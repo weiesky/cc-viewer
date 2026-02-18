@@ -94,9 +94,6 @@ class AppHeader extends React.Component {
               <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{countdownText}</strong>
             </Tag>
           )}
-          <Tag>
-            总请求数: <strong style={{ color: '#fff' }}>{requestCount}</strong>
-          </Tag>
           <Button
             size="small"
             icon={viewMode === 'raw' ? <MessageOutlined /> : <FileTextOutlined />}

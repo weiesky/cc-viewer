@@ -259,8 +259,12 @@ class App extends React.Component {
                     fontSize: 13,
                     color: '#9ca3af',
                     fontWeight: 500,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
                   }}>
-                    请求列表
+                    <span>请求列表</span>
+                    <span style={{ fontSize: 12, color: '#555', fontWeight: 400 }}>总请求数: {requests.length}</span>
                   </div>
                   <div style={{ flex: 1, overflow: 'hidden' }}>
                     <RequestList
