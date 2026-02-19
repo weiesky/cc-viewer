@@ -40,6 +40,7 @@ Limpia la inyección de cli.js y el hook de configuración de shell en un solo p
 - El Response Body completamente expandido por defecto
 - Alternar entre vista JSON y vista de texto plano
 - Copiar contenido JSON con un clic
+- Las solicitudes MainAgent soportan Body Diff JSON, mostrando plegado las diferencias con la solicitud MainAgent anterior (solo campos cambiados/añadidos)
 
 ### Chat Mode
 

@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ 펼치기",
   "ui.collapse": "▼ 접기",
-  "ui.noChat": "MainAgent 대화 데이터 없음"
+  "ui.noChat": "MainAgent 대화 데이터 없음",
+  "ui.diffWithPrev": "이전 요청과의 차이",
+  "ui.diffSessionChanged": "요청 본문 크기가 줄었습니다. /clear, /compact 또는 세션 변경이 있었을 수 있습니다"
 }

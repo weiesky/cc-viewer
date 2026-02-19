@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ Rozwiń",
   "ui.collapse": "▼ Zwiń",
-  "ui.noChat": "Brak danych rozmowy MainAgent"
+  "ui.noChat": "Brak danych rozmowy MainAgent",
+  "ui.diffWithPrev": "Różnica z poprzednim żądaniem",
+  "ui.diffSessionChanged": "Rozmiar treści żądania zmniejszył się, prawdopodobnie z powodu /clear, /compact lub zmiany sesji"
 }

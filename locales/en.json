@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ Expand",
   "ui.collapse": "▼ Collapse",
-  "ui.noChat": "No MainAgent conversation data"
+  "ui.noChat": "No MainAgent conversation data",
+  "ui.diffWithPrev": "Diff with previous request",
+  "ui.diffSessionChanged": "Request body size decreased, possibly due to /clear, /compact, or session change"
 }

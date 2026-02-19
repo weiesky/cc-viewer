@@ -445,6 +445,8 @@ class App extends React.Component {
                 <div style={{ flex: 1, overflow: 'hidden', background: '#0d0d0d' }}>
                   <DetailPanel
                     request={selectedRequest}
+                    requests={filteredRequests}
+                    selectedIndex={selectedIndex}
                     currentTab={currentTab}
                     onTabChange={this.handleTabChange}
                   />

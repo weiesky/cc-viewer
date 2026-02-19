@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ Aufklappen",
   "ui.collapse": "▼ Zuklappen",
-  "ui.noChat": "Keine MainAgent-Gesprächsdaten"
+  "ui.noChat": "Keine MainAgent-Gesprächsdaten",
+  "ui.diffWithPrev": "Diff zur vorherigen Anfrage",
+  "ui.diffSessionChanged": "Anfragekörper wurde kleiner, möglicherweise durch /clear, /compact oder Sitzungswechsel"
 }

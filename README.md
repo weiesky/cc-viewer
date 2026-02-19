@@ -40,6 +40,7 @@ ccv --uninstall
 - Response Body 默认全部展开
 - 支持 JSON 视图与纯文本视图切换
 - 支持一键复制 JSON 内容
+- MainAgent 请求支持 Body Diff JSON，折叠展示与上一次 MainAgent 请求的差异（仅显示变更/新增字段）
 
 ### 对话模式
 

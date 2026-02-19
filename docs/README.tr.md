@@ -40,6 +40,7 @@ cli.js enjeksiyonunu ve shell yapılandırma hook'unu tek adımda temizler.
 - Response Body varsayılan olarak tamamen genişletilir
 - JSON görünümü ile düz metin görünümü arasında geçiş
 - Tek tıkla JSON içeriği kopyalama
+- MainAgent istekleri Body Diff JSON'u destekler, önceki MainAgent isteğiyle farkları katlanmış olarak gösterir (yalnızca değişen/eklenen alanlar)
 
 ### Chat Modu
 

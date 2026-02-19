@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ Genişlet",
   "ui.collapse": "▼ Daralt",
-  "ui.noChat": "MainAgent konuşma verisi yok"
+  "ui.noChat": "MainAgent konuşma verisi yok",
+  "ui.diffWithPrev": "Önceki istekle fark",
+  "ui.diffSessionChanged": "İstek gövdesi boyutu küçüldü, muhtemelen /clear, /compact veya oturum değişikliği nedeniyle"
 }

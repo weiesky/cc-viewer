@@ -40,6 +40,7 @@ cli.js 주입 코드와 shell 설정 파일의 hook을 한 번에 정리합니�
 - Response Body 기본 전체 펼침
 - JSON 뷰와 일반 텍스트 뷰 전환 지원
 - JSON 내용 원클릭 복사
+- MainAgent 요청에 Body Diff JSON 지원, 이전 MainAgent 요청과의 차이를 접어서 표시 (변경/추가된 필드만 표시)
 
 ### 대화 모드
 

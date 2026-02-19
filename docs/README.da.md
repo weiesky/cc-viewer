@@ -40,6 +40,7 @@ Rydder op i cli.js-injektionen og shell-konfigurationens hook i ét trin.
 - Response Body fuldt udvidet som standard
 - Skift mellem JSON-visning og ren tekstvisning
 - Kopiér JSON-indhold med ét klik
+- MainAgent-anmodninger understøtter Body Diff JSON, viser sammenfoldet forskelle med den forrige MainAgent-anmodning (kun ændrede/tilføjede felter)
 
 ### Chat Mode
 

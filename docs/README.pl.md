@@ -40,6 +40,7 @@ Czyści wstrzyknięcie cli.js i hook konfiguracji powłoki w jednym kroku.
 - Response Body domyślnie w pełni rozwinięte
 - Przełączanie między widokiem JSON a widokiem zwykłego tekstu
 - Kopiowanie zawartości JSON jednym kliknięciem
+- Żądania MainAgent obsługują Body Diff JSON, wyświetlając zwinięte różnice z poprzednim żądaniem MainAgent (tylko zmienione/dodane pola)
 
 ### Chat Mode
 

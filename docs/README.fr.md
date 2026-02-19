@@ -40,6 +40,7 @@ Nettoie l'injection cli.js et le hook de configuration shell en une seule étape
 - Le Response Body entièrement déplié par défaut
 - Basculement entre la vue JSON et la vue texte brut
 - Copie du contenu JSON en un clic
+- Les requêtes MainAgent prennent en charge Body Diff JSON, affichant en mode replié les différences avec la requête MainAgent précédente (uniquement les champs modifiés/ajoutés)
 
 ### Chat Mode
 

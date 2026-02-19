@@ -40,6 +40,7 @@ cli.js のインジェクションコードと shell 設定ファイルの hook 
 - Response Body はデフォルトで全展開
 - JSON ビューとプレーンテキストビューの切り替え対応
 - JSON コンテンツのワンクリックコピー
+- MainAgent リクエストで Body Diff JSON をサポート、前回の MainAgent リクエストとの差分を折りたたみ表示（変更/追加フィールドのみ）
 
 ### チャットモード
 

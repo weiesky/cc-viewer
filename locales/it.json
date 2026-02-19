@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ Espandi",
   "ui.collapse": "▼ Comprimi",
-  "ui.noChat": "Nessun dato di conversazione MainAgent"
+  "ui.noChat": "Nessun dato di conversazione MainAgent",
+  "ui.diffWithPrev": "Diff con la richiesta precedente",
+  "ui.diffSessionChanged": "La dimensione del corpo della richiesta è diminuita, probabilmente a causa di /clear, /compact o cambio di sessione"
 }

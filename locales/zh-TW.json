@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ 展開",
   "ui.collapse": "▼ 收起",
-  "ui.noChat": "暫無 MainAgent 對話資料"
+  "ui.noChat": "暫無 MainAgent 對話資料",
+  "ui.diffWithPrev": "與上次請求的差異",
+  "ui.diffSessionChanged": "請求體大小減小，可能使用了 /clear、/compact 或 session 發生了變化"
 }

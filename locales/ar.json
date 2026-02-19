@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ توسيع",
   "ui.collapse": "▼ طي",
-  "ui.noChat": "لا توجد بيانات محادثة MainAgent"
+  "ui.noChat": "لا توجد بيانات محادثة MainAgent",
+  "ui.diffWithPrev": "الفرق مع الطلب السابق",
+  "ui.diffSessionChanged": "حجم نص الطلب انخفض، ربما بسبب /clear أو /compact أو تغيير الجلسة"
 }

@@ -40,6 +40,7 @@ ccv --uninstall
 - Response Body موسع بالكامل افتراضيًا
 - التبديل بين عرض JSON وعرض النص العادي
 - نسخ محتوى JSON بنقرة واحدة
+- طلبات MainAgent تدعم Body Diff JSON، تعرض بشكل مطوي الفروقات مع طلب MainAgent السابق (الحقول المتغيرة/المضافة فقط)
 
 ### Chat Mode
 

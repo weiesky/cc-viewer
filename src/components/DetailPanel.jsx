@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tabs, Collapse, Typography, Button, Tag, Empty, Space, message } from 'antd';
-import { CopyOutlined, FileTextOutlined, CodeOutlined } from '@ant-design/icons';
+import { CopyOutlined, FileTextOutlined, CodeOutlined, RightOutlined, DownOutlined } from '@ant-design/icons';
 import JsonViewer from './JsonViewer';
 import { t } from '../i18n';
 
@@ -11,15 +11,22 @@ class DetailPanel extends React.Component {
     super(props);
     this.state = {
       bodyViewMode: { request: 'json', response: 'json' },
+      diffExpanded: false,
     };
   }
 
   shouldComponentUpdate(nextProps, nextState) {
+    if (nextProps.request !== this.props.request) {
+      this.setState({ diffExpanded: false });
+    }
     return (
       nextProps.request !== this.props.request ||
       nextProps.currentTab !== this.props.currentTab ||
       nextProps.onTabChange !== this.props.onTabChange ||
-      nextState.bodyViewMode !== this.state.bodyViewMode
+      nextProps.requests !== this.props.requests ||
+      nextProps.selectedIndex !== this.props.selectedIndex ||
+      nextState.bodyViewMode !== this.state.bodyViewMode ||
+      nextState.diffExpanded !== this.state.diffExpanded
     );
   }
 
@@ -118,6 +125,40 @@ class DetailPanel extends React.Component {
     );
   }
 
+  getPrevMainAgentRequest() {
+    const { requests, selectedIndex } = this.props;
+    if (!requests || selectedIndex == null) return null;
+    for (let i = selectedIndex - 1; i >= 0; i--) {
+      if (requests[i].mainAgent) return requests[i];
+    }
+    return null;
+  }
+
+  computeDiff(prev, curr) {
+    if (prev == null || curr == null) return null;
+    if (typeof prev !== 'object' || typeof curr !== 'object') return null;
+    const result = {};
+    const allKeys = new Set([...Object.keys(prev), ...Object.keys(curr)]);
+    for (const key of allKeys) {
+      if (!(key in prev)) {
+        result[key] = curr[key];
+      } else if (!(key in curr)) {
+        continue; // removed keys not shown
+      } else {
+        const pStr = JSON.stringify(prev[key]);
+        const cStr = JSON.stringify(curr[key]);
+        if (pStr !== cStr) {
+          if (key === 'messages' && Array.isArray(prev[key]) && Array.isArray(curr[key]) && curr[key].length > prev[key].length) {
+            result[key] = curr[key].slice(prev[key].length);
+          } else {
+            result[key] = curr[key];
+          }
+        }
+      }
+    }
+    return Object.keys(result).length ? result : null;
+  }
+
   render() {
     const { request, currentTab, onTabChange } = this.props;
 
@@ -131,6 +172,46 @@ class DetailPanel extends React.Component {
 
     const time = new Date(request.timestamp).toLocaleString('zh-CN');
     const statusOk = request.response && request.response.status < 400;
+
+    // Diff logic for mainAgent requests
+    let diffBlock = null;
+    if (request.mainAgent) {
+      const prevRequest = this.getPrevMainAgentRequest();
+      if (prevRequest) {
+        const currSize = JSON.stringify(request.body).length;
+        const prevSize = JSON.stringify(prevRequest.body).length;
+        const isShrunk = currSize < prevSize;
+
+        if (isShrunk) {
+          diffBlock = (
+            <div style={{ marginBottom: 16 }}>
+              <Text strong style={{ display: 'block', marginBottom: 8, cursor: 'pointer' }}
+                onClick={() => this.setState(prev => ({ diffExpanded: !prev.diffExpanded }))}>
+                Body Diff JSON {this.state.diffExpanded ? <DownOutlined style={{ fontSize: 12, marginLeft: 4 }} /> : <RightOutlined style={{ fontSize: 12, marginLeft: 4 }} />}
+              </Text>
+              {this.state.diffExpanded && (
+                <Text type="secondary">{t('ui.diffSessionChanged')}</Text>
+              )}
+            </div>
+          );
+        } else {
+          const diffResult = this.computeDiff(prevRequest.body, request.body);
+          if (diffResult) {
+            diffBlock = (
+              <div style={{ marginBottom: 16 }}>
+                <Text strong style={{ display: 'block', marginBottom: 8, cursor: 'pointer' }}
+                  onClick={() => this.setState(prev => ({ diffExpanded: !prev.diffExpanded }))}>
+                  Body Diff JSON {this.state.diffExpanded ? <DownOutlined style={{ fontSize: 12, marginLeft: 4 }} /> : <RightOutlined style={{ fontSize: 12, marginLeft: 4 }} />}
+                </Text>
+                {this.state.diffExpanded && (
+                  <JsonViewer data={diffResult} defaultExpand="all" />
+                )}
+              </div>
+            );
+          }
+        }
+      }
+    }
 
     const tabItems = [
       {
@@ -148,6 +229,7 @@ class DetailPanel extends React.Component {
               }]}
               style={{ marginBottom: 16 }}
             />
+            {diffBlock}
             <div>
               <Text strong style={{ display: 'block', marginBottom: 8 }}>Body</Text>
               {this.renderBody(request.body, 'request')}

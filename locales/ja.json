@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ 展開",
   "ui.collapse": "▼ 折りたたむ",
-  "ui.noChat": "MainAgent の会話データがありません"
+  "ui.noChat": "MainAgent の会話データがありません",
+  "ui.diffWithPrev": "前回リクエストとの差分",
+  "ui.diffSessionChanged": "リクエストボディのサイズが減少しました。/clear、/compact、またはセッション変更の可能性があります"
 }

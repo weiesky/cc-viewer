@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ Udvid",
   "ui.collapse": "▼ Fold sammen",
-  "ui.noChat": "Ingen MainAgent samtaledata"
+  "ui.noChat": "Ingen MainAgent samtaledata",
+  "ui.diffWithPrev": "Diff med forrige anmodning",
+  "ui.diffSessionChanged": "Anmodningens størrelse er reduceret, muligvis på grund af /clear, /compact eller sessionsændring"
 }

@@ -40,6 +40,7 @@ Limpa a injeção do cli.js e o hook de configuração do shell em uma única et
 - Response Body totalmente expandido por padrão
 - Alternar entre visualização JSON e visualização em texto simples
 - Cópia de conteúdo JSON com um clique
+- Requisições MainAgent suportam Body Diff JSON, exibindo de forma recolhida as diferenças com a requisição MainAgent anterior (apenas campos alterados/adicionados)
 
 ### Modo Chat
 

@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ Розгорнути",
   "ui.collapse": "▼ Згорнути",
-  "ui.noChat": "Немає даних діалогу MainAgent"
+  "ui.noChat": "Немає даних діалогу MainAgent",
+  "ui.diffWithPrev": "Відмінності від попереднього запиту",
+  "ui.diffSessionChanged": "Розмір тіла запиту зменшився, можливо через /clear, /compact або зміну сесії"
 }

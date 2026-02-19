@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ Развернуть",
   "ui.collapse": "▼ Свернуть",
-  "ui.noChat": "Нет данных диалога MainAgent"
+  "ui.noChat": "Нет данных диалога MainAgent",
+  "ui.diffWithPrev": "Отличия от предыдущего запроса",
+  "ui.diffSessionChanged": "Размер тела запроса уменьшился, возможно из-за /clear, /compact или смены сессии"
 }

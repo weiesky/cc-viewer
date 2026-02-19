@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ Expandir",
   "ui.collapse": "▼ Contraer",
-  "ui.noChat": "Sin datos de conversación de MainAgent"
+  "ui.noChat": "Sin datos de conversación de MainAgent",
+  "ui.diffWithPrev": "Diferencia con la solicitud anterior",
+  "ui.diffSessionChanged": "El tamaño del cuerpo de la solicitud disminuyó, posiblemente debido a /clear, /compact o cambio de sesión"
 }

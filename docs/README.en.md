@@ -40,6 +40,7 @@ Cleans up the cli.js injection and the shell config hook in one step.
 - Response Body fully expanded by default
 - Toggle between JSON view and plain text view
 - One-click JSON content copy
+- MainAgent requests support Body Diff JSON, showing a collapsible diff with the previous MainAgent request (only changed/added fields)
 
 ### Chat Mode
 

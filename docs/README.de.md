@@ -40,6 +40,7 @@ Bereinigt die cli.js-Injektion und den Shell-Konfigurations-Hook in einem Schrit
 - Response Body standardmäßig vollständig aufgeklappt
 - Umschaltung zwischen JSON-Ansicht und Klartextansicht
 - JSON-Inhalt mit einem Klick kopieren
+- MainAgent-Anfragen unterstützen Body Diff JSON, zeigt eingeklappt die Unterschiede zur vorherigen MainAgent-Anfrage (nur geänderte/neue Felder)
 
 ### Chat Mode
 

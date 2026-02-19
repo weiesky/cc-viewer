@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ Déplier",
   "ui.collapse": "▼ Replier",
-  "ui.noChat": "Aucune donnée de conversation MainAgent"
+  "ui.noChat": "Aucune donnée de conversation MainAgent",
+  "ui.diffWithPrev": "Diff avec la requête précédente",
+  "ui.diffSessionChanged": "La taille du corps de la requête a diminué, possiblement dû à /clear, /compact ou un changement de session"
 }

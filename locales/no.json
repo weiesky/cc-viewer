@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ Utvid",
   "ui.collapse": "▼ Skjul",
-  "ui.noChat": "Ingen MainAgent samtaledata"
+  "ui.noChat": "Ingen MainAgent samtaledata",
+  "ui.diffWithPrev": "Diff med forrige forespørsel",
+  "ui.diffSessionChanged": "Forespørselens størrelse ble redusert, muligens på grunn av /clear, /compact eller sesjonsendring"
 }

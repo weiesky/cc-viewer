@@ -61,5 +61,7 @@
 
   "ui.expand": "▶ ขยาย",
   "ui.collapse": "▼ ย่อ",
-  "ui.noChat": "ไม่มีข้อมูลการสนทนา MainAgent"
+  "ui.noChat": "ไม่มีข้อมูลการสนทนา MainAgent",
+  "ui.diffWithPrev": "ความแตกต่างกับคำขอก่อนหน้า",
+  "ui.diffSessionChanged": "ขนาดเนื้อหาคำขอลดลง อาจเกิดจาก /clear, /compact หรือการเปลี่ยนเซสชัน"
 }
