@@ -26,8 +26,6 @@ Claude Code 업데이트 후 수동 작업이 필요 없습니다. 다음에 `cl
 ccv --uninstall
 ```
 
-cli.js 설정과 shell 설정 파일의 hook을 한 번에 정리합니다.
-
 ## 기능
 
 ### 요청 모니터링 (원문 모드)

@@ -26,8 +26,6 @@ Claude Code の更新後、手動操作は不要です。次回 `claude` を実�
 ccv --uninstall
 ```
 
-cli.js の設定と shell 設定ファイルの hook をワンステップでクリーンアップします。
-
 ## 機能
 
 ### リクエスト監視（Raw モード）

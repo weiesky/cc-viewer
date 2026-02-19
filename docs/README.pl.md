@@ -26,8 +26,6 @@ Po aktualizacji Claude Code nie jest wymagane żadne ręczne działanie — przy
 ccv --uninstall
 ```
 
-Czyści konfigurację cli.js i hook konfiguracji powłoki w jednym kroku.
-
 ## Funkcje
 
 ### Monitorowanie zapytań (Raw Mode)

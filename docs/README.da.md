@@ -26,8 +26,6 @@ Efter Claude Code opdaterer, er der ingen manuel handling nødvendig — næste 
 ccv --uninstall
 ```
 
-Rydder op i cli.js-konfigurationen og shell-konfigurationens hook i ét trin.
-
 ## Funktioner
 
 ### Overvågning af forespørgsler (Raw Mode)

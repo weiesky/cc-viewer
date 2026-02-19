@@ -26,8 +26,6 @@ Claude Code güncellemesinden sonra manuel işlem gerekmez — bir sonraki `clau
 ccv --uninstall
 ```
 
-cli.js yapılandırmasını ve shell yapılandırma hook'unu tek adımda temizler.
-
 ## Özellikler
 
 ### İstek İzleme (Raw Modu)

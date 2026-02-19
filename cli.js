@@ -149,7 +149,7 @@ try {
     }
 
     if (shellResult.status === 'installed') {
-      console.log(t('cli.hook.installed', { path: shellResult.path }));
+      console.log('All READY!');
     } else if (shellResult.status !== 'exists') {
       console.log(t('cli.hook.fail', { error: shellResult.error }));
     }

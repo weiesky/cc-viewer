@@ -5,7 +5,6 @@
   "cli.inject.fail": "❌ 安装失败: {error}",
   "cli.inject.notFound": "❌ 找不到 Claude Code cli.js: {path}",
   "cli.inject.notFoundHint": "   请确认 @anthropic-ai/claude-code 已安装",
-  "cli.hook.installed": "自动修复 hook 已写入 {path}",
   "cli.hook.exists": "自动修复 hook 已存在于 {path}",
   "cli.hook.fail": "⚠️  shell hook 写入失败: {error}",
   "cli.usage.hint": "\n如需卸载，请运行: ccv --uninstall",
@@ -18,8 +17,8 @@
   "cli.uninstall.hookFail": "❌ shell hook 清理失败: {error}",
   "cli.uninstall.done": "\n🗑️  CC Viewer 已完全卸载",
 
-  "server.started": "\n🔍 Claude 请求监控服务已启动: http://{host}:{port}\n",
-  "server.reuse": "\n🔍 CC Viewer 已在运行: http://{host}:{port}\n",
+  "server.started": "\nClaude 请求监控服务已启动: http://{host}:{port}\n",
+  "server.reuse": "\nCC Viewer 已在运行: http://{host}:{port}\n",
   "server.portsBusy": "⚠️  端口 {start}-{end} 均被占用，请求监控服务未启动",
 
   "ui.requestList": "请求列表",

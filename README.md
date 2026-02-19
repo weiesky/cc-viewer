@@ -16,17 +16,13 @@ npm install -g cc-viewer
 ccv
 ```
 
-该命令会自动配置本地安装的 Claude Code 以启用监控，并在 shell 配置文件（`~/.zshrc` 或 `~/.bashrc`）中添加自动修复 hook。之后正常使用 Claude Code，打开浏览器访问 `http://localhost:7008` 即可查看监控界面。
-
-Claude Code 更新后无需手动操作，下次运行 `claude` 时会自动检测并重新配置。
+该命令会自动适配本地安装的 Claude Code。正常使用 Claude Code，打开浏览器访问 `http://localhost:7008` 即可查看监控界面。
 
 ### 卸载
 
 ```bash
 ccv --uninstall
 ```
-
-一键清理 cli.js 中的配置和 shell 配置文件中的 hook。
 
 ## 功能
 

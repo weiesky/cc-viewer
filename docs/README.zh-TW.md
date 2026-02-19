@@ -26,8 +26,6 @@ Claude Code 更新後無需手動操作，下次執行 `claude` 時會自動偵�
 ccv --uninstall
 ```
 
-一鍵清理 cli.js 中的配置和 shell 設定檔中的 hook。
-
 ## 功能
 
 ### 請求監控（原文模式）

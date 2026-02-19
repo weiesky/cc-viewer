@@ -10,7 +10,7 @@ const { Text } = Typography;
 const QUEUE_THRESHOLD = 20;
 
 function randomInterval() {
-  return 1000 + Math.random() * 500;
+  return 100 + Math.random() * 50;
 }
 
 class ChatView extends React.Component {

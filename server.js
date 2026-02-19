@@ -1,5 +1,5 @@
-import { createServer, request as httpRequest } from 'node:http';
-import { readFileSync, existsSync, watchFile, unwatchFile, statSync, writeFileSync, unlinkSync, readdirSync, openSync, closeSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { readFileSync, existsSync, watchFile, unwatchFile, statSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, extname, basename } from 'node:path';
 import { homedir } from 'node:os';
@@ -14,65 +14,6 @@ const __dirname = dirname(__filename);
 const START_PORT = 7008;
 const MAX_PORT = 7099;
 const HOST = '127.0.0.1';
-const PORT_FILE = '/tmp/cc-viewer-port';
-const LOCK_FILE = '/tmp/cc-viewer-lock';
-
-function acquireLock() {
-  try {
-    // wx flag: exclusive create, fails if file already exists
-    const fd = openSync(LOCK_FILE, 'wx');
-    writeFileSync(fd, String(process.pid));
-    closeSync(fd);
-    return true;
-  } catch {
-    // 检查锁文件是否过期（超过 10 秒视为过期）
-    try {
-      const stat = statSync(LOCK_FILE);
-      if (Date.now() - stat.mtimeMs > 10000) {
-        unlinkSync(LOCK_FILE);
-        const fd = openSync(LOCK_FILE, 'wx');
-        writeFileSync(fd, String(process.pid));
-        closeSync(fd);
-        return true;
-      }
-    } catch {}
-    return false;
-  }
-}
-
-function releaseLock() {
-  try { unlinkSync(LOCK_FILE); } catch {}
-}
-
-function checkPortAlive(port) {
-  return new Promise((resolve) => {
-    const req = httpRequest({ host: HOST, port, path: '/api/requests', method: 'GET', timeout: 1000 }, (res) => {
-      res.resume();
-      resolve(true);
-    });
-    req.on('error', () => resolve(false));
-    req.on('timeout', () => { req.destroy(); resolve(false); });
-    req.end();
-  });
-}
-
-function registerLogToServer(port, logFile) {
-  return new Promise((resolve) => {
-    const data = JSON.stringify({ logFile });
-    const req = httpRequest({
-      host: HOST, port, path: '/api/register-log', method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
-      timeout: 2000,
-    }, (res) => {
-      res.resume();
-      resolve(true);
-    });
-    req.on('error', () => resolve(false));
-    req.on('timeout', () => { req.destroy(); resolve(false); });
-    req.write(data);
-    req.end();
-  });
-}
 
 let clients = [];
 let server;
@@ -346,86 +287,35 @@ function handleRequest(req, res) {
 }
 
 export async function startViewer() {
-  // 尝试获取文件锁，防止多个进程同时启动服务器
-  if (!acquireLock()) {
-    // 另一个进程正在启动，等待它完成后复用
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    if (existsSync(PORT_FILE)) {
-      try {
-        const existingPort = parseInt(readFileSync(PORT_FILE, 'utf-8').trim(), 10);
-        if (existingPort >= START_PORT && existingPort <= MAX_PORT) {
-          const alive = await checkPortAlive(existingPort);
-          if (alive) {
-            actualPort = existingPort;
-            await registerLogToServer(existingPort, LOG_FILE);
-            return null;
-          }
-        }
-      } catch {}
-    }
-    // 等待后仍无法复用，静默退出
-    return null;
-  }
-
-  try {
-    // 检查是否已有 cc-viewer 实例在运行
-    if (existsSync(PORT_FILE)) {
-      try {
-        const existingPort = parseInt(readFileSync(PORT_FILE, 'utf-8').trim(), 10);
-        if (existingPort >= START_PORT && existingPort <= MAX_PORT) {
-          const alive = await checkPortAlive(existingPort);
-          if (alive) {
-            actualPort = existingPort;
-            await registerLogToServer(existingPort, LOG_FILE);
-            releaseLock();
-            console.log(t('server.reuse', { host: HOST, port: existingPort }));
-            return null;
-          }
-        }
-      } catch {
-        // PORT_FILE 读取失败，继续正常启动
-      }
-      // 旧实例已不存在，清理 PORT_FILE
-      try { unlinkSync(PORT_FILE); } catch {}
-    }
-
-    return new Promise((resolve, reject) => {
-      function tryListen(port) {
-        if (port > MAX_PORT) {
-          console.log(t('server.portsBusy', { start: START_PORT, end: MAX_PORT }));
-          releaseLock();
-          resolve(null);
-          return;
-        }
-
-        const currentServer = createServer(handleRequest);
-
-        currentServer.listen(port, HOST, () => {
-          server = currentServer;
-          actualPort = port;
-          try { writeFileSync(PORT_FILE, String(port)); } catch {}
-          releaseLock();
-          console.log(t('server.started', { host: HOST, port }));
-          startWatching();
-          resolve(server);
-        });
-
-        currentServer.on('error', (err) => {
-          if (err.code === 'EADDRINUSE') {
-            tryListen(port + 1);
-          } else {
-            releaseLock();
-            reject(err);
-          }
-        });
+  return new Promise((resolve, reject) => {
+    function tryListen(port) {
+      if (port > MAX_PORT) {
+        console.log(t('server.portsBusy', { start: START_PORT, end: MAX_PORT }));
+        resolve(null);
+        return;
       }
 
-      tryListen(START_PORT);
-    });
-  } catch (err) {
-    releaseLock();
-    throw err;
-  }
+      const currentServer = createServer(handleRequest);
+
+      currentServer.listen(port, HOST, () => {
+        server = currentServer;
+        actualPort = port;
+        console.log(t('server.started', { host: HOST, port }));
+        startWatching();
+        resolve(server);
+      });
+
+      currentServer.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          tryListen(port + 1);
+        } else {
+          reject(err);
+        }
+      });
+    }
+
+    tryListen(START_PORT);
+  });
 }
 
 export function stopViewer() {

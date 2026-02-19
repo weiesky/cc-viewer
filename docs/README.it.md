@@ -26,8 +26,6 @@ Dopo un aggiornamento di Claude Code, non è necessaria alcuna azione manuale �
 ccv --uninstall
 ```
 
-Pulisce la configurazione di cli.js e l'hook di configurazione della shell in un unico passaggio.
-
 ## Funzionalità
 
 ### Monitoraggio delle richieste (Raw Mode)

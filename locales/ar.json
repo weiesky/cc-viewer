@@ -5,7 +5,6 @@
   "cli.inject.fail": "❌ فشل التثبيت: {error}",
   "cli.inject.notFound": "❌ لم يتم العثور على Claude Code cli.js: {path}",
   "cli.inject.notFoundHint": "   يرجى التأكد من تثبيت @anthropic-ai/claude-code",
-  "cli.hook.installed": "تم كتابة hook الإصلاح التلقائي في {path}",
   "cli.hook.exists": "hook الإصلاح التلقائي موجود بالفعل في {path}",
   "cli.hook.fail": "⚠️  فشل كتابة shell hook: {error}",
   "cli.usage.hint": "\nلإلغاء التثبيت، قم بتشغيل: ccv --uninstall",
@@ -17,8 +16,8 @@
   "cli.uninstall.hookClean": "✅ لا حاجة للتنظيف في {path}",
   "cli.uninstall.hookFail": "❌ فشل تنظيف shell hook: {error}",
   "cli.uninstall.done": "\n🗑️  تم إلغاء تثبيت CC Viewer بالكامل",
-  "server.started": "\n🔍 تم تشغيل CC Viewer: http://{host}:{port}\n",
-  "server.reuse": "\n🔍 CC Viewer يعمل بالفعل: http://{host}:{port}\n",
+  "server.started": "\nتم تشغيل CC Viewer: http://{host}:{port}\n",
+  "server.reuse": "\nCC Viewer يعمل بالفعل: http://{host}:{port}\n",
   "server.portsBusy": "⚠️  المنافذ {start}-{end} كلها مشغولة، لم يتم تشغيل خدمة المراقبة",
   "ui.requestList": "الطلبات",
   "ui.totalRequests": "الإجمالي: {count}",
