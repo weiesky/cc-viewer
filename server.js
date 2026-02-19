@@ -3,7 +3,7 @@ import { readFileSync, existsSync, watchFile, unwatchFile, statSync, writeFileSy
 import { fileURLToPath } from 'node:url';
 import { dirname, join, extname, basename } from 'node:path';
 import { homedir } from 'node:os';
-import { LOG_FILE } from 'cc-viewer/interceptor.js';
+import { LOG_FILE } from './interceptor.js';
 import { t } from './i18n.js';
 
 const LOG_DIR = join(homedir(), '.claude', 'cc-viewer');

@@ -1,13 +1,13 @@
 {
   "name": "cc-viewer",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Claude Code Logger visualization management tool",
   "license": "MIT",
-  "main": "lib/server.js",
+  "main": "server.js",
   "type": "module",
   "exports": {
-    ".": "./lib/server.js",
-    "./server.js": "./lib/server.js",
+    ".": "./server.js",
+    "./server.js": "./server.js",
     "./interceptor.js": "./interceptor.js"
   },
   "author": "weiesky",
@@ -17,7 +17,7 @@
   "scripts": {
     "dev": "vite",
     "build": "node build.js",
-    "start": "node lib/server.js",
+    "start": "node server.js",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -41,7 +41,8 @@
     "node": ">=18"
   },
   "files": [
-    "lib/",
+    "dist/",
+    "server.js",
     "cli.js",
     "interceptor.js",
     "i18n.js",
