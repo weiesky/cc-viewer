@@ -1,4 +1,5 @@
 import React from 'react';
+import styles from './PanelResizer.module.css';
 
 class PanelResizer extends React.Component {
   constructor(props) {
@@ -38,15 +39,7 @@ class PanelResizer extends React.Component {
     return (
       <div
         onMouseDown={this.handleMouseDown}
-        style={{
-          width: 6,
-          cursor: 'col-resize',
-          background: '#1f1f1f',
-          flexShrink: 0,
-          transition: 'background 0.2s',
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = '#3b82f6'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = '#1f1f1f'; }}
+        className={styles.resizer}
       />
     );
   }

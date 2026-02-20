@@ -1,15 +1,16 @@
 // LLM Request Interceptor
 // 拦截并记录所有Claude API请求
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, renameSync, unlinkSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, basename } from 'node:path';
 
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// 每次启动生成带时间戳的独立日志文件
-function generateLogFilePath() {
+// 生成新的日志文件路径
+function generateNewLogFilePath() {
   const now = new Date();
   const ts = now.getFullYear().toString()
     + String(now.getMonth() + 1).padStart(2, '0')
@@ -23,10 +24,134 @@ function generateLogFilePath() {
   const projectName = basename(cwd).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
   const dir = join(homedir(), '.claude', 'cc-viewer');
   try { mkdirSync(dir, { recursive: true }); } catch {}
-  return join(dir, `${projectName}_${ts}.jsonl`);
+  return { filePath: join(dir, `${projectName}_${ts}.jsonl`), dir, projectName };
 }
 
-export const LOG_FILE = generateLogFilePath();
+// 查找同项目最近的日志文件，检查最后一条响应是否在1小时内
+function findRecentLog(dir, projectName) {
+  try {
+    const files = readdirSync(dir)
+      .filter(f => f.startsWith(projectName + '_') && f.endsWith('.jsonl'))
+      .sort()
+      .reverse();
+    if (files.length === 0) return null;
+    const latestFile = join(dir, files[0]);
+    const content = readFileSync(latestFile, 'utf-8');
+    const entries = content.split('\n---\n').filter(s => s.trim());
+    // 从后往前找最后一条有 response 的记录
+    for (let i = entries.length - 1; i >= 0; i--) {
+      try {
+        const entry = JSON.parse(entries[i]);
+        if (entry.response) {
+          const ts = new Date(entry.timestamp).getTime();
+          if (Date.now() - ts < 3600000) {
+            return latestFile;
+          }
+          return null;
+        }
+      } catch {}
+    }
+  } catch {}
+  return null;
+}
+
+// 清理残留的临时文件（rename 为正式文件名，保留数据）
+function cleanupTempFiles(dir, projectName) {
+  try {
+    const tempFiles = readdirSync(dir)
+      .filter(f => f.startsWith(projectName + '_') && f.endsWith('_temp.jsonl'));
+    for (const f of tempFiles) {
+      try {
+        const tempPath = join(dir, f);
+        const newPath = tempPath.replace('_temp.jsonl', '.jsonl');
+        if (existsSync(newPath)) {
+          // 正式文件已存在，追加临时文件内容后删除
+          const tempContent = readFileSync(tempPath, 'utf-8');
+          if (tempContent.trim()) {
+            appendFileSync(newPath, tempContent);
+          }
+          unlinkSync(tempPath);
+        } else {
+          renameSync(tempPath, newPath);
+        }
+      } catch {}
+    }
+  } catch {}
+}
+
+// Resume 状态（供 server.js 使用）
+let _resumeState = null;
+let _resolveChoice = null;
+const _choicePromise = new Promise(resolve => { _resolveChoice = resolve; });
+
+function resolveResumeChoice(choice) {
+  if (!_resumeState) return;
+  const { recentFile, tempFile } = _resumeState;
+  try {
+    if (choice === 'continue') {
+      // 将临时文件内容追加到旧日志
+      if (existsSync(tempFile)) {
+        const tempContent = readFileSync(tempFile, 'utf-8');
+        if (tempContent.trim()) {
+          appendFileSync(recentFile, tempContent);
+        }
+        unlinkSync(tempFile);
+      }
+      LOG_FILE = recentFile;
+    } else {
+      // new: 将临时文件 rename 为正式新日志文件名
+      const newPath = tempFile.replace('_temp.jsonl', '.jsonl');
+      if (existsSync(tempFile)) {
+        renameSync(tempFile, newPath);
+      }
+      LOG_FILE = newPath;
+    }
+  } catch (err) {
+    console.error('[CC Viewer] resolveResumeChoice error:', err);
+  }
+  const result = { logFile: LOG_FILE };
+  _resumeState = null;
+  _resolveChoice(result);
+  return result;
+}
+
+// 初始化日志文件路径（异步，支持用户交互）
+const { filePath: _newLogFile, dir: _logDir, projectName: _projectName } = generateNewLogFilePath();
+let LOG_FILE = _newLogFile;
+
+// 启动时清理残留临时文件
+cleanupTempFiles(_logDir, _projectName);
+
+const _initPromise = (async () => {
+  try {
+    const recentLog = findRecentLog(_logDir, _projectName);
+    if (recentLog) {
+      // 设置临时文件，不阻塞
+      const tempFile = _newLogFile.replace('.jsonl', '_temp.jsonl');
+      LOG_FILE = tempFile;
+      _resumeState = {
+        recentFile: recentLog,
+        recentFileName: basename(recentLog),
+        tempFile,
+      };
+    }
+  } catch {}
+})();
+
+export { LOG_FILE, _initPromise, _resumeState, _choicePromise, resolveResumeChoice };
+
+const MAX_LOG_SIZE = 200 * 1024 * 1024; // 200MB
+
+function checkAndRotateLogFile() {
+  try {
+    if (!existsSync(LOG_FILE)) return;
+    const size = statSync(LOG_FILE).size;
+    if (size >= MAX_LOG_SIZE) {
+      const { filePath } = generateNewLogFilePath();
+      LOG_FILE = filePath;
+    }
+  } catch {}
+}
 
 // 从环境变量 ANTHROPIC_BASE_URL 提取域名用于请求匹配
 function getBaseUrlHost() {
@@ -225,6 +350,11 @@ export function setupInterceptor() {
       }
     } catch {}
 
+    // 用户新指令边界：检查日志文件大小，超过 200MB 则切换新文件
+    if (requestEntry?.mainAgent) {
+      checkAndRotateLogFile();
+    }
+
     const response = await _originalFetch.apply(this, arguments);
 
     if (requestEntry) {
@@ -345,5 +475,5 @@ export function setupInterceptor() {
 // 自动执行拦截器设置
 setupInterceptor();
 
-// 同步启动 Web Viewer 服务
-import('cc-viewer/server.js').catch(() => {});
+// 等待日志文件初始化完成后启动 Web Viewer 服务
+_initPromise.then(() => import('cc-viewer/server.js')).catch(() => {});

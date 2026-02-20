@@ -1,0 +1,30 @@
+.wrapper {
+  margin: 6px 0;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.filePath {
+  color: #a78bfa;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.toggle {
+  color: #6b7280;
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.code {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: auto;
+}

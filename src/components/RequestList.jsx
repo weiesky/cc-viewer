@@ -1,6 +1,7 @@
 import React from 'react';
 import { List, Tag, Empty } from 'antd';
 import { t } from '../i18n';
+import styles from './RequestList.module.css';
 
 function formatTokens(n) {
   if (n == null || n === 0) return null;
@@ -27,14 +28,10 @@ function getSubAgentType(req) {
     }
   }
 
-  // Bash 工具相关：命令执行、文件路径提取、权限检查
   if (/Extract any file paths/i.test(sysText)) return 'Bash';
   if (/process Bash commands/i.test(sysText)) return 'Bash';
-
-  // Task 工具相关：Explore 子代理
   if (/file search specialist/i.test(sysText)) return 'Task';
 
-  // 从 user message 判断
   const msgs = body.messages || [];
   for (let i = msgs.length - 1; i >= 0; i--) {
     if (msgs[i].role !== 'user') continue;
@@ -57,14 +54,14 @@ class RequestList extends React.Component {
 
     if (requests.length === 0) {
       return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+        <div className={styles.centerEmpty}>
           <Empty description={t('ui.waitingRequests')} />
         </div>
       );
     }
 
     return (
-      <div style={{ overflow: 'auto', height: '100%' }}>
+      <div className={styles.scrollContainer}>
         <List
           dataSource={requests}
           size="small"
@@ -92,49 +89,28 @@ class RequestList extends React.Component {
             return (
               <List.Item
                 onClick={() => onSelect(index)}
-                style={{
-                  cursor: 'pointer',
-                  padding: '8px 12px',
-                  background: isActive ? '#1a2332' : 'transparent',
-                  borderLeft: isActive ? '3px solid #3b82f6' : '3px solid transparent',
-                  borderBottom: '1px solid #1f1f1f',
-                  transition: 'background 0.15s',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) e.currentTarget.style.background = '#151515';
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) e.currentTarget.style.background = 'transparent';
-                }}
+                className={`${styles.listItem} ${isActive ? styles.listItemActive : ''}`}
               >
-                <div style={{ width: '100%', minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, fontSize: 12 }}>
+                <div className={styles.itemContent}>
+                  <div className={styles.itemHeader}>
                     {req.mainAgent
-                      ? <Tag color="orange" style={{ margin: 0, fontSize: 12 }}>MainAgent</Tag>
-                      : <Tag style={{ margin: 0, fontSize: 12 }}>SubAgent{subType ? ':' + subType : ''}</Tag>
+                      ? <Tag color="orange" className={styles.tagNoMargin}>MainAgent</Tag>
+                      : <Tag className={styles.tagNoMargin}>SubAgent{subType ? ':' + subType : ''}</Tag>
                     }
-                    {model && <span style={{ fontSize: 12, color: req.mainAgent ? '#d4822d' : '#8c8c8c' }}>{model}</span>}
-                    <span style={{ fontSize: 12, color: '#6b7280', marginLeft: 'auto' }}>{time}</span>
+                    {model && <span className={styles.modelName} style={{ color: req.mainAgent ? '#d4822d' : '#8c8c8c' }}>{model}</span>}
+                    <span className={styles.time}>{time}</span>
                   </div>
-                  <div style={{ display: 'flex', gap: 8, fontSize: 12, alignItems: 'center' }}>
-                    <span style={{ color: '#555', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }} title={req.url}>{urlShort}</span>
-                    {req.duration && <span style={{ color: '#6b7280', flexShrink: 0 }}>{req.duration}ms</span>}
+                  <div className={styles.detailRow}>
+                    <span className={styles.urlText} title={req.url}>{urlShort}</span>
+                    {req.duration && <span className={styles.duration}>{req.duration}ms</span>}
                     {req.response && (
-                      <span style={{ color: statusOk ? '#10b981' : statusErr ? '#ef4444' : '#9ca3af', flexShrink: 0 }}>
+                      <span className={statusOk ? styles.statusOk : statusErr ? styles.statusErr : styles.statusDefault}>
                         {req.response.status}
                       </span>
                     )}
                   </div>
                   {usage && (
-                    <div style={{
-                      background: '#111',
-                      borderRadius: 4,
-                      padding: '3px 6px',
-                      marginTop: 4,
-                      fontSize: 12,
-                      color: '#6b7280',
-                      lineHeight: 1.6,
-                    }}>
+                    <div className={styles.usageBox}>
                       <div>token: output:{formatTokens(outputTokens) || 0}, input: {formatTokens(inputTokens) || 0}</div>
                       {(cacheRead > 0 || cacheCreate > 0) && (
                         <div>cache: {cacheRead > 0 ? `read:${formatTokens(cacheRead)}` : ''}{cacheRead > 0 && cacheCreate > 0 ? ', ' : ''}{cacheCreate > 0 ? `create:${formatTokens(cacheCreate)}` : ''}</div>

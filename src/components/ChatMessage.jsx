@@ -5,27 +5,9 @@ import { escapeHtml, truncateText, getSvgAvatar } from '../utils/helpers';
 import { renderAssistantText } from '../utils/systemTags';
 import DiffView from './DiffView';
 import ToolResultView from './ToolResultView';
+import styles from './ChatMessage.module.css';
 
 const { Text } = Typography;
-
-const avatarBase = {
-  width: 32,
-  height: 32,
-  borderRadius: '50%',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  flexShrink: 0,
-};
-
-const bubbleBase = {
-  borderRadius: 8,
-  padding: '10px 14px',
-  maxWidth: '100%',
-  fontSize: 14,
-  lineHeight: 1.6,
-  wordBreak: 'break-word',
-};
 
 class ChatMessage extends React.Component {
   formatTime(ts) {
@@ -41,12 +23,30 @@ class ChatMessage extends React.Component {
     const { timestamp } = this.props;
     const timeStr = this.formatTime(timestamp);
     return (
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-        <Text type="secondary" style={{ fontSize: 11 }}>{name}{extra || ''}</Text>
-        {timeStr && <Text style={{ fontSize: 10, color: '#6b7280', flexShrink: 0, marginLeft: 8 }}>{timeStr}</Text>}
+      <div className={styles.labelRow}>
+        <Text type="secondary" className={styles.labelText}>{name}{extra || ''}</Text>
+        {timeStr && <Text className={styles.timeText}>{timeStr}</Text>}
       </div>
     );
   }
+
+  renderUserAvatar(bgColor) {
+    const { userProfile } = this.props;
+    if (userProfile?.avatar) {
+      return <img src={userProfile.avatar} className={styles.avatarImg} alt={userProfile.name || 'User'} />;
+    }
+    return (
+      <div className={styles.avatar} style={{ background: bgColor }}
+        dangerouslySetInnerHTML={{ __html: getSvgAvatar('user') }}
+      />
+    );
+  }
+
+  getUserName() {
+    const { userProfile } = this.props;
+    return userProfile?.name || 'User';
+  }
+
   renderSegments(segments) {
     return segments.map((seg, i) => {
       if (seg.type === 'system-tag') {
@@ -57,16 +57,10 @@ class ChatMessage extends React.Component {
             size="small"
             items={[{
               key: '1',
-              label: <Text type="secondary" style={{ fontSize: 12 }}>{seg.tag}</Text>,
-              children: <pre style={{
-                fontSize: 12,
-                color: '#9ca3af',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all',
-                margin: 0,
-              }}>{seg.content}</pre>,
+              label: <Text type="secondary" className={styles.systemTagLabel}>{seg.tag}</Text>,
+              children: <pre className={styles.systemTagPre}>{seg.content}</pre>,
             }]}
-            style={{ margin: '4px 0' }}
+            className={styles.collapseMargin}
           />
         );
       }
@@ -105,34 +99,18 @@ class ChatMessage extends React.Component {
 
     const inp = (tu.input && typeof tu.input === 'object') ? tu.input : {};
     const box = (label, children) => (
-      <div key={tu.id} style={{
-        background: '#1a1a2e',
-        border: '1px solid #2a2a3e',
-        borderRadius: 8,
-        padding: '8px 12px',
-        margin: '6px 0',
-        fontSize: 12,
-      }}>
-        <Text strong style={{ color: '#a78bfa' }}>{label}</Text>
+      <div key={tu.id} className={styles.toolBox}>
+        <Text strong className={styles.toolLabel}>{label}</Text>
         {children}
       </div>
     );
 
     const codePre = (text, color) => (
-      <pre style={{
-        color: color || '#e5e7eb',
-        fontSize: 12,
-        margin: '4px 0 0',
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-all',
-        background: '#0d1117',
-        borderRadius: 4,
-        padding: '6px 8px',
-      }}>{text}</pre>
+      <pre className={styles.codePre} style={{ color: color || '#e5e7eb' }}>{text}</pre>
     );
 
     const pathTag = (p) => (
-      <span style={{ color: '#7dd3fc', fontSize: 11 }}>{p}</span>
+      <span className={styles.pathTag}>{p}</span>
     );
 
     // Bash: show command and description
@@ -140,7 +118,7 @@ class ChatMessage extends React.Component {
       const cmd = inp.command || '';
       const desc = inp.description || '';
       return box(
-        <>Bash{desc ? <span style={{ color: '#6b7280', fontWeight: 400 }}> — {desc}</span> : ''}</>,
+        <>Bash{desc ? <span className={styles.descSpan}> — {desc}</span> : ''}</>,
         codePre(cmd, '#c9d1d9')
       );
     }
@@ -153,7 +131,7 @@ class ChatMessage extends React.Component {
       if (inp.limit) parts.push(`limit: ${inp.limit}`);
       const range = parts.length ? ` (${parts.join(', ')})` : '';
       return box(
-        <>Read: {pathTag(fp)}<span style={{ color: '#6b7280' }}>{range}</span></>,
+        <>Read: {pathTag(fp)}<span className={styles.secondarySpan}>{range}</span></>,
         null
       );
     }
@@ -167,7 +145,7 @@ class ChatMessage extends React.Component {
         ? lines.slice(0, 20).join('\n') + `\n... (${lines.length} lines total)`
         : content;
       return box(
-        <>Write: {pathTag(fp)} <span style={{ color: '#6b7280' }}>({lines.length} lines)</span></>,
+        <>Write: {pathTag(fp)} <span className={styles.secondarySpan}>({lines.length} lines)</span></>,
         codePre(preview, '#c9d1d9')
       );
     }
@@ -177,7 +155,7 @@ class ChatMessage extends React.Component {
       const pattern = inp.pattern || '';
       const path = inp.path || '';
       return box(
-        <>Glob: <span style={{ color: '#fbbf24' }}>{pattern}</span>{path ? <span style={{ color: '#6b7280' }}> in {path}</span> : ''}</>,
+        <>Glob: <span className={styles.patternSpan}>{pattern}</span>{path ? <span className={styles.secondarySpan}> in {path}</span> : ''}</>,
         null
       );
     }
@@ -192,7 +170,7 @@ class ChatMessage extends React.Component {
       if (inp.head_limit) opts.push(`limit: ${inp.head_limit}`);
       const optsStr = opts.length ? ` (${opts.join(', ')})` : '';
       return box(
-        <>Grep: <span style={{ color: '#fbbf24' }}>/{pattern}/</span>{path ? <span style={{ color: '#6b7280' }}> in {path}</span> : ''}<span style={{ color: '#6b7280' }}>{optsStr}</span></>,
+        <>Grep: <span className={styles.patternSpan}>/{pattern}/</span>{path ? <span className={styles.secondarySpan}> in {path}</span> : ''}<span className={styles.secondarySpan}>{optsStr}</span></>,
         null
       );
     }
@@ -218,70 +196,61 @@ class ChatMessage extends React.Component {
       const vs = typeof v === 'string' ? v : JSON.stringify(v);
       const display = vs.length > 200 ? vs.substring(0, 200) + '...' : vs;
       return (
-        <div key={k} style={{ margin: '2px 0' }}>
-          <span style={{ color: '#7dd3fc' }}>{k}: </span>
-          <span style={{ color: '#9ca3af' }}>{display}</span>
+        <div key={k} className={styles.kvItem}>
+          <span className={styles.kvKey}>{k}: </span>
+          <span className={styles.kvValue}>{display}</span>
         </div>
       );
     });
-    return box(toolLabel, <div style={{ marginTop: 4, fontSize: 11 }}>{items}</div>);
+    return box(toolLabel, <div className={styles.kvContainer}>{items}</div>);
   }
 
   renderUserMessage() {
     const { text, timestamp } = this.props;
     const timeStr = this.formatTime(timestamp);
+    const userName = this.getUserName();
 
     // 检测 /compact 消息
     const isCompact = text && text.includes('This session is being continued from a previous conversation that ran out of context');
 
     if (isCompact) {
       return (
-        <div style={{ display: 'flex', gap: 10, padding: '8px 0', justifyContent: 'flex-end' }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-              {timeStr && <Text style={{ fontSize: 10, color: '#6b7280', flexShrink: 0 }}>{timeStr}</Text>}
-              <Text type="secondary" style={{ fontSize: 11, marginLeft: 'auto' }}>User — /compact</Text>
+        <div className={styles.messageRowEnd}>
+          <div className={styles.contentColLimited}>
+            <div className={styles.labelRow}>
+              {timeStr && <Text className={styles.timeTextNoMargin}>{timeStr}</Text>}
+              <Text type="secondary" className={styles.labelTextRight}>{userName} — /compact</Text>
             </div>
-            <div style={{ ...bubbleBase, background: '#1668dc', color: '#e5e7eb' }}>
+            <div className={styles.bubbleUser}>
               <Collapse
                 ghost
                 size="small"
                 items={[{
                   key: '1',
-                  label: <Text style={{ fontSize: 12, color: '#93c5fd' }}>Compact Summary</Text>,
-                  children: <pre style={{
-                    fontSize: 12,
-                    color: '#d1d5db',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-all',
-                    margin: 0,
-                  }}>{text}</pre>,
+                  label: <Text className={styles.compactLabel}>Compact Summary</Text>,
+                  children: <pre className={styles.compactPre}>{text}</pre>,
                 }]}
-                style={{ margin: 0 }}
+                className={styles.collapseNoMargin}
               />
             </div>
           </div>
-          <div style={{ ...avatarBase, background: '#1e40af' }}
-            dangerouslySetInnerHTML={{ __html: getSvgAvatar('user') }}
-          />
+          {this.renderUserAvatar('#1e40af')}
         </div>
       );
     }
 
     return (
-      <div style={{ display: 'flex', gap: 10, padding: '8px 0', justifyContent: 'flex-end' }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-            {timeStr && <Text style={{ fontSize: 10, color: '#6b7280', flexShrink: 0 }}>{timeStr}</Text>}
-            <Text type="secondary" style={{ fontSize: 11, marginLeft: 'auto' }}>User</Text>
+      <div className={styles.messageRowEnd}>
+        <div className={styles.contentColLimited}>
+          <div className={styles.labelRow}>
+            {timeStr && <Text className={styles.timeTextNoMargin}>{timeStr}</Text>}
+            <Text type="secondary" className={styles.labelTextRight}>{userName}</Text>
           </div>
-          <div style={{ ...bubbleBase, background: '#1668dc', color: '#e5e7eb' }}>
+          <div className={styles.bubbleUser}>
             {escapeHtml(text)}
           </div>
         </div>
-        <div style={{ ...avatarBase, background: '#1e40af' }}
-          dangerouslySetInnerHTML={{ __html: getSvgAvatar('user') }}
-        />
+        {this.renderUserAvatar('#1e40af')}
       </div>
     );
   }
@@ -289,15 +258,8 @@ class ChatMessage extends React.Component {
   renderToolResult(tr) {
     if (!tr) return null;
     return (
-      <div style={{
-        background: '#111827',
-        border: '1px solid #1e293b',
-        borderRadius: 6,
-        padding: '6px 10px',
-        margin: '2px 0 6px',
-        fontSize: 11,
-      }}>
-        <Text type="secondary" style={{ fontSize: 11 }}>{tr.label}</Text>
+      <div className={styles.toolResult}>
+        <Text type="secondary" className={styles.toolResultLabel}>{tr.label}</Text>
         <ToolResultView toolName={tr.toolName} toolInput={tr.toolInput} resultText={tr.resultText} />
       </div>
     );
@@ -320,16 +282,10 @@ class ChatMessage extends React.Component {
           size="small"
           items={[{
             key: '1',
-            label: <Text type="secondary" style={{ fontSize: 12 }}>思考过程</Text>,
-            children: <pre style={{
-              fontSize: 12,
-              color: '#9ca3af',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-              margin: 0,
-            }}>{tb.thinking || ''}</pre>,
+            label: <Text type="secondary" className={styles.thinkingLabel}>思考过程</Text>,
+            children: <pre className={styles.systemTagPre}>{tb.thinking || ''}</pre>,
           }]}
-          style={{ margin: '4px 0' }}
+          className={styles.collapseMargin}
         />
       );
     });
@@ -357,13 +313,13 @@ class ChatMessage extends React.Component {
     if (innerContent.length === 0) return null;
 
     return (
-      <div style={{ display: 'flex', gap: 10, padding: '8px 0' }}>
-        <div style={{ ...avatarBase, background: modelInfo?.color || '#065f46' }}
+      <div className={styles.messageRow}>
+        <div className={styles.avatar} style={{ background: modelInfo?.color || '#6b21a8' }}
           dangerouslySetInnerHTML={{ __html: modelInfo?.svg || getSvgAvatar('agent') }}
         />
-        <div style={{ minWidth: 0, flex: 1 }}>
+        <div className={styles.contentCol}>
           {this.renderLabel(modelInfo?.name || 'MainAgent')}
-          <div style={{ ...bubbleBase, background: 'rgb(20,20,20)', color: '#e5e7eb' }}>
+          <div className={styles.bubbleAssistant}>
             {innerContent}
           </div>
         </div>
@@ -374,13 +330,13 @@ class ChatMessage extends React.Component {
   renderSubAgentMessage() {
     const { label, resultText, toolName, toolInput } = this.props;
     return (
-      <div style={{ display: 'flex', gap: 10, padding: '8px 0' }}>
-        <div style={{ ...avatarBase, background: '#4a1d96' }}
+      <div className={styles.messageRow}>
+        <div className={styles.avatar} style={{ background: '#4a1d96' }}
           dangerouslySetInnerHTML={{ __html: getSvgAvatar('sub') }}
         />
-        <div style={{ minWidth: 0, flex: 1 }}>
+        <div className={styles.contentCol}>
           {this.renderLabel(label)}
-          <div style={{ ...bubbleBase, background: '#1a1a2e', color: '#e5e7eb' }}>
+          <div className={styles.bubbleSubAgent}>
             <ToolResultView toolName={toolName} toolInput={toolInput} resultText={resultText} />
           </div>
         </div>
@@ -390,28 +346,27 @@ class ChatMessage extends React.Component {
 
   renderUserSelectionMessage() {
     const { questions, answers } = this.props;
+    const userName = this.getUserName();
     return (
-      <div style={{ display: 'flex', gap: 10, padding: '8px 0', justifyContent: 'flex-end' }}>
-        <div style={{ minWidth: 0, maxWidth: '85%' }}>
-          {this.renderLabel('User', ' — 选择')}
-          <div style={{ ...bubbleBase, background: '#1a3a1a', color: '#e5e7eb' }}>
+      <div className={styles.messageRowEnd}>
+        <div className={styles.contentColLimited}>
+          {this.renderLabel(userName, ' — 选择')}
+          <div className={styles.bubbleSelection}>
             {questions && questions.map((q, qi) => {
               const answer = answers?.[q.question] || '未选择';
               return (
-                <div key={qi} style={{ marginBottom: qi < questions.length - 1 ? 10 : 0 }}>
-                  <div style={{ fontSize: 13, color: '#ccc', marginBottom: 4 }}>{q.question}</div>
-                  <div style={{ paddingLeft: 8 }}>
+                <div key={qi} className={qi < questions.length - 1 ? styles.questionSpacing : undefined}>
+                  <div className={styles.questionText}>{q.question}</div>
+                  <div className={styles.optionList}>
                     {q.options && q.options.map((opt, oi) => {
                       const isSelected = answer === opt.label;
                       return (
-                        <div key={oi} style={{
-                          fontSize: 12,
-                          padding: '1px 0',
+                        <div key={oi} className={styles.option} style={{
                           color: isSelected ? '#e5e5e5' : '#666',
                           fontWeight: isSelected ? 600 : 'normal',
                         }}>
                           {isSelected ? '● ' : '○ '}{opt.label}
-                          {opt.description && <span style={{ color: '#555', marginLeft: 6, fontWeight: 'normal' }}>— {opt.description}</span>}
+                          {opt.description && <span className={styles.optionDesc}>— {opt.description}</span>}
                         </div>
                       );
                     })}
@@ -421,9 +376,7 @@ class ChatMessage extends React.Component {
             })}
           </div>
         </div>
-        <div style={{ ...avatarBase, background: '#2ea043' }}
-          dangerouslySetInnerHTML={{ __html: getSvgAvatar('user') }}
-        />
+        {this.renderUserAvatar('#2ea043')}
       </div>
     );
   }

@@ -36,3 +36,45 @@ body {
 .hl-comment { color: #8b949e; font-style: italic; }
 .hl-number { color: #79c0ff; }
 .hl-linenum { color: #484f58; user-select: none; }
+
+/* Chat markdown styles (moved from App.jsx chatMdStyles) */
+.chat-md pre {
+  background: #0d1117;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.chat-md code {
+  background: #1a1a2e;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #e5e7eb;
+}
+.chat-md pre code {
+  background: none;
+  padding: 0;
+}
+.chat-md p { margin: 6px 0; }
+.chat-md ul, .chat-md ol { padding-left: 20px; margin: 6px 0; }
+.chat-md li { margin: 2px 0; }
+.chat-md h1, .chat-md h2, .chat-md h3 { margin: 12px 0 6px 0; color: #fff; }
+.chat-md h1 { font-size: 1.3em; }
+.chat-md h2 { font-size: 1.15em; }
+.chat-md h3 { font-size: 1.05em; }
+.chat-md blockquote {
+  border-left: 3px solid #3b82f6;
+  margin: 8px 0;
+  padding: 4px 12px;
+  color: #9ca3af;
+}
+.chat-md table { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+.chat-md th, .chat-md td { border: 1px solid #2a2a2a; padding: 6px 10px; }
+.chat-md th { background: #1a1a1a; color: #fff; }
+.chat-md a { color: #60a5fa; }
+.chat-md hr { border: none; border-top: 1px solid #2a2a2a; margin: 12px 0; }
+.chat-md strong { color: #f1f5f9; }
+.chat-md em { color: #cbd5e1; }

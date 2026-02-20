@@ -3,6 +3,7 @@ import { Space, Tag, Button, Badge, Typography, Dropdown, Popover, Modal, Collap
 import { MessageOutlined, FileTextOutlined, ImportOutlined, DownOutlined, DashboardOutlined, SaveOutlined, ExportOutlined, DownloadOutlined } from '@ant-design/icons';
 import { isSystemText } from '../utils/helpers';
 import { t, getLang, setLang } from '../i18n';
+import styles from './AppHeader.module.css';
 
 const LANG_OPTIONS = [
   { value: 'zh', short: 'zh', label: '简体中文' },
@@ -296,64 +297,48 @@ class AppHeader extends React.Component {
 
     if (models.length === 0) {
       return (
-        <div style={{ padding: '8px 4px', color: '#999', fontSize: 13 }}>
+        <div className={styles.tokenStatsEmpty}>
           暂无 token 数据
         </div>
       );
     }
 
-    const th = { padding: '2px 12px', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: '#888', fontWeight: 'normal', textAlign: 'right' };
-    const td = { padding: '2px 12px', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: '#e5e5e5', textAlign: 'right' };
-    const label = { ...th, textAlign: 'left', color: '#aaa' };
-
     return (
-      <div style={{ minWidth: 240 }}>
+      <div className={styles.tokenStatsContainer}>
         {models.map((model) => {
           const s = byModel[model];
           const totalInput = s.input + s.cacheCreation + s.cacheRead;
           const cacheHitRate = totalInput > 0 ? ((s.cacheRead / totalInput) * 100).toFixed(1) : '0.0';
           return (
-            <div key={model} style={{
-              marginBottom: models.length > 1 ? 10 : 0,
-              border: '1px solid #333',
-              borderRadius: 6,
-              padding: '8px 10px',
-            }}>
-              <div style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: '#e5e5e5',
-                marginBottom: 8,
-                paddingBottom: 4,
-                borderBottom: '1px solid #333',
-              }}>
+            <div key={model} className={models.length > 1 ? styles.modelCardSpaced : styles.modelCard}>
+              <div className={styles.modelName}>
                 {model}
               </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table className={styles.statsTable}>
                 <tbody>
                   <tr>
-                    <td style={label}>Token</td>
-                    <td style={th}>input</td>
-                    <td style={th}>output</td>
+                    <td className={styles.label}>Token</td>
+                    <td className={styles.th}>input</td>
+                    <td className={styles.th}>output</td>
                   </tr>
-                  <tr style={{ borderBottom: '1px solid #2a2a2a' }}>
-                    <td style={label}></td>
-                    <td style={td}>{formatTokenCount(totalInput)}</td>
-                    <td style={td}>{formatTokenCount(s.output)}</td>
-                  </tr>
-                  <tr>
-                    <td style={label}>Cache</td>
-                    <td style={th}>create</td>
-                    <td style={th}>read</td>
-                  </tr>
-                  <tr style={{ borderBottom: '1px solid #2a2a2a' }}>
-                    <td style={label}></td>
-                    <td style={td}>{formatTokenCount(s.cacheCreation)}</td>
-                    <td style={td}>{formatTokenCount(s.cacheRead)}</td>
+                  <tr className={styles.rowBorder}>
+                    <td className={styles.label}></td>
+                    <td className={styles.td}>{formatTokenCount(totalInput)}</td>
+                    <td className={styles.td}>{formatTokenCount(s.output)}</td>
                   </tr>
                   <tr>
-                    <td style={label}>{t('ui.hitRate')}</td>
-                    <td colSpan={2} style={td}>{cacheHitRate}%</td>
+                    <td className={styles.label}>Cache</td>
+                    <td className={styles.th}>create</td>
+                    <td className={styles.th}>read</td>
+                  </tr>
+                  <tr className={styles.rowBorder}>
+                    <td className={styles.label}></td>
+                    <td className={styles.td}>{formatTokenCount(s.cacheCreation)}</td>
+                    <td className={styles.td}>{formatTokenCount(s.cacheRead)}</td>
+                  </tr>
+                  <tr>
+                    <td className={styles.label}>{t('ui.hitRate')}</td>
+                    <td colSpan={2} className={styles.td}>{cacheHitRate}%</td>
                   </tr>
                 </tbody>
               </table>
@@ -366,43 +351,23 @@ class AppHeader extends React.Component {
 
   renderTextPrompt(p) {
     return (
-      <div style={{
-        margin: '4px 0',
-        background: '#141414',
-        borderRadius: 6,
-        border: '1px solid #303030',
-        padding: '10px 14px',
-      }}>
+      <div className={styles.textPromptCard}>
         {p.segments.map((seg, j) => {
           if (seg.type === 'text') {
             return (
-              <pre key={j} style={{
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                fontSize: 13,
-                lineHeight: 1.6,
-                color: '#d9d9d9',
-                margin: '4px 0',
-              }}>{seg.content}</pre>
+              <pre key={j} className={styles.preText}>{seg.content}</pre>
             );
           }
           return (
             <Collapse
               key={j}
               size="small"
-              style={{ margin: '4px 0', background: '#1a1a1a', border: '1px solid #303030', borderRadius: 6 }}
+              className={styles.systemCollapse}
               items={[{
                 key: `sys-${j}`,
-                label: <span style={{ color: '#888', fontSize: 12 }}>{seg.label}</span>,
+                label: <span className={styles.systemLabel}>{seg.label}</span>,
                 children: (
-                  <pre style={{
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    fontSize: 12,
-                    lineHeight: 1.5,
-                    color: '#999',
-                    margin: 0,
-                  }}>{seg.content}</pre>
+                  <pre className={styles.preSys}>{seg.content}</pre>
                 ),
               }]}
             />
@@ -416,58 +381,31 @@ class AppHeader extends React.Component {
     const { prevContent, answerText } = p;
 
     return (
-      <div style={{
-        margin: '4px 0',
-        background: '#141414',
-        borderRadius: 6,
-        border: '1px solid #303030',
-      }}>
+      <div className={styles.selectionCard}>
         {/* Claude 的提问（前一个请求的 response） */}
         {prevContent && (
-          <div style={{ padding: '10px 14px', borderBottom: '1px solid #252525' }}>
-            <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>🤖 Claude</div>
+          <div className={styles.selectionClaudeSection}>
+            <div className={styles.selectionRoleLabel}>🤖 Claude</div>
             {prevContent.thinkingBlocks.length > 0 && (
               <Collapse
                 size="small"
-                style={{ marginBottom: 6, background: '#1a1a1a', border: '1px solid #303030', borderRadius: 6 }}
+                className={styles.thinkingCollapse}
                 items={[{
                   key: 'thinking',
-                  label: <span style={{ color: '#888', fontSize: 12 }}>thinking</span>,
+                  label: <span className={styles.thinkingLabel}>thinking</span>,
                   children: (
-                    <pre style={{
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                      fontSize: 12,
-                      lineHeight: 1.5,
-                      color: '#999',
-                      margin: 0,
-                    }}>{prevContent.thinkingBlocks.join('\n\n')}</pre>
+                    <pre className={styles.preThinking}>{prevContent.thinkingBlocks.join('\n\n')}</pre>
                   ),
                 }]}
               />
             )}
-            <pre style={{
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              fontSize: 13,
-              lineHeight: 1.6,
-              color: '#bbb',
-              margin: 0,
-            }}>{prevContent.questionText}</pre>
+            <pre className={styles.preQuestion}>{prevContent.questionText}</pre>
           </div>
         )}
         {/* 用户的回答（当前请求的 response） */}
-        <div style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>👤 {t('ui.userSelection')}</div>
-          <pre style={{
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            fontSize: 13,
-            lineHeight: 1.6,
-            color: '#d9d9d9',
-            margin: 0,
-            fontWeight: 600,
-          }}>{answerText || t('ui.noAnswer')}</pre>
+        <div className={styles.selectionUserSection}>
+          <div className={styles.selectionRoleLabel}>👤 {t('ui.userSelection')}</div>
+          <pre className={styles.preAnswer}>{answerText || t('ui.noAnswer')}</pre>
         </div>
       </div>
     );
@@ -504,17 +442,11 @@ class AppHeader extends React.Component {
     ];
 
     return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        width: '100%',
-        height: '100%',
-      }}>
+      <div className={styles.headerBar}>
         <Space size="middle">
           <Dropdown menu={{ items: menuItems }} trigger={['hover']}>
-            <Text strong style={{ color: '#fff', fontSize: 18, cursor: 'pointer' }}>
-              CC-Viewer <DownOutlined style={{ fontSize: 12, marginLeft: 4 }} />
+            <Text strong className={styles.titleText}>
+              CC-Viewer <DownOutlined className={styles.titleArrow} />
             </Text>
           </Dropdown>
           <Popover
@@ -523,14 +455,14 @@ class AppHeader extends React.Component {
             placement="bottomLeft"
             overlayInnerStyle={{ background: '#1e1e1e', border: '1px solid #3a3a3a', borderRadius: 8, padding: '8px 8px' }}
           >
-            <Tag style={{ borderRadius: 12, cursor: 'pointer', background: '#2a2a2a', border: '1px solid #3a3a3a', color: '#ccc' }}>
-              <DashboardOutlined style={{ marginRight: 4 }} />
+            <Tag className={styles.tokenStatsTag}>
+              <DashboardOutlined className={styles.tokenStatsIcon} />
               {t('ui.tokenStats')}
             </Tag>
           </Popover>
-          <Tag color="green" style={{ borderRadius: 12 }}>
+          <Tag color="green" className={styles.liveTag}>
             <Badge status="processing" color="green" />
-            <span style={{ marginLeft: 4 }}>{isLocalLog ? t('ui.historyLog', { file: localLogFile }) : t('ui.liveMonitoring')}</span>
+            <span className={styles.liveTagText}>{isLocalLog ? t('ui.historyLog', { file: localLogFile }) : t('ui.liveMonitoring')}</span>
           </Tag>
         </Space>
 
@@ -538,7 +470,7 @@ class AppHeader extends React.Component {
           {countdownText && (
             <Tag color={countdownText === t('ui.cacheExpired') ? 'red' : 'green'}>
               {t('ui.cacheCountdown', { type: cacheType ? `(${cacheType})` : '' })}
-              <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{countdownText}</strong>
+              <strong className={styles.countdownStrong}>{countdownText}</strong>
             </Tag>
           )}
           <Dropdown
@@ -553,10 +485,7 @@ class AppHeader extends React.Component {
               onClick: ({ key }) => { setLang(key); if (onLangChange) onLangChange(); },
             }}
           >
-            <span style={{
-              color: '#888', fontSize: 12, cursor: 'pointer', userSelect: 'none',
-              border: '1px solid #555', borderRadius: 4, padding: '2px 8px',
-            }}>
+            <span className={styles.langSelector}>
               {LANG_OPTIONS.find(o => o.value === getLang())?.short || 'zh'}
             </span>
           </Dropdown>
@@ -575,27 +504,20 @@ class AppHeader extends React.Component {
           footer={null}
           width={700}
         >
-          <div style={{ marginBottom: 12 }}>
+          <div className={styles.promptExportBar}>
             <Button icon={<DownloadOutlined />} onClick={this.handleExportPromptsTxt}>
               {t('ui.exportPromptsTxt')}
             </Button>
           </div>
-          <div style={{ maxHeight: 500, overflow: 'auto' }}>
+          <div className={styles.promptScrollArea}>
             {this.state.promptData.length === 0 && (
-              <div style={{ color: '#999', padding: 12 }}>{t('ui.noPrompt')}</div>
+              <div className={styles.promptEmpty}>{t('ui.noPrompt')}</div>
             )}
             {this.state.promptData.map((p, i) => {
               const ts = p.timestamp ? new Date(p.timestamp).toLocaleString() : t('ui.unknownTime');
               return (
                 <div key={i}>
-                  <div style={{
-                    textAlign: 'center',
-                    color: '#666',
-                    fontSize: 12,
-                    margin: '12px 0 8px',
-                    borderBottom: '1px solid #303030',
-                    paddingBottom: 6,
-                  }}>
+                  <div className={styles.promptTimestamp}>
                     --- {ts} ---
                   </div>
                   {p.type === 'selection' ? this.renderSelectionPrompt(p) : this.renderTextPrompt(p)}

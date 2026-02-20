@@ -3,6 +3,7 @@ import { Tabs, Collapse, Typography, Button, Tag, Empty, Space, message } from '
 import { CopyOutlined, FileTextOutlined, CodeOutlined, RightOutlined, DownOutlined } from '@ant-design/icons';
 import JsonViewer from './JsonViewer';
 import { t } from '../i18n';
+import styles from './DetailPanel.module.css';
 
 const { Text, Paragraph } = Typography;
 
@@ -53,15 +54,11 @@ class DetailPanel extends React.Component {
       return <Text type="secondary">{t('ui.noHeaders')}</Text>;
     }
     return (
-      <div style={{ fontSize: 12 }}>
+      <div className={styles.headersContainer}>
         {Object.entries(headers).map(([key, value]) => (
-          <div key={key} style={{
-            display: 'flex',
-            padding: '4px 0',
-            borderBottom: '1px solid #1f1f1f',
-          }}>
-            <Text code style={{ minWidth: 200, flexShrink: 0 }}>{key}</Text>
-            <Text type="secondary" style={{ wordBreak: 'break-all', marginLeft: 8 }}>{String(value)}</Text>
+          <div key={key} className={styles.headerRow}>
+            <Text code className={styles.headerKey}>{key}</Text>
+            <Text type="secondary" className={styles.headerValue}>{String(value)}</Text>
           </div>
         ))}
       </div>
@@ -74,7 +71,7 @@ class DetailPanel extends React.Component {
 
     if (typeof data === 'string' && data.includes('Streaming Response')) {
       return (
-        <div style={{ padding: 20, background: '#1a1a1a', borderRadius: 6, border: '1px solid #2a2a2a' }}>
+        <div className={styles.streamingBox}>
           <Text type="secondary">{t('ui.streamingResponse')}</Text>
         </div>
       );
@@ -84,7 +81,7 @@ class DetailPanel extends React.Component {
 
     return (
       <div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <div className={styles.bodyToolbar}>
           <Button
             size="small"
             icon={isJsonMode ? <FileTextOutlined /> : <CodeOutlined />}
@@ -106,18 +103,7 @@ class DetailPanel extends React.Component {
             defaultExpand={type === 'response' ? 'all' : 'root'}
           />
         ) : (
-          <pre style={{
-            background: '#0d1117',
-            border: '1px solid #2a2a2a',
-            borderRadius: 6,
-            padding: 12,
-            fontSize: 12,
-            color: '#e5e7eb',
-            overflow: 'auto',
-            maxHeight: 600,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
-          }}>
+          <pre className={styles.rawTextPre}>
             {typeof data === 'string' ? data : JSON.stringify(data, null, 2)}
           </pre>
         )}
@@ -164,7 +150,7 @@ class DetailPanel extends React.Component {
 
     if (!request) {
       return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+        <div className={styles.emptyState}>
           <Empty description="选择一个请求查看详情" />
         </div>
       );
@@ -184,10 +170,10 @@ class DetailPanel extends React.Component {
 
         if (isShrunk) {
           diffBlock = (
-            <div style={{ marginBottom: 16 }}>
-              <Text strong style={{ display: 'block', marginBottom: 8, cursor: 'pointer' }}
+            <div className={styles.diffSection}>
+              <Text strong className={styles.diffToggle}
                 onClick={() => this.setState(prev => ({ diffExpanded: !prev.diffExpanded }))}>
-                Body Diff JSON {this.state.diffExpanded ? <DownOutlined style={{ fontSize: 12, marginLeft: 4 }} /> : <RightOutlined style={{ fontSize: 12, marginLeft: 4 }} />}
+                Body Diff JSON {this.state.diffExpanded ? <DownOutlined className={styles.diffIcon} /> : <RightOutlined className={styles.diffIcon} />}
               </Text>
               {this.state.diffExpanded && (
                 <Text type="secondary">{t('ui.diffSessionChanged')}</Text>
@@ -198,10 +184,10 @@ class DetailPanel extends React.Component {
           const diffResult = this.computeDiff(prevRequest.body, request.body);
           if (diffResult) {
             diffBlock = (
-              <div style={{ marginBottom: 16 }}>
-                <Text strong style={{ display: 'block', marginBottom: 8, cursor: 'pointer' }}
+              <div className={styles.diffSection}>
+                <Text strong className={styles.diffToggle}
                   onClick={() => this.setState(prev => ({ diffExpanded: !prev.diffExpanded }))}>
-                  Body Diff JSON {this.state.diffExpanded ? <DownOutlined style={{ fontSize: 12, marginLeft: 4 }} /> : <RightOutlined style={{ fontSize: 12, marginLeft: 4 }} />}
+                  Body Diff JSON {this.state.diffExpanded ? <DownOutlined className={styles.diffIcon} /> : <RightOutlined className={styles.diffIcon} />}
                 </Text>
                 {this.state.diffExpanded && (
                   <JsonViewer data={diffResult} defaultExpand="all" />
@@ -218,7 +204,7 @@ class DetailPanel extends React.Component {
         key: 'request',
         label: 'Request',
         children: (
-          <div style={{ padding: '12px 0' }}>
+          <div className={styles.tabContent}>
             <Collapse
               ghost
               defaultActiveKey={[]}
@@ -227,11 +213,11 @@ class DetailPanel extends React.Component {
                 label: 'Headers',
                 children: this.renderHeaders(request.headers),
               }]}
-              style={{ marginBottom: 16 }}
+              className={styles.collapseSpacing}
             />
             {diffBlock}
             <div>
-              <Text strong style={{ display: 'block', marginBottom: 8 }}>Body</Text>
+              <Text strong className={styles.bodyLabel}>Body</Text>
               {this.renderBody(request.body, 'request')}
             </div>
           </div>
@@ -241,7 +227,7 @@ class DetailPanel extends React.Component {
         key: 'response',
         label: 'Response',
         children: (
-          <div style={{ padding: '12px 0' }}>
+          <div className={styles.tabContent}>
             {request.response ? (
               <>
                 <Collapse
@@ -252,10 +238,10 @@ class DetailPanel extends React.Component {
                     label: 'Headers',
                     children: this.renderHeaders(request.response.headers),
                   }]}
-                  style={{ marginBottom: 16 }}
+                  className={styles.collapseSpacing}
                 />
                 <div>
-                  <Text strong style={{ display: 'block', marginBottom: 8 }}>Body</Text>
+                  <Text strong className={styles.bodyLabel}>Body</Text>
                   {this.renderBody(request.response.body, 'response')}
                 </div>
               </>
@@ -268,18 +254,18 @@ class DetailPanel extends React.Component {
     ];
 
     return (
-      <div style={{ height: '100%', overflow: 'auto', padding: '0 16px' }}>
-        <div style={{ padding: '12px 0', borderBottom: '1px solid #1f1f1f' }}>
+      <div className={styles.container}>
+        <div className={styles.urlSection}>
           <Paragraph
-            style={{ color: '#d1d5db', fontSize: 13, marginBottom: 8, wordBreak: 'break-all' }}
+            className={styles.urlText}
             ellipsis={{ rows: 2, expandable: true }}
           >
             {request.url}
           </Paragraph>
           <Space size="small" wrap>
             <Tag color={request.method === 'POST' ? 'blue' : 'green'}>{request.method}</Tag>
-            <Text type="secondary" style={{ fontSize: 12 }}>🕐 {time}</Text>
-            {request.duration && <Text type="secondary" style={{ fontSize: 12 }}>⏱️ {request.duration}ms</Text>}
+            <Text type="secondary" className={styles.metaText}>🕐 {time}</Text>
+            {request.duration && <Text type="secondary" className={styles.metaText}>⏱️ {request.duration}ms</Text>}
             {request.response && (
               <Tag color={statusOk ? 'success' : 'error'}>HTTP {request.response.status}</Tag>
             )}

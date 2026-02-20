@@ -1,6 +1,7 @@
 import React from 'react';
 import { JsonView, darkStyles } from 'react-json-view-lite';
 import 'react-json-view-lite/dist/index.css';
+import styles from './JsonViewer.module.css';
 
 const customStyles = {
   ...darkStyles,
@@ -19,15 +20,7 @@ class JsonViewer extends React.Component {
         : (level) => level < 1;
 
     return (
-      <div style={{
-        background: '#0d1117',
-        borderRadius: 6,
-        border: '1px solid #2a2a2a',
-        padding: '12px',
-        fontSize: 13,
-        fontFamily: 'monospace',
-        overflow: 'auto',
-      }}>
+      <div className={styles.container}>
         <JsonView
           data={data}
           shouldExpandNode={shouldExpandNode}

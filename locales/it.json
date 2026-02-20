@@ -58,5 +58,14 @@
   "ui.collapse": "▼ Comprimi",
   "ui.noChat": "Nessun dato di conversazione MainAgent",
   "ui.diffWithPrev": "Diff con la richiesta precedente",
-  "ui.diffSessionChanged": "La dimensione del corpo della richiesta è diminuita, probabilmente a causa di /clear, /compact o cambio di sessione"
+  "ui.diffSessionChanged": "La dimensione del corpo della richiesta è diminuita, probabilmente a causa di /clear, /compact o cambio di sessione",
+
+  "cli.resume.prompt": "Log recente trovato (entro 1 ora): {file}",
+  "cli.resume.continue": "Continua",
+  "cli.resume.new": "Nuovo",
+
+  "ui.resume.title": "Log recente rilevato",
+  "ui.resume.message": "Log recente trovato (entro 1 ora): {file}. Continuare?",
+  "ui.resume.continue": "Continua",
+  "ui.resume.new": "Nuovo log"
 }

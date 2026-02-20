@@ -58,5 +58,14 @@
   "ui.collapse": "▼ Свернуть",
   "ui.noChat": "Нет данных диалога MainAgent",
   "ui.diffWithPrev": "Отличия от предыдущего запроса",
-  "ui.diffSessionChanged": "Размер тела запроса уменьшился, возможно из-за /clear, /compact или смены сессии"
+  "ui.diffSessionChanged": "Размер тела запроса уменьшился, возможно из-за /clear, /compact или смены сессии",
+
+  "cli.resume.prompt": "Обнаружен недавний лог (менее 1 часа): {file}",
+  "cli.resume.continue": "Продолжить",
+  "cli.resume.new": "Новый",
+
+  "ui.resume.title": "Обнаружен недавний лог",
+  "ui.resume.message": "Обнаружен недавний лог (менее 1 часа): {file}. Продолжить?",
+  "ui.resume.continue": "Продолжить",
+  "ui.resume.new": "Новый лог"
 }

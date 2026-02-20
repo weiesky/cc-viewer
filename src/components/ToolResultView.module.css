@@ -1,0 +1,57 @@
+.plainResult {
+  background: #111;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.plainTitle {
+  font-size: 11px;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.plainPre {
+  color: #d1d5db;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 12px;
+}
+
+.codeResult {
+  background: #0d1117;
+  border-radius: 6px;
+  border: 1px solid #1e2a3a;
+  overflow: hidden;
+}
+
+.codeHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 10px;
+  background: #161b22;
+  border-bottom: 1px solid #1e2a3a;
+}
+
+.codeTitle {
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.codeToggle {
+  font-size: 11px;
+  color: #484f58;
+  cursor: pointer;
+  user-select: none;
+}
+
+.codePre {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: auto;
+  max-height: 500px;
+}

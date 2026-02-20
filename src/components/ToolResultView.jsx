@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Typography } from 'antd';
 import { t } from '../i18n';
+import styles from './ToolResultView.module.css';
 
 const { Text } = Typography;
 
@@ -310,9 +311,9 @@ function ToolResultView({ toolName, toolInput, resultText }) {
   if (!isCodeTool) {
     // Non-code tool: plain text
     return (
-      <div style={{ background: '#111', borderRadius: 6, padding: '8px 12px', fontSize: 12 }}>
-        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>{title}</Text>
-        <pre style={{ color: '#d1d5db', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 12 }}>
+      <div className={styles.plainResult}>
+        <Text type="secondary" className={styles.plainTitle}>{title}</Text>
+        <pre className={styles.plainPre}>
           {displayText}
         </pre>
       </div>
@@ -322,14 +323,11 @@ function ToolResultView({ toolName, toolInput, resultText }) {
   const highlighted = highlight(displayText, lang || 'fallback');
 
   return (
-    <div className="tool-result-code" style={{ background: '#0d1117', borderRadius: 6, border: '1px solid #1e2a3a', overflow: 'hidden' }}>
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '4px 10px', background: '#161b22', borderBottom: '1px solid #1e2a3a',
-      }}>
-        <Text style={{ fontSize: 11, color: '#8b949e' }}>{title}{lang ? ` (${lang})` : ''}</Text>
+    <div className={`tool-result-code ${styles.codeResult}`}>
+      <div className={styles.codeHeader}>
+        <Text className={styles.codeTitle}>{title}{lang ? ` (${lang})` : ''}</Text>
         <Text
-          style={{ fontSize: 11, color: '#484f58', cursor: 'pointer', userSelect: 'none' }}
+          className={styles.codeToggle}
           onClick={() => setCollapsed(c => !c)}
         >
           {collapsed ? t('ui.expand') : t('ui.collapse')}
@@ -337,8 +335,7 @@ function ToolResultView({ toolName, toolInput, resultText }) {
       </div>
       {!collapsed && (
         <pre
-          className="code-highlight"
-          style={{ margin: 0, padding: '8px 12px', fontSize: 12, lineHeight: 1.5, overflow: 'auto', maxHeight: 500 }}
+          className={`code-highlight ${styles.codePre}`}
           dangerouslySetInnerHTML={{ __html: highlighted }}
         />
       )}

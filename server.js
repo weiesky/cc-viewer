@@ -1,13 +1,42 @@
 import { createServer } from 'node:http';
-import { readFileSync, existsSync, watchFile, unwatchFile, statSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, watchFile, unwatchFile, statSync, readdirSync, renameSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, extname, basename } from 'node:path';
-import { homedir } from 'node:os';
-import { LOG_FILE } from './interceptor.js';
+import { homedir, userInfo, platform } from 'node:os';
+import { execSync } from 'node:child_process';
+import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice } from './interceptor.js';
 import { t } from './i18n.js';
 
 const LOG_DIR = join(homedir(), '.claude', 'cc-viewer');
 const SHOW_ALL_FILE = '/tmp/cc-viewer-show-all';
+
+// macOS user profile (avatar + display name), cached once
+let _userProfile = null;
+function getUserProfile() {
+  if (_userProfile) return _userProfile;
+  const info = userInfo();
+  const name = info.username || 'User';
+  let displayName = name;
+  let avatarBase64 = null;
+
+  if (platform() === 'darwin') {
+    try {
+      const rn = execSync(`dscl . -read /Users/${name} RealName`, { encoding: 'utf-8', timeout: 3000 });
+      const match = rn.match(/RealName:\n?\s*(.+)/);
+      if (match && match[1].trim()) displayName = match[1].trim();
+    } catch {}
+
+    try {
+      const buf = execSync(`dscl . -read /Users/${name} JPEGPhoto | tail -1 | xxd -r -p`, { timeout: 5000, maxBuffer: 1024 * 1024 });
+      if (buf && buf.length > 100) {
+        avatarBase64 = `data:image/jpeg;base64,${buf.toString('base64')}`;
+      }
+    } catch {}
+  }
+
+  _userProfile = { name: displayName, avatar: avatarBase64 };
+  return _userProfile;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -85,6 +114,11 @@ function watchLogFile(logFile) {
           }
         });
       }
+
+      // 检测日志文件是否已轮转到新文件
+      if (LOG_FILE !== logFile && !watchedFiles.has(LOG_FILE)) {
+        watchLogFile(LOG_FILE);
+      }
     } catch (err) {
       // File not yet created, will retry on next poll
     }
@@ -132,6 +166,50 @@ function handleRequest(req, res) {
     return;
   }
 
+  // 用户选择继续/新开日志
+  if (url === '/api/resume-choice' && method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const { choice } = JSON.parse(body);
+        if (choice !== 'continue' && choice !== 'new') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid choice' }));
+          return;
+        }
+        const result = resolveResumeChoice(choice);
+        if (!result) {
+          res.writeHead(409, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Already resolved' }));
+          return;
+        }
+        // 重新 watch 最终的日志文件
+        watchLogFile(result.logFile);
+        // 广播 resume_resolved + full_reload
+        const resolvedData = JSON.stringify({ logFile: result.logFile });
+        clients.forEach(client => {
+          try {
+            client.write(`event: resume_resolved\ndata: ${resolvedData}\n\n`);
+          } catch {}
+        });
+        // 发送 full_reload 让客户端重新加载数据
+        const entries = readLogFile();
+        clients.forEach(client => {
+          try {
+            client.write(`event: full_reload\ndata: ${JSON.stringify(entries)}\n\n`);
+          } catch {}
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, logFile: result.logFile }));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid request body' }));
+      }
+    });
+    return;
+  }
+
   // SSE endpoint
   if (url === '/events' && method === 'GET') {
     res.writeHead(200, {
@@ -141,6 +219,11 @@ function handleRequest(req, res) {
     });
 
     clients.push(res);
+
+    // 如果有待决的 resume 选择，发送 resume_prompt 事件
+    if (_resumeState) {
+      res.write(`event: resume_prompt\ndata: ${JSON.stringify({ recentFileName: _resumeState.recentFileName })}\n\n`);
+    }
 
     const entries = readLogFile();
     entries.forEach(entry => {
@@ -166,6 +249,14 @@ function handleRequest(req, res) {
     const showAll = existsSync(SHOW_ALL_FILE);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ showAll }));
+    return;
+  }
+
+  // macOS 用户头像和显示名
+  if (url === '/api/user-profile' && method === 'GET') {
+    const profile = getUserProfile();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(profile));
     return;
   }
 
@@ -319,6 +410,16 @@ export async function startViewer() {
 }
 
 export function stopViewer() {
+  // 如果用户未做选择，将临时文件转为正式文件
+  if (_resumeState && _resumeState.tempFile) {
+    try {
+      const { tempFile } = _resumeState;
+      if (existsSync(tempFile)) {
+        const newPath = tempFile.replace('_temp.jsonl', '.jsonl');
+        renameSync(tempFile, newPath);
+      }
+    } catch {}
+  }
   for (const logFile of watchedFiles.keys()) {
     unwatchFile(logFile);
   }
@@ -330,7 +431,24 @@ export function stopViewer() {
   }
 }
 
-// Auto-start the viewer when imported
-startViewer().catch(err => {
-  console.error('Failed to start CC Viewer:', err);
+// Auto-start the viewer after log file init completes
+_initPromise.then(() => {
+  startViewer().catch(err => {
+    console.error('Failed to start CC Viewer:', err);
+  });
 });
+
+// 进程退出时，将未决的临时文件转为正式文件
+function handleExit() {
+  if (_resumeState && _resumeState.tempFile) {
+    try {
+      if (existsSync(_resumeState.tempFile)) {
+        const newPath = _resumeState.tempFile.replace('_temp.jsonl', '.jsonl');
+        renameSync(_resumeState.tempFile, newPath);
+      }
+    } catch {}
+  }
+}
+process.on('exit', handleExit);
+process.on('SIGINT', () => { handleExit(); process.exit(); });
+process.on('SIGTERM', () => { handleExit(); process.exit(); });

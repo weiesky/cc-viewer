@@ -1,0 +1,102 @@
+.container {
+  height: 100%;
+  overflow: auto;
+  padding: 0 16px;
+}
+
+.emptyState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.urlSection {
+  padding: 12px 0;
+  border-bottom: 1px solid #1f1f1f;
+}
+
+.urlText {
+  color: #d1d5db;
+  font-size: 13px;
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+.metaText {
+  font-size: 12px;
+}
+
+.headersContainer {
+  font-size: 12px;
+}
+
+.headerRow {
+  display: flex;
+  padding: 4px 0;
+  border-bottom: 1px solid #1f1f1f;
+}
+
+.headerKey {
+  min-width: 200px;
+  flex-shrink: 0;
+}
+
+.headerValue {
+  word-break: break-all;
+  margin-left: 8px;
+}
+
+.streamingBox {
+  padding: 20px;
+  background: #1a1a1a;
+  border-radius: 6px;
+  border: 1px solid #2a2a2a;
+}
+
+.bodyToolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.rawTextPre {
+  background: #0d1117;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 12px;
+  color: #e5e7eb;
+  overflow: auto;
+  max-height: 600px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.tabContent {
+  padding: 12px 0;
+}
+
+.collapseSpacing {
+  margin-bottom: 16px;
+}
+
+.bodyLabel {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.diffSection {
+  margin-bottom: 16px;
+}
+
+.diffToggle {
+  display: block;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.diffIcon {
+  font-size: 12px;
+  margin-left: 4px;
+}

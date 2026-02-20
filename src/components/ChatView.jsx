@@ -4,6 +4,7 @@ import ChatMessage from './ChatMessage';
 import { extractToolResultText, isSystemText, getModelInfo } from '../utils/helpers';
 import { renderAssistantText } from '../utils/systemTags';
 import { t } from '../i18n';
+import styles from './ChatView.module.css';
 
 const { Text } = Typography;
 
@@ -82,6 +83,7 @@ class ChatView extends React.Component {
   }
 
   renderSessionMessages(messages, keyPrefix, msgTimestamps, modelInfo) {
+    const { userProfile } = this.props;
     const toolUseMap = {};
     for (const msg of messages) {
       if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -154,20 +156,20 @@ class ChatView extends React.Component {
 
             if (questions) {
               renderedMessages.push(
-                <ChatMessage key={`${keyPrefix}-selection-${mi}`} role="user-selection" questions={questions} answers={answers} timestamp={ts} />
+                <ChatMessage key={`${keyPrefix}-selection-${mi}`} role="user-selection" questions={questions} answers={answers} timestamp={ts} userProfile={userProfile} />
               );
             }
           } else {
             const textBlocks = content.filter(b => b.type === 'text' && !isSystemText(b.text));
             for (let ti = 0; ti < textBlocks.length; ti++) {
               renderedMessages.push(
-                <ChatMessage key={`${keyPrefix}-user-${mi}-${ti}`} role="user" text={textBlocks[ti].text} timestamp={ts} />
+                <ChatMessage key={`${keyPrefix}-user-${mi}-${ti}`} role="user" text={textBlocks[ti].text} timestamp={ts} userProfile={userProfile} />
               );
             }
           }
         } else if (typeof content === 'string' && !isSystemText(content)) {
           renderedMessages.push(
-            <ChatMessage key={`${keyPrefix}-user-${mi}`} role="user" text={content} timestamp={ts} />
+            <ChatMessage key={`${keyPrefix}-user-${mi}`} role="user" text={content} timestamp={ts} userProfile={userProfile} />
           );
         }
       } else if (msg.role === 'assistant') {
@@ -208,7 +210,7 @@ class ChatView extends React.Component {
       if (si > 0) {
         allItems.push(
           <Divider key={`session-div-${si}`} style={{ borderColor: '#333', margin: '16px 0' }}>
-            <Text style={{ fontSize: 11, color: '#555' }}>Session</Text>
+            <Text className={styles.sessionDividerText}>Session</Text>
           </Divider>
         );
       }
@@ -221,7 +223,7 @@ class ChatView extends React.Component {
           allItems.push(
             <React.Fragment key="resp-divider">
               <Divider style={{ borderColor: '#2a2a2a', margin: '8px 0' }}>
-                <Text type="secondary" style={{ fontSize: 11 }}>{t('ui.lastResponse')}</Text>
+                <Text type="secondary" className={styles.lastResponseLabel}>{t('ui.lastResponse')}</Text>
               </Divider>
             </React.Fragment>
           );
@@ -241,7 +243,7 @@ class ChatView extends React.Component {
 
     if (!mainAgentSessions || mainAgentSessions.length === 0) {
       return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+        <div className={styles.centerEmpty}>
           <Empty description={t('ui.noChat')} />
         </div>
       );
@@ -249,7 +251,7 @@ class ChatView extends React.Component {
 
     if (loading) {
       return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+        <div className={styles.centerEmpty}>
           <Spin size="large" />
         </div>
       );
@@ -258,13 +260,7 @@ class ChatView extends React.Component {
     return (
       <div
         ref={this.containerRef}
-        style={{
-          height: '100%',
-          overflow: 'auto',
-          padding: '16px 24px',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
+        className={styles.container}
       >
         {allItems.slice(0, visibleCount)}
       </div>

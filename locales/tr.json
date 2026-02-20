@@ -58,5 +58,14 @@
   "ui.collapse": "▼ Daralt",
   "ui.noChat": "MainAgent konuşma verisi yok",
   "ui.diffWithPrev": "Önceki istekle fark",
-  "ui.diffSessionChanged": "İstek gövdesi boyutu küçüldü, muhtemelen /clear, /compact veya oturum değişikliği nedeniyle"
+  "ui.diffSessionChanged": "İstek gövdesi boyutu küçüldü, muhtemelen /clear, /compact veya oturum değişikliği nedeniyle",
+
+  "cli.resume.prompt": "Son günlük bulundu (1 saat içinde): {file}",
+  "cli.resume.continue": "Devam",
+  "cli.resume.new": "Yeni",
+
+  "ui.resume.title": "Son günlük tespit edildi",
+  "ui.resume.message": "Son günlük bulundu (1 saat içinde): {file}. Devam edilsin mi?",
+  "ui.resume.continue": "Devam et",
+  "ui.resume.new": "Yeni günlük"
 }

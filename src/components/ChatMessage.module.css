@@ -1,0 +1,270 @@
+/* === Base reusable classes (from avatarBase / bubbleBase JS objects) === */
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.avatarImg {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.bubble {
+  border-radius: 8px;
+  padding: 10px 14px;
+  max-width: 100%;
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+/* === Message row layouts === */
+
+.messageRow {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.messageRowEnd {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+  justify-content: flex-end;
+}
+
+/* === Content column === */
+
+.contentCol {
+  min-width: 0;
+  flex: 1;
+}
+
+.contentColLimited {
+  min-width: 0;
+  max-width: 80%;
+  width: fit-content;
+}
+
+/* === Label row === */
+
+.labelRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.labelText {
+  font-size: 11px;
+}
+
+.timeText {
+  font-size: 10px;
+  color: #6b7280;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.timeTextNoMargin {
+  font-size: 10px;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.labelTextRight {
+  font-size: 11px;
+  margin-left: auto;
+}
+
+/* === Bubble color variants === */
+
+.bubbleUser {
+  composes: bubble;
+  background: #1668dc;
+  color: #e5e7eb;
+}
+
+.bubbleAssistant {
+  composes: bubble;
+  background: rgb(20, 20, 20);
+  color: #e5e7eb;
+}
+
+.bubbleSubAgent {
+  composes: bubble;
+  background: #1a1a2e;
+  color: #e5e7eb;
+}
+
+.bubbleSelection {
+  composes: bubble;
+  background: #1a3a1a;
+  color: #e5e7eb;
+}
+
+/* === Collapse / system-tag styles === */
+
+.systemTagLabel {
+  font-size: 12px;
+}
+
+.systemTagPre {
+  font-size: 12px;
+  color: #9ca3af;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
+.collapseMargin {
+  margin: 4px 0;
+}
+
+.collapseNoMargin {
+  margin: 0;
+}
+
+/* === Thinking block === */
+
+.thinkingLabel {
+  font-size: 12px;
+}
+
+/* === Tool call box === */
+
+.toolBox {
+  background: #1a1a2e;
+  border: 1px solid #2a2a3e;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.toolLabel {
+  color: #a78bfa;
+}
+
+/* === Code pre inside tool boxes === */
+
+.codePre {
+  font-size: 12px;
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #0d1117;
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+/* === Path tag === */
+
+.pathTag {
+  color: #7dd3fc;
+  font-size: 11px;
+}
+
+/* === Tool call inline spans === */
+
+.descSpan {
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.secondarySpan {
+  color: #6b7280;
+}
+
+.patternSpan {
+  color: #fbbf24;
+}
+
+/* === Default tool key-value items === */
+
+.kvContainer {
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.kvItem {
+  margin: 2px 0;
+}
+
+.kvKey {
+  color: #7dd3fc;
+}
+
+.kvValue {
+  color: #9ca3af;
+}
+
+/* === Tool result box === */
+
+.toolResult {
+  background: #111827;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin: 2px 0 6px;
+  font-size: 11px;
+}
+
+.toolResultLabel {
+  font-size: 11px;
+}
+
+/* === Compact summary label === */
+
+.compactLabel {
+  font-size: 12px;
+  color: #93c5fd;
+}
+
+.compactPre {
+  font-size: 12px;
+  color: #d1d5db;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
+/* === User-selection question === */
+
+.optionList {
+  padding-left: 8px;
+}
+
+.optionDesc {
+  color: #555;
+  margin-left: 6px;
+  font-weight: normal;
+}
+
+/* === User-selection question text === */
+
+.questionText {
+  font-size: 13px;
+  color: #ccc;
+  margin-bottom: 4px;
+}
+
+.questionSpacing {
+  margin-bottom: 10px;
+}
+
+/* === Option item === */
+
+.option {
+  font-size: 12px;
+  padding: 1px 0;
+}

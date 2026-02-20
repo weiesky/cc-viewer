@@ -7,49 +7,7 @@ import DetailPanel from './components/DetailPanel';
 import ChatView from './components/ChatView';
 import PanelResizer from './components/PanelResizer';
 import { t, getLang } from './i18n';
-
-const chatMdStyles = `
-.chat-md pre {
-  background: #0d1117;
-  border: 1px solid #2a2a2a;
-  border-radius: 6px;
-  padding: 12px;
-  overflow-x: auto;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.chat-md code {
-  background: #1a1a2e;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 13px;
-  color: #e5e7eb;
-}
-.chat-md pre code {
-  background: none;
-  padding: 0;
-}
-.chat-md p { margin: 6px 0; }
-.chat-md ul, .chat-md ol { padding-left: 20px; margin: 6px 0; }
-.chat-md li { margin: 2px 0; }
-.chat-md h1, .chat-md h2, .chat-md h3 { margin: 12px 0 6px 0; color: #fff; }
-.chat-md h1 { font-size: 1.3em; }
-.chat-md h2 { font-size: 1.15em; }
-.chat-md h3 { font-size: 1.05em; }
-.chat-md blockquote {
-  border-left: 3px solid #3b82f6;
-  margin: 8px 0;
-  padding: 4px 12px;
-  color: #9ca3af;
-}
-.chat-md table { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
-.chat-md th, .chat-md td { border: 1px solid #2a2a2a; padding: 6px 10px; }
-.chat-md th { background: #1a1a1a; color: #fff; }
-.chat-md a { color: #60a5fa; }
-.chat-md hr { border: none; border-top: 1px solid #2a2a2a; margin: 12px 0; }
-.chat-md strong { color: #f1f5f9; }
-.chat-md em { color: #cbd5e1; }
-`;
+import styles from './App.module.css';
 
 class App extends React.Component {
   constructor(props) {
@@ -68,6 +26,9 @@ class App extends React.Component {
       localLogsLoading: false,
       showAll: false,
       lang: getLang(),      // 是否显示心跳请求
+      userProfile: null,    // { name, avatar }
+      resumeModalVisible: false,
+      resumeFileName: '',
     };
     this.eventSource = null;
     this._autoSelectTimer = null;
@@ -79,6 +40,12 @@ class App extends React.Component {
     fetch('/api/show-all')
       .then(res => res.json())
       .then(data => this.setState({ showAll: !!data.showAll }))
+      .catch(() => {});
+
+    // 获取系统用户头像和名字
+    fetch('/api/user-profile')
+      .then(res => res.json())
+      .then(data => this.setState({ userProfile: data }))
       .catch(() => {});
 
     // 检查是否是通过 ?logfile= 打开的历史日志
@@ -100,6 +67,36 @@ class App extends React.Component {
     try {
       this.eventSource = new EventSource('/events');
       this.eventSource.onmessage = (event) => this.handleEventMessage(event);
+      this.eventSource.addEventListener('resume_prompt', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.setState({ resumeModalVisible: true, resumeFileName: data.recentFileName || '' });
+        } catch {}
+      });
+      this.eventSource.addEventListener('resume_resolved', () => {
+        this.setState({ resumeModalVisible: false, resumeFileName: '' });
+      });
+      this.eventSource.addEventListener('full_reload', (event) => {
+        try {
+          const entries = JSON.parse(event.data);
+          if (Array.isArray(entries)) {
+            let mainAgentSessions = [];
+            for (const entry of entries) {
+              if (entry.mainAgent && entry.body && Array.isArray(entry.body.messages)) {
+                mainAgentSessions = this.mergeMainAgentSessions(mainAgentSessions, entry);
+              }
+            }
+            const filtered = entries.filter(r =>
+              !r.isHeartbeat && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
+            );
+            this.setState({
+              requests: entries,
+              selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
+              mainAgentSessions,
+            });
+          }
+        } catch {}
+      });
       this.eventSource.onerror = () => console.error('SSE连接错误');
     } catch (error) {
       console.error('EventSource初始化失败:', error);
@@ -298,6 +295,14 @@ class App extends React.Component {
     this.setState({ importModalVisible: false });
   };
 
+  handleResumeChoice = (choice) => {
+    fetch('/api/resume-choice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ choice }),
+    }).catch(err => console.error('resume-choice failed:', err));
+  };
+
   handleLoadLocalJsonlFile = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -381,15 +386,8 @@ class App extends React.Component {
           },
         }}
       >
-        <style>{chatMdStyles}</style>
-        <Layout style={{ height: '100vh', overflow: 'hidden' }}>
-          <Layout.Header style={{
-            background: '#111',
-            borderBottom: '1px solid #1f1f1f',
-            padding: '0 24px',
-            height: 60,
-            lineHeight: '60px',
-          }}>
+        <Layout className={styles.layout}>
+          <Layout.Header className={styles.header}>
             <AppHeader
               requestCount={filteredRequests.length}
               requests={filteredRequests}
@@ -404,34 +402,18 @@ class App extends React.Component {
             />
           </Layout.Header>
 
-          <Layout.Content style={{ flex: 1, overflow: 'hidden' }}>
+          <Layout.Content className={styles.content}>
             {viewMode === 'raw' ? (
               <div
                 ref={this.mainContainerRef}
-                style={{ display: 'flex', height: '100%' }}
+                className={styles.mainContainer}
               >
-                <div style={{
-                  width: leftPanelWidth,
-                  flexShrink: 0,
-                  borderRight: '1px solid #1f1f1f',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  background: '#0a0a0a',
-                }}>
-                  <div style={{
-                    padding: '10px 16px',
-                    borderBottom: '1px solid #1f1f1f',
-                    fontSize: 13,
-                    color: '#9ca3af',
-                    fontWeight: 500,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}>
+                <div className={styles.leftPanel} style={{ width: leftPanelWidth }}>
+                  <div className={styles.leftPanelHeader}>
                     <span>{t('ui.requestList')}</span>
-                    <span style={{ fontSize: 12, color: '#555', fontWeight: 400 }}>{t('ui.totalRequests', { count: filteredRequests.length })}</span>
+                    <span className={styles.leftPanelCount}>{t('ui.totalRequests', { count: filteredRequests.length })}</span>
                   </div>
-                  <div style={{ flex: 1, overflow: 'hidden' }}>
+                  <div className={styles.leftPanelBody}>
                     <RequestList
                       requests={filteredRequests}
                       selectedIndex={selectedIndex}
@@ -442,7 +424,7 @@ class App extends React.Component {
 
                 <PanelResizer onResize={this.handleResize} />
 
-                <div style={{ flex: 1, overflow: 'hidden', background: '#0d0d0d' }}>
+                <div className={styles.rightPanel}>
                   <DetailPanel
                     request={selectedRequest}
                     requests={filteredRequests}
@@ -453,10 +435,28 @@ class App extends React.Component {
                 </div>
               </div>
             ) : (
-              <ChatView requests={filteredRequests} mainAgentSessions={mainAgentSessions} />
+              <ChatView requests={filteredRequests} mainAgentSessions={mainAgentSessions} userProfile={this.state.userProfile} />
             )}
           </Layout.Content>
         </Layout>
+
+        <Modal
+          title={t('ui.resume.title')}
+          open={this.state.resumeModalVisible}
+          closable={false}
+          maskClosable={false}
+          keyboard={false}
+          footer={[
+            <Button key="continue" type="primary" onClick={() => this.handleResumeChoice('continue')}>
+              {t('ui.resume.continue')}
+            </Button>,
+            <Button key="new" onClick={() => this.handleResumeChoice('new')}>
+              {t('ui.resume.new')}
+            </Button>,
+          ]}
+        >
+          <p>{t('ui.resume.message', { file: this.state.resumeFileName })}</p>
+        </Modal>
 
         <Modal
           title={t('ui.importLocalLogs')}
@@ -466,15 +466,15 @@ class App extends React.Component {
           width={600}
           styles={{ body: { maxHeight: '60vh', overflow: 'auto' } }}
         >
-          <div style={{ marginBottom: 12 }}>
+          <div className={styles.modalActions}>
             <Button icon={<UploadOutlined />} onClick={this.handleLoadLocalJsonlFile}>
               {t('ui.loadLocalJsonl')}
             </Button>
           </div>
           {this.state.localLogsLoading ? (
-            <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
+            <div className={styles.spinCenter}><Spin /></div>
           ) : Object.keys(this.state.localLogs).length === 0 ? (
-            <div style={{ textAlign: 'center', color: '#999', padding: 40 }}>
+            <div className={styles.emptyCenter}>
               {t('ui.noLogs')}
             </div>
           ) : (
@@ -484,9 +484,9 @@ class App extends React.Component {
                 key: project,
                 label: (
                   <span>
-                    <FolderOutlined style={{ marginRight: 8 }} />
+                    <FolderOutlined className={styles.folderIcon} />
                     {project}
-                    <Tag style={{ marginLeft: 8 }}>{t('ui.logCount', { count: logs.length })}</Tag>
+                    <Tag className={styles.logTag}>{t('ui.logCount', { count: logs.length })}</Tag>
                   </span>
                 ),
                 children: (
@@ -495,12 +495,12 @@ class App extends React.Component {
                     dataSource={logs}
                     renderItem={(log) => (
                       <List.Item
-                        style={{ cursor: 'pointer', padding: '8px 12px' }}
+                        className={styles.logListItem}
                         onClick={() => this.handleOpenLogFile(log.file)}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
+                        <div className={styles.logItemRow}>
                           <span>
-                            <FileTextOutlined style={{ marginRight: 8, color: '#3b82f6' }} />
+                            <FileTextOutlined className={styles.logFileIcon} />
                             {this.formatTimestamp(log.timestamp)}
                           </span>
                           <Tag color="blue">{this.formatSize(log.size)}</Tag>

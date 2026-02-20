@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Typography } from 'antd';
 import { t } from '../i18n';
+import styles from './DiffView.module.css';
 
 const { Text } = Typography;
 
@@ -21,27 +22,20 @@ function DiffView({ file_path, old_string, new_string }) {
   });
 
   return (
-    <div className="diff-view" style={{ margin: '6px 0' }}>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 4,
-        }}
-      >
-        <Text style={{ color: '#a78bfa', fontSize: 12, fontWeight: 600 }}>
+    <div className={`diff-view ${styles.wrapper}`}>
+      <div className={styles.header}>
+        <Text className={styles.filePath}>
           Edit: {file_path}
         </Text>
         <Text
-          style={{ color: '#6b7280', fontSize: 11, cursor: 'pointer', userSelect: 'none' }}
+          className={styles.toggle}
           onClick={() => setCollapsed(c => !c)}
         >
           {collapsed ? t('ui.expand') : t('ui.collapse')}
         </Text>
       </div>
       {!collapsed && (
-        <pre style={{ margin: 0, fontSize: 12, lineHeight: 1.5, overflow: 'auto' }}>
+        <pre className={styles.code}>
           {diffLines.map((dl, i) => (
             <div
               key={i}

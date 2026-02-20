@@ -1,0 +1,263 @@
+/* AppHeader layout */
+.headerBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 100%;
+}
+
+/* Title / brand */
+.titleText {
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.titleArrow {
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+/* Token stats tag */
+.tokenStatsTag {
+  border-radius: 12px;
+  cursor: pointer;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  color: #ccc;
+}
+
+.tokenStatsIcon {
+  margin-right: 4px;
+}
+
+/* Live monitoring tag */
+.liveTag {
+  border-radius: 12px;
+}
+
+.liveTagText {
+  margin-left: 4px;
+}
+
+/* Cache countdown */
+.countdownStrong {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Language selector */
+.langSelector {
+  color: #888;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+/* Token stats popover - empty state */
+.tokenStatsEmpty {
+  padding: 8px 4px;
+  color: #999;
+  font-size: 13px;
+}
+
+/* Token stats popover - container */
+.tokenStatsContainer {
+  min-width: 240px;
+}
+
+/* Token stats - model card */
+.modelCard {
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.modelCardSpaced {
+  composes: modelCard;
+  margin-bottom: 10px;
+}
+
+/* Token stats - model name */
+.modelName {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e5e5e5;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #333;
+}
+
+/* Token stats - table */
+.statsTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.th {
+  padding: 2px 12px;
+  font-size: 12px;
+  font-family: monospace;
+  white-space: nowrap;
+  color: #888;
+  font-weight: normal;
+  text-align: right;
+}
+
+.td {
+  padding: 2px 12px;
+  font-size: 12px;
+  font-family: monospace;
+  white-space: nowrap;
+  color: #e5e5e5;
+  text-align: right;
+}
+
+.label {
+  padding: 2px 12px;
+  font-size: 12px;
+  font-family: monospace;
+  white-space: nowrap;
+  color: #aaa;
+  font-weight: normal;
+  text-align: left;
+}
+
+.rowBorder {
+  border-bottom: 1px solid #2a2a2a;
+}
+
+/* Prompt modal */
+.promptExportBar {
+  margin-bottom: 12px;
+}
+
+.promptScrollArea {
+  max-height: 500px;
+  overflow: auto;
+}
+
+.promptEmpty {
+  color: #999;
+  padding: 12px;
+}
+
+/* Prompt timestamp divider */
+.promptTimestamp {
+  text-align: center;
+  color: #666;
+  font-size: 12px;
+  margin: 12px 0 8px;
+  border-bottom: 1px solid #303030;
+  padding-bottom: 6px;
+}
+
+/* Text prompt card */
+.textPromptCard {
+  margin: 4px 0;
+  background: #141414;
+  border-radius: 6px;
+  border: 1px solid #303030;
+  padding: 10px 14px;
+}
+
+/* Pre blocks for text content */
+.preText {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d9d9d9;
+  margin: 4px 0;
+}
+
+/* Collapse for system-reminder segments */
+.systemCollapse {
+  margin: 4px 0;
+  background: #1a1a1a;
+  border: 1px solid #303030;
+  border-radius: 6px;
+}
+
+.systemLabel {
+  color: #888;
+  font-size: 12px;
+}
+
+.preSys {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #999;
+  margin: 0;
+}
+
+/* Selection prompt card */
+.selectionCard {
+  margin: 4px 0;
+  background: #141414;
+  border-radius: 6px;
+  border: 1px solid #303030;
+}
+
+.selectionClaudeSection {
+  padding: 10px 14px;
+  border-bottom: 1px solid #252525;
+}
+
+.selectionRoleLabel {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 6px;
+}
+
+/* Thinking collapse inside selection prompt */
+.thinkingCollapse {
+  margin-bottom: 6px;
+  background: #1a1a1a;
+  border: 1px solid #303030;
+  border-radius: 6px;
+}
+
+.thinkingLabel {
+  color: #888;
+  font-size: 12px;
+}
+
+.preThinking {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #999;
+  margin: 0;
+}
+
+/* Claude question text in selection prompt */
+.preQuestion {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #bbb;
+  margin: 0;
+}
+
+/* User answer section */
+.selectionUserSection {
+  padding: 10px 14px;
+}
+
+.preAnswer {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d9d9d9;
+  margin: 0;
+  font-weight: 600;
+}

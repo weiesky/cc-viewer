@@ -1,0 +1,106 @@
+.centerEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.scrollContainer {
+  overflow: auto;
+  height: 100%;
+}
+
+.listItem {
+  cursor: pointer;
+  padding: 8px 12px;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid #1f1f1f;
+  transition: background 0.15s;
+}
+
+.listItem:hover {
+  background: #151515;
+}
+
+.listItemActive {
+  background: #1a2332;
+  border-left-color: #3b82f6;
+}
+
+.listItemActive:hover {
+  background: #1a2332;
+}
+
+.itemContent {
+  width: 100%;
+  min-width: 0;
+}
+
+.itemHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.tagNoMargin {
+  margin: 0;
+  font-size: 12px;
+}
+
+.modelName {
+  font-size: 12px;
+}
+
+.time {
+  font-size: 12px;
+  color: #6b7280;
+  margin-left: auto;
+}
+
+.detailRow {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  align-items: center;
+}
+
+.urlText {
+  color: #555;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.duration {
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.statusOk {
+  color: #10b981;
+  flex-shrink: 0;
+}
+
+.statusErr {
+  color: #ef4444;
+  flex-shrink: 0;
+}
+
+.statusDefault {
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.usageBox {
+  background: #111;
+  border-radius: 4px;
+  padding: 3px 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.6;
+}

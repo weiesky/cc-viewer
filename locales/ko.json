@@ -58,5 +58,14 @@
   "ui.collapse": "▼ 접기",
   "ui.noChat": "MainAgent 대화 데이터 없음",
   "ui.diffWithPrev": "이전 요청과의 차이",
-  "ui.diffSessionChanged": "요청 본문 크기가 줄었습니다. /clear, /compact 또는 세션 변경이 있었을 수 있습니다"
+  "ui.diffSessionChanged": "요청 본문 크기가 줄었습니다. /clear, /compact 또는 세션 변경이 있었을 수 있습니다",
+
+  "cli.resume.prompt": "1시간 이내 로그 감지: {file}",
+  "cli.resume.continue": "계속",
+  "cli.resume.new": "새로 시작",
+
+  "ui.resume.title": "최근 로그 감지됨",
+  "ui.resume.message": "1시간 이내 로그 감지: {file}. 계속하시겠습니까?",
+  "ui.resume.continue": "이어서 계속",
+  "ui.resume.new": "새 로그 시작"
 }
