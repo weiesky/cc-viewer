@@ -71,8 +71,8 @@ Via the CC-Viewer dropdown menu in the top left:
 - Import local logs: browse historical log files, grouped by project, opens in new window
 - Load local JSONL file: directly select and load a local `.jsonl` file (up to 200MB)
 - Download current log: download the current monitoring JSONL log file
-- Export user prompts: extract and display all user inputs, with system-reminder collapsible view
-- Export prompts to TXT: export user prompts to a local `.txt` file
+- Export user prompts: extract and display all user inputs, with XML tags (system-reminder, etc.) collapsible; slash commands (`/model`, `/context`, etc.) shown as standalone entries; command-related tags auto-hidden from prompt content
+- Export prompts to TXT: export user prompts (text only, excluding system tags) to a local `.txt` file
 
 ### Multi-language Support
 

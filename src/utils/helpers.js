@@ -110,5 +110,7 @@ export function isSystemText(text) {
   if (!trimmed) return true;
   if (/^<[a-zA-Z_][\w-]*[\s>]/i.test(trimmed)) return true;
   if (/^\[SUGGESTION MODE:/i.test(trimmed)) return true;
+  // Claude Code 输出截断时注入的系统消息
+  if (/^Your response was cut off because it exceeded the output token limit/i.test(trimmed)) return true;
   return false;
 }

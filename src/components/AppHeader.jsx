@@ -115,118 +115,115 @@ class AppHeader extends React.Component {
     this._rafId = requestAnimationFrame(this.updateCountdown);
   }
 
-  // 将一段文本拆分为普通文本和 system-reminder 片段
+  // 命令相关的标签集合，已作为独立 prompt 输出，在 segments 中直接丢弃
+  static COMMAND_TAGS = new Set([
+    'command-name', 'command-message', 'command-args',
+    'local-command-caveat', 'local-command-stdout',
+  ]);
+
+  // 将一段文本拆分为普通文本和 XML 标签片段（可折叠）
   static parseSegments(text) {
     const segments = [];
-    const regex = /<system-reminder>([\s\S]*?)<\/system-reminder>/g;
+    // 匹配所有成对的 XML 标签: <tag-name ...>...</tag-name>
+    const regex = /<([a-zA-Z_][\w-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g;
     let lastIndex = 0;
-    let sysIndex = 0;
     let match;
     while ((match = regex.exec(text)) !== null) {
       const before = text.slice(lastIndex, match.index).trim();
       if (before) segments.push({ type: 'text', content: before });
-      sysIndex++;
-      segments.push({ type: 'system', content: match[1].trim(), label: t('ui.systemContext', { index: sysIndex }) });
+      const tagName = match[1];
       lastIndex = match.index + match[0].length;
+      // 命令相关标签直接跳过
+      if (AppHeader.COMMAND_TAGS.has(tagName)) continue;
+      // 提取标签内的内容（去掉外层开闭标签）
+      const innerRegex = new RegExp(`^<${tagName}(?:\\s[^>]*)?>([\\s\\S]*)<\\/${tagName}>$`);
+      const innerMatch = match[0].match(innerRegex);
+      const content = innerMatch ? innerMatch[1].trim() : match[0].trim();
+      segments.push({ type: 'system', content, label: tagName });
     }
     const after = text.slice(lastIndex).trim();
     if (after) segments.push({ type: 'text', content: after });
     return segments;
   }
 
-  // 从 response content 中提取内容（thinking blocks + 最后的 text 作为提问）
-  static extractResponseContent(responseBody) {
-    const content = responseBody?.content;
-    if (!Array.isArray(content)) return null;
-    const thinkingBlocks = [];
-    let questionText = '';
-    for (const block of content) {
-      if (block.type === 'thinking') {
-        thinkingBlocks.push(block.thinking || '');
-      } else if (block.type === 'text') {
-        questionText = block.text || '';
-      }
-    }
-    return { thinkingBlocks, questionText };
+
+  // 从文本中提取斜杠命令名（如 <command-name>/context</command-name> → /context）
+  static extractSlashCommand(text) {
+    const m = text.match(/<command-name>([\s\S]*?)<\/command-name>/i);
+    if (!m) return null;
+    const cmd = m[1].trim();
+    return cmd.startsWith('/') ? cmd : `/${cmd}`;
   }
 
-  // 从 response content 中提取用户回答（text block）
-  static extractAnswerText(responseBody) {
-    const content = responseBody?.content;
-    if (!Array.isArray(content)) return '';
-    for (const block of content) {
-      if (block.type === 'text' && block.text) return block.text;
+  // 从消息列表中提取用户文本
+  static extractUserTexts(messages) {
+    const userMsgs = [];   // 纯用户文本（不含系统标签），用于去重
+    const fullTexts = [];  // 完整文本（含系统标签），用于展示
+    let slashCmd = null;
+    for (const msg of messages) {
+      if (msg.role !== 'user') continue;
+      if (typeof msg.content === 'string') {
+        const text = msg.content.trim();
+        if (!text) continue;
+        if (!isSystemText(text)) {
+          if (/^Implement the following plan:/i.test(text)) continue;
+          userMsgs.push(text);
+          fullTexts.push(text);
+        } else {
+          const cmd = AppHeader.extractSlashCommand(text);
+          if (cmd) slashCmd = cmd;
+        }
+      } else if (Array.isArray(msg.content)) {
+        // 分别收集纯用户文本和完整文本
+        const userParts = [];
+        const allParts = [];
+        for (const b of msg.content) {
+          if (b.type !== 'text' || !b.text?.trim()) continue;
+          const text = b.text.trim();
+          allParts.push(text);
+          if (!isSystemText(text)) {
+            if (/^Implement the following plan:/i.test(text)) continue;
+            userParts.push(text);
+          } else {
+            const cmd = AppHeader.extractSlashCommand(text);
+            if (cmd) slashCmd = cmd;
+          }
+        }
+        if (userParts.length > 0) {
+          userMsgs.push(userParts.join('\n'));
+          fullTexts.push(allParts.join('\n'));
+        }
+      }
     }
-    return '';
+    return { userMsgs, fullTexts, slashCmd };
   }
 
   extractUserPrompts() {
     const { requests = [] } = this.props;
     const prompts = [];
-    let prevUserCount = 0;
-    let prevLastMsg = '';
+    const seen = new Set();
+    let prevSlashCmd = null;
     const mainAgentRequests = requests.filter(r => r.mainAgent);
     for (let ri = 0; ri < mainAgentRequests.length; ri++) {
       const req = mainAgentRequests[ri];
       const messages = req.body?.messages || [];
       const timestamp = req.timestamp || '';
-      // userMsgs: 非系统文本，用于计数和判断新增
-      // fullTexts: 完整文本（含 system-reminder），用于展示
-      const userMsgs = [];
-      const fullTexts = [];
-      for (const msg of messages) {
-        if (msg.role !== 'user') continue;
-        if (typeof msg.content === 'string') {
-          const text = msg.content.trim();
-          if (!text) continue;
-          if (!isSystemText(text) || /^\[SUGGESTION MODE:/i.test(text)) {
-            // 排除 Plan 生成的实施指令
-            if (/^Implement the following plan:/i.test(text)) continue;
-            userMsgs.push(text);
-            fullTexts.push(text);
-          }
-        } else if (Array.isArray(msg.content)) {
-          // 收集该 message 所有 text blocks 的完整拼接（含系统文本，用于展示）
-          // 同时逐 block 判断是否有非系统文本（用于计数）
-          const allText = msg.content
-            .filter(b => b.type === 'text' && b.text?.trim())
-            .map(b => b.text.trim())
-            .join('\n');
-          let hasUserText = false;
-          for (const b of msg.content) {
-            if (b.type !== 'text' || !b.text?.trim()) continue;
-            const text = b.text.trim();
-            if (!isSystemText(text) || /^\[SUGGESTION MODE:/i.test(text)) {
-              // 排除 Plan 生成的实施指令
-              if (/^Implement the following plan:/i.test(text)) continue;
-              hasUserText = true;
-              break;
-            }
-          }
-          if (hasUserText && allText) {
-            userMsgs.push(allText);
-            fullTexts.push(allText);
-          }
-        }
+      const { userMsgs, fullTexts, slashCmd } = AppHeader.extractUserTexts(messages);
+
+      // 斜杠命令去重
+      if (slashCmd && slashCmd !== '/compact' && slashCmd !== prevSlashCmd) {
+        prompts.push({ type: 'prompt', segments: [{ type: 'text', content: slashCmd }], timestamp });
       }
-      const lastMsg = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1] : '';
-      const lastFull = fullTexts.length > 0 ? fullTexts[fullTexts.length - 1] : '';
-      if (userMsgs.length > 0 && (userMsgs.length > prevUserCount || lastMsg !== prevLastMsg)) {
-        const raw = lastFull;
-        if (/^\[SUGGESTION MODE:/i.test(lastMsg.trim())) {
-          // 用户选择型 prompt
-          // 前一个请求的 response content: thinking(可选) + text(Claude的提问)
-          // 当前请求的 response content: text(用户的回答)
-          const prevReq = ri > 0 ? mainAgentRequests[ri - 1] : null;
-          const prevContent = prevReq ? AppHeader.extractResponseContent(prevReq.response?.body) : null;
-          const answerText = AppHeader.extractAnswerText(req.response?.body);
-          prompts.push({ type: 'selection', prevContent, answerText, timestamp });
-        } else {
-          prompts.push({ type: 'prompt', segments: AppHeader.parseSegments(raw), timestamp });
-        }
+      prevSlashCmd = slashCmd;
+
+      // 逐条检查用户消息，用内容哈希去重
+      for (let i = 0; i < userMsgs.length; i++) {
+        const key = userMsgs[i];
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const raw = fullTexts[i] || key;
+        prompts.push({ type: 'prompt', segments: AppHeader.parseSegments(raw), timestamp });
       }
-      prevUserCount = userMsgs.length;
-      prevLastMsg = lastMsg;
     }
     return prompts;
   }
@@ -239,53 +236,18 @@ class AppHeader extends React.Component {
   }
 
   handleExportPromptsTxt = () => {
-    const { requests = [] } = this.props;
+    const prompts = this.state.promptData;
+    if (!prompts || prompts.length === 0) return;
     const lines = [];
-    let prevUserCount = 0;
-    let prevLastMsg = '';
-    const mainAgentRequests = requests.filter(r => r.mainAgent);
-    for (let ri = 0; ri < mainAgentRequests.length; ri++) {
-      const req = mainAgentRequests[ri];
-      const messages = req.body?.messages || [];
-      const timestamp = req.timestamp || '';
-      const userMsgs = [];
-      for (const msg of messages) {
-        if (msg.role !== 'user') continue;
-        if (typeof msg.content === 'string') {
-          const text = msg.content.trim();
-          if (!text) continue;
-          // 跳过系统文本（以 XML tag 开头的）
-          if (/^<[a-zA-Z_][\w-]*[\s>]/i.test(text)) continue;
-          // 跳过 /compact 命令
-          if (/^\/compact\b/i.test(text)) continue;
-          // SUGGESTION MODE 保留用户选择
-          if (/^\[SUGGESTION MODE:/i.test(text)) continue;
-          // 跳过 Plan 生成的实施指令
-          if (/^Implement the following plan:/i.test(text)) continue;
-          userMsgs.push(text);
-        } else if (Array.isArray(msg.content)) {
-          const parts = [];
-          for (const b of msg.content) {
-            if (b.type !== 'text' || !b.text?.trim()) continue;
-            const text = b.text.trim();
-            if (/^<[a-zA-Z_][\w-]*[\s>]/i.test(text)) continue;
-            if (/^\/compact\b/i.test(text)) continue;
-            if (/^\[SUGGESTION MODE:/i.test(text)) continue;
-            if (/^Implement the following plan:/i.test(text)) continue;
-            parts.push(text);
-          }
-          if (parts.length > 0) userMsgs.push(parts.join('\n'));
-        }
-      }
-      const lastMsg = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1] : '';
-      if (userMsgs.length > 0 && (userMsgs.length > prevUserCount || lastMsg !== prevLastMsg)) {
-        const ts = timestamp ? new Date(timestamp).toLocaleString() : '';
-        if (ts) lines.push(`--- ${ts} ---`);
-        lines.push(lastMsg);
-        lines.push('');
-      }
-      prevUserCount = userMsgs.length;
-      prevLastMsg = lastMsg;
+    for (const p of prompts) {
+      const ts = p.timestamp ? new Date(p.timestamp).toLocaleString() : '';
+      if (ts) lines.push(`${ts}:`);
+      // 只输出纯文本 segments，跳过 system 标签
+      const textParts = (p.segments || [])
+        .filter(seg => seg.type === 'text')
+        .map(seg => seg.content);
+      if (textParts.length > 0) lines.push(textParts.join('\n'));
+      lines.push('');
     }
     if (lines.length === 0) return;
     const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
@@ -380,40 +342,6 @@ class AppHeader extends React.Component {
             />
           );
         })}
-      </div>
-    );
-  }
-
-  renderSelectionPrompt(p) {
-    const { prevContent, answerText } = p;
-
-    return (
-      <div className={styles.selectionCard}>
-        {/* Claude 的提问（前一个请求的 response） */}
-        {prevContent && (
-          <div className={styles.selectionClaudeSection}>
-            <div className={styles.selectionRoleLabel}>🤖 Claude</div>
-            {prevContent.thinkingBlocks.length > 0 && (
-              <Collapse
-                size="small"
-                className={styles.thinkingCollapse}
-                items={[{
-                  key: 'thinking',
-                  label: <span className={styles.thinkingLabel}>thinking</span>,
-                  children: (
-                    <pre className={styles.preThinking}>{prevContent.thinkingBlocks.join('\n\n')}</pre>
-                  ),
-                }]}
-              />
-            )}
-            <pre className={styles.preQuestion}>{prevContent.questionText}</pre>
-          </div>
-        )}
-        {/* 用户的回答（当前请求的 response） */}
-        <div className={styles.selectionUserSection}>
-          <div className={styles.selectionRoleLabel}>👤 {t('ui.userSelection')}</div>
-          <pre className={styles.preAnswer}>{answerText || t('ui.noAnswer')}</pre>
-        </div>
       </div>
     );
   }
@@ -525,9 +453,9 @@ class AppHeader extends React.Component {
               return (
                 <div key={i}>
                   <div className={styles.promptTimestamp}>
-                    --- {ts} ---
+                    {ts}:
                   </div>
-                  {p.type === 'selection' ? this.renderSelectionPrompt(p) : this.renderTextPrompt(p)}
+                  {this.renderTextPrompt(p)}
                 </div>
               );
             })}

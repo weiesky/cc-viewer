@@ -71,8 +71,8 @@ Via CC-Viewer-rullemenuen øverst til venstre:
 - Importér lokale logs: gennemse historiske logfiler, grupperet efter projekt, åbner i nyt vindue
 - Indlæs lokal JSONL-fil: vælg og indlæs en lokal `.jsonl`-fil direkte (op til 200 MB)
 - Download nuværende log: download den aktuelle overvågnings-JSONL-logfil
-- Eksportér brugerprompter: udtræk og vis alle brugerinput, med system-reminder sammenklappelig visning
-- Eksportér prompter til TXT: eksportér brugerprompter til en lokal `.txt`-fil
+- Eksportér brugerprompter: udtræk og vis alle brugerinput, med XML-tags (system-reminder osv.) sammenklappelige; slash-kommandoer (`/model`, `/context` osv.) vist som selvstændige poster; kommandorelaterede tags automatisk skjult fra prompt-indhold
+- Eksportér prompter til TXT: eksportér brugerprompter (kun tekst, uden system-tags) til en lokal `.txt`-fil
 
 ### Flersproget understøttelse
 

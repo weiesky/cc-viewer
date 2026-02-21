@@ -71,8 +71,8 @@ Hover-Panel im Kopfbereich:
 - Lokale Logs importieren: historische Log-Dateien durchsuchen, nach Projekt gruppiert, öffnet in neuem Fenster
 - Lokale JSONL-Datei laden: eine lokale `.jsonl`-Datei direkt auswählen und laden (bis zu 200 MB)
 - Aktuelles Log herunterladen: aktuelle Überwachungs-JSONL-Log-Datei herunterladen
-- Benutzer-Prompts exportieren: alle Benutzereingaben extrahieren und anzeigen, mit einklappbarer system-reminder-Ansicht
-- Prompts als TXT exportieren: Benutzer-Prompts in eine lokale `.txt`-Datei exportieren
+- Benutzer-Prompts exportieren: alle Benutzereingaben extrahieren und anzeigen, XML-Tags (system-reminder usw.) einklappbar; Slash-Befehle (`/model`, `/context` usw.) als eigenständige Einträge angezeigt; befehlsbezogene Tags automatisch aus dem Prompt-Inhalt ausgeblendet
+- Prompts als TXT exportieren: Benutzer-Prompts (nur Text, ohne System-Tags) in eine lokale `.txt`-Datei exportieren
 
 ### Mehrsprachige Unterstützung
 

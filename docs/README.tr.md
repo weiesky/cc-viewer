@@ -71,8 +71,8 @@ Sol üstteki CC-Viewer açılır menüsü aracılığıyla:
 - Yerel logları içe aktar: proje bazında gruplandırılmış geçmiş log dosyalarına göz at, yeni pencerede aç
 - Yerel JSONL dosyası yükle: doğrudan yerel bir `.jsonl` dosyası seçip yükle (200MB'a kadar)
 - Mevcut logu indir: mevcut izleme JSONL log dosyasını indir
-- Kullanıcı promptlarını dışa aktar: tüm kullanıcı girişlerini çıkar ve görüntüle, system-reminder daraltılabilir görünümüyle
-- Promptları TXT olarak dışa aktar: kullanıcı promptlarını yerel bir `.txt` dosyasına aktar
+- Kullanıcı promptlarını dışa aktar: tüm kullanıcı girişlerini çıkar ve görüntüle, XML etiketleri (system-reminder vb.) daraltılabilir; eğik çizgi komutları (`/model`, `/context` vb.) bağımsız girişler olarak gösterilir; komutla ilgili etiketler prompt içeriğinden otomatik olarak gizlenir
+- Promptları TXT olarak dışa aktar: kullanıcı promptlarını (yalnızca metin, sistem etiketleri hariç) yerel bir `.txt` dosyasına aktar
 
 ### Çoklu Dil Desteği
 

@@ -145,13 +145,11 @@
   padding: 12px;
 }
 
-/* Prompt timestamp divider */
+/* Prompt timestamp */
 .promptTimestamp {
-  text-align: center;
   color: #666;
   font-size: 12px;
-  margin: 12px 0 8px;
-  border-bottom: 1px solid #303030;
+  margin: 12px 0 4px;
   padding-bottom: 6px;
 }
 
@@ -196,68 +194,3 @@
   margin: 0;
 }
 
-/* Selection prompt card */
-.selectionCard {
-  margin: 4px 0;
-  background: #141414;
-  border-radius: 6px;
-  border: 1px solid #303030;
-}
-
-.selectionClaudeSection {
-  padding: 10px 14px;
-  border-bottom: 1px solid #252525;
-}
-
-.selectionRoleLabel {
-  font-size: 12px;
-  color: #888;
-  margin-bottom: 6px;
-}
-
-/* Thinking collapse inside selection prompt */
-.thinkingCollapse {
-  margin-bottom: 6px;
-  background: #1a1a1a;
-  border: 1px solid #303030;
-  border-radius: 6px;
-}
-
-.thinkingLabel {
-  color: #888;
-  font-size: 12px;
-}
-
-.preThinking {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #999;
-  margin: 0;
-}
-
-/* Claude question text in selection prompt */
-.preQuestion {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #bbb;
-  margin: 0;
-}
-
-/* User answer section */
-.selectionUserSection {
-  padding: 10px 14px;
-}
-
-.preAnswer {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #d9d9d9;
-  margin: 0;
-  font-weight: 600;
-}

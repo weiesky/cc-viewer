@@ -69,8 +69,8 @@ Header 区域的「Token 消耗统计」悬浮面板：
 - 导入本地日志：浏览历史日志文件，按项目分组，在新窗口打开
 - 加载本地 JSONL 文件：直接选择本地 `.jsonl` 文件加载查看（支持最大 200MB）
 - 当前日志另存为：下载当前监控的 JSONL 日志文件
-- 导出用户 Prompt：提取并展示所有用户输入，支持 system-reminder 折叠查看
-- 导出 Prompt 为 TXT：将用户 Prompt 导出为本地 `.txt` 文件
+- 导出用户 Prompt：提取并展示所有用户输入，XML 标签（system-reminder 等）可折叠查看；斜杠命令（`/model`、`/context` 等）作为独立条目展示；命令相关标签自动从 Prompt 内容中隐藏
+- 导出 Prompt 为 TXT：将用户 Prompt（纯文本，不含系统标签）导出为本地 `.txt` 文件
 
 ### 多语言支持
 

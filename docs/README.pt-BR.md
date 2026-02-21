@@ -71,8 +71,8 @@ Através do menu suspenso CC-Viewer no canto superior esquerdo:
 - Importar logs locais: navegar por arquivos de log históricos, agrupados por projeto, abre em nova janela
 - Carregar arquivo JSONL local: selecionar e carregar diretamente um arquivo `.jsonl` local (até 200MB)
 - Baixar log atual: baixar o arquivo de log JSONL de monitoramento atual
-- Exportar prompts do usuário: extrair e exibir todas as entradas do usuário, com visualização recolhível de system-reminder
-- Exportar prompts para TXT: exportar prompts do usuário para um arquivo `.txt` local
+- Exportar prompts do usuário: extrair e exibir todas as entradas do usuário, com tags XML (system-reminder, etc.) recolhíveis; comandos slash (`/model`, `/context`, etc.) exibidos como entradas independentes; tags relacionadas a comandos ocultadas automaticamente do conteúdo do prompt
+- Exportar prompts para TXT: exportar prompts do usuário (somente texto, excluindo tags do sistema) para um arquivo `.txt` local
 
 ### Suporte Multilíngue
 

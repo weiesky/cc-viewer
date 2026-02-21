@@ -43,9 +43,6 @@
   "ui.userPrompt": "用户 Prompt",
   "ui.noPrompt": "暂无用户 Prompt",
   "ui.unknownTime": "未知时间",
-  "ui.userSelection": "👤 用户选择",
-  "ui.noAnswer": "无回答",
-  "ui.systemContext": "系统上下文_{index}",
   "ui.logCount": "{count} 个日志",
   "ui.noLogs": "暂无日志文件",
 

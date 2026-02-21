@@ -41,9 +41,6 @@
   "ui.userPrompt": "Prompt المستخدم",
   "ui.noPrompt": "لا توجد Prompt للمستخدم بعد",
   "ui.unknownTime": "وقت غير معروف",
-  "ui.userSelection": "👤 اختيار المستخدم",
-  "ui.noAnswer": "لا إجابة",
-  "ui.systemContext": "سياق النظام #{index}",
   "ui.logCount": "{count} سجلات",
   "ui.noLogs": "لا توجد ملفات سجلات",
   "ui.toolReturn": "نتيجة الأداة",

@@ -71,8 +71,8 @@ ccv --uninstall
 - 로컬 로그 가져오기: 프로젝트별 그룹화된 기록 로그 파일 탐색, 새 창에서 열기
 - 로컬 JSONL 파일 불러오기: 로컬 `.jsonl` 파일을 직접 선택하여 불러오기 (최대 200MB)
 - 현재 로그 다운로드: 현재 모니터링 중인 JSONL 로그 파일 다운로드
-- 사용자 Prompt 내보내기: 모든 사용자 입력 추출 및 표시, system-reminder 접기 지원
-- Prompt를 TXT로 내보내기: 사용자 Prompt를 로컬 `.txt` 파일로 내보내기
+- 사용자 Prompt 내보내기: 모든 사용자 입력을 추출하여 표시, XML 태그(system-reminder 등) 접기 지원; 슬래시 명령(`/model`, `/context` 등)은 독립 항목으로 표시; 명령 관련 태그는 Prompt 내용에서 자동 숨김
+- Prompt를 TXT로 내보내기: 사용자 Prompt(텍스트만, 시스템 태그 제외)를 로컬 `.txt` 파일로 내보내기
 
 ### 다국어 지원
 
