@@ -32,13 +32,14 @@ ccv --uninstall
 
 - Claude Code からのすべての API リクエストをリアルタイムキャプチャ（ストリーミングレスポンス含む）
 - 左パネルにリクエストメソッド、URL、所要時間、ステータスコードを表示
-- Main Agent と Sub Agent リクエストを自動識別・ラベリング
+- Main Agent と Sub Agent リクエストを自動識別・ラベリング（サブタイプ：Bash、Task、Plan、General）
 - 右パネルで Request / Response タブ切り替え対応
 - Request Body の `messages`、`system`、`tools` はデフォルトで1階層展開
 - Response Body はデフォルトで全展開
 - JSON ビューとプレーンテキストビューの切り替え対応
 - JSON コンテンツのワンクリックコピー
 - MainAgent リクエストで Body Diff JSON をサポート、前回の MainAgent リクエストとの差分を折りたたみ表示（変更/追加フィールドのみ）
+- Body Diff JSON ツールチップは閉じることができ、閉じるとサーバー側に設定が保存され、再表示されません
 
 ### チャットモード
 

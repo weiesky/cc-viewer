@@ -32,13 +32,14 @@ ccv --uninstall
 
 - Claude Code에서 발생하는 모든 API 요청을 실시간 캡처 (스트리밍 응답 포함)
 - 왼쪽 패널에 요청 방법, URL, 소요 시간, 상태 코드 표시
-- Main Agent 및 Sub Agent 요청 자동 식별 및 라벨링
+- Main Agent 및 Sub Agent 요청 자동 식별 및 라벨링 (하위 유형: Bash, Task, Plan, General)
 - 오른쪽 패널에서 Request / Response 탭 전환 지원
 - Request Body의 `messages`, `system`, `tools` 기본 1단계 펼침
 - Response Body 기본 전체 펼침
 - JSON 뷰와 일반 텍스트 뷰 전환 지원
 - JSON 내용 원클릭 복사
 - MainAgent 요청에 Body Diff JSON 지원, 이전 MainAgent 요청과의 차이를 접어서 표시 (변경/추가된 필드만 표시)
+- Body Diff JSON 툴팁은 닫기 가능하며, 닫으면 서버 측에 환경설정이 저장되어 다시 표시되지 않습니다
 
 ### 대화 모드
 

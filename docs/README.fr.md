@@ -32,13 +32,14 @@ ccv --uninstall
 
 - Capture en temps réel de toutes les requêtes API de Claude Code, y compris les réponses en streaming
 - Le panneau gauche affiche la méthode de requête, l'URL, la durée et le code de statut
-- Identification et étiquetage automatiques des requêtes Main Agent et Sub Agent
+- Identification et étiquetage automatiques des requêtes Main Agent et Sub Agent (sous-types : Bash, Task, Plan, General)
 - Le panneau droit prend en charge le basculement entre les onglets Request / Response
 - Le Request Body déplie `messages`, `system`, `tools` d'un niveau par défaut
 - Le Response Body entièrement déplié par défaut
 - Basculement entre la vue JSON et la vue texte brut
 - Copie du contenu JSON en un clic
 - Les requêtes MainAgent prennent en charge Body Diff JSON, affichant en mode replié les différences avec la requête MainAgent précédente (uniquement les champs modifiés/ajoutés)
+- L'infobulle Body Diff JSON peut être fermée ; une fois fermée, la préférence est sauvegardée côté serveur et ne s'affiche plus
 
 ### Chat Mode
 

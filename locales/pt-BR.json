@@ -59,13 +59,13 @@
   "ui.noChat": "Sem dados de conversa do MainAgent",
   "ui.diffWithPrev": "Diff com a requisição anterior",
   "ui.diffSessionChanged": "O tamanho do corpo da requisição diminuiu, possivelmente devido a /clear, /compact ou mudança de sessão",
-
   "cli.resume.prompt": "Log recente encontrado (dentro de 1 hora): {file}",
   "cli.resume.continue": "Continuar",
   "cli.resume.new": "Novo",
-
   "ui.resume.title": "Log recente detectado",
   "ui.resume.message": "Log recente encontrado (dentro de 1 hora): {file}. Continuar?",
   "ui.resume.continue": "Continuar",
-  "ui.resume.new": "Novo log"
+  "ui.resume.new": "Novo log",
+  "ui.diffTooltip": "Para evitar ler textos completos longos, apenas as partes incrementais do MainAgent são exibidas — geralmente apenas novas mensagens",
+  "ui.copy": "Copiar"
 }

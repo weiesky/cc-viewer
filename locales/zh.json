@@ -54,6 +54,7 @@
   "ui.lastResponse": "Last Response",
 
   "ui.copySuccess": "复制成功",
+  "ui.copy": "复制",
   "ui.noHeaders": "无 Headers",
   "ui.noBody": "无 Body",
   "ui.streamingResponse": "⚡ 流式响应 — 此请求使用了 SSE 流式传输，响应内容无法完整捕获。",
@@ -64,6 +65,7 @@
   "ui.noChat": "暂无 MainAgent 对话数据",
   "ui.diffWithPrev": "与上次请求的差异",
   "ui.diffSessionChanged": "请求体大小减小，可能使用了 /clear、/compact 或 session 发生了变化",
+  "ui.diffTooltip": "为了避免看冗长的全文，所以为大家简化展示了 MainAgent 的增量部分，通常只有 message 增加",
 
   "cli.resume.prompt": "检测到1小时内的日志: {file}",
   "cli.resume.continue": "继续",

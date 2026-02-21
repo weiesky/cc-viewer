@@ -59,13 +59,13 @@
   "ui.noChat": "Brak danych rozmowy MainAgent",
   "ui.diffWithPrev": "Różnica z poprzednim żądaniem",
   "ui.diffSessionChanged": "Rozmiar treści żądania zmniejszył się, prawdopodobnie z powodu /clear, /compact lub zmiany sesji",
-
   "cli.resume.prompt": "Znaleziono ostatni log (w ciągu 1 godziny): {file}",
   "cli.resume.continue": "Kontynuuj",
   "cli.resume.new": "Nowy",
-
   "ui.resume.title": "Wykryto ostatni log",
   "ui.resume.message": "Znaleziono ostatni log (w ciągu 1 godziny): {file}. Kontynuować?",
   "ui.resume.continue": "Kontynuuj",
-  "ui.resume.new": "Nowy log"
+  "ui.resume.new": "Nowy log",
+  "ui.diffTooltip": "Aby uniknąć czytania długich pełnych tekstów, wyświetlane są tylko przyrostowe części MainAgent — zwykle tylko nowe wiadomości",
+  "ui.copy": "Kopiuj"
 }

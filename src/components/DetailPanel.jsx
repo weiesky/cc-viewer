@@ -1,6 +1,6 @@
 import React from 'react';
-import { Tabs, Collapse, Typography, Button, Tag, Empty, Space, message } from 'antd';
-import { CopyOutlined, FileTextOutlined, CodeOutlined, RightOutlined, DownOutlined } from '@ant-design/icons';
+import { Tabs, Typography, Button, Tag, Empty, Space, Tooltip, message } from 'antd';
+import { CopyOutlined, FileTextOutlined, CodeOutlined, RightOutlined, DownOutlined, CloseOutlined } from '@ant-design/icons';
 import JsonViewer from './JsonViewer';
 import { t } from '../i18n';
 import styles from './DetailPanel.module.css';
@@ -13,12 +13,30 @@ class DetailPanel extends React.Component {
     this.state = {
       bodyViewMode: { request: 'json', response: 'json' },
       diffExpanded: false,
+      requestHeadersExpanded: false,
+      responseHeadersExpanded: false,
+      diffTooltipDismissed: false,
     };
+  }
+
+  componentDidMount() {
+    fetch('/api/preferences').then(r => r.json()).then(prefs => {
+      if (prefs.diffTooltipDismissed) this.setState({ diffTooltipDismissed: true });
+    }).catch(() => {});
+  }
+
+  dismissDiffTooltip() {
+    this.setState({ diffTooltipDismissed: true });
+    fetch('/api/preferences', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ diffTooltipDismissed: true }),
+    }).catch(() => {});
   }
 
   shouldComponentUpdate(nextProps, nextState) {
     if (nextProps.request !== this.props.request) {
-      this.setState({ diffExpanded: false });
+      this.setState({ diffExpanded: false, requestHeadersExpanded: false, responseHeadersExpanded: false });
     }
     return (
       nextProps.request !== this.props.request ||
@@ -27,7 +45,10 @@ class DetailPanel extends React.Component {
       nextProps.requests !== this.props.requests ||
       nextProps.selectedIndex !== this.props.selectedIndex ||
       nextState.bodyViewMode !== this.state.bodyViewMode ||
-      nextState.diffExpanded !== this.state.diffExpanded
+      nextState.diffExpanded !== this.state.diffExpanded ||
+      nextState.requestHeadersExpanded !== this.state.requestHeadersExpanded ||
+      nextState.responseHeadersExpanded !== this.state.responseHeadersExpanded ||
+      nextState.diffTooltipDismissed !== this.state.diffTooltipDismissed
     );
   }
 
@@ -81,22 +102,6 @@ class DetailPanel extends React.Component {
 
     return (
       <div>
-        <div className={styles.bodyToolbar}>
-          <Button
-            size="small"
-            icon={isJsonMode ? <FileTextOutlined /> : <CodeOutlined />}
-            onClick={() => this.toggleBodyViewMode(type)}
-          >
-            {isJsonMode ? 'Text' : 'JSON'}
-          </Button>
-          <Button
-            size="small"
-            icon={<CopyOutlined />}
-            onClick={() => this.copyBody(type)}
-          >
-            复制
-          </Button>
-        </div>
         {isJsonMode ? (
           <JsonViewer
             data={data}
@@ -171,10 +176,21 @@ class DetailPanel extends React.Component {
         if (isShrunk) {
           diffBlock = (
             <div className={styles.diffSection}>
-              <Text strong className={styles.diffToggle}
-                onClick={() => this.setState(prev => ({ diffExpanded: !prev.diffExpanded }))}>
-                Body Diff JSON {this.state.diffExpanded ? <DownOutlined className={styles.diffIcon} /> : <RightOutlined className={styles.diffIcon} />}
-              </Text>
+              <Tooltip
+                title={!this.state.diffTooltipDismissed ? (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                    <span style={{ flex: 1 }}>{t('ui.diffTooltip')}</span>
+                    <CloseOutlined style={{ cursor: 'pointer', fontSize: 10, marginTop: 2, flexShrink: 0 }} onClick={(e) => { e.stopPropagation(); this.dismissDiffTooltip(); }} />
+                  </div>
+                ) : null}
+                placement="top" color="#000"
+                overlayStyle={{ maxWidth: 340 }}
+                overlayInnerStyle={{ fontSize: 12, color: '#999' }}
+              >                <Text strong className={styles.diffToggle}
+                  onClick={() => this.setState(prev => ({ diffExpanded: !prev.diffExpanded }))}>
+                  Body Diff JSON {this.state.diffExpanded ? <DownOutlined className={styles.diffIcon} /> : <RightOutlined className={styles.diffIcon} />}
+                </Text>
+              </Tooltip>
               {this.state.diffExpanded && (
                 <Text type="secondary">{t('ui.diffSessionChanged')}</Text>
               )}
@@ -185,11 +201,22 @@ class DetailPanel extends React.Component {
           if (diffResult) {
             diffBlock = (
               <div className={styles.diffSection}>
-                <Text strong className={styles.diffToggle}
+              <Tooltip
+                title={!this.state.diffTooltipDismissed ? (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                    <span style={{ flex: 1 }}>{t('ui.diffTooltip')}</span>
+                    <CloseOutlined style={{ cursor: 'pointer', fontSize: 10, marginTop: 2, flexShrink: 0 }} onClick={(e) => { e.stopPropagation(); this.dismissDiffTooltip(); }} />
+                  </div>
+                ) : null}
+                placement="top" color="#000"
+                overlayStyle={{ maxWidth: 340 }}
+                overlayInnerStyle={{ fontSize: 12, color: '#999' }}
+              >                <Text strong className={styles.diffToggle}
                   onClick={() => this.setState(prev => ({ diffExpanded: !prev.diffExpanded }))}>
                   Body Diff JSON {this.state.diffExpanded ? <DownOutlined className={styles.diffIcon} /> : <RightOutlined className={styles.diffIcon} />}
                 </Text>
-                {this.state.diffExpanded && (
+              </Tooltip>
+              {this.state.diffExpanded && (
                   <JsonViewer data={diffResult} defaultExpand="all" />
                 )}
               </div>
@@ -205,19 +232,34 @@ class DetailPanel extends React.Component {
         label: 'Request',
         children: (
           <div className={styles.tabContent}>
-            <Collapse
-              ghost
-              defaultActiveKey={[]}
-              items={[{
-                key: 'headers',
-                label: 'Headers',
-                children: this.renderHeaders(request.headers),
-              }]}
-              className={styles.collapseSpacing}
-            />
+            <div className={styles.diffSection}>
+              <Text strong className={styles.diffToggle}
+                onClick={() => this.setState(prev => ({ requestHeadersExpanded: !prev.requestHeadersExpanded }))}>
+                Headers {this.state.requestHeadersExpanded ? <DownOutlined className={styles.diffIcon} /> : <RightOutlined className={styles.diffIcon} />}
+              </Text>
+              {this.state.requestHeadersExpanded && this.renderHeaders(request.headers)}
+            </div>
             {diffBlock}
             <div>
-              <Text strong className={styles.bodyLabel}>Body</Text>
+              <div className={styles.bodyHeader}>
+                <Text strong className={styles.bodyLabel}>Body</Text>
+                <Space size="small">
+                  <Button
+                    size="small"
+                    icon={this.state.bodyViewMode.request === 'json' ? <FileTextOutlined /> : <CodeOutlined />}
+                    onClick={() => this.toggleBodyViewMode('request')}
+                  >
+                    {this.state.bodyViewMode.request === 'json' ? 'Text' : 'JSON'}
+                  </Button>
+                  <Button
+                    size="small"
+                    icon={<CopyOutlined />}
+                    onClick={() => this.copyBody('request')}
+                  >
+                    {t('ui.copy')}
+                  </Button>
+                </Space>
+              </div>
               {this.renderBody(request.body, 'request')}
             </div>
           </div>
@@ -230,18 +272,33 @@ class DetailPanel extends React.Component {
           <div className={styles.tabContent}>
             {request.response ? (
               <>
-                <Collapse
-                  ghost
-                  defaultActiveKey={[]}
-                  items={[{
-                    key: 'headers',
-                    label: 'Headers',
-                    children: this.renderHeaders(request.response.headers),
-                  }]}
-                  className={styles.collapseSpacing}
-                />
+                <div className={styles.diffSection}>
+                  <Text strong className={styles.diffToggle}
+                    onClick={() => this.setState(prev => ({ responseHeadersExpanded: !prev.responseHeadersExpanded }))}>
+                    Headers {this.state.responseHeadersExpanded ? <DownOutlined className={styles.diffIcon} /> : <RightOutlined className={styles.diffIcon} />}
+                  </Text>
+                  {this.state.responseHeadersExpanded && this.renderHeaders(request.response.headers)}
+                </div>
                 <div>
-                  <Text strong className={styles.bodyLabel}>Body</Text>
+                  <div className={styles.bodyHeader}>
+                    <Text strong className={styles.bodyLabel}>Body</Text>
+                    <Space size="small">
+                      <Button
+                        size="small"
+                        icon={this.state.bodyViewMode.response === 'json' ? <FileTextOutlined /> : <CodeOutlined />}
+                        onClick={() => this.toggleBodyViewMode('response')}
+                      >
+                        {this.state.bodyViewMode.response === 'json' ? 'Text' : 'JSON'}
+                      </Button>
+                      <Button
+                        size="small"
+                        icon={<CopyOutlined />}
+                        onClick={() => this.copyBody('response')}
+                      >
+                        {t('ui.copy')}
+                      </Button>
+                    </Space>
+                  </div>
                   {this.renderBody(request.response.body, 'response')}
                 </div>
               </>

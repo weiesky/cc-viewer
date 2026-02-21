@@ -32,13 +32,14 @@ ccv --uninstall
 
 - 即時擷取 Claude Code 發出的所有 API 請求，包括串流回應
 - 左側請求列表展示請求方法、URL、耗時、狀態碼
-- 自動識別並標記 Main Agent 和 Sub Agent 請求
+- 自動識別並標記 Main Agent 和 Sub Agent 請求（子類型：Bash、Task、Plan、General）
 - 右側詳情面板支援 Request / Response 兩個 Tab 切換查看
 - Request Body 中 `messages`、`system`、`tools` 預設展開一層子屬性
 - Response Body 預設全部展開
 - 支援 JSON 檢視與純文字檢視切換
 - 支援一鍵複製 JSON 內容
 - MainAgent 請求支援 Body Diff JSON，摺疊展示與上一次 MainAgent 請求的差異（僅顯示變更/新增欄位）
+- Body Diff JSON 提示框支援關閉，關閉後伺服器端持久化偏好，永不再顯示
 
 ### 對話模式
 

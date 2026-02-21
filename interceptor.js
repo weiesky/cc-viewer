@@ -344,8 +344,17 @@ export function setupInterceptor() {
           duration: 0,
           isStream: body?.stream === true,
           isHeartbeat: /\/api\/eval\/sdk-/.test(urlStr),
-          mainAgent: !!body?.system && Array.isArray(body?.tools) && body.tools.length > 10 &&
-            ['Task', 'Edit', 'Bash'].every(n => body.tools.some(t => t.name === n))
+          mainAgent: (() => {
+            if (!body?.system || !Array.isArray(body?.tools) || body.tools.length <= 10) return false;
+            if (!['Task', 'Edit', 'Bash'].every(n => body.tools.some(t => t.name === n))) return false;
+            const sysText = typeof body.system === 'string' ? body.system :
+              Array.isArray(body.system) ? body.system.map(s => s?.text || '').join('') : '';
+            // 正向：必须包含 MainAgent 身份标识
+            if (!sysText.includes('You are Claude Code')) return false;
+            // 排除 SubAgent（general-purpose 等也携带完整工具集）
+            if (/command execution specialist|file search specialist|planning specialist|general-purpose agent/i.test(sysText)) return false;
+            return true;
+          })()
         };
       }
     } catch {}

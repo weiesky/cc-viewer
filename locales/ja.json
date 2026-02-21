@@ -59,13 +59,13 @@
   "ui.noChat": "MainAgent の会話データがありません",
   "ui.diffWithPrev": "前回リクエストとの差分",
   "ui.diffSessionChanged": "リクエストボディのサイズが減少しました。/clear、/compact、またはセッション変更の可能性があります",
-
   "cli.resume.prompt": "1時間以内のログを検出: {file}",
   "cli.resume.continue": "続行",
   "cli.resume.new": "新規",
-
   "ui.resume.title": "最近のログを検出",
   "ui.resume.message": "1時間以内のログを検出: {file}。続行しますか？",
   "ui.resume.continue": "前回の続き",
-  "ui.resume.new": "新規ログ"
+  "ui.resume.new": "新規ログ",
+  "ui.diffTooltip": "MainAgent の増分部分のみを簡略表示しています。長い全文を読む手間を省くため、通常は message の追加のみです",
+  "ui.copy": "コピー"
 }

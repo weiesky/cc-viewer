@@ -100,6 +100,13 @@
   color: #e5e7eb;
 }
 
+.bubblePlan {
+  composes: bubble;
+  background: rgb(20, 20, 20);
+  border: 1px solid #1668dc;
+  color: #e5e7eb;
+}
+
 .bubbleSubAgent {
   composes: bubble;
   background: #1a1a2e;

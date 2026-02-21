@@ -32,13 +32,14 @@ ccv --uninstall
 
 - Claude Code'dan gelen tüm API isteklerinin gerçek zamanlı yakalanması, streaming yanıtlar dahil
 - Sol panel istek yöntemini, URL'yi, süreyi ve durum kodunu gösterir
-- Main Agent ve Sub Agent isteklerini otomatik olarak tanımlar ve etiketler
+- Main Agent ve Sub Agent isteklerini otomatik olarak tanımlar ve etiketler (alt türler: Bash, Task, Plan, General)
 - Sağ panel Request / Response sekme geçişini destekler
 - Request Body varsayılan olarak `messages`, `system`, `tools` öğelerini bir seviye genişletir
 - Response Body varsayılan olarak tamamen genişletilir
 - JSON görünümü ile düz metin görünümü arasında geçiş
 - Tek tıkla JSON içeriği kopyalama
 - MainAgent istekleri Body Diff JSON'u destekler, önceki MainAgent isteğiyle farkları katlanmış olarak gösterir (yalnızca değişen/eklenen alanlar)
+- Body Diff JSON araç ipucu kapatılabilir; kapatıldığında tercih sunucu tarafında kaydedilir ve bir daha gösterilmez
 
 ### Chat Modu
 

@@ -59,13 +59,13 @@
   "ui.noChat": "لا توجد بيانات محادثة MainAgent",
   "ui.diffWithPrev": "الفرق مع الطلب السابق",
   "ui.diffSessionChanged": "حجم نص الطلب انخفض، ربما بسبب /clear أو /compact أو تغيير الجلسة",
-
   "cli.resume.prompt": "تم العثور على سجل حديث (خلال ساعة واحدة): {file}",
   "cli.resume.continue": "متابعة",
   "cli.resume.new": "جديد",
-
   "ui.resume.title": "تم اكتشاف سجل حديث",
   "ui.resume.message": "تم العثور على سجل حديث (خلال ساعة واحدة): {file}. هل تريد المتابعة؟",
   "ui.resume.continue": "متابعة",
-  "ui.resume.new": "سجل جديد"
+  "ui.resume.new": "سجل جديد",
+  "ui.diffTooltip": "لتجنب قراءة النص الكامل الطويل، يتم عرض الأجزاء التزايدية فقط من MainAgent — عادةً فقط الرسائل الجديدة",
+  "ui.copy": "نسخ"
 }

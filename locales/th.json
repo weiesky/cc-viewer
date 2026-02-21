@@ -59,13 +59,13 @@
   "ui.noChat": "ไม่มีข้อมูลการสนทนา MainAgent",
   "ui.diffWithPrev": "ความแตกต่างกับคำขอก่อนหน้า",
   "ui.diffSessionChanged": "ขนาดเนื้อหาคำขอลดลง อาจเกิดจาก /clear, /compact หรือการเปลี่ยนเซสชัน",
-
   "cli.resume.prompt": "พบล็อกล่าสุด (ภายใน 1 ชั่วโมง): {file}",
   "cli.resume.continue": "ดำเนินการต่อ",
   "cli.resume.new": "ใหม่",
-
   "ui.resume.title": "ตรวจพบล็อกล่าสุด",
   "ui.resume.message": "พบล็อกล่าสุด (ภายใน 1 ชั่วโมง): {file} ต้องการดำเนินการต่อหรือไม่?",
   "ui.resume.continue": "ดำเนินการต่อ",
-  "ui.resume.new": "ล็อกใหม่"
+  "ui.resume.new": "ล็อกใหม่",
+  "ui.diffTooltip": "เพื่อหลีกเลี่ยงการอ่านข้อความเต็มที่ยาว จึงแสดงเฉพาะส่วนที่เพิ่มขึ้นของ MainAgent เท่านั้น — โดยปกติจะมีเพียง message ใหม่",
+  "ui.copy": "คัดลอก"
 }

@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { readFileSync, existsSync, watchFile, unwatchFile, statSync, readdirSync, renameSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, watchFile, unwatchFile, statSync, readdirSync, renameSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, extname, basename } from 'node:path';
 import { homedir, userInfo, platform } from 'node:os';
@@ -8,6 +8,7 @@ import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice } from './int
 import { t } from './i18n.js';
 
 const LOG_DIR = join(homedir(), '.claude', 'cc-viewer');
+const PREFS_FILE = join(LOG_DIR, 'preferences.json');
 const SHOW_ALL_FILE = '/tmp/cc-viewer-show-all';
 
 // macOS user profile (avatar + display name), cached once
@@ -140,6 +141,35 @@ function handleRequest(req, res) {
   if (method === 'OPTIONS') {
     res.writeHead(200);
     res.end();
+    return;
+  }
+
+  // User preferences API
+  if (url === '/api/preferences' && method === 'GET') {
+    let prefs = {};
+    try { if (existsSync(PREFS_FILE)) prefs = JSON.parse(readFileSync(PREFS_FILE, 'utf-8')); } catch {}
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(prefs));
+    return;
+  }
+
+  if (url === '/api/preferences' && method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const incoming = JSON.parse(body);
+        let prefs = {};
+        try { if (existsSync(PREFS_FILE)) prefs = JSON.parse(readFileSync(PREFS_FILE, 'utf-8')); } catch {}
+        Object.assign(prefs, incoming);
+        writeFileSync(PREFS_FILE, JSON.stringify(prefs, null, 2));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(prefs));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      }
+    });
     return;
   }
 

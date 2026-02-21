@@ -381,9 +381,30 @@ class ChatMessage extends React.Component {
     );
   }
 
+  renderPlanPromptMessage() {
+    const { text, timestamp, modelInfo } = this.props;
+    const timeStr = this.formatTime(timestamp);
+    const planContent = (text || '').replace(/^Implement the following plan:\s*/i, '');
+
+    return (
+      <div className={styles.messageRow}>
+        <div className={styles.avatar} style={{ background: modelInfo?.color || '#6b21a8' }}
+          dangerouslySetInnerHTML={{ __html: modelInfo?.svg || getSvgAvatar('agent') }}
+        />
+        <div className={styles.contentColLimited}>
+          {this.renderLabel(modelInfo?.name || 'MainAgent', ' (Plan)')}
+          <div className={styles.bubblePlan}>
+            <div className="chat-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(planContent) }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   render() {
     const { role } = this.props;
     if (role === 'user') return this.renderUserMessage();
+    if (role === 'plan-prompt') return this.renderPlanPromptMessage();
     if (role === 'user-selection') return this.renderUserSelectionMessage();
     if (role === 'assistant') return this.renderAssistantMessage();
     if (role === 'sub-agent') return this.renderSubAgentMessage();

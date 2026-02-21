@@ -59,13 +59,13 @@
   "ui.noChat": "Keine MainAgent-Gesprächsdaten",
   "ui.diffWithPrev": "Diff zur vorherigen Anfrage",
   "ui.diffSessionChanged": "Anfragekörper wurde kleiner, möglicherweise durch /clear, /compact oder Sitzungswechsel",
-
   "cli.resume.prompt": "Kürzliches Log gefunden (innerhalb 1 Stunde): {file}",
   "cli.resume.continue": "Fortsetzen",
   "cli.resume.new": "Neu",
-
   "ui.resume.title": "Kürzliches Log erkannt",
   "ui.resume.message": "Kürzliches Log gefunden (innerhalb 1 Stunde): {file}. Fortsetzen?",
   "ui.resume.continue": "Fortsetzen",
-  "ui.resume.new": "Neues Log"
+  "ui.resume.new": "Neues Log",
+  "ui.diffTooltip": "Um das Lesen langer Volltexte zu vermeiden, werden nur die inkrementellen Teile des MainAgent angezeigt — in der Regel nur neue Nachrichten",
+  "ui.copy": "Kopieren"
 }

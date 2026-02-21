@@ -59,13 +59,13 @@
   "ui.noChat": "Ingen MainAgent samtaledata",
   "ui.diffWithPrev": "Diff med forrige anmodning",
   "ui.diffSessionChanged": "Anmodningens størrelse er reduceret, muligvis på grund af /clear, /compact eller sessionsændring",
-
   "cli.resume.prompt": "Nylig log fundet (inden for 1 time): {file}",
   "cli.resume.continue": "Fortsæt",
   "cli.resume.new": "Ny",
-
   "ui.resume.title": "Nylig log fundet",
   "ui.resume.message": "Nylig log fundet (inden for 1 time): {file}. Fortsæt?",
   "ui.resume.continue": "Fortsæt",
-  "ui.resume.new": "Ny log"
+  "ui.resume.new": "Ny log",
+  "ui.diffTooltip": "For at undgå at læse lange fuldtekster vises kun de inkrementelle dele af MainAgent — typisk kun nye beskeder",
+  "ui.copy": "Kopiér"
 }

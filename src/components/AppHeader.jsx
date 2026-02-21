@@ -180,6 +180,8 @@ class AppHeader extends React.Component {
           const text = msg.content.trim();
           if (!text) continue;
           if (!isSystemText(text) || /^\[SUGGESTION MODE:/i.test(text)) {
+            // 排除 Plan 生成的实施指令
+            if (/^Implement the following plan:/i.test(text)) continue;
             userMsgs.push(text);
             fullTexts.push(text);
           }
@@ -195,6 +197,8 @@ class AppHeader extends React.Component {
             if (b.type !== 'text' || !b.text?.trim()) continue;
             const text = b.text.trim();
             if (!isSystemText(text) || /^\[SUGGESTION MODE:/i.test(text)) {
+              // 排除 Plan 生成的实施指令
+              if (/^Implement the following plan:/i.test(text)) continue;
               hasUserText = true;
               break;
             }
@@ -256,6 +260,8 @@ class AppHeader extends React.Component {
           if (/^\/compact\b/i.test(text)) continue;
           // SUGGESTION MODE 保留用户选择
           if (/^\[SUGGESTION MODE:/i.test(text)) continue;
+          // 跳过 Plan 生成的实施指令
+          if (/^Implement the following plan:/i.test(text)) continue;
           userMsgs.push(text);
         } else if (Array.isArray(msg.content)) {
           const parts = [];
@@ -265,6 +271,7 @@ class AppHeader extends React.Component {
             if (/^<[a-zA-Z_][\w-]*[\s>]/i.test(text)) continue;
             if (/^\/compact\b/i.test(text)) continue;
             if (/^\[SUGGESTION MODE:/i.test(text)) continue;
+            if (/^Implement the following plan:/i.test(text)) continue;
             parts.push(text);
           }
           if (parts.length > 0) userMsgs.push(parts.join('\n'));

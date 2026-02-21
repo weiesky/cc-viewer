@@ -59,13 +59,13 @@
   "ui.noChat": "Немає даних діалогу MainAgent",
   "ui.diffWithPrev": "Відмінності від попереднього запиту",
   "ui.diffSessionChanged": "Розмір тіла запиту зменшився, можливо через /clear, /compact або зміну сесії",
-
   "cli.resume.prompt": "Знайдено нещодавній лог (менше 1 години): {file}",
   "cli.resume.continue": "Продовжити",
   "cli.resume.new": "Новий",
-
   "ui.resume.title": "Виявлено нещодавній лог",
   "ui.resume.message": "Знайдено нещодавній лог (менше 1 години): {file}. Продовжити?",
   "ui.resume.continue": "Продовжити",
-  "ui.resume.new": "Новий лог"
+  "ui.resume.new": "Новий лог",
+  "ui.diffTooltip": "Щоб не читати довгий повний текст, відображаються лише інкрементальні частини MainAgent — зазвичай лише нові повідомлення",
+  "ui.copy": "Копіювати"
 }

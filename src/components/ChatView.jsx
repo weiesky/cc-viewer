@@ -162,14 +162,16 @@ class ChatView extends React.Component {
           } else {
             const textBlocks = content.filter(b => b.type === 'text' && !isSystemText(b.text));
             for (let ti = 0; ti < textBlocks.length; ti++) {
+              const isPlan = /^Implement the following plan:/i.test((textBlocks[ti].text || '').trim());
               renderedMessages.push(
-                <ChatMessage key={`${keyPrefix}-user-${mi}-${ti}`} role="user" text={textBlocks[ti].text} timestamp={ts} userProfile={userProfile} />
+                <ChatMessage key={`${keyPrefix}-user-${mi}-${ti}`} role={isPlan ? 'plan-prompt' : 'user'} text={textBlocks[ti].text} timestamp={ts} userProfile={userProfile} modelInfo={modelInfo} />
               );
             }
           }
         } else if (typeof content === 'string' && !isSystemText(content)) {
+          const isPlan = /^Implement the following plan:/i.test(content.trim());
           renderedMessages.push(
-            <ChatMessage key={`${keyPrefix}-user-${mi}`} role="user" text={content} timestamp={ts} userProfile={userProfile} />
+            <ChatMessage key={`${keyPrefix}-user-${mi}`} role={isPlan ? 'plan-prompt' : 'user'} text={content} timestamp={ts} userProfile={userProfile} modelInfo={modelInfo} />
           );
         }
       } else if (msg.role === 'assistant') {

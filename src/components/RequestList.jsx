@@ -1,6 +1,7 @@
 import React from 'react';
 import { List, Tag, Empty } from 'antd';
 import { t } from '../i18n';
+import { classifyRequest, formatRequestTag } from '../utils/requestType';
 import styles from './RequestList.module.css';
 
 function formatTokens(n) {
@@ -14,38 +15,6 @@ function getModelShort(model) {
   return model
     .replace(/^claude-/, '')
     .replace(/-\d{8,}$/, '');
-}
-
-function getSubAgentType(req) {
-  const body = req.body || {};
-  const system = body.system;
-  let sysText = '';
-  if (typeof system === 'string') {
-    sysText = system;
-  } else if (Array.isArray(system)) {
-    for (const s of system) {
-      if (s && s.text) { sysText += s.text; }
-    }
-  }
-
-  if (/Extract any file paths/i.test(sysText)) return 'Bash';
-  if (/process Bash commands/i.test(sysText)) return 'Bash';
-  if (/file search specialist/i.test(sysText)) return 'Task';
-
-  const msgs = body.messages || [];
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    if (msgs[i].role !== 'user') continue;
-    const c = msgs[i].content;
-    let text = '';
-    if (typeof c === 'string') { text = c; }
-    else if (Array.isArray(c)) {
-      for (const b of c) { if (b.type === 'text') { text = b.text || ''; break; } }
-    }
-    if (/^Command:/m.test(text)) return 'Bash';
-    break;
-  }
-
-  return null;
 }
 
 class RequestList extends React.Component {
@@ -73,7 +42,8 @@ class RequestList extends React.Component {
             const statusErr = req.response && req.response.status >= 400;
 
             const model = getModelShort(req.body?.model);
-            const subType = !req.mainAgent ? getSubAgentType(req) : null;
+            const nextReq = index + 1 < requests.length ? requests[index + 1] : null;
+            const { type: reqType, subType } = classifyRequest(req, nextReq);
             const usage = req.response?.body?.usage;
             const inputTokens = usage ? (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0) : null;
             const outputTokens = usage?.output_tokens || null;
@@ -93,11 +63,15 @@ class RequestList extends React.Component {
               >
                 <div className={styles.itemContent}>
                   <div className={styles.itemHeader}>
-                    {req.mainAgent
+                    {reqType === 'MainAgent'
                       ? <Tag color="orange" className={styles.tagNoMargin}>MainAgent</Tag>
-                      : <Tag className={styles.tagNoMargin}>SubAgent{subType ? ':' + subType : ''}</Tag>
+                      : reqType === 'Plan'
+                        ? <Tag className={styles.tagNoMargin} style={{ color: '#a33', borderColor: '#a33', backgroundColor: '#000' }}>{formatRequestTag(reqType, subType)}</Tag>
+                        : reqType === 'Count' || reqType === 'Preflight'
+                          ? <Tag className={styles.tagNoMargin} style={{ color: '#666', borderColor: '#444', backgroundColor: '#000' }}>{reqType}</Tag>
+                          : <Tag className={styles.tagNoMargin}>{formatRequestTag(reqType, subType)}</Tag>
                     }
-                    {model && <span className={styles.modelName} style={{ color: req.mainAgent ? '#d4822d' : '#8c8c8c' }}>{model}</span>}
+                    {model && <span className={styles.modelName} style={{ color: reqType === 'MainAgent' ? '#d4822d' : '#8c8c8c' }}>{model}</span>}
                     <span className={styles.time}>{time}</span>
                   </div>
                   <div className={styles.detailRow}>

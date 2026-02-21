@@ -32,13 +32,14 @@ ccv --uninstall
 
 - Sanntidsfangst av alle API-forespørsler fra Claude Code, inkludert strømmende svar
 - Venstre panel viser forespørselsmetode, URL, varighet og statuskode
-- Identifiserer og merker automatisk Main Agent- og Sub Agent-forespørsler
+- Identifiserer og merker automatisk Main Agent- og Sub Agent-forespørsler (undertyper: Bash, Task, Plan, General)
 - Høyre panel støtter veksling mellom Request / Response-faner
 - Request Body utvider `messages`, `system`, `tools` ett nivå som standard
 - Response Body er fullt utvidet som standard
 - Veksle mellom JSON-visning og ren tekstvisning
 - Kopier JSON-innhold med ett klikk
 - MainAgent-forespørsler støtter Body Diff JSON, viser sammenfoldet forskjeller med forrige MainAgent-forespørsel (kun endrede/nye felter)
+- Body Diff JSON-tooltip kan lukkes; når det er lukket, lagres preferansen på serveren og vises aldri igjen
 
 ### Chat-modus
 

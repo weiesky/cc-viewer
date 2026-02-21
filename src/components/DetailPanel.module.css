@@ -82,7 +82,13 @@
 }
 
 .bodyLabel {
-  display: block;
+  margin: 0;
+}
+
+.bodyHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 8px;
 }
 
@@ -91,7 +97,7 @@
 }
 
 .diffToggle {
-  display: block;
+  display: inline-block;
   margin-bottom: 8px;
   cursor: pointer;
 }
