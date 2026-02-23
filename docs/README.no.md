@@ -54,6 +54,7 @@ Klikk på "Chat-modus"-knappen øverst til høyre for å analysere Main Agent si
 - Task (SubAgent) verktøyresultater gjengitt som Markdown
 - Brukervalg-meldinger (AskUserQuestion) vises i spørsmål-og-svar-format
 - Systemtagger (`<system-reminder>`, `<project-reminder>`, osv.) automatisk skjult
+- Skill-lastemeldinger oppdages automatisk og foldes sammen med Skill-navn; klikk for å utvide full dokumentasjon (Markdown-gjengivelse)
 - Systemtekst automatisk filtrert, viser kun reell brukerinndata
 - Flersesjonsegmentert visning (automatisk segmentert etter `/compact`, `/clear`, osv.)
 - Hver melding viser et tidsstempel nøyaktig til sekundet, utledet fra API-forespørselstiming

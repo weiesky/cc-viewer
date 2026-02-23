@@ -52,6 +52,7 @@ ccv --uninstall
 - Task（SubAgent）工具结果以 Markdown 渲染
 - 用户选择型消息（AskUserQuestion）以问答形式展示
 - 系统标签（`<system-reminder>`、`<project-reminder>` 等）自动折叠
+- Skill 加载消息自动识别并折叠显示 Skill 名称，点击展开查看完整文档（Markdown 渲染）
 - 自动过滤系统文本，只展示用户的真实输入
 - 支持多 session 分段展示（`/compact`、`/clear` 等操作后自动分段）
 - 每条消息显示精确到秒的时间戳，基于 API 请求时间推算

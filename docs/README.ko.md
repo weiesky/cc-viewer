@@ -54,6 +54,7 @@ ccv --uninstall
 - Task(SubAgent) 도구 결과가 Markdown으로 렌더링
 - 사용자 선택 메시지 (AskUserQuestion) Q&A 형식으로 표시
 - 시스템 태그 (`<system-reminder>`, `<project-reminder>` 등) 자동 접힘
+- Skill 로드 메시지 자동 감지 및 접기, Skill 이름 표시; 클릭하여 전체 문서 확인 (Markdown 렌더링)
 - 시스템 텍스트 자동 필터링, 실제 사용자 입력만 표시
 - 다중 session 분할 표시 (`/compact`, `/clear` 등 작업 후 자동 분할)
 - 각 메시지에 초 단위 정확한 타임스탬프 표시, API 요청 타이밍 기반 추산

@@ -54,6 +54,7 @@ Main Agent'ın tam konuşma geçmişini sohbet arayüzüne dönüştürmek için
 - Task (SubAgent) araç sonuçları Markdown olarak işlenir
 - Kullanıcı seçim mesajları (AskUserQuestion) soru-cevap formatında gösterilir
 - Sistem etiketleri (`<system-reminder>`, `<project-reminder>`, vb.) otomatik daraltılır
+- Skill yükleme mesajları otomatik algılanır ve daraltılır, Skill adı gösterilir; tam belgeleri genişletmek için tıklayın (Markdown oluşturma)
 - Sistem metni otomatik filtrelenir, yalnızca gerçek kullanıcı girişi gösterilir
 - Çoklu session segmentli görüntüleme (`/compact`, `/clear` vb. sonrasında otomatik segmentleme)
 - Her mesaj saniye hassasiyetinde zaman damgası gösterir, API istek zamanlamasından türetilmiş

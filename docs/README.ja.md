@@ -54,6 +54,7 @@ ccv --uninstall
 - Task（SubAgent）ツール結果を Markdown でレンダリング
 - ユーザー選択メッセージ（AskUserQuestion）は Q&A 形式で表示
 - システムタグ（`<system-reminder>`、`<project-reminder>` 等）自動折りたたみ
+- Skill 読み込みメッセージを自動検出して折りたたみ表示、Skill 名を表示；クリックで完全なドキュメントを展開（Markdown レンダリング）
 - システムテキスト自動フィルタリング、実際のユーザー入力のみ表示
 - マルチ session 分割表示（`/compact`、`/clear` 等の操作後に自動分割）
 - 各メッセージに秒単位の正確なタイムスタンプを表示、API リクエストのタイミングから算出

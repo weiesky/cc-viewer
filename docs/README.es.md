@@ -54,6 +54,7 @@ Haga clic en el botón "Chat mode" en la esquina superior derecha para analizar 
 - Resultados de herramientas Task (SubAgent) renderizados como Markdown
 - Mensajes de selección del usuario (AskUserQuestion) mostrados en formato de pregunta y respuesta
 - Etiquetas del sistema (`<system-reminder>`, `<project-reminder>`, etc.) auto-colapsadas
+- Mensajes de carga de Skill detectados automáticamente y colapsados, mostrando el nombre del Skill; clic para expandir la documentación completa (renderizado Markdown)
 - Texto del sistema auto-filtrado, mostrando solo la entrada real del usuario
 - Visualización segmentada multi-sesión (segmentación automática después de `/compact`, `/clear`, etc.)
 - Cada mensaje muestra una marca de tiempo con precisión de segundos, derivada del timing de la solicitud API

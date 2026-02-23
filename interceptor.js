@@ -9,6 +9,9 @@ import { dirname, join, basename } from 'node:path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// 缓存从请求 headers 中提取的 API Key
+export let _cachedApiKey = null;
+
 // 生成新的日志文件路径
 function generateNewLogFilePath() {
   const now = new Date();
@@ -316,6 +319,11 @@ export function setupInterceptor() {
           } else if (typeof options.headers === 'object') {
             headers = { ...options.headers };
           }
+        }
+
+        // 缓存 API Key 供翻译接口使用
+        if (headers['x-api-key'] && !_cachedApiKey) {
+          _cachedApiKey = headers['x-api-key'];
         }
 
         requestEntry = {

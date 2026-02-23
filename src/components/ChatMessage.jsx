@@ -403,9 +403,37 @@ class ChatMessage extends React.Component {
     );
   }
 
+  renderSkillLoadedMessage() {
+    const { text, skillName, timestamp } = this.props;
+    const timeStr = this.formatTime(timestamp);
+    return (
+      <div className={styles.messageRow}>
+        <div style={{ width: 32, flexShrink: 0 }} />
+        <div className={styles.contentCol}>
+          <Collapse
+            ghost
+            size="small"
+            items={[{
+              key: '1',
+              label: (
+                <span className={styles.skillLabel}>
+                  📦 {t('ui.skillLoaded')}: {skillName}
+                  {timeStr && <Text className={styles.timeTextNoMargin} style={{ marginLeft: 8 }}>{timeStr}</Text>}
+                </span>
+              ),
+              children: <div className="chat-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />,
+            }]}
+            className={styles.collapseNoMargin}
+          />
+        </div>
+      </div>
+    );
+  }
+
   render() {
     const { role } = this.props;
     if (role === 'user') return this.renderUserMessage();
+    if (role === 'skill-loaded') return this.renderSkillLoadedMessage();
     if (role === 'plan-prompt') return this.renderPlanPromptMessage();
     if (role === 'user-selection') return this.renderUserSelectionMessage();
     if (role === 'assistant') return this.renderAssistantMessage();

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Empty, Typography, Divider, Spin } from 'antd';
 import ChatMessage from './ChatMessage';
-import { extractToolResultText, isSystemText, getModelInfo } from '../utils/helpers';
+import { extractToolResultText, isSystemText, isSkillText, getModelInfo } from '../utils/helpers';
 import { renderAssistantText } from '../utils/systemTags';
 import { t } from '../i18n';
 import styles from './ChatView.module.css';
@@ -141,6 +141,8 @@ class ChatView extends React.Component {
         if (Array.isArray(content)) {
           const suggestionText = content.find(b => b.type === 'text' && /^\[SUGGESTION MODE:/i.test((b.text || '').trim()));
           const toolResults = content.filter(b => b.type === 'tool_result');
+          // 检测是否为 skill/command 展开的消息
+          const hasCommand = content.some(b => b.type === 'text' && /<command-message>/i.test(b.text || ''));
 
           if (suggestionText && toolResults.length > 0) {
             let questions = null;
@@ -164,7 +166,22 @@ class ChatView extends React.Component {
               );
             }
           } else {
-            const textBlocks = content.filter(b => b.type === 'text' && !isSystemText(b.text));
+            let textBlocks = content.filter(b => b.type === 'text' && !isSystemText(b.text));
+            // skill/command 展开的消息：只保留 slash command 显示，跳过 skill 正文
+            if (hasCommand) textBlocks = [];
+            // 检测 skill 加载的文本块
+            const skillBlocks = content.filter(b => b.type === 'text' && isSkillText(b.text));
+            for (const sb of skillBlocks) {
+              const nameMatch = sb.text.match(/^#\s+(.+)$/m);
+              const skillName = nameMatch ? nameMatch[1] : 'Skill';
+              renderedMessages.push(
+                <ChatMessage key={`${keyPrefix}-skill-${mi}`} role="skill-loaded" text={sb.text} skillName={skillName} timestamp={ts} />
+              );
+            }
+            // 过滤掉已作为 skill 渲染的文本块
+            if (skillBlocks.length > 0) {
+              textBlocks = textBlocks.filter(b => !isSkillText(b.text));
+            }
             for (let ti = 0; ti < textBlocks.length; ti++) {
               const isPlan = /^Implement the following plan:/i.test((textBlocks[ti].text || '').trim());
               renderedMessages.push(

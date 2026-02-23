@@ -54,6 +54,7 @@ Klicken Sie auf die Schaltfläche „Chat mode" oben rechts, um den vollständig
 - Task (SubAgent) Tool-Ergebnisse werden als Markdown gerendert
 - Benutzerauswahl-Nachrichten (AskUserQuestion) im Frage-Antwort-Format angezeigt
 - System-Tags (`<system-reminder>`, `<project-reminder>`, usw.) automatisch eingeklappt
+- Skill-Lademeldungen automatisch erkannt und eingeklappt, Skill-Name angezeigt; Klick zum Aufklappen der vollständigen Dokumentation (Markdown-Rendering)
 - Systemtext automatisch gefiltert, nur echte Benutzereingaben werden angezeigt
 - Mehrsitzungs-Segmentanzeige (automatische Segmentierung nach `/compact`, `/clear`, usw.)
 - Jede Nachricht zeigt einen sekundengenauen Zeitstempel, abgeleitet aus dem API-Anfrage-Timing

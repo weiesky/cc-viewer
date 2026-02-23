@@ -126,6 +126,11 @@
   font-size: 12px;
 }
 
+.skillLabel {
+  font-size: 12px;
+  color: #a78bfa;
+}
+
 .systemTagPre {
   font-size: 12px;
   color: #9ca3af;

@@ -54,6 +54,7 @@ Cliquez sur le bouton « Chat mode » en haut à droite pour analyser l'historiq
 - Résultats des outils Task (SubAgent) rendus en Markdown
 - Messages de sélection utilisateur (AskUserQuestion) affichés au format question-réponse
 - Balises système (`<system-reminder>`, `<project-reminder>`, etc.) auto-repliées
+- Messages de chargement de Skill détectés automatiquement et repliés, affichant le nom du Skill ; cliquer pour déplier la documentation complète (rendu Markdown)
 - Texte système auto-filtré, affichant uniquement les saisies réelles de l'utilisateur
 - Affichage segmenté multi-session (segmentation automatique après `/compact`, `/clear`, etc.)
 - Chaque message affiche un horodatage précis à la seconde, dérivé du timing de la requête API

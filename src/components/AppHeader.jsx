@@ -174,6 +174,8 @@ class AppHeader extends React.Component {
           if (cmd) slashCmd = cmd;
         }
       } else if (Array.isArray(msg.content)) {
+        // 检测是否为 skill/command 展开的消息（含 <command-message> 标签）
+        const hasCommand = msg.content.some(b => b.type === 'text' && /<command-message>/i.test(b.text || ''));
         // 分别收集纯用户文本和完整文本
         const userParts = [];
         const allParts = [];
@@ -183,6 +185,8 @@ class AppHeader extends React.Component {
           allParts.push(text);
           if (!isSystemText(text)) {
             if (/^Implement the following plan:/i.test(text)) continue;
+            // skill 展开内容不作为用户 prompt
+            if (hasCommand) continue;
             userParts.push(text);
           } else {
             const cmd = AppHeader.extractSlashCommand(text);

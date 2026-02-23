@@ -54,6 +54,7 @@ Clique no botão "Modo Chat" no canto superior direito para analisar o históric
 - Resultados de ferramentas Task (SubAgent) renderizados como Markdown
 - Mensagens de seleção do usuário (AskUserQuestion) exibidas em formato de perguntas e respostas
 - Tags do sistema (`<system-reminder>`, `<project-reminder>`, etc.) recolhidas automaticamente
+- Mensagens de carregamento de Skill detectadas automaticamente e recolhidas, exibindo o nome do Skill; clique para expandir a documentação completa (renderização Markdown)
 - Texto do sistema filtrado automaticamente, mostrando apenas a entrada real do usuário
 - Exibição segmentada por múltiplas sessões (segmentação automática após `/compact`, `/clear`, etc.)
 - Cada mensagem exibe um timestamp com precisão de segundos, derivado do timing da requisição API

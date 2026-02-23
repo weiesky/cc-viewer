@@ -7,6 +7,20 @@ import styles from './DetailPanel.module.css';
 
 const { Text, Paragraph } = Typography;
 
+/** 递归过滤对象中 _ 前缀的私有属性（由前端注入，非原始数据） */
+function stripPrivateKeys(obj) {
+  if (Array.isArray(obj)) return obj.map(stripPrivateKeys);
+  if (obj && typeof obj === 'object') {
+    const result = {};
+    for (const key of Object.keys(obj)) {
+      if (key.startsWith('_')) continue;
+      result[key] = stripPrivateKeys(obj[key]);
+    }
+    return result;
+  }
+  return obj;
+}
+
 function formatTokenCount(n) {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
   if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
@@ -71,7 +85,8 @@ class DetailPanel extends React.Component {
     if (!request) return;
     const data = type === 'request' ? request.body : request.response?.body;
     if (data == null) return;
-    const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    const clean = typeof data === 'object' ? stripPrivateKeys(data) : data;
+    const text = typeof clean === 'string' ? clean : JSON.stringify(clean, null, 2);
     navigator.clipboard.writeText(text).then(() => message.success(t('ui.copySuccess')));
   }
 
@@ -103,18 +118,19 @@ class DetailPanel extends React.Component {
       );
     }
 
+    const clean = typeof data === 'object' ? stripPrivateKeys(data) : data;
     const isJsonMode = bodyViewMode[type] === 'json';
 
     return (
       <div>
         {isJsonMode ? (
           <JsonViewer
-            data={data}
+            data={clean}
             defaultExpand={type === 'response' ? 'all' : 'root'}
           />
         ) : (
           <pre className={styles.rawTextPre}>
-            {typeof data === 'string' ? data : JSON.stringify(data, null, 2)}
+            {typeof clean === 'string' ? clean : JSON.stringify(clean, null, 2)}
           </pre>
         )}
       </div>

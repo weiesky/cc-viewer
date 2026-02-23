@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, extname, basename } from 'node:path';
 import { homedir, userInfo, platform } from 'node:os';
 import { execSync } from 'node:child_process';
-import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice, _projectName } from './interceptor.js';
-import { t } from './i18n.js';
+import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice, _projectName, _cachedApiKey } from './interceptor.js';
+import { t, detectLanguage } from './i18n.js';
 
 const LOG_DIR = join(homedir(), '.claude', 'cc-viewer');
 const PREFS_FILE = join(LOG_DIR, 'preferences.json');
@@ -235,6 +235,89 @@ function handleRequest(req, res) {
       } catch {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid request body' }));
+      }
+    });
+    return;
+  }
+
+  // 翻译 API
+  if (url === '/api/translate' && method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { text, from = 'en', to } = JSON.parse(body);
+        if (!text) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing "text" field' }));
+          return;
+        }
+
+        // 确定目标语言
+        let targetLang = to;
+        if (!targetLang) {
+          try {
+            if (existsSync(PREFS_FILE)) {
+              const prefs = JSON.parse(readFileSync(PREFS_FILE, 'utf-8'));
+              if (prefs.lang) targetLang = prefs.lang;
+            }
+          } catch {}
+          if (!targetLang) targetLang = detectLanguage();
+        }
+
+        // 源语言与目标语言相同，直接返回
+        if (targetLang === from) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ text, from, to: targetLang }));
+          return;
+        }
+
+        // 获取 API Key
+        const apiKey = process.env.ANTHROPIC_API_KEY || _cachedApiKey;
+        if (!apiKey) {
+          res.writeHead(501, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'No API key available' }));
+          return;
+        }
+
+        const baseUrl = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
+        const inputText = Array.isArray(text) ? text.join('\n---SPLIT---\n') : text;
+
+        const apiRes = await fetch(`${baseUrl}/v1/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-20250514',
+            max_tokens: 4096,
+            system: `You are a translator. Translate the following text from ${from} to ${targetLang}. Output only the translated text, nothing else.`,
+            messages: [{ role: 'user', content: inputText }],
+          }),
+        });
+
+        if (!apiRes.ok) {
+          const errBody = await apiRes.text();
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Translation API failed', status: apiRes.status, detail: errBody }));
+          return;
+        }
+
+        const apiData = await apiRes.json();
+        let translated = apiData.content?.[0]?.text || '';
+
+        // 如果输入是数组，拆分回数组
+        if (Array.isArray(text)) {
+          translated = translated.split(/\n?---SPLIT---\n?/);
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ text: translated, from, to: targetLang }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Internal error', message: err.message }));
       }
     });
     return;

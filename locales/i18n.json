@@ -1398,5 +1398,25 @@
     "th": "กระบวนการคิด",
     "tr": "Düşünce süreci",
     "uk": "Процес мислення"
+  },
+  "ui.skillLoaded": {
+    "zh": "Skill 已加载",
+    "en": "Skill Loaded",
+    "zh-TW": "Skill 已載入",
+    "ko": "Skill 로드됨",
+    "ja": "Skill 読み込み済み",
+    "de": "Skill geladen",
+    "es": "Skill cargado",
+    "fr": "Skill chargé",
+    "it": "Skill caricato",
+    "da": "Skill indlæst",
+    "pl": "Skill załadowany",
+    "ru": "Skill загружен",
+    "ar": "تم تحميل Skill",
+    "no": "Skill lastet",
+    "pt-BR": "Skill carregado",
+    "th": "โหลด Skill แล้ว",
+    "tr": "Skill yüklendi",
+    "uk": "Skill завантажено"
   }
 }

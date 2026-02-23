@@ -54,6 +54,7 @@ Click the "Chat mode" button in the top right to parse Main Agent's full convers
 - Task (SubAgent) tool results rendered as Markdown
 - User selection messages (AskUserQuestion) shown in Q&A format
 - System tags (`<system-reminder>`, `<project-reminder>`, etc.) auto-collapsed
+- Skill loaded messages auto-detected and collapsed, showing skill name; click to expand full documentation with Markdown rendering
 - System text auto-filtered, showing only real user input
 - Multi-session segmented display (auto-segmented after `/compact`, `/clear`, etc.)
 - Each message shows a timestamp accurate to the second, derived from API request timing

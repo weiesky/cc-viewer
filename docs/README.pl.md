@@ -54,6 +54,7 @@ Kliknij przycisk "Chat mode" w prawym górnym rogu, aby przetworzyć pełną his
 - Wyniki narzędzi Task (SubAgent) renderowane jako Markdown
 - Wiadomości wyboru użytkownika (AskUserQuestion) wyświetlane w formacie pytanie-odpowiedź
 - Tagi systemowe (`<system-reminder>`, `<project-reminder>`, itp.) automatycznie zwinięte
+- Wiadomości o załadowaniu Skill automatycznie wykrywane i zwijane, wyświetlając nazwę Skill; kliknij, aby rozwinąć pełną dokumentację (renderowanie Markdown)
 - Tekst systemowy automatycznie filtrowany, pokazuje tylko rzeczywiste dane wejściowe użytkownika
 - Wyświetlanie podzielone na wiele sesji (automatycznie segmentowane po `/compact`, `/clear`, itp.)
 - Każda wiadomość pokazuje znacznik czasu z dokładnością do sekundy, wyznaczony na podstawie czasu żądania API
