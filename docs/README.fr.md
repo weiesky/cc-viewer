@@ -40,6 +40,7 @@ ccv --uninstall
 - Copie du contenu JSON en un clic
 - Les requêtes MainAgent prennent en charge Body Diff JSON, affichant en mode replié les différences avec la requête MainAgent précédente (uniquement les champs modifiés/ajoutés)
 - L'infobulle Body Diff JSON peut être fermée ; une fois fermée, la préférence est sauvegardée côté serveur et ne s'affiche plus
+- Les en-têtes sensibles (`x-api-key`, `authorization`) sont automatiquement masqués dans les fichiers de log JSONL pour éviter les fuites de credentials
 - Statistiques d'utilisation des Token en ligne par requête (tokens d'entrée/sortie, création/lecture de cache, taux de succès)
 
 ### Chat Mode
@@ -49,7 +50,7 @@ Cliquez sur le bouton « Chat mode » en haut à droite pour analyser l'historiq
 - Messages utilisateur alignés à droite (bulles bleues), réponses du Main Agent alignées à gauche (bulles sombres) avec rendu Markdown
 - Messages `/compact` détectés automatiquement et affichés repliés, cliquez pour déplier le résumé complet
 - Résultats des appels d'outils affichés en ligne dans le message Assistant correspondant
-- Blocs `thinking` repliés par défaut, rendus en Markdown, cliquez pour déplier
+- Blocs `thinking` repliés par défaut, rendus en Markdown, cliquez pour déplier ; traduction en un clic prise en charge
 - `tool_use` affiché sous forme de cartes compactes d'appel d'outils (Bash, Read, Edit, Write, Glob, Grep, Task ont chacun un affichage dédié)
 - Résultats des outils Task (SubAgent) rendus en Markdown
 - Messages de sélection utilisateur (AskUserQuestion) affichés au format question-réponse
@@ -59,6 +60,13 @@ Cliquez sur le bouton « Chat mode » en haut à droite pour analyser l'historiq
 - Affichage segmenté multi-session (segmentation automatique après `/compact`, `/clear`, etc.)
 - Chaque message affiche un horodatage précis à la seconde, dérivé du timing de la requête API
 - Panneau de paramètres : basculer l'état de repli par défaut pour les résultats d'outils et les blocs de réflexion
+
+### Traduction
+
+- Les blocs thinking et les messages de l'Assistant prennent en charge la traduction en un clic
+- Basé sur l'API Claude Haiku, prend en charge l'authentification par API Key (`x-api-key`) et OAuth Bearer Token
+- Les résultats de traduction sont mis en cache automatiquement ; cliquez à nouveau pour revenir au texte original
+- Animation de chargement rotative affichée pendant la traduction
 
 ### Statistiques de Token
 

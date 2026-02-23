@@ -6,11 +6,29 @@ import { renderAssistantText } from '../utils/systemTags';
 import { t } from '../i18n';
 import DiffView from './DiffView';
 import ToolResultView from './ToolResultView';
+import TranslateTag from './TranslateTag';
 import styles from './ChatMessage.module.css';
 
 const { Text } = Typography;
 
 class ChatMessage extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      // { [thinkingIndex]: translatedHtml | null }
+      thinkingTranslated: {},
+    };
+  }
+
+  handleThinkingTranslated = (index, translatedText) => {
+    this.setState(prev => ({
+      thinkingTranslated: {
+        ...prev.thinkingTranslated,
+        [index]: translatedText ? renderMarkdown(translatedText) : null,
+      },
+    }));
+  };
+
   formatTime(ts) {
     if (!ts) return null;
     try {
@@ -276,6 +294,8 @@ class ChatMessage extends React.Component {
     let innerContent = [];
 
     thinkingBlocks.forEach((tb, i) => {
+      const translatedHtml = this.state.thinkingTranslated[i];
+      const displayHtml = translatedHtml || renderMarkdown(tb.thinking || '');
       innerContent.push(
         <Collapse
           key={`think-${i}-${this.props.expandThinking ? 'e' : 'c'}`}
@@ -284,8 +304,13 @@ class ChatMessage extends React.Component {
           defaultActiveKey={this.props.expandThinking ? ['1'] : []}
           items={[{
             key: '1',
-            label: <Text type="secondary" className={styles.thinkingLabel}>{t('ui.thinking')}</Text>,
-            children: <div className="chat-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(tb.thinking || '') }} />,
+            label: (
+              <span>
+                <Text type="secondary" className={styles.thinkingLabel}>{t('ui.thinking')}</Text>
+                <TranslateTag text={tb.thinking || ''} onTranslated={(txt) => this.handleThinkingTranslated(i, txt)} />
+              </span>
+            ),
+            children: <div className="chat-md" dangerouslySetInnerHTML={{ __html: displayHtml }} />,
           }]}
           className={styles.collapseMargin}
         />

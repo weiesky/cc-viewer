@@ -40,6 +40,7 @@ ccv --uninstall
 - Kopiowanie zawartości JSON jednym kliknięciem
 - Żądania MainAgent obsługują Body Diff JSON, wyświetlając zwinięte różnice z poprzednim żądaniem MainAgent (tylko zmienione/dodane pola)
 - Podpowiedź Body Diff JSON można zamknąć; po zamknięciu preferencja jest zapisywana po stronie serwera i nigdy więcej nie jest wyświetlana
+- Wrażliwe nagłówki (`x-api-key`, `authorization`) są automatycznie maskowane w plikach logów JSONL, aby zapobiec wyciekowi poświadczeń
 - Statystyki zużycia Token inline dla każdego żądania (tokeny wejściowe/wyjściowe, tworzenie/odczyt cache, współczynnik trafień)
 
 ### Chat Mode
@@ -49,7 +50,7 @@ Kliknij przycisk "Chat mode" w prawym górnym rogu, aby przetworzyć pełną his
 - Wiadomości użytkownika wyrównane do prawej (niebieskie dymki), odpowiedzi Main Agent wyrównane do lewej (ciemne dymki) z renderowaniem Markdown
 - Wiadomości `/compact` automatycznie wykrywane i wyświetlane w formie zwiniętej, kliknij aby rozwinąć pełne podsumowanie
 - Wyniki wywołań narzędzi wyświetlane inline w odpowiedniej wiadomości Assistant
-- Bloki `thinking` domyślnie zwinięte, renderowane jako Markdown, kliknij aby rozwinąć
+- Bloki `thinking` domyślnie zwinięte, renderowane jako Markdown, kliknij aby rozwinąć; obsługa tłumaczenia jednym kliknięciem
 - `tool_use` wyświetlane jako kompaktowe karty wywołań narzędzi (Bash, Read, Edit, Write, Glob, Grep, Task mają dedykowane wyświetlanie)
 - Wyniki narzędzi Task (SubAgent) renderowane jako Markdown
 - Wiadomości wyboru użytkownika (AskUserQuestion) wyświetlane w formacie pytanie-odpowiedź
@@ -59,6 +60,13 @@ Kliknij przycisk "Chat mode" w prawym górnym rogu, aby przetworzyć pełną his
 - Wyświetlanie podzielone na wiele sesji (automatycznie segmentowane po `/compact`, `/clear`, itp.)
 - Każda wiadomość pokazuje znacznik czasu z dokładnością do sekundy, wyznaczony na podstawie czasu żądania API
 - Panel ustawień: przełączanie domyślnego stanu zwinięcia wyników narzędzi i bloków myślenia
+
+### Tłumaczenie
+
+- Bloki thinking i wiadomości Assistant obsługują tłumaczenie jednym kliknięciem
+- Oparte na API Claude Haiku, obsługuje uwierzytelnianie zarówno przez API Key (`x-api-key`), jak i OAuth Bearer Token
+- Wyniki tłumaczenia są automatycznie buforowane; kliknij ponownie, aby przełączyć na tekst oryginalny
+- Podczas tłumaczenia wyświetlana jest animacja ładowania
 
 ### Token Stats
 

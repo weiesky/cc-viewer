@@ -40,6 +40,7 @@ ccv --uninstall
 - Cópia de conteúdo JSON com um clique
 - Requisições MainAgent suportam Body Diff JSON, exibindo de forma recolhida as diferenças com a requisição MainAgent anterior (apenas campos alterados/adicionados)
 - O tooltip do Body Diff JSON pode ser fechado; uma vez fechado, a preferência é salva no servidor e nunca mais exibida
+- Headers sensíveis (`x-api-key`, `authorization`) são automaticamente mascarados nos arquivos de log JSONL para prevenir vazamento de credenciais
 - Estatísticas de uso de Token inline por requisição (tokens de entrada/saída, criação/leitura de cache, taxa de acerto)
 
 ### Modo Chat
@@ -49,7 +50,7 @@ Clique no botão "Modo Chat" no canto superior direito para analisar o históric
 - Mensagens do usuário alinhadas à direita (bolhas azuis), respostas do Main Agent alinhadas à esquerda (bolhas escuras) com renderização Markdown
 - Mensagens `/compact` detectadas automaticamente e exibidas recolhidas, clique para expandir o resumo completo
 - Resultados de chamadas de ferramentas exibidos inline na mensagem do Assistant correspondente
-- Blocos `thinking` recolhidos por padrão, renderizados como Markdown, clique para expandir
+- Blocos `thinking` recolhidos por padrão, renderizados como Markdown, clique para expandir; suporte a tradução com um clique
 - `tool_use` exibido como cartões compactos de chamada de ferramenta (Bash, Read, Edit, Write, Glob, Grep, Task possuem exibições dedicadas)
 - Resultados de ferramentas Task (SubAgent) renderizados como Markdown
 - Mensagens de seleção do usuário (AskUserQuestion) exibidas em formato de perguntas e respostas
@@ -59,6 +60,13 @@ Clique no botão "Modo Chat" no canto superior direito para analisar o históric
 - Exibição segmentada por múltiplas sessões (segmentação automática após `/compact`, `/clear`, etc.)
 - Cada mensagem exibe um timestamp com precisão de segundos, derivado do timing da requisição API
 - Painel de configurações: alternar o estado de recolhimento padrão para resultados de ferramentas e blocos de pensamento
+
+### Tradução
+
+- Blocos thinking e mensagens do Assistant suportam tradução com um clique
+- Baseado na API Claude Haiku, suporta autenticação por API Key (`x-api-key`) e OAuth Bearer Token
+- Resultados da tradução são armazenados em cache automaticamente; clique novamente para alternar de volta ao texto original
+- Animação de carregamento giratória exibida durante a tradução
 
 ### Estatísticas de Token
 

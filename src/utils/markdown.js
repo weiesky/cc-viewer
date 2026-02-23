@@ -1,4 +1,5 @@
 import { marked } from 'marked';
+import { escapeHtml } from './helpers';
 
 export function renderMarkdown(text) {
   if (!text) return '';
@@ -7,9 +8,4 @@ export function renderMarkdown(text) {
   } catch (e) {
     return escapeHtml(text);
   }
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

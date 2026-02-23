@@ -40,6 +40,7 @@ ccv --uninstall
 - Tek tıkla JSON içeriği kopyalama
 - MainAgent istekleri Body Diff JSON'u destekler, önceki MainAgent isteğiyle farkları katlanmış olarak gösterir (yalnızca değişen/eklenen alanlar)
 - Body Diff JSON araç ipucu kapatılabilir; kapatıldığında tercih sunucu tarafında kaydedilir ve bir daha gösterilmez
+- Hassas başlıklar (`x-api-key`, `authorization`) kimlik bilgisi sızıntısını önlemek için JSONL log dosyalarında otomatik olarak maskelenir
 - İstek başına satır içi Token kullanım istatistikleri (giriş/çıkış token'ları, önbellek oluşturma/okuma, isabet oranı)
 
 ### Chat Modu
@@ -49,7 +50,7 @@ Main Agent'ın tam konuşma geçmişini sohbet arayüzüne dönüştürmek için
 - Kullanıcı mesajları sağa hizalı (mavi balonlar), Main Agent yanıtları sola hizalı (koyu balonlar) Markdown oluşturma desteğiyle
 - `/compact` mesajları otomatik algılanır ve daraltılmış gösterilir, tam özeti genişletmek için tıklayın
 - Araç çağrısı sonuçları ilgili Assistant mesajı içinde satır içi görüntülenir
-- `thinking` blokları varsayılan olarak daraltılmış, Markdown olarak işlenmiş, genişletmek için tıklayın
+- `thinking` blokları varsayılan olarak daraltılmış, Markdown olarak işlenmiş, genişletmek için tıklayın; tek tıkla çeviri desteği
 - `tool_use` kompakt araç çağrısı kartları olarak gösterilir (Bash, Read, Edit, Write, Glob, Grep, Task her biri özel görünüme sahip)
 - Task (SubAgent) araç sonuçları Markdown olarak işlenir
 - Kullanıcı seçim mesajları (AskUserQuestion) soru-cevap formatında gösterilir
@@ -59,6 +60,13 @@ Main Agent'ın tam konuşma geçmişini sohbet arayüzüne dönüştürmek için
 - Çoklu session segmentli görüntüleme (`/compact`, `/clear` vb. sonrasında otomatik segmentleme)
 - Her mesaj saniye hassasiyetinde zaman damgası gösterir, API istek zamanlamasından türetilmiş
 - Ayarlar paneli: araç sonuçları ve düşünme blokları için varsayılan daraltma durumunu değiştirme
+
+### Çeviri
+
+- Thinking blokları ve Assistant mesajları tek tıkla çeviriyi destekler
+- Claude Haiku API tabanlı, hem API Key (`x-api-key`) hem de OAuth Bearer Token kimlik doğrulamasını destekler
+- Çeviri sonuçları otomatik olarak önbelleğe alınır; orijinal metne geri dönmek için tekrar tıklayın
+- Çeviri sırasında yükleme döndürücü animasyonu gösterilir
 
 ### Token İstatistikleri
 

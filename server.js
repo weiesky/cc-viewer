@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, extname, basename } from 'node:path';
 import { homedir, userInfo, platform } from 'node:os';
 import { execSync } from 'node:child_process';
-import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice, _projectName, _cachedApiKey } from './interceptor.js';
+import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice, _projectName, _cachedApiKey, _cachedAuthHeader } from './interceptor.js';
 import { t, detectLanguage } from './i18n.js';
 
 const LOG_DIR = join(homedir(), '.claude', 'cc-viewer');
@@ -272,9 +272,10 @@ function handleRequest(req, res) {
           return;
         }
 
-        // 获取 API Key
+        // 获取 API Key 或 Authorization header
         const apiKey = process.env.ANTHROPIC_API_KEY || _cachedApiKey;
-        if (!apiKey) {
+        const authHeader = _cachedAuthHeader; // OAuth Bearer token
+        if (!apiKey && !authHeader) {
           res.writeHead(501, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'No API key available' }));
           return;
@@ -283,13 +284,19 @@ function handleRequest(req, res) {
         const baseUrl = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
         const inputText = Array.isArray(text) ? text.join('\n---SPLIT---\n') : text;
 
+        const reqHeaders = {
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01',
+        };
+        if (apiKey) {
+          reqHeaders['x-api-key'] = apiKey;
+        } else {
+          reqHeaders['authorization'] = authHeader;
+        }
+
         const apiRes = await fetch(`${baseUrl}/v1/messages`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-          },
+          headers: reqHeaders,
           body: JSON.stringify({
             model: 'claude-haiku-4-20250514',
             max_tokens: 4096,

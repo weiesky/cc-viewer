@@ -3,29 +3,10 @@ import { Tabs, Typography, Button, Tag, Empty, Space, Tooltip, message } from 'a
 import { CopyOutlined, FileTextOutlined, CodeOutlined, RightOutlined, DownOutlined, CloseOutlined } from '@ant-design/icons';
 import JsonViewer from './JsonViewer';
 import { t } from '../i18n';
+import { formatTokenCount, stripPrivateKeys } from '../utils/helpers';
 import styles from './DetailPanel.module.css';
 
 const { Text, Paragraph } = Typography;
-
-/** 递归过滤对象中 _ 前缀的私有属性（由前端注入，非原始数据） */
-function stripPrivateKeys(obj) {
-  if (Array.isArray(obj)) return obj.map(stripPrivateKeys);
-  if (obj && typeof obj === 'object') {
-    const result = {};
-    for (const key of Object.keys(obj)) {
-      if (key.startsWith('_')) continue;
-      result[key] = stripPrivateKeys(obj[key]);
-    }
-    return result;
-  }
-  return obj;
-}
-
-function formatTokenCount(n) {
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-  return String(n);
-}
 
 class DetailPanel extends React.Component {
   constructor(props) {

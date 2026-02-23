@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Typography } from 'antd';
 import { t } from '../i18n';
 import { renderMarkdown } from '../utils/markdown';
+import { escapeHtml } from '../utils/helpers';
 import styles from './ToolResultView.module.css';
 
 const { Text } = Typography;
@@ -232,10 +233,6 @@ const FILE_LIST_RULES = [
   { pattern: /^(.*\.(json|ya?ml|toml|xml|html?|css|scss|less|md))$/gm, cls: 'hl-number' }, // config/markup
   { pattern: /^(.*\.(log|txt|csv|jsonl))$/gm, cls: 'hl-comment' },    // data files
 ];
-
-function escapeHtml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
 
 function highlight(text, lang) {
   let resolvedLang = lang;

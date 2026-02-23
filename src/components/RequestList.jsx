@@ -1,21 +1,9 @@
 import React from 'react';
 import { List, Tag, Empty } from 'antd';
 import { t } from '../i18n';
+import { formatTokenCount, getModelShort } from '../utils/helpers';
 import { classifyRequest, formatRequestTag } from '../utils/requestType';
 import styles from './RequestList.module.css';
-
-function formatTokens(n) {
-  if (n == null || n === 0) return null;
-  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
-  return String(n);
-}
-
-function getModelShort(model) {
-  if (!model) return null;
-  return model
-    .replace(/^claude-/, '')
-    .replace(/-\d{8,}$/, '');
-}
 
 class RequestList extends React.Component {
   render() {
@@ -85,9 +73,9 @@ class RequestList extends React.Component {
                   </div>
                   {usage && (
                     <div className={styles.usageBox}>
-                      <div>token: output:{formatTokens(outputTokens) || 0}, input: {formatTokens(inputTokens) || 0}</div>
+                      <div>token: output:{formatTokenCount(outputTokens) || 0}, input: {formatTokenCount(inputTokens) || 0}</div>
                       {(cacheRead > 0 || cacheCreate > 0) && (
-                        <div>cache: {cacheRead > 0 ? `read:${formatTokens(cacheRead)}` : ''}{cacheRead > 0 && cacheCreate > 0 ? ', ' : ''}{cacheCreate > 0 ? `create:${formatTokens(cacheCreate)}` : ''}</div>
+                        <div>cache: {cacheRead > 0 ? `read:${formatTokenCount(cacheRead)}` : ''}{cacheRead > 0 && cacheCreate > 0 ? ', ' : ''}{cacheCreate > 0 ? `create:${formatTokenCount(cacheCreate)}` : ''}</div>
                       )}
                     </div>
                   )}

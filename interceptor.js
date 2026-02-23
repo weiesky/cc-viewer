@@ -9,8 +9,9 @@ import { dirname, join, basename } from 'node:path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// 缓存从请求 headers 中提取的 API Key
+// 缓存从请求 headers 中提取的 API Key 或 Authorization header
 export let _cachedApiKey = null;
+export let _cachedAuthHeader = null;
 
 // 生成新的日志文件路径
 function generateNewLogFilePath() {
@@ -321,9 +322,30 @@ export function setupInterceptor() {
           }
         }
 
-        // 缓存 API Key 供翻译接口使用
+        // 缓存 API Key / Authorization 供翻译接口使用（缓存原始值）
         if (headers['x-api-key'] && !_cachedApiKey) {
           _cachedApiKey = headers['x-api-key'];
+        }
+        if (headers['authorization'] && !_cachedAuthHeader) {
+          _cachedAuthHeader = headers['authorization'];
+        }
+
+        // 脱敏敏感 headers，避免写入日志泄漏凭证
+        const safeHeaders = { ...headers };
+        if (safeHeaders['x-api-key']) {
+          const k = safeHeaders['x-api-key'];
+          safeHeaders['x-api-key'] = k.length > 12 ? k.slice(0, 8) + '****' + k.slice(-4) : '****';
+        }
+        if (safeHeaders['authorization']) {
+          const v = safeHeaders['authorization'];
+          const spaceIdx = v.indexOf(' ');
+          if (spaceIdx > 0) {
+            const scheme = v.slice(0, spaceIdx);
+            const token = v.slice(spaceIdx + 1);
+            safeHeaders['authorization'] = scheme + ' ' + (token.length > 12 ? token.slice(0, 8) + '****' + token.slice(-4) : '****');
+          } else {
+            safeHeaders['authorization'] = '****';
+          }
         }
 
         requestEntry = {
@@ -331,7 +353,7 @@ export function setupInterceptor() {
           project: (() => { try { return basename(process.cwd()); } catch { return 'unknown'; } })(),
           url: urlStr,
           method: options?.method || 'GET',
-          headers,
+          headers: safeHeaders,
           body: body,
           response: null,
           duration: 0,

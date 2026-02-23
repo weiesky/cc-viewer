@@ -7,6 +7,7 @@ import DetailPanel from './components/DetailPanel';
 import ChatView from './components/ChatView';
 import PanelResizer from './components/PanelResizer';
 import { t, getLang, setLang } from './i18n';
+import { formatTokenCount } from './utils/helpers';
 import styles from './App.module.css';
 
 class App extends React.Component {
@@ -39,6 +40,8 @@ class App extends React.Component {
       resumeFileName: '',
       collapseToolResults: false,
       expandThinking: false,
+      fileLoading: false,
+      fileLoadingCount: 0,
     };
     this.eventSource = null;
     this._autoSelectTimer = null;
@@ -94,9 +97,28 @@ class App extends React.Component {
   componentWillUnmount() {
     if (this.eventSource) this.eventSource.close();
     if (this._autoSelectTimer) clearTimeout(this._autoSelectTimer);
+    if (this._loadingCountTimer) cancelAnimationFrame(this._loadingCountTimer);
+  }
+
+  animateLoadingCount(target, onDone) {
+    const duration = Math.min(800, Math.max(300, target * 0.5));
+    const start = performance.now();
+    const step = (now) => {
+      const progress = Math.min((now - start) / duration, 1);
+      const current = Math.round(progress * target);
+      this.setState({ fileLoadingCount: current });
+      if (progress < 1) {
+        this._loadingCountTimer = requestAnimationFrame(step);
+      } else {
+        this._loadingCountTimer = null;
+        onDone();
+      }
+    };
+    this._loadingCountTimer = requestAnimationFrame(step);
   }
 
   initSSE() {
+    this.setState({ fileLoading: true, fileLoadingCount: 0 });
     try {
       this.eventSource = new EventSource('/events');
       this.eventSource.onmessage = (event) => this.handleEventMessage(event);
@@ -118,17 +140,36 @@ class App extends React.Component {
             const filtered = entries.filter(r =>
               !r.isHeartbeat && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
             );
-            this.setState({
-              requests: entries,
-              selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
-              mainAgentSessions,
-            });
+            if (entries.length > 0) {
+              this.animateLoadingCount(entries.length, () => {
+                this.setState({
+                  requests: entries,
+                  selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
+                  mainAgentSessions,
+                  fileLoading: false,
+                  fileLoadingCount: 0,
+                });
+              });
+            } else {
+              this.setState({
+                requests: entries,
+                selectedIndex: null,
+                mainAgentSessions,
+                fileLoading: false,
+                fileLoadingCount: 0,
+              });
+            }
+          } else {
+            this.setState({ fileLoading: false, fileLoadingCount: 0 });
           }
-        } catch {}
+        } catch {
+          this.setState({ fileLoading: false, fileLoadingCount: 0 });
+        }
       });
       this.eventSource.onerror = () => console.error('SSE连接错误');
     } catch (error) {
       console.error('EventSource初始化失败:', error);
+      this.setState({ fileLoading: false, fileLoadingCount: 0 });
     }
   }
 
@@ -136,23 +177,33 @@ class App extends React.Component {
     // 加载本地历史日志文件（非实时模式）
     this._isLocalLog = true;
     this._localLogFile = file;
+    this.setState({ fileLoading: true, fileLoadingCount: 0 });
     fetch(`/api/local-log?file=${encodeURIComponent(file)}`)
       .then(res => res.json())
       .then(entries => {
         if (Array.isArray(entries)) {
-          this.assignMessageTimestamps(entries);
-          const mainAgentSessions = this.buildSessionsFromEntries(entries);
-          const filtered = entries.filter(r =>
-            !r.isHeartbeat && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
-          );
-          this.setState({
-            requests: entries,
-            selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
-            mainAgentSessions,
+          this.animateLoadingCount(entries.length, () => {
+            this.assignMessageTimestamps(entries);
+            const mainAgentSessions = this.buildSessionsFromEntries(entries);
+            const filtered = entries.filter(r =>
+              !r.isHeartbeat && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
+            );
+            this.setState({
+              requests: entries,
+              selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
+              mainAgentSessions,
+              fileLoading: false,
+              fileLoadingCount: 0,
+            });
           });
+        } else {
+          this.setState({ fileLoading: false, fileLoadingCount: 0 });
         }
       })
-      .catch(err => console.error('加载日志文件失败:', err));
+      .catch(err => {
+        console.error('加载日志文件失败:', err);
+        this.setState({ fileLoading: false, fileLoadingCount: 0 });
+      });
   }
 
   handleEventMessage(event) {
@@ -191,7 +242,9 @@ class App extends React.Component {
             }
             if (newExpireAt && newExpireAt > Date.now()) {
               cacheExpireAt = newExpireAt;
-              cacheType = newType;
+              // 计算最后一条 mainAgent 的 cache read + creation token 总和
+              const cacheTotal = (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
+              cacheType = cacheTotal > 0 ? formatTokenCount(cacheTotal) : newType;
               localStorage.setItem('ccv_cacheExpireAt', String(cacheExpireAt));
               localStorage.setItem('ccv_cacheType', cacheType);
             }
@@ -421,6 +474,7 @@ class App extends React.Component {
         message.error(t('ui.fileTooLarge'));
         return;
       }
+      this.setState({ fileLoading: true, fileLoadingCount: 0 });
       const reader = new FileReader();
       reader.onload = (ev) => {
         try {
@@ -430,28 +484,34 @@ class App extends React.Component {
           }).filter(Boolean);
           if (entries.length === 0) {
             message.error(t('ui.noLogs'));
+            this.setState({ fileLoading: false, fileLoadingCount: 0 });
             return;
           }
-          let mainAgentSessions = [];
-          for (const entry of entries) {
-            if (entry.mainAgent && entry.body && Array.isArray(entry.body.messages)) {
-              mainAgentSessions = this.mergeMainAgentSessions(mainAgentSessions, entry);
+          this.animateLoadingCount(entries.length, () => {
+            let mainAgentSessions = [];
+            for (const entry of entries) {
+              if (entry.mainAgent && entry.body && Array.isArray(entry.body.messages)) {
+                mainAgentSessions = this.mergeMainAgentSessions(mainAgentSessions, entry);
+              }
             }
-          }
-          const filtered = entries.filter(r =>
-            !r.isHeartbeat && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
-          );
-          this._isLocalLog = true;
-          this._localLogFile = file.name;
-          if (this.eventSource) { this.eventSource.close(); this.eventSource = null; }
-          this.setState({
-            requests: entries,
-            selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
-            mainAgentSessions,
-            importModalVisible: false,
+            const filtered = entries.filter(r =>
+              !r.isHeartbeat && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
+            );
+            this._isLocalLog = true;
+            this._localLogFile = file.name;
+            if (this.eventSource) { this.eventSource.close(); this.eventSource = null; }
+            this.setState({
+              requests: entries,
+              selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
+              mainAgentSessions,
+              importModalVisible: false,
+              fileLoading: false,
+              fileLoadingCount: 0,
+            });
           });
         } catch (err) {
           message.error(t('ui.noLogs'));
+          this.setState({ fileLoading: false, fileLoadingCount: 0 });
         }
       };
       reader.readAsText(file);
@@ -472,7 +532,7 @@ class App extends React.Component {
   }
 
   render() {
-    const { requests, selectedIndex, viewMode, currentTab, cacheExpireAt, cacheType, leftPanelWidth, mainAgentSessions, showAll } = this.state;
+    const { requests, selectedIndex, viewMode, currentTab, cacheExpireAt, cacheType, leftPanelWidth, mainAgentSessions, showAll, fileLoading, fileLoadingCount } = this.state;
 
     // 过滤心跳请求（eval/sdk-* 和 count_tokens），除非 showAll
     const filteredRequests = showAll ? requests : requests.filter(r =>
@@ -493,6 +553,11 @@ class App extends React.Component {
           },
         }}
       >
+        {fileLoading && (
+          <div className={styles.loadingOverlay}>
+            <div className={styles.loadingText}>Loading...({fileLoadingCount})</div>
+          </div>
+        )}
         <Layout className={styles.layout}>
           <Layout.Header className={styles.header}>
             <AppHeader

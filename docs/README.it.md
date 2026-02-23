@@ -40,6 +40,7 @@ ccv --uninstall
 - Copia del contenuto JSON con un clic
 - Le richieste MainAgent supportano Body Diff JSON, mostrando in modo compresso le differenze con la richiesta MainAgent precedente (solo campi modificati/aggiunti)
 - Il tooltip Body Diff JSON può essere chiuso; una volta chiuso, la preferenza viene salvata lato server e non viene più mostrato
+- Gli header sensibili (`x-api-key`, `authorization`) vengono automaticamente mascherati nei file di log JSONL per prevenire la divulgazione delle credenziali
 - Statistiche di utilizzo Token inline per richiesta (token di input/output, creazione/lettura cache, tasso di successo)
 
 ### Chat Mode
@@ -49,7 +50,7 @@ Fare clic sul pulsante "Chat mode" in alto a destra per analizzare la cronologia
 - Messaggi dell'utente allineati a destra (bolle blu), risposte del Main Agent allineate a sinistra (bolle scure) con rendering Markdown
 - Messaggi `/compact` rilevati automaticamente e mostrati compressi, fare clic per espandere il riepilogo completo
 - Risultati delle chiamate agli strumenti visualizzati in linea all'interno del messaggio Assistant corrispondente
-- Blocchi `thinking` compressi per impostazione predefinita, renderizzati come Markdown, fare clic per espandere
+- Blocchi `thinking` compressi per impostazione predefinita, renderizzati come Markdown, fare clic per espandere; traduzione con un clic supportata
 - `tool_use` mostrato come schede compatte di chiamata strumenti (Bash, Read, Edit, Write, Glob, Grep, Task hanno ciascuno visualizzazioni dedicate)
 - Risultati degli strumenti Task (SubAgent) renderizzati come Markdown
 - Messaggi di selezione dell'utente (AskUserQuestion) mostrati in formato domanda e risposta
@@ -59,6 +60,13 @@ Fare clic sul pulsante "Chat mode" in alto a destra per analizzare la cronologia
 - Visualizzazione segmentata multi-sessione (segmentazione automatica dopo `/compact`, `/clear`, ecc.)
 - Ogni messaggio mostra un timestamp preciso al secondo, derivato dal timing della richiesta API
 - Pannello impostazioni: attiva/disattiva lo stato di compressione predefinito per i risultati degli strumenti e i blocchi di pensiero
+
+### Traduzione
+
+- I blocchi thinking e i messaggi dell'Assistant supportano la traduzione con un clic
+- Basato sull'API Claude Haiku, supporta sia l'autenticazione tramite API Key (`x-api-key`) che OAuth Bearer Token
+- I risultati della traduzione vengono memorizzati automaticamente nella cache; fare clic di nuovo per tornare al testo originale
+- Animazione di caricamento rotante mostrata durante la traduzione
 
 ### Statistiche Token
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Space, Tag, Button, Badge, Typography, Dropdown, Popover, Modal, Collapse, Drawer, Switch } from 'antd';
 import { MessageOutlined, FileTextOutlined, ImportOutlined, DownOutlined, DashboardOutlined, SaveOutlined, ExportOutlined, DownloadOutlined, SettingOutlined } from '@ant-design/icons';
-import { isSystemText } from '../utils/helpers';
+import { isSystemText, formatTokenCount, computeTokenStats } from '../utils/helpers';
 import { t, getLang, setLang } from '../i18n';
 import styles from './AppHeader.module.css';
 
@@ -27,30 +27,6 @@ const LANG_OPTIONS = [
 ];
 
 const { Text } = Typography;
-
-function formatTokenCount(n) {
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-  return String(n);
-}
-
-function computeTokenStats(requests) {
-  const byModel = {};
-  for (const req of requests) {
-    const usage = req.response?.body?.usage;
-    if (!usage) continue;
-    const model = req.body?.model || 'unknown';
-    if (!byModel[model]) {
-      byModel[model] = { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 };
-    }
-    const s = byModel[model];
-    s.input += (usage.input_tokens || 0);
-    s.output += (usage.output_tokens || 0);
-    s.cacheCreation += (usage.cache_creation_input_tokens || 0);
-    s.cacheRead += (usage.cache_read_input_tokens || 0);
-  }
-  return byModel;
-}
 
 class AppHeader extends React.Component {
   constructor(props) {

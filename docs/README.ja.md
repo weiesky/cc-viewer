@@ -40,6 +40,7 @@ ccv --uninstall
 - JSON コンテンツのワンクリックコピー
 - MainAgent リクエストで Body Diff JSON をサポート、前回の MainAgent リクエストとの差分を折りたたみ表示（変更/追加フィールドのみ）
 - Body Diff JSON ツールチップは閉じることができ、閉じるとサーバー側に設定が保存され、再表示されません
+- 機密ヘッダー（`x-api-key`、`authorization`）は JSONL ログファイルで自動的にマスクされ、認証情報の漏洩を防止
 - リクエストごとにインラインで Token 使用量統計を表示（入力/出力 Token、キャッシュ作成/読み取り、ヒット率）
 
 ### チャットモード
@@ -49,7 +50,7 @@ ccv --uninstall
 - ユーザーメッセージ右揃え（青い吹き出し）、Main Agent の返信左揃え（ダークの吹き出し）、Markdown レンダリング対応
 - `/compact` メッセージを自動検出し折りたたみ表示、クリックで完全なサマリーを展開
 - ツール呼び出し結果が対応する Assistant メッセージ内にインライン表示
-- `thinking` ブロックはデフォルトで折りたたみ、Markdown でレンダリング、クリックで展開
+- `thinking` ブロックはデフォルトで折りたたみ、Markdown でレンダリング、クリックで展開；ワンクリック翻訳対応
 - `tool_use` はコンパクトなツール呼び出しカードとして表示（Bash、Read、Edit、Write、Glob、Grep、Task 等に専用表示）
 - Task（SubAgent）ツール結果を Markdown でレンダリング
 - ユーザー選択メッセージ（AskUserQuestion）は Q&A 形式で表示
@@ -59,6 +60,13 @@ ccv --uninstall
 - マルチ session 分割表示（`/compact`、`/clear` 等の操作後に自動分割）
 - 各メッセージに秒単位の正確なタイムスタンプを表示、API リクエストのタイミングから算出
 - 設定パネル：ツール結果と thinking ブロックのデフォルト折りたたみ状態を切り替え
+
+### 翻訳
+
+- thinking ブロックと Assistant メッセージでワンクリック翻訳に対応
+- Claude Haiku API を使用、API Key（`x-api-key`）と OAuth Bearer Token の両方の認証方式に対応
+- 翻訳結果は自動キャッシュされ、再度クリックで原文に切り替え
+- 翻訳中はローディングスピナーアニメーションを表示
 
 ### Token 消費統計
 

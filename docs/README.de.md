@@ -40,6 +40,7 @@ ccv --uninstall
 - JSON-Inhalt mit einem Klick kopieren
 - MainAgent-Anfragen unterstützen Body Diff JSON, zeigt eingeklappt die Unterschiede zur vorherigen MainAgent-Anfrage (nur geänderte/neue Felder)
 - Body Diff JSON-Tooltip kann geschlossen werden; nach dem Schließen wird die Einstellung serverseitig gespeichert und nie wieder angezeigt
+- Sensible Header (`x-api-key`, `authorization`) werden in JSONL-Log-Dateien automatisch maskiert, um Credential-Leaks zu verhindern
 - Inline-Token-Nutzungsstatistiken pro Anfrage (Eingabe-/Ausgabe-Token, Cache-Erstellung/-Lesen, Trefferquote)
 
 ### Chat Mode
@@ -49,7 +50,7 @@ Klicken Sie auf die Schaltfläche „Chat mode" oben rechts, um den vollständig
 - Benutzernachrichten rechtsbündig (blaue Blasen), Main Agent-Antworten linksbündig (dunkle Blasen) mit Markdown-Rendering
 - `/compact`-Nachrichten werden automatisch erkannt und eingeklappt angezeigt, zum Aufklappen der vollständigen Zusammenfassung klicken
 - Tool-Aufruf-Ergebnisse werden inline innerhalb der entsprechenden Assistant-Nachricht angezeigt
-- `thinking`-Blöcke standardmäßig eingeklappt, als Markdown gerendert, zum Aufklappen klicken
+- `thinking`-Blöcke standardmäßig eingeklappt, als Markdown gerendert, zum Aufklappen klicken; Ein-Klick-Übersetzung unterstützt
 - `tool_use` als kompakte Tool-Aufruf-Karten dargestellt (Bash, Read, Edit, Write, Glob, Grep, Task haben jeweils eigene Darstellungen)
 - Task (SubAgent) Tool-Ergebnisse werden als Markdown gerendert
 - Benutzerauswahl-Nachrichten (AskUserQuestion) im Frage-Antwort-Format angezeigt
@@ -59,6 +60,13 @@ Klicken Sie auf die Schaltfläche „Chat mode" oben rechts, um den vollständig
 - Mehrsitzungs-Segmentanzeige (automatische Segmentierung nach `/compact`, `/clear`, usw.)
 - Jede Nachricht zeigt einen sekundengenauen Zeitstempel, abgeleitet aus dem API-Anfrage-Timing
 - Einstellungspanel: Standard-Einklappstatus für Tool-Ergebnisse und Thinking-Blöcke umschalten
+
+### Übersetzung
+
+- Thinking-Blöcke und Assistant-Nachrichten unterstützen Ein-Klick-Übersetzung
+- Basierend auf der Claude Haiku API, unterstützt sowohl API Key (`x-api-key`) als auch OAuth Bearer Token Authentifizierung
+- Übersetzungsergebnisse werden automatisch zwischengespeichert; erneut klicken, um zum Originaltext zurückzuwechseln
+- Lade-Spinner-Animation wird während der Übersetzung angezeigt
 
 ### Token-Statistiken
 

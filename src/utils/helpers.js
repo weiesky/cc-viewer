@@ -121,3 +121,49 @@ export function isSystemText(text) {
   if (/^Base directory for this skill:/i.test(trimmed)) return true;
   return false;
 }
+
+export function formatTokenCount(n) {
+  if (n == null || n === 0) return '0';
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+  return String(n);
+}
+
+/** 递归过滤对象中 _ 前缀的私有属性（由前端注入，非原始数据） */
+export function stripPrivateKeys(obj) {
+  if (Array.isArray(obj)) return obj.map(stripPrivateKeys);
+  if (obj && typeof obj === 'object') {
+    const result = {};
+    for (const key of Object.keys(obj)) {
+      if (key.startsWith('_')) continue;
+      result[key] = stripPrivateKeys(obj[key]);
+    }
+    return result;
+  }
+  return obj;
+}
+
+export function computeTokenStats(requests) {
+  const byModel = {};
+  for (const req of requests) {
+    const usage = req.response?.body?.usage;
+    if (!usage) continue;
+    const model = req.body?.model || 'unknown';
+    if (!byModel[model]) {
+      byModel[model] = { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 };
+    }
+    const s = byModel[model];
+    s.input += (usage.input_tokens || 0);
+    s.output += (usage.output_tokens || 0);
+    s.cacheCreation += (usage.cache_creation_input_tokens || 0);
+    s.cacheRead += (usage.cache_read_input_tokens || 0);
+  }
+  return byModel;
+}
+
+export function getModelShort(model) {
+  if (!model) return null;
+  return model
+    .replace(/^claude-/, '')
+    .replace(/-\d{8,}$/, '');
+}

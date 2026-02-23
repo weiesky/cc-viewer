@@ -40,6 +40,7 @@ ccv --uninstall
 - JSON 내용 원클릭 복사
 - MainAgent 요청에 Body Diff JSON 지원, 이전 MainAgent 요청과의 차이를 접어서 표시 (변경/추가된 필드만 표시)
 - Body Diff JSON 툴팁은 닫기 가능하며, 닫으면 서버 측에 환경설정이 저장되어 다시 표시되지 않습니다
+- 민감한 헤더(`x-api-key`, `authorization`)가 JSONL 로그 파일에서 자동으로 마스킹되어 자격 증명 유출 방지
 - 요청별 인라인 Token 사용량 통계 (입력/출력 Token, 캐시 생성/읽기, 적중률)
 
 ### 대화 모드
@@ -49,7 +50,7 @@ ccv --uninstall
 - 사용자 메시지 오른쪽 정렬 (파란색 말풍선), Main Agent 응답 왼쪽 정렬 (어두운 말풍선), Markdown 렌더링 지원
 - `/compact` 메시지 자동 감지 및 접힌 상태로 표시, 클릭하여 전체 요약 펼치기
 - 도구 호출 결과가 해당 Assistant 메시지 내부에 인라인 표시
-- `thinking` 블록 기본 접힘, Markdown으로 렌더링, 클릭하여 사고 과정 확인
+- `thinking` 블록 기본 접힘, Markdown으로 렌더링, 클릭하여 사고 과정 확인; 원클릭 번역 지원
 - `tool_use`가 컴팩트한 도구 호출 카드로 표시 (Bash, Read, Edit, Write, Glob, Grep, Task 등 전용 표시)
 - Task(SubAgent) 도구 결과가 Markdown으로 렌더링
 - 사용자 선택 메시지 (AskUserQuestion) Q&A 형식으로 표시
@@ -59,6 +60,13 @@ ccv --uninstall
 - 다중 session 분할 표시 (`/compact`, `/clear` 등 작업 후 자동 분할)
 - 각 메시지에 초 단위 정확한 타임스탬프 표시, API 요청 타이밍 기반 추산
 - 설정 패널: 도구 결과 및 사고 블록의 기본 접힘 상태 전환
+
+### 번역
+
+- thinking 블록과 Assistant 메시지에서 원클릭 번역 지원
+- Claude Haiku API 기반, API Key(`x-api-key`) 및 OAuth Bearer Token 인증 모두 지원
+- 번역 결과가 자동 캐시되며, 다시 클릭하면 원문으로 전환
+- 번역 중 로딩 스피너 애니메이션 표시
 
 ### Token 소비 통계
 

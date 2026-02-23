@@ -40,6 +40,7 @@ ccv --uninstall
 - One-click JSON content copy
 - MainAgent requests support Body Diff JSON, showing a collapsible diff with the previous MainAgent request (only changed/added fields)
 - Body Diff JSON tooltip is dismissible; once closed, the preference is persisted server-side and never shown again
+- Sensitive headers (`x-api-key`, `authorization`) are automatically masked in JSONL log files to prevent credential leakage
 - Inline token usage stats per request (input/output tokens, cache creation/read, hit rate)
 
 ### Chat Mode
@@ -49,7 +50,7 @@ Click the "Chat mode" button in the top right to parse Main Agent's full convers
 - User messages right-aligned (blue bubbles), Main Agent replies left-aligned (dark bubbles) with Markdown rendering
 - `/compact` messages auto-detected and displayed collapsed, click to expand full summary
 - Tool call results displayed inline within the corresponding Assistant message
-- `thinking` blocks collapsed by default, rendered as Markdown, click to expand
+- `thinking` blocks collapsed by default, rendered as Markdown, click to expand; supports one-click translation
 - `tool_use` shown as compact tool call cards (Bash, Read, Edit, Write, Glob, Grep, Task each have dedicated displays)
 - Task (SubAgent) tool results rendered as Markdown
 - User selection messages (AskUserQuestion) shown in Q&A format
@@ -59,6 +60,13 @@ Click the "Chat mode" button in the top right to parse Main Agent's full convers
 - Multi-session segmented display (auto-segmented after `/compact`, `/clear`, etc.)
 - Each message shows a timestamp accurate to the second, derived from API request timing
 - Settings panel: toggle default collapse state for tool results and thinking blocks
+
+### Translation
+
+- Thinking blocks and assistant messages support one-click translation
+- Powered by Claude Haiku API, supports both API key (`x-api-key`) and OAuth Bearer token authentication
+- Translation results are cached; click again to toggle back to the original text
+- Loading spinner animation shown during translation
 
 ### Token Stats
 
