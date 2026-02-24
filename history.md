@@ -3,6 +3,7 @@
 ## 1.0.15 (2026-02-24)
 
 - Cache rebuild analysis now precisely identifies the cause: system prompt change, tools change, model switch, message stack truncation, or message content modification (previously only showed a generic "key change" reason)
+- Added comprehensive Claude Code tools reference documentation (23 files in concepts/): index page (Tools.md) and detailed docs for all 22 built-in tools
 
 ## 1.0.14 (2026-02-24)
 
