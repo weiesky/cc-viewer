@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.16 (2026-02-24)
+
+- Added "View in chat" button on Request/Response detail tabs to jump to the corresponding conversation message
+- Highlighted target message with animated rotating dashed border and blue glow on navigation; fades out on scroll
+- Smart scroll positioning: tall messages align to top, short ones center in viewport
+- Changed default settings: collapse tool results and expand thinking are now enabled by default
+- Removed package-lock.json from version control
+
 ## 1.0.15 (2026-02-24)
 
 - Cache rebuild analysis now precisely identifies the cause: system prompt change, tools change, model switch, message stack truncation, or message content modification (previously only showed a generic "key change" reason)

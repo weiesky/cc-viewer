@@ -181,3 +181,24 @@
   font-size: 12px;
   margin-left: 4px;
 }
+
+.viewInChatBtn {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  border-radius: 13px;
+  border: 1px solid #424242;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.viewInChatBtn:hover {
+  border-color: #666;
+  color: #d1d5db;
+  background: rgba(255, 255, 255, 0.06);
+}

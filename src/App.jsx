@@ -38,8 +38,8 @@ class App extends React.Component {
       projectName: '',      // 当前监控的项目名称
       resumeModalVisible: false,
       resumeFileName: '',
-      collapseToolResults: false,
-      expandThinking: false,
+      collapseToolResults: true,
+      expandThinking: true,
       fileLoading: false,
       fileLoadingCount: 0,
     };
@@ -385,6 +385,34 @@ class App extends React.Component {
     this.setState({ viewMode: 'raw', selectedIndex: index, scrollCenter: true });
   };
 
+  handleViewInChat = () => {
+    this.setState(prev => {
+      const filteredRequests = prev.showAll ? prev.requests : prev.requests.filter(r =>
+        !r.isHeartbeat && !r.isCountTokens && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
+      );
+      const selectedReq = filteredRequests[prev.selectedIndex];
+      if (!selectedReq) return null;
+      let targetTs = null;
+      if (selectedReq.mainAgent && selectedReq.timestamp) {
+        targetTs = selectedReq.timestamp;
+      } else {
+        const idx = prev.requests.indexOf(selectedReq);
+        if (idx >= 0) {
+          for (let i = idx - 1; i >= 0; i--) {
+            if (prev.requests[i].mainAgent && prev.requests[i].timestamp) {
+              targetTs = prev.requests[i].timestamp;
+              break;
+            }
+          }
+        }
+        if (!targetTs) {
+          message.info(t('ui.cannotMap'));
+        }
+      }
+      return { viewMode: 'chat', chatScrollToTs: targetTs };
+    });
+  };
+
   handleToggleViewMode = () => {
     this.setState(prev => {
       const newMode = prev.viewMode === 'raw' ? 'chat' : 'raw';
@@ -673,6 +701,7 @@ class App extends React.Component {
                     selectedIndex={selectedIndex}
                     currentTab={currentTab}
                     onTabChange={this.handleTabChange}
+                    onViewInChat={this.handleViewInChat}
                   />
                 </div>
               </div>

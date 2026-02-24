@@ -22,11 +22,14 @@ class ChatView extends React.Component {
       visibleCount: 0,
       loading: false,
       allItems: [],
+      highlightTs: null,
+      highlightFading: false,
     };
     this._queueTimer = null;
     this._prevItemsLen = 0;
     this._scrollTargetIdx = null;
     this._scrollTargetRef = React.createRef();
+    this._scrollFadeTimer = null;
   }
 
   componentDidMount() {
@@ -45,6 +48,8 @@ class ChatView extends React.Component {
 
   componentWillUnmount() {
     if (this._queueTimer) clearTimeout(this._queueTimer);
+    if (this._fadeClearTimer) clearTimeout(this._fadeClearTimer);
+    this._unbindScrollFade();
   }
 
   startRender() {
@@ -85,13 +90,52 @@ class ChatView extends React.Component {
 
   scrollToBottom() {
     if (this._scrollTargetRef.current) {
-      this._scrollTargetRef.current.scrollIntoView({ block: 'center', behavior: 'instant' });
+      const targetEl = this._scrollTargetRef.current;
+      const container = this.containerRef.current;
+      // If the target element is taller than the container, align to top; otherwise center
+      if (container && targetEl.offsetHeight > container.clientHeight) {
+        targetEl.scrollIntoView({ block: 'start', behavior: 'instant' });
+      } else {
+        targetEl.scrollIntoView({ block: 'center', behavior: 'instant' });
+      }
+      const targetTs = this.props.scrollToTimestamp;
       this._scrollTargetRef = React.createRef();
+      // Activate highlight glow
+      if (targetTs) {
+        this.setState({ highlightTs: targetTs, highlightFading: false });
+        this._bindScrollFade();
+      }
       if (this.props.onScrollTsDone) this.props.onScrollTsDone();
       return;
     }
     const el = this.containerRef.current;
     if (el) el.scrollTop = el.scrollHeight;
+  }
+
+  _bindScrollFade() {
+    this._unbindScrollFade();
+    const container = this.containerRef.current;
+    if (!container) return;
+    this._scrollFadeIgnoreFirst = true;
+    this._onScrollFade = () => {
+      if (this._scrollFadeIgnoreFirst) {
+        this._scrollFadeIgnoreFirst = false;
+        return;
+      }
+      this.setState({ highlightFading: true });
+      this._fadeClearTimer = setTimeout(() => {
+        this.setState({ highlightTs: null, highlightFading: false });
+      }, 2000);
+      this._unbindScrollFade();
+    };
+    container.addEventListener('scroll', this._onScrollFade);
+  }
+
+  _unbindScrollFade() {
+    if (this._onScrollFade && this.containerRef.current) {
+      this.containerRef.current.removeEventListener('scroll', this._onScrollFade);
+      this._onScrollFade = null;
+    }
   }
 
   renderSessionMessages(messages, keyPrefix, modelInfo, tsToIndex) {
@@ -287,6 +331,7 @@ class ChatView extends React.Component {
     const { scrollToTimestamp } = this.props;
     this._scrollTargetIdx = scrollToTimestamp && tsItemMap[scrollToTimestamp] != null
       ? tsItemMap[scrollToTimestamp] : null;
+    this._tsItemMap = tsItemMap;
 
     return allItems;
   }
@@ -312,6 +357,9 @@ class ChatView extends React.Component {
     }
 
     const targetIdx = this._scrollTargetIdx;
+    const { highlightTs, highlightFading } = this.state;
+    const highlightIdx = highlightTs && this._tsItemMap && this._tsItemMap[highlightTs] != null
+      ? this._tsItemMap[highlightTs] : null;
     const visible = allItems.slice(0, visibleCount);
 
     return (
@@ -319,11 +367,17 @@ class ChatView extends React.Component {
         ref={this.containerRef}
         className={styles.container}
       >
-        {visible.map((item, i) =>
-          i === targetIdx
-            ? <div key={item.key + '-anchor'} ref={this._scrollTargetRef}>{item}</div>
-            : item
-        )}
+        {visible.map((item, i) => {
+          const isScrollTarget = i === targetIdx;
+          const needsHighlight = i === highlightIdx;
+          let el = item;
+          if (needsHighlight && el.props.role === 'assistant') {
+            el = React.cloneElement(el, { highlight: highlightFading ? 'fading' : 'active' });
+          }
+          return isScrollTarget
+            ? <div key={item.key + '-anchor'} ref={this._scrollTargetRef}>{el}</div>
+            : el;
+        })}
       </div>
     );
   }

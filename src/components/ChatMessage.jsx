@@ -361,7 +361,14 @@ class ChatMessage extends React.Component {
         />
         <div className={styles.contentCol}>
           {this.renderLabel(modelInfo?.name || 'MainAgent')}
-          <div className={styles.bubbleAssistant}>
+          <div className={`${styles.bubbleAssistant}${this.props.highlight === 'active' ? ' ' + styles.bubbleHighlight : ''}${this.props.highlight === 'fading' ? ' ' + styles.bubbleHighlightFading : ''}`}>
+            {(this.props.highlight === 'active' || this.props.highlight === 'fading') && (
+              <svg className={`${styles.borderSvg}${this.props.highlight === 'fading' ? ' ' + styles.borderSvgFading : ''}`} preserveAspectRatio="none">
+                <rect x="0.5" y="0.5" width="calc(100% - 1px)" height="calc(100% - 1px)" rx="8" ry="8"
+                  fill="none" stroke="#1668dc" strokeWidth="1" strokeDasharray="6 4"
+                  className={styles.borderRect} />
+              </svg>
+            )}
             {innerContent}
           </div>
         </div>

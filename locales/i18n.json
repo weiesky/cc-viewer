@@ -699,6 +699,26 @@
     "tr": "İsteği görüntüle",
     "uk": "Переглянути запит"
   },
+  "ui.viewInChat": {
+    "zh": "在对话中查看",
+    "en": "View in chat",
+    "zh-TW": "在對話中查看",
+    "ko": "대화에서 보기",
+    "ja": "チャットで表示",
+    "de": "Im Chat anzeigen",
+    "es": "Ver en chat",
+    "fr": "Voir dans le chat",
+    "it": "Vedi nella chat",
+    "da": "Vis i chat",
+    "pl": "Zobacz w czacie",
+    "ru": "Посмотреть в чате",
+    "ar": "عرض في المحادثة",
+    "no": "Vis i chat",
+    "pt-BR": "Ver no chat",
+    "th": "ดูในแชท",
+    "tr": "Sohbette görüntüle",
+    "uk": "Переглянути в чаті"
+  },
   "ui.cannotMap": {
     "zh": "无法映射到对话",
     "en": "Cannot map to conversation",

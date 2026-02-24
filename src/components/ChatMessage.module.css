@@ -105,6 +105,40 @@
   composes: bubble;
   background: rgb(20, 20, 20);
   color: #e5e7eb;
+  transition: box-shadow 0s;
+  position: relative;
+}
+
+.bubbleHighlight {
+  box-shadow: 0 0 10px rgba(22, 104, 220, 0.6);
+}
+
+.bubbleHighlightFading {
+  box-shadow: 0 0 10px rgba(22, 104, 220, 0);
+  transition: box-shadow 2s ease-out;
+}
+
+.borderSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.borderSvgFading {
+  opacity: 0;
+  transition: opacity 2s ease-out;
+}
+
+.borderRect {
+  animation: dashRotate 4s linear infinite;
+}
+
+@keyframes dashRotate {
+  0% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: -100; }
 }
 
 .bubblePlan {
