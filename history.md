@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1 (2026-02-25)
+
+- Auto-open browser on startup for Claude Code versions before v2.0.69 (older versions may clear console output)
+
 ## 1.1.0 (2026-02-25)
 
 - Added ConceptHelp component: click (?) icon next to tool names and titles to view concept docs in a modal

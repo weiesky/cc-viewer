@@ -556,7 +556,18 @@ export async function startViewer() {
       currentServer.listen(port, HOST, () => {
         server = currentServer;
         actualPort = port;
+        const url = `http://${HOST}:${port}`;
         console.log(t('server.started', { host: HOST, port }));
+        // v2.0.69 之前的版本会清空控制台，自动打开浏览器确保用户能看到界面
+        try {
+          const ccPkgPath = join(__dirname, '..', '@anthropic-ai', 'claude-code', 'package.json');
+          const ccVer = JSON.parse(readFileSync(ccPkgPath, 'utf-8')).version;
+          const [maj, min, pat] = ccVer.split('.').map(Number);
+          if (maj < 2 || (maj === 2 && min === 0 && pat < 69)) {
+            const cmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
+            execSync(`${cmd} ${url}`, { stdio: 'ignore', timeout: 5000 });
+          }
+        } catch {}
         startWatching();
         resolve(server);
       });
