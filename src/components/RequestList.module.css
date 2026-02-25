@@ -81,7 +81,8 @@
 }
 
 .statusOk {
-  color: #10b981;
+  color: #52c41a;
+  opacity: 0.5;
   flex-shrink: 0;
 }
 

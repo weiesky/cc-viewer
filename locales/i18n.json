@@ -879,6 +879,26 @@
     "tr": "Henüz kullanıcı Prompt'u yok",
     "uk": "Немає Prompt користувача"
   },
+  "ui.promptCountUnit": {
+    "zh": "条",
+    "en": "",
+    "zh-TW": "條",
+    "ko": "개",
+    "ja": "件",
+    "de": "",
+    "es": "",
+    "fr": "",
+    "it": "",
+    "da": "",
+    "pl": "",
+    "ru": "",
+    "ar": "",
+    "no": "",
+    "pt-BR": "",
+    "th": "",
+    "tr": "",
+    "uk": ""
+  },
   "ui.promptModeOriginal": {
     "zh": "原文模式",
     "en": "Original"
@@ -2030,6 +2050,26 @@
     "th": "รวมบันทึก",
     "tr": "Logları birleştir",
     "uk": "Об'єднати логи"
+  },
+  "ui.openLog": {
+    "zh": "打开",
+    "en": "Open",
+    "zh-TW": "開啟",
+    "ko": "열기",
+    "ja": "開く",
+    "de": "Öffnen",
+    "es": "Abrir",
+    "fr": "Ouvrir",
+    "it": "Apri",
+    "da": "Åbn",
+    "pl": "Otwórz",
+    "ru": "Открыть",
+    "ar": "فتح",
+    "no": "Åpne",
+    "pt-BR": "Abrir",
+    "th": "เปิด",
+    "tr": "Aç",
+    "uk": "Відкрити"
   },
   "ui.mergeNotConsecutive": {
     "zh": "请选择连续的日志文件",

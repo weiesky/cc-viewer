@@ -2,6 +2,7 @@ import React from 'react';
 import { Tabs, Typography, Button, Tag, Empty, Space, Tooltip, Select, message } from 'antd';
 import { CopyOutlined, FileTextOutlined, CodeOutlined, RightOutlined, DownOutlined, CloseOutlined } from '@ant-design/icons';
 import JsonViewer from './JsonViewer';
+import ConceptHelp from './ConceptHelp';
 import { t } from '../i18n';
 import { formatTokenCount, stripPrivateKeys, hasClaudeMdReminder, isClaudeMdReminder, hasSkillsReminder, isSkillsReminder } from '../utils/helpers';
 import { classifyRequest } from '../utils/requestType';
@@ -325,7 +326,7 @@ class DetailPanel extends React.Component {
                 overlayInnerStyle={{ fontSize: 12, color: '#999' }}
               >                <Text strong className={styles.diffToggle}
                   onClick={() => this.setState(prev => ({ diffExpanded: !prev.diffExpanded }))}>
-                  Body Diff JSON {this.state.diffExpanded ? <DownOutlined className={styles.diffIcon} /> : <RightOutlined className={styles.diffIcon} />}
+                  Body Diff JSON <ConceptHelp doc="BodyDiffJSON" />{' '}{this.state.diffExpanded ? <DownOutlined className={styles.diffIcon} /> : <RightOutlined className={styles.diffIcon} />}
                 </Text>
               </Tooltip>
               {this.state.diffExpanded && (
@@ -334,7 +335,7 @@ class DetailPanel extends React.Component {
             </div>
           );
         } else {
-          const diffResult = this.computeDiff(prevRequest.body, request.body);
+          const diffResult = stripPrivateKeys(this.computeDiff(prevRequest.body, request.body));
           if (diffResult) {
             this._lastDiffResult = diffResult;
             diffBlock = (
@@ -352,7 +353,7 @@ class DetailPanel extends React.Component {
               >                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Text strong className={styles.diffToggle}
                     onClick={() => this.setState(prev => ({ diffExpanded: !prev.diffExpanded }))}>
-                    Body Diff JSON {this.state.diffExpanded ? <DownOutlined className={styles.diffIcon} /> : <RightOutlined className={styles.diffIcon} />}
+                    Body Diff JSON <ConceptHelp doc="BodyDiffJSON" />{' '}{this.state.diffExpanded ? <DownOutlined className={styles.diffIcon} /> : <RightOutlined className={styles.diffIcon} />}
                   </Text>
                   {this.state.diffExpanded && (
                     <Space size="small" style={{ marginLeft: 'auto' }}>

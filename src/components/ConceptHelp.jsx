@@ -12,7 +12,7 @@ const KNOWN_DOCS = new Set([
   'Tool-EnterPlanMode', 'Tool-ExitPlanMode',
   'Tool-AskUserQuestion', 'Tool-Skill',
   'Tool-getDiagnostics', 'Tool-executeCode',
-  'MainAgent', 'Tools', 'CacheRebuild',
+  'MainAgent', 'Tools', 'CacheRebuild', 'BodyDiffJSON',
 ]);
 
 export default function ConceptHelp({ doc }) {
@@ -61,9 +61,9 @@ export default function ConceptHelp({ doc }) {
         footer={null}
         width={640}
         styles={{
-          header: { background: '#000' },
-          body: { background: '#000', padding: '16px 24px 24px' },
-          content: { background: '#000', padding: '12px 20px' },
+          header: { background: '#1a1a1a' },
+          body: { background: '#111', padding: '16px 24px 24px' },
+          content: { background: '#111', padding: '12px 20px' },
         }}
       >
         {loading ? (

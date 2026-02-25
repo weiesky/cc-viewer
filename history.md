@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.1 (2026-02-25)
+
+- Open local logs: current project now sorted to top of the list
+- Open local logs: replaced row-click-to-open with explicit "Open" button; clicking row now toggles checkbox selection
+- Open local logs: "Merge Logs" button only appears when 2+ logs are selected
+- Open local logs: "Open" and "Merge Logs" buttons styled as primary blue buttons
+- User Prompt modal title now shows prompt count
+- Added Body Diff JSON concept doc with (?) help button
+- Body Diff JSON now filters out `_timestamp` and other private keys from nested objects
+- Request list status code color unified to #52c41a with 0.5 opacity
+- Concept help modal background adjusted to #1a1a1a/#111
+
 ## 1.2.0 (2026-02-25)
 
 - Added log merge feature: combine multiple JSONL log files into a single session for unified analysis

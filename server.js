@@ -418,7 +418,7 @@ function handleRequest(req, res) {
         }
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(grouped));
+      res.end(JSON.stringify({ ...grouped, _currentProject: _projectName || '' }));
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: err.message }));

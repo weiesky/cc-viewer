@@ -568,7 +568,7 @@ class AppHeader extends React.Component {
           </Button>
         </Space>
         <Modal
-          title={t('ui.userPrompt')}
+          title={`${t('ui.userPrompt')} (${this.state.promptData.length}${t('ui.promptCountUnit')})`}
           open={this.state.promptModalVisible}
           onCancel={() => this.setState({ promptModalVisible: false })}
           footer={null}

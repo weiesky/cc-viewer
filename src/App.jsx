@@ -540,7 +540,8 @@ class App extends React.Component {
     fetch('/api/local-logs')
       .then(res => res.json())
       .then(data => {
-        this.setState({ localLogs: data, localLogsLoading: false });
+        const { _currentProject, ...logs } = data;
+        this.setState({ localLogs: logs, currentProject: _currentProject || '', localLogsLoading: false });
       })
       .catch(() => {
         this.setState({ localLogs: {}, localLogsLoading: false });
@@ -839,17 +840,24 @@ class App extends React.Component {
           ) : (
             <Collapse
               defaultActiveKey={Object.keys(this.state.localLogs)}
-              items={Object.entries(this.state.localLogs).map(([project, logs]) => ({
+              items={Object.entries(this.state.localLogs)
+                .sort(([a], [b]) => {
+                  const cp = this.state.currentProject;
+                  if (a === cp) return -1;
+                  if (b === cp) return 1;
+                  return 0;
+                })
+                .map(([project, logs]) => ({
                 key: project,
                 label: (
                   <span>
                     <FolderOutlined className={styles.folderIcon} />
                     {project}
                     <Tag className={styles.logTag}>{t('ui.logCount', { count: logs.length })}</Tag>
-                    {this.state.selectedLogs[project]?.size > 0 && (
+                    {this.state.selectedLogs[project]?.size > 1 && (
                       <Button
                         size="small"
-                        type="link"
+                        type="primary"
                         onClick={(e) => { e.stopPropagation(); this.handleMergeLogs(project); }}
                       >
                         {t('ui.mergeLogs')}
@@ -864,7 +872,10 @@ class App extends React.Component {
                     renderItem={(log) => (
                       <List.Item
                         className={styles.logListItem}
-                        onClick={() => this.handleOpenLogFile(log.file)}
+                        onClick={() => {
+                          const checked = !(this.state.selectedLogs[project]?.has(log.file));
+                          this.handleToggleLogSelect(project, log.file, checked);
+                        }}
                       >
                         <div className={styles.logItemRow}>
                           <span>
@@ -880,7 +891,12 @@ class App extends React.Component {
                             <FileTextOutlined className={styles.logFileIcon} />
                             {this.formatTimestamp(log.timestamp)}
                           </span>
-                          <Tag color="blue">{this.formatSize(log.size)}</Tag>
+                          <span>
+                            <Tag color="blue">{this.formatSize(log.size)}</Tag>
+                            <Button size="small" type="primary" onClick={(e) => { e.stopPropagation(); this.handleOpenLogFile(log.file); }}>
+                              {t('ui.openLog')}
+                            </Button>
+                          </span>
                         </div>
                       </List.Item>
                     )}
