@@ -6,19 +6,24 @@ A request monitoring system for Claude Code that captures and visualizes all API
 
 ## Usage
 
+### Installation
+
 ```bash
 npm install -g cc-viewer
 ```
 
-After installation, run:
+### Run & Auto-Configuration
 
 ```bash
 ccv
 ```
 
-Then use Claude Code as usual and open `http://localhost:7008` in your browser to view the monitoring interface.
+This command automatically detects your Claude Code installation method (NPM or Native Install) and configures itself.
 
-After Claude Code updates, no manual action is needed — the next time you run `claude`, it will automatically detect and reconfigure.
+- **NPM Install**: Injects interceptor script.
+- **Native Install**: Sets up a proxy and configures a Shell Hook.
+
+Once configured, use `claude` as usual. Open `http://localhost:7008` to view the monitoring interface.
 
 ### Uninstall
 

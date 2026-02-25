@@ -44,6 +44,7 @@
     "dist/",
     "server.js",
     "cli.js",
+    "proxy.js",
     "interceptor.js",
     "i18n.js",
     "locales/"

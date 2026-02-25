@@ -6,17 +6,24 @@ Claude Code 请求监控系统，实时捕获并可视化展示 Claude Code 的�
 
 ## 使用方法
 
+### 安装
+
 ```bash
 npm install -g cc-viewer
 ```
 
-安装完成后运行：
+### 运行与自动配置
 
 ```bash
 ccv
 ```
 
-该命令会自动适配本地安装的 Claude Code。正常使用 Claude Code，打开浏览器访问 `http://localhost:7008` 即可查看监控界面。
+该命令会自动检测本地 Claude Code 的安装方式（NPM 或 Native Install）并进行适配。
+
+- **NPM 安装**：自动注入拦截脚本。
+- **Native Install**：自动设置代理并配置 Shell Hook。
+
+配置完成后，正常使用 `claude` 命令即可。访问 `http://localhost:7008` 查看监控界面。
 
 ### 卸载
 
