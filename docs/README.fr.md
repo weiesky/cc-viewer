@@ -1,5 +1,7 @@
 # CC-Viewer
 
+[![npm version](https://img.shields.io/npm/v/cc-viewer)](https://www.npmjs.com/package/cc-viewer)
+
 Un système de surveillance des requêtes pour Claude Code qui capture et visualise toutes les requêtes et réponses API en temps réel. Aide les développeurs à surveiller leur Context pour la revue et le débogage pendant le Vibe Coding.
 
 [简体中文](./README.zh.md) | [繁體中文](./README.zh-TW.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md) | [Deutsch](./README.de.md) | [Español](./README.es.md) | [Français](./README.fr.md) | [Italiano](./README.it.md) | [Dansk](./README.da.md) | [Polski](./README.pl.md) | [Русский](./README.ru.md) | [العربية](./README.ar.md) | [Norsk](./README.no.md) | [Português (Brasil)](./README.pt-BR.md) | [ไทย](./README.th.md) | [Türkçe](./README.tr.md) | [Українська](./README.uk.md)

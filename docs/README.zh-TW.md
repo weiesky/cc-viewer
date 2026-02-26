@@ -1,5 +1,7 @@
 # CC-Viewer
 
+[![npm version](https://img.shields.io/npm/v/cc-viewer)](https://www.npmjs.com/package/cc-viewer)
+
 Claude Code 請求監控系統，即時擷取並視覺化展示 Claude Code 的所有 API 請求與回應。方便開發者監控自己的 Context，以便於 Vibe Coding 過程中回顧和排查問題。
 
 [简体中文](./README.zh.md) | [English](../README.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md) | [Deutsch](./README.de.md) | [Español](./README.es.md) | [Français](./README.fr.md) | [Italiano](./README.it.md) | [Dansk](./README.da.md) | [Polski](./README.pl.md) | [Русский](./README.ru.md) | [العربية](./README.ar.md) | [Norsk](./README.no.md) | [Português (Brasil)](./README.pt-BR.md) | [ไทย](./README.th.md) | [Türkçe](./README.tr.md) | [Українська](./README.uk.md)

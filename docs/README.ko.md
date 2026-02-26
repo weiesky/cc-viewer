@@ -1,5 +1,7 @@
 # CC-Viewer
 
+[![npm version](https://img.shields.io/npm/v/cc-viewer)](https://www.npmjs.com/package/cc-viewer)
+
 Claude Code 요청 모니터링 시스템으로, Claude Code의 모든 API 요청과 응답을 실시간으로 캡처하고 시각화합니다. 개발자가 Vibe Coding 과정에서 Context를 모니터링하고 문제를 검토 및 디버깅하는 데 도움을 줍니다.
 
 [简体中文](./README.zh.md) | [English](../README.md) | [繁體中文](./README.zh-TW.md) | [日本語](./README.ja.md) | [Deutsch](./README.de.md) | [Español](./README.es.md) | [Français](./README.fr.md) | [Italiano](./README.it.md) | [Dansk](./README.da.md) | [Polski](./README.pl.md) | [Русский](./README.ru.md) | [العربية](./README.ar.md) | [Norsk](./README.no.md) | [Português (Brasil)](./README.pt-BR.md) | [ไทย](./README.th.md) | [Türkçe](./README.tr.md) | [Українська](./README.uk.md)

@@ -1,4 +1,5 @@
 # CC-Viewer
+[![npm version](https://img.shields.io/npm/v/cc-viewer)](https://www.npmjs.com/package/cc-viewer)
 
 ระบบตรวจสอบคำขอสำหรับ Claude Code ที่จับและแสดงผลคำขอและการตอบกลับ API ทั้งหมดแบบเรียลไทม์ ช่วยให้นักพัฒนาตรวจสอบ Context เพื่อทบทวนและแก้ไขข้อผิดพลาดระหว่าง Vibe Coding
 

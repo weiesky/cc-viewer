@@ -1,4 +1,5 @@
 # CC-Viewer
+[![npm version](https://img.shields.io/npm/v/cc-viewer)](https://www.npmjs.com/package/cc-viewer)
 
 نظام مراقبة الطلبات لـ Claude Code يلتقط ويعرض جميع طلبات واستجابات API في الوقت الفعلي. يساعد المطورين على مراقبة Context الخاص بهم للمراجعة وتصحيح الأخطاء أثناء Vibe Coding.
 

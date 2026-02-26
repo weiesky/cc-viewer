@@ -1,4 +1,5 @@
 # CC-Viewer
+[![npm version](https://img.shields.io/npm/v/cc-viewer)](https://www.npmjs.com/package/cc-viewer)
 
 Um sistema de monitoramento de requisições para Claude Code que captura e visualiza todas as requisições e respostas da API em tempo real. Ajuda desenvolvedores a monitorar o Context para revisão e depuração durante o Vibe Coding.
 
