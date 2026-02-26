@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { readFileSync, writeFileSync, existsSync, watchFile, unwatchFile, statSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, watchFile, unwatchFile, statSync, readdirSync, renameSync, unlinkSync, openSync, readSync, closeSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, extname, basename } from 'node:path';
 import { homedir, userInfo, platform } from 'node:os';
@@ -25,14 +25,14 @@ function getUserProfile() {
       const rn = execSync(`dscl . -read /Users/${name} RealName`, { encoding: 'utf-8', timeout: 3000 });
       const match = rn.match(/RealName:\n?\s*(.+)/);
       if (match && match[1].trim()) displayName = match[1].trim();
-    } catch {}
+    } catch { }
 
     try {
       const buf = execSync(`dscl . -read /Users/${name} JPEGPhoto | tail -1 | xxd -r -p`, { timeout: 5000, maxBuffer: 1024 * 1024 });
       if (buf && buf.length > 100) {
         avatarBase64 = `data:image/jpeg;base64,${buf.toString('base64')}`;
       }
-    } catch {}
+    } catch { }
   }
 
   _userProfile = { name: displayName, avatar: avatarBase64 };
@@ -123,7 +123,7 @@ function watchLogFile(logFile) {
         clients.forEach(client => {
           try {
             client.write(`event: full_reload\ndata: ${JSON.stringify(newEntries)}\n\n`);
-          } catch {}
+          } catch { }
         });
         watchLogFile(LOG_FILE);
       }
@@ -135,6 +135,27 @@ function watchLogFile(logFile) {
 
 function startWatching() {
   watchLogFile(LOG_FILE);
+}
+
+function extractModelFromLog(filePath) {
+  try {
+    const fd = openSync(filePath, 'r');
+    const buffer = Buffer.alloc(1024 * 50); // Read 50KB
+    const bytesRead = readSync(fd, buffer, 0, buffer.length, 0);
+    closeSync(fd);
+
+    const content = buffer.toString('utf-8', 0, bytesRead);
+    const entries = content.split('\n---\n');
+
+    for (const entryStr of entries) {
+      if (!entryStr.trim()) continue;
+      try {
+        const entry = JSON.parse(entryStr);
+        if (entry.body && entry.body.model) return entry.body.model;
+      } catch { }
+    }
+  } catch { }
+  return null;
 }
 
 function handleRequest(req, res) {
@@ -154,7 +175,7 @@ function handleRequest(req, res) {
   // User preferences API
   if (url === '/api/preferences' && method === 'GET') {
     let prefs = {};
-    try { if (existsSync(PREFS_FILE)) prefs = JSON.parse(readFileSync(PREFS_FILE, 'utf-8')); } catch {}
+    try { if (existsSync(PREFS_FILE)) prefs = JSON.parse(readFileSync(PREFS_FILE, 'utf-8')); } catch { }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(prefs));
     return;
@@ -167,7 +188,7 @@ function handleRequest(req, res) {
       try {
         const incoming = JSON.parse(body);
         let prefs = {};
-        try { if (existsSync(PREFS_FILE)) prefs = JSON.parse(readFileSync(PREFS_FILE, 'utf-8')); } catch {}
+        try { if (existsSync(PREFS_FILE)) prefs = JSON.parse(readFileSync(PREFS_FILE, 'utf-8')); } catch { }
         Object.assign(prefs, incoming);
         writeFileSync(PREFS_FILE, JSON.stringify(prefs, null, 2));
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -228,14 +249,14 @@ function handleRequest(req, res) {
         clients.forEach(client => {
           try {
             client.write(`event: resume_resolved\ndata: ${resolvedData}\n\n`);
-          } catch {}
+          } catch { }
         });
         // 发送 full_reload 让客户端重新加载数据
         const entries = readLogFile();
         clients.forEach(client => {
           try {
             client.write(`event: full_reload\ndata: ${JSON.stringify(entries)}\n\n`);
-          } catch {}
+          } catch { }
         });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, logFile: result.logFile }));
@@ -268,7 +289,7 @@ function handleRequest(req, res) {
               const prefs = JSON.parse(readFileSync(PREFS_FILE, 'utf-8'));
               if (prefs.lang) targetLang = prefs.lang;
             }
-          } catch {}
+          } catch { }
           if (!targetLang) targetLang = detectLanguage();
         }
 
@@ -309,10 +330,10 @@ function handleRequest(req, res) {
           body: JSON.stringify({
             model: _cachedHaikuModel || 'claude-haiku-4-5-20251001',
             max_tokens: 32000,
-            tools:[],
+            tools: [],
             system: [{
-              type:"text",
-              text:`You are a translator. Translate the following text from ${from} to ${targetLang}. Output only the translated text, nothing else.`
+              type: "text",
+              text: `You are a translator. Translate the following text from ${from} to ${targetLang}. Output only the translated text, nothing else.`
             }],
             messages: [{ role: 'user', content: inputText }],
             stream: false,
@@ -413,8 +434,9 @@ function handleRequest(req, res) {
             const ts = match[2];
             const filePath = join(projectDir, f);
             const size = statSync(filePath).size;
+            const model = extractModelFromLog(filePath);
             if (!grouped[project]) grouped[project] = [];
-            grouped[project].push({ file: `${project}/${f}`, timestamp: ts, size });
+            grouped[project].push({ file: `${project}/${f}`, timestamp: ts, size, model });
           }
         }
       }
@@ -619,7 +641,7 @@ export async function startViewer() {
             const cmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
             execSync(`${cmd} ${url}`, { stdio: 'ignore', timeout: 5000 });
           }
-        } catch {}
+        } catch { }
         startWatching();
         resolve(server);
       });
@@ -646,7 +668,7 @@ export function stopViewer() {
         const newPath = tempFile.replace('_temp.jsonl', '.jsonl');
         renameSync(tempFile, newPath);
       }
-    } catch {}
+    } catch { }
   }
   for (const logFile of watchedFiles.keys()) {
     unwatchFile(logFile);
@@ -674,7 +696,7 @@ function handleExit() {
         const newPath = _resumeState.tempFile.replace('_temp.jsonl', '.jsonl');
         renameSync(_resumeState.tempFile, newPath);
       }
-    } catch {}
+    } catch { }
   }
 }
 process.on('exit', handleExit);

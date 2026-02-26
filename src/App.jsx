@@ -892,6 +892,7 @@ class App extends React.Component {
                             {this.formatTimestamp(log.timestamp)}
                           </span>
                           <span>
+                            {log.model && <Tag color="cyan">{log.model}</Tag>}
                             <Tag color="blue">{this.formatSize(log.size)}</Tag>
                             <Button size="small" type="primary" onClick={(e) => { e.stopPropagation(); this.handleOpenLogFile(log.file); }}>
                               {t('ui.openLog')}
