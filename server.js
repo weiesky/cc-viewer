@@ -598,7 +598,7 @@ export async function startViewer() {
   return new Promise((resolve, reject) => {
     function tryListen(port) {
       if (port > MAX_PORT) {
-        console.log(t('server.portsBusy', { start: START_PORT, end: MAX_PORT }));
+        console.error(t('server.portsBusy', { start: START_PORT, end: MAX_PORT }));
         resolve(null);
         return;
       }
@@ -609,7 +609,7 @@ export async function startViewer() {
         server = currentServer;
         actualPort = port;
         const url = `http://${HOST}:${port}`;
-        console.log(t('server.started', { host: HOST, port }));
+        console.error(t('server.started', { host: HOST, port }));
         // v2.0.69 之前的版本会清空控制台，自动打开浏览器确保用户能看到界面
         try {
           const ccPkgPath = join(__dirname, '..', '@anthropic-ai', 'claude-code', 'package.json');
