@@ -3,7 +3,6 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { spawn, execSync } from 'node:child_process';
 import { t } from './i18n.js';
@@ -163,14 +162,33 @@ function removeCliJsInjection() {
 }
 
 function getNativeInstallPath() {
-  try {
-    const result = execSync('which claude', { encoding: 'utf-8' }).trim();
-    if (result && existsSync(result)) {
-      return result;
+  // 1. 尝试 which/command -v（继承当前 process.env PATH）
+  for (const cmd of ['which claude', 'command -v claude']) {
+    try {
+      const result = execSync(cmd, { encoding: 'utf-8', shell: true, env: process.env }).trim();
+      // 排除 shell function 的输出（多行说明不是路径）
+      if (result && !result.includes('\n') && existsSync(result)) {
+        return result;
+      }
+    } catch {
+      // ignore
     }
-  } catch (e) {
-    // ignore
   }
+
+  // 2. 检查常见 native 安装路径
+  const home = homedir();
+  const candidates = [
+    join(home, '.claude', 'local', 'claude'),
+    '/usr/local/bin/claude',
+    join(home, '.local', 'bin', 'claude'),
+    '/opt/homebrew/bin/claude',
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) {
+      return p;
+    }
+  }
+
   return null;
 }
 
@@ -215,16 +233,11 @@ async function runProxyCommand(args) {
     // console.error(`[CC-Viewer] Hook triggered for: ${cmd} ${cmdArgs.join(' ')}`);
 
     // Determine the path to the native 'claude' executable
-    let executablePath = cmd;
     if (cmd === 'claude') {
-      // If the command is 'claude', we need to find the actual executable path
-      // to avoid any potential shell function recursion or path issues.
-      // Since we are in 'native' mode (implied by usage of this hook),
-      // we can try to find where 'claude' is.
-      // However, spawn usually looks up PATH.
-      // Let's just trust spawn to find it in PATH, but we must ensure
-      // the shell function is not visible to spawn if shell:false (default).
-      // Standard node spawn does not use shell, so it should be fine.
+      const nativePath = getNativeInstallPath();
+      if (nativePath) {
+        cmd = nativePath;
+      }
     }
     env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${proxyPort}`;
 

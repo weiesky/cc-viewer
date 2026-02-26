@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.5 (2026-02-26)
+
+- Fix: Claude Code Native Install adaptation — improved `claude` binary detection with multi-strategy lookup (`which`, `command -v`, common install paths)
+- Fix: `getNativeInstallPath` now filters out shell function output (multi-line results) to avoid false positives
+- Fix: proxy hook now resolves `claude` command to its actual executable path, preventing shell function recursion
+- Removed duplicate `execSync` import
+
 ## 1.2.4 (2026-02-26)
 
 - Added Native Install support for Claude Code: auto-detects `claude` binary and configures proxy automatically
