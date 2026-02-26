@@ -511,6 +511,7 @@ class AppHeader extends React.Component {
         <Space size="middle">
           <Dropdown menu={{ items: menuItems }} trigger={['hover']}>
             <Text strong className={styles.titleText}>
+              <img src="https://mdn.alipayobjects.com/huamei_ffzdjp/afts/img/A*dCbiQqbv9FoAAAAAQgAAAAgAevJ6AQ/original" alt="Logo" className={styles.logoImage} />
               CC-Viewer <DownOutlined className={styles.titleArrow} />
             </Text>
           </Dropdown>
