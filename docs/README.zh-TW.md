@@ -6,19 +6,44 @@ Claude Code 請求監控系統，即時擷取並視覺化展示 Claude Code 的�
 
 ## 使用方法
 
+### 安裝
+
 ```bash
 npm install -g cc-viewer
 ```
 
-安裝完成後執行：
+### 運行與自動配置
 
 ```bash
 ccv
 ```
 
-該命令會自動配置本地安裝的 Claude Code 以啟用監控，並在 shell 設定檔（`~/.zshrc` 或 `~/.bashrc`）中新增自動修復 hook。之後正常使用 Claude Code，開啟瀏覽器存取 `http://localhost:7008` 即可查看監控介面。
+該命令會自動檢測本地 Claude Code 的安裝方式（NPM 或 Native Install）並進行適配。
 
-Claude Code 更新後無需手動操作，下次執行 `claude` 時會自動偵測並重新配置。
+- **NPM 安裝**：自動向 Claude Code 的 `cli.js` 中注入攔截腳本。
+- **Native Install**：自動檢測 `claude` 二進制文件，配置本地透明代理，並設置 Zsh Shell Hook 自動轉發流量。
+
+### 配置覆蓋 (Configuration Override)
+
+如果您需要使用自定義 API 端點（例如企業代理），只需在 `~/.claude/settings.json` 中配置或設置 `ANTHROPIC_BASE_URL` 環境變量。`ccv` 會自動識別並正確轉發請求。
+
+### 靜默模式 (Silent Mode)
+
+默認情況下，`ccv` 在包裹 `claude` 運行時處於靜默模式，確保您的終端輸出保持整潔，與原生體驗一致。所有日誌都在後台捕獲，並可通過 `http://localhost:7008` 查看。
+
+配置完成後，正常使用 `claude` 命令即可。訪問 `http://localhost:7008` 查看監控介面。
+
+### 常見問題排查 (Troubleshooting)
+
+- **混合輸出 (Mixed Output)**：如果您看到 `[CC-Viewer]` 調試日誌與 Claude 的輸出混雜在一起，請更新到最新版本 (`npm install -g cc-viewer`)。
+- **連接被拒絕 (Connection Refused)**：請確保 `ccv` 後台進程正在運行。運行 `ccv` 或 `claude`（安裝 Hook 後）應會自動啟動它。
+- **無 Body (Empty Body)**：如果您在 Viewer 中看到 "No Body"，可能是由於非標準的 SSE 格式。Viewer 現已支持作為兜底方案捕獲原始內容。
+
+### 檢查版本
+
+```bash
+ccv --version
+```
 
 ### 解除安裝
 
