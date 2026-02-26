@@ -292,7 +292,13 @@ async function runProxyCommand(args) {
 
 const args = process.argv.slice(2);
 const isUninstall = args.includes('--uninstall');
+const isHelp = args.includes('--help') || args.includes('-h') || args[0] === 'help';
 const isVersion = args.includes('--v') || args.includes('--version') || args.includes('-v');
+
+if (isHelp) {
+  console.log(t('cli.help'));
+  process.exit(0);
+}
 
 if (isVersion) {
   try {
