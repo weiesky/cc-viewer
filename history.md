@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.6 (2026-02-26)
+
+- Fix: clarify uninstall success message to indicate integration removal only
+- Fix: enforce 1-hour limit for recent log detection
+- Added model name display in local logs list
+- Improved log list item layout to prevent wrapping
+- Added `ccv --help` option support
+- Added NPM version badge to README and all localized versions
+
 ## 1.2.5 (2026-02-26)
 
 - Fix: Claude Code Native Install adaptation — improved `claude` binary detection with multi-strategy lookup (`which`, `command -v`, common install paths)
