@@ -889,7 +889,7 @@ class App extends React.Component {
                               }}
                             />
                             <FileTextOutlined className={styles.logFileIcon} />
-                            {this.formatTimestamp(log.timestamp)}
+                            <span className={styles.logFileName}>{this.formatTimestamp(log.timestamp)}</span>
                           </span>
                           <span>
                             {log.model && <Tag color="cyan">{log.model}</Tag>}

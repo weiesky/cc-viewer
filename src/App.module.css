@@ -86,11 +86,35 @@
   align-items: center;
   width: 100%;
   justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 12px;
+}
+
+.logItemRow > span:first-child {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.logFileName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logItemRow > span:last-child {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
 }
 
 .logFileIcon {
   margin-right: 8px;
   color: #3b82f6;
+  flex-shrink: 0;
 }
 
 .folderIcon {
