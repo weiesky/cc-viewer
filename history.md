@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.2 (2026-02-26)
+
+- Added Native Install support for Claude Code: auto-detects `claude` binary and configures proxy automatically
+- Added Configuration Override support: respects `~/.claude/settings.json` and `ANTHROPIC_BASE_URL` env var
+- Improved Request Body logging robustness: handles non-standard SSE formats and provides raw content fallback
+- Silenced console logs in proxy mode to ensure clean CLI output
+- Fixed `ZlibError` during response decompression
+- Fixed connection refused issues by ensuring `ccv` background process stability
+
 ## 1.2.1 (2026-02-25)
 
 - Open local logs: current project now sorted to top of the list

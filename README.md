@@ -20,10 +20,24 @@ ccv
 
 This command automatically detects your Claude Code installation method (NPM or Native Install) and configures itself.
 
-- **NPM Install**: Injects interceptor script.
-- **Native Install**: Sets up a proxy and configures a Shell Hook.
+- **NPM Install**: Injects interceptor script into `cli.js` of Claude Code.
+- **Native Install**: Detects `claude` binary, sets up a local transparent proxy, and configures a Zsh Shell Hook to route traffic through the proxy automatically.
+
+### Configuration Override
+
+If you need to use a custom API endpoint (e.g., corporate proxy), simply configure it in `~/.claude/settings.json` or set `ANTHROPIC_BASE_URL` environment variable. `ccv` will respect these settings and forward requests correctly.
+
+### Silent Mode
+
+By default, `ccv` runs in silent mode when wrapping `claude`, ensuring your terminal output remains clean and identical to the original Claude Code experience. All logs are captured in the background and visible at `http://localhost:7008`.
 
 Once configured, use `claude` as usual. Open `http://localhost:7008` to view the monitoring interface.
+
+### Troubleshooting
+
+- **Mixed Output**: If you see `[CC-Viewer]` debug logs mixed with Claude's output, please update to the latest version (`npm install -g cc-viewer`).
+- **Connection Refused**: Ensure `ccv` background process is running. Running `ccv` or `claude` (after hook installation) should start it automatically.
+- **Empty Body**: If you see "No Body" in the viewer, it might be due to non-standard SSE formats. The viewer now attempts to capture raw content as a fallback.
 
 ### Uninstall
 
