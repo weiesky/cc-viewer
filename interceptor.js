@@ -514,19 +514,23 @@ export function setupInterceptor() {
                         .map(block => {
                           // SSE 块可能包含多行: event: xxx\ndata: {...}
                           const lines = block.split('\n');
-                          const dataLine = lines.find(l => l.startsWith('data: '));
+                          const dataLine = lines.find(l => l.startsWith('data:'));
                           if (dataLine) {
+                            // 处理 "data:" 或 "data: " 两种格式
+                            const jsonStr = dataLine.startsWith('data: ')
+                              ? dataLine.substring(6)
+                              : dataLine.substring(5);
                             try {
-                              return JSON.parse(dataLine.substring(6));
+                              return JSON.parse(jsonStr);
                             } catch {
-                              return dataLine.substring(6);
+                              return jsonStr;
                             }
                           }
                           return null;
                         })
                         .filter(Boolean);
 
-                      // 组装完整的 message 对象
+                      // 组装完整的 message 对象（GLM 使用标准格式，但 data: 后无空格）
                       const assembledMessage = assembleStreamMessage(events);
 
                       // 直接使用组装后的 message 对象作为 response.body

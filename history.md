@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.3 (2026-02-26)
+
+- Fix: GLM streaming response body now correctly assembled (SSE `data:` format varies from Anthropic standard)
+- Fix: SSE parser now handles both `data: {...}` and `data:{...}` formats for broader API compatibility
+
 ## 1.2.2 (2026-02-26)
 
 - Fix: translate API no longer reuses OAuth session token (`authorization` header), preventing context pollution with Claude Code's main conversation
