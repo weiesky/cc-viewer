@@ -6,19 +6,44 @@ Claude Code için tüm API isteklerini ve yanıtlarını gerçek zamanlı olarak
 
 ## Kullanım
 
+### Kurulum
+
 ```bash
 npm install -g cc-viewer
 ```
 
-Kurulumdan sonra çalıştırın:
+### Çalıştırma ve Otomatik Yapılandırma
 
 ```bash
 ccv
 ```
 
-Bu komut, yerel olarak kurulu Claude Code'unuzu izleme için otomatik olarak yapılandırır ve shell yapılandırmanıza (`~/.zshrc` veya `~/.bashrc`) otomatik onarım hook'u ekler. Ardından Claude Code'u her zamanki gibi kullanın ve izleme arayüzünü görüntülemek için tarayıcınızda `http://localhost:7008` adresini açın.
+Bu komut, yerel Claude Code kurulum yönteminizi (NPM veya Native Install) otomatik olarak algılar ve buna göre uyum sağlar.
 
-Claude Code güncellemesinden sonra manuel işlem gerekmez — bir sonraki `claude` çalıştırmanızda otomatik olarak algılayıp yeniden yapılandırır.
+- **NPM Kurulumu**: Claude Code'un `cli.js` dosyasına otomatik olarak kesme komut dosyaları enjekte eder.
+- **Native Install**: `claude` ikili dosyasını otomatik olarak algılar, yerel bir şeffaf proxy yapılandırır ve trafiği otomatik olarak iletmek için bir Zsh Shell Hook ayarlar.
+
+### Yapılandırma Geçersiz Kılma (Configuration Override)
+
+Özel bir API uç noktası (örneğin kurumsal proxy) kullanmanız gerekiyorsa, bunu `~/.claude/settings.json` dosyasında yapılandırın veya `ANTHROPIC_BASE_URL` ortam değişkenini ayarlayın. `ccv` bunu otomatik olarak tanıyacak ve istekleri doğru şekilde iletecektir.
+
+### Sessiz Mod (Silent Mode)
+
+Varsayılan olarak `ccv`, `claude`'u çalıştırırken sessiz modda çalışır, bu da terminal çıktınızın temiz kalmasını ve orijinal Claude Code deneyimiyle aynı olmasını sağlar. Tüm loglar arka planda yakalanır ve `http://localhost:7008` adresinde görüntülenebilir.
+
+Yapılandırmadan sonra `claude` komutunu normal şekilde kullanın. İzleme arayüzünü görüntülemek için `http://localhost:7008` adresini ziyaret edin.
+
+### Sorun Giderme (Troubleshooting)
+
+- **Karışık Çıktı (Mixed Output)**: `[CC-Viewer]` hata ayıklama loglarının Claude çıktısıyla karıştığını görürseniz, lütfen en son sürüme güncelleyin (`npm install -g cc-viewer`).
+- **Bağlantı Reddedildi (Connection Refused)**: `ccv` arka plan işleminin çalıştığından emin olun. `ccv` veya `claude` (hook kurulumundan sonra) çalıştırmak onu otomatik olarak başlatmalıdır.
+- **Boş Gövde (Empty Body)**: Viewer'da "No Body" görürseniz, bunun nedeni standart olmayan SSE formatları olabilir. Viewer artık yedek olarak ham içerik yakalamayı desteklemektedir.
+
+### Sürüm Kontrolü (Check Version)
+
+```bash
+ccv --version
+```
 
 ### Kaldırma
 

@@ -10,15 +10,38 @@ Claude Code リクエスト監視システム。Claude Code のすべての API 
 npm install -g cc-viewer
 ```
 
-インストール後、実行：
+### 実行と自動設定
 
 ```bash
 ccv
 ```
 
-このコマンドは、ローカルにインストールされた Claude Code を自動的に監視用に設定し、shell 設定ファイル（`~/.zshrc` または `~/.bashrc`）に自動修復 hook を追加します。その後、Claude Code を通常通り使用し、ブラウザで `http://localhost:7008` を開いて監視インターフェースを確認してください。
+このコマンドは、ローカルにインストールされた Claude Code のインストール方法（NPM または Native Install）を自動的に検出し、適応させます。
 
-Claude Code の更新後、手動操作は不要です。次回 `claude` を実行すると、自動的に検出して再設定します。
+- **NPM Install**: Claude Code の `cli.js` にインターセプトスクリプトを自動的に注入します。
+- **Native Install**: `claude` バイナリを自動的に検出し、ローカル透過プロキシを設定し、Zsh Shell Hook を設定してトラフィックを自動的に転送します。
+
+### 設定の上書き (Configuration Override)
+
+カスタム API エンドポイント（企業のプロキシなど）を使用する必要がある場合は、`~/.claude/settings.json` で設定するか、`ANTHROPIC_BASE_URL` 環境変数を設定するだけです。`ccv` はこれらの設定を自動的に認識し、リクエストを正しく転送します。
+
+### サイレントモード (Silent Mode)
+
+デフォルトでは、`ccv` は `claude` をラップして実行する際にサイレントモードになり、ターミナル出力がクリーンに保たれ、オリジナルの Claude Code 体験と変わらないようにします。すべてのログはバックグラウンドでキャプチャされ、`http://localhost:7008` で確認できます。
+
+設定完了後、通常通り `claude` コマンドを使用してください。`http://localhost:7008` にアクセスして監視インターフェースを確認できます。
+
+### トラブルシューティング (Troubleshooting)
+
+- **出力の混在 (Mixed Output)**: `[CC-Viewer]` のデバッグログが Claude の出力と混ざって表示される場合は、最新バージョンに更新してください (`npm install -g cc-viewer`)。
+- **接続拒否 (Connection Refused)**: `ccv` バックグラウンドプロセスが実行されていることを確認してください。`ccv` または `claude`（フックインストール後）を実行すると自動的に起動するはずです。
+- **ボディなし (Empty Body)**: Viewer で "No Body" と表示される場合は、非標準の SSE 形式が原因の可能性があります。Viewer は現在、フォールバックとして生コンテンツのキャプチャをサポートしています。
+
+### バージョン確認 (Check Version)
+
+```bash
+ccv --version
+```
 
 ### アンインストール
 

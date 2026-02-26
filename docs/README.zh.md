@@ -6,22 +6,49 @@ Claude Code 请求监控系统，实时捕获并可视化展示 Claude Code 的�
 
 ## 使用方法
 
+### 安装
+
 ```bash
 npm install -g cc-viewer
 ```
 
-安装完成后运行：
+### 运行与自动配置
 
 ```bash
 ccv
 ```
 
-该命令会自动适配本地安装的 Claude Code。正常使用 Claude Code，打开浏览器访问 `http://localhost:7008` 即可查看监控界面。
+该命令会自动检测本地 Claude Code 的安装方式（NPM 或 Native Install）并进行适配。
+
+- **NPM 安装**：自动向 Claude Code 的 `cli.js` 中注入拦截脚本。
+- **Native Install**：自动检测 `claude` 二进制文件，配置本地透明代理，并设置 Zsh Shell Hook 自动转发流量。
+
+### 配置覆盖 (Configuration Override)
+
+如果您需要使用自定义 API 端点（例如企业代理），只需在 `~/.claude/settings.json` 中配置或设置 `ANTHROPIC_BASE_URL` 环境变量。`ccv` 会自动识别并正确转发请求。
+
+### 静默模式 (Silent Mode)
+
+默认情况下，`ccv` 在包裹 `claude` 运行时处于静默模式，确保您的终端输出保持整洁，与原生体验一致。所有日志都在后台捕获，并可通过 `http://localhost:7008` 查看。
+
+配置完成后，正常使用 `claude` 命令即可。访问 `http://localhost:7008` 查看监控界面。
+
+### 常见问题排查 (Troubleshooting)
+
+- **混合输出 (Mixed Output)**：如果您看到 `[CC-Viewer]` 调试日志与 Claude 的输出混杂在一起，请更新到最新版本 (`npm install -g cc-viewer`)。
+- **连接被拒绝 (Connection Refused)**：请确保 `ccv` 后台进程正在运行。运行 `ccv` 或 `claude`（安装 Hook 后）应会自动启动它。
+- **无 Body (Empty Body)**：如果您在 Viewer 中看到 "No Body"，可能是由于非标准的 SSE 格式。Viewer 现已支持作为兜底方案捕获原始内容。
 
 ### 卸载
 
 ```bash
 ccv --uninstall
+```
+
+### 检查版本
+
+```bash
+ccv --version
 ```
 
 ## 功能

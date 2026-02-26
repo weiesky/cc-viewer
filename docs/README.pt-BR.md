@@ -16,9 +16,32 @@ Após a instalação, execute:
 ccv
 ```
 
-Este comando configura automaticamente o Claude Code instalado localmente para monitoramento e adiciona um hook de reparo automático na configuração do seu shell (`~/.zshrc` ou `~/.bashrc`). Em seguida, use o Claude Code normalmente e abra `http://localhost:7008` no navegador para visualizar a interface de monitoramento.
+Este comando detecta automaticamente o método de instalação local do Claude Code (NPM ou Native Install) e se adapta.
 
-Após a atualização do Claude Code, nenhuma ação manual é necessária — na próxima vez que você executar `claude`, ele detectará e reconfigurará automaticamente.
+- **Instalação NPM**: Injeta automaticamente o script interceptor no `cli.js` do Claude Code.
+- **Native Install**: Detecta automaticamente o binário `claude`, configura um proxy transparente local e configura um Hook Shell Zsh para rotear o tráfego automaticamente.
+
+### Substituição de Configuração (Configuration Override)
+
+Se você precisar usar um endpoint de API personalizado (por exemplo, proxy corporativo), basta configurá-lo em `~/.claude/settings.json` ou definir a variável de ambiente `ANTHROPIC_BASE_URL`. O `ccv` reconhecerá automaticamente essas configurações e encaminhará as solicitações corretamente.
+
+### Modo Silencioso (Silent Mode)
+
+Por padrão, o `ccv` é executado no modo silencioso ao envolver o `claude`, garantindo que a saída do terminal permaneça limpa e idêntica à experiência original do Claude Code. Todos os logs são capturados em segundo plano e visíveis em `http://localhost:7008`.
+
+Em seguida, use o Claude Code normalmente e abra `http://localhost:7008` no navegador para visualizar a interface de monitoramento.
+
+### Solução de Problemas (Troubleshooting)
+
+- **Saída Mista (Mixed Output)**: Se você vir logs de depuração do `[CC-Viewer]` misturados com a saída do Claude, atualize para a versão mais recente (`npm install -g cc-viewer`).
+- **Conexão Recusada (Connection Refused)**: Certifique-se de que o processo em segundo plano `ccv` esteja em execução. Executar `ccv` ou `claude` (após a instalação do hook) deve iniciá-lo automaticamente.
+- **Corpo Vazio (Empty Body)**: Se você vir "No Body" no visualizador, pode ser devido a formatos SSE não padrão. O visualizador agora suporta a captura de conteúdo bruto como fallback.
+
+### Verificar Versão (Check Version)
+
+```bash
+ccv --version
+```
 
 ### Desinstalar
 

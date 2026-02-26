@@ -5,6 +5,7 @@ import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import { homedir } from 'node:os';
+import { spawn, execSync } from 'node:child_process';
 import { t } from './i18n.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -65,7 +66,21 @@ function getShellConfigPath() {
   return resolve(homedir(), '.zshrc');
 }
 
-function buildShellHook() {
+function buildShellHook(isNative) {
+  if (isNative) {
+    return `${SHELL_HOOK_START}
+claude() {
+  # Avoid recursion if ccv invokes claude
+  if [ "$1" = "--ccv-internal" ]; then
+    shift
+    command claude "$@"
+    return
+  fi
+  ccv run -- claude --ccv-internal "$@"
+}
+${SHELL_HOOK_END}`;
+  }
+
   return `${SHELL_HOOK_START}
 claude() {
   local cli_js=""
@@ -83,14 +98,23 @@ claude() {
 ${SHELL_HOOK_END}`;
 }
 
-function installShellHook() {
+function installShellHook(isNative) {
   const configPath = getShellConfigPath();
   try {
-    const content = existsSync(configPath) ? readFileSync(configPath, 'utf-8') : '';
+    let content = existsSync(configPath) ? readFileSync(configPath, 'utf-8') : '';
+
     if (content.includes(SHELL_HOOK_START)) {
-      return { path: configPath, status: 'exists' };
+      // Check if existing hook matches desired mode
+      const isNativeHook = content.includes('ccv run -- claude');
+      if (!!isNative === !!isNativeHook) {
+        return { path: configPath, status: 'exists' };
+      }
+      // Mismatch: remove old hook first
+      removeShellHook();
+      content = existsSync(configPath) ? readFileSync(configPath, 'utf-8') : '';
     }
-    const hook = buildShellHook();
+
+    const hook = buildShellHook(isNative);
     const newContent = content.endsWith('\n') ? content + '\n' + hook + '\n' : content + '\n\n' + hook + '\n';
     writeFileSync(configPath, newContent);
     return { path: configPath, status: 'installed' };
@@ -138,25 +162,146 @@ function removeCliJsInjection() {
   }
 }
 
+function getNativeInstallPath() {
+  try {
+    const result = execSync('which claude', { encoding: 'utf-8' }).trim();
+    if (result && existsSync(result)) {
+      return result;
+    }
+  } catch (e) {
+    // ignore
+  }
+  return null;
+}
+
+async function runProxyCommand(args) {
+  try {
+    // Dynamic import to avoid side effects when just installing
+    const { startProxy } = await import('./proxy.js');
+    const proxyPort = await startProxy();
+
+    // args = ['run', '--', 'command', 'claude', ...] or ['run', 'claude', ...]
+    // Our hook uses: ccv run -- claude --ccv-internal "$@"
+    // args[0] is 'run'.
+    // If args[1] is '--', then command starts at args[2].
+
+    let cmdStartIndex = 1;
+    if (args[1] === '--') {
+      cmdStartIndex = 2;
+    }
+
+    let cmd = args[cmdStartIndex];
+    if (!cmd) {
+      console.error('No command provided to run.');
+      process.exit(1);
+    }
+    let cmdArgs = args.slice(cmdStartIndex + 1);
+
+    // If cmd is 'claude' and next arg is '--ccv-internal', remove it
+    // and we must use 'command claude' to avoid infinite recursion of the shell function?
+    // Node spawn doesn't use shell functions, so 'claude' should resolve to the binary in PATH.
+    // BUT, if 'claude' is a function in the current shell, spawn won't see it unless we use shell:true.
+    // We are using shell:false (default).
+    // So spawn('claude') should find /usr/local/bin/claude (the binary).
+    // The issue might be that ccv itself is running in a way that PATH is weird?
+
+    // Wait, the shell hook adds '--ccv-internal'. We should strip it before spawning.
+    if (cmdArgs[0] === '--ccv-internal') {
+      cmdArgs.shift();
+    }
+
+    const env = { ...process.env };
+    // [Debug] Verify hook execution
+    // console.error(`[CC-Viewer] Hook triggered for: ${cmd} ${cmdArgs.join(' ')}`);
+
+    // Determine the path to the native 'claude' executable
+    let executablePath = cmd;
+    if (cmd === 'claude') {
+      // If the command is 'claude', we need to find the actual executable path
+      // to avoid any potential shell function recursion or path issues.
+      // Since we are in 'native' mode (implied by usage of this hook),
+      // we can try to find where 'claude' is.
+      // However, spawn usually looks up PATH.
+      // Let's just trust spawn to find it in PATH, but we must ensure
+      // the shell function is not visible to spawn if shell:false (default).
+      // Standard node spawn does not use shell, so it should be fine.
+    }
+    env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${proxyPort}`;
+
+    // [Debug] Force ANTHROPIC_BASE_URL via process.env is not enough for some reason?
+    // Let's also check if we can pass it via command line args if supported, but claude cli doesn't seem to have a --base-url arg documented.
+    // However, maybe the issue is that 'env' in spawn options isn't overriding what claude internal config has?
+    // Claude Code likely reads from ~/.claude/settings.json which might take precedence over env vars?
+    // No, usually env vars take precedence.
+
+    // [Fix] Check if user has ANTHROPIC_BASE_URL in settings.json and use it in proxy.js
+    // We already do that in proxy.js: getOriginalBaseUrl().
+
+    // [Crucial Fix]
+    // Use --settings JSON argument to force ANTHROPIC_BASE_URL configuration
+    // This is safer and more reliable than env vars which might be ignored.
+
+    // console.error(`[CC-Viewer] Setting ANTHROPIC_BASE_URL to ${env.ANTHROPIC_BASE_URL}`);
+
+    // Construct settings JSON string
+    // Note: We need to be careful with quoting for the shell/spawn.
+    // Since we use spawn without shell, we can pass the JSON string directly as an argument.
+    const settingsJson = JSON.stringify({
+      env: {
+        ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL
+      }
+    });
+
+    // Inject --settings argument
+    // We put it at the beginning of args to ensure it's picked up
+    cmdArgs.unshift(settingsJson);
+    cmdArgs.unshift('--settings');
+
+    // Force non-interactive if needed? No, we want interactive.
+
+    const child = spawn(cmd, cmdArgs, { stdio: 'inherit', env });
+
+    child.on('exit', (code) => {
+      process.exit(code);
+    });
+
+    child.on('error', (err) => {
+      console.error('Failed to start command:', err);
+      process.exit(1);
+    });
+  } catch (err) {
+    console.error('Proxy error:', err);
+    process.exit(1);
+  }
+}
+
 // === 主逻辑 ===
 
-const isUninstall = process.argv.includes('--uninstall');
-const isVersion = process.argv.includes('--v') || process.argv.includes('--version');
+const args = process.argv.slice(2);
+const isUninstall = args.includes('--uninstall');
+const isVersion = args.includes('--v') || args.includes('--version') || args.includes('-v');
 
 if (isVersion) {
-  const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
-  console.log(`cc-viewer v${pkg.version}`);
+  try {
+    const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
+    console.log(`cc-viewer v${pkg.version}`);
+  } catch (e) {
+    console.error('Failed to read version:', e.message);
+  }
   process.exit(0);
 }
 
-if (isUninstall) {
+if (args[0] === 'run') {
+  runProxyCommand(args);
+} else if (args.includes('--uninstall')) {
   const cliResult = removeCliJsInjection();
   const shellResult = removeShellHook();
 
   if (cliResult === 'removed' || cliResult === 'clean') {
     console.log(t('cli.uninstall.cliCleaned'));
   } else if (cliResult === 'not_found') {
-    console.log(t('cli.uninstall.cliNotFound'));
+    // console.log(t('cli.uninstall.cliNotFound'));
+    // Silent is better for mixed mode uninstall
   } else {
     console.log(t('cli.uninstall.cliFail'));
   }
@@ -171,36 +316,72 @@ if (isUninstall) {
 
   console.log(t('cli.uninstall.done'));
   process.exit(0);
-}
-
-// 正常安装流程
-try {
-  const cliResult = injectCliJs();
-  const shellResult = installShellHook();
-
-  if (cliResult === 'exists' && shellResult.status === 'exists') {
-    console.log(t('cli.alreadyWorking'));
+} else {
+  // Installation Logic
+  let mode = 'unknown';
+  if (existsSync(cliPath)) {
+    mode = 'npm';
   } else {
-    if (cliResult === 'exists') {
-      console.log(t('cli.inject.exists'));
-    } else {
-      console.log(t('cli.inject.success'));
-    }
-
-    if (shellResult.status === 'installed') {
-      console.log('All READY!');
-    } else if (shellResult.status !== 'exists') {
-      console.log(t('cli.hook.fail', { error: shellResult.error }));
+    const nativePath = getNativeInstallPath();
+    if (nativePath) {
+      mode = 'native';
     }
   }
 
-  console.log(t('cli.usage.hint'));
-} catch (err) {
-  if (err.code === 'ENOENT') {
+  if (mode === 'unknown') {
     console.error(t('cli.inject.notFound', { path: cliPath }));
-    console.error(t('cli.inject.notFoundHint'));
-  } else {
-    console.error(t('cli.inject.fail', { error: err.message }));
+    console.error('Also could not find native "claude" command in PATH.');
+    console.error('Please make sure @anthropic-ai/claude-code is installed.');
+    process.exit(1);
   }
-  process.exit(1);
+
+  if (mode === 'npm') {
+    try {
+      const cliResult = injectCliJs();
+      const shellResult = installShellHook(false);
+
+      if (cliResult === 'exists' && shellResult.status === 'exists') {
+        console.log(t('cli.alreadyWorking'));
+      } else {
+        if (cliResult === 'exists') {
+          console.log(t('cli.inject.exists'));
+        } else {
+          console.log(t('cli.inject.success'));
+        }
+
+        if (shellResult.status === 'installed') {
+          console.log('All READY!');
+        } else if (shellResult.status !== 'exists') {
+          console.log(t('cli.hook.fail', { error: shellResult.error }));
+        }
+      }
+      console.log(t('cli.usage.hint'));
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        console.error(t('cli.inject.notFound', { path: cliPath }));
+        console.error(t('cli.inject.notFoundHint'));
+      } else {
+        console.error(t('cli.inject.fail', { error: err.message }));
+      }
+      process.exit(1);
+    }
+  } else {
+    // Native Mode
+    try {
+      console.log('Detected Claude Code Native Install.');
+      const shellResult = installShellHook(true);
+
+      if (shellResult.status === 'exists') {
+        console.log(t('cli.alreadyWorking'));
+      } else if (shellResult.status === 'installed') {
+        console.log('Native Hook Installed! All READY!');
+      } else {
+        console.log(t('cli.hook.fail', { error: shellResult.error }));
+      }
+      console.log(t('cli.usage.hint'));
+    } catch (err) {
+      console.error('Failed to install native hook:', err);
+      process.exit(1);
+    }
+  }
 }

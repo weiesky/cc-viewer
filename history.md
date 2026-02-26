@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.4 (2026-02-26)
+
+- Added Native Install support for Claude Code: auto-detects `claude` binary and configures proxy automatically
+- Added Configuration Override support: respects `~/.claude/settings.json` and `ANTHROPIC_BASE_URL` env var
+- Improved Request Body logging robustness: handles non-standard SSE formats and provides raw content fallback
+- Silenced console logs in proxy mode to ensure clean CLI output
+- Fixed `ZlibError` during response decompression
+- Fixed connection refused issues by ensuring `ccv` background process stability
+
 ## 1.2.3 (2026-02-26)
 
 - Fix: GLM streaming response body now correctly assembled (SSE `data:` format varies from Anthropic standard)
@@ -87,8 +96,3 @@
 
 - 初始版本发布
 - 拦截并记录 Claude API 请求/响应
-- 实时 SSE 推送，Web 面板查看请求详情
-- 支持流式响应组装与展示
-- JSON Viewer 可视化请求/响应体
-- 对话模式视图
-- 构建脚本，将源码与 vendor 依赖打包至 `lib/`

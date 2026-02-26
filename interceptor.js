@@ -31,7 +31,7 @@ function generateNewLogFilePath() {
   try { cwd = process.cwd(); } catch { cwd = homedir(); }
   const projectName = basename(cwd).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
   const dir = join(homedir(), '.claude', 'cc-viewer', projectName);
-  try { mkdirSync(dir, { recursive: true }); } catch {}
+  try { mkdirSync(dir, { recursive: true }); } catch { }
   return { filePath: join(dir, `${projectName}_${ts}.jsonl`), dir, projectName };
 }
 
@@ -44,7 +44,7 @@ function findRecentLog(dir, projectName) {
       .reverse();
     if (files.length === 0) return null;
     return join(dir, files[0]);
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -67,9 +67,9 @@ function cleanupTempFiles(dir, projectName) {
         } else {
           renameSync(tempPath, newPath);
         }
-      } catch {}
+      } catch { }
     }
-  } catch {}
+  } catch { }
 }
 
 // Resume 状态（供 server.js 使用）
@@ -128,7 +128,7 @@ const _initPromise = (async () => {
         tempFile,
       };
     }
-  } catch {}
+  } catch { }
 })();
 
 export { LOG_FILE, _initPromise, _resumeState, _choicePromise, resolveResumeChoice, _projectName };
@@ -167,7 +167,7 @@ function migrateConversationContext(oldFile, newFile) {
             break;
           }
         }
-      } catch {}
+      } catch { }
     }
 
     if (originIndex < 0) return; // 找不到起点，不迁移
@@ -180,7 +180,7 @@ function migrateConversationContext(oldFile, newFile) {
         if (isPreflightEntry(prev)) {
           migrationStart = originIndex - 1;
         }
-      } catch {}
+      } catch { }
     }
 
     // 迁移条目写入新文件
@@ -194,7 +194,7 @@ function migrateConversationContext(oldFile, newFile) {
     } else {
       writeFileSync(oldFile, '');
     }
-  } catch {}
+  } catch { }
 }
 
 function checkAndRotateLogFile() {
@@ -207,7 +207,7 @@ function checkAndRotateLogFile() {
       LOG_FILE = filePath;
       migrateConversationContext(oldFile, filePath);
     }
-  } catch {}
+  } catch { }
 }
 
 // 从环境变量 ANTHROPIC_BASE_URL 提取域名用于请求匹配
@@ -217,7 +217,7 @@ function getBaseUrlHost() {
     if (baseUrl) {
       return new URL(baseUrl).hostname;
     }
-  } catch {}
+  } catch { }
   return null;
 }
 const CUSTOM_API_HOST = getBaseUrlHost();
@@ -227,7 +227,7 @@ function isAnthropicApiPath(urlStr) {
   try {
     const pathname = new URL(urlStr).pathname;
     return /^\/v1\/messages(\/count_tokens|\/batches(\/.*)?)?$/.test(pathname)
-        || /^\/api\/eval\/sdk-/.test(pathname);
+      || /^\/api\/eval\/sdk-/.test(pathname);
   } catch {
     return /\/v1\/messages/.test(urlStr);
   }
@@ -374,7 +374,7 @@ export function setupInterceptor() {
 
   const _originalFetch = globalThis.fetch;
 
-  globalThis.fetch = async function(url, options) {
+  globalThis.fetch = async function (url, options) {
     // cc-viewer 内部请求（翻译等）直接透传，不拦截
     const internalHeader = options?.headers?.['x-cc-viewer-internal']
       || (options?.headers instanceof Headers && options.headers.get('x-cc-viewer-internal'));
@@ -387,7 +387,17 @@ export function setupInterceptor() {
 
     try {
       const urlStr = typeof url === 'string' ? url : url?.url || String(url);
-      if (urlStr.includes('anthropic') || urlStr.includes('claude') || (CUSTOM_API_HOST && urlStr.includes(CUSTOM_API_HOST)) || isAnthropicApiPath(urlStr)) {
+      // 检查 headers 中是否包含 x-cc-viewer-trace 标记
+      const headers = options?.headers || {};
+      const isProxyTrace = headers['x-cc-viewer-trace'] === 'true' || headers['x-cc-viewer-trace'] === true;
+
+      // 如果是 proxy 转发的，或者符合 URL 规则
+      if (isProxyTrace || urlStr.includes('anthropic') || urlStr.includes('claude') || (CUSTOM_API_HOST && urlStr.includes(CUSTOM_API_HOST)) || isAnthropicApiPath(urlStr)) {
+        // 如果是 proxy 转发的，需要清理掉标记 header 避免发给上游
+        if (isProxyTrace && options?.headers) {
+          delete options.headers['x-cc-viewer-trace'];
+        }
+
         const timestamp = new Date().toISOString();
         let body = null;
         if (options?.body) {
@@ -463,7 +473,7 @@ export function setupInterceptor() {
           })()
         };
       }
-    } catch {}
+    } catch { }
 
     // 用户新指令边界：检查日志文件大小，超过 500MB 则切换新文件
     if (requestEntry?.mainAgent) {
@@ -534,7 +544,8 @@ export function setupInterceptor() {
                       const assembledMessage = assembleStreamMessage(events);
 
                       // 直接使用组装后的 message 对象作为 response.body
-                      requestEntry.response.body = assembledMessage;
+                      // 如果组装失败（例如非标准 SSE），则使用原始流内容
+                      requestEntry.response.body = assembledMessage || streamedContent;
                       appendFileSync(LOG_FILE, JSON.stringify(requestEntry, null, 2) + '\n---\n');
                     } catch (err) {
                       requestEntry.response.body = streamedContent.slice(0, 1000);
@@ -603,4 +614,6 @@ export function setupInterceptor() {
 setupInterceptor();
 
 // 等待日志文件初始化完成后启动 Web Viewer 服务
-_initPromise.then(() => import('cc-viewer/server.js')).catch(() => {});
+_initPromise.then(() => import('./server.js')).catch((err) => {
+  console.error('[CC-Viewer] Failed to start viewer server:', err);
+});

@@ -6,19 +6,44 @@ Et overvågningssystem for forespørgsler til Claude Code, der opfanger og visua
 
 ## Brug
 
+### Installation
+
 ```bash
 npm install -g cc-viewer
 ```
 
-Efter installation, kør:
+### Kørsel og automatisk konfiguration
 
 ```bash
 ccv
 ```
 
-Denne kommando konfigurerer automatisk din lokalt installerede Claude Code til overvågning og tilføjer en auto-reparations hook til din shell-konfiguration (`~/.zshrc` eller `~/.bashrc`). Brug derefter Claude Code som normalt og åbn `http://localhost:7008` i din browser for at se overvågningsgrænsefladen.
+Denne kommando registrerer automatisk din lokale Claude Code-installationsmetode (NPM eller Native Install) og tilpasser sig derefter.
 
-Efter Claude Code opdaterer, er der ingen manuel handling nødvendig — næste gang du kører `claude`, vil den automatisk registrere og genkonfigurere.
+- **NPM Install**: Indsprøjter automatisk aflytningsscripts i Claude Codes `cli.js`.
+- **Native Install**: Registrerer automatisk `claude`-binærfilen, konfigurerer en lokal gennemsigtig proxy og opsætter en Zsh Shell Hook til automatisk at videresende trafik.
+
+### Konfigurationsoverstyring (Configuration Override)
+
+Hvis du har brug for at bruge et brugerdefineret API-slutpunkt (f.eks. virksomhedsproxy), skal du blot konfigurere det i `~/.claude/settings.json` eller indstille miljøvariablen `ANTHROPIC_BASE_URL`. `ccv` vil automatisk genkende dette og videresende anmodninger korrekt.
+
+### Stille tilstand (Silent Mode)
+
+Som standard kører `ccv` i stille tilstand, når den wrapper `claude`, hvilket sikrer, at dit terminaloutput forbliver rent og identisk med den originale Claude Code-oplevelse. Alle logs opfanges i baggrunden og kan ses på `http://localhost:7008`.
+
+Efter konfiguration skal du bruge kommandoen `claude` som normalt. Besøg `http://localhost:7008` for at se overvågningsgrænsefladen.
+
+### Fejlfinding (Troubleshooting)
+
+- **Blandet output (Mixed Output)**: Hvis du ser `[CC-Viewer]` debug-logs blandet med Claude-output, skal du opdatere til den nyeste version (`npm install -g cc-viewer`).
+- **Forbindelse afvist (Connection Refused)**: Sørg for, at `ccv`-baggrundsprocessen kører. Kørsel af `ccv` eller `claude` (efter hook-installation) bør starte den automatisk.
+- **Tom krop (Empty Body)**: Hvis du ser "No Body" i Viewer, kan det skyldes ikke-standard SSE-formater. Viewer understøtter nu rå indholdsfangst som fallback.
+
+### Tjek version (Check Version)
+
+```bash
+ccv --version
+```
 
 ### Afinstallation
 

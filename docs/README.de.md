@@ -16,9 +16,32 @@ Nach der Installation ausführen:
 ccv
 ```
 
-Dieser Befehl konfiguriert automatisch Ihr lokal installiertes Claude Code für die Überwachung und fügt einen Auto-Reparatur-Hook in Ihre Shell-Konfiguration (`~/.zshrc` oder `~/.bashrc`) ein. Verwenden Sie dann Claude Code wie gewohnt und öffnen Sie `http://localhost:7008` in Ihrem Browser, um die Überwachungsoberfläche anzuzeigen.
+Dieser Befehl erkennt automatisch die Installationsmethode von Claude Code (NPM oder Native Install) und passt sich an.
 
-Nach einem Update von Claude Code ist keine manuelle Aktion erforderlich — beim nächsten Start von `claude` wird die Konfiguration automatisch erkannt und erneut durchgeführt.
+- **NPM Install**: Injiziert das Interceptor-Skript automatisch in `cli.js` von Claude Code.
+- **Native Install**: Erkennt die `claude`-Binärdatei automatisch, richtet einen lokalen transparenten Proxy ein und konfiguriert einen Zsh Shell Hook, um den Datenverkehr automatisch weiterzuleiten.
+
+### Konfigurationsüberschreibung (Configuration Override)
+
+Wenn Sie einen benutzerdefinierten API-Endpunkt (z. B. Unternehmens-Proxy) verwenden müssen, konfigurieren Sie ihn einfach in `~/.claude/settings.json` oder setzen Sie die Umgebungsvariable `ANTHROPIC_BASE_URL`. `ccv` erkennt diese Einstellungen automatisch und leitet Anfragen korrekt weiter.
+
+### Stiller Modus (Silent Mode)
+
+Standardmäßig läuft `ccv` beim Wrappen von `claude` im stillen Modus, um sicherzustellen, dass Ihre Terminalausgabe sauber bleibt und identisch mit der ursprünglichen Claude Code-Erfahrung ist. Alle Protokolle werden im Hintergrund erfasst und sind unter `http://localhost:7008` sichtbar.
+
+Verwenden Sie dann Claude Code wie gewohnt und öffnen Sie `http://localhost:7008` in Ihrem Browser, um die Überwachungsoberfläche anzuzeigen.
+
+### Fehlerbehebung (Troubleshooting)
+
+- **Gemischte Ausgabe (Mixed Output)**: Wenn Sie `[CC-Viewer]` Debug-Logs sehen, die mit der Ausgabe von Claude vermischt sind, aktualisieren Sie bitte auf die neueste Version (`npm install -g cc-viewer`).
+- **Verbindung abgelehnt (Connection Refused)**: Stellen Sie sicher, dass der `ccv`-Hintergrundprozess läuft. Das Ausführen von `ccv` oder `claude` (nach der Hook-Installation) sollte ihn automatisch starten.
+- **Kein Inhalt (Empty Body)**: Wenn Sie im Viewer "No Body" sehen, liegt dies möglicherweise an nicht standardmäßigen SSE-Formaten. Der Viewer unterstützt jetzt das Erfassen von Rohinhalten als Fallback.
+
+### Version prüfen (Check Version)
+
+```bash
+ccv --version
+```
 
 ### Deinstallation
 
