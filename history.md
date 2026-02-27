@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.7 (2026-02-27)
+
+- Updated all 17 localized README files to match README.zh.md as the source of truth
+- Changed header logo from remote URL to local `/favicon.ico`
+- Removed deprecated cc-viewer-translate skill file
+
 ## 1.2.6 (2026-02-26)
 
 - Fix: clarify uninstall success message to indicate integration removal only
