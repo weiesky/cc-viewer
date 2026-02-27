@@ -137,27 +137,6 @@ function startWatching() {
   watchLogFile(LOG_FILE);
 }
 
-function extractModelFromLog(filePath) {
-  try {
-    const fd = openSync(filePath, 'r');
-    const buffer = Buffer.alloc(1024 * 50); // Read 50KB
-    const bytesRead = readSync(fd, buffer, 0, buffer.length, 0);
-    closeSync(fd);
-
-    const content = buffer.toString('utf-8', 0, bytesRead);
-    const entries = content.split('\n---\n');
-
-    for (const entryStr of entries) {
-      if (!entryStr.trim()) continue;
-      try {
-        const entry = JSON.parse(entryStr);
-        if (entry.body && entry.body.model) return entry.body.model;
-      } catch { }
-    }
-  } catch { }
-  return null;
-}
-
 function handleRequest(req, res) {
   const { url, method } = req;
 
@@ -434,9 +413,8 @@ function handleRequest(req, res) {
             const ts = match[2];
             const filePath = join(projectDir, f);
             const size = statSync(filePath).size;
-            const model = extractModelFromLog(filePath);
             if (!grouped[project]) grouped[project] = [];
-            grouped[project].push({ file: `${project}/${f}`, timestamp: ts, size, model });
+            grouped[project].push({ file: `${project}/${f}`, timestamp: ts, size });
           }
         }
       }

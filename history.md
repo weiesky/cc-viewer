@@ -4,7 +4,6 @@
 
 - Fix: clarify uninstall success message to indicate integration removal only
 - Fix: enforce 1-hour limit for recent log detection
-- Added model name display in local logs list
 - Improved log list item layout to prevent wrapping
 - Added `ccv --help` option support
 - Added NPM version badge to README and all localized versions

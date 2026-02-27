@@ -72,19 +72,19 @@ class App extends React.Component {
         const filterIrrelevant = data.filterIrrelevant !== undefined ? !!data.filterIrrelevant : true;
         this.setState({ showAll: !filterIrrelevant });
       })
-      .catch(() => {});
+      .catch(() => { });
 
     // 获取系统用户头像和名字
     fetch('/api/user-profile')
       .then(res => res.json())
       .then(data => this.setState({ userProfile: data }))
-      .catch(() => {});
+      .catch(() => { });
 
     // 获取当前监控的项目名称
     fetch('/api/project-name')
       .then(res => res.json())
       .then(data => this.setState({ projectName: data.projectName || '' }))
-      .catch(() => {});
+      .catch(() => { });
 
     // 检查是否是通过 ?logfile= 打开的历史日志
     const params = new URLSearchParams(window.location.search);
@@ -128,7 +128,7 @@ class App extends React.Component {
         try {
           const data = JSON.parse(event.data);
           this.setState({ resumeModalVisible: true, resumeFileName: data.recentFileName || '' });
-        } catch {}
+        } catch { }
       });
       this.eventSource.addEventListener('resume_resolved', () => {
         this.setState({ resumeModalVisible: false, resumeFileName: '' });
@@ -473,7 +473,7 @@ class App extends React.Component {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lang }),
-    }).catch(() => {});
+    }).catch(() => { });
   };
 
   handleCollapseToolResultsChange = (checked) => {
@@ -482,7 +482,7 @@ class App extends React.Component {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ collapseToolResults: checked }),
-    }).catch(() => {});
+    }).catch(() => { });
   };
 
   handleExpandThinkingChange = (checked) => {
@@ -491,7 +491,7 @@ class App extends React.Component {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ expandThinking: checked }),
-    }).catch(() => {});
+    }).catch(() => { });
   };
 
   handleExpandDiffChange = (checked) => {
@@ -500,7 +500,7 @@ class App extends React.Component {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ expandDiff: checked }),
-    }).catch(() => {});
+    }).catch(() => { });
   };
 
   handleFilterIrrelevantChange = (checked) => {
@@ -518,7 +518,7 @@ class App extends React.Component {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filterIrrelevant: checked }),
-    }).catch(() => {});
+    }).catch(() => { });
   };
 
   handleTabChange = (key) => {
@@ -687,7 +687,7 @@ class App extends React.Component {
   formatTimestamp(ts) {
     // 20260217_224218 -> 2026-02-17 22:42:18
     if (!ts || ts.length < 15) return ts;
-    return `${ts.slice(0,4)}-${ts.slice(4,6)}-${ts.slice(6,8)} ${ts.slice(9,11)}:${ts.slice(11,13)}:${ts.slice(13,15)}`;
+    return `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)} ${ts.slice(9, 11)}:${ts.slice(11, 13)}:${ts.slice(13, 15)}`;
   }
 
   formatSize(bytes) {
@@ -791,7 +791,7 @@ class App extends React.Component {
           <div className={styles.footer}>
             <div className={styles.footerRight}>
               <a href="https://github.com/weiesky/cc-viewer" target="_blank" rel="noopener noreferrer" className={styles.footerLink}>
-                <svg className={styles.footerIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                <svg className={styles.footerIcon} viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" /></svg>
                 GitHub
               </a>
               <span className={styles.footerDivider}>|</span>
@@ -848,62 +848,61 @@ class App extends React.Component {
                   return 0;
                 })
                 .map(([project, logs]) => ({
-                key: project,
-                label: (
-                  <span>
-                    <FolderOutlined className={styles.folderIcon} />
-                    {project}
-                    <Tag className={styles.logTag}>{t('ui.logCount', { count: logs.length })}</Tag>
-                    {this.state.selectedLogs[project]?.size > 1 && (
-                      <Button
-                        size="small"
-                        type="primary"
-                        onClick={(e) => { e.stopPropagation(); this.handleMergeLogs(project); }}
-                      >
-                        {t('ui.mergeLogs')}
-                      </Button>
-                    )}
-                  </span>
-                ),
-                children: (
-                  <List
-                    size="small"
-                    dataSource={logs}
-                    renderItem={(log) => (
-                      <List.Item
-                        className={styles.logListItem}
-                        onClick={() => {
-                          const checked = !(this.state.selectedLogs[project]?.has(log.file));
-                          this.handleToggleLogSelect(project, log.file, checked);
-                        }}
-                      >
-                        <div className={styles.logItemRow}>
-                          <span>
-                            <Checkbox
-                              className={styles.logCheckbox}
-                              checked={this.state.selectedLogs[project]?.has(log.file) || false}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                this.handleToggleLogSelect(project, log.file, e.target.checked);
-                              }}
-                            />
-                            <FileTextOutlined className={styles.logFileIcon} />
-                            <span className={styles.logFileName}>{this.formatTimestamp(log.timestamp)}</span>
-                          </span>
-                          <span>
-                            {log.model && <Tag color="cyan">{log.model}</Tag>}
-                            <Tag color="blue">{this.formatSize(log.size)}</Tag>
-                            <Button size="small" type="primary" onClick={(e) => { e.stopPropagation(); this.handleOpenLogFile(log.file); }}>
-                              {t('ui.openLog')}
-                            </Button>
-                          </span>
-                        </div>
-                      </List.Item>
-                    )}
-                  />
-                ),
-              }))}
+                  key: project,
+                  label: (
+                    <span>
+                      <FolderOutlined className={styles.folderIcon} />
+                      {project}
+                      <Tag className={styles.logTag}>{t('ui.logCount', { count: logs.length })}</Tag>
+                      {this.state.selectedLogs[project]?.size > 1 && (
+                        <Button
+                          size="small"
+                          type="primary"
+                          onClick={(e) => { e.stopPropagation(); this.handleMergeLogs(project); }}
+                        >
+                          {t('ui.mergeLogs')}
+                        </Button>
+                      )}
+                    </span>
+                  ),
+                  children: (
+                    <List
+                      size="small"
+                      dataSource={logs}
+                      renderItem={(log) => (
+                        <List.Item
+                          className={styles.logListItem}
+                          onClick={() => {
+                            const checked = !(this.state.selectedLogs[project]?.has(log.file));
+                            this.handleToggleLogSelect(project, log.file, checked);
+                          }}
+                        >
+                          <div className={styles.logItemRow}>
+                            <span>
+                              <Checkbox
+                                className={styles.logCheckbox}
+                                checked={this.state.selectedLogs[project]?.has(log.file) || false}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  this.handleToggleLogSelect(project, log.file, e.target.checked);
+                                }}
+                              />
+                              <FileTextOutlined className={styles.logFileIcon} />
+                              <span className={styles.logFileName}>{this.formatTimestamp(log.timestamp)}</span>
+                            </span>
+                            <span>
+                              <Tag color="blue">{this.formatSize(log.size)}</Tag>
+                              <Button size="small" type="primary" onClick={(e) => { e.stopPropagation(); this.handleOpenLogFile(log.file); }}>
+                                {t('ui.openLog')}
+                              </Button>
+                            </span>
+                          </div>
+                        </List.Item>
+                      )}
+                    />
+                  ),
+                }))}
             />
           )}
         </Modal>
