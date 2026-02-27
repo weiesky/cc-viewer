@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.9 (2026-02-27)
+
+- Fix: clicking request list item no longer causes unwanted scroll-to-bottom; only programmatic selection changes trigger scroll
+
 ## 1.2.8 (2026-02-27)
 
 - Migrated `LOG_DIR` (`~/.claude/cc-viewer`) configuration to `findcc.js` for centralized path management, enabling easier adaptation for custom deployments

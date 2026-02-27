@@ -377,7 +377,7 @@ class App extends React.Component {
   }
 
   handleSelectRequest = (index) => {
-    this.setState({ selectedIndex: index });
+    this.setState({ selectedIndex: index, scrollCenter: false });
   };
 
   handleViewRequest = (index) => {
