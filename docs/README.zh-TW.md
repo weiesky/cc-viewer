@@ -1,6 +1,6 @@
 # CC-Viewer
 
-Claude Code 請求監控系統，即時擷取並視覺化展示 Claude Code 的所有 API 請求與回應（原始文本，不做刪減）。方便開發者監控自己的 Context，以便於 Vibe Coding 過程中回顧和排查問題。
+Claude Code 請求監控系統，即時擷取並視覺化展示 Claude Code 的所有 API 請求與回應（原始文字，不做刪減）。方便開發者監控自己的 Context，以便於 Vibe Coding 過程中回顧和排查問題。
 
 [English](../README.md) | [简体中文](./README.zh.md) | 繁體中文 | [한국어](./README.ko.md) | [日本語](./README.ja.md) | [Deutsch](./README.de.md) | [Español](./README.es.md) | [Français](./README.fr.md) | [Italiano](./README.it.md) | [Dansk](./README.da.md) | [Polski](./README.pl.md) | [Русский](./README.ru.md) | [العربية](./README.ar.md) | [Norsk](./README.no.md) | [Português (Brasil)](./README.pt-BR.md) | [ไทย](./README.th.md) | [Türkçe](./README.tr.md) | [Українська](./README.uk.md)
 
@@ -12,32 +12,38 @@ Claude Code 請求監控系統，即時擷取並視覺化展示 Claude Code 的�
 npm install -g cc-viewer
 ```
 
-### 執行與自動配置
+### 執行與自動設定
 
 ```bash
 ccv
 ```
 
-該命令會自動檢測本地 Claude Code 的安裝方式（NPM 或 Native Install）並進行適配。
+該命令會自動偵測本地 Claude Code 的安裝方式（NPM 或 Native Install）並進行適配。
 
 - **NPM 安裝**：自動向 Claude Code 的 `cli.js` 中注入攔截腳本。
-- **Native Install**：自動檢測 `claude` 二進位檔案，配置本地透明代理，並設置 Zsh Shell Hook 自動轉發流量。
+- **Native Install**：自動偵測 `claude` 二進位檔案，設定本地透明代理，並設置 Zsh Shell Hook 自動轉發流量。
 
-### 配置覆蓋 (Configuration Override)
+### 設定覆蓋 (Configuration Override)
 
-如果您需要使用自訂 API 端點（例如企業代理），只需在 `~/.claude/settings.json` 中配置或設置 `ANTHROPIC_BASE_URL` 環境變數。`ccv` 會自動識別並正確轉發請求。
+如果您需要使用自訂 API 端點（例如企業代理），只需在 `~/.claude/settings.json` 中設定或設置 `ANTHROPIC_BASE_URL` 環境變數。`ccv` 會自動識別並正確轉發請求。
 
 ### 靜默模式 (Silent Mode)
 
 預設情況下，`ccv` 在包裹 `claude` 執行時處於靜默模式，確保您的終端輸出保持整潔，與原生體驗一致。所有日誌都在背景擷取，並可透過 `http://localhost:7008` 查看。
 
-配置完成後，正常使用 `claude` 命令即可。造訪 `http://localhost:7008` 查看監控介面。
+設定完成後，正常使用 `claude` 命令即可。訪問 `http://localhost:7008` 查看監控介面。
 
 ### 常見問題排查 (Troubleshooting)
 
-- **混合輸出 (Mixed Output)**：如果您看到 `[CC-Viewer]` 除錯日誌與 Claude 的輸出混雜在一起，請更新到最新版本 (`npm install -g cc-viewer`)。
-- **連線被拒絕 (Connection Refused)**：請確保 `ccv` 背景程序正在執行。執行 `ccv` 或 `claude`（安裝 Hook 後）應會自動啟動它。
-- **無 Body (Empty Body)**：如果您在 Viewer 中看到 "No Body"，可能是由於非標準的 SSE 格式。Viewer 現已支援作為兜底方案擷取原始內容。
+如果你遇到無法啟動的問題，有一個終極排查方案：
+第一步：任意目錄開啟 claude code；
+第二步：給 claude code 下指令，內容如下:
+```
+我已經安裝了 cc-viewer 這個 npm 套件，但是無法啟動，查看 cc-viewer 的 cli.js 和 findcc.js，根據具體的情況適配本地的 claude code 的部署方式。適配的時候修改範圍盡量約束在 findcc.js 中。
+```
+讓 Claude Code 自己檢查錯誤是比問任何人以及看任何文件更有效的手段！
+
+以上指令完成後，會更新 findcc.js。如果你的專案工程經常需要本地部署，或者 fork 出去的程式碼要經常解決安裝問題，保留這個檔案就可以。下次直接 copy 檔案。現階段很多專案和公司用 claude code 都不是 mac 部署，而是伺服端託管部署，所以作者剝離了 findcc.js 這個檔案，方便後續追蹤 cc-viewer 的原始碼更新。
 
 ### 解除安裝
 
@@ -93,7 +99,7 @@ Header 區域的「資料統計」懸浮面板：
 
 - 匯入本地日誌：瀏覽歷史日誌檔案，按專案分組，在新視窗開啟
 - 載入本地 JSONL 檔案：直接選擇本地 `.jsonl` 檔案載入查看（支援最大 500MB）
-- 當前日誌另存為：下載當前監控的 JSONL 日誌檔案
+- 目前日誌另存為：下載目前監控的 JSONL 日誌檔案
 - 合併日誌：將多個 JSONL 日誌檔案合併為一個會話，統一分析
 - 查看使用者 Prompt：提取並展示所有使用者輸入，支援三種查看模式 — 原文模式（原始內容）、上下文模式（系統標籤可摺疊）、Text 模式（純文字）；斜線命令（`/model`、`/context` 等）作為獨立條目展示；命令相關標籤自動從 Prompt 內容中隱藏
 - 匯出 Prompt 為 TXT：將使用者 Prompt（純文字，不含系統標籤）匯出為本地 `.txt` 檔案

@@ -1,58 +1,24 @@
 #!/usr/bin/env node
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
-import { spawn, execSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { t } from './i18n.js';
+import { INJECT_IMPORT, resolveCliPath, resolveNativePath, buildShellCandidates } from './findcc.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 const INJECT_START = '// >>> Start CC Viewer Web Service >>>';
 const INJECT_END = '// <<< Start CC Viewer Web Service <<<';
-const INJECT_IMPORT = "import '../../cc-viewer/interceptor.js';";
 const INJECT_BLOCK = `${INJECT_START}\n${INJECT_IMPORT}\n${INJECT_END}`;
 
 
 const SHELL_HOOK_START = '# >>> CC-Viewer Auto-Inject >>>';
 const SHELL_HOOK_END = '# <<< CC-Viewer Auto-Inject <<<';
 
-// Claude Code cli.js 包名候选列表，按优先级排列
-const CLAUDE_CODE_PACKAGES = [
-  '@anthropic-ai/claude-code',
-  '@ali/claude-code',
-];
-
-function getGlobalNodeModulesDir() {
-  try {
-    return execSync('npm root -g', { encoding: 'utf-8' }).trim();
-  } catch {
-    return null;
-  }
-}
-
-function resolveClaudeCodeCliPath() {
-  // 候选基础目录：__dirname 的上级（适用于常规 npm 安装）+ 全局 node_modules（适用于符号链接安装）
-  const baseDirs = [resolve(__dirname, '..')];
-  const globalRoot = getGlobalNodeModulesDir();
-  if (globalRoot && globalRoot !== resolve(__dirname, '..')) {
-    baseDirs.push(globalRoot);
-  }
-
-  for (const baseDir of baseDirs) {
-    for (const packageName of CLAUDE_CODE_PACKAGES) {
-      const candidate = join(baseDir, packageName, 'cli.js');
-      if (existsSync(candidate)) {
-        return candidate;
-      }
-    }
-  }
-  // 兜底：返回全局目录下的默认路径，便于错误提示
-  return join(globalRoot || resolve(__dirname, '..'), CLAUDE_CODE_PACKAGES[0], 'cli.js');
-}
-
-const cliPath = resolveClaudeCodeCliPath();
+const cliPath = resolveCliPath();
 
 function getShellConfigPath() {
   const shell = process.env.SHELL || '';
@@ -80,10 +46,11 @@ claude() {
 ${SHELL_HOOK_END}`;
   }
 
+  const candidates = buildShellCandidates();
   return `${SHELL_HOOK_START}
 claude() {
   local cli_js=""
-  for candidate in "$HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js" "$HOME/.npm-global/lib/node_modules/@ali/claude-code/cli.js"; do
+  for candidate in ${candidates}; do
     if [ -f "$candidate" ]; then
       cli_js="$candidate"
       break
@@ -161,37 +128,6 @@ function removeCliJsInjection() {
   }
 }
 
-function getNativeInstallPath() {
-  // 1. 尝试 which/command -v（继承当前 process.env PATH）
-  for (const cmd of ['which claude', 'command -v claude']) {
-    try {
-      const result = execSync(cmd, { encoding: 'utf-8', shell: true, env: process.env }).trim();
-      // 排除 shell function 的输出（多行说明不是路径）
-      if (result && !result.includes('\n') && existsSync(result)) {
-        return result;
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  // 2. 检查常见 native 安装路径
-  const home = homedir();
-  const candidates = [
-    join(home, '.claude', 'local', 'claude'),
-    '/usr/local/bin/claude',
-    join(home, '.local', 'bin', 'claude'),
-    '/opt/homebrew/bin/claude',
-  ];
-  for (const p of candidates) {
-    if (existsSync(p)) {
-      return p;
-    }
-  }
-
-  return null;
-}
-
 async function runProxyCommand(args) {
   try {
     // Dynamic import to avoid side effects when just installing
@@ -229,48 +165,23 @@ async function runProxyCommand(args) {
     }
 
     const env = { ...process.env };
-    // [Debug] Verify hook execution
-    // console.error(`[CC-Viewer] Hook triggered for: ${cmd} ${cmdArgs.join(' ')}`);
-
     // Determine the path to the native 'claude' executable
     if (cmd === 'claude') {
-      const nativePath = getNativeInstallPath();
+      const nativePath = resolveNativePath();
       if (nativePath) {
         cmd = nativePath;
       }
     }
     env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${proxyPort}`;
 
-    // [Debug] Force ANTHROPIC_BASE_URL via process.env is not enough for some reason?
-    // Let's also check if we can pass it via command line args if supported, but claude cli doesn't seem to have a --base-url arg documented.
-    // However, maybe the issue is that 'env' in spawn options isn't overriding what claude internal config has?
-    // Claude Code likely reads from ~/.claude/settings.json which might take precedence over env vars?
-    // No, usually env vars take precedence.
-
-    // [Fix] Check if user has ANTHROPIC_BASE_URL in settings.json and use it in proxy.js
-    // We already do that in proxy.js: getOriginalBaseUrl().
-
-    // [Crucial Fix]
-    // Use --settings JSON argument to force ANTHROPIC_BASE_URL configuration
-    // This is safer and more reliable than env vars which might be ignored.
-
-    // console.error(`[CC-Viewer] Setting ANTHROPIC_BASE_URL to ${env.ANTHROPIC_BASE_URL}`);
-
-    // Construct settings JSON string
-    // Note: We need to be careful with quoting for the shell/spawn.
-    // Since we use spawn without shell, we can pass the JSON string directly as an argument.
     const settingsJson = JSON.stringify({
       env: {
         ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL
       }
     });
 
-    // Inject --settings argument
-    // We put it at the beginning of args to ensure it's picked up
     cmdArgs.unshift(settingsJson);
     cmdArgs.unshift('--settings');
-
-    // Force non-interactive if needed? No, we want interactive.
 
     const child = spawn(cmd, cmdArgs, { stdio: 'inherit', env });
 
@@ -341,7 +252,7 @@ if (args[0] === 'run') {
   if (existsSync(cliPath)) {
     mode = 'npm';
   } else {
-    const nativePath = getNativeInstallPath();
+    const nativePath = resolveNativePath();
     if (nativePath) {
       mode = 'native';
     }

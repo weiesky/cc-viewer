@@ -1,6 +1,6 @@
 # CC-Viewer
 
-Claude Code forespørselsovervåkingssystem som fanger og visuelt viser alle API-forespørsler og -svar fra Claude Code i sanntid (rå tekst, uten sensur). Praktisk for utviklere som vil overvåke sin egen Context, slik at de kan gjennomgå og feilsøke problemer under Vibe Coding.
+Claude Code forespørselsovervåkingssystem som fanger opp og visualiserer alle API-forespørsler og -svar fra Claude Code i sanntid (rå tekst, uten sensurering). Gjør det enkelt for utviklere å overvåke sin egen kontekst, slik at de kan se tilbake og feilsøke under Vibe Coding.
 
 [English](../README.md) | [简体中文](./README.zh.md) | [繁體中文](./README.zh-TW.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md) | [Deutsch](./README.de.md) | [Español](./README.es.md) | [Français](./README.fr.md) | [Italiano](./README.it.md) | [Dansk](./README.da.md) | [Polski](./README.pl.md) | [Русский](./README.ru.md) | [العربية](./README.ar.md) | Norsk | [Português (Brasil)](./README.pt-BR.md) | [ไทย](./README.th.md) | [Türkçe](./README.tr.md) | [Українська](./README.uk.md)
 
@@ -35,9 +35,15 @@ Etter at konfigurasjonen er fullført, bruk `claude`-kommandoen som vanlig. Bes�
 
 ### Feilsøking (Troubleshooting)
 
-- **Blandet utdata (Mixed Output)**: Hvis du ser `[CC-Viewer]`-feilsøkingslogger blandet med Claudes utdata, oppdater til nyeste versjon (`npm install -g cc-viewer`).
-- **Tilkobling avvist (Connection Refused)**: Sørg for at `ccv`-bakgrunnsprosessen kjører. Å kjøre `ccv` eller `claude` (etter Hook-installasjon) bør starte den automatisk.
-- **Tom kropp (Empty Body)**: Hvis du ser "No Body" i Viewer, kan det skyldes ikke-standard SSE-format. Viewer støtter nå fangst av råinnhold som reserveløsning.
+Hvis du opplever problemer med å starte, finnes det en definitiv feilsøkingsmetode:
+Steg 1: Åpne Claude Code i en hvilken som helst katalog;
+Steg 2: Gi Claude Code følgende instruksjon:
+```
+Jeg har installert npm-pakken cc-viewer, men kan ikke starte den. Se på cc-viewer sin cli.js og findcc.js, og tilpass den til den lokale Claude Code-distribusjonsmetoden basert på den faktiske situasjonen. Prøv å begrense endringene til findcc.js.
+```
+La Claude Code selv sjekke feilen — det er mer effektivt enn å spørre noen eller lese dokumentasjon!
+
+Etter at instruksjonen er fullført, vil findcc.js bli oppdatert. Hvis prosjektet ditt ofte krever lokal distribusjon, eller hvis forgrenet kode ofte trenger å løse installasjonsproblemer, kan du beholde denne filen og kopiere den direkte neste gang. På dette stadiet bruker mange prosjekter og selskaper Claude Code ikke på Mac, men på server-side hosting, så forfatteren har skilt ut findcc.js for å gjøre det enklere å følge oppdateringer av cc-viewer-kildekoden.
 
 ### Avinstallasjon
 

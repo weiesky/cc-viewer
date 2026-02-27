@@ -5,9 +5,9 @@ import { dirname, join, extname, basename } from 'node:path';
 import { homedir, userInfo, platform } from 'node:os';
 import { execSync } from 'node:child_process';
 import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice, _projectName, _cachedApiKey, _cachedAuthHeader, _cachedHaikuModel } from './interceptor.js';
+import { LOG_DIR } from './findcc.js';
 import { t, detectLanguage } from './i18n.js';
 
-const LOG_DIR = join(homedir(), '.claude', 'cc-viewer');
 const PREFS_FILE = join(LOG_DIR, 'preferences.json');
 
 

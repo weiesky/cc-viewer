@@ -35,9 +35,15 @@ ccv
 
 ### 常见问题排查 (Troubleshooting)
 
-- **混合输出 (Mixed Output)**：如果您看到 `[CC-Viewer]` 调试日志与 Claude 的输出混杂在一起，请更新到最新版本 (`npm install -g cc-viewer`)。
-- **连接被拒绝 (Connection Refused)**：请确保 `ccv` 后台进程正在运行。运行 `ccv` 或 `claude`（安装 Hook 后）应会自动启动它。
-- **无 Body (Empty Body)**：如果您在 Viewer 中看到 "No Body"，可能是由于非标准的 SSE 格式。Viewer 现已支持作为兜底方案捕获原始内容。
+如果你遇到无法启动的问题，有一个终极排查方案：
+第一步：任意目录打开 claude code；
+第二步：给claude code下指令，内容如下:
+```
+我已经安装了cc-viewer这个npm包，但是无法启动，查看cc-viewer的cli.js 和 findcc.js，根据具体的时间适配本地的claude code的部署方式。适配的时候修改范围尽量约束在findcc.js中。
+```
+让Claude Code自己检查错误是比问任何人以及看任何文档更有效的手段！
+
+以上指令完成后，会更新findcc.js。如果你的项目工程经常需要本地部署。或者fork出去的代码要经常解决安装问题，保留这个文件就可以。下次直接copy 文件。现阶段很多项目和公司用claude code都不是mac部署，而是服务端托管部署，所以作者剥离了findcc.js 这个文件，方便后续跟踪cc-viewer的源代码更新。
 
 ### 卸载
 

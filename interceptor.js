@@ -4,6 +4,7 @@ import { appendFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync, st
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, basename } from 'node:path';
+import { LOG_DIR } from './findcc.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -30,7 +31,7 @@ function generateNewLogFilePath() {
   let cwd;
   try { cwd = process.cwd(); } catch { cwd = homedir(); }
   const projectName = basename(cwd).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
-  const dir = join(homedir(), '.claude', 'cc-viewer', projectName);
+  const dir = join(LOG_DIR, projectName);
   try { mkdirSync(dir, { recursive: true }); } catch { }
   return { filePath: join(dir, `${projectName}_${ts}.jsonl`), dir, projectName };
 }
@@ -240,8 +241,6 @@ function isAnthropicApiPath(urlStr) {
     return /\/v1\/messages/.test(urlStr);
   }
 }
-
-// 不再需要折叠函数，保存完整 JSON 供前端渲染
 
 // 组装流式消息为完整的 message 对象
 function assembleStreamMessage(events) {

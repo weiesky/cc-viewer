@@ -2,7 +2,7 @@
 
 Sistema de monitoreo de solicitudes para Claude Code que captura y visualiza en tiempo real todas las solicitudes y respuestas de API (texto original, sin recortes). Permite a los desarrolladores monitorear su Context para revisar y solucionar problemas durante el Vibe Coding.
 
-[English](../README.md) | [简体中文](./README.zh.md) | [繁體中文](./README.zh-TW.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md) | [Deutsch](./README.de.md) | Español | [Français](./README.fr.md) | [Italiano](./README.it.md) | [Dansk](./README.da.md) | [Polski](./README.pl.md) | [Русский](./README.ru.md) | [العربية](./README.ar.md) | [Norsk](./README.no.md) | [Português (Brasil)](./README.pt-BR.md) | [ไทย](./README.th.md) | [Türkçe](./README.tr.md) | [Українська](./README.uk.md)
+[English](../README.md) | [繁體中文](./README.zh-TW.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md) | [Deutsch](./README.de.md) | Español | [Français](./README.fr.md) | [Italiano](./README.it.md) | [Dansk](./README.da.md) | [Polski](./README.pl.md) | [Русский](./README.ru.md) | [العربية](./README.ar.md) | [Norsk](./README.no.md) | [Português (Brasil)](./README.pt-BR.md) | [ไทย](./README.th.md) | [Türkçe](./README.tr.md) | [Українська](./README.uk.md)
 
 ## Uso
 
@@ -35,9 +35,15 @@ Una vez completada la configuración, use el comando `claude` como de costumbre.
 
 ### Solución de problemas (Troubleshooting)
 
-- **Salida mixta (Mixed Output)**: Si ve registros de depuración `[CC-Viewer]` mezclados con la salida de Claude, actualice a la última versión (`npm install -g cc-viewer`).
-- **Conexión rechazada (Connection Refused)**: Asegúrese de que el proceso en segundo plano `ccv` se esté ejecutando. Ejecutar `ccv` o `claude` (después de la instalación del hook) debería iniciarlo automáticamente.
-- **Sin Body (Empty Body)**: Si ve "No Body" en el visor, puede deberse a formatos SSE no estándar. El visor ahora admite la captura de contenido sin procesar como alternativa.
+Si tiene problemas para iniciar, existe una solución de diagnóstico definitiva:
+Paso 1: abra Claude Code en cualquier directorio;
+Paso 2: dé a Claude Code la siguiente instrucción:
+```
+He instalado el paquete npm cc-viewer pero no puedo iniciarlo. Revisa cli.js y findcc.js de cc-viewer, y adapta la implementación local de Claude Code según el contexto actual. Intenta limitar el alcance de los cambios a findcc.js.
+```
+¡Dejar que Claude Code inspeccione los errores por sí mismo es más efectivo que preguntarle a cualquier persona o leer cualquier documentación!
+
+Una vez completada la instrucción anterior, se actualizará findcc.js. Si su proyecto frecuentemente requiere despliegue local, o si el código bifurcado necesita resolver problemas de instalación con frecuencia, conserve este archivo para copiarlo directamente la próxima vez. En la actualidad, muchos proyectos y empresas que usan Claude Code no lo despliegan en Mac sino en servidores, por lo que el autor separó el archivo findcc.js para facilitar el seguimiento de las actualizaciones del código fuente de cc-viewer.
 
 ### Desinstalar
 

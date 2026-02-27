@@ -35,9 +35,15 @@ Nach Abschluss der Konfiguration verwenden Sie den `claude`-Befehl wie gewohnt. 
 
 ### Fehlerbehebung (Troubleshooting)
 
-- **Gemischte Ausgabe (Mixed Output)**: Wenn Sie `[CC-Viewer]`-Debug-Logs sehen, die mit der Ausgabe von Claude vermischt sind, aktualisieren Sie bitte auf die neueste Version (`npm install -g cc-viewer`).
-- **Verbindung abgelehnt (Connection Refused)**: Stellen Sie sicher, dass der `ccv`-Hintergrundprozess läuft. Das Ausführen von `ccv` oder `claude` (nach der Hook-Installation) sollte ihn automatisch starten.
-- **Kein Body (Empty Body)**: Wenn Sie im Viewer „No Body" sehen, liegt dies möglicherweise an nicht standardmäßigen SSE-Formaten. Der Viewer unterstützt jetzt das Erfassen von Rohinhalten als Fallback.
+Wenn Sie auf Startprobleme stoßen, gibt es eine ultimative Lösung:
+Schritt 1: Öffnen Sie Claude Code in einem beliebigen Verzeichnis;
+Schritt 2: Geben Sie Claude Code folgende Anweisung:
+```
+Ich habe das npm-Paket cc-viewer installiert, aber es lässt sich nicht starten. Schau dir cli.js und findcc.js von cc-viewer an und passe die lokale Claude Code-Deployment-Methode entsprechend an. Beschränke die Änderungen dabei möglichst auf findcc.js.
+```
+Claude Code selbst die Fehler prüfen zu lassen ist effektiver als jede andere Person zu fragen oder Dokumentation zu lesen!
+
+Nachdem die obigen Anweisungen abgeschlossen sind, wird findcc.js aktualisiert. Wenn Ihr Projekt häufig lokal bereitgestellt werden muss oder der geforkte Code regelmäßig Installationsprobleme lösen muss, behalten Sie diese Datei einfach. Beim nächsten Mal können Sie sie direkt kopieren. Derzeit setzen viele Projekte und Unternehmen Claude Code nicht auf dem Mac ein, sondern auf serverseitig gehosteten Deployments. Daher hat der Autor findcc.js ausgelagert, um das Tracking von cc-viewer-Quellcode-Updates zu erleichtern.
 
 ### Deinstallation
 

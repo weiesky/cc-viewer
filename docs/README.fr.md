@@ -1,8 +1,8 @@
 # CC-Viewer
 
-Système de surveillance des requêtes pour Claude Code, capturant et visualisant en temps réel toutes les requêtes et réponses API (texte original, sans troncature). Permet aux développeurs de surveiller leur Context afin de revoir et diagnostiquer les problèmes lors du Vibe Coding.
+Système de surveillance des requêtes Claude Code qui capture en temps réel et visualise toutes les requêtes et réponses API de Claude Code (texte brut, sans censure). Permet aux développeurs de surveiller leur contexte pour faciliter la révision et le débogage pendant le Vibe Coding.
 
-[English](../README.md) | [简体中文](./README.zh.md) | [繁體中文](./README.zh-TW.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md) | [Deutsch](./README.de.md) | [Español](./README.es.md) | Français | [Italiano](./README.it.md) | [Dansk](./README.da.md) | [Polski](./README.pl.md) | [Русский](./README.ru.md) | [العربية](./README.ar.md) | [Norsk](./README.no.md) | [Português (Brasil)](./README.pt-BR.md) | [ไทย](./README.th.md) | [Türkçe](./README.tr.md) | [Українська](./README.uk.md)
+[English](../README.md) | [繁體中文](./README.zh-TW.md) | [简体中文](./README.zh.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md) | [Deutsch](./README.de.md) | [Español](./README.es.md) | Français | [Italiano](./README.it.md) | [Dansk](./README.da.md) | [Polski](./README.pl.md) | [Русский](./README.ru.md) | [العربية](./README.ar.md) | [Norsk](./README.no.md) | [Português (Brasil)](./README.pt-BR.md) | [ไทย](./README.th.md) | [Türkçe](./README.tr.md) | [Українська](./README.uk.md)
 
 ## Utilisation
 
@@ -33,11 +33,17 @@ Par défaut, `ccv` s'exécute en mode silencieux lors de l'enveloppement de `cla
 
 Une fois la configuration terminée, utilisez la commande `claude` comme d'habitude. Ouvrez `http://localhost:7008` pour afficher l'interface de surveillance.
 
-### Dépannage (Troubleshooting)
+### Résolution des problèmes courants (Troubleshooting)
 
-- **Sortie mixte (Mixed Output)** : Si vous voyez des journaux de débogage `[CC-Viewer]` mélangés à la sortie de Claude, veuillez mettre à jour vers la dernière version (`npm install -g cc-viewer`).
-- **Connexion refusée (Connection Refused)** : Assurez-vous que le processus d'arrière-plan `ccv` est en cours d'exécution. L'exécution de `ccv` ou `claude` (après l'installation du hook) devrait le démarrer automatiquement.
-- **Pas de Body (Empty Body)** : Si vous voyez « No Body » dans le visualiseur, cela peut être dû à des formats SSE non standard. Le visualiseur prend désormais en charge la capture de contenu brut comme solution de repli.
+Si vous rencontrez un problème de démarrage, voici une solution de dépannage ultime :
+Étape 1 : ouvrez Claude Code dans n'importe quel répertoire ;
+Étape 2 : donnez l'instruction suivante à Claude Code :
+```
+J'ai installé le package npm cc-viewer, mais je n'arrive pas à le démarrer. Consulte cli.js et findcc.js de cc-viewer, puis adapte-le au mode de déploiement local de Claude Code en fonction du contexte actuel. Essaie de limiter les modifications au fichier findcc.js autant que possible.
+```
+Laisser Claude Code diagnostiquer lui-même les erreurs est plus efficace que de demander à quelqu'un ou de lire n'importe quelle documentation !
+
+Une fois cette instruction exécutée, findcc.js sera mis à jour. Si votre projet nécessite fréquemment un déploiement local, ou si le code forké doit souvent résoudre des problèmes d'installation, il suffit de conserver ce fichier et de le copier directement la prochaine fois. À l'heure actuelle, de nombreux projets et entreprises utilisant Claude Code ne le déploient pas sur Mac mais sur des serveurs hébergés, c'est pourquoi l'auteur a séparé le fichier findcc.js pour faciliter le suivi des mises à jour du code source de cc-viewer.
 
 ### Désinstallation
 

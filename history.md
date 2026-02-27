@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.8 (2026-02-27)
+
+- Migrated `LOG_DIR` (`~/.claude/cc-viewer`) configuration to `findcc.js` for centralized path management, enabling easier adaptation for custom deployments
+- Updated all 17 localized README files to sync with latest README.zh.md content
+
 ## 1.2.7 (2026-02-27)
 
 - Updated all 17 localized README files to match README.zh.md as the source of truth
