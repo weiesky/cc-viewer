@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
@@ -249,11 +249,41 @@ if (args[0] === 'run') {
 } else {
   // Installation Logic
   let mode = 'unknown';
-  if (existsSync(cliPath)) {
-    mode = 'npm';
-  } else {
-    const nativePath = resolveNativePath();
+
+  // Check PATH to determine priority
+  let prefersNative = true; // default to native if not found in PATH
+  const paths = (process.env.PATH || '').split(':');
+  for (const dir of paths) {
+    if (!dir) continue;
+    const exePath = resolve(dir, 'claude');
+    if (existsSync(exePath)) {
+      try {
+        const real = realpathSync(exePath);
+        if (real.includes('node_modules')) {
+          prefersNative = false;
+        } else {
+          prefersNative = true;
+        }
+        break;
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+
+  const nativePath = resolveNativePath();
+  const hasNpm = existsSync(cliPath);
+
+  if (prefersNative) {
     if (nativePath) {
+      mode = 'native';
+    } else if (hasNpm) {
+      mode = 'npm';
+    }
+  } else {
+    if (hasNpm) {
+      mode = 'npm';
+    } else if (nativePath) {
       mode = 'native';
     }
   }
