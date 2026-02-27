@@ -2,7 +2,6 @@ import React from 'react';
 import { Empty, Typography, Divider, Spin } from 'antd';
 import ChatMessage from './ChatMessage';
 import { extractToolResultText, isSystemText, isSkillText, getModelInfo } from '../utils/helpers';
-import { renderAssistantText } from '../utils/systemTags';
 import { t } from '../i18n';
 import styles from './ChatView.module.css';
 

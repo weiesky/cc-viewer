@@ -35,7 +35,6 @@ export function startProxy() {
   return new Promise((resolve, reject) => {
     const server = createServer(async (req, res) => {
       const originalBaseUrl = getOriginalBaseUrl();
-      const targetUrl = new URL(req.url, originalBaseUrl);
 
       // Use the patched fetch (which logs to cc-viewer)
       try {

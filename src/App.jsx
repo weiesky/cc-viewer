@@ -7,7 +7,7 @@ import DetailPanel from './components/DetailPanel';
 import ChatView from './components/ChatView';
 import PanelResizer from './components/PanelResizer';
 import { t, getLang, setLang } from './i18n';
-import { formatTokenCount } from './utils/helpers';
+import { formatTokenCount, filterRelevantRequests, findPrevMainAgentTimestamp } from './utils/helpers';
 import styles from './App.module.css';
 
 class App extends React.Component {
@@ -139,9 +139,7 @@ class App extends React.Component {
           if (Array.isArray(entries)) {
             this.assignMessageTimestamps(entries);
             const mainAgentSessions = this.buildSessionsFromEntries(entries);
-            const filtered = entries.filter(r =>
-              !r.isHeartbeat && !r.isCountTokens && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
-            );
+            const filtered = filterRelevantRequests(entries);
             if (entries.length > 0) {
               this.animateLoadingCount(entries.length, () => {
                 this.setState({
@@ -187,9 +185,7 @@ class App extends React.Component {
           this.animateLoadingCount(entries.length, () => {
             this.assignMessageTimestamps(entries);
             const mainAgentSessions = this.buildSessionsFromEntries(entries);
-            const filtered = entries.filter(r =>
-              !r.isHeartbeat && !r.isCountTokens && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
-            );
+            const filtered = filterRelevantRequests(entries);
             this.setState({
               requests: entries,
               selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
@@ -284,9 +280,7 @@ class App extends React.Component {
           this._autoSelectTimer = setTimeout(() => {
             this.setState(s => {
               if (s.selectedIndex === null && s.requests.length > 0) {
-                const filtered = s.showAll ? s.requests : s.requests.filter(r =>
-                  !r.isHeartbeat && !r.isCountTokens && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
-                );
+                const filtered = s.showAll ? s.requests : filterRelevantRequests(s.requests);
                 return filtered.length > 0 ? { selectedIndex: filtered.length - 1 } : null;
               }
               return null;
@@ -392,9 +386,7 @@ class App extends React.Component {
 
   handleViewInChat = () => {
     this.setState(prev => {
-      const filteredRequests = prev.showAll ? prev.requests : prev.requests.filter(r =>
-        !r.isHeartbeat && !r.isCountTokens && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
-      );
+      const filteredRequests = prev.showAll ? prev.requests : filterRelevantRequests(prev.requests);
       const selectedReq = filteredRequests[prev.selectedIndex];
       if (!selectedReq) return null;
       let targetTs = null;
@@ -403,12 +395,7 @@ class App extends React.Component {
       } else {
         const idx = prev.requests.indexOf(selectedReq);
         if (idx >= 0) {
-          for (let i = idx - 1; i >= 0; i--) {
-            if (prev.requests[i].mainAgent && prev.requests[i].timestamp) {
-              targetTs = prev.requests[i].timestamp;
-              break;
-            }
-          }
+          targetTs = findPrevMainAgentTimestamp(prev.requests, idx);
         }
         if (!targetTs) {
           message.info(t('ui.cannotMap'));
@@ -424,9 +411,7 @@ class App extends React.Component {
       if (newMode === 'raw') {
         // 从对话模式切回 raw 模式
         if (prev.selectedIndex === null) {
-          const filtered = prev.showAll ? prev.requests : prev.requests.filter(r =>
-            !r.isHeartbeat && !r.isCountTokens && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
-          );
+          const filtered = prev.showAll ? prev.requests : filterRelevantRequests(prev.requests);
           return {
             viewMode: newMode,
             selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
@@ -436,9 +421,7 @@ class App extends React.Component {
         return { viewMode: newMode, scrollCenter: true };
       }
       // raw → chat：根据选中的请求定位到对话
-      const filtered = prev.showAll ? prev.requests : prev.requests.filter(r =>
-        !r.isHeartbeat && !r.isCountTokens && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
-      );
+      const filtered = prev.showAll ? prev.requests : filterRelevantRequests(prev.requests);
       const selectedReq = prev.selectedIndex != null ? filtered[prev.selectedIndex] : null;
       if (selectedReq) {
         // 找到选中请求对应的 mainAgent timestamp
@@ -449,12 +432,7 @@ class App extends React.Component {
           // 非 mainAgent 请求，向前找最近的 mainAgent
           const idx = prev.requests.indexOf(selectedReq);
           if (idx >= 0) {
-            for (let i = idx - 1; i >= 0; i--) {
-              if (prev.requests[i].mainAgent && prev.requests[i].timestamp) {
-                targetTs = prev.requests[i].timestamp;
-                break;
-              }
-            }
+            targetTs = findPrevMainAgentTimestamp(prev.requests, idx);
           }
           if (!targetTs) {
             message.info(t('ui.cannotMap'));
@@ -506,9 +484,7 @@ class App extends React.Component {
   handleFilterIrrelevantChange = (checked) => {
     this.setState(prev => {
       const newShowAll = !checked;
-      const newFiltered = newShowAll ? prev.requests : prev.requests.filter(r =>
-        !r.isHeartbeat && !r.isCountTokens && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
-      );
+      const newFiltered = newShowAll ? prev.requests : filterRelevantRequests(prev.requests);
       return {
         showAll: newShowAll,
         selectedIndex: newFiltered.length > 0 ? newFiltered.length - 1 : null,
@@ -659,9 +635,7 @@ class App extends React.Component {
                 mainAgentSessions = this.mergeMainAgentSessions(mainAgentSessions, entry);
               }
             }
-            const filtered = entries.filter(r =>
-              !r.isHeartbeat && !r.isCountTokens && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
-            );
+            const filtered = filterRelevantRequests(entries);
             this._isLocalLog = true;
             this._localLogFile = file.name;
             if (this.eventSource) { this.eventSource.close(); this.eventSource = null; }
@@ -700,9 +674,7 @@ class App extends React.Component {
     const { requests, selectedIndex, viewMode, currentTab, cacheExpireAt, cacheType, leftPanelWidth, mainAgentSessions, showAll, fileLoading, fileLoadingCount } = this.state;
 
     // 过滤心跳请求（eval/sdk-* 和 count_tokens），除非 showAll
-    const filteredRequests = showAll ? requests : requests.filter(r =>
-      !r.isHeartbeat && !r.isCountTokens && !/\/api\/eval\/sdk-/.test(r.url || '') && !/\/messages\/count_tokens/.test(r.url || '')
-    );
+    const filteredRequests = showAll ? requests : filterRelevantRequests(requests);
 
     const selectedRequest = selectedIndex !== null ? filteredRequests[selectedIndex] : null;
 
