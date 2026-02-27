@@ -140,7 +140,7 @@ const _initPromise = (async () => {
   } catch { }
 })();
 
-export { LOG_FILE, _initPromise, _resumeState, _choicePromise, resolveResumeChoice, _projectName };
+export { LOG_FILE, _initPromise, _resumeState, _choicePromise, resolveResumeChoice, _projectName, _logDir };
 
 const MAX_LOG_SIZE = 500 * 1024 * 1024; // 500MB
 

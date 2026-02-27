@@ -113,13 +113,3 @@ CC-Viewer 18 dili destekler ve sistem yerel ayarına göre otomatik olarak geçi
 ## License
 
 MIT
-
-### PR Nasıl Gönderilir
-Yazar PR'ları memnuniyetle karşılar ve topluluğu PR göndermeye teşvik eder.
-
-Bazı gereksinimler:
-
-PR gönderirken, lütfen Prompt'unuzun ne olduğunu ve kodu değiştirmek için hangi modeli kullandığınızı söyleyin (düşük kaliteli modellerle yapılan PR'lar kabul edilmez);
-Arayüz değişiklikleri varsa, arayüzde hangi işlevselliğin değiştirildiğini söyleyin — değişikliklerin etrafına daire çizilmiş bir ekran görüntüsü önerilir;
-cli.js ve interceptor.js'deki değişiklikler çok dikkatli incelenecektir, çünkü çekirdek dosyalardaki sorunların herkesin kullanımını etkilemesini istemiyorum;
-Lütfen göndermeden önce işlevselliği yerel olarak doğruladığınızdan emin olun — çok teşekkürler!

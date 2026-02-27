@@ -113,13 +113,3 @@ CC-Viewer admite 18 idiomas y cambia automáticamente según el idioma del siste
 ## License
 
 MIT
-
-### Cómo enviar un PR
-El autor acepta con gusto los PRs y anima a la comunidad a enviarlos.
-
-Algunos requisitos:
-
-Al enviar un PR, dígame cuál fue su Prompt y qué modelo usó para modificar el código (no se aceptan PRs hechos con modelos de baja calidad);
-Si hay cambios en la interfaz, dígame qué funcionalidad se modificó — se recomienda una captura de pantalla con círculos marcando los cambios;
-Los cambios en cli.js e interceptor.js se revisarán con mucho cuidado, ya que no quiero que problemas en archivos centrales afecten a todos los usuarios;
-Por favor, asegúrese de verificar la funcionalidad localmente antes de enviar — ¡muchas gracias!

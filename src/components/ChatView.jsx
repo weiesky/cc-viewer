@@ -1,7 +1,8 @@
 import React from 'react';
 import { Empty, Typography, Divider, Spin } from 'antd';
 import ChatMessage from './ChatMessage';
-import { extractToolResultText, isSystemText, isSkillText, getModelInfo } from '../utils/helpers';
+import { extractToolResultText, getModelInfo } from '../utils/helpers';
+import { isSystemText, classifyUserContent } from '../utils/contentFilter';
 import { t } from '../i18n';
 import styles from './ChatView.module.css';
 
@@ -203,8 +204,6 @@ class ChatView extends React.Component {
         if (Array.isArray(content)) {
           const suggestionText = content.find(b => b.type === 'text' && /^\[SUGGESTION MODE:/i.test((b.text || '').trim()));
           const toolResults = content.filter(b => b.type === 'tool_result');
-          // 检测是否为 skill/command 展开的消息
-          const hasCommand = content.some(b => b.type === 'text' && /<command-message>/i.test(b.text || ''));
 
           if (suggestionText && toolResults.length > 0) {
             let questions = null;
@@ -228,11 +227,14 @@ class ChatView extends React.Component {
               );
             }
           } else {
-            let textBlocks = content.filter(b => b.type === 'text' && !isSystemText(b.text));
-            // skill/command 展开的消息：只保留 slash command 显示，跳过 skill 正文
-            if (hasCommand) textBlocks = [];
-            // 检测 skill 加载的文本块
-            const skillBlocks = content.filter(b => b.type === 'text' && isSkillText(b.text));
+            const { commands, textBlocks, skillBlocks } = classifyUserContent(content);
+            // 渲染 slash command 作为独立用户输入
+            for (let ci = 0; ci < commands.length; ci++) {
+              renderedMessages.push(
+                <ChatMessage key={`${keyPrefix}-cmd-${mi}-${ci}`} role="user" text={commands[ci]} timestamp={ts} userProfile={userProfile} modelInfo={modelInfo} {...viewReqProps} />
+              );
+            }
+            // 渲染 skill 加载块
             for (const sb of skillBlocks) {
               const nameMatch = sb.text.match(/^#\s+(.+)$/m);
               const skillName = nameMatch ? nameMatch[1] : 'Skill';
@@ -240,10 +242,7 @@ class ChatView extends React.Component {
                 <ChatMessage key={`${keyPrefix}-skill-${mi}`} role="skill-loaded" text={sb.text} skillName={skillName} timestamp={ts} {...viewReqProps} />
               );
             }
-            // 过滤掉已作为 skill 渲染的文本块
-            if (skillBlocks.length > 0) {
-              textBlocks = textBlocks.filter(b => !isSkillText(b.text));
-            }
+            // 渲染普通用户文本块
             for (let ti = 0; ti < textBlocks.length; ti++) {
               const isPlan = /^Implement the following plan:/i.test((textBlocks[ti].text || '').trim());
               renderedMessages.push(

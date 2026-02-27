@@ -1,7 +1,8 @@
 import React from 'react';
-import { Space, Tag, Button, Badge, Typography, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Tabs } from 'antd';
-import { MessageOutlined, FileTextOutlined, ImportOutlined, DownOutlined, DashboardOutlined, SaveOutlined, ExportOutlined, DownloadOutlined, SettingOutlined } from '@ant-design/icons';
-import { isSystemText, formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats } from '../utils/helpers';
+import { Space, Tag, Button, Badge, Typography, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Tabs, Spin } from 'antd';
+import { MessageOutlined, FileTextOutlined, ImportOutlined, DownOutlined, DashboardOutlined, SaveOutlined, ExportOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined } from '@ant-design/icons';
+import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats } from '../utils/helpers';
+import { isSystemText, classifyUserContent } from '../utils/contentFilter';
 import { t, getLang, setLang } from '../i18n';
 import ConceptHelp from './ConceptHelp';
 import styles from './AppHeader.module.css';
@@ -32,7 +33,7 @@ const { Text } = Typography;
 class AppHeader extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { countdownText: '', promptModalVisible: false, promptData: [], promptViewMode: 'original', settingsDrawerVisible: false, globalSettingsVisible: false };
+    this.state = { countdownText: '', promptModalVisible: false, promptData: [], promptViewMode: 'original', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false };
     this._rafId = null;
     this._expiredTimer = null;
     this.updateCountdown = this.updateCountdown.bind(this);
@@ -124,14 +125,6 @@ class AppHeader extends React.Component {
   }
 
 
-  // 从文本中提取斜杠命令名（如 <command-name>/context</command-name> → /context）
-  static extractSlashCommand(text) {
-    const m = text.match(/<command-name>([\s\S]*?)<\/command-name>/i);
-    if (!m) return null;
-    const cmd = m[1].trim();
-    return cmd.startsWith('/') ? cmd : `/${cmd}`;
-  }
-
   // 从消息列表中提取用户文本
   static extractUserTexts(messages) {
     const userMsgs = [];   // 纯用户文本（不含系统标签），用于去重
@@ -146,30 +139,23 @@ class AppHeader extends React.Component {
           if (/^Implement the following plan:/i.test(text)) continue;
           userMsgs.push(text);
           fullTexts.push(text);
-        } else {
-          const cmd = AppHeader.extractSlashCommand(text);
-          if (cmd) slashCmd = cmd;
         }
       } else if (Array.isArray(msg.content)) {
-        // 检测是否为 skill/command 展开的消息（含 <command-message> 标签）
-        const hasCommand = msg.content.some(b => b.type === 'text' && /<command-message>/i.test(b.text || ''));
-        // 分别收集纯用户文本和完整文本
-        const userParts = [];
-        const allParts = [];
-        for (const b of msg.content) {
-          if (b.type !== 'text' || !b.text?.trim()) continue;
-          const text = b.text.trim();
-          allParts.push(text);
-          if (!isSystemText(text)) {
-            if (/^Implement the following plan:/i.test(text)) continue;
-            // skill 展开内容不作为用户 prompt
-            if (hasCommand) continue;
-            userParts.push(text);
-          } else {
-            const cmd = AppHeader.extractSlashCommand(text);
-            if (cmd) slashCmd = cmd;
-          }
+        const { commands, textBlocks } = classifyUserContent(msg.content);
+        // 取最后一个 slash command（与之前行为一致）
+        if (commands.length > 0) {
+          slashCmd = commands[commands.length - 1];
         }
+        // 过滤掉 plan prompt
+        const userParts = [];
+        for (const b of textBlocks) {
+          if (/^Implement the following plan:/i.test((b.text || '').trim())) continue;
+          userParts.push(b.text.trim());
+        }
+        // 收集完整文本用于 context 视图
+        const allParts = msg.content
+          .filter(b => b.type === 'text' && b.text?.trim())
+          .map(b => b.text.trim());
         if (userParts.length > 0) {
           userMsgs.push(userParts.join('\n'));
           fullTexts.push(allParts.join('\n'));
@@ -469,6 +455,124 @@ class AppHeader extends React.Component {
     return blocks.join('\n\n\n');
   }
 
+  handleShowProjectStats = () => {
+    this.setState({ projectStatsVisible: true, projectStatsLoading: true });
+    fetch('/api/project-stats')
+      .then(res => {
+        if (!res.ok) throw new Error('not found');
+        return res.json();
+      })
+      .then(data => this.setState({ projectStats: data, projectStatsLoading: false }))
+      .catch(() => this.setState({ projectStats: null, projectStatsLoading: false }));
+  };
+
+  renderProjectStatsContent() {
+    const { projectStats, projectStatsLoading } = this.state;
+
+    if (projectStatsLoading) {
+      return <div className={styles.projectStatsCenter}><Spin /></div>;
+    }
+
+    if (!projectStats) {
+      return <div className={styles.projectStatsEmpty}>{t('ui.projectStats.noData')}</div>;
+    }
+
+    const { summary, models, updatedAt } = projectStats;
+    const modelEntries = models ? Object.entries(models).sort((a, b) => b[1] - a[1]) : [];
+
+    // 从 files 中汇总每个模型的 token 详情
+    const modelTokens = {};
+    if (projectStats.files) {
+      for (const fStats of Object.values(projectStats.files)) {
+        if (!fStats.models) continue;
+        for (const [model, data] of Object.entries(fStats.models)) {
+          if (!modelTokens[model]) modelTokens[model] = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, count: 0 };
+          modelTokens[model].input += data.input_tokens || 0;
+          modelTokens[model].output += data.output_tokens || 0;
+          modelTokens[model].cacheRead += data.cache_read_input_tokens || 0;
+          modelTokens[model].cacheCreation += data.cache_creation_input_tokens || 0;
+          modelTokens[model].count += data.count || 0;
+        }
+      }
+    }
+    const modelTokenEntries = Object.entries(modelTokens).sort((a, b) => b[1].count - a[1].count);
+
+    return (
+      <div className={styles.projectStatsContent}>
+        {updatedAt && (
+          <div className={styles.projectStatsUpdated}>
+            {t('ui.projectStats.updatedAt', { time: new Date(updatedAt).toLocaleString() })}
+          </div>
+        )}
+
+        <div className={styles.projectStatsSummary}>
+          <div className={styles.projectStatCard}>
+            <div className={styles.projectStatValue}>{summary?.requestCount ?? 0}</div>
+            <div className={styles.projectStatLabel}>{t('ui.projectStats.totalRequests')}</div>
+          </div>
+          <div className={styles.projectStatCard}>
+            <div className={styles.projectStatValue}>{summary?.fileCount ?? 0}</div>
+            <div className={styles.projectStatLabel}>{t('ui.projectStats.totalFiles')}</div>
+          </div>
+          <div className={styles.projectStatCard}>
+            <div className={styles.projectStatValue}>{formatTokenCount(summary?.input_tokens)}</div>
+            <div className={styles.projectStatLabel}>Input Tokens</div>
+          </div>
+          <div className={styles.projectStatCard}>
+            <div className={styles.projectStatValue}>{formatTokenCount(summary?.output_tokens)}</div>
+            <div className={styles.projectStatLabel}>Output Tokens</div>
+          </div>
+        </div>
+
+        {modelTokenEntries.length > 0 && (
+          <div className={styles.projectStatsSection}>
+            <div className={styles.projectStatsSectionTitle}>{t('ui.projectStats.modelUsage')}</div>
+            {modelTokenEntries.map(([model, data]) => {
+              const totalInput = data.input + data.cacheRead + data.cacheCreation;
+              const cacheHitRate = totalInput > 0 ? ((data.cacheRead / totalInput) * 100).toFixed(1) : '0.0';
+              return (
+                <div key={model} className={styles.projectStatsModelCard}>
+                  <div className={styles.projectStatsModelHeader}>
+                    <span className={styles.projectStatsModelName}>{model}</span>
+                    <span className={styles.projectStatsModelCount}>{data.count} reqs</span>
+                  </div>
+                  <table className={styles.statsTable}>
+                    <tbody>
+                      <tr>
+                        <td className={styles.label}>Token</td>
+                        <td className={styles.th}>input</td>
+                        <td className={styles.th}>output</td>
+                      </tr>
+                      <tr className={styles.rowBorder}>
+                        <td className={styles.label}></td>
+                        <td className={styles.td}>{formatTokenCount(totalInput)}</td>
+                        <td className={styles.td}>{formatTokenCount(data.output)}</td>
+                      </tr>
+                      <tr>
+                        <td className={styles.label}>Cache</td>
+                        <td className={styles.th}>create</td>
+                        <td className={styles.th}>read</td>
+                      </tr>
+                      <tr className={styles.rowBorder}>
+                        <td className={styles.label}></td>
+                        <td className={styles.td}>{formatTokenCount(data.cacheCreation)}</td>
+                        <td className={styles.td}>{formatTokenCount(data.cacheRead)}</td>
+                      </tr>
+                      <tr>
+                        <td className={styles.label}>{t('ui.hitRate')}</td>
+                        <td colSpan={2} className={styles.td}>{cacheHitRate}%</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   render() {
     const { requestCount, viewMode, cacheType, onToggleViewMode, onImportLocalLogs, onLangChange, isLocalLog, localLogFile, projectName, collapseToolResults, onCollapseToolResultsChange, expandThinking, onExpandThinkingChange, expandDiff, onExpandDiffChange, filterIrrelevant, onFilterIrrelevantChange } = this.props;
     const { countdownText } = this.state;
@@ -498,6 +602,12 @@ class AppHeader extends React.Component {
         onClick: this.handleShowPrompts,
       },
       { type: 'divider' },
+      {
+        key: 'project-stats',
+        icon: <BarChartOutlined />,
+        label: t('ui.projectStats'),
+        onClick: this.handleShowProjectStats,
+      },
       {
         key: 'global-settings',
         icon: <SettingOutlined />,
@@ -661,6 +771,15 @@ class AppHeader extends React.Component {
             />
           </div>
         </Modal>
+        <Drawer
+          title={<span><BarChartOutlined style={{ marginRight: 8 }} />{t('ui.projectStats')}</span>}
+          placement="right"
+          width={400}
+          open={this.state.projectStatsVisible}
+          onClose={() => this.setState({ projectStatsVisible: false })}
+        >
+          {this.renderProjectStatsContent()}
+        </Drawer>
       </div>
     );
   }

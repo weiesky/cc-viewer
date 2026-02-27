@@ -113,13 +113,3 @@ CC-Viewer understøtter 18 sprog og skifter automatisk baseret på systemets spr
 ## License
 
 MIT
-
-### Sådan indsender du en PR
-Forfatteren modtager gerne PRs og opfordrer fællesskabet til at indsende dem.
-
-Nogle krav:
-
-Når du indsender en PR, skal du fortælle mig, hvad din Prompt var, og hvilken model du brugte til at ændre koden (PRs lavet med dårlige modeller accepteres ikke);
-Hvis der er UI-ændringer, fortæl mig hvilken funktionalitet der blev ændret på grænsefladen — et skærmbillede med cirkler omkring ændringerne anbefales;
-Ændringer i cli.js og interceptor.js vil blive gennemgået meget omhyggeligt, da jeg ikke ønsker, at problemer i kernefiler påvirker alles brug;
-Sørg venligst for at verificere funktionaliteten lokalt, før du indsender — tusind tak!

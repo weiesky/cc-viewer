@@ -113,13 +113,3 @@ CC-Viewer prend en charge 18 langues et bascule automatiquement en fonction de l
 ## License
 
 MIT
-
-### Comment soumettre une PR
-L'auteur accueille volontiers les PRs et encourage la communauté à en soumettre.
-
-Quelques exigences :
-
-Lors de la soumission d'une PR, veuillez me dire quel était votre Prompt et quel modèle vous avez utilisé pour modifier le code (les PRs faites avec des modèles de qualité inférieure ne seront pas acceptées) ;
-S'il y a des changements d'interface, dites-moi quelle fonctionnalité a été modifiée — une capture d'écran avec des cercles autour des changements est recommandée ;
-Les modifications de cli.js et interceptor.js seront examinées très attentivement, car je ne veux pas que des problèmes dans les fichiers principaux affectent l'utilisation de tout le monde ;
-Veuillez vous assurer de vérifier la fonctionnalité localement avant de soumettre — merci infiniment !

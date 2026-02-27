@@ -113,13 +113,3 @@ CC-Viewer støtter 18 språk og bytter automatisk basert på systemets språkinn
 ## License
 
 MIT
-
-### Hvordan sende inn en PR
-Forfatteren tar gjerne imot PRer og oppfordrer fellesskapet til å sende inn.
-
-Noen krav:
-
-Når du sender inn en PR, vennligst fortell meg hva Prompten din var og hvilken modell du brukte til å endre koden (PRer laget med dårlige modeller aksepteres ikke);
-Hvis det er UI-endringer, fortell meg hvilken funksjonalitet som ble endret på grensesnittet — et skjermbilde med sirkler rundt endringene anbefales;
-Endringer i cli.js og interceptor.js vil bli gjennomgått svært nøye, da jeg ikke ønsker at problemer i kjernefiler skal påvirke alles bruk;
-Vennligst sørg for å verifisere funksjonaliteten lokalt før du sender inn — tusen takk!

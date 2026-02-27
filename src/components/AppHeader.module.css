@@ -287,3 +287,99 @@
   outline: none;
 }
 
+/* Project Stats Drawer */
+.projectStatsCenter {
+  display: flex;
+  justify-content: center;
+  padding: 40px 0;
+}
+
+.projectStatsEmpty {
+  color: #999;
+  padding: 40px 0;
+  text-align: center;
+  font-size: 13px;
+}
+
+.projectStatsContent {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.projectStatsUpdated {
+  color: #666;
+  font-size: 12px;
+  text-align: right;
+}
+
+.projectStatsSummary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.projectStatCard {
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 14px 12px;
+  text-align: center;
+}
+
+.projectStatValue {
+  font-size: 22px;
+  font-weight: 700;
+  color: #e5e5e5;
+  font-family: monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.projectStatLabel {
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
+}
+
+.projectStatsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.projectStatsSectionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ccc;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #333;
+}
+
+.projectStatsModelCard {
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.projectStatsModelHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #333;
+}
+
+.projectStatsModelName {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e5e5e5;
+}
+
+.projectStatsModelCount {
+  font-size: 12px;
+  color: #888;
+  font-family: monospace;
+}
+

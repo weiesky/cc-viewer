@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, extname, basename } from 'node:path';
 import { homedir, userInfo, platform } from 'node:os';
 import { execSync } from 'node:child_process';
-import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice, _projectName, _cachedApiKey, _cachedAuthHeader, _cachedHaikuModel } from './interceptor.js';
+import { Worker } from 'node:worker_threads';
+import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice, _projectName, _logDir, _cachedApiKey, _cachedAuthHeader, _cachedHaikuModel } from './interceptor.js';
 import { LOG_DIR } from './findcc.js';
 import { t, detectLanguage } from './i18n.js';
 
@@ -50,6 +51,36 @@ let server;
 let actualPort = START_PORT;
 // 跟踪所有被 watch 的日志文件
 const watchedFiles = new Map();
+// Stats Worker 实例
+let statsWorker = null;
+
+function startStatsWorker() {
+  try {
+    statsWorker = new Worker(new URL('./stats-worker.js', import.meta.url));
+    statsWorker.on('error', (err) => {
+      console.error('[CC Viewer] Stats worker error:', err.message);
+      statsWorker = null;
+    });
+    statsWorker.on('exit', (code) => {
+      if (code !== 0) {
+        console.error('[CC Viewer] Stats worker exited with code', code);
+      }
+      statsWorker = null;
+    });
+    // 初始化：全量扫描当前项目
+    if (_projectName && _logDir) {
+      statsWorker.postMessage({ type: 'init', logDir: LOG_DIR, projectName: _projectName });
+    }
+  } catch (err) {
+    console.error('[CC Viewer] Failed to start stats worker:', err.message);
+  }
+}
+
+function notifyStatsWorker(logFile) {
+  if (statsWorker && _projectName) {
+    statsWorker.postMessage({ type: 'update', logDir: LOG_DIR, projectName: _projectName, logFile });
+  }
+}
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -114,6 +145,8 @@ function watchLogFile(logFile) {
             // Skip invalid entries
           }
         });
+        // 通知 stats worker 更新统计
+        notifyStatsWorker(logFile);
       }
 
       // 检测日志文件是否已轮转到新文件
@@ -385,6 +418,56 @@ function handleRequest(req, res) {
     return;
   }
 
+  // 项目统计数据
+  if (url === '/api/project-stats' && method === 'GET') {
+    try {
+      if (!_projectName) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'No project name' }));
+        return;
+      }
+      const statsFile = join(LOG_DIR, _projectName, `${_projectName}.json`);
+      if (!existsSync(statsFile)) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Stats file not found' }));
+        return;
+      }
+      const stats = readFileSync(statsFile, 'utf-8');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(stats);
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
+  // 所有项目统计数据
+  if (url === '/api/all-project-stats' && method === 'GET') {
+    try {
+      const allStats = {};
+      if (existsSync(LOG_DIR)) {
+        const entries = readdirSync(LOG_DIR, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          const project = entry.name;
+          const statsFile = join(LOG_DIR, project, `${project}.json`);
+          if (existsSync(statsFile)) {
+            try {
+              allStats[project] = JSON.parse(readFileSync(statsFile, 'utf-8'));
+            } catch { }
+          }
+        }
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(allStats));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
   // macOS 用户头像和显示名
   if (url === '/api/user-profile' && method === 'GET') {
     const profile = getUserProfile();
@@ -621,6 +704,7 @@ export async function startViewer() {
           }
         } catch { }
         startWatching();
+        startStatsWorker();
         resolve(server);
       });
 
@@ -656,6 +740,10 @@ export function stopViewer() {
   clients = [];
   if (server) {
     server.close();
+  }
+  if (statsWorker) {
+    statsWorker.terminate();
+    statsWorker = null;
   }
 }
 

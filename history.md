@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0 (2026-02-28)
+
+- Added Project Stats feature: background worker scans JSONL logs and generates per-project statistics including total requests, session file count, model usage with token breakdown (input/output/cache) and cache hit rates
+- Added `/api/project-stats` and `/api/all-project-stats` API endpoints
+- Refactored user content classification into shared `contentFilter.js` module (used by both ChatView and AppHeader)
+- Fix: added missing `Spin` import in AppHeader causing "Spin is not defined" error
+
 ## 1.2.9 (2026-02-27)
 
 - Fix: clicking request list item no longer causes unwanted scroll-to-bottom; only programmatic selection changes trigger scroll

@@ -113,13 +113,3 @@ CC-Viewer obsługuje 18 języków, automatycznie przełączając się na podstaw
 ## License
 
 MIT
-
-### Jak zgłosić PR
-Autor chętnie przyjmuje PRy i zachęca społeczność do ich zgłaszania.
-
-Kilka wymagań:
-
-Przy zgłaszaniu PR proszę powiedzieć mi, jaki był Twój Prompt i jakiego modelu użyłeś do modyfikacji kodu (PRy wykonane przy użyciu słabych modeli nie będą akceptowane);
-Jeśli są zmiany w interfejsie, powiedz mi, jaka funkcjonalność została zmieniona — zalecany jest zrzut ekranu z zakreślonymi zmianami;
-Zmiany w cli.js i interceptor.js będą bardzo dokładnie sprawdzane, ponieważ nie chcę, aby problemy w plikach głównych wpływały na użytkowanie przez wszystkich;
-Proszę upewnić się, że funkcjonalność została zweryfikowana lokalnie przed zgłoszeniem — z góry bardzo dziękuję!

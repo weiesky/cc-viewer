@@ -113,13 +113,3 @@ CC-Viewer unterstützt 18 Sprachen und wechselt automatisch basierend auf der Sy
 ## License
 
 MIT
-
-### Wie man einen PR einreicht
-Der Autor freut sich über PRs und ermutigt die Community, PRs einzureichen.
-
-Einige Anforderungen:
-
-Beim Einreichen eines PRs teilen Sie mir bitte mit, was Ihr Prompt war und welches Modell Sie zur Codeänderung verwendet haben (PRs mit minderwertigen Modellen werden nicht akzeptiert);
-Bei UI-Änderungen teilen Sie mir bitte mit, welche Funktionalität auf der Oberfläche geändert wurde — ein Screenshot mit eingekreisten Änderungen wird empfohlen;
-Änderungen an cli.js und interceptor.js werden sehr sorgfältig geprüft, da Probleme in Kerndateien alle Benutzer betreffen könnten;
-Bitte stellen Sie sicher, dass Sie die Funktionalität lokal verifiziert haben, bevor Sie einreichen — vielen Dank!

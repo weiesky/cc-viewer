@@ -115,13 +115,3 @@ CC-Viewer supports 18 languages, automatically switching based on system locale:
 ## License
 
 MIT
-
-### How to Submit a PR
-The author welcomes and encourages PRs from the community.
-
-A few requirements:
-
-When submitting a PR, please tell me what your Prompt was and which model you used to modify the code (PRs made with inferior models will not be accepted);
-If there are UI changes, tell me what functionality was modified on the interface — a screenshot with circles drawn around the changes is recommended;
-Changes to cli.js and interceptor.js will be reviewed very carefully, as I don't want issues in core files to affect everyone's usage;
-Please make sure to verify the functionality locally before submitting — much appreciated!
