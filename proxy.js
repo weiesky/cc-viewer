@@ -40,7 +40,6 @@ export function startProxy() {
       // Handle CORS preflight if needed (though claude cli probably doesn't send OPTIONS)
 
       const originalBaseUrl = getOriginalBaseUrl();
-      const targetUrl = new URL(req.url, originalBaseUrl);
 
       // Use the patched fetch (which logs to cc-viewer)
       try {

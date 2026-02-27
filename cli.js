@@ -306,7 +306,7 @@ if (isVersion) {
 
 if (args[0] === 'run') {
   runProxyCommand(args);
-} else if (args.includes('--uninstall')) {
+} else if (isUninstall) {
   const cliResult = removeCliJsInjection();
   const shellResult = removeShellHook();
 

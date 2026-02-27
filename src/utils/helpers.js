@@ -334,3 +334,37 @@ export function getModelShort(model) {
     .replace(/^claude-/, '')
     .replace(/-\d{8,}$/, '');
 }
+
+// ============== 请求过滤相关 ==============
+
+/**
+ * 判断请求是否为相关请求（过滤掉心跳、token计数、eval/sdk 请求）
+ */
+export function isRelevantRequest(request) {
+  const url = request?.url || '';
+  return !(
+    request.isHeartbeat ||
+    request.isCountTokens ||
+    /\/api\/eval\/sdk-/.test(url) ||
+    /\/messages\/count_tokens/.test(url)
+  );
+}
+
+/**
+ * 过滤出相关请求
+ */
+export function filterRelevantRequests(requests) {
+  return requests.filter(isRelevantRequest);
+}
+
+/**
+ * 从请求列表中查找前一个 MainAgent 请求的时间戳
+ */
+export function findPrevMainAgentTimestamp(requests, startIndex) {
+  for (let i = startIndex - 1; i >= 0; i--) {
+    if (requests[i].mainAgent && requests[i].timestamp) {
+      return requests[i].timestamp;
+    }
+  }
+  return null;
+}
