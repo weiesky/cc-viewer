@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1 (2026-02-28)
+
+- Fix: include `stats-worker.js` in npm package files
+
 ## 1.3.0 (2026-02-28)
 
 - Added Project Stats feature: background worker scans JSONL logs and generates per-project statistics including total requests, session file count, model usage with token breakdown (input/output/cache) and cache hit rates
