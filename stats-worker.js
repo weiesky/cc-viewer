@@ -3,6 +3,9 @@ import { parentPort } from 'node:worker_threads';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, basename } from 'node:path';
 
+// 统计 schema 版本号，新增统计字段时递增，强制旧缓存失效重新解析
+const STATS_VERSION = 2;
+
 /**
  * 解析单个 JSONL 文件，提取模型使用次数和 token 统计
  * @param {string} filePath JSONL 文件绝对路径
@@ -11,6 +14,7 @@ import { join, basename } from 'node:path';
 function parseJsonlFile(filePath) {
   const models = {};
   let requestCount = 0;
+  let sessionCount = 0;
   let totalInput = 0;
   let totalOutput = 0;
   let totalCacheRead = 0;
@@ -18,13 +22,18 @@ function parseJsonlFile(filePath) {
 
   try {
     const content = readFileSync(filePath, 'utf-8');
-    if (!content.trim()) return { models, summary: { requestCount: 0, input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } };
+    if (!content.trim()) return { models, summary: { requestCount: 0, sessionCount: 0, input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } };
 
     const entries = content.split('\n---\n').filter(p => p.trim());
     for (const raw of entries) {
       try {
         const entry = JSON.parse(raw);
         requestCount++;
+
+        // 会话轮次：MainAgent 且 messages.length === 1 表示一次新会话开始
+        if (entry.mainAgent && Array.isArray(entry.body?.messages) && entry.body.messages.length === 1) {
+          sessionCount++;
+        }
 
         // 提取模型名：优先 body.model，其次 response.body.model
         const model = entry.body?.model || entry.response?.body?.model;
@@ -65,6 +74,7 @@ function parseJsonlFile(filePath) {
     models,
     summary: {
       requestCount,
+      sessionCount,
       input_tokens: totalInput,
       output_tokens: totalOutput,
       cache_read_input_tokens: totalCacheRead,
@@ -119,8 +129,9 @@ function generateProjectStats(projectDir, projectName, onlyFile) {
     const size = stat.size;
     const lastModified = stat.mtime.toISOString();
 
-    // 增量优化：如果有已有统计且文件未变化，直接复用
-    if (existing?.files?.[f] && existing.files[f].size === size && existing.files[f].lastModified === lastModified) {
+    // 增量优化：如果有已有统计且文件未变化且 schema 版本一致，直接复用
+    if (existing?._v === STATS_VERSION
+        && existing?.files?.[f] && existing.files[f].size === size && existing.files[f].lastModified === lastModified) {
       // 如果指定了 onlyFile 且不是此文件，跳过重新解析
       if (!onlyFile || onlyFile !== f) {
         filesStats[f] = existing.files[f];
@@ -153,6 +164,7 @@ function generateProjectStats(projectDir, projectName, onlyFile) {
 
   // 计算全局汇总
   let totalRequests = 0;
+  let totalSessions = 0;
   let totalInput = 0;
   let totalOutput = 0;
   let totalCacheRead = 0;
@@ -160,6 +172,7 @@ function generateProjectStats(projectDir, projectName, onlyFile) {
 
   for (const f of Object.values(filesStats)) {
     totalRequests += f.summary.requestCount;
+    totalSessions += f.summary.sessionCount || 0;
     totalInput += f.summary.input_tokens;
     totalOutput += f.summary.output_tokens;
     totalCacheRead += f.summary.cache_read_input_tokens;
@@ -167,12 +180,14 @@ function generateProjectStats(projectDir, projectName, onlyFile) {
   }
 
   const stats = {
+    _v: STATS_VERSION,
     project: projectName,
     updatedAt: new Date().toISOString(),
     models: topModels,
     files: filesStats,
     summary: {
       requestCount: totalRequests,
+      sessionCount: totalSessions,
       fileCount: jsonlFiles.length,
       input_tokens: totalInput,
       output_tokens: totalOutput,

@@ -357,8 +357,10 @@ class App extends React.Component {
     const newResponse = entry.response;
     const userId = entry.body.metadata?.user_id || null;
 
+    const entryTimestamp = entry.timestamp || null;
+
     if (prevSessions.length === 0) {
-      return [{ userId, messages: newMessages, response: newResponse }];
+      return [{ userId, messages: newMessages, response: newResponse, entryTimestamp }];
     }
 
     const lastSession = prevSessions[prevSessions.length - 1];
@@ -369,10 +371,10 @@ class App extends React.Component {
 
     if (userId && userId === lastSession.userId && !isNewConversation) {
       const updated = [...prevSessions];
-      updated[updated.length - 1] = { userId, messages: newMessages, response: newResponse };
+      updated[updated.length - 1] = { userId, messages: newMessages, response: newResponse, entryTimestamp };
       return updated;
     } else {
-      return [...prevSessions, { userId, messages: newMessages, response: newResponse }];
+      return [...prevSessions, { userId, messages: newMessages, response: newResponse, entryTimestamp }];
     }
   }
 

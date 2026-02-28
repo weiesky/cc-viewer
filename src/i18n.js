@@ -2296,6 +2296,26 @@ const i18nData = {
     "tr": "Toplam İstekler",
     "uk": "Всього запитів"
   },
+  "ui.projectStats.sessionCount": {
+    "zh": "会话轮次",
+    "en": "Sessions",
+    "zh-TW": "會話輪次",
+    "ko": "세션 수",
+    "ja": "セッション数",
+    "de": "Sitzungen",
+    "es": "Sesiones",
+    "fr": "Sessions",
+    "it": "Sessioni",
+    "da": "Sessioner",
+    "pl": "Sesje",
+    "ru": "Сессий",
+    "ar": "الجلسات",
+    "no": "Sesjoner",
+    "pt-BR": "Sessões",
+    "th": "เซสชัน",
+    "tr": "Oturumlar",
+    "uk": "Сесії"
+  },
   "ui.projectStats.totalFiles": {
     "zh": "会话文件数",
     "en": "Session Files",

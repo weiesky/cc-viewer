@@ -327,8 +327,10 @@ class ChatView extends React.Component {
               </Divider>
             </React.Fragment>
           );
+          // 将 Last Response 关联到该 session 对应的 entry timestamp，用于原文-对话定位
+          if (session.entryTimestamp) tsItemMap[session.entryTimestamp] = allItems.length;
           allItems.push(
-            <ChatMessage key="resp-asst" role="assistant" content={respContent} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} toolResultMap={{}} />
+            <ChatMessage key="resp-asst" role="assistant" content={respContent} timestamp={session.entryTimestamp} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} toolResultMap={{}} />
           );
         }
       }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.3 (2026-02-28)
+
+- Fix: Last Response in chat view now correctly correlates with the original request list, enabling proper scroll-to positioning when switching between raw and chat views
+- Added session count (sessionCount) to project stats, tracking new conversation starts across JSONL log files
+- Stats worker schema versioning (`STATS_VERSION`) to force cache invalidation when stats fields change
+
 ## 1.3.2 (2026-02-28)
 
 - Refactor: consolidate all MainAgent detection logic into `contentFilter.js` (`isMainAgent()`) as the single source of truth, replacing scattered `req.mainAgent` checks across 6 files
