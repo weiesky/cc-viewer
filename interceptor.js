@@ -469,7 +469,8 @@ export function setupInterceptor() {
           isCountTokens: /\/messages\/count_tokens/.test(urlStr),
           mainAgent: (() => {
             if (!body?.system || !Array.isArray(body?.tools) || body.tools.length <= 10) return false;
-            if (!['Task', 'Edit', 'Bash'].every(n => body.tools.some(t => t.name === n))) return false;
+            if (!['Edit', 'Bash'].every(n => body.tools.some(t => t.name === n))) return false;
+            if (!body.tools.some(t => t.name === 'Task' || t.name === 'Agent')) return false;
             const sysText = typeof body.system === 'string' ? body.system :
               Array.isArray(body.system) ? body.system.map(s => s?.text || '').join('') : '';
             // 正向：必须包含 MainAgent 身份标识

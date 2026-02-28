@@ -1,8 +1,8 @@
-import { isSkillText } from './contentFilter.js';
+import { isSkillText, isMainAgent } from './contentFilter.js';
 
 export function analyzeCacheLoss(requests, index) {
   const req = requests[index];
-  if (!req?.mainAgent) return null;
+  if (!isMainAgent(req)) return null;
 
   const usage = req.response?.body?.usage;
   if (!usage) return null;
@@ -15,7 +15,7 @@ export function analyzeCacheLoss(requests, index) {
   // 向前查找上一个 MainAgent
   let prevMainAgent = null;
   for (let i = index - 1; i >= 0; i--) {
-    if (requests[i].mainAgent) {
+    if (isMainAgent(requests[i])) {
       prevMainAgent = requests[i];
       break;
     }
@@ -346,7 +346,7 @@ export function filterRelevantRequests(requests) {
  */
 export function findPrevMainAgentTimestamp(requests, startIndex) {
   for (let i = startIndex - 1; i >= 0; i--) {
-    if (requests[i].mainAgent && requests[i].timestamp) {
+    if (isMainAgent(requests[i]) && requests[i].timestamp) {
       return requests[i].timestamp;
     }
   }

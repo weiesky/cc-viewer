@@ -3,6 +3,7 @@
  * classifyRequest(req, nextReq?) 返回 { type, subType }
  * type: 'MainAgent' | 'SubAgent' | 'Count' | 'Preflight' | 'Plan'
  */
+import { isMainAgent, getSystemText } from './contentFilter';
 
 function getMessageText(msg) {
   const c = msg?.content;
@@ -15,15 +16,6 @@ function getMessageText(msg) {
   return '';
 }
 
-function getSystemText(body) {
-  const system = body?.system;
-  if (typeof system === 'string') return system;
-  if (Array.isArray(system)) {
-    return system.map(s => (s && s.text) || '').join('');
-  }
-  return '';
-}
-
 function getSubAgentSubType(req) {
   const body = req.body || {};
   const sysText = getSystemText(body);
@@ -31,7 +23,7 @@ function getSubAgentSubType(req) {
   if (/Extract any file paths/i.test(sysText)) return 'Bash';
   if (/process Bash commands/i.test(sysText)) return 'Bash';
   if (/command execution specialist/i.test(sysText)) return 'Bash';
-  if (/file search specialist/i.test(sysText)) return 'Task';
+  if (/file search specialist/i.test(sysText)) return 'Search';
   if (/planning specialist/i.test(sysText)) return 'Plan';
   if (/general-purpose agent/i.test(sysText)) return 'General';
 
@@ -111,13 +103,7 @@ function isPreflightRequest(req, nextReq) {
  * @param {object} [nextReq] - 下一条请求（用于 Preflight 判断）
  */
 export function classifyRequest(req, nextReq) {
-  if (req.mainAgent) {
-    // 二次校验：排除被误标记的 SubAgent（旧日志兼容）
-    const sysText = getSystemText(req.body || {});
-    if (/command execution specialist|file search specialist|planning specialist|general-purpose agent/i.test(sysText)) {
-      const subType = getSubAgentSubType(req);
-      return { type: 'SubAgent', subType };
-    }
+  if (isMainAgent(req)) {
     return { type: 'MainAgent', subType: null };
   }
 

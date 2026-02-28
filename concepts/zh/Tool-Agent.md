@@ -1,10 +1,8 @@
-# Task
-
-> **注意：** 新版 Claude Code 已将此工具重命名为 **Agent**，请参阅 [Tool-Agent](Tool-Agent) 文档。
+# Agent
 
 ## 定义
 
-启动一个子 agent（SubAgent）来自主处理复杂的多步骤任务。子 agent 是独立的子进程，拥有各自专用的工具集和上下文。
+启动一个子 agent（SubAgent）来自主处理复杂的多步骤任务。子 agent 是独立的子进程，拥有各自专用的工具集和上下文。Agent 是新版 Claude Code 中 Task 工具的重命名版本。
 
 ## 参数
 
@@ -16,7 +14,7 @@
 | `model` | enum | 否 | 指定模型（sonnet / opus / haiku），默认继承父级 |
 | `max_turns` | integer | 否 | 最大 agentic 轮次数 |
 | `run_in_background` | boolean | 否 | 是否后台运行，后台任务返回 output_file 路径 |
-| `resume` | string | 否 | 要恢复的 agent ID，从上次执行继续 |
+| `resume` | string | 否 | 要恢复的 agent ID，从上次执行继续。适用于在不丢失上下文的情况下接续之前的子 agent |
 | `isolation` | enum | 否 | 隔离模式，`worktree` 创建临时 git worktree |
 
 ## 子 agent 类型
@@ -25,8 +23,8 @@
 |------|------|----------|
 | `Bash` | 命令执行，git 操作 | Bash |
 | `general-purpose` | 通用多步骤任务 | 全部工具 |
-| `Explore` | 快速探索代码库 | 除 Task/Edit/Write/NotebookEdit/ExitPlanMode 外的所有工具 |
-| `Plan` | 设计实施方案 | 除 Task/Edit/Write/NotebookEdit/ExitPlanMode 外的所有工具 |
+| `Explore` | 快速探索代码库 | 除 Agent/Edit/Write/NotebookEdit/ExitPlanMode 外的所有工具 |
+| `Plan` | 设计实施方案 | 除 Agent/Edit/Write/NotebookEdit/ExitPlanMode 外的所有工具 |
 | `claude-code-guide` | Claude Code 使用指南问答 | Glob, Grep, Read, WebFetch, WebSearch |
 | `statusline-setup` | 配置状态栏 | Read, Edit |
 
@@ -46,10 +44,12 @@
 ## 注意事项
 
 - 子 agent 完成后返回单条消息，其结果对用户不可见，需要主 agent 转述
-- 可以在单条消息中发起多个并行 Task 调用以提高效率
+- 可以在单条消息中发起多个并行 Agent 调用以提高效率
 - 后台任务通过 TaskOutput 工具检查进度
 - Explore 类型比直接调用 Glob/Grep 慢，仅在简单搜索不够时使用
+- 长时间运行且不需要立即结果的任务建议使用 `run_in_background: true`；需要结果后才能继续时使用前台模式（默认）
+- `resume` 参数允许继续之前启动的子 agent 会话，保留其积累的上下文
 
 ## 在 cc-viewer 中的意义
 
-Task 调用会产生 SubAgent 请求链路，在请求列表中可以看到独立于 MainAgent 的子请求序列。SubAgent 请求通常具有精简的 system prompt 和较少的工具定义，与 MainAgent 形成明显对比。
+Agent 是新版 Claude Code 中 Task 工具的新名称。Agent 调用会产生 SubAgent 请求链路，在请求列表中可以看到独立于 MainAgent 的子请求序列。SubAgent 请求通常具有精简的 system prompt 和较少的工具定义，与 MainAgent 形成明显对比。在 cc-viewer 中，根据录制对话时使用的 Claude Code 版本不同，可能会出现 `Task` 或 `Agent` 两种工具名称。

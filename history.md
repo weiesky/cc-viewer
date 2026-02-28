@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.2 (2026-02-28)
+
+- Refactor: consolidate all MainAgent detection logic into `contentFilter.js` (`isMainAgent()`) as the single source of truth, replacing scattered `req.mainAgent` checks across 6 files
+- Added welcome guide page shown when no requests are loaded
+- Added Tool-Agent concept docs for all 18 languages (Claude Code renamed Task → Agent)
+- Updated interceptor mainAgent detection to support both `Task` and `Agent` tool names
+- Added i18n entries for guide UI
+
 ## 1.3.1 (2026-02-28)
 
 - Fix: include `stats-worker.js` in npm package files

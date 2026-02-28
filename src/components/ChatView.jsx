@@ -2,7 +2,7 @@ import React from 'react';
 import { Empty, Typography, Divider, Spin } from 'antd';
 import ChatMessage from './ChatMessage';
 import { extractToolResultText, getModelInfo } from '../utils/helpers';
-import { isSystemText, classifyUserContent } from '../utils/contentFilter';
+import { isSystemText, classifyUserContent, isMainAgent } from '../utils/contentFilter';
 import { t } from '../i18n';
 import styles from './ChatView.module.css';
 
@@ -280,7 +280,7 @@ class ChatView extends React.Component {
     const tsToIndex = {};
     if (requests) {
       for (let i = 0; i < requests.length; i++) {
-        if (requests[i].mainAgent && requests[i].timestamp) {
+        if (isMainAgent(requests[i]) && requests[i].timestamp) {
           tsToIndex[requests[i].timestamp] = i;
         }
       }
@@ -290,7 +290,7 @@ class ChatView extends React.Component {
     let modelName = null;
     if (requests) {
       for (let i = requests.length - 1; i >= 0; i--) {
-        if (requests[i].mainAgent && requests[i].body?.model) {
+        if (isMainAgent(requests[i]) && requests[i].body?.model) {
           modelName = requests[i].body.model;
           break;
         }

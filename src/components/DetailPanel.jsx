@@ -6,6 +6,7 @@ import ConceptHelp from './ConceptHelp';
 import { t } from '../i18n';
 import { formatTokenCount, stripPrivateKeys, hasClaudeMdReminder, isClaudeMdReminder, hasSkillsReminder, isSkillsReminder } from '../utils/helpers';
 import { classifyRequest } from '../utils/requestType';
+import { isMainAgent } from '../utils/contentFilter';
 import styles from './DetailPanel.module.css';
 
 const { Text, Paragraph } = Typography;
@@ -40,8 +41,8 @@ class DetailPanel extends React.Component {
 
   shouldComponentUpdate(nextProps, nextState) {
     if (nextProps.request !== this.props.request) {
-      const isMainAgent = !!nextProps.request?.mainAgent;
-      this.setState({ diffExpanded: isMainAgent && !!nextProps.expandDiff, requestHeadersExpanded: false, responseHeadersExpanded: false, reminderFilters: null });
+      const isMA = isMainAgent(nextProps.request);
+      this.setState({ diffExpanded: isMA && !!nextProps.expandDiff, requestHeadersExpanded: false, responseHeadersExpanded: false, reminderFilters: null });
     }
     return (
       nextProps.request !== this.props.request ||
@@ -258,7 +259,7 @@ class DetailPanel extends React.Component {
     const { requests, selectedIndex } = this.props;
     if (!requests || selectedIndex == null) return null;
     for (let i = selectedIndex - 1; i >= 0; i--) {
-      if (requests[i].mainAgent) return requests[i];
+      if (isMainAgent(requests[i])) return requests[i];
     }
     return null;
   }
@@ -305,7 +306,7 @@ class DetailPanel extends React.Component {
 
     // Diff logic for mainAgent requests
     let diffBlock = null;
-    if (request.mainAgent) {
+    if (isMainAgent(request)) {
       const prevRequest = this.getPrevMainAgentRequest();
       if (prevRequest) {
         const currSize = JSON.stringify(request.body).length;

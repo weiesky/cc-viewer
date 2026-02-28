@@ -8,6 +8,7 @@ import ChatView from './components/ChatView';
 import PanelResizer from './components/PanelResizer';
 import { t, getLang, setLang } from './i18n';
 import { formatTokenCount, filterRelevantRequests, findPrevMainAgentTimestamp } from './utils/helpers';
+import { isMainAgent } from './utils/contentFilter';
 import styles from './App.module.css';
 
 class App extends React.Component {
@@ -223,7 +224,7 @@ class App extends React.Component {
         // 记录 mainAgent 缓存信息
         let cacheExpireAt = prev.cacheExpireAt;
         let cacheType = prev.cacheType;
-        if (entry.mainAgent) {
+        if (isMainAgent(entry)) {
           const usage = entry.response?.body?.usage;
           if (usage?.cache_creation) {
             const cc = usage.cache_creation;
@@ -251,8 +252,7 @@ class App extends React.Component {
 
         // 合并 mainAgent sessions
         let mainAgentSessions = prev.mainAgentSessions;
-        if (entry.mainAgent && entry.body && Array.isArray(entry.body.messages)) {
-          // SSE 实时模式：为消息注入 _timestamp
+        if (isMainAgent(entry) && entry.body && Array.isArray(entry.body.messages)) {
           const timestamp = entry.timestamp || new Date().toISOString();
           const lastSession = mainAgentSessions.length > 0 ? mainAgentSessions[mainAgentSessions.length - 1] : null;
           const prevMessages = lastSession?.messages || [];
@@ -303,7 +303,7 @@ class App extends React.Component {
     let timestamps = []; // 累积的时间戳数组，索引对应消息位置
     let prevUserId = null;
     for (const entry of entries) {
-      if (!entry.mainAgent || !entry.body || !Array.isArray(entry.body.messages)) continue;
+      if (!isMainAgent(entry) || !entry.body || !Array.isArray(entry.body.messages)) continue;
       const messages = entry.body.messages;
       const count = messages.length;
       const userId = entry.body.metadata?.user_id || null;
@@ -339,7 +339,7 @@ class App extends React.Component {
   buildSessionsFromEntries(entries) {
     let sessions = [];
     for (const entry of entries) {
-      if (entry.mainAgent && entry.body && Array.isArray(entry.body.messages)) {
+      if (isMainAgent(entry) && entry.body && Array.isArray(entry.body.messages)) {
         sessions = this.mergeMainAgentSessions(sessions, entry);
       }
     }
@@ -390,7 +390,7 @@ class App extends React.Component {
       const selectedReq = filteredRequests[prev.selectedIndex];
       if (!selectedReq) return null;
       let targetTs = null;
-      if (selectedReq.mainAgent && selectedReq.timestamp) {
+      if (isMainAgent(selectedReq) && selectedReq.timestamp) {
         targetTs = selectedReq.timestamp;
       } else {
         const idx = prev.requests.indexOf(selectedReq);
@@ -426,7 +426,7 @@ class App extends React.Component {
       if (selectedReq) {
         // 找到选中请求对应的 mainAgent timestamp
         let targetTs = null;
-        if (selectedReq.mainAgent && selectedReq.timestamp) {
+        if (isMainAgent(selectedReq) && selectedReq.timestamp) {
           targetTs = selectedReq.timestamp;
         } else {
           // 非 mainAgent 请求，向前找最近的 mainAgent
@@ -631,7 +631,7 @@ class App extends React.Component {
           this.animateLoadingCount(entries.length, () => {
             let mainAgentSessions = [];
             for (const entry of entries) {
-              if (entry.mainAgent && entry.body && Array.isArray(entry.body.messages)) {
+              if (isMainAgent(entry) && entry.body && Array.isArray(entry.body.messages)) {
                 mainAgentSessions = this.mergeMainAgentSessions(mainAgentSessions, entry);
               }
             }
@@ -722,6 +722,43 @@ class App extends React.Component {
 
           <Layout.Content className={styles.content}>
             {viewMode === 'raw' ? (
+              filteredRequests.length === 0 ? (
+                <div className={styles.guideContainer}>
+                  <div className={styles.guideContent}>
+                    <div className={styles.guideIcon}>
+                      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <circle cx="24" cy="24" r="23" stroke="#333" strokeWidth="2" strokeDasharray="4 4" />
+                        <path d="M16 24h16M24 16v16" stroke="#555" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    </div>
+                    <h2 className={styles.guideTitle}>{t('ui.guide.title')}</h2>
+
+                    <div className={styles.guideStep}>
+                      <div className={styles.guideStepNum}>1</div>
+                      <div className={styles.guideStepBody}>
+                        <p className={styles.guideText}>{t('ui.guide.step1')}</p>
+                        <code className={styles.guideCode}>{t('ui.guide.exampleQuestion')}</code>
+                      </div>
+                    </div>
+
+                    <div className={styles.guideStep}>
+                      <div className={styles.guideStepNum}>2</div>
+                      <div className={styles.guideStepBody}>
+                        <p className={styles.guideText}>{t('ui.guide.step2')}</p>
+                        <code className={styles.guideCode}>{t('ui.guide.troubleshootCmd')}</code>
+                      </div>
+                    </div>
+
+                    <div className={styles.guideStep}>
+                      <div className={styles.guideStepNum}>3</div>
+                      <div className={styles.guideStepBody}>
+                        <p className={styles.guideText}>{t('ui.guide.step3')}</p>
+                        <code className={styles.guideCode}>npm install -g @anthropic-ai/claude-code</code>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
               <div
                 ref={this.mainContainerRef}
                 className={styles.mainContainer}
@@ -756,6 +793,7 @@ class App extends React.Component {
                   />
                 </div>
               </div>
+              )
             ) : (
               <ChatView requests={filteredRequests} mainAgentSessions={mainAgentSessions} userProfile={this.state.userProfile} collapseToolResults={this.state.collapseToolResults} expandThinking={this.state.expandThinking} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={() => this.setState({ chatScrollToTs: null })} />
             )}

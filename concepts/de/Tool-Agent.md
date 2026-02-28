@@ -1,10 +1,8 @@
-# Task
-
-> **Hinweis:** In neueren Claude Code-Versionen wurde dieses Tool in **Agent** umbenannt. Siehe das [Tool-Agent](Tool-Agent)-Dokument.
+# Agent
 
 ## Definition
 
-Startet einen Sub-Agent (SubAgent), der komplexe mehrstufige Aufgaben autonom bearbeitet. Sub-Agents sind unabhängige Unterprozesse mit jeweils eigenen Tool-Sets und Kontext.
+Startet einen Sub-Agent (SubAgent), der komplexe mehrstufige Aufgaben autonom bearbeitet. Sub-Agents sind unabhängige Unterprozesse mit jeweils eigenen Tool-Sets und Kontext. Agent ist die umbenannte Version des Task-Tools in neueren Claude Code-Versionen.
 
 ## Parameter
 
@@ -16,7 +14,7 @@ Startet einen Sub-Agent (SubAgent), der komplexe mehrstufige Aufgaben autonom be
 | `model` | enum | Nein | Modell angeben (sonnet / opus / haiku), Standard wird vom übergeordneten Agent geerbt |
 | `max_turns` | integer | Nein | Maximale Anzahl agentischer Runden |
 | `run_in_background` | boolean | Nein | Ob im Hintergrund ausgeführt werden soll; Hintergrundaufgaben geben den output_file-Pfad zurück |
-| `resume` | string | Nein | Agent-ID zum Fortsetzen, setzt die letzte Ausführung fort |
+| `resume` | string | Nein | Agent-ID zum Fortsetzen, setzt die letzte Ausführung fort. Nützlich, um einen vorherigen Sub-Agent ohne Kontextverlust fortzusetzen |
 | `isolation` | enum | Nein | Isolationsmodus, `worktree` erstellt einen temporären Git-Worktree |
 
 ## Sub-Agent-Typen
@@ -25,8 +23,8 @@ Startet einen Sub-Agent (SubAgent), der komplexe mehrstufige Aufgaben autonom be
 |-----|-------|------------------|
 | `Bash` | Befehlsausführung, Git-Operationen | Bash |
 | `general-purpose` | Allgemeine mehrstufige Aufgaben | Alle Tools |
-| `Explore` | Schnelle Codebasis-Erkundung | Alle Tools außer Task/Edit/Write/NotebookEdit/ExitPlanMode |
-| `Plan` | Implementierungsplan entwerfen | Alle Tools außer Task/Edit/Write/NotebookEdit/ExitPlanMode |
+| `Explore` | Schnelle Codebasis-Erkundung | Alle Tools außer Agent/Edit/Write/NotebookEdit/ExitPlanMode |
+| `Plan` | Implementierungsplan entwerfen | Alle Tools außer Agent/Edit/Write/NotebookEdit/ExitPlanMode |
 | `claude-code-guide` | Claude Code Nutzungsanleitung Q&A | Glob, Grep, Read, WebFetch, WebSearch |
 | `statusline-setup` | Statusleiste konfigurieren | Read, Edit |
 
@@ -46,10 +44,12 @@ Startet einen Sub-Agent (SubAgent), der komplexe mehrstufige Aufgaben autonom be
 ## Hinweise
 
 - Nach Abschluss gibt der Sub-Agent eine einzelne Nachricht zurück; sein Ergebnis ist für den Benutzer nicht sichtbar und muss vom Haupt-Agent weitergegeben werden
-- Mehrere parallele Task-Aufrufe können in einer einzelnen Nachricht gestartet werden, um die Effizienz zu steigern
+- Mehrere parallele Agent-Aufrufe können in einer einzelnen Nachricht gestartet werden, um die Effizienz zu steigern
 - Hintergrundaufgaben werden über das TaskOutput-Tool auf Fortschritt geprüft
 - Der Explore-Typ ist langsamer als direkte Glob/Grep-Aufrufe; nur verwenden, wenn einfache Suchen nicht ausreichen
+- Verwenden Sie `run_in_background: true` für lang laufende Aufgaben, die kein sofortiges Ergebnis benötigen; verwenden Sie den Vordergrundmodus (Standard), wenn das Ergebnis vor dem Fortfahren benötigt wird
+- Der `resume`-Parameter ermöglicht die Fortsetzung einer zuvor gestarteten Sub-Agent-Sitzung unter Beibehaltung des angesammelten Kontexts
 
 ## Bedeutung in cc-viewer
 
-Task-Aufrufe erzeugen SubAgent-Anfrageketten, die in der Anfrageliste als eigenständige Unteranfragesequenzen unabhängig vom MainAgent sichtbar sind. SubAgent-Anfragen haben typischerweise einen kompakten System-Prompt und weniger Tool-Definitionen, was einen deutlichen Kontrast zum MainAgent bildet.
+Agent ist der neue Name des Task-Tools in neueren Claude Code-Versionen. Agent-Aufrufe erzeugen SubAgent-Anfrageketten, die in der Anfrageliste als eigenständige Unteranfragesequenzen unabhängig vom MainAgent sichtbar sind. SubAgent-Anfragen haben typischerweise einen kompakten System-Prompt und weniger Tool-Definitionen, was einen deutlichen Kontrast zum MainAgent bildet. In cc-viewer können je nach verwendeter Claude Code-Version in der aufgezeichneten Konversation die Tool-Namen `Task` oder `Agent` erscheinen.

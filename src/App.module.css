@@ -186,3 +186,74 @@
 .footerText {
   color: #555;
 }
+
+.guideContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: #0a0a0a;
+}
+
+.guideContent {
+  max-width: 560px;
+  padding: 40px;
+}
+
+.guideIcon {
+  margin-bottom: 20px;
+  opacity: 0.6;
+}
+
+.guideTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin: 0 0 28px 0;
+}
+
+.guideStep {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.guideStepNum {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #1a1a2e;
+  color: #7c8aff;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+.guideStepBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.guideText {
+  color: #aaa;
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0 0 8px 0;
+}
+
+.guideCode {
+  display: block;
+  background: #141414;
+  border: 1px solid #252525;
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: #8b9cf7;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-all;
+  white-space: pre-wrap;
+}

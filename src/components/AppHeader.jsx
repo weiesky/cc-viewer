@@ -2,7 +2,7 @@ import React from 'react';
 import { Space, Tag, Button, Badge, Typography, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Tabs, Spin } from 'antd';
 import { MessageOutlined, FileTextOutlined, ImportOutlined, DownOutlined, DashboardOutlined, SaveOutlined, ExportOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined } from '@ant-design/icons';
 import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats } from '../utils/helpers';
-import { isSystemText, classifyUserContent } from '../utils/contentFilter';
+import { isSystemText, classifyUserContent, isMainAgent } from '../utils/contentFilter';
 import { t, getLang, setLang } from '../i18n';
 import ConceptHelp from './ConceptHelp';
 import styles from './AppHeader.module.css';
@@ -170,7 +170,7 @@ class AppHeader extends React.Component {
     const prompts = [];
     const seen = new Set();
     let prevSlashCmd = null;
-    const mainAgentRequests = requests.filter(r => r.mainAgent);
+    const mainAgentRequests = requests.filter(r => isMainAgent(r));
     for (let ri = 0; ri < mainAgentRequests.length; ri++) {
       const req = mainAgentRequests[ri];
       const messages = req.body?.messages || [];

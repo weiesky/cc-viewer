@@ -1,10 +1,8 @@
-# Task
-
-> **Bemærk:** I nyere versioner af Claude Code er dette værktøj omdøbt til **Agent**. Se dokumentet [Tool-Agent](Tool-Agent).
+# Agent
 
 ## Definition
 
-Starter en sub-agent (SubAgent) til selvstændigt at håndtere komplekse flertrinsopgaver. Sub-agenter er uafhængige underprocesser, hver med deres eget dedikerede værktøjssæt og kontekst.
+Starter en sub-agent (SubAgent) til selvstændigt at håndtere komplekse flertrinsopgaver. Sub-agenter er uafhængige underprocesser, hver med deres eget dedikerede værktøjssæt og kontekst. Agent er den omdøbte version af Task-værktøjet i nyere Claude Code-versioner.
 
 ## Parametre
 
@@ -16,7 +14,7 @@ Starter en sub-agent (SubAgent) til selvstændigt at håndtere komplekse flertri
 | `model` | enum | Nej | Angiv model (sonnet / opus / haiku), standard arvet fra forælder |
 | `max_turns` | integer | Nej | Maksimalt antal agentiske ture |
 | `run_in_background` | boolean | Nej | Om den skal køre i baggrunden; baggrundsopgaver returnerer output_file-sti |
-| `resume` | string | Nej | Agent-ID der skal genoptages, fortsætter fra sidste udførelse |
+| `resume` | string | Nej | Agent-ID der skal genoptages, fortsætter fra sidste udførelse. Nyttigt til at genoptage en tidligere sub-agent uden at miste kontekst |
 | `isolation` | enum | Nej | Isoleringstilstand, `worktree` opretter et midlertidigt git worktree |
 
 ## Sub-agent-typer
@@ -25,8 +23,8 @@ Starter en sub-agent (SubAgent) til selvstændigt at håndtere komplekse flertri
 |------|------|----------|
 | `Bash` | Kommandoudførelse, git-operationer | Bash |
 | `general-purpose` | Generelle flertrinsopgaver | Alle værktøjer |
-| `Explore` | Hurtig udforskning af kodebasen | Alle værktøjer undtagen Task/Edit/Write/NotebookEdit/ExitPlanMode |
-| `Plan` | Design af implementeringsplan | Alle værktøjer undtagen Task/Edit/Write/NotebookEdit/ExitPlanMode |
+| `Explore` | Hurtig udforskning af kodebasen | Alle værktøjer undtagen Agent/Edit/Write/NotebookEdit/ExitPlanMode |
+| `Plan` | Design af implementeringsplan | Alle værktøjer undtagen Agent/Edit/Write/NotebookEdit/ExitPlanMode |
 | `claude-code-guide` | Q&A om Claude Code-brugsvejledning | Glob, Grep, Read, WebFetch, WebSearch |
 | `statusline-setup` | Konfiguration af statuslinje | Read, Edit |
 
@@ -46,10 +44,12 @@ Starter en sub-agent (SubAgent) til selvstændigt at håndtere komplekse flertri
 ## Bemærkninger
 
 - Ved fuldførelse returnerer sub-agenten en enkelt besked; dens resultat er ikke synligt for brugeren og skal videreformidles af hovedagenten
-- Man kan starte flere parallelle Task-kald i en enkelt besked for at øge effektiviteten
+- Man kan starte flere parallelle Agent-kald i en enkelt besked for at øge effektiviteten
 - Baggrundsopgaver overvåges via TaskOutput-værktøjet
 - Explore-typen er langsommere end direkte Glob/Grep-kald, brug den kun når simpel søgning ikke er tilstrækkelig
+- Brug `run_in_background: true` til langvarige opgaver der ikke kræver øjeblikkeligt resultat; brug forgrundstilstand (standard) når resultatet er nødvendigt før man fortsætter
+- `resume`-parameteren gør det muligt at fortsætte en tidligere startet sub-agent-session og bevare den akkumulerede kontekst
 
 ## Betydning i cc-viewer
 
-Task-kald genererer SubAgent-requestkæder, der i requestlisten kan ses som uafhængige underrequestsekvenser adskilt fra MainAgent. SubAgent-requests har typisk et forenklet system prompt og færre værktøjsdefinitioner, i tydelig kontrast til MainAgent.
+Agent er det nye navn for Task-værktøjet i nyere Claude Code-versioner. Agent-kald genererer SubAgent-requestkæder, der i requestlisten kan ses som uafhængige underrequestsekvenser adskilt fra MainAgent. SubAgent-requests har typisk et forenklet system prompt og færre værktøjsdefinitioner, i tydelig kontrast til MainAgent. I cc-viewer kan værktøjsnavnene `Task` eller `Agent` forekomme afhængigt af den Claude Code-version der blev brugt i den optagede samtale.

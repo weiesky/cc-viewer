@@ -1,10 +1,8 @@
-# Task
-
-> **Not:** Yeni Claude Code sürümlerinde bu araç **Agent** olarak yeniden adlandırılmıştır. [Tool-Agent](Tool-Agent) belgesine bakın.
+# Agent
 
 ## Tanım
 
-Karmaşık çok adımlı görevleri otonom olarak işlemek için bir alt agent (SubAgent) başlatır. Alt agent'lar bağımsız alt süreçlerdir ve her birinin kendine özel araç seti ve bağlamı vardır.
+Karmaşık çok adımlı görevleri otonom olarak işlemek için bir alt agent (SubAgent) başlatır. Alt agent'lar bağımsız alt süreçlerdir ve her birinin kendine özel araç seti ve bağlamı vardır. Agent, yeni Claude Code sürümlerinde Task aracının yeniden adlandırılmış versiyonudur.
 
 ## Parametreler
 
@@ -16,7 +14,7 @@ Karmaşık çok adımlı görevleri otonom olarak işlemek için bir alt agent (
 | `model` | enum | Hayır | Model belirtme (sonnet / opus / haiku), varsayılan üst seviyeden miras |
 | `max_turns` | integer | Hayır | Maksimum agentic tur sayısı |
 | `run_in_background` | boolean | Hayır | Arka planda çalıştırılıp çalıştırılmayacağı, arka plan görevleri output_file yolu döndürür |
-| `resume` | string | Hayır | Devam ettirilecek agent ID'si, son yürütmeden devam eder |
+| `resume` | string | Hayır | Devam ettirilecek agent ID'si, son yürütmeden devam eder. Bağlamı kaybetmeden önceki bir alt agent'ı sürdürmek için kullanışlı |
 | `isolation` | enum | Hayır | İzolasyon modu, `worktree` geçici git worktree oluşturur |
 
 ## Alt Agent Türleri
@@ -25,8 +23,8 @@ Karmaşık çok adımlı görevleri otonom olarak işlemek için bir alt agent (
 |-----|----------------|----------------------|
 | `Bash` | Komut çalıştırma, git işlemleri | Bash |
 | `general-purpose` | Genel amaçlı çok adımlı görevler | Tüm araçlar |
-| `Explore` | Hızlı kod tabanı keşfi | Task/Edit/Write/NotebookEdit/ExitPlanMode hariç tüm araçlar |
-| `Plan` | Uygulama planı tasarlama | Task/Edit/Write/NotebookEdit/ExitPlanMode hariç tüm araçlar |
+| `Explore` | Hızlı kod tabanı keşfi | Agent/Edit/Write/NotebookEdit/ExitPlanMode hariç tüm araçlar |
+| `Plan` | Uygulama planı tasarlama | Agent/Edit/Write/NotebookEdit/ExitPlanMode hariç tüm araçlar |
 | `claude-code-guide` | Claude Code kullanım kılavuzu soru-cevap | Glob, Grep, Read, WebFetch, WebSearch |
 | `statusline-setup` | Durum çubuğu yapılandırma | Read, Edit |
 
@@ -46,10 +44,12 @@ Karmaşık çok adımlı görevleri otonom olarak işlemek için bir alt agent (
 ## Dikkat Edilecekler
 
 - Alt agent tamamlandığında tek bir mesaj döndürür; sonuçları kullanıcıya görünmez, ana agent'ın aktarması gerekir
-- Verimliliği artırmak için tek mesajda birden fazla paralel Task çağrısı yapılabilir
+- Verimliliği artırmak için tek mesajda birden fazla paralel Agent çağrısı yapılabilir
 - Arka plan görevleri TaskOutput aracıyla ilerleme kontrolü yapılır
 - Explore türü doğrudan Glob/Grep çağrısından yavaştır, yalnızca basit arama yeterli olmadığında kullanın
+- Anında sonuç gerektirmeyen uzun süreli görevler için `run_in_background: true` kullanın; devam etmeden önce sonuç gerektiğinde ön plan modunu (varsayılan) kullanın
+- `resume` parametresi, daha önce başlatılmış bir alt agent oturumunu birikmiş bağlamı koruyarak sürdürmeye olanak tanır
 
 ## cc-viewer'da Önemi
 
-Task çağrıları SubAgent istek zinciri oluşturur; istek listesinde MainAgent'tan bağımsız alt istek dizileri görülebilir. SubAgent istekleri genellikle kısaltılmış system prompt ve daha az araç tanımına sahiptir ve MainAgent ile belirgin bir kontrast oluşturur.
+Agent, son Claude Code sürümlerinde Task aracının yeni adıdır. Agent çağrıları SubAgent istek zinciri oluşturur; istek listesinde MainAgent'tan bağımsız alt istek dizileri görülebilir. SubAgent istekleri genellikle kısaltılmış system prompt ve daha az araç tanımına sahiptir ve MainAgent ile belirgin bir kontrast oluşturur. cc-viewer'da, kaydedilen konuşmada kullanılan Claude Code sürümüne bağlı olarak `Task` veya `Agent` araç adları görünebilir.
