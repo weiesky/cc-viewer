@@ -1,6 +1,6 @@
 import React from 'react';
-import { ConfigProvider, Layout, theme, Modal, Collapse, List, Tag, Spin, Button, Checkbox, message } from 'antd';
-import { FolderOutlined, FileTextOutlined, UploadOutlined } from '@ant-design/icons';
+import { ConfigProvider, Layout, theme, Modal, List, Tag, Spin, Button, Checkbox, message } from 'antd';
+import { FileTextOutlined, UploadOutlined } from '@ant-design/icons';
 import AppHeader from './components/AppHeader';
 import RequestList from './components/RequestList';
 import DetailPanel from './components/DetailPanel';
@@ -44,7 +44,7 @@ class App extends React.Component {
       expandDiff: false,
       fileLoading: false,
       fileLoadingCount: 0,
-      selectedLogs: {},   // { [project]: Set<file> }
+      selectedLogs: new Set(),   // Set<file>
     };
     this.eventSource = null;
     this._autoSelectTimer = null;
@@ -539,33 +539,37 @@ class App extends React.Component {
   };
 
   handleCloseImportModal = () => {
-    this.setState({ importModalVisible: false, selectedLogs: {} });
+    this.setState({ importModalVisible: false, selectedLogs: new Set() });
   };
 
-  handleToggleLogSelect = (project, file, checked) => {
+  handleToggleLogSelect = (file, checked) => {
     this.setState(prev => {
-      const selectedLogs = { ...prev.selectedLogs };
-      const set = new Set(selectedLogs[project] || []);
-      if (checked) set.add(file);
-      else set.delete(file);
-      if (set.size === 0) delete selectedLogs[project];
-      else selectedLogs[project] = set;
+      const selectedLogs = new Set(prev.selectedLogs);
+      if (checked) selectedLogs.add(file);
+      else selectedLogs.delete(file);
       return { selectedLogs };
     });
   };
 
-  handleMergeLogs = (project) => {
-    const { selectedLogs, localLogs } = this.state;
-    const selected = selectedLogs[project];
-    if (!selected || selected.size < 2) return;
+  handleMergeLogs = () => {
+    const { selectedLogs, localLogs, currentProject } = this.state;
+    if (selectedLogs.size < 2) return;
 
-    const logs = localLogs[project];
+    const logs = localLogs[currentProject];
+    if (!logs) return;
+
     // 找到选中项在原始列表中的索引
     const indices = [];
     logs.forEach((log, i) => {
-      if (selected.has(log.file)) indices.push(i);
+      if (selectedLogs.has(log.file)) indices.push(i);
     });
     indices.sort((a, b) => a - b);
+
+    // 校验：最新日志文件不允许被合并（避免当前窗口日志丢失）
+    if (selectedLogs.has(logs[0].file)) {
+      message.warning(t('ui.mergeLatestNotAllowed'));
+      return;
+    }
 
     // 校验连续性
     for (let i = 1; i < indices.length; i++) {
@@ -594,7 +598,7 @@ class App extends React.Component {
       .then(data => {
         if (data.ok) {
           message.success(t('ui.mergeSuccess'));
-          this.setState({ selectedLogs: {} });
+          this.setState({ selectedLogs: new Set() });
           this.handleImportLocalLogs();
         } else {
           message.error(data.error || 'Merge failed');
@@ -849,88 +853,75 @@ class App extends React.Component {
           open={this.state.importModalVisible}
           onCancel={this.handleCloseImportModal}
           footer={null}
-          width={600}
+          width={1000}
           styles={{ body: { maxHeight: '60vh', overflow: 'auto' } }}
         >
           <div className={styles.modalActions}>
             <Button icon={<UploadOutlined />} onClick={this.handleLoadLocalJsonlFile}>
               {t('ui.loadLocalJsonl')}
             </Button>
+            {this.state.selectedLogs.size > 1 && (
+              <Button
+                size="small"
+                type="primary"
+                onClick={this.handleMergeLogs}
+                style={{ marginLeft: 8 }}
+              >
+                {t('ui.mergeLogs')}
+              </Button>
+            )}
           </div>
           {this.state.localLogsLoading ? (
             <div className={styles.spinCenter}><Spin /></div>
-          ) : Object.keys(this.state.localLogs).length === 0 ? (
-            <div className={styles.emptyCenter}>
-              {t('ui.noLogs')}
-            </div>
-          ) : (
-            <Collapse
-              defaultActiveKey={Object.keys(this.state.localLogs)}
-              items={Object.entries(this.state.localLogs)
-                .sort(([a], [b]) => {
-                  const cp = this.state.currentProject;
-                  if (a === cp) return -1;
-                  if (b === cp) return 1;
-                  return 0;
-                })
-                .map(([project, logs]) => ({
-                  key: project,
-                  label: (
-                    <span>
-                      <FolderOutlined className={styles.folderIcon} />
-                      {project}
-                      <Tag className={styles.logTag}>{t('ui.logCount', { count: logs.length })}</Tag>
-                      {this.state.selectedLogs[project]?.size > 1 && (
-                        <Button
-                          size="small"
-                          type="primary"
-                          onClick={(e) => { e.stopPropagation(); this.handleMergeLogs(project); }}
-                        >
-                          {t('ui.mergeLogs')}
-                        </Button>
-                      )}
-                    </span>
-                  ),
-                  children: (
-                    <List
-                      size="small"
-                      dataSource={logs}
-                      renderItem={(log) => (
-                        <List.Item
-                          className={styles.logListItem}
-                          onClick={() => {
-                            const checked = !(this.state.selectedLogs[project]?.has(log.file));
-                            this.handleToggleLogSelect(project, log.file, checked);
+          ) : (() => {
+            const currentLogs = this.state.localLogs[this.state.currentProject];
+            if (!currentLogs || currentLogs.length === 0) {
+              return (
+                <div className={styles.emptyCenter}>
+                  {t('ui.noLogs')}
+                </div>
+              );
+            }
+            return (
+              <div className={styles.logListContainer}>
+                <List
+                  size="small"
+                  dataSource={currentLogs}
+                  renderItem={(log) => (
+                  <List.Item
+                    className={styles.logListItem}
+                    onClick={() => {
+                      const checked = !this.state.selectedLogs.has(log.file);
+                      this.handleToggleLogSelect(log.file, checked);
+                    }}
+                  >
+                    <div className={styles.logItemRow}>
+                      <span>
+                        <Checkbox
+                          className={styles.logCheckbox}
+                          checked={this.state.selectedLogs.has(log.file) || false}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            this.handleToggleLogSelect(log.file, e.target.checked);
                           }}
-                        >
-                          <div className={styles.logItemRow}>
-                            <span>
-                              <Checkbox
-                                className={styles.logCheckbox}
-                                checked={this.state.selectedLogs[project]?.has(log.file) || false}
-                                onClick={(e) => e.stopPropagation()}
-                                onChange={(e) => {
-                                  e.stopPropagation();
-                                  this.handleToggleLogSelect(project, log.file, e.target.checked);
-                                }}
-                              />
-                              <FileTextOutlined className={styles.logFileIcon} />
-                              <span className={styles.logFileName}>{this.formatTimestamp(log.timestamp)}</span>
-                            </span>
-                            <span>
-                              <Tag color="blue">{this.formatSize(log.size)}</Tag>
-                              <Button size="small" type="primary" onClick={(e) => { e.stopPropagation(); this.handleOpenLogFile(log.file); }}>
-                                {t('ui.openLog')}
-                              </Button>
-                            </span>
-                          </div>
-                        </List.Item>
-                      )}
-                    />
-                  ),
-                }))}
-            />
-          )}
+                        />
+                        <FileTextOutlined className={styles.logFileIcon} />
+                        <span className={styles.logFileName}>{this.formatTimestamp(log.timestamp)}</span>
+                      </span>
+                      <span>
+                        <Tag color="blue">{this.formatSize(log.size)}</Tag>
+                        <Button size="small" type="primary" onClick={(e) => { e.stopPropagation(); this.handleOpenLogFile(log.file); }}>
+                          {t('ui.openLog')}
+                        </Button>
+                      </span>
+                    </div>
+                  </List.Item>
+                )}
+              />
+              </div>
+            );
+          })()}
         </Modal>
       </ConfigProvider>
     );

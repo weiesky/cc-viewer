@@ -274,6 +274,7 @@
 
 /* Text mode textarea */
 .promptTextarea {
+  box-sizing: border-box;
   background: #000;
   width: 100%;
   min-height: 400px;

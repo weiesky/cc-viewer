@@ -1,6 +1,6 @@
 import React from 'react';
 import { Space, Tag, Button, Badge, Typography, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Tabs, Spin } from 'antd';
-import { MessageOutlined, FileTextOutlined, ImportOutlined, DownOutlined, DashboardOutlined, SaveOutlined, ExportOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined } from '@ant-design/icons';
+import { MessageOutlined, FileTextOutlined, ImportOutlined, DownOutlined, DashboardOutlined, ExportOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined } from '@ant-design/icons';
 import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats } from '../utils/helpers';
 import { isSystemText, classifyUserContent, isMainAgent } from '../utils/contentFilter';
 import { t, getLang, setLang } from '../i18n';
@@ -587,17 +587,6 @@ class AppHeader extends React.Component {
         icon: <ImportOutlined />,
         label: t('ui.importLocalLogs'),
         onClick: onImportLocalLogs,
-      },
-      {
-        key: 'save-log',
-        icon: <SaveOutlined />,
-        label: t('ui.saveLog'),
-        onClick: () => {
-          const a = document.createElement('a');
-          a.href = '/api/download-log';
-          a.download = '';
-          a.click();
-        },
       },
       {
         key: 'export-prompts',

@@ -76,9 +76,16 @@
   margin-right: 8px;
 }
 
+.logListContainer {
+  background: #0d0d0d;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
 .logListItem {
   cursor: pointer;
   padding: 8px 12px;
+  border-bottom: 1px solid #222;
 }
 
 .logItemRow {
@@ -115,14 +122,6 @@
   margin-right: 8px;
   color: #3b82f6;
   flex-shrink: 0;
-}
-
-.folderIcon {
-  margin-right: 8px;
-}
-
-.logTag {
-  margin-left: 8px;
 }
 
 .loadingOverlay {

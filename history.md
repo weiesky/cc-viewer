@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.5 (2026-03-01)
+
+- Refactor: import modal simplified — flat file list replaces project-grouped collapse, with select-all and merge support; prevent merging the latest (active) log file
+- Removed unused `/api/download-log` endpoint from server
+- Fix: SubAgent tag display changed from `Tools:xxx` to `SubAgent:xxx` for clearer semantics
+- Fix: textarea width overflow in User Prompt text mode (added box-sizing: border-box)
+- Added i18n entry `ui.mergeLatestNotAllowed`
+
 ## 1.3.4 (2026-02-28)
 
 - Feat: auto-update mechanism — checks npm registry on startup (every 4h), auto-updates within same major version, notifies for cross-major updates

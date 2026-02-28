@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { readFileSync, writeFileSync, existsSync, watchFile, unwatchFile, statSync, readdirSync, renameSync, unlinkSync, openSync, readSync, closeSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, extname, basename } from 'node:path';
+import { dirname, join, extname } from 'node:path';
 import { homedir, userInfo, platform } from 'node:os';
 import { execSync } from 'node:child_process';
 import { Worker } from 'node:worker_threads';
@@ -601,29 +601,6 @@ function handleRequest(req, res) {
         res.end(JSON.stringify({ error: err.message }));
       }
     });
-    return;
-  }
-
-  // 下载当前日志文件
-  if (url === '/api/download-log' && method === 'GET') {
-    try {
-      if (!existsSync(LOG_FILE)) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Log file not found' }));
-        return;
-      }
-      const content = readFileSync(LOG_FILE);
-      const fileName = basename(LOG_FILE);
-      res.writeHead(200, {
-        'Content-Type': 'application/octet-stream',
-        'Content-Disposition': `attachment; filename="${fileName}"`,
-        'Content-Length': content.length,
-      });
-      res.end(content);
-    } catch (err) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: err.message }));
-    }
     return;
   }
 

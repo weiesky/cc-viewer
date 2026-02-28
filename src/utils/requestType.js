@@ -127,6 +127,6 @@ export function classifyRequest(req, nextReq) {
 // Tag 显示文本
 export function formatRequestTag(type, subType) {
   if (type === 'Plan' && subType) return `Plan:${subType}`;
-  if (type === 'SubAgent' && subType) return `Tools:${subType}`;
+  if (type === 'SubAgent' && subType) return `SubAgent:${subType}`;
   return type;
 }
