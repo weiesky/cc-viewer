@@ -578,7 +578,7 @@ class AppHeader extends React.Component {
   }
 
   render() {
-    const { requestCount, viewMode, cacheType, onToggleViewMode, onImportLocalLogs, onLangChange, isLocalLog, localLogFile, projectName, collapseToolResults, onCollapseToolResultsChange, expandThinking, onExpandThinkingChange, expandDiff, onExpandDiffChange, filterIrrelevant, onFilterIrrelevantChange } = this.props;
+    const { requestCount, viewMode, cacheType, onToggleViewMode, onImportLocalLogs, onLangChange, isLocalLog, localLogFile, projectName, collapseToolResults, onCollapseToolResultsChange, expandThinking, onExpandThinkingChange, expandDiff, onExpandDiffChange, filterIrrelevant, onFilterIrrelevantChange, updateInfo, onDismissUpdate } = this.props;
     const { countdownText } = this.state;
 
     const menuItems = [
@@ -644,6 +644,17 @@ class AppHeader extends React.Component {
             {!isLocalLog && <Badge status="processing" color="green" />}
             <span className={styles.liveTagText}>{isLocalLog ? t('ui.historyLog', { file: localLogFile }) : (t('ui.liveMonitoring') + (projectName ? `:${projectName}` : ''))}</span>
           </Tag>
+          {updateInfo && (
+            <Tag
+              color={updateInfo.type === 'completed' ? 'green' : 'orange'}
+              closable
+              onClose={() => onDismissUpdate && onDismissUpdate()}
+            >
+              {updateInfo.type === 'completed'
+                ? t('ui.update.completed', { version: updateInfo.version })
+                : t('ui.update.majorAvailable', { version: updateInfo.version })}
+            </Tag>
+          )}
         </Space>
 
         <Space size="middle">

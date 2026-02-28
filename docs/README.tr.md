@@ -110,6 +110,12 @@ CC-Viewer 18 dili destekler ve sistem yerel ayarına göre otomatik olarak geçi
 
 简体中文 | English | 繁體中文 | 한국어 | Deutsch | Español | Français | Italiano | Dansk | 日本語 | Polski | Русский | العربية | Norsk | Português (Brasil) | ไทย | Türkçe | Українська
 
+### Otomatik Güncelleme
+
+CC-Viewer başlangıçta otomatik olarak güncellemeleri kontrol eder (en fazla 4 saatte bir). Aynı ana sürüm içinde (ör. 1.x.x → 1.y.z) güncellemeler otomatik olarak uygulanır ve bir sonraki yeniden başlatmada geçerli olur. Ana sürüm değişiklikleri yalnızca bir bildirim gösterir.
+
+Otomatik güncelleme, Claude Code'un `~/.claude/settings.json` dosyasındaki genel yapılandırmasını takip eder. Claude Code otomatik güncellemeleri devre dışı bıraktıysa (`autoUpdates: false`), CC-Viewer de otomatik güncellemeleri atlayacaktır.
+
 ## License
 
 MIT

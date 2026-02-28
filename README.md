@@ -112,6 +112,12 @@ CC-Viewer supports 18 languages, automatically switching based on system locale:
 
 简体中文 | English | 繁體中文 | 한국어 | Deutsch | Español | Français | Italiano | Dansk | 日本語 | Polski | Русский | العربية | Norsk | Português (Brasil) | ไทย | Türkçe | Українська
 
+### Auto-Update
+
+CC-Viewer automatically checks for updates on startup (at most once every 4 hours). Within the same major version (e.g., 1.x.x → 1.y.z), updates are applied automatically and take effect on the next restart. Cross-major-version updates only show a notification.
+
+Auto-update follows Claude Code's global configuration in `~/.claude/settings.json`. If Claude Code has auto-updates disabled (`autoUpdates: false`), CC-Viewer will also skip auto-updates.
+
 ## License
 
 MIT

@@ -134,6 +134,18 @@ class App extends React.Component {
       this.eventSource.addEventListener('resume_resolved', () => {
         this.setState({ resumeModalVisible: false, resumeFileName: '' });
       });
+      this.eventSource.addEventListener('update_completed', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.setState({ updateInfo: { type: 'completed', version: data.version } });
+        } catch { }
+      });
+      this.eventSource.addEventListener('update_major_available', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.setState({ updateInfo: { type: 'major', version: data.version } });
+        } catch { }
+      });
       this.eventSource.addEventListener('full_reload', (event) => {
         try {
           const entries = JSON.parse(event.data);
@@ -719,6 +731,8 @@ class App extends React.Component {
               onExpandDiffChange={this.handleExpandDiffChange}
               filterIrrelevant={!this.state.showAll}
               onFilterIrrelevantChange={this.handleFilterIrrelevantChange}
+              updateInfo={this.state.updateInfo}
+              onDismissUpdate={() => this.setState({ updateInfo: null })}
             />
           </Layout.Header>
 

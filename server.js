@@ -8,6 +8,7 @@ import { Worker } from 'node:worker_threads';
 import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice, _projectName, _logDir, _cachedApiKey, _cachedAuthHeader, _cachedHaikuModel } from './interceptor.js';
 import { LOG_DIR } from './findcc.js';
 import { t, detectLanguage } from './i18n.js';
+import { checkAndUpdate } from './updater.js';
 
 const PREFS_FILE = join(LOG_DIR, 'preferences.json');
 
@@ -418,6 +419,19 @@ function handleRequest(req, res) {
     return;
   }
 
+  // 当前版本号
+  if (url === '/api/version-info' && method === 'GET') {
+    try {
+      const pkg = JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf-8'));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ version: pkg.version }));
+    } catch {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to read version' }));
+    }
+    return;
+  }
+
   // 项目统计数据
   if (url === '/api/project-stats' && method === 'GET') {
     try {
@@ -749,7 +763,23 @@ export function stopViewer() {
 
 // Auto-start the viewer after log file init completes
 _initPromise.then(() => {
-  startViewer().catch(err => {
+  startViewer().then((srv) => {
+    if (!srv) return;
+    // 延迟 3 秒异步检查更新
+    setTimeout(() => {
+      checkAndUpdate().then(result => {
+        if (result.status === 'updated') {
+          clients.forEach(client => {
+            try { client.write(`event: update_completed\ndata: ${JSON.stringify({ version: result.remoteVersion })}\n\n`); } catch { }
+          });
+        } else if (result.status === 'major_available') {
+          clients.forEach(client => {
+            try { client.write(`event: update_major_available\ndata: ${JSON.stringify({ version: result.remoteVersion })}\n\n`); } catch { }
+          });
+        }
+      }).catch(() => { });
+    }, 3000);
+  }).catch(err => {
     console.error('Failed to start CC Viewer:', err);
   });
 });

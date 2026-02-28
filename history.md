@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.4 (2026-02-28)
+
+- Feat: auto-update mechanism — checks npm registry on startup (every 4h), auto-updates within same major version, notifies for cross-major updates
+- New `updater.js` module with version comparison, frequency control (`~/.claude/cc-viewer/update-check.json`), and `npm install -g` execution
+- SSE events `update_completed` / `update_major_available` pushed to frontend
+- AppHeader displays dismissible update notification tags (green for completed, orange for major)
+- New API endpoint `GET /api/version-info`
+- Added i18n entries for update notifications (18 languages)
+
 ## 1.3.3 (2026-02-28)
 
 - Fix: Last Response in chat view now correctly correlates with the original request list, enabling proper scroll-to positioning when switching between raw and chat views

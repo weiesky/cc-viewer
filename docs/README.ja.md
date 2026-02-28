@@ -110,6 +110,12 @@ CC-Viewer は 18 言語をサポートし、システムロケールに基づい
 
 简体中文 | English | 繁體中文 | 한국어 | Deutsch | Español | Français | Italiano | Dansk | 日本語 | Polski | Русский | العربية | Norsk | Português (Brasil) | ไทย | Türkçe | Українська
 
+### 自動更新
+
+CC-Viewer は起動時に自動的に更新を確認します（最大4時間に1回）。同じメジャーバージョン内（例：1.x.x → 1.y.z）では自動更新され、次回起動時に有効になります。メジャーバージョンが異なる場合は通知のみ表示されます。
+
+自動更新は Claude Code のグローバル設定 `~/.claude/settings.json` に従います。Claude Code で自動更新が無効（`autoUpdates: false`）の場合、CC-Viewer も自動更新をスキップします。
+
 ## License
 
 MIT

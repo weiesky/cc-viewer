@@ -2395,6 +2395,46 @@ const i18nData = {
     "th": "อัปเดตเมื่อ {time}",
     "tr": "{time} tarihinde güncellendi",
     "uk": "Оновлено о {time}"
+  },
+  "ui.update.completed": {
+    "zh": "已更新到 v{version}，下次启动生效",
+    "en": "Updated to v{version}, effective on next restart",
+    "zh-TW": "已更新到 v{version}，下次啟動生效",
+    "ko": "v{version}으로 업데이트됨, 다음 시작 시 적용",
+    "ja": "v{version} に更新済み、次回起動時に有効",
+    "de": "Auf v{version} aktualisiert, wirksam beim nächsten Neustart",
+    "es": "Actualizado a v{version}, efectivo en el próximo reinicio",
+    "fr": "Mis à jour vers v{version}, effectif au prochain redémarrage",
+    "it": "Aggiornato a v{version}, effettivo al prossimo riavvio",
+    "da": "Opdateret til v{version}, træder i kraft ved næste genstart",
+    "pl": "Zaktualizowano do v{version}, obowiązuje po ponownym uruchomieniu",
+    "ru": "Обновлено до v{version}, вступит в силу при следующем запуске",
+    "ar": "تم التحديث إلى v{version}، سيسري عند إعادة التشغيل التالية",
+    "no": "Oppdatert til v{version}, trer i kraft ved neste omstart",
+    "pt-BR": "Atualizado para v{version}, efetivo na próxima reinicialização",
+    "th": "อัปเดตเป็น v{version} แล้ว มีผลเมื่อเริ่มใหม่",
+    "tr": "v{version} sürümüne güncellendi, bir sonraki başlatmada geçerli",
+    "uk": "Оновлено до v{version}, набуде чинності при наступному запуску"
+  },
+  "ui.update.majorAvailable": {
+    "zh": "新大版本 v{version} 可用，请手动更新: npm i -g cc-viewer@latest",
+    "en": "Major version v{version} available, update manually: npm i -g cc-viewer@latest",
+    "zh-TW": "新大版本 v{version} 可用，請手動更新: npm i -g cc-viewer@latest",
+    "ko": "새 메이저 버전 v{version} 사용 가능, 수동 업데이트: npm i -g cc-viewer@latest",
+    "ja": "メジャーバージョン v{version} が利用可能、手動更新: npm i -g cc-viewer@latest",
+    "de": "Hauptversion v{version} verfügbar, manuell aktualisieren: npm i -g cc-viewer@latest",
+    "es": "Versión principal v{version} disponible, actualice: npm i -g cc-viewer@latest",
+    "fr": "Version majeure v{version} disponible, mettez à jour : npm i -g cc-viewer@latest",
+    "it": "Versione principale v{version} disponibile, aggiornare: npm i -g cc-viewer@latest",
+    "da": "Hovedversion v{version} tilgængelig, opdater manuelt: npm i -g cc-viewer@latest",
+    "pl": "Główna wersja v{version} dostępna, zaktualizuj: npm i -g cc-viewer@latest",
+    "ru": "Доступна основная версия v{version}, обновите: npm i -g cc-viewer@latest",
+    "ar": "الإصدار الرئيسي v{version} متاح، حدّث يدويًا: npm i -g cc-viewer@latest",
+    "no": "Hovedversjon v{version} tilgjengelig, oppdater manuelt: npm i -g cc-viewer@latest",
+    "pt-BR": "Versão principal v{version} disponível, atualize: npm i -g cc-viewer@latest",
+    "th": "เวอร์ชันหลัก v{version} พร้อมใช้งาน อัปเดตด้วยตนเอง: npm i -g cc-viewer@latest",
+    "tr": "Ana sürüm v{version} mevcut, manuel güncelleyin: npm i -g cc-viewer@latest",
+    "uk": "Доступна основна версія v{version}, оновіть: npm i -g cc-viewer@latest"
   }
 };
 
