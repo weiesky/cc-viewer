@@ -8,6 +8,9 @@
 - Fix: highlight dashed-border animation uses white stroke on user bubbles (blue background) for better visibility
 - Fix: highlight now applies to all message roles, not just assistant
 - Fix: SubAgent requests use their own timestamp for raw-chat view switching instead of searching for parent MainAgent
+- Feat: added SubAgent call stats (by subType) in stats panel, below cache rebuild stats
+- Refactor: cache rebuild stats extracted as independent column, inserted before tool usage stats
+- Refactor: global settings changed from Modal to left-side Drawer; project stats Drawer also moved to left side
 
 ## 1.3.6 (2026-03-01)
 

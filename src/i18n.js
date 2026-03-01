@@ -2156,6 +2156,26 @@ const i18nData = {
     "tr": "Araç Kullanım İstatistikleri",
     "uk": "Статистика використання інструментів"
   },
+  "ui.subAgentStats": {
+    "zh": "SubAgent 调用统计",
+    "en": "SubAgent Call Stats",
+    "zh-TW": "SubAgent 調用統計",
+    "ko": "SubAgent 호출 통계",
+    "ja": "SubAgent 呼び出し統計",
+    "de": "SubAgent-Aufrufstatistik",
+    "es": "Estadísticas de llamadas SubAgent",
+    "fr": "Statistiques d'appels SubAgent",
+    "it": "Statistiche chiamate SubAgent",
+    "da": "SubAgent-kaldsstatistik",
+    "pl": "Statystyki wywołań SubAgent",
+    "ru": "Статистика вызовов SubAgent",
+    "ar": "إحصائيات استدعاء SubAgent",
+    "no": "SubAgent-anropsstatistikk",
+    "pt-BR": "Estatísticas de chamadas SubAgent",
+    "th": "สถิติการเรียก SubAgent",
+    "tr": "SubAgent Çağrı İstatistikleri",
+    "uk": "Статистика викликів SubAgent"
+  },
   "ui.mergeLogs": {
     "zh": "合并日志",
     "en": "Merge Logs",

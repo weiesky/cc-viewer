@@ -3,6 +3,7 @@ import { Space, Tag, Button, Badge, Typography, Dropdown, Popover, Modal, Collap
 import { MessageOutlined, FileTextOutlined, ImportOutlined, DownOutlined, DashboardOutlined, ExportOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined } from '@ant-design/icons';
 import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats } from '../utils/helpers';
 import { isSystemText, classifyUserContent, isMainAgent } from '../utils/contentFilter';
+import { classifyRequest } from '../utils/requestType';
 import { t, getLang, setLang } from '../i18n';
 import ConceptHelp from './ConceptHelp';
 import styles from './AppHeader.module.css';
@@ -284,9 +285,10 @@ class AppHeader extends React.Component {
             </div>
           );
         })}
-        {this.renderCacheRebuildStats()}
       </div>
     );
+
+    const cacheRebuildColumn = this.renderCacheRebuildStats();
 
     const toolColumn = toolStats.length > 0 ? (
       <div className={styles.toolStatsColumn}>
@@ -351,6 +353,7 @@ class AppHeader extends React.Component {
     return (
       <div className={styles.tokenStatsContainer}>
         {tokenColumn}
+        {cacheRebuildColumn}
         {toolColumn}
         {skillColumn}
       </div>
@@ -366,39 +369,84 @@ class AppHeader extends React.Component {
       model_change: 'modelChange', msg_truncated: 'msgTruncated', msg_modified: 'msgModified', key_change: 'keyChange',
     };
     const activeReasons = reasonKeys.filter(k => stats[k].count > 0);
-    if (activeReasons.length === 0) return null;
 
     const totalCount = activeReasons.reduce((sum, k) => sum + stats[k].count, 0);
     const totalCache = activeReasons.reduce((sum, k) => sum + stats[k].cacheCreate, 0);
 
+    // SubAgent 统计
+    const subAgentCounts = {};
+    for (let i = 0; i < requests.length; i++) {
+      const cls = classifyRequest(requests[i], requests[i + 1]);
+      if (cls.type === 'SubAgent') {
+        const label = cls.subType || 'Other';
+        subAgentCounts[label] = (subAgentCounts[label] || 0) + 1;
+      }
+    }
+    const subAgentEntries = Object.entries(subAgentCounts).sort((a, b) => b[1] - a[1]);
+
+    const hasCacheStats = activeReasons.length > 0;
+    const hasSubAgentStats = subAgentEntries.length > 0;
+    if (!hasCacheStats && !hasSubAgentStats) return null;
+
     return (
-      <div className={styles.rebuildCard}>
-        <div className={styles.modelName}>MainAgent<ConceptHelp doc="MainAgent" /> {t('ui.cacheRebuildStats')}<ConceptHelp doc="CacheRebuild" /></div>
-        <table className={styles.statsTable}>
-          <thead>
-            <tr>
-              <td className={styles.th} style={{ textAlign: 'left' }}>{t('ui.cacheRebuild.reason')}</td>
-              <td className={styles.th}>{t('ui.cacheRebuild.count')}</td>
-              <td className={styles.th}>{t('ui.cacheRebuild.cacheCreate')}</td>
-            </tr>
-          </thead>
-          <tbody>
-            {activeReasons.map(k => (
-              <tr key={k} className={styles.rowBorder}>
-                <td className={styles.label}>{t(`ui.cacheRebuild.${i18nMap[k]}`)}</td>
-                <td className={styles.td}>{stats[k].count}</td>
-                <td className={styles.td}>{formatTokenCount(stats[k].cacheCreate)}</td>
+      <div className={styles.toolStatsColumn}>
+        {hasCacheStats && (
+          <div className={hasSubAgentStats ? styles.modelCardSpaced : styles.modelCard}>
+            <div className={styles.modelName}>MainAgent<ConceptHelp doc="MainAgent" /> {t('ui.cacheRebuildStats')}<ConceptHelp doc="CacheRebuild" /></div>
+            <table className={styles.statsTable}>
+            <thead>
+              <tr>
+                <td className={styles.th} style={{ textAlign: 'left' }}>{t('ui.cacheRebuild.reason')}</td>
+                <td className={styles.th}>{t('ui.cacheRebuild.count')}</td>
+                <td className={styles.th}>{t('ui.cacheRebuild.cacheCreate')}</td>
               </tr>
-            ))}
-            {activeReasons.length > 1 && (
-              <tr className={styles.rebuildTotalRow}>
-                <td className={styles.label}>Total</td>
-                <td className={styles.td}>{totalCount}</td>
-                <td className={styles.td}>{formatTokenCount(totalCache)}</td>
+            </thead>
+            <tbody>
+              {activeReasons.map(k => (
+                <tr key={k} className={styles.rowBorder}>
+                  <td className={styles.label}>{t(`ui.cacheRebuild.${i18nMap[k]}`)}</td>
+                  <td className={styles.td}>{stats[k].count}</td>
+                  <td className={styles.td}>{formatTokenCount(stats[k].cacheCreate)}</td>
+                </tr>
+              ))}
+              {activeReasons.length > 1 && (
+                <tr className={styles.rebuildTotalRow}>
+                  <td className={styles.label}>Total</td>
+                  <td className={styles.td}>{totalCount}</td>
+                  <td className={styles.td}>{formatTokenCount(totalCache)}</td>
+                </tr>
+              )}
+            </tbody>
+            </table>
+          </div>
+        )}
+        {hasSubAgentStats && (
+          <div className={styles.modelCard}>
+            <div className={styles.modelName}>{t('ui.subAgentStats')}</div>
+            <table className={styles.statsTable}>
+            <thead>
+              <tr>
+                <td className={styles.th} style={{ textAlign: 'left' }}>SubAgent</td>
+                <td className={styles.th}>{t('ui.cacheRebuild.count')}</td>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {subAgentEntries.map(([name, count]) => (
+                <tr key={name} className={styles.rowBorder}>
+                  <td className={styles.label}>{name}</td>
+                  <td className={styles.td}>{count}</td>
+                </tr>
+              ))}
+              {subAgentEntries.length > 1 && (
+                <tr className={styles.rebuildTotalRow}>
+                  <td className={styles.label}>Total</td>
+                  <td className={styles.td}>{subAgentEntries.reduce((s, e) => s + e[1], 0)}</td>
+                </tr>
+              )}
+            </tbody>
+            </table>
+          </div>
+        )}
       </div>
     );
   }
@@ -753,12 +801,12 @@ class AppHeader extends React.Component {
             />
           </div>
         </Drawer>
-        <Modal
+        <Drawer
           title={t('ui.globalSettings')}
-          open={this.state.globalSettingsVisible}
-          onCancel={() => this.setState({ globalSettingsVisible: false })}
-          footer={null}
+          placement="left"
           width={400}
+          open={this.state.globalSettingsVisible}
+          onClose={() => this.setState({ globalSettingsVisible: false })}
         >
           <div className={styles.settingsItem}>
             <span className={styles.settingsLabel}>{t('ui.filterIrrelevant')}</span>
@@ -774,10 +822,10 @@ class AppHeader extends React.Component {
               onChange={(checked) => onExpandDiffChange && onExpandDiffChange(checked)}
             />
           </div>
-        </Modal>
+        </Drawer>
         <Drawer
           title={<span><BarChartOutlined style={{ marginRight: 8 }} />{t('ui.projectStats')}</span>}
-          placement="right"
+          placement="left"
           width={400}
           open={this.state.projectStatsVisible}
           onClose={() => this.setState({ projectStatsVisible: false })}
