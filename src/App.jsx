@@ -26,7 +26,7 @@ class App extends React.Component {
       requests: [],
       selectedIndex: null,
       viewMode: 'raw',
-      currentTab: 'request',
+      currentTab: 'context',
       cacheExpireAt,
       cacheType,
       leftPanelWidth: 380,

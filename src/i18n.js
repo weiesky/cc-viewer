@@ -2535,6 +2535,69 @@ const i18nData = {
     "th": "เวอร์ชันหลัก v{version} พร้อมใช้งาน อัปเดตด้วยตนเอง: npm i -g cc-viewer@latest",
     "tr": "Ana sürüm v{version} mevcut, manuel güncelleyin: npm i -g cc-viewer@latest",
     "uk": "Доступна основна версія v{version}, оновіть: npm i -g cc-viewer@latest"
+  },
+  "ui.context.systemPrompt": {
+    "zh": "系统提示词", "en": "System Prompt", "zh-TW": "系統提示詞",
+    "ko": "시스템 프롬프트", "ja": "システムプロンプト", "de": "System-Prompt",
+    "es": "Prompt del sistema", "fr": "Prompt système", "it": "Prompt di sistema",
+    "da": "System-prompt", "pl": "Prompt systemowy", "ru": "Системный промпт",
+    "ar": "موجه النظام", "no": "System-prompt", "pt-BR": "Prompt do sistema",
+    "th": "System Prompt", "tr": "Sistem Prompt'u", "uk": "Системний промпт"
+  },
+  "ui.context.messages": {
+    "zh": "消息", "en": "Messages", "zh-TW": "訊息",
+    "ko": "메시지", "ja": "メッセージ", "de": "Nachrichten",
+    "es": "Mensajes", "fr": "Messages", "it": "Messaggi",
+    "da": "Beskeder", "pl": "Wiadomości", "ru": "Сообщения",
+    "ar": "الرسائل", "no": "Meldinger", "pt-BR": "Mensagens",
+    "th": "ข้อความ", "tr": "Mesajlar", "uk": "Повідомлення"
+  },
+  "ui.context.tools": {
+    "zh": "工具", "en": "Tools", "zh-TW": "工具",
+    "ko": "도구", "ja": "ツール", "de": "Tools",
+    "es": "Herramientas", "fr": "Outils", "it": "Strumenti",
+    "da": "Værktøjer", "pl": "Narzędzia", "ru": "Инструменты",
+    "ar": "الأدوات", "no": "Verktøy", "pt-BR": "Ferramentas",
+    "th": "เครื่องมือ", "tr": "Araçlar", "uk": "Інструменти"
+  },
+  "ui.context.noData": {
+    "zh": "暂无 Context 数据", "en": "No context data", "zh-TW": "暫無 Context 資料",
+    "ko": "컨텍스트 데이터 없음", "ja": "コンテキストデータなし", "de": "Keine Kontextdaten",
+    "es": "Sin datos de contexto", "fr": "Aucune donnée de contexte", "it": "Nessun dato di contesto",
+    "da": "Ingen kontekstdata", "pl": "Brak danych kontekstu", "ru": "Нет данных контекста",
+    "ar": "لا توجد بيانات سياق", "no": "Ingen kontekstdata", "pt-BR": "Sem dados de contexto",
+    "th": "ไม่มีข้อมูล Context", "tr": "Bağlam verisi yok", "uk": "Немає даних контексту"
+  },
+  "ui.context.noFields": {
+    "zh": "Request body 中未找到 messages / system / tools", "en": "No messages / system / tools found in request body",
+    "zh-TW": "Request body 中未找到 messages / system / tools",
+    "ko": "요청 본문에서 messages / system / tools를 찾을 수 없음",
+    "ja": "リクエストボディに messages / system / tools が見つかりません",
+    "de": "Keine messages / system / tools im Request-Body gefunden",
+    "es": "No se encontraron messages / system / tools en el cuerpo de la solicitud",
+    "fr": "Aucun messages / system / tools dans le corps de la requête",
+    "it": "Nessun messages / system / tools trovato nel corpo della richiesta",
+    "da": "Ingen messages / system / tools fundet i request body",
+    "pl": "Nie znaleziono messages / system / tools w treści żądania",
+    "ru": "В теле запроса не найдено messages / system / tools",
+    "ar": "لم يتم العثور على messages / system / tools في جسم الطلب",
+    "no": "Ingen messages / system / tools funnet i request body",
+    "pt-BR": "Nenhum messages / system / tools encontrado no corpo da requisição",
+    "th": "ไม่พบ messages / system / tools ใน request body",
+    "tr": "İstek gövdesinde messages / system / tools bulunamadı",
+    "uk": "У тілі запиту не знайдено messages / system / tools"
+  },
+  "ui.context.selectPrompt": {
+    "zh": "请在左侧选择一个要查看的内容", "en": "Select an item on the left to view",
+    "zh-TW": "請在左側選擇一個要查看的內容",
+    "ko": "왼쪽에서 항목을 선택하세요", "ja": "左側から項目を選択してください",
+    "de": "Wählen Sie links einen Eintrag aus", "es": "Seleccione un elemento a la izquierda",
+    "fr": "Sélectionnez un élément à gauche", "it": "Seleziona un elemento a sinistra",
+    "da": "Vælg et element til venstre", "pl": "Wybierz element po lewej stronie",
+    "ru": "Выберите элемент слева", "ar": "اختر عنصرًا على اليسار",
+    "no": "Velg et element til venstre", "pt-BR": "Selecione um item à esquerda",
+    "th": "เลือกรายการทางซ้าย", "tr": "Soldan bir öğe seçin",
+    "uk": "Виберіть елемент ліворуч"
   }
 };
 
