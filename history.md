@@ -5,6 +5,7 @@
 - Feat: Context Tab structured rendering — messages now display each content block in its proper format: text as markdown, tool_use as labeled JSON viewer (shows tool name + input), tool_result as labeled content; role badge shown per message; visual separators between system prompt items
 - Feat: Context Tab translate button — each markdown block has a per-block translate button; thinking blocks show translate button in header when expanded
 - Feat: Context Tab thinking block — `thinking` content blocks rendered as collapsible section (yellow accent, expanded by default) with preview text when collapsed
+- Style: Context Tab text blocks — each `text` block rendered as a card container (same structure as `tool_use`: header with gray `text` tag + translate button, body with bg-card); `tool_result` inner content uses compact mode (no card wrapper, translate button floats inline)
 - Feat: light mode support — GitHub-inspired light theme with CSS variable system; theme selector (lightbulb icon) in top-right header; preference persisted in localStorage
 - Fix: JSON viewer dark mode — replaced Solarized-based library styles with custom CSS-variable-based classes (`rjv-*`); dark mode strings now use warm orange (#ce9178); preserves `white-space: pre-wrap` formatting; light/dark adapt automatically via CSS variables
 - Fix: translate context pollution — `ANTHROPIC_AUTH_TOKEN` is now validated to start with `sk-` before use as `x-api-key`; OAuth session tokens are rejected, preventing translation requests from being associated with the active Claude Code session

@@ -122,21 +122,32 @@ function parseToolBlocks(tool) {
 
 // ── Block renderers ───────────────────────────────────────────────────────────
 
-function TranslatableMarkdown({ text }) {
+function TranslatableMarkdown({ text, compact }) {
   const [translatedHtml, setTranslatedHtml] = useState(null);
   const displayHtml = translatedHtml || renderMarkdown(text);
-  return (
-    <div>
-      <div className={styles.blockTranslateBar}>
-        <TranslateTag
-          text={text}
-          onTranslated={(txt) => setTranslatedHtml(txt ? renderMarkdown(txt) : null)}
-        />
+  const translateTag = (
+    <TranslateTag
+      text={text}
+      onTranslated={(txt) => setTranslatedHtml(txt ? renderMarkdown(txt) : null)}
+    />
+  );
+
+  if (compact) {
+    return (
+      <div className={styles.textBlockCompact}>
+        <span className={styles.textBlockCompactFloat}>{translateTag}</span>
+        <div className={`chat-md ${styles.markdownBody}`} dangerouslySetInnerHTML={{ __html: displayHtml }} />
       </div>
-      <div
-        className={`chat-md ${styles.markdownBody}`}
-        dangerouslySetInnerHTML={{ __html: displayHtml }}
-      />
+    );
+  }
+
+  return (
+    <div className={styles.textBlock}>
+      <div className={styles.textBlockBar}>
+        <span className={`${styles.blockTag} ${styles.blockTagText}`}>text</span>
+        {translateTag}
+      </div>
+      <div className={`chat-md ${styles.textBlockBody}`} dangerouslySetInnerHTML={{ __html: displayHtml }} />
     </div>
   );
 }
@@ -173,25 +184,25 @@ function ThinkingBlock({ block }) {
   );
 }
 
-function RenderBlocks({ blocks }) {
+function RenderBlocks({ blocks, compact }) {
   if (!blocks || blocks.length === 0) return null;
   return (
     <>
       {blocks.map((block, i) => (
-        <RenderBlock key={i} block={block} />
+        <RenderBlock key={i} block={block} compact={compact} />
       ))}
     </>
   );
 }
 
-function RenderBlock({ block }) {
+function RenderBlock({ block, compact }) {
   if (block.type === 'separator') {
     return <hr className={styles.blockSeparator} />;
   }
 
   if (block.type === 'markdown') {
     if (!block.text?.trim()) return null;
-    return <TranslatableMarkdown text={block.text} />;
+    return <TranslatableMarkdown text={block.text} compact={compact} />;
   }
 
   if (block.type === 'thinking') {
@@ -224,7 +235,7 @@ function RenderBlock({ block }) {
           {block.is_error && <span className={styles.errorLabel}>error</span>}
         </div>
         <div className={styles.toolBlockBody}>
-          <RenderBlocks blocks={block.content} />
+          <RenderBlocks blocks={block.content} compact />
         </div>
       </div>
     );

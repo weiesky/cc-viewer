@@ -264,6 +264,12 @@
   color: var(--diff-del-text);
 }
 
+.blockTagText {
+  background: rgba(128, 128, 128, 0.08);
+  border-color: rgba(128, 128, 128, 0.2);
+  color: var(--text-4);
+}
+
 .toolName {
   font-size: 12px;
   font-weight: 600;
@@ -334,8 +340,33 @@
   background: var(--bg-card);
 }
 
-.blockTranslateBar {
+/* ── Text (markdown) block container ── */
+.textBlock {
+  margin: 8px 0;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.textBlockBar {
   display: flex;
-  justify-content: flex-end;
-  padding: 2px 0 4px 0;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 10px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-2);
+}
+
+.textBlockBody {
+  padding: 8px 12px;
+  background: var(--bg-card);
+}
+
+.textBlockCompact {
+  margin: 4px 0;
+}
+
+.textBlockCompactFloat {
+  float: right;
+  margin-left: 8px;
 }
