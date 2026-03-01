@@ -138,7 +138,7 @@ class ChatMessage extends React.Component {
     );
 
     const codePre = (text, color) => (
-      <pre className={styles.codePre} style={{ color: color || '#e5e7eb' }}>{text}</pre>
+      <pre className={styles.codePre} style={{ color: color || 'var(--text-code)' }}>{text}</pre>
     );
 
     const pathTag = (p) => (
@@ -445,7 +445,7 @@ class ChatMessage extends React.Component {
                       const isSelected = answer === opt.label;
                       return (
                         <div key={oi} className={styles.option} style={{
-                          color: isSelected ? '#e5e5e5' : '#666',
+                          color: isSelected ? 'var(--text-1)' : 'var(--text-5)',
                           fontWeight: isSelected ? 600 : 'normal',
                         }}>
                           {isSelected ? '● ' : '○ '}{opt.label}

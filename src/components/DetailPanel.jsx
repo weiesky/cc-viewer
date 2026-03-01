@@ -246,6 +246,7 @@ class DetailPanel extends React.Component {
             data={clean}
             defaultExpand={type === 'response' ? 'all' : 'root'}
             expandNode={expandNode}
+           
           />
         ) : (
           <pre className={styles.rawTextPre}>
@@ -326,7 +327,7 @@ class DetailPanel extends React.Component {
                 ) : null}
                 placement="top" color="#000"
                 overlayStyle={{ maxWidth: 340 }}
-                overlayInnerStyle={{ fontSize: 12, color: '#999' }}
+                overlayInnerStyle={{ fontSize: 12, color: 'var(--text-4)' }}
               >                <Text strong className={styles.diffToggle}
                   onClick={() => this.setState(prev => ({ diffExpanded: !prev.diffExpanded }))}>
                   Body Diff JSON <ConceptHelp doc="BodyDiffJSON" />{' '}{this.state.diffExpanded ? <DownOutlined className={styles.diffIcon} /> : <RightOutlined className={styles.diffIcon} />}
@@ -352,7 +353,7 @@ class DetailPanel extends React.Component {
                 ) : null}
                 placement="top" color="#000"
                 overlayStyle={{ maxWidth: 340 }}
-                overlayInnerStyle={{ fontSize: 12, color: '#999' }}
+                overlayInnerStyle={{ fontSize: 12, color: 'var(--text-4)' }}
               >                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Text strong className={styles.diffToggle}
                     onClick={() => this.setState(prev => ({ diffExpanded: !prev.diffExpanded }))}>
@@ -428,7 +429,7 @@ class DetailPanel extends React.Component {
                 <Space size="small">
                   {(hasClaudeMd || hasSkills) && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      <span style={{ color: '#888', fontSize: 12, fontFamily: 'monospace' }}>system-reminder:</span>
+                      <span style={{ color: 'var(--text-4)', fontSize: 12, fontFamily: 'monospace' }}>system-reminder:</span>
                       <Select
                         size="small"
                         className={styles.reminderSelect}

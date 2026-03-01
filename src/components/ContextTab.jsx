@@ -3,82 +3,247 @@ import { Typography, Empty } from 'antd';
 import { RightOutlined, DownOutlined } from '@ant-design/icons';
 import { renderMarkdown } from '../utils/markdown';
 import { t } from '../i18n';
+import JsonViewer from './JsonViewer';
+import TranslateTag from './TranslateTag';
 import styles from './ContextTab.module.css';
 
 const { Text } = Typography;
 
-/**
- * 将 messages 数组中每条消息格式化为 Markdown 文本
- */
-function formatMessages(messages) {
-  if (!Array.isArray(messages) || messages.length === 0) return null;
-  return messages.map((msg, i) => {
-    const role = msg?.role || 'unknown';
-    let content = '';
-    if (typeof msg?.content === 'string') {
-      content = msg.content;
-    } else if (Array.isArray(msg?.content)) {
-      content = msg.content
-        .map((block) => {
-          if (!block) return '';
-          if (block.type === 'text') return block.text || '';
-          if (block.type === 'tool_use') return `\`\`\`json\n${JSON.stringify(block, null, 2)}\n\`\`\``;
-          if (block.type === 'tool_result') {
-            const resultContent =
-              typeof block.content === 'string'
-                ? block.content
-                : Array.isArray(block.content)
-                ? block.content.map((c) => c?.text || '').join('\n')
-                : JSON.stringify(block.content, null, 2);
-            return `**[tool_result]**\n${resultContent}`;
-          }
-          return JSON.stringify(block, null, 2);
-        })
-        .join('\n\n');
-    } else {
-      content = JSON.stringify(msg?.content, null, 2);
-    }
-    return { index: i, role, content };
-  });
-}
+// ── Block parsers ─────────────────────────────────────────────────────────────
 
 /**
- * 将 system 数组/字符串格式化为 Markdown 文本
+ * Parse a single content block array or string into typed render-blocks.
+ * Returns an array of:
+ *   { type: 'markdown', text }
+ *   { type: 'tool_use', name, id, input }
+ *   { type: 'tool_result', tool_use_id, content: renderBlocks[] }
+ *   { type: 'json', label, data }
  */
-function formatSystem(system) {
-  if (!system) return null;
-  if (typeof system === 'string') return system;
-  if (Array.isArray(system)) {
-    return system
-      .map((item) => {
-        if (!item) return '';
-        if (typeof item === 'string') return item;
-        if (item.type === 'text') return item.text || '';
-        return JSON.stringify(item, null, 2);
-      })
-      .join('\n\n---\n\n');
+function parseContentBlocks(content) {
+  if (content == null) return [];
+
+  if (typeof content === 'string') {
+    const trimmed = content.trim();
+    return trimmed ? [{ type: 'markdown', text: trimmed }] : [];
   }
-  return JSON.stringify(system, null, 2);
+
+  if (Array.isArray(content)) {
+    const blocks = [];
+    for (const block of content) {
+      if (!block) continue;
+      if (block.type === 'text') {
+        const trimmed = (block.text || '').trim();
+        if (trimmed) blocks.push({ type: 'markdown', text: trimmed });
+      } else if (block.type === 'tool_use') {
+        blocks.push({
+          type: 'tool_use',
+          name: block.name || 'unknown',
+          id: block.id || '',
+          input: block.input ?? {},
+        });
+      } else if (block.type === 'tool_result') {
+        const inner = parseResultContent(block.content);
+        blocks.push({
+          type: 'tool_result',
+          tool_use_id: block.tool_use_id || '',
+          is_error: block.is_error,
+          content: inner,
+        });
+      } else if (block.type === 'thinking') {
+        const text = block.thinking || '';
+        if (text.trim()) blocks.push({ type: 'thinking', text });
+      } else if (block.type === 'image') {
+        blocks.push({ type: 'json', label: 'image', data: block });
+      } else {
+        blocks.push({ type: 'json', label: block.type || 'block', data: block });
+      }
+    }
+    return blocks;
+  }
+
+  return [{ type: 'json', label: 'content', data: content }];
 }
 
-/**
- * 将 tools 数组中单个工具格式化为 Markdown 文本
- */
-function formatTool(tool) {
+function parseResultContent(content) {
+  if (content == null) return [];
+  if (typeof content === 'string') {
+    const trimmed = content.trim();
+    return trimmed ? [{ type: 'markdown', text: trimmed }] : [];
+  }
+  if (Array.isArray(content)) {
+    return content.flatMap((c) => {
+      if (!c) return [];
+      if (c.type === 'text') {
+        const trimmed = (c.text || '').trim();
+        return trimmed ? [{ type: 'markdown', text: trimmed }] : [];
+      }
+      return [{ type: 'json', label: c.type || 'block', data: c }];
+    });
+  }
+  return [{ type: 'json', label: 'content', data: content }];
+}
+
+function parseSystemBlocks(system) {
+  if (!system) return null;
+  if (typeof system === 'string') {
+    return [{ type: 'markdown', text: system }];
+  }
+  if (Array.isArray(system)) {
+    const blocks = [];
+    system.forEach((item, i) => {
+      if (i > 0) blocks.push({ type: 'separator' });
+      if (!item) return;
+      if (typeof item === 'string') {
+        blocks.push({ type: 'markdown', text: item });
+      } else if (item.type === 'text') {
+        blocks.push({ type: 'markdown', text: item.text || '' });
+      } else {
+        blocks.push({ type: 'json', label: item.type || 'item', data: item });
+      }
+    });
+    return blocks;
+  }
+  return [{ type: 'json', label: 'system', data: system }];
+}
+
+function parseToolBlocks(tool) {
+  const blocks = [];
   const name = tool?.name || 'unknown';
   const desc = tool?.description || '';
-  const schema = tool?.input_schema || tool?.parameters || null;
-  let md = `## ${name}\n\n`;
+  let md = `### ${name}\n\n`;
   if (desc) md += `${desc}\n\n`;
+  blocks.push({ type: 'markdown', text: md });
+  const schema = tool?.input_schema || tool?.parameters || null;
   if (schema) {
-    md += `**Parameters:**\n\n\`\`\`json\n${JSON.stringify(schema, null, 2)}\n\`\`\`\n`;
+    blocks.push({ type: 'json', label: 'Parameters', data: schema });
   }
-  return md;
+  return blocks;
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// 手风琴子项
-// ──────────────────────────────────────────────────────────────────────────────
+// ── Block renderers ───────────────────────────────────────────────────────────
+
+function TranslatableMarkdown({ text }) {
+  const [translatedHtml, setTranslatedHtml] = useState(null);
+  const displayHtml = translatedHtml || renderMarkdown(text);
+  return (
+    <div>
+      <div className={styles.blockTranslateBar}>
+        <TranslateTag
+          text={text}
+          onTranslated={(txt) => setTranslatedHtml(txt ? renderMarkdown(txt) : null)}
+        />
+      </div>
+      <div
+        className={`chat-md ${styles.markdownBody}`}
+        dangerouslySetInnerHTML={{ __html: displayHtml }}
+      />
+    </div>
+  );
+}
+
+function ThinkingBlock({ block }) {
+  const [expanded, setExpanded] = useState(true);
+  const [translatedHtml, setTranslatedHtml] = useState(null);
+  const preview = block.text.length > 60 ? block.text.slice(0, 60).replace(/\n/g, ' ') + '…' : block.text.replace(/\n/g, ' ');
+  const displayHtml = translatedHtml || renderMarkdown(block.text);
+  return (
+    <div className={styles.thinkingBlock}>
+      <div className={styles.thinkingHeader} onClick={() => setExpanded((v) => !v)}>
+        {expanded ? <DownOutlined className={styles.arrow} /> : <RightOutlined className={styles.arrow} />}
+        <span className={`${styles.blockTag} ${styles.blockTagThinking}`}>thinking</span>
+        {!expanded && <span className={styles.thinkingPreview}>{preview}</span>}
+        {expanded && (
+          <span onClick={(e) => e.stopPropagation()}>
+            <TranslateTag
+              text={block.text}
+              onTranslated={(txt) => setTranslatedHtml(txt ? renderMarkdown(txt) : null)}
+            />
+          </span>
+        )}
+      </div>
+      {expanded && (
+        <div className={styles.thinkingBody}>
+          <div
+            className={`chat-md ${styles.markdownBody}`}
+            dangerouslySetInnerHTML={{ __html: displayHtml }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RenderBlocks({ blocks }) {
+  if (!blocks || blocks.length === 0) return null;
+  return (
+    <>
+      {blocks.map((block, i) => (
+        <RenderBlock key={i} block={block} />
+      ))}
+    </>
+  );
+}
+
+function RenderBlock({ block }) {
+  if (block.type === 'separator') {
+    return <hr className={styles.blockSeparator} />;
+  }
+
+  if (block.type === 'markdown') {
+    if (!block.text?.trim()) return null;
+    return <TranslatableMarkdown text={block.text} />;
+  }
+
+  if (block.type === 'thinking') {
+    return <ThinkingBlock block={block} />;
+  }
+
+  if (block.type === 'tool_use') {
+    return (
+      <div className={styles.toolBlock}>
+        <div className={styles.toolBlockHeader}>
+          <span className={styles.blockTag}>tool_use</span>
+          <span className={styles.toolName}>{block.name}</span>
+          {block.id && <span className={styles.toolId}>{block.id}</span>}
+        </div>
+        <div className={styles.toolBlockBody}>
+          <JsonViewer data={block.input} defaultExpand="root" />
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === 'tool_result') {
+    return (
+      <div className={`${styles.toolBlock} ${block.is_error ? styles.toolBlockError : styles.toolBlockResult}`}>
+        <div className={styles.toolBlockHeader}>
+          <span className={`${styles.blockTag} ${block.is_error ? styles.blockTagError : styles.blockTagResult}`}>
+            tool_result
+          </span>
+          {block.tool_use_id && <span className={styles.toolId}>{block.tool_use_id}</span>}
+          {block.is_error && <span className={styles.errorLabel}>error</span>}
+        </div>
+        <div className={styles.toolBlockBody}>
+          <RenderBlocks blocks={block.content} />
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === 'json') {
+    return (
+      <div className={styles.jsonBlock}>
+        {block.label && <div className={styles.jsonBlockLabel}>{block.label}</div>}
+        <JsonViewer data={block.data} defaultExpand="root" />
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// ── Accordion ─────────────────────────────────────────────────────────────────
+
 function AccordionSection({ title, items, onSelect, selectedId }) {
   const [open, setOpen] = useState(true);
   return (
@@ -108,9 +273,8 @@ function AccordionSection({ title, items, onSelect, selectedId }) {
   );
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// 主组件
-// ──────────────────────────────────────────────────────────────────────────────
+// ── Main component ────────────────────────────────────────────────────────────
+
 export default function ContextTab({ body }) {
   const [selected, setSelected] = useState(null);
 
@@ -122,40 +286,37 @@ export default function ContextTab({ body }) {
     );
   }
 
-  // ── 构建手风琴数据 ──────────────────────────────────────────────────────────
   const accordionSections = [];
 
-  // 系统提示词
-  const systemText = formatSystem(body.system);
-  if (systemText != null) {
+  // System prompt
+  const systemBlocks = parseSystemBlocks(body.system);
+  if (systemBlocks != null) {
     accordionSections.push({
       key: 'system',
       title: t('ui.context.systemPrompt'),
-      items: [
-        {
-          id: 'system__0',
-          label: t('ui.context.systemPrompt'),
-          markdown: systemText,
-        },
-      ],
+      items: [{
+        id: 'system__0',
+        label: t('ui.context.systemPrompt'),
+        blocks: systemBlocks,
+      }],
     });
   }
 
-  // 消息列表
-  const msgItems = formatMessages(body.messages);
-  if (msgItems && msgItems.length > 0) {
+  // Messages
+  if (Array.isArray(body.messages) && body.messages.length > 0) {
     accordionSections.push({
       key: 'messages',
       title: t('ui.context.messages'),
-      items: msgItems.map((m) => ({
-        id: `msg__${m.index}`,
-        label: `[${m.index}] ${m.role}`,
-        markdown: m.content,
+      items: body.messages.map((msg, i) => ({
+        id: `msg__${i}`,
+        label: `[${i}] ${msg?.role || 'unknown'}`,
+        role: msg?.role || 'unknown',
+        blocks: parseContentBlocks(msg?.content),
       })),
     });
   }
 
-  // 工具列表
+  // Tools
   if (Array.isArray(body.tools) && body.tools.length > 0) {
     accordionSections.push({
       key: 'tools',
@@ -163,7 +324,7 @@ export default function ContextTab({ body }) {
       items: body.tools.map((tool, i) => ({
         id: `tool__${i}`,
         label: tool?.name || `Tool ${i}`,
-        markdown: formatTool(tool),
+        blocks: parseToolBlocks(tool),
       })),
     });
   }
@@ -176,34 +337,41 @@ export default function ContextTab({ body }) {
     );
   }
 
-  const selectedMarkdown = selected?.markdown || null;
+  const selectedItem = selected;
 
   return (
     <div className={styles.root}>
-      {/* 左侧手风琴 */}
+      {/* Left accordion */}
       <div className={styles.sidebar}>
         {accordionSections.map((sec) => (
           <AccordionSection
             key={sec.key}
             title={sec.title}
             items={sec.items}
-            selectedId={selected?.id}
+            selectedId={selectedItem?.id}
             onSelect={(item) => setSelected(item)}
           />
         ))}
       </div>
 
-      {/* 右侧内容区 */}
+      {/* Right content */}
       <div className={styles.content}>
-        {selectedMarkdown == null ? (
+        {selectedItem == null ? (
           <div className={styles.contentEmpty}>
             <Text type="secondary">{t('ui.context.selectPrompt')}</Text>
           </div>
         ) : (
-          <div
-            className={`chat-md ${styles.markdownBody}`}
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(selectedMarkdown) }}
-          />
+          <div key={selectedItem.id} className={styles.contentInner}>
+            {selectedItem.role && (
+              <div className={styles.roleHeader}>
+                <span className={`${styles.roleBadge} ${styles[`role_${selectedItem.role}`] || ''}`}>
+                  {selectedItem.role}
+                </span>
+                <span className={styles.roleLabel}>{selectedItem.label}</span>
+              </div>
+            )}
+            <RenderBlocks blocks={selectedItem.blocks} />
+          </div>
         )}
       </div>
     </div>

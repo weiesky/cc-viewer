@@ -5,7 +5,7 @@
   gap: 0;
 }
 
-/* ── 左侧手风琴 ── */
+/* ── Left accordion ── */
 .sidebar {
   width: 220px;
   flex-shrink: 0;
@@ -78,25 +78,27 @@
 }
 
 .itemActive {
-  background: rgba(99, 179, 237, 0.12);
-  color: #63b3ed;
+  background: var(--bg-active-item);
+  color: var(--accent-blue);
+  border-left: 2px solid var(--accent-blue);
+  padding-left: 22px;
 }
 
 .itemActive:hover {
-  background: rgba(99, 179, 237, 0.16);
-  color: #63b3ed;
+  background: var(--bg-active-item);
+  color: var(--accent-blue);
 }
 
 .itemLabel {
   font-family: monospace;
 }
 
-/* ── 右侧内容区 ── */
+/* ── Right content area ── */
 .content {
   flex: 1;
   min-width: 0;
   overflow: auto;
-  padding: 12px 16px;
+  padding: 0;
 }
 
 .contentEmpty {
@@ -113,10 +115,227 @@
   height: 200px;
 }
 
-/* Markdown 样式覆盖（继承全局 chat-md，此处做微调） */
+.contentInner {
+  padding: 12px 16px;
+}
+
+/* ── Role header ── */
+.roleHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-2);
+}
+
+.roleBadge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: monospace;
+  border-radius: 4px;
+  padding: 2px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-3);
+  color: var(--text-4);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.role_user {
+  background: rgba(9, 105, 218, 0.08);
+  border-color: rgba(9, 105, 218, 0.3);
+  color: var(--accent-blue);
+}
+
+.role_assistant {
+  background: rgba(110, 64, 201, 0.08);
+  border-color: rgba(110, 64, 201, 0.3);
+  color: var(--accent-purple-2);
+}
+
+.role_system {
+  background: rgba(128, 128, 128, 0.08);
+  border-color: var(--border-3);
+  color: var(--text-4);
+}
+
+.roleLabel {
+  font-size: 11px;
+  color: var(--text-5);
+  font-family: monospace;
+}
+
+/* ── Markdown body ── */
 .markdownBody {
   font-size: 13px;
   line-height: 1.7;
   color: var(--text-2);
   word-break: break-word;
+  margin-bottom: 4px;
+}
+
+/* ── Separator ── */
+.blockSeparator {
+  border: none;
+  border-top: 1px dashed var(--border-3);
+  margin: 16px 0;
+}
+
+/* ── JSON block ── */
+.jsonBlock {
+  margin: 8px 0;
+}
+
+.jsonBlockLabel {
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--text-4);
+  margin-bottom: 4px;
+  padding: 2px 6px;
+  background: var(--bg-elevated);
+  border-radius: 4px;
+  display: inline-block;
+}
+
+/* ── Tool use / result blocks ── */
+.toolBlock {
+  margin: 8px 0;
+  border: 1px solid var(--border-code);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.toolBlockHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--bg-tool-box);
+  border-bottom: 1px solid var(--border-code);
+  flex-wrap: wrap;
+}
+
+.toolBlockResult {
+  border-color: var(--border-2);
+}
+
+.toolBlockResult .toolBlockHeader {
+  background: var(--bg-elevated);
+  border-bottom-color: var(--border-2);
+}
+
+.toolBlockError {
+  border-color: rgba(207, 34, 29, 0.4);
+}
+
+.toolBlockError .toolBlockHeader {
+  background: rgba(207, 34, 29, 0.06);
+  border-bottom-color: rgba(207, 34, 29, 0.3);
+}
+
+.toolBlockBody {
+  padding: 8px 10px;
+  background: var(--bg-card);
+}
+
+.blockTag {
+  font-size: 10px;
+  font-family: monospace;
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 1px 6px;
+  background: rgba(110, 64, 201, 0.12);
+  border: 1px solid rgba(110, 64, 201, 0.25);
+  color: var(--accent-purple-2);
+  white-space: nowrap;
+}
+
+.blockTagResult {
+  background: rgba(9, 105, 218, 0.1);
+  border-color: rgba(9, 105, 218, 0.2);
+  color: var(--accent-blue);
+}
+
+.blockTagError {
+  background: rgba(207, 34, 29, 0.1);
+  border-color: rgba(207, 34, 29, 0.25);
+  color: var(--diff-del-text);
+}
+
+.toolName {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: monospace;
+  color: var(--text-1);
+}
+
+.toolId {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.errorLabel {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--diff-del-text);
+  text-transform: uppercase;
+}
+
+/* ── Thinking block ── */
+.thinkingBlock {
+  margin: 8px 0;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.thinkingHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: rgba(251, 191, 36, 0.06);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.thinkingHeader:hover {
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.blockTagThinking {
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.3);
+  color: var(--accent-yellow);
+}
+
+.thinkingPreview {
+  font-size: 11px;
+  color: var(--text-5);
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.thinkingBody {
+  padding: 8px 10px;
+  background: var(--bg-card);
+}
+
+.blockTranslateBar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 2px 0 4px 0;
 }

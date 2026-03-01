@@ -947,8 +947,8 @@ class App extends React.Component {
                         <span className={styles.logFileName}>{this.formatTimestamp(log.timestamp)}</span>
                       </span>
                       <span>
-                        <Tag style={{ background: '#0a0a0a', border: '1px solid #444', color: '#999' }}>{log.turns || 0} {t('ui.turns')}</Tag>
-                        <Tag style={{ background: '#0a0a0a', border: '1px solid #444', color: '#999' }}>{this.formatSize(log.size)}</Tag>
+                        <Tag style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-3)', color: 'var(--text-4)' }}>{log.turns || 0} {t('ui.turns')}</Tag>
+                        <Tag style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-3)', color: 'var(--text-4)' }}>{this.formatSize(log.size)}</Tag>
                         <Button size="small" type="primary" onClick={(e) => { e.stopPropagation(); this.handleOpenLogFile(log.file); }}>
                           {t('ui.openLog')}
                         </Button>

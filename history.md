@@ -2,7 +2,13 @@
 
 ## 1.3.8 (2026-03-01)
 
+- Feat: Context Tab structured rendering — messages now display each content block in its proper format: text as markdown, tool_use as labeled JSON viewer (shows tool name + input), tool_result as labeled content; role badge shown per message; visual separators between system prompt items
+- Feat: Context Tab translate button — each markdown block has a per-block translate button; thinking blocks show translate button in header when expanded
+- Feat: Context Tab thinking block — `thinking` content blocks rendered as collapsible section (yellow accent, expanded by default) with preview text when collapsed
 - Feat: light mode support — GitHub-inspired light theme with CSS variable system; theme selector (lightbulb icon) in top-right header; preference persisted in localStorage
+- Fix: JSON viewer dark mode — replaced Solarized-based library styles with custom CSS-variable-based classes (`rjv-*`); dark mode strings now use warm orange (#ce9178); preserves `white-space: pre-wrap` formatting; light/dark adapt automatically via CSS variables
+- Fix: translate context pollution — `ANTHROPIC_AUTH_TOKEN` is now validated to start with `sk-` before use as `x-api-key`; OAuth session tokens are rejected, preventing translation requests from being associated with the active Claude Code session
+- Fix: translate stale state — `contentInner` keyed by `selectedItem.id` so switching accordion items fully resets translation state
 - Feat: inflight request detection — write request entry before fetch, deduplicate by timestamp+url on read; live spinner and popover for in-flight requests
 - Feat: GitHub stars count displayed in footer
 - Feat: log turns count shown per log file in log management tool (read from project stats cache)
@@ -10,6 +16,7 @@
 - Style: Tooltip arrow now points at the live dot instead of the whole tag
 - Style: global antd Tooltip override — background #090909 including arrow
 - Style: log management tags use subtle dark style (black bg, gray border) instead of colored tags
+
 
 ## 1.3.7 (2026-03-01)
 

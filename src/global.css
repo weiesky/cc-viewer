@@ -65,7 +65,7 @@
   /* Syntax highlight */
   --hl-base: #e6edf3;
   --hl-keyword: #ff7b72;
-  --hl-string: #a5d6ff;
+  --hl-string: #ce9178;
   --hl-comment: #8b949e;
   --hl-number: #79c0ff;
   --hl-linenum: #484f58;
@@ -225,6 +225,38 @@ body {
 .chat-md hr { border: none; border-top: 1px solid var(--border-2); margin: 12px 0; }
 .chat-md strong { color: var(--text-1); }
 .chat-md em { color: var(--text-2); }
+
+/* react-json-view-lite: custom theme using CSS variables */
+.rjv-container {
+  background: var(--bg-code);
+}
+.rjv-label {
+  color: var(--hl-base);
+}
+.rjv-string {
+  color: var(--hl-string);
+}
+.rjv-number {
+  color: var(--hl-number);
+}
+.rjv-keyword {
+  color: var(--hl-keyword);
+}
+.rjv-null {
+  color: var(--hl-comment);
+}
+.rjv-other {
+  color: var(--text-3);
+}
+.rjv-punct {
+  color: var(--text-3);
+}
+.rjv-icon {
+  color: var(--text-4);
+}
+.rjv-collapsed {
+  color: var(--text-5);
+}
 
 /* antd Tooltip global override */
 .ant-tooltip .ant-tooltip-inner {
