@@ -3,3 +3,4 @@ lib
 dist
 package-lock.json
 .claude/setting.local.json
+.idea/

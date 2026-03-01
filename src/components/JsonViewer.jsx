@@ -1,11 +1,28 @@
 import React from 'react';
-import { JsonView, darkStyles } from 'react-json-view-lite';
+import { JsonView } from 'react-json-view-lite';
 import 'react-json-view-lite/dist/index.css';
 import styles from './JsonViewer.module.css';
 
 const customStyles = {
-  ...darkStyles,
-  container: 'rjv-container',
+  container: 'rjv-container _GzYRV',
+  basicChildStyle: '_2bkNM',
+  childFieldsContainer: '_1BXBN',
+  label: 'rjv-label _3eOF8',
+  clickableLabel: 'rjv-label _3eOF8 _1MFti',
+  nullValue: 'rjv-null',
+  undefinedValue: 'rjv-null',
+  stringValue: 'rjv-string',
+  booleanValue: 'rjv-keyword',
+  numberValue: 'rjv-number',
+  otherValue: 'rjv-other',
+  punctuation: 'rjv-punct _3eOF8',
+  collapseIcon: 'rjv-icon _f10Tu _1MFti _1LId0',
+  expandIcon: 'rjv-icon _f10Tu _1MFti _1UmXx',
+  collapsedContent: 'rjv-collapsed _1pNG9 _1MFti',
+  noQuotesForStringValues: false,
+  quotesForFieldNames: false,
+  ariaLables: { collapseJson: 'collapse JSON', expandJson: 'expand JSON' },
+  stringifyStringValues: false,
 };
 
 class JsonViewer extends React.Component {

@@ -1,9 +1,9 @@
 .tag {
   display: inline-block;
   font-size: 10px;
-  color: #6b7280;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-7);
+  background: rgba(128, 128, 128, 0.06);
+  border: 1px solid rgba(128, 128, 128, 0.15);
   border-radius: 3px;
   padding: 0 4px;
   margin-left: 6px;
@@ -15,12 +15,12 @@
 }
 
 .tag:hover {
-  color: #93c5fd;
+  color: var(--accent-blue-3);
   border-color: rgba(147, 197, 253, 0.3);
 }
 
 .tagActive {
-  color: #93c5fd;
+  color: var(--accent-blue-3);
   border-color: rgba(147, 197, 253, 0.25);
 }
 
@@ -34,7 +34,7 @@
   width: 10px;
   height: 10px;
   border: 1.5px solid rgba(147, 197, 253, 0.3);
-  border-top-color: #93c5fd;
+  border-top-color: var(--accent-blue-3);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
   margin-right: 3px;

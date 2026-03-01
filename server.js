@@ -322,7 +322,11 @@ function handleRequest(req, res) {
 
         // 获取 API Key（仅 x-api-key 认证，不复用 session token 避免上下文污染）
         // 优先级: 环境变量 > 拦截缓存 > 从 authHeader 中提取 sk- 开头的 key
-        let apiKey = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || _cachedApiKey;
+        // ANTHROPIC_AUTH_TOKEN 可能是 OAuth session token，必须验证是 sk- 前缀才可作为 x-api-key
+        const _authToken = process.env.ANTHROPIC_AUTH_TOKEN;
+        let apiKey = process.env.ANTHROPIC_API_KEY
+          || (_authToken && _authToken.startsWith('sk-') ? _authToken : null)
+          || _cachedApiKey;
         if (!apiKey && _cachedAuthHeader) {
           // Bearer sk-xxx 格式：提取实际的 API key
           const m = _cachedAuthHeader.match(/^Bearer\s+(sk-\S+)$/i);

@@ -79,12 +79,12 @@ class RequestList extends React.Component {
                     {reqType === 'MainAgent'
                       ? <Tag color="orange" className={styles.tagNoMargin}>MainAgent</Tag>
                       : reqType === 'Plan'
-                        ? <Tag className={styles.tagNoMargin} style={{ color: '#a33', borderColor: '#a33', backgroundColor: '#000' }}>{formatRequestTag(reqType, subType)}</Tag>
+                        ? <Tag className={styles.tagNoMargin} style={{ color: '#a33', borderColor: '#a33', backgroundColor: 'var(--bg-panel)' }}>{formatRequestTag(reqType, subType)}</Tag>
                         : reqType === 'Count' || reqType === 'Preflight'
-                          ? <Tag className={styles.tagNoMargin} style={{ color: '#666', borderColor: '#444', backgroundColor: '#000' }}>{reqType}</Tag>
+                          ? <Tag className={styles.tagNoMargin} style={{ color: 'var(--text-6)', borderColor: 'var(--border-3)', backgroundColor: 'var(--bg-panel)' }}>{reqType}</Tag>
                           : <Tag className={styles.tagNoMargin}>{formatRequestTag(reqType, subType)}</Tag>
                     }
-                    {model && <span className={styles.modelName} style={{ color: reqType === 'MainAgent' ? '#d4822d' : '#8c8c8c' }}>{model}</span>}
+                    {model && <span className={styles.modelName} style={{ color: reqType === 'MainAgent' ? '#d4822d' : 'var(--text-4)' }}>{model}</span>}
                     <span className={styles.time}>{time}</span>
                   </div>
                   <div className={styles.detailRow}>

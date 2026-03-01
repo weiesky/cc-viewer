@@ -1,6 +1,6 @@
 import React from 'react';
 import { Space, Tag, Button, Badge, Typography, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Tabs, Spin, Tooltip } from 'antd';
-import { MessageOutlined, FileTextOutlined, ImportOutlined, DownOutlined, DashboardOutlined, ExportOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined } from '@ant-design/icons';
+import { MessageOutlined, FileTextOutlined, ImportOutlined, DownOutlined, DashboardOutlined, ExportOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
 import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats } from '../utils/helpers';
 import { isSystemText, classifyUserContent, isMainAgent } from '../utils/contentFilter';
 import { classifyRequest, formatRequestTag } from '../utils/requestType';
@@ -626,7 +626,7 @@ class AppHeader extends React.Component {
   }
 
   render() {
-    const { requestCount, requests = [], viewMode, cacheType, onToggleViewMode, onImportLocalLogs, onLangChange, isLocalLog, localLogFile, projectName, collapseToolResults, onCollapseToolResultsChange, expandThinking, onExpandThinkingChange, expandDiff, onExpandDiffChange, filterIrrelevant, onFilterIrrelevantChange, updateInfo, onDismissUpdate } = this.props;
+    const { requestCount, requests = [], viewMode, cacheType, onToggleViewMode, onImportLocalLogs, onLangChange, isLocalLog, localLogFile, projectName, collapseToolResults, onCollapseToolResultsChange, expandThinking, onExpandThinkingChange, expandDiff, onExpandDiffChange, filterIrrelevant, onFilterIrrelevantChange, updateInfo, onDismissUpdate, appTheme, onThemeChange } = this.props;
     const { countdownText } = this.state;
 
     const menuItems = [
@@ -670,7 +670,7 @@ class AppHeader extends React.Component {
             content={this.renderTokenStats()}
             trigger="hover"
             placement="bottomLeft"
-            overlayInnerStyle={{ background: '#1e1e1e', border: '1px solid #3a3a3a', borderRadius: 8, padding: '8px 8px' }}
+            overlayInnerStyle={{ background: appTheme === 'light' ? '#ffffff' : '#1e1e1e', border: `1px solid ${appTheme === 'light' ? '#d0d7de' : '#3a3a3a'}`, borderRadius: 8, padding: '8px 8px' }}
           >
             <Tag className={styles.tokenStatsTag}>
               <DashboardOutlined className={styles.tokenStatsIcon} />
@@ -756,10 +756,35 @@ class AppHeader extends React.Component {
             trigger={['hover']}
             placement="bottom"
             menu={{
+              items: [
+                {
+                  key: 'dark',
+                  label: t('ui.themeDark'),
+                  icon: <BulbFilled />,
+                  style: appTheme !== 'light' ? { color: 'var(--accent-blue)' } : {},
+                },
+                {
+                  key: 'light',
+                  label: t('ui.themeLight'),
+                  icon: <BulbOutlined />,
+                  style: appTheme === 'light' ? { color: 'var(--accent-blue)' } : {},
+                },
+              ],
+              onClick: ({ key }) => { if (onThemeChange) onThemeChange(key); },
+            }}
+          >
+            <span className={styles.themeSelector}>
+              {appTheme === 'light' ? <BulbOutlined /> : <BulbFilled />}
+            </span>
+          </Dropdown>
+          <Dropdown
+            trigger={['hover']}
+            placement="bottom"
+            menu={{
               items: LANG_OPTIONS.map(o => ({
                 key: o.value,
                 label: o.label,
-                style: o.value === getLang() ? { color: '#3b82f6' } : {},
+                style: o.value === getLang() ? { color: 'var(--accent-blue)' } : {},
               })),
               onClick: ({ key }) => { setLang(key); if (onLangChange) onLangChange(); },
             }}

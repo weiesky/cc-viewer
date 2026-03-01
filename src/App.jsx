@@ -22,11 +22,14 @@ class App extends React.Component {
     const now = Date.now();
     const cacheExpireAt = savedExpireAt && savedExpireAt > now ? savedExpireAt : null;
     const cacheType = cacheExpireAt ? savedCacheType : null;
+    // 恢复主题设置
+    const savedTheme = localStorage.getItem('ccv_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme === 'light' ? 'light' : '');
     this.state = {
       requests: [],
       selectedIndex: null,
       viewMode: 'raw',
-      currentTab: 'request',
+      currentTab: 'context',
       cacheExpireAt,
       cacheType,
       leftPanelWidth: 380,
@@ -47,6 +50,7 @@ class App extends React.Component {
       fileLoadingCount: 0,
       selectedLogs: new Set(),   // Set<file>
       githubStars: null,
+      appTheme: savedTheme,
     };
     this.eventSource = null;
     this._autoSelectTimer = null;
@@ -488,6 +492,12 @@ class App extends React.Component {
     }).catch(() => { });
   };
 
+  handleThemeChange = (newTheme) => {
+    localStorage.setItem('ccv_theme', newTheme);
+    document.documentElement.setAttribute('data-theme', newTheme === 'light' ? 'light' : '');
+    this.setState({ appTheme: newTheme });
+  };
+
   handleCollapseToolResultsChange = (checked) => {
     this.setState({ collapseToolResults: checked });
     fetch('/api/preferences', {
@@ -709,18 +719,24 @@ class App extends React.Component {
   }
 
   render() {
-    const { requests, selectedIndex, viewMode, currentTab, cacheExpireAt, cacheType, leftPanelWidth, mainAgentSessions, showAll, fileLoading, fileLoadingCount } = this.state;
+    const { requests, selectedIndex, viewMode, currentTab, cacheExpireAt, cacheType, leftPanelWidth, mainAgentSessions, showAll, fileLoading, fileLoadingCount, appTheme } = this.state;
 
     // 过滤心跳请求（eval/sdk-* 和 count_tokens），除非 showAll
     const filteredRequests = showAll ? requests : filterRelevantRequests(requests);
 
     const selectedRequest = selectedIndex !== null ? filteredRequests[selectedIndex] : null;
+    const isLight = appTheme === 'light';
 
     return (
       <ConfigProvider
         theme={{
-          algorithm: theme.darkAlgorithm,
-          token: {
+          algorithm: isLight ? theme.defaultAlgorithm : theme.darkAlgorithm,
+          token: isLight ? {
+            colorBgContainer: '#ffffff',
+            colorBgLayout: '#f6f8fa',
+            colorBgElevated: '#f6f8fa',
+            colorBorder: '#d0d7de',
+          } : {
             colorBgContainer: '#111',
             colorBgLayout: '#0a0a0a',
             colorBgElevated: '#1a1a1a',
@@ -757,6 +773,8 @@ class App extends React.Component {
               onFilterIrrelevantChange={this.handleFilterIrrelevantChange}
               updateInfo={this.state.updateInfo}
               onDismissUpdate={() => this.setState({ updateInfo: null })}
+              appTheme={appTheme}
+              onThemeChange={this.handleThemeChange}
             />
           </Layout.Header>
 
@@ -929,8 +947,8 @@ class App extends React.Component {
                         <span className={styles.logFileName}>{this.formatTimestamp(log.timestamp)}</span>
                       </span>
                       <span>
-                        <Tag style={{ background: '#0a0a0a', border: '1px solid #444', color: '#999' }}>{log.turns || 0} {t('ui.turns')}</Tag>
-                        <Tag style={{ background: '#0a0a0a', border: '1px solid #444', color: '#999' }}>{this.formatSize(log.size)}</Tag>
+                        <Tag style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-3)', color: 'var(--text-4)' }}>{log.turns || 0} {t('ui.turns')}</Tag>
+                        <Tag style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-3)', color: 'var(--text-4)' }}>{this.formatSize(log.size)}</Tag>
                         <Button size="small" type="primary" onClick={(e) => { e.stopPropagation(); this.handleOpenLogFile(log.file); }}>
                           {t('ui.openLog')}
                         </Button>

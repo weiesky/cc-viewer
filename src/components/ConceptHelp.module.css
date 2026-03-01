@@ -5,9 +5,9 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #1a1a1a;
-  border: 1px solid #444;
-  color: #aaa;
+  background: var(--bg-concept-btn);
+  border: 1px solid var(--border-4);
+  color: var(--text-muted-alt);
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
@@ -18,7 +18,7 @@
 }
 
 .helpBtn:hover {
-  background: #333;
+  background: var(--border-3);
 }
 
 .modalBody {
@@ -38,14 +38,14 @@
 }
 
 .modalBody code {
-  background: #2a2a2a;
+  background: var(--border-2);
   padding: 1px 4px;
   border-radius: 3px;
   font-size: 0.9em;
 }
 
 .modalBody pre {
-  background: #1a1a1a;
+  background: var(--bg-elevated);
   padding: 12px;
   border-radius: 6px;
   overflow-x: auto;
@@ -60,12 +60,12 @@
 .modalBody textarea {
   width: 100%;
   min-height: 200px;
-  background: #1a1a1a;
-  color: #d9d9d9;
+  background: var(--bg-elevated);
+  color: var(--text-2);
   font-family: monospace;
   font-size: 13px;
   line-height: 1.6;
-  border: 1px solid #333;
+  border: 1px solid var(--border-3);
   border-radius: 6px;
   padding: 10px 14px;
   resize: vertical;

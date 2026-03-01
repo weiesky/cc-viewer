@@ -1,46 +1,193 @@
-body { 
+/* ===== Theme Variables ===== */
+:root {
+  /* Backgrounds */
+  --bg-body: #0d0d0d;
+  --bg-panel: #0a0a0a;
+  --bg-card: #111111;
+  --bg-hover: #151515;
+  --bg-elevated: #1a1a1a;
+  --bg-subtle: #141414;
+  --bg-code: #0d1117;
+  --bg-code-header: #161b22;
+  --bg-tool-box: #1a1a2e;
+  --bg-tool-result: #111827;
+  --bg-user-bubble: #1668dc;
+  --bg-assistant-bubble: rgb(20, 20, 20);
+  --bg-subagent-bubble: #1a1a2e;
+  --bg-plan-bubble: #141428;
+  --bg-selection-bubble: #1a3a1a;
+  --bg-concept-btn: #1a1a1a;
+  --bg-active-item: #1a2332;
+
+  /* Borders */
+  --border-1: #1f1f1f;
+  --border-2: #2a2a2a;
+  --border-3: #333333;
+  --border-4: #3a3a3a;
+  --border-code: #2a2a3e;
+  --border-tool-result: #1e293b;
+  --border-token: #303030;
+  --border-code-result: #1e2a3a;
+
+  /* Text */
+  --text-1: #e5e5e5;
+  --text-2: #d1d5db;
+  --text-3: #9ca3af;
+  --text-4: #888888;
+  --text-5: #666666;
+  --text-6: #555555;
+  --text-7: #6b7280;
+  --text-code: #e5e7eb;
+  --text-muted-alt: #aaaaaa;
+
+  /* Accent */
+  --accent-blue: #3b82f6;
+  --accent-blue-2: #60a5fa;
+  --accent-blue-3: #93c5fd;
+  --accent-purple: #8b9cf7;
+  --accent-purple-2: #a78bfa;
+  --accent-sky: #7dd3fc;
+  --accent-yellow: #fbbf24;
+
+  /* Scrollbar */
+  --scrollbar-track: #0d0d0d;
+  --scrollbar-thumb: #3a3a3a;
+  --scrollbar-thumb-hover: #555555;
+
+  /* Diff */
+  --diff-bg: #1a1a2e;
+  --diff-border: #2a2a3e;
+  --diff-add-bg: rgba(34, 197, 94, 0.15);
+  --diff-add-text: #86efac;
+  --diff-del-bg: rgba(239, 68, 68, 0.15);
+  --diff-del-text: #fca5a5;
+
+  /* Syntax highlight */
+  --hl-base: #e6edf3;
+  --hl-keyword: #ff7b72;
+  --hl-string: #ce9178;
+  --hl-comment: #8b949e;
+  --hl-number: #79c0ff;
+  --hl-linenum: #484f58;
+}
+
+[data-theme="light"] {
+  /* Backgrounds */
+  --bg-body: #ffffff;
+  --bg-panel: #f6f8fa;
+  --bg-card: #ffffff;
+  --bg-hover: #f3f4f6;
+  --bg-elevated: #f6f8fa;
+  --bg-subtle: #f6f8fa;
+  --bg-code: #f6f8fa;
+  --bg-code-header: #eaeef2;
+  --bg-tool-box: #f0f6fc;
+  --bg-tool-result: #f6f8fa;
+  --bg-user-bubble: #0969da;
+  --bg-assistant-bubble: #ffffff;
+  --bg-subagent-bubble: #f0f6fc;
+  --bg-plan-bubble: #ddf4ff;
+  --bg-selection-bubble: #dafbe1;
+  --bg-concept-btn: #f3f4f6;
+  --bg-active-item: #ddf4ff;
+
+  /* Borders */
+  --border-1: #d0d7de;
+  --border-2: #d0d7de;
+  --border-3: #d8dee4;
+  --border-4: #afb8c1;
+  --border-code: #d0d7de;
+  --border-tool-result: #d0d7de;
+  --border-token: #d0d7de;
+  --border-code-result: #d0d7de;
+
+  /* Text */
+  --text-1: #1f2328;
+  --text-2: #24292f;
+  --text-3: #57606a;
+  --text-4: #656d76;
+  --text-5: #818c99;
+  --text-6: #8c959f;
+  --text-7: #57606a;
+  --text-code: #24292f;
+  --text-muted-alt: #57606a;
+
+  /* Accent */
+  --accent-blue: #0969da;
+  --accent-blue-2: #218bff;
+  --accent-blue-3: #54aeff;
+  --accent-purple: #6e40c9;
+  --accent-purple-2: #8250df;
+  --accent-sky: #0284c7;
+  --accent-yellow: #b45309;
+
+  /* Scrollbar */
+  --scrollbar-track: #f6f8fa;
+  --scrollbar-thumb: #d0d7de;
+  --scrollbar-thumb-hover: #afb8c1;
+
+  /* Diff */
+  --diff-bg: #f0f6fc;
+  --diff-border: #d0d7de;
+  --diff-add-bg: rgba(31, 136, 61, 0.12);
+  --diff-add-text: #1a7f37;
+  --diff-del-bg: rgba(207, 34, 29, 0.1);
+  --diff-del-text: #cf221d;
+
+  /* Syntax highlight */
+  --hl-base: #24292f;
+  --hl-keyword: #cf222e;
+  --hl-string: #0a3069;
+  --hl-comment: #6e7781;
+  --hl-number: #0550ae;
+  --hl-linenum: #8c959f;
+}
+
+/* ===== Global Styles ===== */
+
+body {
   margin: 0;
-  background-color: #0d0d0d;
+  background-color: var(--bg-body);
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #3a3a3a #0d0d0d;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 *::-webkit-scrollbar { width: 6px; height: 6px; }
-*::-webkit-scrollbar-track { background: #0d0d0d; }
-*::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
-*::-webkit-scrollbar-thumb:hover { background: #555; }
+*::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+*::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 
 .diff-view {
-  background: #1a1a2e;
-  border: 1px solid #2a2a3e;
+  background: var(--diff-bg);
+  border: 1px solid var(--diff-border);
   border-radius: 8px;
   padding: 8px 12px;
 }
 .diff-line-del {
-  background: rgba(239, 68, 68, 0.15);
-  color: #fca5a5;
+  background: var(--diff-del-bg);
+  color: var(--diff-del-text);
   padding: 0 4px;
 }
 .diff-line-add {
-  background: rgba(34, 197, 94, 0.15);
-  color: #86efac;
+  background: var(--diff-add-bg);
+  color: var(--diff-add-text);
   padding: 0 4px;
 }
 
 /* Syntax highlight */
-.code-highlight { color: #e6edf3; }
-.hl-keyword { color: #ff7b72; }
-.hl-string { color: #a5d6ff; }
-.hl-comment { color: #8b949e; font-style: italic; }
-.hl-number { color: #79c0ff; }
-.hl-linenum { color: #484f58; user-select: none; }
+.code-highlight { color: var(--hl-base); }
+.hl-keyword { color: var(--hl-keyword); }
+.hl-string { color: var(--hl-string); }
+.hl-comment { color: var(--hl-comment); font-style: italic; }
+.hl-number { color: var(--hl-number); }
+.hl-linenum { color: var(--hl-linenum); user-select: none; }
 
-/* Chat markdown styles (moved from App.jsx chatMdStyles) */
+/* Chat markdown styles */
 .chat-md pre {
-  background: #0d1117;
-  border: 1px solid #2a2a2a;
+  background: var(--bg-code);
+  border: 1px solid var(--border-2);
   border-radius: 6px;
   padding: 12px;
   overflow-x: auto;
@@ -48,11 +195,11 @@ body {
   line-height: 1.5;
 }
 .chat-md code {
-  background: #1a1a2e;
+  background: var(--bg-tool-box);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 13px;
-  color: #e5e7eb;
+  color: var(--text-1);
 }
 .chat-md pre code {
   background: none;
@@ -61,23 +208,55 @@ body {
 .chat-md p { margin: 6px 0; }
 .chat-md ul, .chat-md ol { padding-left: 20px; margin: 6px 0; }
 .chat-md li { margin: 2px 0; }
-.chat-md h1, .chat-md h2, .chat-md h3 { margin: 12px 0 6px 0; color: #fff; }
+.chat-md h1, .chat-md h2, .chat-md h3 { margin: 12px 0 6px 0; color: var(--text-1); }
 .chat-md h1 { font-size: 1.3em; }
 .chat-md h2 { font-size: 1.15em; }
 .chat-md h3 { font-size: 1.05em; }
 .chat-md blockquote {
-  border-left: 3px solid #3b82f6;
+  border-left: 3px solid var(--accent-blue);
   margin: 8px 0;
   padding: 4px 12px;
-  color: #9ca3af;
+  color: var(--text-3);
 }
 .chat-md table { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
-.chat-md th, .chat-md td { border: 1px solid #2a2a2a; padding: 6px 10px; }
-.chat-md th { background: #1a1a1a; color: #fff; }
-.chat-md a { color: #60a5fa; }
-.chat-md hr { border: none; border-top: 1px solid #2a2a2a; margin: 12px 0; }
-.chat-md strong { color: #f1f5f9; }
-.chat-md em { color: #cbd5e1; }
+.chat-md th, .chat-md td { border: 1px solid var(--border-2); padding: 6px 10px; }
+.chat-md th { background: var(--bg-elevated); color: var(--text-1); }
+.chat-md a { color: var(--accent-blue-2); }
+.chat-md hr { border: none; border-top: 1px solid var(--border-2); margin: 12px 0; }
+.chat-md strong { color: var(--text-1); }
+.chat-md em { color: var(--text-2); }
+
+/* react-json-view-lite: custom theme using CSS variables */
+.rjv-container {
+  background: var(--bg-code);
+}
+.rjv-label {
+  color: var(--hl-base);
+}
+.rjv-string {
+  color: var(--hl-string);
+}
+.rjv-number {
+  color: var(--hl-number);
+}
+.rjv-keyword {
+  color: var(--hl-keyword);
+}
+.rjv-null {
+  color: var(--hl-comment);
+}
+.rjv-other {
+  color: var(--text-3);
+}
+.rjv-punct {
+  color: var(--text-3);
+}
+.rjv-icon {
+  color: var(--text-4);
+}
+.rjv-collapsed {
+  color: var(--text-5);
+}
 
 /* antd Tooltip global override */
 .ant-tooltip .ant-tooltip-inner {
@@ -86,4 +265,12 @@ body {
 .ant-tooltip .ant-tooltip-arrow::before,
 .ant-tooltip .ant-tooltip-arrow::after {
   background: #090909;
+}
+
+[data-theme="light"] .ant-tooltip .ant-tooltip-inner {
+  background-color: #1f2328;
+}
+[data-theme="light"] .ant-tooltip .ant-tooltip-arrow::before,
+[data-theme="light"] .ant-tooltip .ant-tooltip-arrow::after {
+  background: #1f2328;
 }

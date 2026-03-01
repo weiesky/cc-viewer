@@ -14,21 +14,21 @@
   cursor: pointer;
   padding: 8px 12px;
   border-left: 3px solid transparent;
-  border-bottom: 1px solid #1f1f1f;
+  border-bottom: 1px solid var(--border-1);
   transition: background 0.15s;
 }
 
 .listItem:hover {
-  background: #151515;
+  background: var(--bg-hover);
 }
 
 .listItemActive {
-  background: #1a2332;
-  border-left-color: #3b82f6;
+  background: var(--bg-active-item);
+  border-left-color: var(--accent-blue);
 }
 
 .listItemActive:hover {
-  background: #1a2332;
+  background: var(--bg-active-item);
 }
 
 .itemContent {
@@ -55,7 +55,7 @@
 
 .time {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-7);
   margin-left: auto;
 }
 
@@ -67,7 +67,7 @@
 }
 
 .urlText {
-  color: #555;
+  color: var(--text-6);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -76,7 +76,7 @@
 }
 
 .duration {
-  color: #6b7280;
+  color: var(--text-7);
   flex-shrink: 0;
 }
 
@@ -92,17 +92,17 @@
 }
 
 .statusDefault {
-  color: #9ca3af;
+  color: var(--text-3);
   flex-shrink: 0;
 }
 
 .usageBox {
-  background: #111;
+  background: var(--bg-card);
   border-radius: 4px;
   padding: 3px 6px;
   margin-top: 4px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-7);
   line-height: 1.6;
 }
 
@@ -121,5 +121,5 @@
 }
 
 .cacheDotNormal {
-  background-color: #3a3a3a;
+  background-color: var(--border-4);
 }

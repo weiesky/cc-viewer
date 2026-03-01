@@ -61,9 +61,9 @@ export default function ConceptHelp({ doc }) {
         footer={null}
         width={640}
         styles={{
-          header: { background: '#1a1a1a' },
-          body: { background: '#111', padding: '16px 24px 24px' },
-          content: { background: '#1a1a1a', padding: '12px 20px' },
+          header: { background: 'var(--bg-elevated)' },
+          body: { background: 'var(--bg-card)', padding: '16px 24px 24px' },
+          content: { background: 'var(--bg-elevated)', padding: '12px 20px' },
         }}
       >
         {loading ? (

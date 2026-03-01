@@ -85,13 +85,13 @@
 
 .timeText {
   font-size: 10px;
-  color: #6b7280;
+  color: var(--text-7);
   flex-shrink: 0;
 }
 
 .timeTextNoMargin {
   font-size: 10px;
-  color: #6b7280;
+  color: var(--text-7);
   flex-shrink: 0;
 }
 
@@ -104,14 +104,15 @@
 
 .bubbleUser {
   composes: bubble;
-  background: #1668dc;
+  background: var(--bg-user-bubble);
   color: #e5e7eb;
 }
 
 .bubbleAssistant {
   composes: bubble;
-  background: rgb(20, 20, 20);
-  color: #e5e7eb;
+  background: var(--bg-assistant-bubble);
+  color: var(--text-1);
+  border: 1px solid var(--border-1);
   transition: box-shadow 0s;
   position: relative;
 }
@@ -150,22 +151,22 @@
 
 .bubblePlan {
   composes: bubble;
-  background: #141428;
-  border: 5px solid #1668dc;
+  background: var(--bg-plan-bubble);
+  border: 5px solid var(--accent-blue);
   font-size: 12px;
-  color: #e5e7eb;
+  color: var(--text-1);
 }
 
 .bubbleSubAgent {
   composes: bubble;
-  background: #1a1a2e;
-  color: #e5e7eb;
+  background: var(--bg-subagent-bubble);
+  color: var(--text-1);
 }
 
 .bubbleSelection {
   composes: bubble;
-  background: #1a3a1a;
-  color: #e5e7eb;
+  background: var(--bg-selection-bubble);
+  color: var(--text-1);
 }
 
 /* === Collapse / system-tag styles === */
@@ -176,12 +177,12 @@
 
 .skillLabel {
   font-size: 12px;
-  color: #a78bfa;
+  color: var(--accent-purple-2);
 }
 
 .systemTagPre {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--text-3);
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
@@ -204,8 +205,8 @@
 /* === Tool call box === */
 
 .toolBox {
-  background: #1a1a2e;
-  border: 1px solid #2a2a3e;
+  background: var(--bg-tool-box);
+  border: 1px solid var(--border-code);
   border-radius: 8px;
   padding: 8px 12px;
   margin: 6px 0;
@@ -213,7 +214,7 @@
 }
 
 .toolLabel {
-  color: #a78bfa;
+  color: var(--accent-purple-2);
 }
 
 /* === Code pre inside tool boxes === */
@@ -223,7 +224,7 @@
   margin: 4px 0 0;
   white-space: pre-wrap;
   word-break: break-all;
-  background: #0d1117;
+  background: var(--bg-code);
   border-radius: 4px;
   padding: 6px 8px;
 }
@@ -231,23 +232,23 @@
 /* === Path tag === */
 
 .pathTag {
-  color: #7dd3fc;
+  color: var(--accent-sky);
   font-size: 11px;
 }
 
 /* === Tool call inline spans === */
 
 .descSpan {
-  color: #6b7280;
+  color: var(--text-7);
   font-weight: 400;
 }
 
 .secondarySpan {
-  color: #6b7280;
+  color: var(--text-7);
 }
 
 .patternSpan {
-  color: #fbbf24;
+  color: var(--accent-yellow);
 }
 
 /* === Default tool key-value items === */
@@ -262,18 +263,18 @@
 }
 
 .kvKey {
-  color: #7dd3fc;
+  color: var(--accent-sky);
 }
 
 .kvValue {
-  color: #9ca3af;
+  color: var(--text-3);
 }
 
 /* === Tool result box === */
 
 .toolResult {
-  background: #111827;
-  border: 1px solid #1e293b;
+  background: var(--bg-tool-result);
+  border: 1px solid var(--border-tool-result);
   border-radius: 6px;
   padding: 6px 10px;
   margin: 2px 0 6px;
@@ -288,12 +289,12 @@
 
 .compactLabel {
   font-size: 12px;
-  color: #93c5fd;
+  color: var(--accent-blue-3);
 }
 
 .compactPre {
   font-size: 12px;
-  color: #d1d5db;
+  color: var(--text-2);
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
@@ -303,14 +304,14 @@
 
 .viewRequestBtn {
   font-size: 10px;
-  color: #555;
+  color: var(--text-6);
   cursor: pointer;
   margin-left: 6px;
   flex-shrink: 0;
 }
 
 .viewRequestBtn:hover {
-  color: #93c5fd;
+  color: var(--accent-blue-3);
 }
 
 /* === User-selection question === */
@@ -320,7 +321,7 @@
 }
 
 .optionDesc {
-  color: #555;
+  color: var(--text-6);
   margin-left: 6px;
   font-weight: normal;
 }
@@ -329,7 +330,7 @@
 
 .questionText {
   font-size: 13px;
-  color: #ccc;
+  color: var(--text-muted-alt);
   margin-bottom: 4px;
 }
 
