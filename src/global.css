@@ -78,3 +78,12 @@ body {
 .chat-md hr { border: none; border-top: 1px solid #2a2a2a; margin: 12px 0; }
 .chat-md strong { color: #f1f5f9; }
 .chat-md em { color: #cbd5e1; }
+
+/* antd Tooltip global override */
+.ant-tooltip .ant-tooltip-inner {
+  background-color: #090909;
+}
+.ant-tooltip .ant-tooltip-arrow::before,
+.ant-tooltip .ant-tooltip-arrow::after {
+  background: #090909;
+}

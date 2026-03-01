@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.8 (2026-03-01)
+
+- Feat: inflight request detection — write request entry before fetch, deduplicate by timestamp+url on read; live spinner and popover for in-flight requests
+- Feat: GitHub stars count displayed in footer
+- Feat: log turns count shown per log file in log management tool (read from project stats cache)
+- Feat: merge logs button always visible (disabled when < 2 selected) for better discoverability
+- Style: Tooltip arrow now points at the live dot instead of the whole tag
+- Style: global antd Tooltip override — background #090909 including arrow
+- Style: log management tags use subtle dark style (black bg, gray border) instead of colored tags
+
 ## 1.3.7 (2026-03-01)
 
 - Feat: SubAgent chat messages now interleaved in chat view timeline, with dedicated `sub-agent-chat` rendering

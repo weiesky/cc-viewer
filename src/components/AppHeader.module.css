@@ -45,6 +45,18 @@
   border-radius: 12px;
 }
 
+.liveDotWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  vertical-align: middle;
+  margin-right: 2px;
+  position: relative;
+  top: -1px;
+}
+
 .liveTag :global(.ant-badge-status-processing) {
   animation: breathe 2.5s ease-in-out infinite;
 }
@@ -52,6 +64,60 @@
 @keyframes breathe {
   0%, 100% { opacity: 0.4; transform: scale(0.85); }
   50% { opacity: 1; transform: scale(1.15); }
+}
+
+/* Live spinner: "+" ↔ "✳" rotation */
+.liveSpinner {
+  display: block;
+  animation: spinPlusStar 2s linear infinite;
+}
+
+.liveSpinnerDiag {
+  animation: diagFade 2s ease-in-out infinite;
+}
+
+@keyframes spinPlusStar {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes diagFade {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Inflight requests popover */
+.inflightList {
+  min-width: 180px;
+}
+
+.inflightItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+
+.inflightItem + .inflightItem {
+  border-top: 1px solid #333;
+}
+
+.inflightTag {
+  color: #52c41a;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.inflightModel {
+  color: #999;
+  white-space: nowrap;
+}
+
+.inflightTime {
+  color: #666;
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .liveTagHistory {

@@ -103,13 +103,20 @@ function readLogFile() {
   try {
     const content = readFileSync(LOG_FILE, 'utf-8');
     const entries = content.split('\n---\n').filter(line => line.trim());
-    return entries.map(entry => {
+    const parsed = entries.map(entry => {
       try {
         return JSON.parse(entry);
       } catch {
         return null;
       }
     }).filter(Boolean);
+    // 去重：同一 timestamp+url 的条目，后出现的（带 response）覆盖先出现的（在途）
+    const map = new Map();
+    for (const entry of parsed) {
+      const key = `${entry.timestamp}|${entry.url}`;
+      map.set(key, entry);
+    }
+    return Array.from(map.values());
   } catch (err) {
     console.error('Error reading log file:', err);
     return [];
@@ -504,14 +511,23 @@ function handleRequest(req, res) {
             .filter(f => f.endsWith('.jsonl'))
             .sort()
             .reverse();
+          // 从项目统计缓存中读取 per-file 数据，避免逐文件扫描
+          let statsFiles = null;
+          try {
+            const statsFile = join(projectDir, `${project}.json`);
+            if (existsSync(statsFile)) {
+              statsFiles = JSON.parse(readFileSync(statsFile, 'utf-8')).files;
+            }
+          } catch { }
           for (const f of files) {
             const match = f.match(/^(.+?)_(\d{8}_\d{6})\.jsonl$/);
             if (!match) continue;
             const ts = match[2];
             const filePath = join(projectDir, f);
             const size = statSync(filePath).size;
+            const turns = statsFiles?.[f]?.summary?.sessionCount || 0;
             if (!grouped[project]) grouped[project] = [];
-            grouped[project].push({ file: `${project}/${f}`, timestamp: ts, size });
+            grouped[project].push({ file: `${project}/${f}`, timestamp: ts, size, turns });
           }
         }
       }

@@ -496,6 +496,13 @@ export function setupInterceptor() {
       }
     }
 
+    // 在发起请求前先写入一条无 response 的条目，让前端可以检测在途请求
+    if (requestEntry) {
+      try {
+        appendFileSync(LOG_FILE, JSON.stringify(requestEntry, null, 2) + '\n---\n');
+      } catch { }
+    }
+
     const response = await _originalFetch.apply(this, arguments);
 
     if (requestEntry) {

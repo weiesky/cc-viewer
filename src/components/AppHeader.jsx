@@ -1,9 +1,9 @@
 import React from 'react';
-import { Space, Tag, Button, Badge, Typography, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Tabs, Spin } from 'antd';
+import { Space, Tag, Button, Badge, Typography, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Tabs, Spin, Tooltip } from 'antd';
 import { MessageOutlined, FileTextOutlined, ImportOutlined, DownOutlined, DashboardOutlined, ExportOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined } from '@ant-design/icons';
 import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats } from '../utils/helpers';
 import { isSystemText, classifyUserContent, isMainAgent } from '../utils/contentFilter';
-import { classifyRequest } from '../utils/requestType';
+import { classifyRequest, formatRequestTag } from '../utils/requestType';
 import { t, getLang, setLang } from '../i18n';
 import ConceptHelp from './ConceptHelp';
 import styles from './AppHeader.module.css';
@@ -626,7 +626,7 @@ class AppHeader extends React.Component {
   }
 
   render() {
-    const { requestCount, viewMode, cacheType, onToggleViewMode, onImportLocalLogs, onLangChange, isLocalLog, localLogFile, projectName, collapseToolResults, onCollapseToolResultsChange, expandThinking, onExpandThinkingChange, expandDiff, onExpandDiffChange, filterIrrelevant, onFilterIrrelevantChange, updateInfo, onDismissUpdate } = this.props;
+    const { requestCount, requests = [], viewMode, cacheType, onToggleViewMode, onImportLocalLogs, onLangChange, isLocalLog, localLogFile, projectName, collapseToolResults, onCollapseToolResultsChange, expandThinking, onExpandThinkingChange, expandDiff, onExpandDiffChange, filterIrrelevant, onFilterIrrelevantChange, updateInfo, onDismissUpdate } = this.props;
     const { countdownText } = this.state;
 
     const menuItems = [
@@ -677,10 +677,56 @@ class AppHeader extends React.Component {
               {t('ui.tokenStats')}
             </Tag>
           </Popover>
-          <Tag color={isLocalLog ? undefined : 'green'} className={`${styles.liveTag} ${isLocalLog ? styles.liveTagHistory : ''}`}>
-            {!isLocalLog && <Badge status="processing" color="green" />}
-            <span className={styles.liveTagText}>{isLocalLog ? t('ui.historyLog', { file: localLogFile }) : (t('ui.liveMonitoring') + (projectName ? `:${projectName}` : ''))}</span>
-          </Tag>
+          {(() => {
+            const inflightReqs = isLocalLog ? [] : (requests || []).filter(r => !r.response);
+            const hasInflight = inflightReqs.length > 0;
+            const liveDot = !isLocalLog ? (
+              hasInflight ? (
+                <svg className={styles.liveSpinner} width="10" height="10" viewBox="0 0 10 10">
+                  <line x1="5" y1="1" x2="5" y2="9" stroke="#52c41a" strokeWidth="1.5" strokeLinecap="round" />
+                  <line x1="1" y1="5" x2="9" y2="5" stroke="#52c41a" strokeWidth="1.5" strokeLinecap="round" />
+                  <line x1="2.2" y1="2.2" x2="7.8" y2="7.8" stroke="#52c41a" strokeWidth="1.5" strokeLinecap="round" className={styles.liveSpinnerDiag} />
+                  <line x1="7.8" y1="2.2" x2="2.2" y2="7.8" stroke="#52c41a" strokeWidth="1.5" strokeLinecap="round" className={styles.liveSpinnerDiag} />
+                </svg>
+              ) : <Badge status="processing" color="green" />
+            ) : null;
+            const noInflightTip = !isLocalLog && !hasInflight;
+            const dotEl = liveDot && (
+              <span className={styles.liveDotWrap}>
+                {noInflightTip
+                  ? <Tooltip title={t('ui.noInflightRequests')} placement="bottom">{liveDot}</Tooltip>
+                  : liveDot}
+              </span>
+            );
+            const liveTag = (
+              <Tag color={isLocalLog ? undefined : 'green'} className={`${styles.liveTag} ${isLocalLog ? styles.liveTagHistory : ''}`}>
+                {dotEl}
+                <span className={styles.liveTagText}>{isLocalLog ? t('ui.historyLog', { file: localLogFile }) : (t('ui.liveMonitoring') + (projectName ? `:${projectName}` : ''))}</span>
+              </Tag>
+            );
+            if (hasInflight) {
+              const popContent = (
+                <div className={styles.inflightList}>
+                  {inflightReqs.map((req, i) => {
+                    const cls = classifyRequest(req);
+                    const tag = formatRequestTag(cls.type, cls.subType);
+                    const model = req.body?.model || '';
+                    const modelShort = model.includes('-') ? model.split('-').slice(0, 2).join('-') : model;
+                    const time = new Date(req.timestamp).toLocaleTimeString('zh-CN');
+                    return (
+                      <div key={i} className={styles.inflightItem}>
+                        <span className={styles.inflightTag}>{tag}</span>
+                        <span className={styles.inflightModel}>{modelShort}</span>
+                        <span className={styles.inflightTime}>{time}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+              return <Popover content={popContent} title={t('ui.inflightRequests')} placement="bottom">{liveTag}</Popover>;
+            }
+            return liveTag;
+          })()}
           {updateInfo && (
             <Tag
               color={updateInfo.type === 'completed' ? 'green' : 'orange'}
