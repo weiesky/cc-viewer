@@ -25,3 +25,12 @@ Detiene una tarea en segundo plano en ejecución.
 ## Significado en cc-viewer
 
 Las llamadas a TaskStop no producen solicitudes API por sí mismas, pertenecen a las operaciones internas de gestión de tareas de Claude Code.
+
+## Texto original
+
+<textarea readonly>
+- Stops a running background task by its ID
+- Takes a task_id parameter identifying the task to stop
+- Returns a success or failure status
+- Use this tool when you need to terminate a long-running task
+</textarea>

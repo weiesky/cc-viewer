@@ -25,3 +25,12 @@ Stops a running background task.
 ## Significance in cc-viewer
 
 TaskStop calls do not produce API requests themselves; they are internal task management operations in Claude Code.
+
+## Original Text
+
+<textarea readonly>
+- Stops a running background task by its ID
+- Takes a task_id parameter identifying the task to stop
+- Returns a success or failure status
+- Use this tool when you need to terminate a long-running task
+</textarea>

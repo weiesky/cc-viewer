@@ -25,3 +25,12 @@
 ## cc-viewer'da Önemi
 
 TaskStop çağrısı kendisi API isteği üretmez; Claude Code'un dahili görev yönetim işlemidir.
+
+## Orijinal Metin
+
+<textarea readonly>
+- Stops a running background task by its ID
+- Takes a task_id parameter identifying the task to stop
+- Returns a success or failure status
+- Use this tool when you need to terminate a long-running task
+</textarea>

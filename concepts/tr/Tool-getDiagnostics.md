@@ -30,3 +30,7 @@ VS Code'dan sözdizimi hataları, tür hataları, lint uyarıları gibi dil tan�
 ## cc-viewer'da Önemi
 
 getDiagnostics bir MCP aracıdır ve istek günlüğünün `tools` dizisinde `mcp__ide__getDiagnostics` adıyla görünür. Çağrıları ve dönüşleri standart `tool_use` / `tool_result` kalıbını izler. MCP araçlarının eklenmesi veya kaldırılması tools dizisinin değişmesine neden olur ve önbellek yeniden oluşturmayı tetikleyebilir.
+
+## Orijinal Metin
+
+<textarea readonly>Get language diagnostics from VS Code</textarea>

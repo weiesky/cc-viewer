@@ -31,3 +31,15 @@
 ## cc-viewer에서의 의의
 
 executeCode는 MCP 도구이며, 요청 로그의 `tools` 배열에 `mcp__ide__executeCode` 이름으로 나타납니다. 호출과 반환은 표준 `tool_use` / `tool_result` 패턴을 따릅니다. MCP 도구의 증감은 tools 배열 변화를 일으키며, 캐시 재구축을 트리거할 수 있습니다.
+
+## 원문
+
+<textarea readonly>Execute python code in the Jupyter kernel for the current notebook file.
+    
+    All code will be executed in the current Jupyter kernel.
+    
+    Avoid declaring variables or modifying the state of the kernel unless the user
+    explicitly asks for it.
+    
+    Any code executed will persist across calls to this tool, unless the kernel
+    has been restarted.</textarea>

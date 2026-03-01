@@ -32,3 +32,13 @@ Ottiene l'output di un task in background in esecuzione o completato. Applicabil
 ## Significato in cc-viewer
 
 La chiamata TaskOutput non genera richieste API, è un'operazione interna di gestione dei task di Claude Code e non appare nei log delle richieste.
+
+## Testo originale
+
+<textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)
+- Takes a task_id parameter identifying the task
+- Returns the task output along with status information
+- Use block=true (default) to wait for task completion
+- Use block=false for non-blocking check of current status
+- Task IDs can be found using the /tasks command
+- Works with all task types: background shells, async agents, and remote sessions</textarea>

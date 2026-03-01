@@ -31,3 +31,15 @@ Executa código Python no kernel Jupyter do arquivo notebook atual.
 ## Significado no cc-viewer
 
 executeCode é uma ferramenta MCP, aparece no array `tools` dos logs de requisição com o nome `mcp__ide__executeCode`. Suas chamadas e retornos seguem o padrão `tool_use` / `tool_result`. A adição/remoção de ferramentas MCP causa alterações no array tools, podendo acionar reconstrução de cache.
+
+## Texto original
+
+<textarea readonly>Execute python code in the Jupyter kernel for the current notebook file.
+    
+    All code will be executed in the current Jupyter kernel.
+    
+    Avoid declaring variables or modifying the state of the kernel unless the user
+    explicitly asks for it.
+    
+    Any code executed will persist across calls to this tool, unless the kernel
+    has been restarted.</textarea>

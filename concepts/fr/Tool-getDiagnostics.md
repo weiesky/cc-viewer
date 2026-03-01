@@ -30,3 +30,7 @@ Obtient les informations de diagnostic du langage depuis VS Code, incluant les e
 ## Signification dans cc-viewer
 
 getDiagnostics est un outil MCP qui apparaît dans le tableau `tools` du journal des requêtes sous le nom `mcp__ide__getDiagnostics`. Ses appels et retours suivent le modèle standard `tool_use` / `tool_result`. L'ajout/suppression d'outils MCP entraîne des changements dans le tableau tools, ce qui peut déclencher la reconstruction du cache.
+
+## Texte original
+
+<textarea readonly>Get language diagnostics from VS Code</textarea>

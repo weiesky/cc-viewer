@@ -30,3 +30,7 @@ VS Code から言語診断情報を取得します。構文エラー、型エラ
 ## cc-viewer での意義
 
 getDiagnostics は MCP ツールで、リクエストログの `tools` 配列に `mcp__ide__getDiagnostics` の名前で表示されます。その呼び出しと返却は標準の `tool_use` / `tool_result` パターンに従います。MCP ツールの増減は tools 配列の変化を引き起こし、キャッシュ再構築をトリガーする可能性があります。
+
+## 原文
+
+<textarea readonly>Get language diagnostics from VS Code</textarea>

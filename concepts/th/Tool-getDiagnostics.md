@@ -30,3 +30,7 @@
 ## ความสำคัญใน cc-viewer
 
 getDiagnostics เป็นเครื่องมือ MCP ปรากฏในอาร์เรย์ `tools` ของบันทึกคำร้องขอด้วยชื่อ `mcp__ide__getDiagnostics` การเรียกและส่งคืนเป็นไปตามรูปแบบ `tool_use` / `tool_result` มาตรฐาน การเพิ่ม/ลบเครื่องมือ MCP ทำให้อาร์เรย์ tools เปลี่ยนแปลง ซึ่งอาจทำให้เกิดการสร้างแคชใหม่
+
+## ข้อความต้นฉบับ
+
+<textarea readonly>Get language diagnostics from VS Code</textarea>

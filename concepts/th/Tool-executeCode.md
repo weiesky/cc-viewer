@@ -31,3 +31,15 @@
 ## ความสำคัญใน cc-viewer
 
 executeCode เป็นเครื่องมือ MCP ปรากฏในอาร์เรย์ `tools` ของบันทึกคำร้องขอด้วยชื่อ `mcp__ide__executeCode` การเรียกและส่งคืนเป็นไปตามรูปแบบ `tool_use` / `tool_result` มาตรฐาน การเพิ่ม/ลบเครื่องมือ MCP ทำให้อาร์เรย์ tools เปลี่ยนแปลง ซึ่งอาจทำให้เกิดการสร้างแคชใหม่
+
+## ข้อความต้นฉบับ
+
+<textarea readonly>Execute python code in the Jupyter kernel for the current notebook file.
+    
+    All code will be executed in the current Jupyter kernel.
+    
+    Avoid declaring variables or modifying the state of the kernel unless the user
+    explicitly asks for it.
+    
+    Any code executed will persist across calls to this tool, unless the kernel
+    has been restarted.</textarea>

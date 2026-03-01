@@ -32,3 +32,12 @@
 ## 在 cc-viewer 中的意义
 
 Glob 调用在请求日志中表现为 `tool_use` / `tool_result` content block 对。`tool_result` 包含匹配的文件路径列表。
+
+## 原文
+
+<textarea readonly>- Fast file pattern matching tool that works with any codebase size
+- Supports glob patterns like "**/*.js" or "src/**/*.ts"
+- Returns matching file paths sorted by modification time
+- Use this tool when you need to find files by name patterns
+- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead
+- You can call multiple tools in a single response. It is always better to speculatively perform multiple searches in parallel if they are potentially useful.</textarea>

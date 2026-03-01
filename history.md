@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.6 (2026-03-01)
+
+- Feat: added "Original Text" section to all Tool-*.md docs (22 tools × 18 languages = 396 files), showing the raw Claude API tool description in a readonly textarea
+- Added Tool-EnterWorktree.md documentation for all 18 languages (zh/ja/ko/en with localized content, others with English content + localized headings)
+- Added textarea styling in ConceptHelp modal
+
 ## 1.3.5 (2026-03-01)
 
 - Refactor: import modal simplified — flat file list replaces project-grouped collapse, with select-all and merge support; prevent merging the latest (active) log file

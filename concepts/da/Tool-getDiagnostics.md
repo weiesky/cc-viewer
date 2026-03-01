@@ -30,3 +30,7 @@ Henter sprogdiagnostikinformation fra VS Code, herunder syntaksfejl, typefejl, l
 ## Betydning i cc-viewer
 
 getDiagnostics er et MCP-værktøj, der vises i requestloggens `tools`-array med navnet `mcp__ide__getDiagnostics`. Dets kald og returneringer følger standard `tool_use` / `tool_result`-mønsteret. Tilføjelse/fjernelse af MCP-værktøjer medfører ændringer i tools-arrayet, som kan udløse cache-genopbygning.
+
+## Originaltekst
+
+<textarea readonly>Get language diagnostics from VS Code</textarea>

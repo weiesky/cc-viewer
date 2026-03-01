@@ -32,3 +32,13 @@
 ## cc-viewer での意義
 
 TaskOutput 呼び出し自体は API リクエストを生成しません。Claude Code 内部のタスク管理操作であり、リクエストログには表示されません。
+
+## 原文
+
+<textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)
+- Takes a task_id parameter identifying the task
+- Returns the task output along with status information
+- Use block=true (default) to wait for task completion
+- Use block=false for non-blocking check of current status
+- Task IDs can be found using the /tasks command
+- Works with all task types: background shells, async agents, and remote sessions</textarea>

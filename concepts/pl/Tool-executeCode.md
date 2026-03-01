@@ -31,3 +31,15 @@ Wykonuje kod Python w jądrze Jupyter bieżącego pliku notebook.
 ## Znaczenie w cc-viewer
 
 executeCode to narzędzie MCP, pojawiające się w tablicy `tools` logów żądań pod nazwą `mcp__ide__executeCode`. Jego wywołania i zwroty podlegają standardowemu wzorcowi `tool_use` / `tool_result`. Dodawanie/usuwanie narzędzi MCP powoduje zmianę tablicy tools, co może wyzwolić przebudowę cache.
+
+## Tekst oryginalny
+
+<textarea readonly>Execute python code in the Jupyter kernel for the current notebook file.
+    
+    All code will be executed in the current Jupyter kernel.
+    
+    Avoid declaring variables or modifying the state of the kernel unless the user
+    explicitly asks for it.
+    
+    Any code executed will persist across calls to this tool, unless the kernel
+    has been restarted.</textarea>

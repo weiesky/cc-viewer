@@ -25,3 +25,12 @@ Arrête une tâche en arrière-plan en cours d'exécution.
 ## Signification dans cc-viewer
 
 Les appels TaskStop ne produisent pas de requêtes API en eux-mêmes, ils font partie des opérations internes de gestion de tâches de Claude Code.
+
+## Texte original
+
+<textarea readonly>
+- Stops a running background task by its ID
+- Takes a task_id parameter identifying the task to stop
+- Returns a success or failure status
+- Use this tool when you need to terminate a long-running task
+</textarea>

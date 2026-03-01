@@ -25,3 +25,12 @@
 ## Значення в cc-viewer
 
 Виклик TaskStop сам по собі не генерує API-запиту; це внутрішня операція управління завданнями Claude Code.
+
+## Оригінальний текст
+
+<textarea readonly>
+- Stops a running background task by its ID
+- Takes a task_id parameter identifying the task to stop
+- Returns a success or failure status
+- Use this tool when you need to terminate a long-running task
+</textarea>

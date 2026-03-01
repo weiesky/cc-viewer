@@ -31,3 +31,15 @@
 ## Значение в cc-viewer
 
 executeCode — это инструмент MCP, появляющийся в массиве `tools` логов запросов под именем `mcp__ide__executeCode`. Его вызовы и возвраты следуют стандартному шаблону `tool_use` / `tool_result`. Добавление/удаление инструментов MCP вызывает изменение массива tools, что может привести к пересборке кеша.
+
+## Оригинальный текст
+
+<textarea readonly>Execute python code in the Jupyter kernel for the current notebook file.
+    
+    All code will be executed in the current Jupyter kernel.
+    
+    Avoid declaring variables or modifying the state of the kernel unless the user
+    explicitly asks for it.
+    
+    Any code executed will persist across calls to this tool, unless the kernel
+    has been restarted.</textarea>

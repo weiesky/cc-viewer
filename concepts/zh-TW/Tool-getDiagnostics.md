@@ -30,3 +30,7 @@
 ## 在 cc-viewer 中的意義
 
 getDiagnostics 是 MCP 工具，在請求日誌的 `tools` 陣列中以 `mcp__ide__getDiagnostics` 名稱出現。其呼叫和回傳遵循標準的 `tool_use` / `tool_result` 模式。MCP 工具的增減會導致 tools 陣列變化，可能觸發快取重建。
+
+## 原文
+
+<textarea readonly>Get language diagnostics from VS Code</textarea>

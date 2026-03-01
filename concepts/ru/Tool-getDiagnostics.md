@@ -30,3 +30,7 @@
 ## Значение в cc-viewer
 
 getDiagnostics — это инструмент MCP, появляющийся в массиве `tools` логов запросов под именем `mcp__ide__getDiagnostics`. Его вызовы и возвраты следуют стандартному шаблону `tool_use` / `tool_result`. Добавление/удаление инструментов MCP вызывает изменение массива tools, что может привести к пересборке кеша.
+
+## Оригинальный текст
+
+<textarea readonly>Get language diagnostics from VS Code</textarea>
