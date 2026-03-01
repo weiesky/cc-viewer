@@ -7,6 +7,7 @@ import { t } from '../i18n';
 import { formatTokenCount, stripPrivateKeys, hasClaudeMdReminder, isClaudeMdReminder, hasSkillsReminder, isSkillsReminder } from '../utils/helpers';
 import { classifyRequest } from '../utils/requestType';
 import { isMainAgent } from '../utils/contentFilter';
+import ContextTab from './ContextTab';
 import styles from './DetailPanel.module.css';
 
 const { Text, Paragraph } = Typography;
@@ -399,6 +400,15 @@ class DetailPanel extends React.Component {
     const hasSkills = hasSkillsReminder(request.body);
 
     const tabItems = [
+      {
+        key: 'context',
+        label: 'Context',
+        children: (
+          <div className={styles.tabContent} style={{ height: 'calc(100vh - 220px)', minHeight: 400 }}>
+            <ContextTab body={request.body} />
+          </div>
+        ),
+      },
       {
         key: 'request',
         label: 'Request',
