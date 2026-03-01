@@ -64,6 +64,13 @@
   margin-bottom: 2px;
 }
 
+.labelRowEnd {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
 .labelRight {
   display: flex;
   align-items: center;

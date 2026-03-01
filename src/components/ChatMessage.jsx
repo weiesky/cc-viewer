@@ -237,6 +237,24 @@ class ChatMessage extends React.Component {
     return box(toolLabel, <div className={styles.kvContainer}>{items}</div>);
   }
 
+  renderHighlightBubble(bubbleClass, children) {
+    const { highlight } = this.props;
+    const cls = `${bubbleClass}${highlight === 'active' ? ' ' + styles.bubbleHighlight : ''}${highlight === 'fading' ? ' ' + styles.bubbleHighlightFading : ''}`;
+    const isUser = bubbleClass === styles.bubbleUser;
+    return (
+      <div className={cls} style={{ position: 'relative' }}>
+        {(highlight === 'active' || highlight === 'fading') && (
+          <svg className={`${styles.borderSvg}${highlight === 'fading' ? ' ' + styles.borderSvgFading : ''}`} preserveAspectRatio="none">
+            <rect x="0.5" y="0.5" width="calc(100% - 1px)" height="calc(100% - 1px)" rx="8" ry="8"
+              fill="none" stroke={isUser ? '#ffffff' : '#1668dc'} strokeWidth="1" strokeDasharray="6 4"
+              className={styles.borderRect} />
+          </svg>
+        )}
+        {children}
+      </div>
+    );
+  }
+
   renderUserMessage() {
     const { text, timestamp } = this.props;
     const timeStr = this.formatTime(timestamp);
@@ -254,7 +272,7 @@ class ChatMessage extends React.Component {
               {this.renderViewRequestBtn()}
               <Text type="secondary" className={styles.labelTextRight}>{userName} — /compact</Text>
             </div>
-            <div className={styles.bubbleUser}>
+            {this.renderHighlightBubble(styles.bubbleUser, (
               <Collapse
                 ghost
                 size="small"
@@ -265,7 +283,7 @@ class ChatMessage extends React.Component {
                 }]}
                 className={styles.collapseNoMargin}
               />
-            </div>
+            ))}
           </div>
           {this.renderUserAvatar('#1e40af')}
         </div>
@@ -280,9 +298,7 @@ class ChatMessage extends React.Component {
             {this.renderViewRequestBtn()}
             <Text type="secondary" className={styles.labelTextRight}>{userName}</Text>
           </div>
-          <div className={styles.bubbleUser}>
-            {escapeHtml(text)}
-          </div>
+          {this.renderHighlightBubble(styles.bubbleUser, escapeHtml(text))}
         </div>
         {this.renderUserAvatar('#1e40af')}
       </div>
@@ -299,9 +315,7 @@ class ChatMessage extends React.Component {
     );
   }
 
-  renderAssistantMessage() {
-    const { content, toolResultMap = {}, modelInfo } = this.props;
-    // content is an array of blocks: thinking, text, tool_use
+  renderAssistantContent(content, toolResultMap = {}) {
     const thinkingBlocks = content.filter(b => b.type === 'thinking');
     const textBlocks = content.filter(b => b.type === 'text');
     const toolUseBlocks = content.filter(b => b.type === 'tool_use');
@@ -343,7 +357,6 @@ class ChatMessage extends React.Component {
 
     toolUseBlocks.forEach(tu => {
       innerContent.push(this.renderToolCall(tu));
-      // 紧跟工具返回结果
       const tr = toolResultMap[tu.id];
       if (tr) {
         innerContent.push(
@@ -351,6 +364,13 @@ class ChatMessage extends React.Component {
         );
       }
     });
+
+    return innerContent;
+  }
+
+  renderAssistantMessage() {
+    const { content, toolResultMap = {}, modelInfo } = this.props;
+    const innerContent = this.renderAssistantContent(content, toolResultMap);
 
     if (innerContent.length === 0) return null;
 
@@ -361,17 +381,31 @@ class ChatMessage extends React.Component {
         />
         <div className={styles.contentCol}>
           {this.renderLabel(modelInfo?.name || 'MainAgent')}
-          <div className={`${styles.bubbleAssistant}${this.props.highlight === 'active' ? ' ' + styles.bubbleHighlight : ''}${this.props.highlight === 'fading' ? ' ' + styles.bubbleHighlightFading : ''}`}>
-            {(this.props.highlight === 'active' || this.props.highlight === 'fading') && (
-              <svg className={`${styles.borderSvg}${this.props.highlight === 'fading' ? ' ' + styles.borderSvgFading : ''}`} preserveAspectRatio="none">
-                <rect x="0.5" y="0.5" width="calc(100% - 1px)" height="calc(100% - 1px)" rx="8" ry="8"
-                  fill="none" stroke="#1668dc" strokeWidth="1" strokeDasharray="6 4"
-                  className={styles.borderRect} />
-              </svg>
-            )}
-            {innerContent}
-          </div>
+          {this.renderHighlightBubble(styles.bubbleAssistant, innerContent)}
         </div>
+      </div>
+    );
+  }
+
+  renderSubAgentChatMessage() {
+    const { content, toolResultMap = {}, label } = this.props;
+    const innerContent = this.renderAssistantContent(content, toolResultMap);
+
+    if (innerContent.length === 0) return null;
+
+    return (
+      <div className={styles.messageRowEnd}>
+        <div className={styles.contentColLimited}>
+          <div className={styles.labelRowEnd}>
+            {this.formatTime(this.props.timestamp) && <Text className={styles.timeText}>{this.formatTime(this.props.timestamp)}</Text>}
+            {this.renderViewRequestBtn()}
+            <Text type="secondary" className={styles.labelTextRight}>{label || 'SubAgent'}</Text>
+          </div>
+          {this.renderHighlightBubble(styles.bubbleAssistant, innerContent)}
+        </div>
+        <div className={styles.avatar} style={{ background: '#4a1d96' }}
+          dangerouslySetInnerHTML={{ __html: getSvgAvatar('sub') }}
+        />
       </div>
     );
   }
@@ -484,6 +518,7 @@ class ChatMessage extends React.Component {
     if (role === 'plan-prompt') return this.renderPlanPromptMessage();
     if (role === 'user-selection') return this.renderUserSelectionMessage();
     if (role === 'assistant') return this.renderAssistantMessage();
+    if (role === 'sub-agent-chat') return this.renderSubAgentChatMessage();
     if (role === 'sub-agent') return this.renderSubAgentMessage();
     return null;
   }

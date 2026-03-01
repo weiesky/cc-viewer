@@ -9,6 +9,7 @@ import PanelResizer from './components/PanelResizer';
 import { t, getLang, setLang } from './i18n';
 import { formatTokenCount, filterRelevantRequests, findPrevMainAgentTimestamp } from './utils/helpers';
 import { isMainAgent } from './utils/contentFilter';
+import { classifyRequest } from './utils/requestType';
 import styles from './App.module.css';
 
 class App extends React.Component {
@@ -407,9 +408,15 @@ class App extends React.Component {
       if (isMainAgent(selectedReq) && selectedReq.timestamp) {
         targetTs = selectedReq.timestamp;
       } else {
-        const idx = prev.requests.indexOf(selectedReq);
-        if (idx >= 0) {
-          targetTs = findPrevMainAgentTimestamp(prev.requests, idx);
+        // SubAgent 请求直接用自身 timestamp
+        const cls = classifyRequest(selectedReq);
+        if (cls.type === 'SubAgent' && selectedReq.timestamp) {
+          targetTs = selectedReq.timestamp;
+        } else {
+          const idx = prev.requests.indexOf(selectedReq);
+          if (idx >= 0) {
+            targetTs = findPrevMainAgentTimestamp(prev.requests, idx);
+          }
         }
         if (!targetTs) {
           message.info(t('ui.cannotMap'));
@@ -443,13 +450,19 @@ class App extends React.Component {
         if (isMainAgent(selectedReq) && selectedReq.timestamp) {
           targetTs = selectedReq.timestamp;
         } else {
-          // 非 mainAgent 请求，向前找最近的 mainAgent
-          const idx = prev.requests.indexOf(selectedReq);
-          if (idx >= 0) {
-            targetTs = findPrevMainAgentTimestamp(prev.requests, idx);
-          }
-          if (!targetTs) {
-            message.info(t('ui.cannotMap'));
+          // SubAgent 请求直接用自身 timestamp
+          const cls = classifyRequest(selectedReq);
+          if (cls.type === 'SubAgent' && selectedReq.timestamp) {
+            targetTs = selectedReq.timestamp;
+          } else {
+            // 非 mainAgent 请求，向前找最近的 mainAgent
+            const idx = prev.requests.indexOf(selectedReq);
+            if (idx >= 0) {
+              targetTs = findPrevMainAgentTimestamp(prev.requests, idx);
+            }
+            if (!targetTs) {
+              message.info(t('ui.cannotMap'));
+            }
           }
         }
         return { viewMode: newMode, chatScrollToTs: targetTs };

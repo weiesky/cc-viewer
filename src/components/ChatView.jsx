@@ -3,6 +3,7 @@ import { Empty, Typography, Divider, Spin } from 'antd';
 import ChatMessage from './ChatMessage';
 import { extractToolResultText, getModelInfo } from '../utils/helpers';
 import { isSystemText, classifyUserContent, isMainAgent } from '../utils/contentFilter';
+import { classifyRequest, formatRequestTag } from '../utils/requestType';
 import { t } from '../i18n';
 import styles from './ChatView.module.css';
 
@@ -12,6 +13,51 @@ const QUEUE_THRESHOLD = 20;
 
 function randomInterval() {
   return 100 + Math.random() * 50;
+}
+
+function buildToolResultMap(messages) {
+  const toolUseMap = {};
+  for (const msg of messages) {
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      for (const block of msg.content) {
+        if (block.type === 'tool_use') {
+          toolUseMap[block.id] = block;
+        }
+      }
+    }
+  }
+
+  const toolResultMap = {};
+  for (const msg of messages) {
+    if (msg.role === 'user' && Array.isArray(msg.content)) {
+      for (const block of msg.content) {
+        if (block.type === 'tool_result') {
+          const matchedTool = toolUseMap[block.tool_use_id];
+          let label = t('ui.toolReturn');
+          let toolName = null;
+          let toolInput = null;
+          if (matchedTool) {
+            toolName = matchedTool.name;
+            toolInput = matchedTool.input;
+            if (matchedTool.name === 'Task' && matchedTool.input) {
+              const st = matchedTool.input.subagent_type || '';
+              const desc = matchedTool.input.description || '';
+              label = `SubAgent: ${st}${desc ? ' — ' + desc : ''}`;
+            } else {
+              label = t('ui.toolReturnNamed', { name: matchedTool.name });
+            }
+          }
+          toolResultMap[block.tool_use_id] = {
+            label,
+            toolName,
+            toolInput,
+            resultText: extractToolResultText(block),
+          };
+        }
+      }
+    }
+  }
+  return { toolUseMap, toolResultMap };
 }
 
 class ChatView extends React.Component {
@@ -149,47 +195,7 @@ class ChatView extends React.Component {
 
   renderSessionMessages(messages, keyPrefix, modelInfo, tsToIndex) {
     const { userProfile, collapseToolResults, expandThinking, onViewRequest } = this.props;
-    const toolUseMap = {};
-    for (const msg of messages) {
-      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-        for (const block of msg.content) {
-          if (block.type === 'tool_use') {
-            toolUseMap[block.id] = block;
-          }
-        }
-      }
-    }
-
-    const toolResultMap = {};
-    for (const msg of messages) {
-      if (msg.role === 'user' && Array.isArray(msg.content)) {
-        for (const block of msg.content) {
-          if (block.type === 'tool_result') {
-            const matchedTool = toolUseMap[block.tool_use_id];
-            let label = t('ui.toolReturn');
-            let toolName = null;
-            let toolInput = null;
-            if (matchedTool) {
-              toolName = matchedTool.name;
-              toolInput = matchedTool.input;
-              if (matchedTool.name === 'Task' && matchedTool.input) {
-                const st = matchedTool.input.subagent_type || '';
-                const desc = matchedTool.input.description || '';
-                label = `SubAgent: ${st}${desc ? ' — ' + desc : ''}`;
-              } else {
-                label = t('ui.toolReturnNamed', { name: matchedTool.name });
-              }
-            }
-            toolResultMap[block.tool_use_id] = {
-              label,
-              toolName,
-              toolInput,
-              resultText: extractToolResultText(block),
-            };
-          }
-        }
-      }
-    }
+    const { toolUseMap, toolResultMap } = buildToolResultMap(messages);
 
     const renderedMessages = [];
 
@@ -302,6 +308,31 @@ class ChatView extends React.Component {
     // 记录每个 timestamp 对应的最后一个 item index，用于滚动定位
     const tsItemMap = {};
 
+    // 收集 SubAgent entries（按 timestamp 排序）
+    const subAgentEntries = [];
+    if (requests) {
+      for (let i = 0; i < requests.length; i++) {
+        const req = requests[i];
+        if (!req.timestamp) continue;
+        const cls = classifyRequest(req, requests[i + 1]);
+        if (cls.type === 'SubAgent') {
+          const respContent = req.response?.body?.content;
+          if (Array.isArray(respContent) && respContent.length > 0) {
+            const subToolResultMap = buildToolResultMap(req.body?.messages || []).toolResultMap;
+            subAgentEntries.push({
+              timestamp: req.timestamp,
+              content: respContent,
+              toolResultMap: subToolResultMap,
+              label: formatRequestTag(cls.type, cls.subType),
+              requestIndex: i,
+            });
+          }
+        }
+      }
+    }
+
+    let subIdx = 0;
+
     mainAgentSessions.forEach((session, si) => {
       if (si > 0) {
         allItems.push(
@@ -312,9 +343,33 @@ class ChatView extends React.Component {
       }
 
       const msgs = this.renderSessionMessages(session.messages, `s${si}`, modelInfo, tsToIndex);
+
+      // 将 SubAgent entries 按时间戳插入到 session 消息之间
       for (const m of msgs) {
-        if (m.props.timestamp) tsItemMap[m.props.timestamp] = allItems.length;
+        const msgTs = m.props.timestamp;
+        // 插入时间戳 <= 当前消息时间戳的 SubAgent entries
+        while (subIdx < subAgentEntries.length && msgTs && subAgentEntries[subIdx].timestamp <= msgTs) {
+          const sa = subAgentEntries[subIdx];
+          if (sa.timestamp) tsItemMap[sa.timestamp] = allItems.length;
+          allItems.push(
+            <ChatMessage key={`sub-chat-${subIdx}`} role="sub-agent-chat" content={sa.content} toolResultMap={sa.toolResultMap} label={sa.label} timestamp={sa.timestamp} collapseToolResults={collapseToolResults} expandThinking={expandThinking} requestIndex={sa.requestIndex} onViewRequest={onViewRequest} />
+          );
+          subIdx++;
+        }
+        if (msgTs) tsItemMap[msgTs] = allItems.length;
         allItems.push(m);
+      }
+      // 插入剩余的 SubAgent entries（时间戳在最后一条消息之后）
+      while (subIdx < subAgentEntries.length) {
+        const sa = subAgentEntries[subIdx];
+        // 只插入属于当前 session 时间范围内的（下一个 session 之前的）
+        const nextSessionStart = si < mainAgentSessions.length - 1 && mainAgentSessions[si + 1].messages?.[0]?._timestamp;
+        if (nextSessionStart && sa.timestamp > nextSessionStart) break;
+        if (sa.timestamp) tsItemMap[sa.timestamp] = allItems.length;
+        allItems.push(
+          <ChatMessage key={`sub-chat-${subIdx}`} role="sub-agent-chat" content={sa.content} toolResultMap={sa.toolResultMap} label={sa.label} timestamp={sa.timestamp} collapseToolResults={collapseToolResults} expandThinking={expandThinking} requestIndex={sa.requestIndex} onViewRequest={onViewRequest} />
+        );
+        subIdx++;
       }
 
       if (si === mainAgentSessions.length - 1 && session.response?.body?.content) {
@@ -380,7 +435,7 @@ class ChatView extends React.Component {
           const isScrollTarget = i === targetIdx;
           const needsHighlight = i === highlightIdx;
           let el = item;
-          if (needsHighlight && el.props.role === 'assistant') {
+          if (needsHighlight) {
             el = React.cloneElement(el, { highlight: highlightFading ? 'fading' : 'active' });
           }
           return isScrollTarget

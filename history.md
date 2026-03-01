@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.7 (2026-03-01)
+
+- Feat: SubAgent chat messages now interleaved in chat view timeline, with dedicated `sub-agent-chat` rendering
+- Refactor: extracted `renderHighlightBubble()` and `renderAssistantContent()` in ChatMessage for reuse across user/assistant/sub-agent bubbles
+- Refactor: extracted `buildToolResultMap()` as top-level utility in ChatView
+- Fix: highlight dashed-border animation uses white stroke on user bubbles (blue background) for better visibility
+- Fix: highlight now applies to all message roles, not just assistant
+- Fix: SubAgent requests use their own timestamp for raw-chat view switching instead of searching for parent MainAgent
+
 ## 1.3.6 (2026-03-01)
 
 - Feat: added "Original Text" section to all Tool-*.md docs (22 tools × 18 languages = 396 files), showing the raw Claude API tool description in a readonly textarea
