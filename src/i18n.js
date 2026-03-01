@@ -2598,6 +2598,18 @@ const i18nData = {
     "no": "Velg et element til venstre", "pt-BR": "Selecione um item à esquerda",
     "th": "เลือกรายการทางซ้าย", "tr": "Soldan bir öğe seçin",
     "uk": "Виберіть елемент ліворуч"
+  },
+  "ui.themeDark": {
+    "zh": "深色", "en": "Dark", "zh-TW": "深色", "ko": "다크", "ja": "ダーク",
+    "de": "Dunkel", "es": "Oscuro", "fr": "Sombre", "it": "Scuro",
+    "da": "Mørk", "pl": "Ciemny", "ru": "Тёмная", "ar": "داكن",
+    "no": "Mørk", "pt-BR": "Escuro", "th": "มืด", "tr": "Koyu", "uk": "Темна"
+  },
+  "ui.themeLight": {
+    "zh": "浅色", "en": "Light", "zh-TW": "淺色", "ko": "라이트", "ja": "ライト",
+    "de": "Hell", "es": "Claro", "fr": "Clair", "it": "Chiaro",
+    "da": "Lys", "pl": "Jasny", "ru": "Светлая", "ar": "فاتح",
+    "no": "Lys", "pt-BR": "Claro", "th": "สว่าง", "tr": "Açık", "uk": "Світла"
   }
 };
 

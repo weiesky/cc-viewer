@@ -1,5 +1,5 @@
 .plainResult {
-  background: #111;
+  background: var(--bg-card);
   border-radius: 6px;
   font-size: 12px;
 }
@@ -9,7 +9,7 @@
 }
 
 .plainPre {
-  color: #d1d5db;
+  color: var(--text-2);
   margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
@@ -18,9 +18,9 @@
 }
 
 .codeResult {
-  background: #0d1117;
+  background: var(--bg-code);
   border-radius: 6px;
-  border: 1px solid #1e2a3a;
+  border: 1px solid var(--border-code-result);
   overflow: hidden;
 }
 
@@ -29,18 +29,18 @@
   justify-content: space-between;
   align-items: center;
   padding: 4px 10px;
-  background: #161b22;
-  border-bottom: 1px solid #1e2a3a;
+  background: var(--bg-code-header);
+  border-bottom: 1px solid var(--border-code-result);
 }
 
 .codeTitle {
   font-size: 11px;
-  color: #8b949e;
+  color: var(--text-4);
 }
 
 .codeToggle {
   font-size: 11px;
-  color: #484f58;
+  color: var(--text-7);
   cursor: pointer;
   user-select: none;
 }

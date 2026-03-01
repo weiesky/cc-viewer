@@ -9,7 +9,7 @@
 
 /* Title / brand */
 .titleText {
-  color: #fff;
+  color: var(--text-1);
   font-size: 18px;
   cursor: pointer;
 }
@@ -31,9 +31,9 @@
 .tokenStatsTag {
   border-radius: 12px;
   cursor: pointer;
-  background: #2a2a2a;
-  border: 1px solid #3a3a3a;
-  color: #ccc;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-4);
+  color: var(--text-muted-alt);
 }
 
 .tokenStatsIcon {
@@ -100,7 +100,7 @@
 }
 
 .inflightItem + .inflightItem {
-  border-top: 1px solid #333;
+  border-top: 1px solid var(--border-3);
 }
 
 .inflightTag {
@@ -110,20 +110,20 @@
 }
 
 .inflightModel {
-  color: #999;
+  color: var(--text-4);
   white-space: nowrap;
 }
 
 .inflightTime {
-  color: #666;
+  color: var(--text-5);
   margin-left: auto;
   white-space: nowrap;
 }
 
 .liveTagHistory {
-  background: #2a2a2a;
-  border-color: #424242;
-  color: #d1d5db;
+  background: var(--bg-elevated);
+  border-color: var(--border-4);
+  color: var(--text-2);
 }
 
 .liveTagText {
@@ -137,29 +137,43 @@
 
 /* Language selector */
 .langSelector {
-  color: #888;
+  color: var(--text-4);
   font-size: 12px;
   cursor: pointer;
   user-select: none;
-  border: 1px solid #555;
+  border: 1px solid var(--border-4);
   border-radius: 4px;
   padding: 2px 8px;
 }
 
-/* Settings button */
-.settingsBtn {
-  color: #888;
+/* Theme selector */
+.themeSelector {
+  color: var(--text-4);
   font-size: 12px;
   cursor: pointer;
   user-select: none;
-  border: 1px solid #555;
+  border: 1px solid var(--border-4);
+  border-radius: 4px;
+  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Settings button */
+.settingsBtn {
+  color: var(--text-4);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid var(--border-4);
   border-radius: 4px;
   padding: 2px 8px;
 }
 
 .settingsBtn:hover {
-  color: #bbb;
-  border-color: #777;
+  color: var(--text-muted-alt);
+  border-color: var(--text-4);
 }
 
 /* Settings drawer items */
@@ -177,7 +191,7 @@
 /* Token stats popover - empty state */
 .tokenStatsEmpty {
   padding: 8px 4px;
-  color: #999;
+  color: var(--text-4);
   font-size: 13px;
 }
 
@@ -198,10 +212,10 @@
 
 /* Token stats - model card */
 .modelCard {
-  border: 1px solid #333;
+  border: 1px solid var(--border-3);
   border-radius: 6px;
   padding: 8px 10px;
-  background: #111;
+  background: var(--bg-card);
 }
 
 .modelCardSpaced {
@@ -213,10 +227,10 @@
 .modelName {
   font-size: 13px;
   font-weight: 600;
-  color: #e5e5e5;
+  color: var(--text-1);
   margin-bottom: 8px;
   padding-bottom: 4px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--border-3);
 }
 
 /* Token stats - table */
@@ -230,7 +244,7 @@
   font-size: 12px;
   font-family: monospace;
   white-space: nowrap;
-  color: #888;
+  color: var(--text-4);
   font-weight: normal;
   text-align: right;
 }
@@ -240,7 +254,7 @@
   font-size: 12px;
   font-family: monospace;
   white-space: nowrap;
-  color: #e5e5e5;
+  color: var(--text-1);
   text-align: right;
 }
 
@@ -249,25 +263,25 @@
   font-size: 12px;
   font-family: monospace;
   white-space: nowrap;
-  color: #aaa;
+  color: var(--text-muted-alt);
   font-weight: normal;
   text-align: left;
 }
 
 .rowBorder {
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--border-2);
 }
 
 .rebuildCard {
-  border: 1px solid #333;
+  border: 1px solid var(--border-3);
   border-radius: 6px;
   padding: 8px 10px;
   margin-top: 10px;
-  background: #111;
+  background: var(--bg-card);
 }
 
 .rebuildTotalRow {
-  border-top: 1px solid #444;
+  border-top: 1px solid var(--border-4);
 }
 
 .rebuildTotalRow td {
@@ -285,13 +299,13 @@
 }
 
 .promptEmpty {
-  color: #999;
+  color: var(--text-4);
   padding: 12px;
 }
 
 /* Prompt timestamp */
 .promptTimestamp {
-  color: #666;
+  color: var(--text-5);
   font-size: 12px;
   margin: 12px 0 4px;
   padding-bottom: 6px;
@@ -300,9 +314,9 @@
 /* Text prompt card */
 .textPromptCard {
   margin: 4px 0;
-  background: #141414;
+  background: var(--bg-subtle);
   border-radius: 6px;
-  border: 1px solid #303030;
+  border: 1px solid var(--border-2);
   padding: 10px 14px;
 }
 
@@ -312,20 +326,20 @@
   word-break: break-word;
   font-size: 13px;
   line-height: 1.6;
-  color: #d9d9d9;
+  color: var(--text-2);
   margin: 4px 0;
 }
 
 /* Collapse for system-reminder segments */
 .systemCollapse {
   margin: 4px 0;
-  background: #1a1a1a;
-  border: 1px solid #303030;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-2);
   border-radius: 6px;
 }
 
 .systemLabel {
-  color: #888;
+  color: var(--text-4);
   font-size: 12px;
 }
 
@@ -334,17 +348,17 @@
   word-break: break-word;
   font-size: 12px;
   line-height: 1.5;
-  color: #999;
+  color: var(--text-4);
   margin: 0;
 }
 
 /* Text mode textarea */
 .promptTextarea {
   box-sizing: border-box;
-  background: #000;
+  background: var(--bg-panel);
   width: 100%;
   min-height: 400px;
-  color: #d9d9d9;
+  color: var(--text-2);
   font-family: monospace;
   font-size: 13px;
   line-height: 1.6;
@@ -362,7 +376,7 @@
 }
 
 .projectStatsEmpty {
-  color: #999;
+  color: var(--text-4);
   padding: 40px 0;
   text-align: center;
   font-size: 13px;
@@ -375,7 +389,7 @@
 }
 
 .projectStatsUpdated {
-  color: #666;
+  color: var(--text-5);
   font-size: 12px;
   text-align: right;
 }
@@ -387,8 +401,8 @@
 }
 
 .projectStatCard {
-  background: #111;
-  border: 1px solid #333;
+  background: var(--bg-card);
+  border: 1px solid var(--border-3);
   border-radius: 8px;
   padding: 14px 12px;
   text-align: center;
@@ -397,14 +411,14 @@
 .projectStatValue {
   font-size: 22px;
   font-weight: 700;
-  color: #e5e5e5;
+  color: var(--text-1);
   font-family: monospace;
   font-variant-numeric: tabular-nums;
 }
 
 .projectStatLabel {
   font-size: 12px;
-  color: #888;
+  color: var(--text-4);
   margin-top: 4px;
 }
 
@@ -417,14 +431,14 @@
 .projectStatsSectionTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #ccc;
+  color: var(--text-muted-alt);
   padding-bottom: 4px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--border-3);
 }
 
 .projectStatsModelCard {
-  background: #111;
-  border: 1px solid #333;
+  background: var(--bg-card);
+  border: 1px solid var(--border-3);
   border-radius: 6px;
   padding: 10px 12px;
 }
@@ -435,18 +449,17 @@
   align-items: center;
   margin-bottom: 8px;
   padding-bottom: 4px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--border-3);
 }
 
 .projectStatsModelName {
   font-size: 13px;
   font-weight: 600;
-  color: #e5e5e5;
+  color: var(--text-1);
 }
 
 .projectStatsModelCount {
   font-size: 12px;
-  color: #888;
+  color: var(--text-4);
   font-family: monospace;
 }
-

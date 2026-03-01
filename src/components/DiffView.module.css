@@ -10,13 +10,13 @@
 }
 
 .filePath {
-  color: #a78bfa;
+  color: var(--accent-purple-2);
   font-size: 12px;
   font-weight: 600;
 }
 
 .toggle {
-  color: #6b7280;
+  color: var(--text-7);
   font-size: 11px;
   cursor: pointer;
   user-select: none;

@@ -2,6 +2,7 @@
 
 ## 1.3.8 (2026-03-01)
 
+- Feat: light mode support — GitHub-inspired light theme with CSS variable system; theme selector (lightbulb icon) in top-right header; preference persisted in localStorage
 - Feat: inflight request detection — write request entry before fetch, deduplicate by timestamp+url on read; live spinner and popover for in-flight requests
 - Feat: GitHub stars count displayed in footer
 - Feat: log turns count shown per log file in log management tool (read from project stats cache)

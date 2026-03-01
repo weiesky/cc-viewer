@@ -9,7 +9,7 @@
 .sidebar {
   width: 220px;
   flex-shrink: 0;
-  border-right: 1px solid #2a2a2a;
+  border-right: 1px solid var(--border-2);
   overflow-y: auto;
   padding: 4px 0;
 }
@@ -24,19 +24,19 @@
   gap: 6px;
   padding: 6px 10px;
   cursor: pointer;
-  color: #d1d5db;
+  color: var(--text-2);
   font-size: 12px;
   font-weight: 600;
   transition: background 0.15s;
 }
 
 .sectionHeader:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(128, 128, 128, 0.08);
 }
 
 .arrow {
   font-size: 10px;
-  color: #888;
+  color: var(--text-4);
   flex-shrink: 0;
 }
 
@@ -50,8 +50,8 @@
 
 .sectionCount {
   font-size: 11px;
-  color: #666;
-  background: #1f1f1f;
+  color: var(--text-5);
+  background: var(--border-1);
   border-radius: 10px;
   padding: 0 6px;
   line-height: 18px;
@@ -64,7 +64,7 @@
 .item {
   padding: 5px 10px 5px 24px;
   font-size: 12px;
-  color: #888;
+  color: var(--text-4);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   overflow: hidden;
@@ -73,8 +73,8 @@
 }
 
 .item:hover {
-  background: rgba(255, 255, 255, 0.04);
-  color: #d1d5db;
+  background: rgba(128, 128, 128, 0.06);
+  color: var(--text-2);
 }
 
 .itemActive {
@@ -117,6 +117,6 @@
 .markdownBody {
   font-size: 13px;
   line-height: 1.7;
-  color: #d1d5db;
+  color: var(--text-2);
   word-break: break-word;
 }
