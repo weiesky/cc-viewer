@@ -48,7 +48,7 @@ function getOriginalBaseUrl() {
   return 'https://api.anthropic.com';
 }
 
-export function startProxy() {
+export function startProxy(port = 0) {
   return new Promise((resolve, reject) => {
     const server = createServer(async (req, res) => {
       const originalBaseUrl = getOriginalBaseUrl();
@@ -156,8 +156,8 @@ export function startProxy() {
       }
     });
 
-    // Start on random port
-    server.listen(0, '127.0.0.1', () => {
+    // Start on specified port or random port
+    server.listen(port, '127.0.0.1', () => {
       const address = server.address();
       resolve(address.port);
     });

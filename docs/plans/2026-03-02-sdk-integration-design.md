@@ -16,20 +16,21 @@ See [2026-03-02-sdk-integration-design.md](./2026-03-02-sdk-integration-design.m
 ### Phase 1: Core Infrastructure
 
 - [x] Create feature branch `feature/sdk-integration`
-- [ ] Add `ccv proxy` subcommand to CLI
-  - [ ] Modify `proxy.js` to accept optional port parameter
-  - [ ] Add `startProxyOnly()` function in `cli.js`
+- [x] Add `ccv proxy` subcommand to CLI
+  - [x] Modify `proxy.js` to accept optional port parameter
+  - [x] Add `startProxyOnly()` function in `cli.js`
   - [ ] Test standalone proxy mode
 
 ### Phase 2: Python SDK Package
 
-- [ ] Create `cc_viewer_sdk` Python package structure
-  - [ ] `__init__.py` - exports
-  - [ ] `core.py` - main `enable_cc_viewer()` function
-  - [ ] `proxy.py` - proxy management (start/stop via subprocess)
-  - [ ] `utils.py` - path helpers, logging
-  - [ ] `pyproject.toml` - package configuration
-  - [ ] `README.md` - usage documentation
+- [x] Create `cc_viewer_sdk` Python package structure
+  - [x] `__init__.py` - exports
+  - [x] `core.py` - main `enable_cc_viewer()` function
+  - [x] `proxy.py` - proxy management (start/stop via subprocess)
+  - [x] `utils.py` - path helpers, logging
+  - [x] `pyproject.toml` - package configuration
+  - [x] `README.md` - usage documentation
+  - [x] `py.typed` - PEP 561 marker
 
 ### Phase 3: Integration & Testing
 
