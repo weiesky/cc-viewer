@@ -2,6 +2,7 @@
 Proxy management for CC-Viewer SDK integration.
 """
 
+import os
 import logging
 import subprocess
 import time
@@ -46,6 +47,21 @@ class ProxyManager:
         if port is not None:
             cmd.extend(["--port", str(port)])
 
+        # Prepare environment
+        env = os.environ.copy()
+
+        # Save original ANTHROPIC_BASE_URL before we modify it
+        # The proxy will use this to forward requests
+        original_base_url = os.environ.get("ANTHROPIC_BASE_URL")
+        if original_base_url:
+            env["CC_VIEWER_ORIGINAL_BASE_URL"] = original_base_url
+        else:
+            # Default to Anthropic API
+            env["CC_VIEWER_ORIGINAL_BASE_URL"] = "https://api.anthropic.com"
+
+        # Pass project working directory for log file naming
+        env["CC_VIEWER_PROJECT_CWD"] = os.getcwd()
+
         # Start proxy process
         try:
             self._process = subprocess.Popen(
@@ -54,6 +70,7 @@ class ProxyManager:
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,  # Line buffered
+                env=env,
             )
         except FileNotFoundError:
             raise RuntimeError(f"ccv not found at {self.ccv_path}")
