@@ -142,22 +142,12 @@
   cursor: pointer;
   user-select: none;
   border: 1px solid var(--border-4);
-  border-radius: 4px;
-  padding: 2px 8px;
-}
-
-/* Theme selector */
-.themeSelector {
-  color: var(--text-4);
-  font-size: 12px;
-  cursor: pointer;
-  user-select: none;
-  border: 1px solid var(--border-4);
-  border-radius: 4px;
-  padding: 2px 8px;
+  border-radius: 6px;
+  padding: 0 10px;
+  height: 32px;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
 }
 
 /* Settings button */

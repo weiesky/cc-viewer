@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Typography, Empty } from 'antd';
 import { RightOutlined, DownOutlined } from '@ant-design/icons';
 import { renderMarkdown } from '../utils/markdown';
@@ -11,14 +11,6 @@ const { Text } = Typography;
 
 // ── Block parsers ─────────────────────────────────────────────────────────────
 
-/**
- * Parse a single content block array or string into typed render-blocks.
- * Returns an array of:
- *   { type: 'markdown', text }
- *   { type: 'tool_use', name, id, input }
- *   { type: 'tool_result', tool_use_id, content: renderBlocks[] }
- *   { type: 'json', label, data }
- */
 function parseContentBlocks(content) {
   if (content == null) return [];
 
@@ -118,6 +110,51 @@ function parseToolBlocks(tool) {
     blocks.push({ type: 'json', label: 'Parameters', data: schema });
   }
   return blocks;
+}
+
+// ── Message turn grouping ─────────────────────────────────────────────────────
+
+function extractPreviewText(content) {
+  if (typeof content === 'string') return content.slice(0, 60).replace(/\n/g, ' ');
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      if (block?.type === 'text' && block.text?.trim()) {
+        return block.text.trim().slice(0, 60).replace(/\n/g, ' ');
+      }
+    }
+  }
+  return '';
+}
+
+function groupMessagesIntoTurns(messages) {
+  const turns = [];
+  let i = 0;
+  while (i < messages.length) {
+    const userMsg = messages[i];
+    if (userMsg?.role !== 'user') { i++; continue; }
+    const assistantMsg = messages[i + 1]?.role === 'assistant' ? messages[i + 1] : null;
+    turns.push({
+      id: `turn__${i}`,
+      isTurn: true,
+      turnIndex: turns.length,
+      timestamp: userMsg._timestamp || null,
+      assistantTimestamp: assistantMsg?._timestamp || null,
+      userBlocks: parseContentBlocks(userMsg?.content),
+      assistantBlocks: assistantMsg ? parseContentBlocks(assistantMsg.content) : null,
+      preview: extractPreviewText(userMsg?.content),
+    });
+    i += assistantMsg ? 2 : 1;
+  }
+  return turns;
+}
+
+function formatTurnTime(isoStr) {
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  } catch {
+    return null;
+  }
 }
 
 // ── Block renderers ───────────────────────────────────────────────────────────
@@ -253,31 +290,83 @@ function RenderBlock({ block, compact }) {
   return null;
 }
 
+// ── Turn content renderer ─────────────────────────────────────────────────────
+
+function TurnContent({ turn }) {
+  const timeStr = turn.timestamp ? formatTurnTime(turn.timestamp) : null;
+  const assistantTimeStr = turn.assistantTimestamp ? formatTurnTime(turn.assistantTimestamp) : null;
+  return (
+    <div>
+      <div className={styles.roleHeader}>
+        <span className={`${styles.roleBadge} ${styles.role_user}`}>user</span>
+        <span className={styles.roleLabel}>{`Turn ${turn.turnIndex + 1}`}</span>
+        {timeStr && <span className={styles.contentTime}>{timeStr}</span>}
+      </div>
+      <RenderBlocks blocks={turn.userBlocks} />
+      {turn.assistantBlocks && (
+        <>
+          <div className={styles.turnDivider} />
+          <div className={styles.roleHeader}>
+            <span className={`${styles.roleBadge} ${styles.role_assistant}`}>assistant</span>
+            {assistantTimeStr && <span className={styles.contentTime}>{assistantTimeStr}</span>}
+          </div>
+          <RenderBlocks blocks={turn.assistantBlocks} />
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Accordion ─────────────────────────────────────────────────────────────────
 
-function AccordionSection({ title, items, onSelect, selectedId }) {
+function AccordionSection({ title, items, historyItems, onSelect, selectedId }) {
   const [open, setOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const totalCount = items.length + (historyItems?.length || 0);
+
+  function renderItem(item) {
+    const active = selectedId === item.id;
+    return (
+      <div
+        key={item.id}
+        className={`${styles.item} ${active ? styles.itemActive : ''}`}
+        onClick={() => onSelect(item)}
+      >
+        <div className={styles.itemContent}>
+          <span className={styles.itemLabel}>{item.label}</span>
+          {item.sublabel && !active && (
+            <div className={styles.itemSublabel}>{item.sublabel}</div>
+          )}
+        </div>
+        {item.time && <span className={styles.itemTime}>{item.time}</span>}
+      </div>
+    );
+  }
+
   return (
     <div className={styles.section}>
       <div className={styles.sectionHeader} onClick={() => setOpen((v) => !v)}>
         {open ? <DownOutlined className={styles.arrow} /> : <RightOutlined className={styles.arrow} />}
         <span className={styles.sectionTitle}>{title}</span>
-        <span className={styles.sectionCount}>{items.length}</span>
+        <span className={styles.sectionCount}>{totalCount}</span>
       </div>
       {open && (
         <div className={styles.sectionBody}>
-          {items.map((item) => {
-            const active = selectedId === item.id;
-            return (
+          {historyItems && historyItems.length > 0 && (
+            <>
               <div
-                key={item.id}
-                className={`${styles.item} ${active ? styles.itemActive : ''}`}
-                onClick={() => onSelect(item)}
+                className={styles.historyToggle}
+                onClick={() => setHistoryOpen((v) => !v)}
               >
-                <span className={styles.itemLabel}>{item.label}</span>
+                {historyOpen ? <DownOutlined className={styles.arrow} /> : <RightOutlined className={styles.arrow} />}
+                <span className={styles.historyToggleLabel}>
+                  {t('ui.context.history')} ({historyItems.length})
+                </span>
               </div>
-            );
-          })}
+              {historyOpen && historyItems.map(renderItem)}
+            </>
+          )}
+          {items.map(renderItem)}
         </div>
       )}
     </div>
@@ -286,8 +375,31 @@ function AccordionSection({ title, items, onSelect, selectedId }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ContextTab({ body }) {
-  const [selected, setSelected] = useState(null);
+export default function ContextTab({ body, response }) {
+  const [selectedItem, setSelectedItem] = useState(null);
+
+  // Compute conversation turns from messages.
+  // The last turn's assistant blocks are overridden with the actual response content.
+  const turns = useMemo(() => {
+    if (!Array.isArray(body?.messages)) return [];
+    const allTurns = groupMessagesIntoTurns(body.messages);
+    if (allTurns.length === 0) return allTurns;
+    const last = allTurns[allTurns.length - 1];
+    const responseBlocks = response?.content ? parseContentBlocks(response.content) : null;
+    return [
+      ...allTurns.slice(0, -1),
+      { ...last, assistantBlocks: responseBlocks ?? last.assistantBlocks },
+    ];
+  }, [body, response]);
+
+  // Auto-select last turn whenever body or response changes
+  useEffect(() => {
+    if (turns.length > 0) {
+      setSelectedItem(turns[turns.length - 1]);
+    } else {
+      setSelectedItem(null);
+    }
+  }, [body, response]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!body || typeof body !== 'object') {
     return (
@@ -313,17 +425,27 @@ export default function ContextTab({ body }) {
     });
   }
 
-  // Messages
-  if (Array.isArray(body.messages) && body.messages.length > 0) {
+  // Messages: grouped into conversation turns
+  // Historical turns (all but the last) go into a collapsible sub-group
+  if (turns.length > 0) {
+    const toHistoryItem = (turn) => ({
+      ...turn,
+      label: t('ui.context.historyTurnNoTime', { n: turn.turnIndex + 1 }),
+      time: turn.timestamp ? formatTurnTime(turn.timestamp) : null,
+      sublabel: turn.preview || undefined,
+    });
+    const toCurrentItem = (turn) => ({
+      ...turn,
+      label: t('ui.context.currentTurn'),
+      sublabel: turn.preview || undefined,
+    });
+    const historyTurns = turns.slice(0, -1).map(toHistoryItem);
+    const currentTurn = toCurrentItem(turns[turns.length - 1]);
     accordionSections.push({
       key: 'messages',
       title: t('ui.context.messages'),
-      items: body.messages.map((msg, i) => ({
-        id: `msg__${i}`,
-        label: `[${i}] ${msg?.role || 'unknown'}`,
-        role: msg?.role || 'unknown',
-        blocks: parseContentBlocks(msg?.content),
-      })),
+      historyItems: historyTurns.length > 0 ? historyTurns : undefined,
+      items: [currentTurn],
     });
   }
 
@@ -348,7 +470,10 @@ export default function ContextTab({ body }) {
     );
   }
 
-  const selectedItem = selected;
+  // For turn items: resolve against the current turns array
+  const currentSelectedItem = selectedItem?.isTurn
+    ? (turns.find(t => t.id === selectedItem.id) ?? null)
+    : selectedItem;
 
   return (
     <div className={styles.root}>
@@ -359,29 +484,36 @@ export default function ContextTab({ body }) {
             key={sec.key}
             title={sec.title}
             items={sec.items}
-            selectedId={selectedItem?.id}
-            onSelect={(item) => setSelected(item)}
+            historyItems={sec.historyItems}
+            selectedId={currentSelectedItem?.id}
+            onSelect={(item) => setSelectedItem(item)}
           />
         ))}
       </div>
 
       {/* Right content */}
       <div className={styles.content}>
-        {selectedItem == null ? (
+        {currentSelectedItem == null ? (
           <div className={styles.contentEmpty}>
             <Text type="secondary">{t('ui.context.selectPrompt')}</Text>
           </div>
         ) : (
-          <div key={selectedItem.id} className={styles.contentInner}>
-            {selectedItem.role && (
-              <div className={styles.roleHeader}>
-                <span className={`${styles.roleBadge} ${styles[`role_${selectedItem.role}`] || ''}`}>
-                  {selectedItem.role}
-                </span>
-                <span className={styles.roleLabel}>{selectedItem.label}</span>
-              </div>
+          <div key={currentSelectedItem.id} className={styles.contentInner}>
+            {currentSelectedItem.isTurn ? (
+              <TurnContent turn={currentSelectedItem} />
+            ) : (
+              <>
+                {currentSelectedItem.role && (
+                  <div className={styles.roleHeader}>
+                    <span className={`${styles.roleBadge} ${styles[`role_${currentSelectedItem.role}`] || ''}`}>
+                      {currentSelectedItem.role}
+                    </span>
+                    <span className={styles.roleLabel}>{currentSelectedItem.label}</span>
+                  </div>
+                )}
+                <RenderBlocks blocks={currentSelectedItem.blocks} />
+              </>
             )}
-            <RenderBlocks blocks={selectedItem.blocks} />
           </div>
         )}
       </div>

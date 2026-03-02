@@ -67,9 +67,11 @@
   color: var(--text-4);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .item:hover {
@@ -89,8 +91,28 @@
   color: var(--accent-blue);
 }
 
+.itemContent {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .itemLabel {
   font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.itemTime {
+  font-size: 9px;
+  font-family: monospace;
+  color: var(--text-6);
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding-top: 2px;
+  opacity: 0.8;
 }
 
 /* ── Right content area ── */
@@ -127,6 +149,15 @@
   margin-bottom: 12px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--border-2);
+}
+
+.contentTime {
+  margin-left: auto;
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-6);
+  white-space: nowrap;
+  opacity: 0.8;
 }
 
 .roleBadge {
@@ -369,4 +400,44 @@
 .textBlockCompactFloat {
   float: right;
   margin-left: 8px;
+}
+
+/* ── Turn divider (between user and assistant sections) ── */
+.turnDivider {
+  border: none;
+  border-top: 1px solid var(--border-2);
+  margin: 16px 0;
+}
+
+/* ── Sidebar turn preview sublabel ── */
+.itemSublabel {
+  font-size: 10px;
+  color: var(--text-6);
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+  padding-left: 0;
+}
+
+/* ── History collapsible sub-row ── */
+.historyToggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px 4px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.historyToggle:hover {
+  background: rgba(128, 128, 128, 0.06);
+}
+
+.historyToggleLabel {
+  font-size: 11px;
+  color: var(--text-5);
+  font-family: monospace;
 }

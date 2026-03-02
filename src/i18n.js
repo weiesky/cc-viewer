@@ -2560,6 +2560,38 @@ const i18nData = {
     "ar": "الأدوات", "no": "Verktøy", "pt-BR": "Ferramentas",
     "th": "เครื่องมือ", "tr": "Araçlar", "uk": "Інструменти"
   },
+  "ui.context.history": {
+    "zh": "历史", "en": "History", "zh-TW": "歷史",
+    "ko": "기록", "ja": "履歴", "de": "Verlauf",
+    "es": "Historial", "fr": "Historique", "it": "Cronologia",
+    "da": "Historik", "pl": "Historia", "ru": "История",
+    "ar": "السجل", "no": "Historikk", "pt-BR": "Histórico",
+    "th": "ประวัติ", "tr": "Geçmiş", "uk": "Історія"
+  },
+  "ui.context.currentTurn": {
+    "zh": "当前轮次", "en": "Current Turn", "zh-TW": "當前輪次",
+    "ko": "현재 턴", "ja": "現在のターン", "de": "Aktueller Zug",
+    "es": "Turno actual", "fr": "Tour actuel", "it": "Turno corrente",
+    "da": "Aktuel tur", "pl": "Bieżąca tura", "ru": "Текущий ход",
+    "ar": "الدور الحالي", "no": "Nåværende tur", "pt-BR": "Turno atual",
+    "th": "รอบปัจจุบัน", "tr": "Geçerli tur", "uk": "Поточний хід"
+  },
+  "ui.context.historyTurn": {
+    "zh": "历史轮次{n}: {time}", "en": "Turn {n} · {time}", "zh-TW": "歷史輪次{n}: {time}",
+    "ko": "턴 {n} · {time}", "ja": "ターン {n} · {time}", "de": "Runde {n} · {time}",
+    "es": "Turno {n} · {time}", "fr": "Tour {n} · {time}", "it": "Turno {n} · {time}",
+    "da": "Tur {n} · {time}", "pl": "Tura {n} · {time}", "ru": "Ход {n} · {time}",
+    "ar": "الدور {n} · {time}", "no": "Tur {n} · {time}", "pt-BR": "Turno {n} · {time}",
+    "th": "รอบ {n} · {time}", "tr": "Tur {n} · {time}", "uk": "Хід {n} · {time}"
+  },
+  "ui.context.historyTurnNoTime": {
+    "zh": "历史轮次{n}", "en": "Turn {n}", "zh-TW": "歷史輪次{n}",
+    "ko": "턴 {n}", "ja": "ターン {n}", "de": "Runde {n}",
+    "es": "Turno {n}", "fr": "Tour {n}", "it": "Turno {n}",
+    "da": "Tur {n}", "pl": "Tura {n}", "ru": "Ход {n}",
+    "ar": "الدور {n}", "no": "Tur {n}", "pt-BR": "Turno {n}",
+    "th": "รอบ {n}", "tr": "Tur {n}", "uk": "Хід {n}"
+  },
   "ui.context.noData": {
     "zh": "暂无 Context 数据", "en": "No context data", "zh-TW": "暫無 Context 資料",
     "ko": "컨텍스트 데이터 없음", "ja": "コンテキストデータなし", "de": "Keine Kontextdaten",
@@ -2598,18 +2630,6 @@ const i18nData = {
     "no": "Velg et element til venstre", "pt-BR": "Selecione um item à esquerda",
     "th": "เลือกรายการทางซ้าย", "tr": "Soldan bir öğe seçin",
     "uk": "Виберіть елемент ліворуч"
-  },
-  "ui.themeDark": {
-    "zh": "深色", "en": "Dark", "zh-TW": "深色", "ko": "다크", "ja": "ダーク",
-    "de": "Dunkel", "es": "Oscuro", "fr": "Sombre", "it": "Scuro",
-    "da": "Mørk", "pl": "Ciemny", "ru": "Тёмная", "ar": "داكن",
-    "no": "Mørk", "pt-BR": "Escuro", "th": "มืด", "tr": "Koyu", "uk": "Темна"
-  },
-  "ui.themeLight": {
-    "zh": "浅色", "en": "Light", "zh-TW": "淺色", "ko": "라이트", "ja": "ライト",
-    "de": "Hell", "es": "Claro", "fr": "Clair", "it": "Chiaro",
-    "da": "Lys", "pl": "Jasny", "ru": "Светлая", "ar": "فاتح",
-    "no": "Lys", "pt-BR": "Claro", "th": "สว่าง", "tr": "Açık", "uk": "Світла"
   }
 };
 

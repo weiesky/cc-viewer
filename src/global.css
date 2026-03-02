@@ -71,78 +71,6 @@
   --hl-linenum: #484f58;
 }
 
-[data-theme="light"] {
-  /* Backgrounds */
-  --bg-body: #ffffff;
-  --bg-panel: #f6f8fa;
-  --bg-card: #ffffff;
-  --bg-hover: #f3f4f6;
-  --bg-elevated: #f6f8fa;
-  --bg-subtle: #f6f8fa;
-  --bg-code: #f6f8fa;
-  --bg-code-header: #eaeef2;
-  --bg-tool-box: #f0f6fc;
-  --bg-tool-result: #f6f8fa;
-  --bg-user-bubble: #0969da;
-  --bg-assistant-bubble: #ffffff;
-  --bg-subagent-bubble: #f0f6fc;
-  --bg-plan-bubble: #ddf4ff;
-  --bg-selection-bubble: #dafbe1;
-  --bg-concept-btn: #f3f4f6;
-  --bg-active-item: #ddf4ff;
-
-  /* Borders */
-  --border-1: #d0d7de;
-  --border-2: #d0d7de;
-  --border-3: #d8dee4;
-  --border-4: #afb8c1;
-  --border-code: #d0d7de;
-  --border-tool-result: #d0d7de;
-  --border-token: #d0d7de;
-  --border-code-result: #d0d7de;
-
-  /* Text */
-  --text-1: #1f2328;
-  --text-2: #24292f;
-  --text-3: #57606a;
-  --text-4: #656d76;
-  --text-5: #818c99;
-  --text-6: #8c959f;
-  --text-7: #57606a;
-  --text-code: #24292f;
-  --text-muted-alt: #57606a;
-
-  /* Accent */
-  --accent-blue: #0969da;
-  --accent-blue-2: #218bff;
-  --accent-blue-3: #54aeff;
-  --accent-purple: #6e40c9;
-  --accent-purple-2: #8250df;
-  --accent-sky: #0284c7;
-  --accent-yellow: #b45309;
-
-  /* Scrollbar */
-  --scrollbar-track: #f6f8fa;
-  --scrollbar-thumb: #d0d7de;
-  --scrollbar-thumb-hover: #afb8c1;
-
-  /* Diff */
-  --diff-bg: #f0f6fc;
-  --diff-border: #d0d7de;
-  --diff-add-bg: rgba(31, 136, 61, 0.12);
-  --diff-add-text: #1a7f37;
-  --diff-del-bg: rgba(207, 34, 29, 0.1);
-  --diff-del-text: #cf221d;
-
-  /* Syntax highlight */
-  --hl-base: #24292f;
-  --hl-keyword: #cf222e;
-  --hl-string: #0a3069;
-  --hl-comment: #6e7781;
-  --hl-number: #0550ae;
-  --hl-linenum: #8c959f;
-}
-
 /* ===== Global Styles ===== */
 
 body {
@@ -267,10 +195,3 @@ body {
   background: #090909;
 }
 
-[data-theme="light"] .ant-tooltip .ant-tooltip-inner {
-  background-color: #1f2328;
-}
-[data-theme="light"] .ant-tooltip .ant-tooltip-arrow::before,
-[data-theme="light"] .ant-tooltip .ant-tooltip-arrow::after {
-  background: #1f2328;
-}

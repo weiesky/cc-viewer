@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.9 (2026-03-02)
+
+- Feat: Context Tab turn-based conversation view — messages grouped into conversation turns (user + assistant pairs); historical turns collapsed under ▶ History (N) toggle; current turn auto-selected and shows actual API response content
+- Feat: Context Tab timestamps — each sidebar turn label shows HH:MM:SS (from `_timestamp`); content area role headers show per-message timestamps in top-right corner
+- Feat: Context Tab response inheritance — last turn's assistant section shows the actual API response (`response.content`) instead of the static messages array
+- Refactor: remove light/white theme — dark-only mode; removed theme toggle button from header; removed all `[data-theme="light"]` CSS variables
+- Refactor: tab reordering — Context tab moved to 3rd position; default tab changed to Request
+- Style: removed "View in conversation" tab bar button (handler kept)
+- Style: language selector shows full language name (e.g., 简体中文) instead of short code
+
 ## 1.3.8 (2026-03-01)
 
 - Feat: Context Tab structured rendering — messages now display each content block in its proper format: text as markdown, tool_use as labeled JSON viewer (shows tool name + input), tool_result as labeled content; role badge shown per message; visual separators between system prompt items
