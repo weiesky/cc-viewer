@@ -19,13 +19,13 @@ See [2026-03-02-sdk-integration-design.md](./2026-03-02-sdk-integration-design.m
 - [x] Add `ccv proxy` subcommand to CLI
   - [x] Modify `proxy.js` to accept optional port parameter
   - [x] Add `startProxyOnly()` function in `cli.js`
-  - [ ] Test standalone proxy mode
+  - [x] Test standalone proxy mode
 
 ### Phase 2: Python SDK Package
 
 - [x] Create `cc_viewer_sdk` Python package structure
   - [x] `__init__.py` - exports
-  - [x] `core.py` - main `enable_cc_viewer()` function
+  - [x] `core.py` - main `enable_cc_viewer()` function with SDK patching
   - [x] `proxy.py` - proxy management (start/stop via subprocess)
   - [x] `utils.py` - path helpers, logging
   - [x] `pyproject.toml` - package configuration
@@ -34,11 +34,11 @@ See [2026-03-02-sdk-integration-design.md](./2026-03-02-sdk-integration-design.m
 
 ### Phase 3: Integration & Testing
 
-- [ ] Write unit tests for Python package
-- [ ] Write integration tests with Claude Agent SDK
-- [ ] Test on macOS
-- [ ] Test log files appear in cc-viewer Web UI
-- [ ] Test cleanup (no orphan processes)
+- [x] Write unit tests for Python package
+- [x] Write integration tests with Claude Agent SDK
+- [x] Test on macOS
+- [x] Test log files appear in cc-viewer Web UI
+- [x] Test cleanup (no orphan processes)
 
 ### Phase 4: Documentation & Release
 
@@ -55,6 +55,10 @@ See [2026-03-02-sdk-integration-design.md](./2026-03-02-sdk-integration-design.m
 - Started implementation of `ccv proxy` subcommand
 - Created initial Python package structure
 - Added manual test script and test plan
+- **Key discovery**: Claude Code CLI doesn't read `ANTHROPIC_BASE_URL` from environment
+  - Solution: Patch SDK's `SubprocessCLITransport._build_command` to inject `--settings`
+- Fixed proxy URL forwarding to support custom API endpoints (e.g., GLM)
+- **Integration test PASSED** - SDK requests now correctly logged to cc-viewer
 
 ## Test Instructions
 

@@ -172,6 +172,7 @@ def test_sdk_enable():
 
         # Test proxy is running
         import urllib.request
+        import select
         try:
             urllib.request.urlopen(f"{ctx.proxy_url}/v1/messages", timeout=2)
         except urllib.error.HTTPError:
@@ -182,6 +183,14 @@ def test_sdk_enable():
                 return False
             else:
                 print("✓ Proxy is responding")
+
+        # Print proxy stderr for debugging
+        if ctx.proxy_process and ctx.proxy_process.stderr:
+            import select
+            if select.select([ctx.proxy_process.stderr], [], [], 0.1)[0]:
+                stderr_content = ctx.proxy_process.stderr.read()
+                if stderr_content:
+                    print(f"\nProxy stderr:\n{stderr_content}")
 
         # Test disable
         print("\nCalling disable_cc_viewer()...")
@@ -281,21 +290,34 @@ def test_sdk_integration():
         # Wait a moment for logs to be written
         time.sleep(1)
 
-        # Check for new log files
+        # Check for new log files or updated existing files
         new_logs = list(log_dir.rglob("*.jsonl"))
-        if len(new_logs) > len(existing_logs):
-            print(f"✓ New log file created!")
-            latest_log = max(new_logs, key=lambda p: p.stat().st_mtime)
-            print(f"  Latest log: {latest_log}")
+        latest_log = max(new_logs, key=lambda p: p.stat().st_mtime) if new_logs else None
 
-            # Read last few lines
-            with open(latest_log, 'r') as f:
-                lines = f.readlines()
-                print(f"  Log entries: {len(lines)}")
-                if lines:
-                    print(f"  Last entry preview: {lines[-1][:100]}...")
+        if latest_log:
+            # Check if the latest log was modified recently (within last 10 seconds)
+            mtime = latest_log.stat().st_mtime
+            if time.time() - mtime < 10:
+                print(f"✓ Recent log activity detected!")
+                print(f"  Latest log: {latest_log}")
+                print(f"  Modified: {time.strftime('%H:%M:%S', time.localtime(mtime))}")
+
+                # Read last few lines
+                with open(latest_log, 'r') as f:
+                    lines = f.readlines()
+                    print(f"  Log entries: {len(lines)}")
+                    if lines:
+                        # Show a preview of the last entry
+                        import json
+                        try:
+                            last_entry = json.loads(lines[-1].strip().rstrip('---').strip())
+                            print(f"  Last entry URL: {last_entry.get('url', 'N/A')}")
+                        except:
+                            print(f"  Last entry preview: {lines[-1][:100]}...")
+            else:
+                print(f"⚠ Latest log file is old (modified {int(time.time() - mtime)}s ago)")
         else:
-            print("⚠ No new log files detected (check cc-viewer Web UI)")
+            print("⚠ No log files found")
 
         # Cleanup
         ctx.disable()

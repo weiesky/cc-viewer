@@ -2,10 +2,12 @@
 Proxy management for CC-Viewer SDK integration.
 """
 
-import os
+import json
 import logging
+import os
 import subprocess
 import time
+from pathlib import Path
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -52,15 +54,35 @@ class ProxyManager:
 
         # Save original ANTHROPIC_BASE_URL before we modify it
         # The proxy will use this to forward requests
+        # Priority: 1. env var, 2. settings.json, 3. default
         original_base_url = os.environ.get("ANTHROPIC_BASE_URL")
+        
+        if not original_base_url:
+            # Try to read from settings.json
+            try:
+                import json
+                settings_path = Path.home() / ".claude" / "settings.json"
+                if settings_path.exists():
+                    with open(settings_path, 'r') as f:
+                        settings = json.load(f)
+                        original_base_url = settings.get("env", {}).get("ANTHROPIC_BASE_URL")
+                        if original_base_url:
+                            logger.debug(f"Found ANTHROPIC_BASE_URL in settings.json: {original_base_url}")
+            except Exception as e:
+                logger.debug(f"Failed to read settings.json: {e}")
+        
         if original_base_url:
             env["CC_VIEWER_ORIGINAL_BASE_URL"] = original_base_url
+            logger.debug(f"Passing original base URL to proxy: {original_base_url}")
         else:
             # Default to Anthropic API
             env["CC_VIEWER_ORIGINAL_BASE_URL"] = "https://api.anthropic.com"
+            logger.debug("No original base URL found, defaulting to api.anthropic.com")
 
         # Pass project working directory for log file naming
-        env["CC_VIEWER_PROJECT_CWD"] = os.getcwd()
+        project_cwd = os.getcwd()
+        env["CC_VIEWER_PROJECT_CWD"] = project_cwd
+        logger.debug(f"Passing project cwd to proxy: {project_cwd}")
 
         # Start proxy process
         try:
