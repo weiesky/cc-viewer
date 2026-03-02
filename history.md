@@ -3,6 +3,7 @@
 ## 1.4.2 (2026-03-02)
 
 - Fix: prevent redundant cc-viewer server startup when Claude Code is launched via `ccv --c` or `ccv run` proxy mode (CCV_PROXY_MODE env guard)
+- Fix: read `ANTHROPIC_BASE_URL` from project-level config files (`.claude/settings.local.json`, `.claude/settings.json`) with correct priority order (#13)
 
 ## 1.4.1 (2026-03-02)
 
