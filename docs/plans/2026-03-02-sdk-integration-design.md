@@ -54,6 +54,19 @@ See [2026-03-02-sdk-integration-design.md](./2026-03-02-sdk-integration-design.m
 - Created design document
 - Started implementation of `ccv proxy` subcommand
 - Created initial Python package structure
+- Added manual test script and test plan
+
+## Test Instructions
+
+See [sdk-hooks/python/tests/TEST_PLAN.md](../../../sdk-hooks/python/tests/TEST_PLAN.md)
+
+Quick test:
+```bash
+cd sdk-hooks/python
+python tests/test_manual.py test_proxy      # Test proxy command
+python tests/test_manual.py test_sdk_enable # Test SDK enable/disable
+python tests/test_manual.py all             # Run all basic tests
+```
 
 ## Notes
 
