@@ -81,9 +81,9 @@ Developer accesses: `http://<user-ip>:7008`
 
 ## Tasks
 
-- [ ] Modify server.js to use CC_VIEWER_HOST env var
-- [ ] Modify proxy.js to use CC_VIEWER_HOST env var
-- [ ] Update Python SDK core.py with remote parameter
+- [x] Modify server.js to use CC_VIEWER_HOST env var
+- [x] Modify proxy.js to use CC_VIEWER_HOST env var
+- [x] Update Python SDK core.py with remote parameter
 - [ ] Update Python SDK proxy.py to pass env var
 - [ ] Test remote access locally
 - [ ] Update README documentation
@@ -94,7 +94,9 @@ Developer accesses: `http://<user-ip>:7008`
 ### 2026-03-02
 
 - Created design document
-- Starting implementation
+- Modified server.js to use CC_VIEWER_HOST env var
+- Modified proxy.js to use CC_VIEWER_HOST env var
+- Added `remote` parameter to enable_cc_viewer()
 
 ## Notes
 

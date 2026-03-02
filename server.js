@@ -64,7 +64,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const START_PORT = 7008;
 const MAX_PORT = 7099;
-const HOST = '0.0.0.0';
+const HOST = process.env.CC_VIEWER_HOST || '0.0.0.0';
 
 // 局域网访问 token（本地 127.0.0.1 免验证）
 const ACCESS_TOKEN = randomBytes(16).toString('hex');

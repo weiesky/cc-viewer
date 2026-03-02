@@ -135,6 +135,7 @@ def enable_cc_viewer(
     proxy_port: Optional[int] = None,
     start_viewer: bool = False,
     ccv_path: Optional[str] = None,
+    remote: bool = False,
 ) -> CCViewerContext:
     """
     Enable CC-Viewer interception for Claude Agent SDK.
@@ -149,6 +150,7 @@ def enable_cc_viewer(
         proxy_port: Specific proxy port (default: auto-assign)
         start_viewer: Whether to start the web viewer server (not yet implemented)
         ccv_path: Path to ccv executable (default: auto-detect)
+        remote: Enable remote access by binding to 0.0.0.0 (default: False)
 
     Returns:
         CCViewerContext for cleanup and configuration
@@ -177,6 +179,11 @@ def enable_cc_viewer(
                 "ccv (cc-viewer) not found in PATH. "
                 "Please install cc-viewer: npm install -g cc-viewer"
             )
+
+    # Set remote host if enabled
+    if remote:
+        os.environ["CC_VIEWER_HOST"] = "0.0.0.0"
+        logger.info("Remote access enabled, binding to 0.0.0.0")
 
     # Start proxy
     proxy_manager = ProxyManager(ccv_path)
