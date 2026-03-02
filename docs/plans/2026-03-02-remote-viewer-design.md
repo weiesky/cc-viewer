@@ -84,8 +84,8 @@ Developer accesses: `http://<user-ip>:7008`
 - [x] Modify server.js to use CC_VIEWER_HOST env var
 - [x] Modify proxy.js to use CC_VIEWER_HOST env var
 - [x] Update Python SDK core.py with remote parameter
-- [ ] Update Python SDK proxy.py to pass env var
-- [ ] Test remote access locally
+- [x] Update Python SDK proxy.py to pass env var (auto via os.environ.copy())
+- [x] Test remote access locally
 - [ ] Update README documentation
 - [ ] Commit changes
 
@@ -97,6 +97,7 @@ Developer accesses: `http://<user-ip>:7008`
 - Modified server.js to use CC_VIEWER_HOST env var
 - Modified proxy.js to use CC_VIEWER_HOST env var
 - Added `remote` parameter to enable_cc_viewer()
+- **Test passed**: Proxy correctly binds to 0.0.0.0 when remote=True
 
 ## Notes
 

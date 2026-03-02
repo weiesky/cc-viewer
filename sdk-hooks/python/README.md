@@ -33,6 +33,21 @@ asyncio.run(main())
 
 Visit `http://localhost:7008` to view the captured requests in the CC-Viewer Web UI.
 
+## Remote Access
+
+For monitoring applications running on another machine (e.g., in enterprise intranet), enable remote access:
+
+```python
+from cc_viewer_sdk import enable_cc_viewer
+
+# Enable with remote access - binds to 0.0.0.0
+enable_cc_viewer(remote=True)
+```
+
+Then access the viewer from another machine: `http://<host-ip>:7008`
+
+**Note:** Remote access relies on your network security. No additional authentication is provided.
+
 ## Usage
 
 ### Basic Usage
@@ -68,6 +83,7 @@ from cc_viewer_sdk import enable_cc_viewer
 
 ctx = enable_cc_viewer(
     proxy_port=7010,        # Use specific port
+    remote=True,            # Enable remote access
     # start_viewer=True,    # Start web viewer (not yet implemented)
 )
 ```
