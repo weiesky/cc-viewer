@@ -78,9 +78,9 @@ class ChatView extends React.Component {
     this.splitContainerRef = React.createRef();
     this.innerSplitRef = React.createRef();
 
-    // 从 localStorage 读取用户偏好的 splitRatio
-    const savedRatio = localStorage.getItem('cc-viewer-split-ratio');
-    const initialRatio = savedRatio ? parseFloat(savedRatio) : null;
+    // 从 localStorage 读取用户偏好的终端宽度（像素）
+    const savedWidth = localStorage.getItem('cc-viewer-terminal-width');
+    const initialTerminalWidth = savedWidth ? parseFloat(savedWidth) : null;
 
     this.state = {
       visibleCount: 0,
@@ -88,8 +88,8 @@ class ChatView extends React.Component {
       allItems: [],
       highlightTs: null,
       highlightFading: false,
-      splitRatio: initialRatio || 0.6, // 如果没有保存的偏好，使用默认值
-      needsInitialSnap: initialRatio === null, // 标记是否需要初始化吸附
+      terminalWidth: initialTerminalWidth || 468, // 默认 60cols * 7.8px
+      needsInitialSnap: initialTerminalWidth === null, // 标记是否需要初始化吸附
       inputEmpty: true,
       pendingInput: null,
       stickyBottom: true,
@@ -769,21 +769,18 @@ class ChatView extends React.Component {
 
         snapLines = terminalWidths.map(cols => {
           const terminalPx = cols * charWidth;
-          // 终端从右往左布局，终端右边缘在容器右边缘
-          // 分隔条右边缘位置（从容器左边缘算） = 容器宽度 - 终端宽度
-          const resizerRight = containerWidth - terminalPx;
-          // 分隔条左边缘位置 = 分隔条右边缘 - 分隔条宽度
-          const resizerLeft = resizerRight - resizerWidth;
-          // 对话区域占比 = 分隔条左边缘位置 / 容器宽度
-          const ratio = resizerLeft / containerWidth;
+          const totalTerminalWidth = terminalPx + resizerWidth;
 
-          // 只保留合理范围内的吸附线
-          if (ratio < 0.25 || ratio > 0.85) return null;
+          // 只保留合理范围内的吸附线（终端宽度不超过容器的75%，且不小于15%）
+          if (totalTerminalWidth > containerWidth * 0.75 || totalTerminalWidth < containerWidth * 0.15) return null;
+
+          // 吸附线位置 = 容器宽度 - 终端像素宽度 - 分隔条宽度
+          const linePosition = containerWidth - terminalPx - resizerWidth;
 
           return {
             cols,
-            ratio,
-            linePosition: resizerLeft // 吸附线显示在分隔条左边缘
+            terminalPx, // 终端像素宽度
+            linePosition // 吸附线显示位置
           };
         }).filter(snap => snap !== null);
       }
@@ -796,8 +793,10 @@ class ChatView extends React.Component {
       const container = this.innerSplitRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
-      let ratio = (ev.clientX - rect.left) / rect.width;
-      ratio = Math.min(0.85, Math.max(0.25, ratio));
+      const containerWidth = rect.width;
+      // 终端宽度 = 容器右边缘 - 鼠标位置
+      let tw = rect.right - ev.clientX;
+      tw = Math.max(200, Math.min(containerWidth * 0.75, tw));
 
       // 吸附逻辑
       let activeSnapLine = null;
@@ -819,7 +818,7 @@ class ChatView extends React.Component {
         }
       }
 
-      this.setState({ splitRatio: ratio, activeSnapLine });
+      this.setState({ terminalWidth: tw, activeSnapLine });
     };
 
     const onMouseUp = () => {
@@ -827,11 +826,11 @@ class ChatView extends React.Component {
 
       // 松开鼠标时，吸附到最近的线
       if (enableSnap && this.state.activeSnapLine) {
-        const newRatio = this.state.activeSnapLine.ratio;
+        const newWidth = this.state.activeSnapLine.terminalPx;
         // 保存用户偏好到 localStorage
-        localStorage.setItem('cc-viewer-split-ratio', newRatio.toString());
+        localStorage.setItem('cc-viewer-terminal-width', newWidth.toString());
         this.setState({
-          splitRatio: newRatio,
+          terminalWidth: newWidth,
           isDragging: false,
           activeSnapLine: null,
           snapLines: [],
@@ -839,7 +838,7 @@ class ChatView extends React.Component {
         });
       } else {
         // 用户手动拖拽到非吸附位置，也保存偏好
-        localStorage.setItem('cc-viewer-split-ratio', this.state.splitRatio.toString());
+        localStorage.setItem('cc-viewer-terminal-width', this.state.terminalWidth.toString());
         this.setState({
           isDragging: false,
           activeSnapLine: null,
@@ -873,33 +872,17 @@ class ChatView extends React.Component {
 
   _snapToInitialPosition() {
     // 初始化时吸附到 60cols
-    const container = this.innerSplitRef.current;
-    if (!container) {
-      // 容器还未准备好，延迟执行
-      setTimeout(() => this._snapToInitialPosition(), 100);
-      return;
-    }
-
-    const rect = container.getBoundingClientRect();
-    const containerWidth = rect.width;
     const charWidth = 7.8;
     const targetCols = 60;
-    const resizerWidth = 5;
+    const terminalPx = targetCols * charWidth; // 468px
 
-    const terminalPx = targetCols * charWidth;
-    const resizerRight = containerWidth - terminalPx;
-    const resizerLeft = resizerRight - resizerWidth;
-    const ratio = resizerLeft / containerWidth;
-
-    if (ratio >= 0.25 && ratio <= 0.85) {
-      this.setState({ splitRatio: ratio, needsInitialSnap: false });
-      localStorage.setItem('cc-viewer-split-ratio', ratio.toString());
-    }
+    this.setState({ terminalWidth: terminalPx, needsInitialSnap: false });
+    localStorage.setItem('cc-viewer-terminal-width', terminalPx.toString());
   }
 
   render() {
     const { mainAgentSessions, cliMode, terminalVisible } = this.props;
-    const { allItems, visibleCount, loading, splitRatio } = this.state;
+    const { allItems, visibleCount, loading, terminalWidth } = this.state;
 
     const noData = !mainAgentSessions || mainAgentSessions.length === 0;
 
@@ -1035,57 +1018,73 @@ class ChatView extends React.Component {
             })}
             title={t('ui.gitChanges')}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="6" y1="3" x2="6" y2="15"/>
-              <circle cx="18" cy="6" r="3"/>
-              <circle cx="6" cy="18" r="3"/>
-              <path d="M18 9a9 9 0 0 1-9 9"/>
+            <svg width="24" height="24" viewBox="0 0 1024 1024" fill="currentColor">
+              <path d="M759.53332137 326.35000897c0-48.26899766-39.4506231-87.33284994-87.87432908-86.6366625-46.95397689 0.69618746-85.08957923 39.14120645-85.39899588 86.09518335-0.23206249 40.68828971 27.53808201 74.87882971 65.13220519 84.47074592 10.82958281 2.78474987 18.41029078 12.37666607 18.64235327 23.51566553 0.38677082 21.11768647-3.40358317 44.40128953-17.24997834 63.81718442-22.20064476 31.17372767-62.42480948 42.46743545-97.93037026 52.44612248-22.43270724 6.26568719-38.75443563 7.89012462-53.14230994 9.28249954-20.42149901 2.01120825-39.76003975 3.94506233-63.89453858 17.79145747-5.10537475 2.93945818-10.13339535 6.18833303-14.85199928 9.74662453-4.09977063 3.09416652-9.90133285 0.15470833-9.90133286-4.95066641V302.60228095c0-9.43720788 5.26008307-18.17822829 13.69168683-22.3553531 28.69839444-14.23316598 48.42370599-43.93716454 48.19164353-78.20505872-0.38677082-48.57841433-41.15241468-87.71962076-89.730829-86.01782918C338.80402918 117.57112321 301.59667683 155.70672553 301.59667683 202.58334827c0 34.03583169 19.64795738 63.50776777 48.1916435 77.66357958 8.43160375 4.17712479 13.69168685 12.76343689 13.69168684 22.12329062v419.02750058c0 9.43720788-5.26008307 18.17822829-13.69168684 22.3553531-28.69839444 14.23316598-48.42370599 43.93716454-48.1916435 78.20505872 0.30941665 48.57841433 41.07506052 87.6422666 89.65347484 86.01782918C437.74000359 906.42887679 474.87000179 868.2159203 474.87000179 821.41665173c0-34.03583169-19.64795738-63.50776777-48.1916435-77.66357958-8.43160375-4.17712479-13.69168685-12.76343689-13.69168684-22.12329062v-14.85199926c0-32.48874844 15.39347842-63.27570528 42.00331048-81.91805854 2.39797906-1.70179159 4.95066642-3.32622901 7.50335379-4.79595812 14.92935344-8.58631209 25.91364457-9.66927037 44.09187287-11.4484161 15.62554091-1.54708326 35.04143581-3.48093734 61.65126786-10.90693699 39.06385228-10.98429114 92.51557887-25.91364457 124.84961898-71.39789238 18.56499911-26.06835292 27.38337367-58.01562219 26.37776956-95.14562041-0.15470833-5.33743724-0.54147915-10.67487447-1.08295828-16.16702004-0.85089578-8.27689543 2.70739569-16.24437421 9.12779121-21.50445729 19.57060322-15.78024923 32.02462345-39.99210223 32.02462345-67.14341343zM351.1033411 202.58334827c0-20.49885317 16.63114503-37.12999821 37.1299982-37.1299982s37.12999821 16.63114503 37.12999821 37.1299982-16.63114503 37.12999821-37.12999821 37.1299982-37.12999821-16.63114503-37.1299982-37.1299982z m74.25999641 618.83330346c0 20.49885317-16.63114503 37.12999821-37.12999821 37.1299982s-37.12999821-16.63114503-37.1299982-37.1299982 16.63114503-37.12999821 37.1299982-37.1299982 37.12999821 16.63114503 37.12999821 37.1299982z m247.53332139-457.93664456c-20.49885317 0-37.12999821-16.63114503-37.1299982-37.1299982s16.63114503-37.12999821 37.1299982-37.12999821 37.12999821 16.63114503 37.1299982 37.12999821-16.63114503 37.12999821-37.1299982 37.1299982z"/>
             </svg>
           </button>
         </div>
-        {this.state.fileExplorerOpen && (
-          <FileExplorer
-            onClose={() => this.setState({ fileExplorerOpen: false })}
-            onFileClick={(path) => this.setState({ currentFile: path })}
-            expandedPaths={this.state.fileExplorerExpandedPaths}
-            onToggleExpand={this.handleToggleExpandPath}
-          />
-        )}
-        {this.state.gitChangesOpen && (
-          <GitChanges
-            onClose={() => this.setState({ gitChangesOpen: false })}
-            onFileClick={(path) => this.setState({ currentGitDiff: path, currentFile: null })}
-          />
-        )}
         <div style={{ flex: 1, display: 'flex', minWidth: 0, position: 'relative' }} ref={this.innerSplitRef}>
           {/* 吸附预览框 */}
           {this.state.isDragging && this.state.activeSnapLine && (() => {
-            const currentRatio = this.state.splitRatio;
-            const snapRatio = this.state.activeSnapLine.ratio;
-            const leftRatio = Math.min(currentRatio, snapRatio);
-            const widthRatio = Math.abs(snapRatio - currentRatio);
+            const container = this.innerSplitRef.current;
+            if (!container) return null;
+            const containerWidth = container.getBoundingClientRect().width;
+            const resizerWidth = 5;
+            // 当前终端区域左边缘位置
+            const currentLeft = containerWidth - this.state.terminalWidth - resizerWidth;
+            // 吸附目标左边缘位置
+            const snapLeft = this.state.activeSnapLine.linePosition;
+            const left = Math.min(currentLeft, snapLeft);
+            const width = Math.abs(snapLeft - currentLeft);
             return (
               <div
                 className={styles.snapPreview}
                 style={{
-                  left: `${leftRatio * 100}%`,
-                  width: `${widthRatio * 100}%`
+                  left: `${left}px`,
+                  width: `${width}px`
                 }}
               />
             );
           })()}
-          {/* 吸附线 */}
-          {this.state.isDragging && this.state.snapLines.map((snap, idx) => {
-            const isActive = this.state.activeSnapLine && this.state.activeSnapLine.cols === snap.cols;
-            return (
-              <div
-                key={idx}
-                className={isActive ? styles.snapLineActive : styles.snapLine}
-                style={{ left: `${snap.linePosition}px` }}
-              />
-            );
-          })}
-          <div className={styles.chatSection} style={terminalVisible ? { flex: splitRatio, minWidth: 0 } : { flex: 1, minWidth: 0 }}>
+          {/* 吸附线：只显示距离当前位置最近的两条 */}
+          {this.state.isDragging && (() => {
+            const container = this.innerSplitRef.current;
+            if (!container) return null;
+            const containerWidth = container.getBoundingClientRect().width;
+            const resizerWidth = 5;
+            const currentLinePos = containerWidth - this.state.terminalWidth - resizerWidth;
+            // 按距离排序，取最近的两条
+            const sorted = [...this.state.snapLines]
+              .map(snap => ({ ...snap, dist: Math.abs(snap.linePosition - currentLinePos) }))
+              .sort((a, b) => a.dist - b.dist)
+              .slice(0, 2);
+            return sorted.map((snap, idx) => {
+              const isActive = this.state.activeSnapLine && this.state.activeSnapLine.cols === snap.cols;
+              return (
+                <div
+                  key={idx}
+                  className={isActive ? styles.snapLineActive : styles.snapLine}
+                  style={{ left: `${snap.linePosition}px` }}
+                />
+              );
+            });
+          })()}
+          {this.state.fileExplorerOpen && (
+            <FileExplorer
+              onClose={() => this.setState({ fileExplorerOpen: false })}
+              onFileClick={(path) => this.setState({ currentFile: path })}
+              expandedPaths={this.state.fileExplorerExpandedPaths}
+              onToggleExpand={this.handleToggleExpandPath}
+            />
+          )}
+          {this.state.gitChangesOpen && (
+            <GitChanges
+              onClose={() => this.setState({ gitChangesOpen: false })}
+              onFileClick={(path) => this.setState({ currentGitDiff: path, currentFile: null })}
+            />
+          )}
+          <div className={styles.chatSection} style={{ flex: 1, minWidth: 0, display: 'flex' }}>
+            <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {this.state.currentGitDiff ? (
               <GitDiffView
                 filePath={this.state.currentGitDiff}
@@ -1140,11 +1139,12 @@ class ChatView extends React.Component {
                 <span className={styles.suggestionChipAction}>↵</span>
               </div>
             )}
+            </div>
           </div>
           {terminalVisible && (
             <>
               <div className={styles.vResizer} onMouseDown={this.handleSplitMouseDown} />
-              <div style={{ flex: 1 - splitRatio, minWidth: 200, display: 'flex', flexDirection: 'column' }}>
+              <div style={{ width: terminalWidth, flexShrink: 0, minWidth: 200, display: 'flex', flexDirection: 'column' }}>
                 <TerminalPanel />
               </div>
             </>

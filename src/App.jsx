@@ -1,12 +1,13 @@
 import React from 'react';
 import { ConfigProvider, Layout, theme, Modal, List, Tag, Spin, Button, Checkbox, Badge, message } from 'antd';
-import { FileTextOutlined, UploadOutlined, MessageOutlined } from '@ant-design/icons';
+import { FileTextOutlined, UploadOutlined, MessageOutlined, BranchesOutlined } from '@ant-design/icons';
 import AppHeader from './components/AppHeader';
 import RequestList from './components/RequestList';
 import DetailPanel from './components/DetailPanel';
 import ChatView from './components/ChatView';
 import TerminalPanel from './components/TerminalPanel';
 import PanelResizer from './components/PanelResizer';
+import MobileGitDiff from './components/MobileGitDiff';
 import { t, getLang, setLang } from './i18n';
 import { formatTokenCount, filterRelevantRequests, findPrevMainAgentTimestamp } from './utils/helpers';
 import { isMainAgent } from './utils/contentFilter';
@@ -753,18 +754,34 @@ class App extends React.Component {
               <Badge status="processing" color="green" />
               <span style={{ fontSize: 12, color: '#aaa' }}>{t('ui.liveMonitoring')}{this.state.projectName ? `: ${this.state.projectName}` : ''}</span>
             </div>
-            <Button
-              type="text"
-              size="small"
-              icon={<MessageOutlined />}
-              onClick={() => this.setState(prev => ({ mobileChatVisible: !prev.mobileChatVisible }))}
-              style={{ color: this.state.mobileChatVisible ? '#fff' : '#888', fontSize: 12 }}
-            >
-              {this.state.mobileChatVisible ? t('ui.mobileChatExit') : t('ui.mobileChatBrowse')}
-            </Button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Button
+                type="text"
+                size="small"
+                icon={<BranchesOutlined />}
+                onClick={() => this.setState(prev => ({ mobileGitDiffVisible: !prev.mobileGitDiffVisible, mobileChatVisible: false }))}
+                style={{ color: this.state.mobileGitDiffVisible ? '#fff' : '#888', fontSize: 12 }}
+              >
+                {this.state.mobileGitDiffVisible ? t('ui.mobileGitDiffExit') : t('ui.mobileGitDiffBrowse')}
+              </Button>
+              <Button
+                type="text"
+                size="small"
+                icon={<MessageOutlined />}
+                onClick={() => this.setState(prev => ({ mobileChatVisible: !prev.mobileChatVisible, mobileGitDiffVisible: false }))}
+                style={{ color: this.state.mobileChatVisible ? '#fff' : '#888', fontSize: 12 }}
+              >
+                {this.state.mobileChatVisible ? t('ui.mobileChatExit') : t('ui.mobileChatBrowse')}
+              </Button>
+            </div>
           </div>
           <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
             <TerminalPanel />
+            <div className={`${styles.mobileGitDiffOverlay} ${this.state.mobileGitDiffVisible ? styles.mobileGitDiffOverlayVisible : ''}`}>
+              <div className={styles.mobileGitDiffInner}>
+                <MobileGitDiff />
+              </div>
+            </div>
             <div className={`${styles.mobileChatOverlay} ${this.state.mobileChatVisible ? styles.mobileChatOverlayVisible : ''}`}>
               <ConfigProvider theme={{ algorithm: theme.darkAlgorithm, token: { colorBgContainer: '#111', colorBgLayout: '#0a0a0a', colorBgElevated: '#1a1a1a', colorBorder: '#2a2a2a' } }}>
                 <div className={styles.mobileChatInner}>

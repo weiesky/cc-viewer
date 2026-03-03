@@ -60,12 +60,41 @@
 
 .contentContainer {
   flex: 1;
-  overflow: auto;
+  overflow: hidden;
   background: #0d0d0d;
+  display: flex;
 }
 
 .codeBlock {
-  min-height: 100%;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.lineNumberCol {
+  flex-shrink: 0;
+  overflow: hidden;
+  background: #0d0d0d;
+  border-right: 1px solid #2a2a2a;
+  user-select: none;
+}
+
+.lineNumberRow {
+  padding: 0 16px;
+  text-align: right;
+  color: #555;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.codeCol {
+  flex: 1;
+  overflow: auto;
+  min-width: 0;
 }
 
 .codeContent {
@@ -74,9 +103,10 @@
   font-size: 13px;
   line-height: 1.5;
   color: #e0e0e0;
-  overflow-x: auto;
   tab-size: 2;
   margin: 0;
+  width: fit-content;
+  min-width: 100%;
 }
 
 .codeContent code {
@@ -88,30 +118,9 @@
   display: block;
 }
 
-.codeLine {
-  display: flex;
-  min-height: 1.5em;
-}
-
-.codeLine:hover {
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.lineNumber {
-  flex-shrink: 0;
-  width: 50px;
-  padding: 0 16px 0 16px;
-  text-align: right;
-  color: #555;
-  user-select: none;
-  border-right: 1px solid #2a2a2a;
-}
-
-.lineContent {
-  flex: 1;
+.lineContentRow {
   padding: 0 16px;
   white-space: pre;
-  overflow-x: visible;
 }
 
 .loading {

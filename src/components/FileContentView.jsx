@@ -102,6 +102,9 @@ export default function FileContentView({ filePath, onClose }) {
   const [fileSize, setFileSize] = useState(0);
   const mounted = useRef(true);
   const codeRef = useRef(null);
+  const lineNumRef = useRef(null);
+  const codeScrollRef = useRef(null);
+  const lineNumScrollRef = useRef(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -141,21 +144,40 @@ export default function FileContentView({ filePath, onClose }) {
         try {
           const highlighted = hljs.highlight(content, { language: lang });
           const highlightedLines = highlighted.value.split('\n');
+          lineNumRef.current.innerHTML = highlightedLines
+            .map((_, i) => `<div class="${styles.lineNumberRow}">${i + 1}</div>`)
+            .join('');
           codeRef.current.innerHTML = highlightedLines
-            .map((line, i) => `<div class="${styles.codeLine}"><span class="${styles.lineNumber}">${i + 1}</span><span class="${styles.lineContent}">${line || ' '}</span></div>`)
+            .map((line) => `<div class="${styles.lineContentRow}">${line || ' '}</div>`)
             .join('');
         } catch {
+          lineNumRef.current.innerHTML = lines
+            .map((_, i) => `<div class="${styles.lineNumberRow}">${i + 1}</div>`)
+            .join('');
           codeRef.current.innerHTML = lines
-            .map((line, i) => `<div class="${styles.codeLine}"><span class="${styles.lineNumber}">${i + 1}</span><span class="${styles.lineContent}">${line || ' '}</span></div>`)
+            .map((line) => `<div class="${styles.lineContentRow}">${line || ' '}</div>`)
             .join('');
         }
       } else {
+        lineNumRef.current.innerHTML = lines
+          .map((_, i) => `<div class="${styles.lineNumberRow}">${i + 1}</div>`)
+          .join('');
         codeRef.current.innerHTML = lines
-          .map((line, i) => `<div class="${styles.codeLine}"><span class="${styles.lineNumber}">${i + 1}</span><span class="${styles.lineContent}">${line || ' '}</span></div>`)
+          .map((line) => `<div class="${styles.lineContentRow}">${line || ' '}</div>`)
           .join('');
       }
     }
   }, [content, filePath]);
+
+  // 纵向滚动同步：代码区滚动时同步行号列
+  useEffect(() => {
+    const codeEl = codeScrollRef.current;
+    const lineEl = lineNumScrollRef.current;
+    if (!codeEl || !lineEl) return;
+    const onScroll = () => { lineEl.scrollTop = codeEl.scrollTop; };
+    codeEl.addEventListener('scroll', onScroll);
+    return () => codeEl.removeEventListener('scroll', onScroll);
+  });
 
   return (
     <div className={styles.fileContentView}>
@@ -177,7 +199,12 @@ export default function FileContentView({ filePath, onClose }) {
         {!content && !error && <div className={styles.loading}>{t('ui.loading')}</div>}
         {content && (
           <div className={styles.codeBlock}>
-            <pre className={styles.codeContent}><code ref={codeRef}></code></pre>
+            <div className={styles.lineNumberCol} ref={lineNumScrollRef}>
+              <div ref={lineNumRef}></div>
+            </div>
+            <div className={styles.codeCol} ref={codeScrollRef}>
+              <pre className={styles.codeContent}><code ref={codeRef}></code></pre>
+            </div>
           </div>
         )}
       </div>

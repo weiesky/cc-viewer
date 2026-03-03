@@ -280,3 +280,27 @@
   flex-direction: column;
   zoom: 0.6;
 }
+
+.mobileGitDiffOverlay {
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  z-index: 100;
+  background: #0a0a0a;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mobileGitDiffOverlayVisible {
+  transform: translateX(0);
+}
+
+.mobileGitDiffInner {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  zoom: 0.6;
+}

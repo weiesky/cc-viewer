@@ -52,14 +52,72 @@
 
 .codeContainer {
   flex: 1;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  min-height: 0;
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
   font-size: 13px;
   line-height: 1.6;
 }
 
+.lineNumberCol {
+  flex-shrink: 0;
+  overflow: hidden;
+  background: #0d0d0d;
+  border-right: 1px solid #2a2a2a;
+  user-select: none;
+}
+
+.lineNumNormal {
+  padding: 0 12px 0 8px;
+  text-align: right;
+  color: #555;
+  font-size: 12px;
+  min-height: 21px;
+}
+
+.lineNumAdd {
+  padding: 0 9px 0 8px;
+  text-align: right;
+  color: #73c991;
+  font-weight: 600;
+  font-size: 12px;
+  min-height: 21px;
+  border-right: 3px solid #73c991;
+}
+
+.lineNumModify {
+  padding: 0 9px 0 8px;
+  text-align: right;
+  color: #e2c08d;
+  font-weight: 600;
+  font-size: 12px;
+  min-height: 21px;
+  border-right: 3px solid #e2c08d;
+}
+
+.lineNumDelete {
+  padding: 0 9px 0 8px;
+  text-align: right;
+  color: #f14c4c;
+  font-weight: 600;
+  font-size: 12px;
+  min-height: 21px;
+  border-right: 3px solid #f14c4c;
+}
+
+.codeCol {
+  flex: 1;
+  overflow: auto;
+  min-width: 0;
+}
+
+.codeInner {
+  width: fit-content;
+  min-width: 100%;
+}
+
 .codeLine {
-  display: flex;
   position: relative;
   min-height: 21px;
   transition: background 0.1s;
@@ -69,22 +127,11 @@
   background: rgba(255, 255, 255, 0.03);
 }
 
-.lineNumber {
-  width: 50px;
-  flex-shrink: 0;
-  padding: 0 12px 0 8px;
-  text-align: right;
-  color: #555;
-  user-select: none;
-  font-size: 12px;
-}
-
 .lineContent {
-  flex: 1;
   padding-right: 16px;
+  padding-left: 8px;
   color: #ccc;
   white-space: pre;
-  overflow-x: auto;
 }
 
 .lineNormal {
@@ -93,33 +140,15 @@
 
 .lineAdd {
   background: rgba(115, 201, 145, 0.1);
-  border-left: 3px solid #73c991;
-}
-
-.lineAdd .lineNumber {
-  color: #73c991;
-  font-weight: 600;
 }
 
 .lineModify {
   background: rgba(226, 192, 141, 0.1);
-  border-left: 3px solid #e2c08d;
   position: relative;
-}
-
-.lineModify .lineNumber {
-  color: #e2c08d;
-  font-weight: 600;
 }
 
 .lineDelete {
   background: rgba(241, 76, 76, 0.1);
-  border-left: 3px solid #f14c4c;
-}
-
-.lineDelete .lineNumber {
-  color: #f14c4c;
-  font-weight: 600;
 }
 
 .lineDelete .lineContent {

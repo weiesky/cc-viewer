@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import * as Diff from 'diff';
 import hljs from 'highlight.js/lib/core';
 import javascript from 'highlight.js/lib/languages/javascript';
@@ -140,6 +140,19 @@ function computeLineChanges(oldStr, newStr) {
 }
 
 export default function FullFileDiffView({ file_path, old_string, new_string }) {
+  const lineNumScrollRef = useRef(null);
+  const codeScrollRef = useRef(null);
+
+  // 纵向滚动同步：代码区滚动时同步行号列
+  useEffect(() => {
+    const codeEl = codeScrollRef.current;
+    const lineEl = lineNumScrollRef.current;
+    if (!codeEl || !lineEl) return;
+    const onScroll = () => { lineEl.scrollTop = codeEl.scrollTop; };
+    codeEl.addEventListener('scroll', onScroll);
+    return () => codeEl.removeEventListener('scroll', onScroll);
+  });
+
   // 检测文件状态
   const isDeleted = !new_string || new_string.trim() === '';
   const isNew = !old_string || old_string.trim() === '';
@@ -185,38 +198,46 @@ export default function FullFileDiffView({ file_path, old_string, new_string }) 
         {deletedCount > 0 && <span className={styles.deletedBadge}>-{deletedCount}</span>}
       </div>
       <div className={styles.codeContainer}>
-        {highlightedLines.map((line, idx) => {
-          const lineNum = idx + 1;
-          const change = changeMap.get(lineNum);
+        <div className={styles.lineNumberCol} ref={lineNumScrollRef}>
+          {highlightedLines.map((_, idx) => {
+            const lineNum = idx + 1;
+            const change = changeMap.get(lineNum);
+            let numClass = styles.lineNumNormal;
+            if (isDeleted) numClass = styles.lineNumDelete;
+            else if (isNew) numClass = styles.lineNumAdd;
+            else if (change) numClass = change.type === 'add' ? styles.lineNumAdd : styles.lineNumModify;
+            return <div key={idx} className={numClass}>{lineNum}</div>;
+          })}
+        </div>
+        <div className={styles.codeCol} ref={codeScrollRef}>
+          <div className={styles.codeInner}>
+            {highlightedLines.map((line, idx) => {
+              const lineNum = idx + 1;
+              const change = changeMap.get(lineNum);
 
-          // 确定行的类型
-          let lineClass;
-          if (isDeleted) {
-            lineClass = styles.lineDelete;
-          } else if (isNew) {
-            lineClass = styles.lineAdd;
-          } else if (change) {
-            lineClass = change.type === 'add' ? styles.lineAdd : styles.lineModify;
-          } else {
-            lineClass = styles.lineNormal;
-          }
+              let lineClass;
+              if (isDeleted) lineClass = styles.lineDelete;
+              else if (isNew) lineClass = styles.lineAdd;
+              else if (change) lineClass = change.type === 'add' ? styles.lineAdd : styles.lineModify;
+              else lineClass = styles.lineNormal;
 
-          return (
-            <div key={idx} className={`${styles.codeLine} ${lineClass}`}>
-              <span className={styles.lineNumber}>{lineNum}</span>
-              <span
-                className={styles.lineContent}
-                dangerouslySetInnerHTML={{ __html: line || ' ' }}
-              />
-              {change && change.oldContent !== null && (
-                <div className={styles.oldContentTooltip}>
-                  <div className={styles.tooltipLabel}>原内容:</div>
-                  <div className={styles.tooltipContent}>{change.oldContent}</div>
+              return (
+                <div key={idx} className={`${styles.codeLine} ${lineClass}`}>
+                  <span
+                    className={styles.lineContent}
+                    dangerouslySetInnerHTML={{ __html: line || ' ' }}
+                  />
+                  {change && change.oldContent !== null && (
+                    <div className={styles.oldContentTooltip}>
+                      <div className={styles.tooltipLabel}>原内容:</div>
+                      <div className={styles.tooltipContent}>{change.oldContent}</div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );

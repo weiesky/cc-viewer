@@ -653,12 +653,18 @@ class AppHeader extends React.Component {
         label: t('ui.projectStats'),
         onClick: this.handleShowProjectStats,
       },
-      {
+      ...(viewMode === 'raw' ? [{
         key: 'global-settings',
         icon: <SettingOutlined />,
         label: t('ui.globalSettings'),
         onClick: () => this.setState({ globalSettingsVisible: true }),
-      },
+      }] : []),
+      ...(viewMode === 'chat' ? [{
+        key: 'display-settings',
+        icon: <SettingOutlined />,
+        label: t('ui.settings'),
+        onClick: () => this.setState({ settingsDrawerVisible: true }),
+      }] : []),
       {
         key: 'language',
         icon: <GlobalOutlined />,
@@ -765,13 +771,42 @@ class AppHeader extends React.Component {
               <strong className={styles.countdownStrong}>{countdownText}</strong>
             </Tag>
           )}
-          {viewMode === 'chat' && (
-            <Button
-              icon={<SettingOutlined />}
-              onClick={() => this.setState({ settingsDrawerVisible: true })}
+          {viewMode === 'chat' && cliMode && this.state.localUrl && (
+            <Popover
+              content={
+                <div className={styles.qrcodePopover}>
+                  <div className={styles.qrcodeTitle}>{t('ui.scanToCoding')}</div>
+                  <QRCodeCanvas value={this.state.localUrl} size={160} bgColor="#141414" fgColor="#d9d9d9" level="M" />
+                  <Input
+                    readOnly
+                    value={this.state.localUrl}
+                    className={styles.qrcodeUrlInput}
+                    suffix={
+                      <CopyOutlined
+                        className={styles.qrcodeUrlCopy}
+                        onClick={() => {
+                          navigator.clipboard.writeText(this.state.localUrl).then(() => {
+                            message.success(t('ui.copied'));
+                          }).catch(() => {});
+                        }}
+                      />
+                    }
+                  />
+                </div>
+              }
+              trigger="hover"
+              placement="bottomRight"
+              overlayInnerStyle={{ background: '#1e1e1e', border: '1px solid #3a3a3a', borderRadius: 8, padding: '8px 8px' }}
             >
-              {t('ui.settings')}
-            </Button>
+              <Button
+                icon={
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: '-3px' }}>
+                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                    <line x1="12" y1="18" x2="12.01" y2="18"/>
+                  </svg>
+                }
+              />
+            </Popover>
           )}
           {cliMode && viewMode === 'chat' && (
             <Button
@@ -842,32 +877,11 @@ class AppHeader extends React.Component {
         </Modal>
         <Drawer
           title={t('ui.settings')}
-          placement="right"
+          placement="left"
           width={360}
           open={this.state.settingsDrawerVisible}
           onClose={() => this.setState({ settingsDrawerVisible: false })}
         >
-          {cliMode && this.state.localUrl && (
-            <div className={styles.qrcodeSection}>
-              <div className={styles.qrcodeTitle}>{t('ui.scanToCoding')}</div>
-              <QRCodeCanvas value={this.state.localUrl} size={160} bgColor="#141414" fgColor="#d9d9d9" level="M" />
-              <Input
-                readOnly
-                value={this.state.localUrl}
-                className={styles.qrcodeUrlInput}
-                suffix={
-                  <CopyOutlined
-                    className={styles.qrcodeUrlCopy}
-                    onClick={() => {
-                      navigator.clipboard.writeText(this.state.localUrl).then(() => {
-                        message.success(t('ui.copied'));
-                      }).catch(() => {});
-                    }}
-                  />
-                }
-              />
-            </div>
-          )}
           <div className={styles.settingsGroupBox}>
             <div className={styles.settingsGroupTitle}>{t('ui.chatDisplaySwitches')}</div>
             <div className={styles.settingsItem}>

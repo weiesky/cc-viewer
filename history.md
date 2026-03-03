@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.4.11 (2026-03-03)
+
+- Refactor: split panel layout — FileExplorer/GitChanges decoupled from chat section, terminal uses fixed pixel width instead of flex ratio
+- Feat: snap lines now only show the 2 closest to current position during drag
+- Feat: mobile Git Diff preview — slide-in panel with file list (300px) + diff viewer from left side
+- Fix: mobile terminal rendering stability — use fixed cols/rows based on screen size instead of dynamic fitAddon
+- Refactor: QR code module migrated from settings drawer to header nav bar as hover popover (phone icon)
+- Refactor: "Display Settings" moved to CC-Viewer dropdown menu, drawer slides from left
+- Refactor: "Global Settings" menu item only visible in raw (network) mode
+- UI: Git nav icon replaced with new SVG design
+- Fix: code detail view vertical scroll broken after layout refactor
+- Refactor: FileContentView two-column layout — line numbers fixed on left, code scrolls independently
+- Refactor: FullFileDiffView two-column layout — line numbers and diff indicators fixed, code block scrolls as a whole
+- Fix: diff highlight border moved to line number column (border-right) so it stays fixed during horizontal scroll
+
 ## 1.4.10 (2026-03-03)
 
 - Fix: concept help docs (?) links broken — `/api/concept` route lost query params after URL parsing refactor

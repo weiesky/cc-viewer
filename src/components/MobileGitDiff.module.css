@@ -1,0 +1,189 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #0a0a0a;
+  overflow: hidden;
+}
+
+/* 上半部分：文件列表 */
+.fileListSection {
+  height: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #111;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2a2a2a;
+  flex-shrink: 0;
+}
+
+.headerTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.fileCount {
+  font-size: 10px;
+  color: #555;
+  background: #1a1a1a;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.changesContainer {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.changeItem {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  cursor: pointer;
+  color: #ccc;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: background 0.1s;
+  gap: 8px;
+}
+
+.changeItem:hover {
+  background: #1a1a1a;
+}
+
+.changeItemActive {
+  background: rgba(74, 158, 255, 0.12);
+  color: #fff;
+}
+
+.changeItemActive:hover {
+  background: rgba(74, 158, 255, 0.18);
+}
+
+.status {
+  width: 16px;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fileName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+/* 下半部分：Diff 内容 */
+.diffSection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.diffHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2a2a2a;
+  background: #111;
+  flex-shrink: 0;
+}
+
+.diffFilePath {
+  font-size: 12px;
+  color: #ccc;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.diffBadge {
+  padding: 2px 8px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #e2c08d;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.diffContent {
+  flex: 1;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.diffPlaceholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #333;
+  font-size: 13px;
+}
+
+.statusText {
+  color: #555;
+  font-size: 12px;
+  padding: 16px 12px;
+  text-align: center;
+}
+
+.errorText {
+  color: #ff6b6b;
+  font-size: 12px;
+  padding: 16px 12px;
+  text-align: center;
+}
+
+.emptyText {
+  color: #666;
+  font-size: 12px;
+  padding: 16px 12px;
+  text-align: center;
+}
+
+.warningText {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: #e2c08d;
+  font-size: 13px;
+  text-align: center;
+  gap: 8px;
+}

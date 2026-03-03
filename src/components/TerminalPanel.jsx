@@ -68,9 +68,16 @@ class TerminalPanel extends React.Component {
     this.terminal.loadAddon(this.fitAddon);
     this.terminal.open(this.containerRef.current);
 
-    requestAnimationFrame(() => {
-      this.fitAddon.fit();
-    });
+    if (isMobile) {
+      // 移动端：基于屏幕尺寸一次性计算固定 cols/rows，避免动态 fit 导致渲染抖动
+      requestAnimationFrame(() => {
+        this._mobileFixedResize();
+      });
+    } else {
+      requestAnimationFrame(() => {
+        this.fitAddon.fit();
+      });
+    }
 
     this.terminal.onData((data) => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -273,6 +280,9 @@ class TerminalPanel extends React.Component {
   }
 
   setupResizeObserver() {
+    // 移动端使用固定尺寸，不需要 ResizeObserver
+    if (isMobile) return;
+
     this.resizeObserver = new ResizeObserver(() => {
       if (this.fitAddon && this.containerRef.current) {
         try {
@@ -284,6 +294,47 @@ class TerminalPanel extends React.Component {
     if (this.containerRef.current) {
       this.resizeObserver.observe(this.containerRef.current);
     }
+  }
+
+  /**
+   * 移动端固定尺寸计算：基于屏幕宽高一次性确定 cols/rows，
+   * 避免 fitAddon.fit() 因容器尺寸波动导致的反复重排。
+   */
+  _mobileFixedResize() {
+    if (!this.terminal) return;
+
+    // 从 xterm 渲染器获取实际字符尺寸
+    const cellDims = this.terminal._core?._renderService?.dimensions?.css?.cell;
+    if (!cellDims || !cellDims.width || !cellDims.height) {
+      // 渲染器尚未就绪，延迟重试
+      setTimeout(() => this._mobileFixedResize(), 50);
+      return;
+    }
+
+    const charWidth = cellDims.width;
+    const lineHeight = cellDims.height;
+
+    // 容器内边距 padding: 4px 8px
+    const padX = 16; // 8px * 2
+    const padY = 8;  // 4px * 2
+
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+
+    // 顶部状态栏 ~40px，虚拟按键栏 ~52px (44px + padding)
+    const topBarHeight = 40;
+    const keybarHeight = 52;
+    const availableHeight = screenHeight - topBarHeight - keybarHeight;
+
+    const cols = Math.floor((screenWidth - padX) / charWidth);
+    const rows = Math.floor((availableHeight - padY) / lineHeight);
+
+    // 确保合理范围
+    const safeCols = Math.max(20, Math.min(cols, 200));
+    const safeRows = Math.max(5, Math.min(rows, 100));
+
+    this.terminal.resize(safeCols, safeRows);
+    this.sendResize();
   }
 
   handleVirtualKey = (seq) => {

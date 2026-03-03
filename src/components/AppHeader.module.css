@@ -135,7 +135,14 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* QR code section */
+/* QR code popover */
+.qrcodePopover {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px;
+}
+
 .qrcodeSection {
   display: flex;
   flex-direction: column;
