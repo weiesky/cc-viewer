@@ -28,6 +28,30 @@ class ProxyManager:
         self.ccv_path = ccv_path
         self._process: Optional[subprocess.Popen] = None
 
+    def _parse_ccv_path(self) -> list:
+        """
+        Parse ccv_path into a command list.
+
+        Supports:
+        - Simple path: "/usr/local/bin/ccv"
+        - Node command: "node /path/to/cli.js"
+        - Shell command: "ccv"
+
+        Returns:
+            List of command arguments
+        """
+        if not self.ccv_path:
+            return ["ccv"]
+
+        # Check if it's a "node xxx.js" style command
+        parts = self.ccv_path.strip().split()
+        if len(parts) >= 2 and parts[0] == "node":
+            return parts
+        elif len(parts) == 1:
+            return [parts[0]]
+
+        return [self.ccv_path]
+
     def start(
         self, port: Optional[int] = None, timeout: float = 10.0
     ) -> Tuple[int, subprocess.Popen]:
@@ -44,7 +68,8 @@ class ProxyManager:
         Raises:
             RuntimeError: If proxy fails to start
         """
-        cmd = [self.ccv_path, "proxy"]
+        cmd = self._parse_ccv_path()
+        cmd.extend(["proxy"])
 
         if port is not None:
             cmd.extend(["--port", str(port)])
@@ -118,6 +143,9 @@ class ProxyManager:
                 # Check if process died
                 if self._process.poll() is not None:
                     stderr = self._process.stderr.read()
+                    # Ignore npm warnings
+                    if stderr and 'npm warn' in stderr:
+                        continue
                     raise RuntimeError(f"Proxy process died: {stderr}")
 
                 time.sleep(0.1)

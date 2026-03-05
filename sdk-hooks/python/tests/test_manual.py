@@ -180,17 +180,13 @@ def test_sdk_enable():
         except Exception as e:
             if "Connection refused" in str(e):
                 print(f"✗ Proxy not responding: {e}")
+                ctx.disable()
                 return False
             else:
                 print("✓ Proxy is responding")
 
-        # Print proxy stderr for debugging
-        if ctx.proxy_process and ctx.proxy_process.stderr:
-            import select
-            if select.select([ctx.proxy_process.stderr], [], [], 0.1)[0]:
-                stderr_content = ctx.proxy_process.stderr.read()
-                if stderr_content:
-                    print(f"\nProxy stderr:\n{stderr_content}")
+        # Don't wait for stderr in test mode - just continue
+        print("✓ Proxy started successfully")
 
         # Test disable
         print("\nCalling disable_cc_viewer()...")

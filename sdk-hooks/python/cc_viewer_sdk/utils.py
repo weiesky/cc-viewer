@@ -25,6 +25,10 @@ def find_ccv_path() -> Optional[str]:
     Returns:
         Path to ccv or None if not found
     """
+    # Check environment variable first (for development/testing)
+    env_path = os.environ.get("CC_VIEWER_PATH")
+    if env_path:
+        return env_path
     return shutil.which("ccv")
 
 
