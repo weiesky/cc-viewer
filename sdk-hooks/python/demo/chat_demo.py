@@ -80,10 +80,15 @@ async def main():
     print("CC-Viewer SDK Demo")
     print("=" * 60)
 
-    # 检查 API Key
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("\n错误: 请设置 ANTHROPIC_API_KEY 环境变量")
-        print("  export ANTHROPIC_API_KEY=your-api-key")
+    # 检查 API Key (支持 Anthropic 或智谱)
+    has_api_key = (
+        os.environ.get("ANTHROPIC_API_KEY") or
+        os.environ.get("ANTHROPIC_AUTH_TOKEN")
+    )
+    if not has_api_key:
+        print("\n错误: 请设置 API Key 环境变量")
+        print("  Anthropic: export ANTHROPIC_API_KEY=your-api-key")
+        print("  智谱:      export ANTHROPIC_AUTH_TOKEN=your-token")
         sys.exit(1)
 
     # 检查 claude_agent_sdk 是否安装
