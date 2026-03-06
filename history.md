@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.26 (2026-03-06)
+
+- Test: add comprehensive unit tests for `ccv --uninstall` functionality covering npm mode, native mode, multiple hooks, and user config preservation
+
 ## 1.4.25 (2026-03-06)
 
 - Fix: syntax error in commented code block causing server startup failure

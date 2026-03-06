@@ -145,6 +145,159 @@ describe('ccv --uninstall', () => {
     assert.equal(r.exitCode, 0);
     rmSync(fakeHome, { recursive: true, force: true });
   });
+
+  it('removes npm mode hook completely', () => {
+    const zshrc = join(fakeHome, '.zshrc');
+    const hookContent = [
+      '# user config before',
+      '',
+      '# >>> CC-Viewer Auto-Inject >>>',
+      'claude() {',
+      '  local cli_js=""',
+      '  for candidate in "$HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code/cli.js"; do',
+      '    if [ -f "$candidate" ]; then',
+      '      cli_js="$candidate"',
+      '      break',
+      '    fi',
+      '  done',
+      '  if [ -n "$cli_js" ] && ! grep -q "CC Viewer" "$cli_js" 2>/dev/null; then',
+      '    ccv 2>/dev/null',
+      '  fi',
+      '  command claude "$@"',
+      '}',
+      '# <<< CC-Viewer Auto-Inject <<<',
+      '',
+      '# user config after',
+    ].join('\n');
+    writeFileSync(zshrc, hookContent);
+
+    const r = runCli(['--uninstall'], {
+      env: { HOME: fakeHome, SHELL: '/bin/zsh' },
+    });
+    assert.equal(r.exitCode, 0);
+
+    const after = readFileSync(zshrc, 'utf-8');
+    assert.ok(!after.includes('CC-Viewer Auto-Inject'), 'hook markers should be removed');
+    assert.ok(!after.includes('ccv 2>/dev/null'), 'ccv call should be removed');
+    assert.ok(after.includes('# user config before'), 'user config before should remain');
+    assert.ok(after.includes('# user config after'), 'user config after should remain');
+    rmSync(fakeHome, { recursive: true, force: true });
+  });
+
+  it('removes native mode hook completely', () => {
+    const zshrc = join(fakeHome, '.zshrc');
+    const hookContent = [
+      '# user config',
+      '',
+      '# >>> CC-Viewer Auto-Inject >>>',
+      'claude() {',
+      '  if [ "$1" = "--ccv-internal" ]; then',
+      '    shift',
+      '    command claude "$@"',
+      '    return',
+      '  fi',
+      '  case "$1" in',
+      '    doctor|install|update|upgrade|auth|setup-token|agents|plugin|mcp)',
+      '      command claude "$@"',
+      '      return',
+      '      ;;',
+      '    --version|-v|--v|--help|-h)',
+      '      command claude "$@"',
+      '      return',
+      '      ;;',
+      '  esac',
+      '  ccv run -- claude --ccv-internal "$@"',
+      '}',
+      '# <<< CC-Viewer Auto-Inject <<<',
+      '',
+    ].join('\n');
+    writeFileSync(zshrc, hookContent);
+
+    const r = runCli(['--uninstall'], {
+      env: { HOME: fakeHome, SHELL: '/bin/zsh' },
+    });
+    assert.equal(r.exitCode, 0);
+
+    const after = readFileSync(zshrc, 'utf-8');
+    assert.ok(!after.includes('CC-Viewer Auto-Inject'), 'hook markers should be removed');
+    assert.ok(!after.includes('ccv run'), 'ccv run call should be removed');
+    assert.ok(!after.includes('--ccv-internal'), '--ccv-internal flag should be removed');
+    assert.ok(after.includes('# user config'), 'user config should remain');
+    rmSync(fakeHome, { recursive: true, force: true });
+  });
+
+  it('preserves user content around hook', () => {
+    const zshrc = join(fakeHome, '.zshrc');
+    const hookContent = [
+      'export PATH="/usr/local/bin:$PATH"',
+      'alias ll="ls -la"',
+      '',
+      '# >>> CC-Viewer Auto-Inject >>>',
+      'claude() { command claude "$@"; }',
+      '# <<< CC-Viewer Auto-Inject <<<',
+      '',
+      'export EDITOR=vim',
+      'source ~/.zsh_custom',
+    ].join('\n');
+    writeFileSync(zshrc, hookContent);
+
+    const r = runCli(['--uninstall'], {
+      env: { HOME: fakeHome, SHELL: '/bin/zsh' },
+    });
+    assert.equal(r.exitCode, 0);
+
+    const after = readFileSync(zshrc, 'utf-8');
+    assert.ok(!after.includes('CC-Viewer'), 'hook should be removed');
+    assert.ok(after.includes('export PATH'), 'PATH export should remain');
+    assert.ok(after.includes('alias ll'), 'alias should remain');
+    assert.ok(after.includes('export EDITOR'), 'EDITOR export should remain');
+    assert.ok(after.includes('source ~/.zsh_custom'), 'source command should remain');
+    rmSync(fakeHome, { recursive: true, force: true });
+  });
+
+  it('handles multiple hooks (should remove all)', () => {
+    const zshrc = join(fakeHome, '.zshrc');
+    const hookContent = [
+      '# >>> CC-Viewer Auto-Inject >>>',
+      'claude() { command claude "$@"; }',
+      '# <<< CC-Viewer Auto-Inject <<<',
+      '',
+      '# some user config',
+      '',
+      '# >>> CC-Viewer Auto-Inject >>>',
+      'claude() { ccv run -- claude "$@"; }',
+      '# <<< CC-Viewer Auto-Inject <<<',
+    ].join('\n');
+    writeFileSync(zshrc, hookContent);
+
+    const r = runCli(['--uninstall'], {
+      env: { HOME: fakeHome, SHELL: '/bin/zsh' },
+    });
+    assert.equal(r.exitCode, 0);
+
+    const after = readFileSync(zshrc, 'utf-8');
+    assert.ok(!after.includes('CC-Viewer'), 'all hooks should be removed');
+    assert.ok(after.includes('# some user config'), 'user config should remain');
+    rmSync(fakeHome, { recursive: true, force: true });
+  });
+
+  it('outputs helpful message about unset -f claude', () => {
+    const zshrc = join(fakeHome, '.zshrc');
+    const hookContent = [
+      '# >>> CC-Viewer Auto-Inject >>>',
+      'claude() { command claude "$@"; }',
+      '# <<< CC-Viewer Auto-Inject <<<',
+    ].join('\n');
+    writeFileSync(zshrc, hookContent);
+
+    const r = runCli(['--uninstall'], {
+      env: { HOME: fakeHome, SHELL: '/bin/zsh' },
+    });
+    assert.equal(r.exitCode, 0);
+    assert.ok(r.stdout.includes('unset -f claude') || r.stdout.includes('重启终端'),
+      'should mention unset -f claude or restart terminal');
+    rmSync(fakeHome, { recursive: true, force: true });
+  });
 });
 
 // ─── getShellConfigPath logic (tested indirectly via --uninstall) ───
