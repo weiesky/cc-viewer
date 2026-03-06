@@ -1312,6 +1312,26 @@ const i18nData = {
     "tr": "{count} log",
     "uk": "{count} логів"
   },
+  "ui.selectProject": {
+    "zh": "选择项目",
+    "en": "Select Project",
+    "zh-TW": "選擇專案",
+    "ko": "프로젝트 선택",
+    "ja": "プロジェクトを選択",
+    "de": "Projekt auswählen",
+    "es": "Seleccionar proyecto",
+    "fr": "Sélectionner un projet",
+    "it": "Seleziona progetto",
+    "da": "Vælg projekt",
+    "pl": "Wybierz projekt",
+    "ru": "Выбрать проект",
+    "ar": "اختر المشروع",
+    "no": "Velg prosjekt",
+    "pt-BR": "Selecionar projeto",
+    "th": "เลือกโปรเจกต์",
+    "tr": "Proje seç",
+    "uk": "Вибрати проект"
+  },
   "ui.noLogs": {
     "zh": "暂无日志文件",
     "en": "No log files",

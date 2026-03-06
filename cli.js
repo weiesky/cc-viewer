@@ -160,6 +160,32 @@ function removeCliJsInjection() {
   }
 }
 
+async function startProxyOnly(args) {
+  try {
+    // Parse optional port argument
+    let specifiedPort = null;
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === '--port' && args[i + 1]) {
+        specifiedPort = parseInt(args[i + 1], 10);
+        i++;
+      }
+    }
+
+    const { startProxy } = await import('./proxy.js');
+    const proxyPort = await startProxy(specifiedPort);
+
+    // Print port to stdout for programmatic consumption
+    console.log(proxyPort);
+
+    // Keep process alive
+    process.on('SIGINT', () => process.exit(0));
+    process.on('SIGTERM', () => process.exit(0));
+  } catch (err) {
+    console.error('Proxy error:', err.message);
+    process.exit(1);
+  }
+}
+
 async function runProxyCommand(args) {
   try {
     // Dynamic import to avoid side effects when just installing
@@ -391,7 +417,10 @@ if (isVersion) {
   process.exit(0);
 }
 
-if (isCliMode || isDangerousMode) {
+if (args[0] === 'proxy') {
+  // Start proxy only, print port to stdout for SDK integration
+  startProxyOnly(args.slice(1));
+} else if (isCliMode || isDangerousMode) {
   const extraArgs = isDangerousMode ? ['--dangerously-skip-permissions'] : [];
 
   // 解析 -d/-c 后的可选路径参数

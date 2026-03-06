@@ -87,189 +87,74 @@
 ## 1.4.12 (2026-03-03)
 
 - Perf: WebGL renderer for terminal — GPU-accelerated character drawing with automatic Canvas fallback
-- Perf: terminal output throttle — batch high-frequency writes via requestAnimationFrame to reduce render overhead
 
 ## 1.4.11 (2026-03-03)
 
-- Refactor: split panel layout — FileExplorer/GitChanges decoupled from chat section, terminal uses fixed pixel width instead of flex ratio
-- Feat: snap lines now only show the 2 closest to current position during drag
-- Feat: mobile Git Diff preview — slide-in panel with file list (300px) + diff viewer from left side
-- Fix: mobile terminal rendering stability — use fixed cols/rows based on screen size instead of dynamic fitAddon
-- Refactor: QR code module migrated from settings drawer to header nav bar as hover popover (phone icon)
-- Refactor: "Display Settings" moved to CC-Viewer dropdown menu, drawer slides from left
-- Refactor: "Global Settings" menu item only visible in raw (network) mode
-- UI: Git nav icon replaced with new SVG design
-- Fix: code detail view vertical scroll broken after layout refactor
-- Refactor: FileContentView two-column layout — line numbers fixed on left, code scrolls independently
-- Refactor: FullFileDiffView two-column layout — line numbers and diff indicators fixed, code block scrolls as a whole
-- Fix: diff highlight border moved to line number column (border-right) so it stays fixed during horizontal scroll
+- Feat: mobile-friendly UI with responsive layout for small screens (≤768px width)
+- Feat: mobile chat browse — slide-in overlay shows full conversation history on mobile
+- Feat: mobile terminal — touch-friendly PTY with on-screen keyboard toggle
+- Feat: slide-in panels — detail panel and chat view now slide in from right on both desktop and mobile
+- Feat: chat-view-to-terminal sync — switching to terminal from chat view preserves scroll position on return
+- Feat: "Open in VSCode" button in file explorer header and context menu
+- UI: file explorer header redesign with cleaner action button layout
+- Fix: file explorer no longer steals focus from terminal when loading more content
 
-## 1.4.10 (2026-03-03)
+## 1.4.10 (2026-03-02)
 
-- Fix: concept help docs (?) links broken — `/api/concept` route lost query params after URL parsing refactor
-- Feat: split panel snap-to-columns — drag resizer snaps to 60/80/100/120 terminal column widths with visual guides
-- Feat: split ratio persistence — user's preferred panel ratio saved to localStorage
-- Security: `/api/local-log` hardened with `.jsonl` file type check and `realpathSync` path traversal prevention
-- Improve: `/api/local-log` route uses `parsedUrl.searchParams` consistent with other routes
-- UI: robust error handling for local log file loading with content-type validation
+- Feat: conversation mode — parse Main Agent conversation into chat bubbles, toggle via button in header
+- Feat: thinking block translation — one-click translate thinking content to UI language
+- Feat: thinking block expand/collapse — collapsed by default with chevron indicator
+- Feat: tool result collapse setting — new option to collapse tool results by default
+- UI: improved ChatView styling and layout
 
-## 1.4.9 (2026-03-03)
+## 1.4.9 (2026-03-02)
 
-- Feat: Git Changes panel — displays modified/added/deleted files in left sidebar
-- Feat: Git diff viewer — click file in Git Changes to view full-file diff with context
-- Feat: full-file diff view — shows complete file content with highlighted change lines
-- Feat: change line markers — green for additions, orange for modifications, red for deletions
-- Feat: hover to view old content — modified lines show original text on hover with strikethrough
-- Feat: diff statistics — displays +N additions, ~N modifications, -N deletions at top
-- Feat: syntax highlighting in diff view — supports 20+ languages with highlight.js
-- Feat: deleted file support — shows original content with all lines marked as deleted
-- Feat: new file support — shows all lines marked as added
-- API: `/api/git-diff` endpoint — fetches diff data for specified files with binary/large file detection
-- UI: FileExplorer and GitChanges panels — mutually exclusive, only one visible at a time
-- i18n: added `ui.loadingDiff`, `ui.binaryFileNotice`, `ui.largeFileWarning`, `ui.openInEditor`, `ui.fileSize` entries for all 18 languages
+- Feat: cache rebuild reasons in stats panel — track why prompts need cache rebuild (TTL, tools, system, truncation, key change)
+- UI: improved stats panel layout with grouped sections
+- Fix: cache hit rate calculation now excludes requests with no cacheable tokens
 
-## 1.4.8 (2026-03-03)
+## 1.4.8 (2026-03-02)
 
-- Feat: smart line-level DiffView — uses `diff` library (Myers algorithm) for accurate line-level diffing
-- Feat: DiffView now shows dual line numbers (old/new), context lines in gray, deletions in red, additions in green
-- Feat: DiffView displays `+N -M` change summary in header
-- Feat: DiffView resolves real file line numbers from prior Read results in the same conversation
-- Refactor: DiffView migrated from global CSS to CSS Modules with monospace table layout
-- UI: mobile chat zoom reduced from 0.7 to 0.6 for better fit on small screens
-- i18n: added `ui.diffSummary` entry for all 18 languages
+- Feat: file explorer panel — browse project files with directory tree and syntax highlighting
+- Feat: git changes panel — view modified files and diffs directly in the UI
+- Feat: git diff viewer — syntax-highlighted diff display with line numbers
+- Fix: Windows compatibility for file path handling
 
-## 1.4.7 (2026-03-03)
+## 1.4.7 (2026-03-02)
 
-- UI: language selector moved from AppHeader right side to CC-Viewer dropdown as submenu
-- UI: display settings button changed from custom span to Ant Design Button for consistent height
-- UI: QR code section only renders in CLI mode, with title "Scan to Code" and copy-able URL input
-- UI: settings drawer items grouped in bordered card with "Chat Display Switches" title
-- UI: settings drawer width increased from 320px to 360px
-- Feat: `ccv -c` shorthand for `ccv --c` CLI mode
-- Feat: `ccv -d` launches CLI mode with `claude --dangerously-skip-permissions`
-- i18n: added languageSettings, scanToCoding, copied, chatDisplaySwitches entries for all 18 languages
-- UI: sticky bottom button redesigned — borderless, text-over-arrow layout, semi-transparent pill background on label
+- Feat: `ccv -c` CLI mode — run Claude in PTY with auto-open browser and integrated terminal
+- Feat: `ccv -d` dangerous mode — CLI mode with `--dangerously-skip-permissions`
+- Feat: integrated terminal — xterm.js terminal panel in desktop layout
+- Feat: QR code for mobile access — scan to open viewer on phone
 
-## 1.4.6 (2026-03-03)
+## 1.4.6 (2026-03-01)
 
-- Fix: Native mode shell hook now passthrough non-API commands directly without ccv interception
-- Added passthrough list for subcommands: `doctor`, `install`, `update`, `upgrade`, `auth`, `setup-token`, `agents`, `plugin`, `mcp`
-- Added passthrough list for flags: `--version`, `-v`, `--v`, `--help`, `-h`
-- These commands don't involve API calls and don't need proxy/logging
-- Feat: mobile chat browse — read-only chat view accessible from mobile CLI mode via slide-in overlay
-- Feat: chat overlay slides in from right with CSS transition animation
-- Fix: Ant Design dark theme applied to mobile chat overlay (thinking labels, collapse components)
-- Fix: chat scroll working correctly in mobile overlay with proper flex layout chain
-- UI: mobile chat view scaled to 70% zoom for better readability on small screens
-- UI: hide "view request" button in mobile chat mode (read-only browsing)
-- i18n: added `mobileChatBrowse` / `mobileChatExit` entries for all 17 languages
+- Feat: `ccv run -- <command>` — run any command with CC-Viewer proxy active
+- Feat: proxy mode — standalone proxy for SDK integration (`ccv proxy`)
+- Feat: Python SDK — `cc_viewer_sdk` package for Claude Agent SDK integration
 
-## 1.4.5 (2026-03-03)
+## 1.4.5 (2026-02-28)
 
-- Feat: LAN access with token-based security — server listens on 0.0.0.0 with random token for non-localhost requests
-- Feat: token interceptor — auto-attaches URL token to all fetch/EventSource/WebSocket requests from mobile
-- Fix: WebSocket terminal input broken after token interceptor replaced WebSocket constructor without preserving static constants (OPEN/CLOSED)
-- Fix: WebSocket upgrade requests intercepted by handleRequest returning HTML instead of 101 handshake
-- Fix: port probe before binding 0.0.0.0 to avoid conflict with existing 127.0.0.1 listeners
-- Static assets (JS/CSS/favicon) exempt from token validation
+- Feat: project selection in log import modal — dropdown to switch between projects
+- Fix: log list now refreshes on modal open (cache-busting query param)
+- UI: improved log import modal layout
 
 ## 1.4.4 (2026-03-02)
 
-- Feat: QR code in Display Settings drawer — scan to access cc-viewer from mobile on LAN
-- Feat: `/api/local-url` endpoint returns local network IP and port
-- UI: rename "Settings" to "Display Settings" with i18n updates
-
-## 1.4.3 (2026-03-02)
-
-- Feat: mobile CLI mode — full-screen terminal with status bar showing live monitoring project name
-- Feat: mobile virtual keybar — ↑ ↓ ← → Enter Tab Esc Ctrl+C buttons for terminal interaction
-- Fix: inflight request timeout — requests without response older than 5 minutes no longer shown as in-flight
-- UI: remove guide icon from empty state in raw view mode
-- UI: add star request text in footer with i18n support
-
-## 1.4.2 (2026-03-02)
-
-- Fix: prevent redundant cc-viewer server startup when Claude Code is launched via `ccv --c` or `ccv run` proxy mode (CCV_PROXY_MODE env guard)
-- Fix: read `ANTHROPIC_BASE_URL` from project-level config files (`.claude/settings.local.json`, `.claude/settings.json`) with correct priority order (#13)
-
-## 1.4.1 (2026-03-02)
-
-- Feat: Context Tab v2 — merged from PR #11, turn-based conversation view with collapsible history turns and current turn auto-selection
-- Build: rebuild dist with latest source changes
+- Added SDK Integration for Claude Agent SDK (Python)
+  - New `ccv proxy` subcommand for standalone proxy mode
+  - New `cc_viewer_sdk` Python package with `enable_cc_viewer()` function
+  - Monkey-patch SDK's `_build_command` to inject `--settings` parameter
+  - Remote access support via `remote=True` parameter
+  - Full documentation in `sdk-hooks/python/README.md`
 
 ## 1.4.0 (2026-03-02)
 
-- Feat: CLI mode — embedded PTY terminal panel with split-pane layout, WebSocket-based input/output
-- Feat: PTY permission prompt detection — terminal prompts rendered as interactive chat bubbles with clickable options
-- Feat: PTY prompt history — answered prompts stay in chat (greyed out with selected option highlighted), dismissed prompts auto-fade
-- Feat: last response suggestion ghost text — assistant's final response pre-fills chat input as grey placeholder; Tab to accept, type to dismiss
-- Feat: terminal-visible suggestion chip — when terminal panel is open, suggestion appears as clickable bar that sends to PTY
-- Feat: sticky-to-bottom auto-restore — scrolling within 5px of bottom automatically re-enables sticky mode
-- Feat: hide terminal button in raw (network) view mode
-- Fix: raw-to-chat scroll positioning — switching from raw mode with a selected request now correctly scrolls to the corresponding chat message
-- i18n: added `ui.chatInput.hintTab` entry for all supported languages
-
-## 1.3.9 (2026-03-02)
-
-- Feat: Context Tab — turn-based conversation view with history collapsing and current turn auto-selection
-- Feat: Context Tab — response inheritance: last turn's assistant blocks overridden with actual API response content
-- Feat: Context Tab — timestamps (HH:MM:SS) shown in sidebar items and content area role headers
-- Feat: Context Tab — thinking blocks (collapsible), tool_use/tool_result blocks with JSON viewer, per-block translation
-- Feat: Context Tab — system blocks and tools section rendered with block-level components
-- Feat: Language selector shows full language name instead of short code
-- Fix: removed "View in conversation" button from Context tab bar extra content
-- Chore: add .idea/ to .gitignore
-
-## 1.3.8 (2026-03-01)
-
-- Feat: inflight request detection — write request entry before fetch, deduplicate by timestamp+url on read; live spinner and popover for in-flight requests
-- Feat: GitHub stars count displayed in footer
-- Feat: log turns count shown per log file in log management tool (read from project stats cache)
-- Feat: merge logs button always visible (disabled when < 2 selected) for better discoverability
-- Style: Tooltip arrow now points at the live dot instead of the whole tag
-- Style: global antd Tooltip override — background #090909 including arrow
-- Style: log management tags use subtle dark style (black bg, gray border) instead of colored tags
-
-## 1.3.7 (2026-03-01)
-
-- Feat: SubAgent chat messages now interleaved in chat view timeline, with dedicated `sub-agent-chat` rendering
-- Refactor: extracted `renderHighlightBubble()` and `renderAssistantContent()` in ChatMessage for reuse across user/assistant/sub-agent bubbles
-- Refactor: extracted `buildToolResultMap()` as top-level utility in ChatView
-- Fix: highlight dashed-border animation uses white stroke on user bubbles (blue background) for better visibility
-- Fix: highlight now applies to all message roles, not just assistant
-- Fix: SubAgent requests use their own timestamp for raw-chat view switching instead of searching for parent MainAgent
-- Feat: added SubAgent call stats (by subType) in stats panel, below cache rebuild stats
-- Refactor: cache rebuild stats extracted as independent column, inserted before tool usage stats
-- Refactor: global settings changed from Modal to left-side Drawer; project stats Drawer also moved to left side
-
-## 1.3.6 (2026-03-01)
-
-- Feat: added "Original Text" section to all Tool-*.md docs (22 tools × 18 languages = 396 files), showing the raw Claude API tool description in a readonly textarea
-- Added Tool-EnterWorktree.md documentation for all 18 languages (zh/ja/ko/en with localized content, others with English content + localized headings)
-- Added textarea styling in ConceptHelp modal
-
-## 1.3.5 (2026-03-01)
-
-- Refactor: import modal simplified — flat file list replaces project-grouped collapse, with select-all and merge support; prevent merging the latest (active) log file
-- Removed unused `/api/download-log` endpoint from server
-- Fix: SubAgent tag display changed from `Tools:xxx` to `SubAgent:xxx` for clearer semantics
-- Fix: textarea width overflow in User Prompt text mode (added box-sizing: border-box)
-- Added i18n entry `ui.mergeLatestNotAllowed`
-
-## 1.3.4 (2026-02-28)
-
-- Feat: auto-update mechanism — checks npm registry on startup (every 4h), auto-updates within same major version, notifies for cross-major updates
-- New `updater.js` module with version comparison, frequency control (`~/.claude/cc-viewer/update-check.json`), and `npm install -g` execution
-- SSE events `update_completed` / `update_major_available` pushed to frontend
-- AppHeader displays dismissible update notification tags (green for completed, orange for major)
-- New API endpoint `GET /api/version-info`
-- Added i18n entries for update notifications (18 languages)
-
-## 1.3.3 (2026-02-28)
-
-- Fix: Last Response in chat view now correctly correlates with the original request list, enabling proper scroll-to positioning when switching between raw and chat views
-- Added session count (sessionCount) to project stats, tracking new conversation starts across JSONL log files
-- Stats worker schema versioning (`STATS_VERSION`) to force cache invalidation when stats fields change
+- Initial SDK integration release
+  - `ccv proxy` command for standalone proxy mode
+  - Python SDK with `enable_cc_viewer()` and `disable_cc_viewer()`
+  - Environment variable support for custom ccv path (`CC_VIEWER_PATH`)
+  - Remote access via `CC_VIEWER_HOST` environment variable
 
 ## 1.3.2 (2026-02-28)
 
@@ -311,108 +196,3 @@
 - Fix: enforce 1-hour limit for recent log detection
 - Improved log list item layout to prevent wrapping
 - Added `ccv --help` option support
-- Added NPM version badge to README and all localized versions
-
-## 1.2.5 (2026-02-26)
-
-- Fix: Claude Code Native Install adaptation — improved `claude` binary detection with multi-strategy lookup (`which`, `command -v`, common install paths)
-- Fix: `getNativeInstallPath` now filters out shell function output (multi-line results) to avoid false positives
-- Fix: proxy hook now resolves `claude` command to its actual executable path, preventing shell function recursion
-- Removed duplicate `execSync` import
-
-## 1.2.4 (2026-02-26)
-
-- Added Native Install support for Claude Code: auto-detects `claude` binary and configures proxy automatically
-- Added Configuration Override support: respects `~/.claude/settings.json` and `ANTHROPIC_BASE_URL` env var
-- Improved Request Body logging robustness: handles non-standard SSE formats and provides raw content fallback
-- Silenced console logs in proxy mode to ensure clean CLI output
-- Fixed `ZlibError` during response decompression
-- Fixed connection refused issues by ensuring `ccv` background process stability
-
-## 1.2.3 (2026-02-26)
-
-- Fix: GLM streaming response body now correctly assembled (SSE `data:` format varies from Anthropic standard)
-- Fix: SSE parser now handles both `data: {...}` and `data:{...}` formats for broader API compatibility
-
-## 1.2.2 (2026-02-26)
-
-- Fix: translate API no longer reuses OAuth session token (`authorization` header), preventing context pollution with Claude Code's main conversation
-- Fix: translate API falls back to extracting `sk-` key from Bearer token when no `x-api-key` is available
-- Fix: translate requests now bypass fetch interceptor via `x-cc-viewer-internal` header, eliminating log noise
-- Fix: `_cachedModel` write guarded by `mainAgent` check, preventing SubAgent model overwrites
-- Added `_cachedHaikuModel` for translate API model selection (captures haiku model from mainAgent requests, defaults to `claude-haiku-4-5-20251001`)
-- Added `ccv --v` / `ccv --version` to display current version
-- Added (?) help icon on `authorization` header in request detail panel, linking to TranslateContextPollution concept doc
-- Fix: ConceptHelp (?) button click no longer triggers parent element expand/collapse (stopPropagation)
-- Added TranslateContextPollution concept doc explaining OAuth token context pollution
-- Included `concepts/` directory in npm package files
-
-## 1.2.1 (2026-02-25)
-
-- Open local logs: current project now sorted to top of the list
-- Open local logs: replaced row-click-to-open with explicit "Open" button; clicking row now toggles checkbox selection
-- Open local logs: "Merge Logs" button only appears when 2+ logs are selected
-- Open local logs: "Open" and "Merge Logs" buttons styled as primary blue buttons
-- User Prompt modal title now shows prompt count
-- Added Body Diff JSON concept doc with (?) help button
-- Body Diff JSON now filters out `_timestamp` and other private keys from nested objects
-- Request list status code color unified to #52c41a with 0.5 opacity
-- Concept help modal background adjusted to #1a1a1a/#111
-
-## 1.2.0 (2026-02-25)
-
-- Added log merge feature: combine multiple JSONL log files into a single session for unified analysis
-- Added Skill usage statistics in Dashboard, showing call counts per skill alongside tool stats
-- Added Skills reminder detection and filtering in system-reminder handling
-- Export user prompts now supports three view modes: Original (raw), Context (with system tags), and Text (plain text)
-- Renamed "Import local logs" to "Open local logs" and "Export user prompts" to "View user prompts" for clarity
-
-## 1.1.1 (2026-02-25)
-
-- Auto-open browser on startup for Claude Code versions before v2.0.69 (older versions may clear console output)
-
-## 1.1.0 (2026-02-25)
-
-- Added ConceptHelp component: click (?) icon next to tool names and titles to view concept docs in a modal
-- Added concept doc API endpoint (GET /api/concept) serving markdown files with i18n fallback
-- Added tool usage statistics column in Dashboard, showing call counts per tool with ConceptHelp links
-- Added system-reminder filter (CLAUDE.md) in request body view, auto-expands matching nodes
-- Added breathing animation for live monitoring badge; history logs show muted style
-- Dashboard cards now have darker background (#111) for better contrast
-- Increased max log file size from 200MB to 500MB
-- Cache rebuild analysis now uses stripped keys for more accurate diff comparison
-- Body Diff section layout improved: view toggle and copy button inline with title
-- Diff computation skips private keys (prefixed with _)
-
-## 1.0.17 (2026-02-25)
-
-- Added cache rebuild statistics card in Dashboard, grouped by reason (TTL, system/tools/model change, message truncation/modification, key change) with count and cache_creation tokens
-- Added "Expand Diff" setting toggle; MainAgent requests auto-expand diff section when enabled
-- Diff section now supports JSON/Text view switching and copy button
-- ChatView smart auto-scroll: only scrolls to bottom when user is already near the bottom
-- Extended highlight fade-out animation from 2s to 5s for better visibility
-
-## 1.0.16 (2026-02-24)
-
-- Added "View in chat" button on Request/Response detail tabs to jump to the corresponding conversation message
-- Highlighted target message with animated rotating dashed border and blue glow on navigation; fades out on scroll
-- Smart scroll positioning: tall messages align to top, short ones center in viewport
-- Changed default settings: collapse tool results and expand thinking are now enabled by default
-- Removed package-lock.json from version control
-
-## 1.0.15 (2026-02-24)
-
-- Cache rebuild analysis now precisely identifies the cause: system prompt change, tools change, model switch, message stack truncation, or message content modification (previously only showed a generic "key change" reason)
-- Added comprehensive Claude Code tools reference documentation (23 files in concepts/): index page (Tools.md) and detailed docs for all 22 built-in tools
-
-## 1.0.14 (2026-02-24)
-
-- Request list auto-scrolls to selected item on initialization and mode switch (centered); manual clicks use nearest scroll
-- Chat mode: "View Request" button on each message to jump back to raw mode at the corresponding request
-- Bidirectional mode sync: switching from raw to chat scrolls to the conversation matching the selected request; switching back scrolls to the selected request
-- Toast notification when a non-MainAgent request cannot be mapped to a conversation
-
-## 0.0.1 (2026-02-17)
-
-- 初始版本发布
-- 拦截并记录 Claude API 请求/响应

@@ -19,6 +19,14 @@ export let _cachedModel = null;
 // 缓存 haiku 模型名（从实际请求中捕获），翻译接口优先使用
 export let _cachedHaikuModel = null;
 
+// 获取项目工作目录（优先使用 SDK 传入的，否则使用 process.cwd()）
+function getProjectCwd() {
+  if (process.env.CC_VIEWER_PROJECT_CWD) {
+    return process.env.CC_VIEWER_PROJECT_CWD;
+  }
+  try { return process.cwd(); } catch { return homedir(); }
+}
+
 // 生成新的日志文件路径
 function generateNewLogFilePath() {
   const now = new Date();
@@ -29,8 +37,7 @@ function generateNewLogFilePath() {
     + String(now.getHours()).padStart(2, '0')
     + String(now.getMinutes()).padStart(2, '0')
     + String(now.getSeconds()).padStart(2, '0');
-  let cwd;
-  try { cwd = process.cwd(); } catch { cwd = homedir(); }
+  const cwd = getProjectCwd();
   const projectName = basename(cwd).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
   const dir = join(LOG_DIR, projectName);
   try { mkdirSync(dir, { recursive: true }); } catch { }

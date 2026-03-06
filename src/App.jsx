@@ -1,5 +1,5 @@
 import React from 'react';
-import { ConfigProvider, Layout, theme, Modal, List, Tag, Spin, Button, Checkbox, Badge, message } from 'antd';
+import { ConfigProvider, Layout, theme, Modal, List, Tag, Spin, Button, Checkbox, Badge, message, Select } from 'antd';
 import { FileTextOutlined, UploadOutlined, MessageOutlined, BranchesOutlined } from '@ant-design/icons';
 import AppHeader from './components/AppHeader';
 import RequestList from './components/RequestList';
@@ -626,8 +626,8 @@ class App extends React.Component {
   };
 
   handleImportLocalLogs = () => {
-    this.setState({ importModalVisible: true, localLogsLoading: true });
-    fetch(apiUrl('/api/local-logs'))
+    this.setState({ importModalVisible: true, localLogsLoading: true, selectedLogs: new Set() });
+    fetch(apiUrl(`/api/local-logs?_t=${Date.now()}`))
       .then(res => res.json())
       .then(data => {
         const { _currentProject, ...logs } = data;
@@ -1037,6 +1037,16 @@ class App extends React.Component {
           styles={{ body: { maxHeight: '60vh', overflow: 'auto' } }}
         >
           <div className={styles.modalActions}>
+            <Select
+              value={this.state.currentProject}
+              onChange={(value) => this.setState({ currentProject: value, selectedLogs: new Set() })}
+              style={{ width: 200, marginRight: 12 }}
+              placeholder={t('ui.selectProject')}
+            >
+              {Object.keys(this.state.localLogs).map(project => (
+                <Select.Option key={project} value={project}>{project}</Select.Option>
+              ))}
+            </Select>
             <Button icon={<UploadOutlined />} onClick={this.handleLoadLocalJsonlFile}>
               {t('ui.loadLocalJsonl')}
             </Button>

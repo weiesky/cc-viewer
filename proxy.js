@@ -8,6 +8,20 @@ import { setupInterceptor } from './interceptor.js';
 // Setup interceptor to patch fetch
 setupInterceptor();
 
+// Store the original base URL before any modifications
+// This is set by the Python SDK when starting the proxy
+const _originalBaseUrl = process.env.CC_VIEWER_ORIGINAL_BASE_URL || null;
+
+// Store the project working directory for log file naming
+const _projectCwd = process.env.CC_VIEWER_PROJECT_CWD || null;
+
+// Debug logging for SDK mode
+if (_originalBaseUrl || _projectCwd) {
+  console.error(`[CC-Viewer Proxy] SDK mode:`);
+  console.error(`  Original base URL: ${_originalBaseUrl || '(will read from settings)'}`);
+  console.error(`  Project CWD: ${_projectCwd || '(not set)'}`);
+}
+
 function getBaseUrlFromSettings(settingsPath) {
   try {
     if (existsSync(settingsPath)) {
@@ -23,11 +37,20 @@ function getBaseUrlFromSettings(settingsPath) {
 }
 
 function getOriginalBaseUrl() {
+  // 1. Use stored original URL (set by SDK before modifying ANTHROPIC_BASE_URL)
+  if (_originalBaseUrl) {
+    return _originalBaseUrl;
+  }
+
+  // 2. Check config files in priority order (highest first)
   let cwd;
   try { cwd = process.cwd(); } catch { cwd = null; }
 
-  // Check config files in priority order (highest first)
   const configPaths = [];
+  if (_projectCwd) {
+    configPaths.push(join(_projectCwd, '.claude', 'settings.local.json'));
+    configPaths.push(join(_projectCwd, '.claude', 'settings.json'));
+  }
   if (cwd) {
     configPaths.push(join(cwd, '.claude', 'settings.local.json'));
     configPaths.push(join(cwd, '.claude', 'settings.json'));
@@ -39,16 +62,16 @@ function getOriginalBaseUrl() {
     if (url) return url;
   }
 
-  // Check env var
+  // 3. Check env var
   if (process.env.ANTHROPIC_BASE_URL) {
     return process.env.ANTHROPIC_BASE_URL;
   }
 
-  // Default
+  // 4. Default
   return 'https://api.anthropic.com';
 }
 
-export function startProxy() {
+export function startProxy(port = 0) {
   return new Promise((resolve, reject) => {
     const server = createServer(async (req, res) => {
       const originalBaseUrl = getOriginalBaseUrl();
@@ -85,7 +108,7 @@ export function startProxy() {
 
         const response = await fetch(fullUrl, fetchOptions);
 
-        // fetch 自动解压，需移除编码相关 header 避免客户端重复解压
+        // fetch 自动解压，须移除编码相关 header 避免客户端重复解压
         const responseHeaders = {};
         for (const [key, value] of response.headers.entries()) {
           // Skip Content-Encoding and Transfer-Encoding to let Node/Client handle it
@@ -156,8 +179,9 @@ export function startProxy() {
       }
     });
 
-    // Start on random port
-    server.listen(0, '127.0.0.1', () => {
+    // Start on specified port or random port
+    const listenHost = process.env.CC_VIEWER_HOST || '127.0.0.1';
+    server.listen(port, listenHost, () => {
       const address = server.address();
       resolve(address.port);
     });
