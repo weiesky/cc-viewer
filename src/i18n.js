@@ -503,6 +503,26 @@ const i18nData = {
     "tr": "Diff'ten Çık",
     "uk": "Вийти з Diff"
   },
+  "ui.mobileGoBack": {
+    "zh": "回退",
+    "en": "Back",
+    "zh-TW": "返回",
+    "ko": "뒤로",
+    "ja": "戻る",
+    "de": "Zurück",
+    "es": "Volver",
+    "fr": "Retour",
+    "it": "Indietro",
+    "da": "Tilbage",
+    "pl": "Wstecz",
+    "ru": "Назад",
+    "ar": "رجوع",
+    "no": "Tilbake",
+    "pt-BR": "Voltar",
+    "th": "ย้อนกลับ",
+    "tr": "Geri",
+    "uk": "Назад"
+  },
   "ui.mobileGitDiffHint": {
     "zh": "选择文件查看变更",
     "en": "Select a file to view changes",

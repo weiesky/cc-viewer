@@ -1,6 +1,6 @@
 import React from 'react';
 import { ConfigProvider, Layout, theme, Modal, Table, Tag, Spin, Button, Checkbox, Badge, Switch, message } from 'antd';
-import { UploadOutlined, MessageOutlined, BranchesOutlined, DownloadOutlined, DeleteOutlined } from '@ant-design/icons';
+import { UploadOutlined, MessageOutlined, BranchesOutlined, DownloadOutlined, DeleteOutlined, RollbackOutlined } from '@ant-design/icons';
 import { isMobile } from './env';
 import AppHeader from './components/AppHeader';
 import RequestList from './components/RequestList';
@@ -1220,15 +1220,27 @@ class App extends React.Component {
               <span style={{ fontSize: 12, color: '#aaa' }}>{mobileIsLocalLog ? t('ui.historyLog', { file: this._localLogFile }) : (t('ui.liveMonitoring') + (this.state.projectName ? `: ${this.state.projectName}` : ''))}</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Button
-                type="text"
-                size="small"
-                icon={<BranchesOutlined />}
-                onClick={() => this.setState(prev => ({ mobileGitDiffVisible: !prev.mobileGitDiffVisible, mobileChatVisible: false, mobileStatsVisible: false, mobileLogMgmtVisible: false, mobileSettingsVisible: false }))}
-                style={{ color: this.state.mobileGitDiffVisible ? '#fff' : '#888', fontSize: 12 }}
-              >
-                {this.state.mobileGitDiffVisible ? t('ui.mobileGitDiffExit') : t('ui.mobileGitDiffBrowse')}
-              </Button>
+              {mobileIsLocalLog ? (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<RollbackOutlined />}
+                  onClick={() => history.back()}
+                  style={{ color: '#888', fontSize: 12 }}
+                >
+                  {t('ui.mobileGoBack')}
+                </Button>
+              ) : (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<BranchesOutlined />}
+                  onClick={() => this.setState(prev => ({ mobileGitDiffVisible: !prev.mobileGitDiffVisible, mobileChatVisible: false, mobileStatsVisible: false, mobileLogMgmtVisible: false, mobileSettingsVisible: false }))}
+                  style={{ color: this.state.mobileGitDiffVisible ? '#fff' : '#888', fontSize: 12 }}
+                >
+                  {this.state.mobileGitDiffVisible ? t('ui.mobileGitDiffExit') : t('ui.mobileGitDiffBrowse')}
+                </Button>
+              )}
               {!mobileIsLocalLog && (
                 <Button
                   type="text"
