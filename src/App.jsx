@@ -1,7 +1,7 @@
 import React from 'react';
 import { ConfigProvider, Layout, theme, Modal, Table, Tag, Spin, Button, Checkbox, Badge, Switch, message } from 'antd';
 import { UploadOutlined, MessageOutlined, BranchesOutlined, DownloadOutlined, DeleteOutlined, RollbackOutlined } from '@ant-design/icons';
-import { isMobile } from './env';
+import { isMobile, isIOS } from './env';
 import AppHeader from './components/AppHeader';
 import RequestList from './components/RequestList';
 import DetailPanel from './components/DetailPanel';
@@ -67,9 +67,29 @@ class App extends React.Component {
     this._chunkedEntries = [];   // 分段加载缓冲
     this._chunkedTotal = 0;
     this.mainContainerRef = React.createRef();
+    this._layoutRef = React.createRef();
   }
 
   componentDidMount() {
+    // iOS 虚拟键盘弹出时，Safari 会滚动整个文档将页面上推，
+    // 导致导航栏消失在视口之外。通过 visualViewport 的 resize + scroll
+    // 事件同步可见区域的高度和偏移，用 fixed 定位将布局锁定在可见区域内。
+    if (isIOS && window.visualViewport) {
+      this._onVisualViewportChange = () => {
+        const el = this._layoutRef.current;
+        if (!el) return;
+        const vv = window.visualViewport;
+        el.style.position = 'fixed';
+        el.style.top = `${vv.offsetTop}px`;
+        el.style.height = `${vv.height}px`;
+        el.style.width = '100%';
+        el.style.left = '0';
+      };
+      window.visualViewport.addEventListener('resize', this._onVisualViewportChange);
+      window.visualViewport.addEventListener('scroll', this._onVisualViewportChange);
+      this._onVisualViewportChange();
+    }
+
     // 获取用户偏好设置（包含 filterIrrelevant）
     fetch(apiUrl('/api/preferences'))
       .then(res => res.json())
@@ -156,6 +176,10 @@ class App extends React.Component {
   }
 
   componentWillUnmount() {
+    if (this._onVisualViewportChange && window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', this._onVisualViewportChange);
+      window.visualViewport.removeEventListener('scroll', this._onVisualViewportChange);
+    }
     if (this.eventSource) this.eventSource.close();
     if (this._autoSelectTimer) clearTimeout(this._autoSelectTimer);
     if (this._loadingCountTimer) cancelAnimationFrame(this._loadingCountTimer);
@@ -1502,7 +1526,7 @@ class App extends React.Component {
             <div className={styles.loadingText}>Loading...({fileLoadingCount})</div>
           </div>
         )}
-        <Layout className={styles.layout}>
+        <Layout className={styles.layout} ref={this._layoutRef}>
           <Layout.Header className={styles.header}>
             <AppHeader
               requestCount={filteredRequests.length}

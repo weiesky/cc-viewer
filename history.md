@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.17 (2026-03-11)
+
+- Fix: iOS terminal severe lag — skip WebGL renderer on iOS, fall back to Canvas rendering
+- Fix: iOS keyboard pushes navigation bar out of viewport — use `visualViewport` API with fixed positioning to lock layout within visible area
+- Improve: reduce terminal scrollback for better mobile performance (iOS: 200, Android: 1000, Desktop: 3000)
+- Add `isIOS` device detection in env.js
+- Add `interactive-widget=resizes-content` to viewport meta tag
+
 ## 1.5.16 (2026-03-11)
 
 - Fix: single-line selection invisible in FileContentView editor — `.cm-activeLine` solid background occluded CodeMirror selection layer; changed to semi-transparent `rgba(255, 255, 255, 0.06)`

@@ -6,7 +6,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 import { t } from '../i18n';
-import { isMobile } from '../env';
+import { isMobile, isIOS } from '../env';
 import styles from './TerminalPanel.module.css';
 
 // 虚拟按键定义：label 显示文字，seq 为发送到终端的转义序列
@@ -73,7 +73,7 @@ class TerminalPanel extends React.Component {
         selectionBackground: '#264f78',
       },
       allowProposedApi: true,
-      scrollback: isMobile ? 2000 : 5000,
+      scrollback: isIOS ? 200 : isMobile ? 1000 : 3000,
       smoothScrollDuration: 0,
       scrollOnUserInput: true,
     });
@@ -89,7 +89,10 @@ class TerminalPanel extends React.Component {
     this.terminal.open(this.containerRef.current);
 
     // 启用 WebGL 渲染器，GPU 加速绘制，失败时自动回退 Canvas
-    this._loadWebglAddon(false);
+    // iOS 移动端 WebGL 性能差，直接使用 Canvas 渲染器
+    if (!isIOS) {
+      this._loadWebglAddon(false);
+    }
 
     // 写入节流：批量合并高频输出，避免逐条触发渲染
     this._writeBuffer = '';
