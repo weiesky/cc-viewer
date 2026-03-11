@@ -100,7 +100,7 @@ const darkTheme = EditorView.theme({
     background: 'rgba(95, 110, 145, 0.25)',
   },
   '.cm-activeLine': {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
   },
   '.cm-cursor': {
     borderLeftColor: '#e0e0e0',

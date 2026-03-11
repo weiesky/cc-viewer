@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.16 (2026-03-11)
+
+- Fix: single-line selection invisible in FileContentView editor — `.cm-activeLine` solid background occluded CodeMirror selection layer; changed to semi-transparent `rgba(255, 255, 255, 0.06)`
+
 ## 1.5.15 (2026-03-11)
 
 - Fix: multi-line paste in terminal triggers auto-submit — intercept paste events with bracketed paste escape sequences (`\x1b[200~`...`\x1b[201~`) to prevent newlines from being treated as Enter
