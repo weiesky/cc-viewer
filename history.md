@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.20 (2026-03-12)
+
+- Fix: `proxy-errors.js` missing from npm package, causing `ERR_MODULE_NOT_FOUND` when running `ccv -logger`
+
 ## 1.5.19 (2026-03-12)
 
 - Refactor: ccv argument passthrough — ccv is now a drop-in replacement for claude, all args passed through directly
