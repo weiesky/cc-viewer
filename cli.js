@@ -304,7 +304,8 @@ async function runCliMode(extraClaudeArgs = [], cwd) {
   }
 
   // 4. 自动打开浏览器
-  const url = `http://127.0.0.1:${port}`;
+  const protocol = serverMod.getProtocol();
+  const url = `${protocol}://127.0.0.1:${port}`;
   try {
     const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
     const { execSync } = await import('node:child_process');
@@ -359,7 +360,8 @@ async function runCliModeWorkspaceSelector(extraClaudeArgs = []) {
   serverMod.setWorkspaceClaudePath(claudePath, isNpmVersion);
 
   // 自动打开浏览器
-  const url = `http://127.0.0.1:${port}`;
+  const wsProtocol = serverMod.getProtocol();
+  const url = `${wsProtocol}://127.0.0.1:${port}`;
   try {
     const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
     const { execSync } = await import('node:child_process');

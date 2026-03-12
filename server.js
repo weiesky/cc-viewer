@@ -113,7 +113,7 @@ const ACCESS_TOKEN = randomBytes(16).toString('hex');
 
 let clients = [];
 let server;
-let actualPort = START_PORT;
+let actualPort = 0;
 let serverProtocol = 'http';
 // 跟踪所有被 watch 的日志文件
 const watchedFiles = new Map();
@@ -1684,15 +1684,24 @@ export async function startViewer() {
       probe.on('error', () => {
         probe.destroy();
         // 端口空闲，绑定
-        const currentServer = useHttps
-          ? createHttpsServer(httpsOptions, handleRequest)
-          : createServer(handleRequest);
+        let currentServer;
+        if (useHttps) {
+          try {
+            currentServer = createHttpsServer(httpsOptions, handleRequest);
+          } catch (err) {
+            console.error('[CC Viewer] HTTPS server creation failed, falling back to HTTP:', err.message);
+            currentServer = createServer(handleRequest);
+            serverProtocol = 'http';
+          }
+        } else {
+          currentServer = createServer(handleRequest);
+        }
 
         currentServer.listen(port, HOST, () => {
           server = currentServer;
           actualPort = port;
-          const url = `${protocol}://127.0.0.1:${port}`;
-          console.error(t('server.started', { host: '127.0.0.1', port }));
+          const url = `${serverProtocol}://127.0.0.1:${port}`;
+          console.error(t('server.started', { host: '127.0.0.1', port, protocol: serverProtocol }));
           // v2.0.69 之前的版本会清空控制台，自动打开浏览器确保用户能看到界面
           try {
             const ccPkgPath = join(__dirname, '..', '@anthropic-ai', 'claude-code', 'package.json');
@@ -1713,7 +1722,7 @@ export async function startViewer() {
             setupTerminalWebSocket(currentServer);
           }
           // 通知插件服务器已启动
-          runParallelHook('serverStarted', { port, host: HOST, url, ip: getLocalIp(), token: ACCESS_TOKEN })
+          runParallelHook('serverStarted', { port, host: HOST, url, ip: getLocalIp(), token: ACCESS_TOKEN, protocol: serverProtocol })
             .catch(err => console.error('[CC Viewer] Plugin serverStarted hook error:', err.message));
           resolve(server);
         });
@@ -2004,6 +2013,10 @@ async function setupTerminalWebSocket(httpServer) {
 
 export function getPort() {
   return actualPort;
+}
+
+export function getProtocol() {
+  return serverProtocol;
 }
 
 let _stoppingPromise = null;
