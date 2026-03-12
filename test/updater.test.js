@@ -232,6 +232,7 @@ describe('version comparison logic (indirect)', () => {
     return execFileSync(process.execPath, ['-e', script], {
       encoding: 'utf-8',
       timeout: 5000,
+      env: { ...process.env, NO_COLOR: '1' },
     }).trim();
   }
 
@@ -244,32 +245,32 @@ describe('version comparison logic (indirect)', () => {
   });
 
   it('isNewer returns true for higher patch', () => {
-    const out = evalInModule(`console.log(isNewer('1.4.20', '1.4.19'));`);
+    const out = evalInModule(`console.log(String(isNewer('1.4.20', '1.4.19')));`);
     assert.equal(out, 'true');
   });
 
   it('isNewer returns false for same version', () => {
-    const out = evalInModule(`console.log(isNewer('1.4.19', '1.4.19'));`);
+    const out = evalInModule(`console.log(String(isNewer('1.4.19', '1.4.19')));`);
     assert.equal(out, 'false');
   });
 
   it('isNewer returns false for older version', () => {
-    const out = evalInModule(`console.log(isNewer('1.4.18', '1.4.19'));`);
+    const out = evalInModule(`console.log(String(isNewer('1.4.18', '1.4.19')));`);
     assert.equal(out, 'false');
   });
 
   it('isNewer handles major version bump', () => {
-    const out = evalInModule(`console.log(isNewer('2.0.0', '1.9.99'));`);
+    const out = evalInModule(`console.log(String(isNewer('2.0.0', '1.9.99')));`);
     assert.equal(out, 'true');
   });
 
   it('isNewer handles minor version bump', () => {
-    const out = evalInModule(`console.log(isNewer('1.5.0', '1.4.99'));`);
+    const out = evalInModule(`console.log(String(isNewer('1.5.0', '1.4.99')));`);
     assert.equal(out, 'true');
   });
 
   it('isNewer: lower major is not newer', () => {
-    const out = evalInModule(`console.log(isNewer('0.9.99', '1.0.0'));`);
+    const out = evalInModule(`console.log(String(isNewer('0.9.99', '1.0.0')));`);
     assert.equal(out, 'false');
   });
 });
