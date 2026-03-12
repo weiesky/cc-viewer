@@ -322,6 +322,15 @@ describe('interceptor', () => {
   // assembleStreamMessage
   // --------------------------------------------------------------------------
   describe('assembleStreamMessage', () => {
+    it('ignores non-object events and returns null when no message_start', () => {
+      const events = [
+        'data: {"type":"message_start"}',
+        { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'x' } },
+      ];
+      const msg = assembleStreamMessage(events);
+      assert.equal(msg, null);
+    });
+
     it('assembles a simple text response', () => {
       const events = [
         { type: 'message_start', message: { id: 'msg_1', role: 'assistant', model: 'claude-opus-4-6', usage: { input_tokens: 10 } } },
