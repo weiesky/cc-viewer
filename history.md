@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.29 (2026-03-14)
+
+- Feature: auto-refresh FileExplorer and GitChanges panels when Claude uses file-mutating tools (Write, Edit, Bash, NotebookEdit)
+- Improve: footer bar top border for visual consistency with other toolbars
+- Improve: unit test coverage from 68.98% → 71.23% line, 69.17% → 72.81% branch
+- Add: test/git-diff.test.js, test/log-watcher.test.js, test/findcc.test.js, test/context-watcher.test.js
+- Add: `npm run test:coverage` script for branch coverage reporting
+- Improve: supplemented branch tests for proxy-errors, updater, stats-worker
+
 ## 1.5.27 (2026-03-13)
 
 - Remove: inflight request detection and display (spinner, tooltip, popover) — feature no longer functional

@@ -175,6 +175,7 @@
 }
 
 .footer {
+  border-top: 1px solid #1f1f1f;
   height: 18px;
   background: #000;
   display: flex;

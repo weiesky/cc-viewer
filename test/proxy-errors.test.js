@@ -20,6 +20,18 @@ describe('extractApiErrorMessage', () => {
     const text = 'bad gateway';
     assert.equal(extractApiErrorMessage(502, text), 'API Error (502): bad gateway');
   });
+
+  it('truncates long non-JSON text to 200 chars', () => {
+    const text = 'x'.repeat(300);
+    const result = extractApiErrorMessage(500, text);
+    assert.ok(result.includes('x'.repeat(200)));
+    assert.ok(!result.includes('x'.repeat(201)));
+  });
+
+  it('handles empty error object gracefully', () => {
+    const text = JSON.stringify({ error: {} });
+    assert.equal(extractApiErrorMessage(500, text), 'API Error (500): {"error":{}}');
+  });
 });
 
 describe('formatProxyRequestError', () => {
@@ -32,5 +44,39 @@ describe('formatProxyRequestError', () => {
   it('保留普通错误内容', () => {
     const err = new Error('network down');
     assert.equal(formatProxyRequestError(err), '[CC-Viewer Proxy] Request failed: network down');
+  });
+
+  it('converts body timeout to fixed message', () => {
+    const err = new Error('fetch failed');
+    err.cause = { code: 'UND_ERR_BODY_TIMEOUT' };
+    assert.equal(formatProxyRequestError(err), '[CC-Viewer Proxy] Request failed: Upstream body timeout');
+  });
+
+  it('appends cause.message when present', () => {
+    const err = new Error('fetch failed');
+    err.cause = { message: 'ECONNREFUSED' };
+    assert.equal(formatProxyRequestError(err), '[CC-Viewer Proxy] Request failed: fetch failed (ECONNREFUSED)');
+  });
+
+  it('appends cause.code when no cause.message', () => {
+    const err = new Error('fetch failed');
+    err.cause = { code: 'ENOTFOUND' };
+    assert.equal(formatProxyRequestError(err), '[CC-Viewer Proxy] Request failed: fetch failed (ENOTFOUND)');
+  });
+
+  it('falls back to cause itself when no message or code', () => {
+    const err = new Error('fetch failed');
+    err.cause = 'raw cause string';
+    assert.equal(formatProxyRequestError(err), '[CC-Viewer Proxy] Request failed: fetch failed (raw cause string)');
+  });
+
+  it('handles non-Error input', () => {
+    const result = formatProxyRequestError('just a string');
+    assert.equal(result, '[CC-Viewer Proxy] Request failed: just a string');
+  });
+
+  it('handles null/undefined input', () => {
+    const result = formatProxyRequestError(null);
+    assert.equal(result, '[CC-Viewer Proxy] Request failed: null');
   });
 });

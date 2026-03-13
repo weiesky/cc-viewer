@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, watchFile, unwatchFile, statSync, readdirSync, renameSync, unlinkSync, openSync, readSync, closeSync, realpathSync, mkdirSync, createReadStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, extname } from 'node:path';
-import { homedir, userInfo, platform, networkInterfaces } from 'node:os';
+import { homedir, platform, networkInterfaces } from 'node:os';
 import { execFile, exec, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { Worker } from 'node:worker_threads';
@@ -38,6 +38,10 @@ import { LOG_DIR } from './findcc.js';
 import { t, detectLanguage } from './i18n.js';
 import { checkAndUpdate } from './lib/updater.js';
 import { loadPlugins, runWaterfallHook, runParallelHook, getPluginsInfo, PLUGINS_DIR } from './lib/plugin-loader.js';
+import { getUserProfile } from './lib/user-profile.js';
+import { getGitDiffs } from './lib/git-diff.js';
+import { watchContextWindow, installStatusLine, uninstallStatusLine, CONTEXT_WINDOW_FILE } from './lib/context-watcher.js';
+import { readLogFile, watchLogFile, startWatching, getWatchedFiles } from './lib/log-watcher.js';
 
 const PREFS_FILE = join(LOG_DIR, 'preferences.json');
 const isCliMode = process.env.CCV_CLI_MODE === '1';
@@ -83,40 +87,6 @@ export function setWorkspaceClaudePath(path, isNpm) {
 }
 
 
-// macOS user profile (avatar + display name), cached once
-let _userProfile = null;
-let _userProfilePromise = null;
-async function getUserProfile() {
-  if (_userProfile) return _userProfile;
-  if (_userProfilePromise) return _userProfilePromise;
-  _userProfilePromise = _getUserProfileImpl();
-  _userProfile = await _userProfilePromise;
-  _userProfilePromise = null;
-  return _userProfile;
-}
-async function _getUserProfileImpl() {
-  const info = userInfo();
-  const name = info.username || 'User';
-  let displayName = name;
-  let avatarBase64 = null;
-
-  if (platform() === 'darwin') {
-    try {
-      const { stdout: rn } = await execFileAsync('dscl', ['.', '-read', `/Users/${name}`, 'RealName'], { encoding: 'utf-8', timeout: 3000 });
-      const match = rn.match(/RealName:\n?\s*(.+)/);
-      if (match && match[1].trim()) displayName = match[1].trim();
-    } catch { }
-
-    try {
-      const { stdout } = await execAsync(`dscl . -read /Users/${name} JPEGPhoto | tail -1 | xxd -r -p`, { timeout: 5000, maxBuffer: 1024 * 1024, encoding: 'buffer' });
-      if (stdout && stdout.length > 100) {
-        avatarBase64 = `data:image/jpeg;base64,${stdout.toString('base64')}`;
-      }
-    } catch { }
-  }
-
-  return { name: displayName, avatar: avatarBase64 };
-}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -131,8 +101,6 @@ let clients = [];
 let server;
 let actualPort = 0;
 let serverProtocol = 'http';
-// 跟踪所有被 watch 的日志文件
-const watchedFiles = new Map();
 // Stats Worker 实例
 let statsWorker = null;
 
@@ -176,183 +144,16 @@ const MIME_TYPES = {
   '.woff2': 'font/woff2',
 };
 
-function readLogFile() {
-  if (!existsSync(LOG_FILE)) {
-    return [];
-  }
-
-  try {
-    const content = readFileSync(LOG_FILE, 'utf-8');
-    const entries = content.split('\n---\n').filter(line => line.trim());
-    const parsed = entries.map(entry => {
-      try {
-        return JSON.parse(entry);
-      } catch {
-        return null;
-      }
-    }).filter(Boolean);
-    // 去重：同一 timestamp+url 的条目，后出现的（带 response）覆盖先出现的（在途）
-    const map = new Map();
-    for (const entry of parsed) {
-      const key = `${entry.timestamp}|${entry.url}`;
-      map.set(key, entry);
-    }
-    return Array.from(map.values());
-  } catch (err) {
-    console.error('Error reading log file:', err);
-    return [];
-  }
-}
-
-function sendToClients(entry) {
-  clients.forEach(client => {
-    try {
-      client.write(`data: ${JSON.stringify(entry)}\n\n`);
-    } catch (err) {
-      // Client disconnected
-    }
-  });
-}
-
-function watchLogFile(logFile) {
-  if (watchedFiles.has(logFile)) return;
-  let lastSize = 0;
-  watchedFiles.set(logFile, true);
-  watchFile(logFile, { interval: 500 }, () => {
-    try {
-      const content = readFileSync(logFile, 'utf-8');
-      const newContent = content.slice(lastSize);
-      lastSize = content.length;
-
-      if (newContent.trim()) {
-        const entries = newContent.split('\n---\n').filter(line => line.trim());
-        entries.forEach(entry => {
-          try {
-            const parsed = JSON.parse(entry);
-            // 注入 Claude 进程 PID：CLI 模式从 PTY 获取，非 CLI 模式使用当前进程 PID
-            if (!parsed.pid) {
-              parsed.pid = getClaudePid();
-            }
-            sendToClients(parsed);
-            runParallelHook('onNewEntry', parsed).catch(() => {});
-          } catch (err) {
-            // Skip invalid entries
-          }
-        });
-        // 通知 stats worker 更新统计
-        notifyStatsWorker(logFile);
-      }
-
-      // 检测日志文件是否已轮转到新文件
-      if (LOG_FILE !== logFile && !watchedFiles.has(LOG_FILE)) {
-        // 轮转发生，发送 full_reload 让客户端重新加载新文件
-        const newEntries = readLogFile();
-        clients.forEach(client => {
-          try {
-            client.write(`event: full_reload\ndata: ${JSON.stringify(newEntries)}\n\n`);
-          } catch { }
-        });
-        watchLogFile(LOG_FILE);
-      }
-    } catch (err) {
-      // File not yet created, will retry on next poll
-    }
-  });
-}
-
-function startWatching() {
-  watchLogFile(LOG_FILE);
-  installStatusLine();
-  watchContextWindow();
-}
-
-// 监听 ~/.claude/context-window.json，推送上下文使用率到前端
-const CONTEXT_WINDOW_FILE = join(homedir(), '.claude', 'context-window.json');
-const CLAUDE_SETTINGS_FILE = join(homedir(), '.claude', 'settings.json');
-const CCV_STATUSLINE_SCRIPT = join(homedir(), '.claude', 'ccv-statusline.sh');
-let _lastContextPct = -1;
-let _originalStatusLine = undefined; // undefined = not yet installed
-
-function watchContextWindow() {
-  if (!existsSync(CONTEXT_WINDOW_FILE)) {
-    setTimeout(watchContextWindow, 5000);
-    return;
-  }
-  watchFile(CONTEXT_WINDOW_FILE, { interval: 2000 }, () => {
-    try {
-      const raw = readFileSync(CONTEXT_WINDOW_FILE, 'utf-8');
-      const data = JSON.parse(raw);
-      const pct = data?.context_window?.used_percentage ?? -1;
-      if (pct !== _lastContextPct) {
-        _lastContextPct = pct;
-        clients.forEach(client => {
-          try {
-            client.write(`event: context_window\ndata: ${JSON.stringify(data.context_window)}\n\n`);
-          } catch { }
-        });
-      }
-    } catch { }
-  });
-}
-
-// 安装 statusLine wrapper：兼容用户已有配置
-function installStatusLine() {
-  try {
-    let settings = {};
-    if (existsSync(CLAUDE_SETTINGS_FILE)) {
-      settings = JSON.parse(readFileSync(CLAUDE_SETTINGS_FILE, 'utf-8'));
-    }
-
-    // 如果已经是我们的脚本（上次未正常清理），视为无原始配置
-    if (settings.statusLine?.command?.includes('ccv-statusline')) {
-      _originalStatusLine = null; // 标记为"无原始配置"
-    } else {
-      _originalStatusLine = settings.statusLine || null;
-    }
-
-    // 生成 wrapper 脚本：保存 context-window.json + 链式调用原有命令
-    const originalCmd = _originalStatusLine?.type === 'command' && _originalStatusLine?.command
-      ? _originalStatusLine.command : '';
-    const scriptLines = [
-      '#!/usr/bin/env bash',
-      `input=$(cat)`,
-      `echo "$input" > ${CONTEXT_WINDOW_FILE}`,
-    ];
-    if (originalCmd) {
-      scriptLines.push(`echo "$input" | ${originalCmd}`);
-    } else {
-      scriptLines.push(`pct=$(echo "$input" | jq -r '.context_window.used_percentage // 0' 2>/dev/null || echo 0)`);
-      scriptLines.push(`echo "ctx \${pct}%"`);
-    }
-    // 先创建脚本文件，再写入 settings（确保脚本存在后才引用）
-    writeFileSync(CCV_STATUSLINE_SCRIPT, scriptLines.join('\n') + '\n', { mode: 0o755 });
-    settings.statusLine = { type: 'command', command: CCV_STATUSLINE_SCRIPT };
-    writeFileSync(CLAUDE_SETTINGS_FILE, JSON.stringify(settings, null, 2) + '\n');
-  } catch (err) {
-    console.error('[CC Viewer] Failed to install statusLine:', err.message);
-  }
-}
-
-// 卸载 statusLine wrapper：先还原 settings，再删脚本
-function uninstallStatusLine() {
-  if (_originalStatusLine === undefined) return; // 未安装过
-  try {
-    // 先还原 settings.json
-    if (existsSync(CLAUDE_SETTINGS_FILE)) {
-      const settings = JSON.parse(readFileSync(CLAUDE_SETTINGS_FILE, 'utf-8'));
-      if (settings.statusLine?.command?.includes('ccv-statusline')) {
-        if (_originalStatusLine) {
-          settings.statusLine = _originalStatusLine;
-        } else {
-          delete settings.statusLine;
-        }
-        writeFileSync(CLAUDE_SETTINGS_FILE, JSON.stringify(settings, null, 2) + '\n');
-      }
-    }
-    // 再清理脚本文件
-    if (existsSync(CCV_STATUSLINE_SCRIPT)) unlinkSync(CCV_STATUSLINE_SCRIPT);
-  } catch { }
-  _originalStatusLine = undefined;
+// Helper to build log-watcher options object
+function _logWatcherOpts(logFile) {
+  return {
+    logFile: logFile || LOG_FILE,
+    clients,
+    getClaudePid,
+    runParallelHook,
+    notifyStatsWorker,
+    getLogFile: () => LOG_FILE,
+  };
 }
 
 function getLocalIp() {
@@ -436,7 +237,7 @@ async function handleRequest(req, res) {
       try {
         const { logFile } = JSON.parse(body);
         if (logFile && typeof logFile === 'string' && logFile.startsWith(LOG_DIR) && existsSync(logFile)) {
-          watchLogFile(logFile);
+          watchLogFile(_logWatcherOpts(logFile));
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true }));
         } else {
@@ -470,7 +271,7 @@ async function handleRequest(req, res) {
           return;
         }
         // 重新 watch 最终的日志文件
-        watchLogFile(result.logFile);
+        watchLogFile(_logWatcherOpts(result.logFile));
         // 广播 resume_resolved + full_reload
         const resolvedData = JSON.stringify({ logFile: result.logFile });
         clients.forEach(client => {
@@ -479,7 +280,7 @@ async function handleRequest(req, res) {
           } catch { }
         });
         // 发送 full_reload 让客户端重新加载数据
-        const entries = readLogFile();
+        const entries = readLogFile(LOG_FILE);
         clients.forEach(client => {
           try {
             client.write(`event: full_reload\ndata: ${JSON.stringify(entries)}\n\n`);
@@ -660,7 +461,7 @@ async function handleRequest(req, res) {
         process.env.CCV_PROJECT_DIR = wsPath;
 
         // 启动日志监听
-        watchLogFile(LOG_FILE);
+        watchLogFile(_logWatcherOpts(LOG_FILE));
 
         // 启动 stats worker（如果尚未启动）
         if (!statsWorker) startStatsWorker();
@@ -682,7 +483,7 @@ async function handleRequest(req, res) {
         });
 
         // 发送 full_reload 以刷新会话区域
-        const entries = readLogFile();
+        const entries = readLogFile(LOG_FILE);
         clients.forEach(client => {
           try {
             client.write(`event: full_reload\ndata: ${JSON.stringify(entries)}\n\n`);
@@ -740,10 +541,10 @@ async function handleRequest(req, res) {
       killPty();
 
       // 停止日志监听
-      for (const logFile of watchedFiles.keys()) {
+      for (const logFile of getWatchedFiles().keys()) {
         unwatchFile(logFile);
       }
-      watchedFiles.clear();
+      getWatchedFiles().clear();
 
       // 重置 interceptor 状态
       resetWorkspace();
@@ -780,7 +581,7 @@ async function handleRequest(req, res) {
       res.write(`event: resume_prompt\ndata: ${JSON.stringify({ recentFileName: _resumeState.recentFileName })}\n\n`);
     }
 
-    const entries = readLogFile();
+    const entries = readLogFile(LOG_FILE);
     // 增量加载：客户端传 since（最后条目时间戳）和 cc（缓存条目数）
     const since = parsedUrl.searchParams.get('since');
     const cc = parseInt(parsedUrl.searchParams.get('cc') || '0', 10);
@@ -824,7 +625,7 @@ async function handleRequest(req, res) {
 
   // API endpoint
   if (url === '/api/requests' && method === 'GET') {
-    const entries = readLogFile();
+    const entries = readLogFile(LOG_FILE);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(entries));
     return;
@@ -1160,78 +961,7 @@ async function handleRequest(req, res) {
       }
 
       const files = filesParam.split(',').map(f => f.trim()).filter(Boolean);
-      const diffs = [];
-
-      for (const file of files) {
-        // 安全检查：防止路径穿越
-        if (file.includes('..') || file.startsWith('/')) continue;
-
-        try {
-          const { stdout: statusOutput } = await execFileAsync('git', ['status', '--porcelain', '--', file], { cwd, encoding: 'utf-8', timeout: 3000 });
-          if (!statusOutput.trim()) continue;
-
-          const status = statusOutput.substring(0, 2).trim();
-          const is_new = status === 'A' || status === '??';
-          const is_deleted = status === 'D';
-
-          // 检查是否为二进制文件（已删除文件跳过）
-          let is_binary = false;
-          if (!is_deleted) {
-            try {
-              const { stdout: diffCheck } = await execFileAsync('git', ['diff', '--numstat', 'HEAD', '--', file], { cwd, encoding: 'utf-8', timeout: 3000 });
-              if (diffCheck.includes('-\t-\t')) {
-                is_binary = true;
-              }
-            } catch {}
-          }
-
-          let old_content = '';
-          let new_content = '';
-
-          if (!is_binary) {
-            // 获取旧内容（HEAD 版本）
-            if (!is_new) {
-              try {
-                const { stdout } = await execFileAsync('git', ['show', `HEAD:${file}`], { cwd, encoding: 'utf-8', timeout: 5000, maxBuffer: 5 * 1024 * 1024 });
-                old_content = stdout;
-              } catch {
-                old_content = '';
-              }
-            }
-
-            // 获取新内容（工作区版本）
-            if (!is_deleted) {
-              try {
-                const filePath = join(cwd, file);
-                if (existsSync(filePath)) {
-                  const stat = statSync(filePath);
-                  if (stat.size > 5 * 1024 * 1024) {
-                    // 文件过大
-                    diffs.push({ file, status, is_large: true, size: stat.size });
-                    continue;
-                  }
-                  new_content = readFileSync(filePath, 'utf-8');
-                }
-              } catch {
-                new_content = '';
-              }
-            }
-          }
-
-          diffs.push({
-            file,
-            status,
-            old_content,
-            new_content,
-            is_binary,
-            is_new,
-            is_deleted
-          });
-        } catch (err) {
-          // 跳过无法处理的文件
-          continue;
-        }
-      }
+      const diffs = await getGitDiffs(cwd, files);
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ diffs }));
@@ -1825,7 +1555,7 @@ export async function startViewer() {
           } catch { }
           // 工作区模式下延迟到选择工作区后再启动监听
           if (!isWorkspaceMode) {
-            startWatching();
+            startWatching({ ..._logWatcherOpts(LOG_FILE), installStatusLine, watchContextWindow });
             startStatsWorker();
           }
           // CLI 模式下启动 WebSocket 服务
@@ -1856,8 +1586,6 @@ async function setupTerminalWebSocket(httpServer) {
   try {
     const { WebSocketServer } = await import('ws');
     const { writeToPty, resizePty, onPtyData, onPtyExit, getPtyState, getOutputBuffer, getCurrentWorkspace, spawnShell } = await import('./pty-manager.js');
-    // const { default: chokidar } = await import('chokidar');
-
     const wss = new WebSocketServer({ noServer: true });
     terminalWss = wss;
 
@@ -1879,140 +1607,6 @@ async function setupTerminalWebSocket(httpServer) {
       }
       return null;
     };
-
-    // 文件监控器：监控工作区目录变更（暂时禁用）
-    // 以下代码已被注释掉，如需启用请取消注释
-    // let fileWatcher = null;
-    // let fileWatchDebounceTimer = null;
-    // let currentWatchPath = null;
-    //
-    // 忽略规则：从统一的 IGNORED_PATTERNS 生成，并忽略所有隐藏目录
-    // const ignoredPaths = [
-    //   ...Array.from(IGNORED_PATTERNS).map(p => '**/' + p + '/**'),
-    //   '**/.*/**',  // 忽略所有隐藏目录（.git, .Trash, .docker 等）
-    // ];
-    //
-    // 启动文件监控
-    // const startFileWatcher = (watchPath) => {
-    //   if (fileWatcher) {
-    //     fileWatcher.close();
-    //   }
-    //   currentWatchPath = watchPath;
-    //
-    //   try {
-    //     fileWatcher = chokidar.watch(watchPath, {
-    //       ignored: ignoredPaths,
-    //       persistent: true,
-    //       ignoreInitial: true, // 忽略初始扫描，只监控变更
-    //       awaitWriteFinish: {
-    //         stabilityThreshold: 100,
-    //         pollInterval: 50
-    //       }
-    //     });
-    //
-    //     监听 chokidar 错误事件，避免崩溃
-    //     fileWatcher.on('error', (error) => {
-    //       console.error('[CC Viewer] File watcher error:', error.message);
-    //       不要让错误导致进程崩溃，只记录日志
-    //     });
-    //
-    //     使用防抖避免频繁触发
-    //     fileWatcher.on('all', (eventType, path) => {
-    //       if (fileWatchDebounceTimer) {
-    //         clearTimeout(fileWatchDebounceTimer);
-    //       }
-    //
-    //       fileWatchDebounceTimer = setTimeout(() => {
-    //         console.log('[CC Viewer] File change detected: ' + eventType + ' - ' + path);
-    //
-    //         广播文件变更事件给所有连接的客户端
-    //         const changeEvent = {
-    //           type: 'file-change',
-    //           eventType,
-    //           path,
-    //           watchPath: currentWatchPath
-    //         };
-    //
-    //         const clientCount = wss.clients.size;
-    //         console.log('[CC Viewer] Broadcasting file-change to ' + clientCount + ' client(s)');
-    //
-    //         wss.clients.forEach((client) => {
-    //           if (client.readyState === 1) { // WebSocket.OPEN
-    //             try {
-    //               client.send(JSON.stringify(changeEvent));
-    //             } catch (err) {
-    //               console.error('[CC Viewer] Failed to send file-change event:', err.message);
-    //             }
-    //           }
-    //         });
-    //       }, 200); // 200ms 防抖延迟
-    //     });
-    //
-    //     console.log('[CC Viewer] File watcher started for: ' + watchPath);
-    //   } catch (err) {
-    //     console.error('[CC Viewer] Failed to start file watcher:', err.message);
-    //   }
-    // };
-    //
-    // 停止文件监控
-    // const stopFileWatcher = () => {
-    //   if (fileWatchDebounceTimer) {
-    //     clearTimeout(fileWatchDebounceTimer);
-    //     fileWatchDebounceTimer = null;
-    //   }
-    //   if (fileWatcher) {
-    //     fileWatcher.close();
-    //     fileWatcher = null;
-    //   }
-    //   currentWatchPath = null;
-    // };
-    //
-    // 监听 PTY 退出事件，停止文件监控（只在监控器运行时停止）
-    // onPtyExit(() => {
-    //   if (fileWatcher && !fileWatcher.closed) {
-    //     stopFileWatcher();
-    //     console.log('[CC Viewer] File watcher stopped (PTY exited)');
-    //   }
-    // });
-    //
-    // 初始化时检查是否有活跃的工作区
-    // const workspace = getCurrentWorkspace();
-    // if (workspace.running && workspace.cwd) {
-    //   startFileWatcher(workspace.cwd);
-    // }
-    //
-    // 定期检查工作区状态，确保监控器在 PTY 启动后自动开始工作
-    // const workspaceCheckInterval = setInterval(() => {
-    //   const currentWorkspace = getCurrentWorkspace();
-    //   const isRunning = currentWorkspace.running && currentWorkspace.cwd;
-    //
-    //   调试日志
-    //   if (process.env.CCV_DEBUG) {
-    //     console.log('[CC Viewer] Workspace check:', {
-    //       running: currentWorkspace.running,
-    //       cwd: currentWorkspace.cwd,
-    //       fileWatcher: fileWatcher ? (fileWatcher.closed ? 'closed' : 'active') : 'none',
-    //       currentWatchPath
-    //     });
-    //   }
-    //
-    //   如果 PTY 正在运行但监控器未启动，则启动监控器
-    //   if (isRunning && (!fileWatcher || fileWatcher.closed)) {
-    //     if (currentWatchPath !== currentWorkspace.cwd) {
-    //       console.log('[CC Viewer] Starting file watcher for: ' + currentWorkspace.cwd);
-    //       startFileWatcher(currentWorkspace.cwd);
-    //     }
-    //   }
-    // }, 1000); // 每秒检查一次
-    //
-    // 清理定时器
-    // const originalClose = wss.close;
-    // wss.close = function() {
-    //   clearInterval(workspaceCheckInterval);
-    //   stopFileWatcher();
-    //   return originalClose.call(this);
-    // };
-
 
     httpServer.on('upgrade', (req, socket, head) => {
       const pathname = new URL(req.url, `${serverProtocol}://${req.headers.host}`).pathname;
@@ -2148,12 +1742,12 @@ async function _doStop() {
       }
     } catch { }
   }
-  for (const logFile of watchedFiles.keys()) {
+  for (const logFile of getWatchedFiles().keys()) {
     unwatchFile(logFile);
   }
   unwatchFile(CONTEXT_WINDOW_FILE);
   uninstallStatusLine();
-  watchedFiles.clear();
+  getWatchedFiles().clear();
   clients.forEach(client => client.end());
   clients = [];
   if (server) {

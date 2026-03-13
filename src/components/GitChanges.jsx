@@ -95,7 +95,7 @@ function TreeDir({ name, node, depth, onFileClick, selectedFile }) {
   );
 }
 
-export default function GitChanges({ onClose, onFileClick }) {
+export default function GitChanges({ onClose, onFileClick, refreshTrigger }) {
   const [changes, setChanges] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -121,6 +121,16 @@ export default function GitChanges({ onClose, onFileClick }) {
       });
     return () => { mounted.current = false; };
   }, []);
+
+  // 工具触发的增量刷新
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      fetch(apiUrl('/api/git-status'))
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(data => { if (mounted.current) setChanges(data.changes || []); })
+        .catch(() => {});
+    }
+  }, [refreshTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className={styles.gitChanges}>

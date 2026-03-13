@@ -1,6 +1,6 @@
 {
   "name": "cc-viewer",
-  "version": "1.5.28",
+  "version": "1.5.29",
   "description": "Claude Code Logger visualization management tool",
   "license": "MIT",
   "main": "server.js",
@@ -19,6 +19,7 @@
     "build": "node build.js",
     "start": "node server.js",
     "test": "CCV_LOG_DIR=tmp node --test",
+    "test:coverage": "CCV_LOG_DIR=tmp node --test --experimental-test-coverage --test-coverage-include='lib/*.js' --test-coverage-include='*.js'",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -90,7 +91,6 @@
     "vite": "^6.3.5"
   },
   "dependencies": {
-    "chokidar": "^5.0.0",
     "node-pty": "^1.1.0",
     "undici": "^7.22.0",
     "ws": "^8.19.0"

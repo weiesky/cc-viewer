@@ -112,12 +112,10 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
   );
 }
 
-export default function FileExplorer({ onClose, onFileClick, expandedPaths, onToggleExpand, currentFile }) {
+export default function FileExplorer({ onClose, onFileClick, expandedPaths, onToggleExpand, currentFile, refreshTrigger }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
   const mounted = useRef(true);
-  const wsRef = useRef(null);
-  const refreshTimeoutRef = useRef(null);
 
   // 重新加载根目录
   const refreshRoot = useCallback(() => {
@@ -137,72 +135,15 @@ export default function FileExplorer({ onClose, onFileClick, expandedPaths, onTo
       .then(data => { if (mounted.current) setItems(data); })
       .catch(() => { if (mounted.current) setError('Failed to load'); });
 
-    // 建立 WebSocket 连接监听文件变更
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/terminal`;
-
-    try {
-      wsRef.current = new WebSocket(wsUrl);
-
-      wsRef.current.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-
-          // 只处理 file-change 事件
-          if (msg.type === 'file-change') {
-            // 清除之前的定时器
-            if (refreshTimeoutRef.current) {
-              clearTimeout(refreshTimeoutRef.current);
-            }
-
-            // 使用防抖，避免短时间内多次刷新
-            refreshTimeoutRef.current = setTimeout(() => {
-              if (mounted.current) {
-                fetch(apiUrl('/api/files?path='))
-                  .then(r => r.ok ? r.json() : Promise.reject())
-                  .then(data => { if (mounted.current) setItems(data); })
-                  .catch(() => { if (mounted.current) setError('Failed to load'); });
-              }
-            }, 300);
-          }
-        } catch (err) {
-          console.error('[FileExplorer] Failed to parse WebSocket message:', err);
-        }
-      };
-
-      wsRef.current.onerror = (err) => {
-        console.error('[FileExplorer] WebSocket error:', err);
-      };
-
-      wsRef.current.onclose = () => {
-        console.log('[FileExplorer] WebSocket closed, reconnecting in 2s...');
-        // 2秒后重连
-        setTimeout(() => {
-          if (mounted.current) {
-            const newWs = new WebSocket(wsUrl);
-            newWs.onmessage = wsRef.current.onmessage;
-            newWs.onerror = wsRef.current.onerror;
-            newWs.onclose = wsRef.current.onclose;
-            wsRef.current = newWs;
-          }
-        }, 2000);
-      };
-    } catch (err) {
-      console.error('[FileExplorer] Failed to create WebSocket:', err);
-    }
-
     return () => {
       mounted.current = false;
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-        refreshTimeoutRef.current = null;
-      }
     };
   }, []); // 空依赖数组，只在挂载时执行一次
+
+  // 工具触发的增量刷新
+  useEffect(() => {
+    if (refreshTrigger > 0) refreshRoot();
+  }, [refreshTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className={styles.fileExplorer}>

@@ -212,6 +212,91 @@ describe('checkAndUpdate — fetch', () => {
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     assert.equal(result.currentVersion, pkg.version);
   });
+
+  it('returns error when no version found in registry', async () => {
+    mkdirSync(CACHE_DIR, { recursive: true });
+    writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
+
+    const result = await checkAndUpdate({
+      fetchImpl: async () => ({ ok: true, async json() { return { 'dist-tags': {} }; } }),
+      dryRun: true,
+    });
+    assert.equal(result.status, 'error');
+    assert.equal(result.error, 'No version found');
+  });
+
+  it('returns latest when remote version is not newer', async () => {
+    mkdirSync(CACHE_DIR, { recursive: true });
+    writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
+
+    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+
+    const result = await checkAndUpdate({
+      fetchImpl: async () => ({ ok: true, async json() { return { 'dist-tags': { latest: pkg.version } }; } }),
+      dryRun: true,
+    });
+    assert.equal(result.status, 'latest');
+    assert.equal(result.remoteVersion, pkg.version);
+  });
+
+  it('returns major_available for major version bump', async () => {
+    mkdirSync(CACHE_DIR, { recursive: true });
+    writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
+
+    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+    const [maj] = pkg.version.split('.').map(Number);
+    const remote = `${maj + 1}.0.0`;
+
+    const result = await checkAndUpdate({
+      fetchImpl: async () => ({ ok: true, async json() { return { 'dist-tags': { latest: remote } }; } }),
+      dryRun: true,
+    });
+    assert.equal(result.status, 'major_available');
+    assert.equal(result.remoteVersion, remote);
+  });
+
+  it('returns error when fetch fails', async () => {
+    mkdirSync(CACHE_DIR, { recursive: true });
+    writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
+
+    const result = await checkAndUpdate({
+      fetchImpl: async () => { throw new Error('network error'); },
+      dryRun: true,
+    });
+    assert.equal(result.status, 'error');
+    assert.ok(result.error.includes('network error'));
+  });
+
+  it('returns error when fetch returns non-ok status', async () => {
+    mkdirSync(CACHE_DIR, { recursive: true });
+    writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
+
+    const result = await checkAndUpdate({
+      fetchImpl: async () => ({ ok: false, status: 503 }),
+      dryRun: true,
+    });
+    assert.equal(result.status, 'error');
+    assert.ok(result.error.includes('503'));
+  });
+
+  it('returns error when exec fails during update', async () => {
+    mkdirSync(CACHE_DIR, { recursive: true });
+    writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
+
+    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+    const [maj, min, pat] = pkg.version.split('.').map(Number);
+    const remote = `${maj}.${min}.${pat + 1}`;
+
+    const result = await checkAndUpdate({
+      fetchImpl: async () => ({ ok: true, async json() { return { 'dist-tags': { latest: remote } }; } }),
+      execImpl: () => { throw new Error('permission denied'); },
+    });
+    assert.equal(result.status, 'error');
+    assert.ok(result.error.includes('permission denied'));
+  });
 });
 
 // ─── parseVersion / isNewer (tested indirectly via subprocess) ───

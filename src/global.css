@@ -72,7 +72,11 @@ body {
 .chat-md strong { color: #f1f5f9; }
 .chat-md em { color: #cbd5e1; }
 
-/* antd Tooltip global override */
+/* Logo dropdown menu font size */
+.ant-dropdown .logo-dropdown-menu .ant-dropdown-menu-item,
+.ant-dropdown .logo-dropdown-menu .ant-dropdown-menu-submenu-title {
+  font-size: 12px !important;
+}
 .ant-tooltip .ant-tooltip-inner {
   background-color: #090909;
 }

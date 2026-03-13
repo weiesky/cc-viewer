@@ -16,6 +16,12 @@ import styles from './ChatView.module.css';
 const { Text } = Typography;
 
 const QUEUE_THRESHOLD = 20;
+
+const MUTATING_CMD_RE = /\b(rm|mkdir|mv|cp|touch|chmod|chown|ln|git\s+(checkout|reset|stash|merge|rebase|cherry-pick|restore|clean|rm)|npm\s+(install|uninstall|ci)|yarn\s+(add|remove)|pnpm\s+(add|remove|install)|pip\s+install|tar|unzip|curl\s+-[^\s]*o|wget)\b|[^>]>(?!>)|>>/;
+
+function isMutatingCommand(cmd) {
+  return MUTATING_CMD_RE.test(cmd);
+}
 const MOBILE_ITEM_LIMIT = 240;
 const MOBILE_LOAD_MORE_STEP = 100;
 
@@ -209,9 +215,12 @@ class ChatView extends React.Component {
       fileVersion: 0, // 用于强制 FileContentView 重新挂载
       editorSessionId: null, // active $EDITOR session
       editorFilePath: null,
+      fileExplorerRefresh: 0,
+      gitChangesRefresh: 0,
     };
-    this._fileChangeWs = null; // 文件变更 WebSocket 引用
-    this._fileChangeDebounceTimer = null; // 防抖定时器
+    this._processedToolIds = new Set();
+    this._fileRefreshTimer = null;
+    this._gitRefreshTimer = null;
     this._queueTimer = null;
     this._prevItemsLen = 0;
     this._scrollTargetIdx = null;
@@ -227,6 +236,68 @@ class ChatView extends React.Component {
     this._totalItemCount = 0;
   }
 
+  _checkToolFileChanges() {
+    const sessions = this.props.mainAgentSessions;
+    if (!sessions || sessions.length === 0) return;
+
+    let needFileRefresh = false;
+    let needGitRefresh = false;
+
+    // Scan all sessions for tool_use blocks
+    for (const session of sessions) {
+      const sources = [];
+      // response.body.content (streaming)
+      if (session.response?.body?.content) {
+        sources.push(session.response.body.content);
+      }
+      // messages
+      if (Array.isArray(session.messages)) {
+        for (const msg of session.messages) {
+          if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+            sources.push(msg.content);
+          }
+        }
+      }
+
+      for (const blocks of sources) {
+        for (const block of blocks) {
+          if (block.type !== 'tool_use' || !block.id) continue;
+          if (this._processedToolIds.has(block.id)) continue;
+          this._processedToolIds.add(block.id);
+
+          const toolName = block.name;
+          let input = block.input;
+          if (typeof input === 'string') {
+            try { input = JSON.parse(input.replace(/^\[object Object\]/, '')); } catch { input = {}; }
+          }
+
+          if (toolName === 'Write') {
+            needFileRefresh = true;
+            needGitRefresh = true;
+          } else if (toolName === 'Edit' || toolName === 'NotebookEdit') {
+            needGitRefresh = true;
+          } else if (toolName === 'Bash' && input && input.command && isMutatingCommand(input.command)) {
+            needFileRefresh = true;
+            needGitRefresh = true;
+          }
+        }
+      }
+    }
+
+    if (needFileRefresh && this.state.fileExplorerOpen) {
+      clearTimeout(this._fileRefreshTimer);
+      this._fileRefreshTimer = setTimeout(() => {
+        this.setState(prev => ({ fileExplorerRefresh: prev.fileExplorerRefresh + 1 }));
+      }, 500);
+    }
+    if (needGitRefresh && this.state.gitChangesOpen) {
+      clearTimeout(this._gitRefreshTimer);
+      this._gitRefreshTimer = setTimeout(() => {
+        this.setState(prev => ({ gitChangesRefresh: prev.gitChangesRefresh + 1 }));
+      }, 500);
+    }
+  }
+
   componentDidMount() {
     this.startRender();
     if (this.props.cliMode) {
@@ -237,8 +308,6 @@ class ChatView extends React.Component {
     if (this.state.needsInitialSnap && this.props.cliMode && this.props.terminalVisible) {
       this._snapToInitialPosition();
     }
-    // 监听文件变更事件
-    this._setupFileChangeWatcher();
   }
 
   componentDidUpdate(prevProps) {
@@ -249,6 +318,7 @@ class ChatView extends React.Component {
         this.setState({ pendingInput: null });
       }
       this._updateSuggestion();
+      this._checkToolFileChanges();
     } else if (prevProps.collapseToolResults !== this.props.collapseToolResults || prevProps.expandThinking !== this.props.expandThinking) {
       const rawItems = this.buildAllItems();
       const allItems = this._applyMobileSlice(rawItems);
@@ -294,20 +364,13 @@ class ChatView extends React.Component {
     if (this._queueTimer) clearTimeout(this._queueTimer);
     if (this._fadeClearTimer) clearTimeout(this._fadeClearTimer);
     if (this._ptyDebounceTimer) clearTimeout(this._ptyDebounceTimer);
+    if (this._fileRefreshTimer) clearTimeout(this._fileRefreshTimer);
+    if (this._gitRefreshTimer) clearTimeout(this._gitRefreshTimer);
     this._unbindScrollFade();
     this._unbindStickyScroll();
     if (this._inputWs) {
       this._inputWs.close();
       this._inputWs = null;
-    }
-    // 清理文件变更监听
-    if (this._fileChangeWs) {
-      this._fileChangeWs.close();
-      this._fileChangeWs = null;
-    }
-    if (this._fileChangeDebounceTimer) {
-      clearTimeout(this._fileChangeDebounceTimer);
-      this._fileChangeDebounceTimer = null;
     }
   }
 
@@ -1055,76 +1118,6 @@ class ChatView extends React.Component {
     localStorage.setItem('cc-viewer-terminal-width', terminalPx.toString());
   }
 
-  _setupFileChangeWatcher() {
-    try {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws/terminal`;
-
-      this._fileChangeWs = new WebSocket(wsUrl);
-
-      this._fileChangeWs.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-
-          // 只处理 file-change 事件
-          if (msg.type === 'file-change') {
-            const { currentFile } = this.state;
-
-            // 如果当前没有打开文件，忽略
-            if (!currentFile) return;
-
-            // 获取文件名进行比较
-            const getFileName = (p) => {
-              if (!p) return '';
-              return p.split('/').pop();
-            };
-
-            const changedFileName = getFileName(msg.path);
-            const currentFileName = getFileName(currentFile);
-
-            // 检查是否是当前打开的文件
-            if (changedFileName === currentFileName && changedFileName) {
-              // 清除之前的定时器
-              if (this._fileChangeDebounceTimer) {
-                clearTimeout(this._fileChangeDebounceTimer);
-              }
-
-              // 使用防抖
-              this._fileChangeDebounceTimer = setTimeout(() => {
-                // 文件被删除 - 关闭视图
-                if (msg.eventType === 'unlink') {
-                  this.setState({ currentFile: null, fileVersion: 0 });
-                }
-                // 文件被修改 - 强制重新挂载组件
-                else if (msg.eventType === 'change' || msg.eventType === 'add') {
-                  this.setState((prev) => ({ fileVersion: prev.fileVersion + 1 }));
-                }
-              }, 300);
-            }
-          }
-        } catch (err) {
-          // Failed to parse WebSocket message
-        }
-      };
-
-      this._fileChangeWs.onerror = () => {
-        // WebSocket error
-      };
-
-      this._fileChangeWs.onclose = () => {
-        // WebSocket closed, reconnect in 2s
-        // 只有在组件未卸载（_fileChangeWs 未被清空）时才重连
-        setTimeout(() => {
-          if (this._fileChangeWs !== null) {
-            this._setupFileChangeWatcher();
-          }
-        }, 2000);
-      };
-    } catch (err) {
-      // Failed to create WebSocket
-    }
-  }
-
   render() {
     const { mainAgentSessions, cliMode, terminalVisible } = this.props;
     const { allItems, visibleCount, loading, terminalWidth } = this.state;
@@ -1322,6 +1315,7 @@ class ChatView extends React.Component {
           })()}
           {this.state.fileExplorerOpen && (
             <FileExplorer
+              refreshTrigger={this.state.fileExplorerRefresh}
               onClose={() => this.setState({ fileExplorerOpen: false })}
               onFileClick={(path) => this.setState({ currentFile: path, currentGitDiff: null, scrollToLine: null })}
               expandedPaths={this.state.fileExplorerExpandedPaths}
@@ -1331,6 +1325,7 @@ class ChatView extends React.Component {
           )}
           {this.state.gitChangesOpen && (
             <GitChanges
+              refreshTrigger={this.state.gitChangesRefresh}
               onClose={() => this.setState({ gitChangesOpen: false })}
               onFileClick={(path) => this.setState({ currentGitDiff: path, currentFile: null })}
             />

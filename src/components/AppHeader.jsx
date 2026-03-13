@@ -886,7 +886,7 @@ class AppHeader extends React.Component {
     return (
       <div className={styles.headerBar}>
         <Space size="middle">
-          <Dropdown menu={{ items: menuItems }} trigger={['hover']} onOpenChange={(open) => this.setState({ logoDropdownOpen: open })} align={{ offset: [-4, 0] }}>
+          <Dropdown menu={{ items: menuItems, className: 'logo-dropdown-menu' }} trigger={['hover']} onOpenChange={(open) => this.setState({ logoDropdownOpen: open })} align={{ offset: [-4, 0] }}>
             <span className={`${styles.logoWrap}${this.state.logoDropdownOpen ? ` ${styles.logoWrapActive}` : ''}`}>
               <img src="/favicon.ico" alt="Logo" className={`${styles.logoImage}${this.state.logoDropdownOpen ? ` ${styles.logoImageActive}` : ''}`} />
             </span>
@@ -970,7 +970,7 @@ class AppHeader extends React.Component {
           {viewMode === 'chat' && cliMode && !isLocalLog && this.state.localUrl && (
             <Popover
               content={
-                <div className={styles.qrcodePopover}>
+                <div className={styles.qrcodePopover} style={{ width: 800 }}>
                   <div className={styles.qrcodeTitle}>{t('ui.scanToCoding')}</div>
                   <QRCodeCanvas value={this.state.localUrl} size={200} bgColor="#141414" fgColor="#d9d9d9" level="M" />
                   <Input
