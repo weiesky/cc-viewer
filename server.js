@@ -944,9 +944,6 @@ async function handleRequest(req, res) {
   // 终端权限检查
   if (url === '/api/terminal-permission' && method === 'GET') {
     const result = await checkTerminalPermission(req);
-    if (result.allowed && result.user) {
-      setBucUser(result.user);
-    }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ allowed: result.allowed, redirectUrl: result.redirectUrl }));
     return;
@@ -1620,6 +1617,7 @@ async function setupTerminalWebSocket(httpServer) {
     let activeWs = null;              // 当前活跃的 WebSocket 连接
     const clientSizes = new Map();    // ws → { cols, rows }
     const mobileClients = new Set();  // 移动端连接集合
+    const wsUserMap = new Map();      // ws → user（鉴权用户）
 
     // 找到一个在线的移动端并返回其尺寸
     const getMobileSize = () => {
@@ -1637,7 +1635,7 @@ async function setupTerminalWebSocket(httpServer) {
       if (pathname === '/ws/terminal') {
         const permResult = await checkTerminalPermission(req);
         if (permResult.allowed && permResult.user) {
-          setBucUser(permResult.user);
+          req._ccvUser = permResult.user;
         }
         if (!socket.writable) return;
         if (!permResult.allowed) {
@@ -1653,7 +1651,11 @@ async function setupTerminalWebSocket(httpServer) {
       }
     });
 
-    wss.on('connection', (ws) => {
+    wss.on('connection', (ws, req) => {
+      // 将 upgrade 阶段鉴权得到的用户存入 wsUserMap
+      if (req && req._ccvUser) {
+        wsUserMap.set(ws, req._ccvUser);
+      }
       // 发送当前 PTY 状态
       const state = getPtyState();
       ws.send(JSON.stringify({ type: 'state', ...state }));
@@ -1690,7 +1692,8 @@ async function setupTerminalWebSocket(httpServer) {
                 await spawnShell();
               } catch {}
             }
-            // 发送 input 的客户端成为活跃客户端
+            // 发送 input 的客户端成为活跃客户端，同时更新 _bucUser 为该用户
+            setBucUser(wsUserMap.get(ws));
             if (activeWs !== ws) {
               activeWs = ws;
               // 切换活跃客户端时，如果有移动端在线则保持移动端尺寸，
@@ -1726,6 +1729,7 @@ async function setupTerminalWebSocket(httpServer) {
         removeExitListener();
         clientSizes.delete(ws);
         mobileClients.delete(ws);
+        wsUserMap.delete(ws);
         if (activeWs === ws) {
           // 活跃客户端断开，将控制权交给剩余的某个客户端
           activeWs = null;

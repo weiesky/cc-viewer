@@ -2,6 +2,7 @@
 
 ## 1.5.30 (2026-03-14)
 
+- Feature: plugin-based terminal authentication for remote access — `authenticateTerminal` waterfall hook
 - Fix: QR code popover hardcoded 800px width — now auto-fits content
 
 ## 1.5.29 (2026-03-14)

@@ -25,8 +25,12 @@ export let _cachedModel = null;
 // 缓存 haiku 模型名（从实际请求中捕获），翻译接口优先使用
 export let _cachedHaikuModel = null;
 
+// 记录"最后在终端输入的用户"，用于标记 Claude 请求的触发者
 let _bucUser = null;
-export function setBucUser(user) { _bucUser = user; }
+export function setBucUser(user) {
+  if (user == null) return; // 忽略 null/undefined，保留上一个有效用户
+  _bucUser = user;
+}
 
 // 生成新的日志文件路径
 function generateNewLogFilePath() {
