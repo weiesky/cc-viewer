@@ -631,7 +631,8 @@ async function handleRequest(req, res) {
     }
 
     req.on('close', () => {
-      clients = clients.filter(client => client !== res);
+      const idx = clients.indexOf(res);
+      if (idx >= 0) clients.splice(idx, 1);
     });
     return;
   }
