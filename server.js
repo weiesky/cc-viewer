@@ -1802,10 +1802,20 @@ async function _doStop() {
   unwatchFile(CONTEXT_WINDOW_FILE);
   uninstallStatusLine();
   getWatchedFiles().clear();
-  clients.forEach(client => client.end());
-  clients = [];
+  clients.forEach(client => { try { client.end(); } catch {} });
+  clients.length = 0;
+  if (terminalWss) {
+    for (const ws of terminalWss.clients) {
+      try { ws.close(); } catch {}
+    }
+    terminalWss.close();
+    terminalWss = null;
+  }
   if (server) {
-    server.close();
+    await Promise.race([
+      new Promise(resolve => server.close(resolve)),
+      new Promise(resolve => setTimeout(resolve, 2000)),
+    ]);
   }
   if (statsWorker) {
     statsWorker.terminate();

@@ -46,8 +46,8 @@ describe('server plugin endpoints', { concurrency: false }, () => {
     assert.ok(port > 0);
   });
 
-  after(() => {
-    stopViewer();
+  after(async () => {
+    await stopViewer();
   });
 
   it('GET /api/plugins returns plugins list', async () => {

@@ -68,15 +68,8 @@ describe('server API endpoints', { concurrency: false }, () => {
   });
 
   after(async () => {
-    // Wait for server to fully close to avoid EPIPE from lingering async activity
-    await new Promise((resolve) => {
-      stopViewer();
-      // Give server.close() time to finish pending connections
-      setTimeout(() => {
-        rmSync(tmpDir, { recursive: true, force: true });
-        resolve();
-      }, 200);
-    });
+    await stopViewer();
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   // --- CORS ---
