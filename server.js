@@ -33,7 +33,7 @@ function execWithStdin(cmd, args, input, options) {
     child.stdin.end();
   });
 }
-import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice, _projectName, _logDir, _cachedApiKey, _cachedAuthHeader, _cachedHaikuModel, initForWorkspace, resetWorkspace } from './interceptor.js';
+import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice, _projectName, _logDir, _cachedApiKey, _cachedAuthHeader, _cachedHaikuModel, initForWorkspace, resetWorkspace, setBucUser } from './interceptor.js';
 import { LOG_DIR } from './findcc.js';
 import { t, detectLanguage } from './i18n.js';
 import { checkAndUpdate } from './lib/updater.js';
@@ -101,6 +101,19 @@ let clients = [];
 let server;
 let actualPort = 0;
 let serverProtocol = 'http';
+
+function isLocalAddress(remoteIp) {
+  return remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1';
+}
+
+async function checkTerminalPermission(req) {
+  const remoteIp = req.socket.remoteAddress;
+  if (isLocalAddress(remoteIp)) return { allowed: true };
+  // 通过 authenticateTerminal waterfall hook 鉴权，插件返回 { allowed, user?, redirectUrl? }
+  const result = await runWaterfallHook('authenticateTerminal', { req, allowed: true });
+  return { allowed: result.allowed !== false, user: result.user, redirectUrl: result.redirectUrl };
+}
+
 // Stats Worker 实例
 let statsWorker = null;
 
@@ -189,7 +202,7 @@ async function handleRequest(req, res) {
 
   // 局域网访问 token 验证（本地 127.0.0.1 / ::1 免验证，静态资源免验证）
   const remoteIp = req.socket.remoteAddress;
-  const isLocal = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1';
+  const isLocal = isLocalAddress(remoteIp);
   const isStaticAsset = url.startsWith('/assets/') || url === '/favicon.ico';
   if (!isLocal && !isStaticAsset) {
     const urlToken = parsedUrl.searchParams.get('token');
@@ -928,6 +941,17 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // 终端权限检查
+  if (url === '/api/terminal-permission' && method === 'GET') {
+    const result = await checkTerminalPermission(req);
+    if (result.allowed && result.user) {
+      setBucUser(result.user);
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ allowed: result.allowed, redirectUrl: result.redirectUrl }));
+    return;
+  }
+
   // Git 状态
   if (url === '/api/git-status' && method === 'GET') {
     try {
@@ -1608,9 +1632,19 @@ async function setupTerminalWebSocket(httpServer) {
       return null;
     };
 
-    httpServer.on('upgrade', (req, socket, head) => {
+    httpServer.on('upgrade', async (req, socket, head) => {
       const pathname = new URL(req.url, `${serverProtocol}://${req.headers.host}`).pathname;
       if (pathname === '/ws/terminal') {
+        const permResult = await checkTerminalPermission(req);
+        if (permResult.allowed && permResult.user) {
+          setBucUser(permResult.user);
+        }
+        if (!socket.writable) return;
+        if (!permResult.allowed) {
+          socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+          socket.destroy();
+          return;
+        }
         wss.handleUpgrade(req, socket, head, (ws) => {
           wss.emit('connection', ws, req);
         });

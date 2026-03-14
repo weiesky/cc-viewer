@@ -56,6 +56,8 @@ class App extends React.Component {
       githubStars: null,
       cliMode: false,
       terminalVisible: true,
+      terminalAllowed: null,
+      terminalRedirectUrl: null,
       workspaceMode: false,
       mobileMenuVisible: false,
       mobileLogMgmtVisible: false,
@@ -160,6 +162,13 @@ class App extends React.Component {
           this.setState({ cliMode: true, workspaceMode: true, isWorkspaceServer: true });
         } else if (data.cliMode) {
           this.setState({ cliMode: true, viewMode: 'chat' });
+        }
+        // 检测到 CLI 模式后，请求终端权限
+        if (data.cliMode || data.workspaceMode) {
+          fetch(apiUrl('/api/terminal-permission'))
+            .then(r => r.json())
+            .then(d => { this.setState({ terminalAllowed: d.allowed !== false, terminalRedirectUrl: d.redirectUrl || null }); })
+            .catch(() => { this.setState({ terminalAllowed: true }); });
         }
       })
       .catch(() => { });
@@ -1339,7 +1348,17 @@ class App extends React.Component {
             )}
           </div>
           <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-            {!mobileIsLocalLog && <TerminalPanel />}
+            {!mobileIsLocalLog && this.state.terminalAllowed !== false && <TerminalPanel />}
+            {!mobileIsLocalLog && this.state.terminalAllowed === false && (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#888', fontSize: 14, gap: 8 }}>
+                {this.state.terminalRedirectUrl ? t('ui.terminal.needLogin') : t('ui.terminal.noPermission')}
+                {this.state.terminalRedirectUrl && (
+                  <a href={this.state.terminalRedirectUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#1890ff', textDecoration: 'underline' }}>
+                    {t('ui.terminal.goLogin')}
+                  </a>
+                )}
+              </div>
+            )}
             <div className={`${styles.mobileGitDiffOverlay} ${this.state.mobileGitDiffVisible ? styles.mobileGitDiffOverlayVisible : ''}`}>
               <div className={styles.mobileGitDiffInner}>
                 <MobileGitDiff visible={this.state.mobileGitDiffVisible} />
@@ -1634,7 +1653,7 @@ class App extends React.Component {
               )
             )}
             <div style={{ display: viewMode === 'chat' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
-              <ChatView requests={filteredRequests} mainAgentSessions={mainAgentSessions} userProfile={this.state.userProfile} collapseToolResults={this.state.collapseToolResults} expandThinking={this.state.expandThinking} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={() => this.setState({ chatScrollToTs: null })} cliMode={this._isLocalLog ? false : this.state.cliMode} terminalVisible={this._isLocalLog ? false : this.state.terminalVisible} />
+              <ChatView requests={filteredRequests} mainAgentSessions={mainAgentSessions} userProfile={this.state.userProfile} collapseToolResults={this.state.collapseToolResults} expandThinking={this.state.expandThinking} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={() => this.setState({ chatScrollToTs: null })} cliMode={this._isLocalLog ? false : this.state.cliMode} terminalVisible={this._isLocalLog ? false : this.state.terminalVisible} terminalAllowed={this.state.terminalAllowed} terminalRedirectUrl={this.state.terminalRedirectUrl} />
             </div>
           </Layout.Content>
           <div className={styles.footer}>

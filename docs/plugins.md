@@ -95,6 +95,39 @@ hooks: {
 }
 ```
 
+### `authenticateTerminal` — Waterfall
+
+Triggered when a remote user attempts to access the terminal — either via the `/api/terminal-permission` HTTP endpoint or a WebSocket upgrade to `/ws/terminal`. Local connections (127.0.0.1 / ::1) bypass this hook entirely and are always allowed.
+
+If no plugin provides this hook, remote users with a valid access token are allowed by default.
+
+| Property | Description |
+|----------|-------------|
+| **Type** | Waterfall (serial pipeline) |
+| **Parameters** | `{ req, allowed }` — `req` is the Node.js `IncomingMessage`; `allowed` is `true` initially |
+| **Returns** | `{ allowed, user?, redirectUrl? }` |
+| **Timing** | On terminal access from a remote IP |
+
+**Return value fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `allowed` | `boolean` | Whether the user is permitted to use the terminal |
+| `user` | `object` (optional) | Authenticated user info, recorded in log entries as `bucUser` |
+| `redirectUrl` | `string` (optional) | Login page URL — shown to the user when `allowed` is `false` |
+
+```javascript
+hooks: {
+  async authenticateTerminal(ctx) {
+    if (!ctx.allowed) return; // Already denied by a previous plugin
+    const cookie = ctx.req.headers?.cookie || '';
+    const user = await verifySession(cookie);
+    if (!user) return { allowed: false, redirectUrl: 'https://sso.company.com/login' };
+    return { allowed: true, user };
+  },
+}
+```
+
 ### `localUrl` — Waterfall
 
 Triggered when `/api/local-url` is requested (used by the QR code feature).
@@ -238,6 +271,14 @@ export default {
     async localUrl({ url, ip, port, token }) {
       // Replace LAN URL with corporate proxy
       return { url: `https://dev.company.com/proxy/${token}` };
+    },
+
+    async authenticateTerminal(ctx) {
+      if (!ctx.allowed) return;
+      // Verify user identity via corporate SSO cookie
+      const user = await verifySSOCookie(ctx.req.headers?.cookie);
+      if (!user) return { allowed: false, redirectUrl: 'https://sso.company.com/login' };
+      return { allowed: true, user };
     },
 
     async serverStarted({ port, host }) {

@@ -1119,7 +1119,7 @@ class ChatView extends React.Component {
   }
 
   render() {
-    const { mainAgentSessions, cliMode, terminalVisible } = this.props;
+    const { mainAgentSessions, cliMode, terminalVisible, terminalAllowed, terminalRedirectUrl } = this.props;
     const { allItems, visibleCount, loading, terminalWidth } = this.state;
 
     const noData = !mainAgentSessions || mainAgentSessions.length === 0;
@@ -1411,7 +1411,7 @@ class ChatView extends React.Component {
             )}
             </div>
           </div>
-          {terminalVisible && (
+          {terminalVisible && terminalAllowed !== false && (
             <>
               <div className={styles.vResizer} onMouseDown={this.handleSplitMouseDown} />
               <div style={{ width: terminalWidth, flexShrink: 0, minWidth: 200, display: 'flex', flexDirection: 'column' }}>
@@ -1425,6 +1425,19 @@ class ChatView extends React.Component {
                     fileVersion: (this.state.fileVersion || 0) + 1,
                   });
                 }} />
+              </div>
+            </>
+          )}
+          {terminalVisible && terminalAllowed === false && (
+            <>
+              <div className={styles.vResizer} onMouseDown={this.handleSplitMouseDown} />
+              <div style={{ width: terminalWidth, flexShrink: 0, minWidth: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#888', fontSize: 14, background: '#0a0a0a', gap: 8 }}>
+                {terminalRedirectUrl ? t('ui.terminal.needLogin') : t('ui.terminal.noPermission')}
+                {terminalRedirectUrl && (
+                  <a href={terminalRedirectUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#1890ff', textDecoration: 'underline' }}>
+                    {t('ui.terminal.goLogin')}
+                  </a>
+                )}
               </div>
             </>
           )}

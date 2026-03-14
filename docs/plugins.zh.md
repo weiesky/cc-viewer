@@ -69,6 +69,7 @@ export default {
 | Hook 名称 | 类型 | 参数 | 返回值 | 触发时机 |
 |-----------|------|------|--------|---------|
 | `httpsOptions` | waterfall | `{}` | `{ pfx, passphrase }` 或 `{ cert, key }` | 服务器创建前 |
+| `authenticateTerminal` | waterfall | `{ req, allowed }` | `{ allowed, user?, redirectUrl? }` | 远程用户访问终端时 |
 | `localUrl` | waterfall | `{ url, ip, port, token }` | `{ url }` | 客户端请求局域网地址时 |
 | `serverStarted` | parallel | `{ port, host, url, ip, token, protocol }` | 忽略 | 服务器启动成功后 |
 | `serverStopping` | parallel | `{}` | 忽略 | 服务器关闭前 |
@@ -111,6 +112,41 @@ hooks: {
       cert: readFileSync('/path/to/cert.pem'),
       key: readFileSync('/path/to/key.pem'),
     };
+  },
+}
+```
+
+### `authenticateTerminal` — 终端访问鉴权
+
+**类型：Waterfall（串行管道）**
+
+当远程用户尝试访问终端时触发——包括 `/api/terminal-permission` HTTP 端点和 `/ws/terminal` WebSocket 升级请求。本地连接（127.0.0.1 / ::1）会跳过此 hook，始终放行。
+
+如果没有任何插件提供此 hook，持有有效访问 token 的远程用户将默认被允许访问终端。
+
+**参数说明：**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `req` | `IncomingMessage` | Node.js HTTP 请求对象，可从中获取 `headers.cookie` 等信息 |
+| `allowed` | `boolean` | 初始值为 `true`，前序插件可能已将其设为 `false` |
+
+**返回值：**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `allowed` | `boolean` | 是否允许该用户使用终端 |
+| `user` | `object`（可选） | 已认证的用户信息，会记录到日志条目的 `bucUser` 字段中 |
+| `redirectUrl` | `string`（可选） | 登录页面 URL——当 `allowed` 为 `false` 时展示给用户 |
+
+```javascript
+hooks: {
+  async authenticateTerminal(ctx) {
+    if (!ctx.allowed) return; // 已被前序插件拒绝，跳过
+    const cookie = ctx.req.headers?.cookie || '';
+    const user = await verifySession(cookie);
+    if (!user) return { allowed: false, redirectUrl: 'https://sso.company.com/login' };
+    return { allowed: true, user };
   },
 }
 ```
@@ -304,6 +340,14 @@ export default {
     async localUrl({ url, ip, port, token }) {
       // 将局域网 URL 替换为企业内部代理地址
       return { url: `https://dev.company.com/proxy/${token}` };
+    },
+
+    async authenticateTerminal(ctx) {
+      if (!ctx.allowed) return; // 已被前序插件拒绝
+      // 通过企业 SSO cookie 校验用户身份
+      const user = await verifySSOCookie(ctx.req.headers?.cookie);
+      if (!user) return { allowed: false, redirectUrl: 'https://sso.company.com/login' };
+      return { allowed: true, user };
     },
 
     async serverStarted({ port, host }) {

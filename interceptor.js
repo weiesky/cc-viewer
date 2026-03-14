@@ -25,6 +25,9 @@ export let _cachedModel = null;
 // 缓存 haiku 模型名（从实际请求中捕获），翻译接口优先使用
 export let _cachedHaikuModel = null;
 
+let _bucUser = null;
+export function setBucUser(user) { _bucUser = user; }
+
 // 生成新的日志文件路径
 function generateNewLogFilePath() {
   const now = new Date();
@@ -317,7 +320,8 @@ export function setupInterceptor() {
           isStream: body?.stream === true,
           isHeartbeat: /\/api\/eval\/sdk-/.test(urlStr),
           isCountTokens: /\/messages\/count_tokens/.test(urlStr),
-          mainAgent: isMainAgentRequest(body)
+          mainAgent: isMainAgentRequest(body),
+          bucUser: _bucUser || undefined
         };
       }
     } catch { }
