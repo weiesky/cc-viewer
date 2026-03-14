@@ -404,6 +404,14 @@ describe('server API endpoints', { concurrency: false }, () => {
     }
   });
 
+  // --- GET /api/terminal-permission ---
+  it('GET /api/terminal-permission returns allowed for local requests', async () => {
+    const res = await httpRequest(port, '/api/terminal-permission');
+    assert.equal(res.status, 200);
+    const data = res.json();
+    assert.equal(data.allowed, true);
+  });
+
   it('GET /api/files works without gitIgnored when not a git repo', async () => {
     const workspace = mkdtempSync(join(tmpdir(), 'ccv-nogit-'));
     writeFileSync(join(workspace, '.gitignore'), 'foo.txt\n');

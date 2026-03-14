@@ -1631,8 +1631,19 @@ async function setupTerminalWebSocket(httpServer) {
     };
 
     httpServer.on('upgrade', async (req, socket, head) => {
-      const pathname = new URL(req.url, `${serverProtocol}://${req.headers.host}`).pathname;
+      const parsedUrl = new URL(req.url, `${serverProtocol}://${req.headers.host}`);
+      const pathname = parsedUrl.pathname;
       if (pathname === '/ws/terminal') {
+        // 远程连接须先通过 ACCESS_TOKEN 验证（与 handleRequest 逻辑一致）
+        const remoteIp = req.socket.remoteAddress;
+        if (!isLocalAddress(remoteIp)) {
+          const urlToken = parsedUrl.searchParams.get('token');
+          if (urlToken !== ACCESS_TOKEN) {
+            socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+            socket.destroy();
+            return;
+          }
+        }
         const permResult = await checkTerminalPermission(req);
         if (permResult.allowed && permResult.user) {
           req._ccvUser = permResult.user;

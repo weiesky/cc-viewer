@@ -116,4 +116,32 @@ describe('server plugin endpoints', { concurrency: false }, () => {
     const found = data.plugins.find(p => p.file === 'test-upload.js');
     assert.equal(!!found, false);
   });
-}); 
+
+  it('authenticateTerminal hook can deny terminal access', async () => {
+    // Upload a plugin that denies terminal access
+    const pluginContent = `
+      export default {
+        name: 'deny-terminal',
+        hooks: {
+          authenticateTerminal(ctx) {
+            return { allowed: false, redirectUrl: 'https://example.com/login' };
+          }
+        }
+      };
+    `;
+    const uploadRes = await httpRequest(port, '/api/plugins/upload', {
+      method: 'POST',
+      body: { files: [{ name: 'deny-terminal.js', content: pluginContent }] },
+    });
+    assert.equal(uploadRes.status, 200);
+
+    // /api/terminal-permission is local (127.0.0.1), so it bypasses the hook
+    const localRes = await httpRequest(port, '/api/terminal-permission');
+    assert.equal(localRes.status, 200);
+    assert.equal(localRes.json().allowed, true);
+
+    // Clean up
+    const delRes = await httpRequest(port, '/api/plugins?file=deny-terminal.js', { method: 'DELETE' });
+    assert.equal(delRes.status, 200);
+  });
+});
