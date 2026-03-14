@@ -11,7 +11,7 @@
   }
 
   // 为 URL 添加 token 参数
-  function addToken(url) {
+  function addToken(url, isWebSocket) {
     const t = extractToken();
     if (!t) return url;
 
@@ -25,7 +25,12 @@
     try {
       const urlObj = new URL(url);
       // 只为同源请求添加 token
-      if (urlObj.origin === window.location.origin) {
+      // ws:/wss: → http:/https: 以便与 window.location.origin 做同源比较
+      let origin = urlObj.origin;
+      if (isWebSocket) {
+        origin = origin.replace(/^ws(s?):/, 'http$1:');
+      }
+      if (origin === window.location.origin) {
         urlObj.searchParams.set('token', t);
         return urlObj.toString();
       }
@@ -49,7 +54,7 @@
   // 拦截 WebSocket
   const OriginalWebSocket = window.WebSocket;
   window.WebSocket = function(url, protocols) {
-    return new OriginalWebSocket(addToken(url), protocols);
+    return new OriginalWebSocket(addToken(url, true), protocols);
   };
   // 保留静态常量（CONNECTING=0, OPEN=1, CLOSING=2, CLOSED=3）和原型链
   window.WebSocket.prototype = OriginalWebSocket.prototype;
