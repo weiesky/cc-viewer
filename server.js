@@ -1635,29 +1635,33 @@ async function setupTerminalWebSocket(httpServer) {
       const parsedUrl = new URL(req.url, `${serverProtocol}://${req.headers.host}`);
       const pathname = parsedUrl.pathname;
       if (pathname === '/ws/terminal') {
-        // 远程连接须先通过 ACCESS_TOKEN 验证（与 handleRequest 逻辑一致）
-        const remoteIp = req.socket.remoteAddress;
-        if (!isLocalAddress(remoteIp)) {
-          const urlToken = parsedUrl.searchParams.get('token');
-          if (urlToken !== ACCESS_TOKEN) {
-            socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        try {
+          // 远程连接须先通过 ACCESS_TOKEN 验证（与 handleRequest 逻辑一致）
+          const remoteIp = req.socket.remoteAddress;
+          if (!isLocalAddress(remoteIp)) {
+            const urlToken = parsedUrl.searchParams.get('token');
+            if (urlToken !== ACCESS_TOKEN) {
+              if (!socket.destroyed) socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+              socket.destroy();
+              return;
+            }
+          }
+          const permResult = await checkTerminalPermission(req);
+          if (permResult.allowed && permResult.user) {
+            req._ccvUser = permResult.user;
+          }
+          if (!socket.writable) return;
+          if (!permResult.allowed) {
+            if (!socket.destroyed) socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
             socket.destroy();
             return;
           }
+          wss.handleUpgrade(req, socket, head, (ws) => {
+            wss.emit('connection', ws, req);
+          });
+        } catch {
+          if (!socket.destroyed) socket.destroy();
         }
-        const permResult = await checkTerminalPermission(req);
-        if (permResult.allowed && permResult.user) {
-          req._ccvUser = permResult.user;
-        }
-        if (!socket.writable) return;
-        if (!permResult.allowed) {
-          socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
-          socket.destroy();
-          return;
-        }
-        wss.handleUpgrade(req, socket, head, (ws) => {
-          wss.emit('connection', ws, req);
-        });
       } else {
         socket.destroy();
       }
@@ -1705,7 +1709,7 @@ async function setupTerminalWebSocket(httpServer) {
               } catch {}
             }
             // 发送 input 的客户端成为活跃客户端，同时更新 _bucUser 为该用户
-            setBucUser(wsUserMap.get(ws));
+            setBucUser(wsUserMap.get(ws) || { name: 'local' });
             if (activeWs !== ws) {
               activeWs = ws;
               // 切换活跃客户端时，如果有移动端在线则保持移动端尺寸，
