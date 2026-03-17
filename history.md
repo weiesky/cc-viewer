@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.43 (2026-03-17)
+
+- Fix: AskUserQuestion multi-question submit — replaced stale React state closure check with synchronous instance variable (`_currentPtyPrompt`) for reliable prompt detection across sequential question submissions
+
 ## 1.5.42 (2026-03-17)
 
 - Feature: ultrathink button in PC terminal toolbar — writes `ultrathink ` command into terminal input without auto-submitting

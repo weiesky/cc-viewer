@@ -278,6 +278,7 @@ class ChatView extends React.Component {
     this._inputRef = React.createRef();
     this._ptyBuffer = '';
     this._ptyDebounceTimer = null;
+    this._currentPtyPrompt = null; // 同步跟踪 ptyPrompt，避免闭包捕获旧 state
     this._mobileExtraItems = 0;
     this._mobileSliceOffset = 0;
     this._totalItemCount = 0;
@@ -934,9 +935,11 @@ class ChatView extends React.Component {
         const prompt = { question, options };
         // 同一问题只更新选项（光标移动），不重复推入历史
         if (prev && prev.question === question) {
+          this._currentPtyPrompt = prompt;
           this.setState({ ptyPrompt: prompt });
         } else {
           // 新提示：先将旧的 active 提示标记为 dismissed
+          this._currentPtyPrompt = prompt;
           this.setState(state => {
             const history = state.ptyPromptHistory.slice();
             if (state.ptyPrompt) {
@@ -964,6 +967,7 @@ class ChatView extends React.Component {
         // Don't dismiss prompts during AskUserQuestion submission
         return;
       }
+      this._currentPtyPrompt = null;
       this.setState(state => {
         const history = state.ptyPromptHistory.slice();
         const last = history[history.length - 1];
@@ -977,6 +981,7 @@ class ChatView extends React.Component {
 
   _clearPtyPrompt() {
     this._ptyBuffer = '';
+    this._currentPtyPrompt = null;
     if (this._ptyDebounceTimer) clearTimeout(this._ptyDebounceTimer);
     if (this.state.ptyPrompt) {
       this.setState({ ptyPrompt: null });
@@ -1014,6 +1019,7 @@ class ChatView extends React.Component {
     sendStep(0);
 
     // 标记历史中最后一个 active 为 answered
+    this._currentPtyPrompt = null;
     this.setState(state => {
       const history = state.ptyPromptHistory.slice();
       const last = history[history.length - 1];
@@ -1070,6 +1076,7 @@ class ChatView extends React.Component {
     };
     sendStep(0);
 
+    this._currentPtyPrompt = null;
     this.setState(state => {
       const history = state.ptyPromptHistory.slice();
       const last = history[history.length - 1];
@@ -1102,7 +1109,7 @@ class ChatView extends React.Component {
 
     // ptyPrompt may not be available yet (streaming response renders before CLI prompt appears)
     // Retry with delay until ptyPrompt is detected
-    if (!this.state.ptyPrompt) {
+    if (!this._currentPtyPrompt) {
       this._askPromptRetries = 0;
       this._waitForPtyPromptAndSubmit();
       return;
@@ -1121,7 +1128,7 @@ class ChatView extends React.Component {
     }
     if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
       // WS connected, now wait for ptyPrompt
-      if (!this.state.ptyPrompt) {
+      if (!this._currentPtyPrompt) {
         this._askPromptRetries = 0;
         this._waitForPtyPromptAndSubmit();
       } else {
@@ -1139,7 +1146,7 @@ class ChatView extends React.Component {
       this._processNextAskAnswer();
       return;
     }
-    if (this.state.ptyPrompt) {
+    if (this._currentPtyPrompt) {
       this._processNextAskAnswer();
       return;
     }
@@ -1301,6 +1308,7 @@ class ChatView extends React.Component {
 
   _finishCurrentAskAnswer() {
     // Mark current prompt as answered and clear buffer
+    this._currentPtyPrompt = null;
     this.setState(state => {
       const history = state.ptyPromptHistory.slice();
       const last = history[history.length - 1];
@@ -1322,7 +1330,7 @@ class ChatView extends React.Component {
           this._askAnswerQueue = [];
           return;
         }
-        if (this.state.ptyPrompt) {
+        if (this._currentPtyPrompt) {
           this._processNextAskAnswer();
           return;
         }
