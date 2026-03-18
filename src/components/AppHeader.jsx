@@ -55,9 +55,8 @@ class AppHeader extends React.Component {
   }
 
   shouldComponentUpdate(nextProps, nextState) {
-    // Skip re-render when only requests reference changed but count is same
-    // Stats are only visible when popover is open — state change handles that
     return (
+      nextProps.requests !== this.props.requests ||
       nextProps.requestCount !== this.props.requestCount ||
       nextProps.viewMode !== this.props.viewMode ||
       nextProps.cacheExpireAt !== this.props.cacheExpireAt ||

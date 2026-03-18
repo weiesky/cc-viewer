@@ -366,8 +366,8 @@ class ChatView extends React.Component {
   }
 
   shouldComponentUpdate(nextProps, nextState) {
-    // Only re-render when meaningful props/state change, not on every requests reference change
     return (
+      nextProps.requests !== this.props.requests ||
       nextProps.mainAgentSessions !== this.props.mainAgentSessions ||
       nextProps.collapseToolResults !== this.props.collapseToolResults ||
       nextProps.expandThinking !== this.props.expandThinking ||
