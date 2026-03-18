@@ -43,13 +43,29 @@ export function isPlanApprovalPrompt(prompt) {
   return /plan/i.test(q) && (/approv/i.test(q) || /proceed/i.test(q) || /accept/i.test(q));
 }
 
-function buildToolResultMap(messages) {
-  const toolUseMap = {};
-  for (const msg of messages) {
+// --- 单 pass 增量 tool result 构建 ---
+
+const _toolResultCache = new WeakMap();
+
+function createEmptyToolState() {
+  return {
+    toolUseMap: {},
+    toolResultMap: {},
+    readContentMap: {},
+    editSnapshotMap: {},
+    askAnswerMap: {},
+    planApprovalMap: {},
+    _fileState: {},
+  };
+}
+
+function appendToolResultMap(state, messages, startIndex) {
+  const { toolUseMap, toolResultMap, readContentMap, editSnapshotMap, askAnswerMap, planApprovalMap, _fileState } = state;
+  for (let i = startIndex; i < messages.length; i++) {
+    const msg = messages[i];
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
       for (const block of msg.content) {
         if (block.type === 'tool_use') {
-          // 流式组装可能导致 input 是字符串，需要解析
           let parsed = block;
           if (typeof block.input === 'string') {
             try {
@@ -58,15 +74,40 @@ function buildToolResultMap(messages) {
             } catch {}
           }
           toolUseMap[parsed.id] = parsed;
+          // Edit → editSnapshotMap + _fileState 更新
+          if (parsed.name === 'Edit' && parsed.input) {
+            const fp = parsed.input.file_path;
+            const oldStr = parsed.input.old_string;
+            const newStr = parsed.input.new_string;
+            if (fp && oldStr != null && newStr != null && _fileState[fp]) {
+              const entry = _fileState[fp];
+              editSnapshotMap[parsed.id] = { plainText: entry.plainText, lineNums: entry.lineNums.slice() };
+              const idx = entry.plainText.indexOf(oldStr);
+              if (idx >= 0) {
+                const before = entry.plainText.substring(0, idx);
+                const lineOffset = before.split('\n').length - 1;
+                const oldLineCount = oldStr.split('\n').length;
+                const newLineCount = newStr.split('\n').length;
+                const lineDelta = newLineCount - oldLineCount;
+                entry.plainText = entry.plainText.substring(0, idx) + newStr + entry.plainText.substring(idx + oldStr.length);
+                if (lineDelta !== 0) {
+                  const startNum = entry.lineNums[lineOffset] || (lineOffset + 1);
+                  const newNums = [];
+                  for (let j = 0; j < newLineCount; j++) {
+                    newNums.push(startNum + j);
+                  }
+                  entry.lineNums = [
+                    ...entry.lineNums.slice(0, lineOffset),
+                    ...newNums,
+                    ...entry.lineNums.slice(lineOffset + oldLineCount).map(n => n + lineDelta),
+                  ];
+                }
+              }
+            }
+          }
         }
       }
-    }
-  }
-
-  const toolResultMap = {};
-  const readContentMap = {};
-  for (const msg of messages) {
-    if (msg.role === 'user' && Array.isArray(msg.content)) {
+    } else if (msg.role === 'user' && Array.isArray(msg.content)) {
       for (const block of msg.content) {
         if (block.type === 'tool_result') {
           const matchedTool = toolUseMap[block.tool_use_id];
@@ -85,31 +126,10 @@ function buildToolResultMap(messages) {
             }
           }
           const resultText = extractToolResultText(block);
-          toolResultMap[block.tool_use_id] = {
-            label,
-            toolName,
-            toolInput,
-            resultText,
-          };
-          // 收集 Read 结果，用于 Edit diff 行号定位
+          toolResultMap[block.tool_use_id] = { label, toolName, toolInput, resultText };
           if (matchedTool && matchedTool.name === 'Read' && matchedTool.input?.file_path) {
             readContentMap[matchedTool.input.file_path] = resultText;
-          }
-        }
-      }
-    }
-  }
-  // 构建 editSnapshotMap：为每个 Edit tool_use 保存应用前的文件快照
-  // 这样每个 Edit 的 old_string 都能在对应快照中正确定位
-  const editSnapshotMap = {};
-  const _fileState = {}; // 内部追踪文件当前状态
-  for (const msg of messages) {
-    if (msg.role === 'user' && Array.isArray(msg.content)) {
-      for (const block of msg.content) {
-        if (block.type === 'tool_result') {
-          const matchedTool = toolUseMap[block.tool_use_id];
-          if (matchedTool && matchedTool.name === 'Read' && matchedTool.input?.file_path) {
-            const resultText = extractToolResultText(block);
+            // _fileState 更新（行号解析）
             const readLines = resultText.split('\n');
             const plainLines = [];
             const lineNums = [];
@@ -123,13 +143,12 @@ function buildToolResultMap(messages) {
             if (plainLines.length > 0) {
               const existing = _fileState[matchedTool.input.file_path];
               if (existing) {
-                // 合并部分读取：将新读取的行按行号插入/覆盖到已有状态中
                 const mergedMap = new Map();
-                for (let i = 0; i < existing.lineNums.length; i++) {
-                  mergedMap.set(existing.lineNums[i], existing.plainText.split('\n')[i]);
+                for (let j = 0; j < existing.lineNums.length; j++) {
+                  mergedMap.set(existing.lineNums[j], existing.plainText.split('\n')[j]);
                 }
-                for (let i = 0; i < lineNums.length; i++) {
-                  mergedMap.set(lineNums[i], plainLines[i]);
+                for (let j = 0; j < lineNums.length; j++) {
+                  mergedMap.set(lineNums[j], plainLines[j]);
                 }
                 const sortedKeys = [...mergedMap.keys()].sort((a, b) => a - b);
                 _fileState[matchedTool.input.file_path] = {
@@ -141,67 +160,31 @@ function buildToolResultMap(messages) {
               }
             }
           }
-        }
-      }
-    } else if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-      for (const block of msg.content) {
-        if (block.type === 'tool_use' && block.name === 'Edit' && block.input) {
-          const fp = block.input.file_path;
-          const oldStr = block.input.old_string;
-          const newStr = block.input.new_string;
-          if (fp && oldStr != null && newStr != null && _fileState[fp]) {
-            const entry = _fileState[fp];
-            // 保存此 Edit 应用前的快照
-            editSnapshotMap[block.id] = { plainText: entry.plainText, lineNums: entry.lineNums.slice() };
-            // 应用 Edit 更新文件状态
-            const idx = entry.plainText.indexOf(oldStr);
-            if (idx >= 0) {
-              const before = entry.plainText.substring(0, idx);
-              const lineOffset = before.split('\n').length - 1;
-              const oldLineCount = oldStr.split('\n').length;
-              const newLineCount = newStr.split('\n').length;
-              const lineDelta = newLineCount - oldLineCount;
-              entry.plainText = entry.plainText.substring(0, idx) + newStr + entry.plainText.substring(idx + oldStr.length);
-              if (lineDelta !== 0) {
-                const startNum = entry.lineNums[lineOffset] || (lineOffset + 1);
-                const newNums = [];
-                for (let i = 0; i < newLineCount; i++) {
-                  newNums.push(startNum + i);
-                }
-                entry.lineNums = [
-                  ...entry.lineNums.slice(0, lineOffset),
-                  ...newNums,
-                  ...entry.lineNums.slice(lineOffset + oldLineCount).map(n => n + lineDelta),
-                ];
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  // 构建 askAnswerMap：为每个 AskUserQuestion tool_use 解析用户选择的答案
-  const askAnswerMap = {};
-  // 构建 planApprovalMap：为每个 ExitPlanMode tool_use 解析审批状态
-  const planApprovalMap = {};
-  for (const msg of messages) {
-    if (msg.role === 'user' && Array.isArray(msg.content)) {
-      for (const block of msg.content) {
-        if (block.type === 'tool_result') {
-          const matchedTool = toolUseMap[block.tool_use_id];
           if (matchedTool && matchedTool.name === 'AskUserQuestion') {
-            const resultText = extractToolResultText(block);
             askAnswerMap[block.tool_use_id] = parseAskAnswerText(resultText);
           }
           if (matchedTool && matchedTool.name === 'ExitPlanMode') {
-            const resultText = extractToolResultText(block);
             planApprovalMap[block.tool_use_id] = parsePlanApproval(resultText);
           }
         }
       }
     }
   }
-  return { toolUseMap, toolResultMap, readContentMap, editSnapshotMap, askAnswerMap, planApprovalMap };
+}
+
+function buildToolResultMap(messages) {
+  const state = createEmptyToolState();
+  appendToolResultMap(state, messages, 0);
+  return state;
+}
+
+function cachedBuildToolResultMap(messages) {
+  let cached = _toolResultCache.get(messages);
+  if (!cached) {
+    cached = buildToolResultMap(messages);
+    _toolResultCache.set(messages, cached);
+  }
+  return cached;
 }
 
 /** 从 AskUserQuestion tool_result 文本中提取答案 map */
@@ -233,6 +216,15 @@ class ChatView extends React.Component {
     this.splitContainerRef = React.createRef();
     this.innerSplitRef = React.createRef();
 
+    // 增量 tool result 状态
+    this._incToolState = null;
+    this._incToolProcessedCount = 0;
+    this._incToolSessionIdx = -1;
+    this._prevSessions = null;
+
+    // requests 扫描缓存（tsToIndex / modelName / subAgentEntries）
+    this._reqScanCache = { tsToIndex: {}, modelName: null, subAgentEntries: [], processedCount: 0 };
+
     // 从 localStorage 读取用户偏好的终端宽度（像素）
     const savedWidth = localStorage.getItem('cc-viewer-terminal-width');
     const initialTerminalWidth = savedWidth ? parseFloat(savedWidth) : null;
@@ -241,6 +233,7 @@ class ChatView extends React.Component {
       visibleCount: 0,
       loading: false,
       allItems: [],
+      lastResponseItems: null,
       highlightTs: null,
       highlightFading: false,
       terminalWidth: initialTerminalWidth || 624, // 默认 80cols * 7.8px
@@ -386,6 +379,14 @@ class ChatView extends React.Component {
 
   componentDidUpdate(prevProps) {
     if (prevProps.mainAgentSessions !== this.props.mainAgentSessions) {
+      // full_reload / sessions 引用变化 → 重置增量状态
+      if (this.props.mainAgentSessions !== this._prevSessions) {
+        this._incToolState = null;
+        this._incToolProcessedCount = 0;
+        this._incToolSessionIdx = -1;
+        this._prevSessions = this.props.mainAgentSessions;
+        this._reqScanCache = { tsToIndex: {}, modelName: null, subAgentEntries: [], processedCount: 0 };
+      }
       if (isMobile) this._mobileExtraItems = 0;
       this.startRender();
       if (this.state.pendingInput) {
@@ -393,10 +394,13 @@ class ChatView extends React.Component {
       }
       this._updateSuggestion();
       this._checkToolFileChanges();
+    } else if (prevProps.requests !== this.props.requests) {
+      // SubAgent / Teammate 请求到达但 mainAgentSessions 未变 → 增量重建
+      this.startRender();
     } else if (prevProps.collapseToolResults !== this.props.collapseToolResults || prevProps.expandThinking !== this.props.expandThinking) {
       const rawItems = this.buildAllItems();
       const allItems = this._applyMobileSlice(rawItems);
-      this.setState({ allItems, visibleCount: allItems.length });
+      this.setState({ allItems, lastResponseItems: this._lastResponseItems, visibleCount: allItems.length });
     }
     // scrollToTimestamp 变化时（如从 raw 模式切回 chat），重建 items 并滚动定位
     if (!prevProps.scrollToTimestamp && this.props.scrollToTimestamp) {
@@ -413,11 +417,11 @@ class ChatView extends React.Component {
           }
         }
         const allItems = this._applyMobileSlice(rawItems);
-        this.setState({ allItems, visibleCount: allItems.length }, () => this.scrollToBottom());
+        this.setState({ allItems, lastResponseItems: this._lastResponseItems, visibleCount: allItems.length }, () => this.scrollToBottom());
       } else {
         const rawItems = this.buildAllItems();
         const allItems = this._applyMobileSlice(rawItems);
-        this.setState({ allItems, visibleCount: allItems.length }, () => this.scrollToBottom());
+        this.setState({ allItems, lastResponseItems: this._lastResponseItems, visibleCount: allItems.length }, () => this.scrollToBottom());
       }
     }
     // mobileChatVisible: scroll to bottom when becoming visible
@@ -457,6 +461,7 @@ class ChatView extends React.Component {
     if (this._queueTimer) clearTimeout(this._queueTimer);
 
     const rawItems = this.buildAllItems();
+    const lastResponseItems = this._lastResponseItems;
     const allItems = this._applyMobileSlice(rawItems);
     const prevLen = this._prevItemsLen;
     this._prevItemsLen = allItems.length;
@@ -464,18 +469,18 @@ class ChatView extends React.Component {
     const newCount = allItems.length - prevLen;
 
     if (newCount <= 0 || (prevLen > 0 && newCount <= 3)) {
-      this.setState({ allItems, visibleCount: allItems.length, loading: false }, () => this.scrollToBottom());
+      this.setState({ allItems, lastResponseItems, visibleCount: allItems.length, loading: false }, () => this.scrollToBottom());
       return;
     }
 
     if (allItems.length > QUEUE_THRESHOLD) {
-      this.setState({ allItems, visibleCount: 0, loading: true });
+      this.setState({ allItems, lastResponseItems, visibleCount: 0, loading: true });
       this._queueTimer = setTimeout(() => {
         this.setState({ visibleCount: allItems.length, loading: false }, () => this.scrollToBottom());
       }, 300);
     } else {
       const startFrom = Math.max(0, prevLen);
-      this.setState({ allItems, visibleCount: startFrom, loading: false });
+      this.setState({ allItems, lastResponseItems, visibleCount: startFrom, loading: false });
       this.queueNext(startFrom, allItems.length);
     }
   }
@@ -575,7 +580,7 @@ class ChatView extends React.Component {
     const prevScrollTop = el ? el.scrollTop : 0;
     const rawItems = this.buildAllItems();
     const allItems = this._applyMobileSlice(rawItems);
-    this.setState({ allItems, visibleCount: allItems.length }, () => {
+    this.setState({ allItems, lastResponseItems: this._lastResponseItems, visibleCount: allItems.length }, () => {
       if (el) {
         const newScrollHeight = el.scrollHeight;
         el.scrollTop = prevScrollTop + (newScrollHeight - prevScrollHeight);
@@ -611,7 +616,22 @@ class ChatView extends React.Component {
 
   renderSessionMessages(messages, keyPrefix, modelInfo, tsToIndex) {
     const { userProfile, collapseToolResults, expandThinking, onViewRequest } = this.props;
-    const { toolUseMap, toolResultMap, readContentMap, editSnapshotMap, askAnswerMap, planApprovalMap } = buildToolResultMap(messages);
+    // 增量 / WeakMap 缓存
+    let cached = _toolResultCache.get(messages);
+    if (!cached) {
+      const si = parseInt(keyPrefix.slice(1), 10);
+      if (this._incToolSessionIdx === si && messages.length >= this._incToolProcessedCount && this._incToolProcessedCount > 0) {
+        appendToolResultMap(this._incToolState, messages, this._incToolProcessedCount);
+      } else {
+        this._incToolState = createEmptyToolState();
+        appendToolResultMap(this._incToolState, messages, 0);
+        this._incToolSessionIdx = si;
+      }
+      this._incToolProcessedCount = messages.length;
+      cached = this._incToolState;
+      _toolResultCache.set(messages, cached);
+    }
+    const { toolUseMap, toolResultMap, readContentMap, editSnapshotMap, askAnswerMap, planApprovalMap } = cached;
 
     const activePlanPrompt = this.props.cliMode
       ? this.state.ptyPromptHistory.slice().reverse().find(p => isPlanApprovalPrompt(p) && p.status === 'active') || null
@@ -704,47 +724,35 @@ class ChatView extends React.Component {
 
   buildAllItems() {
     const { mainAgentSessions, requests, collapseToolResults, expandThinking, onViewRequest } = this.props;
+    this._lastResponseItems = null;
     if (!mainAgentSessions || mainAgentSessions.length === 0) return [];
 
-    // 构建 timestamp → filteredRequests index 映射
-    const tsToIndex = {};
+    // 单 pass 增量扫描 requests（tsToIndex + modelName + subAgentEntries）
+    const cache = this._reqScanCache;
     if (requests) {
-      for (let i = 0; i < requests.length; i++) {
-        if (isMainAgent(requests[i]) && requests[i].timestamp) {
-          tsToIndex[requests[i].timestamp] = i;
-        }
+      const startIdx = (requests.length >= cache.processedCount) ? cache.processedCount : 0;
+      if (startIdx === 0) {
+        cache.tsToIndex = {};
+        cache.modelName = null;
+        cache.subAgentEntries = [];
       }
-    }
-
-    // 从最新的 mainAgent 请求中提取模型名
-    let modelName = null;
-    if (requests) {
-      for (let i = requests.length - 1; i >= 0; i--) {
-        if (isMainAgent(requests[i]) && requests[i].body?.model) {
-          modelName = requests[i].body.model;
-          break;
-        }
-      }
-    }
-    const modelInfo = getModelInfo(modelName);
-
-    const allItems = [];
-    // 记录每个 timestamp 对应的最后一个 item index，用于滚动定位
-    const tsItemMap = {};
-
-    // 收集 SubAgent 和 Teammate entries（按 timestamp 排序）
-    const subAgentEntries = [];
-    if (requests) {
-      for (let i = 0; i < requests.length; i++) {
+      for (let i = startIdx; i < requests.length; i++) {
         const req = requests[i];
+        const ma = isMainAgent(req);
+        if (ma && req.timestamp) {
+          cache.tsToIndex[req.timestamp] = i;
+        }
+        if (ma && req.body?.model) {
+          cache.modelName = req.body.model;
+        }
         if (!req.timestamp) continue;
         const cls = classifyRequest(req, requests[i + 1]);
         if (cls.type === 'SubAgent' || cls.type === 'Teammate') {
           const respContent = req.response?.body?.content;
           if (Array.isArray(respContent) && respContent.length > 0) {
-            const subToolResultMap = buildToolResultMap(req.body?.messages || []).toolResultMap;
+            const subToolResultMap = cachedBuildToolResultMap(req.body?.messages || []).toolResultMap;
             const isTeammateEntry = cls.type === 'Teammate';
-            subAgentEntries.push({
+            cache.subAgentEntries.push({
               timestamp: req.timestamp,
               content: respContent,
               toolResultMap: subToolResultMap,
@@ -757,7 +765,14 @@ class ChatView extends React.Component {
           }
         }
       }
+      cache.processedCount = requests.length;
     }
+    const tsToIndex = cache.tsToIndex;
+    const modelInfo = getModelInfo(cache.modelName);
+    const subAgentEntries = cache.subAgentEntries;
+
+    const allItems = [];
+    const tsItemMap = {};
 
     let subIdx = 0;
 
@@ -803,24 +818,21 @@ class ChatView extends React.Component {
       if (si === mainAgentSessions.length - 1 && session.response?.body?.content) {
         const respContent = session.response.body.content;
         if (Array.isArray(respContent)) {
-          allItems.push(
-            <React.Fragment key="resp-divider">
-              <Divider style={{ borderColor: '#2a2a2a', margin: '8px 0' }}>
-                <Text type="secondary" className={styles.lastResponseLabel}>{t('ui.lastResponse')}</Text>
-              </Divider>
-            </React.Fragment>
-          );
-          // 将 Last Response 关联到该 session 对应的 entry timestamp，用于原文-对话定位
+          // Last Response 单独存储，不混入主列表
           if (session.entryTimestamp) tsItemMap[session.entryTimestamp] = allItems.length;
-          // 计算 Last Response 中最后一个 pending 的 AskUserQuestion id
           let respLastPendingAskId = null;
           for (const block of respContent) {
             if (block.type === 'tool_use' && block.name === 'AskUserQuestion') {
               respLastPendingAskId = block.id;
             }
           }
-          allItems.push(
-            <ChatMessage key="resp-asst" role="assistant" content={respContent} timestamp={session.entryTimestamp} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} toolResultMap={{}} askAnswerMap={{}} lastPendingAskId={respLastPendingAskId} cliMode={this.props.cliMode} onAskQuestionSubmit={this.handleAskQuestionSubmit} />
+          this._lastResponseItems = (
+            <React.Fragment key="last-response-group">
+              <Divider style={{ borderColor: '#2a2a2a', margin: '8px 0' }}>
+                <Text type="secondary" className={styles.lastResponseLabel}>{t('ui.lastResponse')}</Text>
+              </Divider>
+              <ChatMessage key="resp-asst" role="assistant" content={respContent} timestamp={session.entryTimestamp} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} toolResultMap={{}} askAnswerMap={{}} lastPendingAskId={respLastPendingAskId} cliMode={this.props.cliMode} onAskQuestionSubmit={this.handleAskQuestionSubmit} />
+            </React.Fragment>
           );
         }
       }
@@ -1483,7 +1495,7 @@ class ChatView extends React.Component {
 
   render() {
     const { mainAgentSessions, cliMode, terminalVisible } = this.props;
-    const { allItems, visibleCount, loading, terminalWidth } = this.state;
+    const { allItems, visibleCount, loading, terminalWidth, lastResponseItems } = this.state;
 
     const noData = !mainAgentSessions || mainAgentSessions.length === 0;
 
@@ -1592,6 +1604,11 @@ class ChatView extends React.Component {
               ? <div key={item.key + '-anchor'} ref={this._scrollTargetRef}>{el}</div>
               : el;
           })}
+          {lastResponseItems && (
+            targetIdx != null && targetIdx >= visible.length
+              ? <div key="last-resp-anchor" ref={this._scrollTargetRef}>{lastResponseItems}</div>
+              : lastResponseItems
+          )}
           {pendingBubble}
           {promptBubbles}
         </div>
