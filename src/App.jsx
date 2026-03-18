@@ -2,6 +2,10 @@ import React from 'react';
 import { ConfigProvider, Layout, theme, Modal, Table, Tag, Spin, Button, Checkbox, Badge, Switch, Popover, message } from 'antd';
 import { UploadOutlined, MessageOutlined, BranchesOutlined, DownloadOutlined, DeleteOutlined, RollbackOutlined, ReloadOutlined } from '@ant-design/icons';
 import { isMobile, isIOS } from './env';
+
+// Memory cap: prevent unbounded growth. Log file retains all data — reload to recover.
+const MAX_REQUESTS = isMobile ? 800 : 5000;
+const MAX_SESSIONS = isMobile ? 30 : 100;
 import AppHeader from './components/AppHeader';
 import RequestList from './components/RequestList';
 import DetailPanel from './components/DetailPanel';
@@ -545,6 +549,25 @@ class App extends React.Component {
 
       // Invalidate cache loss map so render() recomputes it
       this._cacheLossMapSource = null;
+
+      // Memory cap: evict oldest entries to prevent unbounded growth
+      if (requests.length > MAX_REQUESTS) {
+        const excess = requests.length - MAX_REQUESTS;
+        requests.splice(0, excess);
+        // Rebuild index map after eviction
+        this._requestIndexMap.clear();
+        for (let i = 0; i < requests.length; i++) {
+          const e = requests[i];
+          this._requestIndexMap.set(`${e.timestamp}|${e.url}`, i);
+        }
+        // Adjust selectedIndex
+        if (selectedIndex !== null) {
+          selectedIndex = selectedIndex >= excess ? selectedIndex - excess : 0;
+        }
+      }
+      if (mainAgentSessions.length > MAX_SESSIONS) {
+        mainAgentSessions = mainAgentSessions.slice(-MAX_SESSIONS);
+      }
 
       let selectedIndex = prev.selectedIndex;
       if (selectedIndex === null && requests.length > 0) {

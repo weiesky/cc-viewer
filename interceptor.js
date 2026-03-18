@@ -440,11 +440,16 @@ export function setupInterceptor() {
                       delete requestEntry.inProgress;
                       delete requestEntry.requestId;
                       appendFileSync(LOG_FILE, JSON.stringify(requestEntry) + '\n---\n');
+                      // Release memory: clear large objects after disk write
+                      streamedContent = '';
+                      requestEntry.response = null;
                     } catch (err) {
                       requestEntry.response.body = streamedContent.slice(0, 1000);
                       delete requestEntry.inProgress;
                       delete requestEntry.requestId;
                       appendFileSync(LOG_FILE, JSON.stringify(requestEntry) + '\n---\n');
+                      streamedContent = '';
+                      requestEntry.response = null;
                     }
                     controller.close();
                     break;

@@ -77,7 +77,15 @@ let _workspaceIsNpmVersion = false;
 let _workspaceLaunched = false; // 工作区是否已经启动了会话
 
 // Editor session state (for $EDITOR intercept)
-const editorSessions = new Map(); // sessionId → { filePath, done }
+const editorSessions = new Map(); // sessionId → { filePath, done, createdAt }
+// Periodically clean up abandoned editor sessions (older than 1 hour)
+const _editorCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [id, session] of editorSessions) {
+    if (now - (session.createdAt || 0) > 3600000) editorSessions.delete(id);
+  }
+}, 60000);
+_editorCleanupTimer.unref(); // Don't keep process alive for cleanup
 let terminalWss = null; // WebSocketServer reference for broadcasting
 export function setWorkspaceClaudeArgs(args) {
   _workspaceClaudeArgs = args;
@@ -86,6 +94,9 @@ export function setWorkspaceClaudePath(path, isNpm) {
   _workspaceClaudePath = path;
   _workspaceIsNpmVersion = isNpm;
 }
+
+// Global POST body size limit (10MB) to prevent OOM from malicious/buggy clients
+const MAX_POST_BODY = 10 * 1024 * 1024;
 
 
 
@@ -279,7 +290,7 @@ async function handleRequest(req, res) {
 
   if (url === '/api/preferences' && method === 'POST') {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
     req.on('end', () => {
       try {
         const incoming = JSON.parse(body);
@@ -300,7 +311,7 @@ async function handleRequest(req, res) {
   // 注册新的日志文件进行 watch（供新进程复用旧服务时调用）
   if (url === '/api/register-log' && method === 'POST') {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
     req.on('end', () => {
       try {
         const { logFile } = JSON.parse(body);
@@ -323,7 +334,7 @@ async function handleRequest(req, res) {
   // 用户选择继续/新开日志
   if (url === '/api/resume-choice' && method === 'POST') {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
     req.on('end', () => {
       try {
         const { choice } = JSON.parse(body);
@@ -367,7 +378,7 @@ async function handleRequest(req, res) {
   // 翻译 API
   if (url === '/api/translate' && method === 'POST') {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
     req.on('end', async () => {
       try {
         const { text, from = 'en', to } = JSON.parse(body);
@@ -511,7 +522,7 @@ async function handleRequest(req, res) {
 
   if (url === '/api/workspaces/launch' && method === 'POST') {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
     req.on('end', async () => {
       try {
         const { path: wsPath } = JSON.parse(body);
@@ -570,7 +581,7 @@ async function handleRequest(req, res) {
 
   if (url === '/api/workspaces/add' && method === 'POST') {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
     req.on('end', async () => {
       try {
         const { path: wsPath } = JSON.parse(body);
@@ -902,7 +913,7 @@ async function handleRequest(req, res) {
 
   if (url === '/api/editor-open' && method === 'POST') {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
     req.on('end', () => {
       try {
         const { sessionId, filePath } = JSON.parse(body);
@@ -911,7 +922,7 @@ async function handleRequest(req, res) {
           res.end(JSON.stringify({ error: 'Missing sessionId or filePath' }));
           return;
         }
-        editorSessions.set(sessionId, { filePath, done: false });
+        editorSessions.set(sessionId, { filePath, done: false, createdAt: Date.now() });
         // Broadcast to all terminal WebSocket clients
         if (terminalWss) {
           const msg = JSON.stringify({ type: 'editor-open', sessionId, filePath });
@@ -946,7 +957,7 @@ async function handleRequest(req, res) {
 
   if (url === '/api/editor-done' && method === 'POST') {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
     req.on('end', () => {
       try {
         const { sessionId } = JSON.parse(body);
@@ -1211,7 +1222,7 @@ async function handleRequest(req, res) {
 
   if (url === '/api/plugins/upload' && method === 'POST') {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
     req.on('end', async () => {
       try {
         const { files: fileList } = JSON.parse(body);
@@ -1396,7 +1407,7 @@ async function handleRequest(req, res) {
   // 删除日志文件
   if (url === '/api/delete-logs' && method === 'POST') {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
     req.on('end', () => {
       try {
         const { files } = JSON.parse(body);
@@ -1442,7 +1453,7 @@ async function handleRequest(req, res) {
   // 合并日志文件
   if (url === '/api/merge-logs' && method === 'POST') {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
     req.on('end', () => {
       try {
         const { files } = JSON.parse(body);
@@ -1601,7 +1612,7 @@ async function handleRequest(req, res) {
   // CCV 进程关闭
   if (url === '/api/ccv-processes/kill' && method === 'POST') {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
     req.on('end', async () => {
       try {
         const { pid } = JSON.parse(body);

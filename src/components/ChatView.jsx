@@ -295,6 +295,11 @@ class ChatView extends React.Component {
     const sessions = this.props.mainAgentSessions;
     if (!sessions || sessions.length === 0) return;
 
+    // Cap processed IDs to prevent unbounded Set growth
+    if (this._processedToolIds.size > 5000) {
+      this._processedToolIds.clear();
+    }
+
     let needFileRefresh = false;
     let needGitRefresh = false;
 
@@ -430,11 +435,16 @@ class ChatView extends React.Component {
   }
 
   componentWillUnmount() {
+    this._unmounted = true;
     if (this._queueTimer) clearTimeout(this._queueTimer);
     if (this._fadeClearTimer) clearTimeout(this._fadeClearTimer);
     if (this._ptyDebounceTimer) clearTimeout(this._ptyDebounceTimer);
     if (this._fileRefreshTimer) clearTimeout(this._fileRefreshTimer);
     if (this._gitRefreshTimer) clearTimeout(this._gitRefreshTimer);
+    if (this._wsReconnectTimer) clearTimeout(this._wsReconnectTimer);
+    if (this._waitForWsTimer) clearTimeout(this._waitForWsTimer);
+    if (this._waitForPtyTimer) clearTimeout(this._waitForPtyTimer);
+    if (this._planFeedbackTimer) clearTimeout(this._planFeedbackTimer);
     this._unbindScrollFade();
     this._unbindStickyScroll();
     if (this._inputWs) {
@@ -906,8 +916,8 @@ class ChatView extends React.Component {
       } catch {}
     };
     this._inputWs.onclose = () => {
-      setTimeout(() => {
-        if (this.splitContainerRef.current && this.props.cliMode) {
+      this._wsReconnectTimer = setTimeout(() => {
+        if (!this._unmounted && this.splitContainerRef.current && this.props.cliMode) {
           this.connectInputWs();
         }
       }, 2000);
@@ -970,6 +980,8 @@ class ChatView extends React.Component {
               }
             }
             history.push({ ...prompt, status: 'active', selectedNumber: null, timestamp: new Date().toISOString() });
+            // Cap history to prevent unbounded growth
+            if (history.length > 200) history.splice(0, history.length - 200);
             return { ptyPrompt: prompt, ptyPromptHistory: history };
           });
           this.scrollToBottom();
@@ -1170,7 +1182,7 @@ class ChatView extends React.Component {
       }
       return;
     }
-    setTimeout(() => this._waitForWsAndSubmit(), 100);
+    this._waitForWsTimer = setTimeout(() => this._waitForWsAndSubmit(), 100);
   }
 
   _waitForPtyPromptAndSubmit() {
@@ -1184,7 +1196,7 @@ class ChatView extends React.Component {
       this._processNextAskAnswer();
       return;
     }
-    setTimeout(() => this._waitForPtyPromptAndSubmit(), 100);
+    this._waitForPtyTimer = setTimeout(() => this._waitForPtyPromptAndSubmit(), 100);
   }
 
   _processNextAskAnswer() {
