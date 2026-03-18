@@ -3,6 +3,7 @@
 ## 1.6.6 (2026-03-19)
 
 - Fix: guard null/undefined entries in `isRelevantRequest` — prevents `Cannot read properties of undefined (reading 'isHeartbeat')` crash during request filtering
+- Fix: `selectedIndex` TDZ (Temporal Dead Zone) bug in `_flushPendingEntries` — variable was used before `let` declaration, causing `ReferenceError` when requests exceed 5000 cap, permanently freezing all state updates
 
 ## 1.6.0 (2026-03-18)
 

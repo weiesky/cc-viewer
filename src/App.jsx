@@ -550,6 +550,8 @@ class App extends React.Component {
       // Invalidate cache loss map so render() recomputes it
       this._cacheLossMapSource = null;
 
+      let selectedIndex = prev.selectedIndex;
+
       // Memory cap: evict oldest entries to prevent unbounded growth
       if (requests.length > MAX_REQUESTS) {
         const excess = requests.length - MAX_REQUESTS;
@@ -568,8 +570,6 @@ class App extends React.Component {
       if (mainAgentSessions.length > MAX_SESSIONS) {
         mainAgentSessions = mainAgentSessions.slice(-MAX_SESSIONS);
       }
-
-      let selectedIndex = prev.selectedIndex;
       if (selectedIndex === null && requests.length > 0) {
         if (this._autoSelectTimer) clearTimeout(this._autoSelectTimer);
         this._autoSelectTimer = setTimeout(() => {
