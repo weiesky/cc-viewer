@@ -12,7 +12,7 @@ CC-Viewer provides a lightweight plugin mechanism that allows injecting custom l
 mkdir -p ~/.claude/cc-viewer/plugins
 ```
 
-2. Create a plugin file (`.js` or `.mjs`):
+1. Create a plugin file (`.js` or `.mjs`):
 
 ```javascript
 // ~/.claude/cc-viewer/plugins/my-plugin.js
@@ -27,7 +27,7 @@ export default {
 };
 ```
 
-3. Restart cc-viewer. The plugin loads automatically — no `npm install` needed.
+1. Restart cc-viewer. The plugin loads automatically — no `npm install` needed.
 
 ## Plugin Directory
 
@@ -39,7 +39,12 @@ All plugins live in:
 
 This is `LOG_DIR/plugins/` — the same base directory cc-viewer uses for logs and preferences. Enterprise IT teams can pre-populate this directory for all users.
 
-The loader scans for all `*.js` and `*.mjs` files in this directory. Each file is one plugin.
+The loader scans:
+
+- flat `*.js` and `*.mjs` files in this directory
+- first-level package entries: `plugins/<name>/index.mjs` or `plugins/<name>/index.js`
+
+It does not recursively load deeper nested folders.
 
 ## Plugin Format
 
@@ -264,6 +269,39 @@ export default {
   },
 };
 ```
+
+## POC Example: Skill Version Evaluation Plugin
+
+A ready-to-use POC plugin is included in this repository:
+
+`examples/plugins/skill-eval-poc/index.mjs`
+
+Install it into your plugin directory:
+
+```bash
+mkdir -p ~/.claude/cc-viewer/plugins
+cp examples/plugins/skill-eval-poc/index.mjs ~/.claude/cc-viewer/plugins/skill-eval-poc.mjs
+```
+
+Add labels in prompts during evaluation runs:
+
+```text
+[variant:v1] [sample_id:s001] ...
+[variant:v2] [sample_id:s001] ...
+```
+
+The plugin aggregates metrics by `variant + teammate + sample_id`:
+
+- requestCount
+- errorCount
+- durationMsTotal
+- inputTokens / outputTokens
+- cacheReadTokens / cacheCreationTokens
+- toolUseCount
+
+Output file:
+
+`tmp/skill-eval-poc-report.json`
 
 ## Notes
 

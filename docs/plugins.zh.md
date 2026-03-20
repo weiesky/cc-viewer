@@ -333,9 +333,47 @@ export default {
 
 ---
 
+## POC 示例：Skill 版本对比插件
+
+仓库提供了一个可直接使用的 POC 插件：
+
+`examples/plugins/skill-eval-poc/index.mjs`
+
+使用方式：
+
+```bash
+mkdir -p ~/.claude/cc-viewer/plugins
+cp examples/plugins/skill-eval-poc/index.mjs ~/.claude/cc-viewer/plugins/skill-eval-poc.mjs
+```
+
+运行实验时，在用户输入中打标签：
+
+```text
+[variant:v1] [sample_id:s001] ...
+[variant:v2] [sample_id:s001] ...
+```
+
+插件会按 `variant + teammate + sample_id` 聚合以下指标：
+
+- requestCount
+- errorCount
+- durationMsTotal
+- inputTokens / outputTokens
+- cacheReadTokens / cacheCreationTokens
+- toolUseCount
+
+结果文件输出到：
+
+`tmp/skill-eval-poc-report.json`
+
+你可以基于该文件做 v1 vs v2 vs vn 的离线对比分析。
+
+---
+
 ## 注意事项
 
 - 插件在服务器启动时加载一次。新增或删除插件文件后需要重启 cc-viewer。
 - 如果插件目录不存在，加载器静默返回，零性能开销。
 - 插件使用 ESM 格式（`export default`），支持 `.js` 和 `.mjs` 后缀。
+- 加载器支持扁平文件和一级目录入口（`plugins/<name>/index.mjs|index.js`），不会递归加载更深目录。
 - 插件目录路径：`~/.claude/cc-viewer/plugins/`，企业 IT 可预置此目录。

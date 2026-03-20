@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import { createConnection } from 'node:net';
 import { randomBytes } from 'node:crypto';
-import { readFileSync, writeFileSync, existsSync, watchFile, unwatchFile, statSync, readdirSync, renameSync, unlinkSync, openSync, readSync, closeSync, realpathSync, mkdirSync, createReadStream } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, watchFile, unwatchFile, statSync, readdirSync, renameSync, unlinkSync, openSync, readSync, closeSync, realpathSync, mkdirSync, rmdirSync, createReadStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, extname } from 'node:path';
 import { homedir, platform, networkInterfaces } from 'node:os';
@@ -27,7 +27,7 @@ function execWithStdin(cmd, args, input, options) {
       resolve(stdout);
     });
     if (options?.timeout) {
-      setTimeout(() => { try { child.kill(); } catch {} reject(new Error('timeout')); }, options.timeout);
+      setTimeout(() => { try { child.kill(); } catch { } reject(new Error('timeout')); }, options.timeout);
     }
     child.stdin.write(input);
     child.stdin.end();
@@ -75,6 +75,14 @@ let _workspaceClaudeArgs = [];
 let _workspaceClaudePath = null;
 let _workspaceIsNpmVersion = false;
 let _workspaceLaunched = false; // 工作区是否已经启动了会话
+
+function isValidPluginEntryId(file) {
+  if (!file || typeof file !== 'string') return false;
+  if (file.includes('..') || file.includes('\\') || file.startsWith('/') || file.endsWith('/')) return false;
+  const flatFile = /^[^/]+\.(js|mjs)$/;
+  const packageEntry = /^[^/]+\/index\.(js|mjs)$/;
+  return flatFile.test(file) || packageEntry.test(file);
+}
 
 // Editor session state (for $EDITOR intercept)
 const editorSessions = new Map(); // sessionId → { filePath, done, createdAt }
@@ -491,7 +499,7 @@ async function handleRequest(req, res) {
         if (entry.name.startsWith('.') && entry.name !== '.') continue;
         const fullPath = join(dirPath, entry.name);
         let hasGit = false;
-        try { hasGit = existsSync(join(fullPath, '.git')); } catch {}
+        try { hasGit = existsSync(join(fullPath, '.git')); } catch { }
         dirs.push({ name: entry.name, path: fullPath, hasGit });
       }
       dirs.sort((a, b) => {
@@ -558,7 +566,7 @@ async function handleRequest(req, res) {
         clients.forEach(client => {
           try {
             client.write(`event: workspace_started\ndata: ${JSON.stringify({ projectName: result.projectName, path: wsPath })}\n\n`);
-          } catch {}
+          } catch { }
         });
 
         // 发送 full_reload 以刷新会话区域
@@ -566,7 +574,7 @@ async function handleRequest(req, res) {
         clients.forEach(client => {
           try {
             client.write(`event: full_reload\ndata: ${JSON.stringify(entries)}\n\n`);
-          } catch {}
+          } catch { }
         });
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -633,7 +641,7 @@ async function handleRequest(req, res) {
       clients.forEach(client => {
         try {
           client.write(`event: workspace_stopped\ndata: {}\n\n`);
-        } catch {}
+        } catch { }
       });
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -914,7 +922,7 @@ async function handleRequest(req, res) {
   if (url === '/api/open-log-dir' && method === 'POST') {
     const dir = LOG_FILE ? dirname(LOG_FILE) : LOG_DIR;
     const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
-    exec(`${cmd} ${JSON.stringify(dir)}`, () => {});
+    exec(`${cmd} ${JSON.stringify(dir)}`, () => { });
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, dir }));
     return;
@@ -937,7 +945,7 @@ async function handleRequest(req, res) {
           const msg = JSON.stringify({ type: 'editor-open', sessionId, filePath });
           terminalWss.clients.forEach(client => {
             if (client.readyState === 1) {
-              try { client.send(msg); } catch {}
+              try { client.send(msg); } catch { }
             }
           });
         }
@@ -1192,7 +1200,7 @@ async function handleRequest(req, res) {
 
   if (url === '/api/plugins' && method === 'DELETE') {
     const file = parsedUrl.searchParams.get('file');
-    if (!file || file.includes('..') || file.includes('/') || file.includes('\\')) {
+    if (!isValidPluginEntryId(file)) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid file name' }));
       return;
@@ -1205,6 +1213,14 @@ async function handleRequest(req, res) {
         return;
       }
       unlinkSync(filePath);
+      if (/^[^/]+\/index\.(js|mjs)$/.test(file)) {
+        const pluginDir = dirname(filePath);
+        try {
+          if (existsSync(pluginDir) && readdirSync(pluginDir).length === 0) {
+            rmdirSync(pluginDir);
+          }
+        } catch { }
+      }
       await loadPlugins();
       const plugins = getPluginsInfo();
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1331,7 +1347,7 @@ async function handleRequest(req, res) {
         if (!saveName) {
           const urlFilename = parsedUrl.pathname.split('/').pop();
           if (urlFilename && (urlFilename.endsWith('.js') || urlFilename.endsWith('.mjs'))
-              && urlFilename !== 'index.js' && urlFilename !== 'index.mjs') {
+            && urlFilename !== 'index.js' && urlFilename !== 'index.mjs') {
             saveName = urlFilename.replace(/\.(js|mjs)$/, '');
           }
         }
@@ -1677,7 +1693,7 @@ async function handleRequest(req, res) {
           const { stdout: ppidOut } = await execAsync(`ps -o ppid= -p ${pid}`, { timeout: 2000 }).catch(() => ({ stdout: '' }));
           const ppid = parseInt(ppidOut.trim(), 10);
           if (ppid && ccvPids.has(ppid)) continue; // 是某个 CCV 进程的子进程，跳过
-        } catch {}
+        } catch { }
         filteredPids.push(pid);
       }
       const processes = [];
@@ -1691,7 +1707,7 @@ async function handleRequest(req, res) {
           // lstart format: "Day Mon DD HH:MM:SS YYYY rest..."
           const lsMatch = psLine.match(/^\w+\s+(\w+)\s+(\d+)\s+([\d:]+)\s+(\d{4})\s+(.*)/);
           if (lsMatch) {
-            const months = { Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12 };
+            const months = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
             const mon = String(months[lsMatch[1]] || 1).padStart(2, '0');
             const day = String(lsMatch[2]).padStart(2, '0');
             const time = lsMatch[3];
@@ -1702,7 +1718,7 @@ async function handleRequest(req, res) {
             const libMatch = rawCmd.match(/lib\/(.+)/);
             command = libMatch ? libMatch[1] : rawCmd;
           }
-        } catch {}
+        } catch { }
         const isCurrent = pid === process.pid;
         processes.push({ port, pid, command, startTime, isCurrent });
       }
@@ -1857,7 +1873,7 @@ export async function startViewer() {
             const [maj, min, pat] = ccVer.split('.').map(Number);
             if (maj < 2 || (maj === 2 && min === 0 && pat < 69)) {
               const cmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
-              execAsync(`${cmd} ${url}`, { timeout: 5000 }).catch(() => {});
+              execAsync(`${cmd} ${url}`, { timeout: 5000 }).catch(() => { });
             }
           } catch { }
           // 工作区模式下延迟到选择工作区后再启动监听
@@ -1962,7 +1978,7 @@ async function setupTerminalWebSocket(httpServer) {
             if (!state.running) {
               try {
                 await spawnShell();
-              } catch {}
+              } catch { }
             }
             // 发送 input 的客户端成为活跃客户端
             if (activeWs !== ws) {
@@ -1984,14 +2000,14 @@ async function setupTerminalWebSocket(httpServer) {
             // Programmatic sequential input: send chunks one by one, waiting for PTY ACK
             const state = getPtyState();
             if (!state.running) {
-              try { await spawnShell(); } catch {}
+              try { await spawnShell(); } catch { }
             }
             const chunks = msg.chunks;
             if (Array.isArray(chunks) && chunks.length > 0) {
               writeToPtySequential(chunks, (ok) => {
                 try {
                   ws.send(JSON.stringify({ type: 'input-sequential-done', ok }));
-                } catch {}
+                } catch { }
               }, { settleMs: msg.settleMs || 150 });
             }
           } else if (msg.type === 'resize') {
@@ -2006,7 +2022,7 @@ async function setupTerminalWebSocket(httpServer) {
               resizePty(msg.cols, msg.rows);
             }
           }
-        } catch {}
+        } catch { }
       });
 
       ws.on('close', () => {

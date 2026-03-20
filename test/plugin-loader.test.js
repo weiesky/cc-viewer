@@ -23,6 +23,14 @@ function writePlugin(filename, content) {
   createdFiles.push(filePath);
 }
 
+function writePluginInDir(dirName, content, ext = 'mjs') {
+  const dirPath = join(PLUGINS_DIR, dirName);
+  mkdirSync(dirPath, { recursive: true });
+  const filePath = join(dirPath, `index.${ext}`);
+  writeFileSync(filePath, content);
+  createdFiles.push(dirPath);
+}
+
 function writePrefs(obj) {
   if (existsSync(PREFS_FILE)) {
     savedPrefs = readFileSync(PREFS_FILE, 'utf-8');
@@ -32,7 +40,7 @@ function writePrefs(obj) {
 
 function cleanup() {
   for (const f of createdFiles) {
-    try { rmSync(f, { force: true }); } catch { }
+    try { rmSync(f, { force: true, recursive: true }); } catch { }
   }
   createdFiles = [];
   if (savedPrefs !== null) {
@@ -148,6 +156,40 @@ describe('loadPlugins', () => {
     const info = getPluginsInfo();
     assert.ok(info.find(p => p.file === 'test-valid.mjs'), '.mjs should be loaded');
     assert.ok(!info.find(p => p.file === 'test-ignore.txt'), '.txt should be ignored');
+  });
+
+  it('loads first-level directory plugin entry (dir/index.mjs)', async () => {
+    writePluginInDir('test-packaged', `
+      export default {
+        name: 'packaged-plugin',
+        hooks: { localUrl(v) { return { url: v.url + '/pkg' }; } }
+      };
+    `, 'mjs');
+    await loadPlugins();
+    const info = getPluginsInfo();
+    const plugin = info.find(p => p.file === 'test-packaged/index.mjs');
+    assert.ok(plugin);
+    assert.equal(plugin.name, 'packaged-plugin');
+    const result = await runWaterfallHook('localUrl', { url: 'http://x' });
+    assert.equal(result.url, 'http://x/pkg');
+  });
+
+  it('does not recursively load nested subdirectory entries', async () => {
+    const nestedDir = join(PLUGINS_DIR, 'test-nested', 'sub');
+    mkdirSync(nestedDir, { recursive: true });
+    const nestedFile = join(nestedDir, 'index.mjs');
+    writeFileSync(nestedFile, `
+      export default {
+        name: 'nested-should-not-load',
+        hooks: { localUrl(v) { return { url: v.url + '/nested' }; } }
+      };
+    `);
+    createdFiles.push(join(PLUGINS_DIR, 'test-nested'));
+    await loadPlugins();
+    const result = await runWaterfallHook('localUrl', { url: 'http://x' });
+    assert.equal(result.url, 'http://x');
+    const info = getPluginsInfo();
+    assert.ok(!info.find(p => p.name === 'nested-should-not-load'));
   });
 
   it('handles plugin with syntax error gracefully (not loaded)', async () => {
