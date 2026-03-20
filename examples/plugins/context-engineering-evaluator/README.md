@@ -64,3 +64,9 @@ export CCV_CONTEXT_EVAL_PORT=7799
 见同目录下：
 
 `SOLUTION.zh.md`
+
+## 单命令验活
+
+```bash
+node /Users/lizhiyao/Documents/cc-viewer/examples/plugins/context-engineering-evaluator/verify.mjs
+```
