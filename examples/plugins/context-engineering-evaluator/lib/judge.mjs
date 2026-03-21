@@ -6,31 +6,19 @@ const execFileAsync = promisify(execFile);
 export const DEFAULT_MODEL = 'sonnet';
 export const JUDGE_MODEL = 'haiku';
 
-// Detect cc-viewer proxy URL (port 7008-7099 on localhost)
-function detectCcvProxy() {
-  const explicit = process.env.CCV_PROXY_URL;
-  if (explicit) return explicit;
-  const base = process.env.ANTHROPIC_BASE_URL || '';
-  if (/127\.0\.0\.1:(70[0-9]{2})\b/.test(base)) return base;
-  return null;
-}
-
-export async function callClaude({ model, system, prompt, proxyUrl = undefined }) {
-  const args = ['-p', prompt, '--output-format', 'json', '--model', model];
+export async function callClaude({ model, system, prompt }) {
+  // Use 'ccv' if available (routes through cc-viewer), fallback to 'claude'
+  const bin = process.env.CCV_EVAL_BIN || 'ccv';
+  const args = bin === 'ccv'
+    ? ['run', '--', 'claude', '-p', prompt, '--output-format', 'json', '--model', model]
+    : ['-p', prompt, '--output-format', 'json', '--model', model];
   if (system) args.push('--system-prompt', system);
-
-  // Build env: route through cc-viewer proxy if available
-  const resolvedProxy = proxyUrl ?? detectCcvProxy();
-  const env = resolvedProxy
-    ? { ...process.env, ANTHROPIC_BASE_URL: resolvedProxy }
-    : { ...process.env };
 
   const start = Date.now();
   try {
-    const { stdout } = await execFileAsync('claude', args, {
+    const { stdout } = await execFileAsync(bin, args, {
       maxBuffer: 10 * 1024 * 1024,
       timeout: 120_000,
-      env,
     });
     const durationMs = Date.now() - start;
     const data = JSON.parse(stdout);

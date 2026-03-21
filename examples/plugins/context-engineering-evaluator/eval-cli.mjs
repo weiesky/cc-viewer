@@ -28,7 +28,6 @@ const config = {
   variants: (args.variants || 'v1,v2').split(',').map((v) => v.trim()).filter(Boolean),
   model: args.model || 'sonnet',
   outputDir: args['output-dir'] ? resolve(args['output-dir']) : undefined,
-  proxyUrl: args.proxy || undefined,
   noJudge: args['no-judge'] === 'true',
   dryRun: args['dry-run'] === 'true',
   onProgress({ phase, completed, total, sample_id, variant, durationMs, inputTokens, outputTokens, costUSD, score }) {

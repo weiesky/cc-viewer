@@ -31,7 +31,6 @@ export async function runEvaluation({
   variants = ['v1', 'v2'],
   model = DEFAULT_MODEL,
   outputDir = DEFAULT_OUTPUT_DIR,
-  proxyUrl = undefined,
   noJudge = false,
   dryRun = false,
   onProgress = null,
@@ -92,7 +91,7 @@ export async function runEvaluation({
       onProgress({ phase: 'start', completed, total: tasks.length, sample_id: task.sample_id, variant: task.variant });
     }
 
-    const result = await callClaude({ model, system: task.system, prompt: task.prompt, proxyUrl });
+    const result = await callClaude({ model, system: task.system, prompt: task.prompt });
     totalCostUSD += result.costUSD;
 
     let judge = null;
