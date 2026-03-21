@@ -1,0 +1,20 @@
+[
+  {
+    "sample_id": "s001",
+    "prompt": "审查以下代码",
+    "context": "function authenticate(username, password) {\n  const query = `SELECT * FROM users WHERE name='${username}' AND pass='${password}'`;\n  return db.execute(query);\n}",
+    "rubric": "应识别 SQL 注入风险，建议使用参数化查询"
+  },
+  {
+    "sample_id": "s002",
+    "prompt": "审查以下代码",
+    "context": "async function fetchData(url) {\n  const res = await fetch(url);\n  const data = await res.json();\n  return data;\n}",
+    "rubric": "应指出缺少错误处理（网络异常、非 JSON 响应、HTTP 错误状态码）"
+  },
+  {
+    "sample_id": "s003",
+    "prompt": "审查以下代码",
+    "context": "function renderComment(comment) {\n  document.getElementById('output').innerHTML = '<p>' + comment + '</p>';\n}",
+    "rubric": "应识别 XSS 风险，建议使用 textContent 或转义 HTML"
+  }
+]
