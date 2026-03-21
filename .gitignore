@@ -3,6 +3,8 @@ dist
 package-lock.json
 .claude/setting.local.json
 .claude/scheduled_tasks.lock
+.claude/skills/code-review-v1.md
+.claude/skills/code-review-v2.md
 .idea/
 .DS_Store
 .omc/
