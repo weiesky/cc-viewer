@@ -27,7 +27,7 @@ function execWithStdin(cmd, args, input, options) {
       resolve(stdout);
     });
     if (options?.timeout) {
-      setTimeout(() => { try { child.kill(); } catch { } reject(new Error('timeout')); }, options.timeout);
+      setTimeout(() => { try { child.kill(); } catch {} reject(new Error('timeout')); }, options.timeout);
     }
     child.stdin.write(input);
     child.stdin.end();
@@ -356,7 +356,7 @@ async function handleRequest(req, res) {
 
   if (url === '/api/preferences' && method === 'GET') {
     let prefs = {};
-    try { if (existsSync(PREFS_FILE)) prefs = JSON.parse(readFileSync(PREFS_FILE, 'utf-8')); } catch { }
+    try { if (existsSync(PREFS_FILE)) prefs = JSON.parse(readFileSync(PREFS_FILE, 'utf-8')); } catch {}
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(prefs));
     return;
@@ -369,7 +369,7 @@ async function handleRequest(req, res) {
       try {
         const incoming = JSON.parse(body);
         let prefs = {};
-        try { if (existsSync(PREFS_FILE)) prefs = JSON.parse(readFileSync(PREFS_FILE, 'utf-8')); } catch { }
+        try { if (existsSync(PREFS_FILE)) prefs = JSON.parse(readFileSync(PREFS_FILE, 'utf-8')); } catch {}
         Object.assign(prefs, incoming);
         writeFileSync(PREFS_FILE, JSON.stringify(prefs, null, 2));
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -430,14 +430,14 @@ async function handleRequest(req, res) {
         clients.forEach(client => {
           try {
             client.write(`event: resume_resolved\ndata: ${resolvedData}\n\n`);
-          } catch { }
+          } catch {}
         });
         // 发送 full_reload 让客户端重新加载数据
         const entries = readLogFile(LOG_FILE);
         clients.forEach(client => {
           try {
             client.write(`event: full_reload\ndata: ${JSON.stringify(entries)}\n\n`);
-          } catch { }
+          } catch {}
         });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, logFile: result.logFile }));
@@ -470,7 +470,7 @@ async function handleRequest(req, res) {
               const prefs = JSON.parse(readFileSync(PREFS_FILE, 'utf-8'));
               if (prefs.lang) targetLang = prefs.lang;
             }
-          } catch { }
+          } catch {}
           if (!targetLang) targetLang = detectLanguage();
         }
 
@@ -565,7 +565,7 @@ async function handleRequest(req, res) {
         if (entry.name.startsWith('.') && entry.name !== '.') continue;
         const fullPath = join(dirPath, entry.name);
         let hasGit = false;
-        try { hasGit = existsSync(join(fullPath, '.git')); } catch { }
+        try { hasGit = existsSync(join(fullPath, '.git')); } catch {}
         dirs.push({ name: entry.name, path: fullPath, hasGit });
       }
       dirs.sort((a, b) => {
@@ -632,7 +632,7 @@ async function handleRequest(req, res) {
         clients.forEach(client => {
           try {
             client.write(`event: workspace_started\ndata: ${JSON.stringify({ projectName: result.projectName, path: wsPath })}\n\n`);
-          } catch { }
+          } catch {}
         });
 
         // 发送 full_reload 以刷新会话区域
@@ -640,7 +640,7 @@ async function handleRequest(req, res) {
         clients.forEach(client => {
           try {
             client.write(`event: full_reload\ndata: ${JSON.stringify(entries)}\n\n`);
-          } catch { }
+          } catch {}
         });
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -707,7 +707,7 @@ async function handleRequest(req, res) {
       clients.forEach(client => {
         try {
           client.write(`event: workspace_stopped\ndata: {}\n\n`);
-        } catch { }
+        } catch {}
       });
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -807,7 +807,7 @@ async function handleRequest(req, res) {
           const data = { ...cw, context_window_size: contextSize, used_percentage: usedPct, remaining_percentage: 100 - usedPct };
           res.write(`event: context_window\ndata: ${JSON.stringify(data)}\n\n`);
         }
-      } catch { }
+      } catch {}
     }
 
     req.on('close', () => {
@@ -882,7 +882,7 @@ async function handleRequest(req, res) {
           if (existsSync(statsFile)) {
             try {
               allStats[project] = JSON.parse(readFileSync(statsFile, 'utf-8'));
-            } catch { }
+            } catch {}
           }
         }
       }
@@ -988,7 +988,7 @@ async function handleRequest(req, res) {
   if (url === '/api/open-log-dir' && method === 'POST') {
     const dir = LOG_FILE ? dirname(LOG_FILE) : LOG_DIR;
     const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
-    exec(`${cmd} ${JSON.stringify(dir)}`, () => { });
+    exec(`${cmd} ${JSON.stringify(dir)}`, () => {});
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, dir }));
     return;
@@ -1011,7 +1011,7 @@ async function handleRequest(req, res) {
           const msg = JSON.stringify({ type: 'editor-open', sessionId, filePath });
           terminalWss.clients.forEach(client => {
             if (client.readyState === 1) {
-              try { client.send(msg); } catch { }
+              try { client.send(msg); } catch {}
             }
           });
         }
@@ -1285,7 +1285,7 @@ async function handleRequest(req, res) {
           if (existsSync(pluginDir) && readdirSync(pluginDir).length === 0) {
             rmdirSync(pluginDir);
           }
-        } catch { }
+        } catch {}
       }
       await loadPlugins();
       const plugins = getPluginsInfo();
@@ -1407,13 +1407,13 @@ async function handleRequest(req, res) {
           });
           const parsed = JSON.parse(result);
           if (parsed.name) saveName = parsed.name;
-        } catch { }
-        try { unlinkSync(tmpFile); } catch { }
+        } catch {}
+        try { unlinkSync(tmpFile); } catch {}
         // fallback：从 URL 路径提取文件名，排除通用名称
         if (!saveName) {
           const urlFilename = parsedUrl.pathname.split('/').pop();
           if (urlFilename && (urlFilename.endsWith('.js') || urlFilename.endsWith('.mjs'))
-            && urlFilename !== 'index.js' && urlFilename !== 'index.mjs') {
+              && urlFilename !== 'index.js' && urlFilename !== 'index.mjs') {
             saveName = urlFilename.replace(/\.(js|mjs)$/, '');
           }
         }
@@ -1480,7 +1480,7 @@ async function handleRequest(req, res) {
             if (existsSync(statsFile)) {
               statsFiles = JSON.parse(readFileSync(statsFile, 'utf-8')).files;
             }
-          } catch { }
+          } catch {}
           for (const f of files) {
             const match = f.match(/^(.+?)_(\d{8}_\d{6})\.jsonl$/);
             if (!match) continue;
@@ -1759,7 +1759,7 @@ async function handleRequest(req, res) {
           const { stdout: ppidOut } = await execAsync(`ps -o ppid= -p ${pid}`, { timeout: 2000 }).catch(() => ({ stdout: '' }));
           const ppid = parseInt(ppidOut.trim(), 10);
           if (ppid && ccvPids.has(ppid)) continue; // 是某个 CCV 进程的子进程，跳过
-        } catch { }
+        } catch {}
         filteredPids.push(pid);
       }
       const processes = [];
@@ -1773,7 +1773,7 @@ async function handleRequest(req, res) {
           // lstart format: "Day Mon DD HH:MM:SS YYYY rest..."
           const lsMatch = psLine.match(/^\w+\s+(\w+)\s+(\d+)\s+([\d:]+)\s+(\d{4})\s+(.*)/);
           if (lsMatch) {
-            const months = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
+            const months = { Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12 };
             const mon = String(months[lsMatch[1]] || 1).padStart(2, '0');
             const day = String(lsMatch[2]).padStart(2, '0');
             const time = lsMatch[3];
@@ -1784,7 +1784,7 @@ async function handleRequest(req, res) {
             const libMatch = rawCmd.match(/lib\/(.+)/);
             command = libMatch ? libMatch[1] : rawCmd;
           }
-        } catch { }
+        } catch {}
         const isCurrent = pid === process.pid;
         processes.push({ port, pid, command, startTime, isCurrent });
       }
@@ -1939,9 +1939,9 @@ export async function startViewer() {
             const [maj, min, pat] = ccVer.split('.').map(Number);
             if (maj < 2 || (maj === 2 && min === 0 && pat < 69)) {
               const cmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
-              execAsync(`${cmd} ${url}`, { timeout: 5000 }).catch(() => { });
+              execAsync(`${cmd} ${url}`, { timeout: 5000 }).catch(() => {});
             }
-          } catch { }
+          } catch {}
           // 工作区模式下延迟到选择工作区后再启动监听
           if (!isWorkspaceMode) {
             readModelContextSize(); // Cache model→size mapping at startup
@@ -2044,7 +2044,7 @@ async function setupTerminalWebSocket(httpServer) {
             if (!state.running) {
               try {
                 await spawnShell();
-              } catch { }
+              } catch {}
             }
             // 发送 input 的客户端成为活跃客户端
             if (activeWs !== ws) {
@@ -2066,14 +2066,14 @@ async function setupTerminalWebSocket(httpServer) {
             // Programmatic sequential input: send chunks one by one, waiting for PTY ACK
             const state = getPtyState();
             if (!state.running) {
-              try { await spawnShell(); } catch { }
+              try { await spawnShell(); } catch {}
             }
             const chunks = msg.chunks;
             if (Array.isArray(chunks) && chunks.length > 0) {
               writeToPtySequential(chunks, (ok) => {
                 try {
                   ws.send(JSON.stringify({ type: 'input-sequential-done', ok }));
-                } catch { }
+                } catch {}
               }, { settleMs: msg.settleMs || 150 });
             }
           } else if (msg.type === 'resize') {
@@ -2088,7 +2088,7 @@ async function setupTerminalWebSocket(httpServer) {
               resizePty(msg.cols, msg.rows);
             }
           }
-        } catch { }
+        } catch {}
       });
 
       ws.on('close', () => {
@@ -2135,7 +2135,7 @@ export function stopViewer() {
   return _stoppingPromise;
 }
 async function _doStop() {
-  try { await Promise.race([runParallelHook('serverStopping'), new Promise(r => setTimeout(r, 3000))]); } catch { }
+  try { await Promise.race([runParallelHook('serverStopping'), new Promise(r => setTimeout(r, 3000))]); } catch {}
   // 如果用户未做选择，将临时文件转为正式文件
   if (_resumeState && _resumeState.tempFile) {
     try {
@@ -2150,7 +2150,7 @@ async function _doStop() {
           unlinkSync(tempFile);
         }
       }
-    } catch { }
+    } catch {}
   }
   for (const logFile of getWatchedFiles().keys()) {
     unwatchFile(logFile);
@@ -2179,14 +2179,14 @@ if (!isWorkspaceMode) {
         checkAndUpdate().then(result => {
           if (result.status === 'updated') {
             clients.forEach(client => {
-              try { client.write(`event: update_completed\ndata: ${JSON.stringify({ version: result.remoteVersion })}\n\n`); } catch { }
+              try { client.write(`event: update_completed\ndata: ${JSON.stringify({ version: result.remoteVersion })}\n\n`); } catch {}
             });
           } else if (result.status === 'major_available') {
             clients.forEach(client => {
-              try { client.write(`event: update_major_available\ndata: ${JSON.stringify({ version: result.remoteVersion })}\n\n`); } catch { }
+              try { client.write(`event: update_major_available\ndata: ${JSON.stringify({ version: result.remoteVersion })}\n\n`); } catch {}
             });
           }
-        }).catch(() => { });
+        }).catch(() => {});
       }, 3000);
     }).catch(err => {
       console.error('Failed to start CC Viewer:', err);
@@ -2202,7 +2202,7 @@ function handleExit() {
         const newPath = _resumeState.tempFile.replace('_temp.jsonl', '.jsonl');
         renameSync(_resumeState.tempFile, newPath);
       }
-    } catch { }
+    } catch {}
   }
 }
 process.on('exit', handleExit);
