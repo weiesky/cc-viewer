@@ -333,9 +333,51 @@ export default {
 
 ---
 
+## 示例：上下文工程测评插件
+
+仓库提供了一个可直接使用的版本对比插件：
+
+`examples/plugins/context-engineering-evaluator/index.mjs`
+
+使用方式：
+
+```bash
+mkdir -p ~/.claude/cc-viewer/plugins
+cp examples/plugins/context-engineering-evaluator/index.mjs ~/.claude/cc-viewer/plugins/context-engineering-evaluator.mjs
+```
+
+运行实验时，在用户输入中打标签：
+
+```text
+[artifact_type:skill] [variant:v1] [sample_id:s001] ...
+[artifact_type:skill] [variant:v2] [sample_id:s001] ...
+[artifact_type:knowledge_pack] [variant:2026-03-21] [sample_id:k001] ...
+```
+
+插件会按 `artifact_type + variant + teammate + sample_id` 聚合以下指标：
+
+- requestCount
+- errorCount
+- durationMsTotal
+- inputTokens / outputTokens
+- cacheReadTokens / cacheCreationTokens
+- toolUseCount
+
+结果文件输出到：
+
+`tmp/context-engineering-evaluator-report.json`
+
+你可以基于该文件与插件自托管报告服务做 skill 版本、知识载体版本的对比分析。  
+详细执行方案见：
+
+`examples/plugins/context-engineering-evaluator/SOLUTION.zh.md`
+
+---
+
 ## 注意事项
 
 - 插件在服务器启动时加载一次。新增或删除插件文件后需要重启 cc-viewer。
 - 如果插件目录不存在，加载器静默返回，零性能开销。
 - 插件使用 ESM 格式（`export default`），支持 `.js` 和 `.mjs` 后缀。
+- 加载器支持扁平文件和一级目录入口（`plugins/<name>/index.mjs|index.js`），不会递归加载更深目录。
 - 插件目录路径：`~/.claude/cc-viewer/plugins/`，企业 IT 可预置此目录。

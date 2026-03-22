@@ -1,6 +1,9 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
+import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { PLUGINS_DIR } from '../lib/plugin-loader.js';
 
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
@@ -115,6 +118,30 @@ describe('server plugin endpoints', { concurrency: false }, () => {
     const data = res.json();
     const found = data.plugins.find(p => p.file === 'test-upload.js');
     assert.equal(!!found, false);
+  });
+
+  it('DELETE /api/plugins removes first-level packaged plugin entry', async () => {
+    const pluginDir = join(PLUGINS_DIR, 'test-packaged-del');
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(join(pluginDir, 'index.mjs'), `
+      export default {
+        name: 'test-packaged-del',
+        hooks: { localUrl(v) { return { url: v.url + '/pkg' }; } }
+      };
+    `);
+    await httpRequest(port, '/api/plugins/reload', { method: 'POST' });
+
+    const listRes = await httpRequest(port, '/api/plugins');
+    assert.equal(listRes.status, 200);
+    const before = listRes.json().plugins.find(p => p.file === 'test-packaged-del/index.mjs');
+    assert.ok(before);
+
+    const delRes = await httpRequest(port, '/api/plugins?file=test-packaged-del/index.mjs', { method: 'DELETE' });
+    assert.equal(delRes.status, 200);
+    const data = delRes.json();
+    const after = data.plugins.find(p => p.file === 'test-packaged-del/index.mjs');
+    assert.equal(!!after, false);
+    assert.equal(existsSync(pluginDir), false);
   });
 
   // --- POST /api/plugins/install-from-url tests ---

@@ -12,7 +12,7 @@ CC-Viewer provides a lightweight plugin mechanism that allows injecting custom l
 mkdir -p ~/.claude/cc-viewer/plugins
 ```
 
-2. Create a plugin file (`.js` or `.mjs`):
+1. Create a plugin file (`.js` or `.mjs`):
 
 ```javascript
 // ~/.claude/cc-viewer/plugins/my-plugin.js
@@ -27,7 +27,7 @@ export default {
 };
 ```
 
-3. Restart cc-viewer. The plugin loads automatically — no `npm install` needed.
+1. Restart cc-viewer. The plugin loads automatically — no `npm install` needed.
 
 ## Plugin Directory
 
@@ -39,7 +39,12 @@ All plugins live in:
 
 This is `LOG_DIR/plugins/` — the same base directory cc-viewer uses for logs and preferences. Enterprise IT teams can pre-populate this directory for all users.
 
-The loader scans for all `*.js` and `*.mjs` files in this directory. Each file is one plugin.
+The loader scans:
+
+- flat `*.js` and `*.mjs` files in this directory
+- first-level package entries: `plugins/<name>/index.mjs` or `plugins/<name>/index.js`
+
+It does not recursively load deeper nested folders.
 
 ## Plugin Format
 
@@ -60,6 +65,14 @@ export default {
 | `hooks` | `object` | Yes | An object mapping hook names to async functions. |
 
 ## Available Hooks
+
+| Hook | Type | Parameters | Returns | Trigger |
+|------|------|------------|---------|---------|
+| `httpsOptions` | waterfall | `{}` | TLS options | Before server creation |
+| `localUrl` | waterfall | `{ url, ip, port, token }` | `{ url }` | `/api/local-url` |
+| `serverStarted` | parallel | `{ port, host, url, ip, token, protocol }` | ignored | After server start |
+| `serverStopping` | parallel | `{}` | ignored | Before server stop |
+| `onNewEntry` | parallel | `entry` | ignored | New JSONL entry |
 
 ### `httpsOptions` — Waterfall
 
@@ -264,6 +277,44 @@ export default {
   },
 };
 ```
+
+## Example: Context Engineering Evaluation Plugin
+
+A ready-to-use version evaluation plugin is included in this repository:
+
+`examples/plugins/context-engineering-evaluator/index.mjs`
+
+Install it into your plugin directory:
+
+```bash
+mkdir -p ~/.claude/cc-viewer/plugins
+cp examples/plugins/context-engineering-evaluator/index.mjs ~/.claude/cc-viewer/plugins/context-engineering-evaluator.mjs
+```
+
+Add labels in prompts during evaluation runs:
+
+```text
+[artifact_type:skill] [variant:v1] [sample_id:s001] ...
+[artifact_type:skill] [variant:v2] [sample_id:s001] ...
+[artifact_type:knowledge_pack] [variant:2026-03-21] [sample_id:k001] ...
+```
+
+The plugin aggregates metrics by `artifact_type + variant + teammate + sample_id`:
+
+- requestCount
+- errorCount
+- durationMsTotal
+- inputTokens / outputTokens
+- cacheReadTokens / cacheCreationTokens
+- toolUseCount
+
+Output file:
+
+`tmp/context-engineering-evaluator-report.json`
+
+Detailed execution guide:
+
+`examples/plugins/context-engineering-evaluator/SOLUTION.zh.md`
 
 ## Notes
 
