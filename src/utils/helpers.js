@@ -491,19 +491,25 @@ export function findPrevMainAgentTimestamp(requests, startIndex) {
 export function extractCachedContent(requests) {
   if (!Array.isArray(requests) || requests.length === 0) return null;
 
-  // 逆序查找最新的 MainAgent 请求，优先选有 response.usage 的
-  let latestMainAgent = null;
-  let latestMainAgentWithUsage = null;
-  for (let i = requests.length - 1; i >= 0; i--) {
-    if (isMainAgent(requests[i])) {
-      if (!latestMainAgent) latestMainAgent = requests[i];
-      if (requests[i].response?.body?.usage) {
-        latestMainAgentWithUsage = requests[i];
-        break;
+  // 单请求（DetailPanel 场景）：直接使用，不做类型过滤
+  // 多请求（AppHeader fallback）：逆序找最新 MainAgent，避免 teammate/subAgent 劫持
+  let chosen = null;
+  if (requests.length === 1) {
+    chosen = requests[0];
+  } else {
+    let latestMA = null;
+    let latestMAWithUsage = null;
+    for (let i = requests.length - 1; i >= 0; i--) {
+      if (isMainAgent(requests[i])) {
+        if (!latestMA) latestMA = requests[i];
+        if (requests[i].response?.body?.usage) {
+          latestMAWithUsage = requests[i];
+          break;
+        }
       }
     }
+    chosen = latestMAWithUsage || latestMA;
   }
-  const chosen = latestMainAgentWithUsage || latestMainAgent;
 
   if (!chosen || !chosen.body) return null;
 
@@ -530,7 +536,7 @@ export function extractCachedContent(requests) {
     if (lastCacheIndex >= 0) {
       for (let i = 0; i <= lastCacheIndex; i++) {
         const block = body.system[i];
-        if (block.type === 'text' && block.text && block.cache_control) {
+        if (block.type === 'text' && block.text) {
           result.system.push(block.text);
         }
       }

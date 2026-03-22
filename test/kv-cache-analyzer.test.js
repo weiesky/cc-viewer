@@ -159,9 +159,18 @@ describe('extractToolResultText', () => {
 // ============================================================================
 
 describe('extractCachedContent', () => {
-  it('returns null for non-MainAgent entry', () => {
-    const entry = { mainAgent: false, body: { system: [], tools: [], messages: [] } };
-    assert.equal(extractCachedContent(entry), null);
+  it('returns result for non-MainAgent entry with cache_control', () => {
+    const entry = {
+      mainAgent: false,
+      body: {
+        system: [{ type: 'text', text: 'SubAgent sys', cache_control: { type: 'ephemeral' } }],
+        tools: [],
+        messages: [],
+      },
+    };
+    const result = extractCachedContent(entry);
+    assert.ok(result !== null);
+    assert.deepEqual(result.system, ['SubAgent sys']);
   });
 
   it('returns null for null entry', () => {
@@ -173,6 +182,32 @@ describe('extractCachedContent', () => {
     assert.equal(extractCachedContent(entry), null);
   });
 
+  it('extracts SubAgent cache with system + messages breakpoints', () => {
+    const entry = {
+      body: {
+        system: [
+          { type: 'text', text: 'billing header' },
+          { type: 'text', text: 'You are Claude Code', cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: 'file search specialist instructions', cache_control: { type: 'ephemeral' } },
+        ],
+        tools: [{ name: 'Glob' }, { name: 'Grep' }, { name: 'Read' }],
+        messages: [
+          { role: 'user', content: [{ type: 'text', text: 'search task' }, { type: 'text', text: 'details', cache_control: { type: 'ephemeral' } }] },
+          { role: 'assistant', content: [{ type: 'text', text: 'found results' }] },
+          { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu_1', content: 'file content', cache_control: { type: 'ephemeral' } }] },
+        ],
+      },
+      response: { body: { usage: { cache_creation_input_tokens: 500, cache_read_input_tokens: 12000 } } },
+    };
+    const result = extractCachedContent(entry);
+    assert.ok(result !== null);
+    assert.deepEqual(result.system, ['billing header', 'You are Claude Code', 'file search specialist instructions']);
+    // msg[0]: 'search task' + 'details', msg[1]: 'found results', msg[2]: tool_result
+    assert.equal(result.messages.length, 4);
+    assert.equal(result.cacheCreateTokens, 500);
+    assert.equal(result.cacheReadTokens, 12000);
+  });
+
   it('returns object with empty arrays when no cache_control present', () => {
     const entry = makeMainAgentEntry();
     const result = extractCachedContent(entry);
@@ -182,7 +217,7 @@ describe('extractCachedContent', () => {
     assert.deepEqual(result.tools, []);
   });
 
-  it('extracts system content: only blocks with cache_control', () => {
+  it('extracts all system blocks up to last cache_control breakpoint', () => {
     const entry = makeMainAgentEntry({
       body: {
         system: [
@@ -195,7 +230,8 @@ describe('extractCachedContent', () => {
       },
     });
     const result = extractCachedContent(entry);
-    assert.deepEqual(result.system, ['Second block.']);
+    // prefix cache: all blocks from 0 to last cache_control are cached
+    assert.deepEqual(result.system, ['You are Claude Code.', 'Second block.']);
   });
 
   it('extracts messages up to last message with cache_control', () => {

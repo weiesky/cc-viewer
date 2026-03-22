@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.16 (2026-03-22)
+
+- Feature: SubAgent requests now display KV-Cache-Text in network panel
+- Fix: KV-Cache system prompt extraction now includes all cached blocks in the prefix (not only those with cache_control markers), matching Anthropic API prefix caching semantics
+- Fix: AppHeader KV-Cache fallback path no longer picks teammate/SubAgent requests when multiple requests are present
+
 ## 1.6.15 (2026-03-22)
 
 - Fix: MainAgent detection threshold lowered from >10 to >5 tools, compatible with v2.1.81+ lightweight MainAgent

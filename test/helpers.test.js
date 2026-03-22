@@ -226,13 +226,23 @@ function findPrevMainAgentTimestamp(requests, startIndex) {
 
 function extractCachedContent(requests) {
   if (!Array.isArray(requests) || requests.length === 0) return null;
-  let latestMainAgent = null;
-  for (let i = requests.length - 1; i >= 0; i--) {
-    if (isMainAgent(requests[i])) { latestMainAgent = requests[i]; break; }
+  let chosen = null;
+  if (requests.length === 1) {
+    chosen = requests[0];
+  } else {
+    let latestMA = null;
+    let latestMAWithUsage = null;
+    for (let i = requests.length - 1; i >= 0; i--) {
+      if (isMainAgent(requests[i])) {
+        if (!latestMA) latestMA = requests[i];
+        if (requests[i].response?.body?.usage) { latestMAWithUsage = requests[i]; break; }
+      }
+    }
+    chosen = latestMAWithUsage || latestMA;
   }
-  if (!latestMainAgent || !latestMainAgent.body) return null;
-  const body = latestMainAgent.body;
-  const usage = latestMainAgent.response?.body?.usage;
+  if (!chosen || !chosen.body) return null;
+  const body = chosen.body;
+  const usage = chosen.response?.body?.usage;
   const result = {
     system: [], messages: [], tools: [],
     cacheCreateTokens: usage?.cache_creation_input_tokens || 0,
@@ -541,12 +551,37 @@ describe('helpers', () => {
       assert.ok(result.tools[0].includes('Read'));
     });
 
-    it('returns null when no MainAgent found', () => {
-      const reqs = [{ mainAgent: false, body: { system: [], tools: [], messages: [] } }];
+    it('returns null when request has no body', () => {
+      const reqs = [{ mainAgent: false }];
       assert.equal(extractCachedContent(reqs), null);
     });
 
-    it('skips teammate when finding latest MainAgent', () => {
+    it('extracts SubAgent cache content', () => {
+      const subReq = {
+        mainAgent: false,
+        body: {
+          system: [
+            { type: 'text', text: 'billing' },
+            { type: 'text', text: 'You are Claude Code', cache_control: { type: 'ephemeral' } },
+            { type: 'text', text: 'file search specialist', cache_control: { type: 'ephemeral' } },
+          ],
+          tools: [{ name: 'Glob' }, { name: 'Read' }],
+          messages: [
+            { role: 'user', content: [{ type: 'text', text: 'task', cache_control: { type: 'ephemeral' } }] },
+          ],
+        },
+        response: { body: { usage: { cache_creation_input_tokens: 100, cache_read_input_tokens: 5000 } } },
+      };
+      const result = extractCachedContent([subReq]);
+      assert.ok(result !== null);
+      // test helper collects all text blocks up to last cache_control (including billing)
+      assert.deepEqual(result.system, ['billing', 'You are Claude Code', 'file search specialist']);
+      assert.equal(result.messages.length, 1);
+      assert.equal(result.cacheCreateTokens, 100);
+      assert.equal(result.cacheReadTokens, 5000);
+    });
+
+    it('prefers request with usage when multiple in array', () => {
       const mainReq = makeMainReq({
         timestamp: 'T1',
         body: { system: [{ type: 'text', text: 'sys', cache_control: { type: 'ephemeral' } }], tools: [], messages: [] },
@@ -557,7 +592,7 @@ describe('helpers', () => {
         response: { body: {} },
       };
       const result = extractCachedContent([mainReq, teammateReq]);
-      assert.deepEqual(result.system, ['sys']); // should use mainReq, not teammate
+      assert.deepEqual(result.system, ['sys']); // mainReq has usage, teammate does not
     });
 
     it('includes cacheCreateTokens and cacheReadTokens', () => {
