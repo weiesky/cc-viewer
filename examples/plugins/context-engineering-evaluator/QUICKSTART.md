@@ -25,12 +25,12 @@ ccv
 ```bash
 cd /path/to/cc-viewer/examples/plugins/context-engineering-evaluator
 
-# CCV_EVAL_CWD 指向 cc-viewer 项目根目录，
-# 这样评测请求会出现在终端 1 的 cc-viewer 工作空间中
-CCV_EVAL_CWD=/path/to/cc-viewer node eval-cli.mjs --variants v1,v2
+# CCV_PROXY_URL 指向终端 1 的 cc-viewer 地址，
+# 评测请求会实时出现在 cc-viewer Web UI 中
+CCV_PROXY_URL=http://127.0.0.1:7008 node eval-cli.mjs --variants v1,v2
 ```
 
-> 如果不设置 `CCV_EVAL_CWD`，评测日志会写入一个独立的工作空间，终端 1 的 cc-viewer 看不到。
+> `CCV_PROXY_URL` 是可选的。不设置时评测正常运行，只是不经过 cc-viewer 代理。
 
 你会看到逐条执行的进度：
 
@@ -95,10 +95,10 @@ node eval-cli.mjs --variants v1,v2 --no-judge
 ### 不经过 cc-viewer
 
 ```bash
-CCV_EVAL_BIN=claude node eval-cli.mjs --variants v1,v2
+node eval-cli.mjs --variants v1,v2
 ```
 
-直接用 `claude -p` 执行，不经过 cc-viewer 拦截。
+不设置 `CCV_PROXY_URL` 即可，直接用 `claude -p` 执行。
 
 ### 使用自己的 skill 和样本
 
@@ -128,7 +128,7 @@ v1（简单 prompt）     v2（结构化 prompt）
 | 文件 | 作用 |
 |------|------|
 | `eval-cli.mjs` | 评测入口，解析参数并调用 eval-runner |
-| `lib/judge.mjs` | 封装 `ccv run -- claude -p` 调用和 LLM 评分 |
+| `lib/judge.mjs` | 封装 `claude -p` 调用和 LLM 评分（支持 `CCV_PROXY_URL` 代理） |
 | `lib/eval-runner.mjs` | 评测编排：加载样本/skill、配对调度、汇总结果 |
 | `lib/report-server.mjs` | HTTP 报告服务（端口 7799） |
 | `lib/html-renderer.mjs` | 服务端 HTML 渲染（运行列表 + 对比报告） |

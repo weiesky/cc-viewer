@@ -15,7 +15,7 @@
 ```
 eval-cli.mjs （驱动层）
     ↓
-ccv run -- claude -p （执行层，流量经过 cc-viewer）
+claude -p （执行层，可通过 CCV_PROXY_URL 经过 cc-viewer 代理）
     ↓
 LLM 自动评分（评分层，haiku）
     ↓
@@ -40,7 +40,6 @@ context-engineering-evaluator/
 │   └── html-renderer.mjs  # 服务端 HTML 渲染
 ├── index.mjs              # cc-viewer 插件入口
 ├── verify.mjs             # 插件验证脚本（17 项检查）
-├── skill-eval.mjs         # 早期独立脚本（已被 eval-cli.mjs + lib/ 替代）
 ├── eval-samples.zh.json   # 评测样本集
 ├── skills/                # 示例 skill 定义
 │   ├── v1.md
@@ -87,11 +86,11 @@ skills/v2.md    # 优化后
 # 预览模式（不实际调用）
 node eval-cli.mjs --dry-run
 
-# 运行评测（默认通过 ccv 走 cc-viewer）
+# 运行评测
 node eval-cli.mjs --variants v1,v2
 
-# 不走 cc-viewer（直接用 claude CLI）
-CCV_EVAL_BIN=claude node eval-cli.mjs --variants v1,v2
+# 经过 cc-viewer 代理（评测请求实时出现在 cc-viewer Web UI）
+CCV_PROXY_URL=http://127.0.0.1:7008 node eval-cli.mjs --variants v1,v2
 ```
 
 ### 4. 查看报告
@@ -125,8 +124,7 @@ node -e "import{createReportServer}from'./lib/report-server.mjs';const s=createR
 
 | 变量 | 说明 |
 |------|------|
-| `CCV_EVAL_BIN` | 执行后端，默认 `ccv`（经过 cc-viewer），设为 `claude` 可直连 |
-| `CCV_EVAL_CWD` | 执行时的工作目录，决定日志写入哪个 cc-viewer 工作空间 |
+| `CCV_PROXY_URL` | 指向已运行的 cc-viewer 服务（如 `http://127.0.0.1:7008`），设置后评测请求实时出现在 cc-viewer Web UI |
 | `CCV_INSIGHT_PORT` | 报告服务端口，默认 `7799` |
 
 ## 评测方法论
@@ -141,9 +139,21 @@ node -e "import{createReportServer}from'./lib/report-server.mjs';const s=createR
 
 可选集成，不是必须。
 
-### 流量采集
+### 实时流量观测
 
-评测默认通过 `ccv run -- claude -p` 执行，请求经过 cc-viewer 拦截器。设置 `CCV_EVAL_CWD` 指向项目根目录，可在 cc-viewer Web UI 中查看评测请求的完整 request/response。
+设置 `CCV_PROXY_URL` 指向已运行的 cc-viewer，评测请求会通过 cc-viewer 的 `/v1/` 代理转发，实时出现在 Web UI 中：
+
+```bash
+# 终端 1：启动 cc-viewer
+ccv
+
+# 终端 2：评测流量经过 cc-viewer
+CCV_PROXY_URL=http://127.0.0.1:7008 node eval-cli.mjs --variants v1,v2
+```
+
+在 cc-viewer 中可以查看每条评测请求的完整 request/response、token 用量和缓存命中情况。
+
+技术原理见 [PROXY_DESIGN.md](PROXY_DESIGN.md)。
 
 ### 插件安装
 
