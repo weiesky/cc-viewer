@@ -603,7 +603,7 @@ class DetailPanel extends React.Component {
                 })
                 .filter(({ cleaned }) => {
                   if (!cleaned) return false;
-                  if (/^Implement the following plan:/i.test(cleaned)) return false;
+                  if (/Implement the following plan:/i.test(cleaned)) return false;
                   return true;
                 });
               const userPromptNavList = userPrompts.length > 0 ? (

@@ -128,6 +128,8 @@ export function isSystemText(text) {
   if (!text) return true;
   const trimmed = text.trim();
   if (!trimmed) return true;
+  // 包含 plan 内容的文本块不应被过滤（即使开头有系统标签）
+  if (/Implement the following plan:/i.test(trimmed)) return false;
   if (/^<[a-zA-Z_][\w-]*[\s>]/i.test(trimmed)) return true;
   if (/^\[SUGGESTION MODE:/i.test(trimmed)) return true;
   // Claude Code 输出截断时注入的系统消息

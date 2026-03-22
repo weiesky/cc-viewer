@@ -123,7 +123,7 @@ export function classifyRequest(req, nextReq) {
   if (isPreflightRequest(req, nextReq)) {
     // Preflight 内容以 "Implement the following plan:" 开头 → Plan:Prompt
     const text = getMessageText((req.body?.messages || [])[0]);
-    if (/^Implement the following plan:/i.test(text.trim())) {
+    if (/Implement the following plan:/i.test(text.trim())) {
       return { type: 'Plan', subType: 'Prompt' };
     }
     return { type: 'Preflight', subType: null };

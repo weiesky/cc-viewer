@@ -27,6 +27,18 @@
   font-weight: 600;
 }
 
+.filePathClickable {
+  color: #a78bfa;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.filePathClickable:hover {
+  text-decoration: underline;
+  color: #c4b5fd;
+}
+
 .toggle {
   color: #6b7280;
   font-size: 11px;

@@ -32,10 +32,15 @@ function getFileIcon(name, type) {
   );
 }
 
-function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpand, currentFile }) {
+function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpand, currentFile, onFileRenamed }) {
   const [children, setChildren] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const inputRef = useRef(null);
+  const submittingRef = useRef(false);
+  const itemRef = useRef(null);
 
   const childPath = path ? `${path}/${item.name}` : item.name;
   const expanded = expandedPaths.has(childPath);
@@ -56,12 +61,12 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
     }
   }, [childPath]);
 
-  // 组件挂载时如果已在展开状态，自动加载子节点（用于恢复展开状态）
+  // expanded 变为 true 时自动加载子节点（恢复展开状态 & 从对话点击路径时级联展开）
   useEffect(() => {
     if (item.type === 'directory' && expanded && children === null && !loading) {
       fetchChildren();
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = useCallback(async () => {
     if (item.type !== 'directory') {
@@ -80,14 +85,119 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
   }, [expanded, children, childPath, item, onFileClick, onToggleExpand, fetchChildren]);
 
   const isDir = item.type === 'directory';
-  const isSelected = !isDir && currentFile && currentFile === childPath;
+  const isSelected = currentFile && currentFile === childPath;
+
+  // 选中文件时自动滚动到可见区域
+  useEffect(() => {
+    if (isSelected && itemRef.current) {
+      requestAnimationFrame(() => {
+        itemRef.current?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      });
+    }
+  }, [isSelected]);
+
+  // 进入编辑模式
+  const startEditing = useCallback(() => {
+    setEditName(item.name);
+    setEditing(true);
+    submittingRef.current = false;
+  }, [item.name]);
+
+  // 编辑模式下自动 focus 并选中文件名（不含扩展名）
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      const dotIdx = item.name.lastIndexOf('.');
+      if (dotIdx > 0 && item.type !== 'directory') {
+        inputRef.current.setSelectionRange(0, dotIdx);
+      } else {
+        inputRef.current.select();
+      }
+    }
+  }, [editing, item.name, item.type]);
+
+  // 提交重命名
+  const submitRename = useCallback(async () => {
+    if (submittingRef.current) return;
+    const trimmed = editName.trim();
+    if (!trimmed || trimmed === item.name) {
+      setEditing(false);
+      return;
+    }
+    submittingRef.current = true;
+    try {
+      const res = await fetch(apiUrl('/api/rename-file'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPath: childPath, newName: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(t('ui.renameFailed', { error: data.error || res.statusText }));
+        setEditing(false);
+        return;
+      }
+      setEditing(false);
+      if (onFileRenamed) onFileRenamed(childPath, data.newPath);
+    } catch (err) {
+      alert(t('ui.renameFailed', { error: err.message }));
+      setEditing(false);
+    }
+  }, [editName, item.name, childPath, onFileRenamed]);
+
+  // 取消编辑
+  const cancelEditing = useCallback(() => {
+    setEditing(false);
+  }, []);
+
+  // 双击进入编辑模式
+  const handleDoubleClick = useCallback((e) => {
+    e.stopPropagation();
+    if (isSelected) {
+      startEditing();
+    }
+  }, [isSelected, startEditing]);
+
+  // 键盘事件：Enter 进入编辑模式 / F2 进入编辑模式
+  const handleKeyDown = useCallback((e) => {
+    if (editing) return;
+    if ((e.key === 'Enter' || e.key === 'F2') && isSelected) {
+      e.preventDefault();
+      e.stopPropagation();
+      startEditing();
+    }
+  }, [editing, isSelected, startEditing]);
+
+  // 输入框键盘事件
+  const handleInputKeyDown = useCallback((e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submitRename();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelEditing();
+    }
+    e.stopPropagation();
+  }, [submitRename, cancelEditing]);
+
+  const handleClick = useCallback((e) => {
+    if (editing) {
+      e.stopPropagation();
+      return;
+    }
+    toggle();
+  }, [editing, toggle]);
 
   return (
     <>
       <div
+        ref={itemRef}
         className={`${styles.treeItem}${isSelected ? ' ' + styles.treeItemSelected : ''}${isGitIgnored ? ' ' + styles.treeItemGitIgnored : ''}`}
         style={{ paddingLeft: 8 + depth * 16 }}
-        onClick={toggle}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
       >
         <span className={styles.arrow}>
           {isDir ? (
@@ -97,7 +207,19 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
           ) : ''}
         </span>
         <span className={styles.icon}>{getFileIcon(item.name, item.type)}</span>
-        <span className={styles.fileName}>{item.name}</span>
+        {editing ? (
+          <input
+            ref={inputRef}
+            className={styles.fileNameInput}
+            value={editName}
+            onChange={e => setEditName(e.target.value)}
+            onKeyDown={handleInputKeyDown}
+            onBlur={submitRename}
+            onClick={e => e.stopPropagation()}
+          />
+        ) : (
+          <span className={styles.fileName}>{item.name}</span>
+        )}
       </div>
       {expanded && loading && (
         <div className={styles.loading} style={{ paddingLeft: 24 + depth * 16 }}>...</div>
@@ -106,13 +228,13 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
         <div className={styles.error} style={{ paddingLeft: 24 + depth * 16 }}>{error}</div>
       )}
       {expanded && children && children.map(child => (
-        <TreeNode key={child.name} item={child} path={childPath} depth={depth + 1} onFileClick={onFileClick} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} currentFile={currentFile} />
+        <TreeNode key={child.name} item={child} path={childPath} depth={depth + 1} onFileClick={onFileClick} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} currentFile={currentFile} onFileRenamed={onFileRenamed} />
       ))}
     </>
   );
 }
 
-export default function FileExplorer({ onClose, onFileClick, expandedPaths, onToggleExpand, currentFile, refreshTrigger }) {
+export default function FileExplorer({ onClose, onFileClick, expandedPaths, onToggleExpand, currentFile, refreshTrigger, onFileRenamed }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
   const mounted = useRef(true);
@@ -160,7 +282,7 @@ export default function FileExplorer({ onClose, onFileClick, expandedPaths, onTo
         {error && <div className={styles.error}>{error}</div>}
         {!items && !error && <div className={styles.loading}>Loading...</div>}
         {items && items.map(item => (
-          <TreeNode key={item.name} item={item} path="" depth={0} onFileClick={onFileClick} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} currentFile={currentFile} />
+          <TreeNode key={item.name} item={item} path="" depth={0} onFileClick={onFileClick} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} currentFile={currentFile} onFileRenamed={onFileRenamed} />
         ))}
       </div>
     </div>

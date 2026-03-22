@@ -774,6 +774,14 @@ class App extends React.Component {
         return { viewMode: newMode, chatScrollToTs: targetTs };
       }
       return { viewMode: newMode, chatScrollToTs: null };
+    }, () => {
+      // 切换到对话模式后，仅在终端可见且为 CLI 模式时将焦点转移到终端 textarea
+      if (this.state.viewMode === 'chat' && this.state.terminalVisible && this.state.cliMode && !isMobile) {
+        requestAnimationFrame(() => {
+          const ta = document.querySelector('.xterm-helper-textarea');
+          if (ta) ta.focus();
+        });
+      }
     });
   };
 
@@ -873,7 +881,7 @@ class App extends React.Component {
         const text = msg.content.trim();
         if (!text) continue;
         if (!isSystemText(text)) {
-          if (/^Implement the following plan:/i.test(text)) continue;
+          if (/Implement the following plan:/i.test(text)) continue;
           userMsgs.push(text);
           fullTexts.push(text);
         }
@@ -886,7 +894,7 @@ class App extends React.Component {
         // 过滤掉 plan prompt
         const userParts = [];
         for (const b of textBlocks) {
-          if (/^Implement the following plan:/i.test((b.text || '').trim())) continue;
+          if (/Implement the following plan:/i.test((b.text || '').trim())) continue;
           userParts.push(b.text.trim());
         }
         // 收集完整文本用于 context 视图

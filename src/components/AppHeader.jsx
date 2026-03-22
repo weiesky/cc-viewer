@@ -171,7 +171,7 @@ class AppHeader extends React.Component {
         const text = msg.content.trim();
         if (!text) continue;
         if (!isSystemText(text)) {
-          if (/^Implement the following plan:/i.test(text)) continue;
+          if (/Implement the following plan:/i.test(text)) continue;
           userMsgs.push(text);
           fullTexts.push(text);
         }
@@ -184,7 +184,7 @@ class AppHeader extends React.Component {
         // 过滤掉 plan prompt
         const userParts = [];
         for (const b of textBlocks) {
-          if (/^Implement the following plan:/i.test((b.text || '').trim())) continue;
+          if (/Implement the following plan:/i.test((b.text || '').trim())) continue;
           userParts.push(b.text.trim());
         }
         // 收集完整文本用于 context 视图
@@ -546,7 +546,7 @@ class AppHeader extends React.Component {
       })
       .filter(({ cleaned }) => {
         if (!cleaned) return false;
-        if (/^Implement the following plan:/i.test(cleaned)) return false;
+        if (/Implement the following plan:/i.test(cleaned)) return false;
         return true;
       });
 

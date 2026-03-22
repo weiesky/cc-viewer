@@ -758,6 +758,14 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // 返回项目目录绝对路径（前端用于将绝对路径转为相对路径）
+  if (url === '/api/project-dir' && method === 'GET') {
+    const dir = process.env.CCV_PROJECT_DIR || process.cwd();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ dir }));
+    return;
+  }
+
   // 当前版本号
   if (url === '/api/version-info' && method === 'GET') {
     try {
@@ -909,6 +917,58 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // 文件重命名 API
+  if (url === '/api/rename-file' && method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
+    req.on('end', () => {
+      let parsed;
+      try { parsed = JSON.parse(body); } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid request body' }));
+        return;
+      }
+      try {
+        const { oldPath, newName } = parsed;
+        if (!oldPath || !newName) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing oldPath or newName' }));
+          return;
+        }
+        // 安全校验
+        if (oldPath.startsWith('/') || oldPath.includes('..') || newName.includes('/') || newName.includes('\\') || newName.includes('..')) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid path' }));
+          return;
+        }
+        const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+        const oldFullPath = join(cwd, oldPath);
+        const parentDir = dirname(oldFullPath);
+        const newFullPath = join(parentDir, newName);
+        // 检查源文件存在
+        if (!existsSync(oldFullPath)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'File not found' }));
+          return;
+        }
+        // 检查目标是否已存在
+        if (existsSync(newFullPath)) {
+          res.writeHead(409, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Target already exists' }));
+          return;
+        }
+        renameSync(oldFullPath, newFullPath);
+        const newRelPath = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/') + 1) + newName : newName;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, newPath: newRelPath }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
   // === Editor session API (for $EDITOR intercept) ===
 
   if (url === '/api/open-log-dir' && method === 'POST') {
@@ -1000,8 +1060,39 @@ async function handleRequest(req, res) {
       res.end(JSON.stringify({ error: 'Invalid path' }));
       return;
     }
-    // Allow absolute paths only for editor sessions
+    // Allow absolute paths for editor sessions or when within project directory
     if (!isEditorSession && (reqPath.startsWith('/') || reqPath.includes('..'))) {
+      const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+      if (reqPath.startsWith(cwd + '/')) {
+        // 绝对路径在项目目录内，自动转为相对路径继续处理
+        const relPath = reqPath.slice(cwd.length + 1);
+        const targetFile = join(cwd, relPath);
+        try {
+          if (!existsSync(targetFile)) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: `File not found: ${targetFile}` }));
+            return;
+          }
+          const stat = statSync(targetFile);
+          if (!stat.isFile()) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Not a file' }));
+            return;
+          }
+          if (stat.size > 5 * 1024 * 1024) {
+            res.writeHead(413, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'File too large' }));
+            return;
+          }
+          const content = readFileSync(targetFile, 'utf-8');
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ path: relPath, content, size: stat.size }));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `Cannot read file: ${err.message}` }));
+        }
+        return;
+      }
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid path' }));
       return;
@@ -1045,11 +1136,15 @@ async function handleRequest(req, res) {
       return;
     }
     if (!isEditorSession && (reqPath.startsWith('/') || reqPath.includes('..'))) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Invalid path' }));
-      return;
+      // 允许项目目录内的绝对路径
+      const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+      if (!reqPath.startsWith(cwd + '/')) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid path' }));
+        return;
+      }
     }
-    const targetFile = isEditorSession && reqPath.startsWith('/') ? reqPath : join(process.env.CCV_PROJECT_DIR || process.cwd(), reqPath);
+    const targetFile = (isEditorSession || reqPath.startsWith('/')) ? reqPath : join(process.env.CCV_PROJECT_DIR || process.cwd(), reqPath);
     try {
       if (!existsSync(targetFile)) {
         res.writeHead(404, { 'Content-Type': 'application/json' });

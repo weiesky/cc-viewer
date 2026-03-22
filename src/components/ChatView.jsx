@@ -13,6 +13,7 @@ import { classifyRequest, formatRequestTag, formatTeammateLabel } from '../utils
 import { buildChunksForAnswer } from '../utils/ptyChunkBuilder';
 import { isMobile } from '../env';
 import { t } from '../i18n';
+import { apiUrl } from '../utils/apiUrl';
 import styles from './ChatView.module.css';
 
 const { Text } = Typography;
@@ -199,10 +200,14 @@ function parseAskAnswerText(text) {
   return answers;
 }
 
-/** 从 ExitPlanMode tool_result 文本中解析审批状态 */
+/** 从 ExitPlanMode tool_result 文本中解析审批状态和计划内容 */
 function parsePlanApproval(text) {
   if (!text) return { status: 'pending' };
-  if (/User has approved/i.test(text)) return { status: 'approved' };
+  if (/User has approved/i.test(text)) {
+    // 提取 "## Approved Plan:" 之后的计划内容
+    const planMatch = text.match(/##\s*Approved Plan:\s*\n([\s\S]*)/i);
+    return { status: 'approved', planContent: planMatch ? planMatch[1].trim() : '' };
+  }
   if (/User rejected/i.test(text)) {
     const feedbackMatch = text.match(/feedback:\s*(.+)/i) || text.match(/User rejected[^:]*:\s*(.+)/i);
     return { status: 'rejected', feedback: feedbackMatch ? feedbackMatch[1].trim() : '' };
@@ -261,6 +266,7 @@ class ChatView extends React.Component {
       gitChangesRefresh: 0,
     };
     this._processedToolIds = new Set();
+    this._projectDirCache = null; // 缓存项目目录绝对路径
     this._fileRefreshTimer = null;
     this._gitRefreshTimer = null;
     this._queueTimer = null;
@@ -714,14 +720,14 @@ class ChatView extends React.Component {
             }
             // 渲染普通用户文本块
             for (let ti = 0; ti < textBlocks.length; ti++) {
-              const isPlan = /^Implement the following plan:/i.test((textBlocks[ti].text || '').trim());
+              const isPlan = /Implement the following plan:/i.test(textBlocks[ti].text || '');
               renderedMessages.push(
                 <ChatMessage key={`${keyPrefix}-user-${mi}-${ti}`} role={isPlan ? 'plan-prompt' : 'user'} text={textBlocks[ti].text} timestamp={ts} userProfile={userProfile} modelInfo={modelInfo} {...viewReqProps} />
               );
             }
           }
         } else if (typeof content === 'string' && !isSystemText(content)) {
-          const isPlan = /^Implement the following plan:/i.test(content.trim());
+          const isPlan = /Implement the following plan:/i.test(content);
           renderedMessages.push(
             <ChatMessage key={`${keyPrefix}-user-${mi}`} role={isPlan ? 'plan-prompt' : 'user'} text={content} timestamp={ts} userProfile={userProfile} modelInfo={modelInfo} {...viewReqProps} />
           );
@@ -729,11 +735,11 @@ class ChatView extends React.Component {
       } else if (msg.role === 'assistant') {
         if (Array.isArray(content)) {
           renderedMessages.push(
-            <ChatMessage key={`${keyPrefix}-asst-${mi}`} role="assistant" content={content} toolResultMap={toolResultMap} readContentMap={readContentMap} editSnapshotMap={editSnapshotMap} askAnswerMap={askAnswerMap} planApprovalMap={planApprovalMap} timestamp={ts} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} ptyPrompt={this.state.ptyPrompt} activePlanPrompt={activePlanPrompt} lastPendingPlanId={lastPendingPlanId} lastPendingAskId={lastPendingAskId} onPlanApprovalClick={this.handlePromptOptionClick} onPlanFeedbackSubmit={this.handlePlanFeedbackSubmit} onAskQuestionSubmit={this.handleAskQuestionSubmit} cliMode={this.props.cliMode} {...viewReqProps} />
+            <ChatMessage key={`${keyPrefix}-asst-${mi}`} role="assistant" content={content} toolResultMap={toolResultMap} readContentMap={readContentMap} editSnapshotMap={editSnapshotMap} askAnswerMap={askAnswerMap} planApprovalMap={planApprovalMap} timestamp={ts} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} ptyPrompt={this.state.ptyPrompt} activePlanPrompt={activePlanPrompt} lastPendingPlanId={lastPendingPlanId} lastPendingAskId={lastPendingAskId} onPlanApprovalClick={this.handlePromptOptionClick} onPlanFeedbackSubmit={this.handlePlanFeedbackSubmit} onAskQuestionSubmit={this.handleAskQuestionSubmit} cliMode={this.props.cliMode} onOpenFile={this.handleOpenToolFilePath} {...viewReqProps} />
           );
         } else if (typeof content === 'string') {
           renderedMessages.push(
-            <ChatMessage key={`${keyPrefix}-asst-${mi}`} role="assistant" content={[{ type: 'text', text: content }]} toolResultMap={toolResultMap} readContentMap={readContentMap} editSnapshotMap={editSnapshotMap} askAnswerMap={askAnswerMap} planApprovalMap={planApprovalMap} timestamp={ts} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} ptyPrompt={this.state.ptyPrompt} activePlanPrompt={activePlanPrompt} lastPendingPlanId={lastPendingPlanId} lastPendingAskId={lastPendingAskId} onPlanApprovalClick={this.handlePromptOptionClick} onPlanFeedbackSubmit={this.handlePlanFeedbackSubmit} onAskQuestionSubmit={this.handleAskQuestionSubmit} cliMode={this.props.cliMode} {...viewReqProps} />
+            <ChatMessage key={`${keyPrefix}-asst-${mi}`} role="assistant" content={[{ type: 'text', text: content }]} toolResultMap={toolResultMap} readContentMap={readContentMap} editSnapshotMap={editSnapshotMap} askAnswerMap={askAnswerMap} planApprovalMap={planApprovalMap} timestamp={ts} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} ptyPrompt={this.state.ptyPrompt} activePlanPrompt={activePlanPrompt} lastPendingPlanId={lastPendingPlanId} lastPendingAskId={lastPendingAskId} onPlanApprovalClick={this.handlePromptOptionClick} onPlanFeedbackSubmit={this.handlePlanFeedbackSubmit} onAskQuestionSubmit={this.handleAskQuestionSubmit} cliMode={this.props.cliMode} onOpenFile={this.handleOpenToolFilePath} {...viewReqProps} />
           );
         }
       }
@@ -831,7 +837,7 @@ class ChatView extends React.Component {
           const sa = subAgentEntries[subIdx];
           if (sa.timestamp) tsItemMap[sa.timestamp] = allItems.length;
           allItems.push(
-            <ChatMessage key={`sub-chat-${subIdx}`} role="sub-agent-chat" content={sa.content} toolResultMap={sa.toolResultMap} label={sa.label} isTeammate={sa.isTeammate} timestamp={sa.timestamp} collapseToolResults={collapseToolResults} expandThinking={expandThinking} requestIndex={sa.requestIndex} onViewRequest={onViewRequest} />
+            <ChatMessage key={`sub-chat-${subIdx}`} role="sub-agent-chat" content={sa.content} toolResultMap={sa.toolResultMap} label={sa.label} isTeammate={sa.isTeammate} timestamp={sa.timestamp} collapseToolResults={collapseToolResults} expandThinking={expandThinking} requestIndex={sa.requestIndex} onViewRequest={onViewRequest} onOpenFile={this.handleOpenToolFilePath} />
           );
           subIdx++;
         }
@@ -846,7 +852,7 @@ class ChatView extends React.Component {
         if (nextSessionStart && sa.timestamp > nextSessionStart) break;
         if (sa.timestamp) tsItemMap[sa.timestamp] = allItems.length;
         allItems.push(
-          <ChatMessage key={`sub-chat-${subIdx}`} role="sub-agent-chat" content={sa.content} toolResultMap={sa.toolResultMap} label={sa.label} isTeammate={sa.isTeammate} timestamp={sa.timestamp} collapseToolResults={collapseToolResults} expandThinking={expandThinking} requestIndex={sa.requestIndex} onViewRequest={onViewRequest} />
+          <ChatMessage key={`sub-chat-${subIdx}`} role="sub-agent-chat" content={sa.content} toolResultMap={sa.toolResultMap} label={sa.label} isTeammate={sa.isTeammate} timestamp={sa.timestamp} collapseToolResults={collapseToolResults} expandThinking={expandThinking} requestIndex={sa.requestIndex} onViewRequest={onViewRequest} onOpenFile={this.handleOpenToolFilePath} />
         );
         subIdx++;
       }
@@ -889,7 +895,7 @@ class ChatView extends React.Component {
                 <Divider style={{ borderColor: '#2a2a2a', margin: '8px 0' }}>
                   <Text type="secondary" className={styles.lastResponseLabel}>{t('ui.lastResponse')}</Text>
                 </Divider>
-                <ChatMessage key="resp-asst" role="assistant" content={respContent} timestamp={session.entryTimestamp} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} toolResultMap={{}} askAnswerMap={{}} lastPendingAskId={respLastPendingAskId} cliMode={this.props.cliMode} onAskQuestionSubmit={this.handleAskQuestionSubmit} />
+                <ChatMessage key="resp-asst" role="assistant" content={respContent} timestamp={session.entryTimestamp} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} toolResultMap={{}} askAnswerMap={{}} lastPendingAskId={respLastPendingAskId} cliMode={this.props.cliMode} onAskQuestionSubmit={this.handleAskQuestionSubmit} onOpenFile={this.handleOpenToolFilePath} />
               </React.Fragment>
             );
           }
@@ -1542,6 +1548,45 @@ class ChatView extends React.Component {
     });
   };
 
+  // 点击工具调用中的文件路径，打开文件查看器
+  // 绝对路径需要转为项目相对路径，以便与 FileExplorer 的 TreeNode 匹配
+  handleOpenToolFilePath = async (filePath) => {
+    if (!filePath) return;
+    let resolved = filePath;
+    if (filePath.startsWith('/')) {
+      // 懒加载项目目录（只请求一次，后续用缓存）
+      if (!this._projectDirCache) {
+        try {
+          const r = await fetch(apiUrl('/api/project-dir'));
+          if (r.ok) {
+            const data = await r.json();
+            if (data && data.dir) this._projectDirCache = data.dir;
+          }
+        } catch { /* ignore */ }
+      }
+      if (this._projectDirCache && filePath.startsWith(this._projectDirCache + '/')) {
+        resolved = filePath.slice(this._projectDirCache.length + 1);
+      }
+    }
+    // 计算所有祖先目录路径，加入 expandedPaths 以展开目录树
+    const parts = resolved.split('/');
+    const ancestors = [];
+    for (let i = 1; i < parts.length; i++) {
+      ancestors.push(parts.slice(0, i).join('/'));
+    }
+    this._setFileExplorerOpen(true);
+    this.setState(prev => {
+      const newSet = new Set(prev.fileExplorerExpandedPaths);
+      ancestors.forEach(p => newSet.add(p));
+      return {
+        currentFile: resolved,
+        currentGitDiff: null,
+        scrollToLine: null,
+        fileExplorerExpandedPaths: newSet,
+      };
+    });
+  };
+
   _snapToInitialPosition() {
     // 初始化时吸附到 60cols
     const charWidth = 7.8;
@@ -1764,6 +1809,12 @@ class ChatView extends React.Component {
               expandedPaths={this.state.fileExplorerExpandedPaths}
               onToggleExpand={this.handleToggleExpandPath}
               currentFile={this.state.currentFile}
+              onFileRenamed={(oldPath, newPath) => {
+                this.setState(prev => ({
+                  currentFile: prev.currentFile === oldPath ? newPath : prev.currentFile,
+                  fileExplorerRefresh: prev.fileExplorerRefresh + 1,
+                }));
+              }}
             />
           )}
           {this.state.gitChangesOpen && (

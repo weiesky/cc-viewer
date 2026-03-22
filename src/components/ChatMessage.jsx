@@ -173,6 +173,7 @@ class ChatMessage extends React.Component {
           old_string={tu.input.old_string}
           new_string={tu.input.new_string}
           startLine={startLine}
+          onOpenFile={this.props.onOpenFile}
         />
       );
     }
@@ -189,8 +190,11 @@ class ChatMessage extends React.Component {
       <pre className={styles.codePre} style={{ color: color || '#e5e7eb' }}>{text}</pre>
     );
 
+    const onOpenFile = this.props.onOpenFile;
     const pathTag = (p) => (
-      <span className={styles.pathTag}>{p}</span>
+      onOpenFile
+        ? <span className={styles.pathTagClickable} onClick={(e) => { e.stopPropagation(); onOpenFile(p); }}>{p}</span>
+        : <span className={styles.pathTag}>{p}</span>
     );
 
     // Bash: show command and description
@@ -363,6 +367,16 @@ class ChatMessage extends React.Component {
       const approval = (planApprovalMap && planApprovalMap[tu.id]) || { status: 'pending' };
       const isPending = approval.status === 'pending';
       const isInteractive = isPending && this.props.cliMode && tu.id === this.props.lastPendingPlanId;
+
+      // 已批准且有计划内容 → 渲染为蓝色边框的 plan 视图
+      if (approval.status === 'approved' && approval.planContent) {
+        return (
+          <div key={tu.id} className={styles.bubblePlan}>
+            <div className="chat-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(approval.planContent) }} />
+          </div>
+        );
+      }
+
       // plan 审批选项：优先用 ptyPrompt 检测到的，否则用内置默认选项
       const detectedPrompt = isPlanApprovalPrompt(this.props.ptyPrompt)
         ? this.props.ptyPrompt
@@ -619,9 +633,16 @@ class ChatMessage extends React.Component {
       innerContent.push(this.renderToolCall(tu));
       const tr = toolResultMap[tu.id];
       if (tr) {
-        innerContent.push(
-          <React.Fragment key={`tr-${tu.id}`}>{this.renderToolResult(tr)}</React.Fragment>
-        );
+        // 已批准的 ExitPlanMode 计划内容已在 renderToolCall 中渲染，隐藏重复的 tool_result
+        const planApprovalMap = this.props.planApprovalMap || {};
+        const approval = planApprovalMap[tu.id];
+        if (tu.name === 'ExitPlanMode' && approval && approval.status === 'approved' && approval.planContent) {
+          // skip tool result — plan content already shown
+        } else {
+          innerContent.push(
+            <React.Fragment key={`tr-${tu.id}`}>{this.renderToolResult(tr)}</React.Fragment>
+          );
+        }
       }
     });
 
@@ -698,7 +719,8 @@ class ChatMessage extends React.Component {
   renderPlanPromptMessage() {
     const { text, timestamp, modelInfo } = this.props;
     const timeStr = this.formatTime(timestamp);
-    const planContent = (text || '').replace(/^Implement the following plan:\s*/i, '');
+    // 去掉前导系统标签和 plan 前缀
+    const planContent = (text || '').replace(/^[\s\S]*?Implement the following plan:\s*/i, '');
 
     return (
       <div className={styles.messageRow}>

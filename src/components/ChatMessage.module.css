@@ -240,6 +240,17 @@
   font-size: 11px;
 }
 
+.pathTagClickable {
+  color: #7dd3fc;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.pathTagClickable:hover {
+  text-decoration: underline;
+  color: #93c5fd;
+}
+
 /* === Tool call inline spans === */
 
 .descSpan {

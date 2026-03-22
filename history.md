@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.17 (2026-03-22)
+
+- Feature: file browser inline rename — double-click or press Enter/F2 on selected file to edit name in-place
+- Feature: clickable file paths in chat — Edit/Read/Write tool calls now have clickable file paths that open the file in the viewer
+- Feature: auto-expand directory tree when opening a file from chat, with scroll-into-view for the selected item
+- Fix: plan content display — plans wrapped in system-reminder tags are no longer filtered out; approved plans now render with the blue-bordered plan view instead of the approval status card
+- Fix: xterm focus on mode switch now only activates when terminal is visible, in CLI mode, and not on mobile
+- Security: /api/rename-file POST body size limited with MAX_POST_BODY; JSON parse errors return 400 instead of 500
+- Fix: /api/project-dir fetch uses apiUrl() for LAN token compatibility
+
 ## 1.6.16 (2026-03-22)
 
 - Feature: SubAgent requests now display KV-Cache-Text in network panel
