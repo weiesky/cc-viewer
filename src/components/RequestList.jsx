@@ -28,8 +28,9 @@ class RequestList extends React.Component {
     if (this.props.scrollCenter && prevProps.selectedIndex !== this.props.selectedIndex) {
       this.scrollToSelected(true);
     } else if (prevProps.selectedIndex !== this.props.selectedIndex) {
-      // User selected a different item — scroll to it
+      // User selected a different item — scroll to it and focus
       this.scrollToSelected(false);
+      if (this.activeItemRef.current) this.activeItemRef.current.focus({ preventScroll: true });
     }
     // When requests update but selectedIndex hasn't changed,
     // don't scroll — preserve user's current scroll position
@@ -41,6 +42,17 @@ class RequestList extends React.Component {
       if (center && this.props.onScrollDone) this.props.onScrollDone();
     }
   }
+
+  handleKeyDown = (e) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    const { requests, selectedIndex, onSelect } = this.props;
+    if (!requests.length) return;
+
+    e.preventDefault();
+    const current = selectedIndex ?? 0;
+    const next = e.key === 'ArrowUp' ? Math.max(0, current - 1) : Math.min(requests.length - 1, current + 1);
+    if (next !== current) onSelect(next);
+  };
 
   render() {
     const { requests, selectedIndex, onSelect } = this.props;
@@ -54,7 +66,7 @@ class RequestList extends React.Component {
     }
 
     return (
-      <div className={styles.scrollContainer}>
+      <div className={styles.scrollContainer} onKeyDown={this.handleKeyDown}>
         <List
           dataSource={requests}
           size="small"
@@ -83,6 +95,7 @@ class RequestList extends React.Component {
             return (
               <List.Item
                 ref={isActive ? this.activeItemRef : undefined}
+                tabIndex={0}
                 onClick={() => onSelect(index)}
                 className={`${styles.listItem} ${isActive ? styles.listItemActive : ''}`}
               >

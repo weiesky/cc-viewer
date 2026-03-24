@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.35 (2026-03-24)
+
+- Feature: keyboard arrow up/down navigation in request list (network view)
+
 ## 1.6.34 (2026-03-24)
 
 - Remove: translate feature (server /api/translate endpoint, TranslateTag component, translator.js)
