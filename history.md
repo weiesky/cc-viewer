@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.49 (2026-03-28)
+
+- Refactor: separate Mobile/PC entry points with AppBase class inheritance — split App.jsx (2202 lines) into AppBase.jsx (shared), App.jsx (PC), Mobile.jsx (mobile) with dynamic import code splitting
+- Fix(mobile): prevent teammate requests from polluting subAgent statistics in MobileStats — merged redundant loops, matching PC-side AppHeader.jsx logic
+
 ## 1.6.48 (2026-03-28)
 
 - Fix(mobile): hide left navSidebar in chat view on mobile for more screen space
