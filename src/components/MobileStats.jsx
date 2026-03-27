@@ -13,9 +13,7 @@ const I18N_MAP = {
 };
 
 export default function MobileStats({ requests = [], visible, onClose }) {
-  if (!visible) return null;
-
-  const { byModel, models, toolStats, skillStats, cacheStats, activeReasons, totalCount, totalCache, hasCacheStats, subAgentEntries, hasSubAgentStats, isEmpty } = useMemo(() => {
+  const { byModel, models, toolStats, skillStats, cacheStats, activeReasons, totalCount, totalCache, hasCacheStats, subAgentEntries, hasSubAgentStats, teammateEntries, hasTeammateStats, isEmpty } = useMemo(() => {
     const byModel = computeTokenStats(requests);
     const models = Object.keys(byModel);
     const toolStats = computeToolUsageStats(requests);
@@ -54,8 +52,10 @@ export default function MobileStats({ requests = [], visible, onClose }) {
 
     const isEmpty = models.length === 0 && toolStats.length === 0 && !hasCacheStats && !hasSubAgentStats && !hasTeammateStats && skillStats.length === 0;
 
-    return { byModel, models, toolStats, skillStats, cacheStats, activeReasons, totalCount, totalCache, hasCacheStats, subAgentEntries, hasSubAgentStats, isEmpty };
+    return { byModel, models, toolStats, skillStats, cacheStats, activeReasons, totalCount, totalCache, hasCacheStats, subAgentEntries, hasSubAgentStats, teammateEntries, hasTeammateStats, isEmpty };
   }, [requests]);
+
+  if (!visible) return null;
 
   return (
     <div className={styles.container}>
