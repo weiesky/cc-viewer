@@ -102,6 +102,47 @@
   color: #fff;
 }
 
+/* 虚拟按键栏分隔符 */
+.vkSeparator {
+  flex-shrink: 0;
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 2px;
+  background: #333;
+}
+
+/* 操作按钮（上传、团队预设） */
+.vkAction {
+  padding: 8px 14px;
+  gap: 6px;
+  min-height: 44px;
+}
+.vkAction svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* 团队预设标签截断 */
+.vkTeamLabel {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+  font-size: 13px;
+}
+
+/* 团队预设按钮 */
+.vkTeamPreset {
+  border-color: #3a5a3a;
+}
+
+/* 禁用态操作按钮 */
+.vkDisabled {
+  opacity: 0.5;
+  border-style: dashed;
+}
+
 /* 预置快捷方式列表 */
 .presetList {
   background: #0d0d0d;

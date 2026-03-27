@@ -650,12 +650,12 @@ class TerminalPanel extends React.Component {
     }
   };
 
-  _vkTouchEnd = (seq, e) => {
+  _vkTouchEnd = (action, e) => {
     e.preventDefault(); // 阻止后续 ghost click
     this._vkTarget?.classList.remove(styles.virtualKeyPressed);
     this._vkTarget = null;
     if (!this._vkMoved) {
-      this.handleVirtualKey(seq);
+      action();
     }
   };
 
@@ -665,8 +665,8 @@ class TerminalPanel extends React.Component {
     try {
       const path = await uploadFileAndGetPath(file);
       if (this.props.onFilePath) this.props.onFilePath(path);
-      // refocus terminal after upload
-      if (this.terminal) this.terminal.focus();
+      // refocus terminal after upload (skip on mobile to avoid system keyboard popup)
+      if (!isMobile && this.terminal) this.terminal.focus();
     } catch (err) {
       console.error('[CC Viewer] Upload failed:', err);
     }
@@ -792,7 +792,7 @@ class TerminalPanel extends React.Component {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'input', data: description }));
     }
-    if (this.terminal) this.terminal.focus();
+    if (!isMobile && this.terminal) this.terminal.focus();
   };
 
   handleEnableAgentTeam = () => {
@@ -803,7 +803,7 @@ class TerminalPanel extends React.Component {
       this.ws.send(JSON.stringify({ type: 'input', data: prompt + '\r' }));
       message.success('需要重启 Claude Code 才能生效');
     }
-    if (this.terminal) this.terminal.focus();
+    if (!isMobile && this.terminal) this.terminal.focus();
   };
 
   handleUltrathink = () => {
@@ -817,9 +817,9 @@ class TerminalPanel extends React.Component {
     return (
       <div className={styles.terminalPanel}>
         <div ref={this.containerRef} className={styles.terminalContainer} />
+        <input type="file" ref={this.fileInputRef} className={styles.hiddenFileInput} onChange={this.handleFileUpload} />
         {!isMobile && (
           <div className={styles.terminalToolbar}>
-            <input type="file" ref={this.fileInputRef} className={styles.hiddenFileInput} onChange={this.handleFileUpload} />
             <button className={styles.toolbarBtn} onClick={() => this.fileInputRef.current?.click()} title={t('ui.terminal.upload')}>
               <UploadIcon />
               <span>{t('ui.terminal.upload')}</span>
@@ -890,11 +890,59 @@ class TerminalPanel extends React.Component {
                 className={styles.virtualKey}
                 onTouchStart={this._vkTouchStart}
                 onTouchMove={this._vkTouchMove}
-                onTouchEnd={(e) => this._vkTouchEnd(k.seq, e)}
+                onTouchEnd={(e) => this._vkTouchEnd(() => this.handleVirtualKey(k.seq), e)}
               >
                 {k.label}
               </button>
             ))}
+            {/* TODO: 移动端文件上传 - 受限于浏览器安全策略，触摸事件链中 input.click() 无法触发文件选择器
+            <span className={styles.vkSeparator} />
+            <button
+              className={`${styles.virtualKey} ${styles.vkAction}`}
+              onClick={() => {
+                this.fileInputRef.current?.click();
+                const ta = this.containerRef.current?.querySelector('.xterm-helper-textarea');
+                if (ta) ta.blur();
+              }}
+              title={t('ui.terminal.upload')}
+            >
+              <UploadIcon />
+            </button>
+            */}
+            {this.state.agentTeamEnabled ? (
+              this.state.presetItems.length > 0 && <>
+                <span className={styles.vkSeparator} />
+                {this.state.presetItems.map(item => {
+                  const isBuiltinRaw = item.builtinId && !item.modified;
+                  const name = isBuiltinRaw ? t(item.teamName) : item.teamName;
+                  const desc = isBuiltinRaw ? t(item.description) : item.description;
+                  return (
+                    <button
+                      key={item.id}
+                      className={`${styles.virtualKey} ${styles.vkAction} ${styles.vkTeamPreset}`}
+                      onTouchStart={this._vkTouchStart}
+                      onTouchMove={this._vkTouchMove}
+                      onTouchEnd={(e) => this._vkTouchEnd(() => this.handlePresetSend(desc), e)}
+                      title={desc}
+                    >
+                      <AgentTeamIcon /><span className={styles.vkTeamLabel}>{name || desc}</span>
+                    </button>
+                  );
+                })}
+              </>
+            ) : (
+              <>
+                <span className={styles.vkSeparator} />
+                <button
+                  className={`${styles.virtualKey} ${styles.vkAction} ${styles.vkDisabled}`}
+                  onTouchStart={this._vkTouchStart}
+                  onTouchMove={this._vkTouchMove}
+                  onTouchEnd={(e) => this._vkTouchEnd(() => this.handleEnableAgentTeam(), e)}
+                >
+                  <AgentTeamIcon /><span className={styles.vkTeamLabel}>{t('ui.terminal.agentTeam')}</span>
+                </button>
+              </>
+            )}
           </div>
         )}
         {/* 预置快捷方式弹窗 */}

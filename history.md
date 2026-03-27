@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.47 (2026-03-28)
+
+- Feature(mobile): add Agent Team presets to mobile virtual keyboard bar — flattened inline buttons instead of popover
+- Fix(mobile): prevent system keyboard popup when tapping Agent Team preset or enable buttons (add isMobile guard to terminal.focus)
+- Refactor: generalize _vkTouchEnd to accept callback, eliminating touch handler duplication
+- Style: add vkSeparator, vkAction, vkTeamPreset, vkDisabled CSS classes for mobile keyboard bar
+
 ## 1.6.44 (2026-03-27)
 
 - Fix: teammate fallback rendering now works — noData guard checks allItems to avoid Empty blocking fallback content
