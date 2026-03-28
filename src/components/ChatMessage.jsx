@@ -2,6 +2,7 @@ import React from 'react';
 import { Collapse, Typography, Radio, Checkbox, Input, Button, Tooltip, message } from 'antd';
 import { renderMarkdown } from '../utils/markdown';
 import { escapeHtml, truncateText, getSvgAvatar } from '../utils/helpers';
+import { getTeammateAvatar } from '../utils/teammateAvatars';
 import { renderAssistantText } from '../utils/systemTags';
 import { apiUrl } from '../utils/apiUrl';
 import AskQuestionForm from './AskQuestionForm';
@@ -32,14 +33,6 @@ function ChatImage({ src, alt, fallbackText }) {
   );
 }
 
-function nameToColor(name) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const hue = ((hash % 360) + 360) % 360;
-  return `hsl(${hue}, 55%, 35%)`;
-}
 
 class ChatMessage extends React.Component {
   constructor(props) {
@@ -754,19 +747,22 @@ class ChatMessage extends React.Component {
           </div>
           {this.renderHighlightBubble(styles.bubbleAssistant, innerContent)}
         </div>
-        <div className={styles.avatar} style={{ background: this.props.isTeammate ? nameToColor(label || '') : 'rgba(255, 255, 255, 0.1)' }}
-          dangerouslySetInnerHTML={{ __html: getSvgAvatar(this._getSubAvatarType()) }}
-        />
+        {(() => { const ta = this.props.isTeammate ? getTeammateAvatar(label) : null; return (
+          <div className={styles.avatar} style={{ background: ta ? ta.color : 'rgba(255, 255, 255, 0.1)' }}
+            dangerouslySetInnerHTML={{ __html: ta ? ta.svg : getSvgAvatar(this._getSubAvatarType()) }}
+          />
+        ); })()}
       </div>
     );
   }
 
   renderSubAgentMessage() {
     const { label, resultText, toolName, toolInput } = this.props;
+    const tmAvatar = this.props.isTeammate ? getTeammateAvatar(label) : null;
     return (
       <div className={styles.messageRow}>
-        <div className={styles.avatar} style={{ background: this.props.isTeammate ? nameToColor(label || '') : 'rgba(255, 255, 255, 0.1)' }}
-          dangerouslySetInnerHTML={{ __html: getSvgAvatar(this._getSubAvatarType()) }}
+        <div className={styles.avatar} style={{ background: tmAvatar ? tmAvatar.color : 'rgba(255, 255, 255, 0.1)' }}
+          dangerouslySetInnerHTML={{ __html: tmAvatar ? tmAvatar.svg : getSvgAvatar(this._getSubAvatarType()) }}
         />
         <div className={styles.contentCol}>
           {this.renderLabel(label)}

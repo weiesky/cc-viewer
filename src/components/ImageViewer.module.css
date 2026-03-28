@@ -136,6 +136,21 @@
   image-rendering: auto;
 }
 
+.svgInline {
+  background: #1a1a1a;
+  border-radius: 8px;
+  padding: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.svgInline svg {
+  display: block;
+  height: 200px;
+  width: auto;
+}
+
 .statusBar {
   display: flex;
   align-items: center;

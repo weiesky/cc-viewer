@@ -8,6 +8,7 @@ import ImageViewer from './ImageViewer';
 import GitChanges from './GitChanges';
 import GitDiffView from './GitDiffView';
 import { extractToolResultText, getModelInfo, getSvgAvatar } from '../utils/helpers';
+import { getTeammateAvatar } from '../utils/teammateAvatars';
 import { renderMarkdown } from '../utils/markdown';
 import defaultModelAvatarUrl from '../img/default-model-avatar.svg';
 import { isSystemText, classifyUserContent, isMainAgent, isTeammate } from '../utils/contentFilter';
@@ -22,11 +23,7 @@ const { Text } = Typography;
 
 const QUEUE_THRESHOLD = 20;
 
-function nameToColor(name) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  return `hsl(${((hash % 360) + 360) % 360}, 55%, 35%)`;
-}
+
 
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'webp']);
 function isImageFile(path) {
@@ -2433,7 +2430,7 @@ class ChatView extends React.Component {
                 if (summary && content.trim()) {
                   ag.teammateMessages.push({ summary, content: content.trim() });
                   const reqTs = req.timestamp || req.response?.timestamp;
-                  entries.push({ type: 'teammate-report', agentName: ag.name, agentColor: nameToColor(ag.name), summary, content: content.trim(), timestamp: reqTs });
+                  entries.push({ type: 'teammate-report', agentName: ag.name, agentColor: getTeammateAvatar(ag.name).color, summary, content: content.trim(), timestamp: reqTs });
                 }
                 break;
               }
@@ -2547,7 +2544,7 @@ class ChatView extends React.Component {
                 >
                   <div className={`${styles.teamAgentCard} ${styles.teamAgentCardClickable} ${this.state.activeAgentCard === i ? styles.teamAgentCardActive : ''}`}>
                     <div className={styles.teamAgentCardHeader}>
-                      <div className={styles.teamAgentAvatar} style={{ background: nameToColor(ag.name) }} dangerouslySetInnerHTML={{ __html: getSvgAvatar('teammate') }} />
+                      {(() => { const _a = getTeammateAvatar(ag.name); return <div className={styles.teamAgentAvatar} style={{ background: _a.color }} dangerouslySetInnerHTML={{ __html: _a.svg }} />; })()}
                       <div className={styles.teamAgentName}>{ag.name}</div>
                     </div>
                     <div className={styles.teamAgentType}>{ag.type}</div>
@@ -2572,7 +2569,7 @@ class ChatView extends React.Component {
                   {entry.type === 'teammate-report' && (
                     <div className={styles.teammateReportEntry}>
                       <div className={styles.teammateReportHeader}>
-                        <div className={styles.teamAgentAvatar} style={{ background: entry.agentColor }} dangerouslySetInnerHTML={{ __html: getSvgAvatar('teammate') }} />
+                        {(() => { const _a = getTeammateAvatar(entry.agentName); return <div className={styles.teamAgentAvatar} style={{ background: _a.color }} dangerouslySetInnerHTML={{ __html: _a.svg }} />; })()}
                         <span className={styles.teammateReportName}>{entry.agentName}</span>
                         <span className={styles.teammateReportSummary}>{entry.summary}</span>
                       </div>
@@ -2645,8 +2642,8 @@ class ChatView extends React.Component {
             if (st === 'explore' || st === 'search') avatarType = 'sub-search';
             else if (st === 'plan') avatarType = 'sub-plan';
           }
-          const _nameToColor = (n) => { let h = 0; for (let i = 0; i < n.length; i++) h = n.charCodeAt(i) + ((h << 5) - h); return `hsl(${((h % 360) + 360) % 360}, 55%, 35%)`; };
-          collectedRolesMap.set(key, { key, name: label.length > 12 ? label.slice(0, 12) + '…' : label, avatarType, color: isTeammate ? _nameToColor(label) : 'rgba(255,255,255,0.1)' });
+          const tmA = isTeammate ? getTeammateAvatar(label) : null;
+          collectedRolesMap.set(key, { key, name: label.length > 12 ? label.slice(0, 12) + '…' : label, avatarType, avatarSvg: tmA ? tmA.svg : undefined, color: tmA ? tmA.color : 'rgba(255,255,255,0.1)' });
         }
       }
     }

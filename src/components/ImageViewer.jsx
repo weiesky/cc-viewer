@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import DOMPurify from 'dompurify';
 import { t as i18n } from '../i18n';
 import { apiUrl } from '../utils/apiUrl';
 import styles from './ImageViewer.module.css';
@@ -20,10 +21,29 @@ export default function ImageViewer({ filePath, onClose, editorSession }) {
   const [fileSize, setFileSize] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [svgContent, setSvgContent] = useState(null);
   const canvasRef = useRef(null);
   const dragRef = useRef(null);
 
+  const isSvg = (filePath || '').toLowerCase().endsWith('.svg');
   const imgSrc = apiUrl(`/api/file-raw?path=${encodeURIComponent(filePath)}${editorSession ? '&editorSession=true' : ''}`);
+
+  // SVG: fetch raw text for inline rendering (CSS background shows through transparent areas)
+  useEffect(() => {
+    if (!isSvg) { setSvgContent(null); return; }
+    setLoading(true);
+    fetch(imgSrc).then(r => r.text()).then(text => {
+      setSvgContent(DOMPurify.sanitize(text, { USE_PROFILES: { svg: true } }));
+      // SVG viewBox 通常很小（如 24x24），用合理的渲染基准尺寸避免 fitToWindow 过度放大
+      const vb = text.match(/viewBox=["']([^"']+)["']/);
+      const vbW = vb ? (vb[1].split(/[\s,]+/).map(Number)[2] || 24) : 24;
+      const vbH = vb ? (vb[1].split(/[\s,]+/).map(Number)[3] || 24) : 24;
+      const aspect = vbW / vbH;
+      const baseSize = 200;
+      setNaturalSize({ w: Math.round(baseSize * aspect), h: baseSize });
+      setLoading(false);
+    }).catch(() => { setError('Failed to load SVG'); setLoading(false); });
+  }, [isSvg, imgSrc]);
 
   // Fetch file size
   useEffect(() => {
@@ -188,14 +208,21 @@ export default function ImageViewer({ filePath, onClose, editorSession }) {
           className={styles.imageWrap}
           style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})` }}
         >
-          <img
-            src={imgSrc}
-            onLoad={handleImageLoad}
-            onError={handleImageError}
-            alt={filePath}
-            draggable={false}
-            style={{ display: loading ? 'none' : 'block' }}
-          />
+          {isSvg && svgContent ? (
+            <div
+              className={styles.svgInline}
+              dangerouslySetInnerHTML={{ __html: svgContent }}
+            />
+          ) : (
+            <img
+              src={imgSrc}
+              onLoad={handleImageLoad}
+              onError={handleImageError}
+              alt={filePath}
+              draggable={false}
+              style={{ display: loading ? 'none' : 'block' }}
+            />
+          )}
         </div>
       </div>
 
