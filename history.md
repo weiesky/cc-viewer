@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.62 (2026-03-29)
+
+- Feature: add `--ad` shortcut for `--allow-dangerously-skip-permissions` (adds bypass mode to Shift+Tab cycle without activating)
+- Keep existing `--d` shortcut for `--dangerously-skip-permissions` unchanged
+
 ## 1.6.61 (2026-03-29)
 
 - Feature: image lightbox — click chat images to preview in overlay instead of opening new tab

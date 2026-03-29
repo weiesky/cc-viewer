@@ -607,8 +607,8 @@ if (args[0] === 'run') {
   runProxyCommand(args);
 } else {
   // 默认行为：所有参数透传给 claude（通过 PTY + Web Viewer）
-  // 展开 --d 快捷方式为 --dangerously-skip-permissions
-  const claudeArgs = args.map(a => a === '--d' ? '--dangerously-skip-permissions' : a);
+  // 展开快捷方式：--d → --dangerously-skip-permissions, --ad → --allow-dangerously-skip-permissions
+  const claudeArgs = args.map(a => a === '--d' ? '--dangerously-skip-permissions' : a === '--ad' ? '--allow-dangerously-skip-permissions' : a);
   runCliMode(claudeArgs, process.cwd()).catch(err => {
     console.error('CLI mode error:', err);
     process.exit(1);
