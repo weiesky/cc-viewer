@@ -33,10 +33,6 @@ Modifica file tramite sostituzione esatta di stringhe. Sostituisce `old_string` 
 - Preferire la modifica dei file esistenti anziché crearne di nuovi
 - `new_string` deve essere diverso da `old_string`
 
-## Significato in cc-viewer
-
-Le chiamate Edit appaiono nei log delle richieste come content block `tool_use`, il cui `input` contiene `old_string` e `new_string`, utili per tracciare quali modifiche il modello ha apportato ai file.
-
 ## Testo originale
 
 <textarea readonly>Performs exact string replacements in files.

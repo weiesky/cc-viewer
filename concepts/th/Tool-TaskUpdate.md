@@ -44,10 +44,6 @@ pending → in_progress → completed
 - ก่อนอัปเดต ควรรับสถานะล่าสุดของงานผ่าน TaskGet เพื่อหลีกเลี่ยงข้อมูลที่ล้าสมัย
 - หลังจากทำงานเสร็จ เรียก TaskList เพื่อค้นหางานถัดไปที่พร้อมทำ
 
-## ความสำคัญใน cc-viewer
-
-TaskUpdate เป็นการดำเนินการจัดการงานภายใน ไม่สร้างคำร้องขอ API อิสระ
-
 ## ข้อความต้นฉบับ
 
 <textarea readonly>Use this tool to update a task in the task list.

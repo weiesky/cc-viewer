@@ -36,7 +36,3 @@
 | `SendMessage` | 团队内 agent 间的通信 |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | 管理共享任务列表 |
 | `Agent` | 生成加入团队的队友 |
-
-## 在 cc-viewer 中的意义
-
-TeamCreate 调用标志着多 agent 协作会话的开始。在请求列表中，你会看到后续的 Agent 调用生成队友，接着是 SendMessage 消息交换和 TaskUpdate 操作来协调工作。团队模式通常会产生一组并行的 SubAgent 请求链路。

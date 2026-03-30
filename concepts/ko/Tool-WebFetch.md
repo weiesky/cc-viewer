@@ -31,10 +31,6 @@
 - URL이 다른 호스트로 리다이렉트되면 도구가 리다이렉트 URL을 반환하며, 새 URL로 재요청 필요
 - MCP 제공 web fetch 도구가 사용 가능하면 그것을 우선 사용
 
-## cc-viewer에서의 의의
-
-WebFetch 호출은 요청 로그에서 `tool_use` / `tool_result` content block 쌍으로 나타납니다. `tool_result`에는 AI 처리 후의 웹페이지 내용 요약이 포함됩니다.
-
 ## 원문
 
 <textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.

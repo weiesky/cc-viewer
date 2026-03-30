@@ -49,7 +49,3 @@ Lance un sous-agent (SubAgent) pour gérer de manière autonome des tâches comp
 - Plusieurs appels Task peuvent être lancés en parallèle dans un seul message pour améliorer l'efficacité
 - Les tâches en arrière-plan vérifient la progression via l'outil TaskOutput
 - Le type Explore est plus lent que l'appel direct à Glob/Grep, à utiliser uniquement quand la recherche simple ne suffit pas
-
-## Signification dans cc-viewer
-
-Les appels Task produisent des chaînes de requêtes SubAgent, visibles dans la liste des requêtes comme des séquences de sous-requêtes indépendantes du MainAgent. Les requêtes SubAgent ont généralement un system prompt simplifié et moins de définitions d'outils, formant un contraste net avec le MainAgent.

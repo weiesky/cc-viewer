@@ -39,7 +39,3 @@ Godkjenner eller avslår et teammedlems plan: `{ type: "plan_approval_response",
 | `TeamDelete` | Fjern team når ferdig |
 | `Agent` | Start teammedlemmer som slutter seg til teamet |
 | `TaskCreate` / `TaskUpdate` / `TaskList` | Administrer den delte oppgavelisten |
-
-## Betydning i cc-viewer
-
-SendMessage-kall representerer kommunikasjon mellom agenter i en teamsesjon. I verktøybruksstatistikken indikerer et høyt antall SendMessage-kall aktiv teamkoordinering. I forespørselstidslinjen viser SendMessage-utvekslinger hvordan agenter samarbeider — videreformidler resultater, ber om hjelp og koordinerer shutdown-sekvenser.

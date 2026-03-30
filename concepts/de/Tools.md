@@ -65,9 +65,3 @@ Im Folgenden finden Sie den kategorisierten Index aller Tools.
 |------|-------|
 | [getDiagnostics](Tool-getDiagnostics.md) | Ruft VS Code Sprachdiagnoseinformationen ab |
 | [executeCode](Tool-executeCode.md) | Führt Code im Jupyter-Kernel aus |
-
-## Bedeutung in cc-viewer
-
-Tool-Aufrufe gehören zu den wichtigsten beobachtbaren Daten in den Claude Code Anfrage-Logs. Das `tools`-Array jeder MainAgent-Anfrage definiert die verfügbaren Tools des Modells, während die `tool_use` / `tool_result` Content Blocks in der Antwort die tatsächlichen Tool-Aufrufe und Rückgaben aufzeichnen. cc-viewer analysiert diese Daten und rekonstruiert im Chat Mode die vollständige Tool-Aufrufkette.
-
-Änderungen an Tool-Definitionen (z.B. durch MCP-Server-Verbindung/-Trennung verursachte Tool-Änderungen) lösen einen Cache-Neuaufbau aus, siehe [CacheRebuild](CacheRebuild.md).

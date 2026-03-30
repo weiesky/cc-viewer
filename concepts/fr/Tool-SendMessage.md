@@ -39,7 +39,3 @@ Approuve ou refuse le plan d'un coéquipier : `{ type: "plan_approval_response",
 | `TeamDelete` | Supprimer l'équipe une fois terminé |
 | `Agent` | Démarrer des coéquipiers qui rejoignent l'équipe |
 | `TaskCreate` / `TaskUpdate` / `TaskList` | Gérer la liste de tâches partagée |
-
-## Signification dans cc-viewer
-
-Les appels SendMessage représentent la communication inter-agents au sein d'une session d'équipe. Dans les statistiques d'utilisation des outils, un nombre élevé de SendMessage indique une coordination d'équipe active. Dans la chronologie des requêtes, les échanges SendMessage montrent comment les agents collaborent — transmettre des résultats, demander de l'aide et coordonner les séquences d'arrêt.

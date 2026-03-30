@@ -29,10 +29,6 @@ Henter utdata fra bakgrunnsoppgaver som kjører eller er fullført. Gjelder for 
 - Oppgave-ID kan finnes via `/tasks`-kommandoen
 - Gjelder for alle oppgavetyper: bakgrunns-shell, asynkrone agenter, fjernsesjoner
 
-## Betydning i cc-viewer
-
-TaskOutput-kall produserer ikke en API-forespørsel i seg selv; det er en intern oppgavebehandlingsoperasjon i Claude Code og vises ikke i forespørselsloggen.
-
 ## Originaltekst
 
 <textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)

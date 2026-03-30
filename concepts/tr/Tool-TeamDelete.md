@@ -28,7 +28,3 @@ TeamDelete, bir takım iş akışının sonunda çağrılır:
 | `SendMessage` | Takım üyeleriyle iletişim kur / kapatma istekleri gönder |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | Paylaşılan görev listesini yönet |
 | `Agent` | Takıma katılan takım üyelerini başlat |
-
-## cc-viewer'da Önemi
-
-TeamDelete çağrısı, çok agent'lı bir işbirliği oturumunun sonunu işaret eder. Tipik olarak tüm SendMessage kapatma alışverişleri tamamlandıktan sonra görünür. İstek listesinde TeamDelete, takım kalıbının son temizlik adımını belirtir.

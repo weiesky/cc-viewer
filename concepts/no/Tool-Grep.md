@@ -42,10 +42,6 @@ Kraftig innholdssøkverktøy bygget på ripgrep. Støtter regulære uttrykk, fil
 - Flerlinjematching krever at `multiline: true` settes
 - Foretrekk alltid Grep-verktøyet fremfor `grep`- eller `rg`-kommandoer i Bash
 
-## Betydning i cc-viewer
-
-Grep-kall vises i forespørselsloggen som et par av `tool_use` / `tool_result` content blocks. `tool_result` inneholder søkeresultatene.
-
 ## Originaltekst
 
 <textarea readonly>A powerful search tool built on ripgrep

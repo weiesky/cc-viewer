@@ -34,7 +34,3 @@ cc-viewer compares the bodies of two consecutive MainAgent requests to precisely
 - **`model_change`**: The user switched models via the `/model` command
 - **`msg_truncated`**: A long conversation triggered context window management, and Claude Code truncated earlier messages
 - **`msg_modified`**: Claude Code edited historical messages (e.g., `/compact` replaced original messages with a compressed summary)
-
-## Display in cc-viewer
-
-In the request list, requests with cache rebuilds show a red dot indicator on the cache row. Hovering displays a tooltip with the specific rebuild reason description (supports 18 languages).

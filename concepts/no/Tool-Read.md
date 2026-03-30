@@ -36,10 +36,6 @@ Leser filinnhold fra det lokale filsystemet. Støtter tekstfiler, bilder, PDF og
 - Lesing av en ikke-eksisterende fil returnerer feil (krasjer ikke)
 - Kan kalle flere Read parallelt i en enkelt melding
 
-## Betydning i cc-viewer
-
-Read-kall vises i forespørselsloggen som et par av `tool_use` (kall) og `tool_result` (returnert innhold) content blocks. `tool_result` inneholder det faktiske filinnholdet og kan brukes til å analysere hvilke filer modellen har lest.
-
 ## Originaltekst
 
 <textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.

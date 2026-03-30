@@ -34,10 +34,6 @@
 - Не спрашивайте через AskUserQuestion «подходит ли план» перед вызовом этого инструмента — это дублирование
 - Не упоминайте «план» в вопросах, так как пользователь не видит содержимое плана до ExitPlanMode
 
-## Значение в cc-viewer
-
-Вызов ExitPlanMode обозначает конец фазы планирования. В логах запросов запросы после этого вызова обычно переходят к операциям реализации (Edit, Write, Bash и т.д.).
-
 ## Оригинальный текст
 
 <textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.

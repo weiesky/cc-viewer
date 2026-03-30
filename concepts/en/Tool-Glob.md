@@ -29,10 +29,6 @@ A fast file pattern matching tool that works with any codebase size. Returns mat
 - Results are sorted by modification time
 - Preferred over the `find` command in Bash
 
-## Significance in cc-viewer
-
-Glob calls appear in request logs as `tool_use` / `tool_result` content block pairs. The `tool_result` contains the list of matched file paths.
-
 ## Original Text
 
 <textarea readonly>- Fast file pattern matching tool that works with any codebase size

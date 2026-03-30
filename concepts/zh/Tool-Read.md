@@ -36,10 +36,6 @@
 - 读取不存在的文件会返回错误（不会崩溃）
 - 可以在单条消息中并行调用多个 Read
 
-## 在 cc-viewer 中的意义
-
-Read 调用在请求日志中表现为 `tool_use`（调用）和 `tool_result`（返回内容）content block 对。`tool_result` 中包含文件的实际内容，可用于分析模型读取了哪些文件。
-
 ## 原文
 
 <textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.

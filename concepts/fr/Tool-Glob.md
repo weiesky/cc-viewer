@@ -29,10 +29,6 @@ Outil rapide de correspondance de motifs de noms de fichiers, compatible avec de
 - Les résultats sont triés par date de modification
 - Plus recommandé que la commande `find` de Bash
 
-## Signification dans cc-viewer
-
-Les appels Glob apparaissent dans le journal des requêtes comme des paires de content blocks `tool_use` / `tool_result`. Le `tool_result` contient la liste des chemins de fichiers correspondants.
-
 ## Texte original
 
 <textarea readonly>- Fast file pattern matching tool that works with any codebase size

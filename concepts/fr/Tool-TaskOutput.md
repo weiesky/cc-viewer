@@ -29,10 +29,6 @@ Obtient la sortie des tâches en arrière-plan en cours d'exécution ou terminé
 - L'ID de la tâche peut être trouvé via la commande `/tasks`
 - Applicable à tous les types de tâches : shells en arrière-plan, agents asynchrones, sessions distantes
 
-## Signification dans cc-viewer
-
-Les appels TaskOutput ne produisent pas de requêtes API en eux-mêmes, c'est une opération interne de gestion de tâches de Claude Code et n'apparaît pas dans le journal des requêtes.
-
 ## Texte original
 
 <textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)

@@ -27,10 +27,6 @@
 - 기존 파일의 전체 내용을 덮어씀
 - 기존 파일 편집에는 Edit를 우선 사용하고, Write는 새 파일 생성 또는 완전한 재작성에만 사용
 
-## cc-viewer에서의 의의
-
-Write 호출은 요청 로그에서 `tool_use` content block으로 나타나며, `input.content`에 쓰여진 전체 내용이 포함됩니다.
-
 ## 원문
 
 <textarea readonly>Writes a file to the local filesystem.

@@ -30,10 +30,6 @@ Görev ID'si ile görevin tam detaylarını alır.
 - Görevi aldıktan sonra çalışmaya başlamadan önce `blockedBy` listesinin boş olup olmadığı kontrol edilmelidir
 - Tüm görevlerin özet bilgilerini görmek için TaskList kullanın
 
-## cc-viewer'da Önemi
-
-TaskGet dahili görev yönetim işlemidir ve bağımsız API isteği üretmez.
-
 ## Orijinal Metin
 
 <textarea readonly>Use this tool to retrieve a task by its ID from the task list.

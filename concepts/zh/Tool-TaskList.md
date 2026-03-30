@@ -31,10 +31,6 @@
 - 有 `blockedBy` 的任务在依赖解除前不能认领
 - 使用 TaskGet 获取特定任务的完整详情
 
-## 在 cc-viewer 中的意义
-
-TaskList 是内部任务管理操作，不产生独立的 API 请求。
-
 ## 原文
 
 <textarea readonly>Use this tool to list all tasks in the task list.

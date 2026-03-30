@@ -21,10 +21,3 @@ cc-viewer では、MainAgent は `req.mainAgent === true` で識別され、`int
 | tools 配列 | 利用可能なすべてのツールを含む | 通常タスクに必要な少数のツールのみ |
 | メッセージ履歴 | 完全な会話コンテキストを蓄積 | サブタスク関連のメッセージのみ |
 | キャッシュ動作 | prompt caching あり（5分 TTL） | 通常キャッシュなし、またはキャッシュが小さい |
-
-## cc-viewer での意義
-
-- **キャッシュ追跡**：MainAgent リクエストの prompt caching 状態はコストに直接影響します。`cache_creation_input_tokens` と `cache_read_input_tokens` の比率を監視することで、キャッシュヒット率を判断できます
-- **キャッシュロス分析**：MainAgent リクエストで大量の cache creation（cache read ではなく）が発生した場合、キャッシュロスと再構築を意味し、cc-viewer は赤い丸のインジケーターでこれらのリクエストをマーキングします
-- **メインチェーン分析**：MainAgent リクエストシーケンスはユーザーと Claude Code の完全なインタラクションプロセスを反映し、セッション行動分析のコアデータです
-- **セッション再構築**：cc-viewer は MainAgent リクエストのメッセージ履歴を通じて会話ビュー（Chat Mode）を再構築します

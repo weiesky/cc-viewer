@@ -29,10 +29,6 @@ Obtiene la salida de tareas en segundo plano en ejecución o completadas. Aplica
 - El ID de la tarea se puede encontrar mediante el comando `/tasks`
 - Aplicable a todos los tipos de tareas: shells en segundo plano, agents asíncronos, sesiones remotas
 
-## Significado en cc-viewer
-
-Las llamadas a TaskOutput no producen solicitudes API por sí mismas, es una operación interna de gestión de tareas de Claude Code y no aparece en el registro de solicitudes.
-
 ## Texto original
 
 <textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)

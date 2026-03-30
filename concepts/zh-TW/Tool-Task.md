@@ -49,7 +49,3 @@
 - 可以在單條訊息中發起多個並行 Task 呼叫以提高效率
 - 背景任務透過 TaskOutput 工具檢查進度
 - Explore 類型比直接呼叫 Glob/Grep 慢，僅在簡單搜尋不夠時使用
-
-## 在 cc-viewer 中的意義
-
-Task 呼叫會產生 SubAgent 請求鏈路，在請求列表中可以看到獨立於 MainAgent 的子請求序列。SubAgent 請求通常具有精簡的 system prompt 和較少的工具定義，與 MainAgent 形成明顯對比。

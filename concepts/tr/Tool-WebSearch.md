@@ -27,10 +27,6 @@ Arama motoru sorgusu çalıştırır ve güncel bilgi almak için arama sonuçla
 - Arama sorgusunda güncel yıl kullanılmalıdır
 - Yalnızca ABD'de kullanılabilir
 
-## cc-viewer'da Önemi
-
-WebSearch çağrıları istek günlüğünde `tool_use` / `tool_result` content block çifti olarak görünür. `tool_result` arama sonuçları listesini içerir.
-
 ## Orijinal Metin
 
 <textarea readonly>

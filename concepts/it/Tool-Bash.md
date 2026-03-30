@@ -42,10 +42,6 @@ Esegue comandi shell, con supporto opzionale per il timeout. La directory di lav
 - I comandi con dipendenze vanno concatenati con `&&`
 - L'ambiente shell viene inizializzato dal profilo dell'utente (bash o zsh)
 
-## Significato in cc-viewer
-
-Le chiamate Bash appaiono nei log delle richieste come coppie di content block `tool_use` (contenente il comando) e `tool_result` (contenente l'output). L'output dell'esecuzione del comando può essere usato per analizzare il comportamento operativo del modello.
-
 ## Testo originale
 
 <textarea readonly>Executes a given bash command and returns its output.
@@ -85,7 +81,6 @@ While the Bash tool can do similar things, it’s better to use the built-in too
   - If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.
   - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
-
 
 # Committing changes with git
 

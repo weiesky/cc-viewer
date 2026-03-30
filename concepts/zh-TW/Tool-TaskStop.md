@@ -22,10 +22,6 @@
 - 回傳成功或失敗狀態
 - `shell_id` 參數已棄用，應使用 `task_id`
 
-## 在 cc-viewer 中的意義
-
-TaskStop 呼叫本身不產生 API 請求，屬於 Claude Code 內部任務管理操作。
-
 ## 原文
 
 <textarea readonly>

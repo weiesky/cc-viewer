@@ -49,7 +49,3 @@ Inicia um sub-agent (SubAgent) para processar autonomamente tarefas complexas de
 - Pode iniciar múltiplas chamadas Task em paralelo em uma única mensagem para maior eficiência
 - Tarefas em segundo plano verificam progresso via ferramenta TaskOutput
 - O tipo Explore é mais lento que chamar Glob/Grep diretamente, use apenas quando buscas simples não são suficientes
-
-## Significado no cc-viewer
-
-A chamada Task gera uma cadeia de requisições SubAgent, visível na lista de requisições como uma sequência de sub-requisições independente do MainAgent. Requisições SubAgent tipicamente possuem system prompt simplificado e menos definições de ferramentas, formando um contraste claro com o MainAgent.

@@ -34,10 +34,6 @@ Planlama modundan çıkar ve planı kullanıcı onayına sunar. Plan içeriği d
 - Bu aracı çağırmadan önce AskUserQuestion ile "plan uygun mu?" diye sormayın, bu tekrardır
 - Sorularda "plan"dan bahsetmeyin, çünkü kullanıcı ExitPlanMode'dan önce plan içeriğini göremez
 
-## cc-viewer'da Önemi
-
-ExitPlanMode çağrısı planlama aşamasının sonunu işaret eder. İstek günlüğünde bu çağrıdan sonraki istekler genellikle uygulama işlemlerine (Edit, Write, Bash vb.) dönüşür.
-
 ## Orijinal Metin
 
 <textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.

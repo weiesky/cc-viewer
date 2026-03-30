@@ -34,7 +34,3 @@ cc-viewer 透過對比前後兩個 MainAgent 請求的 body，精確判斷快取
 - **`model_change`**：使用者透過 `/model` 命令切換模型
 - **`msg_truncated`**：對話過長觸發上下文視窗管理，Claude Code 截斷早期訊息
 - **`msg_modified`**：Claude Code 對歷史訊息做了編輯（如 `/compact` 壓縮摘要替換原始訊息）
-
-## 在 cc-viewer 中的展示
-
-請求列表中，快取重建的請求會在 cache 行顯示紅色圓點指示器。滑鼠懸停顯示 tooltip，包含具體的重建原因描述（支援 18 種語言）。

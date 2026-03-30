@@ -18,7 +18,3 @@ Search sub-agenter vises typisk når:
 1. Hovedagenten trenger å finne bestemte filer, funksjoner eller kodemønstre
 2. En bred kodebaseutforskning er forespurt av brukeren
 3. Agenten undersøker avhengigheter, referanser eller bruksmønstre
-
-## Betydning i cc-viewer
-
-I forespørselstidslinjen vises Search sub-agenter som nestede forespørselskjeder under overordnet agents forespørsel. Flere Search sub-agenter kan kjøre parallelt når agenten utforsker ulike deler av kodebasen samtidig. SubAgent stats-seksjonen teller hvor mange Search-operasjoner som ble utført i løpet av en økt.

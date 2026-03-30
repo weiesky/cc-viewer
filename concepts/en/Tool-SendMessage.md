@@ -39,7 +39,3 @@ Approves or rejects a teammate's plan: `{ type: "plan_approval_response", approv
 | `TeamDelete` | Remove team when done |
 | `Agent` | Spawn teammates that join the team |
 | `TaskCreate` / `TaskUpdate` / `TaskList` | Manage the shared task list |
-
-## Significance in cc-viewer
-
-SendMessage calls represent inter-agent communication within a team session. In the tool usage statistics, high SendMessage counts indicate active team coordination. In the request timeline, SendMessage exchanges show how agents collaborate — passing results, requesting help, and coordinating shutdown sequences.

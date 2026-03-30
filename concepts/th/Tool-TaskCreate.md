@@ -33,10 +33,6 @@
 - หลังจากสร้างงาน สามารถตั้งค่าความสัมพันธ์การพึ่งพา (blocks/blockedBy) ผ่าน TaskUpdate
 - ก่อนสร้าง ควรเรียก TaskList เพื่อตรวจสอบว่ามีงานซ้ำหรือไม่
 
-## ความสำคัญใน cc-viewer
-
-TaskCreate เป็นการดำเนินการจัดการงานภายในของ Claude Code ไม่สร้างคำร้องขอ API อิสระ แต่ใน Chat Mode สามารถเห็น tool_use block ที่โมเดลเรียกเครื่องมือนี้ได้
-
 ## ข้อความต้นฉบับ
 
 <textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.

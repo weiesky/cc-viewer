@@ -1,42 +1,49 @@
-# Contenuto della Cache KV
+# Contenuto della KV-Cache
 
-## Cos'è KV-Cache?
+## Cos'e il Prompt Caching?
 
-KV-Cache (Key-Value Cache) è un meccanismo di accelerazione centrale durante l'inferenza dei grandi modelli di linguaggio. Quando comunichi con Claude, ogni richiesta invia la cronologia completa della conversazione (prompt di sistema + definizioni degli strumenti + messaggi storici). Se questi contenuti venissero ricalcolati ogni volta, sarebbe molto costoso in termini di tempo e risorse.
+Quando comunichi con Claude, ogni richiesta API invia l'intero contesto della conversazione (system prompt + definizioni degli strumenti + cronologia dei messaggi). Il meccanismo di prompt caching di Anthropic memorizza sul server i contenuti del prefisso gia calcolati. Se le richieste successive hanno lo stesso prefisso, i risultati memorizzati vengono riutilizzati direttamente, saltando i calcoli ridondanti e riducendo significativamente latenza e costi.
 
-Lo scopo di KV-Cache è memorizzare nella cache i contenuti già calcolati e riutilizzarli direttamente nella richiesta successiva, evitando calcoli ripetuti.
+In cc-viewer questo meccanismo viene chiamato "KV-Cache" e corrisponde al prompt caching a livello di API Anthropic, non alla key-value cache interna dei livelli di attenzione del transformer dell'LLM.
 
-## Come funziona la cache
+## Come funziona il caching
 
-Il prompt caching di Anthropic concatena le chiavi della cache in un ordine fisso:
+Il prompt caching di Anthropic costruisce la chiave di cache in un ordine fisso:
 
 ```
-Prompt di sistema → Strumenti → Messaggi (fino al punto di interruzione della cache)
+Tools → System Prompt → Messages (fino al cache breakpoint)
 ```
 
-Finché questo prefisso corrisponde esattamente alla richiesta precedente, l'API accede alla cache (restituisce `cache_read_input_tokens`) e riduce significativamente la latenza e i costi.
+Finche questo prefisso corrisponde esattamente a una richiesta precedente all'interno della finestra TTL, l'API restituira un cache hit (`cache_read_input_tokens`) invece di ricalcolare (`cache_creation_input_tokens`).
 
-## Cos'è il «contenuto attuale della cache KV»?
+> **Claude Code non dipende strettamente dall'attributo `cache_control`. Il server rimuove parzialmente questi attributi, ma riesce comunque a creare la cache efficacemente. Quindi l'assenza dell'attributo `cache_control` non significa che il contenuto non sia stato memorizzato nella cache.**
+>
+> Per client speciali come Claude Code, il server di Anthropic non si basa completamente sull'attributo `cache_control` nella richiesta per determinare il comportamento della cache. Il server esegue automaticamente strategie di caching per campi specifici (come system prompt e definizioni degli strumenti), anche quando la richiesta non contiene marcatori `cache_control` espliciti. Pertanto, se non vedi questo attributo nel corpo della richiesta, non c'e motivo di preoccupazione: il server ha gia completato l'operazione di caching dietro le quinte, semplicemente non espone questa informazione al client. Questa e un'intesa tacita tra Claude Code e l'API di Anthropic.
 
-Il «contenuto attuale della cache KV» visualizzato in cc-viewer viene estratto dall'ultima richiesta di MainAgent e contrassegnato come memorizzato nella cache. Include specificamente:
+## Cos'e il "contenuto attuale della KV-Cache"?
 
-- **Prompt di sistema**: Le istruzioni di sistema di Claude Code, inclusi il tuo CLAUDE.md, la descrizione del progetto, le informazioni sull'ambiente, ecc.
-- **Messaggi**: La parte della cronologia della conversazione memorizzata nella cache (generalmente messaggi precedenti)
-- **Strumenti**: L'elenco delle definizioni degli strumenti attualmente disponibili (come Read, Write, Bash, strumenti MCP, ecc.)
+Il "contenuto attuale della KV-Cache" mostrato in cc-viewer viene estratto dall'ultima richiesta del MainAgent e include il contenuto che precede il confine della cache (cache breakpoint). Nello specifico comprende:
 
-Questi contenuti sono contrassegnati nel corpo della richiesta API mediante `cache_control: { type: "ephemeral" }` per indicare i limiti della cache.
+- **System Prompt**: le istruzioni di sistema di Claude Code, incluse le istruzioni principali dell'agent, le specifiche d'uso degli strumenti, le istruzioni del progetto CLAUDE.md, le informazioni sull'ambiente, ecc.
+- **Tools**: l'elenco delle definizioni degli strumenti attualmente disponibili (come Read, Write, Bash, Agent, strumenti MCP, ecc.)
+- **Messages**: la porzione memorizzata della cronologia della conversazione (tipicamente i messaggi piu vecchi, fino all'ultimo marcatore `cache_control`)
 
-## Perché consultare il contenuto della cache?
+## Perche visualizzare il contenuto della cache?
 
-1. **Comprendere il contesto**: Sapere quali contenuti Claude «ricorda» attualmente per valutare meglio il suo comportamento
-2. **Ottimizzazione dei costi**: Gli accessi alla cache costano molto meno dei ricalcoli. Consultare il contenuto della cache ti aiuta a capire perché certe richieste hanno attivato una ricostruzione della cache
-3. **Debug della conversazione**: Quando le risposte di Claude non sono come previsto, verificare il contenuto della cache ti consente di confermare che il prompt di sistema e i messaggi storici sono corretti
-4. **Navigazione per istruzioni dell'utente**: Attraverso l'elenco dei messaggi dell'utente nel contenuto della cache, puoi saltare rapidamente a qualsiasi punto della conversazione
-5. **Monitoraggio della qualità del contesto**: Durante il debug quotidiano, i cambiamenti nelle configurazioni di Claude Code o gli aggiustamenti dei prompt, KV-Cache-Text fornisce una prospettiva centralizzata per confermare rapidamente che il contesto principale non è stato degradato o contaminato da contenuti inaspettati – senza dover esaminare i messaggi grezzi uno per uno
+1. **Comprendere il contesto**: scopri quali contenuti Claude ha attualmente "in memoria" per valutare se il suo comportamento corrisponde alle aspettative
+2. **Ottimizzazione dei costi**: i cache hit costano molto meno dei ricalcoli. Visualizzare il contenuto della cache aiuta a capire perche certe richieste hanno attivato una ricostruzione della cache (cache rebuild)
+3. **Debug delle conversazioni**: quando le risposte di Claude non corrispondono alle aspettative, controllare il contenuto della cache permette di verificare che il system prompt e la cronologia dei messaggi siano corretti
+4. **Monitoraggio della qualita del contesto**: durante il debug, la modifica delle configurazioni o la regolazione dei prompt, il KV-Cache-Text offre una vista centralizzata che ti aiuta a verificare rapidamente se il contesto principale si e degradato o e stato contaminato da contenuti inattesi, senza dover scorrere manualmente ogni singolo messaggio originale
+
+## Strategia di caching multilivello
+
+La KV-Cache di Claude Code non e composta da un'unica cache. Il server genera cache separate per Tools e System Prompt, indipendenti dalla cache dei Messages. Il vantaggio di questo design e che quando lo stack dei messaggi presenta problemi (come troncamento del contesto, modifiche ai messaggi, ecc.) e necessita di ricostruzione, le cache di Tools e System Prompt non vengono invalidate insieme, evitando un ricalcolo completo.
+
+Questa e una strategia di ottimizzazione attuale del server: poiche le definizioni degli strumenti e il system prompt sono relativamente stabili durante l'uso normale e cambiano raramente, memorizzarli separatamente nella cache riduce al minimo il sovracosto di ricostruzioni non necessarie. Osservando la cache noterai che, a parte la ricostruzione dei Tools (che richiede il refresh completo della cache), le modifiche al System Prompt e ai Messages hanno comunque cache ereditabili disponibili.
 
 ## Ciclo di vita della cache
 
-- **Creazione**: Alla prima richiesta o dopo l'invalidazione della cache, l'API crea una nuova cache (`cache_creation_input_tokens`)
-- **Accesso**: Nelle richieste successive con un prefisso coerente, la cache viene riutilizzata (`cache_read_input_tokens`)
-- **Scadenza**: La cache ha un TTL (time to live) di 5 minuti e scade automaticamente dopo tale periodo
-- **Ricostruzione**: Quando il prompt di sistema, l'elenco degli strumenti, il modello o i messaggi cambiano, la chiave della cache non corrisponde e attiva una ricostruzione
+- **Creazione**: alla prima richiesta o dopo l'invalidazione della cache, l'API crea una nuova cache (`cache_creation_input_tokens`)
+- **Hit**: le richieste successive con prefisso identico riutilizzano la cache (`cache_read_input_tokens`)
+- **Scadenza**: la cache ha un TTL (Time to Live) di 5 minuti e scade automaticamente al termine
+- **Ricostruzione**: quando il system prompt, l'elenco degli strumenti, il modello o il contenuto dei messaggi cambiano, la chiave di cache non corrisponde piu e viene attivata una ricostruzione della cache al livello corrispondente

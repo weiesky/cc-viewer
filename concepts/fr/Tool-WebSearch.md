@@ -27,10 +27,6 @@ Exécute des requêtes sur les moteurs de recherche et renvoie des résultats de
 - L'année en cours doit être utilisée dans les requêtes de recherche
 - Disponible uniquement aux États-Unis
 
-## Signification dans cc-viewer
-
-Les appels WebSearch apparaissent dans le journal des requêtes comme des paires de content blocks `tool_use` / `tool_result`. Le `tool_result` contient la liste des résultats de recherche.
-
 ## Texte original
 
 <textarea readonly>

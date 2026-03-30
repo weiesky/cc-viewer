@@ -42,10 +42,6 @@ Potente herramienta de búsqueda de contenido basada en ripgrep. Soporta expresi
 - La coincidencia multilínea requiere establecer `multiline: true`
 - Siempre preferir usar la herramienta Grep en lugar de los comandos `grep` o `rg` en Bash
 
-## Significado en cc-viewer
-
-Las llamadas a Grep aparecen en el registro de solicitudes como pares de content blocks `tool_use` / `tool_result`. El `tool_result` contiene los resultados de búsqueda.
-
 ## Texto original
 
 <textarea readonly>A powerful search tool built on ripgrep

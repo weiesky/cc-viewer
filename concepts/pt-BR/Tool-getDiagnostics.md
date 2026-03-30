@@ -27,10 +27,6 @@ Obtém informações de diagnóstico de linguagem do VS Code, incluindo erros de
 - Disponível apenas em ambiente VS Code / IDE
 - Prefira usar esta ferramenta em vez de comandos Bash para verificar problemas no código
 
-## Significado no cc-viewer
-
-getDiagnostics é uma ferramenta MCP, aparece no array `tools` dos logs de requisição com o nome `mcp__ide__getDiagnostics`. Suas chamadas e retornos seguem o padrão `tool_use` / `tool_result`. A adição/remoção de ferramentas MCP causa alterações no array tools, podendo acionar reconstrução de cache.
-
 ## Texto original
 
 <textarea readonly>Get language diagnostics from VS Code</textarea>

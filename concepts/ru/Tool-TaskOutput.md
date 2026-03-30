@@ -29,10 +29,6 @@
 - ID задачи можно найти через команду `/tasks`
 - Применимо ко всем типам задач: фоновые оболочки, асинхронные агенты, удалённые сессии
 
-## Значение в cc-viewer
-
-Вызов TaskOutput сам по себе не порождает API-запрос — это внутренняя операция управления задачами Claude Code, не отображающаяся в логах запросов.
-
 ## Оригинальный текст
 
 <textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)

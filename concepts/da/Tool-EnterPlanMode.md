@@ -38,10 +38,6 @@ Efter at være gået ind i planlægningstilstand vil Claude Code:
 - Dette værktøj kræver brugerens samtykke for at gå ind i planlægningstilstand
 - Hvis du er i tvivl om, hvorvidt planlægning er nødvendig, foretrækkes planlægning — at afstemme på forhånd er bedre end at lave om
 
-## Betydning i cc-viewer
-
-EnterPlanMode-kald vises i requestloggen som `tool_use` content block. Requestsekvensen efter at være gået ind i planlægningstilstand er typisk domineret af udforskende værktøjskald (Glob, Grep, Read), indtil ExitPlanMode kaldes.
-
 ## Originaltekst
 
 <textarea readonly>Use this tool proactively when you're about to start a non-trivial implementation task. Getting user sign-off on your approach before writing code prevents wasted effort and ensures alignment. This tool transitions you into plan mode where you can explore the codebase and design an implementation approach for user approval.

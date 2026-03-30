@@ -28,10 +28,6 @@ Mevcut notebook dosyasının Jupyter kernel'ında Python kodu çalıştırır.
 - Kullanıcı açıkça istemediği sürece değişken tanımlamaktan veya kernel durumunu değiştirmekten kaçınılmalıdır
 - Kernel yeniden başlatıldığında durum kaybolur
 
-## cc-viewer'da Önemi
-
-executeCode bir MCP aracıdır ve istek günlüğünün `tools` dizisinde `mcp__ide__executeCode` adıyla görünür. Çağrıları ve dönüşleri standart `tool_use` / `tool_result` kalıbını izler. MCP araçlarının eklenmesi veya kaldırılması tools dizisinin değişmesine neden olur ve önbellek yeniden oluşturmayı tetikleyebilir.
-
 ## Orijinal Metin
 
 <textarea readonly>Execute python code in the Jupyter kernel for the current notebook file.

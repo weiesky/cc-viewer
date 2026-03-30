@@ -49,10 +49,6 @@
 - الخيارات التي تحتوي على `markdown` تتحول إلى تخطيط جنباً إلى جنب
 - في وضع التخطيط، تُستخدم لتوضيح المتطلبات قبل تحديد الخطة
 
-## الأهمية في cc-viewer
-
-يظهر استدعاء AskUserQuestion في سجل الطلبات ككتلة محتوى `tool_use`، تحتوي على تعريفات الأسئلة والخيارات. تظهر إجابات المستخدم في سجل الرسائل للطلبات اللاحقة.
-
 ## النص الأصلي
 
 <textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:

@@ -18,7 +18,3 @@ Search 子 agent 通常在以下情況出現：
 1. 主 agent 需要尋找特定檔案、函式或程式碼模式時
 2. 使用者請求進行廣泛的程式碼庫探索時
 3. agent 正在調查依賴關係、參照或使用模式時
-
-## 在 cc-viewer 中的意義
-
-在請求時間線中，Search 子 agent 以巢狀請求鏈的形式出現在父 agent 的請求下方。當 agent 同時探索程式碼庫的不同部分時，多個 Search 子 agent 可能並行執行。SubAgent 統計部分會統計會話期間執行了多少次 Search 操作。

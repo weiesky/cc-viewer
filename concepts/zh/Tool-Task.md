@@ -49,7 +49,3 @@
 - 可以在单条消息中发起多个并行 Task 调用以提高效率
 - 后台任务通过 TaskOutput 工具检查进度
 - Explore 类型比直接调用 Glob/Grep 慢，仅在简单搜索不够时使用
-
-## 在 cc-viewer 中的意义
-
-Task 调用会产生 SubAgent 请求链路，在请求列表中可以看到独立于 MainAgent 的子请求序列。SubAgent 请求通常具有精简的 system prompt 和较少的工具定义，与 MainAgent 形成明显对比。

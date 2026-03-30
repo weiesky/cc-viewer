@@ -49,10 +49,6 @@
 - 有 `markdown` 的選項會切換為左右並排佈局
 - 在規劃模式中，用於在確定方案前澄清需求
 
-## 在 cc-viewer 中的意義
-
-AskUserQuestion 呼叫在請求日誌中表現為 `tool_use` content block，包含問題和選項定義。使用者的回答會出現在後續請求的訊息歷史中。
-
 ## 原文
 
 <textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:

@@ -38,10 +38,6 @@
 - เครื่องมือนี้ต้องได้รับความยินยอมจากผู้ใช้เพื่อเข้าสู่โหมดวางแผน
 - หากไม่แน่ใจว่าต้องวางแผนหรือไม่ ให้เลือกวางแผน — การจัดแนวล่วงหน้าดีกว่าการทำงานซ้ำ
 
-## ความสำคัญใน cc-viewer
-
-การเรียก EnterPlanMode ปรากฏในบันทึกคำร้องขอเป็น content block `tool_use` หลังจากเข้าสู่โหมดวางแผน ลำดับคำร้องขอมักจะเป็นการเรียกเครื่องมือสำรวจ (Glob, Grep, Read) เป็นหลัก จนกว่า ExitPlanMode จะถูกเรียก
-
 ## ข้อความต้นฉบับ
 
 <textarea readonly>Use this tool proactively when you're about to start a non-trivial implementation task. Getting user sign-off on your approach before writing code prevents wasted effort and ensures alignment. This tool transitions you into plan mode where you can explore the codebase and design an implementation approach for user approval.

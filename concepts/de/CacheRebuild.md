@@ -34,7 +34,3 @@ cc-viewer vergleicht die Bodies zweier aufeinanderfolgender MainAgent-Anfragen u
 - **`model_change`**: Der Benutzer wechselt das Modell über den `/model`-Befehl
 - **`msg_truncated`**: Ein zu langes Gespräch löst die Kontextfenster-Verwaltung aus, Claude Code kürzt frühere Nachrichten
 - **`msg_modified`**: Claude Code hat Verlaufsnachrichten bearbeitet (z.B. `/compact` ersetzt Originalnachrichten durch komprimierte Zusammenfassungen)
-
-## Anzeige in cc-viewer
-
-In der Anfrageliste zeigen Anfragen mit Cache-Neuaufbau einen roten Punkt-Indikator in der Cache-Zeile. Beim Überfahren mit der Maus erscheint ein Tooltip mit der konkreten Beschreibung der Neuaufbau-Ursache (unterstützt 18 Sprachen).

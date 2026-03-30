@@ -30,10 +30,6 @@ Führt einen Skill in der Hauptkonversation aus. Skills sind spezialisierte Fäh
 - Wenn ein `<command-name>`-Tag sichtbar ist, bedeutet dies, dass der Skill bereits geladen ist – direkt ausführen statt dieses Tool erneut aufzurufen
 - Einen Skill nicht erwähnen, ohne das Tool tatsächlich aufzurufen
 
-## Bedeutung in cc-viewer
-
-Skill-Aufrufe erscheinen im Anfrage-Log als `tool_use` Content Block. Der nach der Skill-Expansion generierte Prompt beeinflusst den System-Prompt oder Nachrichteninhalt nachfolgender Anfragen.
-
 ## Originaltext
 
 <textarea readonly>Execute a skill within the main conversation

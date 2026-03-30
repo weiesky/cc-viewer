@@ -38,10 +38,6 @@ Nach dem Eintritt in den Planungsmodus wird Claude Code:
 - Dieses Tool erfordert die Zustimmung des Benutzers zum Eintritt in den Planungsmodus
 - Im Zweifelsfall lieber planen – frühzeitige Abstimmung ist besser als Nacharbeit
 
-## Bedeutung in cc-viewer
-
-EnterPlanMode-Aufrufe erscheinen im Anfrage-Log als `tool_use` Content Block. Die Anfragesequenz nach dem Eintritt in den Planungsmodus besteht typischerweise hauptsächlich aus explorativen Tool-Aufrufen (Glob, Grep, Read), bis ExitPlanMode aufgerufen wird.
-
 ## Originaltext
 
 <textarea readonly>Use this tool proactively when you're about to start a non-trivial implementation task. Getting user sign-off on your approach before writing code prevents wasted effort and ensures alignment. This tool transitions you into plan mode where you can explore the codebase and design an implementation approach for user approval.

@@ -28,7 +28,3 @@ TeamDelete kalles på slutten av en team-arbeidsflyt:
 | `SendMessage` | Kommuniser med teammedlemmer / send avslutningsforespørsler |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | Administrer den delte oppgavelisten |
 | `Agent` | Start teammedlemmer som slutter seg til teamet |
-
-## Betydning i cc-viewer
-
-Et TeamDelete-kall signaliserer slutten på en multi-agent-samarbeidsøkt. Det vises typisk etter at alle SendMessage-avslutningsutvekslinger er fullført. I forespørselslisten markerer TeamDelete det siste oppryddingstrinnet i teammønsteret.

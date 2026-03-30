@@ -34,7 +34,3 @@ cc-viewer, ardışık iki MainAgent isteğinin gövdesini karşılaştırarak ö
 - **`model_change`**: Kullanıcı `/model` komutuyla model değiştirdi
 - **`msg_truncated`**: Konuşma çok uzadığında bağlam penceresi yönetimi tetiklenir, Claude Code erken mesajları keser
 - **`msg_modified`**: Claude Code geçmiş mesajları düzenledi (örn. `/compact` sıkıştırma özeti orijinal mesajların yerini aldı)
-
-## cc-viewer'da Gösterim
-
-İstek listesinde, önbellek yeniden oluşturulan istekler cache satırında kırmızı nokta göstergesi ile gösterilir. Fare üzerine gelindiğinde tooltip görüntülenir ve yeniden oluşturma nedeninin açıklaması gösterilir (18 dil desteklenir).

@@ -751,7 +751,7 @@ class AppHeader extends React.Component {
         )}
         {hasTeammateStats && (
           <div className={styles.modelCard}>
-            <div className={styles.modelName}>Teammate</div>
+            <div className={styles.modelName}>Teammate<ConceptHelp doc="Teammate" /></div>
             <table className={styles.statsTable}>
             <thead>
               <tr>

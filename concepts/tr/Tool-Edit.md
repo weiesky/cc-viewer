@@ -33,10 +33,6 @@ Kesin dize değiştirme yoluyla dosya düzenler. Dosyadaki `old_string`'i `new_s
 - Yeni dosya oluşturmak yerine mevcut dosyayı düzenlemeyi tercih edin
 - `new_string`, `old_string`'den farklı olmalıdır
 
-## cc-viewer'da Önemi
-
-Edit çağrıları istek günlüğünde `tool_use` content block olarak görünür; `input` alanı `old_string` ve `new_string` içerir ve modelin dosyada hangi değişiklikleri yaptığını izlemek için kullanılabilir.
-
 ## Orijinal Metin
 
 <textarea readonly>Performs exact string replacements in files.

@@ -33,10 +33,6 @@
 - 新規ファイル作成よりも既存ファイルの編集を優先
 - `new_string` は `old_string` と異なる必要がある
 
-## cc-viewer での意義
-
-Edit 呼び出しはリクエストログで `tool_use` content block として表示され、その `input` に `old_string` と `new_string` が含まれます。モデルがファイルに対して行った変更を追跡するのに使用できます。
-
 ## 原文
 
 <textarea readonly>Performs exact string replacements in files.

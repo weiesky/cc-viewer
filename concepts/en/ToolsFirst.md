@@ -75,11 +75,3 @@ MCP (Model Context Protocol) tools, like built-in tools, are placed at the very 
 | Oversized Tool Schemas | Trim descriptions and enums to reduce prefix token footprint |
 
 In cc-viewer's Context panel, MCP tools are displayed alongside built-in tools in the Tools area, giving you a clear view of each tool's Schema size and contribution to the cache prefix.
-
-## cc-viewer's Layout Design
-
-cc-viewer arranges the Context panel to match the KV-Cache prefix sequence:
-
-- **Top-to-bottom order = cache prefix concatenation order**
-- **Changes higher up have greater impact on cache hit rate**
-- Paired with the [KV-Cache-Text](KVCacheContent.md) panel, you can see the full cache prefix text directly

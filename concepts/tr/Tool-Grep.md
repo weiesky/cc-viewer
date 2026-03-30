@@ -42,10 +42,6 @@ ripgrep tabanlı güçlü içerik arama aracı. Düzenli ifadeler, dosya türü 
 - Çok satırlı eşleştirme için `multiline: true` ayarlanmalıdır
 - Bash'teki `grep` veya `rg` komutu yerine her zaman Grep aracını tercih edin
 
-## cc-viewer'da Önemi
-
-Grep çağrıları istek günlüğünde `tool_use` / `tool_result` content block çifti olarak görünür. `tool_result` arama sonuçlarını içerir.
-
 ## Orijinal Metin
 
 <textarea readonly>A powerful search tool built on ripgrep

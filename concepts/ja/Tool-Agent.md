@@ -50,10 +50,6 @@
 - 長時間実行で即座に結果が不要なタスクには `run_in_background: true` を推奨。結果が必要な場合はフォアグラウンド（デフォルト）を使用
 - `resume` パラメータにより、以前開始したサブ agent セッションを継続でき、蓄積されたコンテキストを保持
 
-## cc-viewer での意義
-
-Agent は新しい Claude Code バージョンにおける Task ツールの新名称です。Agent 呼び出しは SubAgent リクエストチェーンを生成し、リクエストリストで MainAgent とは独立したサブリクエストシーケンスとして確認できます。SubAgent リクエストは通常、簡潔な system prompt と少ないツール定義を持ち、MainAgent と明確な対比を形成します。cc-viewer では、記録された会話で使用された Claude Code のバージョンに応じて、`Task` または `Agent` のいずれかのツール名が表示される場合があります。
-
 ## 原文
 
 <textarea readonly>Launch a new agent to handle complex, multi-step tasks autonomously.
@@ -74,7 +70,6 @@ When NOT to use the Agent tool:
 - If you are searching for a specific class definition like "class Foo", use the Glob tool instead, to find the match more quickly
 - If you are searching for code within a specific file or set of 2-3 files, use the Read tool instead of the Agent tool, to find the match more quickly
 - Other tasks that are not related to the agent descriptions above
-
 
 Usage notes:
 - Always include a short description (3-5 words) summarizing what the agent will do

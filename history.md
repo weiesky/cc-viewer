@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.73 (2026-03-31)
+
+- Feature: role filter interaction redesign — default unselected (show all), click to select (show selected only), close funnel resets
+- Feature: ConceptHelp (?) for Teammate stats, Request Body fields, Response Body fields
+- Feature: ConceptHelp modal width 800px, markdown styles aligned with FileContentView
+- Feature: mobile input hint — "如果遇到流程阻塞，切换到[终端]模式审批权限" (18 languages)
+- Fix: Ant Design focus outline removed via controlOutline token + global CSS
+- Fix: mobile tap highlight removed (-webkit-tap-highlight-color: transparent)
+- Fix: footer starRequest text removed
+- Docs: removed "cc-viewer 中的意义" section from all concept docs (18 languages × 30+ files)
+- Docs: added Teammate, BodyFields, ResponseFields concept docs (18 languages)
+- Docs: updated KVCacheContent — corrected cache key order (Tools → System Prompt → Messages), added multi-level caching strategy
+
 ## 1.6.72 (2026-03-30)
 
 - Fix: Mermaid SVG text invisible — DOMPurify sanitize config now uses `svg` profile with `style`/`foreignObject` tags allowed

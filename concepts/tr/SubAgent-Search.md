@@ -18,7 +18,3 @@ Search sub-agent'ları genellikle şu durumlarda görünür:
 1. Ana agent'ın belirli dosyaları, fonksiyonları veya kod desenlerini bulması gerektiğinde
 2. Kullanıcı tarafından geniş kapsamlı bir kod tabanı keşfi talep edildiğinde
 3. Agent bağımlılıkları, referansları veya kullanım desenlerini araştırdığında
-
-## cc-viewer'da Önemi
-
-İstek zaman tünelinde Search sub-agent'ları, üst agent'ın isteğinin altında iç içe istek zincirleri olarak görünür. Agent kod tabanının farklı bölümlerini aynı anda keşfederken birden fazla Search sub-agent paralel olarak çalışabilir. SubAgent stats bölümü, bir oturum boyunca kaç Search işleminin gerçekleştirildiğini sayar.

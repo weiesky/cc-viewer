@@ -30,10 +30,6 @@
 - 看到 `<command-name>` 標籤時說明技能已載入，應直接執行而非再次呼叫此工具
 - 不要在未實際呼叫工具的情況下提及某個技能
 
-## 在 cc-viewer 中的意義
-
-Skill 呼叫在請求日誌中表現為 `tool_use` content block。技能展開後的 prompt 會影響後續請求的 system prompt 或訊息內容。
-
 ## 原文
 
 <textarea readonly>Execute a skill within the main conversation

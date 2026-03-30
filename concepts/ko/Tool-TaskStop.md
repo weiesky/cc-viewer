@@ -22,10 +22,6 @@
 - 성공 또는 실패 상태를 반환
 - `shell_id` 파라미터는 더 이상 사용되지 않으며, `task_id`를 사용해야 함
 
-## cc-viewer에서의 의의
-
-TaskStop 호출 자체는 API 요청을 생성하지 않으며, Claude Code 내부 태스크 관리 작업입니다.
-
 ## 원문
 
 <textarea readonly>

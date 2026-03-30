@@ -27,10 +27,6 @@
 - 会覆盖已有文件的全部内容
 - 优先使用 Edit 编辑现有文件，Write 仅用于创建新文件或完全重写
 
-## 在 cc-viewer 中的意义
-
-Write 调用在请求日志中表现为 `tool_use` content block，其 `input.content` 包含写入的完整内容。
-
 ## 原文
 
 <textarea readonly>Writes a file to the local filesystem.

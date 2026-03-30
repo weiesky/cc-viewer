@@ -30,10 +30,6 @@
 - 태스크 획득 후 작업 시작 전에 `blockedBy` 목록이 비어 있는지 확인해야 함
 - TaskList로 모든 태스크의 요약 정보 확인
 
-## cc-viewer에서의 의의
-
-TaskGet은 내부 태스크 관리 작업이며, 독립적인 API 요청을 생성하지 않습니다.
-
 ## 원문
 
 <textarea readonly>Use this tool to retrieve a task by its ID from the task list.

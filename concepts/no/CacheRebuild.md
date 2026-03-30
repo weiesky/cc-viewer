@@ -34,7 +34,3 @@ cc-viewer bestemmer nøyaktig årsaken til cache-gjenoppbygging ved å sammenlig
 - **`model_change`**: Brukeren byttet modell via `/model`-kommandoen
 - **`msg_truncated`**: Lang samtale utløste kontekstvindu-håndtering, Claude Code avkortet tidlige meldinger
 - **`msg_modified`**: Claude Code redigerte historiske meldinger (f.eks. `/compact` komprimeringssammendrag erstattet originale meldinger)
-
-## Visning i cc-viewer
-
-I forespørselslisten viser forespørsler med cache-gjenoppbygging en rød prikkindikator på cache-linjen. Tooltip vises ved musepeker med detaljert beskrivelse av gjenoppbyggingsårsaken (støtter 18 språk).

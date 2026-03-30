@@ -33,7 +33,6 @@ CC-Viewer 翻译请求 ──(authorization: Bearer sessionToken)──→ Anthr
 2. **主对话受翻译请求干扰**：翻译请求的内容（用户界面文本片段）可能被注入到主对话的上下文中，导致 Claude Code 的回复出现偏差
 3. **不可预测的行为**：由于上下文污染是服务端行为，客户端无法感知也无法控制
 
-
 ## 经验总结
 
 - **OAuth session token 不是"另一种 API Key"**——它携带服务端状态，复用它等于共享上下文

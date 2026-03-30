@@ -28,10 +28,6 @@
 - ما لم يطلب المستخدم صراحة، يجب تجنب تعريف المتغيرات أو تعديل حالة kernel
 - تُفقد الحالة بعد إعادة تشغيل kernel
 
-## الأهمية في cc-viewer
-
-executeCode هي أداة MCP، تظهر في مصفوفة `tools` في سجل الطلبات باسم `mcp__ide__executeCode`. استدعاؤها ونتائجها تتبع نمط `tool_use` / `tool_result` القياسي. إضافة أو إزالة أدوات MCP تؤدي إلى تغيير مصفوفة tools، مما قد يؤدي إلى إعادة بناء الذاكرة المؤقتة.
-
 ## النص الأصلي
 
 <textarea readonly>Execute python code in the Jupyter kernel for the current notebook file.

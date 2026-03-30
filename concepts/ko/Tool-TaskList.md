@@ -31,10 +31,6 @@
 - `blockedBy`가 있는 태스크는 의존이 해제될 때까지 인수할 수 없음
 - TaskGet으로 특정 태스크의 전체 상세 정보 획득
 
-## cc-viewer에서의 의의
-
-TaskList는 내부 태스크 관리 작업이며, 독립적인 API 요청을 생성하지 않습니다.
-
 ## 원문
 
 <textarea readonly>Use this tool to list all tasks in the task list.

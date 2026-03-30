@@ -65,9 +65,3 @@ Claude Code는 Anthropic API의 tool_use 메커니즘을 통해 모델에 일련
 |------|------|
 | [getDiagnostics](Tool-getDiagnostics.md) | VS Code 언어 진단 정보 가져오기 |
 | [executeCode](Tool-executeCode.md) | Jupyter kernel에서 코드 실행 |
-
-## cc-viewer에서의 의의
-
-도구 호출은 Claude Code 요청 로그에서 가장 핵심적인 관측 가능 데이터 중 하나입니다. 각 MainAgent 요청의 `tools` 배열은 모델이 사용 가능한 도구 세트를 정의하고, 응답 내의 `tool_use` / `tool_result` content block은 실제 도구 호출과 반환을 기록합니다. cc-viewer는 이러한 데이터를 파싱하여 Chat Mode에서 완전한 도구 호출 체인을 재현합니다.
-
-도구 정의의 변화 (MCP server 연결/해제로 인한 도구 증감 등)는 캐시 재구축을 트리거합니다. 자세한 내용은 [CacheRebuild](CacheRebuild.md)를 참조하세요.

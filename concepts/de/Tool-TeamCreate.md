@@ -36,7 +36,3 @@ Teams stehen in einem 1:1-Verhältnis zu Aufgabenlisten.
 | `SendMessage` | Kommunikation zwischen Agenten innerhalb des Teams |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | Gemeinsame Aufgabenliste verwalten |
 | `Agent` | Teammitglieder starten, die dem Team beitreten |
-
-## Bedeutung in cc-viewer
-
-TeamCreate-Aufrufe zeigen den Beginn einer Multi-Agent-Kollaborationssitzung an. In der Anfrageliste sind anschließende Agent-Aufrufe zu sehen, die Teammitglieder starten, gefolgt von SendMessage-Austauschen und TaskUpdate-Operationen während das Team die Arbeit koordiniert. Das Team-Muster erzeugt typischerweise eine Gruppe paralleler SubAgent-Anfrageketten.

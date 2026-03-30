@@ -31,10 +31,6 @@
 - 有 `blockedBy` 的任務在依賴解除前不能認領
 - 使用 TaskGet 取得特定任務的完整詳情
 
-## 在 cc-viewer 中的意義
-
-TaskList 是內部任務管理操作，不產生獨立的 API 請求。
-
 ## 原文
 
 <textarea readonly>Use this tool to list all tasks in the task list.

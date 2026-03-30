@@ -42,10 +42,6 @@ Potente strumento di ricerca nel contenuto basato su ripgrep. Supporta espressio
 - La corrispondenza multiriga richiede l'impostazione `multiline: true`
 - Usare sempre lo strumento Grep anziché i comandi `grep` o `rg` in Bash
 
-## Significato in cc-viewer
-
-Le chiamate Grep appaiono nei log delle richieste come coppie di content block `tool_use` / `tool_result`. Il `tool_result` contiene i risultati della ricerca.
-
 ## Testo originale
 
 <textarea readonly>A powerful search tool built on ripgrep

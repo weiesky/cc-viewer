@@ -42,10 +42,6 @@ Executa comandos shell, com suporte a configuração opcional de timeout. O dire
 - Comandos com dependências devem ser encadeados com `&&`
 - O ambiente shell é inicializado a partir do profile do usuário (bash ou zsh)
 
-## Significado no cc-viewer
-
-As chamadas Bash aparecem nos logs de requisição como pares de content blocks `tool_use` (contendo o comando) e `tool_result` (contendo a saída). A saída da execução do comando pode ser usada para analisar o comportamento operacional do modelo.
-
 ## Texto original
 
 <textarea readonly>Executes a given bash command and returns its output.
@@ -85,7 +81,6 @@ While the Bash tool can do similar things, it’s better to use the built-in too
   - If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.
   - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
-
 
 # Committing changes with git
 

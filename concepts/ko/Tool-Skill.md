@@ -30,10 +30,6 @@
 - `<command-name>` 태그가 보이면 스킬이 이미 로드된 것이므로, 이 도구를 다시 호출하지 말고 직접 실행해야 함
 - 실제로 도구를 호출하지 않고 스킬을 언급하지 말 것
 
-## cc-viewer에서의 의의
-
-Skill 호출은 요청 로그에서 `tool_use` content block으로 나타납니다. 스킬 확장 후의 프롬프트는 후속 요청의 system prompt나 메시지 내용에 영향을 미칩니다.
-
 ## 원문
 
 <textarea readonly>Execute a skill within the main conversation

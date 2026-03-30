@@ -65,9 +65,3 @@ Nedenfor er en kategorisert indeks over alle verktøy.
 |---------|--------|
 | [getDiagnostics](Tool-getDiagnostics.md) | Hente språkdiagnostikk fra VS Code |
 | [executeCode](Tool-executeCode.md) | Kjøre kode i Jupyter kernel |
-
-## Betydning i cc-viewer
-
-Verktøykall er blant de viktigste observerbare dataene i Claude Code-forespørselslogger. `tools`-arrayen i hver MainAgent-forespørsel definerer verktøysettet tilgjengelig for modellen, mens `tool_use` / `tool_result` content blocks i responsen registrerer faktiske verktøykall og resultater. cc-viewer analyserer disse dataene for å rekonstruere den komplette verktøykallkjeden i Chat Mode.
-
-Endringer i verktøydefinisjoner (som tillegg/fjerning av verktøy på grunn av MCP-server tilkobling/frakobling) utløser cache-gjenoppbygging, se [CacheRebuild](CacheRebuild.md).

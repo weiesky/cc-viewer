@@ -36,7 +36,3 @@ Takımlar ile görev listeleri arasında 1:1 ilişki vardır.
 | `SendMessage` | Takım içi agent'lar arası iletişim |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | Paylaşılan görev listesini yönet |
 | `Agent` | Takıma katılan takım üyelerini başlat |
-
-## cc-viewer'da Önemi
-
-TeamCreate çağrıları çok agent'lı bir işbirliği oturumunun başlangıcını gösterir. İstek listesinde, takım üyelerini başlatan Agent çağrılarını, ardından takımın çalışmayı koordine ettiği sırada gerçekleşen SendMessage alışverişlerini ve TaskUpdate işlemlerini görürsünüz. Takım kalıbı genellikle paralel SubAgent istek zincirlerinden oluşan bir küme üretir.

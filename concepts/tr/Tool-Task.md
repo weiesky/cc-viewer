@@ -49,7 +49,3 @@ Karmaşık çok adımlı görevleri otonom olarak işlemek için bir alt agent (
 - Verimliliği artırmak için tek mesajda birden fazla paralel Task çağrısı yapılabilir
 - Arka plan görevleri TaskOutput aracıyla ilerleme kontrolü yapılır
 - Explore türü doğrudan Glob/Grep çağrısından yavaştır, yalnızca basit arama yeterli olmadığında kullanın
-
-## cc-viewer'da Önemi
-
-Task çağrıları SubAgent istek zinciri oluşturur; istek listesinde MainAgent'tan bağımsız alt istek dizileri görülebilir. SubAgent istekleri genellikle kısaltılmış system prompt ve daha az araç tanımına sahiptir ve MainAgent ile belirgin bir kontrast oluşturur.

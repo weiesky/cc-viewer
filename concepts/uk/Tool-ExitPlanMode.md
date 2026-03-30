@@ -34,10 +34,6 @@
 - Не запитуйте "чи підходить план?" через AskUserQuestion перед викликом цього інструменту — це дублювання
 - Не згадуйте "план" у запитаннях, оскільки користувач не бачить вміст плану до ExitPlanMode
 
-## Значення в cc-viewer
-
-Виклик ExitPlanMode позначає завершення етапу планування. У журналі запитів після цього виклику запити зазвичай переходять до операцій реалізації (Edit, Write, Bash тощо).
-
 ## Оригінальний текст
 
 <textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.

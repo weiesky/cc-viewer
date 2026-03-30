@@ -34,10 +34,6 @@
 - このツールを呼び出す前に AskUserQuestion で「方針は大丈夫ですか」と聞かないこと。重複になる
 - 質問の中で「計画」に言及しないこと。ユーザーは ExitPlanMode の前に計画の内容を見ることができないため
 
-## cc-viewer での意義
-
-ExitPlanMode 呼び出しは計画フェーズの終了を示します。リクエストログでは、この呼び出し以降のリクエストは通常、実装的な操作（Edit、Write、Bash など）に移行します。
-
 ## 原文
 
 <textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.

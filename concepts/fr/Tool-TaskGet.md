@@ -30,10 +30,6 @@ Obtient les détails complets d'une tâche via son ID.
 - Après avoir obtenu la tâche, vérifier si la liste `blockedBy` est vide avant de commencer à travailler
 - Utiliser TaskList pour voir les informations résumées de toutes les tâches
 
-## Signification dans cc-viewer
-
-TaskGet est une opération interne de gestion de tâches, elle ne produit pas de requêtes API indépendantes.
-
 ## Texte original
 
 <textarea readonly>Use this tool to retrieve a task by its ID from the task list.

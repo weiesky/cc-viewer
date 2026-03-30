@@ -28,7 +28,3 @@ TeamDelete viene chiamato alla fine di un flusso di lavoro del team:
 | `SendMessage` | Comunicare con i membri del team / inviare richieste di shutdown |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | Gestire la lista dei task condivisa |
 | `Agent` | Avviare i membri del team che si uniscono al team |
-
-## Significato in cc-viewer
-
-Una chiamata TeamDelete segnala la fine di una sessione di collaborazione multi-agent. Appare tipicamente dopo che tutti gli scambi di shutdown di SendMessage sono stati completati. Nella lista delle richieste, TeamDelete segna il passo finale di pulizia del pattern del team.

@@ -42,10 +42,6 @@ Puissant outil de recherche de contenu basé sur ripgrep. Supporte les expressio
 - La correspondance multiligne nécessite de définir `multiline: true`
 - Toujours préférer l'outil Grep aux commandes `grep` ou `rg` dans Bash
 
-## Signification dans cc-viewer
-
-Les appels Grep apparaissent dans le journal des requêtes comme des paires de content blocks `tool_use` / `tool_result`. Le `tool_result` contient les résultats de recherche.
-
 ## Texte original
 
 <textarea readonly>A powerful search tool built on ripgrep

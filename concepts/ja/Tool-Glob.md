@@ -29,10 +29,6 @@
 - 結果は修正時間順にソート
 - Bash の `find` コマンドよりも推奨
 
-## cc-viewer での意義
-
-Glob 呼び出しはリクエストログで `tool_use` / `tool_result` content block ペアとして表示されます。`tool_result` にはマッチしたファイルパスのリストが含まれます。
-
 ## 原文
 
 <textarea readonly>- Fast file pattern matching tool that works with any codebase size

@@ -30,10 +30,6 @@ Pobiera pełne szczegóły zadania na podstawie jego ID.
 - Po pobraniu zadania należy sprawdzić, czy lista `blockedBy` jest pusta, zanim rozpocznie się pracę
 - Użyj TaskList, aby zobaczyć podsumowanie wszystkich zadań
 
-## Znaczenie w cc-viewer
-
-TaskGet to wewnętrzna operacja zarządzania zadaniami, nie generuje niezależnego żądania API.
-
 ## Tekst oryginalny
 
 <textarea readonly>Use this tool to retrieve a task by its ID from the task list.

@@ -42,10 +42,6 @@
 - Залежні команди з'єднуються через `&&`
 - Середовище shell ініціалізується з профілю користувача (bash або zsh)
 
-## Значення в cc-viewer
-
-Виклики Bash відображаються в журналі запитів як пара content block `tool_use` (містить команду) та `tool_result` (містить вивід). Вивід виконання команди може використовуватися для аналізу операційної поведінки моделі.
-
 ## Оригінальний текст
 
 <textarea readonly>Executes a given bash command and returns its output.
@@ -85,7 +81,6 @@ While the Bash tool can do similar things, it’s better to use the built-in too
   - If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.
   - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
-
 
 # Committing changes with git
 

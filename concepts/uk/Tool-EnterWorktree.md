@@ -24,10 +24,6 @@ Creates an isolated git worktree and switches the current session into it. Only 
 - Must be in a git repository, or have WorktreeCreate/WorktreeRemove hooks configured
 - Must not already be in a worktree
 
-## Значення в cc-viewer
-
-EnterWorktree calls appear in request logs as `tool_use` content blocks. It creates an isolated working environment, and subsequent file operations occur within the worktree directory.
-
 ## Оригінальний текст
 
 <textarea readonly>Use this tool ONLY when the user explicitly asks to work in a worktree. This tool creates an isolated git worktree and switches the current session into it.

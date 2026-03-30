@@ -31,10 +31,6 @@ Resuméinformation for hver opgave:
 - Opgaver med `blockedBy` kan ikke påtages, før afhængighederne er løst
 - Brug TaskGet til at hente komplette detaljer for en specifik opgave
 
-## Betydning i cc-viewer
-
-TaskList er en intern opgavestyringsoperation og genererer ikke selvstændige API-requests.
-
 ## Originaltekst
 
 <textarea readonly>Use this tool to list all tasks in the task list.

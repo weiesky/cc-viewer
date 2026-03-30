@@ -38,10 +38,6 @@ Etter å ha gått inn i planleggingsmodus vil Claude Code:
 - Dette verktøyet krever brukersamtykke for å gå inn i planleggingsmodus
 - Hvis du er usikker på om planlegging er nødvendig, foretrekk planlegging — å justere på forhånd er bedre enn å gjøre om
 
-## Betydning i cc-viewer
-
-EnterPlanMode-kall vises i forespørselsloggen som `tool_use` content block. Etter å ha gått inn i planleggingsmodus består forespørselssekvensene vanligvis hovedsakelig av utforskende verktøykall (Glob, Grep, Read), inntil ExitPlanMode kalles.
-
 ## Originaltekst
 
 <textarea readonly>Use this tool proactively when you're about to start a non-trivial implementation task. Getting user sign-off on your approach before writing code prevents wasted effort and ensures alignment. This tool transitions you into plan mode where you can explore the codebase and design an implementation approach for user approval.

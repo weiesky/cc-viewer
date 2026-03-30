@@ -31,10 +31,6 @@ Henter indholdet af en webside fra den angivne URL, konverterer HTML til markdow
 - Når URL'en omdirigerer til en anden vært, returnerer værktøjet omdirigerings-URL'en, og der skal foretages en ny anmodning med den nye URL
 - Hvis et MCP-leveret web fetch-værktøj er tilgængeligt, foretræk det
 
-## Betydning i cc-viewer
-
-WebFetch-kald vises i requestloggen som `tool_use` / `tool_result` content block-par. `tool_result` indeholder det AI-behandlede resumé af webindholdet.
-
 ## Originaltekst
 
 <textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.

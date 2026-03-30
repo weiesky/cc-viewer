@@ -29,10 +29,6 @@ Ferramenta rápida de correspondência de padrões de nomes de arquivo, suporta 
 - Resultados ordenados por data de modificação
 - Mais recomendado que o comando `find` do Bash
 
-## Significado no cc-viewer
-
-As chamadas Glob aparecem nos logs de requisição como pares de content blocks `tool_use` / `tool_result`. O `tool_result` contém a lista de caminhos de arquivos correspondentes.
-
 ## Texto original
 
 <textarea readonly>- Fast file pattern matching tool that works with any codebase size

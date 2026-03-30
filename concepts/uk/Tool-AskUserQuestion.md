@@ -49,10 +49,6 @@
 - Варіанти з `markdown` перемикаються на паралельний макет
 - У режимі планування використовується для уточнення вимог перед визначенням плану
 
-## Значення в cc-viewer
-
-Виклик AskUserQuestion відображається в журналі запитів як `tool_use` content block, що містить визначення запитань та варіантів. Відповідь користувача з'являється в історії повідомлень наступних запитів.
-
 ## Оригінальний текст
 
 <textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:

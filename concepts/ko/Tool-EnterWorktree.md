@@ -24,10 +24,6 @@
 - git 저장소 내에 있거나 WorktreeCreate/WorktreeRemove hooks가 구성되어 있어야 함
 - 이미 worktree 내에 있으면 안 됨
 
-## cc-viewer에서의 의미
-
-EnterWorktree 호출은 요청 로그에 `tool_use` content block으로 나타납니다. 격리된 작업 환경을 생성하며, 이후 파일 작업은 worktree 디렉토리 내에서 수행됩니다.
-
 ## 원문
 
 <textarea readonly>Use this tool ONLY when the user explicitly asks to work in a worktree. This tool creates an isolated git worktree and switches the current session into it.

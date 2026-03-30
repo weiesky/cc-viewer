@@ -29,10 +29,6 @@ Hurtigt filnavnsmønster-matchningsværktøj, der understøtter kodebaser af enh
 - Resultater sorteres efter ændringstidspunkt
 - Mere anbefalet end Bashs `find`-kommando
 
-## Betydning i cc-viewer
-
-Glob-kald vises i requestloggen som `tool_use` / `tool_result` content block-par. `tool_result` indeholder listen over matchende filstier.
-
 ## Originaltekst
 
 <textarea readonly>- Fast file pattern matching tool that works with any codebase size

@@ -36,7 +36,3 @@ Teams har et 1:1-forhold til opgavelister.
 | `SendMessage` | Kommunikation mellem agenter inden for teamet |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | Administrer den delte opgaveliste |
 | `Agent` | Start teammedlemmer der tilslutter sig teamet |
-
-## Betydning i cc-viewer
-
-TeamCreate-kald angiver starten på en multi-agent-samarbejdssession. I requestlisten vil du se efterfølgende Agent-kald der starter teammedlemmer, efterfulgt af SendMessage-udvekslinger og TaskUpdate-operationer mens teamet koordinerer arbejdet. Team-mønsteret producerer typisk en gruppe parallelle SubAgent-requestkæder.

@@ -29,10 +29,6 @@ Gets the output of a running or completed background task. Applicable to backgro
 - Task IDs can be found via the `/tasks` command
 - Applicable to all task types: background shells, async agents, remote sessions
 
-## Significance in cc-viewer
-
-TaskOutput calls do not produce API requests themselves; they are internal task management operations in Claude Code and do not appear in request logs.
-
 ## Original Text
 
 <textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)

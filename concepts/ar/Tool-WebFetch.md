@@ -31,10 +31,6 @@
 - عند إعادة توجيه URL إلى مضيف مختلف، تُرجع الأداة عنوان URL المُعاد توجيهه ويجب إعادة الطلب بالعنوان الجديد
 - إذا كانت أداة web fetch مقدمة من MCP متاحة، يُفضل استخدامها
 
-## الأهمية في cc-viewer
-
-يظهر استدعاء WebFetch في سجل الطلبات كزوج من كتل محتوى `tool_use` / `tool_result`. يحتوي `tool_result` على ملخص محتوى صفحة الويب المعالج بالذكاء الاصطناعي.
-
 ## النص الأصلي
 
 <textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.

@@ -34,7 +34,3 @@ cc-viewer porównuje treści dwóch kolejnych żądań MainAgent, aby precyzyjni
 - **`model_change`**: użytkownik przełączył model poleceniem `/model`
 - **`msg_truncated`**: zbyt długi dialog wywołał zarządzanie oknem kontekstu, Claude Code obciął wcześniejsze wiadomości
 - **`msg_modified`**: Claude Code edytował historyczne wiadomości (np. `/compact` zastąpił oryginalne wiadomości skompresowanym podsumowaniem)
-
-## Wyświetlanie w cc-viewer
-
-Na liście żądań, żądania z przebudową cache mają czerwony wskaźnik kropkowy w wierszu cache. Po najechaniu myszą wyświetlany jest tooltip z konkretnym opisem przyczyny przebudowy (obsługa 18 języków).

@@ -28,10 +28,6 @@ Esegue codice Python nel kernel Jupyter del file notebook corrente.
 - A meno che l'utente non lo richieda esplicitamente, evitare di dichiarare variabili o modificare lo stato del kernel
 - Lo stato viene perso dopo il riavvio del kernel
 
-## Significato in cc-viewer
-
-executeCode è uno strumento MCP, che appare nell'array `tools` dei log delle richieste con il nome `mcp__ide__executeCode`. Le sue chiamate e i risultati seguono il pattern standard `tool_use` / `tool_result`. L'aggiunta/rimozione di strumenti MCP causa modifiche all'array tools, che possono attivare la ricostruzione della cache.
-
 ## Testo originale
 
 <textarea readonly>Execute python code in the Jupyter kernel for the current notebook file.

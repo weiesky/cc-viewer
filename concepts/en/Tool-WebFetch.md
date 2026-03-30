@@ -31,10 +31,6 @@ Fetches web page content from a specified URL, converts HTML to markdown, and pr
 - When a URL redirects to a different host, the tool returns the redirect URL, and you need to re-request with the new URL
 - If an MCP-provided web fetch tool is available, prefer using that one
 
-## Significance in cc-viewer
-
-WebFetch calls appear in request logs as `tool_use` / `tool_result` content block pairs. The `tool_result` contains the AI-processed web content summary.
-
 ## Original Text
 
 <textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.

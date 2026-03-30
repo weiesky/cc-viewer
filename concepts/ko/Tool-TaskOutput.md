@@ -29,10 +29,6 @@
 - 태스크 ID는 `/tasks` 명령으로 검색 가능
 - 모든 태스크 타입에 적용: 백그라운드 셸, 비동기 agent, 원격 세션
 
-## cc-viewer에서의 의의
-
-TaskOutput 호출 자체는 API 요청을 생성하지 않습니다. Claude Code 내부의 태스크 관리 작업이며, 요청 로그에 표시되지 않습니다.
-
 ## 원문
 
 <textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)

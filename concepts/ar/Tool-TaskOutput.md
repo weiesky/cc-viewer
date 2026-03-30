@@ -29,10 +29,6 @@
 - يمكن العثور على معرف المهمة عبر أمر `/tasks`
 - ينطبق على جميع أنواع المهام: shell الخلفية، الوكلاء غير المتزامنين، الجلسات البعيدة
 
-## الأهمية في cc-viewer
-
-استدعاء TaskOutput بحد ذاته لا ينتج طلب API، فهو عملية إدارة مهام داخلية في Claude Code ولا يظهر في سجل الطلبات.
-
 ## النص الأصلي
 
 <textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)

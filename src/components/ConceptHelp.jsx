@@ -15,7 +15,7 @@ const KNOWN_DOCS = new Set([
   'Tool-EnterPlanMode', 'Tool-ExitPlanMode',
   'Tool-AskUserQuestion', 'Tool-Skill',
   'Tool-getDiagnostics', 'Tool-executeCode', 'Tool-EnterWorktree',
-  'MainAgent', 'Tools', 'ToolsFirst', 'CacheRebuild', 'BodyDiffJSON', 'TranslateContextPollution', 'KVCacheContent',
+  'MainAgent', 'Teammate', 'BodyFields', 'ResponseFields', 'Tools', 'ToolsFirst', 'CacheRebuild', 'BodyDiffJSON', 'TranslateContextPollution', 'KVCacheContent',
 ]);
 
 export default function ConceptHelp({ doc }) {
@@ -59,7 +59,7 @@ export default function ConceptHelp({ doc }) {
     body: { maxHeight: '80vh', overflow: 'auto', padding: '8px 10px' },
     content: { padding: 0 },
   } : {
-    body: { padding: '16px 24px 24px' },
+    body: { padding: '16px 24px 24px', background: '#111', borderRadius: '4px' },
     content: { padding: '12px 20px' },
   };
 
@@ -72,7 +72,7 @@ export default function ConceptHelp({ doc }) {
           open={open}
           onCancel={() => setOpen(false)}
           footer={null}
-          width={isMobile ? '98vw' : 640}
+          width={isMobile ? '98vw' : 800}
           centered={isMobile}
           styles={modalStyles}
         >

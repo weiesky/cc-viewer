@@ -75,11 +75,3 @@ Les outils MCP (Model Context Protocol), comme les outils intégrés, sont plac�
 | Schemas d'outils surdimensionnés | Réduire les descriptions et énumérations pour diminuer l'empreinte en tokens du préfixe |
 
 Dans le panneau Context de cc-viewer, les outils MCP sont affichés aux côtés des outils intégrés dans la zone Tools, offrant une vue claire de la taille du Schema de chaque outil et de sa contribution au préfixe de cache.
-
-## Conception de la mise en page de cc-viewer
-
-cc-viewer organise le panneau Context pour correspondre à la séquence de préfixe KV-Cache :
-
-- **Ordre de haut en bas = ordre de concaténation du préfixe de cache**
-- **Les modifications plus haut ont un impact plus grand sur le taux de succès du cache**
-- Associé au panneau [KV-Cache-Text](KVCacheContent.md), vous pouvez voir directement le texte complet du préfixe de cache

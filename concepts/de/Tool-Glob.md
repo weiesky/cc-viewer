@@ -29,10 +29,6 @@ Schnelles Dateinamen-Musterabgleich-Tool, das mit Codebasen jeder Größe funkti
 - Ergebnisse sind nach Änderungszeit sortiert
 - Wird gegenüber dem `find`-Befehl in Bash bevorzugt
 
-## Bedeutung in cc-viewer
-
-Glob-Aufrufe erscheinen im Anfrage-Log als `tool_use` / `tool_result` Content-Block-Paare. `tool_result` enthält die Liste der übereinstimmenden Dateipfade.
-
 ## Originaltext
 
 <textarea readonly>- Fast file pattern matching tool that works with any codebase size

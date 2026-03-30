@@ -2,6 +2,7 @@ body {
   margin: 0;
   background-color: #0d0d0d;
   overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
 }
 
 ::selection {
@@ -94,6 +95,10 @@ body {
   max-width: 100%;
   height: auto;
 }
+
+/* Remove focus outlines (Ant Design CSS-in-JS has higher specificity, !important required) */
+*:focus { outline: none !important; box-shadow: none !important; }
+*:focus-visible { outline: none !important; box-shadow: none !important; }
 
 /* chat-boxer: 白底黑字气泡容器 */
 .chat-boxer {

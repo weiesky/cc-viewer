@@ -49,7 +49,3 @@ Startet einen Sub-Agent (SubAgent), der komplexe mehrstufige Aufgaben autonom be
 - Mehrere parallele Task-Aufrufe können in einer einzelnen Nachricht gestartet werden, um die Effizienz zu steigern
 - Hintergrundaufgaben werden über das TaskOutput-Tool auf Fortschritt geprüft
 - Der Explore-Typ ist langsamer als direkte Glob/Grep-Aufrufe; nur verwenden, wenn einfache Suchen nicht ausreichen
-
-## Bedeutung in cc-viewer
-
-Task-Aufrufe erzeugen SubAgent-Anfrageketten, die in der Anfrageliste als eigenständige Unteranfragesequenzen unabhängig vom MainAgent sichtbar sind. SubAgent-Anfragen haben typischerweise einen kompakten System-Prompt und weniger Tool-Definitionen, was einen deutlichen Kontrast zum MainAgent bildet.

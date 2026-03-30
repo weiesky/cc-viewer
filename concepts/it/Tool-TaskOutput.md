@@ -29,10 +29,6 @@ Ottiene l'output di un task in background in esecuzione o completato. Applicabil
 - L'ID del task può essere trovato tramite il comando `/tasks`
 - Applicabile a tutti i tipi di task: shell in background, agent asincroni, sessioni remote
 
-## Significato in cc-viewer
-
-La chiamata TaskOutput non genera richieste API, è un'operazione interna di gestione dei task di Claude Code e non appare nei log delle richieste.
-
 ## Testo originale
 
 <textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)

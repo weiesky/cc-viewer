@@ -39,7 +39,3 @@
 | `TeamDelete` | 完成后删除团队 |
 | `Agent` | 生成加入团队的队友 |
 | `TaskCreate` / `TaskUpdate` / `TaskList` | 管理共享任务列表 |
-
-## 在 cc-viewer 中的意义
-
-SendMessage 调用代表团队会话中 agent 间的通信。在工具使用统计中，较高的 SendMessage 次数表明团队协调活跃。在请求时间线中，SendMessage 交换展示了 agent 之间如何协作——传递结果、请求帮助以及协调关闭流程。

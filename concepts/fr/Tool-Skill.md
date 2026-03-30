@@ -30,10 +30,6 @@ Exécute une compétence (skill) dans la conversation principale. Les compétenc
 - Quand on voit une balise `<command-name>`, cela signifie que la compétence est déjà chargée et doit être exécutée directement plutôt que de rappeler cet outil
 - Ne pas mentionner une compétence sans avoir réellement appelé l'outil
 
-## Signification dans cc-viewer
-
-Les appels Skill apparaissent dans le journal des requêtes comme des content blocks `tool_use`. Le prompt déployé de la compétence affecte le system prompt ou le contenu des messages des requêtes suivantes.
-
 ## Texte original
 
 <textarea readonly>Execute a skill within the main conversation

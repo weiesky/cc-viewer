@@ -28,7 +28,3 @@ TeamDelete 在团队工作流程结束时调用：
 | `SendMessage` | 与队友通信 / 发送关闭请求 |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | 管理共享任务列表 |
 | `Agent` | 生成加入团队的队友 |
-
-## 在 cc-viewer 中的意义
-
-TeamDelete 调用标志着多 agent 协作会话的结束。它通常出现在所有 SendMessage 关闭消息交换完成之后。在请求时间线中，TeamDelete 标记了团队模式的最终清理步骤。

@@ -30,10 +30,6 @@ Ana konuşmada bir beceri (skill) çalıştırır. Beceriler, kullanıcının sl
 - `<command-name>` etiketi görüldüğünde beceri zaten yüklenmiş demektir, bu aracı tekrar çağırmak yerine doğrudan çalıştırılmalıdır
 - Aracı gerçekten çağırmadan bir beceriden bahsetmeyin
 
-## cc-viewer'da Önemi
-
-Skill çağrıları istek günlüğünde `tool_use` content block olarak görünür. Beceri genişletildikten sonraki prompt, sonraki isteklerin system prompt'unu veya mesaj içeriğini etkiler.
-
 ## Orijinal Metin
 
 <textarea readonly>Execute a skill within the main conversation

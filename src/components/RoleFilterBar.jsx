@@ -2,16 +2,16 @@ import React from 'react';
 import { getSvgAvatar } from '../utils/helpers';
 import styles from './RoleFilterBar.module.css';
 
-function RoleFilterBar({ roles, hiddenRoles, onToggle }) {
+function RoleFilterBar({ roles, selectedRoles, onToggle }) {
   if (!roles || roles.length === 0) return null;
 
   return (
     <div className={styles.roleFilterBar}>
       {roles.map(r => {
-        const hidden = hiddenRoles.has(r.key);
+        const selected = selectedRoles.has(r.key);
         return (
           <button key={r.key}
-            className={hidden ? styles.roleChip : styles.roleChipActive}
+            className={selected ? styles.roleChipActive : styles.roleChip}
             onClick={() => onToggle(r.key)}
           >
             {r.avatarImg ? (
@@ -24,7 +24,7 @@ function RoleFilterBar({ roles, hiddenRoles, onToggle }) {
               dangerouslySetInnerHTML={{ __html: r.avatarSvg || getSvgAvatar(r.avatarType) }}
             />
             <span className={styles.roleName}>{r.name}</span>
-            {!hidden && <span className={styles.roleCheck}>✓</span>}
+            {selected && <span className={styles.roleCheck}>✓</span>}
           </button>
         );
       })}

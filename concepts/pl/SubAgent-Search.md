@@ -18,7 +18,3 @@ Pod-agenty Search pojawiają się zazwyczaj gdy:
 1. Główny agent musi znaleźć określone pliki, funkcje lub wzorce kodu
 2. Użytkownik prosi o szeroką eksplorację kodu źródłowego
 3. Agent bada zależności, odwołania lub wzorce użycia
-
-## Znaczenie w cc-viewer
-
-Na osi czasu żądań pod-agenty Search pojawiają się jako zagnieżdżone łańcuchy żądań pod żądaniem agenta nadrzędnego. Wiele pod-agentów Search może działać równolegle gdy agent jednocześnie eksploruje różne części kodu źródłowego. Sekcja statystyk SubAgent zlicza ile operacji Search zostało wykonanych podczas sesji.

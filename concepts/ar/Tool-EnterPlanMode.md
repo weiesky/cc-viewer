@@ -38,10 +38,6 @@
 - تتطلب هذه الأداة موافقة المستخدم للدخول في وضع التخطيط
 - إذا لم تكن متأكداً من الحاجة للتخطيط، فضّل التخطيط — المواءمة المسبقة أفضل من إعادة العمل
 
-## الأهمية في cc-viewer
-
-يظهر استدعاء EnterPlanMode في سجل الطلبات ككتلة محتوى `tool_use`. بعد الدخول في وضع التخطيط، تتكون تسلسلات الطلبات عادة من استدعاءات أدوات استكشافية (Glob، Grep، Read) بشكل رئيسي، حتى يتم استدعاء ExitPlanMode.
-
 ## النص الأصلي
 
 <textarea readonly>Use this tool proactively when you're about to start a non-trivial implementation task. Getting user sign-off on your approach before writing code prevents wasted effort and ensures alignment. This tool transitions you into plan mode where you can explore the codebase and design an implementation approach for user approval.

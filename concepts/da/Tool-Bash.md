@@ -42,10 +42,6 @@ Udfører shell-kommandoer med valgfri timeout-indstilling. Arbejdsmappen bevares
 - Kommandoer med afhængigheder kædes sammen med `&&`
 - Shell-miljøet initialiseres fra brugerens profil (bash eller zsh)
 
-## Betydning i cc-viewer
-
-Bash-kald vises i requestloggen som `tool_use` (indeholder kommandoen) og `tool_result` (indeholder output) content block-par. Kommandoudførelsens output kan bruges til at analysere modellens operationelle adfærd.
-
 ## Originaltekst
 
 <textarea readonly>Executes a given bash command and returns its output.
@@ -85,7 +81,6 @@ While the Bash tool can do similar things, it’s better to use the built-in too
   - If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.
   - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
-
 
 # Committing changes with git
 

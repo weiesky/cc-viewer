@@ -1277,26 +1277,6 @@ const i18nData = {
     "tr": "Log dosyası yok",
     "uk": "Немає файлів логів"
   },
-  "ui.footer.starRequest": {
-    "zh": "在此感谢各位GitHub大佬赏赐一个STAR",
-    "en": "Please give us a STAR on GitHub if you like it",
-    "zh-TW": "在此感謝各位GitHub大佬賞賜一個STAR",
-    "ko": "마음에 드시면 GitHub에서 STAR를 눌러주세요",
-    "ja": "よろしければGitHubでSTARをお願いします",
-    "de": "Bitte geben Sie uns einen STAR auf GitHub",
-    "es": "Por favor, danos una STAR en GitHub",
-    "fr": "Merci de nous donner une STAR sur GitHub",
-    "it": "Per favore, dacci una STAR su GitHub",
-    "da": "Giv os venligst en STAR på GitHub",
-    "pl": "Prosimy o STAR na GitHubie",
-    "ru": "Пожалуйста, поставьте нам STAR на GitHub",
-    "ar": "يرجى منحنا نجمة STAR على GitHub",
-    "no": "Vennligst gi oss en STAR på GitHub",
-    "pt-BR": "Por favor, nos dê uma STAR no GitHub",
-    "th": "กรุณาให้ STAR บน GitHub ด้วยนะครับ",
-    "tr": "Lütfen GitHub'da bize bir STAR verin",
-    "uk": "Будь ласка, поставте нам STAR на GitHub"
-  },
   "ui.footer.contact": {
     "zh": "如需帮助，请联系 @水映天辙(钉钉)",
     "en": "Need help? Contact @水映天辙 (DingTalk)",
@@ -3636,6 +3616,26 @@ const i18nData = {
     "th": "ส่ง",
     "tr": "Gönder",
     "uk": "Надіслати"
+  },
+  "ui.chatInput.hintMobile": {
+    "zh": "如果遇到流程阻塞，切换到[终端]模式审批权限",
+    "en": "If blocked, switch to [Terminal] mode to approve permissions",
+    "zh-TW": "如果遇到流程阻塞，切換到[終端]模式審批權限",
+    "ko": "프로세스가 차단되면 [터미널] 모드로 전환하여 권한을 승인하세요",
+    "ja": "プロセスがブロックされた場合、[ターミナル]モードに切り替えて権限を承認してください",
+    "de": "Bei Blockierung zum [Terminal]-Modus wechseln, um Berechtigungen zu genehmigen",
+    "es": "Si se bloquea, cambie al modo [Terminal] para aprobar permisos",
+    "fr": "En cas de blocage, passez en mode [Terminal] pour approuver les autorisations",
+    "it": "In caso di blocco, passa alla modalità [Terminale] per approvare i permessi",
+    "da": "Hvis blokeret, skift til [Terminal]-tilstand for at godkende tilladelser",
+    "pl": "W przypadku blokady przełącz na tryb [Terminal], aby zatwierdzić uprawnienia",
+    "ru": "При блокировке переключитесь в режим [Терминал] для одобрения разрешений",
+    "ar": "إذا تم الحظر، قم بالتبديل إلى وضع [الطرفية] للموافقة على الأذونات",
+    "no": "Hvis blokkert, bytt til [Terminal]-modus for å godkjenne tillatelser",
+    "pt-BR": "Se bloqueado, mude para o modo [Terminal] para aprovar permissões",
+    "th": "หากถูกบล็อก ให้สลับไปโหมด [เทอร์มินัล] เพื่ออนุมัติสิทธิ์",
+    "tr": "Engellendiyse, izinleri onaylamak için [Terminal] moduna geçin",
+    "uk": "При блокуванні перейдіть у режим [Термінал] для затвердження дозволів"
   },
   "ui.chatInput.hintEnter": {
     "zh": "Enter 发送，Shift+Enter 换行",

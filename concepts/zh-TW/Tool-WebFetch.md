@@ -31,10 +31,6 @@
 - 當 URL 重新導向到不同主機時，工具會回傳重新導向 URL，需要用新 URL 重新請求
 - 如果有 MCP 提供的 web fetch 工具可用，優先使用那個
 
-## 在 cc-viewer 中的意義
-
-WebFetch 呼叫在請求日誌中表現為 `tool_use` / `tool_result` content block 對。`tool_result` 包含經 AI 處理後的網頁內容摘要。
-
 ## 原文
 
 <textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.

@@ -49,10 +49,6 @@ Każdy obiekt `option`:
 - Opcje z `markdown` przełączają się na układ obok siebie (lewo-prawo)
 - W trybie planowania służy do wyjaśniania wymagań przed ustaleniem planu
 
-## Znaczenie w cc-viewer
-
-Wywołanie AskUserQuestion w logach żądań pojawia się jako blok content `tool_use`, zawierający definicje pytań i opcji. Odpowiedź użytkownika pojawia się w historii wiadomości kolejnych żądań.
-
 ## Tekst oryginalny
 
 <textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:

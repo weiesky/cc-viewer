@@ -39,7 +39,3 @@ Zatwierdza lub odrzuca plan członka zespołu: `{ type: "plan_approval_response"
 | `TeamDelete` | Usuń zespół po zakończeniu |
 | `Agent` | Uruchom członków zespołu dołączających do zespołu |
 | `TaskCreate` / `TaskUpdate` / `TaskList` | Zarządzanie wspólną listą zadań |
-
-## Znaczenie w cc-viewer
-
-Wywołania SendMessage reprezentują komunikację między agentami w sesji zespołu. W statystykach użycia narzędzi wysoka liczba SendMessage wskazuje na aktywną koordynację zespołu. Na osi czasu żądań wymiany SendMessage pokazują, jak agenci współpracują — przekazują wyniki, proszą o pomoc i koordynują sekwencje zamykania.

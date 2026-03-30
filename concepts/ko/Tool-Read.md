@@ -36,10 +36,6 @@
 - 존재하지 않는 파일 읽기는 오류를 반환 (크래시하지 않음)
 - 단일 메시지 내에서 여러 Read를 병렬 호출 가능
 
-## cc-viewer에서의 의의
-
-Read 호출은 요청 로그에서 `tool_use` (호출)와 `tool_result` (반환 내용) content block 쌍으로 나타납니다. `tool_result`에는 파일의 실제 내용이 포함되며, 모델이 어떤 파일을 읽었는지 분석하는 데 사용할 수 있습니다.
-
 ## 원문
 
 <textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.

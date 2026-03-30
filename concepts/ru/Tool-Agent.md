@@ -50,10 +50,6 @@
 - Используйте `run_in_background: true` для длительных задач, не требующих немедленного результата; используйте режим переднего плана (по умолчанию), когда результат нужен перед продолжением
 - Параметр `resume` позволяет продолжить ранее запущенную сессию суб-агента, сохраняя накопленный контекст
 
-## Значение в cc-viewer
-
-Agent — это новое название инструмента Task в последних версиях Claude Code. Вызов Agent порождает цепочку запросов SubAgent, видимую в списке запросов как независимая последовательность подзапросов, отделённая от MainAgent. Запросы SubAgent обычно имеют упрощённый system prompt и меньше определений инструментов, что явно отличает их от MainAgent. В cc-viewer могут отображаться названия инструментов `Task` или `Agent` в зависимости от версии Claude Code, использованной в записанной беседе.
-
 ## Оригинальный текст
 
 <textarea readonly>Launch a new agent to handle complex, multi-step tasks autonomously.
@@ -74,7 +70,6 @@ When NOT to use the Agent tool:
 - If you are searching for a specific class definition like "class Foo", use the Glob tool instead, to find the match more quickly
 - If you are searching for code within a specific file or set of 2-3 files, use the Read tool instead of the Agent tool, to find the match more quickly
 - Other tasks that are not related to the agent descriptions above
-
 
 Usage notes:
 - Always include a short description (3-5 words) summarizing what the agent will do

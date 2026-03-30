@@ -27,10 +27,6 @@ Schreibt Inhalte in das lokale Dateisystem. Überschreibt die Datei, falls sie b
 - Überschreibt den gesamten Inhalt einer vorhandenen Datei
 - Edit zum Bearbeiten vorhandener Dateien bevorzugen; Write nur für neue Dateien oder vollständige Neuschreibungen verwenden
 
-## Bedeutung in cc-viewer
-
-Write-Aufrufe erscheinen im Anfrage-Log als `tool_use` Content Block, dessen `input.content` den vollständigen geschriebenen Inhalt enthält.
-
 ## Originaltext
 
 <textarea readonly>Writes a file to the local filesystem.

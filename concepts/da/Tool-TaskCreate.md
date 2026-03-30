@@ -33,10 +33,6 @@ Opretter en struktureret opgavelistepost til at spore fremskridt, organisere kom
 - Efter oprettelse kan afhængigheder (blocks/blockedBy) sættes via TaskUpdate
 - Før oprettelse bør man tjekke med TaskList, om der findes duplikerede opgaver
 
-## Betydning i cc-viewer
-
-TaskCreate er en intern opgavestyringsoperation i Claude Code og genererer ikke selvstændige API-requests. Men i Chat Mode kan man se det tool_use-block, hvor modellen kalder dette værktøj.
-
 ## Originaltekst
 
 <textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.

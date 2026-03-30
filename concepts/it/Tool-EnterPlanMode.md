@@ -38,10 +38,6 @@ Dopo l'ingresso in modalità pianificazione, Claude Code:
 - Questo strumento richiede il consenso dell'utente per entrare in modalità pianificazione
 - In caso di dubbio sulla necessità di pianificare, preferire la pianificazione — allinearsi in anticipo è meglio che rifare il lavoro
 
-## Significato in cc-viewer
-
-La chiamata EnterPlanMode appare nei log delle richieste come content block `tool_use`. Le richieste successive all'ingresso in modalità pianificazione sono tipicamente dominate da chiamate a strumenti esplorativi (Glob, Grep, Read), fino alla chiamata di ExitPlanMode.
-
 ## Testo originale
 
 <textarea readonly>Use this tool proactively when you're about to start a non-trivial implementation task. Getting user sign-off on your approach before writing code prevents wasted effort and ensures alignment. This tool transitions you into plan mode where you can explore the codebase and design an implementation approach for user approval.

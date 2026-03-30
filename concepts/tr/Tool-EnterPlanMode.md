@@ -38,10 +38,6 @@ Planlama moduna girdikten sonra Claude Code:
 - Bu araç, planlama moduna girmek için kullanıcı onayı gerektirir
 - Planlama gerekip gerekmediğinden emin değilseniz, planlamayı tercih edin — önceden uyum sağlamak yeniden çalışmaktan iyidir
 
-## cc-viewer'da Önemi
-
-EnterPlanMode çağrısı istek günlüğünde `tool_use` content block olarak görünür. Planlama moduna girdikten sonraki istek dizisi genellikle keşif amaçlı araç çağrılarından (Glob, Grep, Read) oluşur ve ExitPlanMode çağrılana kadar devam eder.
-
 ## Orijinal Metin
 
 <textarea readonly>Use this tool proactively when you're about to start a non-trivial implementation task. Getting user sign-off on your approach before writing code prevents wasted effort and ensures alignment. This tool transitions you into plan mode where you can explore the codebase and design an implementation approach for user approval.

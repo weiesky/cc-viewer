@@ -38,10 +38,6 @@ Po wejściu w tryb planowania Claude Code:
 - To narzędzie wymaga zgody użytkownika na wejście w tryb planowania
 - W razie wątpliwości, czy planowanie jest potrzebne, lepiej planować — wcześniejsze uzgodnienie jest lepsze niż przerabianie
 
-## Znaczenie w cc-viewer
-
-Wywołanie EnterPlanMode w logach żądań pojawia się jako blok content `tool_use`. Po wejściu w tryb planowania sekwencja żądań zazwyczaj składa się głównie z eksploracyjnych wywołań narzędzi (Glob, Grep, Read), aż do wywołania ExitPlanMode.
-
 ## Tekst oryginalny
 
 <textarea readonly>Use this tool proactively when you're about to start a non-trivial implementation task. Getting user sign-off on your approach before writing code prevents wasted effort and ensures alignment. This tool transitions you into plan mode where you can explore the codebase and design an implementation approach for user approval.

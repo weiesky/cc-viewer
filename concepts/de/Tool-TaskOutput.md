@@ -29,10 +29,6 @@ Ruft die Ausgabe einer laufenden oder abgeschlossenen Hintergrundaufgabe ab. Gee
 - Die Aufgaben-ID kann über den `/tasks`-Befehl gefunden werden
 - Geeignet für alle Aufgabentypen: Hintergrund-Shells, asynchrone Agents, Remote-Sitzungen
 
-## Bedeutung in cc-viewer
-
-TaskOutput-Aufrufe erzeugen selbst keine API-Anfrage; es handelt sich um eine interne Aufgabenverwaltungsoperation von Claude Code, die nicht im Anfrage-Log erscheint.
-
 ## Originaltext
 
 <textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)

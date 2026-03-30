@@ -27,10 +27,6 @@ Performs search engine queries and returns search results for obtaining up-to-da
 - Use the current year in search queries
 - Only available in the US
 
-## Significance in cc-viewer
-
-WebSearch calls appear in request logs as `tool_use` / `tool_result` content block pairs. The `tool_result` contains the search results list.
-
 ## Original Text
 
 <textarea readonly>

@@ -30,10 +30,6 @@
 - 取得任務後應檢查 `blockedBy` 列表是否為空再開始工作
 - 使用 TaskList 查看所有任務的摘要資訊
 
-## 在 cc-viewer 中的意義
-
-TaskGet 是內部任務管理操作，不產生獨立的 API 請求。
-
 ## 原文
 
 <textarea readonly>Use this tool to retrieve a task by its ID from the task list.

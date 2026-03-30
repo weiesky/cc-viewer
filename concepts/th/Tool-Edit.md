@@ -33,10 +33,6 @@
 - ควรแก้ไขไฟล์ที่มีอยู่มากกว่าสร้างไฟล์ใหม่
 - `new_string` ต้องแตกต่างจาก `old_string`
 
-## ความสำคัญใน cc-viewer
-
-การเรียก Edit ปรากฏในบันทึกคำร้องขอเป็น content block `tool_use` ซึ่ง `input` มี `old_string` และ `new_string` สามารถใช้ติดตามว่าโมเดลทำการแก้ไขอะไรในไฟล์
-
 ## ข้อความต้นฉบับ
 
 <textarea readonly>Performs exact string replacements in files.

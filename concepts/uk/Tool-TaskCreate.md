@@ -33,10 +33,6 @@
 - Після створення можна встановити залежності (blocks/blockedBy) через TaskUpdate
 - Перед створенням слід перевірити наявність дублікатів через TaskList
 
-## Значення в cc-viewer
-
-TaskCreate — це внутрішня операція управління завданнями Claude Code, яка не генерує окремого API-запиту. Проте в Chat Mode можна побачити tool_use block виклику цього інструменту моделлю.
-
 ## Оригінальний текст
 
 <textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.

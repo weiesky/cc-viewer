@@ -42,10 +42,6 @@ Ferramenta poderosa de busca de conteúdo baseada em ripgrep. Suporta expressõe
 - Correspondência multilinha requer `multiline: true`
 - Sempre prefira usar a ferramenta Grep em vez dos comandos `grep` ou `rg` no Bash
 
-## Significado no cc-viewer
-
-As chamadas Grep aparecem nos logs de requisição como pares de content blocks `tool_use` / `tool_result`. O `tool_result` contém os resultados da busca.
-
 ## Texto original
 
 <textarea readonly>A powerful search tool built on ripgrep

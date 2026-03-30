@@ -36,10 +36,6 @@
 - การอ่านไฟล์ที่ไม่มีอยู่จะส่งคืนข้อผิดพลาด (ไม่ทำให้ล่ม)
 - สามารถเรียก Read หลายครั้งพร้อมกันในข้อความเดียว
 
-## ความสำคัญใน cc-viewer
-
-การเรียก Read ปรากฏในบันทึกคำร้องขอเป็นคู่ content block `tool_use` (การเรียก) และ `tool_result` (เนื้อหาที่ส่งคืน) โดย `tool_result` มีเนื้อหาจริงของไฟล์ สามารถใช้วิเคราะห์ว่าโมเดลอ่านไฟล์ใดบ้าง
-
 ## ข้อความต้นฉบับ
 
 <textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.

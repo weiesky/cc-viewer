@@ -34,7 +34,3 @@ cc-viewer compara los cuerpos de dos solicitudes MainAgent consecutivas para det
 - **`model_change`**: El usuario cambió de modelo mediante el comando `/model`
 - **`msg_truncated`**: Una conversación larga activó la gestión de la ventana de contexto, Claude Code truncó los mensajes anteriores
 - **`msg_modified`**: Claude Code editó mensajes históricos (por ejemplo, `/compact` reemplazó mensajes originales con resúmenes comprimidos)
-
-## Visualización en cc-viewer
-
-En la lista de solicitudes, las solicitudes con reconstrucción de caché muestran un indicador de punto rojo en la línea de cache. Al pasar el ratón se muestra un tooltip con la descripción específica de la causa de reconstrucción (soporta 18 idiomas).

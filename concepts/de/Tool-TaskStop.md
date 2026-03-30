@@ -22,10 +22,6 @@ Stoppt eine laufende Hintergrundaufgabe.
 - Gibt Erfolgs- oder Fehlerstatus zurück
 - Der `shell_id`-Parameter ist veraltet; `task_id` verwenden
 
-## Bedeutung in cc-viewer
-
-TaskStop-Aufrufe erzeugen selbst keine API-Anfrage und gehören zu den internen Aufgabenverwaltungsoperationen von Claude Code.
-
 ## Originaltext
 
 <textarea readonly>

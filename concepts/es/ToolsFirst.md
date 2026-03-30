@@ -75,11 +75,3 @@ Las herramientas MCP (Model Context Protocol), al igual que las herramientas int
 | Schemas de herramientas sobredimensionados | Reducir descripciones y enums para disminuir el consumo de tokens del prefijo |
 
 En el panel Context de cc-viewer, las herramientas MCP se muestran junto a las herramientas integradas en la zona Tools, ofreciendo una vista clara del tamaño del Schema de cada herramienta y su contribución al prefijo de caché.
-
-## Diseño del panel de cc-viewer
-
-cc-viewer organiza el panel Context para que coincida con la secuencia de prefijo KV-Cache:
-
-- **Orden de arriba a abajo = orden de concatenación del prefijo de caché**
-- **Los cambios más arriba tienen mayor impacto en la tasa de aciertos del caché**
-- Junto con el panel [KV-Cache-Text](KVCacheContent.md), puedes ver el texto completo del prefijo de caché directamente

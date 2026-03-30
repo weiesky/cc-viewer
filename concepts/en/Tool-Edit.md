@@ -33,10 +33,6 @@ Edits files via exact string replacement. Replaces `old_string` with `new_string
 - Prefer editing existing files over creating new ones
 - `new_string` must differ from `old_string`
 
-## Significance in cc-viewer
-
-Edit calls appear in request logs as `tool_use` content blocks, with `input` containing `old_string` and `new_string`, which can be used to track what modifications the model made to files.
-
 ## Original Text
 
 <textarea readonly>Performs exact string replacements in files.

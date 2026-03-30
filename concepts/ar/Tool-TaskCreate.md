@@ -33,10 +33,6 @@
 - بعد إنشاء المهمة يمكن تعيين التبعيات (blocks/blockedBy) عبر TaskUpdate
 - قبل الإنشاء يجب استدعاء TaskList للتحقق من عدم وجود مهام مكررة
 
-## الأهمية في cc-viewer
-
-TaskCreate هي عملية إدارة مهام داخلية في Claude Code، لا تنتج طلب API مستقل. لكن في Chat Mode يمكن رؤية كتلة tool_use التي يستدعي فيها النموذج هذه الأداة.
-
 ## النص الأصلي
 
 <textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.

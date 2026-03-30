@@ -27,10 +27,6 @@
 - 検索クエリには現在の年を使用すべき
 - 米国でのみ利用可能
 
-## cc-viewer での意義
-
-WebSearch 呼び出しはリクエストログで `tool_use` / `tool_result` content block ペアとして表示されます。`tool_result` には検索結果リストが含まれます。
-
 ## 原文
 
 <textarea readonly>

@@ -1540,6 +1540,8 @@ class AppBase extends React.Component {
         colorBgLayout: '#0a0a0a',
         colorBgElevated: '#1e1e1e',
         colorBorder: '#2a2a2a',
+        controlOutline: 'transparent',
+        controlOutlineWidth: 0,
       },
     };
   }

@@ -22,10 +22,6 @@
 - 返回成功或失败状态
 - `shell_id` 参数已弃用，应使用 `task_id`
 
-## 在 cc-viewer 中的意义
-
-TaskStop 调用本身不产生 API 请求，属于 Claude Code 内部任务管理操作。
-
 ## 原文
 
 <textarea readonly>

@@ -34,7 +34,3 @@ O cc-viewer determina com precisão a causa da reconstrução de cache comparand
 - **`model_change`**: O usuário trocou o modelo através do comando `/model`
 - **`msg_truncated`**: Conversa muito longa acionou o gerenciamento da janela de contexto, o Claude Code truncou mensagens anteriores
 - **`msg_modified`**: O Claude Code editou mensagens históricas (ex: `/compact` substituiu mensagens originais por resumo compactado)
-
-## Exibição no cc-viewer
-
-Na lista de requisições, as requisições com reconstrução de cache exibem um indicador de ponto vermelho na linha de cache. Ao passar o mouse, um tooltip mostra a descrição específica da causa da reconstrução (suporte a 18 idiomas).

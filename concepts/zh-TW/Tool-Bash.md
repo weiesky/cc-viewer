@@ -42,10 +42,6 @@
 - 有依賴關係的命令用 `&&` 鏈接
 - Shell 環境從使用者的 profile（bash 或 zsh）初始化
 
-## 在 cc-viewer 中的意義
-
-Bash 呼叫在請求日誌中表現為 `tool_use`（包含命令）和 `tool_result`（包含輸出）content block 對。命令執行的輸出可用於分析模型的操作行為。
-
 ## 原文
 
 <textarea readonly>Executes a given bash command and returns its output.
@@ -85,7 +81,6 @@ While the Bash tool can do similar things, it’s better to use the built-in too
   - If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.
   - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
-
 
 # Committing changes with git
 

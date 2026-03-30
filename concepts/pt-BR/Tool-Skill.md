@@ -30,10 +30,6 @@ Executa uma skill (habilidade) na conversa principal. Skills são capacidades es
 - Quando a tag `<command-name>` é vista, significa que a skill já foi carregada e deve ser executada diretamente sem chamar esta ferramenta novamente
 - Não mencione uma skill sem realmente invocar a ferramenta
 
-## Significado no cc-viewer
-
-A chamada Skill aparece nos logs de requisição como um content block `tool_use`. O prompt expandido pela skill afeta o system prompt ou conteúdo das mensagens das requisições subsequentes.
-
 ## Texto original
 
 <textarea readonly>Execute a skill within the main conversation

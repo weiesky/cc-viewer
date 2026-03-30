@@ -134,6 +134,14 @@
   padding: 0 4px;
 }
 
+.chatInputHintMobile {
+  flex: 1;
+  font-size: 13px;
+  color: #555;
+  user-select: none;
+  padding: 0 4px;
+}
+
 .sendBtn {
   width: 28px;
   height: 28px;

@@ -39,7 +39,3 @@ Genehmigt oder lehnt den Plan eines Teammitglieds ab: `{ type: "plan_approval_re
 | `TeamDelete` | Team nach Abschluss entfernen |
 | `Agent` | Teammitglieder starten, die dem Team beitreten |
 | `TaskCreate` / `TaskUpdate` / `TaskList` | Gemeinsame Aufgabenliste verwalten |
-
-## Bedeutung in cc-viewer
-
-SendMessage-Aufrufe stellen die Kommunikation zwischen Agenten innerhalb einer Teamsitzung dar. In der Toolnutzungsstatistik weisen hohe SendMessage-Zahlen auf aktive Teamkoordination hin. In der Anfrage-Timeline zeigen SendMessage-Austausche, wie Agenten zusammenarbeiten — Ergebnisse weiterleiten, Hilfe anfordern und Shutdown-Sequenzen koordinieren.

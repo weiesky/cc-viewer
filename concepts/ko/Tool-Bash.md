@@ -42,10 +42,6 @@
 - 의존 관계가 있는 명령은 `&&`로 연결
 - 셸 환경은 사용자의 profile (bash 또는 zsh)에서 초기화
 
-## cc-viewer에서의 의의
-
-Bash 호출은 요청 로그에서 `tool_use` (명령 포함)와 `tool_result` (출력 포함) content block 쌍으로 나타납니다. 명령 실행 출력은 모델의 작업 행동 분석에 사용할 수 있습니다.
-
 ## 원문
 
 <textarea readonly>Executes a given bash command and returns its output.
@@ -85,7 +81,6 @@ While the Bash tool can do similar things, it’s better to use the built-in too
   - If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.
   - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
-
 
 # Committing changes with git
 

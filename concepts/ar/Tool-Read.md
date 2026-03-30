@@ -36,10 +36,6 @@
 - قراءة ملف غير موجود تُرجع خطأ (لا تتعطل)
 - يمكن استدعاء عدة Read بالتوازي في رسالة واحدة
 
-## الأهمية في cc-viewer
-
-يظهر استدعاء Read في سجل الطلبات كزوج من كتل محتوى `tool_use` (الاستدعاء) و`tool_result` (المحتوى المُرجع). يحتوي `tool_result` على المحتوى الفعلي للملف، ويمكن استخدامه لتحليل الملفات التي قرأها النموذج.
-
 ## النص الأصلي
 
 <textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.

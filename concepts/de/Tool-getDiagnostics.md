@@ -27,10 +27,6 @@ Ruft Sprachdiagnoseinformationen von VS Code ab, einschließlich Syntaxfehler, T
 - Nur in VS Code / IDE-Umgebungen verfügbar
 - Dieses Tool gegenüber Bash-Befehlen zur Codeprüfung bevorzugen
 
-## Bedeutung in cc-viewer
-
-getDiagnostics ist ein MCP-Tool und erscheint im `tools`-Array des Anfrage-Logs unter dem Namen `mcp__ide__getDiagnostics`. Aufrufe und Rückgaben folgen dem Standard-`tool_use` / `tool_result`-Muster. Änderungen an MCP-Tools führen zu Änderungen im tools-Array und können einen Cache-Neuaufbau auslösen.
-
 ## Originaltext
 
 <textarea readonly>Get language diagnostics from VS Code</textarea>

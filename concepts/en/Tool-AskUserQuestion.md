@@ -49,10 +49,6 @@ Each `option` object:
 - Options with `markdown` switch to a side-by-side layout
 - In plan mode, used to clarify requirements before finalizing the plan
 
-## Significance in cc-viewer
-
-AskUserQuestion calls appear in request logs as `tool_use` content blocks containing the question and option definitions. The user's answers appear in the message history of subsequent requests.
-
 ## Original Text
 
 <textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:

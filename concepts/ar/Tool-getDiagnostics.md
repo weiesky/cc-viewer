@@ -27,10 +27,6 @@
 - متاحة فقط في بيئة VS Code / IDE
 - يُفضل استخدام هذه الأداة بدلاً من أوامر Bash لفحص مشاكل الكود
 
-## الأهمية في cc-viewer
-
-getDiagnostics هي أداة MCP، تظهر في مصفوفة `tools` في سجل الطلبات باسم `mcp__ide__getDiagnostics`. استدعاؤها ونتائجها تتبع نمط `tool_use` / `tool_result` القياسي. إضافة أو إزالة أدوات MCP تؤدي إلى تغيير مصفوفة tools، مما قد يؤدي إلى إعادة بناء الذاكرة المؤقتة.
-
 ## النص الأصلي
 
 <textarea readonly>Get language diagnostics from VS Code</textarea>

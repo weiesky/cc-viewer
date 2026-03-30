@@ -501,7 +501,7 @@ class DetailPanel extends React.Component {
             {diffBlock}
             <div>
               <div className={styles.bodyHeader}>
-                <Text strong className={styles.bodyLabel}>Body</Text>
+                <Text strong className={styles.bodyLabel}>Body<ConceptHelp doc="BodyFields" /></Text>
                 <Space size="small">
                   {(hasClaudeMd || hasSkills) && (
                     <span className={styles.reminderFilterWrapper}>
@@ -558,7 +558,7 @@ class DetailPanel extends React.Component {
                 </div>
                 <div>
                   <div className={styles.bodyHeader}>
-                    <Text strong className={styles.bodyLabel}>Body</Text>
+                    <Text strong className={styles.bodyLabel}>Body<ConceptHelp doc="ResponseFields" /></Text>
                     <Space size="small">
                       <Button
                         size="small"

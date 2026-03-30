@@ -42,10 +42,6 @@
 - المطابقة متعددة الأسطر تتطلب تعيين `multiline: true`
 - يُفضل دائماً استخدام أداة Grep بدلاً من أمر `grep` أو `rg` في Bash
 
-## الأهمية في cc-viewer
-
-يظهر استدعاء Grep في سجل الطلبات كزوج من كتل محتوى `tool_use` / `tool_result`. يحتوي `tool_result` على نتائج البحث.
-
 ## النص الأصلي
 
 <textarea readonly>A powerful search tool built on ripgrep

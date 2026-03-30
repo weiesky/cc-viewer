@@ -44,10 +44,6 @@ pending → in_progress → completed
 - Vor der Aktualisierung den aktuellen Status über TaskGet abrufen, um veraltete Daten zu vermeiden
 - Nach Abschluss einer Aufgabe TaskList aufrufen, um die nächste verfügbare Aufgabe zu finden
 
-## Bedeutung in cc-viewer
-
-TaskUpdate ist eine interne Aufgabenverwaltungsoperation und erzeugt keine eigenständige API-Anfrage.
-
 ## Originaltext
 
 <textarea readonly>Use this tool to update a task in the task list.

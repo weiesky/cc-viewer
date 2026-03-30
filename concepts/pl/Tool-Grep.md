@@ -42,10 +42,6 @@ Potężne narzędzie do wyszukiwania zawartości oparte na ripgrep. Obsługuje w
 - Dopasowywanie wieloliniowe wymaga ustawienia `multiline: true`
 - Zawsze preferuj narzędzie Grep zamiast poleceń `grep` lub `rg` w Bash
 
-## Znaczenie w cc-viewer
-
-Wywołania Grep w logach żądań pojawiają się jako pary bloków content `tool_use` / `tool_result`. `tool_result` zawiera wyniki wyszukiwania.
-
 ## Tekst oryginalny
 
 <textarea readonly>A powerful search tool built on ripgrep

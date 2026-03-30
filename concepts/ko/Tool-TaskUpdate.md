@@ -44,10 +44,6 @@ pending → in_progress → completed
 - 업데이트 전 TaskGet으로 태스크의 최신 상태를 가져와 오래된 데이터를 피할 것
 - 태스크 완료 후 TaskList를 호출하여 다음 사용 가능한 태스크 검색
 
-## cc-viewer에서의 의의
-
-TaskUpdate는 내부 태스크 관리 작업이며, 독립적인 API 요청을 생성하지 않습니다.
-
 ## 원문
 
 <textarea readonly>Use this tool to update a task in the task list.

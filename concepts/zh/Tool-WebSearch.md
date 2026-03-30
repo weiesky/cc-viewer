@@ -27,10 +27,6 @@
 - 搜索查询中应使用当前年份
 - 仅在美国可用
 
-## 在 cc-viewer 中的意义
-
-WebSearch 调用在请求日志中表现为 `tool_use` / `tool_result` content block 对。`tool_result` 包含搜索结果列表。
-
 ## 原文
 
 <textarea readonly>

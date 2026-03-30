@@ -36,7 +36,3 @@
 | `SendMessage` | チーム内の agent 間通信 |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | 共有タスクリストの管理 |
 | `Agent` | チームに参加するチームメンバーを起動 |
-
-## cc-viewer での意義
-
-TeamCreate 呼び出しはマルチ agent コラボレーションセッション��開始を示します。リクエストリストでは、後続の Agent 呼び出しがチームメンバーを起動し、チームが作業を調整するための SendMessage のやり取りと TaskUpdate 操作が続くのを確認できます。チームパターンは通常、並列 SubAgent リクエストチェーンの集まりを生成します。

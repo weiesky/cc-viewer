@@ -28,10 +28,6 @@
 - ユーザーが明示的に要求しない限り、変数の宣言や kernel 状態の変更を避けるべき
 - kernel 再起動後は状態が失われる
 
-## cc-viewer での意義
-
-executeCode は MCP ツールで、リクエストログの `tools` 配列に `mcp__ide__executeCode` の名前で表示されます。その呼び出しと返却は標準の `tool_use` / `tool_result` パターンに従います。MCP ツールの増減は tools 配列の変化を引き起こし、キャッシュ再構築をトリガーする可能性があります。
-
 ## 原文
 
 <textarea readonly>Execute python code in the Jupyter kernel for the current notebook file.

@@ -39,7 +39,3 @@
 | `TeamDelete` | 完了後にチームを削除 |
 | `Agent` | チームに参加するチームメンバーを起動 |
 | `TaskCreate` / `TaskUpdate` / `TaskList` | 共有タスクリストの管理 |
-
-## cc-viewer での意義
-
-SendMessage 呼び出しはチームセッション内の agent 間通信を表します。ツール使用統計では、SendMessage の回数が多いほどチームの調整が活発であることを示します。リクエストタイムラインでは、SendMessage のやり取りが agent 間の協力の様子を示します — 結果の受け渡し、ヘルプの要請、シャットダウンシーケンスの調整などです。

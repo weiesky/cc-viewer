@@ -27,10 +27,6 @@
 - Écrase tout le contenu du fichier existant
 - Préférer Edit pour éditer des fichiers existants, Write uniquement pour créer de nouveaux fichiers ou des réécritures complètes
 
-## Signification dans cc-viewer
-
-Les appels Write apparaissent dans le journal des requêtes comme des content blocks `tool_use`, dont `input.content` contient le contenu complet écrit.
-
 ## Texte original
 
 <textarea readonly>Writes a file to the local filesystem.

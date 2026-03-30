@@ -49,10 +49,6 @@
 - 有 `markdown` 的选项会切换为左右并排布局
 - 在规划模式中，用于在确定方案前澄清需求
 
-## 在 cc-viewer 中的意义
-
-AskUserQuestion 调用在请求日志中表现为 `tool_use` content block，包含问题和选项定义。用户的回答会出现在后续请求的消息历史中。
-
 ## 原文
 
 <textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:

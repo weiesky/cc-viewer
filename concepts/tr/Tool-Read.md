@@ -36,10 +36,6 @@ Yerel dosya sisteminden dosya içeriğini okur. Metin dosyaları, resimler, PDF 
 - Var olmayan bir dosyayı okumak hata döndürür (çökmez)
 - Tek mesajda birden fazla Read paralel olarak çağrılabilir
 
-## cc-viewer'da Önemi
-
-Read çağrıları istek günlüğünde `tool_use` (çağrı) ve `tool_result` (dönen içerik) content block çifti olarak görünür. `tool_result` dosyanın gerçek içeriğini içerir ve modelin hangi dosyaları okuduğunu analiz etmek için kullanılabilir.
-
 ## Orijinal Metin
 
 <textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.

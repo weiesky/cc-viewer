@@ -27,10 +27,6 @@ Udfører en søgemaskineforespørgsel og returnerer søgeresultater til at hente
 - Brug det aktuelle år i søgeforespørgsler
 - Kun tilgængelig i USA
 
-## Betydning i cc-viewer
-
-WebSearch-kald vises i requestloggen som `tool_use` / `tool_result` content block-par. `tool_result` indeholder listen over søgeresultater.
-
 ## Originaltekst
 
 <textarea readonly>

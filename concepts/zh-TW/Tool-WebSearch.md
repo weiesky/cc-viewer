@@ -27,10 +27,6 @@
 - 搜尋查詢中應使用當前年份
 - 僅在美國可用
 
-## 在 cc-viewer 中的意義
-
-WebSearch 呼叫在請求日誌中表現為 `tool_use` / `tool_result` content block 對。`tool_result` 包含搜尋結果列表。
-
 ## 原文
 
 <textarea readonly>

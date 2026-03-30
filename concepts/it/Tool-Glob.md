@@ -29,10 +29,6 @@ Strumento veloce di corrispondenza per pattern di nomi file, supporta codebase d
 - I risultati sono ordinati per data di modifica
 - Più consigliato rispetto al comando `find` di Bash
 
-## Significato in cc-viewer
-
-Le chiamate Glob appaiono nei log delle richieste come coppie di content block `tool_use` / `tool_result`. Il `tool_result` contiene la lista dei percorsi dei file corrispondenti.
-
 ## Testo originale
 
 <textarea readonly>- Fast file pattern matching tool that works with any codebase size

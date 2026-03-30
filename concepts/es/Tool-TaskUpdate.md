@@ -44,10 +44,6 @@ pending → in_progress → completed
 - Antes de actualizar, se debe obtener el estado más reciente de la tarea mediante TaskGet para evitar datos obsoletos
 - Después de completar una tarea, llamar a TaskList para encontrar la siguiente tarea disponible
 
-## Significado en cc-viewer
-
-TaskUpdate es una operación interna de gestión de tareas, no produce solicitudes API independientes.
-
 ## Texto original
 
 <textarea readonly>Use this tool to update a task in the task list.

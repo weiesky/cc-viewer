@@ -49,10 +49,6 @@ Hvert `option`-objekt:
 - Valgmuligheder med `markdown` skifter til side-om-side-layout
 - I planlægningstilstand bruges det til at afklare krav, før planen fastlægges
 
-## Betydning i cc-viewer
-
-AskUserQuestion-kald vises i requestloggen som `tool_use` content block, der indeholder spørgsmåls- og valgmulighedsdefinitioner. Brugerens svar vises i beskedhistorikken for efterfølgende requests.
-
 ## Originaltekst
 
 <textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:

@@ -42,10 +42,6 @@
 - Для багаторядкового зіставлення потрібно встановити `multiline: true`
 - Завжди надавайте перевагу інструменту Grep замість команд `grep` або `rg` у Bash
 
-## Значення в cc-viewer
-
-Виклики Grep відображаються в журналі запитів як пара content block `tool_use` / `tool_result`. `tool_result` містить результати пошуку.
-
 ## Оригінальний текст
 
 <textarea readonly>A powerful search tool built on ripgrep

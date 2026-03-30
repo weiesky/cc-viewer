@@ -31,10 +31,6 @@ Henter innhold fra en spesifisert URL, konverterer HTML til markdown og behandle
 - Når URL-en omdirigerer til en annen vert, returnerer verktøyet den omdirigerte URL-en, og du må sende en ny forespørsel med den nye URL-en
 - Hvis et MCP-levert web fetch-verktøy er tilgjengelig, foretrekk det
 
-## Betydning i cc-viewer
-
-WebFetch-kall vises i forespørselsloggen som et par av `tool_use` / `tool_result` content blocks. `tool_result` inneholder AI-behandlet sammendrag av nettsideinnholdet.
-
 ## Originaltekst
 
 <textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.

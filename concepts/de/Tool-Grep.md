@@ -42,10 +42,6 @@ Leistungsstarkes Inhaltssuchtool basierend auf ripgrep. Unterstützt reguläre A
 - Mehrzeiliger Abgleich erfordert `multiline: true`
 - Immer das Grep-Tool gegenüber `grep` oder `rg` in Bash bevorzugen
 
-## Bedeutung in cc-viewer
-
-Grep-Aufrufe erscheinen im Anfrage-Log als `tool_use` / `tool_result` Content-Block-Paare. `tool_result` enthält die Suchergebnisse.
-
 ## Originaltext
 
 <textarea readonly>A powerful search tool built on ripgrep

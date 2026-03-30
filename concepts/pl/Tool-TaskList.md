@@ -31,10 +31,6 @@ Podsumowanie każdego zadania:
 - Zadania z `blockedBy` nie mogą być podjęte przed usunięciem zależności
 - Użyj TaskGet, aby uzyskać pełne szczegóły konkretnego zadania
 
-## Znaczenie w cc-viewer
-
-TaskList to wewnętrzna operacja zarządzania zadaniami, nie generuje niezależnego żądania API.
-
 ## Tekst oryginalny
 
 <textarea readonly>Use this tool to list all tasks in the task list.

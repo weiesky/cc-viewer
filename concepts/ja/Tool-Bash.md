@@ -42,10 +42,6 @@
 - 依存関係のあるコマンドは `&&` で連結
 - シェル環境はユーザーの profile（bash または zsh）から初期化
 
-## cc-viewer での意義
-
-Bash 呼び出しはリクエストログで `tool_use`（コマンドを含む）と `tool_result`（出力を含む）の content block ペアとして表示されます。コマンド実行の出力はモデルの操作行動の分析に使用できます。
-
 ## 原文
 
 <textarea readonly>Executes a given bash command and returns its output.
@@ -85,7 +81,6 @@ While the Bash tool can do similar things, it’s better to use the built-in too
   - If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.
   - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
-
 
 # Committing changes with git
 

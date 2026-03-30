@@ -31,10 +31,6 @@
 - `blockedBy` があるタスクは依存が解除されるまで認領できない
 - TaskGet で特定タスクの完全な詳細を取得
 
-## cc-viewer での意義
-
-TaskList は内部タスク管理操作であり、独立した API リクエストは生成しません。
-
 ## 原文
 
 <textarea readonly>Use this tool to list all tasks in the task list.

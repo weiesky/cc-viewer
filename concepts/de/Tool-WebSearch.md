@@ -27,10 +27,6 @@ Führt eine Suchmaschinenabfrage durch und gibt Suchergebnisse zurück, um aktue
 - In Suchanfragen sollte das aktuelle Jahr verwendet werden
 - Nur in den USA verfügbar
 
-## Bedeutung in cc-viewer
-
-WebSearch-Aufrufe erscheinen im Anfrage-Log als `tool_use` / `tool_result` Content-Block-Paare. `tool_result` enthält die Liste der Suchergebnisse.
-
 ## Originaltext
 
 <textarea readonly>

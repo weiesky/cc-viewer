@@ -21,10 +21,3 @@ MainAgent 是 Claude Code 在非 agent team 状态下的主干请求链路。每
 | tools 数组 | 包含全部可用工具 | 通常只包含任务所需的少量工具 |
 | 消息历史 | 累积完整对话上下文 | 仅包含子任务相关消息 |
 | 缓存行为 | 有 prompt caching（5 分钟 TTL） | 通常无缓存或缓存较小 |
-
-## 在 cc-viewer 中的意义
-
-- **缓存追踪**：MainAgent 请求的 prompt caching 状态直接影响费用。通过监控 `cache_creation_input_tokens` 与 `cache_read_input_tokens` 的比例，可以判断缓存命中率
-- **缓存丢失分析**：当 MainAgent 请求出现大量 cache creation（而非 cache read），说明缓存丢失并被重建，cc-viewer 会通过红色圆点指示器标记这些请求
-- **主链路分析**：MainAgent 请求序列反映了用户与 Claude Code 的完整交互过程，是分析会话行为的核心数据
-- **会话重建**：cc-viewer 通过 MainAgent 请求的消息历史重建对话视图（Chat Mode）

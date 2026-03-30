@@ -39,7 +39,3 @@ Aprova ou rejeita o plano de um integrante: `{ type: "plan_approval_response", a
 | `TeamDelete` | Remover equipe ao concluir |
 | `Agent` | Iniciar integrantes que entram na equipe |
 | `TaskCreate` / `TaskUpdate` / `TaskList` | Gerenciar a lista de tarefas compartilhada |
-
-## Significado no cc-viewer
-
-Chamadas SendMessage representam a comunicação entre agents dentro de uma sessão de equipe. Nas estatísticas de uso de ferramentas, contagens altas de SendMessage indicam coordenação de equipe ativa. Na linha do tempo de requisições, as trocas de SendMessage mostram como os agents colaboram — passando resultados, pedindo ajuda e coordenando sequências de encerramento.

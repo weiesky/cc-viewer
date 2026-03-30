@@ -75,11 +75,3 @@ MCP-Tools (Model Context Protocol) werden wie eingebaute Tools ganz vorne im Too
 | Überdimensionierte Tool-Schemas | Beschreibungen und Enums kürzen, um Token-Verbrauch im Präfix zu reduzieren |
 
 Im Context-Panel von cc-viewer werden MCP-Tools neben eingebauten Tools im Tools-Bereich angezeigt, sodass Sie die Schema-Größe jedes Tools und seinen Beitrag zum Cache-Präfix direkt sehen können.
-
-## Layout-Design von cc-viewer
-
-cc-viewer ordnet das Context-Panel so an, dass es der KV-Cache-Präfix-Sequenz entspricht:
-
-- **Reihenfolge von oben nach unten = Reihenfolge der Cache-Präfix-Verkettung**
-- **Änderungen weiter oben haben größeren Einfluss auf die Cache-Trefferquote**
-- In Kombination mit dem [KV-Cache-Text](KVCacheContent.md)-Panel können Sie den vollständigen Cache-Präfix-Text direkt einsehen

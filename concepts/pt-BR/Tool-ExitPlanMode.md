@@ -34,10 +34,6 @@ Cada elemento do array `allowedPrompts`:
 - Não use AskUserQuestion para perguntar "o plano está ok?" antes de chamar esta ferramenta, isso é redundante
 - Não mencione "plano" nas perguntas, pois o usuário não pode ver o conteúdo do plano antes do ExitPlanMode
 
-## Significado no cc-viewer
-
-A chamada ExitPlanMode marca o fim da fase de planejamento. Nos logs de requisição, as requisições após esta chamada tipicamente mudam para operações de implementação (Edit, Write, Bash, etc.).
-
 ## Texto original
 
 <textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.

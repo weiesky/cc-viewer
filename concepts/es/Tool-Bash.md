@@ -42,10 +42,6 @@ Ejecuta comandos shell con configuración de tiempo de espera opcional. El direc
 - Los comandos con dependencias se encadenan con `&&`
 - El entorno shell se inicializa desde el profile del usuario (bash o zsh)
 
-## Significado en cc-viewer
-
-Las llamadas a Bash aparecen en el registro de solicitudes como pares de content blocks `tool_use` (conteniendo el comando) y `tool_result` (conteniendo la salida). La salida de la ejecución del comando puede usarse para analizar el comportamiento operativo del modelo.
-
 ## Texto original
 
 <textarea readonly>Executes a given bash command and returns its output.
@@ -85,7 +81,6 @@ While the Bash tool can do similar things, it’s better to use the built-in too
   - If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.
   - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
-
 
 # Committing changes with git
 

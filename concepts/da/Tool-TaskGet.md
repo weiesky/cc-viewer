@@ -30,10 +30,6 @@ Henter de komplette detaljer for en opgave via dens ID.
 - Efter hentning af opgaven bør man kontrollere, at `blockedBy`-listen er tom, før arbejdet påbegyndes
 - Brug TaskList til at se resuméinformation for alle opgaver
 
-## Betydning i cc-viewer
-
-TaskGet er en intern opgavestyringsoperation og genererer ikke selvstændige API-requests.
-
 ## Originaltekst
 
 <textarea readonly>Use this tool to retrieve a task by its ID from the task list.

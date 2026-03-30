@@ -38,10 +38,6 @@ After entering plan mode, Claude Code will:
 - This tool requires user consent to enter plan mode
 - When unsure whether planning is needed, lean toward planning — aligning upfront is better than rework
 
-## Significance in cc-viewer
-
-EnterPlanMode calls appear in request logs as `tool_use` content blocks. The request sequence after entering plan mode is typically dominated by exploratory tool calls (Glob, Grep, Read) until ExitPlanMode is called.
-
 ## Original Text
 
 <textarea readonly>Use this tool proactively when you're about to start a non-trivial implementation task. Getting user sign-off on your approach before writing code prevents wasted effort and ensures alignment. This tool transitions you into plan mode where you can explore the codebase and design an implementation approach for user approval.

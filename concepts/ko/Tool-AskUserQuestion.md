@@ -49,10 +49,6 @@
 - `markdown`이 있는 선택지는 좌우 병렬 레이아웃으로 전환
 - 계획 모드에서는 방안 확정 전 요구사항 명확화에 사용
 
-## cc-viewer에서의 의의
-
-AskUserQuestion 호출은 요청 로그에서 `tool_use` content block으로 나타나며, 질문과 선택지 정의가 포함됩니다. 사용자의 답변은 후속 요청의 메시지 이력에 표시됩니다.
-
 ## 원문
 
 <textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:

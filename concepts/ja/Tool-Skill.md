@@ -30,10 +30,6 @@
 - `<command-name>` タグが見えた場合はスキルが既にロード済みであり、このツールを再度呼び出さずに直接実行すべき
 - 実際にツールを呼び出さずにスキルに言及しないこと
 
-## cc-viewer での意義
-
-Skill 呼び出しはリクエストログで `tool_use` content block として表示されます。スキル展開後のプロンプトは後続リクエストの system prompt やメッセージ内容に影響します。
-
 ## 原文
 
 <textarea readonly>Execute a skill within the main conversation

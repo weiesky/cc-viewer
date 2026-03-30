@@ -27,10 +27,6 @@ Ejecuta consultas en motores de búsqueda y devuelve resultados de búsqueda par
 - Se debe usar el año actual en las consultas de búsqueda
 - Solo disponible en Estados Unidos
 
-## Significado en cc-viewer
-
-Las llamadas a WebSearch aparecen en el registro de solicitudes como pares de content blocks `tool_use` / `tool_result`. El `tool_result` contiene la lista de resultados de búsqueda.
-
 ## Texto original
 
 <textarea readonly>

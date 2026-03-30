@@ -31,10 +31,6 @@ Her görevin özet bilgileri:
 - `blockedBy` olan görevler bağımlılık çözülmeden sahiplenilemez
 - Belirli bir görevin tam detayları için TaskGet kullanın
 
-## cc-viewer'da Önemi
-
-TaskList dahili görev yönetim işlemidir ve bağımsız API isteği üretmez.
-
 ## Orijinal Metin
 
 <textarea readonly>Use this tool to list all tasks in the task list.

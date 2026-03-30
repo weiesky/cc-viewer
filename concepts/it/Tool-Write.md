@@ -27,10 +27,6 @@ Scrive contenuto nel file system locale. Se il file esiste già, viene sovrascri
 - Sovrascrive l'intero contenuto del file esistente
 - Preferire Edit per modificare file esistenti, Write è solo per creare nuovi file o riscritture complete
 
-## Significato in cc-viewer
-
-Le chiamate Write appaiono nei log delle richieste come content block `tool_use`, il cui `input.content` contiene il contenuto completo scritto.
-
 ## Testo originale
 
 <textarea readonly>Writes a file to the local filesystem.

@@ -29,10 +29,6 @@
 - 任務 ID 可透過 `/tasks` 命令查找
 - 適用於所有任務類型：後台 shell、非同步 agent、遠端會話
 
-## 在 cc-viewer 中的意義
-
-TaskOutput 呼叫本身不產生 API 請求，它是 Claude Code 內部的任務管理操作，不會出現在請求日誌中。
-
 ## 原文
 
 <textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)

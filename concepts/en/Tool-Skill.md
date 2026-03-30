@@ -30,10 +30,6 @@ Executes a skill within the main conversation. Skills are specialized capabiliti
 - When you see a `<command-name>` tag, it means the skill is already loaded — execute it directly rather than calling this tool again
 - Do not mention a skill without actually calling the tool
 
-## Significance in cc-viewer
-
-Skill calls appear in request logs as `tool_use` content blocks. The prompt expanded from the skill affects the system prompt or message content of subsequent requests.
-
 ## Original Text
 
 <textarea readonly>Execute a skill within the main conversation

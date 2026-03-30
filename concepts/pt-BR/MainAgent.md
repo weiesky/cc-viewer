@@ -21,10 +21,3 @@ Condições de identificação (todas devem ser atendidas):
 | array tools | Contém todas as ferramentas disponíveis | Geralmente contém apenas as poucas ferramentas necessárias para a tarefa |
 | Histórico de mensagens | Acumula o contexto completo da conversa | Contém apenas mensagens relacionadas à subtarefa |
 | Comportamento de cache | Possui prompt caching (TTL de 5 minutos) | Geralmente sem cache ou com cache menor |
-
-## Significado no cc-viewer
-
-- **Rastreamento de cache**: O estado do prompt caching das requisições do MainAgent afeta diretamente os custos. Monitorando a proporção entre `cache_creation_input_tokens` e `cache_read_input_tokens`, é possível avaliar a taxa de acerto do cache
-- **Análise de perda de cache**: Quando requisições do MainAgent apresentam grande volume de cache creation (em vez de cache read), isso indica que o cache foi perdido e reconstruído. O cc-viewer marca essas requisições com um indicador de ponto vermelho
-- **Análise da cadeia principal**: A sequência de requisições do MainAgent reflete o processo completo de interação do usuário com o Claude Code, sendo os dados centrais para análise do comportamento da sessão
-- **Reconstrução da sessão**: O cc-viewer reconstrói a visualização da conversa (Chat Mode) através do histórico de mensagens das requisições do MainAgent

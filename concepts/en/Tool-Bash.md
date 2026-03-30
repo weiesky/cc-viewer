@@ -42,10 +42,6 @@ Executes shell commands with optional timeout settings. The working directory pe
 - Dependent commands should be chained with `&&`
 - The shell environment is initialized from the user's profile (bash or zsh)
 
-## Significance in cc-viewer
-
-Bash calls appear in request logs as `tool_use` (containing the command) and `tool_result` (containing the output) content block pairs. The command execution output can be used to analyze the model's operational behavior.
-
 ## Original Text
 
 <textarea readonly>Executes a given bash command and returns its output.
@@ -85,7 +81,6 @@ While the Bash tool can do similar things, it’s better to use the built-in too
   - If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.
   - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
-
 
 # Committing changes with git
 

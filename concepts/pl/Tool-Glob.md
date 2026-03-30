@@ -29,10 +29,6 @@ Szybkie narzędzie do dopasowywania wzorców nazw plików, obsługujące bazy ko
 - Wyniki posortowane według czasu modyfikacji
 - Bardziej zalecane niż polecenie `find` w Bash
 
-## Znaczenie w cc-viewer
-
-Wywołania Glob w logach żądań pojawiają się jako pary bloków content `tool_use` / `tool_result`. `tool_result` zawiera listę pasujących ścieżek plików.
-
 ## Tekst oryginalny
 
 <textarea readonly>- Fast file pattern matching tool that works with any codebase size

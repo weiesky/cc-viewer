@@ -42,10 +42,6 @@ A powerful content search tool based on ripgrep. Supports regular expressions, f
 - Multiline matching requires setting `multiline: true`
 - Always prefer the Grep tool over `grep` or `rg` commands in Bash
 
-## Significance in cc-viewer
-
-Grep calls appear in request logs as `tool_use` / `tool_result` content block pairs. The `tool_result` contains the search results.
-
 ## Original Text
 
 <textarea readonly>A powerful search tool built on ripgrep

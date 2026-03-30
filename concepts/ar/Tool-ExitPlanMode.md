@@ -34,10 +34,6 @@
 - لا تستخدم AskUserQuestion قبل استدعاء هذه الأداة للسؤال "هل الخطة مقبولة"، فهذا تكرار
 - لا تذكر "الخطة" في الأسئلة، لأن المستخدم لا يرى محتوى الخطة قبل ExitPlanMode
 
-## الأهمية في cc-viewer
-
-يمثل استدعاء ExitPlanMode نهاية مرحلة التخطيط. في سجل الطلبات، تتحول الطلبات بعد هذا الاستدعاء عادة إلى عمليات تنفيذية (Edit، Write، Bash إلخ).
-
 ## النص الأصلي
 
 <textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.

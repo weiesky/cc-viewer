@@ -31,10 +31,6 @@ Summary information for each task:
 - Tasks with `blockedBy` cannot be claimed until dependencies are resolved
 - Use TaskGet to get full details of a specific task
 
-## Significance in cc-viewer
-
-TaskList is an internal task management operation and does not produce independent API requests.
-
 ## Original Text
 
 <textarea readonly>Use this tool to list all tasks in the task list.

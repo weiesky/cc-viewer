@@ -75,11 +75,3 @@ MCP（Model Context Protocol）ツールは、組み込みツールと同様にT
 | 過大なTool Schema | descriptionとenumを削減し、プレフィックスのトークン消費を削減 |
 
 cc-viewerのContextパネルでは、MCPツールは組み込みツールと並んでTools領域に表示され、各ツールのSchemaサイズとキャッシュプレフィックスへの寄与を直感的に確認できます。
-
-## cc-viewerのレイアウト設計
-
-cc-viewerはContextパネルをKV-Cacheプレフィックスシーケンスと一致するように配置しています：
-
-- **上から下の順序 = キャッシュプレフィックスの連結順序**
-- **上位の変更ほどキャッシュヒット率への影響が大きい**
-- [KV-Cache-Text](KVCacheContent.md)パネルと組み合わせることで、キャッシュプレフィックスの全テキストを直接確認できます

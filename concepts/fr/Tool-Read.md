@@ -36,10 +36,6 @@ Lit le contenu de fichiers depuis le système de fichiers local. Supporte les fi
 - Lire un fichier inexistant renvoie une erreur (pas de plantage)
 - Plusieurs appels Read peuvent être effectués en parallèle dans un seul message
 
-## Signification dans cc-viewer
-
-Les appels Read apparaissent dans le journal des requêtes comme des paires de content blocks `tool_use` (appel) et `tool_result` (contenu renvoyé). Le `tool_result` contient le contenu réel du fichier, permettant d'analyser quels fichiers le modèle a lus.
-
 ## Texte original
 
 <textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.

@@ -50,10 +50,6 @@ Starter en sub-agent (SubAgent) for å selvstendig håndtere komplekse flerstegs
 - Bruk `run_in_background: true` for langvarige oppgaver som ikke trenger umiddelbart resultat; bruk forgrunnsmodus (standard) når resultatet trengs før man fortsetter
 - `resume`-parameteren gjør det mulig å fortsette en tidligere startet sub-agent-sesjon og bevare den akkumulerte konteksten
 
-## Betydning i cc-viewer
-
-Agent er det nye navnet for Task-verktøyet i nyere Claude Code-versjoner. Agent-kall produserer SubAgent-forespørselskjeder, og i forespørselslisten kan du se uavhengige underforespørselssekvenser atskilt fra MainAgent. SubAgent-forespørsler har vanligvis et forenklet system prompt og færre verktøydefinisjoner, noe som danner en tydelig kontrast til MainAgent. I cc-viewer kan verktøynavnene `Task` eller `Agent` vises avhengig av Claude Code-versjonen som ble brukt i den innspilte samtalen.
-
 ## Originaltekst
 
 <textarea readonly>Launch a new agent to handle complex, multi-step tasks autonomously.
@@ -74,7 +70,6 @@ When NOT to use the Agent tool:
 - If you are searching for a specific class definition like "class Foo", use the Glob tool instead, to find the match more quickly
 - If you are searching for code within a specific file or set of 2-3 files, use the Read tool instead of the Agent tool, to find the match more quickly
 - Other tasks that are not related to the agent descriptions above
-
 
 Usage notes:
 - Always include a short description (3-5 words) summarizing what the agent will do

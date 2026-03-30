@@ -27,10 +27,6 @@
 - 會覆寫已有檔案的全部內容
 - 優先使用 Edit 編輯現有檔案，Write 僅用於建立新檔案或完全重寫
 
-## 在 cc-viewer 中的意義
-
-Write 呼叫在請求日誌中表現為 `tool_use` content block，其 `input.content` 包含寫入的完整內容。
-
 ## 原文
 
 <textarea readonly>Writes a file to the local filesystem.

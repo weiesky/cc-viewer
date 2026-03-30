@@ -33,10 +33,6 @@ Edytuje plik poprzez precyzyjne zastępowanie ciągów znaków. Zastępuje `old_
 - Preferowana jest edycja istniejących plików zamiast tworzenia nowych
 - `new_string` musi różnić się od `old_string`
 
-## Znaczenie w cc-viewer
-
-Wywołanie Edit w logach żądań pojawia się jako blok content `tool_use`, którego `input` zawiera `old_string` i `new_string`, co pozwala śledzić, jakie modyfikacje model wprowadził w pliku.
-
 ## Tekst oryginalny
 
 <textarea readonly>Performs exact string replacements in files.

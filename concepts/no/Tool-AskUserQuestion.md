@@ -49,10 +49,6 @@ Hvert `option`-objekt:
 - Alternativer med `markdown` bytter til side-ved-side-layout
 - I planleggingsmodus brukes dette til å avklare krav før planen fastsettes
 
-## Betydning i cc-viewer
-
-AskUserQuestion-kall vises i forespørselsloggen som `tool_use` content block, som inneholder spørsmåls- og alternativdefinisjoner. Brukerens svar vises i meldingshistorikken for påfølgende forespørsler.
-
 ## Originaltekst
 
 <textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:

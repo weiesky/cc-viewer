@@ -50,10 +50,6 @@
 - 長時間執行且不需要立即結果的任務建議使用 `run_in_background: true`；需要結果後才能繼續時使用前台模式（預設）
 - `resume` 參數允許繼續之前啟動的子 agent 會話，保留其累積的上下文
 
-## 在 cc-viewer 中的意義
-
-Agent 是新版 Claude Code 中 Task 工具的新名稱。Agent 呼叫會產生 SubAgent 請求鏈路，在請求列表中可以看到獨立於 MainAgent 的子請求序列。SubAgent 請求通常具有精簡的 system prompt 和較少的工具定義，與 MainAgent 形成明顯對比。在 cc-viewer 中，根據錄製對話時使用的 Claude Code 版本不同，可能會出現 `Task` 或 `Agent` 兩種工具名稱。
-
 ## 原文
 
 <textarea readonly>Launch a new agent to handle complex, multi-step tasks autonomously.
@@ -74,7 +70,6 @@ When NOT to use the Agent tool:
 - If you are searching for a specific class definition like "class Foo", use the Glob tool instead, to find the match more quickly
 - If you are searching for code within a specific file or set of 2-3 files, use the Read tool instead of the Agent tool, to find the match more quickly
 - Other tasks that are not related to the agent descriptions above
-
 
 Usage notes:
 - Always include a short description (3-5 words) summarizing what the agent will do

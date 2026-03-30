@@ -22,10 +22,6 @@ Stopper en kørende baggrundsopgave.
 - Returnerer en succes- eller fejlstatus
 - Parameteren `shell_id` er forældet, brug `task_id`
 
-## Betydning i cc-viewer
-
-TaskStop-kald genererer ikke API-requests; det er en intern opgavestyringsoperation i Claude Code.
-
 ## Originaltekst
 
 <textarea readonly>

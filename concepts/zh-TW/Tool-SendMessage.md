@@ -39,7 +39,3 @@
 | `TeamDelete` | 完成後刪除團隊 |
 | `Agent` | 生成加入團隊的隊友 |
 | `TaskCreate` / `TaskUpdate` / `TaskList` | 管理共享任務列表 |
-
-## 在 cc-viewer 中的意義
-
-SendMessage 呼叫代表團隊會話中 agent 間的通訊。在工具使用統計中，較高的 SendMessage 次數表明團隊協調活躍。在請求時間線中，SendMessage 交換展示了 agent 之間如何協作——傳遞結果、請求協助以及協調關閉流程。

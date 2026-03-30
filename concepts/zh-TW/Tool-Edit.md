@@ -33,10 +33,6 @@
 - 優先編輯現有檔案，而非建立新檔案
 - `new_string` 必須與 `old_string` 不同
 
-## 在 cc-viewer 中的意義
-
-Edit 呼叫在請求日誌中表現為 `tool_use` content block，其 `input` 包含 `old_string` 和 `new_string`，可用於追蹤模型對檔案做了哪些修改。
-
 ## 原文
 
 <textarea readonly>Performs exact string replacements in files.

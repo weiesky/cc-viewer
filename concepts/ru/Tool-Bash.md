@@ -42,10 +42,6 @@
 - Команды с зависимостями связываются через `&&`
 - Среда shell инициализируется из профиля пользователя (bash или zsh)
 
-## Значение в cc-viewer
-
-Вызовы Bash в логах запросов отображаются как пары блоков content `tool_use` (содержащие команду) и `tool_result` (содержащие вывод). Вывод выполнения команды может использоваться для анализа поведения модели.
-
 ## Оригинальный текст
 
 <textarea readonly>Executes a given bash command and returns its output.
@@ -85,7 +81,6 @@ While the Bash tool can do similar things, it’s better to use the built-in too
   - If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.
   - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
-
 
 # Committing changes with git
 

@@ -22,10 +22,6 @@ Zatrzymuje działające zadanie w tle.
 - Zwraca status powodzenia lub niepowodzenia
 - Parametr `shell_id` jest przestarzały, należy używać `task_id`
 
-## Znaczenie w cc-viewer
-
-Wywołanie TaskStop samo w sobie nie generuje żądania API — jest to wewnętrzna operacja zarządzania zadaniami Claude Code.
-
 ## Tekst oryginalny
 
 <textarea readonly>

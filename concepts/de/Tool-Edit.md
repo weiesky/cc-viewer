@@ -33,10 +33,6 @@ Bearbeitet Dateien durch exakte Zeichenkettenersetzung. Ersetzt `old_string` in 
 - Vorhandene Dateien bearbeiten hat Vorrang vor dem Erstellen neuer Dateien
 - `new_string` muss sich von `old_string` unterscheiden
 
-## Bedeutung in cc-viewer
-
-Edit-Aufrufe erscheinen im Anfrage-Log als `tool_use` Content Block, dessen `input` `old_string` und `new_string` enthält und zur Nachverfolgung der Dateiänderungen des Modells verwendet werden kann.
-
 ## Originaltext
 
 <textarea readonly>Performs exact string replacements in files.

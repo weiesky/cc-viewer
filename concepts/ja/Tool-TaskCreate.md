@@ -33,10 +33,6 @@
 - 作成後に TaskUpdate で依存関係（blocks/blockedBy）を設定可能
 - 作成前に TaskList を呼び出して重複タスクがないか確認すべき
 
-## cc-viewer での意義
-
-TaskCreate は Claude Code 内部のタスク管理操作であり、独立した API リクエストは生成しません。ただし Chat Mode ではモデルがこのツールを呼び出した tool_use block を確認できます。
-
 ## 原文
 
 <textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.

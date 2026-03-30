@@ -27,10 +27,6 @@ Writes content to the local filesystem. Overwrites the file if it already exists
 - Overwrites the entire content of existing files
 - Prefer using Edit for existing files; Write is only for creating new files or complete rewrites
 
-## Significance in cc-viewer
-
-Write calls appear in request logs as `tool_use` content blocks, with `input.content` containing the complete written content.
-
 ## Original Text
 
 <textarea readonly>Writes a file to the local filesystem.

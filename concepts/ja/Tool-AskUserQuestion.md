@@ -49,10 +49,6 @@
 - `markdown` がある選択肢は左右並列レイアウトに切り替わる
 - 計画モードでは、方針確定前の要件明確化に使用
 
-## cc-viewer での意義
-
-AskUserQuestion 呼び出しはリクエストログで `tool_use` content block として表示され、質問と選択肢の定義が含まれます。ユーザーの回答は後続リクエストのメッセージ履歴に表示されます。
-
 ## 原文
 
 <textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:

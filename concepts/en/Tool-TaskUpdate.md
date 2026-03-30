@@ -44,10 +44,6 @@ pending → in_progress → completed
 - Before updating, retrieve the task's latest status via TaskGet to avoid stale data
 - After completing a task, call TaskList to find the next available task
 
-## Significance in cc-viewer
-
-TaskUpdate is an internal task management operation and does not produce independent API requests.
-
 ## Original Text
 
 <textarea readonly>Use this tool to update a task in the task list.

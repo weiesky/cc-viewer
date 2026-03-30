@@ -42,10 +42,6 @@ ripgrep ベースの強力なコンテンツ検索ツール。正規表現、フ
 - 複数行マッチには `multiline: true` の設定が必要
 - Bash 内の `grep` や `rg` コマンドよりも常に Grep ツールを優先使用
 
-## cc-viewer での意義
-
-Grep 呼び出しはリクエストログで `tool_use` / `tool_result` content block ペアとして表示されます。`tool_result` には検索結果が含まれます。
-
 ## 原文
 
 <textarea readonly>A powerful search tool built on ripgrep

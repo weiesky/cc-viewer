@@ -29,10 +29,6 @@ Herhangi bir boyuttaki kod tabanını destekleyen hızlı dosya adı kalıp eşl
 - Sonuçlar değişiklik zamanına göre sıralanır
 - Bash'in `find` komutundan daha çok önerilir
 
-## cc-viewer'da Önemi
-
-Glob çağrıları istek günlüğünde `tool_use` / `tool_result` content block çifti olarak görünür. `tool_result` eşleşen dosya yollarının listesini içerir.
-
 ## Orijinal Metin
 
 <textarea readonly>- Fast file pattern matching tool that works with any codebase size

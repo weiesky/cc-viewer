@@ -42,10 +42,6 @@
 - คำสั่งที่มีการพึ่งพาควรเชื่อมด้วย `&&`
 - สภาพแวดล้อม shell จะถูกเริ่มต้นจาก profile ของผู้ใช้ (bash หรือ zsh)
 
-## ความสำคัญใน cc-viewer
-
-การเรียก Bash ปรากฏในบันทึกคำร้องขอเป็นคู่ content block `tool_use` (มีคำสั่ง) และ `tool_result` (มีผลลัพธ์) ผลลัพธ์การรันคำสั่งสามารถใช้วิเคราะห์พฤติกรรมการดำเนินงานของโมเดลได้
-
 ## ข้อความต้นฉบับ
 
 <textarea readonly>Executes a given bash command and returns its output.
@@ -85,7 +81,6 @@ While the Bash tool can do similar things, it’s better to use the built-in too
   - If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.
   - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
-
 
 # Committing changes with git
 

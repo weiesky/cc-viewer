@@ -27,10 +27,6 @@ Escribe contenido en el sistema de archivos local. Si el archivo ya existe, lo s
 - Sobrescribe todo el contenido del archivo existente
 - Preferir usar Edit para editar archivos existentes, Write solo para crear archivos nuevos o reescrituras completas
 
-## Significado en cc-viewer
-
-Las llamadas a Write aparecen en el registro de solicitudes como content blocks `tool_use`, cuyo `input.content` contiene el contenido completo escrito.
-
 ## Texto original
 
 <textarea readonly>Writes a file to the local filesystem.

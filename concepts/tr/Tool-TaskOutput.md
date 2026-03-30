@@ -29,10 +29,6 @@
 - Görev ID'si `/tasks` komutuyla bulunabilir
 - Tüm görev türleri için geçerlidir: arka plan shell, asenkron agent, uzak oturum
 
-## cc-viewer'da Önemi
-
-TaskOutput çağrısı kendisi API isteği üretmez; Claude Code'un dahili görev yönetim işlemidir ve istek günlüğünde görünmez.
-
 ## Orijinal Metin
 
 <textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)

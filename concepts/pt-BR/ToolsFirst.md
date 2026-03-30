@@ -75,11 +75,3 @@ Ferramentas MCP (Model Context Protocol), assim como ferramentas integradas, sã
 | Schemas de ferramentas superdimensionados | Reduzir descriptions e enums para diminuir o consumo de tokens no prefixo |
 
 No painel Context do cc-viewer, ferramentas MCP são exibidas ao lado das ferramentas integradas na área Tools, oferecendo uma visão clara do tamanho do Schema de cada ferramenta e sua contribuição para o prefixo de cache.
-
-## Design de layout do cc-viewer
-
-O cc-viewer organiza o painel Context para corresponder à sequência de prefixo KV-Cache:
-
-- **Ordem de cima para baixo = ordem de concatenação do prefixo de cache**
-- **Alterações mais acima têm maior impacto na taxa de acerto do cache**
-- Combinado com o painel [KV-Cache-Text](KVCacheContent.md), você pode ver diretamente o texto completo do prefixo de cache

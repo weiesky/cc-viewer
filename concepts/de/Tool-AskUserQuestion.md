@@ -49,10 +49,6 @@ Jedes `option`-Objekt:
 - Optionen mit `markdown` wechseln zu einem nebeneinander angeordneten Layout
 - Im Planungsmodus wird es verwendet, um Anforderungen vor der Festlegung des Plans zu klären
 
-## Bedeutung in cc-viewer
-
-AskUserQuestion-Aufrufe erscheinen im Anfrage-Log als `tool_use` Content Block mit Fragen- und Optionsdefinitionen. Die Antworten des Benutzers erscheinen im Nachrichtenverlauf nachfolgender Anfragen.
-
 ## Originaltext
 
 <textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:

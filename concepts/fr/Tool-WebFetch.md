@@ -31,10 +31,6 @@ Récupère le contenu d'une page web à partir d'une URL spécifiée, convertit 
 - Quand l'URL redirige vers un hôte différent, l'outil renvoie l'URL de redirection et il faut refaire la requête avec la nouvelle URL
 - Si un outil web fetch fourni par MCP est disponible, préférer l'utiliser
 
-## Signification dans cc-viewer
-
-Les appels WebFetch apparaissent dans le journal des requêtes comme des paires de content blocks `tool_use` / `tool_result`. Le `tool_result` contient le résumé du contenu web traité par l'IA.
-
 ## Texte original
 
 <textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.

@@ -36,7 +36,3 @@ Los equipos tienen una correspondencia 1:1 con las listas de tareas.
 | `SendMessage` | Comunicación entre agentes dentro del equipo |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | Gestionar la lista de tareas compartida |
 | `Agent` | Generar compañeros de equipo que se unen al equipo |
-
-## Significado en cc-viewer
-
-Las llamadas a TeamCreate indican el inicio de una sesión de colaboración multi-agent. En la lista de solicitudes, verá las llamadas posteriores a Agent que generan compañeros de equipo, seguidas de intercambios de SendMessage y operaciones de TaskUpdate mientras el equipo coordina el trabajo. El patrón de equipo típicamente produce un grupo de cadenas de solicitudes SubAgent en paralelo.

@@ -28,7 +28,3 @@ TeamDelete はチームワークフローの終了時に呼び出されます:
 | `SendMessage` | チームメンバーとの通信 / シャットダウンリクエストの送信 |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | 共有タスクリストの管理 |
 | `Agent` | チームに参加するチームメンバーを起動 |
-
-## cc-viewer での意義
-
-TeamDelete 呼び出しはマルチ agent コラボレーションセッションの終了を示します。通常、すべての SendMessage シャットダウンのやり取りが完了した後に表示されます。リクエストのタイムラインでは、TeamDelete がチームパターンの最終クリーンアップステップを示します。

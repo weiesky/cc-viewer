@@ -30,10 +30,6 @@ Ruft die vollständigen Details einer Aufgabe anhand ihrer ID ab.
 - Nach dem Abrufen sollte die `blockedBy`-Liste geprüft werden, bevor mit der Arbeit begonnen wird
 - TaskList verwenden, um Zusammenfassungen aller Aufgaben anzuzeigen
 
-## Bedeutung in cc-viewer
-
-TaskGet ist eine interne Aufgabenverwaltungsoperation und erzeugt keine eigenständige API-Anfrage.
-
 ## Originaltext
 
 <textarea readonly>Use this tool to retrieve a task by its ID from the task list.

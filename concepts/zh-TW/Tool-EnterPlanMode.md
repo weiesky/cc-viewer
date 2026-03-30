@@ -38,10 +38,6 @@
 - 此工具需要使用者同意才能進入規劃模式
 - 如果不確定是否需要規劃，傾向於規劃——提前對齊比返工好
 
-## 在 cc-viewer 中的意義
-
-EnterPlanMode 呼叫在請求日誌中表現為 `tool_use` content block。進入規劃模式後的請求序列通常以探索性工具呼叫（Glob、Grep、Read）為主，直到 ExitPlanMode 被呼叫。
-
 ## 原文
 
 <textarea readonly>Use this tool proactively when you're about to start a non-trivial implementation task. Getting user sign-off on your approach before writing code prevents wasted effort and ensures alignment. This tool transitions you into plan mode where you can explore the codebase and design an implementation approach for user approval.

@@ -33,10 +33,6 @@
 - يُفضل تحرير الملفات الموجودة بدلاً من إنشاء ملفات جديدة
 - يجب أن يختلف `new_string` عن `old_string`
 
-## الأهمية في cc-viewer
-
-يظهر استدعاء Edit في سجل الطلبات ككتلة محتوى `tool_use`، حيث يحتوي `input` على `old_string` و`new_string`، ويمكن استخدامه لتتبع التعديلات التي أجراها النموذج على الملفات.
-
 ## النص الأصلي
 
 <textarea readonly>Performs exact string replacements in files.

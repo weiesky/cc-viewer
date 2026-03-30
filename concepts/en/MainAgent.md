@@ -21,10 +21,3 @@ Criteria (all must be met):
 | tools array | Contains all available tools | Usually contains only a few tools needed for the task |
 | Message history | Accumulates full conversation context | Contains only sub-task related messages |
 | Caching behavior | Has prompt caching (5-minute TTL) | Usually no caching or smaller cache |
-
-## Significance in cc-viewer
-
-- **Cache tracking**: The prompt caching status of MainAgent requests directly affects costs. By monitoring the ratio of `cache_creation_input_tokens` to `cache_read_input_tokens`, you can assess cache hit rates
-- **Cache miss analysis**: When MainAgent requests show large amounts of cache creation (rather than cache read), it indicates cache misses and rebuilds. cc-viewer marks these requests with a red dot indicator
-- **Main chain analysis**: The MainAgent request sequence reflects the complete interaction between the user and Claude Code, serving as the core data for analyzing session behavior
-- **Session reconstruction**: cc-viewer reconstructs the conversation view (Chat Mode) from MainAgent request message history

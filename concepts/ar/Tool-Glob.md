@@ -29,10 +29,6 @@
 - النتائج مرتبة حسب وقت التعديل
 - يُفضل استخدامه على أمر `find` في Bash
 
-## الأهمية في cc-viewer
-
-يظهر استدعاء Glob في سجل الطلبات كزوج من كتل محتوى `tool_use` / `tool_result`. يحتوي `tool_result` على قائمة مسارات الملفات المطابقة.
-
 ## النص الأصلي
 
 <textarea readonly>- Fast file pattern matching tool that works with any codebase size

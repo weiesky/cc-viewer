@@ -18,7 +18,3 @@ Sub-agents Search tipicamente aparecem quando:
 1. O agente principal precisa encontrar arquivos, funções ou padrões de código específicos
 2. Uma exploração ampla da base de código é solicitada pelo usuário
 3. O agente está investigando dependências, referências ou padrões de uso
-
-## Significado no cc-viewer
-
-Na linha do tempo de requisições, sub-agents Search aparecem como cadeias de requisições aninhadas sob a requisição do agente pai. Múltiplos sub-agents Search podem executar em paralelo quando o agente explora diferentes partes da base de código simultaneamente. A seção de estatísticas de SubAgent conta quantas operações Search foram realizadas durante uma sessão.

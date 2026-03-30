@@ -34,10 +34,6 @@ Każdy element tablicy `allowedPrompts`:
 - Nie pytaj za pomocą AskUserQuestion „czy plan jest OK" przed wywołaniem tego narzędzia — to byłoby duplikowanie
 - Nie wspominaj o „planie" w pytaniach, ponieważ użytkownik nie widzi treści planu przed ExitPlanMode
 
-## Znaczenie w cc-viewer
-
-Wywołanie ExitPlanMode oznacza koniec fazy planowania. W logach żądań, żądania po tym wywołaniu zazwyczaj przechodzą do operacji wdrożeniowych (Edit, Write, Bash itp.).
-
 ## Tekst oryginalny
 
 <textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.

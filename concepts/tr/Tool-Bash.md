@@ -42,10 +42,6 @@ Shell komutu çalıştırır, isteğe bağlı zaman aşımı ayarını destekler
 - Bağımlılığı olan komutlar `&&` ile zincirlenir
 - Shell ortamı kullanıcının profilinden (bash veya zsh) başlatılır
 
-## cc-viewer'da Önemi
-
-Bash çağrıları istek günlüğünde `tool_use` (komutu içerir) ve `tool_result` (çıktıyı içerir) content block çifti olarak görünür. Komut çalıştırma çıktısı, modelin işlem davranışını analiz etmek için kullanılabilir.
-
 ## Orijinal Metin
 
 <textarea readonly>Executes a given bash command and returns its output.
@@ -85,7 +81,6 @@ While the Bash tool can do similar things, it’s better to use the built-in too
   - If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.
   - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
-
 
 # Committing changes with git
 

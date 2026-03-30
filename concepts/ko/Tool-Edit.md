@@ -33,10 +33,6 @@
 - 새 파일 생성보다 기존 파일 편집을 우선
 - `new_string`은 `old_string`과 달라야 함
 
-## cc-viewer에서의 의의
-
-Edit 호출은 요청 로그에서 `tool_use` content block으로 나타나며, `input`에 `old_string`과 `new_string`이 포함됩니다. 모델이 파일에 대해 수행한 변경 사항을 추적하는 데 사용할 수 있습니다.
-
 ## 원문
 
 <textarea readonly>Performs exact string replacements in files.

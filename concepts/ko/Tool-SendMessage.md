@@ -39,7 +39,3 @@
 | `TeamDelete` | 완료 후 팀 제거 |
 | `Agent` | 팀에 합류하는 팀원 생성 |
 | `TaskCreate` / `TaskUpdate` / `TaskList` | 공유 태스크 목록 관리 |
-
-## cc-viewer에서의 의의
-
-SendMessage 호출은 팀 세션 내 agent 간 통신을 나타냅니다. 도구 사용 통계에서 SendMessage 횟수가 많을수록 팀 조율이 활발함을 의미합니다. 요청 타임라인에서 SendMessage 교환은 agent 간 협업 방식을 보여줍니다 — 결과 전달, 도움 요청, 종료 시퀀스 조율 등입니다.

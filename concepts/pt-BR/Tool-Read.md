@@ -36,10 +36,6 @@ Lê conteúdo de arquivo do sistema de arquivos local. Suporta arquivos de texto
 - Ler um arquivo inexistente retorna erro (não causa crash)
 - Pode chamar múltiplos Read em paralelo em uma única mensagem
 
-## Significado no cc-viewer
-
-As chamadas Read aparecem nos logs de requisição como pares de content blocks `tool_use` (chamada) e `tool_result` (conteúdo retornado). O `tool_result` contém o conteúdo real do arquivo, podendo ser usado para analisar quais arquivos o modelo leu.
-
 ## Texto original
 
 <textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.

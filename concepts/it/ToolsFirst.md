@@ -75,11 +75,3 @@ Gli strumenti MCP (Model Context Protocol), come gli strumenti integrati, sono p
 | Schema di strumenti sovradimensionati | Ridurre descrizioni ed enum per diminuire il consumo di token nel prefisso |
 
 Nel pannello Context di cc-viewer, gli strumenti MCP sono visualizzati accanto agli strumenti integrati nell'area Tools, offrendo una vista chiara delle dimensioni dello Schema di ogni strumento e del suo contributo al prefisso di cache.
-
-## Design del layout di cc-viewer
-
-cc-viewer organizza il pannello Context in modo da corrispondere alla sequenza del prefisso KV-Cache:
-
-- **Ordine dall'alto verso il basso = ordine di concatenazione del prefisso di cache**
-- **Le modifiche più in alto hanno un impatto maggiore sul tasso di successo della cache**
-- Abbinato al pannello [KV-Cache-Text](KVCacheContent.md), è possibile vedere direttamente il testo completo del prefisso di cache

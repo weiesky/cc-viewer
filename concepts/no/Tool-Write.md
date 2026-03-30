@@ -27,10 +27,6 @@ Skriver innhold til det lokale filsystemet. Overskriver filen hvis den allerede 
 - Overskriver alt eksisterende filinnhold
 - Foretrekk Edit for å redigere eksisterende filer, Write brukes kun for å opprette nye filer eller fullstendig omskriving
 
-## Betydning i cc-viewer
-
-Write-kall vises i forespørselsloggen som `tool_use` content block, der `input.content` inneholder det fullstendige skrevne innholdet.
-
 ## Originaltekst
 
 <textarea readonly>Writes a file to the local filesystem.

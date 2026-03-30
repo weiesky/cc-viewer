@@ -42,10 +42,6 @@ Exécute des commandes shell avec une configuration de délai d'attente optionne
 - Les commandes avec des dépendances sont chaînées avec `&&`
 - L'environnement shell est initialisé à partir du profile de l'utilisateur (bash ou zsh)
 
-## Signification dans cc-viewer
-
-Les appels Bash apparaissent dans le journal des requêtes comme des paires de content blocks `tool_use` (contenant la commande) et `tool_result` (contenant la sortie). La sortie de l'exécution de la commande peut être utilisée pour analyser le comportement opérationnel du modèle.
-
 ## Texte original
 
 <textarea readonly>Executes a given bash command and returns its output.
@@ -85,7 +81,6 @@ While the Bash tool can do similar things, it’s better to use the built-in too
   - If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.
   - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
-
 
 # Committing changes with git
 

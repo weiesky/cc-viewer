@@ -38,10 +38,6 @@
 - Этот инструмент требует согласия пользователя для входа в режим планирования
 - Если не уверены, нужно ли планирование, лучше планировать — заблаговременное согласование лучше, чем переделка
 
-## Значение в cc-viewer
-
-Вызов EnterPlanMode в логах запросов отображается как блок content `tool_use`. После входа в режим планирования последовательность запросов обычно состоит преимущественно из исследовательских вызовов инструментов (Glob, Grep, Read), до вызова ExitPlanMode.
-
 ## Оригинальный текст
 
 <textarea readonly>Use this tool proactively when you're about to start a non-trivial implementation task. Getting user sign-off on your approach before writing code prevents wasted effort and ensures alignment. This tool transitions you into plan mode where you can explore the codebase and design an implementation approach for user approval.

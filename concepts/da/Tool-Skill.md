@@ -30,10 +30,6 @@ Udfører en skill i hovedsamtalen. Skills er specialiserede evner, som brugeren 
 - Når du ser et `<command-name>`-tag, betyder det, at skillen er indlæst og skal udføres direkte uden at kalde dette værktøj igen
 - Nævn ikke en skill uden faktisk at have kaldt værktøjet
 
-## Betydning i cc-viewer
-
-Skill-kald vises i requestloggen som `tool_use` content block. Det udvidede prompt fra skillen påvirker system prompten eller beskedindholdet i efterfølgende requests.
-
 ## Originaltekst
 
 <textarea readonly>Execute a skill within the main conversation

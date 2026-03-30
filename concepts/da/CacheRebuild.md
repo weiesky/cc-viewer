@@ -34,7 +34,3 @@ cc-viewer sammenligner body fra to på hinanden følgende MainAgent-requests for
 - **`model_change`**: brugeren skiftede model via `/model`-kommandoen
 - **`msg_truncated`**: en for lang samtale udløste kontekstvindue-styring, Claude Code afkortede tidlige beskeder
 - **`msg_modified`**: Claude Code redigerede historiske beskeder (f.eks. `/compact` erstattede originale beskeder med et komprimeret resumé)
-
-## Visning i cc-viewer
-
-I requestlisten viser requests med cache-genopbygning en rød prikindikator i cache-rækken. Ved mouseover vises en tooltip med den specifikke beskrivelse af genopbygningsårsagen (understøtter 18 sprog).

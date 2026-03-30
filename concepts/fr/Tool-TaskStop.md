@@ -22,10 +22,6 @@ Arrête une tâche en arrière-plan en cours d'exécution.
 - Renvoie un statut de succès ou d'échec
 - Le paramètre `shell_id` est obsolète, utiliser `task_id`
 
-## Signification dans cc-viewer
-
-Les appels TaskStop ne produisent pas de requêtes API en eux-mêmes, ils font partie des opérations internes de gestion de tâches de Claude Code.
-
 ## Texte original
 
 <textarea readonly>

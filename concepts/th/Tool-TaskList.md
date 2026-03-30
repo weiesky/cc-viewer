@@ -31,10 +31,6 @@
 - งานที่มี `blockedBy` ไม่สามารถรับมาทำได้จนกว่าการพึ่งพาจะถูกแก้ไข
 - ใช้ TaskGet เพื่อรับรายละเอียดที่สมบูรณ์ของงานเฉพาะ
 
-## ความสำคัญใน cc-viewer
-
-TaskList เป็นการดำเนินการจัดการงานภายใน ไม่สร้างคำร้องขอ API อิสระ
-
 ## ข้อความต้นฉบับ
 
 <textarea readonly>Use this tool to list all tasks in the task list.

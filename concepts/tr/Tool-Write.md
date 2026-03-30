@@ -27,10 +27,6 @@
 - Mevcut dosyanın tüm içeriğini üzerine yazar
 - Mevcut dosyaları düzenlemek için Edit'i tercih edin; Write yalnızca yeni dosya oluşturma veya tamamen yeniden yazma için kullanılır
 
-## cc-viewer'da Önemi
-
-Write çağrıları istek günlüğünde `tool_use` content block olarak görünür; `input.content` yazılan tam içeriği içerir.
-
 ## Orijinal Metin
 
 <textarea readonly>Writes a file to the local filesystem.

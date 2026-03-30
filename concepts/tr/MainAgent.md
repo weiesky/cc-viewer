@@ -21,10 +21,3 @@ Belirleme koşulları (tümü karşılanmalı):
 | tools dizisi | Tüm kullanılabilir araçları içerir | Genellikle yalnızca görev için gereken az sayıda araç |
 | Mesaj geçmişi | Tam konuşma bağlamını biriktirir | Yalnızca alt görevle ilgili mesajlar |
 | Önbellek davranışı | Prompt caching var (5 dakika TTL) | Genellikle önbellek yok veya küçük önbellek |
-
-## cc-viewer'da Önemi
-
-- **Önbellek takibi**: MainAgent isteklerinin prompt caching durumu maliyeti doğrudan etkiler. `cache_creation_input_tokens` ile `cache_read_input_tokens` oranını izleyerek önbellek isabet oranı belirlenebilir
-- **Önbellek kaybı analizi**: MainAgent isteğinde yoğun cache creation (cache read yerine) görüldüğünde, önbellek kaybedilmiş ve yeniden oluşturulmuş demektir; cc-viewer bu istekleri kırmızı nokta göstergesiyle işaretler
-- **Ana zincir analizi**: MainAgent istek dizisi, kullanıcının Claude Code ile tam etkileşim sürecini yansıtır ve oturum davranışını analiz etmek için temel veridir
-- **Oturum yeniden oluşturma**: cc-viewer, MainAgent isteklerinin mesaj geçmişi aracılığıyla konuşma görünümünü (Chat Mode) yeniden oluşturur

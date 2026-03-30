@@ -27,10 +27,6 @@
 - 검색 쿼리에 현재 연도를 사용해야 함
 - 미국에서만 사용 가능
 
-## cc-viewer에서의 의의
-
-WebSearch 호출은 요청 로그에서 `tool_use` / `tool_result` content block 쌍으로 나타납니다. `tool_result`에는 검색 결과 목록이 포함됩니다.
-
 ## 원문
 
 <textarea readonly>

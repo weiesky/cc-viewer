@@ -36,7 +36,3 @@ Les équipes ont une correspondance 1:1 avec les listes de tâches.
 | `SendMessage` | Communication inter-agents au sein de l'équipe |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | Gérer la liste de tâches partagée |
 | `Agent` | Démarrer des coéquipiers qui rejoignent l'équipe |
-
-## Signification dans cc-viewer
-
-Les appels TeamCreate indiquent le début d'une session de collaboration multi-agent. Dans la liste des requêtes, vous verrez les appels Agent suivants qui démarrent les coéquipiers, suivis d'échanges SendMessage et d'opérations TaskUpdate pendant que l'équipe coordonne le travail. Le modèle d'équipe produit typiquement un ensemble de chaînes de requêtes SubAgent en parallèle.

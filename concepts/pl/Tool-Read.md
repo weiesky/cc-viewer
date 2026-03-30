@@ -36,10 +36,6 @@ Odczytuje zawartość pliku z lokalnego systemu plików. Obsługuje pliki teksto
 - Odczyt nieistniejącego pliku zwróci błąd (nie spowoduje awarii)
 - Można równolegle wywoływać wiele Read w jednej wiadomości
 
-## Znaczenie w cc-viewer
-
-Wywołania Read w logach żądań pojawiają się jako pary bloków content `tool_use` (wywołanie) i `tool_result` (zwrócona zawartość). `tool_result` zawiera faktyczną zawartość pliku, co pozwala analizować, które pliki model odczytał.
-
 ## Tekst oryginalny
 
 <textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.

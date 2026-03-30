@@ -34,10 +34,6 @@
 - 不要在呼叫此工具前用 AskUserQuestion 問「方案是否可以」，這是重複的
 - 不要在問題中提及「計畫」，因為使用者在 ExitPlanMode 之前看不到計畫內容
 
-## 在 cc-viewer 中的意義
-
-ExitPlanMode 呼叫標誌著規劃階段的結束。在請求日誌中，此呼叫之後的請求通常轉為實施性操作（Edit、Write、Bash 等）。
-
 ## 原文
 
 <textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.

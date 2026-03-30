@@ -1,42 +1,49 @@
-# KV-Cache İçeriği
+# KV-Cache Önbellek İçeriği
 
-## KV-Cache Nedir?
+## Prompt Caching Nedir?
 
-KV-Cache (Key-Value Cache), büyük dil modellerinin çıkarım sürecinde temel hızlandırma mekanizmasıdır. Claude ile sohbet ettiğinizde, her istek tam konuşma geçmişini (system prompt + araç tanımları + geçmiş mesajlar) gönderir. Her seferinde her şey sıfırdan hesaplansaydı, bu çok zaman alıcı ve pahalı olurdu.
+Claude ile sohbet ettiğinizde, her API isteği tam konuşma bağlamını (system prompt + araç tanımları + geçmiş mesajlar) gönderir. Anthropic'in prompt caching mekanizması, daha önce hesaplanmış önek içeriğini sunucuda önbelleğe alır; sonraki isteklerde önek aynıysa, önbellek sonuçları doğrudan yeniden kullanılır ve tekrarlanan hesaplamalar atlanır, bu da gecikmeyi ve maliyeti büyük ölçüde azaltır.
 
-KV-Cache'in rolü: zaten hesaplanmış içeriği önbellekte depolamak, böylece bir sonraki istekte yeniden kullanılabilmesi ve tekrarlanan hesaplamaların atlanması.
+cc-viewer'da bu mekanizma "KV-Cache" olarak adlandırılır ve Anthropic API düzeyindeki prompt caching'e karşılık gelir; LLM içindeki transformer dikkat katmanlarının key-value cache'i değildir.
 
 ## Önbellek Nasıl Çalışır
 
 Anthropic'in prompt caching özelliği, önbellek anahtarlarını sabit bir sırayla birleştirir:
 
 ```
-System Prompt → Tools → Messages (cache breakpoint'e kadar)
+Tools → System Prompt → Messages (cache breakpoint'e kadar)
 ```
 
-Bu önek önceki istekle tamamen aynı olduğu sürece, API önbelleği vurur (`cache_read_input_tokens` döndürür), gecikmeyi ve maliyetleri önemli ölçüde azaltır.
+Bu önek, TTL penceresi içindeki herhangi bir önceki istekle tamamen aynı olduğu sürece, API önbelleği vurur (`cache_read_input_tokens` döndürür) ve yeniden hesaplama yapmaz (`cache_creation_input_tokens`).
 
-## "Mevcut KV-Cache İçeriği" Nedir?
+> **Claude Code `cache_control` özelliğine sıkı sıkıya bağlı değildir; sunucu bu özelliklerin bir kısmını kaldırarak iş birliği yapar, ancak yine de önbelleği başarıyla oluşturabilir. Bu nedenle `cache_control` özelliğini görmemek, önbelleğe alınmadığı anlamına gelmez**
+>
+> Claude Code gibi özel istemciler için, Anthropic sunucusu önbellek davranışını belirlemek için istekteki `cache_control` özelliğine tamamen bağımlı değildir. Sunucu, belirli alanlar (system prompt, araç tanımları gibi) için otomatik olarak önbellek politikası uygular; istekte açıkça `cache_control` etiketi olmasa bile. Bu nedenle, istek gövdesinde bu özelliği görmediğinizde şaşırmayın — sunucu arka planda önbellek işlemini zaten tamamlamıştır, sadece bu bilgiyi istemciye açıklamamıştır. Bu, Claude Code ile Anthropic API arasındaki örtük bir anlaşmadır.
 
-cc-viewer'da gösterilen "Mevcut KV-Cache İçeriği", en son MainAgent isteğinden çıkarılan ve önbelleğe alınmış olarak işaretlenen içeriktir. Özellikle şunları içerir:
+## "Mevcut KV-Cache Önbellek İçeriği" Nedir?
 
-- **System Prompt**: Claude Code'un sistem talimatları, CLAUDE.md'niz, proje açıklaması, ortam bilgisi vb. dahil
-- **Messages**: Konuşma geçmişinin önbelleğe alınan kısmı (genellikle daha eski mesajlar)
-- **Tools**: Mevcut araç tanımlarının listesi (Read, Write, Bash, MCP araçları vb.)
+cc-viewer'da gösterilen "Mevcut KV-Cache Önbellek İçeriği", en son MainAgent isteğinden çıkarılan ve önbellek sınırının (cache breakpoint) öncesinde yer alan içeriktir. Özellikle şunları içerir:
 
-Bu içerik, API isteğinin body'sinde `cache_control: { type: "ephemeral" }` aracılığıyla işaretlenerek önbellek sınırını gösterir.
+- **System Prompt**: Claude Code'un sistem talimatları; temel agent talimatları, araç kullanım kuralları, CLAUDE.md proje talimatları, ortam bilgisi vb. dahil
+- **Tools**: Mevcut kullanılabilir araç tanımlarının listesi (Read, Write, Bash, Agent, MCP araçları vb.)
+- **Messages**: Konuşma geçmişinin önbelleğe alınan kısmı (genellikle daha eski mesajlar, son `cache_control` etiketine kadar)
 
 ## Neden Önbellek İçeriğini Görüntülemelisiniz?
 
-1. **Bağlamı Anlama**: Claude'un şu anda "hatırladığı" içeriği bilin ve davranışın beklentilerinize uygun olup olmadığını değerlendirmenize yardımcı olun
-2. **Maliyet Optimizasyonu**: Önbellek isabetleri yeniden hesaplamadan çok daha az maliyetlidir. Önbellek içeriğini görüntülemek, belirli isteklerin neden önbellek yeniden oluşturmayı (cache rebuild) tetiklediğini anlamanıza yardımcı olur
-3. **Konuşma Hata Ayıklama**: Claude'un yanıtı beklentilerinize uymadığında, önbellek içeriğini kontrol ederek system prompt ve geçmiş mesajların doğru olduğunu doğrulayabilirsiniz
-4. **Kullanıcı Talimatı Gezintisi**: Önbellek içeriğindeki kullanıcı mesajları listesi aracılığıyla, konuşmada herhangi bir konuma hızlıca atlayabilirsiniz
-5. **Bağlam Kalitesi İzleme**: Günlük hata ayıklama, Claude Code yapılandırmasını değiştirme veya prompt ayarlama sırasında, KV-Cache-Text merkezi bir bakış açısı sağlar ve temel bağlamın bozulmadığını ya da beklenmedik içerikle kirlenmediğini hızlıca doğrulamanıza yardımcı olur — orijinal mesajları tek tek gözden geçirmeye gerek kalmadan
+1. **Bağlamı Anlama**: Claude'un şu anda "hatırladığı" içeriği bilin ve davranışının beklentilerinize uygun olup olmadığını değerlendirmenize yardımcı olun
+2. **Maliyet Optimizasyonu**: Önbellek isabetlerinin maliyeti yeniden hesaplamadan çok daha düşüktür. Önbellek içeriğini görüntülemek, belirli isteklerin neden önbellek yeniden oluşturmayı (cache rebuild) tetiklediğini anlamanıza yardımcı olur
+3. **Konuşma Hata Ayıklama**: Claude'un yanıtı beklentilerinize uymadığında, önbellek içeriğini kontrol ederek system prompt ve geçmiş mesajların doğru olduğunu onaylayabilirsiniz
+4. **Bağlam Kalitesi İzleme**: Hata ayıklama, yapılandırma değiştirme veya prompt ayarlama sırasında, KV-Cache-Text merkezi bir bakış açısı sağlar ve temel bağlamın bozulmadığını ya da beklenmedik içerikle kirlenmediğini hızlıca doğrulamanıza yardımcı olur — orijinal mesajları tek tek gözden geçirmeye gerek kalmadan
+
+## Çok Katmanlı Önbellek Stratejisi
+
+Claude Code'a karşılık gelen KV-Cache tek bir kopyadan ibaret değildir. Sunucu, Tools ve System Prompt için Messages kısmından bağımsız olarak ayrı önbellekler oluşturur. Bu tasarımın avantajı şudur: mesaj yığınında karışıklık olduğunda (bağlam kısaltma, mesaj değiştirme vb.) yeniden oluşturma gerektiğinde, Tools ve System Prompt önbelleği de birlikte geçersiz olmaz ve tüm yeniden hesaplama önlenir.
+
+Bu, mevcut aşamada sunucu tarafındaki bir optimizasyon stratejisidir — çünkü araç tanımları ve System Prompt normal kullanım sırasında oldukça kararlıdır ve nadiren değişir; bunları ayrı ayrı önbelleğe almak gereksiz yeniden oluşturma maliyetini en aza indirir. Bu nedenle önbelleği gözlemlediğinizde, Tools yeniden oluşturmanın tüm önbelleğin yeniden yüklenmesini gerektirmesi dışında, System Prompt ve Messages hasarının hâlâ miras alınabilir bir önbellek bıraktığını fark edeceksiniz.
 
 ## Önbelleğin Yaşam Döngüsü
 
-- **Oluşturma**: İlk istekte veya önbellek geçersizleşmesinin ardından, API yeni bir önbellek oluşturur (`cache_creation_input_tokens`)
+- **Oluşturma**: İlk istekte veya önbellek sona erdikten sonra, API yeni bir önbellek oluşturur (`cache_creation_input_tokens`)
 - **İsabet**: Sonraki isteklerin öneki tutarlı olduğunda, önbellek yeniden kullanılır (`cache_read_input_tokens`)
 - **Sona Erme**: Önbelleğin 5 dakikalık bir TTL'si (yaşam süresi) vardır ve bu sürenin ardından otomatik olarak sona erer
-- **Yeniden Oluşturma**: System prompt, araç listesi, model veya mesajlar değiştiğinde, önbellek anahtarı eşleşmez ve yeniden oluşturma tetiklenir
+- **Yeniden Oluşturma**: System prompt, araç listesi, model veya mesaj içeriği değiştiğinde, önbellek anahtarı eşleşmez ve ilgili düzeyde önbellek yeniden oluşturma tetiklenir

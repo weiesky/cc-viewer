@@ -44,10 +44,6 @@ pending → in_progress → completed
 - قبل التحديث يجب الحصول على أحدث حالة للمهمة عبر TaskGet لتجنب البيانات القديمة
 - بعد إكمال المهمة استدعِ TaskList للبحث عن المهمة التالية المتاحة
 
-## الأهمية في cc-viewer
-
-TaskUpdate هي عملية إدارة مهام داخلية، لا تنتج طلب API مستقل.
-
 ## النص الأصلي
 
 <textarea readonly>Use this tool to update a task in the task list.

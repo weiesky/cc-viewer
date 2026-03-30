@@ -44,10 +44,6 @@ pending → in_progress → completed
 - Güncellemeden önce TaskGet ile görevin en son durumunu alın, eski verileri önleyin
 - Görevi tamamladıktan sonra TaskList ile bir sonraki mevcut görevi bulun
 
-## cc-viewer'da Önemi
-
-TaskUpdate dahili görev yönetim işlemidir ve bağımsız API isteği üretmez.
-
 ## Orijinal Metin
 
 <textarea readonly>Use this tool to update a task in the task list.

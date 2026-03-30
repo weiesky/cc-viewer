@@ -24,10 +24,6 @@
 - 必须在 git 仓库中，或已配置 WorktreeCreate/WorktreeRemove hooks
 - 不能已经在 worktree 中
 
-## 在 cc-viewer 中的意义
-
-EnterWorktree 调用在请求日志中表现为 `tool_use` content block。它创建隔离的工作环境，后续的文件操作都在 worktree 目录中进行。
-
 ## 原文
 
 <textarea readonly>Use this tool ONLY when the user explicitly asks to work in a worktree. This tool creates an isolated git worktree and switches the current session into it.

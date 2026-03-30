@@ -33,10 +33,6 @@ Crée des entrées structurées dans la liste de tâches pour suivre la progress
 - Après la création de la tâche, les relations de dépendance (blocks/blockedBy) peuvent être établies via TaskUpdate
 - Avant de créer, appeler TaskList pour vérifier s'il y a des tâches en double
 
-## Signification dans cc-viewer
-
-TaskCreate est une opération interne de gestion de tâches de Claude Code, elle ne produit pas de requêtes API indépendantes. Cependant, dans le Chat Mode, on peut voir le bloc tool_use où le modèle appelle cet outil.
-
 ## Texte original
 
 <textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.

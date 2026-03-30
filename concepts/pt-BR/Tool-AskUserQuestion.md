@@ -49,10 +49,6 @@ Cada objeto `option`:
 - Opções com `markdown` alternam para layout lado a lado
 - No modo de planejamento, usado para esclarecer requisitos antes de definir o plano
 
-## Significado no cc-viewer
-
-A chamada AskUserQuestion aparece nos logs de requisição como um content block `tool_use`, contendo a definição das perguntas e opções. As respostas do usuário aparecem no histórico de mensagens das requisições subsequentes.
-
 ## Texto original
 
 <textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:

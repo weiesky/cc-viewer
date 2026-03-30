@@ -29,10 +29,6 @@ Obtém a saída de tarefas em segundo plano em execução ou concluídas. Aplic�
 - O ID da tarefa pode ser encontrado via comando `/tasks`
 - Aplicável a todos os tipos de tarefa: shells em segundo plano, agents assíncronos, sessões remotas
 
-## Significado no cc-viewer
-
-A chamada TaskOutput em si não gera requisições API, é uma operação interna de gerenciamento de tarefas do Claude Code e não aparece nos logs de requisição.
-
 ## Texto original
 
 <textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)

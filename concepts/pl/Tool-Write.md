@@ -27,10 +27,6 @@ Zapisuje zawartość do lokalnego systemu plików. Jeśli plik już istnieje, na
 - Nadpisuje całą zawartość istniejącego pliku
 - Preferuj Edit do edycji istniejących plików, Write służy tylko do tworzenia nowych plików lub całkowitego przepisywania
 
-## Znaczenie w cc-viewer
-
-Wywołanie Write w logach żądań pojawia się jako blok content `tool_use`, którego `input.content` zawiera pełną zapisaną zawartość.
-
 ## Tekst oryginalny
 
 <textarea readonly>Writes a file to the local filesystem.

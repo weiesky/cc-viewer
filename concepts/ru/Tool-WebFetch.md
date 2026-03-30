@@ -31,10 +31,6 @@
 - Когда URL перенаправляет на другой хост, инструмент возвращает URL перенаправления — необходимо повторить запрос с новым URL
 - Если доступен инструмент web fetch, предоставляемый MCP, предпочитайте его использование
 
-## Значение в cc-viewer
-
-Вызовы WebFetch в логах запросов отображаются как пары блоков content `tool_use` / `tool_result`. `tool_result` содержит резюме содержимого страницы, обработанное AI.
-
 ## Оригинальный текст
 
 <textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.

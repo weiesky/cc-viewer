@@ -22,10 +22,6 @@ Ferma un task in background in esecuzione.
 - Restituisce uno stato di successo o fallimento
 - Il parametro `shell_id` è deprecato, usare `task_id`
 
-## Significato in cc-viewer
-
-La chiamata TaskStop non genera richieste API, è un'operazione interna di gestione dei task di Claude Code.
-
 ## Testo originale
 
 <textarea readonly>

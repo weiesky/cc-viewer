@@ -22,10 +22,6 @@ Stops a running background task.
 - Returns a success or failure status
 - The `shell_id` parameter is deprecated; use `task_id` instead
 
-## Significance in cc-viewer
-
-TaskStop calls do not produce API requests themselves; they are internal task management operations in Claude Code.
-
 ## Original Text
 
 <textarea readonly>

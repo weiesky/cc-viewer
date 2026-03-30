@@ -44,10 +44,6 @@ pending → in_progress → completed
 - Før oppdatering bør du hente siste oppgavestatus via TaskGet for å unngå utdaterte data
 - Etter fullføring av oppgave, kall TaskList for å finne neste tilgjengelige oppgave
 
-## Betydning i cc-viewer
-
-TaskUpdate er en intern oppgavebehandlingsoperasjon og produserer ikke en selvstendig API-forespørsel.
-
 ## Originaltekst
 
 <textarea readonly>Use this tool to update a task in the task list.

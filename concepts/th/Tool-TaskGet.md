@@ -30,10 +30,6 @@
 - หลังจากรับงาน ควรตรวจสอบว่ารายการ `blockedBy` ว่างเปล่าก่อนเริ่มทำงาน
 - ใช้ TaskList เพื่อดูข้อมูลสรุปของงานทั้งหมด
 
-## ความสำคัญใน cc-viewer
-
-TaskGet เป็นการดำเนินการจัดการงานภายใน ไม่สร้างคำร้องขอ API อิสระ
-
 ## ข้อความต้นฉบับ
 
 <textarea readonly>Use this tool to retrieve a task by its ID from the task list.

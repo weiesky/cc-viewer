@@ -44,10 +44,6 @@ pending → in_progress → completed
 - 更新前应先通过 TaskGet 获取任务最新状态，避免过期数据
 - 完成任务后调用 TaskList 查找下一个可用任务
 
-## 在 cc-viewer 中的意义
-
-TaskUpdate 是内部任务管理操作，不产生独立的 API 请求。
-
 ## 原文
 
 <textarea readonly>Use this tool to update a task in the task list.

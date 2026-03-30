@@ -33,10 +33,6 @@
 - 建立任務後可透過 TaskUpdate 設定依賴關係（blocks/blockedBy）
 - 建立前應先呼叫 TaskList 檢查是否有重複任務
 
-## 在 cc-viewer 中的意義
-
-TaskCreate 是 Claude Code 內部的任務管理操作，不產生獨立的 API 請求。但在 Chat Mode 中可以看到模型呼叫此工具的 tool_use block。
-
 ## 原文
 
 <textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.

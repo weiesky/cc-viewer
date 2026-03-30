@@ -22,10 +22,6 @@
 - 成功または失敗のステータスを返す
 - `shell_id` パラメータは非推奨、`task_id` を使用すべき
 
-## cc-viewer での意義
-
-TaskStop 呼び出し自体は API リクエストを生成しません。Claude Code 内部のタスク管理操作です。
-
 ## 原文
 
 <textarea readonly>

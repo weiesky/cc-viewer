@@ -33,10 +33,6 @@
 - Надавайте перевагу редагуванню існуючих файлів, а не створенню нових
 - `new_string` повинен відрізнятися від `old_string`
 
-## Значення в cc-viewer
-
-Виклики Edit відображаються в журналі запитів як `tool_use` content block, де `input` містить `old_string` та `new_string`, що дозволяє відстежувати, які зміни модель внесла до файлу.
-
 ## Оригінальний текст
 
 <textarea readonly>Performs exact string replacements in files.

@@ -49,7 +49,3 @@
 - 단일 메시지 내에서 여러 병렬 Task 호출을 발행하여 효율 향상 가능
 - 백그라운드 태스크는 TaskOutput 도구로 진행 상황 확인
 - Explore 타입은 직접 Glob/Grep 호출보다 느리므로, 단순 검색으로 충분하지 않을 때만 사용
-
-## cc-viewer에서의 의의
-
-Task 호출은 SubAgent 요청 체인을 생성하며, 요청 목록에서 MainAgent와 독립된 서브 요청 시퀀스로 확인할 수 있습니다. SubAgent 요청은 보통 간결한 system prompt와 적은 도구 정의를 가지며, MainAgent와 뚜렷한 대비를 이룹니다.

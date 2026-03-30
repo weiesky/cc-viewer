@@ -27,10 +27,6 @@ Henter språkdiagnostikk fra VS Code, inkludert syntaksfeil, typefeil, lint-adva
 - Kun tilgjengelig i VS Code / IDE-miljø
 - Foretrekk dette verktøyet fremfor Bash-kommandoer for å sjekke kodeproblemer
 
-## Betydning i cc-viewer
-
-getDiagnostics er et MCP-verktøy som vises i `tools`-arrayen i forespørselsloggen med navnet `mcp__ide__getDiagnostics`. Kall og resultater følger standard `tool_use` / `tool_result`-mønsteret. Tillegg eller fjerning av MCP-verktøy fører til endringer i tools-arrayen, noe som kan utløse cache-gjenoppbygging.
-
 ## Originaltekst
 
 <textarea readonly>Get language diagnostics from VS Code</textarea>

@@ -33,10 +33,6 @@ Redigerer filer via nøyaktig strengerstatning. Erstatter `old_string` med `new_
 - Foretrekk å redigere eksisterende filer fremfor å opprette nye
 - `new_string` må være forskjellig fra `old_string`
 
-## Betydning i cc-viewer
-
-Edit-kall vises i forespørselsloggen som `tool_use` content block, der `input` inneholder `old_string` og `new_string`, som kan brukes til å spore hvilke endringer modellen har gjort i filer.
-
 ## Originaltekst
 
 <textarea readonly>Performs exact string replacements in files.

@@ -31,10 +31,6 @@
 - المهام التي لديها `blockedBy` لا يمكن المطالبة بها قبل رفع التبعية
 - استخدم TaskGet للحصول على التفاصيل الكاملة لمهمة محددة
 
-## الأهمية في cc-viewer
-
-TaskList هي عملية إدارة مهام داخلية، لا تنتج طلب API مستقل.
-
 ## النص الأصلي
 
 <textarea readonly>Use this tool to list all tasks in the task list.

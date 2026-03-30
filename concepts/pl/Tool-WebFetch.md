@@ -31,10 +31,6 @@ Pobiera zawartość strony internetowej pod podanym URL, konwertuje HTML na mark
 - Gdy URL przekierowuje na inny host, narzędzie zwraca URL przekierowania — należy ponowić żądanie z nowym URL
 - Jeśli dostępne jest narzędzie web fetch dostarczane przez MCP, preferuj jego użycie
 
-## Znaczenie w cc-viewer
-
-Wywołania WebFetch w logach żądań pojawiają się jako pary bloków content `tool_use` / `tool_result`. `tool_result` zawiera podsumowanie zawartości strony przetworzone przez AI.
-
 ## Tekst oryginalny
 
 <textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.

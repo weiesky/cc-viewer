@@ -27,10 +27,6 @@ Wykonuje zapytanie do wyszukiwarki, zwracając wyniki wyszukiwania w celu uzyska
 - W zapytaniach wyszukiwania należy używać bieżącego roku
 - Dostępne tylko w USA
 
-## Znaczenie w cc-viewer
-
-Wywołania WebSearch w logach żądań pojawiają się jako pary bloków content `tool_use` / `tool_result`. `tool_result` zawiera listę wyników wyszukiwania.
-
 ## Tekst oryginalny
 
 <textarea readonly>

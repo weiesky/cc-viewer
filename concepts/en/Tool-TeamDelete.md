@@ -28,7 +28,3 @@ TeamDelete is called at the end of a team workflow:
 | `SendMessage` | Communicate with teammates / send shutdown requests |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | Manage the shared task list |
 | `Agent` | Spawn teammates that join the team |
-
-## Significance in cc-viewer
-
-A TeamDelete call signals the end of a multi-agent collaboration session. It typically appears after all SendMessage shutdown exchanges have completed. In the request timeline, TeamDelete marks the final cleanup step of the team pattern.

@@ -42,10 +42,6 @@
 - 多行匹配需要設定 `multiline: true`
 - 始終優先使用 Grep 工具而非 Bash 中的 `grep` 或 `rg` 命令
 
-## 在 cc-viewer 中的意義
-
-Grep 呼叫在請求日誌中表現為 `tool_use` / `tool_result` content block 對。`tool_result` 包含搜尋結果。
-
 ## 原文
 
 <textarea readonly>A powerful search tool built on ripgrep

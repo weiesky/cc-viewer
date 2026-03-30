@@ -36,10 +36,6 @@ Liest Dateiinhalte aus dem lokalen Dateisystem. Unterstützt Textdateien, Bilder
 - Das Lesen einer nicht existierenden Datei gibt einen Fehler zurück (kein Absturz)
 - Mehrere Read-Aufrufe können in einer einzelnen Nachricht parallel ausgeführt werden
 
-## Bedeutung in cc-viewer
-
-Read-Aufrufe erscheinen im Anfrage-Log als `tool_use` (Aufruf) und `tool_result` (zurückgegebener Inhalt) Content-Block-Paare. `tool_result` enthält den tatsächlichen Dateiinhalt und kann zur Analyse verwendet werden, welche Dateien das Modell gelesen hat.
-
 ## Originaltext
 
 <textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.

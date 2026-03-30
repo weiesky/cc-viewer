@@ -36,10 +36,6 @@
 - Читання неіснуючого файлу поверне помилку (не призведе до збою)
 - Можна паралельно викликати кілька Read в одному повідомленні
 
-## Значення в cc-viewer
-
-Виклики Read відображаються в журналі запитів як пара content block `tool_use` (виклик) та `tool_result` (повернений вміст). `tool_result` містить фактичний вміст файлу і може використовуватися для аналізу того, які файли модель прочитала.
-
 ## Оригінальний текст
 
 <textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.

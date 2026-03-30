@@ -50,10 +50,6 @@
 - 장시간 실행되며 즉시 결과가 필요 없는 태스크에는 `run_in_background: true` 권장; 결과가 필요한 경우 포그라운드(기본값) 사용
 - `resume` 파라미터를 통해 이전에 시작한 서브 agent 세션을 계속할 수 있으며, 축적된 컨텍스트를 유지
 
-## cc-viewer에서의 의의
-
-Agent는 최신 Claude Code 버전에서 Task 도구의 새 이름입니다. Agent 호출은 SubAgent 요청 체인을 생성하며, 요청 목록에서 MainAgent와 독립된 서브 요청 시퀀스로 확인할 수 있습니다. SubAgent 요청은 보통 간결한 system prompt와 적은 도구 정의를 가지며, MainAgent와 뚜렷한 대비를 이룹니다. cc-viewer에서는 기록된 대화에서 사용된 Claude Code 버전에 따라 `Task` 또는 `Agent` 도구 이름이 표시될 수 있습니다.
-
 ## 원문
 
 <textarea readonly>Launch a new agent to handle complex, multi-step tasks autonomously.
@@ -74,7 +70,6 @@ When NOT to use the Agent tool:
 - If you are searching for a specific class definition like "class Foo", use the Glob tool instead, to find the match more quickly
 - If you are searching for code within a specific file or set of 2-3 files, use the Read tool instead of the Agent tool, to find the match more quickly
 - Other tasks that are not related to the agent descriptions above
-
 
 Usage notes:
 - Always include a short description (3-5 words) summarizing what the agent will do

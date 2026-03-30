@@ -31,10 +31,6 @@ Informações resumidas de cada tarefa:
 - Tarefas com `blockedBy` não podem ser reivindicadas até que as dependências sejam resolvidas
 - Use TaskGet para obter detalhes completos de uma tarefa específica
 
-## Significado no cc-viewer
-
-TaskList é uma operação interna de gerenciamento de tarefas, não gera requisições API independentes.
-
 ## Texto original
 
 <textarea readonly>Use this tool to list all tasks in the task list.

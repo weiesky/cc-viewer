@@ -49,10 +49,6 @@
 - ตัวเลือกที่มี `markdown` จะสลับเป็นเลย์เอาต์แบบเคียงข้างกัน
 - ในโหมดวางแผน ใช้เพื่อชี้แจงข้อกำหนดก่อนกำหนดแผน
 
-## ความสำคัญใน cc-viewer
-
-การเรียก AskUserQuestion ปรากฏในบันทึกคำร้องขอเป็น content block `tool_use` ซึ่งมีคำจำกัดความของคำถามและตัวเลือก คำตอบของผู้ใช้จะปรากฏในประวัติข้อความของคำร้องขอถัดไป
-
 ## ข้อความต้นฉบับ
 
 <textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:

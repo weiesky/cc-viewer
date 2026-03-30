@@ -36,7 +36,3 @@ Zespoły mają relację 1:1 z listami zadań.
 | `SendMessage` | Komunikacja między agentami w zespole |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | Zarządzanie wspólną listą zadań |
 | `Agent` | Uruchom członków zespołu dołączających do zespołu |
-
-## Znaczenie w cc-viewer
-
-Wywołania TeamCreate oznaczają początek sesji współpracy wielu agentów. Na liście żądań widać kolejne wywołania Agent uruchamiające członków zespołu, po których następują wymiany SendMessage i operacje TaskUpdate podczas koordynacji pracy zespołu. Wzorzec zespołu zazwyczaj generuje grupę równoległych łańcuchów żądań SubAgent.

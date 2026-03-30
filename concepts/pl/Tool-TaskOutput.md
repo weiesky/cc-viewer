@@ -29,10 +29,6 @@ Pobiera wynik działającego lub zakończonego zadania w tle. Dotyczy powłok w 
 - ID zadania można znaleźć za pomocą polecenia `/tasks`
 - Dotyczy wszystkich typów zadań: powłoki w tle, asynchroniczne agenty, sesje zdalne
 
-## Znaczenie w cc-viewer
-
-Wywołanie TaskOutput samo w sobie nie generuje żądania API — jest to wewnętrzna operacja zarządzania zadaniami Claude Code i nie pojawia się w logach żądań.
-
 ## Tekst oryginalny
 
 <textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)

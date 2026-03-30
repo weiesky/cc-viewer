@@ -24,10 +24,6 @@
 - git リポジトリ内であるか、WorktreeCreate/WorktreeRemove hooks が設定されている必要がある
 - 既に worktree 内にいてはならない
 
-## cc-viewer での意義
-
-EnterWorktree の呼び出しはリクエストログに `tool_use` content block として表示されます。隔離された作業環境を作成し、以降のファイル操作は worktree ディレクトリ内で行われます。
-
 ## 原文
 
 <textarea readonly>Use this tool ONLY when the user explicitly asks to work in a worktree. This tool creates an isolated git worktree and switches the current session into it.

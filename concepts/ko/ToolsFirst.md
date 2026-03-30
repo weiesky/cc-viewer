@@ -75,11 +75,3 @@ MCP(Model Context Protocol) 도구는 내장 도구와 마찬가지로 Tools 영
 | 과대한 Tool Schema | description과 enum을 축소하여 접두사 토큰 소비 절감 |
 
 cc-viewer의 Context 패널에서 MCP 도구는 내장 도구와 함께 Tools 영역에 표시되어, 각 도구의 Schema 크기와 캐시 접두사에 대한 기여를 직관적으로 확인할 수 있습니다.
-
-## cc-viewer의 레이아웃 설계
-
-cc-viewer는 Context 패널을 KV-Cache 프리픽스 시퀀스와 일치하도록 배치합니다:
-
-- **위에서 아래로의 순서 = 캐시 프리픽스 연결 순서**
-- **위쪽의 변경일수록 캐시 히트율에 더 큰 영향을 미침**
-- [KV-Cache-Text](KVCacheContent.md) 패널과 함께 사용하면, 캐시 프리픽스의 전체 텍스트를 직접 확인할 수 있습니다

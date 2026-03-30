@@ -29,10 +29,6 @@
 - 任务 ID 可通过 `/tasks` 命令查找
 - 适用于所有任务类型：后台 shell、异步 agent、远程会话
 
-## 在 cc-viewer 中的意义
-
-TaskOutput 调用本身不产生 API 请求，它是 Claude Code 内部的任务管理操作，不会出现在请求日志中。
-
 ## 原文
 
 <textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)

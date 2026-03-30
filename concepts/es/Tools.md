@@ -65,9 +65,3 @@ A continuación se presenta el índice clasificado de todas las herramientas.
 |-------------|-----------|
 | [getDiagnostics](Tool-getDiagnostics.md) | Obtener información de diagnóstico del lenguaje de VS Code |
 | [executeCode](Tool-executeCode.md) | Ejecutar código en el kernel de Jupyter |
-
-## Significado en cc-viewer
-
-Las llamadas a herramientas son uno de los datos observables más importantes en los registros de solicitudes de Claude Code. El array `tools` de cada solicitud MainAgent define el conjunto de herramientas disponibles para el modelo, mientras que los content blocks `tool_use` / `tool_result` en la respuesta registran las llamadas reales a herramientas y sus retornos. cc-viewer analiza estos datos para reconstruir la cadena completa de llamadas a herramientas en el Chat Mode.
-
-Los cambios en las definiciones de herramientas (como la adición/eliminación de herramientas por conexión/desconexión de MCP server) activan la reconstrucción de caché, ver [CacheRebuild](CacheRebuild.md).

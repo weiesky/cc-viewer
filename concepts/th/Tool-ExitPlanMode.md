@@ -34,10 +34,6 @@
 - อย่าใช้ AskUserQuestion ถามว่า "แผนโอเคไหม?" ก่อนเรียกเครื่องมือนี้ เพราะเป็นการซ้ำซ้อน
 - อย่ากล่าวถึง "แผน" ในคำถาม เพราะผู้ใช้ไม่สามารถเห็นเนื้อหาแผนก่อน ExitPlanMode
 
-## ความสำคัญใน cc-viewer
-
-การเรียก ExitPlanMode เป็นเครื่องหมายสิ้นสุดขั้นตอนการวางแผน ในบันทึกคำร้องขอ คำร้องขอหลังจากการเรียกนี้มักจะเปลี่ยนเป็นการดำเนินงานเชิงปฏิบัติ (Edit, Write, Bash ฯลฯ)
-
 ## ข้อความต้นฉบับ
 
 <textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.

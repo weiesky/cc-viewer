@@ -36,7 +36,3 @@
 | `SendMessage` | 팀 내 agent 간 통신 |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | 공유 태스크 목록 관리 |
 | `Agent` | 팀에 합류하는 팀원 생성 |
-
-## cc-viewer에서의 의의
-
-TeamCreate 호출은 다중 agent 협업 세션의 시작을 나타냅니다. 요청 목록에서 후속 Agent 호출이 팀원을 생성하고, 팀이 작업을 조율하면서 SendMessage 교환과 TaskUpdate 작업이 이어지는 것을 볼 수 있습니다. 팀 패턴은 일반적으로 병렬 SubAgent 요청 체인의 집합을 생성합니다.

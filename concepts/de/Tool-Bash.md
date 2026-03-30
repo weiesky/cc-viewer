@@ -42,10 +42,6 @@ Führt Shell-Befehle aus, mit optionaler Timeout-Einstellung. Das Arbeitsverzeic
 - Abhängige Befehle werden mit `&&` verkettet
 - Die Shell-Umgebung wird aus dem Benutzerprofil (bash oder zsh) initialisiert
 
-## Bedeutung in cc-viewer
-
-Bash-Aufrufe erscheinen im Anfrage-Log als `tool_use` (enthält den Befehl) und `tool_result` (enthält die Ausgabe) Content-Block-Paare. Die Befehlsausgabe kann zur Analyse des Modellverhaltens verwendet werden.
-
 ## Originaltext
 
 <textarea readonly>Executes a given bash command and returns its output.
@@ -85,7 +81,6 @@ While the Bash tool can do similar things, it’s better to use the built-in too
   - If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.
   - If you must poll an external process, use a check command (e.g. `gh run view`) rather than sleeping first.
   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
-
 
 # Committing changes with git
 

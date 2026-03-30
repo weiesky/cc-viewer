@@ -36,10 +36,6 @@ Legge il contenuto di un file dal file system locale. Supporta file di testo, im
 - La lettura di un file inesistente restituisce un errore (non causa un crash)
 - È possibile chiamare più Read in parallelo in un singolo messaggio
 
-## Significato in cc-viewer
-
-Le chiamate Read appaiono nei log delle richieste come coppie di content block `tool_use` (chiamata) e `tool_result` (contenuto restituito). Il `tool_result` contiene il contenuto effettivo del file, utile per analizzare quali file il modello ha letto.
-
 ## Testo originale
 
 <textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.

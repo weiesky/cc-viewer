@@ -31,10 +31,6 @@ Ruft den Inhalt einer angegebenen URL ab, konvertiert HTML in Markdown und verar
 - Wenn die URL zu einem anderen Host weiterleitet, gibt das Tool die Weiterleitungs-URL zurück; eine erneute Anfrage mit der neuen URL ist erforderlich
 - Wenn ein MCP-bereitgestelltes Web-Fetch-Tool verfügbar ist, dieses bevorzugt verwenden
 
-## Bedeutung in cc-viewer
-
-WebFetch-Aufrufe erscheinen im Anfrage-Log als `tool_use` / `tool_result` Content-Block-Paare. `tool_result` enthält die KI-verarbeitete Zusammenfassung des Webseiteninhalts.
-
 ## Originaltext
 
 <textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.

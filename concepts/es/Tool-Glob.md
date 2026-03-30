@@ -29,10 +29,6 @@ Herramienta rápida de coincidencia de patrones de nombres de archivo, compatibl
 - Los resultados se ordenan por tiempo de modificación
 - Se recomienda más que el comando `find` de Bash
 
-## Significado en cc-viewer
-
-Las llamadas a Glob aparecen en el registro de solicitudes como pares de content blocks `tool_use` / `tool_result`. El `tool_result` contiene la lista de rutas de archivos coincidentes.
-
 ## Texto original
 
 <textarea readonly>- Fast file pattern matching tool that works with any codebase size

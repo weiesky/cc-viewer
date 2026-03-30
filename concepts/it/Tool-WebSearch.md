@@ -27,10 +27,6 @@ Esegue una query su motore di ricerca, restituendo risultati di ricerca per otte
 - Usare l'anno corrente nelle query di ricerca
 - Disponibile solo negli Stati Uniti
 
-## Significato in cc-viewer
-
-Le chiamate WebSearch appaiono nei log delle richieste come coppie di content block `tool_use` / `tool_result`. Il `tool_result` contiene la lista dei risultati di ricerca.
-
 ## Testo originale
 
 <textarea readonly>

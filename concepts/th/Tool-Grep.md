@@ -42,10 +42,6 @@
 - การจับคู่หลายบรรทัดต้องตั้งค่า `multiline: true`
 - ควรใช้เครื่องมือ Grep แทนคำสั่ง `grep` หรือ `rg` ใน Bash เสมอ
 
-## ความสำคัญใน cc-viewer
-
-การเรียก Grep ปรากฏในบันทึกคำร้องขอเป็นคู่ content block `tool_use` / `tool_result` โดย `tool_result` มีผลลัพธ์การค้นหา
-
 ## ข้อความต้นฉบับ
 
 <textarea readonly>A powerful search tool built on ripgrep

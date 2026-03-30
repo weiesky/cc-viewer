@@ -18,7 +18,3 @@ Search-Sub-Agents erscheinen typischerweise wenn:
 1. Der Haupt-Agent bestimmte Dateien, Funktionen oder Codemuster finden muss
 2. Eine umfassende Codebase-Erkundung vom Benutzer angefordert wird
 3. Der Agent Abhängigkeiten, Referenzen oder Verwendungsmuster untersucht
-
-## Bedeutung in cc-viewer
-
-In der Anfrage-Zeitleiste erscheinen Search-Sub-Agents als verschachtelte Anfrageketten unter der Anfrage des übergeordneten Agents. Mehrere Search-Sub-Agents können parallel laufen, wenn der Agent verschiedene Teile der Codebase gleichzeitig erkundet. Der SubAgent-Statistikbereich zählt, wie viele Search-Operationen während einer Sitzung durchgeführt wurden.

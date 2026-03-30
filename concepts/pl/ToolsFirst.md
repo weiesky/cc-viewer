@@ -75,11 +75,3 @@ Narzędzia MCP (Model Context Protocol), podobnie jak narzędzia wbudowane, są 
 | Zbyt duże Tool Schemas | Skrócić opisy i enumy, aby zmniejszyć zużycie tokenów prefiksu |
 
 W panelu Context cc-viewer narzędzia MCP są wyświetlane obok narzędzi wbudowanych w obszarze Tools, dając jasny widok na rozmiar Schema każdego narzędzia i jego wkład w prefiks cache'u.
-
-## Projekt układu cc-viewer
-
-cc-viewer rozmieszcza panel kontekstu tak, aby odpowiadał sekwencji prefiksu KV-Cache:
-
-- **Kolejność od góry do dołu = kolejność łączenia prefiksu cache**
-- **Zmiany wyżej mają większy wpływ na współczynnik trafień cache**
-- W połączeniu z panelem [KV-Cache-Text](KVCacheContent.md) możesz bezpośrednio zobaczyć pełny tekst prefiksu cache

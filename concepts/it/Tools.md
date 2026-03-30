@@ -65,9 +65,3 @@ Di seguito l'indice categorizzato di tutti gli strumenti.
 |------|------|
 | [getDiagnostics](Tool-getDiagnostics.md) | Ottieni informazioni diagnostiche del linguaggio da VS Code |
 | [executeCode](Tool-executeCode.md) | Esegui codice nel kernel Jupyter |
-
-## Significato in cc-viewer
-
-Le chiamate agli strumenti sono uno dei dati osservabili più importanti nei log delle richieste di Claude Code. L'array `tools` di ogni richiesta MainAgent definisce il set di strumenti disponibili per il modello, mentre i content block `tool_use` / `tool_result` nella risposta registrano le chiamate effettive e i risultati. cc-viewer analizza questi dati per ricostruire la catena completa delle chiamate agli strumenti nella Chat Mode.
-
-Le modifiche alle definizioni degli strumenti (come l'aggiunta/rimozione di strumenti causata dalla connessione/disconnessione di un MCP server) attivano la ricostruzione della cache, vedi [CacheRebuild](CacheRebuild.md).

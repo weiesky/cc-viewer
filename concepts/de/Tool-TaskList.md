@@ -31,10 +31,6 @@ Zusammenfassung jeder Aufgabe:
 - Aufgaben mit `blockedBy` können erst nach Auflösung der Abhängigkeiten übernommen werden
 - TaskGet verwenden, um vollständige Details einer bestimmten Aufgabe abzurufen
 
-## Bedeutung in cc-viewer
-
-TaskList ist eine interne Aufgabenverwaltungsoperation und erzeugt keine eigenständige API-Anfrage.
-
 ## Originaltext
 
 <textarea readonly>Use this tool to list all tasks in the task list.

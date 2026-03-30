@@ -36,10 +36,6 @@
 - 存在しないファイルの読み取りはエラーを返す（クラッシュしない）
 - 単一メッセージ内で複数の Read を並列呼び出し可能
 
-## cc-viewer での意義
-
-Read 呼び出しはリクエストログで `tool_use`（呼び出し）と `tool_result`（返却内容）の content block ペアとして表示されます。`tool_result` にはファイルの実際の内容が含まれ、モデルがどのファイルを読み取ったかの分析に使用できます。
-
 ## 原文
 
 <textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.

@@ -33,10 +33,6 @@ Edita archivos mediante reemplazo exacto de cadenas. Reemplaza `old_string` por 
 - Preferir editar archivos existentes en lugar de crear nuevos
 - `new_string` debe ser diferente de `old_string`
 
-## Significado en cc-viewer
-
-Las llamadas a Edit aparecen en el registro de solicitudes como content blocks `tool_use`, cuyo `input` contiene `old_string` y `new_string`, lo que permite rastrear qué modificaciones hizo el modelo en los archivos.
-
 ## Texto original
 
 <textarea readonly>Performs exact string replacements in files.

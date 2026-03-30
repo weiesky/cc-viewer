@@ -30,10 +30,6 @@ Kjører en ferdighet (skill) i hovedsamtalen. Ferdigheter er spesialiserte evner
 - Når du ser en `<command-name>`-tag betyr det at ferdigheten allerede er lastet, og du bør kjøre den direkte i stedet for å kalle dette verktøyet igjen
 - Ikke nevn en ferdighet uten å faktisk kalle verktøyet
 
-## Betydning i cc-viewer
-
-Skill-kall vises i forespørselsloggen som `tool_use` content block. Det utvidede ferdighets-promptet påvirker system prompt eller meldingsinnhold i påfølgende forespørsler.
-
 ## Originaltekst
 
 <textarea readonly>Execute a skill within the main conversation

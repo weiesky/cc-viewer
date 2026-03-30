@@ -39,7 +39,3 @@ Bir takım üyesinin planını onaylar veya reddeder: `{ type: "plan_approval_re
 | `TeamDelete` | Tamamlandığında takımı kaldır |
 | `Agent` | Takıma katılan takım üyelerini başlat |
 | `TaskCreate` / `TaskUpdate` / `TaskList` | Paylaşılan görev listesini yönet |
-
-## cc-viewer'da Önemi
-
-SendMessage çağrıları bir takım oturumu içindeki agent'lar arası iletişimi temsil eder. Araç kullanım istatistiklerinde yüksek SendMessage sayısı aktif takım koordinasyonunu gösterir. İstek zaman çizelgesinde SendMessage alışverişleri agent'ların nasıl işbirliği yaptığını gösterir — sonuçları iletme, yardım isteme ve kapatma sıralarını koordine etme.

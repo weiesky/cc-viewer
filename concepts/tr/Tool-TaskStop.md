@@ -22,10 +22,6 @@
 - Başarı veya başarısızlık durumu döndürür
 - `shell_id` parametresi kullanımdan kaldırılmıştır, `task_id` kullanılmalıdır
 
-## cc-viewer'da Önemi
-
-TaskStop çağrısı kendisi API isteği üretmez; Claude Code'un dahili görev yönetim işlemidir.
-
 ## Orijinal Metin
 
 <textarea readonly>

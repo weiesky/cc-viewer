@@ -22,10 +22,6 @@ Para uma tarefa em segundo plano que está em execução.
 - Retorna status de sucesso ou falha
 - O parâmetro `shell_id` está descontinuado, deve-se usar `task_id`
 
-## Significado no cc-viewer
-
-A chamada TaskStop em si não gera requisições API, é uma operação interna de gerenciamento de tarefas do Claude Code.
-
 ## Texto original
 
 <textarea readonly>

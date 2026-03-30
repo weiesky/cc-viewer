@@ -30,10 +30,6 @@ Ejecuta una habilidad (skill) en la conversación principal. Las habilidades son
 - Cuando se ve una etiqueta `<command-name>`, significa que la habilidad ya está cargada y se debe ejecutar directamente en lugar de llamar a esta herramienta nuevamente
 - No mencionar una habilidad sin haber llamado realmente a la herramienta
 
-## Significado en cc-viewer
-
-Las llamadas a Skill aparecen en el registro de solicitudes como content blocks `tool_use`. El prompt expandido de la habilidad afecta el system prompt o el contenido de los mensajes de solicitudes posteriores.
-
 ## Texto original
 
 <textarea readonly>Execute a skill within the main conversation

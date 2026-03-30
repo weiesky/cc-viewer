@@ -50,10 +50,6 @@ Karmaşık çok adımlı görevleri otonom olarak işlemek için bir alt agent (
 - Anında sonuç gerektirmeyen uzun süreli görevler için `run_in_background: true` kullanın; devam etmeden önce sonuç gerektiğinde ön plan modunu (varsayılan) kullanın
 - `resume` parametresi, daha önce başlatılmış bir alt agent oturumunu birikmiş bağlamı koruyarak sürdürmeye olanak tanır
 
-## cc-viewer'da Önemi
-
-Agent, son Claude Code sürümlerinde Task aracının yeni adıdır. Agent çağrıları SubAgent istek zinciri oluşturur; istek listesinde MainAgent'tan bağımsız alt istek dizileri görülebilir. SubAgent istekleri genellikle kısaltılmış system prompt ve daha az araç tanımına sahiptir ve MainAgent ile belirgin bir kontrast oluşturur. cc-viewer'da, kaydedilen konuşmada kullanılan Claude Code sürümüne bağlı olarak `Task` veya `Agent` araç adları görünebilir.
-
 ## Orijinal Metin
 
 <textarea readonly>Launch a new agent to handle complex, multi-step tasks autonomously.
@@ -74,7 +70,6 @@ When NOT to use the Agent tool:
 - If you are searching for a specific class definition like "class Foo", use the Glob tool instead, to find the match more quickly
 - If you are searching for code within a specific file or set of 2-3 files, use the Read tool instead of the Agent tool, to find the match more quickly
 - Other tasks that are not related to the agent descriptions above
-
 
 Usage notes:
 - Always include a short description (3-5 words) summarizing what the agent will do

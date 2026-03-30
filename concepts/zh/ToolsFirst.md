@@ -75,11 +75,3 @@ MCP（Model Context Protocol）工具与内置工具一样，被放在 Tools 区
 | Tool Schema 过大 | 精简 description 和 enum，减少前缀 token 占用 |
 
 在 cc-viewer 的 Context 面板中，MCP 工具与内置工具并列显示在 Tools 区域，可以直观看到每个 tool 的 Schema 体积和对缓存前缀的贡献。
-
-## cc-viewer 的排列设计
-
-cc-viewer 将 Context 面板的排列顺序设计为与 KV-Cache 前缀序列一致：
-
-- **从上到下的顺序 = 缓存前缀的拼接顺序**
-- **越靠上的部分变化，对缓存命中率的打击越大**
-- 配合 [KV-Cache-Text](KVCacheContent.md) 面板，可以直接看到缓存前缀的完整文本

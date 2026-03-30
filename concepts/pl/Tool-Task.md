@@ -49,7 +49,3 @@ Uruchamia sub-agenta (SubAgent) do autonomicznego przetwarzania złożonych wiel
 - Można równolegle uruchamiać wiele wywołań Task w jednej wiadomości dla zwiększenia wydajności
 - Postęp zadań w tle sprawdza się za pomocą narzędzia TaskOutput
 - Typ Explore jest wolniejszy niż bezpośrednie wywołanie Glob/Grep, używaj tylko gdy proste wyszukiwanie nie wystarcza
-
-## Znaczenie w cc-viewer
-
-Wywołanie Task generuje łańcuch żądań SubAgent, widoczny na liście żądań jako niezależna sekwencja podzapytań oddzielona od MainAgent. Żądania SubAgent zazwyczaj mają uproszczony system prompt i mniej definicji narzędzi, co wyraźnie odróżnia je od MainAgent.

@@ -33,10 +33,6 @@
 - Préférer l'édition de fichiers existants plutôt que la création de nouveaux
 - `new_string` doit être différent de `old_string`
 
-## Signification dans cc-viewer
-
-Les appels Edit apparaissent dans le journal des requêtes comme des content blocks `tool_use`, dont l'`input` contient `old_string` et `new_string`, permettant de suivre les modifications apportées par le modèle aux fichiers.
-
 ## Texte original
 
 <textarea readonly>Performs exact string replacements in files.

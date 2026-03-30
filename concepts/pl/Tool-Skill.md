@@ -30,10 +30,6 @@ Wykonuje umiejętność (skill) w głównej rozmowie. Umiejętności to specjali
 - Gdy widoczny jest tag `<command-name>`, oznacza to, że umiejętność została załadowana — należy ją bezpośrednio wykonać, a nie ponownie wywoływać to narzędzie
 - Nie wspominaj o umiejętności bez faktycznego wywołania narzędzia
 
-## Znaczenie w cc-viewer
-
-Wywołanie Skill w logach żądań pojawia się jako blok content `tool_use`. Prompt rozwinięty z umiejętności wpływa na system prompt lub zawartość wiadomości kolejnych żądań.
-
 ## Tekst oryginalny
 
 <textarea readonly>Execute a skill within the main conversation

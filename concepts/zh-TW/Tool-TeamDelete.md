@@ -28,7 +28,3 @@ TeamDelete 在團隊工作流程結束時呼叫：
 | `SendMessage` | 與隊友通訊 / 發送關閉請求 |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | 管理共享任務列表 |
 | `Agent` | 生成加入團隊的隊友 |
-
-## 在 cc-viewer 中的意義
-
-TeamDelete 呼叫標誌著多 agent 協作會話的結束。它通常出現在所有 SendMessage 關閉訊息交換完成之後。在請求時間線中，TeamDelete 標記了團隊模式的最終清理步驟。

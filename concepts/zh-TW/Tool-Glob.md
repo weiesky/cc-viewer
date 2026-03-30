@@ -29,10 +29,6 @@
 - 結果按修改時間排序
 - 比 Bash 的 `find` 命令更推薦使用
 
-## 在 cc-viewer 中的意義
-
-Glob 呼叫在請求日誌中表現為 `tool_use` / `tool_result` content block 對。`tool_result` 包含匹配的檔案路徑列表。
-
 ## 原文
 
 <textarea readonly>- Fast file pattern matching tool that works with any codebase size

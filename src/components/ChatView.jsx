@@ -100,7 +100,7 @@ class ChatView extends React.Component {
       fileExplorerRefresh: 0,
       gitChangesRefresh: 0,
       roleFilterOpen: false,
-      roleFilterHidden: new Set(),
+      roleFilterSelected: new Set(),
       teamModalSession: null,
       mdLightboxSrc: null,
       streamingFading: false,
@@ -1983,25 +1983,27 @@ class ChatView extends React.Component {
     const collectedRoles = Array.from(collectedRolesMap.values());
 
     let filteredItems = allItems;
-    if (this.state.roleFilterHidden.size > 0) {
+    const _selSize = this.state.roleFilterSelected.size;
+    if (_selSize > 0 && _selSize < collectedRoles.length) {
       filteredItems = allItems.filter(item => {
         if (!item || !item.props) return true;
         const role = item.props.role;
-        if (role === 'user' || role === 'plan-prompt') return !this.state.roleFilterHidden.has('user');
-        if (role === 'assistant') return !this.state.roleFilterHidden.has('assistant');
+        if (role === 'user' || role === 'plan-prompt') return this.state.roleFilterSelected.has('user');
+        if (role === 'assistant') return this.state.roleFilterSelected.has('assistant');
         if (role === 'sub-agent-chat') {
           const key = `sub:${item.props.label || 'SubAgent'}`;
-          return !this.state.roleFilterHidden.has(key);
+          return this.state.roleFilterSelected.has(key);
         }
-        return true;
+        return false;
       });
     }
 
-    const filteredLastResponseItems = lastResponseItems && this.state.roleFilterHidden.has('assistant') ? null : lastResponseItems;
+    const _isFiltering = _selSize > 0 && _selSize < collectedRoles.length;
+    const filteredLastResponseItems = lastResponseItems && _isFiltering && !this.state.roleFilterSelected.has('assistant') ? null : lastResponseItems;
 
     const targetIdx = this._scrollTargetIdx;
     const { highlightTs, highlightFading } = this.state;
-    const visible = filteredItems.slice(0, this.state.roleFilterHidden.size > 0 ? filteredItems.length : visibleCount);
+    const visible = filteredItems.slice(0, _isFiltering ? filteredItems.length : visibleCount);
     // 缓存 visible，供 _buildUserPromptNav / _scrollToUserPrompt 使用
     this._currentVisible = visible;
     // H2 fix: highlightIdx 基于 visible 索引（而非 allItems 索引），role filter 时不会偏移
@@ -2033,10 +2035,10 @@ class ChatView extends React.Component {
     ) : null;
 
     const roleFilterBar = this.state.roleFilterOpen && collectedRoles.length > 0 ? (
-      <RoleFilterBar roles={collectedRoles} hiddenRoles={this.state.roleFilterHidden} onToggle={(key) => this.setState(prev => {
-        const next = new Set(prev.roleFilterHidden);
+      <RoleFilterBar roles={collectedRoles} selectedRoles={this.state.roleFilterSelected} onToggle={(key) => this.setState(prev => {
+        const next = new Set(prev.roleFilterSelected);
         next.has(key) ? next.delete(key) : next.add(key);
-        return { roleFilterHidden: next };
+        return { roleFilterSelected: next };
       })} />
     ) : null;
 
@@ -2159,7 +2161,7 @@ class ChatView extends React.Component {
           <div className={styles.navSidebar}>
             <button
               className={this.state.roleFilterOpen ? styles.navBtnActive : styles.navBtn}
-              onClick={() => this.setState(prev => ({ roleFilterOpen: !prev.roleFilterOpen }))}
+              onClick={() => this.setState(prev => prev.roleFilterOpen ? { roleFilterOpen: false, roleFilterSelected: new Set() } : { roleFilterOpen: true })}
               title={t('ui.roleFilter')}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -2181,7 +2183,7 @@ class ChatView extends React.Component {
         <div className={styles.navSidebar}>
           <button
             className={this.state.roleFilterOpen ? styles.navBtnActive : styles.navBtn}
-            onClick={() => this.setState(prev => ({ roleFilterOpen: !prev.roleFilterOpen }))}
+            onClick={() => this.setState(prev => prev.roleFilterOpen ? { roleFilterOpen: false, roleFilterSelected: new Set() } : { roleFilterOpen: true })}
             title={t('ui.roleFilter')}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

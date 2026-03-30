@@ -27,10 +27,6 @@
 - 既存ファイルの全内容を上書きする
 - 既存ファイルの編集には Edit を優先使用し、Write は新規ファイル作成または完全な書き換えにのみ使用
 
-## cc-viewer での意義
-
-Write 呼び出しはリクエストログで `tool_use` content block として表示され、その `input.content` に書き込まれた完全な内容が含まれます。
-
 ## 原文
 
 <textarea readonly>Writes a file to the local filesystem.

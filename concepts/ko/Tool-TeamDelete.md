@@ -28,7 +28,3 @@ TeamDelete는 팀 워크플로우 종료 시 호출됩니다:
 | `SendMessage` | 팀원과의 통신 / 종료 요청 전송 |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | 공유 태스크 목록 관리 |
 | `Agent` | 팀에 합류하는 팀원 생성 |
-
-## cc-viewer에서의 의의
-
-TeamDelete 호출은 다중 agent 협업 세션의 종료를 나타냅니다. 일반적으로 모든 SendMessage 종료 교환이 완료된 후에 나타납니다. 요청 타임라인에서 TeamDelete는 팀 패턴의 최종 정리 단계를 표시합니다.

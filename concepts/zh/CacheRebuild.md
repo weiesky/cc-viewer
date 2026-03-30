@@ -34,7 +34,3 @@ cc-viewer 通过对比前后两个 MainAgent 请求的 body，精确判断缓存
 - **`model_change`**：用户通过 `/model` 命令切换模型
 - **`msg_truncated`**：对话过长触发上下文窗口管理，Claude Code 截断早期消息
 - **`msg_modified`**：Claude Code 对历史消息做了编辑（如 `/compact` 压缩摘要替换原始消息）
-
-## 在 cc-viewer 中的展示
-
-请求列表中，缓存重建的请求会在 cache 行显示红色圆点指示器。鼠标悬停显示 tooltip，包含具体的重建原因描述（支持 18 种语言）。

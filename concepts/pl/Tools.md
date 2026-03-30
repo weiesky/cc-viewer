@@ -65,9 +65,3 @@ Poniżej znajduje się kategoryzowany indeks wszystkich narzędzi.
 |------|------|
 | [getDiagnostics](Tool-getDiagnostics.md) | Pobranie informacji diagnostycznych języka z VS Code |
 | [executeCode](Tool-executeCode.md) | Wykonanie kodu w jądrze Jupyter |
-
-## Znaczenie w cc-viewer
-
-Wywołania narzędzi to jedne z najważniejszych obserwowalnych danych w logach żądań Claude Code. Tablica `tools` każdego żądania MainAgent definiuje zestaw narzędzi dostępnych dla modelu, a bloki content `tool_use` / `tool_result` w odpowiedzi rejestrują faktyczne wywołania narzędzi i ich wyniki. cc-viewer parsuje te dane, aby w Chat Mode odtworzyć pełny łańcuch wywołań narzędzi.
-
-Zmiany w definicjach narzędzi (np. dodanie/usunięcie narzędzi spowodowane połączeniem/rozłączeniem serwera MCP) wyzwalają przebudowę cache, szczegóły w [CacheRebuild](CacheRebuild.md).

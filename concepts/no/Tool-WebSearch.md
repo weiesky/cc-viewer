@@ -27,10 +27,6 @@ Utfører søkemotorforespørsler og returnerer søkeresultater for å hente oppd
 - Bruk gjeldende årstall i søkeforespørsler
 - Kun tilgjengelig i USA
 
-## Betydning i cc-viewer
-
-WebSearch-kall vises i forespørselsloggen som et par av `tool_use` / `tool_result` content blocks. `tool_result` inneholder listen over søkeresultater.
-
 ## Originaltekst
 
 <textarea readonly>

@@ -29,10 +29,6 @@
 - Результати відсортовані за часом модифікації
 - Рекомендується більше, ніж команда `find` у Bash
 
-## Значення в cc-viewer
-
-Виклики Glob відображаються в журналі запитів як пара content block `tool_use` / `tool_result`. `tool_result` містить список шляхів файлів, що збіглися.
-
 ## Оригінальний текст
 
 <textarea readonly>- Fast file pattern matching tool that works with any codebase size

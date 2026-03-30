@@ -65,9 +65,3 @@ Below is a categorized index of all tools.
 |------|---------|
 | [getDiagnostics](Tool-getDiagnostics.md) | Get VS Code language diagnostics |
 | [executeCode](Tool-executeCode.md) | Execute code in a Jupyter kernel |
-
-## Significance in cc-viewer
-
-Tool calls are one of the most important observable data points in Claude Code request logs. The `tools` array in each MainAgent request defines the set of tools available to the model, while the `tool_use` / `tool_result` content blocks in responses record the actual tool invocations and returns. cc-viewer parses this data to reconstruct the complete tool call chain in Chat Mode.
-
-Changes in tool definitions (e.g., tools added/removed due to MCP server connection/disconnection) trigger cache rebuilds. See [CacheRebuild](CacheRebuild.md) for details.

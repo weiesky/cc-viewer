@@ -36,10 +36,6 @@ Reads file contents from the local filesystem. Supports text files, images, PDFs
 - Reading a non-existent file returns an error (does not crash)
 - Multiple Read calls can be issued in parallel within a single message
 
-## Significance in cc-viewer
-
-Read calls appear in request logs as `tool_use` (invocation) and `tool_result` (returned content) content block pairs. The `tool_result` contains the actual file content, which can be used to analyze which files the model read.
-
 ## Original Text
 
 <textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.

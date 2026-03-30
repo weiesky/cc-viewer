@@ -29,10 +29,6 @@
 - ID ของงานสามารถค้นหาได้ผ่านคำสั่ง `/tasks`
 - ใช้ได้กับงานทุกประเภท: shell เบื้องหลัง, agent แบบอะซิงโครนัส, เซสชันระยะไกล
 
-## ความสำคัญใน cc-viewer
-
-การเรียก TaskOutput ไม่สร้างคำร้องขอ API เป็นการดำเนินการจัดการงานภายในของ Claude Code และไม่ปรากฏในบันทึกคำร้องขอ
-
 ## ข้อความต้นฉบับ
 
 <textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)

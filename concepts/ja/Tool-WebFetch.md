@@ -31,10 +31,6 @@
 - URL が異なるホストにリダイレクトされた場合、ツールはリダイレクト URL を返し、新しい URL で再リクエストが必要
 - MCP 提供の web fetch ツールが利用可能な場合、そちらを優先使用
 
-## cc-viewer での意義
-
-WebFetch 呼び出しはリクエストログで `tool_use` / `tool_result` content block ペアとして表示されます。`tool_result` には AI 処理後のウェブページ内容の要約が含まれます。
-
 ## 原文
 
 <textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.

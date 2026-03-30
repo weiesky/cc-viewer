@@ -36,10 +36,6 @@
 - 讀取不存在的檔案會回傳錯誤（不會當機）
 - 可以在單條訊息中並行呼叫多個 Read
 
-## 在 cc-viewer 中的意義
-
-Read 呼叫在請求日誌中表現為 `tool_use`（呼叫）和 `tool_result`（回傳內容）content block 對。`tool_result` 中包含檔案的實際內容，可用於分析模型讀取了哪些檔案。
-
 ## 原文
 
 <textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.

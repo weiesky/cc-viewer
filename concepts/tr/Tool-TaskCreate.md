@@ -33,10 +33,6 @@
 - Oluşturulduktan sonra TaskUpdate ile bağımlılık ilişkileri (blocks/blockedBy) ayarlanabilir
 - Oluşturmadan önce TaskList ile mükerrer görev olup olmadığı kontrol edilmelidir
 
-## cc-viewer'da Önemi
-
-TaskCreate, Claude Code'un dahili görev yönetim işlemidir ve bağımsız API isteği üretmez. Ancak Chat Mode'da modelin bu aracı çağırdığı tool_use block görülebilir.
-
 ## Orijinal Metin
 
 <textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.

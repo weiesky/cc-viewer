@@ -31,10 +31,6 @@
 - เมื่อ URL เปลี่ยนเส้นทางไปยังโฮสต์อื่น เครื่องมือจะส่งคืน URL เปลี่ยนเส้นทาง ต้องร้องขอใหม่ด้วย URL ใหม่
 - หากมีเครื่องมือ web fetch จาก MCP ที่ใช้ได้ ให้ใช้เครื่องมือนั้นแทน
 
-## ความสำคัญใน cc-viewer
-
-การเรียก WebFetch ปรากฏในบันทึกคำร้องขอเป็นคู่ content block `tool_use` / `tool_result` โดย `tool_result` มีสรุปเนื้อหาเว็บเพจที่ประมวลผลโดย AI
-
 ## ข้อความต้นฉบับ
 
 <textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.

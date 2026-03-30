@@ -65,9 +65,3 @@ Aşağıda tüm araçların kategorize edilmiş dizini bulunmaktadır.
 |------|----------------|
 | [getDiagnostics](Tool-getDiagnostics.md) | VS Code dil tanılama bilgilerini alma |
 | [executeCode](Tool-executeCode.md) | Jupyter kernel'da kod çalıştırma |
-
-## cc-viewer'da Önemi
-
-Araç çağrıları, Claude Code istek günlüklerindeki en temel gözlemlenebilir verilerden biridir. Her MainAgent isteğinin `tools` dizisi modelin kullanabileceği araç setini tanımlar ve yanıttaki `tool_use` / `tool_result` content block'ları gerçek araç çağrılarını ve dönüşlerini kaydeder. cc-viewer bu verileri ayrıştırarak Chat Mode'da tam araç çağrı zincirini yeniden oluşturur.
-
-Araç tanımlarındaki değişiklikler (MCP server bağlantı/kopma nedeniyle araç ekleme/çıkarma gibi) önbellek yeniden oluşturmayı tetikler, detaylar için [CacheRebuild](CacheRebuild.md) belgesine bakın.

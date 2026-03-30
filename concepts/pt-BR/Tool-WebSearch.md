@@ -27,10 +27,6 @@ Executa consultas em mecanismo de busca, retornando resultados de pesquisa para 
 - A consulta de busca deve usar o ano atual
 - Disponível apenas nos EUA
 
-## Significado no cc-viewer
-
-As chamadas WebSearch aparecem nos logs de requisição como pares de content blocks `tool_use` / `tool_result`. O `tool_result` contém a lista de resultados da busca.
-
 ## Texto original
 
 <textarea readonly>

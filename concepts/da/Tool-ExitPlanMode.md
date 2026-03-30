@@ -34,10 +34,6 @@ Hvert element i `allowedPrompts`-arrayet:
 - Brug ikke AskUserQuestion til at spørge "er planen OK?" før du kalder dette værktøj, det er overflødigt
 - Nævn ikke "planen" i spørgsmål, da brugeren ikke kan se planindholdet før ExitPlanMode
 
-## Betydning i cc-viewer
-
-ExitPlanMode-kaldet markerer afslutningen af planlægningsfasen. I requestloggen skifter requests efter dette kald typisk til implementeringsoperationer (Edit, Write, Bash osv.).
-
 ## Originaltekst
 
 <textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.

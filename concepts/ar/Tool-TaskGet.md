@@ -30,10 +30,6 @@
 - بعد الحصول على المهمة يجب التحقق من أن قائمة `blockedBy` فارغة قبل بدء العمل
 - استخدم TaskList لعرض معلومات ملخصة لجميع المهام
 
-## الأهمية في cc-viewer
-
-TaskGet هي عملية إدارة مهام داخلية، لا تنتج طلب API مستقل.
-
 ## النص الأصلي
 
 <textarea readonly>Use this tool to retrieve a task by its ID from the task list.

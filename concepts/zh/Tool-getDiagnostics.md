@@ -27,10 +27,6 @@
 - 仅在 VS Code / IDE 环境中可用
 - 优先使用此工具而非 Bash 命令来检查代码问题
 
-## 在 cc-viewer 中的意义
-
-getDiagnostics 是 MCP 工具，在请求日志的 `tools` 数组中以 `mcp__ide__getDiagnostics` 名称出现。其调用和返回遵循标准的 `tool_use` / `tool_result` 模式。MCP 工具的增减会导致 tools 数组变化，可能触发缓存重建。
-
 ## 原文
 
 <textarea readonly>Get language diagnostics from VS Code</textarea>

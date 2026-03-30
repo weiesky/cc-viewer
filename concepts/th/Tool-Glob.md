@@ -29,10 +29,6 @@
 - ผลลัพธ์เรียงตามเวลาแก้ไข
 - แนะนำให้ใช้มากกว่าคำสั่ง `find` ของ Bash
 
-## ความสำคัญใน cc-viewer
-
-การเรียก Glob ปรากฏในบันทึกคำร้องขอเป็นคู่ content block `tool_use` / `tool_result` โดย `tool_result` มีรายการพาธไฟล์ที่ตรงกัน
-
 ## ข้อความต้นฉบับ
 
 <textarea readonly>- Fast file pattern matching tool that works with any codebase size

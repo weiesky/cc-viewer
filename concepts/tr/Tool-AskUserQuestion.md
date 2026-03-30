@@ -49,10 +49,6 @@ Her `option` nesnesi:
 - `markdown` içeren seçenekler yan yana düzene geçer
 - Planlama modunda, planı kesinleştirmeden önce gereksinimleri netleştirmek için kullanılır
 
-## cc-viewer'da Önemi
-
-AskUserQuestion çağrısı istek günlüğünde `tool_use` content block olarak görünür ve soru ile seçenek tanımlarını içerir. Kullanıcının yanıtı sonraki isteklerin mesaj geçmişinde yer alır.
-
 ## Orijinal Metin
 
 <textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:

@@ -34,10 +34,6 @@ Each element in the `allowedPrompts` array:
 - Do not use AskUserQuestion to ask "Is the plan okay?" before calling this tool, as that would be redundant
 - Do not mention "the plan" in questions, since the user cannot see the plan content before ExitPlanMode
 
-## Significance in cc-viewer
-
-ExitPlanMode calls mark the end of the planning phase. In request logs, requests after this call typically shift to implementation operations (Edit, Write, Bash, etc.).
-
 ## Original Text
 
 <textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.

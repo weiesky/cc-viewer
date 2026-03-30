@@ -34,10 +34,6 @@
 - 이 도구를 호출하기 전에 AskUserQuestion으로 "방안이 괜찮은지" 묻지 말 것. 중복됨
 - 질문에서 "계획"을 언급하지 말 것. 사용자는 ExitPlanMode 전에 계획 내용을 볼 수 없기 때문
 
-## cc-viewer에서의 의의
-
-ExitPlanMode 호출은 계획 단계의 종료를 나타냅니다. 요청 로그에서 이 호출 이후의 요청은 보통 구현적 작업 (Edit, Write, Bash 등)으로 전환됩니다.
-
 ## 원문
 
 <textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.

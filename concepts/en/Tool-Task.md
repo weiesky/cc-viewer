@@ -49,7 +49,3 @@ Launches a SubAgent to autonomously handle complex multi-step tasks. SubAgents a
 - Multiple Task calls can be issued in parallel within a single message for efficiency
 - Background tasks are checked for progress via the TaskOutput tool
 - The Explore type is slower than directly calling Glob/Grep; only use it when simple searches are insufficient
-
-## Significance in cc-viewer
-
-Task calls produce SubAgent request chains, which appear in the request list as sub-request sequences independent of MainAgent. SubAgent requests typically have streamlined system prompts and fewer tool definitions, forming a clear contrast with MainAgent.

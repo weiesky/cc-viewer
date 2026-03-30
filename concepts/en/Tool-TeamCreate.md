@@ -36,7 +36,3 @@ Teams have a 1:1 correspondence with task lists.
 | `SendMessage` | Inter-agent communication within the team |
 | `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | Manage the shared task list |
 | `Agent` | Spawn teammates that join the team |
-
-## Significance in cc-viewer
-
-TeamCreate calls indicate the start of a multi-agent collaboration session. In the request list, you will see subsequent Agent calls spawning teammates, followed by SendMessage exchanges and TaskUpdate operations as the team coordinates work. The team pattern typically produces a burst of parallel SubAgent request chains.

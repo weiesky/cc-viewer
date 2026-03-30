@@ -42,10 +42,6 @@
 - Многострочное сопоставление требует установки `multiline: true`
 - Всегда предпочитайте инструмент Grep вместо команд `grep` или `rg` в Bash
 
-## Значение в cc-viewer
-
-Вызовы Grep в логах запросов отображаются как пары блоков content `tool_use` / `tool_result`. `tool_result` содержит результаты поиска.
-
 ## Оригинальный текст
 
 <textarea readonly>A powerful search tool built on ripgrep

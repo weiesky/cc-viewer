@@ -30,10 +30,6 @@
 - 看到 `<command-name>` 标签时说明技能已加载，应直接执行而非再次调用此工具
 - 不要在未实际调用工具的情况下提及某个技能
 
-## 在 cc-viewer 中的意义
-
-Skill 调用在请求日志中表现为 `tool_use` content block。技能展开后的 prompt 会影响后续请求的 system prompt 或消息内容。
-
 ## 原文
 
 <textarea readonly>Execute a skill within the main conversation

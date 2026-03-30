@@ -65,9 +65,3 @@ Voici l'index classifié de tous les outils.
 |-------|---------|
 | [getDiagnostics](Tool-getDiagnostics.md) | Obtenir les informations de diagnostic du langage de VS Code |
 | [executeCode](Tool-executeCode.md) | Exécuter du code dans le kernel Jupyter |
-
-## Signification dans cc-viewer
-
-Les appels d'outils sont l'une des données observables les plus importantes dans les journaux de requêtes de Claude Code. Le tableau `tools` de chaque requête MainAgent définit l'ensemble des outils disponibles pour le modèle, tandis que les content blocks `tool_use` / `tool_result` dans la réponse enregistrent les appels réels aux outils et leurs retours. cc-viewer analyse ces données pour reconstruire la chaîne complète d'appels d'outils dans le Chat Mode.
-
-Les changements dans les définitions d'outils (comme l'ajout/suppression d'outils par connexion/déconnexion de MCP server) déclenchent la reconstruction du cache, voir [CacheRebuild](CacheRebuild.md).

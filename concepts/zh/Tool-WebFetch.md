@@ -31,10 +31,6 @@
 - 当 URL 重定向到不同主机时，工具会返回重定向 URL，需要用新 URL 重新请求
 - 如果有 MCP 提供的 web fetch 工具可用，优先使用那个
 
-## 在 cc-viewer 中的意义
-
-WebFetch 调用在请求日志中表现为 `tool_use` / `tool_result` content block 对。`tool_result` 包含经 AI 处理后的网页内容摘要。
-
 ## 原文
 
 <textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.

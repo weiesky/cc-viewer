@@ -49,7 +49,3 @@ Starter en sub-agent (SubAgent) for å selvstendig håndtere komplekse flerstegs
 - Kan starte flere parallelle Task-kall i en enkelt melding for økt effektivitet
 - Bakgrunnsoppgaver sjekkes via TaskOutput-verktøyet
 - Explore-typen er tregere enn direkte Glob/Grep-kall, bruk kun når enkelt søk ikke er tilstrekkelig
-
-## Betydning i cc-viewer
-
-Task-kall produserer SubAgent-forespørselskjeder, og i forespørselslisten kan du se uavhengige underforespørselssekvenser atskilt fra MainAgent. SubAgent-forespørsler har vanligvis et forenklet system prompt og færre verktøydefinisjoner, noe som danner en tydelig kontrast til MainAgent.

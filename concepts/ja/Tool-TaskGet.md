@@ -30,10 +30,6 @@
 - タスク取得後、作業開始前に `blockedBy` リストが空であることを確認すべき
 - TaskList ですべてのタスクの要約情報を確認
 
-## cc-viewer での意義
-
-TaskGet は内部タスク管理操作であり、独立した API リクエストは生成しません。
-
 ## 原文
 
 <textarea readonly>Use this tool to retrieve a task by its ID from the task list.
