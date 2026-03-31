@@ -1,6 +1,6 @@
 import React from 'react';
 import { Space, Tag, Button, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Radio, Tabs, Spin, Input, Table, Select, message } from 'antd';
-import { MessageOutlined, FileTextOutlined, ImportOutlined, DashboardOutlined, ExportOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, GlobalOutlined, CopyOutlined, ApiOutlined, DeleteOutlined, ReloadOutlined, PlusOutlined, CloudDownloadOutlined } from '@ant-design/icons';
+import { MessageOutlined, FileTextOutlined, ImportOutlined, DashboardOutlined, ExportOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, GlobalOutlined, CopyOutlined, ApiOutlined, DeleteOutlined, ReloadOutlined, PlusOutlined, CloudDownloadOutlined, SwapOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { QRCodeCanvas } from 'qrcode.react';
 import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats, getModelMaxTokens, extractCachedContent } from '../utils/helpers';
 import { isSystemText, classifyUserContent, isMainAgent } from '../utils/contentFilter';
@@ -8,6 +8,7 @@ import { classifyRequest } from '../utils/requestType';
 import { t, getLang, setLang } from '../i18n';
 import { apiUrl } from '../utils/apiUrl';
 import ConceptHelp from './ConceptHelp';
+import OpenFolderIcon from './OpenFolderIcon';
 import appConfig from '../config.json';
 const CALIBRATION_MODELS = appConfig.calibrationModels;
 import styles from './AppHeader.module.css';
@@ -43,7 +44,7 @@ const countryToFlag = (code) => {
 class AppHeader extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { countdownText: '', countryFlag: null, countryInfo: null, promptModalVisible: false, promptData: [], promptViewMode: 'original', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false, localUrl: '', pluginModalVisible: false, pluginsList: [], pluginsDir: '', deleteConfirmVisible: false, deleteTarget: null, processModalVisible: false, processList: [], processLoading: false, logoDropdownOpen: false, cacheHighlightIdx: null, cacheHighlightFading: false, cdnModalVisible: false, cdnUrl: '', cdnLoading: false, calibrationModel: (v => CALIBRATION_MODELS.some(m => m.value === v) ? v : 'auto')(localStorage.getItem('ccv_calibrationModel') || 'auto') };
+    this.state = { countdownText: '', countryFlag: null, countryInfo: null, promptModalVisible: false, promptData: [], promptViewMode: 'original', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false, localUrl: '', pluginModalVisible: false, pluginsList: [], pluginsDir: '', deleteConfirmVisible: false, deleteTarget: null, processModalVisible: false, processList: [], processLoading: false, logoDropdownOpen: false, cacheHighlightIdx: null, cacheHighlightFading: false, cdnModalVisible: false, cdnUrl: '', cdnLoading: false, calibrationModel: (v => CALIBRATION_MODELS.some(m => m.value === v) ? v : 'auto')(localStorage.getItem('ccv_calibrationModel') || 'auto'), proxyModalVisible: false, editingProxy: null, editForm: { name: '', baseURL: '', apiKey: '', models: '', activeModel: '' } };
     this._rafId = null;
     this._expiredTimer = null;
     this.updateCountdown = this.updateCountdown.bind(this);
@@ -85,6 +86,9 @@ class AppHeader extends React.Component {
       nextProps.contextWindow !== this.props.contextWindow ||
       nextProps.serverCachedContent !== this.props.serverCachedContent ||
       nextProps.resumeAutoChoice !== this.props.resumeAutoChoice ||
+      nextProps.proxyProfiles !== this.props.proxyProfiles ||
+      nextProps.activeProxyId !== this.props.activeProxyId ||
+      nextProps.defaultConfig !== this.props.defaultConfig ||
       nextState !== this.state
     );
   }
@@ -1199,6 +1203,12 @@ class AppHeader extends React.Component {
         label: t('ui.processManagement'),
         onClick: this.handleShowProcesses,
       },
+      {
+        key: 'proxy-switch',
+        icon: <SwapOutlined />,
+        label: t('ui.proxySwitch'),
+        onClick: () => this.setState({ proxyModalVisible: true }),
+      },
       { type: 'divider' },
       {
         key: 'project-stats',
@@ -1267,6 +1277,15 @@ class AppHeader extends React.Component {
               {t('ui.tokenStats')}
             </Tag>
           </Popover>
+          {this.props.activeProxyId && this.props.activeProxyId !== 'max' && (() => {
+            const p = (this.props.proxyProfiles || []).find(x => x.id === this.props.activeProxyId);
+            return p ? (
+              <Tag className={styles.proxyProfileTag} onClick={() => this.setState({ proxyModalVisible: true })} style={{ cursor: 'pointer' }}>
+                <SwapOutlined style={{ marginRight: 4, fontSize: 11 }} />
+                {p.name}{p.activeModel ? ` · ${p.activeModel}` : ''}
+              </Tag>
+            ) : null;
+          })()}
           {(() => {
             // 计算上下文使用率：距离 auto-compact 触发点的进度
             // auto-compact 在 ~83.5% 时触发（扣除 16.5% buffer）
@@ -1710,6 +1729,151 @@ class AppHeader extends React.Component {
             ]}
           />
         </Modal>
+
+        {/* Proxy Profile Modal */}
+        <Modal
+          title={<span><OpenFolderIcon apiEndpoint={apiUrl('/api/open-profile-dir')} title={t('ui.proxy.openConfigDir')} size={16} /> {t('ui.proxySwitch')} <ConceptHelp doc="ProxySwitch" zIndex={1100} /></span>}
+          open={this.state.proxyModalVisible}
+          onCancel={() => this.setState({ proxyModalVisible: false, editingProxy: null })}
+          footer={null}
+          width={520}
+        >
+          {this.renderProxyProfileList()}
+        </Modal>
+      </div>
+    );
+  }
+
+  // ─── Proxy Profile Modal 内容 ───────────────────────────
+
+  renderProxyProfileList() {
+    const profiles = this.props.proxyProfiles || [];
+    const activeId = this.props.activeProxyId || 'max';
+    const { editingProxy, editForm } = this.state;
+
+    return (
+      <div>
+        <div className={styles.proxyWarning}>⚠️ {t('ui.proxy.maxWarning')}</div>
+        <div className={styles.proxyList}>
+          {profiles.map(p => (
+            <div key={p.id} className={`${styles.proxyItem} ${p.id === activeId ? styles.proxyItemActive : ''}`}>
+              <div className={styles.proxyItemMain} onClick={() => {
+                if (p.id !== activeId) {
+                  const data = { active: p.id, profiles };
+                  this.props.onProxyProfileChange(data);
+                }
+              }}>
+                <Radio checked={p.id === activeId} style={{ marginRight: 8 }} />
+                <div className={styles.proxyItemInfo}>
+                  <div className={styles.proxyItemNameRow}>
+                    <span className={styles.proxyItemName}>{p.name}</span>
+                    {p.id === 'max' && <Tag className={styles.proxyBuiltinTag}>{t('ui.proxy.builtin')}</Tag>}
+                  </div>
+                  {p.id === 'max' && this.props.defaultConfig && (
+                    <div className={styles.proxyItemDetail}>
+                      {(() => { try { return new URL(this.props.defaultConfig.origin).host; } catch { return this.props.defaultConfig.origin; } })()}
+                      {this.props.defaultConfig.authType ? ` · ${this.props.defaultConfig.authType}` : ''}
+                      {this.props.defaultConfig.apiKey ? ` · ${this.props.defaultConfig.apiKey}` : ''}
+                      {this.props.defaultConfig.model ? ` · ${this.props.defaultConfig.model}` : ''}
+                    </div>
+                  )}
+                  {p.id !== 'max' && p.baseURL && (
+                    <div className={styles.proxyItemDetail}>
+                      {(() => { try { return new URL(p.baseURL).host; } catch { return p.baseURL; } })()}
+                      {p.activeModel ? ` · ${p.activeModel}` : (p.models?.length ? ` · ${p.models[0]}` : '')}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {p.id !== 'max' && (
+                <div className={styles.proxyItemActions}>
+                  <Button type="text" size="small" icon={<EditOutlined />} onClick={() => this.setState({
+                    editingProxy: p.id,
+                    editForm: { name: p.name || '', baseURL: p.baseURL || '', apiKey: p.apiKey || '', models: (p.models || []).join(', '), activeModel: p.activeModel || '' }
+                  })} />
+                  <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => {
+                    Modal.confirm({
+                      title: t('ui.proxy.deleteProxy'),
+                      content: t('ui.proxy.deleteConfirm', { name: p.name }),
+                      okType: 'danger',
+                      onOk: () => {
+                        const newProfiles = profiles.filter(x => x.id !== p.id);
+                        const newActive = activeId === p.id ? 'max' : activeId;
+                        this.props.onProxyProfileChange({ active: newActive, profiles: newProfiles });
+                      }
+                    });
+                  }} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* 编辑/新增表单 */}
+        {editingProxy && (
+          <div className={styles.proxyEditForm}>
+            <div className={styles.proxyEditRow}>
+              <label>{t('ui.proxy.name')} <span className={styles.proxyRequired}>*</span></label>
+              <Input size="small" value={editForm.name} onChange={e => { const v = e.target.value; this.setState(prev => ({ editForm: { ...prev.editForm, name: v } })); }} />
+            </div>
+            <div className={styles.proxyEditRow}>
+              <label>{t('ui.proxy.baseURL')} <span className={styles.proxyRequired}>*</span></label>
+              <Input size="small" value={editForm.baseURL} onChange={e => { const v = e.target.value; this.setState(prev => ({ editForm: { ...prev.editForm, baseURL: v } })); }} placeholder="https://api.example.com" />
+            </div>
+            <div className={styles.proxyEditRow}>
+              <label>{t('ui.proxy.apiKey')} <span className={styles.proxyRequired}>*</span></label>
+              <Input.Password size="small" value={editForm.apiKey} onChange={e => { const v = e.target.value; this.setState(prev => ({ editForm: { ...prev.editForm, apiKey: v } })); }} placeholder="sk-..." />
+            </div>
+            <div className={styles.proxyEditDivider} />
+            <div className={styles.proxyEditRow}>
+              <label>{t('ui.proxy.models')}</label>
+              <Input size="small" value={editForm.models} onChange={e => { const v = e.target.value; this.setState(prev => ({ editForm: { ...prev.editForm, models: v } })); }} placeholder="model-1, model-2" />
+            </div>
+            <div className={styles.proxyEditRow}>
+              <label>{t('ui.proxy.activeModel')}</label>
+              <Select size="small" style={{ width: '100%' }} value={editForm.activeModel || undefined} onChange={v => this.setState(prev => ({ editForm: { ...prev.editForm, activeModel: v } }))} placeholder={t('ui.proxy.activeModel')}>
+                {(editForm.models || '').split(',').map(m => m.trim()).filter(Boolean).map(m => (
+                  <Select.Option key={m} value={m}>{m}</Select.Option>
+                ))}
+              </Select>
+            </div>
+            <div className={styles.proxyEditBtns}>
+              <Button size="small" icon={<CheckOutlined />} type="primary" onClick={() => {
+                if (!editForm.name?.trim() || !editForm.baseURL?.trim() || !editForm.apiKey?.trim()) {
+                  message.warning(t('ui.proxy.requiredFields'));
+                  return;
+                }
+                const models = (editForm.models || '').split(',').map(m => m.trim()).filter(Boolean);
+                const updated = {
+                  id: editingProxy === '__new__' ? `proxy_${Date.now()}` : editingProxy,
+                  name: editForm.name.trim(),
+                  baseURL: editForm.baseURL.trim(),
+                  apiKey: editForm.apiKey.trim(),
+                  models,
+                  activeModel: editForm.activeModel || models[0] || '',
+                };
+                let newProfiles;
+                if (editingProxy === '__new__') {
+                  newProfiles = [...profiles, updated];
+                } else {
+                  newProfiles = profiles.map(p => p.id === editingProxy ? { ...p, ...updated, id: p.id } : p);
+                }
+                this.props.onProxyProfileChange({ active: activeId, profiles: newProfiles });
+                this.setState({ editingProxy: null });
+              }}>{t('ui.proxy.save')}</Button>
+              <Button size="small" icon={<CloseOutlined />} onClick={() => this.setState({ editingProxy: null })}>{t('ui.proxy.cancel')}</Button>
+            </div>
+          </div>
+        )}
+
+        {!editingProxy && (
+          <Button block type="dashed" icon={<PlusOutlined />} style={{ marginTop: 12 }} onClick={() => this.setState({
+            editingProxy: '__new__',
+            editForm: { name: '', baseURL: '', apiKey: '', models: '', activeModel: '' }
+          })}>
+            {t('ui.proxy.addProxy')}
+          </Button>
+        )}
       </div>
     );
   }

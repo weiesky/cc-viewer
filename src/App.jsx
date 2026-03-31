@@ -305,6 +305,10 @@ class App extends AppBase {
               resumeAutoChoice={this.state.resumeAutoChoice}
               onResumeAutoChoiceToggle={this.handleResumeAutoChoiceToggle}
               onResumeAutoChoiceChange={this.handleResumeAutoChoiceChange}
+              proxyProfiles={this.state.proxyProfiles}
+              activeProxyId={this.state.activeProxyId}
+              defaultConfig={this.state.defaultConfig}
+              onProxyProfileChange={this.handleProxyProfileChange}
             />
           </Layout.Header>
 

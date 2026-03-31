@@ -71,6 +71,9 @@ class AppBase extends React.Component {
       loadingMore: false,
       sessionIndex: [],
       loadingSessionId: null,
+      proxyProfiles: [],
+      activeProxyId: 'max',
+      defaultConfig: null,
     };
     this.eventSource = null;
     this._currentSessionId = null;
@@ -218,6 +221,39 @@ class AppBase extends React.Component {
       .then(data => this.setState({ userProfile: data }))
       .catch(() => { });
 
+    // 获取 proxy profile 配置
+    fetch(apiUrl('/api/proxy-profiles'))
+      .then(res => res.json())
+      .then(data => {
+        if (!data.profiles) return;
+        let activeId = data.active || 'max';
+        const dc = data.defaultConfig;
+        // 如果当前是 Default 且启动配置匹配了某个 proxy profile（origin + apiKey + model），自动指定到那一项
+        if (activeId === 'max' && dc?.origin) {
+          const match = data.profiles.find(p => {
+            if (p.id === 'max' || !p.baseURL) return false;
+            try {
+              if (new URL(p.baseURL).origin !== dc.origin) return false;
+            } catch { return false; }
+            // apiKey 匹配（mask 格式比较：都取后 4 位）
+            if (dc.apiKey && p.apiKey) {
+              const dcTail = dc.apiKey.slice(-4);
+              const pTail = p.apiKey.slice(-4);
+              if (dcTail !== pTail) return false;
+            }
+            // model 匹配
+            if (dc.model && p.activeModel && dc.model !== p.activeModel) return false;
+            return true;
+          });
+          if (match) {
+            activeId = match.id;
+            this.handleProxyProfileChange({ active: match.id, profiles: data.profiles });
+          }
+        }
+        this.setState({ proxyProfiles: data.profiles, activeProxyId: activeId, defaultConfig: dc || null });
+      })
+      .catch(() => { });
+
     // 获取当前监控的项目名称
     const params = new URLSearchParams(window.location.search);
     const logfile = params.get('logfile');
@@ -226,6 +262,7 @@ class AppBase extends React.Component {
       .then(data => {
         const projectName = data.projectName || '';
         this.setState({ projectName });
+        if (projectName) document.title = projectName;
         // 移动端：从缓存恢复数据，在 SSE 数据到达前立即渲染
         if (isMobile && projectName && !logfile && this.state.requests.length === 0) {
           loadEntries(projectName).then(cached => {
@@ -655,6 +692,7 @@ class AppBase extends React.Component {
             this._loadingCountTimer = null;
           }
           this._rebuildRequestIndex([]);
+          if (data.projectName) document.title = `${data.projectName} - CC Viewer`;
           this.setState({
             workspaceMode: false,
             projectName: data.projectName || '',
@@ -696,6 +734,19 @@ class AppBase extends React.Component {
         } catch (err) {
           console.error('Failed to parse kv_cache_content:', err);
         }
+      });
+      this.eventSource.addEventListener('proxy_profile', (event) => {
+        this._resetSSETimeout();
+        try {
+          const data = JSON.parse(event.data);
+          if (data.active) this.setState({ activeProxyId: data.active });
+          if (data.profile) {
+            // 刷新完整列表
+            fetch(apiUrl('/api/proxy-profiles')).then(r => r.json()).then(d => {
+              if (d.profiles) this.setState({ proxyProfiles: d.profiles, activeProxyId: d.active || 'max' });
+            }).catch(() => { });
+          }
+        } catch { }
       });
       this.eventSource.addEventListener('ping', () => { this._resetSSETimeout(); });
       this.eventSource.addEventListener('streaming_status', (e) => {
@@ -1078,6 +1129,21 @@ class AppBase extends React.Component {
         });
       })
       .catch(() => {});
+  };
+
+  // ─── Proxy Profile ─────────────────────────────────────
+
+  handleProxyProfileChange = (data) => {
+    fetch(apiUrl('/api/proxy-profiles'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+      .then(r => r.json())
+      .then(() => {
+        this.setState({ proxyProfiles: data.profiles, activeProxyId: data.active });
+      })
+      .catch(() => { });
   };
 
   // ─── 偏好设置 ──────────────────────────────────────────

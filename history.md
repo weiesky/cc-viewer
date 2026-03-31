@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.75 (2026-03-31)
+
+- Feature: Proxy Hot-Switch — dynamically switch API proxy (URL + API Key + Model) without restarting Claude Code
+  - interceptor.js: profile loading via `fs.watchFile`, URL/Auth/Model rewrite before `_originalFetch`
+  - server.js: GET/POST `/api/proxy-profiles` API, SSE `proxy_profile` broadcast, apiKey mask in responses
+  - UI: logo menu entry, gray badge tag, Modal with profile list + inline edit form
+  - Default profile captures startup config (origin, authType, apiKey, model) for restore
+  - Auto-match: if startup config matches a configured proxy profile, auto-select it
+  - Config stored at `~/.claude/cc-viewer/profile.json` (mode 0o600)
+  - ConceptHelp (?) doc for ProxySwitch (18 languages)
+  - Required field validation, warning banner for Max subscribers
+  - i18n: 16 new keys × 18 languages
+- Feature: dynamic document.title — shows project name instead of static "Claude Code Viewer"
+
 ## 1.6.74 (2026-03-31)
 
 - Fix: rejected AskUserQuestion rendered as interactive form — mark `__rejected__` in askAnswerMap to prevent pending state

@@ -6,7 +6,7 @@ const _ccvSkipArgs = ['--version', '-v', '--v', '--help', '-h', 'doctor', 'insta
 const _ccvSkip = _ccvSkipArgs.includes(process.argv[2]);
 
 import './lib/proxy-env.js';
-import { appendFileSync, mkdirSync, readFileSync, statSync, renameSync, unlinkSync, existsSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, statSync, renameSync, unlinkSync, existsSync, watchFile } from 'node:fs';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, basename } from 'node:path';
@@ -36,6 +36,28 @@ export let _cachedAuthHeader = null;
 export let _cachedModel = null;
 // 缓存 haiku 模型名（从实际请求中捕获），翻译接口优先使用
 export let _cachedHaikuModel = null;
+
+// Proxy profile hot-switch support
+const PROFILE_PATH = join(homedir(), '.claude', 'cc-viewer', 'profile.json');
+let _activeProfile = null; // { id, name, baseURL?, apiKey?, models?, activeModel? }
+
+// 启动时捕获的原始配置（首次 API 请求时记录，不可变）
+let _defaultConfig = null; // { origin, authType, model }
+
+function _loadProxyProfile() {
+  try {
+    const data = JSON.parse(readFileSync(PROFILE_PATH, 'utf-8'));
+    const active = data.profiles?.find(p => p.id === data.active);
+    _activeProfile = (active && active.id !== 'max') ? active : null;
+  } catch {
+    _activeProfile = null;
+  }
+}
+
+_loadProxyProfile();
+try { watchFile(PROFILE_PATH, { interval: 1500 }, _loadProxyProfile); } catch { }
+
+export { _activeProfile, _defaultConfig, _loadProxyProfile, PROFILE_PATH };
 
 // 生成新的日志文件路径
 function generateNewLogFilePath() {
@@ -345,6 +367,19 @@ export function setupInterceptor() {
           _cachedAuthHeader = headers['authorization'];
         }
 
+        // 首次 API 请求时捕获原始配置（仅一次，用于 Default profile 展示和自动匹配）
+        if (!_defaultConfig) {
+          try {
+            const _u = new URL(urlStr);
+            _defaultConfig = {
+              origin: _u.origin,
+              authType: headers['authorization'] ? 'OAuth' : headers['x-api-key'] ? 'API Key' : 'Unknown',
+              apiKey: headers['x-api-key'] || null,
+              model: body?.model || null,
+            };
+          } catch { }
+        }
+
         // 缓存请求中的模型名（仅 mainAgent 请求，避免 SubAgent 覆盖）
         // 注意：写入移到 requestEntry 构建之后
 
@@ -451,9 +486,52 @@ export function setupInterceptor() {
       streamingState.chunksReceived = 0;
     }
 
+    // Proxy profile request rewriting
+    let _fetchUrl = url;
+    let _fetchOpts = options;
+    if (_activeProfile && _activeProfile.baseURL && requestEntry) {
+      try {
+        // 1. URL 重写: 用 baseURL 替换 origin，智能处理路径重叠
+        //    baseURL="https://proxy.com/v1" + pathname="/v1/messages" → "https://proxy.com/v1/messages"（去重 /v1）
+        //    baseURL="https://proxy.com"    + pathname="/v1/messages" → "https://proxy.com/v1/messages"（无重叠）
+        if (typeof _fetchUrl === 'string') {
+          const _origUrl = new URL(_fetchUrl);
+          const _baseUrl = new URL(_activeProfile.baseURL);
+          const _basePath = _baseUrl.pathname.replace(/\/+$/, '');
+          const _origPath = _origUrl.pathname;
+          // 如果原始路径以 baseURL 的路径开头（如都有 /v1/），去掉重叠部分
+          // 使用 _basePath + '/' 避免 /api 误匹配 /api-v2
+          const _finalPath = (!_basePath || _origPath === _basePath || _origPath.startsWith(_basePath + '/')) ? _origPath : _basePath + _origPath;
+          _fetchUrl = _baseUrl.origin + _finalPath + _origUrl.search;
+        }
+        // 2. Auth 替换
+        if (_activeProfile.apiKey && _fetchOpts?.headers) {
+          const h = _fetchOpts.headers;
+          if (typeof h === 'object' && !(h instanceof Headers)) {
+            _fetchOpts = { ..._fetchOpts, headers: { ...h } };
+            if (h['x-api-key']) _fetchOpts.headers['x-api-key'] = _activeProfile.apiKey;
+            if (h['authorization']) _fetchOpts.headers['authorization'] = `Bearer ${_activeProfile.apiKey}`;
+          }
+        }
+        // 3. Model 替换
+        if (_activeProfile.activeModel && _fetchOpts?.body) {
+          try {
+            const _b = JSON.parse(_fetchOpts.body);
+            if (_b.model) {
+              _b.model = _activeProfile.activeModel;
+              _fetchOpts = { ..._fetchOpts, body: JSON.stringify(_b) };
+            }
+          } catch { }
+        }
+        // 记录 proxy 信息到日志条目
+        requestEntry.proxyProfile = _activeProfile.name;
+        requestEntry.proxyUrl = _fetchUrl;
+      } catch { }
+    }
+
     let response;
     try {
-      response = await _originalFetch.apply(this, arguments);
+      response = await _originalFetch.call(this, _fetchUrl, _fetchOpts);
     } catch (err) {
       if (requestEntry?.isStream) resetStreamingState();
       throw err;

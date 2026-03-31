@@ -855,3 +855,136 @@
   font-size: 12px;
 }
 
+/* Proxy Profile */
+.proxyProfileTag {
+  border-radius: 12px;
+  background: #333;
+  border: 1px solid #444;
+  color: #999;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.proxyProfileTag:hover {
+  color: #ccc;
+  border-color: #555;
+}
+
+.proxyWarning {
+  background: #2a2000;
+  border: 1px solid #5c4d00;
+  border-radius: 4px;
+  color: #e8a838;
+  font-size: 12px;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+}
+
+.proxyList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.proxyItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: background 0.15s;
+}
+.proxyItem:hover {
+  background: #1e1e1e;
+}
+.proxyItemActive {
+  background: #1a2332;
+  border-color: rgb(25, 106, 225);
+}
+
+.proxyItemMain {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+
+.proxyItemInfo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.proxyItemNameRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.proxyItemName {
+  font-size: 13px;
+  color: #e5e5e5;
+  font-weight: 500;
+}
+
+.proxyItemDetail {
+  font-size: 11px;
+  color: #777;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proxyBuiltinTag {
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #1e3a5f;
+  color: #60a5fa;
+  line-height: 16px;
+  border: none;
+}
+
+.proxyItemActions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.proxyEditForm {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 6px;
+  background: #1e1e1e;
+  border: 1px solid #333;
+}
+
+.proxyEditRow {
+  margin-bottom: 8px;
+}
+.proxyEditRow label {
+  display: block;
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 4px;
+}
+
+.proxyRequired {
+  color: #ff4d4f;
+  margin-left: 2px;
+}
+
+.proxyEditDivider {
+  border-top: 1px dashed #333;
+  margin: 10px 0 8px;
+}
+
+.proxyEditBtns {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+

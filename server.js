@@ -34,7 +34,7 @@ function execWithStdin(cmd, args, input, options) {
     child.stdin.end();
   });
 }
-import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice, _projectName, _logDir, _cachedApiKey, _cachedAuthHeader, _cachedHaikuModel, initForWorkspace, resetWorkspace, streamingState, resetStreamingState } from './interceptor.js';
+import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice, _projectName, _logDir, _cachedApiKey, _cachedAuthHeader, _cachedHaikuModel, initForWorkspace, resetWorkspace, streamingState, resetStreamingState, _loadProxyProfile, PROFILE_PATH, _defaultConfig } from './interceptor.js';
 import { LOG_DIR } from './findcc.js';
 import { t, detectLanguage } from './i18n.js';
 import { checkAndUpdate } from './lib/updater.js';
@@ -61,6 +61,13 @@ try {
 } catch { }
 const isCliMode = process.env.CCV_CLI_MODE === '1';
 const isWorkspaceMode = process.env.CCV_WORKSPACE_MODE === '1';
+const _defaultProxyProfiles = { active: 'max', profiles: [{ id: 'max', name: 'Default' }] };
+const _maskApiKey = (k) => k && typeof k === 'string' && k.length > 4 ? '****' + k.slice(-4) : k ? '****' : '';
+const _maskProfiles = (data) => {
+  if (!data?.profiles) return data;
+  return { ...data, profiles: data.profiles.map(p => p.apiKey ? { ...p, apiKey: _maskApiKey(p.apiKey) } : p) };
+};
+const _isMasked = (k) => typeof k === 'string' && /^\*{4}.{0,4}$/.test(k);
 
 // 获取 Claude 进程 PID（CLI 模式下从 pty-manager 获取）
 let _getPtyPidFn = null;
@@ -891,6 +898,64 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Proxy profile 热切换
+  if (url === '/api/proxy-profiles' && method === 'GET') {
+    try {
+      const data = existsSync(PROFILE_PATH) ? JSON.parse(readFileSync(PROFILE_PATH, 'utf-8')) : _defaultProxyProfiles;
+      const masked = _maskProfiles(data);
+      if (_defaultConfig) masked.defaultConfig = { ..._defaultConfig, apiKey: _defaultConfig.apiKey ? _maskApiKey(_defaultConfig.apiKey) : null };
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(masked));
+    } catch {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(_defaultProxyProfiles));
+    }
+    return;
+  }
+
+  if (url === '/api/proxy-profiles' && method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
+    req.on('end', () => {
+      try {
+        const incoming = JSON.parse(body);
+        if (!incoming || typeof incoming !== 'object' || !Array.isArray(incoming.profiles)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid profile data: profiles must be an array' }));
+          return;
+        }
+        // 确保 max profile 始终存在
+        if (!incoming.profiles.some(p => p.id === 'max')) {
+          incoming.profiles = [{ id: 'max', name: 'Default' }, ...(incoming.profiles || [])];
+        }
+        // 如果 apiKey 是 mask 值（未修改），从磁盘读取原始值保留
+        let existing = {};
+        try { if (existsSync(PROFILE_PATH)) existing = JSON.parse(readFileSync(PROFILE_PATH, 'utf-8')); } catch { }
+        const existingMap = {};
+        if (existing.profiles) existing.profiles.forEach(p => { if (p.apiKey) existingMap[p.id] = p.apiKey; });
+        for (const p of incoming.profiles) {
+          if (p.apiKey && _isMasked(p.apiKey) && existingMap[p.id]) {
+            p.apiKey = existingMap[p.id];
+          }
+        }
+        const dir = dirname(PROFILE_PATH);
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+        writeFileSync(PROFILE_PATH, JSON.stringify(incoming, null, 2), { mode: 0o600 });
+        _loadProxyProfile();
+        // SSE 广播给所有 viewer 客户端（mask apiKey）
+        const activeProfile = incoming.profiles?.find(p => p.id === incoming.active) || null;
+        const maskedProfile = activeProfile?.apiKey ? { ...activeProfile, apiKey: _maskApiKey(activeProfile.apiKey) } : activeProfile;
+        sendEventToClients(clients, 'proxy_profile', { active: incoming.active, profile: maskedProfile });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      }
+    });
+    return;
+  }
+
   // macOS 用户头像和显示名
   if (url === '/api/user-profile' && method === 'GET') {
     const profile = await getUserProfile();
@@ -1004,6 +1069,16 @@ async function handleRequest(req, res) {
 
   if (url === '/api/open-log-dir' && method === 'POST') {
     const dir = LOG_FILE ? dirname(LOG_FILE) : LOG_DIR;
+    const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
+    execFile(cmd, [dir], () => {});
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, dir }));
+    return;
+  }
+
+  if (url === '/api/open-profile-dir' && method === 'POST') {
+    const dir = dirname(PROFILE_PATH);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
     execFile(cmd, [dir], () => {});
     res.writeHead(200, { 'Content-Type': 'application/json' });

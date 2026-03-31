@@ -15,10 +15,10 @@ const KNOWN_DOCS = new Set([
   'Tool-EnterPlanMode', 'Tool-ExitPlanMode',
   'Tool-AskUserQuestion', 'Tool-Skill',
   'Tool-getDiagnostics', 'Tool-executeCode', 'Tool-EnterWorktree',
-  'MainAgent', 'Teammate', 'BodyFields', 'ResponseFields', 'Tools', 'ToolsFirst', 'CacheRebuild', 'BodyDiffJSON', 'TranslateContextPollution', 'KVCacheContent',
+  'MainAgent', 'Teammate', 'BodyFields', 'ResponseFields', 'Tools', 'ToolsFirst', 'CacheRebuild', 'BodyDiffJSON', 'TranslateContextPollution', 'KVCacheContent', 'ProxySwitch',
 ]);
 
-export default function ConceptHelp({ doc }) {
+export default function ConceptHelp({ doc, zIndex }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [html, setHtml] = useState('');
@@ -75,6 +75,7 @@ export default function ConceptHelp({ doc }) {
           width={isMobile ? '98vw' : 800}
           centered={isMobile}
           styles={modalStyles}
+          {...(zIndex ? { zIndex } : {})}
         >
           {loading ? (
             <div className={styles.spinWrap}><Spin /></div>
