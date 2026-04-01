@@ -1246,8 +1246,8 @@ async function handleRequest(req, res) {
           });
         }
 
-        // Handle ask-bridge.js disconnection
-        req.on('close', () => {
+        // Handle ask-bridge.js disconnection (use res instead of req — Node.js v24+ fires req 'close' immediately after body is read)
+        res.on('close', () => {
           if (pendingAskHook && pendingAskHook.res === res) {
             clearTimeout(pendingAskHook.timer);
             pendingAskHook = null;

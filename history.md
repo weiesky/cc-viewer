@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.79 (2026-04-01)
+
+- Fix: AskUserQuestion hook 5-min delay on Node.js v24+ (#44)
+  - Replace `req.on('close')` with `res.on('close')` in `/api/ask-hook` long-poll endpoint
+  - Node.js v24+ fires `req` close immediately after body read; `res` close fires on actual disconnect
+
 ## 1.6.78 (2026-04-01)
 
 - Feature: print all LAN IP addresses on startup (Vite-style multi-line output)
