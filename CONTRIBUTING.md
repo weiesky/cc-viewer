@@ -1,6 +1,6 @@
 # Contributing to CC-Viewer
 
-The author welcomes and encourages PRs from the community.
+The author welcomes and encourages PRs from the community. The author also doesn't mind if you distill features from this project into your own applications.
 
 ## Requirements
 
@@ -13,7 +13,7 @@ The author welcomes and encourages PRs from the community.
 
 # 贡献指南
 
-作者乐于接收 PR，也鼓励大家提交 PR。
+作者乐于接收 PR，也鼓励大家提交 PR。作者也不介意你们蒸馏当前项目的功能到你自己的应用。
 
 ## 要求
 

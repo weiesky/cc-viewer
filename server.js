@@ -1082,6 +1082,149 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // 删除文件 API
+  if (url === '/api/delete-file' && method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
+    req.on('end', () => {
+      let parsed;
+      try { parsed = JSON.parse(body); } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid request body' }));
+        return;
+      }
+      try {
+        const { path: filePath } = parsed;
+        if (!filePath) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing path' }));
+          return;
+        }
+        if (filePath.startsWith('/') || filePath.includes('..')) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid path' }));
+          return;
+        }
+        const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+        const fullPath = join(cwd, filePath);
+        if (!existsSync(fullPath)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'File not found' }));
+          return;
+        }
+        const realFull = realpathSync(fullPath);
+        const realCwd = realpathSync(cwd);
+        if (!realFull.startsWith(realCwd + '/')) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Path traversal not allowed' }));
+          return;
+        }
+        if (!statSync(fullPath).isFile()) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Not a file' }));
+          return;
+        }
+        unlinkSync(fullPath);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // 在系统文件管理器中显示文件
+  if (url === '/api/reveal-file' && method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
+    req.on('end', () => {
+      let parsed;
+      try { parsed = JSON.parse(body); } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid request body' }));
+        return;
+      }
+      try {
+        const { path: filePath } = parsed;
+        if (!filePath) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing path' }));
+          return;
+        }
+        if (filePath.startsWith('/') || filePath.includes('..')) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid path' }));
+          return;
+        }
+        const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+        const fullPath = join(cwd, filePath);
+        if (!existsSync(fullPath)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'File not found' }));
+          return;
+        }
+        const realFull = realpathSync(fullPath);
+        const realCwd = realpathSync(cwd);
+        if (!realFull.startsWith(realCwd + '/')) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Path traversal not allowed' }));
+          return;
+        }
+        const plat = process.platform;
+        if (plat === 'darwin') {
+          execFile('open', ['-R', fullPath], () => {});
+        } else if (plat === 'win32') {
+          spawn('explorer', ['/select,', fullPath], { shell: false });
+        } else {
+          execFile('xdg-open', [dirname(fullPath)], () => {});
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, fullPath }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // 解析相对路径为绝对路径（不触发任何副作用）
+  if (url === '/api/resolve-path' && method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
+    req.on('end', () => {
+      let parsed;
+      try { parsed = JSON.parse(body); } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid request body' }));
+        return;
+      }
+      try {
+        const { path: filePath } = parsed;
+        if (!filePath) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing path' }));
+          return;
+        }
+        if (filePath.startsWith('/') || filePath.includes('..')) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid path' }));
+          return;
+        }
+        const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+        const fullPath = join(cwd, filePath);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, fullPath }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
   // === Editor session API (for $EDITOR intercept) ===
 
   if (url === '/api/open-log-dir' && method === 'POST') {

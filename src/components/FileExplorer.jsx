@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { Dropdown, Modal, message } from 'antd';
 import { t } from '../i18n';
 import { apiUrl } from '../utils/apiUrl';
 import OpenFolderIcon from './OpenFolderIcon';
@@ -189,39 +190,106 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
     toggle();
   }, [editing, toggle]);
 
+  // 右键菜单项（仅文件，非目录）
+  const contextMenuItems = useMemo(() => {
+    if (isDir) return [];
+    return [
+      { key: 'reveal', label: t('ui.contextMenu.revealInExplorer') },
+      { key: 'copyPath', label: t('ui.contextMenu.copyPath') },
+      { key: 'copyRelPath', label: t('ui.contextMenu.copyRelativePath') },
+      { type: 'divider' },
+      { key: 'rename', label: t('ui.contextMenu.rename') },
+      { key: 'delete', label: t('ui.contextMenu.delete'), danger: true },
+    ];
+  }, [isDir]);
+
+  const handleMenuClick = useCallback(({ key }) => {
+    switch (key) {
+      case 'reveal':
+        fetch(apiUrl('/api/reveal-file'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: childPath }),
+        }).catch(() => {});
+        break;
+      case 'copyPath':
+        fetch(apiUrl('/api/resolve-path'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: childPath }),
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (data.fullPath) {
+              navigator.clipboard.writeText(data.fullPath).then(() => message.success(t('ui.copied'))).catch(() => {});
+            }
+          })
+          .catch(() => {});
+        break;
+      case 'copyRelPath':
+        navigator.clipboard.writeText(childPath).then(() => message.success(t('ui.copied'))).catch(() => {});
+        break;
+      case 'rename':
+        startEditing();
+        break;
+      case 'delete':
+        Modal.confirm({
+          title: t('ui.contextMenu.deleteConfirm', { name: item.name }),
+          okType: 'danger',
+          okText: t('ui.contextMenu.delete'),
+          onOk: () => fetch(apiUrl('/api/delete-file'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: childPath }),
+          }).then(r => {
+            if (r.ok && onFileRenamed) onFileRenamed(childPath, null);
+          }).catch(() => {}),
+        });
+        break;
+    }
+  }, [childPath, item.name, startEditing, onFileRenamed]);
+
+  const treeItemDiv = (
+    <div
+      ref={itemRef}
+      className={`${styles.treeItem}${isSelected ? ' ' + styles.treeItemSelected : ''}${isGitIgnored ? ' ' + styles.treeItemGitIgnored : ''}`}
+      style={{ paddingLeft: 8 + depth * 16 }}
+      onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+    >
+      <span className={styles.arrow}>
+        {isDir ? (
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={styles.arrowIcon} style={{ transform: expanded ? 'rotate(90deg)' : 'none' }}>
+            <polyline points="9 6 15 12 9 18"/>
+          </svg>
+        ) : ''}
+      </span>
+      <span className={styles.icon}>{getFileIcon(item.name, item.type)}</span>
+      {editing ? (
+        <input
+          ref={inputRef}
+          className={styles.fileNameInput}
+          value={editName}
+          onChange={e => setEditName(e.target.value)}
+          onKeyDown={handleInputKeyDown}
+          onBlur={submitRename}
+          onClick={e => e.stopPropagation()}
+        />
+      ) : (
+        <span className={styles.fileName}>{item.name}</span>
+      )}
+    </div>
+  );
+
   return (
     <>
-      <div
-        ref={itemRef}
-        className={`${styles.treeItem}${isSelected ? ' ' + styles.treeItemSelected : ''}${isGitIgnored ? ' ' + styles.treeItemGitIgnored : ''}`}
-        style={{ paddingLeft: 8 + depth * 16 }}
-        onClick={handleClick}
-        onDoubleClick={handleDoubleClick}
-        onKeyDown={handleKeyDown}
-        tabIndex={0}
-      >
-        <span className={styles.arrow}>
-          {isDir ? (
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={styles.arrowIcon} style={{ transform: expanded ? 'rotate(90deg)' : 'none' }}>
-              <polyline points="9 6 15 12 9 18"/>
-            </svg>
-          ) : ''}
-        </span>
-        <span className={styles.icon}>{getFileIcon(item.name, item.type)}</span>
-        {editing ? (
-          <input
-            ref={inputRef}
-            className={styles.fileNameInput}
-            value={editName}
-            onChange={e => setEditName(e.target.value)}
-            onKeyDown={handleInputKeyDown}
-            onBlur={submitRename}
-            onClick={e => e.stopPropagation()}
-          />
-        ) : (
-          <span className={styles.fileName}>{item.name}</span>
-        )}
-      </div>
+      {!isDir ? (
+        <Dropdown menu={{ items: contextMenuItems, onClick: handleMenuClick }} trigger={['contextMenu']}>
+          {treeItemDiv}
+        </Dropdown>
+      ) : treeItemDiv}
       {expanded && loading && (
         <div className={styles.loading} style={{ paddingLeft: 24 + depth * 16 }}>...</div>
       )}

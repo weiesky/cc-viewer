@@ -149,6 +149,7 @@ class ChatView extends React.Component {
 
     let needFileRefresh = false;
     let needGitRefresh = false;
+    let needContentRefresh = false;
 
     // Scan all sessions for tool_use blocks
     for (const session of sessions) {
@@ -187,6 +188,20 @@ class ChatView extends React.Component {
             needFileRefresh = true;
             needGitRefresh = true;
           }
+
+          // Auto-refresh FileContentView when the currently open file is modified
+          if ((toolName === 'Write' || toolName === 'Edit' || toolName === 'NotebookEdit') && this.state.currentFile) {
+            const fp = input && input.file_path;
+            if (fp) {
+              let rel = fp;
+              if (rel.startsWith('/') && this._projectDirCache && rel.startsWith(this._projectDirCache + '/')) {
+                rel = rel.slice(this._projectDirCache.length + 1);
+              }
+              if (rel === this.state.currentFile || (rel.startsWith('/') && rel.endsWith('/' + this.state.currentFile))) {
+                needContentRefresh = true;
+              }
+            }
+          }
         }
       }
     }
@@ -201,6 +216,12 @@ class ChatView extends React.Component {
       clearTimeout(this._gitRefreshTimer);
       this._gitRefreshTimer = setTimeout(() => {
         this.setState(prev => ({ gitChangesRefresh: prev.gitChangesRefresh + 1 }));
+      }, 500);
+    }
+    if (needContentRefresh) {
+      clearTimeout(this._contentRefreshTimer);
+      this._contentRefreshTimer = setTimeout(() => {
+        this.setState(prev => ({ fileVersion: prev.fileVersion + 1 }));
       }, 500);
     }
   }
@@ -337,6 +358,7 @@ class ChatView extends React.Component {
     if (this._ptyDebounceTimer) clearTimeout(this._ptyDebounceTimer);
     if (this._fileRefreshTimer) clearTimeout(this._fileRefreshTimer);
     if (this._gitRefreshTimer) clearTimeout(this._gitRefreshTimer);
+    if (this._contentRefreshTimer) clearTimeout(this._contentRefreshTimer);
     if (this._wsReconnectTimer) clearTimeout(this._wsReconnectTimer);
     if (this._waitForWsTimer) clearTimeout(this._waitForWsTimer);
     if (this._waitForPtyTimer) clearTimeout(this._waitForPtyTimer);

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.6.80 (2026-04-02)
+
+- Feature: file context menu — right-click files in File Explorer for quick actions
+  - "Reveal in Explorer" — open system file manager and select the file (macOS/Windows/Linux)
+  - "Copy Path" / "Copy Relative Path" — copy to clipboard
+  - "Rename" — enter inline edit mode (same as double-click)
+  - "Delete" — with confirmation dialog, file-only (not directories)
+  - New APIs: `/api/delete-file`, `/api/reveal-file`, `/api/resolve-path`
+  - Security: realpathSync symlink traversal protection on delete/reveal
+  - i18n: 6 new keys × 18 languages
+- Feature: auto-refresh open file content when Claude edits it via Edit/Write tools
+  - Detects tool_use file_path matching the currently viewed file
+  - 500ms debounce, endsWith fallback for path matching robustness
+- Docs: CLAUDE.md clarifies separate frontend/server i18n files
+- Docs: CONTRIBUTING.md adds distillation permission statement
+
 ## 1.6.79 (2026-04-01)
 
 - Fix: AskUserQuestion hook 5-min delay on Node.js v24+ (#44)
