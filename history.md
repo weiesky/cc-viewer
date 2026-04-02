@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.88 (2026-04-03)
+
+- Fix: delta reconstruction — skip orphaned inProgress entries to prevent accumulated message offset (align reconstructEntries/reconstructSegment with createIncrementalReconstructor)
+- Fix: loadLocalLogFile — move entry-slim after reconstructEntries to prevent delta increment data loss
+- Fix: v2.1.90+ native teammate name resolution — add raw prompt fallback for Agent-tool spawned sub-agents
+- Fix: markdown image stretching — add height:auto to all markdown img CSS rules
+- Docs: sync all 17 README translations with latest zh source
+- Util: add extractCcVersion() for billing header version detection
+
 ## 1.6.87 (2026-04-02)
 
 - Fix: tsToIndex cache invalidation — reset on filteredRequests change to prevent highlight offset

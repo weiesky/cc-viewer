@@ -230,7 +230,7 @@
 .markdownPreview ol { padding-left: 2em; margin: 0.8em 0; }
 .markdownPreview li { margin: 0.3em 0; }
 .markdownPreview hr { border: none; border-top: 1px solid #303030; margin: 1.5em 0; }
-.markdownPreview img { max-width: 100%; border-radius: 6px; }
+.markdownPreview img { max-width: 100%; height: auto; border-radius: 6px; }
 .markdownPreview input[type="checkbox"] { margin-right: 6px; }
 
 .saveBtn {

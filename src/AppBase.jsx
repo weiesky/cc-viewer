@@ -774,7 +774,6 @@ class AppBase extends React.Component {
     if (this._localLogES) { this._localLogES.close(); this._localLogES = null; }
 
     const entries = [];
-    const slimmer = createEntrySlimmer(isMainAgent);
     const es = new EventSource(apiUrl(`/api/local-log?file=${encodeURIComponent(file)}`));
     this._localLogES = es;
 
@@ -790,7 +789,6 @@ class AppBase extends React.Component {
         const chunk = JSON.parse(event.data);
         if (Array.isArray(chunk)) {
           for (const entry of chunk) {
-            slimmer.process(entry, entries, entries.length);
             entries.push(entry);
           }
           this.setState({ fileLoadingCount: entries.length });
@@ -800,9 +798,14 @@ class AppBase extends React.Component {
 
     es.addEventListener('load_end', () => {
       es.close();
-      slimmer.finalize(entries);
-      // Delta 重建：server 发送原始 delta 条目，客户端重建为完整 messages
+      // Delta 重建必须在 entry-slim 之前：delta 条目的 body.messages 只有增量部分，
+      // 如果先 slim 会永久丢失增量数据，导致重建后 messages 为空
       const reconstructed = reconstructEntries(entries);
+      const slimmer = createEntrySlimmer(isMainAgent);
+      for (let i = 0; i < reconstructed.length; i++) {
+        slimmer.process(reconstructed[i], reconstructed, i);
+      }
+      slimmer.finalize(reconstructed);
       if (Array.isArray(reconstructed) && reconstructed.length > 0) {
         const { mainAgentSessions, filtered } = this._processEntries(reconstructed);
         this.setState({

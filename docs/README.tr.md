@@ -1,17 +1,15 @@
 # CC-Viewer
 
-Claude Code istek izleme sistemi; Claude Code'un tüm API istek ve yanıtlarını gerçek zamanlı olarak yakalar ve görselleştirir (ham metin, hiçbir şey kırpılmaz). Geliştiricilerin Vibe Coding sürecinde bağlamlarını izlemelerine, gözden geçirmelerine ve sorunları gidermelerine yardımcı olur.
-CC-Viewer'ın en son sürümü ayrıca sunucu tabanlı web programlama ve mobil programlama araçları da sunmaktadır. Kendi projelerinizde kullanmaya davetlisiniz; gelecekte daha fazla eklenti işlevi açılacak ve bulut dağıtımı desteklenecektir.
+Claude Code istek izleme sistemi; tum API isteklerini ve yanitlarini gercek zamanli olarak yakalar ve gorsellestirir (orijinal metin, sansursuz). Gelistiricilerin kendi Context'lerini izlemelerini kolaylastirir, boylece Vibe Coding sirasinda sorunlari gozden gecirmek ve hata ayiklamak daha kolay olur.
+CC-Viewer'in en son surumu ayrica sunucu tabanli web programlama cozumleri ve mobil programlama araclari sunar. Herkesin kendi projelerinde kullanmasini memnuniyetle karsiliyoruz. Gelecekte daha fazla eklenti ozelligi ve bulut dagitim destegi sunulacaktir.
 
-İlginç kısma bakalım — bunu mobil cihazınızda görebilirsiniz:
+Once ilginc kisma bakalim — mobil cihazda gorebilecekleriniz:
 
 <img width="1700" height="790" alt="image" src="https://github.com/user-attachments/assets/da3e519f-ff66-4cd2-81d1-f4e131215f6c" />
 
-<font color="#999">(Mevcut sürümde iOS uyumluluğu tam değil; iOS optimizasyonu 2026.04.01'de yapılacak)</font>
+[English](../README.md) | [简体中文](./README.zh.md) | [繁體中文](./README.zh-TW.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md) | [Deutsch](./README.de.md) | [Español](./README.es.md) | [Français](./README.fr.md) | [Italiano](./README.it.md) | [Dansk](./README.da.md) | [Polski](./README.pl.md) | [Русский](./README.ru.md) | [العربية](./README.ar.md) | [Norsk](./README.no.md) | [Português (Brasil)](./README.pt-BR.md) | [ไทย](./README.th.md) | Türkçe | [Українська](./README.uk.md)
 
-[English](../README.md) | [繁體中文](./README.zh-TW.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md) | [Deutsch](./README.de.md) | [Español](./README.es.md) | [Français](./README.fr.md) | [Italiano](./README.it.md) | [Dansk](./README.da.md) | [Polski](./README.pl.md) | [Русский](./README.ru.md) | [العربية](./README.ar.md) | [Norsk](./README.no.md) | [Português (Brasil)](./README.pt-BR.md) | [ไทย](./README.th.md) | Türkçe | [Українська](./README.uk.md) | [简体中文](./README.zh.md)
-
-## Kullanım
+## Kullanim
 
 ### Kurulum
 
@@ -21,161 +19,202 @@ npm install -g cc-viewer --registry=https://registry.npmjs.org
 
 ### Programlama Modu
 
-`ccv`, `claude` için birebir yedektir; tüm argümanlar claude'a iletilir ve aynı anda Web Viewer başlatılır.
+ccv, claude'un dogrudan yerine gecer. Tum parametreler claude'a iletilirken ayni anda Web Viewer baslatilir.
 
 ```bash
-ccv                    # == claude (etkileşimli mod)
-ccv -c                 # == claude --continue (son konuşmaya devam et)
-ccv -r                 # == claude --resume (konuşmayı sürdür)
-ccv -p "hello"         # == claude --print "hello" (yazdırma modu)
-ccv --d                # == claude --dangerously-skip-permissions (kısayol)
+ccv                    # == claude (etkilesimli mod)
+ccv -c                 # == claude --continue (son konusmaya devam et)
+ccv -r                 # == claude --resume (konusmayi surdur)
+ccv -p "hello"         # == claude --print "hello" (yazdirma modu)
+ccv --d                # == claude --dangerously-skip-permissions (kisayol)
 ccv --model opus       # == claude --model opus
 ```
 
-Programlama modu başlatıldığında web sayfası otomatik olarak açılır.
+Yazarin en sik kullandigi komut:
+```
+ccv -c --d             # == claude --continue --dangerously-skip-permissions
+```
 
-Web sayfasında doğrudan claude kullanabilir, tam istek gövdelerini görüntüleyebilir ve kod değişikliklerini inceleyebilirsiniz.
+Programlama modu baslatildiktan sonra web sayfasi otomatik olarak acilir.
 
-Üstelik daha da etkileyici olan şu: mobil cihazınızdan bile programlama yapabilirsiniz!
+Web sayfasinda claude'u dogrudan kullanabilir, ayni zamanda tam istek mesajlarini ve kod degisikliklerini goruntuleyebilirsiniz.
 
-### Logger Modu
+Ve daha da heyecan verici olani — mobil cihazdan bile programlama yapabilirsiniz!
 
-⚠️ Hâlâ yerel claude aracını veya VS Code eklentisini kullanmayı tercih ediyorsanız bu modu kullanın.
 
-Bu modda ```claude``` veya ```claude --dangerously-skip-permissions``` başlatıldığında istek günlükleri otomatik olarak `~/.claude/cc-viewer/*projeniz*/tarih.jsonl` dosyasına kaydedilir.
+### Gunluk (Logger) Modu
 
-Logger modunu başlatmak için:
+⚠️ Hala yerel claude aracini veya VS Code eklentisini kullanmayi tercih ediyorsaniz, bu modu kullanin.
+
+Bu modda ```claude``` veya ```claude --dangerously-skip-permissions``` baslatildiginda
+
+otomatik olarak bir gunluk sureci baslatilir ve istekler ~/.claude/cc-viewer/*projeniz*/tarih.jsonl dosyasina kaydedilir.
+
+Gunluk modunu baslatma:
 ```bash
 ccv -logger
 ```
 
-Konsolda belirli bir port gösterilmediğinde varsayılan ilk başlangıç portu 127.0.0.1:7008'dir. Birden fazla örnek çalışıyorsa portlar sırayla artar: 7009, 7010 vb.
+Konsolda belirli port yazdirilmadiginda, ilk ornegin varsayilan portu 127.0.0.1:7008'dir. Birden fazla eszamanli ornek icin portlar sirasiyla 7009, 7010 seklinde artar.
 
-Bu komut, yerel Claude Code kurulumunu (NPM veya Native Install) otomatik olarak algılar ve buna göre uyum sağlar.
+Bu komut, Claude Code'un kurulum yontemini (NPM veya Native Install) otomatik olarak algilar ve buna gore uyarlanir.
 
-- **NPM sürümü claude code**: Claude Code'un `cli.js` dosyasına otomatik olarak bir yakalama betiği enjekte eder.
-- **Native sürümü claude code**: `claude` ikili dosyasını otomatik algılar, yerel şeffaf proxy yapılandırır ve trafiği otomatik yönlendirmek için Zsh Shell Hook ayarlar.
-- Bu proje, npm ile kurulu claude code kullanımını önerir.
+- **Claude code NPM surumu**: Claude Code'un `cli.js` dosyasina otomatik olarak yakalama betigi enjekte eder.
+- **Claude code Native surumu**: `claude` ikili dosyasini otomatik olarak algilar, yerel seffaf proxy yapilandirir ve otomatik trafik yonlendirme icin Zsh Shell Hook kurar.
+- Bu proje, NPM uzerinden kurulan Claude Code'un kullanilmasini onerir.
 
-Logger modunu kaldırmak için:
+Gunluk modunu kaldirma:
 ```bash
 ccv --uninstall
 ```
 
 ### Sorun Giderme (Troubleshooting)
 
-Başlatma sorunuyla karşılaşırsanız nihai çözüm şudur:
-Adım 1: Herhangi bir dizinde Claude Code'u açın;
-Adım 2: Claude Code'a aşağıdaki talimatı verin:
+Baslatma sorunlariyla karsilastirsaniz, nihai bir cozum vardir:
+Adim 1: Herhangi bir dizinde Claude Code'u acin;
+Adim 2: Claude Code'a su talimati verin:
 ```
-cc-viewer npm paketini kurdum ancak ccv çalıştırdıktan sonra düzgün çalışmıyor. cc-viewer'ın cli.js ve findcc.js dosyalarını incele; yerel ortama göre claude code kurulumunu uyumlu hale getir. Uyum değişikliklerini mümkün olduğunca findcc.js ile sınırlı tut.
+cc-viewer npm paketini kurdum, ancak ccv calistirdiktan sonra hala duzgun calismiyor. cc-viewer'in cli.js ve findcc.js dosyalarini incele ve belirli ortama gore yerel Claude Code dagitimini uyarla. Degisiklikleri mumkun oldugunca findcc.js ile sinirla.
 ```
-Claude Code'un hatayı kendisinin incelemesi, herhangi birine danışmaktan veya herhangi bir belgeyi okumaktan çok daha etkilidir!
+Claude Code'un hatalari kendisinin kontrol etmesine izin vermek, herhangi birine danismaktan veya herhangi bir belge okumaktan cok daha etkilidir!
 
-Yukarıdaki talimat tamamlandıktan sonra findcc.js güncellenecektir. Projeniz sık sık yerel dağıtım gerektiriyorsa veya fork edilmiş kodun kurulum sorunlarını çözmesi gerekiyorsa bu dosyayı saklayın — bir sonraki seferde doğrudan kopyalayabilirsiniz. Şu an pek çok proje ve şirket claude code'u Mac'te değil, sunucu tarafında barındırarak kullanıyor; bu nedenle yazar findcc.js dosyasını ayrı tutarak cc-viewer kaynak kodu güncellemelerinin takibini kolaylaştırdı.
+Yukaridaki talimatlar tamamlandiktan sonra findcc.js guncellenecektir. Projeniz sik sik yerel dagitim gerektiriyorsa veya fork'lanmis kodun sikca kurulum sorunlarini cozmesi gerekiyorsa, bu dosyayi saklayin ve bir sonraki sefere dogrudan kopyalayin. Gunumuzde bircok proje ve sirket Claude Code'u Mac'te degil, sunucu tarafinda barindirilan dagitimlarda kullanmaktadir. Bu nedenle yazar, cc-viewer kaynak kodu guncellemelerini takip etmeyi kolaylastirmak icin findcc.js'yi ayristirmistir.
 
-### Diğer Yardımcı Komutlar
+### Diger Yardimci Komutlar
 
-Yardım için:
+Yardimi goruntuleme:
 ```bash
 ccv -h
 ```
 
-### Yapılandırma Geçersiz Kılma (Configuration Override)
+### Yapilandirma Gecersiz Kilma (Configuration Override)
 
-Özel bir API uç noktası kullanmanız gerekiyorsa (örneğin kurumsal proxy), `~/.claude/settings.json` dosyasında yapılandırın veya `ANTHROPIC_BASE_URL` ortam değişkenini ayarlayın. `ccv` bunu otomatik olarak algılar ve istekleri doğru şekilde iletir.
+Ozel bir API uc noktasi kullanmaniz gerekiyorsa (ornegin kurumsal proxy), `~/.claude/settings.json` dosyasinda yapilandirin veya `ANTHROPIC_BASE_URL` ortam degiskenini ayarlayin. `ccv` bunu otomatik olarak algilar ve istekleri dogru sekilde yonlendirir.
 
 ### Sessiz Mod (Silent Mode)
 
-Varsayılan olarak `ccv`, `claude`'u sararken sessiz modda çalışır; terminal çıktınızın temiz kalmasını ve yerel deneyimle tutarlı olmasını sağlar. Tüm günlükler arka planda yakalanır ve `http://localhost:7008` üzerinden görüntülenebilir.
+Varsayilan olarak `ccv`, `claude`'u sararken sessiz modda calisir; boylece terminal ciktiniz temiz kalir ve yerel deneyimle ayni olur. Tum gunlukler arka planda yakalanir ve `http://localhost:7008` uzerinden goruntulenebilir.
 
-Yapılandırma tamamlandıktan sonra `claude` komutunu normal şekilde kullanın. İzleme arayüzünü görüntülemek için `http://localhost:7008` adresini ziyaret edin.
+Yapilandirma tamamlandiktan sonra `claude` komutunu her zamanki gibi kullanin. Izleme arayuzunu gormek icin `http://localhost:7008` adresini ziyaret edin.
 
 
-## Özellikler
+## Ozellikler
 
 
 ### Programlama Modu
 
-`ccv` ile başlatıldıktan sonra görebilecekleriniz:
+ccv ile baslatildiktan sonra sunlari goreceksiniz:
 
-<img width="1500" height="725" alt="image" src="https://github.com/user-attachments/assets/a64a381e-5a68-430c-b594-6d57dc01f4d3" />
+<img width="1500" height="765" alt="image" src="https://github.com/user-attachments/assets/ab353a2b-f101-409d-a28c-6a4e41571ea2" />
 
-Düzenleme tamamlandıktan sonra doğrudan kod farkını görüntüleyebilirsiniz:
+
+Duzenleme tamamlandiktan sonra dogrudan kod diff'ini goruntuleyebilirsiniz:
 
 <img width="1500" height="728" alt="image" src="https://github.com/user-attachments/assets/2a4acdaa-fc5f-4dc0-9e5f-f3273f0849b2" />
 
-Dosyaları açıp manuel olarak düzenleyebilirsiniz, ancak bu önerilmez — bu eski usul programlama!
+Dosyalari acip manuel olarak programlama yapabilirsiniz, ancak bu onerilmez — bu eski usul programlamadir!
 
 ### Mobil Programlama
 
-QR kodu tarayarak mobil cihazınızdan programlama yapabilirsiniz:
+QR kod tarayarak mobil cihazda programlama bile yapabilirsiniz:
 
 <img width="3018" height="1460" alt="image" src="https://github.com/user-attachments/assets/8debf48e-daec-420c-b37a-609f8b81cd20" />
 
-Mobil programlama hayalinizi gerçeğe dönüştürür. Ayrıca bir eklenti mekanizması da mevcuttur; programlama alışkanlıklarınıza göre özelleştirme yapmak istiyorsanız ilerleyen dönemde eklenti hook güncellemelerini takip edebilirsiniz.
+Mobil programlama hayallerinizi gerceklestirir. Ayrica bir eklenti mekanizmasi vardir — programlama aliskanliklariniza gore ozellestirmek istiyorsaniz, eklenti hooks guncellemelerini takip edebilirsiniz.
 
-### Logger Modu (Claude Code tam oturumunu görüntüleme)
+### Gunluk Modu (Claude Code tam konusmalarini goruntuleme)
 
-<img width="1500" height="720" alt="image" src="https://github.com/user-attachments/assets/519dd496-68bd-4e76-84d7-2a3d14ae3f61" />
+<img width="1500" height="768" alt="image" src="https://github.com/user-attachments/assets/a8a9f3f7-d876-4f6b-a64d-f323a05c4d21" />
 
-- Claude Code tarafından gönderilen tüm API isteklerini gerçek zamanlı olarak yakalar; kırpılmış günlükler değil, ham metin (bu çok önemli!!!)
-- Main Agent ve Sub Agent isteklerini otomatik olarak tanımlar ve etiketler (alt türler: Plan, Search, Bash)
-- MainAgent istekleri Body Diff JSON'u destekler; önceki MainAgent isteğiyle farkı daraltılmış şekilde gösterir (yalnızca değişen/eklenen alanlar)
-- Her istekte satır içi token kullanım istatistikleri (giriş/çıkış token, önbellek oluşturma/okuma, isabet oranı)
-- Claude Code Router (CCR) ve diğer proxy senaryolarıyla uyumlu — API yol deseniyle istekleri eşleştirir
 
-### Konuşma Modu
+- Claude Code'un gonderdigi tum API isteklerini gercek zamanli olarak yakalar, orijinal metin oldugundan emin olur, sansurlenmis gunlukler degil (bu cok onemli!!!)
+- Main Agent ve Sub Agent isteklerini otomatik olarak tanımlar ve isaretler (alt turler: Plan, Search, Bash)
+- MainAgent istekleri Body Diff JSON'u destekler, onceki MainAgent istegiyle farklari daraltilmis olarak gosterir (yalnizca degisen/yeni alanlar gosterilir)
+- Her istek satir ici Token kullanim istatistiklerini gosterir (giris/cikis Token, onbellek olusturma/okuma, isabet orani)
+- Claude Code Router (CCR) ve diger proxy senaryolariyla uyumlu — API yol kalibi eslestirmesi ile yedek olarak istekleri eslestirir
 
-Sağ üst köşedeki "Konuşma Modu" düğmesine tıklayarak Main Agent'ın tam konuşma geçmişini sohbet arayüzüne dönüştürün:
+### Konusma Modu
 
-<img width="1500" height="730" alt="image" src="https://github.com/user-attachments/assets/c973f142-748b-403f-b2b7-31a5d81e33e6" />
+Main Agent'in tam konusma gecmisini sohbet arayuzu olarak ayristirmak icin sag ustteki "Konusma Modu" dugmesine tiklayin:
 
-- Agent Team görünümü henüz desteklenmiyor
-- Kullanıcı mesajları sağa hizalı (mavi balon), Main Agent yanıtları sola hizalı (koyu balon)
-- `thinking` blokları varsayılan olarak daraltılmış, Markdown ile işlenmiş; genişletmek için tıklayın; tek tıkla çeviri desteklenir (özellik henüz kararlı değil)
-- Kullanıcı seçim mesajları (AskUserQuestion) soru-cevap biçiminde gösterilir
-- Çift yönlü mod senkronizasyonu: konuşma moduna geçildiğinde seçili isteğe karşılık gelen konuşmaya otomatik gidilir; ham moda dönüldüğünde seçili isteğe otomatik gidilir
-- Ayarlar paneli: araç sonuçları ve düşünme bloklarının varsayılan daraltma durumu değiştirilebilir
-- Mobil konuşma tarama: mobil CLI modunda üst çubukta "Konuşma Tarama" düğmesine tıklayarak salt okunur konuşma görünümünü kaydırın ve tam konuşma geçmişine göz atın
+<img width="1500" height="764" alt="image" src="https://github.com/user-attachments/assets/725b57c8-6128-4225-b157-7dba2738b1c6" />
 
-### İstatistik Araçları
 
-Header alanındaki "Veri İstatistikleri" kayan paneli:
+- Agent Team goruntuleme henuz desteklenmiyor
+- Kullanici mesajlari saga hizali (mavi balon), Main Agent yanitlari sola hizali (koyu balon)
+- `thinking` bloklari varsayilan olarak daraltilmis, Markdown olarak islenir. Dusunce surecini gormek icin tiklayin; tek tikla ceviri destekler (ozellik henuz kararsiz)
+- Kullanici secim mesajlari (AskUserQuestion) soru-cevap formatinda goruntulenir
+- Cift yonlu mod senkronizasyonu: Konusma moduna gecildiginde secili istegin konusmasina otomatik olarak gidilir; orijinal moda geri donuldugunde secili istege otomatik olarak gidilir
+- Ayarlar paneli: Arac sonuclarinin ve thinking bloklarinin varsayilan daraltma durumunu degistirebilir
+- Mobil konusma gorunumu: Mobil CLI modunda, ust cubraktaki "Konusma Gorunumu" dugmesine tiklayarak salt okunur bir konusma gorunumu acabilir ve mobilde tam konusma gecmisini inceleyebilirsiniz
 
-<img width="1500" height="729" alt="image" src="https://github.com/user-attachments/assets/b23f9a81-fc3d-4937-9700-e70d84e4e5ce" />
+### Istatistik Araclari
 
-- Önbellek oluşturma/okuma sayısını ve önbellek isabet oranını gösterir
-- Önbellek yeniden oluşturma istatistikleri: nedene göre gruplandırılmış (TTL, sistem/araçlar/model değişikliği, mesaj kesme/değiştirme, anahtar değişikliği) sayı ve cache_creation token'ları
-- Araç kullanım istatistikleri: her aracın çağrı sıklığı çağrı sayısına göre sıralanmış
-- Skill kullanım istatistikleri: her Skill'in çağrı sıklığı çağrı sayısına göre sıralanmış
-- Kavram yardımı (?) simgesi: MainAgent, CacheRebuild ve çeşitli araçlar için yerleşik belgeleri görüntülemek için tıklayın
+Header alaninda "Veri Istatistikleri" acilir paneli:
 
-### Günlük Yönetimi
+<img width="1500" height="765" alt="image" src="https://github.com/user-attachments/assets/a3d2db47-eac3-463a-9b44-3fa64994bf3b" />
 
-Sol üst köşedeki CC-Viewer açılır menüsü aracılığıyla:
+- Cache creation/read sayisi ve onbellek isabet oranini gosterir
+- Onbellek yeniden olusturma istatistikleri: Nedene gore gruplandirılmis (TTL, system/tools/model degisikligi, mesaj kisaltma/degistirme, key degisikligi) sayi ve cache_creation tokens ile
+- Arac kullanim istatistikleri: Her aracin cagri sikligini sayiya gore sirali gosterir
+- Skill kullanim istatistikleri: Her Skill'in cagri sikligini sayiya gore sirali gosterir
+- Teammate istatistiklerini destekler
+- Kavram yardimi (?) simgeleri: MainAgent, CacheRebuild ve her arac icin yerlesik belgeleri goruntulemek uzere tiklayin
 
-<img width="1200" height="672" alt="image" src="https://github.com/user-attachments/assets/8cf24f5b-9450-4790-b781-0cd074cd3b39" />
+### Gunluk Yonetimi
 
-- Yerel günlükleri içe aktar: geçmiş günlük dosyalarına göz at, projeye göre gruplandır, yeni pencerede aç
-- Yerel JSONL dosyası yükle: görüntülemek için doğrudan yerel `.jsonl` dosyası seç (maksimum 500 MB desteklenir)
-- Mevcut günlüğü farklı kaydet: izlenen JSONL günlük dosyasını indir
-- Günlükleri birleştir: birden fazla JSONL günlük dosyasını tek bir oturumda birleştirerek birlikte analiz et
-- Kullanıcı Prompt'larını görüntüle: tüm kullanıcı girdilerini çıkar ve göster; üç görüntüleme modu desteklenir — Ham mod (orijinal içerik), Bağlam modu (sistem etiketleri daraltılabilir), Metin modu (düz metin); eğik çizgi komutları (`/model`, `/context` vb.) bağımsız girdi olarak gösterilir; komutla ilgili etiketler Prompt içeriğinden otomatik gizlenir
-- Prompt'ları TXT olarak dışa aktar: kullanıcı Prompt'larını (sistem etiketleri olmadan düz metin) yerel `.txt` dosyası olarak dışa aktar
+Sol ustteki CC-Viewer acilir menusu araciligiyla:
+<img width="1500" height="760" alt="image" src="https://github.com/user-attachments/assets/33295e2b-f2e0-4968-a6f1-6f3d1404454e" />
 
-### Otomatik Güncelleme
+**Gunluk Sikistirma**
+Gunlukler hakkinda yazar, Anthropic'in resmi tanimlarinda hicbir degisiklik yapilmadigini, gunluklerin butunlugunu garanti etmek icin acikca belirtmek ister.
+Ancak opus 1M'nin tek tek gunlukleri zamanla asiri buyudugunden, yazarin MainAgent icin uyguladigi gunluk optimizasyonlari sayesinde gzip olmadan en az %66 boyut kucultme saglanabilmektedir.
+Bu sikistirilmis gunlukleri ayristirma yontemi bu depodan cikarilabilir.
 
-CC-Viewer başlatıldığında güncellemeleri otomatik olarak kontrol eder (en fazla 4 saatte bir). Aynı ana sürüm içinde (örn. 1.x.x → 1.y.z) otomatik güncelleme yapılır ve bir sonraki başlatmada geçerli olur. Ana sürüm değişikliklerinde yalnızca bildirim gösterilir.
+### Daha Fazla Kullanisli Ozellik
 
-Otomatik güncelleme, Claude Code'un genel yapılandırması olan `~/.claude/settings.json` dosyasını takip eder. Claude Code otomatik güncellemeleri devre dışı bıraktıysa (`autoUpdates: false`), CC-Viewer de otomatik güncellemeyi atlar.
+<img width="1500" height="767" alt="image" src="https://github.com/user-attachments/assets/add558c5-9c4d-468a-ac6f-d8d64759fdbd" />
 
-### Çok Dilli Destek
+Kenar cubugu araciligiyla prompt'unuzu hizlica bulabilirsiniz
 
-CC-Viewer 18 dili destekler ve sistem dil ortamına göre otomatik olarak geçiş yapar:
+--- 
+
+<img width="1500" height="765" alt="image" src="https://github.com/user-attachments/assets/82b8eb67-82f5-41b1-89d6-341c95a047ed" />
+
+Ilginc KV-Cache-Text ozelligi, Claude'un gercekte ne gordugunu gormenizi saglar
+
+---
+
+<img width="1500" height="765" alt="image" src="https://github.com/user-attachments/assets/54cdfa4e-677c-4aed-a5bb-5fd946600c46" />
+
+Gorsel yukleyerek ihtiyaclarinizi ifade edebilirsiniz. Claude'un gorsel anlama yetenegi son derece gucludur. Ayrica ekran goruntlerini dogrudan Ctrl + V ile yapistirabilirsiniz ve konusma tum iceriginizi gosterir
+
+---
+
+<img width="600" height="370" alt="image" src="https://github.com/user-attachments/assets/87d332ea-3e34-4957-b442-f9d070211fbf" />
+
+Eklentileri dogrudan ozellestirebilir, tum CC-Viewer sureclerini yonetebilir ve CC-Viewer ucuncu taraf API'lere aninda gecis yapabilir (evet, GLM, Kimi, MiniMax, Qwen, DeepSeek kullanabilirsiniz — yazar su an hepsinin oldukca zayif oldugunu dusunse de)
+
+---
+
+
+<img width="1500" height="746" alt="image" src="https://github.com/user-attachments/assets/b1f60c7c-1438-4ecc-8c64-193d21ee3445" />
+
+Kesfedilmeyi bekleyen daha fazla ozellik... Ornegin: Sistem Agent Team'i destekler ve yerlesik Code Reviewer'a sahiptir. Yakinda Codex'in Code Reviewer entegrasyonu da gelecek (yazar, Claude Code kodunu incelemek icin Codex kullanilmasini siddetle savunmaktadir)
+
+
+### Otomatik Guncellemeler
+
+CC-Viewer baslatilirken otomatik olarak guncellemeleri kontrol eder (4 saatte en fazla bir kez). Ayni ana surum icinde (orn. 1.x.x -> 1.y.z) otomatik guncellenir ve bir sonraki baslatmada gecerli olur. Ana surum degisikliginde yalnizca bildirim gosterilir.
+
+Otomatik guncelleme, Claude Code'un genel yapilandirmasi `~/.claude/settings.json`'u takip eder. Claude Code otomatik guncellemeleri devre disi biraktiysa (`autoUpdates: false`), CC-Viewer de otomatik guncellemeyi atlar.
+
+### Coklu Dil Destegi
+
+CC-Viewer 18 dili destekler ve sistem diline gore otomatik olarak gecis yapar:
 
 简体中文 | English | 繁體中文 | 한국어 | Deutsch | Español | Français | Italiano | Dansk | 日本語 | Polski | Русский | العربية | Norsk | Português (Brasil) | ไทย | Türkçe | Українська
 
-## Lisans
+## License
 
 MIT

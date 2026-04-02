@@ -7,8 +7,6 @@ Check out the fun part — here's what you can see on mobile:
 
 <img width="1700" height="790" alt="image" src="https://github.com/user-attachments/assets/da3e519f-ff66-4cd2-81d1-f4e131215f6c" />
 
-<font color="#999">(Current version has limited iOS compatibility — iOS optimization is planned for 2026.04.01)</font>
-
 English | [简体中文](./docs/README.zh.md) | [繁體中文](./docs/README.zh-TW.md) | [한국어](./docs/README.ko.md) | [日本語](./docs/README.ja.md) | [Deutsch](./docs/README.de.md) | [Español](./docs/README.es.md) | [Français](./docs/README.fr.md) | [Italiano](./docs/README.it.md) | [Dansk](./docs/README.da.md) | [Polski](./docs/README.pl.md) | [Русский](./docs/README.ru.md) | [العربية](./docs/README.ar.md) | [Norsk](./docs/README.no.md) | [Português (Brasil)](./docs/README.pt-BR.md) | [ไทย](./docs/README.th.md) | [Türkçe](./docs/README.tr.md) | [Українська](./docs/README.uk.md)
 
 ## Usage
@@ -32,11 +30,17 @@ ccv --d                # == claude --dangerously-skip-permissions (shortcut)
 ccv --model opus       # == claude --model opus
 ```
 
-After launching, a web page will open automatically.
+The author's most-used command is:
+```
+ccv -c --d             # == claude --continue --dangerously-skip-permissions
+```
+
+After launching in programming mode, a web page will open automatically.
 
 You can use Claude directly from the web page while viewing the full request payloads and code changes.
 
 Even better — you can even code from your mobile device!
+
 
 ### Logger Mode
 
@@ -45,7 +49,6 @@ Even better — you can even code from your mobile device!
 In this mode, launching `claude` or `claude --dangerously-skip-permissions` will automatically start a logging process that records request logs to ~/.claude/cc-viewer/*yourproject*/date.jsonl
 
 Enable logger mode:
-
 ```bash
 ccv -logger
 ```
@@ -59,27 +62,9 @@ This command automatically detects how Claude Code is installed locally (NPM or 
 - NPM-installed Claude Code is the recommended approach for this project.
 
 Uninstall logger mode:
-
 ```bash
 ccv --uninstall
 ```
-
-### Configuration Override
-
-If you need to use a custom API endpoint (e.g., a corporate proxy), simply configure it in `~/.claude/settings.json` or set the `ANTHROPIC_BASE_URL` environment variable. `ccv` will automatically detect and correctly forward requests.
-
-### Environment Variables
-
-- `CCV_LOG_DIR`: Override the default log directory (`~/.claude/cc-viewer`).
-  - Set to `tmp` to use the system temporary directory (useful for testing or ephemeral sessions).
-  - Set to any absolute path or `~/path` to customize storage location.
-- `CCV_DEBUG_PLUGINS`: Set to `1` to enable debug logs for the plugin system.
-
-### Silent Mode
-
-By default, `ccv` runs in silent mode when wrapping `claude`, keeping your terminal output clean and consistent with the native experience. All logs are captured in the background and can be viewed at `http://localhost:7008`.
-
-Once configured, use the `claude` command as normal. Visit `http://localhost:7008` to access the monitoring interface.
 
 ### Troubleshooting
 
@@ -115,13 +100,16 @@ By default, `ccv` runs in silent mode when wrapping `claude`, keeping your termi
 
 Once configured, use the `claude` command as normal. Visit `http://localhost:7008` to access the monitoring interface.
 
+
 ## Features
+
 
 ### Programming Mode
 
 After launching with ccv, you can see:
 
-<img width="1500" height="725" alt="image" src="https://github.com/user-attachments/assets/a64a381e-5a68-430c-b594-6d57dc01f4d3" />
+<img width="1500" height="765" alt="image" src="https://github.com/user-attachments/assets/ab353a2b-f101-409d-a28c-6a4e41571ea2" />
+
 
 You can view code diffs directly after editing:
 
@@ -139,7 +127,8 @@ Fulfill your imagination of mobile programming. There's also a plugin mechanism 
 
 ### Logger Mode (View Complete Claude Code Sessions)
 
-<img width="1500" height="720" alt="image" src="https://github.com/user-attachments/assets/519dd496-68bd-4e76-84d7-2a3d14ae3f61" />
+<img width="1500" height="768" alt="image" src="https://github.com/user-attachments/assets/a8a9f3f7-d876-4f6b-a64d-f323a05c4d21" />
+
 
 - Captures all API requests from Claude Code in real time, ensuring raw text — not redacted logs (this is important!!!)
 - Automatically identifies and labels Main Agent and Sub Agent requests (subtypes: Plan, Search, Bash)
@@ -151,7 +140,8 @@ Fulfill your imagination of mobile programming. There's also a plugin mechanism 
 
 Click the "Conversation Mode" button in the top-right corner to parse the Main Agent's complete conversation history into a chat interface:
 
-<img width="1500" height="730" alt="image" src="https://github.com/user-attachments/assets/c973f142-748b-403f-b2b7-31a5d81e33e6" />
+<img width="1500" height="764" alt="image" src="https://github.com/user-attachments/assets/725b57c8-6128-4225-b157-7dba2738b1c6" />
+
 
 - Agent Team display is not yet supported
 - User messages are right-aligned (blue bubbles), Main Agent replies are left-aligned (dark bubbles)
@@ -160,36 +150,63 @@ Click the "Conversation Mode" button in the top-right corner to parse the Main A
 - Bidirectional mode sync: switching to conversation mode auto-scrolls to the conversation corresponding to the selected request; switching back to raw mode auto-scrolls to the selected request
 - Settings panel: toggle default collapse state for tool results and thinking blocks
 - Mobile conversation browsing: in mobile CLI mode, tap the "Conversation Browse" button in the top bar to slide out a read-only conversation view for browsing the complete conversation history on mobile
-- Network location indicator: header displays a country flag emoji based on the browser's outbound IP (via ipinfo.io); hover to see city, region, ISP, and IP address
 
 ### Statistics Tool
 
 The "Data Statistics" floating panel in the header area:
 
-<img width="1500" height="729" alt="image" src="https://github.com/user-attachments/assets/b23f9a81-fc3d-4937-9700-e70d84e4e5ce" />
+<img width="1500" height="765" alt="image" src="https://github.com/user-attachments/assets/a3d2db47-eac3-463a-9b44-3fa64994bf3b" />
 
 - Displays cache creation/read counts and cache hit rate
 - Cache rebuild statistics: grouped by reason (TTL, system/tools/model changes, message truncation/modification, key changes) showing counts and cache_creation tokens
 - Tool usage statistics: displays call frequency for each tool sorted by number of calls
 - Skill usage statistics: displays call frequency for each skill sorted by number of calls
+- Supports teammate statistics
 - Concept help (?) icon: click to view built-in documentation for MainAgent, CacheRebuild, and each tool
 
 ### Log Management
 
 Via the CC-Viewer dropdown menu in the top-left corner:
+<img width="1500" height="760" alt="image" src="https://github.com/user-attachments/assets/33295e2b-f2e0-4968-a6f1-6f3d1404454e" />
 
-<img width="1200" height="672" alt="image" src="https://github.com/user-attachments/assets/8cf24f5b-9450-4790-b781-0cd074cd3b39" />
+**Log Compression**
+Regarding logs, the author wants to clarify that the official Anthropic definitions have not been modified, ensuring log integrity. However, since individual log entries from the 1M Opus model can become extremely large in later stages, thanks to certain log optimizations for MainAgent, at least 66% size reduction is achieved without gzip. The parsing method for these compressed logs can be extracted from the current repository.
 
-- Import local logs: browse historical log files grouped by project, open in a new window
-- Load local JSONL file: directly select a local `.jsonl` file to load and view (supports up to 500MB)
-- Save current log as: download the current monitoring JSONL log file
-- Merge logs: combine multiple JSONL log files into a single session for unified analysis
-- View user Prompts: extract and display all user inputs, supporting three view modes — Raw mode (original content), Context mode (system tags collapsible), Text mode (plain text); slash commands (`/model`, `/context`, etc.) shown as standalone entries; command-related tags are auto-hidden from Prompt content
-- Export Prompts to TXT: export user Prompts (plain text, excluding system tags) to a local `.txt` file
+### More Useful Features
+
+<img width="1500" height="767" alt="image" src="https://github.com/user-attachments/assets/add558c5-9c4d-468a-ac6f-d8d64759fdbd" />
+
+You can quickly locate your prompts using the sidebar tools.
+
+--- 
+
+<img width="1500" height="765" alt="image" src="https://github.com/user-attachments/assets/82b8eb67-82f5-41b1-89d6-341c95a047ed" />
+
+The interesting KV-Cache-Text feature lets you see exactly what Claude sees.
+
+---
+
+<img width="1500" height="765" alt="image" src="https://github.com/user-attachments/assets/54cdfa4e-677c-4aed-a5bb-5fd946600c46" />
+
+You can upload images and describe your needs — Claude's image understanding is incredibly powerful. And as you know, you can paste images directly with Ctrl+V, and your complete content will be displayed in the conversation.
+
+---
+
+<img width="600" height="370" alt="image" src="https://github.com/user-attachments/assets/87d332ea-3e34-4957-b442-f9d070211fbf" />
+
+You can customize plugins, manage all CC-Viewer processes, and CC-Viewer supports hot-switching to third-party APIs (yes, you can use GLM, Kimi, MiniMax, Qwen, DeepSeek — although the author considers them all quite weak at this point).
+
+---
+
+
+<img width="1500" height="746" alt="image" src="https://github.com/user-attachments/assets/b1f60c7c-1438-4ecc-8c64-193d21ee3445" />
+
+More features waiting to be discovered... For example: the system supports Agent Team, and has a built-in Code Reviewer. Codex Code Reviewer integration is coming soon (the author highly recommends using Codex to review Claude Code's code).
+
 
 ### Auto-Update
 
-CC-Viewer automatically checks for updates on startup (at most once every 4 hours). Within the same major version (e.g., 1.x.x → 1.y.z), updates are applied automatically and take effect on the next restart. Cross-major-version updates only show a notification.
+CC-Viewer automatically checks for updates on startup (at most once every 4 hours). Within the same major version (e.g., 1.x.x -> 1.y.z), updates are applied automatically and take effect on the next restart. Cross-major-version updates only show a notification.
 
 Auto-update follows Claude Code's global configuration in `~/.claude/settings.json`. If Claude Code has auto-updates disabled (`autoUpdates: false`), CC-Viewer will also skip auto-updates.
 

@@ -7,8 +7,6 @@
 
 <img width="1700" height="790" alt="image" src="https://github.com/user-attachments/assets/da3e519f-ff66-4cd2-81d1-f4e131215f6c" />
 
-<font color="#999">(التوافق مع iOS في الإصدار الحالي ليس جيدًا جدًا، سيتم تحسينه لـ iOS في 2026.04.01)</font>
-
 [English](../README.md) | [简体中文](./README.zh.md) | [繁體中文](./README.zh-TW.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md) | [Deutsch](./README.de.md) | [Español](./README.es.md) | [Français](./README.fr.md) | [Italiano](./README.it.md) | [Dansk](./README.da.md) | [Polski](./README.pl.md) | [Русский](./README.ru.md) | العربية | [Norsk](./README.no.md) | [Português (Brasil)](./README.pt-BR.md) | [ไทย](./README.th.md) | [Türkçe](./README.tr.md) | [Українська](./README.uk.md)
 
 ## طريقة الاستخدام
@@ -32,6 +30,11 @@ ccv --d                # == claude --dangerously-skip-permissions (اختصار)
 ccv --model opus       # == claude --model opus
 ```
 
+الأمر الأكثر استخدامًا من قبل المؤلف هو
+```
+ccv -c --d             # == claude --continue --dangerously-skip-permissions
+```
+
 بعد تشغيل وضع البرمجة، سيتم فتح صفحة الويب تلقائيًا.
 
 يمكنك استخدام claude مباشرة من صفحة الويب، مع إمكانية عرض رسائل الطلبات الكاملة ومراجعة تغييرات الكود.
@@ -41,11 +44,11 @@ ccv --model opus       # == claude --model opus
 
 ### وضع السجل
 
-⚠️ إذا كنت لا تزال معتادًا على استخدام أداة claude الأصلية، أو إضافة VS Code، يرجى استخدام هذا الوضع.
+⚠️ إذا كنت لا تزال تفضل استخدام أداة claude الأصلية، أو إضافة VS Code، يرجى استخدام هذا الوضع.
 
 في هذا الوضع، عند تشغيل ```claude``` أو ```claude --dangerously-skip-permissions```
 
-سيتم تشغيل عملية سجل تلقائيًا لتسجيل سجلات الطلبات في ~/.claude/cc-viewer/*yourproject*/date.jsonl
+سيتم تشغيل عملية سجل تلقائيًا لتسجيل سجلات الطلبات في ~/.claude/cc-viewer/*مشروعك*/date.jsonl
 
 تشغيل وضع السجل:
 ```bash
@@ -68,8 +71,8 @@ ccv --uninstall
 ### استكشاف الأخطاء وإصلاحها (Troubleshooting)
 
 إذا واجهت مشكلة في التشغيل، هناك حل نهائي لاستكشاف الأخطاء:
-الخطوة الأولى: افتح Claude Code في أي مجلد؛
-الخطوة الثانية: أعطِ Claude Code التعليمات التالية:
+الخطوة الأولى: افتح claude code في أي مجلد؛
+الخطوة الثانية: أعطِ claude code التعليمات التالية:
 ```
 لقد قمت بتثبيت حزمة npm المسماة cc-viewer، لكن بعد تنفيذ ccv لا يعمل بشكل صحيح. افحص cli.js و findcc.js الخاصين بـ cc-viewer، وقم بالتكيف مع طريقة نشر Claude Code المحلية وفقًا للبيئة المحددة. حاول حصر نطاق التعديلات في findcc.js.
 ```
@@ -102,7 +105,8 @@ ccv -h
 
 بعد التشغيل باستخدام ccv يمكنك رؤية:
 
-<img width="1500" height="725" alt="image" src="https://github.com/user-attachments/assets/a64a381e-5a68-430c-b594-6d57dc01f4d3" />
+<img width="1500" height="765" alt="image" src="https://github.com/user-attachments/assets/ab353a2b-f101-409d-a28c-6a4e41571ea2" />
+
 
 يمكنك عرض diff الكود مباشرة بعد اكتمال التحرير:
 
@@ -120,9 +124,10 @@ ccv -h
 
 ### وضع السجل (عرض جلسة claude code الكاملة)
 
-<img width="1500" height="720" alt="image" src="https://github.com/user-attachments/assets/519dd496-68bd-4e76-84d7-2a3d14ae3f61" />
+<img width="1500" height="768" alt="image" src="https://github.com/user-attachments/assets/a8a9f3f7-d876-4f6b-a64d-f323a05c4d21" />
 
-- التقاط في الوقت الفعلي لجميع طلبات API الصادرة من Claude Code، مع ضمان أنها النص الأصلي، وليس السجلات المختصرة (هذا مهم جدًا!!)
+
+- التقاط في الوقت الفعلي لجميع طلبات API الصادرة من Claude Code، مع ضمان أنها النص الأصلي، وليس السجلات المختصرة (هذا مهم جدًا!!!)
 - التعرف التلقائي ووضع علامات على طلبات Main Agent و Sub Agent (الأنواع الفرعية: Plan، Search، Bash)
 - طلبات MainAgent تدعم Body Diff JSON، عرض مطوي للاختلافات مع طلب MainAgent السابق (عرض الحقول المتغيرة/المضافة فقط)
 - عرض إحصائيات استخدام Token مضمنة لكل طلب (Token الإدخال/الإخراج، إنشاء/قراءة ذاكرة التخزين المؤقت، معدل الإصابة)
@@ -132,7 +137,8 @@ ccv -h
 
 انقر على زر «وضع المحادثة» في الزاوية العلوية اليمنى، لتحليل سجل المحادثة الكامل لـ Main Agent إلى واجهة دردشة:
 
-<img width="1500" height="730" alt="image" src="https://github.com/user-attachments/assets/c973f142-748b-403f-b2b7-31a5d81e33e6" />
+<img width="1500" height="764" alt="image" src="https://github.com/user-attachments/assets/725b57c8-6128-4225-b157-7dba2738b1c6" />
+
 
 - لا يدعم حاليًا عرض Agent Team
 - رسائل المستخدم محاذاة لليمين (فقاعة زرقاء)، ردود Main Agent محاذاة لليسار (فقاعة داكنة)
@@ -140,32 +146,62 @@ ccv -h
 - رسائل اختيار المستخدم (AskUserQuestion) معروضة بتنسيق سؤال وجواب
 - مزامنة الوضع ثنائي الاتجاه: عند التبديل إلى وضع المحادثة، يتم تحديد موقع المحادثة المقابلة للطلب المحدد تلقائيًا؛ عند العودة إلى وضع النص الأصلي، يتم تحديد موقع الطلب المحدد تلقائيًا
 - لوحة الإعدادات: يمكن تبديل حالة الطي الافتراضية لنتائج الأدوات وكتل التفكير
-- تصفح المحادثة على الهاتف المحمول: في وضع CLI على ا��هاتف المحمول، انقر على زر «تصفح المحادثة» في الشريط العلوي، لعرض طريقة عرض المحادثة للقراءة فقط، لتصفح سجل المحادثة الكامل على الهاتف
+- تصفح المحادثة على الهاتف المحمول: في وضع CLI على الهاتف المحمول، انقر على زر «تصفح المحادثة» في الشريط العلوي، لعرض طريقة عرض المحادثة للقراءة فقط، لتصفح سجل المحادثة الكامل على الهاتف
 
 ### أدوات الإحصائيات
 
 لوحة «إحصائيات البيانات» المنبثقة في منطقة الرأس:
 
-<img width="1500" height="729" alt="image" src="https://github.com/user-attachments/assets/b23f9a81-fc3d-4937-9700-e70d84e4e5ce" />
+<img width="1500" height="765" alt="image" src="https://github.com/user-attachments/assets/a3d2db47-eac3-463a-9b44-3fa64994bf3b" />
 
 - عرض عدد cache creation/read ونسبة إصابة ذاكرة التخزين المؤقت
 - إحصائيات إعادة بناء ذاكرة التخزين المؤقت: مجمعة حسب السبب (TTL، تغيير system/tools/model، اقتطاع/تعديل الرسائل، تغيير المفتاح) مع عدد المرات وعدد cache_creation tokens
 - إحصائيات استخدام الأدوات: عرض تكرار استدعاء كل أداة مرتبة حسب عدد الاستدعاءات
 - إحصائيات استخدام Skill: عرض تكرار استدعاء كل Skill مرتبة حسب عدد الاستدعاءات
+- دعم إحصائيات teammate
 - أيقونة المساعدة المفاهيمية (?): انقر لعرض الوثائق المدمجة لـ MainAgent و CacheRebuild والأدوات المختلفة
 
 ### إدارة السجلات
 
 عبر القائمة المنسدلة CC-Viewer في أعلى اليسار:
+<img width="1500" height="760" alt="image" src="https://github.com/user-attachments/assets/33295e2b-f2e0-4968-a6f1-6f3d1404454e" />
 
-<img width="1200" height="672" alt="image" src="https://github.com/user-attachments/assets/8cf24f5b-9450-4790-b781-0cd074cd3b39" />
+**ضغط السجلات**
+بخصوص السجلات، يود المؤلف التأكيد على أن التعريفات الرسمية لـ Anthropic لم يتم تعديلها، لضمان سلامة السجلات.
+ولكن نظرًا لأن السجلات الفردية لـ 1M opus في المراحل المتأخرة تصبح ضخمة جدًا، فبفضل تحسينات سجلات MainAgent التي أجراها المؤلف، تم تقليل الحجم بنسبة 66% على الأقل بدون استخدام gzip.
+يمكن استخراج طريقة تحليل هذه السجلات المضغوطة من المستودع الحالي.
 
-- استيراد السجلات المحلية: تصفح ملفات السجلات التاريخية، مجمعة حسب المشروع، تفتح في نافذة جديدة
-- تحميل ملف JSONL محلي: اختيار ملف `.jsonl` محلي مباشرة للتحميل والعرض (يدعم حتى 500 ميجابايت)
-- حفظ السجل الحالي باسم: تنزيل ملف سجل JSONL الحالي للمراقبة
-- دمج السجلات: دمج عدة ملفات سجلات JSONL في جلسة واحدة للتحليل الموحد
-- عرض Prompt المستخدم: استخراج وعرض جميع مدخلات المستخدم، يدعم ثلاثة أوضاع عرض — وضع النص الأصلي (المحتوى الخام)، وضع السياق (وسوم النظام قابلة للطي)، وضع النص (نص عادي فقط)؛ أوامر الشرطة المائلة (`/model`، `/context`، إلخ) تُعرض كإدخالات مستقلة؛ الوسوم المتعلقة بالأوامر تُخفى تلقائيًا من محتوى Prompt
-- تصدير Prompt إلى TXT: تصدير Prompt المستخدم (نص عادي، بدون وسوم النظام) إلى ملف `.txt` محلي
+### المزيد من الميزات المفيدة والعملية
+
+<img width="1500" height="767" alt="image" src="https://github.com/user-attachments/assets/add558c5-9c4d-468a-ac6f-d8d64759fdbd" />
+
+يمكنك العثور بسرعة على الـ prompt الخاص بك عبر أدوات الشريط الجانبي
+
+--- 
+
+<img width="1500" height="765" alt="image" src="https://github.com/user-attachments/assets/82b8eb67-82f5-41b1-89d6-341c95a047ed" />
+
+ميزة KV-Cache-Text المثيرة تساعدك على رؤية ما يراه Claude
+
+---
+
+<img width="1500" height="765" alt="image" src="https://github.com/user-attachments/assets/54cdfa4e-677c-4aed-a5bb-5fd946600c46" />
+
+يمكنك رفع الصور ووصف احتياجاتك. قدرة Claude على فهم الصور قوية للغاية. كما يمكنك التقاط لقطة شاشة ولصقها مباشرة باستخدام Ctrl + V، وستعرض المحادثة المحتوى الكامل
+
+---
+
+<img width="600" height="370" alt="image" src="https://github.com/user-attachments/assets/87d332ea-3e34-4957-b442-f9d070211fbf" />
+
+يمكنك تخصيص الإضافات مباشرة، وإدارة جميع عمليات CC-Viewer، كما يتمتع CC-Viewer بقدرة التبديل السريع للواجهات الخارجية (نعم، يمكنك استخدام GLM، Kimi، MiniMax، Qwen، DeepSeek — رغم أن المؤلف يرى أنها جميعًا ضعيفة حاليًا)
+
+---
+
+
+<img width="1500" height="746" alt="image" src="https://github.com/user-attachments/assets/b1f60c7c-1438-4ecc-8c64-193d21ee3445" />
+
+المزيد من الميزات في انتظارك لاكتشافها... مثلاً: النظام يدعم Agent Team، ويحتوي على Code Reviewer مدمج. دمج Codex Code Reviewer قادم قريبًا (يوصي المؤلف بشدة باستخدام Codex لمراجعة كود Claude Code)
+
 
 ### التحديث التلقائي
 

@@ -257,6 +257,24 @@ function _extractSpawnPrompt(req) {
 }
 
 /**
+ * v2.1.90+ Agent 模式：native teammate 的首条 user message 是 raw prompt（无 <teammate-message> 包装）。
+ * 直接提取首条 user message 文本内容用于 prompt prefix 匹配。
+ */
+function _extractRawPrompt(req) {
+  const msgs = req.body?.messages;
+  if (!Array.isArray(msgs) || msgs.length === 0) return '';
+  const first = msgs[0];
+  const content = first.content;
+  if (typeof content === 'string') return content.trimStart();
+  if (Array.isArray(content)) {
+    for (const b of content) {
+      if (b.type === 'text' && b.text) return b.text.trimStart();
+    }
+  }
+  return '';
+}
+
+/**
  * 预扫描 requests，通过匹配 MainAgent 的 Agent tool_use prompt
  * 与 native teammate 的首条消息内容，注入 req.teammate 名字。
  *
@@ -297,7 +315,9 @@ export function resolveTeammateNames(requests) {
     if (req.teammate) continue;
     if (!isNativeTeammate(req) && !TEAMMATE_SYSTEM_RE.test(getSystemText(req.body || {}))) continue;
 
-    const prompt = _extractSpawnPrompt(req);
+    let prompt = _extractSpawnPrompt(req);
+    // v2.1.90+ Agent 模式 fallback：无 <teammate-message> 时尝试 raw prompt
+    if (!prompt && isNativeTeammate(req)) prompt = _extractRawPrompt(req);
     if (!prompt) continue;
     const prefix = prompt.slice(0, PROMPT_PREFIX_LEN);
 

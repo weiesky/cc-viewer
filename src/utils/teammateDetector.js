@@ -90,3 +90,20 @@ export function extractNativeTeammateName(req) {
 
   return null;
 }
+
+/**
+ * 从 billing header 中提取 Claude Code 版本号
+ * v2.1.90+ system prompt 中包含 x-anthropic-billing-header: cc_version=X.Y.Z
+ * @param {object} req - 请求对象
+ * @returns {string|null} 版本号如 "2.1.90" 或 null
+ */
+export function extractCcVersion(req) {
+  const system = req?.body?.system;
+  if (!Array.isArray(system)) return null;
+  for (const block of system) {
+    if (!block?.text) continue;
+    const m = block.text.match(/cc_version=([\d.]+)/);
+    if (m) return m[1];
+  }
+  return null;
+}

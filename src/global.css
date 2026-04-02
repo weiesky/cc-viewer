@@ -75,7 +75,7 @@ body {
 .chat-md th, .chat-md td { border: 1px solid #6b7280; padding: 6px 10px; }
 .chat-md th { background: #1e1e1e; color: #fff; }
 .chat-md a { color: #60a5fa; }
-.chat-md img { cursor: pointer; max-width: 100%; border-radius: 6px; }
+.chat-md img { cursor: pointer; max-width: 100%; height: auto; border-radius: 6px; }
 .chat-md hr { border: none; border-top: 1px solid #2a2a2a; margin: 12px 0; }
 .chat-md strong { color: #e5e5e5; }
 .chat-md em { color: #e5e5e5; }

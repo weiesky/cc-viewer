@@ -102,7 +102,7 @@
 .modalBody ol { padding-left: 2em; margin: 0.8em 0; }
 .modalBody li { margin: 0.3em 0; }
 .modalBody hr { border: none; border-top: 1px solid #303030; margin: 1.5em 0; }
-.modalBody img { max-width: 100%; border-radius: 6px; }
+.modalBody img { max-width: 100%; height: auto; border-radius: 6px; }
 .modalBody strong { color: #e5e5e5; }
 
 .modalBody textarea {
