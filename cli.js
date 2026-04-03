@@ -634,11 +634,13 @@ async function runViewMode(filePath) {
   // No proxy, no PTY, no Claude instance
   const serverMod = await import('./server.js');
 
-  // Poll until server is ready
-  await new Promise(resolve => {
+  // Poll until server is ready (timeout after 15s)
+  const startTime = Date.now();
+  await new Promise((resolve, reject) => {
     const check = () => {
       const port = serverMod.getPort();
       if (port) resolve(port);
+      else if (Date.now() - startTime > 15000) reject(new Error('Timed out waiting for server to start'));
       else setTimeout(check, 100);
     };
     setTimeout(check, 200);
@@ -665,14 +667,13 @@ async function runViewMode(filePath) {
   process.on('SIGTERM', cleanup);
 }
 
-const fileIdx = args.indexOf('--file');
-if (fileIdx !== -1 && args[fileIdx + 1]) {
-  runViewMode(args[fileIdx + 1]).catch(err => {
+if (args[0] === 'run') {
+  runProxyCommand(args);
+} else if (args.indexOf('--file') !== -1 && args[args.indexOf('--file') + 1]) {
+  runViewMode(args[args.indexOf('--file') + 1]).catch(err => {
     console.error('View mode error:', err);
     process.exit(1);
   });
-} else if (args[0] === 'run') {
-  runProxyCommand(args);
 } else {
   // 默认行为：所有参数透传给 claude（通过 PTY + Web Viewer）
   // 展开快捷方式：--d → --dangerously-skip-permissions, --ad → --allow-dangerously-skip-permissions
