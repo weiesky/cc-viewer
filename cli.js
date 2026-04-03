@@ -615,7 +615,63 @@ if (isLogger) {
   process.exit(0);
 }
 
-if (args[0] === 'run') {
+// View-only mode: open a specific log file without starting Claude
+async function runViewMode(filePath) {
+  const absPath = resolve(filePath);
+  if (!existsSync(absPath)) {
+    console.error(`Log file not found: ${absPath}`);
+    process.exit(1);
+  }
+  if (!absPath.endsWith('.jsonl')) {
+    console.error('Invalid file type. Only .jsonl files are supported.');
+    process.exit(1);
+  }
+
+  // Tell interceptor to use this file directly (no new file creation, no resume)
+  process.env.CCV_VIEW_FILE = absPath;
+
+  // Import server.js — auto-starts viewer via _initPromise.then(startViewer)
+  // No proxy, no PTY, no Claude instance
+  const serverMod = await import('./server.js');
+
+  // Poll until server is ready
+  await new Promise(resolve => {
+    const check = () => {
+      const port = serverMod.getPort();
+      if (port) resolve(port);
+      else setTimeout(check, 100);
+    };
+    setTimeout(check, 200);
+  });
+
+  const port = serverMod.getPort();
+  const protocol = serverMod.getProtocol();
+  const accessUrl = serverMod.getAccessUrl();
+
+  // Open browser (only useful on local machine)
+  try {
+    const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+    const { execSync } = await import('node:child_process');
+    execSync(`${cmd} ${accessUrl}`, { stdio: 'ignore', timeout: 5000 });
+  } catch {}
+
+  console.log(accessUrl);
+
+  // Block until exit
+  const cleanup = () => {
+    serverMod.stopViewer().finally(() => process.exit());
+  };
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
+}
+
+const fileIdx = args.indexOf('--file');
+if (fileIdx !== -1 && args[fileIdx + 1]) {
+  runViewMode(args[fileIdx + 1]).catch(err => {
+    console.error('View mode error:', err);
+    process.exit(1);
+  });
+} else if (args[0] === 'run') {
   runProxyCommand(args);
 } else {
   // 默认行为：所有参数透传给 claude（通过 PTY + Web Viewer）

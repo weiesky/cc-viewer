@@ -147,8 +147,15 @@ let _teamName = null;
 
 // 初始化日志文件路径（异步，支持用户交互）
 // 工作区模式下延迟到选择工作区后再初始化
+// View-only 模式下直接使用指定文件，不创建新日志
 let _newLogFile, _logDir, _projectName;
-if (process.env.CCV_WORKSPACE_MODE === '1') {
+const _viewFile = process.env.CCV_VIEW_FILE;
+if (_viewFile) {
+  // View-only: point at an existing log file, no new file creation
+  _projectName = basename(dirname(_viewFile));
+  _logDir = dirname(_viewFile);
+  _newLogFile = _viewFile;
+} else if (process.env.CCV_WORKSPACE_MODE === '1') {
   _newLogFile = '';
   _logDir = '';
   _projectName = '';
@@ -168,6 +175,7 @@ if (process.env.CCV_WORKSPACE_MODE === '1') {
 let LOG_FILE = _newLogFile;
 
 const _initPromise = (async () => {
+  if (_viewFile) return; // View-only: no resume logic, LOG_FILE already set
   if (!_logDir || !_projectName) return; // 工作区模式下跳过
   if (_isTeammate) return; // Teammate 已在上方同步初始化，跳过 async resume 流程
   try {

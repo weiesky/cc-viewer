@@ -2553,6 +2553,11 @@ export function getAccessToken() {
   return ACCESS_TOKEN;
 }
 
+export function getAccessUrl() {
+  const ip = getLocalIp();
+  return `${serverProtocol}://${ip}:${actualPort}?token=${ACCESS_TOKEN}`;
+}
+
 // 流式状态 SSE 推送定时器：检测 streamingState 变化并广播给所有客户端
 let _streamingStatusTimer = null;
 let _lastStreamingActive = false;
