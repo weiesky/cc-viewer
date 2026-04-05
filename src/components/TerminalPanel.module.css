@@ -308,6 +308,25 @@
   background: #303030;
 }
 
+.presetMenuItemMuted {
+  color: #888;
+  border-bottom: 1px solid #333;
+  margin-bottom: 2px;
+}
+
+.presetMenuItemMuted:hover {
+  color: #e5e5e5;
+}
+
+.presetMenuItemMuted svg {
+  stroke: #888;
+  transition: stroke 0.15s;
+}
+
+.presetMenuItemMuted:hover svg {
+  stroke: #e5e5e5;
+}
+
 .presetName {
   width: 100px;
   flex-shrink: 0;
@@ -319,7 +338,7 @@
 }
 
 .presetInput {
-  width: 600px;
+  width: min(600px, 80vw);
   background: #111;
   border: 1px solid #303030;
   border-radius: 6px;
@@ -335,7 +354,7 @@
 }
 
 .presetTextarea {
-  width: 600px;
+  width: min(600px, 80vw);
   background: #111;
   border: 1px solid #303030;
   border-radius: 6px;

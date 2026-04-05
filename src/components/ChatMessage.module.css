@@ -295,21 +295,21 @@
   border-color: #555;
 }
 
-:global(.simplifiedToolPopover) .ant-popover-inner {
-  background: #1a1a2e;
-  border: 1px solid #2a2a3e;
-  padding: 0;
-}
-
-:global(.simplifiedToolPopover) .ant-popover-arrow::before,
-:global(.simplifiedToolPopover) .ant-popover-arrow::after {
-  background: #1a1a2e;
-}
-
 .simplifiedToolPopoverContent {
   max-width: 520px;
   max-height: 360px;
   overflow: auto;
+}
+
+.simplifiedToolPopoverContent .toolBox {
+  background: transparent;
+  border: none;
+  margin: 0;
+}
+
+.simplifiedToolPopoverContent .codePre {
+  background: #000;
+  border: 1px solid #303030;
 }
 
 :global(.simplifiedToolPopover) {

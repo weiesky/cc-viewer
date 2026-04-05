@@ -1277,26 +1277,6 @@ const i18nData = {
     "tr": "Log dosyası yok",
     "uk": "Немає файлів логів"
   },
-  "ui.footer.contact": {
-    "zh": "如需帮助，请联系 @水映天辙(钉钉)",
-    "en": "Need help? Contact @水映天辙 (DingTalk)",
-    "zh-TW": "如需幫助，請聯繫 @水映天辙(釘釘)",
-    "ko": "도움이 필요하면 @水映天辙(DingTalk)에 연락하세요",
-    "ja": "ヘルプが必要な場合は @水映天辙(DingTalk) にご連絡ください",
-    "de": "Hilfe benötigt? Kontaktieren Sie @水映天辙 (DingTalk)",
-    "es": "¿Necesita ayuda? Contacte a @水映天辙 (DingTalk)",
-    "fr": "Besoin d'aide ? Contactez @水映天辙 (DingTalk)",
-    "it": "Hai bisogno di aiuto? Contatta @水映天辙 (DingTalk)",
-    "da": "Brug for hjælp? Kontakt @水映天辙 (DingTalk)",
-    "pl": "Potrzebujesz pomocy? Skontaktuj się z @水映天辙 (DingTalk)",
-    "ru": "Нужна помощь? Свяжитесь с @水映天辙 (DingTalk)",
-    "ar": "تحتاج مساعدة؟ تواصل مع @水映天辙 (DingTalk)",
-    "no": "Trenger du hjelp? Kontakt @水映天辙 (DingTalk)",
-    "pt-BR": "Precisa de ajuda? Entre em contato com @水映天辙 (DingTalk)",
-    "th": "ต้องการความช่วยเหลือ? ติดต่อ @水映天辙 (DingTalk)",
-    "tr": "Yardıma mı ihtiyacınız var? @水映天辙 (DingTalk) ile iletişime geçin",
-    "uk": "Потрібна допомога? Зв'яжіться з @水映天辙 (DingTalk)"
-  },
   "ui.toolReturn": {
     "zh": "工具返回",
     "en": "Tool result",
@@ -4738,6 +4718,26 @@ const i18nData = {
     "th": "ทางลัดที่ตั้งไว้ล่วงหน้า",
     "tr": "Önceden ayarlanmış kısayollar",
     "uk": "Попередньо встановлені ярлики"
+  },
+  "ui.terminal.customShortcuts": {
+    "zh": "+ 自定义快捷方式",
+    "en": "+ Custom Shortcuts",
+    "zh-TW": "+ 自訂快捷方式",
+    "ko": "+ 사용자 정의 바로가기",
+    "ja": "+ カスタムショートカット",
+    "de": "+ Benutzerdefinierte Verknüpfungen",
+    "es": "+ Atajos personalizados",
+    "fr": "+ Raccourcis personnalisés",
+    "it": "+ Scorciatoie personalizzate",
+    "da": "+ Brugerdefinerede genveje",
+    "pl": "+ Niestandardowe skróty",
+    "ru": "+ Пользовательские ярлыки",
+    "ar": "+ اختصارات مخصصة",
+    "no": "+ Egendefinerte snarveier",
+    "pt-BR": "+ Atalhos personalizados",
+    "th": "+ ทางลัดที่กำหนดเอง",
+    "tr": "+ Özel kısayollar",
+    "uk": "+ Користувацькі ярлики"
   },
   "ui.terminal.agentTeamCustom": {
     "zh": "Agent Team 定制",

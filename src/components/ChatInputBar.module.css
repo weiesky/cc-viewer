@@ -120,6 +120,25 @@
   background: #2a2a2a;
 }
 
+.plusMenuItemMuted {
+  color: #888;
+  border-bottom: 1px solid #333;
+  margin-bottom: 2px;
+}
+
+.plusMenuItemMuted:hover {
+  color: #e5e5e5;
+}
+
+.plusMenuItemMuted svg {
+  stroke: #888;
+  transition: stroke 0.15s;
+}
+
+.plusMenuItemMuted:hover svg {
+  stroke: #e5e5e5;
+}
+
 .presetLabel {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -332,6 +351,7 @@
 @media (max-width: 768px) {
   .chatInputBar {
     padding: 10px 21px 16px;
+    background: transparent;
   }
 
   .chatInputWrapper {

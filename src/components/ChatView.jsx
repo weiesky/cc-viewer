@@ -21,6 +21,7 @@ import { TeamButton, TeamModal } from './TeamSessionPanel';
 import SnapLineOverlay from './SnapLineOverlay';
 import RoleFilterBar from './RoleFilterBar';
 import ChatInputBar from './ChatInputBar';
+import PresetModal from './PresetModal';
 import { Virtuoso } from 'react-virtuoso';
 import { isMobile } from '../env';
 import { t } from '../i18n';
@@ -108,6 +109,7 @@ class ChatView extends React.Component {
       mdLightboxSrc: null,
       streamingFading: false,
       presetItems: [],
+      mobilePresetModalVisible: false,
       localAskAnswers: {}, // 提交后的本地答案映射，用于 Last Response 立即切换到非交互式
       pendingPermission: null, // { id, toolName, input } — active permission approval request
       pendingPlanApproval: null, // { id, input } — active ExitPlanMode approval in SDK mode
@@ -245,6 +247,8 @@ class ChatView extends React.Component {
     }
     // 加载 Agent Team 预置项
     this._loadPresets();
+    this._onPresetsChanged = () => this._loadPresets();
+    window.addEventListener('ccv-presets-changed', this._onPresetsChanged);
   }
 
   shouldComponentUpdate(nextProps, nextState) {
@@ -295,6 +299,15 @@ class ChatView extends React.Component {
       } else {
         this.props.onPendingPlanApproval(null);
       }
+    }
+    // Last Response 出现/消失时，Footer 高度变化会导致 Virtuoso atBottom 误判，需要重新吸底
+    if (isMobile && prevState.lastResponseItems !== this.state.lastResponseItems && this.state.stickyBottom) {
+      this._stickyScrollLock = true;
+      requestAnimationFrame(() => {
+        const scroller = this._virtuosoScrollerEl;
+        if (scroller) scroller.scrollTop = scroller.scrollHeight;
+        requestAnimationFrame(() => { this._stickyScrollLock = false; });
+      });
     }
     // Streaming border fade-out: when isStreaming goes from true to false, trigger fade
     if (prevProps.isStreaming && !this.props.isStreaming) {
@@ -389,6 +402,7 @@ class ChatView extends React.Component {
 
   componentWillUnmount() {
     this._unmounted = true;
+    window.removeEventListener('ccv-presets-changed', this._onPresetsChanged);
     // 清理全局权限通知
     if (this.props.onPendingPermission) this.props.onPendingPermission(null);
     if (this.props.onPendingPlanApproval) this.props.onPendingPlanApproval(null);
@@ -2474,6 +2488,11 @@ class ChatView extends React.Component {
             followOutput={this.state.stickyBottom ? 'smooth' : false}
             atBottomStateChange={(atBottom) => {
               if (this._stickyScrollLock) return;
+              // Footer 高度变化时 Virtuoso 可能误判，用真实 DOM 距离兜底
+              if (!atBottom && this.state.stickyBottom && this._virtuosoScrollerEl) {
+                const s = this._virtuosoScrollerEl;
+                if (s.scrollHeight - s.scrollTop - s.clientHeight <= 60) return;
+              }
               if (atBottom !== this.state.stickyBottom) this.setState({ stickyBottom: atBottom });
             }}
             atBottomThreshold={60}
@@ -2757,6 +2776,7 @@ class ChatView extends React.Component {
               onUploadPath={this.handleUploadPath}
               presetItems={this.state.presetItems}
               onPresetSend={this.handlePresetSend}
+              onOpenPresetModal={() => this.setState({ mobilePresetModalVisible: true })}
               isStreaming={this.props.isStreaming}
               streamingFading={this.state.streamingFading}
               pendingImages={this.state.pendingImages}
@@ -2805,6 +2825,7 @@ class ChatView extends React.Component {
         </div>
       </div>
       <TeamModal session={this.state.teamModalSession} requests={this.props.requests} mainAgentSessions={this.props.mainAgentSessions} collapseToolResults={this.props.collapseToolResults} expandThinking={this.props.expandThinking} showFullToolContent={this.props.showFullToolContent} userProfile={this.props.userProfile} onViewRequest={this.props.onViewRequest} onClose={() => this.setState({ teamModalSession: null })} />
+      <PresetModal open={this.state.mobilePresetModalVisible} onClose={() => this.setState({ mobilePresetModalVisible: false })} items={this.state.presetItems} onItemsChange={(items) => this.setState({ presetItems: items })} />
     </>);
   }
 }

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.105 (2026-04-05)
+
+- Feat: custom shortcuts entry in Agent Team popover and mobile `+` menu, opens preset management modal
+- Feat: PresetModal standalone component for mobile preset management with full CRUD and drag-drop
+- Feat: preset state sync via `ccv-presets-changed` event between PresetModal, TerminalPanel, and ChatView
+- Fix: mobile sticky-bottom scroll broken when Last Response appears/disappears (Virtuoso footer height change)
+- Fix: mobile ToolApprovalPanel full border-radius with 16px bottom spacing (was half-round flush to bottom)
+- Fix: preset input/textarea responsive width `min(600px, 80vw)` for mobile
+- Fix: mobile ChatInputBar background transparent to match chat area
+- Style: ChatMessage simplified tool popover refactored from global CSS to inline + scoped styles
+- Chore: removed footer contact link and orphaned i18n key
+
 ## 1.6.104 (2026-04-05)
 
 - Feat: animated dashed border on ToolApprovalPanel (yellow), AskUserQuestion (blue), Plan approval (blue)

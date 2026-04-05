@@ -814,6 +814,7 @@ class ChatMessage extends React.Component {
             key={`stag-${tu.id}`}
             placement="top"
             overlayClassName="simplifiedToolPopover"
+            overlayInnerStyle={{ background: '#1e1e1e', border: '1px solid #3a3a3a', borderRadius: 8, padding: 0 }}
             content={<div className={styles.simplifiedToolPopoverContent}>{this.renderToolCall(tu)}</div>}
             mouseEnterDelay={0.3}
             {...(isMobile ? { trigger: 'click', getPopupContainer: (node) => node.parentElement } : {})}

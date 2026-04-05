@@ -14,15 +14,15 @@
 
 .panelGlobal {
   position: fixed;
-  bottom: 0;
+  bottom: 16px;
   left: 10px;
   right: 10px;
   z-index: 99999;
   background: #1e1e1e;
   border: none;
-  border-radius: 12px 12px 0 0;
+  border-radius: 12px;
   padding: 10px 14px;
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5), 0 0 12px rgba(245, 158, 11, 0.15);
+  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.6), 0 0 12px rgba(245, 158, 11, 0.15);
   animation: slideUp 0.2s ease-out;
   font-size: 80%;
 }
@@ -187,11 +187,10 @@
 @media (max-width: 768px) {
   .panel {
     position: fixed;
-    bottom: 0;
+    bottom: 16px;
     right: 10px;
     left: 10px;
-    border-radius: 12px 12px 0 0;
-    border-bottom: none;
+    border-radius: 12px;
     padding: 16px 20px;
   }
   .toolName { font-size: 18px; }

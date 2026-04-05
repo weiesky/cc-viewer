@@ -87,6 +87,12 @@ class TerminalPanel extends React.Component {
       const enabled = data?.env?.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS === '1';
       this.setState({ agentTeamEnabled: enabled });
     }).catch(() => {});
+    this._loadPresetShortcuts();
+    this._onPresetsChanged = () => this._loadPresetShortcuts();
+    window.addEventListener('ccv-presets-changed', this._onPresetsChanged);
+  }
+
+  _loadPresetShortcuts() {
     // 读取预置快捷方式（兼容旧版 string[] 和新版 {teamName, description}[]），合并内置预置
     fetch(apiUrl('/api/preferences')).then(r => r.json()).then(data => {
       const dismissed = Array.isArray(data.dismissedBuiltinPresets) ? new Set(data.dismissedBuiltinPresets) : new Set();
@@ -115,6 +121,7 @@ class TerminalPanel extends React.Component {
   }
 
   componentWillUnmount() {
+    window.removeEventListener('ccv-presets-changed', this._onPresetsChanged);
     if (this._stopMobileMomentum) this._stopMobileMomentum();
     if (this._writeTimer) cancelAnimationFrame(this._writeTimer);
     if (this.ws) {
@@ -726,6 +733,8 @@ class TerminalPanel extends React.Component {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+    }).then(() => {
+      window.dispatchEvent(new Event('ccv-presets-changed'));
     }).catch(() => {});
   };
 
@@ -888,6 +897,9 @@ class TerminalPanel extends React.Component {
                 overlayInnerStyle={{ background: '#1e1e1e', border: '1px solid #3a3a3a', borderRadius: 8, padding: 4, minWidth: 140 }}
                 content={
                   <div className={styles.presetMenu}>
+                    <button className={`${styles.presetMenuItem} ${styles.presetMenuItemMuted}`} onClick={() => { this.setState({ agentTeamPopoverOpen: false, presetModalVisible: true }); }}>
+                      {t('ui.terminal.customShortcuts')}
+                    </button>
                     {this.state.presetItems.length === 0 ? (
                       <div className={styles.popoverEmptyHint}>—</div>
                     ) : (
