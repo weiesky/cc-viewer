@@ -98,6 +98,13 @@ ccv -h
 設定完成後，正常使用 `claude` 指令即可。存取 `http://localhost:7008` 查看監控介面。
 
 
+## 客戶端版本
+
+cc-viewer 提供了客戶端版本，你可以在 GitHub 上下載到對應的客戶端版本。
+[下載地址](https://github.com/weiesky/cc-viewer/releases)
+目前客戶端版本在測試階段，有問題可以隨時回饋。另外 cc-viewer 的使用前提是你本地有 Claude Code。
+需要注意的是：cc-viewer 始終只是工人（Claude Code）的一件「衣服」，沒有 Claude Code，衣服是無法獨立工作的。
+
 ## 功能
 
 

@@ -98,6 +98,13 @@ Som standard kjorer `ccv` i stillemodus nar den wrapper `claude`, slik at termin
 Etter at konfigurasjonen er fullfort, bruk `claude`-kommandoen som vanlig. Besok `http://localhost:7008` for a se overvaakingsgrensesnittet.
 
 
+## Klientversjon
+
+cc-viewer tilbyr en skrivebordsklientversjon som du kan laste ned fra GitHub.
+[Nedlastingslenke](https://github.com/weiesky/cc-viewer/releases)
+Klientversjonen er for oyeblikket i testfasen — hvis du stoter pa problemer, er du velkommen til a gi tilbakemelding nar som helst. Vær ogsa oppmerksom pa at forutsetningen for a bruke cc-viewer er at du har Claude Code installert lokalt.
+Det er viktig a merke seg at cc-viewer alltid bare er et «klæsplagg» for arbeideren (Claude Code) — uten Claude Code kan ikke klærne fungere pa egen hand.
+
 ## Funksjoner
 
 

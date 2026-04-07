@@ -98,6 +98,13 @@ Varsayilan olarak `ccv`, `claude`'u sararken sessiz modda calisir; boylece termi
 Yapilandirma tamamlandiktan sonra `claude` komutunu her zamanki gibi kullanin. Izleme arayuzunu gormek icin `http://localhost:7008` adresini ziyaret edin.
 
 
+## Istemci Surumu
+
+CC-Viewer'in istemci surumu mevcuttur ve GitHub uzerinden indirilebilir.
+[Indirme adresi](https://github.com/weiesky/cc-viewer/releases)
+Su anda istemci surumu test asamasindadir — herhangi bir sorunla karsilastiginizda geri bildirimde bulunabilirsiniz. Ayrica cc-viewer'i kullanabilmeniz icin bilgisayarinizda Claude Code'un yuklu olmasi gerekmektedir.
+Unutmamak gerekir ki: cc-viewer yalnizca iscinin (Claude Code) bir "kiyafeti"dir. Claude Code olmadan kiyafet tek basina calisamaz.
+
 ## Ozellikler
 
 

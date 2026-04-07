@@ -98,6 +98,13 @@ ccv -h
 설정 완료 후, `claude` 명령어를 평소처럼 사용하면 됩니다. `http://localhost:7008`에 접속하여 모니터링 인터페이스를 확인하세요.
 
 
+## 클라이언트 버전
+
+cc-viewer는 클라이언트 버전을 제공하며, GitHub에서 해당 클라이언트 버전을 다운로드할 수 있습니다.
+[다운로드 링크](https://github.com/weiesky/cc-viewer/releases)
+현재 클라이언트 버전은 테스트 단계에 있으며, 문제가 있으면 언제든지 피드백을 보내주세요. 또한 cc-viewer를 사용하려면 로컬에 Claude Code가 설치되어 있어야 합니다.
+주의할 점은, cc-viewer는 항상 작업자(Claude Code)의 "옷"에 불과하다는 것입니다. Claude Code가 없으면 옷만으로는 독립적으로 작동할 수 없습니다.
+
 ## 기능
 
 

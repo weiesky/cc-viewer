@@ -98,6 +98,14 @@ Standardmasig lauft `ccv` beim Wrappen von `claude` im stillen Modus, um sicherz
 Nach Abschluss der Konfiguration verwenden Sie den `claude`-Befehl wie gewohnt. Offnen Sie `http://localhost:7008`, um die Uberwachungsoberflache anzuzeigen.
 
 
+## Client-Version
+
+CC-Viewer bietet eine Desktop-Client-Version an, die Sie auf GitHub herunterladen konnen:
+[Download-Link](https://github.com/weiesky/cc-viewer/releases)
+Die Client-Version befindet sich derzeit in der Testphase. Bei Problemen konnen Sie jederzeit Feedback geben. Ausserdem setzt die Nutzung von cc-viewer voraus, dass Claude Code lokal installiert ist.
+Bitte beachten Sie: cc-viewer ist lediglich ein „Kleidungsstuck" fur den Arbeiter (Claude Code). Ohne Claude Code kann das Kleidungsstuck nicht eigenstandig funktionieren.
+
+
 ## Funktionen
 
 

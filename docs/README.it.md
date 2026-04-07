@@ -98,6 +98,14 @@ Per impostazione predefinita, `ccv` opera in modalita silenziosa quando avvolge 
 Una volta configurato, basta utilizzare normalmente il comando `claude`. Visita `http://localhost:7008` per accedere all'interfaccia di monitoraggio.
 
 
+## Versione client
+
+CC-Viewer offre una versione client desktop scaricabile da GitHub:
+[Link per il download](https://github.com/weiesky/cc-viewer/releases)
+La versione client e attualmente in fase di test; non esitate a segnalare eventuali problemi. Inoltre, l'uso di cc-viewer richiede che Claude Code sia installato localmente.
+E importante sottolineare che cc-viewer e semplicemente un "vestito" per l'operaio (Claude Code). Senza Claude Code, il vestito non puo funzionare da solo.
+
+
 ## Funzionalita
 
 
