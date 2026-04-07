@@ -1320,8 +1320,8 @@ class AppBase extends React.Component {
               placement={mobile ? 'bottomLeft' : 'leftTop'}
               autoAdjustOverflow={{ adjustX: false, adjustY: true }}
               overlayInnerStyle={{
-                background: '#1e1e1e',
-                border: '1px solid #3a3a3a',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-hover)',
                 borderRadius: 8,
                 padding: 0,
                 maxHeight: 400,

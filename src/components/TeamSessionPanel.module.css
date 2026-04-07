@@ -246,12 +246,13 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  color: #fff;
 }
 
 .teamAgentAvatar svg {
   width: 14px;
   height: 14px;
-  fill: var(--text-white);
+  fill: #fff;
 }
 
 .teamAgentName {

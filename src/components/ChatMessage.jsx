@@ -631,7 +631,7 @@ class ChatMessage extends React.Component {
         {(highlight === 'active' || highlight === 'fading') && (
           <svg className={`${styles.borderSvg}${highlight === 'fading' ? ' ' + styles.borderSvgFading : ''}`} preserveAspectRatio="none">
             <rect x="0.5" y="0.5" width="calc(100% - 1px)" height="calc(100% - 1px)" rx="8" ry="8"
-              fill="none" stroke={isUser ? 'var(--text-white)' : 'var(--color-primary)'} strokeWidth="1" strokeDasharray="6 4"
+              fill="none" stroke={isUser ? '#fff' : 'var(--color-primary)'} strokeWidth="1" strokeDasharray="6 4"
               className={styles.borderRect} />
           </svg>
         )}

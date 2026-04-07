@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { t } from '../i18n';
 import { apiUrl } from '../utils/apiUrl';
+import { isImageFile } from '../utils/commandValidator';
 import FullFileDiffView from './FullFileDiffView';
+import ImageLightbox from './ImageLightbox';
 import styles from './MobileGitDiff.module.css';
 
 const STATUS_COLORS = {
@@ -103,6 +105,7 @@ export default function MobileGitDiff({ visible }) {
   const [diffData, setDiffData] = useState(null);
   const [diffError, setDiffError] = useState(null);
   const [diffLoading, setDiffLoading] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -201,6 +204,22 @@ export default function MobileGitDiff({ visible }) {
                       <p className={styles.fileSizeNote}>
                         {t('ui.fileSize')}: {(diffData.size / (1024 * 1024)).toFixed(2)} MB
                       </p>
+                    </div>
+                  ) : isImageFile(selectedFile) && !diffData.is_deleted ? (
+                    <div className={styles.imagePreviewWrap}>
+                      <img
+                        className={styles.imagePreview}
+                        src={apiUrl(`/api/file-raw?path=${encodeURIComponent(selectedFile)}`)}
+                        alt={selectedFile}
+                        onClick={() => setLightboxOpen(true)}
+                      />
+                      {lightboxOpen && (
+                        <ImageLightbox
+                          src={apiUrl(`/api/file-raw?path=${encodeURIComponent(selectedFile)}`)}
+                          alt={selectedFile}
+                          onClose={() => setLightboxOpen(false)}
+                        />
+                      )}
                     </div>
                   ) : diffData.is_binary ? (
                     <div className={`${styles.statusText} ${styles.statusTextItalic}`}>{t('ui.binaryFileNotice')}</div>

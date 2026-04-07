@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.115 (2026-04-07)
+
+- Fix: stats panel cache rebuild card and teammate card spacing when no SubAgent stats
+- Fix: image viewer checkerboard pattern too harsh — use rgba(0,0,0,0.08) for both themes
+- Fix: teammate SVG avatars always white (color: #fff) on colored backgrounds in both themes
+- Feat: mobile git diff image preview — inline preview with click-to-zoom lightbox
+- Fix: log management preview popover hardcoded dark background → var(--bg-elevated)
+- Fix: user bubble dashed animation border uses fixed #fff instead of var(--text-white)
+
 ## 1.6.114 (2026-04-07)
 
 - Fix: model avatar background hardcoded #000 → var(--bg-model-avatar), light theme uses #e8e8e8

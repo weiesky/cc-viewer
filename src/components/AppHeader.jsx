@@ -701,7 +701,7 @@ class AppHeader extends React.Component {
     return (
       <div className={styles.toolStatsColumn}>
         {hasCacheStats && (
-          <div className={hasSubAgentStats ? styles.modelCardSpaced : styles.modelCard}>
+          <div className={(hasSubAgentStats || hasTeammateStats) ? styles.modelCardSpaced : styles.modelCard}>
             <div className={styles.modelName}>MainAgent<ConceptHelp doc="MainAgent" /> {t('ui.cacheRebuildStats')}<ConceptHelp doc="CacheRebuild" /></div>
             <table className={styles.statsTable}>
             <thead>
