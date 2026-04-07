@@ -2681,6 +2681,7 @@ class ChatView extends React.Component {
               expandedPaths={this.state.fileExplorerExpandedPaths}
               onToggleExpand={this.handleToggleExpandPath}
               currentFile={this.state.currentFile}
+              onAttachToChat={(filePath) => this._addPendingImage(filePath, 'explorer')}
               onFileRenamed={(oldPath, newPath) => {
                 this.setState(prev => ({
                   currentFile: prev.currentFile === oldPath ? newPath : prev.currentFile,

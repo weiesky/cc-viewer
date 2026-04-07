@@ -1457,6 +1457,26 @@ const i18nData = {
     "tr": "Yeniden adlandır",
     "uk": "Перейменувати"
   },
+  "ui.contextMenu.attachToChat": {
+    "zh": "以附件形式载入对话",
+    "en": "Attach to chat",
+    "zh-TW": "以附件形式載入對話",
+    "ko": "대화에 첨부",
+    "ja": "チャットに添付",
+    "de": "An Chat anhängen",
+    "es": "Adjuntar al chat",
+    "fr": "Joindre au chat",
+    "it": "Allega alla chat",
+    "da": "Vedhæft til chat",
+    "pl": "Dołącz do czatu",
+    "ru": "Прикрепить к чату",
+    "ar": "إرفاق بالمحادثة",
+    "no": "Legg ved i chat",
+    "pt-BR": "Anexar ao chat",
+    "th": "แนบไปยังแชท",
+    "tr": "Sohbete ekle",
+    "uk": "Прикріпити до чату"
+  },
   "ui.contextMenu.delete": {
     "zh": "删除",
     "en": "Delete",
@@ -2538,8 +2558,8 @@ const i18nData = {
     "uk": "Колір теми"
   },
   "ui.themeColor.dark": {
-    "zh": "标准黑",
-    "en": "Standard Dark",
+    "zh": "耀石黑",
+    "en": "Obsidian Dark",
     "zh-TW": "標準黑",
     "ko": "표준 다크",
     "ja": "スタンダードダーク",
@@ -2558,8 +2578,8 @@ const i18nData = {
     "uk": "Стандартна темна"
   },
   "ui.themeColor.light": {
-    "zh": "标准白",
-    "en": "Standard Light",
+    "zh": "雪山白",
+    "en": "Snow White",
     "zh-TW": "標準白",
     "ko": "표준 라이트",
     "ja": "スタンダードライト",

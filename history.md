@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.116 (2026-04-07)
+
+- Feat: file explorer right-click "Attach to chat" — add file as attachment to chat input
+- Fix: image attachment remove button (×) always white on both ChatInputBar and TerminalPanel
+- Fix: terminal pending file chip background hardcoded → var(--bg-surface)
+- Fix: live tag (context progress bar) background → var(--bg-base-pure) for clean light mode
+- Fix: light theme folder icon color → #CB7C5E
+- UI: theme names renamed — 耀石黑 (Obsidian Dark) / 雪山白 (Snow White)
+
 ## 1.6.115 (2026-04-07)
 
 - Fix: stats panel cache rebuild card and teammate card spacing when no SubAgent stats

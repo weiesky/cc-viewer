@@ -78,6 +78,7 @@
   overflow: hidden;
   transition: border-color 0.3s, color 0.3s;
   white-space: nowrap;
+  background: var(--bg-base-pure);
 }
 
 .liveTagFill {
