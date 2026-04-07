@@ -68,6 +68,11 @@ class ChatView extends React.Component {
     // requests 扫描缓存（tsToIndex / modelName / subAgentEntries）
     this._reqScanCache = { tsToIndex: {}, modelName: null, subAgentEntries: [], processedCount: 0 };
 
+    // buildAllItems session 级缓存
+    // 每项: { session, msgsLen, subCount, items, tsEntries, lastPendingAskId, lastPendingPlanId }
+    this._sessionItemCache = [];
+    this._itemCacheToggleSig = null;
+
 
     // 从 localStorage 读取用户偏好的终端宽度（像素）
     const savedWidth = localStorage.getItem('cc-viewer-terminal-width');
@@ -345,6 +350,7 @@ class ChatView extends React.Component {
           this._incToolProcessedCount = 0;
           this._incToolSessionIdx = -1;
           this._reqScanCache = { tsToIndex: {}, modelName: null, subAgentEntries: [], processedCount: 0, subAgentProcessedCount: 0 };
+          this._sessionItemCache = [];
         }
         this._prevSessions = this.props.mainAgentSessions;
       }
@@ -674,7 +680,7 @@ class ChatView extends React.Component {
     }
   }
 
-  renderSessionMessages(messages, keyPrefix, modelInfo, tsToIndex) {
+  renderSessionMessages(messages, keyPrefix, modelInfo, tsToIndex, startIdx = 0) {
     const { userProfile, collapseToolResults, expandThinking, showFullToolContent, showThinkingSummaries, onViewRequest } = this.props;
     // 增量 / WeakMap 缓存
     let cached = getToolResultCache(messages);
@@ -755,7 +761,7 @@ class ChatView extends React.Component {
 
     const renderedMessages = [];
 
-    for (let mi = 0; mi < messages.length; mi++) {
+    for (let mi = startIdx; mi < messages.length; mi++) {
       const msg = messages[mi];
       const content = msg.content;
       const ts = msg._timestamp || null;
@@ -815,7 +821,7 @@ class ChatView extends React.Component {
       }
     }
 
-    return renderedMessages;
+    return { items: renderedMessages, lastPendingAskId, lastPendingPlanId };
   }
 
   /**
@@ -855,7 +861,7 @@ class ChatView extends React.Component {
           <Text className={styles.sessionDividerText}>{name}</Text>
         </Divider>
       );
-      const msgs = this.renderSessionMessages(session.messages, `tm${si}`, modelInfo, {});
+      const { items: msgs } = this.renderSessionMessages(session.messages, `tm${si}`, modelInfo, {});
       allItems.push(...msgs);
 
       // 渲染 response content（如果有）
@@ -953,6 +959,18 @@ class ChatView extends React.Component {
     const allItems = [];
     const tsItemMap = {};
 
+    // === session item 缓存：toggle 签名检查 ===
+    const { showThinkingSummaries } = this.props;
+    const activePromptIds = (this.state.ptyPromptHistory || []).filter(p => p.status === 'active').map(p => p.id).join(',');
+    const toggleSig = `${collapseToolResults}|${expandThinking}|${showFullToolContent}|${showThinkingSummaries}|${this.props.cliMode}|${this.state.ptyPrompt?.id || ''}|${activePromptIds}|${this.props.userProfile?.name || ''}|${this.props.lang || ''}|${Object.keys(this.state.localAskAnswers || {}).join(',')}`;
+    if (toggleSig !== this._itemCacheToggleSig) {
+      this._sessionItemCache = [];
+      this._itemCacheToggleSig = toggleSig;
+    }
+    if (this._sessionItemCache.length > mainAgentSessions.length) {
+      this._sessionItemCache.length = mainAgentSessions.length;
+    }
+
     // Server-side pagination: "load earlier conversations" button
     if (this.props.hasMoreHistory || this.props.loadingMore) {
       allItems.push(
@@ -1003,7 +1021,51 @@ class ChatView extends React.Component {
         return; // 跳过 renderSessionMessages
       }
 
-      const msgs = this.renderSessionMessages(session.messages, `s${si}`, modelInfo, tsToIndex);
+      // === session 级缓存判断 ===
+      const sc = this._sessionItemCache[si];
+      let msgs, lastPendingAskId, lastPendingPlanId;
+
+      if (sc && sc.session === session && sc.msgsLen === session.messages.length) {
+        // 完全命中：session 对象不变且消息数不变 → 直接复用
+        msgs = sc.items;
+        lastPendingAskId = sc.lastPendingAskId;
+        lastPendingPlanId = sc.lastPendingPlanId;
+      } else if (sc && sc.session === session && session.messages.length > sc.msgsLen) {
+        // 增量：session 对象不变但消息增长 → 只渲染新消息，拼接到缓存
+        const result = this.renderSessionMessages(session.messages, `s${si}`, modelInfo, tsToIndex, sc.msgsLen);
+        msgs = sc.items.concat(result.items);
+        lastPendingAskId = result.lastPendingAskId;
+        lastPendingPlanId = result.lastPendingPlanId;
+        // 如果 lastPendingAskId 迁移了，修补旧缓存中持有旧 id 的 ChatMessage
+        if (sc.lastPendingAskId && sc.lastPendingAskId !== lastPendingAskId) {
+          for (let i = 0; i < sc.items.length; i++) {
+            if (msgs[i].props.lastPendingAskId === sc.lastPendingAskId) {
+              msgs[i] = React.cloneElement(msgs[i], { lastPendingAskId: null });
+              break;
+            }
+          }
+        }
+        if (sc.lastPendingPlanId && sc.lastPendingPlanId !== lastPendingPlanId) {
+          for (let i = 0; i < sc.items.length; i++) {
+            if (msgs[i].props.lastPendingPlanId === sc.lastPendingPlanId) {
+              msgs[i] = React.cloneElement(msgs[i], { lastPendingPlanId: null });
+              break;
+            }
+          }
+        }
+      } else {
+        // 缓存未命中 → 全量渲染
+        const result = this.renderSessionMessages(session.messages, `s${si}`, modelInfo, tsToIndex);
+        msgs = result.items;
+        lastPendingAskId = result.lastPendingAskId;
+        lastPendingPlanId = result.lastPendingPlanId;
+      }
+
+      // 更新缓存
+      this._sessionItemCache[si] = {
+        session, msgsLen: session.messages.length,
+        items: msgs, lastPendingAskId, lastPendingPlanId,
+      };
 
       // 将 SubAgent entries 按时间戳插入到 session 消息之间
       for (const m of msgs) {

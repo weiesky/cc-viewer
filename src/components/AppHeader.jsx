@@ -100,6 +100,9 @@ class AppHeader extends React.Component {
     if (this._rafId) cancelAnimationFrame(this._rafId);
     if (this._expiredTimer) clearTimeout(this._expiredTimer);
     if (this._cacheFadeClearTimer) clearTimeout(this._cacheFadeClearTimer);
+    if (this._cacheScrollSettleTimer) clearTimeout(this._cacheScrollSettleTimer);
+    if (this._cacheAutoFadeTimer) clearTimeout(this._cacheAutoFadeTimer);
+    if (this._cacheHighlightDelayTimer) clearTimeout(this._cacheHighlightDelayTimer);
     this._cacheUnbindScrollFade();
   }
 

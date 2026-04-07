@@ -20,6 +20,8 @@ export function setToolResultCache(messages, state) {
 
 // --- State builder ---
 
+const MAX_EDIT_SNAPSHOTS = 300;
+
 export function createEmptyToolState() {
   return {
     toolUseMap: {},
@@ -30,6 +32,7 @@ export function createEmptyToolState() {
     planApprovalMap: {},
     latestPlanContent: null,
     _fileState: {},
+    _editOrder: [],
   };
 }
 
@@ -60,7 +63,15 @@ export function appendToolResultMap(state, messages, startIndex) {
             const newStr = parsed.input.new_string;
             if (fp && oldStr != null && newStr != null && _fileState[fp]) {
               const entry = _fileState[fp];
-              editSnapshotMap[parsed.id] = { plainText: entry.plainText, lineNums: entry.lineNums.slice() };
+              // 淘汰时留 null 占位：rebuild 时 key 已存在则跳过，避免重建已淘汰条目
+              if (!(parsed.id in editSnapshotMap)) {
+                editSnapshotMap[parsed.id] = { plainText: entry.plainText, lineNums: entry.lineNums.slice() };
+                state._editOrder.push(parsed.id);
+                if (state._editOrder.length > MAX_EDIT_SNAPSHOTS) {
+                  const evictId = state._editOrder.shift();
+                  editSnapshotMap[evictId] = null;
+                }
+              }
               const idx = entry.plainText.indexOf(oldStr);
               if (idx >= 0) {
                 const before = entry.plainText.substring(0, idx);

@@ -234,7 +234,14 @@ const FILE_LIST_RULES = [
   { pattern: /^(.*\.(log|txt|csv|jsonl))$/gm, cls: 'hl-comment' },    // data files
 ];
 
+const _hlCache = new Map();
+const _HL_CACHE_MAX = 512;
+
 function highlight(text, lang) {
+  const cacheKey = `${lang}\0${text}`;
+  const hit = _hlCache.get(cacheKey);
+  if (hit !== undefined) return hit;
+
   let resolvedLang = lang;
   // resolve aliases
   if (resolvedLang === 'typescript') resolvedLang = 'javascript';
@@ -286,6 +293,10 @@ function highlight(text, lang) {
     return `<span class="hl-linenum">${ln}</span>`;
   });
 
+  if (_hlCache.size >= _HL_CACHE_MAX) {
+    _hlCache.delete(_hlCache.keys().next().value);
+  }
+  _hlCache.set(cacheKey, result);
   return result;
 }
 

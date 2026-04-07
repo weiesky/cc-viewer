@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.119 (2026-04-08)
+
+- Perf: renderMarkdown LRU cache (1024) — eliminates 5000+ redundant DOMPurify.sanitize calls per render cycle
+- Perf: highlight() LRU cache (512) — code syntax highlighting result caching
+- Perf: renderAssistantText() LRU cache (512) — system tag parsing result caching
+- Perf: session-level incremental buildAllItems — skips unchanged sessions, renders only new messages
+- Perf: editSnapshotMap eviction (300 cap with null tombstone) — prevents unbounded snapshot growth
+- Fix: TerminalPanel ghost WebSocket reconnect loop — tracked timer + onclose nulled before close
+- Fix: AppHeader missing clearTimeout for 3 cache scroll timers in componentWillUnmount
+
 ## 1.6.118 (2026-04-08)
 
 - Feat: Electron multi-tab architecture — each tab is an isolated fork() child process with its own proxy/server/PTY

@@ -29,8 +29,19 @@ export function parseSystemTags(text) {
   return { segments };
 }
 
+const _tagCache = new Map();
+const _TAG_CACHE_MAX = 512;
+
 export function renderAssistantText(text) {
-  const { segments } = parseSystemTags(text);
-  if (segments.length === 0) return { segments: [] };
-  return { segments };
+  if (!text) return { segments: [] };
+  const hit = _tagCache.get(text);
+  if (hit) return hit;
+
+  const result = parseSystemTags(text);
+
+  if (_tagCache.size >= _TAG_CACHE_MAX) {
+    _tagCache.delete(_tagCache.keys().next().value);
+  }
+  _tagCache.set(text, result);
+  return result;
 }

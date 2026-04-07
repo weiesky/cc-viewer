@@ -149,7 +149,9 @@ class TerminalPanel extends React.Component {
     window.removeEventListener('ccv-presets-changed', this._onPresetsChanged);
     if (this._stopMobileMomentum) this._stopMobileMomentum();
     if (this._writeTimer) cancelAnimationFrame(this._writeTimer);
+    if (this._wsReconnectTimer) clearTimeout(this._wsReconnectTimer);
     if (this.ws) {
+      this.ws.onclose = null;
       this.ws.close();
       this.ws = null;
     }
@@ -438,7 +440,7 @@ class TerminalPanel extends React.Component {
     };
 
     this.ws.onclose = () => {
-      setTimeout(() => {
+      this._wsReconnectTimer = setTimeout(() => {
         if (this.containerRef.current) {
           this.terminal?.reset();
           this.connectWebSocket();
