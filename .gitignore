@@ -22,3 +22,4 @@ package-lock.json
 .stylelintrc.js
 .projectlintrc.json
 # fishlint-ignore-end
+electron-dist/*
