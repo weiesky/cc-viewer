@@ -4,7 +4,7 @@ es
 node_modules
 .mini-ide
 .node
-
+tmp/
 
 # paul
 .paul
