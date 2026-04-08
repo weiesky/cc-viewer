@@ -18,6 +18,39 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = join(__dirname, '..');
 
+// --- Resolve shell environment (Finder-launched Electron has minimal env) ---
+// When launched from Finder/dock, process.env lacks shell profile vars (HTTP_PROXY, LANG, etc.)
+// Spawn a login shell to capture the full environment, then inject missing vars.
+const _proxyVars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'no_proxy', 'NO_PROXY', 'ALL_PROXY', 'all_proxy', 'LANG'];
+const _hasProxyEnv = _proxyVars.some(k => process.env[k]);
+if (!_hasProxyEnv && process.platform !== 'win32') {
+  try {
+    const _shell = process.env.SHELL || '/bin/zsh';
+    // Use -i (interactive) to ensure .zshrc is loaded, not just .zprofile
+    const _envOutput = execSync(`${_shell} -l -i -c 'env' 2>/dev/null`, {
+      encoding: 'utf-8',
+      timeout: 5000,
+      env: { ...process.env, TERM: process.env.TERM || 'xterm-256color' },
+    });
+    for (const line of _envOutput.split('\n')) {
+      const eq = line.indexOf('=');
+      if (eq <= 0) continue;
+      const key = line.slice(0, eq);
+      const val = line.slice(eq + 1);
+      if (_proxyVars.includes(key) && !process.env[key]) {
+        process.env[key] = val;
+      }
+    }
+    if (process.env.HTTP_PROXY || process.env.HTTPS_PROXY) {
+      console.error('[Electron] Injected proxy from shell profile:', process.env.HTTP_PROXY || process.env.HTTPS_PROXY);
+    } else {
+      console.error('[Electron] Shell env loaded but no proxy vars found');
+    }
+  } catch (err) {
+    console.error('[Electron] Failed to resolve shell env:', err.message);
+  }
+}
+
 // --- Resolve real Node.js path (Electron's process.execPath is the Electron binary) ---
 let _nodePath = process.execPath;
 if (process.versions.electron) {
