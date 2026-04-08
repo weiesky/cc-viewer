@@ -1,0 +1,24 @@
+# 临时文件 / 产物目录
+dist
+es
+node_modules
+.mini-ide
+.node
+
+
+# paul
+.paul
+custom_dist
+
+package-lock.json
+# fishlint-ignore-start
+# 不要修改此代码块, 会自动生成
+# 如果你不想要忽略某些文件, 可以在 .fishlintrc.json 配置 disableFishlintGitignore : true.
+# 背景可以看 https://yuque.antfin.com/fish-pond/stdlib/fishlintrc
+.tacos-vision-run
+.lintstagedrc.json
+.prettierrc.js
+.commitlintrc.js
+.stylelintrc.js
+.projectlintrc.json
+# fishlint-ignore-end

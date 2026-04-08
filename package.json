@@ -1,0 +1,59 @@
+{
+  "name": "cc-viewer",
+  "version": "0.0.1",
+  "description": "claude code 报文抓取分析的逆向研发工具",
+  "repository": {
+    "type": "git",
+    "url": "https://code.alipay.com/finx/cc-viewer"
+  },
+  "author": "weiesky.wangc",
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "prepare": "tnpx @alipay/fishlint setup",
+    "build": "paul build",
+    "preview": "paul preview",
+    "dev": "paul dev",
+    "prepublishOnly": "paul build --publish",
+    "commitlint": "fishlint commitlint",
+    "lint": "fishlint eslint",
+    "lint:fix": "npm run lint -- --fix",
+    "format": "fishlint format",
+    "stylelint": "fishlint stylelint",
+    "stylelint:fix": "npm run stylelint -- --fix",
+    "projectlint": "fishlint projectlint"
+  },
+  "devDependencies": {
+    "@ali/dslplus-h5-component-react": "^0.7.14",
+    "@alipay/minifish": "^1.0.0",
+    "@alipay/minifish-global-types": "^1.0.0",
+    "@alipay/minifish-plugin-lib": "1.0.0-alpha.26",
+    "@alipay/minifish-plugin-morpho": "^3.0.0",
+    "@alipay/minifish-runtime": "^1.17.20",
+    "@alipay/nemo": "^1.0.0",
+    "@alipay/eslint-plugin-paul": "^1.0.0",
+    "@alipay/fishlint": "^1.0.0",
+    "@alipay/paul": "^1.8.0",
+    "@alipay/paul-bridge-jsapi": "^1.0.0",
+    "@alipay/paul-component-types": "^1.0.0",
+    "@alipay/paul-stylelint": "^1.0.0",
+    "@alipay/smallfish": "^2.2.11",
+    "@alipay/smallfish-language-service": "^2.2.11",
+    "@alipay/smallfish-plugin-app": "^2.2.11",
+    "@alipay/smallfish-plugin-bakery": "^1.1.2",
+    "@alipay/smallfish-plugin-comp-antlog": "^1.1.6",
+    "@alipay/smallfish-plugin-component": "^2.2.11",
+    "@alipay/smallfish-plugin-component-morpho": "^2.2.11",
+    "@alipay/smallfish-plugin-hitu": "^2.2.11",
+    "prettier": "^3",
+    "typescript": "^4.0.0"
+  },
+  "engines": {
+    "install-node": "^20.0.0"
+  },
+  "tnpm": {
+    "mode": "npm"
+  },
+  "yuyanId": "180020010101339377"
+}

@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noImplicitThis": true,
+    "lib": ["ES2020"],
+    "module": "ES2020",
+    "target": "ES2020",
+    "isolatedModules": true,
+    "moduleResolution": "Node",
+    "resolveJsonModule": true,
+    "noEmitOnError": true,
+    "importHelpers": true,
+    "baseUrl": "./",
+    "paths": {}
+  },
+  "include": ["src", "global.d.ts"]
+}

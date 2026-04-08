@@ -1,0 +1,36 @@
+{
+  "lintstaged": {
+    "lint": "{src,test}/**/*.{js,jsx,ts,tsx,axml}",
+    "stylelint": "src/**/*.{less,css,acss}"
+  },
+  "gitHooks": {
+    "commit-msg": "npm run commitlint -s -- -E GIT_PARAMS",
+    "pre-commit": "fishlint-lint-staged"
+  },
+  "prettier": {},
+  "commitlint": {},
+  "stylelint": {
+    "configName": [
+      "stylelint"
+    ],
+    "legacyRules": {
+      "color-hex-case": null,
+      "indentation": null,
+      "length-zero-no-unit": null
+    },
+    "plugins": [
+      "@alipay/paul-stylelint"
+    ],
+    "rules": {
+      "paul/card-css-declaration-important": true,
+      "paul/card-css-selector": true,
+      "paul/card-css-single-decl-version-limit": true,
+      "paul/card-css-multi-decl-version-limit": true,
+      "paul/card-css-declaration": true
+    }
+  },
+  "projectlint": {
+    "projectTag": []
+  },
+  "disableFishlintGitignore": true
+}
