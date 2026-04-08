@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Compass: outer circle with diamond pointer -->
+  <circle cx="12" cy="12" r="9"/>
+  <polygon points="12,4 14,11 12,9 10,11" fill="currentColor" stroke="none"/>
+  <polygon points="12,20 10,13 12,15 14,13" fill="currentColor" stroke="none"/>
+  <circle cx="12" cy="12" r="2"/>
+</svg>

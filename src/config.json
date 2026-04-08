@@ -1,0 +1,11 @@
+{
+  "calibrationModels": [
+    { "label": "Auto", "value": "auto" },
+    { "label": "Opus 4.6 (1M)", "value": "opus-4.6-1m", "tokens": 1000000 },
+    { "label": "Sonnet 4.6", "value": "sonnet-4.6", "tokens": 200000 },
+    { "label": "GLM5", "value": "glm5", "tokens": 200000 },
+    { "label": "Kimi K2.5", "value": "kimi-k2.5", "tokens": 200000 },
+    { "label": "MiniMax 2.1", "value": "minimax-2.1", "tokens": 200000 },
+    { "label": "Qwen 3.5", "value": "Qwen 3.5", "tokens": 200000 }
+  ]
+}

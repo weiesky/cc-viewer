@@ -1,0 +1,17 @@
+.miniMap {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 10px;
+  height: 100%;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.marker {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  border-radius: 1px;
+  pointer-events: none;
+}

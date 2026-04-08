@@ -1,0 +1,177 @@
+/* WorkspaceList root */
+.root {
+  min-height: 100vh;
+  background: var(--bg-base-alt);
+  display: flex;
+  justify-content: center;
+  padding-top: 60px;
+}
+
+.inner {
+  width: 100%;
+  max-width: 720px;
+  padding: 0 24px;
+}
+
+/* Header section */
+.header {
+  margin-bottom: 32px;
+  text-align: center;
+}
+
+.headerTitle {
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.headerFolderIcon {
+  margin-right: 8px;
+  color: var(--color-primary);
+}
+
+.headerSubtitle {
+  font-size: 13px;
+}
+
+.addButtonRow {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+/* Loading / empty states */
+.loadingCenter {
+  text-align: center;
+  padding: 60px;
+}
+
+.emptyState {
+  margin-top: 60px;
+}
+
+/* Workspace card */
+.card {
+  margin-bottom: 10px;
+  background: var(--bg-container);
+  border-color: var(--border-primary);
+  cursor: pointer;
+}
+
+.cardRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cardLeft {
+  flex: 1;
+  min-width: 0;
+}
+
+.cardNameRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.cardName {
+  color: var(--text-primary);
+  font-size: 15px;
+}
+
+.cardPath {
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.cardMeta {
+  display: flex;
+  gap: 16px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* DirBrowser modal */
+.dirPathHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 10px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.dirCurrentPath {
+  color: var(--text-primary);
+  font-size: 13px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dirFolderIcon {
+  margin-right: 6px;
+  color: var(--color-primary);
+}
+
+.dirList {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.dirListCenter {
+  text-align: center;
+  padding: 40px;
+}
+
+.dirItem {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.dirItemInner {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dirItemName {
+  color: var(--text-primary);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dirGitTag {
+  font-size: 11px;
+  line-height: 18px;
+  padding: 0 4px;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+/* DirBrowser footer */
+.dirFooter {
+  border-top: 1px solid var(--border-primary);
+  padding: 10px 16px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dirPathInputRow {
+  display: flex;
+  gap: 8px;
+}
+
+.dirPathInput {
+  flex: 1;
+}

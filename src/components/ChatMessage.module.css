@@ -1,0 +1,1085 @@
+/* === Base reusable classes (from avatarBase / bubbleBase JS objects) === */
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #fff;
+}
+
+.avatarImg {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.bubble {
+  border-radius: 8px;
+  border: 1px solid var(--border-secondary);
+  box-sizing: border-box;
+  padding: 6px 6px;
+  max-width: 100%;
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+/* === Message row layouts === */
+
+.messageRow {
+  display: flex;
+  gap: 10px;
+  padding: 8px 24px;
+}
+
+.messageRowEnd {
+  display: flex;
+  gap: 10px;
+  padding: 8px 24px;
+  justify-content: flex-end;
+}
+
+/* === Content column === */
+
+.contentCol {
+  min-width: 0;
+}
+
+.contentColLimited {
+  min-width: 0;
+  max-width: 80%;
+  width: fit-content;
+}
+
+/* === Label row === */
+
+.labelRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.labelRowEnd {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.labelRight {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.labelText {
+  font-size: 11px;
+}
+
+.timeText {
+  font-size: 10px;
+  color: var(--text-gray);
+  flex-shrink: 0;
+}
+
+.timeTextNoMargin {
+  font-size: 10px;
+  color: var(--text-gray);
+  flex-shrink: 0;
+}
+
+.labelTextRight {
+  font-size: 11px;
+  margin-left: auto;
+}
+
+/* === Bubble color variants === */
+
+.bubbleUser {
+  composes: bubble;
+  background: linear-gradient(to top, var(--color-primary), var(--color-primary));
+  color: #fff;
+  padding: 8px 12px;
+  border-color: var(--color-primary-pale);
+}
+.bubbleUser:hover {
+  border-color: var(--color-primary-lighter);
+  color: #fff;
+}
+
+.bubbleAssistant {
+  composes: bubble;
+  background: var(--bg-container);
+  color: var(--text-primary);
+  transition: box-shadow 0s;
+  position: relative;
+}
+.bubbleAssistant > :last-child {
+  margin-bottom: 0;
+}
+
+.bubbleAssistant:hover {
+  background: var(--bg-container);
+  border: 1px solid var(--border-secondary);
+}
+
+.bubbleHighlight {
+  box-shadow: 0 0 10px var(--color-primary-shadow);
+}
+
+.bubbleHighlightFading {
+  box-shadow: 0 0 10px transparent;
+  transition: box-shadow 5s ease-out;
+}
+
+.borderSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.borderSvgInset {
+  overflow: hidden;
+}
+
+.borderSvgFading {
+  opacity: 0;
+  transition: opacity 5s ease-out;
+}
+
+.borderRect {
+  animation: dashRotate 4s linear infinite;
+}
+
+@keyframes dashRotate {
+  0% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: -100; }
+}
+
+.bubblePlan {
+  composes: bubble;
+  background: var(--bg-code);
+  border: 5px solid var(--color-primary);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.bubbleSubAgent {
+  composes: bubble;
+  background: var(--bg-code);
+  color: var(--text-primary);
+}
+.bubbleSubAgent:hover {
+  border: 1px solid var(--border-light);
+}
+
+.bubbleSelection {
+  composes: bubble;
+  background: var(--color-green-bg);
+  color: var(--text-primary);
+}
+.bubbleSelection:hover {
+  border: 1px solid var(--border-light);
+}
+
+/* === Collapse / system-tag styles === */
+
+.systemTagLabel {
+  font-size: 12px;
+}
+
+.skillLabel {
+  font-size: 12px;
+  color: var(--color-code-purple);
+}
+
+.systemTagPre {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
+.collapseMargin {
+  margin: 4px 0;
+}
+
+.collapseNoMargin {
+  margin: 0;
+}
+
+/* === Thinking block === */
+
+.thinkingLabel {
+  font-size: 12px;
+}
+
+.thinkingEmptyHint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  flex-wrap: wrap;
+}
+
+.thinkingEmptyText {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.enableThinkingBtn {
+  font-size: 12px;
+  border-radius: 4px;
+}
+
+.bashCollapseLabel {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+/* === Tool call box === */
+
+.toolBox {
+  background: var(--bg-code);
+  border: 1px solid var(--border-code);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 0 0 6px 0;
+  font-size: 12px;
+}
+
+.toolBox:hover {
+  border: 1px solid var(--border-code);
+}
+
+.toolLabel {
+  color: var(--color-code-purple);
+}
+
+.simplifiedToolLabel {
+  display: inline-block;
+  font-size: 12px;
+  color: var(--text-disabled-faint);
+  margin-right: 4px;
+  line-height: 24px;
+  vertical-align: middle;
+}
+
+.simplifiedToolTag {
+  display: inline-block;
+  padding: 1px 8px;
+  margin: 2px 4px 2px 0;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace;
+  color: var(--text-disabled-faint);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-hover);
+  border-radius: 4px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.simplifiedToolTag:hover {
+  border-color: var(--text-disabled);
+}
+
+.simplifiedToolPopoverContent {
+  max-width: 520px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.simplifiedToolPopoverContent .toolBox {
+  background: transparent;
+  border: none;
+  margin: 0;
+}
+
+.simplifiedToolPopoverContent .codePre {
+  background: var(--bg-base-pure);
+  border: 1px solid var(--border-secondary);
+}
+
+:global(.simplifiedToolPopover) {
+  max-width: calc(100vw - 24px);
+}
+
+@media (max-width: 768px) {
+  .simplifiedToolPopoverContent {
+    max-width: calc(100vw - 48px);
+    max-height: 260px;
+  }
+}
+
+/* === Code pre inside tool boxes === */
+
+.codePre {
+  font-size: 12px;
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--bg-base-pure);
+  color: var(--text-primary);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+/* === Path tag === */
+
+.pathTag {
+  color: var(--color-info-light);
+  font-size: 11px;
+}
+
+.pathTagClickable {
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.pathTagClickable:hover {
+  text-decoration: underline;
+  color: var(--color-primary-lighter);
+}
+
+/* === Tool call inline spans === */
+
+.descSpan {
+  color: var(--text-gray);
+  font-weight: 400;
+}
+
+.secondarySpan {
+  color: var(--text-gray);
+}
+
+.patternSpan {
+  color: var(--color-warning-light);
+}
+
+/* === Default tool key-value items === */
+
+.kvContainer {
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.kvItem {
+  margin: 2px 0;
+}
+
+.kvKey {
+  color: var(--text-white);
+}
+
+.kvValue {
+  color: var(--text-tertiary);
+}
+
+/* === Tool result box === */
+
+.toolResult {
+  background: var(--bg-code-dark);
+  border: 1px solid var(--color-selection-bg);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin: 2px 0 6px;
+  font-size: 11px;
+}
+
+.toolResultLabel {
+  font-size: 11px;
+}
+
+/* === Compact summary label === */
+
+.compactLabel {
+  font-size: 12px;
+  color: var(--color-primary-lighter);
+}
+
+.compactPre {
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
+/* === View request button === */
+
+.viewRequestBtn {
+  font-size: 10px;
+  color: var(--text-disabled);
+  cursor: pointer;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.viewRequestBtn:hover {
+  color: var(--color-primary-lighter);
+}
+
+/* === User-selection question === */
+
+.optionList {
+  padding-left: 8px;
+}
+
+.optionDesc {
+  color: var(--text-muted);
+  margin-left: 6px;
+  font-weight: normal;
+}
+
+/* === User-selection question text === */
+
+.questionText {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.questionSpacing {
+  margin-bottom: 10px;
+}
+
+/* === Option item === */
+
+.option {
+  font-size: 12px;
+  padding: 1px 0;
+}
+
+/* === AskUserQuestion 问卷卡片 === */
+
+.askQuestionBox {
+  background: var(--color-green-dark-bg);
+  border: 1px solid var(--color-success-dark);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.askQuestionHeader {
+  display: inline-block;
+  background: var(--color-green-bg);
+  color: var(--color-success-dark);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.askQuestionText {
+  color: var(--text-primary);
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.askOptionItem {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 1px 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.askOptionSelected {
+  color: var(--text-white);
+  font-weight: 600;
+}
+
+.askOptionSelected .optionDesc {
+  color: var(--text-white);
+}
+
+.askCheckSvg {
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+/* === Plan 模式状态指示 === */
+
+.planModeBox {
+  position: relative;
+  background: var(--bg-code-dark);
+  border: 1px solid var(--color-primary);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.planModeBox.planStatusPending {
+  border: none;
+  box-shadow: 0 0 12px var(--color-primary-bg-light);
+}
+
+.planModeLabel {
+  color: var(--color-primary-lighter);
+  font-weight: 600;
+}
+
+.planModePermissions {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-primary-dark-bg);
+}
+
+.planModePermLabel {
+  color: var(--text-gray);
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+.planModeHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.planStatusBadge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 10px;
+  line-height: 1.6;
+}
+
+.planStatusApproved {
+  border-color: var(--color-success);
+}
+
+.planStatusApproved.planStatusBadge {
+  background: var(--color-success-bg-light);
+  color: var(--color-success-light);
+}
+
+.planStatusRejected {
+  border-color: var(--color-error);
+}
+
+.planStatusRejected.planStatusBadge {
+  background: var(--color-error-bg-light);
+  color: var(--color-error-light);
+}
+
+.planStatusPending {
+  border-color: var(--color-primary);
+}
+
+.planStatusPending.planStatusBadge {
+  background: var(--color-primary-bg-light);
+  color: var(--color-primary-lighter);
+}
+
+.planContentPreview {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--bg-code);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-primary);
+  max-height: min(400px, 50vh);
+  overflow-y: auto;
+  border: 1px solid var(--color-primary-dark-bg);
+}
+
+.planFeedback {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--color-error-bg-faint);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.planFeedbackLabel {
+  color: var(--color-error-light);
+  font-weight: 600;
+}
+
+.planApprovalActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.planApproveBtn {
+  padding: 4px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--color-success);
+  background: var(--color-success-bg-light);
+  color: var(--color-success-light);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.planApproveBtn:hover {
+  background: var(--color-success-bg-medium);
+}
+
+.planRejectBtn {
+  padding: 4px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--color-error);
+  background: var(--color-error-bg-light);
+  color: var(--color-error-light);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.planRejectBtn:hover {
+  background: var(--color-error-bg-medium);
+}
+
+.planOptionBtn {
+  padding: 4px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--text-gray);
+  background: var(--color-gray-bg-light);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.planOptionBtn:hover {
+  background: var(--color-gray-bg-medium);
+}
+
+.dangerApprovalBox {
+  background: var(--color-error-dark-bg);
+  border: 1px solid var(--color-warning);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.dangerApprovalBoxDenied {
+  border-color: var(--color-error);
+}
+
+.ultraplanBadge {
+  color: var(--color-info-light);
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+.dangerApprovalHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dangerApprovalIcon {
+  color: var(--color-warning-light);
+  font-size: 14px;
+}
+
+.dangerApprovalLabel {
+  color: var(--color-warning-light);
+  font-weight: 600;
+}
+
+.dangerApprovalActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.dangerApproveBtn {
+  padding: 4px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--color-success);
+  background: var(--color-success-bg-light);
+  color: var(--color-success-light);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.dangerApproveBtn:hover {
+  background: var(--color-success-bg-medium);
+}
+
+.dangerRejectBtn {
+  padding: 4px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--color-error);
+  background: var(--color-error-bg-light);
+  color: var(--color-error-light);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.dangerRejectBtn:hover {
+  background: var(--color-error-bg-medium);
+}
+
+.dangerOptionBtn {
+  padding: 4px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--color-warning);
+  background: var(--color-warning-bg-light);
+  color: var(--color-warning-light);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.dangerOptionBtn:hover {
+  background: var(--color-warning-bg-medium);
+}
+
+.dangerDeniedBadge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--color-error-bg-light);
+  color: var(--color-error-light);
+  line-height: 1.6;
+}
+
+.dangerDeniedDetail {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--color-error-muted);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.planFeedbackInputWrap {
+  margin-top: 8px;
+}
+
+.planFeedbackTextarea {
+  width: 100%;
+  min-height: 60px;
+  max-height: 120px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--text-disabled);
+  background: var(--color-selection-bg);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  font-family: inherit;
+  outline: none;
+}
+
+.planFeedbackTextarea:focus {
+  border-color: var(--color-primary-light);
+}
+
+.planFeedbackBtnRow {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  justify-content: flex-end;
+}
+
+.planFeedbackSendBtn {
+  padding: 4px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--color-primary-light);
+  background: var(--color-primary-bg-lighter);
+  color: var(--color-primary-lighter);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.planFeedbackSendBtn:hover {
+  background: var(--color-primary-bg-medium);
+}
+
+.planFeedbackSendBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.planFeedbackCancelBtn {
+  padding: 4px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--text-gray);
+  background: var(--color-gray-bg-light);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.planFeedbackCancelBtn:hover {
+  background: var(--color-gray-bg-medium);
+}
+
+/* === AskUserQuestion 交互模式 === */
+
+.askQuestionInteractive {
+  position: relative;
+  background: var(--bg-code-dark);
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 6px 0;
+  font-size: 12px;
+  box-shadow: 0 0 12px var(--color-primary-bg-light);
+}
+
+.askQuestionInteractive .optionDesc {
+  color: var(--color-primary-dark);
+}
+
+.askRadioGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 4px;
+  margin-top: 4px;
+}
+
+.askRadioItem {
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 3px 0;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  user-select: none;
+}
+
+.askRadioItem:hover {
+  color: var(--text-white);
+}
+
+.askRadioItemSelected {
+  color: var(--color-primary-lighter);
+}
+
+.askRadioDot {
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.askRadioGroup :global(.ant-radio-wrapper),
+.askCheckboxGroup :global(.ant-checkbox-wrapper) {
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 3px 0;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.askRadioGroup :global(.ant-radio-wrapper > span),
+.askRadioGroup :global(.ant-radio) {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.askRadioGroup :global(.ant-radio-input) {
+  cursor: pointer;
+}
+
+.askCheckboxGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 4px;
+  margin-top: 4px;
+}
+
+.askOtherInput {
+  margin-top: 4px;
+  margin-left: 24px;
+  width: calc(100% - 24px);
+}
+
+.askOtherInput :global(.ant-input) {
+  background: var(--color-selection-bg);
+  border-color: var(--text-disabled);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.askSubmitRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.askSubmitBtn {
+  padding: 4px 20px;
+  border-radius: 4px;
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary-bg-lighter);
+  color: var(--color-primary-lighter);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.askSubmitBtn:hover {
+  background: var(--color-primary-bg-medium);
+}
+
+.askSubmitBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.askMarkdownLayout {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.askMarkdownLayout > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.askMarkdownPreview {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-code-dark);
+  border: 1px solid var(--border-code);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.askMarkdownPreview pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* === ChatImage === */
+
+.chatImageFallback {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.chatImageImg {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 6px;
+  margin: 6px 0;
+  display: block;
+  cursor: pointer;
+}
+
+/* === Highlight bubble wrapper === */
+
+.bubbleRelative {
+  position: relative;
+}
+
+/* === Skill loaded spacer === */
+
+.skillSpacer {
+  width: 32px;
+  flex-shrink: 0;
+}
+
+/* === Skill time text indent === */
+
+.skillTimeIndent {
+  margin-left: 8px;
+}
+
+.previewPlaceholder {
+  color: var(--text-gray);
+}
+
+/* === AskUserQuestion 移动端适配 === */
+@media (max-width: 768px) {
+  .askQuestionBox {
+    padding: 12px 16px;
+    font-size: 16px;
+  }
+  .askQuestionHeader {
+    font-size: 14px;
+    padding: 2px 10px;
+  }
+  .askQuestionText {
+    font-size: 17px;
+    margin-bottom: 8px;
+  }
+  .askOptionItem {
+    font-size: 16px;
+    padding: 6px 0;
+    gap: 8px;
+  }
+  .askQuestionInteractive {
+    padding: 12px 16px;
+    font-size: 16px;
+  }
+  .askRadioGroup {
+    gap: 4px;
+  }
+  .askRadioItem {
+    font-size: 16px;
+    padding: 8px 0;
+    gap: 10px;
+    min-height: 40px;
+  }
+  .askRadioDot {
+    font-size: 18px;
+  }
+  .askRadioGroup :global(.ant-radio-wrapper),
+  .askCheckboxGroup :global(.ant-checkbox-wrapper) {
+    font-size: 16px;
+    padding: 8px 0;
+    min-height: 40px;
+  }
+  .askCheckboxGroup {
+    gap: 4px;
+  }
+  .askOtherInput :global(.ant-input) {
+    font-size: 16px;
+    padding: 8px;
+  }
+  .askSubmitBtn {
+    padding: 10px 28px;
+    font-size: 18px;
+  }
+}

@@ -1,0 +1,56 @@
+appId: com.ccviewer.app
+productName: CC Viewer
+copyright: Copyright © 2026
+
+directories:
+  output: electron-dist
+
+files:
+  - dist/**/*
+  - server.js
+  - cli.js
+  - proxy.js
+  - interceptor.js
+  - i18n.js
+  - findcc.js
+  - pty-manager.js
+  - workspace-registry.js
+  - lib/**/*
+  - concepts/**/*
+  - electron/**/*
+  - package.json
+  - "!node_modules/**/*.md"
+  - "!node_modules/**/*.ts"
+  - "!node_modules/**/test/**"
+  - "!node_modules/**/tests/**"
+  - "!node_modules/**/.github/**"
+
+extraMetadata:
+  main: electron/main.js
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+  icon: build/icon.icns
+
+win:
+  target:
+    - nsis
+  icon: build/icon.png
+
+linux:
+  target:
+    - AppImage
+  icon: build/icon.png
+  category: Development
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+asar: false
+
+npmRebuild: true
+buildDependenciesFromSource: false

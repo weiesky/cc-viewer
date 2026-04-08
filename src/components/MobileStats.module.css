@@ -1,0 +1,75 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-base-alt);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.headerTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.closeBtn:active {
+  color: var(--text-white);
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.empty {
+  color: var(--text-tertiary);
+  font-size: 13px;
+  text-align: center;
+  padding: 40px 0;
+}
+
+.fixedTable {
+  table-layout: fixed;
+}
+
+.ellipsisCell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 0;
+}
+
+.thLeft {
+  text-align: left;
+}
+
+.colWide {
+  width: 50%;
+}
+
+.colNarrow {
+  width: 25%;
+}

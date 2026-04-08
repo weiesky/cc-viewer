@@ -1,0 +1,774 @@
+.layout {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.header {
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-primary);
+  padding: 0 10px;
+  height: 40px;
+  line-height: 40px;
+}
+
+.content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.mainContainer {
+  display: flex;
+  height: 100%;
+}
+
+.leftPanel {
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base-alt);
+}
+
+.leftPanelHeader {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-primary);
+  font-size: 13px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.leftPanelCount {
+  font-size: 12px;
+  color: var(--text-disabled);
+  font-weight: 400;
+}
+
+.leftPanelBody {
+  flex: 1;
+  overflow: hidden;
+}
+
+.rightPanel {
+  flex: 1;
+  overflow: hidden;
+  background: var(--bg-base-alt);
+}
+
+.modalActions {
+  margin-bottom: 12px;
+}
+
+.spinCenter {
+  text-align: center;
+  padding: 40px;
+}
+
+.emptyCenter {
+  text-align: center;
+  color: var(--text-tertiary);
+  padding: 40px;
+}
+
+.logCheckbox {
+  margin-right: 8px;
+}
+
+.logListContainer {
+  background: var(--bg-base-alt);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.logListItem {
+  cursor: pointer;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.logItemRow {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 12px;
+}
+
+.logItemRow > span:first-child {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.logFileName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logItemRow > span:last-child {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.logFileIcon {
+  margin-right: 8px;
+  color: var(--color-primary-light);
+  flex-shrink: 0;
+}
+
+.loadingOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--overlay-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.dragOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--overlay-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.dragOverlayContent {
+  text-align: center;
+  color: var(--text-primary);
+  font-size: 18px;
+  border: 2px dashed var(--color-primary-light);
+  border-radius: 16px;
+  padding: 48px 64px;
+}
+
+.dragIcon {
+  font-size: 48px;
+}
+
+.loadingText {
+  color: var(--text-white);
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.mobileLoadingOverlay {
+  position: absolute;
+  inset: 0;
+  background: var(--overlay-dark-strong);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  gap: 16px;
+}
+
+.mobileLoadingSpinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--overlay-light-medium);
+  border-top-color: var(--color-primary-pale);
+  border-radius: 50%;
+  animation: mobileSpin 0.8s linear infinite;
+}
+
+@keyframes mobileSpin {
+  to { transform: rotate(360deg); }
+}
+
+.mobileLoadingLabel {
+  color: var(--text-tertiary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.footer {
+  border-top: 1px solid var(--border-primary);
+  height: 18px;
+  background: var(--bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+.footerRight {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-disabled);
+}
+
+.footerText {
+  color: var(--border-light);
+  margin-right: 2px;
+}
+
+.footerLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-disabled);
+  text-decoration: none;
+}
+
+.footerLink:hover {
+  color: var(--text-tertiary);
+}
+
+.footerIcon {
+  width: 12px;
+  height: 12px;
+}
+
+.footerDivider {
+  color: var(--border-secondary);
+}
+
+.footerText {
+  color: var(--text-disabled);
+}
+
+.guideContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--bg-base-alt);
+}
+
+.guideContent {
+  max-width: 560px;
+  padding: 40px;
+}
+
+.guideTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 28px 0;
+}
+
+.guideStep {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.guideStepNum {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  color: var(--color-primary-lighter);
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+.guideStepBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.guideText {
+  color: var(--text-light);
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0 0 8px 0;
+}
+
+.guideCode {
+  display: block;
+  background: var(--bg-container);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: var(--color-primary-lighter);
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.mobileChatOverlay {
+  position: absolute;
+  inset: 0;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  z-index: 100;
+  background: var(--bg-base-alt);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mobileChatOverlayVisible {
+  transform: translateX(0);
+}
+
+.mobileNavBtn {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.mobileChatInner {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  zoom: 0.6;
+}
+
+.mobileGitDiffOverlay {
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  z-index: 100;
+  background: var(--bg-base-alt);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mobileGitDiffOverlayVisible {
+  transform: translateX(0);
+}
+
+.mobileGitDiffInner {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  zoom: 0.6;
+}
+
+.mobileMenuBtn {
+  background: none;
+  border: none;
+  color: var(--text-light);
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.mobileMenuBtn:active {
+  background: var(--overlay-light-medium);
+}
+
+.mobileMenuOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+}
+
+.mobileMenuDropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-secondary);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px var(--overlay-dark-light);
+  min-width: 160px;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.mobileMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+
+.mobileMenuItem:active {
+  background: var(--overlay-light-medium);
+}
+
+.mobileStatsOverlay {
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  z-index: 100;
+  background: var(--bg-base-alt);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mobileStatsOverlayVisible {
+  transform: translateX(0);
+}
+
+.mobileStatsInner {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobileLogMgmtOverlay {
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  z-index: 100;
+  background: var(--bg-base-alt);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mobileLogMgmtOverlayVisible {
+  transform: translateX(0);
+}
+
+.mobileLogMgmtHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.mobileLogMgmtTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mobileLogMgmtClose {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobileLogMgmtClose:hover {
+  color: var(--text-white);
+}
+
+.mobileLogMgmtActions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.mobileLogMgmtBody {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 10px;
+}
+
+.mobileSettingsOverlay {
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  z-index: 100;
+  background: var(--bg-base-alt);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mobileSettingsOverlayVisible {
+  transform: translateX(0);
+}
+
+.mobilePromptOverlay {
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  z-index: 100;
+  background: var(--bg-base-alt);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mobilePromptOverlayVisible {
+  transform: translateX(0);
+}
+
+.mobilePromptBody {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobilePromptList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px;
+}
+
+.mobilePromptItem {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.mobilePromptTimestamp {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  font-family: ui-monospace, monospace;
+}
+
+.mobilePromptCard {
+  margin: 4px 0;
+  background: var(--bg-container);
+  border-radius: 6px;
+  border: 1px solid var(--border-secondary);
+  padding: 10px 14px;
+}
+
+.mobilePromptPreText {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin: 4px 0;
+}
+
+/* Table cell styles */
+.tableTimestampCell {
+  white-space: nowrap;
+}
+
+.tablePreviewText {
+  max-width: 600px;
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.tablePreviewTextClickable {
+  max-width: 600px;
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  cursor: pointer;
+}
+
+.tableTag {
+  background: var(--bg-base-alt);
+  border: 1px solid var(--border-light);
+  color: var(--text-tertiary);
+}
+
+.tableActionsCell {
+  display: flex;
+  gap: 4px;
+}
+
+/* Mobile CLI layout */
+.mobileCLIRoot {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base-pure);
+  overflow-x: hidden;
+}
+
+.mobileCLIHeader {
+  padding: 10px 12px;
+  background: var(--bg-container);
+  border-bottom: 1px solid var(--border-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.mobileCLIHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mobileCLIStatusLabel {
+  font-size: 12px;
+  color: var(--text-light);
+}
+
+.mobileCLIHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mobileCLIBody {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Mobile settings panel */
+.mobileSettingsBody {
+  padding: 12px 16px;
+}
+
+.mobileSettingsSectionTitle {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+
+.mobileSettingsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.mobileSettingsLabel {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* Mobile prompt panel */
+.mobilePromptEmpty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 20px;
+  font-size: 14px;
+}
+
+.mobilePromptHeader {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-primary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.mobilePromptCount {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+/* Chat view display toggle */
+.chatViewWrapper {
+  height: 100%;
+  flex-direction: column;
+}
+
+/* Resume modal footer */
+.resumeFooterRight {
+  text-align: right;
+  margin-bottom: 8px;
+}
+
+.resumeFooterLeft {
+  text-align: left;
+}
+
+.resumeCheckboxOpacity {
+  opacity: 0.6;
+}
+
+.btnMarginLeft {
+  margin-left: 8px;
+}
+
+.btnMarginRight {
+  margin-right: 8px;
+}
+
+/* Modal title with icon */
+.modalTitleInline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Log preview popover */
+.previewPopover {
+  max-width: 420px;
+  min-width: 280px;
+  padding: 8px;
+}
+
+.previewItem {
+  background: var(--bg-container);
+  border-radius: 6px;
+  border: 1px solid var(--border-secondary);
+  padding: 8px 12px;
+  margin-bottom: 6px;
+}
+
+.previewItem:last-child {
+  margin-bottom: 0;
+}
+
+.previewText {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin: 0;
+}

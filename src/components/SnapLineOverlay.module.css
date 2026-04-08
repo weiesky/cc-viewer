@@ -1,0 +1,31 @@
+.snapLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #00000000;
+  border-left: 2px dashed var(--overlay-light-medium);
+  pointer-events: none;
+  z-index: 1000;
+  transition: all 0.15s;
+}
+
+.snapLineActive {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #00000000;
+  border-left: 2px dashed var(--overlay-light-half);
+  pointer-events: none;
+  z-index: 1001;
+}
+
+.snapPreview {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--overlay-light-medium);
+  pointer-events: none;
+  z-index: 999;
+}

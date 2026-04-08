@@ -1,0 +1,141 @@
+.wrapper {
+  margin: 0 0 6px 0;
+  background: var(--bg-code);
+  border: 1px solid var(--border-code);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.wrapper:hover {
+  border-color: var(--border-code);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.filePath {
+  color: var(--color-code-purple);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.filePathClickable {
+  color: var(--color-code-purple);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.filePathClickable:hover {
+  text-decoration: underline;
+  color: var(--color-code-purple);
+}
+
+.toggle {
+  color: var(--text-gray);
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.diffSummary {
+  font-size: 11px;
+  color: var(--text-gray);
+}
+
+/* === Two-column layout: fixed gutter + scrollable code === */
+
+.diffBody {
+  display: flex;
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--bg-container);
+  border: 1px solid var(--border-secondary);
+}
+
+/* Left gutter: line numbers + prefix, never scrolls horizontally */
+.gutter {
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.gutterRow {
+  display: flex;
+  height: 18px; /* 12px * 1.5 line-height */
+}
+
+.lineNumOld,
+.lineNumNew {
+  text-align: right;
+  color: var(--text-tertiary);
+  padding: 0 6px 0 2px;
+  box-sizing: border-box;
+}
+
+.prefix {
+  width: 16px;
+  min-width: 16px;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* Right code area: horizontally scrollable */
+.codeWrap {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+/* Inner container: stretches to max(100%, longest line) */
+.codeInner {
+  display: inline-block;
+  min-width: 100%;
+}
+
+.codeLine {
+  white-space: pre;
+  padding: 0 4px;
+  height: 18px; /* must match gutterRow height */
+}
+
+/* === Row type colors === */
+
+.rowContext {
+  background: var(--bg-container);
+  color: var(--text-tertiary);
+}
+
+.rowDel {
+  background: var(--color-error-bg-faint);
+  color: var(--color-diff-delete-text);
+}
+.rowDel.gutterRow .prefix {
+  color: var(--color-error);
+}
+
+.rowAdd {
+  background: var(--color-success-bg-faint);
+  color: var(--color-success-light);
+}
+.rowAdd.gutterRow .prefix {
+  color: var(--color-success);
+}
+
+.rowContext.gutterRow {
+  background: var(--bg-container);
+}

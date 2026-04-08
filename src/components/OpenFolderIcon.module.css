@@ -1,0 +1,7 @@
+.iconBtn {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}

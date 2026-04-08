@@ -1,0 +1,154 @@
+.centerEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.scrollContainer {
+  overflow: auto;
+  height: 100%;
+  -webkit-overflow-scrolling: touch;
+  will-change: scroll-position;
+}
+
+.listItem {
+  cursor: pointer;
+  padding: 8px 12px;
+  border-left: 3px solid #00000000;
+  border-bottom: 1px solid var(--border-primary);
+  transition: background 0.15s;
+}
+
+.listItem:hover {
+  background: var(--bg-container);
+}
+
+.listItemActive {
+  background: var(--color-selection-bg);
+  border-left-color: var(--color-primary-light);
+}
+
+.listItemActive:hover {
+  background: var(--color-selection-bg);
+}
+
+.itemContent {
+  width: 100%;
+  min-width: 0;
+}
+
+.itemHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.tagNoMargin {
+  margin: 0;
+  font-size: 12px;
+}
+
+.modelName {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.modelNameMain {
+  color: var(--color-code-orange);
+}
+
+.time {
+  font-size: 12px;
+  color: var(--text-gray);
+  margin-left: auto;
+}
+
+.detailRow {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  align-items: center;
+}
+
+.urlText {
+  color: var(--text-disabled);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.duration {
+  color: var(--text-gray);
+  flex-shrink: 0;
+}
+
+.statusOk {
+  color: var(--color-success);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.statusErr {
+  color: var(--color-error);
+  flex-shrink: 0;
+}
+
+.statusDefault {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.usageBox {
+  background: var(--bg-container);
+  border-radius: 4px;
+  padding: 3px 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-gray);
+  line-height: 1.6;
+}
+
+.cacheDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin: 0 3px;
+  vertical-align: middle;
+}
+
+.cacheDotLoss {
+  background-color: var(--color-red-dark-bg);
+  cursor: help;
+}
+
+.cacheDotNormal {
+  background-color: var(--border-hover);
+}
+
+.tagMainAgent {
+  color: var(--color-code-orange);
+  border-color: var(--color-code-orange-border);
+  background: var(--color-code-orange-bg);
+}
+
+.tagPlan {
+  color: var(--color-error-muted);
+  border-color: var(--color-error-muted);
+  background-color: var(--bg-base-pure);
+}
+
+.tagMuted {
+  color: var(--text-muted);
+  border-color: var(--border-light);
+  background-color: var(--bg-base-pure);
+}
+
+.tooltipPreLine {
+  white-space: pre-line;
+}
