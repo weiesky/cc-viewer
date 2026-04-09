@@ -1402,7 +1402,7 @@ class AppHeader extends React.Component {
           )}
           {viewMode === 'chat' && cliMode && !isLocalLog && this.state.localUrl && (
             <>
-              {this.state.countryFlag && (
+              {this.state.countryFlag && this.state.countryInfo?.country !== 'CN' && (
                 <Popover
                   content={this.state.countryInfo ? (
                     <div className={styles.countryInfoPopover}>
@@ -1429,7 +1429,7 @@ class AppHeader extends React.Component {
               <Popover
               content={
                 <div className={styles.qrcodePopover}>
-                  <div className={styles.qrcodeTitle}>{t('ui.scanToCoding')}</div>
+                  <div className={styles.qrcodeTitle}>{t('ui.scanToCoding')} <ConceptHelp doc="QRCode" /></div>
                   <QRCodeCanvas value={this.state.localUrl} size={200} bgColor="#141414" fgColor="#d9d9d9" level="M" />
                   <Input
                     readOnly

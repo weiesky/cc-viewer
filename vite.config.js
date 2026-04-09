@@ -10,10 +10,15 @@ function getBackendPort() {
   }
 }
 
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'));
+
 export default defineConfig(() => {
   const port = getBackendPort();
   return {
     plugins: [react()],
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+    },
     build: {
       outDir: 'dist',
     },

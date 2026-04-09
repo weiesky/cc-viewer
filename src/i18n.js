@@ -1054,10 +1054,10 @@ const i18nData = {
     "uk": "Режим чату"
   },
   "ui.rawMode": {
-    "zh": "查看网络报文",
+    "zh": "网络报文",
     "en": "Network Packets",
-    "zh-TW": "查看網路封包",
-    "ko": "네트워크 패킷 보기",
+    "zh-TW": "網路封包",
+    "ko": "네트워크 패킷",
     "ja": "ネットワークパケット",
     "de": "Netzwerkpakete",
     "es": "Paquetes de red",

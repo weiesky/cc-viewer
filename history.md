@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.130 (2026-04-09)
+
+- Fix: hide git changes button when project has no git repository
+- Fix: hide country flag module for CN region
+- Fix: i18n trim "查看" prefix from network packets label (zh/zh-TW/ko)
+
 ## 1.6.129 (2026-04-09)
 
 - Feat: theme switch (雪山白/曜石黑) in AppHeader toolbar for quick theme toggle

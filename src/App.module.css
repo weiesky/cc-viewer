@@ -242,6 +242,21 @@
   height: 12px;
 }
 
+.footerSep {
+  color: var(--text-disabled);
+  font-size: 10px;
+}
+
+.footerVersion {
+  color: var(--text-disabled);
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.footerVersion:hover {
+  color: var(--text-tertiary);
+}
+
 .footerDivider {
   color: var(--border-secondary);
 }
