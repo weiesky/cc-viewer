@@ -127,7 +127,7 @@
 
 .closeBtn:hover {
   background: var(--overlay-light-medium);
-  color: var(--text-white);
+  color: #fff;
 }
 
 .viewToggleBtn {

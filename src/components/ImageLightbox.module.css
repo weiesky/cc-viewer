@@ -44,7 +44,7 @@
   background: var(--overlay-dark-light);
   border: none;
   border-radius: 50%;
-  color: var(--text-white);
+  color: #fff;
   cursor: pointer;
   transition: background 0.15s;
 }

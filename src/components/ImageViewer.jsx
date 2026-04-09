@@ -74,10 +74,23 @@ export default function ImageViewer({ filePath, onClose, editorSession }) {
     setLoading(false);
   }, []);
 
-  // Fit to window once natural size is known
+  // Fit to window once natural size is known, and on resize
   useEffect(() => {
-    if (naturalSize) fitToWindow();
-  }, [naturalSize, fitToWindow]);
+    if (!naturalSize) return;
+    // Delay to ensure layout is settled
+    const raf = requestAnimationFrame(() => fitToWindow());
+    let resizeRaf;
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(() => fitToWindow());
+    });
+    if (canvasRef.current) ro.observe(canvasRef.current);
+    return () => {
+      cancelAnimationFrame(raf);
+      cancelAnimationFrame(resizeRaf);
+      ro.disconnect();
+    };
+  }, [naturalSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleImageError = useCallback(() => {
     setError('Failed to load image');
@@ -169,6 +182,11 @@ export default function ImageViewer({ filePath, onClose, editorSession }) {
         </div>
         <div className={styles.headerRight}>
           {fileSize > 0 && <span className={styles.fileSize}>{formatFileSize(fileSize)}</span>}
+          <button className={styles.closeBtn} onClick={onClose} title={i18n('ui.backToChat')}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
         </div>
       </div>
 
