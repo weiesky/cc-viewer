@@ -1,3 +1,175 @@
+/* ═══ Theme Variables ═══ */
+[data-theme="dark"] {
+  --bg-primary: #0d0d0d;
+  --bg-secondary: #111;
+  --bg-elevated: #1e1e1e;
+  --bg-code: #0d1117;
+  --bg-inline-code: #14141F;
+  --bg-hover: #2a2a2a;
+  --bg-active: #303030;
+  --bg-table-header: #1e1e1e;
+  --bg-table-body: #000;
+  --bg-chat-bubble: linear-gradient(to top, #222, #303030);
+  --bg-chat-bubble-hover: linear-gradient(to top, #303030, #3a3a3a);
+  --bg-input: #1e1e1e;
+  --bg-panel: #141414;
+  --bg-minimap: #0f0f0f;
+  --bg-selected: #532f00;
+  --bg-active-item: #1a2332;
+  --bg-overlay: #000000bf;
+  --bg-overlay-dark: #000000e0;
+  --bg-tooltip: #0d0d0d;
+
+  --text-primary: #e5e5e5;
+  --text-heading: #fff;
+  --text-secondary: #aaa;
+  --text-muted: #888;
+  --text-dim: #555;
+  --text-link: #60a5fa;
+  --text-inline-code: #aeafff;
+  --text-code: #e5e5e5;
+  --text-code-secondary: #e0e0e0;
+  --text-label: #a0a0a0;
+  --text-on-dark: #ccc;
+
+  --border-primary: #2a2a2a;
+  --border-secondary: #444;
+  --border-subtle: #303030;
+  --border-input: #424242;
+  --border-strong: #666;
+  --border-dropdown: #3a3a3a;
+
+  --color-primary: #1668dc;
+  --color-primary-light: #3b82f6;
+  --color-accent: #4a9eff;
+  --selection-bg: #264f78;
+  --scrollbar-thumb: #3a3a3a;
+  --scrollbar-track: #0d0d0d;
+  --scrollbar-thumb-hover: #555;
+  --popover-arrow: #303030;
+
+  /* Syntax highlighting */
+  --hl-keyword: #f87171;
+  --hl-string: #7dd3fc;
+  --hl-comment: #888;
+  --hl-linenum: #555;
+  --hl-code: #e5e5e5;
+
+  /* Diff colors */
+  --diff-add-bg: #22c55e1d;
+  --diff-add-text: #4ade80;
+  --diff-del-bg: #ef44441d;
+  --diff-del-text: #fca5a5;
+
+  /* Status colors */
+  --file-path-color: #a78bfa;
+  --file-path-hover: #c4b5fd;
+  --diff-badge: #e2c08d;
+
+  /* Button defaults */
+  --btn-default-bg: transparent;
+  --btn-default-border: #444;
+  --btn-default-text: #ccc;
+  --btn-default-hover-bg: #2a2a2a;
+  --btn-default-hover-border: #666;
+  --btn-default-hover-text: #fff;
+
+  /* White-alpha tints (for overlays on dark bg) */
+  --tint-subtle: #ffffff0a;
+  --tint-light: #ffffff1a;
+  --tint-medium: #ffffff80;
+}
+
+[data-theme="light"] {
+  --bg-primary: #f8f9fb;
+  --bg-secondary: #f0f2f6;
+  --bg-elevated: #ffffff;
+  --bg-code: #eef0f4;
+  --bg-inline-code: #e8eaf0;
+  --bg-hover: #e8eaef;
+  --bg-active: #dcdfe8;
+  --bg-table-header: #e8eaef;
+  --bg-table-body: #f0f2f6;
+  --bg-chat-bubble: linear-gradient(to top, #eef0f4, #f8f9fb);
+  --bg-chat-bubble-hover: linear-gradient(to top, #e4e6ec, #eef0f4);
+  --bg-input: #ffffff;
+  --bg-panel: #f0f2f6;
+  --bg-minimap: #eef0f4;
+  --bg-selected: #fff3cd;
+  --bg-active-item: #e8f0fe;
+  --bg-overlay: #00000040;
+  --bg-overlay-dark: #00000060;
+  --bg-tooltip: #1a1a2e;
+
+  --text-primary: #1a1a2e;
+  --text-heading: #111827;
+  --text-secondary: #5a5d72;
+  --text-muted: #8b8fa3;
+  --text-dim: #a0a5b5;
+  --text-link: #1668dc;
+  --text-inline-code: #5b5fc7;
+  --text-code: #1a1a2e;
+  --text-code-secondary: #333;
+  --text-label: #5a5d72;
+  --text-on-dark: #5a5d72;
+
+  --border-primary: #d8dce5;
+  --border-secondary: #c5c9d6;
+  --border-subtle: #e0e3ea;
+  --border-input: #c5c9d6;
+  --border-strong: #a0a5b5;
+  --border-dropdown: #d8dce5;
+
+  --color-primary: #1668dc;
+  --color-primary-light: #4088e8;
+  --color-accent: #1668dc;
+  --selection-bg: #b3d4fc;
+  --scrollbar-thumb: #c5c9d6;
+  --scrollbar-track: #f0f2f6;
+  --scrollbar-thumb-hover: #a0a5b5;
+  --popover-arrow: #d8dce5;
+
+  /* Syntax highlighting */
+  --hl-keyword: #c42b2b;
+  --hl-string: #0969da;
+  --hl-comment: #6a737d;
+  --hl-linenum: #a0a5b5;
+  --hl-code: #1a1a2e;
+
+  /* Diff colors */
+  --diff-add-bg: #dafbe1;
+  --diff-add-text: #116329;
+  --diff-del-bg: #ffebe9;
+  --diff-del-text: #82071e;
+
+  /* Status colors */
+  --file-path-color: #7c3aed;
+  --file-path-hover: #6d28d9;
+  --diff-badge: #92700c;
+
+  /* Button defaults */
+  --btn-default-bg: #ffffff;
+  --btn-default-border: #c5c9d6;
+  --btn-default-text: #5a5d72;
+  --btn-default-hover-bg: #f0f2f6;
+  --btn-default-hover-border: #a0a5b5;
+  --btn-default-hover-text: #1a1a2e;
+
+  /* Dark-alpha tints (for overlays on light bg) */
+  --tint-subtle: #0000000a;
+  --tint-light: #00000012;
+  --tint-medium: #00000040;
+}
+
+/* Theme transition */
+*, *::before, *::after {
+  transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+}
+/* Disable transition for performance-critical elements */
+.cm-editor *, .xterm *, .mermaid-diagram * {
+  transition: none !important;
+}
+
 body {
   margin: 0;
   background-color: #0d0d0d;
