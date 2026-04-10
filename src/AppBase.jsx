@@ -242,6 +242,13 @@ class AppBase extends React.Component {
         if (data.logDir) {
           this.setState({ logDir: data.logDir });
         }
+        // URL 参数覆盖主题（白名单校验防 XSS）
+        const urlTheme = new URLSearchParams(window.location.search).get('theme');
+        if (urlTheme === 'light' || urlTheme === 'dark') {
+          this.setState({ themeColor: urlTheme });
+          document.documentElement.setAttribute('data-theme', urlTheme);
+        }
+
         return data;
       })
       .catch(() => ({}));
