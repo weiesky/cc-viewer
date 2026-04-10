@@ -1,5 +1,5 @@
 import React from 'react';
-import { message, Tooltip, Popover, Button, Modal, Checkbox } from 'antd';
+import { message, Tooltip, Popover, Button, Modal, Checkbox, Radio } from 'antd';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
@@ -11,6 +11,7 @@ import { apiUrl } from '../utils/apiUrl';
 import { isMobile, isIOS } from '../env';
 import styles from './TerminalPanel.module.css';
 import { BUILTIN_PRESETS } from '../utils/builtinPresets.js';
+import { buildLocalUltraplan } from '../utils/ultraplanTemplates';
 
 const darkTerminalTheme = {
   background: '#0a0a0a', foreground: '#d4d4d4', cursor: '#0a0a0a',
@@ -51,6 +52,14 @@ function UploadIcon() {
   );
 }
 
+function UltraplanIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 22 12 12 22 2 12"/>
+    </svg>
+  );
+}
+
 function AgentTeamIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -86,6 +95,10 @@ class TerminalPanel extends React.Component {
       terminalFocused: false,
       agentTeamEnabled: false,
       agentTeamPopoverOpen: false,
+      ultraplanOpen: false,
+      ultraplanVariant: 'auto',
+      ultraplanPrompt: '',
+      ultraplanFiles: [],
       presetModalVisible: false,
       presetItems: [],
       presetSelected: new Set(),
@@ -883,6 +896,41 @@ class TerminalPanel extends React.Component {
     if (!isMobile && this.terminal) this.terminal.focus();
   };
 
+  handleUltraplanSend = () => {
+    const trimmed = this.state.ultraplanPrompt.trim();
+    if (!trimmed && this.state.ultraplanFiles.length === 0) return;
+    const filePaths = this.state.ultraplanFiles.map(f => `"${f.path}"`).join(' ');
+    const userInput = filePaths ? (trimmed ? `${filePaths} ${trimmed}` : filePaths) : trimmed;
+    const assembled = buildLocalUltraplan(userInput, this.state.ultraplanVariant);
+    this.setState({ ultraplanOpen: false, ultraplanPrompt: '', ultraplanVariant: 'auto', ultraplanFiles: [] });
+    this.handlePresetSend(assembled);
+  };
+
+  handleUltraplanUpload = async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const path = await uploadFileAndGetPath(file);
+        this.setState(prev => ({
+          ultraplanFiles: [...prev.ultraplanFiles, { name: file.name, path }],
+        }));
+      } catch (err) {
+        console.error('Ultraplan upload failed:', err);
+        message.error(err?.message || 'Upload failed');
+      }
+    };
+    input.click();
+  };
+
+  handleUltraplanRemoveFile = (idx) => {
+    this.setState(prev => ({
+      ultraplanFiles: prev.ultraplanFiles.filter((_, i) => i !== idx),
+    }));
+  };
+
   handleEnableAgentTeam = () => {
     if (this.state.agentTeamEnabling) return;
     this.setState({ agentTeamEnabling: true });
@@ -981,6 +1029,55 @@ class TerminalPanel extends React.Component {
                 </button>
               </Popover>
             )}
+            <Popover
+              trigger="click"
+              placement="top"
+              open={this.state.ultraplanOpen}
+              onOpenChange={(v) => { if (!v) this.setState({ ultraplanOpen: false }); }}
+              overlayInnerStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-hover)', borderRadius: 8, padding: 0, width: 420 }}
+              content={
+                <div className={styles.ultraplanPanel}>
+                  <div className={styles.ultraplanHeader}>{t('ui.ultraplan.title')}</div>
+                  <div className={styles.ultraplanVariantRow}>
+                    <Radio.Group size="small" value={this.state.ultraplanVariant} onChange={(e) => this.setState({ ultraplanVariant: e.target.value })}>
+                      <Radio.Button value="auto">AutoModel</Radio.Button>
+                      <Radio.Button value="simple">level-1</Radio.Button>
+                      <Radio.Button value="visual">level-2</Radio.Button>
+                      <Radio.Button value="subagents">◇level-3</Radio.Button>
+                    </Radio.Group>
+                    {this.state.ultraplanFiles.length > 0 && (
+                      <div className={styles.ultraplanFileList}>
+                        {this.state.ultraplanFiles.map((f, i) => (
+                          <span key={i} className={styles.ultraplanFileChip} title={f.name}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span className={styles.ultraplanFileName}>{f.name}</span>
+                            <span className={styles.ultraplanFileRemove} onClick={() => this.handleUltraplanRemoveFile(i)}>×</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <textarea
+                    className={styles.ultraplanTextarea}
+                    value={this.state.ultraplanPrompt}
+                    onChange={(e) => this.setState({ ultraplanPrompt: e.target.value })}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && (this.state.ultraplanPrompt.trim() || this.state.ultraplanFiles.length > 0)) { e.preventDefault(); this.handleUltraplanSend(); } }}
+                    placeholder={t('ui.ultraplan.placeholder')}
+                    rows={5}
+                    autoFocus
+                  />
+                  <div className={styles.ultraplanFooter}>
+                    <button className={styles.ultraplanSendBtn} disabled={!this.state.ultraplanPrompt.trim() && this.state.ultraplanFiles.length === 0} onClick={this.handleUltraplanSend}>{t('ui.ultraplan.send')}</button>
+                    <button className={styles.ultraplanUploadBtn} onClick={this.handleUltraplanUpload}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>{t('ui.ultraplan.upload')}</button>
+                  </div>
+                </div>
+              }
+            >
+              <button className={styles.toolbarBtn} onClick={() => this.setState({ ultraplanOpen: true })} title={t('ui.ultraplan')}>
+                <UltraplanIcon />
+                <span>Ultraplan</span>
+              </button>
+            </Popover>
             <button className={`${styles.toolbarBtn} ${styles.toolbarBtnRight}`} onClick={() => this.setState({ presetModalVisible: true })} title={t('ui.terminal.presetShortcuts')}>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>

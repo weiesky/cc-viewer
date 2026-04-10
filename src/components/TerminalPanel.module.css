@@ -448,3 +448,154 @@
   display: block;
   margin-bottom: 4px;
 }
+
+/* ── ultraplan floating panel ── */
+.ultraplanPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.ultraplanHeader {
+  padding: 10px 14px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ultraplanVariantRow {
+  padding: 0 14px 8px;
+}
+
+.ultraplanVariantRow :global(.ant-radio-group) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+}
+
+.ultraplanVariantRow :global(.ant-radio-button-wrapper) {
+  font-size: 11px;
+  height: 24px;
+  line-height: 22px;
+  padding: 0 8px;
+}
+
+.ultraplanTextarea {
+  margin: 0 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-container);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  min-height: 100px;
+  max-height: 300px;
+}
+
+.ultraplanTextarea:focus {
+  border-color: var(--color-primary-pale);
+}
+
+.ultraplanTextarea::placeholder {
+  color: var(--text-disabled);
+}
+
+.ultraplanFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px 10px;
+}
+
+.ultraplanSendBtn {
+  height: 26px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 4px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.ultraplanSendBtn:hover {
+  opacity: 0.85;
+}
+
+.ultraplanSendBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ultraplanUploadBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-light);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.ultraplanUploadBtn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--text-disabled);
+}
+
+.ultraplanFileList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.ultraplanFileChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--bg-container);
+  border: 1px solid var(--border-primary);
+  font-size: 11px;
+  color: var(--text-secondary);
+  max-width: 180px;
+  white-space: nowrap;
+}
+
+.ultraplanFileChip svg {
+  flex-shrink: 0;
+}
+
+.ultraplanFileName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ultraplanFileRemove {
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--text-disabled);
+  font-size: 14px;
+  line-height: 1;
+  margin-left: 2px;
+}
+
+.ultraplanFileRemove:hover {
+  color: var(--color-error);
+}
