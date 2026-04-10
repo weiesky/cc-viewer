@@ -29,3 +29,44 @@ export function isDangerousOperationPrompt(prompt) {
   }
   return false;
 }
+
+/**
+ * Parse tool name and input from the PTY buffer surrounding a detected prompt.
+ * Used to populate ToolApprovalPanel for subAgent permission prompts that bypass hooks.
+ *
+ * @param {string} buf - ANSI-stripped PTY buffer (up to 4KB)
+ * @param {string} question - Detected prompt question text
+ * @param {Array} options - Detected prompt options [{text, number, selected}]
+ * @returns {{ toolName: string, input: object }}
+ */
+export function parseToolInfoFromBuffer(buf, question, options) {
+  const q = (question || '').toLowerCase();
+  const optTexts = (options || []).map(o => o.text || '').join(' ').toLowerCase();
+
+  // 1. Bash: buffer contains "Bash command" or "Run shell command"
+  if (/bash command|run shell command/i.test(buf)) {
+    const cmdMatch = buf.match(/(?:Bash command|Run shell command)\s*\n\s*\n((?:\s{4,}.+\n?)+)/i);
+    const cmd = cmdMatch ? cmdMatch[1].replace(/^\s{4}/gm, '').trim() : null;
+    return { toolName: 'Bash', input: cmd ? { command: cmd } : { description: question } };
+  }
+
+  // 2. Edit: "make this edit to <path>"
+  const editMatch = q.match(/make this edit to\s+(.+?)\s*\??$/);
+  if (editMatch) return { toolName: 'Edit', input: { file_path: editMatch[1] } };
+
+  // 3. Write: "write" + path
+  const writeMatch = q.match(/write (?:this new file|to)\s+(.+?)\s*\??$/);
+  if (writeMatch) return { toolName: 'Write', input: { file_path: writeMatch[1] } };
+  if (/write/i.test(q)) return { toolName: 'Write', input: { description: question } };
+
+  // 4. Read: "read <path>" or options contain "allow reading from <path>"
+  const readMatch = q.match(/read\s+(.+?)\s*\??$/) || optTexts.match(/allow reading from\s+(.+?)(?:\s+from this project)?/);
+  if (readMatch) return { toolName: 'Read', input: { file_path: readMatch[1] } };
+
+  // 5. WebFetch/WebSearch
+  if (/fetch|url/i.test(q)) return { toolName: 'WebFetch', input: { description: question } };
+  if (/search/i.test(q)) return { toolName: 'WebSearch', input: { description: question } };
+
+  // 6. Fallback
+  return { toolName: 'Tool', input: { description: question } };
+}

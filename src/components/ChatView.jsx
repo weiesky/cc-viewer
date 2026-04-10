@@ -14,7 +14,7 @@ import { getTeammateAvatar } from '../utils/teammateAvatars';
 import { isSystemText, classifyUserContent, isMainAgent, isTeammate, resolveTeammateNames } from '../utils/contentFilter';
 import { classifyRequest, formatRequestTag, formatTeammateLabel } from '../utils/requestType';
 import { buildChunksForAnswer } from '../utils/ptyChunkBuilder';
-import { isPlanApprovalPrompt, isDangerousOperationPrompt } from '../utils/promptClassifier';
+import { isPlanApprovalPrompt, isDangerousOperationPrompt, parseToolInfoFromBuffer } from '../utils/promptClassifier';
 import { isImageFile, isMutatingCommand } from '../utils/commandValidator';
 import { createEmptyToolState, appendToolResultMap, cachedBuildToolResultMap, getToolResultCache, setToolResultCache } from '../utils/toolResultBuilder';
 import { TeamButton, TeamModal } from './TeamSessionPanel';
@@ -722,7 +722,7 @@ class ChatView extends React.Component {
     const activePlanPrompt = this.props.cliMode
       ? this.state.ptyPromptHistory.slice().reverse().find(p => isPlanApprovalPrompt(p) && p.status === 'active') || null
       : null;
-    const activeDangerousPrompt = this.props.cliMode
+    const activeDangerousPrompt = this.props.cliMode && !(this.state.pendingPermission?.source === 'pty')
       ? this.state.ptyPromptHistory.slice().reverse().find(p => isDangerousOperationPrompt(p) && p.status === 'active') || null
       : null;
 
@@ -1160,7 +1160,7 @@ class ChatView extends React.Component {
             const activePlanPrompt = this.props.cliMode
               ? this.state.ptyPromptHistory.slice().reverse().find(p => isPlanApprovalPrompt(p) && p.status === 'active') || null
               : null;
-            const activeDangerousPrompt = this.props.cliMode
+            const activeDangerousPrompt = this.props.cliMode && !this.state.pendingPermission
               ? this.state.ptyPromptHistory.slice().reverse().find(p => isDangerousOperationPrompt(p) && p.status === 'active') || null
               : null;
             // Last Response 过滤：隐藏 tool_use 块，仅保留交互卡片（AskUserQuestion / ExitPlanMode）
@@ -1469,6 +1469,27 @@ class ChatView extends React.Component {
 
       const prev = this.state.ptyPrompt;
       const prompt = { question, options };
+
+      // SubAgent permission prompt: route to ToolApprovalPanel instead of renderDangerApproval
+      // when hooks don't fire (subAgent tool calls bypass PreToolUse hooks)
+      if (isDangerousOperationPrompt(prompt) && !this.state.pendingPermission) {
+        const toolInfo = parseToolInfoFromBuffer(this._ptyBuffer, question, options);
+        const id = `pty_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        this._currentPtyPrompt = prompt;
+        this.setState(state => {
+          const history = state.ptyPromptHistory.slice();
+          // Mark as 'pty-routed' (not 'active') to avoid triggering renderDangerApproval
+          history.push({ ...prompt, status: 'pty-routed', selectedNumber: null, timestamp: new Date().toISOString() });
+          if (history.length > 200) history.splice(0, history.length - 200);
+          return {
+            pendingPermission: { id, toolName: toolInfo.toolName, input: toolInfo.input, source: 'pty', ptyPrompt: prompt },
+            ptyPromptHistory: history,
+          };
+        });
+        this.scrollToBottom();
+        return;
+      }
+
       // 同一问题只更新选项（光标移动），不重复推入历史
       if (prev && prev.question === question) {
         this._currentPtyPrompt = prompt;
@@ -1581,6 +1602,13 @@ class ChatView extends React.Component {
   };
 
   handlePermissionAllow = (id) => {
+    const perm = this.state.pendingPermission;
+    if (perm?.source === 'pty' && perm.ptyPrompt) {
+      const optNum = this._findPtyOptionNumber(perm.ptyPrompt, 'allow');
+      this.handlePromptOptionClick(optNum);
+      this.setState({ pendingPermission: null });
+      return;
+    }
     const ws = this._inputWs;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'perm-hook-answer', id, decision: 'allow' }));
@@ -1589,6 +1617,13 @@ class ChatView extends React.Component {
   };
 
   handlePermissionAllowSession = (id) => {
+    const perm = this.state.pendingPermission;
+    if (perm?.source === 'pty' && perm.ptyPrompt) {
+      const optNum = this._findPtyOptionNumber(perm.ptyPrompt, 'allowSession');
+      this.handlePromptOptionClick(optNum);
+      this.setState({ pendingPermission: null });
+      return;
+    }
     const ws = this._inputWs;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'perm-hook-answer', id, decision: 'allow', allowSession: true }));
@@ -1597,12 +1632,34 @@ class ChatView extends React.Component {
   };
 
   handlePermissionDeny = (id) => {
+    const perm = this.state.pendingPermission;
+    if (perm?.source === 'pty' && perm.ptyPrompt) {
+      const optNum = this._findPtyOptionNumber(perm.ptyPrompt, 'deny');
+      this.handlePromptOptionClick(optNum);
+      this.setState({ pendingPermission: null });
+      return;
+    }
     const ws = this._inputWs;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'perm-hook-answer', id, decision: 'deny' }));
     }
     this.setState({ pendingPermission: null });
   };
+
+  _findPtyOptionNumber(prompt, decision) {
+    const options = prompt?.options || [];
+    if (decision === 'allow') {
+      const opt = options.find(o => /^yes$/i.test(o.text.trim()))
+        || options.find(o => /^yes/i.test(o.text) && !/allow|session|project/i.test(o.text));
+      return opt?.number || 1;
+    }
+    if (decision === 'allowSession') {
+      const opt = options.find(o => /allow.*(?:project|session|during)/i.test(o.text));
+      return opt?.number || 2;
+    }
+    const opt = options.find(o => /^no$/i.test(o.text.trim()) || /^no[^a-z]/i.test(o.text));
+    return opt?.number || options.length;
+  }
 
   handlePlanApprove = (id) => {
     const ws = this._inputWs;
@@ -2867,11 +2924,16 @@ class ChatView extends React.Component {
                 toolInput={this.state.pendingPermission?.input}
                 requestId={this.state.pendingPermission?.id}
                 onAllow={this.handlePermissionAllow}
-                onAllowSession={this.props.sdkMode ? this.handlePermissionAllowSession : null}
+                onAllowSession={
+                  (this.props.sdkMode || (this.state.pendingPermission?.source === 'pty' && this.state.pendingPermission?.ptyPrompt?.options?.length >= 3))
+                    ? this.handlePermissionAllowSession
+                    : null
+                }
                 onDeny={this.handlePermissionDeny}
                 visible={!!this.state.pendingPermission}
                 autoApproveSeconds={this.props.autoApproveSeconds}
                 onAutoApproveChange={this.props.onAutoApproveChange}
+                source={this.state.pendingPermission?.source}
               />
             )}
             {!this.props.onPendingPlanApproval && this.state.pendingPlanApproval && (

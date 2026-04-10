@@ -4537,6 +4537,14 @@ const i18nData = {
     "ar": "إيقاف الموافقة التلقائية", "no": "Deaktiver auto-godkjenn", "pt-BR": "Desativar auto-aprovar",
     "th": "ปิดอนุมัติอัตโนมัติ", "tr": "Otomatik onayı kapat", "uk": "Вимкнути авто-схвалення"
   },
+  "ui.subAgentApproval": {
+    "zh": "SubAgent", "en": "SubAgent", "zh-TW": "SubAgent",
+    "ko": "SubAgent", "ja": "SubAgent", "de": "SubAgent",
+    "es": "SubAgent", "fr": "SubAgent", "it": "SubAgent",
+    "da": "SubAgent", "pl": "SubAgent", "ru": "SubAgent",
+    "ar": "SubAgent", "no": "SubAgent", "pt-BR": "SubAgent",
+    "th": "SubAgent", "tr": "SubAgent", "uk": "SubAgent"
+  },
   "ui.permission.autoApprove.off": {
     "zh": "关闭", "en": "Off", "zh-TW": "關閉",
     "ko": "끄기", "ja": "オフ", "de": "Aus",
@@ -6084,24 +6092,24 @@ const i18nData = {
     "uk": "Ultraplan — Супер-планування"
   },
   "ui.ultraplan.placeholder": {
-    "zh": "描述你的需求，系统会自动包装成 ultraplan 格式发送给 Claude…",
-    "en": "Describe your task, it will be wrapped as an ultraplan prompt for Claude…",
-    "zh-TW": "描述你的需求，系統會自動包裝成 ultraplan 格式發送給 Claude…",
-    "ko": "작업을 설명하면 Claude에 ultraplan 형식으로 전송됩니다…",
-    "ja": "タスクを記述すると、ultraplan 形式で Claude に送信されます…",
-    "de": "Beschreiben Sie Ihre Aufgabe, sie wird als ultraplan-Prompt an Claude gesendet…",
-    "es": "Describe tu tarea, se enviará como prompt ultraplan a Claude…",
-    "fr": "Décrivez votre tâche, elle sera envoyée comme prompt ultraplan à Claude…",
-    "it": "Descrivi il tuo compito, verrà inviato come prompt ultraplan a Claude…",
-    "da": "Beskriv din opgave, den sendes som ultraplan-prompt til Claude…",
-    "pl": "Opisz swoje zadanie, zostanie wysłane jako prompt ultraplan do Claude…",
-    "ru": "Опишите задачу, она будет отправлена как ultraplan-промпт в Claude…",
-    "ar": "صف مهمتك، سيتم إرسالها كـ ultraplan إلى Claude…",
-    "no": "Beskriv oppgaven, den sendes som ultraplan-prompt til Claude…",
-    "pt-BR": "Descreva sua tarefa, será enviada como prompt ultraplan para o Claude…",
-    "th": "อธิบายงานของคุณ จะถูกส่งในรูปแบบ ultraplan ไปยัง Claude…",
-    "tr": "Görevinizi açıklayın, Claude'a ultraplan formatında gönderilecek…",
-    "uk": "Опишіть завдання, воно буде надіслано як ultraplan-промпт до Claude…"
+    "zh": "这是一个超级许愿机，它能完成非常复杂的任务，只有普通输入无法完成的任务才需要启用该功能，启动之前确认 Agent Team 已经打开",
+    "en": "This is a super wishing machine for complex tasks. Only use it when normal input can't handle the job. Make sure Agent Team is enabled before starting.",
+    "zh-TW": "這是一個超級許願機，它能完成非常複雜的任務，只有普通輸入無法完成的任務才需要啟用該功能，啟動之前確認 Agent Team 已經打開",
+    "ko": "복잡한 작업을 위한 슈퍼 위시 머신입니다. 일반 입력으로 처리할 수 없는 작업에만 사용하세요. 시작 전에 Agent Team이 활성화되어 있는지 확인하세요.",
+    "ja": "これは超複雑なタスクを処理できるスーパーウィッシングマシンです。通常の入力では対応できないタスクにのみ使用してください。開始前に Agent Team が有効であることを確認してください。",
+    "de": "Dies ist eine Super-Wunschmaschine für komplexe Aufgaben. Verwenden Sie sie nur, wenn normale Eingaben nicht ausreichen. Stellen Sie sicher, dass Agent Team aktiviert ist, bevor Sie starten.",
+    "es": "Esta es una súper máquina de deseos para tareas complejas. Úsala solo cuando la entrada normal no pueda manejar el trabajo. Asegúrate de que Agent Team esté activado antes de comenzar.",
+    "fr": "C'est une super machine à vœux pour les tâches complexes. Utilisez-la uniquement quand l'entrée normale ne suffit pas. Assurez-vous que Agent Team est activé avant de commencer.",
+    "it": "Questa è una super macchina dei desideri per compiti complessi. Usala solo quando l'input normale non è sufficiente. Assicurati che Agent Team sia attivato prima di iniziare.",
+    "da": "Dette er en super-ønskemaskine til komplekse opgaver. Brug den kun, når normal input ikke kan klare opgaven. Sørg for, at Agent Team er aktiveret, før du starter.",
+    "pl": "To super maszyna życzeń do złożonych zadań. Używaj jej tylko, gdy normalne dane wejściowe nie wystarczą. Upewnij się, że Agent Team jest włączony przed rozpoczęciem.",
+    "ru": "Это супер-машина желаний для сложных задач. Используйте только когда обычный ввод не справляется. Убедитесь, что Agent Team включён перед запуском.",
+    "ar": "هذه آلة أمنيات خارقة للمهام المعقدة. استخدمها فقط عندما لا يكفي الإدخال العادي. تأكد من تفعيل Agent Team قبل البدء.",
+    "no": "Dette er en super-ønskemaskin for komplekse oppgaver. Bruk den kun når vanlig input ikke kan håndtere jobben. Sørg for at Agent Team er aktivert før du starter.",
+    "pt-BR": "Esta é uma super máquina de desejos para tarefas complexas. Use apenas quando a entrada normal não conseguir lidar com o trabalho. Certifique-se de que o Agent Team está ativado antes de começar.",
+    "th": "นี่คือเครื่องอธิษฐานสุดยอดสำหรับงานที่ซับซ้อน ใช้เฉพาะเมื่อการป้อนข้อมูลปกติไม่สามารถจัดการได้ ตรวจสอบว่า Agent Team เปิดใช้งานแล้วก่อนเริ่ม",
+    "tr": "Bu, karmaşık görevler için süper bir dilek makinesidir. Yalnızca normal giriş yeterli olmadığında kullanın. Başlamadan önce Agent Team'in etkinleştirildiğinden emin olun.",
+    "uk": "Це супер-машина бажань для складних завдань. Використовуйте лише коли звичайний ввід не справляється. Переконайтеся, що Agent Team увімкнено перед запуском."
   },
   "ui.ultraplan.variant": {
     "zh": "计划策略",
