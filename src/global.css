@@ -172,19 +172,19 @@
 
 body {
   margin: 0;
-  background-color: #0d0d0d;
+  background-color: var(--bg-primary);
   overflow-x: hidden;
   -webkit-tap-highlight-color: #00000000;
 }
 
 ::selection {
-  background-color: #264f78;
+  background-color: var(--selection-bg);
   color: inherit;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #3a3a3a #0d0d0d;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 /* 手机端使用原生 overlay scrollbar，性能更好 */
 @media (pointer: coarse) {
@@ -195,24 +195,24 @@ body {
 }
 @media (pointer: fine) {
   *::-webkit-scrollbar { width: 6px; height: 6px; }
-  *::-webkit-scrollbar-track { background: #0d0d0d; }
-  *::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
-  *::-webkit-scrollbar-thumb:hover { background: #555; }
+  *::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+  *::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+  *::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 }
 
 
 /* Syntax highlight */
-.code-highlight { color: #e5e5e5; }
-.hl-keyword { color: #f87171; }
-.hl-string { color: #7dd3fc; }
-.hl-comment { color: #888; font-style: italic; }
-.hl-number { color: #7dd3fc; }
-.hl-linenum { color: #555; user-select: none; }
+.code-highlight { color: var(--hl-code); }
+.hl-keyword { color: var(--hl-keyword); }
+.hl-string { color: var(--hl-string); }
+.hl-comment { color: var(--hl-comment); font-style: italic; }
+.hl-number { color: var(--hl-string); }
+.hl-linenum { color: var(--hl-linenum); user-select: none; }
 
 /* Chat markdown styles (moved from App.jsx chatMdStyles) */
 .chat-md pre {
-  background: #0d1117;
-  border: 1px solid #2a2a2a;
+  background: var(--bg-code);
+  border: 1px solid var(--border-primary);
   border-radius: 6px;
   padding: 12px;
   overflow-x: auto;
@@ -220,11 +220,11 @@ body {
   line-height: 1.5;
 }
 .chat-md code {
-  background: #14141F;
+  background: var(--bg-inline-code);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 13px;
-  color: #aeafff;
+  color: var(--text-inline-code);
 }
 .chat-md pre code {
   background: none;
@@ -233,24 +233,24 @@ body {
 .chat-md p { margin: 6px 0; }
 .chat-md ul, .chat-md ol { padding-left: 20px; margin: 6px 0; }
 .chat-md li { margin: 2px 0; }
-.chat-md h1, .chat-md h2, .chat-md h3 { margin: 12px 0 6px 0; color: #fff; }
+.chat-md h1, .chat-md h2, .chat-md h3 { margin: 12px 0 6px 0; color: var(--text-heading); }
 .chat-md h1 { font-size: 1.3em; }
 .chat-md h2 { font-size: 1.15em; }
 .chat-md h3 { font-size: 1.05em; }
 .chat-md blockquote {
-  border-left: 3px solid #3b82f6;
+  border-left: 3px solid var(--color-primary-light);
   margin: 8px 0;
   padding: 4px 12px;
-  color: #999;
+  color: var(--text-secondary);
 }
 .chat-md table { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
-.chat-md th, .chat-md td { border: 1px solid #6b7280; padding: 6px 10px; }
-.chat-md th { background: #1e1e1e; color: #fff; }
-.chat-md a { color: #60a5fa; }
+.chat-md th, .chat-md td { border: 1px solid var(--border-strong); padding: 6px 10px; }
+.chat-md th { background: var(--bg-table-header); color: var(--text-heading); }
+.chat-md a { color: var(--text-link); }
 .chat-md img { cursor: pointer; max-width: 100%; height: auto; border-radius: 6px; }
-.chat-md hr { border: none; border-top: 1px solid #2a2a2a; margin: 12px 0; }
-.chat-md strong { color: #e5e5e5; }
-.chat-md em { color: #e5e5e5; }
+.chat-md hr { border: none; border-top: 1px solid var(--border-primary); margin: 12px 0; }
+.chat-md strong { color: var(--text-primary); }
+.chat-md em { color: var(--text-primary); }
 
 /* Mermaid diagram rendered from ```mermaid code blocks */
 .mermaid-diagram {
@@ -258,8 +258,8 @@ body {
   justify-content: center;
   margin: 12px 0;
   padding: 16px;
-  background: #0d1117;
-  border: 1px solid #2a2a2a;
+  background: var(--bg-code);
+  border: 1px solid var(--border-primary);
   border-radius: 6px;
   overflow-x: auto;
 }
@@ -274,22 +274,22 @@ body {
 
 /* chat-boxer: 白底黑字气泡容器 */
 .chat-boxer {
-  background: linear-gradient(to top, #222, #303030);
-  color: #fff;
+  background: var(--bg-chat-bubble);
+  color: var(--text-heading);
   border-radius: 6px;
   padding: 2px 10px;
   margin-bottom: 6px;
-  border: 1px solid #666;
+  border: 1px solid var(--border-strong);
   box-sizing: border-box;
 }
 .chat-boxer:hover {
-  background: linear-gradient(to top, #303030, #3a3a3a);
+  background: var(--bg-chat-bubble-hover);
 }
-.chat-boxer .chat-md tbody { background: #000; }
+.chat-boxer .chat-md tbody { background: var(--bg-table-body); }
 
 /* Logo dropdown menu style — double class selector for specificity over antd defaults */
 .ant-dropdown .logo-dropdown-menu.logo-dropdown-menu {
-  border: 1px solid #3a3a3a;
+  border: 1px solid var(--border-dropdown);
   border-radius: 4px;
 }
 .ant-dropdown .logo-dropdown-menu.logo-dropdown-menu .ant-dropdown-menu-item,
@@ -299,21 +299,21 @@ body {
 }
 /* Submenu popup (二级菜单，antd 渲染在独立 .ant-dropdown 容器中) */
 .ant-dropdown-menu-submenu-popup .ant-dropdown-menu {
-  border: 1px solid #3a3a3a;
+  border: 1px solid var(--border-dropdown);
   border-radius: 4px;
 }
 .ant-tooltip .ant-tooltip-inner {
-  background-color: #0d0d0d;
+  background-color: var(--bg-tooltip);
 }
 .ant-tooltip .ant-tooltip-arrow::before,
 .ant-tooltip .ant-tooltip-arrow::after {
-  background: #0d0d0d;
+  background: var(--bg-tooltip);
 }
 
 /* Popover arrow color */
 .ant-popover .ant-popover-arrow::before,
 .ant-popover .ant-popover-arrow::after {
-  background: #303030;
+  background: var(--popover-arrow);
 }
 
 /* Ant Design Typography font size override */
@@ -323,25 +323,25 @@ body {
 
 /* antd Modal.confirm dark override */
 .ant-modal-confirm .ant-modal-content {
-  background-color: #1e1e1e;
-  border: 1px solid #2a2a2a;
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-primary);
 }
 .ant-modal-confirm .ant-modal-confirm-title {
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 .ant-modal-confirm .ant-modal-confirm-content {
-  color: #aaa;
+  color: var(--text-secondary);
 }
 .ant-modal-confirm .ant-btn-default {
-  background-color: #00000000;
-  border-color: #444;
-  color: #ccc;
+  background-color: var(--btn-default-bg);
+  border-color: var(--btn-default-border);
+  color: var(--btn-default-text);
 }
 .ant-modal-confirm .ant-btn-default.ant-btn-default:hover,
 .ant-modal-confirm .ant-btn-default.ant-btn-default:focus {
-  background-color: #2a2a2a;
-  border-color: #666;
-  color: #fff;
+  background-color: var(--btn-default-hover-bg);
+  border-color: var(--btn-default-hover-border);
+  color: var(--btn-default-hover-text);
 }
 .ant-modal-confirm .ant-btn-primary {
   background-color: #1668dc;
