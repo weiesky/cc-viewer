@@ -238,7 +238,7 @@ class Mobile extends AppBase {
                 size="small"
                 icon={<BranchesOutlined />}
                 onClick={() => this.setState(prev => ({ mobileGitDiffVisible: !prev.mobileGitDiffVisible, mobileChatVisible: false, mobileTerminalVisible: false, mobileStatsVisible: false, mobileLogMgmtVisible: false, mobileSettingsVisible: false }))}
-                style={{ color: this.state.mobileGitDiffVisible ? '#fff' : '#888', fontSize: 12 }}
+                style={{ color: this.state.mobileGitDiffVisible ? 'var(--text-heading)' : 'var(--text-muted)', fontSize: 12 }}
               >
                 {this.state.mobileGitDiffVisible ? t('ui.mobileGitDiffExit') : t('ui.mobileGitDiffBrowse')}
               </Button>
@@ -249,7 +249,7 @@ class Mobile extends AppBase {
                 size="small"
                 icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" /></svg>}
                 onClick={() => this.setState(prev => ({ mobileTerminalVisible: !prev.mobileTerminalVisible, mobileGitDiffVisible: false, mobileStatsVisible: false, mobileLogMgmtVisible: false, mobileSettingsVisible: false }))}
-                style={{ color: this.state.mobileTerminalVisible ? '#fff' : '#888', fontSize: 12 }}
+                style={{ color: this.state.mobileTerminalVisible ? 'var(--text-heading)' : 'var(--text-muted)', fontSize: 12 }}
               >
                 {this.state.mobileTerminalVisible ? t('ui.mobileTerminalExit') : t('ui.mobileTerminalBrowse')}
               </Button>
@@ -319,7 +319,7 @@ class Mobile extends AppBase {
                   <div className={styles.mobileLoadingLabel}>{t('ui.loadingChat')}{fileLoadingCount > 0 ? ` (${fileLoadingCount})` : ''}</div>
                 </div>
               )}
-              <ConfigProvider theme={this.darkThemeConfig}>
+              <ConfigProvider theme={this.currentThemeConfig}>
                 <div className={styles.mobileChatInner}>
                   <ChatView
                     requests={filteredRequests}
@@ -385,7 +385,7 @@ class Mobile extends AppBase {
                 type={this.state.selectedLogs.size >= 2 ? 'primary' : 'default'}
                 disabled={this.state.selectedLogs.size < 2}
                 onClick={this.handleMergeLogs}
-                style={this.state.selectedLogs.size < 2 ? { color: '#666', borderColor: '#333' } : undefined}
+                style={this.state.selectedLogs.size < 2 ? { color: 'var(--text-dim)', borderColor: 'var(--border-subtle)' } : undefined}
               >
                 {t('ui.mergeLogs')}
               </Button>
@@ -394,7 +394,7 @@ class Mobile extends AppBase {
                 icon={<DeleteOutlined />}
                 disabled={this.state.selectedLogs.size === 0}
                 onClick={this.handleDeleteLogs}
-                style={this.state.selectedLogs.size === 0 ? { color: '#666', borderColor: '#333' } : { color: '#ff4d4f', borderColor: '#ff4d4f' }}
+                style={this.state.selectedLogs.size === 0 ? { color: 'var(--text-dim)', borderColor: 'var(--border-subtle)' } : { color: '#ff4d4f', borderColor: '#ff4d4f' }}
               >
                 {t('ui.deleteLogs')}
               </Button>
@@ -420,7 +420,7 @@ class Mobile extends AppBase {
                   );
                 }
                 return (
-                  <ConfigProvider theme={this.darkThemeConfig}>
+                  <ConfigProvider theme={this.currentThemeConfig}>
                   <div className={styles.logListContainer}>
                     {this.renderLogTable(currentLogs, true)}
                   </div>

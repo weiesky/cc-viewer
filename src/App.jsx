@@ -257,7 +257,7 @@ class App extends AppBase {
     }
 
     return (
-      <ConfigProvider theme={this.darkThemeConfig}>
+      <ConfigProvider theme={this.currentThemeConfig}>
         {fileLoading && (
           <div className={styles.loadingOverlay}>
             <div className={styles.loadingText}>Loading...({fileLoadingCount})</div>

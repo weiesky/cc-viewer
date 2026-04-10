@@ -190,6 +190,9 @@ class AppBase extends React.Component {
   }
 
   componentDidMount() {
+    // Set default theme attribute immediately to prevent flash
+    document.documentElement.dataset.theme = this.state.themeColor;
+
     // 获取 claude settings（showThinkingSummaries 等）
     fetch(apiUrl('/api/claude-settings')).then(r => r.json()).then(data => {
       if (data.showThinkingSummaries) this.setState({ showThinkingSummaries: true });
@@ -221,6 +224,13 @@ class AppBase extends React.Component {
         }
         if (data.themeColor) {
           this.setState({ themeColor: data.themeColor });
+          document.documentElement.dataset.theme = data.themeColor;
+        } else {
+          // First visit: auto-detect system preference
+          const preferLight = window.matchMedia?.('(prefers-color-scheme: light)').matches;
+          const detected = preferLight ? 'light' : 'dark';
+          this.setState({ themeColor: detected });
+          document.documentElement.dataset.theme = detected;
         }
         // filterIrrelevant 默认 true，showAll = !filterIrrelevant
         const filterIrrelevant = data.filterIrrelevant !== undefined ? !!data.filterIrrelevant : true;
@@ -1193,6 +1203,7 @@ class AppBase extends React.Component {
 
   handleThemeColorChange = (value) => {
     this.setState({ themeColor: value });
+    document.documentElement.dataset.theme = value;
     fetch(apiUrl('/api/preferences'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1627,18 +1638,7 @@ class AppBase extends React.Component {
   /** 工作区选择器渲染（PC/Mobile 共用） */
   renderWorkspaceMode() {
     return (
-      <ConfigProvider
-        theme={{
-          algorithm: theme.darkAlgorithm,
-          token: {
-            colorPrimary: '#1668dc',
-            colorBgContainer: '#111',
-            colorBgLayout: '#0a0a0a',
-            colorBgElevated: '#1e1e1e',
-            colorBorder: '#2a2a2a',
-          },
-        }}
-      >
+      <ConfigProvider theme={this.currentThemeConfig}>
         <WorkspaceList onLaunch={this.handleWorkspaceLaunch} />
       </ConfigProvider>
     );
@@ -1658,6 +1658,27 @@ class AppBase extends React.Component {
         controlOutlineWidth: 0,
       },
     };
+  }
+
+  /** Ant Design 浅色主题配置 */
+  get lightThemeConfig() {
+    return {
+      algorithm: theme.defaultAlgorithm,
+      token: {
+        colorPrimary: '#1668dc',
+        colorBgContainer: '#ffffff',
+        colorBgLayout: '#f8f9fb',
+        colorBgElevated: '#ffffff',
+        colorBorder: '#d8dce5',
+        controlOutline: 'transparent',
+        controlOutlineWidth: 0,
+      },
+    };
+  }
+
+  /** 根据当前 themeColor 返回对应主题配置 */
+  get currentThemeConfig() {
+    return this.state.themeColor === 'light' ? this.lightThemeConfig : this.darkThemeConfig;
   }
 }
 
