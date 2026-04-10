@@ -278,12 +278,18 @@ export async function spawnShell() {
   lastExitCode = null;
   currentWorkspacePath = cwd;
 
+  // Clean env: remove cc-viewer specific vars so child shells don't inherit them
+  // (prevents CCVIEWER_PORT leaking to non-cc-viewer Claude instances)
+  const shellEnv = { ...process.env };
+  delete shellEnv.CCVIEWER_PORT;
+  delete shellEnv.CCV_EDITOR_PORT;
+
   ptyProcess = pty.spawn(shell, [], {
     name: 'xterm-256color',
     cols: lastPtyCols,
     rows: lastPtyRows,
     cwd,
-    env: { ...process.env },
+    env: shellEnv,
   });
 
   ptyProcess.onData((data) => {

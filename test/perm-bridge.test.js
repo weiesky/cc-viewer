@@ -99,21 +99,25 @@ describe('perm-bridge.js', () => {
   }
 
   for (const tool of ['Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch']) {
-    it(`forwards ${tool} to server for approval (exits 1 when server unreachable)`, async () => {
+    it(`forwards ${tool} to server for approval (falls back to terminal UI when unreachable)`, async () => {
       const input = JSON.stringify({ tool_name: tool, tool_input: { command: 'test' } });
-      const { code } = await runBridge(input, { CCVIEWER_PORT: '19999' });
-      // Server unreachable → catch block → exit 1 (fallback to Claude Code UI)
-      assert.equal(code, 1);
+      const { code, stdout } = await runBridge(input, { CCVIEWER_PORT: '19999' });
+      // Server unreachable → graceful fallback → exit 0 with continue: true
+      assert.equal(code, 0);
+      const output = JSON.parse(stdout.trim());
+      assert.equal(output.continue, true);
     });
   }
 
   // git commit/push/npm publish 不再直接 deny，和其他 Bash 命令一样走 Web UI 审批
   for (const cmd of ['git commit -m "test"', 'git push origin main', 'npm publish']) {
-    it(`forwards "${cmd}" to server for approval (no auto-deny)`, async () => {
+    it(`forwards "${cmd}" to server for approval (falls back to terminal UI when unreachable)`, async () => {
       const input = JSON.stringify({ tool_name: 'Bash', tool_input: { command: cmd } });
-      const { code } = await runBridge(input, { CCVIEWER_PORT: '19999' });
-      // Forwards to server → unreachable → exit 1 (same as any other Bash command)
-      assert.equal(code, 1);
+      const { code, stdout } = await runBridge(input, { CCVIEWER_PORT: '19999' });
+      // Forwards to server → unreachable → graceful fallback → exit 0 with continue: true
+      assert.equal(code, 0);
+      const output = JSON.parse(stdout.trim());
+      assert.equal(output.continue, true);
     });
   }
 
