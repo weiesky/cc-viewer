@@ -20,8 +20,11 @@ function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSes
       setShow(true);
       setExiting(false);
       deniedRef.current = false;
-      prevFocusRef.current = document.activeElement;
-      requestAnimationFrame(() => allowRef.current?.focus());
+      // 自动审批开启时不抢焦点，避免打断用户在其他输入框的正常输入
+      if (autoApproveSeconds <= 0) {
+        prevFocusRef.current = document.activeElement;
+        requestAnimationFrame(() => allowRef.current?.focus());
+      }
     } else if (show) {
       setExiting(true);
       const timer = setTimeout(() => { setShow(false); setExiting(false); }, 200);

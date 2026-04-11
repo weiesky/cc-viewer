@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.143 (2026-04-12)
+
+- Fix: ToolApprovalPanel no longer steals focus when auto-approve countdown is enabled, avoiding interruption of user input in other fields
+
 ## 1.6.142 (2026-04-12)
 
 - Feat: macOS code signing / notarization infrastructure (entitlements, notarize script, mac-sign.sh, SIGNING_GUIDE)
