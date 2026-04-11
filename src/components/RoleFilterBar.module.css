@@ -2,8 +2,8 @@
   display: flex;
   gap: 6px;
   padding: 6px 12px;
-  background: #1e1e1e;
-  border-bottom: 1px solid #303030;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
   overflow-x: auto;
   flex-shrink: 0;
 }
@@ -13,20 +13,20 @@
   gap: 4px;
   padding: 3px 8px;
   border-radius: 12px;
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
   background: #00000000;
-  color: #888;
+  color: var(--text-muted);
   font-size: 11px;
   cursor: pointer;
   white-space: nowrap;
   transition: border-color 0.15s, color 0.15s;
 }
 .roleChipActive {
-  border-color: #4a9eff;
-  color: #ccc;
+  border-color: var(--color-accent);
+  color: var(--text-on-dark);
 }
 .roleChip:hover, .roleChipActive:hover {
-  border-color: #555;
+  border-color: var(--text-dim);
 }
 .roleAvatar {
   width: 16px;
@@ -54,6 +54,6 @@
   text-overflow: ellipsis;
 }
 .roleCheck {
-  color: #4a9eff;
+  color: var(--color-accent);
   font-size: 10px;
 }

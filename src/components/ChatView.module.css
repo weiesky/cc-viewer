@@ -22,7 +22,7 @@
 
 .sessionDividerText {
   font-size: 11px;
-  color: #555;
+  color: var(--text-dim);
 }
 
 .lastResponseLabel {
@@ -46,16 +46,16 @@
 
 .vResizer {
   width: 5px;
-  background: #1e1e1e;
+  background: var(--bg-elevated);
   cursor: col-resize;
   flex-shrink: 0;
-  border-left: 1px solid #2a2a2a;
-  border-right: 1px solid #2a2a2a;
+  border-left: 1px solid var(--border-primary);
+  border-right: 1px solid var(--border-primary);
   transition: background 0.15s;
 }
 
 .vResizer:hover {
-  background: #303030;
+  background: var(--bg-active);
 }
 
 .terminalToggle {
@@ -68,8 +68,8 @@
   margin-left: -14px;
   flex-shrink: 0;
   cursor: pointer;
-  color: #555;
-  background: #ffffff0a;
+  color: var(--text-dim);
+  background: var(--tint-subtle);
   border-radius: 4px 0 0 4px;
   transition: background 0.2s, color 0.2s;
   z-index: 20;
@@ -77,8 +77,8 @@
 }
 
 .terminalToggle:hover {
-  background: #ffffff1a;
-  color: #999;
+  background: var(--tint-light);
+  color: var(--text-muted);
 }
 
 .messageListWrap {
@@ -103,7 +103,7 @@
   border-radius: 0;
   border: none;
   background: none;
-  color: #999;
+  color: var(--text-muted);
   font-size: 12px;
   cursor: pointer;
   transition: color 0.15s;
@@ -112,13 +112,13 @@
 }
 
 .stickyBottomBtn span {
-  background: #00000080;
+  background: var(--bg-overlay);
   padding: 2px 10px;
   border-radius: 10px;
 }
 
 .stickyBottomBtn:hover {
-  color: #fff;
+  color: var(--text-heading);
   background: none;
 }
 
@@ -151,22 +151,22 @@
   padding: 6px 18px;
   border-radius: 16px;
   border: 1px solid #3a3a3a;
-  background: #ffffff0a;
-  color: #999;
+  background: var(--tint-subtle);
+  color: var(--text-muted);
   font-size: 12px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 
 .loadMoreBtn:hover {
-  background: #ffffff1a;
-  color: #ccc;
+  background: var(--tint-light);
+  color: var(--text-on-dark);
 }
 
 .navSidebar {
   width: 40px;
   flex-shrink: 0;
-  background: #1e1e1e;  border-right: 1px solid #2a2a2a;
+  background: var(--bg-elevated);  border-right: 1px solid var(--border-primary);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -185,7 +185,7 @@
   height: 32px;
   border: none;
   background: none;
-  color: #666;
+  color: var(--border-strong);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -196,8 +196,8 @@
 }
 
 .navBtn:hover {
-  color: #ccc;
-  background: #1e1e1e;
+  color: var(--text-on-dark);
+  background: var(--bg-elevated);
 }
 
 .navBtnActive {
@@ -205,7 +205,7 @@
   height: 32px;
   border: none;
   background: #4a9eff26;
-  color: #4a9eff;
+  color: var(--color-accent);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -232,24 +232,24 @@
   overflow-y: auto;
   min-width: 200px;
   max-width: 360px;
-  background: #111;
+  background: var(--bg-secondary);
   border-radius: 4px;
 }
 
 .userPromptNavItem {
   padding: 6px 10px;
   font-size: 12px;
-  color: #ccc;
+  color: var(--text-on-dark);
   cursor: pointer;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--bg-elevated);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .userPromptNavItem:hover {
-  background: #2a2a2a;
-  color: #fff;
+  background: var(--bg-hover);
+  color: var(--text-heading);
 }
 
 .userPromptNavItem:last-child {
@@ -307,7 +307,7 @@
 }
 
 .sessionDivider {
-  border-color: #303030;
+  border-color: var(--border-subtle);
   margin: 16px 0;
 }
 
@@ -317,7 +317,7 @@
 }
 
 .lastResponseDivider {
-  border-color: #2a2a2a;
+  border-color: var(--border-primary);
   margin: 8px 0;
 }
 

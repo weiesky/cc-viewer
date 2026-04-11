@@ -20,7 +20,7 @@
 
 .bubble {
   border-radius: 8px;
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
   box-sizing: border-box;
   padding: 6px 6px;
   max-width: 100%;
@@ -105,20 +105,20 @@
 
 .bubbleUser {
   composes: bubble;
-  background: linear-gradient(to top, #1668dc, #1668dc);
-  color: #e5e5e5;
+  background: linear-gradient(to top, var(--color-primary), var(--color-primary));
+  color: var(--text-primary);
   padding: 8px 12px;
-  border-color: #4a9eff;
+  border-color: var(--color-accent);
 }
 .bubbleUser:hover {
-  border-color: #60a5fa;
-  color: #fff;
+  border-color: var(--text-link);
+  color: var(--text-heading);
 }
 
 .bubbleAssistant {
   composes: bubble;
-  background: #111;
-  color: #e5e5e5;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
   transition: box-shadow 0s;
   position: relative;
 }
@@ -127,8 +127,8 @@
 }
 
 .bubbleAssistant:hover {
-  background: #111;
-  border: 1px solid #303030;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
 }
 
 .bubbleHighlight {
@@ -169,28 +169,28 @@
 
 .bubblePlan {
   composes: bubble;
-  background: #14141F;
-  border: 5px solid #1668dc;
+  background: var(--bg-inline-code);
+  border: 5px solid var(--color-primary);
   font-size: 12px;
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 .bubbleSubAgent {
   composes: bubble;
-  background: #14141F;
-  color: #e5e5e5;
+  background: var(--bg-inline-code);
+  color: var(--text-primary);
 }
 .bubbleSubAgent:hover {
-  border: 1px solid #444;
+  border: 1px solid var(--border-secondary);
 }
 
 .bubbleSelection {
   composes: bubble;
   background: #1a3a1a;
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 .bubbleSelection:hover {
-  border: 1px solid #444;
+  border: 1px solid var(--border-secondary);
 }
 
 /* === Collapse / system-tag styles === */
@@ -206,7 +206,7 @@
 
 .systemTagPre {
   font-size: 12px;
-  color: #999;
+  color: var(--text-muted);
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
@@ -246,13 +246,13 @@
 
 .bashCollapseLabel {
   font-size: 12px;
-  color: #999;
+  color: var(--text-muted);
 }
 
 /* === Tool call box === */
 
 .toolBox {
-  background: #14141F;
+  background: var(--bg-inline-code);
   border: 1px solid #2a2a3e;
   border-radius: 6px;
   padding: 8px 12px;
@@ -292,7 +292,7 @@
 }
 
 .simplifiedToolTag:hover {
-  border-color: #555;
+  border-color: var(--text-dim);
 }
 
 .simplifiedToolPopoverContent {
@@ -309,7 +309,7 @@
 
 .simplifiedToolPopoverContent .codePre {
   background: #000;
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
 }
 
 :global(.simplifiedToolPopover) {
@@ -343,14 +343,14 @@
 }
 
 .pathTagClickable {
-  color: #666;
+  color: var(--border-strong);
   font-size: 11px;
   cursor: pointer;
 }
 
 .pathTagClickable:hover {
   text-decoration: underline;
-  color: #60a5fa;
+  color: var(--text-link);
 }
 
 /* === Tool call inline spans === */
@@ -380,11 +380,11 @@
 }
 
 .kvKey {
-  color: #fff;
+  color: var(--text-heading);
 }
 
 .kvValue {
-  color: #999;
+  color: var(--text-muted);
 }
 
 /* === Tool result box === */
@@ -406,12 +406,12 @@
 
 .compactLabel {
   font-size: 12px;
-  color: #60a5fa;
+  color: var(--text-link);
 }
 
 .compactPre {
   font-size: 12px;
-  color: #e5e5e5;
+  color: var(--text-primary);
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
@@ -421,14 +421,14 @@
 
 .viewRequestBtn {
   font-size: 10px;
-  color: #555;
+  color: var(--text-dim);
   cursor: pointer;
   margin-left: 6px;
   flex-shrink: 0;
 }
 
 .viewRequestBtn:hover {
-  color: #60a5fa;
+  color: var(--text-link);
 }
 
 /* === User-selection question === */
@@ -447,7 +447,7 @@
 
 .questionText {
   font-size: 13px;
-  color: #ccc;
+  color: var(--text-on-dark);
   margin-bottom: 4px;
 }
 
@@ -485,7 +485,7 @@
 }
 
 .askQuestionText {
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 13px;
   margin-bottom: 4px;
 }
@@ -500,12 +500,12 @@
 }
 
 .askOptionSelected {
-  color: #fff;
+  color: var(--text-heading);
   font-weight: 600;
 }
 
 .askOptionSelected .optionDesc {
-  color: #fff;
+  color: var(--text-heading);
 }
 
 .askCheckSvg {
@@ -518,7 +518,7 @@
 .planModeBox {
   position: relative;
   background: #0d1117;
-  border: 1px solid #1668dc;
+  border: 1px solid var(--color-primary);
   border-radius: 6px;
   padding: 8px 12px;
   margin: 6px 0;
@@ -531,7 +531,7 @@
 }
 
 .planModeLabel {
-  color: #60a5fa;
+  color: var(--text-link);
   font-weight: 600;
 }
 
@@ -580,21 +580,21 @@
 }
 
 .planStatusPending {
-  border-color: #1668dc;
+  border-color: var(--color-primary);
 }
 
 .planStatusPending.planStatusBadge {
   background: #1668dc26;
-  color: #60a5fa;
+  color: var(--text-link);
 }
 
 .planContentPreview {
   margin-top: 8px;
   padding: 8px 10px;
-  background: #14141F;
+  background: var(--bg-inline-code);
   border-radius: 4px;
   font-size: 12px;
-  color: #e5e5e5;
+  color: var(--text-primary);
   max-height: min(400px, 50vh);
   overflow-y: auto;
   border: 1px solid #1e3a5f;
@@ -606,7 +606,7 @@
   background: #ef44441a;
   border-radius: 4px;
   font-size: 12px;
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 .planFeedbackLabel {
@@ -656,7 +656,7 @@
   border-radius: 4px;
   border: 1px solid #6b7280;
   background: #6b728026;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 13px;
   cursor: pointer;
   transition: background 0.15s;
@@ -784,9 +784,9 @@
   max-height: 120px;
   padding: 8px 10px;
   border-radius: 4px;
-  border: 1px solid #555;
+  border: 1px solid var(--text-dim);
   background: #1a2332;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 13px;
   line-height: 1.5;
   resize: vertical;
@@ -795,7 +795,7 @@
 }
 
 .planFeedbackTextarea:focus {
-  border-color: #3b82f6;
+  border-color: var(--color-primary-light);
 }
 
 .planFeedbackBtnRow {
@@ -808,9 +808,9 @@
 .planFeedbackSendBtn {
   padding: 4px 16px;
   border-radius: 4px;
-  border: 1px solid #3b82f6;
+  border: 1px solid var(--color-primary-light);
   background: #3b82f633;
-  color: #60a5fa;
+  color: var(--text-link);
   font-size: 13px;
   cursor: pointer;
   transition: background 0.15s;
@@ -830,7 +830,7 @@
   border-radius: 4px;
   border: 1px solid #6b7280;
   background: #6b728026;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 13px;
   cursor: pointer;
   transition: background 0.15s;
@@ -866,7 +866,7 @@
 }
 
 .askRadioItem {
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 12px;
   padding: 3px 0;
   cursor: pointer;
@@ -877,11 +877,11 @@
 }
 
 .askRadioItem:hover {
-  color: #fff;
+  color: var(--text-heading);
 }
 
 .askRadioItemSelected {
-  color: #60a5fa;
+  color: var(--text-link);
 }
 
 .askRadioDot {
@@ -892,7 +892,7 @@
 
 .askRadioGroup :global(.ant-radio-wrapper),
 .askCheckboxGroup :global(.ant-checkbox-wrapper) {
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 12px;
   padding: 3px 0;
   cursor: pointer;
@@ -925,8 +925,8 @@
 
 .askOtherInput :global(.ant-input) {
   background: #1a2332;
-  border-color: #555;
-  color: #e5e5e5;
+  border-color: var(--text-dim);
+  color: var(--text-primary);
   font-size: 12px;
 }
 
@@ -939,9 +939,9 @@
 .askSubmitBtn {
   padding: 4px 20px;
   border-radius: 4px;
-  border: 1px solid #1668dc;
+  border: 1px solid var(--color-primary);
   background: #1668dc33;
-  color: #60a5fa;
+  color: var(--text-link);
   font-size: 13px;
   cursor: pointer;
   transition: background 0.15s;
@@ -975,7 +975,7 @@
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 12px;
-  color: #e5e5e5;
+  color: var(--text-primary);
   max-height: 240px;
   overflow-y: auto;
 }
@@ -992,7 +992,7 @@
 /* === ChatImage === */
 
 .chatImageFallback {
-  color: #888;
+  color: var(--text-muted);
   font-size: 12px;
 }
 

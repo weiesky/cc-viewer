@@ -1,21 +1,21 @@
 .chatInputBar {
   padding: 8px 16px 12px;
-  background: #00000080;
+  background: var(--bg-overlay);
   flex-shrink: 0;
 }
 
 .chatInputWrapper {
   display: flex;
   flex-direction: column;
-  background: #1e1e1e;
-  border: 1px solid #303030;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
   border-radius: 16px;
   transition: border-color 0.2s;
   overflow: visible;
 }
 
 .chatInputWrapper:focus-within {
-  border-color: #555;
+  border-color: var(--text-dim);
 }
 
 .chatTextareaWrap {
@@ -29,7 +29,7 @@
   max-height: 120px;
   padding: 12px 14px 4px;
   background: #00000000;
-  color: #e5e5e5;
+  color: var(--text-primary);
   border: none;
   outline: none;
   resize: none;
@@ -40,7 +40,7 @@
 }
 
 .chatTextarea::placeholder {
-  color: #555;
+  color: var(--text-dim);
 }
 
 .chatInputBottom {
@@ -58,9 +58,9 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  border: 1px solid #444;
+  border: 1px solid var(--border-secondary);
   background: #00000000;
-  color: #888;
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -73,9 +73,9 @@
 }
 
 .plusBtn:hover {
-  background: #2a2a2a;
-  color: #ccc;
-  border-color: #666;
+  background: var(--bg-hover);
+  color: var(--text-on-dark);
+  border-color: var(--border-strong);
 }
 
 .plusOverlay {
@@ -91,12 +91,12 @@
   position: absolute;
   bottom: 36px;
   left: 0;
-  background: #1e1e1e;
+  background: var(--bg-elevated);
   border: 1px solid #3a3a3a;
   border-radius: 10px;
   padding: 4px;
   min-width: 140px;
-  box-shadow: 0 4px 16px #00000080;
+  box-shadow: 0 4px 16px var(--bg-overlay);
   z-index: 100;
 }
 
@@ -108,7 +108,7 @@
   padding: 8px 12px;
   border: none;
   background: #00000000;
-  color: #ccc;
+  color: var(--text-on-dark);
   font-size: 13px;
   cursor: pointer;
   border-radius: 6px;
@@ -117,26 +117,26 @@
 }
 
 .plusMenuItem:hover {
-  background: #2a2a2a;
+  background: var(--bg-hover);
 }
 
 .plusMenuItemMuted {
-  color: #888;
+  color: var(--text-muted);
   border-bottom: 1px solid #333;
   margin-bottom: 2px;
 }
 
 .plusMenuItemMuted:hover {
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 .plusMenuItemMuted svg {
-  stroke: #888;
+  stroke: var(--text-muted);
   transition: stroke 0.15s;
 }
 
 .plusMenuItemMuted:hover svg {
-  stroke: #e5e5e5;
+  stroke: var(--text-primary);
 }
 
 .presetLabel {
@@ -148,23 +148,23 @@
 .chatInputHint {
   flex: 1;
   font-size: 11px;
-  color: #444;
+  color: var(--border-secondary);
   user-select: none;
   padding: 0 4px;
 }
 
 .chatInputHintSep {
-  color: #444;
+  color: var(--border-secondary);
 }
 
 .chatInputHintTerminal {
-  color: #444;
+  color: var(--border-secondary);
 }
 
 .chatInputHintMobile {
   flex: 1;
   font-size: 13px;
-  color: #555;
+  color: var(--text-dim);
   user-select: none;
   padding: 0 4px;
 }
@@ -174,8 +174,8 @@
   height: 28px;
   border-radius: 50%;
   border: none;
-  background: #fff;
-  color: #000;
+  background: var(--text-heading);
+  color: var(--bg-primary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -185,8 +185,8 @@
 }
 
 .sendBtnDisabled {
-  background: #444;
-  color: #888;
+  background: var(--border-secondary);
+  color: var(--text-muted);
   cursor: default;
 }
 
@@ -201,7 +201,7 @@
   left: 0;
   right: 0;
   padding: 12px 14px 4px;
-  color: #444;
+  color: var(--border-secondary);
   font-size: 14px;
   line-height: 1.5;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -216,20 +216,20 @@
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  background: #1e1e1e;
-  border-top: 1px solid #2a2a2a;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-primary);
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.15s;
 }
 
 .suggestionChip:hover {
-  background: #1e1e1e;
+  background: var(--bg-elevated);
 }
 
 .suggestionChipText {
   flex: 1;
-  color: #555;
+  color: var(--text-dim);
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -237,7 +237,7 @@
 }
 
 .suggestionChipAction {
-  color: #4a9eff;
+  color: var(--color-accent);
   font-size: 14px;
   flex-shrink: 0;
 }
@@ -280,7 +280,7 @@
   height: 16px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.7);
-  color: #ccc;
+  color: var(--text-on-dark);
   border: none;
   font-size: 12px;
   line-height: 14px;
@@ -303,17 +303,17 @@
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  background: #2a2a2a;
+  background: var(--bg-hover);
   border: 1px solid #3a3a3a;
   border-radius: 8px;
   flex-shrink: 0;
   max-width: 200px;
-  color: #ccc;
+  color: var(--text-on-dark);
 }
 
 .filePreviewChip svg {
   flex-shrink: 0;
-  color: #888;
+  color: var(--text-muted);
 }
 
 .filePreviewName {
@@ -330,7 +330,7 @@
   height: 16px;
   border-radius: 50%;
   background: transparent;
-  color: #666;
+  color: var(--border-strong);
   border: none;
   font-size: 14px;
   line-height: 14px;
@@ -344,7 +344,7 @@
 }
 
 .filePreviewClose:hover {
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 /* ─── 移动端放大输入区域 (x1.3) ─── */

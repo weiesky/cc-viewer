@@ -5,9 +5,9 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #1e1e1e;
-  border: 1px solid #444;
-  color: #aaa;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-secondary);
+  color: var(--text-secondary);
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
@@ -18,7 +18,7 @@
 }
 
 .helpBtn:hover {
-  background: #303030;
+  background: var(--bg-active);
 }
 
 /* Match FileContentView markdownPreview styles */
@@ -27,7 +27,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 4px 12px;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 14px;
   line-height: 1.75;
   word-break: break-word;
@@ -39,18 +39,18 @@
 .modalBody h4,
 .modalBody h5,
 .modalBody h6 {
-  color: #e5e5e5;
+  color: var(--text-primary);
   margin: 1.2em 0 0.6em;
   line-height: 1.3;
 }
-.modalBody h1 { font-size: 1.8em; border-bottom: 1px solid #303030; padding-bottom: 0.3em; }
-.modalBody h2 { font-size: 1.5em; border-bottom: 1px solid #2a2a2a; padding-bottom: 0.25em; }
+.modalBody h1 { font-size: 1.8em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.3em; }
+.modalBody h2 { font-size: 1.5em; border-bottom: 1px solid var(--border-primary); padding-bottom: 0.25em; }
 .modalBody h3 { font-size: 1.25em; }
 .modalBody p { margin: 0.8em 0; }
-.modalBody a { color: #4a9eff; text-decoration: none; }
+.modalBody a { color: var(--color-accent); text-decoration: none; }
 .modalBody a:hover { text-decoration: underline; }
 .modalBody code {
-  background: #1e1e1e;
+  background: var(--bg-elevated);
   color: #e06c75;
   padding: 2px 6px;
   border-radius: 4px;
@@ -58,8 +58,8 @@
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
 }
 .modalBody pre {
-  background: #111;
-  border: 1px solid #2a2a2a;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
   border-radius: 8px;
   padding: 14px 18px;
   overflow-x: auto;
@@ -69,15 +69,15 @@
 }
 .modalBody pre code {
   background: none;
-  color: #e5e5e5;
+  color: var(--text-primary);
   padding: 0;
   font-size: 13px;
 }
 .modalBody blockquote {
-  border-left: 3px solid #4a9eff;
+  border-left: 3px solid var(--color-accent);
   margin: 1em 0;
   padding: 0.5em 1em;
-  color: #aaa;
+  color: var(--text-secondary);
   background: #4a9eff0d;
   border-radius: 0 6px 6px 0;
 }
@@ -88,32 +88,32 @@
 }
 .modalBody th,
 .modalBody td {
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
   padding: 8px 12px;
   text-align: left;
 }
 .modalBody th {
-  background: #1e1e1e;
-  color: #e5e5e5;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
   font-weight: 600;
 }
-.modalBody tr:nth-child(even) { background: #ffffff0a; }
+.modalBody tr:nth-child(even) { background: var(--tint-subtle); }
 .modalBody ul,
 .modalBody ol { padding-left: 2em; margin: 0.8em 0; }
 .modalBody li { margin: 0.3em 0; }
-.modalBody hr { border: none; border-top: 1px solid #303030; margin: 1.5em 0; }
+.modalBody hr { border: none; border-top: 1px solid var(--border-subtle); margin: 1.5em 0; }
 .modalBody img { max-width: 100%; height: auto; border-radius: 6px; }
-.modalBody strong { color: #e5e5e5; }
+.modalBody strong { color: var(--text-primary); }
 
 .modalBody textarea {
   width: 100%;
   min-height: 200px;
-  background: #1e1e1e;
-  color: #e5e5e5;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
   font-family: monospace;
   font-size: 13px;
   line-height: 1.6;
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
   padding: 10px 14px;
   resize: vertical;
