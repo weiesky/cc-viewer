@@ -1,13 +1,13 @@
 .wrapper {
   margin: 0 0 6px 0;
-  background: #14141F;
-  border: 1px solid #2a2a3e;
+  background: var(--bg-inline-code);
+  border: 1px solid var(--bg-inline-code);
   border-radius: 6px;
   padding: 8px 12px;
 }
 
 .wrapper:hover {
-  border-color: #2a2a3e;
+  border-color: var(--bg-inline-code);
 }
 
 .header {
@@ -26,13 +26,13 @@
 }
 
 .filePath {
-  color: #a78bfa;
+  color: var(--file-path-color);
   font-size: 12px;
   font-weight: 600;
 }
 
 .filePathClickable {
-  color: #a78bfa;
+  color: var(--file-path-color);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -40,11 +40,11 @@
 
 .filePathClickable:hover {
   text-decoration: underline;
-  color: #c4b5fd;
+  color: var(--file-path-hover);
 }
 
 .toggle {
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 11px;
   cursor: pointer;
   user-select: none;
@@ -54,7 +54,7 @@
 
 .diffSummary {
   font-size: 11px;
-  color: #6b7280;
+  color: var(--text-muted);
 }
 
 /* === Two-column layout: fixed gutter + scrollable code === */
@@ -64,8 +64,8 @@
   font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', 'Consolas', monospace;
   font-size: 12px;
   line-height: 1.5;
-  background: #111;
-  border: 1px solid #303030;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
 }
 
 /* Left gutter: line numbers + prefix, never scrolls horizontally */
@@ -82,7 +82,7 @@
 .lineNumOld,
 .lineNumNew {
   text-align: right;
-  color: #888;
+  color: var(--text-muted);
   padding: 0 6px 0 2px;
   box-sizing: border-box;
 }
@@ -116,26 +116,26 @@
 /* === Row type colors === */
 
 .rowContext {
-  background: #111;
-  color: #888;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
 }
 
 .rowDel {
-  background: #ef44441d;
-  color: #fca5a5;
+  background: var(--diff-del-bg);
+  color: var(--diff-del-text);
 }
 .rowDel.gutterRow .prefix {
   color: #ef4444;
 }
 
 .rowAdd {
-  background: #22c55e1d;
-  color: #4ade80;
+  background: var(--diff-add-bg);
+  color: var(--diff-add-text);
 }
 .rowAdd.gutterRow .prefix {
   color: #22c55e;
 }
 
 .rowContext.gutterRow {
-  background: #111;
+  background: var(--bg-secondary);
 }

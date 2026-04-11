@@ -3,7 +3,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #0d0d0d;
+  background: var(--bg-primary);
   overflow: hidden;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -11,8 +11,8 @@
 
 .diffSummary {
   padding: 8px 16px;
-  background: #111;
-  border-bottom: 1px solid #2a2a2a;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
   display: flex;
   gap: 8px;
   align-items: center;
@@ -21,23 +21,23 @@
 
 .addedBadge {
   padding: 2px 8px;
-  background: #73c99126;
+  background: var(--diff-add-bg);
   border: 1px solid #73c9914d;
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
-  color: #73c991;
+  color: var(--diff-add-text);
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
 }
 
 .deletedBadge {
   padding: 2px 8px;
-  background: #ef444426;
+  background: var(--diff-del-bg);
   border: 1px solid #ef44444d;
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
-  color: #ef4444;
+  color: var(--diff-del-text);
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
 }
 
@@ -54,8 +54,8 @@
 .lineNumberCol {
   flex-shrink: 0;
   overflow: hidden;
-  background: #0d0d0d;
-  border-right: 1px solid #2a2a2a;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-primary);
   user-select: none;
 }
 
@@ -76,33 +76,33 @@
 
 .lineNumNormal .oldLineNum,
 .lineNumNormal .newLineNum {
-  color: #555;
+  color: var(--text-dim);
 }
 
 .lineNumAdd {
-  border-right: 3px solid #73c991;
+  border-right: 3px solid var(--diff-add-text);
 }
 
 .lineNumAdd .oldLineNum {
-  color: #555;
+  color: var(--text-dim);
 }
 
 .lineNumAdd .newLineNum {
-  color: #73c991;
+  color: var(--diff-add-text);
   font-weight: 600;
 }
 
 .lineNumDelete {
-  border-right: 3px solid #ef4444;
+  border-right: 3px solid var(--diff-del-text);
 }
 
 .lineNumDelete .oldLineNum {
-  color: #ef4444;
+  color: var(--diff-del-text);
   font-weight: 600;
 }
 
 .lineNumDelete .newLineNum {
-  color: #555;
+  color: var(--text-dim);
 }
 
 .codeColWrap {
@@ -139,14 +139,14 @@
   display: inline-block;
   width: 16px;
   text-align: center;
-  color: #888;
+  color: var(--text-muted);
   flex-shrink: 0;
   user-select: none;
 }
 
 .lineContent {
   padding-right: 16px;
-  color: #ccc;
+  color: var(--text-on-dark);
   white-space: pre;
 }
 
@@ -155,19 +155,19 @@
 }
 
 .lineAdd {
-  background: #73c99126;
+  background: var(--diff-add-bg);
 }
 
 .lineAdd .linePrefix {
-  color: #73c991;
+  color: var(--diff-add-text);
 }
 
 .lineDelete {
-  background: #ef44441a;
+  background: var(--diff-del-bg);
 }
 
 .lineDelete .linePrefix {
-  color: #ef4444;
+  color: var(--diff-del-text);
 }
 
 .lineDelete .lineContent {

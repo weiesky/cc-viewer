@@ -1,6 +1,6 @@
 .gitChanges {
   flex-shrink: 0;
-  background: #111;
+  background: var(--bg-secondary);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -12,14 +12,14 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--border-primary);
   flex-shrink: 0;
 }
 
 .headerTitle {
   font-size: 11px;
   font-weight: 600;
-  color: #888;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -29,7 +29,7 @@
   height: 20px;
   border: none;
   background: none;
-  color: #666;
+  color: var(--text-dim);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -39,8 +39,8 @@
 }
 
 .collapseBtn:hover {
-  color: #ccc;
-  background: #2a2a2a;
+  color: var(--text-on-dark);
+  background: var(--bg-hover);
 }
 
 .changesContainer {
@@ -55,7 +55,7 @@
   height: 26px;
   padding: 0 8px;
   cursor: pointer;
-  color: #ccc;
+  color: var(--text-on-dark);
   font-size: 13px;
   white-space: nowrap;
   transition: background 0.1s;
@@ -63,11 +63,11 @@
 }
 
 .changeItem:hover {
-  background: #1e1e1e;
+  background: var(--bg-elevated);
 }
 
 .changeItem.changeItemSelected {
-  background: #532f00;
+  background: var(--bg-selected);
 }
 
 .dirItem {
@@ -75,7 +75,7 @@
   align-items: center;
   height: 26px;
   padding: 0 8px;
-  color: #999;
+  color: var(--text-muted);
   font-size: 13px;
   white-space: nowrap;
   gap: 6px;
@@ -84,7 +84,7 @@
 .dirArrow {
   width: 16px;
   flex-shrink: 0;
-  color: #666;
+  color: var(--text-dim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -128,7 +128,7 @@
 }
 
 .actions span {
-  color: #666;
+  color: var(--text-dim);
   cursor: pointer;
   width: 18px;
   height: 18px;
@@ -139,8 +139,8 @@
 }
 
 .actions span:hover {
-  color: #ccc;
-  background: #333;
+  color: var(--text-on-dark);
+  background: var(--border-subtle);
 }
 
 .changeItem:hover .actions {
@@ -148,7 +148,7 @@
 }
 
 .loading {
-  color: #555;
+  color: var(--text-dim);
   font-size: 12px;
   padding: 8px 12px;
 }
@@ -160,7 +160,7 @@
 }
 
 .empty {
-  color: #666;
+  color: var(--text-dim);
   font-size: 12px;
   padding: 8px 12px;
   text-align: center;

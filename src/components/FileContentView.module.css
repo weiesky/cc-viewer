@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #0d0d0d;
+  background: var(--bg-primary);
   animation: slideInFromRight 0.25s ease-out;
 }
 
@@ -54,8 +54,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 6px 16px;
-  border-bottom: 1px solid #2a2a2a;
-  background: #111;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
   flex-shrink: 0;
 }
 
@@ -79,7 +79,7 @@
   height: 28px;
   border: none;
   background: none;
-  color: #666;
+  color: var(--text-dim);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -91,13 +91,13 @@
 }
 
 .backBtn:hover {
-  color: #ccc;
-  background: #1e1e1e;
+  color: var(--text-on-dark);
+  background: var(--bg-elevated);
 }
 
 .filePath {
   font-size: 13px;
-  color: #ccc;
+  color: var(--text-on-dark);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -105,7 +105,7 @@
 
 .fileSize {
   font-size: 11px;
-  color: #666;
+  color: var(--text-dim);
   flex-shrink: 0;
   margin-left: 8px;
 }
@@ -119,7 +119,7 @@
   padding: 0;
   border: none;
   background: transparent;
-  color: #888;
+  color: var(--text-muted);
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
@@ -127,7 +127,7 @@
 
 .closeBtn:hover {
   background: #ffffff1a;
-  color: #fff;
+  color: var(--text-heading);
 }
 
 .viewToggleBtn {
@@ -136,8 +136,8 @@
   gap: 4px;
   padding: 4px 10px;
   border: 1px solid #3a3a3a;
-  background: #1e1e1e;
-  color: #999;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
   font-size: 12px;
   border-radius: 6px;
   cursor: pointer;
@@ -145,23 +145,23 @@
   white-space: nowrap;
 }
 .viewToggleBtn:hover {
-  background: #2a2a2a;
-  color: #fff;
-  border-color: #444;
+  background: var(--bg-hover);
+  color: var(--text-heading);
+  border-color: var(--border-secondary);
 }
 .viewToggleActive {
-  color: #4a9eff;
-  border-color: #4a9eff;
+  color: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 .markdownPreview {
   flex: 1;
   overflow-y: auto;
   padding: 24px 36px;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 14px;
   line-height: 1.75;
-  background: #0d0d0d;
+  background: var(--bg-primary);
 }
 .markdownPreview h1,
 .markdownPreview h2,
@@ -169,18 +169,18 @@
 .markdownPreview h4,
 .markdownPreview h5,
 .markdownPreview h6 {
-  color: #e5e5e5;
+  color: var(--text-primary);
   margin: 1.2em 0 0.6em;
   line-height: 1.3;
 }
-.markdownPreview h1 { font-size: 1.8em; border-bottom: 1px solid #303030; padding-bottom: 0.3em; }
-.markdownPreview h2 { font-size: 1.5em; border-bottom: 1px solid #2a2a2a; padding-bottom: 0.25em; }
+.markdownPreview h1 { font-size: 1.8em; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.3em; }
+.markdownPreview h2 { font-size: 1.5em; border-bottom: 1px solid var(--border-primary); padding-bottom: 0.25em; }
 .markdownPreview h3 { font-size: 1.25em; }
 .markdownPreview p { margin: 0.8em 0; }
-.markdownPreview a { color: #4a9eff; text-decoration: none; }
+.markdownPreview a { color: var(--color-accent); text-decoration: none; }
 .markdownPreview a:hover { text-decoration: underline; }
 .markdownPreview code {
-  background: #1e1e1e;
+  background: var(--bg-elevated);
   color: #e06c75;
   padding: 2px 6px;
   border-radius: 4px;
@@ -188,8 +188,8 @@
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
 }
 .markdownPreview pre {
-  background: #111;
-  border: 1px solid #2a2a2a;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
   border-radius: 8px;
   padding: 14px 18px;
   overflow-x: auto;
@@ -197,16 +197,16 @@
 }
 .markdownPreview pre code {
   background: none;
-  color: #e5e5e5;
+  color: var(--text-primary);
   padding: 0;
   font-size: 13px;
 }
 .markdownPreview blockquote {
-  border-left: 3px solid #4a9eff;
+  border-left: 3px solid var(--color-accent);
   margin: 1em 0;
   padding: 0.5em 1em;
-  color: #aaa;
-  background: #4a9eff0d;
+  color: var(--text-secondary);
+  background: #4a9eff0d; /* theme-dependent: accent with alpha */
   border-radius: 0 6px 6px 0;
 }
 .markdownPreview table {
@@ -216,20 +216,20 @@
 }
 .markdownPreview th,
 .markdownPreview td {
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
   padding: 8px 12px;
   text-align: left;
 }
 .markdownPreview th {
-  background: #1e1e1e;
-  color: #e5e5e5;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
   font-weight: 600;
 }
 .markdownPreview tr:nth-child(even) { background: #ffffff0a; }
 .markdownPreview ul,
 .markdownPreview ol { padding-left: 2em; margin: 0.8em 0; }
 .markdownPreview li { margin: 0.3em 0; }
-.markdownPreview hr { border: none; border-top: 1px solid #303030; margin: 1.5em 0; }
+.markdownPreview hr { border: none; border-top: 1px solid var(--border-subtle); margin: 1.5em 0; }
 .markdownPreview img { max-width: 100%; height: auto; border-radius: 6px; }
 .markdownPreview input[type="checkbox"] { margin-right: 6px; }
 
@@ -239,8 +239,8 @@
   gap: 5px;
   padding: 4px 12px;
   border: 1px solid #3a3a3a;
-  background: #1e1e1e;
-  color: #ccc;
+  background: var(--bg-elevated);
+  color: var(--text-on-dark);
   font-size: 12px;
   border-radius: 6px;
   cursor: pointer;
@@ -249,9 +249,9 @@
 }
 
 .saveBtn:hover:not(:disabled) {
-  background: #2a2a2a;
-  color: #fff;
-  border-color: #444;
+  background: var(--bg-hover);
+  color: var(--text-heading);
+  border-color: var(--border-secondary);
 }
 
 .saveBtn:disabled {
@@ -261,7 +261,7 @@
 
 .saveStatus {
   font-size: 11px;
-  color: #888;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
@@ -276,7 +276,7 @@
 .contentContainer {
   flex: 1;
   overflow: hidden;
-  background: #0d0d0d;
+  background: var(--bg-primary);
   display: flex;
   min-height: 0;
   min-width: 0;
@@ -294,8 +294,8 @@
   flex-shrink: 0;
   width: 56px;
   overflow: hidden;
-  background: #0d0d0d;
-  border-right: 1px solid #2a2a2a;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-primary);
   user-select: none;
   padding-top: 4px;
 }
@@ -303,7 +303,7 @@
 .lineNumRow {
   padding: 0 16px;
   text-align: right;
-  color: #555;
+  color: var(--text-dim);
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
   font-size: 13px;
   line-height: 1.5;
@@ -336,7 +336,7 @@
   justify-content: center;
   height: 100%;
   width: 100%;
-  color: #666;
+  color: var(--text-dim);
   font-size: 14px;
 }
 
