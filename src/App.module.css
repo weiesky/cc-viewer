@@ -4,8 +4,8 @@
 }
 
 .header {
-  background: #1e1e1e;
-  border-bottom: 1px solid #2a2a2a;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-primary);
   padding: 0 10px;
   height: 40px;
   line-height: 40px;
@@ -23,17 +23,17 @@
 
 .leftPanel {
   flex-shrink: 0;
-  border-right: 1px solid #1e1e1e;
+  border-right: 1px solid var(--bg-elevated);
   display: flex;
   flex-direction: column;
-  background: #0d0d0d;
+  background: var(--bg-primary);
 }
 
 .leftPanelHeader {
   padding: 10px 16px;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--bg-elevated);
   font-size: 13px;
-  color: #999;
+  color: var(--text-muted);
   font-weight: 500;
   display: flex;
   justify-content: space-between;
@@ -42,7 +42,7 @@
 
 .leftPanelCount {
   font-size: 12px;
-  color: #555;
+  color: var(--text-dim);
   font-weight: 400;
 }
 
@@ -54,7 +54,7 @@
 .rightPanel {
   flex: 1;
   overflow: hidden;
-  background: #0d0d0d;
+  background: var(--bg-primary);
 }
 
 .modalActions {
@@ -68,7 +68,7 @@
 
 .emptyCenter {
   text-align: center;
-  color: #999;
+  color: var(--text-muted);
   padding: 40px;
 }
 
@@ -77,7 +77,7 @@
 }
 
 .logListContainer {
-  background: #0d0d0d;
+  background: var(--bg-primary);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -85,7 +85,7 @@
 .logListItem {
   cursor: pointer;
   padding: 8px 12px;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--bg-elevated);
 }
 
 .logItemRow {
@@ -120,7 +120,7 @@
 
 .logFileIcon {
   margin-right: 8px;
-  color: #3b82f6;
+  color: var(--color-primary-light);
   flex-shrink: 0;
 }
 
@@ -130,7 +130,7 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: #000000bf;
+  background: var(--bg-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -143,7 +143,7 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: #000000bf;
+  background: var(--bg-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -153,9 +153,9 @@
 
 .dragOverlayContent {
   text-align: center;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 18px;
-  border: 2px dashed #3b82f6;
+  border: 2px dashed var(--color-primary-light);
   border-radius: 16px;
   padding: 48px 64px;
 }
@@ -165,7 +165,7 @@
 }
 
 .loadingText {
-  color: #fff;
+  color: var(--text-heading);
   font-size: 16px;
   font-weight: bold;
 }
@@ -173,7 +173,7 @@
 .mobileLoadingOverlay {
   position: absolute;
   inset: 0;
-  background: #000000e0;
+  background: var(--bg-overlay-dark);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -185,8 +185,8 @@
 .mobileLoadingSpinner {
   width: 36px;
   height: 36px;
-  border: 3px solid #ffffff1a;
-  border-top-color: #4a9eff;
+  border: 3px solid var(--tint-light);
+  border-top-color: var(--color-accent);
   border-radius: 50%;
   animation: mobileSpin 0.8s linear infinite;
 }
@@ -196,15 +196,15 @@
 }
 
 .mobileLoadingLabel {
-  color: #888;
+  color: var(--text-muted);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 
 .footer {
-  border-top: 1px solid #2a2a2a;
+  border-top: 1px solid var(--border-primary);
   height: 18px;
-  background: #1e1e1e;
+  background: var(--bg-elevated);
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -217,11 +217,11 @@
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: #555;
+  color: var(--text-dim);
 }
 
 .footerText {
-  color: #444;
+  color: var(--border-secondary);
   margin-right: 2px;
 }
 
@@ -229,12 +229,12 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  color: #555;
+  color: var(--text-dim);
   text-decoration: none;
 }
 
 .footerLink:hover {
-  color: #888;
+  color: var(--text-muted);
 }
 
 .footerIcon {
@@ -243,11 +243,11 @@
 }
 
 .footerDivider {
-  color: #303030;
+  color: var(--border-subtle);
 }
 
 .footerText {
-  color: #555;
+  color: var(--text-dim);
 }
 
 .guideContainer {
@@ -255,7 +255,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  background: #0d0d0d;
+  background: var(--bg-primary);
 }
 
 .guideContent {
@@ -266,7 +266,7 @@
 .guideTitle {
   font-size: 20px;
   font-weight: 600;
-  color: #e5e5e5;
+  color: var(--text-primary);
   margin: 0 0 28px 0;
 }
 
@@ -281,8 +281,8 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: #1e1e1e;
-  color: #60a5fa;
+  background: var(--bg-elevated);
+  color: var(--text-link);
   font-size: 13px;
   font-weight: 600;
   display: flex;
@@ -297,7 +297,7 @@
 }
 
 .guideText {
-  color: #aaa;
+  color: var(--text-secondary);
   font-size: 14px;
   line-height: 1.6;
   margin: 0 0 8px 0;
@@ -305,11 +305,11 @@
 
 .guideCode {
   display: block;
-  background: #111;
-  border: 1px solid #1e1e1e;
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-elevated);
   border-radius: 6px;
   padding: 10px 14px;
-  color: #60a5fa;
+  color: var(--text-link);
   font-size: 13px;
   line-height: 1.5;
   word-break: break-all;
@@ -322,7 +322,7 @@
   transform: translateX(100%);
   transition: transform 0.3s ease;
   z-index: 100;
-  background: #0d0d0d;
+  background: var(--bg-primary);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -333,7 +333,7 @@
 }
 
 .mobileNavBtn {
-  color: #888;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
@@ -351,7 +351,7 @@
   transform: translateX(-100%);
   transition: transform 0.3s ease;
   z-index: 100;
-  background: #0d0d0d;
+  background: var(--bg-primary);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -372,7 +372,7 @@
 .mobileMenuBtn {
   background: none;
   border: none;
-  color: #aaa;
+  color: var(--text-secondary);
   padding: 4px;
   display: flex;
   align-items: center;
@@ -383,7 +383,7 @@
 }
 
 .mobileMenuBtn:active {
-  background: #ffffff1a;
+  background: var(--tint-light);
 }
 
 .mobileMenuOverlay {
@@ -397,8 +397,8 @@
   top: 100%;
   left: 0;
   margin-top: 4px;
-  background: #1e1e1e;
-  border: 1px solid #303030;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
   box-shadow: 0 4px 12px #00000080;
   min-width: 160px;
@@ -411,7 +411,7 @@
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 14px;
   cursor: pointer;
   border: none;
@@ -421,7 +421,7 @@
 }
 
 .mobileMenuItem:active {
-  background: #ffffff1a;
+  background: var(--tint-light);
 }
 
 .mobileStatsOverlay {
@@ -430,7 +430,7 @@
   transform: translateX(-100%);
   transition: transform 0.3s ease;
   z-index: 100;
-  background: #0d0d0d;
+  background: var(--bg-primary);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -453,7 +453,7 @@
   transform: translateX(-100%);
   transition: transform 0.3s ease;
   z-index: 100;
-  background: #0d0d0d;
+  background: var(--bg-primary);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -468,20 +468,20 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--bg-elevated);
   flex-shrink: 0;
 }
 
 .mobileLogMgmtTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 .mobileLogMgmtClose {
   background: none;
   border: none;
-  color: #888;
+  color: var(--text-muted);
   cursor: pointer;
   padding: 4px;
   display: flex;
@@ -490,14 +490,14 @@
 }
 
 .mobileLogMgmtClose:hover {
-  color: #fff;
+  color: var(--text-heading);
 }
 
 .mobileLogMgmtActions {
   display: flex;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--bg-elevated);
   flex-shrink: 0;
 }
 
@@ -514,7 +514,7 @@
   transform: translateX(-100%);
   transition: transform 0.3s ease;
   z-index: 100;
-  background: #0d0d0d;
+  background: var(--bg-primary);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -530,7 +530,7 @@
   transform: translateX(-100%);
   transition: transform 0.3s ease;
   z-index: 100;
-  background: #0d0d0d;
+  background: var(--bg-primary);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -556,21 +556,21 @@
 
 .mobilePromptItem {
   padding: 12px 0;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--bg-elevated);
 }
 
 .mobilePromptTimestamp {
   font-size: 11px;
-  color: #666;
+  color: var(--border-strong);
   margin-bottom: 8px;
   font-family: ui-monospace, monospace;
 }
 
 .mobilePromptCard {
   margin: 4px 0;
-  background: #111;
+  background: var(--bg-secondary);
   border-radius: 6px;
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
   padding: 10px 14px;
 }
 
@@ -579,7 +579,7 @@
   word-break: break-word;
   font-size: 13px;
   line-height: 1.6;
-  color: #e5e5e5;
+  color: var(--text-primary);
   margin: 4px 0;
 }
 
@@ -608,9 +608,9 @@
 }
 
 .tableTag {
-  background: #0d0d0d;
-  border: 1px solid #444;
-  color: #999;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
+  color: var(--text-muted);
 }
 
 .tableActionsCell {
@@ -630,8 +630,8 @@
 
 .mobileCLIHeader {
   padding: 10px 12px;
-  background: #111;
-  border-bottom: 1px solid #1e1e1e;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--bg-elevated);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -647,7 +647,7 @@
 
 .mobileCLIStatusLabel {
   font-size: 12px;
-  color: #aaa;
+  color: var(--text-secondary);
 }
 
 .mobileCLIHeaderRight {
@@ -671,7 +671,7 @@
 
 .mobileSettingsSectionTitle {
   font-size: 13px;
-  color: #888;
+  color: var(--text-muted);
   font-weight: 500;
   margin-bottom: 12px;
 }
@@ -681,25 +681,25 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 0;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--bg-elevated);
 }
 
 .mobileSettingsLabel {
-  color: #ccc;
+  color: var(--text-on-dark);
   font-size: 14px;
 }
 
 /* Mobile prompt panel */
 .mobilePromptEmpty {
   text-align: center;
-  color: #666;
+  color: var(--border-strong);
   padding: 40px 20px;
   font-size: 14px;
 }
 
 .mobilePromptHeader {
   padding: 8px 12px;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--bg-elevated);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -707,7 +707,7 @@
 
 .mobilePromptCount {
   font-size: 13px;
-  color: #888;
+  color: var(--text-muted);
 }
 
 /* Chat view display toggle */
@@ -753,9 +753,9 @@
 }
 
 .previewItem {
-  background: #111;
+  background: var(--bg-secondary);
   border-radius: 6px;
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
   padding: 8px 12px;
   margin-bottom: 6px;
 }
@@ -769,6 +769,6 @@
   word-break: break-word;
   font-size: 13px;
   line-height: 1.6;
-  color: #e5e5e5;
+  color: var(--text-primary);
   margin: 0;
 }

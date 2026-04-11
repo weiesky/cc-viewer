@@ -1,7 +1,7 @@
 /* WorkspaceList root */
 .root {
   min-height: 100vh;
-  background: #0d0d0d;
+  background: var(--bg-primary);
   display: flex;
   justify-content: center;
   padding-top: 60px;
@@ -20,13 +20,13 @@
 }
 
 .headerTitle {
-  color: #e5e5e5;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .headerFolderIcon {
   margin-right: 8px;
-  color: #1668dc;
+  color: var(--color-primary);
 }
 
 .headerSubtitle {
@@ -51,8 +51,8 @@
 /* Workspace card */
 .card {
   margin-bottom: 10px;
-  background: #111;
-  border-color: #2a2a2a;
+  background: var(--bg-secondary);
+  border-color: var(--border-primary);
   cursor: pointer;
 }
 
@@ -75,7 +75,7 @@
 }
 
 .cardName {
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 15px;
 }
 
@@ -89,7 +89,7 @@
   gap: 16px;
   margin-top: 6px;
   font-size: 12px;
-  color: #666;
+  color: var(--border-strong);
 }
 
 /* DirBrowser modal */
@@ -98,11 +98,11 @@
   align-items: center;
   gap: 8px;
   padding: 0 16px 10px;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .dirCurrentPath {
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 13px;
   flex: 1;
   overflow: hidden;
@@ -112,7 +112,7 @@
 
 .dirFolderIcon {
   margin-right: 6px;
-  color: #1668dc;
+  color: var(--color-primary);
 }
 
 .dirList {
@@ -143,7 +143,7 @@
 }
 
 .dirItemName {
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -160,7 +160,7 @@
 
 /* DirBrowser footer */
 .dirFooter {
-  border-top: 1px solid #2a2a2a;
+  border-top: 1px solid var(--border-primary);
   padding: 10px 16px 4px;
   display: flex;
   flex-direction: column;

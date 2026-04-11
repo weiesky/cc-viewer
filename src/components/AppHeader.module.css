@@ -55,9 +55,9 @@
 .tokenStatsTag {
   border-radius: 12px;
   cursor: pointer;
-  background: #2a2a2a;
-  border: 1px solid #3a3a3a;
-  color: #ccc;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-dropdown);
+  color: var(--text-on-dark);
 }
 
 .tokenStatsIcon {
@@ -98,9 +98,9 @@
 }
 
 .liveTagHistory {
-  background: #2a2a2a;
-  border-color: #444;
-  color: #e5e5e5;
+  background: var(--bg-hover);
+  border-color: var(--border-secondary);
+  color: var(--text-primary);
 }
 
 .liveTagText {
@@ -126,15 +126,15 @@
   align-items: center;
   padding: 16px;
   margin-bottom: 12px;
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  background: #111;
+  background: var(--bg-secondary);
 }
 
 .qrcodeTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #e5e5e5;
+  color: var(--text-primary);
   margin-bottom: 12px;
 }
 
@@ -146,19 +146,19 @@
 
 .qrcodeUrlCopy {
   cursor: pointer;
-  color: #888;
+  color: var(--text-muted);
   transition: color 0.2s;
 }
 
 .qrcodeUrlCopy:hover {
-  color: #3b82f6;
+  color: var(--color-primary-light);
 }
 
 /* Settings group box */
 .settingsGroupBox {
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  background: #111;
+  background: var(--bg-secondary);
   padding: 4px 16px;
   margin-bottom: 12px;
 }
@@ -166,9 +166,9 @@
 .settingsGroupTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #e5e5e5;
+  color: var(--text-primary);
   padding: 12px 0 4px;
-  border-bottom: 1px solid #303030;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 /* Settings drawer items */
@@ -184,15 +184,15 @@
 }
 
 .settingsDivider {
-  border-top: 1px solid #2a2a2a;
+  border-top: 1px solid var(--border-primary);
   margin: 12px 0;
 }
 
 .logDirInput {
   margin-top: 8px;
   background: #1a1a1a;
-  border-color: #333;
-  color: #e5e5e5;
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
   font-family: monospace;
   font-size: 13px;
 }
@@ -200,7 +200,7 @@
 /* Token stats popover - empty state */
 .tokenStatsEmpty {
   padding: 8px 4px;
-  color: #999;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -221,10 +221,10 @@
 
 /* Token stats - model card */
 .modelCard {
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
   padding: 8px 10px;
-  background: #111;
+  background: var(--bg-secondary);
 }
 
 .modelCardSpaced {
@@ -236,10 +236,10 @@
 .modelName {
   font-size: 13px;
   font-weight: 600;
-  color: #e5e5e5;
+  color: var(--text-primary);
   margin-bottom: 8px;
   padding-bottom: 4px;
-  border-bottom: 1px solid #303030;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 /* Token stats - table */
@@ -253,7 +253,7 @@
   font-size: 12px;
   font-family: monospace;
   white-space: nowrap;
-  color: #888;
+  color: var(--text-muted);
   font-weight: normal;
   text-align: right;
 }
@@ -263,7 +263,7 @@
   font-size: 12px;
   font-family: monospace;
   white-space: nowrap;
-  color: #e5e5e5;
+  color: var(--text-primary);
   text-align: right;
 }
 
@@ -272,25 +272,25 @@
   font-size: 12px;
   font-family: monospace;
   white-space: nowrap;
-  color: #aaa;
+  color: var(--text-secondary);
   font-weight: normal;
   text-align: left;
 }
 
 .rowBorder {
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .rebuildCard {
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
   padding: 8px 10px;
   margin-top: 10px;
-  background: #111;
+  background: var(--bg-secondary);
 }
 
 .rebuildTotalRow {
-  border-top: 1px solid #444;
+  border-top: 1px solid var(--border-secondary);
 }
 
 .rebuildTotalRow td {
@@ -308,13 +308,13 @@
 }
 
 .promptEmpty {
-  color: #999;
+  color: var(--text-muted);
   padding: 12px;
 }
 
 /* Prompt timestamp */
 .promptTimestamp {
-  color: #666;
+  color: var(--border-strong);
   font-size: 12px;
   margin: 12px 0 4px;
   padding-bottom: 6px;
@@ -323,9 +323,9 @@
 /* Text prompt card */
 .textPromptCard {
   margin: 4px 0;
-  background: #111;
+  background: var(--bg-secondary);
   border-radius: 6px;
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
   padding: 10px 14px;
 }
 
@@ -335,20 +335,20 @@
   word-break: break-word;
   font-size: 13px;
   line-height: 1.6;
-  color: #e5e5e5;
+  color: var(--text-primary);
   margin: 4px 0;
 }
 
 /* Collapse for system-reminder segments */
 .systemCollapse {
   margin: 4px 0;
-  background: #1e1e1e;
-  border: 1px solid #303030;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
 }
 
 .systemLabel {
-  color: #888;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
@@ -357,7 +357,7 @@
   word-break: break-word;
   font-size: 12px;
   line-height: 1.5;
-  color: #999;
+  color: var(--text-muted);
   margin: 0;
 }
 
@@ -367,7 +367,7 @@
   background: #000;
   width: 100%;
   min-height: 400px;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-family: monospace;
   font-size: 13px;
   line-height: 1.6;
@@ -385,7 +385,7 @@
 }
 
 .projectStatsEmpty {
-  color: #999;
+  color: var(--text-muted);
   padding: 40px 0;
   text-align: center;
   font-size: 13px;
@@ -398,7 +398,7 @@
 }
 
 .projectStatsUpdated {
-  color: #666;
+  color: var(--border-strong);
   font-size: 12px;
   text-align: right;
 }
@@ -410,8 +410,8 @@
 }
 
 .projectStatCard {
-  background: #111;
-  border: 1px solid #303030;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
   padding: 14px 12px;
   text-align: center;
@@ -420,14 +420,14 @@
 .projectStatValue {
   font-size: 22px;
   font-weight: 700;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-family: monospace;
   font-variant-numeric: tabular-nums;
 }
 
 .projectStatLabel {
   font-size: 12px;
-  color: #888;
+  color: var(--text-muted);
   margin-top: 4px;
 }
 
@@ -440,14 +440,14 @@
 .projectStatsSectionTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #ccc;
+  color: var(--text-on-dark);
   padding-bottom: 4px;
-  border-bottom: 1px solid #303030;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .projectStatsModelCard {
-  background: #111;
-  border: 1px solid #303030;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
   padding: 10px 12px;
 }
@@ -458,18 +458,18 @@
   align-items: center;
   margin-bottom: 8px;
   padding-bottom: 4px;
-  border-bottom: 1px solid #303030;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .projectStatsModelName {
   font-size: 13px;
   font-weight: 600;
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 .projectStatsModelCount {
   font-size: 12px;
-  color: #888;
+  color: var(--text-muted);
   font-family: monospace;
 }
 
@@ -477,20 +477,20 @@
 .pluginDirHint {
   margin-bottom: 12px;
   font-size: 12px;
-  color: #888;
+  color: var(--text-muted);
 }
 
 .pluginDirPath {
   font-family: Menlo, Monaco, monospace;
-  color: #aaa;
+  color: var(--text-secondary);
   cursor: pointer;
   padding: 1px 4px;
   border-radius: 3px;
-  background: #1e1e1e;
+  background: var(--bg-elevated);
 }
 
 .pluginDirPath:hover {
-  color: #3b82f6;
+  color: var(--color-primary-light);
 }
 
 .pluginList {
@@ -504,9 +504,9 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
-  background: #111;
+  background: var(--bg-secondary);
 }
 
 .pluginInfo {
@@ -519,13 +519,13 @@
 
 .pluginName {
   font-size: 14px;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
 .pluginFile {
   font-size: 12px;
-  color: #666;
+  color: var(--border-strong);
   font-family: Menlo, Monaco, monospace;
 }
 
@@ -541,7 +541,7 @@
   padding: 0 5px;
   border-radius: 3px;
   background: #1e3a5f;
-  color: #60a5fa;
+  color: var(--text-link);
   line-height: 18px;
 }
 
@@ -556,7 +556,7 @@
 .pluginEmpty {
   text-align: center;
   padding: 32px 0;
-  color: #999;
+  color: var(--text-muted);
 }
 
 /* KV-Cache content popover */
@@ -575,30 +575,30 @@
   gap: 6px;
   font-size: 14px;
   font-weight: 600;
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 .cachePopoverHeader {
   margin-bottom: 8px;
   padding-bottom: 6px;
-  border-bottom: 1px solid #303030;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .cacheCopyBtn {
   font-size: 14px;
-  color: #888;
+  color: var(--text-muted);
   cursor: pointer;
   transition: color 0.2s;
   margin-left: 8px;
 }
 
 .cacheCopyBtn:hover {
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 .cachePopoverEmpty {
   padding: 8px 4px;
-  color: #999;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -607,7 +607,7 @@
   align-items: center;
   font-size: 12px;
   font-family: monospace;
-  color: #aaa;
+  color: var(--text-secondary);
   margin-bottom: 8px;
 }
 
@@ -621,7 +621,7 @@
   gap: 2px;
   font-size: 12px;
   font-weight: 600;
-  color: #aaa;
+  color: var(--text-secondary);
   margin-bottom: 4px;
   padding: 4px 0;
   background: none;
@@ -633,14 +633,14 @@
 }
 
 .cacheSectionTitle:hover {
-  color: #ccc;
+  color: var(--text-on-dark);
 }
 
 .cacheSectionArrow {
   display: inline-block;
   width: 12px;
   font-size: 10px;
-  color: #666;
+  color: var(--border-strong);
   flex-shrink: 0;
 }
 
@@ -649,9 +649,9 @@
   word-break: break-word;
   font-size: 12px;
   line-height: 1.5;
-  color: #ccc;
-  background: #111;
-  border: 1px solid #2a2a2a;
+  color: var(--text-on-dark);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
   border-radius: 4px;
   padding: 8px;
   margin: 4px 0;
@@ -663,7 +663,7 @@
   word-break: break-word;
   font-size: 12px;
   line-height: 1.5;
-  color: #ccc;
+  color: var(--text-on-dark);
   background: #060f2a;
   border: 1px solid #0b2a5c;
   border-radius: 4px;
@@ -675,9 +675,9 @@
 .cacheNavBtn {
   margin-left: auto;
   font-size: 11px;
-  color: #1668dc;
+  color: var(--color-primary);
   cursor: pointer;
-  border: 1px solid #1668dc;
+  border: 1px solid var(--color-primary);
   border-radius: 3px;
   padding: 1px 6px;
   white-space: nowrap;
@@ -696,7 +696,7 @@
 .cacheNavItem {
   padding: 4px 8px;
   font-size: 12px;
-  color: #ccc;
+  color: var(--text-on-dark);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -706,7 +706,7 @@
 
 .cacheNavItem:hover {
   background: #1668dc33;
-  color: #fff;
+  color: var(--text-heading);
 }
 
 .cacheBlockHighlight {
@@ -750,7 +750,7 @@
 /* Cache popover calibration model label */
 .cacheCalibrationLabel {
   margin-left: auto;
-  color: #888;
+  color: var(--text-muted);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -776,7 +776,7 @@
 }
 
 .cacheCtxPercent {
-  color: #888;
+  color: var(--text-muted);
   margin-left: 6px;
 }
 
@@ -793,7 +793,7 @@
 
 /* Plugin dir label */
 .pluginDirLabel {
-  color: #888;
+  color: var(--text-muted);
 }
 
 /* Plugin empty state */
@@ -804,20 +804,20 @@
 
 .pluginEmptyHint {
   font-size: 12px;
-  color: #666;
+  color: var(--border-strong);
 }
 
 /* CDN install modal */
 .cdnUrlLabel {
   margin-bottom: 6px;
-  color: #ccc;
+  color: var(--text-on-dark);
   font-size: 13px;
 }
 
 .cdnInput {
-  background: #1e1e1e;
-  border-color: #303030;
-  color: #e5e5e5;
+  background: var(--bg-elevated);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
 }
 
 /* Icon with marginRight in drawer/modal titles */
@@ -859,18 +859,18 @@
 
 /* Country info popover */
 .countryInfoPopover {
-  color: #ccc;
+  color: var(--text-on-dark);
   font-size: 13px;
   line-height: 22px;
 }
 
 .countryInfoMeta {
-  color: #888;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
 .disabledMenuItem {
-  color: #555;
+  color: var(--text-dim);
   cursor: not-allowed;
 }
 
@@ -891,16 +891,16 @@
 /* Proxy Profile */
 .proxyProfileTag {
   border-radius: 12px;
-  background: #303030;
-  border: 1px solid #444;
-  color: #999;
+  background: var(--bg-active);
+  border: 1px solid var(--border-secondary);
+  color: var(--text-muted);
   font-size: 12px;
   cursor: pointer;
   transition: color 0.2s, border-color 0.2s;
 }
 .proxyProfileTag:hover {
-  color: #ccc;
-  border-color: #555;
+  color: var(--text-on-dark);
+  border-color: var(--text-dim);
 }
 
 .proxyWarning {
@@ -929,11 +929,11 @@
   transition: background 0.15s;
 }
 .proxyItem:hover {
-  background: #1e1e1e;
+  background: var(--bg-elevated);
 }
 .proxyItemActive {
-  background: #1a2332;
-  border-color: #1668dc;
+  background: var(--bg-active-item);
+  border-color: var(--color-primary);
 }
 
 .proxyItemMain {
@@ -958,7 +958,7 @@
 
 .proxyItemName {
   font-size: 13px;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
@@ -976,7 +976,7 @@
   padding: 0 4px;
   border-radius: 3px;
   background: #1e3a5f;
-  color: #60a5fa;
+  color: var(--text-link);
   line-height: 16px;
   border: none;
 }
@@ -991,8 +991,8 @@
   margin-top: 12px;
   padding: 12px;
   border-radius: 6px;
-  background: #1e1e1e;
-  border: 1px solid #303030;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
 }
 
 .proxyEditRow {
@@ -1001,7 +1001,7 @@
 .proxyEditRow label {
   display: block;
   font-size: 12px;
-  color: #999;
+  color: var(--text-muted);
   margin-bottom: 4px;
 }
 
@@ -1011,7 +1011,7 @@
 }
 
 .proxyEditDivider {
-  border-top: 1px dashed #303030;
+  border-top: 1px dashed var(--border-subtle);
   margin: 10px 0 8px;
 }
 

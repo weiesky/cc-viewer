@@ -1,11 +1,11 @@
 .resizer {
   width: 6px;
   cursor: col-resize;
-  background: #1e1e1e;
+  background: var(--bg-elevated);
   flex-shrink: 0;
   transition: background 0.2s;
 }
 
 .resizer:hover {
-  background: #3b82f6;
+  background: var(--color-primary-light);
 }
