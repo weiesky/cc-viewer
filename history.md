@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.113 (2026-04-10)
+
+- Feat: light mode (浅色模式) — Cool Blue-Gray color scheme with full theme switching support
+- Feat: CSS custom properties system — all theme colors defined as variables for dark/light modes
+- Feat: auto-detect system preference (`prefers-color-scheme`) on first visit, user choice overrides
+- Feat: smooth 0.3s transition animation when switching themes
+- Feat: light theme for third-party libs — CodeMirror, Xterm.js, Mermaid diagrams, highlight.js
+- Refactor: migrated 31 CSS files from hardcoded hex colors to CSS variable references
+- UI: Ant Design ConfigProvider dynamically switches between darkAlgorithm and defaultAlgorithm
+
 ## 1.6.112 (2026-04-06)
 
 - Fix: ExitPlanMode approval status not updating after permission denial — status stayed "pending" with buttons visible
