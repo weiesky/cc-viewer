@@ -23,9 +23,9 @@
 .teamPopoverTitle {
   font-size: 13px;
   font-weight: 600;
-  color: #e5e5e5;
+  color: var(--text-primary);
   padding: 4px 12px 8px;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .teamPopoverItem {
@@ -35,11 +35,11 @@
   cursor: pointer;
   transition: background 0.15s;
   font-size: 12px;
-  color: #ccc;
+  color: var(--text-on-dark);
 }
 
 .teamPopoverItem:hover {
-  background: #1e1e1e;
+  background: var(--bg-elevated);
 }
 
 .teamPopoverName {
@@ -51,14 +51,14 @@
 }
 
 .teamPopoverMeta {
-  color: #666;
+  color: var(--text-dim);
   font-size: 11px;
   margin: 0 8px;
   flex-shrink: 0;
 }
 
 .teamPopoverTime {
-  color: #555;
+  color: var(--text-dim);
   font-size: 11px;
   flex-shrink: 0;
 }
@@ -77,14 +77,14 @@
   cursor: pointer;
   padding: 8px 16px;
   font-size: 12px;
-  color: #888;
+  color: var(--text-muted);
   user-select: none;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--bg-elevated);
   transition: color 0.15s;
 }
 
 .teamGanttToggle:hover {
-  color: #ccc;
+  color: var(--text-on-dark);
 }
 
 .ganttExportBtn {
@@ -92,15 +92,15 @@
   align-items: center;
   margin-left: 8px;
   padding: 2px 4px;
-  color: #666;
+  color: var(--text-dim);
   cursor: pointer;
   border-radius: 3px;
   transition: color 0.15s, background 0.15s;
 }
 
 .ganttExportBtn:hover {
-  color: #ccc;
-  background: #2a2a2a;
+  color: var(--text-on-dark);
+  background: var(--bg-hover);
 }
 
 .teamGanttWrap {
@@ -116,13 +116,13 @@
   height: 5px;
   cursor: ns-resize;
   background: #00000000;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--bg-elevated);
   flex-shrink: 0;
   transition: background 0.15s;
 }
 
 .teamGanttResizer:hover {
-  background: #303030;
+  background: var(--bg-active);
 }
 
 .teamGanttRow {
@@ -135,7 +135,7 @@
 .teamGanttLabel {
   width: calc(var(--gantt-label-width) - 10px);
   font-size: 11px;
-  color: #888;
+  color: var(--text-muted);
   text-align: right;
   padding-right: 10px;
   overflow: hidden;
@@ -147,7 +147,7 @@
 .teamGanttTrack {
   flex: 1;
   height: 14px;
-  background: #111;
+  background: var(--bg-secondary);
   border-radius: 3px;
   position: relative;
   overflow: hidden;
@@ -193,10 +193,10 @@
   top: 0;
   bottom: 0;
   width: 2px;
-  background: #4a9eff;
+  background: var(--color-accent);
   z-index: 10;
   pointer-events: none;
-  box-shadow: 0 0 6px #4a9eff80;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--color-accent) 50%, transparent);
   transition: left 0.15s ease-out;
 }
 
@@ -208,9 +208,9 @@
 .teamAgentCards {
   width: 160px;
   flex-shrink: 0;
-  border-right: 1px solid #2a2a2a;
+  border-right: 1px solid var(--border-primary);
   overflow-y: auto;
-  background: #0d0d0d;
+  background: var(--bg-primary);
   padding: 8px;
 }
 
@@ -218,17 +218,17 @@
   padding: 8px;
   border-radius: 0;
   margin-bottom: 6px;
-  border-left: 3px solid #303030;
-  background: #111;
+  border-left: 3px solid var(--border-subtle);
+  background: var(--bg-secondary);
   transition: background 0.15s;
 }
 
 .teamAgentCard:hover {
-  background: #1e1e1e;
+  background: var(--bg-elevated);
 }
 
 .teamAgentCardActive {
-  background: #1e1e1e !important;
+  background: var(--bg-elevated) !important;
 }
 
 .teamAgentCardHeader {
@@ -251,13 +251,13 @@
 .teamAgentAvatar svg {
   width: 14px;
   height: 14px;
-  fill: #fff;
+  fill: var(--text-heading);
 }
 
 .teamAgentName {
   font-size: 12px;
   font-weight: 500;
-  color: #e5e5e5;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -265,7 +265,7 @@
 
 .teamAgentType {
   font-size: 10px;
-  color: #666;
+  color: var(--text-dim);
   margin-top: 2px;
 }
 
@@ -290,36 +290,36 @@
 .teamAgentPopTmSummary {
   font-size: 12px;
   font-weight: 600;
-  color: #4a9eff;
+  color: var(--color-accent);
   margin-bottom: 6px;
 }
 
 .teamAgentPopTmContent {
   font-size: 12px;
-  color: #ccc;
+  color: var(--text-on-dark);
   line-height: 1.6;
 }
 
 .teamAgentPopTask {
   font-size: 13px;
   font-weight: 600;
-  color: #e5e5e5;
+  color: var(--text-primary);
   margin-bottom: 8px;
   padding-bottom: 6px;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .teamAgentPopMsg {
   font-size: 12px;
-  color: #ccc;
+  color: var(--text-on-dark);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
   margin-bottom: 8px;
   padding: 6px 8px;
-  background: #111;
+  background: var(--bg-secondary);
   border-radius: 4px;
-  border: 1px solid #1e1e1e;
+  border: 1px solid var(--bg-elevated);
 }
 
 .teammateReportEntry {
@@ -342,12 +342,12 @@
 .teammateReportName {
   font-size: 13px;
   font-weight: 600;
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 .teammateReportSummary {
   font-size: 12px;
-  color: #4a9eff;
+  color: var(--color-accent);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -356,7 +356,7 @@
 
 .teammateReportBody {
   font-size: 12px;
-  color: #ccc;
+  color: var(--text-on-dark);
   line-height: 1.6;
 }
 
@@ -373,12 +373,12 @@
 }
 
 .ganttLabelLead {
-  color: #1668dc;
+  color: var(--color-primary);
   font-weight: 600;
 }
 
 .ganttLabelAgent {
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 .ganttTimeAxisRow {
@@ -395,7 +395,7 @@
   position: absolute;
   transform: translateX(-50%);
   font-size: 9px;
-  color: #555;
+  color: var(--text-dim);
   white-space: nowrap;
 }
 
@@ -409,24 +409,24 @@
 }
 
 .teamModalTitle {
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 15px;
 }
 
 .teamLeadCard {
-  border-left-color: #1668dc;
+  border-left-color: var(--color-primary);
 }
 
 .agentNoMessages {
-  color: #666;
+  color: var(--text-dim);
   font-size: 12px;
 }
 
 .teamAgentCardClickable {
-  border-left-color: #e5e5e5;
+  border-left-color: var(--text-primary);
   cursor: pointer;
 }
 
 .agentStatusDurSuffix {
-  color: #888;
+  color: var(--text-muted);
 }

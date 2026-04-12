@@ -1,14 +1,14 @@
 .plainResult {
-  background: #111;
+  background: var(--bg-secondary);
   border-radius: 4px;
-  border: 1px solid #1e1e1e;
+  border: 1px solid var(--bg-elevated);
   overflow: hidden;
   font-size: 12px;
   margin-bottom: 6px;
 }
 
 .plainResult:hover {
-  border-color: #303030;
+  border-color: var(--border-subtle);
 }
 
 .plainTitle {
@@ -16,7 +16,7 @@
 }
 
 .plainPre {
-  color: #e5e5e5;
+  color: var(--text-primary);
   margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
@@ -25,15 +25,15 @@
 }
 
 .codeResult {
-  background: #111;
+  background: var(--bg-secondary);
   border-radius: 4px;
-  border: 1px solid #1e1e1e;
+  border: 1px solid var(--bg-elevated);
   overflow: hidden;
   margin-bottom: 6px;
 }
 
 .codeResult:hover {
-  border-color: #303030;
+  border-color: var(--border-subtle);
 }
 
 .codeHeader {
@@ -45,17 +45,17 @@
 }
 /* 展开时才显示分隔线，收起时 codeHeader 是最后可见元素，避免与容器 border 叠加成两条线 */
 .codeHeader:not(:last-child) {
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--bg-elevated);
 }
 
 .codeTitle {
   font-size: 11px;
-  color: #888;
+  color: var(--text-muted);
 }
 
 .codeToggle {
   font-size: 11px;
-  color: #555;
+  color: var(--text-dim);
   cursor: pointer;
   user-select: none;
 }

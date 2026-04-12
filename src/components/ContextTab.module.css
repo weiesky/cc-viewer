@@ -9,7 +9,7 @@
 .sidebar {
   width: 220px;
   flex-shrink: 0;
-  border-right: 1px solid #2a2a2a;
+  border-right: 1px solid var(--border-primary);
   overflow-y: auto;
   padding: 4px 0;
   -webkit-overflow-scrolling: touch;
@@ -26,7 +26,7 @@
   width: 100%;
   padding: 6px 10px;
   cursor: pointer;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 600;
   transition: background 0.15s;
@@ -47,7 +47,7 @@
 
 .arrow {
   font-size: 10px;
-  color: #888;
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
@@ -61,8 +61,8 @@
 
 .sectionCount {
   font-size: 11px;
-  color: #666;
-  background: #1e1e1e;
+  color: var(--text-dim);
+  background: var(--bg-elevated);
   border-radius: 10px;
   padding: 0 6px;
   line-height: 18px;
@@ -80,7 +80,7 @@
   width: 100%;
   padding: 4px 10px 4px 14px;
   cursor: pointer;
-  color: #666;
+  color: var(--text-dim);
   font-size: 11px;
   transition: color 0.15s, background 0.15s;
   background: none;
@@ -90,7 +90,7 @@
 }
 
 .historyToggle:hover {
-  color: #888;
+  color: var(--text-muted);
   background: #ffffff0a;
 }
 
@@ -111,7 +111,7 @@
   width: 100%;
   padding: 5px 10px 5px 24px;
   font-size: 12px;
-  color: #888;
+  color: var(--text-muted);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   background: none;
@@ -122,7 +122,7 @@
 
 .item:hover {
   background: #ffffff0a;
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 .item:focus-visible {
@@ -132,12 +132,12 @@
 
 .itemActive {
   background: #1668dc26;
-  color: #1668dc;
+  color: var(--color-primary);
 }
 
 .itemActive:hover {
   background: #1668dc26;
-  color: #1668dc;
+  color: var(--color-primary);
 }
 
 .itemContent {
@@ -156,7 +156,7 @@
 
 .itemSublabel {
   font-size: 10px;
-  color: #555;
+  color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -165,7 +165,7 @@
 
 .itemTime {
   font-size: 9px;
-  color: #555;
+  color: var(--text-dim);
   flex-shrink: 0;
   margin-left: 4px;
   font-family: monospace;
@@ -230,7 +230,7 @@
 
 .roleLabel {
   font-size: 11px;
-  color: #666;
+  color: var(--text-dim);
   flex: 1;
   min-width: 0;
 }
@@ -238,21 +238,21 @@
 .contentTime {
   margin-left: auto;
   font-size: 10px;
-  color: #555;
+  color: var(--text-dim);
   font-family: monospace;
   flex-shrink: 0;
 }
 
 .turnDivider {
   border: none;
-  border-top: 1px solid #1e1e1e;
+  border-top: 1px solid var(--bg-elevated);
   margin: 14px 0;
 }
 
 /* ── Text blocks ── */
 .textBlock {
   margin-bottom: 8px;
-  border: 1px solid #1e1e1e;
+  border: 1px solid var(--bg-elevated);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -262,15 +262,15 @@
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  background: #111;
-  border-bottom: 1px solid #1e1e1e;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--bg-elevated);
 }
 
 .textBlockBody {
   padding: 10px 12px;
   font-size: 13px;
   line-height: 1.7;
-  color: #e5e5e5;
+  color: var(--text-primary);
   word-break: break-word;
 }
 
@@ -278,7 +278,7 @@
   position: relative;
   padding: 8px 10px;
   font-size: 12px;
-  color: #aaa;
+  color: var(--text-secondary);
 }
 
 .textBlockCompactFloat {
@@ -303,7 +303,7 @@
   padding: 5px 10px;
   cursor: pointer;
   font-size: 12px;
-  color: #888;
+  color: var(--text-muted);
   transition: background 0.15s;
 }
 
@@ -317,7 +317,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #666;
+  color: var(--text-dim);
   font-size: 11px;
 }
 
@@ -329,7 +329,7 @@
 /* ── Tool blocks ── */
 .toolBlock {
   margin-bottom: 8px;
-  border: 1px solid #1e1e1e;
+  border: 1px solid var(--bg-elevated);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -347,8 +347,8 @@
   align-items: center;
   gap: 8px;
   padding: 5px 10px;
-  background: #111;
-  border-bottom: 1px solid #1e1e1e;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--bg-elevated);
   font-size: 12px;
   flex-wrap: wrap;
 }
@@ -359,13 +359,13 @@
 }
 
 .toolName {
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-weight: 500;
   font-family: monospace;
 }
 
 .toolId {
-  color: #555;
+  color: var(--text-dim);
   font-size: 10px;
   font-family: monospace;
   margin-left: auto;
@@ -388,9 +388,9 @@
   text-transform: uppercase;
   padding: 1px 5px;
   border-radius: 3px;
-  background: #1e1e1e;
-  color: #666;
-  border: 1px solid #2a2a2a;
+  background: var(--bg-elevated);
+  color: var(--text-dim);
+  border: 1px solid var(--border-primary);
   flex-shrink: 0;
 }
 
@@ -421,24 +421,24 @@
 /* ── JSON block ── */
 .jsonBlock {
   margin-bottom: 8px;
-  border: 1px solid #1e1e1e;
+  border: 1px solid var(--bg-elevated);
   border-radius: 6px;
   overflow: hidden;
 }
 
 .jsonBlockLabel {
   font-size: 10px;
-  color: #666;
+  color: var(--text-dim);
   padding: 3px 10px;
-  background: #111;
-  border-bottom: 1px solid #1e1e1e;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--bg-elevated);
   font-family: monospace;
 }
 
 /* ── Block separator ── */
 .blockSeparator {
   border: none;
-  border-top: 1px solid #2a2a2a;
+  border-top: 1px solid var(--border-primary);
   margin: 16px 0;
 }
 
@@ -446,6 +446,6 @@
 .markdownBody {
   font-size: 13px;
   line-height: 1.7;
-  color: #e5e5e5;
+  color: var(--text-primary);
   word-break: break-word;
 }

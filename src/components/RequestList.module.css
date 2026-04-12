@@ -16,21 +16,21 @@
   cursor: pointer;
   padding: 8px 12px;
   border-left: 3px solid #00000000;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--bg-elevated);
   transition: background 0.15s;
 }
 
 .listItem:hover {
-  background: #111;
+  background: var(--bg-secondary);
 }
 
 .listItemActive {
-  background: #1a2332;
-  border-left-color: #3b82f6;
+  background: var(--bg-active-item);
+  border-left-color: var(--color-primary-light);
 }
 
 .listItemActive:hover {
-  background: #1a2332;
+  background: var(--bg-active-item);
 }
 
 .itemContent {
@@ -53,7 +53,7 @@
 
 .modelName {
   font-size: 12px;
-  color: #888;
+  color: var(--text-muted);
 }
 
 .modelNameMain {
@@ -62,7 +62,7 @@
 
 .time {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-muted);
   margin-left: auto;
 }
 
@@ -74,7 +74,7 @@
 }
 
 .urlText {
-  color: #555;
+  color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -83,7 +83,7 @@
 }
 
 .duration {
-  color: #6b7280;
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
@@ -99,17 +99,17 @@
 }
 
 .statusDefault {
-  color: #999;
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
 .usageBox {
-  background: #111;
+  background: var(--bg-secondary);
   border-radius: 4px;
   padding: 3px 6px;
   margin-top: 4px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-muted);
   line-height: 1.6;
 }
 
@@ -128,7 +128,7 @@
 }
 
 .cacheDotNormal {
-  background-color: #3a3a3a;
+  background-color: var(--border-dropdown);
 }
 
 .tagMainAgent {
@@ -144,8 +144,8 @@
 }
 
 .tagMuted {
-  color: #666;
-  border-color: #444;
+  color: var(--text-dim);
+  border-color: var(--border-secondary);
   background-color: #000;
 }
 

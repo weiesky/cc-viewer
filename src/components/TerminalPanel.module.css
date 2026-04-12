@@ -2,7 +2,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #0d0d0d;
+  background: var(--bg-primary);
 }
 
 .terminalContainer {
@@ -32,9 +32,9 @@
   gap: 4px;
   padding: 2px 8px;
   background: rgba(42, 42, 42, 0.8);
-  border: 1px solid #3a3a3a;
+  border: 1px solid var(--border-dropdown);
   border-radius: 4px;
-  color: #ccc;
+  color: var(--text-on-dark);
   font-size: 12px;
 }
 
@@ -48,7 +48,7 @@
 .pendingFileClose {
   background: none;
   border: none;
-  color: #666;
+  color: var(--text-dim);
   cursor: pointer;
   font-size: 14px;
   padding: 0;
@@ -56,7 +56,7 @@
 }
 
 .pendingFileClose:hover {
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 .pendingImageItem {
@@ -66,7 +66,7 @@
   border-radius: 4px;
   overflow: hidden;
   flex-shrink: 0;
-  border: 1px solid #3a3a3a;
+  border: 1px solid var(--border-dropdown);
 }
 
 .pendingImageThumb {
@@ -83,7 +83,7 @@
   height: 14px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.7);
-  color: #ccc;
+  color: var(--text-on-dark);
   border: none;
   font-size: 11px;
   line-height: 12px;
@@ -108,8 +108,8 @@
   align-items: center;
   padding: 0 8px;
   gap: 4px;
-  border-top: 1px solid #1e1e1e;
-  background: #0d0d0d;
+  border-top: 1px solid var(--bg-elevated);
+  background: var(--bg-primary);
 }
 
 .toolbarBtn {
@@ -118,19 +118,19 @@
   gap: 4px;
   height: 26px;
   padding: 0 10px;
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
-  background: #1e1e1e;
-  color: #aaa;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .toolbarBtn:hover {
-  background: #2a2a2a;
-  color: #e5e5e5;
-  border-color: #555;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-dim);
 }
 
 .toolbarBtnDisabled {
@@ -138,9 +138,9 @@
   cursor: not-allowed;
 }
 .toolbarBtnDisabled:hover {
-  background: #1e1e1e;
-  color: #aaa;
-  border-color: #303030;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border-color: var(--border-subtle);
 }
 
 .toolbarBtn svg {
@@ -152,8 +152,8 @@
   display: flex;
   gap: 6px;
   padding: 8px 10px;
-  background: #111;
-  border-top: 1px solid #1e1e1e;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--bg-elevated);
   overflow-x: auto;
   flex-shrink: 0;
   -webkit-overflow-scrolling: touch;
@@ -162,10 +162,10 @@
 .virtualKey {
   flex-shrink: 0;
   padding: 12px 20px;
-  border: 1px solid #303030;
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  background: #1e1e1e;
-  color: #ccc;
+  background: var(--bg-elevated);
+  color: var(--text-on-dark);
   font-size: 15px;
   font-family: Menlo, Monaco, monospace;
   cursor: pointer;
@@ -180,9 +180,9 @@
 }
 
 .virtualKeyPressed {
-  background: #303030;
-  border-color: #555;
-  color: #fff;
+  background: var(--bg-active);
+  border-color: var(--text-dim);
+  color: var(--text-heading);
 }
 
 /* 虚拟按键栏分隔符 */
@@ -191,7 +191,7 @@
   width: 1px;
   align-self: stretch;
   margin: 4px 2px;
-  background: #303030;
+  background: var(--bg-active);
 }
 
 /* 操作按钮（上传、团队预设） */
@@ -228,8 +228,8 @@
 
 /* 预置快捷方式列表 */
 .presetList {
-  background: #0d0d0d;
-  border: 1px solid #303030;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
   max-height: 260px;
   overflow-y: auto;
@@ -240,7 +240,7 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--bg-elevated);
 }
 
 .presetRow:last-child {
@@ -252,13 +252,13 @@
 }
 
 .presetRowDragOver {
-  border-top: 2px solid #1668dc;
+  border-top: 2px solid var(--color-primary);
   padding-top: 6px;
 }
 
 .dragHandle {
   cursor: grab;
-  color: #444;
+  color: var(--border-secondary);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -267,7 +267,7 @@
 }
 
 .dragHandle:hover {
-  color: #888;
+  color: var(--text-muted);
 }
 
 .dragHandle:active {
@@ -277,7 +277,7 @@
 .presetText {
   flex: 1;
   font-size: 13px;
-  color: #e5e5e5;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -292,7 +292,7 @@
 .presetMenuItem {
   background: none;
   border: none;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 13px;
   padding: 6px 12px;
   text-align: left;
@@ -305,33 +305,33 @@
 }
 
 .presetMenuItem:hover {
-  background: #303030;
+  background: var(--bg-active);
 }
 
 .presetMenuItemMuted {
-  color: #888;
-  border-bottom: 1px solid #333;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
   margin-bottom: 2px;
 }
 
 .presetMenuItemMuted:hover {
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 .presetMenuItemMuted svg {
-  stroke: #888;
+  stroke: var(--text-muted);
   transition: stroke 0.15s;
 }
 
 .presetMenuItemMuted:hover svg {
-  stroke: #e5e5e5;
+  stroke: var(--text-primary);
 }
 
 .presetName {
   width: 100px;
   flex-shrink: 0;
   font-size: 13px;
-  color: #999;
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -339,10 +339,10 @@
 
 .presetInput {
   width: min(600px, 80vw);
-  background: #111;
-  border: 1px solid #303030;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 13px;
   padding: 6px 12px;
   outline: none;
@@ -350,15 +350,15 @@
 }
 
 .presetInput:focus {
-  border-color: #1668dc;
+  border-color: var(--color-primary);
 }
 
 .presetTextarea {
   width: min(600px, 80vw);
-  background: #111;
-  border: 1px solid #303030;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
-  color: #e5e5e5;
+  color: var(--text-primary);
   font-size: 13px;
   padding: 8px 12px;
   resize: none;
@@ -367,7 +367,7 @@
 }
 
 .presetTextarea:focus {
-  border-color: #1668dc;
+  border-color: var(--color-primary);
 }
 
 .hiddenFileInput {
@@ -375,14 +375,14 @@
 }
 
 .popoverEmptyHint {
-  color: #666;
+  color: var(--text-dim);
   font-size: 13px;
   padding: 8px 12px;
   text-align: center;
 }
 
 .agentTeamDisabledTip {
-  color: #ccc;
+  color: var(--text-on-dark);
   font-size: 13px;
   margin-bottom: 10px;
 }
@@ -398,11 +398,11 @@
 .presetSectionTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #e5e5e5;
+  color: var(--text-primary);
 }
 
 .presetListEmptyHint {
-  color: #666;
+  color: var(--text-dim);
   font-size: 13px;
   padding: 12px 0;
   text-align: center;
@@ -420,7 +420,7 @@
 
 .presetFormLabel {
   font-size: 13px;
-  color: #aaa;
+  color: var(--text-secondary);
   display: block;
   margin-bottom: 4px;
 }
