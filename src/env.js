@@ -2,3 +2,7 @@
 const _isIPadOS = navigator.maxTouchPoints > 1 && /Macintosh/i.test(navigator.userAgent);
 export const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || _isIPadOS;
 export const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || _isIPadOS;
+
+if (isMobile && isIOS) {
+  document.documentElement.classList.add('mobile-ios');
+}

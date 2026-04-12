@@ -378,6 +378,17 @@
   zoom: 0.6;
 }
 
+:global(html.mobile-ios) .mobileChatInner {
+  zoom: 1;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(100% / 0.6);
+  height: calc(100% / 0.6);
+  transform: scale(0.6);
+  transform-origin: top left;
+}
+
 .mobileGitDiffOverlay {
   position: absolute;
   inset: 0;
@@ -400,6 +411,17 @@
   display: flex;
   flex-direction: column;
   zoom: 0.6;
+}
+
+:global(html.mobile-ios) .mobileGitDiffInner {
+  zoom: 1;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(100% / 0.6);
+  height: calc(100% / 0.6);
+  transform: scale(0.6);
+  transform-origin: top left;
 }
 
 .mobileMenuBtn {

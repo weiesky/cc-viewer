@@ -23,7 +23,7 @@ import RoleFilterBar from './RoleFilterBar';
 import ChatInputBar from './ChatInputBar';
 import PresetModal from './PresetModal';
 import { Virtuoso } from 'react-virtuoso';
-import { isMobile } from '../env';
+import { isMobile, isIOS } from '../env';
 import { t } from '../i18n';
 import { apiUrl } from '../utils/apiUrl';
 import { tryOpenWithSystem } from '../utils/fileOpen';
@@ -37,7 +37,9 @@ const { Text } = Typography;
 const QUEUE_THRESHOLD = 20;
 
 const MOBILE_ITEM_LIMIT = 240;
+const IOS_ITEM_LIMIT = 150;
 const MOBILE_LOAD_MORE_STEP = 100;
+const useVirtuoso = isMobile && !isIOS;
 
 // 稳定空对象引用，避免每次 render 创建新 {} 导致子组件重渲染
 const EMPTY_OBJ = {};
@@ -252,7 +254,7 @@ class ChatView extends React.Component {
     fetch(apiUrl('/api/git-status')).then(r => {
       if (!r.ok) this.setState({ hasGit: false, gitChangesOpen: false });
     }).catch(() => this.setState({ hasGit: false, gitChangesOpen: false }));
-    if (!isMobile) this._bindStickyScroll();
+    if (!useVirtuoso) this._bindStickyScroll();
     // 初始化时吸附到 60cols
     if (this.state.needsInitialSnap && this.props.cliMode && this.props.terminalVisible) {
       this._snapToInitialPosition();
@@ -314,7 +316,7 @@ class ChatView extends React.Component {
       }
     }
     // Last Response 出现/消失时，Footer 高度变化会导致 Virtuoso atBottom 误判，需要重新吸底
-    if (isMobile && prevState.lastResponseItems !== this.state.lastResponseItems && this.state.stickyBottom) {
+    if (useVirtuoso && prevState.lastResponseItems !== this.state.lastResponseItems && this.state.stickyBottom) {
       this._stickyScrollLock = true;
       requestAnimationFrame(() => {
         const scroller = this._virtuosoScrollerEl;
@@ -394,10 +396,11 @@ class ChatView extends React.Component {
         const rawItems = this.buildAllItems();
         const targetIdx = this._scrollTargetIdx;
         if (targetIdx != null) {
-          const limit = MOBILE_ITEM_LIMIT + this._mobileExtraItems;
+          const mobileLimit = isIOS ? IOS_ITEM_LIMIT : MOBILE_ITEM_LIMIT;
+          const limit = mobileLimit + this._mobileExtraItems;
           const offset = rawItems.length > limit ? rawItems.length - limit : 0;
           if (targetIdx < offset) {
-            this._mobileExtraItems = rawItems.length - targetIdx - MOBILE_ITEM_LIMIT;
+            this._mobileExtraItems = rawItems.length - targetIdx - mobileLimit;
             if (this._mobileExtraItems < 0) this._mobileExtraItems = 0;
           }
         }
@@ -424,7 +427,7 @@ class ChatView extends React.Component {
     if (!prevProps.cliMode && this.props.cliMode) {
       this.connectInputWs();
     }
-    if (!isMobile) this._rebindStickyEl();
+    if (!useVirtuoso) this._rebindStickyEl();
   }
 
   componentWillUnmount() {
@@ -447,7 +450,7 @@ class ChatView extends React.Component {
     if (this._hookWaitTimer) clearTimeout(this._hookWaitTimer);
     this._pendingHookAnswers = null;
     this._unbindScrollFade();
-    if (!isMobile) this._unbindStickyScroll();
+    if (!useVirtuoso) this._unbindStickyScroll();
     if (this._inputWs) {
       this._inputWs.close();
       this._inputWs = null;
@@ -495,7 +498,7 @@ class ChatView extends React.Component {
     // stickyOverride: startRender 传入的快照值，优先于当前 state（防止竞态翻转）
     const shouldStick = stickyOverride != null ? stickyOverride : this.state.stickyBottom;
     // 移动端：Virtuoso API
-    if (isMobile && this.virtuosoRef.current) {
+    if (useVirtuoso && this.virtuosoRef.current) {
       if (this._scrollTargetIdx != null) {
         this.virtuosoRef.current.scrollToIndex({ index: this._scrollTargetIdx, align: 'center' });
         const targetTs = this.props.scrollToTimestamp;
@@ -587,7 +590,7 @@ class ChatView extends React.Component {
 
   handleStickToBottom = () => {
     this.setState({ stickyBottom: true }, () => {
-      if (isMobile && this.virtuosoRef.current) {
+      if (useVirtuoso && this.virtuosoRef.current) {
         this.virtuosoRef.current.scrollToIndex({ index: 'LAST', behavior: 'smooth' });
       } else {
         const el = this.containerRef.current;
@@ -630,7 +633,7 @@ class ChatView extends React.Component {
     const rawItems = this.buildAllItems();
     const allItems = this._applyMobileSlice(rawItems);
     const addedCount = allItems.length - prevLen;
-    if (isMobile && this.virtuosoRef.current) {
+    if (useVirtuoso && this.virtuosoRef.current) {
       this.setState({ allItems, lastResponseItems: this._lastResponseItems, visibleCount: allItems.length }, () => {
         if (this.virtuosoRef.current && addedCount > 0) {
           this.virtuosoRef.current.scrollToIndex({ index: addedCount, align: 'start' });
@@ -650,7 +653,7 @@ class ChatView extends React.Component {
   };
 
   _getScrollContainer() {
-    return isMobile ? this._virtuosoScrollerEl : this.containerRef.current;
+    return useVirtuoso ? this._virtuosoScrollerEl : this.containerRef.current;
   }
 
   _bindScrollFade() {
@@ -1232,7 +1235,7 @@ class ChatView extends React.Component {
       return allItems;
     }
     this._totalItemCount = allItems.length;
-    const limit = MOBILE_ITEM_LIMIT + this._mobileExtraItems;
+    const limit = (isIOS ? IOS_ITEM_LIMIT : MOBILE_ITEM_LIMIT) + this._mobileExtraItems;
     if (allItems.length <= limit) {
       this._mobileSliceOffset = 0;
       return allItems;
@@ -2490,7 +2493,7 @@ class ChatView extends React.Component {
   }
 
   _doScrollToVisibleIdx(idx) {
-    if (isMobile && this.virtuosoRef.current) {
+    if (useVirtuoso && this.virtuosoRef.current) {
       this.virtuosoRef.current.scrollToIndex({ index: idx, align: 'center', behavior: 'smooth' });
     } else {
       const el = this.containerRef.current;
@@ -2653,7 +2656,7 @@ class ChatView extends React.Component {
         {this.state.mdLightboxSrc && (
           <ImageLightbox src={this.state.mdLightboxSrc} alt="" onClose={() => this.setState({ mdLightboxSrc: null })} />
         )}
-        {isMobile ? (
+        {useVirtuoso ? (
           this._virtuosoHeader = loadMoreBtn,
           this._virtuosoFooter = <>
             <div className={`${styles.streamingSpinnerWrap}${!this.props.isStreaming ? ' ' + styles.streamingSpinnerHidden : ''}`}>

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.144 (2026-04-12)
+
+- Fix: iOS Safari mobile font-size clamping — WebKit minimumLogicalFontSize (9px) broke font hierarchy under zoom:0.6; iOS now uses transform:scale(0.6) with non-virtualized rendering to bypass the clamp
+
 ## 1.6.143 (2026-04-12)
 
 - Fix: ToolApprovalPanel no longer steals focus when auto-approve countdown is enabled, avoiding interruption of user input in other fields
