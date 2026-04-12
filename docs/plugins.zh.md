@@ -70,7 +70,7 @@ export default {
 |-----------|------|------|--------|---------|
 | `httpsOptions` | waterfall | `{}` | `{ pfx, passphrase }` 或 `{ cert, key }` | 服务器创建前 |
 | `localUrl` | waterfall | `{ url, ip, port, token }` | `{ url }` | 客户端请求局域网地址时 |
-| `serverStarted` | parallel | `{ port, host, url, ip, token, protocol }` | 忽略 | 服务器启动成功后 |
+| `serverStarted` | parallel | `{ port, host, url, ip, token, protocol, httpServer }` | 忽略 | 服务器启动成功后 |
 | `serverStopping` | parallel | `{}` | 忽略 | 服务器关闭前 |
 | `onNewEntry` | parallel | `entry` (JSONL 日志条目对象) | 忽略 | 检测到新的 JSONL 日志条目时 |
 
@@ -168,7 +168,7 @@ hooks: {
 
 ```javascript
 hooks: {
-  async serverStarted({ port, host, url, ip, token, protocol }) {
+  async serverStarted({ port, host, url, ip, token, protocol, httpServer }) {
     console.error(`[my-plugin] 服务器运行在 ${url}`);
 
     // 示例：通知企业监控系统

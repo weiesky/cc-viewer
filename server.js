@@ -2708,7 +2708,7 @@ export async function startViewer() {
           currentServer = createServer(handleRequest);
         }
 
-        currentServer.listen(port, HOST, () => {
+        currentServer.listen(port, HOST, async () => {
           server = currentServer;
           actualPort = port;
           const url = `${serverProtocol}://127.0.0.1:${port}`;
@@ -2737,12 +2737,12 @@ export async function startViewer() {
             startStatsWorker();
             startStreamingStatusTimer();
           }
-          // CLI 模式下启动 WebSocket 服务
+          // CLI 模式下启动 WebSocket 服务 (必须 await，否则插件 hook 拿不到 upgrade listeners)
           if (isCliMode) {
-            setupTerminalWebSocket(currentServer);
+            await setupTerminalWebSocket(currentServer);
           }
           // 通知插件服务器已启动
-          runParallelHook('serverStarted', { port, host: HOST, url, ip: getLocalIp(), token: ACCESS_TOKEN, protocol: serverProtocol })
+          runParallelHook('serverStarted', { port, host: HOST, url, ip: getLocalIp(), token: ACCESS_TOKEN, protocol: serverProtocol, httpServer: currentServer })
             .catch(err => console.error('[CC Viewer] Plugin serverStarted hook error:', err.message));
           resolve(server);
         });
