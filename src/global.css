@@ -351,3 +351,23 @@ body {
   background-color: #1668dc;
   border-color: #1668dc;
 }
+
+/* highlight.js light mode overrides */
+[data-theme="light"] .hljs {
+  color: #1a1a2e;
+  background: var(--bg-code);
+}
+[data-theme="light"] .hljs-keyword,
+[data-theme="light"] .hljs-selector-tag,
+[data-theme="light"] .hljs-type { color: #cf222e; }
+[data-theme="light"] .hljs-string,
+[data-theme="light"] .hljs-attr,
+[data-theme="light"] .hljs-literal { color: #0a3069; }
+[data-theme="light"] .hljs-number { color: #0550ae; }
+[data-theme="light"] .hljs-comment { color: #6e7781; }
+[data-theme="light"] .hljs-function .hljs-title,
+[data-theme="light"] .hljs-title.function_ { color: #8250df; }
+[data-theme="light"] .hljs-name,
+[data-theme="light"] .hljs-variable,
+[data-theme="light"] .hljs-property { color: #953800; }
+[data-theme="light"] .hljs-built_in { color: #0550ae; }

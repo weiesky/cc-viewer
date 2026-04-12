@@ -248,6 +248,74 @@ const darkTheme = EditorView.theme({
   },
 }, { dark: true });
 
+const lightTheme = EditorView.theme({
+  '&': {
+    backgroundColor: '#f8f9fb',
+    color: '#333',
+    height: '100%',
+    overflow: 'visible',
+  },
+  '.cm-gutters:not(.cm-minimap-gutter)': { display: 'none' },
+  '& .cm-scroller': {
+    position: 'absolute', inset: '0',
+    fontFamily: "'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace",
+    fontSize: '13px', lineHeight: '1.5',
+  },
+  '.cm-minimap-gutter': { background: '#eef0f4', borderLeft: '1px solid #d8dce5' },
+  '.cm-minimap-overlay': {
+    border: '1px solid rgba(22, 104, 220, 0.6)', background: 'rgba(22, 104, 220, 0.15)',
+    borderRadius: '2px', transition: 'opacity 0.2s ease',
+  },
+  '.cm-minimap-gutter:hover .cm-minimap-overlay': {
+    border: '1px solid rgba(22, 104, 220, 0.8)', background: 'rgba(22, 104, 220, 0.2)',
+  },
+  '.cm-activeLine': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
+  '.cm-cursor': { borderLeftColor: '#333' },
+  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': { backgroundColor: '#b3d4fc' },
+  '.cm-panels': { backgroundColor: '#f0f2f6', borderBottom: '1px solid #d8dce5' },
+  '.cm-panel.cm-search': { padding: '8px 12px 10px', fontSize: '13px', color: '#333', backgroundColor: '#f0f2f6' },
+  '.cm-panel.cm-search input[type=text], .cm-panel.cm-search input[main]': {
+    height: '26px', padding: '2px 11px', fontSize: '100%', color: '#333',
+    backgroundColor: '#ffffff', border: '1px solid #c5c9d6', borderRadius: '6px',
+    outline: 'none', transition: 'border-color 0.2s', verticalAlign: 'middle', boxSizing: 'border-box',
+  },
+  '.cm-panel.cm-search input[type=text]:focus': { borderColor: '#1668dc', boxShadow: '0 0 0 2px rgba(22, 104, 220, 0.15)' },
+  '.cm-textfield': {
+    height: '26px', padding: '2px 11px', fontSize: '100%',
+    color: '#333 !important', backgroundColor: '#ffffff !important',
+    border: '1px solid #c5c9d6 !important', borderRadius: '6px',
+    outline: 'none', verticalAlign: 'middle', boxSizing: 'border-box',
+  },
+  '.cm-textfield:focus': { borderColor: '#1668dc !important', boxShadow: '0 0 0 2px rgba(22, 104, 220, 0.15)' },
+  '.cm-panel.cm-search input[type=checkbox]': { accentColor: '#1668dc', width: '14px', height: '14px', verticalAlign: 'middle', marginRight: '4px', cursor: 'pointer' },
+  '.cm-panel.cm-search button': {
+    height: '26px', padding: '2px 12px', fontSize: '100%', color: '#333',
+    backgroundColor: 'transparent', backgroundImage: 'none !important',
+    border: '1px solid #c5c9d6', borderRadius: '6px', cursor: 'pointer',
+    transition: 'background 0.2s, border-color 0.2s, color 0.2s', verticalAlign: 'middle', lineHeight: '1',
+  },
+  '.cm-panel.cm-search button:hover': { color: '#1a1a2e', backgroundColor: '#e8eaef', backgroundImage: 'none !important', borderColor: '#a0a5b5' },
+  '.cm-panel.cm-search button:active': { backgroundColor: '#dcdfe8', backgroundImage: 'none !important' },
+  '.cm-button': {
+    height: '26px', padding: '2px 12px', fontSize: '100%',
+    color: '#333 !important', backgroundColor: 'transparent !important',
+    backgroundImage: 'none !important', border: '1px solid #c5c9d6 !important',
+    borderRadius: '6px', cursor: 'pointer', lineHeight: '1',
+  },
+  '.cm-button:hover': { color: '#1a1a2e !important', backgroundColor: '#e8eaef !important', backgroundImage: 'none !important', borderColor: '#a0a5b5 !important' },
+  '.cm-panel.cm-search button[name=close]': {
+    position: 'absolute', top: '8px', right: '8px', width: '28px', height: '28px',
+    padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: '16px', color: '#8b8fa3', backgroundColor: 'transparent', border: 'none', borderRadius: '6px',
+  },
+  '.cm-panel.cm-search button[name=close]:hover': { color: '#1a1a2e', backgroundColor: '#e8eaef' },
+  '.cm-panel.cm-search label': { fontSize: '13px', color: '#5a5d72', verticalAlign: 'middle', cursor: 'pointer' },
+  '.cm-panel.cm-search label:hover': { color: '#1a1a2e' },
+  '.cm-panel.cm-search [name=close]': { fontSize: '16px' },
+  '.cm-searchMatch': { backgroundColor: 'rgba(255, 213, 79, 0.35)', outline: '1px solid rgba(255, 213, 79, 0.5)' },
+  '.cm-searchMatch-selected': { backgroundColor: 'rgba(255, 152, 0, 0.4)' },
+}, { dark: false });
+
 // 语法高亮配色（GitHub Dark 风格）
 const darkHighlightStyle = HighlightStyle.define([
   { tag: t.keyword, color: '#ff7b72' },
@@ -270,7 +338,27 @@ const darkHighlightStyle = HighlightStyle.define([
 
 const syntaxTheme = syntaxHighlighting(darkHighlightStyle);
 
-export default function FileContentView({ filePath, onClose, editorSession, scrollToLine }) {
+const lightHighlightStyle = HighlightStyle.define([
+  { tag: t.keyword, color: '#cf222e' },
+  { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: '#953800' },
+  { tag: [t.function(t.variableName), t.labelName], color: '#8250df' },
+  { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: '#0550ae' },
+  { tag: [t.definition(t.name), t.separator], color: '#333' },
+  { tag: [t.typeName, t.className, t.number, t.changed, t.annotation, t.modifier, t.self, t.namespace], color: '#953800' },
+  { tag: [t.operator, t.operatorKeyword, t.url, t.escape, t.regexp, t.link, t.special(t.string)], color: '#0550ae' },
+  { tag: [t.meta, t.comment], color: '#6e7781', fontStyle: 'italic' },
+  { tag: t.strong, fontWeight: 'bold' },
+  { tag: t.emphasis, fontStyle: 'italic' },
+  { tag: t.strikethrough, textDecoration: 'line-through' },
+  { tag: t.link, color: '#0550ae', textDecoration: 'underline' },
+  { tag: t.heading, fontWeight: 'bold', color: '#953800' },
+  { tag: [t.atom, t.bool, t.special(t.variableName)], color: '#0550ae' },
+  { tag: [t.processingInstruction, t.string, t.inserted], color: '#0a3069' },
+  { tag: t.invalid, color: '#82071e' },
+]);
+const lightSyntaxTheme = syntaxHighlighting(lightHighlightStyle);
+
+export default function FileContentView({ filePath, onClose, editorSession, scrollToLine, themeColor }) {
   const [content, setContent] = useState(null);
   const [currentContent, setCurrentContent] = useState(null);
   const [error, setError] = useState(null);
@@ -423,10 +511,13 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
     }
   }, [scrollToLine, loading, content]);
 
+  const editorTheme = themeColor === 'light' ? lightTheme : darkTheme;
+  const editorSyntax = themeColor === 'light' ? lightSyntaxTheme : syntaxTheme;
+
   const extensions = useMemo(() => {
     const exts = [
       ...getLanguageExtension(filePath),
-      syntaxTheme,
+      editorSyntax,
       scrollSyncExtension,
       keymap.of([{
         key: 'Mod-s',
@@ -449,7 +540,7 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
     );
 
     return exts;
-  }, [filePath, scrollSyncExtension]);
+  }, [filePath, scrollSyncExtension, editorSyntax]);
 
   // 跟踪文档行数变化
   const handleChange = useCallback((value) => {
@@ -553,7 +644,7 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
               <CodeMirror
                 value={content}
                 height="100%"
-                theme={darkTheme}
+                theme={editorTheme}
                 extensions={extensions}
                 onChange={handleChange}
                 onCreateEditor={onEditorCreate}

@@ -345,6 +345,7 @@ class Mobile extends AppBase {
                     onLoadSession={(sid) => this.loadSession(sid)}
                     onPendingPermission={this.handlePendingPermission}
                     onPendingPlanApproval={this.handlePendingPlanApproval}
+                    themeColor={this.state.themeColor}
                   />
                 </div>
               </ConfigProvider>
@@ -352,7 +353,7 @@ class Mobile extends AppBase {
           )}
           {!mobileIsLocalLog && (
             <div className={`${styles.mobileChatOverlay} ${this.state.mobileTerminalVisible ? styles.mobileChatOverlayVisible : ''}`}>
-              <TerminalPanel />
+              <TerminalPanel themeColor={this.state.themeColor} />
             </div>
           )}
           <div className={`${styles.mobileGitDiffOverlay} ${this.state.mobileGitDiffVisible ? styles.mobileGitDiffOverlayVisible : ''}`}>

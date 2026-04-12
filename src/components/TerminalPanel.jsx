@@ -145,6 +145,22 @@ class TerminalPanel extends React.Component {
     }
   }
 
+  componentDidUpdate(prevProps) {
+    if (prevProps.themeColor !== this.props.themeColor && this.terminal) {
+      this.terminal.options.theme = this.props.themeColor === 'light' ? {
+        background: '#f8f9fb',
+        foreground: '#1a1a2e',
+        cursor: '#1a1a2e',
+        selectionBackground: '#b3d4fc',
+      } : {
+        background: '#0a0a0a',
+        foreground: '#d4d4d4',
+        cursor: '#0a0a0a',
+        selectionBackground: '#264f78',
+      };
+    }
+  }
+
   initTerminal() {
     this.terminal = new Terminal({
       cursorBlink: false,
@@ -153,7 +169,12 @@ class TerminalPanel extends React.Component {
       cursorInactiveStyle: 'none',
       fontSize: isMobile ? 11 : 13,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      theme: {
+      theme: this.props.themeColor === 'light' ? {
+        background: '#f8f9fb',
+        foreground: '#1a1a2e',
+        cursor: '#1a1a2e',
+        selectionBackground: '#b3d4fc',
+      } : {
         background: '#0a0a0a',
         foreground: '#d4d4d4',
         cursor: '#0a0a0a',

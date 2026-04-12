@@ -2765,6 +2765,7 @@ class ChatView extends React.Component {
                     filePath={this.state.currentFile}
                     scrollToLine={this.state.scrollToLine}
                     editorSession={!!this.state.editorSessionId}
+                    themeColor={this.props.themeColor}
                     onClose={() => {
                       if (this.state.editorSessionId) {
                         fetch(apiUrl('/api/editor-done'), {
@@ -2856,6 +2857,7 @@ class ChatView extends React.Component {
                 pendingImages={this.state.pendingImages}
                 onRemovePendingImage={this._removePendingImage}
                 onClearPendingImages={this._clearPendingImages}
+                themeColor={this.props.themeColor}
                 />
               </div>
             </>

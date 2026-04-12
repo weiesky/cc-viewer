@@ -6,21 +6,24 @@
 import DOMPurify from 'dompurify';
 
 let _mermaidPromise = null;
+let _currentTheme = null;
 let _observerStarted = false;
 let _scanTimer = null;
 let _pendingNodes = new Set();
 
-function loadMermaid() {
-  if (_mermaidPromise) return _mermaidPromise;
+function loadMermaid(isDark = true) {
+  const newTheme = isDark ? 'dark' : 'default';
+  if (_mermaidPromise && _currentTheme === newTheme) return _mermaidPromise;
+  _currentTheme = newTheme;
   _mermaidPromise = import('mermaid').then(mod => {
     const m = mod.default;
     m.initialize({
       startOnLoad: false,
-      theme: 'dark',
-      darkMode: true,
+      theme: newTheme,
+      darkMode: isDark,
       securityLevel: 'strict',
       flowchart: { useMaxWidth: true },
-      themeVariables: {
+      themeVariables: isDark ? {
         darkMode: true,
         background: '#0d1117',
         primaryColor: '#1a3a5c',
@@ -31,6 +34,17 @@ function loadMermaid() {
         tertiaryColor: '#0d1117',
         nodeTextColor: '#c9d1d9',
         edgeLabelBackground: '#0d1117',
+      } : {
+        darkMode: false,
+        background: '#ffffff',
+        primaryColor: '#d0e2ff',
+        primaryTextColor: '#1a1a2e',
+        primaryBorderColor: '#d8dce5',
+        lineColor: '#1668dc',
+        secondaryColor: '#f0f2f6',
+        tertiaryColor: '#ffffff',
+        nodeTextColor: '#1a1a2e',
+        edgeLabelBackground: '#ffffff',
       },
     });
     return m;
@@ -47,7 +61,8 @@ async function renderMermaidIn(container) {
   const codeEls = container.querySelectorAll('code.language-mermaid');
   if (codeEls.length === 0) return;
 
-  const m = await loadMermaid();
+  const isDark = document.documentElement.dataset.theme !== 'light';
+  const m = await loadMermaid(isDark);
   if (!m) return;
 
   for (const code of codeEls) {
