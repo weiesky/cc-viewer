@@ -1,7 +1,7 @@
 .container {
-  background: #111;
+  background: var(--bg-secondary);
   border-radius: 6px;
-  border: 1px solid #2a2a2a;
+  border: 1px solid var(--border-primary);
   padding: 12px;
   font-size: 13px;
   font-family: monospace;

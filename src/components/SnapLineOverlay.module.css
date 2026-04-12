@@ -4,7 +4,7 @@
   bottom: 0;
   width: 2px;
   background: #00000000;
-  border-left: 2px dashed #ffffff1a;
+  border-left: 2px dashed var(--tint-light);
   pointer-events: none;
   z-index: 1000;
   transition: all 0.15s;
@@ -16,7 +16,7 @@
   bottom: 0;
   width: 2px;
   background: #00000000;
-  border-left: 2px dashed #ffffff80;
+  border-left: 2px dashed var(--tint-medium);
   pointer-events: none;
   z-index: 1001;
 }
@@ -25,7 +25,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  background: #ffffff1a;
+  background: var(--tint-light);
   pointer-events: none;
   z-index: 999;
 }

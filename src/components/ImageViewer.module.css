@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #0d0d0d;
+  background: var(--bg-primary);
 }
 
 .header {
@@ -10,8 +10,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 6px 16px;
-  border-bottom: 1px solid #2a2a2a;
-  background: #111;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
   flex-shrink: 0;
 }
 
@@ -35,7 +35,7 @@
   height: 28px;
   border: none;
   background: none;
-  color: #666;
+  color: var(--text-dim);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -47,13 +47,13 @@
 }
 
 .backBtn:hover {
-  color: #ccc;
-  background: #1e1e1e;
+  color: var(--text-on-dark);
+  background: var(--bg-elevated);
 }
 
 .filePath {
   font-size: 13px;
-  color: #ccc;
+  color: var(--text-on-dark);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -61,7 +61,7 @@
 
 .fileSize {
   font-size: 11px;
-  color: #666;
+  color: var(--text-dim);
   flex-shrink: 0;
 }
 
@@ -70,17 +70,17 @@
   align-items: center;
   gap: 4px;
   padding: 6px 16px;
-  background: #111;
-  border-bottom: 1px solid #2a2a2a;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
   flex-shrink: 0;
 }
 
 .toolBtn {
   width: 28px;
   height: 28px;
-  border: 1px solid #3a3a3a;
-  background: #1e1e1e;
-  color: #999;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -91,14 +91,14 @@
 }
 
 .toolBtn:hover {
-  background: #2a2a2a;
-  color: #fff;
-  border-color: #444;
+  background: var(--bg-hover);
+  color: var(--text-heading);
+  border-color: var(--border-secondary);
 }
 
 .zoomLabel {
   font-size: 11px;
-  color: #888;
+  color: var(--text-muted);
   min-width: 42px;
   text-align: center;
   user-select: none;
@@ -109,12 +109,12 @@
   overflow: hidden;
   position: relative;
   cursor: grab;
-  background-color: #1e1e1e;
+  background-color: var(--bg-elevated);
   background-image:
-    linear-gradient(45deg, #222 25%, #00000000 25%),
-    linear-gradient(-45deg, #222 25%, #00000000 25%),
-    linear-gradient(45deg, #00000000 75%, #222 75%),
-    linear-gradient(-45deg, #00000000 75%, #222 75%);
+    linear-gradient(45deg, var(--bg-hover) 25%, #00000000 25%),
+    linear-gradient(-45deg, var(--bg-hover) 25%, #00000000 25%),
+    linear-gradient(45deg, #00000000 75%, var(--bg-hover) 75%),
+    linear-gradient(-45deg, #00000000 75%, var(--bg-hover) 75%);
   background-size: 20px 20px;
   background-position: 0 0, 0 10px, 10px -10px, -10px 0;
 }
@@ -137,7 +137,7 @@
 }
 
 .svgInline {
-  background: #1e1e1e;
+  background: var(--bg-elevated);
   border-radius: 8px;
   padding: 24px;
   display: inline-flex;
@@ -156,11 +156,11 @@
   align-items: center;
   gap: 16px;
   padding: 4px 16px;
-  background: #111;
-  border-top: 1px solid #2a2a2a;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-primary);
   flex-shrink: 0;
   font-size: 11px;
-  color: #666;
+  color: var(--text-dim);
 }
 
 .loading {
@@ -169,7 +169,7 @@
   justify-content: center;
   height: 100%;
   width: 100%;
-  color: #666;
+  color: var(--text-dim);
   font-size: 14px;
 }
 

@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #0d0d0d;
+  background: var(--bg-primary);
   overflow: hidden;
 }
 
@@ -11,20 +11,20 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--border-primary);
   flex-shrink: 0;
 }
 
 .headerTitle {
   font-size: 13px;
   font-weight: 600;
-  color: #ccc;
+  color: var(--text-on-dark);
 }
 
 .closeBtn {
   background: none;
   border: none;
-  color: #888;
+  color: var(--text-muted);
   cursor: pointer;
   padding: 4px;
   display: flex;
@@ -32,7 +32,7 @@
 }
 
 .closeBtn:active {
-  color: #fff;
+  color: var(--text-heading);
 }
 
 .content {
@@ -45,7 +45,7 @@
 }
 
 .empty {
-  color: #999;
+  color: var(--text-muted);
   font-size: 13px;
   text-align: center;
   padding: 40px 0;
