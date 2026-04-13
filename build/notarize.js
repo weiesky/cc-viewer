@@ -22,7 +22,7 @@ export default async function notarizing(context) {
     return;
   }
 
-  const NOTARIZE_TIMEOUT = 6 * 60 * 60 * 1000; // 6 hours
+  const NOTARIZE_TIMEOUT = 45 * 60 * 1000; // 45 minutes (must be less than CI's 60min timeout)
   console.log(`🔐 开始公证 ${appName}.app (超时: ${NOTARIZE_TIMEOUT / 60000} 分钟)...`);
 
   try {

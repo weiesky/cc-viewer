@@ -19,6 +19,7 @@ export default function ImageLightbox({ src, alt, onClose }) {
   const touchRef = useRef(null);
   const overlayRef = useRef(null);
   const stateRef = useRef({ zoom: 1, offset: { x: 0, y: 0 } });
+  const fitZoomRef = useRef(1);
   const mountedRef = useRef(true);
 
   const clampZoom = (z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
@@ -56,16 +57,19 @@ export default function ImageLightbox({ src, alt, onClose }) {
     };
   }, [doClose]);
 
-  // Auto-fit large images to viewport on load
+  // Auto-fit image to viewport on load
   const handleImageLoad = useCallback((e) => {
     setLoaded(true);
     const img = e.target;
     const vw = window.innerWidth * 0.9;
     const vh = window.innerHeight * 0.9;
-    if (img.naturalWidth > vw || img.naturalHeight > vh) {
-      const fit = Math.min(vw / img.naturalWidth, vh / img.naturalHeight);
-      const initial = Math.min(1, fit);
-      setZoom(initial);
+    // 用 CSS 渲染后的实际尺寸计算，避免与 max-width/max-height 冲突
+    const renderedW = img.clientWidth;
+    const renderedH = img.clientHeight;
+    const fit = Math.min(vw / renderedW, vh / renderedH);
+    fitZoomRef.current = fit;
+    if (fit > 1.05) {
+      setZoom(fit);
     }
   }, []);
 
@@ -168,12 +172,13 @@ export default function ImageLightbox({ src, alt, onClose }) {
     }
   }, [doClose]);
 
-  // Double-click to toggle zoom
+  // Double-click to toggle between fit-to-screen and natural size
   const handleDoubleClick = useCallback((e) => {
     e.stopPropagation();
     setZoom(prev => {
       setOffset({ x: 0, y: 0 });
-      return prev > 1.1 ? 1 : 2.5;
+      const fitZ = fitZoomRef.current;
+      return Math.abs(prev - fitZ) < 0.05 ? 1 : fitZ;
     });
   }, []);
 

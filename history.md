@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.149 (2026-04-13)
+
+- Fix: ImageLightbox auto-fit — small images now scale up to fill viewport on open
+- Fix: ImageLightbox double-click toggles between fit-to-screen and natural size
+- Fix: notarize timeout reduced to 45min (within CI's 60min step limit)
+
 ## 1.6.148 (2026-04-13)
 
 - Feat: Markdown hover action buttons — copy to clipboard & save as .md file (with native OS save dialog)
