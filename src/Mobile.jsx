@@ -29,11 +29,16 @@ class Mobile extends AppBase {
       globalPermission: null,     // { permission, handlers } — 全局权限审批浮层
       globalPlanApproval: null,   // { plan, handlers } — 全局计划审批浮层
       autoApproveSeconds: 0,
+      hasGit: true,
     });
   }
 
   componentDidMount() {
     super.componentDidMount();
+    // 检测项目是否有 git
+    fetch(apiUrl('/api/git-status')).then(r => {
+      if (!r.ok) this.setState({ hasGit: false, mobileGitDiffVisible: false });
+    }).catch(() => this.setState({ hasGit: false, mobileGitDiffVisible: false }));
     // iOS 虚拟键盘弹出时，Safari 会滚动整个文档将页面上推，
     // 导致导航栏消失在视口之外。通过 visualViewport 的 resize + scroll
     // 事件同步可见区域的高度和偏移，用 fixed 定位将布局锁定在可见区域内。
@@ -246,7 +251,7 @@ class Mobile extends AppBase {
               >
                 {t('ui.mobileGoBack')}
               </Button>
-            ) : (
+            ) : this.state.hasGit ? (
               <Button
                 type="text"
                 size="small"
@@ -256,7 +261,7 @@ class Mobile extends AppBase {
               >
                 {this.state.mobileGitDiffVisible ? t('ui.mobileGitDiffExit') : t('ui.mobileGitDiffBrowse')}
               </Button>
-            )}
+            ) : null}
             {!mobileIsLocalLog && (
               <Button
                 type="text"

@@ -1457,6 +1457,26 @@ const i18nData = {
     "tr": "Kopyala",
     "uk": "Копіювати"
   },
+  "ui.saveAs": {
+    "zh": "另存为",
+    "en": "Save As",
+    "zh-TW": "另存為",
+    "ko": "다른 이름으로 저장",
+    "ja": "名前を付けて保存",
+    "de": "Speichern unter",
+    "es": "Guardar como",
+    "fr": "Enregistrer sous",
+    "it": "Salva con nome",
+    "da": "Gem som",
+    "pl": "Zapisz jako",
+    "ru": "Сохранить как",
+    "ar": "حفظ باسم",
+    "no": "Lagre som",
+    "pt-BR": "Salvar como",
+    "th": "บันทึกเป็น",
+    "tr": "Farklı Kaydet",
+    "uk": "Зберегти як"
+  },
   "ui.contextMenu.revealInExplorer": {
     "zh": "在系统中展示",
     "en": "Reveal in Explorer",

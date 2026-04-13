@@ -833,10 +833,6 @@
 }
 
 /* SVG icon vertical alignment */
-.svgIcon {
-  vertical-align: -3px;
-}
-
 /* Mirror icon horizontally */
 .iconMirror {
   transform: scaleX(-1);

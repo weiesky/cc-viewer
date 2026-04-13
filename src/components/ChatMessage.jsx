@@ -1,7 +1,7 @@
 import React from 'react';
 import { Collapse, Typography, Radio, Checkbox, Input, Button, Tooltip, Popover, message } from 'antd';
-import { renderMarkdown } from '../utils/markdown';
 import { escapeHtml, truncateText, getSvgAvatar } from '../utils/helpers';
+import MarkdownBlock from './MarkdownBlock';
 import { getTeammateAvatar } from '../utils/teammateAvatars';
 import { renderAssistantText } from '../utils/systemTags';
 import { apiUrl } from '../utils/apiUrl';
@@ -168,13 +168,7 @@ class ChatMessage extends React.Component {
           />
         );
       }
-      return (
-        <div
-          key={i}
-          className="chat-md"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(seg.content) }}
-        />
-      );
+      return <MarkdownBlock key={i} text={seg.content} />;
     });
   }
 
@@ -434,7 +428,7 @@ class ChatMessage extends React.Component {
       if (approval.status === 'approved' && approval.planContent) {
         return (
           <div key={tu.id} className={styles.bubblePlan}>
-            <div className="chat-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(approval.planContent) }} />
+            <MarkdownBlock text={approval.planContent} />
           </div>
         );
       }
@@ -476,7 +470,7 @@ class ChatMessage extends React.Component {
           </div>
           {isPending && planTextContent && (
             <div className={styles.planContentPreview}>
-              <div className="chat-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(planTextContent) }} />
+              <MarkdownBlock text={planTextContent} />
             </div>
           )}
           {prompts.length > 0 && (
@@ -582,7 +576,7 @@ class ChatMessage extends React.Component {
         return (
           <div key={tu.id} className={styles.sendMessageBlock}>
             <div className={styles.sendMessageHeader}>{header}</div>
-            <div className="chat-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg) }} />
+            <MarkdownBlock text={msg} />
           </div>
         );
       }
@@ -809,7 +803,7 @@ class ChatMessage extends React.Component {
                 )}
               </div>
             ) : (
-              <div className="chat-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(thinkingText) }} />
+              <MarkdownBlock text={thinkingText} />
             ),
           }]}
           className={styles.collapseMargin}
@@ -1004,7 +998,7 @@ class ChatMessage extends React.Component {
             <Text type="secondary" className={styles.labelTextRight}>{label || 'Teammate'}</Text>
           </div>
           {this.renderHighlightBubble(styles.bubbleAssistant, (
-            <div className="chat-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(text || '') }} />
+            <MarkdownBlock text={text || ''} />
           ))}
         </div>
         <div className={styles.avatar} style={{ background: ta ? ta.color : 'var(--bg-sub-avatar)' }}
@@ -1040,7 +1034,7 @@ class ChatMessage extends React.Component {
         <div className={styles.contentColLimited}>
           {this.renderLabel(modelInfo?.name || 'MainAgent', ' (Plan)')}
           <div className={styles.bubblePlan}>
-            <div className="chat-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(planContent) }} />
+            <MarkdownBlock text={planContent} />
           </div>
         </div>
       </div>
@@ -1065,7 +1059,7 @@ class ChatMessage extends React.Component {
                   {timeStr && <Text className={`${styles.timeTextNoMargin} ${styles.skillTimeIndent}`}>{timeStr}</Text>}
                 </span>
               ),
-              children: <div className="chat-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />,
+              children: <MarkdownBlock text={text} />,
             }]}
             className={styles.collapseNoMargin}
           />
@@ -1099,7 +1093,7 @@ class ChatMessage extends React.Component {
         <Collapse key="result" ghost size="small" items={[{
           key: '1',
           label: <Typography.Text type="secondary">{t('ui.taskNotification.result') || 'Result'}</Typography.Text>,
-          children: <div className="chat-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(tn.result) }} />,
+          children: <MarkdownBlock text={tn.result} />,
         }]} />
       );
     }

@@ -405,6 +405,7 @@ body {
 }
 .ant-tooltip .ant-tooltip-inner {
   background-color: var(--bg-base-alt);
+  color: var(--text-primary);
 }
 .ant-tooltip .ant-tooltip-arrow::before,
 .ant-tooltip .ant-tooltip-arrow::after {

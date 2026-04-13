@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.148 (2026-04-13)
+
+- Feat: Markdown hover action buttons — copy to clipboard & save as .md file (with native OS save dialog)
+- Feat: mobile git entry hidden when project has no git (consistent with PC)
+- Feat: auto-approve toggle now also approves the current pending permission request
+- Fix: PC header QR code icon replaced (phone → QR code SVG), alignment fixed
+- Fix: Ant Design Tooltip text color in light theme
+- Fix: removed unused `.svgIcon` CSS class
+
 ## 1.6.147 (2026-04-13)
 
 - Chore: remove signing guide docs

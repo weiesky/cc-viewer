@@ -71,9 +71,13 @@ function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSes
   // 简化按钮：点击切换开启/关闭
   const handleAutoApproveToggle = useCallback(() => {
     if (onAutoApproveChange) {
-      onAutoApproveChange(autoApproveSeconds > 0 ? 0 : getAutoApproveDefault(modelName));
+      const enabling = autoApproveSeconds <= 0;
+      onAutoApproveChange(enabling ? getAutoApproveDefault(modelName) : 0);
+      if (enabling && requestId && onAllow) {
+        onAllow(requestId);
+      }
     }
-  }, [onAutoApproveChange, autoApproveSeconds, modelName]);
+  }, [onAutoApproveChange, autoApproveSeconds, modelName, requestId, onAllow]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Escape') {
