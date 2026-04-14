@@ -4,6 +4,11 @@
 
 - Feat: `--log-dir <path>` CLI option — specify custom JSONL log storage directory at startup (alternative to CCV_LOG_DIR env)
 - Feat: `--no-open` CLI option — prevent auto-opening browser on startup, server still runs normally
+- Feat: UltraPlan role selector — replace toggle with "代码专家" / "调研专家" pill buttons
+- Feat: add scoped instruction to UltraPlan templates to limit influence on subsequent interactions
+- Feat: update UltraPlan concept docs across all 18 locales
+- Style: pill buttons with SVG icons, auto-width, focus-visible accessibility
+- Chore: remove unused simple/visual/auto template variants
 
 ## 1.6.151 (2026-04-14)
 

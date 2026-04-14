@@ -466,14 +466,43 @@
 .ultraplanVariantRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 0 14px 8px;
+  flex-wrap: wrap;
 }
 
-.ultraplanModeLabel {
+.ultraplanRoleBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
   font-size: 12px;
+  line-height: 1.6;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--bg-main);
   color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
   user-select: none;
+  white-space: nowrap;
+}
+.ultraplanRoleBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+.ultraplanRoleBtn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.ultraplanRoleBtnActive {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+.ultraplanRoleBtnActive:hover {
+  color: #fff;
 }
 
 .ultraplanContextWarning {

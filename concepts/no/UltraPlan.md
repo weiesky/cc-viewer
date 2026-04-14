@@ -5,8 +5,8 @@
 UltraPlan er cc-viewers **lokaliserte implementering** av Claude Codes native `/ultraplan`-kommando. Den lar deg bruke de fulle mulighetene til `/ultraplan` i ditt lokale miljø **uten å måtte starte Claudes offisielle fjerntjeneste**, og veileder Claude Code til å utføre komplekse planleggings- og implementeringsoppgaver ved hjelp av **multiagent-samarbeid**.
 
 Sammenlignet med vanlig Plan-modus eller Agent Team, kan UltraPlan:
-- Automatisk vurdere oppgavekompleksitet og velge den optimale planleggingsstrategien
-- Distribuere flere parallelle agenter for å utforske kodebasen fra ulike dimensjoner
+- Tilbyr rollene **Kodeekspert** og **Forskningsekspert** tilpasset ulike oppgavetyper
+- Utplasser flere parallelle agenter for å utforske kodebasen eller utføre forskning fra ulike dimensjoner
 - Inkludere ekstern forskning (webSearch) for bransjens beste praksis
 - Automatisk sette sammen et Code Review Team etter plangjennomføring for kodegjennomgang
 - Danne en komplett lukket sløyfe **Plan → Utfør → Gjennomgå → Fiks**
@@ -32,24 +32,24 @@ Hvis du har spørsmål eller forslag om den lokaliserte UltraPlan, er du velkomm
 
 ---
 
-## Hvordan det fungerer
+## Slik fungerer det
 
-UltraPlan tilbyr to driftsmoduser:
+UltraPlan tilbyr to ekspertroller, tilpasset ulike oppgavetyper:
 
-### Automatisk modus
-Analyserer automatisk oppgavekompleksitet (poengsum 4-12) og ruter til ulike strategier:
+### Kodeekspert
+En multi-agent samarbeidsarbeidsflyt designet for programmeringsprosjekter:
+1. Utplasser opptil 5 parallelle agenter for å utforske kodebasen samtidig (arkitektur, filidentifikasjon, risikovurdering osv.)
+2. Valgfritt: utplasser en forskningsagent for å undersøke bransjeløsninger via webSearch
+3. Syntetiser alle agentenes funn til en detaljert implementeringsplan
+4. Utplasser en gjennomgangsagent for å granske planen fra flere perspektiver
+5. Utfør planen etter godkjenning
+6. Automatisk sett sammen et Code Review Team for å validere kodekvaliteten etter implementering
 
-| Rute | Poengsum | Strategi |
-|------|----------|----------|
-| Rute A | 4-6 | Lettvektsplanlegging med direkte kodeutforskning |
-| Rute B | 7-9 | Planlegging med strukturelle diagrammer (Mermaid / ASCII) |
-| Rute C | 10-12 | Multiagent-utforskning + lukket gjennomgangssløyfe |
-
-### Tvungen modus
-Aktiverer direkte den fullstendige Rute C multiagent-arbeidsflyten:
-1. Distribuere opptil 5 parallelle agenter for å utforske kodebasen samtidig (arkitektur, filidentifikasjon, risikovurdering osv.)
-2. Valgfritt distribuere en forskningsagent for å undersøke bransjeløsninger via webSearch
-3. Syntetisere alle agentfunn til en detaljert implementeringsplan
-4. Distribuere en gjennomgangsagent for å granske planen fra flere perspektiver
-5. Utføre planen etter godkjenning
-6. Automatisk sette sammen et Code Review Team for å validere kodekvalitet etter implementering
+### Forskningsekspert
+En multi-agent samarbeidsarbeidsflyt designet for forsknings- og analyseoppgaver:
+1. Utplasser flere parallelle agenter for å forske fra ulike dimensjoner (bransjeundersøkelser, akademiske artikler, nyheter, konkurrentanalyse osv.)
+2. Tildel en agent for å syntetisere målløsningen og samtidig verifisere nøyaktigheten og troverdigheten til innsamlede kilder
+3. Valgfritt: utplasser en agent for å lage en produktdemo (HTML, Markdown osv.)
+4. Syntetiser alle funn til en omfattende implementeringsplan
+5. Utplasser flere gjennomgangsagenter for å granske planen fra ulike roller og perspektiver
+6. Utfør planen etter godkjenning

@@ -5,8 +5,8 @@
 UltraPlan to **zlokalizowana implementacja** natywnego polecenia `/ultraplan` Claude Code przez cc-viewer. Pozwala na korzystanie z pełnych możliwości `/ultraplan` w lokalnym środowisku **bez konieczności uruchamiania oficjalnej zdalnej usługi Claude**, kierując Claude Code do realizacji złożonych zadań planowania i implementacji przy użyciu **współpracy wielu agentów**.
 
 W porównaniu ze zwykłym trybem Plan lub Agent Team, UltraPlan potrafi:
-- Automatycznie oceniać złożoność zadania i wybierać optymalną strategię planowania
-- Wdrażać wielu równoległych agentów do eksploracji bazy kodu z różnych wymiarów
+- Oferuje role **Ekspert kodu** i **Ekspert badawczy** dostosowane do różnych typów zadań
+- Wysyłanie wielu równoległych agentów do eksploracji bazy kodu lub prowadzenia badań z różnych perspektyw
 - Włączać badania zewnętrzne (webSearch) w celu poznania najlepszych praktyk branżowych
 - Automatycznie tworzyć Zespół Code Review po wykonaniu planu w celu przeglądu kodu
 - Tworzyć kompletną zamkniętą pętlę **Plan → Wykonanie → Przegląd → Naprawa**
@@ -34,22 +34,22 @@ Jeśli masz jakiekolwiek pytania lub sugestie dotyczące zlokalizowanego UltraPl
 
 ## Jak to działa
 
-UltraPlan oferuje dwa tryby działania:
+UltraPlan oferuje dwie role ekspertów, dostosowane do różnych typów zadań:
 
-### Tryb Automatyczny
-Automatycznie analizuje złożoność zadania (wynik 4-12) i kieruje do różnych strategii:
-
-| Trasa | Wynik | Strategia |
-|-------|-------|-----------|
-| Trasa A | 4-6 | Lekkie planowanie z bezpośrednią eksploracją kodu |
-| Trasa B | 7-9 | Planowanie z diagramami strukturalnymi (Mermaid / ASCII) |
-| Trasa C | 10-12 | Eksploracja wieloagentowa + zamknięta pętla przeglądu |
-
-### Tryb Wymuszony
-Bezpośrednio aktywuje pełny wieloagentowy przepływ pracy Trasy C:
-1. Wdrożenie do 5 równoległych agentów do jednoczesnej eksploracji bazy kodu (architektura, identyfikacja plików, ocena ryzyka itp.)
-2. Opcjonalne wdrożenie agenta badawczego do zbadania rozwiązań branżowych przez webSearch
+### Ekspert kodu
+Wieloagentowy przepływ pracy zaprojektowany dla projektów programistycznych:
+1. Wysłanie do 5 równoległych agentów do jednoczesnej eksploracji bazy kodu (architektura, identyfikacja plików, ocena ryzyka itp.)
+2. Opcjonalne wysłanie agenta badawczego do zbadania rozwiązań branżowych przez webSearch
 3. Synteza wszystkich odkryć agentów w szczegółowy plan implementacji
-4. Wdrożenie agenta przeglądowego do dokładnego zbadania planu z wielu perspektyw
-5. Wykonanie planu po zatwierdzeniu
-6. Automatyczne utworzenie Zespołu Code Review w celu walidacji jakości kodu po implementacji
+4. Wysłanie agenta recenzenta do zbadania planu z wielu perspektyw
+5. Realizacja planu po zatwierdzeniu
+6. Automatyczne utworzenie Code Review Team do walidacji jakości kodu po implementacji
+
+### Ekspert badawczy
+Wieloagentowy przepływ pracy zaprojektowany dla zadań badawczych i analitycznych:
+1. Wysłanie wielu równoległych agentów do badań z różnych wymiarów (badania branżowe, artykuły naukowe, wiadomości, analiza konkurencji itp.)
+2. Przypisanie agenta do syntezy docelowego rozwiązania przy jednoczesnej weryfikacji rzetelności i wiarygodności zebranych źródeł
+3. Opcjonalne wysłanie agenta do stworzenia demo produktu (HTML, Markdown itp.)
+4. Synteza wszystkich odkryć w kompleksowy plan implementacji
+5. Wysłanie wielu agentów recenzentów do zbadania planu z różnych ról i perspektyw
+6. Realizacja planu po zatwierdzeniu

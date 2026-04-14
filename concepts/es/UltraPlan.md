@@ -5,8 +5,8 @@
 UltraPlan es la **implementacion localizada** de cc-viewer del comando nativo `/ultraplan` de Claude Code. Te permite usar las capacidades completas de `/ultraplan` en tu entorno local **sin necesidad de iniciar el servicio remoto oficial de Claude**, guiando a Claude Code para lograr tareas complejas de planificacion e implementacion mediante **colaboracion multi-agente**.
 
 En comparacion con el modo Plan regular o Agent Team, UltraPlan puede:
-- Evaluar automaticamente la complejidad de la tarea y seleccionar la estrategia de planificacion optima
-- Desplegar multiples agentes en paralelo para explorar la base de codigo desde diferentes dimensiones
+- Ofrece los roles de **Experto en código** y **Experto en investigación** adaptados a diferentes tipos de tareas
+- Desplegar múltiples agentes paralelos para explorar el código o realizar investigaciones desde diferentes dimensiones
 - Incorporar investigacion externa (webSearch) sobre mejores practicas de la industria
 - Ensamblar automaticamente un Code Review Team despues de la ejecucion del plan para revision de codigo
 - Formar un ciclo cerrado completo de **Plan → Execute → Review → Fix**
@@ -32,24 +32,24 @@ Si tienes preguntas o sugerencias sobre el UltraPlan localizado, no dudes en abr
 
 ---
 
-## Como Funciona
+## Cómo funciona
 
-UltraPlan ofrece dos modos de operacion:
+UltraPlan ofrece dos roles de experto, adaptados a diferentes tipos de tareas:
 
-### Modo Automatico
-Analiza automaticamente la complejidad de la tarea (puntuacion 4-12) y enruta a diferentes estrategias:
-
-| Ruta | Puntuacion | Estrategia |
-|------|------------|------------|
-| Ruta A | 4-6 | Planificacion ligera con exploracion directa de codigo |
-| Ruta B | 7-9 | Planificacion con diagramas estructurales (Mermaid / ASCII) |
-| Ruta C | 10-12 | Exploracion multi-agente + ciclo cerrado de revision |
-
-### Modo Forzado
-Activa directamente el flujo de trabajo multi-agente completo de Ruta C:
-1. Desplegar hasta 5 agentes en paralelo para explorar la base de codigo simultaneamente (arquitectura, identificacion de archivos, evaluacion de riesgos, etc.)
-2. Opcionalmente desplegar un agente de investigacion para indagar soluciones de la industria mediante webSearch
-3. Sintetizar todos los hallazgos de los agentes en un plan de implementacion detallado
-4. Desplegar un agente de revision para examinar el plan desde multiples perspectivas
+### Experto en código
+Un flujo de trabajo de colaboración multi-agente diseñado para proyectos de programación:
+1. Desplegar hasta 5 agentes paralelos para explorar el código simultáneamente (arquitectura, identificación de archivos, evaluación de riesgos, etc.)
+2. Opcionalmente desplegar un agente de investigación para examinar soluciones del sector vía webSearch
+3. Sintetizar todos los hallazgos de los agentes en un plan de implementación detallado
+4. Desplegar un agente de revisión para examinar el plan desde múltiples perspectivas
 5. Ejecutar el plan una vez aprobado
-6. Ensamblar automaticamente un Code Review Team para validar la calidad del codigo despues de la implementacion
+6. Ensamblar automáticamente un Code Review Team para validar la calidad del código tras la implementación
+
+### Experto en investigación
+Un flujo de trabajo de colaboración multi-agente diseñado para tareas de investigación y análisis:
+1. Desplegar múltiples agentes paralelos para investigar desde diferentes dimensiones (estudios sectoriales, artículos académicos, noticias, análisis competitivo, etc.)
+2. Asignar un agente para sintetizar la solución objetivo verificando la rigurosidad y credibilidad de las fuentes recopiladas
+3. Opcionalmente desplegar un agente para crear un demo del producto (HTML, Markdown, etc.)
+4. Sintetizar todos los hallazgos en un plan de implementación integral
+5. Desplegar múltiples agentes de revisión para examinar el plan desde diferentes roles y perspectivas
+6. Ejecutar el plan una vez aprobado

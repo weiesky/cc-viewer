@@ -1,5 +1,5 @@
 import React from 'react';
-import { message, Tooltip, Popover, Button, Modal, Checkbox, Switch } from 'antd';
+import { message, Tooltip, Popover, Button, Modal, Checkbox } from 'antd';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
@@ -101,7 +101,7 @@ class TerminalPanel extends React.Component {
       agentTeamEnabled: false,
       agentTeamPopoverOpen: false,
       ultraplanOpen: false,
-      ultraplanVariant: 'subagents',
+      ultraplanVariant: 'codeExpert',
       ultraplanPrompt: '',
       ultraplanFiles: [],
       presetModalVisible: false,
@@ -907,7 +907,7 @@ class TerminalPanel extends React.Component {
     const filePaths = this.state.ultraplanFiles.map(f => `"${f.path}"`).join(' ');
     const userInput = filePaths ? (trimmed ? `${filePaths} ${trimmed}` : filePaths) : trimmed;
     const assembled = buildLocalUltraplan(userInput, this.state.ultraplanVariant);
-    this.setState({ ultraplanOpen: false, ultraplanPrompt: '', ultraplanVariant: 'auto', ultraplanFiles: [] });
+    this.setState({ ultraplanOpen: false, ultraplanPrompt: '', ultraplanVariant: 'codeExpert', ultraplanFiles: [] });
     if (assembled && this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'input', data: `\x1b[200~${assembled}\x1b[201~\r` }));
     }
@@ -1071,14 +1071,14 @@ class TerminalPanel extends React.Component {
                   <div className={styles.ultraplanPanel}>
                     <div className={styles.ultraplanHeader}>{t('ui.ultraplan.title')}<ConceptHelp doc="UltraPlan" zIndex={1100} /></div>
                     <div className={styles.ultraplanVariantRow}>
-                      <Switch
-                        size="small"
-                        checked={this.state.ultraplanVariant === 'subagents'}
-                        onChange={(checked) => this.setState({ ultraplanVariant: checked ? 'subagents' : 'auto' })}
-                      />
-                      <span className={styles.ultraplanModeLabel}>
-                        {this.state.ultraplanVariant === 'subagents' ? t('ui.ultraplan.modeForced') : t('ui.ultraplan.modeAuto')}
-                      </span>
+                      <button
+                        className={`${styles.ultraplanRoleBtn} ${this.state.ultraplanVariant === 'codeExpert' ? styles.ultraplanRoleBtnActive : ''}`}
+                        onClick={() => this.setState({ ultraplanVariant: 'codeExpert' })}
+                      ><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>{t('ui.ultraplan.roleCodeExpert')}</button>
+                      <button
+                        className={`${styles.ultraplanRoleBtn} ${this.state.ultraplanVariant === 'researchExpert' ? styles.ultraplanRoleBtnActive : ''}`}
+                        onClick={() => this.setState({ ultraplanVariant: 'researchExpert' })}
+                      ><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>{t('ui.ultraplan.roleResearchExpert')}</button>
                     </div>
                     {(!this.props.modelName || getModelMaxTokens(this.props.modelName) < 1000000) && (
                       <div className={styles.ultraplanContextWarning}>{t('ui.ultraplan.contextWarning')}</div>

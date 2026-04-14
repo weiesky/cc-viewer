@@ -6151,21 +6151,21 @@ const i18nData = {
     "tr": "UltraPlan — Nihai dilek makinesi",
     "uk": "UltraPlan — Найвища машина бажань"
   },
-  "ui.ultraplan.modeAuto": {
-    "zh": "自适应模式", "en": "Adaptive Mode", "zh-TW": "自適應模式",
-    "ko": "적응형 모드", "ja": "アダプティブモード", "de": "Adaptiver Modus",
-    "es": "Modo adaptativo", "fr": "Mode adaptatif", "it": "Modalità adattiva",
-    "da": "Adaptiv tilstand", "pl": "Tryb adaptacyjny", "ru": "Адаптивный режим",
-    "ar": "وضع تكيفي", "no": "Adaptiv modus", "pt-BR": "Modo adaptativo",
-    "th": "โหมดปรับตัว", "tr": "Uyarlanabilir mod", "uk": "Адаптивний режим"
+  "ui.ultraplan.roleCodeExpert": {
+    "zh": "代码专家", "en": "Code Expert", "zh-TW": "程式碼專家",
+    "ko": "코드 전문가", "ja": "コードエキスパート", "de": "Code-Experte",
+    "es": "Experto en código", "fr": "Expert code", "it": "Esperto di codice",
+    "da": "Kodeekspert", "pl": "Ekspert kodu", "ru": "Эксперт по коду",
+    "ar": "خبير الكود", "no": "Kodeekspert", "pt-BR": "Especialista em código",
+    "th": "ผู้เชี่ยวชาญโค้ด", "tr": "Kod uzmanı", "uk": "Експерт з коду"
   },
-  "ui.ultraplan.modeForced": {
-    "zh": "强制执行 UltraPlan", "en": "Force UltraPlan", "zh-TW": "強制執行 UltraPlan",
-    "ko": "UltraPlan 강제 실행", "ja": "UltraPlan 強制実行", "de": "UltraPlan erzwingen",
-    "es": "Forzar UltraPlan", "fr": "Forcer UltraPlan", "it": "Forza UltraPlan",
-    "da": "Gennemtving UltraPlan", "pl": "Wymuś UltraPlan", "ru": "Принудительный UltraPlan",
-    "ar": "فرض UltraPlan", "no": "Tving UltraPlan", "pt-BR": "Forçar UltraPlan",
-    "th": "บังคับ UltraPlan", "tr": "UltraPlan'ı zorla", "uk": "Примусовий UltraPlan"
+  "ui.ultraplan.roleResearchExpert": {
+    "zh": "调研专家", "en": "Research Expert", "zh-TW": "調研專家",
+    "ko": "리서치 전문가", "ja": "リサーチエキスパート", "de": "Recherche-Experte",
+    "es": "Experto en investigación", "fr": "Expert recherche", "it": "Esperto di ricerca",
+    "da": "Forskningsekspert", "pl": "Ekspert badawczy", "ru": "Эксперт по исследованиям",
+    "ar": "خبير الأبحاث", "no": "Forskningsekspert", "pt-BR": "Especialista em pesquisa",
+    "th": "ผู้เชี่ยวชาญวิจัย", "tr": "Araştırma uzmanı", "uk": "Експерт з досліджень"
   },
   "ui.ultraplan.agentTeamRequired": {
     "zh": "UltraPlan 需要开启 Agent Team 才能使用",

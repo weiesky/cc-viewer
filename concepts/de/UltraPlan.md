@@ -5,8 +5,8 @@
 UltraPlan ist die **lokalisierte Implementierung** von cc-viewer fuer den nativen `/ultraplan`-Befehl von Claude Code. Es ermoeglicht Ihnen, die vollstaendigen Funktionen von `/ultraplan` in Ihrer lokalen Umgebung zu nutzen, **ohne Claudes offiziellen Remote-Dienst starten zu muessen**, und leitet Claude Code an, komplexe Planungs- und Implementierungsaufgaben mittels **Multi-Agenten-Zusammenarbeit** zu bewaeltigen.
 
 Im Vergleich zum regulaeren Plan-Modus oder Agent Team kann UltraPlan:
-- Automatisch die Aufgabenkomplexitaet bewerten und die optimale Planungsstrategie waehlen
-- Mehrere parallele Agenten einsetzen, um die Codebasis aus verschiedenen Dimensionen zu erkunden
+- Bietet die Rollen **Code-Experte** und **Recherche-Experte** für verschiedene Aufgabentypen
+- Einsatz mehrerer paralleler Agenten zur Erkundung der Codebasis oder Durchführung von Recherchen aus verschiedenen Perspektiven
 - Externe Recherche (webSearch) fuer branchenbewaehrte Verfahren einbeziehen
 - Nach der Planausfuehrung automatisch ein Code Review Team zusammenstellen
 - Einen vollstaendigen **Plan → Execute → Review → Fix** Kreislauf bilden
@@ -34,22 +34,22 @@ Wenn Sie Fragen oder Vorschlaege zum lokalisierten UltraPlan haben, eroeffnen Si
 
 ## Funktionsweise
 
-UltraPlan bietet zwei Betriebsmodi:
+UltraPlan bietet zwei Expertenrollen für verschiedene Aufgabentypen:
 
-### Automatischer Modus
-Analysiert automatisch die Aufgabenkomplexitaet (Score 4-12) und leitet an verschiedene Strategien weiter:
+### Code-Experte
+Ein Multi-Agenten-Workflow für Programmierprojekte:
+1. Einsatz von bis zu 5 parallelen Agenten zur gleichzeitigen Erkundung der Codebasis (Architektur, Dateiidentifikation, Risikobewertung usw.)
+2. Optional: Einsatz eines Recherche-Agenten zur Untersuchung von Branchenlösungen via webSearch
+3. Synthese aller Agenten-Erkenntnisse zu einem detaillierten Implementierungsplan
+4. Einsatz eines Review-Agenten zur Überprüfung des Plans aus mehreren Perspektiven
+5. Umsetzung nach Plangenehmigung
+6. Automatische Zusammenstellung eines Code Review Teams zur Validierung der Codequalität nach der Implementierung
 
-| Route | Score | Strategie |
-|-------|-------|-----------|
-| Route A | 4-6 | Leichtgewichtige Planung mit direkter Code-Erkundung |
-| Route B | 7-9 | Planung mit Strukturdiagrammen (Mermaid / ASCII) |
-| Route C | 10-12 | Multi-Agenten-Erkundung + Review-Kreislauf |
-
-### Erzwungener Modus
-Aktiviert direkt den vollstaendigen Route-C-Multi-Agenten-Workflow:
-1. Bis zu 5 parallele Agenten einsetzen, die gleichzeitig die Codebasis erkunden (Architektur, Dateiidentifikation, Risikobewertung usw.)
-2. Optional einen Recherche-Agenten einsetzen, um ueber webSearch Branchenloesungen zu untersuchen
-3. Alle Agenten-Erkenntnisse zu einem detaillierten Implementierungsplan zusammenfassen
-4. Einen Review-Agenten einsetzen, der den Plan aus mehreren Perspektiven prueft
-5. Den Plan nach Genehmigung ausfuehren
-6. Nach der Implementierung automatisch ein Code Review Team zusammenstellen, um die Codequalitaet zu validieren
+### Recherche-Experte
+Ein Multi-Agenten-Workflow für Recherche- und Analyseaufgaben:
+1. Einsatz mehrerer paralleler Agenten für Recherchen aus verschiedenen Dimensionen (Branchenanalyse, wissenschaftliche Arbeiten, Nachrichtenartikel, Wettbewerbsanalyse usw.)
+2. Beauftragung eines Agenten zur Synthese der Ziellösung bei gleichzeitiger Überprüfung der Seriosität und Glaubwürdigkeit gesammelter Quellen
+3. Optional: Einsatz eines Agenten zur Erstellung eines Produkt-Demos (HTML, Markdown usw.)
+4. Synthese aller Agenten-Erkenntnisse zu einem umfassenden Implementierungsplan
+5. Einsatz mehrerer Review-Agenten zur Überprüfung des Plans aus verschiedenen Rollen und Perspektiven
+6. Umsetzung nach Plangenehmigung

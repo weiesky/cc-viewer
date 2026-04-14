@@ -5,8 +5,8 @@
 UltraPlan is cc-viewer's **localized implementation** of Claude Code's native `/ultraplan` command. It allows you to use the full capabilities of `/ultraplan` in your local environment **without needing to launch Claude's official remote service**, guiding Claude Code to accomplish complex planning and implementation tasks using **multi-agent collaboration**.
 
 Compared to regular Plan mode or Agent Team, UltraPlan can:
-- Automatically assess task complexity and select the optimal planning strategy
-- Deploy multiple parallel agents to explore the codebase from different dimensions
+- Offer **Code Expert** and **Research Expert** roles tailored for different task types
+- Deploy multiple parallel agents to explore the codebase or conduct research from different dimensions
 - Incorporate external research (webSearch) for industry best practices
 - Automatically assemble a Code Review Team after plan execution for code review
 - Form a complete **Plan → Execute → Review → Fix** closed loop
@@ -34,22 +34,22 @@ If you have any questions or suggestions about the localized UltraPlan, feel fre
 
 ## How It Works
 
-UltraPlan offers two operating modes:
+UltraPlan offers two expert roles, tailored for different types of tasks:
 
-### Auto Mode
-Automatically analyzes task complexity (score 4-12) and routes to different strategies:
-
-| Route | Score | Strategy |
-|-------|-------|----------|
-| Route A | 4-6 | Lightweight planning with direct code exploration |
-| Route B | 7-9 | Planning with structural diagrams (Mermaid / ASCII) |
-| Route C | 10-12 | Multi-agent exploration + review closed loop |
-
-### Forced Mode
-Directly activates the full Route C multi-agent workflow:
+### Code Expert
+A multi-agent collaboration workflow designed for programming projects:
 1. Deploy up to 5 parallel agents to explore the codebase simultaneously (architecture, file identification, risk assessment, etc.)
 2. Optionally deploy a research agent to investigate industry solutions via webSearch
 3. Synthesize all agent findings into a detailed implementation plan
 4. Deploy a review agent to scrutinize the plan from multiple perspectives
 5. Execute the plan once approved
 6. Automatically assemble a Code Review Team to validate code quality after implementation
+
+### Research Expert
+A multi-agent collaboration workflow designed for research and analysis tasks:
+1. Deploy multiple parallel agents to research from different dimensions (industry surveys, academic papers, news articles, competitor analysis, etc.)
+2. Assign an agent to synthesize the target solution while verifying the rigor and credibility of gathered papers, news, and research reports
+3. Optionally deploy an agent to create a product demo (HTML, Markdown, etc.)
+4. Synthesize all agent findings into a comprehensive implementation plan
+5. Deploy multiple review agents to scrutinize the plan from different roles and perspectives
+6. Execute the plan once approved
