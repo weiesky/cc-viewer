@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.152 (2026-04-14)
+
+- Feat: `--log-dir <path>` CLI option — specify custom JSONL log storage directory at startup (alternative to CCV_LOG_DIR env)
+- Feat: `--no-open` CLI option — prevent auto-opening browser on startup, server still runs normally
+
 ## 1.6.151 (2026-04-14)
 
 - Feat: UltraPlan "强制执行" toggle default to ON

@@ -405,3 +405,55 @@ describe('arg parsing', () => {
     assert.ok(!r.stdout.includes('-c [path]'), 'help should not mention old -c [path]');
   });
 });
+
+// ─── --no-open ───
+
+describe('ccv --no-open', () => {
+  it('--no-open appears in help text', () => {
+    const r = runCli(['--help']);
+    assert.equal(r.exitCode, 0);
+    assert.ok(r.stdout.includes('--no-open'), 'help text should document --no-open');
+  });
+
+  it('--no-open is stripped before --help (does not error)', () => {
+    const r = runCli(['--no-open', '--help']);
+    assert.equal(r.exitCode, 0);
+    assert.ok(r.stdout.length > 0, 'should print help');
+  });
+});
+
+// ─── --log-dir ───
+
+describe('ccv --log-dir', () => {
+  it('--log-dir appears in help text', () => {
+    const r = runCli(['--help']);
+    assert.equal(r.exitCode, 0);
+    assert.ok(r.stdout.includes('--log-dir'), 'help text should document --log-dir');
+  });
+
+  it('--log-dir without value prints error and exits non-zero', () => {
+    const r = runCli(['--log-dir']);
+    assert.notEqual(r.exitCode, 0, 'should fail without path argument');
+    assert.ok(
+      r.stderr.includes('--log-dir requires') || r.stdout.includes('--log-dir requires'),
+      'should mention --log-dir requires a path'
+    );
+  });
+
+  it('--log-dir with flag-like value prints error', () => {
+    const r = runCli(['--log-dir', '--version']);
+    assert.notEqual(r.exitCode, 0, 'should fail when value looks like a flag');
+  });
+
+  it('--log-dir is stripped from args before --help', () => {
+    const fakeHome = resolve(tmpdir(), `ccv-test-logdir-${Date.now()}`);
+    mkdirSync(fakeHome, { recursive: true });
+    const logDir = join(fakeHome, 'custom-logs');
+    const r = runCli(['--log-dir', logDir, '--help'], {
+      env: { HOME: fakeHome },
+    });
+    assert.equal(r.exitCode, 0);
+    assert.ok(r.stdout.length > 0, 'should print help after consuming --log-dir');
+    rmSync(fakeHome, { recursive: true, force: true });
+  });
+});

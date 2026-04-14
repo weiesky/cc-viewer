@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { t } from './i18n.js';
-import { INJECT_IMPORT, resolveCliPath, resolveNativePath, resolveNpmClaudePath, buildShellCandidates } from './findcc.js';
+import { INJECT_IMPORT, resolveCliPath, resolveNativePath, resolveNpmClaudePath, buildShellCandidates, setLogDir, LOG_DIR } from './findcc.js';
 import { ensureHooks } from './lib/ensure-hooks.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -259,7 +259,7 @@ async function runProxyCommand(args) {
 
 // ensureHooks() extracted to lib/ensure-hooks.js (shared with electron/tab-worker.js)
 
-async function runCliMode(extraClaudeArgs = [], cwd) {
+async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   // 首先尝试 npm 版本（包括 nvm 安装），找不到再尝试 native 版本
   let claudePath = resolveNpmClaudePath();
   let isNpmVersion = !!claudePath;
@@ -328,11 +328,13 @@ async function runCliMode(extraClaudeArgs = [], cwd) {
   // 4. 自动打开浏览器
   const protocol = serverMod.getProtocol();
   const url = `${protocol}://127.0.0.1:${port}`;
-  try {
-    const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-    const { execSync } = await import('node:child_process');
-    execSync(`${cmd} ${url}`, { stdio: 'ignore', timeout: 5000 });
-  } catch {}
+  if (!noOpen) {
+    try {
+      const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+      const { execSync } = await import('node:child_process');
+      execSync(`${cmd} ${url}`, { stdio: 'ignore', timeout: 5000 });
+    } catch {}
+  }
 
   console.log(`CC Viewer:`);
   console.log(`  ➜ Local:   ${url}`);
@@ -351,7 +353,7 @@ async function runCliMode(extraClaudeArgs = [], cwd) {
   process.on('SIGTERM', cleanup);
 }
 
-async function runSdkMode(extraClaudeArgs = [], cwd) {
+async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   // 检查 SDK 是否可用
   let sdkManager;
   try {
@@ -359,7 +361,7 @@ async function runSdkMode(extraClaudeArgs = [], cwd) {
     if (!sdkManager.isSdkAvailable()) throw new Error('query not available');
   } catch {
     console.warn('[CC Viewer] Agent SDK not available, falling back to PTY mode (-C)');
-    return runCliMode(extraClaudeArgs, cwd);
+    return runCliMode(extraClaudeArgs, cwd, noOpen);
   }
 
   const workingDir = cwd || process.cwd();
@@ -415,11 +417,13 @@ async function runSdkMode(extraClaudeArgs = [], cwd) {
   // 自动打开浏览器
   const protocol = serverMod.getProtocol();
   const url = `${protocol}://127.0.0.1:${port}`;
-  try {
-    const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-    const { execSync } = await import('node:child_process');
-    execSync(`${cmd} ${url}`, { stdio: 'ignore', timeout: 5000 });
-  } catch {}
+  if (!noOpen) {
+    try {
+      const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+      const { execSync } = await import('node:child_process');
+      execSync(`${cmd} ${url}`, { stdio: 'ignore', timeout: 5000 });
+    } catch {}
+  }
 
   console.log(`CC Viewer (SDK mode):`);
   console.log(`  ➜ Local:   ${url}`);
@@ -438,7 +442,7 @@ async function runSdkMode(extraClaudeArgs = [], cwd) {
   process.on('SIGTERM', cleanup);
 }
 
-async function runCliModeWorkspaceSelector(extraClaudeArgs = []) {
+async function runCliModeWorkspaceSelector(extraClaudeArgs = [], noOpen = false) {
   // 首先尝试 npm 版本（包括 nvm 安装），找不到再尝试 native 版本
   let claudePath = resolveNpmClaudePath();
   let isNpmVersion = !!claudePath;
@@ -477,11 +481,13 @@ async function runCliModeWorkspaceSelector(extraClaudeArgs = []) {
   // 自动打开浏览器
   const wsProtocol = serverMod.getProtocol();
   const url = `${wsProtocol}://127.0.0.1:${port}`;
-  try {
-    const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-    const { execSync } = await import('node:child_process');
-    execSync(`${cmd} ${url}`, { stdio: 'ignore', timeout: 5000 });
-  } catch {}
+  if (!noOpen) {
+    try {
+      const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+      const { execSync } = await import('node:child_process');
+      execSync(`${cmd} ${url}`, { stdio: 'ignore', timeout: 5000 });
+    } catch {}
+  }
 
   console.log(`CC Viewer (Workspace):`);
   console.log(`  ➜ Local:   ${url}`);
@@ -504,6 +510,34 @@ async function runCliModeWorkspaceSelector(extraClaudeArgs = []) {
 // === 主逻辑 ===
 
 const args = process.argv.slice(2);
+
+// --- CCV 专属参数提取（必须在动态 import 之前） ---
+let noOpen = false;
+
+// 提取 --log-dir <path>
+const logDirIdx = args.indexOf('--log-dir');
+if (logDirIdx !== -1) {
+  const logDirVal = args[logDirIdx + 1];
+  if (logDirVal && !logDirVal.startsWith('-')) {
+    const prevDir = LOG_DIR;
+    setLogDir(logDirVal);
+    if (LOG_DIR === prevDir) {
+      console.error(`Error: --log-dir path rejected (must be under home directory or /tmp/): ${logDirVal}`);
+      process.exit(1);
+    }
+    args.splice(logDirIdx, 2);
+  } else {
+    console.error('Error: --log-dir requires a path argument');
+    process.exit(1);
+  }
+}
+
+// 提取 --no-open
+const noOpenIdx = args.indexOf('--no-open');
+if (noOpenIdx !== -1) {
+  noOpen = true;
+  args.splice(noOpenIdx, 1);
+}
 
 // ccv 自有命令判断
 const isLogger = args.includes('-logger');
@@ -680,14 +714,14 @@ if (args[0] === 'run') {
   // SDK 模式（显式 -SDK 切换）
   const claudeArgs = args.filter(a => a !== '-SDK' && a !== '--sdk')
     .map(a => a === '--d' ? '--dangerously-skip-permissions' : a === '--ad' ? '--allow-dangerously-skip-permissions' : a);
-  runSdkMode(claudeArgs, process.cwd()).catch(err => {
+  runSdkMode(claudeArgs, process.cwd(), noOpen).catch(err => {
     console.error('SDK mode error:', err);
     process.exit(1);
   });
 } else {
   // PTY 模式（默认）
   const claudeArgs = args.map(a => a === '--d' ? '--dangerously-skip-permissions' : a === '--ad' ? '--allow-dangerously-skip-permissions' : a);
-  runCliMode(claudeArgs, process.cwd()).catch(err => {
+  runCliMode(claudeArgs, process.cwd(), noOpen).catch(err => {
     console.error('CLI mode error:', err);
     process.exit(1);
   });
