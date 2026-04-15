@@ -5,6 +5,7 @@
 - Feat: custom user name and avatar via CLI — `--user-name <name>` and `--user-avatar <path|url>` override macOS system identity in chat UI
 - Feat: avatar supports online URLs (http/https) and local image files (png/jpg/jpeg/gif/webp, ≤2MB)
 - Feat: i18n — `cli.userNameRequired`, `cli.userAvatarRequired` with 18 languages; help text updated
+- Fix: UltraPlan send — simplify by reusing input textarea + handleInputSend instead of direct WebSocket with retry
 
 ## 1.6.158 (2026-04-15)
 

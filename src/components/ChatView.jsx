@@ -1392,32 +1392,16 @@ class ChatView extends React.Component {
     const assembled = buildLocalUltraplan(userInput, this.state.ultraplanVariant);
     if (!assembled) return;
 
-    const doSend = () => {
-      if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
-        this._inputWs.send(JSON.stringify({ type: 'input', data: `\x1b[200~${assembled}\x1b[201~\r` }));
-        this.setState({ ultraplanModalOpen: false, ultraplanPrompt: '', ultraplanVariant: 'codeExpert', ultraplanFiles: [] });
-        return true;
-      }
-      return false;
-    };
-
-    // 立即尝试发送
-    if (doSend()) return;
-    // WebSocket 未就绪：尝试重连后重试（最多 3 次，每次 500ms）
-    let retries = 0;
-    const retry = () => {
-      if (this._unmounted) return;
-      if (doSend()) return;
-      if (++retries < 3) {
-        setTimeout(retry, 500);
-      } else {
-        message.error(t('ui.sendFailed') || 'Send failed, please try again');
-      }
-    };
-    if (!this._inputWs || this._inputWs.readyState === WebSocket.CLOSED) {
-      this.connectInputWs();
+    // 复用对话输入框的发送方式：写入 textarea → 触发 handleInputSend
+    const textarea = this._inputRef.current;
+    if (textarea) {
+      textarea.value = assembled;
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+      this.setState({ inputEmpty: false, ultraplanModalOpen: false, ultraplanPrompt: '', ultraplanVariant: 'codeExpert', ultraplanFiles: [] }, () => {
+        this.handleInputSend();
+      });
     }
-    setTimeout(retry, 500);
   };
 
   _handleUltraplanUpload = () => {
