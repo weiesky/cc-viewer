@@ -8,7 +8,6 @@
 - Feat: REST API `/api/external/{roots,scopes,sessions,events}` — JSON listings + SSE live-tail for external sessions
 - Feat: UI at `?view=external` — 3-pane browser (scope sidebar / session list with role filter / raw JSON entry timeline); opt-in, no behaviour change without config
 - Feat: `src/i18n.js` — 14 new keys across 17 languages under `external.*` namespace
-- Docs: `docs/ccv-external-integration-options.md` archives rejected plugin-hook and UI-plugin-system designs for future reference
 
 ## 1.6.157 (2026-04-15)
 

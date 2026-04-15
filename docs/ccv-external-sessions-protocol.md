@@ -107,19 +107,21 @@ Producers don't have to use ccv's proxy — they can write the files themselves.
 | `logFile` | string | yes | Relative path within `<session-id>/`. Must not be absolute, must not contain `..`. Typically `"log.jsonl"`. |
 | `startedAt` | ISO 8601 | yes | Used for session-list sort (desc). |
 | `endedAt` | ISO 8601 / null | yes | `null` means session is live; UI shows a live tag. Proxy fills this on exit. |
-| `parentSessionId` | string / null | no | Reserved for sub-agent linkage (ccv doesn't follow it yet in 1.6.158). |
-| `meta` | array | no | See below. Reserved for future MetadataPanel. |
+| `parentSessionId` | string / null | no | v1 reader stores but does not consume this field. |
+| `meta` | array | no | Forward-compat field. v1 reader does not render `meta`. See below for shape. |
 | `updatedAt` | ISO 8601 | no | Informational. |
 
 **Lifecycle invariant**: `session.json` is written **twice** at minimum — once at session start (skeleton with `endedAt: null`), once at end (`endedAt` filled). No intermediate writes required. Producers may add writes to refresh `meta`, but ccv doesn't depend on mid-session updates.
 
 ### meta entries
 
-Reserved format for future MetadataPanel rendering. ccv 1.6.158 **does not render meta** but producers should populate it per this shape so no migration is needed when rendering lands:
+Forward-compat field. v1 reader does **not** render meta. Producers may populate it so future readers can display without migration. Shape:
 
 ```json
 {"label": "Label", "value": "string or array", "type": "text|tag|link|code", "href": "optional"}
 ```
+
+`type` values are advisory in v1; future readers may add new types.
 
 ## Runtime: `CCV_EXTERNAL_SESSION` (writer env)
 
@@ -151,7 +153,7 @@ Producers that don't use ccv's proxy must write session.json + log.jsonl themsel
 
 ## Runtime: `CCV_EXTERNAL_ROOTS` (reader env)
 
-Comma-separated list of absolute paths. Supports `~` and `$HOME` expansion.
+Comma-separated list of absolute paths. Supports `~` and `$HOME` expansion. Env is the only v1 input — no preferences.json or auto-discovery.
 
 ```bash
 export CCV_EXTERNAL_ROOTS="$HOME/.lia/ccv-roots,/tmp/ccv-external-dev"
@@ -159,12 +161,12 @@ ccv
 ```
 
 ccv on startup:
-1. Loads roots (env takes precedence over `preferences.json` → `externalRoots: []`)
+1. Parses the env into absolute-path roots
 2. `fs.watch(root, {recursive: true})` on each root
 3. Exposes REST + SSE API (below)
 4. The UI at `?view=external` becomes usable
 
-When no roots are configured, none of the above activates — ccv behaves identically to prior versions.
+When the env is absent or empty, none of the above activates — ccv behaves identically to prior versions.
 
 ## REST API
 
@@ -210,7 +212,7 @@ Returns 400 on bad params, 404 on missing log.
 
 - **Path whitelisting**: `provider`/`scope`/`session` query params are validated against the slug regex. Invalid → 400.
 - **Path traversal defense**: `session.json`'s `logFile` field must be a relative path within its `sessionDir`. Absolute paths or `..` segments → 404.
-- **Root whitelisting**: Only roots explicitly in `CCV_EXTERNAL_ROOTS` / `preferences.externalRoots` are scanned. No auto-discovery.
+- **Root whitelisting**: Only roots explicitly in `CCV_EXTERNAL_ROOTS` are scanned. No auto-discovery.
 - **Third-party producers**: ccv executes no code from external roots. It only reads JSON and appends-only log files. Malicious JSON content in `meta` fields is text — not rendered as HTML.
 
 ## UI entry
@@ -228,10 +230,10 @@ Add `?view=external` to the ccv URL (optionally with `root=`, `provider=`, `scop
 └─────────────────┴──────────────────────────────┴───────────────────┘
 ```
 
-Out of scope for v1 UI (planned for follow-up):
-- Rendering `meta[]` (MetadataPanel)
-- `parentSessionId` navigation to sub-agents
-- Cross-session grep
+Out of scope for v1 UI:
+- `meta[]` rendering
+- Navigation via `parentSessionId`
+- Cross-session search
 
 ## Example: end-to-end (producer = lia-like)
 
@@ -273,4 +275,3 @@ CCV_EXTERNAL_ROOTS="$HOME/.lia/ccv-roots" ccv
 - Server routes: `server.js` (`/api/external/*`)
 - Frontend: `src/components/external/ExternalSessionsView.jsx`
 - Tests: `test/external-session-writer.test.js`, `test/external-sessions.test.js`
-- Decision history: `docs/ccv-external-integration-options.md` (archived path 1/2 options)

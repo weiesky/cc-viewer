@@ -75,11 +75,8 @@ describe('external-sessions', () => {
     assert.deepEqual(parseRootsEnv(undefined), []);
   });
 
-  test('loadRoots 合并 env + prefs 并去重', () => {
-    const roots = loadRoots({
-      envValue: '/a,/b',
-      preferenceRoots: ['/b', '/c'],
-    });
+  test('loadRoots 只认 env 并去重', () => {
+    const roots = loadRoots({ envValue: '/a,/b,/a,/c' });
     assert.deepEqual(roots.map(r => r.path), ['/a', '/b', '/c']);
     assert.deepEqual(roots.map(r => r.index), [0, 1, 2]);
   });

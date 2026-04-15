@@ -202,7 +202,6 @@ function _startExtWatch(logFile) {
 function _initExternalRoots() {
   _externalRoots = loadExternalRoots({
     envValue: process.env.CCV_EXTERNAL_ROOTS,
-    preferenceRoots: [],
   });
   if (_externalRoots.length === 0) return;
   try {
