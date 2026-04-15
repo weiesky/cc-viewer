@@ -6369,6 +6369,123 @@ const i18nData = {
     "th": "รายละเอียดผลลัพธ์",
     "tr": "Sonuç detayları",
     "uk": "Деталі результату"
+  },
+  "external.title": {
+    "zh": "外部会话", "en": "External Sessions", "zh-TW": "外部會話",
+    "ko": "외부 세션", "ja": "外部セッション", "de": "Externe Sitzungen",
+    "es": "Sesiones externas", "fr": "Sessions externes", "it": "Sessioni esterne",
+    "da": "Eksterne sessioner", "pl": "Sesje zewnętrzne", "ru": "Внешние сессии",
+    "ar": "الجلسات الخارجية", "no": "Eksterne økter", "pt-BR": "Sessões externas",
+    "th": "เซสชันภายนอก", "tr": "Harici oturumlar", "uk": "Зовнішні сесії"
+  },
+  "external.refresh": {
+    "zh": "刷新", "en": "Refresh", "zh-TW": "刷新", "ko": "새로 고침", "ja": "更新",
+    "de": "Aktualisieren", "es": "Actualizar", "fr": "Actualiser", "it": "Aggiorna",
+    "da": "Opdater", "pl": "Odśwież", "ru": "Обновить", "ar": "تحديث", "no": "Oppdater",
+    "pt-BR": "Atualizar", "th": "รีเฟรช", "tr": "Yenile", "uk": "Оновити"
+  },
+  "external.close": {
+    "zh": "关闭", "en": "Close", "zh-TW": "關閉", "ko": "닫기", "ja": "閉じる",
+    "de": "Schließen", "es": "Cerrar", "fr": "Fermer", "it": "Chiudi", "da": "Luk",
+    "pl": "Zamknij", "ru": "Закрыть", "ar": "إغلاق", "no": "Lukk", "pt-BR": "Fechar",
+    "th": "ปิด", "tr": "Kapat", "uk": "Закрити"
+  },
+  "external.noRoots": {
+    "zh": "未配置外部 root（CCV_EXTERNAL_ROOTS）",
+    "en": "No external roots configured (CCV_EXTERNAL_ROOTS)",
+    "zh-TW": "未配置外部 root（CCV_EXTERNAL_ROOTS）",
+    "ko": "외부 루트 미구성 (CCV_EXTERNAL_ROOTS)",
+    "ja": "外部ルート未設定 (CCV_EXTERNAL_ROOTS)",
+    "de": "Keine externen Roots konfiguriert (CCV_EXTERNAL_ROOTS)",
+    "es": "Sin roots externos configurados (CCV_EXTERNAL_ROOTS)",
+    "fr": "Aucune racine externe configurée (CCV_EXTERNAL_ROOTS)",
+    "it": "Nessuna root esterna configurata (CCV_EXTERNAL_ROOTS)",
+    "da": "Ingen eksterne rødder konfigureret (CCV_EXTERNAL_ROOTS)",
+    "pl": "Brak skonfigurowanych roots zewnętrznych (CCV_EXTERNAL_ROOTS)",
+    "ru": "Внешние корни не настроены (CCV_EXTERNAL_ROOTS)",
+    "ar": "لا توجد جذور خارجية مُكوَّنة (CCV_EXTERNAL_ROOTS)",
+    "no": "Ingen eksterne røtter konfigurert (CCV_EXTERNAL_ROOTS)",
+    "pt-BR": "Nenhuma raiz externa configurada (CCV_EXTERNAL_ROOTS)",
+    "th": "ไม่ได้กำหนด root ภายนอก (CCV_EXTERNAL_ROOTS)",
+    "tr": "Harici root yapılandırılmamış (CCV_EXTERNAL_ROOTS)",
+    "uk": "Зовнішні корені не налаштовані (CCV_EXTERNAL_ROOTS)"
+  },
+  "external.noScopes": {
+    "zh": "无 scope", "en": "No scopes", "zh-TW": "無 scope", "ko": "범위 없음",
+    "ja": "スコープなし", "de": "Keine Scopes", "es": "Sin ámbitos", "fr": "Aucune portée",
+    "it": "Nessun ambito", "da": "Ingen scopes", "pl": "Brak zakresów", "ru": "Нет областей",
+    "ar": "لا نطاقات", "no": "Ingen scopes", "pt-BR": "Sem escopos",
+    "th": "ไม่มี scope", "tr": "Kapsam yok", "uk": "Немає областей"
+  },
+  "external.noSessions": {
+    "zh": "无 session", "en": "No sessions", "zh-TW": "無 session", "ko": "세션 없음",
+    "ja": "セッションなし", "de": "Keine Sitzungen", "es": "Sin sesiones", "fr": "Aucune session",
+    "it": "Nessuna sessione", "da": "Ingen sessioner", "pl": "Brak sesji", "ru": "Нет сессий",
+    "ar": "لا جلسات", "no": "Ingen økter", "pt-BR": "Sem sessões",
+    "th": "ไม่มีเซสชัน", "tr": "Oturum yok", "uk": "Немає сесій"
+  },
+  "external.selectScope": {
+    "zh": "请选择一个 scope", "en": "Select a scope", "zh-TW": "請選擇一個 scope",
+    "ko": "범위를 선택하세요", "ja": "スコープを選択してください", "de": "Scope auswählen",
+    "es": "Selecciona un ámbito", "fr": "Sélectionnez une portée", "it": "Seleziona un ambito",
+    "da": "Vælg et scope", "pl": "Wybierz zakres", "ru": "Выберите область",
+    "ar": "اختر نطاقًا", "no": "Velg et scope", "pt-BR": "Selecione um escopo",
+    "th": "เลือก scope", "tr": "Kapsam seçin", "uk": "Виберіть область"
+  },
+  "external.selectSession": {
+    "zh": "请选择一个 session", "en": "Select a session", "zh-TW": "請選擇一個 session",
+    "ko": "세션을 선택하세요", "ja": "セッションを選択してください", "de": "Sitzung auswählen",
+    "es": "Selecciona una sesión", "fr": "Sélectionnez une session", "it": "Seleziona una sessione",
+    "da": "Vælg en session", "pl": "Wybierz sesję", "ru": "Выберите сессию",
+    "ar": "اختر جلسة", "no": "Velg en økt", "pt-BR": "Selecione uma sessão",
+    "th": "เลือกเซสชัน", "tr": "Oturum seçin", "uk": "Виберіть сесію"
+  },
+  "external.noEntries": {
+    "zh": "暂无条目", "en": "No entries yet", "zh-TW": "暫無條目", "ko": "항목 없음",
+    "ja": "エントリなし", "de": "Noch keine Einträge", "es": "Sin entradas aún",
+    "fr": "Pas encore d'entrées", "it": "Nessuna voce ancora", "da": "Ingen poster endnu",
+    "pl": "Brak wpisów", "ru": "Пока нет записей", "ar": "لا إدخالات بعد",
+    "no": "Ingen oppføringer ennå", "pt-BR": "Sem entradas ainda", "th": "ยังไม่มีรายการ",
+    "tr": "Henüz giriş yok", "uk": "Записів ще немає"
+  },
+  "external.loading": {
+    "zh": "加载中…", "en": "Loading…", "zh-TW": "載入中…", "ko": "로드 중…", "ja": "読み込み中…",
+    "de": "Wird geladen…", "es": "Cargando…", "fr": "Chargement…", "it": "Caricamento…",
+    "da": "Indlæser…", "pl": "Ładowanie…", "ru": "Загрузка…", "ar": "جاري التحميل…",
+    "no": "Laster…", "pt-BR": "Carregando…", "th": "กำลังโหลด…", "tr": "Yükleniyor…", "uk": "Завантаження…"
+  },
+  "external.rawJson": {
+    "zh": "原始 JSON", "en": "Raw JSON", "zh-TW": "原始 JSON", "ko": "원시 JSON",
+    "ja": "生 JSON", "de": "Roh-JSON", "es": "JSON en bruto", "fr": "JSON brut",
+    "it": "JSON grezzo", "da": "Rå JSON", "pl": "Surowy JSON", "ru": "Сырой JSON",
+    "ar": "JSON خام", "no": "Rå JSON", "pt-BR": "JSON bruto", "th": "JSON ดิบ",
+    "tr": "Ham JSON", "uk": "Сирий JSON"
+  },
+  "external.roleAll": {
+    "zh": "全部", "en": "All", "zh-TW": "全部", "ko": "전체", "ja": "すべて",
+    "de": "Alle", "es": "Todos", "fr": "Tous", "it": "Tutti", "da": "Alle",
+    "pl": "Wszystkie", "ru": "Все", "ar": "الكل", "no": "Alle", "pt-BR": "Todos",
+    "th": "ทั้งหมด", "tr": "Tümü", "uk": "Усі"
+  },
+  "external.roleWorker": {
+    "zh": "Worker", "en": "Worker", "zh-TW": "Worker", "ko": "Worker", "ja": "Worker",
+    "de": "Worker", "es": "Worker", "fr": "Worker", "it": "Worker", "da": "Worker",
+    "pl": "Worker", "ru": "Worker", "ar": "Worker", "no": "Worker", "pt-BR": "Worker",
+    "th": "Worker", "tr": "Worker", "uk": "Worker"
+  },
+  "external.roleCounsel": {
+    "zh": "Counsel", "en": "Counsel", "zh-TW": "Counsel", "ko": "Counsel", "ja": "Counsel",
+    "de": "Counsel", "es": "Counsel", "fr": "Counsel", "it": "Counsel", "da": "Counsel",
+    "pl": "Counsel", "ru": "Counsel", "ar": "Counsel", "no": "Counsel", "pt-BR": "Counsel",
+    "th": "Counsel", "tr": "Counsel", "uk": "Counsel"
+  },
+  "external.streamError": {
+    "zh": "流错误", "en": "Stream error", "zh-TW": "流錯誤", "ko": "스트림 오류",
+    "ja": "ストリームエラー", "de": "Stream-Fehler", "es": "Error de transmisión",
+    "fr": "Erreur de flux", "it": "Errore stream", "da": "Stream-fejl",
+    "pl": "Błąd strumienia", "ru": "Ошибка потока", "ar": "خطأ في البث",
+    "no": "Strømfeil", "pt-BR": "Erro de fluxo", "th": "ข้อผิดพลาดสตรีม",
+    "tr": "Akış hatası", "uk": "Помилка потоку"
   }
 };
 

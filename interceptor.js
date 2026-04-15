@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, basename } from 'node:path';
 import { LOG_DIR } from './findcc.js';
 import { assembleStreamMessage, cleanupTempFiles, findRecentLog, isAnthropicApiPath, isMainAgentRequest, rotateLogFile } from './lib/interceptor-core.js';
+import { getExternalSession, writeSessionSkeleton } from './lib/external-session-writer.js';
 
 
 
@@ -148,7 +149,16 @@ let _teamName = null;
 // 初始化日志文件路径（异步，支持用户交互）
 // 工作区模式下延迟到选择工作区后再初始化
 let _newLogFile, _logDir, _projectName;
-if (process.env.CCV_WORKSPACE_MODE === '1') {
+// External session mode: 按 CCV External Sessions Protocol 写入指定目录
+// docs/ccv-external-sessions-protocol.md
+const _extSession = getExternalSession();
+if (_extSession) {
+  _newLogFile = _extSession.logFile;
+  _logDir = _extSession.sessionDir;
+  _projectName = _extSession.sessionId;
+  try { mkdirSync(_logDir, { recursive: true }); } catch {}
+  writeSessionSkeleton();
+} else if (process.env.CCV_WORKSPACE_MODE === '1') {
   _newLogFile = '';
   _logDir = '';
   _projectName = '';
@@ -168,6 +178,7 @@ if (process.env.CCV_WORKSPACE_MODE === '1') {
 let LOG_FILE = _newLogFile;
 
 const _initPromise = (async () => {
+  if (_extSession) return; // External session: protocol-dictated path, skip resume interaction
   if (!_logDir || !_projectName) return; // 工作区模式下跳过
   if (_isTeammate) return; // Teammate 已在上方同步初始化，跳过 async resume 流程
   try {
@@ -237,6 +248,8 @@ const MAX_LOG_SIZE = 300 * 1024 * 1024; // 300MB
 function checkAndRotateLogFile() {
   // Teammate 不做日志轮转，由 leader 负责
   if (_isTeammate) return;
+  // External session: 协议要求单一 log.jsonl，不轮转
+  if (_extSession) return;
   try {
     if (!existsSync(LOG_FILE) || statSync(LOG_FILE).size < MAX_LOG_SIZE) return;
   } catch { return; }
