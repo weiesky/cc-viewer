@@ -44,6 +44,15 @@ import { getUserProfile } from './lib/user-profile.js';
 import { getGitDiffs } from './lib/git-diff.js';
 import { CONTEXT_WINDOW_FILE, readModelContextSize, buildContextWindowEvent, getContextSizeForModel } from './lib/context-watcher.js';
 import { watchLogFile, startWatching, getWatchedFiles, sendEventToClients, sendToClients } from './lib/log-watcher.js';
+import { markSessionEnded } from './lib/external-session-writer.js';
+import {
+  loadRoots as loadExternalRoots,
+  scanProviders as scanExternalProviders,
+  listScopes as listExternalScopes,
+  listSessions as listExternalSessions,
+  resolveLogFile as resolveExternalLogFile,
+  watchExternalRoots,
+} from './lib/external-sessions.js';
 import { isMainAgentEntry, extractCachedContent } from './lib/kv-cache-analyzer.js';
 import { listLocalLogs, deleteLogFiles, mergeLogFiles } from './lib/log-management.js';
 import { countLogEntries, streamRawEntriesAsync, readPagedEntries } from './lib/log-stream.js';
@@ -147,6 +156,7 @@ export function initPostLaunch() {
   watchLogFile(_logWatcherOpts(LOG_FILE));
   if (!statsWorker) startStatsWorker();
   startStreamingStatusTimer();
+  _initExternalRoots();
 }
 
 // Global POST body size limit (10MB) to prevent OOM from malicious/buggy clients
@@ -167,6 +177,45 @@ let clients = [];
 let server;
 let actualPort = 0;
 let serverProtocol = 'http';
+
+// External Sessions Protocol — see docs/ccv-external-sessions-protocol.md
+let _externalRoots = [];
+let _externalRootsStopWatch = null;
+const _externalSseClients = new Map();     // logFile -> [res]
+const _externalWatchStarted = new Set();   // logFile already being watched
+function _getExtClients(logFile) {
+  if (!_externalSseClients.has(logFile)) _externalSseClients.set(logFile, []);
+  return _externalSseClients.get(logFile);
+}
+function _startExtWatch(logFile) {
+  if (_externalWatchStarted.has(logFile)) return;
+  _externalWatchStarted.add(logFile);
+  watchLogFile({
+    logFile,
+    clients: _getExtClients(logFile),
+    getClaudePid: () => null,
+    runParallelHook: () => Promise.resolve(),
+    notifyStatsWorker: () => {},
+    getLogFile: () => logFile,
+  });
+}
+function _initExternalRoots() {
+  _externalRoots = loadExternalRoots({
+    envValue: process.env.CCV_EXTERNAL_ROOTS,
+  });
+  if (_externalRoots.length === 0) return;
+  try {
+    _externalRootsStopWatch = watchExternalRoots(_externalRoots, ({ rootIndex, relPath }) => {
+      // relPath 形如: lia/scopes/wi-150/sessions/worker-xxx/session.json
+      const parts = String(relPath).split(/[\/\\]/);
+      // log.jsonl 的变化由 watchLogFile 处理，这里只广播元数据变化
+      if (parts[parts.length - 1] === 'log.jsonl') return;
+      sendEventToClients(clients, 'external:changed', { rootIndex, relPath });
+    });
+  } catch (err) {
+    console.error('[CC Viewer] External roots watch failed:', err.message);
+  }
+}
 // Stats Worker 实例
 let statsWorker = null;
 
@@ -942,6 +991,99 @@ async function handleRequest(req, res) {
     res.end(JSON.stringify({ projectName: _projectName || '' }));
     return;
   }
+
+  // ─── CCV External Sessions Protocol v1 ─────────────────────────
+  // Spec: docs/ccv-external-sessions-protocol.md
+  if (url === '/api/external/roots' && method === 'GET') {
+    const roots = _externalRoots.map(r => ({
+      index: r.index,
+      path: r.path,
+      providers: scanExternalProviders(r.path),
+    }));
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ roots }));
+    return;
+  }
+  if (url.startsWith('/api/external/scopes') && method === 'GET') {
+    const rootIdx = parseInt(parsedUrl.searchParams.get('root'), 10);
+    const providerId = parsedUrl.searchParams.get('provider');
+    const rootObj = Number.isFinite(rootIdx) ? _externalRoots[rootIdx] : null;
+    if (!rootObj || !providerId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'bad_request' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ scopes: listExternalScopes(rootObj.path, providerId) }));
+    return;
+  }
+  if (url.startsWith('/api/external/sessions') && method === 'GET') {
+    const rootIdx = parseInt(parsedUrl.searchParams.get('root'), 10);
+    const providerId = parsedUrl.searchParams.get('provider');
+    const scopeId = parsedUrl.searchParams.get('scope');
+    const rootObj = Number.isFinite(rootIdx) ? _externalRoots[rootIdx] : null;
+    if (!rootObj || !providerId || !scopeId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'bad_request' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ sessions: listExternalSessions(rootObj.path, providerId, scopeId) }));
+    return;
+  }
+  if (url.startsWith('/api/external/events') && method === 'GET') {
+    const rootIdx = parseInt(parsedUrl.searchParams.get('root'), 10);
+    const providerId = parsedUrl.searchParams.get('provider');
+    const scopeId = parsedUrl.searchParams.get('scope');
+    const sessionId = parsedUrl.searchParams.get('session');
+    const rootObj = Number.isFinite(rootIdx) ? _externalRoots[rootIdx] : null;
+    if (!rootObj || !providerId || !scopeId || !sessionId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'bad_request' }));
+      return;
+    }
+    const logFile = resolveExternalLogFile(rootObj.path, providerId, scopeId, sessionId);
+    if (!logFile) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'log_not_found' }));
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+    const pingTimer = setInterval(() => {
+      try { res.write('event: ping\ndata: {}\n\n'); } catch {}
+    }, 30000);
+    try {
+      let totalCount = 0;
+      await streamRawEntriesAsync(logFile, (raw) => {
+        res.write('event: load_chunk\ndata: [');
+        res.write(raw.includes('\n') ? raw.replace(/\n/g, '') : raw);
+        res.write(']\n\n');
+      }, {
+        onReady: ({ totalCount: tc }) => {
+          totalCount = tc;
+          res.write(`event: load_start\ndata: ${JSON.stringify({ total: totalCount, incremental: false, external: true })}\n\n`);
+        },
+      });
+      res.write('event: load_end\ndata: {}\n\n');
+    } catch (err) {
+      res.write(`event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
+    }
+    const extClients = _getExtClients(logFile);
+    extClients.push(res);
+    _startExtWatch(logFile);
+    req.on('close', () => {
+      clearInterval(pingTimer);
+      const idx = extClients.indexOf(res);
+      if (idx !== -1) extClients.splice(idx, 1);
+    });
+    return;
+  }
+  // ───────────────────────────────────────────────────────────────
+
 
   // 返回项目目录绝对路径（前端用于将绝对路径转为相对路径）
   if (url === '/api/project-dir' && method === 'GET') {
@@ -2795,6 +2937,8 @@ export async function startViewer() {
             startStatsWorker();
             startStreamingStatusTimer();
           }
+          // External Sessions Protocol: 初始化 roots 并启 watch（与现有日志平行）
+          _initExternalRoots();
           // CLI 模式下启动 WebSocket 服务 (必须 await，否则插件 hook 拿不到 upgrade listeners)
           if (isCliMode) {
             await setupTerminalWebSocket(currentServer);
@@ -3116,6 +3260,8 @@ export function stopViewer() {
 }
 async function _doStop() {
   try { await Promise.race([runParallelHook('serverStopping'), new Promise(r => setTimeout(r, 3000))]); } catch { }
+  // External session: 协议要求在退出时更新 session.json 的 endedAt
+  try { markSessionEnded(); } catch {}
   // 如果用户未做选择，将临时文件转为正式文件
   if (_resumeState && _resumeState.tempFile) {
     try {
@@ -3216,6 +3362,8 @@ if (!isWorkspaceMode) {
 
 // 进程退出时，将未决的临时文件转为正式文件
 function handleExit() {
+  // External session: 协议要求在退出时更新 session.json 的 endedAt（幂等）
+  try { markSessionEnded(); } catch {}
   if (_resumeState && _resumeState.tempFile) {
     try {
       if (existsSync(_resumeState.tempFile)) {

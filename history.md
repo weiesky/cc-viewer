@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.158 (2026-04-15)
+
+- Feat: CCV External Sessions Protocol v1 — producer/consumer contract for browsing CC session logs from external tools (lia, CI, orchestrators). Spec: `docs/ccv-external-sessions-protocol.md`
+- Feat: `CCV_EXTERNAL_SESSION` env — ccv proxy writes `log.jsonl` + `session.json` skeleton into protocol-prescribed `<sessionDir>`; idempotent `endedAt` on exit
+- Feat: `CCV_EXTERNAL_ROOTS` env (supports `~` / `$HOME` expansion) — ccv scans external roots at startup, live-watches for new scopes/sessions
+- Feat: REST API `/api/external/{roots,scopes,sessions,events}` — JSON listings + SSE live-tail for external sessions
+- Feat: UI at `?view=external` — 3-pane browser (scope sidebar / session list with role filter / raw JSON entry timeline); opt-in, no behaviour change without config
+- Feat: `src/i18n.js` — 14 new keys across 17 languages under `external.*` namespace
+
 ## 1.6.157 (2026-04-15)
 
 - Feat: mobile hamburger menu — "Project Folder" entry opens file explorer overlay

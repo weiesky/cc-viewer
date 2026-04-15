@@ -5,6 +5,7 @@ import AppBase, { styles } from './AppBase';
 import { isMobile } from './env';
 import { uploadFileAndGetPath } from './components/TerminalPanel';
 import AppHeader from './components/AppHeader';
+import ExternalSessionsView from './components/external/ExternalSessionsView';
 import RequestList from './components/RequestList';
 import DetailPanel from './components/DetailPanel';
 import ChatView from './components/ChatView';
@@ -254,6 +255,35 @@ class App extends AppBase {
   // ─── PC 渲染 ──────────────────────────────────────────
 
   render() {
+    // CCV External Sessions Protocol: ?view=external 时独占渲染该视图
+    // docs/ccv-external-sessions-protocol.md
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      if (qs.get('view') === 'external') {
+        const initial = {};
+        const r = qs.get('root'); if (r != null) initial.root = parseInt(r, 10);
+        const p = qs.get('provider'); if (p) initial.provider = p;
+        const s = qs.get('scope'); if (s) initial.scope = s;
+        const se = qs.get('session'); if (se) initial.session = se;
+        return (
+          <ConfigProvider theme={this.themeConfig}>
+            <ExternalSessionsView
+              initial={initial}
+              onExit={() => {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('view');
+                url.searchParams.delete('root');
+                url.searchParams.delete('provider');
+                url.searchParams.delete('scope');
+                url.searchParams.delete('session');
+                window.location.href = url.toString();
+              }}
+            />
+          </ConfigProvider>
+        );
+      }
+    } catch {}
+
     const { filteredRequests, selectedRequest, fileLoading, fileLoadingCount, mainAgentSessions, viewMode } = this.renderPrepare();
     const { selectedIndex, leftPanelWidth, currentTab } = this.state;
 
