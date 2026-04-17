@@ -15,12 +15,11 @@
 - Test: new `test/external-live-tail.test.js` (2 cases) — verifies append → watchLogFile → SSE data frame propagation, the path `/api/external/events` depends on
 - i18n: 12 keys × 17 languages under `external.*` (removed hard-coded `roleWorker` / `roleCounsel`)
 - Feat: `ccv view --roots <path>` — read-only viewer subcommand (no claude wrapper, no PTY, no workspace registration); auto-redirects `/` to `?view=external`. Primary entry point for External Sessions Protocol consumers.
-- Feat: programmatic writer API — `import { createSession } from 'cc-viewer/external'` returns `{ appendEntry, markEnded }`; producers that don't launch claude via ccv proxy can append entries directly
 - Feat: `CCV_VIEW_ONLY=1` env — treats the server as a pure reader (skips interceptor log init, stats worker, streaming-status timer, auto log watcher)
 - Refactor: spec openly acknowledges producer/group/session three-tier shape assumption; variable-depth layout and `parentSessionId` / `meta[]` / `updatedAt` semantics deferred to v2
 - Refactor: drop `scope.kind` and `updatedAt` from schema + reader return shape (neither was rendered; kept only v1-load-bearing fields)
 - Docs: `log.jsonl` entry schema documented explicitly (timestamp / url / method / body / response), no longer hand-waved as "ccv's native proxy format"
-- Test: `createSession` programmatic API — 7 cases covering validation, idempotent skeleton, entry append, markEnded
+- Docs: v1 has a single write path — `CCV_EXTERNAL_SESSION` + `ccv run -- ...` routes the target program's HTTP traffic through ccv's proxy, which writes the protocol files. Producers that cannot proxy (different language / no HTTP) emit the small `session.json` + `log.jsonl` files directly by following the schema.
 
 ## 1.6.157 (2026-04-15)
 

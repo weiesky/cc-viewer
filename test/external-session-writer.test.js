@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
-  createSession,
   getExternalSession,
   writeSessionSkeleton,
   markSessionEnded,
@@ -150,81 +149,3 @@ describe('external-session-writer', () => {
   });
 });
 
-describe('createSession (programmatic writer API)', () => {
-  let tmpDir;
-
-  beforeEach(() => { tmpDir = mkdtempSync(join(tmpdir(), 'ccv-ext-create-')); });
-  afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
-
-  test('sessionDir 非绝对路径抛错', () => {
-    assert.throws(() => createSession({ sessionDir: 'relative', sessionId: 's1' }),
-      /sessionDir must be an absolute path/);
-  });
-
-  test('sessionId 缺失抛错', () => {
-    assert.throws(() => createSession({ sessionDir: tmpDir }),
-      /sessionId is required/);
-  });
-
-  test('正常创建 + 返回 helpers', () => {
-    const sessionDir = join(tmpDir, 'sess-a');
-    const s = createSession({ sessionDir, sessionId: 'sess-a', role: 'agent-x', title: 'probe' });
-    assert.equal(s.sessionDir, sessionDir);
-    assert.equal(s.logFile, join(sessionDir, 'log.jsonl'));
-    assert.equal(s.sessionJsonPath, join(sessionDir, 'session.json'));
-    assert.equal(typeof s.appendEntry, 'function');
-    assert.equal(typeof s.markEnded, 'function');
-
-    const skeleton = JSON.parse(readFileSync(s.sessionJsonPath, 'utf-8'));
-    assert.equal(skeleton.sessionId, 'sess-a');
-    assert.equal(skeleton.role, 'agent-x');
-    assert.equal(skeleton.title, 'probe');
-    assert.equal(skeleton.logFile, 'log.jsonl');
-    assert.equal(skeleton.endedAt, null);
-    assert.match(skeleton.startedAt, /^\d{4}-\d{2}-\d{2}T/);
-    // 精简后 skeleton 不再含 updatedAt
-    assert.equal('updatedAt' in skeleton, false);
-  });
-
-  test('幂等：二次 createSession 保留原 startedAt', () => {
-    const sessionDir = join(tmpDir, 'sess-b');
-    const s1 = createSession({ sessionDir, sessionId: 'sess-b' });
-    const startedAt1 = JSON.parse(readFileSync(s1.sessionJsonPath, 'utf-8')).startedAt;
-    // 小等一下再重入，确保 ISO timestamp 会不同
-    const s2 = createSession({ sessionDir, sessionId: 'sess-b', title: 'changed' });
-    const json2 = JSON.parse(readFileSync(s2.sessionJsonPath, 'utf-8'));
-    assert.equal(json2.startedAt, startedAt1, 'startedAt 不应该被二次 createSession 覆盖');
-    // 并且 title 等字段也保留第一次的值（skeleton 未被重写）
-    assert.notEqual(json2.title, 'changed');
-  });
-
-  test('appendEntry 按 \\n---\\n 分隔写入单行 JSON', () => {
-    const sessionDir = join(tmpDir, 'sess-c');
-    const s = createSession({ sessionDir, sessionId: 'sess-c' });
-    s.appendEntry({ timestamp: 't1', url: 'u1', method: 'POST', body: { a: 1 } });
-    s.appendEntry({ timestamp: 't2', url: 'u2', method: 'POST' });
-    const raw = readFileSync(s.logFile, 'utf-8');
-    const parts = raw.split('\n---\n').filter(Boolean);
-    assert.equal(parts.length, 2);
-    assert.equal(JSON.parse(parts[0]).timestamp, 't1');
-    assert.equal(JSON.parse(parts[1]).url, 'u2');
-    // 每个 part 必须是单行（协议要求）
-    for (const p of parts) assert.equal(p.includes('\n'), false);
-  });
-
-  test('appendEntry 非对象参数抛错', () => {
-    const s = createSession({ sessionDir: join(tmpDir, 'sess-d'), sessionId: 'sess-d' });
-    assert.throws(() => s.appendEntry(null), /entry must be an object/);
-    assert.throws(() => s.appendEntry('string'), /entry must be an object/);
-  });
-
-  test('markEnded 补 endedAt 且幂等', () => {
-    const s = createSession({ sessionDir: join(tmpDir, 'sess-e'), sessionId: 'sess-e' });
-    assert.equal(s.markEnded(), true);
-    const first = JSON.parse(readFileSync(s.sessionJsonPath, 'utf-8')).endedAt;
-    assert.match(first, /^\d{4}-\d{2}-\d{2}T/);
-    assert.equal(s.markEnded(), true);
-    const second = JSON.parse(readFileSync(s.sessionJsonPath, 'utf-8')).endedAt;
-    assert.equal(second, first);
-  });
-});

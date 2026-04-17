@@ -15,10 +15,10 @@ If three tiers don't fit your product, file an issue before adopting.
 
 | Direction | ccv offers |
 |---|---|
-| **Write** | (1) **Programmatic API** — `import { createSession } from 'cc-viewer/external'` — append entries directly from your Node process. (2) **Env-driven** — set `CCV_EXTERNAL_SESSION` and launch claude via `ccv run -- claude ...`; ccv's proxy captures HTTP traffic and writes the protocol files. |
+| **Write** | Set `CCV_EXTERNAL_SESSION` on the producer's environment and launch the target program through ccv's proxy (`ccv run -- <cmd>`). ccv's interceptor writes `session.json` skeleton + captures HTTP traffic into `<sessionDir>/log.jsonl`, and patches `endedAt` on exit. |
 | **Read** | `ccv view --roots <path>` — launches a read-only HTTP viewer + UI. No claude wrapper, no PTY, no workspace registration. |
 
-Both sides are independent. Producers may use either writer path (or write files themselves following the schema) and the reader side works on any producer's output.
+Producers that cannot route traffic through ccv's proxy may write `session.json` + `log.jsonl` themselves by following the schema — the file format is small enough to emit from any language.
 
 ## Directory layout
 
@@ -138,53 +138,9 @@ Each entry records one HTTP exchange with the Claude API. The frontend renders e
 
 Additional fields (e.g. `pid`, `mainAgent`, `_deltaFormat`) are used by ccv's native interceptor for local-log features (cache analysis, checkpointing) — external producers can omit them.
 
-## Writer: programmatic API (recommended)
+## Writer
 
-For producers running inside Node and not using claude's CLI. Install `cc-viewer` as a dependency and import:
-
-```js
-import { createSession } from 'cc-viewer/external';
-
-const s = createSession({
-  sessionDir: '/abs/path/.../sessions/session-xyz',
-  sessionId: 'session-xyz',
-  role: 'agent-a',            // optional, free-form
-  title: 'first attempt',     // optional
-});
-
-// Every HTTP exchange:
-s.appendEntry({
-  timestamp: new Date().toISOString(),
-  url: 'https://api.anthropic.com/v1/messages',
-  method: 'POST',
-  body: {...},
-  response: {status: 200, body: {...}},
-});
-
-// On session exit:
-s.markEnded();
-```
-
-Guarantees:
-- `mkdir -p <sessionDir>` on first call.
-- If `session.json` already exists, it is **not** overwritten (safe for session resume; original `startedAt` preserved).
-- `appendEntry` serializes with `JSON.stringify` (single-line) and appends `\n---\n`.
-- `markEnded` is idempotent.
-
-The producer is responsible for `scope.json` and `index.json` — those are fixtures at the directory level, not per-session:
-
-```js
-import { writeFileSync, mkdirSync } from 'node:fs';
-mkdirSync('/abs/.../my-producer/scopes/group-001', {recursive: true});
-writeFileSync('/abs/.../my-producer/index.json',
-  JSON.stringify({protocolVersion: 1, providerId: 'my-producer', providerName: 'My Producer'}));
-writeFileSync('/abs/.../my-producer/scopes/group-001/scope.json',
-  JSON.stringify({scopeId: 'group-001', title: 'Group title'}));
-```
-
-## Writer: env-driven (for ccv-proxied claude launches)
-
-When the producer launches claude via `ccv run -- claude ...` (so ccv's HTTP proxy captures API traffic), set `CCV_EXTERNAL_SESSION` on the environment:
+The producer launches its target program through ccv's proxy — typically `ccv run -- claude ...` — with `CCV_EXTERNAL_SESSION` set on the environment. ccv's HTTP proxy intercepts API traffic and writes it to the protocol-dictated path:
 
 ```bash
 export CCV_EXTERNAL_SESSION='{
@@ -196,9 +152,19 @@ export CCV_EXTERNAL_SESSION='{
 ccv run -- claude ...
 ```
 
-Accepted fields: `sessionDir` (required, absolute), `sessionId` (required), `role`, `title`. Other fields are ignored — switch to the programmatic API if you need richer control.
+Accepted fields: `sessionDir` (required, absolute), `sessionId` (required), `role`, `title`. Other fields are ignored. Producers with richer needs should write `session.json` / `log.jsonl` themselves instead of piping through ccv's writer.
 
-Behaviour: ccv writes the skeleton at proxy start, redirects the captured log to `<sessionDir>/log.jsonl`, and patches `endedAt` on proxy exit (SIGTERM / SIGINT / normal).
+Behaviour: ccv writes the skeleton at proxy start, redirects the captured log to `<sessionDir>/log.jsonl`, and patches `endedAt` on proxy exit (SIGTERM / SIGINT / normal). Log rotation is disabled in this mode — the protocol requires a single `log.jsonl` per session.
+
+The producer is also responsible for `index.json` (per provider, one-shot) and `scope.json` (per scope, one-shot). These are plain JSON fixtures — any language can emit them:
+
+```bash
+mkdir -p "$ROOT/my-producer/scopes/group-001"
+echo '{"protocolVersion":1,"providerId":"my-producer","providerName":"My Producer"}' \
+  > "$ROOT/my-producer/index.json"
+echo '{"scopeId":"group-001","title":"Group title"}' \
+  > "$ROOT/my-producer/scopes/group-001/scope.json"
+```
 
 **Mode precedence**: when both `CCV_EXTERNAL_SESSION` and `CCV_WORKSPACE_MODE=1` are set, external-session mode wins — the caller explicitly dictated the output path.
 
@@ -284,59 +250,40 @@ The UI is rendered at `/?view=external` (auto-redirected from `/` under `ccv vie
 
 The role filter is built at runtime from the distinct `role` values observed in the current session list — there are no built-in role categories.
 
-## Examples
+## End-to-end example
 
-**Example 1 — agent orchestrator using programmatic writer**
-
-```js
-// producer.js (a lia-like orchestrator)
-import { createSession } from 'cc-viewer/external';
-import { writeFileSync, mkdirSync } from 'node:fs';
-
-const root = `${process.env.HOME}/.my-orch/ccv-roots`;
-const providerId = 'my-orch';
-const scopeId = 'task-42';
-const sessionId = `worker-${Date.now()}`;
-
-// one-time provider + scope fixtures
-mkdirSync(`${root}/${providerId}/scopes/${scopeId}`, {recursive: true});
-writeFileSync(`${root}/${providerId}/index.json`,
-  JSON.stringify({protocolVersion: 1, providerId, providerName: 'My Orchestrator'}));
-writeFileSync(`${root}/${providerId}/scopes/${scopeId}/scope.json`,
-  JSON.stringify({scopeId, title: 'Implement feature X'}));
-
-const s = createSession({
-  sessionDir: `${root}/${providerId}/scopes/${scopeId}/sessions/${sessionId}`,
-  sessionId, role: 'worker', title: 'first attempt',
-});
-
-// each API call your agent makes:
-s.appendEntry({timestamp: new Date().toISOString(), url, method: 'POST', body, response});
-
-// on shutdown:
-s.markEnded();
-```
-
-View from another shell:
+A producer (say, a CI runner or agent orchestrator) prepares the provider + scope fixtures once per business grouping, then sets `CCV_EXTERNAL_SESSION` per session and launches its target program through `ccv run`:
 
 ```bash
-ccv view --roots "$HOME/.my-orch/ccv-roots"
-```
+ROOT="$HOME/.my-producer/ccv-roots"
+PROVIDER="my-producer"
+SCOPE="pr-1234"
+SESSION="run-$(date +%Y%m%d-%H%M%S)"
 
-**Example 2 — CI runner using env + ccv proxy**
+# one-time fixtures
+mkdir -p "$ROOT/$PROVIDER/scopes/$SCOPE/sessions/$SESSION"
+[ -f "$ROOT/$PROVIDER/index.json" ] || \
+  echo '{"protocolVersion":1,"providerId":"'"$PROVIDER"'","providerName":"My Producer"}' \
+    > "$ROOT/$PROVIDER/index.json"
+[ -f "$ROOT/$PROVIDER/scopes/$SCOPE/scope.json" ] || \
+  echo '{"scopeId":"'"$SCOPE"'","title":"PR #1234: fix login flow"}' \
+    > "$ROOT/$PROVIDER/scopes/$SCOPE/scope.json"
 
-```bash
-ROOT="$HOME/.ci-runs/ccv"
-mkdir -p "$ROOT/ci-runner/scopes/pr-1234/sessions/run-78901"
-echo '{"protocolVersion":1,"providerId":"ci-runner","providerName":"CI Runner"}' > "$ROOT/ci-runner/index.json"
-echo '{"scopeId":"pr-1234","title":"PR #1234: fix login flow"}' > "$ROOT/ci-runner/scopes/pr-1234/scope.json"
-
-export CCV_EXTERNAL_SESSION=$(jq -n --arg dir "$ROOT/ci-runner/scopes/pr-1234/sessions/run-78901" \
-  '{sessionDir: $dir, sessionId: "run-78901", role: "lint", title: "lint stage"}')
+# launch with proxy-captured logging
+export CCV_EXTERNAL_SESSION=$(jq -n \
+  --arg dir "$ROOT/$PROVIDER/scopes/$SCOPE/sessions/$SESSION" \
+  --arg id "$SESSION" \
+  '{sessionDir: $dir, sessionId: $id, role: "worker", title: "first attempt"}')
 ccv run -- claude ...
 ```
 
-Same protocol — different vocabulary. ccv renders both without modification.
+View from another shell (can happen during or after the session):
+
+```bash
+ccv view --roots "$ROOT"
+```
+
+Producers whose `role` taxonomy differs (e.g. a CI runner with `role: "lint"` / `role: "test"`) just vary the string — ccv derives the session-list filter from observed values with no hard-coded vocabulary.
 
 ## Scale
 

@@ -8,8 +8,7 @@
   "exports": {
     ".": "./server.js",
     "./server.js": "./server.js",
-    "./interceptor.js": "./interceptor.js",
-    "./external": "./lib/external-session-writer.js"
+    "./interceptor.js": "./interceptor.js"
   },
   "author": "weiesky",
   "bin": {
