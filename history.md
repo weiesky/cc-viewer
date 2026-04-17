@@ -20,6 +20,8 @@
 - Refactor: drop `scope.kind` and `updatedAt` from schema + reader return shape (neither was rendered; kept only v1-load-bearing fields)
 - Docs: `log.jsonl` entry schema documented explicitly (timestamp / url / method / body / response), no longer hand-waved as "ccv's native proxy format"
 - Docs: v1 has a single write path — `CCV_EXTERNAL_SESSION` + `ccv run -- ...` routes the target program's HTTP traffic through ccv's proxy, which writes the protocol files. Producers that cannot proxy (different language / no HTTP) emit the small `session.json` + `log.jsonl` files directly by following the schema.
+- Docs: new "Producers with richer taxonomies" section — clarifies the escape hatch for deeper-than-three-tier models is entry-point design, not protocol extension. The producer owns a CLI (`myprod wi view <ref>` etc.) that resolves internal layers and opens ccv via URL deep-link to a pre-contextualised scope/session. ccv URL parameters `root` / `provider` / `scope` / `session` are the load-bearing integration surface.
+- Docs: test fixtures + shape-assumption phrasing scrubbed of producer-specific vocabulary — no producer name leaks into the reference implementation or spec examples.
 
 ## 1.6.157 (2026-04-15)
 

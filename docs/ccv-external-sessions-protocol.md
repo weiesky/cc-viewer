@@ -7,9 +7,11 @@ This is a **data protocol**, not a code protocol. ccv has zero knowledge of any 
 
 ## Shape assumption (be honest about this)
 
-This protocol assumes a **three-tier taxonomy**: `producer / group / session`. Producers whose natural model fits this shape (one producer → several business groupings → each grouping has multiple CC sessions) can adopt v1 directly. Producers with two-tier (flat: producer → sessions) or deeper (producer → workspace → work-item → claim → session) models will have to either collapse or pad to three tiers to use v1. A layout-declaration mechanism for variable depth is on the v2 table; it is **not** in v1.
+This protocol assumes a **three-tier taxonomy**: `producer / group / session`. Producers whose natural model fits this shape (one producer → several business groupings → each grouping has multiple CC sessions) can adopt v1 directly. Producers with two-tier (flat: producer → sessions) or deeper (four or more levels, e.g. producer → sub-namespace → sub-sub-namespace → session) models will have to either collapse or adapt to fit three tiers.
 
-If three tiers don't fit your product, file an issue before adopting.
+**The intended escape hatch for deeper models is not a protocol change — it's entry-point design.** See ["Producers with richer taxonomies"](#producers-with-richer-taxonomies) below: the producer owns its own CLI / UI command (`myprod view <ref>`, `myprod group view <ref>`, …) that translates its richer model into a single `scope` + optional `session` pair, then launches ccv with a URL deep-link. From ccv's point of view each session comes pre-contextualised — it never needs to represent layers it doesn't know about.
+
+A generic variable-depth layout declaration is on the v2 table; it is **not** in v1. File an issue if the three-tier + entry-point pattern truly can't express your model.
 
 ## Two entry points
 
@@ -284,6 +286,46 @@ ccv view --roots "$ROOT"
 ```
 
 Producers whose `role` taxonomy differs (e.g. a CI runner with `role: "lint"` / `role: "test"`) just vary the string — ccv derives the session-list filter from observed values with no hard-coded vocabulary.
+
+## Producers with richer taxonomies
+
+If your model has more than three layers (e.g. `product / project / task / session`), **do not try to encode all layers into ccv's structure**. Two common temptations that both hurt:
+
+1. Pack your full hierarchy into the `scope-id` string (e.g. `project-foo.task-42`) and hope users make sense of a flat scope list. The extra structure is invisible to ccv's UI filtering.
+2. Create one `providerId` per upper-level bucket (e.g. `myprod-project-foo`, `myprod-project-bar`). Provider fixtures multiply; ccv shows them as peers of your competitors' provider blocks, cluttering the sidebar.
+
+The right shape is **entry-point design**: own the navigation on your side, use ccv only as a single-scope viewer.
+
+### The pattern
+
+Your tool exposes commands like `myprod session view <ref>` or `myprod group view <ref>`. Each such command:
+
+1. Resolves `<ref>` against your internal model (including any `product / project / …` layers ccv doesn't care about).
+2. Picks one target scope (and optionally one target session).
+3. Launches ccv with a URL that goes directly to that scope / session:
+
+```bash
+# Pseudocode for `myprod wi view 150` inside your CLI
+SCOPE_ID=$(resolve_scope_for_wi 150)   # e.g. "project-foo.task-150" or just "task-150"
+SESSION_ID=$(latest_session_for_wi 150)
+ccv view --roots "$HOME/.myprod/ccv-roots" --no-open &
+ccv_pid=$!
+ccv_port=$(wait_for_port "$ccv_pid")
+open "http://127.0.0.1:$ccv_port/?view=external&root=0&provider=myprod&scope=$SCOPE_ID&session=$SESSION_ID"
+```
+
+ccv's URL-parameter support (`root`, `provider`, `scope`, `session`) is the load-bearing interface for this integration — it accepts a fully-qualified address into its three-tier space. Your producer owns everything above that address space.
+
+### Why this works
+
+- ccv UI doesn't need to represent the layers above `scope` — the producer already resolved them before opening the viewer.
+- Each invocation arrives pre-contextualised; the user isn't dropped into "all your data" and forced to navigate down.
+- Multiple concurrent `myprod wi view` calls just open distinct deep-links; no cross-pollution, no assumption about which scope is "current".
+- If the user wants to browse across scopes, they can click sibling scopes in the sidebar — but that's a secondary UX, not the primary path.
+
+### What you give up
+
+The user cannot use raw `ccv view --roots <path>` to discover your full content tree — they must enter through your tool's commands. If your product genuinely needs "browse everything from ccv alone" as a primary UX, this v1 protocol isn't the right fit; open an issue describing the use case.
 
 ## Scale
 
