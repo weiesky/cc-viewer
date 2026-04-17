@@ -159,6 +159,11 @@ if (_extSession) {
   _projectName = _extSession.sessionId;
   try { mkdirSync(_logDir, { recursive: true }); } catch {}
   writeSessionSkeleton();
+} else if (process.env.CCV_VIEW_ONLY === '1') {
+  // view-only 模式：纯 reader，不启动 claude、不写日志（同 workspace 的惰性效果）
+  _newLogFile = '';
+  _logDir = '';
+  _projectName = '';
 } else if (process.env.CCV_WORKSPACE_MODE === '1') {
   _newLogFile = '';
   _logDir = '';

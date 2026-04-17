@@ -507,6 +507,69 @@ async function runCliModeWorkspaceSelector(extraClaudeArgs = [], noOpen = false)
   process.on('SIGTERM', cleanup);
 }
 
+/**
+ * View-only mode: launches just the HTTP server + External Sessions UI.
+ * No claude wrapper, no PTY, no workspace registration, no shell-hook requirement.
+ * Primary entry for consumers of the CCV External Sessions Protocol.
+ *
+ * Usage:
+ *   ccv view --roots /path/to/external/roots
+ *   CCV_EXTERNAL_ROOTS=/path ccv view
+ */
+async function runViewOnly(viewArgs, noOpen = false) {
+  // --roots <comma-separated-paths>（覆盖 CCV_EXTERNAL_ROOTS env）
+  const rootsIdx = viewArgs.indexOf('--roots');
+  if (rootsIdx !== -1) {
+    const rootsVal = viewArgs[rootsIdx + 1];
+    if (!rootsVal || rootsVal.startsWith('-')) {
+      console.error('Error: --roots requires a comma-separated list of absolute paths');
+      process.exit(1);
+    }
+    process.env.CCV_EXTERNAL_ROOTS = rootsVal;
+    viewArgs.splice(rootsIdx, 2);
+  }
+
+  if (!process.env.CCV_EXTERNAL_ROOTS) {
+    console.error('Error: ccv view requires --roots <path> or CCV_EXTERNAL_ROOTS env');
+    console.error('Example: ccv view --roots $HOME/.my-tool/ccv-roots');
+    process.exit(1);
+  }
+
+  process.env.CCV_VIEW_ONLY = '1';
+  process.env.CCV_CLI_MODE = '1';
+  process.env.CCV_PROXY_MODE = '1'; // 让 interceptor 惰性
+
+  const serverMod = await import('./server.js');
+  await serverMod.startViewer();
+
+  const port = serverMod.getPort();
+  const protocol = serverMod.getProtocol();
+  const url = `${protocol}://127.0.0.1:${port}/?view=external`;
+
+  if (!noOpen) {
+    try {
+      const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+      const { execSync } = await import('node:child_process');
+      execSync(`${cmd} ${url}`, { stdio: 'ignore', timeout: 5000 });
+    } catch {}
+  }
+
+  console.log(`CC Viewer (view-only):`);
+  console.log(`  ➜ Local:   ${url}`);
+  const _lanIps = serverMod.getAllLocalIps();
+  const _token = serverMod.getAccessToken();
+  for (const _ip of _lanIps) {
+    console.log(`  ➜ Network: ${protocol}://${_ip}:${port}/?view=external&token=${_token}`);
+  }
+  console.log(`  Roots:     ${process.env.CCV_EXTERNAL_ROOTS}`);
+
+  const cleanup = () => {
+    serverMod.stopViewer().finally(() => process.exit());
+  };
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
+}
+
 // === 主逻辑 ===
 
 const args = process.argv.slice(2);
@@ -708,7 +771,12 @@ if (isLogger) {
   process.exit(0);
 }
 
-if (args[0] === 'run') {
+if (args[0] === 'view') {
+  runViewOnly(args.slice(1), noOpen).catch(err => {
+    console.error('View mode error:', err);
+    process.exit(1);
+  });
+} else if (args[0] === 'run') {
   runProxyCommand(args);
 } else if (args.includes('-SDK') || args.includes('--sdk')) {
   // SDK 模式（显式 -SDK 切换）

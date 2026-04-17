@@ -72,6 +72,7 @@ try {
 const isCliMode = process.env.CCV_CLI_MODE === '1';
 const isSdkMode = process.env.CCV_SDK_MODE === '1';
 const isWorkspaceMode = process.env.CCV_WORKSPACE_MODE === '1';
+const isViewOnly = process.env.CCV_VIEW_ONLY === '1';
 const _defaultProxyProfiles = { active: 'max', profiles: [{ id: 'max', name: 'Default' }] };
 const _maskApiKey = (k) => k && typeof k === 'string' && k.length > 4 ? '****' + k.slice(-4) : k ? '****' : '';
 const _maskProfiles = (data) => {
@@ -2841,6 +2842,14 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // view-only 模式：根路径自动 redirect 到 external view
+  if (method === 'GET' && isViewOnly && (url === '/' || url === '/index.html')
+      && !parsedUrl.searchParams.get('view')) {
+    res.writeHead(302, { Location: '/?view=external' });
+    res.end();
+    return;
+  }
+
   // 静态文件服务
   if (method === 'GET') {
     let filePath = url === '/' ? '/index.html' : url;
@@ -2956,8 +2965,8 @@ export async function startViewer() {
               execAsync(`${cmd} ${url}`, { timeout: 5000 }).catch(() => {});
             }
           } catch { }
-          // 工作区模式下延迟到选择工作区后再启动监听
-          if (!isWorkspaceMode) {
+          // 工作区模式下延迟到选择工作区后再启动监听；view-only 模式不监听本地日志
+          if (!isWorkspaceMode && !isViewOnly) {
             readModelContextSize(); // Cache model→size mapping at startup
             startWatching(_logWatcherOpts(LOG_FILE));
             startStatsWorker();
@@ -3363,8 +3372,8 @@ let _sdkSendUserMessage = null;
 export function setSdkSendUserMessage(fn) { _sdkSendUserMessage = fn; }
 
 // Auto-start the viewer after log file init completes
-// 工作区模式下由 cli.js 直接 import server.js 触发启动，跳过 _initPromise 自动启动
-if (!isWorkspaceMode) {
+// 工作区模式 / view-only 模式下由 cli.js 手工调用 startViewer() 触发启动
+if (!isWorkspaceMode && !isViewOnly) {
   _initPromise.then(() => {
     startViewer().then((srv) => {
       if (!srv) return;
