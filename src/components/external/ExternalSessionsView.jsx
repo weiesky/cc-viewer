@@ -13,10 +13,17 @@ function formatTs(iso) {
   try { return new Date(iso).toLocaleString(); } catch { return iso; }
 }
 
+// Palette 用于 role 标签着色。协议不理解 role 语义，这里用字符串哈希到
+// 固定色板的映射，保证同一 role 在一个会话里颜色稳定。
+const ROLE_PALETTE = ['geekblue', 'purple', 'cyan', 'gold', 'magenta', 'green', 'volcano', 'blue'];
+function hashString(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
 function roleBadgeColor(role) {
-  if (role === 'worker') return 'geekblue';
-  if (role === 'counsel') return 'purple';
-  return 'default';
+  if (!role || role === 'unknown') return 'default';
+  return ROLE_PALETTE[hashString(role) % ROLE_PALETTE.length];
 }
 
 function ScopeSidebar({ roots, selectedRoot, selectedProvider, selectedScope, onSelectScope, refreshTick }) {
@@ -117,6 +124,22 @@ function SessionList({ rootIndex, providerId, scopeId, selectedSession, onSelect
       .catch(() => { setSessions([]); setLoading(false); });
   }, [rootIndex, providerId, scopeId, refreshTick]);
 
+  // 动态从 sessions 里抽所有 role 作为过滤选项——协议不固定 role 取值域。
+  const availableRoles = useMemo(() => {
+    const set = new Set();
+    for (const s of sessions) {
+      if (s.role && s.role !== 'unknown') set.add(s.role);
+    }
+    return Array.from(set).sort();
+  }, [sessions]);
+
+  // sessions 变化后，如果当前 filter 的 role 不在新集合里，回到 all
+  useEffect(() => {
+    if (roleFilter !== 'all' && !availableRoles.includes(roleFilter)) {
+      setRoleFilter('all');
+    }
+  }, [availableRoles, roleFilter]);
+
   const filtered = useMemo(() => {
     if (roleFilter === 'all') return sessions;
     return sessions.filter(s => s.role === roleFilter);
@@ -128,13 +151,16 @@ function SessionList({ rootIndex, providerId, scopeId, selectedSession, onSelect
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ padding: 12, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-        <Radio.Group value={roleFilter} onChange={e => setRoleFilter(e.target.value)} size="small">
-          <Radio.Button value="all">{t('external.roleAll')}</Radio.Button>
-          <Radio.Button value="worker">{t('external.roleWorker')}</Radio.Button>
-          <Radio.Button value="counsel">{t('external.roleCounsel')}</Radio.Button>
-        </Radio.Group>
-      </div>
+      {availableRoles.length > 0 && (
+        <div style={{ padding: 12, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <Radio.Group value={roleFilter} onChange={e => setRoleFilter(e.target.value)} size="small">
+            <Radio.Button value="all">{t('external.roleAll')}</Radio.Button>
+            {availableRoles.map(r => (
+              <Radio.Button key={r} value={r}>{r}</Radio.Button>
+            ))}
+          </Radio.Group>
+        </div>
+      )}
       <div style={{ flex: 1, overflow: 'auto' }}>
         {loading && <div style={{ padding: 16 }}><Spin size="small" /></div>}
         {!loading && filtered.length === 0 && <Empty description={t('external.noSessions')} style={{ marginTop: 40 }} />}
@@ -177,7 +203,9 @@ function EntryTimeline({ rootIndex, providerId, scopeId, sessionId }) {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [atBottom, setAtBottom] = useState(true);
   const esRef = useRef(null);
+  const virtuosoRef = useRef(null);
 
   useEffect(() => {
     setEntries([]);
@@ -242,8 +270,12 @@ function EntryTimeline({ rootIndex, providerId, scopeId, sessionId }) {
 
   return (
     <Virtuoso
+      ref={virtuosoRef}
       style={{ height: '100%' }}
       data={entries}
+      // 用户主动离开底部后就不再追尾，避免打断阅读历史
+      followOutput={atBottom ? 'smooth' : false}
+      atBottomStateChange={setAtBottom}
       itemContent={(index, entry) => {
         const method = entry.method || '';
         const ts = entry.timestamp ? formatTs(entry.timestamp) : '';
@@ -288,7 +320,7 @@ function EntryTimeline({ rootIndex, providerId, scopeId, sessionId }) {
 
 /**
  * Top-level view for CCV External Sessions Protocol browsing.
- * URL: ?view=external[&root=0&provider=lia&scope=wi-lia-150&session=worker-...]
+ * URL: ?view=external[&root=0&provider=X&scope=Y&session=Z]
  */
 export default function ExternalSessionsView({ initial, onExit }) {
   const [roots, setRoots] = useState([]);
@@ -385,4 +417,37 @@ export default function ExternalSessionsView({ initial, onExit }) {
       </Layout>
     </Layout>
   );
+}
+
+/**
+ * Helper for App.jsx / Mobile.jsx render() guard.
+ * Returns JSX when ?view=external is in URL, otherwise null.
+ * ConfigProvider is passed in to avoid circular imports.
+ */
+export function maybeRenderExternalView(ConfigProvider, themeConfig) {
+  try {
+    const qs = new URLSearchParams(window.location.search);
+    if (qs.get('view') !== 'external') return null;
+    const initial = {};
+    const r = qs.get('root'); if (r != null) initial.root = parseInt(r, 10);
+    const p = qs.get('provider'); if (p) initial.provider = p;
+    const s = qs.get('scope'); if (s) initial.scope = s;
+    const se = qs.get('session'); if (se) initial.session = se;
+    const onExit = () => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('view');
+      url.searchParams.delete('root');
+      url.searchParams.delete('provider');
+      url.searchParams.delete('scope');
+      url.searchParams.delete('session');
+      window.location.href = url.toString();
+    };
+    return (
+      <ConfigProvider theme={themeConfig}>
+        <ExternalSessionsView initial={initial} onExit={onExit} />
+      </ConfigProvider>
+    );
+  } catch {
+    return null;
+  }
 }

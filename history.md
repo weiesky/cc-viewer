@@ -1,13 +1,19 @@
 # Changelog
 
-## 1.6.158 (2026-04-15)
+## 1.6.158 (2026-04-17)
 
-- Feat: CCV External Sessions Protocol v1 — producer/consumer contract for browsing CC session logs from external tools (lia, CI, orchestrators). Spec: `docs/ccv-external-sessions-protocol.md`
+- Feat: CCV External Sessions Protocol v1 — producer-agnostic data contract for browsing CC session logs from external tools (agent orchestrators, CI runners, custom launchers). Spec: `docs/ccv-external-sessions-protocol.md`
 - Feat: `CCV_EXTERNAL_SESSION` env — ccv proxy writes `log.jsonl` + `session.json` skeleton into protocol-prescribed `<sessionDir>`; idempotent `endedAt` on exit
 - Feat: `CCV_EXTERNAL_ROOTS` env (supports `~` / `$HOME` expansion) — ccv scans external roots at startup, live-watches for new scopes/sessions
 - Feat: REST API `/api/external/{roots,scopes,sessions,events}` — JSON listings + SSE live-tail for external sessions
-- Feat: UI at `?view=external` — 3-pane browser (scope sidebar / session list with role filter / raw JSON entry timeline); opt-in, no behaviour change without config
-- Feat: `src/i18n.js` — 14 new keys across 17 languages under `external.*` namespace
+- Feat: UI at `?view=external` — 3-pane browser (scope sidebar / session list with dynamic role filter / raw JSON entry timeline); opt-in, no behaviour change without config
+- Fix: `_initExternalRoots` idempotent — closes existing watcher before recreating, prevents duplicate `external:changed` events under Electron workspace mode
+- Fix: `_doStop` tears down external watcher + SSE clients to avoid resource leaks on restart
+- Fix: SSE `load_chunk` frame — normalizes entries containing literal newlines via JSON parse/stringify instead of stripping `\n` (which corrupted multi-line JSON payloads)
+- Refactor: protocol schema cleaned of producer-specific vocabulary — `role` / `kind` free-form, UI derives role filter dynamically; `parentSessionId` / `meta[]` deferred to v2
+- Refactor: `maybeRenderExternalView` helper extracted; App.jsx / Mobile.jsx share a single URL-guard call
+- Test: new `test/external-live-tail.test.js` (2 cases) — verifies append → watchLogFile → SSE data frame propagation, the path `/api/external/events` depends on
+- i18n: 12 keys × 17 languages under `external.*` (removed hard-coded `roleWorker` / `roleCounsel`)
 
 ## 1.6.157 (2026-04-15)
 

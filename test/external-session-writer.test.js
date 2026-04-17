@@ -59,30 +59,30 @@ describe('external-session-writer', () => {
     process.env.CCV_EXTERNAL_SESSION = JSON.stringify({
       sessionDir,
       sessionId: 's1',
-      role: 'worker',
+      role: 'agent-a',
       title: 'hello world',
-      parentSessionId: null,
-      meta: [{ label: 'X', value: 'Y', type: 'text' }],
     });
     const p = getExternalSession();
     assert.equal(p.sessionDir, sessionDir);
     assert.equal(p.sessionId, 's1');
-    assert.equal(p.role, 'worker');
+    assert.equal(p.role, 'agent-a');
     assert.equal(p.title, 'hello world');
-    assert.equal(p.parentSessionId, null);
     assert.equal(p.logFile, join(sessionDir, 'log.jsonl'));
     assert.equal(p.sessionJsonPath, join(sessionDir, 'session.json'));
-    assert.deepEqual(p.meta, [{ label: 'X', value: 'Y', type: 'text' }]);
   });
 
-  test('非法 meta 降级为空数组', () => {
+  test('未知字段（如 parentSessionId / meta）被忽略不影响解析', () => {
     process.env.CCV_EXTERNAL_SESSION = JSON.stringify({
       sessionDir: tmpDir,
       sessionId: 's1',
-      meta: 'not an array',
+      parentSessionId: 'legacy',
+      meta: [{ label: 'X' }],
+      extraFoo: 42,
     });
     const p = getExternalSession();
-    assert.deepEqual(p.meta, []);
+    assert.equal(p.sessionId, 's1');
+    assert.equal(p.parentSessionId, undefined);
+    assert.equal(p.meta, undefined);
   });
 
   test('writeSessionSkeleton 创建多级目录和 session.json', () => {
@@ -90,18 +90,21 @@ describe('external-session-writer', () => {
     process.env.CCV_EXTERNAL_SESSION = JSON.stringify({
       sessionDir,
       sessionId: 's1',
-      role: 'worker',
+      role: 'agent-a',
       title: 'attempt 1',
     });
     assert.equal(writeSessionSkeleton(), true);
     assert.equal(existsSync(sessionDir), true);
     const data = JSON.parse(readFileSync(join(sessionDir, 'session.json'), 'utf-8'));
     assert.equal(data.sessionId, 's1');
-    assert.equal(data.role, 'worker');
+    assert.equal(data.role, 'agent-a');
     assert.equal(data.title, 'attempt 1');
     assert.equal(data.logFile, 'log.jsonl');
     assert.equal(data.endedAt, null);
     assert.match(data.startedAt, /^\d{4}-\d{2}-\d{2}T/);
+    // v1 协议不写 parentSessionId / meta（保留给 v2）
+    assert.equal('parentSessionId' in data, false);
+    assert.equal('meta' in data, false);
   });
 
   test('writeSessionSkeleton 在 session.json 已存在时保留（resume 幂等）', () => {

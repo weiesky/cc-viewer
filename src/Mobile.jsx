@@ -11,7 +11,7 @@ import MobileGitDiff from './components/MobileGitDiff';
 import MobileFileExplorer from './components/MobileFileExplorer';
 import MobileStats from './components/MobileStats';
 import OpenFolderIcon from './components/OpenFolderIcon';
-import ExternalSessionsView from './components/external/ExternalSessionsView';
+import { maybeRenderExternalView } from './components/external/ExternalSessionsView';
 import { t } from './i18n';
 import { apiUrl } from './utils/apiUrl';
 
@@ -303,32 +303,8 @@ class Mobile extends AppBase {
 
   render() {
     // CCV External Sessions Protocol: ?view=external 时独占渲染该视图
-    try {
-      const qs = new URLSearchParams(window.location.search);
-      if (qs.get('view') === 'external') {
-        const initial = {};
-        const r = qs.get('root'); if (r != null) initial.root = parseInt(r, 10);
-        const p = qs.get('provider'); if (p) initial.provider = p;
-        const s = qs.get('scope'); if (s) initial.scope = s;
-        const se = qs.get('session'); if (se) initial.session = se;
-        return (
-          <ConfigProvider theme={this.themeConfig}>
-            <ExternalSessionsView
-              initial={initial}
-              onExit={() => {
-                const url = new URL(window.location.href);
-                url.searchParams.delete('view');
-                url.searchParams.delete('root');
-                url.searchParams.delete('provider');
-                url.searchParams.delete('scope');
-                url.searchParams.delete('session');
-                window.location.href = url.toString();
-              }}
-            />
-          </ConfigProvider>
-        );
-      }
-    } catch {}
+    const externalView = maybeRenderExternalView(ConfigProvider, this.themeConfig);
+    if (externalView) return externalView;
 
     const { filteredRequests, fileLoading, fileLoadingCount, mainAgentSessions } = this.renderPrepare();
 

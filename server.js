@@ -199,14 +199,20 @@ function _startExtWatch(logFile) {
     getLogFile: () => logFile,
   });
 }
+// 幂等：多次调用先关闭旧 watcher、清空状态再重建。
+// 触发场景：Electron workspace 下 startViewer → initPostLaunch 两路径都会调用。
 function _initExternalRoots() {
+  if (_externalRootsStopWatch) {
+    try { _externalRootsStopWatch(); } catch {}
+    _externalRootsStopWatch = null;
+  }
   _externalRoots = loadExternalRoots({
     envValue: process.env.CCV_EXTERNAL_ROOTS,
   });
   if (_externalRoots.length === 0) return;
   try {
     _externalRootsStopWatch = watchExternalRoots(_externalRoots, ({ rootIndex, relPath }) => {
-      // relPath 形如: lia/scopes/wi-150/sessions/worker-xxx/session.json
+      // relPath 形如: <provider>/scopes/<scope>/sessions/<session>/session.json
       const parts = String(relPath).split(/[\/\\]/);
       // log.jsonl 的变化由 watchLogFile 处理，这里只广播元数据变化
       if (parts[parts.length - 1] === 'log.jsonl') return;
@@ -215,6 +221,21 @@ function _initExternalRoots() {
   } catch (err) {
     console.error('[CC Viewer] External roots watch failed:', err.message);
   }
+}
+// stopViewer 调用：关 root watcher、断所有外部 SSE 连接、清 watchStarted 集合。
+function _teardownExternal() {
+  if (_externalRootsStopWatch) {
+    try { _externalRootsStopWatch(); } catch {}
+    _externalRootsStopWatch = null;
+  }
+  for (const arr of _externalSseClients.values()) {
+    for (const res of arr) {
+      try { res.end(); } catch {}
+    }
+  }
+  _externalSseClients.clear();
+  _externalWatchStarted.clear();
+  _externalRoots = [];
 }
 // Stats Worker 实例
 let statsWorker = null;
@@ -1059,9 +1080,14 @@ async function handleRequest(req, res) {
     try {
       let totalCount = 0;
       await streamRawEntriesAsync(logFile, (raw) => {
-        res.write('event: load_chunk\ndata: [');
-        res.write(raw.includes('\n') ? raw.replace(/\n/g, '') : raw);
-        res.write(']\n\n');
+        // 协议要求 log.jsonl 每条为单行 JSON（合法 JSON 紧凑形式不含字面 LF/CR）。
+        // 若 producer 误发 pretty-print，字面换行会违反 SSE data 帧规范（data 行不能含 LF）。
+        // 兜底：parse → stringify 规范化；parse 失败说明条目本就不合法，跳过。
+        let safe = raw;
+        if (raw.includes('\n') || raw.includes('\r')) {
+          try { safe = JSON.stringify(JSON.parse(raw)); } catch { return; }
+        }
+        res.write(`event: load_chunk\ndata: [${safe}]\n\n`);
       }, {
         onReady: ({ totalCount: tc }) => {
           totalCount = tc;
@@ -3262,6 +3288,8 @@ async function _doStop() {
   try { await Promise.race([runParallelHook('serverStopping'), new Promise(r => setTimeout(r, 3000))]); } catch { }
   // External session: 协议要求在退出时更新 session.json 的 endedAt
   try { markSessionEnded(); } catch {}
+  // External reader 资源回收：关 root watcher、断所有 SSE、清 watchStarted 集合
+  try { _teardownExternal(); } catch {}
   // 如果用户未做选择，将临时文件转为正式文件
   if (_resumeState && _resumeState.tempFile) {
     try {

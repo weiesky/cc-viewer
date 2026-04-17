@@ -6467,18 +6467,6 @@ const i18nData = {
     "pl": "Wszystkie", "ru": "Все", "ar": "الكل", "no": "Alle", "pt-BR": "Todos",
     "th": "ทั้งหมด", "tr": "Tümü", "uk": "Усі"
   },
-  "external.roleWorker": {
-    "zh": "Worker", "en": "Worker", "zh-TW": "Worker", "ko": "Worker", "ja": "Worker",
-    "de": "Worker", "es": "Worker", "fr": "Worker", "it": "Worker", "da": "Worker",
-    "pl": "Worker", "ru": "Worker", "ar": "Worker", "no": "Worker", "pt-BR": "Worker",
-    "th": "Worker", "tr": "Worker", "uk": "Worker"
-  },
-  "external.roleCounsel": {
-    "zh": "Counsel", "en": "Counsel", "zh-TW": "Counsel", "ko": "Counsel", "ja": "Counsel",
-    "de": "Counsel", "es": "Counsel", "fr": "Counsel", "it": "Counsel", "da": "Counsel",
-    "pl": "Counsel", "ru": "Counsel", "ar": "Counsel", "no": "Counsel", "pt-BR": "Counsel",
-    "th": "Counsel", "tr": "Counsel", "uk": "Counsel"
-  },
   "external.streamError": {
     "zh": "流错误", "en": "Stream error", "zh-TW": "流錯誤", "ko": "스트림 오류",
     "ja": "ストリームエラー", "de": "Stream-Fehler", "es": "Error de transmisión",

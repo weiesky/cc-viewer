@@ -150,6 +150,7 @@ let _teamName = null;
 // 工作区模式下延迟到选择工作区后再初始化
 let _newLogFile, _logDir, _projectName;
 // External session mode: 按 CCV External Sessions Protocol 写入指定目录
+// 协议约定：external 与 workspace 互斥，external 优先（调用方已显式指定输出路径）。
 // docs/ccv-external-sessions-protocol.md
 const _extSession = getExternalSession();
 if (_extSession) {

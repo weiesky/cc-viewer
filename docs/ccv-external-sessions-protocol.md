@@ -1,9 +1,9 @@
 # CCV External Sessions Protocol v1
 
 **Status**: Draft → Stable (v1 as of ccv 1.6.158)
-**Scope**: Defines how external tools (e.g. `lia`, CI runners, custom orchestrators) write CC session logs into a directory layout that ccv can browse and live-tail.
+**Scope**: Defines how external tools (agent orchestrators, CI runners, custom launchers, etc.) write CC session logs into a directory layout that ccv can browse and live-tail.
 
-This is a **data protocol**, not a code protocol. ccv has zero knowledge of any particular producer. ccv reads what's on disk; producers write what the schema says.
+This is a **data protocol**, not a code protocol. ccv has zero knowledge of any particular producer. ccv reads what's on disk; producers write what the schema says. The schema intentionally avoids any domain-specific vocabulary — values like `role` and `kind` are free-form strings the producer chooses, and ccv renders them without interpretation.
 
 ## Two entry points
 
@@ -18,10 +18,10 @@ Producers don't have to use ccv's proxy — they can write the files themselves.
 
 ```
 <external-root>/                      # user-configured absolute path
-  <provider-id>/                      # slug — one per producer (e.g. "lia")
+  <provider-id>/                      # slug — one per producer
     index.json                        # provider-level metadata
     scopes/
-      <scope-id>/                     # slug — business grouping (e.g. "wi-lia-150")
+      <scope-id>/                     # slug — business grouping (producer-defined)
         scope.json                    # scope metadata
         sessions/
           <session-id>/               # slug — one CC session
@@ -34,7 +34,7 @@ Producers don't have to use ccv's proxy — they can write the files themselves.
 **Rules**:
 - Directories that don't match slug format are ignored by ccv
 - Any JSON file that's missing or unparseable is treated as absent (ccv falls back to directory-name display)
-- `log.jsonl` format is **ccv's native proxy format** — entries joined by `\n---\n` (not newline-delimited JSON, because entries may contain literal newlines)
+- `log.jsonl` format is **ccv's native proxy format** — entries joined by `\n---\n` (not newline-delimited JSON, because entries may contain literal newlines). Each entry MUST be a single-line JSON object (no pretty-printing).
 
 ## Schema
 
@@ -43,8 +43,8 @@ Producers don't have to use ccv's proxy — they can write the files themselves.
 ```json
 {
   "protocolVersion": 1,
-  "providerId": "lia",
-  "providerName": "Lia Work Management",
+  "providerId": "example-producer",
+  "providerName": "Example Producer",
   "updatedAt": "2026-04-15T14:30:22Z"
 }
 ```
@@ -60,14 +60,10 @@ Producers don't have to use ccv's proxy — they can write the files themselves.
 
 ```json
 {
-  "scopeId": "wi-lia-150",
-  "title": "实现 ccv 集成",
-  "subtitle": "lia:150",
-  "kind": "work-item",
-  "meta": [
-    {"label": "Status", "value": "in_progress", "type": "tag"},
-    {"label": "Claim", "value": "mail-789", "type": "link", "href": "lia://mail/789"}
-  ],
+  "scopeId": "group-001",
+  "title": "Scope title",
+  "subtitle": "optional extra line",
+  "kind": "custom",
   "updatedAt": "2026-04-15T14:30:22Z"
 }
 ```
@@ -77,24 +73,19 @@ Producers don't have to use ccv's proxy — they can write the files themselves.
 | `scopeId` | string | yes | Matches parent directory name. |
 | `title` | string | yes | Displayed in sidebar. |
 | `subtitle` | string | no | Shown under title. |
-| `kind` | string | no | `work-item` / `project` / `custom`. Informational. |
-| `meta` | array | no | See "meta entries" below. Reserved for future UI; ccv 1.6.158 doesn't render them yet. |
+| `kind` | string | no | Free-form tag chosen by the producer (e.g. `work-item`, `build`, `run`). Informational only — ccv does not interpret it. |
 | `updatedAt` | ISO 8601 | no | Informational. |
 
 ### session.json (one CC session)
 
 ```json
 {
-  "sessionId": "worker-20260415-143022",
-  "title": "worker claim attempt 1",
-  "role": "worker",
+  "sessionId": "session-20260415-143022",
+  "title": "human-readable session title",
+  "role": "agent-a",
   "logFile": "log.jsonl",
   "startedAt": "2026-04-15T14:30:22Z",
   "endedAt": null,
-  "parentSessionId": null,
-  "meta": [
-    {"label": "Skills", "value": ["release", "adr"], "type": "tag"}
-  ],
   "updatedAt": "2026-04-15T14:30:22Z"
 }
 ```
@@ -103,25 +94,17 @@ Producers don't have to use ccv's proxy — they can write the files themselves.
 |---|---|---|---|
 | `sessionId` | string | yes | Matches parent directory name. |
 | `title` | string | yes | Displayed in session list. |
-| `role` | string | yes | Freeform; conventional values `worker`, `counsel`. UI provides a role filter. |
-| `logFile` | string | yes | Relative path within `<session-id>/`. Must not be absolute, must not contain `..`. Typically `"log.jsonl"`. |
+| `role` | string | yes | Free-form producer-chosen label. ccv groups the session list by this value and derives a filter from the distinct values it observes — it does not treat any particular string as special. |
+| `logFile` | string | no | Relative path within `<session-id>/`, must not be absolute, must not contain `..`. Default `"log.jsonl"`. |
 | `startedAt` | ISO 8601 | yes | Used for session-list sort (desc). |
 | `endedAt` | ISO 8601 / null | yes | `null` means session is live; UI shows a live tag. Proxy fills this on exit. |
-| `parentSessionId` | string / null | no | v1 reader stores but does not consume this field. |
-| `meta` | array | no | Forward-compat field. v1 reader does not render `meta`. See below for shape. |
 | `updatedAt` | ISO 8601 | no | Informational. |
 
-**Lifecycle invariant**: `session.json` is written **twice** at minimum — once at session start (skeleton with `endedAt: null`), once at end (`endedAt` filled). No intermediate writes required. Producers may add writes to refresh `meta`, but ccv doesn't depend on mid-session updates.
+**Lifecycle invariant**: `session.json` is written **twice** at minimum — once at session start (skeleton with `endedAt: null`), once at end (`endedAt` filled). No intermediate writes required.
 
-### meta entries
+**Unknown fields are preserved, not enforced**: ccv ignores keys it does not understand when reading. Producers MAY add their own extension keys (e.g. `myOrg.workItemId`), but a future protocol version MAY reserve additional top-level keys — producers should prefix custom keys with a namespace (dotted or `x-`) to avoid collisions.
 
-Forward-compat field. v1 reader does **not** render meta. Producers may populate it so future readers can display without migration. Shape:
-
-```json
-{"label": "Label", "value": "string or array", "type": "text|tag|link|code", "href": "optional"}
-```
-
-`type` values are advisory in v1; future readers may add new types.
+**Forward-compatibility fields explicitly deferred to a future version**: `parentSessionId`, `meta[]`. Don't rely on them in v1 — they will be defined in v2 with proper semantics. Writing them is not prohibited but ccv 1.6.158 does not read or render them.
 
 ## Runtime: `CCV_EXTERNAL_SESSION` (writer env)
 
@@ -129,25 +112,27 @@ When ccv's proxy starts with this env set, it writes into the protocol-prescribe
 
 ```bash
 export CCV_EXTERNAL_SESSION='{
-  "sessionDir": "/abs/root/lia/scopes/wi-lia-150/sessions/worker-20260415-143022",
-  "sessionId": "worker-20260415-143022",
-  "role": "worker",
-  "title": "worker claim attempt 1",
-  "parentSessionId": null,
-  "meta": [{"label":"Skills","value":["release"],"type":"tag"}]
+  "sessionDir": "/abs/root/example-producer/scopes/group-001/sessions/session-20260415-143022",
+  "sessionId": "session-20260415-143022",
+  "role": "agent-a",
+  "title": "first attempt"
 }'
 ```
 
+Accepted fields: `sessionDir` (required, absolute), `sessionId` (required), `role` (optional), `title` (optional). Any other fields are ignored — producers with extended metadata write `session.json` themselves instead of piping through ccv's writer.
+
 Behaviour:
 1. `mkdir -p <sessionDir>`
-2. Write `<sessionDir>/session.json` skeleton with `startedAt: now`, `endedAt: null`, `logFile: "log.jsonl"`, and verbatim copy of `sessionId`/`role`/`title`/`parentSessionId`/`meta`
-3. Append all captured requests/responses to `<sessionDir>/log.jsonl`
+2. Write `<sessionDir>/session.json` skeleton with `startedAt: now`, `endedAt: null`, `logFile: "log.jsonl"`, and verbatim copy of `sessionId`/`role`/`title`
+3. Append all captured requests/responses to `<sessionDir>/log.jsonl` (single-line JSON entries joined by `\n---\n`)
 4. On proxy exit (SIGTERM / SIGINT / normal), patch `session.json` with `endedAt: now`, `updatedAt: now` (idempotent)
 
 Guarantees:
 - If `session.json` already exists, it is **not** overwritten (safe for session resume)
 - If the env is absent or unparseable, proxy falls back to default behaviour (`~/.claude/cc-viewer/<proj>/...`) — no regression for existing users
 - Log rotation is disabled in external-session mode (protocol requires a single `log.jsonl`)
+
+**Mode precedence**: when both `CCV_EXTERNAL_SESSION` and `CCV_WORKSPACE_MODE=1` are set, external-session mode wins. The two are mutually exclusive; external wins because its output path is explicitly dictated by the caller.
 
 Producers that don't use ccv's proxy must write session.json + log.jsonl themselves, following the same rules.
 
@@ -156,7 +141,7 @@ Producers that don't use ccv's proxy must write session.json + log.jsonl themsel
 Comma-separated list of absolute paths. Supports `~` and `$HOME` expansion. Env is the only v1 input — no preferences.json or auto-discovery.
 
 ```bash
-export CCV_EXTERNAL_ROOTS="$HOME/.lia/ccv-roots,/tmp/ccv-external-dev"
+export CCV_EXTERNAL_ROOTS="$HOME/.example-producer/ccv-roots,/tmp/ccv-external-dev"
 ccv
 ```
 
@@ -167,6 +152,8 @@ ccv on startup:
 4. The UI at `?view=external` becomes usable
 
 When the env is absent or empty, none of the above activates — ccv behaves identically to prior versions.
+
+**Scale**: v1 targets single-digit roots, dozens of providers per root, hundreds of scopes per provider. Directory scans use synchronous IO; very large trees (thousands of sessions per scope) may cause UI latency. On Linux, `fs.watch({recursive: true})` consumes inotify watches — adjust `fs.inotify.max_user_watches` for large trees.
 
 ## REST API
 
@@ -179,9 +166,9 @@ Returns configured roots and the providers found under each.
   "roots": [
     {
       "index": 0,
-      "path": "/home/user/.lia/ccv-roots",
+      "path": "/home/user/.example-producer/ccv-roots",
       "providers": [
-        {"providerId": "lia", "providerName": "Lia", "protocolVersion": 1, "updatedAt": "..."}
+        {"providerId": "example-producer", "providerName": "Example", "protocolVersion": 1, "updatedAt": "..."}
       ]
     }
   ]
@@ -197,9 +184,9 @@ Returns the session list, sorted by `startedAt` desc.
 ### `GET /api/external/events?root=<idx>&provider=<id>&scope=<id>&session=<id>` (SSE)
 Live-tails the selected session's `log.jsonl`. Events:
 - `load_start` — total entry count + `external: true`
-- `load_chunk` — historical entries in batches
+- `load_chunk` — historical entries in batches (JSON array of entry objects)
 - `load_end` — history replay finished
-- default (unnamed) — new entries appended after `load_end`
+- default (unnamed) — new entries appended after `load_end` (single entry object per event)
 - `ping` — keepalive every 30s
 - `error` — stream error detail
 
@@ -213,7 +200,7 @@ Returns 400 on bad params, 404 on missing log.
 - **Path whitelisting**: `provider`/`scope`/`session` query params are validated against the slug regex. Invalid → 400.
 - **Path traversal defense**: `session.json`'s `logFile` field must be a relative path within its `sessionDir`. Absolute paths or `..` segments → 404.
 - **Root whitelisting**: Only roots explicitly in `CCV_EXTERNAL_ROOTS` are scanned. No auto-discovery.
-- **Third-party producers**: ccv executes no code from external roots. It only reads JSON and appends-only log files. Malicious JSON content in `meta` fields is text — not rendered as HTML.
+- **Third-party producers**: ccv executes no code from external roots. It only reads JSON and appends-only log files. Any text from `session.json` / `scope.json` (titles, roles, subtitles) is rendered as plain text — never evaluated as HTML.
 
 ## UI entry
 
@@ -221,52 +208,70 @@ Add `?view=external` to the ccv URL (optionally with `root=`, `provider=`, `scop
 
 ```
 ┌─ header (title, refresh, close) ────────────────────────────────────┐
-├─ scope sidebar ─┬─ session list (role filter) ─┬─ entry timeline ──┤
-│ [lia]           │ [All] [Worker] [Counsel]     │                   │
-│   wi-lia-150    │ [worker] attempt 1 [live]    │ POST /v1/messages │
-│   wi-lia-212    │ [counsel] reviewer           │   model=...       │
-│ [other-provider]│                              │   msgs=12         │
-│   ...           │                              │   ... raw JSON    │
-└─────────────────┴──────────────────────────────┴───────────────────┘
+├─ scope sidebar ─┬─ session list (dynamic role filter) ─┬─ timeline ┤
+│ [example]       │ [All] [agent-a] [agent-b] ...        │           │
+│   group-001     │ [agent-a] first attempt [live]       │ POST /v1  │
+│   group-002     │ [agent-b] reviewer                   │  model=.. │
+│ [other-provider]│                                      │  ...      │
+│   ...           │                                      │           │
+└─────────────────┴──────────────────────────────────────┴───────────┘
 ```
 
-Out of scope for v1 UI:
-- `meta[]` rendering
-- Navigation via `parentSessionId`
-- Cross-session search
+The role filter is built at runtime from the distinct `role` values observed in the current session list — there are no built-in role categories.
 
-## Example: end-to-end (producer = lia-like)
+Out of scope for v1 UI:
+- Custom meta rendering
+- Cross-session search
+- Session parent/child navigation (deferred to v2)
+
+## Example 1: end-to-end, agent orchestrator
 
 ```bash
 # 1. Prepare scope (producer responsibility)
-mkdir -p "$HOME/.lia/ccv-roots/lia/scopes/wi-lia-150"
-cat > "$HOME/.lia/ccv-roots/lia/index.json" <<EOF
-{"protocolVersion": 1, "providerId": "lia", "providerName": "Lia"}
+mkdir -p "$HOME/.my-orchestrator/ccv-roots/orchestrator-a/scopes/task-42"
+cat > "$HOME/.my-orchestrator/ccv-roots/orchestrator-a/index.json" <<EOF
+{"protocolVersion": 1, "providerId": "orchestrator-a", "providerName": "My Orchestrator"}
 EOF
-cat > "$HOME/.lia/ccv-roots/lia/scopes/wi-lia-150/scope.json" <<EOF
-{"scopeId": "wi-lia-150", "title": "实现集成", "kind": "work-item"}
+cat > "$HOME/.my-orchestrator/ccv-roots/orchestrator-a/scopes/task-42/scope.json" <<EOF
+{"scopeId": "task-42", "title": "Implement feature X", "kind": "task"}
 EOF
 
 # 2. Launch claude through ccv proxy with external-session env
 SESSION_ID="worker-$(date +%Y%m%d-%H%M%S)"
-SESSION_DIR="$HOME/.lia/ccv-roots/lia/scopes/wi-lia-150/sessions/$SESSION_ID"
+SESSION_DIR="$HOME/.my-orchestrator/ccv-roots/orchestrator-a/scopes/task-42/sessions/$SESSION_ID"
 export CCV_EXTERNAL_SESSION=$(jq -n \
   --arg dir "$SESSION_DIR" --arg id "$SESSION_ID" \
-  '{sessionDir: $dir, sessionId: $id, role: "worker", title: "worker claim"}')
-# proxy writes session.json skeleton + log.jsonl into $SESSION_DIR
+  '{sessionDir: $dir, sessionId: $id, role: "worker", title: "first attempt"}')
 ccv run -- claude ...
 
 # 3. View (from another shell, during or after)
-CCV_EXTERNAL_ROOTS="$HOME/.lia/ccv-roots" ccv
-# Browser opens; navigate to http://127.0.0.1:7008/?view=external
-# Or deep-link: .../?view=external&root=0&provider=lia&scope=wi-lia-150&session=<SESSION_ID>
+CCV_EXTERNAL_ROOTS="$HOME/.my-orchestrator/ccv-roots" ccv
+# Browser opens at http://127.0.0.1:7008/?view=external
 ```
+
+## Example 2: end-to-end, CI runner
+
+A CI system naming things its own way:
+
+```bash
+ROOT="$HOME/.ci-runs/ccv"
+mkdir -p "$ROOT/ci-runner/scopes/pr-1234/sessions/run-78901"
+echo '{"protocolVersion":1,"providerId":"ci-runner","providerName":"CI Runner"}' > "$ROOT/ci-runner/index.json"
+echo '{"scopeId":"pr-1234","title":"PR #1234: fix login flow","kind":"pull-request"}' > "$ROOT/ci-runner/scopes/pr-1234/scope.json"
+
+export CCV_EXTERNAL_SESSION=$(jq -n --arg dir "$ROOT/ci-runner/scopes/pr-1234/sessions/run-78901" \
+  '{sessionDir: $dir, sessionId: "run-78901", role: "lint", title: "lint stage"}')
+ccv run -- claude ...
+```
+
+Same protocol — different vocabulary. ccv renders both without modification.
 
 ## Versioning
 
 - `protocolVersion: 1` is frozen. Any breaking schema change bumps to `2`.
 - Additive fields (new optional keys) may appear in minor ccv releases; producers should ignore unknown keys.
 - If a new ccv reads `protocolVersion: 2` from a future producer, it skips with a warning and keeps functioning on v1 roots.
+- Reserved for v2: `parentSessionId`, `meta[]` — semantics will be defined then. Producers SHOULD NOT rely on v1 readers preserving these fields.
 
 ## Reference files in ccv source
 
@@ -274,4 +279,4 @@ CCV_EXTERNAL_ROOTS="$HOME/.lia/ccv-roots" ccv
 - Reader: `lib/external-sessions.js`
 - Server routes: `server.js` (`/api/external/*`)
 - Frontend: `src/components/external/ExternalSessionsView.jsx`
-- Tests: `test/external-session-writer.test.js`, `test/external-sessions.test.js`
+- Tests: `test/external-session-writer.test.js`, `test/external-sessions.test.js`, `test/e2e-external.sh`
