@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { t } from './i18n.js';
-import { INJECT_IMPORT, resolveCliPath, resolveNativePath, resolveNpmClaudePath, buildShellCandidates, setLogDir, LOG_DIR } from './findcc.js';
+import { INJECT_IMPORT, resolveCliPath, resolveNativePath, resolveNpmClaudePath, buildShellCandidates, setLogDir, LOG_DIR, hasClaude2xWrapper, getGlobalNodeModulesDir, PACKAGES } from './findcc.js';
 import { ensureHooks } from './lib/ensure-hooks.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -20,6 +20,29 @@ const SHELL_HOOK_START = '# >>> CC-Viewer Auto-Inject >>>';
 const SHELL_HOOK_END = '# <<< CC-Viewer Auto-Inject <<<';
 
 const cliPath = resolveCliPath();
+
+// 统一的"claude 找不到"错误提示：区分"Claude Code 2.x wrapper 装了但原生二进制
+// 没 ready（--ignore-scripts / --omit=optional / 某些 pnpm 配置）"和"claude 根本
+// 没装"两种情况，给出针对性的修复指引。
+function reportClaudeNotFound(cliPathHint) {
+  const globalRoot = getGlobalNodeModulesDir();
+  if (hasClaude2xWrapper(globalRoot)) {
+    // 2.x wrapper 在场但找不到可执行二进制：大概率是 postinstall 没跑
+    console.error(t('cli.claude2x.binaryMissing'));
+    for (const pkg of PACKAGES) {
+      const installScript = resolve(globalRoot, pkg, 'install.cjs');
+      if (existsSync(installScript)) {
+        console.error(`  node ${installScript}`);
+        break;
+      }
+    }
+    console.error(t('cli.claude2x.reinstallHint'));
+  } else {
+    // 完全没检测到 Claude Code 安装
+    console.error(t('cli.inject.notFound', { path: cliPathHint || cliPath }));
+    console.error(t('cli.notFound.nativeHint'));
+  }
+}
 
 function getShellConfigPath() {
   const shell = process.env.SHELL || '';
@@ -83,6 +106,12 @@ ${SHELL_HOOK_END}`;
   const candidates = buildShellCandidates();
   return `${SHELL_HOOK_START}
 claude() {
+  # Avoid recursion if ccv invokes claude (used by the 2.x self-heal path below)
+  if [ "$1" = "--ccv-internal" ]; then
+    shift
+    command claude "$@"
+    return
+  fi
   # Pass through certain commands directly without ccv interception
   case "$1" in
     ${passthroughCommands.join('|')})
@@ -101,7 +130,14 @@ claude() {
       break
     fi
   done
-  if [ -n "$cli_js" ] && ! grep -q "CC Viewer" "$cli_js" 2>/dev/null; then
+  if [ -z "$cli_js" ]; then
+    # cli.js 消失 → Claude Code 已升级到 2.1.114+（native-only 分发）。
+    # 后台重写 hook（下次 shell 就是 native hook），当前调用直接走 native proxy 路径。
+    ( ccv -logger >/dev/null 2>&1 & )
+    ccv run -- claude --ccv-internal "$@"
+    return $?
+  fi
+  if ! grep -q "CC Viewer" "$cli_js" 2>/dev/null; then
     ccv -logger 2>/dev/null
   fi
   command claude "$@"
@@ -269,7 +305,7 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   }
 
   if (!claudePath) {
-    console.error(t('cli.cMode.notFound'));
+    reportClaudeNotFound(cliPath);
     process.exit(1);
   }
 
@@ -452,7 +488,7 @@ async function runCliModeWorkspaceSelector(extraClaudeArgs = [], noOpen = false)
   }
 
   if (!claudePath) {
-    console.error(t('cli.cMode.notFound'));
+    reportClaudeNotFound(cliPath);
     process.exit(1);
   }
 
@@ -641,50 +677,16 @@ if (isUninstall) {
 }
 
 if (isLogger) {
-  // 安装/修复 hook 逻辑（原来无参数 ccv 的行为）
-  let mode = 'unknown';
-
-  let prefersNative = true;
-  const paths = (process.env.PATH || '').split(':');
-  for (const dir of paths) {
-    if (!dir) continue;
-    const exePath = resolve(dir, 'claude');
-    if (existsSync(exePath)) {
-      try {
-        const real = realpathSync(exePath);
-        if (real.includes('node_modules')) {
-          prefersNative = false;
-        } else {
-          prefersNative = true;
-        }
-        break;
-      } catch (e) {
-        // ignore
-      }
-    }
-  }
-
+  // 模式选择：有 cli.js 就走 npm 注入模式（pre-2.1.113），没有就走 native proxy
+  // 模式（2.1.114+）。单一判据，不再靠 realpath 的启发式。
   const nativePath = resolveNativePath();
   const hasNpm = existsSync(cliPath);
-
-  if (prefersNative) {
-    if (nativePath) {
-      mode = 'native';
-    } else if (hasNpm) {
-      mode = 'npm';
-    }
-  } else {
-    if (hasNpm) {
-      mode = 'npm';
-    } else if (nativePath) {
-      mode = 'native';
-    }
-  }
+  let mode = 'unknown';
+  if (hasNpm) mode = 'npm';
+  else if (nativePath) mode = 'native';
 
   if (mode === 'unknown') {
-    console.error(t('cli.inject.notFound', { path: cliPath }));
-    console.error('Also could not find native "claude" command in PATH.');
-    console.error('Please make sure @anthropic-ai/claude-code is installed.');
+    reportClaudeNotFound(cliPath);
     process.exit(1);
   }
 

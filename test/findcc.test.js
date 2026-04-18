@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, mkdtempSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
-import { buildShellCandidates, getGlobalNodeModulesDir, findPackagedBinary, findPlatformBinary, detectPlatformKey } from '../findcc.js';
+import { buildShellCandidates, getGlobalNodeModulesDir, findPackagedBinary, findPlatformBinary, detectPlatformKey, hasClaude2xWrapper } from '../findcc.js';
 
 // Test resolveLogDir by spawning a subprocess with different CCV_LOG_DIR values.
 // This avoids module cache busting which dilutes coverage.
@@ -159,6 +159,47 @@ function runResolveNativePath({ shimDir, realTarget }) {
     timeout: 5000,
   });
 }
+
+describe('findcc: hasClaude2xWrapper', () => {
+  it('returns false for null/empty root', () => {
+    assert.equal(hasClaude2xWrapper(null), false);
+    assert.equal(hasClaude2xWrapper(''), false);
+  });
+
+  it('returns false when wrapper package does not exist', () => {
+    const root = mkdtempSync(join(tmpdir(), 'findcc-wrap-missing-'));
+    try {
+      assert.equal(hasClaude2xWrapper(root), false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('returns true when install.cjs is present in @anthropic-ai/claude-code', () => {
+    const root = mkdtempSync(join(tmpdir(), 'findcc-wrap-present-'));
+    try {
+      const pkgDir = join(root, '@anthropic-ai', 'claude-code');
+      mkdirSync(pkgDir, { recursive: true });
+      writeFileSync(join(pkgDir, 'install.cjs'), '// postinstall stub\n');
+      assert.equal(hasClaude2xWrapper(root), true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('returns false when only package.json exists (1.x layout, no install.cjs)', () => {
+    const root = mkdtempSync(join(tmpdir(), 'findcc-wrap-1x-'));
+    try {
+      const pkgDir = join(root, '@anthropic-ai', 'claude-code');
+      mkdirSync(pkgDir, { recursive: true });
+      writeFileSync(join(pkgDir, 'package.json'), '{}');
+      writeFileSync(join(pkgDir, 'cli.js'), '// cli.js present, 1.x layout\n');
+      assert.equal(hasClaude2xWrapper(root), false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('findcc: detectPlatformKey', () => {
   it('returns a known platform key for the current platform', () => {

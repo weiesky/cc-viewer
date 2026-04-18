@@ -232,6 +232,18 @@ export function detectPlatformKey() {
   return null;
 }
 
+// 检测 Claude Code 2.x wrapper 包是否已安装。install.cjs 是 2.x wrapper 独有的
+// 文件（1.x 的 cli.js 分发不带它），可作为"是 2.x 布局"的可靠标识。
+// 当我们既找不到 cli.js 也找不到原生二进制时，此函数用来区分"根本没装 claude"
+// 和"装了 2.x 但 postinstall/optional 依赖出问题了"两种情况，给出更精准的提示。
+export function hasClaude2xWrapper(nodeModulesRoot) {
+  if (!nodeModulesRoot) return false;
+  for (const pkg of PACKAGES) {
+    if (existsSync(join(nodeModulesRoot, pkg, 'install.cjs'))) return true;
+  }
+  return false;
+}
+
 // Claude Code 2.x 把真正的原生二进制放在平台特定的 optional dependency 包中
 // （如 @anthropic-ai/claude-code-darwin-arm64/claude）。postinstall 只是把它复制到
 // 主包的 bin/claude.exe。如果 postinstall 没跑（--ignore-scripts / pnpm），bin/claude.exe
