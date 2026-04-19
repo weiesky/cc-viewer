@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { Tooltip, message } from 'antd';
 import { CopyOutlined, DownloadOutlined, CameraOutlined, SaveOutlined } from '@ant-design/icons';
 import { renderMarkdown } from '../utils/markdown';
+import { renderIncremental } from '../utils/markdownIncremental';
 import { recordMountSample, DEV_PROFILER_ENABLED } from '../utils/markdownProfiler';
 import { apiUrl } from '../utils/apiUrl';
 import { isMobile, isPad } from '../env';
@@ -18,7 +19,10 @@ function MarkdownBlock({ text, className, style, trailingCursor }) {
 
   useEffect(() => () => clearTimeout(timerRef.current), []);
 
-  const html = useMemo(() => text ? renderMarkdown(text) : '', [text]);
+  const html = useMemo(
+    () => text ? (trailingCursor ? renderIncremental(text) : renderMarkdown(text)) : '',
+    [text, trailingCursor]
+  );
 
   // Dev-only mount profiling: start AFTER useMemo so `md-parse` time (measured
   // separately inside renderMarkdown) is not double-counted in `md-mount`.

@@ -148,37 +148,7 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
 
   return (
     <div className={styles.chatInputBar}>
-      <div className={`${styles.chatInputWrapper}${isStreaming ? ` ${styles.streaming}` : ''}${streamingFading ? ` ${styles.streamingFading}` : ''}`}>
-        {(isStreaming || streamingFading) && (
-          <svg className={`${styles.streamingSvg}${streamingFading ? ` ${styles.streamingSvgFading}` : ''}`}>
-            <defs>
-              <filter id="ccv-streamGlow">
-                <feGaussianBlur stdDeviation="2" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
-            {/* 5层渐变拖尾：头亮尾淡，所有层头部对齐 */}
-            {[
-              { da: '20 30', op: 0.08, off: 0 },
-              { da: '16 34', op: 0.15, off: -4 },
-              { da: '11 39', op: 0.3,  off: -9 },
-              { da: '6 44',  op: 0.6,  off: -14 },
-              { da: '3 47',  op: 1,    off: -17 },
-            ].map((l, i, arr) => (
-              <rect key={i} x="0" y="0" width="100%" height="100%" rx="16" ry="16"
-                pathLength="100" fill="none" strokeWidth="1.5"
-                stroke="var(--color-primary-lighter)" strokeOpacity={l.op}
-                strokeLinecap="round" strokeDasharray={l.da}
-                filter={i === arr.length - 1 ? 'url(#ccv-streamGlow)' : undefined}>
-                <animate attributeName="stroke-dashoffset"
-                  from={l.off} to={l.off - 100} dur="2.5s" repeatCount="indefinite" />
-              </rect>
-            ))}
-          </svg>
-        )}
+      <div className={styles.chatInputWrapper}>
         <div className={styles.chatTextareaWrap}>
           {pendingImages && pendingImages.length > 0 && (
             <div className={styles.imagePreviewStrip}>
@@ -339,17 +309,34 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                   <span className={styles.chatInputHintTerminal}>{t('ui.chatInput.hintTerminal')}</span>
                 </>}
           </div>
-          <button
-            className={`${styles.sendBtn} ${inputEmpty && !(pendingImages?.length) ? styles.sendBtnDisabled : ''}`}
-            onClick={onSend}
-            disabled={inputEmpty && !(pendingImages?.length)}
-            title={t('ui.chatInput.send')}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="19" x2="12" y2="5" />
-              <polyline points="5 12 12 5 19 12" />
-            </svg>
-          </button>
+          <div className={styles.sendBtnWrap}>
+            {(isStreaming || streamingFading) && (
+              <div className={`${styles.streamingSpinner}${streamingFading ? ` ${styles.streamingSpinnerFading}` : ''}`} aria-hidden="true">
+                <svg className={styles.streamingSvg} viewBox="0 0 32 32">
+                  <circle cx="16" cy="16" r="15" pathLength="100" fill="none" strokeWidth="1.5"
+                    stroke="var(--color-primary-lighter)" strokeOpacity="0.25"
+                    strokeLinecap="round" strokeDasharray="14 86" strokeDashoffset="0" />
+                  <circle cx="16" cy="16" r="15" pathLength="100" fill="none" strokeWidth="1.5"
+                    stroke="var(--color-primary-lighter)" strokeOpacity="0.55"
+                    strokeLinecap="round" strokeDasharray="7 93" strokeDashoffset="-6" />
+                  <circle cx="16" cy="16" r="15" pathLength="100" fill="none" strokeWidth="1.5"
+                    stroke="var(--color-primary-lighter)" strokeOpacity="1"
+                    strokeLinecap="round" strokeDasharray="3 97" strokeDashoffset="-10" />
+                </svg>
+              </div>
+            )}
+            <button
+              className={`${styles.sendBtn} ${inputEmpty && !(pendingImages?.length) ? styles.sendBtnDisabled : ''}`}
+              onClick={onSend}
+              disabled={inputEmpty && !(pendingImages?.length)}
+              title={t('ui.chatInput.send')}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="19" x2="12" y2="5" />
+                <polyline points="5 12 12 5 19 12" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>

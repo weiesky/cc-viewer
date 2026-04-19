@@ -386,6 +386,8 @@ class AppBase extends React.Component {
     if (this._sseTimeoutTimer) clearTimeout(this._sseTimeoutTimer);
     if (this._sseReconnectTimer) clearTimeout(this._sseReconnectTimer);
     if (this._streamingOffTimer) clearTimeout(this._streamingOffTimer);
+    if (this._streamingRaf) { cancelAnimationFrame(this._streamingRaf); this._streamingRaf = null; }
+    this._pendingStreamingLatest = null;
   }
 
   // ─── SSE 通信 ───────────────────────────────────────────
@@ -556,6 +558,9 @@ class AppBase extends React.Component {
       this.eventSource.onmessage = (event) => { this._resetSSETimeout(); this.handleEventMessage(event); };
       this.eventSource.onopen = () => { this._resetSSETimeout(); };
       // Live streaming overlay: 直接更新 streamingLatest state（不走 reconstructor / dedup）
+      // rAF coalesce + startTransition：每个 SSE chunk 只在下一帧合并成一次 setState，
+      // 并标记为低优先级渲染，避免阻塞用户输入。最终 chunk 经 entry path 交付而非
+      // stream-progress，所以丢掉 trailing stream-progress 是安全的。
       this.eventSource.addEventListener('stream-progress', (event) => {
         this._resetSSETimeout();
         try {
@@ -570,14 +575,22 @@ class AppBase extends React.Component {
           // 1) 正常：最终 entry 到达时 _flushPendingEntries 原子清除
           // 2) 异常：SSE 连接真死 (_reconnectSSE)
           // 避免长 thinking / 网络抖动 / 切 tab 等场景误杀 overlay。
-          this.setState({
-            streamingLatest: {
-              timestamp: data.timestamp,
-              url: data.url,
-              content: data.content || [],
-              model: data.model,
-              updatedAt: Date.now(),
-            }
+          this._pendingStreamingLatest = {
+            timestamp: data.timestamp,
+            url: data.url,
+            content: data.content || [],
+            model: data.model,
+            updatedAt: Date.now(),
+          };
+          if (this._streamingRaf) return;
+          this._streamingRaf = requestAnimationFrame(() => {
+            this._streamingRaf = null;
+            const pending = this._pendingStreamingLatest;
+            this._pendingStreamingLatest = null;
+            if (!pending) return;
+            React.startTransition(() => {
+              this.setState({ streamingLatest: pending });
+            });
           });
         } catch { }
       });
