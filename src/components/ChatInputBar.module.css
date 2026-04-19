@@ -195,14 +195,6 @@
   padding: 0 4px;
 }
 
-.chatInputHintSep {
-  color: var(--border-light);
-}
-
-.chatInputHintTerminal {
-  color: var(--border-light);
-}
-
 .chatInputHintMobile {
   flex: 1;
   font-size: 13px;

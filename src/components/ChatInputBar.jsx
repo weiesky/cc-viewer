@@ -23,6 +23,7 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
   const [interimText, setInterimText] = useState('');
   const recRef = useRef(null);
   const anchorRef = useRef({ prefix: '', suffix: '' });
+  const rootRef = useRef(null);
 
   useEffect(() => () => {
     const rec = recRef.current;
@@ -33,6 +34,23 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
       try { rec.abort(); } catch {}
       recRef.current = null;
     }
+  }, []);
+
+  // 把 ChatInputBar 实时高度写到 document CSS 变量 --chat-input-bar-height。
+  // 用于移动端 .panelGlobal（Mobile.jsx 全局渲染，不在 .inputStack 内）动态上浮，
+  // 避免多行输入时审批面板被输入栏覆盖。
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      // offsetHeight 包含 padding+border，准确反映输入栏在布局中占据的垂直空间
+      document.documentElement.style.setProperty('--chat-input-bar-height', el.offsetHeight + 'px');
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      document.documentElement.style.removeProperty('--chat-input-bar-height');
+    };
   }, []);
 
   useEffect(() => {
@@ -147,7 +165,7 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
   }
 
   return (
-    <div className={styles.chatInputBar}>
+    <div className={styles.chatInputBar} ref={rootRef}>
       <div className={styles.chatInputWrapper}>
         <div className={styles.chatTextareaWrap}>
           {pendingImages && pendingImages.length > 0 && (
@@ -303,11 +321,7 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
           <div className={(isMobile && !isPad) ? styles.chatInputHintMobile : styles.chatInputHint}>
             {(isMobile && !isPad)
               ? t('ui.chatInput.hintMobile')
-              : <>
-                  {inputSuggestion && inputEmpty ? t('ui.chatInput.hintTab') : t('ui.chatInput.hintEnter')}
-                  <span className={styles.chatInputHintSep}> · </span>
-                  <span className={styles.chatInputHintTerminal}>{t('ui.chatInput.hintTerminal')}</span>
-                </>}
+              : (inputSuggestion && inputEmpty ? t('ui.chatInput.hintTab') : t('ui.chatInput.hintEnter'))}
           </div>
           <div className={styles.sendBtnWrap}>
             {(isStreaming || streamingFading) && (

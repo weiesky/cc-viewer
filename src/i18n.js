@@ -4376,26 +4376,6 @@ const i18nData = {
     "tr": "Engellendiyse, izinleri onaylamak için [Terminal] moduna geçin",
     "uk": "При блокуванні перейдіть у режим [Термінал] для затвердження дозволів"
   },
-  "ui.chatInput.hintTerminal": {
-    "zh": "如果遇到流程阻塞，打开右上角的[终端]审批一下权限即可",
-    "en": "If blocked, open [Terminal] in the top-right corner to approve permissions",
-    "zh-TW": "如果遇到流程阻塞，打開右上角的[終端]審批一下權限即可",
-    "ko": "프로세스가 차단되면 오른쪽 상단의 [터미널]을 열어 권한을 승인하세요",
-    "ja": "プロセスがブロックされた場合、右上の[ターミナル]を開いて権限を承認してください",
-    "de": "Bei Blockierung [Terminal] oben rechts öffnen, um Berechtigungen zu genehmigen",
-    "es": "Si se bloquea, abra [Terminal] en la esquina superior derecha para aprobar permisos",
-    "fr": "En cas de blocage, ouvrez le [Terminal] en haut à droite pour approuver les autorisations",
-    "it": "In caso di blocco, apri il [Terminale] in alto a destra per approvare i permessi",
-    "da": "Hvis blokeret, åbn [Terminal] i øverste højre hjørne for at godkende tilladelser",
-    "pl": "W przypadku blokady otwórz [Terminal] w prawym górnym rogu, aby zatwierdzić uprawnienia",
-    "ru": "При блокировке откройте [Терминал] в правом верхнем углу для одобрения разрешений",
-    "ar": "إذا تم الحظر، افتح [الطرفية] في الزاوية العلوية اليمنى للموافقة على الأذونات",
-    "no": "Hvis blokkert, åpne [Terminal] øverst til høyre for å godkjenne tillatelser",
-    "pt-BR": "Se bloqueado, abra o [Terminal] no canto superior direito para aprovar permissões",
-    "th": "หากถูกบล็อก ให้เปิด [เทอร์มินัล] ที่มุมขวาบนเพื่ออนุมัติสิทธิ์",
-    "tr": "Engellendiyse, izinleri onaylamak için sağ üst köşedeki [Terminal]'i açın",
-    "uk": "При блокуванні відкрийте [Термінал] у правому верхньому куті для затвердження дозволів"
-  },
   "ui.chatInput.hintEnter": {
     "zh": "Enter 发送，Shift+Enter 换行",
     "en": "Enter to send, Shift+Enter for new line",

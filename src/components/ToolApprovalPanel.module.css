@@ -1,6 +1,11 @@
 .panel {
+  /* 放在 .inputStack wrapper 内：bottom: 100% 把面板的底边锚到 wrapper 的顶边，
+     自动贴在 ChatInputBar 之上，不管输入栏多高（单行/多行/附带图片）都不会遮挡。
+     margin-bottom: 8px 在 absolute 元素上是有效的偏移量（不是盒模型外边距），
+     让面板与输入栏之间留 8px 视觉间隙。 */
   position: absolute;
-  bottom: 60px;
+  bottom: 100%;
+  margin-bottom: 8px;
   left: 16px;
   right: 16px;
   z-index: 99999;
@@ -13,8 +18,12 @@
 }
 
 .panelGlobal {
+  /* 移动端在 mobileCLIBody 之外渲染（避免 transform 影响 fixed），无法嵌入 .inputStack。
+     由 ChatInputBar 通过 ResizeObserver 写入 --chat-input-bar-height（含 padding+border），
+     这里 bottom = 输入栏实际高度 + 12px 视觉间隙；多行输入时自动跟随，单行时紧贴。
+     fallback 140px 对应 mobile 最小单行输入栏高度。 */
   position: fixed;
-  bottom: 16px;
+  bottom: calc(var(--chat-input-bar-height, 140px) + 12px);
   left: 10px;
   right: 10px;
   z-index: 99999;
@@ -234,8 +243,7 @@
 
 @media (max-width: 768px) {
   .panel {
-    position: fixed;
-    bottom: 16px;
+    /* 沿用 .inputStack 内的 bottom:100% 贴顶策略；仅调整水平 padding */
     right: 10px;
     left: 10px;
     border-radius: 12px;
@@ -250,7 +258,9 @@
 }
 
 /* ─── iPad/Pad 模式：全局置顶 + 恢复桌面尺寸 ─── */
-:global(html.pad-mode) .panel { position: fixed; bottom: 16px; right: 16px; left: 16px; padding: 12px 16px; z-index: 99999; }
+/* Pad 模式继承 .panel 基类 position:absolute + bottom:100%（通过 .inputStack 贴在输入栏上方），
+   这里只覆盖水平 padding 和 inset，不再设 position:fixed */
+:global(html.pad-mode) .panel { right: 16px; left: 16px; padding: 12px 16px; z-index: 99999; }
 :global(html.pad-mode) .toolName { font-size: 13px; }
 :global(html.pad-mode) .command { font-size: 12px; max-height: 120px; }
 :global(html.pad-mode) .allowBtn,

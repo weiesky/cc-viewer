@@ -296,6 +296,12 @@
   position: relative;
 }
 
+/* 审批面板 + ChatInputBar 的共享定位容器。面板用 absolute bottom:100% 贴在输入栏之上。 */
+.inputStack {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .overlayPanel {
   position: absolute;
   inset: 0;

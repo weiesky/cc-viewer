@@ -3328,6 +3328,9 @@ class ChatView extends React.Component {
               </div>
             )}
             {messageList}
+            {/* inputStack 把审批面板 + 输入栏包成同一个定位容器，
+                面板用 position:absolute; bottom:100% 自动贴在输入栏顶部之上，不遮挡 */}
+            <div className={styles.inputStack}>
             {/* 如果父组件处理全局渲染（移动端），跳过本地渲染 */}
             {!this.props.onPendingPermission && (
               <ToolApprovalPanel
@@ -3392,6 +3395,7 @@ class ChatView extends React.Component {
               pendingImages={this.state.pendingImages}
               onRemovePendingImage={this._removePendingImage}
             />
+            </div>
             <UltraPlanModal
               open={this.state.ultraplanModalOpen}
               variant={this.state.ultraplanVariant}
