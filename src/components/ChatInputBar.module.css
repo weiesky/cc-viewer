@@ -54,7 +54,8 @@
   position: relative;
 }
 
-.plusBtn {
+.plusBtn,
+.micBtn {
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -65,6 +66,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.25s ease;
 }
 
@@ -72,10 +74,50 @@
   transform: rotate(45deg);
 }
 
-.plusBtn:hover {
+.plusBtn:hover,
+.micBtn:hover {
   background: var(--bg-surface);
   color: var(--text-secondary);
   border-color: var(--text-muted);
+}
+
+.micBtnRecording,
+.micBtnRecording:hover {
+  background: var(--color-error);
+  color: #fff;
+  border-color: var(--color-error);
+  animation: ccvMicPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes ccvMicPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--color-error-rgb), 0.45); }
+  50% { box-shadow: 0 0 0 6px rgba(var(--color-error-rgb), 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .micBtnRecording,
+  .micBtnRecording:hover {
+    animation: none;
+  }
+}
+
+.interimPreview {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 4px;
+  z-index: 101;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-style: italic;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  white-space: pre-wrap;
+  max-height: 40px;
+  overflow: hidden;
+  user-select: none;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent 0%, var(--bg-elevated) 30%);
+  padding-top: 8px;
 }
 
 .plusOverlay {
@@ -375,14 +417,25 @@
     gap: 8px;
   }
 
-  .plusBtn {
+  .plusBtn,
+  .micBtn {
     width: 47px;
     height: 47px;
   }
 
-  .plusBtn svg {
+  .plusBtn svg,
+  .micBtn svg {
     width: 23px;
     height: 23px;
+  }
+
+  .interimPreview {
+    left: 21px;
+    right: 21px;
+    bottom: 8px;
+    font-size: 17px;
+    max-height: 60px;
+    padding-top: 12px;
   }
 
   .plusMenu {
@@ -451,8 +504,11 @@
 :global(html.pad-mode) .chatTextarea { min-height: 22px; max-height: 120px; padding: 12px 14px 4px; font-size: 14px; }
 :global(html.pad-mode) .ghostText { padding: 12px 14px 4px; font-size: 14px; }
 :global(html.pad-mode) .chatInputBottom { padding: 4px 6px 6px; gap: 4px; }
-:global(html.pad-mode) .plusBtn { width: 28px; height: 28px; }
-:global(html.pad-mode) .plusBtn svg { width: 16px; height: 16px; }
+:global(html.pad-mode) .plusBtn,
+:global(html.pad-mode) .micBtn { width: 28px; height: 28px; }
+:global(html.pad-mode) .plusBtn svg,
+:global(html.pad-mode) .micBtn svg { width: 16px; height: 16px; }
+:global(html.pad-mode) .interimPreview { left: 14px; right: 14px; bottom: 4px; font-size: 12px; max-height: 40px; padding-top: 8px; }
 :global(html.pad-mode) .plusMenu { bottom: 36px; }
 :global(html.pad-mode) .plusMenuItem { padding: 8px 12px; font-size: 13px; }
 :global(html.pad-mode) .chatInputHint { font-size: 11px; }

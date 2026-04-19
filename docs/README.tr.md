@@ -129,6 +129,8 @@ QR kod tarayarak mobil cihazda programlama bile yapabilirsiniz:
 
 Mobil programlama hayallerinizi gerceklestirir. Ayrica bir eklenti mekanizmasi vardir — programlama aliskanliklariniza gore ozellestirmek istiyorsaniz, eklenti hooks guncellemelerini takip edebilirsiniz.
 
+**Sesli giris**: sohbet girisindeki mikrofon simgesine dokunarak sesten metne gecis yapin (Web Speech API; HTTPS veya localhost gerektirir, bu yuzden LAN HTTP erisiminde dugme gizlidir). Android'de Gboard'un yerlesik 🎤 tusunu, iOS'ta klavyedeki sistem dikte ozelligini dogrudan kullanabilirsiniz — her ikisi de HTTPS gerektirmeden cevrimdisi calisir.
+
 ### Gunluk Modu (Claude Code tam konusmalarini goruntuleme)
 
 <img width="1500" height="768" alt="image" src="https://github.com/user-attachments/assets/a8a9f3f7-d876-4f6b-a64d-f323a05c4d21" />

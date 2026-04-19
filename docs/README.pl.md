@@ -129,6 +129,8 @@ Możesz nawet zeskanować kod QR i programować na urządzeniu mobilnym:
 
 Spełnia Twoje wyobrażenia o programowaniu mobilnym. Dostępny jest również mechanizm wtyczek — jeśli chcesz dostosować go do swoich nawyków programistycznych, możesz śledzić aktualizacje hooków wtyczek.
 
+**Wejście głosowe**: naciśnij ikonę mikrofonu w polu czatu, aby skorzystać z dyktowania (Web Speech API; wymaga HTTPS lub localhost, więc przycisk jest ukryty przy dostępie LAN HTTP). Na Androidzie użyj wbudowanego klawisza 🎤 Gboarda, a na iOS systemowego dyktowania na klawiaturze — oba działają offline i nie wymagają HTTPS.
+
 ### Tryb logowania (przeglądanie pełnej sesji claude code)
 
 <img width="1500" height="768" alt="image" src="https://github.com/user-attachments/assets/a8a9f3f7-d876-4f6b-a64d-f323a05c4d21" />

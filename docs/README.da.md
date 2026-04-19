@@ -129,6 +129,8 @@ Du kan endda scanne en QR-kode for at programmere på din mobilenhed:
 
 Opfylder din forestilling om mobilprogrammering. Derudover er der en plugin-mekanisme — hvis du har brug for at tilpasse det til dine programmeringsvaner, kan du følge med i plugin hooks-opdateringerne fremover.
 
+**Stemmeinput**: Tryk på mikrofonikonet i chatinputtet for tale-til-tekst (Web Speech API; kræver HTTPS eller localhost, så knappen er skjult ved LAN HTTP-adgang). På Android kan du bruge Gboards indbyggede 🎤-tast, og på iOS systemdikteringen på tastaturet — begge virker offline uden HTTPS-krav.
+
 ### Logger-tilstand (se komplette claude code-sessioner)
 
 <img width="1500" height="768" alt="image" src="https://github.com/user-attachments/assets/a8a9f3f7-d876-4f6b-a64d-f323a05c4d21" />

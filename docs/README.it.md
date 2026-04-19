@@ -130,6 +130,8 @@ Puoi persino scansionare un QR code per programmare su dispositivi mobili:
 
 Realizza la tua idea di programmazione mobile. Inoltre, e disponibile un meccanismo di plugin -- se hai bisogno di personalizzare in base alle tue abitudini di programmazione, puoi seguire gli aggiornamenti degli hooks dei plugin in futuro.
 
+**Input vocale**: tocca l'icona del microfono nell'input della chat per la dettatura vocale (Web Speech API; richiede HTTPS o localhost, quindi il pulsante e nascosto in accesso LAN HTTP). Su Android puoi usare il tasto 🎤 integrato di Gboard, e su iOS la dettatura di sistema sulla tastiera -- entrambi funzionano offline e senza HTTPS.
+
 ### Modalita logger (visualizza la conversazione completa di Claude Code)
 
 <img width="1500" height="768" alt="image" src="https://github.com/user-attachments/assets/a8a9f3f7-d876-4f6b-a64d-f323a05c4d21" />

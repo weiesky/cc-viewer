@@ -125,6 +125,8 @@ You can even scan a QR code to code from your mobile device:
 
 Fulfill your imagination of mobile programming. There's also a plugin mechanism — if you need to customize for your coding habits, stay tuned for plugin hooks updates.
 
+**Voice input:** tap the microphone icon in the chat input for voice-to-text (Web Speech API; requires HTTPS or localhost, so it's hidden on LAN HTTP access). Alternatively, on Android use Gboard's built-in 🎤 key, and on iOS use the system dictation on the keyboard — both work offline and without any HTTPS requirement.
+
 ### Logger Mode (View Complete Claude Code Sessions)
 
 <img width="1500" height="768" alt="image" src="https://github.com/user-attachments/assets/a8a9f3f7-d876-4f6b-a64d-f323a05c4d21" />

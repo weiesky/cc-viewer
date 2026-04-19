@@ -130,6 +130,8 @@ Vous pouvez meme scanner un QR code pour programmer sur un appareil mobile :
 
 Realisez vos reves de programmation mobile. De plus, un mecanisme de plugins est disponible -- si vous souhaitez personnaliser selon vos habitudes de programmation, vous pourrez suivre les mises a jour des hooks de plugins ulterieurement.
 
+**Saisie vocale** : appuyez sur l'icone du microphone dans la zone de saisie du chat pour la reconnaissance vocale (Web Speech API ; necessite HTTPS ou localhost, le bouton est donc masque en acces LAN HTTP). Sur Android, utilisez la touche 🎤 integree de Gboard, et sur iOS la dictee systeme sur le clavier -- les deux fonctionnent hors ligne et sans HTTPS.
+
 ### Mode journal (voir la session complete de Claude Code)
 
 <img width="1500" height="768" alt="image" src="https://github.com/user-attachments/assets/a8a9f3f7-d876-4f6b-a64d-f323a05c4d21" />

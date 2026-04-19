@@ -47,6 +47,7 @@
   --color-success-bg-medium: rgba(34, 197, 94, 0.3);
   /* Error (red) */
   --color-error: #ef4444;
+  --color-error-rgb: 239, 68, 68;
   --color-error-light: #f87171;
   --color-error-muted: #a33;
   --color-error-dark-bg: #220000;
@@ -183,6 +184,7 @@
   --color-success-bg-medium: rgba(26, 127, 55, 0.15);
   /* Error (red) */
   --color-error: #CF222E;
+  --color-error-rgb: 207, 34, 46;
   --color-error-light: #DA3633;
   --color-error-muted: #82071E;
   --color-error-dark-bg: #FFEBE9;

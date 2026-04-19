@@ -129,6 +129,8 @@ Incluso puedes escanear un codigo QR para programar en dispositivos moviles:
 
 Satisface tu imaginacion sobre la programacion movil. Ademas, hay un mecanismo de plugins -- si necesitas personalizar segun tus habitos de programacion, puedes seguir las actualizaciones de los hooks de plugins en el futuro.
 
+**Entrada de voz**: toca el icono del microfono en la entrada del chat para dictado por voz (Web Speech API; requiere HTTPS o localhost, por lo que el boton se oculta en acceso LAN HTTP). En Android puedes usar la tecla 🎤 integrada de Gboard, y en iOS el dictado del sistema en el teclado -- ambos funcionan sin conexion y sin requerir HTTPS.
+
 ### Modo logger (ver conversacion completa de Claude Code)
 
 <img width="1500" height="768" alt="image" src="https://github.com/user-attachments/assets/a8a9f3f7-d876-4f6b-a64d-f323a05c4d21" />

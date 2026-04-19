@@ -129,6 +129,8 @@ QR 코드를 스캔하여 모바일 기기에서 코딩할 수도 있습니다:
 
 모바일 프로그래밍에 대한 상상을 현실로 만들어 줍니다. 또한 플러그인 메커니즘이 있어서, 자신의 코딩 습관에 맞게 커스터마이징이 필요하다면 플러그인 hooks 업데이트를 기대해 주세요.
 
+**음성 입력**: 채팅 입력란의 마이크 아이콘을 탭하면 음성을 텍스트로 변환할 수 있습니다(Web Speech API. HTTPS 또는 localhost가 필요하며, LAN HTTP 접속에서는 버튼이 표시되지 않습니다). Android에서는 Gboard의 내장 🎤 키를, iOS에서는 시스템 키보드의 받아쓰기 기능을 그대로 사용할 수 있습니다 — 둘 다 HTTPS 없이 오프라인에서도 작동합니다.
+
 ### 로거 모드 (Claude Code 전체 세션 보기)
 
 <img width="1500" height="768" alt="image" src="https://github.com/user-attachments/assets/a8a9f3f7-d876-4f6b-a64d-f323a05c4d21" />

@@ -1,12 +1,121 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { uploadFileAndGetPath } from './TerminalPanel';
 import { apiUrl } from '../utils/apiUrl';
 import { isMobile, isPad } from '../env';
-import { t } from '../i18n';
+import { t, getLang } from '../i18n';
 import styles from './ChatInputBar.module.css';
+
+const SpeechRec = typeof window !== 'undefined' && window.isSecureContext
+  ? (window.SpeechRecognition || window.webkitSpeechRecognition)
+  : null;
+
+const SPEECH_LANG_MAP = {
+  zh: 'zh-CN', 'zh-TW': 'zh-TW', en: 'en-US', ko: 'ko-KR',
+  ja: 'ja-JP', de: 'de-DE', es: 'es-ES', fr: 'fr-FR',
+  it: 'it-IT', da: 'da-DK', pl: 'pl-PL', ru: 'ru-RU',
+  ar: 'ar-SA', no: 'nb-NO', 'pt-BR': 'pt-BR', th: 'th-TH',
+  tr: 'tr-TR', uk: 'uk-UA',
+};
 
 function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, onKeyDown, onChange, onSend, onSuggestionClick, onUploadPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onClearContext, isStreaming, streamingFading, pendingImages, onRemovePendingImage }) {
   const [plusOpen, setPlusOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [interimText, setInterimText] = useState('');
+  const recRef = useRef(null);
+  const anchorRef = useRef({ prefix: '', suffix: '' });
+
+  useEffect(() => () => {
+    const rec = recRef.current;
+    if (rec) {
+      rec.onend = null;
+      rec.onresult = null;
+      rec.onerror = null;
+      try { rec.abort(); } catch {}
+      recRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (terminalVisible && recRef.current) {
+      try { recRef.current.abort(); } catch {}
+    }
+  }, [terminalVisible]);
+
+  const startRecording = () => {
+    if (!SpeechRec || recRef.current) return;
+    const ta = inputRef?.current;
+    if (!ta) return;
+    const pos = typeof ta.selectionStart === 'number' ? ta.selectionStart : ta.value.length;
+    anchorRef.current = { prefix: ta.value.slice(0, pos), suffix: ta.value.slice(pos) };
+
+    let rec;
+    try { rec = new SpeechRec(); } catch (err) {
+      console.error('[CC Viewer] SpeechRecognition init failed:', err);
+      return;
+    }
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = SPEECH_LANG_MAP[getLang()] || 'en-US';
+
+    rec.onresult = (event) => {
+      const t2 = inputRef?.current;
+      if (!t2) return;
+      const { prefix, suffix } = anchorRef.current;
+      // 外部(Tab补全/发送/ClearContext)改过 textarea.value 就放弃合并，避免把已发送的内容写回
+      if (!t2.value.startsWith(prefix) || !t2.value.endsWith(suffix)) {
+        try { rec.abort(); } catch {}
+        return;
+      }
+      let interim = '';
+      let finalAcc = '';
+      for (let i = 0; i < event.results.length; i++) {
+        const r = event.results[i];
+        const transcript = r[0]?.transcript ?? '';
+        if (r.isFinal) finalAcc += transcript;
+        else interim += transcript;
+      }
+      t2.value = prefix + finalAcc + suffix;
+      t2.style.height = 'auto';
+      t2.style.height = Math.min(t2.scrollHeight, 120) + 'px';
+      setInterimText(interim);
+      onChange?.({ target: t2 });
+    };
+    rec.onerror = (event) => {
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        try { alert(t('ui.chatInput.voicePermissionDenied')); } catch {}
+      } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        console.error('[CC Viewer] SpeechRecognition error:', event.error);
+      }
+    };
+    rec.onend = () => {
+      setRecording(false);
+      setInterimText('');
+      recRef.current = null;
+    };
+
+    try {
+      rec.start();
+      recRef.current = rec;
+      setRecording(true);
+    } catch (err) {
+      console.error('[CC Viewer] SpeechRecognition start failed:', err);
+    }
+  };
+
+  const stopRecording = () => {
+    try { recRef.current?.stop(); } catch {}
+  };
+
+  const toggleRecording = () => {
+    if (recRef.current) stopRecording(); else startRecording();
+  };
+
+  const handleTextareaInput = (e) => {
+    if (recRef.current && e.nativeEvent?.inputType && !e.nativeEvent?.isComposing) {
+      try { recRef.current.abort(); } catch {}
+    }
+    onChange?.(e);
+  };
 
   const handlePaste = async (e) => {
     const items = e.clipboardData?.items;
@@ -112,11 +221,14 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
             placeholder={inputSuggestion ? '' : t('ui.chatInput.placeholder')}
             rows={1}
             onKeyDown={onKeyDown}
-            onInput={onChange}
+            onInput={handleTextareaInput}
             onPaste={handlePaste}
           />
           {inputSuggestion && inputEmpty && (
             <div className={styles.ghostText}>{inputSuggestion}</div>
+          )}
+          {recording && interimText && (
+            <div className={styles.interimPreview}>{interimText}</div>
           )}
         </div>
         <div className={styles.chatInputBottom}>
@@ -201,6 +313,23 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
               </>
             )}
           </div>
+          {SpeechRec && (
+            <button
+              type="button"
+              className={`${styles.micBtn}${recording ? ` ${styles.micBtnRecording}` : ''}`}
+              onClick={toggleRecording}
+              title={t(recording ? 'ui.chatInput.voiceStop' : 'ui.chatInput.voiceStart')}
+              aria-label={t(recording ? 'ui.chatInput.voiceStop' : 'ui.chatInput.voiceStart')}
+              aria-pressed={recording}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
+            </button>
+          )}
           <div className={(isMobile && !isPad) ? styles.chatInputHintMobile : styles.chatInputHint}>
             {(isMobile && !isPad)
               ? t('ui.chatInput.hintMobile')

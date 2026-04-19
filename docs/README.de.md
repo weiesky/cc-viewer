@@ -130,6 +130,8 @@ Sie konnen sogar einen QR-Code scannen, um auf Mobilgeraten zu programmieren:
 
 Erfullt Ihre Vorstellungen von mobiler Programmierung. Ausserdem gibt es einen Plugin-Mechanismus -- wenn Sie Anpassungen an Ihre Programmiergewohnheiten vornehmen mochten, konnen Sie spater die Plugin-Hooks-Updates verfolgen.
 
+**Spracheingabe**: Tippen Sie auf das Mikrofon-Symbol im Chat-Eingabefeld fur Sprache-zu-Text (Web Speech API; erfordert HTTPS oder localhost, daher ist die Schaltflache bei LAN-HTTP-Zugriff ausgeblendet). Unter Android konnen Sie die integrierte 🎤-Taste von Gboard verwenden, und unter iOS die System-Diktierfunktion auf der Tastatur -- beides funktioniert offline und ohne HTTPS.
+
 ### Logger-Modus (vollstandige Claude Code Konversation anzeigen)
 
 <img width="1500" height="768" alt="image" src="https://github.com/user-attachments/assets/a8a9f3f7-d876-4f6b-a64d-f323a05c4d21" />

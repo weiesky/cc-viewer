@@ -130,6 +130,8 @@ Voce pode ate escanear um QR code para programar no celular:
 
 Realize suas expectativas de programacao mobile. Alem disso, ha um mecanismo de plugins — se voce quiser personalizar sua experiencia de programacao, pode acompanhar as atualizacoes dos hooks de plugins.
 
+**Entrada por voz**: toque no icone do microfone na entrada do chat para ditado por voz (Web Speech API; requer HTTPS ou localhost, portanto o botao e ocultado no acesso LAN HTTP). No Android, use a tecla 🎤 integrada do Gboard; no iOS, o ditado do sistema no teclado — ambos funcionam offline e sem HTTPS.
+
 ### Modo Logger (visualizar conversas completas do Claude Code)
 
 <img width="1500" height="768" alt="image" src="https://github.com/user-attachments/assets/a8a9f3f7-d876-4f6b-a64d-f323a05c4d21" />
