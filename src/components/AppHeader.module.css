@@ -45,9 +45,12 @@
 }
 
 .compactBtnNoBorder {
-  font-size: 12px;
+  font-size: 18px;
   height: 30px;
-  line-height: 28px;
+  /* flex 居中：图标脱离基线对齐，font-size 变动不影响垂直位置 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
 }
 
