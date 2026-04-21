@@ -19,14 +19,18 @@ export default defineConfig(() => {
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
     },
-    // xterm.js 6.0.0 的 InputHandler.requestMode 被 esbuild identifier mangler
-    // 误处理导致生产构建抛 ReferenceError。参考 issue #5800，关闭 identifier mangling
-    // 绕过，仅保留空格/语法压缩——体积损失<10%，远小于让用户跑到崩溃。
-    esbuild: {
-      minifyIdentifiers: false,
-    },
     build: {
       outDir: 'dist',
+      // xterm.js 6.0.0 的 InputHandler.requestMode 被 identifier mangler 误处理
+      // 导致生产构建抛 ReferenceError（issue #5800）。Vite 默认的 esbuild minify
+      // 无法细粒度关闭 identifier mangling（顶层 esbuild 选项只作用于 transform
+      // 阶段，不传给 minify），切到 terser + mangle:false 才能真正绕过。体积
+      // 比 esbuild 默认大 15-25% gzip，等 xterm 6.1 稳定版修复后可切回 esbuild。
+      minify: 'terser',
+      terserOptions: {
+        mangle: false,
+        compress: true,
+      },
       rollupOptions: {
         output: {
           // 拆分 vendor chunk，避免 antd/highlight/virtuoso/xterm/codemirror 等被合并

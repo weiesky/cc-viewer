@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.193 (2026-04-21)
+
+- Fix (xterm.js `requestMode` TDZ 在 1.6.192 未真正修复): 上版的 `vite.config.js` 加了顶层 `esbuild.minifyIdentifiers: false`，**但 Vite 顶层 `esbuild` 选项只作用于 transform 阶段，不传给 build minify 阶段**——bundle 里变量仍被压缩（用户截图栈帧出现 `r5 is not defined` / `vn.requestMode` / `bn$1.parse` 等单字母变量就是证据）。这次切到 `build.minify: 'terser'` + `terserOptions: { mangle: false, compress: true }`，terser 不 mangle identifier 能真正保留 xterm `InputHandler._activeBuffer` 等原始符号，验证 bundle `requestMode`/`this._activeBuffer` 原样存在。代价：build 时间 6s → 10s，gzip 相对 esbuild 默认 +15-25%（相对 1.6.192 的无效 workaround 会再多一些）。新增 `terser@^5.46.1` devDependency。后续 xterm 6.1 稳定版修复后可切回 esbuild minify。
+
 ## 1.6.192 (2026-04-21)
 
 - Fix (`/api/git-status` 新增目录在 diff 树显示为空文件名 + 插入行数 0): `server.js` 原 `git status --porcelain` 默认 `-unormal` 把新增目录收敛为 `?? dir/`（尾斜杠），前端 buildTree 取最后一段得空串渲染幽灵条目，`countUntrackedLines` 对目录返回 0 导致插入行数漏算。改用 `-uall` 展开到具体文件；加 `maxBuffer: 10MB` 防止超大 repo 输出被默认 1MB 截断；`MAX_UNTRACKED` 1000→5000 并新增 `insertions_capped` flag 通知前端数据被硬上限截断。前端 `GitChanges.jsx`/`MobileGitDiff.jsx` 两处 `buildTree` 抽到 `src/utils/gitTreeBuilder.js` 消除重复，加尾斜杠 `endsWith('/')` 跳过兜底——即便旧后端或未来回滚 `-uall` 也不会再误把目录当文件。
