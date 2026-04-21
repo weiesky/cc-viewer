@@ -5,18 +5,147 @@ import { getModelInfo } from '../utils/helpers';
 import { getTeammateAvatar } from '../utils/teammateAvatars';
 import { renderMarkdown } from '../utils/markdown';
 import defaultModelAvatarUrl from '../img/default-model-avatar.svg';
-import { extractTeamSessions } from '../utils/teamSessionParser';
+import { extractTeamSessions, isStrongTerminal, END_REASON } from '../utils/teamSessionParser';
 import { buildTeamModalData } from '../utils/teamModalBuilder';
 import { t } from '../i18n';
+import { apiUrl } from '../utils/apiUrl';
 import styles from './TeamSessionPanel.module.css';
+
+/**
+ * 根据 log 态 + runtime 态推导显示样式。
+ * 纯函数，便于单测。
+ */
+function deriveDisplayStatus(team, runtimeStatus) {
+  // 无 endTime → 活跃进行中
+  if (!team.endTime) {
+    return { glyph: '●', className: '', tooltipKey: 'ui.teamSession.status.active' };
+  }
+  // 强证据 → ✓
+  if (isStrongTerminal(team)) {
+    return {
+      glyph: '✓',
+      className: '',
+      colorVar: 'var(--color-success)',
+      tooltipKey: team.endReason === END_REASON.SUCCESSOR_CREATE
+        ? 'ui.teamSession.status.successorCreate'
+        : 'ui.teamSession.status.done',
+    };
+  }
+  // 弱证据（shutdownRequest / logTail / 老 memo 仅有 _hasInferredEnd）
+  const rt = runtimeStatus;
+  if (rt) {
+    if (rt.state === 'dead' || rt.state === 'residue') {
+      return {
+        glyph: '✓',
+        className: styles.statusConverged,
+        tooltipKey: rt.state === 'residue'
+          ? 'ui.teamSession.status.residue'
+          : 'ui.teamSession.status.converged',
+      };
+    }
+    if (rt.state === 'possiblyAlive') {
+      return { glyph: '⏱', className: styles.statusPossiblyAlive, tooltipKey: 'ui.teamSession.status.possiblyAlive' };
+    }
+    if (rt.state === 'reused') {
+      return { glyph: '⏱', className: styles.statusReused, tooltipKey: 'ui.teamSession.status.reused' };
+    }
+    // error / unknown → 降级为 pending
+  }
+  return {
+    glyph: '⏱',
+    className: styles.statusPending,
+    colorVar: 'var(--text-tertiary)',
+    tooltipKey: 'ui.teamSession.status.pending',
+  };
+}
+
+// 供外部（如测试）使用
+export { deriveDisplayStatus };
+
+const RUNTIME_TTL_MS = 5 * 60 * 1000;
+const HISTORICAL_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+
+function isWeakEnd(team) {
+  const r = team.endReason;
+  if (r === END_REASON.SHUTDOWN_REQUEST || r === END_REASON.LOG_TAIL) return true;
+  // 老 memo fallback：只有 _hasInferredEnd 没 endReason（或旧版本 _inferredEnd 别名）
+  if (!r && (team._hasInferredEnd || team._inferredEnd)) return true;
+  return false;
+}
 
 /* ── helper: nav button styles (shared from parent) ── */
 function TeamButton({ requests, onOpenSession, navBtnClass }) {
-  const sessionsRef = useRef({ requests: null, result: [] });
-  if (sessionsRef.current.requests !== requests) {
-    sessionsRef.current = { requests, result: extractTeamSessions(requests) };
-  }
-  const teamSessions = sessionsRef.current.result;
+  // 稳定引用：只有 requests 对象本身变化时才重算；否则 useEffect 依赖 teamSessions 会被每次 render 误触发
+  const teamSessions = useMemo(() => extractTeamSessions(requests), [requests]);
+
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [runtimeMap, setRuntimeMap] = useState({});
+
+  // 把 team → key/endMs/是否历史豁免 的分类抽出来，两个分支共用
+  const classifyTeams = useCallback((teams, nowMs) => {
+    const historical = {}; // key → state 直写
+    const fresh = [];      // 待 fetch
+    for (const team of teams) {
+      if (!isWeakEnd(team)) continue;
+      const key = `${team.name}@${team.startTime}`;
+      const endMs = team.endTime ? Date.parse(team.endTime) : null;
+      if (endMs && nowMs - endMs > HISTORICAL_THRESHOLD_MS) {
+        historical[key] = { state: 'dead', queriedAt: nowMs, historical: true };
+      } else {
+        fresh.push({ key, name: team.name, endTime: endMs });
+      }
+    }
+    return { historical, fresh };
+  }, []);
+
+  // Popover 打开时，懒查 runtime 状态
+  useEffect(() => {
+    if (!popoverOpen || teamSessions.length === 0) return;
+    const now = Date.now();
+    const { historical, fresh } = classifyTeams(teamSessions, now);
+    const ctrl = new AbortController();
+
+    // m2: 用单个函数式 setState 合并历史豁免 + TTL 过滤 + 发送请求
+    // 这样闭包里不需要读取 runtimeMap，TTL 判断用到 prev 是权威值
+    setRuntimeMap(prev => {
+      const merged = { ...prev };
+      for (const [k, v] of Object.entries(historical)) {
+        if (!merged[k]) merged[k] = v;
+      }
+      const needQuery = fresh.filter(q => {
+        const c = merged[q.key];
+        return !c || now - c.queriedAt >= RUNTIME_TTL_MS;
+      });
+      if (needQuery.length > 0) {
+        fetch(apiUrl('/api/team-status'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teams: needQuery.map(q => ({ name: q.name, endTime: q.endTime })) }),
+          signal: ctrl.signal,
+        })
+          .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+          .then(data => {
+            const addl = {};
+            const t = Date.now();
+            for (const q of needQuery) {
+              const st = data?.statuses?.[q.name];
+              if (st) addl[q.key] = { ...st, queriedAt: t };
+            }
+            if (Object.keys(addl).length > 0) {
+              setRuntimeMap(p => ({ ...p, ...addl }));
+            }
+          })
+          .catch(err => {
+            if (err.name === 'AbortError') return;
+            // 查询失败：保持原 ⏱（降级保守）
+          });
+      }
+      return merged;
+    });
+
+    return () => ctrl.abort();
+  }, [popoverOpen, teamSessions, classifyTeams]);
+
   if (teamSessions.length === 0) return null;
 
   const content = (
@@ -24,11 +153,16 @@ function TeamButton({ requests, onOpenSession, navBtnClass }) {
       <div className={styles.teamPopoverTitle}>{t('ui.teamSessions')} ({teamSessions.length})</div>
       {teamSessions.map((team, i) => {
         const time = team.startTime ? new Date(team.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-        const status = team.endTime ? (team._inferredEnd ? '⏱' : '✓') : '●';
-        const statusColor = team.endTime ? (team._inferredEnd ? 'var(--text-tertiary)' : 'var(--color-success)') : 'var(--color-warning-light)';
+        const rtKey = `${team.name}@${team.startTime}`;
+        const rt = runtimeMap[rtKey];
+        const disp = deriveDisplayStatus(team, rt);
+        const style = disp.colorVar ? { color: disp.colorVar } : undefined;
+        const statusEl = (
+          <span className={`${styles.teamPopoverStatus} ${disp.className || ''}`} style={style}>{disp.glyph}</span>
+        );
         return (
           <div key={i} className={styles.teamPopoverItem} onClick={() => onOpenSession(team)}>
-            <span className={styles.teamPopoverStatus} style={{ color: statusColor }}>{status}</span>
+            <Tooltip title={t(disp.tooltipKey)}>{statusEl}</Tooltip>
             <span className={styles.teamPopoverName}>{team.name}</span>
             <span className={styles.teamPopoverMeta}>{team.teammateCount}p · {team.taskCount}t</span>
             <span className={styles.teamPopoverTime}>{time}</span>
@@ -37,9 +171,11 @@ function TeamButton({ requests, onOpenSession, navBtnClass }) {
       })}
     </div>
   );
-  const hasActiveTeam = teamSessions.some(s => !s.endTime || s._inferredEnd);
+  // spinner 只看 parser 态（不等 runtime 回包就能显示）
+  const hasActiveTeam = teamSessions.some(s => !s.endTime || isWeakEnd(s));
   return (
-    <Popover content={content} trigger="hover" placement="rightTop" overlayInnerStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-light)', padding: 0 }}>
+    <Popover content={content} trigger="hover" placement="rightTop" onOpenChange={setPopoverOpen}
+      overlayInnerStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-light)', padding: 0 }}>
       <button className={`${navBtnClass || ''} ${styles.teamBtnRelative}`} title={t('ui.teamSessions')}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -332,9 +468,15 @@ function TeamModal({ session, requests, mainAgentSessions, collapseToolResults, 
               <div className={styles.teamAgentName}>team-lead</div>
             </div>
             <div className={styles.teamAgentType}>orchestrator</div>
-            <div className={styles.teamAgentStatus} style={{ color: session.endTime ? (session._inferredEnd ? 'var(--text-tertiary)' : 'var(--color-success)') : 'var(--color-warning-light)' }}>
-              {session.endTime ? (session._inferredEnd ? '⏱ ended' : '✓ done') : '● active'}
-            </div>
+            {(() => {
+              const disp = deriveDisplayStatus(session, null);
+              const style = disp.colorVar ? { color: disp.colorVar } : undefined;
+              return (
+                <div className={`${styles.teamAgentStatus} ${disp.className || ''}`} style={style}>
+                  {disp.glyph} {t(disp.tooltipKey)}
+                </div>
+              );
+            })()}
           </div>
           {teamAgents.map((ag, i) => {
             const isDone = !!ag.doneTime;

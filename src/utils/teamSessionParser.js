@@ -1,9 +1,34 @@
 /**
  * Parse team lifecycle (TeamCreate → TeamDelete) from requests.
  * Pure function, no React/state dependencies.
+ *
+ * endReason 取值（详见 END_REASON 常量）：
+ *   'deleteConfirmed' — TeamDelete 返回 success（强证据，终态 ✓）
+ *   'successorCreate' — 新 TeamCreate 顶掉旧的（强证据，lead 已转移，等同 ✓）
+ *   'shutdownRequest' — 没看到 TeamDelete，但有 shutdown_request（弱证据，待 runtime 收敛）
+ *   'logTail'         — 纯 log 末尾兜底（弱证据，待 runtime 收敛）
+ *
+ * _hasInferredEnd 派生含义：**只要 endReason 存在且不是 deleteConfirmed 就为 true**
+ * ⚠️ 注意：此字段**同时覆盖强证据 (successorCreate) 和弱证据 (shutdownRequest/logTail)**，
+ * 仅用于"是否经过推断流程结束"的存在性提示，不能用来判断强弱。
+ * **判断强弱证据请用 `isStrongTerminal(team)`**（它是权威的 API）。
+ * 旧代码里的 `_inferredEnd` 已重命名为 `_hasInferredEnd` 以避免"inferred 一定是弱证据"的直觉误读。
  */
 
 import { restoreSlimmedEntry } from './entry-slim.js';
+
+export const END_REASON = Object.freeze({
+  DELETE_CONFIRMED: 'deleteConfirmed',
+  SUCCESSOR_CREATE: 'successorCreate',
+  SHUTDOWN_REQUEST: 'shutdownRequest',
+  LOG_TAIL: 'logTail',
+});
+
+export function isStrongTerminal(team) {
+  if (!team) return false;
+  return team.endReason === END_REASON.DELETE_CONFIRMED
+      || team.endReason === END_REASON.SUCCESSOR_CREATE;
+}
 
 // 从 requests 中提取 Team 会话列表
 export function extractTeamSessions(requests) {
@@ -58,7 +83,8 @@ export function extractTeamSessions(requests) {
         if (currentTeamIdx >= 0 && !teams[currentTeamIdx].endTime) {
           teams[currentTeamIdx].endTime = ts;
           teams[currentTeamIdx].endRequestIndex = Math.max(teams[currentTeamIdx].requestIndex, i - 1);
-          teams[currentTeamIdx]._inferredEnd = true;
+          teams[currentTeamIdx].endReason = END_REASON.SUCCESSOR_CREATE;
+          teams[currentTeamIdx]._hasInferredEnd = true;
         }
         const team = { name: teamName, startTime: ts, endTime: null, requestIndex: i, endRequestIndex: null, taskCount: 0, teammateCount: 0, _teammates: new Set() };
         teams.push(team);
@@ -89,7 +115,7 @@ export function extractTeamSessions(requests) {
             }
             if (startIdx > 0) break;
           }
-          const team = { name: teamName, startTime: startTs, endTime: ts, requestIndex: startIdx, endRequestIndex: i, taskCount: 0, teammateCount: 0, _teammates: new Set(), _inferredStart: true };
+          const team = { name: teamName, startTime: startTs, endTime: ts, endReason: END_REASON.DELETE_CONFIRMED, requestIndex: startIdx, endRequestIndex: i, taskCount: 0, teammateCount: 0, _teammates: new Set(), _inferredStart: true };
           // 回填 teammate 和 task 计数
           for (let k = startIdx; k < i; k++) {
             const kResp = requests[k]?.response?.body?.content;
@@ -110,6 +136,7 @@ export function extractTeamSessions(requests) {
         }
         teams[currentTeamIdx].endTime = ts;
         teams[currentTeamIdx].endRequestIndex = i;
+        teams[currentTeamIdx].endReason = END_REASON.DELETE_CONFIRMED;
         currentTeamIdx = -1; // 清理：team 已关闭
       } else if (name === 'SendMessage') {
         // 跟踪 shutdown_request 作为备用结束信号
@@ -146,14 +173,16 @@ export function extractTeamSessions(requests) {
     if (team._lastShutdownTime) {
       team.endTime = team._lastShutdownTime;
       team.endRequestIndex = team._lastShutdownRequestIdx;
-      team._inferredEnd = true;
+      team.endReason = END_REASON.SHUTDOWN_REQUEST;
+      team._hasInferredEnd = true;
     } else {
       const lastReq = requests[requests.length - 1];
       const lastTs = lastReq?.response?.timestamp || lastReq?.timestamp;
       if (lastTs && team.startTime !== lastTs) {
         team.endTime = lastTs;
         team.endRequestIndex = requests.length - 1;
-        team._inferredEnd = true;
+        team.endReason = END_REASON.LOG_TAIL;
+        team._hasInferredEnd = true;
       }
     }
   }

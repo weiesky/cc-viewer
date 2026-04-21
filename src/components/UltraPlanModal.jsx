@@ -23,17 +23,6 @@ export default function UltraPlanModal({
         <div className={styles.header}>
           <span className={styles.title}>{t('ui.ultraplan.title')}</span>
           <div className={styles.headerActions}>
-            {onOpenCustomEditor && agentTeamEnabled && (
-              <button
-                className={styles.headerIconBtn}
-                onClick={() => onOpenCustomEditor(null)}
-                title={t('ui.ultraplan.customAdd')}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <circle cx="12" cy="12" r="9" /><path d="M12 7v10M7 12h10" />
-                </svg>
-              </button>
-            )}
             <button className={styles.closeBtn} onClick={onClose}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -85,6 +74,19 @@ export default function UltraPlanModal({
                   </span>
                 );
               })}
+              {onOpenCustomEditor && (
+                <button
+                  type="button"
+                  className={styles.addExpertBtn}
+                  onClick={() => onOpenCustomEditor(null)}
+                  title={t('ui.ultraplan.customAdd')}
+                  aria-label={t('ui.ultraplan.customAdd')}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                </button>
+              )}
             </div>
 
             {lowContext && (

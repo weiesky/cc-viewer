@@ -47,6 +47,7 @@ import { watchLogFile, startWatching, getWatchedFiles, sendEventToClients, sendT
 import { isMainAgentEntry, extractCachedContent } from './lib/kv-cache-analyzer.js';
 import { listLocalLogs, deleteLogFiles, mergeLogFiles } from './lib/log-management.js';
 import { countLogEntries, streamRawEntriesAsync, readPagedEntries } from './lib/log-stream.js';
+import { buildTeamStatusResponse } from './lib/team-runtime.js';
 
 
 // 动态获取 getPrefsFile()（LOG_DIR 可能在运行时被 setLogDir 修改）
@@ -2769,6 +2770,32 @@ async function handleRequest(req, res) {
         process.kill(pid, 'SIGTERM');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // Team 运行时状态检测（fs-only：目录存在性 + inbox mtime）
+  if (url === '/api/team-status' && method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > MAX_POST_BODY) req.destroy(); });
+    req.on('end', async () => {
+      let parsed;
+      try {
+        parsed = JSON.parse(body || '{}');
+      } catch {
+        // 固定文案避免把 JSON.parse 的原始 err.message 回显给客户端
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'invalid_json' }));
+        return;
+      }
+      try {
+        const result = await buildTeamStatusResponse(parsed);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: err.message }));

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractTeamSessions } from '../src/utils/teamSessionParser.js';
+import { extractTeamSessions, isStrongTerminal } from '../src/utils/teamSessionParser.js';
 
 // Inlined function removed — now imported from src/utils/teamSessionParser.js
 
@@ -48,7 +48,7 @@ function extractTeamSessions_REMOVED_UNUSED(requests) {
         if (currentTeamIdx >= 0 && !teams[currentTeamIdx].endTime) {
           teams[currentTeamIdx].endTime = ts;
           teams[currentTeamIdx].endRequestIndex = Math.max(teams[currentTeamIdx].requestIndex, i - 1);
-          teams[currentTeamIdx]._inferredEnd = true;
+          teams[currentTeamIdx]._hasInferredEnd = true;
         }
         const team = { name: teamName, startTime: ts, endTime: null, requestIndex: i, endRequestIndex: null, taskCount: 0, teammateCount: 0, _teammates: new Set() };
         teams.push(team);
@@ -122,14 +122,14 @@ function extractTeamSessions_REMOVED_UNUSED(requests) {
     if (team._lastShutdownTime) {
       team.endTime = team._lastShutdownTime;
       team.endRequestIndex = team._lastShutdownRequestIdx;
-      team._inferredEnd = true;
+      team._hasInferredEnd = true;
     } else {
       const lastReq = requests[requests.length - 1];
       const lastTs = lastReq?.response?.timestamp || lastReq?.timestamp;
       if (lastTs && team.startTime !== lastTs) {
         team.endTime = lastTs;
         team.endRequestIndex = requests.length - 1;
-        team._inferredEnd = true;
+        team._hasInferredEnd = true;
       }
     }
   }
@@ -180,7 +180,7 @@ describe('extractTeamSessions', () => {
     assert.equal(teams[0].startTime, '2026-01-01T00:00:00Z');
     assert.equal(teams[0].endTime, '2026-01-01T00:01:00Z');
     assert.equal(teams[0].endRequestIndex, 2);
-    assert.ok(!teams[0]._inferredEnd, 'should not be inferred end');
+    assert.ok(!teams[0]._hasInferredEnd, 'should not be inferred end');
   });
 
   it('T2: failed TeamCreate (error in result) is skipped', () => {
@@ -218,7 +218,7 @@ describe('extractTeamSessions', () => {
     assert.equal(teams.length, 1);
     assert.equal(teams[0].name, 'beta');
     assert.equal(teams[0].endTime, '2026-01-01T00:01:00Z');
-    assert.ok(!teams[0]._inferredEnd);
+    assert.ok(!teams[0]._hasInferredEnd);
   });
 
   it('T4: auto-close unclosed team when new TeamCreate appears', () => {
@@ -236,12 +236,12 @@ describe('extractTeamSessions', () => {
     // alpha auto-closed when beta was created
     assert.equal(teams[0].name, 'alpha');
     assert.equal(teams[0].endTime, '2026-01-01T00:05:00Z');
-    assert.equal(teams[0]._inferredEnd, true);
+    assert.equal(teams[0]._hasInferredEnd, true);
     assert.equal(teams[0].endRequestIndex, 1); // i-1 = 2-1 = 1
     // beta closed normally
     assert.equal(teams[1].name, 'beta');
     assert.equal(teams[1].endTime, '2026-01-01T00:10:00Z');
-    assert.ok(!teams[1]._inferredEnd);
+    assert.ok(!teams[1]._hasInferredEnd);
   });
 
   it('T5: shutdown_request as fallback end signal', () => {
@@ -254,7 +254,7 @@ describe('extractTeamSessions', () => {
     const teams = extractTeamSessions(requests);
     assert.equal(teams.length, 1);
     assert.equal(teams[0].endTime, '2026-01-01T00:05:00Z');
-    assert.equal(teams[0]._inferredEnd, true);
+    assert.equal(teams[0]._hasInferredEnd, true);
   });
 
   it('T6: no TeamDelete, no shutdown — fallback to last request timestamp', () => {
@@ -266,7 +266,7 @@ describe('extractTeamSessions', () => {
     const teams = extractTeamSessions(requests);
     assert.equal(teams.length, 1);
     assert.equal(teams[0].endTime, '2026-01-01T00:10:00Z');
-    assert.equal(teams[0]._inferredEnd, true);
+    assert.equal(teams[0]._hasInferredEnd, true);
   });
 
   it('T7: single request only — startTime === lastTs, endTime stays null', () => {
@@ -298,17 +298,17 @@ describe('extractTeamSessions', () => {
     assert.equal(teams[1].teammateCount, 1); // second alpha: worker-1
   });
 
-  it('T9: _inferredEnd flag correctness for different close paths', () => {
-    // Case A: TeamDelete → no _inferredEnd
+  it('T9: _hasInferredEnd flag correctness for different close paths', () => {
+    // Case A: TeamDelete → no _hasInferredEnd
     const reqsA = [
       makeReq({ ts: '100', toolUses: [toolUse('tc1', 'TeamCreate', { team_name: 'a' })] }),
       makeReq({ ts: '101', resultPairs: [['tc1', '{"success":true}']] }),
       makeReq({ ts: '200', toolUses: [toolUse('td1', 'TeamDelete', {})] }),
       makeReq({ ts: '201', resultPairs: [['td1', '{"success":true}']] }),
     ];
-    assert.ok(!extractTeamSessions(reqsA)[0]._inferredEnd);
+    assert.ok(!extractTeamSessions(reqsA)[0]._hasInferredEnd);
 
-    // Case B: new TeamCreate → _inferredEnd = true
+    // Case B: new TeamCreate → _hasInferredEnd = true
     const reqsB = [
       makeReq({ ts: '100', toolUses: [toolUse('tc1', 'TeamCreate', { team_name: 'a' })] }),
       makeReq({ ts: '101', resultPairs: [['tc1', '{"success":true}']] }),
@@ -316,24 +316,24 @@ describe('extractTeamSessions', () => {
       makeReq({ ts: '201', resultPairs: [['tc2', '{"success":true}']] }),
       makeReq({ ts: '300' }),
     ];
-    assert.equal(extractTeamSessions(reqsB)[0]._inferredEnd, true);
+    assert.equal(extractTeamSessions(reqsB)[0]._hasInferredEnd, true);
 
-    // Case C: shutdown_request → _inferredEnd = true
+    // Case C: shutdown_request → _hasInferredEnd = true
     const reqsC = [
       makeReq({ ts: '100', toolUses: [toolUse('tc1', 'TeamCreate', { team_name: 'a' })] }),
       makeReq({ ts: '101', resultPairs: [['tc1', '{"success":true}']] }),
       makeReq({ ts: '200', toolUses: [toolUse('sm1', 'SendMessage', { message: { type: 'shutdown_request' } })] }),
       makeReq({ ts: '300' }),
     ];
-    assert.equal(extractTeamSessions(reqsC)[0]._inferredEnd, true);
+    assert.equal(extractTeamSessions(reqsC)[0]._hasInferredEnd, true);
 
-    // Case D: last-request fallback → _inferredEnd = true
+    // Case D: last-request fallback → _hasInferredEnd = true
     const reqsD = [
       makeReq({ ts: '100', toolUses: [toolUse('tc1', 'TeamCreate', { team_name: 'a' })] }),
       makeReq({ ts: '101', resultPairs: [['tc1', '{"success":true}']] }),
       makeReq({ ts: '300' }),
     ];
-    assert.equal(extractTeamSessions(reqsD)[0]._inferredEnd, true);
+    assert.equal(extractTeamSessions(reqsD)[0]._hasInferredEnd, true);
   });
 
   it('T10: failed TeamDelete does not close team', () => {
@@ -348,7 +348,7 @@ describe('extractTeamSessions', () => {
     assert.equal(teams.length, 1);
     // Should NOT be closed by the failed delete; instead inferred from last request
     assert.equal(teams[0].endTime, '2026-01-01T00:10:00Z');
-    assert.equal(teams[0]._inferredEnd, true);
+    assert.equal(teams[0]._hasInferredEnd, true);
   });
 
   it('T11: taskCount increments via TaskCreate and TaskUpdate', () => {
@@ -427,5 +427,109 @@ describe('extractTeamSessions', () => {
     const teams = extractTeamSessions(requests);
     // Failed delete should NOT create a team entry
     assert.equal(teams.length, 0);
+  });
+
+  // ==================================================================
+  // endReason 分类（v2 状态收敛）
+  // ==================================================================
+
+  it('T17: endReason=deleteConfirmed when TeamDelete succeeds', () => {
+    const requests = [
+      makeReq({ ts: '1', toolUses: [toolUse('tc', 'TeamCreate', { team_name: 'a' })] }),
+      makeReq({ ts: '2', resultPairs: [['tc', '{"success":true}']] }),
+      makeReq({ ts: '3', toolUses: [toolUse('td', 'TeamDelete', {})] }),
+      makeReq({ ts: '4', resultPairs: [['td', '{"success":true,"message":"Cleaned up"}']] }),
+    ];
+    const teams = extractTeamSessions(requests);
+    assert.equal(teams.length, 1);
+    assert.equal(teams[0].endReason, 'deleteConfirmed');
+    assert.ok(!teams[0]._hasInferredEnd);
+    assert.equal(isStrongTerminal(teams[0]), true);
+  });
+
+  it('T18: endReason=successorCreate when a new TeamCreate displaces the previous', () => {
+    const requests = [
+      makeReq({ ts: '1', toolUses: [toolUse('tc1', 'TeamCreate', { team_name: 'first' })] }),
+      makeReq({ ts: '2', resultPairs: [['tc1', '{"success":true}']] }),
+      makeReq({ ts: '3', toolUses: [toolUse('tc2', 'TeamCreate', { team_name: 'second' })] }),
+      makeReq({ ts: '4', resultPairs: [['tc2', '{"success":true}']] }),
+    ];
+    const teams = extractTeamSessions(requests);
+    assert.equal(teams.length, 2);
+    assert.equal(teams[0].name, 'first');
+    assert.equal(teams[0].endReason, 'successorCreate');
+    assert.equal(teams[0]._hasInferredEnd, true);
+    assert.equal(isStrongTerminal(teams[0]), true, 'successorCreate is a strong terminal');
+    // second team has no close yet, falls through to logTail in post-processing
+    assert.equal(teams[1].endReason, 'logTail');
+  });
+
+  it('T19: endReason=shutdownRequest when only shutdown_request is found', () => {
+    const requests = [
+      makeReq({ ts: '1', toolUses: [toolUse('tc', 'TeamCreate', { team_name: 'x' })] }),
+      makeReq({ ts: '2', resultPairs: [['tc', '{"success":true}']] }),
+      makeReq({ ts: '3', toolUses: [toolUse('sm', 'SendMessage', { to: 'worker', message: { type: 'shutdown_request' } })] }),
+      makeReq({ ts: '4', toolUses: [toolUse('noop', 'TaskCreate', { subject: 'extend' })] }),
+    ];
+    const teams = extractTeamSessions(requests);
+    assert.equal(teams.length, 1);
+    assert.equal(teams[0].endReason, 'shutdownRequest');
+    assert.equal(teams[0].endTime, '3'); // shutdown_request timestamp
+    assert.equal(teams[0]._hasInferredEnd, true);
+    assert.equal(isStrongTerminal(teams[0]), false, 'shutdownRequest is weak evidence');
+  });
+
+  it('T20: endReason=logTail when nothing signals termination', () => {
+    const requests = [
+      makeReq({ ts: '1', toolUses: [toolUse('tc', 'TeamCreate', { team_name: 'x' })] }),
+      makeReq({ ts: '2', resultPairs: [['tc', '{"success":true}']] }),
+      makeReq({ ts: '3', toolUses: [toolUse('task', 'TaskCreate', { subject: 't1' })] }),
+    ];
+    const teams = extractTeamSessions(requests);
+    assert.equal(teams.length, 1);
+    assert.equal(teams[0].endReason, 'logTail');
+    assert.equal(teams[0].endTime, '3');
+    assert.equal(teams[0]._hasInferredEnd, true);
+    assert.equal(isStrongTerminal(teams[0]), false, 'logTail is weak evidence');
+  });
+
+  it('T21: isStrongTerminal helper returns correctly for all endReason values', () => {
+    assert.equal(isStrongTerminal({ endReason: 'deleteConfirmed' }), true);
+    assert.equal(isStrongTerminal({ endReason: 'successorCreate' }), true);
+    assert.equal(isStrongTerminal({ endReason: 'shutdownRequest' }), false);
+    assert.equal(isStrongTerminal({ endReason: 'logTail' }), false);
+    assert.equal(isStrongTerminal({ endReason: undefined }), false);
+    assert.equal(isStrongTerminal(null), false);
+    assert.equal(isStrongTerminal(undefined), false);
+  });
+
+  it('T22: cross-file TeamDelete yields endReason=deleteConfirmed (_inferredStart preserved)', () => {
+    const requests = [
+      makeReq({ ts: '1', toolUses: [toolUse('a1', 'Agent', { team_name: 'cross', name: 'w1' })] }),
+      makeReq({ ts: '2', toolUses: [toolUse('td', 'TeamDelete', {})] }),
+      makeReq({ ts: '3', resultPairs: [['td', '{"success":true,"team_name":"cross","message":"Cleaned up"}']] }),
+    ];
+    const teams = extractTeamSessions(requests);
+    assert.equal(teams.length, 1);
+    assert.equal(teams[0].name, 'cross');
+    assert.equal(teams[0].endReason, 'deleteConfirmed');
+    assert.equal(teams[0]._inferredStart, true);
+  });
+
+  it('T23: three consecutive TeamCreate of same name — first two get successorCreate', () => {
+    const requests = [
+      makeReq({ ts: '1', toolUses: [toolUse('tc1', 'TeamCreate', { team_name: 'same' })] }),
+      makeReq({ ts: '2', resultPairs: [['tc1', '{"success":true}']] }),
+      makeReq({ ts: '3', toolUses: [toolUse('tc2', 'TeamCreate', { team_name: 'same' })] }),
+      makeReq({ ts: '4', resultPairs: [['tc2', '{"success":true}']] }),
+      makeReq({ ts: '5', toolUses: [toolUse('tc3', 'TeamCreate', { team_name: 'same' })] }),
+      makeReq({ ts: '6', resultPairs: [['tc3', '{"success":true}']] }),
+    ];
+    const teams = extractTeamSessions(requests);
+    assert.equal(teams.length, 3);
+    assert.equal(teams[0].endReason, 'successorCreate');
+    assert.equal(teams[1].endReason, 'successorCreate');
+    // last one falls through to logTail
+    assert.equal(teams[2].endReason, 'logTail');
   });
 });

@@ -405,6 +405,28 @@
   font-size: 10px;
 }
 
+/* v2 状态收敛：收敛态（弱证据 + runtime=dead/residue）*/
+.statusConverged {
+  color: var(--color-success);
+  opacity: 0.55;
+}
+
+/* 推断结束但 runtime 未查 / 仍可能活动 */
+.statusPending {
+  color: var(--text-tertiary);
+}
+
+/* possiblyAlive: inbox 近期仍有投递 */
+.statusPossiblyAlive {
+  color: var(--color-warning-light);
+}
+
+/* reused: 目录被新 session 占用 */
+.statusReused {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
 .ganttIndicatorInitial {
   left: 110px;
 }

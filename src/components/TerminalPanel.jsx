@@ -1175,11 +1175,13 @@ class TerminalPanel extends React.Component {
                     <div className={styles.ultraplanHeader}>
                       <span className={styles.ultraplanHeaderTitle}>{t('ui.ultraplan.title')}<ConceptHelp doc="UltraPlan" zIndex={1100} /></span>
                       <button
-                        className={styles.ultraplanHeaderAddBtn}
-                        onClick={() => this.openCustomUltraplanEditor(null)}
-                        title={t('ui.ultraplan.customAdd')}
+                        type="button"
+                        className={styles.ultraplanCloseBtn}
+                        onClick={() => this.setState({ ultraplanOpen: false })}
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
                       </button>
                     </div>
                     <div className={styles.ultraplanVariantRow}>
@@ -1213,6 +1215,17 @@ class TerminalPanel extends React.Component {
                           </span>
                         );
                       })}
+                      <button
+                        type="button"
+                        className={styles.ultraplanAddExpertBtn}
+                        onClick={() => this.openCustomUltraplanEditor(null)}
+                        title={t('ui.ultraplan.customAdd')}
+                        aria-label={t('ui.ultraplan.customAdd')}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                          <path d="M12 5v14M5 12h14" />
+                        </svg>
+                      </button>
                     </div>
                     {(!this.props.modelName || getModelMaxTokens(this.props.modelName) < 1000000) && (
                       <div className={styles.ultraplanContextWarning}>{t('ui.ultraplan.contextWarning')}</div>
