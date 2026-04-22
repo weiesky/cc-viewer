@@ -185,6 +185,13 @@
 - Fix (其他 AppHeader SCU 白名单补齐 P1 修复合并): correctness-reviewer 指出 `toolChipGrid` 左 padding 16px 比 `.cacheSectionArrow` width 12px + gap 2px 多 2px，不严格对齐；改为 14px。另把 `mcpBody` 里 inline style `{flexDirection: 'column', alignItems: 'stretch'}` 抽成独立 `.toolChipGridVertical` 类，避免 inline style 与 module CSS 混用。
 - Hygiene (calibrationModel 配置更新): `src/config.json` 把手动校准主力模型下拉里的 `"Opus 4.6 (1M)"` / `opus-4.6-1m` 换成 `"Opus 4.7 (1M)"` / `opus-4.7-1m`，tokens 1M 保持不变。旧 `opus-4.6-1m` 偏好值在下拉里消失，用户需重新选。
 - Fix (MarkdownBlock 下载按钮斜向/垂直 hover 保护区): 用户反馈从对话气泡右下外侧沿垂直或斜向路径靠近右上角下载按钮时，鼠标轨迹落在"wrapper 外 + actionBar DOM 外"的空白里触发 wrapper 的 `mouseleave`，按钮 150ms 延迟兜底来不及就提前 fade out。在 `src/components/MarkdownBlock.jsx` 的 `.actionBar` 内 `.saveAsWrap` 前后各插入一个 `<div className={styles.hoverPad} aria-hidden="true" />`，CSS 新增 `.hoverPad` 用 `position: absolute`（脱离 flex 流，不占按钮位置使按钮保持 top:0 原位不下移）+ `left: 0` 对齐按钮左缘 + `width: 48px`（按钮 24px 向右溢出 24px 作水平 hover 桥）+ `height: 60px`（上下各给约 60px 竖向 hover 桥）；`.hoverPadTop` 用 `bottom: 100%` 贴按钮上方、`.hoverPadBottom` 用 `top: 100%` 贴按钮下方。actionBar 仅在 hovered=true 时 render，不干扰非激活气泡。
+## 1.6.184 (2026-04-23)
+
+- Feat (interaction hooks + HTTPS bridge support): add `onPermRequest`, `onAskRequest`, `onPlanRequest` waterfall hooks so plugins can intercept PTY-mode permission approvals, AskUserQuestion prompts, and plan approvals. Expand `serverStarted` hook context with `interactions` object exposing `getPendingPerms`, `resolvePerm`, `getPendingAsk`, `resolveAsk`, `resolveSdkApproval`. Add `CCVIEWER_PROTOCOL` env var injection in `pty-manager.js` so `ask-bridge.js` / `perm-bridge.js` auto-select `https` vs `http` client when `https-auto-cert` plugin is active. Both bridges gain `rejectUnauthorized: false` to accept self-signed certs.
+
+## 1.6.183 (2026-04-22)
+
+- Feat (plugin system: beforeRequest hook + bundled plugin loading): add a generic `beforeRequest` waterfall hook, allowing plugins to intercept HTTP requests after token auth. Expand `serverStarted` hook context with a `pty` field exposing PTY API functions (`writeToPty`, `getPtyState`, `getOutputBuffer`, `onPtyData`, `writeToPtySequential`) for CLI-mode plugins. Add bundled plugin loading support — plugins shipped in the package's `plugins/` directory are auto-loaded after user plugins, with user plugins taking priority by name.
 
 ## 1.6.182 (2026-04-20)
 

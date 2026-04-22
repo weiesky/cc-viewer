@@ -284,6 +284,20 @@ async function handleRequest(req, res) {
     }
   }
 
+  // Plugin hook: intercept HTTP requests (after auth, before routing)
+  try {
+    const hookResult = await runWaterfallHook('beforeRequest', {
+      req, res, url, method, parsedUrl, handled: false,
+    });
+    if (hookResult.handled) return;
+  } catch (err) {
+    if (!res.headersSent) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Plugin error' }));
+    }
+    return;
+  }
+
   // User preferences API
   // File upload API — save to /tmp/cc-viewer-uploads/
   if (url === '/api/upload' && method === 'POST') {
@@ -3010,8 +3024,22 @@ export async function startViewer() {
             await setupTerminalWebSocket(currentServer);
           }
           // 通知插件服务器已启动
-          runParallelHook('serverStarted', { port, host: HOST, url, ip: getLocalIp(), token: ACCESS_TOKEN, protocol: serverProtocol, httpServer: currentServer })
-            .catch(err => console.error('[CC Viewer] Plugin serverStarted hook error:', err.message));
+          let ptyApi = null;
+          if (isCliMode) {
+            const pm = await import('./pty-manager.js');
+            ptyApi = {
+              writeToPty: pm.writeToPty,
+              writeToPtySequential: pm.writeToPtySequential,
+              getPtyState: pm.getPtyState,
+              getOutputBuffer: pm.getOutputBuffer,
+              onPtyData: pm.onPtyData,
+            };
+          }
+          await runParallelHook('serverStarted', {
+            port, host: HOST, url, ip: getLocalIp(),
+            token: ACCESS_TOKEN, protocol: serverProtocol,
+            httpServer: currentServer, pty: ptyApi,
+          });
           resolve(server);
         });
 

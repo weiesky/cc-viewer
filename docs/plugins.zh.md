@@ -68,15 +68,50 @@ export default {
 
 | Hook 名称 | 类型 | 参数 | 返回值 | 触发时机 |
 |-----------|------|------|--------|---------|
+| `beforeRequest` | waterfall | `{ req, res, url, method, parsedUrl, handled }` | `{ handled: true }` 短路请求 | token 验证后、路由分发前 |
 | `httpsOptions` | waterfall | `{}` | `{ pfx, passphrase }` 或 `{ cert, key }` | 服务器创建前 |
 | `localUrl` | waterfall | `{ url, ip, port, token }` | `{ url }` | 客户端请求局域网地址时 |
-| `serverStarted` | parallel | `{ port, host, url, ip, token, protocol, httpServer }` | 忽略 | 服务器启动成功后 |
+| `serverStarted` | parallel | `{ port, host, url, ip, token, protocol, httpServer, pty }` | 忽略 | 服务器启动成功后 |
 | `serverStopping` | parallel | `{}` | 忽略 | 服务器关闭前 |
 | `onNewEntry` | parallel | `entry` (JSONL 日志条目对象) | 忽略 | 检测到新的 JSONL 日志条目时 |
 
 ---
 
 ## Hook 详解
+
+### `beforeRequest` — 拦截 HTTP 请求
+
+**类型：Waterfall（串行管道）**
+
+每个 HTTP 请求经过 token 认证后、路由分发前触发。允许插件拦截并处理自定义 API 端点。
+
+**参数说明：**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `req` | `IncomingMessage` | Node.js 请求对象 |
+| `res` | `ServerResponse` | Node.js 响应对象 |
+| `url` | `string` | 请求路径（如 `/api/plugin/my-endpoint`） |
+| `method` | `string` | HTTP 方法（`GET`、`POST` 等） |
+| `parsedUrl` | `URL` | 完整的 URL 对象 |
+| `handled` | `boolean` | 初始为 `false`；插件写完响应后返回 `{ handled: true }` |
+
+**返回值：** 返回 `{ handled: true }` 表示已处理完成，cc-viewer 将跳过后续路由。
+
+> **重要：** 只应返回 `{ handled: true }`。不要在返回值中覆写 `req`、`res`、`url`、`method`——waterfall 合并机制会影响后续插件。
+
+```javascript
+hooks: {
+  async beforeRequest({ req, res, url, method, handled }) {
+    if (handled) return; // 其他插件已处理
+    if (url === '/api/plugin/my-endpoint' && method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ hello: 'world' }));
+      return { handled: true };
+    }
+  },
+}
+```
 
 ### `httpsOptions` — 提供 HTTPS 证书
 
@@ -166,10 +201,23 @@ hooks: {
 
 服务器成功绑定端口后触发。适合用于发送通知、注册服务发现等。
 
+`pty` 字段在 CLI 模式下提供 PTY（终端）API 函数。非 CLI 模式（如 SDK 模式）下为 `null`。
+
+| `pty` 方法 | 签名 | 说明 |
+|-----------|------|------|
+| `writeToPty(data)` | `(string) → boolean` | 向 PTY stdin 写入数据。成功返回 `true`。 |
+| `writeToPtySequential(chunks, onComplete, opts)` | `(string[], Function, object) → void` | 按顺序发送多个 chunk。 |
+| `getPtyState()` | `() → { running, exitCode }` | 获取 PTY 进程状态。 |
+| `getOutputBuffer()` | `() → string` | 获取累积的 PTY 输出（最大 200KB）。 |
+| `onPtyData(cb)` | `(Function) → Function` | 注册 PTY 输出监听器。返回取消订阅函数。 |
+
 ```javascript
 hooks: {
-  async serverStarted({ port, host, url, ip, token, protocol, httpServer }) {
+  async serverStarted({ port, host, url, ip, token, protocol, httpServer, pty }) {
     console.error(`[my-plugin] 服务器运行在 ${url}`);
+    if (pty) {
+      console.error(`[my-plugin] PTY 状态:`, pty.getPtyState());
+    }
 
     // 示例：通知企业监控系统
     fetch('https://monitor.company.com/api/register', {

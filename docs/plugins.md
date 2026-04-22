@@ -61,6 +61,38 @@ export default {
 
 ## Available Hooks
 
+### `beforeRequest` — Waterfall
+
+Triggered on every HTTP request, after token authentication but before route dispatching. Allows plugins to intercept and handle custom API endpoints.
+
+| Property | Description |
+|----------|-------------|
+| **Type** | Waterfall (serial pipeline) |
+| **Parameters** | `{ req, res, url, method, parsedUrl, handled }` |
+| **Returns** | `{ handled: true }` to short-circuit the request (skip cc-viewer routing) |
+| **Timing** | After token auth, before route dispatch |
+
+- `req` / `res` — Node.js `IncomingMessage` / `ServerResponse` objects
+- `url` — the pathname (e.g., `/api/plugin/my-endpoint`)
+- `method` — HTTP method (`GET`, `POST`, etc.)
+- `parsedUrl` — the full `URL` object
+- `handled` — starts as `false`; return `{ handled: true }` if your plugin wrote the response
+
+> **Important:** Only return `{ handled: true }`. Do NOT return overrides for `req`, `res`, `url`, or `method` — the waterfall merge would overwrite them for subsequent plugins.
+
+```javascript
+hooks: {
+  async beforeRequest({ req, res, url, method, handled }) {
+    if (handled) return; // another plugin already handled it
+    if (url === '/api/plugin/my-endpoint' && method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ hello: 'world' }));
+      return { handled: true };
+    }
+  },
+}
+```
+
 ### `httpsOptions` — Waterfall
 
 Triggered at server startup to obtain HTTPS certificate options. If the returned object contains `pfx` or `cert`, the server starts in HTTPS mode; otherwise it falls back to HTTP.
@@ -122,14 +154,27 @@ Triggered after the HTTP server starts successfully.
 | Property | Description |
 |----------|-------------|
 | **Type** | Parallel (concurrent notification) |
-| **Parameters** | `{ port, host, url, ip, token, protocol, httpServer }` |
+| **Parameters** | `{ port, host, url, ip, token, protocol, httpServer, pty }` |
 | **Returns** | Ignored |
 | **Timing** | After server binds to a port |
 
+The `pty` field provides PTY (terminal) API functions when running in CLI mode. It is `null` when not in CLI mode (e.g., SDK mode).
+
+| `pty` method | Signature | Description |
+|-------------|-----------|-------------|
+| `writeToPty(data)` | `(string) → boolean` | Write data to the PTY stdin. Returns `true` if written. |
+| `writeToPtySequential(chunks, onComplete, opts)` | `(string[], Function, object) → void` | Send chunks sequentially with delays. |
+| `getPtyState()` | `() → { running, exitCode }` | Get current PTY process state. |
+| `getOutputBuffer()` | `() → string` | Get accumulated PTY output (max 200KB). |
+| `onPtyData(cb)` | `(Function) → Function` | Register listener for PTY output. Returns unsubscribe function. |
+
 ```javascript
 hooks: {
-  async serverStarted({ port, host, url, ip, token, protocol, httpServer }) {
+  async serverStarted({ port, host, url, ip, token, protocol, httpServer, pty }) {
     console.error(`[my-plugin] Server is running at ${url}`);
+    if (pty) {
+      console.error(`[my-plugin] PTY state:`, pty.getPtyState());
+    }
   },
 }
 ```

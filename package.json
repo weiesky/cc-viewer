@@ -55,6 +55,7 @@
     "i18n.js",
     "findcc.js",
     "lib/",
+    "plugins/",
     "pty-manager.js",
     "workspace-registry.js",
     "concepts/"

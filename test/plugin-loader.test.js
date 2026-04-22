@@ -415,3 +415,80 @@ describe('getPluginsInfo', () => {
     }
   });
 });
+
+// ─── beforeRequest waterfall hook ───
+
+describe('beforeRequest waterfall hook', () => {
+  beforeEach(() => {
+    mkdirSync(PLUGINS_DIR, { recursive: true });
+  });
+  afterEach(async () => {
+    cleanup();
+    await loadPlugins();
+  });
+
+  it('returns handled:true when plugin sets it', async () => {
+    writePlugin('test-br-handle.js', `
+      export default {
+        name: 'br-handle',
+        hooks: {
+          beforeRequest({ url }) {
+            if (url === '/api/plugin/test') return { handled: true };
+          }
+        }
+      };
+    `);
+    await loadPlugins();
+    const result = await runWaterfallHook('beforeRequest', {
+      req: {}, res: {}, url: '/api/plugin/test', method: 'GET', parsedUrl: {}, handled: false,
+    });
+    assert.equal(result.handled, true);
+  });
+
+  it('passes through handled:false when no plugin handles it', async () => {
+    writePlugin('test-br-noop.js', `
+      export default {
+        name: 'br-noop',
+        hooks: {
+          beforeRequest({ url }) {
+            if (url === '/api/plugin/other') return { handled: true };
+          }
+        }
+      };
+    `);
+    await loadPlugins();
+    const result = await runWaterfallHook('beforeRequest', {
+      req: {}, res: {}, url: '/api/something-else', method: 'GET', parsedUrl: {}, handled: false,
+    });
+    assert.equal(result.handled, false);
+  });
+
+  it('first plugin handled:true is visible to second plugin', async () => {
+    writePlugin('test-br-first.js', `
+      export default {
+        name: 'br-first',
+        hooks: {
+          beforeRequest({ url }) {
+            if (url === '/api/plugin/test') return { handled: true };
+          }
+        }
+      };
+    `);
+    writePlugin('test-br-second.js', `
+      let sawHandled = false;
+      export default {
+        name: 'br-second',
+        hooks: {
+          beforeRequest({ handled }) {
+            sawHandled = handled;
+          }
+        }
+      };
+    `);
+    await loadPlugins();
+    const result = await runWaterfallHook('beforeRequest', {
+      req: {}, res: {}, url: '/api/plugin/test', method: 'GET', parsedUrl: {}, handled: false,
+    });
+    assert.equal(result.handled, true);
+  });
+});
