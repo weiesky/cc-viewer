@@ -168,6 +168,17 @@ export async function spawnClaude(proxyPort, cwd, extraArgs = [], claudePath = n
     env.CCVIEWER_PORT = String(serverPort); // For ask-hook bridge
   }
 
+  // Claude Code fullscreen (alt-screen) 渲染器 —— flicker 降 ~85%。
+  // xterm.js 嵌入场景下主 buffer 的追加式绘制是 flicker 重灾区，切 alt-screen
+  // 由 xterm 的专门路径处理更稳。同时开 DISABLE_MOUSE 保留 xterm 原生文本选中
+  // （不开的话 Claude 会抢鼠标事件，导致 xterm 面板里无法复制文字）。
+  // 用 ??= 而非 =，尊重用户在 ~/.zshrc / shell 里显式 export 的偏好
+  // （比如 CLAUDE_CODE_NO_FLICKER=0 明确关闭 flicker 优化的场景）。
+  // 历史查看走 cc-viewer ChatView（独立读 .claude/projects/*.jsonl），
+  // 不依赖 xterm scrollback，所以 alt-screen 隔离 Claude 历史对本项目无实际损失。
+  env.CLAUDE_CODE_NO_FLICKER ??= '1';
+  env.CLAUDE_CODE_DISABLE_MOUSE ??= '1';
+
   // 通过 --settings 注入 ANTHROPIC_BASE_URL，确保覆盖 settings.json 中的配置。
   // 仅覆盖 env.ANTHROPIC_BASE_URL，不影响其他 settings 字段。
   const settingsJson = JSON.stringify({
@@ -340,6 +351,10 @@ export async function spawnShell() {
   const shellEnv = { ...process.env };
   delete shellEnv.CCVIEWER_PORT;
   delete shellEnv.CCV_EDITOR_PORT;
+  // 透传 Claude Code 渲染优化，用户在交互 shell 里手动敲 claude 时同样生效
+  // 同样用 ??= 尊重 shell 里的显式偏好
+  shellEnv.CLAUDE_CODE_NO_FLICKER ??= '1';
+  shellEnv.CLAUDE_CODE_DISABLE_MOUSE ??= '1';
 
   ptyProcess = pty.spawn(shell, [], {
     name: 'xterm-256color',

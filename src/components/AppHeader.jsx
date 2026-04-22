@@ -1,8 +1,9 @@
 import React from 'react';
-import { Space, Tag, Button, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Radio, Tabs, Spin, Input, Table, Select, message } from 'antd';
+import { Space, Tag, Button, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Radio, Tabs, Spin, Input, Table, Select, Tooltip, message } from 'antd';
 import { MessageOutlined, FileTextOutlined, ImportOutlined, DashboardOutlined, ExportOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, CopyOutlined, ApiOutlined, DeleteOutlined, ReloadOutlined, PlusOutlined, CloudDownloadOutlined, SwapOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { QRCodeCanvas } from 'qrcode.react';
-import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats, getModelMaxTokens, extractCachedContent, parseCachedTools } from '../utils/helpers';
+import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats, getModelMaxTokens, extractCachedContent, parseCachedTools, extractLoadedSkills } from '../utils/helpers';
+import { BUILTIN_SKILL_NAMES } from '../utils/skillsParser';
 import { isSystemText, classifyUserContent, isMainAgent } from '../utils/contentFilter';
 import { classifyRequest } from '../utils/requestType';
 import { resolveTeammateNames } from '../utils/contentFilter';
@@ -45,7 +46,7 @@ const countryToFlag = (code) => {
 class AppHeader extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { countdownText: '', countryFlag: null, countryInfo: null, promptModalVisible: false, promptData: [], promptViewMode: 'original', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false, localUrl: '', pluginModalVisible: false, pluginsList: [], pluginsDir: '', deleteConfirmVisible: false, deleteTarget: null, processModalVisible: false, processList: [], processLoading: false, logoDropdownOpen: false, cacheHighlightIdx: null, cacheHighlightFading: false, cdnModalVisible: false, cdnUrl: '', cdnLoading: false, calibrationModel: (v => CALIBRATION_MODELS.some(m => m.value === v) ? v : 'auto')(localStorage.getItem('ccv_calibrationModel') || 'auto'), proxyModalVisible: false, editingProxy: null, editForm: { name: '', baseURL: '', apiKey: '', models: '', activeModel: '' }, logDirDraft: null };
+    this.state = { countdownText: '', countryFlag: null, countryInfo: null, promptModalVisible: false, promptData: [], promptViewMode: 'original', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false, localUrl: '', pluginModalVisible: false, pluginsList: [], pluginsDir: '', deleteConfirmVisible: false, deleteTarget: null, processModalVisible: false, processList: [], processLoading: false, logoDropdownOpen: false, cacheHighlightIdx: null, cacheHighlightFading: false, cdnModalVisible: false, cdnUrl: '', cdnLoading: false, calibrationModel: (v => CALIBRATION_MODELS.some(m => m.value === v) ? v : 'auto')(localStorage.getItem('ccv_calibrationModel') || 'auto'), proxyModalVisible: false, editingProxy: null, editForm: { name: '', baseURL: '', apiKey: '', models: '', activeModel: '' }, logDirDraft: null, _skillsModal: { open: false, loading: false, skills: [], error: null, toggling: new Set() } };
     this._countdownTimer = null;
     this._expiredTimer = null;
     this.updateCountdown = this.updateCountdown.bind(this);
@@ -558,6 +559,25 @@ class AppHeader extends React.Component {
     const hasBuiltin = builtin.length > 0;
     const hasMcp = mcpByServer.size > 0;
 
+    // skills 缓存：以「被选中的 MainAgent 请求引用」为 key（而非 requests 数组引用），
+    // live-tail 追加新请求时，chosen 不变就不重扫。
+    const chosenForSkills = (() => {
+      if (!Array.isArray(requests) || requests.length === 0) return null;
+      if (requests.length === 1) return requests[0];
+      for (let i = requests.length - 1; i >= 0; i--) {
+        const r = requests[i];
+        if (r && r.type !== 'teammate' && r.type !== 'subAgent') return r;
+      }
+      return null;
+    })();
+    if (chosenForSkills !== this._lastChosenForSkills) {
+      this._lastSkills = extractLoadedSkills(requests);
+      this._lastChosenForSkills = chosenForSkills;
+    }
+    // 过滤掉 builtin skill（无法单独管理，用户见过一次就够了，留着只会占 chip 行）
+    const skills = (this._lastSkills || []).filter(s => !BUILTIN_SKILL_NAMES.has(s.name));
+    const hasSkills = skills.length > 0;
+
     // 内置工具 chip：若有对应 Tool-<name>.md 文档（由 ConceptHelp 内部白名单校验），
     // 点击直接打开 md modal；无文档则退化为纯展示 chip（ConceptHelp children fallback）。
     // MCP 工具 chip：暂无对应文档，维持纯展示 + title hover 预览。
@@ -566,14 +586,38 @@ class AppHeader extends React.Component {
       const chip = <span className={styles.cacheToolChip} title={title}>{name}</span>;
       return <ConceptHelp key={name} doc={`Tool-${name}`}>{chip}</ConceptHelp>;
     };
-    const renderMcpChip = ({ name, fullName, description }) => {
-      const title = [fullName, description].filter(Boolean).join('\n\n');
-      return (
-        <span key={fullName} className={styles.cacheToolChip} title={title}>{name}</span>
-      );
-    };
+    // MCP / Skill chip 改 hover 弹浮窗看 desc（原 click 弹 Modal 交互太重）。
+    // Antd Popover 默认 trigger='hover' + mouseEnter/Leave delay；overlay maxWidth 480
+    // 避免长描述拉爆视口；`.chipDetailBody` 复用原 Modal 样式（pre-wrap + maxHeight: 60vh 滚动）。
+    const renderChipPopoverContent = (description) => (
+      description
+        ? <div className={styles.chipDetailBody}>{description}</div>
+        : <div className={`${styles.chipDetailBody} ${styles.chipDetailEmpty}`}>{t('ui.noDescription')}</div>
+    );
+    const renderMcpChip = ({ name, fullName, description }) => (
+      <Popover
+        key={fullName}
+        title={fullName}
+        content={renderChipPopoverContent(description)}
+        overlayStyle={{ maxWidth: 480 }}
+        mouseEnterDelay={0.2}
+      >
+        <span className={styles.cacheToolChip}>{name}</span>
+      </Popover>
+    );
+    const renderSkillChip = ({ name, description }) => (
+      <Popover
+        key={name}
+        title={name}
+        content={renderChipPopoverContent(description)}
+        overlayStyle={{ maxWidth: 480 }}
+        mouseEnterDelay={0.2}
+      >
+        <span className={styles.cacheToolChip}>{name}</span>
+      </Popover>
+    );
 
-    const renderGroup = (sectionKey, titleKey, count, defaultCollapsed, body) => {
+    const renderGroup = (sectionKey, titleKey, count, defaultCollapsed, body, rightAction = null) => {
       const state = (this.state._cacheSectionCollapsed || {})[sectionKey];
       const collapsed = state !== undefined ? !!state : defaultCollapsed;
       const toggle = () => this.setState(prev => ({
@@ -581,10 +625,13 @@ class AppHeader extends React.Component {
       }));
       return (
         <div className={styles.cacheSection}>
-          <button type="button" className={styles.cacheSectionTitle} onClick={toggle} aria-expanded={!collapsed}>
-            <span className={styles.cacheSectionArrow}>{collapsed ? '▶' : '▼'}</span>
-            {t(titleKey)} ({count})
-          </button>
+          <div className={styles.cacheSectionHeader}>
+            <button type="button" className={styles.cacheSectionTitle} onClick={toggle} aria-expanded={!collapsed}>
+              <span className={styles.cacheSectionArrow}>{collapsed ? '▶' : '▼'}</span>
+              {t(titleKey)} ({count})
+            </button>
+            {rightAction}
+          </div>
           {!collapsed && body}
         </div>
       );
@@ -605,6 +652,23 @@ class AppHeader extends React.Component {
       </div>
     );
 
+    const skillsBody = (
+      <div className={styles.toolChipGrid}>{skills.map(renderSkillChip)}</div>
+    );
+
+    const skillsAction = (
+      <Button
+        type="primary"
+        size="small"
+        onClick={() => {
+          // 打开 modal 同时关掉 popover（popover zIndex 1030 > Modal 1000 会盖住内容）
+          this.handleOpenSkillsModal();
+        }}
+      >
+        {t('ui.skillManage')}
+      </Button>
+    );
+
     const ctxColor = contextPercent >= 80 ? 'var(--color-error-light)' : contextPercent >= 60 ? 'var(--color-warning-light)' : 'var(--color-success)';
     return (
       <div className={styles.cachePopover}>
@@ -622,10 +686,30 @@ class AppHeader extends React.Component {
             />
           </div>
         </div>
-        {(hasBuiltin || hasMcp) && (
+        {(hasBuiltin || hasMcp || hasSkills) && (
           <div className={styles.cacheScrollArea}>
             {hasBuiltin && renderGroup('tools_builtin', 'ui.builtinTools', builtin.length, true, builtinBody)}
-            {hasMcp && renderGroup('tools_mcp', 'ui.mcpTools', Array.from(mcpByServer.values()).reduce((n, arr) => n + arr.length, 0), false, mcpBody)}
+            {hasMcp && (
+              // MCP 工具一进来就要看（常用且量不大），去掉折叠控件走静态标签 + 视觉分组框
+              <div className={`${styles.cacheSection} ${styles.cacheSectionBordered}`}>
+                <div className={styles.cacheSectionLabel}>
+                  {t('ui.mcpTools')} ({Array.from(mcpByServer.values()).reduce((n, arr) => n + arr.length, 0)})
+                </div>
+                {mcpBody}
+              </div>
+            )}
+            {hasSkills && (
+              // 已载入 Skill 同样去折叠 + 加框；「管理」按钮放标题右侧（space-between + 蓝色 primary）
+              <div className={`${styles.cacheSection} ${styles.cacheSectionBordered}`}>
+                <div className={styles.cacheSectionHeader}>
+                  <div className={styles.cacheSectionLabel}>
+                    {t('ui.loadedSkills')} ({skills.length})
+                  </div>
+                  {skillsAction}
+                </div>
+                {skillsBody}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1767,7 +1851,177 @@ class AppHeader extends React.Component {
         >
           {this.renderProxyProfileList()}
         </Modal>
+
+        {/* Skills Manager Modal — 从 AppHeader popover「已载入 Skill」→「管理」按钮打开 */}
+        {this.renderSkillsManagerModal()}
       </div>
+    );
+  }
+
+  handleOpenSkillsModal = async () => {
+    this.setState(prev => ({
+      _skillsModal: {
+        open: true,
+        loading: true,
+        skills: [],
+        error: null,
+        toggling: prev._skillsModal?.toggling || new Set(),
+      },
+      _cachePopoverOpen: false,
+    }));
+    try {
+      const r = await fetch(apiUrl('/api/skills'));
+      const data = await r.json();
+      if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      this.setState(prev => ({
+        _skillsModal: { ...prev._skillsModal, loading: false, skills: data.skills, error: null },
+      }));
+    } catch (e) {
+      this.setState(prev => ({
+        _skillsModal: { ...prev._skillsModal, loading: false, skills: [], error: e.message || 'load_failed' },
+      }));
+    }
+  };
+
+  handleToggleSkill = async (skill) => {
+    const key = `${skill.source}-${skill.name}`;
+    if (this.state._skillsModal?.toggling?.has(key)) return;
+    const enable = !skill.enabled;
+    // 乐观更新：先翻 Switch 让视觉立刻响应；请求失败再回滚
+    const flipEnabled = (target) => (s) =>
+      (s.source === skill.source && s.name === skill.name) ? { ...s, enabled: target } : s;
+    this.setState(prev => {
+      const next = new Set(prev._skillsModal.toggling); next.add(key);
+      return {
+        _skillsModal: {
+          ...prev._skillsModal,
+          toggling: next,
+          skills: prev._skillsModal.skills.map(flipEnabled(enable)),
+        },
+      };
+    });
+    try {
+      const r = await fetch(apiUrl('/api/skills/toggle'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: skill.source, name: skill.name, enable }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        // 回滚乐观更新
+        this.setState(prev => ({
+          _skillsModal: {
+            ...prev._skillsModal,
+            skills: prev._skillsModal.skills.map(flipEnabled(!enable)),
+          },
+        }));
+        if (data.code === 'DEST_CONFLICT') {
+          message.error(t('ui.skillToggleConflict', { name: skill.name }));
+        } else {
+          message.error(t('ui.skillToggleFailed', { reason: data.error || 'unknown' }));
+        }
+        return;
+      }
+      message.success(enable
+        ? t('ui.skillEnabled', { name: skill.name })
+        : t('ui.skillDisabled', { name: skill.name })
+      );
+    } catch (e) {
+      // 网络异常也回滚
+      this.setState(prev => ({
+        _skillsModal: {
+          ...prev._skillsModal,
+          skills: prev._skillsModal.skills.map(flipEnabled(!enable)),
+        },
+      }));
+      message.error(t('ui.skillToggleFailed', { reason: e.message }));
+    } finally {
+      this.setState(prev => {
+        const next = new Set(prev._skillsModal.toggling); next.delete(key);
+        return { _skillsModal: { ...prev._skillsModal, toggling: next } };
+      });
+    }
+  };
+
+  renderSkillsManagerModal() {
+    const modal = this.state._skillsModal || {};
+    const { open = false, loading = false, skills = [], error = null, toggling = new Set() } = modal;
+    return (
+      <Modal
+        title={t('ui.skillManagerTitle')}
+        open={open}
+        onCancel={() => this.setState(prev => ({ _skillsModal: { ...prev._skillsModal, open: false } }))}
+        footer={null}
+        width="min(1200px, calc(100vw - 80px))"
+        zIndex={1100}
+        styles={{ body: { maxHeight: '70vh', overflowY: 'auto', padding: '16px 20px' } }}
+      >
+        {loading ? (
+          <div className={styles.skillsEmpty}><Spin /></div>
+        ) : error ? (
+          <div className={styles.skillsEmpty}>{t('ui.skillsLoadFailed', { reason: error })}</div>
+        ) : skills.length === 0 ? (
+          <div className={styles.skillsEmpty}>{t('ui.noSkillsLoaded')}</div>
+        ) : (
+          <>
+            {/* 只把 user / project（可切换）放 card 列表；plugin + builtin 折叠到底部 chip 行 */}
+            {skills.filter(s => s.source === 'user' || s.source === 'project').length > 0 && (
+              <div className={styles.skillsList}>
+                {skills.filter(s => s.source === 'user' || s.source === 'project').map((s, i) => {
+                  const key = `${s.source}-${s.name}`;
+                  const isToggling = toggling.has(key);
+                  return (
+                    <div key={`${key}-${i}`} className={`${styles.skillCard} ${!s.enabled ? styles.skillCardDisabled : ''}`}>
+                      <div className={styles.skillCardHeader}>
+                        <div className={styles.skillCardTitleRow}>
+                          <span className={`${styles.skillSourceBadge} ${styles['skillSource_' + s.source]}`}>
+                            {t('ui.skillSource.' + s.source)}
+                          </span>
+                          <div className={styles.skillCardName}>{s.name}</div>
+                        </div>
+                        <div className={styles.skillCardActions}>
+                          <Switch size="small" checked={s.enabled} loading={isToggling} onChange={() => this.handleToggleSkill(s)} />
+                        </div>
+                      </div>
+                      {s.description && <div className={styles.skillCardDesc}>{s.description}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {/* Plugin：不可单独禁用（要走 `claude plugin disable <name>` CLI），折叠成 chip 行；每 chip tooltip 带 plugin 名 */}
+            {skills.filter(s => s.source === 'plugin').length > 0 && (
+              <div className={styles.skillsReadonlySection}>
+                <div className={styles.skillsReadonlyLabel}>{t('ui.skillsPluginLabel')}</div>
+                <div className={styles.toolChipGrid}>
+                  {skills.filter(s => s.source === 'plugin').map((s, i) => {
+                    // pluginName 现在返 "name@marketplace"（pluginKey），tooltip 显示时剥后缀
+                    const pluginDisplay = (s.pluginName || '').split('@')[0];
+                    return (
+                      <Tooltip key={`plugin-${s.name}-${i}`} title={t('ui.skillCannotDisablePlugin', { plugin: pluginDisplay })}>
+                        <span className={styles.cacheToolChip}>{s.name}</span>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {/* Builtin：同样折叠为 chip 行，tooltip 解释"硬编码无法禁用" */}
+            {skills.filter(s => s.source === 'builtin').length > 0 && (
+              <div className={styles.skillsReadonlySection}>
+                <div className={styles.skillsReadonlyLabel}>{t('ui.skillsBuiltinLabel')}</div>
+                <div className={styles.toolChipGrid}>
+                  {skills.filter(s => s.source === 'builtin').map(s => (
+                    <Tooltip key={s.name} title={t('ui.skillCannotDisableBuiltin')}>
+                      <span className={styles.cacheToolChip}>{s.name}</span>
+                    </Tooltip>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </Modal>
     );
   }
 

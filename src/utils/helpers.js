@@ -461,6 +461,12 @@ export function hasClaudeMdReminder(body) {
 }
 
 export function hasSkillsReminder(body) {
+  // 与 extractLoadedSkills 的扫描范围对齐：system[] + messages[]
+  if (Array.isArray(body?.system)) {
+    for (const blk of body.system) {
+      if (blk?.type === 'text' && isSkillsReminder(blk.text)) return true;
+    }
+  }
   const messages = body?.messages;
   if (!Array.isArray(messages)) return false;
   for (const msg of messages) {
@@ -476,6 +482,52 @@ export function hasSkillsReminder(body) {
     }
   }
   return false;
+}
+
+// parseLoadedSkills 拆到独立文件 skillsParser.js（纯函数、无传递依赖），
+// 方便 node --test 直接导入（contentFilter.js 的 ./teammateDetector import
+// 未写 .js 后缀，会让任何 helpers.js 的传递测试挂掉）。
+export { parseLoadedSkills } from './skillsParser.js';
+import { parseLoadedSkills as _parseLoadedSkills } from './skillsParser.js';
+
+// 从 requests 中挑出当前生效的 skills 列表。
+// 策略：最新 MainAgent；单请求直取。不依赖 response.usage（skills 只来自 body）。
+// 只扫 body.system[] 与 body.messages[*].content[*] 中 type==='text' 的块。
+export function extractLoadedSkills(requests) {
+  if (!Array.isArray(requests) || requests.length === 0) return [];
+  let chosen = null;
+  if (requests.length === 1) {
+    chosen = requests[0];
+  } else {
+    for (let i = requests.length - 1; i >= 0; i--) {
+      if (isMainAgent(requests[i])) { chosen = requests[i]; break; }
+    }
+  }
+  if (!chosen || !chosen.body) return [];
+  const body = chosen.body;
+
+  let last = null;
+  if (Array.isArray(body.system)) {
+    for (const blk of body.system) {
+      if (blk?.type === 'text' && isSkillsReminder(blk.text)) last = blk.text;
+    }
+  }
+  if (Array.isArray(body.messages)) {
+    for (const msg of body.messages) {
+      const c = msg?.content;
+      if (typeof c === 'string') {
+        if (isSkillsReminder(c)) last = c;
+      } else if (Array.isArray(c)) {
+        for (const blk of c) {
+          if (blk?.type === 'text' && isSkillsReminder(blk.text)) last = blk.text;
+        }
+      }
+    }
+  }
+  if (!last) return [];
+
+  const m = /<system-reminder>([\s\S]*?)<\/system-reminder>/i.exec(last);
+  return _parseLoadedSkills(m ? m[1] : last);
 }
 
 export function getModelShort(model) {

@@ -619,6 +619,43 @@
   margin-bottom: 10px;
 }
 
+/* MCP / 已载入 Skill 两块的视觉分组框——内置工具走 renderGroup 折叠不加框 */
+.cacheSectionBordered {
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--bg-container);
+}
+
+/* 标题（或标题 + 管理按钮的 flex 行）与内容列表之间拉一根分隔线，
+   颜色与外框一致（--border-secondary）；MCP 场景直接作用到 label，
+   Skill 场景作用到 header wrapper（内含按钮 + label） */
+.cacheSectionBordered > .cacheSectionLabel,
+.cacheSectionBordered > .cacheSectionHeader {
+  border-bottom: 1px solid var(--border-secondary);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+
+.cacheSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+/* 静态分组标签（MCP / 已载入 Skill 用）：去掉折叠按钮语义，只保留文字样式。
+   与 .cacheSectionTitle 视觉一致（12px / 600 / --text-light / 4px 上下 padding），
+   但不是 button、无 cursor:pointer、无 :hover 颜色变化、不可聚焦 —— 单纯一个 label。*/
+.cacheSectionLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-light);
+  margin-bottom: 4px;
+  padding: 4px 0;
+  user-select: none;
+}
+
 .cacheSectionTitle {
   display: flex;
   align-items: center;
@@ -632,9 +669,12 @@
   border: none;
   cursor: pointer;
   user-select: none;
-  width: 100%;
+  flex: 1;
   text-align: left;
 }
+
+/* 原 .cacheSectionAction（自绘按钮）已改用 Antd <Button type="primary" size="small"> —
+   蓝色、hover/focus 状态由 antd 主题统一接管。保留此注释作为寻路锚点，无需复刻样式。 */
 
 .cacheSectionTitle:hover {
   color: var(--text-secondary);
@@ -681,6 +721,25 @@
   cursor: help;
 }
 
+/* 原 .cacheToolChipClickable 已退役 —— MCP/Skill chip 改走 hover Popover，无需点击高亮 */
+
+.chipDetailBody {
+  margin: 0;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 60vh;
+  overflow-y: auto;
+  color: var(--text-primary);
+}
+
+.chipDetailEmpty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .mcpServerGroup {
   margin-bottom: 6px;
 }
@@ -691,6 +750,103 @@
   color: var(--text-muted);
   padding: 2px 0 2px 14px;
 }
+
+/* Skill Manager Modal — 每条 skill 一个独立 bordered block，垂直排列 */
+.skillsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skillCard {
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--bg-container);
+}
+
+.skillCardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.skillCardName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-word;
+  flex: 1;
+}
+
+.skillCardActions {
+  flex-shrink: 0;
+  /* 预留未来操作按钮位置（⋯ 菜单：禁用 / 删除 / 编辑），现状为空 */
+}
+
+.skillCardDesc {
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-secondary);
+}
+
+.skillsEmpty {
+  padding: 32px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* 不可切换 skill 区（Plugin / Builtin）：分隔线上方是可切的 card 列表，下方 chip grid 行 */
+.skillsReadonlySection {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-secondary);
+}
+
+.skillsReadonlyLabel {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+/* Skill 管理 Modal 里的卡片 disabled 状态 + 来源徽章 */
+.skillCardDisabled {
+  opacity: 0.55;
+  background: var(--bg-elevated, var(--bg-surface));
+}
+.skillCardDisabled .skillCardName {
+  text-decoration: line-through;
+}
+.skillCardTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.skillSourceBadge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+.skillSource_user    { background: #e6f4ff; color: #0958d9; }
+.skillSource_project { background: #f6ffed; color: #389e0d; }
+.skillSource_plugin  { background: #fff7e6; color: #d46b08; }
+.skillSource_builtin { background: #f9f0ff; color: #531dab; }
+[data-theme="dark"] .skillSource_user    { background: #111d2c; color: #69b1ff; }
+[data-theme="dark"] .skillSource_project { background: #162312; color: #73d13d; }
+[data-theme="dark"] .skillSource_plugin  { background: #2b1d11; color: #ffa940; }
+[data-theme="dark"] .skillSource_builtin { background: #1a1325; color: #b37feb; }
 
 .cacheCodeBlock {
   white-space: pre-wrap;

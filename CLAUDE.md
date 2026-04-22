@@ -4,3 +4,4 @@ When committing code to GitHub, always run `npm run test` first to ensure all te
 Before publishing to npm, check if any new root-level .js files are missing from package.json files array.
 When adding node_modules dependencies, be sure to distinguish between devDependencies and dependencies.
 When submitting code to GitHub or npm, always consult the user. Unless the user explicitly prompts you to submit, you should always ask the user before submitting. Don't auto-commit/push/publish — always ask first
+Do not increment the version number arbitrarily; you should only update it when running `npm publish`.

@@ -9,7 +9,7 @@ import { homedir, platform, networkInterfaces } from 'node:os';
 import { execFile, exec, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { Worker } from 'node:worker_threads';
-import { isPathContained, readFileContent, writeFileContent, resolveFilePath, ERROR_STATUS_MAP } from './lib/file-api.js';
+import { isPathContained, readFileContent, writeFileContent, resolveFilePath, ERROR_STATUS_MAP, validateImportDir } from './lib/file-api.js';
 
 const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
@@ -326,7 +326,10 @@ async function handleRequest(req, res) {
         const headerStr = buf.slice(0, headerEnd).toString();
         const nameMatch = headerStr.match(/filename="([^"]+)"/);
         if (!nameMatch) throw new Error('No filename');
-        const originalName = nameMatch[1].replace(/[/\\]/g, '_'); // sanitize
+        // sanitize: 只过 null byte + 控制字符 + 路径分隔符（真正会破坏 fs 调用的字符）；
+        // Windows 非法字符 <>:"|?* 在 Unix 合法（ISO 时间戳 10:30:45.log、name:v1.txt 等常见），
+        // 不做跨平台代理过滤，让 writeFileSync 在 Windows 上自行抛错即可。
+        const originalName = nameMatch[1].replace(/[\x00-\x1f/\\]/g, '_');
         const bodyStart = headerEnd + 4;
         // Find the closing boundary
         const closingBoundary = Buffer.from('\r\n--' + boundary);
@@ -373,10 +376,11 @@ async function handleRequest(req, res) {
     }
     const importUrl = new URL(req.url, `${serverProtocol}://${req.headers.host}`);
     const dir = importUrl.searchParams.get('dir') || '';
-    // Security: reject absolute paths and path traversal
-    if (dir.startsWith('/') || dir.includes('..')) {
+    // 在 mkdirSync 之前纯字符串校验，防 symlink 副作用目录被创建在项目外
+    const dirCheck = validateImportDir(dir);
+    if (!dirCheck.ok) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Invalid dir parameter' }));
+      res.end(JSON.stringify({ error: dirCheck.error }));
       return;
     }
     const MAX_UPLOAD = 100 * 1024 * 1024; // 100MB
@@ -420,24 +424,37 @@ async function handleRequest(req, res) {
         const headerStr = buf.slice(0, headerEnd).toString();
         const nameMatch = headerStr.match(/filename="([^"]+)"/);
         if (!nameMatch) throw new Error('No filename');
-        const originalName = nameMatch[1].replace(/[/\\]/g, '_');
+        // sanitize 与 /api/upload 一致：只过真正有害的字符，保留 Unix 合法 : " < > | ? * 等
+        const originalName = nameMatch[1].replace(/[\x00-\x1f/\\]/g, '_');
         const bodyStart = headerEnd + 4;
         const closingBoundary = Buffer.from('\r\n--' + boundary);
         const bodyEnd = buf.indexOf(closingBoundary, bodyStart);
         const fileData = bodyEnd !== -1 ? buf.slice(bodyStart, bodyEnd) : buf.slice(bodyStart);
-        // Resolve unique filename: append -1, -2, ... if conflict
+        // Resolve unique filename via exclusive write (wx)；避免并发 TOCTOU 覆盖
         const dotIdx = originalName.lastIndexOf('.');
         const stem = dotIdx > 0 ? originalName.slice(0, dotIdx) : originalName;
         const ext = dotIdx > 0 ? originalName.slice(dotIdx) : '';
         let finalName = originalName;
         let savePath = join(realDir, finalName);
         let counter = 1;
-        while (existsSync(savePath)) {
-          finalName = `${stem}-${counter}${ext}`;
-          savePath = join(realDir, finalName);
-          counter++;
+        let written = false;
+        // 最多重试 10000 次（极端场景保底）；耗尽后必须显式抛错，防止返回虚假成功
+        while (counter < 10001) {
+          try {
+            writeFileSync(savePath, fileData, { flag: 'wx' });
+            written = true;
+            break;
+          } catch (e) {
+            if (e && e.code === 'EEXIST') {
+              finalName = `${stem}-${counter}${ext}`;
+              savePath = join(realDir, finalName);
+              counter++;
+              continue;
+            }
+            throw e;
+          }
         }
-        writeFileSync(savePath, fileData);
+        if (!written) throw new Error('Too many filename conflicts');
         const relPath = dir ? `${dir}/${finalName}` : finalName;
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, name: finalName, relPath }));
@@ -1203,6 +1220,51 @@ async function handleRequest(req, res) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Directory not found' }));
     }
+    return;
+  }
+
+  // Skill 动态装卸 —— 列出所有 skill（含来源）
+  if (url === '/api/skills' && method === 'GET') {
+    try {
+      const { listSkills } = await import('./lib/skills-api.js');
+      const skills = listSkills({ projectDir: process.env.CCV_PROJECT_DIR || process.cwd() });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, skills }));
+    } catch (err) {
+      console.error('[api/skills]', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'internal_error' }));
+    }
+    return;
+  }
+
+  // Skill 动态装卸 —— 切换单个 skill（在 skills/ 和 skills-skip/ 之间 move）
+  if (url === '/api/skills/toggle' && method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > 4096) req.destroy(); });
+    req.on('end', async () => {
+      try {
+        const { source, name, enable } = JSON.parse(body);
+        const { moveSkill } = await import('./lib/skills-api.js');
+        // 不加进程锁：moveSkill 里 existsSync 前置 + renameSync 原子性已能让并发
+        // toggle 落到合理分支（一个成功、另一个拿 SOURCE_MISSING 或 DEST_CONFLICT）；
+        // 前端 toggling:Set 也已防同 tab 连点，两者叠加足够安全
+        moveSkill({
+          source, name, enable: !!enable,
+          projectDir: process.env.CCV_PROJECT_DIR || process.cwd(),
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (err) {
+        const statusMap = {
+          INVALID_NAME: 400, INVALID_SOURCE: 400, PATH_ESCAPE: 400, SYMLINK: 400,
+          SOURCE_MISSING: 404, DEST_CONFLICT: 409,
+        };
+        const status = statusMap[err?.code] || 500;
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err?.message || 'internal_error', code: err?.code || 'unknown' }));
+      }
+    });
     return;
   }
 

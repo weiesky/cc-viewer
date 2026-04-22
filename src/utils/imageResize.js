@@ -1,18 +1,11 @@
 // 图片上传前尺寸压缩：任意一边超过 maxDim 时，按比例缩放至 maxDim 以内。
-// 非图片 / 不支持的格式 / 解码失败时，原样返回。
+// 非图片 / 解码失败时原样返回；HEIC/AVIF/GIF/BMP 等只要浏览器能解码就会处理。
 
-const RESIZABLE_TYPES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/jpg',
-  'image/webp',
-]);
+// 输出格式：原 PNG/WebP 保留以避免不必要的有损再编码，其余一律转 JPEG。
+const KEEP_FORMAT = new Set(['image/png', 'image/webp']);
 
-// 优先保留原格式；对超出画布上限的 PNG 回退到 JPEG 以降体积。
-function pickOutputType(inputType) {
-  if (inputType === 'image/jpg') return 'image/jpeg';
-  if (RESIZABLE_TYPES.has(inputType)) return inputType;
-  return 'image/jpeg';
+export function pickOutputType(inputType) {
+  return KEEP_FORMAT.has(inputType) ? inputType : 'image/jpeg';
 }
 
 function loadImageBitmap(file) {
@@ -46,7 +39,9 @@ export async function resizeImageIfNeeded(file, maxDim = 2000) {
   if (!file || typeof file !== 'object') return file;
   const type = (file.type || '').toLowerCase();
   if (!type.startsWith('image/')) return file;
-  if (!RESIZABLE_TYPES.has(type)) return file;
+  // GIF 走 canvas 会只保留第一帧 + 转 JPEG，动图彻底丢。
+  // 直接放行原文件（Claude API 对 GIF 有自己的降采样，即便 >2000px 也由后端处理）。
+  if (type === 'image/gif') return file;
 
   let source;
   try {
@@ -100,13 +95,13 @@ export async function resizeImageIfNeeded(file, maxDim = 2000) {
     return file;
   }
 
-  if (blob.size >= file.size) return file;
-
+  // 走到这里说明 maxSide > maxDim，必须返回缩放版本以满足 API 尺寸限制
+  // （即使重编码后字节反而更大 —— 如低色 PNG 转 JPEG —— 也不能回退原图）
   const nameOut = renameForType(file.name || 'image', outType);
   return new File([blob], nameOut, { type: outType, lastModified: Date.now() });
 }
 
-function renameForType(originalName, outType) {
+export function renameForType(originalName, outType) {
   const ext = outType === 'image/jpeg' ? 'jpg'
     : outType === 'image/png' ? 'png'
     : outType === 'image/webp' ? 'webp'

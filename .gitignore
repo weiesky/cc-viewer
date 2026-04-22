@@ -4,6 +4,8 @@ electron-dist
 .claude/setting.local.json
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+.claude/skills/
+.claude/skills-skip/
 .idea/
 .DS_Store
 .omc/

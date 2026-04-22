@@ -277,14 +277,21 @@ class TerminalPanel extends React.Component {
       });
     }
 
-    // Shift+Enter: 用 bracketed paste 包裹 LF，使 CLI 将其视为字面换行而非提交
+    // Shift+Enter: 发 ESC+CR（Alt+Enter 的 escape 码），和 Claude Code `/terminal-setup`
+    // 写进 VS Code/Cursor keybindings 的 `\r` 等价。Claude Code CLI 识别这个序列为
+    // "插入换行而非提交"。之前用 bracketed-paste-LF 对老版可能有效，2.x 版已不兼容。
     this.terminal.attachCustomKeyEventHandler((e) => {
       if (e.type === 'keydown' && e.key === 'Enter' && e.shiftKey) {
+        // 必须显式 preventDefault：xterm customKeyEventHandler 返回 false 只阻 xterm 内部处理，
+        // 不阻浏览器 textarea 默认行为（Enter 会往隐藏 textarea 塞 \n 再被 xterm onData 转发到 PTY）。
+        // 不 preventDefault 会让 PTY 同时收到 \x1b\r（我们显式发的）和 \n（textarea 漏进来的），
+        // 后者被 Claude Code 当作 Enter 提交，于是"看起来换行没生效"。
+        e.preventDefault();
+        e.stopPropagation();
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          this.ws.send(JSON.stringify({ type: 'input', data: '\x1b[200~\n\x1b[201~' }));
-          return false;
+          this.ws.send(JSON.stringify({ type: 'input', data: '\x1b\r' }));
         }
-        return true; // WS 未连接，不吞按键
+        return false;
       }
       // Enter: 如果有 pending 文件，先注入路径到终端输入行（不带回车），
       // 用户可以看到路径后再按 Enter 确认发送
