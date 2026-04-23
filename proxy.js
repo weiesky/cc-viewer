@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import * as interceptor from './interceptor.js';
 import { setupInterceptor } from './interceptor.js';
 import { extractApiErrorMessage, formatProxyRequestError } from './lib/proxy-errors.js';
 import { getClaudeConfigDir } from './findcc.js';
@@ -25,6 +26,13 @@ function getBaseUrlFromSettings(settingsPath) {
 }
 
 function getOriginalBaseUrl() {
+  // 热切换 profile 最高优先：UI 里用户选中的 baseURL 直接作为上游目标，
+  // 让 log/UI 显示的 URL 与实际去向一致，且避免 settings.json 残留的本地
+  // 代理 URL（如 127.0.0.1:xxxx）导致 ccv proxy 自环 404。
+  // Via namespace import to pick up watchFile 刷新（ES module live binding）。
+  const ap = interceptor._activeProfile;
+  if (ap && ap.baseURL) return ap.baseURL;
+
   let cwd;
   try { cwd = process.cwd(); } catch { cwd = null; }
 

@@ -86,9 +86,12 @@ class RequestList extends React.Component {
             const cacheRead = usage?.cache_read_input_tokens || 0;
             const cacheCreate = usage?.cache_creation_input_tokens || 0;
 
-            let urlShort = req.url;
+            // 热切换开启时 proxyUrl 是 interceptor 改写后的真实去向（如 foxcode），
+            // req.url 仍是 pre-rewrite 值（原 origin 或 ccv proxy 端口），UI 优先展示去向。
+            const displayUrl = req.proxyUrl || req.url;
+            let urlShort = displayUrl;
             try {
-              const u = new URL(req.url);
+              const u = new URL(displayUrl);
               urlShort = u.host + u.pathname;
             } catch {}
 
@@ -115,7 +118,7 @@ class RequestList extends React.Component {
                     <span className={styles.time}>{time}</span>
                   </div>
                   <div className={styles.detailRow}>
-                    <span className={styles.urlText} title={req.url}>{urlShort}</span>
+                    <span className={styles.urlText} title={displayUrl}>{urlShort}</span>
                     {req.duration && <span className={styles.duration}>{req.duration}ms</span>}
                     {req.response && (
                       <span className={statusOk ? styles.statusOk : statusErr ? styles.statusErr : styles.statusDefault}>

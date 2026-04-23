@@ -37,16 +37,12 @@ const LANG_OPTIONS = [
 ];
 
 
-const countryToFlag = (code) => {
-  const toFlag = (c2) => c2.toUpperCase().split('').map(c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join('');
-  if (!code || code.length !== 2) return toFlag('CN');
-  return toFlag(code);
-};
+// countryToFlag 已随地理位置控件一起迁到 src/components/CountryFlag.jsx
 
 class AppHeader extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { countdownText: '', countryFlag: null, countryInfo: null, promptModalVisible: false, promptData: [], promptViewMode: 'original', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false, localUrl: '', pluginModalVisible: false, pluginsList: [], pluginsDir: '', deleteConfirmVisible: false, deleteTarget: null, processModalVisible: false, processList: [], processLoading: false, logoDropdownOpen: false, cacheHighlightIdx: null, cacheHighlightFading: false, cdnModalVisible: false, cdnUrl: '', cdnLoading: false, calibrationModel: (v => CALIBRATION_MODELS.some(m => m.value === v) ? v : 'auto')(localStorage.getItem('ccv_calibrationModel') || 'auto'), proxyModalVisible: false, editingProxy: null, editForm: { name: '', baseURL: '', apiKey: '', models: '', activeModel: '' }, logDirDraft: null, _skillsModal: { open: false, loading: false, skills: [], error: null, toggling: new Set() } };
+    this.state = { countdownText: '', promptModalVisible: false, promptData: [], promptViewMode: 'original', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false, localUrl: '', pluginModalVisible: false, pluginsList: [], pluginsDir: '', deleteConfirmVisible: false, deleteTarget: null, processModalVisible: false, processList: [], processLoading: false, logoDropdownOpen: false, cacheHighlightIdx: null, cacheHighlightFading: false, cdnModalVisible: false, cdnUrl: '', cdnLoading: false, calibrationModel: (v => CALIBRATION_MODELS.some(m => m.value === v) ? v : 'auto')(localStorage.getItem('ccv_calibrationModel') || 'auto'), proxyModalVisible: false, editingProxy: null, editForm: { name: '', baseURL: '', apiKey: '', models: '', activeModel: '' }, logDirDraft: null, _skillsModal: { open: false, loading: false, skills: [], error: null, toggling: new Set() } };
     this._countdownTimer = null;
     this._expiredTimer = null;
     this.updateCountdown = this.updateCountdown.bind(this);
@@ -60,9 +56,7 @@ class AppHeader extends React.Component {
     fetch(apiUrl('/api/claude-settings')).then(r => r.json()).then(data => {
       if (data.model) this.setState({ settingsModel: data.model });
     }).catch(() => {});
-    fetch('https://ipinfo.io/json', { signal: AbortSignal.timeout(5000) }).then(r => r.json()).then(data => {
-      if (data.country) this.setState({ countryFlag: countryToFlag(data.country), countryInfo: data });
-    }).catch(() => {});
+    // ipinfo.io 请求已移到 CountryFlag 组件里
   }
 
   componentDidUpdate(prevProps) {
@@ -1415,40 +1409,16 @@ class AppHeader extends React.Component {
           )}
         </Space>
 
-        <Space size="middle">
+        <Space size={12} align="center" className={styles.headerRightRow}>
           {countdownText && viewMode === 'raw' && (
-            <Tag style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-hover)', color: countdownText === t('ui.cacheExpired') ? 'var(--color-error-light)' : 'var(--text-secondary)' }}>
+            <Tag className={styles.headerCountdownTag} style={{ color: countdownText === t('ui.cacheExpired') ? 'var(--color-error-light)' : 'var(--text-secondary)' }}>
               {t('ui.cacheCountdown', { type: cacheType ? `(${cacheType})` : '' })}
               <strong className={styles.countdownStrong}>{countdownText}</strong>
             </Tag>
           )}
           {viewMode === 'chat' && cliMode && !isLocalLog && this.state.localUrl && (
             <>
-              {this.state.countryFlag && this.state.countryInfo?.country !== 'CN' && (
-                <Popover
-                  content={this.state.countryInfo ? (
-                    <div className={styles.countryInfoPopover}>
-                      <div>{this.state.countryFlag} {this.state.countryInfo.country}</div>
-                      {this.state.countryInfo.region && <div>{this.state.countryInfo.region}</div>}
-                      {this.state.countryInfo.city && <div>{this.state.countryInfo.city}</div>}
-                      {this.state.countryInfo.org && <div className={styles.countryInfoMeta}>{this.state.countryInfo.org}</div>}
-                      {this.state.countryInfo.ip && <div className={styles.countryInfoMeta}>{this.state.countryInfo.ip}</div>}
-                    </div>
-                  ) : null}
-                  trigger="hover"
-                  placement="bottomRight"
-                  overlayInnerStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-hover)', borderRadius: 8, padding: '8px 12px' }}
-                >
-                  <Button className={styles.compactBtnNoBorder} icon={<span className={styles.countryFlagIcon}>{this.state.countryFlag}</span>} />
-                </Popover>
-              )}
-              <Switch
-                checked={themeColor === 'light'}
-                onChange={(checked) => onThemeColorChange && onThemeColorChange(checked ? 'light' : 'dark')}
-                checkedChildren="雪山白"
-                unCheckedChildren="曜石黑"
-              />
-              <Popover
+<Popover
               content={
                 <div className={styles.qrcodePopover}>
                   <div className={styles.qrcodeTitle}>{t('ui.scanToCoding')} <ConceptHelp doc="QRCode" /></div>
@@ -1470,22 +1440,58 @@ class AppHeader extends React.Component {
                   />
                 </div>
               }
-              trigger="hover"
+              trigger={['hover', 'focus']}
               placement="bottomRight"
               overlayInnerStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-hover)', borderRadius: 8, padding: '8px 8px' }}
             >
-              <Button
-                className={styles.compactBtnNoBorder}
-                icon={
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={{ verticalAlign: 'middle' }}>
-                    {/* Three QR finder patterns (10×10 outer, 6×6 hollow, 4×4 inner dot) rendered
-                        as a single evenodd path so the rings stay crisp at 18px, plus a 5-dot X
-                        data pattern in the bottom-right quadrant (3×3 modules = 2.25px each). */}
-                    <path fillRule="evenodd" d="M0 0h10v10H0zM2 2v6h6V2zM3 3h4v4H3zM14 0h10v10H14zM16 2v6h6V2zM17 3h4v4H17zM0 14h10v10H0zM2 16v6h6v-6zM3 17h4v4H3zM14 14h3v3h-3zM20 14h3v3h-3zM17 17h3v3h-3zM14 20h3v3h-3zM20 20h3v3h-3z"/>
-                  </svg>
-                }
-              />
+              {/* 去掉 antd Button 外框，button 直接作为 Popover 触发体；键盘 Tab 可聚焦。
+                  和 themeToggle / compactBtn 一样走 flex center，高度 30px 与同行对齐。 */}
+              <button
+                type="button"
+                className={styles.qrcodeIcon}
+                aria-label={t('ui.scanToCoding')}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  {/* Three QR finder patterns (10×10 outer, 6×6 hollow, 4×4 inner dot) rendered
+                      as a single evenodd path so the rings stay crisp at 18px, plus a 5-dot X
+                      data pattern in the bottom-right quadrant (3×3 modules = 2.25px each). */}
+                  <path fillRule="evenodd" d="M0 0h10v10H0zM2 2v6h6V2zM3 3h4v4H3zM14 0h10v10H14zM16 2v6h6V2zM17 3h4v4H17zM0 14h10v10H0zM2 16v6h6v-6zM3 17h4v4H3zM14 14h3v3h-3zM20 14h3v3h-3zM17 17h3v3h-3zM14 20h3v3h-3zM20 20h3v3h-3z"/>
+                </svg>
+              </button>
             </Popover>
+              <button
+                type="button"
+                className={styles.themeToggle}
+                data-theme={themeColor === 'light' ? 'light' : 'dark'}
+                role="switch"
+                aria-checked={themeColor === 'light'}
+                title={themeColor === 'light' ? t('ui.themeColor.light') : t('ui.themeColor.dark')}
+                onClick={() => onThemeColorChange && onThemeColorChange(themeColor === 'light' ? 'dark' : 'light')}
+              >
+                <span className={styles.themeToggleKnob}>
+                  {themeColor === 'light' ? (
+                    /* Sun: 中心圆 + 8 条呈十字斜向分布的光芒 */
+                    <svg className={styles.themeToggleIcon} width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <circle cx="8" cy="8" r="2.8" fill="currentColor"/>
+                      <g stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+                        <line x1="8" y1="1" x2="8" y2="2.6"/>
+                        <line x1="8" y1="13.4" x2="8" y2="15"/>
+                        <line x1="1" y1="8" x2="2.6" y2="8"/>
+                        <line x1="13.4" y1="8" x2="15" y2="8"/>
+                        <line x1="2.95" y1="2.95" x2="4.1" y2="4.1"/>
+                        <line x1="11.9" y1="11.9" x2="13.05" y2="13.05"/>
+                        <line x1="2.95" y1="13.05" x2="4.1" y2="11.9"/>
+                        <line x1="11.9" y1="4.1" x2="13.05" y2="2.95"/>
+                      </g>
+                    </svg>
+                  ) : (
+                    /* Moon: 右向月牙 */
+                    <svg className={styles.themeToggleIcon} width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path d="M8.4 2.5a5.9 5.9 0 1 0 5.1 8.55A4.8 4.8 0 0 1 8.4 2.5Z" fill="currentColor"/>
+                    </svg>
+                  )}
+                </span>
+              </button>
             </>
           )}
           {cliMode && viewMode === 'chat' && !isLocalLog && (

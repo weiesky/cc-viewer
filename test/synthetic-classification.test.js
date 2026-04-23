@@ -92,6 +92,30 @@ function classifyRequest(req) {
   return { type: 'Other', subType: null };
 }
 
+// KEEP IN SYNC: 与 src/utils/contentFilter.js 的 isSyntheticPromptText / isSystemText 同步。
+function isSyntheticPromptText(text) {
+  if (!text || typeof text !== 'string') return false;
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  for (const { pattern } of SYNTHETIC_PROMPTS) {
+    if (pattern.test(trimmed)) return true;
+  }
+  return false;
+}
+
+function isSystemText(text) {
+  if (!text) return true;
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  if (/Implement the following plan:/i.test(trimmed)) return false;
+  if (/^<[a-zA-Z_][\w-]*[\s>]/i.test(trimmed)) return true;
+  if (/^\[SUGGESTION MODE:/i.test(trimmed)) return true;
+  if (/^Your response was cut off because it exceeded the output token limit/i.test(trimmed)) return true;
+  if (/^Base directory for this skill:/i.test(trimmed)) return true;
+  if (isSyntheticPromptText(trimmed)) return true;
+  return false;
+}
+
 function formatRequestTag(type, subType) {
   if (type === 'Teammate' && subType) return `Teammate:${subType}`;
   if (type === 'Synthetic' && subType) return `Synthetic:${subType}`;
@@ -296,6 +320,75 @@ describe('Synthetic classification', () => {
     });
     it('falls back to type name when subType missing', () => {
       assert.equal(formatRequestTag('Synthetic', null), 'Synthetic');
+    });
+  });
+
+  // isSystemText 级联：ChatView 字符串分支（ChatView.jsx:936）/ Mobile / AppHeader / DetailPanel /
+  // teamModalBuilder 共用。1.6.199 只把 Synthetic 挂在 RequestList，ChatView 对话流仍把内部 recap
+  // 渲染为用户气泡——本组用例守护"所有 isSystemText 消费方都同步隐藏合成 prompt"的约束。
+  describe('isSystemText recognizes synthetic prompts', () => {
+    it('Recap prompt → isSystemText=true (hidden from chat bubble)', () => {
+      assert.equal(
+        isSystemText('The user stepped away and is coming back. Recap in under 40 words, 1-2 plain sentences, no markdown.'),
+        true
+      );
+    });
+
+    it('Title prompt → isSystemText=true', () => {
+      assert.equal(
+        isSystemText('Based on the above conversation, generate a short title (under 8 words).'),
+        true
+      );
+    });
+
+    it('Compact prompt → isSystemText=true', () => {
+      assert.equal(
+        isSystemText('Your task is to create a detailed summary of the conversation so far.'),
+        true
+      );
+    });
+
+    it('Topic prompt → isSystemText=true', () => {
+      assert.equal(
+        isSystemText('Analyze if this message indicates a new topic.'),
+        true
+      );
+    });
+
+    it('Summary prompt → isSystemText=true', () => {
+      assert.equal(
+        isSystemText('Summarize this coding session in a paragraph.'),
+        true
+      );
+    });
+
+    it('real user input quoting recap phrase (not at start) → isSystemText=false', () => {
+      // 与 Synthetic classifier 同款 ^ 锚定保护，避免用户引用原文被误过滤
+      assert.equal(
+        isSystemText('I think you hallucinated — the field {content:"The user stepped away and is coming back. Recap in under 40 words..."} is system-generated?'),
+        false
+      );
+    });
+
+    it('normal user text → isSystemText=false', () => {
+      assert.equal(isSystemText('帮我看看这个 bug'), false);
+      assert.equal(isSystemText('please refactor the auth middleware'), false);
+    });
+
+    it('leading whitespace before Recap → still detected as system', () => {
+      assert.equal(
+        isSystemText('   \n  The user stepped away and is coming back. Recap in under 40 words.'),
+        true
+      );
+    });
+
+    it('empty / whitespace-only → isSystemText=true (existing behavior)', () => {
+      assert.equal(isSystemText(''), true);
+      assert.equal(isSystemText('   '), true);
+    });
+
+    it('XML-like tag still detected (existing behavior unchanged)', () => {
+      assert.equal(isSystemText('<system-reminder>...</system-reminder>'), true);
     });
   });
 });

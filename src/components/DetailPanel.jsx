@@ -761,7 +761,7 @@ class DetailPanel extends React.Component {
               className={styles.urlText}
               ellipsis={{ rows: 2, expandable: true }}
             >
-              {request.url}
+              {request.proxyUrl || request.url}
             </Paragraph>
             <Space size="small" wrap>
               <Tag color={request.method === 'POST' ? 'blue' : 'green'}>{request.method}</Tag>

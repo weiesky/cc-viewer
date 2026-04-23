@@ -7,17 +7,10 @@
  * （idle 返回 recap / 会话标题生成 / 压缩摘要等），HTTP 层 role=user 但并非用户手输。
  * subType: 'Recap' | 'Title' | 'Compact' | 'Topic' | 'Summary'
  */
-import { isMainAgent, isTeammate, getSystemText, extractTeammateName } from './contentFilter';
-
-// Claude Code 内部合成 prompt 白名单（基于实际拦截日志归纳的固定字符串）
-// 匹配 last user message 的起首，避免误伤用户在对话中引用同一句话的场景。
-const SYNTHETIC_PROMPTS = [
-  { subType: 'Recap',   pattern: /^The user stepped away and is coming back\. Recap in under/i },
-  { subType: 'Title',   pattern: /^(Based on the above conversation, generate a|Please write a)\s+(short|concise)\s+title/i },
-  { subType: 'Compact', pattern: /^(Your task is to create a detailed summary of the conversation|This session is being continued from a previous conversation)/i },
-  { subType: 'Topic',   pattern: /^Analyze if this message indicates a new/i },
-  { subType: 'Summary', pattern: /^Summarize this coding session/i },
-];
+// SYNTHETIC_PROMPTS 已抬到 contentFilter.js，让 isSystemText 也能共用（ChatView 字符串分支过滤）。
+// requestType.js 继续维护 getSyntheticSubType —— 走的是"last user message + isMainAgent 门槛"的更强
+// 形式判断（用于 RequestList 打 Synthetic tag）；isSystemText 走的是"纯文本起首匹配"（用于对话流隐藏）。
+import { isMainAgent, isTeammate, getSystemText, extractTeammateName, SYNTHETIC_PROMPTS } from './contentFilter';
 
 function getMessageText(msg) {
   const c = msg?.content;

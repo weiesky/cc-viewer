@@ -6,7 +6,7 @@ const _ccvSkipArgs = ['--version', '-v', '--v', '--help', '-h', 'doctor', 'insta
 const _ccvSkip = _ccvSkipArgs.includes(process.argv[2]);
 
 import './lib/proxy-env.js';
-import { appendFileSync, mkdirSync, readFileSync, statSync, renameSync, unlinkSync, existsSync, watchFile } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync, statSync, renameSync, unlinkSync, existsSync, watchFile } from 'node:fs';
 import http from 'node:http';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -45,26 +45,134 @@ export let _cachedModel = null;
 export let _cachedHaikuModel = null;
 
 // Proxy profile hot-switch support
+// 数据模型：
+//   profile.json (全局共享): 仅存 profiles 列表，watchFile 跨 ccv 进程同步 CRUD。
+//     兼容老数据：若文件里仍有 active 字段，读为"全局回退默认"；但本模块不再写它。
+//   <projectDir>/active-profile.json (每 workspace 独占): 仅存 { activeId }；
+//     切换 active 只影响当前 ccv 进程的 workspace，不污染其他实例。
 const PROFILE_PATH = join(getClaudeConfigDir(), 'cc-viewer', 'profile.json');
 let _activeProfile = null; // { id, name, baseURL?, apiKey?, models?, activeModel? }
 
 // 启动时捕获的原始配置（首次 API 请求时记录，不可变）
 let _defaultConfig = null; // { origin, authType, model }
 
-function _loadProxyProfile() {
+function _getActiveProfileFilePath() {
+  // _projectName/_logDir 声明在 ~line 218；本函数只会在这些变量初始化后被调用
+  // （_loadProxyProfile 的初始调用被挪到 line ~237 之后；watchFile 回调、HTTP handler 也都在之后）
+  if (!_projectName || !_logDir) return null;
+  return join(_logDir, 'active-profile.json');
+}
+
+function _readWorkspaceActiveId() {
+  const p = _getActiveProfileFilePath();
+  if (!p) return null;
   try {
-    const data = JSON.parse(readFileSync(PROFILE_PATH, 'utf-8'));
-    const active = data.profiles?.find(p => p.id === data.active);
-    _activeProfile = (active && active.id !== 'max') ? active : null;
-  } catch {
-    _activeProfile = null;
+    if (existsSync(p)) {
+      const data = JSON.parse(readFileSync(p, 'utf-8'));
+      return typeof data?.activeId === 'string' ? data.activeId : null;
+    }
+  } catch { }
+  return null;
+}
+
+function _writeWorkspaceActiveId(activeId) {
+  const p = _getActiveProfileFilePath();
+  if (!p) {
+    // 诊断用：能把"为什么 workspace 路径不可用"暴露到启动 ccv 的终端
+    console.error('[ccv proxy-profile] skip workspace write: ' +
+      `_projectName="${_projectName}" _logDir="${_logDir}" (both required)`);
+    return false;
+  }
+  try {
+    mkdirSync(dirname(p), { recursive: true });
+    const payload = { activeId: (activeId && typeof activeId === 'string') ? activeId : 'max' };
+    writeFileSync(p, JSON.stringify(payload, null, 2), { mode: 0o600 });
+    return true;
+  } catch (err) {
+    console.error('[ccv proxy-profile] workspace write failed:', p, err && err.message);
+    return false;
   }
 }
 
-_loadProxyProfile();
-try { watchFile(PROFILE_PATH, { interval: 1500 }, _loadProxyProfile); } catch { }
+function _loadProxyProfile() {
+  try {
+    const data = JSON.parse(readFileSync(PROFILE_PATH, 'utf-8'));
+    // active 解析优先级：workspace override > profile.json.active (兼容老数据 / 全局回退) > null
+    const wsActive = _readWorkspaceActiveId();
+    const activeId = wsActive || data.active;
+    const active = data.profiles?.find(p => p.id === activeId);
+    _activeProfile = (active && active.id !== 'max') ? active : null;
+  } catch (err) {
+    _activeProfile = null;
+    if (process.env.CCV_DEBUG_HOTSWITCH) {
+      console.error('[ccv hotswitch] _loadProxyProfile failed:', err && err.message);
+    }
+  }
+}
 
-export { _activeProfile, _defaultConfig, _loadProxyProfile, PROFILE_PATH };
+// 为 server.js::POST /api/proxy-profiles 使用，切换当前 workspace 的 active。
+// 同时写两个位置，彼此互为兜底：
+//   (1) <logDir>/active-profile.json    —— 每 workspace 独占，读取优先级最高
+//   (2) profile.json.active             —— 全局默认，watchFile 跨实例同步；用作
+//       UI 在 workspace 文件读失败 / 不存在时的回落，避免"切换后立刻回切"的幽灵 revert
+// 回落一致性：其他 ccv 实例如果自己 workspace 文件已存在，_loadProxyProfile 会优先用自己
+// 的，不受这里改动影响；只有"从未切过"的实例会跟随最新全局默认（符合直觉）。
+// 返回 { workspace: bool, profile: bool } 指示两条路径的落盘结果。
+function setActiveProfileForWorkspace(activeId) {
+  const normalizedId = (activeId && typeof activeId === 'string') ? activeId : 'max';
+  const result = { workspace: false, profile: false };
+
+  // (1) workspace override
+  result.workspace = _writeWorkspaceActiveId(normalizedId);
+
+  // (2) profile.json.active —— 幂等更新，老数据兼容 + UI GET 回落兜底
+  try {
+    const data = existsSync(PROFILE_PATH)
+      ? JSON.parse(readFileSync(PROFILE_PATH, 'utf-8'))
+      : { profiles: [{ id: 'max', name: 'Default' }] };
+    if (data.active !== normalizedId) {
+      data.active = normalizedId;
+      mkdirSync(dirname(PROFILE_PATH), { recursive: true });
+      writeFileSync(PROFILE_PATH, JSON.stringify(data, null, 2), { mode: 0o600 });
+    }
+    result.profile = true;
+  } catch { /* 双失败场景下 result 全 false，由调用方自行兜底 */ }
+
+  _loadProxyProfile(); // 立刻刷新本进程 _activeProfile
+  return result;
+}
+
+function getActiveProfileId() {
+  // UI 需要知道当前 workspace 的 active（优先 workspace 文件，回退 profile.json.active）
+  const ws = _readWorkspaceActiveId();
+  if (ws) return ws;
+  try {
+    const data = JSON.parse(readFileSync(PROFILE_PATH, 'utf-8'));
+    return data.active || 'max';
+  } catch { return 'max'; }
+}
+
+// _loadProxyProfile 的初始调用 + watchFile 挂载挪到 _projectName/_logDir 初始化之后
+// （见 "初始化日志文件路径" 段后的 _kickoffProxyProfileWatcher 调用），避免 TDZ。
+
+// 纯函数：把 headers 里任意大小写的 authorization / x-api-key 替换为 profile 的 apiKey；
+// 两者都不存在时强制植入 x-api-key（第三方代理最常见的鉴权形式）。
+// 返回 { headers, matchedAuthKey, matchedXApiKey }，诊断日志据此判断是否真正写入。
+function _replaceProxyAuthHeaders(headers, apiKey) {
+  const newHeaders = { ...headers };
+  let matchedAuthKey = null, matchedXApiKey = null;
+  for (const k of Object.keys(newHeaders)) {
+    const lk = k.toLowerCase();
+    if (lk === 'authorization') matchedAuthKey = k;
+    else if (lk === 'x-api-key') matchedXApiKey = k;
+  }
+  if (matchedAuthKey) newHeaders[matchedAuthKey] = `Bearer ${apiKey}`;
+  if (matchedXApiKey) newHeaders[matchedXApiKey] = apiKey;
+  if (!matchedAuthKey && !matchedXApiKey) newHeaders['x-api-key'] = apiKey;
+  return { headers: newHeaders, matchedAuthKey, matchedXApiKey };
+}
+
+export { _activeProfile, _defaultConfig, _loadProxyProfile, PROFILE_PATH, setActiveProfileForWorkspace, getActiveProfileId };
 
 // 生成新的日志文件路径
 function generateNewLogFilePath() {
@@ -174,6 +282,11 @@ if (process.env.CCV_WORKSPACE_MODE === '1') {
 }
 let LOG_FILE = _newLogFile;
 
+// 现在 _projectName/_logDir 已初始化，可以安全加载 proxy profile（含 workspace override）
+// 并挂载 watchFile 同步列表变化。
+_loadProxyProfile();
+try { watchFile(PROFILE_PATH, { interval: 1500 }, _loadProxyProfile); } catch { }
+
 const _initPromise = (async () => {
   if (!_logDir || !_projectName) return; // 工作区模式下跳过
   if (_isTeammate) return; // Teammate 已在上方同步初始化，跳过 async resume 流程
@@ -210,6 +323,8 @@ export function initForWorkspace(projectPath, { forceNew = false } = {}) {
     _projectName = projectName;
     _logDir = dir;
     LOG_FILE = recentLog;
+    // workspace 切换后，重读该 workspace 的 active-profile.json（可能和上一个 workspace 不同）
+    _loadProxyProfile();
     return { filePath: recentLog, dir, projectName, resumed: true };
   }
 
@@ -228,6 +343,7 @@ export function initForWorkspace(projectPath, { forceNew = false } = {}) {
   _projectName = projectName;
   _logDir = dir;
   LOG_FILE = filePath;
+  _loadProxyProfile(); // 同上
 
   return { filePath, dir, projectName, resumed: false };
 }
@@ -237,6 +353,7 @@ export function resetWorkspace() {
   _projectName = '';
   _logDir = '';
   LOG_FILE = '';
+  _loadProxyProfile(); // workspace 上下文消失，回落到 profile.json.active
 }
 
 const MAX_LOG_SIZE = 300 * 1024 * 1024; // 300MB
@@ -551,13 +668,27 @@ export function setupInterceptor() {
           const _finalPath = (!_basePath || _origPath === _basePath || _origPath.startsWith(_basePath + '/')) ? _origPath : _basePath + _origPath;
           _fetchUrl = _baseUrl.origin + _finalPath + _origUrl.search;
         }
-        // 2. Auth 替换
+        // 2. Auth 替换 —— 兼容 lowercase / TitleCase，且 x-api-key / Authorization 同时替换以覆盖两种鉴权形式
         if (_activeProfile.apiKey && _fetchOpts?.headers) {
           const h = _fetchOpts.headers;
           if (typeof h === 'object' && !(h instanceof Headers)) {
-            _fetchOpts = { ..._fetchOpts, headers: { ...h } };
-            if (h['x-api-key']) _fetchOpts.headers['x-api-key'] = _activeProfile.apiKey;
-            if (h['authorization']) _fetchOpts.headers['authorization'] = `Bearer ${_activeProfile.apiKey}`;
+            const { headers: newHeaders, matchedAuthKey, matchedXApiKey } =
+              _replaceProxyAuthHeaders(h, _activeProfile.apiKey);
+            _fetchOpts = { ..._fetchOpts, headers: newHeaders };
+
+            // 诊断日志：让 stderr 能看到替换是否真的发生
+            // 只输出"是否命中/是否写入"布尔，绝不输出任何 apiKey 明文或片段
+            // （日志聚合/审计规则会把尾 N 字符一并标记为敏感泄漏）
+            if (process.env.CCV_DEBUG_HOTSWITCH) {
+              console.error('[ccv hotswitch]', {
+                profile: _activeProfile.name,
+                url: _fetchUrl,
+                matchedAuth: matchedAuthKey || '(none)',
+                matchedXApiKey: matchedXApiKey || '(none)',
+                authSet: !!(matchedAuthKey && newHeaders[matchedAuthKey]),
+                xApiKeySet: !!(newHeaders[matchedXApiKey] || newHeaders['x-api-key']),
+              });
+            }
           }
         }
         // 3. Model 替换

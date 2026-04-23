@@ -29,7 +29,9 @@ function getBaseUrlFromSettings(settingsPath) {
   return null;
 }
 
-function getOriginalBaseUrl(configPaths, envBaseUrl) {
+function getOriginalBaseUrl(configPaths, envBaseUrl, activeProfile = null) {
+  // 热切换 profile 最高优先（与 proxy.js 同步）
+  if (activeProfile && activeProfile.baseURL) return activeProfile.baseURL;
   for (const configPath of configPaths) {
     const url = getBaseUrlFromSettings(configPath);
     if (url) return url;
@@ -166,6 +168,38 @@ describe('proxy', () => {
       assert.equal(
         getOriginalBaseUrl([s1], 'https://env.example.com'),
         'https://config.example.com'
+      );
+    });
+
+    it('active profile baseURL takes priority over everything else', () => {
+      const s1 = join(tempDir, 'settings.json');
+      writeFileSync(s1, JSON.stringify({ env: { ANTHROPIC_BASE_URL: 'https://config.example.com' } }));
+
+      assert.equal(
+        getOriginalBaseUrl(
+          [s1],
+          'https://env.example.com',
+          { baseURL: 'https://foxcode.example.com/claude' }
+        ),
+        'https://foxcode.example.com/claude'
+      );
+    });
+
+    it('null active profile falls through to config/env/default chain', () => {
+      const s1 = join(tempDir, 'settings.json');
+      writeFileSync(s1, JSON.stringify({ env: { ANTHROPIC_BASE_URL: 'https://config.example.com' } }));
+
+      assert.equal(
+        getOriginalBaseUrl([s1], null, null),
+        'https://config.example.com'
+      );
+    });
+
+    it('active profile without baseURL falls through (max profile case)', () => {
+      // max profile 只有 id/name，没有 baseURL，应该回退到配置链
+      assert.equal(
+        getOriginalBaseUrl([], 'https://env.example.com', { id: 'max', name: 'Default' }),
+        'https://env.example.com'
       );
     });
   });
@@ -369,6 +403,96 @@ describe('proxy', () => {
         getOriginalBaseUrl([join(tempDir, 'a'), join(tempDir, 'b'), join(tempDir, 'c')], null),
         'https://api.anthropic.com'
       );
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Proxy auth header replacement (for hot-switch profile)
+  //
+  // KEEP IN SYNC: 与 interceptor.js::_replaceProxyAuthHeaders 保持一致。
+  // interceptor.js 的 fetch 补丁有 module-level 副作用，这里复制纯函数做单测。
+  // --------------------------------------------------------------------------
+  describe('proxy auth header replacement', () => {
+    function replaceProxyAuthHeaders(headers, apiKey) {
+      const newHeaders = { ...headers };
+      let matchedAuthKey = null, matchedXApiKey = null;
+      for (const k of Object.keys(newHeaders)) {
+        const lk = k.toLowerCase();
+        if (lk === 'authorization') matchedAuthKey = k;
+        else if (lk === 'x-api-key') matchedXApiKey = k;
+      }
+      if (matchedAuthKey) newHeaders[matchedAuthKey] = `Bearer ${apiKey}`;
+      if (matchedXApiKey) newHeaders[matchedXApiKey] = apiKey;
+      if (!matchedAuthKey && !matchedXApiKey) newHeaders['x-api-key'] = apiKey;
+      return { headers: newHeaders, matchedAuthKey, matchedXApiKey };
+    }
+
+    it('replaces authorization header case-insensitively (lowercase)', () => {
+      const { headers, matchedAuthKey, matchedXApiKey } = replaceProxyAuthHeaders(
+        { authorization: 'Bearer old-key', 'content-type': 'application/json' },
+        'sk-new'
+      );
+      assert.equal(matchedAuthKey, 'authorization');
+      assert.equal(matchedXApiKey, null);
+      assert.equal(headers.authorization, 'Bearer sk-new');
+      assert.equal(headers['content-type'], 'application/json');
+    });
+
+    it('replaces authorization header case-insensitively (TitleCase)', () => {
+      const { headers, matchedAuthKey } = replaceProxyAuthHeaders(
+        { Authorization: 'Bearer old-key' },
+        'sk-new'
+      );
+      assert.equal(matchedAuthKey, 'Authorization');
+      assert.equal(headers.Authorization, 'Bearer sk-new');
+      assert.equal(headers.authorization, undefined, 'should not create a lowercase duplicate');
+    });
+
+    it('replaces x-api-key case-insensitively (X-API-Key)', () => {
+      const { headers, matchedXApiKey, matchedAuthKey } = replaceProxyAuthHeaders(
+        { 'X-API-Key': 'old-key' },
+        'sk-new'
+      );
+      assert.equal(matchedXApiKey, 'X-API-Key');
+      assert.equal(matchedAuthKey, null);
+      assert.equal(headers['X-API-Key'], 'sk-new');
+    });
+
+    it('replaces BOTH authorization and x-api-key simultaneously when both present', () => {
+      const { headers, matchedAuthKey, matchedXApiKey } = replaceProxyAuthHeaders(
+        { authorization: 'Bearer old-auth', 'x-api-key': 'old-xkey' },
+        'sk-new'
+      );
+      assert.equal(matchedAuthKey, 'authorization');
+      assert.equal(matchedXApiKey, 'x-api-key');
+      assert.equal(headers.authorization, 'Bearer sk-new');
+      assert.equal(headers['x-api-key'], 'sk-new');
+    });
+
+    it('plants x-api-key when BOTH headers missing (third-party proxy fallback)', () => {
+      const { headers, matchedAuthKey, matchedXApiKey } = replaceProxyAuthHeaders(
+        { 'content-type': 'application/json' },
+        'sk-new'
+      );
+      assert.equal(matchedAuthKey, null);
+      assert.equal(matchedXApiKey, null);
+      assert.equal(headers['x-api-key'], 'sk-new');
+      assert.equal(headers['content-type'], 'application/json');
+    });
+
+    it('does NOT plant x-api-key when authorization was matched', () => {
+      const { headers } = replaceProxyAuthHeaders(
+        { authorization: 'Bearer old' },
+        'sk-new'
+      );
+      assert.equal(headers['x-api-key'], undefined);
+    });
+
+    it('returns a new headers object (does not mutate input)', () => {
+      const input = { authorization: 'Bearer old' };
+      const { headers } = replaceProxyAuthHeaders(input, 'sk-new');
+      assert.notEqual(headers, input, 'should return a fresh object');
+      assert.equal(input.authorization, 'Bearer old', 'input must remain untouched');
     });
   });
 });

@@ -34,7 +34,7 @@ function execWithStdin(cmd, args, input, options) {
     child.stdin.end();
   });
 }
-import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice, _projectName, _logDir, _cachedApiKey, _cachedAuthHeader, _cachedHaikuModel, initForWorkspace, resetWorkspace, streamingState, resetStreamingState, _loadProxyProfile, PROFILE_PATH, _defaultConfig, setLivePort } from './interceptor.js';
+import { LOG_FILE, _initPromise, _resumeState, resolveResumeChoice, _projectName, _logDir, _cachedApiKey, _cachedAuthHeader, _cachedHaikuModel, initForWorkspace, resetWorkspace, streamingState, resetStreamingState, _loadProxyProfile, PROFILE_PATH, _defaultConfig, setLivePort, setActiveProfileForWorkspace, getActiveProfileId } from './interceptor.js';
 import { LOG_DIR, setLogDir, getClaudeConfigDir } from './findcc.js';
 import { t, detectLanguage } from './i18n.js';
 import { checkAndUpdate } from './lib/updater.js';
@@ -1109,10 +1109,14 @@ async function handleRequest(req, res) {
   }
 
   // Proxy profile 热切换
+  // 数据拆分：profiles 列表 → profile.json（全局共享，fs.watchFile 跨进程同步）
+  //          active → <workspace>/active-profile.json（每 workspace 独占，不污染其他 ccv 实例）
   if (url === '/api/proxy-profiles' && method === 'GET') {
     try {
       const data = existsSync(PROFILE_PATH) ? JSON.parse(readFileSync(PROFILE_PATH, 'utf-8')) : _defaultProxyProfiles;
-      const masked = _maskProfiles(data);
+      // 用 interceptor.getActiveProfileId() 返回 effective active（workspace > profile.json.active > 'max'）
+      const effectiveActive = getActiveProfileId();
+      const masked = _maskProfiles({ ...data, active: effectiveActive });
       if (_defaultConfig) masked.defaultConfig = { ..._defaultConfig, apiKey: _defaultConfig.apiKey ? _maskApiKey(_defaultConfig.apiKey) : null };
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(masked));
@@ -1148,14 +1152,23 @@ async function handleRequest(req, res) {
             p.apiKey = existingMap[p.id];
           }
         }
+        // 只写 profiles 列表到 profile.json；active 不再入文件（避免跨进程串台）
+        // 保留老数据里的 active 字段不变，以便老版本 ccv 或手动编辑者的回退能力
+        const toWrite = { ...existing, profiles: incoming.profiles };
         const dir = dirname(PROFILE_PATH);
         if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-        writeFileSync(PROFILE_PATH, JSON.stringify(incoming, null, 2), { mode: 0o600 });
-        _loadProxyProfile();
-        // SSE 广播给所有 viewer 客户端（mask apiKey）
-        const activeProfile = incoming.profiles?.find(p => p.id === incoming.active) || null;
+        writeFileSync(PROFILE_PATH, JSON.stringify(toWrite, null, 2), { mode: 0o600 });
+        // active 走 workspace 级别存储（当前进程独占）
+        if (typeof incoming.active === 'string' && incoming.active) {
+          setActiveProfileForWorkspace(incoming.active);
+        } else {
+          _loadProxyProfile(); // 仅列表变化时也刷新一次以反映删除 / 重命名
+        }
+        // SSE 广播仅给本进程客户端（sendEventToClients 本就是 per-process；另外 active 不跨进程）
+        const effectiveActive = getActiveProfileId();
+        const activeProfile = incoming.profiles?.find(p => p.id === effectiveActive) || null;
         const maskedProfile = activeProfile?.apiKey ? { ...activeProfile, apiKey: _maskApiKey(activeProfile.apiKey) } : activeProfile;
-        sendEventToClients(clients, 'proxy_profile', { active: incoming.active, profile: maskedProfile });
+        sendEventToClients(clients, 'proxy_profile', { active: effectiveActive, profile: maskedProfile });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       } catch {

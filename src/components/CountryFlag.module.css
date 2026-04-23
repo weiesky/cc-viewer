@@ -1,0 +1,36 @@
+/* Footer 左下角紧凑国旗 —— hover 才展示地区详情。
+   字号控制在 13px，比 AppHeader 里的 18px 小一半多，适合 18px 高的 footer 条。 */
+.flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  cursor: help;
+  user-select: none;
+  /* Emoji 在 macOS / Windows 字形高度不同，设定 height 配 flex 稳住 baseline */
+  height: 14px;
+  /* 作为 Popover trigger 的键盘可达 button，需抹掉浏览器默认样式 */
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-family: inherit;
+}
+
+.flag:focus-visible {
+  outline: 2px solid var(--primary-color, #1677ff);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.popover {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.meta {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}

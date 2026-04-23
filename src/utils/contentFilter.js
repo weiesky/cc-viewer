@@ -154,6 +154,29 @@ function stripSystemTags(text) {
     .trim();
 }
 
+// Claude Code 内部合成 prompt 白名单（CLI 在主会话里合成的 recap/title/compact/topic/summary 查询，
+// HTTP 层 role=user 但不是用户手输）。与 requestType.js 的 Synthetic 分类共用同一白名单，
+// 在 isSystemText 里统一过滤 → ChatView / Mobile / DetailPanel / teamModalBuilder 全链路隐藏。
+// 匹配 last user message 的起首（`^` 锚定 + trim），避免误伤用户引用原文。
+// KEEP IN SYNC: test/synthetic-classification.test.js 有 inline 副本。
+export const SYNTHETIC_PROMPTS = [
+  { subType: 'Recap',   pattern: /^The user stepped away and is coming back\. Recap in under/i },
+  { subType: 'Title',   pattern: /^(Based on the above conversation, generate a|Please write a)\s+(short|concise)\s+title/i },
+  { subType: 'Compact', pattern: /^(Your task is to create a detailed summary of the conversation|This session is being continued from a previous conversation)/i },
+  { subType: 'Topic',   pattern: /^Analyze if this message indicates a new/i },
+  { subType: 'Summary', pattern: /^Summarize this coding session/i },
+];
+
+export function isSyntheticPromptText(text) {
+  if (!text || typeof text !== 'string') return false;
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  for (const { pattern } of SYNTHETIC_PROMPTS) {
+    if (pattern.test(trimmed)) return true;
+  }
+  return false;
+}
+
 export function isSystemText(text) {
   if (!text) return true;
   const trimmed = text.trim();
@@ -166,6 +189,8 @@ export function isSystemText(text) {
   if (/^Your response was cut off because it exceeded the output token limit/i.test(trimmed)) return true;
   // Skill 加载的文档内容
   if (/^Base directory for this skill:/i.test(trimmed)) return true;
+  // CLI 内部合成 prompt（Recap/Title/Compact/Topic/Summary）
+  if (isSyntheticPromptText(trimmed)) return true;
   return false;
 }
 

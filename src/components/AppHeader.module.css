@@ -37,21 +37,37 @@
   opacity: 1;
 }
 
-/* Compact header buttons */
+/* Compact header buttons — 本区所有控件统一 30px 高，flex 居中对齐。
+   compactBtn: 带文字/带边框的常规按钮（终端 / chat-raw 模式）
+   compactBtnNoBorder: 仅图标、无边框（国旗 / 二维码）—— 显式 30×30 方块 */
 .compactBtn {
   font-size: 12px;
   height: 30px;
-  line-height: 28px;
-}
-
-.compactBtnNoBorder {
-  font-size: 18px;
-  height: 30px;
-  /* flex 居中：图标脱离基线对齐，font-size 变动不影响垂直位置 */
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* 去掉 line-height:28，用 flex 居中；antd Button 默认 4px 15px padding 保持 */
+}
+
+.compactBtnNoBorder {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
   border: none;
+  font-size: 18px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* antd Button 内部 <span class="anticon"> 会继承 inline-block，用 flex 强制居中
+   避免 emoji / SVG 因基线对齐造成的 1~3px 纵偏 */
+.compactBtnNoBorder :global(.anticon) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
 }
 
 /* Token stats tag */
@@ -1037,10 +1053,34 @@
   margin-right: 8px;
 }
 
-/* Country flag emoji icon */
-.countryFlagIcon {
-  vertical-align: -3px;
-  font-size: 20px;
+/* .countryFlagIcon / .countryInfoPopover / .countryInfoMeta 已随地理位置控件
+   一起迁到 src/components/CountryFlag.module.css */
+
+/* QR code 扫码图标 —— 去掉 antd Button 外框，button 直接作为 Popover 触发体。
+   宽度给 30px 让它在 Header Space 行里与同组控件视觉对齐（等高/等间距）。 */
+.qrcodeIcon {
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  box-sizing: border-box;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  background: none;
+  border: none;
+}
+.qrcodeIcon:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover, rgba(0, 0, 0, 0.04));
+}
+.qrcodeIcon:focus-visible {
+  outline: 2px solid var(--primary-color, #1677ff);
+  outline-offset: 1px;
 }
 
 /* SVG icon vertical alignment */
@@ -1049,18 +1089,6 @@
   transform: scaleX(-1);
 }
 
-
-/* Country info popover */
-.countryInfoPopover {
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 22px;
-}
-
-.countryInfoMeta {
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
 
 .disabledMenuItem {
   color: var(--text-disabled);
@@ -1212,5 +1240,91 @@
   display: flex;
   gap: 8px;
   margin-top: 12px;
+}
+
+/* ─── Theme toggle pill（雪山白 / 曜石黑）──────────────────────
+   data-theme=light: 浅背景 + 白色 knob 居左 + 太阳图标
+   data-theme=dark : 深背景 + 深灰 knob 居右 + 月亮图标
+   宽 56 / 高 30 / knob 24，两侧 padding 2，位移 28px。
+   高度与 compactBtn / compactBtnNoBorder 统一为 30px。 */
+.themeToggle {
+  position: relative;
+  box-sizing: border-box;
+  display: inline-flex;
+  vertical-align: middle;
+  width: 56px;
+  height: 30px;
+  border-radius: 15px;
+  border: 1px solid var(--border-hover);
+  cursor: pointer;
+  padding: 0;
+  overflow: hidden;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  flex-shrink: 0;
+  outline: none;
+}
+.themeToggle:focus-visible {
+  box-shadow: 0 0 0 2px var(--primary-color, #1677ff);
+}
+.themeToggle[data-theme="light"] {
+  background: linear-gradient(135deg, #eaf2fa 0%, #d9e4ef 100%);
+  border-color: #c8d4e0;
+}
+.themeToggle[data-theme="dark"] {
+  background: #1a1a1a;
+  border-color: #2a2a2a;
+}
+
+.themeToggleKnob {
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(0, -50%);
+  transition: transform 0.28s cubic-bezier(0.4, 0.2, 0.2, 1),
+              background-color 0.2s ease,
+              color 0.2s ease,
+              box-shadow 0.2s ease;
+  pointer-events: none;
+}
+.themeToggle[data-theme="light"] .themeToggleKnob {
+  background: #ffffff;
+  color: #8fa2b7;
+  box-shadow: 0 1px 3px rgba(30, 50, 80, 0.18);
+}
+.themeToggle[data-theme="dark"] .themeToggleKnob {
+  /* 位移：56(宽) - 24(knob) - 2(左间距) - 2(右间距) = 28px */
+  transform: translate(28px, -50%);
+  background: #2a2a2a;
+  color: #e8e8e8;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.themeToggleIcon {
+  display: block;
+}
+
+/* ─── Header 右侧功能区整行统一 ────────────────────────────── */
+.headerRightRow :global(.ant-space-item) {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 缓存倒计时 Tag 也拉平到 30px，与同行按钮对齐 */
+.headerCountdownTag {
+  height: 30px;
+  margin: 0;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hover);
+  border-radius: 6px;
+  line-height: 1;
 }
 
