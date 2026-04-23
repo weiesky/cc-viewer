@@ -710,7 +710,7 @@ async function handleRequest(req, res) {
         if (proxyPort) {
           const { spawnClaude } = await import('./pty-manager.js');
           const mergedArgs = [..._workspaceClaudeArgs, ...(Array.isArray(launchExtraArgs) ? launchExtraArgs : [])];
-          await spawnClaude(parseInt(proxyPort), wsPath, mergedArgs, _workspaceClaudePath, _workspaceIsNpmVersion, actualPort);
+          await spawnClaude(parseInt(proxyPort), wsPath, mergedArgs, _workspaceClaudePath, _workspaceIsNpmVersion, actualPort, serverProtocol);
         }
 
         _workspaceLaunched = true;
@@ -1941,7 +1941,7 @@ async function handleRequest(req, res) {
         return;
       }
     });
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
         const { questions } = JSON.parse(body);
         if (!Array.isArray(questions) || questions.length === 0) {
@@ -1962,6 +1962,17 @@ async function handleRequest(req, res) {
         }
 
         const HOOK_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+        // Plugin hook: let plugins answer questions directly
+        try {
+          const hookResult = await runWaterfallHook('onAskRequest', { id: `ask_${Date.now()}`, questions, mode: 'hook' });
+          if (hookResult.answers) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ answers: hookResult.answers }));
+            return;
+          }
+        } catch {}
+
         const timer = setTimeout(() => {
           if (pendingAskHook && pendingAskHook.res === res) {
             pendingAskHook = null;
@@ -2025,7 +2036,7 @@ async function handleRequest(req, res) {
         return;
       }
     });
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
         const { toolName, input } = JSON.parse(body);
         if (!toolName) {
@@ -2047,6 +2058,17 @@ async function handleRequest(req, res) {
 
         const HOOK_TIMEOUT = 5 * 60 * 1000;
         const id = `perm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+        // Plugin hook: let plugins handle permission requests directly
+        try {
+          const hookResult = await runWaterfallHook('onPermRequest', { id, toolName, input, mode: 'hook' });
+          if (hookResult.decision) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ decision: hookResult.decision }));
+            return;
+          }
+        } catch {}
+
         const timer = setTimeout(() => {
           const entry = pendingPermHooks.get(id);
           if (entry) {
@@ -3039,6 +3061,45 @@ export async function startViewer() {
             port, host: HOST, url, ip: getLocalIp(),
             token: ACCESS_TOKEN, protocol: serverProtocol,
             httpServer: currentServer, pty: ptyApi,
+            interactions: {
+              getPendingPerms: () => [...pendingPermHooks.entries()].map(([id, e]) => ({ id, toolName: e.toolName, input: e.input, createdAt: e.createdAt })),
+              resolvePerm: (id, decision, allowSession) => {
+                const entry = pendingPermHooks.get(id);
+                if (!entry) return false;
+                clearTimeout(entry.timer);
+                pendingPermHooks.delete(id);
+                try {
+                  if (!entry.res.headersSent) {
+                    entry.res.writeHead(200, { 'Content-Type': 'application/json' });
+                    entry.res.end(JSON.stringify({ decision }));
+                  }
+                } catch {}
+                if (terminalWss) {
+                  const rmsg = JSON.stringify({ type: 'perm-hook-resolved', id });
+                  terminalWss.clients.forEach((c) => { if (c.readyState === 1) try { c.send(rmsg); } catch {} });
+                }
+                return true;
+              },
+              getPendingAsk: () => pendingAskHook ? { questions: pendingAskHook.questions, createdAt: pendingAskHook.createdAt } : null,
+              resolveAsk: (answers) => {
+                if (!pendingAskHook) return false;
+                const { res: hookRes, timer } = pendingAskHook;
+                clearTimeout(timer);
+                pendingAskHook = null;
+                try {
+                  if (!hookRes.headersSent) {
+                    hookRes.writeHead(200, { 'Content-Type': 'application/json' });
+                    hookRes.end(JSON.stringify({ answers }));
+                  }
+                } catch {}
+                if (terminalWss) {
+                  const rmsg = JSON.stringify({ type: 'ask-hook-resolved' });
+                  terminalWss.clients.forEach((c) => { if (c.readyState === 1) try { c.send(rmsg); } catch {} });
+                }
+                return true;
+              },
+              resolveSdkApproval: _sdkResolveApproval,
+            },
           });
           resolve(server);
         });

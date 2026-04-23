@@ -362,11 +362,12 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   });
 
   const port = serverMod.getPort();
+  const serverProtocol = serverMod.getProtocol();
 
   // 3. 启动 PTY 中的 claude
   const { spawnClaude, killPty } = await import('./pty-manager.js');
   try {
-    await spawnClaude(proxyPort, workingDir, extraClaudeArgs, claudePath, isNpmVersion, port);
+    await spawnClaude(proxyPort, workingDir, extraClaudeArgs, claudePath, isNpmVersion, port, serverProtocol);
   } catch (err) {
     console.error('[CC Viewer] Failed to spawn Claude:', err.message);
     await serverMod.stopViewer();
@@ -456,6 +457,7 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
     onStreamingStatus: (data) => serverMod.setSdkStreamingState(data),
     broadcastWs: (msg) => serverMod.broadcastWsMessage(msg),
     permissionMode,
+    runWaterfallHook: (await import('./lib/plugin-loader.js')).runWaterfallHook,
   });
 
   // 注册 SDK 回调到 server.js（WS 消息路由用）

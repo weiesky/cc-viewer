@@ -124,7 +124,7 @@ export function _markThinkingDisplayRejected(claudePath) {
   _thinkingDisplayRejectedPaths.add(claudePath);
 }
 
-export async function spawnClaude(proxyPort, cwd, extraArgs = [], claudePath = null, isNpmVersion = false, serverPort = null) {
+export async function spawnClaude(proxyPort, cwd, extraArgs = [], claudePath = null, isNpmVersion = false, serverPort = null, serverProtocol = 'http') {
   if (ptyProcess) {
     killPty();
   }
@@ -166,6 +166,7 @@ export async function spawnClaude(proxyPort, cwd, extraArgs = [], claudePath = n
     env.VISUAL = env.EDITOR;
     env.CCV_EDITOR_PORT = String(serverPort);
     env.CCVIEWER_PORT = String(serverPort); // For ask-hook bridge
+    env.CCVIEWER_PROTOCOL = serverProtocol; // For ask/perm-bridge (http vs https)
   }
 
   // 禁用 Claude Code CLI 的鼠标事件捕获，保住 xterm 面板原生文本选中（复制粘贴）。
@@ -238,7 +239,7 @@ export async function spawnClaude(proxyPort, cwd, extraArgs = [], claudePath = n
     if (hasContinue && exitCode !== 0 && outputBuffer.includes('No conversation found')) {
       console.error('[CC Viewer] -c failed (no conversation), retrying without -c');
       const retryArgs = extraArgs.filter(a => a !== '-c' && a !== '--continue');
-      spawnClaude(proxyPort, cwd, retryArgs, claudePath, isNpmVersion, serverPort);
+      spawnClaude(proxyPort, cwd, retryArgs, claudePath, isNpmVersion, serverPort, serverProtocol);
       return;
     }
 
@@ -254,7 +255,7 @@ export async function spawnClaude(proxyPort, cwd, extraArgs = [], claudePath = n
     if (flagRejected) {
       console.error('[CC Viewer] claude rejected --thinking-display, marking as unsupported and retrying without flag');
       _thinkingDisplayRejectedPaths.add(claudePath);
-      spawnClaude(proxyPort, cwd, extraArgs, claudePath, isNpmVersion, serverPort);
+      spawnClaude(proxyPort, cwd, extraArgs, claudePath, isNpmVersion, serverPort, serverProtocol);
       return;
     }
 
