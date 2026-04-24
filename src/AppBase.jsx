@@ -1045,10 +1045,10 @@ class AppBase extends React.Component {
           const sameUser = userId !== null && lastSession?.userId === userId;
           const isNewSession = !sameUser && prevCount > 0 && messages.length < prevCount * 0.5 && (prevCount - messages.length) > 4;
 
-          const isTransient = prevCount > 4 && messages.length <= 4 && messages.length < prevCount * 0.5;
-          if (isTransient) continue;
-
-          // Fix #2: 标记 _sessionId
+          // SSE 实时流每条 entry 都是完整 request+response，不存在"中间态"；
+          // 历史代码曾在此处 `if (isTransient) continue` 跳过极短 entry 防中间态污染，
+          // 但这会把真实的 /clear → 短对话（如 "hi"）也丢掉 —— 交给 mergeMainAgentSessions
+          // 的 skipTransientFilter: true 统一放行，isNewSession 单独驱动 _currentSessionId。
           if (isNewSession) {
             this._currentSessionId = timestamp;
           } else if (this._currentSessionId === null) {
@@ -1062,7 +1062,9 @@ class AppBase extends React.Component {
               messages[i]._timestamp = timestamp;
             }
           }
-          mainAgentSessions = this.mergeMainAgentSessions(mainAgentSessions, entry);
+          // SSE 实时追加：每条 entry 都已是完整 request+response，不存在中间态，
+          // 跳过 transient 过滤以避免误伤真实的 /clear → 短消息对话。
+          mainAgentSessions = this.mergeMainAgentSessions(mainAgentSessions, entry, { skipTransientFilter: true });
         }
 
         // 标记 entry 的 _sessionId
@@ -1203,8 +1205,8 @@ class AppBase extends React.Component {
 
   // ─── 数据处理 ───────────────────────────────────────────
 
-  mergeMainAgentSessions(prevSessions, entry) {
-    return _mergeMainAgentSessions(prevSessions, entry);
+  mergeMainAgentSessions(prevSessions, entry, options) {
+    return _mergeMainAgentSessions(prevSessions, entry, options);
   }
 
   // ─── 选中 & 导航 ───────────────────────────────────────

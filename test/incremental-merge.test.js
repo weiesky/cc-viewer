@@ -147,6 +147,23 @@ describe('transient filter', () => {
     assert.equal(result.length, 1);
     assert.equal(result[0].messages.length, 10);
   });
+
+  it('skipTransientFilter=true creates new session for /clear → short chat (SSE path)', () => {
+    // 真实场景：用户在长对话里 /clear 后说 "hi"，SSE 推送的 entry 只有 2 条消息
+    const existingMsgs = Array.from({ length: 10 }, (_, i) => makeMsg(i % 2 === 0 ? 'user' : 'assistant', `m${i}`));
+    const session = makeSession(existingMsgs, { userId: null });
+
+    const newMsgs = [makeMsg('user', 'hi'), makeMsg('assistant', 'Hi! How can I help?')];
+    const entry = makeEntry(newMsgs, { userId: null });
+
+    const result = mergeMainAgentSessions([session], entry, { skipTransientFilter: true });
+
+    // 旧 session 保留，新 session 被追加（不再被 transient 过滤器丢弃）
+    assert.equal(result.length, 2);
+    assert.equal(result[0].messages.length, 10);
+    assert.equal(result[1].messages.length, 2);
+    assert.equal(result[1].messages[0].content, 'hi');
+  });
 });
 
 // ─── 6. First session creation ────────────────────────────────────────────────

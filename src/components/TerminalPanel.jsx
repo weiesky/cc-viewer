@@ -1,5 +1,5 @@
 import React from 'react';
-import { message, Tooltip, Popover, Button, Modal, Checkbox } from 'antd';
+import { message, Tooltip, Popover, Popconfirm, Button, Checkbox } from 'antd';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
@@ -66,6 +66,18 @@ function UltraplanIcon() {
       <ellipse cx="12" cy="12" rx="10" ry="4"/>
       <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(60 12 12)"/>
       <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(120 12 12)"/>
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M5 6v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
     </svg>
   );
 }
@@ -948,6 +960,13 @@ class TerminalPanel extends React.Component {
     if ((!isMobile || isPad) && this.terminal) this.terminal.focus();
   };
 
+  handleClearContext = () => {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'input', data: `\x1b[200~/clear\x1b[201~\r` }));
+    }
+    if ((!isMobile || isPad) && this.terminal) this.terminal.focus();
+  };
+
   handleUltraplanSend = () => {
     const trimmed = this.state.ultraplanPrompt.trim();
     if (!trimmed && this.state.ultraplanFiles.length === 0) return;
@@ -1336,6 +1355,29 @@ class TerminalPanel extends React.Component {
                 </button>
               </Popover>
             )}
+            {(() => {
+              // i18n 是单句 "X？Y。" 结构，按 ? / ？ 拆成 Popconfirm 的 title + description 以换行呈现
+              const confirmFull = t('ui.chatInput.clearContextConfirm');
+              const qIdx = Math.max(confirmFull.indexOf('？'), confirmFull.indexOf('?'));
+              const confirmTitle = qIdx > 0 ? confirmFull.slice(0, qIdx + 1) : confirmFull;
+              const confirmDesc = qIdx > 0 ? confirmFull.slice(qIdx + 1).trim() : null;
+              return (
+                <Popconfirm
+                  title={confirmTitle}
+                  description={confirmDesc}
+                  okText={t('ui.chatInput.clearContext')}
+                  cancelText={t('ui.common.confirmCancel')}
+                  okButtonProps={{ danger: true }}
+                  placement="top"
+                  onConfirm={this.handleClearContext}
+                >
+                  <button className={styles.toolbarBtn} title={t('ui.chatInput.clearContext')}>
+                    <TrashIcon />
+                    <span>{t('ui.chatInput.clearContext')}</span>
+                  </button>
+                </Popconfirm>
+              );
+            })()}
             <button className={`${styles.toolbarBtn} ${styles.toolbarBtnRight}`} onClick={() => this.setState({ presetModalVisible: true })} title={t('ui.terminal.presetShortcuts')}>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>

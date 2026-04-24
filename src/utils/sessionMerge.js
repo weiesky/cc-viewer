@@ -2,13 +2,17 @@
  * 增量合并 mainAgent sessions。
  * - 同 session 更新：push 新消息（保持 messages 引用稳定）或 checkpoint 重建
  * - 新 session：追加新 session 对象
- * - Transient 过滤：极短消息跳过合并
+ * - Transient 过滤：极短消息跳过合并（仅批量加载场景）
  *
  * @param {Array} prevSessions - 当前 sessions 数组
  * @param {object} entry - 新的 mainAgent entry
+ * @param {object} [options]
+ * @param {boolean} [options.skipTransientFilter=false] - SSE 实时追加路径设为 true：
+ *   实时流里每条 entry 都带完整 response，不会是"中间态"，transient 过滤会误伤真实的
+ *   `/clear → hi` 短对话。仅在批量加载历史日志时保留该过滤（防中间态 entry 污染）。
  * @returns {Array} 更新后的 sessions 数组
  */
-export function mergeMainAgentSessions(prevSessions, entry) {
+export function mergeMainAgentSessions(prevSessions, entry, options = {}) {
   const newMessages = entry.body.messages;
   const newResponse = entry.response;
   const userId = entry.body.metadata?.user_id || null;
@@ -25,7 +29,7 @@ export function mergeMainAgentSessions(prevSessions, entry) {
   const isNewConversation = prevMsgCount > 0 && newMessages.length < prevMsgCount * 0.5 && (prevMsgCount - newMessages.length) > 4;
   const sameUser = userId !== null && userId === lastSession.userId;
 
-  if (isNewConversation && newMessages.length <= 4 && prevMsgCount > 4) {
+  if (!options.skipTransientFilter && isNewConversation && newMessages.length <= 4 && prevMsgCount > 4) {
     return prevSessions;
   }
 
