@@ -277,10 +277,36 @@ function extractCachedContent(requests) {
   }
   if (Array.isArray(body.tools)) {
     if (body.tools.some(t => t.cache_control)) {
-      for (const t of body.tools) result.tools.push(`${t.name}: ${t.description || ''}`);
+      for (const t of body.tools) result.tools.push(formatToolAsXml(t));
     }
   }
   return result;
+}
+
+// Inline (simplified) copy of src/utils/toolsXmlFormatter.js::formatToolAsXml
+function formatToolAsXml(tool) {
+  if (!tool || typeof tool !== 'object') return '';
+  const name = tool.name || 'unknown';
+  const description = typeof tool.description === 'string' ? tool.description : '';
+  const schema = tool.input_schema || tool.parameters || {};
+  const properties = schema && typeof schema === 'object' && schema.properties ? schema.properties : {};
+  const requiredSet = new Set(Array.isArray(schema && schema.required) ? schema.required : []);
+  const paramXmls = Object.entries(properties).map(([pName, pSchema]) => {
+    const s = pSchema && typeof pSchema === 'object' ? pSchema : {};
+    const type = s.type || 'any';
+    const desc = typeof s.description === 'string' ? s.description : '';
+    const lines = ['<parameter>', `  <name>${pName}</name>`, `  <type>${type}</type>`];
+    if (desc) lines.push(`  <description>${desc}</description>`);
+    lines.push(`  <required>${requiredSet.has(pName) ? 'true' : 'false'}</required>`);
+    lines.push('</parameter>');
+    return lines.join('\n');
+  });
+  const pad = '  ';
+  const parametersBlock = paramXmls.length > 0
+    ? '<parameters>\n' + paramXmls.join('\n').split('\n').map(l => l ? pad + l : l).join('\n') + '\n</parameters>'
+    : '<parameters></parameters>';
+  const body = [`<name>${name}</name>`, `<description>${description}</description>`, parametersBlock].join('\n');
+  return '<tool>\n' + body.split('\n').map(l => l ? pad + l : l).join('\n') + '\n</tool>';
 }
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
@@ -616,9 +642,18 @@ describe('helpers', () => {
     if (!Array.isArray(tools)) return { builtin, mcpByServer };
     for (const raw of tools) {
       if (typeof raw !== 'string' || !raw) continue;
-      const colonIdx = raw.indexOf(':');
-      const name = colonIdx >= 0 ? raw.slice(0, colonIdx).trim() : raw.trim();
-      const description = colonIdx >= 0 ? raw.slice(colonIdx + 1).trim() : '';
+      let name = '';
+      let description = '';
+      const nameMatch = raw.match(/<name>([\s\S]*?)<\/name>/);
+      if (nameMatch) {
+        name = nameMatch[1].trim();
+        const descMatch = raw.match(/<description>([\s\S]*?)<\/description>/);
+        description = descMatch ? descMatch[1].trim() : '';
+      } else {
+        const colonIdx = raw.indexOf(':');
+        name = colonIdx >= 0 ? raw.slice(0, colonIdx).trim() : raw.trim();
+        description = colonIdx >= 0 ? raw.slice(colonIdx + 1).trim() : '';
+      }
       if (!name) continue;
       const mcpMatch = /^mcp__(.+?)__(.+)$/.exec(name);
       if (mcpMatch) {
@@ -712,6 +747,27 @@ describe('helpers', () => {
       assert.equal(builtin.length, 1);
       assert.equal(builtin[0].name, 'mcp__incomplete');
       assert.equal(mcpByServer.size, 0);
+    });
+
+    it('parses XML-shaped tool blocks (new format from formatToolAsXml)', () => {
+      const xmlBuiltin = [
+        '<tool>\n  <name>Edit</name>\n  <description>Edit files</description>\n  <parameters></parameters>\n</tool>',
+        '<tool>\n  <name>Bash</name>\n  <description>Run commands</description>\n  <parameters></parameters>\n</tool>',
+        '<tool>\n  <name>mcp__slack__post</name>\n  <description>Post to slack</description>\n  <parameters></parameters>\n</tool>',
+      ];
+      const { builtin, mcpByServer } = parseCachedTools(xmlBuiltin);
+      assert.equal(builtin.length, 2);
+      assert.deepEqual(builtin[0], { name: 'Edit', description: 'Edit files' });
+      assert.deepEqual(builtin[1], { name: 'Bash', description: 'Run commands' });
+      assert.ok(mcpByServer.has('slack'));
+      assert.equal(mcpByServer.get('slack')[0].name, 'post');
+    });
+
+    it('only uses the first <name> (tool-level), ignoring parameter <name> tags', () => {
+      const xml = '<tool>\n  <name>Configure</name>\n  <description>Set up</description>\n  <parameters>\n    <parameter>\n      <name>port</name>\n      <type>integer</type>\n    </parameter>\n  </parameters>\n</tool>';
+      const { builtin } = parseCachedTools([xml]);
+      assert.equal(builtin.length, 1);
+      assert.equal(builtin[0].name, 'Configure');
     });
   });
 });

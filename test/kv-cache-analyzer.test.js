@@ -266,8 +266,12 @@ describe('extractCachedContent', () => {
     });
     const result = extractCachedContent(entry);
     assert.equal(result.tools.length, 2);
-    assert.equal(result.tools[0], 'Edit: Edit files');
-    assert.equal(result.tools[1], 'Bash: Run commands');
+    // Tools are now serialized as XML-shaped text (matching the on-model format)
+    assert.match(result.tools[0], /^<tool>\n/);
+    assert.match(result.tools[0], /<name>Edit<\/name>/);
+    assert.match(result.tools[0], /<description>Edit files<\/description>/);
+    assert.match(result.tools[1], /<name>Bash<\/name>/);
+    assert.match(result.tools[1], /<description>Run commands<\/description>/);
   });
 
   it('returns correct cacheCreateTokens and cacheReadTokens from usage', () => {

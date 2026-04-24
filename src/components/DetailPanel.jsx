@@ -605,9 +605,21 @@ class DetailPanel extends React.Component {
               }
               const buildPlainText = () => {
                 const parts = [];
-                if (cached.tools.length > 0) { parts.push(`=== ${t('ui.tools')} ===`); cached.tools.forEach(t => parts.push(t)); }
-                if (cached.system.length > 0) { parts.push(`\n=== ${t('ui.systemPrompt')} ===`); cached.system.forEach(t => parts.push(t)); }
-                if (cached.messages.length > 0) { parts.push(`\n=== ${t('ui.messages')} ===`); cached.messages.forEach(t => parts.push(t)); }
+                if (cached.tools.length > 0) {
+                  // Wrap in <tools>...</tools> with 2-space indent to match on-model format.
+                  const indented = cached.tools
+                    .map(xml => xml.split('\n').map(l => (l ? '  ' + l : l)).join('\n'))
+                    .join('\n');
+                  parts.push(`<tools>\n${indented}\n</tools>`);
+                }
+                if (cached.system.length > 0) {
+                  // Wrap system content in <system-reminder> so the copied text carries
+                  // elevated salience when pasted into another model call.
+                  parts.push(`<system-reminder>\n${cached.system.join('\n\n')}\n</system-reminder>`);
+                }
+                if (cached.messages.length > 0) {
+                  cached.messages.forEach(t => parts.push(t));
+                }
                 return parts.join('\n\n');
               };
               const userPrompts = cached.messages

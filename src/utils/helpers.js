@@ -1,5 +1,6 @@
 import { isSkillText, isMainAgent } from './contentFilter.js';
 import { restoreSlimmedEntry } from './entry-slim.js';
+import { formatToolAsXml } from './toolsXmlFormatter.js';
 import modelClaudeUrl from '../img/model-claude.svg';
 import modelOpenaiUrl from '../img/model-openai.svg';
 import modelGeminiUrl from '../img/model-gemini.svg';
@@ -689,7 +690,7 @@ export function extractCachedContent(requests) {
   // Keep in sync with lib/kv-cache-analyzer.js extractCachedContent
   if (Array.isArray(body.tools) && body.tools.length > 0 && result.system.length > 0) {
     for (const tool of body.tools) {
-      result.tools.push(`${tool.name}: ${tool.description || ''}`);
+      result.tools.push(formatToolAsXml(tool));
     }
   }
 
@@ -697,16 +698,18 @@ export function extractCachedContent(requests) {
 }
 
 /**
- * 把 extractCachedContent 产出的 tools 字符串数组（"name: description"）
- * 拆分为内置工具和 MCP 工具两组。
+ * 把 extractCachedContent 产出的 tools XML 字符串数组拆分为内置工具和 MCP 工具两组。
+ *
+ * 输入形如 formatToolAsXml 的输出：每个字符串是完整的 <tool>...</tool> 块。
+ * 解析时只取出工具级别（最顶层）的 <name> 与 <description>——即字符串中第一次出现的那对。
  *
  * MCP 识别：name 匹配 /^mcp__(.+?)__(.+)$/，非贪心以支持 server 名含下划线
  * （例如 mcp__some_server_name__do_thing → server: "some_server_name", tool: "do_thing"）。
  *
  * 边界：
  * - tools 非数组或空 → { builtin: [], mcpByServer: new Map() }
- * - 项为空字符串 → 跳过
- * - 项无冒号 → 整串当 name，description 为空
+ * - 项为空字符串 / 非字符串 → 跳过
+ * - 项不是 XML 块但含冒号 → 回退到 "name: description" 解析（向前兼容）
  *
  * @param {string[]} tools
  * @returns {{ builtin: Array<{name:string, description:string}>, mcpByServer: Map<string, Array<{name:string, fullName:string, description:string}>> }}
@@ -718,9 +721,22 @@ export function parseCachedTools(tools) {
 
   for (const raw of tools) {
     if (typeof raw !== 'string' || !raw) continue;
-    const colonIdx = raw.indexOf(':');
-    const name = colonIdx >= 0 ? raw.slice(0, colonIdx).trim() : raw.trim();
-    const description = colonIdx >= 0 ? raw.slice(colonIdx + 1).trim() : '';
+
+    let name = '';
+    let description = '';
+
+    const nameMatch = raw.match(/<name>([\s\S]*?)<\/name>/);
+    if (nameMatch) {
+      name = nameMatch[1].trim();
+      const descMatch = raw.match(/<description>([\s\S]*?)<\/description>/);
+      description = descMatch ? descMatch[1].trim() : '';
+    } else {
+      // Back-compat: older "name: description" format
+      const colonIdx = raw.indexOf(':');
+      name = colonIdx >= 0 ? raw.slice(0, colonIdx).trim() : raw.trim();
+      description = colonIdx >= 0 ? raw.slice(colonIdx + 1).trim() : '';
+    }
+
     if (!name) continue;
 
     const mcpMatch = /^mcp__(.+?)__(.+)$/.exec(name);
