@@ -2,7 +2,7 @@ import React from 'react';
 import { Space, Tag, Button, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Radio, Tabs, Spin, Input, Table, Select, Tooltip, Alert, message } from 'antd';
 import { MessageOutlined, FileTextOutlined, ImportOutlined, DashboardOutlined, ExportOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, CopyOutlined, ApiOutlined, DeleteOutlined, ReloadOutlined, PlusOutlined, CloudDownloadOutlined, SwapOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { QRCodeCanvas } from 'qrcode.react';
-import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats, getModelMaxTokens, extractCachedContent, parseCachedTools, extractLoadedSkills } from '../utils/helpers';
+import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats, getModelMaxTokens, getEffectiveModel, extractCachedContent, parseCachedTools, extractLoadedSkills } from '../utils/helpers';
 import { BUILTIN_SKILL_NAMES, mergeActiveSkills } from '../utils/skillsParser';
 import { isSystemText, classifyUserContent, isMainAgent } from '../utils/contentFilter';
 import { classifyRequest } from '../utils/requestType';
@@ -1431,7 +1431,7 @@ class AppHeader extends React.Component {
                 for (let i = requests.length - 1; i >= 0; i--) {
                   if (isMainAgent(requests[i]) && requests[i].response?.body?.usage) {
                     const total = getTotal(requests[i]);
-                    const maxTokens = calibrationTokens || contextWindow?.context_window_size || getModelMaxTokens(requests[i].body?.model || this.state.settingsModel);
+                    const maxTokens = calibrationTokens || contextWindow?.context_window_size || getModelMaxTokens(getEffectiveModel(requests[i]) || this.state.settingsModel);
                     const usable = maxTokens * 0.835;
                     if (usable > 0 && total > 0) {
                       contextPercent = Math.min(100, Math.max(0, Math.round(total / usable * 100)));

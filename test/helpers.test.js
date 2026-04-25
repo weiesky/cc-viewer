@@ -63,6 +63,7 @@ const MODEL_CONTEXT_SIZES = [
   { match: /gpt-4o|o1|o3|o4/i, tokens: 128000 },
   { match: /gpt-4/i, tokens: 128000 },
   { match: /gpt-3/i, tokens: 16000 },
+  { match: /deepseek-v4/i, tokens: 1000000 },
   { match: /deepseek/i, tokens: 128000 },
 ];
 
@@ -72,6 +73,10 @@ function getModelMaxTokens(modelName) {
     if (entry.match.test(modelName)) return entry.tokens;
   }
   return 200000;
+}
+
+function getEffectiveModel(request) {
+  return request?.response?.body?.model || request?.body?.model || null;
 }
 
 function escapeHtml(str) {
@@ -327,9 +332,40 @@ describe('helpers', () => {
     it('returns 200000 for non-opus claude models', () => { assert.equal(getModelMaxTokens('claude-sonnet-4-6'), 200000); });
     it('returns 128000 for gpt-4o', () => { assert.equal(getModelMaxTokens('gpt-4o'), 128000); });
     it('returns 128000 for deepseek', () => { assert.equal(getModelMaxTokens('deepseek-v3'), 128000); });
+    it('returns 128000 for deepseek-r1 (still 128K, no v4 substring)', () => { assert.equal(getModelMaxTokens('deepseek-r1'), 128000); });
+    it('returns 1000000 for deepseek-v4', () => { assert.equal(getModelMaxTokens('deepseek-v4'), 1000000); });
+    it('returns 1000000 for deepseek-v4 with suffix', () => { assert.equal(getModelMaxTokens('deepseek-v4-turbo'), 1000000); });
+    it('returns 1000000 for deepseek-v4 with surrounding chars', () => { assert.equal(getModelMaxTokens('mycompany-deepseek-v4-ft'), 1000000); });
     it('returns 16000 for gpt-3', () => { assert.equal(getModelMaxTokens('gpt-3.5-turbo'), 16000); });
     it('returns 200000 for null', () => { assert.equal(getModelMaxTokens(null), 200000); });
     it('returns 200000 for unknown model', () => { assert.equal(getModelMaxTokens('llama-3'), 200000); });
+  });
+
+  describe('getEffectiveModel', () => {
+    it('returns response.body.model when present (proxy hot-switch)', () => {
+      const req = { body: { model: 'claude-opus-4-6' }, response: { body: { model: 'deepseek-v4' } } };
+      assert.equal(getEffectiveModel(req), 'deepseek-v4');
+    });
+    it('falls back to request.body.model when response missing', () => {
+      const req = { body: { model: 'claude-sonnet-4-6' } };
+      assert.equal(getEffectiveModel(req), 'claude-sonnet-4-6');
+    });
+    it('falls back to request.body.model when response has no model field', () => {
+      const req = { body: { model: 'claude-haiku-4-5' }, response: { body: {} } };
+      assert.equal(getEffectiveModel(req), 'claude-haiku-4-5');
+    });
+    it('returns null when both sides missing', () => {
+      assert.equal(getEffectiveModel({ body: {}, response: { body: {} } }), null);
+    });
+    it('returns null for null input', () => {
+      assert.equal(getEffectiveModel(null), null);
+    });
+    it('returns null for undefined input', () => {
+      assert.equal(getEffectiveModel(undefined), null);
+    });
+    it('returns null when body and response are entirely absent', () => {
+      assert.equal(getEffectiveModel({}), null);
+    });
   });
 
   describe('escapeHtml', () => {

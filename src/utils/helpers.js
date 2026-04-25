@@ -20,6 +20,9 @@ const MODEL_CONTEXT_SIZES = [
   { match: /gpt-4o|o1|o3|o4/i, tokens: 128000 },
   { match: /gpt-4/i, tokens: 128000 },
   { match: /gpt-3/i, tokens: 16000 },
+  // deepseek-v4 defaults to 1M; placed before generic /deepseek/ so the
+  // first-match-wins loop picks it up before falling through to 128K.
+  { match: /deepseek-v4/i, tokens: 1000000 },
   { match: /deepseek/i, tokens: 128000 },
 ];
 
@@ -29,6 +32,16 @@ export function getModelMaxTokens(modelName) {
     if (entry.match.test(modelName)) return entry.tokens;
   }
   return 200000;
+}
+
+/**
+ * Resolve the effective model name for a log request entry, preferring the
+ * server-reported model in `response.body.model` (authoritative under proxy
+ * hot-switch) over the client-supplied `body.model`. Returns null when both
+ * are missing — callers should fall back to a sensible default.
+ */
+export function getEffectiveModel(request) {
+  return request?.response?.body?.model || request?.body?.model || null;
 }
 
 /**

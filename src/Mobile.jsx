@@ -4,7 +4,7 @@ import { BranchesOutlined, DownloadOutlined, DeleteOutlined, RollbackOutlined, R
 import AppBase, { styles } from './AppBase';
 import { isIOS, isPad, setViewMode } from './env';
 import { isMainAgent, isSystemText, classifyUserContent } from './utils/contentFilter';
-import { getModelMaxTokens } from './utils/helpers';
+import { getModelMaxTokens, getEffectiveModel } from './utils/helpers';
 import ChatView from './components/ChatView';
 import TerminalPanel, { uploadFileAndGetPath } from './components/TerminalPanel';
 import ToolApprovalPanel from './components/ToolApprovalPanel';
@@ -340,7 +340,8 @@ class Mobile extends AppBase {
     const mobileIsLocalLog = !!this._isLocalLog;
     let mobileModelName = null;
     for (let i = filteredRequests.length - 1; i >= 0; i--) {
-      if (isMainAgent(filteredRequests[i]) && filteredRequests[i].body?.model) { mobileModelName = filteredRequests[i].body.model; break; }
+      const effective = getEffectiveModel(filteredRequests[i]);
+      if (isMainAgent(filteredRequests[i]) && effective) { mobileModelName = effective; break; }
     }
 
     return (
@@ -377,7 +378,7 @@ class Mobile extends AppBase {
                   if (isMainAgent(filteredRequests[i]) && filteredRequests[i].response?.body?.usage) {
                     const u = filteredRequests[i].response.body.usage;
                     const total = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
-                    const maxTokens = contextWindow?.context_window_size || getModelMaxTokens(filteredRequests[i].body?.model || this.state.settingsModel);
+                    const maxTokens = contextWindow?.context_window_size || getModelMaxTokens(getEffectiveModel(filteredRequests[i]) || this.state.settingsModel);
                     const usable = maxTokens * 0.835;
                     if (usable > 0 && total > 0) contextPercent = Math.min(100, Math.max(0, Math.round(total / usable * 100)));
                     break;

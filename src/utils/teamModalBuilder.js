@@ -6,7 +6,7 @@
 import { classifyUserContent, isSystemText, isMainAgent } from './contentFilter';
 import { restoreSlimmedEntry } from './entry-slim.js';
 import { classifyRequest, formatRequestTag, formatTeammateLabel } from './requestType';
-import { getModelInfo } from './helpers';
+import { getModelInfo, getEffectiveModel } from './helpers';
 import { getTeammateAvatar } from './teammateAvatars';
 
 export function buildTeamModalData(team, requests, mainAgentSessions) {
@@ -22,7 +22,8 @@ export function buildTeamModalData(team, requests, mainAgentSessions) {
   for (let i = startIdx; i < endIdx && i < requests.length; i++) {
     const req = requests[i];
     if (req.timestamp) tsToIndex[req.timestamp] = i;
-    if (req.body?.model) modelName = req.body.model;
+    const effective = getEffectiveModel(req);
+    if (effective) modelName = effective;
   }
   const modelInfo = getModelInfo(modelName);
 

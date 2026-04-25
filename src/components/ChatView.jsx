@@ -9,7 +9,7 @@ import ImageLightbox from './ImageLightbox';
 import GitChanges from './GitChanges';
 import GitDiffView from './GitDiffView';
 import ToolApprovalPanel from './ToolApprovalPanel';
-import { getModelInfo } from '../utils/helpers';
+import { getModelInfo, getEffectiveModel } from '../utils/helpers';
 import { getTeammateAvatar } from '../utils/teammateAvatars';
 import { isSystemText, classifyUserContent, isMainAgent, isTeammate, resolveTeammateNames } from '../utils/contentFilter';
 import { classifyRequest, formatRequestTag, formatTeammateLabel } from '../utils/requestType';
@@ -1058,8 +1058,9 @@ class ChatView extends React.Component {
         if (ma && req.timestamp) {
           cache.tsToIndex[req.timestamp] = i;
         }
-        if (ma && req.body?.model) {
-          lastModelName = req.body.model;
+        const effectiveModel = getEffectiveModel(req);
+        if (ma && effectiveModel) {
+          lastModelName = effectiveModel;
           cache.modelName = lastModelName;
           // 只在 response 已到达时更新 completedModelName。
           // 流式进行中的 request 尚无 response，不应污染"上一次已完成的模型"。
