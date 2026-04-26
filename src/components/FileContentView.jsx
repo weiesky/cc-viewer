@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { DownloadOutlined, CopyOutlined, CameraOutlined } from '@ant-design/icons';
+import { Modal, message } from 'antd';
 import { apiUrl } from '../utils/apiUrl';
 import { useMarkdownExport } from '../hooks/useMarkdownExport';
+import { detectMdExtensions } from '../utils/mdExtensionDetect';
 import CodeMirror from '@uiw/react-codemirror';
 import { EditorView } from '@codemirror/view';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
@@ -23,7 +25,22 @@ import { go } from '@codemirror/lang-go';
 import { keymap } from '@codemirror/view';
 import { t as i18n } from '../i18n';
 import { renderMarkdown } from '../utils/markdown';
+import { isMobile } from '../env';
 import styles from './FileContentView.module.css';
+
+// 单独 chunk + 仅在打开 .md 文件时才加载，避免 ~850KB MDXEditor 进首屏
+const MdxEditorPanel = lazy(() => import('./MdxEditorPanel'));
+
+// Feature flag：默认开；用户可在 devtools 里 localStorage.setItem('mdxEditorEnabled','false') 回退
+function readMdxFeatureFlag() {
+  try {
+    return typeof localStorage !== 'undefined'
+      ? localStorage.getItem('mdxEditorEnabled') !== 'false'
+      : true;
+  } catch {
+    return true;
+  }
+}
 
 const LANG_MAP = {
   js: javascript,
@@ -284,6 +301,10 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
   const isMdFile = /\.md$/i.test(filePath);
   const [viewMode, setViewMode] = useState(isMdFile ? 'markdown' : 'text');
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+  // MDX 编辑相关 state
+  const [mdxFeatureEnabled] = useState(readMdxFeatureFlag);
+  const [extensionDetected, setExtensionDetected] = useState(false);
+  const [forceMdxOverride, setForceMdxOverride] = useState(false);
   const containerRef = useRef(null);
   const mounted = useRef(true);
   const saveTimeoutRef = useRef(null);
@@ -293,11 +314,43 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
   const markdownPreviewRef = useRef(null);
   const downloadWrapRef = useRef(null);
   const editorWrapperRef = useRef(null);
+  const mdxRef = useRef(null);
+  // 总是反映最新 filePath（不通过 useCallback closure），doSave 完成回调用它做
+  // "保存中切文件 race" 的兜底比对：保存时 snapshot 当前 filePath，保存完成后
+  // 若 filePathRef.current 已变（用户切到别的文件），不再 setContent，避免把
+  // 旧文件的内容写到新文件的 state。
+  const filePathRef = useRef(filePath);
+  filePathRef.current = filePath;
 
   const isDirty = content !== null && currentContent !== null && content !== currentContent;
 
+  // 「使用 MDX 编辑」= flag 开 + 非移动端 + (无扩展语法 OR 用户强制覆盖)
+  // 移动端直接降级到旧 marked 渲染：屏幕小 + 触屏体验差 + bundle 加载成本高，
+  // GUI 编辑能力性价比不足，统一走 fallback 预览路径。
+  const useMdxEditor = isMdFile && mdxFeatureEnabled && !isMobile && (!extensionDetected || forceMdxOverride);
+  // 「展示旧 marked 预览」= viewMode='markdown' && !useMdx
+  const useLegacyPreview = isMdFile && viewMode === 'markdown' && !useMdxEditor;
+
+  // 取当前文本：MDX 模式优先从 editor ref 读 markdown（保持 GUI 编辑里的最新值），
+  // 否则走原 content/currentContent。
+  // 空串兜底：跟 doSave 一致——MDX mount 早期可能返回 ''，若原文件非空则用
+  // currentContent/content 回退，避免 Copy 按钮在快速点击时复制到空字符串。
+  const getCurrentText = useCallback(() => {
+    if (useMdxEditor && mdxRef.current?.getMarkdown) {
+      try {
+        const fromMdx = mdxRef.current.getMarkdown() ?? '';
+        if (fromMdx.length > 0 || (content?.length ?? 0) === 0) {
+          return fromMdx;
+        }
+      } catch {
+        // fall through to legacy path
+      }
+    }
+    return (isDirty ? currentContent : content) ?? '';
+  }, [useMdxEditor, isDirty, currentContent, content]);
+
   const { handleCopy, handleSaveAs, handleSaveAsImage } = useMarkdownExport({
-    getText: useCallback(() => (isDirty ? currentContent : content) ?? '', [isDirty, currentContent, content]),
+    getText: getCurrentText,
     getSnapshotTarget: useCallback(() => markdownPreviewRef.current, []),
     onDone: useCallback(() => setDownloadMenuOpen(false), []),
   });
@@ -329,22 +382,79 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
     }
   }, [closing, onClose]);
 
+  // MDX onChange：把 markdown 同步到 currentContent，触发 isDirty + 行号刷新
+  const handleMdxChange = useCallback((md) => {
+    if (typeof md !== 'string') return;
+    setCurrentContent(md);
+    setLineCount(md.split('\n').length);
+  }, []);
+
+  // viewMode 切换前的 dirty 守护：弹 confirm 让用户保存或丢弃
+  const requestViewModeSwitch = useCallback((next) => {
+    if (next === viewMode) return;
+    if (!isDirty) { setViewMode(next); return; }
+    Modal.confirm({
+      title: i18n('ui.mdEditor.unsavedConfirmTitle'),
+      content: i18n('ui.mdEditor.unsavedConfirmContent'),
+      okText: i18n('ui.mdEditor.unsavedConfirmDiscard'),
+      cancelText: i18n('ui.mdEditor.unsavedConfirmKeep'),
+      okButtonProps: { danger: true },
+      onOk: () => {
+        // 丢弃：把 currentContent 回滚到 content（消除 isDirty）后再切
+        setCurrentContent(content);
+        setLineCount((content ?? '').split('\n').length);
+        setViewMode(next);
+      },
+    });
+  }, [viewMode, isDirty, content]);
+
+  // 「强制 GUI 编辑」：用户明确接受可能损坏扩展语法
+  const requestForceMdx = useCallback(() => {
+    Modal.confirm({
+      title: i18n('ui.mdEditor.forceGuiEdit'),
+      content: i18n('ui.mdEditor.forceGuiEditConfirm'),
+      okText: i18n('ui.mdEditor.forceGuiEdit'),
+      cancelText: i18n('ui.mdEditor.unsavedConfirmKeep'),
+      okButtonProps: { danger: true },
+      onOk: () => setForceMdxOverride(true),
+    });
+  }, []);
+
   const doSave = useCallback(async () => {
     if (!isDirty) return;
+    // MDX 模式下优先从 editor ref 取最新 markdown（onChange 是 debounced，currentContent 可能滞后）
+    let saveContent = currentContent;
+    if (useMdxEditor && mdxRef.current?.getMarkdown) {
+      try {
+        const fromMdx = mdxRef.current.getMarkdown();
+        // 防御：MDX 在 mount 早期 / 状态异常时 getMarkdown() 可能返回 ''，
+        // 若原文件非空则不要让空串覆盖（用 currentContent 兜底）。
+        if (typeof fromMdx === 'string' && (fromMdx.length > 0 || (content?.length ?? 0) === 0)) {
+          saveContent = fromMdx;
+        }
+      } catch {
+        // fall through to currentContent
+      }
+    }
+    // Snapshot 当前 filePath，用于保存完成后比对是否切了文件
+    const startFilePath = filePathRef.current;
     setSaveStatus('saving');
     try {
       const res = await fetch(apiUrl('/api/file-content'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: filePath, content: currentContent, ...(editorSession ? { editorSession: true } : {}) }),
+        body: JSON.stringify({ path: filePath, content: saveContent, ...(editorSession ? { editorSession: true } : {}) }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      if (mounted.current) {
-        setContent(currentContent);
+      // 切文件后落空保护：若保存期间用户切到别的文件，filePathRef 已变，
+      // 此时绝不能 setContent (会把旧文件的内容写到新文件的 state)
+      if (mounted.current && filePathRef.current === startFilePath) {
+        setContent(saveContent);
+        setCurrentContent(saveContent);
         setFileSize(data.size);
         setSaveStatus('saved');
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -361,7 +471,7 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
         }, 3000);
       }
     }
-  }, [isDirty, filePath, currentContent]);
+  }, [isDirty, filePath, currentContent, useMdxEditor, editorSession]);
 
   saveRef.current = doSave;
 
@@ -398,6 +508,9 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
     setError(null);
     setLoading(true);
     setLineCount(0);
+    // 切换文件时重置 MDX 相关 state，避免上一个文件的扩展检测/强制覆盖跨文件污染
+    setExtensionDetected(false);
+    setForceMdxOverride(false);
 
     fetch(apiUrl(`/api/file-content?path=${encodeURIComponent(filePath)}${editorSession ? '&editorSession=true' : ''}`))
       .then((r) => {
@@ -420,6 +533,19 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
           setFileSize(data.size);
           setLineCount(data.content.split('\n').length);
           setLoading(false);
+          // 仅对 .md 且 flag 开启时做扩展检测，命中则提示 + 走旧 marked 渲染（自动 fallback）
+          if (isMdFile && mdxFeatureEnabled) {
+            const det = detectMdExtensions(data.content);
+            if (det.anyExtension) {
+              setExtensionDetected(true);
+              try {
+                // 用固定 key 去重，连续打开多个含扩展的 .md 不会叠 toast
+                message.open({ key: 'mdxExtFallback', type: 'info', content: i18n('ui.mdEditor.extensionFallbackToast') });
+              } catch {
+                // 没 antd App 上下文也无所谓
+              }
+            }
+          }
         }
       })
       .catch((err) => {
@@ -428,7 +554,7 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
           setLoading(false);
         }
       });
-  }, [filePath, editorSession]);
+  }, [filePath, editorSession, isMdFile, mdxFeatureEnabled]);
 
   useEffect(() => {
     loadFileContent();
@@ -551,8 +677,14 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
                   <button
                     className={styles.downloadMenuItem}
                     onClick={handleSaveAsImage}
-                    disabled={viewMode !== 'markdown'}
-                    title={viewMode !== 'markdown' ? i18n('ui.saveAsImageHintMd') : undefined}
+                    disabled={viewMode !== 'markdown' || useMdxEditor}
+                    title={
+                      viewMode !== 'markdown'
+                        ? i18n('ui.saveAsImageHintMd')
+                        : useMdxEditor
+                          ? i18n('ui.mdEditor.saveAsImageDisabled')
+                          : undefined
+                    }
                   >
                     <CameraOutlined />
                     <span>{i18n('ui.saveAsImage')}</span>
@@ -561,10 +693,21 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
               )}
             </div>
           )}
-          {isMdFile && (
+          {isMdFile && extensionDetected && !forceMdxOverride && mdxFeatureEnabled && !isMobile && (
+            <button
+              className={styles.viewToggleBtn}
+              onClick={requestForceMdx}
+              title={i18n('ui.mdEditor.forceGuiEditConfirm')}
+            >
+              {i18n('ui.mdEditor.forceGuiEdit')}
+            </button>
+          )}
+          {/* MDX 状态下三态切换器（DiffSourceToggleWrapper 在 toolbar 里）已包含 source 模式访问，
+              外层不再放重复按钮；fallback / 旧 marked / 含扩展自动降级 / 移动端 状态保留作为兜底入口。 */}
+          {isMdFile && !useMdxEditor && (
             <button
               className={`${styles.viewToggleBtn}${viewMode === 'markdown' ? ` ${styles.viewToggleActive}` : ''}`}
-              onClick={() => setViewMode(v => v === 'markdown' ? 'text' : 'markdown')}
+              onClick={() => requestViewModeSwitch(viewMode === 'markdown' ? 'text' : 'markdown')}
               title={viewMode === 'markdown' ? i18n('ui.viewText') : i18n('ui.viewMarkdown')}
             >
               {viewMode === 'markdown' ? (
@@ -602,7 +745,17 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
       <div className={styles.contentContainer}>
         {error && <div className={styles.error}>{error}</div>}
         {loading && !error && <div className={styles.loading}>{i18n('ui.loading')}</div>}
-        {!loading && content !== null && viewMode === 'markdown' && isMdFile && (
+        {!loading && content !== null && viewMode === 'markdown' && isMdFile && useMdxEditor && (
+          <Suspense fallback={<div className={styles.loading}>{i18n('ui.loading')}</div>}>
+            <MdxEditorPanel
+              key={filePath}
+              ref={mdxRef}
+              initialMarkdown={content}
+              onChange={handleMdxChange}
+            />
+          </Suspense>
+        )}
+        {!loading && content !== null && useLegacyPreview && (
           <div ref={markdownPreviewRef} className={styles.markdownPreview} dangerouslySetInnerHTML={{ __html: renderMarkdown(isDirty ? currentContent : content) }} />
         )}
         {!loading && content !== null && !(viewMode === 'markdown' && isMdFile) && (

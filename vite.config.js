@@ -66,6 +66,9 @@ export default defineConfig(() => {
               '@codemirror/lang-xml',
               '@codemirror/lang-yaml',
             ],
+            // MDXEditor 仅在打开 .md 文件且 GUI 模式时通过 React.lazy 加载，
+            // 单独成 chunk 避免拖累首屏 + 与 vendor-codemirror 区分。
+            'vendor-mdxeditor': ['@mdxeditor/editor'],
           },
         },
       },

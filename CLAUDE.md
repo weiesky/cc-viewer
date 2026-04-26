@@ -1,3 +1,4 @@
+Using `!important` in CSS is prohibited.
 When adding new interactive controls, remember to add corresponding i18n entries. The project has two separate i18n files: `src/i18n.js` (frontend/React components) and `i18n.js` (server-side/CLI). Add keys to the correct file based on where the translation is used.
 After completing any code changes, automatically run `npm run build` to rebuild the project.
 When committing code to GitHub, always run `npm run test` first to ensure all tests pass; for new server-side scripts (*.js files in root or lib/), add corresponding unit tests in the test/ directory; update history.md accordingly, and update README.md with translation into all i18n supported language versions if needed.

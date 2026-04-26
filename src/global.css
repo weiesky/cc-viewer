@@ -295,6 +295,16 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* 阻止子滚动容器到边后将滚动事件冒泡到 body/html，消除"滚到顶/底继续拖会拖动整页"
+   的 rubber-band 体感。cc-viewer 整体 flex 布局，body 不应承载滚动；这一行
+   彻底关掉滚动冒泡链，对 MDXEditor / chat 流 / 文件浏览树 / terminal 等所有
+   子滚动容器一次性见效。
+   `none` 同时禁掉浏览器原生 pull-to-refresh 与"横向 swipe 返回"，cc-viewer
+   不依赖这两者，影响 0。 */
+html, body {
+  overscroll-behavior: none;
+}
+
 ::selection {
   background-color: var(--color-selection-alt);
   color: inherit;
@@ -433,6 +443,10 @@ body {
 .ant-popover .ant-popover-arrow::before,
 .ant-popover .ant-popover-arrow::after {
   background: var(--border-secondary);
+}
+[data-theme="light"] .ant-popover .ant-popover-arrow::before,
+[data-theme="light"] .ant-popover .ant-popover-arrow::after {
+  background: var(--bg-base-pure);
 }
 
 /* Ant Design Typography font size override */

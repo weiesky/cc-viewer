@@ -1,6 +1,6 @@
 {
   "name": "cc-viewer",
-  "version": "1.6.212",
+  "version": "1.6.213",
   "description": "Claude Code Logger visualization management tool",
   "license": "MIT",
   "main": "server.js",
@@ -75,6 +75,7 @@
     "@codemirror/lang-xml": "^6.1.0",
     "@codemirror/lang-yaml": "^6.1.2",
     "@electron/notarize": "^3.1.1",
+    "@mdxeditor/editor": "^3.55.0",
     "@replit/codemirror-minimap": "^0.5.2",
     "@uiw/react-codemirror": "^4.25.8",
     "@vitejs/plugin-react": "^4.5.2",

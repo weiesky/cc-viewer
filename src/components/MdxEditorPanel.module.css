@@ -1,0 +1,854 @@
+/* MdxEditorPanel — 把 MDXEditor 的 Radix 主题变量映射到 cc-viewer 现有
+   --bg-* / --text-* / --border-* / --color-primary 体系，做到 dark/light
+   切换全自动。container 既加 .dark/.light（panel 自管），也加 dark-theme（MDXEditor
+   官方 dark 入口），双保险。
+
+   优先级机制（关键）：MDXEditor 自带的 style.css 通过 MdxEditorPanel.base.css
+   被 @import 进 layer(mdxeditor-base)。本文件所有规则保持 unlayered，
+   按 CSS Cascading & Inheritance Level 5 规范，**unlayered 永远胜过任何 layered**，
+   因此本文件无需 !important、也无需抬 specificity 即可干净覆盖 MDXEditor 默认样式。
+
+   全局污染对冲：cc-viewer/src/global.css 有两条 unlayered 规则会泄漏进编辑区——
+     1. `*:focus { outline: none !important }`  → 编辑区任何元素失去 focus 视觉
+     2. `* { scrollbar-* }`                       → MDXEditor 滚动条被全局接管
+   规则 1 我们用 :focus-visible 的 box-shadow 自给视觉；规则 2 接受现状（与 cc-viewer
+   全站滚动条统一是 feature 不是 bug）。此外官方 demo 的 prose 排版（h1-h6 字号阶梯、
+   p / list / blockquote 间距）MDXEditor 自身不出样式，必须在 .contentEditable 内
+   显式补齐，否则会被 cc-viewer 全局 reset 压成裸文本。
+
+   ⚠️ 已知技术债：本文件用了大量 :global([class*='_xxx']) 通配符匹配 MDXEditor
+   内部 CSS module hash class（_toolbarRoot / _selectContent / _dialogContent /
+   _codeMirrorWrapper / _imageWrapper 等）。依赖 MDXEditor 3.55.x 命名约定；
+   升级到不兼容的版本时这些选择器可能整体失效，届时需对照新版本 dist/style.css
+   重新调整。 */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+/* ── Radix 变量 → cc-viewer token 映射（理论上能改一切由 MDXEditor 用变量画出来的部分）── */
+.container :global(.mdxeditor) {
+  --baseBgSubtle: var(--bg-base-alt);
+  --baseBg: var(--bg-elevated);
+  --baseBgHover: var(--bg-surface);
+  --baseBgActive: var(--bg-base-alt);
+  --baseLine: var(--border-secondary);
+  --baseBorder: var(--border-primary);
+  --baseBorderHover: var(--border-hover);
+  --baseSolid: var(--text-secondary);
+  --baseSolidHover: var(--text-primary);
+  --baseText: var(--text-primary);
+  --baseTextContrast: var(--text-primary);
+  --basePageBg: var(--bg-elevated);
+
+  --accentBase: var(--color-primary-bg-faint);
+  --accentBgSubtle: var(--color-primary-bg-light);
+  --accentBg: var(--color-primary-bg-light);
+  --accentBgHover: var(--color-primary-bg-medium);
+  --accentBgActive: var(--color-primary-bg-medium);
+  --accentLine: var(--color-primary-pale);
+  --accentBorder: var(--color-primary-pale);
+  --accentBorderHover: var(--color-primary);
+  --accentSolid: var(--color-primary);
+  --accentSolidHover: var(--color-primary-dark);
+  --accentText: var(--color-primary);
+  --accentTextContrast: #ffffff;
+
+  --font-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+}
+
+/* ── 容器布局：让 MDXEditor 占满 panel ── */
+.container :global(.mdxeditor),
+.container :global(.mdxeditor-root-contenteditable) {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.container :global(.mdxeditor-root-contenteditable) {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 24px;
+}
+
+/* =====================================================================
+   diffSourcePlugin 的 DiffSourceWrapper 在 toolbar 与 contenteditable 之间插入了
+   两层 div：
+     <div class="mdxeditor-diff-source-wrapper">       ← 外层，无 inline style
+       <div class="mdxeditor-rich-text-editor"         ← 内层，inline display:block|none
+            style="display: block">                       根据 viewMode 切换
+         {.mdxeditor-root-contenteditable}
+       </div>
+       <div class="mdxeditor-diff-editor"/>            ← viewMode='diff' 时显示
+       <div class="mdxeditor-source-editor"/>          ← viewMode='source' 时显示
+     </div>
+
+   关键 trick：display 与 flex 正交。inline display:block 决定盒类型，外部 flex:1
+   决定它在 flex 父容器中分配的主轴尺寸——两者不冲突，无需 !important 即可让
+   inline display:block 的元素撑满外层 flex column 的可用空间。
+   min-height: 0 必须配套 —— 撤销 flex item 默认 min-height: auto，否则内部 overflow
+   不生效（被内容顶高）。
+   .mdxeditor-root-contenteditable 上面已经有 height: 100%（从 .mdxeditor 共享的规则），
+   作为 block 父级（rich-text-editor）的子元素，height: 100% 解析到 flex item 的
+   computed height，scroll 链路接续。 */
+
+.container :global(.mdxeditor-diff-source-wrapper) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.container :global(.mdxeditor-rich-text-editor) {
+  flex: 1;
+  min-height: 0;
+}
+
+/* source / diff 模式的 host 容器：撑满并自身滚动；覆盖代码块继承的紫色 bg 回到中性 */
+.container :global(.mdxeditor-source-editor),
+.container :global(.mdxeditor-diff-editor) {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg-elevated);
+}
+
+.container :global(.cm-sourceView.cm-editor),
+.container :global(.cm-mergeView .cm-editor) {
+  background: var(--bg-elevated);
+  border: 0;
+  border-radius: 0;
+}
+
+.container :global(.cm-sourceView .cm-scroller),
+.container :global(.cm-mergeView .cm-scroller) {
+  padding: 12px 18px;
+}
+
+/* error 状态：DiffSourceWrapper 在 markdownProcessingError$ 非空时
+   渲染独立 _markdownParseError div 作为外层第一个子元素 */
+.container :global([class*='_markdownParseError']) {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  background: var(--color-warning-bg-light, var(--bg-base-alt));
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-secondary);
+  font-size: 13px;
+}
+
+/* diff/source 模式 toolbar 显示的模式标题（"Diff mode" 等） */
+.container :global([class*='_toolbarTitleMode']) {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+/* =====================================================================
+   Contenteditable 内的 prose 排版（关键修复）
+   MDXEditor 自身完全不给 h/p/list/blockquote 等元素出样式，且 cc-viewer 全局
+   会做隐式 reset，所以必须在这里补齐字号阶梯和默认间距，不然就是一坨裸文本。
+   ===================================================================== */
+.contentEditable {
+  outline: none;
+  min-height: 100%;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-primary);
+}
+
+/* 段落 / 列表项 / 引用 默认间距 */
+.contentEditable :global(p),
+.contentEditable :global(li),
+.contentEditable :global(blockquote) {
+  color: var(--text-primary);
+}
+
+.contentEditable :global(p) {
+  margin: 0.75em 0;
+}
+
+.contentEditable :global(p:first-child) {
+  margin-top: 0;
+}
+
+.contentEditable :global(p:last-child) {
+  margin-bottom: 0;
+}
+
+/* h1-h6 字号阶梯（仿 GitHub markdown / Tailwind prose 默认） */
+.contentEditable :global(h1),
+.contentEditable :global(h2),
+.contentEditable :global(h3),
+.contentEditable :global(h4),
+.contentEditable :global(h5),
+.contentEditable :global(h6) {
+  color: var(--text-primary);
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 1.5em 0 0.6em;
+}
+
+.contentEditable :global(h1:first-child),
+.contentEditable :global(h2:first-child),
+.contentEditable :global(h3:first-child),
+.contentEditable :global(h4:first-child),
+.contentEditable :global(h5:first-child),
+.contentEditable :global(h6:first-child) {
+  margin-top: 0;
+}
+
+.contentEditable :global(h1) { font-size: 1.875em; line-height: 1.2; padding-bottom: 0.3em; border-bottom: 1px solid var(--border-secondary); }
+.contentEditable :global(h2) { font-size: 1.5em; padding-bottom: 0.25em; border-bottom: 1px solid var(--border-secondary); }
+.contentEditable :global(h3) { font-size: 1.25em; }
+.contentEditable :global(h4) { font-size: 1.1em; }
+.contentEditable :global(h5) { font-size: 1em; }
+.contentEditable :global(h6) { font-size: 0.9em; color: var(--text-secondary); }
+
+/* 列表 — 抵御全局 ul/ol reset，补 marker + 缩进 */
+.contentEditable :global(ul),
+.contentEditable :global(ol) {
+  margin: 0.75em 0;
+  padding-left: 1.75em;
+}
+
+.contentEditable :global(ul) { list-style: disc; }
+.contentEditable :global(ol) { list-style: decimal; }
+.contentEditable :global(ul ul) { list-style: circle; }
+.contentEditable :global(ul ul ul) { list-style: square; }
+
+.contentEditable :global(li) {
+  margin: 0.25em 0;
+}
+
+.contentEditable :global(li > p) {
+  margin: 0.25em 0;
+}
+
+/* 行内 code — 关键发现：MDXEditor 用 Lexical 渲染 inline code 时，给的是
+   <span class="_code_1tncs_52">code</span>（不是 <code> 标签），且自带规则
+   ._code_1tncs_52 { background-color: var(--baseBg); } 会让 inline code 跟
+   panel 背景融为一体（因为我们映射 --baseBg → --bg-elevated）。
+   选择器 [class*='_code_'] 精确匹配 lexical-theme 的 inline code class（注意
+   _codeMirrorWrapper / _codeBlockLanguageSelect 等不含 `_code_` 的连续子串，
+   不会误伤），同时保留对原生 <code> 标签的覆盖（fallback marked 渲染或纯 prose
+   表格 cell 里如果出现 <code> 也兼容）。 */
+.contentEditable :global(code),
+.contentEditable :global([class*='_code_']) {
+  background: var(--code-inline-bg);
+  color: var(--code-inline-color);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+/* 旧 <pre> 规则保留（极端情况下可能出现），但 MDXEditor 实际把代码块渲染成
+   CodeMirror（.cm-editor），真正生效的是下面 _codeMirrorWrapper 那段。 */
+.contentEditable :global(pre) {
+  background: var(--bg-code);
+  border: 1px solid var(--border-code);
+  border-radius: 6px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  line-height: 1.5;
+}
+
+.contentEditable :global(pre code) {
+  background: transparent;
+  padding: 0;
+  font-size: 1em;
+}
+
+/* blockquote */
+.contentEditable :global(blockquote) {
+  border-left: 4px solid var(--border-primary);
+  padding-left: 14px;
+  margin: 1em 0;
+  color: var(--text-secondary);
+}
+
+.contentEditable :global(blockquote > p:first-child) { margin-top: 0; }
+.contentEditable :global(blockquote > p:last-child) { margin-bottom: 0; }
+
+/* hr */
+.contentEditable :global(hr) {
+  border: 0;
+  border-top: 1px solid var(--border-secondary);
+  margin: 1.5em 0;
+}
+
+/* table — 关键：MDXEditor 在 edit 模式下把表格包成 <table class="_tableEditor">，
+   除了数据 cell 还会渲染：
+     thead > tr > th._tableToolsColumn  （顶部行第一个角落 cell — 无 _toolCell class）
+     thead > tr > th._toolCell           （每列 ColumnEditor 触发器 — 有 _toolCell）
+     tbody > tr > th._toolCell + ...     （行编辑触发器 / 删除 / 真实数据）
+     tfoot > tr > th + th[data-tool-cell] + th  （左下角 / +addRow / 右下角 — 两侧裸 <th>）
+
+   旧规则 `:not([class*='_toolCell']):not([data-tool-cell])` 漏掉了 _tableToolsColumn
+   和 tfoot 两侧裸 <th>，导致这三个空角落被加上 border 显形成小方块。
+
+   修复：参照 MDXEditor 自己的 scoping，规则收敛到 [class*='_tableEditor'] > tbody >
+   tr > th/td —— 直接排除 thead 和 tfoot 的所有非数据 cell（角落自然不在 tbody 里）。
+   :not([class*='_toolCell']):not([data-tool-cell]) 继续排除 tbody 里的行编辑/删除
+   控件 cell。 */
+.contentEditable :global(table) {
+  border-collapse: collapse;
+  margin: 1em 0;
+  width: 100%;
+}
+
+.contentEditable :global([class*='_tableEditor'] > tbody > tr > th:not([class*='_toolCell']):not([data-tool-cell])),
+.contentEditable :global([class*='_tableEditor'] > tbody > tr > td:not([class*='_toolCell']):not([data-tool-cell])) {
+  border: 1px solid var(--border-secondary);
+  padding: 8px 14px;
+  vertical-align: top;
+}
+
+/* 表头：仅 font-weight 区分，不填色，让 GFM align 语法（th align="center" / "right"）
+   能正常生效。底色保持透明跟官方 demo 一致。 */
+.contentEditable :global([class*='_tableEditor'] > tbody > tr > th:not([class*='_toolCell']):not([data-tool-cell])) {
+  font-weight: 600;
+}
+
+/* 兜底：非 _tableEditor 的 prose 表格（旧 marked fallback 路径不在 .contentEditable
+   里，但万一某一天 MDXEditor 提供 read-only table 不走 _tableEditor 也能 cover） */
+.contentEditable :global(table:not([class*='_tableEditor']) th),
+.contentEditable :global(table:not([class*='_tableEditor']) td) {
+  border: 1px solid var(--border-secondary);
+  padding: 8px 14px;
+  vertical-align: top;
+}
+
+.contentEditable :global(table:not([class*='_tableEditor']) th) {
+  font-weight: 600;
+}
+
+/* row hover 仅对非编辑表格 —— 编辑 _tableEditor 不需要 prose 阅读态高亮 */
+.contentEditable :global(table:not([class*='_tableEditor']) tbody tr:hover) {
+  background: var(--bg-surface);
+}
+
+/* 链接 */
+.contentEditable :global(a) {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.contentEditable :global(a:hover) {
+  color: var(--color-primary-dark);
+}
+
+/* 图片：display block 避免 inline 基线下沉，max-width 限定避免溢出 panel */
+.contentEditable :global(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+  margin: 1em auto;
+}
+
+/* MDXEditor 的 image wrapper 用 inline-block + 宽度自适应，确保编辑/删除浮层定位准确 */
+.contentEditable :global([class*='_imageWrapper']) {
+  display: inline-block;
+  width: -moz-fit-content;
+  width: fit-content;
+  max-width: 100%;
+}
+
+/* 图片右上角的编辑 toolbar（_editImageToolbar）：默认彻底隐藏，hover 图片或聚焦时显形，
+   跟代码块 toolbar / 表格编辑控件保持一致的 hover-fade 阅读体验。 */
+.contentEditable :global([class*='_editImageToolbar']) {
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.contentEditable :global([class*='_imageWrapper']:hover) :global([class*='_editImageToolbar']),
+.contentEditable :global([class*='_imageWrapper']:focus-within) :global([class*='_editImageToolbar']) {
+  opacity: 1;
+}
+
+/* =====================================================================
+   Toolbar — 跟 MDXEditor 官方 demo 视觉对齐
+   ===================================================================== */
+/* toolbar 用横向 overflow 而非 wrap：让 DiffSourceToggleWrapper 能 sticky 在右边
+   "盖"在被滚出视野的 toolbar items 上，跟 MDXEditor 官方行为一致。
+   position: relative 给内部 sticky 元素提供定位上下文。 */
+.container :global([class*='_toolbarRoot']) {
+  background: var(--bg-base-alt);
+  border-bottom: 1px solid var(--border-secondary);
+  padding: 6px 8px;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  align-items: center;
+  position: relative;
+}
+
+/* DiffSourceToggleWrapper 的 SegmentedControl：sticky 钉死右侧 */
+.container :global([class*='_diffSourceToggleWrapper']) {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  position: sticky;
+  right: 0;
+  background: var(--bg-base-alt);
+  padding-left: 12px;
+  flex-shrink: 0;
+  z-index: 1;
+  /* 左侧渐变阴影：暗示有 toolbar items 被遮在下方 */
+  box-shadow: -8px 0 8px -4px rgba(0, 0, 0, 0.08);
+}
+
+.container :global([class*='_diffSourceToggle']) {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-secondary);
+  border-radius: 4px;
+  padding: 1px;
+  display: inline-flex;
+  gap: 1px;
+}
+
+.container :global([class*='_toolbarToggleItem']),
+.container :global([class*='_toolbarButton']) {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.container :global([class*='_toolbarToggleItem'] svg),
+.container :global([class*='_toolbarButton'] svg) {
+  width: 18px;
+  height: 18px;
+  display: block;
+  transition: transform 0.05s ease;
+}
+
+.container :global([class*='_toolbarToggleItem']:hover),
+.container :global([class*='_toolbarButton']:hover) {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+/* 模仿官方"按下时图标位移 1px" 的触感 */
+.container :global([class*='_toolbarToggleItem']:active svg),
+.container :global([class*='_toolbarButton']:active svg) {
+  transform: translate(1px, 1px);
+}
+
+.container :global([class*='_toolbarToggleItem'][data-state='on']),
+.container :global([class*='_toolbarToggleItem'][aria-pressed='true']) {
+  background: var(--color-primary-bg-medium);
+  color: var(--color-primary);
+}
+
+.container :global([class*='_toolbarToggleItem'][disabled]),
+.container :global([class*='_toolbarButton'][disabled]) {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 抵御全局 *:focus { outline: none !important }：用 box-shadow 自给 focus-visible 视觉 */
+.container :global([class*='_toolbarToggleItem']:focus-visible),
+.container :global([class*='_toolbarButton']:focus-visible),
+.container :global([class*='_selectTrigger']:focus-visible) {
+  box-shadow: 0 0 0 2px var(--color-primary-pale);
+  border-color: var(--color-primary);
+}
+
+.container :global([class*='_toolbarSeparator']) {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border-primary);
+  margin: 4px 6px;
+}
+
+/* Block type select 触发器 */
+.container :global([class*='_selectTrigger']) {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-secondary);
+  border-radius: 4px;
+  height: 32px;
+  padding: 0 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.container :global([class*='_selectTrigger']:hover) {
+  background: var(--bg-surface);
+  border-color: var(--border-hover);
+}
+
+.container :global([class*='_selectTrigger'][data-state='open']) {
+  border-color: var(--color-primary);
+}
+
+/* =====================================================================
+   CodeMirror（codeBlockPlugin + codeMirrorPlugin 渲染的代码块容器）
+   原本写的 <pre> 规则不会击中代码块，必须在 _codeMirrorWrapper / .cm-editor 上做。
+   ===================================================================== */
+.container :global([class*='_codeMirrorWrapper']) {
+  position: relative;
+  margin: 1em 0;
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  background: var(--bg-code);
+  overflow: hidden;
+}
+
+/* 代码块右上角 toolbar（含语言切换 + 删除按钮）：
+   默认 opacity 0 完全隐藏（避免对阅读视觉造成任何污染），鼠标 hover 代码块
+   wrapper 或内部 focus（含下拉打开）才整体显形。padding/gap 收紧适合 24px
+   小型 toolbar。 */
+.container :global([class*='_codeMirrorToolbar']) {
+  background: var(--bg-base-alt);
+  border: 1px solid var(--border-secondary);
+  border-top: 0;
+  border-right: 0;
+  border-bottom-left-radius: 4px;
+  padding: 3px 4px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.container :global([class*='_codeMirrorWrapper']:hover) :global([class*='_codeMirrorToolbar']),
+.container :global([class*='_codeMirrorWrapper']:focus-within) :global([class*='_codeMirrorToolbar']) {
+  opacity: 1;
+}
+
+/* 语言选择 trigger 单独瘦身：从 192×32 (MDX 默认 spacing-48) 压到 110×24，字号 11px。
+   长语言名（"TypeScript" 等）超出走 ellipsis，hover 时 toolbar 已浮起看得清；
+   下拉 content (_toolbarCodeBlockLanguageSelectContent) 宽度不动，保留 192px 让列表可读。 */
+.container :global([class*='_toolbarCodeBlockLanguageSelectTrigger']) {
+  width: 110px;
+  height: 24px;
+  font-size: 11px;
+  padding: 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 删除代码块的 icon button 也跟着瘦身保持视觉协调 */
+.container :global([class*='_codeMirrorToolbar'] button) {
+  height: 24px;
+  min-width: 24px;
+  padding: 0 4px;
+}
+
+.container :global(.cm-editor) {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+  background: var(--bg-code);
+  color: var(--text-primary);
+}
+
+/* CodeMirror focused 不再加 inset 描边 —— 代码块自身已有外 border + bg 明确表达
+   "这是一个代码块"，光标位置已经说明 focus 在哪，再加 ring 只是视觉噪音。 */
+.container :global(.cm-editor.cm-focused) {
+  outline: none;
+}
+
+.container :global(.cm-editor .cm-scroller) {
+  font-family: var(--font-mono);
+  padding: 8px 10px;
+}
+
+.container :global(.cm-editor .cm-gutters) {
+  background: var(--bg-base-alt);
+  border-right: 1px solid var(--border-secondary);
+  color: var(--text-muted);
+}
+
+.container :global(.cm-editor .cm-activeLine) {
+  background: var(--color-primary-bg-faint);
+}
+
+.container :global(.cm-editor .cm-activeLineGutter) {
+  background: var(--color-primary-bg-light);
+}
+
+
+/* =====================================================================
+   Placeholder（MDXEditor 内置占位文字）
+   ===================================================================== */
+.container :global([class*='_placeholder']) {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* =====================================================================
+   以下规则匹配 Radix portal 渲染到 document.body 的浮层，必须用全局选择器
+   z-index 选 1500：高于 cc-viewer 所有 chrome (max ~1100) 与 AntD Popover (1030) /
+   Tooltip (1070)；低于 AntD message/notification (2010) 保 toast 永远在最上。
+   1499 给 dialog 遮罩，让 dialog 内容（1500）正好压在自己的遮罩之上。
+   ===================================================================== */
+:global([class*='_selectContainer']),
+:global([class*='_popupContainer']),
+:global([class*='_selectContent']),
+:global([class*='_toolbarCodeBlockLanguageSelectContent']),
+:global([class*='_toolbarNodeKindSelectContainer']),
+:global([class*='_toolbarButtonDropdownContainer']) {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1500;
+  padding: 4px;
+  min-width: 144px;
+}
+
+:global([class*='_selectItem']) {
+  color: var(--text-primary);
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+:global([class*='_selectItem'][data-highlighted]) {
+  background: var(--bg-surface);
+  outline: none;
+}
+
+:global([class*='_selectItem'][data-state='checked']) {
+  background: var(--color-primary-bg-light);
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+/* Popover / Tooltip / Link dialog（Radix 浮层） */
+:global([class*='_popoverContent']),
+:global([class*='_tooltipContent']),
+:global([class*='_linkDialogPopoverContent']),
+:global([class*='_tableColumnEditorPopoverContent']) {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  z-index: 1500;
+  padding: 6px;
+}
+
+/* Modal-like Dialog（image dialog 等带遮罩的） */
+:global([class*='_dialogOverlay']) {
+  z-index: 1499;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+/* MDXEditor 默认给 _dialogContent 设了 display: flex; align-items: center（row 方向），
+   导致 image dialog 这种"Title + 多字段表单"被左右排成两列（Title 撇左、Form 撇右），
+   非常难看。强制改为 column 方向 + stretch 对齐，让 Title 在上、Form 在下，符合
+   常规弹窗布局。_largeDialogContent 默认就是 block，加 column 方向也无害。 */
+:global([class*='_dialogContent']),
+:global([class*='_largeDialogContent']) {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  z-index: 1500;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  min-width: 360px;
+  max-width: 90vw;
+}
+
+/* Title 视觉提示：放大 + 不再 padding-left（默认 padding-left: spacing-2 是为
+   row flex 场景设的，column 下需要去掉避免左缩进偏离） */
+:global([class*='_dialogTitle']) {
+  font-size: 16px;
+  font-weight: 600;
+  padding: 0;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+:global([class*='_dialogContent'] input),
+:global([class*='_linkDialogPopoverContent'] input),
+:global([class*='_textInput']) {
+  background: var(--bg-base-alt);
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+:global([class*='_dialogContent'] input:focus),
+:global([class*='_linkDialogPopoverContent'] input:focus),
+:global([class*='_textInput']:focus) {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-bg-light);
+}
+
+/* Action / Primary / Secondary 按钮（dialog 与 link popover 内部） */
+:global([class*='_actionButton']) {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+:global([class*='_actionButton']:hover) {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+:global([class*='_actionButton']:active) {
+  transform: translate(1px, 1px);
+}
+
+:global([class*='_primaryButton']) {
+  background: var(--color-primary);
+  color: #ffffff;
+  border: 1px solid var(--color-primary);
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s ease;
+}
+
+:global([class*='_primaryButton']:hover) {
+  background: var(--color-primary-dark);
+}
+
+:global([class*='_secondaryButton']) {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+:global([class*='_secondaryButton']:hover) {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+/* =====================================================================
+   Table 编辑浮层 — 阅读体验优先：默认彻底隐藏，hover 表格才浮现
+   MDXEditor 自带规则给这些控件 opacity: 0.15（layered），hover 表格 0.3、单独
+   hover 1。我们用 unlayered 0 完全消隐，对照代码块 toolbar 的 hover-fade 模式
+   保持一致：阅读不被打扰，编辑意图（hover）才看到入口。
+   也撤掉之前自己加的 bg + border —— 那两个属性让控件即使 opacity 0.15 时
+   也能看到色块轮廓，违背"不污染阅读"的目标。
+   保留 transition 让浮起平滑。 */
+.container :global([class*='_tableEditor']) {
+  border-color: var(--border-secondary);
+}
+
+.container :global([class*='_tableEditor'] [class*='_tableColumnEditorTrigger']),
+.container :global([class*='_tableEditor'] [class*='_tableRowEditorTrigger']),
+.container :global([class*='_tableEditor'] [class*='_addRowButton']),
+.container :global([class*='_tableEditor'] [class*='_addColumnButton']),
+.container :global([class*='_tableEditor'] [class*='_iconButton']) {
+  opacity: 0;
+  color: var(--text-secondary);
+  transition: opacity 0.18s ease, color 0.15s ease;
+}
+
+@media (hover: hover) {
+  /* 表格被 hover 时：所有控件半透明显形（提示存在）*/
+  .container :global([class*='_tableEditor']:hover [class*='_tableColumnEditorTrigger']),
+  .container :global([class*='_tableEditor']:hover [class*='_tableRowEditorTrigger']),
+  .container :global([class*='_tableEditor']:hover [class*='_addRowButton']),
+  .container :global([class*='_tableEditor']:hover [class*='_addColumnButton']),
+  .container :global([class*='_tableEditor']:hover [class*='_iconButton']) {
+    opacity: 0.5;
+  }
+
+  /* 单独控件被 hover 时：完全显形 + 主题色提示可点击 */
+  .container :global([class*='_tableEditor'] [class*='_tableColumnEditorTrigger']:hover),
+  .container :global([class*='_tableEditor'] [class*='_tableRowEditorTrigger']:hover),
+  .container :global([class*='_tableEditor'] [class*='_addRowButton']:hover),
+  .container :global([class*='_tableEditor'] [class*='_addColumnButton']:hover),
+  .container :global([class*='_tableEditor'] [class*='_iconButton']:hover) {
+    opacity: 1;
+    color: var(--color-primary);
+  }
+
+  /* 数据 cell 被 focus 时（用户正在编辑该格）所在行/列对应的控件也显形 */
+  .container :global([class*='_tableEditor']:focus-within [class*='_tableColumnEditorTrigger']),
+  .container :global([class*='_tableEditor']:focus-within [class*='_tableRowEditorTrigger']),
+  .container :global([class*='_tableEditor']:focus-within [class*='_addRowButton']),
+  .container :global([class*='_tableEditor']:focus-within [class*='_addColumnButton']),
+  .container :global([class*='_tableEditor']:focus-within [class*='_iconButton']) {
+    opacity: 0.5;
+  }
+}
+
+/* =====================================================================
+   Dark 主题阴影补偿
+   默认 box-shadow 用 rgba(0,0,0,X) 黑色阴影，在 dark 主题（深色背景）上
+   完全不可见，浮层失去"漂浮感"。重写为更深的黑 + 1px 半透明白边定义轮廓。
+   - portal 浮层 (select / popover / dialog) 渲染在 document.body 下，
+     必须用 [data-theme="dark"] document-level 锚点匹配。
+   - sticky DiffSource toggle 在 .container 内，可继续 scope 到 .container。
+   ===================================================================== */
+[data-theme="dark"] :global([class*='_selectContainer']),
+[data-theme="dark"] :global([class*='_popupContainer']),
+[data-theme="dark"] :global([class*='_selectContent']),
+[data-theme="dark"] :global([class*='_toolbarCodeBlockLanguageSelectContent']),
+[data-theme="dark"] :global([class*='_toolbarNodeKindSelectContainer']),
+[data-theme="dark"] :global([class*='_toolbarButtonDropdownContainer']),
+[data-theme="dark"] :global([class*='_popoverContent']),
+[data-theme="dark"] :global([class*='_tooltipContent']),
+[data-theme="dark"] :global([class*='_linkDialogPopoverContent']),
+[data-theme="dark"] :global([class*='_tableColumnEditorPopoverContent']) {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="dark"] :global([class*='_dialogContent']),
+[data-theme="dark"] :global([class*='_largeDialogContent']) {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .container :global([class*='_diffSourceToggleWrapper']) {
+  box-shadow: -8px 0 12px -4px rgba(0, 0, 0, 0.4);
+}

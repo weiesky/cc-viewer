@@ -1,0 +1,9 @@
+/* 把 MDXEditor 自带的 style.css 推进一个 layer。
+   配合 MdxEditorPanel.module.css 里 unlayered 的覆盖规则使用：
+   按 CSS Cascading & Inheritance Level 5 规范，**unlayered 样式优先级永远高于
+   任何 layered 样式**，因此我们的覆盖无需 !important、也无需抬 specificity，
+   就能干净地胜过 MDXEditor 的 baseline（包括它写在 hash class 上的 z-index: 52）。
+
+   注意：@import 必须在文件顶部，且 layer() 语法是浏览器原生 CSS 特性，
+   Vite 6 + lightningcss / postcss 都会保留这层语义，不会内联展开成 unlayered。 */
+@import "@mdxeditor/editor/style.css" layer(mdxeditor-base);

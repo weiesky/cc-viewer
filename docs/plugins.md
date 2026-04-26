@@ -12,7 +12,7 @@ CC-Viewer provides a lightweight plugin mechanism that allows injecting custom l
 mkdir -p ~/.claude/cc-viewer/plugins
 ```
 
-2. Create a plugin file (`.js` or `.mjs`):
+1. Create a plugin file (`.js` or `.mjs`):
 
 ```javascript
 // ~/.claude/cc-viewer/plugins/my-plugin.js
@@ -27,7 +27,7 @@ export default {
 };
 ```
 
-3. Restart cc-viewer. The plugin loads automatically — no `npm install` needed.
+1. Restart cc-viewer. The plugin loads automatically — no `npm install` needed.
 
 ## Plugin Directory
 
@@ -54,10 +54,10 @@ export default {
 };
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | `string` | No | Plugin identifier. Defaults to filename if omitted. Used in `disabledPlugins`. |
-| `hooks` | `object` | Yes | An object mapping hook names to async functions. |
+| Field   | Type     | Required | Description                                                                    |
+| ------- | -------- | -------- | ------------------------------------------------------------------------------ |
+| `name`  | `string` | No       | Plugin identifier. Defaults to filename if omitted. Used in `disabledPlugins`. |
+| `hooks` | `object` | Yes      | An object mapping hook names to async functions.                               |
 
 ## Available Hooks
 
@@ -65,18 +65,18 @@ export default {
 
 Triggered on every HTTP request, after token authentication but before route dispatching. Allows plugins to intercept and handle custom API endpoints.
 
-| Property | Description |
-|----------|-------------|
-| **Type** | Waterfall (serial pipeline) |
-| **Parameters** | `{ req, res, url, method, parsedUrl, handled }` |
-| **Returns** | `{ handled: true }` to short-circuit the request (skip cc-viewer routing) |
-| **Timing** | After token auth, before route dispatch |
+| Property       | Description                                                               |
+| -------------- | ------------------------------------------------------------------------- |
+| **Type**       | Waterfall (serial pipeline)                                               |
+| **Parameters** | `{ req, res, url, method, parsedUrl, handled }`                           |
+| **Returns**    | `{ handled: true }` to short-circuit the request (skip cc-viewer routing) |
+| **Timing**     | After token auth, before route dispatch                                   |
 
-- `req` / `res` — Node.js `IncomingMessage` / `ServerResponse` objects
-- `url` — the pathname (e.g., `/api/plugin/my-endpoint`)
-- `method` — HTTP method (`GET`, `POST`, etc.)
-- `parsedUrl` — the full `URL` object
-- `handled` — starts as `false`; return `{ handled: true }` if your plugin wrote the response
+* `req` / `res` — Node.js `IncomingMessage` / `ServerResponse` objects
+* `url` — the pathname (e.g., `/api/plugin/my-endpoint`)
+* `method` — HTTP method (`GET`, `POST`, etc.)
+* `parsedUrl` — the full `URL` object
+* `handled` — starts as `false`; return `{ handled: true }` if your plugin wrote the response
 
 > **Important:** Only return `{ handled: true }`. Do NOT return overrides for `req`, `res`, `url`, or `method` — the waterfall merge would overwrite them for subsequent plugins.
 
@@ -97,12 +97,12 @@ hooks: {
 
 Triggered at server startup to obtain HTTPS certificate options. If the returned object contains `pfx` or `cert`, the server starts in HTTPS mode; otherwise it falls back to HTTP.
 
-| Property | Description |
-|----------|-------------|
-| **Type** | Waterfall (serial pipeline) |
-| **Parameters** | `{}` (empty object) |
-| **Returns** | `{ pfx, passphrase }` or `{ cert, key }` — TLS options passed to `https.createServer()` |
-| **Timing** | Before the HTTP/HTTPS server is created |
+| Property       | Description                                                                             |
+| -------------- | --------------------------------------------------------------------------------------- |
+| **Type**       | Waterfall (serial pipeline)                                                             |
+| **Parameters** | `{}` (empty object)                                                                     |
+| **Returns**    | `{ pfx, passphrase }` or `{ cert, key }` — TLS options passed to `https.createServer()` |
+| **Timing**     | Before the HTTP/HTTPS server is created                                                 |
 
 ```javascript
 hooks: {
@@ -131,12 +131,12 @@ hooks: {
 
 Triggered when `/api/local-url` is requested (used by the QR code feature).
 
-| Property | Description |
-|----------|-------------|
-| **Type** | Waterfall (serial pipeline) |
-| **Parameters** | `{ url, ip, port, token }` |
-| **Returns** | `{ url }` — the modified URL |
-| **Timing** | When a client requests the local network URL |
+| Property       | Description                                  |
+| -------------- | -------------------------------------------- |
+| **Type**       | Waterfall (serial pipeline)                  |
+| **Parameters** | `{ url, ip, port, token }`                   |
+| **Returns**    | `{ url }` — the modified URL                 |
+| **Timing**     | When a client requests the local network URL |
 
 ```javascript
 hooks: {
@@ -151,22 +151,22 @@ hooks: {
 
 Triggered after the HTTP server starts successfully.
 
-| Property | Description |
-|----------|-------------|
-| **Type** | Parallel (concurrent notification) |
+| Property       | Description                                                 |
+| -------------- | ----------------------------------------------------------- |
+| **Type**       | Parallel (concurrent notification)                          |
 | **Parameters** | `{ port, host, url, ip, token, protocol, httpServer, pty }` |
-| **Returns** | Ignored |
-| **Timing** | After server binds to a port |
+| **Returns**    | Ignored                                                     |
+| **Timing**     | After server binds to a port                                |
 
 The `pty` field provides PTY (terminal) API functions when running in CLI mode. It is `null` when not in CLI mode (e.g., SDK mode).
 
-| `pty` method | Signature | Description |
-|-------------|-----------|-------------|
-| `writeToPty(data)` | `(string) → boolean` | Write data to the PTY stdin. Returns `true` if written. |
-| `writeToPtySequential(chunks, onComplete, opts)` | `(string[], Function, object) → void` | Send chunks sequentially with delays. |
-| `getPtyState()` | `() → { running, exitCode }` | Get current PTY process state. |
-| `getOutputBuffer()` | `() → string` | Get accumulated PTY output (max 200KB). |
-| `onPtyData(cb)` | `(Function) → Function` | Register listener for PTY output. Returns unsubscribe function. |
+| `pty` method                                     | Signature                             | Description                                                     |
+| ------------------------------------------------ | ------------------------------------- | --------------------------------------------------------------- |
+| `writeToPty(data)`                               | `(string) → boolean`                  | Write data to the PTY stdin. Returns `true` if written.         |
+| `writeToPtySequential(chunks, onComplete, opts)` | `(string[], Function, object) → void` | Send chunks sequentially with delays.                           |
+| `getPtyState()`                                  | `() → { running, exitCode }`          | Get current PTY process state.                                  |
+| `getOutputBuffer()`                              | `() → string`                         | Get accumulated PTY output (max 200KB).                         |
+| `onPtyData(cb)`                                  | `(Function) → Function`               | Register listener for PTY output. Returns unsubscribe function. |
 
 ```javascript
 hooks: {
@@ -183,12 +183,12 @@ hooks: {
 
 Triggered before the server shuts down.
 
-| Property | Description |
-|----------|-------------|
-| **Type** | Parallel (concurrent notification) |
-| **Parameters** | `{}` |
-| **Returns** | Ignored |
-| **Timing** | When `stopViewer()` is called |
+| Property       | Description                        |
+| -------------- | ---------------------------------- |
+| **Type**       | Parallel (concurrent notification) |
+| **Parameters** | `{}`                               |
+| **Returns**    | Ignored                            |
+| **Timing**     | When `stopViewer()` is called      |
 
 ```javascript
 hooks: {
@@ -202,12 +202,12 @@ hooks: {
 
 Triggered whenever a new JSONL log entry is detected. Useful for forwarding log data to external HTTP services, analytics platforms, or custom storage.
 
-| Property | Description |
-|----------|-------------|
-| **Type** | Parallel (concurrent notification) |
+| Property       | Description                                                                                                                                                                                                                                   |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Type**       | Parallel (concurrent notification)                                                                                                                                                                                                            |
 | **Parameters** | `entry` — the full JSONL log entry object containing request/response data, token usage, etc. Includes `entry.pid` (Claude process PID: PTY child PID in CLI mode, `process.pid` in hook-injection mode; may be `null` if PTY is not running) |
-| **Returns** | Ignored |
-| **Timing** | When a new entry is appended to the JSONL log file |
+| **Returns**    | Ignored                                                                                                                                                                                                                                       |
+| **Timing**     | When a new entry is appended to the JSONL log file                                                                                                                                                                                            |
 
 ```javascript
 hooks: {
@@ -257,9 +257,9 @@ All plugins execute **concurrently**. Return values are ignored. Used for notifi
 
 Every hook call is wrapped in `try/catch`. If a plugin throws an error:
 
-- The error is logged to stderr: `[CC Viewer] Plugin "name" hook "hookName" error: message`
-- Other plugins and the host application are **not** affected
-- For waterfall hooks, the value passes through to the next plugin unchanged
+* The error is logged to stderr: `[CC Viewer] Plugin "name" hook "hookName" error: message`
+* Other plugins and the host application are **not** affected
+* For waterfall hooks, the value passes through to the next plugin unchanged
 
 ## Disabling Plugins
 
@@ -312,7 +312,7 @@ export default {
 
 ## Notes
 
-- Plugins are loaded once at server startup. Adding/removing plugins requires a restart.
-- If the plugins directory does not exist, the loader silently returns with zero overhead.
-- Plugin files are sorted by filename before loading, which determines waterfall execution order.
-- Use filename prefixes (e.g., `00-first.js`, `99-last.js`) to control execution order.
+* Plugins are loaded once at server startup. Adding/removing plugins requires a restart.
+* If the plugins directory does not exist, the loader silently returns with zero overhead.
+* Plugin files are sorted by filename before loading, which determines waterfall execution order.
+* Use filename prefixes (e.g., `00-first.js`, `99-last.js`) to control execution order.
