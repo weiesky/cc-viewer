@@ -35,6 +35,7 @@ ccv                    # == claude（交互模式）
 作者本人最常用的命令是
 ```
 ccv -c --d             # == claude --continue --dangerously-skip-permissions
+# ccv 透传所有claude code 的启动参数，你可以自己任意组合使用
 ```
 
 编程模式启动以后，会主动打开web页面。
