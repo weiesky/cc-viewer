@@ -314,6 +314,10 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
   const [mdxFeatureEnabled] = useState(readMdxFeatureFlag);
   const [extensionDetected, setExtensionDetected] = useState(false);
   const [forceMdxOverride, setForceMdxOverride] = useState(false);
+  // MDXEditor 运行时解析失败（例如文件含 <system-reminder> 这类自定义 JSX 标签，
+  // mdExtensionDetect 的正则白名单覆盖不到）时置 true，触发降级到旧 marked 渲染。
+  // 每次切文件都会在 loadFileContent 里重置——单文件失败不污染其他文件。
+  const [mdxParseErrored, setMdxParseErrored] = useState(false);
   const containerRef = useRef(null);
   const mounted = useRef(true);
   const saveTimeoutRef = useRef(null);
@@ -324,6 +328,12 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
   const downloadWrapRef = useRef(null);
   const editorWrapperRef = useRef(null);
   const mdxRef = useRef(null);
+  // 解析失败 1-frame flash 守卫：MDXEditor 在同一 React commit 里既触发 onError，
+  // 又把红色 "Parsing of the following markdown structure failed" 横幅写进 DOM。
+  // setState 走下一帧才生效，浏览器可能在中间 paint 一次，用户看到一闪而过的红
+  // 横幅。在 onError 同步把 wrapper.style.display='none'，让中间 paint 时 wrapper
+  // 已经隐藏；下一帧 mdxParseErrored=true 让 wrapper 直接卸载，inline style 失效。
+  const mdxWrapperRef = useRef(null);
   // 总是反映最新 filePath（不通过 useCallback closure），doSave 完成回调用它做
   // "保存中切文件 race" 的兜底比对：保存时 snapshot 当前 filePath，保存完成后
   // 若 filePathRef.current 已变（用户切到别的文件），不再 setContent，避免把
@@ -336,7 +346,7 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
   // 「使用 MDX 编辑」= flag 开 + 非移动端 + (无扩展语法 OR 用户强制覆盖)
   // 移动端直接降级到旧 marked 渲染：屏幕小 + 触屏体验差 + bundle 加载成本高，
   // GUI 编辑能力性价比不足，统一走 fallback 预览路径。
-  const useMdxEditor = isMdFile && mdxFeatureEnabled && !isMobile && (!extensionDetected || forceMdxOverride);
+  const useMdxEditor = isMdFile && mdxFeatureEnabled && !isMobile && (!extensionDetected || forceMdxOverride) && !mdxParseErrored;
   // 「展示旧 marked 预览」= viewMode='markdown' && !useMdx
   const useLegacyPreview = isMdFile && viewMode === 'markdown' && !useMdxEditor;
 
@@ -398,6 +408,23 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
     setLineCount(md.split('\n').length);
   }, []);
 
+  // MDXEditor 解析失败：标志置位 + 一次性 toast。useMdxEditor 条件在下一次渲染就把
+  // <MdxEditorPanel> 卸载，渲染回旧 marked 预览路径——用户看到的不是红色错误横幅，
+  // 而是和 extensionDetected 命中时一致的"自动降级"体验。
+  const handleMdxParseError = useCallback(() => {
+    // 同步隐藏 wrapper（详见 mdxWrapperRef 注释）—— 必须在 setState 之前，否则浏
+    // 览器可能在 React 下一帧 commit 之前 paint 一次红横幅。
+    if (mdxWrapperRef.current) {
+      mdxWrapperRef.current.style.display = 'none';
+    }
+    setMdxParseErrored(true);
+    try {
+      message.open({ key: 'mdxParseFallback', type: 'info', content: i18n('ui.mdEditor.parseFallbackToast') });
+    } catch {
+      // 没有 antd App context 也无所谓——降级本身已经发生
+    }
+  }, []);
+
   // viewMode 切换前的 dirty 守护：弹 confirm 让用户保存或丢弃
   const requestViewModeSwitch = useCallback((next) => {
     if (next === viewMode) return;
@@ -425,7 +452,14 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
       okText: i18n('ui.mdEditor.forceGuiEdit'),
       cancelText: i18n('ui.mdEditor.unsavedConfirmKeep'),
       okButtonProps: { danger: true },
-      onOk: () => setForceMdxOverride(true),
+      onOk: () => {
+        // 同时清掉 mdxParseErrored 锁：用户主动 force 时，让 useMdxEditor 重新走全
+        // 5 个合取条件的求值，否则 force 按钮会被 `&& !mdxParseErrored` 继续否决，
+        // 表面看点了没反应。重试本身可能再次失败，但那是 onError 重新触发的事——
+        // 不要在 force 这一层把 user intent 静默吞掉。
+        setForceMdxOverride(true);
+        setMdxParseErrored(false);
+      },
     });
   }, []);
 
@@ -517,9 +551,10 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
     setError(null);
     setLoading(true);
     setLineCount(0);
-    // 切换文件时重置 MDX 相关 state，避免上一个文件的扩展检测/强制覆盖跨文件污染
+    // 切换文件时重置 MDX 相关 state，避免上一个文件的扩展检测/强制覆盖/解析错误跨文件污染
     setExtensionDetected(false);
     setForceMdxOverride(false);
+    setMdxParseErrored(false);
 
     fetch(apiUrl(`/api/file-content?path=${encodeURIComponent(filePath)}${editorSession ? '&editorSession=true' : ''}`))
       .then((r) => {
@@ -755,14 +790,17 @@ export default function FileContentView({ filePath, onClose, editorSession, scro
         {error && <div className={styles.error}>{error}</div>}
         {loading && !error && <div className={styles.loading}>{i18n('ui.loading')}</div>}
         {!loading && content !== null && viewMode === 'markdown' && isMdFile && useMdxEditor && (
-          <Suspense fallback={<div className={styles.loading}>{i18n('ui.loading')}</div>}>
-            <MdxEditorPanel
-              key={filePath}
-              ref={mdxRef}
-              initialMarkdown={content}
-              onChange={handleMdxChange}
-            />
-          </Suspense>
+          <div ref={mdxWrapperRef} style={{ display: 'contents' }}>
+            <Suspense fallback={<div className={styles.loading}>{i18n('ui.loading')}</div>}>
+              <MdxEditorPanel
+                key={filePath}
+                ref={mdxRef}
+                initialMarkdown={content}
+                onChange={handleMdxChange}
+                onParseError={handleMdxParseError}
+              />
+            </Suspense>
+          </div>
         )}
         {!loading && content !== null && useLegacyPreview && (
           <div ref={markdownPreviewRef} className={styles.markdownPreview} dangerouslySetInnerHTML={{ __html: renderMarkdown(isDirty ? currentContent : content) }} />

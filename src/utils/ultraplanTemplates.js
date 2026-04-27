@@ -43,7 +43,7 @@ Your final plan must include the following elements:
 - Potential risks and their corresponding mitigation strategies.
 
 6. Upon the successful completion of the final plan's execution:
-If code changes have been made and the project is Git-based, invoke \`TeamCreate\` to assemble a "Code Review Team." The team's objective is to analyze the current Git change log and validate the modifications from various perspectives and roles, specifically to:
+If code changes have been made and the project is Git-based, invoke \`TeamCreate\` to assemble an "UltraReview" team. The team's objective is to analyze the current Git change log and validate the modifications from various perspectives and roles, specifically to:
 - Confirm that the original requirements and objectives have been met;
 - Review any newly added code for potential side effects or regressions that might disrupt existing functionality;
 - Review the implemented code for any oversights or errors.

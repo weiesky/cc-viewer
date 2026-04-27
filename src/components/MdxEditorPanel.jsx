@@ -66,7 +66,7 @@ const CODE_BLOCK_LANGUAGES = {
 // 理论上会让 FileContentView 整片白屏。实际触发概率极低（标准 markdown + extension 检测
 // 已先 fallback 走旧 marked），且 React 18 的 root error boundary 行为不稳定，故 v2 跟进。
 const MdxEditorPanel = forwardRef(function MdxEditorPanel(
-  { initialMarkdown, onChange, onError },
+  { initialMarkdown, onChange, onError, onParseError },
   ref,
 ) {
   const editorRef = useRef(null);
@@ -114,6 +114,15 @@ const MdxEditorPanel = forwardRef(function MdxEditorPanel(
         ref={editorRef}
         markdown={initialMarkdown ?? ''}
         onChange={onChange}
+        onError={(payload) => {
+          // MDXEditor 在解析到无法识别的 mdast 节点（如自定义 JSX 标签 <system-reminder>）
+          // 时会触发；payload 形如 { error: string, source: string }。我们把信号上抛给
+          // 父组件，让 FileContentView 自动降级到旧 marked 渲染——避免用户看到红色
+          // "Parsing of the following markdown structure failed" 横幅。
+          if (typeof onParseError === 'function') {
+            try { onParseError(payload); } catch { /* swallow — fallback 路径不能再抛 */ }
+          }
+        }}
         translation={translation}
         contentEditableClassName={styles.contentEditable}
         plugins={[

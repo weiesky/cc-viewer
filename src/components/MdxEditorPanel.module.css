@@ -631,9 +631,23 @@
    z-index 选 1500：高于 cc-viewer 所有 chrome (max ~1100) 与 AntD Popover (1030) /
    Tooltip (1070)；低于 AntD message/notification (2010) 保 toast 永远在最上。
    1499 给 dialog 遮罩，让 dialog 内容（1500）正好压在自己的遮罩之上。
+
+   _popupContainer 单独处理：MDXEditor 把它作为 portal 根节点常驻挂在 <body> 下，
+   即便没有任何 popover 打开也存在。如果给它 padding/border 样式，空容器会被渲染成
+   一条 padding(4)+border(2)+min-width 的可见 strip——撑出 ~10px 高度让全页面出
+   现纵向滚动条。所以这里只把它压成 position:absolute 0×0 的"占位"节点，真实
+   popover 在它内部用 Radix 自己的 fixed/transform 定位，不受影响。
    ===================================================================== */
+:global([class*='_popupContainer']) {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  z-index: 1500;
+}
+
 :global([class*='_selectContainer']),
-:global([class*='_popupContainer']),
 :global([class*='_selectContent']),
 :global([class*='_toolbarCodeBlockLanguageSelectContent']),
 :global([class*='_toolbarNodeKindSelectContainer']),
@@ -853,7 +867,6 @@
    - sticky DiffSource toggle 在 .container 内，可继续 scope 到 .container。
    ===================================================================== */
 [data-theme="dark"] :global([class*='_selectContainer']),
-[data-theme="dark"] :global([class*='_popupContainer']),
 [data-theme="dark"] :global([class*='_selectContent']),
 [data-theme="dark"] :global([class*='_toolbarCodeBlockLanguageSelectContent']),
 [data-theme="dark"] :global([class*='_toolbarNodeKindSelectContainer']),
