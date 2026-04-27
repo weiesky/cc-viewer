@@ -1,0 +1,269 @@
+.tabBarContainer {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  flex-shrink: 0;
+  background: #1a1a1a;
+  border-top: 1px solid var(--border-primary);
+  padding: 0 4px;
+  gap: 2px;
+  /* Prevent iOS overscroll from bleeding through the tab bar */
+  overscroll-behavior: none;
+}
+
+.dashboardHandle {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 6px;
+  color: #60a5fa;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.dashboardHandle:hover {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #93bbfd;
+}
+
+.dashboardHandle:active {
+  background: rgba(59, 130, 246, 0.25);
+  color: var(--text-primary);
+}
+
+.tabScroll {
+  flex: 1;
+  display: flex;
+  overflow-x: auto;
+  gap: 4px;
+  padding: 0 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.tabScroll::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  min-width: 60px;
+  max-width: 140px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.tab:active {
+  background: var(--bg-surface);
+}
+
+.tabActive {
+  background: var(--bg-surface);
+  border-color: var(--color-primary);
+  color: var(--text-primary);
+}
+
+.tabTmux {
+  border-color: rgba(74, 222, 128, 0.35);
+}
+
+.tabTmux.tabActive {
+  border-color: #4ade80;
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.statusRunning {
+  background: #4ade80;
+  box-shadow: 0 0 4px rgba(74, 222, 128, 0.4);
+}
+
+.statusExited {
+  background: #666;
+}
+
+.tabLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.closeBtn {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: auto;
+}
+
+/* Detach button for tmux tabs -- visible on hover */
+.detachBtn {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: #f59e0b;
+  font-size: 11px;
+  line-height: 1;
+  margin-left: auto;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.tab:hover .detachBtn {
+  opacity: 1;
+}
+
+.detachBtn:hover {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+/* PC close button -- visible on hover */
+.pcCloseBtn {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--text-muted);
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.tab:hover .pcCloseBtn {
+  opacity: 1;
+}
+
+.pcCloseBtn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ef4444;
+}
+
+/* Inline rename input */
+.tabRenameInput {
+  width: 80px;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid var(--color-primary);
+  border-radius: 3px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  min-width: 40px;
+}
+
+.addBtn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px dashed var(--border-secondary);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.addBtn:active {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* Long press close confirmation */
+.longPressOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.longPressCard {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-hover);
+  border-radius: 12px;
+  padding: 20px 24px;
+  min-width: 240px;
+  text-align: center;
+}
+
+.longPressText {
+  color: var(--text-primary);
+  font-size: 14px;
+  margin: 0 0 16px 0;
+}
+
+.longPressActions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.longPressCancel {
+  padding: 8px 20px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.longPressConfirm {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 6px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  min-height: 36px;
+}

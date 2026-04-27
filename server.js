@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import { createConnection } from 'node:net';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, watchFile, unwatchFile, statSync, readdirSync, renameSync, unlinkSync, rmSync, openSync, readSync, closeSync, realpathSync, mkdirSync, createReadStream, cpSync, copyFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, extname, resolve, basename } from 'node:path';
@@ -72,19 +72,19 @@ const _maskProfiles = (data) => {
 };
 const _isMasked = (k) => typeof k === 'string' && /^\*{4}.{0,4}$/.test(k);
 
-// 获取 Claude 进程 PID（CLI 模式下从 pty-manager 获取）
-let _getPtyPidFn = null;
+// 获取 Claude 进程 PID（CLI 模式下从 terminal-manager 获取）
+let _getTerminalPidFn = null;
 function getClaudePid() {
   if (!isCliMode) return process.pid;
-  if (_getPtyPidFn) return _getPtyPidFn();
-  // lazy load 尚未完成，尝试同步获取（pty-manager 可能已被其他路径加载）
+  if (_getTerminalPidFn) return _getTerminalPidFn('default');
+  // lazy load 尚未完成，尝试同步获取（terminal-manager 可能已被其他路径加载）
   return null;
 }
 if (isCliMode) {
-  import('./pty-manager.js').then(m => {
-    _getPtyPidFn = m.getPtyPid;
+  import('./terminal-manager.js').then(m => {
+    _getTerminalPidFn = m.getTerminalPid;
   }).catch(err => {
-    console.error('[CC Viewer] Failed to load pty-manager for PID tracking:', err.message);
+    console.error('[CC Viewer] Failed to load terminal-manager for PID tracking:', err.message);
   });
 }
 
@@ -137,6 +137,16 @@ const _editorCleanupTimer = setInterval(() => {
   }
 }, 60000);
 _editorCleanupTimer.unref(); // Don't keep process alive for cleanup
+
+// Security helper: timing-safe token comparison to prevent timing attacks
+function safeTokenCompare(a, b) {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(String(a));
+  const bufB = Buffer.from(String(b));
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
 let terminalWss = null; // WebSocketServer reference for broadcasting
 let _writeToPty = null; // PTY write function reference (set by setupTerminalWebSocket)
 let _onPtyData = null;  // PTY data listener registration (set by setupTerminalWebSocket)
@@ -277,7 +287,7 @@ async function handleRequest(req, res) {
   const isStaticAsset = url.startsWith('/assets/') || url === '/favicon.ico';
   if (!isLocal && !isStaticAsset) {
     const urlToken = parsedUrl.searchParams.get('token');
-    if (urlToken !== ACCESS_TOKEN) {
+    if (!safeTokenCompare(urlToken, ACCESS_TOKEN)) {
       res.writeHead(403, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Forbidden: invalid token' }));
       return;
@@ -708,9 +718,10 @@ async function handleRequest(req, res) {
         // 启动 PTY
         const proxyPort = process.env.CCV_PROXY_PORT;
         if (proxyPort) {
-          const { spawnClaude } = await import('./pty-manager.js');
+          const { spawnClaude, createTerminal } = await import('./terminal-manager.js');
+          createTerminal('default');
           const mergedArgs = [..._workspaceClaudeArgs, ...(Array.isArray(launchExtraArgs) ? launchExtraArgs : [])];
-          await spawnClaude(parseInt(proxyPort), wsPath, mergedArgs, _workspaceClaudePath, _workspaceIsNpmVersion, actualPort, serverProtocol);
+          await spawnClaude('default', parseInt(proxyPort), wsPath, mergedArgs, _workspaceClaudePath, _workspaceIsNpmVersion, actualPort, serverProtocol);
         }
 
         _workspaceLaunched = true;
@@ -783,8 +794,8 @@ async function handleRequest(req, res) {
   }
 
   if (url === '/api/workspaces/stop' && method === 'POST') {
-    import('./pty-manager.js').then(({ killPty }) => {
-      killPty();
+    import('./terminal-manager.js').then(({ killTerminal }) => {
+      killTerminal('default');
 
       // 停止日志监听
       for (const logFile of getWatchedFiles().keys()) {
@@ -808,6 +819,199 @@ async function handleRequest(req, res) {
     }).catch(err => {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: err.message }));
+    });
+    return;
+  }
+
+  // ---- Multi-terminal REST API ----
+  if (url === '/api/terminals' && method === 'GET') {
+    import('./terminal-manager.js').then(({ listTerminals }) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(listTerminals()));
+    }).catch(err => {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    });
+    return;
+  }
+
+  if (url.startsWith('/api/terminals/') && url.endsWith('/preview') && method === 'GET') {
+    const parts = url.split('/');
+    // /api/terminals/:tid/preview
+    const tid = decodeURIComponent(parts[3]);
+    const linesParam = parsedUrl.searchParams.get('lines');
+    const lines = linesParam ? parseInt(linesParam, 10) : 5;
+    import('./terminal-manager.js').then(({ getTerminalBufferPreview }) => {
+      const preview = getTerminalBufferPreview(tid, lines);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ tid, preview }));
+    }).catch(err => {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    });
+    return;
+  }
+
+  // Extract all URLs from terminal buffers (full buffer, handles line wrapping)
+  if (url === '/api/terminal-urls' && method === 'GET') {
+    const tidParam = parsedUrl.searchParams.get('tid'); // optional: specific terminal
+    import('./terminal-manager.js').then(({ listTerminals, getTerminalBuffer }) => {
+      const terminals = tidParam ? [{ tid: tidParam }] : listTerminals();
+      const allUrls = new Set();
+      for (const t of terminals) {
+        let buf = getTerminalBuffer(t.tid);
+        if (!buf) continue;
+        // Only scan last 5000 chars to get recent/relevant URLs
+        if (buf.length > 5000) buf = buf.slice(-5000);
+        // Strip ANSI escapes + DELETE line breaks (not replace with space)
+        // so wrapped URLs reassemble naturally
+        const clean = buf
+          .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+          .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
+          .replace(/\x1b[()][AB012]/g, '')
+          .replace(/\x1b\[\?[0-9;]*[hl]/g, '')
+          .replace(/[\r\n]/g, '');
+        const matches = clean.match(/https?:\/\/[^\s<>"')\]]+/g);
+        if (matches) matches.forEach(u => allUrls.add(u));
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ urls: [...allUrls] }));
+    }).catch(err => {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    });
+    return;
+  }
+
+  // ─── Local tmux session discovery ───────────────────────────────
+  if (url === '/api/local-terminals' && method === 'GET') {
+    (async () => {
+      try {
+        // 1. Locate tmux binary
+        let tmuxPath;
+        try {
+          const { stdout } = await execFileAsync('which', ['tmux'], { timeout: 2000 });
+          tmuxPath = stdout.trim();
+        } catch {
+          // tmux not installed
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ tmux: { available: false, sessions: [] } }));
+          return;
+        }
+        if (!tmuxPath) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ tmux: { available: false, sessions: [] } }));
+          return;
+        }
+
+        // 2. List sessions
+        let sessionsRaw;
+        try {
+          const { stdout } = await execFileAsync(tmuxPath, [
+            'list-sessions', '-F',
+            '#{session_name}\t#{session_id}\t#{session_windows}\t#{session_attached}\t#{session_created}'
+          ], { timeout: 3000 });
+          sessionsRaw = stdout.trim();
+        } catch {
+          // No tmux server running or no sessions
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ tmux: { available: true, sessions: [] } }));
+          return;
+        }
+        if (!sessionsRaw) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ tmux: { available: true, sessions: [] } }));
+          return;
+        }
+
+        const sessions = [];
+        const sessionLines = sessionsRaw.split('\n').filter(Boolean);
+
+        for (const line of sessionLines) {
+          const [name, id, windows, attached, created] = line.split('\t');
+          if (!name) continue;
+
+          // 3. List panes for this session
+          let panes = [];
+          try {
+            const { stdout: panesOut } = await execFileAsync(tmuxPath, [
+              'list-panes', '-t', name, '-F',
+              '#{pane_index}\t#{pane_pid}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_width}x#{pane_height}'
+            ], { timeout: 3000 });
+            const paneLines = panesOut.trim().split('\n').filter(Boolean);
+            for (const paneLine of paneLines) {
+              const [paneIndex, panePid, paneCmd, paneCwd, paneSize] = paneLine.split('\t');
+
+              // 4. Capture last 3 lines of each pane as preview
+              let preview = '';
+              try {
+                const { stdout: captureOut } = await execFileAsync(tmuxPath, [
+                  'capture-pane', '-t', `${name}:.${paneIndex}`, '-p'
+                ], { timeout: 3000 });
+                // Take last 3 non-empty lines
+                const allLines = captureOut.split('\n');
+                const nonEmpty = allLines.filter(l => l.trim().length > 0);
+                preview = nonEmpty.slice(-3).join('\n');
+              } catch {
+                // capture-pane may fail for some panes
+              }
+
+              panes.push({
+                index: parseInt(paneIndex, 10) || 0,
+                pid: parseInt(panePid, 10) || 0,
+                command: (paneCmd || '').trim(),
+                cwd: (paneCwd || '').trim(),
+                size: (paneSize || '').trim(),
+                preview
+              });
+            }
+          } catch {
+            // list-panes failed for this session
+          }
+
+          sessions.push({
+            name: (name || '').trim(),
+            id: (id || '').trim(),
+            windows: parseInt(windows, 10) || 0,
+            attached: attached === '1',
+            created: parseInt(created, 10) || 0,
+            panes
+          });
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ tmux: { available: true, sessions } }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    })();
+    return;
+  }
+
+  // ─── Open tmux session in local Terminal.app (macOS only, localhost only) ──
+  if (url === '/api/open-local-terminal' && method === 'POST') {
+    // Security: token auth already enforced at HTTP layer
+    // This API runs osascript on the server (Mac), safe for authenticated remote clients
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { sessionName } = JSON.parse(body);
+        if (!sessionName) throw new Error('sessionName required');
+        // Sanitize session name (alphanumeric, dash, underscore only)
+        if (!/^[a-zA-Z0-9_-]+$/.test(sessionName)) throw new Error('Invalid session name');
+
+        await execFileAsync('osascript', ['-e',
+          `tell application "Terminal" to do script "tmux attach-session -t ${sessionName}"`
+        ], { timeout: 5000 });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
     });
     return;
   }
@@ -3066,13 +3270,13 @@ export async function startViewer() {
           // 通知插件服务器已启动
           let ptyApi = null;
           if (isCliMode) {
-            const pm = await import('./pty-manager.js');
+            const tm = await import('./terminal-manager.js');
             ptyApi = {
-              writeToPty: pm.writeToPty,
-              writeToPtySequential: pm.writeToPtySequential,
-              getPtyState: pm.getPtyState,
-              getOutputBuffer: pm.getOutputBuffer,
-              onPtyData: pm.onPtyData,
+              writeToPty: (data) => tm.writeToTerminal('default', data),
+              writeToPtySequential: (chunks, cb, opts) => tm.writeToTerminalSequential('default', chunks, cb, opts),
+              getPtyState: () => tm.getTerminalState('default') || { running: false },
+              getOutputBuffer: () => tm.getTerminalBuffer('default') || '',
+              onPtyData: (cb) => tm.onTerminalData('default', cb),
             };
           }
           await runParallelHook('serverStarted', {
@@ -3139,21 +3343,31 @@ export async function startViewer() {
 async function setupTerminalWebSocket(httpServer) {
   try {
     const { WebSocketServer } = await import('ws');
-    const { writeToPty, writeToPtySequential, resizePty, onPtyData, onPtyExit, getPtyState, getOutputBuffer, getCurrentWorkspace, spawnShell } = await import('./pty-manager.js');
-    _writeToPty = writeToPty;
-    _onPtyData = onPtyData;
+    const tm = await import('./terminal-manager.js');
+    const {
+      createTerminal, writeToTerminal, writeToTerminalSequential,
+      resizeTerminal, onTerminalData, onTerminalExit,
+      getTerminalState, getTerminalBuffer, listTerminals,
+      spawnClaude, spawnShell, killTerminal, removeTerminal,
+      renameTerminal, attachTmux, createTmuxSession,
+    } = tm;
+
+    // Backward compat: expose write/data for theme toggle via _writeToPty/_onPtyData
+    _writeToPty = (data) => writeToTerminal('default', data);
+    _onPtyData = (cb) => onTerminalData('default', cb);
+
     const wss = new WebSocketServer({ noServer: true });
     terminalWss = wss;
 
     // 多客户端共享 PTY 的尺寸冲突解决：
     // 移动端优先——只要有移动端在线，PTY 始终使用移动端尺寸，
     // PC 端的 resize 仅存储不生效，避免宽屏尺寸导致移动端乱码。
-    // PC 端显示窄输出但完全可读，移动端永远不会乱码。
     let activeWs = null;              // 当前活跃的 WebSocket 连接
     const clientSizes = new Map();    // ws → { cols, rows }
     const mobileClients = new Set();  // 移动端连接集合
+    // Track per-terminal data/exit listener cleanup functions per ws
+    const clientListenerCleanups = new Map(); // ws → Map<tid, { removeData, removeExit }>
 
-    // 找到一个在线的移动端并返回其尺寸
     const getMobileSize = () => {
       for (const mws of mobileClients) {
         if (mws.readyState === 1) {
@@ -3164,9 +3378,63 @@ async function setupTerminalWebSocket(httpServer) {
       return null;
     };
 
+    // Subscribe a WS client to a terminal's data/exit events
+    const subscribeToTerminal = (ws, tid) => {
+      let cleanups = clientListenerCleanups.get(ws);
+      if (!cleanups) { cleanups = new Map(); clientListenerCleanups.set(ws, cleanups); }
+      if (cleanups.has(tid)) return; // already subscribed
+
+      const removeData = onTerminalData(tid, (data) => {
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: 'data', tid, data }));
+        }
+      });
+      const removeExit = onTerminalExit(tid, (exitCode) => {
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: 'exit', tid, exitCode }));
+        }
+      });
+      cleanups.set(tid, { removeData, removeExit });
+    };
+
+    // Unsubscribe a WS client from a terminal
+    const unsubscribeFromTerminal = (ws, tid) => {
+      const cleanups = clientListenerCleanups.get(ws);
+      if (cleanups) {
+        const fns = cleanups.get(tid);
+        if (fns) { fns.removeData(); fns.removeExit(); cleanups.delete(tid); }
+      }
+    };
+
+    // Cleanup all subscriptions for a WS client
+    const cleanupClient = (ws) => {
+      const cleanups = clientListenerCleanups.get(ws);
+      if (cleanups) {
+        for (const { removeData, removeExit } of cleanups.values()) {
+          removeData(); removeExit();
+        }
+        cleanups.clear();
+      }
+      clientListenerCleanups.delete(ws);
+      clientSizes.delete(ws);
+      mobileClients.delete(ws);
+    };
+
     httpServer.on('upgrade', (req, socket, head) => {
-      const pathname = new URL(req.url, `${serverProtocol}://${req.headers.host}`).pathname;
+      const upgradeUrl = new URL(req.url, `${serverProtocol}://${req.headers.host}`);
+      const pathname = upgradeUrl.pathname;
       if (pathname === '/ws/terminal') {
+        // Token auth for non-local connections on WebSocket upgrade
+        const remoteIp = req.socket.remoteAddress;
+        const isLocal = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1';
+        if (!isLocal) {
+          const urlToken = upgradeUrl.searchParams.get('token');
+          if (!safeTokenCompare(urlToken, ACCESS_TOKEN)) {
+            socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+            socket.destroy();
+            return;
+          }
+        }
         wss.handleUpgrade(req, socket, head, (ws) => {
           wss.emit('connection', ws, req);
         });
@@ -3176,88 +3444,221 @@ async function setupTerminalWebSocket(httpServer) {
     });
 
     wss.on('connection', (ws) => {
-      // 发送当前 PTY 状态
-      const state = getPtyState();
-      ws.send(JSON.stringify({ type: 'state', ...state }));
+      // On connect, send the list of all terminals
+      const allTerminals = listTerminals();
+      ws.send(JSON.stringify({ type: 'terminal-list', terminals: allTerminals }));
 
-      // 发送历史输出缓冲
-      const buffer = getOutputBuffer();
-      if (buffer) {
-        ws.send(JSON.stringify({ type: 'data', data: buffer }));
+      // Auto-subscribe to 'default' terminal for backward compatibility
+      const defaultState = getTerminalState('default');
+      if (defaultState) {
+        ws.send(JSON.stringify({ type: 'state', tid: 'default', ...defaultState }));
+        const defaultBuffer = getTerminalBuffer('default');
+        if (defaultBuffer) {
+          ws.send(JSON.stringify({ type: 'data', tid: 'default', data: defaultBuffer }));
+        }
+        subscribeToTerminal(ws, 'default');
       }
 
-      // PTY 输出 → WebSocket
-      const removeDataListener = onPtyData((data) => {
-        if (ws.readyState === 1) {
-          ws.send(JSON.stringify({ type: 'data', data }));
-        }
-      });
-
-      // PTY 退出 → WebSocket
-      const removeExitListener = onPtyExit((exitCode) => {
-        if (ws.readyState === 1) {
-          ws.send(JSON.stringify({ type: 'exit', exitCode }));
-        }
-      });
-
-      // WebSocket → PTY
+      // WebSocket message handler (with multi-terminal routing)
       ws.on('message', async (raw) => {
         try {
           const msg = JSON.parse(raw.toString());
+          // Route tid: default to 'default' for backward compat
+          const tid = msg.tid || 'default';
+
           if (msg.type === 'input') {
-            // PTY 已退出时，自动 spawn 交互式 shell
-            const state = getPtyState();
-            if (!state.running) {
-              try {
-                await spawnShell();
-              } catch {}
+            const state = getTerminalState(tid);
+            if (state && !state.running) {
+              try { await spawnShell(tid); } catch {}
             }
-            // 发送 input 的客户端成为活跃客户端
             if (activeWs !== ws) {
               activeWs = ws;
-              // 切换活跃客户端时，如果有移动端在线则保持移动端尺寸，
-              // 否则切换到新活跃客户端的尺寸
               const mSize = getMobileSize();
               if (mSize) {
-                resizePty(mSize.cols, mSize.rows);
+                resizeTerminal(tid, mSize.cols, mSize.rows);
               } else {
                 const size = clientSizes.get(ws);
                 if (size) {
-                  resizePty(size.cols, size.rows);
+                  resizeTerminal(tid, size.cols, size.rows);
                 }
               }
             }
-            // 拦截连续 Ctrl+C：2秒内连按2次则阻止并提醒，避免误退出 CLI
+            // 拦截连续 Ctrl+C：2秒内连按2次则阻止并提醒
             if (msg.data === '\x03') {
               const now = Date.now();
               if (!ws._ctrlCLastTime) ws._ctrlCLastTime = 0;
               if (now - ws._ctrlCLastTime < 2000) {
                 ws._ctrlCLastTime = 0;
                 try { ws.send(JSON.stringify({ type: 'toast', message: t('ui.terminal.ctrlCBlocked') })); } catch {}
-                // 不发送第二次 Ctrl+C 到 PTY
               } else {
                 ws._ctrlCLastTime = now;
-                writeToPty(msg.data);
+                writeToTerminal(tid, msg.data);
               }
             } else {
-              writeToPty(msg.data);
+              writeToTerminal(tid, msg.data);
             }
           } else if (msg.type === 'input-sequential') {
-            // Programmatic sequential input: send chunks one by one, waiting for PTY ACK
-            const state = getPtyState();
-            if (!state.running) {
-              try { await spawnShell(); } catch {}
+            const state = getTerminalState(tid);
+            if (state && !state.running) {
+              try { await spawnShell(tid); } catch {}
             }
             const chunks = msg.chunks;
             if (Array.isArray(chunks) && chunks.length > 0) {
-              writeToPtySequential(chunks, (ok) => {
+              writeToTerminalSequential(tid, chunks, (ok) => {
                 try {
-                  ws.send(JSON.stringify({ type: 'input-sequential-done', ok }));
+                  ws.send(JSON.stringify({ type: 'input-sequential-done', tid, ok }));
                 } catch {}
               }, { settleMs: msg.settleMs || 150 });
             }
+
+          // ---- Multi-terminal management messages ----
+          } else if (msg.type === 'terminal-create') {
+            try {
+              const defaultCwd = homedir();
+              let spawnCwd = defaultCwd;
+              if (msg.cwd) {
+                try {
+                  const resolved = realpathSync(msg.cwd);
+                  const cwdStat = statSync(resolved);
+                  if (!cwdStat.isDirectory()) throw new Error('Not a directory');
+                  spawnCwd = resolved;
+                } catch (cwdErr) {
+                  ws.send(JSON.stringify({ type: 'error', message: `Invalid cwd: ${msg.cwd}` }));
+                  return;
+                }
+              }
+              const termLabel = msg.label || spawnCwd.split('/').pop() || msg.tid;
+              createTerminal(msg.tid, { label: termLabel, cwd: spawnCwd });
+              subscribeToTerminal(ws, msg.tid);
+              // Spawn an interactive shell (plain shell, no auto-commands)
+              try {
+                await spawnShell(msg.tid);
+              } catch {}
+              // Broadcast terminal-created event
+              const createdMsg = JSON.stringify({ type: 'terminal-created', tid: msg.tid, cwd: spawnCwd });
+              wss.clients.forEach((c) => {
+                if (c.readyState === 1) try { c.send(createdMsg); } catch {}
+              });
+              // Broadcast updated terminal list
+              const updated = listTerminals();
+              const listMsg = JSON.stringify({ type: 'terminal-list', terminals: updated });
+              wss.clients.forEach((c) => {
+                if (c.readyState === 1) try { c.send(listMsg); } catch {}
+              });
+            } catch (err) {
+              ws.send(JSON.stringify({ type: 'terminal-error', tid: msg.tid, error: err.message }));
+            }
+          } else if (msg.type === 'terminal-attach-tmux') {
+            try {
+              const attachTid = msg.tid || `tmux-${Date.now()}`;
+              const tmuxTarget = msg.session; // tmux session name
+              const readOnly = msg.readOnly || false;
+
+              // Create a new CCV terminal slot for this attach
+              createTerminal(attachTid, { label: `tmux: ${tmuxTarget}`, cwd: null });
+              subscribeToTerminal(ws, attachTid);
+
+              const ok = await attachTmux(attachTid, tmuxTarget, readOnly);
+              if (!ok) {
+                // Remove the slot if attach failed
+                removeTerminal(attachTid);
+                ws.send(JSON.stringify({ type: 'terminal-error', tid: attachTid, error: `Failed to attach to tmux session: ${tmuxTarget}` }));
+              } else {
+                // Broadcast terminal-created event
+                const createdMsg = JSON.stringify({ type: 'terminal-created', tid: attachTid, cwd: '' });
+                wss.clients.forEach((c) => {
+                  if (c.readyState === 1) try { c.send(createdMsg); } catch {}
+                });
+              }
+
+              // Broadcast updated terminal list
+              const updated = listTerminals();
+              const listMsg = JSON.stringify({ type: 'terminal-list', terminals: updated });
+              wss.clients.forEach((c) => {
+                if (c.readyState === 1) try { c.send(listMsg); } catch {}
+              });
+            } catch (err) {
+              ws.send(JSON.stringify({ type: 'error', message: err.message }));
+            }
+          } else if (msg.type === 'terminal-create-tmux') {
+            try {
+              const sessionName = msg.sessionName || `ccv-${Date.now()}`;
+              const tmuxTid = `tmux-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+              const cwd = msg.cwd || homedir();
+
+              createTerminal(tmuxTid, { label: `tmux: ${sessionName}`, cwd });
+              subscribeToTerminal(ws, tmuxTid);
+
+              const ok = await createTmuxSession(tmuxTid, sessionName, cwd);
+              if (!ok) {
+                removeTerminal(tmuxTid);
+                ws.send(JSON.stringify({ type: 'terminal-error', tid: tmuxTid, message: `Failed to create tmux session: ${sessionName}` }));
+              } else {
+                // Notify all clients: new tmux session created (PC auto-detect)
+                const notifyMsg = JSON.stringify({ type: 'tmux-session-created', sessionName, cwd, tid: tmuxTid });
+                wss.clients.forEach((c) => {
+                  if (c.readyState === 1) try { c.send(notifyMsg); } catch {}
+                });
+                // Server-side: auto-open Terminal.app with tmux attach (macOS only)
+                if (process.platform === 'darwin' && /^[a-zA-Z0-9_-]+$/.test(sessionName)) {
+                  try {
+                    const { execFile: ef } = await import('node:child_process');
+                    ef('osascript', ['-e', `tell application "Terminal" to do script "tmux attach-session -t ${sessionName}"`], { timeout: 5000 }, () => {});
+                  } catch {}
+                }
+              }
+
+              // Broadcast updated terminal list
+              const updated = listTerminals();
+              const listMsg = JSON.stringify({ type: 'terminal-list', terminals: updated });
+              wss.clients.forEach((c) => {
+                if (c.readyState === 1) try { c.send(listMsg); } catch {}
+              });
+            } catch (err) {
+              ws.send(JSON.stringify({ type: 'terminal-error', message: err.message }));
+            }
+          } else if (msg.type === 'terminal-close') {
+            // Broadcast terminal-closed event before cleanup
+            const closedMsg = JSON.stringify({ type: 'terminal-closed', tid: msg.tid });
+            wss.clients.forEach((c) => {
+              if (c.readyState === 1) try { c.send(closedMsg); } catch {}
+            });
+            wss.clients.forEach((c) => { unsubscribeFromTerminal(c, msg.tid); });
+            removeTerminal(msg.tid);
+            const updated = listTerminals();
+            const listMsg = JSON.stringify({ type: 'terminal-list', terminals: updated });
+            wss.clients.forEach((c) => {
+              if (c.readyState === 1) try { c.send(listMsg); } catch {}
+            });
+          } else if (msg.type === 'terminal-subscribe') {
+            const st = getTerminalState(msg.tid);
+            if (st) {
+              subscribeToTerminal(ws, msg.tid);
+              ws.send(JSON.stringify({ type: 'state', tid: msg.tid, ...st }));
+              const subBuffer = getTerminalBuffer(msg.tid);
+              if (subBuffer) {
+                ws.send(JSON.stringify({ type: 'data', tid: msg.tid, data: subBuffer }));
+              }
+            } else {
+              ws.send(JSON.stringify({ type: 'terminal-error', tid: msg.tid, error: 'Terminal not found' }));
+            }
+          } else if (msg.type === 'terminal-unsubscribe') {
+            unsubscribeFromTerminal(ws, msg.tid);
+          } else if (msg.type === 'terminal-list') {
+            ws.send(JSON.stringify({ type: 'terminal-list', terminals: listTerminals() }));
+          } else if (msg.type === 'terminal-rename') {
+            const ok = renameTerminal(msg.tid, msg.label || msg.tid);
+            if (ok) {
+              // Broadcast updated terminal list to all clients
+              const updated = listTerminals();
+              const listMsg = JSON.stringify({ type: 'terminal-list', terminals: updated });
+              wss.clients.forEach((c) => {
+                if (c.readyState === 1) try { c.send(listMsg); } catch {}
+              });
+            }
+
+          // ---- Hook / SDK messages (terminal-agnostic) ----
           } else if (msg.type === 'ask-hook-answer') {
-            // Client answered AskUserQuestion via hook bridge
             let askAnswered = false;
             if (pendingAskHook) {
               const { res: hookRes, timer } = pendingAskHook;
@@ -3271,7 +3672,6 @@ async function setupTerminalWebSocket(httpServer) {
                 }
               } catch {}
             }
-            // Broadcast resolved to other clients so they clear their ask panel
             if (askAnswered && terminalWss) {
               const rmsg = JSON.stringify({ type: 'ask-hook-resolved' });
               terminalWss.clients.forEach((c) => {
@@ -3279,7 +3679,6 @@ async function setupTerminalWebSocket(httpServer) {
               });
             }
           } else if (msg.type === 'perm-hook-answer') {
-            // Permission approval — SDK mode (canUseTool) or PTY mode (hook bridge)
             let permAnswered = false;
             if (isSdkMode && _sdkResolveApproval && msg.id) {
               permAnswered = _sdkResolveApproval(msg.id, msg.allowSession ? { decision: msg.decision || 'allow', allowSession: true } : (msg.decision || 'deny'));
@@ -3297,7 +3696,6 @@ async function setupTerminalWebSocket(httpServer) {
                 }
               } catch {}
             }
-            // Broadcast resolved only when an answer was actually processed
             if (permAnswered && terminalWss) {
               const rmsg = JSON.stringify({ type: 'perm-hook-resolved', id: msg.id });
               terminalWss.clients.forEach((c) => {
@@ -3305,11 +3703,9 @@ async function setupTerminalWebSocket(httpServer) {
               });
             }
           } else if (msg.type === 'sdk-ask-answer') {
-            // AskUserQuestion answer in SDK mode — resolve canUseTool Promise
             if (_sdkResolveApproval && msg.id) {
               _sdkResolveApproval(msg.id, msg.answers);
             }
-            // Broadcast resolved to other clients
             if (msg.id && terminalWss) {
               const rmsg = JSON.stringify({ type: 'sdk-ask-resolved', id: msg.id });
               terminalWss.clients.forEach((c) => {
@@ -3317,11 +3713,9 @@ async function setupTerminalWebSocket(httpServer) {
               });
             }
           } else if (msg.type === 'sdk-plan-answer') {
-            // Plan approval in SDK mode
             if (_sdkResolveApproval) {
               _sdkResolveApproval(msg.id, { approve: msg.approve !== false, feedback: msg.feedback || '' });
             }
-            // Broadcast resolved to other clients
             if (terminalWss) {
               const rmsg = JSON.stringify({ type: 'sdk-plan-resolved', id: msg.id });
               terminalWss.clients.forEach((c) => {
@@ -3329,14 +3723,12 @@ async function setupTerminalWebSocket(httpServer) {
               });
             }
           } else if (msg.type === 'sdk-user-message') {
-            // User message in SDK mode — relay to sdk-manager
             if (_sdkSendUserMessage && msg.text) {
               _sdkSendUserMessage(msg.text).catch(err => {
                 console.error('[SDK] sendUserMessage error:', err.message);
               });
             }
           } else if (msg.type === 'image-remove-notify' || msg.type === 'image-upload-notify') {
-            // Security: only allow paths within upload directories, reject traversal
             const p = msg.path;
             if (terminalWss && p && !p.includes('..') && (
               p.startsWith('/tmp/cc-viewer-uploads/') || (p.includes('/cc-viewer/') && p.includes('/images/'))
@@ -3349,37 +3741,31 @@ async function setupTerminalWebSocket(httpServer) {
               });
             }
           } else if (msg.type === 'resize') {
-            // 存储该客户端的尺寸
             clientSizes.set(ws, { cols: msg.cols, rows: msg.rows });
             if (msg.mobile) mobileClients.add(ws);
-            // 移动端 resize 始终生效；PC 端仅在无移动端时生效
+            // Resize applies to the specified terminal (or 'default')
             if (msg.mobile) {
-              resizePty(msg.cols, msg.rows);
+              resizeTerminal(tid, msg.cols, msg.rows);
             } else if (mobileClients.size === 0 && (activeWs === ws || activeWs === null)) {
               activeWs = ws;
-              resizePty(msg.cols, msg.rows);
+              resizeTerminal(tid, msg.cols, msg.rows);
             }
           }
         } catch {}
       });
 
       ws.on('close', () => {
-        removeDataListener();
-        removeExitListener();
-        clientSizes.delete(ws);
-        mobileClients.delete(ws);
+        cleanupClient(ws);
         if (activeWs === ws) {
-          // 活跃客户端断开，将控制权交给剩余的某个客户端
           activeWs = null;
-          // 优先使用移动端尺寸，无移动端则用剩余客户端尺寸
           const mSize = getMobileSize();
           if (mSize) {
-            resizePty(mSize.cols, mSize.rows);
+            resizeTerminal('default', mSize.cols, mSize.rows);
           } else {
             for (const [remainWs, size] of clientSizes) {
               if (remainWs.readyState === 1) {
                 activeWs = remainWs;
-                resizePty(size.cols, size.rows);
+                resizeTerminal('default', size.cols, size.rows);
                 break;
               }
             }
@@ -3522,9 +3908,10 @@ if (!isWorkspaceMode) {
       setTimeout(async () => {
         let ptyRunning = false;
         try {
-          const { getPtyState } = await import('./pty-manager.js');
-          ptyRunning = getPtyState().running === true;
-        } catch { /* 未加载 pty-manager 或 import 失败 → 当作不 running */ }
+          const { getTerminalState } = await import('./terminal-manager.js');
+          const defState = getTerminalState('default');
+          ptyRunning = defState ? defState.running === true : false;
+        } catch { /* 未加载 terminal-manager 或 import 失败 → 当作不 running */ }
         const busy = clients.length > 0 || ptyRunning || _sdkResolveApproval !== null;
         try {
           const result = await checkAndUpdate({ busy, portRange: [START_PORT, MAX_PORT] });

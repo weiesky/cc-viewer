@@ -1,0 +1,57 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  min-height: 0; /* Allow flex shrinking in iOS Safari */
+}
+
+.terminalArea {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.terminalPane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Mobile: ensure terminal container fills viewport properly ─── */
+@media (pointer: coarse), (max-width: 768px) {
+  .container {
+    /* On mobile, flex height: 100% may not resolve through transform'd ancestors.
+       Use absolute positioning as fallback to guarantee fill.
+       Do NOT set height: auto -- it overrides the height computed by inset: 0
+       and collapses the container to zero when children have no intrinsic height. */
+    position: absolute;
+    inset: 0;
+    /* Prevent iOS rubber-band overscroll from revealing black background */
+    background: var(--bg-base-alt);
+    overscroll-behavior: none;
+  }
+
+  .terminalArea {
+    /* Consistent background so pull-down never shows black */
+    background: var(--bg-base-alt);
+  }
+
+  /* On mobile, TerminalPanel sets touch-action: none on its container
+     which blocks all native touch scrolling. We cannot modify TerminalPanel,
+     but we can override touch-action on all descendants within .terminalArea
+     so the browser allows vertical panning to reach xterm's scroll handler.
+     Using a broad descendant selector since TerminalPanel uses CSS modules
+     (mangled class names). */
+  .terminalArea * {
+    touch-action: pan-y;
+  }
+
+  /* xterm.js viewport needs momentum scrolling on iOS */
+  .terminalArea :global(.xterm-viewport) {
+    -webkit-overflow-scrolling: touch;
+  }
+}
