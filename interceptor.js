@@ -11,7 +11,7 @@ import http from 'node:http';
 import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, basename } from 'node:path';
-import { LOG_DIR, getClaudeConfigDir } from './findcc.js';
+import { LOG_DIR } from './findcc.js';
 import { assembleStreamMessage, createStreamAssembler, cleanupTempFiles, findRecentLog, isAnthropicApiPath, isMainAgentRequest, rotateLogFile } from './lib/interceptor-core.js';
 
 
@@ -50,7 +50,8 @@ export let _cachedHaikuModel = null;
 //     兼容老数据：若文件里仍有 active 字段，读为"全局回退默认"；但本模块不再写它。
 //   <projectDir>/active-profile.json (每 workspace 独占): 仅存 { activeId }；
 //     切换 active 只影响当前 ccv 进程的 workspace，不污染其他实例。
-const PROFILE_PATH = join(getClaudeConfigDir(), 'cc-viewer', 'profile.json');
+// profile.json 存放在 LOG_DIR 下，受 --log-dir / CCV_LOG_DIR 影响
+const PROFILE_PATH = join(LOG_DIR, 'profile.json');
 let _activeProfile = null; // { id, name, baseURL?, apiKey?, models?, activeModel? }
 
 // 启动时捕获的原始配置（首次 API 请求时记录，不可变）

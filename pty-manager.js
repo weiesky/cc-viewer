@@ -1,4 +1,4 @@
-import { resolveNativePath } from './findcc.js';
+import { resolveNativePath, LOG_DIR } from './findcc.js';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import { chmodSync, statSync } from 'node:fs';
@@ -144,6 +144,7 @@ export async function spawnClaude(proxyPort, cwd, extraArgs = [], claudePath = n
   const env = { ...process.env };
   env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${proxyPort}`;
   env.CCV_PROXY_MODE = '1'; // 告诉 interceptor.js 不要再启动 server
+  env.CCV_LOG_DIR = LOG_DIR; // 让 fork 出的 Claude Code 进程找到同一份 profile.json 等资源
   // 剥离 cc-viewer 的内部短路开关，避免泄漏给 claude 子进程
   delete env.CCV_SKIP_THINKING_DISPLAY;
 
