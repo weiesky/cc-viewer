@@ -277,13 +277,20 @@ async function runProxyCommand(args) {
     });
 
     // 注入默认 --thinking-display summarized，仅对 claude 二进制（其他命令如 `ccv run -- sometool` 跳过）。
-    // 若 claude 不识别该 flag（老版本/fork）会 unknown option 崩溃——由 pty-manager.js::spawnClaude 的
+    // 若 claude 不识别该 flag（老版本/fork）会 unknown option 崩溃——由 terminal-manager.js::spawnClaude 的
     // onExit reactive retry 兜底；cli.js 这条路径是一次性子进程，没有 respawn 机会，用户需手动重试。
     // 可通过环境变量 CCV_SKIP_THINKING_DISPLAY=1 强制跳过。
     const isClaudeCmd = cmd === 'claude' || /[\\/]claude(\.exe)?$/.test(cmd);
     if (isClaudeCmd && process.env.CCV_SKIP_THINKING_DISPLAY !== '1') {
-      const { withDefaultThinkingDisplay } = await import('./pty-manager.js');
-      cmdArgs = withDefaultThinkingDisplay(cmdArgs);
+      // Inline withDefaultThinkingDisplay: inject --thinking-display summarized if not already present
+      if (Array.isArray(cmdArgs)) {
+        const hasFlag = cmdArgs.some(a =>
+          a === '--thinking-display' || (typeof a === 'string' && a.startsWith('--thinking-display='))
+        );
+        if (!hasFlag) {
+          cmdArgs = [...cmdArgs, '--thinking-display', 'summarized'];
+        }
+      }
     }
 
     cmdArgs.unshift(settingsJson);
@@ -364,12 +371,14 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   const port = serverMod.getPort();
   const serverProtocol = serverMod.getProtocol();
 
-  // 3. 启动 PTY 中的 claude
-  const { spawnClaude, killPty } = await import('./pty-manager.js');
+  // 3. 创建默认终端 (纯 shell，用户自行启动 cfuse)
+  const { spawnShell, killAllTerminals, createTerminal } = await import('./terminal-manager.js');
+  const { homedir: getHome } = await import('os');
   try {
-    await spawnClaude(proxyPort, workingDir, extraClaudeArgs, claudePath, isNpmVersion, port, serverProtocol);
+    createTerminal('default', { cwd: getHome() });
+    await spawnShell('default');
   } catch (err) {
-    console.error('[CC Viewer] Failed to spawn Claude:', err.message);
+    console.error('[CC Viewer] Failed to spawn shell:', err.message);
     await serverMod.stopViewer();
     process.exit(1);
   }
@@ -395,7 +404,7 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
 
   // 5. 注册退出处理
   const cleanup = () => {
-    killPty();
+    killAllTerminals();
     serverMod.stopViewer().finally(() => process.exit());
   };
   process.on('SIGINT', cleanup);
@@ -548,9 +557,9 @@ async function runCliModeWorkspaceSelector(extraClaudeArgs = [], noOpen = false)
   }
 
   // 注册退出处理
-  const { killPty } = await import('./pty-manager.js');
+  const { killAllTerminals: killAll } = await import('./terminal-manager.js');
   const cleanup = () => {
-    killPty();
+    killAll();
     serverMod.stopViewer().finally(() => process.exit());
   };
   process.on('SIGINT', cleanup);

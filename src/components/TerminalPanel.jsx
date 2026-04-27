@@ -20,6 +20,7 @@ import CustomUltraplanEditModal from './CustomUltraplanEditModal';
 import ImageLightbox from './ImageLightbox';
 import ConfirmRemoveButton from './ConfirmRemoveButton';
 import { resizeImageIfNeeded } from '../utils/imageResize';
+import TerminalContext from './TerminalContext';
 
 const darkTerminalTheme = {
   background: '#0a0a0a', foreground: '#d4d4d4', cursor: '#0a0a0a',
@@ -109,6 +110,8 @@ export async function uploadFileAndGetPath(file) {
 }
 
 class TerminalPanel extends React.Component {
+  static contextType = TerminalContext;
+
   constructor(props) {
     super(props);
     this.containerRef = React.createRef();
@@ -117,6 +120,8 @@ class TerminalPanel extends React.Component {
     this.fitAddon = null;
     this.ws = null;
     this.resizeObserver = null;
+    // Whether this panel uses context-mediated WS (multi-terminal mode)
+    this._useContextWs = !!props.tid;
     this.state = {
       terminalFocused: false,
       agentTeamEnabled: false,
@@ -143,7 +148,11 @@ class TerminalPanel extends React.Component {
 
   componentDidMount() {
     this.initTerminal();
-    this.connectWebSocket();
+    if (this._useContextWs) {
+      this._connectViaContext();
+    } else {
+      this.connectWebSocket();
+    }
     this.setupResizeObserver();
     // 读取 claude settings 判断 Agent Team 是否可用
     fetch(apiUrl('/api/claude-settings')).then(r => r.json()).then(data => {
@@ -162,6 +171,21 @@ class TerminalPanel extends React.Component {
       }
     });
     this._themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
+
+  componentDidUpdate(prevProps) {
+    // When terminal becomes active (switched to in multi-terminal mode), re-fit and focus
+    if (this.props.isActive && !prevProps.isActive) {
+      requestAnimationFrame(() => {
+        if (this.fitAddon && this.containerRef.current) {
+          try {
+            this.fitAddon.fit();
+            this.sendResize();
+          } catch {}
+        }
+        if (this.terminal) this.terminal.focus();
+      });
+    }
   }
 
   _loadPresetShortcuts() {
@@ -201,6 +225,9 @@ class TerminalPanel extends React.Component {
   }
 
   componentWillUnmount() {
+    // Cleanup context-mediated listeners
+    if (this._unregisterDataListener) this._unregisterDataListener();
+    if (this._unregisterStateListener) this._unregisterStateListener();
     if (this.terminal?.textarea) {
       this.terminal.textarea.removeEventListener('focus', this._handleTermFocus);
       this.terminal.textarea.removeEventListener('blur', this._handleTermBlur);
@@ -301,8 +328,10 @@ class TerminalPanel extends React.Component {
         // 后者被 Claude Code 当作 Enter 提交，于是"看起来换行没生效"。
         e.preventDefault();
         e.stopPropagation();
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          this.ws.send(JSON.stringify({ type: 'input', data: '\x1b\r' }));
+        if (this._isWsReady()) {
+          const msg = { type: 'input', data: '\x1b\r' };
+          if (this.props.tid) msg.tid = this.props.tid;
+          this._sendWsMessage(msg);
         }
         return false;
       }
@@ -312,9 +341,11 @@ class TerminalPanel extends React.Component {
       if (e.type === 'keydown' && e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
         const pending = this.props.pendingImages;
         const inAlternateScreen = this.terminal?.buffer?.active?.type === 'alternate';
-        if (pending?.length > 0 && !inAlternateScreen && this.ws?.readyState === WebSocket.OPEN) {
+        if (pending?.length > 0 && !inAlternateScreen && this._isWsReady()) {
           const paths = pending.map(img => `'${img.path.replace(/'/g, "'\\''")}'`).join(' ');
-          this.ws.send(JSON.stringify({ type: 'input', data: paths + ' ' }));
+          const inputMsg = { type: 'input', data: paths + ' ' };
+          if (this.props.tid) inputMsg.tid = this.props.tid;
+          this._sendWsMessage(inputMsg);
           this.props.onClearPendingImages?.();
           return false;
         }
@@ -340,8 +371,10 @@ class TerminalPanel extends React.Component {
     });
 
     this.terminal.onData((data) => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'input', data }));
+      if (this._isWsReady()) {
+        const msg = { type: 'input', data };
+        if (this.props.tid) msg.tid = this.props.tid;
+        this._sendWsMessage(msg);
       }
     });
 
@@ -548,16 +581,85 @@ class TerminalPanel extends React.Component {
     };
   }
 
-  sendResize() {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN && this.terminal) {
-      const msg = {
-        type: 'resize',
-        cols: this.terminal.cols,
-        rows: this.terminal.rows,
-      };
-      if (isMobile) msg.mobile = true;
+  /**
+   * Context-mediated connection: use TerminalContext's shared WebSocket
+   * instead of creating a separate one. Register data/state listeners
+   * that route only this terminal's data to the xterm instance.
+   */
+  _connectViaContext() {
+    const ctx = this.context;
+    if (!ctx) return;
+    const tid = this.props.tid;
+
+    // Register data listener -- receives only data for this tid
+    this._unregisterDataListener = ctx.registerDataListener(tid, (data) => {
+      this._throttledWrite(data);
+    });
+
+    // Register state listener -- receives state/exit for this tid
+    this._unregisterStateListener = ctx.registerStateListener(tid, (msg) => {
+      if (msg.type === 'exit') {
+        this._flushWrite();
+        this.terminal.write(`\r\n\x1b[33m${t('ui.terminal.exited', { code: msg.exitCode ?? '?' })}\x1b[0m\r\n`);
+        this.terminal.write(`\x1b[90m${t('ui.terminal.pressEnterForShell')}\x1b[0m\r\n`);
+      } else if (msg.type === 'state') {
+        if (!msg.running && msg.exitCode !== null) {
+          this._flushWrite();
+          this.terminal.write(`\x1b[33m${t('ui.terminal.exited', { code: msg.exitCode })}\x1b[0m\r\n`);
+          this.terminal.write(`\x1b[90m${t('ui.terminal.pressEnterForShell')}\x1b[0m\r\n`);
+        }
+      } else if (msg.type === 'toast') {
+        this._flushWrite();
+        this.terminal.write(`\r\n\x1b[33m\u26a0 ${msg.message}\x1b[0m\r\n`);
+      } else if (msg.type === 'editor-open') {
+        if (this.props.onEditorOpen) {
+          this.props.onEditorOpen(msg.sessionId, msg.filePath);
+        }
+      }
+    });
+
+    // Subscribe to terminal data stream (triggers buffer replay from server)
+    ctx.subscribeTerminal(tid);
+
+    // Send initial resize
+    this.sendResize();
+  }
+
+  /**
+   * Send a message through the appropriate WebSocket channel.
+   * In context-mediated mode, uses TerminalContext.sendMessage.
+   * In legacy mode, uses the local WebSocket.
+   */
+  _sendWsMessage(msg) {
+    if (this._useContextWs) {
+      const ctx = this.context;
+      if (ctx) ctx.sendMessage(msg);
+    } else if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
     }
+  }
+
+  /**
+   * Check if the WebSocket channel (either shared or local) is ready.
+   */
+  _isWsReady() {
+    if (this._useContextWs) {
+      const ctx = this.context;
+      return ctx && ctx.getWs() !== null;
+    }
+    return this.ws && this.ws.readyState === WebSocket.OPEN;
+  }
+
+  sendResize() {
+    if (!this.terminal) return;
+    const msg = {
+      type: 'resize',
+      cols: this.terminal.cols,
+      rows: this.terminal.rows,
+    };
+    if (this.props.tid) msg.tid = this.props.tid;
+    if (isMobile) msg.mobile = true;
+    this._sendWsMessage(msg);
   }
 
   setupResizeObserver() {
@@ -714,13 +816,15 @@ class TerminalPanel extends React.Component {
     // 当 shell 已启用 bracketedPasteMode 时，xterm.js 会自动包裹，无需干预
     if (this.terminal?.modes?.bracketedPasteMode) return;
     const text = e.clipboardData?.getData('text');
-    if (!text || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    // shell 未启用 bracketed paste 时，手动包裹多行文本，防止换行被当作 Enter 执行
+    if (!text || !this._isWsReady()) return;
+    // shell 未启用 bracketed paste 时，手動包裹多行文本，防止换行被当作 Enter 执行
     if (text.includes('\n') || text.includes('\r')) {
       e.preventDefault();
       e.stopPropagation();
       const wrapped = `\x1b[200~${text}\x1b[201~`;
-      this.ws.send(JSON.stringify({ type: 'input', data: wrapped }));
+      const msg = { type: 'input', data: wrapped };
+      if (this.props.tid) msg.tid = this.props.tid;
+      this._sendWsMessage(msg);
     }
   };
 
@@ -730,8 +834,8 @@ class TerminalPanel extends React.Component {
       const path = await uploadFileAndGetPath(optimized);
       if (this.props.onFilePath) this.props.onFilePath(path);
       // Notify other views/devices about the uploaded image
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'image-upload-notify', path, source: 'terminal' }));
+      if (this._isWsReady()) {
+        this._sendWsMessage({ type: 'image-upload-notify', path, source: 'terminal' });
       }
       if (this.terminal) this.terminal.focus();
     } catch (err) {
@@ -772,8 +876,10 @@ class TerminalPanel extends React.Component {
   }
 
   handleVirtualKey = (seq) => {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'input', data: seq }));
+    if (this._isWsReady()) {
+      const msg = { type: 'input', data: seq };
+      if (this.props.tid) msg.tid = this.props.tid;
+      this._sendWsMessage(msg);
     }
     // 手机上不 focus 终端，避免弹出系统软键盘；主动 blur 防止先前已聚焦
     if (isMobile && !isPad) {
@@ -824,8 +930,8 @@ class TerminalPanel extends React.Component {
       const path = await uploadFileAndGetPath(file);
       if (this.props.onFilePath) this.props.onFilePath(path);
       // Notify other views/devices about the uploaded file
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'image-upload-notify', path, source: 'terminal' }));
+      if (this._isWsReady()) {
+        this._sendWsMessage({ type: 'image-upload-notify', path, source: 'terminal' });
       }
       // refocus terminal after upload (skip on mobile to avoid system keyboard popup)
       if ((!isMobile || isPad) && this.terminal) this.terminal.focus();
@@ -953,23 +1059,27 @@ class TerminalPanel extends React.Component {
   handlePresetSend = (description) => {
     if (!description) return;
     this.setState({ agentTeamPopoverOpen: false });
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({
+    if (this._isWsReady()) {
+      const msg = {
         type: 'input-sequential',
         chunks: buildBracketPasteSubmitChunks(description),
         settleMs: BRACKET_PASTE_SUBMIT_SETTLE_MS,
-      }));
+      };
+      if (this.props.tid) msg.tid = this.props.tid;
+      this._sendWsMessage(msg);
     }
     if ((!isMobile || isPad) && this.terminal) this.terminal.focus();
   };
 
   handleClearContext = () => {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({
+    if (this._isWsReady()) {
+      const msg = {
         type: 'input-sequential',
         chunks: buildBracketPasteSubmitChunks('/clear'),
         settleMs: BRACKET_PASTE_SUBMIT_SETTLE_MS,
-      }));
+      };
+      if (this.props.tid) msg.tid = this.props.tid;
+      this._sendWsMessage(msg);
       this.props.onClearContextOptimistic?.();
     }
     if ((!isMobile || isPad) && this.terminal) this.terminal.focus();
@@ -993,12 +1103,14 @@ class TerminalPanel extends React.Component {
     // 先校验再重置，避免空模板导致用户输入被静默清空
     if (!assembled) return;
     this.setState({ ultraplanOpen: false, ultraplanPrompt: '', ultraplanVariant: 'codeExpert', ultraplanFiles: [] });
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({
+    if (this._isWsReady()) {
+      const msg = {
         type: 'input-sequential',
         chunks: buildBracketPasteSubmitChunks(assembled),
         settleMs: BRACKET_PASTE_SUBMIT_SETTLE_MS,
-      }));
+      };
+      if (this.props.tid) msg.tid = this.props.tid;
+      this._sendWsMessage(msg);
     }
     if ((!isMobile || isPad) && this.terminal) this.terminal.focus();
   };
@@ -1104,11 +1216,13 @@ class TerminalPanel extends React.Component {
   handleEnableAgentTeam = () => {
     if (this.state.agentTeamEnabling) return;
     this.setState({ agentTeamEnabling: true });
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (this._isWsReady()) {
       // 用当前真实的配置目录拼 prompt，避免 CLAUDE_CONFIG_DIR 用户让 Claude 去改错文件
       const settingsPath = `${getClaudeConfigDir()}/settings.json`;
       const prompt = `Add "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" to the env object in ${settingsPath}. If the env key does not exist, create it. Preserve all existing content. Only modify this one field. If ${settingsPath} does not exist, instead add the line: export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 to the user's shell profile (~/.zshrc or ~/.bashrc).`;
-      this.ws.send(JSON.stringify({ type: 'input', data: prompt + '\r' }));
+      const msg = { type: 'input', data: prompt + '\r' };
+      if (this.props.tid) msg.tid = this.props.tid;
+      this._sendWsMessage(msg);
       message.success('需要重启 Claude Code 才能生效');
     }
     if ((!isMobile || isPad) && this.terminal) this.terminal.focus();

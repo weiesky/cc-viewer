@@ -7,6 +7,8 @@ import { isMainAgent, isSystemText, classifyUserContent } from './utils/contentF
 import { getModelMaxTokens, getEffectiveModel } from './utils/helpers';
 import ChatView from './components/ChatView';
 import TerminalPanel, { uploadFileAndGetPath } from './components/TerminalPanel';
+import MultiTerminalView from './components/MultiTerminalView';
+import { TerminalProvider } from './components/TerminalContext';
 import ToolApprovalPanel from './components/ToolApprovalPanel';
 import MobileGitDiff from './components/MobileGitDiff';
 import MobileFileExplorer from './components/MobileFileExplorer';
@@ -553,14 +555,16 @@ class Mobile extends AppBase {
           )}
           {!mobileIsLocalLog && (
             <div className={`${styles.mobileChatOverlay} ${this.state.mobileTerminalVisible ? styles.mobileChatOverlayVisible : ''}`}>
-              <TerminalPanel
-                modelName={mobileModelName}
-                onFilePath={this._handleTerminalFilePath}
-                pendingImages={this.state.terminalPendingImages}
-                onRemovePendingImage={this._handleRemoveTerminalImage}
-                onClearPendingImages={this._handleClearTerminalImages}
-                onClearContextOptimistic={this.handleClearContextOptimistic}
-              />
+              <TerminalProvider>
+                <MultiTerminalView
+                  modelName={mobileModelName}
+                  onFilePath={this._handleTerminalFilePath}
+                  pendingImages={this.state.terminalPendingImages}
+                  onRemovePendingImage={this._handleRemoveTerminalImage}
+                  onClearPendingImages={this._handleClearTerminalImages}
+                  onClearContextOptimistic={this.handleClearContextOptimistic}
+                />
+              </TerminalProvider>
             </div>
           )}
           <div className={`${styles.mobileGitDiffOverlay} ${this.state.mobileGitDiffVisible ? styles.mobileGitDiffOverlayVisible : ''}`}>

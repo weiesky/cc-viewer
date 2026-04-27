@@ -2,6 +2,8 @@ import React from 'react';
 import { Empty, Typography, Divider, Spin, Popover, Modal, message } from 'antd';
 import ChatMessage from './ChatMessage';
 import TerminalPanel, { uploadFileAndGetPath } from './TerminalPanel';
+import MultiTerminalView from './MultiTerminalView';
+import { TerminalProvider } from './TerminalContext';
 import FileExplorer from './FileExplorer';
 import FileContentView from './FileContentView';
 import ImageViewer from './ImageViewer';
@@ -3456,26 +3458,30 @@ class ChatView extends React.Component {
             <>
               <div className={styles.vResizer} onMouseDown={this.handleSplitMouseDown} />
               <div className={styles.terminalPanelWrap} style={{ width: terminalWidth }}>
-                <TerminalPanel onEditorOpen={(sessionId, filePath) => {
-                  this.setState({
-                    editorSessionId: sessionId,
-                    editorFilePath: filePath,
-                    currentFile: filePath,
-                    currentGitDiff: null,
-                    scrollToLine: null,
-                    fileVersion: (this.state.fileVersion || 0) + 1,
-                  });
-                }} onFilePath={(path) => {
-                  // 加入 pendingImages，在终端 Enter 时统一注入 PTY
-                  this._addPendingImage(path, 'terminal');
-                }}
-                pendingImages={this.state.pendingImages}
-                onRemovePendingImage={this._removePendingImage}
-                onClearPendingImages={this._clearPendingImages}
-                modelName={this._reqScanCache?.modelName}
-                getChatScroller={() => this._getScrollContainer()}
-                onClearContextOptimistic={this.props.onClearContextOptimistic}
-                />
+                <TerminalProvider>
+                  <MultiTerminalView
+                    onEditorOpen={(sessionId, filePath) => {
+                      this.setState({
+                        editorSessionId: sessionId,
+                        editorFilePath: filePath,
+                        currentFile: filePath,
+                        currentGitDiff: null,
+                        scrollToLine: null,
+                        fileVersion: (this.state.fileVersion || 0) + 1,
+                      });
+                    }}
+                    onFilePath={(path) => {
+                      // 加入 pendingImages，在终端 Enter 时统一注入 PTY
+                      this._addPendingImage(path, 'terminal');
+                    }}
+                    pendingImages={this.state.pendingImages}
+                    onRemovePendingImage={this._removePendingImage}
+                    onClearPendingImages={this._clearPendingImages}
+                    modelName={this._reqScanCache?.modelName}
+                    getChatScroller={() => this._getScrollContainer()}
+                    onClearContextOptimistic={this.props.onClearContextOptimistic}
+                  />
+                </TerminalProvider>
               </div>
             </>
           )}
