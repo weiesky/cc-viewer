@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- fix(sessionMerge): 反向锚点对齐替换正向 prefix-overlap，根治流式 mainAgent "复制"翻车
+  - 旧 `src/utils/sessionMerge.js` 三分支按 `newLen vs currentLen` 各走各的：① `newLen===curLen` tail-fp 异时走 1.6.245 的"正向 prefix-overlap"，O(K²) 线性递减找最大匹配 K；text/thinking 取 `slice(0,64)` 单条 fp 易碰撞（共有 `<system-reminder>...` / `<command-name>/...` 头部），算法挑最大 K 优先选错 → 真新增的尾部消息被切掉、流式过程实际丢消息。② `newLen>curLen` 盲推 `newMsgs[curLen..]`，假设严格前缀扩展；CLI Plan Mode 后偶发 "K 条与末尾重叠 + 后段新增" 但 newLen>curLen 的窗口会被当作新内容再 push 一遍 → 同对话出现两次相同消息，即用户报的"复制翻车"。③ `newLen<curLen` 仅尾部全等才保留，少一条不同就重建，长 session 偶尔被一条 race 拍没。
+  - 新算法：以 `newMessages[0]` 为锚点，从 `lastSession.messages` 末尾 `curLen-1` 反向扫，配合多块连续 fp 等价校验决定 append / no-op / rebuild。三分支收口到一个 `findReverseAnchor` 主路径，仅在 anchor 未命中且 `newLen<curLen` 时走 /compact rebuild、`newLen===curLen` 走整段 append（Plan Mode 2-msg 全替换窗口）、`newLen>curLen` 回退到旧"严格前缀扩展"语义保兼容。fp 加固：text / thinking / string content 从 `slice(0,64)` → `length + first32 + last32` 三元组，单条碰撞概率压到忽略量级；tool_use / tool_result 保留 API 强保证唯一的 id 主键不变。
+  - 流式热路径零分配：anchor.overlapLen===newLen 时不进 push 循环、不动 `messages` 引用，下游 `appendToolResultMap` WeakMap 缓存继续命中。复杂度：单候选 O(L)，最坏 O(curLen·newLen) 与旧 O(K²) 同阶；典型 K<200 可忽略。
+  - 测试：`test/incremental-merge.test.js` 追加 `describe('reverse anchor regression')` 6 case 锁死翻车场景：① text-only 共 64-char 头部不再误判；② newLen>curLen 带 K-msg 末尾重叠不再 K 条复制；③ 严格前缀扩展引用稳定；④ suffix-subset 引用稳定；⑤ 空 fp 防御；⑥ 反向扫多候选选最右。`incremental-merge / streaming-state / lr-messages-dedup / markdown-stream / delta-e2e / delta-reconstructor / entry-slim / session-manager / clearCheckpoint / extract-team-sessions / stream-assembler` 11 组 206/206 全过；`npm run build` ✓。
+
 ## 1.6.247 (2026-05-07)
 
 - chore(perm-bridge): `git commit` / `git push` 退出硬拦截白名单，仅 `npm publish` 仍走 Web UI 强制审批
