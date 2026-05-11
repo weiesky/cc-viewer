@@ -114,12 +114,22 @@ export default function ImageViewer({ filePath, onClose, editorSession }) {
   const clampZoom = (z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
 
   const handleWheel = useCallback((e) => {
+    // 必须 preventDefault 拦下浏览器对 Ctrl+wheel / trackpad pinch 的整页缩放行为；
+    // 注意这里依赖下方 useEffect 用 native addEventListener({passive:false}) 绑定——React
+    // 的 onWheel 自 v17 起是 passive listener，preventDefault 会静默失败并导致页面与图片同时缩放。
     e.preventDefault();
     const rect = canvasRef.current.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
+    // Mac 触控板 pinch 被浏览器翻译成 wheel + ctrlKey，每秒发数十次小 deltaY（0.5~3px）；
+    // 鼠标滚轮稀疏发大 deltaY（~100px）。旧实现「每次事件固定 ×1.15」对 trackpad 累积爆炸
+    // ——5 次 pinch 就 ×2.0、10 次就 ×4.0。clamp 到 ±10 把鼠标极端值削掉，再用指数让小 delta
+    // 也丝滑：trackpad 单帧 ~2.8%（exp(-2*0.014)≈0.972）、鼠标 wheel ~13%（exp(-10*0.014)≈0.869），
+    // 后者接近原 15% 手感保留鼠标用户肌肉记忆，无需检测设备类型；跨 deltaMode (PIXEL/LINE/PAGE)
+    // 也被 clamp 兜底，Firefox 行模式 / 各平台精度触控板量级差异自动归一。
+    const delta = Math.max(-10, Math.min(10, e.deltaY));
     setZoom(prev => {
-      const next = clampZoom(prev * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+      const next = clampZoom(prev * Math.exp(-delta * 0.014));
       const ratio = next / prev;
       setOffset(o => ({
         x: mx - ratio * (mx - o.x),
@@ -128,6 +138,16 @@ export default function ImageViewer({ filePath, onClose, editorSession }) {
       return next;
     });
   }, []);
+
+  // React 的 onWheel 自 v17 起是 passive listener，preventDefault 会被忽略——Ctrl+wheel /
+  // trackpad pinch 时浏览器会同时整页缩放，让本组件的缩放与页面缩放叠加。这里改用 native
+  // addEventListener + {passive:false} 绑定，确保 e.preventDefault() 在 handleWheel 里生效。
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
 
   const handleMouseDown = useCallback((e) => {
     if (e.button !== 0) return;
@@ -231,7 +251,6 @@ export default function ImageViewer({ filePath, onClose, editorSession }) {
       <div
         className={styles.canvasArea}
         ref={canvasRef}
-        onWheel={handleWheel}
         onMouseDown={handleMouseDown}
       >
         {loading && !error && <div className={styles.loading}>{i18n('ui.loading')}</div>}

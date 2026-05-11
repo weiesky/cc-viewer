@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.260 (2026-05-11)
+
+- fix(image-viewer): Mac 触控板 pinch 缩放灵敏度过高根治 + React passive wheel listener 修复 + 5-agent UltraReview 采纳
+  - **症状**：FileExplorer 详情面板的图片预览（ImageViewer）在 Mac 上做触控板 pinch 缩放时，轻轻一捏从 100% 直接跳到 300%+，几乎无法精确控制。
+  - **根因 #1（灵敏度爆表）**：`src/components/ImageViewer.jsx:116-130` `handleWheel` 公式 `prev * (e.deltaY < 0 ? 1.15 : 1/1.15)` **每次 wheel 事件固定 ±15% 缩放，完全忽略 deltaY 大小**。macOS 触控板 pinch 被浏览器翻译成 `wheel` event with `ctrlKey=true`，每秒发数十次小 deltaY（0.5~3px），每次 ×1.15 → 5 次 ×2.0、10 次 ×4.0 累积爆炸。鼠标滚轮稀疏发大 deltaY（~100px），单次 15% 才是合理手感——旧公式偏袒鼠标用户，惩罚 trackpad 用户。
+  - **根因 #2（page-zoom 抵消修复，UltraReview 发现）**：React 自 v17 起把 `onWheel` 注册成 passive listener，`e.preventDefault()` 静默失败（Chrome 控制台仅 warn）。Ctrl+wheel / trackpad pinch 触发浏览器整页缩放，与组件的图片缩放叠加，灵敏度修复价值被部分抵消。
+  - **修复（src/components/ImageViewer.jsx:116-145，仅 1 文件）**：
+    1. 改 clamp + 指数公式（业界 zoomable-canvas 常见模式）：`delta = clamp(deltaY, -10, 10)`、`scale *= Math.exp(-delta * 0.014)`。trackpad 小 delta=2 → 单帧 ~2.8%（柔和，比原 15% 柔 5×）；鼠标大 delta=100 被 clamp 到 10 → 单次 ~13%（接近原 15% 手感保留鼠标用户肌肉记忆）。无需检测设备类型，跨 deltaMode (PIXEL/LINE/PAGE) 也被 clamp 兜底——Firefox 行模式 / Windows 精度触控板 / Linux libinput 量级差异自动归一。
+    2. React `onWheel` JSX 属性改为 `useEffect` + native `addEventListener('wheel', handler, {passive: false})`，让 `preventDefault()` 真正生效，杜绝叠加整页缩放。
+    3. zoom-to-mouse 锚点算法（mx/my、offset ratio 更新）原样保留，缩放比例 `next/prev` 不变，行为等价；仅替换缩放比例计算与监听器绑定方式。
+  - **5-人 UltraReview 采纳**：**P1 (platform-reviewer)** passive listener 修复（最关键，本次 commit 的核心增量）；**P2 (math + ux 两位共识)** factor 从 0.01 调到 0.014 兼顾鼠标和触控板手感；**P2 (quality-reviewer)** history.md 业界归因措辞软化（不点名 Leaflet/Figma 等具体库以避免未验证的精确归因）。**不采纳记 backlog**：(a) ctrlKey 区分 pinch/scroll（改 zoom→pan 行为大，scope creep）；(b) ImageLightbox 同病（用户未提，1.06/event 已较柔且有 touch pinch 路径）；(c) 按钮 +0.25 vs 滚轮乘法不一致（pre-existing，非本次回归）。
+  - **测试**：`npm run build` 通过；`npm run test` 1891/1891 全绿；待用户在 Mac 实机验证 pinch 手感 + Ctrl+wheel 不再触发整页缩放。
+  - **覆盖范围**：本修复同时受益于 `MobileFileExplorer.jsx` 中的 ImageViewer 复用路径（iPad Magic Keyboard 触控板 pinch 同样走 wheel 事件链）。
+
 ## 1.6.259 (2026-05-11)
 
 - fix(mobile): 移动端开启 Terminal 后权限审批 modal 飞出屏幕根治
