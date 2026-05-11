@@ -77,7 +77,7 @@ process.env.PATH = pathDirs.join(delimiter);
 
 // --- Resolve real Node.js path (Electron's process.execPath is the Electron binary) ---
 let _nodePath = process.execPath;
-if (process.versions.electron) {
+if (process.versions.electron && !app.isPackaged) {
   try {
     _nodePath = execSync(process.platform === 'win32' ? 'where node' : 'which node', { encoding: 'utf-8' }).trim();
     if (process.platform === 'win32') _nodePath = _nodePath.split('\n')[0].trim();

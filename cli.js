@@ -368,7 +368,7 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   const serverProtocol = serverMod.getProtocol();
 
   // 3. 启动 PTY 中的 claude
-  const { spawnClaude, killPty } = await import('./pty-manager.js');
+  const { spawnClaude, killPty, onPtyExit } = await import('./pty-manager.js');
   try {
     await spawnClaude(proxyPort, workingDir, extraClaudeArgs, claudePath, isNpmVersion, port, serverProtocol);
   } catch (err) {
@@ -410,6 +410,11 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   };
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
+
+  // 6. Claude 退出后自动清理（防止 Windows 上 node-pty/conpty 拦截 Ctrl+C 后进程无法退出）
+  onPtyExit(() => {
+    cleanup();
+  });
 }
 
 async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
@@ -643,6 +648,40 @@ if (userAvatarIdx !== -1) {
     console.error(t('cli.userAvatarRequired'));
     process.exit(1);
   }
+}
+
+// Extract --access-token <token>
+const accessTokenIdx = args.indexOf('--access-token');
+if (accessTokenIdx !== -1) {
+  const accessTokenVal = args[accessTokenIdx + 1];
+  if (accessTokenVal && !accessTokenVal.startsWith('-')) {
+    if (!/^[0-9a-f]{32}$/i.test(accessTokenVal)) {
+      console.error('Error: --access-token must be a 32-character hex string');
+      process.exit(1);
+    }
+    const tokenPath = resolve(getClaudeConfigDir(), 'cc-viewer', 'access-token.json');
+    const tokenDir = resolve(getClaudeConfigDir(), 'cc-viewer');
+    if (!existsSync(tokenDir)) mkdirSync(tokenDir, { recursive: true });
+    writeFileSync(tokenPath, JSON.stringify({ token: accessTokenVal, createdAt: Date.now() }, null, 2), { mode: 0o600 });
+    console.error(`Access token saved to ${tokenPath}`);
+    args.splice(accessTokenIdx, 2);
+  } else {
+    console.error('Error: --access-token requires a token argument');
+    process.exit(1);
+  }
+}
+
+// Extract --reset-access-token
+const resetAccessTokenIdx = args.indexOf('--reset-access-token');
+if (resetAccessTokenIdx !== -1) {
+  const tokenPath = resolve(getClaudeConfigDir(), 'cc-viewer', 'access-token.json');
+  if (existsSync(tokenPath)) {
+    unlinkSync(tokenPath);
+    console.error(`Access token reset. A new token will be generated on next start.`);
+  } else {
+    console.error('No persistent access token found to reset.');
+  }
+  args.splice(resetAccessTokenIdx, 1);
 }
 
 // ccv 自有命令判断
