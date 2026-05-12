@@ -382,9 +382,11 @@
   margin: 8px 0;
 }
 
-.lastResponseDivider::before,
-.lastResponseDivider::after {
-  border-block-start-style: dashed !important;
+/* 类名翻倍以超过 AntD Divider `:where()` / `.ant-divider-with-text` 的特异度，
+   避免使用 !important。CSS Modules 编译后是 hash 类名，翻倍语义不变。 */
+.lastResponseDivider.lastResponseDivider::before,
+.lastResponseDivider.lastResponseDivider::after {
+  border-block-start-style: dashed;
 }
 
 /* 方案 D：流式 overlay 活跃时隐藏 Last Response 顶部 "---Last Response---" Divider 标识

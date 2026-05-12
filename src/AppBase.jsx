@@ -1,9 +1,10 @@
 import React from 'react';
-import { ConfigProvider, theme, Modal, Table, Tag, Spin, Button, Checkbox, Popover, message } from 'antd';
-import { DownloadOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import { ConfigProvider, theme, Modal, Spin, Button, message } from 'antd';
+import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { isMobile, isPad } from './env';
 import WorkspaceList from './components/WorkspaceList';
 import OpenFolderIcon from './components/OpenFolderIcon';
+import LogTable from './components/LogTable';
 import { t, getLang, setLang } from './i18n';
 import { SettingsContext } from './contexts/SettingsContext';
 import { formatTokenCount, filterRelevantRequests, isRelevantRequest, appendCacheLossMap, extractCachedContent } from './utils/helpers';
@@ -1648,113 +1649,14 @@ class AppBase extends React.Component {
   };
 
   renderLogTable(logs, mobile) {
-    const columns = [
-      {
-        title: '',
-        dataIndex: 'file',
-        key: 'check',
-        width: 40,
-        fixed: mobile ? 'left' : false,
-        render: (file) => (
-          <Checkbox
-            checked={this.state.selectedLogs.has(file) || false}
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => { e.stopPropagation(); this.handleToggleLogSelect(file, e.target.checked); }}
-          />
-        ),
-      },
-      {
-        title: t('ui.logTime'),
-        dataIndex: 'timestamp',
-        key: 'time',
-        width: mobile ? 150 : 180,
-        render: (ts) => <span className={styles.tableTimestampCell}>{this.formatTimestamp(ts, mobile)}</span>,
-      },
-      {
-        title: t('ui.logPreview'),
-        dataIndex: 'preview',
-        key: 'preview',
-        width: mobile ? 150 : undefined,
-        ellipsis: true,
-        render: (arr) => {
-          if (!Array.isArray(arr) || arr.length === 0) return '—';
-          const first = arr[0];
-          const displayText = (first.length <= 30 && arr.length > 1) ? `${first} | ${arr[1]}` : first;
-          if (arr.length <= 1) return <span className={styles.tablePreviewText}>{displayText}</span>;
-          return (
-            <Popover
-              trigger={mobile ? 'click' : 'hover'}
-              placement={mobile ? 'bottomLeft' : 'leftTop'}
-              autoAdjustOverflow={{ adjustX: false, adjustY: true }}
-              overlayInnerStyle={{
-                background: 'var(--bg-elevated)',
-                border: '1px solid var(--border-hover)',
-                borderRadius: 8,
-                padding: 0,
-                maxHeight: 400,
-                overflowY: 'auto',
-              }}
-              content={
-                <div className={styles.previewPopover}>
-                  {arr.map((text, i) => (
-                    <div key={i} className={styles.previewItem}>
-                      <pre className={styles.previewText}>{text}</pre>
-                    </div>
-                  ))}
-                </div>
-              }
-            >
-              <span className={styles.tablePreviewTextClickable} style={{ textDecoration: mobile ? 'underline dotted #666' : 'none' }}>{displayText}</span>
-            </Popover>
-          );
-        },
-      },
-      ...(!mobile ? [{
-        title: t('ui.logTurns'),
-        dataIndex: 'turns',
-        key: 'turns',
-        width: 80,
-        render: (v) => <Tag className={styles.tableTag}>{v || 0}</Tag>,
-      }] : []),
-      {
-        title: t('ui.logSize'),
-        dataIndex: 'size',
-        key: 'size',
-        width: 90,
-        render: (v) => <Tag className={styles.tableTag}>{this.formatSize(v)}</Tag>,
-      },
-      {
-        title: t('ui.logActions'),
-        key: 'actions',
-        width: mobile ? 160 : 180,
-        render: (_, log) => (
-          <span className={styles.tableActionsCell}>
-            <Button size="small" type="primary" onClick={(e) => { e.stopPropagation(); this.handleOpenLogFile(log.file); }}>
-              {t('ui.openLog')}
-            </Button>
-            <Button size="small" icon={<DownloadOutlined />} onClick={(e) => { e.stopPropagation(); this.handleDownloadLogFile(log.file); }}>
-              {t('ui.downloadLog')}
-            </Button>
-          </span>
-        ),
-      },
-    ];
-
     return (
-      <Table
-        size="small"
-        dataSource={logs}
-        columns={columns}
-        rowKey="file"
-        pagination={false}
-        scroll={mobile ? { x: 'max-content', y: 'calc(100vh - 160px)' } : { y: 400 }}
-        onRow={(log) => ({
-          onClick: () => {
-            const checked = !this.state.selectedLogs.has(log.file);
-            this.handleToggleLogSelect(log.file, checked);
-          },
-          style: { cursor: 'pointer' },
-        })}
+      <LogTable
+        logs={logs}
+        mobile={mobile}
+        selectedLogs={this.state.selectedLogs}
+        onToggleSelect={this.handleToggleLogSelect}
+        onOpenLog={this.handleOpenLogFile}
+        onDownloadLog={this.handleDownloadLogFile}
       />
     );
   }
@@ -1928,20 +1830,6 @@ class AppBase extends React.Component {
       });
     });
   };
-
-  // ─── 格式化 ────────────────────────────────────────────
-
-  formatTimestamp(ts, mobile) {
-    if (!ts || ts.length < 15) return ts;
-    if (mobile) return `${ts.slice(4, 6)}-${ts.slice(6, 8)} ${ts.slice(9, 11)}:${ts.slice(11, 13)}:${ts.slice(13, 15)}`;
-    return `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)} ${ts.slice(9, 11)}:${ts.slice(11, 13)}:${ts.slice(13, 15)}`;
-  }
-
-  formatSize(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  }
 
   // ─── 共享渲染辅助 ─────────────────────────────────────
 

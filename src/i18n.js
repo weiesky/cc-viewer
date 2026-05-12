@@ -8621,6 +8621,26 @@ const i18nData = {
     "th": "ปิดรายละเอียดโครงการ",
     "tr": "Proje ayrıntılarını kapat",
     "uk": "Закрити деталі проєкту"
+  },
+  "ui.closeDrawer": {
+    "zh": "关闭",
+    "en": "Close",
+    "zh-TW": "關閉",
+    "ko": "닫기",
+    "ja": "閉じる",
+    "de": "Schließen",
+    "es": "Cerrar",
+    "fr": "Fermer",
+    "it": "Chiudi",
+    "da": "Luk",
+    "pl": "Zamknij",
+    "ru": "Закрыть",
+    "ar": "إغلاق",
+    "no": "Lukk",
+    "pt-BR": "Fechar",
+    "th": "ปิด",
+    "tr": "Kapat",
+    "uk": "Закрити"
   }
 };
 

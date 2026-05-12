@@ -75,8 +75,13 @@ function isWeakEnd(team) {
 
 /* ── helper: nav button styles (shared from parent) ── */
 function TeamButton({ requests, onOpenSession, navBtnClass }) {
-  // 稳定引用：只有 requests 对象本身变化时才重算；否则 useEffect 依赖 teamSessions 会被每次 render 误触发
-  const teamSessions = useMemo(() => extractTeamSessions(requests), [requests]);
+  // 稳定引用：requests 变化才重算，避免 useEffect 误触发。
+  // 过滤 name === 'unknown'：parser 在 TeamCreate 缺 team_name 或 cross-file TeamDelete
+  // 推断失败时兜底 'unknown'（teamSessionParser.js:80, 98），UI 隐藏，parser 保留底层数据用于追溯。
+  const teamSessions = useMemo(
+    () => extractTeamSessions(requests).filter(t => t.name && t.name !== 'unknown'),
+    [requests]
+  );
 
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [runtimeMap, setRuntimeMap] = useState({});

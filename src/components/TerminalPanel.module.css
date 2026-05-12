@@ -51,9 +51,11 @@
 [data-theme="light"] .terminalContainer { background: #FFF; }
 [data-theme="dark"] .terminalContainer { background: #000; }
 
-/* 隐藏 xterm textarea 的闪烁光标，避免在底部状态栏区域显示多余光标 */
+/* 隐藏 xterm textarea 的闪烁光标，避免在底部状态栏区域显示多余光标。
+   选择器 (0,0,2,0) 已超过 xterm.css 中 `.xterm-helper-textarea` 单类 (0,0,1,0)，
+   去掉 !important。若 xterm.js 6.x 通过 inline style 注入 caret-color，需 revert。 */
 .terminalContainer :global(.xterm-helper-textarea) {
-  caret-color: #00000000 !important;
+  caret-color: #00000000;
 }
 
 .pendingFileStrip {

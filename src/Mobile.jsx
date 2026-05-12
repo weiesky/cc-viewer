@@ -23,6 +23,7 @@ import OpenFolderIcon from './components/OpenFolderIcon';
 import appConfig from './config.json';
 import { t, getLang, setLang, LANG_OPTIONS } from './i18n';
 import { apiUrl } from './utils/apiUrl';
+import * as SeqLoaders from './utils/seqResourceLoaders';
 
 const CALIBRATION_MODELS = appConfig.calibrationModels;
 
@@ -98,29 +99,7 @@ class Mobile extends AppBase {
     localStorage.setItem('ccv_calibrationModel', value);
   };
 
-  // 与 AppHeader.reloadFsSkills 同实现（短期接受重复，TODO 后续抽 src/utils/cacheFetch.js）。
-  // 三态契约 null/false/数组；seq 防 workspace 切换时旧回包污染。
-  reloadFsSkills = async () => {
-    if (this._isLocalLog) return { ok: false, reason: 'local_log' };
-    const seq = ++this._fsSkillsSeq;
-    try {
-      const r = await fetch(apiUrl('/api/skills'));
-      const data = await r.json();
-      if (seq !== this._fsSkillsSeq) return { ok: false, reason: 'stale' };
-      if (!r.ok || !data.ok || !Array.isArray(data.skills)) {
-        const reason = (data && data.error) || `http:${r.status}`;
-        this.setState(prev => ({ _fsSkills: Array.isArray(prev._fsSkills) ? prev._fsSkills : false }));
-        return { ok: false, reason };
-      }
-      this.setState({ _fsSkills: data.skills });
-      return { ok: true, skills: data.skills };
-    } catch (e) {
-      if (seq === this._fsSkillsSeq) {
-        this.setState(prev => ({ _fsSkills: Array.isArray(prev._fsSkills) ? prev._fsSkills : false }));
-      }
-      return { ok: false, reason: e.message || 'network' };
-    }
-  };
+  reloadFsSkills = async () => SeqLoaders.loadFsSkills(this, { isLocalLog: this._isLocalLog });
 
   // 打开 skills 管理 modal。同时关闭 cache 抽屉避免两个 overlay 叠加。
   // 与 AppHeader.handleOpenSkillsModal 同语义；区别只在于关闭 cache UI 的字段名（mobileCachePanelVisible vs _cachePopoverOpen）。
@@ -226,18 +205,7 @@ class Mobile extends AppBase {
     }
   };
 
-  loadMemory = async () => {
-    const seq = ++this._memorySeq;
-    try {
-      const r = await fetch(apiUrl('/api/project-memory'));
-      const data = await r.json();
-      if (seq !== this._memorySeq) return;
-      if (!r.ok) { this.setState({ _memory: false }); return; }
-      this.setState({ _memory: data });
-    } catch {
-      if (seq === this._memorySeq) this.setState({ _memory: false });
-    }
-  };
+  loadMemory = async () => SeqLoaders.loadProjectMemory(this);
 
   // 与 AppHeader.handleRefreshMemory 同语义：用户主动刷新带 toast 反馈，
   // stale（workspace 中途切换）保持静默不误报失败。
@@ -291,22 +259,7 @@ class Mobile extends AppBase {
     if (open && this.state._claudeMd === null) this.loadClaudeMdList();
   };
 
-  // CLAUDE.md 列表懒加载：与 AppHeader.loadClaudeMdList 同语义。
-  loadClaudeMdList = async () => {
-    const seq = ++this._claudeMdSeq;
-    try {
-      const r = await fetch(apiUrl('/api/claude-md'));
-      const data = await r.json();
-      if (seq !== this._claudeMdSeq) return;
-      if (!r.ok || !Array.isArray(data.entries)) {
-        this.setState({ _claudeMd: false });
-        return;
-      }
-      this.setState({ _claudeMd: data.entries });
-    } catch {
-      if (seq === this._claudeMdSeq) this.setState({ _claudeMd: false });
-    }
-  };
+  loadClaudeMdList = async () => SeqLoaders.loadClaudeMdList(this);
 
   // 点击 chip → 拉明细到 _claudeMdDetail；标题用"<scope> · <tail>"组合。
   loadClaudeMdDetail = async (id, tail, scope) => {

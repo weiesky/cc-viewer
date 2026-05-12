@@ -235,7 +235,10 @@
   margin: 0;
 }
 
-/* 流式 thinking 自动折叠专属。非流式 Collapse 保留 antd 默认 200ms 快响应。 */
+/* 流式 thinking 自动折叠专属。非流式 Collapse 保留 antd 默认 200ms 快响应。
+   !important required: rc-motion (AntD 折叠动画底层) 通过 inline style 注入
+   `transition` 属性，inline style 的特异度永远高于 CSS 规则；唯一能覆盖的方式是 !important。
+   非特异度问题，CSS 本身无法绕过；项目级 no-!important 规则的明确例外。 */
 .collapseStream :global(.ant-motion-collapse),
 .collapseStream :global(.ant-motion-collapse-legacy-active) {
   transition: height 600ms cubic-bezier(0.33, 1, 0.68, 1),

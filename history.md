@@ -1,5 +1,86 @@
 # Changelog
 
+## 1.6.261 (2026-05-12)
+
+- review(adopt): 5-agent code review 采纳（P1 + P2 全部）
+  - **P1-1**：删 `src/utils/apiClient.js`（0 caller 死代码，违反 YAGNI；4/5 reviewer 共识）。
+  - **P1-3**：删 `PresetModal.jsx` 内重复定义的 `buildPresetsPayload`，改 import `src/utils/presetShortcuts.js`（B 类抽取漏改 1 处）。
+  - **P2-2**：新建 `src/utils/formatters.js`，收敛 `formatSize` + `formatTimestamp` —— LogTable / WorkspaceList 两处重复合并；选用 4 档版本（B/KB/MB/GB，与原 WorkspaceList 等价）。
+  - **P2-3**：LogTable `selectedLogs` 默认空 Set；preview 数组首元素加 `typeof === 'string'` 守卫，防 server 偶发回 `[null]`。
+  - **P2-4**：LogTable `columns` 用 `useMemo` 包，依赖 `[mobile, selectedLogs, onToggleSelect, onOpenLog, onDownloadLog]`，免 antd Table schemaChange 重诊。
+  - **P2-5**：`_seqGuardedFetch` 拆 fetch / r.json() 两段 try，错误带 `errorKind: 'network' | 'parse'`，loadFsSkills `reason` 字段优先用 errorKind 取代 `e.message` —— 区分网络断 vs 后端回非法 JSON。
+  - **P2-6**：`MobileDrawerCloseButton` 内联 X SVG → antd `<CloseOutlined />`；i18n key 从借用的 `ui.closeCachePanel` 改为新增中性 key `ui.closeDrawer`（18 语言全覆盖）。
+  - **P2-1**：`seqResourceLoaders.js` 头注释明确"抽取边界"——静默 lazy-load 走 utils，用户触发 refresh / detail 留 caller inline，是设计选择不是抽取漏。
+  - **延后到后续 PR (P3)**：三 Modal 专用 CSS 拆分、seqResourceLoaders Hook 化、PluginModal 上传 size 上限、mobile 抽屉 DOM 常驻 → `{open && ...}`、imageDownscale 入参守卫、AbortController、FileContentView 14 处 CodeMirror inline `!important`、lib/plugin-manager SSRF 黑名单等。
+
+- feat(mobile-ui): 插件管理 / CCV 进程管理 / 代理热切换 三个 Modal 在移动端改为左侧滑入抽屉，与文件浏览器 / 日志管理 / 偏好设置等其余菜单项保持一致
+  - **背景**：截至上一版，左侧菜单中其它项已统一采用 `position:absolute + translateX(-100%)→0 + transition 0.3s + zoom:0.6 inner` 的侧边抽屉模式（`mobileFileExplorerOverlay` / `mobileLogMgmtOverlay` 等），但 PluginModal / ProcessModal / ProxyModal 仍是 Ant Modal 弹窗，视觉与交互双重不一致。
+  - **改造（src/components/{PluginModal,ProcessModal,ProxyModal,MobileDrawerCloseButton}.jsx + src/App.module.css + src/components/AppHeader.module.css）**：
+    - `App.module.css` 抽出 `.mobileDrawerOverlay / .mobileDrawerOverlayVisible / .mobileDrawerInner` 三个**公共基类**（替代之前的三套重复 mobile{Plugin,Process,Proxy}Overlay/Inner），含 `:global(html.mobile-ios) {scale(0.6)}` 与 `:global(html.pad-mode) {zoom:1}` 变体；overlay 加 `will-change: transform` 提示浏览器为动画建独立合成层、缓解 iOS Safari 在 inner 含 scale 时的滑动卡顿。零新增 `!important`。
+    - `AppHeader.module.css` 追加 `.pluginModalScroll / .pluginModalFooterBar / .processModalScroll / .processModalFooterBar / .proxyModalScroll` 五个内层类，提供抽屉 scroll+footerBar 的 flex 布局；footerBar 显式 `flex-shrink: 0` 防止在 zoom 容器中被压扁。抽屉 header / title / close 按钮直接复用 App.module.css 中既有 `.mobileLogMgmtHeader/Title/Close`（mobileSettingsOverlay/mobilePromptOverlay 已先例），不再重复定义。
+    - 新增 `src/components/MobileDrawerCloseButton.jsx`：把三处一字不差的 `<button>` + 内联 X 图标 SVG 抽成通用子组件，三个 Modal 通过 `<MobileDrawerCloseButton onClose={onClose} />` 引用。
+    - 三个 Modal 各加 `if (isMobile)` 提前 `return` 分支：移动端渲染 overlay→header→inner→scroll[+footerBar] 四层 DOM；桌面端 `<Modal>` 全部字符级保留，无视觉/行为回归。
+    - 嵌套二级 Modal（删插件 / kill 进程 / 删代理 / CDN 安装）继续保持 Ant Modal 形态，通过默认 portal-to-body 逃出抽屉 inner 的 `transform: scale` 堆叠上下文，z-index 1100 高于抽屉 z-index 100，自然叠在最上层。
+    - Mobile.jsx 无需修改：`_closeAllMobileOverlays()` 早已把 `pluginModalVisible / processModalVisible / proxyModalVisible` 三个旗标并入互斥逻辑（`Mobile.jsx:91-93`），三处挂载点 `:1004-1019` API 不变。
+    - 关闭按钮 aria-label 复用现有 `ui.closeCachePanel` i18n key，不新增翻译条目。
+  - **2 轮 5-agent UltraReview 采纳点**：① CSS 抽公共基类去除三套重复（架构 P0 + 质量 P0 跨轮共识）；② 抽 `MobileDrawerCloseButton` 子组件去除 SVG 重复（质量 P0）；③ overlay 加 `will-change: transform` 缓解 iOS 滑动卡顿（性能 P2）；④ ProcessModal 变量命名 `refreshBtn` → `refreshBtnNode` 与同文件 `titleNode/tableNode` 后缀一致（质量 P1）。其余 P1/P2（fetch AbortController、isMobile reactive、遮罩点击关闭、apiKey masking 等）经核查为非本次引入 / 与现有项目约定冲突 / 经第一轮已核为误判，未采纳。
+
+- fix(team-session): Team 会话 popover 隐藏 name="unknown" 的无名条目
+  - **症状**：sidebar 左侧人形图标弹出的「Team 会话 (N)」列表里，偶尔出现 name 为 "unknown"、metadata 全 0（`0p · 0t`）的条目，对用户无任何信息价值。
+  - **根因**：`src/utils/teamSessionParser.js:80` 在 TeamCreate tool_use 缺少 `team_name`/`teamName` 字段时兜底 `teamName = 'unknown'`；`:98` cross-file TeamDelete（TeamCreate 在前一个 JSONL）反推不出名字时同样兜底 'unknown'。parser conservative 保留底层数据用于调试/历史追溯，但 popover UI 不应当展示这些占位项。
+  - **修复（src/components/TeamSessionPanel.jsx:79，仅 1 文件、1 行）**：`useMemo` 内追加 `.filter(t => t.name && t.name !== 'unknown')`。下游所有引用（标题计数 / map 渲染 / classifyTeams / useEffect 触发 / `/api/team-status` 查询）自动级联到 filtered 列表,无需多处同步——全部 team 都是 unknown 的会话整个按钮自动隐藏（line 149 `if (teamSessions.length === 0) return null;` 自动级联）；副作用：省掉对 unknown teams 的 runtime status 查询，与 UI 隐藏一致。parser 不动。
+  - **测试**：`npm run build` 通过；`npm run test` 1891/1891 全绿。
+
+- style(css): 清理 4 处 `!important`（违反 CLAUDE.md 全局禁令）+ 2 处保留并加注释说明物理无法绕过
+  - **背景**：CLAUDE.md 明令 "Using `!important` in CSS is prohibited"，但 src/ 实际散落 7 处。7-agent 调研（含挑战派/隐藏风险/fact-checker）核实每条的特异度博弈后分两批处理。
+  - **真删的 4 处**：
+    - `src/global.css:495` `.ant-tabs .ant-tabs-nav::before` 已有 (0,0,2,1) 特异度，原 !important 多余。
+    - `src/components/ChatView.module.css:386` `.lastResponseDivider::before/::after` 用类名翻倍 `.lastResponseDivider.lastResponseDivider::before` 达 (0,0,2,1)，超过 AntD Divider 的 `:where()` 注入特异度。
+    - `src/components/TeamSessionPanel.module.css:230` 改选择器为 `.teamAgentCard.teamAgentCardActive` (0,0,2,0)，超过 `.teamAgentCard:hover` (0,0,1,1) — 解决"选中态被 hover 压过"的本质特异度冲突。
+    - `src/components/TerminalPanel.module.css:55` `.terminalContainer :global(.xterm-helper-textarea)` (0,0,2,0) 已超过 xterm.css 单类 (0,0,1,0)，去 !important（注释提示若 xterm.js inline 注入 caret-color 则需 revert）。
+  - **保留并加注释的 2 处（CSS 物理无法去）**：
+    - `src/global.css:404-409` 全局 `*:focus { outline/box-shadow: none }`：要超过 AntD v5 `:not(:disabled):focus-visible` (0,0,3,0) 需 3 类以上，需污染 JSX 添加 hook 类——不值得；注释明确标"intentional exception"。
+    - `src/components/ChatMessage.module.css:238-245` 流式 thinking 折叠 transition：rc-motion 通过 inline style 注入 `transition`，inline style (1,0,0,0) 高于任何 CSS 规则，**只有 !important 能破** —— 非特异度问题，CSS 无解；注释明确这是项目级规则的明确例外。
+  - **取舍记录**：另两种思路被否决——(a) `@layer` cascade：AntD v5.29 CSS-in-JS 注入时机不明，不可靠；(b) 删 `*:focus` 整条规则：影响 a11y/视觉太广，回归风险高。**视觉验证待办**：4 处真删点（AntD Tabs 底边线 / Last Response 虚线 / TeamAgent 选中态 / xterm 光标）需用户实机目视确认。
+  - **测试**：`npm run build` 通过。
+
+- chore(assets): 删除 6 张完全未引用的图片（节省 ~325KB）
+  - **背景**：调研 agent 报告 src/img/ccv-logo.png + claude/{entrance,tickle,exit,waiting,thinking}.svg 在 src/ 全局零引用。fact-check 跨 codebase（含 server.js / lib/ / cli.js / electron/ / README）确认无任何路径硬编码或动态拼接引用；test/svg-sanitize.test.js 只引用配置常量不加载具体文件，删除无影响。
+  - **保留**：claude/{orbiting,shimmer,writing}.svg 是 src/components/ChatView.jsx 和 src/utils/helpers.js 实际引用的动画素材，不动。
+  - **可回滚**：git 历史可恢复。
+
+- refactor(loaders): 抽 `src/utils/seqResourceLoaders.js` 取代 AppHeader/Mobile 6 处重复的 seq-guarded 三态加载
+  - **重复代码**：AppHeader.jsx 与 Mobile.jsx 各自实现 `reloadFsSkills`/`loadMemory`/`loadClaudeMdList` 三个 lazy-load 方法，3 × 2 = 6 份代码近乎逐行相同（seq 计数防 workspace 切换脏回包污染 + 三态契约 null/false/data + 失败回退策略）。原代码注释已自陈"短期接受重复，TODO 后续抽 src/utils/cacheFetch.js"。
+  - **抽象形态**：3 个 dedicated loader 而非 1 个万能函数 —— 因 fact-checker 核实 3 个 loader 实际有契约差异：`loadFsSkills` 返回 `{ok, skills, reason}` 给 caller 决策且失败时保留前次成功数组（避免 popover chip 从乐观态回退）；`loadProjectMemory` / `loadClaudeMdList` 无返回值，失败直接 `false`。class 组件不能用 hooks，故 utility 接受 `this` 作为 component 参数直接操作 seq 字段和 setState。私有 `_seqGuardedFetch` 封装"seq++ → fetch → json → stale 检查"原语。
+  - **影响**：AppHeader 三个方法各从 ~20 行 → 1 行 delegate；Mobile 同样压缩。原`isLocalLog` 来源差异（AppHeader 用 `props.isLocalLog`、Mobile 用 `this._isLocalLog`）通过 options 参数注入，保持各自语义。
+  - **不抽**：`handleRefreshMemory`（带 toast 的主动刷新变体，与 lazy-load 的 silent 策略不同）和 `loadMemoryDetail`/`loadClaudeMdDetail`（payload 形状不同）保留原样，避免过度抽象损失语义。
+  - **测试**：`npm run build` 通过；`npm run test` 1891/1891 全绿。
+
+- refactor(api): 新增 `src/utils/apiClient.js`（helper-only，不迁移现有 fetch 调用）
+  - **决策记录**：调研发现 src/ 下有 95 处 fetch 调用，形态异质（31 处 await 风格、2 处 .then 风格、错误处理散落 silent catch / message toast / 自定义状态 / fire-and-forget）。若强制全量迁移到 wrapper，会损失各处自定义错误语义且 churn 高（95 site）；若不建 helper，未来新代码继续重复样板。**折中**：建轻 helper 放着，老代码不动，新代码自然采用。
+  - **API**：`apiCall(path, init)` 返回 `{ ok, status, data, error? }` 形状（不抛错，与现有 .ok 检查风格兼容）；`apiGet/apiPost/apiPut/apiDelete` 是常用方法 sugar。
+  - **测试**：未引入运行时行为变化（无 caller）；build 通过。
+
+- refactor(env): 新增 `isElectron` 到 `src/env.js`，迁移 1 处直检
+  - **背景**：env.js 已集中 `isMobile`/`isPad`/`isIOS`，但 Electron 检测散在 2 处直接 `window.electronAPI`。仅 1 处是纯存在检查（App.jsx:523 更新提示 UI），其他 1 处（WorkspaceList.jsx:214 `?.launchWorkspace`）同时检方法存在，精度更高保留不迁移。
+  - **实现**：`export const isElectron = typeof window !== 'undefined' && !!window.electronAPI;` 在模块加载时求值（Electron preload 在页面加载前注入 `window.electronAPI`，时序安全）。
+  - **测试**：build + 1891 tests 全绿。
+
+- refactor(logtable): 抽 `AppBase.renderLogTable` (~110 行) 为 `src/components/LogTable.jsx` 函数组件
+  - **背景**：AppBase.jsx 是 PC App 和 Mobile 共享的 2011 行基类。renderLogTable 是其中 110 行纯渲染块，含 6 列 Table 列定义 + 关联回调，与 AppBase 状态机无强耦合。`formatTimestamp` 和 `formatSize` 两个 helper 在 src/ 全局只在此一处调用，一并迁入 LogTable.jsx 内部。
+  - **影响**：AppBase 删除 6 个无关 antd imports（Table/Checkbox/Popover/Tag/DownloadOutlined）；renderLogTable 从 110 行变 11 行 delegate；删除 formatTimestamp/formatSize 两个 instance 方法（共 11 行）。AppBase 净减 ~120 行。
+  - **接口**：LogTable 接收 6 个 props（logs/mobile/selectedLogs/onToggleSelect/onOpenLog/onDownloadLog）。class field 箭头函数引用稳定，无 React batching 风险。
+  - **审计**：3-agent code review（功能等价 / 代码质量 / 测试依赖）未发现 P0/P1 阻塞；Reviewer 提的 propTypes 建议未采纳——项目全局 0 propTypes 使用，是约定。
+  - **测试**：build + 1891 tests 全绿。
+
+- refactor(utils): 抽 `TerminalPanel._downscaleForRetina` (~26 行) 为 `src/utils/imageDownscale.js`
+  - **判定**：fact-checker 核实该方法是纯通用 Retina 图片压缩（dpr > 1 → canvas 重绘到 1x），无 PTY / Terminal / xterm 特定逻辑。导出 `downscaleForRetina(file)` 函数。Graceful fallback（canvas 不可用 / blob null / img.onerror 时 resolve(file)）保留原行为，注释解释"intentional silent fallback for upload robustness"。
+  - **测试**：build + 1891 tests 全绿。
+
+- refactor(utils): 抽 `TerminalPanel._savePresetShortcuts` payload 序列化为 `src/utils/presetShortcuts.js`
+  - **背景**：原方法 13 行混合"payload 构造 + props 回调"。payload 部分（items.map → presetShortcuts、dismissed Set spread → dismissedBuiltinPresets）是纯数据变换，与组件 state 解耦后变 14 行 pure function `buildPresetShortcutsPayload(items, dismissed)`。组件方法保留 props 调用部分，从 13 行 → 3 行。
+  - **测试**：build + 1891 tests 全绿。
+
 ## 1.6.260 (2026-05-11)
 
 - fix(image-viewer): Mac 触控板 pinch 缩放灵敏度过高根治 + React passive wheel listener 修复 + 5-agent UltraReview 采纳

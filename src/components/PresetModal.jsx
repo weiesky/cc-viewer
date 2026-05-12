@@ -2,25 +2,12 @@ import React, { useState, useRef, useCallback } from 'react';
 import { Modal, Button, Checkbox } from 'antd';
 import { t } from '../i18n';
 import styles from './TerminalPanel.module.css';
-
-// 序列化 + 写入由调用方注入的 onSavePresets 回调完成(走 SettingsContext.updatePreferences)。
-function buildPresetsPayload(items, dismissed) {
-  const payload = {
-    presetShortcuts: items.map(i => {
-      const o = { teamName: i.teamName, description: i.description };
-      if (i.builtinId) o.builtinId = i.builtinId;
-      if (i.modified) o.modified = true;
-      return o;
-    }),
-  };
-  if (dismissed) payload.dismissedBuiltinPresets = [...dismissed];
-  return payload;
-}
+import { buildPresetShortcutsPayload } from '../utils/presetShortcuts';
 
 export default function PresetModal({ open, onClose, items, onItemsChange, dismissedBuiltinPresets, onSavePresets }) {
   const savePresets = useCallback((nextItems, nextDismissed) => {
     if (typeof onSavePresets === 'function') {
-      onSavePresets(buildPresetsPayload(nextItems, nextDismissed));
+      onSavePresets(buildPresetShortcutsPayload(nextItems, nextDismissed));
     }
   }, [onSavePresets]);
   const [selected, setSelected] = useState(new Set());

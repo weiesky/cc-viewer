@@ -6,6 +6,8 @@ import { apiUrl } from '../utils/apiUrl';
 import { isMobile } from '../env';
 import { SettingsContext } from '../contexts/SettingsContext';
 import styles from './AppHeader.module.css';
+import appStyles from '../App.module.css';
+import MobileDrawerCloseButton from './MobileDrawerCloseButton';
 
 // 插件管理 Modal —— PC + mobile 共用。
 // 包含 3 段嵌套 modal：主面板 / 删除确认 / CDN 安装。
@@ -251,121 +253,169 @@ export default function PluginModal({ open, onClose }) {
     setCdnLoading(false);
   };
 
+  const titleNode = (
+    <span><ApiOutlined className={styles.titleIcon} />{t('ui.pluginManagement')}</span>
+  );
+
+  const footerNode = (
+    <div className={styles.pluginModalFooter}>
+      <div className={styles.pluginModalFooterLeft}>
+        <Button icon={<PlusOutlined />} onClick={handleAddPlugin}>{t('ui.plugins.add')}</Button>
+        <Button icon={<CloudDownloadOutlined />} onClick={handleShowCdnModal}>{t('ui.plugins.cdnInstall')}</Button>
+      </div>
+      <Button icon={<ReloadOutlined />} onClick={handleReloadPlugins}>{t('ui.plugins.reload')}</Button>
+    </div>
+  );
+
+  const bodyNode = (
+    <>
+      {pluginsDir && (
+        <div className={styles.pluginDirHint}>
+          <span className={styles.pluginDirLabel}>{t('ui.plugins.pluginsDir')}:</span>{' '}
+          <code
+            className={styles.pluginDirPath}
+            onClick={() => {
+              navigator.clipboard.writeText(pluginsDir)
+                .then(() => { message.success(t('ui.copied')); })
+                .catch(() => {});
+            }}
+          >
+            {pluginsDir}
+          </code>
+        </div>
+      )}
+      {pluginsList.length === 0 ? (
+        <div className={styles.pluginEmpty}>
+          <div className={styles.pluginEmptyTitle}>{t('ui.plugins.empty')}</div>
+          <div className={styles.pluginEmptyHint}>{t('ui.plugins.emptyHint')}</div>
+        </div>
+      ) : (
+        <div className={styles.pluginList}>
+          {pluginsList.map(p => (
+            <div key={p.file} className={styles.pluginItem}>
+              <div className={styles.pluginInfo}>
+                <span className={styles.pluginName}>{p.name}</span>
+                <span className={styles.pluginFile}>{p.file}</span>
+                {p.hooks.length > 0 && (
+                  <span className={styles.pluginHooks}>
+                    {p.hooks.map(h => <span key={h} className={styles.pluginHookTag}>{h}</span>)}
+                  </span>
+                )}
+              </div>
+              <div className={styles.pluginActions}>
+                <Switch
+                  size="small"
+                  checked={p.enabled}
+                  onChange={(checked) => handleTogglePlugin(p.name, checked)}
+                />
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() => handleDeletePlugin(p.file, p.name)}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+
+  const deleteConfirmModal = (
+    /* 删除确认 */
+    <Modal
+      title={t('ui.plugins.delete')}
+      open={deleteConfirmVisible}
+      onCancel={() => { setDeleteConfirmVisible(false); setDeleteTarget(null); }}
+      onOk={handleDeletePluginConfirm}
+      okType="danger"
+      okText="OK"
+      cancelText="Cancel"
+      styles={{ body: isMobile ? { zoom: 0.6 } : {} }}
+    >
+      <p>{deleteTarget ? t('ui.plugins.deleteConfirm', { name: deleteTarget.name }) : ''}</p>
+    </Modal>
+  );
+
+  const cdnInstallModal = (
+    /* CDN 安装 */
+    <Modal
+      title={<span><CloudDownloadOutlined className={styles.titleIcon} />{t('ui.plugins.cdnInstall')}</span>}
+      open={cdnModalVisible}
+      onCancel={handleCdnCancel}
+      onOk={handleCdnInstall}
+      confirmLoading={cdnLoading}
+      okText={t('ui.plugins.cdnInstallBtn')}
+      cancelText={t('ui.cancel')}
+      width={480}
+      styles={{ body: isMobile ? { zoom: 0.6 } : {} }}
+    >
+      <div>
+        <div className={styles.cdnUrlLabel}>{t('ui.plugins.cdnUrl')}</div>
+        <Input
+          placeholder={t('ui.plugins.cdnUrlPlaceholder')}
+          value={cdnUrl}
+          onChange={handleCdnUrlChange}
+          onPressEnter={handleCdnInstall}
+          className={styles.cdnInput}
+        />
+      </div>
+    </Modal>
+  );
+
+  const hiddenFileInput = (
+    /* 隐藏 file input —— 通过 ref 触发 click;onChange 后重置 value 防同文件二次失效 */
+    <input
+      ref={fileInputRef}
+      type="file"
+      accept=".js,.mjs"
+      multiple
+      style={{ display: 'none' }}
+      onChange={handleFileChange}
+    />
+  );
+
+  if (isMobile) {
+    return (
+      <>
+        {hiddenFileInput}
+        <div className={`${appStyles.mobileDrawerOverlay} ${open ? appStyles.mobileDrawerOverlayVisible : ''}`}>
+          <div className={appStyles.mobileLogMgmtHeader}>
+            <span className={appStyles.mobileLogMgmtTitle}>{titleNode}</span>
+            <MobileDrawerCloseButton onClose={onClose} />
+          </div>
+          <div className={appStyles.mobileDrawerInner}>
+            <div className={styles.pluginModalScroll}>
+              {bodyNode}
+              <div className={styles.pluginModalFooterBar}>
+                {footerNode}
+              </div>
+            </div>
+          </div>
+        </div>
+        {deleteConfirmModal}
+        {cdnInstallModal}
+      </>
+    );
+  }
+
   return (
     <>
-      {/* 隐藏 file input —— 通过 ref 触发 click;onChange 后重置 value 防同文件二次失效 */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".js,.mjs"
-        multiple
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
+      {hiddenFileInput}
       <Modal
-        title={<span><ApiOutlined className={styles.titleIcon} />{t('ui.pluginManagement')}</span>}
+        title={titleNode}
         open={open}
         onCancel={onClose}
-        footer={
-          <div className={styles.pluginModalFooter}>
-            <div className={styles.pluginModalFooterLeft}>
-              <Button icon={<PlusOutlined />} onClick={handleAddPlugin}>{t('ui.plugins.add')}</Button>
-              <Button icon={<CloudDownloadOutlined />} onClick={handleShowCdnModal}>{t('ui.plugins.cdnInstall')}</Button>
-            </div>
-            <Button icon={<ReloadOutlined />} onClick={handleReloadPlugins}>{t('ui.plugins.reload')}</Button>
-          </div>
-        }
+        footer={footerNode}
         width={560}
         styles={{ body: isMobile ? { zoom: 0.6 } : {} }}
       >
-        {pluginsDir && (
-          <div className={styles.pluginDirHint}>
-            <span className={styles.pluginDirLabel}>{t('ui.plugins.pluginsDir')}:</span>{' '}
-            <code
-              className={styles.pluginDirPath}
-              onClick={() => {
-                navigator.clipboard.writeText(pluginsDir)
-                  .then(() => { message.success(t('ui.copied')); })
-                  .catch(() => {});
-              }}
-            >
-              {pluginsDir}
-            </code>
-          </div>
-        )}
-        {pluginsList.length === 0 ? (
-          <div className={styles.pluginEmpty}>
-            <div className={styles.pluginEmptyTitle}>{t('ui.plugins.empty')}</div>
-            <div className={styles.pluginEmptyHint}>{t('ui.plugins.emptyHint')}</div>
-          </div>
-        ) : (
-          <div className={styles.pluginList}>
-            {pluginsList.map(p => (
-              <div key={p.file} className={styles.pluginItem}>
-                <div className={styles.pluginInfo}>
-                  <span className={styles.pluginName}>{p.name}</span>
-                  <span className={styles.pluginFile}>{p.file}</span>
-                  {p.hooks.length > 0 && (
-                    <span className={styles.pluginHooks}>
-                      {p.hooks.map(h => <span key={h} className={styles.pluginHookTag}>{h}</span>)}
-                    </span>
-                  )}
-                </div>
-                <div className={styles.pluginActions}>
-                  <Switch
-                    size="small"
-                    checked={p.enabled}
-                    onChange={(checked) => handleTogglePlugin(p.name, checked)}
-                  />
-                  <Button
-                    type="text"
-                    size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={() => handleDeletePlugin(p.file, p.name)}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {bodyNode}
       </Modal>
-      {/* 删除确认 */}
-      <Modal
-        title={t('ui.plugins.delete')}
-        open={deleteConfirmVisible}
-        onCancel={() => { setDeleteConfirmVisible(false); setDeleteTarget(null); }}
-        onOk={handleDeletePluginConfirm}
-        okType="danger"
-        okText="OK"
-        cancelText="Cancel"
-        styles={{ body: isMobile ? { zoom: 0.6 } : {} }}
-      >
-        <p>{deleteTarget ? t('ui.plugins.deleteConfirm', { name: deleteTarget.name }) : ''}</p>
-      </Modal>
-      {/* CDN 安装 */}
-      <Modal
-        title={<span><CloudDownloadOutlined className={styles.titleIcon} />{t('ui.plugins.cdnInstall')}</span>}
-        open={cdnModalVisible}
-        onCancel={handleCdnCancel}
-        onOk={handleCdnInstall}
-        confirmLoading={cdnLoading}
-        okText={t('ui.plugins.cdnInstallBtn')}
-        cancelText={t('ui.cancel')}
-        width={480}
-        styles={{ body: isMobile ? { zoom: 0.6 } : {} }}
-      >
-        <div>
-          <div className={styles.cdnUrlLabel}>{t('ui.plugins.cdnUrl')}</div>
-          <Input
-            placeholder={t('ui.plugins.cdnUrlPlaceholder')}
-            value={cdnUrl}
-            onChange={handleCdnUrlChange}
-            onPressEnter={handleCdnInstall}
-            className={styles.cdnInput}
-          />
-        </div>
-      </Modal>
+      {deleteConfirmModal}
+      {cdnInstallModal}
     </>
   );
 }

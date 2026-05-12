@@ -23,6 +23,8 @@ import { buildBracketPasteSubmitChunks, BRACKET_PASTE_SUBMIT_SETTLE_MS } from '.
 import ConceptHelp from './ConceptHelp';
 import CustomUltraplanEditModal from './CustomUltraplanEditModal';
 import { TerminalWriteQueue } from '../utils/terminalWriteQueue';
+import { downscaleForRetina } from '../utils/imageDownscale';
+import { buildPresetShortcutsPayload } from '../utils/presetShortcuts';
 import ImageLightbox from './ImageLightbox';
 import ConfirmRemoveButton from './ConfirmRemoveButton';
 import ScratchTerminal from './ScratchTerminal';
@@ -1013,7 +1015,7 @@ class TerminalPanel extends React.Component {
 
   _uploadClipboardImage = async (file) => {
     try {
-      const optimized = await this._downscaleForRetina(file);
+      const optimized = await downscaleForRetina(file);
       const path = await uploadFileAndGetPath(optimized);
       if (this.props.onFilePath) this.props.onFilePath(path);
       // Notify other views/devices about the uploaded image
@@ -1027,36 +1029,6 @@ class TerminalPanel extends React.Component {
     }
   };
 
-  /**
-   * Retina 屏幕截图为 2x 分辨率，上传前按 devicePixelRatio 缩小到 1x，
-   * 减少文件体积。非 Retina 屏幕或 Canvas 不可用时返回原始文件。
-   */
-  _downscaleForRetina(file) {
-    const dpr = window.devicePixelRatio || 1;
-    if (dpr <= 1) return Promise.resolve(file);
-
-    return new Promise((resolve) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const w = Math.round(img.width / dpr);
-        const h = Math.round(img.height / dpr);
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) { resolve(file); return; }
-        ctx.drawImage(img, 0, 0, w, h);
-        canvas.toBlob((blob) => {
-          if (!blob) { resolve(file); return; }
-          resolve(new File([blob], file.name || 'clipboard.png', { type: file.type }));
-        }, file.type);
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
-      img.src = url;
-    });
-  }
 
   handleVirtualKey = (seq) => {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -1125,16 +1097,9 @@ class TerminalPanel extends React.Component {
 
   // --- 预置快捷方式相关 ---
   _savePresetShortcuts = (items, dismissed) => {
-    const payload = {
-      presetShortcuts: items.map(i => {
-        const o = { teamName: i.teamName, description: i.description };
-        if (i.builtinId) o.builtinId = i.builtinId;
-        if (i.modified) o.modified = true;
-        return o;
-      }),
-    };
-    if (dismissed) payload.dismissedBuiltinPresets = [...dismissed];
-    if (this.props.onUpdatePreferences) this.props.onUpdatePreferences(payload);
+    if (this.props.onUpdatePreferences) {
+      this.props.onUpdatePreferences(buildPresetShortcutsPayload(items, dismissed));
+    }
   };
 
   handlePresetAdd = () => {

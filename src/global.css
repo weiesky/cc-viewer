@@ -401,7 +401,11 @@ html, body {
   height: auto;
 }
 
-/* Remove focus outlines (Ant Design CSS-in-JS has higher specificity, !important required) */
+/* Remove focus outlines globally.
+   !important required: AntD v5 CSS-in-JS uses class-level selectors like
+   `.ant-btn:focus` (0,0,2,0) which exceed our universal `*:focus` (0,0,1,0).
+   No clean specificity-based override without polluting JSX with extra
+   class hooks; intentional exception to the project-wide no-!important rule. */
 *:focus { outline: none !important; box-shadow: none !important; }
 *:focus-visible { outline: none !important; box-shadow: none !important; }
 
@@ -492,7 +496,7 @@ html, body {
 
 /* Ant Design Tabs bottom border */
 .ant-tabs .ant-tabs-nav::before {
-  border-bottom-color: var(--border-primary) !important;
+  border-bottom-color: var(--border-primary);
 }
 
 /* highlight.js light theme overrides */

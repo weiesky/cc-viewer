@@ -2,7 +2,7 @@ import React from 'react';
 import { ConfigProvider, Layout, theme, Modal, Button, Checkbox, Spin, Alert, message, Tooltip } from 'antd';
 import { UploadOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import AppBase, { styles } from './AppBase';
-import { isMobile, setViewMode } from './env';
+import { isMobile, isElectron, setViewMode } from './env';
 import { uploadFileAndGetPath } from './components/TerminalPanel';
 import AppHeader from './components/AppHeader';
 import RequestList from './components/RequestList';
@@ -520,7 +520,7 @@ class App extends AppBase {
             {this.state.updateInfo && <p><strong>{t('ui.update.latest')}:</strong> v{this.state.updateInfo.version}</p>}
             <p style={{ marginTop: 12 }}><strong>{t('ui.update.npm')}</strong></p>
             <code style={{ display: 'block', background: 'var(--bg-code)', padding: '8px 12px', borderRadius: 6, fontSize: 13 }}>npm update -g cc-viewer</code>
-            {typeof window !== 'undefined' && window.electronAPI && (<>
+            {isElectron && (<>
               <p style={{ marginTop: 16 }}><strong>{t('ui.update.electron')}</strong></p>
               <p style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>{t('ui.update.electronDesc')}</p>
               <ol style={{ color: 'var(--text-tertiary)', fontSize: 13, paddingLeft: 20, margin: '6px 0' }}>

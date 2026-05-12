@@ -16,6 +16,8 @@ export const isPad = _forcePad || _savedMode === 'pad' || _autoNarrow;
 export const isMobile = _forcePad || _forceMobile || _savedMode === 'pad' || _autoNarrow
   || (_savedMode !== 'pc' && (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || _isIPadOS));
 export const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || _isIPadOS;
+// Electron preload 在页面加载前注入 window.electronAPI，模块初始化时计算即可。
+export const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
 
 if (isPad) {
   document.documentElement.classList.add('pad-mode');

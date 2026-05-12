@@ -9,6 +9,7 @@ import { classifyRequest } from '../utils/requestType';
 import { resolveTeammateNames } from '../utils/contentFilter';
 import { t, getLang, setLang, LANG_OPTIONS } from '../i18n';
 import { apiUrl } from '../utils/apiUrl';
+import * as SeqLoaders from '../utils/seqResourceLoaders';
 import { SettingsContext } from '../contexts/SettingsContext';
 import ConceptHelp from './ConceptHelp';
 import OpenFolderIcon from './OpenFolderIcon';
@@ -111,50 +112,9 @@ class AppHeader extends React.Component {
     }
   }
 
-  // 返回 { ok: true, skills } / { ok: false, reason: 'http:NNN' | 'network' | 'local_log' | 'stale' | <server msg> }。
-  // caller 应用返回值做下一步决策（setState 异步；await 后 this.state 可能还没 flush）。
-  // 失败时若已有过成功结果（_fsSkills 是数组）→ 保留不 clobber，避免 popover chip 从乐观态回退到历史态。
-  reloadFsSkills = async () => {
-    if (this.props.isLocalLog) return { ok: false, reason: 'local_log' };
-    const seq = ++this._fsSkillsSeq;
-    try {
-      const r = await fetch(apiUrl('/api/skills'));
-      const data = await r.json();
-      if (seq !== this._fsSkillsSeq) return { ok: false, reason: 'stale' };
-      if (!r.ok || !data.ok || !Array.isArray(data.skills)) {
-        const reason = (data && data.error) || `http:${r.status}`;
-        this.setState(prev => ({ _fsSkills: Array.isArray(prev._fsSkills) ? prev._fsSkills : false }));
-        return { ok: false, reason };
-      }
-      this.setState({ _fsSkills: data.skills });
-      return { ok: true, skills: data.skills };
-    } catch (e) {
-      if (seq === this._fsSkillsSeq) {
-        this.setState(prev => ({ _fsSkills: Array.isArray(prev._fsSkills) ? prev._fsSkills : false }));
-      }
-      return { ok: false, reason: e.message || 'network' };
-    }
-  };
+  reloadFsSkills = async () => SeqLoaders.loadFsSkills(this, { isLocalLog: this.props.isLocalLog });
 
-  // 拉取当前项目入口 MEMORY.md。沿用 _fsSkills 的 seq + 静默回退模式。
-  // 三态契约:null=loading / false=失败 / 对象=成功(消费方在 815-855 / 1636 行依赖此契约)。
-  // 与 loadMemoryDetail 不同:Detail 把错误暴露到 UI(_memoryDetail.error),需要 catch (e);
-  // 入口 popover 失败时只显示通用文案(memoryLoadError),无需 e 详情,故 catch 不带形参。
-  loadMemory = async () => {
-    const seq = ++this._memorySeq;
-    try {
-      const r = await fetch(apiUrl('/api/project-memory'));
-      const data = await r.json();
-      if (seq !== this._memorySeq) return;
-      if (!r.ok) {
-        this.setState({ _memory: false });
-        return;
-      }
-      this.setState({ _memory: data });
-    } catch {
-      if (seq === this._memorySeq) this.setState({ _memory: false });
-    }
-  };
+  loadMemory = async () => SeqLoaders.loadProjectMemory(this);
 
   // 用户主动点击"刷新记忆"按钮：自管 seq 三态（ok/stale/fail）以决定 toast。
   // 与 loadMemory 区分的原因：lazy-load 失败不打扰用户，只在 popover 内显示 memoryLoadError；
@@ -192,23 +152,7 @@ class AppHeader extends React.Component {
     if (open && this.state._claudeMd === null) this.loadClaudeMdList();
   };
 
-  // CLAUDE.md 列表懒加载。三态契约: null/false/[]/[...].
-  // 与 loadMemory 同语义: lazy-load 失败静默回退 false; 不打扰用户。
-  loadClaudeMdList = async () => {
-    const seq = ++this._claudeMdSeq;
-    try {
-      const r = await fetch(apiUrl('/api/claude-md'));
-      const data = await r.json();
-      if (seq !== this._claudeMdSeq) return;
-      if (!r.ok || !Array.isArray(data.entries)) {
-        this.setState({ _claudeMd: false });
-        return;
-      }
-      this.setState({ _claudeMd: data.entries });
-    } catch {
-      if (seq === this._claudeMdSeq) this.setState({ _claudeMd: false });
-    }
-  };
+  loadClaudeMdList = async () => SeqLoaders.loadClaudeMdList(this);
 
   // 点击 CLAUDE.md chip 触发: 拉取明细到 _claudeMdDetail, MemoryDetailModal(linkMode=passthrough) 渲染。
   // tail / scope 提前注入到 detail.name 用作 Modal 标题, 避免等 server 回包再拼。

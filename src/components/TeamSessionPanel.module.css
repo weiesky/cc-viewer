@@ -227,8 +227,10 @@
   background: var(--bg-elevated);
 }
 
-.teamAgentCardActive {
-  background: var(--bg-elevated) !important;
+/* 用双类选择器 (0,0,2,0) 超过 .teamAgentCard:hover (0,0,1,1)，避免 !important。
+   JSX 中 active 时同一 div 同时挂 teamAgentCard 和 teamAgentCardActive 两个类。 */
+.teamAgentCard.teamAgentCardActive {
+  background: var(--bg-elevated);
 }
 
 .teamAgentCardHeader {

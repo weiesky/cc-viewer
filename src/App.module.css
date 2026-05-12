@@ -1026,3 +1026,51 @@
   color: var(--text-primary);
   margin: 0;
 }
+
+/* ===== Mobile 侧边抽屉公共基类 =====
+ * 当前由插件管理 / CCV 进程管理 / 代理热切换三处共用；模板与既有
+ * mobileFileExplorerOverlay / mobileLogMgmtOverlay 一致：
+ *   - overlay 自身负责 translateX 动画与 z-index 100；will-change 提示浏览器为
+ *     transform 单独建合成层，缓解 iOS Safari 在 inner 含 scale 时滑动卡顿。
+ *   - inner 在内部用 zoom:0.6 还原桌面内容密度；iOS Safari 改用 scale(0.6)；pad-mode 复位 zoom:1。
+ */
+
+.mobileDrawerOverlay {
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  will-change: transform;
+  z-index: 100;
+  background: var(--bg-base-alt);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mobileDrawerOverlayVisible {
+  transform: translateX(0);
+}
+
+.mobileDrawerInner {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  zoom: 0.6;
+}
+
+:global(html.mobile-ios) .mobileDrawerInner {
+  zoom: 1;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(100% / 0.6);
+  height: calc(100% / 0.6);
+  transform: scale(0.6);
+  transform-origin: top left;
+}
+
+:global(html.pad-mode) .mobileDrawerInner {
+  zoom: 1;
+}

@@ -995,6 +995,7 @@
 .pluginModalFooter {
   display: flex;
   justify-content: space-between;
+  width: 100%;
 }
 
 .pluginModalFooterLeft {
@@ -1445,4 +1446,51 @@
   word-break: break-all;
   user-select: text;
 }
+
+/* ===== Mobile 抽屉版三个 Modal 内层结构 =====
+ * 配合 src/App.module.css 中 .mobileDrawerOverlay / .mobileDrawerInner（公共基类，
+ * zoom:0.6 / iOS scale 0.6 / pad-mode zoom:1）之内的 scroll + footerBar 两段。
+ * flex-shrink:0 防止 footer 在 zoom 容器内被压扁。
+ */
+
+.pluginModalScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px 0;
+}
+
+/* footerBar 不再吸底（已移入 scroll 容器内），只负责与列表的视觉分隔。
+ * 故意保持 block 布局：内层 .pluginModalFooter 是 flex/space-between，
+ * block 父让它自然撑满 100% 宽度，space-between 才能把"重新加载"推到右侧。
+ * zoom:0.6 容器下，padding/margin 数值需放大些才有标准视觉间距。 */
+.pluginModalFooterBar {
+  padding: 16px 0;
+  margin-top: 16px;
+  border-top: 1px solid var(--border-primary);
+}
+
+.processModalScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px 16px 0;
+}
+
+.processModalFooterBar {
+  padding: 16px 0;
+  margin-top: 16px;
+  border-top: 1px solid var(--border-primary);
+}
+
+.proxyModalScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px 0;
+}
+
+/* 抽屉 header / title / close 按钮统一复用 src/App.module.css 中 mobileLogMgmtHeader /
+ * mobileLogMgmtTitle / mobileLogMgmtClose 三个类（mobileSettingsOverlay / mobilePromptOverlay
+ * 已先例复用），避免重复定义。 */
 

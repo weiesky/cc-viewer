@@ -7,6 +7,8 @@ import { isMobile } from '../env';
 import OpenFolderIcon from './OpenFolderIcon';
 import ConceptHelp from './ConceptHelp';
 import styles from './AppHeader.module.css';
+import appStyles from '../App.module.css';
+import MobileDrawerCloseButton from './MobileDrawerCloseButton';
 
 // 代理热切换 Modal —— PC + mobile 共用。
 // 风格:半受控(proxyProfiles/activeProxyId 是父级跨组件共享数据 → props 注入;
@@ -115,25 +117,18 @@ export default function ProxyModal({
     setEditingProxy(null);
   };
 
-  return (
-    <>
-    <Modal
-      title={
-        <span>
-          <OpenFolderIcon apiEndpoint={apiUrl('/api/open-profile-dir')} title={t('ui.proxy.openConfigDir')} size={16} />
-          {' '}{t('ui.proxySwitch')}{' '}
-          <ConceptHelp doc="ProxySwitch" zIndex={1100} />
-        </span>
-      }
-      open={open}
-      onCancel={onClose}
-      footer={null}
-      width={520}
-      styles={{ body: isMobile ? { zoom: 0.6 } : {} }}
-    >
-      <div>
-        <div className={styles.proxyWarning}>⚠️ {t('ui.proxy.maxWarning')}</div>
-        <div className={styles.proxyList}>
+  const titleNode = (
+    <span>
+      <OpenFolderIcon apiEndpoint={apiUrl('/api/open-profile-dir')} title={t('ui.proxy.openConfigDir')} size={16} />
+      {' '}{t('ui.proxySwitch')}{' '}
+      <ConceptHelp doc="ProxySwitch" zIndex={1100} />
+    </span>
+  );
+
+  const bodyNode = (
+    <div>
+      <div className={styles.proxyWarning}>⚠️ {t('ui.proxy.maxWarning')}</div>
+      <div className={styles.proxyList}>
           {profiles.map(p => (
             <div key={p.id} className={`${styles.proxyItem} ${p.id === activeId ? styles.proxyItemActive : ''}`}>
               <div className={styles.proxyItemMain} onClick={() => handleActivate(p)}>
@@ -210,8 +205,10 @@ export default function ProxyModal({
           </Button>
         )}
       </div>
-    </Modal>
-    {/* 删除确认 —— 受控 Modal,父关时通过 useEffect 联动关闭,避免孤儿态 */}
+  );
+
+  const deleteConfirmModal = (
+    /* 受控 Modal,父关时通过 useEffect 联动关闭,避免孤儿态 */
     <Modal
       title={t('ui.proxy.deleteProxy')}
       open={deleteConfirmTarget !== null}
@@ -222,6 +219,40 @@ export default function ProxyModal({
     >
       {deleteConfirmTarget && t('ui.proxy.deleteConfirm', { name: deleteConfirmTarget.name })}
     </Modal>
+  );
+
+  if (isMobile) {
+    return (
+      <>
+        <div className={`${appStyles.mobileDrawerOverlay} ${open ? appStyles.mobileDrawerOverlayVisible : ''}`}>
+          <div className={appStyles.mobileLogMgmtHeader}>
+            <span className={appStyles.mobileLogMgmtTitle}>{titleNode}</span>
+            <MobileDrawerCloseButton onClose={onClose} />
+          </div>
+          <div className={appStyles.mobileDrawerInner}>
+            <div className={styles.proxyModalScroll}>
+              {bodyNode}
+            </div>
+          </div>
+        </div>
+        {deleteConfirmModal}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Modal
+        title={titleNode}
+        open={open}
+        onCancel={onClose}
+        footer={null}
+        width={520}
+        styles={{ body: isMobile ? { zoom: 0.6 } : {} }}
+      >
+        {bodyNode}
+      </Modal>
+      {deleteConfirmModal}
     </>
   );
 }
