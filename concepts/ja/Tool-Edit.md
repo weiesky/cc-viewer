@@ -1,38 +1,46 @@
 # Edit
 
-既存ファイル内で完全一致の文字列置換を実行します。差分のみが送信されるため、正確で監査可能な編集ができる、ファイル変更の推奨方法です。
+## 定義
 
-## 使用タイミング
-
-- 周囲のファイルを書き直さずに単一関数のバグを修正
-- 設定値、バージョン文字列、インポートパスを更新
-- `replace_all` を使ってファイル全体でシンボルをリネーム
-- アンカー付近にブロックを挿入 (`old_string` を拡張して近隣の文脈を含め、置換を提供)
-- マルチステップのリファクタリングの一部として、小さく範囲を限定した編集を適用
+精確な文字列置換によるファイル編集。ファイル内の `old_string` を `new_string` に置換します。
 
 ## パラメータ
 
-- `file_path` (string, required): 変更するファイルの絶対パス。
-- `old_string` (string, required): 検索する正確なテキスト。空白とインデントを含め、文字単位で一致する必要があります。
-- `new_string` (string, required): 置換テキスト。`old_string` と異なる必要があります。
-- `replace_all` (boolean, optional): `true` の場合、`old_string` のすべての出現を置換します。デフォルトは `false` で、一致が一意であることが要求されます。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `file_path` | string | はい | 変更するファイルの絶対パス |
+| `old_string` | string | はい | 置換する元のテキスト |
+| `new_string` | string | はい | 置換後の新しいテキスト（old_string と異なる必要がある） |
+| `replace_all` | boolean | いいえ | すべてのマッチを置換するかどうか、デフォルト `false` |
 
-## 例
+## 使用シナリオ
 
-### 例 1: 単一の呼び出し箇所を修正
-`old_string` を正確な行 `const port = 3000;` に、`new_string` を `const port = process.env.PORT ?? 3000;` に設定します。一致が一意なので `replace_all` はデフォルトのままで構いません。
+**適している場合：**
+- 既存ファイル内の特定のコードセクションを変更
+- バグ修正、ロジックの更新
+- 変数のリネーム（`replace_all: true` と併用）
+- ファイル内容を精確に変更する必要があるすべてのシナリオ
 
-### 例 2: ファイル全体でシンボルをリネーム
-`api.ts` 内のすべての `getUser` を `fetchUser` にリネームするには、`old_string: "getUser"`、`new_string: "fetchUser"`、`replace_all: true` を設定します。
-
-### 例 3: 繰り返されるスニペットの曖昧性解消
-`return null;` が複数のブランチに現れる場合、`old_string` を拡張して周囲の文脈 (例えば先行する `if` 行) を含め、一致を一意にしてください。そうしなければツールは推測せずエラーを返します。
+**適していない場合：**
+- 新規ファイルの作成——Write を使用すべき
+- 大規模な書き換え——Write でファイル全体を上書きする必要がある場合
 
 ## 注意事項
 
-- 現在のセッションで `Edit` が変更を受け付ける前に、ファイルに対して `Read` を少なくとも 1 回呼び出す必要があります。`Read` 出力の行番号プレフィックスはファイル内容の一部ではありません。`old_string` や `new_string` に含めないでください。
-- 空白は正確に一致する必要があります。特に YAML、Makefile、Python ではタブとスペース、末尾スペースに注意してください。
-- `old_string` が一意でなく、`replace_all` が `false` の場合、編集は失敗します。コンテキストを拡張するか `replace_all` を有効にしてください。
-- 既存ファイルには `Write` よりも `Edit` を優先してください。`Write` はファイル全体を上書きし、注意しないと無関係な内容を失います。
-- 同じファイル内の複数の無関係な編集には、1 つの大きく壊れやすい置換ではなく、複数の `Edit` 呼び出しを順次発行してください。
-- ソースファイルの編集時に、絵文字、マーケティング文、要求されていないドキュメントブロックを追加しないでください。
+- 使用前に必ず Read でそのファイルを読み取っておく必要がある。そうでないとエラーになる
+- `old_string` はファイル内で一意でなければならない。一意でない場合は、より多くのコンテキストを含めて一意にするか、`replace_all` を使用する
+- テキスト編集時は元のインデント（tab/スペース）を維持する必要がある。Read 出力の行番号プレフィックスを含めないこと
+- 新規ファイル作成よりも既存ファイルの編集を優先
+- `new_string` は `old_string` と異なる必要がある
+
+## 原文
+
+<textarea readonly>Performs exact string replacements in files.
+
+Usage:
+- You must use your `Read` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file. 
+- When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix format is: spaces + line number + tab. Everything after that tab is the actual file content to match. Never include any part of the line number prefix in the old_string or new_string.
+- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
+- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
+- The edit will FAIL if `old_string` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use `replace_all` to change every instance of `old_string`.
+- Use `replace_all` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.</textarea>

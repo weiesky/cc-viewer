@@ -1,0 +1,184 @@
+.imageViewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-base-alt);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-container);
+  flex-shrink: 0;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.backBtn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.backBtn:hover {
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+}
+
+.filePath {
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileSize {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 16px;
+  background: var(--bg-container);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.toolBtn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-hover);
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  padding: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.toolBtn:hover {
+  background: var(--bg-surface);
+  color: var(--text-white);
+  border-color: var(--border-light);
+}
+
+.zoomLabel {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  min-width: 42px;
+  text-align: center;
+  user-select: none;
+}
+
+.canvasArea {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  cursor: grab;
+  background-color: var(--bg-elevated);
+  background-image:
+    linear-gradient(45deg, rgba(0,0,0,0.08) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(0,0,0,0.08) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(0,0,0,0.08) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(0,0,0,0.08) 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+}
+
+.canvasArea.dragging {
+  cursor: grabbing;
+}
+
+.imageWrap {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.imageWrap img {
+  display: block;
+  max-width: none;
+  image-rendering: auto;
+}
+
+.svgInline {
+  background: var(--bg-elevated);
+  border-radius: 8px;
+  padding: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.svgInline svg {
+  display: block;
+  height: 200px;
+  width: auto;
+}
+
+.statusBar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 4px 16px;
+  background: var(--bg-container);
+  border-top: 1px solid var(--border-primary);
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  color: var(--color-error-light);
+  font-size: 14px;
+}

@@ -1,35 +1,39 @@
 # Write
 
-在本機檔案系統建立新檔案，或完全取代既有檔案的內容。因為它會取代目標路徑的一切，所以應保留給真正的建立或有意的完整重寫。
+## 定義
 
-## 使用時機
-
-- 建立尚未存在的新原始檔、測試或設定
-- 從零產生新的 fixture、snapshot 或資料檔
-- 執行完整重寫，而增量 `Edit` 會比從頭開始更複雜
-- 產出使用者明確要求的產品，例如 schema、migration 或建構指令稿
+將內容寫入本機檔案系統。如果檔案已存在則覆寫。
 
 ## 參數
 
-- `file_path`（string，必填）：要寫入之檔案的絕對路徑。所有父目錄必須已存在。
-- `content`（string，必填）：要寫入檔案的完整文字。這會成為整個檔案內容。
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| `file_path` | string | 是 | 檔案的絕對路徑（必須是絕對路徑） |
+| `content` | string | 是 | 要寫入的內容 |
 
-## 範例
+## 使用場景
 
-### 範例 1：建立新輔助模組
-以 `file_path: "/Users/me/app/src/utils/slugify.ts"` 呼叫 `Write`，並將實作提供為 `content`。只在你已確認該檔案不存在後再用此方法。
+**適合使用：**
+- 建立新檔案
+- 需要完全重寫檔案內容時
 
-### 範例 2：重新產生衍生產物
-schema 原始碼變更後，以一次 `Write` 重寫 `/Users/me/app/generated/schema.json`，將新產生的 JSON 作為 `content`。
-
-### 範例 3：替換小型 fixture 檔
-對每行都變動的拋棄式測試 fixture，`Write` 可能比一連串 `Edit` 呼叫更清晰。先讀檔、確認範圍，再覆寫。
+**不適合使用：**
+- 修改檔案中的局部內容——應使用 Edit
+- 不應主動建立文件檔案（*.md）或 README，除非使用者明確要求
 
 ## 注意事項
 
-- 在覆寫既有檔案之前，你必須在目前工作階段中對其呼叫過 `Read`。`Write` 拒絕覆蓋未被檢視過的內容。
-- 只變動檔案一部分的修改，優先用 `Edit`。`Edit` 只傳送 diff，更快、更安全、也更容易審閱。
-- 除非使用者明確要求，不要主動建立 Markdown 說明文件、`README.md` 或 changelog 檔案。
-- 除非使用者要求該風格，不要加入 emoji、行銷文案或裝飾性橫幅。
-- 先用 `Bash` 的 `ls` 呼叫確認父目錄存在；`Write` 不會建立中間資料夾。
-- 提供的內容就是你希望被儲存下來的樣子；沒有模板或後處理。
+- 如果目標檔案已存在，必須先透過 Read 讀取，否則會失敗
+- 會覆寫已有檔案的全部內容
+- 優先使用 Edit 編輯現有檔案，Write 僅用於建立新檔案或完全重寫
+
+## 原文
+
+<textarea readonly>Writes a file to the local filesystem.
+
+Usage:
+- This tool will overwrite the existing file if there is one at the provided path.
+- If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
+- Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.
+- NEVER create documentation files (*.md) or README files unless explicitly requested by the User.
+- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.</textarea>

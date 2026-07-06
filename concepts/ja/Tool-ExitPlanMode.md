@@ -1,42 +1,62 @@
 # ExitPlanMode
 
-プランモード中に作成された実装プランをユーザーの承認のために提出し、承認された場合はセッションをプランモードから遷移させて編集を開始できるようにします。
+## 定義
 
-## 使用タイミング
-
-- `EnterPlanMode` 中に書かれたプランが完成し、レビューの準備ができた。
-- タスクは実装中心 (コードや設定の変更) であり、純粋な調査ではないため、明示的なプランが適切である。
-- すべての前提となる読み込みと分析が完了し、ユーザーが決定する前にさらなる調査は不要である。
-- アシスタントが具体的なファイルパス、関数、ステップを列挙した — 単なる目標ではない。
-- ユーザーがプランを見せるよう依頼した、またはプランモードのワークフローが編集ツールに引き渡されようとしている。
+計画モードを終了し、方針をユーザー承認に提出します。方針の内容は以前書き込まれた計画ファイルから読み取られます。
 
 ## パラメータ
 
-- `allowedPrompts` (array, optional): ユーザーが承認画面で入力してプランを自動承認または変更できるプロンプト。各要素はスコープ付きの権限 (例えば操作名と、それが適用されるツール) を指定します。デフォルトの承認フローを使用する場合は未設定のままにします。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `allowedPrompts` | array | いいえ | 実装方針に必要な権限の説明リスト |
 
-## 例
+`allowedPrompts` 配列の各要素：
 
-### 例 1: 標準的な提出
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `tool` | enum | はい | 適用するツール、現在は `Bash` のみサポート |
+| `prompt` | string | はい | 操作のセマンティック説明（例："run tests"、"install dependencies"） |
 
-プランモード内で認証リファクタリングを調査し、プランファイルをディスクに書き込んだ後、アシスタントは引数なしで `ExitPlanMode` を呼び出します。ハーネスはプランを正規の場所から読み込み、ユーザーに表示して承認または拒否を待ちます。
+## 使用シナリオ
 
-### 例 2: 事前承認されたクイックアクション
+**適している場合：**
+- 計画モードで方針が完成し、ユーザー承認に提出する準備ができた
+- コードを書く必要がある実装タスクにのみ使用
 
-```
-ExitPlanMode(allowedPrompts=[
-  {"tool": "Bash", "prompt": "run tests"},
-  {"tool": "Bash", "prompt": "install dependencies"}
-])
-```
-
-ユーザーが日常的なフォローアップコマンドに事前に権限を付与できるようにすることで、実装中にアシスタントが各権限プロンプトで一時停止する必要がなくなります。
+**適していない場合：**
+- 純粋な調査/探索タスク——計画モードを終了する必要はない
+- ユーザーに「方針でよろしいですか？」と聞きたい場合——これがまさにこのツールの機能であり、AskUserQuestion で聞かないこと
 
 ## 注意事項
 
-- `ExitPlanMode` は実装スタイルの作業でのみ意味があります。ユーザーのリクエストがファイル変更のない調査や説明タスクである場合は、プランモードを経由せずに直接回答してください — プランモードを終了するためだけにそこに入らないでください。
-- このツールを呼び出す前に、プランはすでにディスクに書き込まれている必要があります。`ExitPlanMode` はプラン本体をパラメータとして受け取りません。ハーネスが期待するパスから読み込みます。
-- ユーザーがプランを拒否した場合、プランモードに戻ります。フィードバックに基づいて修正し、再度提出してください。プランが承認されていない間はファイル編集を開始しないでください。
-- 承認により、プランモードを終了し、プランで説明されたスコープに対して変更ツール (`Edit`、`Write`、`Bash` など) を使用する権限が付与されます。後でスコープを拡大するには新しいプランまたはユーザーの明示的な同意が必要です。
-- このツールを呼び出す前に「このプランはどうですか？」と尋ねるために `AskUserQuestion` を使用しないでください — プラン承認を要求することはまさに `ExitPlanMode` が行うことであり、ユーザーは提出されるまでプランを見ることができません。
-- プランは最小限で実行可能に保ってください。レビュー担当者は 1 分以内にざっと読んで、何が変更されるかを正確に理解できるはずです。
-- 実装途中でプランが間違っていたと気付いた場合、黙って逸脱するのではなく、停止してユーザーに報告してください。プランモードに再度入ることは有効な次のステップです。
+- このツールは方針の内容をパラメータとして受け取らない——以前書き込まれた計画ファイルから読み取る
+- ユーザーは計画ファイルの内容を見て承認する
+- このツールを呼び出す前に AskUserQuestion で「方針は大丈夫ですか」と聞かないこと。重複になる
+- 質問の中で「計画」に言及しないこと。ユーザーは ExitPlanMode の前に計画の内容を見ることができないため
+
+## 原文
+
+<textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.
+
+## How This Tool Works
+- You should have already written your plan to the plan file specified in the plan mode system message
+- This tool does NOT take the plan content as a parameter - it will read the plan from the file you wrote
+- This tool simply signals that you're done planning and ready for the user to review and approve
+- The user will see the contents of your plan file when they review it
+
+## When to Use This Tool
+IMPORTANT: Only use this tool when the task requires planning the implementation steps of a task that requires writing code. For research tasks where you're gathering information, searching files, reading files or in general trying to understand the codebase - do NOT use this tool.
+
+## Before Using This Tool
+Ensure your plan is complete and unambiguous:
+- If you have unresolved questions about requirements or approach, use AskUserQuestion first (in earlier phases)
+- Once your plan is finalized, use THIS tool to request approval
+
+**Important:** Do NOT use AskUserQuestion to ask "Is this plan okay?" or "Should I proceed?" - that's exactly what THIS tool does. ExitPlanMode inherently requests user approval of your plan.
+
+## Examples
+
+1. Initial task: "Search for and understand the implementation of vim mode in the codebase" - Do not use the exit plan mode tool because you are not planning the implementation steps of a task.
+2. Initial task: "Help me implement yank mode for vim" - Use the exit plan mode tool after you have finished planning the implementation steps of the task.
+3. Initial task: "Add a new feature to handle user authentication" - If unsure about auth method (OAuth, JWT, etc.), use AskUserQuestion first, then use exit plan mode tool after clarifying the approach.
+</textarea>

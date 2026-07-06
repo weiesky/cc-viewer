@@ -8,8 +8,7 @@ import assert from 'node:assert/strict';
 // 从 contentFilter.js 提取的核心逻辑（与源码保持一致）
 // ============================================================================
 
-const SUBAGENT_SYSTEM_RE = /command execution specialist|file search specialist|planning specialist|general-purpose agent|security monitor|performing a web search/i;
-const SUBAGENT_BILLING_RE = /cc_is_subagent=true\b/;
+const SUBAGENT_SYSTEM_RE = /command execution specialist|file search specialist|planning specialist|general-purpose agent/i;
 const TEAMMATE_SYSTEM_RE = /running as an agent in a team|Agent Teammate Communication/i;
 
 function getSystemText(body) {
@@ -31,14 +30,12 @@ function isTeammate(req) {
 function isMainAgent(req) {
   if (!req) return false;
   if (isTeammate(req)) return false;
-  // cc_is_subagent=true ⇒ 子代理（cc 2.1.181+），早于 req.mainAgent 短路（与 contentFilter.js 源码同步）
-  if (SUBAGENT_BILLING_RE.test(getSystemText(req.body || {}))) return false;
   if (req.mainAgent) {
     const sysText = getSystemText(req.body || {});
     if (SUBAGENT_SYSTEM_RE.test(sysText)) return false;
     return true;
   }
-  return false; // simplified for test — full logic has additional checks (轻量启发式等)
+  return false; // simplified for test — full logic has additional checks
 }
 
 // From requestType.js — full implementation
@@ -62,8 +59,6 @@ function getSubAgentSubType(req) {
   if (/file search specialist/i.test(sysText)) return 'Search';
   if (/planning specialist/i.test(sysText)) return 'Plan';
   if (/general-purpose agent/i.test(sysText)) return 'General';
-  if (/security monitor/i.test(sysText)) return 'Advisor';
-  if (/performing a web search/i.test(sysText)) return 'WebSearch';
   const msgs = body.messages || [];
   for (let i = msgs.length - 1; i >= 0; i--) {
     if (msgs[i].role !== 'user') continue;
@@ -79,16 +74,6 @@ function isCountRequest(req) {
   if (!Array.isArray(msgs) || msgs.length !== 1) return false;
   const msg = msgs[0];
   return msg.role === 'user' && msg.content === 'count';
-}
-
-function isQuotaCheck(req) {
-  const body = req.body || {};
-  if (body.max_tokens !== 1) return false;
-  if (body.system) return false;
-  if (Array.isArray(body.tools) && body.tools.length > 0) return false;
-  const msgs = body.messages;
-  if (!Array.isArray(msgs) || msgs.length !== 1) return false;
-  return msgs[0].role === 'user' && msgs[0].content === 'quota';
 }
 
 function isPreflightRequest(req, nextReq) {
@@ -146,7 +131,6 @@ function classifyRequest(req, nextReq) {
   if (isTeammate(req)) return { type: 'Teammate', subType: req.teammate || extractTeammateName(req.body) || null };
   if (isMainAgent(req)) return { type: 'MainAgent', subType: null };
   if (req.isCountTokens || isCountRequest(req)) return { type: 'Count', subType: null };
-  if (isQuotaCheck(req)) return { type: 'Count', subType: 'Quota' };
   if (isPreflightRequest(req, nextReq)) {
     const text = getMessageText((req.body?.messages || [])[0]);
     if (/^Implement the following plan:/i.test(text.trim())) return { type: 'Plan', subType: 'Prompt' };
@@ -159,7 +143,6 @@ function formatRequestTag(type, subType) {
   if (type === 'Teammate' && subType) return `Teammate:${subType}`;
   if (type === 'Plan' && subType) return `Plan:${subType}`;
   if (type === 'SubAgent' && subType) return `SubAgent:${subType}`;
-  if (type === 'Count' && subType) return `Count:${subType}`;
   return type;
 }
 
@@ -1116,92 +1099,5 @@ describe('Teammate empty log filtering', () => {
     const cls = classifyRequest(req);
     assert.equal(cls.type, 'Teammate');
     assert.equal(shouldCreateEntry(req.response.body.content), true);
-  });
-});
-
-// ============================================================================
-// 新 SubAgent 子类型 + Quota 检测 + SUBAGENT_SYSTEM_RE 排除
-// ============================================================================
-
-describe('new subAgent subTypes', () => {
-  function makeReq(system, messages) {
-    return { body: { system, messages: messages || [{ role: 'user', content: 'do it' }] } };
-  }
-
-  it('"security monitor" → SubAgent:Advisor', () => {
-    const req = makeReq('You are a security monitor for autonomous AI coding agents.');
-    const result = classifyRequest(req);
-    assert.equal(result.type, 'SubAgent');
-    assert.equal(result.subType, 'Advisor');
-  });
-
-  it('"performing a web search" → SubAgent:WebSearch', () => {
-    const req = makeReq('You are an assistant for performing a web search tool use');
-    const result = classifyRequest(req);
-    assert.equal(result.type, 'SubAgent');
-    assert.equal(result.subType, 'WebSearch');
-  });
-
-  it('Advisor not misclassified as MainAgent via SUBAGENT_SYSTEM_RE', () => {
-    const req = {
-      mainAgent: true,
-      body: {
-        system: 'You are Claude Code. You are a security monitor for autonomous AI coding agents.',
-        tools: makeMainAgentTools(),
-        messages: [{ role: 'user', content: 'check' }],
-      },
-    };
-    assert.equal(isMainAgent(req), false);
-  });
-
-  it('WebSearch not misclassified as MainAgent via SUBAGENT_SYSTEM_RE', () => {
-    const req = {
-      mainAgent: true,
-      body: {
-        system: 'You are Claude Code. You are an assistant for performing a web search tool use.',
-        tools: makeMainAgentTools(),
-        messages: [{ role: 'user', content: 'search' }],
-      },
-    };
-    assert.equal(isMainAgent(req), false);
-  });
-
-  it('formatRequestTag renders SubAgent:Advisor', () => {
-    assert.equal(formatRequestTag('SubAgent', 'Advisor'), 'SubAgent:Advisor');
-  });
-
-  it('formatRequestTag renders SubAgent:WebSearch', () => {
-    assert.equal(formatRequestTag('SubAgent', 'WebSearch'), 'SubAgent:WebSearch');
-  });
-});
-
-describe('Quota check classification', () => {
-  it('classifies quota request as Count:Quota', () => {
-    const req = { body: { max_tokens: 1, messages: [{ role: 'user', content: 'quota' }] } };
-    const result = classifyRequest(req);
-    assert.equal(result.type, 'Count');
-    assert.equal(result.subType, 'Quota');
-  });
-
-  it('does not classify quota with system prompt as Count:Quota', () => {
-    const req = { body: { max_tokens: 1, system: 'some system', messages: [{ role: 'user', content: 'quota' }] } };
-    const result = classifyRequest(req);
-    assert.notEqual(result.subType, 'Quota');
-  });
-
-  it('does not classify quota with tools as Count:Quota', () => {
-    const req = { body: { max_tokens: 1, tools: [{ name: 'Bash' }], messages: [{ role: 'user', content: 'quota' }] } };
-    const result = classifyRequest(req);
-    assert.notEqual(result.subType, 'Quota');
-  });
-
-  it('does not classify quota without max_tokens=1 as Count:Quota', () => {
-    const req = { body: { messages: [{ role: 'user', content: 'quota' }] } };
-    const result = classifyRequest(req);
-    assert.notEqual(result.subType, 'Quota');
-  });
-
-  it('formatRequestTag renders Count:Quota', () => {
-    assert.equal(formatRequestTag('Count', 'Quota'), 'Count:Quota');
   });
 });

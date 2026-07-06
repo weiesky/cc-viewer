@@ -6,7 +6,7 @@ MainAgent는 Claude Code가 비 agent team 상태에서의 주간 요청 체인�
 
 ## 식별 방법
 
-cc-viewer에서 MainAgent는 `req.mainAgent === true`로 식별되며, `server/interceptor.js`가 요청 캡처 시 자동으로 마킹합니다.
+cc-viewer에서 MainAgent는 `req.mainAgent === true`로 식별되며, `interceptor.js`가 요청 캡처 시 자동으로 마킹합니다.
 
 판정 조건 (모두 충족):
 - 요청 본문에 `system` 필드 (system prompt) 포함

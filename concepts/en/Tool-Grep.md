@@ -1,46 +1,57 @@
 # Grep
 
-Searches file contents using the ripgrep engine. Offers full regular expression support, file-type filtering, and three output modes so you can trade precision for compactness.
+## Definition
 
-## When to Use
-
-- Locating every call site of a function or every reference to an identifier
-- Checking whether a string or error message appears anywhere in the codebase
-- Counting occurrences of a pattern to gauge impact before refactoring
-- Narrowing a search to a file type (`type: "ts"`) or glob (`glob: "**/*.tsx"`)
-- Pulling cross-line matches such as multi-line struct definitions or JSX blocks with `multiline: true`
+A powerful content search tool based on ripgrep. Supports regular expressions, file type filtering, and multiple output modes.
 
 ## Parameters
 
-- `pattern` (string, required): The regular expression to search for. Uses ripgrep syntax, so literal braces need escaping (for example `interface\{\}` to find `interface{}`).
-- `path` (string, optional): File or directory to search. Defaults to the current working directory.
-- `glob` (string, optional): Filename filter such as `*.js` or `*.{ts,tsx}`.
-- `type` (string, optional): File-type shortcut such as `js`, `py`, `rust`, `go`. More efficient than `glob` for standard languages.
-- `output_mode` (enum, optional): `files_with_matches` (default, returns paths only), `content` (returns matching lines), or `count` (returns match tallies).
-- `-i` (boolean, optional): Case-insensitive matching.
-- `-n` (boolean, optional): Include line numbers in `content` mode. Defaults to `true`.
-- `-A` (number, optional): Lines of context to show after each match (requires `content` mode).
-- `-B` (number, optional): Lines of context before each match (requires `content` mode).
-- `-C` / `context` (number, optional): Lines of context on both sides of each match.
-- `multiline` (boolean, optional): Allow patterns to span newlines (`.` matches `\n`). Defaults to `false`.
-- `head_limit` (number, optional): Limit returned lines, file paths, or count entries. Defaults to 250; pass `0` for unlimited (use sparingly).
-- `offset` (number, optional): Skip the first N results before applying `head_limit`. Defaults to `0`.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `pattern` | string | Yes | Regular expression search pattern |
+| `path` | string | No | Search path (file or directory), defaults to current working directory |
+| `glob` | string | No | Filename filter (e.g., `*.js`, `*.{ts,tsx}`) |
+| `type` | string | No | File type filter (e.g., `js`, `py`, `rust`), more efficient than glob |
+| `output_mode` | enum | No | Output mode: `files_with_matches` (default), `content`, `count` |
+| `-i` | boolean | No | Case-insensitive search |
+| `-n` | boolean | No | Show line numbers (content mode only), default true |
+| `-A` | number | No | Number of lines to show after a match |
+| `-B` | number | No | Number of lines to show before a match |
+| `-C` / `context` | number | No | Number of lines to show before and after a match |
+| `head_limit` | number | No | Limit the number of output entries, default 0 (unlimited) |
+| `offset` | number | No | Skip the first N results |
+| `multiline` | boolean | No | Enable multiline matching mode, default false |
 
-## Examples
+## Use Cases
 
-### Example 1: Find all call sites of a function
-Set `pattern: "registerHandler\\("`, `output_mode: "content"`, and `-C: 2` to see the surrounding lines of each call.
+**Good for:**
+- Searching for specific strings or patterns in the codebase
+- Finding where functions/variables are used
+- Filtering search results by file type
+- Counting the number of matches
 
-### Example 2: Count matches across a type
-Set `pattern: "TODO"`, `type: "py"`, and `output_mode: "count"` to see per-file TODO totals across Python sources.
-
-### Example 3: Multiline struct match
-Use `pattern: "struct Config \\{[\\s\\S]*?version"` with `multiline: true` to capture a field declared several lines into a Go struct.
+**Not good for:**
+- Finding files by filename — use Glob instead
+- Open-ended exploration requiring multiple rounds of searching — use Task (Explore type) instead
 
 ## Notes
 
-- Always prefer `Grep` over running `grep` or `rg` through `Bash`; the tool is optimized for correct permissions and structured output.
-- Default output mode is `files_with_matches`, which is cheapest. Switch to `content` only when you need to see the lines themselves.
-- Context flags (`-A`, `-B`, `-C`) are ignored unless `output_mode` is `content`.
-- Large result sets burn context tokens. Use `head_limit`, `offset`, or tighter `glob`/`type` filters to stay focused.
-- For filename discovery, use `Glob` instead; for open-ended investigations across many rounds, dispatch an `Agent` with the Explore agent.
+- Uses ripgrep syntax (not grep); special characters like braces need escaping
+- `files_with_matches` mode returns only file paths, most efficient
+- `content` mode returns matching line content, supports context lines
+- Multiline matching requires setting `multiline: true`
+- Always prefer the Grep tool over `grep` or `rg` commands in Bash
+
+## Original Text
+
+<textarea readonly>A powerful search tool built on ripgrep
+
+  Usage:
+  - ALWAYS use Grep for search tasks. NEVER invoke `grep` or `rg` as a Bash command. The Grep tool has been optimized for correct permissions and access.
+  - Supports full regex syntax (e.g., "log.*Error", "function\s+\w+")
+  - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
+  - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
+  - Use Agent tool for open-ended searches requiring multiple rounds
+  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use `interface\{\}` to find `interface{}` in Go code)
+  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like `struct \{[\s\S]*?field`, use `multiline: true`
+</textarea>

@@ -1,42 +1,62 @@
 # ExitPlanMode
 
-Indsender implementeringsplanen, der blev udarbejdet under plantilstand, til brugergodkendelse og — hvis godkendt — skifter sessionen ud af plantilstand, så redigeringer kan begynde.
+## Definition
 
-## Hvornår skal den bruges
-
-- En plan, der blev skrevet under `EnterPlanMode`, er færdig og klar til gennemgang.
-- Opgaven er implementeringsfokuseret (kode- eller konfigurationsændringer), ikke ren research, så en eksplicit plan er passende.
-- Al forudgående læsning og analyse er udført; ingen yderligere undersøgelse er nødvendig, før brugeren beslutter sig.
-- Assistenten har opregnet konkrete filstier, funktioner og trin — ikke blot mål.
-- Brugeren har bedt om at se planen, eller plantilstand-workflowet er ved at overdrage til redigeringsværktøjer.
+Forlader planlægningstilstand og indsender planen til brugerens godkendelse. Planens indhold læses fra den tidligere skrevne planfil.
 
 ## Parametre
 
-- `allowedPrompts` (array, valgfri): Forespørgsler, som brugeren må skrive på godkendelsesskærmen for at auto-godkende eller ændre planen. Hvert element angiver en afgrænset tilladelse (for eksempel et operationsnavn og det værktøj, det gælder for). Lad være med at sætte for at bruge standardgodkendelsesflowet.
+| Parameter | Type | Påkrævet | Beskrivelse |
+|------|------|------|------|
+| `allowedPrompts` | array | Nej | Liste over tilladelsebeskrivelser nødvendige for at implementere planen |
 
-## Eksempler
+Hvert element i `allowedPrompts`-arrayet:
 
-### Eksempel 1: Standardindsendelse
+| Felt | Type | Påkrævet | Beskrivelse |
+|------|------|------|------|
+| `tool` | enum | Ja | Det gældende værktøj, understøtter i øjeblikket kun `Bash` |
+| `prompt` | string | Ja | Semantisk beskrivelse af operationen (f.eks. "run tests", "install dependencies") |
 
-Efter at have undersøgt en godkendelsesrefaktorering inde i plantilstand og skrevet planfilen til disk, kalder assistenten `ExitPlanMode` uden argumenter. Rammen læser planen fra dens kanoniske placering, viser den til brugeren og venter på godkendelse eller afvisning.
+## Brugsscenarier
 
-### Eksempel 2: Forhåndsgodkendte hurtighandlinger
+**Egnet til:**
+- I planlægningstilstand er planen færdig og klar til brugerens godkendelse
+- Kun til implementeringsopgaver der kræver kodeskrivning
 
-```
-ExitPlanMode(allowedPrompts=[
-  {"tool": "Bash", "prompt": "run tests"},
-  {"tool": "Bash", "prompt": "install dependencies"}
-])
-```
+**Ikke egnet til:**
+- Rene forsknings-/udforskningsopgaver — det er ikke nødvendigt at forlade planlægningstilstand
+- At ville spørge brugeren "er planen OK?" — det er præcis dette værktøjs funktion, brug ikke AskUserQuestion til at spørge
 
-Lader brugeren give tilladelse på forhånd til rutinemæssige opfølgningskommandoer, så assistenten ikke behøver at pause ved hver tilladelsesforespørgsel under implementeringen.
+## Bemærkninger
 
-## Noter
+- Dette værktøj accepterer ikke planindhold som parameter — det læser fra den tidligere skrevne planfil
+- Brugeren vil se planfilens indhold til godkendelse
+- Brug ikke AskUserQuestion til at spørge "er planen OK?" før du kalder dette værktøj, det er overflødigt
+- Nævn ikke "planen" i spørgsmål, da brugeren ikke kan se planindholdet før ExitPlanMode
 
-- `ExitPlanMode` giver kun mening for implementeringslignende arbejde. Hvis brugerens anmodning er en research- eller forklaringsopgave uden filændringer, svar direkte i stedet — dirigér ikke gennem plantilstand blot for at afslutte den.
-- Planen skal allerede være skrevet til disk, før dette værktøj kaldes. `ExitPlanMode` accepterer ikke planteksten som en parameter; den læser fra den sti, rammen forventer.
-- Hvis brugeren afviser planen, vender du tilbage til plantilstand. Revidér ud fra feedbacken og indsend igen; begynd ikke at redigere filer, mens planen er ugodkendt.
-- Godkendelse giver tilladelse til at forlade plantilstand og bruge muterende værktøjer (`Edit`, `Write`, `Bash` og så videre) inden for det omfang, der er beskrevet i planen. Udvidelse af omfang bagefter kræver en ny plan eller eksplicit brugersamtykke.
-- Brug ikke `AskUserQuestion` til at spørge "ser denne plan god ud?", før dette værktøj kaldes — at anmode om plangodkendelse er præcis, hvad `ExitPlanMode` gør, og brugeren kan ikke se planen, før den er indsendt.
-- Hold planen minimal og handlingsorienteret. En anmelder bør kunne skimme den på under et minut og forstå præcis, hvad der vil ændre sig.
-- Hvis du midt i implementeringen indser, at planen var forkert, stop og rapportér tilbage til brugeren i stedet for stille at afvige. At gå i plantilstand igen er et gyldigt næste skridt.
+## Originaltekst
+
+<textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.
+
+## How This Tool Works
+- You should have already written your plan to the plan file specified in the plan mode system message
+- This tool does NOT take the plan content as a parameter - it will read the plan from the file you wrote
+- This tool simply signals that you're done planning and ready for the user to review and approve
+- The user will see the contents of your plan file when they review it
+
+## When to Use This Tool
+IMPORTANT: Only use this tool when the task requires planning the implementation steps of a task that requires writing code. For research tasks where you're gathering information, searching files, reading files or in general trying to understand the codebase - do NOT use this tool.
+
+## Before Using This Tool
+Ensure your plan is complete and unambiguous:
+- If you have unresolved questions about requirements or approach, use AskUserQuestion first (in earlier phases)
+- Once your plan is finalized, use THIS tool to request approval
+
+**Important:** Do NOT use AskUserQuestion to ask "Is this plan okay?" or "Should I proceed?" - that's exactly what THIS tool does. ExitPlanMode inherently requests user approval of your plan.
+
+## Examples
+
+1. Initial task: "Search for and understand the implementation of vim mode in the codebase" - Do not use the exit plan mode tool because you are not planning the implementation steps of a task.
+2. Initial task: "Help me implement yank mode for vim" - Use the exit plan mode tool after you have finished planning the implementation steps of the task.
+3. Initial task: "Add a new feature to handle user authentication" - If unsure about auth method (OAuth, JWT, etc.), use AskUserQuestion first, then use exit plan mode tool after clarifying the approach.
+</textarea>

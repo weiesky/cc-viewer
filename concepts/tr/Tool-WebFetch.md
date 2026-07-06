@@ -1,50 +1,55 @@
 # WebFetch
 
-Genel bir web sayfasının içeriklerini alır, HTML'i Markdown'a dönüştürür ve ihtiyacınız olan bilgiyi çıkarmak için sonuç üzerinde doğal dil promptuyla küçük bir yardımcı modeli çalıştırır.
+## Tanım
 
-## Ne Zaman Kullanılır
-
-- Konuşmada bahsedilen genel bir dokümantasyon sayfası, blog yazısı veya RFC'yi okumak.
-- Tam sayfayı bağlama yüklemeden bilinen bir URL'den belirli bir gerçek, kod parçacığı veya tablo çıkarmak.
-- Açık bir web kaynağından yayın notlarını veya changelog'ları özetlemek.
-- Kaynak yerel depoda olmadığında bir kitaplığın genel API referansını kontrol etmek.
-- Takip sorusunu yanıtlamak için kullanıcının sohbete yapıştırdığı bir bağlantıyı takip etmek.
+Belirtilen URL'nin web sayfası içeriğini çeker, HTML'yi markdown'a dönüştürür ve prompt'a göre AI modeli ile içeriği işler.
 
 ## Parametreler
 
-- `url` (string, zorunlu): Tam biçimli mutlak URL. Düz `http://` otomatik olarak `https://`'e yükseltilir.
-- `prompt` (string, zorunlu): Küçük çıkarma modeline geçirilen talimat. Sayfadan tam olarak neyi çıkaracağınızı açıklayın, örneğin "tüm dışa aktarılan fonksiyonları listele" veya "desteklenen minimum Node sürümünü döndür".
+| Parametre | Tür | Zorunlu | Açıklama |
+|-----------|-----|---------|----------|
+| `url` | string (URI) | Evet | Çekilecek tam URL |
+| `prompt` | string | Evet | Sayfadan hangi bilginin çıkarılacağını açıklar |
 
-## Örnekler
+## Kullanım Senaryoları
 
-### Örnek 1: Bir yapılandırma varsayılanını çıkarmak
+**Kullanıma uygun:**
+- Herkese açık web sayfalarının içeriğini alma
+- Çevrimiçi belgelere başvurma
+- Web sayfasından belirli bilgileri çıkarma
 
-```
-WebFetch(
-  url="https://vitejs.dev/config/server-options.html",
-  prompt="What is the default value of server.port and can it be a string?"
-)
-```
+**Kullanıma uygun değil:**
+- Kimlik doğrulama gerektiren URL'ler (Google Docs, Confluence, Jira, GitHub vb.) — önce özel MCP aracı aranmalıdır
+- GitHub URL'leri — öncelikle `gh` CLI kullanılmalıdır
 
-Araç Vite dokümantasyon sayfasını alır, Markdown'a dönüştürür ve "Varsayılan `5173`'tür; yalnızca bir sayı kabul eder." gibi kısa bir yanıt döndürür.
+## Dikkat Edilecekler
 
-### Örnek 2: Bir changelog bölümünü özetlemek
+- URL tam ve geçerli bir URL olmalıdır
+- HTTP otomatik olarak HTTPS'ye yükseltilir
+- İçerik çok büyükse sonuçlar özetlenebilir
+- 15 dakikalık otomatik temizlenen önbellek içerir
+- URL farklı bir ana bilgisayara yönlendirildiğinde, araç yönlendirme URL'sini döndürür ve yeni URL ile tekrar istek yapılması gerekir
+- MCP tarafından sağlanan web fetch aracı mevcutsa, onu tercih edin
 
-```
-WebFetch(
-  url="https://nodejs.org/en/blog/release/v20.11.0",
-  prompt="List the security fixes included in this release as bullet points."
-)
-```
+## Orijinal Metin
 
-Kullanıcı "Node 20.11'de neler değişti" diye sorduğunda ve yayın sayfası uzun olduğunda kullanışlıdır.
+<textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.
 
-## Notlar
+- Fetches content from a specified URL and processes it using an AI model
+- Takes a URL and a prompt as input
+- Fetches the URL content, converts HTML to markdown
+- Processes the content with the prompt using a small, fast model
+- Returns the model's response about the content
+- Use this tool when you need to retrieve and analyze web content
 
-- `WebFetch`, kimlik doğrulama, çerezler veya VPN gerektiren herhangi bir URL'de başarısız olur. Google Docs, Confluence, Jira, özel GitHub kaynakları veya dahili wikiler için, bunun yerine kimlik doğrulamalı erişim sağlayan özel bir MCP sunucusu kullanın.
-- GitHub'da barındırılan herhangi bir şey için (PR'lar, konular, dosya blob'ları, API yanıtları), web arayüzünü kazımak yerine `Bash` aracılığıyla `gh` CLI'yi tercih edin. `gh pr view`, `gh issue view` ve `gh api` yapılandırılmış veri döndürür ve özel depolarda çalışır.
-- Alınan sayfa çok büyük olduğunda sonuçlar özetlenebilir. Tam metne ihtiyacınız varsa, literal bir alıntı istemek için `prompt`'u daraltın.
-- URL başına kendi kendini temizleyen 15 dakikalık bir önbellek uygulanır. Bir oturum sırasında aynı sayfaya tekrarlanan çağrılar neredeyse anlıktır ancak biraz eski içerik döndürebilir. Tazelik önemliyse, promptta bahsedin veya önbelleği bekleyin.
-- Hedef ana bilgisayar bir çapraz-ana bilgisayar yönlendirmesi verirse, araç özel bir yanıt bloğunda yeni URL'yi döndürür ve otomatik olarak takip etmez. Hala içeriği istiyorsanız yönlendirme hedefiyle `WebFetch`'i yeniden çağırın.
-- Prompt, ana asistandan daha küçük, daha hızlı bir model tarafından yürütülür. Dar ve somut tutun; karmaşık çok adımlı akıl yürütme, alındıktan sonra ham Markdown'u kendiniz okuyarak daha iyi ele alınır.
-- URL'e gömülü sırları, tokenları veya oturum tanımlayıcılarını asla geçirmeyin — sayfa içerikleri ve çıktıda yansıyan sorgu stringleri yukarı akış hizmetleri tarafından günlüğe kaydedilebilir.
+Usage notes:
+  - IMPORTANT: If an MCP-provided web fetch tool is available, prefer using that tool instead of this one, as it may have fewer restrictions.
+  - The URL must be a fully-formed valid URL
+  - HTTP URLs will be automatically upgraded to HTTPS
+  - The prompt should describe what information you want to extract from the page
+  - This tool is read-only and does not modify any files
+  - Results may be summarized if the content is very large
+  - Includes a self-cleaning 15-minute cache for faster responses when repeatedly accessing the same URL
+  - When a URL redirects to a different host, the tool will inform you and provide the redirect URL in a special format. You should then make a new WebFetch request with the redirect URL to fetch the content.
+  - For GitHub URLs, prefer using the gh CLI via Bash instead (e.g., gh pr view, gh issue view, gh api).
+</textarea>

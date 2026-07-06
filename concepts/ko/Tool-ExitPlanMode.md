@@ -1,42 +1,62 @@
 # ExitPlanMode
 
-계획 모드 동안 작성된 구현 계획을 사용자 승인을 위해 제출하고, 승인되면 세션을 계획 모드 밖으로 전환하여 편집을 시작할 수 있도록 합니다.
+## 정의
 
-## 사용 시점
+계획 모드를 종료하고 방안을 사용자 승인에 제출합니다. 방안 내용은 이전에 작성된 계획 파일에서 읽어옵니다.
 
-- `EnterPlanMode` 동안 작성된 계획이 완료되어 검토 준비가 되었습니다.
-- 작업이 순수 연구가 아닌 구현 중심 (코드 또는 구성 변경)이므로 명시적 계획이 적절합니다.
-- 모든 사전 독서 및 분석이 완료되었으며, 사용자가 결정하기 전에 추가 조사가 필요하지 않습니다.
-- 어시스턴트가 단순한 목표가 아닌 구체적인 파일 경로, 함수, 단계를 열거했습니다.
-- 사용자가 계획을 보여달라고 요청했거나 계획 모드 워크플로가 편집 도구로 넘어가려고 합니다.
+## 파라미터
 
-## 매개변수
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| `allowedPrompts` | array | 아니오 | 구현 방안에 필요한 권한 설명 목록 |
 
-- `allowedPrompts` (array, 선택): 승인 화면에서 사용자가 입력하여 계획을 자동 승인하거나 변경할 수 있는 프롬프트. 각 요소는 범위가 지정된 권한 (예: 작업 이름 및 적용할 도구)을 지정합니다. 기본 승인 흐름을 사용하려면 설정하지 마십시오.
+`allowedPrompts` 배열의 각 요소:
 
-## 예시
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| `tool` | enum | 예 | 적용할 도구, 현재 `Bash`만 지원 |
+| `prompt` | string | 예 | 작업의 의미적 설명 (예: "run tests", "install dependencies") |
 
-### 예시 1: 표준 제출
+## 사용 시나리오
 
-계획 모드 내에서 인증 리팩터링을 조사하고 계획 파일을 디스크에 작성한 후, 어시스턴트는 인수 없이 `ExitPlanMode`를 호출합니다. 하니스는 표준 위치에서 계획을 읽고, 사용자에게 표시하며, 승인 또는 거부를 기다립니다.
+**적합한 경우:**
+- 계획 모드에서 방안이 완성되어 사용자 승인에 제출할 준비가 됨
+- 코드를 작성해야 하는 구현 태스크에만 사용
 
-### 예시 2: 사전 승인된 빠른 작업
+**적합하지 않은 경우:**
+- 순수 조사/탐색 태스크 — 계획 모드를 종료할 필요 없음
+- 사용자에게 "방안이 괜찮으신가요?"라고 묻고 싶은 경우 — 이것이 바로 이 도구의 기능이므로 AskUserQuestion으로 묻지 말 것
 
-```
-ExitPlanMode(allowedPrompts=[
-  {"tool": "Bash", "prompt": "run tests"},
-  {"tool": "Bash", "prompt": "install dependencies"}
-])
-```
+## 주의사항
 
-사용자가 일상적인 후속 명령에 대한 권한을 미리 부여하여, 어시스턴트가 구현 중에 각 권한 프롬프트에 대해 일시 중지할 필요가 없도록 합니다.
+- 이 도구는 방안 내용을 파라미터로 받지 않음 — 이전에 작성된 계획 파일에서 읽어옴
+- 사용자는 계획 파일의 내용을 보고 승인함
+- 이 도구를 호출하기 전에 AskUserQuestion으로 "방안이 괜찮은지" 묻지 말 것. 중복됨
+- 질문에서 "계획"을 언급하지 말 것. 사용자는 ExitPlanMode 전에 계획 내용을 볼 수 없기 때문
 
-## 참고사항
+## 원문
 
-- `ExitPlanMode`는 구현 스타일의 작업에만 의미가 있습니다. 사용자의 요청이 파일 변경이 없는 연구 또는 설명 작업인 경우, 종료하기 위해 계획 모드를 거치지 말고 직접 답변하십시오.
-- 이 도구를 호출하기 전에 계획이 이미 디스크에 작성되어 있어야 합니다. `ExitPlanMode`는 계획 본문을 매개변수로 받지 않습니다. 하니스가 기대하는 경로에서 읽습니다.
-- 사용자가 계획을 거부하면 계획 모드로 돌아갑니다. 피드백에 따라 수정하고 다시 제출하십시오. 계획이 승인되지 않은 상태에서 파일 편집을 시작하지 마십시오.
-- 승인은 계획 모드를 떠나고 계획에 설명된 범위에 대해 변이를 일으키는 도구 (`Edit`, `Write`, `Bash` 등)를 사용할 권한을 부여합니다. 이후 범위를 확장하려면 새 계획 또는 명시적인 사용자 동의가 필요합니다.
-- 이 도구를 호출하기 전에 "이 계획이 괜찮아 보이나요?"를 묻기 위해 `AskUserQuestion`을 사용하지 마십시오 — 계획 승인을 요청하는 것이 바로 `ExitPlanMode`가 하는 일이며, 계획이 제출되기 전까지 사용자는 계획을 볼 수 없습니다.
-- 계획을 최소화하고 실행 가능하게 유지하십시오. 검토자는 1분 이내에 훑어보고 정확히 무엇이 변경될지 이해할 수 있어야 합니다.
-- 구현 중간에 계획이 잘못되었다는 것을 깨달으면 조용히 벗어나지 말고 멈추고 사용자에게 보고하십시오. 계획 모드에 다시 들어가는 것이 유효한 다음 단계입니다.
+<textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.
+
+## How This Tool Works
+- You should have already written your plan to the plan file specified in the plan mode system message
+- This tool does NOT take the plan content as a parameter - it will read the plan from the file you wrote
+- This tool simply signals that you're done planning and ready for the user to review and approve
+- The user will see the contents of your plan file when they review it
+
+## When to Use This Tool
+IMPORTANT: Only use this tool when the task requires planning the implementation steps of a task that requires writing code. For research tasks where you're gathering information, searching files, reading files or in general trying to understand the codebase - do NOT use this tool.
+
+## Before Using This Tool
+Ensure your plan is complete and unambiguous:
+- If you have unresolved questions about requirements or approach, use AskUserQuestion first (in earlier phases)
+- Once your plan is finalized, use THIS tool to request approval
+
+**Important:** Do NOT use AskUserQuestion to ask "Is this plan okay?" or "Should I proceed?" - that's exactly what THIS tool does. ExitPlanMode inherently requests user approval of your plan.
+
+## Examples
+
+1. Initial task: "Search for and understand the implementation of vim mode in the codebase" - Do not use the exit plan mode tool because you are not planning the implementation steps of a task.
+2. Initial task: "Help me implement yank mode for vim" - Use the exit plan mode tool after you have finished planning the implementation steps of the task.
+3. Initial task: "Add a new feature to handle user authentication" - If unsure about auth method (OAuth, JWT, etc.), use AskUserQuestion first, then use exit plan mode tool after clarifying the approach.
+</textarea>

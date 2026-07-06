@@ -1,50 +1,40 @@
 # TaskOutput
 
-Çalışan veya tamamlanmış bir arka plan görevinin — bir arka plan kabuk komutunun, yerel bir ajanın veya uzak bir oturumun — birikmiş çıktısını getirir. Uzun süredir çalışan bir görevin o ana kadar ürettiklerini incelemeniz gerektiğinde kullanın.
+## Tanım
 
-## Ne Zaman Kullanılır
-
-- Uzak bir oturum (örneğin bir bulut sandbox'ı) çalışıyor ve stdout'una ihtiyacınız var.
-- Yerel bir ajan arka planda gönderildi ve geri dönmeden önce kısmi ilerleme görmek istiyorsunuz.
-- Bir arka plan kabuk komutu, durdurmadan kontrol etmek isteyeceğiniz kadar uzun süre çalışıyor.
-- Arka plan görevinin gerçekten ilerleme kaydettiğini daha uzun beklemeden veya `TaskStop` çağırmadan önce doğrulamanız gerekiyor.
-
-`TaskOutput`'a refleksle uzanmayın. Çoğu arka plan işi için daha doğrudan bir yol vardır — aşağıdaki notlara bakın.
+Çalışan veya tamamlanmış arka plan görevinin çıktısını alır. Arka plan shell'leri, asenkron agent'lar ve uzak oturumlar için uygundur.
 
 ## Parametreler
 
-- `task_id` (string, zorunlu): Arka plan işi başlatıldığında döndürülen görev tanımlayıcısı. Bir task-list `taskId` ile aynı değildir; bu belirli yürütme için çalışma zamanı handle'ıdır.
-- `block` (boolean, opsiyonel): `true` (varsayılan) olduğunda, görev yeni çıktı üretene veya tamamlanana kadar geri dönmeden önce bekler. `false` olduğunda, arabellekte ne varsa hemen geri döner.
-- `timeout` (number, opsiyonel): Geri dönmeden önce beklenecek maksimum milisaniye. Yalnızca `block` `true` olduğunda anlamlıdır. Varsayılan `30000`, maksimum `600000`.
+| Parametre | Tür | Zorunlu | Açıklama |
+|-----------|-----|---------|----------|
+| `task_id` | string | Evet | Görev ID'si |
+| `block` | boolean | Evet | Görev tamamlanana kadar beklenip beklenmeyeceği, varsayılan `true` |
+| `timeout` | number | Evet | Maksimum bekleme süresi (milisaniye), varsayılan 30000, maksimum 600000 |
 
-## Örnekler
+## Kullanım Senaryoları
 
-### Örnek 1
+**Kullanıma uygun:**
+- Task (`run_in_background: true`) ile başlatılan arka plan agent'ının ilerlemesini kontrol etme
+- Arka plan Bash komutunun çalıştırma sonucunu alma
+- Asenkron görevin tamamlanmasını bekleyip çıktısını alma
 
-Bloklamadan uzak bir oturuma bakın.
+**Kullanıma uygun değil:**
+- Ön plan görevleri — ön plan görevleri doğrudan sonuç döndürür, bu araca gerek yoktur
 
-```
-TaskOutput(task_id: "sess_01HXYZ...", block: false)
-```
+## Dikkat Edilecekler
 
-Görev başladığından beri (veya çalışma zamanına bağlı olarak son `TaskOutput` çağrınızdan beri) üretilen stdout/stderr'yi döndürür.
+- `block: true` görev tamamlanana veya zaman aşımına uğrayana kadar engeller
+- `block: false` mevcut durumu engellemeden kontrol etmek için kullanılır
+- Görev ID'si `/tasks` komutuyla bulunabilir
+- Tüm görev türleri için geçerlidir: arka plan shell, asenkron agent, uzak oturum
 
-### Örnek 2
+## Orijinal Metin
 
-Yerel bir ajanın daha fazla çıktı yayması için kısaca bekleyin.
-
-```
-TaskOutput(
-  task_id: "agent_01ABCD...",
-  block: true,
-  timeout: 10000
-)
-```
-
-## Notlar
-
-- Arka plan bash komutları: `TaskOutput` bu kullanım senaryosu için etkin bir şekilde kullanımdan kaldırılmıştır. Arka plan kabuk görevi başlattığınızda, sonuç zaten çıktı dosyasının yolunu içerir — bu yolu doğrudan `Read` aracıyla okuyun. `Read` size rastgele erişim, satır ofsetleri ve kararlı bir görünüm verir; `TaskOutput` vermez.
-- Yerel ajanlar (arka planda gönderilen `Agent` aracı): ajan bittiğinde, `Agent` aracı sonucu zaten nihai yanıtını içerir. Bunu doğrudan kullanın. Sembolik bağlanmış transcript dosyasını `Read` etmeyin — tam araç çağrı akışını içerir ve bağlam penceresini taşırır.
-- Uzak oturumlar: `TaskOutput`, çıktıyı geri akışla almanın doğru ve genellikle tek yoludur. Sıkı yoklama döngüleri yerine mütevazı bir `timeout` ile `block: true` tercih edin.
-- Bilinmeyen bir `task_id` veya çıktısı çöp toplanmış bir görev hata döndürür. Hala ihtiyaç varsa işi yeniden gönderin.
-- `TaskOutput` görevi durdurmaz. Sonlandırmak için `TaskStop` kullanın.
+<textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)
+- Takes a task_id parameter identifying the task
+- Returns the task output along with status information
+- Use block=true (default) to wait for task completion
+- Use block=false for non-blocking check of current status
+- Task IDs can be found using the /tasks command
+- Works with all task types: background shells, async agents, and remote sessions</textarea>

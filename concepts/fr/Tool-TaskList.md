@@ -1,62 +1,56 @@
 # TaskList
 
-Renvoie toutes les tâches de l'équipe courante (ou de la session) sous forme résumée. Utilisez-le pour passer en revue le travail en cours, décider quoi prendre ensuite et éviter de créer des doublons.
+## Définition
 
-## Quand l'utiliser
-
-- Au début d'une session pour voir ce qui est déjà suivi.
-- Avant d'appeler `TaskCreate`, pour confirmer que le travail n'est pas déjà capturé.
-- Lorsque vous décidez quelle tâche réclamer ensuite en tant que coéquipier ou sous-agent.
-- Pour vérifier les relations de dépendance au sein de l'équipe d'un coup d'œil.
-- Périodiquement pendant de longues sessions pour resynchroniser avec des coéquipiers qui ont pu réclamer, terminer ou ajouter des tâches.
-
-`TaskList` est en lecture seule et peu coûteux ; appelez-le librement chaque fois que vous avez besoin d'une vue d'ensemble.
+Liste toutes les tâches dans la liste de tâches pour voir la progression globale et le travail disponible.
 
 ## Paramètres
 
-`TaskList` ne prend aucun paramètre. Il renvoie toujours l'ensemble complet des tâches pour le contexte actif.
+Aucun paramètre.
 
-## Forme de la réponse
+## Contenu renvoyé
 
-Chaque tâche de la liste est un résumé, pas l'enregistrement complet. Attendez-vous à peu près à :
+Informations résumées de chaque tâche :
+- `id` — Identifiant de la tâche
+- `subject` — Description brève
+- `status` — Statut : `pending`, `in_progress` ou `completed`
+- `owner` — Responsable (agent ID), vide signifie non assigné
+- `blockedBy` — Liste des IDs de tâches incomplètes qui bloquent cette tâche
 
-- `id` — identifiant stable à utiliser avec `TaskGet` / `TaskUpdate`.
-- `subject` — titre court à l'impératif.
-- `status` — un parmi `pending`, `in_progress`, `completed`, `deleted`.
-- `owner` — identifiant d'agent ou de coéquipier, ou vide lorsqu'aucune propriété.
-- `blockedBy` — tableau d'IDs de tâches qui doivent se terminer d'abord.
+## Cas d'utilisation
 
-Pour la description complète, les critères d'acceptation ou les métadonnées d'une tâche spécifique, enchaînez avec `TaskGet`.
-
-## Exemples
-
-### Exemple 1
-
-Vérification de statut rapide.
-
-```
-TaskList()
-```
-
-Parcourez la sortie pour repérer tout ce qui est `in_progress` sans `owner` (travail stagnant) et tout ce qui est `pending` avec un `blockedBy` vide (prêt à être pris).
-
-### Exemple 2
-
-Un coéquipier choisit la prochaine tâche.
-
-```
-TaskList()
-# Filter to: status == pending AND blockedBy is empty AND owner is empty.
-# Among those, prefer the lower ID (tasks are typically numbered in
-# creation order, so lower IDs are older and usually higher priority).
-TaskGet(taskId: "<chosen id>")
-TaskUpdate(taskId: "<chosen id>", status: "in_progress", owner: "<your handle>")
-```
+**Adapté pour :**
+- Voir quelles tâches sont disponibles (statut pending, sans owner, non bloquées)
+- Vérifier la progression globale du projet
+- Trouver les tâches bloquées
+- Chercher la prochaine tâche après en avoir terminé une
 
 ## Notes
 
-- Heuristique de coéquipier : lorsque plusieurs tâches `pending` sont débloquées et sans propriétaire, prenez le plus petit ID. Cela maintient le travail en FIFO et évite que deux agents ne s'emparent de la même tâche très visible.
-- Respectez `blockedBy` : ne commencez pas une tâche dont les bloqueurs sont encore `pending` ou `in_progress`. Travaillez d'abord le bloqueur ou coordonnez-vous avec son propriétaire.
-- `TaskList` est le seul mécanisme de découverte des tâches. Il n'y a pas de recherche ; si la liste est longue, parcourez-la structurellement (par statut, puis par propriétaire).
-- Les tâches supprimées peuvent encore apparaître dans la liste avec le statut `deleted` pour la traçabilité. Ignorez-les à des fins de planification.
-- La liste reflète l'état en direct de l'équipe, donc les coéquipiers peuvent ajouter ou réclamer des tâches entre les appels. Relistez avant de réclamer si du temps s'est écoulé.
+- Préférer traiter les tâches dans l'ordre des ID (ID le plus bas en premier), car les tâches antérieures fournissent généralement du contexte pour les suivantes
+- Les tâches avec `blockedBy` ne peuvent pas être réclamées tant que les dépendances ne sont pas résolues
+- Utiliser TaskGet pour obtenir les détails complets d'une tâche spécifique
+
+## Texte original
+
+<textarea readonly>Use this tool to list all tasks in the task list.
+
+## When to Use This Tool
+
+- To see what tasks are available to work on (status: 'pending', no owner, not blocked)
+- To check overall progress on the project
+- To find tasks that are blocked and need dependencies resolved
+- After completing a task, to check for newly unblocked work or claim the next available task
+- **Prefer working on tasks in ID order** (lowest ID first) when multiple tasks are available, as earlier tasks often set up context for later ones
+
+## Output
+
+Returns a summary of each task:
+- **id**: Task identifier (use with TaskGet, TaskUpdate)
+- **subject**: Brief description of the task
+- **status**: 'pending', 'in_progress', or 'completed'
+- **owner**: Agent ID if assigned, empty if available
+- **blockedBy**: List of open task IDs that must be resolved first (tasks with blockedBy cannot be claimed until dependencies resolve)
+
+Use TaskGet with a specific task ID to view full details including description and comments.
+</textarea>

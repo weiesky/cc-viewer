@@ -1,35 +1,128 @@
 # EnterPlanMode
 
-将会话切换到计划模式——一个只读探索阶段，助手在其中调研代码库并起草具体的实施方案，交由用户审批后再修改任何文件。
+## 定义
 
-## 何时使用
-
-- 用户请求的是跨多个文件或子系统的非平凡改动。
-- 需求存在歧义，助手需要先阅读代码再决定方案。
-- 提出重构、迁移或依赖升级，而影响范围尚不明确。
-- 用户明确说「先做计划」「先规划一下」或请求设计评审。
-- 风险较高，直接动手可能浪费工作或破坏状态。
+将 Claude Code 切换到规划模式，用于在实施前探索代码库并设计方案。
 
 ## 参数
 
-无。`EnterPlanMode` 不接受任何参数——调用时传入空参数对象即可。
+无参数。
 
-## 示例
+## 使用场景
 
-### 示例 1：大型功能请求
+**适合使用：**
+- 新功能实现——需要架构决策
+- 存在多种可行方案——需要用户选择
+- 代码修改影响现有行为或结构
+- 多文件变更——可能涉及 2-3 个以上文件
+- 需求不明确——需要先探索再理解范围
+- 用户偏好很重要——实现可以有多种合理方向
 
-用户说：「给管理后台加上通过 Okta 的 SSO。」助手调用 `EnterPlanMode`，接着花费若干轮阅读认证中间件、会话存储、路由守卫和现有登录 UI。它写出一份计划，描述所需改动、迁移步骤和测试覆盖，然后通过 `ExitPlanMode` 提交审批。
+**不适合使用：**
+- 单行或少量行的修复（拼写错误、明显 bug）
+- 用户已给出非常具体的指令
+- 纯研究/探索任务——应使用 Task（Explore 类型）
 
-### 示例 2：高风险重构
+## 规划模式中的行为
 
-用户说：「把 REST 控制器换成 tRPC。」助手进入计划模式，审视每个控制器，盘点公开契约，列出发布阶段（shim、双读、切换），并在修改任何文件之前提出排序计划。
+进入规划模式后，Claude Code 会：
+1. 使用 Glob、Grep、Read 工具深入探索代码库
+2. 理解现有模式和架构
+3. 设计实施方案
+4. 将方案提交给用户审批
+5. 如需澄清可使用 AskUserQuestion
+6. 方案就绪后通过 ExitPlanMode 退出
 
 ## 注意事项
 
-- 计划模式在契约上是只读的。处于其中时，助手不得运行 `Edit`、`Write`、`NotebookEdit` 或任何会改变状态的 shell 命令。仅使用 `Read`、`Grep`、`Glob` 以及非破坏性的 `Bash` 命令。
-- 不要对简单的单行编辑、纯粹的研究性问题，或用户已详细指定的任务进入计划模式。开销得不偿失。
-- 在 Auto 模式下，除非用户明确要求，否则不建议进入计划模式——Auto 模式倾向于先行动而非事先规划。
-- 通过计划模式降低高成本工作的反复修改。五分钟的计划往往能省下一小时的无用编辑。
-- 进入计划模式后，将调研聚焦在真正会改动的部分。避免对与当前任务无关的仓库区域做详尽巡视。
-- 计划本身应写入运行时约定的路径，以便 `ExitPlanMode` 提交。计划应包含具体的文件路径、函数名和验证步骤，而不是笼统的意图。
-- 用户可能驳回计划并要求修改。请在计划模式内迭代，直到计划被接受；然后再退出。
+- 此工具需要用户同意才能进入规划模式
+- 如果不确定是否需要规划，倾向于规划——提前对齐比返工好
+
+## 原文
+
+<textarea readonly>Use this tool proactively when you're about to start a non-trivial implementation task. Getting user sign-off on your approach before writing code prevents wasted effort and ensures alignment. This tool transitions you into plan mode where you can explore the codebase and design an implementation approach for user approval.
+
+## When to Use This Tool
+
+**Prefer using EnterPlanMode** for implementation tasks unless they're simple. Use it when ANY of these conditions apply:
+
+1. **New Feature Implementation**: Adding meaningful new functionality
+   - Example: "Add a logout button" - where should it go? What should happen on click?
+   - Example: "Add form validation" - what rules? What error messages?
+
+2. **Multiple Valid Approaches**: The task can be solved in several different ways
+   - Example: "Add caching to the API" - could use Redis, in-memory, file-based, etc.
+   - Example: "Improve performance" - many optimization strategies possible
+
+3. **Code Modifications**: Changes that affect existing behavior or structure
+   - Example: "Update the login flow" - what exactly should change?
+   - Example: "Refactor this component" - what's the target architecture?
+
+4. **Architectural Decisions**: The task requires choosing between patterns or technologies
+   - Example: "Add real-time updates" - WebSockets vs SSE vs polling
+   - Example: "Implement state management" - Redux vs Context vs custom solution
+
+5. **Multi-File Changes**: The task will likely touch more than 2-3 files
+   - Example: "Refactor the authentication system"
+   - Example: "Add a new API endpoint with tests"
+
+6. **Unclear Requirements**: You need to explore before understanding the full scope
+   - Example: "Make the app faster" - need to profile and identify bottlenecks
+   - Example: "Fix the bug in checkout" - need to investigate root cause
+
+7. **User Preferences Matter**: The implementation could reasonably go multiple ways
+   - If you would use AskUserQuestion to clarify the approach, use EnterPlanMode instead
+   - Plan mode lets you explore first, then present options with context
+
+## When NOT to Use This Tool
+
+Only skip EnterPlanMode for simple tasks:
+- Single-line or few-line fixes (typos, obvious bugs, small tweaks)
+- Adding a single function with clear requirements
+- Tasks where the user has given very specific, detailed instructions
+- Pure research/exploration tasks (use the Agent tool with explore agent instead)
+
+## What Happens in Plan Mode
+
+In plan mode, you'll:
+1. Thoroughly explore the codebase using Glob, Grep, and Read tools
+2. Understand existing patterns and architecture
+3. Design an implementation approach
+4. Present your plan to the user for approval
+5. Use AskUserQuestion if you need to clarify approaches
+6. Exit plan mode with ExitPlanMode when ready to implement
+
+## Examples
+
+### GOOD - Use EnterPlanMode:
+User: "Add user authentication to the app"
+- Requires architectural decisions (session vs JWT, where to store tokens, middleware structure)
+
+User: "Optimize the database queries"
+- Multiple approaches possible, need to profile first, significant impact
+
+User: "Implement dark mode"
+- Architectural decision on theme system, affects many components
+
+User: "Add a delete button to the user profile"
+- Seems simple but involves: where to place it, confirmation dialog, API call, error handling, state updates
+
+User: "Update the error handling in the API"
+- Affects multiple files, user should approve the approach
+
+### BAD - Don't use EnterPlanMode:
+User: "Fix the typo in the README"
+- Straightforward, no planning needed
+
+User: "Add a console.log to debug this function"
+- Simple, obvious implementation
+
+User: "What files handle routing?"
+- Research task, not implementation planning
+
+## Important Notes
+
+- This tool REQUIRES user approval - they must consent to entering plan mode
+- If unsure whether to use it, err on the side of planning - it's better to get alignment upfront than to redo work
+- Users appreciate being consulted before significant changes are made to their codebase
+</textarea>

@@ -1,62 +1,56 @@
 # TaskList
 
-Возвращает каждую задачу в текущей команде (или сессии) в обобщённой форме. Используйте, чтобы обозреть невыполненную работу, решить, что взять следующим, и избежать создания дубликатов.
+## Определение
 
-## Когда использовать
-
-- В начале сессии, чтобы увидеть, что уже отслеживается.
-- Перед вызовом `TaskCreate`, чтобы подтвердить, что работа ещё не зафиксирована.
-- При выборе, какую задачу взять следующей как сокомандник или подагент.
-- Для быстрой проверки зависимостей между задачами команды.
-- Периодически во время длинных сессий для ре-синхронизации с сокомандниками, которые могли взять, завершить или добавить задачи.
-
-`TaskList` работает только на чтение и дёшев; вызывайте свободно, когда нужен обзор.
+Отображает список всех задач в списке задач, позволяя просмотреть общий прогресс и доступную работу.
 
 ## Параметры
 
-`TaskList` не принимает параметров. Всегда возвращает полный набор задач активного контекста.
+Без параметров.
 
-## Форма ответа
+## Возвращаемое содержимое
 
-Каждая задача в списке — сводка, а не полная запись. Ожидайте примерно:
+Сводка по каждой задаче:
+- `id` — идентификатор задачи
+- `subject` — краткое описание
+- `status` — статус: `pending`, `in_progress` или `completed`
+- `owner` — ответственный (ID агента), пустое означает не назначено
+- `blockedBy` — список ID незавершённых задач, блокирующих эту задачу
 
-- `id` — стабильный идентификатор для `TaskGet` / `TaskUpdate`.
-- `subject` — короткий императивный заголовок.
-- `status` — один из `pending`, `in_progress`, `completed`, `deleted`.
-- `owner` — handle агента или сокомандника, либо пусто, если задача невостребована.
-- `blockedBy` — массив ID задач, которые должны завершиться первыми.
+## Сценарии использования
 
-За полным описанием, критериями приёмки или метаданными конкретной задачи обращайтесь через `TaskGet`.
-
-## Примеры
-
-### Пример 1
-
-Быстрая проверка статуса.
-
-```
-TaskList()
-```
-
-Просмотрите вывод на предмет `in_progress` без `owner` (застарелая работа) и `pending` с пустым `blockedBy` (готова к взятию).
-
-### Пример 2
-
-Сокомандник выбирает следующую задачу.
-
-```
-TaskList()
-# Filter to: status == pending AND blockedBy is empty AND owner is empty.
-# Among those, prefer the lower ID (tasks are typically numbered in
-# creation order, so lower IDs are older and usually higher priority).
-TaskGet(taskId: "<chosen id>")
-TaskUpdate(taskId: "<chosen id>", status: "in_progress", owner: "<your handle>")
-```
+**Подходящее применение:**
+- Просмотр доступных задач (статус pending, без owner, не заблокированы)
+- Проверка общего прогресса проекта
+- Поиск заблокированных задач
+- Поиск следующей задачи после завершения текущей
 
 ## Примечания
 
-- Эвристика сокомандника: когда несколько задач `pending` разблокированы и без владельца, берите с наименьшим ID. Это сохраняет FIFO и предотвращает захват двумя агентами одной и той же заметной задачи.
-- Уважайте `blockedBy`: не начинайте задачу, чьи блокеры ещё `pending` или `in_progress`. Сначала обработайте блокер или скоординируйтесь с его владельцем.
-- `TaskList` — единственный механизм обнаружения задач. Поиска нет; если список длинный, сканируйте структурно (по статусу, затем по владельцу).
-- Удалённые задачи могут по-прежнему появляться в списке со статусом `deleted` для отслеживания. Игнорируйте их для планирования.
-- Список отражает живое состояние команды, поэтому сокомандники могут добавлять или брать задачи между вызовами. Перелистайте перед взятием, если прошло время.
+- Предпочитайте обработку задач в порядке ID (наименьший ID первым), так как ранние задачи обычно предоставляют контекст для последующих
+- Задачи с `blockedBy` не могут быть взяты до снятия зависимости
+- Используйте TaskGet для получения полных деталей конкретной задачи
+
+## Оригинальный текст
+
+<textarea readonly>Use this tool to list all tasks in the task list.
+
+## When to Use This Tool
+
+- To see what tasks are available to work on (status: 'pending', no owner, not blocked)
+- To check overall progress on the project
+- To find tasks that are blocked and need dependencies resolved
+- After completing a task, to check for newly unblocked work or claim the next available task
+- **Prefer working on tasks in ID order** (lowest ID first) when multiple tasks are available, as earlier tasks often set up context for later ones
+
+## Output
+
+Returns a summary of each task:
+- **id**: Task identifier (use with TaskGet, TaskUpdate)
+- **subject**: Brief description of the task
+- **status**: 'pending', 'in_progress', or 'completed'
+- **owner**: Agent ID if assigned, empty if available
+- **blockedBy**: List of open task IDs that must be resolved first (tasks with blockedBy cannot be claimed until dependencies resolve)
+
+Use TaskGet with a specific task ID to view full details including description and comments.
+</textarea>

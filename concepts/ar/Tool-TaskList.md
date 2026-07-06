@@ -1,62 +1,56 @@
 # TaskList
 
-يُعيد كل مهمة في الفريق الحالي (أو الجلسة) بشكل مُلخَّص. استخدمه لاستعراض العمل المعلق وتحديد ما ستتناوله تالياً وتجنب إنشاء تكرارات.
+## التعريف
 
-## متى يُستخدم
-
-- في بداية الجلسة لرؤية ما هو متعقَّب بالفعل.
-- قبل استدعاء `TaskCreate` للتأكد من أن العمل غير مُلتقط بالفعل.
-- عند اتخاذ قرار بشأن أي مهمة تدعي كزميل فريق أو وكيل فرعي.
-- للتحقق من علاقات التبعية عبر الفريق في لمحة.
-- بشكل دوري خلال الجلسات الطويلة لإعادة المزامنة مع زملاء الفريق الذين ربما ادعوا أو أكملوا أو أضافوا مهاماً.
-
-`TaskList` للقراءة فقط ورخيص؛ استدعِه بحرية كلما احتجت إلى نظرة عامة.
+عرض جميع المهام في قائمة المهام، لمراجعة التقدم العام والأعمال المتاحة.
 
 ## المعاملات
 
-`TaskList` لا يأخذ معاملات. يُعيد دائماً مجموعة المهام الكاملة للسياق النشط.
+لا توجد معاملات.
 
-## شكل الاستجابة
+## المحتوى المُرجع
 
-كل مهمة في القائمة ملخص لا السجل الكامل. توقع تقريباً:
+معلومات ملخصة لكل مهمة:
+- `id` — معرف المهمة
+- `subject` — وصف مختصر
+- `status` — الحالة: `pending`، `in_progress` أو `completed`
+- `owner` — المسؤول (معرف agent)، فارغ يعني غير مُعيَّن
+- `blockedBy` — قائمة معرفات المهام غير المكتملة التي تحظر هذه المهمة
 
-- `id` — معرف ثابت للاستخدام مع `TaskGet` / `TaskUpdate`.
-- `subject` — عنوان أمري قصير.
-- `status` — واحدة من `pending` أو `in_progress` أو `completed` أو `deleted`.
-- `owner` — مُعرَّف وكيل أو زميل فريق، أو فارغ عند عدم الادعاء.
-- `blockedBy` — مصفوفة معرفات المهام التي يجب إكمالها أولاً.
+## سيناريوهات الاستخدام
 
-للحصول على الوصف الكامل أو معايير القبول أو البيانات الوصفية لمهمة معينة، تابع بـ `TaskGet`.
-
-## أمثلة
-
-### مثال 1
-
-فحص حالة سريع.
-
-```
-TaskList()
-```
-
-امسح المخرج بحثاً عن أي شيء `in_progress` بلا `owner` (عمل راكد) وأي شيء `pending` بـ `blockedBy` فارغ (جاهز للالتقاط).
-
-### مثال 2
-
-زميل فريق يختار المهمة التالية.
-
-```
-TaskList()
-# Filter to: status == pending AND blockedBy is empty AND owner is empty.
-# Among those, prefer the lower ID (tasks are typically numbered in
-# creation order, so lower IDs are older and usually higher priority).
-TaskGet(taskId: "<chosen id>")
-TaskUpdate(taskId: "<chosen id>", status: "in_progress", owner: "<your handle>")
-```
+**مناسب للاستخدام:**
+- عرض المهام المتاحة (حالة pending، بدون owner، غير محظورة)
+- فحص التقدم العام للمشروع
+- البحث عن المهام المحظورة
+- البحث عن المهمة التالية بعد إكمال مهمة
 
 ## ملاحظات
 
-- إرشاد لزميل الفريق: عندما تكون عدة مهام `pending` غير محجوبة وغير ممتلكة، اختر المعرف الأدنى. هذا يُبقي العمل FIFO ويتجنب أن يلتقط وكيلان المهمة بارزة نفسها.
-- احترم `blockedBy`: لا تبدأ مهمة لا تزال عوائقها `pending` أو `in_progress`. اعمل على العائق أولاً أو نسق مع مالكه.
-- `TaskList` هو آلية الاكتشاف الوحيدة للمهام. لا يوجد بحث؛ إذا كانت القائمة طويلة، امسح بنيوياً (حسب الحالة، ثم حسب المالك).
-- قد تظل المهام المحذوفة تظهر في القائمة بحالة `deleted` للتتبع. تجاهلها لأغراض التخطيط.
-- تعكس القائمة الحالة الحية للفريق، لذا قد يُضيف زملاء الفريق أو يدعون مهاماً بين الاستدعاءات. أعد السرد قبل الادعاء إذا مر وقت.
+- يُفضل معالجة المهام بترتيب المعرف (الأصغر أولاً)، لأن المهام المبكرة عادة توفر سياقاً للمهام اللاحقة
+- المهام التي لديها `blockedBy` لا يمكن المطالبة بها قبل رفع التبعية
+- استخدم TaskGet للحصول على التفاصيل الكاملة لمهمة محددة
+
+## النص الأصلي
+
+<textarea readonly>Use this tool to list all tasks in the task list.
+
+## When to Use This Tool
+
+- To see what tasks are available to work on (status: 'pending', no owner, not blocked)
+- To check overall progress on the project
+- To find tasks that are blocked and need dependencies resolved
+- After completing a task, to check for newly unblocked work or claim the next available task
+- **Prefer working on tasks in ID order** (lowest ID first) when multiple tasks are available, as earlier tasks often set up context for later ones
+
+## Output
+
+Returns a summary of each task:
+- **id**: Task identifier (use with TaskGet, TaskUpdate)
+- **subject**: Brief description of the task
+- **status**: 'pending', 'in_progress', or 'completed'
+- **owner**: Agent ID if assigned, empty if available
+- **blockedBy**: List of open task IDs that must be resolved first (tasks with blockedBy cannot be claimed until dependencies resolve)
+
+Use TaskGet with a specific task ID to view full details including description and comments.
+</textarea>

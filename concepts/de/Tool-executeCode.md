@@ -1,47 +1,41 @@
-# executeCode
+# executeCode (mcp__ide__executeCode)
 
-Führt ein Code-Snippet innerhalb eines Live-Kernels oder einer Sandbox aus, die von einer IDE-Integration bereitgestellt wird (zum Beispiel der Jupyter-Kernel, der an das aktuell geöffnete Notebook gebunden ist). Das Tool ist nur verfügbar, wenn Claude Code neben einer kompatiblen IDE-Brücke wie der VS-Code-Erweiterung mit ausgewähltem Jupyter-Kernel läuft.
+## Definition
 
-## Wann verwenden
-
-- Ausführen einer schnellen Berechnung, Datenprüfung oder eines Plots gegen den Zustand, der bereits in einem aktiven Jupyter-Kernel geladen ist.
-- Validieren eines Code-Snippets, bevor es in eine Notebook-Zelle eingefügt wird.
-- Erkunden eines im Speicher gehaltenen Dataframes, einer Variablen oder eines Modells, das im Kernel existiert, aber nicht auf Platte serialisiert ist.
-- Erzeugen eines Charts oder numerischen Ergebnisses, das der Benutzer inline in der IDE gerendert sehen möchte.
-
-NICHT verwenden für eigenständige Skripte, die besser mit `Bash` und `python script.py` ausgeführt werden, oder für Code, der über einen frischen Kernel hinaus bestehen muss.
+Führt Python-Code im Jupyter-Kernel der aktuellen Notebook-Datei aus.
 
 ## Parameter
 
-- `code` (string, erforderlich): Der im aktuellen Kernel auszuführende Code. Läuft, als wäre er in eine Notebook-Zelle eingefügt – definierte Variablen bleiben im Kernel erhalten, bis er neu gestartet wird.
-- `language` (string, optional): Die Sprache des Snippets, wenn die IDE-Brücke mehrere Kernel unterstützt. Am häufigsten weggelassen; Standard ist die Sprache des aktiven Kernels (typischerweise Python).
+| Parameter | Typ | Erforderlich | Beschreibung |
+|-----------|-----|--------------|--------------|
+| `code` | string | Ja | Der auszuführende Python-Code |
 
-## Beispiele
+## Anwendungsfälle
 
-### Beispiel 1: Einen Dataframe im Speicher inspizieren
+**Geeignet für:**
+- Code in einer Jupyter-Notebook-Umgebung ausführen
+- Code-Snippets testen
+- Datenanalyse und Berechnungen
 
-```
-executeCode(
-  code="df.head()\nprint(df.shape)\nprint(df.dtypes)"
-)
-```
-
-Gibt die ersten Zeilen, die Form und die Spalten-dtypes eines bereits im Kernel geladenen Dataframes zurück.
-
-### Beispiel 2: Schnelle numerische Prüfung
-
-```
-executeCode(
-  code="import numpy as np\nnp.mean([1, 2, 3, 4, 5])"
-)
-```
-
-Führt eine einmalige Berechnung aus, ohne eine Notebook-Zelle zu erstellen.
+**Nicht geeignet für:**
+- Codeausführung außerhalb von Jupyter – dafür Bash verwenden
+- Dateien ändern – dafür Edit oder Write verwenden
 
 ## Hinweise
 
-- `executeCode` ist ein IDE-Brücken-Tool. Es ist in einfachen Terminal-Sitzungen von Claude Code nicht verfügbar; es erscheint nur, wenn die Sitzung mit einer IDE verbunden ist, die einen Kernel freigibt (zum Beispiel die VS-Code-Jupyter-Erweiterung).
-- Zustand bleibt im Kernel erhalten. Von einem `executeCode`-Aufruf definierte Variablen bleiben späteren Aufrufen, Notebook-Zellen und dem Benutzer sichtbar – achten Sie auf Seiteneffekte.
-- Langlaufender oder blockierender Code blockiert den Kernel. Halten Sie Snippets kurz; für Arbeit über mehrere Minuten schreiben Sie ein echtes Skript und führen es über `Bash` aus.
-- Ausgabe (stdout, Rückgabewerte, Bilder) wird an die Sitzung zurückgegeben. Sehr große Ausgaben können von der IDE-Brücke gekürzt werden.
-- Für Datei-Edits bevorzugen Sie `Edit`, `Write` oder `NotebookEdit` – `executeCode` ist kein Ersatz zum Verfassen von Quelldateien.
+- Dies ist ein MCP-Tool (Model Context Protocol), bereitgestellt durch die IDE-Integration
+- Code wird im aktuellen Jupyter-Kernel ausgeführt, der Zustand bleibt zwischen Aufrufen bestehen
+- Sofern der Benutzer es nicht ausdrücklich anfordert, sollte das Deklarieren von Variablen oder Ändern des Kernel-Zustands vermieden werden
+- Nach einem Kernel-Neustart geht der Zustand verloren
+
+## Originaltext
+
+<textarea readonly>Execute python code in the Jupyter kernel for the current notebook file.
+    
+    All code will be executed in the current Jupyter kernel.
+    
+    Avoid declaring variables or modifying the state of the kernel unless the user
+    explicitly asks for it.
+    
+    Any code executed will persist across calls to this tool, unless the kernel
+    has been restarted.</textarea>

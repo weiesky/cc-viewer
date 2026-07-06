@@ -1,50 +1,40 @@
 # TaskOutput
 
-Récupère la sortie accumulée d'une tâche d'arrière-plan en cours ou terminée — une commande shell en arrière-plan, un agent local ou une session distante. Utilisez-le lorsque vous devez inspecter ce qu'une tâche de longue durée a produit jusqu'à présent.
+## Définition
 
-## Quand l'utiliser
-
-- Une session distante (par exemple un sandbox cloud) est en cours d'exécution et vous avez besoin de sa sortie standard.
-- Un agent local a été dispatché en arrière-plan et vous souhaitez une progression partielle avant qu'il ne renvoie son résultat.
-- Une commande shell en arrière-plan est en cours depuis assez longtemps pour que vous souhaitiez vérifier sans l'arrêter.
-- Vous devez confirmer qu'une tâche d'arrière-plan progresse réellement avant d'attendre plus longtemps ou d'appeler `TaskStop`.
-
-Ne recourez pas à `TaskOutput` par réflexe. Pour la plupart des travaux d'arrière-plan, il existe un chemin plus direct — voir les notes ci-dessous.
+Obtient la sortie des tâches en arrière-plan en cours d'exécution ou terminées. Applicable aux shells en arrière-plan, agents asynchrones et sessions distantes.
 
 ## Paramètres
 
-- `task_id` (string, requis) : l'identifiant de tâche renvoyé au démarrage du travail en arrière-plan. Ce n'est pas la même chose qu'un `taskId` de liste de tâches ; c'est le handle d'exécution de l'exécution spécifique.
-- `block` (boolean, optionnel) : lorsque `true` (par défaut), attendez que la tâche produise une nouvelle sortie ou se termine avant de renvoyer. Lorsque `false`, renvoyez immédiatement ce qui est mis en mémoire tampon.
-- `timeout` (number, optionnel) : millisecondes maximales de blocage avant de renvoyer. N'a de sens que lorsque `block` est `true`. Défaut `30000`, maximum `600000`.
+| Paramètre | Type | Requis | Description |
+|-----------|------|--------|-------------|
+| `task_id` | string | Oui | ID de la tâche |
+| `block` | boolean | Oui | Si l'on bloque en attendant la fin de la tâche, par défaut `true` |
+| `timeout` | number | Oui | Temps d'attente maximum (millisecondes), par défaut 30000, maximum 600000 |
 
-## Exemples
+## Cas d'utilisation
 
-### Exemple 1
+**Adapté pour :**
+- Vérifier la progression des agents en arrière-plan lancés via Task (`run_in_background: true`)
+- Obtenir les résultats d'exécution de commandes Bash en arrière-plan
+- Attendre qu'une tâche asynchrone se termine et obtenir sa sortie
 
-Jeter un coup d'œil à une session distante sans bloquer.
-
-```
-TaskOutput(task_id: "sess_01HXYZ...", block: false)
-```
-
-Renvoie tout ce qui a été produit en sortie standard / erreur depuis le démarrage de la tâche (ou depuis votre dernier appel `TaskOutput`, selon l'environnement d'exécution).
-
-### Exemple 2
-
-Attendre brièvement qu'un agent local émette plus de sortie.
-
-```
-TaskOutput(
-  task_id: "agent_01ABCD...",
-  block: true,
-  timeout: 10000
-)
-```
+**Non adapté pour :**
+- Tâches au premier plan — les tâches au premier plan renvoient directement les résultats, cet outil n'est pas nécessaire
 
 ## Notes
 
-- Commandes bash en arrière-plan : `TaskOutput` est en pratique déprécié pour ce cas d'usage. Lorsque vous démarrez une tâche shell en arrière-plan, le résultat inclut déjà le chemin de son fichier de sortie — lisez ce chemin directement avec l'outil `Read`. `Read` vous donne un accès aléatoire, des offsets de ligne et une vue stable ; `TaskOutput` non.
-- Agents locaux (l'outil `Agent` dispatché en arrière-plan) : lorsque l'agent termine, le résultat de l'outil `Agent` contient déjà sa réponse finale. Utilisez-la directement. Ne lisez pas le fichier de transcription symlinké — il contient le flux complet d'appels d'outils et débordera la fenêtre de contexte.
-- Sessions distantes : `TaskOutput` est la méthode correcte et souvent la seule pour récupérer la sortie en streaming. Préférez `block: true` avec un `timeout` modeste plutôt que des boucles de polling serrées.
-- Un `task_id` inconnu, ou une tâche dont la sortie a été collectée par le ramasse-miettes, renvoie une erreur. Relancez le travail si vous en avez encore besoin.
-- `TaskOutput` n'arrête pas la tâche. Utilisez `TaskStop` pour terminer.
+- `block: true` bloque jusqu'à ce que la tâche se termine ou que le délai expire
+- `block: false` est utilisé pour une vérification non bloquante de l'état actuel
+- L'ID de la tâche peut être trouvé via la commande `/tasks`
+- Applicable à tous les types de tâches : shells en arrière-plan, agents asynchrones, sessions distantes
+
+## Texte original
+
+<textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)
+- Takes a task_id parameter identifying the task
+- Returns the task output along with status information
+- Use block=true (default) to wait for task completion
+- Use block=false for non-blocking check of current status
+- Task IDs can be found using the /tasks command
+- Works with all task types: background shells, async agents, and remote sessions</textarea>

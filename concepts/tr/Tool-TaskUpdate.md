@@ -1,70 +1,123 @@
 # TaskUpdate
 
-Var olan bir görevi değiştirir — durumu, içeriği, sahipliği, meta verileri veya bağımlılık kenarları. Görevler bu şekilde yaşam döngülerinde ilerler ve Claude Code, ekip arkadaşları ve alt ajanlar arasında bu şekilde devredilir.
+## Tanım
 
-## Ne Zaman Kullanılır
-
-- Üzerinde çalıştıkça görevi durum iş akışında geçiriyorsunuz.
-- Kendinizi (veya başka bir ajanı) `owner` olarak atayarak bir görevi talep ediyorsunuz.
-- Problem hakkında daha fazlasını öğrendikten sonra `subject` veya `description`'ı iyileştirmek.
-- Yeni keşfedilen bağımlılıkları `addBlocks` / `addBlockedBy` ile kaydetmek.
-- Dış bilet ID'leri veya öncelik ipuçları gibi yapılandırılmış `metadata` eklemek.
+Görev listesindeki bir görevin durumunu, içeriğini veya bağımlılık ilişkilerini günceller.
 
 ## Parametreler
 
-- `taskId` (string, zorunlu): Değiştirilecek görev. `TaskList` veya `TaskCreate`'den alın.
-- `status` (string, opsiyonel): `pending`, `in_progress`, `completed`, `deleted`'den biri.
-- `subject` (string, opsiyonel): Yerine geçen buyurgan başlık.
-- `description` (string, opsiyonel): Yerine geçen ayrıntılı açıklama.
-- `activeForm` (string, opsiyonel): Yerine geçen şimdiki-sürekli dönen metin.
-- `owner` (string, opsiyonel): Görev için sorumluluk alan ajan veya ekip arkadaşı handle'ı.
-- `metadata` (object, opsiyonel): Göreve birleştirilecek meta veri anahtarları. Bir anahtarı silmek için `null`'a ayarlayın.
-- `addBlocks` (string dizisi, opsiyonel): Bu görevin engellediği görev ID'leri.
-- `addBlockedBy` (string dizisi, opsiyonel): Bundan önce tamamlanması gereken görev ID'leri.
+| Parametre | Tür | Zorunlu | Açıklama |
+|-----------|-----|---------|----------|
+| `taskId` | string | Evet | Güncellenecek görev ID'si |
+| `status` | enum | Hayır | Yeni durum: `pending` / `in_progress` / `completed` / `deleted` |
+| `subject` | string | Hayır | Yeni başlık |
+| `description` | string | Hayır | Yeni açıklama |
+| `activeForm` | string | Hayır | Devam ederken gösterilen şimdiki zaman metni |
+| `owner` | string | Hayır | Yeni görev sorumlusu (agent adı) |
+| `metadata` | object | Hayır | Birleştirilecek meta veriler (null olarak ayarlamak anahtarı siler) |
+| `addBlocks` | string[] | Hayır | Bu görev tarafından engellenen görev ID listesi |
+| `addBlockedBy` | string[] | Hayır | Bu görevi engelleyen ön koşul görev ID listesi |
 
-## Durum İş Akışı
-
-Yaşam döngüsü kasıtlı olarak doğrusaldır: `pending` → `in_progress` → `completed`. `deleted` son durumdur ve asla üzerinde çalışılmayacak görevleri geri çekmek için kullanılır.
-
-- Çalışmaya başladığınız an `in_progress`'e ayarlayın, öncesinde değil. Belirli bir sahip için aynı anda yalnızca bir görev `in_progress` olmalıdır.
-- Yalnızca iş tamamen bittiğinde `completed`'a ayarlayın — kabul kriterleri karşılandı, testler geçti, çıktı yazıldı. Bir engel belirirse, görevi `in_progress`'te tutun ve çözülmesi gerekeni açıklayan yeni bir görev ekleyin.
-- Testler başarısız olduğunda, uygulama kısmi olduğunda veya çözülmemiş hatalara isabet ettiğinizde asla bir görevi `completed` olarak işaretlemeyin.
-- İptal edilen veya yinelenen görevler için `deleted` kullanın; bir görevi ilgisiz iş için yeniden kullanmayın.
-
-## Örnekler
-
-### Örnek 1
-
-Bir görevi talep edin ve başlatın.
+## Durum Geçişi
 
 ```
-TaskUpdate(
-  taskId: "t_01HXYZ...",
-  status: "in_progress",
-  owner: "main-agent"
-)
+pending → in_progress → completed
 ```
 
-### Örnek 2
+`deleted` herhangi bir durumdan geçilebilir ve görevi kalıcı olarak kaldırır.
 
-İşi bitirin ve bir takip bağımlılığı kaydedin.
+## Kullanım Senaryoları
 
+**Kullanıma uygun:**
+- Çalışmaya başlarken görevi `in_progress` olarak işaretleme
+- Çalışma tamamlandığında görevi `completed` olarak işaretleme
+- Görevler arası bağımlılık ilişkilerini ayarlama
+- Gereksinimler değiştiğinde görev içeriğini güncelleme
+
+**Önemli kurallar:**
+- Yalnızca görev tamamen tamamlandığında `completed` olarak işaretleyin
+- Hata veya engelle karşılaşıldığında `in_progress` olarak bırakın
+- Test başarısız, uygulama eksik veya çözülmemiş hatalarla karşılaşıldığında `completed` olarak işaretlemeyin
+
+## Dikkat Edilecekler
+
+- Güncellemeden önce TaskGet ile görevin en son durumunu alın, eski verileri önleyin
+- Görevi tamamladıktan sonra TaskList ile bir sonraki mevcut görevi bulun
+
+## Orijinal Metin
+
+<textarea readonly>Use this tool to update a task in the task list.
+
+## When to Use This Tool
+
+**Mark tasks as resolved:**
+- When you have completed the work described in a task
+- When a task is no longer needed or has been superseded
+- IMPORTANT: Always mark your assigned tasks as resolved when you finish them
+- After resolving, call TaskList to find your next task
+
+- ONLY mark a task as completed when you have FULLY accomplished it
+- If you encounter errors, blockers, or cannot finish, keep the task as in_progress
+- When blocked, create a new task describing what needs to be resolved
+- Never mark a task as completed if:
+  - Tests are failing
+  - Implementation is partial
+  - You encountered unresolved errors
+  - You couldn't find necessary files or dependencies
+
+**Delete tasks:**
+- When a task is no longer relevant or was created in error
+- Setting status to `deleted` permanently removes the task
+
+**Update task details:**
+- When requirements change or become clearer
+- When establishing dependencies between tasks
+
+## Fields You Can Update
+
+- **status**: The task status (see Status Workflow below)
+- **subject**: Change the task title (imperative form, e.g., "Run tests")
+- **description**: Change the task description
+- **activeForm**: Present continuous form shown in spinner when in_progress (e.g., "Running tests")
+- **owner**: Change the task owner (agent name)
+- **metadata**: Merge metadata keys into the task (set a key to null to delete it)
+- **addBlocks**: Mark tasks that cannot start until this one completes
+- **addBlockedBy**: Mark tasks that must complete before this one can start
+
+## Status Workflow
+
+Status progresses: `pending` → `in_progress` → `completed`
+
+Use `deleted` to permanently remove a task.
+
+## Staleness
+
+Make sure to read a task's latest state using `TaskGet` before updating it.
+
+## Examples
+
+Mark task as in progress when starting work:
+```json
+{"taskId": "1", "status": "in_progress"}
 ```
-TaskUpdate(
-  taskId: "t_01HXYZ...",
-  status: "completed"
-)
 
-TaskUpdate(
-  taskId: "t_01FOLLOWUP...",
-  addBlockedBy: ["t_01HXYZ..."]
-)
+Mark task as completed after finishing work:
+```json
+{"taskId": "1", "status": "completed"}
 ```
 
-## Notlar
+Delete a task:
+```json
+{"taskId": "1", "status": "deleted"}
+```
 
-- `metadata` anahtar anahtar birleşir; bir anahtar için `null` geçirmek onu kaldırır. Mevcut içerikten emin değilseniz önce `TaskGet` çağırın.
-- `addBlocks` ve `addBlockedBy` kenarları ekler; mevcut olanları kaldırmazlar. Grafiği yıkıcı bir şekilde düzenlemek özel bir iş akışı gerektirir — bağımlılıkları yeniden yazmadan önce ekip sahibine danışın.
-- `subject`'i değiştirdiğinizde `activeForm`'u senkronize tutun, böylece dönen metin doğal okunmaya devam eder.
-- Bir görevi susturmak için `completed` olarak işaretlemeyin. Kullanıcı işi iptal ettiyse, `description`'da kısa bir gerekçe ile `deleted` kullanın.
-- Güncellemeden önce `TaskGet` ile bir görevin en son durumunu okuyun — ekip arkadaşları son okumanızla yazmanız arasında değiştirmiş olabilir.
+Claim a task by setting owner:
+```json
+{"taskId": "1", "owner": "my-name"}
+```
+
+Set up task dependencies:
+```json
+{"taskId": "2", "addBlockedBy": ["1"]}
+```
+</textarea>

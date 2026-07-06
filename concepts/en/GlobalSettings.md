@@ -1,7 +1,5 @@
 # CC-Viewer Configuration Reference
 
-> Also available in [简体中文](../zh/GlobalSettings.md) and other languages.
-
 ## 1. Global Settings Panel (UI)
 
 Open via top-left menu → "Global Settings".
@@ -68,7 +66,6 @@ All UI settings are persisted to `<log_dir>/preferences.json` via the `/api/pref
 | `CCV_PROJECT_DIR` | `process.cwd()` | Project working directory for file operations and Git commands |
 | `CCV_PROXY_PORT` | unset | Local MITM proxy port |
 | `CCV_BYPASS_PERMISSIONS` | unset | `=1` skip tool permission approval (with `--dangerously-skip-permissions`) |
-| `CCV_DISABLE_ASK_HOOK` | unset | `=1` skip cc-viewer's web AskUserQuestion prompt; let it fall through to the terminal / a downstream PermissionRequest hook |
 | `CCV_DISABLE_DELTA` | unset | `=1` disable incremental log storage, write full messages every time |
 | `CCV_DEBUG` | unset | `=1` enable HTTP proxy debug logging |
 | `CCV_DEBUG_PLUGINS` | unset | `=1` enable plugin loading debug logging |
@@ -125,12 +122,12 @@ CC-Viewer auto-registers hooks in `~/.claude/settings.json` under `hooks.PreTool
 
 ### 1. AskUserQuestion Bridge
 - **Matcher**: `"AskUserQuestion"`
-- **Command**: `node <install_dir>/server/lib/ask-bridge.js`
+- **Command**: `node <install_dir>/lib/ask-bridge.js`
 - **Purpose**: Forward Claude's questions to Web UI, wait for user answers
 
 ### 2. Permission Approval Bridge
 - **Matcher**: `""` (empty = match all tools)
-- **Command**: `node <install_dir>/server/lib/perm-bridge.js`
+- **Command**: `node <install_dir>/lib/perm-bridge.js`
 - **Purpose**: Only `Bash`/`Edit`/`Write`/`NotebookEdit` require Web UI approval; others pass through
 
 ## 7. Shell Integration
@@ -168,11 +165,8 @@ Stored in `<log_dir>/profile.json`, managed via the "Proxy Switch" panel in the 
 | `name` | Display name |
 | `baseURL` | Proxy API address (replaces request origin) |
 | `apiKey` | Proxy API key (replaces auth headers) |
-| `ANTHROPIC_MODEL` | Primary model (fable/mythos family maps here) |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` | Model for the opus family (extended) |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Model for the sonnet family (extended) |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Model for the haiku family (extended) |
-| `effort` | Forced `output_config.effort` level |
+| `models` | Available model list |
+| `activeModel` | Currently selected model |
 
 ## 9. Plugin System
 

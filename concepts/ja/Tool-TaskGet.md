@@ -1,47 +1,56 @@
 # TaskGet
 
-ID で単一タスクの完全なレコードを取得します。説明、現在のステータス、所有者、メタデータ、依存関係エッジを含みます。`TaskList` が返すサマリでは不十分なときに使用します。
+## 定義
 
-## 使用タイミング
-
-- `TaskList` からタスクをピックアップし、作業開始前に完全な説明が必要な場合。
-- タスクを `completed` としてマークしようとしており、受け入れ基準を再確認したい場合。
-- このタスクが何を `blocks` または `blockedBy` しているかを検査し、次の動きを決める必要がある場合。
-- 履歴を調査中 — 誰が所有しているか、どのメタデータが添付されたか、いつ状態が変わったか。
-- チームメイトまたは前のセッションがタスク ID を参照し、コンテキストが必要な場合。
-
-高レベルのスキャンだけが必要な場合は `TaskList` を優先してください。`TaskGet` は注意深く読んだり変更したりする特定のレコードのために予約してください。
+タスク ID でタスクの完全な詳細を取得します。
 
 ## パラメータ
 
-- `taskId` (string, required): `TaskCreate` または `TaskList` によって返されるタスク識別子。ID はタスクの生存期間中安定しています。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `taskId` | string | はい | 取得するタスクの ID |
 
-## 例
+## 返却内容
 
-### 例 1
+- `subject` — タスクタイトル
+- `description` — 詳細な要件とコンテキスト
+- `status` — ステータス：`pending`、`in_progress` または `completed`
+- `blocks` — このタスクによってブロックされているタスクのリスト
+- `blockedBy` — このタスクをブロックしている前提タスクのリスト
 
-リストで見たばかりのタスクを検索します。
+## 使用シナリオ
 
-```
-TaskGet(taskId: "t_01HXYZ...")
-```
-
-典型的な応答フィールド: `id`、`subject`、`description`、`activeForm`、`status`、`owner`、`blocks`、`blockedBy`、`metadata`、`createdAt`、`updatedAt`。
-
-### 例 2
-
-開始前に依存関係を解決します。
-
-```
-TaskGet(taskId: "t_01HXYZ...")
-# blockedBy を検査 — 参照されたタスクがまだ pending
-# または in_progress の場合は、まずブロッカーに取り組んでください。
-```
+**適している場合：**
+- 作業開始前にタスクの完全な説明とコンテキストを取得
+- タスクの依存関係を理解
+- タスクを割り当てられた後に完全な要件を取得
 
 ## 注意事項
 
-- `TaskGet` は読み取り専用で、繰り返し呼び出しても安全です。ステータスや所有権を変更しません。
-- `blockedBy` が空でなく、`completed` されていないタスクを含んでいる場合、このタスクを開始しないでください — 先にブロッカーを解決 (または所有者と調整) してください。
-- `description` フィールドは長い場合があります。行動する前に完全に読んでください。斜め読みは受け入れ基準の見落としにつながります。
-- 不明または削除された `taskId` はエラーを返します。現在の ID を取得するために `TaskList` を再実行してください。
-- タスクを編集しようとしている場合は、チームメイトが今変更したフィールドを上書きしないように、最初に `TaskGet` を呼び出してください。
+- タスク取得後、作業開始前に `blockedBy` リストが空であることを確認すべき
+- TaskList ですべてのタスクの要約情報を確認
+
+## 原文
+
+<textarea readonly>Use this tool to retrieve a task by its ID from the task list.
+
+## When to Use This Tool
+
+- When you need the full description and context before starting work on a task
+- To understand task dependencies (what it blocks, what blocks it)
+- After being assigned a task, to get complete requirements
+
+## Output
+
+Returns full task details:
+- **subject**: Task title
+- **description**: Detailed requirements and context
+- **status**: 'pending', 'in_progress', or 'completed'
+- **blocks**: Tasks waiting on this one to complete
+- **blockedBy**: Tasks that must complete before this one can start
+
+## Tips
+
+- After fetching a task, verify its blockedBy list is empty before beginning work.
+- Use TaskList to see all tasks in summary form.
+</textarea>

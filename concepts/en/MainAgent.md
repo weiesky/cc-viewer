@@ -6,7 +6,7 @@ MainAgent is the primary request chain in Claude Code when not in agent team mod
 
 ## Identification
 
-In cc-viewer, MainAgent is identified by `req.mainAgent === true`, automatically tagged by `server/interceptor.js` during request capture.
+In cc-viewer, MainAgent is identified by `req.mainAgent === true`, automatically tagged by `interceptor.js` during request capture.
 
 Criteria (all must be met):
 - The request body contains a `system` field (system prompt)

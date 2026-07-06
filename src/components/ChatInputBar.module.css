@@ -1,0 +1,474 @@
+.chatInputBar {
+  padding: 8px 16px 12px;
+  background: var(--bg-input-bar);
+  flex-shrink: 0;
+}
+
+.chatInputWrapper {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-secondary);
+  border-radius: 16px;
+  transition: border-color 0.2s;
+  overflow: visible;
+}
+
+.chatInputWrapper:focus-within {
+  border-color: var(--text-disabled);
+}
+
+.chatTextareaWrap {
+  position: relative;
+  flex: 1;
+}
+
+.chatTextarea {
+  width: 100%;
+  min-height: 22px;
+  max-height: 120px;
+  padding: 12px 14px 4px;
+  background: #00000000;
+  color: var(--text-primary);
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 14px;
+  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  box-sizing: border-box;
+}
+
+.chatTextarea::placeholder {
+  color: var(--text-disabled);
+}
+
+.chatInputBottom {
+  display: flex;
+  align-items: center;
+  padding: 4px 6px 6px;
+  gap: 4px;
+}
+
+.plusArea {
+  position: relative;
+}
+
+.plusBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border-light);
+  background: #00000000;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.25s ease;
+}
+
+.plusBtnOpen {
+  transform: rotate(45deg);
+}
+
+.plusBtn:hover {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border-color: var(--text-muted);
+}
+
+.plusOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 99;
+}
+
+.plusMenu {
+  position: absolute;
+  bottom: 36px;
+  left: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-hover);
+  border-radius: 10px;
+  padding: 4px;
+  min-width: 140px;
+  box-shadow: 0 4px 16px var(--overlay-dark-light);
+  z-index: 100;
+}
+
+.plusMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: #00000000;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.plusMenuItem:hover {
+  background: var(--bg-surface);
+}
+
+.plusMenuItemMuted {
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 2px;
+}
+
+.plusMenuItemMuted:hover {
+  color: var(--text-primary);
+}
+
+.plusMenuItemMuted svg {
+  stroke: var(--text-tertiary);
+  transition: stroke 0.15s;
+}
+
+.plusMenuItemMuted:hover svg {
+  stroke: var(--text-primary);
+}
+
+.presetLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chatInputHint {
+  flex: 1;
+  font-size: 11px;
+  color: var(--border-light);
+  user-select: none;
+  padding: 0 4px;
+}
+
+.chatInputHintSep {
+  color: var(--border-light);
+}
+
+.chatInputHintTerminal {
+  color: var(--border-light);
+}
+
+.chatInputHintMobile {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-disabled);
+  user-select: none;
+  padding: 0 4px;
+}
+
+.sendBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: var(--text-white);
+  color: var(--bg-base-pure);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.sendBtnDisabled {
+  background: var(--border-light);
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.sendBtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.ghostText {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 14px 4px;
+  color: var(--border-light);
+  font-size: 14px;
+  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow: hidden;
+  max-height: 120px;
+}
+
+.suggestionChip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.suggestionChip:hover {
+  background: var(--bg-elevated);
+}
+
+.suggestionChipText {
+  flex: 1;
+  color: var(--text-disabled);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestionChipAction {
+  color: var(--color-primary-pale);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* ─── Image preview strip ─── */
+.imagePreviewStrip {
+  display: flex;
+  gap: 8px;
+  padding: 8px 14px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.imagePreviewStrip::-webkit-scrollbar {
+  display: none;
+}
+
+.imagePreviewItem {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid var(--border-light);
+}
+
+.imagePreviewThumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: pointer;
+}
+
+.imagePreviewRemove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  border: none;
+  font-size: 12px;
+  line-height: 14px;
+  text-align: center;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.imagePreviewItem:hover .imagePreviewRemove {
+  opacity: 1;
+}
+
+.filePreviewChip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hover);
+  border-radius: 8px;
+  flex-shrink: 0;
+  max-width: 200px;
+  color: var(--text-secondary);
+}
+
+.filePreviewChip svg {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+
+.filePreviewName {
+  font-size: 12px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filePreviewClose {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  font-size: 14px;
+  line-height: 14px;
+  text-align: center;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s;
+}
+
+.filePreviewClose:hover {
+  color: var(--text-primary);
+}
+
+/* ─── 移动端放大输入区域 (x1.3) ─── */
+@media (max-width: 768px) {
+  .chatInputBar {
+    padding: 10px 21px 16px;
+    background: transparent;
+  }
+
+  .chatInputWrapper {
+    border-radius: 21px;
+  }
+
+  .chatTextarea {
+    min-height: 52px;
+    max-height: 208px;
+    padding: 18px 21px 8px;
+    font-size: 22px;
+  }
+
+  .ghostText {
+    padding: 18px 21px 8px;
+    font-size: 22px;
+  }
+
+  .chatInputBottom {
+    padding: 8px 10px 10px;
+    gap: 8px;
+  }
+
+  .plusBtn {
+    width: 47px;
+    height: 47px;
+  }
+
+  .plusBtn svg {
+    width: 23px;
+    height: 23px;
+  }
+
+  .plusMenu {
+    bottom: 57px;
+  }
+
+  .plusMenuItem {
+    padding: 13px 18px;
+    font-size: 20px;
+  }
+
+  .chatInputHint {
+    font-size: 17px;
+  }
+
+  .sendBtn {
+    width: 47px;
+    height: 47px;
+  }
+
+  .sendBtn svg {
+    width: 23px;
+    height: 23px;
+  }
+
+  .imagePreviewStrip {
+    gap: 10px;
+    padding: 10px 18px 0;
+  }
+
+  .imagePreviewItem {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+  }
+
+  .imagePreviewRemove {
+    width: 20px;
+    height: 20px;
+    font-size: 14px;
+    opacity: 1;
+  }
+
+  .filePreviewChip {
+    padding: 8px 12px;
+    gap: 8px;
+    border-radius: 10px;
+    max-width: 240px;
+  }
+
+  .filePreviewName {
+    font-size: 15px;
+  }
+
+  .filePreviewClose {
+    width: 20px;
+    height: 20px;
+    font-size: 16px;
+  }
+
+}
+
+/* ─── Streaming border animation ─── */
+
+.chatInputWrapper.streaming,
+.chatInputWrapper.streamingFading {
+  position: relative;
+  border-color: #00000000;
+}
+
+.chatInputWrapper.streaming:focus-within,
+.chatInputWrapper.streamingFading:focus-within {
+  border-color: #00000000;
+}
+
+.streamingSvg {
+  position: absolute;
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  pointer-events: none;
+  overflow: visible;
+  opacity: 0.2;
+  transition: opacity 0.5s ease-out;
+}
+
+.streamingSvgFading {
+  opacity: 0;
+}

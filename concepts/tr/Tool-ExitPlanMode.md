@@ -1,42 +1,62 @@
 # ExitPlanMode
 
-Plan modu sırasında hazırlanan uygulama planını kullanıcı onayına gönderir ve — onaylanırsa — düzenlemelere başlanabilmesi için oturumu plan modundan çıkarır.
+## Tanım
 
-## Ne Zaman Kullanılır
-
-- `EnterPlanMode` sırasında yazılan bir plan tamamlandı ve incelemeye hazır.
-- Görev saf araştırma değil, uygulama odaklıdır (kod veya yapılandırma değişiklikleri), bu nedenle açık bir plan uygundur.
-- Tüm ön okuma ve analiz yapıldı; kullanıcı karar vermeden önce daha fazla inceleme gerekmez.
-- Asistan sadece hedefleri değil, somut dosya yollarını, fonksiyonları ve adımları numaralandırdı.
-- Kullanıcı planı görmek istedi veya plan modu iş akışı düzenleme araçlarına devrediliyor.
+Planlama modundan çıkar ve planı kullanıcı onayına sunar. Plan içeriği daha önce yazılmış plan dosyasından okunur.
 
 ## Parametreler
 
-- `allowedPrompts` (dizi, opsiyonel): Kullanıcının onay ekranında planı otomatik olarak onaylamak veya değiştirmek için yazabileceği istemler. Her öğe kapsamlı bir izin belirtir (örneğin bir işlem adı ve uygulandığı araç). Varsayılan onay akışını kullanmak için ayarsız bırakın.
+| Parametre | Tür | Zorunlu | Açıklama |
+|-----------|-----|---------|----------|
+| `allowedPrompts` | array | Hayır | Uygulama planının gerektirdiği izin açıklamaları listesi |
 
-## Örnekler
+`allowedPrompts` dizisindeki her öğe:
 
-### Örnek 1: Standart gönderme
+| Alan | Tür | Zorunlu | Açıklama |
+|------|-----|---------|----------|
+| `tool` | enum | Evet | Uygulanacak araç, şu anda yalnızca `Bash` desteklenir |
+| `prompt` | string | Evet | İşlemin anlamsal açıklaması (örn. "run tests", "install dependencies") |
 
-Plan modunda bir kimlik doğrulama refactoring'ini inceledikten ve plan dosyasını diske yazdıktan sonra, asistan argümansız olarak `ExitPlanMode`'u çağırır. Harness, planı standart konumundan okur, kullanıcıya gösterir ve onay veya reddetme bekler.
+## Kullanım Senaryoları
 
-### Örnek 2: Önceden onaylanmış hızlı eylemler
+**Kullanıma uygun:**
+- Planlama modunda plan tamamlandı, kullanıcı onayına sunulmaya hazır
+- Yalnızca kod yazılması gereken uygulama görevleri için
 
-```
-ExitPlanMode(allowedPrompts=[
-  {"tool": "Bash", "prompt": "run tests"},
-  {"tool": "Bash", "prompt": "install dependencies"}
-])
-```
+**Kullanıma uygun değil:**
+- Salt araştırma/keşif görevi — planlama modundan çıkmaya gerek yok
+- Kullanıcıya "Plan uygun mu?" diye sormak — bu tam olarak bu aracın işlevidir, AskUserQuestion kullanmayın
 
-Kullanıcının rutin takip komutları için önceden izin vermesine izin verir, böylece asistanın uygulama sırasında her izin istemi için duraklamasına gerek kalmaz.
+## Dikkat Edilecekler
 
-## Notlar
+- Bu araç plan içeriğini parametre olarak kabul etmez — daha önce yazılmış plan dosyasından okur
+- Kullanıcı onay için plan dosyasının içeriğini görecektir
+- Bu aracı çağırmadan önce AskUserQuestion ile "plan uygun mu?" diye sormayın, bu tekrardır
+- Sorularda "plan"dan bahsetmeyin, çünkü kullanıcı ExitPlanMode'dan önce plan içeriğini göremez
 
-- `ExitPlanMode` yalnızca uygulama tarzı iş için anlam taşır. Kullanıcının isteği dosya değişikliği olmayan bir araştırma veya açıklama görevi ise, doğrudan yanıt verin — sadece çıkmak için plan modundan geçmeyin.
-- Bu aracı çağırmadan önce plan zaten diske yazılmış olmalıdır. `ExitPlanMode` plan gövdesini bir parametre olarak kabul etmez; harness'in beklediği yoldan okur.
-- Kullanıcı planı reddederse, plan moduna dönersiniz. Geri bildirime dayalı olarak revize edin ve tekrar gönderin; plan onaylanmamışken dosyaları düzenlemeye başlamayın.
-- Onay, plan modundan çıkma ve planda açıklanan kapsam için değiştirici araçları (`Edit`, `Write`, `Bash` vb.) kullanma iznini verir. Kapsamı sonradan genişletmek yeni bir plan veya açık kullanıcı onayı gerektirir.
-- Bu aracı çağırmadan önce "bu plan iyi görünüyor mu?" diye sormak için `AskUserQuestion` kullanmayın — plan onayı istemek tam olarak `ExitPlanMode`'un yaptığı şeydir ve kullanıcı gönderilene kadar planı göremez.
-- Planı minimal ve eyleme dönüştürülebilir tutun. Bir inceleyici bir dakikadan az sürede tarayabilmeli ve tam olarak neyin değişeceğini anlayabilmelidir.
-- Uygulama ortasında planın yanlış olduğunu fark ederseniz, sessizce sapmak yerine durun ve kullanıcıya rapor verin. Plan moduna yeniden girmek geçerli bir sonraki adımdır.
+## Orijinal Metin
+
+<textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.
+
+## How This Tool Works
+- You should have already written your plan to the plan file specified in the plan mode system message
+- This tool does NOT take the plan content as a parameter - it will read the plan from the file you wrote
+- This tool simply signals that you're done planning and ready for the user to review and approve
+- The user will see the contents of your plan file when they review it
+
+## When to Use This Tool
+IMPORTANT: Only use this tool when the task requires planning the implementation steps of a task that requires writing code. For research tasks where you're gathering information, searching files, reading files or in general trying to understand the codebase - do NOT use this tool.
+
+## Before Using This Tool
+Ensure your plan is complete and unambiguous:
+- If you have unresolved questions about requirements or approach, use AskUserQuestion first (in earlier phases)
+- Once your plan is finalized, use THIS tool to request approval
+
+**Important:** Do NOT use AskUserQuestion to ask "Is this plan okay?" or "Should I proceed?" - that's exactly what THIS tool does. ExitPlanMode inherently requests user approval of your plan.
+
+## Examples
+
+1. Initial task: "Search for and understand the implementation of vim mode in the codebase" - Do not use the exit plan mode tool because you are not planning the implementation steps of a task.
+2. Initial task: "Help me implement yank mode for vim" - Use the exit plan mode tool after you have finished planning the implementation steps of the task.
+3. Initial task: "Add a new feature to handle user authentication" - If unsure about auth method (OAuth, JWT, etc.), use AskUserQuestion first, then use exit plan mode tool after clarifying the approach.
+</textarea>

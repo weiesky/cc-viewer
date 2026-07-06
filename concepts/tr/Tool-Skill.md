@@ -1,47 +1,56 @@
 # Skill
 
-Mevcut konuşmanın içinde isimlendirilmiş bir skill çağırır. Skill'ler, harness'in sistem hatırlatıcıları aracılığıyla asistana sunduğu önceden paketlenmiş yetenek paketleridir — alan bilgisi, iş akışları ve bazen araç erişimi.
+## Tanım
 
-## Ne Zaman Kullanılır
-
-- Kullanıcı `/review` veya `/init` gibi bir slash komutu yazar — slash komutları skill'lerdir ve bu araç üzerinden yürütülmelidir.
-- Kullanıcı, reklamı yapılan bir skill'in tetik koşullarıyla eşleşen bir görevi tanımlar (örneğin, tekrarlanan izin istemleri için transkriptleri taramayı istemek `fewer-permission-prompts` ile eşleşir).
-- Bir skill'in belirtilen amacı, mevcut dosya, istek veya konuşma bağlamıyla doğrudan eşleşir.
-- Özelleşmiş, tekrarlanabilir iş akışları skill olarak mevcuttur ve standart prosedür ad-hoc bir yaklaşıma tercih edilir.
-- Kullanıcı "hangi skill'ler mevcut" diye sorar — reklamı yapılan adları listeleyin ve yalnızca onaylarlarsa çağırın.
+Ana konuşmada bir beceri (skill) çalıştırır. Beceriler, kullanıcının slash command (örn. `/commit`, `/review-pr`) aracılığıyla çağırabileceği özel yeteneklerdir.
 
 ## Parametreler
 
-- `skill` (string, zorunlu): Mevcut available-skills sistem hatırlatıcısında listelenen bir skill'in tam adı. Eklenti-namespace'li skill'ler için tam nitelikli `plugin:skill` formunu kullanın (örneğin `skill-creator:skill-creator`). Başına slash koymayın.
-- `args` (string, opsiyonel): Skill'e geçirilen serbest biçimli argümanlar. Format ve anlam her skill'in kendi dokümantasyonu tarafından tanımlanır.
+| Parametre | Tür | Zorunlu | Açıklama |
+|-----------|-----|---------|----------|
+| `skill` | string | Evet | Beceri adı (örn. "commit", "review-pr", "pdf") |
+| `args` | string | Hayır | Beceri parametreleri |
 
-## Örnekler
+## Kullanım Senaryoları
 
-### Örnek 1: Mevcut dalda bir inceleme skill'i çalıştırmak
+**Kullanıma uygun:**
+- Kullanıcı `/<skill-name>` formatında slash command girdiğinde
+- Kullanıcının isteği kayıtlı bir becerinin işlevselliğiyle eşleştiğinde
 
-```
-Skill(skill="review")
-```
+**Kullanıma uygun değil:**
+- Yerleşik CLI komutları (örn. `/help`, `/clear`)
+- Zaten çalışmakta olan bir beceri
+- Kullanılabilir beceri listesinde olmayan beceri adları
 
-`review` skill'i, mevcut base dala karşı bir pull request'i incelemek için adımları paketler. Çağırmak, harness tarafından tanımlanan inceleme prosedürünü tura yükler.
+## Dikkat Edilecekler
 
-### Örnek 2: Eklenti-namespace'li bir skill'i argümanlarla çağırmak
+- Beceri çağrıldıktan sonra tam bir prompt'a genişletilir
+- Tam nitelikli adları destekler (örn. `ms-office-suite:pdf`)
+- Kullanılabilir beceri listesi system-reminder mesajlarında sağlanır
+- `<command-name>` etiketi görüldüğünde beceri zaten yüklenmiş demektir, bu aracı tekrar çağırmak yerine doğrudan çalıştırılmalıdır
+- Aracı gerçekten çağırmadan bir beceriden bahsetmeyin
 
-```
-Skill(
-  skill="skill-creator:skill-creator",
-  args="create a skill that summarizes git log for a given date range"
-)
-```
+## Orijinal Metin
 
-Yazım iş akışının devreye girmesi için isteği `skill-creator` eklentisinin giriş noktası aracılığıyla yönlendirir.
+<textarea readonly>Execute a skill within the main conversation
 
-## Notlar
+When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.
 
-- Yalnızca adları available-skills sistem hatırlatıcısında aynen görünen veya kullanıcının mesajında doğrudan `/name` olarak yazdığı skill'leri çağırın. Bellekten veya eğitim verilerinden asla skill adları tahmin etmeyin veya uydurmayın — skill reklamı yapılmamışsa, bu aracı çağırmayın.
-- Bir kullanıcının isteği reklamı yapılan bir skill ile eşleştiğinde, `Skill` çağırmak bloklayıcı bir önkoşuldur: görev hakkında başka herhangi bir yanıt üretmeden önce onu çağırın. Skill'in ne yapacağını tarif etmeyin — çalıştırın.
-- Aslında çağırmadan bir skill'den asla adıyla bahsetmeyin. Aracı çağırmadan bir skill'i duyurmak yanıltıcıdır.
-- `/help`, `/clear`, `/model` veya `/exit` gibi yerleşik CLI komutları için `Skill` kullanmayın. Bunlar harness tarafından doğrudan ele alınır.
-- Mevcut turda zaten çalışan bir skill'i yeniden çağırmayın. Mevcut turda bir `<command-name>` etiketi görürseniz, skill zaten yüklenmiştir — aracı tekrar çağırmak yerine talimatlarını yerinde izleyin.
-- Birkaç skill uygulanabilirse, en spesifik olanı seçin. İzinler veya kancalar eklemek gibi yapılandırma değişiklikleri için, genel bir ayarlar yaklaşımı yerine `update-config`'i tercih edin.
-- Skill yürütme, turun geri kalanı için yeni sistem hatırlatıcıları, araçlar veya kısıtlar tanıtabilir. Bir skill tamamlandıktan sonra devam etmeden önce konuşma durumunu yeniden okuyun.
+When users reference a "slash command" or "/<something>" (e.g., "/commit", "/review-pr"), they are referring to a skill. Use this tool to invoke it.
+
+How to invoke:
+- Use this tool with the skill name and optional arguments
+- Examples:
+  - `skill: "pdf"` - invoke the pdf skill
+  - `skill: "commit", args: "-m 'Fix bug'"` - invoke with arguments
+  - `skill: "review-pr", args: "123"` - invoke with arguments
+  - `skill: "ms-office-suite:pdf"` - invoke using fully qualified name
+
+Important:
+- Available skills are listed in system-reminder messages in the conversation
+- When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task
+- NEVER mention a skill without actually calling this tool
+- Do not invoke a skill that is already running
+- Do not use this tool for built-in CLI commands (like /help, /clear, etc.)
+- If you see a <command-name> tag in the current conversation turn, the skill has ALREADY been loaded - follow the instructions directly instead of calling this tool again
+</textarea>

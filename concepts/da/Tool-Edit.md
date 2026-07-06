@@ -1,38 +1,46 @@
 # Edit
 
-Udfører en nøjagtig strengudskiftning inden for en eksisterende fil. Det er den foretrukne måde at ændre filer på, fordi kun diff'en sendes, hvilket holder redigeringer præcise og reviderbare.
+## Definition
 
-## Hvornår skal den bruges
-
-- Rette en fejl i en enkelt funktion uden at omskrive den omgivende fil
-- Opdatere en konfigurationsværdi, versionsstreng eller importsti
-- Omdøbe et symbol på tværs af en fil med `replace_all`
-- Indsætte en blok i nærheden af et anker (udvid `old_string` til at inkludere nærliggende kontekst, og angiv derefter erstatningen)
-- Anvende små, velafgrænsede redigeringer som led i en refaktorering i flere trin
+Redigerer filer via præcis strengerstatning. Erstatter `old_string` med `new_string` i filen.
 
 ## Parametre
 
-- `file_path` (string, påkrævet): Absolut sti til den fil, der skal ændres.
-- `old_string` (string, påkrævet): Den eksakte tekst, der skal søges efter. Skal matche tegn for tegn, inklusive mellemrum og indrykning.
-- `new_string` (string, påkrævet): Erstatningsteksten. Skal afvige fra `old_string`.
-- `replace_all` (boolean, valgfri): Når `true`, erstattes hver forekomst af `old_string`. Standard er `false`, hvilket kræver, at matchet er unikt.
+| Parameter | Type | Påkrævet | Beskrivelse |
+|------|------|------|------|
+| `file_path` | string | Ja | Absolut sti til filen der skal ændres |
+| `old_string` | string | Ja | Originaltekst der skal erstattes |
+| `new_string` | string | Ja | Ny erstatningstekst (skal være forskellig fra old_string) |
+| `replace_all` | boolean | Nej | Om alle forekomster skal erstattes, standard `false` |
 
-## Eksempler
+## Brugsscenarier
 
-### Eksempel 1: Ret et enkelt kaldssted
-Sæt `old_string` til den eksakte linje `const port = 3000;` og `new_string` til `const port = process.env.PORT ?? 3000;`. Matchet er unikt, så `replace_all` kan forblive på standardværdien.
+**Egnet til:**
+- Ændre specifikke kodeafsnit i eksisterende filer
+- Rette fejl, opdatere logik
+- Omdøbe variabler (med `replace_all: true`)
+- Ethvert scenarie der kræver præcis ændring af filindhold
 
-### Eksempel 2: Omdøb et symbol på tværs af en fil
-For at omdøbe `getUser` til `fetchUser` overalt i `api.ts` sættes `old_string: "getUser"`, `new_string: "fetchUser"` og `replace_all: true`.
+**Ikke egnet til:**
+- Oprette nye filer — brug Write
+- Omfattende omskrivninger — kan kræve Write til at overskrive hele filen
 
-### Eksempel 3: Disambiguér et gentaget uddrag
-Hvis `return null;` forekommer i flere grene, udvides `old_string` til at inkludere omgivende kontekst (for eksempel den foregående `if`-linje), så matchet er unikt. Ellers fejler værktøjet i stedet for at gætte.
+## Bemærkninger
 
-## Noter
+- Filen skal først være læst via Read, ellers opstår en fejl
+- `old_string` skal være unik i filen, ellers fejler redigeringen. Hvis den ikke er unik, angiv mere kontekst for at gøre den unik, eller brug `replace_all`
+- Ved redigering af tekst skal den originale indrykning (tab/mellemrum) bevares; medtag ikke linjenummerpræfikset fra Read-output
+- Foretræk redigering af eksisterende filer frem for at oprette nye
+- `new_string` skal være forskellig fra `old_string`
 
-- Du skal kalde `Read` på filen mindst én gang i den aktuelle session, før `Edit` accepterer ændringer. Linjenummer-præfikser fra `Read`-output er ikke en del af filindholdet; inkludér dem ikke i `old_string` eller `new_string`.
-- Mellemrum skal matche nøjagtigt. Vær opmærksom på tabulatorer versus mellemrum og efterstillede mellemrum, især i YAML, Makefiles og Python.
-- Hvis `old_string` ikke er unik og `replace_all` er `false`, fejler redigeringen. Udvid enten konteksten eller aktivér `replace_all`.
-- Foretræk `Edit` frem for `Write`, når filen allerede findes; `Write` overskriver hele filen og mister urelateret indhold, hvis du ikke er forsigtig.
-- Til flere urelaterede redigeringer i samme fil skal du udstede flere `Edit`-kald i rækkefølge i stedet for én stor, skrøbelig erstatning.
-- Undgå at indføre emoji, marketingtekst eller uanmodede dokumentationsblokke ved redigering af kildefiler.
+## Originaltekst
+
+<textarea readonly>Performs exact string replacements in files.
+
+Usage:
+- You must use your `Read` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file. 
+- When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix format is: spaces + line number + tab. Everything after that tab is the actual file content to match. Never include any part of the line number prefix in the old_string or new_string.
+- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
+- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
+- The edit will FAIL if `old_string` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use `replace_all` to change every instance of `old_string`.
+- Use `replace_all` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.</textarea>

@@ -6,7 +6,7 @@ MainAgent est la chaîne de requêtes principale de Claude Code en état non age
 
 ## Méthode d'identification
 
-Dans cc-viewer, MainAgent est identifié par `req.mainAgent === true`, marqué automatiquement par `server/interceptor.js` lors de la capture de la requête.
+Dans cc-viewer, MainAgent est identifié par `req.mainAgent === true`, marqué automatiquement par `interceptor.js` lors de la capture de la requête.
 
 Conditions de détermination (toutes doivent être remplies) :
 - Le corps de la requête contient le champ `system` (system prompt)

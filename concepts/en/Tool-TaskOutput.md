@@ -1,50 +1,40 @@
 # TaskOutput
 
-Fetches the accumulated output of a running or completed background task — a background shell command, a local agent, or a remote session. Use it when you need to inspect what a long-running task has produced so far.
+## Definition
 
-## When to Use
-
-- A remote session (for example a cloud sandbox) is running and you need its stdout.
-- A local agent was dispatched in the background and you want partial progress before it returns.
-- A background shell command has been running long enough that you want to check on it without stopping it.
-- You need to confirm a background task is actually making progress before waiting longer or calling `TaskStop`.
-
-Do not reach for `TaskOutput` reflexively. For most background work there is a more direct path — see the notes below.
+Gets the output of a running or completed background task. Applicable to background shells, async agents, and remote sessions.
 
 ## Parameters
 
-- `task_id` (string, required): The task identifier returned when the background work was started. Not the same as a task-list `taskId`; this is the runtime handle for the specific execution.
-- `block` (boolean, optional): When `true` (default), wait until the task produces new output or finishes before returning. When `false`, return immediately with whatever is buffered.
-- `timeout` (number, optional): Maximum milliseconds to block before returning. Only meaningful when `block` is `true`. Default `30000`, maximum `600000`.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `task_id` | string | Yes | Task ID |
+| `block` | boolean | Yes | Whether to block and wait for task completion, default `true` |
+| `timeout` | number | Yes | Maximum wait time in milliseconds, default 30000, max 600000 |
 
-## Examples
+## Use Cases
 
-### Example 1
+**Good for:**
+- Checking the progress of background agents launched via Task (`run_in_background: true`)
+- Getting the execution results of background Bash commands
+- Waiting for async tasks to complete and retrieving output
 
-Peek at a remote session without blocking.
-
-```
-TaskOutput(task_id: "sess_01HXYZ...", block: false)
-```
-
-Returns whatever stdout/stderr has been produced since the task started (or since your last `TaskOutput` call, depending on the runtime).
-
-### Example 2
-
-Wait briefly for a local agent to emit more output.
-
-```
-TaskOutput(
-  task_id: "agent_01ABCD...",
-  block: true,
-  timeout: 10000
-)
-```
+**Not good for:**
+- Foreground tasks — foreground tasks return results directly, no need for this tool
 
 ## Notes
 
-- Background bash commands: `TaskOutput` is effectively deprecated for this use case. When you start a background shell task the result already includes the path to its output file — read that path directly with the `Read` tool. `Read` gives you random access, line offsets, and a stable view; `TaskOutput` does not.
-- Local agents (the `Agent` tool dispatched in the background): when the agent finishes, the `Agent` tool result already contains its final response. Use that directly. Do not `Read` the symlinked transcript file — it contains the full tool-call stream and will overflow the context window.
-- Remote sessions: `TaskOutput` is the correct and often only way to stream back output. Prefer `block: true` with a modest `timeout` over tight polling loops.
-- An unknown `task_id`, or a task whose output has been garbage-collected, returns an error. Re-dispatch the work if you still need it.
-- `TaskOutput` does not stop the task. Use `TaskStop` to terminate.
+- `block: true` blocks until the task completes or times out
+- `block: false` is for non-blocking checks of the current status
+- Task IDs can be found via the `/tasks` command
+- Applicable to all task types: background shells, async agents, remote sessions
+
+## Original Text
+
+<textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)
+- Takes a task_id parameter identifying the task
+- Returns the task output along with status information
+- Use block=true (default) to wait for task completion
+- Use block=false for non-blocking check of current status
+- Task IDs can be found using the /tasks command
+- Works with all task types: background shells, async agents, and remote sessions</textarea>

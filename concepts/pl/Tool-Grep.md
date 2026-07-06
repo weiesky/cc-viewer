@@ -1,46 +1,57 @@
 # Grep
 
-Przeszukuje zawartość plików przy użyciu silnika ripgrep. Oferuje pełne wsparcie wyrażeń regularnych, filtrowanie typów plików oraz trzy tryby wyjścia, aby można było wymieniać precyzję na zwięzłość.
+## Definicja
 
-## Kiedy używać
-
-- Lokalizowanie wszystkich miejsc wywołania funkcji lub wszystkich odniesień do identyfikatora
-- Sprawdzanie, czy ciąg lub komunikat błędu pojawia się gdziekolwiek w bazie kodu
-- Liczenie wystąpień wzorca, aby oszacować wpływ przed refaktoringiem
-- Zawężanie wyszukiwania do typu pliku (`type: "ts"`) lub glob (`glob: "**/*.tsx"`)
-- Wyciąganie dopasowań wielolinijkowych, takich jak wielolinijkowe definicje struktur lub bloki JSX, za pomocą `multiline: true`
+Potężne narzędzie do wyszukiwania zawartości oparte na ripgrep. Obsługuje wyrażenia regularne, filtrowanie typów plików i wiele trybów wyjścia.
 
 ## Parametry
 
-- `pattern` (string, wymagany): Wyrażenie regularne do wyszukania. Używa składni ripgrep, więc dosłowne nawiasy klamrowe wymagają ekranowania (na przykład `interface\{\}`, aby znaleźć `interface{}`).
-- `path` (string, opcjonalny): Plik lub katalog do przeszukania. Domyślnie bieżący katalog roboczy.
-- `glob` (string, opcjonalny): Filtr nazwy pliku, taki jak `*.js` lub `*.{ts,tsx}`.
-- `type` (string, opcjonalny): Skrót typu pliku, taki jak `js`, `py`, `rust`, `go`. Bardziej wydajny niż `glob` dla standardowych języków.
-- `output_mode` (enum, opcjonalny): `files_with_matches` (domyślny, zwraca tylko ścieżki), `content` (zwraca pasujące wiersze) lub `count` (zwraca zliczenia dopasowań).
-- `-i` (boolean, opcjonalny): Dopasowanie bez uwzględniania wielkości liter.
-- `-n` (boolean, opcjonalny): Dołącza numery wierszy w trybie `content`. Domyślnie `true`.
-- `-A` (liczba, opcjonalny): Liczba wierszy kontekstu do pokazania po każdym dopasowaniu (wymaga trybu `content`).
-- `-B` (liczba, opcjonalny): Liczba wierszy kontekstu przed każdym dopasowaniem (wymaga trybu `content`).
-- `-C` / `context` (liczba, opcjonalny): Liczba wierszy kontekstu po obu stronach każdego dopasowania.
-- `multiline` (boolean, opcjonalny): Pozwala wzorcom obejmować znaki nowego wiersza (`.` dopasowuje `\n`). Domyślnie `false`.
-- `head_limit` (liczba, opcjonalny): Ograniczenie zwróconych wierszy, ścieżek plików lub wpisów zliczeń. Domyślnie 250; przekaż `0` dla braku limitu (używaj oszczędnie).
-- `offset` (liczba, opcjonalny): Pomiń pierwsze N wyników przed zastosowaniem `head_limit`. Domyślnie `0`.
+| Parametr | Typ | Wymagany | Opis |
+|------|------|------|------|
+| `pattern` | string | Tak | Wzorzec wyszukiwania wyrażenia regularnego |
+| `path` | string | Nie | Ścieżka wyszukiwania (plik lub katalog), domyślnie bieżący katalog roboczy |
+| `glob` | string | Nie | Filtr nazw plików (np. `*.js`, `*.{ts,tsx}`) |
+| `type` | string | Nie | Filtr typu pliku (np. `js`, `py`, `rust`), wydajniejszy niż glob |
+| `output_mode` | enum | Nie | Tryb wyjścia: `files_with_matches` (domyślny), `content`, `count` |
+| `-i` | boolean | Nie | Wyszukiwanie bez rozróżniania wielkości liter |
+| `-n` | boolean | Nie | Wyświetlanie numerów linii (tylko tryb content), domyślnie true |
+| `-A` | number | Nie | Liczba linii wyświetlanych po dopasowaniu |
+| `-B` | number | Nie | Liczba linii wyświetlanych przed dopasowaniem |
+| `-C` / `context` | number | Nie | Liczba linii wyświetlanych przed i po dopasowaniu |
+| `head_limit` | number | Nie | Limit liczby wyników, domyślnie 0 (bez limitu) |
+| `offset` | number | Nie | Pominięcie pierwszych N wyników |
+| `multiline` | boolean | Nie | Włączenie trybu dopasowywania wieloliniowego, domyślnie false |
 
-## Przykłady
+## Scenariusze użycia
 
-### Przykład 1: Znajdź wszystkie miejsca wywołania funkcji
-Ustaw `pattern: "registerHandler\\("`, `output_mode: "content"` i `-C: 2`, aby zobaczyć otaczające wiersze każdego wywołania.
+**Odpowiednie zastosowanie:**
+- Wyszukiwanie określonych ciągów znaków lub wzorców w bazie kodu
+- Znajdowanie miejsc użycia funkcji/zmiennych
+- Filtrowanie wyników wyszukiwania według typu pliku
+- Zliczanie dopasowań
 
-### Przykład 2: Policz dopasowania w ramach typu
-Ustaw `pattern: "TODO"`, `type: "py"` i `output_mode: "count"`, aby zobaczyć sumy TODO na plik w źródłach Pythona.
-
-### Przykład 3: Dopasowanie wielolinijkowej struktury
-Użyj `pattern: "struct Config \\{[\\s\\S]*?version"` z `multiline: true`, aby uchwycić pole zadeklarowane kilka linii wewnątrz struktury Go.
+**Nieodpowiednie zastosowanie:**
+- Wyszukiwanie plików według nazwy — należy użyć Glob
+- Otwarta eksploracja wymagająca wielu rund wyszukiwania — należy użyć Task (typ Explore)
 
 ## Uwagi
 
-- Zawsze preferuj `Grep` nad uruchamianiem `grep` lub `rg` przez `Bash`; narzędzie jest zoptymalizowane pod kątem poprawnych uprawnień i ustrukturyzowanego wyjścia.
-- Domyślny tryb wyjścia to `files_with_matches`, który jest najtańszy. Przełącz się na `content` tylko wtedy, gdy musisz zobaczyć same wiersze.
-- Flagi kontekstu (`-A`, `-B`, `-C`) są ignorowane, chyba że `output_mode` to `content`.
-- Duże zbiory wyników zużywają tokeny kontekstu. Używaj `head_limit`, `offset` lub bardziej ciasnych filtrów `glob`/`type`, aby zachować koncentrację.
-- Do odkrywania nazw plików używaj `Glob`; do otwartych badań obejmujących wiele rund wysyłaj `Agent` z agentem Explore.
+- Używa składni ripgrep (nie grep), znaki specjalne jak nawiasy klamrowe wymagają escapowania
+- Tryb `files_with_matches` zwraca tylko ścieżki plików, najwydajniejszy
+- Tryb `content` zwraca zawartość pasujących linii, obsługuje linie kontekstowe
+- Dopasowywanie wieloliniowe wymaga ustawienia `multiline: true`
+- Zawsze preferuj narzędzie Grep zamiast poleceń `grep` lub `rg` w Bash
+
+## Tekst oryginalny
+
+<textarea readonly>A powerful search tool built on ripgrep
+
+  Usage:
+  - ALWAYS use Grep for search tasks. NEVER invoke `grep` or `rg` as a Bash command. The Grep tool has been optimized for correct permissions and access.
+  - Supports full regex syntax (e.g., "log.*Error", "function\s+\w+")
+  - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
+  - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
+  - Use Agent tool for open-ended searches requiring multiple rounds
+  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use `interface\{\}` to find `interface{}` in Go code)
+  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like `struct \{[\s\S]*?field`, use `multiline: true`
+</textarea>

@@ -1,53 +1,38 @@
 # TeamCreate
 
-Établit une nouvelle équipe de collaboration avec une liste de tâches partagée et un canal de messagerie inter-agents. Une équipe est la primitive de coordination pour le travail multi-agents — la session principale fait office de chef et fait apparaître des coéquipiers nommés via l'outil `Agent`.
+## Définition
 
-## Quand l'utiliser
-
-- L'utilisateur demande explicitement une équipe, un essaim, un équipage ou une collaboration multi-agents.
-- Un projet comporte plusieurs flux de travail clairement indépendants qui bénéficient de spécialistes dédiés (par exemple frontend, backend, tests, docs).
-- Vous avez besoin d'une liste de tâches partagée persistante que plusieurs agents mettent à jour à mesure qu'ils progressent.
-- Vous voulez des coéquipiers nommés et adressables capables d'échanger des messages via `SendMessage` plutôt que des appels de sous-agent à usage unique.
-
-N'utilisez PAS pour une unique recherche déléguée ou un fan-out parallèle ponctuel — de simples appels `Agent` sont plus légers et suffisants.
+Crée une nouvelle équipe pour coordonner plusieurs agents travaillant sur un projet. Les équipes permettent l'exécution parallèle des tâches via une liste de tâches partagée et une messagerie inter-agents.
 
 ## Paramètres
 
-- `team_name` (string, requis) : identifiant unique pour l'équipe. Utilisé comme nom de répertoire sous `~/.claude/teams/` et comme argument `team_name` lors du lancement de coéquipiers.
-- `description` (string, requis) : courte déclaration de l'objectif de l'équipe. Affichée à chaque coéquipier au lancement et écrite dans la configuration de l'équipe.
-- `agent_type` (string, optionnel) : persona de sous-agent par défaut appliquée aux coéquipiers qui ne la remplacent pas. Les valeurs typiques sont `general-purpose`, `Explore` ou `Plan`.
+| Paramètre | Type | Requis | Description |
+|-----------|------|--------|-------------|
+| `team_name` | string | Oui | Nom de la nouvelle équipe |
+| `description` | string | Non | Description / objectif de l'équipe |
+| `agent_type` | string | Non | Type / rôle du responsable de l'équipe |
 
-## Exemples
+## Ce qui est créé
 
-### Exemple 1 : créer une équipe de refactoring
+- **Fichier de configuration de l'équipe** : `~/.claude/teams/{team-name}/config.json` — stocke la liste des membres et les métadonnées
+- **Répertoire de liste de tâches** : `~/.claude/tasks/{team-name}/` — liste de tâches partagée pour tous les coéquipiers
 
-```
-TeamCreate(
-  team_name="refactor-crew",
-  description="Refactor the data access layer from raw SQL to Prisma, including migrations and tests.",
-  agent_type="general-purpose"
-)
-```
+Les équipes ont une correspondance 1:1 avec les listes de tâches.
 
-Après la création, faites apparaître des coéquipiers avec `Agent` en utilisant `team_name: "refactor-crew"` et des valeurs `name` distinctes telles que `db-lead`, `migrations` et `tests`.
+## Flux de travail de l'équipe
 
-### Exemple 2 : créer une équipe d'investigation
+1. **TeamCreate** — créer l'équipe et sa liste de tâches
+2. **TaskCreate** — définir les tâches pour l'équipe
+3. **Agent** (avec `team_name` + `name`) — démarrer des coéquipiers qui rejoignent l'équipe
+4. **TaskUpdate** — attribuer des tâches aux coéquipiers via `owner`
+5. Les coéquipiers travaillent sur les tâches et communiquent via **SendMessage**
+6. Arrêter les coéquipiers une fois terminé, puis **TeamDelete** pour nettoyer
 
-```
-TeamCreate(
-  team_name="perf-investigation",
-  description="Identify and rank the top three performance regressions introduced in the last release.",
-  agent_type="Explore"
-)
-```
+## Outils associés
 
-Chaque coéquipier généré hérite de `Explore` comme persona par défaut, ce qui correspond à la nature en lecture seule et investigative du travail.
-
-## Notes
-
-- Une seule équipe peut être dirigée à la fois depuis une session donnée. Terminez ou supprimez l'équipe courante avant d'en créer une autre.
-- Une équipe est en relation 1:1 avec une liste de tâches partagée. Le chef possède la création, l'affectation et la clôture des tâches ; les coéquipiers mettent à jour le statut des tâches sur lesquelles ils travaillent.
-- La configuration de l'équipe est persistée à `~/.claude/teams/{team_name}/config.json`, et le répertoire de tâches se trouve à côté. Ces fichiers survivent aux sessions jusqu'à leur suppression explicite avec `TeamDelete`.
-- Les coéquipiers sont générés via l'outil `Agent` avec le `team_name` correspondant et un `name` distinct. Le `name` devient l'adresse utilisée par `SendMessage`.
-- Choisissez un `team_name` compatible avec le système de fichiers (lettres, chiffres, tirets, underscores). Évitez les espaces ou les slashes.
-- Rédigez la `description` de manière qu'un tout nouveau coéquipier, la lisant à froid, comprenne l'objectif de l'équipe sans contexte supplémentaire. Elle fait partie de l'invite de démarrage de chaque coéquipier.
+| Outil | Rôle |
+|-------|------|
+| `TeamDelete` | Supprimer l'équipe et les répertoires de tâches |
+| `SendMessage` | Communication inter-agents au sein de l'équipe |
+| `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | Gérer la liste de tâches partagée |
+| `Agent` | Démarrer des coéquipiers qui rejoignent l'équipe |

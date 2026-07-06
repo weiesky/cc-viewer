@@ -1,50 +1,55 @@
 # WebFetch
 
-공개 웹 페이지의 내용을 검색하고, HTML을 Markdown으로 변환한 다음, 자연어 프롬프트를 사용하여 결과에 작은 보조 모델을 실행하여 필요한 정보를 추출합니다.
+## 정의
 
-## 사용 시점
+지정된 URL의 웹페이지 내용을 가져와 HTML을 markdown으로 변환하고, AI 모델로 prompt에 따라 내용을 처리합니다.
 
-- 대화에서 참조된 공개 문서 페이지, 블로그 게시물, 또는 RFC 읽기.
-- 전체 페이지를 컨텍스트에 로드하지 않고 알려진 URL에서 특정 사실, 코드 스니펫, 또는 테이블 추출.
-- 공개 웹 리소스에서 릴리스 노트나 변경 로그 요약.
-- 소스가 로컬 저장소에 없을 때 라이브러리의 공개 API 참조 확인.
-- 후속 질문에 답하기 위해 사용자가 채팅에 붙여 넣은 링크 따르기.
+## 파라미터
 
-## 매개변수
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| `url` | string (URI) | 예 | 가져올 완전한 URL |
+| `prompt` | string | 예 | 페이지에서 어떤 정보를 추출할지 설명 |
 
-- `url` (string, 필수): 완전히 형성된 절대 URL. 일반 `http://`는 자동으로 `https://`로 업그레이드됩니다.
-- `prompt` (string, 필수): 작은 추출 모델에 전달되는 지시사항. 페이지에서 정확히 무엇을 추출할지 설명하십시오. 예를 들어 "모든 내보낸 함수를 나열하세요" 또는 "지원되는 최소 Node 버전을 반환하세요".
+## 사용 시나리오
 
-## 예시
+**적합한 경우:**
+- 공개 웹페이지의 내용 가져오기
+- 온라인 문서 참조
+- 웹페이지에서 특정 정보 추출
 
-### 예시 1: 구성 기본값 추출
+**적합하지 않은 경우:**
+- 인증이 필요한 URL (Google Docs, Confluence, Jira, GitHub 등) — 먼저 전용 MCP 도구를 찾아야 함
+- GitHub URL — `gh` CLI를 우선 사용
 
-```
-WebFetch(
-  url="https://vitejs.dev/config/server-options.html",
-  prompt="What is the default value of server.port and can it be a string?"
-)
-```
+## 주의사항
 
-도구는 Vite 문서 페이지를 가져와 Markdown으로 변환하고 "기본값은 `5173`이며 숫자만 허용합니다."와 같은 짧은 답변을 반환합니다.
+- URL은 완전한 유효 URL이어야 함
+- HTTP는 자동으로 HTTPS로 업그레이드
+- 내용이 너무 크면 결과가 요약될 수 있음
+- 15분 자동 정리 캐시 포함
+- URL이 다른 호스트로 리다이렉트되면 도구가 리다이렉트 URL을 반환하며, 새 URL로 재요청 필요
+- MCP 제공 web fetch 도구가 사용 가능하면 그것을 우선 사용
 
-### 예시 2: 변경 로그 섹션 요약
+## 원문
 
-```
-WebFetch(
-  url="https://nodejs.org/en/blog/release/v20.11.0",
-  prompt="List the security fixes included in this release as bullet points."
-)
-```
+<textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.
 
-사용자가 "Node 20.11에서 무엇이 변경되었나요"라고 묻고 릴리스 페이지가 길 때 유용합니다.
+- Fetches content from a specified URL and processes it using an AI model
+- Takes a URL and a prompt as input
+- Fetches the URL content, converts HTML to markdown
+- Processes the content with the prompt using a small, fast model
+- Returns the model's response about the content
+- Use this tool when you need to retrieve and analyze web content
 
-## 참고사항
-
-- `WebFetch`는 인증, 쿠키, 또는 VPN이 필요한 URL에서 실패합니다. Google Docs, Confluence, Jira, 비공개 GitHub 리소스, 또는 내부 위키의 경우 인증된 접근을 제공하는 전용 MCP 서버를 대신 사용하십시오.
-- GitHub에 호스팅된 것 (PR, 이슈, 파일 blob, API 응답)은 웹 UI를 스크래핑하는 대신 `Bash`를 통해 `gh` CLI를 선호하십시오. `gh pr view`, `gh issue view`, `gh api`는 구조화된 데이터를 반환하며 비공개 저장소에 대해 작동합니다.
-- 가져온 페이지가 매우 크면 결과가 요약될 수 있습니다. 정확한 텍스트가 필요하면 리터럴 추출을 요청하도록 `prompt`를 좁히십시오.
-- URL당 자체 정리되는 15분 캐시가 적용됩니다. 하나의 세션 동안 동일한 페이지에 대한 반복 호출은 거의 즉시이지만 약간 오래된 콘텐츠를 반환할 수 있습니다. 신선도가 중요하면 프롬프트에 언급하거나 캐시를 기다리십시오.
-- 대상 호스트가 크로스 호스트 리다이렉트를 발행하면 도구는 특수 응답 블록에 새 URL을 반환하며 자동으로 따르지 않습니다. 여전히 콘텐츠를 원한다면 리다이렉트 대상으로 `WebFetch`를 다시 호출하십시오.
-- 프롬프트는 메인 어시스턴트보다 작고 빠른 모델에 의해 실행됩니다. 좁고 구체적으로 유지하십시오. 복잡한 다단계 추론은 가져온 후 원시 Markdown을 직접 읽어 처리하는 것이 더 낫습니다.
-- URL에 포함된 비밀, 토큰, 또는 세션 식별자를 전달하지 마십시오 — 출력에 반영된 페이지 내용과 쿼리 문자열은 업스트림 서비스에 의해 로그될 수 있습니다.
+Usage notes:
+  - IMPORTANT: If an MCP-provided web fetch tool is available, prefer using that tool instead of this one, as it may have fewer restrictions.
+  - The URL must be a fully-formed valid URL
+  - HTTP URLs will be automatically upgraded to HTTPS
+  - The prompt should describe what information you want to extract from the page
+  - This tool is read-only and does not modify any files
+  - Results may be summarized if the content is very large
+  - Includes a self-cleaning 15-minute cache for faster responses when repeatedly accessing the same URL
+  - When a URL redirects to a different host, the tool will inform you and provide the redirect URL in a special format. You should then make a new WebFetch request with the redirect URL to fetch the content.
+  - For GitHub URLs, prefer using the gh CLI via Bash instead (e.g., gh pr view, gh issue view, gh api).
+</textarea>

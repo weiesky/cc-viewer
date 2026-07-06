@@ -1,35 +1,39 @@
 # Write
 
-Yerel dosya sisteminde yeni bir dosya oluşturur veya var olan bir dosyanın içeriklerini tamamen değiştirir. Hedef yoldaki her şeyi değiştirdiğinden, gerçek oluşturma veya kasıtlı tam yeniden yazma için saklanmalıdır.
+## Tanım
 
-## Ne Zaman Kullanılır
-
-- Henüz var olmayan yepyeni bir kaynak dosyası, test veya yapılandırma oluşturmak
-- Sıfırdan yeni bir fikstür, anlık görüntü veya veri dosyası üretmek
-- Artımlı bir `Edit`'in yeniden başlamaktan daha karmaşık olacağı tam bir yeniden yazma gerçekleştirmek
-- Kullanıcının açıkça üretmenizi istediği bir şema, geçiş veya derleme betiği gibi istenen bir eser yayınlamak
+İçeriği yerel dosya sistemine yazar. Dosya zaten mevcutsa üzerine yazar.
 
 ## Parametreler
 
-- `file_path` (string, zorunlu): Yazılacak dosyanın mutlak yolu. Herhangi bir üst dizin zaten var olmalıdır.
-- `content` (string, zorunlu): Dosyaya yazılacak tam metin. Bu, tüm dosya gövdesi olur.
+| Parametre | Tür | Zorunlu | Açıklama |
+|-----------|-----|---------|----------|
+| `file_path` | string | Evet | Dosyanın mutlak yolu (mutlak yol olmalıdır) |
+| `content` | string | Evet | Yazılacak içerik |
 
-## Örnekler
+## Kullanım Senaryoları
 
-### Örnek 1: Yeni bir yardımcı modül oluşturun
-`file_path: "/Users/me/app/src/utils/slugify.ts"` ile `Write` çağırın ve uygulamayı `content` olarak sağlayın. Bunu yalnızca dosyanın zaten var olmadığını doğruladıktan sonra kullanın.
+**Kullanıma uygun:**
+- Yeni dosya oluşturma
+- Dosya içeriğinin tamamen yeniden yazılması gerektiğinde
 
-### Örnek 2: Türetilmiş bir eseri yeniden oluşturun
-Şema kaynağı değiştikten sonra, `/Users/me/app/generated/schema.json`'u taze üretilen JSON'u `content` olarak kullanarak tek bir `Write` çağrısında yeniden yazın.
+**Kullanıma uygun değil:**
+- Dosyadaki kısmi içeriği değiştirme — Edit kullanılmalıdır
+- Kullanıcı açıkça istemediği sürece proaktif olarak belge dosyaları (*.md) veya README oluşturulmamalıdır
 
-### Örnek 3: Küçük bir fikstür dosyasını değiştirin
-Her satırın değiştiği tek kullanımlık bir test fikstürü için, `Write` bir `Edit` çağrıları dizisinden daha net olabilir. Dosyayı önce okuyun, kapsamı onaylayın, sonra üzerine yazın.
+## Dikkat Edilecekler
 
-## Notlar
+- Hedef dosya zaten mevcutsa, önce Read ile okunmuş olmalıdır, aksi takdirde başarısız olur
+- Mevcut dosyanın tüm içeriğini üzerine yazar
+- Mevcut dosyaları düzenlemek için Edit'i tercih edin; Write yalnızca yeni dosya oluşturma veya tamamen yeniden yazma için kullanılır
 
-- Var olan bir dosyanın üzerine yazmadan önce, mevcut oturumda üzerinde `Read` çağırmalısınız. `Write` görülmemiş içeriği bozmayı reddeder.
-- Dosyanın yalnızca bir kısmına dokunan herhangi bir değişiklik için `Edit`'i tercih edin. `Edit` yalnızca diff'i gönderir, bu da daha hızlı, daha güvenli ve gözden geçirmesi daha kolaydır.
-- Kullanıcı açıkça istemedikçe proaktif olarak Markdown dokümantasyonu, `README.md` veya changelog dosyaları oluşturmayın.
-- Kullanıcı bu stili talep etmedikçe emoji, pazarlama yazısı veya dekoratif bannerlar eklemeyin.
-- Önce `Bash` `ls` çağrısı ile üst dizinin var olduğunu doğrulayın; `Write` ara klasörler oluşturmaz.
-- İçeriği tam olarak kalıcılaştırmak istediğiniz gibi sağlayın; şablonlama veya son işleme yoktur.
+## Orijinal Metin
+
+<textarea readonly>Writes a file to the local filesystem.
+
+Usage:
+- This tool will overwrite the existing file if there is one at the provided path.
+- If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
+- Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.
+- NEVER create documentation files (*.md) or README files unless explicitly requested by the User.
+- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.</textarea>

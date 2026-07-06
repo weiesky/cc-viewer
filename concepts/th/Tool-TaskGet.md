@@ -1,47 +1,56 @@
 # TaskGet
 
-ดึงบันทึกเต็มสำหรับ task เดียวโดย ID รวมถึง description, สถานะปัจจุบัน, owner, metadata, และ dependency edge ใช้เมื่อ summary ที่ส่งคืนโดย `TaskList` ไม่เพียงพอที่จะลงมือกับ task
+## คำจำกัดความ
 
-## เมื่อใดควรใช้
-
-- คุณเลือก task จาก `TaskList` และต้องการ description เต็มก่อนเริ่มงาน
-- คุณกำลังจะ mark task เป็น `completed` และต้องการตรวจสอบ acceptance criteria อีกครั้ง
-- คุณต้องการตรวจสอบว่า task นี้ `blocks` หรือ `blockedBy` อะไรเพื่อตัดสินใจขั้นตอนถัดไป
-- คุณกำลังสืบสวนประวัติ — ใครเป็น owner, metadata อะไรที่แนบอยู่, เมื่อไหร่ที่เปลี่ยนสถานะ
-- Teammate หรือ session ก่อนหน้าอ้างถึง task ID และคุณต้องการ context
-
-ชอบ `TaskList` เมื่อต้องการเพียงการสแกนระดับสูง; สงวน `TaskGet` สำหรับบันทึกเฉพาะที่คุณตั้งใจจะอ่านอย่างตั้งใจหรือแก้ไข
+รับรายละเอียดงานทั้งหมดผ่าน ID ของงาน
 
 ## พารามิเตอร์
 
-- `taskId` (string, required): ตัวระบุ task ที่ส่งคืนโดย `TaskCreate` หรือ `TaskList` ID คงที่ตลอดอายุของ task
+| พารามิเตอร์ | ประเภท | จำเป็น | คำอธิบาย |
+|------|------|------|------|
+| `taskId` | string | ใช่ | ID ของงานที่จะรับข้อมูล |
 
-## ตัวอย่าง
+## เนื้อหาที่ส่งคืน
 
-### ตัวอย่างที่ 1
+- `subject` — หัวข้องาน
+- `description` — ข้อกำหนดโดยละเอียดและบริบท
+- `status` — สถานะ: `pending`, `in_progress` หรือ `completed`
+- `blocks` — รายการงานที่ถูกบล็อกโดยงานนี้
+- `blockedBy` — รายการงานเงื่อนไขก่อนหน้าที่บล็อกงานนี้
 
-ค้นหา task ที่คุณเพิ่งเห็นใน list
+## สถานการณ์การใช้งาน
 
-```
-TaskGet(taskId: "t_01HXYZ...")
-```
+**เหมาะสำหรับ:**
+- รับคำอธิบายและบริบทที่สมบูรณ์ของงานก่อนเริ่มทำงาน
+- ทำความเข้าใจความสัมพันธ์การพึ่งพาของงาน
+- รับข้อกำหนดที่สมบูรณ์หลังจากได้รับมอบหมายงาน
 
-Field ทั่วไปของ response: `id`, `subject`, `description`, `activeForm`, `status`, `owner`, `blocks`, `blockedBy`, `metadata`, `createdAt`, `updatedAt`
+## ข้อควรระวัง
 
-### ตัวอย่างที่ 2
+- หลังจากรับงาน ควรตรวจสอบว่ารายการ `blockedBy` ว่างเปล่าก่อนเริ่มทำงาน
+- ใช้ TaskList เพื่อดูข้อมูลสรุปของงานทั้งหมด
 
-แก้ไข dependency ก่อนเริ่ม
+## ข้อความต้นฉบับ
 
-```
-TaskGet(taskId: "t_01HXYZ...")
-# ตรวจสอบ blockedBy — หาก task ใดที่อ้างถึงยัง pending
-# หรือ in_progress ให้ทำงานบน blocker ก่อน
-```
+<textarea readonly>Use this tool to retrieve a task by its ID from the task list.
 
-## หมายเหตุ
+## When to Use This Tool
 
-- `TaskGet` เป็น read-only และปลอดภัยที่จะเรียกซ้ำ; ไม่เปลี่ยนสถานะหรือ ownership
-- หาก `blockedBy` ไม่ว่างและมี task ที่ไม่ใช่ `completed` อย่าเริ่ม task นี้ — แก้ blocker ก่อน (หรือประสานกับ owner ของมัน)
-- Field `description` อาจยาว อ่านให้ครบก่อนลงมือ; การสแกนนำไปสู่การพลาด acceptance criteria
-- `taskId` ที่ไม่รู้จักหรือถูกลบจะคืน error รัน `TaskList` อีกครั้งเพื่อเลือก ID ปัจจุบัน
-- หากคุณกำลังจะแก้ไข task ให้เรียก `TaskGet` ก่อนเพื่อหลีกเลี่ยงการ overwrite field ที่ teammate เพิ่งเปลี่ยน
+- When you need the full description and context before starting work on a task
+- To understand task dependencies (what it blocks, what blocks it)
+- After being assigned a task, to get complete requirements
+
+## Output
+
+Returns full task details:
+- **subject**: Task title
+- **description**: Detailed requirements and context
+- **status**: 'pending', 'in_progress', or 'completed'
+- **blocks**: Tasks waiting on this one to complete
+- **blockedBy**: Tasks that must complete before this one can start
+
+## Tips
+
+- After fetching a task, verify its blockedBy list is empty before beginning work.
+- Use TaskList to see all tasks in summary form.
+</textarea>

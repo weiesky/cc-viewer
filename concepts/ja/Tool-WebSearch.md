@@ -1,51 +1,58 @@
 # WebSearch
 
-ライブ Web 検索を実行し、モデルのトレーニングカットオフを超える最新情報でアシスタントが回答を根拠付けるためのランク付けされた結果を返します。
+## 定義
 
-## 使用タイミング
-
-- 時事問題、最近のリリース、または速報ニュースに関する質問に答える。
-- ライブラリ、フレームワーク、CLI ツールの最新バージョンを調べる。
-- 正確な URL が分からないドキュメントやブログ投稿を見つける。
-- モデルがトレーニングされて以降に変わった可能性のある事実を検証する。
-- `WebFetch` で特定のページを取得する前に、トピックに関する複数の視点を発見する。
+検索エンジンクエリを実行し、最新情報を取得するための検索結果を返します。
 
 ## パラメータ
 
-- `query` (string, required): 検索クエリ。最小 2 文字。「最新」または「最近」の情報について尋ねるときは、結果が新鮮になるよう現在の年を含めてください。
-- `allowed_domains` (array of strings, optional): 結果をこれらのドメインのみに制限します。例えば `["nodejs.org", "developer.mozilla.org"]`。特定のソースを信頼する場合に便利です。
-- `blocked_domains` (array of strings, optional): これらのドメインからの結果を除外します。同じドメインを `allowed_domains` と `blocked_domains` の両方に渡さないでください。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `query` | string | はい | 検索クエリ（最低2文字） |
+| `allowed_domains` | string[] | いいえ | これらのドメインの結果のみを含む |
+| `blocked_domains` | string[] | いいえ | これらのドメインの結果を除外 |
 
-## 例
+## 使用シナリオ
 
-### 例 1: 現在の年でバージョンを検索
-
-```
-WebSearch(
-  query="React 19 stable release date 2026",
-  allowed_domains=["react.dev", "github.com"]
-)
-```
-
-公式アナウンスを返し、低品質アグリゲーターサイトを避けます。
-
-### 例 2: ノイズの多いソースを除外
-
-```
-WebSearch(
-  query="kubernetes ingress-nginx CVE April 2026",
-  blocked_domains=["pinterest.com", "medium.com"]
-)
-```
-
-結果をベンダーアドバイザリとセキュリティトラッカーに集中させ続けます。
+**適している場合：**
+- モデルの知識カットオフ日を超えた最新情報の取得
+- 現在のイベントや最新データの検索
+- 最新の技術ドキュメントの検索
 
 ## 注意事項
 
-- 回答で `WebSearch` を使用するときは、応答の最後に `Sources:` セクションを追加し、引用された各結果を `[Title](URL)` 形式の Markdown ハイパーリンクとしてリストする必要があります。これは任意ではなく、厳格な要件です。
-- `WebSearch` はアメリカ合衆国のユーザーのみ利用可能です。地域でツールが利用できない場合は、既知の URL に対して `WebFetch` にフォールバックするか、ユーザーに関連コンテンツを貼り付けるよう依頼してください。
-- 各呼び出しは検索を単一のラウンドトリップで実行します — ストリームやページネーションはできません。最初の結果セットがターゲットから外れている場合は、クエリを絞り込んでください。
-- ツールはスニペットとメタデータを返し、完全なページ内容は返しません。特定のヒットを詳しく読むには、返された URL を使って `WebFetch` でフォローアップしてください。
-- CVE やコンプライアンスなどのセキュリティに敏感な質問では、権威あるソースを強制するために `allowed_domains` を使用し、ドキュメントをミラーする SEO ファームを削除するために `blocked_domains` を使用してください。
-- クエリは短くキーワード駆動に保ってください。自然言語の質問は機能しますが、主要ソースではなく会話的な回答を返す傾向があります。
-- 検索直感に基づいて URL を発明しないでください — 常に検索を実行し、ツールが実際に返したものを引用してください。
+- 検索結果は markdown ハイパーリンク形式で返される
+- 使用後はレスポンスの末尾に "Sources:" セクションを付け、関連 URL を列挙する必要がある
+- ドメインフィルタリング（包含/除外）に対応
+- 検索クエリには現在の年を使用すべき
+- 米国でのみ利用可能
+
+## 原文
+
+<textarea readonly>
+- Allows Claude to search the web and use the results to inform responses
+- Provides up-to-date information for current events and recent data
+- Returns search result information formatted as search result blocks, including links as markdown hyperlinks
+- Use this tool for accessing information beyond Claude's knowledge cutoff
+- Searches are performed automatically within a single API call
+
+CRITICAL REQUIREMENT - You MUST follow this:
+  - After answering the user's question, you MUST include a "Sources:" section at the end of your response
+  - In the Sources section, list all relevant URLs from the search results as markdown hyperlinks: [Title](URL)
+  - This is MANDATORY - never skip including sources in your response
+  - Example format:
+
+    [Your answer here]
+
+    Sources:
+    - [Source Title 1](https://example.com/1)
+    - [Source Title 2](https://example.com/2)
+
+Usage notes:
+  - Domain filtering is supported to include or block specific websites
+  - Web search is only available in the US
+
+IMPORTANT - Use the correct year in search queries:
+  - The current month is March 2026. You MUST use this year when searching for recent information, documentation, or current events.
+  - Example: If the user asks for "latest React docs", search for "React documentation" with the current year, NOT last year
+</textarea>

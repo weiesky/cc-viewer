@@ -1,51 +1,58 @@
 # WebSearch
 
-執行即時網路搜尋，並回傳排序後的結果，助理可用這些結果基於當前資訊作答，超越模型的訓練截止日。
+## 定義
 
-## 使用時機
-
-- 回答關於時事、近期發布或突發新聞的問題。
-- 查詢函式庫、框架或 CLI 工具的最新版本。
-- 在不知道確切 URL 時尋找說明文件或部落格文章。
-- 驗證自模型訓練後可能已改變的事實。
-- 在用 `WebFetch` 擷取單一頁面之前，對主題探索多種觀點。
+執行搜尋引擎查詢，回傳搜尋結果用於取得最新資訊。
 
 ## 參數
 
-- `query`（string，必填）：搜尋查詢。最短 2 個字元。在詢問「最新」或「近期」資訊時請加上當前年份，以確保結果新鮮。
-- `allowed_domains`（string 陣列，選填）：只允許來自這些網域的結果，例如 `["nodejs.org", "developer.mozilla.org"]`。在你信任特定來源時有用。
-- `blocked_domains`（string 陣列，選填）：排除來自這些網域的結果。同一網域不要同時傳入 `allowed_domains` 與 `blocked_domains`。
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| `query` | string | 是 | 搜尋查詢（最少 2 個字元） |
+| `allowed_domains` | string[] | 否 | 僅包含這些網域的結果 |
+| `blocked_domains` | string[] | 否 | 排除這些網域的結果 |
 
-## 範例
+## 使用場景
 
-### 範例 1：用當前年份查版本
-
-```
-WebSearch(
-  query="React 19 stable release date 2026",
-  allowed_domains=["react.dev", "github.com"]
-)
-```
-
-回傳官方公告，避開品質較差的內容聚合網站。
-
-### 範例 2：排除吵雜的來源
-
-```
-WebSearch(
-  query="kubernetes ingress-nginx CVE April 2026",
-  blocked_domains=["pinterest.com", "medium.com"]
-)
-```
-
-讓結果聚焦於廠商公告與安全追蹤器。
+**適合使用：**
+- 取得超出模型知識截止日期的最新資訊
+- 查找當前事件和最新資料
+- 搜尋最新的技術文件
 
 ## 注意事項
 
-- 在回答中使用 `WebSearch` 時，必須在回應最後附加一個 `Sources:` 段落，以 Markdown 超連結 `[Title](URL)` 列出每個引用的結果。這是硬性要求，不可省略。
-- `WebSearch` 僅對美國使用者可用。若該工具在你的地區不可用，可退回使用 `WebFetch` 對已知 URL 擷取，或請使用者貼上相關內容。
-- 每次呼叫在一次往返中完成搜尋——無法串流或分頁。若首批結果偏離目標，請精煉查詢。
-- 工具回傳片段與 metadata，非完整頁面內容。若要深入閱讀某一筆結果，接著用 `WebFetch` 搭配回傳的 URL。
-- 對安全敏感的問題（如 CVE 或合規），使用 `allowed_domains` 強制從權威來源取得；使用 `blocked_domains` 濾掉鏡像文件的 SEO 農場。
-- 保持查詢簡短且以關鍵字為主。自然語言問句可行，但往往回傳對話式回答而非第一手來源。
-- 不要根據搜尋直覺臆造 URL——一律執行搜尋並引用工具實際傳回的內容。
+- 搜尋結果以 markdown 超連結格式回傳
+- 使用後必須在回應末尾附上 "Sources:" 部分，列出相關 URL
+- 支援網域過濾（包含/排除）
+- 搜尋查詢中應使用當前年份
+- 僅在美國可用
+
+## 原文
+
+<textarea readonly>
+- Allows Claude to search the web and use the results to inform responses
+- Provides up-to-date information for current events and recent data
+- Returns search result information formatted as search result blocks, including links as markdown hyperlinks
+- Use this tool for accessing information beyond Claude's knowledge cutoff
+- Searches are performed automatically within a single API call
+
+CRITICAL REQUIREMENT - You MUST follow this:
+  - After answering the user's question, you MUST include a "Sources:" section at the end of your response
+  - In the Sources section, list all relevant URLs from the search results as markdown hyperlinks: [Title](URL)
+  - This is MANDATORY - never skip including sources in your response
+  - Example format:
+
+    [Your answer here]
+
+    Sources:
+    - [Source Title 1](https://example.com/1)
+    - [Source Title 2](https://example.com/2)
+
+Usage notes:
+  - Domain filtering is supported to include or block specific websites
+  - Web search is only available in the US
+
+IMPORTANT - Use the correct year in search queries:
+  - The current month is March 2026. You MUST use this year when searching for recent information, documentation, or current events.
+  - Example: If the user asks for "latest React docs", search for "React documentation" with the current year, NOT last year
+</textarea>

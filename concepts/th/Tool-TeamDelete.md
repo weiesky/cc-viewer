@@ -1,44 +1,30 @@
 # TeamDelete
 
-รื้อทีมที่ active ในปัจจุบัน ลบ directory configuration ของมันและ directory task ที่แชร์ นี่คือคู่ตรงข้ามในการทำความสะอาดของ `TeamCreate` และโดยทั่วไปเรียกหลังเป้าหมายของทีมสำเร็จและ teammate ทุกคนปิดระบบแล้ว
+## คำจำกัดความ
 
-## เมื่อใดควรใช้
+ลบทีมและไดเรกทอรีงานที่เกี่ยวข้องเมื่องานการทำงานร่วมกันแบบหลาย agent เสร็จสมบูรณ์ นี่คือส่วนการทำความสะอาดที่เป็นคู่ตรงข้ามกับ TeamCreate
 
-- ทีมเสร็จงานและส่งรายงานสุดท้ายให้ผู้ใช้แล้ว
-- ทีมถูกสร้างโดยผิดพลาดหรือขอบเขตเปลี่ยนไปมากจนเริ่มใหม่สะอาดกว่าการทำต่อ
-- คุณต้องสร้างทีมใหม่แต่ยังมีทีม active อยู่ — ลบทีมเก่าก่อน เพราะสามารถนำทีมได้เพียงทีมเดียวในคราวเดียว
-- ทีมเก่าค้างข้าม session และ persisted state ใต้ `~/.claude/teams/` ไม่จำเป็นแล้ว
+## พฤติกรรม
 
-อย่าเรียกขณะ teammate ยังรันอยู่ — ปิด teammate ก่อนผ่าน `SendMessage` ด้วย `shutdown_request` รอ `shutdown_response` ทุกตัวแล้วลบ
+- ลบไดเรกทอรีทีม: `~/.claude/teams/{team-name}/`
+- ลบไดเรกทอรีงาน: `~/.claude/tasks/{team-name}/`
+- ล้างบริบทของทีมออกจากเซสชันปัจจุบัน
 
-## พารามิเตอร์
+**สำคัญ**: TeamDelete จะล้มเหลวหากทีมยังมีสมาชิกที่ยังทำงานอยู่ ต้องปิดสมาชิกอย่างถูกต้องก่อนผ่านคำขอปิดระบบของ SendMessage
 
-`TeamDelete` ไม่รับ parameter ในการ invoke ทั่วไป มันทำงานบนทีมที่ active ในปัจจุบันซึ่งเป็นของ session ที่เรียก
+## การใช้งานทั่วไป
 
-## ตัวอย่าง
+TeamDelete ถูกเรียกใช้ที่ท้ายขั้นตอนการทำงานของทีม:
 
-### ตัวอย่างที่ 1: Shutdown ตามปกติหลังสำเร็จ
+1. งานทั้งหมดเสร็จสมบูรณ์
+2. ปิดสมาชิกผ่าน `SendMessage` พร้อม `shutdown_request`
+3. **TeamDelete** ลบไดเรกทอรีทีมและงาน
 
-1. Broadcast คำขอ shutdown ไปยังทีม:
-   ```
-   SendMessage(to="*", message={ "type": "shutdown_request" })
-   ```
-2. รอให้ teammate แต่ละคนตอบด้วย `shutdown_response`
-3. เรียก `TeamDelete()` เพื่อลบ directory ทีมและ directory task
+## เครื่องมือที่เกี่ยวข้อง
 
-### ตัวอย่างที่ 2: แทนที่ทีมที่ตั้งค่าผิด
-
-หาก `TeamCreate` ถูกเรียกด้วย `agent_type` หรือ `description` ที่ผิด ให้ตรวจสอบก่อนว่ายังไม่มี teammate ถูก spawn (หรือปิด) แล้ว:
-
-```
-TeamDelete()
-TeamCreate(team_name="...", description="...", agent_type="...")
-```
-
-## หมายเหตุ
-
-- `TeamDelete` ล้มเหลวหาก teammate ใดยัง active อยู่ response error จะ list teammate ที่ live — ส่ง `shutdown_request` ผ่าน `SendMessage` ให้แต่ละตัว รอ `shutdown_response` แล้ว retry
-- การลบเป็น irreversible จากมุมมองของ tool Config ของทีมที่ `~/.claude/teams/{team_name}/config.json` และ directory task ถูกลบจาก disk หากต้องการรักษา task list ให้ export หรือคัดลอก directory ก่อนลบ
-- เฉพาะ session leader ที่สร้างทีมเท่านั้นที่ลบได้ Teammate ที่ถูก spawn ไม่สามารถเรียก `TeamDelete` บนทีมของตัวเองได้
-- การลบทีมไม่ rollback การเปลี่ยนแปลง filesystem ที่ teammate ทำใน repository สิ่งเหล่านั้นคือการแก้ไขที่ติดตามโดย git ปกติและต้องถูก revert แยกหากไม่ต้องการ
-- หลัง `TeamDelete` คืนค่าสำเร็จ session อิสระที่จะเรียก `TeamCreate` อีกครั้งสำหรับทีมใหม่
+| เครื่องมือ | วัตถุประสงค์ |
+|-----------|-------------|
+| `TeamCreate` | สร้างทีมใหม่และรายการงาน |
+| `SendMessage` | สื่อสารกับสมาชิก / ส่งคำขอปิดระบบ |
+| `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | จัดการรายการงานที่แชร์ร่วมกัน |
+| `Agent` | สร้างสมาชิกที่เข้าร่วมทีม |

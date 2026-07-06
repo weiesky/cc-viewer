@@ -1,60 +1,75 @@
 # AskUserQuestion
 
-Представляє користувачеві одне або кілька структурованих запитань із множинним вибором у чат-інтерфейсі, збирає його вибір і повертає його асистентові — корисно для усунення неоднозначності наміру без довільного обміну повідомленнями.
+## Визначення
 
-## Коли використовувати
-
-- Запит має кілька розумних інтерпретацій, і асистенту потрібно, щоб користувач обрав одну з них перед тим, як продовжити.
-- Користувач має обрати серед конкретних варіантів (фреймворк, бібліотека, шлях файлу, стратегія), де вільні текстові відповіді схильні до помилок.
-- Ви хочете порівняти альтернативи поруч за допомогою панелі попереднього перегляду.
-- Кілька повʼязаних рішень можна обʼєднати в один запит, щоб зменшити обмін повідомленнями.
-- План або виклик інструмента залежить від конфігурації, яку користувач ще не вказав.
+Використовується для запитань користувачу під час виконання з метою отримання уточнень, перевірки припущень або запиту рішень.
 
 ## Параметри
 
-- `questions` (array, обовʼязковий): Від одного до чотирьох запитань, показаних разом в одному запиті. Кожен обʼєкт запитання містить:
-  - `question` (string, обовʼязковий): Повний текст запитання, що закінчується знаком питання.
-  - `header` (string, обовʼязковий): Коротка мітка (не більше 12 символів), що відображається як чіп над запитанням.
-  - `options` (array, обовʼязковий): Від двох до чотирьох обʼєктів варіантів. Кожен варіант має `label` (1–5 слів), `description` та необовʼязковий попередній перегляд `markdown`.
-  - `multiSelect` (boolean, обовʼязковий): Якщо `true`, користувач може обрати більше одного варіанта.
+| Параметр | Тип | Обов'язковий | Опис |
+|----------|-----|--------------|------|
+| `questions` | array | Так | Список запитань (1-4 запитання) |
+| `answers` | object | Ні | Зібрані відповіді користувача |
+| `annotations` | object | Ні | Примітки до кожного запитання (наприклад, нотатки до попереднього перегляду вибору) |
+| `metadata` | object | Ні | Метадані для відстеження та аналізу |
 
-## Приклади
+Кожен об'єкт `question`:
 
-### Приклад 1: Вибір одного фреймворка
+| Поле | Тип | Обов'язковий | Опис |
+|------|-----|--------------|------|
+| `question` | string | Так | Повний текст запитання, повинен закінчуватися знаком питання |
+| `header` | string | Так | Короткий ярлик (максимум 12 символів), відображається як чіп-мітка |
+| `options` | array | Так | 2-4 варіанти |
+| `multiSelect` | boolean | Так | Чи дозволено множинний вибір |
 
-```
-AskUserQuestion(questions=[{
-  "header": "Test runner",
-  "question": "Which test runner should I configure?",
-  "multiSelect": false,
-  "options": [
-    {"label": "Vitest (Recommended)", "description": "Fast, Vite-native, Jest-compatible API"},
-    {"label": "Jest",                  "description": "Mature, broadest plugin ecosystem"},
-    {"label": "Node --test",           "description": "Zero dependencies, built in"}
-  ]
-}])
-```
+Кожен об'єкт `option`:
 
-### Приклад 2: Порівняльний попередній перегляд двох макетів
+| Поле | Тип | Обов'язковий | Опис |
+|------|-----|--------------|------|
+| `label` | string | Так | Текст відображення варіанту (1-5 слів) |
+| `description` | string | Так | Опис варіанту |
+| `markdown` | string | Ні | Вміст попереднього перегляду (для візуального порівняння ASCII-макетів, фрагментів коду тощо) |
 
-```
-AskUserQuestion(questions=[{
-  "header": "Layout",
-  "question": "Which dashboard layout do you prefer?",
-  "multiSelect": false,
-  "options": [
-    {"label": "Sidebar",  "description": "Nav on the left", "markdown": "```\n+------+---------+\n| NAV  | CONTENT |\n+------+---------+\n```"},
-    {"label": "Top bar",  "description": "Nav across top",  "markdown": "```\n+-----------------+\n|       NAV       |\n+-----------------+\n|     CONTENT     |\n+-----------------+\n```"}
-  ]
-}])
-```
+## Сценарії використання
+
+**Підходить для:**
+- Збір уподобань або вимог користувача
+- Уточнення нечітких інструкцій
+- Прийняття рішень під час реалізації
+- Надання користувачу вибору напрямку
+
+**Не підходить для:**
+- Запитання "Чи підходить план?" — слід використовувати ExitPlanMode
 
 ## Примітки
 
-- UI автоматично додає варіант вільного тексту "Other" до кожного запитання. Не додавайте власні пункти "Other", "None" чи "Custom" — це продублює вбудовану можливість.
-- Обмежуйте кожен виклик до одного-чотирьох запитань, а кожне запитання — до двох-чотирьох варіантів. Перевищення цих меж відхиляється оболонкою.
-- Якщо ви рекомендуєте конкретний варіант, розмістіть його першим і додайте "(Recommended)" до його мітки, щоб UI виділив бажаний шлях.
-- Попередні перегляди через поле `markdown` підтримуються лише для запитань з одиночним вибором. Використовуйте їх для візуальних артефактів, таких як ASCII-макети, фрагменти коду чи diff конфігурації — а не для простих запитань переваг, де достатньо мітки та опису.
-- Коли будь-який варіант у запитанні має значення `markdown`, UI переключається на макет пліч-о-пліч зі списком варіантів зліва та попереднім переглядом справа.
-- Не використовуйте `AskUserQuestion` для запиту "чи виглядає цей план добре?" — викликайте замість цього `ExitPlanMode`, який існує саме для затвердження плану. У режимі плану також уникайте згадування "плану" в тексті запитання, оскільки план не видно користувачеві, доки не виконається `ExitPlanMode`.
-- Не використовуйте цей інструмент для запитів конфіденційного або довільного вводу, такого як API-ключі чи паролі. Запитайте натомість у чаті.
+- Користувач завжди може вибрати "Other" для надання власного введення
+- Рекомендований варіант розміщується першим, і в кінці label додається "(Recommended)"
+- Попередній перегляд `markdown` підтримується лише для запитань з одиничним вибором
+- Варіанти з `markdown` перемикаються на паралельний макет
+- У режимі планування використовується для уточнення вимог перед визначенням плану
+
+## Оригінальний текст
+
+<textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:
+1. Gather user preferences or requirements
+2. Clarify ambiguous instructions
+3. Get decisions on implementation choices as you work
+4. Offer choices to the user about what direction to take.
+
+Usage notes:
+- Users will always be able to select "Other" to provide custom text input
+- Use multiSelect: true to allow multiple answers to be selected for a question
+- If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
+
+Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ExitPlanMode for plan approval. IMPORTANT: Do not reference "the plan" in your questions (e.g., "Do you have feedback about the plan?", "Does the plan look good?") because the user cannot see the plan in the UI until you call ExitPlanMode. If you need plan approval, use ExitPlanMode instead.
+
+Preview feature:
+Use the optional `markdown` field on options when presenting concrete artifacts that users need to visually compare:
+- ASCII mockups of UI layouts or components
+- Code snippets showing different implementations
+- Diagram variations
+- Configuration examples
+
+When any option has a markdown, the UI switches to a side-by-side layout with a vertical option list on the left and preview on the right. Do not use previews for simple preference questions where labels and descriptions suffice. Note: previews are only supported for single-select questions (not multiSelect).
+</textarea>

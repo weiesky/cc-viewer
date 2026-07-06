@@ -1,42 +1,62 @@
 # ExitPlanMode
 
-Подає план реалізації, складений під час режиму планування, на затвердження користувача та — якщо затверджено — переводить сесію з режиму планування, щоб можна було розпочати правки.
+## Визначення
 
-## Коли використовувати
-
-- План, написаний під час `EnterPlanMode`, завершений і готовий до перегляду.
-- Завдання орієнтоване на реалізацію (зміни коду чи конфігурації), а не чисте дослідження, тому явний план є доцільним.
-- Усе необхідне читання та аналіз виконано; подальше дослідження не потрібне перед рішенням користувача.
-- Асистент перелічив конкретні шляхи файлів, функції та кроки — не лише цілі.
-- Користувач попросив побачити план, або робочий процес режиму планування готується передати керування інструментам редагування.
+Виходить з режиму планування та подає план на затвердження користувачем. Вміст плану зчитується з раніше записаного файлу плану.
 
 ## Параметри
 
-- `allowedPrompts` (array, необовʼязковий): Промпти, які користувач може ввести на екрані затвердження, щоб автоматично затвердити або змінити план. Кожен елемент вказує дозвіл з областю дії (наприклад, імʼя операції та інструмент, до якого вона застосовується). Залиште невстановленим, щоб використати типовий потік затвердження.
+| Параметр | Тип | Обов'язковий | Опис |
+|----------|-----|--------------|------|
+| `allowedPrompts` | array | Ні | Список описів дозволів, необхідних для плану реалізації |
 
-## Приклади
+Кожен елемент масиву `allowedPrompts`:
 
-### Приклад 1: Стандартна подача
+| Поле | Тип | Обов'язковий | Опис |
+|------|-----|--------------|------|
+| `tool` | enum | Так | Застосовний інструмент, наразі підтримується лише `Bash` |
+| `prompt` | string | Так | Семантичний опис операції (наприклад, "run tests", "install dependencies") |
 
-Після дослідження рефакторингу автентифікації в режимі планування та запису файлу плану на диск асистент викликає `ExitPlanMode` без аргументів. Оболонка читає план з його канонічного розташування, показує його користувачеві та чекає на затвердження або відхилення.
+## Сценарії використання
 
-### Приклад 2: Попередньо затверджені швидкі дії
+**Підходить для:**
+- У режимі планування план завершено, готовий до подання на затвердження користувачем
+- Лише для завдань реалізації, що потребують написання коду
 
-```
-ExitPlanMode(allowedPrompts=[
-  {"tool": "Bash", "prompt": "run tests"},
-  {"tool": "Bash", "prompt": "install dependencies"}
-])
-```
-
-Дозволяє користувачеві надати дозвіл наперед для рутинних подальших команд, щоб асистенту не потрібно було робити паузу для кожного запиту дозволу під час реалізації.
+**Не підходить для:**
+- Суто дослідницьке/розвідувальне завдання — не потрібно виходити з режиму планування
+- Запитання користувачу "Чи підходить план?" — це саме функція цього інструменту, не використовуйте AskUserQuestion
 
 ## Примітки
 
-- `ExitPlanMode` має сенс лише для роботи, орієнтованої на реалізацію. Якщо запит користувача є завданням дослідження чи пояснення без змін файлів, відповідайте напряму — не маршрутизуйте через режим планування, аби лише вийти з нього.
-- План має бути вже записаним на диск перед викликом цього інструмента. `ExitPlanMode` не приймає тіло плану як параметр; він читає зі шляху, який очікує оболонка.
-- Якщо користувач відхиляє план, ви повертаєтесь у режим планування. Перегляньте на основі відгуку та подайте знову; не починайте редагувати файли, поки план не затверджений.
-- Затвердження надає дозвіл залишити режим планування та використовувати мутаційні інструменти (`Edit`, `Write`, `Bash` тощо) для області, описаної в плані. Розширення області після цього вимагає нового плану або явної згоди користувача.
-- Не використовуйте `AskUserQuestion`, щоб запитати "чи виглядає цей план добре?" перед викликом цього інструмента — запит затвердження плану — це саме те, що робить `ExitPlanMode`, а користувач не бачить плану, доки його не подадуть.
-- Тримайте план мінімальним та дієвим. Рецензент має бути здатним перечитати його менш ніж за хвилину та зрозуміти, що саме зміниться.
-- Якщо посеред реалізації ви усвідомите, що план був неправильним, зупиніться та доповідьте користувачеві, а не відхиляйтеся мовчки. Повторний вхід у режим планування — дійсний наступний крок.
+- Цей інструмент не приймає вміст плану як параметр — він зчитує з раніше записаного файлу плану
+- Користувач побачить вміст файлу плану для затвердження
+- Не запитуйте "чи підходить план?" через AskUserQuestion перед викликом цього інструменту — це дублювання
+- Не згадуйте "план" у запитаннях, оскільки користувач не бачить вміст плану до ExitPlanMode
+
+## Оригінальний текст
+
+<textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.
+
+## How This Tool Works
+- You should have already written your plan to the plan file specified in the plan mode system message
+- This tool does NOT take the plan content as a parameter - it will read the plan from the file you wrote
+- This tool simply signals that you're done planning and ready for the user to review and approve
+- The user will see the contents of your plan file when they review it
+
+## When to Use This Tool
+IMPORTANT: Only use this tool when the task requires planning the implementation steps of a task that requires writing code. For research tasks where you're gathering information, searching files, reading files or in general trying to understand the codebase - do NOT use this tool.
+
+## Before Using This Tool
+Ensure your plan is complete and unambiguous:
+- If you have unresolved questions about requirements or approach, use AskUserQuestion first (in earlier phases)
+- Once your plan is finalized, use THIS tool to request approval
+
+**Important:** Do NOT use AskUserQuestion to ask "Is this plan okay?" or "Should I proceed?" - that's exactly what THIS tool does. ExitPlanMode inherently requests user approval of your plan.
+
+## Examples
+
+1. Initial task: "Search for and understand the implementation of vim mode in the codebase" - Do not use the exit plan mode tool because you are not planning the implementation steps of a task.
+2. Initial task: "Help me implement yank mode for vim" - Use the exit plan mode tool after you have finished planning the implementation steps of the task.
+3. Initial task: "Add a new feature to handle user authentication" - If unsure about auth method (OAuth, JWT, etc.), use AskUserQuestion first, then use exit plan mode tool after clarifying the approach.
+</textarea>

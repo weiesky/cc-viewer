@@ -1,13 +1,5 @@
-/* ===== Theme CSS Variables =====
- * 默认主题（雪山白 / light）由 index.html 的 <html data-theme="light"> 写死 + inline 启动脚本
- * 从 localStorage('ccv_themeColor') 抢占，避免组件级 [data-theme="..."] 选择器在 attr 缺失时全部 miss。
- * 这里 :root 仍绑定 dark vars 是历史遗留：很多 module CSS 写了 [data-theme="dark"] / [data-theme="light"]
- * 的成对覆写，:root 兜底能保证 attr 异常时不会出现"半亮半暗"的混合态。
- */
+/* ===== Theme CSS Variables ===== */
 :root, [data-theme="dark"] {
-  /* Fonts (theme-independent; defined once, inherited everywhere) */
-  --font-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   /* Background */
   --bg-base: #0a0a0a;
   --bg-base-pure: #000;
@@ -17,7 +9,6 @@
   --bg-surface: #2a2a2a;
   --bg-code: #14141F;
   --bg-code-dark: #0d1117;
-  --bg-code-hover: #0e0e17;
   --bg-code-system: #060f2a;
   /* Border */
   --border-primary: #2a2a2a;
@@ -56,7 +47,6 @@
   --color-success-bg-medium: rgba(34, 197, 94, 0.3);
   /* Error (red) */
   --color-error: #ef4444;
-  --color-error-rgb: 239, 68, 68;
   --color-error-light: #f87171;
   --color-error-muted: #a33;
   --color-error-dark-bg: #220000;
@@ -117,15 +107,6 @@
   --bg-container-alt: #161616;
   /* Model avatar */
   --bg-model-avatar: #000;
-  --bg-sub-avatar: #3a3a3a;
-  /* Teammate avatar 20 色（与 teammateAvatars.js PALETTE 严格对齐，索引即名）*/
-  --avatar-bg-0:  #5b6abf; --avatar-bg-1:  #2a9d8f; --avatar-bg-2:  #6366f1; --avatar-bg-3:  #d97706;
-  --avatar-bg-4:  #3b82f6; --avatar-bg-5:  #8b5cf6; --avatar-bg-6:  #0e7490; --avatar-bg-7:  #ea580c;
-  --avatar-bg-8:  #059669; --avatar-bg-9:  #e11d48; --avatar-bg-10: #0284c7; --avatar-bg-11: #dc2626;
-  --avatar-bg-12: #65a30d; --avatar-bg-13: #ca8a04; --avatar-bg-14: #9333ea; --avatar-bg-15: #db2777;
-  --avatar-bg-16: #6b7280; --avatar-bg-17: #1d4ed8; --avatar-bg-18: #b45309; --avatar-bg-19: #047857;
-  /* 单色 logo（GLM/Kimi/MiniMax）随主题反转：dark=白、light=黑 */
-  --model-logo-mono: #fff;
   /* Input bar / sticky */
   --bg-input-bar: rgba(0, 0, 0, 0.5);
   --bg-sticky-btn: rgba(0, 0, 0, 0.5);
@@ -154,13 +135,6 @@
 }
 
 [data-theme="light"] {
-  /* Light-theme bubble overrides:雪山白下用户气泡走深底白字,
-     同步覆写 hover/highlight/compact 子区域颜色,避免 var(--color-primary-*)
-     与 var(--text-primary) 在 #222 深底上对比塌陷。 */
-  --bubble-user-bg-light: #222;
-  --bubble-user-hover-border-light: #444;
-  --bubble-user-highlight-shadow-light: 0 0 12px rgba(255, 255, 255, 0.5);
-  --bubble-assistant-shadow-light: 0 3px 8px rgba(0, 0, 0, 0.08);
   /* Background */
   --bg-base: #FAFAFA;
   --bg-base-pure: #FFFFFF;
@@ -170,7 +144,6 @@
   --bg-surface: #F0F0F0;
   --bg-code: #F5F5F5;
   --bg-code-dark: #F5F5F5;
-  --bg-code-hover: #EAEAEA;
   --bg-code-system: #EFF1F3;
   /* Border */
   --border-primary: #E0E0E0;
@@ -209,7 +182,6 @@
   --color-success-bg-medium: rgba(26, 127, 55, 0.15);
   /* Error (red) */
   --color-error: #CF222E;
-  --color-error-rgb: 207, 34, 46;
   --color-error-light: #DA3633;
   --color-error-muted: #82071E;
   --color-error-dark-bg: #FFEBE9;
@@ -269,15 +241,7 @@
   --color-code-orange-bg: rgba(149, 56, 0, 0.06);
   --bg-container-alt: #F5F5F5;
   /* Model avatar */
-  --bg-model-avatar: transparent;
-  --bg-sub-avatar: #E5E5E5;
-  /* Teammate avatar：雪山白降饱和版（HSL s×0.35 / l+0.28 预处理的静态映射，不影响曜石黑）*/
-  --avatar-bg-0:  #ced0db; --avatar-bg-1:  #9abcb8; --avatar-bg-2:  #edeef5; --avatar-bg-3:  #cfb99f;
-  --avatar-bg-4:  #d6deea; --avatar-bg-5:  #efecf5; --avatar-bg-6:  #78a8b5; --avatar-bg-7:  #d6bcaf;
-  --avatar-bg-8:  #72b8a2; --avatar-bg-9:  #d6b7be; --avatar-bg-10: #8fb5c8; --avatar-bg-11: #d6bbbb;
-  --avatar-bg-12: #a4bc83; --avatar-bg-13: #cab893; --avatar-bg-14: #d6cae2; --avatar-bg-15: #d6bbc7;
-  --avatar-bg-16: #bbbcbf; --avatar-bg-17: #b2bad2; --avatar-bg-18: #c2a28a; --avatar-bg-19: #5ead97;
-  --model-logo-mono: #000;
+  --bg-model-avatar: #e8e8e8;
   /* Input bar / sticky */
   --bg-input-bar: #ffffff;
   --bg-sticky-btn: rgba(255, 255, 255, 0.85);
@@ -310,28 +274,6 @@ body {
   background-color: var(--bg-base-alt);
   overflow-x: hidden;
   -webkit-tap-highlight-color: transparent;
-}
-
-/* 工作区选择器浮层模式（Electron 多 tab 点「+」）：body 透明，使透明 workspaceView 叠加在
-   当前 tab 之上时能透出后面变暗的项目界面。类选择器特异性高于上面的 body 规则，无需 !important。 */
-body.ccv-ws-popup {
-  background-color: transparent;
-}
-
-/* 阻止子滚动容器到边后将滚动事件冒泡到 body/html，消除"滚到顶/底继续拖会拖动整页"
-   的 rubber-band 体感。cc-viewer 整体 flex 布局，body 不应承载滚动；这一行
-   彻底关掉滚动冒泡链，对 MDXEditor / chat 流 / 文件浏览树 / terminal 等所有
-   子滚动容器一次性见效。
-   `none` 同时禁掉浏览器原生 pull-to-refresh 与"横向 swipe 返回"，cc-viewer
-   不依赖这两者，影响 0。 */
-html, body {
-  overscroll-behavior: none;
-}
-
-/* 高度链：让根容器用 height:100% 而非 100vh，使「显示大小」CSS zoom 缩放下
-   主框架仍精确铺满视口（百分比随 zoom 计算，vh 不随）。缺任一层都会塌成内容高度。 */
-html, body, #root {
-  height: 100%;
 }
 
 ::selection {
@@ -373,7 +315,6 @@ html, body, #root {
   border-radius: 6px;
   padding: 12px;
   overflow-x: auto;
-  font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -381,7 +322,6 @@ html, body, #root {
   background: var(--code-inline-bg);
   padding: 2px 6px;
   border-radius: 4px;
-  font-family: var(--font-mono);
   font-size: 13px;
   color: var(--code-inline-color);
 }
@@ -408,10 +348,6 @@ html, body, #root {
 .chat-md a { color: var(--color-primary-lighter); }
 .chat-md img { cursor: pointer; max-width: 100%; height: auto; border-radius: 6px; }
 .chat-md hr { border: none; border-top: 1px solid var(--border-primary); margin: 12px 0; }
-/* chat-boxer 内的 hr 用 --border-light 避开两端渐变色（--border-primary 与 --border-secondary 都
-   分别匹配 chat-boxer 渐变的一端，dark mode 下不可见）；margin 收紧适配 chat-boxer 极薄 padding。 */
-.chat-md .chat-boxer hr,
-.chat-boxer .chat-md hr { border-top-color: var(--border-light); margin: 8px 0; }
 .chat-md strong { color: var(--text-primary); }
 .chat-md em { color: var(--text-primary); }
 
@@ -431,11 +367,7 @@ html, body, #root {
   height: auto;
 }
 
-/* Remove focus outlines globally.
-   !important required: AntD v5 CSS-in-JS uses class-level selectors like
-   `.ant-btn:focus` (0,0,2,0) which exceed our universal `*:focus` (0,0,1,0).
-   No clean specificity-based override without polluting JSX with extra
-   class hooks; intentional exception to the project-wide no-!important rule. */
+/* Remove focus outlines (Ant Design CSS-in-JS has higher specificity, !important required) */
 *:focus { outline: none !important; box-shadow: none !important; }
 *:focus-visible { outline: none !important; box-shadow: none !important; }
 
@@ -458,8 +390,6 @@ html, body, #root {
 .ant-dropdown .logo-dropdown-menu.logo-dropdown-menu {
   border: 1px solid var(--border-hover);
   border-radius: 4px;
-  user-select: none;
-  -webkit-user-select: none;
 }
 .ant-dropdown .logo-dropdown-menu.logo-dropdown-menu .ant-dropdown-menu-item,
 .ant-dropdown .logo-dropdown-menu.logo-dropdown-menu .ant-dropdown-menu-submenu-title {
@@ -470,35 +400,9 @@ html, body, #root {
 .ant-dropdown-menu-submenu-popup .ant-dropdown-menu {
   border: 1px solid var(--border-hover);
   border-radius: 4px;
-  user-select: none;
-  -webkit-user-select: none;
-}
-/* 行内「钉住」按钮：默认隐藏，hover 当前行显形；钉住后(data-pinned=true)常驻。
-   双类特异性压过 antd，无 !important(CLAUDE.md)。菜单在 portal 渲染，故规则放 global.css。 */
-.ant-dropdown .logo-dropdown-menu.logo-dropdown-menu [data-pin-trigger] {
-  opacity: 0;
-  color: var(--text-tertiary);
-  padding: 7px 8px;
-  margin: -7px -6px -7px 0;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: opacity 0.15s, color 0.15s, background-color 0.15s;
-}
-.ant-dropdown .logo-dropdown-menu.logo-dropdown-menu .ant-dropdown-menu-item:hover [data-pin-trigger] {
-  opacity: 0.55;
-}
-.ant-dropdown .logo-dropdown-menu.logo-dropdown-menu [data-pin-trigger]:hover {
-  opacity: 0.85;
-  color: var(--text-secondary);
-  background-color: var(--border-hover);
-}
-.ant-dropdown .logo-dropdown-menu.logo-dropdown-menu [data-pin-trigger][data-pinned="true"] {
-  opacity: 1;
-  color: var(--color-primary, var(--text-secondary));
 }
 .ant-tooltip .ant-tooltip-inner {
   background-color: var(--bg-base-alt);
-  color: var(--text-primary);
 }
 .ant-tooltip .ant-tooltip-arrow::before,
 .ant-tooltip .ant-tooltip-arrow::after {
@@ -509,10 +413,6 @@ html, body, #root {
 .ant-popover .ant-popover-arrow::before,
 .ant-popover .ant-popover-arrow::after {
   background: var(--border-secondary);
-}
-[data-theme="light"] .ant-popover .ant-popover-arrow::before,
-[data-theme="light"] .ant-popover .ant-popover-arrow::after {
-  background: var(--bg-base-pure);
 }
 
 /* Ant Design Typography font size override */
@@ -553,22 +453,7 @@ html, body, #root {
 
 /* Ant Design Tabs bottom border */
 .ant-tabs .ant-tabs-nav::before {
-  border-bottom-color: var(--border-primary);
-}
-
-/* antd Segmented：选中段改用主色(蓝)实填 + 白字，替代默认浅色滑块(对比太弱)。
-   全局生效——所有用到 Segmented 的地方统一。滑块动画元素 .ant-segmented-thumb 同步着色，
-   切换过渡动画保留。antd v5 选择器用 :where()(0 特异度)，此处普通类即可覆盖，无需 !important。 */
-.ant-segmented .ant-segmented-item-selected,
-.ant-segmented .ant-segmented-thumb {
-  background-color: var(--color-primary);
-}
-.ant-segmented .ant-segmented-item-selected,
-.ant-segmented .ant-segmented-item-selected:hover,
-.ant-segmented .ant-segmented-item-selected .ant-segmented-item-label,
-.ant-segmented .ant-segmented-item-selected:hover .ant-segmented-item-label,
-.ant-segmented .ant-segmented-item-selected .ant-segmented-item-icon {
-  color: #fff;  /* 蓝底固定白字（两套主题一致）；勿用 --text-white，浅色主题下它是深色 */
+  border-bottom-color: var(--border-primary) !important;
 }
 
 /* highlight.js light theme overrides */
@@ -594,14 +479,3 @@ html, body, #root {
 [data-theme="light"] .hljs-selector-tag { color: #800000; }
 [data-theme="light"] .hljs-selector-class { color: #267F99; }
 [data-theme="light"] .hljs-selector-id { color: #267F99; }
-
-/* 左侧滑抽屉(IM 对话记录 / 设置 / 全局设置 / 项目统计)的标题栏高度统一对齐主窗口顶栏
-   (App .header = 40px)。antd 默认 .ant-drawer-header 约 56px;这里压到 40 并清零默认 16px
-   上下内边距(.ant-drawer-header-title 内部已 flex 居中,内容在 40px 内垂直居中)。
-   统一走 rootClassName="ccvSideDrawer",新增左侧抽屉只需挂这个类即可继承样式。 */
-.ccvSideDrawer .ant-drawer-header {
-  height: 40px;
-  min-height: 40px;
-  padding-top: 0;
-  padding-bottom: 0;
-}

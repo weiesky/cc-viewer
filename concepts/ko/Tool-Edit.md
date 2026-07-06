@@ -1,38 +1,46 @@
 # Edit
 
-기존 파일 내에서 정확한 문자열 교체를 수행합니다. 차이점만 전송되므로 편집이 정밀하고 감사 가능하게 유지되어 파일을 수정하는 선호되는 방법입니다.
+## 정의
 
-## 사용 시점
+정확한 문자열 치환을 통한 파일 편집. 파일 내의 `old_string`을 `new_string`으로 치환합니다.
 
-- 주변 파일을 다시 작성하지 않고 단일 함수의 버그 수정
-- 구성 값, 버전 문자열, 또는 import 경로 업데이트
-- `replace_all`로 파일 전체에서 심볼 이름 변경
-- 앵커 근처에 블록 삽입 (`old_string`을 확장하여 주변 컨텍스트 포함 후 교체 제공)
-- 다단계 리팩터링의 일환으로 작고 범위가 잘 지정된 편집 적용
+## 파라미터
 
-## 매개변수
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| `file_path` | string | 예 | 수정할 파일의 절대 경로 |
+| `old_string` | string | 예 | 치환할 원본 텍스트 |
+| `new_string` | string | 예 | 치환 후 새 텍스트 (old_string과 달라야 함) |
+| `replace_all` | boolean | 아니오 | 모든 매치를 치환할지 여부, 기본값 `false` |
 
-- `file_path` (string, 필수): 수정할 파일의 절대 경로.
-- `old_string` (string, 필수): 검색할 정확한 텍스트. 공백과 들여쓰기를 포함하여 문자 단위로 일치해야 합니다.
-- `new_string` (string, 필수): 교체 텍스트. `old_string`과 달라야 합니다.
-- `replace_all` (boolean, 선택): `true`인 경우 `old_string`의 모든 발생을 교체합니다. 기본값은 `false`이며, 일치 항목이 고유해야 합니다.
+## 사용 시나리오
 
-## 예시
+**적합한 경우:**
+- 기존 파일 내 특정 코드 섹션 수정
+- 버그 수정, 로직 업데이트
+- 변수 이름 변경 (`replace_all: true`와 함께 사용)
+- 파일 내용을 정확하게 수정해야 하는 모든 시나리오
 
-### 예시 1: 단일 호출 사이트 수정
-`old_string`을 정확한 라인 `const port = 3000;`으로, `new_string`을 `const port = process.env.PORT ?? 3000;`으로 설정합니다. 일치가 고유하므로 `replace_all`은 기본값을 유지할 수 있습니다.
+**적합하지 않은 경우:**
+- 새 파일 생성 — Write를 사용해야 함
+- 대규모 재작성 — Write로 전체 파일을 덮어써야 할 수 있음
 
-### 예시 2: 파일 전체에서 심볼 이름 변경
-`api.ts`에서 모든 `getUser`를 `fetchUser`로 이름을 바꾸려면 `old_string: "getUser"`, `new_string: "fetchUser"`, `replace_all: true`로 설정합니다.
+## 주의사항
 
-### 예시 3: 반복되는 스니펫의 모호성 제거
-`return null;`이 여러 분기에서 나타나는 경우, `old_string`을 확장하여 주변 컨텍스트 (예: 앞의 `if` 라인)를 포함시켜 일치가 고유하도록 하십시오. 그렇지 않으면 도구가 추측하지 않고 오류를 반환합니다.
+- 사용 전 반드시 Read로 해당 파일을 읽어야 하며, 그렇지 않으면 오류 발생
+- `old_string`은 파일 내에서 유일해야 함. 유일하지 않으면 더 많은 컨텍스트를 포함하여 유일하게 만들거나 `replace_all`을 사용
+- 텍스트 편집 시 원본 들여쓰기 (tab/공백)를 유지해야 함. Read 출력의 행 번호 접두사를 포함하지 말 것
+- 새 파일 생성보다 기존 파일 편집을 우선
+- `new_string`은 `old_string`과 달라야 함
 
-## 참고사항
+## 원문
 
-- `Edit`가 변경을 수락하기 전에 현재 세션에서 파일에 대해 적어도 한 번 `Read`를 호출해야 합니다. `Read` 출력의 라인 번호 접두사는 파일 내용의 일부가 아닙니다. `old_string`이나 `new_string`에 포함하지 마십시오.
-- 공백이 정확히 일치해야 합니다. 특히 YAML, Makefile, Python에서 탭 대 공백, 뒤쪽 공백에 주의하십시오.
-- `old_string`이 고유하지 않고 `replace_all`이 `false`이면 편집이 실패합니다. 컨텍스트를 확장하거나 `replace_all`을 활성화하십시오.
-- 파일이 이미 존재하는 경우 언제든 `Write`보다 `Edit`를 선호하십시오. `Write`는 전체 파일을 덮어쓰고 주의하지 않으면 관련 없는 내용을 잃습니다.
-- 동일한 파일에서 여러 관련 없는 편집의 경우 하나의 큰 취약한 교체 대신 여러 `Edit` 호출을 순차적으로 실행하십시오.
-- 소스 파일을 편집할 때 이모지, 마케팅 카피, 요청되지 않은 문서 블록 도입을 피하십시오.
+<textarea readonly>Performs exact string replacements in files.
+
+Usage:
+- You must use your `Read` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file. 
+- When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix format is: spaces + line number + tab. Everything after that tab is the actual file content to match. Never include any part of the line number prefix in the old_string or new_string.
+- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
+- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
+- The edit will FAIL if `old_string` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use `replace_all` to change every instance of `old_string`.
+- Use `replace_all` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.</textarea>

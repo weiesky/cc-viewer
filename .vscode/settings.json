@@ -1,0 +1,25 @@
+{
+  "stylelint.configFile": ".stylelintrc.js",
+  "stylelint.snippet": [
+    "css",
+    "postcss",
+    "less",
+    "acss"
+  ],
+  "stylelint.enable": true,
+  "stylelint.validate": [
+    "css",
+    "postcss",
+    "acss",
+    "less"
+  ],
+  "eslint.enable": true,
+  "eslint.validate": [
+    "typescript",
+    "javascript",
+    "axml"
+  ],
+  "eslint.options": {
+    "overrideConfigFile": ".eslintrc.js"
+  }
+}

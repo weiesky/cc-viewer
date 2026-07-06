@@ -1,32 +1,19 @@
-// ████ 文件内显式隔离(第六层闸) — ESM 静态 import 会被提升(hoist) ████
-// WORKSPACES_FILE = join(LOG_DIR, 'workspaces.json'),beforeEach 对其 unlinkSync。
-// LOG_DIR 在 ../findcc.js 模块加载时即固化:若先静态 import findcc 再赋 env,LOG_DIR
-// 会落到真实 ~/.claude/cc-viewer,unlinkSync 误伤用户数据(2026-06-06 事故同源)。
-// 因此必须:仅 node: 内置静态 import → 隔离段锁 env → 顶层 await 动态 import 项目模块。
-// 禁止改回静态 import findcc/workspace-registry。
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, unlinkSync, writeFileSync, readFileSync, existsSync, utimesSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, unlinkSync, writeFileSync, readFileSync, existsSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
-
-// ── 隔离段:务必早于任何项目模块 import ──
-const __isoDir = mkdtempSync(join(tmpdir(), 'ccv-wsreg-'));
-process.env.CCV_LOG_DIR = __isoDir;
-process.env.CLAUDE_CONFIG_DIR = __isoDir;
-
-// 隔离段之后才动态 import(此时 LOG_DIR 已固化到 __isoDir)
-const { LOG_DIR } = await import('../findcc.js');
-const { getWorkspaces, loadWorkspaces, registerWorkspace, removeWorkspace } = await import('../server/workspace-registry.js');
+import { LOG_DIR } from '../findcc.js';
+import { getWorkspaces, loadWorkspaces, registerWorkspace, removeWorkspace } from '../workspace-registry.js';
 
 const WORKSPACES_FILE = join(LOG_DIR, 'workspaces.json');
 
 function spawnRegister(path) {
-  const moduleUrl = new URL('../server/workspace-registry.js', import.meta.url).href;
+  const moduleUrl = new URL('../workspace-registry.js', import.meta.url).href;
   const script = `
     import { registerWorkspace } from ${JSON.stringify(moduleUrl)};
-    await registerWorkspace(process.argv[1]);
+    registerWorkspace(process.argv[1]);
   `;
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--input-type=module', '-e', script, path], {
@@ -53,10 +40,10 @@ describe('workspace-registry', () => {
     assert.deepStrictEqual(loadWorkspaces(), []);
   });
 
-  it('registers a workspace and sanitizes projectName', async () => {
+  it('registers a workspace and sanitizes projectName', () => {
     const wsDir = join(tmpdir(), `ccv-ws-${Date.now()}-my project!`);
     mkdirSync(wsDir, { recursive: true });
-    const entry = await registerWorkspace(wsDir);
+    const entry = registerWorkspace(wsDir);
     assert.equal(entry.path, wsDir);
     assert.equal(entry.projectName, wsDir.split('/').pop().replace(/[^a-zA-Z0-9_\-\.]/g, '_'));
     const list = loadWorkspaces();
@@ -67,32 +54,32 @@ describe('workspace-registry', () => {
   it('does not duplicate when registering same path twice', async () => {
     const wsDir = join(tmpdir(), `ccv-ws-${Date.now()}-dup`);
     mkdirSync(wsDir, { recursive: true });
-    const first = await registerWorkspace(wsDir);
+    const first = registerWorkspace(wsDir);
     await new Promise(r => setTimeout(r, 10));
-    const second = await registerWorkspace(wsDir);
+    const second = registerWorkspace(wsDir);
     assert.equal(first.id, second.id);
     const list = loadWorkspaces();
     assert.equal(list.length, 1);
   });
 
-  it('removes workspace by id', async () => {
+  it('removes workspace by id', () => {
     const wsDir = join(tmpdir(), `ccv-ws-${Date.now()}-rm`);
     mkdirSync(wsDir, { recursive: true });
-    const entry = await registerWorkspace(wsDir);
-    assert.equal(await removeWorkspace(entry.id), true);
+    const entry = registerWorkspace(wsDir);
+    assert.equal(removeWorkspace(entry.id), true);
     assert.deepStrictEqual(loadWorkspaces(), []);
   });
 
-  it('enriches logCount and totalSize in getWorkspaces', async () => {
+  it('enriches logCount and totalSize in getWorkspaces', () => {
     const wsDir = join(tmpdir(), `ccv-ws-${Date.now()}-logs`);
     mkdirSync(wsDir, { recursive: true });
-    const entry = await registerWorkspace(wsDir);
+    const entry = registerWorkspace(wsDir);
     const projectDir = join(LOG_DIR, entry.projectName);
     mkdirSync(projectDir, { recursive: true });
     writeFileSync(join(projectDir, `${entry.projectName}_a.jsonl`), '{"a":1}\n');
     writeFileSync(join(projectDir, `${entry.projectName}_b.jsonl`), '{"b":2}\n');
     writeFileSync(join(projectDir, 'readme.txt'), 'x');
-    const list = await getWorkspaces();
+    const list = getWorkspaces();
     assert.equal(list.length, 1);
     assert.equal(list[0].logCount, 2);
     assert.ok(list[0].totalSize > 0);
@@ -112,7 +99,7 @@ describe('workspace-registry', () => {
     assert.ok(paths.includes(wsB));
   });
 
-  it('recovers from stale lock', async () => {
+  it('recovers from stale lock', () => {
     // Manually create a lock file with old mtime
     const LOCK_FILE = join(LOG_DIR, 'workspaces.lock');
     const oldTime = new Date(Date.now() - 10000);
@@ -124,7 +111,7 @@ describe('workspace-registry', () => {
     mkdirSync(wsDir, { recursive: true });
 
     // This will throw if lock is not cleared
-    const entry = await registerWorkspace(wsDir);
+    const entry = registerWorkspace(wsDir);
     assert.ok(entry);
     assert.ok(!existsSync(LOCK_FILE)); // Lock should be gone after operation
   });

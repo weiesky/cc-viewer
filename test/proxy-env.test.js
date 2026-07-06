@@ -1,7 +1,6 @@
-import { describe, it, afterEach } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { EnvHttpProxyAgent, getGlobalDispatcher, setGlobalDispatcher } from 'undici';
-import { resolveProxyConfig, setupProxyEnv, getProxyDispatcher } from '../server/lib/proxy-env.js';
+import { resolveProxyConfig } from '../lib/proxy-env.js';
 
 describe('resolveProxyConfig', () => {
   it('无代理变量时返回全 undefined', () => {
@@ -66,31 +65,5 @@ describe('resolveProxyConfig', () => {
       NO_PROXY: '*.example.com',
     });
     assert.equal(result2.noProxy, '*.example.com');
-  });
-});
-
-describe('getProxyDispatcher / setupProxyEnv', () => {
-  // setupProxyEnv 读 process.env 并调 setGlobalDispatcher，副作用必须隔离：
-  // 用例结束后还原 http_proxy 与全局 dispatcher，避免污染同进程其它用例。
-  const savedHttpProxy = process.env.http_proxy;
-  const savedGlobal = getGlobalDispatcher();
-
-  afterEach(() => {
-    if (savedHttpProxy === undefined) delete process.env.http_proxy;
-    else process.env.http_proxy = savedHttpProxy;
-    setGlobalDispatcher(savedGlobal);
-  });
-
-  it('配置 http_proxy 后 getProxyDispatcher 返回 EnvHttpProxyAgent 实例', () => {
-    process.env.http_proxy = 'http://127.0.0.1:39990';
-    setupProxyEnv();
-    // 这是修复的核心：把代理 dispatcher 暴露出去，供 proxy 转发处显式传给内置 fetch。
-    assert.ok(getProxyDispatcher() instanceof EnvHttpProxyAgent);
-  });
-
-  it('多次调用返回同一引用（稳定 getter，供 fetch dispatcher 复用）', () => {
-    process.env.http_proxy = 'http://127.0.0.1:39990';
-    setupProxyEnv();
-    assert.equal(getProxyDispatcher(), getProxyDispatcher());
   });
 });

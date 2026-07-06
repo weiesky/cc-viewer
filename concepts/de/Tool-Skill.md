@@ -1,47 +1,56 @@
 # Skill
 
-Ruft einen benannten Skill innerhalb der aktuellen Unterhaltung auf. Skills sind vorgefertigte Fähigkeitsbündel – Fachwissen, Workflows und mitunter Tool-Zugriff –, die der Harness dem Assistenten über System-Erinnerungen freigibt.
+## Definition
 
-## Wann verwenden
-
-- Der Benutzer tippt einen Slash-Befehl wie `/review` oder `/init` – Slash-Befehle sind Skills und müssen über dieses Tool ausgeführt werden.
-- Der Benutzer beschreibt eine Aufgabe, die den angekündigten Auslösebedingungen eines Skills entspricht (zum Beispiel passt die Bitte, Transkripte nach wiederholten Berechtigungsaufforderungen zu scannen, zu `fewer-permission-prompts`).
-- Der angegebene Zweck eines Skills passt direkt zur aktuellen Datei, Anfrage oder zum Unterhaltungskontext.
-- Spezialisierte, wiederholbare Workflows sind als Skills verfügbar und das kanonische Verfahren ist einem improvisierten Ansatz vorzuziehen.
-- Der Benutzer fragt "welche Skills sind verfügbar" – die angekündigten Namen auflisten und erst aufrufen, wenn er bestätigt.
+Führt einen Skill in der Hauptkonversation aus. Skills sind spezialisierte Fähigkeiten, die der Benutzer über Slash Commands (z.B. `/commit`, `/review-pr`) aufrufen kann.
 
 ## Parameter
 
-- `skill` (string, erforderlich): Der exakte Name eines Skills, der in der aktuellen System-Erinnerung zu verfügbaren Skills aufgeführt ist. Für Plugin-namensräumliche Skills die voll qualifizierte `plugin:skill`-Form verwenden (zum Beispiel `skill-creator:skill-creator`). Keinen führenden Slash einschließen.
-- `args` (string, optional): Freiformargumente, die an den Skill übergeben werden. Format und Semantik werden von der Dokumentation des jeweiligen Skills definiert.
+| Parameter | Typ | Erforderlich | Beschreibung |
+|-----------|-----|--------------|--------------|
+| `skill` | string | Ja | Skill-Name (z.B. "commit", "review-pr", "pdf") |
+| `args` | string | Nein | Skill-Argumente |
 
-## Beispiele
+## Anwendungsfälle
 
-### Beispiel 1: Einen Review-Skill auf dem aktuellen Branch ausführen
+**Geeignet für:**
+- Der Benutzer hat einen Slash Command im Format `/<skill-name>` eingegeben
+- Die Anfrage des Benutzers entspricht der Funktionalität eines registrierten Skills
 
-```
-Skill(skill="review")
-```
-
-Der `review`-Skill bündelt die Schritte für die Überprüfung eines Pull Requests gegen den aktuellen Base-Branch. Der Aufruf lädt die vom Harness definierte Review-Prozedur in den Turn.
-
-### Beispiel 2: Einen Plugin-namensräumlichen Skill mit Argumenten aufrufen
-
-```
-Skill(
-  skill="skill-creator:skill-creator",
-  args="create a skill that summarizes git log for a given date range"
-)
-```
-
-Leitet die Anfrage über den Einstiegspunkt des `skill-creator`-Plugins, sodass der Autoren-Workflow anläuft.
+**Nicht geeignet für:**
+- Integrierte CLI-Befehle (z.B. `/help`, `/clear`)
+- Bereits laufende Skills
+- Skill-Namen, die nicht in der Liste verfügbarer Skills stehen
 
 ## Hinweise
 
-- Rufen Sie nur Skills auf, deren Namen wörtlich in der System-Erinnerung zu verfügbaren Skills erscheinen, oder Skills, die der Benutzer direkt als `/name` in seiner Nachricht getippt hat. Erraten oder erfinden Sie niemals Skill-Namen aus Erinnerung oder Trainingsdaten – wenn der Skill nicht angekündigt ist, rufen Sie dieses Tool nicht auf.
-- Wenn die Anfrage eines Benutzers zu einem angekündigten Skill passt, ist der Aufruf von `Skill` eine blockierende Voraussetzung: Rufen Sie ihn auf, bevor Sie irgendeine andere Antwort zur Aufgabe generieren. Beschreiben Sie nicht, was der Skill tun würde – führen Sie ihn aus.
-- Erwähnen Sie niemals einen Skill namentlich, ohne ihn tatsächlich aufzurufen. Einen Skill anzukündigen, ohne das Tool aufzurufen, ist irreführend.
-- Verwenden Sie `Skill` nicht für eingebaute CLI-Befehle wie `/help`, `/clear`, `/model` oder `/exit`. Diese werden direkt vom Harness behandelt.
-- Rufen Sie einen Skill nicht erneut auf, der bereits im aktuellen Turn läuft. Wenn Sie ein `<command-name>`-Tag im aktuellen Turn sehen, wurde der Skill bereits geladen – folgen Sie seinen Anweisungen direkt, statt das Tool erneut aufzurufen.
-- Wenn mehrere Skills in Frage kommen, wählen Sie den spezifischsten. Für Konfigurationsänderungen wie das Hinzufügen von Berechtigungen oder Hooks bevorzugen Sie `update-config` gegenüber einem generischen Einstellungsansatz.
-- Die Skill-Ausführung kann für den Rest des Turns neue System-Erinnerungen, Tools oder Einschränkungen einführen. Lesen Sie den Unterhaltungszustand nach Abschluss eines Skills erneut, bevor Sie fortfahren.
+- Nach dem Aufruf wird der Skill zu einem vollständigen Prompt expandiert
+- Unterstützt vollqualifizierte Namen (z.B. `ms-office-suite:pdf`)
+- Die Liste verfügbarer Skills wird in system-reminder-Nachrichten bereitgestellt
+- Wenn ein `<command-name>`-Tag sichtbar ist, bedeutet dies, dass der Skill bereits geladen ist – direkt ausführen statt dieses Tool erneut aufzurufen
+- Einen Skill nicht erwähnen, ohne das Tool tatsächlich aufzurufen
+
+## Originaltext
+
+<textarea readonly>Execute a skill within the main conversation
+
+When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.
+
+When users reference a "slash command" or "/<something>" (e.g., "/commit", "/review-pr"), they are referring to a skill. Use this tool to invoke it.
+
+How to invoke:
+- Use this tool with the skill name and optional arguments
+- Examples:
+  - `skill: "pdf"` - invoke the pdf skill
+  - `skill: "commit", args: "-m 'Fix bug'"` - invoke with arguments
+  - `skill: "review-pr", args: "123"` - invoke with arguments
+  - `skill: "ms-office-suite:pdf"` - invoke using fully qualified name
+
+Important:
+- Available skills are listed in system-reminder messages in the conversation
+- When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task
+- NEVER mention a skill without actually calling this tool
+- Do not invoke a skill that is already running
+- Do not use this tool for built-in CLI commands (like /help, /clear, etc.)
+- If you see a <command-name> tag in the current conversation turn, the skill has ALREADY been loaded - follow the instructions directly instead of calling this tool again
+</textarea>

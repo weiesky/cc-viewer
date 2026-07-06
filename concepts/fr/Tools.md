@@ -8,7 +8,7 @@ Voici l'index classifié de tous les outils.
 
 | Outil | Utilité |
 |-------|---------|
-| [Agent](Tool-Agent.md) | Lancer un sous-agent (SubAgent) pour gérer des tâches complexes multi-étapes |
+| [Task](Tool-Task.md) | Lancer un sous-agent (SubAgent) pour gérer des tâches complexes multi-étapes |
 | [TaskOutput](Tool-TaskOutput.md) | Obtenir la sortie des tâches en arrière-plan |
 | [TaskStop](Tool-TaskStop.md) | Arrêter une tâche en arrière-plan en cours d'exécution |
 | [TaskCreate](Tool-TaskCreate.md) | Créer une entrée dans la liste de tâches structurée |

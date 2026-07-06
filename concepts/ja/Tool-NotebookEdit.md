@@ -1,39 +1,33 @@
 # NotebookEdit
 
-Jupyter ノートブック (`.ipynb`) 内の単一セルを変更します。ノートブック構造の残りを保持したまま、セルのソースの置換、新しいセルの挿入、既存のセルの削除をサポートします。
+## 定義
 
-## 使用タイミング
-
-- ファイル全体を書き直さずに分析ノートブックのコードセルを修正または更新
-- マークダウンセルを入れ替えてナレーティブを改善したりドキュメントを追加
-- 既存のノートブックの既知の位置に新しいコードセルやマークダウンセルを挿入
-- 下流のセルが依存しないよう、古いまたは壊れたセルを削除
-- セルを 1 つずつ反復処理して再現可能なノートブックを準備
+Jupyter notebook（.ipynb ファイル）内の特定のセルを置換、挿入、または削除します。
 
 ## パラメータ
 
-- `notebook_path` (string, required): `.ipynb` ファイルの絶対パス。相対パスは拒否されます。
-- `new_source` (string, required): 新しいセルのソース。`replace` と `insert` ではセル本体になります。`delete` では無視されますが、スキーマによって依然として必須です。
-- `cell_id` (string, optional): 対象セルの ID。`replace` と `delete` モードでは、ツールはこのセルに作用します。`insert` モードでは、新しいセルはこの ID のセルの直後に挿入されます。ノートブックの先頭に挿入するには省略します。
-- `cell_type` (enum, optional): `code` または `markdown`。`edit_mode` が `insert` のときに必要です。`replace` で省略された場合、既存のセルのタイプが保持されます。
-- `edit_mode` (enum, optional): `replace` (デフォルト)、`insert`、または `delete`。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `notebook_path` | string | はい | notebook ファイルの絶対パス |
+| `new_source` | string | はい | セルの新しい内容 |
+| `cell_id` | string | いいえ | 編集するセルの ID。挿入モードでは新しいセルがこの ID の後に挿入される |
+| `cell_type` | enum | いいえ | セルタイプ：`code` または `markdown`。挿入モードでは必須 |
+| `edit_mode` | enum | いいえ | 編集モード：`replace`（デフォルト）、`insert`、`delete` |
 
-## 例
+## 使用シナリオ
 
-### 例 1: バグのあるコードセルを置換
-`notebook_path` を絶対パスに、`cell_id` を対象セルの ID に、`new_source` を修正された Python コードに設定して `NotebookEdit` を呼び出します。`edit_mode` はデフォルトの `replace` のままにします。
-
-### 例 2: マークダウン説明を挿入
-既存の `setup` セルの直後にマークダウンセルを追加するには、`edit_mode: "insert"`、`cell_type: "markdown"`、`cell_id` を setup セルの ID に設定し、`new_source` にナレーティブを入れます。
-
-### 例 3: 古いセルを削除
-`edit_mode: "delete"` を設定し、削除するセルの `cell_id` を指定します。`new_source` には任意の文字列を提供してください。適用されません。
+**適している場合：**
+- Jupyter notebook 内のコードまたは markdown セルを変更
+- notebook に新しいセルを追加
+- notebook 内のセルを削除
 
 ## 注意事項
 
-- 常に絶対パスを渡してください。`NotebookEdit` は作業ディレクトリに対する相対パスを解決しません。
-- ツールは対象セルのみを書き換えます。無関係なセルの実行カウント、出力、メタデータは変更されません。
-- `cell_id` なしで挿入すると、新しいセルはノートブックの最初に配置されます。
-- `cell_type` は挿入時に必須です。置換時は、コードセルをマークダウンに変換するなど明示的に変更したい場合を除き、省略してください。
-- セルを検査してその ID を取得するには、まずノートブックに `Read` ツールを使用してください。セルがコンテンツと出力とともに返されます。
-- 通常のソースファイルには通常の `Edit` を使用してください。`NotebookEdit` は `.ipynb` JSON に特化しており、そのセル構造を理解します。
+- `cell_number` は 0 インデックス
+- `insert` モードは指定位置に新しいセルを挿入
+- `delete` モードは指定位置のセルを削除
+- パスは絶対パスでなければならない
+
+## 原文
+
+<textarea readonly>Completely replaces the contents of a specific cell in a Jupyter notebook (.ipynb file) with new source. Jupyter notebooks are interactive documents that combine code, text, and visualizations, commonly used for data analysis and scientific computing. The notebook_path parameter must be an absolute path, not a relative path. The cell_number is 0-indexed. Use edit_mode=insert to add a new cell at the index specified by cell_number. Use edit_mode=delete to delete the cell at the index specified by cell_number.</textarea>

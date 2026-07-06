@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractApiErrorMessage, formatProxyRequestError } from '../server/lib/proxy-errors.js';
+import { extractApiErrorMessage, formatProxyRequestError } from '../lib/proxy-errors.js';
 
 describe('extractApiErrorMessage', () => {
   it('提取 error.message', () => {

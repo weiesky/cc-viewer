@@ -1,47 +1,56 @@
 # Skill
 
-在當前對話中呼叫具名的 skill。Skill 是預先封裝的能力組合——領域知識、工作流程，以及有時也包含工具存取——由 harness 透過系統提示（system reminder）揭露給助理。
+## 定義
 
-## 使用時機
-
-- 使用者輸入 slash command，例如 `/review` 或 `/init`——slash command 是 skill，必須透過此工具執行。
-- 使用者描述的任務符合某個已公告 skill 的觸發條件（例如要求掃描逐字稿以找出重複出現的權限提示，就符合 `fewer-permission-prompts`）。
-- 某個 skill 的目的說明與目前的檔案、請求或對話背景直接吻合。
-- 有專門且可重複的工作流程以 skill 形式提供，且這份正式程序比臨時做法更好。
-- 使用者問「有哪些 skill 可用」——列出公告的名稱，並在他們確認時才呼叫。
+在主對話中執行一個技能（skill）。技能是使用者可透過 slash command（如 `/commit`、`/review-pr`）呼叫的專用能力。
 
 ## 參數
 
-- `skill`（string，必填）：目前 available-skills 系統提示中所列的確切 skill 名稱。若為外掛命名空間下的 skill，請使用完整 `plugin:skill` 形式（例如 `skill-creator:skill-creator`）。不要帶前置斜線。
-- `args`（string，選填）：傳給 skill 的自由形式參數。格式與語意由每個 skill 自己的說明定義。
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| `skill` | string | 是 | 技能名稱（如 "commit"、"review-pr"、"pdf"） |
+| `args` | string | 否 | 技能參數 |
 
-## 範例
+## 使用場景
 
-### 範例 1：對目前分支執行 review skill
+**適合使用：**
+- 使用者輸入了 `/<skill-name>` 格式的 slash command
+- 使用者的請求匹配某個已註冊技能的功能
 
-```
-Skill(skill="review")
-```
-
-`review` skill 封裝了對當前基底分支進行 pull request 審閱的步驟。呼叫它會把 harness 定義的審閱流程載入本輪。
-
-### 範例 2：以參數呼叫外掛命名空間下的 skill
-
-```
-Skill(
-  skill="skill-creator:skill-creator",
-  args="create a skill that summarizes git log for a given date range"
-)
-```
-
-將請求導向 `skill-creator` 外掛的進入點，啟動撰寫 skill 的工作流程。
+**不適合使用：**
+- 內建 CLI 命令（如 `/help`、`/clear`）
+- 已經在執行中的技能
+- 未在可用技能列表中的技能名稱
 
 ## 注意事項
 
-- 只能呼叫名稱完全列在 available-skills 系統提示中的 skill，或使用者在訊息中直接以 `/name` 輸入的 skill。絕對不要從記憶或訓練資料中猜測或臆造 skill 名稱——若該 skill 未被公告，就不要呼叫此工具。
-- 當使用者的請求符合已公告的 skill，呼叫 `Skill` 是阻斷性前置動作：在就任務產生任何其他回應之前先呼叫它。不要描述 skill 會做什麼——直接執行它。
-- 不要在未實際呼叫 skill 的情況下提起 skill 的名稱。宣告 skill 卻不呼叫工具會誤導使用者。
-- 不要使用 `Skill` 來執行內建 CLI 指令，例如 `/help`、`/clear`、`/model` 或 `/exit`。這些由 harness 直接處理。
-- 不要重新呼叫本輪已在執行中的 skill。若你在目前這輪看到 `<command-name>` 標籤，代表該 skill 已載入——請就地依其指示進行，而不是再次呼叫工具。
-- 若多個 skill 都適用，請挑最具體的那一個。對於新增權限或 hook 等設定變更，優先選擇 `update-config` 而非一般的設定路徑。
-- Skill 執行可能為本輪餘下時間引入新的系統提示、工具或限制。skill 完成後，請重新閱讀對話狀態再繼續。
+- 技能被呼叫後會展開為完整的 prompt
+- 支援完全限定名稱（如 `ms-office-suite:pdf`）
+- 可用技能列表在 system-reminder 訊息中提供
+- 看到 `<command-name>` 標籤時說明技能已載入，應直接執行而非再次呼叫此工具
+- 不要在未實際呼叫工具的情況下提及某個技能
+
+## 原文
+
+<textarea readonly>Execute a skill within the main conversation
+
+When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.
+
+When users reference a "slash command" or "/<something>" (e.g., "/commit", "/review-pr"), they are referring to a skill. Use this tool to invoke it.
+
+How to invoke:
+- Use this tool with the skill name and optional arguments
+- Examples:
+  - `skill: "pdf"` - invoke the pdf skill
+  - `skill: "commit", args: "-m 'Fix bug'"` - invoke with arguments
+  - `skill: "review-pr", args: "123"` - invoke with arguments
+  - `skill: "ms-office-suite:pdf"` - invoke using fully qualified name
+
+Important:
+- Available skills are listed in system-reminder messages in the conversation
+- When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task
+- NEVER mention a skill without actually calling this tool
+- Do not invoke a skill that is already running
+- Do not use this tool for built-in CLI commands (like /help, /clear, etc.)
+- If you see a <command-name> tag in the current conversation turn, the skill has ALREADY been loaded - follow the instructions directly instead of calling this tool again
+</textarea>

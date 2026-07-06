@@ -1,56 +1,78 @@
 # TaskCreate
 
-สร้าง task ใหม่ใน task list ของทีมปัจจุบัน (หรือ task list ของ session เมื่อไม่มีทีม active) ใช้เพื่อจับรายการงานที่ควรได้รับการติดตาม มอบหมาย หรือกลับมาดูภายหลัง
+## คำจำกัดความ
 
-## เมื่อใดควรใช้
-
-- ผู้ใช้อธิบายงานหลายขั้นตอนที่ได้ประโยชน์จากการติดตามที่ชัดเจน
-- คุณกำลังแบ่งคำขอขนาดใหญ่เป็นหน่วยย่อยที่สามารถเสร็จสิ้นแยกกันได้
-- มีการค้นพบ follow-up ระหว่างงานและไม่ควรถูกลืม
-- คุณต้องการบันทึกเจตนาที่คงทนก่อนส่งงานให้ teammate หรือ subagent
-- คุณกำลังทำงานใน plan mode และต้องการให้แต่ละขั้นตอนของแผนแสดงเป็น task ที่เป็นรูปธรรม
-
-ข้าม `TaskCreate` สำหรับการกระทำ one-shot ธรรมดา การสนทนาล้วนๆ หรือสิ่งใดก็ตามที่ทำเสร็จได้ในสองหรือสามการเรียก tool โดยตรง
+สร้างรายการในรายการงานแบบมีโครงสร้าง ใช้สำหรับติดตามความคืบหน้า จัดระเบียบงานที่ซับซ้อน และแสดงความคืบหน้าของงานให้ผู้ใช้เห็น
 
 ## พารามิเตอร์
 
-- `subject` (string, required): หัวข้อสั้นในรูปคำสั่ง เช่น `Fix login redirect on Safari` รักษาความยาวไม่เกินประมาณแปดสิบอักขระ
-- `description` (string, required): context ที่ละเอียด — ปัญหา ข้อจำกัด acceptance criteria และไฟล์หรือลิงก์ที่ผู้อ่านในอนาคตจะต้องการ เขียนราวกับว่า teammate จะรับงานเย็นๆ
-- `activeForm` (string, optional): ข้อความ spinner ในรูปปัจจุบันกาลต่อเนื่องที่แสดงขณะที่ task เป็น `in_progress` เช่น `Fixing login redirect on Safari` สะท้อน `subject` แต่ในรูป -ing
-- `metadata` (object, optional): ข้อมูลโครงสร้างแบบกำหนดเองที่แนบกับ task ใช้ทั่วไป: label, hint ลำดับความสำคัญ, external ticket ID, หรือ configuration เฉพาะ agent
+| พารามิเตอร์ | ประเภท | จำเป็น | คำอธิบาย |
+|------|------|------|------|
+| `subject` | string | ใช่ | หัวข้องานสั้น ใช้รูปแบบคำสั่ง (เช่น "Fix authentication bug") |
+| `description` | string | ใช่ | คำอธิบายโดยละเอียด รวมถึงบริบทและเกณฑ์การยอมรับ |
+| `activeForm` | string | ไม่ | ข้อความรูปแบบกำลังดำเนินการที่แสดงเมื่อกำลังทำงาน (เช่น "Fixing authentication bug") |
+| `metadata` | object | ไม่ | ข้อมูลเมตาที่แนบกับงาน |
 
-Task ที่สร้างใหม่จะเริ่มด้วยสถานะ `pending` และไม่มี owner Dependency (`blocks`, `blockedBy`) ไม่ได้ตั้งค่าในตอนสร้าง — ใช้ภายหลังด้วย `TaskUpdate`
+## สถานการณ์การใช้งาน
 
-## ตัวอย่าง
+**เหมาะสำหรับ:**
+- งานหลายขั้นตอนที่ซับซ้อน (มากกว่า 3 ขั้นตอน)
+- ผู้ใช้ให้รายการสิ่งที่ต้องทำหลายรายการ
+- ติดตามงานในโหมดวางแผน
+- ผู้ใช้ร้องขออย่างชัดเจนให้ใช้รายการ todo
 
-### ตัวอย่างที่ 1
+**ไม่เหมาะสำหรับ:**
+- งานเดียวที่ง่าย
+- การดำเนินการง่ายๆ ไม่เกิน 3 ขั้นตอน
+- การสนทนาหรือการสอบถามข้อมูลล้วนๆ
 
-จับรายงานบั๊กที่ผู้ใช้เพิ่งยื่น
+## ข้อควรระวัง
 
-```
-TaskCreate(
-  subject: "Repair broken PDF export on Windows",
-  description: "Users on Windows 11 report the export button produces a 0-byte file. Reproduce with sample doc in test/fixtures/export/, then fix the code path in src/export/pdf.ts. Acceptance: export writes a valid PDF and the existing export test suite passes.",
-  activeForm: "Repairing broken PDF export on Windows"
-)
-```
+- งานที่สร้างใหม่ทั้งหมดมีสถานะเริ่มต้นเป็น `pending`
+- `subject` ใช้รูปแบบคำสั่ง ("Run tests"), `activeForm` ใช้รูปแบบกำลังดำเนินการ ("Running tests")
+- หลังจากสร้างงาน สามารถตั้งค่าความสัมพันธ์การพึ่งพา (blocks/blockedBy) ผ่าน TaskUpdate
+- ก่อนสร้าง ควรเรียก TaskList เพื่อตรวจสอบว่ามีงานซ้ำหรือไม่
 
-### ตัวอย่างที่ 2
+## ข้อความต้นฉบับ
 
-แบ่ง epic เป็นหน่วยติดตามเมื่อเริ่ม session
+<textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+It also helps the user understand the progress of the task and overall progress of their requests.
 
-```
-TaskCreate(
-  subject: "Draft migration plan for auth service",
-  description: "Produce a written plan covering rollout stages, rollback strategy, and monitoring. Output: docs/auth-migration.md.",
-  activeForm: "Drafting migration plan for auth service",
-  metadata: { "priority": "P1", "linearId": "AUTH-214" }
-)
-```
+## When to Use This Tool
 
-## หมายเหตุ
+Use this tool proactively in these scenarios:
 
-- เขียน `subject` ในรูปคำสั่งและ `activeForm` ในรูปปัจจุบันกาลต่อเนื่อง เพื่อให้ UI อ่านเป็นธรรมชาติเมื่อ task เปลี่ยนเป็น `in_progress`
-- เรียก `TaskList` ก่อนสร้างเพื่อหลีกเลี่ยงการซ้ำ — list ของทีมแชร์กับ teammate และ subagent
-- อย่าใส่ secret หรือ credential ใน `description` หรือ `metadata`; บันทึก task จะเห็นได้โดยทุกคนที่เข้าถึงทีม
-- หลังสร้าง ให้ task ผ่าน lifecycle ด้วย `TaskUpdate` อย่าปล่อยงานให้ถูกละเลยเงียบๆ ใน `in_progress`
+- Complex multi-step tasks - When a task requires 3 or more distinct steps or actions
+- Non-trivial and complex tasks - Tasks that require careful planning or multiple operations
+- Plan mode - When using plan mode, create a task list to track the work
+- User explicitly requests todo list - When the user directly asks you to use the todo list
+- User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
+- After receiving new instructions - Immediately capture user requirements as tasks
+- When you start working on a task - Mark it as in_progress BEFORE beginning work
+- After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation
+
+## When NOT to Use This Tool
+
+Skip using this tool when:
+- There is only a single, straightforward task
+- The task is trivial and tracking it provides no organizational benefit
+- The task can be completed in less than 3 trivial steps
+- The task is purely conversational or informational
+
+NOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.
+
+## Task Fields
+
+- **subject**: A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")
+- **description**: Detailed description of what needs to be done, including context and acceptance criteria
+- **activeForm**: Present continuous form shown in spinner when task is in_progress (e.g., "Fixing authentication bug"). This is displayed to the user while you work on the task.
+
+**IMPORTANT**: Always provide activeForm when creating tasks. The subject should be imperative ("Run tests") while activeForm should be present continuous ("Running tests"). All tasks are created with status `pending`.
+
+## Tips
+
+- Create tasks with clear, specific subjects that describe the outcome
+- Include enough detail in the description for another agent to understand and complete the task
+- After creating tasks, use TaskUpdate to set up dependencies (blocks/blockedBy) if needed
+- Check TaskList first to avoid creating duplicate tasks
+</textarea>

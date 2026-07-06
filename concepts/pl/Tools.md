@@ -8,7 +8,7 @@ Poniżej znajduje się kategoryzowany indeks wszystkich narzędzi.
 
 | Narzędzie | Przeznaczenie |
 |------|------|
-| [Agent](Tool-Agent.md) | Uruchomienie sub-agenta (SubAgent) do obsługi złożonych wieloetapowych zadań |
+| [Task](Tool-Task.md) | Uruchomienie sub-agenta (SubAgent) do obsługi złożonych wieloetapowych zadań |
 | [TaskOutput](Tool-TaskOutput.md) | Pobranie wyniku zadania w tle |
 | [TaskStop](Tool-TaskStop.md) | Zatrzymanie działającego zadania w tle |
 | [TaskCreate](Tool-TaskCreate.md) | Utworzenie wpisu na strukturalnej liście zadań |

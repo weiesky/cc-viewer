@@ -1,42 +1,62 @@
 # ExitPlanMode
 
-Reicht den während des Planmodus entworfenen Implementierungsplan zur Genehmigung durch den Benutzer ein und führt die Sitzung – bei Genehmigung – aus dem Planmodus heraus, sodass Edits beginnen können.
+## Definition
 
-## Wann verwenden
-
-- Ein während `EnterPlanMode` geschriebener Plan ist fertig und bereit zur Überprüfung.
-- Die Aufgabe ist umsetzungsorientiert (Code- oder Konfigurationsänderungen), keine reine Recherche, sodass ein expliziter Plan angebracht ist.
-- Alle vorbereitende Lektüre und Analyse sind erledigt; vor der Benutzerentscheidung ist keine weitere Untersuchung nötig.
-- Der Assistent hat konkrete Dateipfade, Funktionen und Schritte aufgezählt – nicht nur Ziele.
-- Der Benutzer hat um den Plan gebeten, oder der Planmodus-Workflow ist kurz davor, an Edit-Tools zu übergeben.
+Verlässt den Planungsmodus und reicht den Plan zur Benutzerfreigabe ein. Der Planinhalt wird aus der zuvor geschriebenen Plandatei gelesen.
 
 ## Parameter
 
-- `allowedPrompts` (array, optional): Prompts, die der Benutzer im Freigabedialog eingeben darf, um den Plan automatisch zu genehmigen oder zu verändern. Jedes Element spezifiziert eine begrenzte Berechtigung (zum Beispiel einen Operationsnamen und das Tool, auf das sie zutrifft). Nicht setzen, um den Standard-Freigabeablauf zu verwenden.
+| Parameter | Typ | Erforderlich | Beschreibung |
+|-----------|-----|--------------|--------------|
+| `allowedPrompts` | array | Nein | Liste der für die Planumsetzung benötigten Berechtigungsbeschreibungen |
 
-## Beispiele
+Jedes Element im `allowedPrompts`-Array:
 
-### Beispiel 1: Standard-Einreichung
+| Feld | Typ | Erforderlich | Beschreibung |
+|------|-----|--------------|--------------|
+| `tool` | enum | Ja | Das zutreffende Tool, derzeit nur `Bash` unterstützt |
+| `prompt` | string | Ja | Semantische Beschreibung der Operation (z.B. "run tests", "install dependencies") |
 
-Nachdem der Assistent im Planmodus ein Authentifizierungs-Refactoring untersucht und die Plandatei auf die Festplatte geschrieben hat, ruft er `ExitPlanMode` ohne Argumente auf. Der Harness liest den Plan aus seinem kanonischen Ort, zeigt ihn dem Benutzer an und wartet auf Genehmigung oder Ablehnung.
+## Anwendungsfälle
 
-### Beispiel 2: Vorab genehmigte Schnellaktionen
+**Geeignet für:**
+- Der Plan im Planungsmodus ist fertig und bereit zur Benutzerfreigabe
+- Nur für Implementierungsaufgaben, die Code schreiben erfordern
 
-```
-ExitPlanMode(allowedPrompts=[
-  {"tool": "Bash", "prompt": "run tests"},
-  {"tool": "Bash", "prompt": "install dependencies"}
-])
-```
-
-Erlaubt dem Benutzer, für routinemäßige Folge-Befehle im Voraus die Erlaubnis zu erteilen, damit der Assistent bei der Implementierung nicht für jede Berechtigungsabfrage pausieren muss.
+**Nicht geeignet für:**
+- Reine Recherche-/Erkundungsaufgaben – kein Verlassen des Planungsmodus nötig
+- Den Benutzer fragen „Ist der Plan in Ordnung?" – genau das ist die Funktion dieses Tools, verwenden Sie nicht AskUserQuestion dafür
 
 ## Hinweise
 
-- `ExitPlanMode` ist nur für umsetzungsartige Arbeit sinnvoll. Handelt es sich bei der Anfrage des Benutzers um eine Recherche- oder Erklärungsaufgabe ohne Dateiänderungen, antworten Sie direkt – routen Sie nicht über den Planmodus, nur um ihn zu verlassen.
-- Der Plan muss bereits auf die Festplatte geschrieben sein, bevor dieses Tool aufgerufen wird. `ExitPlanMode` akzeptiert den Planinhalt nicht als Parameter; es liest vom Pfad, den der Harness erwartet.
-- Lehnt der Benutzer den Plan ab, kehren Sie in den Planmodus zurück. Überarbeiten Sie basierend auf dem Feedback und reichen Sie erneut ein; beginnen Sie nicht mit Datei-Edits, solange der Plan nicht genehmigt ist.
-- Die Genehmigung erteilt die Erlaubnis, den Planmodus zu verlassen und verändernde Tools (`Edit`, `Write`, `Bash` und so weiter) für den im Plan beschriebenen Umfang zu verwenden. Eine nachträgliche Ausweitung des Umfangs erfordert einen neuen Plan oder die ausdrückliche Zustimmung des Benutzers.
-- Verwenden Sie `AskUserQuestion` nicht, um vor dem Aufruf dieses Tools "sieht dieser Plan gut aus?" zu fragen – die Plan-Genehmigung anzufordern ist genau das, was `ExitPlanMode` tut, und der Benutzer kann den Plan erst nach der Einreichung sehen.
-- Halten Sie den Plan minimal und umsetzbar. Ein Reviewer sollte ihn in unter einer Minute überfliegen und genau verstehen können, was geändert wird.
-- Erkennen Sie während der Implementierung, dass der Plan falsch war, stoppen Sie und melden Sie dies dem Benutzer, statt stillschweigend abzuweichen. Das erneute Betreten des Planmodus ist ein gültiger nächster Schritt.
+- Dieses Tool akzeptiert keinen Planinhalt als Parameter – es liest aus der zuvor geschriebenen Plandatei
+- Der Benutzer sieht den Inhalt der Plandatei zur Genehmigung
+- Verwenden Sie nicht AskUserQuestion vor dem Aufruf dieses Tools, um zu fragen „Ist der Plan in Ordnung?" – das wäre redundant
+- Erwähnen Sie den „Plan" nicht in Fragen, da der Benutzer den Planinhalt vor ExitPlanMode nicht sehen kann
+
+## Originaltext
+
+<textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.
+
+## How This Tool Works
+- You should have already written your plan to the plan file specified in the plan mode system message
+- This tool does NOT take the plan content as a parameter - it will read the plan from the file you wrote
+- This tool simply signals that you're done planning and ready for the user to review and approve
+- The user will see the contents of your plan file when they review it
+
+## When to Use This Tool
+IMPORTANT: Only use this tool when the task requires planning the implementation steps of a task that requires writing code. For research tasks where you're gathering information, searching files, reading files or in general trying to understand the codebase - do NOT use this tool.
+
+## Before Using This Tool
+Ensure your plan is complete and unambiguous:
+- If you have unresolved questions about requirements or approach, use AskUserQuestion first (in earlier phases)
+- Once your plan is finalized, use THIS tool to request approval
+
+**Important:** Do NOT use AskUserQuestion to ask "Is this plan okay?" or "Should I proceed?" - that's exactly what THIS tool does. ExitPlanMode inherently requests user approval of your plan.
+
+## Examples
+
+1. Initial task: "Search for and understand the implementation of vim mode in the codebase" - Do not use the exit plan mode tool because you are not planning the implementation steps of a task.
+2. Initial task: "Help me implement yank mode for vim" - Use the exit plan mode tool after you have finished planning the implementation steps of the task.
+3. Initial task: "Add a new feature to handle user authentication" - If unsure about auth method (OAuth, JWT, etc.), use AskUserQuestion first, then use exit plan mode tool after clarifying the approach.
+</textarea>

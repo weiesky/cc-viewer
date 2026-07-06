@@ -1,60 +1,75 @@
 # AskUserQuestion
 
-チャット UI 内で 1 つ以上の構造化された選択式の質問をユーザーに提示し、選択を収集してアシスタントに返します — 自由記述のやり取りなしに意図を明確化するのに便利です。
+## 定義
 
-## 使用タイミング
-
-- リクエストに複数の妥当な解釈があり、進める前にユーザーに 1 つ選んでもらう必要がある場合。
-- 自由テキストの返信だとエラーになりやすい具体的な選択肢 (フレームワーク、ライブラリ、ファイルパス、戦略) から選ぶ必要がある場合。
-- プレビューペインを使用して選択肢を並べて比較したい場合。
-- やり取りを減らすため、複数の関連する決定を 1 つのプロンプトにまとめたい場合。
-- プランやツール呼び出しが、ユーザーがまだ指定していない設定に依存している場合。
+実行中にユーザーに質問し、確認の取得、仮説の検証、または判断の要求に使用します。
 
 ## パラメータ
 
-- `questions` (array, required): 1 つのプロンプトで一緒に表示される 1〜4 個の質問。各質問オブジェクトには以下が含まれます。
-  - `question` (string, required): 疑問符で終わる完全な質問テキスト。
-  - `header` (string, required): 質問の上にチップとして表示される短いラベル (最大 12 文字)。
-  - `options` (array, required): 2〜4 個の選択肢オブジェクト。各選択肢には `label` (1〜5 語)、`description`、オプションの `markdown` プレビューがあります。
-  - `multiSelect` (boolean, required): `true` の場合、ユーザーは複数の選択肢を選べます。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `questions` | array | はい | 質問リスト（1〜4個の質問） |
+| `answers` | object | いいえ | ユーザーから収集した回答 |
+| `annotations` | object | いいえ | 各質問の注釈（プレビュー選択の備考など） |
+| `metadata` | object | いいえ | トラッキングと分析用のメタデータ |
 
-## 例
+各 `question` オブジェクト：
 
-### 例 1: 単一フレームワークの選択
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `question` | string | はい | 完全な質問テキスト。疑問符で終わること |
+| `header` | string | はい | 短いラベル（最大12文字）、ラベルチップとして表示 |
+| `options` | array | はい | 2〜4個の選択肢 |
+| `multiSelect` | boolean | はい | 複数選択を許可するかどうか |
 
-```
-AskUserQuestion(questions=[{
-  "header": "Test runner",
-  "question": "Which test runner should I configure?",
-  "multiSelect": false,
-  "options": [
-    {"label": "Vitest (Recommended)", "description": "Fast, Vite-native, Jest-compatible API"},
-    {"label": "Jest",                  "description": "Mature, broadest plugin ecosystem"},
-    {"label": "Node --test",           "description": "Zero dependencies, built in"}
-  ]
-}])
-```
+各 `option` オブジェクト：
 
-### 例 2: 2 つのレイアウトを並べてプレビュー
+| フィールド | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `label` | string | はい | 選択肢の表示テキスト（1〜5語） |
+| `description` | string | はい | 選択肢の説明 |
+| `markdown` | string | いいえ | プレビューコンテンツ（ASCII レイアウト、コードスニペットなどの視覚的比較用） |
 
-```
-AskUserQuestion(questions=[{
-  "header": "Layout",
-  "question": "Which dashboard layout do you prefer?",
-  "multiSelect": false,
-  "options": [
-    {"label": "Sidebar",  "description": "Nav on the left", "markdown": "```\n+------+---------+\n| NAV  | CONTENT |\n+------+---------+\n```"},
-    {"label": "Top bar",  "description": "Nav across top",  "markdown": "```\n+-----------------+\n|       NAV       |\n+-----------------+\n|     CONTENT     |\n+-----------------+\n```"}
-  ]
-}])
-```
+## 使用シナリオ
+
+**適している場合：**
+- ユーザーの好みや要件を収集
+- 曖昧な指示を明確化
+- 実装中に判断を取得
+- ユーザーに方向性の選択を提供
+
+**適していない場合：**
+- 「方針でよろしいですか？」と聞く場合——ExitPlanMode を使用すべき
 
 ## 注意事項
 
-- UI は各質問に自動的に「Other」自由記述オプションを追加します。独自の「Other」、「None」、「Custom」エントリを追加しないでください — 組み込みのエスケープハッチと重複します。
-- 各呼び出しは 1〜4 個の質問、各質問は 2〜4 個の選択肢に制限してください。この範囲を超えるとハーネスによって拒否されます。
-- 特定の選択肢を推奨する場合は、それを先頭に置き、ラベルに「(Recommended)」を付けて UI が優先パスを強調表示するようにしてください。
-- `markdown` フィールドによるプレビューは単一選択の質問でのみサポートされます。ASCII レイアウト、コードスニペット、設定差分などの視覚的なアーティファクトに使用してください — ラベルと説明で十分な単純な好みの質問には使用しないでください。
-- 質問のいずれかの選択肢に `markdown` 値がある場合、UI は選択肢リストを左、プレビューを右に表示する並列レイアウトに切り替わります。
-- 「このプランはどうですか？」と尋ねるのに `AskUserQuestion` を使用しないでください — プラン承認のために存在する `ExitPlanMode` を呼び出してください。プランモード中は、質問テキストで「the plan」に言及することも避けてください。`ExitPlanMode` が実行されるまでプランはユーザーに見えません。
-- API キーやパスワードなどの機密情報や自由記述の入力を要求するためにこのツールを使用しないでください。代わりにチャットで質問してください。
+- ユーザーは常に "Other" を選択してカスタム入力を提供できる
+- 推奨選択肢は最初に配置し、label の末尾に "(Recommended)" を追加
+- `markdown` プレビューは単一選択の質問のみ対応
+- `markdown` がある選択肢は左右並列レイアウトに切り替わる
+- 計画モードでは、方針確定前の要件明確化に使用
+
+## 原文
+
+<textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:
+1. Gather user preferences or requirements
+2. Clarify ambiguous instructions
+3. Get decisions on implementation choices as you work
+4. Offer choices to the user about what direction to take.
+
+Usage notes:
+- Users will always be able to select "Other" to provide custom text input
+- Use multiSelect: true to allow multiple answers to be selected for a question
+- If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
+
+Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ExitPlanMode for plan approval. IMPORTANT: Do not reference "the plan" in your questions (e.g., "Do you have feedback about the plan?", "Does the plan look good?") because the user cannot see the plan in the UI until you call ExitPlanMode. If you need plan approval, use ExitPlanMode instead.
+
+Preview feature:
+Use the optional `markdown` field on options when presenting concrete artifacts that users need to visually compare:
+- ASCII mockups of UI layouts or components
+- Code snippets showing different implementations
+- Diagram variations
+- Configuration examples
+
+When any option has a markdown, the UI switches to a side-by-side layout with a vertical option list on the left and preview on the right. Do not use previews for simple preference questions where labels and descriptions suffice. Note: previews are only supported for single-select questions (not multiSelect).
+</textarea>

@@ -1,62 +1,56 @@
 # TaskList
 
-ส่งคืนทุก task ในทีมปัจจุบัน (หรือ session) ในรูป summary ใช้เพื่อสำรวจงานที่ค้างอยู่ ตัดสินใจว่าจะรับอะไรต่อไป และหลีกเลี่ยงการสร้างสิ่งซ้ำ
+## คำจำกัดความ
 
-## เมื่อใดควรใช้
-
-- เมื่อเริ่ม session เพื่อดูว่าอะไรถูกติดตามไว้แล้ว
-- ก่อนเรียก `TaskCreate` เพื่อยืนยันว่างานยังไม่ถูกจับ
-- เมื่อตัดสินใจว่าจะอ้างสิทธิ์ task อะไรต่อไปเป็น teammate หรือ subagent
-- เพื่อตรวจสอบความสัมพันธ์ dependency ข้ามทีมในพริบตา
-- เป็นระยะระหว่าง session ที่ยาว เพื่อ re-sync กับ teammate ที่อาจอ้าง เสร็จ หรือเพิ่ม task
-
-`TaskList` เป็น read-only และถูก; เรียกได้อย่างอิสระเมื่อต้องการ overview
+แสดงรายการงานทั้งหมดในรายการงาน เพื่อดูความคืบหน้าโดยรวมและงานที่พร้อมทำ
 
 ## พารามิเตอร์
 
-`TaskList` ไม่รับ parameter มันส่งคืนชุด task เต็มสำหรับ context ที่ active เสมอ
+ไม่มีพารามิเตอร์
 
-## รูปร่างการตอบกลับ
+## เนื้อหาที่ส่งคืน
 
-แต่ละ task ใน list เป็น summary ไม่ใช่บันทึกเต็ม คาดว่า:
+ข้อมูลสรุปของแต่ละงาน:
+- `id` — ตัวระบุงาน
+- `subject` — คำอธิบายสั้น
+- `status` — สถานะ: `pending`, `in_progress` หรือ `completed`
+- `owner` — ผู้รับผิดชอบ (ID ของ agent) ว่างหมายถึงยังไม่ได้มอบหมาย
+- `blockedBy` — รายการ ID ของงานที่ยังไม่เสร็จที่บล็อกงานนี้
 
-- `id` — ตัวระบุคงที่สำหรับใช้กับ `TaskGet` / `TaskUpdate`
-- `subject` — หัวข้อสั้นในรูปคำสั่ง
-- `status` — หนึ่งใน `pending`, `in_progress`, `completed`, `deleted`
-- `owner` — handle ของ agent หรือ teammate หรือว่างเมื่อไม่ถูกอ้างสิทธิ์
-- `blockedBy` — array ของ task ID ที่ต้องเสร็จก่อน
+## สถานการณ์การใช้งาน
 
-สำหรับ description เต็ม, acceptance criteria, หรือ metadata ของ task เฉพาะ ให้ follow up ด้วย `TaskGet`
+**เหมาะสำหรับ:**
+- ดูว่ามีงานใดพร้อมทำ (สถานะ pending ไม่มี owner ไม่ถูกบล็อก)
+- ตรวจสอบความคืบหน้าโดยรวมของโปรเจกต์
+- ค้นหางานที่ถูกบล็อก
+- ค้นหางานถัดไปหลังจากทำงานเสร็จ
 
-## ตัวอย่าง
+## ข้อควรระวัง
 
-### ตัวอย่างที่ 1
+- ควรดำเนินการงานตามลำดับ ID (ID น้อยสุดก่อน) เพราะงานก่อนหน้ามักให้บริบทสำหรับงานถัดไป
+- งานที่มี `blockedBy` ไม่สามารถรับมาทำได้จนกว่าการพึ่งพาจะถูกแก้ไข
+- ใช้ TaskGet เพื่อรับรายละเอียดที่สมบูรณ์ของงานเฉพาะ
 
-ตรวจสอบสถานะอย่างเร็ว
+## ข้อความต้นฉบับ
 
-```
-TaskList()
-```
+<textarea readonly>Use this tool to list all tasks in the task list.
 
-สแกน output หาสิ่งที่เป็น `in_progress` โดยไม่มี `owner` (งานค้าง) และสิ่งที่ `pending` โดยมี `blockedBy` ว่าง (พร้อมรับ)
+## When to Use This Tool
 
-### ตัวอย่างที่ 2
+- To see what tasks are available to work on (status: 'pending', no owner, not blocked)
+- To check overall progress on the project
+- To find tasks that are blocked and need dependencies resolved
+- After completing a task, to check for newly unblocked work or claim the next available task
+- **Prefer working on tasks in ID order** (lowest ID first) when multiple tasks are available, as earlier tasks often set up context for later ones
 
-Teammate เลือก task ถัดไป
+## Output
 
-```
-TaskList()
-# Filter ไปยัง: status == pending AND blockedBy ว่าง AND owner ว่าง
-# ในบรรดานั้น เลือก ID ที่ต่ำกว่า (task มักถูกหมายเลขตามลำดับ
-# การสร้าง ดังนั้น ID ต่ำกว่าเก่ากว่าและมักมีความสำคัญสูงกว่า)
-TaskGet(taskId: "<chosen id>")
-TaskUpdate(taskId: "<chosen id>", status: "in_progress", owner: "<your handle>")
-```
+Returns a summary of each task:
+- **id**: Task identifier (use with TaskGet, TaskUpdate)
+- **subject**: Brief description of the task
+- **status**: 'pending', 'in_progress', or 'completed'
+- **owner**: Agent ID if assigned, empty if available
+- **blockedBy**: List of open task IDs that must be resolved first (tasks with blockedBy cannot be claimed until dependencies resolve)
 
-## หมายเหตุ
-
-- Heuristic ของ teammate: เมื่อมีหลาย task ที่ `pending` ถูก unblock และไม่มี owner ให้เลือก ID ต่ำที่สุด สิ่งนี้รักษางานเป็น FIFO และหลีกเลี่ยง agent สองตัวคว้า task ที่โดดเด่นเดียวกัน
-- เคารพ `blockedBy`: อย่าเริ่ม task ที่ blocker ของมันยัง `pending` หรือ `in_progress` ทำงาน blocker ก่อนหรือประสานกับ owner ของมัน
-- `TaskList` เป็นกลไกการค้นพบเพียงอย่างเดียวสำหรับ task ไม่มีการค้นหา; หาก list ยาวให้สแกนตามโครงสร้าง (ตามสถานะ แล้วตาม owner)
-- Task ที่ลบแล้วอาจยังปรากฏใน list ด้วยสถานะ `deleted` เพื่อการติดตามกลับ ละเลยสำหรับการวางแผน
-- List สะท้อนสถานะสดของทีม ดังนั้น teammate อาจเพิ่มหรืออ้างสิทธิ์ task ระหว่างการเรียก List ใหม่ก่อนอ้างสิทธิ์หากเวลาผ่านไป
+Use TaskGet with a specific task ID to view full details including description and comments.
+</textarea>

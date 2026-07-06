@@ -1,47 +1,56 @@
 # TaskGet
 
-Busca o registro completo de uma única tarefa por ID, incluindo sua descrição, status atual, owner, metadata e arestas de dependência. Use quando o resumo retornado por `TaskList` não for suficiente para agir sobre a tarefa.
+## Definição
 
-## Quando usar
-
-- Você pegou uma tarefa de `TaskList` e precisa da descrição completa antes de começar a trabalhar.
-- Você está prestes a marcar uma tarefa como `completed` e quer reverificar os critérios de aceitação.
-- Você precisa inspecionar quais tarefas esta `blocks` ou é `blockedBy` para decidir o próximo passo.
-- Você está investigando histórico — quem é o owner, que metadata foi anexada, quando mudou de estado.
-- Um colega ou sessão anterior referenciou um ID de tarefa e você precisa do contexto.
-
-Prefira `TaskList` quando só precisa de uma varredura de alto nível; reserve `TaskGet` para o registro específico que você pretende ler com cuidado ou modificar.
+Obtém os detalhes completos de uma tarefa através do ID da tarefa.
 
 ## Parâmetros
 
-- `taskId` (string, obrigatório): O identificador da tarefa retornado por `TaskCreate` ou `TaskList`. IDs são estáveis durante toda a vida da tarefa.
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|------|------|------|------|
+| `taskId` | string | Sim | ID da tarefa a obter |
 
-## Exemplos
+## Conteúdo Retornado
 
-### Exemplo 1
+- `subject` — Título da tarefa
+- `description` — Requisitos detalhados e contexto
+- `status` — Status: `pending`, `in_progress` ou `completed`
+- `blocks` — Lista de tarefas bloqueadas por esta tarefa
+- `blockedBy` — Lista de tarefas pré-requisito que bloqueiam esta tarefa
 
-Consultar uma tarefa que você acabou de ver na lista.
+## Cenários de Uso
 
-```
-TaskGet(taskId: "t_01HXYZ...")
-```
-
-Campos típicos na resposta: `id`, `subject`, `description`, `activeForm`, `status`, `owner`, `blocks`, `blockedBy`, `metadata`, `createdAt`, `updatedAt`.
-
-### Exemplo 2
-
-Resolver dependências antes de começar.
-
-```
-TaskGet(taskId: "t_01HXYZ...")
-# Inspect blockedBy — if any referenced task is still pending
-# or in_progress, work on the blocker first.
-```
+**Adequado para:**
+- Obter a descrição completa e contexto da tarefa antes de iniciar o trabalho
+- Entender as dependências da tarefa
+- Obter requisitos completos após ser atribuído a uma tarefa
 
 ## Observações
 
-- `TaskGet` é somente leitura e seguro para chamar repetidamente; não altera status ou ownership.
-- Se `blockedBy` não estiver vazio e contém tarefas que não estão `completed`, não comece esta tarefa — resolva os bloqueadores primeiro (ou coordene com o owner deles).
-- O campo `description` pode ser longo. Leia-o completamente antes de agir; passar os olhos leva a critérios de aceitação perdidos.
-- Um `taskId` desconhecido ou excluído retorna um erro. Rode `TaskList` novamente para pegar um ID atual.
-- Se você está prestes a editar uma tarefa, chame `TaskGet` primeiro para evitar sobrescrever campos que um colega acabou de alterar.
+- Após obter a tarefa, deve-se verificar se a lista `blockedBy` está vazia antes de iniciar o trabalho
+- Use TaskList para ver o resumo de todas as tarefas
+
+## Texto original
+
+<textarea readonly>Use this tool to retrieve a task by its ID from the task list.
+
+## When to Use This Tool
+
+- When you need the full description and context before starting work on a task
+- To understand task dependencies (what it blocks, what blocks it)
+- After being assigned a task, to get complete requirements
+
+## Output
+
+Returns full task details:
+- **subject**: Task title
+- **description**: Detailed requirements and context
+- **status**: 'pending', 'in_progress', or 'completed'
+- **blocks**: Tasks waiting on this one to complete
+- **blockedBy**: Tasks that must complete before this one can start
+
+## Tips
+
+- After fetching a task, verify its blockedBy list is empty before beginning work.
+- Use TaskList to see all tasks in summary form.
+</textarea>

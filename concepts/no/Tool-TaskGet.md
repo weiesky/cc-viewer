@@ -1,47 +1,56 @@
 # TaskGet
 
-Henter hele posten for en enkelt oppgave med ID, inkludert beskrivelse, gjeldende status, eier, metadata og avhengighetskanter. Bruk det når sammendraget returnert av `TaskList` ikke er nok til å handle på oppgaven.
+## Definisjon
 
-## Når skal den brukes
-
-- Du plukket opp en oppgave fra `TaskList` og trenger den fulle beskrivelsen før du begynner arbeidet.
-- Du er i ferd med å markere en oppgave `completed` og vil dobbeltsjekke akseptkriteriene.
-- Du må inspisere hvilke oppgaver denne `blocks` eller er `blockedBy` for å avgjøre neste trekk.
-- Du undersøker historikk — hvem eier den, hvilken metadata ble knyttet, når endret den tilstand.
-- En lagkamerat eller tidligere sesjon refererte til en oppgave-ID og du trenger konteksten.
-
-Foretrekk `TaskList` når du bare trenger en oversikt på høyt nivå; reserver `TaskGet` for den spesifikke posten du har tenkt å lese nøye eller endre.
+Henter fullstendige detaljer for en oppgave via oppgave-ID.
 
 ## Parametere
 
-- `taskId` (string, påkrevd): Oppgaveidentifikatoren returnert av `TaskCreate` eller `TaskList`. ID-er er stabile gjennom oppgavens levetid.
+| Parameter | Type | Påkrevd | Beskrivelse |
+|-----------|------|---------|-------------|
+| `taskId` | string | Ja | ID-en til oppgaven som skal hentes |
 
-## Eksempler
+## Returnert innhold
 
-### Eksempel 1
+- `subject` — Oppgavetittel
+- `description` — Detaljerte krav og kontekst
+- `status` — Status: `pending`, `in_progress` eller `completed`
+- `blocks` — Liste over oppgaver blokkert av denne oppgaven
+- `blockedBy` — Liste over forutgående oppgaver som blokkerer denne oppgaven
 
-Slå opp en oppgave du nettopp så i listen.
+## Bruksscenarioer
 
-```
-TaskGet(taskId: "t_01HXYZ...")
-```
+**Egnet for bruk:**
+- Hente fullstendig beskrivelse og kontekst før arbeidet starter
+- Forstå oppgavens avhengighetsforhold
+- Hente fullstendige krav etter å ha blitt tildelt en oppgave
 
-Typiske svarfelter: `id`, `subject`, `description`, `activeForm`, `status`, `owner`, `blocks`, `blockedBy`, `metadata`, `createdAt`, `updatedAt`.
+## Merknader
 
-### Eksempel 2
+- Etter å ha hentet oppgaven bør du sjekke at `blockedBy`-listen er tom før du starter arbeidet
+- Bruk TaskList for å se sammendragsinformasjon for alle oppgaver
 
-Løs avhengigheter før du starter.
+## Originaltekst
 
-```
-TaskGet(taskId: "t_01HXYZ...")
-# Inspect blockedBy — if any referenced task is still pending
-# or in_progress, work on the blocker first.
-```
+<textarea readonly>Use this tool to retrieve a task by its ID from the task list.
 
-## Notater
+## When to Use This Tool
 
-- `TaskGet` er skrivebeskyttet og trygt å kalle gjentatte ganger; det endrer ikke status eller eierskap.
-- Hvis `blockedBy` er ikke-tom og inneholder oppgaver som ikke er `completed`, ikke start denne oppgaven — løs blokkerne først (eller koordiner med eieren deres).
-- `description`-feltet kan være langt. Les det fullt ut før du handler; å skumlese fører til missede akseptkriterier.
-- En ukjent eller slettet `taskId` returnerer en feil. Kjør `TaskList` på nytt for å plukke en gjeldende ID.
-- Hvis du er i ferd med å redigere en oppgave, kall `TaskGet` først for å unngå å overskrive felter en lagkamerat nettopp endret.
+- When you need the full description and context before starting work on a task
+- To understand task dependencies (what it blocks, what blocks it)
+- After being assigned a task, to get complete requirements
+
+## Output
+
+Returns full task details:
+- **subject**: Task title
+- **description**: Detailed requirements and context
+- **status**: 'pending', 'in_progress', or 'completed'
+- **blocks**: Tasks waiting on this one to complete
+- **blockedBy**: Tasks that must complete before this one can start
+
+## Tips
+
+- After fetching a task, verify its blockedBy list is empty before beginning work.
+- Use TaskList to see all tasks in summary form.
+</textarea>

@@ -1,35 +1,39 @@
 # Glob
 
-ファイル名を glob パターンに対してマッチさせ、最新の変更時刻が最初になるようにソートされたパスを返します。`find` にシェルアウトすることなく、任意のサイズのコードベースで素早くファイルを見つけるために最適化されています。
+## 定義
 
-## 使用タイミング
-
-- 特定の拡張子のすべてのファイルを列挙する (例えば `src` 以下のすべての `*.ts` ファイル)
-- 命名規則によって設定ファイルやフィクスチャファイルを発見する (`**/jest.config.*`、`**/*.test.tsx`)
-- ターゲットを絞った `Grep` を実行する前に検索対象を絞り込む
-- `Write` を呼ぶ前に、既知のパターンにファイルがすでに存在するかチェック
-- 変更時刻順に依存することで、最近触れたファイルを見つける
+高速なファイル名パターンマッチングツール。任意の規模のコードベースに対応。修正時間順にソートされたマッチするファイルパスを返します。
 
 ## パラメータ
 
-- `pattern` (string, required): マッチさせる glob 式。単一セグメントのワイルドカードには `*`、再帰的マッチには `**`、代替には `{a,b}` をサポートします。例 `src/**/*.{ts,tsx}`。
-- `path` (string, optional): 検索を実行するディレクトリ。提供する場合は有効なディレクトリパスである必要があります。現在の作業ディレクトリを検索するには、フィールドを完全に省略してください。`"undefined"` や `"null"` という文字列を渡さないでください。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `pattern` | string | はい | glob パターン（例：`**/*.js`、`src/**/*.ts`） |
+| `path` | string | いいえ | 検索ディレクトリ、デフォルトは現在の作業ディレクトリ。"undefined" や "null" を渡さないこと |
 
-## 例
+## 使用シナリオ
 
-### 例 1: すべての TypeScript ソースファイル
-`pattern: "src/**/*.ts"` で `Glob` を呼び出します。結果は mtime でソートされたリストなので、最近編集されたファイルが最初に表示され、ホットスポットに焦点を合わせるのに便利です。
+**適している場合：**
+- ファイル名パターンでファイルを検索
+- 特定タイプのすべてのファイルを検索（例：すべての `.tsx` ファイル）
+- 特定のクラス定義（例：`class Foo`）を探す際にまずファイルを特定
+- 単一メッセージ内で複数の Glob 呼び出しを並列実行可能
 
-### 例 2: クラス定義の候補を特定
-ファイル名が分からないファイルにクラスがあると疑われる場合、`pattern: "**/*UserService*"` で検索して候補を絞り込み、その後 `Read` または `Grep` で追跡します。
-
-### 例 3: より大きなタスクの前の並列発見
-単一のメッセージで複数の `Glob` 呼び出しを発行します (例えば `**/*.test.ts` 用と `**/fixtures/**` 用)。両方が並列で実行され、結果を相関できます。
+**適していない場合：**
+- ファイル内容の検索——Grep を使用すべき
+- 複数ラウンドの検索が必要なオープンエンドな探索——Task（Explore タイプ）を使用すべき
 
 ## 注意事項
 
-- 結果はファイルの変更時刻 (新しい順) でソートされ、アルファベット順ではありません。安定した順序が必要な場合は後段でソートしてください。
-- パターンはシェルではなくツールによって評価されます。コマンドラインのように引用符やエスケープを使う必要はありません。
-- 複数回の検索と推論が必要なオープンエンドな探索には、多くの `Glob` 呼び出しをチェーンするのではなく、Explore エージェントタイプで `Agent` に委譲してください。
-- ファイル名の発見には `Bash` での `find` や `ls` 呼び出しよりも `Glob` を優先してください。パーミッションを一貫して処理し、構造化された出力を返します。
-- ファイル名ではなくファイル内のコンテンツを探す場合は、代わりに `Grep` を使用してください。
+- 標準 glob 構文をサポート：`*` は単一階層、`**` は複数階層、`{}` は複数選択にマッチ
+- 結果は修正時間順にソート
+- Bash の `find` コマンドよりも推奨
+
+## 原文
+
+<textarea readonly>- Fast file pattern matching tool that works with any codebase size
+- Supports glob patterns like "**/*.js" or "src/**/*.ts"
+- Returns matching file paths sorted by modification time
+- Use this tool when you need to find files by name patterns
+- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead
+- You can call multiple tools in a single response. It is always better to speculatively perform multiple searches in parallel if they are potentially useful.</textarea>

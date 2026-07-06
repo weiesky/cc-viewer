@@ -1,47 +1,56 @@
 # TaskGet
 
-يجلب السجل الكامل لمهمة واحدة بالمعرف، بما في ذلك وصفها وحالتها الحالية ومالكها وبياناتها الوصفية وحواف تبعياتها. استخدمه عندما لا يكون الملخص الذي يُعيده `TaskList` كافياً للتصرف بناءً على المهمة.
+## التعريف
 
-## متى يُستخدم
-
-- عندما تلتقط مهمة من `TaskList` وتحتاج إلى الوصف الكامل قبل البدء في العمل.
-- عندما توشك على وسم مهمة بـ `completed` وتريد إعادة فحص معايير القبول.
-- عندما تحتاج إلى فحص ما تحجبه هذه المهمة (`blocks`) أو ما يحجبها (`blockedBy`) لتقرير الخطوة التالية.
-- عندما تُحقق في التاريخ — من يملكها، وما البيانات الوصفية المُرفقة، ومتى تغيرت حالتها.
-- عندما يشير زميل فريق أو جلسة سابقة إلى معرف مهمة وتحتاج إلى السياق.
-
-فضِّل `TaskList` عندما تحتاج فقط إلى مسح عالي المستوى؛ واحجز `TaskGet` للسجل المحدد الذي تعتزم قراءته بعناية أو تعديله.
+الحصول على التفاصيل الكاملة للمهمة عبر معرف المهمة.
 
 ## المعاملات
 
-- `taskId` (سلسلة، مطلوب): معرف المهمة المُعاد من `TaskCreate` أو `TaskList`. المعرفات ثابتة طوال عمر المهمة.
+| المعامل | النوع | مطلوب | الوصف |
+|---------|-------|-------|-------|
+| `taskId` | string | نعم | معرف المهمة المراد الحصول عليها |
 
-## أمثلة
+## المحتوى المُرجع
 
-### مثال 1
+- `subject` — عنوان المهمة
+- `description` — المتطلبات التفصيلية والسياق
+- `status` — الحالة: `pending`، `in_progress` أو `completed`
+- `blocks` — قائمة المهام المحظورة بواسطة هذه المهمة
+- `blockedBy` — قائمة المهام السابقة التي تحظر هذه المهمة
 
-ابحث عن مهمة رأيتها للتو في القائمة.
+## سيناريوهات الاستخدام
 
-```
-TaskGet(taskId: "t_01HXYZ...")
-```
-
-الحقول النموذجية في الاستجابة: `id`، `subject`، `description`، `activeForm`، `status`، `owner`، `blocks`، `blockedBy`، `metadata`، `createdAt`، `updatedAt`.
-
-### مثال 2
-
-حل التبعيات قبل البدء.
-
-```
-TaskGet(taskId: "t_01HXYZ...")
-# Inspect blockedBy — if any referenced task is still pending
-# or in_progress, work on the blocker first.
-```
+**مناسب للاستخدام:**
+- الحصول على الوصف الكامل والسياق قبل بدء العمل
+- فهم علاقات التبعية للمهمة
+- الحصول على المتطلبات الكاملة بعد تعيين المهمة
 
 ## ملاحظات
 
-- `TaskGet` للقراءة فقط وآمن للاستدعاء المتكرر؛ فهو لا يغير الحالة أو الملكية.
-- إذا كان `blockedBy` غير فارغ ويحتوي على مهام غير `completed`، فلا تبدأ هذه المهمة — احل العوائق أولاً (أو نسق مع مالكها).
-- قد يكون حقل `description` طويلاً. اقرأه بالكامل قبل التصرف؛ التصفح السطحي يؤدي إلى معايير قبول فائتة.
-- `taskId` غير معروف أو محذوف يُعيد خطأً. أعد تشغيل `TaskList` لاختيار معرف حالي.
-- إذا كنت ستُعدل مهمة، فاستدعِ `TaskGet` أولاً لتجنب الكتابة فوق حقول غيَّرها زميل فريق للتو.
+- بعد الحصول على المهمة يجب التحقق من أن قائمة `blockedBy` فارغة قبل بدء العمل
+- استخدم TaskList لعرض معلومات ملخصة لجميع المهام
+
+## النص الأصلي
+
+<textarea readonly>Use this tool to retrieve a task by its ID from the task list.
+
+## When to Use This Tool
+
+- When you need the full description and context before starting work on a task
+- To understand task dependencies (what it blocks, what blocks it)
+- After being assigned a task, to get complete requirements
+
+## Output
+
+Returns full task details:
+- **subject**: Task title
+- **description**: Detailed requirements and context
+- **status**: 'pending', 'in_progress', or 'completed'
+- **blocks**: Tasks waiting on this one to complete
+- **blockedBy**: Tasks that must complete before this one can start
+
+## Tips
+
+- After fetching a task, verify its blockedBy list is empty before beginning work.
+- Use TaskList to see all tasks in summary form.
+</textarea>

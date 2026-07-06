@@ -1,41 +1,56 @@
 # Read
 
-โหลดเนื้อหาของไฟล์เดียวจาก filesystem ในเครื่อง รองรับข้อความธรรมดา, source code, รูปภาพ, PDF, และ Jupyter notebook ส่งผลลัพธ์พร้อมหมายเลขบรรทัดเริ่มจาก 1 ในสไตล์ `cat -n`
+## คำจำกัดความ
 
-## เมื่อใดควรใช้
-
-- อ่านไฟล์ source ที่ path ที่ทราบก่อนแก้ไขหรือวิเคราะห์
-- ตรวจสอบไฟล์ configuration, lockfile, log, หรือ artifact ที่ generate
-- ดู screenshot หรือไดอะแกรมที่ผู้ใช้วางใน conversation
-- ดึงช่วงหน้าเฉพาะจาก PDF manual ที่ยาว
-- เปิด notebook `.ipynb` เพื่อ review code cell, markdown, และ output ของ cell พร้อมกัน
+อ่านเนื้อหาไฟล์จากระบบไฟล์ในเครื่อง รองรับไฟล์ข้อความ รูปภาพ PDF และ Jupyter notebook
 
 ## พารามิเตอร์
 
-- `file_path` (string, required): Absolute path ไปยังไฟล์เป้าหมาย Path แบบ relative จะถูกปฏิเสธ
-- `offset` (integer, optional): หมายเลขบรรทัดเริ่มจาก 1 ที่จะเริ่มอ่าน มีประโยชน์สำหรับไฟล์ขนาดใหญ่เมื่อใช้ร่วมกับ `limit`
-- `limit` (integer, optional): จำนวนบรรทัดสูงสุดที่จะส่งกลับเริ่มจาก `offset` ค่าเริ่มต้น 2000 บรรทัดจากด้านบนของไฟล์เมื่อละเว้น
-- `pages` (string, optional): ช่วงหน้าสำหรับไฟล์ PDF เช่น `"1-5"`, `"3"`, หรือ `"10-20"` จำเป็นสำหรับ PDF ที่ยาวกว่า 10 หน้า; สูงสุด 20 หน้าต่อการร้องขอ
+| พารามิเตอร์ | ประเภท | จำเป็น | คำอธิบาย |
+|------|------|------|------|
+| `file_path` | string | ใช่ | พาธแบบสัมบูรณ์ของไฟล์ |
+| `offset` | number | ไม่ | หมายเลขบรรทัดเริ่มต้น (สำหรับอ่านไฟล์ขนาดใหญ่แบบแบ่งส่วน) |
+| `limit` | number | ไม่ | จำนวนบรรทัดที่จะอ่าน (สำหรับอ่านไฟล์ขนาดใหญ่แบบแบ่งส่วน) |
+| `pages` | string | ไม่ | ช่วงหน้า PDF (เช่น "1-5", "3", "10-20") ใช้ได้เฉพาะกับ PDF |
 
-## ตัวอย่าง
+## สถานการณ์การใช้งาน
 
-### ตัวอย่างที่ 1: อ่านไฟล์ขนาดเล็กทั้งหมด
-เรียก `Read` โดยตั้งเฉพาะ `file_path` เป็น `/Users/me/project/src/index.ts` จะส่งกลับถึง 2000 บรรทัดพร้อมหมายเลขบรรทัด ซึ่งมักเพียงพอสำหรับ context การแก้ไข
+**เหมาะสำหรับ:**
+- อ่านไฟล์โค้ด ไฟล์การตั้งค่า และไฟล์ข้อความอื่นๆ
+- ดูไฟล์รูปภาพ (Claude เป็นโมเดลมัลติโมดัล)
+- อ่านเอกสาร PDF
+- อ่าน Jupyter notebook (ส่งคืนเซลล์ทั้งหมดพร้อมผลลัพธ์)
+- อ่านหลายไฟล์พร้อมกันเพื่อรับบริบท
 
-### ตัวอย่างที่ 2: ดู log ยาวทีละหน้า
-ใช้ `offset: 5001` และ `limit: 500` บนไฟล์ log หลายพันบรรทัดเพื่อดึงหน้าต่างแคบโดยไม่สิ้นเปลือง token context
+**ไม่เหมาะสำหรับ:**
+- อ่านไดเรกทอรี — ควรใช้คำสั่ง `ls` ของ Bash
+- การสำรวจโค้ดเบสแบบเปิด — ควรใช้ Task (ประเภท Explore)
 
-### ตัวอย่างที่ 3: ดึงหน้า PDF เฉพาะ
-สำหรับ PDF 120 หน้าที่ `/tmp/spec.pdf` ให้ตั้ง `pages: "8-15"` เพื่อดึงเฉพาะบทที่ต้องการ การละเว้น `pages` ใน PDF ขนาดใหญ่จะทำให้เกิด error
+## ข้อควรระวัง
 
-### ตัวอย่างที่ 4: ดูรูปภาพ
-ส่ง absolute path ของ PNG หรือ JPG screenshot รูปภาพจะถูก render แบบมองเห็นได้เพื่อให้ Claude Code สามารถ reason เกี่ยวกับมันโดยตรง
+- พาธต้องเป็นแบบสัมบูรณ์ ไม่ใช่แบบสัมพัทธ์
+- ค่าเริ่มต้นอ่าน 2000 บรรทัดแรกของไฟล์
+- บรรทัดที่เกิน 2000 ตัวอักษรจะถูกตัดทอน
+- ผลลัพธ์ใช้รูปแบบ `cat -n` หมายเลขบรรทัดเริ่มจาก 1
+- PDF ขนาดใหญ่ (เกิน 10 หน้า) ต้องระบุพารามิเตอร์ `pages` สูงสุด 20 หน้าต่อครั้ง
+- การอ่านไฟล์ที่ไม่มีอยู่จะส่งคืนข้อผิดพลาด (ไม่ทำให้ล่ม)
+- สามารถเรียก Read หลายครั้งพร้อมกันในข้อความเดียว
 
-## หมายเหตุ
+## ข้อความต้นฉบับ
 
-- ชอบ absolute path เสมอ หากผู้ใช้ให้มา ให้เชื่อใช้ตามนั้น
-- บรรทัดที่ยาวกว่า 2000 อักขระจะถูกตัด ให้ถือเนื้อหาที่ส่งกลับว่าอาจถูกตัดสำหรับข้อมูลที่กว้างมาก
-- อ่านหลายไฟล์ที่อิสระกัน? ออก `Read` หลายตัวในการตอบเดียวกันเพื่อให้รันขนานกัน
-- `Read` ไม่สามารถ list directory ใช้ `Bash` `ls` หรือ tool `Glob` แทน
-- อ่านไฟล์ที่มีอยู่แต่ว่างเปล่า จะส่ง system reminder แทน file byte ดังนั้นจัดการสัญญาณนี้อย่างชัดเจน
-- `Read` ที่สำเร็จจำเป็นก่อนใช้ `Edit` บนไฟล์เดียวกันใน session ปัจจุบัน
+<textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.
+Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+
+Usage:
+- The file_path parameter must be an absolute path, not a relative path
+- By default, it reads up to 2000 lines starting from the beginning of the file
+- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
+- Any lines longer than 2000 characters will be truncated
+- Results are returned using cat -n format, with line numbers starting at 1
+- This tool allows Claude Code to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Claude Code is a multimodal LLM.
+- This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.
+- This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
+- This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
+- You can call multiple tools in a single response. It is always better to speculatively read multiple potentially useful files in parallel.
+- You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.
+- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.</textarea>

@@ -1,56 +1,78 @@
 # TaskCreate
 
-現在のチームのタスクリスト (またはチームがアクティブでない場合はセッションのタスクリスト) に新しいタスクを作成します。追跡、委任、または後で再訪すべき作業項目を記録するために使用します。
+## 定義
 
-## 使用タイミング
-
-- ユーザーが明示的な追跡から恩恵を受けるマルチステップの作業を説明した場合。
-- 大きなリクエストを個別に完了可能な小さな単位に分割している場合。
-- タスクの途中でフォローアップが発見され、忘れるべきでない場合。
-- チームメイトやサブエージェントに作業を引き渡す前に、意図の永続的な記録が必要な場合。
-- プランモードで動作しており、各プランステップを具体的なタスクとして表現したい場合。
-
-些細なワンショットアクション、純粋な会話、または 2〜3 の直接的なツール呼び出しで完了できるものには `TaskCreate` をスキップしてください。
+構造化されたタスクリストエントリを作成し、進捗の追跡、複雑なタスクの整理、ユーザーへの作業進捗の表示に使用します。
 
 ## パラメータ
 
-- `subject` (string, required): 短い命令型のタイトル。例 `Fix login redirect on Safari`。約 80 文字以内に保ってください。
-- `description` (string, required): 詳細なコンテキスト — 問題、制約、受け入れ基準、将来の読者が必要とするファイルやリンク。チームメイトがコールドでピックアップするかのように書いてください。
-- `activeForm` (string, optional): タスクが `in_progress` のときに表示される現在進行形のスピナーテキスト。例 `Fixing login redirect on Safari`。`subject` を反映しつつ -ing 形式にします。
-- `metadata` (object, optional): タスクに添付される任意の構造化データ。一般的な用途: ラベル、優先度ヒント、外部チケット ID、またはエージェント固有の設定。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `subject` | string | はい | 短いタスクタイトル、命令形を使用（例："Fix authentication bug"） |
+| `description` | string | はい | 詳細な説明、コンテキストと受け入れ基準を含む |
+| `activeForm` | string | いいえ | 進行中に表示する現在進行形テキスト（例："Fixing authentication bug"） |
+| `metadata` | object | いいえ | タスクに付加する任意のメタデータ |
 
-新しく作成されたタスクは常にステータス `pending` と所有者なしで始まります。依存関係 (`blocks`、`blockedBy`) は作成時には設定されません — 後で `TaskUpdate` で適用してください。
+## 使用シナリオ
 
-## 例
+**適している場合：**
+- 複雑なマルチステップタスク（3ステップ以上）
+- ユーザーが複数の TODO 項目を提供した
+- 計画モードで作業を追跡
+- ユーザーが明示的に todo リストの使用を要求
 
-### 例 1
-
-ユーザーが今提出したバグレポートをキャプチャします。
-
-```
-TaskCreate(
-  subject: "Repair broken PDF export on Windows",
-  description: "Users on Windows 11 report the export button produces a 0-byte file. Reproduce with sample doc in test/fixtures/export/, then fix the code path in src/export/pdf.ts. Acceptance: export writes a valid PDF and the existing export test suite passes.",
-  activeForm: "Repairing broken PDF export on Windows"
-)
-```
-
-### 例 2
-
-セッションの開始時にエピックを追跡単位に分割します。
-
-```
-TaskCreate(
-  subject: "Draft migration plan for auth service",
-  description: "Produce a written plan covering rollout stages, rollback strategy, and monitoring. Output: docs/auth-migration.md.",
-  activeForm: "Drafting migration plan for auth service",
-  metadata: { "priority": "P1", "linearId": "AUTH-214" }
-)
-```
+**適していない場合：**
+- 単一の簡単なタスク
+- 3ステップ以内の簡単な操作
+- 純粋な会話や情報照会
 
 ## 注意事項
 
-- `subject` は命令形で、`activeForm` は現在進行形で書いてください。タスクが `in_progress` に遷移したときに UI が自然に読めるようになります。
-- 重複を避けるため、作成前に `TaskList` を呼び出してください — チームリストはチームメイトとサブエージェントと共有されます。
-- `description` や `metadata` にシークレットやクレデンシャルを含めないでください。タスクレコードはチームへのアクセス権を持つ全員に見えます。
-- 作成後は、`TaskUpdate` でタスクをライフサイクルに沿って移動させてください。`in_progress` で黙って放置しないでください。
+- すべての新規タスクの初期ステータスは `pending`
+- `subject` は命令形（"Run tests"）、`activeForm` は現在進行形（"Running tests"）を使用
+- 作成後に TaskUpdate で依存関係（blocks/blockedBy）を設定可能
+- 作成前に TaskList を呼び出して重複タスクがないか確認すべき
+
+## 原文
+
+<textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+It also helps the user understand the progress of the task and overall progress of their requests.
+
+## When to Use This Tool
+
+Use this tool proactively in these scenarios:
+
+- Complex multi-step tasks - When a task requires 3 or more distinct steps or actions
+- Non-trivial and complex tasks - Tasks that require careful planning or multiple operations
+- Plan mode - When using plan mode, create a task list to track the work
+- User explicitly requests todo list - When the user directly asks you to use the todo list
+- User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
+- After receiving new instructions - Immediately capture user requirements as tasks
+- When you start working on a task - Mark it as in_progress BEFORE beginning work
+- After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation
+
+## When NOT to Use This Tool
+
+Skip using this tool when:
+- There is only a single, straightforward task
+- The task is trivial and tracking it provides no organizational benefit
+- The task can be completed in less than 3 trivial steps
+- The task is purely conversational or informational
+
+NOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.
+
+## Task Fields
+
+- **subject**: A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")
+- **description**: Detailed description of what needs to be done, including context and acceptance criteria
+- **activeForm**: Present continuous form shown in spinner when task is in_progress (e.g., "Fixing authentication bug"). This is displayed to the user while you work on the task.
+
+**IMPORTANT**: Always provide activeForm when creating tasks. The subject should be imperative ("Run tests") while activeForm should be present continuous ("Running tests"). All tasks are created with status `pending`.
+
+## Tips
+
+- Create tasks with clear, specific subjects that describe the outcome
+- Include enough detail in the description for another agent to understand and complete the task
+- After creating tasks, use TaskUpdate to set up dependencies (blocks/blockedBy) if needed
+- Check TaskList first to avoid creating duplicate tasks
+</textarea>

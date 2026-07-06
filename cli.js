@@ -1,58 +1,25 @@
 #!/usr/bin/env node
 
-// Windows NTFS + Defender increase per-async-IO overhead; default 4 threads aren't enough
-if (process.platform === 'win32' && !process.env.UV_THREADPOOL_SIZE) {
-  process.env.UV_THREADPOOL_SIZE = '16';
-}
-
 import { readFileSync, writeFileSync, existsSync, realpathSync, unlinkSync, mkdirSync } from 'node:fs';
-import { resolve, isAbsolute } from 'node:path';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
-import { t } from './server/i18n.js';
-import { INJECT_IMPORT, LEGACY_INJECT_IMPORTS, resolveCliPath, resolveNativePath, resolveNpmClaudePath, buildShellCandidates, setLogDir, LOG_DIR, hasClaude2xWrapper, getGlobalNodeModulesDir, PACKAGES, getClaudeConfigDir, isBrowserOpenSuppressed } from './findcc.js';
-import { ensureHooks, removeAllManagedHooks } from './server/lib/ensure-hooks.js';
-import { injectCliJsAt, removeCliJsInjectionAt, INJECT_START as _INJECT_START, INJECT_END as _INJECT_END, buildInjectBlock as _buildInjectBlock } from './server/lib/cli-inject.js';
-import { normalizeBasePath } from './server/lib/base-path.js';
-import { createHardenedCleanup, installWinKeypressFallback } from './server/lib/term-signals.js';
+import { t } from './i18n.js';
+import { INJECT_IMPORT, resolveCliPath, resolveNativePath, resolveNpmClaudePath, buildShellCandidates } from './findcc.js';
+import { ensureHooks } from './lib/ensure-hooks.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
-// Injection marker constants are defined in server/lib/cli-inject.js (for testability);
-// This file only re-exports them for use by helpers and hooks, preserving existing behavior.
-const INJECT_START = _INJECT_START;
-const INJECT_END = _INJECT_END;
-const INJECT_BLOCK = _buildInjectBlock(INJECT_IMPORT);
+const INJECT_START = '// >>> Start CC Viewer Web Service >>>';
+const INJECT_END = '// <<< Start CC Viewer Web Service <<<';
+const INJECT_BLOCK = `${INJECT_START}\n${INJECT_IMPORT}\n${INJECT_END}`;
 
 
 const SHELL_HOOK_START = '# >>> CC-Viewer Auto-Inject >>>';
 const SHELL_HOOK_END = '# <<< CC-Viewer Auto-Inject <<<';
 
 const cliPath = resolveCliPath();
-
-// Unified "claude not found" error message: distinguishes between "Claude Code 2.x wrapper
-// installed but native binary not ready (--ignore-scripts / --omit=optional / certain pnpm
-// configurations)" and "claude not installed at all," giving targeted fix guidance.
-function reportClaudeNotFound(cliPathHint) {
-  const globalRoot = getGlobalNodeModulesDir();
-  if (hasClaude2xWrapper(globalRoot)) {
-    // 2.x wrapper 在场但找不到可执行二进制：大概率是 postinstall 没跑
-    console.error(t('cli.claude2x.binaryMissing'));
-    for (const pkg of PACKAGES) {
-      const installScript = resolve(globalRoot, pkg, 'install.cjs');
-      if (existsSync(installScript)) {
-        console.error(`  node ${installScript}`);
-        break;
-      }
-    }
-    console.error(t('cli.claude2x.reinstallHint'));
-  } else {
-    // 完全没检测到 Claude Code 安装
-    console.error(t('cli.inject.notFound', { path: cliPathHint || cliPath }));
-    console.error(t('cli.notFound.nativeHint'));
-  }
-}
 
 function getShellConfigPath() {
   const shell = process.env.SHELL || '';
@@ -116,12 +83,6 @@ ${SHELL_HOOK_END}`;
   const candidates = buildShellCandidates();
   return `${SHELL_HOOK_START}
 claude() {
-  # Avoid recursion if ccv invokes claude (used by the 2.x self-heal path below)
-  if [ "$1" = "--ccv-internal" ]; then
-    shift
-    command claude "$@"
-    return
-  fi
   # Pass through certain commands directly without ccv interception
   case "$1" in
     ${passthroughCommands.join('|')})
@@ -140,14 +101,7 @@ claude() {
       break
     fi
   done
-  if [ -z "$cli_js" ]; then
-    # cli.js 消失 → Claude Code 已升级到 2.1.114+（native-only 分发）。
-    # 后台重写 hook（下次 shell 就是 native hook），当前调用直接走 native proxy 路径。
-    ( ccv -logger >/dev/null 2>&1 & )
-    ccv run -- claude --ccv-internal "$@"
-    return $?
-  fi
-  if ! grep -q "CC Viewer" "$cli_js" 2>/dev/null; then
+  if [ -n "$cli_js" ] && ! grep -q "CC Viewer" "$cli_js" 2>/dev/null; then
     ccv -logger 2>/dev/null
   fi
   command claude "$@"
@@ -208,17 +162,33 @@ function removeShellHook() {
 }
 
 function injectCliJs() {
-  return injectCliJsAt(cliPath, INJECT_IMPORT, LEGACY_INJECT_IMPORTS);
+  const content = readFileSync(cliPath, 'utf-8');
+  if (content.includes(INJECT_START)) {
+    return 'exists';
+  }
+  const lines = content.split('\n');
+  lines.splice(2, 0, INJECT_BLOCK);
+  writeFileSync(cliPath, lines.join('\n'));
+  return 'injected';
 }
 
 function removeCliJsInjection() {
-  return removeCliJsInjectionAt(cliPath, INJECT_IMPORT, LEGACY_INJECT_IMPORTS);
+  try {
+    if (!existsSync(cliPath)) return 'not_found';
+    const content = readFileSync(cliPath, 'utf-8');
+    if (!content.includes(INJECT_START)) return 'clean';
+    const regex = new RegExp(`${INJECT_START}\\n${INJECT_IMPORT}\\n${INJECT_END}\\n?`, 'g');
+    writeFileSync(cliPath, content.replace(regex, ''));
+    return 'removed';
+  } catch {
+    return 'error';
+  }
 }
 
 async function runProxyCommand(args) {
   try {
     // Dynamic import to avoid side effects when just installing
-    const { startProxy } = await import('./server/proxy.js');
+    const { startProxy } = await import('./proxy.js');
     const proxyPort = await startProxy();
 
     // args = ['run', '--', 'command', 'claude', ...] or ['run', 'claude', ...]
@@ -261,24 +231,12 @@ async function runProxyCommand(args) {
     }
     env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${proxyPort}`;
     env.CCV_PROXY_MODE = '1'; // 告诉 interceptor.js 不要再启动 server
-    // 剥离 cc-viewer 的内部短路开关，避免泄漏给 claude 子进程
-    delete env.CCV_SKIP_THINKING_DISPLAY;
 
     const settingsJson = JSON.stringify({
       env: {
         ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL
       }
     });
-
-    // 注入默认 --thinking-display summarized，仅对 claude 二进制（其他命令如 `ccv run -- sometool` 跳过）。
-    // 若 claude 不识别该 flag（老版本/fork）会 unknown option 崩溃——由 pty-manager.js::spawnClaude 的
-    // onExit reactive retry 兜底；cli.js 这条路径是一次性子进程，没有 respawn 机会，用户需手动重试。
-    // 可通过环境变量 CCV_SKIP_THINKING_DISPLAY=1 强制跳过。
-    const isClaudeCmd = cmd === 'claude' || /[\\/]claude(\.exe)?$/.test(cmd);
-    if (isClaudeCmd && process.env.CCV_SKIP_THINKING_DISPLAY !== '1') {
-      const { withDefaultThinkingDisplay } = await import('./server/pty-manager.js');
-      cmdArgs = withDefaultThinkingDisplay(cmdArgs);
-    }
 
     cmdArgs.unshift(settingsJson);
     cmdArgs.unshift('--settings');
@@ -299,22 +257,9 @@ async function runProxyCommand(args) {
   }
 }
 
-// ensureHooks() extracted to server/lib/ensure-hooks.js (shared with electron/tab-worker.js)
+// ensureHooks() extracted to lib/ensure-hooks.js (shared with electron/tab-worker.js)
 
-// Print the `--pid` instance id + this project's previously-used ids in the startup banner,
-// so the user can recall which id to reuse (with `-c`) next time. No-op without `--pid`.
-function printInstanceBanner(serverMod) {
-  try {
-    const id = serverMod.getInstanceId && serverMod.getInstanceId();
-    if (!id) return;
-    console.log(`  ${t('cli.instanceId', { id })}`);
-    const known = (serverMod.getKnownInstances && serverMod.getKnownInstances()) || [];
-    const others = known.filter((x) => x !== id);
-    if (others.length) console.log(`  ${t('cli.instanceHistory', { ids: others.join(', ') })}`);
-  } catch { /* banner is best-effort */ }
-}
-
-async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
+async function runCliMode(extraClaudeArgs = [], cwd) {
   // 首先尝试 npm 版本（包括 nvm 安装），找不到再尝试 native 版本
   let claudePath = resolveNpmClaudePath();
   let isNpmVersion = !!claudePath;
@@ -324,7 +269,7 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   }
 
   if (!claudePath) {
-    reportClaudeNotFound(cliPath);
+    console.error(t('cli.cMode.notFound'));
     process.exit(1);
   }
 
@@ -332,11 +277,9 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
 
   const workingDir = cwd || process.cwd();
 
-  // 注册工作区（IM worker 跳过：避免把 IM_<id>/ 目录塞进工作区选择器）
-  if (!process.env.CCV_IM_PLATFORM) {
-    const { registerWorkspace } = await import('./server/workspace-registry.js');
-    await registerWorkspace(workingDir);
-  }
+  // 注册工作区
+  const { registerWorkspace } = await import('./workspace-registry.js');
+  registerWorkspace(workingDir);
 
   // 确保 AskUserQuestion hook 已注册到 ~/.claude/settings.json
   ensureHooks();
@@ -353,49 +296,29 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   }
 
   // 1. 启动代理
-  const { startProxy } = await import('./server/proxy.js');
+  const { startProxy } = await import('./proxy.js');
   const proxyPort = await startProxy();
   process.env.CCV_PROXY_PORT = String(proxyPort);
 
   // 3. 启动 HTTP 服务器
-  const serverMod = await import('./server/server.js');
+  const serverMod = await import('./server.js');
 
-  // 等待服务器启动完成。IM worker 加 30s 死线：端口段(7050-7099)耗尽时 getPort() 恒为 0，
-  // 否则 worker 会永久空转并占着 im.lock(port:null)。超时则退出(exit 钩子释放锁)，让用户快速看到失败、
-  // manager 也能据此判死。普通 ccv 保持原有无限轮询行为不变。
-  const _imPortDeadline = process.env.CCV_IM_PLATFORM ? Date.now() + 30000 : null;
-  await new Promise((resolve, reject) => {
+  // 等待服务器启动完成
+  await new Promise(resolve => {
     const check = () => {
       const port = serverMod.getPort();
-      if (port) return resolve(port);
-      if (_imPortDeadline && Date.now() > _imPortDeadline) {
-        return reject(new Error('no free port in 7050-7099 within 30s'));
-      }
-      setTimeout(check, 100);
+      if (port) resolve(port);
+      else setTimeout(check, 100);
     };
     setTimeout(check, 200);
-  }).catch((e) => {
-    console.error('[CC Viewer] IM worker could not bind a port:', e.message);
-    process.exit(1); // process.on('exit') 会按身份释放 im.lock
   });
 
   const port = serverMod.getPort();
-  const serverProtocol = serverMod.getProtocol();
-
-  // IM worker：服务器监听成功后把真实端口回填进 im.lock（manager 据此做 HTTP 身份探测）
-  if (process.env.CCV_IM_PLATFORM) {
-    try {
-      const { updateImLockPort } = await import('./server/lib/im-lock.js');
-      updateImLockPort(process.env.CCV_IM_PLATFORM, port);
-    } catch (e) {
-      console.error('[CC Viewer] updateImLockPort failed:', e.message);
-    }
-  }
 
   // 3. 启动 PTY 中的 claude
-  const { spawnClaude, killPty } = await import('./server/pty-manager.js');
+  const { spawnClaude, killPty } = await import('./pty-manager.js');
   try {
-    await spawnClaude(proxyPort, workingDir, extraClaudeArgs, claudePath, isNpmVersion, port, serverProtocol, serverMod.getInternalToken());
+    await spawnClaude(proxyPort, workingDir, extraClaudeArgs, claudePath, isNpmVersion, port);
   } catch (err) {
     console.error('[CC Viewer] Failed to spawn Claude:', err.message);
     await serverMod.stopViewer();
@@ -404,124 +327,46 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
 
   // 4. 自动打开浏览器
   const protocol = serverMod.getProtocol();
-  const basePath = normalizeBasePath(process.env.CCV_BASE_PATH);
-  const url = `${protocol}://127.0.0.1:${port}${basePath}`;
-  if (!noOpen) {
-    try {
-      // URL 含 & 在 cmd.exe 下会被当命令分隔符切断 query；用 spawn 数组传参避免 shell interpolation。
-      // Win 上 `start` 是 cmd.exe 内置不是 .exe，必须 shell:true；用 spawn + 数组让 Node 自己 escape。
-      // 第二个 arg '""' 是 `start` 的 window-title 占位（否则 start 会把 URL 当 title）。
-      const { spawn } = await import('node:child_process');
-      if (process.platform === 'win32') {
-        spawn('cmd.exe', ['/c', 'start', '""', url], { stdio: 'ignore', detached: true, windowsHide: true }).unref();
-      } else {
-        const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
-        spawn(cmd, [url], { stdio: 'ignore', detached: true }).unref();
-      }
-    } catch {}
-  }
+  const url = `${protocol}://127.0.0.1:${port}`;
+  try {
+    const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+    const { execSync } = await import('node:child_process');
+    execSync(`${cmd} ${url}`, { stdio: 'ignore', timeout: 5000 });
+  } catch {}
 
   console.log(`CC Viewer:`);
   console.log(`  ➜ Local:   ${url}`);
   const _lanIps = serverMod.getAllLocalIps();
   const _token = serverMod.getAccessToken();
   for (const _ip of _lanIps) {
-    console.log(`  ➜ Network: ${protocol}://${_ip}:${port}${basePath}?token=${_token}`);
+    console.log(`  ➜ Network: ${protocol}://${_ip}:${port}?token=${_token}`);
   }
-  // 密码登录已启用时,把当前密码打印出来 —— 否则 `ccv --usePassword`(随机密码)在 CLI 模式下
-  // 用户无从得知密码(server.js 的密码打印只在非 CLI 模式生效)。空密码=无防护,给出警告。
-  const _auth = serverMod.getAuthConfig && serverMod.getAuthConfig();
-  if (_auth && _auth.enabled) {
-    if (_auth.password === '') console.error(`  ${t('server.passwordEmptyWarn')}`);
-    else console.log(`  ${t('server.passwordActive', { password: _auth.password })}`);
-  }
-  printInstanceBanner(serverMod);
 
-  // 5. 注册退出处理（hardened：watchdog 5s 强退 + 连按 Ctrl+C 立退，
-  //    防 Windows 上 ConPTY kill / IM teardown 挂住导致"Ctrl+C 完全无反应"）
-  const cleanup = createHardenedCleanup({
-    doCleanup: () => {
-      killPty();
-      return serverMod.stopViewer();
-    },
-  });
+  // 5. 注册退出处理
+  const cleanup = () => {
+    killPty();
+    serverMod.stopViewer().finally(() => process.exit());
+  };
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
-  // Windows 兜底：ConPTY 下控制台 Ctrl+C 事件偶发不送达（SIGINT 永不触发），
-  // raw mode keypress 直连 cleanup。silent 模式本地终端无人读 stdin，无副作用；
-  // darwin / 非 TTY 内部自动跳过。
-  installWinKeypressFallback({ onInterrupt: cleanup });
 }
 
-// 启动一个独立常驻 IM worker。本质是「在 IM_<id>/ 工作目录、绑 127.0.0.1、skip-permissions」的 runCliMode，
-// 外加：全局唯一锁、CC_APPEND_SYSTEM.md 人格预置/迁移、IM 专属 env。由 im-process-manager 以 detached 子进程拉起，
-// 也可手动 `ccv --im <id>` 启动。
-async function runImMode(platformId) {
-  const { getDescriptor } = await import('./server/lib/im-config.js');
-  if (!getDescriptor(platformId)) {
-    console.error(t('cli.imUnknownPlatform', { id: platformId }));
-    process.exit(1);
-  }
-
-  const { acquireImLock, releaseImLock, imDir } = await import('./server/lib/im-lock.js');
-  const { ensureImAppendSystem, migrateImClaudeMd } = await import('./server/lib/im-append-system.js');
-  const { ensureImBuiltinSkills } = await import('./server/lib/im-skills.js');
-
-  const dir = imDir(platformId);
-  mkdirSync(dir, { recursive: true });
-
-  // 全局唯一：被活进程持有则拒绝启动（loser 退出，manager 会观察到子进程秒退）
-  const lockRes = acquireImLock(platformId);
-  if (!lockRes.ok) {
-    console.error(t('cli.imAlreadyRunning', { id: platformId, pid: lockRes.holder?.pid ?? '?' }));
-    process.exit(3);
-  }
-  // 退出时按身份释放锁（exit 同步钩子在 process.exit()/SIGINT/SIGTERM→cleanup 后仍执行；
-  // SIGKILL 不触发，由 manager 的 getImLiveness 兜底清理陈旧锁）
-  process.on('exit', () => { try { releaseImLock(platformId, process.pid); } catch { /* noop */ } });
-
-  // 一次性把遗留的 CLAUDE.md 迁为 CC_APPEND_SYSTEM.md（幂等：迁移=rename 移动、内容不丢；目标已有内容时不动 CLAUDE.md）；再确保默认存在。
-  // 该文件由 pty-manager 启动 claude 时自动注入为 --append-system-prompt-file（追加系统提示，比旧
-  // CLAUDE.md 项目记忆更难被来信指令绕过）。失败非致命：worker 照常启动。
-  try { migrateImClaudeMd(platformId, dir); }
-  catch (e) { console.warn('[CC Viewer] migrateImClaudeMd failed (non-fatal):', e.message); }
-  try { ensureImAppendSystem(platformId, dir); }
-  catch (e) { console.warn('[CC Viewer] ensureImAppendSystem failed (non-fatal):', e.message); }
-
-  // 受管同步内置默认技能（manage-ccv-projects：列出/启动 ccv 项目 + 自我介绍）。失败非致命：worker 照常启动。
-  try { ensureImBuiltinSkills(platformId, dir); }
-  catch (e) { console.warn('[CC Viewer] ensureImBuiltinSkills failed (non-fatal):', e.message); }
-
-  // 以下 env 必须在 import server.js（runCliMode 内）之前设置：server 顶层读 START_PORT/MAX_PORT/HOST。
-  process.env.CCV_IM_PLATFORM = platformId;
-  process.env.CCV_START_PORT = process.env.CCV_START_PORT || '7050'; // IM 端口段从 7050 起
-  process.env.CCV_MAX_PORT = process.env.CCV_MAX_PORT || '7099';
-  process.env.CCV_HOST = '127.0.0.1';  // 仅 loopback：不把 skip-perms 端点暴露到局域网
-  process.env.CCV_IM_DENY = '1';       // 启用 perm-bridge 的 IM 硬拦截层
-  // IM 人格(CC_APPEND_SYSTEM.md)必须始终注入：清掉全局 opt-out，使手动 `ccv --im` 也不被它关掉
-  // （manager 拉起的 worker 由 buildChildEnv 已剥离全部 CCV_*，此处对其为 no-op，仅覆盖手动启动路径）。
-  delete process.env.CCV_DISABLE_AUTO_SYSTEM_PROMPT;
-
-  // worker 全自动：skip-permissions + 不开浏览器，工作目录设为 IM_<id>/
-  return runCliMode(['--dangerously-skip-permissions'], dir, true);
-}
-
-async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
+async function runSdkMode(extraClaudeArgs = [], cwd) {
   // 检查 SDK 是否可用
   let sdkManager;
   try {
-    sdkManager = await import('./server/lib/sdk-manager.js');
+    sdkManager = await import('./lib/sdk-manager.js');
     if (!sdkManager.isSdkAvailable()) throw new Error('query not available');
   } catch {
     console.warn('[CC Viewer] Agent SDK not available, falling back to PTY mode (-C)');
-    return runCliMode(extraClaudeArgs, cwd, noOpen);
+    return runCliMode(extraClaudeArgs, cwd);
   }
 
   const workingDir = cwd || process.cwd();
 
   // 注册工作区
-  const { registerWorkspace } = await import('./server/workspace-registry.js');
-  await registerWorkspace(workingDir);
+  const { registerWorkspace } = await import('./workspace-registry.js');
+  registerWorkspace(workingDir);
 
   // 不需要 ensureHooks — SDK canUseTool 处理 AskUserQuestion + 权限
   // 不需要 proxy — SDK 直接管理 API 通信
@@ -533,7 +378,7 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   process.env.CCV_PROXY_MODE = '1'; // 使 interceptor.js 惰性
 
   // 启动 HTTP 服务器
-  const serverMod = await import('./server/server.js');
+  const serverMod = await import('./server.js');
 
   await new Promise(resolve => {
     const check = () => {
@@ -561,198 +406,104 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
     onStreamingStatus: (data) => serverMod.setSdkStreamingState(data),
     broadcastWs: (msg) => serverMod.broadcastWsMessage(msg),
     permissionMode,
-    runWaterfallHook: (await import('./server/lib/plugin-loader.js')).runWaterfallHook,
-    // Round-3 P0: SDK mode has no Stop hook (ensureHooks() skipped above), so
-    // the only place we learn a turn ended is the SDK 'result' message. Forward
-    // it to the same SSE channel the Stop hook bridge uses in PTY mode.
-    // 包 try/catch + warn：rising-edge flush 假设「下一轮 active 之前 onTurnEnd 已到」，
-    // 若 SDK 内部异常吞掉了 result 消息这条信号就丢了 —— 至少打个 warn 让排查时有线索。
-    // 显式 typeof 检查：以前用可选链 `?.()` 在 export 缺失时返回 undefined → catch 永远不触发
-    // → 「至少 warn」承诺落空，turn-end 静默丢，bug 极难追。
-    onTurnEnd: ({ sessionId, ts }) => {
-      if (typeof serverMod.broadcastTurnEnd !== 'function') {
-        console.warn('[sdk] serverMod.broadcastTurnEnd is not a function (export missing?); turn-end signal dropped');
-        return;
-      }
-      try { serverMod.broadcastTurnEnd(sessionId, ts); }
-      catch (err) { console.warn('[sdk] broadcastTurnEnd threw:', err?.message); }
-    },
   });
 
   // 注册 SDK 回调到 server.js（WS 消息路由用）
   serverMod.setSdkResolveApproval(sdkManager.resolveApproval);
-  serverMod.setSdkCancelApproval(sdkManager.cancelApproval);
   serverMod.setSdkSendUserMessage(sdkManager.sendUserMessage);
-  serverMod.setSdkInterruptTurn(sdkManager.interruptTurn);
 
   // 自动打开浏览器
   const protocol = serverMod.getProtocol();
-  const basePath = normalizeBasePath(process.env.CCV_BASE_PATH);
-  const url = `${protocol}://127.0.0.1:${port}${basePath}`;
-  if (!noOpen) {
-    try {
-      // URL 含 & 在 cmd.exe 下会被当命令分隔符切断 query；用 spawn 数组传参避免 shell interpolation。
-      // Win 上 `start` 是 cmd.exe 内置不是 .exe，必须 shell:true；用 spawn + 数组让 Node 自己 escape。
-      // 第二个 arg '""' 是 `start` 的 window-title 占位（否则 start 会把 URL 当 title）。
-      const { spawn } = await import('node:child_process');
-      if (process.platform === 'win32') {
-        spawn('cmd.exe', ['/c', 'start', '""', url], { stdio: 'ignore', detached: true, windowsHide: true }).unref();
-      } else {
-        const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
-        spawn(cmd, [url], { stdio: 'ignore', detached: true }).unref();
-      }
-    } catch {}
-  }
+  const url = `${protocol}://127.0.0.1:${port}`;
+  try {
+    const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+    const { execSync } = await import('node:child_process');
+    execSync(`${cmd} ${url}`, { stdio: 'ignore', timeout: 5000 });
+  } catch {}
 
   console.log(`CC Viewer (SDK mode):`);
   console.log(`  ➜ Local:   ${url}`);
   const _lanIps = serverMod.getAllLocalIps();
   const _token = serverMod.getAccessToken();
   for (const _ip of _lanIps) {
-    console.log(`  ➜ Network: ${protocol}://${_ip}:${port}${basePath}?token=${_token}`);
+    console.log(`  ➜ Network: ${protocol}://${_ip}:${port}?token=${_token}`);
   }
-  // 密码登录已启用时,把当前密码打印出来 —— 否则 `ccv --usePassword`(随机密码)在 CLI 模式下
-  // 用户无从得知密码(server.js 的密码打印只在非 CLI 模式生效)。空密码=无防护,给出警告。
-  const _auth = serverMod.getAuthConfig && serverMod.getAuthConfig();
-  if (_auth && _auth.enabled) {
-    if (_auth.password === '') console.error(`  ${t('server.passwordEmptyWarn')}`);
-    else console.log(`  ${t('server.passwordActive', { password: _auth.password })}`);
-  }
-  printInstanceBanner(serverMod);
 
-  // 注册退出处理（hardened，与 PTY 模式同款三层防御）
-  const cleanup = createHardenedCleanup({
-    doCleanup: () => {
-      sdkManager.stopSession();
-      return serverMod.stopViewer();
-    },
-  });
+  // 注册退出处理
+  const cleanup = () => {
+    sdkManager.stopSession();
+    serverMod.stopViewer().finally(() => process.exit());
+  };
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
-  installWinKeypressFallback({ onInterrupt: cleanup });
+}
+
+async function runCliModeWorkspaceSelector(extraClaudeArgs = []) {
+  // 首先尝试 npm 版本（包括 nvm 安装），找不到再尝试 native 版本
+  let claudePath = resolveNpmClaudePath();
+  let isNpmVersion = !!claudePath;
+
+  if (!claudePath) {
+    claudePath = resolveNativePath();
+  }
+
+  if (!claudePath) {
+    console.error(t('cli.cMode.notFound'));
+    process.exit(1);
+  }
+
+  console.log(t('cli.cMode.starting'));
+
+  process.env.CCV_CLI_MODE = '1';
+  process.env.CCV_WORKSPACE_MODE = '1';
+
+  // 启动代理
+  const { startProxy } = await import('./proxy.js');
+  const proxyPort = await startProxy();
+  process.env.CCV_PROXY_PORT = String(proxyPort);
+
+  // 启动 HTTP 服务器（工作区模式，不初始化 interceptor 日志）
+  const serverMod = await import('./server.js');
+
+  // 工作区模式下 server.js 跳过了自动启动，需要手动调用
+  await serverMod.startViewer();
+
+  const port = serverMod.getPort();
+
+  // 保存 extraClaudeArgs 和 claudePath 供后续 launch 使用
+  serverMod.setWorkspaceClaudeArgs(extraClaudeArgs);
+  serverMod.setWorkspaceClaudePath(claudePath, isNpmVersion);
+
+  // 自动打开浏览器
+  const wsProtocol = serverMod.getProtocol();
+  const url = `${wsProtocol}://127.0.0.1:${port}`;
+  try {
+    const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+    const { execSync } = await import('node:child_process');
+    execSync(`${cmd} ${url}`, { stdio: 'ignore', timeout: 5000 });
+  } catch {}
+
+  console.log(`CC Viewer (Workspace):`);
+  console.log(`  ➜ Local:   ${url}`);
+  const _lanIps = serverMod.getAllLocalIps();
+  const _token = serverMod.getAccessToken();
+  for (const _ip of _lanIps) {
+    console.log(`  ➜ Network: ${wsProtocol}://${_ip}:${port}?token=${_token}`);
+  }
+
+  // 注册退出处理
+  const { killPty } = await import('./pty-manager.js');
+  const cleanup = () => {
+    killPty();
+    serverMod.stopViewer().finally(() => process.exit());
+  };
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
 }
 
 // === 主逻辑 ===
 
 const args = process.argv.slice(2);
-
-// --- CCV 专属参数提取（必须在动态 import 之前） ---
-let noOpen = false;
-
-// 提取 --log-dir <path>
-const logDirIdx = args.indexOf('--log-dir');
-if (logDirIdx !== -1) {
-  const logDirVal = args[logDirIdx + 1];
-  if (logDirVal && !logDirVal.startsWith('-')) {
-    const prevDir = LOG_DIR;
-    setLogDir(logDirVal);
-    if (LOG_DIR === prevDir) {
-      console.error(`Error: --log-dir path rejected (must be under home directory or /tmp/): ${logDirVal}`);
-      process.exit(1);
-    }
-    args.splice(logDirIdx, 2);
-  } else {
-    console.error('Error: --log-dir requires a path argument');
-    process.exit(1);
-  }
-}
-
-// 提取 --no-open
-const noOpenIdx = args.indexOf('--no-open');
-if (noOpenIdx !== -1) {
-  noOpen = true;
-  args.splice(noOpenIdx, 1);
-}
-// L7 sandbox: never pop real browser windows from tests (NODE_TEST_CONTEXT) or
-// CCV_NO_OPEN=1 environments — single derivation point feeding both run modes.
-if (!noOpen && isBrowserOpenSuppressed()) {
-  noOpen = true;
-}
-
-// Extract --user-name <name>
-const userNameIdx = args.indexOf('--user-name');
-if (userNameIdx !== -1) {
-  const userNameVal = args[userNameIdx + 1];
-  if (userNameVal && !userNameVal.startsWith('-')) {
-    process.env.CCV_USER_NAME = userNameVal;
-    args.splice(userNameIdx, 2);
-  } else {
-    console.error(t('cli.userNameRequired'));
-    process.exit(1);
-  }
-}
-
-// Extract --user-avatar <path|url>
-const userAvatarIdx = args.indexOf('--user-avatar');
-if (userAvatarIdx !== -1) {
-  const userAvatarVal = args[userAvatarIdx + 1];
-  if (userAvatarVal && !userAvatarVal.startsWith('-')) {
-    // URLs and data URIs stored as-is; relative paths resolved to absolute immediately
-    if (!userAvatarVal.startsWith('http://') && !userAvatarVal.startsWith('https://') &&
-        !userAvatarVal.startsWith('data:') && !isAbsolute(userAvatarVal)) {
-      process.env.CCV_USER_AVATAR = resolve(process.cwd(), userAvatarVal);
-    } else {
-      process.env.CCV_USER_AVATAR = userAvatarVal;
-    }
-    args.splice(userAvatarIdx, 2);
-  } else {
-    console.error(t('cli.userAvatarRequired'));
-    process.exit(1);
-  }
-}
-
-// Extract --usePassword[=<pwd>] — enable password login at startup.
-// Bare form → random 6-char password; =<pwd> form → explicit. server.js resolves
-// the final value: explicit > already-persisted > random.
-const usePwdIdx = args.findIndex((a) => a === '--usePassword' || a.startsWith('--usePassword='));
-if (usePwdIdx !== -1) {
-  const arg = args[usePwdIdx];
-  process.env.CCV_USE_PASSWORD = '1';
-  const eq = arg.indexOf('=');
-  if (eq !== -1) {
-    const val = arg.slice(eq + 1);
-    if (val.length > 0) process.env.CCV_PASSWORD = val;
-  }
-  args.splice(usePwdIdx, 1);
-}
-
-// Extract --pid[=<name>] / --pid <name> — instance id for per-instance session-pin isolation.
-// NB: "pid" here is an instance *id* LABEL (user-chosen, e.g. alpha/beta), NOT an OS process id —
-// it only keys the session-pin file `.session-pin.<id>.json`; unrelated to process.pid.
-// ccv-owned (NEVER forwarded to claude — an unknown --pid would otherwise crash claude): sets
-// CCV_INSTANCE_ID and splices out. Sanitized to a filesystem-safe token (it becomes part of a
-// `.session-pin.<id>.json` filename → guard against path traversal / invalid names).
-const pidIdx = args.findIndex((a) => a === '--pid' || a.startsWith('--pid='));
-if (pidIdx !== -1) {
-  const arg = args[pidIdx];
-  let rawVal;
-  if (arg.startsWith('--pid=')) {
-    rawVal = arg.slice('--pid='.length);
-    args.splice(pidIdx, 1);
-  } else {
-    rawVal = args[pidIdx + 1];
-    if (rawVal && !rawVal.startsWith('-')) args.splice(pidIdx, 2);
-    else { console.error(t('cli.pidInvalid')); process.exit(1); }
-  }
-  const sanitized = (rawVal || '').replace(/[^a-zA-Z0-9_\-.]/g, '_');
-  if (!sanitized) { console.error(t('cli.pidInvalid')); process.exit(1); }
-  process.env.CCV_INSTANCE_ID = sanitized;
-}
-
-// Extract --im <platformId> — 启动一个独立常驻 IM worker：工作目录 IM_<id>/、绑 127.0.0.1、
-// skip-permissions、全局唯一锁。必须在动态 import 之前提取（runImMode 会在 import server.js 前设 env）。
-let imPlatform = null;
-const imIdx = args.indexOf('--im');
-if (imIdx !== -1) {
-  const val = args[imIdx + 1];
-  if (val && !val.startsWith('-')) {
-    imPlatform = val;
-    args.splice(imIdx, 2);
-  } else {
-    console.error(t('cli.imRequiresId'));
-    process.exit(1);
-  }
-}
 
 // ccv 自有命令判断
 const isLogger = args.includes('-logger');
@@ -795,41 +546,24 @@ if (isUninstall) {
     console.log(t('cli.uninstall.hookFail', { error: shellResult.error }));
   }
 
-  // 清理 settings.json 里的 cc-viewer-managed hooks + 历史 statusLine 残留
-  // 一次性 read-modify-write，避免对 settings.json 做两轮 IO。
+  // 清理 statusLine 配置和脚本（兼容历史版本遗留）
   try {
-    const settingsPath = resolve(getClaudeConfigDir(), 'settings.json');
+    const settingsPath = resolve(homedir(), '.claude', 'settings.json');
     if (existsSync(settingsPath)) {
       const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
-      let mutated = false;
-
-      // 1) 移除所有带 cc-viewer-managed marker 的 hook entry（PreToolUse + Stop）
-      //    无此清理 → npm uninstall 后用户 settings.json 仍含 dead path → claude 启动
-      //    时每个工具调用都 ENOENT 报错。
-      const removed = removeAllManagedHooks(settings);
-      if (removed > 0) {
-        mutated = true;
-        console.log(`Removed ${removed} cc-viewer-managed hook entr${removed === 1 ? 'y' : 'ies'} from settings.json`);
-      }
-
-      // 2) 历史 statusLine 残留
       if (settings.statusLine?.command?.includes('ccv-statusline')) {
         delete settings.statusLine;
-        mutated = true;
+        writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
         console.log('Cleaned statusLine config from settings.json');
       }
-
-      if (mutated) {
-        writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
-      }
     }
-    const ccvScript = resolve(getClaudeConfigDir(), 'ccv-statusline.sh');
+    const ccvScript = resolve(homedir(), '.claude', 'ccv-statusline.sh');
     if (existsSync(ccvScript)) {
       unlinkSync(ccvScript);
       console.log('Removed ccv-statusline.sh');
     }
     // 清理 context-window.json
-    const ctxFile = resolve(getClaudeConfigDir(), 'context-window.json');
+    const ctxFile = resolve(homedir(), '.claude', 'context-window.json');
     if (existsSync(ctxFile)) {
       unlinkSync(ctxFile);
     }
@@ -841,16 +575,50 @@ if (isUninstall) {
 }
 
 if (isLogger) {
-  // 模式选择：有 cli.js 就走 npm 注入模式（pre-2.1.113），没有就走 native proxy
-  // 模式（2.1.114+）。单一判据，不再靠 realpath 的启发式。
+  // 安装/修复 hook 逻辑（原来无参数 ccv 的行为）
+  let mode = 'unknown';
+
+  let prefersNative = true;
+  const paths = (process.env.PATH || '').split(':');
+  for (const dir of paths) {
+    if (!dir) continue;
+    const exePath = resolve(dir, 'claude');
+    if (existsSync(exePath)) {
+      try {
+        const real = realpathSync(exePath);
+        if (real.includes('node_modules')) {
+          prefersNative = false;
+        } else {
+          prefersNative = true;
+        }
+        break;
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+
   const nativePath = resolveNativePath();
   const hasNpm = existsSync(cliPath);
-  let mode = 'unknown';
-  if (hasNpm) mode = 'npm';
-  else if (nativePath) mode = 'native';
+
+  if (prefersNative) {
+    if (nativePath) {
+      mode = 'native';
+    } else if (hasNpm) {
+      mode = 'npm';
+    }
+  } else {
+    if (hasNpm) {
+      mode = 'npm';
+    } else if (nativePath) {
+      mode = 'native';
+    }
+  }
 
   if (mode === 'unknown') {
-    reportClaudeNotFound(cliPath);
+    console.error(t('cli.inject.notFound', { path: cliPath }));
+    console.error('Also could not find native "claude" command in PATH.');
+    console.error('Please make sure @anthropic-ai/claude-code is installed.');
     process.exit(1);
   }
 
@@ -906,26 +674,20 @@ if (isLogger) {
   process.exit(0);
 }
 
-if (imPlatform) {
-  // 独立 IM worker 模式
-  runImMode(imPlatform).catch(err => {
-    console.error('IM mode error:', err);
-    process.exit(1);
-  });
-} else if (args[0] === 'run') {
+if (args[0] === 'run') {
   runProxyCommand(args);
 } else if (args.includes('-SDK') || args.includes('--sdk')) {
   // SDK 模式（显式 -SDK 切换）
   const claudeArgs = args.filter(a => a !== '-SDK' && a !== '--sdk')
     .map(a => a === '--d' ? '--dangerously-skip-permissions' : a === '--ad' ? '--allow-dangerously-skip-permissions' : a);
-  runSdkMode(claudeArgs, process.cwd(), noOpen).catch(err => {
+  runSdkMode(claudeArgs, process.cwd()).catch(err => {
     console.error('SDK mode error:', err);
     process.exit(1);
   });
 } else {
   // PTY 模式（默认）
   const claudeArgs = args.map(a => a === '--d' ? '--dangerously-skip-permissions' : a === '--ad' ? '--allow-dangerously-skip-permissions' : a);
-  runCliMode(claudeArgs, process.cwd(), noOpen).catch(err => {
+  runCliMode(claudeArgs, process.cwd()).catch(err => {
     console.error('CLI mode error:', err);
     process.exit(1);
   });

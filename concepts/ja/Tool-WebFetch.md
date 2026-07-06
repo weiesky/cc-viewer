@@ -1,50 +1,55 @@
 # WebFetch
 
-公開 Web ページの内容を取得し、HTML を Markdown に変換して、自然言語プロンプトを使って結果に対して小さな補助モデルを実行し、必要な情報を抽出します。
+## 定義
 
-## 使用タイミング
-
-- 会話で参照された公開ドキュメントページ、ブログ投稿、または RFC を読む。
-- 既知の URL から特定の事実、コードスニペット、またはテーブルを、ページ全体をコンテキストにロードせずに抽出する。
-- 公開 Web リソースのリリースノートやチェンジログを要約する。
-- ソースがローカルリポジトリにない場合にライブラリの公開 API リファレンスを確認する。
-- ユーザーがチャットに貼り付けたリンクをたどってフォローアップの質問に答える。
+指定 URL のウェブページ内容を取得し、HTML を markdown に変換し、AI モデルで prompt に基づいて内容を処理します。
 
 ## パラメータ
 
-- `url` (string, required): 完全な形式の絶対 URL。プレーンな `http://` は自動的に `https://` にアップグレードされます。
-- `prompt` (string, required): 小さな抽出モデルに渡される指示。「すべてのエクスポートされた関数をリストする」や「サポートされる最小 Node バージョンを返す」など、ページから何を取り出すかを正確に記述します。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `url` | string (URI) | はい | 取得する完全な URL |
+| `prompt` | string | はい | ページからどの情報を抽出するかの説明 |
 
-## 例
+## 使用シナリオ
 
-### 例 1: 設定デフォルトを抽出
+**適している場合：**
+- 公開ウェブページの内容を取得
+- オンラインドキュメントの参照
+- ウェブページから特定の情報を抽出
 
-```
-WebFetch(
-  url="https://vitejs.dev/config/server-options.html",
-  prompt="What is the default value of server.port and can it be a string?"
-)
-```
-
-ツールは Vite docs ページを取得し、Markdown に変換し、「デフォルトは `5173`、数値のみを受け入れる」のような短い回答を返します。
-
-### 例 2: チェンジログセクションを要約
-
-```
-WebFetch(
-  url="https://nodejs.org/en/blog/release/v20.11.0",
-  prompt="List the security fixes included in this release as bullet points."
-)
-```
-
-ユーザーが「Node 20.11 で何が変わった？」と尋ね、リリースページが長い場合に便利です。
+**適していない場合：**
+- 認証が必要な URL（Google Docs、Confluence、Jira、GitHub など）——まず専用の MCP ツールを探すべき
+- GitHub URL——`gh` CLI を優先使用
 
 ## 注意事項
 
-- `WebFetch` は認証、Cookie、または VPN を必要とする URL では失敗します。Google Docs、Confluence、Jira、プライベート GitHub リソース、内部 wiki には、認証付きアクセスを提供する専用 MCP サーバーを代わりに使用してください。
-- GitHub にホストされているもの (PR、issue、ファイル blob、API 応答) には、Web UI をスクレイピングするよりも `Bash` 経由の `gh` CLI を優先してください。`gh pr view`、`gh issue view`、`gh api` は構造化データを返し、プライベートリポジトリに対しても動作します。
-- 取得されたページが非常に大きい場合、結果は要約されることがあります。正確なテキストが必要な場合は、`prompt` を絞ってリテラル抽出を求めてください。
-- URL ごとに 15 分の自己クリーニングキャッシュが適用されます。同じページへの 1 セッション中の繰り返し呼び出しはほぼ瞬時ですが、わずかに古いコンテンツを返すことがあります。鮮度が重要な場合はプロンプトで言及するか、キャッシュが切れるのを待ってください。
-- 対象ホストがクロスホストリダイレクトを発行した場合、ツールは特別な応答ブロックで新しい URL を返し、自動的には従いません。まだコンテンツが必要な場合は、リダイレクト先で `WebFetch` を再呼び出ししてください。
-- プロンプトはメインアシスタントよりも小さく高速なモデルによって実行されます。狭く具体的に保ってください。複雑なマルチステップ推論は、取得後に生の Markdown を自分で読む方がうまく処理できます。
-- URL に埋め込まれたシークレット、トークン、またはセッション識別子を絶対に渡さないでください — 出力に反映されるページコンテンツやクエリ文字列は上流サービスによってログに記録される可能性があります。
+- URL は完全な有効 URL でなければならない
+- HTTP は自動的に HTTPS にアップグレード
+- 内容が大きすぎる場合、結果が要約される可能性がある
+- 15分の自動クリーニングキャッシュを含む
+- URL が異なるホストにリダイレクトされた場合、ツールはリダイレクト URL を返し、新しい URL で再リクエストが必要
+- MCP 提供の web fetch ツールが利用可能な場合、そちらを優先使用
+
+## 原文
+
+<textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.
+
+- Fetches content from a specified URL and processes it using an AI model
+- Takes a URL and a prompt as input
+- Fetches the URL content, converts HTML to markdown
+- Processes the content with the prompt using a small, fast model
+- Returns the model's response about the content
+- Use this tool when you need to retrieve and analyze web content
+
+Usage notes:
+  - IMPORTANT: If an MCP-provided web fetch tool is available, prefer using that tool instead of this one, as it may have fewer restrictions.
+  - The URL must be a fully-formed valid URL
+  - HTTP URLs will be automatically upgraded to HTTPS
+  - The prompt should describe what information you want to extract from the page
+  - This tool is read-only and does not modify any files
+  - Results may be summarized if the content is very large
+  - Includes a self-cleaning 15-minute cache for faster responses when repeatedly accessing the same URL
+  - When a URL redirects to a different host, the tool will inform you and provide the redirect URL in a special format. You should then make a new WebFetch request with the redirect URL to fetch the content.
+  - For GitHub URLs, prefer using the gh CLI via Bash instead (e.g., gh pr view, gh issue view, gh api).
+</textarea>

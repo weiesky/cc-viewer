@@ -1,60 +1,75 @@
 # AskUserQuestion
 
-在聊天界面中向用户呈现一个或多个结构化的多选题，收集其选择并返回给助手——适用于无需自由文本往返即可澄清意图的场景。
+## 定义
 
-## 何时使用
-
-- 请求存在多种合理解读，助手需要用户先选定一种再继续。
-- 用户必须在具体选项（框架、库、文件路径、策略）中做出选择，此时自由文本回复容易出错。
-- 你希望通过预览面板并排比较候选方案。
-- 若干相关决策可以合并为单次提问，从而减少来回交流。
-- 某个计划或工具调用依赖于用户尚未指定的配置。
+在执行过程中向用户提问，用于获取澄清、验证假设或请求决策。
 
 ## 参数
 
-- `questions` (array, 必填)：一个提示中同时展示 1 到 4 个问题。每个问题对象包含：
-  - `question` (string, 必填)：问题的完整文本，以问号结尾。
-  - `header` (string, 必填)：短标签（最多 12 个字符），作为问题上方的小芯片渲染。
-  - `options` (array, 必填)：2 到 4 个选项对象。每个选项包含 `label`（1-5 个词）、`description` 和可选的 `markdown` 预览。
-  - `multiSelect` (boolean, 必填)：为 `true` 时允许用户选择多项。
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `questions` | array | 是 | 问题列表（1-4 个问题） |
+| `answers` | object | 否 | 用户收集的答案 |
+| `annotations` | object | 否 | 每个问题的注释（如预览选择的备注） |
+| `metadata` | object | 否 | 跟踪和分析用的元数据 |
 
-## 示例
+每个 `question` 对象：
 
-### 示例 1：选择单一框架
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `question` | string | 是 | 完整的问题文本，应以问号结尾 |
+| `header` | string | 是 | 短标签（最多 12 字符），显示为标签芯片 |
+| `options` | array | 是 | 2-4 个选项 |
+| `multiSelect` | boolean | 是 | 是否允许多选 |
 
-```
-AskUserQuestion(questions=[{
-  "header": "Test runner",
-  "question": "Which test runner should I configure?",
-  "multiSelect": false,
-  "options": [
-    {"label": "Vitest (Recommended)", "description": "Fast, Vite-native, Jest-compatible API"},
-    {"label": "Jest",                  "description": "Mature, broadest plugin ecosystem"},
-    {"label": "Node --test",           "description": "Zero dependencies, built in"}
-  ]
-}])
-```
+每个 `option` 对象：
 
-### 示例 2：两种布局的并排预览
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `label` | string | 是 | 选项显示文本（1-5 个词） |
+| `description` | string | 是 | 选项说明 |
+| `markdown` | string | 否 | 预览内容（用于 ASCII 布局、代码片段等的可视化对比） |
 
-```
-AskUserQuestion(questions=[{
-  "header": "Layout",
-  "question": "Which dashboard layout do you prefer?",
-  "multiSelect": false,
-  "options": [
-    {"label": "Sidebar",  "description": "Nav on the left", "markdown": "```\n+------+---------+\n| NAV  | CONTENT |\n+------+---------+\n```"},
-    {"label": "Top bar",  "description": "Nav across top",  "markdown": "```\n+-----------------+\n|       NAV       |\n+-----------------+\n|     CONTENT     |\n+-----------------+\n```"}
-  ]
-}])
-```
+## 使用场景
+
+**适合使用：**
+- 收集用户偏好或需求
+- 澄清模糊的指令
+- 在实施过程中获取决策
+- 向用户提供方向选择
+
+**不适合使用：**
+- 问"方案可以吗？"——应使用 ExitPlanMode
 
 ## 注意事项
 
-- UI 会自动为每个问题追加一个「Other」自由文本选项。不要自行添加「Other」「None」或「Custom」条目——否则会与内置的兜底入口重复。
-- 每次调用限制在 1 到 4 个问题，每个问题限制在 2 到 4 个选项。超出上限会被运行时拒绝。
-- 若你推荐某一选项，请将它放在首位，并在其 label 后追加「(Recommended)」，以便 UI 高亮推荐路径。
-- 通过 `markdown` 字段提供的预览仅支持单选题。用于 ASCII 布局、代码片段、配置差异等视觉工件，而不是只需 label 加 description 就够的简单偏好选择。
-- 当问题中任一选项带有 `markdown` 值时，UI 会切换为左侧选项列表、右侧预览的并排布局。
-- 不要用 `AskUserQuestion` 询问「这个计划看起来如何？」——请改用 `ExitPlanMode`，它正是用于计划审批。在计划模式下，也请避免在问题文本中提及「the plan」，因为在 `ExitPlanMode` 运行之前用户看不到计划。
-- 不要使用本工具请求 API 密钥、密码等敏感或自由格式的输入。请改为在聊天中直接询问。
+- 用户始终可以选择 "Other" 提供自定义输入
+- 推荐选项放在第一位，并在 label 末尾加 "(Recommended)"
+- `markdown` 预览仅支持单选问题
+- 有 `markdown` 的选项会切换为左右并排布局
+- 在规划模式中，用于在确定方案前澄清需求
+
+## 原文
+
+<textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:
+1. Gather user preferences or requirements
+2. Clarify ambiguous instructions
+3. Get decisions on implementation choices as you work
+4. Offer choices to the user about what direction to take.
+
+Usage notes:
+- Users will always be able to select "Other" to provide custom text input
+- Use multiSelect: true to allow multiple answers to be selected for a question
+- If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
+
+Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ExitPlanMode for plan approval. IMPORTANT: Do not reference "the plan" in your questions (e.g., "Do you have feedback about the plan?", "Does the plan look good?") because the user cannot see the plan in the UI until you call ExitPlanMode. If you need plan approval, use ExitPlanMode instead.
+
+Preview feature:
+Use the optional `markdown` field on options when presenting concrete artifacts that users need to visually compare:
+- ASCII mockups of UI layouts or components
+- Code snippets showing different implementations
+- Diagram variations
+- Configuration examples
+
+When any option has a markdown, the UI switches to a side-by-side layout with a vertical option list on the left and preview on the right. Do not use previews for simple preference questions where labels and descriptions suffice. Note: previews are only supported for single-select questions (not multiSelect).
+</textarea>

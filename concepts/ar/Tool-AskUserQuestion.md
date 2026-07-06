@@ -1,60 +1,75 @@
 # AskUserQuestion
 
-يعرض على المستخدم سؤالاً أو أكثر من الأسئلة المنظمة متعددة الخيارات داخل واجهة المحادثة، ويجمع اختياراته ثم يُعيدها إلى المساعد — مفيد لإزالة الغموض عن النية دون تبادل نصي مفتوح.
+## التعريف
 
-## متى يُستخدم
-
-- عندما يحتمل الطلب عدة تفسيرات معقولة ويحتاج المساعد إلى أن يختار المستخدم أحدها قبل المتابعة.
-- عندما يجب على المستخدم الاختيار بين خيارات محددة (إطار عمل، مكتبة، مسار ملف، استراتيجية) حيث تكون الردود الحرة عرضة للخطأ.
-- عندما تريد المقارنة بين البدائل جنباً إلى جنب باستخدام جزء المعاينة.
-- عندما يمكن تجميع عدة قرارات مترابطة في موجه واحد لتقليل التبادل.
-- عندما تعتمد خطة أو استدعاء أداة على إعدادات لم يحددها المستخدم بعد.
+طرح أسئلة على المستخدم أثناء التنفيذ، للحصول على توضيحات أو التحقق من الافتراضات أو طلب اتخاذ قرارات.
 
 ## المعاملات
 
-- `questions` (مصفوفة، مطلوب): من سؤال واحد إلى أربعة أسئلة تُعرض معاً في موجه واحد. يحتوي كل كائن سؤال على:
-  - `question` (سلسلة، مطلوب): نص السؤال الكامل، منتهياً بعلامة استفهام.
-  - `header` (سلسلة، مطلوب): تسمية قصيرة (12 حرفاً كحد أقصى) تُعرض كشارة فوق السؤال.
-  - `options` (مصفوفة، مطلوب): من خيارين إلى أربعة كائنات خيار. يحتوي كل خيار على `label` (1-5 كلمات) و`description` ومعاينة `markdown` اختيارية.
-  - `multiSelect` (قيمة منطقية، مطلوب): عندما تكون `true`، يمكن للمستخدم اختيار أكثر من خيار.
+| المعامل | النوع | مطلوب | الوصف |
+|---------|-------|-------|-------|
+| `questions` | array | نعم | قائمة الأسئلة (1-4 أسئلة) |
+| `answers` | object | لا | الإجابات التي جمعها المستخدم |
+| `annotations` | object | لا | ملاحظات لكل سؤال (مثل ملاحظات معاينة الاختيارات) |
+| `metadata` | object | لا | بيانات وصفية للتتبع والتحليل |
 
-## أمثلة
+كل كائن `question`:
 
-### مثال 1: اختيار إطار عمل واحد
+| الحقل | النوع | مطلوب | الوصف |
+|-------|-------|-------|-------|
+| `question` | string | نعم | نص السؤال الكامل، يجب أن ينتهي بعلامة استفهام |
+| `header` | string | نعم | تسمية قصيرة (12 حرفاً كحد أقصى)، تُعرض كشريحة تسمية |
+| `options` | array | نعم | 2-4 خيارات |
+| `multiSelect` | boolean | نعم | هل يُسمح بالاختيار المتعدد |
 
-```
-AskUserQuestion(questions=[{
-  "header": "Test runner",
-  "question": "Which test runner should I configure?",
-  "multiSelect": false,
-  "options": [
-    {"label": "Vitest (Recommended)", "description": "Fast, Vite-native, Jest-compatible API"},
-    {"label": "Jest",                  "description": "Mature, broadest plugin ecosystem"},
-    {"label": "Node --test",           "description": "Zero dependencies, built in"}
-  ]
-}])
-```
+كل كائن `option`:
 
-### مثال 2: معاينة جنباً إلى جنب لتخطيطين
+| الحقل | النوع | مطلوب | الوصف |
+|-------|-------|-------|-------|
+| `label` | string | نعم | نص عرض الخيار (1-5 كلمات) |
+| `description` | string | نعم | وصف الخيار |
+| `markdown` | string | لا | محتوى المعاينة (للمقارنة المرئية لتخطيطات ASCII ومقتطفات الكود وغيرها) |
 
-```
-AskUserQuestion(questions=[{
-  "header": "Layout",
-  "question": "Which dashboard layout do you prefer?",
-  "multiSelect": false,
-  "options": [
-    {"label": "Sidebar",  "description": "Nav on the left", "markdown": "```\n+------+---------+\n| NAV  | CONTENT |\n+------+---------+\n```"},
-    {"label": "Top bar",  "description": "Nav across top",  "markdown": "```\n+-----------------+\n|       NAV       |\n+-----------------+\n|     CONTENT     |\n+-----------------+\n```"}
-  ]
-}])
-```
+## سيناريوهات الاستخدام
+
+**مناسب للاستخدام:**
+- جمع تفضيلات أو متطلبات المستخدم
+- توضيح التعليمات الغامضة
+- الحصول على قرارات أثناء التنفيذ
+- تقديم خيارات اتجاهية للمستخدم
+
+**غير مناسب للاستخدام:**
+- السؤال "هل الخطة مقبولة؟" — يجب استخدام ExitPlanMode
 
 ## ملاحظات
 
-- تُضيف الواجهة تلقائياً خيار نص حر «أخرى» لكل سؤال. لا تُضف خانتك الخاصة من نوع «أخرى» أو «لا شيء» أو «مخصص» — فسيُكرر ذلك المخرج المدمج.
-- اقصر كل استدعاء على ما بين سؤال وأربعة أسئلة، وكل سؤال على ما بين خيارين وأربعة خيارات. يرفض الإطار أي تجاوز لهذه الحدود.
-- إذا أوصيت بخيار محدد، ضعه أولاً وأضف "(Recommended)" إلى تسميته حتى تبرز الواجهة المسار المفضل.
-- تُدعم المعاينات عبر حقل `markdown` في أسئلة الاختيار الفردي فقط. استخدمها للعناصر المرئية مثل تخطيطات ASCII أو مقتطفات الشفرة أو فروقات الإعدادات — لا لأسئلة التفضيل البسيطة حيث تكفي التسمية مع الوصف.
-- عندما يحمل أي خيار في السؤال قيمة `markdown`، تتحول الواجهة إلى تخطيط جنباً إلى جنب مع قائمة الخيارات على اليسار والمعاينة على اليمين.
-- لا تستخدم `AskUserQuestion` لسؤال «هل تبدو هذه الخطة جيدة؟» — استدعِ `ExitPlanMode` بدلاً منها، فهي موجودة تحديداً لاعتماد الخطة. وفي وضع التخطيط، تجنَّب كذلك ذكر «الخطة» في نص السؤال لأنها لا تكون مرئية للمستخدم قبل تشغيل `ExitPlanMode`.
-- لا تستخدم هذه الأداة لطلب مدخلات حساسة أو نصية حرة مثل مفاتيح API أو كلمات المرور. اطلبها في المحادثة بدلاً من ذلك.
+- يمكن للمستخدم دائماً اختيار "Other" لتقديم إدخال مخصص
+- يُوضع الخيار الموصى به في المقام الأول مع إضافة "(Recommended)" في نهاية label
+- معاينة `markdown` تدعم فقط أسئلة الاختيار الفردي
+- الخيارات التي تحتوي على `markdown` تتحول إلى تخطيط جنباً إلى جنب
+- في وضع التخطيط، تُستخدم لتوضيح المتطلبات قبل تحديد الخطة
+
+## النص الأصلي
+
+<textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:
+1. Gather user preferences or requirements
+2. Clarify ambiguous instructions
+3. Get decisions on implementation choices as you work
+4. Offer choices to the user about what direction to take.
+
+Usage notes:
+- Users will always be able to select "Other" to provide custom text input
+- Use multiSelect: true to allow multiple answers to be selected for a question
+- If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
+
+Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ExitPlanMode for plan approval. IMPORTANT: Do not reference "the plan" in your questions (e.g., "Do you have feedback about the plan?", "Does the plan look good?") because the user cannot see the plan in the UI until you call ExitPlanMode. If you need plan approval, use ExitPlanMode instead.
+
+Preview feature:
+Use the optional `markdown` field on options when presenting concrete artifacts that users need to visually compare:
+- ASCII mockups of UI layouts or components
+- Code snippets showing different implementations
+- Diagram variations
+- Configuration examples
+
+When any option has a markdown, the UI switches to a side-by-side layout with a vertical option list on the left and preview on the right. Do not use previews for simple preference questions where labels and descriptions suffice. Note: previews are only supported for single-select questions (not multiSelect).
+</textarea>

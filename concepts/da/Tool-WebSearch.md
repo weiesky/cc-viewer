@@ -1,51 +1,58 @@
 # WebSearch
 
-Udfører en live websøgning og returnerer rangerede resultater, som assistenten bruger til at grundlægge sit svar i aktuel information ud over modellens træningscutoff.
+## Definition
 
-## Hvornår skal den bruges
-
-- Besvare spørgsmål om aktuelle begivenheder, nylige udgivelser eller breaking news.
-- Slå den nyeste version op af et bibliotek, framework eller CLI-værktøj.
-- Finde dokumentation eller blogindlæg, når den nøjagtige URL er ukendt.
-- Verificere et faktum, der kan have ændret sig, siden modellen blev trænet.
-- Opdage flere perspektiver på et emne, før du henter en enkelt side med `WebFetch`.
+Udfører en søgemaskineforespørgsel og returnerer søgeresultater til at hente aktuel information.
 
 ## Parametre
 
-- `query` (string, påkrævet): Søgeforespørgslen. Minimum længde 2 tegn. Inkludér det aktuelle år, når du spørger om "nyeste" eller "seneste" information, så resultaterne er friske.
-- `allowed_domains` (array af strings, valgfri): Begrænser resultater til kun disse domæner, for eksempel `["nodejs.org", "developer.mozilla.org"]`. Nyttigt, når du stoler på en specifik kilde.
-- `blocked_domains` (array af strings, valgfri): Udelukker resultater fra disse domæner. Send ikke det samme domæne til både `allowed_domains` og `blocked_domains`.
+| Parameter | Type | Påkrævet | Beskrivelse |
+|------|------|------|------|
+| `query` | string | Ja | Søgeforespørgsel (mindst 2 tegn) |
+| `allowed_domains` | string[] | Nej | Inkluder kun resultater fra disse domæner |
+| `blocked_domains` | string[] | Nej | Ekskluder resultater fra disse domæner |
 
-## Eksempler
+## Brugsscenarier
 
-### Eksempel 1: Versionsopslag med aktuelt år
+**Egnet til:**
+- Hente aktuel information ud over modellens videns-cutoff-dato
+- Søge efter aktuelle begivenheder og nyeste data
+- Søge efter den nyeste tekniske dokumentation
 
-```
-WebSearch(
-  query="React 19 stable release date 2026",
-  allowed_domains=["react.dev", "github.com"]
-)
-```
+## Bemærkninger
 
-Returnerer officielle meddelelser og undgår lavkvalitets-aggregatorsider.
+- Søgeresultater returneres i markdown-hyperlinkformat
+- Efter brug skal der tilføjes en "Sources:"-sektion i slutningen af svaret med relevante URL'er
+- Understøtter domænefiltrering (inklusion/eksklusion)
+- Brug det aktuelle år i søgeforespørgsler
+- Kun tilgængelig i USA
 
-### Eksempel 2: Udeluk støjende kilder
+## Originaltekst
 
-```
-WebSearch(
-  query="kubernetes ingress-nginx CVE April 2026",
-  blocked_domains=["pinterest.com", "medium.com"]
-)
-```
+<textarea readonly>
+- Allows Claude to search the web and use the results to inform responses
+- Provides up-to-date information for current events and recent data
+- Returns search result information formatted as search result blocks, including links as markdown hyperlinks
+- Use this tool for accessing information beyond Claude's knowledge cutoff
+- Searches are performed automatically within a single API call
 
-Holder resultaterne fokuseret på leverandør-advisories og sikkerhedstrackere.
+CRITICAL REQUIREMENT - You MUST follow this:
+  - After answering the user's question, you MUST include a "Sources:" section at the end of your response
+  - In the Sources section, list all relevant URLs from the search results as markdown hyperlinks: [Title](URL)
+  - This is MANDATORY - never skip including sources in your response
+  - Example format:
 
-## Noter
+    [Your answer here]
 
-- Når du bruger `WebSearch` i et svar, skal du tilføje en `Sources:`-sektion i slutningen af dit svar, der lister hvert citeret resultat som en Markdown-hyperlink i form `[Title](URL)`. Dette er et hårdt krav, ikke valgfrit.
-- `WebSearch` er kun tilgængelig for brugere i USA. Hvis værktøjet ikke er tilgængeligt i din region, fald tilbage til `WebFetch` mod en kendt URL, eller bed brugeren om at indsætte relevant indhold.
-- Hvert kald udfører søgningen i en enkelt tur-retur — du kan ikke streame eller paginere. Finjustér forespørgslen, hvis det første resultatsæt rammer ved siden af.
-- Værktøjet returnerer uddrag og metadata, ikke fuldt sideindhold. For at læse et specifikt hit i dybden, følg op med `WebFetch` ved hjælp af den returnerede URL.
-- Brug `allowed_domains` til at håndhæve autoritativ kildeangivelse for sikkerhedsfølsomme spørgsmål som CVE'er eller compliance, og `blocked_domains` til at skære SEO-farme, der spejler dokumentation, væk.
-- Hold forespørgsler korte og nøgleordsdrevne. Naturligsprogs-spørgsmål virker, men har tendens til at returnere samtaleagtige svar frem for primære kilder.
-- Opfind ikke URL'er baseret på søgeintuition — kør altid søgningen og citer, hvad værktøjet faktisk returnerede.
+    Sources:
+    - [Source Title 1](https://example.com/1)
+    - [Source Title 2](https://example.com/2)
+
+Usage notes:
+  - Domain filtering is supported to include or block specific websites
+  - Web search is only available in the US
+
+IMPORTANT - Use the correct year in search queries:
+  - The current month is March 2026. You MUST use this year when searching for recent information, documentation, or current events.
+  - Example: If the user asks for "latest React docs", search for "React documentation" with the current year, NOT last year
+</textarea>

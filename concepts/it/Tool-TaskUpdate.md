@@ -1,70 +1,123 @@
 # TaskUpdate
 
-Modifica un task esistente — il suo stato, contenuto, proprietà, metadati o archi di dipendenza. È così che i task progrediscono attraverso il loro ciclo di vita e come il lavoro viene passato tra Claude Code, teammate e subagenti.
+## Definizione
 
-## Quando usare
-
-- Far transitare un task attraverso il workflow di stato mentre ci lavori.
-- Rivendicare un task assegnando te stesso (o un altro agente) come `owner`.
-- Affinare il `subject` o la `description` una volta che impari di più sul problema.
-- Registrare dipendenze appena scoperte con `addBlocks` / `addBlockedBy`.
-- Allegare `metadata` strutturati come ID di ticket esterni o suggerimenti di priorità.
+Aggiorna lo stato, il contenuto o le dipendenze di un task nella lista dei task.
 
 ## Parametri
 
-- `taskId` (string, obbligatorio): Il task da modificare. Ottienilo da `TaskList` o `TaskCreate`.
-- `status` (string, opzionale): Uno tra `pending`, `in_progress`, `completed`, `deleted`.
-- `subject` (string, opzionale): Titolo imperativo sostitutivo.
-- `description` (string, opzionale): Descrizione dettagliata sostitutiva.
-- `activeForm` (string, opzionale): Testo spinner al presente continuo sostitutivo.
-- `owner` (string, opzionale): Handle di agente o teammate che si assume la responsabilità del task.
-- `metadata` (object, opzionale): Chiavi di metadati da fondere nel task. Imposta una chiave a `null` per eliminarla.
-- `addBlocks` (array of strings, opzionale): ID di task che questo task blocca.
-- `addBlockedBy` (array of strings, opzionale): ID di task che devono completarsi prima di questo.
+| Parametro | Tipo | Obbligatorio | Descrizione |
+|------|------|------|------|
+| `taskId` | string | Sì | ID del task da aggiornare |
+| `status` | enum | No | Nuovo stato: `pending` / `in_progress` / `completed` / `deleted` |
+| `subject` | string | No | Nuovo titolo |
+| `description` | string | No | Nuova descrizione |
+| `activeForm` | string | No | Testo al presente progressivo mostrato durante l'esecuzione |
+| `owner` | string | No | Nuovo responsabile del task (nome dell'agent) |
+| `metadata` | object | No | Metadati da unire (impostare a null per eliminare una chiave) |
+| `addBlocks` | string[] | No | Lista degli ID dei task bloccati da questo task |
+| `addBlockedBy` | string[] | No | Lista degli ID dei task prerequisiti che bloccano questo task |
 
-## Workflow di stato
-
-Il ciclo di vita è deliberatamente lineare: `pending` → `in_progress` → `completed`. `deleted` è terminale e usato per ritirare task su cui non si lavorerà mai.
-
-- Imposta `in_progress` nel momento in cui inizi effettivamente il lavoro, non prima. Solo un task alla volta dovrebbe essere `in_progress` per un dato proprietario.
-- Imposta `completed` solo quando il lavoro è completamente fatto — criteri di accettazione soddisfatti, test che passano, output scritto. Se appare un blocker, mantieni il task `in_progress` e aggiungi un nuovo task che descriva cosa deve essere risolto.
-- Non marcare mai un task come `completed` quando i test stanno fallendo, l'implementazione è parziale o hai incontrato errori irrisolti.
-- Usa `deleted` per task cancellati o duplicati; non riutilizzare un task per lavoro non correlato.
-
-## Esempi
-
-### Esempio 1
-
-Rivendica un task e inizialo.
+## Flusso degli stati
 
 ```
-TaskUpdate(
-  taskId: "t_01HXYZ...",
-  status: "in_progress",
-  owner: "main-agent"
-)
+pending → in_progress → completed
 ```
 
-### Esempio 2
+`deleted` può essere raggiunto da qualsiasi stato e rimuove permanentemente il task.
 
-Completa il lavoro e registra una dipendenza di follow-up.
+## Scenari d'uso
 
-```
-TaskUpdate(
-  taskId: "t_01HXYZ...",
-  status: "completed"
-)
+**Adatto per:**
+- Contrassegnare un task come `in_progress` quando si inizia il lavoro
+- Contrassegnare un task come `completed` quando il lavoro è terminato
+- Impostare le dipendenze tra i task
+- Aggiornare il contenuto del task quando i requisiti cambiano
 
-TaskUpdate(
-  taskId: "t_01FOLLOWUP...",
-  addBlockedBy: ["t_01HXYZ..."]
-)
-```
+**Regole importanti:**
+- Contrassegnare come `completed` solo quando il task è completamente terminato
+- In caso di errori o blocchi, mantenere `in_progress`
+- Non contrassegnare come `completed` in caso di test falliti, implementazione incompleta o errori non risolti
 
 ## Note
 
-- `metadata` si fonde chiave per chiave; passare `null` per una chiave la rimuove. Chiama prima `TaskGet` se non sei sicuro del contenuto corrente.
-- `addBlocks` e `addBlockedBy` appendono archi; non rimuovono quelli esistenti. Modificare il grafo distruttivamente richiede un workflow dedicato — consulta il proprietario del team prima di riscrivere le dipendenze.
-- Mantieni `activeForm` sincronizzato quando cambi `subject` così che il testo dello spinner continui a leggersi naturalmente.
-- Non marcare un task come `completed` per silenziarlo. Se l'utente ha cancellato il lavoro, usa `deleted` con una breve motivazione in `description`.
-- Leggi l'ultimo stato di un task con `TaskGet` prima di aggiornare — i teammate potrebbero averlo cambiato tra la tua ultima lettura e la tua scrittura.
+- Prima dell'aggiornamento, ottenere lo stato più recente del task tramite TaskGet per evitare dati obsoleti
+- Dopo aver completato un task, chiamare TaskList per trovare il prossimo task disponibile
+
+## Testo originale
+
+<textarea readonly>Use this tool to update a task in the task list.
+
+## When to Use This Tool
+
+**Mark tasks as resolved:**
+- When you have completed the work described in a task
+- When a task is no longer needed or has been superseded
+- IMPORTANT: Always mark your assigned tasks as resolved when you finish them
+- After resolving, call TaskList to find your next task
+
+- ONLY mark a task as completed when you have FULLY accomplished it
+- If you encounter errors, blockers, or cannot finish, keep the task as in_progress
+- When blocked, create a new task describing what needs to be resolved
+- Never mark a task as completed if:
+  - Tests are failing
+  - Implementation is partial
+  - You encountered unresolved errors
+  - You couldn't find necessary files or dependencies
+
+**Delete tasks:**
+- When a task is no longer relevant or was created in error
+- Setting status to `deleted` permanently removes the task
+
+**Update task details:**
+- When requirements change or become clearer
+- When establishing dependencies between tasks
+
+## Fields You Can Update
+
+- **status**: The task status (see Status Workflow below)
+- **subject**: Change the task title (imperative form, e.g., "Run tests")
+- **description**: Change the task description
+- **activeForm**: Present continuous form shown in spinner when in_progress (e.g., "Running tests")
+- **owner**: Change the task owner (agent name)
+- **metadata**: Merge metadata keys into the task (set a key to null to delete it)
+- **addBlocks**: Mark tasks that cannot start until this one completes
+- **addBlockedBy**: Mark tasks that must complete before this one can start
+
+## Status Workflow
+
+Status progresses: `pending` → `in_progress` → `completed`
+
+Use `deleted` to permanently remove a task.
+
+## Staleness
+
+Make sure to read a task's latest state using `TaskGet` before updating it.
+
+## Examples
+
+Mark task as in progress when starting work:
+```json
+{"taskId": "1", "status": "in_progress"}
+```
+
+Mark task as completed after finishing work:
+```json
+{"taskId": "1", "status": "completed"}
+```
+
+Delete a task:
+```json
+{"taskId": "1", "status": "deleted"}
+```
+
+Claim a task by setting owner:
+```json
+{"taskId": "1", "owner": "my-name"}
+```
+
+Set up task dependencies:
+```json
+{"taskId": "2", "addBlockedBy": ["1"]}
+```
+</textarea>

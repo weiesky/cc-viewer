@@ -1,70 +1,123 @@
 # TaskUpdate
 
-既存のタスクを変更します — ステータス、コンテンツ、所有権、メタデータ、または依存関係エッジ。これがタスクのライフサイクルを進める方法であり、Claude Code、チームメイト、サブエージェント間で作業が引き渡される方法です。
+## 定義
 
-## 使用タイミング
-
-- 作業中にタスクをステータスワークフローに沿って遷移させる。
-- 自分 (または別のエージェント) を `owner` として割り当ててタスクを請求する。
-- 問題についてより多く学んだら `subject` や `description` を洗練する。
-- `addBlocks` / `addBlockedBy` で新しく発見された依存関係を記録する。
-- 外部チケット ID や優先度ヒントなどの構造化された `metadata` を添付する。
+タスクリスト内の特定タスクのステータス、内容、または依存関係を更新します。
 
 ## パラメータ
 
-- `taskId` (string, required): 変更するタスク。`TaskList` または `TaskCreate` から取得。
-- `status` (string, optional): `pending`、`in_progress`、`completed`、`deleted` のいずれか。
-- `subject` (string, optional): 置換用の命令型タイトル。
-- `description` (string, optional): 置換用の詳細な説明。
-- `activeForm` (string, optional): 置換用の現在進行形スピナーテキスト。
-- `owner` (string, optional): タスクの責任を取るエージェントまたはチームメイトのハンドル。
-- `metadata` (object, optional): タスクにマージするメタデータキー。キーを `null` に設定すると削除されます。
-- `addBlocks` (array of strings, optional): このタスクがブロックするタスク ID。
-- `addBlockedBy` (array of strings, optional): このタスクの前に完了する必要があるタスク ID。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `taskId` | string | はい | 更新するタスクの ID |
+| `status` | enum | いいえ | 新しいステータス：`pending` / `in_progress` / `completed` / `deleted` |
+| `subject` | string | いいえ | 新しいタイトル |
+| `description` | string | いいえ | 新しい説明 |
+| `activeForm` | string | いいえ | 進行中に表示する現在進行形テキスト |
+| `owner` | string | いいえ | 新しいタスク担当者（agent 名） |
+| `metadata` | object | いいえ | マージするメタデータ（null に設定するとキーを削除） |
+| `addBlocks` | string[] | いいえ | このタスクによってブロックされるタスク ID のリスト |
+| `addBlockedBy` | string[] | いいえ | このタスクをブロックする前提タスク ID のリスト |
 
-## ステータスワークフロー
-
-ライフサイクルは意図的に線形です: `pending` → `in_progress` → `completed`。`deleted` は終端で、決して作業されないタスクを撤回するために使用します。
-
-- 実際に作業を始めた瞬間に `in_progress` を設定してください、その前ではありません。特定の所有者に対して `in_progress` は一度に 1 つだけであるべきです。
-- 作業が完全に完了したときのみ `completed` を設定してください — 受け入れ基準が満たされ、テストが通り、出力が書き込まれた。ブロッカーが現れた場合、タスクを `in_progress` のまま保ち、解決する必要があるものを記述する新しいタスクを追加してください。
-- テストが失敗している、実装が部分的、または未解決のエラーに遭遇した場合は、決してタスクを `completed` としてマークしないでください。
-- キャンセルまたは重複のタスクには `deleted` を使用してください。タスクを無関係な作業のために再利用しないでください。
-
-## 例
-
-### 例 1
-
-タスクを請求して開始します。
+## ステータス遷移
 
 ```
-TaskUpdate(
-  taskId: "t_01HXYZ...",
-  status: "in_progress",
-  owner: "main-agent"
-)
+pending → in_progress → completed
 ```
 
-### 例 2
+`deleted` は任意のステータスから遷移可能で、タスクを永久に削除します。
 
-作業を終了し、フォローアップの依存関係を記録します。
+## 使用シナリオ
 
-```
-TaskUpdate(
-  taskId: "t_01HXYZ...",
-  status: "completed"
-)
+**適している場合：**
+- 作業開始時にタスクを `in_progress` にマーク
+- 作業完了後にタスクを `completed` にマーク
+- タスク間の依存関係を設定
+- 要件変更時にタスク内容を更新
 
-TaskUpdate(
-  taskId: "t_01FOLLOWUP...",
-  addBlockedBy: ["t_01HXYZ..."]
-)
-```
+**重要なルール：**
+- タスクを完全に完了した場合のみ `completed` にマーク
+- エラーやブロックに遭遇した場合は `in_progress` を維持
+- テスト失敗、実装不完全、未解決エラーがある場合は `completed` にマークしてはならない
 
 ## 注意事項
 
-- `metadata` はキーごとにマージされます。キーに `null` を渡すと削除されます。現在の内容が不明な場合は、最初に `TaskGet` を呼び出してください。
-- `addBlocks` と `addBlockedBy` はエッジを追加します。既存のものは削除しません。グラフを破壊的に編集するには専用のワークフローが必要です — 依存関係を書き換える前にチームオーナーに相談してください。
-- `subject` を変更するときは `activeForm` を同期させて、スピナーテキストが自然に読めるようにしてください。
-- 無音化するためにタスクを `completed` としてマークしないでください。ユーザーが作業をキャンセルした場合、`description` に簡単な根拠を付けて `deleted` を使用してください。
-- 更新前に `TaskGet` でタスクの最新状態を読み取ってください — 最後の読み取りと書き込みの間にチームメイトが変更した可能性があります。
+- 更新前に TaskGet でタスクの最新ステータスを取得し、古いデータを避ける
+- タスク完了後に TaskList を呼び出して次の利用可能なタスクを検索
+
+## 原文
+
+<textarea readonly>Use this tool to update a task in the task list.
+
+## When to Use This Tool
+
+**Mark tasks as resolved:**
+- When you have completed the work described in a task
+- When a task is no longer needed or has been superseded
+- IMPORTANT: Always mark your assigned tasks as resolved when you finish them
+- After resolving, call TaskList to find your next task
+
+- ONLY mark a task as completed when you have FULLY accomplished it
+- If you encounter errors, blockers, or cannot finish, keep the task as in_progress
+- When blocked, create a new task describing what needs to be resolved
+- Never mark a task as completed if:
+  - Tests are failing
+  - Implementation is partial
+  - You encountered unresolved errors
+  - You couldn't find necessary files or dependencies
+
+**Delete tasks:**
+- When a task is no longer relevant or was created in error
+- Setting status to `deleted` permanently removes the task
+
+**Update task details:**
+- When requirements change or become clearer
+- When establishing dependencies between tasks
+
+## Fields You Can Update
+
+- **status**: The task status (see Status Workflow below)
+- **subject**: Change the task title (imperative form, e.g., "Run tests")
+- **description**: Change the task description
+- **activeForm**: Present continuous form shown in spinner when in_progress (e.g., "Running tests")
+- **owner**: Change the task owner (agent name)
+- **metadata**: Merge metadata keys into the task (set a key to null to delete it)
+- **addBlocks**: Mark tasks that cannot start until this one completes
+- **addBlockedBy**: Mark tasks that must complete before this one can start
+
+## Status Workflow
+
+Status progresses: `pending` → `in_progress` → `completed`
+
+Use `deleted` to permanently remove a task.
+
+## Staleness
+
+Make sure to read a task's latest state using `TaskGet` before updating it.
+
+## Examples
+
+Mark task as in progress when starting work:
+```json
+{"taskId": "1", "status": "in_progress"}
+```
+
+Mark task as completed after finishing work:
+```json
+{"taskId": "1", "status": "completed"}
+```
+
+Delete a task:
+```json
+{"taskId": "1", "status": "deleted"}
+```
+
+Claim a task by setting owner:
+```json
+{"taskId": "1", "owner": "my-name"}
+```
+
+Set up task dependencies:
+```json
+{"taskId": "2", "addBlockedBy": ["1"]}
+```
+</textarea>

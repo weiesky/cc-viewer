@@ -1,70 +1,123 @@
 # TaskUpdate
 
-기존 작업 — 상태, 내용, 소유권, 메타데이터, 또는 의존성 에지 — 을 수정합니다. 이것은 작업이 수명 주기를 통해 진행되고 Claude Code, 팀원, 서브에이전트 간에 작업이 전달되는 방식입니다.
+## 정의
 
-## 사용 시점
+태스크 리스트 내 특정 태스크의 상태, 내용 또는 의존 관계를 업데이트합니다.
 
-- 작업을 진행할 때 상태 워크플로를 통해 작업을 전환합니다.
-- 자신 (또는 다른 에이전트)을 `owner`로 할당하여 작업을 주장합니다.
-- 문제에 대해 더 많이 알게 되면 `subject` 또는 `description`을 개선합니다.
-- `addBlocks` / `addBlockedBy`로 새로 발견된 의존성을 기록합니다.
-- 외부 티켓 ID나 우선순위 힌트와 같은 구조화된 `metadata`를 첨부합니다.
+## 파라미터
 
-## 매개변수
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| `taskId` | string | 예 | 업데이트할 태스크 ID |
+| `status` | enum | 아니오 | 새 상태: `pending` / `in_progress` / `completed` / `deleted` |
+| `subject` | string | 아니오 | 새 제목 |
+| `description` | string | 아니오 | 새 설명 |
+| `activeForm` | string | 아니오 | 진행 중 표시할 현재 진행형 텍스트 |
+| `owner` | string | 아니오 | 새 태스크 담당자 (agent 이름) |
+| `metadata` | object | 아니오 | 병합할 메타데이터 (null로 설정하면 키 삭제) |
+| `addBlocks` | string[] | 아니오 | 이 태스크에 의해 차단되는 태스크 ID 목록 |
+| `addBlockedBy` | string[] | 아니오 | 이 태스크를 차단하는 선행 태스크 ID 목록 |
 
-- `taskId` (string, 필수): 수정할 작업. `TaskList`나 `TaskCreate`에서 얻습니다.
-- `status` (string, 선택): `pending`, `in_progress`, `completed`, `deleted` 중 하나.
-- `subject` (string, 선택): 교체할 명령형 제목.
-- `description` (string, 선택): 교체할 상세한 설명.
-- `activeForm` (string, 선택): 교체할 현재 진행형 스피너 텍스트.
-- `owner` (string, 선택): 작업에 대한 책임을 맡는 에이전트나 팀원 핸들.
-- `metadata` (object, 선택): 작업에 병합할 메타데이터 키. 키를 `null`로 설정하여 삭제합니다.
-- `addBlocks` (array of strings, 선택): 이 작업이 차단하는 작업 ID.
-- `addBlockedBy` (array of strings, 선택): 이 작업 전에 완료되어야 하는 작업 ID.
-
-## 상태 워크플로
-
-수명 주기는 의도적으로 선형입니다: `pending` → `in_progress` → `completed`. `deleted`는 종결되며 절대 작업되지 않을 작업을 취소하는 데 사용됩니다.
-
-- 실제로 작업을 시작하는 순간에 `in_progress`로 설정하십시오. 주어진 소유자에 대해 한 번에 하나의 작업만 `in_progress`여야 합니다.
-- 작업이 완전히 완료된 경우에만 `completed`로 설정하십시오 — 수락 기준 충족, 테스트 통과, 출력 작성. 블로커가 나타나면 작업을 `in_progress`로 유지하고 해결해야 할 것을 설명하는 새 작업을 추가하십시오.
-- 테스트가 실패하거나 구현이 부분적이거나 해결되지 않은 오류에 부딪힐 때 작업을 `completed`로 표시하지 마십시오.
-- 취소되거나 중복된 작업에는 `deleted`를 사용하십시오. 관련 없는 작업을 위해 작업을 재활용하지 마십시오.
-
-## 예시
-
-### 예시 1
-
-작업을 주장하고 시작합니다.
+## 상태 전이
 
 ```
-TaskUpdate(
-  taskId: "t_01HXYZ...",
-  status: "in_progress",
-  owner: "main-agent"
-)
+pending → in_progress → completed
 ```
 
-### 예시 2
+`deleted`는 모든 상태에서 전이 가능하며, 태스크를 영구 삭제합니다.
 
-작업을 완료하고 후속 의존성을 기록합니다.
+## 사용 시나리오
 
+**적합한 경우:**
+- 작업 시작 시 태스크를 `in_progress`로 마킹
+- 작업 완료 후 태스크를 `completed`로 마킹
+- 태스크 간 의존 관계 설정
+- 요구사항 변경 시 태스크 내용 업데이트
+
+**중요 규칙:**
+- 태스크를 완전히 완료한 경우에만 `completed`로 마킹
+- 오류나 차단에 직면하면 `in_progress` 유지
+- 테스트 실패, 구현 불완전, 미해결 오류가 있으면 `completed`로 마킹 불가
+
+## 주의사항
+
+- 업데이트 전 TaskGet으로 태스크의 최신 상태를 가져와 오래된 데이터를 피할 것
+- 태스크 완료 후 TaskList를 호출하여 다음 사용 가능한 태스크 검색
+
+## 원문
+
+<textarea readonly>Use this tool to update a task in the task list.
+
+## When to Use This Tool
+
+**Mark tasks as resolved:**
+- When you have completed the work described in a task
+- When a task is no longer needed or has been superseded
+- IMPORTANT: Always mark your assigned tasks as resolved when you finish them
+- After resolving, call TaskList to find your next task
+
+- ONLY mark a task as completed when you have FULLY accomplished it
+- If you encounter errors, blockers, or cannot finish, keep the task as in_progress
+- When blocked, create a new task describing what needs to be resolved
+- Never mark a task as completed if:
+  - Tests are failing
+  - Implementation is partial
+  - You encountered unresolved errors
+  - You couldn't find necessary files or dependencies
+
+**Delete tasks:**
+- When a task is no longer relevant or was created in error
+- Setting status to `deleted` permanently removes the task
+
+**Update task details:**
+- When requirements change or become clearer
+- When establishing dependencies between tasks
+
+## Fields You Can Update
+
+- **status**: The task status (see Status Workflow below)
+- **subject**: Change the task title (imperative form, e.g., "Run tests")
+- **description**: Change the task description
+- **activeForm**: Present continuous form shown in spinner when in_progress (e.g., "Running tests")
+- **owner**: Change the task owner (agent name)
+- **metadata**: Merge metadata keys into the task (set a key to null to delete it)
+- **addBlocks**: Mark tasks that cannot start until this one completes
+- **addBlockedBy**: Mark tasks that must complete before this one can start
+
+## Status Workflow
+
+Status progresses: `pending` → `in_progress` → `completed`
+
+Use `deleted` to permanently remove a task.
+
+## Staleness
+
+Make sure to read a task's latest state using `TaskGet` before updating it.
+
+## Examples
+
+Mark task as in progress when starting work:
+```json
+{"taskId": "1", "status": "in_progress"}
 ```
-TaskUpdate(
-  taskId: "t_01HXYZ...",
-  status: "completed"
-)
 
-TaskUpdate(
-  taskId: "t_01FOLLOWUP...",
-  addBlockedBy: ["t_01HXYZ..."]
-)
+Mark task as completed after finishing work:
+```json
+{"taskId": "1", "status": "completed"}
 ```
 
-## 참고사항
+Delete a task:
+```json
+{"taskId": "1", "status": "deleted"}
+```
 
-- `metadata`는 키별로 병합됩니다. 키에 대해 `null`을 전달하면 제거됩니다. 현재 내용에 대해 확신이 없으면 먼저 `TaskGet`을 호출하십시오.
-- `addBlocks`와 `addBlockedBy`는 에지를 추가합니다. 기존 것을 제거하지 않습니다. 그래프를 파괴적으로 편집하려면 전용 워크플로가 필요합니다 — 의존성을 다시 작성하기 전에 팀 소유자와 상의하십시오.
-- `subject`를 변경할 때 `activeForm`을 동기화 상태로 유지하여 스피너 텍스트가 계속 자연스럽게 읽히도록 하십시오.
-- 작업을 조용히 하기 위해 `completed`로 표시하지 마십시오. 사용자가 작업을 취소한 경우 `description`에 간단한 근거와 함께 `deleted`를 사용하십시오.
-- 업데이트 전에 `TaskGet`으로 작업의 최신 상태를 읽으십시오 — 팀원이 마지막 읽기와 쓰기 사이에 변경했을 수 있습니다.
+Claim a task by setting owner:
+```json
+{"taskId": "1", "owner": "my-name"}
+```
+
+Set up task dependencies:
+```json
+{"taskId": "2", "addBlockedBy": ["1"]}
+```
+</textarea>

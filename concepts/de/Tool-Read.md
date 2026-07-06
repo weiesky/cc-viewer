@@ -1,41 +1,56 @@
 # Read
 
-Lädt den Inhalt einer einzelnen Datei aus dem lokalen Dateisystem. Unterstützt Klartext, Quellcode, Bilder, PDFs und Jupyter-Notebooks und gibt die Ergebnisse mit 1-basierten Zeilennummern im `cat -n`-Stil zurück.
+## Definition
 
-## Wann verwenden
-
-- Lesen einer Quelldatei an einem bekannten Pfad vor Bearbeitung oder Analyse
-- Inspizieren von Konfigurationsdateien, Lockfiles, Logs oder generierten Artefakten
-- Anzeigen von Screenshots oder Diagrammen, die der Benutzer in die Unterhaltung eingefügt hat
-- Extrahieren eines bestimmten Seitenbereichs aus einem langen PDF-Handbuch
-- Öffnen eines `.ipynb`-Notebooks, um Code-Zellen, Markdown und Zellenausgaben gemeinsam zu überprüfen
+Liest Dateiinhalte aus dem lokalen Dateisystem. Unterstützt Textdateien, Bilder, PDF und Jupyter Notebooks.
 
 ## Parameter
 
-- `file_path` (string, erforderlich): Absoluter Pfad zur Zieldatei. Relative Pfade werden abgelehnt.
-- `offset` (integer, optional): 1-basierte Zeilennummer, ab der gelesen wird. Nützlich für große Dateien in Kombination mit `limit`.
-- `limit` (integer, optional): Maximale Anzahl zurückzugebender Zeilen ab `offset`. Standard sind 2000 Zeilen vom Dateianfang, wenn weggelassen.
-- `pages` (string, optional): Seitenbereich für PDF-Dateien, zum Beispiel `"1-5"`, `"3"` oder `"10-20"`. Erforderlich für PDFs länger als 10 Seiten; maximal 20 Seiten pro Anfrage.
+| Parameter | Typ | Erforderlich | Beschreibung |
+|-----------|-----|--------------|--------------|
+| `file_path` | string | Ja | Absoluter Pfad der Datei |
+| `offset` | number | Nein | Startzeilennummer (für abschnittsweises Lesen großer Dateien) |
+| `limit` | number | Nein | Anzahl zu lesender Zeilen (für abschnittsweises Lesen großer Dateien) |
+| `pages` | string | Nein | PDF-Seitenbereich (z.B. "1-5", "3", "10-20"), nur für PDF |
 
-## Beispiele
+## Anwendungsfälle
 
-### Beispiel 1: Eine gesamte kleine Datei lesen
-`Read` nur mit `file_path` auf `/Users/me/project/src/index.ts` aufrufen. Bis zu 2000 Zeilen werden mit Zeilennummern zurückgegeben, was normalerweise als Bearbeitungskontext ausreicht.
+**Geeignet für:**
+- Codedateien, Konfigurationsdateien und andere Textdateien lesen
+- Bilddateien anzeigen (Claude ist ein multimodales Modell)
+- PDF-Dokumente lesen
+- Jupyter Notebooks lesen (gibt alle Zellen mit Ausgaben zurück)
+- Mehrere Dateien parallel lesen, um Kontext zu erhalten
 
-### Beispiel 2: Durch ein langes Log blättern
-`offset: 5001` und `limit: 500` für eine Log-Datei mit mehreren Tausend Zeilen verwenden, um ein schmales Fenster abzurufen, ohne Kontext-Token zu verschwenden.
-
-### Beispiel 3: Bestimmte PDF-Seiten extrahieren
-Für ein 120-seitiges PDF unter `/tmp/spec.pdf` `pages: "8-15"` setzen, um nur das benötigte Kapitel herauszuziehen. Das Weglassen von `pages` bei einem großen PDF erzeugt einen Fehler.
-
-### Beispiel 4: Ein Bild anzeigen
-Den absoluten Pfad eines PNG- oder JPG-Screenshots übergeben. Das Bild wird visuell gerendert, sodass Claude Code direkt darüber schlussfolgern kann.
+**Nicht geeignet für:**
+- Verzeichnisse lesen – dafür den `ls`-Befehl in Bash verwenden
+- Offene Codebasis-Erkundung – dafür Task (Explore-Typ) verwenden
 
 ## Hinweise
 
-- Immer absolute Pfade bevorzugen. Wenn der Benutzer einen angibt, vertrauen Sie ihm so, wie er ist.
-- Zeilen länger als 2000 Zeichen werden gekürzt; behandeln Sie den zurückgegebenen Inhalt bei extrem breiten Daten als potenziell abgeschnitten.
-- Mehrere unabhängige Dateien lesen? Setzen Sie mehrere `Read`-Aufrufe in derselben Antwort ab, damit sie parallel laufen.
-- `Read` kann keine Verzeichnisse auflisten. Verwenden Sie stattdessen einen `Bash`-`ls`-Aufruf oder das `Glob`-Tool.
-- Das Lesen einer vorhandenen, aber leeren Datei liefert eine System-Erinnerung statt Dateibytes, also behandeln Sie dieses Signal explizit.
-- Ein erfolgreiches `Read` ist erforderlich, bevor Sie `Edit` auf derselben Datei in der aktuellen Sitzung verwenden können.
+- Der Pfad muss ein absoluter Pfad sein, kein relativer Pfad
+- Standardmäßig werden die ersten 2000 Zeilen der Datei gelesen
+- Zeilen mit mehr als 2000 Zeichen werden abgeschnitten
+- Die Ausgabe verwendet das `cat -n`-Format, Zeilennummern beginnen bei 1
+- Große PDFs (über 10 Seiten) erfordern den `pages`-Parameter, maximal 20 Seiten pro Aufruf
+- Das Lesen einer nicht existierenden Datei gibt einen Fehler zurück (kein Absturz)
+- Mehrere Read-Aufrufe können in einer einzelnen Nachricht parallel ausgeführt werden
+
+## Originaltext
+
+<textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.
+Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+
+Usage:
+- The file_path parameter must be an absolute path, not a relative path
+- By default, it reads up to 2000 lines starting from the beginning of the file
+- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
+- Any lines longer than 2000 characters will be truncated
+- Results are returned using cat -n format, with line numbers starting at 1
+- This tool allows Claude Code to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Claude Code is a multimodal LLM.
+- This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.
+- This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
+- This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
+- You can call multiple tools in a single response. It is always better to speculatively read multiple potentially useful files in parallel.
+- You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.
+- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.</textarea>

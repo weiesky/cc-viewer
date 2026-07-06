@@ -6,7 +6,7 @@ MainAgent คือสายการร้องขอหลักของ Cla
 
 ## วิธีการระบุ
 
-ใน cc-viewer, MainAgent จะถูกระบุด้วย `req.mainAgent === true` ซึ่งถูกทำเครื่องหมายโดยอัตโนมัติโดย `server/interceptor.js` ในขณะจับคำร้องขอ
+ใน cc-viewer, MainAgent จะถูกระบุด้วย `req.mainAgent === true` ซึ่งถูกทำเครื่องหมายโดยอัตโนมัติโดย `interceptor.js` ในขณะจับคำร้องขอ
 
 เงื่อนไขการระบุ (ต้องตรงทั้งหมด):
 - เนื้อหาคำร้องขอมีฟิลด์ `system` (system prompt)

@@ -1,70 +1,123 @@
 # TaskUpdate
 
-Ændrer en eksisterende opgave — dens status, indhold, ejerskab, metadata eller afhængighedskanter. Sådan skrider opgaver gennem deres livscyklus, og sådan overdrages arbejde mellem Claude Code, holdkammerater og underagenter.
+## Definition
 
-## Hvornår skal den bruges
-
-- Skift en opgave gennem statusworkflowet, mens du arbejder på den.
-- Overtag en opgave ved at tildele dig selv (eller en anden agent) som `owner`.
-- Finjustering af `subject` eller `description`, når du lærer mere om problemet.
-- Registrering af nyopdagede afhængigheder med `addBlocks` / `addBlockedBy`.
-- Vedhæft struktureret `metadata` som eksterne ticket-ID'er eller prioritetshints.
+Opdaterer status, indhold eller afhængigheder for en opgave i opgavelisten.
 
 ## Parametre
 
-- `taskId` (string, påkrævet): Den opgave, der skal ændres. Hent fra `TaskList` eller `TaskCreate`.
-- `status` (string, valgfri): En af `pending`, `in_progress`, `completed`, `deleted`.
-- `subject` (string, valgfri): Erstatningsimperativtitel.
-- `description` (string, valgfri): Erstatningsdetaljeret beskrivelse.
-- `activeForm` (string, valgfri): Erstatnings-nutid-continuous-spinner-tekst.
-- `owner` (string, valgfri): Agent- eller holdkammerat-handle, der tager ansvar for opgaven.
-- `metadata` (object, valgfri): Metadata-nøgler, der skal flettes ind i opgaven. Sæt en nøgle til `null` for at slette den.
-- `addBlocks` (array af strings, valgfri): Opgave-ID'er, som denne opgave blokerer.
-- `addBlockedBy` (array af strings, valgfri): Opgave-ID'er, der skal fuldføres, før denne.
+| Parameter | Type | Påkrævet | Beskrivelse |
+|------|------|------|------|
+| `taskId` | string | Ja | ID på opgaven der skal opdateres |
+| `status` | enum | Nej | Ny status: `pending` / `in_progress` / `completed` / `deleted` |
+| `subject` | string | Nej | Ny titel |
+| `description` | string | Nej | Ny beskrivelse |
+| `activeForm` | string | Nej | Tekst i nutids-tillægsform vist under udførelse |
+| `owner` | string | Nej | Ny opgaveansvarlig (agent-navn) |
+| `metadata` | object | Nej | Metadata der skal flettes (sæt til null for at slette en nøgle) |
+| `addBlocks` | string[] | Nej | Liste over ID'er for opgaver blokeret af denne opgave |
+| `addBlockedBy` | string[] | Nej | Liste over ID'er for forudgående opgaver der blokerer denne opgave |
 
-## Statusworkflow
-
-Livscyklussen er bevidst lineær: `pending` → `in_progress` → `completed`. `deleted` er terminal og bruges til at trække opgaver tilbage, der aldrig vil blive arbejdet på.
-
-- Sæt `in_progress` i det øjeblik, du faktisk begynder arbejdet, ikke før. Kun én opgave ad gangen bør være `in_progress` for en given ejer.
-- Sæt `completed`, kun når arbejdet er fuldt udført — accepteringskriterier opfyldt, tests bestået, output skrevet. Hvis en blokering viser sig, hold opgaven `in_progress` og tilføj en ny opgave, der beskriver, hvad der skal løses.
-- Markér aldrig en opgave `completed`, når tests fejler, implementeringen er delvis, eller du støder på uløste fejl.
-- Brug `deleted` for opgaver, der er annullerede eller dublerede; genbrug ikke en opgave til ikke-relateret arbejde.
-
-## Eksempler
-
-### Eksempel 1
-
-Overtag en opgave og start den.
+## Statusflow
 
 ```
-TaskUpdate(
-  taskId: "t_01HXYZ...",
-  status: "in_progress",
-  owner: "main-agent"
-)
+pending → in_progress → completed
 ```
 
-### Eksempel 2
+`deleted` kan nås fra enhver status og fjerner opgaven permanent.
 
-Afslut arbejdet og registrér en opfølgende afhængighed.
+## Brugsscenarier
 
+**Egnet til:**
+- Markere en opgave som `in_progress` når arbejdet påbegyndes
+- Markere en opgave som `completed` når arbejdet er afsluttet
+- Sætte afhængigheder mellem opgaver
+- Opdatere opgaveindhold når kravene ændres
+
+**Vigtige regler:**
+- Markér kun som `completed` når opgaven er fuldstændigt afsluttet
+- Ved fejl eller blokeringer, behold `in_progress`
+- Markér ikke som `completed` ved fejlende tests, ufuldstændig implementering eller uløste fejl
+
+## Bemærkninger
+
+- Før opdatering bør man hente opgavens seneste status via TaskGet for at undgå forældede data
+- Efter fuldførelse af en opgave, kald TaskList for at finde den næste tilgængelige opgave
+
+## Originaltekst
+
+<textarea readonly>Use this tool to update a task in the task list.
+
+## When to Use This Tool
+
+**Mark tasks as resolved:**
+- When you have completed the work described in a task
+- When a task is no longer needed or has been superseded
+- IMPORTANT: Always mark your assigned tasks as resolved when you finish them
+- After resolving, call TaskList to find your next task
+
+- ONLY mark a task as completed when you have FULLY accomplished it
+- If you encounter errors, blockers, or cannot finish, keep the task as in_progress
+- When blocked, create a new task describing what needs to be resolved
+- Never mark a task as completed if:
+  - Tests are failing
+  - Implementation is partial
+  - You encountered unresolved errors
+  - You couldn't find necessary files or dependencies
+
+**Delete tasks:**
+- When a task is no longer relevant or was created in error
+- Setting status to `deleted` permanently removes the task
+
+**Update task details:**
+- When requirements change or become clearer
+- When establishing dependencies between tasks
+
+## Fields You Can Update
+
+- **status**: The task status (see Status Workflow below)
+- **subject**: Change the task title (imperative form, e.g., "Run tests")
+- **description**: Change the task description
+- **activeForm**: Present continuous form shown in spinner when in_progress (e.g., "Running tests")
+- **owner**: Change the task owner (agent name)
+- **metadata**: Merge metadata keys into the task (set a key to null to delete it)
+- **addBlocks**: Mark tasks that cannot start until this one completes
+- **addBlockedBy**: Mark tasks that must complete before this one can start
+
+## Status Workflow
+
+Status progresses: `pending` → `in_progress` → `completed`
+
+Use `deleted` to permanently remove a task.
+
+## Staleness
+
+Make sure to read a task's latest state using `TaskGet` before updating it.
+
+## Examples
+
+Mark task as in progress when starting work:
+```json
+{"taskId": "1", "status": "in_progress"}
 ```
-TaskUpdate(
-  taskId: "t_01HXYZ...",
-  status: "completed"
-)
 
-TaskUpdate(
-  taskId: "t_01FOLLOWUP...",
-  addBlockedBy: ["t_01HXYZ..."]
-)
+Mark task as completed after finishing work:
+```json
+{"taskId": "1", "status": "completed"}
 ```
 
-## Noter
+Delete a task:
+```json
+{"taskId": "1", "status": "deleted"}
+```
 
-- `metadata` fletter nøgle for nøgle; at sende `null` for en nøgle fjerner den. Kald `TaskGet` først, hvis du er usikker på det aktuelle indhold.
-- `addBlocks` og `addBlockedBy` tilføjer kanter; de fjerner ikke eksisterende. Destruktiv redigering af grafen kræver et dedikeret workflow — rådfør dig med teamejeren, før du omskriver afhængigheder.
-- Hold `activeForm` i synk, når du ændrer `subject`, så spinnertekst fortsat læses naturligt.
-- Markér ikke en opgave `completed` for at tie den stille. Hvis brugeren annullerede arbejdet, brug `deleted` med en kort begrundelse i `description`.
-- Læs en opgaves seneste tilstand med `TaskGet`, før du opdaterer — holdkammerater kan have ændret den mellem din sidste læsning og din skrivning.
+Claim a task by setting owner:
+```json
+{"taskId": "1", "owner": "my-name"}
+```
+
+Set up task dependencies:
+```json
+{"taskId": "2", "addBlockedBy": ["1"]}
+```
+</textarea>

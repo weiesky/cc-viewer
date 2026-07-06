@@ -1,35 +1,39 @@
 # Glob
 
-글로브 패턴에 대해 파일 이름을 매칭하고 가장 최근 수정 시간 순으로 정렬된 경로를 반환합니다. `find`로 셸을 실행하지 않고도 어떤 규모의 코드베이스에서든 파일을 빠르게 찾는 데 최적화되어 있습니다.
+## 정의
 
-## 사용 시점
+빠른 파일명 패턴 매칭 도구로, 모든 규모의 코드베이스를 지원합니다. 수정 시간순으로 정렬된 매칭 파일 경로를 반환합니다.
 
-- 특정 확장자의 모든 파일 열거 (예: `src` 아래의 모든 `*.ts` 파일)
-- 명명 규칙으로 구성 또는 픽스처 파일 발견 (`**/jest.config.*`, `**/*.test.tsx`)
-- 대상을 지정한 `Grep`을 실행하기 전에 검색 표면 좁히기
-- `Write`를 호출하기 전에 알려진 패턴에 파일이 이미 존재하는지 확인
-- 수정 시간 순서에 의존하여 최근에 수정된 파일 찾기
+## 파라미터
 
-## 매개변수
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| `pattern` | string | 예 | glob 패턴 (예: `**/*.js`, `src/**/*.ts`) |
+| `path` | string | 아니오 | 검색 디렉토리, 기본값은 현재 작업 디렉토리. "undefined"나 "null"을 전달하지 말 것 |
 
-- `pattern` (string, 필수): 매칭할 글로브 표현식. 단일 세그먼트 와일드카드의 경우 `*`, 재귀 매치의 경우 `**`, 대안의 경우 `{a,b}`를 지원합니다 (예: `src/**/*.{ts,tsx}`).
-- `path` (string, 선택): 검색을 실행할 디렉토리. 제공되는 경우 유효한 디렉토리 경로여야 합니다. 현재 작업 디렉토리를 검색하려면 필드를 완전히 생략하십시오. 문자열 `"undefined"`나 `"null"`을 전달하지 마십시오.
+## 사용 시나리오
 
-## 예시
+**적합한 경우:**
+- 파일명 패턴으로 파일 검색
+- 특정 타입의 모든 파일 검색 (예: 모든 `.tsx` 파일)
+- 특정 클래스 정의 (예: `class Foo`)를 찾을 때 먼저 파일 위치 파악
+- 단일 메시지 내에서 여러 Glob 호출을 병렬 실행 가능
 
-### 예시 1: 모든 TypeScript 소스 파일
-`pattern: "src/**/*.ts"`로 `Glob`을 호출합니다. 결과는 mtime 순으로 정렬된 목록이므로, 가장 최근에 편집된 파일이 먼저 나타나 핫스팟에 집중하는 데 유용합니다.
+**적합하지 않은 경우:**
+- 파일 내용 검색 — Grep를 사용해야 함
+- 여러 라운드의 검색이 필요한 개방형 탐색 — Task (Explore 타입)를 사용해야 함
 
-### 예시 2: 클래스 정의 후보 찾기
-이름을 모르는 파일에 클래스가 있다고 의심될 때, `pattern: "**/*UserService*"`로 검색하여 후보를 좁힌 다음 `Read` 또는 `Grep`으로 후속 작업을 진행합니다.
+## 주의사항
 
-### 예시 3: 대규모 작업 전 병렬 발견
-단일 메시지에서 여러 `Glob` 호출을 실행합니다 (예: `**/*.test.ts`용 하나와 `**/fixtures/**`용 하나). 이를 통해 둘 다 병렬로 실행되고 결과를 상관 관계로 지을 수 있습니다.
+- 표준 glob 구문 지원: `*`는 단일 레벨, `**`는 다중 레벨, `{}`는 다중 선택 매칭
+- 결과는 수정 시간순으로 정렬
+- Bash의 `find` 명령보다 권장
 
-## 참고사항
+## 원문
 
-- 결과는 알파벳순이 아닌 파일 수정 시간 (최신 우선)으로 정렬됩니다. 안정적인 순서가 필요하면 다운스트림에서 정렬하십시오.
-- 패턴은 셸이 아닌 도구에 의해 평가됩니다. 명령 줄에서처럼 따옴표로 묶거나 이스케이프할 필요가 없습니다.
-- 여러 라운드의 검색과 추론이 필요한 개방형 탐색의 경우, 많은 `Glob` 호출을 연결하는 대신 Explore 에이전트 타입으로 `Agent`에 위임하십시오.
-- 파일 이름 발견에는 `find`나 `ls`의 `Bash` 호출보다 `Glob`을 선호하십시오. 권한을 일관되게 처리하고 구조화된 출력을 반환합니다.
-- 파일 이름이 아닌 파일 내용을 찾을 때는 대신 `Grep`을 사용하십시오.
+<textarea readonly>- Fast file pattern matching tool that works with any codebase size
+- Supports glob patterns like "**/*.js" or "src/**/*.ts"
+- Returns matching file paths sorted by modification time
+- Use this tool when you need to find files by name patterns
+- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead
+- You can call multiple tools in a single response. It is always better to speculatively perform multiple searches in parallel if they are potentially useful.</textarea>

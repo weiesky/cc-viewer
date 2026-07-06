@@ -66,7 +66,6 @@
 | `CCV_PROJECT_DIR` | `process.cwd()` | 项目工作目录，用于文件操作和 Git 命令 |
 | `CCV_PROXY_PORT` | 未设置 | 本地 MITM 代理端口 |
 | `CCV_BYPASS_PERMISSIONS` | 未设置 | `=1` 跳过工具权限审批（配合 `--dangerously-skip-permissions`） |
-| `CCV_DISABLE_ASK_HOOK` | 未设置 | `=1` 跳过 cc-viewer 网页端 AskUserQuestion 答题，交回终端 / 下游 PermissionRequest hook 处理 |
 | `CCV_DISABLE_DELTA` | 未设置 | `=1` 禁用增量日志存储，每次写入完整消息 |
 | `CCV_DEBUG` | 未设置 | `=1` 启用 HTTP 代理调试日志 |
 | `CCV_DEBUG_PLUGINS` | 未设置 | `=1` 启用插件加载调试日志 |
@@ -123,12 +122,12 @@ CC-Viewer 自动注册到 `~/.claude/settings.json` 的 `hooks.PreToolUse` 中�
 
 ### 1. AskUserQuestion 桥接
 - **匹配器**: `"AskUserQuestion"`
-- **命令**: `node <安装目录>/server/lib/ask-bridge.js`
+- **命令**: `node <安装目录>/lib/ask-bridge.js`
 - **作用**: 将 Claude 的问题转发到 Web UI，等待用户回答
 
 ### 2. 权限审批桥接
 - **匹配器**: `""` (空 = 匹配所有工具)
-- **命令**: `node <安装目录>/server/lib/perm-bridge.js`
+- **命令**: `node <安装目录>/lib/perm-bridge.js`
 - **作用**: 仅 `Bash`/`Edit`/`Write`/`NotebookEdit` 需要 Web UI 审批，其余自动放行
 
 ## 七、Shell 集成
@@ -166,11 +165,8 @@ claude() { ... }
 | `name` | 显示名称 |
 | `baseURL` | 代理 API 地址（替换请求 origin） |
 | `apiKey` | 代理 API 密钥（替换认证头） |
-| `ANTHROPIC_MODEL` | 主模型（fable/mythos 家族映射到此） |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` | opus 家族对应的模型（扩展） |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` | sonnet 家族对应的模型（扩展） |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | haiku 家族对应的模型（扩展） |
-| `effort` | 强制的 `output_config.effort` 等级 |
+| `models` | 可用模型列表 |
+| `activeModel` | 当前选中的模型 |
 
 ## 九、插件系统
 

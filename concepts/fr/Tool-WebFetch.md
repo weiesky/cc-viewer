@@ -1,50 +1,55 @@
 # WebFetch
 
-Récupère le contenu d'une page web publique, convertit le HTML en Markdown et exécute un petit modèle auxiliaire sur le résultat à l'aide d'une invite en langage naturel pour extraire les informations dont vous avez besoin.
+## Définition
 
-## Quand l'utiliser
-
-- Lire une page de documentation publique, un article de blog ou une RFC référencé dans la conversation.
-- Extraire un fait spécifique, un extrait de code ou un tableau d'une URL connue sans charger la page entière dans le contexte.
-- Résumer des notes de version ou des changelogs d'une ressource web ouverte.
-- Consulter la référence d'API publique d'une bibliothèque lorsque le code source n'est pas dans le dépôt local.
-- Suivre un lien que l'utilisateur a collé dans le chat pour répondre à une question de suivi.
+Récupère le contenu d'une page web à partir d'une URL spécifiée, convertit le HTML en markdown et traite le contenu avec un modèle d'IA selon le prompt.
 
 ## Paramètres
 
-- `url` (string, requis) : une URL absolue bien formée. Le simple `http://` est automatiquement mis à niveau en `https://`.
-- `prompt` (string, requis) : l'instruction passée au petit modèle d'extraction. Décrivez exactement ce qu'il faut extraire de la page, par exemple « list all exported functions » ou « return the minimum supported Node version ».
+| Paramètre | Type | Requis | Description |
+|-----------|------|--------|-------------|
+| `url` | string (URI) | Oui | URL complète à récupérer |
+| `prompt` | string | Oui | Décrit quelles informations extraire de la page |
 
-## Exemples
+## Cas d'utilisation
 
-### Exemple 1 : extraire une valeur de configuration par défaut
+**Adapté pour :**
+- Récupérer le contenu de pages web publiques
+- Consulter la documentation en ligne
+- Extraire des informations spécifiques de pages web
 
-```
-WebFetch(
-  url="https://vitejs.dev/config/server-options.html",
-  prompt="What is the default value of server.port and can it be a string?"
-)
-```
-
-L'outil récupère la page de documentation Vite, la convertit en Markdown et renvoie une courte réponse telle que « Default is `5173`; accepts a number only. »
-
-### Exemple 2 : résumer une section de changelog
-
-```
-WebFetch(
-  url="https://nodejs.org/en/blog/release/v20.11.0",
-  prompt="List the security fixes included in this release as bullet points."
-)
-```
-
-Utile lorsque l'utilisateur demande « qu'est-ce qui a changé dans Node 20.11 » et que la page de version est longue.
+**Non adapté pour :**
+- URLs nécessitant une authentification (Google Docs, Confluence, Jira, GitHub, etc.) — chercher d'abord des outils MCP dédiés
+- URLs GitHub — préférer utiliser le CLI `gh`
 
 ## Notes
 
-- `WebFetch` échoue sur toute URL nécessitant authentification, cookies ou VPN. Pour Google Docs, Confluence, Jira, les ressources GitHub privées ou les wikis internes, utilisez plutôt un serveur MCP dédié qui fournit un accès authentifié.
-- Pour tout ce qui est hébergé sur GitHub (PR, issues, blobs de fichiers, réponses d'API), préférez la CLI `gh` via `Bash` plutôt que de scraper l'UI web. `gh pr view`, `gh issue view` et `gh api` renvoient des données structurées et fonctionnent sur des dépôts privés.
-- Les résultats peuvent être résumés lorsque la page récupérée est très grande. Si vous avez besoin du texte exact, restreignez le `prompt` pour demander un extrait littéral.
-- Un cache auto-nettoyant de 15 minutes est appliqué par URL. Les appels répétés à la même page pendant une session sont quasi instantanés mais peuvent renvoyer du contenu légèrement obsolète. Si la fraîcheur importe, mentionnez-le dans l'invite ou attendez que le cache expire.
-- Si l'hôte cible émet une redirection cross-host, l'outil renvoie la nouvelle URL dans un bloc de réponse spécial et ne la suit pas automatiquement. Réinvoquez `WebFetch` avec la cible de redirection si vous voulez toujours le contenu.
-- L'invite est exécutée par un modèle plus petit et plus rapide que l'assistant principal. Gardez-la étroite et concrète ; le raisonnement complexe en plusieurs étapes est mieux géré en lisant vous-même le Markdown brut après la récupération.
-- Ne passez jamais de secrets, jetons ou identifiants de session intégrés dans l'URL — le contenu des pages et les chaînes de requête reflétés dans la sortie peuvent être enregistrés par les services en amont.
+- L'URL doit être une URL valide complète
+- HTTP est automatiquement mis à niveau vers HTTPS
+- Les résultats peuvent être résumés si le contenu est trop volumineux
+- Inclut un cache auto-nettoyant de 15 minutes
+- Quand l'URL redirige vers un hôte différent, l'outil renvoie l'URL de redirection et il faut refaire la requête avec la nouvelle URL
+- Si un outil web fetch fourni par MCP est disponible, préférer l'utiliser
+
+## Texte original
+
+<textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.
+
+- Fetches content from a specified URL and processes it using an AI model
+- Takes a URL and a prompt as input
+- Fetches the URL content, converts HTML to markdown
+- Processes the content with the prompt using a small, fast model
+- Returns the model's response about the content
+- Use this tool when you need to retrieve and analyze web content
+
+Usage notes:
+  - IMPORTANT: If an MCP-provided web fetch tool is available, prefer using that tool instead of this one, as it may have fewer restrictions.
+  - The URL must be a fully-formed valid URL
+  - HTTP URLs will be automatically upgraded to HTTPS
+  - The prompt should describe what information you want to extract from the page
+  - This tool is read-only and does not modify any files
+  - Results may be summarized if the content is very large
+  - Includes a self-cleaning 15-minute cache for faster responses when repeatedly accessing the same URL
+  - When a URL redirects to a different host, the tool will inform you and provide the redirect URL in a special format. You should then make a new WebFetch request with the redirect URL to fetch the content.
+  - For GitHub URLs, prefer using the gh CLI via Bash instead (e.g., gh pr view, gh issue view, gh api).
+</textarea>

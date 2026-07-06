@@ -8,7 +8,7 @@ Claude Code มอบชุดเครื่องมือในตัวใ�
 
 | เครื่องมือ | วัตถุประสงค์ |
 |------|------|
-| [Agent](Tool-Agent.md) | เริ่มต้น sub-agent (SubAgent) เพื่อจัดการงานหลายขั้นตอนที่ซับซ้อน |
+| [Task](Tool-Task.md) | เริ่มต้น sub-agent (SubAgent) เพื่อจัดการงานหลายขั้นตอนที่ซับซ้อน |
 | [TaskOutput](Tool-TaskOutput.md) | รับผลลัพธ์ของงานเบื้องหลัง |
 | [TaskStop](Tool-TaskStop.md) | หยุดงานเบื้องหลังที่กำลังทำงาน |
 | [TaskCreate](Tool-TaskCreate.md) | สร้างรายการในรายการงานแบบมีโครงสร้าง |

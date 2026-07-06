@@ -1,50 +1,40 @@
 # TaskOutput
 
-실행 중이거나 완료된 백그라운드 작업 — 백그라운드 셸 명령, 로컬 에이전트, 또는 원격 세션 — 의 누적된 출력을 가져옵니다. 장시간 실행되는 작업이 지금까지 생성한 것을 검사해야 할 때 사용합니다.
+## 정의
 
-## 사용 시점
+실행 중이거나 완료된 백그라운드 태스크의 출력을 가져옵니다. 백그라운드 셸, 비동기 agent, 원격 세션에 적용됩니다.
 
-- 원격 세션 (예: 클라우드 샌드박스)이 실행 중이며 stdout이 필요합니다.
-- 로컬 에이전트가 백그라운드에서 디스패치되었고 반환되기 전에 부분적인 진행 상황을 원합니다.
-- 백그라운드 셸 명령이 충분히 오래 실행되어 중지하지 않고 확인하고 싶습니다.
-- `TaskStop`을 호출하기 전에 백그라운드 작업이 실제로 진행 중인지 확인해야 합니다.
+## 파라미터
 
-반사적으로 `TaskOutput`에 손을 뻗지 마십시오. 대부분의 백그라운드 작업에는 더 직접적인 경로가 있습니다 — 아래 참고사항을 참조하십시오.
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| `task_id` | string | 예 | 태스크 ID |
+| `block` | boolean | 예 | 태스크 완료까지 블로킹 대기 여부, 기본값 `true` |
+| `timeout` | number | 예 | 최대 대기 시간 (밀리초), 기본값 30000, 최대 600000 |
 
-## 매개변수
+## 사용 시나리오
 
-- `task_id` (string, 필수): 백그라운드 작업이 시작되었을 때 반환된 작업 식별자. 작업 목록 `taskId`와 동일하지 않습니다. 이것은 특정 실행의 런타임 핸들입니다.
-- `block` (boolean, 선택): `true` (기본값)인 경우 작업이 새 출력을 생성하거나 완료될 때까지 기다린 후 반환합니다. `false`인 경우 버퍼링된 것과 함께 즉시 반환합니다.
-- `timeout` (number, 선택): 반환 전에 차단할 최대 밀리초. `block`이 `true`일 때만 의미가 있습니다. 기본값 `30000`, 최대 `600000`.
+**적합한 경우:**
+- Task (`run_in_background: true`)로 시작한 백그라운드 agent의 진행 상황 확인
+- 백그라운드 Bash 명령의 실행 결과 획득
+- 비동기 태스크 완료를 기다리고 출력 획득
 
-## 예시
+**적합하지 않은 경우:**
+- 포그라운드 태스크 — 포그라운드 태스크는 직접 결과를 반환하므로 이 도구가 불필요
 
-### 예시 1
+## 주의사항
 
-차단하지 않고 원격 세션을 엿봅니다.
+- `block: true`는 태스크 완료 또는 타임아웃까지 블로킹
+- `block: false`는 논블로킹으로 현재 상태 확인
+- 태스크 ID는 `/tasks` 명령으로 검색 가능
+- 모든 태스크 타입에 적용: 백그라운드 셸, 비동기 agent, 원격 세션
 
-```
-TaskOutput(task_id: "sess_01HXYZ...", block: false)
-```
+## 원문
 
-작업이 시작된 이후 (또는 런타임에 따라 마지막 `TaskOutput` 호출 이후) 생성된 stdout/stderr를 반환합니다.
-
-### 예시 2
-
-로컬 에이전트가 더 많은 출력을 생성할 때까지 잠시 기다립니다.
-
-```
-TaskOutput(
-  task_id: "agent_01ABCD...",
-  block: true,
-  timeout: 10000
-)
-```
-
-## 참고사항
-
-- 백그라운드 bash 명령: `TaskOutput`은 이 사용 사례에서 사실상 폐기되었습니다. 백그라운드 셸 작업을 시작할 때 결과에는 이미 출력 파일에 대한 경로가 포함되어 있습니다 — `Read` 도구로 직접 그 경로를 읽으십시오. `Read`는 랜덤 접근, 줄 오프셋, 안정적인 보기를 제공합니다. `TaskOutput`은 그렇지 않습니다.
-- 로컬 에이전트 (백그라운드에서 디스패치된 `Agent` 도구): 에이전트가 완료되면 `Agent` 도구 결과에 이미 최종 응답이 포함되어 있습니다. 그것을 직접 사용하십시오. 심볼릭 링크된 기록 파일을 `Read`하지 마십시오 — 전체 도구 호출 스트림을 포함하고 컨텍스트 창을 넘칠 것입니다.
-- 원격 세션: `TaskOutput`은 출력을 다시 스트림하는 올바른 방법이며 종종 유일한 방법입니다. 긴 폴링 루프 대신 적당한 `timeout`과 함께 `block: true`를 선호하십시오.
-- 알 수 없는 `task_id`, 또는 출력이 가비지 수집된 작업은 오류를 반환합니다. 여전히 필요하면 작업을 다시 디스패치하십시오.
-- `TaskOutput`은 작업을 중지하지 않습니다. 종료하려면 `TaskStop`을 사용하십시오.
+<textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)
+- Takes a task_id parameter identifying the task
+- Returns the task output along with status information
+- Use block=true (default) to wait for task completion
+- Use block=false for non-blocking check of current status
+- Task IDs can be found using the /tasks command
+- Works with all task types: background shells, async agents, and remote sessions</textarea>

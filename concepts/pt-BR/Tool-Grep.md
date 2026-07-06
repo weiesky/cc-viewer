@@ -1,46 +1,57 @@
 # Grep
 
-Busca conteúdo de arquivos usando o motor ripgrep. Oferece suporte completo a expressões regulares, filtragem por tipo de arquivo e três modos de saída para que você possa equilibrar precisão com concisão.
+## Definição
 
-## Quando usar
-
-- Localizar todos os pontos de chamada de uma função ou toda referência a um identificador
-- Verificar se uma string ou mensagem de erro aparece em algum lugar no codebase
-- Contar ocorrências de um padrão para avaliar o impacto antes de refatorar
-- Restringir uma busca a um tipo de arquivo (`type: "ts"`) ou glob (`glob: "**/*.tsx"`)
-- Extrair correspondências entre linhas, como definições de struct multilinha ou blocos JSX com `multiline: true`
+Ferramenta poderosa de busca de conteúdo baseada em ripgrep. Suporta expressões regulares, filtragem por tipo de arquivo e múltiplos modos de saída.
 
 ## Parâmetros
 
-- `pattern` (string, obrigatório): A expressão regular a buscar. Usa sintaxe do ripgrep, portanto chaves literais precisam de escape (por exemplo `interface\{\}` para encontrar `interface{}`).
-- `path` (string, opcional): Arquivo ou diretório a buscar. O padrão é o diretório de trabalho atual.
-- `glob` (string, opcional): Filtro de nome de arquivo como `*.js` ou `*.{ts,tsx}`.
-- `type` (string, opcional): Atalho por tipo de arquivo como `js`, `py`, `rust`, `go`. Mais eficiente que `glob` para linguagens padrão.
-- `output_mode` (enum, opcional): `files_with_matches` (padrão, retorna apenas caminhos), `content` (retorna linhas que correspondem) ou `count` (retorna contagens de correspondências).
-- `-i` (boolean, opcional): Correspondência sem diferenciação de maiúsculas e minúsculas.
-- `-n` (boolean, opcional): Inclui números de linha no modo `content`. O padrão é `true`.
-- `-A` (number, opcional): Linhas de contexto a mostrar após cada correspondência (requer modo `content`).
-- `-B` (number, opcional): Linhas de contexto antes de cada correspondência (requer modo `content`).
-- `-C` / `context` (number, opcional): Linhas de contexto em ambos os lados de cada correspondência.
-- `multiline` (boolean, opcional): Permite que padrões atravessem newlines (`.` corresponde a `\n`). O padrão é `false`.
-- `head_limit` (number, opcional): Limita linhas, caminhos de arquivo ou entradas de contagem retornadas. O padrão é 250; passe `0` para ilimitado (use com moderação).
-- `offset` (number, opcional): Pula os primeiros N resultados antes de aplicar `head_limit`. O padrão é `0`.
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|------|------|------|------|
+| `pattern` | string | Sim | Padrão de busca com expressão regular |
+| `path` | string | Não | Caminho de busca (arquivo ou diretório), padrão é o diretório de trabalho atual |
+| `glob` | string | Não | Filtro de nome de arquivo (ex: `*.js`, `*.{ts,tsx}`) |
+| `type` | string | Não | Filtro de tipo de arquivo (ex: `js`, `py`, `rust`), mais eficiente que glob |
+| `output_mode` | enum | Não | Modo de saída: `files_with_matches` (padrão), `content`, `count` |
+| `-i` | boolean | Não | Busca sem distinção de maiúsculas/minúsculas |
+| `-n` | boolean | Não | Exibir números de linha (apenas modo content), padrão true |
+| `-A` | number | Não | Número de linhas a exibir após a correspondência |
+| `-B` | number | Não | Número de linhas a exibir antes da correspondência |
+| `-C` / `context` | number | Não | Número de linhas a exibir antes e depois da correspondência |
+| `head_limit` | number | Não | Limitar número de entradas na saída, padrão 0 (ilimitado) |
+| `offset` | number | Não | Pular os primeiros N resultados |
+| `multiline` | boolean | Não | Ativar modo de correspondência multilinha, padrão false |
 
-## Exemplos
+## Cenários de Uso
 
-### Exemplo 1: Encontrar todos os pontos de chamada de uma função
-Defina `pattern: "registerHandler\\("`, `output_mode: "content"` e `-C: 2` para ver as linhas ao redor de cada chamada.
+**Adequado para:**
+- Buscar strings ou padrões específicos na base de código
+- Encontrar locais de uso de funções/variáveis
+- Filtrar resultados de busca por tipo de arquivo
+- Contar número de correspondências
 
-### Exemplo 2: Contar correspondências em um tipo
-Defina `pattern: "TODO"`, `type: "py"` e `output_mode: "count"` para ver totais de TODO por arquivo em fontes Python.
-
-### Exemplo 3: Correspondência multilinha em struct
-Use `pattern: "struct Config \\{[\\s\\S]*?version"` com `multiline: true` para capturar um campo declarado várias linhas dentro de uma struct Go.
+**Não adequado para:**
+- Buscar arquivos por nome — deve usar Glob
+- Exploração aberta que requer múltiplas rodadas de busca — deve usar Task (tipo Explore)
 
 ## Observações
 
-- Sempre prefira `Grep` a rodar `grep` ou `rg` via `Bash`; a ferramenta é otimizada para permissões corretas e saída estruturada.
-- O modo de saída padrão é `files_with_matches`, que é o mais barato. Mude para `content` apenas quando precisar ver as próprias linhas.
-- Flags de contexto (`-A`, `-B`, `-C`) são ignoradas a menos que `output_mode` seja `content`.
-- Conjuntos grandes de resultados queimam tokens de contexto. Use `head_limit`, `offset` ou filtros `glob`/`type` mais apertados para manter o foco.
-- Para descoberta de nomes de arquivo, use `Glob`; para investigações abertas em várias rodadas, dispare um `Agent` com o agente Explore.
+- Usa sintaxe ripgrep (não grep), caracteres especiais como chaves precisam ser escapados
+- O modo `files_with_matches` retorna apenas caminhos de arquivo, é o mais eficiente
+- O modo `content` retorna o conteúdo das linhas correspondentes, suporta linhas de contexto
+- Correspondência multilinha requer `multiline: true`
+- Sempre prefira usar a ferramenta Grep em vez dos comandos `grep` ou `rg` no Bash
+
+## Texto original
+
+<textarea readonly>A powerful search tool built on ripgrep
+
+  Usage:
+  - ALWAYS use Grep for search tasks. NEVER invoke `grep` or `rg` as a Bash command. The Grep tool has been optimized for correct permissions and access.
+  - Supports full regex syntax (e.g., "log.*Error", "function\s+\w+")
+  - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
+  - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
+  - Use Agent tool for open-ended searches requiring multiple rounds
+  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use `interface\{\}` to find `interface{}` in Go code)
+  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like `struct \{[\s\S]*?field`, use `multiline: true`
+</textarea>

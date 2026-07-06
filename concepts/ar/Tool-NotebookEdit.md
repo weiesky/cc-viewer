@@ -1,39 +1,33 @@
 # NotebookEdit
 
-يُعدِّل خلية واحدة في دفتر Jupyter (`.ipynb`). يدعم استبدال مصدر الخلية، أو إدراج خلية جديدة، أو حذف خلية موجودة مع الحفاظ على بقية هيكل الدفتر.
+## التعريف
 
-## متى يُستخدم
-
-- إصلاح أو تحديث خلية شفرة في دفتر تحليلي دون إعادة كتابة الملف بأكمله
-- استبدال خلية markdown لتحسين السرد أو إضافة توثيق
-- إدراج خلية شفرة أو markdown جديدة في موضع معروف داخل دفتر موجود
-- إزالة خلية قديمة أو معطوبة حتى لا تعتمد عليها الخلايا اللاحقة
-- إعداد دفتر قابل للتكرار بالتطوير على خلية تلو أخرى
+استبدال أو إدراج أو حذف خلايا محددة في Jupyter notebook (ملفات .ipynb).
 
 ## المعاملات
 
-- `notebook_path` (سلسلة، مطلوب): المسار المطلق لملف `.ipynb`. تُرفض المسارات النسبية.
-- `new_source` (سلسلة، مطلوب): مصدر الخلية الجديد. في `replace` و`insert` يصبح متن الخلية؛ وفي `delete` يُتجاهل لكنه مطلوب في المخطط.
-- `cell_id` (سلسلة، اختياري): معرف الخلية المستهدفة. في وضعي `replace` و`delete`، تعمل الأداة على هذه الخلية. في وضع `insert`، تُدرج الخلية الجديدة مباشرة بعد الخلية ذات هذا المعرف؛ احذفه للإدراج في أعلى الدفتر.
-- `cell_type` (تعداد، اختياري): إما `code` أو `markdown`. مطلوب عندما يكون `edit_mode` هو `insert`. عند حذفه خلال `replace`، يُحافظ على نوع الخلية الحالي.
-- `edit_mode` (تعداد، اختياري): `replace` (الافتراضي)، أو `insert`، أو `delete`.
+| المعامل | النوع | مطلوب | الوصف |
+|---------|-------|-------|-------|
+| `notebook_path` | string | نعم | المسار المطلق لملف notebook |
+| `new_source` | string | نعم | المحتوى الجديد للخلية |
+| `cell_id` | string | لا | معرف الخلية المراد تحريرها. في وضع الإدراج تُدرج الخلية الجديدة بعد هذا المعرف |
+| `cell_type` | enum | لا | نوع الخلية: `code` أو `markdown`. مطلوب في وضع الإدراج |
+| `edit_mode` | enum | لا | وضع التحرير: `replace` (افتراضي)، `insert`، `delete` |
 
-## أمثلة
+## سيناريوهات الاستخدام
 
-### مثال 1: استبدال خلية شفرة معيبة
-استدعِ `NotebookEdit` مع تعيين `notebook_path` إلى المسار المطلق و`cell_id` إلى معرف الخلية المستهدفة و`new_source` يحتوي على شفرة Python المُصحَّحة. اترك `edit_mode` على قيمته الافتراضية `replace`.
-
-### مثال 2: إدراج شرح markdown
-لإضافة خلية markdown مباشرة بعد خلية `setup` موجودة، اضبط `edit_mode: "insert"` و`cell_type: "markdown"` و`cell_id` لمعرف خلية setup، وضع السرد في `new_source`.
-
-### مثال 3: حذف خلية قديمة
-اضبط `edit_mode: "delete"` ومرر `cell_id` للخلية المراد إزالتها. قدِّم أي سلسلة لـ `new_source`؛ فلا تُطبَّق.
+**مناسب للاستخدام:**
+- تعديل خلايا الكود أو markdown في Jupyter notebook
+- إضافة خلايا جديدة إلى notebook
+- حذف خلايا من notebook
 
 ## ملاحظات
 
-- مرر دائماً مساراً مطلقاً. لا يحل `NotebookEdit` المسارات النسبية مقابل دليل العمل.
-- تُعيد الأداة كتابة الخلية المستهدفة فقط؛ تبقى أعداد التنفيذ والمخرجات والبيانات الوصفية للخلايا غير المرتبطة كما هي.
-- الإدراج دون `cell_id` يضع الخلية الجديدة في بداية الدفتر تماماً.
-- `cell_type` إلزامي للإدراج. للاستبدالات، احذفه إلا إذا أردت صراحةً تحويل خلية شفرة إلى markdown أو العكس.
-- لفحص الخلايا وأخذ معرفاتها، استخدم أداة `Read` على الدفتر أولاً؛ فهي تُعيد الخلايا بمحتوياتها ومخرجاتها.
-- استخدم `Edit` المعتاد للملفات المصدرية العادية؛ `NotebookEdit` خاص بـ JSON في `.ipynb` ويفهم هيكل خلاياها.
+- `cell_number` يبدأ من الصفر (0-indexed)
+- وضع `insert` يُدرج خلية جديدة في الموضع المحدد
+- وضع `delete` يحذف الخلية في الموضع المحدد
+- يجب أن يكون المسار مطلقاً
+
+## النص الأصلي
+
+<textarea readonly>Completely replaces the contents of a specific cell in a Jupyter notebook (.ipynb file) with new source. Jupyter notebooks are interactive documents that combine code, text, and visualizations, commonly used for data analysis and scientific computing. The notebook_path parameter must be an absolute path, not a relative path. The cell_number is 0-indexed. Use edit_mode=insert to add a new cell at the index specified by cell_number. Use edit_mode=delete to delete the cell at the index specified by cell_number.</textarea>

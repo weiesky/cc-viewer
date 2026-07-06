@@ -6,13 +6,21 @@
  */
 export const BUILTIN_PRESETS = [
   {
+    builtinId: 'scout-regiment',
+    version: 1,
+    teamName: 'ui.preset.scoutRegiment.name',
+    description: 'ui.preset.scoutRegiment.desc',
+  },
+  {
     builtinId: 'codereview-5',
+    version: 1,
     teamName: 'ui.preset.codeReview5.name',
     description: 'ui.preset.codeReview5.desc',
   },
-  // 历史遗留 builtinId 已连同 i18n key 一并删除（用户反馈不常用）：
-  //   - 'scout-regiment'  / ui.preset.scoutRegiment.*
-  //   - 'codereview-2'    / ui.preset.codeReview2.*
-  // 若老用户的 preset 列表里已保存这些条目，i18n key 缺失时 t() 会回显原始 key，
-  // 视觉上难看但不崩；用户可在管理弹窗里手动删除。
+  {
+    builtinId: 'codereview-2',
+    version: 1,
+    teamName: 'ui.preset.codeReview2.name',
+    description: 'ui.preset.codeReview2.desc',
+  },
 ];

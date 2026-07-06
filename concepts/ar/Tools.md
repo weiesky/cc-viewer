@@ -8,7 +8,7 @@
 
 | الأداة | الغرض |
 |--------|--------|
-| [Agent](Tool-Agent.md) | بدء وكيل فرعي (SubAgent) لمعالجة المهام المعقدة متعددة الخطوات |
+| [Task](Tool-Task.md) | بدء وكيل فرعي (SubAgent) لمعالجة المهام المعقدة متعددة الخطوات |
 | [TaskOutput](Tool-TaskOutput.md) | الحصول على مخرجات المهام الخلفية |
 | [TaskStop](Tool-TaskStop.md) | إيقاف مهمة خلفية قيد التشغيل |
 | [TaskCreate](Tool-TaskCreate.md) | إنشاء عنصر في قائمة المهام المنظمة |

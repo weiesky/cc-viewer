@@ -1,35 +1,128 @@
 # EnterPlanMode
 
-Перемикає сесію в режим планування — фазу дослідження лише для читання, в якій асистент вивчає кодову базу і складає конкретний план реалізації, щоб користувач затвердив його перед будь-якими змінами файлів.
+## Визначення
 
-## Коли використовувати
-
-- Користувач просить нетривіальну зміну, що охоплює кілька файлів чи підсистем.
-- Вимоги неоднозначні, і асистенту потрібно прочитати код, перш ніж обирати підхід.
-- Пропонується рефакторинг, міграція чи оновлення залежності, і радіус впливу незрозумілий.
-- Користувач явно каже "сплануй це", "давай спочатку спланувати" або запитує огляд проєкту.
-- Ризик достатньо високий, щоб перехід одразу до правок міг зруйнувати роботу або стан.
+Перемикає Claude Code у режим планування для дослідження кодової бази та проєктування плану перед реалізацією.
 
 ## Параметри
 
-Немає. `EnterPlanMode` не приймає аргументів — викликайте його з порожнім обʼєктом параметрів.
+Без параметрів.
 
-## Приклади
+## Сценарії використання
 
-### Приклад 1: Великий запит на функцію
+**Підходить для:**
+- Реалізація нової функціональності — потрібні архітектурні рішення
+- Існує кілька можливих підходів — потрібен вибір користувача
+- Зміна коду впливає на існуючу поведінку або структуру
+- Зміни в кількох файлах — можуть стосуватися 2-3 і більше файлів
+- Вимоги нечіткі — потрібно спочатку дослідити та зрозуміти обсяг
+- Уподобання користувача важливі — реалізація може мати кілька обґрунтованих напрямків
 
-Користувач запитує: "Додай SSO через Okta до адмінпанелі." Асистент викликає `EnterPlanMode`, потім витрачає кілька кроків, читаючи middleware автентифікації, сховище сесій, охоронці маршрутів та наявний UI входу. Він пише план, описуючи необхідні зміни, етапи міграції та тестове покриття, а потім подає через `ExitPlanMode` на затвердження.
+**Не підходить для:**
+- Виправлення одного рядка або кількох рядків (друкарська помилка, очевидний баг)
+- Користувач дав дуже конкретні інструкції
+- Суто дослідницьке/розвідувальне завдання — слід використовувати Task (тип Explore)
 
-### Приклад 2: Ризикований рефакторинг
+## Поведінка в режимі планування
 
-Користувач каже: "Перетвори REST-контролери на tRPC." Асистент входить у режим планування, оглядає кожен контролер, каталогізує публічний контракт, перелічує фази розгортання (шим, подвійне читання, перемикання) і пропонує план послідовності перед тим, як торкатися будь-якого файлу.
+Після входу в режим планування Claude Code:
+1. Використовує інструменти Glob, Grep, Read для глибокого дослідження кодової бази
+2. Розуміє існуючі патерни та архітектуру
+3. Проєктує план реалізації
+4. Подає план на затвердження користувачем
+5. За потреби може використовувати AskUserQuestion для уточнення
+6. Коли план готовий, виходить через ExitPlanMode
 
 ## Примітки
 
-- Режим планування за контрактом є лише для читання. Перебуваючи в ньому, асистент не повинен запускати `Edit`, `Write`, `NotebookEdit` чи будь-яку мутаційну команду оболонки. Використовуйте лише `Read`, `Grep`, `Glob` та недеструктивні команди `Bash`.
-- Не входьте в режим планування для тривіальних однорядкових правок, чисто дослідницьких питань чи завдань, де користувач уже повністю вказав зміну в деталях. Накладні витрати шкодять більше, ніж допомагають.
-- У режимі Auto режим планування не заохочується, якщо користувач явно не запитує — Auto віддає перевагу діям над попереднім плануванням.
-- Використовуйте режим планування, щоб зменшити коригування курсу в дорогій роботі. Пʼятихвилинний план часто економить годину неправильно спрямованих правок.
-- У режимі планування фокусуйте дослідження на частинах системи, які насправді зміняться. Уникайте вичерпних турів по репозиторію, не повʼязаних із поточним завданням.
-- Сам план має бути записаний на диск за шляхом, який очікує оболонка, щоб `ExitPlanMode` міг його подати. План повинен містити конкретні шляхи файлів, імена функцій та кроки верифікації, а не розпливчасті наміри.
-- Користувач може відхилити план і попросити перегляду. Ітеруйте в режимі планування, доки план не буде прийнятий; лише потім виходьте.
+- Цей інструмент потребує згоди користувача для входу в режим планування
+- Якщо не впевнені, чи потрібне планування, схиляйтеся до планування — попереднє узгодження краще за переробку
+
+## Оригінальний текст
+
+<textarea readonly>Use this tool proactively when you're about to start a non-trivial implementation task. Getting user sign-off on your approach before writing code prevents wasted effort and ensures alignment. This tool transitions you into plan mode where you can explore the codebase and design an implementation approach for user approval.
+
+## When to Use This Tool
+
+**Prefer using EnterPlanMode** for implementation tasks unless they're simple. Use it when ANY of these conditions apply:
+
+1. **New Feature Implementation**: Adding meaningful new functionality
+   - Example: "Add a logout button" - where should it go? What should happen on click?
+   - Example: "Add form validation" - what rules? What error messages?
+
+2. **Multiple Valid Approaches**: The task can be solved in several different ways
+   - Example: "Add caching to the API" - could use Redis, in-memory, file-based, etc.
+   - Example: "Improve performance" - many optimization strategies possible
+
+3. **Code Modifications**: Changes that affect existing behavior or structure
+   - Example: "Update the login flow" - what exactly should change?
+   - Example: "Refactor this component" - what's the target architecture?
+
+4. **Architectural Decisions**: The task requires choosing between patterns or technologies
+   - Example: "Add real-time updates" - WebSockets vs SSE vs polling
+   - Example: "Implement state management" - Redux vs Context vs custom solution
+
+5. **Multi-File Changes**: The task will likely touch more than 2-3 files
+   - Example: "Refactor the authentication system"
+   - Example: "Add a new API endpoint with tests"
+
+6. **Unclear Requirements**: You need to explore before understanding the full scope
+   - Example: "Make the app faster" - need to profile and identify bottlenecks
+   - Example: "Fix the bug in checkout" - need to investigate root cause
+
+7. **User Preferences Matter**: The implementation could reasonably go multiple ways
+   - If you would use AskUserQuestion to clarify the approach, use EnterPlanMode instead
+   - Plan mode lets you explore first, then present options with context
+
+## When NOT to Use This Tool
+
+Only skip EnterPlanMode for simple tasks:
+- Single-line or few-line fixes (typos, obvious bugs, small tweaks)
+- Adding a single function with clear requirements
+- Tasks where the user has given very specific, detailed instructions
+- Pure research/exploration tasks (use the Agent tool with explore agent instead)
+
+## What Happens in Plan Mode
+
+In plan mode, you'll:
+1. Thoroughly explore the codebase using Glob, Grep, and Read tools
+2. Understand existing patterns and architecture
+3. Design an implementation approach
+4. Present your plan to the user for approval
+5. Use AskUserQuestion if you need to clarify approaches
+6. Exit plan mode with ExitPlanMode when ready to implement
+
+## Examples
+
+### GOOD - Use EnterPlanMode:
+User: "Add user authentication to the app"
+- Requires architectural decisions (session vs JWT, where to store tokens, middleware structure)
+
+User: "Optimize the database queries"
+- Multiple approaches possible, need to profile first, significant impact
+
+User: "Implement dark mode"
+- Architectural decision on theme system, affects many components
+
+User: "Add a delete button to the user profile"
+- Seems simple but involves: where to place it, confirmation dialog, API call, error handling, state updates
+
+User: "Update the error handling in the API"
+- Affects multiple files, user should approve the approach
+
+### BAD - Don't use EnterPlanMode:
+User: "Fix the typo in the README"
+- Straightforward, no planning needed
+
+User: "Add a console.log to debug this function"
+- Simple, obvious implementation
+
+User: "What files handle routing?"
+- Research task, not implementation planning
+
+## Important Notes
+
+- This tool REQUIRES user approval - they must consent to entering plan mode
+- If unsure whether to use it, err on the side of planning - it's better to get alignment upfront than to redo work
+- Users appreciate being consulted before significant changes are made to their codebase
+</textarea>

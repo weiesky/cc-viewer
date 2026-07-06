@@ -1,35 +1,39 @@
 # Write
 
-Creates a new file or fully replaces the contents of an existing one on the local filesystem. Because it replaces everything at the target path, it should be reserved for genuine creation or intentional full rewrites.
+## Definition
 
-## When to Use
-
-- Creating a brand-new source file, test, or configuration that does not yet exist
-- Generating a fresh fixture, snapshot, or data file from scratch
-- Performing a complete rewrite where an incremental `Edit` would be more complex than starting over
-- Emitting a requested artifact such as a schema, migration, or build script that the user explicitly asked you to produce
+Writes content to the local filesystem. Overwrites the file if it already exists.
 
 ## Parameters
 
-- `file_path` (string, required): Absolute path of the file to write. Any parent directories must already exist.
-- `content` (string, required): The full text to write to the file. This becomes the entire file body.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `file_path` | string | Yes | Absolute path of the file (must be an absolute path) |
+| `content` | string | Yes | The content to write |
 
-## Examples
+## Use Cases
 
-### Example 1: Create a new helper module
-Call `Write` with `file_path: "/Users/me/app/src/utils/slugify.ts"` and provide the implementation as `content`. Use this only after verifying that the file does not already exist.
+**Good for:**
+- Creating new files
+- When a complete rewrite of file content is needed
 
-### Example 2: Regenerate a derived artifact
-After the schema source changes, rewrite `/Users/me/app/generated/schema.json` in one `Write` call using the freshly generated JSON as `content`.
-
-### Example 3: Replace a small fixture file
-For a throwaway test fixture where every line changes, `Write` can be clearer than a sequence of `Edit` calls. Read the file first, confirm the scope, then overwrite.
+**Not good for:**
+- Modifying partial content in a file — use Edit instead
+- Should not proactively create documentation files (*.md) or READMEs unless the user explicitly requests it
 
 ## Notes
 
-- Before overwriting an existing file, you must call `Read` on it in the current session. `Write` refuses to clobber unseen content.
-- Prefer `Edit` for any change that touches only part of a file. `Edit` sends just the diff, which is faster, safer, and easier to review.
-- Do not proactively create Markdown documentation, `README.md`, or changelog files unless the user explicitly asks for them.
-- Do not add emoji, marketing copy, or decorative banners unless the user requests that style.
-- Verify the parent directory exists first with a `Bash` `ls` call; `Write` does not create intermediate folders.
-- Supply the content exactly as you want it persisted; there is no templating or post-processing.
+- If the target file already exists, it must first be read via Read, otherwise it will fail
+- Overwrites the entire content of existing files
+- Prefer using Edit for existing files; Write is only for creating new files or complete rewrites
+
+## Original Text
+
+<textarea readonly>Writes a file to the local filesystem.
+
+Usage:
+- This tool will overwrite the existing file if there is one at the provided path.
+- If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
+- Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.
+- NEVER create documentation files (*.md) or README files unless explicitly requested by the User.
+- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.</textarea>

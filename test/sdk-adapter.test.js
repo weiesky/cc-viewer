@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { sdkToJSONLEntry, buildStreamingStatus, sdkApprovalCloseType } from '../server/lib/sdk-adapter.js';
+import { sdkToJSONLEntry, buildStreamingStatus } from '../lib/sdk-adapter.js';
 
 describe('sdkToJSONLEntry', () => {
   it('produces a valid JSONL entry with all fields', () => {
@@ -115,30 +115,5 @@ describe('buildStreamingStatus', () => {
   it('ignores meta when active is false', () => {
     const status = buildStreamingStatus(false, { model: 'x', startTime: 999 });
     assert.deepEqual(status, { active: false });
-  });
-});
-
-describe('sdkApprovalCloseType', () => {
-  // interruptTurn() 排空 pending approvals 后，server.js 用该映射告诉所有 client 关掉对应 modal。
-  // 映射错 = 关错弹窗 / 走错 client handler，故逐 kind 锁定。
-  it("maps 'ask' → ask-hook-cancelled", () => {
-    assert.equal(sdkApprovalCloseType('ask'), 'ask-hook-cancelled');
-  });
-
-  it("maps 'plan' → sdk-plan-resolved", () => {
-    assert.equal(sdkApprovalCloseType('plan'), 'sdk-plan-resolved');
-  });
-
-  it("maps 'perm' → perm-hook-resolved", () => {
-    assert.equal(sdkApprovalCloseType('perm'), 'perm-hook-resolved');
-  });
-
-  it('falls back to perm-hook-resolved for null (interruptTurn returns kind=null when unset)', () => {
-    assert.equal(sdkApprovalCloseType(null), 'perm-hook-resolved');
-  });
-
-  it('falls back to perm-hook-resolved for unknown / undefined kinds', () => {
-    assert.equal(sdkApprovalCloseType(undefined), 'perm-hook-resolved');
-    assert.equal(sdkApprovalCloseType('bogus'), 'perm-hook-resolved');
   });
 });

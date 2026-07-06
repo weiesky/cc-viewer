@@ -8,7 +8,7 @@ Nedenfor er en kategorisert indeks over alle verktøy.
 
 | Verktøy | Formål |
 |---------|--------|
-| [Agent](Tool-Agent.md) | Starte en sub-agent (SubAgent) for å håndtere komplekse flerstegsoppgaver |
+| [Task](Tool-Task.md) | Starte en sub-agent (SubAgent) for å håndtere komplekse flerstegsoppgaver |
 | [TaskOutput](Tool-TaskOutput.md) | Hente utdata fra bakgrunnsoppgaver |
 | [TaskStop](Tool-TaskStop.md) | Stoppe en kjørende bakgrunnsoppgave |
 | [TaskCreate](Tool-TaskCreate.md) | Opprette et strukturert oppgavelisteelement |

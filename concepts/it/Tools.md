@@ -8,7 +8,7 @@ Di seguito l'indice categorizzato di tutti gli strumenti.
 
 | Strumento | Scopo |
 |------|------|
-| [Agent](Tool-Agent.md) | Avvia un sub agent (SubAgent) per gestire task complessi multi-step |
+| [Task](Tool-Task.md) | Avvia un sub agent (SubAgent) per gestire task complessi multi-step |
 | [TaskOutput](Tool-TaskOutput.md) | Ottieni l'output di un task in background |
 | [TaskStop](Tool-TaskStop.md) | Ferma un task in background in esecuzione |
 | [TaskCreate](Tool-TaskCreate.md) | Crea una voce nella lista dei task strutturata |

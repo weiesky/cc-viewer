@@ -1,51 +1,58 @@
 # WebSearch
 
-Performs a live web search and returns ranked results that the assistant uses to ground its answer in current information beyond the model's training cutoff.
+## Definition
 
-## When to Use
-
-- Answering questions about current events, recent releases, or breaking news.
-- Looking up the latest version of a library, framework, or CLI tool.
-- Finding documentation or blog posts when the exact URL is unknown.
-- Verifying a fact that may have changed since the model was trained.
-- Discovering multiple perspectives on a topic before fetching any single page with `WebFetch`.
+Performs search engine queries and returns search results for obtaining up-to-date information.
 
 ## Parameters
 
-- `query` (string, required): The search query. Minimum length 2 characters. Include the current year when asking about "latest" or "recent" information so results are fresh.
-- `allowed_domains` (array of strings, optional): Restricts results to only these domains, for example `["nodejs.org", "developer.mozilla.org"]`. Useful when you trust a specific source.
-- `blocked_domains` (array of strings, optional): Excludes results from these domains. Do not pass the same domain to both `allowed_domains` and `blocked_domains`.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | Yes | Search query (minimum 2 characters) |
+| `allowed_domains` | string[] | No | Only include results from these domains |
+| `blocked_domains` | string[] | No | Exclude results from these domains |
 
-## Examples
+## Use Cases
 
-### Example 1: Version lookup with current year
-
-```
-WebSearch(
-  query="React 19 stable release date 2026",
-  allowed_domains=["react.dev", "github.com"]
-)
-```
-
-Returns official announcements and avoids low-quality aggregator sites.
-
-### Example 2: Exclude noisy sources
-
-```
-WebSearch(
-  query="kubernetes ingress-nginx CVE April 2026",
-  blocked_domains=["pinterest.com", "medium.com"]
-)
-```
-
-Keeps results focused on vendor advisories and security trackers.
+**Good for:**
+- Getting the latest information beyond the model's knowledge cutoff date
+- Finding current events and recent data
+- Searching for the latest technical documentation
 
 ## Notes
 
-- When you use `WebSearch` in an answer, you must append a `Sources:` section at the end of your response listing each cited result as a Markdown hyperlink of the form `[Title](URL)`. This is a hard requirement, not optional.
-- `WebSearch` is only available to users in the United States. If the tool is unavailable in your region, fall back to `WebFetch` against a known URL or ask the user to paste relevant content.
-- Each call performs the search in a single round-trip — you cannot stream or paginate. Refine the query if the first result set is off-target.
-- The tool returns snippets and metadata, not full page contents. To read a specific hit in depth, follow up with `WebFetch` using the returned URL.
-- Use `allowed_domains` to enforce authoritative sourcing for security-sensitive questions such as CVEs or compliance, and `blocked_domains` to cut out SEO farms that mirror documentation.
-- Keep queries short and keyword-driven. Natural-language questions work but tend to return conversational answers rather than primary sources.
-- Do not invent URLs based on search intuition — always run the search and cite what the tool actually returned.
+- Search results are returned in markdown hyperlink format
+- After using this tool, a "Sources:" section must be appended at the end of the response listing the relevant URLs
+- Supports domain filtering (include/exclude)
+- Use the current year in search queries
+- Only available in the US
+
+## Original Text
+
+<textarea readonly>
+- Allows Claude to search the web and use the results to inform responses
+- Provides up-to-date information for current events and recent data
+- Returns search result information formatted as search result blocks, including links as markdown hyperlinks
+- Use this tool for accessing information beyond Claude's knowledge cutoff
+- Searches are performed automatically within a single API call
+
+CRITICAL REQUIREMENT - You MUST follow this:
+  - After answering the user's question, you MUST include a "Sources:" section at the end of your response
+  - In the Sources section, list all relevant URLs from the search results as markdown hyperlinks: [Title](URL)
+  - This is MANDATORY - never skip including sources in your response
+  - Example format:
+
+    [Your answer here]
+
+    Sources:
+    - [Source Title 1](https://example.com/1)
+    - [Source Title 2](https://example.com/2)
+
+Usage notes:
+  - Domain filtering is supported to include or block specific websites
+  - Web search is only available in the US
+
+IMPORTANT - Use the correct year in search queries:
+  - The current month is March 2026. You MUST use this year when searching for recent information, documentation, or current events.
+  - Example: If the user asks for "latest React docs", search for "React documentation" with the current year, NOT last year
+</textarea>

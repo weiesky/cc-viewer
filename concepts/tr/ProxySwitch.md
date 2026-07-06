@@ -1,38 +1,32 @@
-# Anlık Geçiş Proxy'si
+# Hot-Switch Proxy
 
-## Genel Bakış
+## Overview
 
-Anlık Geçiş Proxy'si, Claude Code'u yeniden başlatmadan API isteklerini dinamik olarak farklı bir uç noktaya yönlendirmenizi sağlar. Üçüncü taraf API proxy hizmetleri kullanırken faydalıdır.
+Hot-Switch Proxy lets you dynamically redirect API requests to a different endpoint without restarting Claude Code. This is useful when using third-party API proxy services.
 
-> ⚠️ Claude Max aboneliğiniz varsa bu özelliği kullanmayın.
+> ⚠️ Do not use this feature if you are a Claude Max subscriber.
 
-## Alanlar
+## Fields
 
-| Alan | Zorunlu | Açıklama |
-|------|---------|----------|
-| **Name** | ✅ | Bu proxy'yi tanımlamak için kullanılan görünen ad |
-| **Base URL** | ✅ | API hizmetinin temel URL'si (ör. `https://api.example.com`). Orijinal istek kaynağı bununla değiştirilir |
-| **API Key** | ✅ | Proxy hizmetinin API anahtarı, orijinal kimlik doğrulamanın yerini alır |
-| **ANTHROPIC_MODEL** | ❌ | Birincil model. Modeli `fable` / `mythos` ailesine ait olan istekler buna yeniden yazılır |
-| **ANTHROPIC_DEFAULT_OPUS_MODEL** | ❌ | Genişletilmiş: modeli `opus` içeren istekler buna yeniden yazılır |
-| **ANTHROPIC_DEFAULT_SONNET_MODEL** | ❌ | Genişletilmiş: modeli `sonnet` içeren istekler buna yeniden yazılır |
-| **ANTHROPIC_DEFAULT_HAIKU_MODEL** | ❌ | Genişletilmiş: modeli `haiku` içeren istekler buna yeniden yazılır |
-| **Effort Level** | ❌ | İstek gövdesine `output_config.effort` (`low`/`medium`/`high`/`xhigh`/`max`) ekler. Atlamak için "Default" olarak bırakın |
+| Field | Required | Description |
+|-------|----------|-------------|
+| **Name** | ✅ | Display name for this proxy, used to identify it |
+| **Base URL** | ✅ | Base URL of the API service (e.g. `https://api.example.com`). The original request origin will be replaced |
+| **API Key** | ✅ | API key for the proxy service, replaces the original authentication |
+| **Models** | ❌ | Comma-separated list of models supported by this proxy (e.g. `model-a, model-b`) |
+| **Active Model** | ❌ | Select the active model from the list. The `model` field in requests will be replaced |
 
-Model eşleştirme, isteğin `model` alanı üzerinde büyük/küçük harfe duyarsız bir alt dize testidir; böylece herhangi bir sürüm (ör. `claude-opus-4-8`, gelecekteki bir `claude-opus-5`) yeniden yapılandırma gerektirmeden aynı aileye eşlenir. Boş bir aile alanı, o ailenin değiştirilmeden bırakıldığı anlamına gelir; tanınmayan bir aile olduğu gibi geçirilir.
+## How It Works
 
-## Nasıl Çalışır
+When a proxy is active, `interceptor.js` performs the following before each API request:
 
-Bir proxy etkin olduğunda, `server/interceptor.js` her API isteğinden önce şunları yapar:
+1. **URL Rewrite** — Replaces the request origin with the proxy's Base URL
+2. **Auth Replace** — Replaces `x-api-key` or `Authorization` header with the proxy's API Key
+3. **Model Replace** — If an active model is set, replaces the `model` field in the request body
 
-1. **URL Rewrite** — İstek kaynağını proxy'nin Base URL'si ile değiştirir
-2. **Auth Replace** — `x-api-key` veya `Authorization` başlığını proxy'nin API Anahtarı ile değiştirir
-3. **Model Replace** — İstek gövdesindeki `model` alanını aileye göre yeniden yazar (opus/sonnet/haiku → eşleşen alan; fable/mythos → `ANTHROPIC_MODEL`)
-4. **Effort Inject** — Bir effort seviyesi ayarlanmışsa `output_config.effort` ekler (`count_tokens` / heartbeat istekleri için atlanır)
+## Config File
 
-## Yapılandırma Dosyası
-
-Yapılandırma `~/.claude/cc-viewer/profile.json` konumunda saklanır. Dizini açmak için başlıktaki klasör simgesine tıklayın:
+Configuration is stored at `~/.claude/cc-viewer/profile.json`. Click the folder icon in the title to open the directory:
 
 ```json
 {
@@ -44,17 +38,13 @@ Yapılandırma `~/.claude/cc-viewer/profile.json` konumunda saklanır. Dizini a�
       "name": "My Proxy",
       "baseURL": "https://api.example.com",
       "apiKey": "sk-xxx",
-      "ANTHROPIC_MODEL": "model-primary",
-      "ANTHROPIC_DEFAULT_OPUS_MODEL": "model-opus",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL": "model-sonnet",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "model-haiku",
-      "effort": "max"
+      "models": ["model-a", "model-b"],
+      "activeModel": "model-a"
     }
   ]
 }
 ```
 
-- `active` — Mevcut profilin ID'si. Doğrudan bağlantı (proxy yok) için `"max"` olarak ayarlayın
-- `profiles` — Profil listesi. `id: "max"` yerleşiktir ve silinemez
-- `models` / `activeModel` kullanan eski profiller, yüklenirken otomatik olarak `ANTHROPIC_MODEL`'e taşınır
-- Değişiklikler ~1,5 saniye içinde etkili olur (`fs.watchFile` ile izlenir), yeniden başlatma gerekmez
+- `active` — ID of the current profile. Set to `"max"` for direct connection (no proxy)
+- `profiles` — Profile list. `id: "max"` is built-in and cannot be deleted
+- Changes take effect within ~1.5 seconds (monitored via `fs.watchFile`), no restart needed

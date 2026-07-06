@@ -1,60 +1,75 @@
 # AskUserQuestion
 
-Præsenterer brugeren for et eller flere strukturerede multiple choice-spørgsmål i chat-grænsefladen, indsamler deres valg og returnerer dem til assistenten — nyttigt til at afklare intentioner uden frit formuleret frem og tilbage.
+## Definition
 
-## Hvornår skal den bruges
-
-- En anmodning har flere rimelige fortolkninger, og assistenten skal have brugeren til at vælge en, før der fortsættes.
-- Brugeren skal vælge mellem konkrete muligheder (framework, bibliotek, filsti, strategi), hvor fritekstsvar ville være fejlbehæftede.
-- Du vil sammenligne alternativer side om side ved hjælp af forhåndsvisningsruden.
-- Flere relaterede beslutninger kan batches til en enkelt forespørgsel for at reducere frem og tilbage.
-- En plan eller et værktøjskald afhænger af konfiguration, som brugeren endnu ikke har angivet.
+Stiller spørgsmål til brugeren under udførelsen for at få afklaring, verificere antagelser eller anmode om beslutninger.
 
 ## Parametre
 
-- `questions` (array, påkrævet): Et til fire spørgsmål vist sammen i en enkelt forespørgsel. Hvert spørgsmålsobjekt indeholder:
-  - `question` (string, påkrævet): Den fulde spørgsmålstekst, der slutter med et spørgsmålstegn.
-  - `header` (string, påkrævet): En kort label (højst 12 tegn), der vises som et mærke over spørgsmålet.
-  - `options` (array, påkrævet): To til fire mulighedsobjekter. Hver mulighed har en `label` (1-5 ord), en `description` og en valgfri `markdown`-forhåndsvisning.
-  - `multiSelect` (boolean, påkrævet): Når `true`, kan brugeren vælge mere end én mulighed.
+| Parameter | Type | Påkrævet | Beskrivelse |
+|------|------|------|------|
+| `questions` | array | Ja | Liste af spørgsmål (1-4 spørgsmål) |
+| `answers` | object | Nej | Svar indsamlet fra brugeren |
+| `annotations` | object | Nej | Annotationer for hvert spørgsmål (f.eks. noter til forhåndsvisning af valg) |
+| `metadata` | object | Nej | Metadata til sporing og analyse |
 
-## Eksempler
+Hvert `question`-objekt:
 
-### Eksempel 1: Vælg et enkelt framework
+| Felt | Type | Påkrævet | Beskrivelse |
+|------|------|------|------|
+| `question` | string | Ja | Komplet spørgsmålstekst, skal slutte med spørgsmålstegn |
+| `header` | string | Ja | Kort label (maks. 12 tegn), vises som label-chip |
+| `options` | array | Ja | 2-4 valgmuligheder |
+| `multiSelect` | boolean | Ja | Om flervalg er tilladt |
 
-```
-AskUserQuestion(questions=[{
-  "header": "Test runner",
-  "question": "Which test runner should I configure?",
-  "multiSelect": false,
-  "options": [
-    {"label": "Vitest (Recommended)", "description": "Fast, Vite-native, Jest-compatible API"},
-    {"label": "Jest",                  "description": "Mature, broadest plugin ecosystem"},
-    {"label": "Node --test",           "description": "Zero dependencies, built in"}
-  ]
-}])
-```
+Hvert `option`-objekt:
 
-### Eksempel 2: Side om side-forhåndsvisning af to layouts
+| Felt | Type | Påkrævet | Beskrivelse |
+|------|------|------|------|
+| `label` | string | Ja | Visningstekst for valgmuligheden (1-5 ord) |
+| `description` | string | Ja | Beskrivelse af valgmuligheden |
+| `markdown` | string | Nej | Forhåndsvisningsindhold (til visuel sammenligning af ASCII-layout, kodestykker osv.) |
 
-```
-AskUserQuestion(questions=[{
-  "header": "Layout",
-  "question": "Which dashboard layout do you prefer?",
-  "multiSelect": false,
-  "options": [
-    {"label": "Sidebar",  "description": "Nav on the left", "markdown": "```\n+------+---------+\n| NAV  | CONTENT |\n+------+---------+\n```"},
-    {"label": "Top bar",  "description": "Nav across top",  "markdown": "```\n+-----------------+\n|       NAV       |\n+-----------------+\n|     CONTENT     |\n+-----------------+\n```"}
-  ]
-}])
-```
+## Brugsscenarier
 
-## Noter
+**Egnet til:**
+- Indsamling af brugerpræferencer eller krav
+- Afklaring af tvetydige instruktioner
+- Indhentning af beslutninger under implementering
+- Give brugeren retningsvalg
 
-- UI tilføjer automatisk en "Other"-fritekstindstilling til hvert spørgsmål. Tilføj ikke din egen "Other", "None" eller "Custom"-post — det vil duplikere den indbyggede nødudgang.
-- Begræns hvert kald til mellem et og fire spørgsmål og hvert spørgsmål til mellem to og fire muligheder. Overskridelse af disse grænser afvises af rammen.
-- Hvis du anbefaler en specifik mulighed, sæt den først og tilføj "(Recommended)" til dens label, så UI fremhæver den foretrukne sti.
-- Forhåndsvisninger via `markdown`-feltet understøttes kun på single-select-spørgsmål. Brug dem til visuelle artefakter som ASCII-layouts, kodestumper eller konfigurationsdiffs — ikke til simple præferencespørgsmål, hvor en label plus beskrivelse er tilstrækkelig.
-- Når en vilkårlig mulighed i et spørgsmål har en `markdown`-værdi, skifter UI til et side om side-layout med mulighedslisten til venstre og forhåndsvisningen til højre.
-- Brug ikke `AskUserQuestion` til at spørge "ser denne plan god ud?" — kald i stedet `ExitPlanMode`, som netop findes til plangodkendelse. I plantilstand bør du også undgå at nævne "planen" i spørgsmålsteksten, fordi planen ikke er synlig for brugeren, før `ExitPlanMode` kører.
-- Brug ikke dette værktøj til at anmode om følsomt eller fritformuleret input som API-nøgler eller adgangskoder. Spørg i stedet i chatten.
+**Ikke egnet til:**
+- At spørge "er planen OK?" — brug ExitPlanMode
+
+## Bemærkninger
+
+- Brugeren kan altid vælge "Other" for at give brugerdefineret input
+- Den anbefalede valgmulighed placeres først med "(Recommended)" i slutningen af label
+- `markdown`-forhåndsvisning understøttes kun for enkeltvalgs-spørgsmål
+- Valgmuligheder med `markdown` skifter til side-om-side-layout
+- I planlægningstilstand bruges det til at afklare krav, før planen fastlægges
+
+## Originaltekst
+
+<textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:
+1. Gather user preferences or requirements
+2. Clarify ambiguous instructions
+3. Get decisions on implementation choices as you work
+4. Offer choices to the user about what direction to take.
+
+Usage notes:
+- Users will always be able to select "Other" to provide custom text input
+- Use multiSelect: true to allow multiple answers to be selected for a question
+- If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
+
+Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ExitPlanMode for plan approval. IMPORTANT: Do not reference "the plan" in your questions (e.g., "Do you have feedback about the plan?", "Does the plan look good?") because the user cannot see the plan in the UI until you call ExitPlanMode. If you need plan approval, use ExitPlanMode instead.
+
+Preview feature:
+Use the optional `markdown` field on options when presenting concrete artifacts that users need to visually compare:
+- ASCII mockups of UI layouts or components
+- Code snippets showing different implementations
+- Diagram variations
+- Configuration examples
+
+When any option has a markdown, the UI switches to a side-by-side layout with a vertical option list on the left and preview on the right. Do not use previews for simple preference questions where labels and descriptions suffice. Note: previews are only supported for single-select questions (not multiSelect).
+</textarea>

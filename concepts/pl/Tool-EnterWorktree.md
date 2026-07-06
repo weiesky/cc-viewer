@@ -1,44 +1,56 @@
 # EnterWorktree
 
-Tworzy izolowany worktree Git na nowej gałęzi lub przełącza sesję do istniejącego worktree bieżącego repozytorium, aby praca równoległa lub eksperymentalna mogła przebiegać bez wpływu na główny checkout.
+## Definicja
 
-## Kiedy używać
-
-- Użytkownik wyraźnie mówi "worktree" — na przykład "zacznij worktree", "utwórz worktree" lub "pracuj w worktree".
-- Instrukcje projektu w `CLAUDE.md` lub trwałej pamięci nakazują użycie worktree dla bieżącego zadania.
-- Chcesz kontynuować zadanie, które wcześniej zostało skonfigurowane jako worktree (przekaż `path`, aby ponownie do niego wejść).
-- Wiele gałęzi eksperymentalnych musi współistnieć na dysku bez ciągłych przełączeń checkoutu.
-- Długo działające zadanie powinno być odizolowane od niezwiązanych edycji w głównym drzewie roboczym.
+Creates an isolated git worktree and switches the current session into it. Only used when the user explicitly asks to work in a worktree.
 
 ## Parametry
 
-- `name` (string, opcjonalny): Nazwa nowego katalogu worktree. Każdy segment oddzielony `/` może zawierać tylko litery, cyfry, kropki, podkreślenia i myślniki; cały ciąg jest ograniczony do 64 znaków. Jeśli pominięty, a `path` również jest pominięty, generowana jest losowa nazwa. Wyklucza się wzajemnie z `path`.
-- `path` (string, opcjonalny): Ścieżka systemu plików istniejącego worktree bieżącego repozytorium, do którego należy się przełączyć. Musi pojawiać się w `git worktree list` dla tego repo; ścieżki, które nie są zarejestrowanymi worktree bieżącego repozytorium, są odrzucane. Wyklucza się wzajemnie z `name`.
+| Name | Type | Required | Description |
+|---|---|---|---|
+| name | string | No | A name for the worktree. If not provided, a random name is generated. |
 
-## Przykłady
+## Przypadki użycia
 
-### Przykład 1: Utwórz nowy worktree z opisową nazwą
+**Odpowiednie dla:**
+- The user explicitly says "worktree" (e.g., "start a worktree", "work in a worktree", "create a worktree")
 
-```
-EnterWorktree(name="feat/okta-sso")
-```
-
-Tworzy `.claude/worktrees/feat/okta-sso` na nowej gałęzi opartej na `HEAD`, a następnie przełącza katalog roboczy sesji do tego worktree. Wszystkie kolejne edycje plików i polecenia powłoki działają wewnątrz tego worktree, aż wyjdziesz.
-
-### Przykład 2: Ponownie wejdź do istniejącego worktree
-
-```
-EnterWorktree(path="/Users/me/repo/.claude/worktrees/feat/okta-sso")
-```
-
-Wznawia pracę w wcześniej utworzonym worktree. Ponieważ wszedłeś do niego przez `path`, `ExitWorktree` nie usunie go automatycznie — wyjście z `action: "keep"` po prostu wraca do pierwotnego katalogu.
+**Nieodpowiednie dla:**
+- The user asks to create/switch branches — use git commands instead
+- The user asks to fix a bug or work on a feature — use normal git workflow unless they specifically mention worktrees
 
 ## Uwagi
 
-- Nie wywołuj `EnterWorktree`, chyba że użytkownik wyraźnie o to poprosił lub instrukcje projektu tego wymagają. Zwykłe przełączanie gałęzi lub prośby o naprawę błędów powinny używać normalnych poleceń Git, a nie worktree.
-- Wywoływany wewnątrz repozytorium Git, narzędzie tworzy worktree w `.claude/worktrees/` i rejestruje nową gałąź opartą na `HEAD`. Poza repozytorium Git deleguje do skonfigurowanych hooków `WorktreeCreate` / `WorktreeRemove` w `settings.json` dla izolacji niezależnej od VCS.
-- W danym momencie aktywna jest tylko jedna sesja worktree. Narzędzie odmawia uruchomienia, jeśli już jesteś w sesji worktree; najpierw wyjdź za pomocą `ExitWorktree`.
-- Użyj `ExitWorktree`, aby opuścić worktree w trakcie sesji. Jeśli sesja zakończy się, gdy wciąż jesteś w nowo utworzonym worktree, użytkownik zostanie zapytany, czy go zachować, czy usunąć.
-- Worktree, do których wszedłeś przez `path`, są traktowane jako zewnętrzne — `ExitWorktree` z `action: "remove"` ich nie usunie. Jest to zabezpieczenie chroniące worktree, którymi użytkownik zarządza ręcznie.
-- Nowy worktree dziedziczy zawartość bieżącej gałęzi, ale ma niezależny katalog roboczy i indeks. Zmiany zindeksowane i niezindeksowane w głównym checkoucie nie są widoczne wewnątrz worktree.
-- Wskazówka dotycząca nazewnictwa: prefiksuj rodzajem pracy (`feat/`, `fix/`, `spike/`), aby wiele równoczesnych worktree łatwo odróżniało się w `git worktree list`.
+- Must be in a git repository, or have WorktreeCreate/WorktreeRemove hooks configured
+- Must not already be in a worktree
+
+## Tekst oryginalny
+
+<textarea readonly>Use this tool ONLY when the user explicitly asks to work in a worktree. This tool creates an isolated git worktree and switches the current session into it.
+
+## When to Use
+
+- The user explicitly says "worktree" (e.g., "start a worktree", "work in a worktree", "create a worktree", "use a worktree")
+
+## When NOT to Use
+
+- The user asks to create a branch, switch branches, or work on a different branch — use git commands instead
+- The user asks to fix a bug or work on a feature — use normal git workflow unless they specifically mention worktrees
+- Never use this tool unless the user explicitly mentions "worktree"
+
+## Requirements
+
+- Must be in a git repository, OR have WorktreeCreate/WorktreeRemove hooks configured in settings.json
+- Must not already be in a worktree
+
+## Behavior
+
+- In a git repository: creates a new git worktree inside `.claude/worktrees/` with a new branch based on HEAD
+- Outside a git repository: delegates to WorktreeCreate/WorktreeRemove hooks for VCS-agnostic isolation
+- Switches the session's working directory to the new worktree
+- On session exit, the user will be prompted to keep or remove the worktree
+
+## Parameters
+
+- `name` (optional): A name for the worktree. If not provided, a random name is generated.
+</textarea>

@@ -6,7 +6,7 @@ MainAgent は、Claude Code が非 agent team 状態における主幹リクエ�
 
 ## 識別方法
 
-cc-viewer では、MainAgent は `req.mainAgent === true` で識別され、`server/interceptor.js` がリクエストキャプチャ時に自動的にマーキングします。
+cc-viewer では、MainAgent は `req.mainAgent === true` で識別され、`interceptor.js` がリクエストキャプチャ時に自動的にマーキングします。
 
 判定条件（すべて満たす）：
 - リクエストボディに `system` フィールド（system prompt）が含まれる

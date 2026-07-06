@@ -1,51 +1,58 @@
 # WebSearch
 
-يُنفِّذ بحث ويب حياً ويُعيد نتائج مرتبة يستخدمها المساعد لدعم إجابته بمعلومات حديثة تتجاوز تاريخ تدريب النموذج.
+## التعريف
 
-## متى يُستخدم
-
-- الإجابة عن أسئلة حول الأحداث الجارية أو الإصدارات الحديثة أو الأخبار العاجلة.
-- البحث عن أحدث إصدار لمكتبة أو إطار عمل أو أداة CLI.
-- العثور على توثيق أو منشورات مدونة عندما يكون URL الدقيق غير معروف.
-- التحقق من حقيقة قد تكون تغيرت منذ تدريب النموذج.
-- اكتشاف عدة وجهات نظر حول موضوع قبل جلب أي صفحة واحدة بـ `WebFetch`.
+تنفيذ استعلامات محرك البحث، وإرجاع نتائج البحث للحصول على أحدث المعلومات.
 
 ## المعاملات
 
-- `query` (سلسلة، مطلوب): استعلام البحث. الحد الأدنى للطول حرفان. أدرج السنة الحالية عند السؤال عن المعلومات «الأحدث» أو «الأخيرة» حتى تكون النتائج حديثة.
-- `allowed_domains` (مصفوفة سلاسل، اختياري): يقصر النتائج على هذه النطاقات فقط، مثل `["nodejs.org", "developer.mozilla.org"]`. مفيد عندما تثق بمصدر محدد.
-- `blocked_domains` (مصفوفة سلاسل، اختياري): يستبعد النتائج من هذه النطاقات. لا تمرر النطاق نفسه لكل من `allowed_domains` و`blocked_domains`.
+| المعامل | النوع | مطلوب | الوصف |
+|---------|-------|-------|-------|
+| `query` | string | نعم | استعلام البحث (حرفان على الأقل) |
+| `allowed_domains` | string[] | لا | تضمين نتائج من هذه النطاقات فقط |
+| `blocked_domains` | string[] | لا | استبعاد نتائج من هذه النطاقات |
 
-## أمثلة
+## سيناريوهات الاستخدام
 
-### مثال 1: بحث عن إصدار مع السنة الحالية
-
-```
-WebSearch(
-  query="React 19 stable release date 2026",
-  allowed_domains=["react.dev", "github.com"]
-)
-```
-
-يُعيد الإعلانات الرسمية ويتجنب المواقع المجمِّعة منخفضة الجودة.
-
-### مثال 2: استبعاد مصادر مزعجة
-
-```
-WebSearch(
-  query="kubernetes ingress-nginx CVE April 2026",
-  blocked_domains=["pinterest.com", "medium.com"]
-)
-```
-
-يُبقي النتائج مركزة على إرشادات الموردين ومتتبعي الأمان.
+**مناسب للاستخدام:**
+- الحصول على أحدث المعلومات التي تتجاوز تاريخ قطع معرفة النموذج
+- البحث عن الأحداث الجارية وأحدث البيانات
+- البحث عن أحدث التوثيق التقني
 
 ## ملاحظات
 
-- عند استخدام `WebSearch` في إجابة، يجب إلحاق قسم `Sources:` في نهاية ردك يسرد كل نتيجة مذكورة كرابط Markdown بالصيغة `[Title](URL)`. هذا متطلب صارم وليس اختيارياً.
-- `WebSearch` متاح فقط للمستخدمين في الولايات المتحدة. إذا كانت الأداة غير متاحة في منطقتك، فارجع إلى `WebFetch` مقابل URL معروف أو اطلب من المستخدم لصق محتوى ذي صلة.
-- ينفذ كل استدعاء البحث في رحلة واحدة — لا يمكنك التدفق أو التصفح. حسِّن الاستعلام إذا كانت مجموعة النتائج الأولى بعيدة عن الهدف.
-- تُعيد الأداة مقتطفات وبيانات وصفية، لا محتويات الصفحة الكاملة. لقراءة نتيجة محددة بعمق، تابع بـ `WebFetch` باستخدام URL المُعاد.
-- استخدم `allowed_domains` لفرض مصادر موثوقة للأسئلة الأمنية الحساسة مثل CVEs أو الامتثال، و`blocked_domains` لقطع مزارع SEO التي تعكس التوثيق.
-- أبقِ الاستعلامات قصيرة ومُوجَّهة بالكلمات الرئيسية. الأسئلة باللغة الطبيعية تعمل لكنها تميل إلى إرجاع إجابات محادثة بدلاً من مصادر أولية.
-- لا تخترع URLs بناءً على حدس البحث — شغِّل البحث دائماً واستشهد بما أعادته الأداة فعلاً.
+- تُرجع نتائج البحث بتنسيق روابط markdown
+- بعد الاستخدام يجب إضافة قسم "Sources:" في نهاية الاستجابة مع قائمة عناوين URL ذات الصلة
+- يدعم تصفية النطاقات (تضمين/استبعاد)
+- يجب استخدام السنة الحالية في استعلامات البحث
+- متاح فقط في الولايات المتحدة
+
+## النص الأصلي
+
+<textarea readonly>
+- Allows Claude to search the web and use the results to inform responses
+- Provides up-to-date information for current events and recent data
+- Returns search result information formatted as search result blocks, including links as markdown hyperlinks
+- Use this tool for accessing information beyond Claude's knowledge cutoff
+- Searches are performed automatically within a single API call
+
+CRITICAL REQUIREMENT - You MUST follow this:
+  - After answering the user's question, you MUST include a "Sources:" section at the end of your response
+  - In the Sources section, list all relevant URLs from the search results as markdown hyperlinks: [Title](URL)
+  - This is MANDATORY - never skip including sources in your response
+  - Example format:
+
+    [Your answer here]
+
+    Sources:
+    - [Source Title 1](https://example.com/1)
+    - [Source Title 2](https://example.com/2)
+
+Usage notes:
+  - Domain filtering is supported to include or block specific websites
+  - Web search is only available in the US
+
+IMPORTANT - Use the correct year in search queries:
+  - The current month is March 2026. You MUST use this year when searching for recent information, documentation, or current events.
+  - Example: If the user asks for "latest React docs", search for "React documentation" with the current year, NOT last year
+</textarea>

@@ -1,46 +1,57 @@
 # Grep
 
-Durchsucht Dateiinhalte mit der ripgrep-Engine. Bietet vollständige Unterstützung für reguläre Ausdrücke, Dateityp-Filter und drei Ausgabemodi, sodass Sie Präzision gegen Kompaktheit abwägen können.
+## Definition
 
-## Wann verwenden
-
-- Auffinden jeder Aufrufstelle einer Funktion oder jeder Referenz auf einen Bezeichner
-- Prüfen, ob ein String oder eine Fehlermeldung irgendwo im Codebase vorkommt
-- Zählen von Musterauftreten, um den Impact vor einem Refactoring einzuschätzen
-- Einschränken einer Suche auf einen Dateityp (`type: "ts"`) oder Glob (`glob: "**/*.tsx"`)
-- Zeilenübergreifende Treffer wie mehrzeilige Strukturdefinitionen oder JSX-Blöcke mit `multiline: true` herausziehen
+Leistungsstarkes Inhaltssuchtool basierend auf ripgrep. Unterstützt reguläre Ausdrücke, Dateitypfilterung und mehrere Ausgabemodi.
 
 ## Parameter
 
-- `pattern` (string, erforderlich): Der reguläre Ausdruck für die Suche. Nutzt die ripgrep-Syntax, literale geschweifte Klammern müssen escaped werden (zum Beispiel `interface\{\}`, um `interface{}` zu finden).
-- `path` (string, optional): Datei oder Verzeichnis zum Durchsuchen. Standard ist das aktuelle Arbeitsverzeichnis.
-- `glob` (string, optional): Dateinamensfilter wie `*.js` oder `*.{ts,tsx}`.
-- `type` (string, optional): Dateityp-Kürzel wie `js`, `py`, `rust`, `go`. Effizienter als `glob` für Standardsprachen.
-- `output_mode` (enum, optional): `files_with_matches` (Standard, gibt nur Pfade zurück), `content` (gibt übereinstimmende Zeilen zurück) oder `count` (gibt Trefferzahlen zurück).
-- `-i` (boolean, optional): Groß-/Kleinschreibung ignorierende Suche.
-- `-n` (boolean, optional): Zeilennummern in `content`-Modus einbeziehen. Standard ist `true`.
-- `-A` (number, optional): Anzahl der Kontextzeilen nach jedem Treffer (erfordert `content`-Modus).
-- `-B` (number, optional): Anzahl der Kontextzeilen vor jedem Treffer (erfordert `content`-Modus).
-- `-C` / `context` (number, optional): Kontextzeilen auf beiden Seiten jedes Treffers.
-- `multiline` (boolean, optional): Erlaubt Mustern, Zeilenumbrüche zu überspannen (`.` matcht `\n`). Standard ist `false`.
-- `head_limit` (number, optional): Begrenzung der zurückgegebenen Zeilen, Dateipfade oder Zählwerte. Standard ist 250; `0` für unbegrenzt (sparsam verwenden).
-- `offset` (number, optional): Überspringt die ersten N Ergebnisse, bevor `head_limit` angewendet wird. Standard ist `0`.
+| Parameter | Typ | Erforderlich | Beschreibung |
+|-----------|-----|--------------|--------------|
+| `pattern` | string | Ja | Reguläres Ausdruckssuchmuster |
+| `path` | string | Nein | Suchpfad (Datei oder Verzeichnis), Standard ist das aktuelle Arbeitsverzeichnis |
+| `glob` | string | Nein | Dateinamenfilter (z.B. `*.js`, `*.{ts,tsx}`) |
+| `type` | string | Nein | Dateitypfilter (z.B. `js`, `py`, `rust`), effizienter als glob |
+| `output_mode` | enum | Nein | Ausgabemodus: `files_with_matches` (Standard), `content`, `count` |
+| `-i` | boolean | Nein | Groß-/Kleinschreibung ignorieren |
+| `-n` | boolean | Nein | Zeilennummern anzeigen (nur content-Modus), Standard true |
+| `-A` | number | Nein | Anzahl der Zeilen nach dem Treffer |
+| `-B` | number | Nein | Anzahl der Zeilen vor dem Treffer |
+| `-C` / `context` | number | Nein | Anzahl der Zeilen vor und nach dem Treffer |
+| `head_limit` | number | Nein | Ausgabeeinträge begrenzen, Standard 0 (unbegrenzt) |
+| `offset` | number | Nein | Erste N Ergebnisse überspringen |
+| `multiline` | boolean | Nein | Mehrzeiligen Abgleichmodus aktivieren, Standard false |
 
-## Beispiele
+## Anwendungsfälle
 
-### Beispiel 1: Alle Aufrufstellen einer Funktion finden
-`pattern: "registerHandler\\("`, `output_mode: "content"` und `-C: 2` setzen, um die umgebenden Zeilen jedes Aufrufs zu sehen.
+**Geeignet für:**
+- Bestimmte Zeichenketten oder Muster in der Codebasis suchen
+- Verwendungsstellen von Funktionen/Variablen finden
+- Suchergebnisse nach Dateityp filtern
+- Trefferanzahl zählen
 
-### Beispiel 2: Treffer über einen Typ hinweg zählen
-`pattern: "TODO"`, `type: "py"` und `output_mode: "count"` setzen, um TODO-Summen pro Datei in Python-Quellen zu sehen.
-
-### Beispiel 3: Mehrzeiliger Struct-Match
-`pattern: "struct Config \\{[\\s\\S]*?version"` mit `multiline: true` verwenden, um ein Feld zu erfassen, das mehrere Zeilen tief in einem Go-Struct deklariert ist.
+**Nicht geeignet für:**
+- Dateien nach Dateinamen suchen – dafür Glob verwenden
+- Offene Erkundung mit mehreren Suchrunden – dafür Task (Explore-Typ) verwenden
 
 ## Hinweise
 
-- Bevorzugen Sie stets `Grep` gegenüber dem Ausführen von `grep` oder `rg` über `Bash`; das Tool ist auf korrekte Berechtigungen und strukturierte Ausgabe optimiert.
-- Der Standard-Ausgabemodus ist `files_with_matches`, der günstigste. Wechseln Sie nur zu `content`, wenn Sie die Zeilen selbst sehen müssen.
-- Kontext-Flags (`-A`, `-B`, `-C`) werden ignoriert, sofern `output_mode` nicht `content` ist.
-- Große Ergebnismengen verbrauchen Kontext-Token. Nutzen Sie `head_limit`, `offset` oder strengere `glob`/`type`-Filter, um fokussiert zu bleiben.
-- Für die Dateinamensfindung verwenden Sie stattdessen `Glob`; für offene Untersuchungen über viele Runden eine `Agent` mit dem Explore-Agenten entsenden.
+- Verwendet ripgrep-Syntax (nicht grep), geschweifte Klammern und andere Sonderzeichen müssen escaped werden
+- `files_with_matches`-Modus gibt nur Dateipfade zurück, am effizientesten
+- `content`-Modus gibt übereinstimmende Zeileninhalte zurück, unterstützt Kontextzeilen
+- Mehrzeiliger Abgleich erfordert `multiline: true`
+- Immer das Grep-Tool gegenüber `grep` oder `rg` in Bash bevorzugen
+
+## Originaltext
+
+<textarea readonly>A powerful search tool built on ripgrep
+
+  Usage:
+  - ALWAYS use Grep for search tasks. NEVER invoke `grep` or `rg` as a Bash command. The Grep tool has been optimized for correct permissions and access.
+  - Supports full regex syntax (e.g., "log.*Error", "function\s+\w+")
+  - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
+  - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
+  - Use Agent tool for open-ended searches requiring multiple rounds
+  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use `interface\{\}` to find `interface{}` in Go code)
+  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like `struct \{[\s\S]*?field`, use `multiline: true`
+</textarea>

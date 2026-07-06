@@ -8,7 +8,7 @@ Below is a categorized index of all tools.
 
 | Tool | Purpose |
 |------|---------|
-| [Agent](Tool-Agent.md) | Launch a SubAgent to handle complex multi-step tasks |
+| [Task](Tool-Task.md) | Launch a SubAgent to handle complex multi-step tasks |
 | [TaskOutput](Tool-TaskOutput.md) | Get the output of a background task |
 | [TaskStop](Tool-TaskStop.md) | Stop a running background task |
 | [TaskCreate](Tool-TaskCreate.md) | Create a structured task list entry |

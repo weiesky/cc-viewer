@@ -23,9 +23,6 @@ function getSystemText(body) {
 
 // Native teammate 特征：system prompt 包含 "You are a Claude agent"
 // 注意区分 "You are Claude Code"（主 agent）
-// 但 "You are a Claude agent" 对所有 SDK agent（含普通 subagent）都匹配，
-// 单这一条判据会把 Agent tool 启动的普通 subagent 误判为 teammate。
-// 真正区分：teammate 之间通过 SendMessage tool 通信，subagent 不会被授予该工具。
 const NATIVE_TEAMMATE_RE = /You are a Claude agent/i;
 
 // WeakMap cache 避免重复检测
@@ -48,16 +45,7 @@ export function isNativeTeammate(req) {
   }
 
   const sysText = getSystemText(req.body || {});
-  if (!NATIVE_TEAMMATE_RE.test(sysText)) {
-    _cache.set(req, false);
-    return false;
-  }
-
-  // SendMessage tool 是 teammate 间通信必需工具，普通 subagent 不会被授予。
-  // 命中正则但没 SendMessage → 是通过 Agent tool 启动的 subagent，不是 teammate。
-  const tools = req.body?.tools;
-  const hasSendMessage = Array.isArray(tools) && tools.some(t => t && t.name === 'SendMessage');
-  const result = hasSendMessage;
+  const result = NATIVE_TEAMMATE_RE.test(sysText);
   _cache.set(req, result);
   return result;
 }
@@ -114,7 +102,7 @@ export function extractCcVersion(req) {
   if (!Array.isArray(system)) return null;
   for (const block of system) {
     if (!block?.text) continue;
-    const m = block.text.match(/cc_version=([\d.]+[a-fA-F0-9]*)/);
+    const m = block.text.match(/cc_version=([\d.]+)/);
     if (m) return m[1];
   }
   return null;

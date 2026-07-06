@@ -1,35 +1,39 @@
 # Write
 
-Opretter en ny fil eller udskifter fuldt ud indholdet af en eksisterende på det lokale filsystem. Fordi den udskifter alt på målstien, bør den reserveres til ægte oprettelse eller bevidste fulde omskrivninger.
+## Definition
 
-## Hvornår skal den bruges
-
-- Oprette en helt ny kildefil, test eller konfiguration, der ikke eksisterer endnu
-- Generere en ny fixture, snapshot eller datafil fra bunden
-- Udføre en komplet omskrivning, hvor en inkrementel `Edit` ville være mere kompleks end at starte forfra
-- Udsende en anmodet artefakt som et skema, en migration eller et build-script, som brugeren udtrykkeligt bad dig producere
+Skriver indhold til det lokale filsystem. Hvis filen allerede eksisterer, overskrives den.
 
 ## Parametre
 
-- `file_path` (string, påkrævet): Absolut sti til den fil, der skal skrives. Eventuelle overordnede mapper skal allerede eksistere.
-- `content` (string, påkrævet): Den fulde tekst, der skal skrives til filen. Dette bliver hele filens krop.
+| Parameter | Type | Påkrævet | Beskrivelse |
+|------|------|------|------|
+| `file_path` | string | Ja | Absolut sti til filen (skal være absolut) |
+| `content` | string | Ja | Indhold der skal skrives |
 
-## Eksempler
+## Brugsscenarier
 
-### Eksempel 1: Opret et nyt hjælpemodul
-Kald `Write` med `file_path: "/Users/me/app/src/utils/slugify.ts"` og angiv implementeringen som `content`. Brug dette kun efter at have verificeret, at filen ikke allerede eksisterer.
+**Egnet til:**
+- Oprette nye filer
+- Når filindholdet skal omskrives fuldstændigt
 
-### Eksempel 2: Regenerér en afledt artefakt
-Efter at skemakilden ændrer sig, omskriv `/Users/me/app/generated/schema.json` i et enkelt `Write`-kald ved hjælp af den nyligt genererede JSON som `content`.
+**Ikke egnet til:**
+- Ændre delvist indhold i en fil — brug Edit
+- Opret ikke proaktivt dokumentationsfiler (*.md) eller README, medmindre brugeren udtrykkeligt beder om det
 
-### Eksempel 3: Udskift en lille fixture-fil
-For en engangs-testfixture, hvor hver linje ændrer sig, kan `Write` være klarere end en sekvens af `Edit`-kald. Læs filen først, bekræft omfanget, og overskriv derefter.
+## Bemærkninger
 
-## Noter
+- Hvis målfilen allerede eksisterer, skal den først læses via Read, ellers fejler operationen
+- Overskriver alt eksisterende filindhold
+- Foretræk Edit til redigering af eksisterende filer, Write er kun til oprettelse af nye filer eller fuldstændig omskrivning
 
-- Før du overskriver en eksisterende fil, skal du kalde `Read` på den i den aktuelle session. `Write` nægter at overskrive usete data.
-- Foretræk `Edit` for enhver ændring, der kun rører en del af en fil. `Edit` sender kun diff'en, hvilket er hurtigere, sikrere og nemmere at gennemgå.
-- Opret ikke proaktivt Markdown-dokumentation, `README.md` eller changelog-filer, medmindre brugeren udtrykkeligt beder om dem.
-- Tilføj ikke emoji, marketingtekst eller dekorative bannere, medmindre brugeren anmoder om den stil.
-- Verificér først, at den overordnede mappe eksisterer, med et `Bash` `ls`-kald; `Write` opretter ikke mellemliggende mapper.
-- Lever indholdet nøjagtigt, som du ønsker det persisteret; der er ingen templating eller post-processing.
+## Originaltekst
+
+<textarea readonly>Writes a file to the local filesystem.
+
+Usage:
+- This tool will overwrite the existing file if there is one at the provided path.
+- If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
+- Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.
+- NEVER create documentation files (*.md) or README files unless explicitly requested by the User.
+- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.</textarea>

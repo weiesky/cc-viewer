@@ -1,39 +1,33 @@
 # NotebookEdit
 
-Jupyter 노트북 (`.ipynb`) 내의 단일 셀을 수정합니다. 노트북 구조의 나머지를 보존하면서 셀의 소스 교체, 새 셀 삽입, 기존 셀 삭제를 지원합니다.
+## 정의
 
-## 사용 시점
+Jupyter notebook (.ipynb 파일) 내의 특정 셀을 치환, 삽입 또는 삭제합니다.
 
-- 전체 파일을 다시 작성하지 않고 분석 노트북의 코드 셀 수정 또는 업데이트
-- 서술을 개선하거나 문서를 추가하기 위해 마크다운 셀 교체
-- 기존 노트북의 알려진 위치에 새 코드 또는 마크다운 셀 삽입
-- 다운스트림 셀이 더 이상 의존하지 않도록 오래되거나 손상된 셀 제거
-- 셀을 하나씩 반복하여 재현 가능한 노트북 준비
+## 파라미터
 
-## 매개변수
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| `notebook_path` | string | 예 | notebook 파일의 절대 경로 |
+| `new_source` | string | 예 | 셀의 새 내용 |
+| `cell_id` | string | 아니오 | 편집할 셀 ID. 삽입 모드에서는 새 셀이 이 ID 뒤에 삽입됨 |
+| `cell_type` | enum | 아니오 | 셀 타입: `code` 또는 `markdown`. 삽입 모드에서 필수 |
+| `edit_mode` | enum | 아니오 | 편집 모드: `replace` (기본값), `insert`, `delete` |
 
-- `notebook_path` (string, 필수): `.ipynb` 파일의 절대 경로. 상대 경로는 거부됩니다.
-- `new_source` (string, 필수): 새 셀 소스. `replace`와 `insert`의 경우 셀 본문이 됩니다. `delete`의 경우 무시되지만 스키마에 의해 여전히 필요합니다.
-- `cell_id` (string, 선택): 대상 셀의 ID. `replace`와 `delete` 모드에서 도구는 이 셀에 작동합니다. `insert` 모드에서 새 셀은 이 ID를 가진 셀 바로 뒤에 삽입됩니다. 노트북 맨 위에 삽입하려면 생략하십시오.
-- `cell_type` (enum, 선택): `code` 또는 `markdown`. `edit_mode`가 `insert`일 때 필수입니다. `replace` 중에 생략되면 기존 셀의 타입이 유지됩니다.
-- `edit_mode` (enum, 선택): `replace` (기본값), `insert`, 또는 `delete`.
+## 사용 시나리오
 
-## 예시
+**적합한 경우:**
+- Jupyter notebook 내의 코드 또는 markdown 셀 수정
+- notebook에 새 셀 추가
+- notebook 내의 셀 삭제
 
-### 예시 1: 버그가 있는 코드 셀 교체
-절대 경로로 설정된 `notebook_path`, 대상 셀의 ID로 설정된 `cell_id`, 수정된 Python 코드를 포함하는 `new_source`로 `NotebookEdit`를 호출합니다. `edit_mode`는 기본값 `replace`로 둡니다.
+## 주의사항
 
-### 예시 2: 마크다운 설명 삽입
-기존 `setup` 셀 바로 뒤에 마크다운 셀을 추가하려면 `edit_mode: "insert"`, `cell_type: "markdown"`, `cell_id`를 설정 셀의 ID로, `new_source`에 서술을 넣습니다.
+- `cell_number`는 0 인덱스
+- `insert` 모드는 지정 위치에 새 셀을 삽입
+- `delete` 모드는 지정 위치의 셀을 삭제
+- 경로는 절대 경로여야 함
 
-### 예시 3: 오래된 셀 삭제
-`edit_mode: "delete"`로 설정하고 제거할 셀의 `cell_id`를 제공합니다. `new_source`에는 임의의 문자열을 제공하십시오. 적용되지 않습니다.
+## 원문
 
-## 참고사항
-
-- 항상 절대 경로를 전달하십시오. `NotebookEdit`는 작업 디렉토리에 대해 상대 경로를 해결하지 않습니다.
-- 도구는 대상 셀만 다시 씁니다. 관련 없는 셀의 실행 횟수, 출력, 메타데이터는 그대로 유지됩니다.
-- `cell_id` 없이 삽입하면 새 셀이 노트북 맨 처음에 배치됩니다.
-- `cell_type`은 삽입에 필수입니다. 교체의 경우 코드 셀을 마크다운으로 또는 그 반대로 명시적으로 변환하려는 경우가 아니면 생략하십시오.
-- 셀을 검사하고 ID를 가져오려면 먼저 노트북에서 `Read` 도구를 사용하십시오. 콘텐츠와 출력이 포함된 셀을 반환합니다.
-- 일반 소스 파일에는 일반 `Edit`를 사용하십시오. `NotebookEdit`는 `.ipynb` JSON에 특화되어 있으며 셀 구조를 이해합니다.
+<textarea readonly>Completely replaces the contents of a specific cell in a Jupyter notebook (.ipynb file) with new source. Jupyter notebooks are interactive documents that combine code, text, and visualizations, commonly used for data analysis and scientific computing. The notebook_path parameter must be an absolute path, not a relative path. The cell_number is 0-indexed. Use edit_mode=insert to add a new cell at the index specified by cell_number. Use edit_mode=delete to delete the cell at the index specified by cell_number.</textarea>

@@ -8,7 +8,7 @@ Claude Code 通过 Anthropic API 的 tool_use 机制向模型提供一组内置�
 
 | 工具 | 用途 |
 |------|------|
-| [Agent](Tool-Agent.md) | 启动子 agent（SubAgent）处理复杂多步骤任务 |
+| [Task](Tool-Task.md) | 启动子 agent（SubAgent）处理复杂多步骤任务 |
 | [TaskOutput](Tool-TaskOutput.md) | 获取后台任务的输出 |
 | [TaskStop](Tool-TaskStop.md) | 停止正在运行的后台任务 |
 | [TaskCreate](Tool-TaskCreate.md) | 创建结构化任务列表条目 |

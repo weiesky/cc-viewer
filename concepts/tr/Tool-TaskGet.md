@@ -1,47 +1,56 @@
 # TaskGet
 
-ID'ye göre tek bir görevin tam kaydını getirir — açıklaması, mevcut durumu, sahibi, meta verileri ve bağımlılık kenarları dahil. `TaskList` tarafından döndürülen özet, görev üzerinde hareket etmek için yeterli olmadığında kullanın.
+## Tanım
 
-## Ne Zaman Kullanılır
-
-- `TaskList`'ten bir görev aldınız ve çalışmaya başlamadan önce tam açıklamaya ihtiyacınız var.
-- Bir görevi `completed` olarak işaretlemek üzeresiniz ve kabul kriterlerini yeniden kontrol etmek istiyorsunuz.
-- Bu görevin hangilerini `blocks` veya hangileri tarafından `blockedBy` olduğunu incelemek için bir sonraki hamleye karar vermek.
-- Geçmişi inceliyorsunuz — kim sahibi, hangi meta veriler ekli, durumunun ne zaman değiştiği.
-- Bir ekip arkadaşı veya önceki oturum bir görev ID'sine atıfta bulundu ve bağlama ihtiyacınız var.
-
-Yalnızca yüksek düzey bir tarama yapmak istediğinizde `TaskList`'i tercih edin; `TaskGet`'i dikkatlice okumayı veya değiştirmeyi planladığınız belirli kayıt için saklayın.
+Görev ID'si ile görevin tam detaylarını alır.
 
 ## Parametreler
 
-- `taskId` (string, zorunlu): `TaskCreate` veya `TaskList` tarafından döndürülen görev tanımlayıcısı. ID'ler görevin ömrü boyunca kararlıdır.
+| Parametre | Tür | Zorunlu | Açıklama |
+|-----------|-----|---------|----------|
+| `taskId` | string | Evet | Alınacak görev ID'si |
 
-## Örnekler
+## Dönen İçerik
 
-### Örnek 1
+- `subject` — Görev başlığı
+- `description` — Ayrıntılı gereksinimler ve bağlam
+- `status` — Durum: `pending`, `in_progress` veya `completed`
+- `blocks` — Bu görev tarafından engellenen görev listesi
+- `blockedBy` — Bu görevi engelleyen ön koşul görev listesi
 
-Listede az önce gördüğünüz bir görevi arayın.
+## Kullanım Senaryoları
 
-```
-TaskGet(taskId: "t_01HXYZ...")
-```
+**Kullanıma uygun:**
+- Çalışmaya başlamadan önce görevin tam açıklamasını ve bağlamını alma
+- Görev bağımlılıklarını anlama
+- Görev atandıktan sonra tam gereksinimleri alma
 
-Tipik yanıt alanları: `id`, `subject`, `description`, `activeForm`, `status`, `owner`, `blocks`, `blockedBy`, `metadata`, `createdAt`, `updatedAt`.
+## Dikkat Edilecekler
 
-### Örnek 2
+- Görevi aldıktan sonra çalışmaya başlamadan önce `blockedBy` listesinin boş olup olmadığı kontrol edilmelidir
+- Tüm görevlerin özet bilgilerini görmek için TaskList kullanın
 
-Başlamadan önce bağımlılıkları çözün.
+## Orijinal Metin
 
-```
-TaskGet(taskId: "t_01HXYZ...")
-# Inspect blockedBy — if any referenced task is still pending
-# or in_progress, work on the blocker first.
-```
+<textarea readonly>Use this tool to retrieve a task by its ID from the task list.
 
-## Notlar
+## When to Use This Tool
 
-- `TaskGet` yalnızca okumadır ve tekrar tekrar çağırmak güvenlidir; durumu veya sahipliği değiştirmez.
-- `blockedBy` boş değilse ve `completed` olmayan görevler içeriyorsa, bu göreve başlamayın — önce engelleyicileri çözün (veya sahibiyle koordine olun).
-- `description` alanı uzun olabilir. Harekete geçmeden önce tam olarak okuyun; gözden kaçırma, gözden kaçırılan kabul kriterlerine yol açar.
-- Bilinmeyen veya silinmiş bir `taskId` hata döndürür. Mevcut bir ID seçmek için `TaskList`'i yeniden çalıştırın.
-- Bir görevi düzenlemek üzereyseniz, bir ekip arkadaşının az önce değiştirdiği alanların üzerine yazmamak için önce `TaskGet` çağırın.
+- When you need the full description and context before starting work on a task
+- To understand task dependencies (what it blocks, what blocks it)
+- After being assigned a task, to get complete requirements
+
+## Output
+
+Returns full task details:
+- **subject**: Task title
+- **description**: Detailed requirements and context
+- **status**: 'pending', 'in_progress', or 'completed'
+- **blocks**: Tasks waiting on this one to complete
+- **blockedBy**: Tasks that must complete before this one can start
+
+## Tips
+
+- After fetching a task, verify its blockedBy list is empty before beginning work.
+- Use TaskList to see all tasks in summary form.
+</textarea>

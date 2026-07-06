@@ -1,30 +1,14 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
   <title>Claude Code Viewer</title>
   <link rel="icon" href="/favicon.ico?v=1">
   <link rel="shortcut icon" href="/favicon.ico?v=1">
-  <script>
-    // 在 React 渲染前同步抢占 data-theme，避免明暗主题闪屏。
-    // 优先级：URL ?theme= > localStorage 缓存 > <html data-theme> 默认 (light/雪山白)。
-    // URL 优先是为了让分享链接（?theme=dark）首屏就生效，不被 localStorage 抢一拍。
-    try {
-      const url = new URLSearchParams(location.search).get('theme');
-      const cached = localStorage.getItem('ccv_themeColor');
-      const pick = (url === 'dark' || url === 'light') ? url
-                 : (cached === 'dark' || cached === 'light') ? cached
-                 : null;
-      if (pick) document.documentElement.setAttribute('data-theme', pick);
-    } catch {}
-    // 整体显示大小已弃用 CSS zoom：Electron 改用 webFrame.setZoomFactor（首屏抢占见
-    // electron/tab-content-preload.js），纯浏览器交由用户用浏览器自带快捷键缩放，故此处不再设 zoom。
-  </script>
 </head>
 <body>
-  <!-- Pre-hydration splash: no SPA CSS yet — keep font-family in sync with --font-ui in src/global.css -->
-  <div id="root"><div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#888;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">Loading...</div></div>
+  <div id="root"><div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0a0a0a;color:#555;font-family:system-ui">Loading...</div></div>
   <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>

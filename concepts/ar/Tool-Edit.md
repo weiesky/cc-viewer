@@ -1,38 +1,46 @@
 # Edit
 
-يُنفِّذ استبدال سلسلة نصية دقيق داخل ملف قائم. هي الطريقة المفضلة لتعديل الملفات لأن ما يُرسَل هو الفارق فقط، ما يُبقي التعديلات دقيقة وقابلة للتدقيق.
+## التعريف
 
-## متى يُستخدم
-
-- إصلاح علة في دالة واحدة دون إعادة كتابة الملف المحيط
-- تحديث قيمة إعداد أو سلسلة إصدار أو مسار استيراد
-- إعادة تسمية رمز عبر ملف باستخدام `replace_all`
-- إدراج كتلة قرب علامة مرجعية (وسِّع `old_string` ليشمل سياقاً قريباً، ثم قدِّم الاستبدال)
-- تطبيق تعديلات صغيرة محددة النطاق ضمن إعادة هيكلة متعددة الخطوات
+تحرير الملفات عبر استبدال نصي دقيق. يستبدل `old_string` بـ `new_string` في الملف.
 
 ## المعاملات
 
-- `file_path` (سلسلة، مطلوب): المسار المطلق للملف المراد تعديله.
-- `old_string` (سلسلة، مطلوب): النص المضبوط المطلوب البحث عنه. يجب أن يتطابق حرفاً حرفاً، بما في ذلك المسافات البيضاء والمسافة البادئة.
-- `new_string` (سلسلة، مطلوب): نص الاستبدال. يجب أن يختلف عن `old_string`.
-- `replace_all` (قيمة منطقية، اختياري): عندما تكون `true`، يستبدل كل ورود لـ `old_string`. الافتراضي `false`، ويتطلب أن يكون التطابق فريداً.
+| المعامل | النوع | مطلوب | الوصف |
+|---------|-------|-------|-------|
+| `file_path` | string | نعم | المسار المطلق للملف المراد تعديله |
+| `old_string` | string | نعم | النص الأصلي المراد استبداله |
+| `new_string` | string | نعم | النص الجديد بعد الاستبدال (يجب أن يختلف عن old_string) |
+| `replace_all` | boolean | لا | هل يتم استبدال جميع التطابقات، الافتراضي `false` |
 
-## أمثلة
+## سيناريوهات الاستخدام
 
-### مثال 1: إصلاح موقع استدعاء واحد
-اضبط `old_string` على السطر الدقيق `const port = 3000;` و`new_string` على `const port = process.env.PORT ?? 3000;`. التطابق فريد لذا يمكن إبقاء `replace_all` على قيمته الافتراضية.
+**مناسب للاستخدام:**
+- تعديل أجزاء محددة من الكود في ملفات موجودة
+- إصلاح الأخطاء وتحديث المنطق
+- إعادة تسمية المتغيرات (مع `replace_all: true`)
+- أي سيناريو يتطلب تعديلاً دقيقاً لمحتوى الملف
 
-### مثال 2: إعادة تسمية رمز عبر ملف
-لإعادة تسمية `getUser` إلى `fetchUser` في كل مكان داخل `api.ts`، اضبط `old_string: "getUser"` و`new_string: "fetchUser"` و`replace_all: true`.
-
-### مثال 3: إزالة الالتباس في مقتطف متكرر
-إذا ظهر `return null;` في عدة فروع، فوسِّع `old_string` ليشمل سياقاً محيطاً (مثل سطر `if` السابق) حتى يكون التطابق فريداً. وإلا ستُصدر الأداة خطأً بدلاً من التخمين.
+**غير مناسب للاستخدام:**
+- إنشاء ملفات جديدة — يجب استخدام Write
+- إعادة كتابة واسعة النطاق — قد يتطلب Write للكتابة فوق الملف بالكامل
 
 ## ملاحظات
 
-- يجب عليك استدعاء `Read` على الملف مرة واحدة على الأقل في الجلسة الحالية قبل أن يقبل `Edit` التغييرات. بادئات أرقام الأسطر من مخرجات `Read` ليست جزءاً من محتوى الملف؛ لا تُضمنها في `old_string` أو `new_string`.
-- يجب أن تتطابق المسافات البيضاء تماماً. انتبه للتبويبات مقابل المسافات والمسافات الزائدة في النهاية، خاصةً في YAML وMakefiles وPython.
-- إذا لم يكن `old_string` فريداً وكان `replace_all` هو `false`، يفشل التعديل. إما أن توسِّع السياق أو أن تُفعِّل `replace_all`.
-- فضِّل `Edit` على `Write` كلما كان الملف موجوداً فعلاً؛ إذ يُعيد `Write` كتابة الملف بأكمله ويفقد المحتوى غير المرتبط إن لم تكن حذراً.
-- لإجراء عدة تعديلات غير مترابطة في الملف نفسه، أصدر عدة استدعاءات `Edit` بالتعاقب بدلاً من استبدال واحد كبير وهش.
-- تجنَّب إدخال الرموز التعبيرية أو النصوص التسويقية أو كتل التوثيق غير المطلوبة عند تعديل ملفات المصدر.
+- يجب قراءة الملف أولاً عبر Read قبل الاستخدام، وإلا سيحدث خطأ
+- يجب أن يكون `old_string` فريداً في الملف، وإلا يفشل التحرير. إذا لم يكن فريداً، يجب توفير مزيد من السياق لجعله فريداً، أو استخدام `replace_all`
+- يجب الحفاظ على المسافة البادئة الأصلية (tab/مسافات) عند تحرير النص، ولا تُضمَّن بادئة أرقام الأسطر من مخرجات Read
+- يُفضل تحرير الملفات الموجودة بدلاً من إنشاء ملفات جديدة
+- يجب أن يختلف `new_string` عن `old_string`
+
+## النص الأصلي
+
+<textarea readonly>Performs exact string replacements in files.
+
+Usage:
+- You must use your `Read` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file. 
+- When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix format is: spaces + line number + tab. Everything after that tab is the actual file content to match. Never include any part of the line number prefix in the old_string or new_string.
+- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
+- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
+- The edit will FAIL if `old_string` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use `replace_all` to change every instance of `old_string`.
+- Use `replace_all` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.</textarea>

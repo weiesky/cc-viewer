@@ -1,35 +1,39 @@
 # Glob
 
-Gleicht Dateinamen gegen ein Glob-Muster ab und gibt die Pfade zurück, sortiert nach neuester Änderungszeit zuerst. Optimiert, um Dateien in Codebases jeder Größe schnell zu finden, ohne auf `find` zurückzugreifen.
+## Definition
 
-## Wann verwenden
-
-- Aufzählen aller Dateien einer bestimmten Erweiterung (zum Beispiel alle `*.ts`-Dateien unter `src`)
-- Auffinden von Konfigurations- oder Fixture-Dateien anhand von Namenskonventionen (`**/jest.config.*`, `**/*.test.tsx`)
-- Einschränken der Suchfläche, bevor ein gezieltes `Grep` ausgeführt wird
-- Prüfen, ob eine Datei unter einem bekannten Muster bereits existiert, bevor `Write` aufgerufen wird
-- Auffinden kürzlich geänderter Dateien, indem die Sortierung nach Änderungszeit genutzt wird
+Schnelles Dateinamen-Musterabgleich-Tool, das mit Codebasen jeder Größe funktioniert. Gibt übereinstimmende Dateipfade sortiert nach Änderungszeit zurück.
 
 ## Parameter
 
-- `pattern` (string, erforderlich): Der Glob-Ausdruck zum Abgleich. Unterstützt `*` für Einzelsegment-Wildcards, `**` für rekursive Treffer und `{a,b}` für Alternativen, zum Beispiel `src/**/*.{ts,tsx}`.
-- `path` (string, optional): Verzeichnis, in dem die Suche ausgeführt wird. Muss bei Angabe ein gültiger Verzeichnispfad sein. Feld ganz weglassen, um das aktuelle Arbeitsverzeichnis zu durchsuchen. Nicht die Zeichenketten `"undefined"` oder `"null"` übergeben.
+| Parameter | Typ | Erforderlich | Beschreibung |
+|-----------|-----|--------------|--------------|
+| `pattern` | string | Ja | Glob-Muster (z.B. `**/*.js`, `src/**/*.ts`) |
+| `path` | string | Nein | Suchverzeichnis, Standard ist das aktuelle Arbeitsverzeichnis. Nicht "undefined" oder "null" übergeben |
 
-## Beispiele
+## Anwendungsfälle
 
-### Beispiel 1: Jede TypeScript-Quelldatei
-`Glob` mit `pattern: "src/**/*.ts"` aufrufen. Das Ergebnis ist eine nach mtime sortierte Liste, sodass zuletzt bearbeitete Dateien zuerst erscheinen, was nützlich ist, um sich auf Brennpunkte zu konzentrieren.
+**Geeignet für:**
+- Dateien nach Dateinamenmuster suchen
+- Alle Dateien eines bestimmten Typs finden (z.B. alle `.tsx`-Dateien)
+- Beim Suchen einer bestimmten Klassendefinition (z.B. `class Foo`) zuerst die Datei lokalisieren
+- Mehrere Glob-Aufrufe können in einer einzelnen Nachricht parallel gestartet werden
 
-### Beispiel 2: Einen Kandidaten für eine Klassendefinition finden
-Wenn Sie vermuten, dass eine Klasse in einer Datei wohnt, deren Name Sie nicht kennen, mit `pattern: "**/*UserService*"` suchen, um die Kandidaten einzugrenzen, und dann mit `Read` oder `Grep` folgen.
-
-### Beispiel 3: Parallele Erkundung vor einer größeren Aufgabe
-In einer einzigen Nachricht mehrere `Glob`-Aufrufe absetzen (zum Beispiel einen für `**/*.test.ts` und einen für `**/fixtures/**`), damit beide parallel laufen und ihre Ergebnisse korreliert werden können.
+**Nicht geeignet für:**
+- Dateiinhalte durchsuchen – dafür Grep verwenden
+- Offene Erkundung mit mehreren Suchrunden – dafür Task (Explore-Typ) verwenden
 
 ## Hinweise
 
-- Die Ergebnisse sind nach Dateimodifikationszeit sortiert (neueste zuerst), nicht alphabetisch. Sortieren Sie nachgelagert, wenn Sie eine stabile Reihenfolge benötigen.
-- Muster werden vom Tool ausgewertet, nicht von der Shell; Sie müssen sie nicht so quotieren oder escapen wie in der Kommandozeile.
-- Für offene Exploration, die mehrere Runden Suche und Reasoning erfordert, delegieren Sie an eine `Agent` mit dem Explore-Agenten-Typ, statt viele `Glob`-Aufrufe zu verketten.
-- Bevorzugen Sie `Glob` gegenüber `Bash`-Aufrufen von `find` oder `ls` für die Dateinamensfindung; es behandelt Berechtigungen konsistent und gibt strukturierte Ausgabe zurück.
-- Wenn Sie nach Inhalten innerhalb von Dateien statt nach Dateinamen suchen, verwenden Sie stattdessen `Grep`.
+- Unterstützt Standard-Glob-Syntax: `*` matcht eine Ebene, `**` matcht mehrere Ebenen, `{}` matcht Alternativen
+- Ergebnisse sind nach Änderungszeit sortiert
+- Wird gegenüber dem `find`-Befehl in Bash bevorzugt
+
+## Originaltext
+
+<textarea readonly>- Fast file pattern matching tool that works with any codebase size
+- Supports glob patterns like "**/*.js" or "src/**/*.ts"
+- Returns matching file paths sorted by modification time
+- Use this tool when you need to find files by name patterns
+- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead
+- You can call multiple tools in a single response. It is always better to speculatively perform multiple searches in parallel if they are potentially useful.</textarea>

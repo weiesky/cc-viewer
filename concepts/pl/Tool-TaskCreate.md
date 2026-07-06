@@ -1,56 +1,78 @@
 # TaskCreate
 
-Tworzy nowe zadanie na liście zadań bieżącego zespołu (lub na liście zadań sesji, gdy żaden zespół nie jest aktywny). Użyj, aby uchwycić elementy pracy, które powinny być śledzone, delegowane lub odwiedzane ponownie później.
+## Definicja
 
-## Kiedy używać
-
-- Użytkownik opisuje wieloetapowy element pracy, który korzysta z jawnego śledzenia.
-- Rozbijasz duże żądanie na mniejsze, oddzielnie ukańczalne jednostki.
-- Odkryto kolejny krok w trakcie zadania i nie powinien zostać zapomniany.
-- Potrzebujesz trwałego zapisu intencji przed przekazaniem pracy współpracownikowi lub podagentowi.
-- Działasz w trybie planowania i chcesz, aby każdy krok planu był reprezentowany jako konkretne zadanie.
-
-Pomiń `TaskCreate` dla trywialnych, jednorazowych akcji, czystych rozmów lub czegokolwiek, co można ukończyć w dwóch lub trzech bezpośrednich wywołaniach narzędzi.
+Tworzy strukturalny wpis na liście zadań, służący do śledzenia postępu, organizacji złożonych zadań i prezentowania użytkownikowi postępu prac.
 
 ## Parametry
 
-- `subject` (string, wymagany): Krótki tytuł w trybie rozkazującym, np. `Fix login redirect on Safari`. Utrzymuj poniżej około osiemdziesięciu znaków.
-- `description` (string, wymagany): Szczegółowy kontekst — problem, ograniczenia, kryteria akceptacji oraz wszelkie pliki lub linki potrzebne przyszłemu czytelnikowi. Pisz tak, jakby współpracownik miał odebrać to na zimno.
-- `activeForm` (string, opcjonalny): Tekst wskaźnika w czasie ciągłym teraźniejszym pokazywany, gdy zadanie jest `in_progress`, np. `Fixing login redirect on Safari`. Odzwierciedla `subject`, ale w formie z -ing.
-- `metadata` (obiekt, opcjonalny): Dowolne ustrukturyzowane dane dołączone do zadania. Typowe zastosowania: etykiety, wskazówki priorytetowe, ID ticketów zewnętrznych lub konfiguracja specyficzna dla agenta.
+| Parametr | Typ | Wymagany | Opis |
+|------|------|------|------|
+| `subject` | string | Tak | Krótki tytuł zadania w trybie rozkazującym (np. "Fix authentication bug") |
+| `description` | string | Tak | Szczegółowy opis, zawierający kontekst i kryteria akceptacji |
+| `activeForm` | string | Nie | Tekst w czasie teraźniejszym ciągłym wyświetlany podczas wykonywania (np. "Fixing authentication bug") |
+| `metadata` | object | Nie | Dowolne metadane dołączone do zadania |
 
-Nowo utworzone zadania zawsze zaczynają ze statusem `pending` i bez właściciela. Zależności (`blocks`, `blockedBy`) nie są ustawiane przy tworzeniu — zastosuj je później za pomocą `TaskUpdate`.
+## Scenariusze użycia
 
-## Przykłady
+**Odpowiednie zastosowanie:**
+- Złożone wieloetapowe zadania (ponad 3 kroki)
+- Użytkownik podał wiele elementów do wykonania
+- Śledzenie pracy w trybie planowania
+- Użytkownik wyraźnie poprosił o użycie listy todo
 
-### Przykład 1
-
-Uchwyć raport błędu, który użytkownik właśnie zgłosił.
-
-```
-TaskCreate(
-  subject: "Repair broken PDF export on Windows",
-  description: "Users on Windows 11 report the export button produces a 0-byte file. Reproduce with sample doc in test/fixtures/export/, then fix the code path in src/export/pdf.ts. Acceptance: export writes a valid PDF and the existing export test suite passes.",
-  activeForm: "Repairing broken PDF export on Windows"
-)
-```
-
-### Przykład 2
-
-Podziel epik na śledzone jednostki na początku sesji.
-
-```
-TaskCreate(
-  subject: "Draft migration plan for auth service",
-  description: "Produce a written plan covering rollout stages, rollback strategy, and monitoring. Output: docs/auth-migration.md.",
-  activeForm: "Drafting migration plan for auth service",
-  metadata: { "priority": "P1", "linearId": "AUTH-214" }
-)
-```
+**Nieodpowiednie zastosowanie:**
+- Pojedyncze proste zadanie
+- Proste operacje w mniej niż 3 krokach
+- Czysta rozmowa lub zapytanie informacyjne
 
 ## Uwagi
 
-- Pisz `subject` w trybie rozkazującym, a `activeForm` w czasie ciągłym teraźniejszym, aby interfejs brzmiał naturalnie, gdy zadanie przechodzi do `in_progress`.
-- Wywołaj `TaskList` przed utworzeniem, aby uniknąć duplikatów — lista zespołu jest współdzielona ze współpracownikami i podagentami.
-- Nie umieszczaj sekretów ani poświadczeń w `description` lub `metadata`; rekordy zadań są widoczne dla każdego z dostępem do zespołu.
-- Po utworzeniu przesuwaj zadanie przez jego cykl życia za pomocą `TaskUpdate`. Nie pozostawiaj pracy po cichu porzuconej w `in_progress`.
+- Wszystkie nowo utworzone zadania mają początkowy status `pending`
+- `subject` używa trybu rozkazującego ("Run tests"), `activeForm` używa czasu teraźniejszego ciągłego ("Running tests")
+- Po utworzeniu zadania można ustawić zależności (blocks/blockedBy) za pomocą TaskUpdate
+- Przed utworzeniem należy wywołać TaskList, aby sprawdzić, czy nie ma duplikatów
+
+## Tekst oryginalny
+
+<textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+It also helps the user understand the progress of the task and overall progress of their requests.
+
+## When to Use This Tool
+
+Use this tool proactively in these scenarios:
+
+- Complex multi-step tasks - When a task requires 3 or more distinct steps or actions
+- Non-trivial and complex tasks - Tasks that require careful planning or multiple operations
+- Plan mode - When using plan mode, create a task list to track the work
+- User explicitly requests todo list - When the user directly asks you to use the todo list
+- User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
+- After receiving new instructions - Immediately capture user requirements as tasks
+- When you start working on a task - Mark it as in_progress BEFORE beginning work
+- After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation
+
+## When NOT to Use This Tool
+
+Skip using this tool when:
+- There is only a single, straightforward task
+- The task is trivial and tracking it provides no organizational benefit
+- The task can be completed in less than 3 trivial steps
+- The task is purely conversational or informational
+
+NOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.
+
+## Task Fields
+
+- **subject**: A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")
+- **description**: Detailed description of what needs to be done, including context and acceptance criteria
+- **activeForm**: Present continuous form shown in spinner when task is in_progress (e.g., "Fixing authentication bug"). This is displayed to the user while you work on the task.
+
+**IMPORTANT**: Always provide activeForm when creating tasks. The subject should be imperative ("Run tests") while activeForm should be present continuous ("Running tests"). All tasks are created with status `pending`.
+
+## Tips
+
+- Create tasks with clear, specific subjects that describe the outcome
+- Include enough detail in the description for another agent to understand and complete the task
+- After creating tasks, use TaskUpdate to set up dependencies (blocks/blockedBy) if needed
+- Check TaskList first to avoid creating duplicate tasks
+</textarea>

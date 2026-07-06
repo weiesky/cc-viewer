@@ -1,17 +1,11 @@
 import { describe, it, before, after } from 'node:test';
-import { describeCli } from './_helpers/cli-tier.mjs';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-// ████ 文件内显式隔离(第六层闸) — env 必须早于 server.js 动态 import(见 before)████
-// 此前 tmpDir 已建却从未被指向 env,server.js 的 LOG_DIR / 依赖链(updater CACHE_DIR、
-// ensure-hooks、settings 经 getClaudeConfigDir())会解析到真实 ~/.claude(2026-06-06 事故同源)。
-// 这里把 CCV_LOG_DIR / CLAUDE_CONFIG_DIR 指向 tmpDir,并设私有端口窗 19760-19769。
-// 禁止把这些 env 移到 server.js import 之后或依赖默认值。
-// 创建临时目录(同时充当隔离根 LOG_DIR / CLAUDE_CONFIG_DIR)
+// 创建临时目录模拟 LOG_DIR
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-server-test-'));
 const fakeLogDir = join(tmpDir, 'logs');
 const fakeProjectDir = join(fakeLogDir, 'test-project');
@@ -26,11 +20,7 @@ writeFileSync(fakeLogFile, JSON.stringify({
   status: 200,
 }) + '\n---\n');
 
-// 设置环境变量：隔离数据根 + 私有端口窗 + 阻止自动启动和副作用
-process.env.CCV_LOG_DIR = tmpDir;
-process.env.CLAUDE_CONFIG_DIR = tmpDir;
-process.env.CCV_START_PORT = '19760';
-process.env.CCV_MAX_PORT = '19769';
+// 设置环境变量，阻止自动启动和副作用
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
 
@@ -61,12 +51,12 @@ function httpRequest(port, path, { method = 'GET', body = null } = {}) {
   });
 }
 
-describeCli('server API endpoints', { concurrency: false }, () => {
+describe('server API endpoints', { concurrency: false }, () => {
   let startViewer, stopViewer, getPort;
   let port;
 
   before(async () => {
-    const mod = await import('../server/server.js');
+    const mod = await import('../server.js');
     startViewer = mod.startViewer;
     stopViewer = mod.stopViewer;
     getPort = mod.getPort;
@@ -106,39 +96,6 @@ describeCli('server API endpoints', { concurrency: false }, () => {
     assert.equal(typeof data, 'object');
   });
 
-  it('GET /api/preferences maps the real ~/.claude config dir to "~/.claude"', async () => {
-    // 文件级隔离把 CLAUDE_CONFIG_DIR 锁向 tmpDir(数据安全),故不能再依赖"未设 env"来观察默认值。
-    // 这里只验证 preferences 路由的【映射逻辑】:当 getClaudeConfigDir() 解析到真实 homedir()/.claude
-    // 时,回包应折叠成 "~/.claude"。仅临时改 env 跑一次只读 GET(绝不写真实目录),随后立即还原。
-    const { homedir } = await import('node:os');
-    const prev = process.env.CLAUDE_CONFIG_DIR;
-    process.env.CLAUDE_CONFIG_DIR = join(homedir(), '.claude');
-    try {
-      const res = await httpRequest(port, '/api/preferences');
-      const data = res.json();
-      // 路径比较用 path.join 以防 Windows 分隔符不匹配
-      assert.equal(data.claudeConfigDir, '~/.claude',
-        `expected "~/.claude" for the real home config dir, got ${JSON.stringify(data.claudeConfigDir)}`);
-    } finally {
-      if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR;
-      else process.env.CLAUDE_CONFIG_DIR = prev;
-    }
-  });
-
-  it('GET /api/preferences exposes claudeConfigDir as absolute path when CLAUDE_CONFIG_DIR is set', async () => {
-    const prev = process.env.CLAUDE_CONFIG_DIR;
-    process.env.CLAUDE_CONFIG_DIR = '/tmp/my-custom-claude-dir';
-    try {
-      const res = await httpRequest(port, '/api/preferences');
-      const data = res.json();
-      assert.equal(data.claudeConfigDir, '/tmp/my-custom-claude-dir',
-        `expected absolute path when CLAUDE_CONFIG_DIR is set, got ${JSON.stringify(data.claudeConfigDir)}`);
-    } finally {
-      if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR;
-      else process.env.CLAUDE_CONFIG_DIR = prev;
-    }
-  });
-
   // --- POST /api/preferences ---
   it('POST /api/preferences with invalid JSON returns 400', async () => {
     const res = await httpRequest(port, '/api/preferences', {
@@ -165,59 +122,6 @@ describeCli('server API endpoints', { concurrency: false }, () => {
     assert.equal(res.status, 200);
     const data = res.json();
     assert.ok(data.name, 'should have a name');
-  });
-
-  it('GET /api/user-profile respects CCV_USER_NAME override', async () => {
-    const { clearProfileCache } = await import('../server/lib/user-profile.js');
-    const origName = process.env.CCV_USER_NAME;
-    try {
-      process.env.CCV_USER_NAME = 'TestCustomUser';
-      clearProfileCache();
-      const res = await httpRequest(port, '/api/user-profile');
-      assert.equal(res.status, 200);
-      const data = res.json();
-      assert.equal(data.name, 'TestCustomUser');
-    } finally {
-      if (origName === undefined) delete process.env.CCV_USER_NAME;
-      else process.env.CCV_USER_NAME = origName;
-      clearProfileCache();
-    }
-  });
-
-  it('GET /api/user-profile respects CCV_USER_AVATAR URL override', async () => {
-    const { clearProfileCache } = await import('../server/lib/user-profile.js');
-    const origAvatar = process.env.CCV_USER_AVATAR;
-    try {
-      process.env.CCV_USER_AVATAR = 'https://example.com/avatar.png';
-      clearProfileCache();
-      const res = await httpRequest(port, '/api/user-profile');
-      assert.equal(res.status, 200);
-      const data = res.json();
-      assert.equal(data.avatar, 'https://example.com/avatar.png');
-    } finally {
-      if (origAvatar === undefined) delete process.env.CCV_USER_AVATAR;
-      else process.env.CCV_USER_AVATAR = origAvatar;
-      clearProfileCache();
-    }
-  });
-
-  it('GET /api/user-profile falls back to OS detection when no override', async () => {
-    const { clearProfileCache } = await import('../server/lib/user-profile.js');
-    const origName = process.env.CCV_USER_NAME;
-    const origAvatar = process.env.CCV_USER_AVATAR;
-    try {
-      delete process.env.CCV_USER_NAME;
-      delete process.env.CCV_USER_AVATAR;
-      clearProfileCache();
-      const res = await httpRequest(port, '/api/user-profile');
-      assert.equal(res.status, 200);
-      const data = res.json();
-      assert.ok(data.name, 'should have a name from OS');
-    } finally {
-      if (origName !== undefined) process.env.CCV_USER_NAME = origName;
-      if (origAvatar !== undefined) process.env.CCV_USER_AVATAR = origAvatar;
-      clearProfileCache();
-    }
   });
 
   // --- GET /api/concept with invalid params ---
@@ -316,56 +220,6 @@ describeCli('server API endpoints', { concurrency: false }, () => {
       });
       req.end();
     });
-  });
-
-  // --- Voice-pack /list shape lock ---
-  // Pins the response shape so a future refactor can't silently drop fields the
-  // mobile app shell / third-party forks rely on. Both the new bundledPacks[]
-  // and the legacy defaultPack / defaultPackPlaceholder fields must coexist
-  // until the SUNSET marker fires (see server.js list handler).
-  it('GET /api/voice-pack/list returns bundledPacks[] + legacy defaultPack fields together', async () => {
-    const res = await httpRequest(port, '/api/voice-pack/list');
-    assert.equal(res.status, 200);
-    const body = res.json();
-
-    // Legacy fields — SUNSET-MARKER ccv-voice-pack-defaultPack-flat-shape
-    assert.ok(Array.isArray(body.defaultPack), 'legacy defaultPack[] must persist');
-    assert.equal(typeof body.defaultPackPlaceholder, 'boolean');
-
-    // New shape
-    assert.ok(Array.isArray(body.bundledPacks), 'bundledPacks[] required');
-    assert.ok(body.bundledPacks.length >= 2, 'at least default + sanguo should ship');
-    const ids = body.bundledPacks.map(p => p.id);
-    assert.ok(ids.includes('default'), 'default pack missing from bundledPacks');
-    assert.ok(ids.includes('sanguo'), 'sanguo pack missing from bundledPacks');
-
-    // Each pack metadata is well-formed
-    for (const pack of body.bundledPacks) {
-      assert.equal(typeof pack.id, 'string');
-      assert.equal(typeof pack.displayName, 'string');
-      assert.equal(typeof pack.placeholder, 'boolean');
-      assert.ok(Array.isArray(pack.events));
-      assert.ok(pack.events.length > 0, `pack ${pack.id} has no event entries`);
-    }
-
-    // Shared bookkeeping
-    assert.ok(Array.isArray(body.userAudio));
-    assert.ok(Array.isArray(body.eventKeys));
-    assert.equal(typeof body.maxBytes, 'number');
-  });
-
-  it('GET /api/voice-pack/audio/sanguo/<event> serves bundled audio (P0 route guard)', async () => {
-    // Regression guard for the P0 route fix — pre-fix, only "default/" was
-    // dispatched as bundled; "sanguo/" fell into the uuid branch → 404.
-    const res = await httpRequest(port, '/api/voice-pack/audio/sanguo/planApproval');
-    assert.equal(res.status, 200, `sanguo planApproval should be served, got ${res.status}`);
-    assert.ok(res.headers['content-type']?.includes('audio/'), 'must serve audio mime type');
-    // Bundled-pack cache policy is must-revalidate (not "immutable" — bundled
-    // audio CAN change when pack.json is updated).
-    assert.ok(
-      res.headers['cache-control']?.includes('must-revalidate'),
-      `sanguo response should use bundled-pack cache policy, got: ${res.headers['cache-control']}`,
-    );
   });
 
   // --- Unknown route handling ---
@@ -581,133 +435,5 @@ describeCli('server API endpoints', { concurrency: false }, () => {
     assert.equal(res.status, 200);
     const data = res.json();
     assert.equal(data.ok, true);
-  });
-
-  // --- /api/stream-chunk 鉴权与基础接收 ---
-  function streamChunkRequest(port, path, { method = 'POST', body = null, headers = {} } = {}) {
-    return new Promise((resolve, reject) => {
-      const req = request({
-        hostname: '127.0.0.1',
-        port,
-        path,
-        method,
-        headers: { 'Content-Type': 'application/json', ...headers },
-      }, (res) => {
-        let data = '';
-        res.on('data', chunk => { data += chunk; });
-        res.on('end', () => { resolve({ status: res.statusCode, body: data }); });
-      });
-      req.on('error', reject);
-      if (body) req.write(typeof body === 'string' ? body : JSON.stringify(body));
-      req.end();
-    });
-  }
-
-  it('POST /api/stream-chunk without x-cc-viewer-internal header returns 403', async () => {
-    const res = await streamChunkRequest(port, '/api/stream-chunk', {
-      body: { timestamp: 't1', url: 'u1', _chunkSeq: 1, response: { body: { content: [] } } },
-    });
-    assert.equal(res.status, 403);
-  });
-
-  it('POST /api/stream-chunk with internal header returns 204', async () => {
-    const res = await streamChunkRequest(port, '/api/stream-chunk', {
-      body: { timestamp: 't1', url: 'u1', _chunkSeq: 1, response: { body: { content: [] } } },
-      headers: { 'x-cc-viewer-internal': '1' },
-    });
-    assert.equal(res.status, 204);
-  });
-
-  it('POST /api/stream-chunk drops out-of-order (smaller seq) chunks silently', async () => {
-    // First chunk seq=5
-    await streamChunkRequest(port, '/api/stream-chunk', {
-      body: { timestamp: 'ts-ooo', url: 'u-ooo', _chunkSeq: 5, response: { body: { content: [] } } },
-      headers: { 'x-cc-viewer-internal': '1' },
-    });
-    // Smaller seq=3 should be dropped (still returns 204, but no broadcast)
-    const res = await streamChunkRequest(port, '/api/stream-chunk', {
-      body: { timestamp: 'ts-ooo', url: 'u-ooo', _chunkSeq: 3, response: { body: { content: [] } } },
-      headers: { 'x-cc-viewer-internal': '1' },
-    });
-    assert.equal(res.status, 204);
-  });
-
-  it('POST /api/stream-chunk rejects payload > 8MB with 413', async () => {
-    const huge = 'x'.repeat(9 * 1024 * 1024);
-    const res = await streamChunkRequest(port, '/api/stream-chunk', {
-      body: { timestamp: 't', url: 'u', _chunkSeq: 1, response: { body: { content: [{ type: 'text', text: huge }] } } },
-      headers: { 'x-cc-viewer-internal': '1' },
-    });
-    assert.equal(res.status, 413);
-  });
-
-  it('POST /api/stream-chunk accepts monotonically increasing seq without drops', async () => {
-    // happy path: seq 10, 11, 12 for same key should all 204 (no drop)
-    const key = { timestamp: 'ts-inc', url: 'u-inc' };
-    for (const seq of [10, 11, 12]) {
-      const res = await streamChunkRequest(port, '/api/stream-chunk', {
-        body: { ...key, _chunkSeq: seq, response: { body: { content: [{ type: 'text', text: 's' + seq }] } } },
-        headers: { 'x-cc-viewer-internal': '1' },
-      });
-      assert.equal(res.status, 204, `seq=${seq} should not be dropped`);
-    }
-  });
-
-  it('POST /api/stream-chunk broadcasts stream-progress SSE event with slimmed payload', async () => {
-    // Subscribe to /events, then POST a chunk, assert the SSE event arrives with the 4-field shape.
-    const received = [];
-    const events = await new Promise((resolve, reject) => {
-      const req = request({
-        hostname: '127.0.0.1',
-        port,
-        path: '/events',
-        method: 'GET',
-        headers: { 'Accept': 'text/event-stream' },
-      }, (res) => {
-        let buf = '';
-        res.on('data', (chunk) => {
-          buf += chunk.toString();
-          // parse complete SSE events separated by \n\n
-          let idx;
-          while ((idx = buf.indexOf('\n\n')) !== -1) {
-            const block = buf.slice(0, idx);
-            buf = buf.slice(idx + 2);
-            const lines = block.split('\n');
-            const eventLine = lines.find(l => l.startsWith('event:'));
-            const dataLine = lines.find(l => l.startsWith('data:'));
-            if (eventLine && dataLine) {
-              const eventName = eventLine.slice(6).trim();
-              const dataStr = dataLine.startsWith('data: ') ? dataLine.slice(6) : dataLine.slice(5);
-              try { received.push({ event: eventName, data: JSON.parse(dataStr) }); } catch {}
-              if (eventName === 'stream-progress') {
-                req.destroy();
-                resolve(received);
-                return;
-              }
-            }
-          }
-        });
-        res.on('error', () => resolve(received));
-      });
-      req.on('error', () => resolve(received));
-      req.end();
-      // Give SSE stream a moment to establish, then POST chunk
-      setTimeout(() => {
-        streamChunkRequest(port, '/api/stream-chunk', {
-          body: { timestamp: 'broadcast-ts', url: 'broadcast-url', _chunkSeq: 1,
-                  response: { body: { content: [{ type: 'text', text: 'hello' }] } },
-                  body: { model: 'claude-test' } },
-          headers: { 'x-cc-viewer-internal': '1' },
-        }).catch(() => {});
-      }, 100);
-      setTimeout(() => { req.destroy(); resolve(received); }, 2000);
-    });
-    const sp = events.find(e => e.event === 'stream-progress');
-    assert.ok(sp, 'should receive stream-progress event');
-    assert.equal(sp.data.timestamp, 'broadcast-ts');
-    assert.equal(sp.data.url, 'broadcast-url');
-    assert.deepEqual(sp.data.content, [{ type: 'text', text: 'hello' }]);
-    // model field present (may be undefined if interceptor sent nothing, but here we sent it)
-    assert.ok('content' in sp.data, 'content field present');
   });
 });

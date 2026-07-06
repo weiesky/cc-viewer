@@ -6,7 +6,7 @@ MainAgent — это основная цепочка запросов Claude Cod
 
 ## Способ идентификации
 
-В cc-viewer MainAgent идентифицируется через `req.mainAgent === true`, автоматически помечается `server/interceptor.js` при перехвате запроса.
+В cc-viewer MainAgent идентифицируется через `req.mainAgent === true`, автоматически помечается `interceptor.js` при перехвате запроса.
 
 Условия определения (должны выполняться все):
 - Тело запроса содержит поле `system` (system prompt)

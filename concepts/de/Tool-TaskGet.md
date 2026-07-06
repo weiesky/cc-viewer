@@ -1,47 +1,56 @@
 # TaskGet
 
-Ruft den vollständigen Datensatz einer einzelnen Aufgabe per ID ab, einschließlich Beschreibung, aktuellem Status, Besitzer, Metadaten und Abhängigkeitskanten. Verwenden Sie es, wenn die von `TaskList` zurückgegebene Zusammenfassung nicht ausreicht, um zu handeln.
+## Definition
 
-## Wann verwenden
-
-- Sie haben eine Aufgabe aus `TaskList` aufgenommen und benötigen die vollständige Beschreibung, bevor Sie mit der Arbeit beginnen.
-- Sie sind im Begriff, eine Aufgabe als `completed` zu markieren, und möchten die Akzeptanzkriterien erneut prüfen.
-- Sie möchten inspizieren, welche Aufgaben diese hier `blocks` oder welche sie `blockedBy` sind, um den nächsten Schritt zu entscheiden.
-- Sie untersuchen den Verlauf – wer besitzt sie, welche Metadaten wurden angehängt, wann änderte sie ihren Zustand.
-- Ein Teammitglied oder eine frühere Sitzung hat eine Aufgaben-ID referenziert und Sie benötigen den Kontext.
-
-Bevorzugen Sie `TaskList`, wenn Sie nur einen groben Überblick benötigen; reservieren Sie `TaskGet` für den konkreten Datensatz, den Sie sorgfältig lesen oder ändern wollen.
+Ruft die vollständigen Details einer Aufgabe anhand ihrer ID ab.
 
 ## Parameter
 
-- `taskId` (string, erforderlich): Der Aufgabenbezeichner, der von `TaskCreate` oder `TaskList` zurückgegeben wird. IDs sind für die Lebensdauer der Aufgabe stabil.
+| Parameter | Typ | Erforderlich | Beschreibung |
+|-----------|-----|--------------|--------------|
+| `taskId` | string | Ja | Die abzurufende Aufgaben-ID |
 
-## Beispiele
+## Rückgabe
 
-### Beispiel 1
+- `subject` — Aufgabentitel
+- `description` — Detaillierte Anforderungen und Kontext
+- `status` — Status: `pending`, `in_progress` oder `completed`
+- `blocks` — Liste der Aufgaben, die von dieser Aufgabe blockiert werden
+- `blockedBy` — Liste der Voraussetzungsaufgaben, die diese Aufgabe blockieren
 
-Eine Aufgabe nachschlagen, die Sie gerade in der Liste gesehen haben.
+## Anwendungsfälle
 
-```
-TaskGet(taskId: "t_01HXYZ...")
-```
-
-Typische Antwortfelder: `id`, `subject`, `description`, `activeForm`, `status`, `owner`, `blocks`, `blockedBy`, `metadata`, `createdAt`, `updatedAt`.
-
-### Beispiel 2
-
-Abhängigkeiten vor Beginn auflösen.
-
-```
-TaskGet(taskId: "t_01HXYZ...")
-# Inspect blockedBy — if any referenced task is still pending
-# or in_progress, work on the blocker first.
-```
+**Geeignet für:**
+- Vollständige Beschreibung und Kontext einer Aufgabe vor Arbeitsbeginn abrufen
+- Aufgabenabhängigkeiten verstehen
+- Nach Aufgabenzuweisung vollständige Anforderungen abrufen
 
 ## Hinweise
 
-- `TaskGet` ist schreibgeschützt und sicher wiederholt aufzurufen; es ändert weder Status noch Besitz.
-- Ist `blockedBy` nicht leer und enthält Aufgaben, die nicht `completed` sind, starten Sie diese Aufgabe nicht – lösen Sie zuerst die Blocker auf (oder koordinieren Sie sich mit deren Besitzer).
-- Das `description`-Feld kann lang sein. Lesen Sie es vollständig, bevor Sie handeln; Überfliegen führt zu übersehenen Akzeptanzkriterien.
-- Eine unbekannte oder gelöschte `taskId` gibt einen Fehler zurück. Führen Sie `TaskList` erneut aus, um eine aktuelle ID auszuwählen.
-- Wenn Sie eine Aufgabe bearbeiten möchten, rufen Sie zuerst `TaskGet` auf, um nicht Felder zu überschreiben, die ein Teammitglied gerade geändert hat.
+- Nach dem Abrufen sollte die `blockedBy`-Liste geprüft werden, bevor mit der Arbeit begonnen wird
+- TaskList verwenden, um Zusammenfassungen aller Aufgaben anzuzeigen
+
+## Originaltext
+
+<textarea readonly>Use this tool to retrieve a task by its ID from the task list.
+
+## When to Use This Tool
+
+- When you need the full description and context before starting work on a task
+- To understand task dependencies (what it blocks, what blocks it)
+- After being assigned a task, to get complete requirements
+
+## Output
+
+Returns full task details:
+- **subject**: Task title
+- **description**: Detailed requirements and context
+- **status**: 'pending', 'in_progress', or 'completed'
+- **blocks**: Tasks waiting on this one to complete
+- **blockedBy**: Tasks that must complete before this one can start
+
+## Tips
+
+- After fetching a task, verify its blockedBy list is empty before beginning work.
+- Use TaskList to see all tasks in summary form.
+</textarea>

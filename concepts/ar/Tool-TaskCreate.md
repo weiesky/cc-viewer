@@ -1,56 +1,78 @@
 # TaskCreate
 
-يُنشئ مهمة جديدة في قائمة مهام الفريق الحالي (أو قائمة مهام الجلسة عندما لا يكون هناك فريق نشط). استخدمه لالتقاط بنود العمل التي ينبغي تعقبها أو تفويضها أو مراجعتها لاحقاً.
+## التعريف
 
-## متى يُستخدم
-
-- عندما يصف المستخدم قطعة عمل متعددة الخطوات تستفيد من التعقب الصريح.
-- عندما تُقسم طلباً كبيراً إلى وحدات أصغر قابلة للإكمال بشكل منفصل.
-- عندما يُكتشف بند متابعة في منتصف مهمة ويجب ألا يُنسى.
-- عندما تحتاج إلى سجل دائم للنية قبل تسليم العمل إلى زميل فريق أو وكيل فرعي.
-- عندما تعمل في وضع التخطيط وتريد تمثيل كل خطوة من الخطة بمهمة ملموسة.
-
-تخطَّ `TaskCreate` للإجراءات التافهة ذات اللقطة الواحدة، أو للمحادثة الصرفة، أو لأي شيء يمكن إكماله في استدعاءي أدوات أو ثلاثة مباشرة.
+إنشاء عناصر قائمة مهام منظمة، لتتبع التقدم وتنظيم المهام المعقدة وعرض تقدم العمل للمستخدم.
 
 ## المعاملات
 
-- `subject` (سلسلة، مطلوب): عنوان أمري قصير، مثل `Fix login redirect on Safari`. احتفظ به تحت ثمانين حرفاً تقريباً.
-- `description` (سلسلة، مطلوب): سياق مفصَّل — المشكلة والقيود ومعايير القبول وأي ملفات أو روابط سيحتاجها القارئ المستقبلي. اكتب كأن زميل فريق سيتسلمها بدون سياق.
-- `activeForm` (سلسلة، اختياري): نص دوَّار في صيغة المضارع المستمر يُعرض بينما المهمة `in_progress`، مثل `Fixing login redirect on Safari`. يعكس `subject` لكن بصيغة -ing.
-- `metadata` (كائن، اختياري): بيانات مُنظَّمة عشوائية مُرفقة بالمهمة. الاستخدامات الشائعة: تسميات، تلميحات أولوية، معرفات تذاكر خارجية، أو إعدادات خاصة بوكيل.
+| المعامل | النوع | مطلوب | الوصف |
+|---------|-------|-------|-------|
+| `subject` | string | نعم | عنوان مختصر للمهمة، بصيغة الأمر (مثل "Fix authentication bug") |
+| `description` | string | نعم | وصف تفصيلي يتضمن السياق ومعايير القبول |
+| `activeForm` | string | لا | نص بصيغة المضارع المستمر يُعرض أثناء التنفيذ (مثل "Fixing authentication bug") |
+| `metadata` | object | لا | بيانات وصفية عشوائية مرفقة بالمهمة |
 
-المهام المُنشأة حديثاً تبدأ دائماً بحالة `pending` وبلا مالك. التبعيات (`blocks`، `blockedBy`) لا تُضبط وقت الإنشاء — طبقها لاحقاً بـ `TaskUpdate`.
+## سيناريوهات الاستخدام
 
-## أمثلة
+**مناسب للاستخدام:**
+- المهام المعقدة متعددة الخطوات (أكثر من 3 خطوات)
+- المستخدم قدم عدة عناصر مهام
+- تتبع العمل في وضع التخطيط
+- المستخدم طلب صراحة استخدام قائمة المهام
 
-### مثال 1
-
-التقط تقرير خطأ قدَّمه المستخدم لتوه.
-
-```
-TaskCreate(
-  subject: "Repair broken PDF export on Windows",
-  description: "Users on Windows 11 report the export button produces a 0-byte file. Reproduce with sample doc in test/fixtures/export/, then fix the code path in src/export/pdf.ts. Acceptance: export writes a valid PDF and the existing export test suite passes.",
-  activeForm: "Repairing broken PDF export on Windows"
-)
-```
-
-### مثال 2
-
-قسِّم ملحمة إلى وحدات متعقَّبة عند بداية الجلسة.
-
-```
-TaskCreate(
-  subject: "Draft migration plan for auth service",
-  description: "Produce a written plan covering rollout stages, rollback strategy, and monitoring. Output: docs/auth-migration.md.",
-  activeForm: "Drafting migration plan for auth service",
-  metadata: { "priority": "P1", "linearId": "AUTH-214" }
-)
-```
+**غير مناسب للاستخدام:**
+- مهمة واحدة بسيطة
+- عمليات بسيطة من 3 خطوات أو أقل
+- محادثة بحتة أو استعلام معلومات
 
 ## ملاحظات
 
-- اكتب `subject` بصيغة الأمر و`activeForm` بصيغة المضارع المستمر حتى تُقرأ الواجهة طبيعياً عند انتقال المهمة إلى `in_progress`.
-- استدعِ `TaskList` قبل الإنشاء لتجنب التكرارات — قائمة الفريق مشتركة مع زملاء الفريق والوكلاء الفرعيين.
-- لا تُضمِّن أسراراً أو بيانات اعتماد في `description` أو `metadata`؛ سجلات المهام مرئية لكل من يملك الوصول إلى الفريق.
-- بعد الإنشاء، حرِّك المهمة عبر دورة حياتها بـ `TaskUpdate`. لا تترك العمل مهجوراً بصمت في `in_progress`.
+- جميع المهام الجديدة تبدأ بحالة `pending`
+- `subject` بصيغة الأمر ("Run tests")، `activeForm` بصيغة المضارع المستمر ("Running tests")
+- بعد إنشاء المهمة يمكن تعيين التبعيات (blocks/blockedBy) عبر TaskUpdate
+- قبل الإنشاء يجب استدعاء TaskList للتحقق من عدم وجود مهام مكررة
+
+## النص الأصلي
+
+<textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+It also helps the user understand the progress of the task and overall progress of their requests.
+
+## When to Use This Tool
+
+Use this tool proactively in these scenarios:
+
+- Complex multi-step tasks - When a task requires 3 or more distinct steps or actions
+- Non-trivial and complex tasks - Tasks that require careful planning or multiple operations
+- Plan mode - When using plan mode, create a task list to track the work
+- User explicitly requests todo list - When the user directly asks you to use the todo list
+- User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
+- After receiving new instructions - Immediately capture user requirements as tasks
+- When you start working on a task - Mark it as in_progress BEFORE beginning work
+- After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation
+
+## When NOT to Use This Tool
+
+Skip using this tool when:
+- There is only a single, straightforward task
+- The task is trivial and tracking it provides no organizational benefit
+- The task can be completed in less than 3 trivial steps
+- The task is purely conversational or informational
+
+NOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.
+
+## Task Fields
+
+- **subject**: A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")
+- **description**: Detailed description of what needs to be done, including context and acceptance criteria
+- **activeForm**: Present continuous form shown in spinner when task is in_progress (e.g., "Fixing authentication bug"). This is displayed to the user while you work on the task.
+
+**IMPORTANT**: Always provide activeForm when creating tasks. The subject should be imperative ("Run tests") while activeForm should be present continuous ("Running tests"). All tasks are created with status `pending`.
+
+## Tips
+
+- Create tasks with clear, specific subjects that describe the outcome
+- Include enough detail in the description for another agent to understand and complete the task
+- After creating tasks, use TaskUpdate to set up dependencies (blocks/blockedBy) if needed
+- Check TaskList first to avoid creating duplicate tasks
+</textarea>

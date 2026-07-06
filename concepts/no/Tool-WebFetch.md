@@ -1,50 +1,55 @@
 # WebFetch
 
-Henter innholdet på en offentlig nettside, konverterer HTML til Markdown, og kjører en liten hjelpemodell over resultatet med en naturligspråklig prompt for å hente ut informasjonen du trenger.
+## Definisjon
 
-## Når skal den brukes
-
-- Lese en offentlig dokumentasjonsside, blogginnlegg eller RFC referert til i samtalen.
-- Hente ut et spesifikt faktum, kodesnutt eller tabell fra en kjent URL uten å laste hele siden inn i konteksten.
-- Oppsummere release notes eller changelogs fra en åpen webressurs.
-- Sjekke et biblioteks offentlige API-referanse når kilden ikke er i det lokale repositoriet.
-- Følge en lenke brukeren limte inn i chatten for å svare på et oppfølgingsspørsmål.
+Henter innhold fra en spesifisert URL, konverterer HTML til markdown og behandler innholdet med en AI-modell basert på promptet.
 
 ## Parametere
 
-- `url` (string, påkrevd): En fullstendig formet absolutt URL. Ren `http://` oppgraderes automatisk til `https://`.
-- `prompt` (string, påkrevd): Instruksjonen som sendes til den lille uttrekksmodellen. Beskriv nøyaktig hva som skal hentes fra siden, som "list all exported functions" eller "return the minimum supported Node version".
+| Parameter | Type | Påkrevd | Beskrivelse |
+|-----------|------|---------|-------------|
+| `url` | string (URI) | Ja | Fullstendig URL som skal hentes |
+| `prompt` | string | Ja | Beskrivelse av hvilken informasjon som skal trekkes ut fra siden |
 
-## Eksempler
+## Bruksscenarioer
 
-### Eksempel 1: Hent ut en konfigurasjonsstandard
+**Egnet for bruk:**
+- Hente innhold fra offentlige nettsider
+- Slå opp nettbasert dokumentasjon
+- Trekke ut spesifikk informasjon fra nettsider
 
-```
-WebFetch(
-  url="https://vitejs.dev/config/server-options.html",
-  prompt="What is the default value of server.port and can it be a string?"
-)
-```
+**Ikke egnet for bruk:**
+- URL-er som krever autentisering (Google Docs, Confluence, Jira, GitHub osv.) — søk først etter et dedikert MCP-verktøy
+- GitHub-URL-er — foretrekk `gh` CLI
 
-Verktøyet henter Vite-dokumentasjonssiden, konverterer den til Markdown og returnerer et kort svar som "Default is `5173`; accepts a number only."
+## Merknader
 
-### Eksempel 2: Oppsummer en changelog-seksjon
+- URL-en må være en fullstendig gyldig URL
+- HTTP oppgraderes automatisk til HTTPS
+- Resultater kan bli oppsummert når innholdet er for stort
+- Inkluderer en selvrensende 15-minutters cache
+- Når URL-en omdirigerer til en annen vert, returnerer verktøyet den omdirigerte URL-en, og du må sende en ny forespørsel med den nye URL-en
+- Hvis et MCP-levert web fetch-verktøy er tilgjengelig, foretrekk det
 
-```
-WebFetch(
-  url="https://nodejs.org/en/blog/release/v20.11.0",
-  prompt="List the security fixes included in this release as bullet points."
-)
-```
+## Originaltekst
 
-Nyttig når brukeren spør "hva endret seg i Node 20.11" og release-siden er lang.
+<textarea readonly>IMPORTANT: WebFetch WILL FAIL for authenticated or private URLs. Before using this tool, check if the URL points to an authenticated service (e.g. Google Docs, Confluence, Jira, GitHub). If so, you MUST use ToolSearch first to find a specialized tool that provides authenticated access.
 
-## Notater
+- Fetches content from a specified URL and processes it using an AI model
+- Takes a URL and a prompt as input
+- Fetches the URL content, converts HTML to markdown
+- Processes the content with the prompt using a small, fast model
+- Returns the model's response about the content
+- Use this tool when you need to retrieve and analyze web content
 
-- `WebFetch` feiler på enhver URL som krever autentisering, cookies eller VPN. For Google Docs, Confluence, Jira, private GitHub-ressurser eller interne wikier, bruk en dedikert MCP-server som gir autentisert tilgang i stedet.
-- For alt som er hostet på GitHub (PR-er, issues, fil-blobs, API-svar), foretrekk `gh`-CLI gjennom `Bash` fremfor å skrape web-UI-et. `gh pr view`, `gh issue view` og `gh api` returnerer strukturerte data og fungerer mot private repositorier.
-- Resultater kan oppsummeres når den hentede siden er veldig stor. Hvis du trenger eksakt tekst, snevre inn `prompt` til å be om et bokstavelig utdrag.
-- En selvrensende 15-minutters cache anvendes per URL. Gjentatte kall til samme side i én sesjon er nesten umiddelbare, men kan returnere noe foreldet innhold. Hvis ferskhet betyr noe, nevn det i prompten eller vent ut cachen.
-- Hvis målverten utsteder en redirect på tvers av verter, returnerer verktøyet den nye URL-en i en spesiell svarblokk og følger den ikke automatisk. Påkall `WebFetch` på nytt med redirect-målet hvis du fortsatt vil ha innholdet.
-- Prompten utføres av en mindre, raskere modell enn hovedassistenten. Hold den smal og konkret; komplekst flertrinns-resonnement håndteres bedre ved å lese den rå Markdown selv etter henting.
-- Send aldri inn hemmeligheter, tokens eller øktidentifikatorer innebygd i URL-en — sideinnhold og query-strenger reflektert i utdata kan bli logget av oppstrømstjenester.
+Usage notes:
+  - IMPORTANT: If an MCP-provided web fetch tool is available, prefer using that tool instead of this one, as it may have fewer restrictions.
+  - The URL must be a fully-formed valid URL
+  - HTTP URLs will be automatically upgraded to HTTPS
+  - The prompt should describe what information you want to extract from the page
+  - This tool is read-only and does not modify any files
+  - Results may be summarized if the content is very large
+  - Includes a self-cleaning 15-minute cache for faster responses when repeatedly accessing the same URL
+  - When a URL redirects to a different host, the tool will inform you and provide the redirect URL in a special format. You should then make a new WebFetch request with the redirect URL to fetch the content.
+  - For GitHub URLs, prefer using the gh CLI via Bash instead (e.g., gh pr view, gh issue view, gh api).
+</textarea>

@@ -1,46 +1,57 @@
 # Grep
 
-Cerca i contenuti dei file usando il motore ripgrep. Offre supporto completo per espressioni regolari, filtraggio per tipo di file e tre modalità di output così da poter scambiare precisione per compattezza.
+## Definizione
 
-## Quando usare
-
-- Localizzare ogni call site di una funzione o ogni riferimento a un identificatore
-- Verificare se una stringa o un messaggio di errore appare ovunque nel codebase
-- Contare le occorrenze di un pattern per misurare l'impatto prima di un refactor
-- Restringere una ricerca a un tipo di file (`type: "ts"`) o glob (`glob: "**/*.tsx"`)
-- Estrarre corrispondenze multi-riga come definizioni di struct multi-riga o blocchi JSX con `multiline: true`
+Potente strumento di ricerca nel contenuto basato su ripgrep. Supporta espressioni regolari, filtro per tipo di file e diverse modalità di output.
 
 ## Parametri
 
-- `pattern` (string, obbligatorio): L'espressione regolare da cercare. Usa la sintassi ripgrep, quindi le parentesi graffe letterali devono essere escapate (ad esempio `interface\{\}` per trovare `interface{}`).
-- `path` (string, opzionale): File o directory da cercare. Default: working directory corrente.
-- `glob` (string, opzionale): Filtro di nome file come `*.js` o `*.{ts,tsx}`.
-- `type` (string, opzionale): Scorciatoia per tipo di file come `js`, `py`, `rust`, `go`. Più efficiente di `glob` per linguaggi standard.
-- `output_mode` (enum, opzionale): `files_with_matches` (default, restituisce solo i percorsi), `content` (restituisce le righe corrispondenti) o `count` (restituisce i conteggi delle corrispondenze).
-- `-i` (boolean, opzionale): Abbinamento case-insensitive.
-- `-n` (boolean, opzionale): Include i numeri di riga in modalità `content`. Default `true`.
-- `-A` (number, opzionale): Righe di contesto da mostrare dopo ogni corrispondenza (richiede modalità `content`).
-- `-B` (number, opzionale): Righe di contesto prima di ogni corrispondenza (richiede modalità `content`).
-- `-C` / `context` (number, opzionale): Righe di contesto su entrambi i lati di ogni corrispondenza.
-- `multiline` (boolean, opzionale): Permette ai pattern di estendersi su più righe (`.` corrisponde a `\n`). Default `false`.
-- `head_limit` (number, opzionale): Limita le righe restituite, i percorsi dei file o le voci di conteggio. Default 250; passa `0` per illimitato (usa con parsimonia).
-- `offset` (number, opzionale): Salta i primi N risultati prima di applicare `head_limit`. Default `0`.
+| Parametro | Tipo | Obbligatorio | Descrizione |
+|------|------|------|------|
+| `pattern` | string | Sì | Pattern di ricerca con espressione regolare |
+| `path` | string | No | Percorso di ricerca (file o directory), predefinita la directory di lavoro corrente |
+| `glob` | string | No | Filtro per nome file (es. `*.js`, `*.{ts,tsx}`) |
+| `type` | string | No | Filtro per tipo di file (es. `js`, `py`, `rust`), più efficiente di glob |
+| `output_mode` | enum | No | Modalità di output: `files_with_matches` (predefinita), `content`, `count` |
+| `-i` | boolean | No | Ricerca senza distinzione maiuscole/minuscole |
+| `-n` | boolean | No | Mostra numeri di riga (solo modalità content), predefinito true |
+| `-A` | number | No | Numero di righe da mostrare dopo la corrispondenza |
+| `-B` | number | No | Numero di righe da mostrare prima della corrispondenza |
+| `-C` / `context` | number | No | Numero di righe da mostrare prima e dopo la corrispondenza |
+| `head_limit` | number | No | Limita il numero di voci nell'output, predefinito 0 (illimitato) |
+| `offset` | number | No | Salta i primi N risultati |
+| `multiline` | boolean | No | Abilita la modalità di corrispondenza multiriga, predefinito false |
 
-## Esempi
+## Scenari d'uso
 
-### Esempio 1: Trovare tutti i call site di una funzione
-Imposta `pattern: "registerHandler\\("`, `output_mode: "content"` e `-C: 2` per vedere le righe circostanti di ogni chiamata.
+**Adatto per:**
+- Cercare stringhe o pattern specifici nel codebase
+- Trovare dove vengono usate funzioni/variabili
+- Filtrare i risultati di ricerca per tipo di file
+- Contare il numero di corrispondenze
 
-### Esempio 2: Contare le corrispondenze su un tipo
-Imposta `pattern: "TODO"`, `type: "py"` e `output_mode: "count"` per vedere i totali per file di TODO nei sorgenti Python.
-
-### Esempio 3: Corrispondenza di struct multi-riga
-Usa `pattern: "struct Config \\{[\\s\\S]*?version"` con `multiline: true` per catturare un campo dichiarato diverse righe dentro una struct Go.
+**Non adatto per:**
+- Cercare file per nome — usare Glob
+- Esplorazione aperta che richiede più cicli di ricerca — usare Task (tipo Explore)
 
 ## Note
 
-- Preferisci sempre `Grep` all'esecuzione di `grep` o `rg` tramite `Bash`; il tool è ottimizzato per permessi corretti e output strutturato.
-- La modalità di output predefinita è `files_with_matches`, che è la più economica. Passa a `content` solo quando devi vedere le righe stesse.
-- I flag di contesto (`-A`, `-B`, `-C`) sono ignorati a meno che `output_mode` non sia `content`.
-- Insiemi di risultati grandi bruciano token di contesto. Usa `head_limit`, `offset` o filtri `glob`/`type` più stretti per restare focalizzati.
-- Per la scoperta di nomi di file, usa invece `Glob`; per indagini aperte su molti cicli, invia un `Agent` con l'agente Explore.
+- Usa la sintassi ripgrep (non grep), i caratteri speciali come le parentesi graffe devono essere escapati
+- La modalità `files_with_matches` restituisce solo i percorsi dei file, la più efficiente
+- La modalità `content` restituisce il contenuto delle righe corrispondenti, supporta righe di contesto
+- La corrispondenza multiriga richiede l'impostazione `multiline: true`
+- Usare sempre lo strumento Grep anziché i comandi `grep` o `rg` in Bash
+
+## Testo originale
+
+<textarea readonly>A powerful search tool built on ripgrep
+
+  Usage:
+  - ALWAYS use Grep for search tasks. NEVER invoke `grep` or `rg` as a Bash command. The Grep tool has been optimized for correct permissions and access.
+  - Supports full regex syntax (e.g., "log.*Error", "function\s+\w+")
+  - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
+  - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
+  - Use Agent tool for open-ended searches requiring multiple rounds
+  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use `interface\{\}` to find `interface{}` in Go code)
+  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like `struct \{[\s\S]*?field`, use `multiline: true`
+</textarea>

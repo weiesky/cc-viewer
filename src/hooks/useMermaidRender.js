@@ -59,10 +59,6 @@ function loadMermaid() {
     m.initialize({
       startOnLoad: false,
       securityLevel: 'strict',
-      // mermaid 默认会在 render() 失败时把 "Syntax error" SVG 节点硬塞进 document.body
-      // （见 mermaid-js/mermaid #4358 / #786），专坑 React 应用。开此官方开关后，render 失败
-      // 改为调 removeTempElements() 清临时节点并 re-throw，绝不向 DOM 注入错误图。
-      suppressErrorRendering: true,
       flowchart: { useMaxWidth: true },
       ...cfg,
     });
@@ -87,22 +83,10 @@ async function renderMermaidIn(container) {
   for (const code of codeEls) {
     const pre = code.parentElement;
     if (!pre || pre.dataset.mermaidRendered) continue;
-    const src = code.textContent;
-    const id = 'mmd-' + Math.random().toString(36).slice(2, 9);
-
-    // 渲染前先校验：parse(suppressErrors) 对非法/半截语法只返回 false，不碰 DOM、不注入任何
-    // 错误节点。非法 → 保留原 <pre> 文本、且不打 rendered 标记，让流式补全后的完整块能重试。
-    // 这是杜绝 mermaid 把 "Syntax error" 错误图写进 document.body 的关键：render() 失败会把
-    // 测量/错误节点遗留在 body 里，而 parse() 不会。
-    let valid = false;
-    try {
-      valid = (await m.parse(src, { suppressErrors: true })) !== false;
-    } catch { valid = false; }
-    if (!valid) continue;
-
-    // 校验通过才真正渲染。先打标避免同一 <pre> 被并发的扫描重复 render。
     pre.dataset.mermaidRendered = '1';
+    const src = code.textContent;
     try {
+      const id = 'mmd-' + Math.random().toString(36).slice(2, 9);
       const { svg } = await m.render(id, src);
       const wrapper = document.createElement('div');
       wrapper.className = 'mermaid-diagram';
@@ -113,11 +97,7 @@ async function renderMermaidIn(container) {
       });
       pre.replaceWith(wrapper);
     } catch {
-      // 校验通过却仍渲染失败（罕见，如 mermaid 不支持的特性）：撤销 rendered 标记以便重试，
-      // 并兜底清掉 mermaid 可能已 append 到 <body> 的孤儿节点（id 或 'd'+id 两种历史写法）。
-      delete pre.dataset.mermaidRendered;
-      document.getElementById(id)?.remove();
-      document.getElementById('d' + id)?.remove();
+      // render failed — keep original <pre> code block visible
     }
   }
 }
@@ -169,7 +149,6 @@ export async function reinitializeMermaid() {
   _mermaidInstance.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
-    suppressErrorRendering: true, // 见 loadMermaid 注释：禁止 render 失败时向 DOM 注入错误图
     flowchart: { useMaxWidth: true },
     ...cfg,
   });
@@ -177,17 +156,15 @@ export async function reinitializeMermaid() {
   const diagrams = document.querySelectorAll('.mermaid-diagram[data-mermaid-src]');
   for (const wrapper of diagrams) {
     const src = wrapper.dataset.mermaidSrc;
-    const id = 'mmd-' + Math.random().toString(36).slice(2, 9);
     try {
+      const id = 'mmd-' + Math.random().toString(36).slice(2, 9);
       const { svg } = await _mermaidInstance.render(id, src);
       wrapper.innerHTML = DOMPurify.sanitize(svg, {
         USE_PROFILES: { svg: true, svgFilters: true },
         ADD_TAGS: ['style', 'foreignObject'],
       });
     } catch {
-      // 保留既有 SVG；同时清掉 render 失败可能遗留在 <body> 的孤儿错误节点
-      document.getElementById(id)?.remove();
-      document.getElementById('d' + id)?.remove();
+      // keep existing SVG if re-render fails
     }
   }
 }

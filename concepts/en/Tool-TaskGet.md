@@ -1,47 +1,56 @@
 # TaskGet
 
-Fetches the full record for a single task by ID, including its description, current status, owner, metadata, and dependency edges. Use it when the summary returned by `TaskList` is not enough to act on the task.
+## Definition
 
-## When to Use
-
-- You picked up a task from `TaskList` and need the full description before starting work.
-- You are about to mark a task `completed` and want to re-check the acceptance criteria.
-- You need to inspect which tasks this one `blocks` or is `blockedBy` to decide the next move.
-- You are investigating history — who owns it, what metadata was attached, when it changed state.
-- A teammate or prior session referenced a task ID and you need the context.
-
-Prefer `TaskList` when you only need a high-level scan; reserve `TaskGet` for the specific record you intend to read carefully or modify.
+Retrieves the full details of a task by its task ID.
 
 ## Parameters
 
-- `taskId` (string, required): The task identifier returned by `TaskCreate` or `TaskList`. IDs are stable for the life of the task.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `taskId` | string | Yes | The task ID to retrieve |
 
-## Examples
+## Return Content
 
-### Example 1
+- `subject` — Task title
+- `description` — Detailed requirements and context
+- `status` — Status: `pending`, `in_progress`, or `completed`
+- `blocks` — List of tasks blocked by this task
+- `blockedBy` — List of prerequisite tasks blocking this task
 
-Look up a task you just saw in the list.
+## Use Cases
 
-```
-TaskGet(taskId: "t_01HXYZ...")
-```
-
-Typical response fields: `id`, `subject`, `description`, `activeForm`, `status`, `owner`, `blocks`, `blockedBy`, `metadata`, `createdAt`, `updatedAt`.
-
-### Example 2
-
-Resolve dependencies before starting.
-
-```
-TaskGet(taskId: "t_01HXYZ...")
-# Inspect blockedBy — if any referenced task is still pending
-# or in_progress, work on the blocker first.
-```
+**Good for:**
+- Getting the full description and context of a task before starting work
+- Understanding task dependencies
+- Getting complete requirements after being assigned a task
 
 ## Notes
 
-- `TaskGet` is read-only and safe to call repeatedly; it does not change status or ownership.
-- If `blockedBy` is non-empty and contains tasks that are not `completed`, do not start this task — resolve the blockers first (or coordinate with their owner).
-- The `description` field can be long. Read it fully before acting; skimming leads to missed acceptance criteria.
-- An unknown or deleted `taskId` returns an error. Re-run `TaskList` to pick a current ID.
-- If you are about to edit a task, call `TaskGet` first to avoid overwriting fields a teammate just changed.
+- After retrieving a task, check whether the `blockedBy` list is empty before starting work
+- Use TaskList to view summary information for all tasks
+
+## Original Text
+
+<textarea readonly>Use this tool to retrieve a task by its ID from the task list.
+
+## When to Use This Tool
+
+- When you need the full description and context before starting work on a task
+- To understand task dependencies (what it blocks, what blocks it)
+- After being assigned a task, to get complete requirements
+
+## Output
+
+Returns full task details:
+- **subject**: Task title
+- **description**: Detailed requirements and context
+- **status**: 'pending', 'in_progress', or 'completed'
+- **blocks**: Tasks waiting on this one to complete
+- **blockedBy**: Tasks that must complete before this one can start
+
+## Tips
+
+- After fetching a task, verify its blockedBy list is empty before beginning work.
+- Use TaskList to see all tasks in summary form.
+</textarea>

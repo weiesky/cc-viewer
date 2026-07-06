@@ -1,41 +1,56 @@
 # Read
 
-Завантажує вміст одного файлу з локальної файлової системи. Підтримує простий текст, вихідний код, зображення, PDF та Jupyter-ноутбуки, повертаючи результати з номерами рядків на основі 1 у стилі `cat -n`.
+## Визначення
 
-## Коли використовувати
-
-- Читання файлу вихідного коду за відомим шляхом перед редагуванням чи аналізом
-- Перегляд файлів конфігурації, lockfile, логів чи згенерованих артефактів
-- Перегляд скріншотів чи діаграм, які користувач вставив у розмову
-- Витягування конкретного діапазону сторінок з довгого PDF-посібника
-- Відкриття ноутбука `.ipynb` для спільного перегляду клітинок з кодом, markdown та виводів клітинок
+Читає вміст файлу з локальної файлової системи. Підтримує текстові файли, зображення, PDF та Jupyter notebook.
 
 ## Параметри
 
-- `file_path` (string, обовʼязковий): Абсолютний шлях до цільового файлу. Відносні шляхи відхиляються.
-- `offset` (integer, необовʼязковий): Номер рядка на основі 1, з якого почати читання. Корисно для великих файлів у парі з `limit`.
-- `limit` (integer, необовʼязковий): Максимальна кількість рядків для повернення, починаючи з `offset`. За замовчуванням 2000 рядків з початку файлу, коли опущено.
-- `pages` (string, необовʼязковий): Діапазон сторінок для файлів PDF, наприклад `"1-5"`, `"3"` чи `"10-20"`. Обовʼязковий для PDF довших за 10 сторінок; максимум 20 сторінок на запит.
+| Параметр | Тип | Обов'язковий | Опис |
+|----------|-----|--------------|------|
+| `file_path` | string | Так | Абсолютний шлях до файлу |
+| `offset` | number | Ні | Початковий номер рядка (для посегментного читання великих файлів) |
+| `limit` | number | Ні | Кількість рядків для читання (для посегментного читання великих файлів) |
+| `pages` | string | Ні | Діапазон сторінок PDF (наприклад, "1-5", "3", "10-20"), лише для PDF |
 
-## Приклади
+## Сценарії використання
 
-### Приклад 1: Читання маленького файлу повністю
-Викличте `Read` лише з `file_path`, встановленим на `/Users/me/project/src/index.ts`. До 2000 рядків повертається з номерами рядків, чого зазвичай достатньо для контексту редагування.
+**Підходить для:**
+- Читання текстових файлів: файлів коду, конфігураційних файлів тощо
+- Перегляд файлів зображень (Claude — мультимодальна модель)
+- Читання PDF-документів
+- Читання Jupyter notebook (повертає всі комірки та їх вивід)
+- Паралельне читання кількох файлів для отримання контексту
 
-### Приклад 2: Посторінкове читання довгого логу
-Використовуйте `offset: 5001` і `limit: 500` на багатотисячному лог-файлі, щоб отримати вузьке вікно без марнування контекстних токенів.
-
-### Приклад 3: Витягування конкретних сторінок PDF
-Для 120-сторінкового PDF за `/tmp/spec.pdf` встановіть `pages: "8-15"`, щоб вилучити лише потрібний розділ. Опущення `pages` на великому PDF призведе до помилки.
-
-### Приклад 4: Перегляд зображення
-Передайте абсолютний шлях скріншоту PNG чи JPG. Зображення відображається візуально, щоб Claude Code міг міркувати про нього безпосередньо.
+**Не підходить для:**
+- Читання каталогу — слід використовувати команду `ls` у Bash
+- Відкрите дослідження кодової бази — слід використовувати Task (тип Explore)
 
 ## Примітки
 
-- Завжди віддавайте перевагу абсолютним шляхам. Якщо користувач надає один, довіряйте йому як є.
-- Рядки довші за 2000 символів обрізаються; розглядайте повернутий вміст як потенційно обрізаний для дуже широких даних.
-- Читаєте кілька незалежних файлів? Видайте кілька викликів `Read` в одній відповіді, щоб вони виконувалися паралельно.
-- `Read` не може перелічувати каталоги. Використовуйте виклик `Bash` `ls` чи інструмент `Glob` натомість.
-- Читання наявного, але порожнього файлу повертає системне нагадування, а не байти файлу, тому обробляйте цей сигнал явно.
-- Успішний `Read` потрібен перед тим, як ви зможете використовувати `Edit` на тому самому файлі в поточній сесії.
+- Шлях повинен бути абсолютним, не відносним
+- За замовчуванням читає перші 2000 рядків файлу
+- Рядки довші за 2000 символів будуть обрізані
+- Вивід у форматі `cat -n`, нумерація рядків починається з 1
+- Для великих PDF (понад 10 сторінок) обов'язково вказувати параметр `pages`, максимум 20 сторінок за раз
+- Читання неіснуючого файлу поверне помилку (не призведе до збою)
+- Можна паралельно викликати кілька Read в одному повідомленні
+
+## Оригінальний текст
+
+<textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.
+Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+
+Usage:
+- The file_path parameter must be an absolute path, not a relative path
+- By default, it reads up to 2000 lines starting from the beginning of the file
+- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
+- Any lines longer than 2000 characters will be truncated
+- Results are returned using cat -n format, with line numbers starting at 1
+- This tool allows Claude Code to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Claude Code is a multimodal LLM.
+- This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.
+- This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
+- This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
+- You can call multiple tools in a single response. It is always better to speculatively read multiple potentially useful files in parallel.
+- You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.
+- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.</textarea>

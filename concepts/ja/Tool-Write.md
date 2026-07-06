@@ -1,35 +1,39 @@
 # Write
 
-ローカルファイルシステム上で新しいファイルを作成するか、既存のファイルの内容を完全に置換します。対象パスのすべてを置換するため、本当の作成や意図的な完全書き換えのために予約すべきです。
+## 定義
 
-## 使用タイミング
-
-- まだ存在しない新しいソースファイル、テスト、または設定を作成
-- フィクスチャ、スナップショット、またはデータファイルをゼロから生成
-- 段階的な `Edit` がやり直すよりも複雑になる完全書き換え
-- ユーザーが明示的に生成を依頼した、スキーマ、マイグレーション、ビルドスクリプトなどのアーティファクトを出力
+ローカルファイルシステムにコンテンツを書き込みます。ファイルが既に存在する場合は上書きします。
 
 ## パラメータ
 
-- `file_path` (string, required): 書き込むファイルの絶対パス。親ディレクトリはすでに存在している必要があります。
-- `content` (string, required): ファイルに書き込む完全なテキスト。これがファイル本体全体になります。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `file_path` | string | はい | ファイルの絶対パス（絶対パスでなければならない） |
+| `content` | string | はい | 書き込む内容 |
 
-## 例
+## 使用シナリオ
 
-### 例 1: 新しいヘルパーモジュールを作成
-`file_path: "/Users/me/app/src/utils/slugify.ts"` で `Write` を呼び出し、実装を `content` として提供します。ファイルがまだ存在しないことを確認してからのみ使用してください。
+**適している場合：**
+- 新規ファイルの作成
+- ファイル内容を完全に書き換える必要がある場合
 
-### 例 2: 派生アーティファクトを再生成
-スキーマソースが変更された後、新しく生成された JSON を `content` として使って 1 回の `Write` 呼び出しで `/Users/me/app/generated/schema.json` を書き直します。
-
-### 例 3: 小さなフィクスチャファイルを置換
-すべての行が変わる使い捨てテストフィクスチャの場合、`Write` は一連の `Edit` 呼び出しより明確です。最初にファイルを読み、スコープを確認してから上書きしてください。
+**適していない場合：**
+- ファイル内の部分的な内容の変更——Edit を使用すべき
+- ドキュメントファイル（*.md）や README を自発的に作成すべきではない。ユーザーが明示的に要求した場合を除く
 
 ## 注意事項
 
-- 既存ファイルを上書きする前に、現在のセッションで `Read` を呼び出す必要があります。`Write` は見ていない内容を上書きすることを拒否します。
-- ファイルの一部だけに触れる変更には `Edit` を優先してください。`Edit` は差分だけを送信するため、より速く、安全で、レビューしやすくなります。
-- ユーザーが明示的に依頼しない限り、Markdown ドキュメント、`README.md`、チェンジログファイルを積極的に作成しないでください。
-- ユーザーがそのスタイルを要求しない限り、絵文字、マーケティング文、装飾バナーを追加しないでください。
-- `Bash` の `ls` 呼び出しで最初に親ディレクトリが存在することを確認してください。`Write` は中間フォルダを作成しません。
-- テンプレートや後処理はないので、永続化したい内容を正確に提供してください。
+- 対象ファイルが既に存在する場合、先に Read で読み取る必要がある。そうでないと失敗する
+- 既存ファイルの全内容を上書きする
+- 既存ファイルの編集には Edit を優先使用し、Write は新規ファイル作成または完全な書き換えにのみ使用
+
+## 原文
+
+<textarea readonly>Writes a file to the local filesystem.
+
+Usage:
+- This tool will overwrite the existing file if there is one at the provided path.
+- If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
+- Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.
+- NEVER create documentation files (*.md) or README files unless explicitly requested by the User.
+- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.</textarea>

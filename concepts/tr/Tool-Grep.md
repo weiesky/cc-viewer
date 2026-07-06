@@ -1,46 +1,57 @@
 # Grep
 
-ripgrep motorunu kullanarak dosya içeriklerini arar. Tam düzenli ifade desteği, dosya türü filtreleme ve kesinliği kompaktlık için takas edebileceğiniz üç çıktı modu sunar.
+## Tanım
 
-## Ne Zaman Kullanılır
-
-- Bir fonksiyonun her çağrı yerini veya bir tanımlayıcının her referansını bulmak
-- Bir string veya hata mesajının kod tabanında herhangi bir yerde görünüp görünmediğini kontrol etmek
-- Refactoring'den önce etkiyi ölçmek için bir desenin geçişlerini saymak
-- Bir aramayı bir dosya türüne (`type: "ts"`) veya glob'a (`glob: "**/*.tsx"`) daraltmak
-- `multiline: true` ile çok satırlı struct tanımları veya JSX blokları gibi çapraz-satır eşleşmelerini çekmek
+ripgrep tabanlı güçlü içerik arama aracı. Düzenli ifadeler, dosya türü filtreleme ve çoklu çıktı modlarını destekler.
 
 ## Parametreler
 
-- `pattern` (string, zorunlu): Aranacak düzenli ifade. ripgrep sözdizimi kullanır, bu yüzden literal süslü parantezlerin kaçış karakteri gerektirir (örneğin `interface{}` bulmak için `interface\{\}`).
-- `path` (string, opsiyonel): Aranacak dosya veya dizin. Varsayılan olarak mevcut çalışma dizini.
-- `glob` (string, opsiyonel): `*.js` veya `*.{ts,tsx}` gibi dosya adı filtresi.
-- `type` (string, opsiyonel): `js`, `py`, `rust`, `go` gibi dosya türü kısayolu. Standart diller için `glob`'dan daha verimli.
-- `output_mode` (enum, opsiyonel): `files_with_matches` (varsayılan, yalnızca yolları döndürür), `content` (eşleşen satırları döndürür) veya `count` (eşleşme sayılarını döndürür).
-- `-i` (boolean, opsiyonel): Büyük/küçük harf duyarsız eşleştirme.
-- `-n` (boolean, opsiyonel): `content` modunda satır numaralarını dahil et. Varsayılan `true`.
-- `-A` (number, opsiyonel): Her eşleşmeden sonra gösterilecek bağlam satırı sayısı (`content` modu gerektirir).
-- `-B` (number, opsiyonel): Her eşleşmeden önceki bağlam satırları (`content` modu gerektirir).
-- `-C` / `context` (number, opsiyonel): Her eşleşmenin iki tarafındaki bağlam satırları.
-- `multiline` (boolean, opsiyonel): Desenlerin yeni satırları kapsamasına izin ver (`.` `\n` ile eşleşir). Varsayılan `false`.
-- `head_limit` (number, opsiyonel): Döndürülen satırları, dosya yollarını veya sayım girişlerini sınırlar. Varsayılan 250; sınırsız için `0` geçirin (cimri kullanın).
-- `offset` (number, opsiyonel): `head_limit` uygulamadan önce ilk N sonucu atla. Varsayılan `0`.
+| Parametre | Tür | Zorunlu | Açıklama |
+|-----------|-----|---------|----------|
+| `pattern` | string | Evet | Düzenli ifade arama kalıbı |
+| `path` | string | Hayır | Arama yolu (dosya veya dizin), varsayılan mevcut çalışma dizini |
+| `glob` | string | Hayır | Dosya adı filtresi (örn. `*.js`, `*.{ts,tsx}`) |
+| `type` | string | Hayır | Dosya türü filtresi (örn. `js`, `py`, `rust`), glob'dan daha verimli |
+| `output_mode` | enum | Hayır | Çıktı modu: `files_with_matches` (varsayılan), `content`, `count` |
+| `-i` | boolean | Hayır | Büyük/küçük harf duyarsız arama |
+| `-n` | boolean | Hayır | Satır numaralarını göster (yalnızca content modu), varsayılan true |
+| `-A` | number | Hayır | Eşleşmeden sonra gösterilecek satır sayısı |
+| `-B` | number | Hayır | Eşleşmeden önce gösterilecek satır sayısı |
+| `-C` / `context` | number | Hayır | Eşleşme öncesi ve sonrası gösterilecek satır sayısı |
+| `head_limit` | number | Hayır | Çıktı girdi sayısını sınırla, varsayılan 0 (sınırsız) |
+| `offset` | number | Hayır | İlk N sonucu atla |
+| `multiline` | boolean | Hayır | Çok satırlı eşleştirme modunu etkinleştir, varsayılan false |
 
-## Örnekler
+## Kullanım Senaryoları
 
-### Örnek 1: Bir fonksiyonun tüm çağrı yerlerini bulmak
-Her çağrının çevreleyen satırlarını görmek için `pattern: "registerHandler\\("`, `output_mode: "content"` ve `-C: 2` olarak ayarlayın.
+**Kullanıma uygun:**
+- Kod tabanında belirli dize veya kalıp arama
+- Fonksiyon/değişken kullanım yerlerini bulma
+- Dosya türüne göre arama sonuçlarını filtreleme
+- Eşleşme sayısını sayma
 
-### Örnek 2: Bir tür genelinde eşleşme saymak
-Python kaynakları arasında dosya başına TODO toplamlarını görmek için `pattern: "TODO"`, `type: "py"` ve `output_mode: "count"` olarak ayarlayın.
+**Kullanıma uygun değil:**
+- Dosya adına göre dosya bulma — Glob kullanılmalıdır
+- Birden fazla tur gerektiren açık uçlu keşif — Task (Explore türü) kullanılmalıdır
 
-### Örnek 3: Çok satırlı struct eşleşmesi
-Bir Go struct'ı içinde birkaç satır derinlikte bildirilmiş bir alanı yakalamak için `multiline: true` ile `pattern: "struct Config \\{[\\s\\S]*?version"` kullanın.
+## Dikkat Edilecekler
 
-## Notlar
+- ripgrep sözdizimi kullanır (grep değil), süslü parantez gibi özel karakterler kaçış gerektirir
+- `files_with_matches` modu yalnızca dosya yollarını döndürür, en verimli moddur
+- `content` modu eşleşen satır içeriklerini döndürür, bağlam satırlarını destekler
+- Çok satırlı eşleştirme için `multiline: true` ayarlanmalıdır
+- Bash'teki `grep` veya `rg` komutu yerine her zaman Grep aracını tercih edin
 
-- Her zaman `Bash` aracılığıyla `grep` veya `rg` çalıştırmak yerine `Grep`'i tercih edin; araç doğru izinler ve yapılandırılmış çıktı için optimize edilmiştir.
-- Varsayılan çıktı modu en ucuz olan `files_with_matches`'tır. Yalnızca satırların kendisini görmeniz gerektiğinde `content`'e geçin.
-- Bağlam bayrakları (`-A`, `-B`, `-C`) `output_mode` `content` olmadıkça yok sayılır.
-- Büyük sonuç kümeleri bağlam tokenlarını yakar. Odaklı kalmak için `head_limit`, `offset` veya daha sıkı `glob`/`type` filtreleri kullanın.
-- Dosya adı keşfi için `Glob` kullanın; birçok turda açık uçlu araştırmalar için Explore ajanıyla bir `Agent` gönderin.
+## Orijinal Metin
+
+<textarea readonly>A powerful search tool built on ripgrep
+
+  Usage:
+  - ALWAYS use Grep for search tasks. NEVER invoke `grep` or `rg` as a Bash command. The Grep tool has been optimized for correct permissions and access.
+  - Supports full regex syntax (e.g., "log.*Error", "function\s+\w+")
+  - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
+  - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
+  - Use Agent tool for open-ended searches requiring multiple rounds
+  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use `interface\{\}` to find `interface{}` in Go code)
+  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like `struct \{[\s\S]*?field`, use `multiline: true`
+</textarea>

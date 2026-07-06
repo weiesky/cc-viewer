@@ -22,6 +22,9 @@ function getDB() {
       if (!db.objectStoreNames.contains('sessions')) {
         db.createObjectStore('sessions');
       }
+      if (!db.objectStoreNames.contains('session_index')) {
+        db.createObjectStore('session_index');
+      }
     };
     req.onsuccess = () => {
       _dbInstance = req.result;
@@ -177,3 +180,40 @@ export async function loadSessionEntries(projectName, sessionId) {
   }
 }
 
+export async function saveSessionIndex(projectName, index) {
+  if (!projectName || !Array.isArray(index)) return;
+  try {
+    const db = await getDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction('session_index', 'readwrite');
+      tx.objectStore('session_index').put({ index, ts: Date.now() }, projectName);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch {
+    // 静默
+  }
+}
+
+export async function loadSessionIndex(projectName) {
+  try {
+    const db = await getDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction('session_index', 'readonly');
+      const req = tx.objectStore('session_index').get(projectName);
+      req.onsuccess = () => {
+        const data = req.result;
+        if (!data || !Array.isArray(data.index) || data.index.length === 0) {
+          resolve(null);
+        } else if (data.ts && Date.now() - data.ts > MAX_AGE) {
+          resolve(null);
+        } else {
+          resolve(data.index);
+        }
+      };
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}

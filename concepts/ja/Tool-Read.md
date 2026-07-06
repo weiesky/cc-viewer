@@ -1,41 +1,56 @@
 # Read
 
-ローカルファイルシステムから単一ファイルの内容をロードします。プレーンテキスト、ソースコード、画像、PDF、Jupyter ノートブックをサポートし、結果を 1 始まりの行番号を持つ `cat -n` スタイルで返します。
+## 定義
 
-## 使用タイミング
-
-- 編集や分析の前に既知のパスでソースファイルを読む
-- 設定ファイル、ロックファイル、ログ、生成されたアーティファクトを検査
-- ユーザーが会話に貼り付けたスクリーンショットや図を表示
-- 長い PDF マニュアルから特定のページ範囲を抽出
-- `.ipynb` ノートブックを開いてコードセル、マークダウン、セル出力を一緒にレビュー
+ローカルファイルシステムからファイル内容を読み取ります。テキストファイル、画像、PDF、Jupyter notebook に対応。
 
 ## パラメータ
 
-- `file_path` (string, required): 対象ファイルの絶対パス。相対パスは拒否されます。
-- `offset` (integer, optional): 読み込みを開始する 1 始まりの行番号。大きなファイルで `limit` と組み合わせると便利です。
-- `limit` (integer, optional): `offset` から返す最大行数。省略時は、ファイルの先頭から最大 2000 行がデフォルト。
-- `pages` (string, optional): PDF ファイルのページ範囲。例えば `"1-5"`、`"3"`、または `"10-20"`。10 ページを超える PDF には必須。リクエストあたり最大 20 ページ。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `file_path` | string | はい | ファイルの絶対パス |
+| `offset` | number | いいえ | 開始行番号（大きなファイルの分割読み取り用） |
+| `limit` | number | いいえ | 読み取り行数（大きなファイルの分割読み取り用） |
+| `pages` | string | いいえ | PDF ページ範囲（例："1-5"、"3"、"10-20"）、PDF のみ適用 |
 
-## 例
+## 使用シナリオ
 
-### 例 1: 小さなファイル全体を読む
-`file_path` を `/Users/me/project/src/index.ts` に設定して `Read` を呼び出すだけです。行番号付きで最大 2000 行が返され、通常は編集コンテキストに十分です。
+**適している場合：**
+- コードファイル、設定ファイルなどのテキストファイルを読み取り
+- 画像ファイルの表示（Claude はマルチモーダルモデル）
+- PDF ドキュメントの読み取り
+- Jupyter notebook の読み取り（すべてのセルと出力を返す）
+- 複数ファイルを並列読み取りしてコンテキストを取得
 
-### 例 2: 長いログをページング
-数千行のログファイルで `offset: 5001` と `limit: 500` を使用して、コンテキストトークンを無駄にせずに狭いウィンドウを取得します。
-
-### 例 3: 特定の PDF ページを抽出
-`/tmp/spec.pdf` の 120 ページ PDF に対し、`pages: "8-15"` を設定して必要な章のみを引き出します。大きな PDF で `pages` を省略するとエラーが発生します。
-
-### 例 4: 画像を表示
-PNG または JPG スクリーンショットの絶対パスを渡します。画像は視覚的にレンダリングされ、Claude Code が直接推論できます。
+**適していない場合：**
+- ディレクトリの読み取り——Bash の `ls` コマンドを使用すべき
+- オープンエンドなコードベース探索——Task（Explore タイプ）を使用すべき
 
 ## 注意事項
 
-- 常に絶対パスを優先してください。ユーザーが提供した場合、そのまま信頼してください。
-- 2000 文字を超える行は切り詰められます。極めて幅の広いデータに対しては、返された内容がクリップされている可能性があることを念頭に置いてください。
-- 独立した複数のファイルを読みますか？ 同じ応答で複数の `Read` 呼び出しを発行すると、並列で実行されます。
-- `Read` はディレクトリをリストできません。代わりに `Bash` の `ls` 呼び出しまたは `Glob` ツールを使用してください。
-- 既存だが空のファイルを読むと、ファイルバイトではなくシステムリマインダーが返されるので、その信号を明示的に処理してください。
-- 現在のセッションで同じファイルに `Edit` を使用する前に、成功した `Read` が必要です。
+- パスは絶対パスでなければならず、相対パスは不可
+- デフォルトでファイルの最初の 2000 行を読み取り
+- 2000 文字を超える行は切り詰められる
+- 出力は `cat -n` 形式で、行番号は 1 から開始
+- 大きな PDF（10 ページ超）は `pages` パラメータの指定が必須、1回最大 20 ページ
+- 存在しないファイルの読み取りはエラーを返す（クラッシュしない）
+- 単一メッセージ内で複数の Read を並列呼び出し可能
+
+## 原文
+
+<textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.
+Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+
+Usage:
+- The file_path parameter must be an absolute path, not a relative path
+- By default, it reads up to 2000 lines starting from the beginning of the file
+- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
+- Any lines longer than 2000 characters will be truncated
+- Results are returned using cat -n format, with line numbers starting at 1
+- This tool allows Claude Code to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Claude Code is a multimodal LLM.
+- This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.
+- This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
+- This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
+- You can call multiple tools in a single response. It is always better to speculatively read multiple potentially useful files in parallel.
+- You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.
+- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.</textarea>

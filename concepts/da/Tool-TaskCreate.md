@@ -1,56 +1,78 @@
 # TaskCreate
 
-Opretter en ny opgave i det aktuelle teams opgaveliste (eller sessionens opgaveliste, når intet team er aktivt). Brug den til at fange arbejdselementer, der bør spores, delegeres eller gennemses senere.
+## Definition
 
-## Hvornår skal den bruges
-
-- Brugeren beskriver et flertrinsstykke arbejde, der drager fordel af eksplicit sporing.
-- Du nedbryder en stor anmodning til mindre, separat færdiggørlige enheder.
-- En opfølgning opdages midt i en opgave og bør ikke glemmes.
-- Du har brug for en holdbar registrering af hensigt, før du overdrager arbejde til en holdkammerat eller underagent.
-- Du opererer i plantilstand og vil have hvert plantrin repræsenteret som en konkret opgave.
-
-Spring `TaskCreate` over for trivielle one-shot-handlinger, ren samtale eller alt, der kan gennemføres i to eller tre direkte værktøjskald.
+Opretter en struktureret opgavelistepost til at spore fremskridt, organisere komplekse opgaver og vise brugeren arbejdets fremdrift.
 
 ## Parametre
 
-- `subject` (string, påkrævet): Kort imperativ titel, f.eks. `Fix login redirect on Safari`. Hold den under cirka firs tegn.
-- `description` (string, påkrævet): Detaljeret kontekst — problemet, begrænsningerne, accepteringskriterier og alle filer eller links, en fremtidig læser vil have brug for. Skriv, som om en holdkammerat vil samle dette op helt koldt.
-- `activeForm` (string, valgfri): Spinnertekst i nutid-continuous, der vises, mens opgaven er `in_progress`, f.eks. `Fixing login redirect on Safari`. Spejl `subject`, men i -ing-form.
-- `metadata` (object, valgfri): Vilkårlige strukturerede data knyttet til opgaven. Almindelige anvendelser: labels, prioritetshints, eksterne ticket-ID'er eller agent-specifik konfiguration.
+| Parameter | Type | Påkrævet | Beskrivelse |
+|------|------|------|------|
+| `subject` | string | Ja | Kort opgavetitel i bydeform (f.eks. "Fix authentication bug") |
+| `description` | string | Ja | Detaljeret beskrivelse inkl. kontekst og acceptkriterier |
+| `activeForm` | string | Nej | Tekst i nutids-tillægsform vist under udførelse (f.eks. "Fixing authentication bug") |
+| `metadata` | object | Nej | Vilkårlig metadata knyttet til opgaven |
 
-Nyoprettede opgaver starter altid med status `pending` og ingen ejer. Afhængigheder (`blocks`, `blockedBy`) sættes ikke ved oprettelse — anvend dem bagefter med `TaskUpdate`.
+## Brugsscenarier
 
-## Eksempler
+**Egnet til:**
+- Komplekse flertrinsopgaver (mere end 3 trin)
+- Brugeren har givet flere gøremål
+- Sporing af arbejde i planlægningstilstand
+- Brugeren beder udtrykkeligt om en todo-liste
 
-### Eksempel 1
+**Ikke egnet til:**
+- En enkelt simpel opgave
+- Simple operationer med færre end 3 trin
+- Ren samtale eller informationsforespørgsler
 
-Fang en fejlrapport, brugeren netop indsendte.
+## Bemærkninger
 
-```
-TaskCreate(
-  subject: "Repair broken PDF export on Windows",
-  description: "Users on Windows 11 report the export button produces a 0-byte file. Reproduce with sample doc in test/fixtures/export/, then fix the code path in src/export/pdf.ts. Acceptance: export writes a valid PDF and the existing export test suite passes.",
-  activeForm: "Repairing broken PDF export on Windows"
-)
-```
+- Alle nyoprettede opgaver har startstatus `pending`
+- `subject` bruger bydeform ("Run tests"), `activeForm` bruger nutids-tillægsform ("Running tests")
+- Efter oprettelse kan afhængigheder (blocks/blockedBy) sættes via TaskUpdate
+- Før oprettelse bør man tjekke med TaskList, om der findes duplikerede opgaver
 
-### Eksempel 2
+## Originaltekst
 
-Splittethed et epos op i sporede enheder ved starten af en session.
+<textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+It also helps the user understand the progress of the task and overall progress of their requests.
 
-```
-TaskCreate(
-  subject: "Draft migration plan for auth service",
-  description: "Produce a written plan covering rollout stages, rollback strategy, and monitoring. Output: docs/auth-migration.md.",
-  activeForm: "Drafting migration plan for auth service",
-  metadata: { "priority": "P1", "linearId": "AUTH-214" }
-)
-```
+## When to Use This Tool
 
-## Noter
+Use this tool proactively in these scenarios:
 
-- Skriv `subject` i bydeform og `activeForm` i nutid-continuous, så UI læses naturligt, når opgaven skifter til `in_progress`.
-- Kald `TaskList` før oprettelse for at undgå dubletter — teamlisten deles med holdkammerater og underagenter.
-- Inkludér ikke hemmeligheder eller legitimationsoplysninger i `description` eller `metadata`; opgaveregistreringer er synlige for alle med adgang til teamet.
-- Efter oprettelse skal opgaven flyttes gennem sin livscyklus med `TaskUpdate`. Lad ikke arbejde stille dø i `in_progress`.
+- Complex multi-step tasks - When a task requires 3 or more distinct steps or actions
+- Non-trivial and complex tasks - Tasks that require careful planning or multiple operations
+- Plan mode - When using plan mode, create a task list to track the work
+- User explicitly requests todo list - When the user directly asks you to use the todo list
+- User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
+- After receiving new instructions - Immediately capture user requirements as tasks
+- When you start working on a task - Mark it as in_progress BEFORE beginning work
+- After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation
+
+## When NOT to Use This Tool
+
+Skip using this tool when:
+- There is only a single, straightforward task
+- The task is trivial and tracking it provides no organizational benefit
+- The task can be completed in less than 3 trivial steps
+- The task is purely conversational or informational
+
+NOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.
+
+## Task Fields
+
+- **subject**: A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")
+- **description**: Detailed description of what needs to be done, including context and acceptance criteria
+- **activeForm**: Present continuous form shown in spinner when task is in_progress (e.g., "Fixing authentication bug"). This is displayed to the user while you work on the task.
+
+**IMPORTANT**: Always provide activeForm when creating tasks. The subject should be imperative ("Run tests") while activeForm should be present continuous ("Running tests"). All tasks are created with status `pending`.
+
+## Tips
+
+- Create tasks with clear, specific subjects that describe the outcome
+- Include enough detail in the description for another agent to understand and complete the task
+- After creating tasks, use TaskUpdate to set up dependencies (blocks/blockedBy) if needed
+- Check TaskList first to avoid creating duplicate tasks
+</textarea>

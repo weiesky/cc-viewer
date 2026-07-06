@@ -14,7 +14,7 @@ const EXT_COLORS = {
   java: '#b07219', c: '#555', cpp: '#f34b7d', h: '#555',
   sh: '#4eaa25', bash: '#4eaa25', zsh: '#4eaa25',
   yml: '#cb171e', yaml: '#cb171e', toml: '#999',
-  svg: '#e34c26', png: '#a86fd9', jpg: '#a86fd9', jpeg: '#a86fd9', gif: '#a86fd9', bmp: '#a86fd9', ico: '#a86fd9', icns: '#a86fd9', webp: '#a86fd9', avif: '#a86fd9',
+  svg: '#e34c26', png: '#a86fd9', jpg: '#a86fd9', jpeg: '#a86fd9', gif: '#a86fd9', ico: '#a86fd9', webp: '#a86fd9',
 };
 
 export function getFileIcon(name, type) {

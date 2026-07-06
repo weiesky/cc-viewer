@@ -6,7 +6,7 @@ MainAgent ist die Hauptanfragekette von Claude Code im Nicht-Agent-Team-Modus. J
 
 ## Erkennung
 
-In cc-viewer wird MainAgent durch `req.mainAgent === true` identifiziert und von `server/interceptor.js` beim Abfangen der Anfrage automatisch markiert.
+In cc-viewer wird MainAgent durch `req.mainAgent === true` identifiziert und von `interceptor.js` beim Abfangen der Anfrage automatisch markiert.
 
 Erkennungsbedingungen (alle müssen erfüllt sein):
 - Der Request-Body enthält das `system`-Feld (System-Prompt)

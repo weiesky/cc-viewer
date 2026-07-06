@@ -1,6 +1,5 @@
 import { isSkillText, isMainAgent } from './contentFilter.js';
 import { restoreSlimmedEntry } from './entry-slim.js';
-import { formatToolAsXml } from './toolsXmlFormatter.js';
 import modelClaudeUrl from '../img/model-claude.svg';
 import modelOpenaiUrl from '../img/model-openai.svg';
 import modelGeminiUrl from '../img/model-gemini.svg';
@@ -9,168 +8,25 @@ import modelKimiUrl from '../img/model-kimi.svg';
 import modelGlmUrl from '../img/model-glm.svg';
 import modelMinimaxUrl from '../img/model-minimax.svg';
 import modelDeepseekUrl from '../img/model-deepseek.svg';
-import modelClaudeAnimatedSvg from '../img/claude/writing.svg?raw';
 
-// 上下文窗口规则唯一事实源在 server/lib/context-rules.js(CLIENT-SAFE,无 node 依赖,
-// Vite 跨目录打包,先例见 toolsXmlFormatter.js)。前端一律经此处 re-export 取用,
-// 保证血条档位/纠偏/usage 分子与服务端 SSE 路径同源,杜绝三份规则表漂移的旧病。
-export {
-  getModelMaxTokens,
-  adaptContextWindow,
-  sumCacheCreationTokens,
-  sumUsageInputTokens,
-  sumUsageContextTokens,
-} from '../../server/lib/context-rules.js';
-import { classifyContextWindow, adaptContextWindow } from '../../server/lib/context-rules.js';
+const MODEL_CONTEXT_SIZES = [
+  // Explicit 1M context annotation: [1m] suffix in model descriptor
+  { match: /\[1m\]/i, tokens: 1000000 },
+  // Opus defaults to 1M context (no 200K variant exists)
+  { match: /opus/i, tokens: 1000000 },
+  { match: /claude/i, tokens: 200000 },
+  { match: /gpt-4o|o1|o3|o4/i, tokens: 128000 },
+  { match: /gpt-4/i, tokens: 128000 },
+  { match: /gpt-3/i, tokens: 16000 },
+  { match: /deepseek/i, tokens: 128000 },
+];
 
-/**
- * Resolve the effective model name for a log request entry, preferring the
- * server-reported model in `response.body.model` (authoritative under proxy
- * hot-switch) over the client-supplied `body.model`. Returns null when both
- * are missing — callers should fall back to a sensible default.
- */
-export function getEffectiveModel(request) {
-  return request?.response?.body?.model || request?.body?.model || null;
-}
-
-// 校准尺寸 → token 数集中映射。
-// 注意：扩档（如加 500K）必须同步改 src/config.json 的 calibrationModels（label/value）
-// 与 i18n 文案；只改这里 UI 不会出现新选项。
-const CALIBRATION_TOKEN_MAP = {
-  '1m': 1000000,
-  '200k': 200000,
-};
-
-/**
- * 把用户在 popover 里选的"上下文窗口尺寸"换算成 token 数。
- *  - calibrationModel === '1m' / '200k'：直接查表
- *  - 其它（含 'auto' 与所有兜底情况）：按以下优先级判定
- *      1) lastMainAgent.model 真实信号（但跳过 haiku — 启动期 init ping 噪声）
- *      2) projectModelHint（来自 ~/.claude.json projects[cwd].lastModelUsage，
- *         由 /api/claude-settings 与 workspace_started SSE 携带；反映用户在
- *         claude 里实际偏好的 model）
- *      3) 冷启动兜底 → 1M（用户规约）
- *  分类规则（context-rules.classifyContextWindow，前后端同源）：
- *      · model 含 1m 子串（含 [1m] 后缀与裸 1m,如 deepseek-v3-1m）→ 1M
- *      · 其余按统一档位表归并:opus-4-6+/mythons/fable-5/deepseek-v4 → 1M;
- *        haiku/旧 opus(4-0/4-1/4-5)/3-opus/裸 claude/gpt/deepseek 等 → 200K 桶
- *  haiku 跳过的代价：纯 haiku 子任务期会落到 projectModelHint；该路径下 hint
- *  缺失时仍按冷启动 1M 处理，不会突然变 200K。
- *
- * 不变量：永远返回 1000000 或 200000；调用方可放心当真值用。
- */
-export function resolveCalibrationTokens(calibrationModel, lastMainAgent, projectModelHint = null) {
-  const direct = CALIBRATION_TOKEN_MAP[calibrationModel];
-  if (direct) return direct;
-  const lastModel = lastMainAgent ? getEffectiveModel(lastMainAgent) : null;
-  // 优先用真实 mainAgent 信号；haiku 一律视为 init ping 噪声，跳过
-  if (typeof lastModel === 'string' && lastModel && !/haiku/i.test(lastModel)) {
-    return classifyContextWindow(lastModel);
+export function getModelMaxTokens(modelName) {
+  if (!modelName) return 200000;
+  for (const entry of MODEL_CONTEXT_SIZES) {
+    if (entry.match.test(modelName)) return entry.tokens;
   }
-  // 回落 1：claude 自己存的项目偏好 model
-  if (typeof projectModelHint === 'string' && projectModelHint) {
-    return classifyContextWindow(projectModelHint);
-  }
-  // 回落 2：冷启动 1M
-  return 1000000;
-}
-
-// Pre-1.6.243 stored values (calibrated per concrete model) → the new size buckets;
-// keeps upgrading users' calibration semantics instead of degrading them to 'auto'.
-// (If a stale localStorage value misses both this map and calibrationModels, fall back to 'auto'.)
-export const LEGACY_CALIBRATION_MIGRATION = {
-  'opus-4.7-1m': '1m',
-  'sonnet-4.6': '200k',
-  'glm5': '200k',
-  'kimi-k2.5': '200k',
-  'minimax-2.1': '200k',
-  'Qwen 3.5': '200k',
-};
-
-/**
- * Read the persisted calibration choice ('ccv_calibrationModel'), applying the
- * legacy-value migration and validating against the configured size options.
- * Shared by the desktop header and the mobile shell so both apply identical
- * migration semantics. Safe in non-browser environments (returns 'auto').
- */
-export function readCalibrationModel(calibrationModels) {
-  let raw = 'auto';
-  try {
-    raw = localStorage.getItem('ccv_calibrationModel') || 'auto';
-  } catch {}
-  const migrated = LEGACY_CALIBRATION_MIGRATION[raw] || raw;
-  return calibrationModels.some(m => m.value === migrated) ? migrated : 'auto';
-}
-
-/**
- * Single source of truth for the context-bar percentage. Extracted from the
- * desktop header math so mobile cannot drift (mobile previously ignored the
- * user's calibration choice and trusted the server's used_percentage raw).
- *
- * Inputs:
- *  - calibrationModel: '1m' | '200k' | 'auto' (user's popover choice)
- *  - lastMainAgent / lastTotalTokens / lastInputTokens: the caller's reverse
- *    scan for the latest main-agent usage (tokens via sumUsageContextTokens /
- *    sumUsageInputTokens)
- *  - projectModelHint: claudeProjectModel from app state (see resolveCalibrationTokens)
- *  - contextWindow: server-pushed { used_percentage, context_window_size, total_input_tokens }
- *
- * Callers keep local-log gating, contextBarLocked/Optimistic handling and the
- * _lastContextPercent memo outside this function.
- */
-export function computeContextPercent({ calibrationModel, lastMainAgent, projectModelHint = null, contextWindow, lastTotalTokens = 0, lastInputTokens = 0 }) {
-  let calibrationTokens = resolveCalibrationTokens(calibrationModel, lastMainAgent, projectModelHint);
-  // Adaptive correction: a window classified as 200K that has demonstrably held
-  // more than 200K of input must actually be 1M. Skipped when the user pinned '200k'.
-  if (calibrationModel !== '200k') {
-    const usedContextTokens = lastInputTokens > 0 ? lastInputTokens : (contextWindow?.total_input_tokens || 0);
-    calibrationTokens = adaptContextWindow(calibrationTokens, usedContextTokens);
-  }
-  let percent = 0;
-  if (contextWindow?.used_percentage != null) {
-    if (lastTotalTokens > 0) {
-      percent = Math.round(lastTotalTokens / calibrationTokens * 100);
-    } else {
-      // No usable usage on the last main agent: rebase the server percentage
-      // from its original window onto the calibrated one.
-      const origMax = contextWindow.context_window_size || 200000;
-      percent = Math.round(contextWindow.used_percentage * origMax / calibrationTokens);
-    }
-  } else if (lastMainAgent && lastTotalTokens > 0) {
-    percent = Math.round(lastTotalTokens / calibrationTokens * 100);
-  }
-  return Math.min(100, Math.max(0, percent));
-}
-
-/**
- * Per-message model info resolver. 1v1 严格遵从：每条消息的 modelInfo 来自
- * 它自己那条 request 的 effectiveModel，不回落到全局最新 model。
- *
- * 关键 off-by-one：assistant message 的 _timestamp 在 _processEntries 中
- * 被赋值为【下一轮 entry】的 ts（详见 src/AppBase.jsx:184-186 与
- * src/utils/sessionMerge.js:44/50），所以 producer req idx = idx - 1；
- * user message 的 _timestamp 与生产者 req 一致，producer idx = idx。
- *
- * mid-session 启动边界：cc-viewer 在 mid-conversation 才启动时，第一个 entry
- * 的 body.messages 已包含历史 [user, assistant, user, ...]，那条 assistant
- * 的 _timestamp = T0、idx=0、producerIdx=-1。其真实 producer 不在 server 视野内，
- * 退而求其次用当前 entry 的 model（modelNameByReqIdx[0]）作为最佳估计 ——
- * 同一段对话通常 model 一致，比显示中性 'MainAgent' 更接近用户预期。
- *
- * @param {string|null} ts message._timestamp
- * @param {string} role original msg.role ('user' | 'assistant')；ChatMessage 内部
- *                       派生 role（plan-prompt / teammate-message 等）不传入此函数。
- * @param {Object} tsToIndex map req.timestamp → request 数组下标
- * @param {Array<string|null>} modelNameByReqIdx 按 request idx 存储的"当时活跃" model name
- * @returns {Object|null} modelInfo (svg/color/name/...) 或 null（caller 应渲染中性 'MainAgent' 头像）
- */
-export function resolveProducerModelInfo(ts, role, tsToIndex, modelNameByReqIdx) {
-  if (!ts) return null;
-  const idx = tsToIndex[ts];
-  if (idx == null) return null;
-  const producerIdx = role === 'assistant' ? Math.max(idx - 1, 0) : idx;
-  const name = modelNameByReqIdx[producerIdx];
-  return name ? getModelInfo(name) : null;
+  return 200000;
 }
 
 /**
@@ -266,6 +122,70 @@ function _computeCacheLoss(prevMainAgent, req) {
   return { reason: reasons[0], reasons };
 }
 
+export function analyzeCacheLoss(requests, index) {
+  const req = requests[index];
+  if (!isMainAgent(req)) return null;
+
+  const usage = req.response?.body?.usage;
+  if (!usage) return null;
+
+  const cacheCreate = usage.cache_creation_input_tokens || 0;
+  const cacheRead = usage.cache_read_input_tokens || 0;
+
+  if (cacheCreate === 0 || cacheCreate <= cacheRead) return null;
+
+  // 向前查找上一个 MainAgent
+  let prevMainAgent = null;
+  for (let i = index - 1; i >= 0; i--) {
+    if (isMainAgent(requests[i])) {
+      prevMainAgent = requests[i];
+      break;
+    }
+  }
+
+  // 冷启动首条，不标记
+  if (!prevMainAgent) return null;
+  // 还原被剪枝的 prev entry 以确保 messages 比较精确
+  if (prevMainAgent._slimmed) {
+    prevMainAgent = restoreSlimmedEntry(prevMainAgent, requests);
+  }
+
+  const gap = req.timestamp - prevMainAgent.timestamp;
+  if (gap > 5 * 60 * 1000) return { reason: 'ttl' };
+
+  // 精确判断 key_change 子类型
+  const prev = stripPrivateKeys(prevMainAgent.body);
+  const curr = stripPrivateKeys(req.body);
+  if (!prev || !curr) return { reason: 'key_change' };
+
+  const reasons = [];
+
+  if (prev.model !== curr.model) reasons.push('model_change');
+  if (JSON.stringify(prev.system) !== JSON.stringify(curr.system)) reasons.push('system_change');
+  if (JSON.stringify(prev.tools) !== JSON.stringify(curr.tools)) reasons.push('tools_change');
+
+  // 消息栈分析
+  const prevMsgs = prev.messages || [];
+  const currMsgs = curr.messages || [];
+  if (currMsgs.length < prevMsgs.length) {
+    reasons.push('msg_truncated');
+  } else {
+    // 检查前缀消息是否一致（正常追加时前缀应不变）
+    const prefixLen = Math.min(prevMsgs.length, currMsgs.length);
+    let prefixMatch = true;
+    for (let i = 0; i < prefixLen; i++) {
+      if (JSON.stringify(prevMsgs[i]) !== JSON.stringify(currMsgs[i])) {
+        prefixMatch = false;
+        break;
+      }
+    }
+    if (!prefixMatch) reasons.push('msg_modified');
+  }
+
+  if (reasons.length === 0) return { reason: 'key_change' };
+  return { reason: reasons[0], reasons };
+}
+
 export function escapeHtml(str) {
   if (!str) return '';
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -276,9 +196,7 @@ export function truncateText(text, maxLen) {
   return text.length > maxLen ? text.substring(0, maxLen) + '...' : text;
 }
 
-// 文件内私有,仅供 L755 自调用使用。公共定义在 src/utils/toolResultCore.js,
-// 跨模块请 import 那里的版本(本文件因 SVG/i18n 依赖链不能被 node --test 直接加载)。
-function extractToolResultText(toolResult) {
+export function extractToolResultText(toolResult) {
   if (!toolResult.content) return String(toolResult.content ?? '');
   if (typeof toolResult.content === 'string') return toolResult.content;
   if (Array.isArray(toolResult.content)) {
@@ -290,21 +208,13 @@ function extractToolResultText(toolResult) {
   return JSON.stringify(toolResult.content);
 }
 
-// 模型配置：匹配规则、显示名、品牌色、SVG logo。
-// 字段约定：
-//   match        : 匹配模型名的正则（按数组顺序首次命中即止）
-//   name         : 用于 avatar label 的短名
-//   color        : avatar 背景色（CSS 变量或 literal）
-//   svg          : 必填。静态 logo 字符串，由 dangerouslySetInnerHTML 渲染
-//   svgAnimated  : 可选。流式响应期间显示的动画 logo；缺省时 ModelAvatar 自动回退到 svg。
-//                  添加新动画版只需设置此字段，其他消费者无感。
+// 模型配置：匹配规则、显示名、品牌色、SVG logo
 const MODEL_PROVIDERS = [
   {
     match: /claude/i,
     name: 'Claude',
     color: 'var(--bg-model-avatar)',
     svg: '<svg t="1771495509570" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1570" width="200" height="200"><path d="M198.4 678.4l198.4-115.2 6.4-12.8H243.2l-96-6.4-102.4-6.4-19.2-6.4-25.6-25.6v-12.8l19.2-12.8h32l64 6.4 96 6.4 70.4 6.4L384 512h19.2V492.8l-6.4-6.4-102.4-64-108.8-76.8-51.2-38.4-32-19.2-19.2-25.6-6.4-38.4 32-32h44.8l38.4 32 83.2 64L384 364.8l12.8 12.8 6.4-6.4-6.4-12.8L339.2 256l-64-108.8-25.6-38.4-6.4-25.6c0-12.8-6.4-19.2-6.4-32l32-44.8 19.2-6.4 44.8 6.4 19.2 12.8 25.6 57.6 44.8 96 64 128 19.2 38.4 6.4 38.4 6.4 12.8h6.4V384l6.4-70.4 12.8-89.6 12.8-115.2 6.4-32 19.2-38.4 32-19.2 25.6 12.8 19.2 32v19.2l-32 70.4-19.2 121.6-19.2 83.2h6.4l12.8-12.8 44.8-57.6 70.4-89.6 32-32 38.4-38.4 25.6-19.2h44.8l32 51.2-12.8 51.2-51.2 57.6-38.4 51.2-51.2 70.4-38.4 57.6v6.4h6.4l121.6-25.6 64-12.8 76.8-12.8 38.4 19.2 6.4 19.2-12.8 32-83.2 19.2-96 19.2-147.2 32 64 6.4h96l128 6.4 32 19.2 25.6 38.4-6.4 19.2-51.2 25.6-70.4-12.8-160-38.4-57.6-12.8h-6.4v6.4l44.8 44.8 83.2 76.8 108.8 102.4 6.4 25.6-12.8 19.2h-12.8l-96-70.4-38.4-32-83.2-70.4h-6.4v6.4l19.2 25.6 102.4 147.2 6.4 44.8-6.4 12.8-25.6 6.4-25.6-6.4-57.6-83.2-64-83.2-51.2-83.2-6.4 6.4-25.6 307.2-12.8 12.8-32 12.8-25.6-19.2-12.8-32 12.8-64 19.2-83.2 12.8-64 12.8-83.2 6.4-25.6h-6.4l-64 83.2-96 128-70.4 76.8-19.2 6.4-32-12.8v-25.6l19.2-25.6 102.4-128 64-83.2 38.4-51.2v-6.4l-268.8 172.8-51.2 12.8-19.2-19.2v-32l12.8-12.8 76.8-57.6z m0 0" fill="#D97757" p-id="1571"></path></svg>',
-    svgAnimated: modelClaudeAnimatedSvg,
   },
   {
     match: /gpt|o1|o3|o4/i,
@@ -328,19 +238,19 @@ const MODEL_PROVIDERS = [
     match: /kimi|moonshot/i,
     name: 'Kimi',
     color: 'var(--bg-model-avatar)',
-    svg: '<svg t="1771495664798" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6649" width="200" height="200"><path d="M731.062857 590.262857v318.317714h-148.589714V443.977143a146.285714 146.285714 0 0 1-146.285714 146.285714l-214.491429-0.036571v318.354285H73.142857V165.814857h148.553143v275.858286h180.882286l119.771428-275.858286h167.753143l-67.84 156.269714a255.524571 255.524571 0 0 1-106.678857 119.588572h66.925714a148.553143 148.553143 0 0 1 148.516572 148.589714z m120.758857-473.965714a99.035429 99.035429 0 0 1 0 198.070857h-99.035428V215.332571a99.035429 99.035429 0 0 1 99.035428-99.035428z" fill="currentColor" p-id="6650"></path></svg>',
+    svg: '<svg t="1771495664798" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6649" width="200" height="200"><path d="M731.062857 590.262857v318.317714h-148.589714V443.977143a146.285714 146.285714 0 0 1-146.285714 146.285714l-214.491429-0.036571v318.354285H73.142857V165.814857h148.553143v275.858286h180.882286l119.771428-275.858286h167.753143l-67.84 156.269714a255.524571 255.524571 0 0 1-106.678857 119.588572h66.925714a148.553143 148.553143 0 0 1 148.516572 148.589714z m120.758857-473.965714a99.035429 99.035429 0 0 1 0 198.070857h-99.035428V215.332571a99.035429 99.035429 0 0 1 99.035428-99.035428z" fill="#F4F4F4" p-id="6650"></path></svg>',
   },
   {
     match: /glm|chatglm/i,
     name: 'GLM',
     color: 'var(--bg-model-avatar)',
-    svg: '<svg data-name="glm" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 217.2 200"> <defs> <style> .st0 { fill: currentColor; } </style> </defs> <path class="st0" d="M86.8,190.4H0L131.3,4.8h85.8L86.8,190.4h0ZM212.8,190h-107.9l14.9-21.6c2.3-3.3,6-5.2,9.9-5.2h83.1v26.8h0ZM99.4,26.3c-2.3,3.3-6,5.2-9.9,5.2H6.4V4.8h107.9l-14.9,21.6Z"/> </svg>',
+    svg: '<svg data-name="glm" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 217.2 200"> <!-- Generator: Adobe Illustrator 29.8.2, SVG Export Plug-In . SVG Version: 2.1.1 Build 3)  --> <defs> <style> .st0 { fill: #fff; } </style> </defs> <path class="st0" d="M86.8,190.4H0L131.3,4.8h85.8L86.8,190.4h0ZM212.8,190h-107.9l14.9-21.6c2.3-3.3,6-5.2,9.9-5.2h83.1v26.8h0ZM99.4,26.3c-2.3,3.3-6,5.2-9.9,5.2H6.4V4.8h107.9l-14.9,21.6Z"/> </svg>',
   },
   {
     match: /minimax|abab/i,
     name: 'MiniMax',
     color: 'var(--bg-model-avatar)',
-    svg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 8l4-4 4 4 4-4 4 4v8l-4 4-4-4-4 4-4-4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+    svg: '<svg viewBox="0 0 24 24" fill="#fff"><path d="M4 8l4-4 4 4 4-4 4 4v8l-4 4-4-4-4 4-4-4z" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>',
   },
   {
     match: /deepseek/i,
@@ -350,38 +260,26 @@ const MODEL_PROVIDERS = [
   },
 ];
 
-// 按 modelName 缓存 modelInfo 对象，保证同名返回同引用。
-// React.memo(ModelAvatar) 和 ChatMessage.shouldComponentUpdate 依赖引用稳定性跳过 re-render。
-const _modelInfoCache = new Map();
-
 export function getModelInfo(modelName) {
   if (!modelName) return null;
-  const cached = _modelInfoCache.get(modelName);
-  if (cached) return cached;
-  let info = null;
   for (const provider of MODEL_PROVIDERS) {
     if (provider.match.test(modelName)) {
-      info = {
+      return {
         name: modelName.replace(/^claude-/, '').replace(/-\d{8,}$/, ''),
         provider: provider.name,
         color: provider.color,
         svg: provider.svg,
-        svgAnimated: provider.svgAnimated || null,
       };
-      break;
     }
   }
-  if (!info) {
-    // 未知模型，不设 svg，由 renderModelAvatar 使用兜底头像
-    info = { name: modelName, provider: modelName, color: 'var(--bg-model-avatar)', svg: null };
-  }
-  _modelInfoCache.set(modelName, info);
-  return info;
+  // 未知模型，不设 svg，由 renderModelAvatar 使用兜底头像
+  return {
+    name: modelName,
+    provider: modelName,
+    color: 'var(--bg-model-avatar)',
+    svg: null,
+  };
 }
-
-// 自动审批三态语义与档位的唯一事实源迁至 ./autoApproveOptions.js（node 可直接测试，
-// 无 Vite 专属依赖）；这里 re-export 维持既有 import 路径不变。
-export { AUTO_APPROVE_INSTANT } from './autoApproveOptions.js';
 
 export function getSvgAvatar(type) {
   if (type === 'user') {
@@ -392,17 +290,17 @@ export function getSvgAvatar(type) {
   }
   // sub-agent: 根据类型匹配不同图标
   if (type === 'sub-search' || type === 'sub-explore') {
-    return '<svg viewBox="0 0 1024 1024"><path d="M128.957606 76.608479v495.401496c0 20.428928-17.875312 38.304239-38.304239 38.304239S52.349127 592.438903 52.349127 572.009975V38.304239c0-20.428928 17.875312-38.304239 38.30424-38.304239h426.453865c20.428928 0 38.304239 17.875312 38.304239 38.304239s-17.875312 38.304239-38.304239 38.30424H128.957606z m127.680798 127.680798v495.401496c0 20.428928-17.875312 38.304239-38.304239 38.304239S180.029925 720.119701 180.029925 699.690773V165.985037c0-20.428928 17.875312-38.304239 38.30424-38.304239h426.453865c20.428928 0 38.304239 17.875312 38.304239 38.304239s-17.875312 38.304239-38.304239 38.30424H256.638404z m579.670823 291.112219v-150.663341H399.640898v515.830424h76.608479c0 38.304239 30.643392 68.947631 43.411471 89.376558h-145.55611c-33.197007 0-61.286783-28.089776-61.286783-63.840399V321.755611c0-35.750623 28.089776-63.840399 61.286783-63.840399h490.294264c33.197007 0 61.286783 28.089776 61.286784 63.840399V564.349127c-20.428928-22.982544-58.733167-56.179551-89.376559-68.947631zM486.46384 411.13217h255.361596c15.321696 0 25.53616 10.214464 25.53616 25.536159s-10.214464 25.53616-25.53616 25.53616H486.46384c-15.321696 0-25.53616-10.214464-25.536159-25.53616s10.214464-25.53616 25.536159-25.536159z m0 102.144638h102.144639c15.321696 0 25.53616 10.214464 25.536159 25.53616s-10.214464 25.53616-25.536159 25.536159h-102.144639c-15.321696 0-25.53616-10.214464-25.536159-25.536159s10.214464-25.53616 25.536159-25.53616z m503.062345 492.84788c-2.553616 2.553616-7.660848 10.214464-12.76808 10.214464-10.214464 10.214464-35.750623 10.214464-45.965088 0l-81.71571-71.501247c-28.089776 17.875312-63.840399 28.089776-99.591023 28.089776-102.144638 0-186.413965-84.269327-186.413965-186.413965s84.269327-186.413965 186.413965-186.413965 186.413965 84.269327 186.413965 186.413965c0 38.304239-10.214464 71.501247-30.643391 99.591022l81.715711 71.501247c12.76808 12.76808 12.76808 35.750623 2.553616 48.518703z m-240.039901-324.309227c-58.733167 0-104.698254 48.518703-104.698254 104.698255 0 58.733167 48.518703 104.698254 104.698254 104.698254s104.698254-48.518703 104.698255-104.698254c2.553616-58.733167-45.965087-104.698254-104.698255-104.698255z" fill="currentColor"/></svg>';
+    return '<svg viewBox="0 0 1024 1024"><path d="M128.957606 76.608479v495.401496c0 20.428928-17.875312 38.304239-38.304239 38.304239S52.349127 592.438903 52.349127 572.009975V38.304239c0-20.428928 17.875312-38.304239 38.30424-38.304239h426.453865c20.428928 0 38.304239 17.875312 38.304239 38.304239s-17.875312 38.304239-38.304239 38.30424H128.957606z m127.680798 127.680798v495.401496c0 20.428928-17.875312 38.304239-38.304239 38.304239S180.029925 720.119701 180.029925 699.690773V165.985037c0-20.428928 17.875312-38.304239 38.30424-38.304239h426.453865c20.428928 0 38.304239 17.875312 38.304239 38.304239s-17.875312 38.304239-38.304239 38.30424H256.638404z m579.670823 291.112219v-150.663341H399.640898v515.830424h76.608479c0 38.304239 30.643392 68.947631 43.411471 89.376558h-145.55611c-33.197007 0-61.286783-28.089776-61.286783-63.840399V321.755611c0-35.750623 28.089776-63.840399 61.286783-63.840399h490.294264c33.197007 0 61.286783 28.089776 61.286784 63.840399V564.349127c-20.428928-22.982544-58.733167-56.179551-89.376559-68.947631zM486.46384 411.13217h255.361596c15.321696 0 25.53616 10.214464 25.53616 25.536159s-10.214464 25.53616-25.53616 25.53616H486.46384c-15.321696 0-25.53616-10.214464-25.536159-25.53616s10.214464-25.53616 25.536159-25.536159z m0 102.144638h102.144639c15.321696 0 25.53616 10.214464 25.536159 25.53616s-10.214464 25.53616-25.536159 25.536159h-102.144639c-15.321696 0-25.53616-10.214464-25.536159-25.536159s10.214464-25.53616 25.536159-25.53616z m503.062345 492.84788c-2.553616 2.553616-7.660848 10.214464-12.76808 10.214464-10.214464 10.214464-35.750623 10.214464-45.965088 0l-81.71571-71.501247c-28.089776 17.875312-63.840399 28.089776-99.591023 28.089776-102.144638 0-186.413965-84.269327-186.413965-186.413965s84.269327-186.413965 186.413965-186.413965 186.413965 84.269327 186.413965 186.413965c0 38.304239-10.214464 71.501247-30.643391 99.591022l81.715711 71.501247c12.76808 12.76808 12.76808 35.750623 2.553616 48.518703z m-240.039901-324.309227c-58.733167 0-104.698254 48.518703-104.698254 104.698255 0 58.733167 48.518703 104.698254 104.698254 104.698254s104.698254-48.518703 104.698255-104.698254c2.553616-58.733167-45.965087-104.698254-104.698255-104.698255z" fill="#ffffff"/></svg>';
   }
   if (type === 'sub-plan') {
-    return '<svg viewBox="0 0 1024 1024"><path d="M674.507676 598.338391 287.079856 598.338391c-14.136975 0-25.638937 11.499915-25.638937 25.63689 0 14.137998 11.501962 25.640983 25.638937 25.640983l387.42782 0c14.137998 0 25.640983-11.501962 25.640983-25.640983C700.148659 609.838306 688.646698 598.338391 674.507676 598.338391zM794.746154 384.583029c-14.137998 0-25.640983 11.501962-25.640983 25.63996l0 494.299873c0 0.130983 0 0.280386-0.001023 0.433882-0.899486 0.279363-2.665713 0.644683-5.764284 0.644683L200.047664 905.601426c-4.312212 0-7.564279-2.971681-7.564279-6.913457L192.483384 191.851493c0-4.493338 0.974188-8.28878 1.811252-9.821693l373.337917 0c14.136975 0 25.63996-11.501962 25.63996-25.63996 0-14.136975-11.501962-25.638937-25.63996-25.638937l-374.069581 0c-30.336936 0-52.357462 25.696242-52.357462 61.099566l0 706.836477c0 32.086789 26.396183 58.19133 58.84113 58.19133l563.293223 0c34.119075 0 57.042157-21.041222 57.042157-52.356438L820.382021 410.224012C820.383044 396.086014 808.883129 384.583029 794.746154 384.583029zM674.507676 745.295394 287.079856 745.295394c-14.136975 0-25.638937 11.499915-25.638937 25.63689 0 14.137998 11.501962 25.640983 25.638937 25.640983l387.42782 0c14.137998 0 25.640983-11.501962 25.640983-25.640983C700.148659 756.795309 688.646698 745.295394 674.507676 745.295394zM879.595634 157.107177c-3.77293-14.409175-12.871145-28.250414-24.964578-37.975916l-43.827181-35.240619c-12.880355-10.352789-29.27679-16.290011-44.986587-16.290011-16.876366 0-31.594579 6.747681-41.439808 18.995633l-19.624966 24.381293c-6.380314 7.968485-7.987928 17.577331-5.222955 26.916023l-114.241904 142.063553-2.486634 3.090385-22.812565 85.303828c-9.749038 30.859845 4.449335 48.075949 13.806447 55.608505 6.783497 5.450129 14.468526 8.728802 22.851451 9.754155 0.984421 0.246617 2.125407 0.488117 3.440355 0.632403 1.003863 0.110517 2.053776 0.167822 3.118014 0.167822l0.014326 0c4.588505 0 10.047844-0.9967 17.180288-3.13541l2.877537-1.065262 83.402525-41.897226 119.874181-149.07934c0.440022 0.017396 0.880043 0.032746 1.320065 0.032746 9.218966 0 17.411555-3.862981 23.077601-10.892071l19.562545-24.342408C880.924909 191.1976 884.15037 174.495196 879.595634 157.107177zM674.469813 348.564697l-56.738235 28.537963c-2.958378 0.579191-5.734608 1.684362-8.277524 3.296069-0.313132 0.198521-0.615007 0.385786-0.905626 0.562818 0.12382-0.318248 0.25378-0.639566 0.39295-0.971118 0.99977-2.437515 1.588171-5.022387 1.753947-7.702426l17.732873-66.078974 105.73209-131.488707 48.647977 39.113833L674.469813 348.564697zM831.385633 172.919305l-7.679913 9.550517-68.139913-54.779627 7.687076-9.56382c0.291642-0.132006 1.144056-0.38374 2.604314-0.38374 4.28356 0 9.735735 2.071172 13.570063 5.15644l43.832298 35.245735c3.493567 2.805906 6.421246 7.018857 7.642051 10.993378C831.497173 171.081447 831.492056 172.446537 831.385633 172.919305zM487.474932 291.067168l-200.394053 0c-14.136975 0-25.638937 11.501962-25.638937 25.63996 0 14.136975 11.501962 25.637913 25.638937 25.637913l200.394053 0c14.137998 0 25.63996-11.500938 25.63996-25.637913C513.114892 302.56913 501.611907 291.067168 487.474932 291.067168zM674.507676 438.023148 287.079856 438.023148c-14.136975 0-25.638937 11.500938-25.638937 25.638937s11.501962 25.638937 25.638937 25.638937l387.42782 0c14.137998 0 25.640983-11.501962 25.640983-25.638937S688.646698 438.023148 674.507676 438.023148z" fill="currentColor"/></svg>';
+    return '<svg viewBox="0 0 1024 1024"><path d="M674.507676 598.338391 287.079856 598.338391c-14.136975 0-25.638937 11.499915-25.638937 25.63689 0 14.137998 11.501962 25.640983 25.638937 25.640983l387.42782 0c14.137998 0 25.640983-11.501962 25.640983-25.640983C700.148659 609.838306 688.646698 598.338391 674.507676 598.338391zM794.746154 384.583029c-14.137998 0-25.640983 11.501962-25.640983 25.63996l0 494.299873c0 0.130983 0 0.280386-0.001023 0.433882-0.899486 0.279363-2.665713 0.644683-5.764284 0.644683L200.047664 905.601426c-4.312212 0-7.564279-2.971681-7.564279-6.913457L192.483384 191.851493c0-4.493338 0.974188-8.28878 1.811252-9.821693l373.337917 0c14.136975 0 25.63996-11.501962 25.63996-25.63996 0-14.136975-11.501962-25.638937-25.63996-25.638937l-374.069581 0c-30.336936 0-52.357462 25.696242-52.357462 61.099566l0 706.836477c0 32.086789 26.396183 58.19133 58.84113 58.19133l563.293223 0c34.119075 0 57.042157-21.041222 57.042157-52.356438L820.382021 410.224012C820.383044 396.086014 808.883129 384.583029 794.746154 384.583029zM674.507676 745.295394 287.079856 745.295394c-14.136975 0-25.638937 11.499915-25.638937 25.63689 0 14.137998 11.501962 25.640983 25.638937 25.640983l387.42782 0c14.137998 0 25.640983-11.501962 25.640983-25.640983C700.148659 756.795309 688.646698 745.295394 674.507676 745.295394zM879.595634 157.107177c-3.77293-14.409175-12.871145-28.250414-24.964578-37.975916l-43.827181-35.240619c-12.880355-10.352789-29.27679-16.290011-44.986587-16.290011-16.876366 0-31.594579 6.747681-41.439808 18.995633l-19.624966 24.381293c-6.380314 7.968485-7.987928 17.577331-5.222955 26.916023l-114.241904 142.063553-2.486634 3.090385-22.812565 85.303828c-9.749038 30.859845 4.449335 48.075949 13.806447 55.608505 6.783497 5.450129 14.468526 8.728802 22.851451 9.754155 0.984421 0.246617 2.125407 0.488117 3.440355 0.632403 1.003863 0.110517 2.053776 0.167822 3.118014 0.167822l0.014326 0c4.588505 0 10.047844-0.9967 17.180288-3.13541l2.877537-1.065262 83.402525-41.897226 119.874181-149.07934c0.440022 0.017396 0.880043 0.032746 1.320065 0.032746 9.218966 0 17.411555-3.862981 23.077601-10.892071l19.562545-24.342408C880.924909 191.1976 884.15037 174.495196 879.595634 157.107177zM674.469813 348.564697l-56.738235 28.537963c-2.958378 0.579191-5.734608 1.684362-8.277524 3.296069-0.313132 0.198521-0.615007 0.385786-0.905626 0.562818 0.12382-0.318248 0.25378-0.639566 0.39295-0.971118 0.99977-2.437515 1.588171-5.022387 1.753947-7.702426l17.732873-66.078974 105.73209-131.488707 48.647977 39.113833L674.469813 348.564697zM831.385633 172.919305l-7.679913 9.550517-68.139913-54.779627 7.687076-9.56382c0.291642-0.132006 1.144056-0.38374 2.604314-0.38374 4.28356 0 9.735735 2.071172 13.570063 5.15644l43.832298 35.245735c3.493567 2.805906 6.421246 7.018857 7.642051 10.993378C831.497173 171.081447 831.492056 172.446537 831.385633 172.919305zM487.474932 291.067168l-200.394053 0c-14.136975 0-25.638937 11.501962-25.638937 25.63996 0 14.136975 11.501962 25.637913 25.638937 25.637913l200.394053 0c14.137998 0 25.63996-11.500938 25.63996-25.637913C513.114892 302.56913 501.611907 291.067168 487.474932 291.067168zM674.507676 438.023148 287.079856 438.023148c-14.136975 0-25.638937 11.500938-25.638937 25.638937s11.501962 25.638937 25.638937 25.638937l387.42782 0c14.137998 0 25.640983-11.501962 25.640983-25.638937S688.646698 438.023148 674.507676 438.023148z" fill="#ffffff"/></svg>';
   }
   // teammate: team/collaboration icon (two people)
   if (type === 'teammate') {
-    return '<svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" fill="currentColor"/></svg>';
+    return '<svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" fill="#ffffff"/></svg>';
   }
   // default: other sub-agent
-  return '<svg viewBox="0 0 1024 1024"><path d="M810.666667 384l53.333333-117.333333L981.333333 213.333333l-117.333333-53.333333L810.666667 42.666667l-53.333334 117.333333L640 213.333333l117.333333 53.333334L810.666667 384zM810.666667 640l-53.333334 117.333333L640 810.666667l117.333333 53.333333L810.666667 981.333333l53.333333-117.333333L981.333333 810.666667l-117.333333-53.333334L810.666667 640zM490.666667 405.333333L384 170.666667 277.333333 405.333333 42.666667 512l234.666666 106.666667L384 853.333333l106.666667-234.666666L725.333333 512l-234.666666-106.666667z m-64.426667 148.906667L384 647.253333l-42.24-93.013333L248.746667 512l93.013333-42.24L384 376.746667l42.24 93.013333 93.013333 42.24-93.013333 42.24z" fill="currentColor"/></svg>';
+  return '<svg viewBox="0 0 1024 1024"><path d="M810.666667 384l53.333333-117.333333L981.333333 213.333333l-117.333333-53.333333L810.666667 42.666667l-53.333334 117.333333L640 213.333333l117.333333 53.333334L810.666667 384zM810.666667 640l-53.333334 117.333333L640 810.666667l117.333333 53.333333L810.666667 981.333333l53.333333-117.333333L981.333333 810.666667l-117.333333-53.333334L810.666667 640zM490.666667 405.333333L384 170.666667 277.333333 405.333333 42.666667 512l234.666666 106.666667L384 853.333333l106.666667-234.666666L725.333333 512l-234.666666-106.666667z m-64.426667 148.906667L384 647.253333l-42.24-93.013333L248.746667 512l93.013333-42.24L384 376.746667l42.24 93.013333 93.013333 42.24-93.013333 42.24z" fill="#ffffff"/></svg>';
 }
 
 export function formatTokenCount(n) {
@@ -533,12 +431,6 @@ export function hasClaudeMdReminder(body) {
 }
 
 export function hasSkillsReminder(body) {
-  // 与 extractLoadedSkills 的扫描范围对齐：system[] + messages[]
-  if (Array.isArray(body?.system)) {
-    for (const blk of body.system) {
-      if (blk?.type === 'text' && isSkillsReminder(blk.text)) return true;
-    }
-  }
   const messages = body?.messages;
   if (!Array.isArray(messages)) return false;
   for (const msg of messages) {
@@ -554,52 +446,6 @@ export function hasSkillsReminder(body) {
     }
   }
   return false;
-}
-
-// parseLoadedSkills 拆到独立文件 skillsParser.js（纯函数、无传递依赖），
-// 方便 node --test 直接导入（contentFilter.js 的 ./teammateDetector import
-// 未写 .js 后缀，会让任何 helpers.js 的传递测试挂掉）。
-export { parseLoadedSkills } from './skillsParser.js';
-import { parseLoadedSkills as _parseLoadedSkills } from './skillsParser.js';
-
-// 从 requests 中挑出当前生效的 skills 列表。
-// 策略：最新 MainAgent；单请求直取。不依赖 response.usage（skills 只来自 body）。
-// 只扫 body.system[] 与 body.messages[*].content[*] 中 type==='text' 的块。
-export function extractLoadedSkills(requests) {
-  if (!Array.isArray(requests) || requests.length === 0) return [];
-  let chosen = null;
-  if (requests.length === 1) {
-    chosen = requests[0];
-  } else {
-    for (let i = requests.length - 1; i >= 0; i--) {
-      if (isMainAgent(requests[i])) { chosen = requests[i]; break; }
-    }
-  }
-  if (!chosen || !chosen.body) return [];
-  const body = chosen.body;
-
-  let last = null;
-  if (Array.isArray(body.system)) {
-    for (const blk of body.system) {
-      if (blk?.type === 'text' && isSkillsReminder(blk.text)) last = blk.text;
-    }
-  }
-  if (Array.isArray(body.messages)) {
-    for (const msg of body.messages) {
-      const c = msg?.content;
-      if (typeof c === 'string') {
-        if (isSkillsReminder(c)) last = c;
-      } else if (Array.isArray(c)) {
-        for (const blk of c) {
-          if (blk?.type === 'text' && isSkillsReminder(blk.text)) last = blk.text;
-        }
-      }
-    }
-  }
-  if (!last) return [];
-
-  const m = /<system-reminder>([\s\S]*?)<\/system-reminder>/i.exec(last);
-  return _parseLoadedSkills(m ? m[1] : last);
 }
 
 export function getModelShort(model) {
@@ -618,7 +464,6 @@ export function isRelevantRequest(request) {
   if (!request) return false;
   const url = request.url || '';
   return !(
-    request.ccvRotationContext ||  // rotation-context sentinel: metadata frame, never a renderable request
     request.isHeartbeat ||
     request.isCountTokens ||
     /\/api\/eval\/sdk-/.test(url) ||
@@ -634,19 +479,6 @@ export function isRelevantRequest(request) {
  */
 export function filterRelevantRequests(requests) {
   return requests.filter(isRelevantRequest);
-}
-
-/**
- * The single source of truth for the request list a user can SEE and that
- * selectedIndex indexes. showAll bypasses relevance filtering but must still
- * hide rotation-context sentinels (metadata frames kept inside state.requests
- * for positional-index integrity). Every selectedIndex-coupled call site must
- * use this helper — a sentinel-inclusive array desynchronizes the selection.
- */
-export function visibleRequests(requests, showAll) {
-  return showAll
-    ? requests.filter((r) => !r?.ccvRotationContext)
-    : filterRelevantRequests(requests);
 }
 
 /**
@@ -723,7 +555,6 @@ export function extractCachedContent(requests) {
   }
 
   // 提取 messages：找到最后一个带 cache_control 的消息，提取从开始到该位置的所有消息内容
-  // 如果没有 cache_control 标记但有 cache_read（delta 重建/slim 还原后标记丢失），提取全部 messages
   if (Array.isArray(body.messages)) {
     let lastCacheIndex = -1;
     for (let i = body.messages.length - 1; i >= 0; i--) {
@@ -738,11 +569,6 @@ export function extractCachedContent(requests) {
         if (lastCacheIndex >= 0) break;
       }
     }
-    // Fallback: delta 重建 + slim 还原后 cache_control 标记可能丢失，
-    // 但 cache_read > 0 说明 messages 确实被缓存了，提取全部
-    if (lastCacheIndex < 0 && result.cacheReadTokens > 0 && body.messages.length > 0) {
-      lastCacheIndex = body.messages.length - 1;
-    }
     if (lastCacheIndex >= 0) {
       for (let i = 0; i <= lastCacheIndex; i++) {
         const msg = body.messages[i];
@@ -753,10 +579,6 @@ export function extractCachedContent(requests) {
           for (const block of content) {
             if (block.type === 'text' && block.text) {
               result.messages.push(`[${msg.role}] ${block.text}`);
-            } else if (block.type === 'tool_use') {
-              const inputStr = block.input ? JSON.stringify(block.input) : '';
-              const preview = inputStr.length > 200 ? inputStr.substring(0, 200) + '...' : inputStr;
-              result.messages.push(`[${msg.role}] ${block.name}(${preview})`);
             } else if (block.type === 'tool_result') {
               const toolText = extractToolResultText(block);
               if (toolText) {
@@ -772,68 +594,12 @@ export function extractCachedContent(requests) {
   // 提取 tools：API 缓存顺序为 tools → system → messages，
   // tools 作为 cache 前缀的一部分隐式被缓存（不需要自身有 cache_control 标记）。
   // 只要 system 有缓存内容（说明 cache 前缀存在），tools 就应被展示。
-  // Keep in sync with server/lib/kv-cache-analyzer.js extractCachedContent
+  // Keep in sync with lib/kv-cache-analyzer.js extractCachedContent
   if (Array.isArray(body.tools) && body.tools.length > 0 && result.system.length > 0) {
     for (const tool of body.tools) {
-      result.tools.push(formatToolAsXml(tool));
+      result.tools.push(`${tool.name}: ${tool.description || ''}`);
     }
   }
 
   return result;
-}
-
-/**
- * 把 extractCachedContent 产出的 tools XML 字符串数组拆分为内置工具和 MCP 工具两组。
- *
- * 输入形如 formatToolAsXml 的输出：每个字符串是完整的 <tool>...</tool> 块。
- * 解析时只取出工具级别（最顶层）的 <name> 与 <description>——即字符串中第一次出现的那对。
- *
- * MCP 识别：name 匹配 /^mcp__(.+?)__(.+)$/，非贪心以支持 server 名含下划线
- * （例如 mcp__some_server_name__do_thing → server: "some_server_name", tool: "do_thing"）。
- *
- * 边界：
- * - tools 非数组或空 → { builtin: [], mcpByServer: new Map() }
- * - 项为空字符串 / 非字符串 → 跳过
- * - 项不是 XML 块但含冒号 → 回退到 "name: description" 解析（向前兼容）
- *
- * @param {string[]} tools
- * @returns {{ builtin: Array<{name:string, description:string}>, mcpByServer: Map<string, Array<{name:string, fullName:string, description:string}>> }}
- */
-export function parseCachedTools(tools) {
-  const builtin = [];
-  const mcpByServer = new Map();
-  if (!Array.isArray(tools)) return { builtin, mcpByServer };
-
-  for (const raw of tools) {
-    if (typeof raw !== 'string' || !raw) continue;
-
-    let name = '';
-    let description = '';
-
-    const nameMatch = raw.match(/<name>([\s\S]*?)<\/name>/);
-    if (nameMatch) {
-      name = nameMatch[1].trim();
-      const descMatch = raw.match(/<description>([\s\S]*?)<\/description>/);
-      description = descMatch ? descMatch[1].trim() : '';
-    } else {
-      // Back-compat: older "name: description" format
-      const colonIdx = raw.indexOf(':');
-      name = colonIdx >= 0 ? raw.slice(0, colonIdx).trim() : raw.trim();
-      description = colonIdx >= 0 ? raw.slice(colonIdx + 1).trim() : '';
-    }
-
-    if (!name) continue;
-
-    const mcpMatch = /^mcp__(.+?)__(.+)$/.exec(name);
-    if (mcpMatch) {
-      const server = mcpMatch[1];
-      const toolName = mcpMatch[2];
-      if (!mcpByServer.has(server)) mcpByServer.set(server, []);
-      mcpByServer.get(server).push({ name: toolName, fullName: name, description });
-    } else {
-      builtin.push({ name, description });
-    }
-  }
-
-  return { builtin, mcpByServer };
 }

@@ -8,7 +8,7 @@ Aşağıda tüm araçların kategorize edilmiş dizini bulunmaktadır.
 
 | Araç | Kullanım Amacı |
 |------|----------------|
-| [Agent](Tool-Agent.md) | Karmaşık çok adımlı görevleri işlemek için alt agent (SubAgent) başlatma |
+| [Task](Tool-Task.md) | Karmaşık çok adımlı görevleri işlemek için alt agent (SubAgent) başlatma |
 | [TaskOutput](Tool-TaskOutput.md) | Arka plan görevinin çıktısını alma |
 | [TaskStop](Tool-TaskStop.md) | Çalışan arka plan görevini durdurma |
 | [TaskCreate](Tool-TaskCreate.md) | Yapılandırılmış görev listesi girdisi oluşturma |

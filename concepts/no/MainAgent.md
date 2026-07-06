@@ -6,7 +6,7 @@ MainAgent er hovedforespørselskjeden i Claude Code når den ikke er i agent tea
 
 ## Identifisering
 
-I cc-viewer identifiseres MainAgent gjennom `req.mainAgent === true`, som automatisk settes av `server/interceptor.js` ved forespørselsfangst.
+I cc-viewer identifiseres MainAgent gjennom `req.mainAgent === true`, som automatisk settes av `interceptor.js` ved forespørselsfangst.
 
 Bestemmelsesvilkår (alle må oppfylles):
 - Forespørselskroppen inneholder `system`-felt (system prompt)

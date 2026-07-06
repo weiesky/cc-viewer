@@ -1,41 +1,56 @@
 # Read
 
-從本機檔案系統載入單一檔案的內容。支援純文字、原始碼、圖片、PDF 與 Jupyter notebook，並以 `cat -n` 風格回傳以 1 為起始的行號。
+## 定義
 
-## 使用時機
-
-- 在編輯或分析前，依已知路徑讀取原始檔案
-- 檢視設定檔、lockfile、記錄或產出的成品
-- 檢視使用者貼入對話中的螢幕截圖或示意圖
-- 從長 PDF 手冊中擷取特定頁面範圍
-- 開啟 `.ipynb` notebook 同時檢視程式碼 cell、markdown 與 cell 輸出
+從本機檔案系統讀取檔案內容。支援文字檔案、圖片、PDF 和 Jupyter notebook。
 
 ## 參數
 
-- `file_path`（string，必填）：目標檔案的絕對路徑。相對路徑會被拒絕。
-- `offset`（integer，選填）：從以 1 為起始的行號開始讀取。對大檔搭配 `limit` 使用很實用。
-- `limit`（integer，選填）：從 `offset` 開始回傳的最大行數。未提供時預設為檔案頂端起的 2000 行。
-- `pages`（string，選填）：PDF 檔案的頁碼範圍，例如 `"1-5"`、`"3"` 或 `"10-20"`。對超過 10 頁的 PDF 為必填；每次請求最多 20 頁。
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| `file_path` | string | 是 | 檔案的絕對路徑 |
+| `offset` | number | 否 | 起始行號（用於大檔案分段讀取） |
+| `limit` | number | 否 | 讀取行數（用於大檔案分段讀取） |
+| `pages` | string | 否 | PDF 頁碼範圍（如 "1-5"、"3"、"10-20"），僅適用於 PDF |
 
-## 範例
+## 使用場景
 
-### 範例 1：讀取整個小檔案
-僅以 `file_path` 為 `/Users/me/project/src/index.ts` 呼叫 `Read`。最多會回傳 2000 行並附行號，通常足以提供編輯所需的上下文。
+**適合使用：**
+- 讀取程式碼檔案、設定檔等文字檔案
+- 查看圖片檔案（Claude 是多模態模型）
+- 讀取 PDF 文件
+- 讀取 Jupyter notebook（回傳所有儲存格及輸出）
+- 並行讀取多個檔案以取得上下文
 
-### 範例 2：分頁瀏覽長記錄
-對上萬行的記錄檔使用 `offset: 5001` 與 `limit: 500`，擷取狹窄區段而不浪費上下文 tokens。
-
-### 範例 3：擷取特定 PDF 頁面
-對於 `/tmp/spec.pdf` 這份 120 頁的 PDF，設 `pages: "8-15"` 只擷取所需章節。對大型 PDF 省略 `pages` 會產生錯誤。
-
-### 範例 4：檢視圖片
-傳入 PNG 或 JPG 螢幕截圖的絕對路徑。圖片會以視覺形式呈現，Claude Code 可直接對其推理。
+**不適合使用：**
+- 讀取目錄——應使用 Bash 的 `ls` 命令
+- 開放式程式碼庫探索——應使用 Task（Explore 類型）
 
 ## 注意事項
 
-- 一律優先使用絕對路徑。若使用者提供了絕對路徑，就照用。
-- 超過 2000 字元的行會被截斷；對於極寬的資料，請把回傳內容視為可能被截斷。
-- 需要讀取多個獨立檔案嗎？在同一次回應中平行送出多個 `Read` 呼叫。
-- `Read` 無法列出目錄。請改用 `Bash` 的 `ls` 呼叫或 `Glob` 工具。
-- 讀取既有但空白的檔案會回傳系統提示而非檔案位元組，請明確處理該訊號。
-- 在目前工作階段中，你必須先成功 `Read` 過同一個檔案，才能對其使用 `Edit`。
+- 路徑必須是絕對路徑，不能是相對路徑
+- 預設讀取檔案前 2000 行
+- 超過 2000 字元的行會被截斷
+- 輸出使用 `cat -n` 格式，行號從 1 開始
+- 大型 PDF（超過 10 頁）必須指定 `pages` 參數，每次最多 20 頁
+- 讀取不存在的檔案會回傳錯誤（不會當機）
+- 可以在單條訊息中並行呼叫多個 Read
+
+## 原文
+
+<textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.
+Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+
+Usage:
+- The file_path parameter must be an absolute path, not a relative path
+- By default, it reads up to 2000 lines starting from the beginning of the file
+- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
+- Any lines longer than 2000 characters will be truncated
+- Results are returned using cat -n format, with line numbers starting at 1
+- This tool allows Claude Code to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Claude Code is a multimodal LLM.
+- This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.
+- This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
+- This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
+- You can call multiple tools in a single response. It is always better to speculatively read multiple potentially useful files in parallel.
+- You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.
+- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.</textarea>

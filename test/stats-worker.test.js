@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const WORKER_PATH = join(__dirname, '..', 'server', 'lib', 'stats-worker.js');
+const WORKER_PATH = join(__dirname, '..', 'lib', 'stats-worker.js');
 
 function makeTmpDir() {
   const dir = join(tmpdir(), `ccv-stats-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);

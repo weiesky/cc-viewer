@@ -1,47 +1,56 @@
 # Skill
 
-Wywołuje nazwany skill wewnątrz bieżącej rozmowy. Skille to wstępnie spakowane pakiety możliwości — wiedza dziedzinowa, przepływy pracy, a czasem dostęp do narzędzi — które środowisko udostępnia asystentowi poprzez przypomnienia systemowe.
+## Definicja
 
-## Kiedy używać
-
-- Użytkownik wpisuje komendę ukośnikową, taką jak `/review` czy `/init` — komendy ukośnikowe to skille i muszą być wykonywane przez to narzędzie.
-- Użytkownik opisuje zadanie, które pasuje do warunków wyzwalających reklamowanego skilla (na przykład prośba o skanowanie transkryptów w celu wykrycia powtarzających się monitów o uprawnienia pasuje do `fewer-permission-prompts`).
-- Zadeklarowany cel skilla jest bezpośrednim dopasowaniem do bieżącego pliku, żądania lub kontekstu rozmowy.
-- Wyspecjalizowane, powtarzalne przepływy pracy są dostępne jako skille i kanoniczna procedura jest preferowana nad ad-hoc.
-- Użytkownik pyta "jakie skille są dostępne" — wylistuj reklamowane nazwy i wywołuj tylko po potwierdzeniu.
+Wykonuje umiejętność (skill) w głównej rozmowie. Umiejętności to specjalizowane zdolności, które użytkownik może wywoływać za pomocą slash command (np. `/commit`, `/review-pr`).
 
 ## Parametry
 
-- `skill` (string, wymagany): Dokładna nazwa skilla wylistowana w bieżącym przypomnieniu systemowym dostępnych skilli. Dla skilli z przestrzenią nazw wtyczki użyj w pełni kwalifikowanej formy `plugin:skill` (na przykład `skill-creator:skill-creator`). Nie dodawaj początkowego ukośnika.
-- `args` (string, opcjonalny): Argumenty w dowolnym formacie przekazywane do skilla. Format i semantyka są zdefiniowane przez własną dokumentację każdego skilla.
+| Parametr | Typ | Wymagany | Opis |
+|------|------|------|------|
+| `skill` | string | Tak | Nazwa umiejętności (np. "commit", "review-pr", "pdf") |
+| `args` | string | Nie | Argumenty umiejętności |
 
-## Przykłady
+## Scenariusze użycia
 
-### Przykład 1: Uruchom skill review na bieżącej gałęzi
+**Odpowiednie zastosowanie:**
+- Użytkownik wpisał slash command w formacie `/<skill-name>`
+- Żądanie użytkownika pasuje do funkcjonalności zarejestrowanej umiejętności
 
-```
-Skill(skill="review")
-```
-
-Skill `review` pakuje kroki do przeglądu pull requesta względem bieżącej gałęzi bazowej. Wywołanie go ładuje procedurę przeglądu zdefiniowaną przez środowisko do tury.
-
-### Przykład 2: Wywołanie skilla z przestrzeni nazw wtyczki z argumentami
-
-```
-Skill(
-  skill="skill-creator:skill-creator",
-  args="create a skill that summarizes git log for a given date range"
-)
-```
-
-Kieruje żądanie przez punkt wejścia wtyczki `skill-creator`, aby uruchomił się przepływ pracy autorski.
+**Nieodpowiednie zastosowanie:**
+- Wbudowane polecenia CLI (np. `/help`, `/clear`)
+- Umiejętność już jest w trakcie wykonywania
+- Nazwa umiejętności nie znajduje się na liście dostępnych umiejętności
 
 ## Uwagi
 
-- Wywołuj tylko skille, których nazwy pojawiają się dosłownie w przypomnieniu systemowym dostępnych skilli, lub skille, które użytkownik wpisał bezpośrednio jako `/nazwa` w swojej wiadomości. Nigdy nie zgaduj ani nie wymyślaj nazw skilli z pamięci lub danych treningowych — jeśli skill nie jest reklamowany, nie wywołuj tego narzędzia.
-- Gdy żądanie użytkownika pasuje do reklamowanego skilla, wywołanie `Skill` jest blokującym warunkiem wstępnym: wywołaj je przed wygenerowaniem jakiejkolwiek innej odpowiedzi dotyczącej zadania. Nie opisuj, co skill zrobiłby — uruchom go.
-- Nigdy nie wymieniaj skilla z nazwy bez faktycznego wywołania go. Zapowiadanie skilla bez wywołania narzędzia jest mylące.
-- Nie używaj `Skill` dla wbudowanych komend CLI, takich jak `/help`, `/clear`, `/model` czy `/exit`. Są one obsługiwane bezpośrednio przez środowisko.
-- Nie wywołuj ponownie skilla, który już działa w bieżącej turze. Jeśli widzisz znacznik `<command-name>` w bieżącej turze, skill został już załadowany — postępuj zgodnie z jego instrukcjami, zamiast wywoływać narzędzie ponownie.
-- Jeśli kilka skilli mogłoby pasować, wybierz najbardziej specyficzny. Dla zmian konfiguracyjnych, takich jak dodawanie uprawnień lub hooków, preferuj `update-config` nad ogólne podejście do ustawień.
-- Wykonanie skilla może wprowadzić nowe przypomnienia systemowe, narzędzia lub ograniczenia na resztę tury. Przeczytaj ponownie stan rozmowy po zakończeniu skilla, zanim kontynuujesz.
+- Po wywołaniu umiejętność rozwija się w pełny prompt
+- Obsługuje w pełni kwalifikowane nazwy (np. `ms-office-suite:pdf`)
+- Lista dostępnych umiejętności jest podawana w wiadomościach system-reminder
+- Gdy widoczny jest tag `<command-name>`, oznacza to, że umiejętność została załadowana — należy ją bezpośrednio wykonać, a nie ponownie wywoływać to narzędzie
+- Nie wspominaj o umiejętności bez faktycznego wywołania narzędzia
+
+## Tekst oryginalny
+
+<textarea readonly>Execute a skill within the main conversation
+
+When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.
+
+When users reference a "slash command" or "/<something>" (e.g., "/commit", "/review-pr"), they are referring to a skill. Use this tool to invoke it.
+
+How to invoke:
+- Use this tool with the skill name and optional arguments
+- Examples:
+  - `skill: "pdf"` - invoke the pdf skill
+  - `skill: "commit", args: "-m 'Fix bug'"` - invoke with arguments
+  - `skill: "review-pr", args: "123"` - invoke with arguments
+  - `skill: "ms-office-suite:pdf"` - invoke using fully qualified name
+
+Important:
+- Available skills are listed in system-reminder messages in the conversation
+- When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task
+- NEVER mention a skill without actually calling this tool
+- Do not invoke a skill that is already running
+- Do not use this tool for built-in CLI commands (like /help, /clear, etc.)
+- If you see a <command-name> tag in the current conversation turn, the skill has ALREADY been loaded - follow the instructions directly instead of calling this tool again
+</textarea>

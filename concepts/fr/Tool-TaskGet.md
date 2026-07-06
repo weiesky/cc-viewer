@@ -1,47 +1,56 @@
 # TaskGet
 
-Récupère l'enregistrement complet d'une tâche unique par ID, y compris sa description, son statut actuel, son propriétaire, ses métadonnées et ses arêtes de dépendance. Utilisez-le lorsque le résumé renvoyé par `TaskList` ne suffit pas pour agir sur la tâche.
+## Définition
 
-## Quand l'utiliser
-
-- Vous avez récupéré une tâche dans `TaskList` et avez besoin de la description complète avant de commencer le travail.
-- Vous êtes sur le point de marquer une tâche `completed` et souhaitez revérifier les critères d'acceptation.
-- Vous devez inspecter quelles tâches celle-ci `blocks` ou par lesquelles elle est `blockedBy` afin de décider de la suite.
-- Vous enquêtez sur l'historique — qui la possède, quelles métadonnées étaient attachées, quand elle a changé d'état.
-- Un coéquipier ou une session antérieure a référencé un ID de tâche et vous avez besoin du contexte.
-
-Préférez `TaskList` lorsque vous n'avez besoin que d'un balayage de haut niveau ; réservez `TaskGet` à l'enregistrement spécifique que vous prévoyez de lire attentivement ou de modifier.
+Obtient les détails complets d'une tâche via son ID.
 
 ## Paramètres
 
-- `taskId` (string, requis) : l'identifiant de tâche renvoyé par `TaskCreate` ou `TaskList`. Les IDs sont stables pendant toute la durée de vie de la tâche.
+| Paramètre | Type | Requis | Description |
+|-----------|------|--------|-------------|
+| `taskId` | string | Oui | ID de la tâche à obtenir |
 
-## Exemples
+## Contenu renvoyé
 
-### Exemple 1
+- `subject` — Titre de la tâche
+- `description` — Exigences détaillées et contexte
+- `status` — Statut : `pending`, `in_progress` ou `completed`
+- `blocks` — Liste des tâches bloquées par cette tâche
+- `blockedBy` — Liste des tâches préalables qui bloquent cette tâche
 
-Consulter une tâche que vous venez de voir dans la liste.
+## Cas d'utilisation
 
-```
-TaskGet(taskId: "t_01HXYZ...")
-```
-
-Champs de réponse typiques : `id`, `subject`, `description`, `activeForm`, `status`, `owner`, `blocks`, `blockedBy`, `metadata`, `createdAt`, `updatedAt`.
-
-### Exemple 2
-
-Résoudre les dépendances avant de commencer.
-
-```
-TaskGet(taskId: "t_01HXYZ...")
-# Inspect blockedBy — if any referenced task is still pending
-# or in_progress, work on the blocker first.
-```
+**Adapté pour :**
+- Obtenir la description complète et le contexte d'une tâche avant de commencer à travailler
+- Comprendre les relations de dépendance d'une tâche
+- Obtenir les exigences complètes après avoir été assigné à une tâche
 
 ## Notes
 
-- `TaskGet` est en lecture seule et peut être appelé à plusieurs reprises sans danger ; il ne modifie ni statut ni propriété.
-- Si `blockedBy` n'est pas vide et contient des tâches qui ne sont pas `completed`, ne commencez pas cette tâche — résolvez d'abord les bloqueurs (ou coordonnez-vous avec leur propriétaire).
-- Le champ `description` peut être long. Lisez-le intégralement avant d'agir ; le survoler conduit à manquer des critères d'acceptation.
-- Un `taskId` inconnu ou supprimé renvoie une erreur. Relancez `TaskList` pour récupérer un ID courant.
-- Si vous êtes sur le point d'éditer une tâche, appelez `TaskGet` d'abord pour éviter d'écraser des champs qu'un coéquipier vient de modifier.
+- Après avoir obtenu la tâche, vérifier si la liste `blockedBy` est vide avant de commencer à travailler
+- Utiliser TaskList pour voir les informations résumées de toutes les tâches
+
+## Texte original
+
+<textarea readonly>Use this tool to retrieve a task by its ID from the task list.
+
+## When to Use This Tool
+
+- When you need the full description and context before starting work on a task
+- To understand task dependencies (what it blocks, what blocks it)
+- After being assigned a task, to get complete requirements
+
+## Output
+
+Returns full task details:
+- **subject**: Task title
+- **description**: Detailed requirements and context
+- **status**: 'pending', 'in_progress', or 'completed'
+- **blocks**: Tasks waiting on this one to complete
+- **blockedBy**: Tasks that must complete before this one can start
+
+## Tips
+
+- After fetching a task, verify its blockedBy list is empty before beginning work.
+- Use TaskList to see all tasks in summary form.
+</textarea>

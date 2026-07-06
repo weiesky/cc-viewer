@@ -1,0 +1,9 @@
+.container {
+  background: var(--bg-container);
+  border-radius: 6px;
+  border: 1px solid var(--border-primary);
+  padding: 12px;
+  font-size: 13px;
+  font-family: monospace;
+  overflow: auto;
+}

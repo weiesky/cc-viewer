@@ -1,62 +1,56 @@
 # TaskList
 
-Mevcut ekipteki (veya oturumdaki) her görevi özet biçimde döndürür. Beklenen işi incelemek, sıradaki görevi almaya karar vermek ve yinelenenler oluşturmaktan kaçınmak için kullanın.
+## Tanım
 
-## Ne Zaman Kullanılır
-
-- Bir oturumun başında neyin zaten izlendiğini görmek.
-- `TaskCreate` çağırmadan önce, işin zaten yakalanmadığını doğrulamak.
-- Bir ekip arkadaşı veya alt ajan olarak sıradaki görevi almaya karar verirken.
-- Tek bakışta ekip genelindeki bağımlılık ilişkilerini doğrulamak.
-- Uzun oturumlar sırasında periyodik olarak, görevleri talep etmiş, tamamlamış veya eklemiş olabilecek ekip arkadaşlarıyla yeniden senkronize olmak.
-
-`TaskList` yalnızca okumadır ve ucuzdur; bir genel bakışa ihtiyaç duyduğunuzda serbestçe çağırın.
+Görev listesindeki tüm görevleri listeler, genel ilerlemeyi ve mevcut çalışmaları görüntüler.
 
 ## Parametreler
 
-`TaskList` parametre almaz. Her zaman aktif bağlam için tam görev kümesini döndürür.
+Parametre yok.
 
-## Yanıt Şekli
+## Dönen İçerik
 
-Listedeki her görev bir özettir, tam kayıt değildir. Yaklaşık olarak şunu bekleyin:
+Her görevin özet bilgileri:
+- `id` — Görev tanımlayıcısı
+- `subject` — Kısa açıklama
+- `status` — Durum: `pending`, `in_progress` veya `completed`
+- `owner` — Sorumlu kişi (agent ID), boş ise atanmamış
+- `blockedBy` — Bu görevi engelleyen tamamlanmamış görev ID listesi
 
-- `id` — `TaskGet` / `TaskUpdate` ile kullanım için kararlı tanımlayıcı.
-- `subject` — kısa buyurgan başlık.
-- `status` — `pending`, `in_progress`, `completed`, `deleted`'den biri.
-- `owner` — ajan veya ekip arkadaşı handle'ı veya talep edilmediğinde boş.
-- `blockedBy` — önce tamamlanması gereken görev ID'leri dizisi.
+## Kullanım Senaryoları
 
-Belirli bir görevin tam açıklamasını, kabul kriterlerini veya meta verilerini almak için `TaskGet` ile takip edin.
+**Kullanıma uygun:**
+- Mevcut görevleri görme (durumu pending, owner'ı yok, engellenmemiş)
+- Proje genel ilerlemesini kontrol etme
+- Engellenen görevleri bulma
+- Bir görevi tamamladıktan sonra bir sonrakini bulma
 
-## Örnekler
+## Dikkat Edilecekler
 
-### Örnek 1
+- Görevleri ID sırasına göre işlemeyi tercih edin (en küçük ID önce), çünkü erken görevler genellikle sonraki görevler için bağlam sağlar
+- `blockedBy` olan görevler bağımlılık çözülmeden sahiplenilemez
+- Belirli bir görevin tam detayları için TaskGet kullanın
 
-Hızlı durum kontrolü.
+## Orijinal Metin
 
-```
-TaskList()
-```
+<textarea readonly>Use this tool to list all tasks in the task list.
 
-Çıktıyı `owner`'ı olmayan (stale iş) `in_progress` ve `blockedBy`'ı boş (alınmaya hazır) `pending` için tarayın.
+## When to Use This Tool
 
-### Örnek 2
+- To see what tasks are available to work on (status: 'pending', no owner, not blocked)
+- To check overall progress on the project
+- To find tasks that are blocked and need dependencies resolved
+- After completing a task, to check for newly unblocked work or claim the next available task
+- **Prefer working on tasks in ID order** (lowest ID first) when multiple tasks are available, as earlier tasks often set up context for later ones
 
-Sıradaki görevi alan bir ekip arkadaşı.
+## Output
 
-```
-TaskList()
-# Filter to: status == pending AND blockedBy is empty AND owner is empty.
-# Among those, prefer the lower ID (tasks are typically numbered in
-# creation order, so lower IDs are older and usually higher priority).
-TaskGet(taskId: "<chosen id>")
-TaskUpdate(taskId: "<chosen id>", status: "in_progress", owner: "<your handle>")
-```
+Returns a summary of each task:
+- **id**: Task identifier (use with TaskGet, TaskUpdate)
+- **subject**: Brief description of the task
+- **status**: 'pending', 'in_progress', or 'completed'
+- **owner**: Agent ID if assigned, empty if available
+- **blockedBy**: List of open task IDs that must be resolved first (tasks with blockedBy cannot be claimed until dependencies resolve)
 
-## Notlar
-
-- Ekip arkadaşı sezgiseli: birden fazla `pending` görev engellenmemiş ve sahipsiz olduğunda, en düşük ID'yi seçin. Bu, işi FIFO'da tutar ve iki ajanın aynı yüksek profilli görevi almasını önler.
-- `blockedBy`'a saygı gösterin: engelleyicileri hala `pending` veya `in_progress` olan bir göreve başlamayın. Önce engelleyiciyi çalıştırın veya sahibiyle koordine olun.
-- `TaskList` görevler için tek keşif mekanizmasıdır. Arama yoktur; liste uzunsa yapısal olarak (önce duruma, sonra sahibe göre) tarayın.
-- Silinen görevler izlenebilirlik için hala listede `deleted` durumuyla görünebilir. Planlama amaçları için onları yok sayın.
-- Liste ekibin canlı durumunu yansıtır, bu yüzden ekip arkadaşları çağrılar arasında görev ekleyebilir veya talep edebilir. Zaman geçtiyse talep etmeden önce yeniden listeleyin.
+Use TaskGet with a specific task ID to view full details including description and comments.
+</textarea>

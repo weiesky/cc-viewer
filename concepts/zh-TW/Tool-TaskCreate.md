@@ -1,56 +1,78 @@
 # TaskCreate
 
-在目前團隊的任務清單（或無團隊時為工作階段的任務清單）中建立新任務。用它來擷取應被追蹤、委派或稍後再回顧的工作項目。
+## 定義
 
-## 使用時機
-
-- 使用者描述了一項多步驟工作，適合以明確追蹤的方式進行。
-- 你要把大型請求拆成較小、可獨立完成的單元。
-- 任務進行中發現追加事項，不應被遺忘。
-- 在把工作交給隊友或子代理之前，需要一份持久的意圖紀錄。
-- 你在計畫模式下運作，並希望每個計畫步驟都以具體任務來表示。
-
-對瑣碎的單次動作、純對話或兩三次直接工具呼叫即可完成的事情，略過 `TaskCreate`。
+建立結構化的任務列表條目，用於追蹤進度、組織複雜任務，並向使用者展示工作進展。
 
 ## 參數
 
-- `subject`（string，必填）：簡短的祈使句標題，例如 `Fix login redirect on Safari`。盡量控制在 80 個字元以內。
-- `description`（string，必填）：詳細背景——問題、限制、驗收條件，以及未來讀者所需的任何檔案或連結。撰寫時要假設會有隊友在沒有背景的情況下接手。
-- `activeForm`（string，選填）：任務處於 `in_progress` 時顯示的現在進行式 spinner 文字，例如 `Fixing login redirect on Safari`。形式上呼應 `subject`，但用 -ing 的形式。
-- `metadata`（object，選填）：附加在任務上的任意結構化資料。常見用途：標籤、優先度提示、外部工單 ID，或代理專屬的設定。
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| `subject` | string | 是 | 簡短的任務標題，使用祈使句（如 "Fix authentication bug"） |
+| `description` | string | 是 | 詳細描述，包含上下文和驗收標準 |
+| `activeForm` | string | 否 | 進行中時顯示的現在進行式文字（如 "Fixing authentication bug"） |
+| `metadata` | object | 否 | 附加到任務的任意中繼資料 |
 
-新建任務一律以狀態 `pending` 開始，且無 owner。相依關係（`blocks`、`blockedBy`）不會在建立時設定——之後以 `TaskUpdate` 套用。
+## 使用場景
 
-## 範例
+**適合使用：**
+- 複雜的多步驟任務（3 步以上）
+- 使用者提供了多個待辦事項
+- 在規劃模式中追蹤工作
+- 使用者明確要求使用 todo 列表
 
-### 範例 1
-
-擷取使用者剛回報的 bug。
-
-```
-TaskCreate(
-  subject: "Repair broken PDF export on Windows",
-  description: "Users on Windows 11 report the export button produces a 0-byte file. Reproduce with sample doc in test/fixtures/export/, then fix the code path in src/export/pdf.ts. Acceptance: export writes a valid PDF and the existing export test suite passes.",
-  activeForm: "Repairing broken PDF export on Windows"
-)
-```
-
-### 範例 2
-
-在工作階段開始時把一個 epic 拆成可追蹤單元。
-
-```
-TaskCreate(
-  subject: "Draft migration plan for auth service",
-  description: "Produce a written plan covering rollout stages, rollback strategy, and monitoring. Output: docs/auth-migration.md.",
-  activeForm: "Drafting migration plan for auth service",
-  metadata: { "priority": "P1", "linearId": "AUTH-214" }
-)
-```
+**不適合使用：**
+- 單一簡單任務
+- 3 步以內的簡單操作
+- 純對話或資訊查詢
 
 ## 注意事項
 
-- `subject` 使用祈使語氣，`activeForm` 使用現在進行式，這樣當任務轉入 `in_progress` 時，UI 的讀起來會自然。
-- 建立前先呼叫 `TaskList` 以避免重複——團隊清單是與隊友與子代理共享的。
-- 不要把機密或憑證放入 `description` 或 `metadata`；任務紀錄對所有能存取團隊的人可見。
-- 建立後透過 `TaskUpdate` 推進任務生命週期。不要讓工作無聲地停在 `in_progress`。
+- 所有新建任務的初始狀態為 `pending`
+- `subject` 使用祈使句（"Run tests"），`activeForm` 使用現在進行式（"Running tests"）
+- 建立任務後可透過 TaskUpdate 設定依賴關係（blocks/blockedBy）
+- 建立前應先呼叫 TaskList 檢查是否有重複任務
+
+## 原文
+
+<textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+It also helps the user understand the progress of the task and overall progress of their requests.
+
+## When to Use This Tool
+
+Use this tool proactively in these scenarios:
+
+- Complex multi-step tasks - When a task requires 3 or more distinct steps or actions
+- Non-trivial and complex tasks - Tasks that require careful planning or multiple operations
+- Plan mode - When using plan mode, create a task list to track the work
+- User explicitly requests todo list - When the user directly asks you to use the todo list
+- User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
+- After receiving new instructions - Immediately capture user requirements as tasks
+- When you start working on a task - Mark it as in_progress BEFORE beginning work
+- After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation
+
+## When NOT to Use This Tool
+
+Skip using this tool when:
+- There is only a single, straightforward task
+- The task is trivial and tracking it provides no organizational benefit
+- The task can be completed in less than 3 trivial steps
+- The task is purely conversational or informational
+
+NOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.
+
+## Task Fields
+
+- **subject**: A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")
+- **description**: Detailed description of what needs to be done, including context and acceptance criteria
+- **activeForm**: Present continuous form shown in spinner when task is in_progress (e.g., "Fixing authentication bug"). This is displayed to the user while you work on the task.
+
+**IMPORTANT**: Always provide activeForm when creating tasks. The subject should be imperative ("Run tests") while activeForm should be present continuous ("Running tests"). All tasks are created with status `pending`.
+
+## Tips
+
+- Create tasks with clear, specific subjects that describe the outcome
+- Include enough detail in the description for another agent to understand and complete the task
+- After creating tasks, use TaskUpdate to set up dependencies (blocks/blockedBy) if needed
+- Check TaskList first to avoid creating duplicate tasks
+</textarea>

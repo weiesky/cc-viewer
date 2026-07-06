@@ -1,41 +1,56 @@
 # Read
 
-Wczytuje zawartość pojedynczego pliku z lokalnego systemu plików. Obsługuje zwykły tekst, kod źródłowy, obrazy, pliki PDF i notatniki Jupyter, zwracając wyniki z numerami wierszy liczonymi od 1 w stylu `cat -n`.
+## Definicja
 
-## Kiedy używać
-
-- Odczytywanie pliku źródłowego o znanej ścieżce przed edycją lub analizą
-- Inspekcja plików konfiguracyjnych, lockfile, logów lub wygenerowanych artefaktów
-- Wyświetlanie zrzutów ekranu lub diagramów, które użytkownik wkleił do rozmowy
-- Wyciąganie konkretnego zakresu stron z długiego podręcznika PDF
-- Otwieranie notatnika `.ipynb`, aby przejrzeć komórki kodu, markdown i wyjścia komórek razem
+Odczytuje zawartość pliku z lokalnego systemu plików. Obsługuje pliki tekstowe, obrazy, PDF i Jupyter notebook.
 
 ## Parametry
 
-- `file_path` (string, wymagany): Bezwzględna ścieżka do pliku docelowego. Ścieżki względne są odrzucane.
-- `offset` (liczba całkowita, opcjonalny): Numer wiersza (liczony od 1), od którego zacząć odczyt. Przydatne dla dużych plików w połączeniu z `limit`.
-- `limit` (liczba całkowita, opcjonalny): Maksymalna liczba wierszy do zwrócenia, zaczynając od `offset`. Domyślnie 2000 wierszy od góry pliku, gdy pominięty.
-- `pages` (string, opcjonalny): Zakres stron dla plików PDF, na przykład `"1-5"`, `"3"` lub `"10-20"`. Wymagany dla plików PDF dłuższych niż 10 stron; maksymalnie 20 stron na żądanie.
+| Parametr | Typ | Wymagany | Opis |
+|------|------|------|------|
+| `file_path` | string | Tak | Bezwzględna ścieżka do pliku |
+| `offset` | number | Nie | Numer linii początkowej (do segmentowego odczytu dużych plików) |
+| `limit` | number | Nie | Liczba linii do odczytu (do segmentowego odczytu dużych plików) |
+| `pages` | string | Nie | Zakres stron PDF (np. "1-5", "3", "10-20"), dotyczy tylko PDF |
 
-## Przykłady
+## Scenariusze użycia
 
-### Przykład 1: Odczytaj cały mały plik
-Wywołaj `Read` z ustawionym tylko `file_path` na `/Users/me/project/src/index.ts`. Zwracanych jest do 2000 wierszy z numerami wierszy, co zwykle wystarcza jako kontekst edycji.
+**Odpowiednie zastosowanie:**
+- Odczyt plików kodu, plików konfiguracyjnych i innych plików tekstowych
+- Przeglądanie plików graficznych (Claude jest modelem multimodalnym)
+- Odczyt dokumentów PDF
+- Odczyt Jupyter notebook (zwraca wszystkie komórki z wyjściem)
+- Równoległy odczyt wielu plików w celu uzyskania kontekstu
 
-### Przykład 2: Stronicowanie długiego logu
-Użyj `offset: 5001` i `limit: 500` na pliku logu o kilku tysiącach wierszy, aby pobrać wąskie okno bez marnowania tokenów kontekstu.
-
-### Przykład 3: Wyciągnij konkretne strony PDF
-Dla 120-stronicowego PDF-a w `/tmp/spec.pdf` ustaw `pages: "8-15"`, aby wyciągnąć tylko rozdział, którego potrzebujesz. Pominięcie `pages` na dużym PDF-ie powoduje błąd.
-
-### Przykład 4: Wyświetl obraz
-Przekaż ścieżkę bezwzględną zrzutu ekranu PNG lub JPG. Obraz jest renderowany wizualnie, dzięki czemu Claude Code może bezpośrednio o nim rozumować.
+**Nieodpowiednie zastosowanie:**
+- Odczyt katalogów — należy użyć polecenia `ls` w Bash
+- Otwarta eksploracja bazy kodu — należy użyć Task (typ Explore)
 
 ## Uwagi
 
-- Zawsze preferuj ścieżki bezwzględne. Jeśli użytkownik je podaje, zaufaj im takim, jakimi są.
-- Wiersze dłuższe niż 2000 znaków są obcinane; traktuj zwróconą zawartość jako potencjalnie przyciętą dla bardzo szerokich danych.
-- Czytasz wiele niezależnych plików? Wywołaj kilka `Read` w tej samej odpowiedzi, aby działały równolegle.
-- `Read` nie może wylistować katalogów. Użyj wywołania `ls` przez `Bash` lub narzędzia `Glob`.
-- Odczyt istniejącego, ale pustego pliku zwraca przypomnienie systemowe zamiast bajtów pliku, więc obsłuż ten sygnał jawnie.
-- Pomyślny `Read` jest wymagany, zanim będziesz mógł użyć `Edit` na tym samym pliku w bieżącej sesji.
+- Ścieżka musi być bezwzględna, nie może być względna
+- Domyślnie odczytuje pierwsze 2000 linii pliku
+- Linie przekraczające 2000 znaków zostaną obcięte
+- Wyjście używa formatu `cat -n`, numery linii zaczynają się od 1
+- Duże pliki PDF (ponad 10 stron) muszą mieć określony parametr `pages`, maksymalnie 20 stron na raz
+- Odczyt nieistniejącego pliku zwróci błąd (nie spowoduje awarii)
+- Można równolegle wywoływać wiele Read w jednej wiadomości
+
+## Tekst oryginalny
+
+<textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.
+Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+
+Usage:
+- The file_path parameter must be an absolute path, not a relative path
+- By default, it reads up to 2000 lines starting from the beginning of the file
+- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
+- Any lines longer than 2000 characters will be truncated
+- Results are returned using cat -n format, with line numbers starting at 1
+- This tool allows Claude Code to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Claude Code is a multimodal LLM.
+- This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.
+- This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
+- This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
+- You can call multiple tools in a single response. It is always better to speculatively read multiple potentially useful files in parallel.
+- You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.
+- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.</textarea>

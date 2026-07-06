@@ -1,50 +1,40 @@
 # TaskOutput
 
-擷取正在執行或已完成的背景任務累積輸出——背景 shell 指令、本地代理或遠端工作階段。當你需要檢視長時間工作至今產出了什麼時使用。
+## 定義
 
-## 使用時機
-
-- 有一個遠端工作階段（例如雲端 sandbox）正在執行，而你需要它的 stdout。
-- 某個本地代理以背景派發，而你想在它回傳前看局部進度。
-- 背景 shell 指令已執行一段時間，你想檢查進度而不停止它。
-- 你需要確認背景任務真的在推進，再決定是繼續等待或呼叫 `TaskStop`。
-
-不要下意識就伸手去用 `TaskOutput`。對大多數背景工作都有更直接的路徑——見下方注意事項。
+取得正在執行或已完成的後台任務的輸出。適用於後台 shell、非同步 agent 和遠端會話。
 
 ## 參數
 
-- `task_id`（string，必填）：背景工作啟動時回傳的任務識別碼。並非任務清單的 `taskId`；這是該次執行的 runtime handle。
-- `block`（boolean，選填）：為 `true`（預設）時，等到任務產生新輸出或結束再回傳。為 `false` 時，立即回傳已緩衝的內容。
-- `timeout`（number，選填）：回傳前最多阻塞的毫秒數。僅在 `block` 為 `true` 時有意義。預設 `30000`，最大 `600000`。
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| `task_id` | string | 是 | 任務 ID |
+| `block` | boolean | 是 | 是否阻塞等待任務完成，預設 `true` |
+| `timeout` | number | 是 | 最大等待時間（毫秒），預設 30000，最大 600000 |
 
-## 範例
+## 使用場景
 
-### 範例 1
+**適合使用：**
+- 檢查透過 Task（`run_in_background: true`）啟動的後台 agent 的進度
+- 取得後台 Bash 命令的執行結果
+- 等待非同步任務完成並取得輸出
 
-不阻塞地窺視遠端工作階段。
-
-```
-TaskOutput(task_id: "sess_01HXYZ...", block: false)
-```
-
-回傳自任務啟動（或自你上次 `TaskOutput` 呼叫，視 runtime 而定）以來產生的任何 stdout/stderr。
-
-### 範例 2
-
-短暫等待本地代理產出更多輸出。
-
-```
-TaskOutput(
-  task_id: "agent_01ABCD...",
-  block: true,
-  timeout: 10000
-)
-```
+**不適合使用：**
+- 前台任務——前台任務直接回傳結果，無需此工具
 
 ## 注意事項
 
-- 背景 bash 指令：此用途實際上已不建議使用 `TaskOutput`。啟動背景 shell 任務時，結果已包含其輸出檔的路徑——用 `Read` 工具直接讀取該路徑。`Read` 提供隨機存取、行號偏移與穩定視圖；`TaskOutput` 則沒有。
-- 本地代理（以背景派發的 `Agent` 工具）：代理結束時，`Agent` 工具的結果已包含其最終回應。直接用那個。不要 `Read` 那個透過符號連結的逐字稿檔案——它含完整工具呼叫流，會讓上下文視窗爆掉。
-- 遠端工作階段：`TaskOutput` 是串回輸出的正確、且常常是唯一的方式。偏好 `block: true` 搭配適中的 `timeout`，勝過緊湊的輪詢迴圈。
-- 未知的 `task_id`，或輸出已被垃圾回收的任務，會傳回錯誤。若仍需要結果，請重新派發工作。
-- `TaskOutput` 不會停止任務。若要終止，請用 `TaskStop`。
+- `block: true` 會阻塞直到任務完成或逾時
+- `block: false` 用於非阻塞檢查當前狀態
+- 任務 ID 可透過 `/tasks` 命令查找
+- 適用於所有任務類型：後台 shell、非同步 agent、遠端會話
+
+## 原文
+
+<textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)
+- Takes a task_id parameter identifying the task
+- Returns the task output along with status information
+- Use block=true (default) to wait for task completion
+- Use block=false for non-blocking check of current status
+- Task IDs can be found using the /tasks command
+- Works with all task types: background shells, async agents, and remote sessions</textarea>

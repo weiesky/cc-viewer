@@ -1,50 +1,40 @@
 # TaskOutput
 
-実行中または完了したバックグラウンドタスク — バックグラウンドシェルコマンド、ローカルエージェント、またはリモートセッション — の蓄積された出力を取得します。長時間実行タスクがこれまでに生成したものを検査する必要があるときに使用します。
+## 定義
 
-## 使用タイミング
-
-- リモートセッション (例えばクラウドサンドボックス) が実行中で、その stdout が必要な場合。
-- ローカルエージェントがバックグラウンドで派遣され、戻る前に部分的な進捗が欲しい場合。
-- バックグラウンドシェルコマンドが十分長く実行されており、停止せずに確認したい場合。
-- さらに待つか `TaskStop` を呼び出す前に、バックグラウンドタスクが実際に進捗しているかを確認する必要がある場合。
-
-`TaskOutput` に反射的に手を伸ばさないでください。ほとんどのバックグラウンド作業には、より直接的なパスがあります — 以下の注意事項を参照してください。
+実行中または完了したバックグラウンドタスクの出力を取得します。バックグラウンドシェル、非同期 agent、リモートセッションに適用。
 
 ## パラメータ
 
-- `task_id` (string, required): バックグラウンド作業が開始されたときに返されたタスク識別子。タスクリストの `taskId` と同じではありません。これは特定の実行のランタイムハンドルです。
-- `block` (boolean, optional): `true` (デフォルト) の場合、タスクが新しい出力を生成するか終了するまで待ってから返します。`false` の場合、バッファされたものを即座に返します。
-- `timeout` (number, optional): 返す前にブロックする最大ミリ秒。`block` が `true` の場合にのみ意味があります。デフォルトは `30000`、最大は `600000`。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `task_id` | string | はい | タスク ID |
+| `block` | boolean | はい | タスク完了までブロック待機するかどうか、デフォルト `true` |
+| `timeout` | number | はい | 最大待機時間（ミリ秒）、デフォルト 30000、最大 600000 |
 
-## 例
+## 使用シナリオ
 
-### 例 1
+**適している場合：**
+- Task（`run_in_background: true`）で起動したバックグラウンド agent の進捗確認
+- バックグラウンド Bash コマンドの実行結果を取得
+- 非同期タスクの完了を待って出力を取得
 
-ブロックせずにリモートセッションを覗き見ます。
-
-```
-TaskOutput(task_id: "sess_01HXYZ...", block: false)
-```
-
-タスクが開始されてから (またはランタイムに応じて、最後の `TaskOutput` 呼び出しから) 生成された stdout/stderr を返します。
-
-### 例 2
-
-ローカルエージェントがさらに出力を発するのを簡単に待ちます。
-
-```
-TaskOutput(
-  task_id: "agent_01ABCD...",
-  block: true,
-  timeout: 10000
-)
-```
+**適していない場合：**
+- フォアグラウンドタスク——フォアグラウンドタスクは直接結果を返すため、このツールは不要
 
 ## 注意事項
 
-- バックグラウンド bash コマンド: `TaskOutput` はこのユースケースでは事実上非推奨です。バックグラウンドシェルタスクを開始すると、結果には既にその出力ファイルへのパスが含まれています — そのパスを `Read` ツールで直接読んでください。`Read` はランダムアクセス、行オフセット、安定したビューを提供します。`TaskOutput` はそうではありません。
-- ローカルエージェント (`Agent` ツールをバックグラウンドで派遣): エージェントが完了すると、`Agent` ツールの結果にはすでに最終応答が含まれています。それを直接使用してください。シンボリックリンクされたトランスクリプトファイルを `Read` しないでください — 完全なツール呼び出しストリームが含まれ、コンテキストウィンドウがオーバーフローします。
-- リモートセッション: `TaskOutput` は正しく、多くの場合出力をストリームバックする唯一の方法です。タイトなポーリングループよりも、控えめな `timeout` で `block: true` を優先してください。
-- 不明な `task_id`、または出力がガベージコレクトされたタスクはエラーを返します。まだ必要な場合は作業を再派遣してください。
-- `TaskOutput` はタスクを停止しません。終了するには `TaskStop` を使用してください。
+- `block: true` はタスク完了またはタイムアウトまでブロック
+- `block: false` はノンブロッキングで現在の状態を確認
+- タスク ID は `/tasks` コマンドで検索可能
+- すべてのタスクタイプに適用：バックグラウンドシェル、非同期 agent、リモートセッション
+
+## 原文
+
+<textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)
+- Takes a task_id parameter identifying the task
+- Returns the task output along with status information
+- Use block=true (default) to wait for task completion
+- Use block=false for non-blocking check of current status
+- Task IDs can be found using the /tasks command
+- Works with all task types: background shells, async agents, and remote sessions</textarea>

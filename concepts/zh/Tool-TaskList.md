@@ -1,62 +1,56 @@
 # TaskList
 
-以摘要形式返回当前团队（或会话）中的每个任务。用它概览未完成的工作、决定下一步做什么并避免重复创建。
+## 定义
 
-## 何时使用
-
-- 会话伊始，查看已跟踪的内容。
-- 调用 `TaskCreate` 之前，确认工作尚未被记录。
-- 作为队友或子代理，决定接下来认领哪个任务。
-- 一眼核对整个团队的依赖关系。
-- 在长会话中周期性重新同步，避免遗漏队友期间认领、完成或新增的任务。
-
-`TaskList` 只读且成本低；需要概览时随时调用。
+列出任务列表中的所有任务，查看整体进度和可用工作。
 
 ## 参数
 
-`TaskList` 无参数。它总是返回当前上下文中的全量任务集合。
+无参数。
 
-## 响应形态
+## 返回内容
 
-列表中的每个任务都是摘要，而非完整记录。大致包括：
+每个任务的摘要信息：
+- `id` — 任务标识符
+- `subject` — 简短描述
+- `status` — 状态：`pending`、`in_progress` 或 `completed`
+- `owner` — 负责人（agent ID），空表示未分配
+- `blockedBy` — 阻塞此任务的未完成任务 ID 列表
 
-- `id` —— 供 `TaskGet` / `TaskUpdate` 使用的稳定标识符。
-- `subject` —— 简短的祈使式标题。
-- `status` —— `pending`、`in_progress`、`completed`、`deleted` 之一。
-- `owner` —— 代理或队友 handle，未认领时为空。
-- `blockedBy` —— 必须先完成的任务 ID 数组。
+## 使用场景
 
-若需要某任务的完整描述、验收标准或 metadata，后续再调用 `TaskGet`。
-
-## 示例
-
-### 示例 1
-
-快速状态检查。
-
-```
-TaskList()
-```
-
-扫描输出，找出无 `owner` 却处于 `in_progress` 的（陈旧工作），以及 `blockedBy` 为空且处于 `pending` 的（可认领）。
-
-### 示例 2
-
-队友挑选下一个任务。
-
-```
-TaskList()
-# 过滤：status == pending 且 blockedBy 为空且 owner 为空。
-# 在这些之中，偏向较低 ID（任务通常按创建顺序编号，
-# 较低 ID 更老，通常优先级更高）。
-TaskGet(taskId: "<chosen id>")
-TaskUpdate(taskId: "<chosen id>", status: "in_progress", owner: "<your handle>")
-```
+**适合使用：**
+- 查看有哪些可用任务（状态为 pending、无 owner、未被阻塞）
+- 检查项目整体进度
+- 查找被阻塞的任务
+- 完成一个任务后查找下一个
 
 ## 注意事项
 
-- 队友启发式：当多个 `pending` 任务未被阻塞且未认领时，选最低 ID。这保持工作 FIFO，避免两个代理同抢一个高关注度任务。
-- 尊重 `blockedBy`：不要开始前置仍 `pending` 或 `in_progress` 的任务。先做前置，或与其 owner 协调。
-- `TaskList` 是发现任务的唯一机制。没有搜索；列表长时按结构（先按 status，再按 owner）扫描。
-- 已删除任务可能仍以 `deleted` 状态出现在列表中以留痕。规划时忽略它们。
-- 列表反映团队的实时状态，队友可能在两次调用之间新增或认领任务。时间久了认领前先重新列表。
+- 优先按 ID 顺序处理任务（最小 ID 优先），因为早期任务通常为后续任务提供上下文
+- 有 `blockedBy` 的任务在依赖解除前不能认领
+- 使用 TaskGet 获取特定任务的完整详情
+
+## 原文
+
+<textarea readonly>Use this tool to list all tasks in the task list.
+
+## When to Use This Tool
+
+- To see what tasks are available to work on (status: 'pending', no owner, not blocked)
+- To check overall progress on the project
+- To find tasks that are blocked and need dependencies resolved
+- After completing a task, to check for newly unblocked work or claim the next available task
+- **Prefer working on tasks in ID order** (lowest ID first) when multiple tasks are available, as earlier tasks often set up context for later ones
+
+## Output
+
+Returns a summary of each task:
+- **id**: Task identifier (use with TaskGet, TaskUpdate)
+- **subject**: Brief description of the task
+- **status**: 'pending', 'in_progress', or 'completed'
+- **owner**: Agent ID if assigned, empty if available
+- **blockedBy**: List of open task IDs that must be resolved first (tasks with blockedBy cannot be claimed until dependencies resolve)
+
+Use TaskGet with a specific task ID to view full details including description and comments.
+</textarea>

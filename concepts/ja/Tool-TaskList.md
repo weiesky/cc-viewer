@@ -1,62 +1,56 @@
 # TaskList
 
-現在のチーム (またはセッション) のすべてのタスクを要約形式で返します。未処理の作業を調査し、次に何をピックアップするかを決定し、重複の作成を避けるために使用します。
+## 定義
 
-## 使用タイミング
-
-- セッションの開始時に、すでに追跡されているものを確認する。
-- `TaskCreate` を呼び出す前に、作業がまだキャプチャされていないことを確認する。
-- チームメイトまたはサブエージェントとして次にどのタスクを請求するかを決定する。
-- チーム全体の依存関係を一目で確認する。
-- 長いセッション中、チームメイトがタスクを請求、完了、追加した可能性があるため、定期的に再同期する。
-
-`TaskList` は読み取り専用で安価です。概要が必要なときはいつでも自由に呼び出してください。
+タスクリスト内のすべてのタスクを一覧表示し、全体の進捗と利用可能な作業を確認します。
 
 ## パラメータ
 
-`TaskList` はパラメータを取りません。常にアクティブなコンテキストの完全なタスクセットを返します。
+パラメータなし。
 
-## 応答の形状
+## 返却内容
 
-リスト内の各タスクは完全なレコードではなく、サマリです。おおよそ以下が期待されます。
+各タスクの要約情報：
+- `id` — タスク識別子
+- `subject` — 短い説明
+- `status` — ステータス：`pending`、`in_progress` または `completed`
+- `owner` — 担当者（agent ID）、空は未割り当て
+- `blockedBy` — このタスクをブロックしている未完了タスク ID のリスト
 
-- `id` — `TaskGet` / `TaskUpdate` で使用する安定した識別子。
-- `subject` — 短い命令型のタイトル。
-- `status` — `pending`、`in_progress`、`completed`、`deleted` のいずれか。
-- `owner` — エージェントまたはチームメイトのハンドル、または未請求の場合は空。
-- `blockedBy` — 先に完了する必要があるタスク ID の配列。
+## 使用シナリオ
 
-特定のタスクの完全な説明、受け入れ基準、またはメタデータについては、`TaskGet` でフォローアップしてください。
-
-## 例
-
-### 例 1
-
-クイックなステータスチェック。
-
-```
-TaskList()
-```
-
-出力をスキャンして、`owner` のない `in_progress` のもの (古い作業) と、`blockedBy` が空の `pending` のもの (ピックアップ可能) を探します。
-
-### 例 2
-
-チームメイトが次のタスクを選ぶ。
-
-```
-TaskList()
-# フィルタ: status == pending かつ blockedBy が空かつ owner が空。
-# その中で、より小さい ID を優先します (タスクは通常作成順に番号付けされるため、
-# より小さい ID は古く、通常優先度が高い)。
-TaskGet(taskId: "<chosen id>")
-TaskUpdate(taskId: "<chosen id>", status: "in_progress", owner: "<your handle>")
-```
+**適している場合：**
+- 利用可能なタスクの確認（ステータスが pending、owner なし、ブロックされていない）
+- プロジェクト全体の進捗確認
+- ブロックされているタスクの検索
+- タスク完了後に次のタスクを検索
 
 ## 注意事項
 
-- チームメイトヒューリスティック: 複数の `pending` タスクがブロックされず未所有の場合、最小の ID を選んでください。これにより作業が FIFO に保たれ、2 つのエージェントが同じ目立つタスクを取り合うのを避けられます。
-- `blockedBy` を尊重してください: ブロッカーがまだ `pending` または `in_progress` のタスクを開始しないでください。先にブロッカーに取り組むか、その所有者と調整してください。
-- `TaskList` はタスクの唯一の発見メカニズムです。検索はありません。リストが長い場合は、構造的に (ステータス、次に所有者で) スキャンしてください。
-- 削除されたタスクは追跡可能性のために `deleted` ステータスでリストに残ることがあります。計画目的では無視してください。
-- リストはチームのライブ状態を反映するため、チームメイトが呼び出し間でタスクを追加または請求する可能性があります。時間が経過した場合は、請求前に再リストしてください。
+- ID 順にタスクを処理することを優先（最小 ID 優先）。早期のタスクは通常、後続タスクにコンテキストを提供するため
+- `blockedBy` があるタスクは依存が解除されるまで認領できない
+- TaskGet で特定タスクの完全な詳細を取得
+
+## 原文
+
+<textarea readonly>Use this tool to list all tasks in the task list.
+
+## When to Use This Tool
+
+- To see what tasks are available to work on (status: 'pending', no owner, not blocked)
+- To check overall progress on the project
+- To find tasks that are blocked and need dependencies resolved
+- After completing a task, to check for newly unblocked work or claim the next available task
+- **Prefer working on tasks in ID order** (lowest ID first) when multiple tasks are available, as earlier tasks often set up context for later ones
+
+## Output
+
+Returns a summary of each task:
+- **id**: Task identifier (use with TaskGet, TaskUpdate)
+- **subject**: Brief description of the task
+- **status**: 'pending', 'in_progress', or 'completed'
+- **owner**: Agent ID if assigned, empty if available
+- **blockedBy**: List of open task IDs that must be resolved first (tasks with blockedBy cannot be claimed until dependencies resolve)
+
+Use TaskGet with a specific task ID to view full details including description and comments.
+</textarea>

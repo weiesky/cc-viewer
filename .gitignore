@@ -1,37 +1,25 @@
-node_modules
+# 临时文件 / 产物目录
 dist
-electron-dist
-coverage
-.claude/settings.local.json
-.claude/scheduled_tasks.lock
-.claude/worktrees/
-.claude/skills/
-.claude/skills-skip/
-.idea/
-.DS_Store
-.omc/
+es
+node_modules
+.mini-ide
+.node
 tmp/
 
-# Sensitive signing-related files
-*.p12
-*.cer
-*.certSigningRequest
-*.pem
-*.key
-*.pfx
-.env
-.env.*
-!.env.example
+# paul
+.paul
+custom_dist
 
-# Local agent instruction mirror (copy of CLAUDE.md, kept out of repo)
-AGENTS.md
-
-# Workspace system prompt sentinels (written at runtime by expert settings / CCV, kept out of repo)
-CC_SYSTEM.md
-CC_APPEND_SYSTEM.md
-
-# Claude Code decompiled artifacts (main JS bundle extracted from official bun --compile binary, reference only, kept out of repo)
-claude-code-*.cli.js
-system_prompt/
-# Working analysis documents (session artifacts, not deliverables)
-code-rot-analysis.md
+package-lock.json
+# fishlint-ignore-start
+# 不要修改此代码块, 会自动生成
+# 如果你不想要忽略某些文件, 可以在 .fishlintrc.json 配置 disableFishlintGitignore : true.
+# 背景可以看 https://yuque.antfin.com/fish-pond/stdlib/fishlintrc
+.tacos-vision-run
+.lintstagedrc.json
+.prettierrc.js
+.commitlintrc.js
+.stylelintrc.js
+.projectlintrc.json
+# fishlint-ignore-end
+electron-dist/*

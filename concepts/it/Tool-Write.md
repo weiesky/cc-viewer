@@ -1,35 +1,39 @@
 # Write
 
-Crea un nuovo file o sostituisce completamente i contenuti di uno esistente sul filesystem locale. Poiché sostituisce tutto al percorso target, dovrebbe essere riservato a creazione autentica o riscritture complete intenzionali.
+## Definizione
 
-## Quando usare
-
-- Creare un nuovo file sorgente, test o configurazione che non esiste ancora
-- Generare una nuova fixture, snapshot o file di dati da zero
-- Eseguire una riscrittura completa dove un `Edit` incrementale sarebbe più complesso che ricominciare
-- Emettere un artefatto richiesto come uno schema, migrazione o script di build che l'utente ti ha esplicitamente chiesto di produrre
+Scrive contenuto nel file system locale. Se il file esiste già, viene sovrascritto.
 
 ## Parametri
 
-- `file_path` (string, obbligatorio): Percorso assoluto del file da scrivere. Qualsiasi directory genitore deve esistere già.
-- `content` (string, obbligatorio): Il testo completo da scrivere nel file. Diventa l'intero corpo del file.
+| Parametro | Tipo | Obbligatorio | Descrizione |
+|------|------|------|------|
+| `file_path` | string | Sì | Percorso assoluto del file (deve essere assoluto) |
+| `content` | string | Sì | Contenuto da scrivere |
 
-## Esempi
+## Scenari d'uso
 
-### Esempio 1: Creare un nuovo modulo helper
-Chiama `Write` con `file_path: "/Users/me/app/src/utils/slugify.ts"` e fornisci l'implementazione come `content`. Usa questo solo dopo aver verificato che il file non esista già.
+**Adatto per:**
+- Creare nuovi file
+- Quando è necessario riscrivere completamente il contenuto di un file
 
-### Esempio 2: Rigenerare un artefatto derivato
-Dopo che il sorgente dello schema cambia, riscrivi `/Users/me/app/generated/schema.json` in una chiamata `Write` usando il JSON appena generato come `content`.
-
-### Esempio 3: Sostituire un piccolo file di fixture
-Per una fixture di test usa e getta dove ogni riga cambia, `Write` può essere più chiaro di una sequenza di chiamate `Edit`. Leggi prima il file, conferma lo scope, poi sovrascrivi.
+**Non adatto per:**
+- Modificare contenuto parziale di un file — usare Edit
+- Non creare proattivamente file di documentazione (*.md) o README, a meno che l'utente non lo richieda esplicitamente
 
 ## Note
 
-- Prima di sovrascrivere un file esistente, devi chiamare `Read` su di esso nella sessione corrente. `Write` si rifiuta di cancellare contenuto non visto.
-- Preferisci `Edit` per qualsiasi modifica che tocchi solo parte di un file. `Edit` invia solo il diff, che è più veloce, più sicuro e più facile da revisionare.
-- Non creare proattivamente documentazione Markdown, file `README.md` o changelog a meno che l'utente non li richieda esplicitamente.
-- Non aggiungere emoji, testo promozionale o banner decorativi a meno che l'utente non richieda quello stile.
-- Verifica prima che la directory genitore esista con una chiamata `Bash` `ls`; `Write` non crea cartelle intermedie.
-- Fornisci il contenuto esattamente come vuoi che venga persistito; non c'è templating o post-processing.
+- Se il file di destinazione esiste già, è necessario prima leggerlo tramite Read, altrimenti l'operazione fallisce
+- Sovrascrive l'intero contenuto del file esistente
+- Preferire Edit per modificare file esistenti, Write è solo per creare nuovi file o riscritture complete
+
+## Testo originale
+
+<textarea readonly>Writes a file to the local filesystem.
+
+Usage:
+- This tool will overwrite the existing file if there is one at the provided path.
+- If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
+- Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.
+- NEVER create documentation files (*.md) or README files unless explicitly requested by the User.
+- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.</textarea>

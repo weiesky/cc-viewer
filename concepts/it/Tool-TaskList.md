@@ -1,63 +1,56 @@
 # TaskList
 
-Restituisce ogni task nel team corrente (o sessione) in forma riassuntiva. Usalo per esaminare il lavoro in sospeso, decidere cosa prendere in carico successivamente ed evitare di creare duplicati.
+## Definizione
 
-## Quando usare
-
-- All'inizio di una sessione per vedere cosa è già tracciato.
-- Prima di chiamare `TaskCreate`, per confermare che il lavoro non sia già catturato.
-- Quando decidi quale task rivendicare successivamente come teammate o subagente.
-- Per verificare le relazioni di dipendenza attraverso il team a colpo d'occhio.
-- Periodicamente durante sessioni lunghe per risincronizzarsi con i teammate che potrebbero aver rivendicato, completato o aggiunto task.
-
-`TaskList` è in sola lettura ed economico; chiamalo liberamente ogni volta che hai bisogno di una panoramica.
+Elenca tutti i task nella lista dei task, per visualizzare i progressi complessivi e il lavoro disponibile.
 
 ## Parametri
 
-`TaskList` non accetta parametri. Restituisce sempre l'insieme completo dei task per il contesto attivo.
+Nessun parametro.
 
-## Forma della risposta
+## Contenuto restituito
 
-Ogni task nella lista è un riepilogo, non il record completo. Attendi approssimativamente:
+Informazioni di riepilogo per ogni task:
+- `id` — Identificatore del task
+- `subject` — Breve descrizione
+- `status` — Stato: `pending`, `in_progress` o `completed`
+- `owner` — Responsabile (agent ID), vuoto se non assegnato
+- `blockedBy` — Lista degli ID dei task non completati che bloccano questo task
 
-- `id` — identificatore stabile da usare con `TaskGet` / `TaskUpdate`.
-- `subject` — titolo imperativo breve.
-- `status` — uno tra `pending`, `in_progress`, `completed`, `deleted`.
-- `owner` — handle di agente o teammate, o vuoto quando non rivendicato.
-- `blockedBy` — array di ID task che devono completarsi prima.
+## Scenari d'uso
 
-Per la descrizione completa, i criteri di accettazione o i metadati di un task specifico, segui con `TaskGet`.
-
-## Esempi
-
-### Esempio 1
-
-Controllo rapido dello stato.
-
-```
-TaskList()
-```
-
-Scansiona l'output per qualsiasi cosa `in_progress` senza un `owner` (lavoro stantio) e qualsiasi cosa `pending` con `blockedBy` vuoto (pronto da prendere).
-
-### Esempio 2
-
-Teammate che sceglie il prossimo task.
-
-```
-TaskList()
-# Filtra a: status == pending AND blockedBy è vuoto AND owner è vuoto.
-# Tra questi, preferisci l'ID più basso (i task sono tipicamente numerati in
-# ordine di creazione, quindi gli ID più bassi sono più vecchi e di solito
-# di priorità più alta).
-TaskGet(taskId: "<chosen id>")
-TaskUpdate(taskId: "<chosen id>", status: "in_progress", owner: "<your handle>")
-```
+**Adatto per:**
+- Vedere quali task sono disponibili (stato pending, senza owner, non bloccati)
+- Controllare i progressi complessivi del progetto
+- Trovare task bloccati
+- Trovare il prossimo task dopo averne completato uno
 
 ## Note
 
-- Euristica teammate: quando più task `pending` sono sbloccati e senza proprietario, scegli l'ID più basso. Questo mantiene il lavoro FIFO ed evita che due agenti afferrino lo stesso task di alto profilo.
-- Rispetta `blockedBy`: non iniziare un task i cui blocker sono ancora `pending` o `in_progress`. Lavora prima sul blocker o coordinati con il suo proprietario.
-- `TaskList` è l'unico meccanismo di scoperta per i task. Non esiste ricerca; se la lista è lunga, scansiona strutturalmente (per stato, poi per proprietario).
-- I task eliminati possono ancora apparire nella lista con stato `deleted` per tracciabilità. Ignorali per scopi di pianificazione.
-- La lista riflette lo stato live del team, quindi i teammate possono aggiungere o rivendicare task tra le chiamate. Rielenca prima di rivendicare se è passato del tempo.
+- Elaborare i task preferibilmente in ordine di ID (ID più basso per primo), poiché i task precedenti forniscono tipicamente contesto per quelli successivi
+- I task con `blockedBy` non possono essere presi in carico finché le dipendenze non sono risolte
+- Usare TaskGet per ottenere i dettagli completi di un task specifico
+
+## Testo originale
+
+<textarea readonly>Use this tool to list all tasks in the task list.
+
+## When to Use This Tool
+
+- To see what tasks are available to work on (status: 'pending', no owner, not blocked)
+- To check overall progress on the project
+- To find tasks that are blocked and need dependencies resolved
+- After completing a task, to check for newly unblocked work or claim the next available task
+- **Prefer working on tasks in ID order** (lowest ID first) when multiple tasks are available, as earlier tasks often set up context for later ones
+
+## Output
+
+Returns a summary of each task:
+- **id**: Task identifier (use with TaskGet, TaskUpdate)
+- **subject**: Brief description of the task
+- **status**: 'pending', 'in_progress', or 'completed'
+- **owner**: Agent ID if assigned, empty if available
+- **blockedBy**: List of open task IDs that must be resolved first (tasks with blockedBy cannot be claimed until dependencies resolve)
+
+Use TaskGet with a specific task ID to view full details including description and comments.
+</textarea>

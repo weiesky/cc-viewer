@@ -1,50 +1,40 @@
 # TaskOutput
 
-Busca a saída acumulada de uma tarefa em segundo plano em execução ou concluída — um comando de shell em segundo plano, um agente local ou uma sessão remota. Use quando precisar inspecionar o que uma tarefa de longa duração produziu até agora.
+## Definição
 
-## Quando usar
-
-- Uma sessão remota (por exemplo um sandbox na nuvem) está rodando e você precisa do stdout dela.
-- Um agente local foi despachado em segundo plano e você quer progresso parcial antes que ele retorne.
-- Um comando de shell em segundo plano está rodando há tempo suficiente para que você queira verificar sem pará-lo.
-- Você precisa confirmar que uma tarefa em segundo plano está de fato progredindo antes de esperar mais ou chamar `TaskStop`.
-
-Não recorra a `TaskOutput` reflexivamente. Para a maior parte do trabalho em segundo plano há um caminho mais direto — veja as observações abaixo.
+Obtém a saída de tarefas em segundo plano em execução ou concluídas. Aplicável a shells em segundo plano, agents assíncronos e sessões remotas.
 
 ## Parâmetros
 
-- `task_id` (string, obrigatório): O identificador da tarefa retornado quando o trabalho em segundo plano foi iniciado. Não é o mesmo que um `taskId` da lista de tarefas; este é o handle de execução para a execução específica.
-- `block` (boolean, opcional): Quando `true` (padrão), espera até que a tarefa produza nova saída ou termine antes de retornar. Quando `false`, retorna imediatamente com o que está bufferizado.
-- `timeout` (number, opcional): Máximo de milissegundos para bloquear antes de retornar. Só significativo quando `block` é `true`. Padrão `30000`, máximo `600000`.
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|------|------|------|------|
+| `task_id` | string | Sim | ID da tarefa |
+| `block` | boolean | Sim | Se deve bloquear aguardando a conclusão da tarefa, padrão `true` |
+| `timeout` | number | Sim | Tempo máximo de espera (milissegundos), padrão 30000, máximo 600000 |
 
-## Exemplos
+## Cenários de Uso
 
-### Exemplo 1
+**Adequado para:**
+- Verificar o progresso de agents em segundo plano iniciados via Task (`run_in_background: true`)
+- Obter resultados de execução de comandos Bash em segundo plano
+- Aguardar a conclusão de tarefas assíncronas e obter a saída
 
-Espiar uma sessão remota sem bloquear.
-
-```
-TaskOutput(task_id: "sess_01HXYZ...", block: false)
-```
-
-Retorna qualquer stdout/stderr que foi produzido desde que a tarefa começou (ou desde sua última chamada `TaskOutput`, dependendo do runtime).
-
-### Exemplo 2
-
-Esperar brevemente por um agente local emitir mais saída.
-
-```
-TaskOutput(
-  task_id: "agent_01ABCD...",
-  block: true,
-  timeout: 10000
-)
-```
+**Não adequado para:**
+- Tarefas em primeiro plano — tarefas em primeiro plano retornam resultados diretamente, sem necessidade desta ferramenta
 
 ## Observações
 
-- Comandos bash em segundo plano: `TaskOutput` está efetivamente depreciado para este caso de uso. Quando você inicia uma tarefa de shell em segundo plano, o resultado já inclui o caminho para seu arquivo de saída — leia esse caminho diretamente com a ferramenta `Read`. `Read` dá acesso aleatório, offsets de linha e uma visão estável; `TaskOutput` não.
-- Agentes locais (a ferramenta `Agent` despachada em segundo plano): quando o agente termina, o resultado da ferramenta `Agent` já contém sua resposta final. Use-a diretamente. Não dê `Read` no arquivo de transcript simbólico — ele contém o fluxo completo de chamadas de ferramenta e transbordará a janela de contexto.
-- Sessões remotas: `TaskOutput` é a forma correta e muitas vezes única de fazer stream da saída. Prefira `block: true` com um `timeout` modesto em vez de loops de polling apertados.
-- Um `task_id` desconhecido, ou uma tarefa cuja saída foi coletada pelo garbage collector, retorna um erro. Despache o trabalho novamente se ainda precisar dele.
-- `TaskOutput` não para a tarefa. Use `TaskStop` para terminar.
+- `block: true` bloqueia até a tarefa ser concluída ou atingir timeout
+- `block: false` é usado para verificação não-bloqueante do estado atual
+- O ID da tarefa pode ser encontrado via comando `/tasks`
+- Aplicável a todos os tipos de tarefa: shells em segundo plano, agents assíncronos, sessões remotas
+
+## Texto original
+
+<textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)
+- Takes a task_id parameter identifying the task
+- Returns the task output along with status information
+- Use block=true (default) to wait for task completion
+- Use block=false for non-blocking check of current status
+- Task IDs can be found using the /tasks command
+- Works with all task types: background shells, async agents, and remote sessions</textarea>

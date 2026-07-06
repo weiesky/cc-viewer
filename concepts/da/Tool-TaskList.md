@@ -1,62 +1,56 @@
 # TaskList
 
-Returnerer hver opgave i det aktuelle team (eller session) i opsummeret form. Brug den til at gennemgå udestående arbejde, beslutte hvad du skal samle op næste, og undgå at oprette dubletter.
+## Definition
 
-## Hvornår skal den bruges
-
-- Ved starten af en session for at se, hvad der allerede spores.
-- Før kald af `TaskCreate` for at bekræfte, at arbejdet ikke allerede er fanget.
-- Når du beslutter, hvilken opgave du skal overtage næste som holdkammerat eller underagent.
-- For at verificere afhængighedsforhold på tværs af teamet med et hurtigt blik.
-- Periodisk under lange sessioner for at genresynkronisere med holdkammerater, der kan have overtaget, fuldført eller tilføjet opgaver.
-
-`TaskList` er skrivebeskyttet og billig; kald den frit, når du har brug for et overblik.
+Lister alle opgaver i opgavelisten for at se den samlede fremdrift og tilgængeligt arbejde.
 
 ## Parametre
 
-`TaskList` tager ingen parametre. Den returnerer altid det fulde opgavesæt for den aktive kontekst.
+Ingen parametre.
 
-## Svarform
+## Returneret indhold
 
-Hver opgave i listen er et resumé, ikke den fulde registrering. Forvent cirka:
+Resuméinformation for hver opgave:
+- `id` — Opgaveidentifikator
+- `subject` — Kort beskrivelse
+- `status` — Status: `pending`, `in_progress` eller `completed`
+- `owner` — Ansvarlig (agent-ID), tom betyder ikke tildelt
+- `blockedBy` — Liste over ID'er for ufuldførte opgaver der blokerer denne opgave
 
-- `id` — stabil identifikator til brug med `TaskGet` / `TaskUpdate`.
-- `subject` — kort imperativ titel.
-- `status` — en af `pending`, `in_progress`, `completed`, `deleted`.
-- `owner` — agent- eller holdkammerat-handle, eller tom, når uoverdraget.
-- `blockedBy` — array af opgave-ID'er, der skal fuldføres først.
+## Brugsscenarier
 
-For den fulde beskrivelse, accepteringskriterier eller metadata for en specifik opgave, følg op med `TaskGet`.
+**Egnet til:**
+- Se hvilke opgaver der er tilgængelige (status pending, ingen owner, ikke blokeret)
+- Kontrollere projektets samlede fremdrift
+- Finde blokerede opgaver
+- Finde den næste opgave efter at have fuldført en
 
-## Eksempler
+## Bemærkninger
 
-### Eksempel 1
+- Behandl opgaver fortrinsvis i ID-rækkefølge (laveste ID først), da tidlige opgaver typisk giver kontekst til efterfølgende opgaver
+- Opgaver med `blockedBy` kan ikke påtages, før afhængighederne er løst
+- Brug TaskGet til at hente komplette detaljer for en specifik opgave
 
-Hurtig statuskontrol.
+## Originaltekst
 
-```
-TaskList()
-```
+<textarea readonly>Use this tool to list all tasks in the task list.
 
-Scan outputtet for alt, der er `in_progress` uden en `owner` (forældet arbejde), og alt `pending` med en tom `blockedBy` (klar til at samle op).
+## When to Use This Tool
 
-### Eksempel 2
+- To see what tasks are available to work on (status: 'pending', no owner, not blocked)
+- To check overall progress on the project
+- To find tasks that are blocked and need dependencies resolved
+- After completing a task, to check for newly unblocked work or claim the next available task
+- **Prefer working on tasks in ID order** (lowest ID first) when multiple tasks are available, as earlier tasks often set up context for later ones
 
-Holdkammerat, der vælger den næste opgave.
+## Output
 
-```
-TaskList()
-# Filter to: status == pending AND blockedBy is empty AND owner is empty.
-# Among those, prefer the lower ID (tasks are typically numbered in
-# creation order, so lower IDs are older and usually higher priority).
-TaskGet(taskId: "<chosen id>")
-TaskUpdate(taskId: "<chosen id>", status: "in_progress", owner: "<your handle>")
-```
+Returns a summary of each task:
+- **id**: Task identifier (use with TaskGet, TaskUpdate)
+- **subject**: Brief description of the task
+- **status**: 'pending', 'in_progress', or 'completed'
+- **owner**: Agent ID if assigned, empty if available
+- **blockedBy**: List of open task IDs that must be resolved first (tasks with blockedBy cannot be claimed until dependencies resolve)
 
-## Noter
-
-- Holdkammerat-heuristik: når flere `pending`-opgaver er ublokerede og uoverdragne, vælg det laveste ID. Dette holder arbejdet FIFO og undgår, at to agenter griber den samme højprofilerede opgave.
-- Respektér `blockedBy`: start ikke en opgave, hvis blokere stadig er `pending` eller `in_progress`. Arbejd på blokeren først, eller koordinér med dens ejer.
-- `TaskList` er den eneste opdagelsesmekanisme for opgaver. Der er ingen søgning; hvis listen er lang, scan strukturelt (efter status, derefter efter ejer).
-- Slettede opgaver kan stadig fremgå af listen med status `deleted` for sporbarhed. Ignorer dem til planlægningsformål.
-- Listen afspejler teamets live-tilstand, så holdkammerater kan tilføje eller overtage opgaver mellem kald. Gen-list før overtagelse, hvis tid er gået.
+Use TaskGet with a specific task ID to view full details including description and comments.
+</textarea>

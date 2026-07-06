@@ -29,9 +29,7 @@ function getBaseUrlFromSettings(settingsPath) {
   return null;
 }
 
-function getOriginalBaseUrl(configPaths, envBaseUrl, activeProfile = null) {
-  // 热切换 profile 最高优先（与 proxy.js 同步）
-  if (activeProfile && activeProfile.baseURL) return activeProfile.baseURL;
+function getOriginalBaseUrl(configPaths, envBaseUrl) {
   for (const configPath of configPaths) {
     const url = getBaseUrlFromSettings(configPath);
     if (url) return url;
@@ -58,31 +56,6 @@ function filterResponseHeaders(headerEntries) {
     }
   }
   return filtered;
-}
-
-// Replicated from proxy.js: force upstream to return uncompressed responses.
-// Strips any existing accept-encoding (case-insensitive) and forces identity, so a
-// gateway that drops the content-encoding response header can't leave undici handing
-// back still-compressed bytes that get streamed to the CLI as if they were plaintext.
-function forceIdentityAcceptEncoding(headers) {
-  if (!headers) return headers;
-  const out = {};
-  for (const k of Object.keys(headers)) {
-    if (k.toLowerCase() !== 'accept-encoding') out[k] = headers[k];
-  }
-  out['accept-encoding'] = 'identity';
-  return out;
-}
-
-// Replicated from proxy.js: drop client-declared content-length before forwarding,
-// since the interceptor rewrites the body (model replacement) and the stale length
-// would trigger undici UND_ERR_REQ_CONTENT_LENGTH_MISMATCH.
-function stripContentLengthHeader(headers) {
-  if (!headers) return headers;
-  const key = Object.keys(headers).find(k => k.toLowerCase() === 'content-length');
-  if (!key) return headers;
-  const { [key]: _omit, ...rest } = headers;
-  return rest;
 }
 
 // Error message formatting logic from startProxy catch block
@@ -193,38 +166,6 @@ describe('proxy', () => {
       assert.equal(
         getOriginalBaseUrl([s1], 'https://env.example.com'),
         'https://config.example.com'
-      );
-    });
-
-    it('active profile baseURL takes priority over everything else', () => {
-      const s1 = join(tempDir, 'settings.json');
-      writeFileSync(s1, JSON.stringify({ env: { ANTHROPIC_BASE_URL: 'https://config.example.com' } }));
-
-      assert.equal(
-        getOriginalBaseUrl(
-          [s1],
-          'https://env.example.com',
-          { baseURL: 'https://foxcode.example.com/claude' }
-        ),
-        'https://foxcode.example.com/claude'
-      );
-    });
-
-    it('null active profile falls through to config/env/default chain', () => {
-      const s1 = join(tempDir, 'settings.json');
-      writeFileSync(s1, JSON.stringify({ env: { ANTHROPIC_BASE_URL: 'https://config.example.com' } }));
-
-      assert.equal(
-        getOriginalBaseUrl([s1], null, null),
-        'https://config.example.com'
-      );
-    });
-
-    it('active profile without baseURL falls through (max profile case)', () => {
-      // max profile 只有 id/name，没有 baseURL，应该回退到配置链
-      assert.equal(
-        getOriginalBaseUrl([], 'https://env.example.com', { id: 'max', name: 'Default' }),
-        'https://env.example.com'
       );
     });
   });
@@ -428,166 +369,6 @@ describe('proxy', () => {
         getOriginalBaseUrl([join(tempDir, 'a'), join(tempDir, 'b'), join(tempDir, 'c')], null),
         'https://api.anthropic.com'
       );
-    });
-  });
-
-  // --------------------------------------------------------------------------
-  // Proxy auth header replacement (for hot-switch profile)
-  //
-  // KEEP IN SYNC: 与 interceptor.js::_replaceProxyAuthHeaders 保持一致。
-  // interceptor.js 的 fetch 补丁有 module-level 副作用，这里复制纯函数做单测。
-  // --------------------------------------------------------------------------
-  describe('proxy auth header replacement', () => {
-    function replaceProxyAuthHeaders(headers, apiKey) {
-      const newHeaders = { ...headers };
-      let matchedAuthKey = null, matchedXApiKey = null;
-      for (const k of Object.keys(newHeaders)) {
-        const lk = k.toLowerCase();
-        if (lk === 'authorization') matchedAuthKey = k;
-        else if (lk === 'x-api-key') matchedXApiKey = k;
-      }
-      if (matchedAuthKey) newHeaders[matchedAuthKey] = `Bearer ${apiKey}`;
-      if (matchedXApiKey) newHeaders[matchedXApiKey] = apiKey;
-      if (!matchedAuthKey && !matchedXApiKey) newHeaders['x-api-key'] = apiKey;
-      return { headers: newHeaders, matchedAuthKey, matchedXApiKey };
-    }
-
-    it('replaces authorization header case-insensitively (lowercase)', () => {
-      const { headers, matchedAuthKey, matchedXApiKey } = replaceProxyAuthHeaders(
-        { authorization: 'Bearer old-key', 'content-type': 'application/json' },
-        'sk-new'
-      );
-      assert.equal(matchedAuthKey, 'authorization');
-      assert.equal(matchedXApiKey, null);
-      assert.equal(headers.authorization, 'Bearer sk-new');
-      assert.equal(headers['content-type'], 'application/json');
-    });
-
-    it('replaces authorization header case-insensitively (TitleCase)', () => {
-      const { headers, matchedAuthKey } = replaceProxyAuthHeaders(
-        { Authorization: 'Bearer old-key' },
-        'sk-new'
-      );
-      assert.equal(matchedAuthKey, 'Authorization');
-      assert.equal(headers.Authorization, 'Bearer sk-new');
-      assert.equal(headers.authorization, undefined, 'should not create a lowercase duplicate');
-    });
-
-    it('replaces x-api-key case-insensitively (X-API-Key)', () => {
-      const { headers, matchedXApiKey, matchedAuthKey } = replaceProxyAuthHeaders(
-        { 'X-API-Key': 'old-key' },
-        'sk-new'
-      );
-      assert.equal(matchedXApiKey, 'X-API-Key');
-      assert.equal(matchedAuthKey, null);
-      assert.equal(headers['X-API-Key'], 'sk-new');
-    });
-
-    it('replaces BOTH authorization and x-api-key simultaneously when both present', () => {
-      const { headers, matchedAuthKey, matchedXApiKey } = replaceProxyAuthHeaders(
-        { authorization: 'Bearer old-auth', 'x-api-key': 'old-xkey' },
-        'sk-new'
-      );
-      assert.equal(matchedAuthKey, 'authorization');
-      assert.equal(matchedXApiKey, 'x-api-key');
-      assert.equal(headers.authorization, 'Bearer sk-new');
-      assert.equal(headers['x-api-key'], 'sk-new');
-    });
-
-    it('plants x-api-key when BOTH headers missing (third-party proxy fallback)', () => {
-      const { headers, matchedAuthKey, matchedXApiKey } = replaceProxyAuthHeaders(
-        { 'content-type': 'application/json' },
-        'sk-new'
-      );
-      assert.equal(matchedAuthKey, null);
-      assert.equal(matchedXApiKey, null);
-      assert.equal(headers['x-api-key'], 'sk-new');
-      assert.equal(headers['content-type'], 'application/json');
-    });
-
-    it('does NOT plant x-api-key when authorization was matched', () => {
-      const { headers } = replaceProxyAuthHeaders(
-        { authorization: 'Bearer old' },
-        'sk-new'
-      );
-      assert.equal(headers['x-api-key'], undefined);
-    });
-
-    it('returns a new headers object (does not mutate input)', () => {
-      const input = { authorization: 'Bearer old' };
-      const { headers } = replaceProxyAuthHeaders(input, 'sk-new');
-      assert.notEqual(headers, input, 'should return a fresh object');
-      assert.equal(input.authorization, 'Bearer old', 'input must remain untouched');
-    });
-  });
-
-  describe('forceIdentityAcceptEncoding (force uncompressed upstream to dodge mangled content-encoding)', () => {
-    it('returns input untouched when input is null/undefined', () => {
-      assert.equal(forceIdentityAcceptEncoding(null), null);
-      assert.equal(forceIdentityAcceptEncoding(undefined), undefined);
-    });
-
-    it('adds accept-encoding: identity when the header is absent', () => {
-      const out = forceIdentityAcceptEncoding({ 'content-type': 'application/json' });
-      assert.equal(out['accept-encoding'], 'identity');
-      assert.equal(out['content-type'], 'application/json', 'other headers preserved');
-    });
-
-    it('overrides an existing lowercase accept-encoding', () => {
-      const out = forceIdentityAcceptEncoding({ 'accept-encoding': 'gzip, deflate, br, zstd' });
-      assert.equal(out['accept-encoding'], 'identity');
-    });
-
-    it('drops a TitleCase Accept-Encoding and emits a single lowercase identity', () => {
-      const out = forceIdentityAcceptEncoding({ 'Accept-Encoding': 'gzip, br' });
-      assert.equal(out['Accept-Encoding'], undefined, 'original casing removed');
-      assert.equal(out['accept-encoding'], 'identity');
-    });
-
-    it('returns a new object (does not mutate input)', () => {
-      const input = { 'accept-encoding': 'gzip, zstd' };
-      const out = forceIdentityAcceptEncoding(input);
-      assert.notEqual(out, input);
-      assert.equal(input['accept-encoding'], 'gzip, zstd', 'input must remain untouched');
-    });
-
-    it('preserves unrelated headers alongside the forced identity', () => {
-      const out = forceIdentityAcceptEncoding({ authorization: 'Bearer x', 'x-foo': '1' });
-      assert.equal(out.authorization, 'Bearer x');
-      assert.equal(out['x-foo'], '1');
-      assert.equal(out['accept-encoding'], 'identity');
-    });
-  });
-
-  describe('stripContentLengthHeader (avoid stale content-length after body rewrite)', () => {
-    it('removes content-length (lowercase header)', () => {
-      const out = stripContentLengthHeader({ 'content-type': 'application/json', 'content-length': '123' });
-      assert.equal(out['content-length'], undefined);
-      assert.equal(out['content-type'], 'application/json', 'other headers preserved');
-    });
-
-    it('removes Content-Length (TitleCase header)', () => {
-      const out = stripContentLengthHeader({ 'Content-Length': '456' });
-      assert.equal(out['Content-Length'], undefined);
-      assert.equal(out['content-length'], undefined);
-    });
-
-    it('returns headers untouched when content-length is absent', () => {
-      const input = { 'content-type': 'application/json' };
-      const out = stripContentLengthHeader(input);
-      assert.equal(out, input);
-    });
-
-    it('returns a new object and does not mutate input', () => {
-      const input = { 'content-length': '10', 'content-type': 'application/json' };
-      const out = stripContentLengthHeader(input);
-      assert.notEqual(out, input);
-      assert.equal(input['content-length'], '10', 'input must remain untouched');
-    });
-
-    it('returns input untouched when input is null/undefined', () => {
-      assert.equal(stripContentLengthHeader(null), null);
-      assert.equal(stripContentLengthHeader(undefined), undefined);
     });
   });
 });

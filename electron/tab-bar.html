@@ -7,7 +7,7 @@
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 12px;
-    height: 50px;
+    height: 36px;
     display: flex;
     align-items: center;
     overflow: hidden;
@@ -20,94 +20,32 @@
   /* Theme variables */
   :root {
     --bg: #1a1a1a;
-    --bg-tab: #111;
+    --bg-tab: transparent;
     --bg-tab-active: #2a2a2a;
-    --bg-tab-hover: #2a2a2a;
+    --bg-tab-hover: #222;
     --text: #aaa;
     --text-active: #e5e5e5;
     --border: #333;
     --accent: #1668dc;
     --close-hover: rgba(255,255,255,0.1);
-    /* tab 状态点 / 待审批小圆环：默认用 accent（与按钮边框同色），背景+边框统一此色，色彩更均衡；
-     * has-pending 非活动 tab 时仍由 keyframes 在 accent ↔ text 间脉动提示。 */
-    --pending-ring: var(--accent);
   }
   [data-theme="light"] {
     --bg: #f0f0f0;
-    --bg-tab: #e8e8e8;
+    --bg-tab: transparent;
     --bg-tab-active: #ffffff;
-    --bg-tab-hover: #ffffff;
+    --bg-tab-hover: #e8e8e8;
     --text: #666;
     --text-active: #1a1a1a;
     --border: #ddd;
     --accent: #0969DA;
     --close-hover: rgba(0,0,0,0.08);
-    --pending-ring: var(--accent);
   }
   /* macOS traffic lights padding + drag area */
   .traffic-light-spacer {
     width: 70px;
     flex-shrink: 0;
     -webkit-app-region: drag;
-    transition: width 0.15s;
   }
-  /* Fullscreen 时 macOS 红黄绿按钮隐藏，占位也去掉 */
-  body.fullscreen .traffic-light-spacer {
-    width: 0;
-  }
-  /* Windows：无 traffic lights，70px 幽灵占位去掉 */
-  body.win32 .traffic-light-spacer { display: none; }
-  /* Windows 品牌区(logo + 标题)：处于拖拽区，仅 win32 显示 */
-  #winBrand {
-    display: none;
-    align-items: center;
-    gap: 7px;
-    padding: 0 6px 0 12px;
-    flex-shrink: 0;
-    color: var(--text-active);
-    font-size: 12px;
-    font-weight: 600;
-    -webkit-app-region: drag;
-  }
-  body.win32 #winBrand { display: flex; }
-  #winBrand svg { display: block; color: var(--accent); }
-  /* Windows HTML 菜单栏(File/Edit/View/Window)：文案与下拉皮肤跟随主题,下拉由活动 tab 的 React 渲染 */
-  #menuBar {
-    display: none;
-    align-items: center;
-    flex-shrink: 0;
-    margin-right: 4px;
-    -webkit-app-region: no-drag;
-  }
-  body.win32 #menuBar { display: flex; }
-  .menubar-btn {
-    height: 26px;
-    padding: 0 9px;
-    border-radius: 6px;
-    border: none;
-    background: none;
-    color: var(--text);
-    cursor: pointer;
-    font-size: 12px;
-    white-space: nowrap;
-    -webkit-app-region: no-drag;
-    transition: background 0.1s, color 0.1s;
-  }
-  .menubar-btn:hover { background: var(--close-hover); color: var(--text-active); }
-  .menubar-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  /* Windows 原生窗控(最小化/最大化/关闭)overlay 区域占位:titleBarOverlay 的三按钮绘制在本视图
-     右上角之上,DOM 摸不到也测不了宽度(env(titlebar-area-*) 在子 WebContentsView 不可靠),
-     按 Win11 标准 3×46px≈138px 取 140px 固定值;若 Windows 改版导致重叠/留白,在此调整。
-     全屏时 overlay 按钮消失,占位收起。 */
-  .win-overlay-spacer {
-    display: none;
-    flex-shrink: 0;
-    width: 140px;
-    align-self: stretch;
-    -webkit-app-region: drag;
-  }
-  body.win32 .win-overlay-spacer { display: block; }
-  body.win32.fullscreen .win-overlay-spacer { width: 0; }
   /* Right-side drag area */
   .drag-spacer {
     flex-shrink: 0;
@@ -119,9 +57,7 @@
     overflow-x: auto;
     overflow-y: hidden;
     height: 100%;
-    align-items: center;
-    gap: 4px;
-    padding: 8px 0 8px 8px;
+    align-items: stretch;
     -webkit-app-region: no-drag;
   }
   /* Empty space after tabs + "+" button becomes drag area */
@@ -136,56 +72,36 @@
     align-items: center;
     gap: 6px;
     padding: 0 12px;
-    height: 34px;
+    height: 100%;
     max-width: 180px;
     min-width: 60px;
     cursor: pointer;
     white-space: nowrap;
-    border-radius: 12px;
+    border-right: 1px solid var(--border);
     background: var(--bg-tab);
     color: var(--text);
     position: relative;
-    transition: background 0.1s, box-shadow 0.1s;
+    transition: background 0.1s;
   }
   .tab:hover { background: var(--bg-tab-hover); }
   .tab.active {
     background: var(--bg-tab-active);
     color: var(--text-active);
-    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+  .tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent);
   }
   .tab.loading { opacity: 0.6; }
   .tab-name {
     overflow: hidden;
     text-overflow: ellipsis;
     flex: 1;
-  }
-  /* 左侧 16px 状态槽，与右侧 .tab-close 镜像。永远占位，避免 tab 名因状态变化抖动。
-   * 槽内 8px 圆点默认填 var(--pending-ring)(= accent)，常驻作为每个 tab 的状态点；
-   * .has-pending:not(.active) 时由 keyframes 让 border-color 在 accent ↔ var(--text) 间脉动以强调待审批。 */
-  .tab-pending {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-  }
-  .tab-pending::before {
-    content: '';
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    border: 1.5px solid var(--pending-ring);
-    background: var(--pending-ring);
-    box-sizing: border-box;
-  }
-  .tab.has-pending:not(.active) .tab-pending::before {
-    animation: tab-pending-pulse 1.4s ease-in-out infinite;
-  }
-  @keyframes tab-pending-pulse {
-    0%, 100% { border-color: var(--pending-ring); }
-    50% { border-color: var(--text); }
   }
   .tab-close {
     width: 16px;
@@ -203,8 +119,7 @@
     transition: opacity 0.1s, background 0.1s;
     flex-shrink: 0;
   }
-  /* 关闭按钮只在选中的 tab 上显示，未选中的 tab hover 也不显示 */
-  .tab.active .tab-close { opacity: 1; }
+  .tab:hover .tab-close { opacity: 1; }
   .tab-close:hover { background: var(--close-hover); }
   .new-tab-btn {
     width: 28px;
@@ -225,78 +140,12 @@
     transition: background 0.1s;
   }
   .new-tab-btn:hover { background: var(--close-hover); color: var(--text-active); }
-  /* iPad 模式开关：窗口级，常驻 tab bar 右侧 */
-  .mode-btn {
-    width: 30px;
-    height: 30px;
-    border-radius: 6px;
-    border: none;
-    background: none;
-    color: var(--text);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    margin: auto 10px auto 4px;
-    -webkit-app-region: no-drag;
-    transition: background 0.1s, color 0.1s;
-  }
-  .mode-btn:hover { background: var(--close-hover); color: var(--text-active); }
-  .mode-btn svg { display: block; }
-  /* 从 React header 迁移过来的控件簇（左：菜单+代理；右：bell/主题/终端/视图） */
-  .hdr-cluster {
-    display: flex; align-items: center; gap: 4px;
-    flex-shrink: 0; -webkit-app-region: no-drag;
-  }
-  #leftCluster { margin: 0 4px 0 10px; }
-  #rightCluster { margin: 0 2px; }
-  .hdr-btn {
-    height: 28px; min-width: 28px; padding: 0 7px;
-    border-radius: 6px; border: none; background: none;
-    color: var(--text); cursor: pointer;
-    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-    font-size: 12px; white-space: nowrap;
-    -webkit-app-region: no-drag;
-    transition: background 0.1s, color 0.1s;
-  }
-  .hdr-btn:hover { background: var(--close-hover); color: var(--text-active); }
-  .hdr-btn.active { background: var(--bg-tab-active); color: var(--text-active); box-shadow: inset 0 0 0 1px var(--accent); }
-  .hdr-btn svg { display: block; }
-  .hdr-btn .badge {
-    min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
-    background: var(--accent); color: #fff; font-size: 10px; line-height: 15px; text-align: center;
-  }
-  .hdr-btn.proxy-btn { color: var(--accent); }
-  .hdr-countdown { font-size: 11px; color: var(--text); white-space: nowrap; padding: 0 4px; align-self: center; -webkit-app-region: no-drag; }
-  /* 键盘可达性：tab bar 内按钮聚焦时给出可见描边（窗口级 chrome 默认无聚焦样式）。 */
-  .hdr-btn:focus-visible, .mode-btn:focus-visible, .new-tab-btn:focus-visible, .tab-close:focus-visible {
-    outline: 2px solid var(--accent); outline-offset: 1px;
-  }
-  /* 全屏下无法 resize → iPad 开关无意义：禁用并弱化，避免「点了没反应」。 */
-  body.fullscreen .mode-btn { opacity: 0.4; pointer-events: none; }
-  /* iPad/移动模式：顶部工具栏只保留当前项目 tab + 模式开关，其余隐藏。
-     镜像 body.fullscreen 的做法，纯 CSS，不动 render()。 */
-  body.device-mode #leftCluster,
-  body.device-mode #rightCluster,
-  body.device-mode .tab:not(.active),
-  body.device-mode .new-tab-btn,
-  body.device-mode #winBrand,
-  body.device-mode #menuBar {
-    display: none;
-  }
 </style>
 </head>
 <body>
   <div class="traffic-light-spacer"></div>
-  <div id="winBrand" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><line x1="12" y1="2" x2="12" y2="4.2"/><line x1="12" y1="19.8" x2="12" y2="22"/><line x1="2" y1="12" x2="4.2" y2="12"/><line x1="19.8" y1="12" x2="22" y2="12"/><line x1="4.9" y1="4.9" x2="6.5" y2="6.5"/><line x1="17.5" y1="17.5" x2="19.1" y2="19.1"/><line x1="4.9" y1="19.1" x2="6.5" y2="17.5"/><line x1="17.5" y1="6.5" x2="19.1" y2="4.9"/></svg><span>CC Viewer</span></div>
-  <div id="menuBar" role="menubar"></div>
-  <div class="hdr-cluster" id="leftCluster"></div>
   <div class="tab-container" id="tabs"><!-- tabs + newBtn rendered here --></div>
   <div class="tab-drag-fill"></div>
-  <div class="hdr-cluster" id="rightCluster"></div>
-  <button class="mode-btn" id="modeBtn" title="Switch to iPad mode" aria-pressed="false"></button>
-  <div class="win-overlay-spacer" aria-hidden="true"></div>
 
 <script>
   let tabs = [];
@@ -305,64 +154,32 @@
   const tabsEl = document.getElementById('tabs');
   const newBtn = document.getElementById('newBtn');
 
-  // 平台 class:win32 时隐藏 traffic-light 占位、显示品牌区/HTML 菜单栏/原生窗控 overlay 占位(纯 CSS 接管)。
-  const PLATFORM = (window.tabAPI.platform || '');
-  if (PLATFORM) document.body.classList.add(PLATFORM);
-
-  // 主进程推来的已翻译菜单模型 + tab bar 文案(语言切换时会重推)。
-  let menuModel = null;
-  let uiStrings = {};
-
   function render() {
-    // tab.name / tab.id 来自 main 进程，最终源头是用户输入的项目名 / 路径，可控字符串。
-    // 用 textContent + setAttribute 替代 innerHTML 模板拼接，避免 `</span><img onerror=...>`
-    // 之类的项目名逃逸属性 / 注入新元素。close 按钮的 ×（HTML 实体 &times;）改用 × 字面量。
-    tabsEl.replaceChildren();
+    tabsEl.innerHTML = '';
     tabs.forEach(tab => {
       const el = document.createElement('div');
-      el.className = 'tab'
-        + (tab.id === activeTabId ? ' active' : '')
-        + (tab.status === 'loading' ? ' loading' : '')
-        + (tab.pending > 0 ? ' has-pending' : '');
-
-      // 左侧状态槽：始终占 16px，避免有/无待审批时 tab 名抖动；
-      // .has-pending:not(.active) 时由 CSS 把里面的圆环点亮 + 脉动。
-      const pendingEl = document.createElement('span');
-      pendingEl.className = 'tab-pending';
-      pendingEl.setAttribute('aria-hidden', 'true');
-      el.appendChild(pendingEl);
-
-      const nameEl = document.createElement('span');
-      nameEl.className = 'tab-name';
-      nameEl.setAttribute('title', tab.name);
-      nameEl.textContent = (tab.status === 'loading' ? '⏳ ' : '') + tab.name;
-      el.appendChild(nameEl);
-
-      const closeBtn = document.createElement('button');
-      closeBtn.className = 'tab-close';
-      closeBtn.dataset.id = tab.id;
-      closeBtn.textContent = '×';
-      el.appendChild(closeBtn);
-
+      el.className = 'tab' + (tab.id === activeTabId ? ' active' : '') + (tab.status === 'loading' ? ' loading' : '');
+      el.innerHTML = `
+        <span class="tab-name" title="${tab.name}">${tab.status === 'loading' ? '⏳ ' : ''}${tab.name}</span>
+        <button class="tab-close" data-id="${tab.id}">&times;</button>
+      `;
       el.addEventListener('click', (e) => {
         if (e.target.classList.contains('tab-close')) return;
         window.tabAPI.switchTab(tab.id);
       });
-      closeBtn.addEventListener('click', (e) => {
+      el.querySelector('.tab-close').addEventListener('click', (e) => {
         e.stopPropagation();
         window.tabAPI.closeTab(tab.id);
       });
       tabsEl.appendChild(el);
     });
-    // "+" 仅在已有 tab 时显示：零 tab（初始化界面）本身就是项目选择器，再放「+」属交互重叠。
-    if (tabs.length > 0) {
-      const btn = document.createElement('button');
-      btn.className = 'new-tab-btn';
-      btn.title = uiStrings.newTab || 'New project tab';
-      btn.textContent = '+';
-      btn.addEventListener('click', () => window.tabAPI.newTab());
-      tabsEl.appendChild(btn);
-    }
+    // "+" button always follows the last tab
+    const btn = document.createElement('button');
+    btn.className = 'new-tab-btn';
+    btn.title = 'New project tab';
+    btn.textContent = '+';
+    btn.addEventListener('click', () => window.tabAPI.newTab());
+    tabsEl.appendChild(btn);
   }
 
   window.tabAPI.onTabsUpdated((newTabs) => {
@@ -378,198 +195,6 @@
   window.tabAPI.onThemeChanged((theme) => {
     document.documentElement.setAttribute('data-theme', theme);
   });
-
-  window.tabAPI.onFullscreenChanged?.((isFullscreen) => {
-    document.body.classList.toggle('fullscreen', !!isFullscreen);
-  });
-
-  // iPad 模式开关（窗口级）：点击切换 PC ⇄ iPad，图标显示当前模式（显示器 / 手机样式）。
-  const modeBtn = document.getElementById('modeBtn');
-  const ICON_MONITOR = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>';
-  const ICON_PHONE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>';
-  let deviceOn = false;
-  // iPad/PC 开关 tooltip:优先用活动 tab header 模型下发的(React t());无模型时用主进程
-  // menu-model 附带的 uiStrings(server i18n);两者都没到时英文兜底。
-  let modeTitles = { toIpad: 'Switch to iPad mode', toPc: 'Switch to PC mode' };
-  let modeTitlesFromModel = false;
-  function renderModeBtn() {
-    modeBtn.innerHTML = deviceOn ? ICON_PHONE : ICON_MONITOR;
-    modeBtn.setAttribute('aria-pressed', String(deviceOn));
-    modeBtn.title = deviceOn ? modeTitles.toPc : modeTitles.toIpad;
-    modeBtn.setAttribute('aria-label', modeBtn.title);
-  }
-  modeBtn.addEventListener('click', () => window.tabAPI.toggleDeviceMode());
-  window.tabAPI.onDeviceModeChange?.((on) => {
-    deviceOn = !!on;
-    renderModeBtn();
-    document.body.classList.toggle('device-mode', deviceOn);
-  });
-  renderModeBtn();
-  window.tabAPI.requestDeviceMode?.();
-
-  // ---- 从 React header 迁移过来的控件（active tab 推模型，这里渲染；点击回传 main → active tab）----
-  const leftCluster = document.getElementById('leftCluster');
-  const rightCluster = document.getElementById('rightCluster');
-  let headerModel = null;
-  let headerModelTabId = null; // 模型所属 tab；随点击回传，main 据此精确投递，规避切 tab 竞态
-  const HSVG = {
-    menu: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>',
-    proxy: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
-    bell: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a6 6 0 0 0-6 6v3.5L4.5 14a1 1 0 0 0 .8 1.6h13.4a1 1 0 0 0 .8-1.6L18 11.5V8a6 6 0 0 0-6-6z"/><path d="M10 18a2 2 0 0 0 4 0"/></svg>',
-    sun: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"/><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"/><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"/></svg>',
-    moon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg>',
-    terminal: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
-    chat: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8A8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/></svg>',
-    raw: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
-    qr: '<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M0 0h10v10H0zM2 2v6h6V2zM3 3h4v4H3zM14 0h10v10H14zM16 2v6h6V2zM17 3h4v4H17zM0 14h10v10H0zM2 16v6h6v-6zM3 17h4v4H3zM14 14h3v3h-3zM20 14h3v3h-3zM17 17h3v3h-3zM14 20h3v3h-3zM20 20h3v3h-3z"/></svg>',
-  };
-  const IM_ICON = {
-    dingtalk: { vb: '0 0 1024 1024', color: '#1677ff', path: 'M903.282484 382.828702c-2.999866 10.899512-6.899691 21.499038-11.699476 31.698581h0.099995l-0.599973 1.299942c-34.098474 76.596571-123.194485 226.989839-123.194485 226.989839l-0.399982-0.999955-25.998836 47.597869h125.394386L627.294839 1024l54.397565-227.589812h-98.795578l34.298465-150.493263c-27.798756 6.999687-60.497292 16.699252-99.395551 29.798666 0 0-52.49765 32.298554-151.393222-62.197216 0 0-66.697014-61.597243-27.998747-77.096548 16.399266-6.499709 79.796428-14.799337 129.694194-21.999015 67.296987-9.59957 108.79513-14.699342 108.79513-14.699342s-207.690703 3.299852-256.988496-4.899781c-49.297793-8.099637-111.695-94.49577-125.0944-170.392372 0 0-20.599078-41.698133 44.198021-21.999016 64.897095 19.699118 333.385076 76.796563 333.385076 76.796563S223.312923 266.933891 200.113962 239.535117 131.717024 89.741823 137.616759 14.645184c0 0 2.599884-18.799158 20.899065-13.799382 0 0 258.188442 123.994449 434.680541 191.691419C769.688464 260.434182 923.081598 295.032633 903.282484 382.828702z' },
-    feishu: { vb: '0 0 24 24', color: '#00d6b9', path: 'M2.01 21L23 12 2.01 3 2 10l15 2-15 2z' },
-    wecom: { vb: '0 0 24 24', color: '#2f90e8', path: 'M9.5 3C5.36 3 2 5.91 2 9.5c0 2.08 1.13 3.93 2.9 5.13L4 17.5l2.74-1.4c.86.26 1.79.4 2.76.4.27 0 .53-.01.79-.03A5.6 5.6 0 0 1 10 14.5C10 11.46 12.91 9 16.5 9c.35 0 .69.02 1.03.07C16.9 5.6 13.55 3 9.5 3zm-2.6 4.4a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm5.2 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM16.5 10.5c-3.04 0-5.5 2.02-5.5 4.5s2.46 4.5 5.5 4.5c.7 0 1.37-.1 1.99-.29L20.5 20.5l-.62-1.78A4.9 4.9 0 0 0 22 15c0-2.48-2.46-4.5-5.5-4.5zm-1.85 3a.85.85 0 1 1 0 1.7.85.85 0 0 1 0-1.7zm3.7 0a.85.85 0 1 1 0 1.7.85.85 0 0 1 0-1.7z' },
-    discord: { vb: '0 0 24 24', color: '#5865F2', path: 'M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.249a18.27 18.27 0 0 0-5.487 0 12.6 12.6 0 0 0-.617-1.25.077.077 0 0 0-.079-.036A19.74 19.74 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.891.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.331c-1.182 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z' },
-  };
-  // 「钉住」快捷方式图标表：按菜单 key → antd 图标 path（viewBox 统一 64 64 896 896）。
-  // 原生侧无打包器，无法 import @ant-design/icons，故手工烘焙；与 React 侧 _getMenuDescriptors 图标对应。
-  const MENU_ICON_VB = '64 64 896 896';
-  const _MI_SETTING = 'M924.8 625.7l-65.5-56c3.1-19 4.7-38.4 4.7-57.8s-1.6-38.8-4.7-57.8l65.5-56a32.03 32.03 0 009.3-35.2l-.9-2.6a443.74 443.74 0 00-79.7-137.9l-1.8-2.1a32.12 32.12 0 00-35.1-9.5l-81.3 28.9c-30-24.6-63.5-44-99.7-57.6l-15.7-85a32.05 32.05 0 00-25.8-25.7l-2.7-.5c-52.1-9.4-106.9-9.4-159 0l-2.7.5a32.05 32.05 0 00-25.8 25.7l-15.8 85.4a351.86 351.86 0 00-99 57.4l-81.9-29.1a32 32 0 00-35.1 9.5l-1.8 2.1a446.02 446.02 0 00-79.7 137.9l-.9 2.6c-4.5 12.5-.8 26.5 9.3 35.2l66.3 56.6c-3.1 18.8-4.6 38-4.6 57.1 0 19.2 1.5 38.4 4.6 57.1L99 625.5a32.03 32.03 0 00-9.3 35.2l.9 2.6c18.1 50.4 44.9 96.9 79.7 137.9l1.8 2.1a32.12 32.12 0 0035.1 9.5l81.9-29.1c29.8 24.5 63.1 43.9 99 57.4l15.8 85.4a32.05 32.05 0 0025.8 25.7l2.7.5a449.4 449.4 0 00159 0l2.7-.5a32.05 32.05 0 0025.8-25.7l15.7-85a350 350 0 0099.7-57.6l81.3 28.9a32 32 0 0035.1-9.5l1.8-2.1c34.8-41.1 61.6-87.5 79.7-137.9l.9-2.6c4.5-12.3.8-26.3-9.3-35zM788.3 465.9c2.5 15.1 3.8 30.6 3.8 46.1s-1.3 31-3.8 46.1l-6.6 40.1 74.7 63.9a370.03 370.03 0 01-42.6 73.6L721 702.8l-31.4 25.8c-23.9 19.6-50.5 35-79.3 45.8l-38.1 14.3-17.9 97a377.5 377.5 0 01-85 0l-17.9-97.2-37.8-14.5c-28.5-10.8-55-26.2-78.7-45.7l-31.4-25.9-93.4 33.2c-17-22.9-31.2-47.6-42.6-73.6l75.5-64.5-6.5-40c-2.4-14.9-3.7-30.3-3.7-45.5 0-15.3 1.2-30.6 3.7-45.5l6.5-40-75.5-64.5c11.3-26.1 25.6-50.7 42.6-73.6l93.4 33.2 31.4-25.9c23.7-19.5 50.2-34.9 78.7-45.7l37.9-14.3 17.9-97.2c28.1-3.2 56.8-3.2 85 0l17.9 97 38.1 14.3c28.7 10.8 55.4 26.2 79.3 45.8l31.4 25.8 92.8-32.9c17 22.9 31.2 47.6 42.6 73.6L781.8 426l6.5 39.9zM512 326c-97.2 0-176 78.8-176 176s78.8 176 176 176 176-78.8 176-176-78.8-176-176-176zm79.2 255.2A111.6 111.6 0 01512 614c-29.9 0-58-11.7-79.2-32.8A111.6 111.6 0 01400 502c0-29.9 11.7-58 32.8-79.2C454 401.6 482.1 390 512 390c29.9 0 58 11.6 79.2 32.8A111.6 111.6 0 01624 502c0 29.9-11.7 58-32.8 79.2z';
-  const MENU_ICON = {
-    'import-local': 'M880 912H144c-17.7 0-32-14.3-32-32V144c0-17.7 14.3-32 32-32h360c4.4 0 8 3.6 8 8v56c0 4.4-3.6 8-8 8H184v656h656V520c0-4.4 3.6-8 8-8h56c4.4 0 8 3.6 8 8v360c0 17.7-14.3 32-32 32zM653.3 424.6l52.2 52.2a8.01 8.01 0 01-4.7 13.6l-179.4 21c-5.1.6-9.5-3.7-8.9-8.9l21-179.4c.8-6.6 8.9-9.4 13.6-4.7l52.4 52.4 256.2-256.2c3.1-3.1 8.2-3.1 11.3 0l42.4 42.4c3.1 3.1 3.1 8.2 0 11.3L653.3 424.6z',
-    'export-prompts': 'M880 912H144c-17.7 0-32-14.3-32-32V144c0-17.7 14.3-32 32-32h360c4.4 0 8 3.6 8 8v56c0 4.4-3.6 8-8 8H184v656h656V520c0-4.4 3.6-8 8-8h56c4.4 0 8 3.6 8 8v360c0 17.7-14.3 32-32 32zM770.87 199.13l-52.2-52.2a8.01 8.01 0 014.7-13.6l179.4-21c5.1-.6 9.5 3.7 8.9 8.9l-21 179.4c-.8 6.6-8.9 9.4-13.6 4.7l-52.4-52.4-256.2 256.2a8.03 8.03 0 01-11.3 0l-42.4-42.4a8.03 8.03 0 010-11.3l256.1-256.3z',
-    'plugin-management': 'M917.7 148.8l-42.4-42.4c-1.6-1.6-3.6-2.3-5.7-2.3s-4.1.8-5.7 2.3l-76.1 76.1a199.27 199.27 0 00-112.1-34.3c-51.2 0-102.4 19.5-141.5 58.6L432.3 308.7a8.03 8.03 0 000 11.3L704 591.7c1.6 1.6 3.6 2.3 5.7 2.3 2 0 4.1-.8 5.7-2.3l101.9-101.9c68.9-69 77-175.7 24.3-253.5l76.1-76.1c3.1-3.2 3.1-8.3 0-11.4zM769.1 441.7l-59.4 59.4-186.8-186.8 59.4-59.4c24.9-24.9 58.1-38.7 93.4-38.7 35.3 0 68.4 13.7 93.4 38.7 24.9 24.9 38.7 58.1 38.7 93.4 0 35.3-13.8 68.4-38.7 93.4zm-190.2 105a8.03 8.03 0 00-11.3 0L501 613.3 410.7 523l66.7-66.7c3.1-3.1 3.1-8.2 0-11.3L441 408.6a8.03 8.03 0 00-11.3 0L363 475.3l-43-43a7.85 7.85 0 00-5.7-2.3c-2 0-4.1.8-5.7 2.3L206.8 534.2c-68.9 69-77 175.7-24.3 253.5l-76.1 76.1a8.03 8.03 0 000 11.3l42.4 42.4c1.6 1.6 3.6 2.3 5.7 2.3s4.1-.8 5.7-2.3l76.1-76.1c33.7 22.9 72.9 34.3 112.1 34.3 51.2 0 102.4-19.5 141.5-58.6l101.9-101.9c3.1-3.1 3.1-8.2 0-11.3l-43-43 66.7-66.7c3.1-3.1 3.1-8.2 0-11.3l-36.6-36.2zM441.7 769.1a131.32 131.32 0 01-93.4 38.7c-35.3 0-68.4-13.7-93.4-38.7a131.32 131.32 0 01-38.7-93.4c0-35.3 13.7-68.4 38.7-93.4l59.4-59.4 186.8 186.8-59.4 59.4z',
-    'process-management': 'M924.8 385.6a446.7 446.7 0 00-96-142.4 446.7 446.7 0 00-142.4-96C631.1 123.8 572.5 112 512 112s-119.1 11.8-174.4 35.2a446.7 446.7 0 00-142.4 96 446.7 446.7 0 00-96 142.4C75.8 440.9 64 499.5 64 560c0 132.7 58.3 257.7 159.9 343.1l1.7 1.4c5.8 4.8 13.1 7.5 20.6 7.5h531.7c7.5 0 14.8-2.7 20.6-7.5l1.7-1.4C901.7 817.7 960 692.7 960 560c0-60.5-11.9-119.1-35.2-174.4zM761.4 836H262.6A371.12 371.12 0 01140 560c0-99.4 38.7-192.8 109-263 70.3-70.3 163.7-109 263-109 99.4 0 192.8 38.7 263 109 70.3 70.3 109 163.7 109 263 0 105.6-44.5 205.5-122.6 276zM623.5 421.5a8.03 8.03 0 00-11.3 0L527.7 506c-18.7-5-39.4-.2-54.1 14.5a55.95 55.95 0 000 79.2 55.95 55.95 0 0079.2 0 55.87 55.87 0 0014.5-54.1l84.5-84.5c3.1-3.1 3.1-8.2 0-11.3l-28.3-28.3zM490 320h44c4.4 0 8-3.6 8-8v-80c0-4.4-3.6-8-8-8h-44c-4.4 0-8 3.6-8 8v80c0 4.4 3.6 8 8 8zm260 218v44c0 4.4 3.6 8 8 8h80c4.4 0 8-3.6 8-8v-44c0-4.4-3.6-8-8-8h-80c-4.4 0-8 3.6-8 8zm12.7-197.2l-31.1-31.1a8.03 8.03 0 00-11.3 0l-56.6 56.6a8.03 8.03 0 000 11.3l31.1 31.1c3.1 3.1 8.2 3.1 11.3 0l56.6-56.6c3.1-3.1 3.1-8.2 0-11.3zm-458.6-31.1a8.03 8.03 0 00-11.3 0l-31.1 31.1a8.03 8.03 0 000 11.3l56.6 56.6c3.1 3.1 8.2 3.1 11.3 0l31.1-31.1c3.1-3.1 3.1-8.2 0-11.3l-56.6-56.6zM262 530h-80c-4.4 0-8 3.6-8 8v44c0 4.4 3.6 8 8 8h80c4.4 0 8-3.6 8-8v-44c0-4.4-3.6-8-8-8z',
-    'proxy-switch': 'M847.9 592H152c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h605.2L612.9 851c-4.1 5.2-.4 13 6.3 13h72.5c4.9 0 9.5-2.2 12.6-6.1l168.8-214.1c16.5-21 1.6-51.8-25.2-51.8zM872 356H266.8l144.3-183c4.1-5.2.4-13-6.3-13h-72.5c-4.9 0-9.5 2.2-12.6 6.1L150.9 380.2c-16.5 21-1.6 51.8 25.1 51.8h696c4.4 0 8-3.6 8-8v-60c0-4.4-3.6-8-8-8z',
-    'project-stats': 'M888 792H200V168c0-4.4-3.6-8-8-8h-56c-4.4 0-8 3.6-8 8v688c0 4.4 3.6 8 8 8h752c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm-600-80h56c4.4 0 8-3.6 8-8V560c0-4.4-3.6-8-8-8h-56c-4.4 0-8 3.6-8 8v144c0 4.4 3.6 8 8 8zm152 0h56c4.4 0 8-3.6 8-8V384c0-4.4-3.6-8-8-8h-56c-4.4 0-8 3.6-8 8v320c0 4.4 3.6 8 8 8zm152 0h56c4.4 0 8-3.6 8-8V462c0-4.4-3.6-8-8-8h-56c-4.4 0-8 3.6-8 8v242c0 4.4 3.6 8 8 8zm152 0h56c4.4 0 8-3.6 8-8V304c0-4.4-3.6-8-8-8h-56c-4.4 0-8 3.6-8 8v400c0 4.4 3.6 8 8 8z',
-    'messaging': 'M464 512a48 48 0 1096 0 48 48 0 10-96 0zm200 0a48 48 0 1096 0 48 48 0 10-96 0zm-400 0a48 48 0 1096 0 48 48 0 10-96 0zm661.2-173.6c-22.6-53.7-55-101.9-96.3-143.3a444.35 444.35 0 00-143.3-96.3C630.6 75.7 572.2 64 512 64h-2c-60.6.3-119.3 12.3-174.5 35.9a445.35 445.35 0 00-142 96.5c-40.9 41.3-73 89.3-95.2 142.8-23 55.4-34.6 114.3-34.3 174.9A449.4 449.4 0 00112 714v152a46 46 0 0046 46h152.1A449.4 449.4 0 00510 960h2.1c59.9 0 118-11.6 172.7-34.3a444.48 444.48 0 00142.8-95.2c41.3-40.9 73.8-88.7 96.5-142 23.6-55.2 35.6-113.9 35.9-174.5.3-60.9-11.5-120-34.8-175.6zm-151.1 438C704 845.8 611 884 512 884h-1.7c-60.3-.3-120.2-15.3-173.1-43.5l-8.4-4.5H188V695.2l-4.5-8.4C155.3 633.9 140.3 574 140 513.7c-.4-99.7 37.7-193.3 107.6-263.8 69.8-70.5 163.1-109.5 262.8-109.9h1.7c50 0 98.5 9.7 144.2 28.9 44.6 18.7 84.6 45.6 119 80 34.3 34.3 61.3 74.4 80 119 19.4 46.2 29.1 95.2 28.9 145.8-.6 99.6-39.7 192.9-110.1 262.7z',
-    'global-settings': _MI_SETTING,
-    'display-settings': _MI_SETTING,
-  };
-  function hEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-  function hBtn(html, title, type, opts){
-    const b = document.createElement('button');
-    b.className = 'hdr-btn' + (opts&&opts.cls ? (' '+opts.cls) : '') + (opts&&opts.active ? ' active' : '');
-    if (title) { b.title = title; b.setAttribute('aria-label', title); } // icon-only 按钮：title 对 AT 不可达，补 aria-label
-    if (opts && opts.active) b.setAttribute('aria-pressed', 'true');
-    if (opts && opts.color) b.style.color = opts.color;
-    b.innerHTML = html;
-    const svgEl = b.querySelector('svg');
-    if (svgEl && !svgEl.hasAttribute('aria-hidden')) svgEl.setAttribute('aria-hidden', 'true'); // 装饰性图标对 AT 隐藏
-    const payload = Object.assign({ tabId: headerModelTabId }, opts && opts.payload, { type });
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      // 需锚定坐标的按钮(如二维码弹层):点击时附带「按钮右缘到窗口右缘的距离」,React 端据此把弹层
-      // 锚到图标正下方(同 menuBarOpen 传 x 的机制)。tab bar 视图未被原生缩放、React 内容视图按
-      // ccv_displayScale 缩放,故 React 端会再除以缩放系数。
-      if (opts && opts.withRect) {
-        const r = b.getBoundingClientRect();
-        window.tabAPI.headerAction(Object.assign({}, payload, { rightOffset: Math.round(window.innerWidth - r.right) }));
-      } else {
-        window.tabAPI.headerAction(payload);
-      }
-    });
-    return b;
-  }
-  function renderClusters(){
-    leftCluster.replaceChildren();
-    rightCluster.replaceChildren();
-    const m = headerModel;
-    if (!m) return; // 无活动 tab（工作区选择器）→ 不显示任何迁移控件
-    // 左侧：菜单（在 React 内打开下拉，避免被 50px 高的 tab bar 裁切）+ 代理 + IM 状态
-    leftCluster.appendChild(hBtn(HSVG.menu, (m.menu && m.menu.title) || uiStrings.menu || 'Menu', 'menuOpen'));
-    if (m.proxy && m.proxy.label) {
-      leftCluster.appendChild(hBtn(HSVG.proxy + '<span>' + hEsc(m.proxy.label) + '</span>', m.proxy.label, 'proxy', { cls: 'proxy-btn' }));
-    }
-    if (Array.isArray(m.im)) {
-      m.im.forEach((chip) => {
-        if (!chip || !chip.id) return; // 容错：非法 model 条目不应中断整簇渲染
-        const def = IM_ICON[chip.id];
-        if (!def) return;
-        const svg = '<svg width="16" height="16" viewBox="' + def.vb + '" fill="currentColor" aria-hidden="true"><path d="' + def.path + '"/></svg>';
-        leftCluster.appendChild(hBtn(svg, chip.name || chip.id, 'im', { payload: { id: chip.id }, color: chip.connected ? def.color : 'var(--text)' }));
-      });
-    }
-    // 钉住的快捷方式：汉堡右侧常驻入口。点击回传 menuShortcut + key → React _handleHeaderAction 触发对应动作。
-    if (Array.isArray(m.pins)) {
-      m.pins.forEach((p) => {
-        if (!p || !p.key) return; // 容错：非法条目不中断整簇渲染
-        const path = MENU_ICON[p.key];
-        if (!path) return;
-        const svg = '<svg width="16" height="16" viewBox="' + MENU_ICON_VB + '" fill="currentColor" aria-hidden="true"><path d="' + path + '"/></svg>';
-        leftCluster.appendChild(hBtn(svg, p.name || p.key, 'menuShortcut', { payload: { key: p.key } }));
-      });
-    }
-    // 右侧：审批 bell、倒计时、二维码、主题、终端、视图模式
-    if (m.approval && m.approval.count > 0) {
-      rightCluster.appendChild(hBtn(HSVG.bell + '<span class="badge">' + hEsc(m.approval.count) + '</span>', m.approval.title || '', 'approval'));
-    }
-    if (m.countdown && m.countdown.text) {
-      const c = document.createElement('span');
-      c.className = 'hdr-countdown';
-      c.textContent = m.countdown.text;
-      rightCluster.appendChild(c);
-    }
-    if (m.qr) {
-      rightCluster.appendChild(hBtn(HSVG.qr, (m.qr && m.qr.title) || 'QR', 'qrOpen', { withRect: true }));
-    }
-    if (m.theme) {
-      rightCluster.appendChild(hBtn(m.theme.mode === 'light' ? HSVG.sun : HSVG.moon, m.theme.title || '', 'theme'));
-    }
-    if (m.terminal) {
-      rightCluster.appendChild(hBtn(HSVG.terminal, m.terminal.label || '', 'terminal', { active: !!m.terminal.active }));
-    }
-    if (m.viewMode) {
-      rightCluster.appendChild(hBtn(m.viewMode.mode === 'raw' ? HSVG.chat : HSVG.raw, m.viewMode.label || '', 'viewMode'));
-    }
-  }
-  window.tabAPI.onHeaderModel?.((model, tabId) => {
-    headerModel = model;
-    if (tabId != null) headerModelTabId = tabId;
-    if (model && model.deviceMode) { modeTitles = model.deviceMode; modeTitlesFromModel = true; renderModeBtn(); } // 习得本地化的开关 tooltip
-    renderClusters();
-    renderMenuBar(); // 菜单栏仅在有活动 tab 时渲染(下拉宿主在活动 tab 的 React 里)
-  });
-  window.tabAPI.requestHeaderModel?.(); // 首帧拉取活动 tab 已缓存模型，规避 did-finish-load 竞态后空白
-
-  // ---- Windows HTML 菜单栏(File/Edit/View/Window) ----
-  // 点击把 menuId + 按钮横坐标经 header-action 发给 main(main 附上已翻译模型)→ 活动 tab 的
-  // React 在内容视图里渲染跟随皮肤的下拉(50px 高的 tab bar 自己放不下下拉)。
-  const menuBarEl = document.getElementById('menuBar');
-  // React 端回报的「菜单下拉是否打开」状态:打开时 hover 相邻顶级菜单即切换(原生菜单栏惯例)。
-  let menuDropdownOpen = false;
-  function renderMenuBar() {
-    menuBarEl.replaceChildren();
-    if (PLATFORM !== 'win32' || !Array.isArray(menuModel) || !headerModel) return;
-    menuModel.forEach((menu) => {
-      const b = document.createElement('button');
-      b.className = 'menubar-btn';
-      b.setAttribute('role', 'menuitem');
-      b.setAttribute('aria-haspopup', 'true');
-      b.textContent = menu.label;
-      const open = () => {
-        window.tabAPI.headerAction({
-          tabId: headerModelTabId,
-          type: 'menuBarOpen',
-          menuId: menu.id,
-          x: Math.round(b.getBoundingClientRect().left),
-        });
-      };
-      b.addEventListener('click', (e) => { e.stopPropagation(); open(); });
-      b.addEventListener('mouseenter', () => { if (menuDropdownOpen) open(); });
-      menuBarEl.appendChild(b);
-    });
-  }
-  window.tabAPI.onMenuModel?.((payload) => {
-    menuModel = (payload && payload.menus) || null;
-    uiStrings = (payload && payload.uiStrings) || {};
-    if (!modeTitlesFromModel && uiStrings.toIpad && uiStrings.toPc) {
-      modeTitles = { toIpad: uiStrings.toIpad, toPc: uiStrings.toPc };
-      renderModeBtn();
-    }
-    render();        // "+" tooltip 应用翻译
-    renderClusters(); // 汉堡兜底 tooltip 应用翻译
-    renderMenuBar();
-  });
-  window.tabAPI.onMenuBarState?.((open) => { menuDropdownOpen = !!open; });
 </script>
 </body>
 </html>

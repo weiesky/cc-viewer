@@ -8,7 +8,7 @@ Im Folgenden finden Sie den kategorisierten Index aller Tools.
 
 | Tool | Zweck |
 |------|-------|
-| [Agent](Tool-Agent.md) | Startet einen Sub-Agent (SubAgent) für komplexe mehrstufige Aufgaben |
+| [Task](Tool-Task.md) | Startet einen Sub-Agent (SubAgent) für komplexe mehrstufige Aufgaben |
 | [TaskOutput](Tool-TaskOutput.md) | Ruft die Ausgabe von Hintergrundaufgaben ab |
 | [TaskStop](Tool-TaskStop.md) | Stoppt eine laufende Hintergrundaufgabe |
 | [TaskCreate](Tool-TaskCreate.md) | Erstellt einen strukturierten Aufgabenlisteneintrag |

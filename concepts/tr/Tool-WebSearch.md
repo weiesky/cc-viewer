@@ -1,51 +1,58 @@
 # WebSearch
 
-Canlı bir web araması gerçekleştirir ve asistanın modelin eğitim kesiminin ötesindeki mevcut bilgilerde yanıtını temellendirmek için kullandığı sıralanmış sonuçlar döndürür.
+## Tanım
 
-## Ne Zaman Kullanılır
-
-- Güncel olaylar, son yayınlar veya son dakika haberleri hakkındaki soruları yanıtlamak.
-- Bir kitaplık, çerçeve veya CLI aracının en son sürümünü aramak.
-- Tam URL bilinmediğinde dokümantasyon veya blog yazıları bulmak.
-- Model eğitildiğinden beri değişmiş olabilecek bir gerçeği doğrulamak.
-- `WebFetch` ile herhangi bir sayfayı almadan önce bir konudaki birden fazla bakış açısını keşfetmek.
+Arama motoru sorgusu çalıştırır ve güncel bilgi almak için arama sonuçlarını döndürür.
 
 ## Parametreler
 
-- `query` (string, zorunlu): Arama sorgusu. Minimum uzunluk 2 karakter. Sonuçların taze olması için "en son" veya "yakın zamandaki" bilgiler hakkında sorarken mevcut yılı dahil edin.
-- `allowed_domains` (string dizisi, opsiyonel): Sonuçları yalnızca bu alan adlarıyla sınırlar, örneğin `["nodejs.org", "developer.mozilla.org"]`. Belirli bir kaynağa güvendiğinizde kullanışlıdır.
-- `blocked_domains` (string dizisi, opsiyonel): Bu alan adlarından gelen sonuçları hariç tutar. Aynı alan adını `allowed_domains` ve `blocked_domains`'e geçirmeyin.
+| Parametre | Tür | Zorunlu | Açıklama |
+|-----------|-----|---------|----------|
+| `query` | string | Evet | Arama sorgusu (en az 2 karakter) |
+| `allowed_domains` | string[] | Hayır | Yalnızca bu alan adlarından sonuçları dahil et |
+| `blocked_domains` | string[] | Hayır | Bu alan adlarından sonuçları hariç tut |
 
-## Örnekler
+## Kullanım Senaryoları
 
-### Örnek 1: Mevcut yıl ile sürüm araması
+**Kullanıma uygun:**
+- Modelin bilgi kesme tarihini aşan güncel bilgileri alma
+- Güncel olayları ve en son verileri bulma
+- En güncel teknik belgeleri arama
 
-```
-WebSearch(
-  query="React 19 stable release date 2026",
-  allowed_domains=["react.dev", "github.com"]
-)
-```
+## Dikkat Edilecekler
 
-Resmi duyuruları döndürür ve düşük kaliteli toplayıcı sitelerden kaçınır.
+- Arama sonuçları markdown köprü formatında döndürülür
+- Kullanımdan sonra yanıtın sonuna "Sources:" bölümü eklenmeli ve ilgili URL'ler listelenmelidir
+- Alan adı filtrelemeyi destekler (dahil etme/hariç tutma)
+- Arama sorgusunda güncel yıl kullanılmalıdır
+- Yalnızca ABD'de kullanılabilir
 
-### Örnek 2: Gürültülü kaynakları hariç tutmak
+## Orijinal Metin
 
-```
-WebSearch(
-  query="kubernetes ingress-nginx CVE April 2026",
-  blocked_domains=["pinterest.com", "medium.com"]
-)
-```
+<textarea readonly>
+- Allows Claude to search the web and use the results to inform responses
+- Provides up-to-date information for current events and recent data
+- Returns search result information formatted as search result blocks, including links as markdown hyperlinks
+- Use this tool for accessing information beyond Claude's knowledge cutoff
+- Searches are performed automatically within a single API call
 
-Sonuçları satıcı uyarıları ve güvenlik izleyicilerine odaklı tutar.
+CRITICAL REQUIREMENT - You MUST follow this:
+  - After answering the user's question, you MUST include a "Sources:" section at the end of your response
+  - In the Sources section, list all relevant URLs from the search results as markdown hyperlinks: [Title](URL)
+  - This is MANDATORY - never skip including sources in your response
+  - Example format:
 
-## Notlar
+    [Your answer here]
 
-- Bir yanıtta `WebSearch` kullandığınızda, yanıtınızın sonuna her alıntılanan sonucu `[Title](URL)` biçiminde bir Markdown köprüsü olarak listeleyen bir `Sources:` bölümü eklemeniz gerekir. Bu isteğe bağlı değil, zorunlu bir gerekliliktir.
-- `WebSearch` yalnızca Amerika Birleşik Devletleri'ndeki kullanıcılara sunulmaktadır. Araç bölgenizde kullanılamıyorsa, bilinen bir URL'ye karşı `WebFetch`'e geri dönün veya kullanıcıdan ilgili içeriği yapıştırmasını isteyin.
-- Her çağrı tek bir gidiş-dönüşte aramayı gerçekleştirir — akış yapamaz veya sayfalara ayıramazsınız. İlk sonuç kümesi hedef dışıysa sorguyu iyileştirin.
-- Araç parçacıklar ve meta veri döndürür, tam sayfa içerikleri değil. Belirli bir sonucu derinlemesine okumak için, döndürülen URL ile `WebFetch` ile takip edin.
-- CVE'ler veya uyumluluk gibi güvenliğe duyarlı sorular için yetkili kaynak temini uygulamak için `allowed_domains`'i ve dokümantasyonu yansıtan SEO çiftliklerini kesmek için `blocked_domains`'i kullanın.
-- Sorguları kısa ve anahtar kelime odaklı tutun. Doğal dil soruları işe yarar ancak birincil kaynaklardan ziyade konuşma yanıtları döndürme eğilimindedir.
-- Arama sezgisine dayalı olarak URL'ler uydurmayın — her zaman aramayı çalıştırın ve aracın gerçekten döndürdüğünü alıntılayın.
+    Sources:
+    - [Source Title 1](https://example.com/1)
+    - [Source Title 2](https://example.com/2)
+
+Usage notes:
+  - Domain filtering is supported to include or block specific websites
+  - Web search is only available in the US
+
+IMPORTANT - Use the correct year in search queries:
+  - The current month is March 2026. You MUST use this year when searching for recent information, documentation, or current events.
+  - Example: If the user asks for "latest React docs", search for "React documentation" with the current year, NOT last year
+</textarea>

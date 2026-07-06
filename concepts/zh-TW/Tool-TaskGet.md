@@ -1,47 +1,56 @@
 # TaskGet
 
-依 ID 擷取單一任務的完整紀錄，包括描述、目前狀態、owner、metadata 與相依邊。當 `TaskList` 回傳的摘要不足以採取行動時使用。
+## 定義
 
-## 使用時機
-
-- 你從 `TaskList` 挑選了一個任務，開始前需要完整描述。
-- 即將把任務標為 `completed` 時，想再次確認驗收條件。
-- 你需要檢視此任務 `blocks` 了哪些任務或被哪些任務 `blockedBy`，以決定下一步。
-- 你在調查歷史——誰擁有、附了什麼 metadata、何時變更了狀態。
-- 隊友或先前工作階段提到了某個任務 ID，你需要上下文。
-
-只需要高階瀏覽時請使用 `TaskList`；保留 `TaskGet` 給你打算細讀或修改的特定紀錄。
+透過任務 ID 取得任務的完整詳情。
 
 ## 參數
 
-- `taskId`（string，必填）：由 `TaskCreate` 或 `TaskList` 回傳的任務識別碼。ID 在任務生命週期中維持不變。
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| `taskId` | string | 是 | 要取得的任務 ID |
 
-## 範例
+## 回傳內容
 
-### 範例 1
+- `subject` — 任務標題
+- `description` — 詳細需求和上下文
+- `status` — 狀態：`pending`、`in_progress` 或 `completed`
+- `blocks` — 被此任務阻塞的任務列表
+- `blockedBy` — 阻塞此任務的前置任務列表
 
-查閱你剛在清單中看到的任務。
+## 使用場景
 
-```
-TaskGet(taskId: "t_01HXYZ...")
-```
-
-典型回應欄位：`id`、`subject`、`description`、`activeForm`、`status`、`owner`、`blocks`、`blockedBy`、`metadata`、`createdAt`、`updatedAt`。
-
-### 範例 2
-
-開始前先解相依。
-
-```
-TaskGet(taskId: "t_01HXYZ...")
-# Inspect blockedBy — if any referenced task is still pending
-# or in_progress, work on the blocker first.
-```
+**適合使用：**
+- 開始工作前取得任務的完整描述和上下文
+- 了解任務的依賴關係
+- 被分配任務後取得完整需求
 
 ## 注意事項
 
-- `TaskGet` 為唯讀，可安全地重複呼叫；不會改變狀態或擁有者。
-- 若 `blockedBy` 非空且包含未 `completed` 的任務，不要開始此任務——先處理阻擋者（或與其 owner 協調）。
-- `description` 欄位可能很長。動工前完整閱讀；草讀會漏掉驗收條件。
-- 未知或已刪除的 `taskId` 會傳回錯誤。重新執行 `TaskList` 以取得目前 ID。
-- 若你即將編輯某個任務，先呼叫 `TaskGet` 以避免覆寫隊友剛改過的欄位。
+- 取得任務後應檢查 `blockedBy` 列表是否為空再開始工作
+- 使用 TaskList 查看所有任務的摘要資訊
+
+## 原文
+
+<textarea readonly>Use this tool to retrieve a task by its ID from the task list.
+
+## When to Use This Tool
+
+- When you need the full description and context before starting work on a task
+- To understand task dependencies (what it blocks, what blocks it)
+- After being assigned a task, to get complete requirements
+
+## Output
+
+Returns full task details:
+- **subject**: Task title
+- **description**: Detailed requirements and context
+- **status**: 'pending', 'in_progress', or 'completed'
+- **blocks**: Tasks waiting on this one to complete
+- **blockedBy**: Tasks that must complete before this one can start
+
+## Tips
+
+- After fetching a task, verify its blockedBy list is empty before beginning work.
+- Use TaskList to see all tasks in summary form.
+</textarea>

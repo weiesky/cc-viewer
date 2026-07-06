@@ -6,7 +6,7 @@ MainAgent, Claude Code'un agent team durumunda olmadığı zamanlardaki ana iste
 
 ## Tanımlama Yöntemi
 
-cc-viewer'da MainAgent, `req.mainAgent === true` ile tanımlanır ve `server/interceptor.js` tarafından istek yakalama sırasında otomatik olarak işaretlenir.
+cc-viewer'da MainAgent, `req.mainAgent === true` ile tanımlanır ve `interceptor.js` tarafından istek yakalama sırasında otomatik olarak işaretlenir.
 
 Belirleme koşulları (tümü karşılanmalı):
 - İstek gövdesi `system` alanı içerir (system prompt)

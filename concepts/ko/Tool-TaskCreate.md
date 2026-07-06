@@ -1,56 +1,78 @@
 # TaskCreate
 
-현재 팀의 작업 목록 (또는 팀이 활성화되지 않은 경우 세션의 작업 목록)에 새 작업을 생성합니다. 나중에 추적, 위임, 또는 재방문해야 할 작업 항목을 캡처하는 데 사용합니다.
+## 정의
 
-## 사용 시점
+구조화된 태스크 리스트 항목을 생성하여 진행 상황 추적, 복잡한 태스크 정리, 사용자에게 작업 진행 상황 표시에 사용합니다.
 
-- 사용자가 명시적인 추적으로부터 이점을 얻는 다단계 작업을 설명합니다.
-- 큰 요청을 별도로 완료 가능한 작은 단위로 분할하고 있습니다.
-- 작업 중간에 후속 작업이 발견되었으며 잊지 말아야 합니다.
-- 팀원이나 서브에이전트에게 작업을 넘기기 전에 의도에 대한 영속적인 기록이 필요합니다.
-- 계획 모드에서 작동 중이며 각 계획 단계를 구체적인 작업으로 표현하려고 합니다.
+## 파라미터
 
-사소한 일회성 작업, 순수 대화, 또는 두세 번의 직접 도구 호출로 완료 가능한 작업에는 `TaskCreate`를 건너뛰십시오.
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| `subject` | string | 예 | 짧은 태스크 제목, 명령형 사용 (예: "Fix authentication bug") |
+| `description` | string | 예 | 상세 설명, 컨텍스트와 수락 기준 포함 |
+| `activeForm` | string | 아니오 | 진행 중 표시할 현재 진행형 텍스트 (예: "Fixing authentication bug") |
+| `metadata` | object | 아니오 | 태스크에 첨부할 임의의 메타데이터 |
 
-## 매개변수
+## 사용 시나리오
 
-- `subject` (string, 필수): 짧은 명령형 제목, 예를 들어 `Fix login redirect on Safari`. 대략 80자 미만으로 유지하십시오.
-- `description` (string, 필수): 상세한 컨텍스트 — 문제, 제약 조건, 수락 기준, 향후 독자가 필요할 파일이나 링크. 팀원이 이것을 차갑게 집어 드는 것처럼 작성하십시오.
-- `activeForm` (string, 선택): 작업이 `in_progress`일 때 표시되는 현재 진행형 스피너 텍스트, 예를 들어 `Fixing login redirect on Safari`. `subject`를 미러링하지만 -ing 형태로.
-- `metadata` (object, 선택): 작업에 첨부된 임의의 구조화된 데이터. 일반적인 용도: 레이블, 우선순위 힌트, 외부 티켓 ID, 또는 에이전트별 구성.
+**적합한 경우:**
+- 복잡한 다단계 태스크 (3단계 이상)
+- 사용자가 여러 할 일 항목을 제공한 경우
+- 계획 모드에서 작업 추적
+- 사용자가 명시적으로 todo 리스트 사용을 요청
 
-새로 생성된 작업은 항상 상태 `pending`으로 시작하며 소유자가 없습니다. 의존성 (`blocks`, `blockedBy`)은 생성 시점에 설정되지 않습니다 — 나중에 `TaskUpdate`로 적용하십시오.
+**적합하지 않은 경우:**
+- 단일 간단한 태스크
+- 3단계 이내의 간단한 작업
+- 순수 대화 또는 정보 조회
 
-## 예시
+## 주의사항
 
-### 예시 1
+- 모든 새 태스크의 초기 상태는 `pending`
+- `subject`는 명령형 ("Run tests"), `activeForm`은 현재 진행형 ("Running tests") 사용
+- 생성 후 TaskUpdate로 의존 관계 (blocks/blockedBy) 설정 가능
+- 생성 전 TaskList를 호출하여 중복 태스크가 없는지 확인해야 함
 
-사용자가 방금 제출한 버그 보고서를 캡처합니다.
+## 원문
 
-```
-TaskCreate(
-  subject: "Repair broken PDF export on Windows",
-  description: "Users on Windows 11 report the export button produces a 0-byte file. Reproduce with sample doc in test/fixtures/export/, then fix the code path in src/export/pdf.ts. Acceptance: export writes a valid PDF and the existing export test suite passes.",
-  activeForm: "Repairing broken PDF export on Windows"
-)
-```
+<textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+It also helps the user understand the progress of the task and overall progress of their requests.
 
-### 예시 2
+## When to Use This Tool
 
-세션 시작 시 에픽을 추적된 단위로 분할합니다.
+Use this tool proactively in these scenarios:
 
-```
-TaskCreate(
-  subject: "Draft migration plan for auth service",
-  description: "Produce a written plan covering rollout stages, rollback strategy, and monitoring. Output: docs/auth-migration.md.",
-  activeForm: "Drafting migration plan for auth service",
-  metadata: { "priority": "P1", "linearId": "AUTH-214" }
-)
-```
+- Complex multi-step tasks - When a task requires 3 or more distinct steps or actions
+- Non-trivial and complex tasks - Tasks that require careful planning or multiple operations
+- Plan mode - When using plan mode, create a task list to track the work
+- User explicitly requests todo list - When the user directly asks you to use the todo list
+- User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
+- After receiving new instructions - Immediately capture user requirements as tasks
+- When you start working on a task - Mark it as in_progress BEFORE beginning work
+- After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation
 
-## 참고사항
+## When NOT to Use This Tool
 
-- 작업이 `in_progress`로 전환될 때 UI가 자연스럽게 읽히도록 `subject`는 명령형 어조로, `activeForm`은 현재 진행형으로 작성하십시오.
-- 중복을 피하기 위해 생성 전에 `TaskList`를 호출하십시오 — 팀 목록은 팀원 및 서브에이전트와 공유됩니다.
-- `description`이나 `metadata`에 비밀이나 자격 증명을 포함하지 마십시오. 작업 기록은 팀에 접근할 수 있는 모든 사람에게 보입니다.
-- 생성 후 `TaskUpdate`로 작업을 수명 주기를 통해 이동시키십시오. `in_progress`에 작업을 조용히 방치하지 마십시오.
+Skip using this tool when:
+- There is only a single, straightforward task
+- The task is trivial and tracking it provides no organizational benefit
+- The task can be completed in less than 3 trivial steps
+- The task is purely conversational or informational
+
+NOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.
+
+## Task Fields
+
+- **subject**: A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")
+- **description**: Detailed description of what needs to be done, including context and acceptance criteria
+- **activeForm**: Present continuous form shown in spinner when task is in_progress (e.g., "Fixing authentication bug"). This is displayed to the user while you work on the task.
+
+**IMPORTANT**: Always provide activeForm when creating tasks. The subject should be imperative ("Run tests") while activeForm should be present continuous ("Running tests"). All tasks are created with status `pending`.
+
+## Tips
+
+- Create tasks with clear, specific subjects that describe the outcome
+- Include enough detail in the description for another agent to understand and complete the task
+- After creating tasks, use TaskUpdate to set up dependencies (blocks/blockedBy) if needed
+- Check TaskList first to avoid creating duplicate tasks
+</textarea>

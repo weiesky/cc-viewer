@@ -9,7 +9,7 @@
  */
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { reconstructEntries } from '../server/lib/delta-reconstructor.js';
+import { reconstructEntries } from '../lib/delta-reconstructor.js';
 
 // ============================================================================
 // Mock AppBase SSE 逻辑（从 AppBase.jsx 提取的核心行为）

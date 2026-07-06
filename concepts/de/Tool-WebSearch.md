@@ -1,51 +1,58 @@
 # WebSearch
 
-Führt eine Live-Websuche durch und gibt gerankte Ergebnisse zurück, mit denen der Assistent seine Antwort auf aktuelle Informationen jenseits des Trainings-Cutoffs des Modells stützt.
+## Definition
 
-## Wann verwenden
-
-- Beantworten von Fragen zu aktuellen Ereignissen, jüngsten Releases oder Breaking News.
-- Nachschlagen der neuesten Version einer Bibliothek, eines Frameworks oder CLI-Tools.
-- Finden von Dokumentation oder Blogposts, wenn die genaue URL unbekannt ist.
-- Verifizieren einer Tatsache, die sich seit dem Training des Modells geändert haben könnte.
-- Entdecken mehrerer Perspektiven zu einem Thema, bevor eine einzelne Seite mit `WebFetch` abgerufen wird.
+Führt eine Suchmaschinenabfrage durch und gibt Suchergebnisse zurück, um aktuelle Informationen zu erhalten.
 
 ## Parameter
 
-- `query` (string, erforderlich): Die Suchanfrage. Mindestlänge 2 Zeichen. Fügen Sie das aktuelle Jahr hinzu, wenn Sie nach "aktuellen" oder "jüngsten" Informationen fragen, damit die Ergebnisse frisch sind.
-- `allowed_domains` (array of strings, optional): Beschränkt Ergebnisse auf nur diese Domains, zum Beispiel `["nodejs.org", "developer.mozilla.org"]`. Nützlich, wenn Sie einer bestimmten Quelle vertrauen.
-- `blocked_domains` (array of strings, optional): Schließt Ergebnisse von diesen Domains aus. Übergeben Sie dieselbe Domain nicht sowohl an `allowed_domains` als auch an `blocked_domains`.
+| Parameter | Typ | Erforderlich | Beschreibung |
+|-----------|-----|--------------|--------------|
+| `query` | string | Ja | Suchanfrage (mindestens 2 Zeichen) |
+| `allowed_domains` | string[] | Nein | Nur Ergebnisse von diesen Domains einschließen |
+| `blocked_domains` | string[] | Nein | Ergebnisse von diesen Domains ausschließen |
 
-## Beispiele
+## Anwendungsfälle
 
-### Beispiel 1: Versions-Nachschlagen mit aktuellem Jahr
-
-```
-WebSearch(
-  query="React 19 stable release date 2026",
-  allowed_domains=["react.dev", "github.com"]
-)
-```
-
-Liefert offizielle Ankündigungen und vermeidet Low-Quality-Aggregator-Seiten.
-
-### Beispiel 2: Rauschige Quellen ausschließen
-
-```
-WebSearch(
-  query="kubernetes ingress-nginx CVE April 2026",
-  blocked_domains=["pinterest.com", "medium.com"]
-)
-```
-
-Hält die Ergebnisse auf Herstellerhinweise und Security-Tracker fokussiert.
+**Geeignet für:**
+- Aktuelle Informationen abrufen, die über den Wissensstand des Modells hinausgehen
+- Aktuelle Ereignisse und neueste Daten finden
+- Neueste technische Dokumentation suchen
 
 ## Hinweise
 
-- Wenn Sie `WebSearch` in einer Antwort verwenden, müssen Sie am Ende Ihrer Antwort einen `Sources:`-Abschnitt anhängen, der jedes zitierte Ergebnis als Markdown-Hyperlink der Form `[Title](URL)` auflistet. Das ist eine harte Voraussetzung, keine Option.
-- `WebSearch` ist nur für Benutzer in den Vereinigten Staaten verfügbar. Wenn das Tool in Ihrer Region nicht verfügbar ist, weichen Sie auf `WebFetch` gegen eine bekannte URL aus oder bitten Sie den Benutzer, relevanten Inhalt einzufügen.
-- Jeder Aufruf führt die Suche in einem einzigen Roundtrip aus – Sie können nicht streamen oder paginieren. Verfeinern Sie die Anfrage, wenn das erste Ergebnisset unpassend ist.
-- Das Tool gibt Snippets und Metadaten zurück, keine vollständigen Seiteninhalte. Um einen bestimmten Treffer tiefgehend zu lesen, folgen Sie mit `WebFetch` unter Verwendung der zurückgegebenen URL.
-- Verwenden Sie `allowed_domains`, um autoritative Quellen für sicherheitsrelevante Fragen wie CVEs oder Compliance durchzusetzen, und `blocked_domains`, um SEO-Farmen auszuschließen, die Dokumentation spiegeln.
-- Halten Sie Anfragen kurz und schlagwortgetrieben. Natürlichsprachliche Fragen funktionieren, neigen aber dazu, Konversationsantworten statt Primärquellen zurückzuliefern.
-- Erfinden Sie keine URLs aufgrund Suchintuition – führen Sie die Suche stets aus und zitieren Sie, was das Tool tatsächlich zurückgegeben hat.
+- Suchergebnisse werden im Markdown-Hyperlink-Format zurückgegeben
+- Nach der Verwendung muss am Ende der Antwort ein "Sources:"-Abschnitt mit den relevanten URLs angefügt werden
+- Unterstützt Domain-Filterung (einschließen/ausschließen)
+- In Suchanfragen sollte das aktuelle Jahr verwendet werden
+- Nur in den USA verfügbar
+
+## Originaltext
+
+<textarea readonly>
+- Allows Claude to search the web and use the results to inform responses
+- Provides up-to-date information for current events and recent data
+- Returns search result information formatted as search result blocks, including links as markdown hyperlinks
+- Use this tool for accessing information beyond Claude's knowledge cutoff
+- Searches are performed automatically within a single API call
+
+CRITICAL REQUIREMENT - You MUST follow this:
+  - After answering the user's question, you MUST include a "Sources:" section at the end of your response
+  - In the Sources section, list all relevant URLs from the search results as markdown hyperlinks: [Title](URL)
+  - This is MANDATORY - never skip including sources in your response
+  - Example format:
+
+    [Your answer here]
+
+    Sources:
+    - [Source Title 1](https://example.com/1)
+    - [Source Title 2](https://example.com/2)
+
+Usage notes:
+  - Domain filtering is supported to include or block specific websites
+  - Web search is only available in the US
+
+IMPORTANT - Use the correct year in search queries:
+  - The current month is March 2026. You MUST use this year when searching for recent information, documentation, or current events.
+  - Example: If the user asks for "latest React docs", search for "React documentation" with the current year, NOT last year
+</textarea>

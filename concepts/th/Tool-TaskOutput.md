@@ -1,50 +1,40 @@
 # TaskOutput
 
-ดึง output ที่สะสมของ task เบื้องหลังที่กำลังรันหรือเสร็จสิ้น — คำสั่ง shell เบื้องหลัง, agent ในเครื่อง, หรือ session ระยะไกล ใช้เมื่อต้องการตรวจสอบสิ่งที่ task ที่รันนานได้ผลิตจนถึงขณะนี้
+## คำจำกัดความ
 
-## เมื่อใดควรใช้
-
-- Session ระยะไกล (เช่น cloud sandbox) กำลังรันและคุณต้องการ stdout ของมัน
-- Agent ในเครื่องถูก dispatch ใน background และคุณต้องการความคืบหน้าบางส่วนก่อนที่มันจะส่งกลับ
-- คำสั่ง shell เบื้องหลังรันนานพอที่คุณต้องการตรวจสอบโดยไม่หยุดมัน
-- คุณต้องยืนยันว่า task เบื้องหลังกำลังมีความคืบหน้าจริงๆ ก่อนรอนานขึ้นหรือเรียก `TaskStop`
-
-อย่าหันไปใช้ `TaskOutput` โดยอัตโนมัติ สำหรับงานเบื้องหลังส่วนใหญ่มีเส้นทางที่ตรงกว่า — ดูหมายเหตุด้านล่าง
+รับผลลัพธ์ของงานเบื้องหลังที่กำลังทำงานหรือเสร็จสิ้นแล้ว ใช้ได้กับ shell เบื้องหลัง agent แบบอะซิงโครนัส และเซสชันระยะไกล
 
 ## พารามิเตอร์
 
-- `task_id` (string, required): ตัวระบุ task ที่ส่งคืนเมื่องานเบื้องหลังเริ่มต้น ไม่ใช่เหมือน `taskId` ของ task-list; นี่คือ handle runtime สำหรับการ execute เฉพาะ
-- `block` (boolean, optional): เมื่อ `true` (ค่าเริ่มต้น) รอจนกว่า task จะสร้าง output ใหม่หรือเสร็จก่อนส่งกลับ เมื่อ `false` ส่งกลับทันทีด้วยสิ่งที่ buffer ไว้
-- `timeout` (number, optional): millisecond สูงสุดที่ block ก่อนส่งกลับ มีความหมายเฉพาะเมื่อ `block` เป็น `true` ค่าเริ่มต้น `30000`, สูงสุด `600000`
+| พารามิเตอร์ | ประเภท | จำเป็น | คำอธิบาย |
+|------|------|------|------|
+| `task_id` | string | ใช่ | ID ของงาน |
+| `block` | boolean | ใช่ | บล็อกรอจนกว่างานจะเสร็จหรือไม่ ค่าเริ่มต้น `true` |
+| `timeout` | number | ใช่ | เวลารอสูงสุด (มิลลิวินาที) ค่าเริ่มต้น 30000 สูงสุด 600000 |
 
-## ตัวอย่าง
+## สถานการณ์การใช้งาน
 
-### ตัวอย่างที่ 1
+**เหมาะสำหรับ:**
+- ตรวจสอบความคืบหน้าของ agent เบื้องหลังที่เริ่มผ่าน Task (`run_in_background: true`)
+- รับผลลัพธ์การรันคำสั่ง Bash เบื้องหลัง
+- รอให้งานอะซิงโครนัสเสร็จสิ้นและรับผลลัพธ์
 
-ดู session ระยะไกลโดยไม่ block
+**ไม่เหมาะสำหรับ:**
+- งานเบื้องหน้า — งานเบื้องหน้าส่งคืนผลลัพธ์โดยตรง ไม่ต้องใช้เครื่องมือนี้
 
-```
-TaskOutput(task_id: "sess_01HXYZ...", block: false)
-```
+## ข้อควรระวัง
 
-ส่งคืน stdout/stderr ที่ผลิตตั้งแต่ task เริ่ม (หรือตั้งแต่การเรียก `TaskOutput` ครั้งก่อน ขึ้นกับ runtime)
+- `block: true` จะบล็อกจนกว่างานจะเสร็จหรือหมดเวลา
+- `block: false` ใช้สำหรับตรวจสอบสถานะปัจจุบันแบบไม่บล็อก
+- ID ของงานสามารถค้นหาได้ผ่านคำสั่ง `/tasks`
+- ใช้ได้กับงานทุกประเภท: shell เบื้องหลัง, agent แบบอะซิงโครนัส, เซสชันระยะไกล
 
-### ตัวอย่างที่ 2
+## ข้อความต้นฉบับ
 
-รอสั้นๆ ให้ agent ในเครื่อง emit output เพิ่ม
-
-```
-TaskOutput(
-  task_id: "agent_01ABCD...",
-  block: true,
-  timeout: 10000
-)
-```
-
-## หมายเหตุ
-
-- คำสั่ง bash เบื้องหลัง: `TaskOutput` ถือเป็น deprecated ในการใช้งานนี้ เมื่อคุณเริ่ม task shell เบื้องหลัง ผลลัพธ์จะรวม path ไปยังไฟล์ output ของมันแล้ว — อ่าน path นั้นโดยตรงด้วย tool `Read` `Read` ให้การเข้าถึงแบบสุ่ม offset บรรทัด และมุมมองที่เสถียร; `TaskOutput` ไม่ให้
-- Agent ในเครื่อง (tool `Agent` ที่ dispatch ใน background): เมื่อ agent เสร็จ ผลลัพธ์ของ tool `Agent` จะมีการตอบสุดท้ายแล้ว ใช้สิ่งนั้นโดยตรง อย่า `Read` ไฟล์ transcript ที่ symlink — มันมี tool-call stream เต็มและจะ overflow context window
-- Session ระยะไกล: `TaskOutput` คือวิธีที่ถูกต้องและมักเป็นวิธีเดียวในการ stream output กลับ ชอบ `block: true` ด้วย `timeout` ที่พอเหมาะมากกว่าการ poll loop ที่แน่น
-- `task_id` ที่ไม่รู้จักหรือ task ที่ output ถูก garbage-collect จะคืน error Re-dispatch งานหากยังต้องการ
-- `TaskOutput` ไม่หยุด task ใช้ `TaskStop` เพื่อ terminate
+<textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)
+- Takes a task_id parameter identifying the task
+- Returns the task output along with status information
+- Use block=true (default) to wait for task completion
+- Use block=false for non-blocking check of current status
+- Task IDs can be found using the /tasks command
+- Works with all task types: background shells, async agents, and remote sessions</textarea>

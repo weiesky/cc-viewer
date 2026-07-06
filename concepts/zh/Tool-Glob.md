@@ -1,35 +1,39 @@
 # Glob
 
-按 glob 模式匹配文件名，并按最近修改时间倒序返回路径。它针对任意规模的代码库都能快速定位文件，无需退化到 `find`。
+## 定义
 
-## 何时使用
-
-- 枚举某个扩展名的所有文件（例如 `src` 下所有 `*.ts`）
-- 按命名约定发现配置或夹具文件（`**/jest.config.*`、`**/*.test.tsx`）
-- 在执行有针对性的 `Grep` 前收窄搜索面
-- 在调用 `Write` 前检查是否已存在符合模式的文件
-- 依赖修改时间排序，查找最近改动过的文件
+快速的文件名模式匹配工具，支持任意规模的代码库。返回按修改时间排序的匹配文件路径。
 
 ## 参数
 
-- `pattern` (string, 必填)：要匹配的 glob 表达式。支持 `*` 单段通配、`**` 递归匹配、`{a,b}` 多选，例如 `src/**/*.{ts,tsx}`。
-- `path` (string, 可选)：执行搜索的目录。提供时必须是有效目录路径。完全省略该字段即在当前工作目录搜索。不要传入字符串 `"undefined"` 或 `"null"`。
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `pattern` | string | 是 | glob 模式（如 `**/*.js`、`src/**/*.ts`） |
+| `path` | string | 否 | 搜索目录，默认为当前工作目录。不要传 "undefined" 或 "null" |
 
-## 示例
+## 使用场景
 
-### 示例 1：每一个 TypeScript 源文件
-以 `pattern: "src/**/*.ts"` 调用 `Glob`。结果按修改时间排序，最近编辑过的文件排在前面，便于聚焦热点。
+**适合使用：**
+- 按文件名模式查找文件
+- 查找特定类型的所有文件（如所有 `.tsx` 文件）
+- 查找特定类定义（如 `class Foo`）时先定位文件
+- 可以在单条消息中并行发起多个 Glob 调用
 
-### 示例 2：定位类定义候选
-当你怀疑某个类位于某个不确定名字的文件中时，使用 `pattern: "**/*UserService*"` 缩小候选范围，再用 `Read` 或 `Grep` 跟进。
-
-### 示例 3：更大任务前的并行发现
-在同一条消息中发起多个 `Glob` 调用（例如一个搜 `**/*.test.ts`、一个搜 `**/fixtures/**`），让它们并行执行，再将结果关联。
+**不适合使用：**
+- 搜索文件内容——应使用 Grep
+- 需要多轮搜索的开放式探索——应使用 Task（Explore 类型）
 
 ## 注意事项
 
-- 结果按文件修改时间排序（最新优先），而非字母顺序。如需稳定排序，请在后续步骤中自行排序。
-- 模式由工具解析，而非 shell；你无需像在命令行那样加引号或转义。
-- 对于需要多轮搜索和推理的开放式探索，请委派给 `Agent` 并使用 Explore 代理类型，而不是串起很多次 `Glob`。
-- 在文件名发现上，优先使用 `Glob` 而非通过 `Bash` 调 `find` 或 `ls`；它处理权限更一致，返回结构化输出。
-- 若要查找文件内部的内容而非文件名，请改用 `Grep`。
+- 支持标准 glob 语法：`*` 匹配单层，`**` 匹配多层，`{}` 匹配多选
+- 结果按修改时间排序
+- 比 Bash 的 `find` 命令更推荐使用
+
+## 原文
+
+<textarea readonly>- Fast file pattern matching tool that works with any codebase size
+- Supports glob patterns like "**/*.js" or "src/**/*.ts"
+- Returns matching file paths sorted by modification time
+- Use this tool when you need to find files by name patterns
+- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead
+- You can call multiple tools in a single response. It is always better to speculatively perform multiple searches in parallel if they are potentially useful.</textarea>

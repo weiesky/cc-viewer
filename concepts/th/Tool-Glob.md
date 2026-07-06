@@ -1,35 +1,39 @@
 # Glob
 
-จับคู่ชื่อไฟล์กับ glob pattern และส่ง path กลับเรียงตามเวลาการแก้ไขล่าสุดก่อน เหมาะสำหรับค้นหาไฟล์อย่างรวดเร็วใน codebase ทุกขนาดโดยไม่ shell ออกไป `find`
+## คำจำกัดความ
 
-## เมื่อใดควรใช้
-
-- แจกแจงทุกไฟล์ของ extension เฉพาะ (เช่น ทุกไฟล์ `*.ts` ใต้ `src`)
-- ค้นหาไฟล์ configuration หรือ fixture ตามแบบแผนการตั้งชื่อ (`**/jest.config.*`, `**/*.test.tsx`)
-- จำกัด surface การค้นหาก่อนรัน `Grep` แบบ targeted
-- ตรวจสอบว่าไฟล์มีอยู่แล้วที่ pattern ที่รู้จักก่อนเรียก `Write` หรือไม่
-- ค้นหาไฟล์ที่แก้ไขล่าสุดโดยอาศัยการเรียงตามเวลาแก้ไข
+เครื่องมือจับคู่รูปแบบชื่อไฟล์ที่รวดเร็ว รองรับโค้ดเบสทุกขนาด ส่งคืนพาธไฟล์ที่ตรงกันเรียงตามเวลาแก้ไข
 
 ## พารามิเตอร์
 
-- `pattern` (string, required): glob expression ที่จะ match รองรับ `*` สำหรับ wildcard segment เดียว, `**` สำหรับ match แบบ recursive, และ `{a,b}` สำหรับทางเลือก เช่น `src/**/*.{ts,tsx}`
-- `path` (string, optional): Directory ที่จะรันการค้นหา ต้องเป็น directory path ที่ถูกต้องเมื่อระบุ ละเว้น field ทั้งหมดเพื่อค้นหาใน working directory ปัจจุบัน อย่าส่ง string `"undefined"` หรือ `"null"`
+| พารามิเตอร์ | ประเภท | จำเป็น | คำอธิบาย |
+|------|------|------|------|
+| `pattern` | string | ใช่ | รูปแบบ glob (เช่น `**/*.js`, `src/**/*.ts`) |
+| `path` | string | ไม่ | ไดเรกทอรีค้นหา ค่าเริ่มต้นคือไดเรกทอรีทำงานปัจจุบัน อย่าส่ง "undefined" หรือ "null" |
 
-## ตัวอย่าง
+## สถานการณ์การใช้งาน
 
-### ตัวอย่างที่ 1: ไฟล์ TypeScript source ทุกไฟล์
-เรียก `Glob` ด้วย `pattern: "src/**/*.ts"` ผลลัพธ์เป็น list ที่เรียงตาม mtime ดังนั้นไฟล์ที่เพิ่งแก้ไขล่าสุดจะปรากฏก่อน ซึ่งมีประโยชน์สำหรับโฟกัสที่ hot spot
+**เหมาะสำหรับ:**
+- ค้นหาไฟล์ตามรูปแบบชื่อ
+- ค้นหาไฟล์ทั้งหมดของประเภทเฉพาะ (เช่น ไฟล์ `.tsx` ทั้งหมด)
+- ระบุตำแหน่งไฟล์เมื่อค้นหาคำจำกัดความคลาสเฉพาะ (เช่น `class Foo`)
+- สามารถเรียก Glob หลายครั้งพร้อมกันในข้อความเดียว
 
-### ตัวอย่างที่ 2: ค้นหา candidate นิยาม class
-เมื่อคุณสงสัยว่า class อยู่ในไฟล์ที่ไม่รู้ชื่อ ให้ค้นหาด้วย `pattern: "**/*UserService*"` เพื่อจำกัด candidate แล้ว follow up ด้วย `Read` หรือ `Grep`
+**ไม่เหมาะสำหรับ:**
+- ค้นหาเนื้อหาไฟล์ — ควรใช้ Grep
+- การสำรวจแบบเปิดที่ต้องค้นหาหลายรอบ — ควรใช้ Task (ประเภท Explore)
 
-### ตัวอย่างที่ 3: ค้นหาแบบขนานก่อนงานใหญ่กว่า
-ในข้อความเดียว ออก `Glob` หลายตัว (เช่น หนึ่งสำหรับ `**/*.test.ts` และหนึ่งสำหรับ `**/fixtures/**`) เพื่อให้รันพร้อมกันและผลลัพธ์สามารถ correlate ได้
+## ข้อควรระวัง
 
-## หมายเหตุ
+- รองรับไวยากรณ์ glob มาตรฐาน: `*` จับคู่ระดับเดียว, `**` จับคู่หลายระดับ, `{}` จับคู่หลายตัวเลือก
+- ผลลัพธ์เรียงตามเวลาแก้ไข
+- แนะนำให้ใช้มากกว่าคำสั่ง `find` ของ Bash
 
-- ผลลัพธ์เรียงตามเวลาแก้ไขไฟล์ (ใหม่สุดก่อน) ไม่ใช่ตามตัวอักษร Sort ภายหลังหากต้องการการเรียงที่เสถียร
-- Pattern ถูก evaluate โดย tool ไม่ใช่ shell; คุณไม่จำเป็นต้อง quote หรือ escape เหมือนที่จะทำบน command line
-- สำหรับการสำรวจแบบเปิดกว้างที่ต้องใช้การค้นหาและเหตุผลหลายรอบ ให้ delegate ไปยัง `Agent` ด้วย Explore agent type แทนการ chain `Glob` หลายตัว
-- ชอบ `Glob` มากกว่าการ invoke `find` หรือ `ls` ผ่าน `Bash` สำหรับการค้นพบชื่อไฟล์; จัดการ permission อย่างสม่ำเสมอและส่ง output ที่มีโครงสร้าง
-- เมื่อหาเนื้อหาภายในไฟล์แทนที่จะเป็นชื่อไฟล์ ให้ใช้ `Grep` แทน
+## ข้อความต้นฉบับ
+
+<textarea readonly>- Fast file pattern matching tool that works with any codebase size
+- Supports glob patterns like "**/*.js" or "src/**/*.ts"
+- Returns matching file paths sorted by modification time
+- Use this tool when you need to find files by name patterns
+- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead
+- You can call multiple tools in a single response. It is always better to speculatively perform multiple searches in parallel if they are potentially useful.</textarea>

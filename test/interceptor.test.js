@@ -1,20 +1,19 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync, appendFileSync, utimesSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   assembleStreamMessage,
   cleanupTempFiles,
   findRecentLog,
-  claimUntaggedLog,
   getSystemText,
   isAnthropicApiPath,
   isMainAgentRequest,
   isPreflightEntry,
   migrateConversationContext,
   rotateLogFile,
-} from '../server/lib/interceptor-core.js';
+} from '../lib/interceptor-core.js';
 
 // ============================================================================
 // Test helpers
@@ -219,65 +218,17 @@ describe('interceptor', () => {
       }), false);
     });
 
-    it('rejects same-process teammate via TEAMMATE_SYSTEM_RE (body-level, keeps in sync with isMainAgentEntry)', () => {
-      // 同进程 Agent/Task 队友:system prompt 与 MainAgent 几乎一致(同样 You are Claude Code + 工具),
-      // 但带团队协作标记。这类队友不带 --agent-name(interceptor.js 的 _isTeammate 认不出),
-      // 旧逻辑误判为 MainAgent → 流式期开 live-stream、其 thinking 污染主「最新回复」overlay。
-      // 现 interceptor-core 在 body 层即排除(TEAMMATE_SYSTEM_RE),与 isMainAgentEntry / 前端 isMainAgent 三处对齐。
+    it('does not filter teammate requests (teammate handling is in interceptor layer)', () => {
+      // Teammate body looks identical to MainAgent — same system prompt, same tools
+      // interceptor-core should NOT filter it; that's the interceptor.js / frontend layer's job
       const teammateBody = makeMainAgentBody({
         system: [
           { type: 'text', text: 'You are Claude Code, Anthropic\'s official CLI for Claude.' },
           { type: 'text', text: '# Agent Teammate Communication\n\nIMPORTANT: You are running as an agent in a team.' },
         ],
       });
-      assert.equal(isMainAgentRequest(teammateBody), false);
-    });
-
-    // cc_version 2.1.181+：billing header 显式带 cc_is_subagent=true 的子代理（继承完整 CC prompt + Edit/Bash/Agent）
-    it('rejects cc_is_subagent=true subagent (2.1.181+) even with main-like prompt/tools', () => {
-      const body = makeMainAgentBody({
-        system: [
-          { type: 'text', text: 'x-anthropic-billing-header: cc_version=2.1.181.be0; cc_entrypoint=cli; cc_is_subagent=true;\nYou are Claude Code, Anthropic\'s official CLI for Claude.' },
-        ],
-      });
-      assert.equal(isMainAgentRequest(body), false);
-    });
-
-    it('backward-compat: genuine main (no cc_is_subagent token) still detected', () => {
-      const body = makeMainAgentBody({
-        system: [
-          { type: 'text', text: 'x-anthropic-billing-header: cc_version=2.1.181.2f7; cc_entrypoint=cli;\nYou are Claude Code, Anthropic\'s official CLI for Claude.' },
-        ],
-      });
-      assert.equal(isMainAgentRequest(body), true);
-    });
-
-    it('does not over-match cc_is_subagent=false', () => {
-      const body = makeMainAgentBody({
-        system: [
-          { type: 'text', text: 'x-anthropic-billing-header: cc_version=2.1.181.2f7; cc_entrypoint=cli; cc_is_subagent=false;\nYou are Claude Code, Anthropic\'s official CLI for Claude.' },
-        ],
-      });
-      assert.equal(isMainAgentRequest(body), true);
-    });
-
-    it('\\b anchor: does not over-match cc_is_subagent=truex', () => {
-      const body = makeMainAgentBody({
-        system: [
-          { type: 'text', text: 'x-anthropic-billing-header: cc_version=2.1.181.2f7; cc_is_subagent=truex;\nYou are Claude Code, Anthropic\'s official CLI for Claude.' },
-        ],
-      });
-      assert.equal(isMainAgentRequest(body), true);
-    });
-
-    it('rejects cc_is_subagent=true when billing header is in a SEPARATE system block', () => {
-      const body = makeMainAgentBody({
-        system: [
-          { type: 'text', text: 'x-anthropic-billing-header: cc_version=2.1.181.be0; cc_entrypoint=cli; cc_is_subagent=true;' },
-          { type: 'text', text: 'You are Claude Code, Anthropic\'s official CLI for Claude.' },
-        ],
-      });
-      assert.equal(isMainAgentRequest(body), false);
+      // interceptor-core treats this as MainAgent (body-level only, no req.teammate field)
+      assert.equal(isMainAgentRequest(teammateBody), true);
     });
   });
 
@@ -398,17 +349,6 @@ describe('interceptor', () => {
     it('fallback regex for invalid URL', () => {
       assert.equal(isAnthropicApiPath('not-a-url/v1/messages'), true);
       assert.equal(isAnthropicApiPath('not-a-url/other'), false);
-    });
-
-    it('matches proxy-prefixed /v1/messages', () => {
-      assert.equal(isAnthropicApiPath('https://work.group.com/proxy/group_235:8100/v1/messages'), true);
-      assert.equal(isAnthropicApiPath('https://gateway.example.com/proxy/anthropic/v1/messages'), true);
-      assert.equal(isAnthropicApiPath('https://gateway.example.com/proxy/anthropic/v1/messages/count_tokens'), true);
-      assert.equal(isAnthropicApiPath('https://gateway.example.com/proxy/anthropic/v1/messages/batches'), true);
-    });
-
-    it('still rejects proxy-prefixed unknown suffix', () => {
-      assert.equal(isAnthropicApiPath('https://gateway.example.com/proxy/anthropic/v1/messages/unknown'), false);
     });
   });
 
@@ -671,133 +611,6 @@ describe('interceptor', () => {
   });
 
   // --------------------------------------------------------------------------
-  // per-instance (--pid) log isolation: <pid>__<project>_<ts>.jsonl
-  // --------------------------------------------------------------------------
-  describe('findRecentLog — instanceId scoping', () => {
-    function seed() {
-      const dir = join(tempDir, 'pidproj');
-      mkdirSync(dir);
-      writeFileSync(join(dir, 'pidproj_20260101_120000.jsonl'), '{}');             // untagged
-      writeFileSync(join(dir, 'alpha__pidproj_20260301_080000.jsonl'), '{}');      // alpha
-      writeFileSync(join(dir, 'beta__pidproj_20260401_090000.jsonl'), '{}');       // beta (newest overall)
-      return dir;
-    }
-    it('pid instance selects only its own logs', () => {
-      const dir = seed();
-      assert.equal(findRecentLog(dir, 'pidproj', 'alpha'), join(dir, 'alpha__pidproj_20260301_080000.jsonl'));
-      assert.equal(findRecentLog(dir, 'pidproj', 'beta'), join(dir, 'beta__pidproj_20260401_090000.jsonl'));
-    });
-    it('no-pid (default) excludes pid-tagged logs, picks untagged only', () => {
-      const dir = seed();
-      // even though beta is newest, the default query must ignore pid files
-      assert.equal(findRecentLog(dir, 'pidproj', null), join(dir, 'pidproj_20260101_120000.jsonl'));
-    });
-    it('pid with no own log → null (does not borrow another pid/untagged)', () => {
-      const dir = seed();
-      assert.equal(findRecentLog(dir, 'pidproj', 'gamma'), null);
-    });
-    it('no-pid query excludes a pid file even when pid == projectName (prefix-collision guard)', () => {
-      const dir = join(tempDir, 'collide');
-      mkdirSync(dir);
-      writeFileSync(join(dir, 'collide_20260101_120000.jsonl'), '{}');             // untagged
-      writeFileSync(join(dir, 'collide__collide_20260301_120000.jsonl'), '{}');    // pid == projectName (newer)
-      // `collide__collide_…`.startsWith('collide_') is true, but it carries the `__collide_` pid mark → excluded.
-      assert.equal(findRecentLog(dir, 'collide', null), join(dir, 'collide_20260101_120000.jsonl'));
-      assert.equal(findRecentLog(dir, 'collide', 'collide'), join(dir, 'collide__collide_20260301_120000.jsonl'));
-    });
-    it('no-pid query keeps untagged logs even when the project name contains "__"', () => {
-      const dir = join(tempDir, 'dunder');
-      mkdirSync(dir);
-      writeFileSync(join(dir, 'a__b_20260101_120000.jsonl'), '{}');                 // untagged, project = a__b
-      writeFileSync(join(dir, 'x__a__b_20260301_120000.jsonl'), '{}');              // pid = x
-      assert.equal(findRecentLog(dir, 'a__b', null), join(dir, 'a__b_20260101_120000.jsonl'));
-      assert.equal(findRecentLog(dir, 'a__b', 'x'), join(dir, 'x__a__b_20260301_120000.jsonl'));
-    });
-  });
-
-  describe('cleanupTempFiles — instanceId scoping (multi-process temp safety)', () => {
-    it('pid instance only finalizes its own temp, never another instance\'s', () => {
-      const dir = join(tempDir, 'pidtemp');
-      mkdirSync(dir);
-      writeFileSync(join(dir, 'alpha__pidtemp_20260301_120000_temp.jsonl'), '{"a":1}\n');
-      writeFileSync(join(dir, 'beta__pidtemp_20260301_120000_temp.jsonl'), '{"b":1}\n'); // beta is "live"
-      cleanupTempFiles(dir, 'pidtemp', 'alpha');
-      assert.ok(!existsSync(join(dir, 'alpha__pidtemp_20260301_120000_temp.jsonl')), 'alpha temp finalized');
-      assert.ok(existsSync(join(dir, 'alpha__pidtemp_20260301_120000.jsonl')), 'alpha permanent created');
-      assert.ok(existsSync(join(dir, 'beta__pidtemp_20260301_120000_temp.jsonl')), 'beta temp untouched');
-    });
-    it('no-pid cleanup does not touch pid-tagged temps', () => {
-      const dir = join(tempDir, 'pidtemp2');
-      mkdirSync(dir);
-      writeFileSync(join(dir, 'pidtemp2_20260301_120000_temp.jsonl'), '{"u":1}\n');
-      writeFileSync(join(dir, 'alpha__pidtemp2_20260301_120000_temp.jsonl'), '{"a":1}\n');
-      cleanupTempFiles(dir, 'pidtemp2', null);
-      assert.ok(!existsSync(join(dir, 'pidtemp2_20260301_120000_temp.jsonl')), 'untagged temp finalized');
-      assert.ok(existsSync(join(dir, 'alpha__pidtemp2_20260301_120000_temp.jsonl')), 'pid temp untouched');
-    });
-  });
-
-  describe('claimUntaggedLog — first-launch adoption (Q3)', () => {
-    // helper: write a file whose mtime is well in the past (i.e. not a live writer)
-    function writeOld(path, content) {
-      writeFileSync(path, content);
-      const past = new Date(Date.now() - 10 * 60 * 1000); // 10 min ago
-      utimesSync(path, past, past);
-    }
-    it('moves (renames) the recent untagged log into the pid lineage', () => {
-      const dir = join(tempDir, 'claim1');
-      mkdirSync(dir);
-      writeOld(join(dir, 'claim1_20260101_120000.jsonl'), '{"x":1}\n');
-      const claimed = claimUntaggedLog(dir, 'claim1', 'alpha'); // default freshness; mtime is old → claims
-      assert.equal(claimed, join(dir, 'alpha__claim1_20260101_120000.jsonl'));
-      assert.ok(existsSync(claimed), 'pid file exists');
-      assert.ok(!existsSync(join(dir, 'claim1_20260101_120000.jsonl')), 'original untagged moved (no double-count)');
-      assert.equal(readFileSync(claimed, 'utf-8'), '{"x":1}\n', 'content preserved');
-    });
-    it('does NOT claim a fresh (possibly live) untagged log', () => {
-      const dir = join(tempDir, 'claim2');
-      mkdirSync(dir);
-      writeFileSync(join(dir, 'claim2_20260101_120000.jsonl'), '{}'); // just written → fresh
-      assert.equal(claimUntaggedLog(dir, 'claim2', 'alpha'), null); // default freshnessMs guards it
-      assert.ok(existsSync(join(dir, 'claim2_20260101_120000.jsonl')), 'fresh untagged untouched');
-    });
-    it('does NOT claim when an untagged *_temp.jsonl signals a live/parked no-pid instance', () => {
-      const dir = join(tempDir, 'claim4');
-      mkdirSync(dir);
-      writeOld(join(dir, 'claim4_20260101_120000.jsonl'), '{}');       // old (would pass freshness)
-      writeFileSync(join(dir, 'claim4_20260105_090000_temp.jsonl'), '{}'); // a no-pid instance is mid-resume
-      assert.equal(claimUntaggedLog(dir, 'claim4', 'alpha'), null);   // temp present → do not steal
-      assert.ok(existsSync(join(dir, 'claim4_20260101_120000.jsonl')), 'untagged left intact');
-    });
-    it('abandons (returns null) when the pid-claimed target already exists, leaving both files intact', () => {
-      const dir = join(tempDir, 'claim5');
-      mkdirSync(dir);
-      writeOld(join(dir, 'claim5_20260101_120000.jsonl'), '{"orig":1}\n');
-      writeFileSync(join(dir, 'alpha__claim5_20260101_120000.jsonl'), '{"pre":1}\n'); // target already present
-      assert.equal(claimUntaggedLog(dir, 'claim5', 'alpha'), null);   // existsSync(claimed) guard
-      assert.ok(existsSync(join(dir, 'claim5_20260101_120000.jsonl')), 'untagged not moved');
-      assert.equal(readFileSync(join(dir, 'alpha__claim5_20260101_120000.jsonl'), 'utf-8'), '{"pre":1}\n', 'pre-existing target untouched');
-    });
-    it('honors the freshnessMs option (huge → never claim; small → old file passes)', () => {
-      const dir = join(tempDir, 'claim6');
-      mkdirSync(dir);
-      writeOld(join(dir, 'claim6_20260101_120000.jsonl'), '{}'); // mtime ~10 min ago
-      assert.equal(claimUntaggedLog(dir, 'claim6', 'alpha', { freshnessMs: Number.MAX_SAFE_INTEGER }), null);
-      assert.ok(existsSync(join(dir, 'claim6_20260101_120000.jsonl')), 'not claimed under huge freshness');
-      assert.equal(claimUntaggedLog(dir, 'claim6', 'alpha', { freshnessMs: 1000 }), join(dir, 'alpha__claim6_20260101_120000.jsonl'));
-    });
-    it('returns null without an instanceId, and when nothing left to claim', () => {
-      const dir = join(tempDir, 'claim3');
-      mkdirSync(dir);
-      writeOld(join(dir, 'claim3_20260101_120000.jsonl'), '{}');
-      assert.equal(claimUntaggedLog(dir, 'claim3', null), null); // no pid
-      assert.equal(claimUntaggedLog(dir, 'claim3', 'alpha'), join(dir, 'alpha__claim3_20260101_120000.jsonl'));
-      // second claim: untagged already moved → null (loser/no-op path)
-      assert.equal(claimUntaggedLog(dir, 'claim3', 'beta'), null);
-    });
-  });
-
-  // --------------------------------------------------------------------------
   // migrateConversationContext
   // --------------------------------------------------------------------------
   describe('migrateConversationContext', () => {
@@ -1036,62 +849,5 @@ describe('interceptor', () => {
       const result = rotateLogFile(oldFile, newFile, 500);
       assert.equal(result.rotated, true);
     });
-  });
-});
-
-// ─────────── rotation carry-forward: spawn-pair extraction + sentinel ───────────
-describe('rotation carry-forward (interceptor-core)', () => {
-  it('extractAgentSpawnPairs pulls prefix→name pairs with client-parity normalization', async () => {
-    const { extractAgentSpawnPairs, TEAMMATE_PROMPT_PREFIX_LEN } = await import('../server/lib/interceptor-core.js');
-    // Leading whitespace must be trimmed BEFORE slicing (parity with
-    // src/utils/contentFilter.js prefix building).
-    const prompt = '   You are the researcher. Investigate the failing pipeline and report everything.';
-    const body = {
-      content: [
-        { type: 'tool_use', name: 'Agent', input: { name: 'researcher', prompt } },
-        { type: 'tool_use', name: 'Bash', input: { command: 'ls' } },
-        { type: 'tool_use', name: 'Agent', input: { name: 'no-prompt' } },
-        { type: 'text', text: 'hello' },
-      ],
-    };
-    const pairs = extractAgentSpawnPairs(body);
-    assert.equal(pairs.length, 1);
-    assert.equal(pairs[0][1], 'researcher');
-    assert.equal(pairs[0][0], prompt.trimStart().slice(0, TEAMMATE_PROMPT_PREFIX_LEN));
-  });
-
-  it('extractAgentSpawnPairs tolerates raw-string and missing bodies', async () => {
-    const { extractAgentSpawnPairs } = await import('../server/lib/interceptor-core.js');
-    assert.deepEqual(extractAgentSpawnPairs('raw sse fallback text'), []);
-    assert.deepEqual(extractAgentSpawnPairs(null), []);
-    assert.deepEqual(extractAgentSpawnPairs({}), []);
-  });
-
-  it('rotateLogFile bakes initialContent into the new file at creation', async () => {
-    const { rotateLogFile, parseRotationContextHead } = await import('../server/lib/interceptor-core.js');
-    const dir = mkdtempSync(join(tmpdir(), 'ccv-rot-'));
-    const oldFile = join(dir, 'proj_20260101_000000.jsonl');
-    const newFile = join(dir, 'proj_20260102_000000.jsonl');
-    writeFileSync(oldFile, 'x'.repeat(2048));
-    const sentinel = JSON.stringify({
-      ccvRotationContext: 1, url: 'ccv://rotation-context',
-      from: 'proj_20260101_000000.jsonl',
-      teammateNames: [['prefix-a', 'alice']],
-      timestamp: '2026-01-02T00:00:00.000Z',
-    }) + '\n---\n';
-    const result = rotateLogFile(oldFile, newFile, 1024, sentinel);
-    assert.equal(result.rotated, true);
-    const head = readFileSync(newFile, 'utf-8');
-    assert.ok(head.startsWith('{"ccvRotationContext":1'));
-    const parsed = parseRotationContextHead(head);
-    assert.ok(parsed);
-    assert.deepEqual(parsed.teammateNames, [['prefix-a', 'alice']]);
-  });
-
-  it('parseRotationContextHead ignores non-sentinel heads and garbage', async () => {
-    const { parseRotationContextHead } = await import('../server/lib/interceptor-core.js');
-    assert.equal(parseRotationContextHead('{"timestamp":"t","url":"/v1/messages"}\n---\n'), null);
-    assert.equal(parseRotationContextHead('not json\n---\n'), null);
-    assert.equal(parseRotationContextHead('no frame separator at all'), null);
   });
 });

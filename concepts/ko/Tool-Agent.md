@@ -1,60 +1,125 @@
 # Agent
 
-자체 컨텍스트 창을 갖춘 자율적인 Claude Code 서브에이전트를 생성하여 특정 작업을 처리하고 하나의 통합된 결과를 반환합니다. 이는 개방형 조사, 병렬 작업, 또는 팀 협업을 위임하는 표준적인 메커니즘입니다.
+## 정의
 
-## 사용 시점
+서브 agent (SubAgent)를 시작하여 복잡한 다단계 태스크를 자율적으로 처리합니다. 서브 agent는 독립된 서브프로세스로, 각각 전용 도구 세트와 컨텍스트를 가집니다. Agent는 최신 Claude Code 버전에서 Task 도구의 이름이 변경된 버전입니다.
 
-- 어떤 파일이 관련 있는지 아직 모르고 `Glob`, `Grep`, `Read`의 여러 라운드가 예상되는 개방형 검색.
-- 병렬 독립 작업 — 하나의 메시지에서 여러 에이전트를 실행하여 서로 다른 영역을 동시에 조사합니다.
-- 부모 컨텍스트를 간결하게 유지하기 위해 주요 대화로부터 노이즈가 많은 탐색을 분리합니다.
-- `Explore`, `Plan`, `claude-code-guide`, `statusline-setup`과 같은 전문화된 서브에이전트 타입에 위임합니다.
-- 조율된 다중 에이전트 작업을 위해 활성화된 팀에 명명된 팀원을 생성합니다.
+## 파라미터
 
-대상 파일이나 심볼을 이미 알고 있는 경우에는 사용하지 마십시오 — `Read`, `Grep`, 또는 `Glob`을 직접 사용하십시오. `Agent`를 통한 한 단계 조회는 전체 컨텍스트 창을 낭비하고 지연 시간을 추가합니다.
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| `prompt` | string | 예 | 서브 agent가 실행할 태스크 설명 |
+| `description` | string | 예 | 3~5단어의 짧은 요약 |
+| `subagent_type` | string | 예 | 서브 agent 타입, 사용 가능한 도구 세트를 결정 |
+| `model` | enum | 아니오 | 모델 지정 (sonnet / opus / haiku), 기본값은 부모로부터 상속 |
+| `max_turns` | integer | 아니오 | 최대 agentic 턴 수 |
+| `run_in_background` | boolean | 아니오 | 백그라운드 실행 여부. 백그라운드 태스크는 output_file 경로를 반환 |
+| `resume` | string | 아니오 | 재개할 agent ID, 이전 실행에서 계속. 컨텍스트를 잃지 않고 이전 서브 agent를 이어받는 데 유용 |
+| `isolation` | enum | 아니오 | 격리 모드, `worktree`로 임시 git worktree 생성 |
 
-## 매개변수
+## 서브 agent 타입
 
-- `description` (string, 필수): 작업을 설명하는 3-5 단어의 짧은 레이블로, UI와 로그에 표시됩니다.
-- `prompt` (string, 필수): 에이전트가 실행할 완전하고 자체 포함된 지시사항. 필요한 모든 컨텍스트, 제약 조건, 기대하는 반환 형식을 포함해야 합니다.
-- `subagent_type` (string, 선택): `general-purpose`, `Explore`, `Plan`, `claude-code-guide`, `statusline-setup`과 같은 사전 설정 페르소나. 기본값은 `general-purpose`입니다.
-- `run_in_background` (boolean, 선택): true인 경우 에이전트가 비동기로 실행되며 부모는 작업을 계속할 수 있습니다. 결과는 나중에 검색됩니다.
-- `model` (string, 선택): 이 에이전트에 대한 모델을 재정의합니다 — `opus`, `sonnet`, 또는 `haiku`. 기본값은 부모 세션의 모델입니다.
-- `isolation` (string, 선택): 에이전트의 파일시스템 쓰기가 부모와 충돌하지 않도록 격리된 git 워크트리 안에서 에이전트를 실행하려면 `worktree`로 설정합니다.
-- `team_name` (string, 선택): 기존 팀에 생성할 때 에이전트가 합류할 팀 식별자.
-- `name` (string, 선택): 팀 내에서 주소 지정 가능한 팀원 이름으로, `SendMessage`의 `to` 대상으로 사용됩니다.
+| 타입 | 용도 | 사용 가능한 도구 |
+|------|------|------------------|
+| `Bash` | 명령 실행, git 작업 | Bash |
+| `general-purpose` | 범용 다단계 태스크 | 전체 도구 |
+| `Explore` | 코드베이스 빠른 탐색 | Agent/Edit/Write/NotebookEdit/ExitPlanMode 외 모든 도구 |
+| `Plan` | 구현 방안 설계 | Agent/Edit/Write/NotebookEdit/ExitPlanMode 외 모든 도구 |
+| `claude-code-guide` | Claude Code 사용 가이드 Q&A | Glob, Grep, Read, WebFetch, WebSearch |
+| `statusline-setup` | 상태 표시줄 설정 | Read, Edit |
 
-## 예시
+## 사용 시나리오
 
-### 예시 1: 개방형 코드 검색
+**적합한 경우:**
+- 다단계로 자율 완료해야 하는 복잡한 태스크
+- 코드베이스 탐색 및 심층 조사 (Explore 타입 사용)
+- 격리 환경이 필요한 병렬 작업
+- 백그라운드 실행이 필요한 장시간 태스크
 
-```
-Agent(
-  description="Find auth middleware",
-  subagent_type="Explore",
-  prompt="Locate every place in this repo where JWT verification is performed. Return a bulleted list of absolute file paths with a one-line note about each site's role. Do not modify any files."
-)
-```
+**적합하지 않은 경우:**
+- 특정 파일 경로 읽기 — 직접 Read 또는 Glob 사용
+- 2~3개 알려진 파일 내 검색 — 직접 Read 사용
+- 특정 클래스 정의 검색 — 직접 Glob 사용
 
-### 예시 2: 병렬 독립 조사
+## 주의사항
 
-같은 메시지에서 두 개의 에이전트를 실행합니다 — 하나는 빌드 파이프라인을 검사하고, 다른 하나는 테스트 하니스를 검토합니다. 각 에이전트는 자체 컨텍스트 창을 받고 요약을 반환합니다. 단일 도구 호출 블록에서 일괄 실행하면 동시에 실행됩니다.
+- 서브 agent는 완료 후 단일 메시지를 반환하며, 그 결과는 사용자에게 보이지 않으므로 메인 agent가 전달해야 함
+- 단일 메시지 내에서 여러 병렬 Agent 호출을 발행하여 효율 향상 가능
+- 백그라운드 태스크는 TaskOutput 도구로 진행 상황 확인
+- Explore 타입은 직접 Glob/Grep 호출보다 느리므로, 단순 검색으로 충분하지 않을 때만 사용
+- 장시간 실행되며 즉시 결과가 필요 없는 태스크에는 `run_in_background: true` 권장; 결과가 필요한 경우 포그라운드(기본값) 사용
+- `resume` 파라미터를 통해 이전에 시작한 서브 agent 세션을 계속할 수 있으며, 축적된 컨텍스트를 유지
 
-### 예시 3: 실행 중인 팀에 팀원 생성
+## 원문
 
-```
-Agent(
-  description="Data layer specialist",
-  team_name="refactor-crew",
-  name="db-lead",
-  prompt="You are db-lead on team refactor-crew. Audit all Prisma schema files and propose a migration plan. Use SendMessage to report findings to the team leader."
-)
-```
+<textarea readonly>Launch a new agent to handle complex, multi-step tasks autonomously.
 
-## 참고사항
+The Agent tool launches specialized agents (subprocesses) that autonomously handle complex tasks. Each agent type has specific capabilities and tools available to it.
 
-- 에이전트는 이전 실행의 메모리가 없습니다. 모든 호출은 제로에서 시작하므로 `prompt`는 완전히 자체 포함되어야 합니다 — 파일 경로, 규칙, 질문, 원하는 답변의 정확한 형태를 포함해야 합니다.
-- 에이전트는 정확히 하나의 최종 메시지를 반환합니다. 실행 중에 명확한 질문을 할 수 없으므로 프롬프트의 모호함은 결과에서 추측이 됩니다.
-- 병렬로 여러 에이전트를 실행하는 것은 서브태스크가 독립적인 경우 순차 호출보다 훨씬 빠릅니다. 단일 도구 호출 블록에서 일괄 처리하십시오.
-- 에이전트가 파일을 작성할 것이고 메인 작업 트리에 병합하기 전에 변경 사항을 검토하려면 언제든 `isolation: "worktree"`를 사용하십시오.
-- 읽기 전용 정찰에는 `subagent_type: "Explore"`를, 설계 작업에는 `Plan`을 선호하십시오. `general-purpose`는 혼합 읽기/쓰기 작업의 기본값입니다.
-- 백그라운드 에이전트 (`run_in_background: true`)는 장시간 실행되는 작업에 적합합니다. sleep 루프로 폴링하지 마십시오 — 완료 시 부모에게 알림이 갑니다.
+Available agent types and the tools they have access to:
+- general-purpose: General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you. (Tools: *)
+- statusline-setup: Use this agent to configure the user's Claude Code status line setting. (Tools: Read, Edit)
+- Explore: Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. "src/components/**/*.tsx"), search code for keywords (eg. "API endpoints"), or answer questions about the codebase (eg. "how do API endpoints work?"). When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions. (Tools: All tools except Agent, ExitPlanMode, Edit, Write, NotebookEdit)
+- Plan: Software architect agent for designing implementation plans. Use this when you need to plan the implementation strategy for a task. Returns step-by-step plans, identifies critical files, and considers architectural trade-offs. (Tools: All tools except Agent, ExitPlanMode, Edit, Write, NotebookEdit)
+- claude-code-guide: Use this agent when the user asks questions ("Can Claude...", "Does Claude...", "How do I...") about: (1) Claude Code (the CLI tool) - features, hooks, slash commands, MCP servers, settings, IDE integrations, keyboard shortcuts; (2) Claude Agent SDK - building custom agents; (3) Claude API (formerly Anthropic API) - API usage, tool use, Anthropic SDK usage. **IMPORTANT:** Before spawning a new agent, check if there is already a running or recently completed claude-code-guide agent that you can resume using the "resume" parameter. (Tools: Glob, Grep, Read, WebFetch, WebSearch)
+
+When using the Agent tool, you must specify a subagent_type parameter to select which agent type to use.
+
+When NOT to use the Agent tool:
+- If you want to read a specific file path, use the Read or Glob tool instead of the Agent tool, to find the match more quickly
+- If you are searching for a specific class definition like "class Foo", use the Glob tool instead, to find the match more quickly
+- If you are searching for code within a specific file or set of 2-3 files, use the Read tool instead of the Agent tool, to find the match more quickly
+- Other tasks that are not related to the agent descriptions above
+
+Usage notes:
+- Always include a short description (3-5 words) summarizing what the agent will do
+- Launch multiple agents concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses
+- When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result.
+- You can optionally run agents in the background using the run_in_background parameter. When an agent runs in the background, you will be automatically notified when it completes — do NOT sleep, poll, or proactively check on its progress. Continue with other work or respond to the user instead.
+- **Foreground vs background**: Use foreground (default) when you need the agent's results before you can proceed — e.g., research agents whose findings inform your next steps. Use background when you have genuinely independent work to do in parallel.
+- Agents can be resumed using the `resume` parameter by passing the agent ID from a previous invocation. When resumed, the agent continues with its full previous context preserved. When NOT resuming, each invocation starts fresh and you should provide a detailed task description with all necessary context.
+- When the agent is done, it will return a single message back to you along with its agent ID. You can use this ID to resume the agent later if needed for follow-up work.
+- Provide clear, detailed prompts so the agent can work autonomously and return exactly the information you need.
+- Agents with "access to current context" can see the full conversation history before the tool call. When using these agents, you can write concise prompts that reference earlier context (e.g., "investigate the error discussed above") instead of repeating information. The agent will receive all prior messages and understand the context.
+- The agent's outputs should generally be trusted
+- Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.), since it is not aware of the user's intent
+- If the agent description mentions that it should be used proactively, then you should try your best to use it without the user having to ask for it first. Use your judgement.
+- If the user specifies that they want you to run agents "in parallel", you MUST send a single message with multiple Agent tool use content blocks. For example, if you need to launch both a build-validator agent and a test-runner agent in parallel, send a single message with both tool calls.
+- You can optionally set `isolation: "worktree"` to run the agent in a temporary git worktree, giving it an isolated copy of the repository. The worktree is automatically cleaned up if the agent makes no changes; if changes are made, the worktree path and branch are returned in the result.
+
+Example usage:
+
+<example_agent_descriptions>
+"test-runner": use this agent after you are done writing code to run tests
+"greeting-responder": use this agent to respond to user greetings with a friendly joke
+</example_agent_descriptions>
+
+<example>
+user: "Please write a function that checks if a number is prime"
+assistant: Sure let me write a function that checks if a number is prime
+assistant: First let me use the Write tool to write a function that checks if a number is prime
+assistant: I'm going to use the Write tool to write the following code:
+<code>
+function isPrime(n) {
+  if (n <= 1) return false
+  for (let i = 2; i * i <= n; i++) {
+    if (n % i === 0) return false
+  }
+  return true
+}
+</code>
+<commentary>
+Since a significant piece of code was written and the task was completed, now use the test-runner agent to run the tests
+</commentary>
+assistant: Now let me use the test-runner agent to run the tests
+assistant: Uses the Agent tool to launch the test-runner agent
+</example>
+
+<example>
+user: "Hello"
+<commentary>
+Since the user is greeting, use the greeting-responder agent to respond with a friendly joke
+</commentary>
+assistant: "I'm going to use the Agent tool to launch the greeting-responder agent"
+</example>
+</textarea>

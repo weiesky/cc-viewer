@@ -1,46 +1,57 @@
 # Grep
 
-ripgrep エンジンを使用してファイル内容を検索します。完全な正規表現サポート、ファイルタイプフィルタリング、3 つの出力モードを提供し、精度とコンパクトさをトレードオフできます。
+## 定義
 
-## 使用タイミング
-
-- 関数のすべての呼び出し箇所や識別子のすべての参照を特定
-- 文字列やエラーメッセージがコードベースのどこかに現れるか確認
-- リファクタリング前に影響を測るためにパターンの出現回数を数える
-- 検索をファイルタイプ (`type: "ts"`) や glob (`glob: "**/*.tsx"`) に絞り込む
-- `multiline: true` でマルチライン構造体定義や JSX ブロックなどの複数行マッチを取得
+ripgrep ベースの強力なコンテンツ検索ツール。正規表現、ファイルタイプフィルタリング、複数の出力モードに対応。
 
 ## パラメータ
 
-- `pattern` (string, required): 検索する正規表現。ripgrep 構文を使用するため、リテラルな中括弧はエスケープが必要です (例えば `interface{}` を見つけるには `interface\{\}`)。
-- `path` (string, optional): 検索するファイルまたはディレクトリ。デフォルトは現在の作業ディレクトリ。
-- `glob` (string, optional): `*.js` や `*.{ts,tsx}` などのファイル名フィルタ。
-- `type` (string, optional): `js`、`py`、`rust`、`go` などのファイルタイプショートカット。標準言語には `glob` より効率的です。
-- `output_mode` (enum, optional): `files_with_matches` (デフォルト、パスのみ返す)、`content` (マッチ行を返す)、`count` (マッチ集計を返す)。
-- `-i` (boolean, optional): 大文字小文字を区別しないマッチ。
-- `-n` (boolean, optional): `content` モードで行番号を含める。デフォルトは `true`。
-- `-A` (number, optional): 各マッチの後に表示するコンテキスト行数 (`content` モードが必要)。
-- `-B` (number, optional): 各マッチの前のコンテキスト行数 (`content` モードが必要)。
-- `-C` / `context` (number, optional): 各マッチの両側のコンテキスト行数。
-- `multiline` (boolean, optional): パターンが改行をまたぐことを許可する (`.` が `\n` にマッチ)。デフォルトは `false`。
-- `head_limit` (number, optional): 返される行、ファイルパス、カウントエントリを制限。デフォルトは 250。無制限には `0` を渡します (控えめに使用)。
-- `offset` (number, optional): `head_limit` を適用する前に最初の N 件の結果をスキップ。デフォルトは `0`。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `pattern` | string | はい | 正規表現検索パターン |
+| `path` | string | いいえ | 検索パス（ファイルまたはディレクトリ）、デフォルトは現在の作業ディレクトリ |
+| `glob` | string | いいえ | ファイル名フィルタ（例：`*.js`、`*.{ts,tsx}`） |
+| `type` | string | いいえ | ファイルタイプフィルタ（例：`js`、`py`、`rust`）、glob より効率的 |
+| `output_mode` | enum | いいえ | 出力モード：`files_with_matches`（デフォルト）、`content`、`count` |
+| `-i` | boolean | いいえ | 大文字小文字を区別しない検索 |
+| `-n` | boolean | いいえ | 行番号を表示（content モードのみ）、デフォルト true |
+| `-A` | number | いいえ | マッチ後に表示する行数 |
+| `-B` | number | いいえ | マッチ前に表示する行数 |
+| `-C` / `context` | number | いいえ | マッチ前後に表示する行数 |
+| `head_limit` | number | いいえ | 出力エントリ数の制限、デフォルト 0（無制限） |
+| `offset` | number | いいえ | 最初の N 件の結果をスキップ |
+| `multiline` | boolean | いいえ | 複数行マッチモードを有効化、デフォルト false |
 
-## 例
+## 使用シナリオ
 
-### 例 1: 関数のすべての呼び出し箇所を検索
-`pattern: "registerHandler\\("`、`output_mode: "content"`、`-C: 2` を設定して、各呼び出しの周囲の行を表示します。
+**適している場合：**
+- コードベース内で特定の文字列やパターンを検索
+- 関数/変数の使用箇所を検索
+- ファイルタイプで検索結果をフィルタリング
+- マッチ数のカウント
 
-### 例 2: 型全体のマッチを数える
-`pattern: "TODO"`、`type: "py"`、`output_mode: "count"` を設定し、Python ソース全体のファイル別 TODO 合計を表示します。
-
-### 例 3: マルチライン構造体マッチ
-`multiline: true` とともに `pattern: "struct Config \\{[\\s\\S]*?version"` を使用して、Go 構造体の数行内に宣言されたフィールドをキャプチャします。
+**適していない場合：**
+- ファイル名でファイルを検索——Glob を使用すべき
+- 複数ラウンドの検索が必要なオープンエンドな探索——Task（Explore タイプ）を使用すべき
 
 ## 注意事項
 
-- `Bash` で `grep` や `rg` を実行するよりも常に `Grep` を優先してください。ツールは正しい権限と構造化出力のために最適化されています。
-- デフォルトの出力モードは `files_with_matches` で、最も安価です。行自体を見る必要がある場合にのみ `content` に切り替えてください。
-- コンテキストフラグ (`-A`、`-B`、`-C`) は、`output_mode` が `content` でない限り無視されます。
-- 大きな結果セットはコンテキストトークンを消費します。焦点を保つには `head_limit`、`offset`、またはより厳密な `glob`/`type` フィルタを使用してください。
-- ファイル名の発見には代わりに `Glob` を使用してください。複数ラウンドにわたるオープンエンドな調査には、Explore エージェントで `Agent` を派遣してください。
+- ripgrep 構文を使用（grep ではない）、波括弧などの特殊文字はエスケープが必要
+- `files_with_matches` モードはファイルパスのみを返し、最も効率的
+- `content` モードはマッチ行の内容を返し、コンテキスト行に対応
+- 複数行マッチには `multiline: true` の設定が必要
+- Bash 内の `grep` や `rg` コマンドよりも常に Grep ツールを優先使用
+
+## 原文
+
+<textarea readonly>A powerful search tool built on ripgrep
+
+  Usage:
+  - ALWAYS use Grep for search tasks. NEVER invoke `grep` or `rg` as a Bash command. The Grep tool has been optimized for correct permissions and access.
+  - Supports full regex syntax (e.g., "log.*Error", "function\s+\w+")
+  - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
+  - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
+  - Use Agent tool for open-ended searches requiring multiple rounds
+  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use `interface\{\}` to find `interface{}` in Go code)
+  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like `struct \{[\s\S]*?field`, use `multiline: true`
+</textarea>

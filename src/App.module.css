@@ -1,8 +1,5 @@
 .layout {
-  /* 用 100% 而非 100vh：CSS zoom（显示大小缩放）会按比例计算百分比高度，
-     但 vh 始终等于"未缩放的整屏"，导致缩放后底部留缝/超出。
-     依赖 global.css 里 html,body,#root 的 height:100% 高度链。 */
-  height: 100%;
+  height: 100vh;
   overflow: hidden;
 }
 
@@ -30,10 +27,6 @@
   display: flex;
   flex-direction: column;
   background: var(--bg-base-alt);
-}
-
-:global([data-theme="light"]) .leftPanel {
-  background: rgba(255, 255, 255, 0.5);
 }
 
 .leftPanelHeader {
@@ -135,8 +128,8 @@
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   background: var(--overlay-dark);
   display: flex;
   align-items: center;
@@ -148,8 +141,8 @@
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   background: var(--overlay-dark);
   display: flex;
   align-items: center;
@@ -215,7 +208,6 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px;
   padding: 0 12px;
   flex-shrink: 0;
 }
@@ -248,41 +240,6 @@
 .footerIcon {
   width: 12px;
   height: 12px;
-}
-
-.footerSep {
-  color: var(--text-disabled);
-  font-size: 10px;
-}
-
-.footerVersion {
-  color: var(--text-disabled);
-  font-size: 11px;
-  text-decoration: none;
-}
-
-.footerVersion:hover {
-  color: var(--text-tertiary);
-}
-
-.newBadgeText {
-  display: inline-flex;
-  align-items: center;
-  height: 14px;
-  padding: 0 5px;
-  font-size: 10px;
-  line-height: 1;
-  color: var(--color-warning);
-  background: var(--color-warning-bg-faint);
-  border: 1px solid var(--color-warning-border-light);
-  border-radius: 3px;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.newBadgeText:hover {
-  background: var(--color-warning-bg-light);
-  border-color: var(--color-warning);
 }
 
 .footerDivider {
@@ -388,17 +345,6 @@
   zoom: 0.6;
 }
 
-:global(html.mobile-ios) .mobileChatInner {
-  zoom: 1;
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: calc(100% / 0.6);
-  height: calc(100% / 0.6);
-  transform: scale(0.6);
-  transform-origin: top left;
-}
-
 .mobileGitDiffOverlay {
   position: absolute;
   inset: 0;
@@ -421,145 +367,6 @@
   display: flex;
   flex-direction: column;
   zoom: 0.6;
-}
-
-:global(html.mobile-ios) .mobileGitDiffInner {
-  zoom: 1;
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: calc(100% / 0.6);
-  height: calc(100% / 0.6);
-  transform: scale(0.6);
-  transform-origin: top left;
-}
-
-/* ─── 文件浏览器 overlay ─── */
-.mobileFileExplorerOverlay {
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  transition: transform 0.3s ease;
-  z-index: 100;
-  background: var(--bg-base-alt);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.mobileFileExplorerOverlayVisible {
-  transform: translateX(0);
-}
-
-.mobileFileExplorerInner {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  zoom: 0.6;
-}
-
-:global(html.mobile-ios) .mobileFileExplorerInner {
-  zoom: 1;
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: calc(100% / 0.6);
-  height: calc(100% / 0.6);
-  transform: scale(0.6);
-  transform-origin: top left;
-}
-
-/* ─── 血条 cache popover 抽屉 overlay（手机模式：点击血条划出）─── */
-.mobileCachePanelOverlay {
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  transition: transform 0.3s ease;
-  z-index: 100;
-  background: var(--bg-base-alt);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.mobileCachePanelOverlayVisible {
-  transform: translateX(0);
-}
-
-.mobileCachePanelInner {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  zoom: 0.6;
-}
-
-:global(html.mobile-ios) .mobileCachePanelInner {
-  zoom: 1;
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: calc(100% / 0.6);
-  height: calc(100% / 0.6);
-  transform: scale(0.6);
-  transform-origin: top left;
-}
-
-.mobileCachePanelHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border-secondary);
-  background: var(--bg-elevated);
-}
-
-.mobileCachePanelTitle {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobileCachePanelClose {
-  background: none;
-  border: none;
-  color: var(--text-light);
-  padding: 4px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.mobileCachePanelClose:hover {
-  color: var(--text-primary);
-}
-
-.mobileCachePanelBody {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  padding: 8px;
-}
-
-/* ─── iPad/Pad 模式：取消 0.6 缩放，保持 PC 比例 ─── */
-:global(html.pad-mode) .mobileChatInner {
-  zoom: 1;
-}
-:global(html.pad-mode) .mobileGitDiffInner {
-  zoom: 1;
-}
-:global(html.pad-mode) .mobileFileExplorerInner {
-  zoom: 1;
-}
-:global(html.pad-mode) .mobileCachePanelInner {
-  zoom: 1;
 }
 
 .mobileMenuBtn {
@@ -596,9 +403,7 @@
   box-shadow: 0 4px 12px var(--overlay-dark-light);
   min-width: 160px;
   z-index: 1000;
-  /* 8 项 + 1 divider 在 iPhone SE (568px viewport) 边缘可能溢屏外，必须可滚 */
-  max-height: calc(100vh - 80px);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .mobileMenuItem {
@@ -617,13 +422,6 @@
 
 .mobileMenuItem:active {
   background: var(--overlay-light-medium);
-}
-
-/* PC 端在「代理热切换」与「项目统计」之间的分隔线在 mobile 也保留视觉一致 */
-.mobileMenuDivider {
-  height: 1px;
-  background: var(--border-primary);
-  margin: 4px 0;
 }
 
 .mobileStatsOverlay {
@@ -765,7 +563,7 @@
   font-size: 11px;
   color: var(--text-muted);
   margin-bottom: 8px;
-  font-family: var(--font-mono);
+  font-family: ui-monospace, monospace;
 }
 
 .mobilePromptCard {
@@ -845,51 +643,11 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  min-width: 0;
-  flex: 1 1 auto;
 }
 
 .mobileCLIStatusLabel {
   font-size: 12px;
   color: var(--text-light);
-}
-
-/* ─── iPad 模式血条（上下文使用率） ─── */
-.mobileCtxTag {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  border-radius: 12px;
-  border: 1px solid;
-  padding: 0 10px;
-  height: 22px;
-  font-size: 12px;
-  line-height: 22px;
-  overflow: hidden;
-  transition: border-color 0.3s, color 0.3s;
-  white-space: nowrap;
-  background: var(--bg-base-pure);
-  max-width: 200px;
-  min-width: 0;
-  flex: 0 1 auto;
-}
-
-.mobileCtxTagFill {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  opacity: 0.35;
-  transition: width 0.5s ease, background-color 0.3s;
-  pointer-events: none;
-}
-
-.mobileCtxTagContent {
-  position: relative;
-  z-index: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .mobileCLIHeaderRight {
@@ -909,50 +667,26 @@
 /* Mobile settings panel */
 .mobileSettingsBody {
   padding: 12px 16px;
-  overflow-y: auto;
-}
-
-.mobileSettingsGroup + .mobileSettingsGroup {
-  margin-top: 24px;
-  padding-top: 16px;
-  /* No border-top — bold section title + 40px gap already separates groups.
-     The horizontal line read as a distracting "title underline" rather than a divider. */
-}
-
-.mobileSettingsGroup .mobileSettingsRow:last-child {
-  border-bottom: none;
 }
 
 .mobileSettingsSectionTitle {
-  font-size: 15px;
-  color: var(--text-primary);
-  font-weight: 600;
-  margin-bottom: 4px;
-  letter-spacing: 0.2px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+  margin-bottom: 12px;
 }
 
 .mobileSettingsRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 0;
-  /* No row-divider line — 24px vertical padding gives enough breathing room
-     between rows; horizontal lines added noise without helping scan. */
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .mobileSettingsLabel {
   color: var(--text-secondary);
   font-size: 14px;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-/* 设置项标签后的 (?) 帮助图标（移动端 click 触发 Tooltip） */
-.mobileSettingsHelpIcon {
-  margin-left: 6px;
-  font-size: 15px;
-  color: var(--text-disabled);
 }
 
 /* Mobile prompt panel */
@@ -1037,52 +771,4 @@
   line-height: 1.6;
   color: var(--text-primary);
   margin: 0;
-}
-
-/* ===== Mobile 侧边抽屉公共基类 =====
- * 当前由插件管理 / CCV 进程管理 / 代理热切换三处共用；模板与既有
- * mobileFileExplorerOverlay / mobileLogMgmtOverlay 一致：
- *   - overlay 自身负责 translateX 动画与 z-index 100；will-change 提示浏览器为
- *     transform 单独建合成层，缓解 iOS Safari 在 inner 含 scale 时滑动卡顿。
- *   - inner 在内部用 zoom:0.6 还原桌面内容密度；iOS Safari 改用 scale(0.6)；pad-mode 复位 zoom:1。
- */
-
-.mobileDrawerOverlay {
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  transition: transform 0.3s ease;
-  will-change: transform;
-  z-index: 100;
-  background: var(--bg-base-alt);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.mobileDrawerOverlayVisible {
-  transform: translateX(0);
-}
-
-.mobileDrawerInner {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  zoom: 0.6;
-}
-
-:global(html.mobile-ios) .mobileDrawerInner {
-  zoom: 1;
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: calc(100% / 0.6);
-  height: calc(100% / 0.6);
-  transform: scale(0.6);
-  transform-origin: top left;
-}
-
-:global(html.pad-mode) .mobileDrawerInner {
-  zoom: 1;
 }

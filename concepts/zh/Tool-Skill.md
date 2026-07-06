@@ -1,47 +1,56 @@
 # Skill
 
-在当前对话内调用具名的 skill。Skill 是预打包的能力组合——领域知识、工作流、有时还包含工具权限——由运行时通过系统提醒暴露给助手。
+## 定义
 
-## 何时使用
-
-- 用户输入像 `/review` 或 `/init` 这样的斜杠命令——斜杠命令就是 skill，必须通过本工具执行。
-- 用户描述的任务与已公示 skill 的触发条件匹配（例如，请求扫描转录以寻找重复权限弹窗，就匹配 `fewer-permission-prompts`）。
-- 某 skill 的声明用途与当前文件、请求或对话上下文直接吻合。
-- 可重复的专项工作流已以 skill 形式提供，规范化流程比即兴方式更可取。
-- 用户询问「有哪些 skill 可用」——列出公示的名称，仅在他们确认后再调用。
+在主对话中执行一个技能（skill）。技能是用户可通过 slash command（如 `/commit`、`/review-pr`）调用的专用能力。
 
 ## 参数
 
-- `skill` (string, 必填)：当前 available-skills 系统提醒中列出的 skill 的精确名称。对于带插件命名空间的 skill，使用完整的 `plugin:skill` 形式（例如 `skill-creator:skill-creator`）。不要带前导斜杠。
-- `args` (string, 可选)：传给 skill 的自由格式参数。格式与语义由每个 skill 自己的文档定义。
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `skill` | string | 是 | 技能名称（如 "commit"、"review-pr"、"pdf"） |
+| `args` | string | 否 | 技能参数 |
 
-## 示例
+## 使用场景
 
-### 示例 1：对当前分支运行 review skill
+**适合使用：**
+- 用户输入了 `/<skill-name>` 格式的 slash command
+- 用户的请求匹配某个已注册技能的功能
 
-```
-Skill(skill="review")
-```
-
-`review` skill 封装了针对当前基础分支审查 pull request 的步骤。调用它会把运行时定义的审查流程加载到本轮中。
-
-### 示例 2：调用带插件命名空间并传参的 skill
-
-```
-Skill(
-  skill="skill-creator:skill-creator",
-  args="create a skill that summarizes git log for a given date range"
-)
-```
-
-将请求路由到 `skill-creator` 插件的入口，触发创作工作流。
+**不适合使用：**
+- 内置 CLI 命令（如 `/help`、`/clear`）
+- 已经在运行中的技能
+- 未在可用技能列表中的技能名称
 
 ## 注意事项
 
-- 仅调用其名称逐字出现在 available-skills 系统提醒中的 skill，或者用户在消息中以 `/name` 形式直接输入的 skill。永远不要根据记忆或训练数据猜测或编造 skill 名称——若未公示，不要调用本工具。
-- 当用户请求与已公示 skill 匹配时，调用 `Skill` 是阻塞性前置：在生成关于该任务的其他回复之前先调用它。不要描述 skill「会做什么」——直接运行它。
-- 不要只提 skill 名字而不实际调用。只宣称却不调用是误导。
-- 不要用 `Skill` 调用内置 CLI 命令如 `/help`、`/clear`、`/model` 或 `/exit`。那些由运行时直接处理。
-- 不要重复调用当前轮已在运行的 skill。如果你看到当前轮内有 `<command-name>` 标签，skill 已加载——请直接遵循其指令，而不是再次调用工具。
-- 若多个 skill 都可用，选择最具体的那个。对于添加权限或 hook 等配置改动，优先选 `update-config` 而非通用方式。
-- skill 执行可能在本轮剩余部分引入新的系统提醒、工具或约束。skill 完成后请重新阅读对话状态再继续。
+- 技能被调用后会展开为完整的 prompt
+- 支持完全限定名称（如 `ms-office-suite:pdf`）
+- 可用技能列表在 system-reminder 消息中提供
+- 看到 `<command-name>` 标签时说明技能已加载，应直接执行而非再次调用此工具
+- 不要在未实际调用工具的情况下提及某个技能
+
+## 原文
+
+<textarea readonly>Execute a skill within the main conversation
+
+When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.
+
+When users reference a "slash command" or "/<something>" (e.g., "/commit", "/review-pr"), they are referring to a skill. Use this tool to invoke it.
+
+How to invoke:
+- Use this tool with the skill name and optional arguments
+- Examples:
+  - `skill: "pdf"` - invoke the pdf skill
+  - `skill: "commit", args: "-m 'Fix bug'"` - invoke with arguments
+  - `skill: "review-pr", args: "123"` - invoke with arguments
+  - `skill: "ms-office-suite:pdf"` - invoke using fully qualified name
+
+Important:
+- Available skills are listed in system-reminder messages in the conversation
+- When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task
+- NEVER mention a skill without actually calling this tool
+- Do not invoke a skill that is already running
+- Do not use this tool for built-in CLI commands (like /help, /clear, etc.)
+- If you see a <command-name> tag in the current conversation turn, the skill has ALREADY been loaded - follow the instructions directly instead of calling this tool again
+</textarea>

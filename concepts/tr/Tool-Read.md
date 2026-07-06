@@ -1,41 +1,56 @@
 # Read
 
-Yerel dosya sisteminden tek bir dosyanın içeriğini yükler. Düz metin, kaynak kodu, görüntüler, PDF'ler ve Jupyter notebook'larını destekler ve sonuçları `cat -n` stilinde 1 tabanlı satır numaralarıyla döndürür.
+## Tanım
 
-## Ne Zaman Kullanılır
-
-- Düzenleme veya analiz öncesinde bilinen bir yoldaki bir kaynak dosyasını okumak
-- Yapılandırma dosyalarını, lockfile'ları, günlükleri veya üretilen eserleri incelemek
-- Kullanıcının konuşmaya yapıştırdığı ekran görüntülerini veya diyagramları görüntülemek
-- Uzun bir PDF kılavuzundan belirli bir sayfa aralığını çıkarmak
-- Kod hücrelerini, markdown'u ve hücre çıktılarını birlikte gözden geçirmek için bir `.ipynb` notebook'unu açmak
+Yerel dosya sisteminden dosya içeriğini okur. Metin dosyaları, resimler, PDF ve Jupyter notebook destekler.
 
 ## Parametreler
 
-- `file_path` (string, zorunlu): Hedef dosyanın mutlak yolu. Göreceli yollar reddedilir.
-- `offset` (integer, opsiyonel): Okumaya başlanacak 1 tabanlı satır numarası. `limit` ile eşleştirildiğinde büyük dosyalar için kullanışlıdır.
-- `limit` (integer, opsiyonel): `offset`'ten başlayarak döndürülecek maksimum satır sayısı. Atlandığında dosyanın üstünden varsayılan olarak 2000 satır.
-- `pages` (string, opsiyonel): PDF dosyaları için sayfa aralığı, örneğin `"1-5"`, `"3"` veya `"10-20"`. 10 sayfadan uzun PDF'ler için gereklidir; istek başına maksimum 20 sayfa.
+| Parametre | Tür | Zorunlu | Açıklama |
+|-----------|-----|---------|----------|
+| `file_path` | string | Evet | Dosyanın mutlak yolu |
+| `offset` | number | Hayır | Başlangıç satır numarası (büyük dosyalar için parçalı okuma) |
+| `limit` | number | Hayır | Okunacak satır sayısı (büyük dosyalar için parçalı okuma) |
+| `pages` | string | Hayır | PDF sayfa aralığı (örn. "1-5", "3", "10-20"), yalnızca PDF için |
 
-## Örnekler
+## Kullanım Senaryoları
 
-### Örnek 1: Küçük bir dosyanın tamamını okumak
-`Read`'i yalnızca `file_path` `/Users/me/project/src/index.ts` olarak ayarlanmış şekilde çağırın. Satır numaralarıyla birlikte 2000 satıra kadar döndürülür, bu genellikle düzenleme bağlamı için yeterlidir.
+**Kullanıma uygun:**
+- Kod dosyaları, yapılandırma dosyaları gibi metin dosyalarını okuma
+- Resim dosyalarını görüntüleme (Claude çok modlu bir modeldir)
+- PDF belgeleri okuma
+- Jupyter notebook okuma (tüm hücreleri ve çıktıları döndürür)
+- Bağlam elde etmek için birden fazla dosyayı paralel okuma
 
-### Örnek 2: Uzun bir günlüğü sayfa sayfa görüntülemek
-Bağlam tokenlarını israf etmeden dar bir pencere almak için birkaç bin satırlık bir günlük dosyasında `offset: 5001` ve `limit: 500` kullanın.
+**Kullanıma uygun değil:**
+- Dizin okuma — Bash'in `ls` komutu kullanılmalıdır
+- Açık uçlu kod tabanı keşfi — Task (Explore türü) kullanılmalıdır
 
-### Örnek 3: Belirli PDF sayfalarını çıkarmak
-`/tmp/spec.pdf`'teki 120 sayfalık bir PDF için, yalnızca ihtiyacınız olan bölümü almak için `pages: "8-15"` ayarlayın. Büyük bir PDF'de `pages`'i atlamak hata üretir.
+## Dikkat Edilecekler
 
-### Örnek 4: Bir görüntü görüntülemek
-PNG veya JPG ekran görüntüsünün mutlak yolunu geçirin. Görüntü görsel olarak işlenir, böylece Claude Code onun üzerinde doğrudan akıl yürütebilir.
+- Yol mutlak yol olmalıdır, göreli yol kullanılamaz
+- Varsayılan olarak dosyanın ilk 2000 satırını okur
+- 2000 karakteri aşan satırlar kesilir
+- Çıktı `cat -n` formatında, satır numaraları 1'den başlar
+- Büyük PDF'ler (10 sayfadan fazla) için `pages` parametresi belirtilmelidir, her seferinde en fazla 20 sayfa
+- Var olmayan bir dosyayı okumak hata döndürür (çökmez)
+- Tek mesajda birden fazla Read paralel olarak çağrılabilir
 
-## Notlar
+## Orijinal Metin
 
-- Her zaman mutlak yolları tercih edin. Kullanıcı bir tane sağlıyorsa, olduğu gibi güvenin.
-- 2000 karakterden uzun satırlar kesilir; aşırı geniş veriler için döndürülen içeriği olası kırpılmış olarak değerlendirin.
-- Birden fazla bağımsız dosya okuyor musunuz? Paralel çalışmaları için aynı yanıtta birkaç `Read` çağrısı yayınlayın.
-- `Read` dizinleri listeleyemez. Bunun yerine `Bash` `ls` çağrısı veya `Glob` aracı kullanın.
-- Var olan ancak boş bir dosyayı okumak dosya baytları yerine bir sistem hatırlatıcısı döndürür, bu yüzden bu sinyali açıkça yönetin.
-- Mevcut oturumda aynı dosyada `Edit` kullanabilmek için önce başarılı bir `Read` gereklidir.
+<textarea readonly>Reads a file from the local filesystem. You can access any file directly by using this tool.
+Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+
+Usage:
+- The file_path parameter must be an absolute path, not a relative path
+- By default, it reads up to 2000 lines starting from the beginning of the file
+- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
+- Any lines longer than 2000 characters will be truncated
+- Results are returned using cat -n format, with line numbers starting at 1
+- This tool allows Claude Code to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Claude Code is a multimodal LLM.
+- This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.
+- This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
+- This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
+- You can call multiple tools in a single response. It is always better to speculatively read multiple potentially useful files in parallel.
+- You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.
+- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.</textarea>

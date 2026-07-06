@@ -1,47 +1,56 @@
 # TaskGet
 
-Забирает полную запись одной задачи по ID, включая её описание, текущий статус, владельца, метаданные и рёбра зависимостей. Используйте, когда сводки, возвращаемой `TaskList`, недостаточно для действия по задаче.
+## Определение
 
-## Когда использовать
-
-- Вы подхватили задачу из `TaskList` и нужно полное описание перед началом работы.
-- Вы собираетесь пометить задачу `completed` и хотите перепроверить критерии приёмки.
-- Нужно инспектировать, какие задачи эта блокирует (`blocks`) или чем заблокирована (`blockedBy`), чтобы решить следующий шаг.
-- Вы расследуете историю — кто владеет, какие метаданные прикреплены, когда она меняла состояние.
-- Сокомандник или прежняя сессия сослались на ID задачи, и вам нужен контекст.
-
-Предпочитайте `TaskList`, когда нужен лишь общий обзор; резервируйте `TaskGet` для конкретной записи, которую вы собираетесь читать внимательно или модифицировать.
+Получает полные детали задачи по её ID.
 
 ## Параметры
 
-- `taskId` (string, обязательный): идентификатор задачи, возвращённый `TaskCreate` или `TaskList`. ID стабильны на всё время жизни задачи.
+| Параметр | Тип | Обязательный | Описание |
+|------|------|------|------|
+| `taskId` | string | Да | ID задачи для получения |
 
-## Примеры
+## Возвращаемое содержимое
 
-### Пример 1
+- `subject` — заголовок задачи
+- `description` — подробные требования и контекст
+- `status` — статус: `pending`, `in_progress` или `completed`
+- `blocks` — список задач, заблокированных этой задачей
+- `blockedBy` — список предшествующих задач, блокирующих эту задачу
 
-Посмотреть задачу, только что увиденную в списке.
+## Сценарии использования
 
-```
-TaskGet(taskId: "t_01HXYZ...")
-```
-
-Типичные поля ответа: `id`, `subject`, `description`, `activeForm`, `status`, `owner`, `blocks`, `blockedBy`, `metadata`, `createdAt`, `updatedAt`.
-
-### Пример 2
-
-Разрешить зависимости перед началом.
-
-```
-TaskGet(taskId: "t_01HXYZ...")
-# Inspect blockedBy — if any referenced task is still pending
-# or in_progress, work on the blocker first.
-```
+**Подходящее применение:**
+- Получение полного описания и контекста задачи перед началом работы
+- Понимание зависимостей задачи
+- Получение полных требований после назначения задачи
 
 ## Примечания
 
-- `TaskGet` работает только на чтение и безопасен для повторных вызовов; он не меняет статус или владение.
-- Если `blockedBy` непустой и содержит задачи, не являющиеся `completed`, не начинайте эту задачу — сначала разрешите блокеры (или скоординируйтесь с их владельцем).
-- Поле `description` может быть длинным. Прочитайте его полностью перед действием; беглый просмотр ведёт к пропущенным критериям приёмки.
-- Неизвестный или удалённый `taskId` возвращает ошибку. Перезапустите `TaskList`, чтобы выбрать актуальный ID.
-- Если вы собираетесь править задачу, сначала вызовите `TaskGet`, чтобы не перезаписать поля, которые только что изменил сокомандник.
+- После получения задачи следует проверить, пуст ли список `blockedBy`, прежде чем начинать работу
+- Используйте TaskList для просмотра сводки всех задач
+
+## Оригинальный текст
+
+<textarea readonly>Use this tool to retrieve a task by its ID from the task list.
+
+## When to Use This Tool
+
+- When you need the full description and context before starting work on a task
+- To understand task dependencies (what it blocks, what blocks it)
+- After being assigned a task, to get complete requirements
+
+## Output
+
+Returns full task details:
+- **subject**: Task title
+- **description**: Detailed requirements and context
+- **status**: 'pending', 'in_progress', or 'completed'
+- **blocks**: Tasks waiting on this one to complete
+- **blockedBy**: Tasks that must complete before this one can start
+
+## Tips
+
+- After fetching a task, verify its blockedBy list is empty before beginning work.
+- Use TaskList to see all tasks in summary form.
+</textarea>

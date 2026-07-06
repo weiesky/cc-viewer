@@ -1,38 +1,46 @@
 # Edit
 
-Виконує точну заміну рядка всередині наявного файлу. Це бажаний спосіб модифікації файлів, оскільки передається лише diff, що зберігає зміни точними та придатними для аудиту.
+## Визначення
 
-## Коли використовувати
-
-- Виправлення помилки в одній функції без переписування всього навколишнього файлу
-- Оновлення значення конфігурації, рядка версії чи шляху імпорту
-- Перейменування символу по всьому файлу за допомогою `replace_all`
-- Вставка блоку біля якоря (розширте `old_string`, щоб включити прилеглий контекст, а потім надайте заміну)
-- Застосування невеликих, добре спрямованих правок як частини багатоетапного рефакторингу
+Редагує файл через точну заміну рядків. Замінює `old_string` на `new_string` у файлі.
 
 ## Параметри
 
-- `file_path` (string, обовʼязковий): Абсолютний шлях до файлу для модифікації.
-- `old_string` (string, обовʼязковий): Точний текст для пошуку. Має збігатися символ у символ, включно з пробілами та відступами.
-- `new_string` (string, обовʼязковий): Текст заміни. Має відрізнятися від `old_string`.
-- `replace_all` (boolean, необовʼязковий): Якщо `true`, замінює кожне входження `old_string`. За замовчуванням `false`, що вимагає унікального збігу.
+| Параметр | Тип | Обов'язковий | Опис |
+|----------|-----|--------------|------|
+| `file_path` | string | Так | Абсолютний шлях до файлу для зміни |
+| `old_string` | string | Так | Оригінальний текст для заміни |
+| `new_string` | string | Так | Новий текст після заміни (повинен відрізнятися від old_string) |
+| `replace_all` | boolean | Ні | Чи замінювати всі збіги, за замовчуванням `false` |
 
-## Приклади
+## Сценарії використання
 
-### Приклад 1: Виправлення одного місця виклику
-Встановіть `old_string` точним рядком `const port = 3000;` і `new_string` — `const port = process.env.PORT ?? 3000;`. Збіг унікальний, тому `replace_all` може залишатися за замовчуванням.
+**Підходить для:**
+- Зміна конкретних ділянок коду в існуючому файлі
+- Виправлення помилок, оновлення логіки
+- Перейменування змінних (у поєднанні з `replace_all: true`)
+- Будь-які сценарії, що потребують точної зміни вмісту файлу
 
-### Приклад 2: Перейменування символу по всьому файлу
-Щоб перейменувати `getUser` на `fetchUser` скрізь у `api.ts`, встановіть `old_string: "getUser"`, `new_string: "fetchUser"` і `replace_all: true`.
-
-### Приклад 3: Уточнення повторюваного фрагменту
-Якщо `return null;` зʼявляється в кількох гілках, розширте `old_string`, щоб включити навколишній контекст (наприклад, попередній рядок `if`), щоб збіг став унікальним. Інакше інструмент видасть помилку замість здогадки.
+**Не підходить для:**
+- Створення нових файлів — слід використовувати Write
+- Масштабне переписування — може знадобитися Write для перезапису всього файлу
 
 ## Примітки
 
-- Ви повинні викликати `Read` для файлу принаймні один раз у поточній сесії, перш ніж `Edit` прийме зміни. Префікси з номерами рядків з виводу `Read` не є частиною вмісту файлу; не включайте їх у `old_string` чи `new_string`.
-- Пробіли мають збігатися точно. Звертайте увагу на табуляції проти пробілів та пробіли в кінці, особливо в YAML, Makefiles і Python.
-- Якщо `old_string` не унікальний і `replace_all` дорівнює `false`, редагування зазнає невдачі. Або розширте контекст, або увімкніть `replace_all`.
-- Віддавайте перевагу `Edit` перед `Write`, коли файл уже існує; `Write` перезаписує весь файл і втрачає непов'язаний вміст, якщо ви не обережні.
-- Для кількох непов'язаних правок в одному файлі видайте кілька викликів `Edit` послідовно, а не одну велику крихку заміну.
-- Уникайте введення емодзі, маркетингових текстів або незапитаних блоків документації під час редагування файлів вихідного коду.
+- Перед використанням файл повинен бути прочитаний через Read, інакше буде помилка
+- `old_string` повинен бути унікальним у файлі, інакше редагування не вдасться. Якщо не унікальний, надайте більше контексту для забезпечення унікальності або використовуйте `replace_all`
+- При редагуванні тексту необхідно зберігати оригінальний відступ (tab/пробіли), не включайте префікс номера рядка з виводу Read
+- Надавайте перевагу редагуванню існуючих файлів, а не створенню нових
+- `new_string` повинен відрізнятися від `old_string`
+
+## Оригінальний текст
+
+<textarea readonly>Performs exact string replacements in files.
+
+Usage:
+- You must use your `Read` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file. 
+- When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix format is: spaces + line number + tab. Everything after that tab is the actual file content to match. Never include any part of the line number prefix in the old_string or new_string.
+- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
+- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
+- The edit will FAIL if `old_string` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use `replace_all` to change every instance of `old_string`.
+- Use `replace_all` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.</textarea>

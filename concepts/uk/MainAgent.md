@@ -6,7 +6,7 @@ MainAgent — це основний ланцюг запитів Claude Code у �
 
 ## Спосіб ідентифікації
 
-У cc-viewer MainAgent ідентифікується через `req.mainAgent === true` і автоматично позначається `server/interceptor.js` під час перехоплення запиту.
+У cc-viewer MainAgent ідентифікується через `req.mainAgent === true` і автоматично позначається `interceptor.js` під час перехоплення запиту.
 
 Умови визначення (повинні виконуватися всі):
 - Тіло запиту містить поле `system` (system prompt)

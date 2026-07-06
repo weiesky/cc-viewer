@@ -1,56 +1,78 @@
 # TaskCreate
 
-Mevcut ekibin görev listesinde (veya etkin bir ekip yoksa oturumun görev listesinde) yeni bir görev oluşturur. İzlenmesi, devredilmesi veya daha sonra tekrar ziyaret edilmesi gereken iş öğelerini yakalamak için kullanın.
+## Tanım
 
-## Ne Zaman Kullanılır
-
-- Kullanıcı, açık izlemeden yararlanan çok adımlı bir iş parçası tanımlar.
-- Büyük bir isteği daha küçük, ayrı tamamlanabilir birimlere ayırıyorsunuz.
-- Görev ortasında bir takip keşfedilir ve unutulmaması gerekir.
-- Çalışmayı bir ekip arkadaşına veya alt ajana devretmeden önce niyetin kalıcı bir kaydına ihtiyacınız var.
-- Plan modunda çalışıyorsunuz ve her plan adımının somut bir görev olarak temsil edilmesini istiyorsunuz.
-
-Önemsiz tek seferlik eylemler, saf konuşma veya iki veya üç doğrudan araç çağrısıyla tamamlanabilecek her şey için `TaskCreate`'i atlayın.
+İlerlemeyi izlemek, karmaşık görevleri organize etmek ve kullanıcıya çalışma ilerlemesini göstermek için yapılandırılmış görev listesi girdisi oluşturur.
 
 ## Parametreler
 
-- `subject` (string, zorunlu): Kısa buyurgan başlık, örneğin `Fix login redirect on Safari`. Yaklaşık seksen karakter altında tutun.
-- `description` (string, zorunlu): Ayrıntılı bağlam — problem, kısıtlar, kabul kriterleri ve gelecekteki bir okuyucunun ihtiyaç duyacağı dosyalar veya bağlantılar. Bir ekip arkadaşının bunu soğuk olarak alacakmış gibi yazın.
-- `activeForm` (string, opsiyonel): Görev `in_progress` iken gösterilen şimdiki-sürekli dönen metin, örneğin `Fixing login redirect on Safari`. `subject`'i yansıtın ancak -ing formunda.
-- `metadata` (object, opsiyonel): Göreve eklenen keyfi yapılandırılmış veri. Yaygın kullanımlar: etiketler, öncelik ipuçları, dış bilet ID'leri veya ajana özgü yapılandırma.
+| Parametre | Tür | Zorunlu | Açıklama |
+|-----------|-----|---------|----------|
+| `subject` | string | Evet | Kısa görev başlığı, emir kipi kullanılır (örn. "Fix authentication bug") |
+| `description` | string | Evet | Bağlam ve kabul kriterleri dahil ayrıntılı açıklama |
+| `activeForm` | string | Hayır | Devam ederken gösterilen şimdiki zaman metni (örn. "Fixing authentication bug") |
+| `metadata` | object | Hayır | Göreve eklenen rastgele meta veriler |
 
-Yeni oluşturulan görevler her zaman `pending` durumuyla ve sahibi olmadan başlar. Bağımlılıklar (`blocks`, `blockedBy`) oluşturma zamanında ayarlanmaz — daha sonra `TaskUpdate` ile uygulayın.
+## Kullanım Senaryoları
 
-## Örnekler
+**Kullanıma uygun:**
+- Karmaşık çok adımlı görevler (3 adımdan fazla)
+- Kullanıcı birden fazla yapılacak iş sağladığında
+- Planlama modunda çalışmayı izleme
+- Kullanıcı açıkça todo listesi kullanılmasını istediğinde
 
-### Örnek 1
+**Kullanıma uygun değil:**
+- Tek basit görev
+- 3 adımdan az basit işlemler
+- Salt konuşma veya bilgi sorgusu
 
-Kullanıcının az önce dosyaladığı bir hata raporunu yakalayın.
+## Dikkat Edilecekler
 
-```
-TaskCreate(
-  subject: "Repair broken PDF export on Windows",
-  description: "Users on Windows 11 report the export button produces a 0-byte file. Reproduce with sample doc in test/fixtures/export/, then fix the code path in src/export/pdf.ts. Acceptance: export writes a valid PDF and the existing export test suite passes.",
-  activeForm: "Repairing broken PDF export on Windows"
-)
-```
+- Tüm yeni görevlerin başlangıç durumu `pending`'dir
+- `subject` emir kipi kullanır ("Run tests"), `activeForm` şimdiki zaman kullanır ("Running tests")
+- Oluşturulduktan sonra TaskUpdate ile bağımlılık ilişkileri (blocks/blockedBy) ayarlanabilir
+- Oluşturmadan önce TaskList ile mükerrer görev olup olmadığı kontrol edilmelidir
 
-### Örnek 2
+## Orijinal Metin
 
-Bir oturumun başında bir epic'i izlenen birimlere bölün.
+<textarea readonly>Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+It also helps the user understand the progress of the task and overall progress of their requests.
 
-```
-TaskCreate(
-  subject: "Draft migration plan for auth service",
-  description: "Produce a written plan covering rollout stages, rollback strategy, and monitoring. Output: docs/auth-migration.md.",
-  activeForm: "Drafting migration plan for auth service",
-  metadata: { "priority": "P1", "linearId": "AUTH-214" }
-)
-```
+## When to Use This Tool
 
-## Notlar
+Use this tool proactively in these scenarios:
 
-- `subject`'i buyurgan sesle ve `activeForm`'u şimdiki sürekli olarak yazın, böylece görev `in_progress`'e geçtiğinde arayüz doğal bir şekilde okunur.
-- Yinelenenlerden kaçınmak için oluşturmadan önce `TaskList` çağırın — ekip listesi ekip arkadaşları ve alt ajanlarla paylaşılır.
-- `description` veya `metadata` içinde sırları veya kimlik bilgilerini dahil etmeyin; görev kayıtları ekibe erişimi olan herkese görünür.
-- Oluşturmadan sonra, görevi `TaskUpdate` ile yaşam döngüsünden geçirin. Çalışmayı sessizce `in_progress`'te terk edilmiş bırakmayın.
+- Complex multi-step tasks - When a task requires 3 or more distinct steps or actions
+- Non-trivial and complex tasks - Tasks that require careful planning or multiple operations
+- Plan mode - When using plan mode, create a task list to track the work
+- User explicitly requests todo list - When the user directly asks you to use the todo list
+- User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
+- After receiving new instructions - Immediately capture user requirements as tasks
+- When you start working on a task - Mark it as in_progress BEFORE beginning work
+- After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation
+
+## When NOT to Use This Tool
+
+Skip using this tool when:
+- There is only a single, straightforward task
+- The task is trivial and tracking it provides no organizational benefit
+- The task can be completed in less than 3 trivial steps
+- The task is purely conversational or informational
+
+NOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.
+
+## Task Fields
+
+- **subject**: A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")
+- **description**: Detailed description of what needs to be done, including context and acceptance criteria
+- **activeForm**: Present continuous form shown in spinner when task is in_progress (e.g., "Fixing authentication bug"). This is displayed to the user while you work on the task.
+
+**IMPORTANT**: Always provide activeForm when creating tasks. The subject should be imperative ("Run tests") while activeForm should be present continuous ("Running tests"). All tasks are created with status `pending`.
+
+## Tips
+
+- Create tasks with clear, specific subjects that describe the outcome
+- Include enough detail in the description for another agent to understand and complete the task
+- After creating tasks, use TaskUpdate to set up dependencies (blocks/blockedBy) if needed
+- Check TaskList first to avoid creating duplicate tasks
+</textarea>

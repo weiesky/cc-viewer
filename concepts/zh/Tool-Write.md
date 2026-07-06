@@ -1,35 +1,39 @@
 # Write
 
-在本地文件系统上创建新文件，或完全替换已有文件的内容。由于它会替换目标路径的全部内容，应仅用于真正意义上的创建或刻意的完整重写。
+## 定义
 
-## 何时使用
-
-- 创建一份全新的源文件、测试或配置，尚不存在
-- 从零生成一份新的夹具、快照或数据文件
-- 执行完整重写，渐进式 `Edit` 反而比重来更复杂时
-- 产出用户明确要求的工件，如 schema、迁移或构建脚本
+将内容写入本地文件系统。如果文件已存在则覆盖。
 
 ## 参数
 
-- `file_path` (string, 必填)：要写入文件的绝对路径。父目录必须已存在。
-- `content` (string, 必填)：要写入文件的完整文本。它将成为整个文件主体。
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `file_path` | string | 是 | 文件的绝对路径（必须是绝对路径） |
+| `content` | string | 是 | 要写入的内容 |
 
-## 示例
+## 使用场景
 
-### 示例 1：创建新的辅助模块
-以 `file_path: "/Users/me/app/src/utils/slugify.ts"` 调用 `Write`，并将实现作为 `content` 提供。仅在确认该文件尚不存在后使用。
+**适合使用：**
+- 创建新文件
+- 需要完全重写文件内容时
 
-### 示例 2：重新生成派生工件
-当 schema 源变化后，用一次 `Write` 将新生成的 JSON 作为 `content` 覆盖 `/Users/me/app/generated/schema.json`。
-
-### 示例 3：替换小型夹具文件
-对每一行都会变化的一次性测试夹具，`Write` 可能比一连串 `Edit` 更清晰。先读文件、确认范围再覆盖。
+**不适合使用：**
+- 修改文件中的局部内容——应使用 Edit
+- 不应主动创建文档文件（*.md）或 README，除非用户明确要求
 
 ## 注意事项
 
-- 在覆盖已有文件之前，当前会话内必须对其调用过 `Read`。`Write` 拒绝覆盖未曾查看的内容。
-- 仅改动文件的一部分时，优先使用 `Edit`。`Edit` 只发送 diff，更快更安全也更易审阅。
-- 不要主动创建 Markdown 文档、`README.md` 或 changelog，除非用户明确要求。
-- 不要添加表情符号、营销性文案或装饰性横幅，除非用户要求这种风格。
-- 先用 `Bash` 的 `ls` 调用核实父目录是否存在；`Write` 不会创建中间目录。
-- 提供精确希望持久化的内容；没有模板或后处理。
+- 如果目标文件已存在，必须先通过 Read 读取，否则会失败
+- 会覆盖已有文件的全部内容
+- 优先使用 Edit 编辑现有文件，Write 仅用于创建新文件或完全重写
+
+## 原文
+
+<textarea readonly>Writes a file to the local filesystem.
+
+Usage:
+- This tool will overwrite the existing file if there is one at the provided path.
+- If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
+- Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.
+- NEVER create documentation files (*.md) or README files unless explicitly requested by the User.
+- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.</textarea>

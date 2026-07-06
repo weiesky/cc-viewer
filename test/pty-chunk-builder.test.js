@@ -438,35 +438,4 @@ describe('ptyChunkBuilder', () => {
       assert.deepEqual(chunks, [ENTER]);
     });
   });
-
-  // --------------------------------------------------------------------------
-  // buildBracketPasteSubmitChunks
-  // --------------------------------------------------------------------------
-  describe('buildBracketPasteSubmitChunks', () => {
-    function buildBracketPasteSubmitChunks(content) {
-      if (typeof content !== 'string' || content.length === 0) return [];
-      return [`\x1b[200~${content}\x1b[201~`, '\r'];
-    }
-
-    it('wraps content in bracket paste and appends Enter', () => {
-      const chunks = buildBracketPasteSubmitChunks('hello');
-      assert.deepEqual(chunks, ['\x1b[200~hello\x1b[201~', '\r']);
-    });
-
-    it('handles multi-byte characters (CJK)', () => {
-      const chunks = buildBracketPasteSubmitChunks('测试');
-      assert.deepEqual(chunks, ['\x1b[200~测试\x1b[201~', '\r']);
-    });
-
-    it('returns empty array for empty string', () => {
-      const chunks = buildBracketPasteSubmitChunks('');
-      assert.deepEqual(chunks, []);
-    });
-
-    it('returns empty array for non-string input', () => {
-      assert.deepEqual(buildBracketPasteSubmitChunks(null), []);
-      assert.deepEqual(buildBracketPasteSubmitChunks(undefined), []);
-      assert.deepEqual(buildBracketPasteSubmitChunks(123), []);
-    });
-  });
 });

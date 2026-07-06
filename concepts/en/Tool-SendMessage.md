@@ -1,68 +1,41 @@
 # SendMessage
 
-Delivers a message from one team member to another within an active team, or broadcasts to every teammate at once. This is the only channel teammates can hear — anything written to normal text output is invisible to them.
+## Definition
 
-## When to Use
-
-- Assigning a task or handing off a subproblem to a named teammate during team collaboration.
-- Requesting status, intermediate findings, or a code review from another agent.
-- Broadcasting a decision, shared constraint, or shutdown announcement to the full team via `*`.
-- Replying to a protocol prompt such as a shutdown request or a plan-approval request from the team leader.
-- Closing the loop at the end of a delegated task so the leader can mark the item complete.
+Sends messages between agents within a team. Used for direct communication, broadcasting, and protocol messages (shutdown requests/responses, plan approval).
 
 ## Parameters
 
-- `to` (string, required): The target teammate's `name` as registered in the team, or `*` to broadcast to all teammates at once.
-- `message` (string or object, required): Plain text for normal communication, or a structured object for protocol responses like `shutdown_response` and `plan_approval_response`.
-- `summary` (string, optional): A 5–10 word preview shown in the team activity log for plain-text messages. Required for long string messages; ignored when `message` is a protocol object.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `to` | string | Yes | Recipient: teammate name, or `"*"` for broadcast to all |
+| `message` | string / object | Yes | Plain text message or structured protocol object |
+| `summary` | string | No | A 5-10 word preview shown in the UI |
 
-## Examples
+## Message Types
 
-### Example 1: Direct task handoff
+### Plain Text
+Direct messages between teammates for coordination, status updates, and task discussions.
 
-```
-SendMessage(
-  to="db-lead",
-  message="Please audit prisma/schema.prisma and list any model missing createdAt/updatedAt timestamps. Reply when done.",
-  summary="Audit schema for missing timestamps"
-)
-```
+### Shutdown Request
+Asks a teammate to gracefully shut down: `{ type: "shutdown_request", reason: "..." }`
 
-### Example 2: Broadcast a shared constraint
+### Shutdown Response
+Teammate approves or rejects a shutdown: `{ type: "shutdown_response", approve: true/false }`
 
-```
-SendMessage(
-  to="*",
-  message="Reminder: do not touch files under legacy/ — that subtree is frozen until the migration PR lands.",
-  summary="Freeze legacy/ during migration"
-)
-```
+### Plan Approval Response
+Approves or rejects a teammate's plan: `{ type: "plan_approval_response", approve: true/false }`
 
-### Example 3: Protocol response
+## Broadcast vs Direct
 
-Respond to a shutdown request from the leader using a structured message:
+- **Direct** (`to: "teammate-name"`): Send to a specific teammate — preferred for most communication
+- **Broadcast** (`to: "*"`): Send to all teammates — use sparingly, only for critical team-wide announcements
 
-```
-SendMessage(
-  to="leader",
-  message={ "type": "shutdown_response", "ready": true, "final_report": "All assigned diff chunks committed on branch refactor-crew/db-lead." }
-)
-```
+## Related Tools
 
-### Example 4: Plan approval response
-
-```
-SendMessage(
-  to="leader",
-  message={ "type": "plan_approval_response", "approved": true, "notes": "LGTM, but please split step 4 into migration + backfill." }
-)
-```
-
-## Notes
-
-- Your regular assistant text output is NOT transmitted to teammates. If you want another agent to see something, it must go through `SendMessage`. This is the single most common mistake in team workflows.
-- Broadcast (`to: "*"`) is expensive — it wakes every teammate and consumes their context. Reserve it for announcements that genuinely affect everyone. Prefer targeted sends.
-- Keep messages concise and action-oriented. Include the file paths, constraints, and expected reply format the recipient needs; remember they have no shared memory with you.
-- Protocol message objects (`shutdown_response`, `plan_approval_response`) have fixed shapes. Do not mix protocol fields into plain-text messages or vice versa.
-- Messages are asynchronous. The recipient will receive yours on their next turn; do not assume they have read or acted on it until they reply.
-- A well-written `summary` makes the team activity log scannable for the leader — treat it like a commit subject line.
+| Tool | Purpose |
+|------|---------|
+| `TeamCreate` | Create a new team |
+| `TeamDelete` | Remove team when done |
+| `Agent` | Spawn teammates that join the team |
+| `TaskCreate` / `TaskUpdate` / `TaskList` | Manage the shared task list |

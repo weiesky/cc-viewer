@@ -3,12 +3,11 @@
  * Pure function — no React/state dependencies.
  */
 
-import { classifyUserContent, isMainAgent, extractDisplayText } from './contentFilter';
+import { classifyUserContent, isSystemText, isMainAgent } from './contentFilter';
 import { restoreSlimmedEntry } from './entry-slim.js';
 import { classifyRequest, formatRequestTag, formatTeammateLabel } from './requestType';
-import { getModelInfo, getEffectiveModel } from './helpers';
+import { getModelInfo } from './helpers';
 import { getTeammateAvatar } from './teammateAvatars';
-import { buildSubAgentResultMap, buildGlobalToolResultIndex } from './toolResultBuilder';
 
 export function buildTeamModalData(team, requests, mainAgentSessions) {
   const startIdx = team.requestIndex;
@@ -23,8 +22,7 @@ export function buildTeamModalData(team, requests, mainAgentSessions) {
   for (let i = startIdx; i < endIdx && i < requests.length; i++) {
     const req = requests[i];
     if (req.timestamp) tsToIndex[req.timestamp] = i;
-    const effective = getEffectiveModel(req);
-    if (effective) modelName = effective;
+    if (req.body?.model) modelName = req.body.model;
   }
   const modelInfo = getModelInfo(modelName);
 
@@ -60,12 +58,9 @@ export function buildTeamModalData(team, requests, mainAgentSessions) {
               hasUserMsg = true;
             }
           }
-        } else if (typeof content === 'string') {
-          const dispText = extractDisplayText(content);
-          if (dispText) {
-            entries.push({ type: 'user', text: dispText, timestamp: ts });
-            hasUserMsg = true;
-          }
+        } else if (typeof content === 'string' && !isSystemText(content)) {
+          entries.push({ type: 'user', text: content, timestamp: ts });
+          hasUserMsg = true;
         }
       }
     }
@@ -87,12 +82,9 @@ export function buildTeamModalData(team, requests, mainAgentSessions) {
             hasUserMsg = true;
           }
         }
-      } else if (typeof c === 'string') {
-        const dispText = extractDisplayText(c);
-        if (dispText) {
-          entries.push({ type: 'user', text: dispText, timestamp: teamStartTime });
-          hasUserMsg = true;
-        }
+      } else if (typeof c === 'string' && !isSystemText(c)) {
+        entries.push({ type: 'user', text: c, timestamp: teamStartTime });
+        hasUserMsg = true;
       }
       if (hasUserMsg) break;
     }
@@ -114,10 +106,6 @@ export function buildTeamModalData(team, requests, mainAgentSessions) {
     }
   }
 
-  // 全局 tool_result 索引(team 范围内):并行 sub-agent 请求穿插,K+1 不可预测;
-  // 一次性建 id → result 索引,O(1) 查询。
-  const teamGlobalIndex = buildGlobalToolResultIndex(teamRequests);
-
   // 收集 assistant + sub-agent 条目
   for (let i = 0; i < teamRequests.length; i++) {
     const req = teamRequests[i];
@@ -130,7 +118,18 @@ export function buildTeamModalData(team, requests, mainAgentSessions) {
     if (isMA) {
       entries.push({ type: 'assistant', content: respContent, timestamp: req.response?.timestamp || req.timestamp, requestIndex: startIdx + i, modelInfo });
     } else if (isSub) {
-      const subToolResultMap = buildSubAgentResultMap(req, teamGlobalIndex);
+      const subToolResultMap = {};
+      const msgs = req.body?.messages || [];
+      for (const msg of msgs) {
+        if (msg.role === 'tool_result' || (msg.role === 'user' && Array.isArray(msg.content))) {
+          const blocks = Array.isArray(msg.content) ? msg.content : [msg];
+          for (const b of blocks) {
+            if (b.type === 'tool_result' && b.tool_use_id) {
+              subToolResultMap[b.tool_use_id] = { resultText: typeof b.content === 'string' ? b.content : JSON.stringify(b.content) };
+            }
+          }
+        }
+      }
       entries.push({
         type: 'sub-agent',
         content: respContent,

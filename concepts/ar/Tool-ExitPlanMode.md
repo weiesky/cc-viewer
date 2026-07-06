@@ -1,42 +1,62 @@
 # ExitPlanMode
 
-يُقدم خطة التنفيذ التي أُعدت أثناء وضع التخطيط لاعتماد المستخدم، ثم — إذا اعتُمدت — ينقل الجلسة خارج وضع التخطيط حتى يمكن أن تبدأ التعديلات.
+## التعريف
 
-## متى يُستخدم
-
-- عندما تكتمل خطة كُتبت خلال `EnterPlanMode` وتصبح جاهزة للمراجعة.
-- عندما تكون المهمة موجهة نحو التنفيذ (تغييرات شفرة أو إعدادات)، لا بحثاً صرفاً، فالخطة الصريحة مناسبة.
-- عندما تكون جميع القراءة والتحليل التمهيدية منجزة؛ لا حاجة لمزيد من التحقيق قبل أن يقرر المستخدم.
-- عندما يكون المساعد قد عدَّد مسارات ملفات ودوال وخطوات ملموسة — لا مجرد أهداف.
-- عندما يطلب المستخدم رؤية الخطة، أو عندما يوشك سير عمل وضع التخطيط على التسليم إلى أدوات التعديل.
+الخروج من وضع التخطيط وتقديم الخطة للمستخدم للموافقة. يُقرأ محتوى الخطة من ملف الخطة المكتوب مسبقاً.
 
 ## المعاملات
 
-- `allowedPrompts` (مصفوفة، اختياري): مطالبات يمكن للمستخدم كتابتها في شاشة الاعتماد لاعتماد الخطة تلقائياً أو تعديلها. يحدد كل عنصر صلاحية مُحدَّدة النطاق (على سبيل المثال، اسم عملية والأداة التي تنطبق عليها). اتركها غير مضبوطة لاستخدام تدفق الاعتماد الافتراضي.
+| المعامل | النوع | مطلوب | الوصف |
+|---------|-------|-------|-------|
+| `allowedPrompts` | array | لا | قائمة أوصاف الأذونات المطلوبة لخطة التنفيذ |
 
-## أمثلة
+كل عنصر في مصفوفة `allowedPrompts`:
 
-### مثال 1: تقديم قياسي
+| الحقل | النوع | مطلوب | الوصف |
+|-------|-------|-------|-------|
+| `tool` | enum | نعم | الأداة المعنية، حالياً يُدعم فقط `Bash` |
+| `prompt` | string | نعم | وصف دلالي للعملية (مثل "run tests"، "install dependencies") |
 
-بعد التحقق من إعادة هيكلة المصادقة داخل وضع التخطيط وكتابة ملف الخطة على القرص، يستدعي المساعد `ExitPlanMode` دون وسيطات. يقرأ الإطار الخطة من موقعها القانوني، ويعرضها على المستخدم، وينتظر الاعتماد أو الرفض.
+## سيناريوهات الاستخدام
 
-### مثال 2: إجراءات سريعة معتمدة مسبقاً
+**مناسب للاستخدام:**
+- اكتملت الخطة في وضع التخطيط وجاهزة لتقديمها لموافقة المستخدم
+- يُستخدم فقط لمهام التنفيذ التي تتطلب كتابة كود
 
-```
-ExitPlanMode(allowedPrompts=[
-  {"tool": "Bash", "prompt": "run tests"},
-  {"tool": "Bash", "prompt": "install dependencies"}
-])
-```
-
-يتيح للمستخدم منح الإذن مقدماً لأوامر المتابعة الروتينية، حتى لا يحتاج المساعد إلى التوقف عند كل مطالبة إذن خلال التنفيذ.
+**غير مناسب للاستخدام:**
+- مهام البحث/الاستكشاف البحتة — لا حاجة للخروج من وضع التخطيط
+- السؤال "هل الخطة مقبولة؟" — هذا بالضبط وظيفة هذه الأداة، لا تستخدم AskUserQuestion لذلك
 
 ## ملاحظات
 
-- لا معنى لـ `ExitPlanMode` إلا في العمل بطابع التنفيذ. إذا كان طلب المستخدم مهمة بحث أو شرح بلا تغييرات في الملفات، فأجب مباشرةً — لا تتوجه عبر وضع التخطيط لمجرد الخروج منه.
-- يجب أن تكون الخطة مكتوبة على القرص قبل استدعاء هذه الأداة. لا يقبل `ExitPlanMode` متن الخطة كمعامل؛ إذ يقرأ من المسار الذي يتوقعه الإطار.
-- إذا رفض المستخدم الخطة، تعود إلى وضع التخطيط. راجع بناءً على الملاحظات وقدم مرة أخرى؛ لا تبدأ في تعديل الملفات بينما الخطة غير معتمدة.
-- الاعتماد يمنح الإذن بمغادرة وضع التخطيط واستخدام الأدوات المُعدِّلة (`Edit` و`Write` و`Bash` وغيرها) للنطاق الموصوف في الخطة. توسيع النطاق بعد ذلك يتطلب خطة جديدة أو موافقة صريحة من المستخدم.
-- لا تستخدم `AskUserQuestion` لسؤال «هل تبدو هذه الخطة جيدة؟» قبل استدعاء هذه الأداة — طلب اعتماد الخطة هو بالضبط ما يفعله `ExitPlanMode`، ولا يستطيع المستخدم رؤية الخطة قبل تقديمها.
-- اجعل الخطة ضئيلة وقابلة للتنفيذ. ينبغي أن يستطيع المراجع تصفحها في أقل من دقيقة وأن يفهم تحديداً ما سيتغير.
-- إذا أدركت في منتصف التنفيذ أن الخطة كانت خاطئة، توقف وأبلغ المستخدم بدلاً من الانحراف بصمت. إعادة الدخول إلى وضع التخطيط خطوة صالحة.
+- هذه الأداة لا تقبل محتوى الخطة كمعامل — تقرأ من ملف الخطة المكتوب مسبقاً
+- سيرى المستخدم محتوى ملف الخطة للموافقة
+- لا تستخدم AskUserQuestion قبل استدعاء هذه الأداة للسؤال "هل الخطة مقبولة"، فهذا تكرار
+- لا تذكر "الخطة" في الأسئلة، لأن المستخدم لا يرى محتوى الخطة قبل ExitPlanMode
+
+## النص الأصلي
+
+<textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.
+
+## How This Tool Works
+- You should have already written your plan to the plan file specified in the plan mode system message
+- This tool does NOT take the plan content as a parameter - it will read the plan from the file you wrote
+- This tool simply signals that you're done planning and ready for the user to review and approve
+- The user will see the contents of your plan file when they review it
+
+## When to Use This Tool
+IMPORTANT: Only use this tool when the task requires planning the implementation steps of a task that requires writing code. For research tasks where you're gathering information, searching files, reading files or in general trying to understand the codebase - do NOT use this tool.
+
+## Before Using This Tool
+Ensure your plan is complete and unambiguous:
+- If you have unresolved questions about requirements or approach, use AskUserQuestion first (in earlier phases)
+- Once your plan is finalized, use THIS tool to request approval
+
+**Important:** Do NOT use AskUserQuestion to ask "Is this plan okay?" or "Should I proceed?" - that's exactly what THIS tool does. ExitPlanMode inherently requests user approval of your plan.
+
+## Examples
+
+1. Initial task: "Search for and understand the implementation of vim mode in the codebase" - Do not use the exit plan mode tool because you are not planning the implementation steps of a task.
+2. Initial task: "Help me implement yank mode for vim" - Use the exit plan mode tool after you have finished planning the implementation steps of the task.
+3. Initial task: "Add a new feature to handle user authentication" - If unsure about auth method (OAuth, JWT, etc.), use AskUserQuestion first, then use exit plan mode tool after clarifying the approach.
+</textarea>

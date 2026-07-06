@@ -7,10 +7,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync, appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { readLogFile } from '../server/lib/log-watcher.js';
-import { readLocalLog } from '../server/lib/log-management.js';
-import { reconstructEntries, createIncrementalReconstructor } from '../server/lib/delta-reconstructor.js';
-import { fingerprintMsg } from '../server/lib/interceptor-core.js';
+import { readLogFile } from '../lib/log-watcher.js';
+import { readLocalLog } from '../lib/log-management.js';
+import { reconstructEntries, createIncrementalReconstructor } from '../lib/delta-reconstructor.js';
 
 // ============================================================================
 // Helpers — 模拟 interceptor 的写入行为
@@ -28,40 +27,20 @@ const CHECKPOINT_INTERVAL = 10;
  */
 function simulateInterceptorWrites(logFile, turns) {
   let lastMessagesCount = 0;
-  let lastTailFp = '';
   let deltaCount = 0;
   const fullConversation = []; // 完整的对话历史（用于验证）
 
   for (const turn of turns) {
-    // 三种 turn 类型：
-    //   { newMessages: [...] }        —— append（默认）
-    //   { replaceLast: msg }           —— in-place last-msg replace（长度不变，末位换内容）
-    //   { mainAgent: false, ... }     —— teammate 请求
-    if (turn.replaceLast) {
-      // 末位原地替换：长度不变，末位元素换成新的
-      if (fullConversation.length === 0) throw new Error('replaceLast 需先有 append');
-      fullConversation[fullConversation.length - 1] = turn.replaceLast;
-    } else if (Array.isArray(turn.newMessages)) {
-      fullConversation.push(...turn.newMessages);
-    }
+    // 模拟用户发送消息后，messages 数组增长
+    fullConversation.push(...turn.newMessages);
     const allMessages = [...fullConversation];
     deltaCount++;
-
-    // 计算当前末位 fp（与 interceptor.js Plan C 一致）
-    const currentTailFp = allMessages.length > 0 ? fingerprintMsg(allMessages[allMessages.length - 1]) : '';
-    const sameLenInPlaceReplace =
-      allMessages.length === lastMessagesCount &&
-      lastMessagesCount > 0 &&
-      lastTailFp !== '' &&
-      currentTailFp !== '' &&
-      currentTailFp !== lastTailFp;
 
     // 模拟 checkpoint 触发逻辑（与 interceptor.js 一致）
     const needsCheckpoint =
       lastMessagesCount === 0 ||
       allMessages.length < lastMessagesCount ||
-      (deltaCount % CHECKPOINT_INTERVAL === 0) ||
-      sameLenInPlaceReplace;
+      (deltaCount % CHECKPOINT_INTERVAL === 0);
 
     const entry = {
       timestamp: new Date(Date.now() + deltaCount * 1000).toISOString(),
@@ -92,7 +71,6 @@ function simulateInterceptorWrites(logFile, turns) {
       entry._totalMessageCount = allMessages.length;
       entry._conversationId = 'mainAgent';
       entry._isCheckpoint = true;
-      if (sameLenInPlaceReplace) entry._inPlaceReplaceDetected = true;
       entry.body.messages = [...allMessages];
     } else {
       entry._deltaFormat = 1;
@@ -112,7 +90,6 @@ function simulateInterceptorWrites(logFile, turns) {
     // completed 后更新状态
     if (entry.mainAgent !== false) {
       lastMessagesCount = allMessages.length;
-      lastTailFp = currentTailFp;
     }
   }
 
@@ -266,7 +243,7 @@ describe('Delta Storage E2E', () => {
     assert.ok(lastMain.body.messages.length > 0, 'MainAgent should have messages after reconstruction');
   });
 
-  it('readLocalLog 与 readLogFile 返回一致的重建结果', async () => {
+  it('readLocalLog 与 readLogFile 返回一致的重建结果', () => {
     const turns = [
       { newMessages: [msg('user', 'x')] },
       { newMessages: [msg('assistant', 'y'), msg('user', 'z')] },
@@ -277,7 +254,7 @@ describe('Delta Storage E2E', () => {
     const fromReadLogFile = readLogFile(logFile);
 
     // readLocalLog 需要 logDir + relative file
-    const fromReadLocalLog = await readLocalLog(tmpDir, 'test.jsonl');
+    const fromReadLocalLog = readLocalLog(tmpDir, 'test.jsonl');
 
     // 两者应该返回相同的结果
     assert.equal(fromReadLogFile.length, fromReadLocalLog.length);
@@ -432,106 +409,5 @@ describe('Delta Storage E2E', () => {
     assert.equal(result[1].body.messages.length, 2);
     assert.equal(result[1].body.messages[0].content, 'hello');
     assert.equal(result[1].body.messages[1].content, 'hi there');
-  });
-
-  // ==========================================================================
-  // Plan C：in-place last-msg replace 端到端验证
-  // ==========================================================================
-
-  it('Plan C: in-place replace 触发 checkpoint，重建后末位是新内容（不是被替换前的）', () => {
-    // 场景：CLI 注入 SUGGESTION MODE 末位 → 用户真实输入替换末位（长度不变）
-    // 旧逻辑：messages.slice(_lastMessagesCount) = []，丢失末位变化 → 重建拿到旧末位
-    // Plan C：检测到 in-place 替换，强制 checkpoint，messages 全量写入
-    const turns = [
-      { newMessages: [msg('user', 'h1'), msg('assistant', 'h2'), msg('user', 'h3')] },
-      // CLI 在末位注入 SUGGESTION MODE prompt（长度变 4）
-      { newMessages: [{ role: 'user', content: '[SUGGESTION MODE: Suggest what the user might naturally type next...]' }] },
-      // 真实用户输入到达，CLI 把末位 SUGGESTION MODE 替换成真实输入（长度仍 4）
-      { replaceLast: msg('user', 'real user prompt that replaced the suggestion stub') },
-    ];
-    simulateInterceptorWrites(logFile, turns);
-
-    const result = readLogFile(logFile);
-    assert.equal(result.length, 3);
-
-    // 验证最后一条是 in-place 触发的 checkpoint
-    const lastEntry = result[2];
-    assert.equal(lastEntry._isCheckpoint, true);
-    assert.equal(lastEntry._inPlaceReplaceDetected, true);
-
-    // 验证重建后末位是新内容（"real user prompt..."），不是被替换前的 SUGGESTION MODE
-    const reconstructed = lastEntry.body.messages;
-    assert.equal(reconstructed.length, 4);
-    assert.equal(reconstructed[3].role, 'user');
-    assert.equal(reconstructed[3].content, 'real user prompt that replaced the suggestion stub');
-    // 没有 doubling：reconstructed 应该是 4 条不是 8 条
-    assert.equal(reconstructed.length, 4);
-  });
-
-  it('Plan C: doubled-history 回归 —— 反事实证伪（关闭 fp 检测时重建仍取旧末位）', () => {
-    // 这条 case 验证：如果不做 in-place 检测，重建会拿到错误的"前态末位"
-    // 用一个"老逻辑模拟器"再跑一遍同样序列，验证旧逻辑确实有 bug
-    function legacySimulate(logFile, turns) {
-      let lastMessagesCount = 0;
-      let deltaCount = 0;
-      const fullConversation = [];
-      for (const turn of turns) {
-        if (turn.replaceLast) {
-          fullConversation[fullConversation.length - 1] = turn.replaceLast;
-        } else if (Array.isArray(turn.newMessages)) {
-          fullConversation.push(...turn.newMessages);
-        }
-        const allMessages = [...fullConversation];
-        deltaCount++;
-        // 老逻辑：仅按长度 + 周期判断，不看 fp
-        const needsCheckpoint =
-          lastMessagesCount === 0 ||
-          allMessages.length < lastMessagesCount ||
-          (deltaCount % CHECKPOINT_INTERVAL === 0);
-        const entry = {
-          timestamp: new Date(Date.now() + deltaCount * 1000).toISOString(),
-          url: 'https://api.anthropic.com/v1/messages',
-          mainAgent: true,
-          body: { model: 'claude-opus-4-6', system: [{ type: 'text', text: 's' }], tools: [] },
-          response: { status: 200, body: { content: [{ type: 'text', text: 'r' }] } },
-        };
-        if (needsCheckpoint) {
-          entry._deltaFormat = 1;
-          entry._totalMessageCount = allMessages.length;
-          entry._conversationId = 'mainAgent';
-          entry._isCheckpoint = true;
-          entry.body.messages = [...allMessages];
-        } else {
-          entry._deltaFormat = 1;
-          entry._totalMessageCount = allMessages.length;
-          entry._conversationId = 'mainAgent';
-          entry._isCheckpoint = false;
-          entry.body.messages = allMessages.slice(lastMessagesCount);
-        }
-        appendFileSync(logFile, JSON.stringify(entry) + '\n---\n');
-        lastMessagesCount = allMessages.length;
-      }
-    }
-
-    const turns = [
-      { newMessages: [msg('user', 'h1'), msg('assistant', 'h2'), msg('user', 'h3'), msg('user', '[SUGGESTION MODE: stub]')] },
-      { replaceLast: msg('user', 'REAL USER INPUT replacing suggestion') },
-    ];
-
-    // 老逻辑：跑出来的日志末位 entry 重建后是 SUGGESTION MODE（错误）
-    const legacyLog = join(tmpDir, 'legacy.jsonl');
-    writeFileSync(legacyLog, '');
-    legacySimulate(legacyLog, turns);
-    const legacyResult = readLogFile(legacyLog);
-    const legacyLast = legacyResult[legacyResult.length - 1].body.messages;
-    // 老逻辑下：第二次请求的 delta=[]，重建 messages = 第一次 ckpt 的 4 条（含 SUGGESTION MODE）
-    assert.equal(legacyLast[3].content, '[SUGGESTION MODE: stub]', '老逻辑应该错误地保留 SUGGESTION MODE 在末位');
-
-    // Plan C 逻辑：跑同样序列，重建后末位是真实用户输入（正确）
-    simulateInterceptorWrites(logFile, turns);
-    const planCResult = readLogFile(logFile);
-    const planCLast = planCResult[planCResult.length - 1].body.messages;
-    assert.equal(planCLast[3].content, 'REAL USER INPUT replacing suggestion', 'Plan C 应该正确反映末位替换');
-    assert.equal(planCResult[planCResult.length - 1]._inPlaceReplaceDetected, true);
   });
 });

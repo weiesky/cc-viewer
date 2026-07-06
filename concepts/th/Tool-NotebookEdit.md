@@ -1,39 +1,33 @@
 # NotebookEdit
 
-แก้ไข cell เดียวใน Jupyter notebook (`.ipynb`) รองรับการแทนที่ source ของ cell, แทรก cell ใหม่, หรือลบ cell ที่มีอยู่ขณะรักษาโครงสร้างที่เหลือของ notebook
+## คำจำกัดความ
 
-## เมื่อใดควรใช้
-
-- แก้ไขหรืออัปเดต code cell ใน notebook การวิเคราะห์โดยไม่ต้องเขียนไฟล์ทั้งหมดใหม่
-- สลับ markdown cell เพื่อปรับปรุงเรื่องราวหรือเพิ่ม documentation
-- แทรก code หรือ markdown cell ใหม่ที่ตำแหน่งที่ทราบใน notebook ที่มีอยู่
-- ลบ cell ที่ล้าสมัยหรือเสียหายเพื่อให้ cell ปลายทางไม่ขึ้นกับมันอีกต่อไป
-- เตรียม notebook ที่ทำซ้ำได้โดยการ iterate ทีละ cell
+แทนที่ แทรก หรือลบเซลล์เฉพาะใน Jupyter notebook (ไฟล์ .ipynb)
 
 ## พารามิเตอร์
 
-- `notebook_path` (string, required): Absolute path ไปยังไฟล์ `.ipynb` Path แบบ relative จะถูกปฏิเสธ
-- `new_source` (string, required): source ใหม่ของ cell สำหรับ `replace` และ `insert` จะกลายเป็นเนื้อหา cell; สำหรับ `delete` จะถูกละเลยแต่ยังคงต้องมีตาม schema
-- `cell_id` (string, optional): ID ของ cell เป้าหมาย ใน mode `replace` และ `delete`, tool จะทำงานบน cell นี้ ใน mode `insert`, cell ใหม่จะถูกแทรกหลัง cell ที่มี ID นี้ทันที; ละเว้นเพื่อแทรกที่ด้านบนของ notebook
-- `cell_type` (enum, optional): `code` หรือ `markdown` จำเป็นเมื่อ `edit_mode` เป็น `insert` เมื่อละเว้นระหว่าง `replace`, ประเภทของ cell ที่มีอยู่จะถูกรักษาไว้
-- `edit_mode` (enum, optional): `replace` (ค่าเริ่มต้น), `insert`, หรือ `delete`
+| พารามิเตอร์ | ประเภท | จำเป็น | คำอธิบาย |
+|------|------|------|------|
+| `notebook_path` | string | ใช่ | พาธแบบสัมบูรณ์ของไฟล์ notebook |
+| `new_source` | string | ใช่ | เนื้อหาใหม่ของเซลล์ |
+| `cell_id` | string | ไม่ | ID ของเซลล์ที่จะแก้ไข ในโหมดแทรก เซลล์ใหม่จะถูกแทรกหลัง ID นี้ |
+| `cell_type` | enum | ไม่ | ประเภทเซลล์: `code` หรือ `markdown` จำเป็นในโหมดแทรก |
+| `edit_mode` | enum | ไม่ | โหมดแก้ไข: `replace` (ค่าเริ่มต้น), `insert`, `delete` |
 
-## ตัวอย่าง
+## สถานการณ์การใช้งาน
 
-### ตัวอย่างที่ 1: แทนที่ code cell ที่มีบั๊ก
-เรียก `NotebookEdit` ด้วย `notebook_path` ตั้งเป็น absolute path, `cell_id` ตั้งเป็น ID ของ cell เป้าหมาย, และ `new_source` มี Python code ที่แก้แล้ว ปล่อย `edit_mode` เป็นค่าเริ่มต้น `replace`
+**เหมาะสำหรับ:**
+- แก้ไขเซลล์โค้ดหรือ markdown ใน Jupyter notebook
+- เพิ่มเซลล์ใหม่ใน notebook
+- ลบเซลล์ใน notebook
 
-### ตัวอย่างที่ 2: แทรกคำอธิบาย markdown
-เพื่อเพิ่ม markdown cell ทันทีหลัง cell `setup` ที่มีอยู่ ให้ตั้ง `edit_mode: "insert"`, `cell_type: "markdown"`, `cell_id` เป็น ID ของ setup cell, และใส่เนื้อหาใน `new_source`
+## ข้อควรระวัง
 
-### ตัวอย่างที่ 3: ลบ cell ที่ค้าง
-ตั้ง `edit_mode: "delete"` และจัดหา `cell_id` ของ cell ที่จะลบ จัดหา string ใดก็ได้สำหรับ `new_source`; จะไม่ถูกใช้
+- `cell_number` เป็นดัชนีเริ่มจาก 0
+- โหมด `insert` แทรกเซลล์ใหม่ที่ตำแหน่งที่ระบุ
+- โหมด `delete` ลบเซลล์ที่ตำแหน่งที่ระบุ
+- พาธต้องเป็นแบบสัมบูรณ์
 
-## หมายเหตุ
+## ข้อความต้นฉบับ
 
-- ส่ง absolute path เสมอ `NotebookEdit` ไม่ resolve relative path ตาม working directory
-- Tool เขียน cell ที่ targeted เท่านั้น; execution count, output, และ metadata ของ cell ที่ไม่เกี่ยวข้องยังคงไม่ถูกแตะ
-- การแทรกโดยไม่มี `cell_id` วาง cell ใหม่ที่จุดเริ่มต้นสุดของ notebook
-- `cell_type` จำเป็นสำหรับ insert สำหรับ replace ให้ละเว้นเว้นแต่คุณต้องการแปลง code cell เป็น markdown หรือกลับกัน
-- เพื่อตรวจสอบ cell และเอา ID ของมัน ให้ใช้ tool `Read` บน notebook ก่อน; มันจะส่งคืน cell พร้อมเนื้อหาและ output
-- ใช้ `Edit` ปกติสำหรับไฟล์ source ธรรมดา; `NotebookEdit` เฉพาะสำหรับ JSON `.ipynb` และเข้าใจโครงสร้าง cell
+<textarea readonly>Completely replaces the contents of a specific cell in a Jupyter notebook (.ipynb file) with new source. Jupyter notebooks are interactive documents that combine code, text, and visualizations, commonly used for data analysis and scientific computing. The notebook_path parameter must be an absolute path, not a relative path. The cell_number is 0-indexed. Use edit_mode=insert to add a new cell at the index specified by cell_number. Use edit_mode=delete to delete the cell at the index specified by cell_number.</textarea>

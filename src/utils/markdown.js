@@ -2,7 +2,6 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { escapeHtml } from './helpers';
 import { setupMermaidAutoRender } from '../hooks/useMermaidRender';
-import { measureParse } from './markdownProfiler';
 
 setupMermaidAutoRender();
 
@@ -16,7 +15,7 @@ export function renderMarkdown(text) {
 
   let html;
   try {
-    html = measureParse(() => DOMPurify.sanitize(marked.parse(text, { breaks: true })));
+    html = DOMPurify.sanitize(marked.parse(text, { breaks: true }));
   } catch (e) {
     html = escapeHtml(text);
   }

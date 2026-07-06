@@ -1,35 +1,39 @@
 # Write
 
-로컬 파일시스템에 새 파일을 생성하거나 기존 파일의 내용을 완전히 교체합니다. 대상 경로의 모든 것을 교체하기 때문에 진정한 생성이나 의도적인 전체 재작성에 예약되어야 합니다.
+## 정의
 
-## 사용 시점
+로컬 파일 시스템에 내용을 씁니다. 파일이 이미 존재하면 덮어씁니다.
 
-- 아직 존재하지 않는 새로운 소스 파일, 테스트, 또는 구성 생성
-- 처음부터 새로운 픽스처, 스냅샷, 또는 데이터 파일 생성
-- 증분 `Edit`가 처음부터 시작하는 것보다 복잡한 전체 재작성 수행
-- 사용자가 명시적으로 요청한 스키마, 마이그레이션, 또는 빌드 스크립트와 같은 아티팩트 생성
+## 파라미터
 
-## 매개변수
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| `file_path` | string | 예 | 파일의 절대 경로 (절대 경로여야 함) |
+| `content` | string | 예 | 쓸 내용 |
 
-- `file_path` (string, 필수): 쓸 파일의 절대 경로. 부모 디렉토리가 이미 존재해야 합니다.
-- `content` (string, 필수): 파일에 쓸 전체 텍스트. 이것이 전체 파일 본문이 됩니다.
+## 사용 시나리오
 
-## 예시
+**적합한 경우:**
+- 새 파일 생성
+- 파일 내용을 완전히 재작성해야 하는 경우
 
-### 예시 1: 새 헬퍼 모듈 생성
-`file_path: "/Users/me/app/src/utils/slugify.ts"`로 `Write`를 호출하고 `content`로 구현을 제공합니다. 파일이 아직 존재하지 않는지 확인한 후에만 사용하십시오.
+**적합하지 않은 경우:**
+- 파일 내 부분적인 내용 수정 — Edit를 사용해야 함
+- 문서 파일 (*.md)이나 README를 자발적으로 생성하지 말 것. 사용자가 명시적으로 요청한 경우를 제외
 
-### 예시 2: 파생된 아티팩트 재생성
-스키마 소스가 변경된 후 새로 생성된 JSON을 `content`로 사용하여 하나의 `Write` 호출에서 `/Users/me/app/generated/schema.json`을 다시 씁니다.
+## 주의사항
 
-### 예시 3: 작은 픽스처 파일 교체
-모든 줄이 변경되는 일회용 테스트 픽스처의 경우 `Write`가 일련의 `Edit` 호출보다 더 명확할 수 있습니다. 먼저 파일을 읽고, 범위를 확인한 다음 덮어씁니다.
+- 대상 파일이 이미 존재하면 먼저 Read로 읽어야 함. 그렇지 않으면 실패
+- 기존 파일의 전체 내용을 덮어씀
+- 기존 파일 편집에는 Edit를 우선 사용하고, Write는 새 파일 생성 또는 완전한 재작성에만 사용
 
-## 참고사항
+## 원문
 
-- 기존 파일을 덮어쓰기 전에 현재 세션에서 `Read`를 호출해야 합니다. `Write`는 보지 않은 내용을 덮어쓰기를 거부합니다.
-- 파일의 일부만 건드리는 모든 변경에는 `Edit`를 선호하십시오. `Edit`는 차이점만 전송하며 더 빠르고 안전하고 검토하기 쉽습니다.
-- 사용자가 명시적으로 요청하지 않는 한 Markdown 문서, `README.md`, 또는 변경 로그 파일을 사전 대응적으로 생성하지 마십시오.
-- 사용자가 해당 스타일을 요청하지 않는 한 이모지, 마케팅 카피, 또는 장식 배너를 추가하지 마십시오.
-- 먼저 `Bash` `ls` 호출로 부모 디렉토리가 존재하는지 확인하십시오. `Write`는 중간 폴더를 생성하지 않습니다.
-- 지속되기를 원하는 대로 정확히 내용을 제공하십시오. 템플릿화나 후처리가 없습니다.
+<textarea readonly>Writes a file to the local filesystem.
+
+Usage:
+- This tool will overwrite the existing file if there is one at the provided path.
+- If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
+- Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.
+- NEVER create documentation files (*.md) or README files unless explicitly requested by the User.
+- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.</textarea>

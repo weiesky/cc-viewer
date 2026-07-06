@@ -1,38 +1,46 @@
 # Edit
 
-在已有文件中执行精确的字符串替换。它是修改文件的首选方式，因为只传输 diff，使编辑既精确又可审计。
+## 定义
 
-## 何时使用
-
-- 修复单个函数中的 bug，而不重写其周围文件
-- 更新配置值、版本字符串或 import 路径
-- 通过 `replace_all` 在文件内重命名符号
-- 在某个锚点附近插入代码块（扩展 `old_string` 纳入附近上下文，再提供替换内容）
-- 作为多步重构的一部分，应用小范围、界限清晰的编辑
+通过精确的字符串替换来编辑文件。将文件中的 `old_string` 替换为 `new_string`。
 
 ## 参数
 
-- `file_path` (string, 必填)：要修改文件的绝对路径。
-- `old_string` (string, 必填)：要搜索的精确文本。必须逐字符匹配，包括空白与缩进。
-- `new_string` (string, 必填)：替换文本。必须不同于 `old_string`。
-- `replace_all` (boolean, 可选)：为 `true` 时替换 `old_string` 的每一处匹配。默认为 `false`，此时要求匹配唯一。
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `file_path` | string | 是 | 要修改的文件的绝对路径 |
+| `old_string` | string | 是 | 要替换的原始文本 |
+| `new_string` | string | 是 | 替换后的新文本（必须与 old_string 不同） |
+| `replace_all` | boolean | 否 | 是否替换所有匹配项，默认 `false` |
 
-## 示例
+## 使用场景
 
-### 示例 1：修复单处调用
-将 `old_string` 设为精确行 `const port = 3000;`，`new_string` 设为 `const port = process.env.PORT ?? 3000;`。由于匹配唯一，`replace_all` 可保持默认。
+**适合使用：**
+- 修改现有文件中的特定代码段
+- 修复 bug、更新逻辑
+- 重命名变量（配合 `replace_all: true`）
+- 任何需要精确修改文件内容的场景
 
-### 示例 2：在文件内重命名符号
-要在 `api.ts` 中把 `getUser` 重命名为 `fetchUser`，设置 `old_string: "getUser"`、`new_string: "fetchUser"`、`replace_all: true`。
-
-### 示例 3：消除重复片段的歧义
-若 `return null;` 出现在多个分支，扩大 `old_string` 以包含周围上下文（例如前一行 `if`），使匹配唯一。否则工具会报错而非猜测。
+**不适合使用：**
+- 创建新文件——应使用 Write
+- 大规模重写——可能需要 Write 覆盖整个文件
 
 ## 注意事项
 
-- 在当前会话中必须至少对文件调用过一次 `Read`，`Edit` 才会接受改动。`Read` 输出的行号前缀不是文件内容的一部分；不要把它们放进 `old_string` 或 `new_string`。
-- 空白必须完全一致。注意制表符与空格、以及行尾空格，尤其是在 YAML、Makefile 和 Python 中。
-- 如果 `old_string` 不唯一且 `replace_all` 为 `false`，编辑将失败。请扩大上下文或启用 `replace_all`。
-- 只要文件已存在，优先使用 `Edit` 而非 `Write`；`Write` 会覆盖整个文件，稍有不慎就会丢失无关内容。
-- 对同一文件的多处无关编辑，应按顺序发起多次 `Edit` 调用，而不是一次庞大且脆弱的替换。
-- 编辑源代码时避免引入表情符号、营销性文案或未请求的文档块。
+- 使用前必须先通过 Read 读取过该文件，否则会报错
+- `old_string` 在文件中必须是唯一的，否则编辑失败。如果不唯一，需要提供更多上下文使其唯一，或使用 `replace_all`
+- 编辑文本时必须保持原始缩进（tab/空格），不要包含 Read 输出中的行号前缀
+- 优先编辑现有文件，而非创建新文件
+- `new_string` 必须与 `old_string` 不同
+
+## 原文
+
+<textarea readonly>Performs exact string replacements in files.
+
+Usage:
+- You must use your `Read` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file. 
+- When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix format is: spaces + line number + tab. Everything after that tab is the actual file content to match. Never include any part of the line number prefix in the old_string or new_string.
+- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
+- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
+- The edit will FAIL if `old_string` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use `replace_all` to change every instance of `old_string`.
+- Use `replace_all` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.</textarea>

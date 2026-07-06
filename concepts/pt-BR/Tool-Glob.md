@@ -1,35 +1,39 @@
 # Glob
 
-Faz correspondência de nomes de arquivo contra um padrão glob e retorna os caminhos ordenados pelo horário de modificação mais recente primeiro. Otimizado para localizar arquivos rapidamente em codebases de qualquer tamanho sem recorrer ao `find`.
+## Definição
 
-## Quando usar
-
-- Enumerar todo arquivo de uma extensão específica (por exemplo, todos os arquivos `*.ts` sob `src`)
-- Descobrir arquivos de configuração ou fixtures por convenção de nomenclatura (`**/jest.config.*`, `**/*.test.tsx`)
-- Reduzir a superfície de busca antes de rodar um `Grep` mais focado
-- Verificar se um arquivo já existe em um padrão conhecido antes de chamar `Write`
-- Encontrar arquivos modificados recentemente confiando na ordenação por horário de modificação
+Ferramenta rápida de correspondência de padrões de nomes de arquivo, suporta bases de código de qualquer tamanho. Retorna caminhos de arquivos correspondentes ordenados por data de modificação.
 
 ## Parâmetros
 
-- `pattern` (string, obrigatório): A expressão glob a corresponder. Suporta `*` para wildcards de segmento único, `**` para correspondências recursivas e `{a,b}` para alternativas, por exemplo `src/**/*.{ts,tsx}`.
-- `path` (string, opcional): Diretório em que rodar a busca. Deve ser um caminho de diretório válido quando fornecido. Omita o campo completamente para buscar no diretório de trabalho atual. Não passe as strings `"undefined"` ou `"null"`.
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|------|------|------|------|
+| `pattern` | string | Sim | Padrão glob (ex: `**/*.js`, `src/**/*.ts`) |
+| `path` | string | Não | Diretório de busca, padrão é o diretório de trabalho atual. Não passe "undefined" ou "null" |
 
-## Exemplos
+## Cenários de Uso
 
-### Exemplo 1: Todo arquivo fonte TypeScript
-Chame `Glob` com `pattern: "src/**/*.ts"`. O resultado é uma lista ordenada por mtime, então os arquivos editados mais recentemente aparecem primeiro, o que é útil para focar em pontos quentes.
+**Adequado para:**
+- Buscar arquivos por padrão de nome
+- Encontrar todos os arquivos de um tipo específico (ex: todos os arquivos `.tsx`)
+- Localizar arquivos ao buscar definições de classes específicas (ex: `class Foo`)
+- Pode iniciar múltiplas chamadas Glob em paralelo em uma única mensagem
 
-### Exemplo 2: Localizar um candidato a definição de classe
-Quando você suspeita que uma classe vive em um arquivo cujo nome você não sabe, busque com `pattern: "**/*UserService*"` para restringir os candidatos, depois siga com `Read` ou `Grep`.
-
-### Exemplo 3: Descoberta paralela antes de uma tarefa maior
-Em uma única mensagem, dispare múltiplas chamadas `Glob` (por exemplo, uma para `**/*.test.ts` e uma para `**/fixtures/**`) para que ambas rodem em paralelo e seus resultados possam ser correlacionados.
+**Não adequado para:**
+- Buscar conteúdo de arquivo — deve usar Grep
+- Exploração aberta que requer múltiplas rodadas de busca — deve usar Task (tipo Explore)
 
 ## Observações
 
-- Os resultados são ordenados por horário de modificação do arquivo (mais novo primeiro), não alfabeticamente. Ordene a jusante se precisar de ordenação estável.
-- Os padrões são avaliados pela ferramenta, não pelo shell; você não precisa colocá-los entre aspas ou escapá-los como faria na linha de comando.
-- Para exploração aberta que exige várias rodadas de busca e raciocínio, delegue para um `Agent` com o tipo de agente Explore em vez de encadear muitas chamadas `Glob`.
-- Prefira `Glob` em vez de invocações `Bash` de `find` ou `ls` para descoberta de nomes de arquivo; ele lida com permissões de forma consistente e retorna saída estruturada.
-- Quando procurar conteúdo dentro de arquivos em vez de nomes de arquivo, use `Grep`.
+- Suporta sintaxe glob padrão: `*` corresponde a um nível, `**` corresponde a múltiplos níveis, `{}` corresponde a múltiplas opções
+- Resultados ordenados por data de modificação
+- Mais recomendado que o comando `find` do Bash
+
+## Texto original
+
+<textarea readonly>- Fast file pattern matching tool that works with any codebase size
+- Supports glob patterns like "**/*.js" or "src/**/*.ts"
+- Returns matching file paths sorted by modification time
+- Use this tool when you need to find files by name patterns
+- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead
+- You can call multiple tools in a single response. It is always better to speculatively perform multiple searches in parallel if they are potentially useful.</textarea>

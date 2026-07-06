@@ -1,46 +1,57 @@
 # Grep
 
-Søker i filinnhold med ripgrep-motoren. Tilbyr full støtte for regulære uttrykk, filtrering etter filtype og tre utdatamoduser slik at du kan bytte presisjon mot kompakthet.
+## Definisjon
 
-## Når skal den brukes
-
-- Lokalisere hvert kallsted for en funksjon eller hver referanse til en identifikator
-- Sjekke om en streng eller feilmelding vises noe sted i kodebasen
-- Telle forekomster av et mønster for å vurdere påvirkning før refaktorering
-- Snevre inn et søk til en filtype (`type: "ts"`) eller glob (`glob: "**/*.tsx"`)
-- Hente treff på tvers av linjer, som flerlinjede struct-definisjoner eller JSX-blokker med `multiline: true`
+Kraftig innholdssøkverktøy bygget på ripgrep. Støtter regulære uttrykk, filtypfiltrering og flere utdatamoduser.
 
 ## Parametere
 
-- `pattern` (string, påkrevd): Det regulære uttrykket å søke etter. Bruker ripgrep-syntaks, så bokstavelige krøllparenteser må escapes (for eksempel `interface\{\}` for å finne `interface{}`).
-- `path` (string, valgfri): Fil eller katalog å søke i. Standard er gjeldende arbeidskatalog.
-- `glob` (string, valgfri): Filnavnsfilter som `*.js` eller `*.{ts,tsx}`.
-- `type` (string, valgfri): Snarvei for filtype som `js`, `py`, `rust`, `go`. Mer effektiv enn `glob` for standardspråk.
-- `output_mode` (enum, valgfri): `files_with_matches` (standard, returnerer kun stier), `content` (returnerer treffende linjer), eller `count` (returnerer treffantall).
-- `-i` (boolean, valgfri): Ikke skille mellom store og små bokstaver.
-- `-n` (boolean, valgfri): Inkluder linjenummer i `content`-modus. Standard er `true`.
-- `-A` (number, valgfri): Linjer med kontekst etter hvert treff (krever `content`-modus).
-- `-B` (number, valgfri): Linjer med kontekst før hvert treff (krever `content`-modus).
-- `-C` / `context` (number, valgfri): Linjer med kontekst på begge sider av hvert treff.
-- `multiline` (boolean, valgfri): Tillat mønstre å gå over linjeskift (`.` matcher `\n`). Standard er `false`.
-- `head_limit` (number, valgfri): Begrens returnerte linjer, filstier eller telleoppføringer. Standard er 250; send `0` for ubegrenset (bruk sparsomt).
-- `offset` (number, valgfri): Hopp over de første N resultatene før `head_limit` anvendes. Standard er `0`.
+| Parameter | Type | Påkrevd | Beskrivelse |
+|-----------|------|---------|-------------|
+| `pattern` | string | Ja | Søkemønster med regulært uttrykk |
+| `path` | string | Nei | Søkesti (fil eller katalog), standard er gjeldende arbeidskatalog |
+| `glob` | string | Nei | Filnavnfilter (f.eks. `*.js`, `*.{ts,tsx}`) |
+| `type` | string | Nei | Filtypfilter (f.eks. `js`, `py`, `rust`), mer effektivt enn glob |
+| `output_mode` | enum | Nei | Utdatamodus: `files_with_matches` (standard), `content`, `count` |
+| `-i` | boolean | Nei | Søk uten hensyn til store/små bokstaver |
+| `-n` | boolean | Nei | Vis linjenumre (kun content-modus), standard true |
+| `-A` | number | Nei | Antall linjer vist etter treff |
+| `-B` | number | Nei | Antall linjer vist før treff |
+| `-C` / `context` | number | Nei | Antall linjer vist før og etter treff |
+| `head_limit` | number | Nei | Begrens antall utdataoppføringer, standard 0 (ubegrenset) |
+| `offset` | number | Nei | Hopp over de første N resultatene |
+| `multiline` | boolean | Nei | Aktiver flerlinjematchingsmodus, standard false |
 
-## Eksempler
+## Bruksscenarioer
 
-### Eksempel 1: Finn alle kallsteder for en funksjon
-Sett `pattern: "registerHandler\\("`, `output_mode: "content"` og `-C: 2` for å se linjene rundt hvert kall.
+**Egnet for bruk:**
+- Søke etter spesifikke strenger eller mønstre i kodebasen
+- Finne brukssteder for funksjoner/variabler
+- Filtrere søkeresultater etter filtype
+- Telle antall treff
 
-### Eksempel 2: Tell treff på tvers av en type
-Sett `pattern: "TODO"`, `type: "py"` og `output_mode: "count"` for å se totale TODO-tall per fil på tvers av Python-kilder.
+**Ikke egnet for bruk:**
+- Finne filer etter navn — bruk Glob
+- Åpen utforskning som krever flere søkerunder — bruk Task (Explore-type)
 
-### Eksempel 3: Flerlinjers struct-treff
-Bruk `pattern: "struct Config \\{[\\s\\S]*?version"` med `multiline: true` for å fange et felt som er deklarert flere linjer inn i en Go-struct.
+## Merknader
 
-## Notater
+- Bruker ripgrep-syntaks (ikke grep), spesialtegn som krøllparenteser må escapes
+- `files_with_matches`-modus returnerer kun filstier, mest effektivt
+- `content`-modus returnerer innholdet i matchende linjer, med støtte for kontekstlinjer
+- Flerlinjematching krever at `multiline: true` settes
+- Foretrekk alltid Grep-verktøyet fremfor `grep`- eller `rg`-kommandoer i Bash
 
-- Foretrekk alltid `Grep` fremfor å kjøre `grep` eller `rg` via `Bash`; verktøyet er optimalisert for riktige tillatelser og strukturert utdata.
-- Standard utdatamodus er `files_with_matches`, som er billigst. Bytt til `content` kun når du trenger å se linjene selv.
-- Kontekstflagg (`-A`, `-B`, `-C`) ignoreres med mindre `output_mode` er `content`.
-- Store resultatsett brenner kontekstokens. Bruk `head_limit`, `offset` eller strammere `glob`/`type`-filtre for å holde fokus.
-- For filnavnsoppdagelse, bruk `Glob` i stedet; for åpne undersøkelser over mange runder, dispatch en `Agent` med Explore-agenten.
+## Originaltekst
+
+<textarea readonly>A powerful search tool built on ripgrep
+
+  Usage:
+  - ALWAYS use Grep for search tasks. NEVER invoke `grep` or `rg` as a Bash command. The Grep tool has been optimized for correct permissions and access.
+  - Supports full regex syntax (e.g., "log.*Error", "function\s+\w+")
+  - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
+  - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
+  - Use Agent tool for open-ended searches requiring multiple rounds
+  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use `interface\{\}` to find `interface{}` in Go code)
+  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like `struct \{[\s\S]*?field`, use `multiline: true`
+</textarea>

@@ -1,78 +1,30 @@
 import React from 'react';
-import { ConfigProvider, theme, Modal, Spin, Button, message } from 'antd';
-import { uploadFileAndGetPath } from './components/terminal/TerminalPanel';
-import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
-import { isMobile, isPad, hasNativeZoom } from './env';
-import WorkspaceList from './components/dashboard/WorkspaceList';
-import OpenFolderIcon from './components/common/OpenFolderIcon';
-import LogTable from './components/viewers/LogTable';
+import { ConfigProvider, theme, Modal, Table, Tag, Spin, Button, Checkbox, Popover, message } from 'antd';
+import { DownloadOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import { isMobile } from './env';
+import WorkspaceList from './components/WorkspaceList';
+import OpenFolderIcon from './components/OpenFolderIcon';
 import { t, getLang, setLang } from './i18n';
-import { SettingsContext } from './contexts/SettingsContext';
-import { formatTokenCount, filterRelevantRequests, isRelevantRequest, visibleRequests, appendCacheLossMap, extractCachedContent } from './utils/helpers';
-import { snapToPreset, stepPreset } from './utils/displayScaleHelper';
-import { getProjectAlias, subscribeToAlias } from './utils/projectAlias';
-import { isMainAgent, isSessionBoundary, setTeammateNameSeeds, clearTeammateNameSeeds } from './utils/contentFilter';
-import { apiUrl, getBasePath } from './utils/apiUrl';
-import { publish as publishWorkflowUpdate } from './utils/workflowStore';
-import { reportSwallowed } from './utils/errorReport';
-import { playEvent as playVoiceEvent, unlockAudio, setTurnEndCooldownMs } from './utils/voicePackPlayer';
-import { getDefaultBindingsForLocale as vpDefaultBindingsForLocale } from '../server/lib/voice-pack-events';
-import { mergeVoicePackInto } from '../server/lib/approval-modal-prefs';
-import { saveEntries, loadEntries, clearEntries, getCacheMeta, saveSessionEntries, loadSessionEntries } from './utils/entryCache';
-import { buildSessionIndex, splitHotCold, mergeSessionIndices, HOT_SESSION_COUNT, assignMessageTimestamps, applyInPlaceLastMsgReplace, getSessionStableId, resolveDisplaySessions, getLatestSessionByActivity, resolveHydratedPin, runPinHydration, applyBatchEntryTimestamps } from './utils/sessionManager';
-import { mergeMainAgentSessions as _mergeMainAgentSessions, isMergeBlockedEntry } from './utils/sessionMerge';
-import { reconstructEntries, createIncrementalReconstructor } from '../server/lib/delta-reconstructor.js';
-import { createEntrySlimmer, createIncrementalSlimmer, restoreSlimmedEntry, internEntryBigFields } from './utils/entry-slim.js';
-import { yieldToMain, runChunkedPass, INGEST_BATCH_SIZE } from './utils/ingestPipeline.js';
+import { formatTokenCount, filterRelevantRequests, isRelevantRequest, appendCacheLossMap, extractCachedContent } from './utils/helpers';
+import { isMainAgent } from './utils/contentFilter';
+import { apiUrl } from './utils/apiUrl';
+import { saveEntries, loadEntries, clearEntries, getCacheMeta, saveSessionEntries, loadSessionEntries, saveSessionIndex } from './utils/entryCache';
+import { buildSessionIndex, splitHotCold, mergeSessionIndices, HOT_SESSION_COUNT } from './utils/sessionManager';
+import { mergeMainAgentSessions as _mergeMainAgentSessions } from './utils/sessionMerge';
+import { reconstructEntries } from '../lib/delta-reconstructor.js';
+import { createEntrySlimmer, createIncrementalSlimmer, restoreSlimmedEntry } from './utils/entry-slim.js';
 import { reinitializeMermaid } from './hooks/useMermaidRender';
 import styles from './App.module.css';
 
 export { styles };
 
-export const MAX_SESSIONS = (isMobile && !isPad) ? 30 : 100;
-// /clear 后乐观水位：把上下文血条压到这个百分比，下一次 context_window SSE 推送会自动覆盖回真实值
-export const OPTIMISTIC_CLEAR_PERCENT = 5;
-
-// AntD 主题配置：模块顶层冻结常量。
-// 旧实现是 getter 每次 render 返回新字面量，导致 antd cssinjs useTheme cache 永远 miss、
-// flattenToken 反复跑。顶层常量保证主题不变时引用稳定。
-const LIGHT_THEME_CONFIG = Object.freeze({
-  algorithm: theme.defaultAlgorithm,
-  token: Object.freeze({
-    colorPrimary: '#0969DA',
-    colorBgContainer: '#FFFFFF',
-    colorBgLayout: '#FAFAFA',
-    colorBgElevated: '#FFFFFF',
-    colorBorder: '#E0E0E0',
-    controlOutline: 'transparent',
-    controlOutlineWidth: 0,
-  }),
-});
-
-const DARK_THEME_CONFIG = Object.freeze({
-  algorithm: theme.darkAlgorithm,
-  token: Object.freeze({
-    colorPrimary: '#1668dc',
-    colorBgContainer: '#111',
-    colorBgLayout: '#0a0a0a',
-    colorBgElevated: '#1e1e1e',
-    colorBorder: '#2a2a2a',
-    controlOutline: 'transparent',
-    controlOutlineWidth: 0,
-  }),
-});
+export const MAX_SESSIONS = isMobile ? 30 : 100;
 
 /**
  * 共享基类：包含 PC 和 Mobile 通用的状态管理、SSE 通信、数据处理、偏好设置等逻辑。
  * 子类 App (PC) 和 Mobile 各自实现 render() 方法。
- *
- * settings 数据(claude-settings + preferences)集中由 SettingsContext 提供;
- * setLang / setClaudeConfigDir 这两个全局副作用已搬到 SettingsProvider 的 fetch 回调。
- * AppBase 仍保留本地 state 副本用于即时 UI 反馈,POST 写入走 this.context.updatePreferences。
  */
 class AppBase extends React.Component {
-  static contextType = SettingsContext;
-
   constructor(props) {
     super(props);
     // 从 localStorage 恢复缓存倒计时
@@ -89,36 +41,25 @@ class AppBase extends React.Component {
       cacheExpireAt,
       cacheType,
       mainAgentSessions: [], // [{ messages, response }]
-      // 「仅展示当前会话」锁定的会话稳定 id（= 会话起点 ts）；null = 未锁定。
-      // 服务端持久化（按项目 + 可选 --pid 实例隔离），同进程多端经 SSE 实时一致。
-      // 命名提示：本字段就是服务端 /api/session-pin 里的 `pinnedSessionId`（同一个值，Ts/Id 同物）。
-      pinnedSessionTs: null,
-      // 本实例 id（来自 ccv --pid），随 /api/project-name 拿回；null = 默认模式。仅用于标题 项目(id)。
-      instanceId: null,
       importModalVisible: false,
       localLogs: {},       // { projectName: [{file, timestamp, size}] }
       localLogsLoading: false,
       refreshingStats: false,
-      logShowAllInstances: false, // 「显示全部实例」开关：true 时越过 --pid 硬隔离列出全部实例日志
       showAll: false,
       lang: getLang(),
       userProfile: null,    // { name, avatar }
       projectName: '',      // 当前监控的项目名称
-      // claude 自己存的项目偏好 model（~/.claude.json projects[cwd].lastModelUsage 推断），
-      // 用作 AppHeader 血条 calibration 'auto' 启动期的回落 hint（避 haiku init ping 误判 200K）。
-      // 初值 null = 还没拿到；/api/claude-settings 与 workspace_started SSE 都会塞值。
-      claudeProjectModel: null,
       resumeModalVisible: false,
       resumeFileName: '',
       resumeRememberChoice: false,
-      resumeAutoChoice: null, // null | "continue" | "new"；出厂默认 'continue' 由 GET /api/preferences 注入（键缺失时），这里的 null 只是 pre-hydrate 占位
-      autoApproveSeconds: 0, // 自动审批倒计时秒数，0=关闭
+      resumeAutoChoice: null, // null | "continue" | "new"
+      collapseToolResults: true,
+      expandThinking: true,
+      expandDiff: false,
       logDir: '',
-      themeColor: /Windows/i.test(navigator.userAgent) ? 'dark' : 'light',
-      displayScale: 100, // 整体显示缩放百分比(100=原始大小),仅 Electron 桌面经 webFrame.setZoomFactor 原生缩放;浏览器交由原生快捷键
-
-      claudeMissing: false,
-      updateModalVisible: false,
+      showFullToolContent: false,
+      showThinkingSummaries: false,
+      themeColor: 'dark',
       fileLoading: false,
       fileLoadingCount: 0,
       isDragging: false,
@@ -130,12 +71,8 @@ class AppBase extends React.Component {
       serverCachedContent: null,
       updateInfo: null,
       pendingUploadPaths: [],
-      uploadingDrop: [], // [{id,name}] — 拖拽上传在途占位(spinner-only),供 ChatView 调谐 uploadingItems 实现「上传未完成时按发送→缓发不漏图」
       contextWindow: null,
-      contextBarOptimistic: false, // /clear 后的乐观水位重置，下一次 context_window SSE 自动清除
-      contextBarLocked: false, // /clear 触发后强制血条 0K (0%)，到用户发出非 /clear 消息时解锁
       isStreaming: false,
-      streamingLatest: null, // { timestamp, url, content, model } — Live typewriter overlay for latest assistant message
       hasMoreHistory: false,
       loadingMore: false,
       sessionIndex: [],
@@ -143,56 +80,9 @@ class AppBase extends React.Component {
       proxyProfiles: [],
       activeProxyId: 'max',
       defaultConfig: null,
-      // ─── Approval modal global state ───
-      // approvalGlobal: { ptyPlan?, ask? } currently active in the (single) ChatView mounted in this app instance.
-      // Each entry carries { id, ..., handlers } as bubbled by ChatView.componentDidUpdate.
-      // Permission and SDK ExitPlanMode stay inline-only — they do NOT pop the global modal.
-      approvalGlobal: { ptyPlan: null, ask: null },
-      // approvalDismissedIds: pending ids the user has chosen to minimize. Reopens via bell / chip.
-      approvalDismissedIds: new Set(),
-      // approvalOtherTabs: aggregated state from other Electron tabs, pushed by main via tabBridge.onApprovalBroadcast.
-      approvalOtherTabs: [],
-      // approvalOwnPending: 当前 tab 在 main 进程聚合的 pending 计数（来自 approval-broadcast.ownPending）。
-      // 仅信息性使用（bell badge 显示「服务端记得有 N 条 pending」），不试图重写 approvalGlobal——
-      // approvalGlobal 含 questions / handlers 闭包无法跨 IPC 序列化，权威源是 ChatView 的 pendingAsk / pendingPtyPlan。
-      approvalOwnPending: { ask: 0, ptyPlan: 0 },
-      // ownTabId: numeric tab id pushed by main once on view init (electron only). null in pure web mode.
-      ownTabId: null,
-      // approvalPrefs: user toggles persisted to /api/preferences.
-      // soundEnabled = 合并后的"审批提示音"主开关（默认 ON），voicePack.enabled 始终 == soundEnabled。
-      // hydrate 时如检测到老版本独立两字段不一致，会强制对齐并一次性写回 server。
-      // events.turnEnd 仍默认 null（disabled，避免每轮都响）。
-      // Locale-aware initial seed: zh / zh-TW 新用户首次拿 sanguo，其它走 default (butler)。
-      // getLang() 在 i18n.js 模块加载时已调过 setLang(detectLanguage())（i18n.js:9465），
-      // AppBase constructor 进入这里时 currentLang 已就绪 — 单测见 voice-pack-events.test.js。
-      // 注意：这是 React state 初始 seed，不是 dynamic 重计算。运行时切语言不会重 seed
-      // binding（避免静默改变用户持久化选择 — "no silent migration" P0 规则）。
-      approvalPrefs: {
-        modalEnabled: true,
-        soundEnabled: true,
-        notifyOnlyWhenHidden: true,
-        planAutoApproveSeconds: 0, // 「Plan 自动审批」倒计时秒数（同 autoApproveSeconds 语义：0=关 / N=N 秒后自动批准 / -1=立即）；仅 CLI(PTY) 路径
-        voicePack: {
-          enabled: true,
-          volume: 0.3,
-          events: { ...vpDefaultBindingsForLocale(getLang()) },
-        },
-      },
     };
     this.eventSource = null;
     this._currentSessionId = null;
-    // pin 竞态守卫（_maintainPinState/_hydratePin/session_pin SSE 用）：
-    //  _isHydratingPin   — 服务端 pin 的 GET 在途；期间禁 lazy-lock + 禁 persist，防抢在真值返回前误锁/回写。
-    //  _applyingRemotePin — 正在采纳服务端值（hydrate/SSE）；期间禁 persist，防把服务端值当本地改动回 POST（防回环）。
-    //  _hydratePinSeq    — monotonic token per hydrate round; a GET that resolves after a
-    //                      newer hydrate started (project switch, another reconnect) is discarded.
-    this._isHydratingPin = false;
-    this._applyingRemotePin = false;
-    this._hydratePinSeq = 0;
-    // 跟踪上一次 mainAgent entry 的 timestamp，给新增 assistant msg 赋 _generatedTs（生成时 ts）。
-    // 解决 bubble 时间标签晚一拍的 bug：assistant 响应是上一次 API 调用产出的，
-    // 被这次 API 调用带进 body.messages，旧逻辑统一赋 entry.timestamp 导致显示成"下一次 ts"。
-    this._prevMainAgentTs = null;
     this._autoSelectTimer = null;
     this._chunkedEntries = [];   // 分段加载缓冲
     this._chunkedTotal = 0;
@@ -210,61 +100,11 @@ class AppBase extends React.Component {
     this._cacheLossShowAll = undefined;
     // 增量维护的 KV-Cache 缓存内容（稳定引用，不受 inProgress 闪烁影响）
     this._lastKvCacheContent = null;
-    this._sseSlimmer = null; this._sseReconstructor = null;
-    // 冷启动分帧摄取管线（_runColdIngestCore）并发控制：
-    // - _ingestRunning 在途时 live 条目入 _liveGateBuffer（见 handleEventMessage），
-    //   提交后统一泄洪，防止 live 条目与未提交基线交错污染 sessionMerge
-    // - _ingestToken 自增令牌：任何 baseline 重置路径（重连/full_reload/workspace 切换/
-    //   新管线启动）bump 即废弃在途管线，废弃管线不 setState
-    this._ingestRunning = false;
-    this._ingestToken = 0;
-    this._liveGateBuffer = [];
-    this._ingestProgressCount = 0;
+    this._sseSlimmer = null;
   }
 
-  /** 批量剪枝 entries：清空旧 MainAgent 的 body.messages，保留最后一条完整。
-   *  v3: intern body.tools / body.system 让所有 entry 共享 pool 引用 */
-  // Centralised document.title writer. All paths that used to do
-  //   document.title = projectName
-  //   document.title = `${projectName} - CC Viewer`
-  // route through here so a user-configured per-project alias (utils/projectAlias)
-  // can override consistently. Without this, the SSE workspace_started handler
-  // would clobber alias on every switch.
-  // Empty / missing projectName falls back to the literal app name to keep the
-  // browser tab from showing a stale name across reloads.
-  _applyDocTitle = (projectName) => {
-    try {
-      if (typeof document === 'undefined') return;
-      const alias = getProjectAlias(projectName);
-      // --pid 实例：标题加 (id) 后缀，让多开 ccv 时能从标签页一眼分辨是哪个实例。
-      const id = this.state.instanceId;
-      const suffix = id ? `(${id})` : '';
-      if (alias) {
-        document.title = `${alias}${suffix}`;
-      } else if (projectName) {
-        document.title = `${projectName}${suffix}`;
-      } else {
-        document.title = 'CC Viewer';
-      }
-    } catch { /* ignore — title is cosmetic, never block */ }
-  };
-
-  // Subscribe the current projectName to alias mutations (same-tab pubsub +
-  // cross-tab storage event). Re-called whenever projectName changes so we
-  // don't end up listening to an old project's key.
-  _resubscribeAlias = (projectName) => {
-    if (typeof this._aliasOff === 'function') {
-      try { this._aliasOff(); } catch {}
-      this._aliasOff = null;
-    }
-    if (!projectName) return;
-    this._aliasOff = subscribeToAlias(projectName, () => {
-      this._applyDocTitle(projectName);
-    });
-  };
-
+  /** 批量剪枝 entries：清空旧 MainAgent 的 body.messages，保留最后一条完整 */
   _batchSlim(entries) {
-    for (let i = 0; i < entries.length; i++) entries[i] = internEntryBigFields(entries[i]);
     const slimmer = createEntrySlimmer(isMainAgent);
     for (let i = 0; i < entries.length; i++) slimmer.process(entries[i], entries, i);
     slimmer.finalize(entries);
@@ -282,256 +122,7 @@ class AppBase extends React.Component {
     this._cacheLossLastMainAgent = null;
     this._cacheLossMap = new Map();
     this._lastKvCacheContent = null;
-    this._sseSlimmer = null; this._sseReconstructor = null;
-  }
-
-  // 给子组件(ChatView / TerminalPanel)一次性注入 SettingsContext 的所有字段。
-  // 不能直接给它们绑 contextType — 它们已绑 TerminalWsContext,class 一次只能一个。
-  _settingsProps() {
-    const ctx = this.context || {};
-    return {
-      claudeSettings: ctx.claudeSettings,
-      preferences: ctx.preferences,
-      onUpdatePreferences: ctx.updatePreferences,
-      onUpdateClaudeSettings: ctx.updateClaudeSettings,
-      // 把 lang 塞进 settings spread,让 App / Mobile 入口都自动拿到,
-      // 避免 ChatMessage 切语言时只在桌面端刷新而漏移动端。
-      lang: this.state.lang,
-    };
-  }
-
-  // 这 5 个偏好的唯一真相源是 SettingsContext(preferences/claudeSettings);
-  // App/Mobile render 时直接派生往下传 prop,不再镜像进本地 state。
-  // context 未就绪(fetch 前)时用与原初始 state 一致的默认值兜底。
-  _prefValues() {
-    const prefs = (this.context && this.context.preferences) || {};
-    const cs = (this.context && this.context.claudeSettings) || {};
-    return {
-      collapseToolResults: prefs.collapseToolResults ?? true,
-      expandThinking: !!prefs.expandThinking,
-      expandDiff: !!prefs.expandDiff,
-      showFullToolContent: !!prefs.showFullToolContent,
-      onlyCurrentSession: prefs.onlyCurrentSession !== undefined ? !!prefs.onlyCurrentSession : /Windows/i.test(navigator.userAgent),
-      showThinkingSummaries: !!cs.showThinkingSummaries,
-    };
-  }
-
-  // 把 /api/preferences 回包水合进散落在 this.state 的偏好字段（autoApproveSeconds / approvalPrefs /
-  // themeColor / displayScale / resumeAutoChoice 等，区别于 _prefValues() 直接读 context 的那几个）。
-  // 初次加载与 refreshAllPrefs（toggle「项目独立配置」后）共用，避免抽屉里这半数控件读到旧的全局值。
-  _hydratePrefsFromData = (data) => {
-    if (!data) return;
-    if (data.lang) this.setState({ lang: data.lang });
-    // collapseToolResults / expandThinking / expandDiff / showFullToolContent
-    // 不再镜像进 state —— render 经 _prefValues() 直接读 context.preferences。
-    if (data.resumeAutoChoice) {
-      this.setState({ resumeAutoChoice: data.resumeAutoChoice });
-    }
-    if (typeof data.autoApproveSeconds === 'number') {
-      this.setState({ autoApproveSeconds: data.autoApproveSeconds });
-    }
-    // Approval modal preferences (defaults already in initial state — only override when persisted).
-    if (data.approvalModal && typeof data.approvalModal === 'object') {
-      // setState updater 不做 side effect，先在外层算 next + mismatch，再 setState + POST + IPC。
-      const prevPrefs = this.state.approvalPrefs;
-      const mergedVP = mergeVoicePackInto(prevPrefs.voicePack, data.approvalModal.voicePack);
-      const next = {
-        modalEnabled: data.approvalModal.modalEnabled !== undefined ? !!data.approvalModal.modalEnabled : prevPrefs.modalEnabled,
-        soundEnabled: data.approvalModal.soundEnabled !== undefined ? !!data.approvalModal.soundEnabled : prevPrefs.soundEnabled,
-        notifyOnlyWhenHidden: data.approvalModal.notifyOnlyWhenHidden !== undefined ? !!data.approvalModal.notifyOnlyWhenHidden : prevPrefs.notifyOnlyWhenHidden,
-        planAutoApproveSeconds: typeof data.approvalModal.planAutoApproveSeconds === 'number' ? data.approvalModal.planAutoApproveSeconds : prevPrefs.planAutoApproveSeconds,
-        voicePack: mergedVP,
-      };
-      // 合并开关迁移：server 端 soundEnabled !== voicePack.enabled 时以 soundEnabled 为准强制对齐（幂等回写）。
-      const mismatch = !!next.voicePack.enabled !== !!next.soundEnabled;
-      if (mismatch) {
-        next.voicePack = { ...next.voicePack, enabled: next.soundEnabled };
-      }
-      this.setState({ approvalPrefs: next });
-      // updatePreferences 顶层浅 merge：必须传完整 next（含 voicePack 子树），否则 events/volume 被砍。
-      if (mismatch) {
-        this.context?.updatePreferences?.({ approvalModal: next });
-      }
-      // 同步给 electron main 进程（voicePack 不发——播放在 renderer）。
-      try {
-        const { voicePack: _omit, ...forIpc } = next;
-        window.tabBridge?.setApprovalPref?.(forIpc);
-      } catch (e) { console.warn('[approvalPref IPC] hydrate sync failed:', e); }
-    }
-    // hydrate：prefs 没存过 themeColor 时回退当前 state（首次安装 'light'）。不写回 prefs，但同步 localStorage。
-    const effective = (data.themeColor === 'light' || data.themeColor === 'dark')
-      ? data.themeColor
-      : this.state.themeColor;
-    this._applyTheme(effective);
-    // 整体显示大小：prefs 为准（跨设备），没存过回退当前 state(默认 100)。
-    this._applyDisplayScale(data.displayScale ?? this.state.displayScale);
-    // filterIrrelevant 默认 true，showAll = !filterIrrelevant
-    const filterIrrelevant = data.filterIrrelevant !== undefined ? !!data.filterIrrelevant : true;
-    this.setState({ showAll: !filterIrrelevant });
-    if (data.logDir) {
-      this.setState({ logDir: data.logDir });
-    }
-    // URL 参数覆盖主题（白名单校验防 XSS）。一次性覆盖，不写回 prefs，但同步 localStorage。
-    const urlTheme = new URLSearchParams(window.location.search).get('theme');
-    if (urlTheme === 'light' || urlTheme === 'dark') {
-      this._applyTheme(urlTheme);
-    }
-  };
-
-  // 重新拉取偏好并重跑本地 state 水合（toggle 项目独立配置后、admin 改完他人 fork 后调用）。
-  refreshAllPrefs = () => {
-    const p = this.context?.refreshPreferences?.();
-    if (!p || typeof p.then !== 'function') return Promise.resolve(null);
-    return p.then(d => { if (d) this._hydratePrefsFromData(d); return d; });
-  };
-
-  // 切换「启动项目独立配置」：开启 = 把当前全局偏好 fork 到本项目；关闭 = 删除该 fork。
-  // 服务端按当前项目 key 处理；成功后整刷一遍偏好（GET 会据 fork 解析出有效值）。
-  handleToggleProjectScoped = (enabled) => {
-    return fetch(apiUrl('/api/project-prefs/toggle'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: !!enabled }),
-    }).then(r => (r.ok ? r.json() : null))
-      .then((resp) => {
-        // 服务端确认后立刻乐观翻 _projectScoped，关掉"确认→refresh 到位"窗口内偏好写误投全局的风险；
-        // 随后 refreshAllPrefs 再按 fork 解析出的有效值整体校准。toggle 失败(resp 为 null)则只刷新校准。
-        if (resp) this.context?.mergeLocalPreferences?.({ _projectScoped: !!enabled });
-        return this.refreshAllPrefs();
-      })
-      .catch(() => this.refreshAllPrefs());
-  };
-
-  // ─── 「仅展示当前会话」会话锁定（pin） ──────────────────────────
-  // 生效的「仅展示当前会话」值：本地日志模式强制关闭（须看全量历史），否则取 _prefValues()
-  // （含 Windows 未设时默认开启），与 App.jsx render 传给 ChatView 的口径一致。
-  _effectiveOnlyCurrentSession() {
-    if (this._isLocalLog) return false;
-    return !!this._prefValues().onlyCurrentSession;
-  }
-
-  // 移动端 splitHotCold 的「强制保热」集合：始终把当前 pin 会话纳入，防其被冷淘汰后
-  // 在 [对话] 里退化成「加载」占位（findIndex 也就再找不到它）。可附加额外 id（如刚加载的冷 session）。
-  _pinnedSessionIdSet(extra) {
-    const s = new Set();
-    if (this.state.pinnedSessionTs != null) s.add(this.state.pinnedSessionTs);
-    if (Array.isArray(extra)) {
-      for (const id of extra) { if (id != null) s.add(id); }
-    }
-    return s;
-  }
-
-  // Single definition of "the current session's stable id" — used by follow-latest
-  // (_maintainPinState), hydrate adoption (_hydratePin), and the session_pin SSE
-  // listener. Keep all three on this helper so the derivation can never drift
-  // between the paths again (that divergence class is the bug this fixes).
-  _derivedLatestId() {
-    return getSessionStableId(getLatestSessionByActivity(this.state.mainAgentSessions));
-  }
-
-  // 一次性清理旧版浏览器本地 pin（ccv_pinnedSession_<项目>）。pin 已改服务端存储，这些键不再使用，
-  // 历史上每访问一个项目就攒一个、永不回收。mount 时调用一次即可。
-  _cleanupLegacyPinKeys() {
-    try {
-      const stale = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith('ccv_pinnedSession_')) stale.push(k);
-      }
-      for (const k of stale) localStorage.removeItem(k);
-    } catch {}
-  }
-
-  // pin 持久化 → 服务端（POST /api/session-pin），由 server 按项目 + --pid 实例键落盘并 SSE 广播本进程，
-  // 多端实时一致。本地日志模式无 server，短路不发。
-  _persistPin() {
-    if (this._isLocalLog) return;
-    const val = this.state.pinnedSessionTs;
-    try {
-      fetch(apiUrl('/api/session-pin'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pinnedSessionId: val == null ? null : String(val) }),
-      }).catch(() => {});
-    } catch {}
-  }
-
-  // 从服务端读回 pin（刷新/切项目/重连后恢复）。异步：hydrate 在途时置 _isHydratingPin，
-  // 抑制 _maintainPinState 的 lazy-lock / persist，避免抢在 GET 返回前误锁并 POST 覆盖服务端真值。
-  // 采纳服务端值时置 _applyingRemotePin，避免被 persist 分支当成本地改动回写。
-  //
-  // Orchestration lives in runPinHydration (sessionManager.js) so the race-sensitive
-  // ordering is unit-tested: a stale server pin loses to the locally derived latest
-  // when the toggle is on (resolveHydratedPin); a superseded GET (newer hydrate
-  // started meanwhile) is discarded without touching the gate; and after settling,
-  // the gate is cleared BEFORE _maintainPinState(null) re-runs follow-latest — so a
-  // reconnect on an idle stream self-heals instead of sticking to a stale pin.
-  _hydratePin() {
-    if (this._isLocalLog) return;
-    const seq = ++this._hydratePinSeq;
-    this._isHydratingPin = true;
-    runPinHydration({
-      fetchPin: () => fetch(apiUrl('/api/session-pin'))
-        .then(res => res.ok ? res.json() : null)
-        .then(data => data && data.pinnedSessionId),
-      // Unmount counts as supersession: a GET resolving after teardown must not
-      // setState (adopt/self-heal) or clear a gate nobody owns anymore.
-      isCurrent: () => seq === this._hydratePinSeq && !this._unmounted,
-      getDerived: () => this._derivedLatestId(),
-      effOnly: () => this._effectiveOnlyCurrentSession(),
-      getLocalPin: () => this.state.pinnedSessionTs,
-      adopt: (val) => {
-        this._applyingRemotePin = true;
-        this.setState({ pinnedSessionTs: val }, () => { this._applyingRemotePin = false; });
-      },
-      persistLocal: () => this._persistPin(),
-      clearGate: () => { this._isHydratingPin = false; },
-      selfHeal: () => this._maintainPinState(null),
-    });
-  }
-
-  // App / Mobile 子类的 componentDidUpdate 都 `super.componentDidUpdate(...)`，故 pin 维护集中在此。
-  componentDidUpdate(prevProps, prevState) {
-    this._maintainPinState(prevState);
-  }
-
-  // 维护 pin：过滤开启时始终把 pin 跟随到「当前会话」（= 最新会话的稳定 id）；切项目重 hydrate；
-  // pin 变化持久化。「当前会话」以日志最新条目所属会话为准，不依赖界面 /clear 交互 —— 从新终端
-  // (如 Ghostty)启动的会话，重载/实时都能自动切过去（配合 _flushPendingEntries 的实时推进）。
-  _maintainPinState(prevState) {
-    const effOnly = this._effectiveOnlyCurrentSession();
-
-    // _isHydratingPin：服务端 pin 的 GET 在途时，不要抢先推进（否则会在真值返回前误锁到最新）。
-    if (effOnly && !this._isHydratingPin) {
-      // "Current session" = newest ACTIVITY among hot sessions, NOT the last list
-      // element: mainAgentSessions is insertion-ordered, and with interleaved
-      // multi-terminal sessions or a truncated reconnect replay the tail is often
-      // an old session — following it anchored (and persisted) the wrong pin.
-      const latestId = this._derivedLatestId() || this._currentSessionId || null;
-      // 始终跟随最新会话（不再只在「开关刚打开 / pin 为空」时锁一次）：这样即便持久化的 pin
-      // 指向旧会话（cc-viewer 关闭期间新终端已启动，重开后 batch 重载出新会话），也会自动切到
-      // 最新会话。因为没有「手动锁定任意旧会话」的 UI，「当前会话」恒等于最新会话，此推进安全。
-      // 不变式：切项目那一拍这里的乐观锁不会被持久化——下面同一趟的 _hydratePin() 会同步置
-      // _isHydratingPin=true，把下一拍 persist 分支挡掉（由 hydrate 的服务端真值收口），故无需在此回写。
-      if (latestId && this.state.pinnedSessionTs !== latestId) {
-        this.setState({ pinnedSessionTs: latestId });
-      }
-    }
-
-    if (prevState && prevState.projectName !== this.state.projectName) {
-      // 切项目：从服务端重新 hydrate（旧 pin 已在切换 setState 里清空）。
-      this._hydratePin();
-    } else if (prevState && prevState.pinnedSessionTs !== this.state.pinnedSessionTs && this.state.projectName
-               && !this._applyingRemotePin && !this._isHydratingPin) {
-      // pin 本地变化且 projectName 稳定 → 持久化到服务端。
-      // _applyingRemotePin：来自 hydrate/SSE 的服务端值不回写（防回环）；_isHydratingPin：hydrate 在途不写。
-      this._persistPin();
-    }
-  }
-
-  // App / Mobile render 共用：按生效的「仅展示当前会话」+ pin 切出传给 ChatView 的会话与上界。
-  _displaySessionsFor(mainAgentSessions) {
-    return resolveDisplaySessions(mainAgentSessions, this.state.pinnedSessionTs, this._effectiveOnlyCurrentSession());
+    this._sseSlimmer = null;
   }
 
   /**
@@ -540,341 +131,113 @@ class AppBase extends React.Component {
    * 减少 3 次 O(n) 全量扫描。
    */
   _processEntries(entries) {
-    const st = this._initProcessState();
-    for (let i = 0; i < entries.length; i++) {
-      this._processOneEntry(entries[i], i, st);
-    }
-    this._currentSessionId = st.currentSessionId;
-    return { mainAgentSessions: st.sessions, filtered: st.filtered };
-  }
+    let timestamps = [];
+    let prevUserId = null;
+    let sessions = [];
+    const filtered = [];
 
-  /** _processEntries 的循环前置：实例状态重置（_rebuildRequestIndex 内联）+ 遍历局部状态对象。
-   *  同步 _processEntries 与分帧 _processEntriesChunked 共用，保证两条路径前置完全一致。 */
-  _initProcessState() {
     // _rebuildRequestIndex 内联
     this._requestIndexMap.clear();
     this._cacheLossProcessedCount = 0;
     this._cacheLossLastMainAgent = null;
     this._cacheLossMap = new Map();
     this._lastKvCacheContent = null;
-    this._sseSlimmer = null; this._sseReconstructor = null;
+    this._sseSlimmer = null;
 
-    return {
-      timestamps: [],
-      generatedTimestamps: [],   // 跟 timestamps 平行：position → _generatedTs（assistant 才有）
-      prevMainAgentTs: null,      // 上一次 mainAgent entry 的 ts，给本次新增 assistant msg 赋
-      prevUserId: null,
-      sessions: [],
-      filtered: [],
-      currentSessionId: null,
-    };
-  }
+    let currentSessionId = null;
 
-  /** _processEntries 的循环体原样抽取（局部变量改读写 st.*，其余逐行一致）。
-   *  同步与分帧路径共用此方法 —— mergeMainAgentSessions 的调用序列/参数/
-   *  _sessionId 赋值因此与抽取前完全相同（sessionMerge 脆弱区零语义变化）。 */
-  _processOneEntry(entry, i, st) {
-    // Rotation-context sentinel (first frame of a post-rotation segment):
-    // capture the carry-forward payload, seed the teammate-name registry, and
-    // never treat it as a renderable request (isRelevantRequest also rejects
-    // it as belt-and-braces for other filter paths).
-    if (entry && entry.ccvRotationContext) {
-      this._rotationContext = entry;
-      if (Array.isArray(entry.teammateNames)) setTeammateNameSeeds(entry.teammateNames);
-      return;
-    }
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
 
-    // requestIndex
-    this._requestIndexMap.set(`${entry.timestamp}|${entry.url}`, i);
+      // requestIndex
+      this._requestIndexMap.set(`${entry.timestamp}|${entry.url}`, i);
 
-    // filterRelevant
-    if (isRelevantRequest(entry)) st.filtered.push(entry);
+      // filterRelevant
+      if (isRelevantRequest(entry)) filtered.push(entry);
 
-    // assignTimestamps + buildSessions（仅 mainAgent）
-    if (isMainAgent(entry) && entry.body && Array.isArray(entry.body.messages)) {
-      // Boundary detection + positional timestamp accumulation extracted to
-      // applyBatchEntryTimestamps (sessionManager.js) — shares isSessionBoundary
-      // with the live SSE path (_flushPendingEntries) so batch reload and live
-      // streaming segment sessions identically (the "only show current session"
-      // pin depends on stable ids matching across the two paths).
-      // KEEP IN SYNC: test/session-boundary-parity.test.js runBatchLeg mirrors
-      // this slim → applyBatchEntryTimestamps → merge call order.
-      applyBatchEntryTimestamps(st, entry);
+      // assignTimestamps + buildSessions（仅 mainAgent）
+      if (isMainAgent(entry) && entry.body && Array.isArray(entry.body.messages)) {
+        const messages = entry.body.messages;
+        const count = entry._messageCount || messages.length;
+        const userId = entry.body.metadata?.user_id || null;
+        const timestamp = entry.timestamp || new Date().toISOString();
 
-      // session 合并（跳过 _slimmed；批量路径额外跳过 stale/broken/inProgress，见谓词 JSDoc）
-      if (!entry._slimmed && !isMergeBlockedEntry(entry, { batch: true })) {
-        st.sessions = this.mergeMainAgentSessions(st.sessions, entry);
-      }
-    }
+        const prevCount = timestamps.length;
+        const isNewSession = prevCount > 0 && (
+          (count < prevCount * 0.5 && (prevCount - count) > 4) ||
+          (prevUserId && userId && userId !== prevUserId)
+        );
+        // Transient 保护：极短 entry（<=4 msgs）在长对话后不应重置 timestamps 累积
+        // 这些通常是中间态请求（request body 只有 user message，尚未拿到 response）
+        const isTransient = isNewSession && count <= 4 && prevCount > 4 && count < prevCount * 0.5;
+        if (isNewSession && !isTransient) {
+          currentSessionId = timestamp;
+          timestamps = [];
+        } else if (currentSessionId === null) {
+          currentSessionId = timestamp;
+        }
+        for (let j = timestamps.length; j < count; j++) timestamps.push(timestamp);
+        if (messages.length > 0) {
+          for (let j = 0; j < messages.length; j++) messages[j]._timestamp = timestamps[j];
+        }
+        prevUserId = userId;
 
-    entry._sessionId = st.currentSessionId;
-  }
-
-  /** _processEntries 的分帧版：同一循环插入让步，调用序列与同步版完全一致。 */
-  async _processEntriesChunked(entries, ctl) {
-    const st = this._initProcessState();
-    const r = await runChunkedPass(entries.length, (i) => this._processOneEntry(entries[i], i, st), ctl);
-    if (r.aborted) return { aborted: true };
-    this._currentSessionId = st.currentSessionId;
-    return { aborted: false, mainAgentSessions: st.sessions, filtered: st.filtered };
-  }
-
-  /** _batchSlim 的分帧版：与同步版完全同序 —— intern 全量 pass → slimmer.process 全量 pass
-   *  → finalize 一次。两个 pass 各自分帧（保持"intern 先全部完成"的既有顺序假设）。 */
-  async _batchSlimChunked(entries, ctl) {
-    const r1 = await runChunkedPass(entries.length, (i) => { entries[i] = internEntryBigFields(entries[i]); }, ctl);
-    if (r1.aborted) return { aborted: true };
-    const slimmer = createEntrySlimmer(isMainAgent);
-    const r2 = await runChunkedPass(entries.length, (i) => { slimmer.process(entries[i], entries, i); }, ctl);
-    if (r2.aborted) return { aborted: true };
-    slimmer.finalize(entries);
-    return { aborted: false };
-  }
-
-  /** 分帧管线的并发控制句柄。progress 经 _loadingCountRafId rAF 节流写 fileLoadingCount。
-   *  _loadingCountRafId/_ingestProgressCount 跨管线共享 —— onProgress 与 rAF 回调都按
-   *  token 过滤，防被 supersede 的旧管线最后一批写入陈旧计数（进度数字乱跳）。 */
-  _makeIngestCtl(myToken) {
-    return {
-      shouldAbort: () => this._ingestToken !== myToken || this._unmounted,
-      onProgress: (count) => {
-        if (this._ingestToken !== myToken) return;
-        this._ingestProgressCount = count;
-        if (this._loadingCountRafId) return;
-        this._loadingCountRafId = requestAnimationFrame(() => {
-          this._loadingCountRafId = null;
-          if (this._ingestToken === myToken && !this._unmounted) {
-            this.setState({ fileLoadingCount: this._ingestProgressCount });
-          }
-        });
-      },
-      yieldFn: yieldToMain,
-      batchSize: INGEST_BATCH_SIZE,
-    };
-  }
-
-  /** 冷启动共享分帧管线：reconstruct（整体一次）→ 分帧 slim → 分帧 process。
-   *  reconstructEntries 有状态（running accumulated + _compensateBrokenEntries 全数组
-   *  前向补偿），不可切片 —— 作为独立任务隔离，算法不动。
-   *  Delta 重建必须在 entry-slim 之前：delta 条目的 body.messages 只有增量部分，
-   *  先 slim 会永久丢失增量数据，导致重建后 messages 为空。 */
-  async _runColdIngestCore(rawEntries, ctl) {
-    const entries = Array.isArray(rawEntries) ? reconstructEntries(rawEntries) : rawEntries;
-    if (ctl.shouldAbort()) return { aborted: true };
-    if (!(Array.isArray(entries) && entries.length > 0)) {
-      return { aborted: false, empty: true, entries: Array.isArray(entries) ? entries : [], mainAgentSessions: [], filtered: [] };
-    }
-    await ctl.yieldFn();   // reconstruct 是长任务，先让出一帧再进分帧 passes
-    if (ctl.shouldAbort()) return { aborted: true };
-    const s = await this._batchSlimChunked(entries, ctl);
-    if (s.aborted) return { aborted: true };
-    const p = await this._processEntriesChunked(entries, ctl);
-    if (p.aborted) return { aborted: true };
-    return { aborted: false, empty: false, entries, mainAgentSessions: p.mainAgentSessions, filtered: p.filtered };
-  }
-
-  /** 管线提交：单次原子 setState；回调里关闸 + 泄洪 live 缓冲（对已提交基线重建）。 */
-  _commitColdIngest(myToken, newState, after) {
-    if (this._ingestToken !== myToken || this._unmounted) return; // 已被 supersede
-    this.setState(newState, () => {
-      if (this._ingestToken !== myToken) return; // setState 提交期间又被 supersede
-      this._ingestRunning = false;
-      const buffered = this._liveGateBuffer;
-      this._liveGateBuffer = [];
-      if (buffered.length > 0) {
-        this._pendingEntries.push(...buffered);
-        if (!this._flushRafId) {
-          this._flushRafId = requestAnimationFrame(this._flushPendingEntries);
+        // session 合并（跳过 _slimmed）
+        if (!entry._slimmed) {
+          sessions = this.mergeMainAgentSessions(sessions, entry);
         }
       }
-      if (after) after();
-    });
-  }
 
-  /** 废弃在途分帧管线（baseline 重置路径调用：重连/full_reload/workspace 切换）。
-   *  drain=true 时把闸门缓冲送回 _pendingEntries 走正常 flush（dedup 兜底重复）。 */
-  _abortColdIngest({ drain = false } = {}) {
-    this._ingestToken++;
-    this._ingestRunning = false;
-    const buffered = this._liveGateBuffer;
-    this._liveGateBuffer = [];
-    if (drain && buffered.length > 0) {
-      this._pendingEntries.push(...buffered);
-      if (!this._flushRafId) {
-        this._flushRafId = requestAnimationFrame(this._flushPendingEntries);
-      }
+      entry._sessionId = currentSessionId;
     }
-  }
 
-  /** initSSE load_end 的分帧版主流程（移动端 hot/cold 分层提交原样保留）。 */
-  async _runSseColdIngest(rawEntries, { isIncremental, unlockContextBar }) {
-    const myToken = ++this._ingestToken;
-    this._ingestRunning = true;
-    // Seed lifecycle: reset carried teammate-name seeds ONLY on non-incremental
-    // baseline loads (workspace switches land here too). Incremental reloads
-    // (SSE reconnect ?since=, mobile cache merge) carry no sentinel and must
-    // not wipe seeds they cannot re-deliver. The route re-delivers context
-    // after this load, and an in-window sentinel re-seeds during processing.
-    if (!isIncremental) {
-      clearTeammateNameSeeds();
-      this._rotationContext = null;
-      this._backfillDoneFor = null;
-      this._backfillCount = 0;
-    }
-    const ctl = this._makeIngestCtl(myToken);
-    const core = await this._runColdIngestCore(rawEntries, ctl);
-    if (core.aborted) return;
-    if (core.empty) {
-      const st = { fileLoading: false, fileLoadingCount: 0 };
-      if (unlockContextBar) st.contextBarLocked = false;
-      this._commitColdIngest(myToken, st);
-      return;
-    }
-    const { entries, mainAgentSessions, filtered } = core;
-
-    // P1: 移动端 hot/cold 分层
-    if (isMobile && mainAgentSessions.length > HOT_SESSION_COUNT) {
-      const sessionIndex = buildSessionIndex(entries, mainAgentSessions);
-      const fullIndex = isIncremental
-        ? mergeSessionIndices(this.state.sessionIndex, sessionIndex)
-        : sessionIndex;
-      const unslimmed = entries.map(e => e._slimmed ? restoreSlimmedEntry(e, entries) : e);
-      const { hotEntries, allSessions, coldGroups } = splitHotCold(
-        unslimmed, mainAgentSessions, fullIndex, HOT_SESSION_COUNT, this._pinnedSessionIdSet()
-      );
-      this._sseSlimmer = null; this._sseReconstructor = null;
-      // 冷 session entries 异步写入 IndexedDB
-      const pn = this.state.projectName;
-      if (pn) {
-        for (const [sid, coldEntries] of coldGroups) {
-          saveSessionEntries(pn, sid, coldEntries);
-        }
-        // 主缓存保存全量 entries（而非 hotEntries），确保下次缓存恢复时有完整数据
-        saveEntries(pn, entries);
-      }
-      // Fix #4: selectedIndex 基于 hotEntries 而非全量 filtered
-      const hotFiltered = hotEntries.filter(e => isRelevantRequest(e));
-      const newState = {
-        requests: hotEntries,
-        selectedIndex: hotFiltered.length > 0 ? hotFiltered.length - 1 : null,
-        mainAgentSessions: allSessions,
-        sessionIndex: fullIndex,
-        fileLoading: false,
-        fileLoadingCount: 0,
-      };
-      // 增量模式保留缓存恢复时设的 hasMoreHistory；非增量（limit）模式用服务端的值
-      // hasMoreHistory 必须 AND 上 _oldestTs 非空，否则后续 loadMoreHistory() 会拼 before=null 触发 400
-      if (!isIncremental) newState.hasMoreHistory = !!this._hasMoreHistory && !!this._oldestTs;
-      if (unlockContextBar) newState.contextBarLocked = false;
-      this._commitColdIngest(myToken, newState);
-    } else {
-      const newState = {
-        requests: entries,
-        selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
-        mainAgentSessions,
-        fileLoading: false,
-        fileLoadingCount: 0,
-      };
-      if (!isIncremental) newState.hasMoreHistory = !!this._hasMoreHistory && !!this._oldestTs;
-      if (unlockContextBar) newState.contextBarLocked = false;
-      this._commitColdIngest(myToken, newState, () => {
-        if (isMobile && this.state.projectName) {
-          saveEntries(this.state.projectName, entries);
-        }
-        // Post-rotation teammate backfill — desktop baseline loads only. The
-        // route decides whether rotation context exists (the in-band sentinel
-        // may sit outside the load window on long post-rotation files), so
-        // the call is unconditional up to the guards; "no context" is a
-        // silent no-op. Mobile is excluded in v1: persisting pre-split
-        // entries would corrupt the _oldestTs paging cursor.
-        if (!isIncremental && !isMobile && !this._isLocalLog && !newState.hasMoreHistory) {
-          this._fetchPrevSegmentTeammates();
-        }
-      });
-    }
-  }
-
-  /** loadLocalLogFile load_end 的分帧版主流程。 */
-  async _runLocalLogIngest(rawEntries) {
-    const myToken = ++this._ingestToken;
-    this._ingestRunning = true;
-    // History-switcher loads must not inherit live-session seeds or fire a
-    // stale backfill; a historical post-rotation segment self-seeds from its
-    // own head sentinel during processing.
-    clearTeammateNameSeeds();
-    this._rotationContext = null;
-    this._backfillDoneFor = null;
-    this._backfillCount = 0;
-    const ctl = this._makeIngestCtl(myToken);
-    const core = await this._runColdIngestCore(rawEntries, ctl);
-    if (core.aborted) return;
-    if (core.empty) {
-      this._commitColdIngest(myToken, { fileLoading: false, fileLoadingCount: 0, serverCachedContent: null });
-      return;
-    }
-    this._commitColdIngest(myToken, {
-      requests: core.entries,
-      selectedIndex: core.filtered.length > 0 ? core.filtered.length - 1 : null,
-      mainAgentSessions: core.mainAgentSessions,
-      fileLoading: false,
-      fileLoadingCount: 0,
-      serverCachedContent: null,
-      // logfile 只读模式恒为全量，无「加载更早」分页
-      hasMoreHistory: this._isLocalLog ? false : (!!this._hasMoreHistory && !!this._oldestTs),
-    });
+    this._currentSessionId = currentSessionId;
+    return { mainAgentSessions: sessions, filtered };
   }
 
   componentDidMount() {
-    // pin 已改服务端存储：清掉旧版浏览器本地 ccv_pinnedSession_* 残留（一次性）。
-    this._cleanupLegacyPinKeys();
-    // 全局键盘缩放监听(Cmd/Ctrl +/-/0)仅 Electron 注册——驱动原生 setZoomFactor 并与下拉同步。
-    // 纯浏览器**不**注册,把 Cmd/Ctrl +/- 交还浏览器原生缩放(不拦截)。unmount 时按同一 ref 卸载。
-    if (hasNativeZoom) window.addEventListener('keydown', this._onScaleKeydown);
-    // claude-settings / preferences fetch 由 SettingsProvider 集中触发;
-    // 这里仅订阅其 Promise,把字段同步到本地 state(沿用现有 13+ 个 setState 消费链路)。
-    this.context._claudeSettingsReady.then(data => {
-      if (!data) return;
-      // showThinkingSummaries 不再镜像进 state —— render 经 _prefValues() 直接读
-      // context.claudeSettings,fetch 回包触发 Provider 重渲染即生效。勿在此重加 setState。
-      if (data.claudeAvailable === false) this.setState({ claudeMissing: true });
-      if (typeof data.claudeProjectModel === 'string' && data.claudeProjectModel) {
-        this.setState({ claudeProjectModel: data.claudeProjectModel });
-      }
-    });
+    // 获取 claude settings（showThinkingSummaries 等）
+    fetch(apiUrl('/api/claude-settings')).then(r => r.json()).then(data => {
+      if (data.showThinkingSummaries) this.setState({ showThinkingSummaries: true });
+    }).catch(() => {});
 
-    // ─── Approval modal: subscribe to electron main → tabBridge ──────────────────
-    // No-op when running in pure web mode — window.tabBridge is only injected by tab-content-preload.js.
-    // Subscription handles保存到 instance 以便 unmount 时卸载，避免 webContents reload 累加监听。
-    this._tabBridgeDisposers = [];
-    if (typeof window !== 'undefined' && window.tabBridge) {
-      try {
-        const offTabId = window.tabBridge.onTabIdInit?.((tabId) => {
-          this.setState({ ownTabId: tabId });
-        });
-        const offBroadcast = window.tabBridge.onApprovalBroadcast?.((payload) => {
-          if (!payload) return;
-          // ownPending 只取计数（main 进程的 ptyPlan/ask Map 序列化为 [{id, projectName, ...}]）。
-          // 不重写 approvalGlobal——闭包内的 handlers / questions 无法跨 IPC 还原，
-          // 权威源仍是 ChatView 的 pendingAsk / pendingPtyPlan（WS 重连服务端会重放）。
-          const op = payload.ownPending;
-          const ownPendingCount = (op && typeof op === 'object')
-            ? { ask: Array.isArray(op.ask) ? op.ask.length : 0, ptyPlan: Array.isArray(op.ptyPlan) ? op.ptyPlan.length : 0 }
-            : { ask: 0, ptyPlan: 0 };
-          this.setState((prev) => ({
-            ownTabId: payload.ownTabId != null ? payload.ownTabId : prev.ownTabId,
-            approvalOtherTabs: Array.isArray(payload.others) ? payload.others : [],
-            approvalOwnPending: ownPendingCount,
-          }));
-        });
-        if (typeof offTabId === 'function') this._tabBridgeDisposers.push(offTabId);
-        if (typeof offBroadcast === 'function') this._tabBridgeDisposers.push(offBroadcast);
-      } catch {}
-    }
-
-    // 等 SettingsProvider 完成 /api/preferences fetch,把字段同步到本地 state。
-    // setLang / setClaudeConfigDir 已由 Provider 处理,这里不再重复。
-    // initSSE 仍可读 this._prefsReady(getter 代理到 context),resume_prompt 行为不变。
-    this.context._prefsReady.then(data => this._hydratePrefsFromData(data));
+    // 获取用户偏好设置（包含 filterIrrelevant）
+    // 用 Promise 保存，供 initSSE 等待（resume_prompt 需要知道 resumeAutoChoice）
+    this._prefsReady = fetch(apiUrl('/api/preferences'))
+      .then(res => res.json())
+      .then(data => {
+        if (data.lang) {
+          setLang(data.lang);
+          this.setState({ lang: data.lang });
+        }
+        if (data.collapseToolResults !== undefined) {
+          this.setState({ collapseToolResults: !!data.collapseToolResults });
+        }
+        if (data.expandThinking !== undefined) {
+          this.setState({ expandThinking: !!data.expandThinking });
+        }
+        if (data.expandDiff !== undefined) {
+          this.setState({ expandDiff: !!data.expandDiff });
+        }
+        if (data.showFullToolContent !== undefined) {
+          this.setState({ showFullToolContent: !!data.showFullToolContent });
+        }
+        if (data.resumeAutoChoice) {
+          this.setState({ resumeAutoChoice: data.resumeAutoChoice });
+        }
+        if (data.themeColor) {
+          this.setState({ themeColor: data.themeColor });
+          document.documentElement.setAttribute('data-theme', data.themeColor === 'light' ? 'light' : 'dark');
+        }
+        // filterIrrelevant 默认 true，showAll = !filterIrrelevant
+        const filterIrrelevant = data.filterIrrelevant !== undefined ? !!data.filterIrrelevant : true;
+        this.setState({ showAll: !filterIrrelevant });
+        if (data.logDir) {
+          this.setState({ logDir: data.logDir });
+        }
+        return data;
+      })
+      .catch(() => ({}));
 
     // 获取系统用户头像和名字
     fetch(apiUrl('/api/user-profile'))
@@ -902,9 +265,8 @@ class AppBase extends React.Component {
               const pTail = p.apiKey.slice(-4);
               if (dcTail !== pTail) return false;
             }
-            // model 匹配（主模型优先，回退老 activeModel）
-            const pModel = p.ANTHROPIC_MODEL || p.activeModel;
-            if (dc.model && pModel && dc.model !== pModel) return false;
+            // model 匹配
+            if (dc.model && p.activeModel && dc.model !== p.activeModel) return false;
             return true;
           });
           if (match) {
@@ -923,10 +285,8 @@ class AppBase extends React.Component {
       .then(res => res.json())
       .then(data => {
         const projectName = data.projectName || '';
-        const instanceId = data.instanceId || null;
-        // instanceId 与 projectName 同批入 state；标题在回调里应用，确保读到已更新的 instanceId。
-        this.setState({ projectName, instanceId }, () => this._applyDocTitle(projectName));
-        this._resubscribeAlias(projectName);
+        this.setState({ projectName });
+        if (projectName) document.title = projectName;
         // 移动端：从缓存恢复数据，在 SSE 数据到达前立即渲染
         if (isMobile && projectName && !logfile && this.state.requests.length === 0) {
           loadEntries(projectName).then(cached => {
@@ -939,9 +299,9 @@ class AppBase extends React.Component {
                 // slimmer 全平台：split 前还原 slimmed entries，确保 IndexedDB / hot 数据完整
                 const unslimmed = cached.map(e => e._slimmed ? restoreSlimmedEntry(e, cached) : e);
                 const { hotEntries, allSessions } = splitHotCold(
-                  unslimmed, mainAgentSessions, sessionIndex, HOT_SESSION_COUNT, this._pinnedSessionIdSet()
+                  unslimmed, mainAgentSessions, sessionIndex, HOT_SESSION_COUNT
                 );
-                this._sseSlimmer = null; this._sseReconstructor = null; // 重置，下帧 SSE 重建
+                this._sseSlimmer = null; // 重置，下帧 SSE 重建
                 const hotFiltered = hotEntries.filter(e => isRelevantRequest(e));
                 // 计算 _oldestTs 供"加载更多"使用
                 this._oldestTs = hotEntries.length > 0 ? hotEntries[0].timestamp : null;
@@ -991,19 +351,11 @@ class AppBase extends React.Component {
     if (logfile) {
       this.loadLocalLogFile(logfile);
     } else {
-      this._scheduleInitSSE();
+      this.initSSE();
     }
   }
 
   componentWillUnmount() {
-    window.removeEventListener('keydown', this._onScaleKeydown);
-    if (Array.isArray(this._tabBridgeDisposers)) {
-      for (const off of this._tabBridgeDisposers) {
-        try { off(); } catch {}
-      }
-      this._tabBridgeDisposers = null;
-    }
-    this._unmounted = true;
     if (this.eventSource) this.eventSource.close();
     if (this._localLogES) { this._localLogES.close(); this._localLogES = null; }
     if (this._autoSelectTimer) clearTimeout(this._autoSelectTimer);
@@ -1014,10 +366,6 @@ class AppBase extends React.Component {
     if (this._sseTimeoutTimer) clearTimeout(this._sseTimeoutTimer);
     if (this._sseReconnectTimer) clearTimeout(this._sseReconnectTimer);
     if (this._streamingOffTimer) clearTimeout(this._streamingOffTimer);
-    if (this._streamingRaf) { cancelAnimationFrame(this._streamingRaf); this._streamingRaf = null; }
-    if (this._clearOptimisticTimer) clearTimeout(this._clearOptimisticTimer);
-    if (typeof this._aliasOff === 'function') { try { this._aliasOff(); } catch {} this._aliasOff = null; }
-    this._pendingStreamingLatest = null;
   }
 
   // ─── SSE 通信 ───────────────────────────────────────────
@@ -1032,54 +380,17 @@ class AppBase extends React.Component {
     }, 45000);
   };
 
-  // 不关闭 EventSource —— 连接是会话级单例，workspace 切换复用同一条连接。
-  _scheduleInitSSE() {
-    const start = () => { if (!this._unmounted) this.initSSE(); };
-    // Windows 冷启动时 V8 需要 3-5 秒编译 ~7MB JS bundle（热启动有 Code Cache 则 <0.5s）。
-    // timeout 设为 5 秒确保编译完成后再建 SSE 连接，避免数据处理与编译竞争导致 tab 崩溃。
-    // 浏览器空闲时会提前触发（不必等满 5 秒），所以对热启动/Mac 无感知延迟。
-    if (typeof requestIdleCallback === 'function') {
-      requestIdleCallback(start, { timeout: 5000 });
-    } else {
-      requestAnimationFrame(() => requestAnimationFrame(start));
-    }
-  }
-
-  _teardownTransientLiveState = () => {
-    this._pendingEntries = [];
-    if (this._flushRafId) { cancelAnimationFrame(this._flushRafId); this._flushRafId = null; }
-    if (this._streamingOffTimer) { clearTimeout(this._streamingOffTimer); this._streamingOffTimer = null; }
-    if (this._loadingCountRafId) { cancelAnimationFrame(this._loadingCountRafId); this._loadingCountRafId = null; }
-    this._chunkedEntries = [];
-    this._chunkedTotal = 0;
-    this._isIncremental = false;
-    this._sseSlimmer = null;
-    this._sseReconstructor = null;
-    // 分帧管线闸门兜底复位（_pendingEntries 已清空，缓冲不泄洪直接丢弃）
-    this._ingestToken++;
-    this._ingestRunning = false;
-    this._liveGateBuffer = [];
-  };
-
   _reconnectSSE() {
-    // SSE 连接真死（心跳超时 / 重试上限），清除流式 overlay 避免卡死
-    if (this.state.streamingLatest) this.setState({ streamingLatest: null });
     if (this._sseReconnectCount >= 10) {
       console.error('SSE reconnect limit reached');
       return;
     }
     this._sseReconnectCount = (this._sseReconnectCount || 0) + 1;
     if (this.eventSource) { this.eventSource.close(); this.eventSource = null; }
+    if (this._streamingOffTimer) { clearTimeout(this._streamingOffTimer); this._streamingOffTimer = null; }
+    if (this._flushRafId) { cancelAnimationFrame(this._flushRafId); this._flushRafId = null; }
 
-    // 必须在部分保存之前废弃在途分帧管线（review P1）：下方部分保存会同步跑
-    // _processEntries → 清空 _requestIndexMap 等实例状态，若在途管线未先废弃，
-    // 其下一批会基于被污染的状态继续写。
-    // 不 drain 是有意的：闸门缓冲条目已由 interceptor 落盘，重连后 server replay
-    // 必然重发；且下方 _teardownTransientLiveState 会清空 _pendingEntries，
-    // drain 进去也会被立即清掉 —— 泄洪在此既无意义也有合并陈旧基线的风险。
-    this._abortColdIngest();
-
-    // 必须在 _teardownTransientLiveState() 之前，否则 _chunkedEntries 会被清零。
+    // 增量恢复：如果加载中断，保存已收到的 chunked entries 以便重连后增量续传
     if (this._chunkedEntries && this._chunkedEntries.length > 0 && isMobile) {
       try {
         const partial = reconstructEntries([...this._chunkedEntries]);
@@ -1100,12 +411,16 @@ class AppBase extends React.Component {
         console.warn('Failed to save partial entries on reconnect:', e);
       }
     }
+    this._chunkedEntries = [];
+    this._chunkedTotal = 0;
+    this._isIncremental = false;
+    if (this._loadingCountRafId) { cancelAnimationFrame(this._loadingCountRafId); this._loadingCountRafId = null; }
 
-    this._teardownTransientLiveState();
-    this.setState({ isStreaming: false, contextBarLocked: false });
+    this._pendingEntries = [];
+    this.setState({ isStreaming: false });
+    this._sseSlimmer = null;
     if (this._sseReconnectTimer) clearTimeout(this._sseReconnectTimer);
-    const delay = Math.min(2000 * Math.pow(2, (this._sseReconnectCount || 1) - 1), 32000);
-    this._sseReconnectTimer = setTimeout(() => { this.initSSE(); }, delay);
+    this._sseReconnectTimer = setTimeout(() => { this.initSSE(); }, 2000);
   }
 
   animateLoadingCount(target, onDone) {
@@ -1129,87 +444,16 @@ class AppBase extends React.Component {
     this._loadingCountTimer = requestAnimationFrame(step);
   }
 
-  /**
-   * Post-rotation teammate backfill: fetch teammate-only entries from the
-   * previous log segment and prepend them so pre-split teammate rows reappear.
-   * One-shot per rotation context; superseded fetches (workspace switch / new
-   * cold ingest mid-flight) are dropped via the ingest token, mirroring the
-   * reload-token discipline used elsewhere.
-   */
-  async _fetchPrevSegmentTeammates() {
-    const ctxKey = this._rotationContext?.from || '__probe__';
-    if (this._backfillDoneFor === ctxKey) return;
-    const tok = this._ingestToken;
-    let lines;
-    try {
-      const res = await fetch(apiUrl('/api/prev-segment-teammates'));
-      if (!res.ok) return;
-      const text = await res.text();
-      lines = text.split('\n').filter(Boolean).map((l) => {
-        try { return JSON.parse(l); } catch { return null; }
-      }).filter(Boolean);
-    } catch { return; }
-    if (this._ingestToken !== tok || this._unmounted) return; // superseded mid-flight
-    if (!lines || lines.length === 0) return;
-    this._backfillDoneFor = ctxKey;
-    const ctx = lines[0];
-    const done = lines[lines.length - 1];
-    // The route's context line is the primary seed channel — the in-band
-    // sentinel may be outside the client's load window entirely.
-    if (Array.isArray(ctx?.teammateNames) && ctx.teammateNames.length > 0) {
-      setTeammateNameSeeds(ctx.teammateNames);
-    }
-    if (!done || done.error || !done.prevSegment) return; // not post-rotation / no predecessor
-    const entries = lines.slice(1, -1).filter((e) => e && e.timestamp && e.url && !e.done);
-    const fresh = entries.filter((e) => !this._requestIndexMap.has(`${e.timestamp}|${e.url}`));
-    if (fresh.length === 0) return;
-    // Prepend precedent (loadMoreHistory): merge → slim → reprocess → commit.
-    const reconstructed = reconstructEntries(fresh);
-    const merged = [...reconstructed, ...this.state.requests];
-    this._batchSlim(merged);
-    const { mainAgentSessions } = this._processEntries(merged);
-    if (this._ingestToken !== tok || this._unmounted) return;
-    this._backfillCount = (this._backfillCount || 0) + reconstructed.length;
-    this.setState((prev) => {
-      // Shift by the count of rows the ACTIVE view actually gained —
-      // selectedIndex indexes visibleRequests, which depends on showAll.
-      const addedVisible = visibleRequests(reconstructed, prev.showAll).length;
-      return {
-        requests: merged,
-        mainAgentSessions,
-        // Keep the DetailPanel selection on the same logical row.
-        selectedIndex: prev.selectedIndex == null ? null : prev.selectedIndex + addedVisible,
-      };
-    });
-  }
-
   async loadMoreHistory() {
     if (!this.state.hasMoreHistory || this._loadingMore) return;
-    // 防御 _hasMoreHistory=true 而 _oldestTs 为 null 的不一致状态：
-    // 没有锚点时间戳就别去拼 before=null，否则服务端 400。把 hasMoreHistory 同步
-    // 关掉避免上层 loader 反复触发。
-    if (!this._oldestTs) {
-      this.setState({ hasMoreHistory: false });
-      return;
-    }
     this._loadingMore = true;
     this.setState({ loadingMore: true });
     try {
-      // logfile 只读模式已全量加载（hasMoreHistory 恒 false），不会触发本函数；此分页逻辑仅供 live 模式使用。
-      const pageUrl = `/api/entries/page?before=${encodeURIComponent(this._oldestTs)}&limit=100`;
-      const res = await fetch(apiUrl(pageUrl));
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const res = await fetch(apiUrl(`/api/entries/page?before=${encodeURIComponent(this._oldestTs)}&limit=100`));
       const data = await res.json();
       if (Array.isArray(data.entries) && data.entries.length > 0) {
         const reconstructed = reconstructEntries(data.entries);
-        // Paged current-file entries are OLDER than the current baseline but
-        // NEWER than any backfilled previous-segment block — splice them after
-        // the backfilled head so the array stays time-ordered (the sub-agent
-        // interleave cursor depends on it).
-        const bf = this._backfillCount || 0;
-        const merged = bf > 0
-          ? [...this.state.requests.slice(0, bf), ...reconstructed, ...this.state.requests.slice(bf)]
-          : [...reconstructed, ...this.state.requests];
+        const merged = [...reconstructed, ...this.state.requests];
         this._batchSlim(merged);
         const { mainAgentSessions } = this._processEntries(merged);
         this._oldestTs = data.oldestTimestamp;
@@ -1220,37 +464,30 @@ class AppBase extends React.Component {
           const fullIndex = mergeSessionIndices(this.state.sessionIndex, sessionIndex);
           const unslimmed = merged.map(e => e._slimmed ? restoreSlimmedEntry(e, merged) : e);
           const { hotEntries, allSessions, coldGroups } = splitHotCold(
-            unslimmed, mainAgentSessions, fullIndex, HOT_SESSION_COUNT, this._pinnedSessionIdSet()
+            unslimmed, mainAgentSessions, fullIndex, HOT_SESSION_COUNT
           );
-          this._sseSlimmer = null; this._sseReconstructor = null;
+          this._sseSlimmer = null;
           const pn = this.state.projectName;
           if (pn) {
             for (const [sid, coldEntries] of coldGroups) {
               saveSessionEntries(pn, sid, coldEntries);
             }
+            saveSessionIndex(pn, fullIndex);
             saveEntries(pn, merged);
           }
           this.setState({
             requests: hotEntries,
             mainAgentSessions: allSessions,
             sessionIndex: fullIndex,
-            hasMoreHistory: !!data.hasMore && !!data.oldestTimestamp,
+            hasMoreHistory: !!data.hasMore,
             loadingMore: false,
           });
         } else {
-          this.setState((prev) => {
-            // Count against the ACTIVE view: raw pages contain non-relevant
-            // entries that showAll displays but the default view hides.
-            const addedVisible = visibleRequests(reconstructed, prev.showAll).length;
-            return {
-              requests: merged,
-              mainAgentSessions,
-              hasMoreHistory: !!data.hasMore && !!data.oldestTimestamp,
-              loadingMore: false,
-              // Keep the DetailPanel selection on the same logical row after the
-              // prepend (pre-existing latent flaw, fixed alongside the backfill).
-              selectedIndex: prev.selectedIndex == null ? null : prev.selectedIndex + addedVisible,
-            };
+          this.setState({
+            requests: merged,
+            mainAgentSessions,
+            hasMoreHistory: !!data.hasMore,
+            loadingMore: false,
           });
           if (isMobile && this.state.projectName) {
             saveEntries(this.state.projectName, merged);
@@ -1262,7 +499,6 @@ class AppBase extends React.Component {
     } catch (e) {
       console.error('loadMoreHistory failed:', e);
       this.setState({ loadingMore: false });
-      message.error(t('ui.loadMoreHistoryFailed'));
     }
     this._loadingMore = false;
   }
@@ -1279,23 +515,9 @@ class AppBase extends React.Component {
           hasCache = true;
         }
       }
-      // 桌面端重连：用最后接收到的时间戳做增量加载，避免全量重载放大卡顿
-      if (!hasCache && !isMobile && this._sseReconnectCount > 0 && this.state.requests.length > 0) {
-        const reqs = this.state.requests;
-        let lastTs = null;
-        for (let i = reqs.length - 1; i >= 0; i--) {
-          if (reqs[i]?.timestamp) { lastTs = reqs[i].timestamp; break; }
-        }
-        if (lastTs && this.state.projectName) {
-          url = `/events?since=${encodeURIComponent(lastTs)}&cc=${reqs.length}&project=${encodeURIComponent(this.state.projectName)}`;
-          hasCache = true;
-        }
-      }
-      // 无缓存时限制首屏加载量，剩余按需分页。
-      // 移动端 200 条；桌面端 400 条（Windows 上 1000 条的同步重建 + React 渲染
-      // 可达 10-15s，超出 Chrome tab kill 阈值导致崩溃）。
-      if (!hasCache) {
-        url = `/events?limit=${isMobile ? 200 : 400}`;
+      // 移动端无缓存时只加载最近 200 条，剩余按需分页
+      if (!hasCache && isMobile) {
+        url = '/events?limit=200';
       }
       // 只有在无缓存时才显示 loading 遮罩
       if (!hasCache) {
@@ -1304,59 +526,13 @@ class AppBase extends React.Component {
       this.eventSource = new EventSource(apiUrl(url));
       // 每次收到任何 SSE 事件（包括心跳注释帧触发的隐式活动）都重置超时
       this.eventSource.onmessage = (event) => { this._resetSSETimeout(); this.handleEventMessage(event); };
-      this.eventSource.onopen = () => {
-        this._resetSSETimeout();
-        // 每次连上都补一次 pin GET 同步：浏览器原生 EventSource 自愈重连复用同一 EventSource、
-        // 不走 _reconnectSSE（不增 _sseReconnectCount），故不能只在 wasReconnect 时同步，否则原生重连
-        // 期间他端改的 pin 会一直 stale 到下次 session_pin 或切项目。GET 幂等，_applyingRemotePin 防回写。
-        this._hydratePin();
-      };
-      // Live streaming overlay: 直接更新 streamingLatest state（不走 reconstructor / dedup）
-      // rAF coalesce + startTransition：每个 SSE chunk 只在下一帧合并成一次 setState，
-      // 并标记为低优先级渲染，避免阻塞用户输入。最终 chunk 经 entry path 交付而非
-      // stream-progress，所以丢掉 trailing stream-progress 是安全的。
-      this.eventSource.addEventListener('stream-progress', (event) => {
-        this._resetSSETimeout();
-        try {
-          const data = JSON.parse(event.data);
-          // 防 stale：若 requests 中已有同 timestamp 的完成条目，说明最终 entry 已到达，
-          // 此 chunk 是乱序/延迟到达的旧包，直接丢弃以免复活已清除的 overlay
-          const existingFinal = this.state.requests.find(r =>
-            r && r.timestamp === data.timestamp && !r.inProgress
-          );
-          if (existingFinal) return;
-          // streamingLatest 生命周期只由两种信号终结（不再用短 timeout 兜底）：
-          // 1) 正常：最终 entry 到达时 _flushPendingEntries 原子清除
-          // 2) 异常：SSE 连接真死 (_reconnectSSE)
-          // 避免长 thinking / 网络抖动 / 切 tab 等场景误杀 overlay。
-          this._pendingStreamingLatest = {
-            timestamp: data.timestamp,
-            url: data.url,
-            content: data.content || [],
-            model: data.model,
-            updatedAt: Date.now(),
-          };
-          if (this._streamingRaf) return;
-          this._streamingRaf = requestAnimationFrame(() => {
-            this._streamingRaf = null;
-            const pending = this._pendingStreamingLatest;
-            this._pendingStreamingLatest = null;
-            if (!pending) return;
-            React.startTransition(() => {
-              this.setState({ streamingLatest: pending });
-            });
-          });
-        } catch (e) { reportSwallowed('sse.stream-progress', e); }
-      });
+      this.eventSource.onopen = () => { this._resetSSETimeout(); };
       this.eventSource.addEventListener('resume_prompt', (event) => {
         this._resetSSETimeout();
         try {
           const data = JSON.parse(event.data);
           // 等待偏好加载完成再判断是否跳过弹窗（避免竞态）
-          (this.context._prefsReady || Promise.resolve({})).then((initialPrefs) => {
-            // 优先读 live preferences（本会话内改过开关需立即生效，否则关了开关当次仍自动继承）；
-            // provider 尚未 setState 时回落启动快照
-            const prefs = this.context?.preferences || initialPrefs;
+          (this._prefsReady || Promise.resolve({})).then((prefs) => {
             if (prefs?.resumeAutoChoice) {
               // 自动跳过：直接发送选择到服务端，不触碰偏好设置（避免 setState 竞态清除偏好）
               fetch(apiUrl('/api/resume-choice'), {
@@ -1368,21 +544,25 @@ class AppBase extends React.Component {
               this.setState({ resumeModalVisible: true, resumeFileName: data.recentFileName || '' });
             }
           });
-        } catch (e) { reportSwallowed('sse.resume_prompt', e); }
+        } catch { }
       });
       this.eventSource.addEventListener('resume_resolved', () => {
         this._resetSSETimeout();
         this.setState({ resumeModalVisible: false, resumeFileName: '', resumeRememberChoice: false });
       });
-      // update_completed 事件已废弃：自 1.6.203 起后台 detached npm install 负责升级，
-      // 当前进程内存里仍是旧版本，广播"已升级完成"会误导用户。保留 update_major_available
-      // 作为"有新版可用"的统一信号（包含跨大版本提示 + 本版本忙时跳过两种场景）。
+      this.eventSource.addEventListener('update_completed', (event) => {
+        this._resetSSETimeout();
+        try {
+          const data = JSON.parse(event.data);
+          this.setState({ updateInfo: { type: 'completed', version: data.version } });
+        } catch { }
+      });
       this.eventSource.addEventListener('update_major_available', (event) => {
         this._resetSSETimeout();
         try {
           const data = JSON.parse(event.data);
           this.setState({ updateInfo: { type: 'major', version: data.version } });
-        } catch (e) { reportSwallowed('sse.update_major_available', e); }
+        } catch { }
       });
       this.eventSource.addEventListener('load_start', (event) => {
         this._resetSSETimeout();
@@ -1397,7 +577,7 @@ class AppBase extends React.Component {
           if (!this._isIncremental) {
             this.setState({ fileLoading: true, fileLoadingCount: 0 });
           }
-        } catch (e) { reportSwallowed('sse.load_start', e); }
+        } catch { }
       });
       this.eventSource.addEventListener('load_chunk', (event) => {
         this._resetSSETimeout();
@@ -1413,7 +593,7 @@ class AppBase extends React.Component {
               });
             }
           }
-        } catch (e) { reportSwallowed('sse.load_chunk', e, { dataLen: event.data?.length }); }
+        } catch { }
       });
       this.eventSource.addEventListener('load_end', () => {
         this._resetSSETimeout();
@@ -1423,56 +603,85 @@ class AppBase extends React.Component {
         this._chunkedTotal = 0;
         const isIncremental = this._isIncremental;
         this._isIncremental = false;
-        // 解锁信号：增量模式下出现至少一条**带 body.messages 的 mainAgent** 条目，说明
-        // mainAgent 真有新一轮请求落盘。仅看 delta.length>0 会被 SSE 重连时 backlog
-        // replay 的旧 entry（synthetic、post-stop hook 等）误触发；mainAgent + body.messages
-        // 才是"用户实际发了内容"的最强信号。覆盖 TerminalPanel /clear 后用户没走 ChatView
-        // 输入框（pty 直接键入 / 外部 hook / Agent 自驱）时血条卡 0% 的场景。
-        // 注：解锁不再单独 setState，并入分帧管线末段的原子提交（避免与主提交分帧）。
-        let unlockContextBar = false;
-        if (isIncremental && this.state.contextBarLocked) {
-          const hasMainAgentTurn = delta.some(e => {
-            if (!e || !e.mainAgent) return false;
-            const msgs = e.body?.messages;
-            return Array.isArray(msgs) && msgs.length > 0;
-          });
-          if (hasMainAgentTurn) unlockContextBar = true;
-        }
 
         // 增量模式：Map 去重合并（delta 条目覆盖同 key 的缓存条目）
         let rawEntries;
         if (isIncremental && isMobile && this.state.requests.length > 0) {
           if (delta.length === 0) {
             // 无新数据，缓存已是最新，跳过重建（保留缓存恢复时已设置的 hasMoreHistory）
-            const st = { fileLoading: false, fileLoadingCount: 0 };
-            if (unlockContextBar) st.contextBarLocked = false;
-            this.setState(st);
+            this.setState({ fileLoading: false, fileLoadingCount: 0 });
             return;
           }
           const eKey = (e, i) => (e.timestamp && e.url) ? `${e.timestamp}|${e.url}` : `__nokey_c${i}`;
           const map = new Map();
           this.state.requests.forEach((e, i) => map.set(eKey(e, i), e));
           delta.forEach((e, i) => map.set((e.timestamp && e.url) ? `${e.timestamp}|${e.url}` : `__nokey_d${i}`, e));
-          // 注意：合并结果含 state.requests 的 live 引用 —— 分帧 slim/process 期间这些对象被
-          // 原地变异（intern/_slimmed），让步间隙的 render 会看到中间态。旧同步代码同样原地
-          // 变异（只是单任务内完成）；最终原子提交会以干净引用整体覆盖。
           rawEntries = Array.from(map.values());
         } else {
           rawEntries = delta;
         }
 
-        // 分帧管线：reconstruct → 分帧 slim → 分帧 process → 原子提交。
-        // async 不 await（EventSource 回调）；在途期间 live 条目入闸门缓冲（handleEventMessage）。
-        this._runSseColdIngest(rawEntries, { isIncremental, unlockContextBar });
+        // Delta 重建：server 发送原始 delta 条目，客户端重建为完整 messages
+        const entries = Array.isArray(rawEntries) ? reconstructEntries(rawEntries) : rawEntries;
+
+        if (Array.isArray(entries) && entries.length > 0) {
+          this._batchSlim(entries);
+          const { mainAgentSessions, filtered } = this._processEntries(entries);
+
+          // P1: 移动端 hot/cold 分层
+          if (isMobile && mainAgentSessions.length > HOT_SESSION_COUNT) {
+            const sessionIndex = buildSessionIndex(entries, mainAgentSessions);
+            const fullIndex = isIncremental
+              ? mergeSessionIndices(this.state.sessionIndex, sessionIndex)
+              : sessionIndex;
+            const unslimmed = entries.map(e => e._slimmed ? restoreSlimmedEntry(e, entries) : e);
+            const { hotEntries, allSessions, coldGroups } = splitHotCold(
+              unslimmed, mainAgentSessions, fullIndex, HOT_SESSION_COUNT
+            );
+            this._sseSlimmer = null;
+            // 冷 session entries 异步写入 IndexedDB
+            const pn = this.state.projectName;
+            if (pn) {
+              for (const [sid, coldEntries] of coldGroups) {
+                saveSessionEntries(pn, sid, coldEntries);
+              }
+              saveSessionIndex(pn, fullIndex);
+              // 主缓存保存全量 entries（而非 hotEntries），确保下次缓存恢复时有完整数据
+              saveEntries(pn, entries);
+            }
+            // Fix #4: selectedIndex 基于 hotEntries 而非全量 filtered
+            const hotFiltered = hotEntries.filter(e => isRelevantRequest(e));
+            const newState = {
+              requests: hotEntries,
+              selectedIndex: hotFiltered.length > 0 ? hotFiltered.length - 1 : null,
+              mainAgentSessions: allSessions,
+              sessionIndex: fullIndex,
+              fileLoading: false,
+              fileLoadingCount: 0,
+            };
+            // 增量模式保留缓存恢复时设的 hasMoreHistory；非增量（limit）模式用服务端的值
+            if (!isIncremental) newState.hasMoreHistory = !!this._hasMoreHistory;
+            this.setState(newState);
+          } else {
+            const newState = {
+              requests: entries,
+              selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
+              mainAgentSessions,
+              fileLoading: false,
+              fileLoadingCount: 0,
+            };
+            if (!isIncremental) newState.hasMoreHistory = !!this._hasMoreHistory;
+            this.setState(newState);
+            if (isMobile && this.state.projectName) {
+              saveEntries(this.state.projectName, entries);
+            }
+          }
+        } else {
+          this.setState({ fileLoading: false, fileLoadingCount: 0 });
+        }
       });
       this.eventSource.addEventListener('full_reload', (event) => {
         this._resetSSETimeout();
-        // 服务端要求整体重载 = baseline 重置：废弃在途分帧管线（防其稍后提交陈旧基线），
-        // 闸门缓冲泄回 _pendingEntries（dedup 兜底与重载数据的重复）。
-        this._abortColdIngest({ drain: true });
-        // animateLoadingCount 回调有数百 ms 窗口：期间若新分帧管线启动（token 再 bump），
-        // 本次 full_reload 的延迟 setState 不得覆盖新管线提交 —— 回调内按 token 失配丢弃。
-        const reloadToken = this._ingestToken;
         try {
           const entries = JSON.parse(event.data);
           if (Array.isArray(entries)) {
@@ -1480,7 +689,6 @@ class AppBase extends React.Component {
             const { mainAgentSessions, filtered } = entries.length > 0 ? this._processEntries(entries) : { mainAgentSessions: [], filtered: [] };
             if (entries.length > 0) {
               this.animateLoadingCount(entries.length, () => {
-                if (this._ingestToken !== reloadToken) return; // 已被新管线 supersede
                 this.setState({
                   requests: entries,
                   selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
@@ -1507,9 +715,7 @@ class AppBase extends React.Component {
           } else {
             this.setState({ fileLoading: false, fileLoadingCount: 0 });
           }
-        } catch (e) {
-          // A silently failed full reload discards the server's baseline — report, then recover.
-          reportSwallowed('sse.full_reload', e);
+        } catch {
           this.setState({ fileLoading: false, fileLoadingCount: 0 });
         }
       });
@@ -1523,26 +729,8 @@ class AppBase extends React.Component {
             cancelAnimationFrame(this._loadingCountTimer);
             this._loadingCountTimer = null;
           }
-          // workspace 切换 = baseline 重置：废弃在途分帧管线，防旧项目的巨型基线
-          // 在切换后才提交、覆盖新项目数据（闸门缓冲属旧项目，直接丢弃不泄洪）
-          this._abortColdIngest();
           this._rebuildRequestIndex([]);
-          // 切项目要连 _currentSessionId 一并清掉：否则 _maintainPinState 的 lazy-lock 兜底
-          // (getSessionStableId(null) || this._currentSessionId) 会拿旧项目的会话 id 误锁新项目，
-          // 在 hydrate GET 抢先返回前可能把旧 id POST 进新项目的 pin 文件。
-          this._currentSessionId = null;
-          // SSE workspace switch — rebind alias subscription to the new
-          // project before writing the title so the title reflects the new
-          // alias if one exists. _applyDocTitle handles the "no alias"
-          // fallback (used to be `${projectName} - CC Viewer` here; that
-          // suffix is dropped — pure projectName for consistency with the
-          // initial mount path).
-          this._resubscribeAlias(data.projectName || '');
-          this._applyDocTitle(data.projectName || '');
-          // Reset isStreaming alongside streamingLatest — workspace switches happen
-          // between user prompts and shouldn't leave streaming flags stuck. (turnEnd
-          // false-fire on this transition is no longer a concern since we hook
-          // turnEnd to the Stop SSE event, not to isStreaming falling-edge.)
+          if (data.projectName) document.title = `${data.projectName} - CC Viewer`;
           this.setState({
             workspaceMode: false,
             projectName: data.projectName || '',
@@ -1550,46 +738,28 @@ class AppBase extends React.Component {
             cliMode: true,
             requests: [],
             mainAgentSessions: [],
-            // 切项目：清空旧项目 pin，由 App.componentDidUpdate 按新 projectName 重新 hydrate
-            pinnedSessionTs: null,
             selectedIndex: null,
-            streamingLatest: null,
-            isStreaming: false,
-            // workspace 切换 = cwd 切换 → claude 的 lastModelUsage 也要重查；
-            // 后端在 workspace_started 一并塞了新 cwd 对应的 hint，没有就清空。
-            claudeProjectModel: (typeof data.claudeProjectModel === 'string' && data.claudeProjectModel) ? data.claudeProjectModel : null,
           });
           if (isMobile) clearEntries();
-        } catch (e) { reportSwallowed('sse.workspace_started', e); }
+        } catch {}
       });
       this.eventSource.addEventListener('workspace_stopped', () => {
         this._resetSSETimeout();
-        this._teardownTransientLiveState();
         this._rebuildRequestIndex([]);
-        this._currentSessionId = null; // 同 workspace_started：清旧会话 id，避免 lazy-lock 误锁
         this.setState({
           workspaceMode: true,
           requests: [],
           mainAgentSessions: [],
           projectName: '',
-          pinnedSessionTs: null,
           selectedIndex: null,
-          streamingLatest: null,
-          contextBarLocked: false,
-          isStreaming: false,
         });
       });
       this.eventSource.addEventListener('context_window', (event) => {
         this._resetSSETimeout();
         try {
           const data = JSON.parse(event.data);
-          // 收到新的 context_window 测量 → 同步解锁血条。
-          // 兜底场景：onUserMessageSent / load_end fallback 都没触发解锁时
-          //（WS 抖动、非增量 load、纯外部输入），SSE 推送的真实测量值就是
-          //「会话已推进」的最强信号，避免 lock 永久卡 0%。
-          this.setState({ contextWindow: data, contextBarOptimistic: false, contextBarLocked: false });
-          if (this._clearOptimisticTimer) { clearTimeout(this._clearOptimisticTimer); this._clearOptimisticTimer = null; }
-        } catch (e) { reportSwallowed('sse.context_window', e); }
+          this.setState({ contextWindow: data });
+        } catch { }
       });
       this.eventSource.addEventListener('kv_cache_content', (event) => {
         this._resetSSETimeout();
@@ -1603,12 +773,6 @@ class AppBase extends React.Component {
           console.error('Failed to parse kv_cache_content:', err);
         }
       });
-      this.eventSource.addEventListener('workflow_update', (event) => {
-        this._resetSSETimeout();
-        try {
-          publishWorkflowUpdate(JSON.parse(event.data));
-        } catch (e) { reportSwallowed('sse.workflow_update', e); }
-      });
       this.eventSource.addEventListener('proxy_profile', (event) => {
         this._resetSSETimeout();
         try {
@@ -1620,74 +784,9 @@ class AppBase extends React.Component {
               if (d.profiles) this.setState({ proxyProfiles: d.profiles, activeProxyId: d.active || 'max' });
             }).catch(() => { });
           }
-        } catch (e) { reportSwallowed('sse.proxy_profile', e); }
+        } catch { }
       });
       this.eventSource.addEventListener('ping', () => { this._resetSSETimeout(); });
-      // server_config: server 启动时一次性推 turnEnd debounce ms（CCV_TURN_END_DEBOUNCE_MS
-      // 可能改过默认值），前端拿这个值同步 voicePackPlayer 的 turnEnd cooldown，避免硬常数漂移。
-      this.eventSource.addEventListener('server_config', (event) => {
-        this._resetSSETimeout();
-        try {
-          const cfg = JSON.parse(event?.data || '{}');
-          if (typeof cfg.turnEndDebounceMs === 'number') setTurnEndCooldownMs(cfg.turnEndDebounceMs);
-        } catch { /* tolerate parse error */ }
-      });
-      // session_pin SSE — 本进程任一端改了「当前会话」pin 后广播，让同实例多端（电脑+手机）实时一致。
-      // 采纳服务端值时置 _applyingRemotePin，避免 _maintainPinState 把它当本地改动回 POST（防回环）。
-      // A broadcast value that mismatches the locally derived latest is rejected via
-      // resolveHydratedPin (another client may have derived a stale "latest"). No
-      // POST-back on reject — re-persisting inside the broadcast handler could
-      // ping-pong between clients; healing flows through _maintainPinState's
-      // normal persist path instead.
-      this.eventSource.addEventListener('session_pin', (event) => {
-        this._resetSSETimeout();
-        try {
-          const data = JSON.parse(event?.data || '{}');
-          const r = resolveHydratedPin(data.pinnedSessionId, this._derivedLatestId(), this._effectiveOnlyCurrentSession());
-          if (r.adopt && r.value !== this.state.pinnedSessionTs) {
-            this._applyingRemotePin = true;
-            this.setState({ pinnedSessionTs: r.value }, () => { this._applyingRemotePin = false; });
-          }
-        } catch { /* tolerate parse error */ }
-      });
-      // turn_end SSE — broadcast by /api/turn-end-notify whenever Claude Code's Stop hook
-      // fires (real end of a user-prompt turn). This is the **authoritative** turnEnd
-      // signal — far more accurate than isStreaming falling-edge, which resets per-API-call
-      // and would mis-fire during slow tool execution. 30s cooldown lives in voicePackPlayer.
-      this.eventSource.addEventListener('turn_end', (event) => {
-        // Guard against a teardown race: SSE chunks in flight when _reconnectSSE
-        // closes the current EventSource can still fire here before the listener
-        // unbinds (round-3 quality P1).
-        if (!this.eventSource) return;
-        this._resetSSETimeout();
-        const vp = this.state.approvalPrefs && this.state.approvalPrefs.voicePack;
-        if (vp && vp.enabled && vp.events && vp.events.turnEnd) {
-          let serverTs = null;
-          try { serverTs = (JSON.parse(event?.data || '{}'))?.ts || null; } catch { /* fine */ }
-          try {
-            playVoiceEvent('turnEnd', vp, {
-              // Prefer the server-supplied ts so a re-broadcast (server bug, two
-              // SSE delivery paths) is deduped by the player. Falls back to a
-              // unique key if absent — relies on COOLDOWN_MS.turnEnd to suppress.
-              dedupeKey: `turnEnd:${serverTs || Date.now()}`,
-            });
-          } catch { /* never propagate */ }
-        }
-      });
-      // im_log_update SSE — 主服务 fs.watch 到某 IM worker 日志目录写入时广播（IM worker 独立端口，
-      // turn_end 落在 worker 自己进程，主服务收不到，故用日志落盘信号驱动「对话记录」自动刷新）。
-      // AppBase 不直接持有 ImConversationModal，转成 window 事件解耦派发，弹窗打开时自行监听并重拉。
-      this.eventSource.addEventListener('im_log_update', (event) => {
-        if (!this.eventSource) return;
-        this._resetSSETimeout();
-        let platform = null;
-        if (typeof event?.data === 'string') {
-          try { platform = JSON.parse(event.data)?.platform || null; } catch { /* tolerate */ }
-        }
-        if (platform) {
-          try { window.dispatchEvent(new CustomEvent('ccv:im-log-update', { detail: { platform } })); } catch { /* noop */ }
-        }
-      });
       this.eventSource.addEventListener('streaming_status', (e) => {
         this._resetSSETimeout();
         try {
@@ -1695,12 +794,7 @@ class AppBase extends React.Component {
           if (data.active) {
             // 立即显示 loading
             clearTimeout(this._streamingOffTimer);
-            // agent 开始响应 = 新一轮已落实 → 顺手解锁血条。
-            // 覆盖 onUserMessageSent 没触发的极端情况（WS 抖动 / 外部输入 /
-            // pty 直接键入），避免 lock 永久卡 0%。
-            const patch = { isStreaming: true };
-            if (this.state.contextBarLocked) patch.contextBarLocked = false;
-            this.setState(patch);
+            this.setState({ isStreaming: true });
           } else {
             // 延迟隐藏，避免工具调用间隙导致 spinner 频繁闪烁
             clearTimeout(this._streamingOffTimer);
@@ -1710,12 +804,7 @@ class AppBase extends React.Component {
           }
         } catch (err) { console.error('Failed to parse streaming_status:', err); }
       });
-      this.eventSource.onerror = () => {
-        console.error('SSE连接错误');
-        // 不清 streamingLatest：浏览器会自动 3s 重连，新 chunk 到达会覆盖 state；
-        // 若彻底断连，45s heartbeat 超时触发 _reconnectSSE，那里会清 overlay；
-        // 若流式已完成，最终 entry 的原子清除会收走 overlay。
-      };
+      this.eventSource.onerror = () => console.error('SSE连接错误');
     } catch (error) {
       console.error('EventSource初始化失败:', error);
       this.setState({ fileLoading: false, fileLoadingCount: 0 });
@@ -1727,27 +816,20 @@ class AppBase extends React.Component {
     // 与 /events (CLI 模式) 完全隔离，不会触发 terminal/workspace 等 CLI 行为
     this._isLocalLog = true;
     this._localLogFile = file;
-    // 全量加载，无分页：防御上一次状态残留
-    this._hasMoreHistory = false;
-    this._oldestTs = null;
     this.setState({ fileLoading: true, fileLoadingCount: 0, serverCachedContent: null });
 
     // 关闭上一次的加载连接（防止快速切换时资源泄漏）
     if (this._localLogES) { this._localLogES.close(); this._localLogES = null; }
 
     const entries = [];
-    // logfile 只读模式一次性全量加载（含移动端）：走服务端全量流式分支，
-    // 由分帧管线 _runLocalLogIngest 消化大文件，避免「加载更早」手工分页。
     const es = new EventSource(apiUrl(`/api/local-log?file=${encodeURIComponent(file)}`));
     this._localLogES = es;
 
     es.addEventListener('load_start', (event) => {
       try {
         const data = JSON.parse(event.data);
-        this._hasMoreHistory = !!data.hasMore;
-        this._oldestTs = data.oldestTs || null;
         this.setState({ fileLoadingCount: 0 });
-      } catch (e) { reportSwallowed('sse.local-log.load_start', e); }
+      } catch { }
     });
 
     es.addEventListener('load_chunk', (event) => {
@@ -1759,14 +841,28 @@ class AppBase extends React.Component {
           }
           this.setState({ fileLoadingCount: entries.length });
         }
-      } catch (e) { reportSwallowed('sse.local-log.load_chunk', e, { dataLen: event.data?.length }); }
+      } catch { }
     });
 
     es.addEventListener('load_end', () => {
       es.close();
-      // 分帧管线（reconstruct → 分帧 slim → 分帧 process → 原子提交）：
-      // 历史日志同样可能含巨型 checkpoint，同步管线会卡死主线程。
-      this._runLocalLogIngest(entries);
+      // Delta 重建必须在 entry-slim 之前：delta 条目的 body.messages 只有增量部分，
+      // 如果先 slim 会永久丢失增量数据，导致重建后 messages 为空
+      const reconstructed = reconstructEntries(entries);
+      this._batchSlim(reconstructed);
+      if (Array.isArray(reconstructed) && reconstructed.length > 0) {
+        const { mainAgentSessions, filtered } = this._processEntries(reconstructed);
+        this.setState({
+          requests: reconstructed,
+          selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
+          mainAgentSessions,
+          fileLoading: false,
+          fileLoadingCount: 0,
+          serverCachedContent: null,
+        });
+      } else {
+        this.setState({ fileLoading: false, fileLoadingCount: 0, serverCachedContent: null });
+      }
     });
 
     es.onerror = () => {
@@ -1779,13 +875,6 @@ class AppBase extends React.Component {
   handleEventMessage(event) {
     try {
       const entry = JSON.parse(event.data);
-      // 冷启动分帧管线在途：live 条目入闸门缓冲，提交后统一泄洪（_commitColdIngest）。
-      // 否则 live flush 会基于旧 prev.requests 合并、随后被管线的基线提交整体覆盖，
-      // 且 _sseSlimmer/_sseReconstructor 会对错误基线初始化（sessionMerge 脆弱区）。
-      if (this._ingestRunning) {
-        this._liveGateBuffer.push(entry);
-        return;
-      }
       this._pendingEntries.push(entry);
       if (!this._flushRafId) {
         this._flushRafId = requestAnimationFrame(this._flushPendingEntries);
@@ -1807,35 +896,13 @@ class AppBase extends React.Component {
       let cacheExpireAt = prev.cacheExpireAt;
       let cacheType = prev.cacheType;
       let mainAgentSessions = prev.mainAgentSessions;
-      let shouldClearStreaming = false;  // 检测到最终 entry 时原子清除 Live overlay
-      // 本窗口实时新会话（/clear、/resume）时推进 pin —— 仅实时追加路径会跟随，
-      // 整体重载（_processEntries）不动 pin，于是多开时 [对话] 不被重载/他实例拖走。
-      let _newPinTs = null;
 
       // P0 perf: lazy init 增量剪枝器
       if (!this._sseSlimmer) {
         this._sseSlimmer = createIncrementalSlimmer(isMainAgent);
       }
-      // Delta 增量重建器：SSE 逐条到达的 delta entry 只有增量 messages，
-      // 需要拼接为完整 messages（与批量加载时 reconstructEntries 对应）
-      if (!this._sseReconstructor) {
-        this._sseReconstructor = createIncrementalReconstructor();
-      }
 
-      for (const rawEntry of batch) {
-        // Rotation-context sentinel on the LIVE path (rotation while this
-        // client is connected): capture + seed, never enter state.requests.
-        if (rawEntry && rawEntry.ccvRotationContext) {
-          this._rotationContext = rawEntry;
-          if (Array.isArray(rawEntry.teammateNames)) setTeammateNameSeeds(rawEntry.teammateNames);
-          continue;
-        }
-        // v3: intern body.tools / body.system → pool 共享引用，消除 fullEntry 累积
-        // v5: 同时 intern body.messages 内 tool_result block.content（lazy-clone 三层
-        //     messages/content/block）。下方 L1170-1175 mutate `messages[i]._timestamp`
-        //     的安全前提：浅 clone 仅 spread 顶层字段保留 _timestamp 写位；共享的
-        //     block.content 是 string primitive 不可变，跨 entry 共享 ref 不会串扰。
-        const entry = internEntryBigFields(this._sseReconstructor.reconstruct(rawEntry));
+      for (const entry of batch) {
         const key = `${entry.timestamp}|${entry.url}`;
         const existingIndex = this._requestIndexMap.get(key);
 
@@ -1855,12 +922,6 @@ class AppBase extends React.Component {
           if (kvCached && (kvCached.system.length > 0 || kvCached.messages.length > 0 || kvCached.tools.length > 0)) {
             this._lastKvCacheContent = kvCached;
           }
-        }
-
-        // Live overlay 原子清除：最终 entry（非 inProgress）到达且 timestamp 匹配 → 同 setState 清除 overlay
-        if (!entry.inProgress && isMainAgent(entry) && prev.streamingLatest
-            && prev.streamingLatest.timestamp === entry.timestamp) {
-          shouldClearStreaming = true;
         }
 
         // 记录 mainAgent 缓存信息
@@ -1888,11 +949,8 @@ class AppBase extends React.Component {
           }
         }
 
-        // 合并 mainAgent sessions（跳过被剪枝的 entry，其 messages 已被清空；
-        // 跳过重建层标记的乱序/断裂条目，防完成序倒置翻倍，见 isMergeBlockedEntry JSDoc）
-        // KEEP IN SYNC: test/delta-reorder.test.js clientMergeSse 镜像本块守卫顺序
-        // （mainAgent 形态 → teammate/blocked → applyInPlaceLastMsgReplace → merge），改动需同步
-        if (isMainAgent(entry) && entry.body && Array.isArray(entry.body.messages) && !entry._slimmed && !isMergeBlockedEntry(entry)) {
+        // 合并 mainAgent sessions（跳过被剪枝的 entry，其 messages 已被清空）
+        if (isMainAgent(entry) && entry.body && Array.isArray(entry.body.messages) && !entry._slimmed) {
           const timestamp = entry.timestamp || new Date().toISOString();
           const lastSession = mainAgentSessions.length > 0 ? mainAgentSessions[mainAgentSessions.length - 1] : null;
           const prevMessages = lastSession?.messages || [];
@@ -1900,59 +958,27 @@ class AppBase extends React.Component {
           const prevCount = prevMessages.length;
 
           const userId = entry.body.metadata?.user_id || null;
-          // Session-boundary detection shares isSessionBoundary (clearCheckpoint.js)
-          // with the batch path (applyBatchEntryTimestamps) so live streaming and
-          // reload segment sessions identically: post-/clear checkpoint always
-          // splits; a big count drop splits unless it's a /compact continuation
-          // (same-machine multi-terminal user_id is identical, so the summary
-          // msg[0] is the only reliable /compact-vs-new-terminal discriminator);
-          // a user_id change splits (previously batch-only — without it, merge
-          // appended a new session while timestamps were inherited positionally,
-          // yielding two sessions with the SAME stable id and a mis-resolved pin).
-          // KEEP IN SYNC: test/session-boundary-parity.test.js runLiveLeg mirrors
-          // this boundary → assignMessageTimestamps → in-place/merge call order.
-          const isNewSession = isSessionBoundary(entry, {
-            prevCount,
-            count: messages.length,
-            prevUserId: lastSession ? lastSession.userId : null,
-            userId,
-          });
+          const sameUser = userId !== null && lastSession?.userId === userId;
+          const isNewSession = !sameUser && prevCount > 0 && messages.length < prevCount * 0.5 && (prevCount - messages.length) > 4;
 
-          // SSE 实时流每条 entry 都是完整 request+response，不存在"中间态"；
-          // 历史代码曾在此处 `if (isTransient) continue` 跳过极短 entry 防中间态污染，
-          // 但这会把真实的 /clear → 短对话（如 "hi"）也丢掉 —— 交给 mergeMainAgentSessions
-          // 的 skipTransientFilter: true 统一放行，isNewSession 单独驱动 _currentSessionId。
+          const isTransient = prevCount > 4 && messages.length <= 4 && messages.length < prevCount * 0.5;
+          if (isTransient) continue;
+
+          // Fix #2: 标记 _sessionId
           if (isNewSession) {
             this._currentSessionId = timestamp;
-            // 新 session 起点：reset _prevMainAgentTs 防跨 session 串场（旧 session 的末尾 ts
-            // 不应作为新 session 第一条 assistant msg 的"生成时 ts"）
-            this._prevMainAgentTs = null;
-            // 开启「仅展示当前会话」时，跟随本窗口新会话：把 pin 推进到新会话起点 ts
-            //（= 新会话 messages[0]._timestamp，与 getSessionStableId 一致）。
-            if (this._effectiveOnlyCurrentSession()) _newPinTs = timestamp;
           } else if (this._currentSessionId === null) {
             this._currentSessionId = timestamp;
           }
 
-          // 赋 _timestamp 和 _generatedTs（assistant 角色新增 msg 拿 prevMainAgentTs 反映生成时 ts）
-          assignMessageTimestamps(messages, prevMessages, isNewSession, prevCount, timestamp, this._prevMainAgentTs);
-          // 信号驱动短路：服务端已检测到末位替换（_inPlaceReplaceDetected:true）→ 直接 in-place
-          // 替换 lastSession.messages 末位，避开 sessionMerge prefix-overlap 算法在
-          // newLen===currentLen+末位fp异 场景必然 overlap=0 → push 整段 → 翻倍的陷阱。
-          // helper 协议详见 src/utils/sessionManager.js applyInPlaceLastMsgReplace JSDoc。
-          const inPlaceResult = applyInPlaceLastMsgReplace(mainAgentSessions, entry, timestamp, isNewSession);
-          if (inPlaceResult.applied) {
-            mainAgentSessions = inPlaceResult.sessions;
-          } else {
-            // SSE 实时追加：每条 entry 都已是完整 request+response，不存在中间态，
-            // 跳过 transient 过滤以避免误伤真实的 /clear → 短消息对话。
-            mainAgentSessions = this.mergeMainAgentSessions(mainAgentSessions, entry, { skipTransientFilter: true });
+          for (let i = 0; i < messages.length; i++) {
+            if (!isNewSession && i < prevCount && prevMessages[i]._timestamp) {
+              messages[i]._timestamp = prevMessages[i]._timestamp;
+            } else if (!messages[i]._timestamp) {
+              messages[i]._timestamp = timestamp;
+            }
           }
-
-          // 记录本次 mainAgent entry 的 timestamp，给下一次 entry 处理时
-          // 当作 _generatedTs 赋给新增 assistant msg（反映"生成时刻"）。
-          // 必须放在 if (isMainAgent && !_slimmed) 块内 —— timestamp 是该块内的 const
-          this._prevMainAgentTs = timestamp;
+          mainAgentSessions = this.mergeMainAgentSessions(mainAgentSessions, entry);
         }
 
         // 标记 entry 的 _sessionId
@@ -1969,7 +995,7 @@ class AppBase extends React.Component {
         this._autoSelectTimer = setTimeout(() => {
           this.setState(s => {
             if (s.selectedIndex === null && s.requests.length > 0) {
-              const filtered = visibleRequests(s.requests, s.showAll);
+              const filtered = s.showAll ? s.requests : filterRelevantRequests(s.requests);
               return filtered.length > 0 ? { selectedIndex: filtered.length - 1 } : null;
             }
             return null;
@@ -1977,11 +1003,7 @@ class AppBase extends React.Component {
         }, 200);
       }
 
-      return {
-        requests, cacheExpireAt, cacheType, mainAgentSessions,
-        ...(shouldClearStreaming && { streamingLatest: null }),
-        ...(_newPinTs != null && { pinnedSessionTs: _newPinTs }),
-      };
+      return { requests, cacheExpireAt, cacheType, mainAgentSessions };
     }, () => {
       // 移动端：防抖 5s 批量写入缓存
       if (isMobile && this.state.projectName) {
@@ -2035,18 +1057,19 @@ class AppBase extends React.Component {
 
         const sessionIndex = buildSessionIndex(merged, mainAgentSessions);
         const fullIndex = mergeSessionIndices(this.state.sessionIndex, sessionIndex);
-        // Fix #3: pin 加载的 session，防止 splitHotCold 立即淘汰（并入「仅展示当前会话」锁定的 pin）
+        // Fix #3: pin 加载的 session，防止 splitHotCold 立即淘汰
         const unslimmed = merged.map(e => e._slimmed ? restoreSlimmedEntry(e, merged) : e);
         const { hotEntries, allSessions, coldGroups } = splitHotCold(
           unslimmed, mainAgentSessions, fullIndex, HOT_SESSION_COUNT,
-          this._pinnedSessionIdSet([sessionId])
+          new Set([sessionId])
         );
-        this._sseSlimmer = null; this._sseReconstructor = null;
+        this._sseSlimmer = null;
         const pn = this.state.projectName;
         if (pn) {
           for (const [sid, coldEntries] of coldGroups) {
             saveSessionEntries(pn, sid, coldEntries);
           }
+          saveSessionIndex(pn, fullIndex);
           saveEntries(pn, merged);
         }
 
@@ -2072,14 +1095,15 @@ class AppBase extends React.Component {
 
     const unslimmed = requests.map(e => e._slimmed ? restoreSlimmedEntry(e, requests) : e);
     const { hotEntries, allSessions, coldGroups } = splitHotCold(
-      unslimmed, mainAgentSessions, this.state.sessionIndex, HOT_SESSION_COUNT, this._pinnedSessionIdSet()
+      unslimmed, mainAgentSessions, this.state.sessionIndex, HOT_SESSION_COUNT
     );
-    this._sseSlimmer = null; this._sseReconstructor = null;
+    this._sseSlimmer = null;
     const fullIndex = this.state.sessionIndex;
     if (projectName) {
       for (const [sid, coldEntries] of coldGroups) {
         saveSessionEntries(projectName, sid, coldEntries);
       }
+      saveSessionIndex(projectName, fullIndex);
       // 不调 saveEntries：state.requests 可能已是 hotEntries，写入会覆盖全量缓存。
       // 冷数据已通过 saveSessionEntries 持久化，全量缓存由 load_end 维护。
     }
@@ -2092,8 +1116,8 @@ class AppBase extends React.Component {
 
   // ─── 数据处理 ───────────────────────────────────────────
 
-  mergeMainAgentSessions(prevSessions, entry, options) {
-    return _mergeMainAgentSessions(prevSessions, entry, options);
+  mergeMainAgentSessions(prevSessions, entry) {
+    return _mergeMainAgentSessions(prevSessions, entry);
   }
 
   // ─── 选中 & 导航 ───────────────────────────────────────
@@ -2104,62 +1128,31 @@ class AppBase extends React.Component {
 
   handleScrollDone = () => { this.setState({ scrollCenter: false }); };
   handleScrollTsDone = () => { this.setState({ chatScrollToTs: null }); };
-  // 用户点 /clear 时立即把 Header 上下文血条降到 OPTIMISTIC_CLEAR_PERCENT 水位；
-  // 正常路径下一次 context_window SSE 推送会自动取消。
-  // 30s 兜底：SSE 没及时来（PTY 未连接、后端没推、CLI 崩了）时自动清掉，避免血条卡在低位。
-  // 同时进入 locked 状态：忽略 SSE / 其他 re-render，强制血条 0K (0%)，直到用户
-  // 通过 _sendUserMessageImmediate 发出一条非 /clear 消息（见 handleUserMessageSent）。
-  handleClearContextOptimistic = () => {
-    this.setState({ contextBarOptimistic: true, contextBarLocked: true });
-    if (this._clearOptimisticTimer) clearTimeout(this._clearOptimisticTimer);
-    this._clearOptimisticTimer = setTimeout(() => {
-      this.setState({ contextBarOptimistic: false });
-      this._clearOptimisticTimer = null;
-    }, 30000);
-  };
-
-  // ChatView 在 _sendUserMessageImmediate 里对非 /clear 文本调用本方法解锁血条。
-  handleUserMessageSent = () => {
-    if (this.state.contextBarLocked) this.setState({ contextBarLocked: false });
-  };
 
   // ─── 模式切换 ──────────────────────────────────────────
 
   handleWorkspaceLaunch = ({ projectName }) => {
     this._isLocalLog = false;
     this._localLogFile = null;
-    // 切 project：清掉旧 project 残留的 /clear optimistic 30s timer，避免延迟到新 project 触发。
-    if (this._clearOptimisticTimer) {
-      clearTimeout(this._clearOptimisticTimer);
-      this._clearOptimisticTimer = null;
-    }
     this.setState({
       workspaceMode: false,
       projectName,
       viewMode: 'chat',
       cliMode: true,
       terminalVisible: false,
-      contextBarLocked: false,
-      contextBarOptimistic: false,
     });
   };
 
   handleReturnToWorkspaces = () => {
     fetch(apiUrl('/api/workspaces/stop'), { method: 'POST' })
       .then(() => {
-        this._teardownTransientLiveState();
         this._rebuildRequestIndex([]);
-        this._currentSessionId = null; // 同 workspace_started：清旧会话 id，避免 lazy-lock 误锁
         this.setState({
           workspaceMode: true,
           requests: [],
           mainAgentSessions: [],
           projectName: '',
-          pinnedSessionTs: null,
           selectedIndex: null,
-          streamingLatest: null,
-          contextBarLocked: false,
-          isStreaming: false,
         });
       })
       .catch(() => {});
@@ -2185,202 +1178,49 @@ class AppBase extends React.Component {
   handleLangChange = () => {
     const lang = getLang();
     this.setState({ lang });
-    this.context.updatePreferences({ lang });
+    fetch(apiUrl('/api/preferences'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lang }),
+    }).catch(() => { });
   };
 
   handleCollapseToolResultsChange = (checked) => {
-    // 单一真相源 = context;updatePreferences 内乐观 setState 即驱动重渲染。
-    this.context.updatePreferences({ collapseToolResults: checked });
+    this.setState({ collapseToolResults: checked });
+    fetch(apiUrl('/api/preferences'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ collapseToolResults: checked }),
+    }).catch(() => { });
   };
 
   handleExpandThinkingChange = (checked) => {
-    this.context.updatePreferences({ expandThinking: checked });
+    this.setState({ expandThinking: checked });
+    fetch(apiUrl('/api/preferences'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expandThinking: checked }),
+    }).catch(() => { });
   };
 
-  handleAutoApproveChange = (seconds) => {
-    this.setState({ autoApproveSeconds: seconds });
-    this.context.updatePreferences({ autoApproveSeconds: seconds });
-  };
-
-  // 终端工具栏快捷设置菜单的 Plan 档位回调。稳定引用（类属性而非调用处内联箭头），
-  // 避免 App/Mobile 每次 render 生成新闭包穿透 ChatView.shouldComponentUpdate。
-  handlePlanAutoApproveChange = (seconds) => {
-    this.handleApprovalPrefsChange({ planAutoApproveSeconds: seconds });
-  };
-
-  // ─── Approval modal: ChatView -> AppBase bubbling handlers ───────────────────────
-  // Inject projectName from AppBase state so the modal chip / Notification body have
-  // human-readable session context. ChatView itself doesn't track project name.
-  _injectProjectName = (data, slot) => {
-    if (!data) return data;
-    const projectName = this.state.projectName || '';
-    if (!projectName) return data;
-    const innerKey = slot; // 'ptyPlan' | 'ask'
-    if (data[innerKey] && data[innerKey].projectName === undefined) {
-      return { ...data, [innerKey]: { ...data[innerKey], projectName } };
-    }
-    return data;
-  };
-
-  // Generic transition helper that mirrors a kind in/out of approvalGlobal AND wipes stale
-  // dismissed entries for that kind. Used by both ask (static id reuse) and ptyPlan (timestamp ids
-  // could repeat after long sessions). PTY plan and ask share the same dismiss-on-transition policy.
-  _setApprovalKind = (kind, data) => {
-    const enriched = this._injectProjectName(data, kind);
-    this.setState(prev => {
-      const next = { ...prev.approvalGlobal };
-      if (enriched) next[kind] = enriched;
-      else next[kind] = null;
-      const dismissed = new Set(prev.approvalDismissedIds);
-      let changed = false;
-      for (const id of dismissed) {
-        if (id.startsWith(`${kind}:`)) { dismissed.delete(id); changed = true; }
-      }
-      return changed
-        ? { approvalGlobal: next, approvalDismissedIds: dismissed }
-        : { approvalGlobal: next };
-    });
-  };
-
-  handleApprovalAsk = (data) => this._setApprovalKind('ask', data);
-  handleApprovalPtyPlan = (data) => this._setApprovalKind('ptyPlan', data);
-
-  // Modal calls this when user presses ESC / clicks backdrop. Pending state untouched — only UI hides.
-  handleApprovalDismiss = (kind, id) => {
-    if (!kind || !id) return;
-    this.setState(prev => {
-      const next = new Set(prev.approvalDismissedIds);
-      next.add(`${kind}:${id}`);
-      return { approvalDismissedIds: next };
-    });
-  };
-
-  // Bell / chip click reopens minimised modal — clear all dismissed entries currently pending.
-  handleApprovalReopen = () => {
-    this.setState({ approvalDismissedIds: new Set() });
-  };
-
-  // Cross-tab jump (electron only). Renderer doesn't directly switch — main does it.
-  handleApprovalJumpTab = (tabId) => {
-    if (typeof window !== 'undefined' && window.tabBridge?.jumpToTab && tabId != null) {
-      try { window.tabBridge.jumpToTab(tabId); } catch {}
-    }
-  };
-
-  handleApprovalPrefsChange = (patch) => {
-    // 同源 next：setState + POST body 都用同一个 next，避免 rapid toggle 下第二次 POST 读到 stale state 漏 patch
-    const next = { ...this.state.approvalPrefs, ...patch };
-    this.setState({ approvalPrefs: next });
-    // 同步给 electron main 进程,maybeNotify 立即用新 notifyOnlyWhenHidden 决策。
-    // voicePack 不发给 main —— renderer 自己播放，main 只关心 OS notification。
-    try {
-      const { voicePack: _omit, ...forIpc } = next;
-      window.tabBridge?.setApprovalPref?.(forIpc);
-    } catch (e) { console.warn('[approvalPref IPC] onChange sync failed:', e); }
-    this.context.updatePreferences({ approvalModal: next });
-  };
-
-  // Deep-merge change handler for the voicePack subtree — patches `events` field-by-field
-  // so e.g. updating only `events.askQuestion` doesn't drop the bindings for other events.
-  // Uses the shared mergeVoicePackInto helper (single source of truth across hydrate /
-  // server POST / this handler — review dedup).
-  handleVoicePackChange = (patch) => {
-    if (!patch || typeof patch !== 'object') return;
-    const nextVP = mergeVoicePackInto(this.state.approvalPrefs?.voicePack, patch);
-    const nextPrefs = { ...this.state.approvalPrefs, voicePack: nextVP };
-    this.setState({ approvalPrefs: nextPrefs });
-    // SettingsContext.updatePreferences 是顶层浅 merge — 必须带完整 approvalModal，否则会把
-    // modalEnabled / soundEnabled / notifyOnlyWhenHidden 抹成 undefined（直到下次 GET 才回来）。
-    this.context.updatePreferences({ approvalModal: nextPrefs });
-  };
-
-  // 合并开关「审批提示音」的统一入口：原子地双写 soundEnabled + voicePack.enabled。
-  // updatePreferences patch 带完整 next（含 voicePack.events / volume），因为 SettingsContext 是
-  // 顶层浅 merge — 若只传 voicePack:{enabled} 会擦掉 events，AskTimeoutCountdown 与 ChatView SDK
-  // 直接读 ctx.approvalModal.voicePack.events 立即变 undefined 致静音。
-  // unlockAudio 在用户手势内立即调用，绕过移动浏览器的 autoplay policy（onChange 是 trusted gesture）。
-  handleApprovalSoundToggle = (checked) => {
-    if (checked) {
-      try { unlockAudio(); } catch (e) { /* 内部已 try/catch，理论上 unreachable */ }
-    }
-    const prev = this.state.approvalPrefs;
-    const nextVP = { ...prev.voicePack, enabled: checked };
-    const next = { ...prev, soundEnabled: checked, voicePack: nextVP };
-    this.setState({ approvalPrefs: next });
-    try {
-      const { voicePack: _omit, ...forIpc } = next;
-      window.tabBridge?.setApprovalPref?.(forIpc);
-    } catch (e) { console.warn('[approvalPref IPC] sound toggle sync failed:', e); }
-    this.context.updatePreferences({ approvalModal: next });
-  };
-
-  /**
-   * 主题应用收口：state / <html data-theme> / localStorage 三处镜像同步。
-   * 三个调用方（hydrate / urlTheme / handleThemeColorChange）行为差异收敛到 opts。
-   *
-   * 幂等：setAttribute 只在值变化时调用，避免唤醒 TerminalPanel MutationObserver
-   *       重赋 xterm theme（80×24 cell 重算 1-3ms）。
-   */
-  _applyTheme = (value, opts = {}) => {
-    const theme = value === 'light' ? 'light' : 'dark';
-    const { persistPref = false, remountMermaid = false } = opts;
-    if (this.state.themeColor !== theme) this.setState({ themeColor: theme });
-    if (document.documentElement.getAttribute('data-theme') !== theme) {
-      document.documentElement.setAttribute('data-theme', theme);
-    }
-    try { localStorage.setItem('ccv_themeColor', theme); } catch {}
-    if (remountMermaid) reinitializeMermaid();
-    if (persistPref) this.context.updatePreferences({ themeColor: theme });
+  handleExpandDiffChange = (checked) => {
+    this.setState({ expandDiff: checked });
+    fetch(apiUrl('/api/preferences'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expandDiff: checked }),
+    }).catch(() => { });
   };
 
   handleThemeColorChange = (value) => {
-    this._applyTheme(value, { persistPref: true, remountMermaid: true });
-    // 切换主题后让终端获得焦点，便于用户看到 /theme 切换效果
-    window.dispatchEvent(new CustomEvent('ccv-focus-terminal'));
-  };
-
-  /**
-   * 整体显示缩放收口：state / 原生缩放(webFrame.setZoomFactor)/ localStorage 三处同步。
-   * 仅 Electron 桌面生效——用真·原生缩放(等同浏览器 Cmd/Ctrl +/-),避开 CSS zoom 的坐标空间分裂。
-   * 纯浏览器无 JS API 设原生缩放,该档位不渲染下拉而提示用户用浏览器快捷键,故 hasNativeZoom=false 时早返回。
-   * @param {number} pct 目标百分比
-   * @param {{persistPref?: boolean}} opts persistPref=true 时写回 preferences.json
-   */
-  _applyDisplayScale = (pct, opts = {}) => {
-    // 「显示大小」仅 Electron 桌面有效——经 webFrame.setZoomFactor 做真·原生缩放(不再用 CSS zoom,
-    // 后者会引发 Chromium 128 标准化 zoom 的坐标空间分裂)。纯浏览器无法用 JS 设原生缩放,该档位
-    // 不渲染下拉、改提示用户用浏览器快捷键,故这里直接早返回。
-    if (!hasNativeZoom) return;
-    const { persistPref = false } = opts;
-    const scale = snapToPreset(pct);
-    if (this.state.displayScale !== scale) this.setState({ displayScale: scale });
-    try { window.tabBridge.setZoomFactor(scale / 100); } catch {}
-    try { localStorage.setItem('ccv_displayScale', String(scale)); } catch {}
-    if (persistPref) this.context.updatePreferences({ displayScale: scale });
-  };
-
-  handleDisplayScaleChange = (pct) => {
-    this._applyDisplayScale(pct, { persistPref: true });
-  };
-
-  // 全局键盘缩放:Cmd/Ctrl + "+"/"-" 步进,Cmd/Ctrl + 0 复位 100%。
-  // 行为对齐 Chrome —— 即便焦点在输入框内也生效。stored ref 以便 unmount 卸载。
-  _onScaleKeydown = (e) => {
-    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
-    if (isMobile && !isPad) return;
-    const key = e.key;
-    const code = e.code;
-    let next = null;
-    if (key === '=' || key === '+' || code === 'NumpadAdd') {
-      next = stepPreset(this.state.displayScale, +1);
-    } else if (key === '-' || key === '_' || code === 'NumpadSubtract') {
-      next = stepPreset(this.state.displayScale, -1);
-    } else if (key === '0' || code === 'Numpad0') {
-      next = 100;
-    }
-    if (next === null) return;
-    e.preventDefault();
-    this.handleDisplayScaleChange(next);
+    this.setState({ themeColor: value });
+    document.documentElement.setAttribute('data-theme', value === 'light' ? 'light' : 'dark');
+    reinitializeMermaid();
+    fetch(apiUrl('/api/preferences'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ themeColor: value }),
+    }).catch(() => { });
   };
 
   handleLogDirChange = (value) => {
@@ -2388,43 +1228,45 @@ class AppBase extends React.Component {
     const trimmed = value.trim();
     if (!trimmed) return;
     this.setState({ logDir: trimmed });
-    // logDir 服务端可能 normalize 后回写,read response.logDir 覆盖本地
-    this.context.updatePreferences({ logDir: trimmed }).then(data => {
-      if (data && data.logDir) this.setState({ logDir: data.logDir });
-    });
+    fetch(apiUrl('/api/preferences'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ logDir: trimmed }),
+    }).then(r => r.json()).then(data => {
+      if (data.logDir) this.setState({ logDir: data.logDir });
+    }).catch(() => { });
   };
 
   handleShowFullToolContentChange = (checked) => {
-    this.context.updatePreferences({ showFullToolContent: checked });
-  };
-
-  handleOnlyCurrentSessionChange = (checked) => {
-    this.context.updatePreferences({ onlyCurrentSession: checked });
+    this.setState({ showFullToolContent: checked });
+    fetch(apiUrl('/api/preferences'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ showFullToolContent: checked }),
+    }).catch(() => { });
   };
 
   handleFilterIrrelevantChange = (checked) => {
     this.setState(prev => {
       const newShowAll = !checked;
-      const newFiltered = visibleRequests(prev.requests, newShowAll);
+      const newFiltered = newShowAll ? prev.requests : filterRelevantRequests(prev.requests);
       return {
         showAll: newShowAll,
         selectedIndex: newFiltered.length > 0 ? newFiltered.length - 1 : null,
       };
     });
-    this.context.updatePreferences({ filterIrrelevant: checked });
+    fetch(apiUrl('/api/preferences'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filterIrrelevant: checked }),
+    }).catch(() => { });
   };
 
   // ─── 日志管理 ──────────────────────────────────────────
 
-  // 集中构造 /api/local-logs URL：「显示全部实例」开启时带 ?all=1。打开弹窗 / 刷新统计 /
-  // 合并·归档·删除后这几处 refetch 都经此 helper，开关一改即自动跟随（apiUrl 的 token 追加已正确处理已有 ?）。
-  _localLogsUrl() {
-    return apiUrl(this.state.logShowAllInstances ? '/api/local-logs?all=1' : '/api/local-logs');
-  }
-
   handleImportLocalLogs = () => {
     this.setState({ importModalVisible: true, localLogsLoading: true });
-    fetch(this._localLogsUrl())
+    fetch(apiUrl('/api/local-logs'))
       .then(res => res.json())
       .then(data => {
         const { _currentProject, ...logs } = data;
@@ -2433,11 +1275,6 @@ class AppBase extends React.Component {
       .catch(() => {
         this.setState({ localLogs: {}, localLogsLoading: false });
       });
-  };
-
-  // 「显示全部实例」开关：翻转后用新 scope 重新拉取列表（开关状态持久，不随弹窗关闭重置）。
-  handleToggleShowAllLogs = () => {
-    this.setState(prev => ({ logShowAllInstances: !prev.logShowAllInstances }), () => this.handleImportLocalLogs());
   };
 
   handleCloseImportModal = () => {
@@ -2450,7 +1287,7 @@ class AppBase extends React.Component {
       .then(res => res.json())
       .then(data => {
         if (!data.ok) throw new Error(data.error || 'refresh failed');
-        return fetch(this._localLogsUrl());
+        return fetch(apiUrl('/api/local-logs'));
       })
       .then(res => res.json())
       .then(data => {
@@ -2465,14 +1302,113 @@ class AppBase extends React.Component {
   };
 
   renderLogTable(logs, mobile) {
+    const columns = [
+      {
+        title: '',
+        dataIndex: 'file',
+        key: 'check',
+        width: 40,
+        fixed: mobile ? 'left' : false,
+        render: (file) => (
+          <Checkbox
+            checked={this.state.selectedLogs.has(file) || false}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => { e.stopPropagation(); this.handleToggleLogSelect(file, e.target.checked); }}
+          />
+        ),
+      },
+      {
+        title: t('ui.logTime'),
+        dataIndex: 'timestamp',
+        key: 'time',
+        width: mobile ? 150 : 180,
+        render: (ts) => <span className={styles.tableTimestampCell}>{this.formatTimestamp(ts, mobile)}</span>,
+      },
+      {
+        title: t('ui.logPreview'),
+        dataIndex: 'preview',
+        key: 'preview',
+        width: mobile ? 150 : undefined,
+        ellipsis: true,
+        render: (arr) => {
+          if (!Array.isArray(arr) || arr.length === 0) return '—';
+          const first = arr[0];
+          const displayText = (first.length <= 30 && arr.length > 1) ? `${first} | ${arr[1]}` : first;
+          if (arr.length <= 1) return <span className={styles.tablePreviewText}>{displayText}</span>;
+          return (
+            <Popover
+              trigger={mobile ? 'click' : 'hover'}
+              placement={mobile ? 'bottomLeft' : 'leftTop'}
+              autoAdjustOverflow={{ adjustX: false, adjustY: true }}
+              overlayInnerStyle={{
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-hover)',
+                borderRadius: 8,
+                padding: 0,
+                maxHeight: 400,
+                overflowY: 'auto',
+              }}
+              content={
+                <div className={styles.previewPopover}>
+                  {arr.map((text, i) => (
+                    <div key={i} className={styles.previewItem}>
+                      <pre className={styles.previewText}>{text}</pre>
+                    </div>
+                  ))}
+                </div>
+              }
+            >
+              <span className={styles.tablePreviewTextClickable} style={{ textDecoration: mobile ? 'underline dotted #666' : 'none' }}>{displayText}</span>
+            </Popover>
+          );
+        },
+      },
+      ...(!mobile ? [{
+        title: t('ui.logTurns'),
+        dataIndex: 'turns',
+        key: 'turns',
+        width: 80,
+        render: (v) => <Tag className={styles.tableTag}>{v || 0}</Tag>,
+      }] : []),
+      {
+        title: t('ui.logSize'),
+        dataIndex: 'size',
+        key: 'size',
+        width: 90,
+        render: (v) => <Tag className={styles.tableTag}>{this.formatSize(v)}</Tag>,
+      },
+      {
+        title: t('ui.logActions'),
+        key: 'actions',
+        width: mobile ? 160 : 180,
+        render: (_, log) => (
+          <span className={styles.tableActionsCell}>
+            <Button size="small" type="primary" onClick={(e) => { e.stopPropagation(); this.handleOpenLogFile(log.file); }}>
+              {t('ui.openLog')}
+            </Button>
+            <Button size="small" icon={<DownloadOutlined />} onClick={(e) => { e.stopPropagation(); this.handleDownloadLogFile(log.file); }}>
+              {t('ui.downloadLog')}
+            </Button>
+          </span>
+        ),
+      },
+    ];
+
     return (
-      <LogTable
-        logs={logs}
-        mobile={mobile}
-        selectedLogs={this.state.selectedLogs}
-        onToggleSelect={this.handleToggleLogSelect}
-        onOpenLog={this.handleOpenLogFile}
-        onDownloadLog={this.handleDownloadLogFile}
+      <Table
+        size="small"
+        dataSource={logs}
+        columns={columns}
+        rowKey="file"
+        pagination={false}
+        scroll={mobile ? { x: 'max-content', y: 'calc(100vh - 160px)' } : { y: 400 }}
+        onRow={(log) => ({
+          onClick: () => {
+            const checked = !this.state.selectedLogs.has(log.file);
+            this.handleToggleLogSelect(log.file, checked);
+          },
+          style: { cursor: 'pointer' },
+        })}
       />
     );
   }
@@ -2512,7 +1448,7 @@ class AppBase extends React.Component {
     }
 
     const totalSize = indices.reduce((sum, i) => sum + logs[i].size, 0);
-    if (totalSize > 400 * 1024 * 1024) {
+    if (totalSize > 500 * 1024 * 1024) {
       message.warning(t('ui.mergeTooLarge'));
       return;
     }
@@ -2535,43 +1471,6 @@ class AppBase extends React.Component {
         }
       })
       .catch(() => message.error('Merge failed'));
-  };
-
-  handleArchiveLogs = () => {
-    const { selectedLogs, localLogs, currentProject } = this.state;
-    if (selectedLogs.size === 0) return;
-    const logs = localLogs[currentProject];
-    if (!logs) return;
-    const latestFile = logs[0]?.file;
-    const candidates = [...selectedLogs].filter(f => f.endsWith('.jsonl') && f !== latestFile);
-    if (candidates.length === 0) {
-      message.warning(t('ui.mergeLatestNotAllowed'));
-      return;
-    }
-
-    Modal.confirm({
-      title: t('ui.archiveLogs'),
-      content: t('ui.archiveLogsConfirm', { count: candidates.length }),
-      okText: t('ui.archiveLogs'),
-      cancelText: t('ui.cancel'),
-      onOk: () => {
-        fetch(apiUrl('/api/archive-logs'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ files: candidates }),
-        })
-          .then(res => res.json())
-          .then(data => {
-            const archived = data.archived?.length || 0;
-            const failed = (data.failed?.length || 0) + (data.skipped?.length || 0);
-            if (archived > 0) message.success(t('ui.archiveSuccess', { count: archived }));
-            if (failed > 0) message.error(t('ui.archiveFailed', { count: failed }));
-            this.setState({ selectedLogs: new Set() });
-            this.handleImportLocalLogs();
-          })
-          .catch(() => message.error(t('ui.archiveFailed', { count: candidates.length })));
-      },
-    });
   };
 
   handleDeleteLogs = () => {
@@ -2609,7 +1508,7 @@ class AppBase extends React.Component {
 
   handleOpenLogFile = async (file) => {
     // 优先使用当前 URL 的 token（远程访问时已有）；本地访问时从 /api/local-url 获取带 token 的基础 URL
-    let base = `${window.location.protocol}//${window.location.host}${getBasePath()}`;
+    let base = `${window.location.protocol}//${window.location.host}`;
     let token = new URLSearchParams(window.location.search).get('token');
     if (!token) {
       try {
@@ -2640,7 +1539,11 @@ class AppBase extends React.Component {
   handleResumeChoice = (choice) => {
     if (this.state.resumeRememberChoice) {
       this.setState({ resumeAutoChoice: choice });
-      this.context.updatePreferences({ resumeAutoChoice: choice });
+      fetch(apiUrl('/api/preferences'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeAutoChoice: choice }),
+      }).catch(() => {});
     }
     fetch(apiUrl('/api/resume-choice'), {
       method: 'POST',
@@ -2652,12 +1555,20 @@ class AppBase extends React.Component {
   handleResumeAutoChoiceToggle = (enabled) => {
     const value = enabled ? 'continue' : null;
     this.setState({ resumeAutoChoice: value });
-    this.context.updatePreferences({ resumeAutoChoice: value });
+    fetch(apiUrl('/api/preferences'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resumeAutoChoice: value }),
+    }).catch(() => {});
   };
 
   handleResumeAutoChoiceChange = (value) => {
     this.setState({ resumeAutoChoice: value });
-    this.context.updatePreferences({ resumeAutoChoice: value });
+    fetch(apiUrl('/api/preferences'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resumeAutoChoice: value }),
+    }).catch(() => {});
   };
 
   _finishLocalLoad = (entries, fileNames) => {
@@ -2671,8 +1582,6 @@ class AppBase extends React.Component {
       const { mainAgentSessions, filtered } = this._processEntries(entries);
       this._isLocalLog = true;
       this._localLogFile = fileNames.length === 1 ? fileNames[0] : `${fileNames.length} files`;
-      this._hasMoreHistory = false;
-      this._oldestTs = null;
       if (this.eventSource) { this.eventSource.close(); this.eventSource = null; }
       if (this._streamingOffTimer) { clearTimeout(this._streamingOffTimer); this._streamingOffTimer = null; }
       this.setState({
@@ -2682,77 +1591,23 @@ class AppBase extends React.Component {
         importModalVisible: false,
         fileLoading: false,
         fileLoadingCount: 0,
-        hasMoreHistory: false,
       });
     });
   };
 
-  // ─── 拖拽上传（App / Mobile 共享）─────────────────────────
-  // 文件拖入窗口 → 上传 → 落入 pendingUploadPaths。子类用 _captureDropContext()/
-  // _dispatchUploadedFiles() 两个 prototype 钩子定制分发（Mobile 按终端可见性分流）。
-  _isInternalDrag = (e) => e.dataTransfer.types.includes('text/x-preset-reorder');
+  // ─── 格式化 ────────────────────────────────────────────
 
-  _onDragOver = (e) => {
-    e.preventDefault();
-    if (this._isInternalDrag(e)) return;
-    // FileExplorer 区域不显示全屏 overlay，由 FileExplorer 自己处理外部拖入反馈
-    const overFileExplorer = e.target.closest && e.target.closest('[data-file-explorer]');
-    if (overFileExplorer) {
-      if (this.state.isDragging) this.setState({ isDragging: false });
-      return;
-    }
-    if (!this.state.isDragging) this.setState({ isDragging: true });
-  };
-
-  _onDragLeave = (e) => {
-    const layout = this._layoutRef.current;
-    if (layout && !layout.contains(e.relatedTarget)) {
-      this.setState({ isDragging: false });
-    }
-  };
-
-  _onDrop = (e) => {
-    e.preventDefault();
-    if (this._isInternalDrag(e)) return;
-    this.setState({ isDragging: false });
-    const files = Array.from(e.dataTransfer.files);
-    if (!files.length) return;
-    // drop 时刻同步捕获分发上下文（Mobile 需要 mobileTerminalVisible 的当时值，非上传完成后的值）
-    const ctx = this._captureDropContext();
-    // 拖拽上传在途占位:每文件登记 {id,name}(spinner-only,不建 objectURL 以免跨组件 revoke 竞态)。
-    // ChatView 据 uploadingDrop 调谐占位 + 缓发,使图不漏发。
-    const items = files.map(file => ({ id: `drop-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name }));
-    this.setState(prev => ({ uploadingDrop: [...(prev.uploadingDrop || []), ...items] }));
-    Promise.all(
-      files.map(file =>
-        uploadFileAndGetPath(file).then(path => ({ name: file.name, path }))
-          .catch(err => { message.error(`${file.name}: ${err.message}`); return null; })
-      )
-    ).then(results => {
-      // 关键顺序:先派发已 resolve 路径(落 pendingUploadPaths→pendingImages),再在同一 .then(同 tick,
-      // React 批处理合并)清掉本批占位 —— 保证 ChatView 的 drain 重发在同一次渲染里读到已就绪的 pendingImages,
-      // 不会出现「占位先清空、路径还没到 → drain 发出纯文字」的拖拽路径丢图竞态。
-      this._dispatchUploadedFiles(results, ctx);
-      const ids = new Set(items.map(i => i.id));
-      this.setState(prev => ({ uploadingDrop: (prev.uploadingDrop || []).filter(d => !ids.has(d.id)) }));
-    });
-  };
-
-  // 子类可 override（prototype 方法）。默认＝桌面行为：全落入 pendingUploadPaths。
-  _captureDropContext() { return undefined; }
-
-  _dispatchUploadedFiles(results) {
-    const paths = results.filter(Boolean).map(r => `"${r.path}"`);
-    if (paths.length > 0) {
-      this.setState(prev => ({
-        pendingUploadPaths: [...(prev.pendingUploadPaths || []), ...paths],
-      }));
-    }
+  formatTimestamp(ts, mobile) {
+    if (!ts || ts.length < 15) return ts;
+    if (mobile) return `${ts.slice(4, 6)}-${ts.slice(6, 8)} ${ts.slice(9, 11)}:${ts.slice(11, 13)}:${ts.slice(13, 15)}`;
+    return `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)} ${ts.slice(9, 11)}:${ts.slice(11, 13)}:${ts.slice(13, 15)}`;
   }
 
-  handleUploadPathsConsumed = () => {
-    this.setState({ pendingUploadPaths: [] });
-  };
+  formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
 
   // ─── 共享渲染辅助 ─────────────────────────────────────
 
@@ -2764,7 +1619,7 @@ class AppBase extends React.Component {
     if (this._filteredSource !== requests || this._filteredShowAll !== showAll) {
       this._filteredSource = requests;
       this._filteredShowAll = showAll;
-      this._filteredRequests = visibleRequests(requests, showAll);
+      this._filteredRequests = showAll ? requests : filterRelevantRequests(requests);
     }
     const filteredRequests = this._filteredRequests;
 
@@ -2802,20 +1657,34 @@ class AppBase extends React.Component {
     );
   }
 
-  /** Ant Design 主题配置 (dark/light)
-   *
-   * 历史尝试 `cssVar: true`（antd 5.14+）想砍 useToken/useGlobalCache 开销，但实测是性能
-   * 负优化：trace3 vs trace2 显示 cssinjs 自身耗时 +170%，`flattenToken` +1426%，GC +56%，
-   * 主线程 idle 从 16% 崩到 0.5%，dropped frames +64%。原因：启用 cssVar 后每个 token 多走
-   * 一层 CSSVarRegister.path + flattenToken；4 处 ConfigProvider + 主题切换 + 大量 antd
-   * 组件叠加，cache miss 路径被放大。antd 文档宣传的 20-35% 收益建立在「单 ConfigProvider
-   * + 主题不切换」理想场景，本仓库不符合。结论：保持 hash style，不要开 cssVar。
-   *
-   * 引用稳定性：返回模块顶层冻结常量（LIGHT_THEME_CONFIG / DARK_THEME_CONFIG），
-   * 主题不变时 React 每次 render 都拿到同一引用 → cssinjs useTheme useMemo 真正命中。
-   */
+  /** Ant Design 主题配置 (dark/light) */
   get themeConfig() {
-    return this.state.themeColor === 'light' ? LIGHT_THEME_CONFIG : DARK_THEME_CONFIG;
+    if (this.state.themeColor === 'light') {
+      return {
+        algorithm: theme.defaultAlgorithm,
+        token: {
+          colorPrimary: '#0969DA',
+          colorBgContainer: '#FFFFFF',
+          colorBgLayout: '#FAFAFA',
+          colorBgElevated: '#FFFFFF',
+          colorBorder: '#E0E0E0',
+          controlOutline: 'transparent',
+          controlOutlineWidth: 0,
+        },
+      };
+    }
+    return {
+      algorithm: theme.darkAlgorithm,
+      token: {
+        colorPrimary: '#1668dc',
+        colorBgContainer: '#111',
+        colorBgLayout: '#0a0a0a',
+        colorBgElevated: '#1e1e1e',
+        colorBorder: '#2a2a2a',
+        controlOutline: 'transparent',
+        controlOutlineWidth: 0,
+      },
+    };
   }
 }
 

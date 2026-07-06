@@ -6,7 +6,7 @@ MainAgent هو سلسلة الطلبات الرئيسية في Claude Code عن�
 
 ## طريقة التعرف
 
-في cc-viewer، يُعرَّف MainAgent من خلال `req.mainAgent === true`، ويتم تعيينه تلقائياً بواسطة `server/interceptor.js` عند التقاط الطلب.
+في cc-viewer، يُعرَّف MainAgent من خلال `req.mainAgent === true`، ويتم تعيينه تلقائياً بواسطة `interceptor.js` عند التقاط الطلب.
 
 شروط التحديد (يجب استيفاؤها جميعاً):
 - جسم الطلب يحتوي على حقل `system` (system prompt)

@@ -1,44 +1,56 @@
 # EnterWorktree
 
-새 브랜치에 격리된 Git 워크트리를 생성하거나, 현재 저장소의 기존 워크트리로 세션을 전환합니다. 이를 통해 기본 체크아웃을 건드리지 않고 병렬 또는 실험적 작업을 진행할 수 있습니다.
+## 정의
 
-## 사용 시점
-
-- 사용자가 명시적으로 "worktree"라고 말합니다 — 예를 들어 "start a worktree", "create a worktree", 또는 "work in a worktree".
-- `CLAUDE.md` 또는 영속 메모리의 프로젝트 지시사항이 현재 작업에 워크트리를 사용하도록 지시합니다.
-- 이전에 워크트리로 설정된 작업을 계속하고 싶습니다 (다시 들어가려면 `path`를 전달합니다).
-- 여러 실험적 브랜치가 지속적인 체크아웃 변경 없이 디스크에 공존해야 합니다.
-- 장시간 실행되는 작업이 메인 작업 트리의 관련 없는 편집으로부터 격리되어야 합니다.
+격리된 git worktree를 생성하고 현재 세션을 해당 worktree로 전환합니다. 사용자가 명시적으로 worktree 작업을 요청할 때만 사용합니다.
 
 ## 매개변수
 
-- `name` (string, 선택): 새 워크트리 디렉토리의 이름. 각 `/`로 구분된 세그먼트는 문자, 숫자, 점, 밑줄, 대시만 포함할 수 있으며, 전체 문자열은 최대 64자로 제한됩니다. 생략되고 `path`도 생략되면 임의의 이름이 생성됩니다. `path`와 상호 배타적입니다.
-- `path` (string, 선택): 전환할 현재 저장소의 기존 워크트리의 파일시스템 경로. 이 저장소에 대한 `git worktree list`에 나타나야 하며, 현재 저장소의 등록된 워크트리가 아닌 경로는 거부됩니다. `name`과 상호 배타적입니다.
+| 매개변수명 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| name | string | 아니오 | worktree 이름. 제공하지 않으면 임의의 이름이 생성됩니다. |
 
-## 예시
+## 사용 사례
 
-### 예시 1: 설명적인 이름으로 새 워크트리 생성
+**적합한 경우:**
+- 사용자가 명시적으로 "worktree"라고 말한 경우 (예: "worktree 생성", "worktree에서 작업")
 
-```
-EnterWorktree(name="feat/okta-sso")
-```
-
-`HEAD`를 기반으로 하는 새 브랜치에 `.claude/worktrees/feat/okta-sso`를 생성한 다음, 세션의 작업 디렉토리를 그 안으로 전환합니다. 종료할 때까지 이후의 모든 파일 편집과 셸 명령은 해당 워크트리 내에서 작동합니다.
-
-### 예시 2: 기존 워크트리 다시 들어가기
-
-```
-EnterWorktree(path="/Users/me/repo/.claude/worktrees/feat/okta-sso")
-```
-
-이전에 생성된 워크트리에서 작업을 재개합니다. `path`를 통해 들어갔기 때문에 `ExitWorktree`는 자동으로 삭제하지 않습니다 — `action: "keep"`으로 나가면 원래 디렉토리로 돌아갑니다.
+**적합하지 않은 경우:**
+- 사용자가 브랜치 생성/전환을 요청 — git 명령어 사용
+- 사용자가 버그 수정이나 기능 개발을 요청 — worktree를 명시하지 않는 한 일반 git 워크플로우 사용
 
 ## 참고사항
 
-- 사용자가 명시적으로 요청하거나 프로젝트 지시사항이 요구하지 않는 한 `EnterWorktree`를 호출하지 마십시오. 일반적인 브랜치 전환이나 버그 수정 요청은 워크트리가 아닌 일반 Git 명령을 사용해야 합니다.
-- Git 저장소 내에서 호출되면 도구는 `.claude/worktrees/` 아래에 워크트리를 생성하고 `HEAD`를 기반으로 새 브랜치를 등록합니다. Git 저장소 외부에서는 VCS에 구애받지 않는 격리를 위해 `settings.json`의 구성된 `WorktreeCreate` / `WorktreeRemove` 후크에 위임합니다.
-- 한 번에 하나의 워크트리 세션만 활성화됩니다. 이미 워크트리 세션 내에 있는 경우 도구가 실행을 거부합니다. 먼저 `ExitWorktree`로 종료하십시오.
-- 세션 중간에 나가려면 `ExitWorktree`를 사용하십시오. 새로 생성된 워크트리 안에 있는 동안 세션이 종료되면 사용자에게 유지할지 제거할지 묻는 프롬프트가 표시됩니다.
-- `path`로 들어간 워크트리는 외부로 간주됩니다 — `action: "remove"`와 함께 `ExitWorktree`는 이를 삭제하지 않습니다. 이는 사용자가 수동으로 관리하는 워크트리를 보호하기 위한 안전 장치입니다.
-- 새 워크트리는 현재 브랜치의 내용을 상속하지만 독립적인 작업 디렉토리와 인덱스를 갖습니다. 메인 체크아웃의 스테이징 및 비스테이징 변경 사항은 워크트리 내에서 보이지 않습니다.
-- 명명 팁: 작업 종류 (`feat/`, `fix/`, `spike/`)로 접두사를 붙여서 `git worktree list`에서 여러 동시 워크트리를 쉽게 구분할 수 있도록 하십시오.
+- git 저장소 내에 있거나 WorktreeCreate/WorktreeRemove hooks가 구성되어 있어야 함
+- 이미 worktree 내에 있으면 안 됨
+
+## 원문
+
+<textarea readonly>Use this tool ONLY when the user explicitly asks to work in a worktree. This tool creates an isolated git worktree and switches the current session into it.
+
+## When to Use
+
+- The user explicitly says "worktree" (e.g., "start a worktree", "work in a worktree", "create a worktree", "use a worktree")
+
+## When NOT to Use
+
+- The user asks to create a branch, switch branches, or work on a different branch — use git commands instead
+- The user asks to fix a bug or work on a feature — use normal git workflow unless they specifically mention worktrees
+- Never use this tool unless the user explicitly mentions "worktree"
+
+## Requirements
+
+- Must be in a git repository, OR have WorktreeCreate/WorktreeRemove hooks configured in settings.json
+- Must not already be in a worktree
+
+## Behavior
+
+- In a git repository: creates a new git worktree inside `.claude/worktrees/` with a new branch based on HEAD
+- Outside a git repository: delegates to WorktreeCreate/WorktreeRemove hooks for VCS-agnostic isolation
+- Switches the session's working directory to the new worktree
+- On session exit, the user will be prompted to keep or remove the worktree
+
+## Parameters
+
+- `name` (optional): A name for the worktree. If not provided, a random name is generated.
+</textarea>

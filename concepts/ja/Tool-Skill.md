@@ -1,47 +1,56 @@
 # Skill
 
-現在の会話内で名前付きスキルを呼び出します。スキルは事前にパッケージ化された機能バンドル — ドメイン知識、ワークフロー、時にはツールアクセス — で、ハーネスがシステムリマインダーを介してアシスタントに公開します。
+## 定義
 
-## 使用タイミング
-
-- ユーザーが `/review` や `/init` などのスラッシュコマンドを入力した場合 — スラッシュコマンドはスキルであり、このツールを通して実行する必要があります。
-- ユーザーが宣伝されているスキルのトリガー条件に一致するタスクを説明した場合 (例えば、繰り返される権限プロンプトについてトランスクリプトをスキャンするよう求めることは `fewer-permission-prompts` に一致します)。
-- スキルの記載された目的が、現在のファイル、リクエスト、または会話のコンテキストに直接一致する場合。
-- 特化した反復可能なワークフローがスキルとして利用可能で、アドホックなアプローチよりも正規の手順が望ましい場合。
-- ユーザーが「どのスキルが利用可能か」と尋ねた場合 — 宣伝されている名前をリストアップし、確認された場合にのみ呼び出してください。
+メイン会話内でスキル（skill）を実行します。スキルはユーザーが slash command（例：`/commit`、`/review-pr`）で呼び出せる専用機能です。
 
 ## パラメータ
 
-- `skill` (string, required): 現在の available-skills システムリマインダーにリストされているスキルの正確な名前。プラグイン名前空間のスキルには、完全修飾の `plugin:skill` 形式を使用してください (例えば `skill-creator:skill-creator`)。先頭のスラッシュは含めないでください。
-- `args` (string, optional): スキルに渡される自由形式の引数。形式と意味は各スキル自身のドキュメントで定義されます。
+| パラメータ | 型 | 必須 | 説明 |
+|------------|------|------|------|
+| `skill` | string | はい | スキル名（例："commit"、"review-pr"、"pdf"） |
+| `args` | string | いいえ | スキルの引数 |
 
-## 例
+## 使用シナリオ
 
-### 例 1: 現在のブランチでレビュースキルを実行
+**適している場合：**
+- ユーザーが `/<skill-name>` 形式の slash command を入力した
+- ユーザーのリクエストが登録済みスキルの機能にマッチする
 
-```
-Skill(skill="review")
-```
-
-`review` スキルは、現在のベースブランチに対してプルリクエストをレビューするためのステップをパッケージ化します。呼び出すと、ハーネスで定義されたレビュー手順がターンにロードされます。
-
-### 例 2: 引数を持つプラグイン名前空間のスキルを呼び出す
-
-```
-Skill(
-  skill="skill-creator:skill-creator",
-  args="create a skill that summarizes git log for a given date range"
-)
-```
-
-リクエストを `skill-creator` プラグインのエントリポイントを通じてルーティングし、オーサリングワークフローが起動します。
+**適していない場合：**
+- 組み込み CLI コマンド（例：`/help`、`/clear`）
+- 既に実行中のスキル
+- 利用可能なスキルリストにないスキル名
 
 ## 注意事項
 
-- available-skills システムリマインダーに名前がそのまま表示されているスキル、またはユーザーがメッセージで `/name` として直接入力したスキルのみを呼び出してください。メモリやトレーニングデータからスキル名を推測したり発明したりしないでください — スキルが宣伝されていない場合、このツールを呼び出さないでください。
-- ユーザーのリクエストが宣伝されているスキルに一致する場合、`Skill` を呼び出すことはブロッキングの前提条件です。タスクに関する他の応答を生成する前に呼び出してください。スキルが何をするかを説明しないでください — 実行してください。
-- 実際に呼び出すことなく、スキルを名前で言及しないでください。ツールを呼び出さずにスキルをアナウンスすることは誤解を招きます。
-- `/help`、`/clear`、`/model`、`/exit` などの組み込み CLI コマンドには `Skill` を使用しないでください。これらはハーネスによって直接処理されます。
-- 現在のターンですでに実行中のスキルを再呼び出ししないでください。現在のターンで `<command-name>` タグが表示された場合、スキルはすでにロードされています — ツールを再度呼び出す代わりに、その場で指示に従ってください。
-- 複数のスキルが適用可能な場合は、最も具体的なものを選んでください。権限やフックの追加などの設定変更には、一般的な設定アプローチよりも `update-config` を優先してください。
-- スキルの実行により、ターンの残りに新しいシステムリマインダー、ツール、または制約が導入される可能性があります。スキル完了後に会話状態を再度読んでから進めてください。
+- スキルが呼び出されると完全なプロンプトに展開される
+- 完全修飾名をサポート（例：`ms-office-suite:pdf`）
+- 利用可能なスキルリストは system-reminder メッセージで提供される
+- `<command-name>` タグが見えた場合はスキルが既にロード済みであり、このツールを再度呼び出さずに直接実行すべき
+- 実際にツールを呼び出さずにスキルに言及しないこと
+
+## 原文
+
+<textarea readonly>Execute a skill within the main conversation
+
+When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.
+
+When users reference a "slash command" or "/<something>" (e.g., "/commit", "/review-pr"), they are referring to a skill. Use this tool to invoke it.
+
+How to invoke:
+- Use this tool with the skill name and optional arguments
+- Examples:
+  - `skill: "pdf"` - invoke the pdf skill
+  - `skill: "commit", args: "-m 'Fix bug'"` - invoke with arguments
+  - `skill: "review-pr", args: "123"` - invoke with arguments
+  - `skill: "ms-office-suite:pdf"` - invoke using fully qualified name
+
+Important:
+- Available skills are listed in system-reminder messages in the conversation
+- When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task
+- NEVER mention a skill without actually calling this tool
+- Do not invoke a skill that is already running
+- Do not use this tool for built-in CLI commands (like /help, /clear, etc.)
+- If you see a <command-name> tag in the current conversation turn, the skill has ALREADY been loaded - follow the instructions directly instead of calling this tool again
+</textarea>

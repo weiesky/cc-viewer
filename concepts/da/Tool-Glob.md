@@ -1,35 +1,39 @@
 # Glob
 
-Matcher filnavne mod et glob-mønster og returnerer stierne sorteret efter seneste ændringstidspunkt først. Optimeret til hurtigt at lokalisere filer i kodebaser af enhver størrelse uden at skulle gå til `find` via shell.
+## Definition
 
-## Hvornår skal den bruges
-
-- Opremse hver fil af en specifik udvidelse (for eksempel alle `*.ts`-filer under `src`)
-- Opdage konfigurations- eller fixture-filer ved navnekonvention (`**/jest.config.*`, `**/*.test.tsx`)
-- Indsnævre et søgeoverflade før en målrettet `Grep`
-- Tjekke om en fil allerede eksisterer ved et kendt mønster før kald af `Write`
-- Finde nyligt ændrede filer ved at læne sig op ad ændringstidssorteringen
+Hurtigt filnavnsmønster-matchningsværktøj, der understøtter kodebaser af enhver størrelse. Returnerer matchende filstier sorteret efter ændringstidspunkt.
 
 ## Parametre
 
-- `pattern` (string, påkrævet): Det glob-udtryk, der skal matches. Understøtter `*` for enkeltsegments-wildcards, `**` for rekursive match og `{a,b}` for alternativer, for eksempel `src/**/*.{ts,tsx}`.
-- `path` (string, valgfri): Mappe, som søgningen køres i. Skal være en gyldig mappesti, når angivet. Udelad feltet helt for at søge i den aktuelle arbejdsmappe. Send ikke strengene `"undefined"` eller `"null"`.
+| Parameter | Type | Påkrævet | Beskrivelse |
+|------|------|------|------|
+| `pattern` | string | Ja | Glob-mønster (f.eks. `**/*.js`, `src/**/*.ts`) |
+| `path` | string | Nej | Søgemappe, standard er den aktuelle arbejdsmappe. Send ikke "undefined" eller "null" |
 
-## Eksempler
+## Brugsscenarier
 
-### Eksempel 1: Hver TypeScript-kildefil
-Kald `Glob` med `pattern: "src/**/*.ts"`. Resultatet er en mtime-sorteret liste, så de senest redigerede filer vises først, hvilket er nyttigt til at fokusere på hotspots.
+**Egnet til:**
+- Søge filer efter filnavnsmønster
+- Finde alle filer af en bestemt type (f.eks. alle `.tsx`-filer)
+- Lokalisere filer når man søger efter en bestemt klassedefinition (f.eks. `class Foo`)
+- Man kan starte flere Glob-kald parallelt i en enkelt besked
 
-### Eksempel 2: Find en kandidat til en klassedefinition
-Når du mistænker, at en klasse ligger i en fil, hvis navn du ikke kender, så søg med `pattern: "**/*UserService*"` for at indsnævre kandidaterne, og følg op med `Read` eller `Grep`.
+**Ikke egnet til:**
+- Søge filindhold — brug Grep
+- Åben udforskning der kræver flere søgerunder — brug Task (Explore-type)
 
-### Eksempel 3: Parallel opdagelse før en større opgave
-I en enkelt besked kan du udstede flere `Glob`-kald (for eksempel et for `**/*.test.ts` og et for `**/fixtures/**`), så begge kører parallelt, og deres resultater kan korreleres.
+## Bemærkninger
 
-## Noter
+- Understøtter standard glob-syntaks: `*` matcher ét niveau, `**` matcher flere niveauer, `{}` matcher flervalg
+- Resultater sorteres efter ændringstidspunkt
+- Mere anbefalet end Bashs `find`-kommando
 
-- Resultater er sorteret efter filens ændringstid (nyeste først), ikke alfabetisk. Sortér nedstrøms, hvis du har brug for stabil rækkefølge.
-- Mønstre evalueres af værktøjet, ikke af skallen; du behøver ikke at sætte dem i anførselstegn eller escape dem som på kommandolinjen.
-- Til åben udforskning, der kræver flere runder af søgning og ræsonnement, delegér til en `Agent` med Explore-agenttypen i stedet for at kæde mange `Glob`-kald.
-- Foretræk `Glob` frem for `Bash`-kald af `find` eller `ls` til filnavnsopdagelse; det håndterer tilladelser konsekvent og returnerer struktureret output.
-- Når du leder efter indhold inde i filer frem for filnavne, brug `Grep` i stedet.
+## Originaltekst
+
+<textarea readonly>- Fast file pattern matching tool that works with any codebase size
+- Supports glob patterns like "**/*.js" or "src/**/*.ts"
+- Returns matching file paths sorted by modification time
+- Use this tool when you need to find files by name patterns
+- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead
+- You can call multiple tools in a single response. It is always better to speculatively perform multiple searches in parallel if they are potentially useful.</textarea>

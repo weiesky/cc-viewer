@@ -1,46 +1,57 @@
 # Grep
 
-ค้นหาเนื้อหาไฟล์โดยใช้ engine ripgrep รองรับ regular expression เต็มรูปแบบ, filter ตามประเภทไฟล์ และ output mode สามแบบเพื่อให้คุณสามารถแลกความแม่นยำกับความกระชับได้
+## คำจำกัดความ
 
-## เมื่อใดควรใช้
-
-- ค้นหาทุก call site ของ function หรือทุก reference ของ identifier
-- ตรวจสอบว่า string หรือ error message ปรากฏที่ใดใน codebase หรือไม่
-- นับ occurrence ของ pattern เพื่อประเมินผลกระทบก่อน refactor
-- จำกัดการค้นหาเฉพาะประเภทไฟล์ (`type: "ts"`) หรือ glob (`glob: "**/*.tsx"`)
-- ดึง match ข้ามบรรทัด เช่น นิยาม struct หลายบรรทัดหรือ block JSX ด้วย `multiline: true`
+เครื่องมือค้นหาเนื้อหาที่ทรงพลังโดยใช้ ripgrep รองรับนิพจน์ทั่วไป การกรองตามประเภทไฟล์ และโหมดผลลัพธ์หลายแบบ
 
 ## พารามิเตอร์
 
-- `pattern` (string, required): regular expression ที่จะค้นหา ใช้ syntax ของ ripgrep ดังนั้น literal brace ต้อง escape (เช่น `interface\{\}` เพื่อหา `interface{}`)
-- `path` (string, optional): ไฟล์หรือ directory ที่จะค้นหา ค่าเริ่มต้นคือ working directory ปัจจุบัน
-- `glob` (string, optional): filter ชื่อไฟล์ เช่น `*.js` หรือ `*.{ts,tsx}`
-- `type` (string, optional): shortcut ประเภทไฟล์ เช่น `js`, `py`, `rust`, `go` มีประสิทธิภาพมากกว่า `glob` สำหรับภาษามาตรฐาน
-- `output_mode` (enum, optional): `files_with_matches` (ค่าเริ่มต้น, ส่ง path เท่านั้น), `content` (ส่งบรรทัดที่ match), หรือ `count` (ส่งจำนวน match)
-- `-i` (boolean, optional): match แบบไม่แยกตัวพิมพ์
-- `-n` (boolean, optional): รวมหมายเลขบรรทัดใน mode `content` ค่าเริ่มต้น `true`
-- `-A` (number, optional): จำนวนบรรทัด context แสดงหลังแต่ละ match (ต้องใช้ mode `content`)
-- `-B` (number, optional): จำนวนบรรทัด context ก่อนแต่ละ match (ต้องใช้ mode `content`)
-- `-C` / `context` (number, optional): จำนวนบรรทัด context ทั้งสองด้านของแต่ละ match
-- `multiline` (boolean, optional): ให้ pattern ข้าม newline ได้ (`.` match `\n`) ค่าเริ่มต้น `false`
-- `head_limit` (number, optional): จำกัดจำนวนบรรทัด, path ของไฟล์, หรือ count entry ที่ส่งกลับ ค่าเริ่มต้น 250; ส่ง `0` สำหรับไม่จำกัด (ใช้อย่างประหยัด)
-- `offset` (number, optional): ข้าม N ผลลัพธ์แรกก่อนใช้ `head_limit` ค่าเริ่มต้น `0`
+| พารามิเตอร์ | ประเภท | จำเป็น | คำอธิบาย |
+|------|------|------|------|
+| `pattern` | string | ใช่ | รูปแบบค้นหาด้วยนิพจน์ทั่วไป |
+| `path` | string | ไม่ | พาธค้นหา (ไฟล์หรือไดเรกทอรี) ค่าเริ่มต้นคือไดเรกทอรีทำงานปัจจุบัน |
+| `glob` | string | ไม่ | ตัวกรองชื่อไฟล์ (เช่น `*.js`, `*.{ts,tsx}`) |
+| `type` | string | ไม่ | ตัวกรองประเภทไฟล์ (เช่น `js`, `py`, `rust`) มีประสิทธิภาพมากกว่า glob |
+| `output_mode` | enum | ไม่ | โหมดผลลัพธ์: `files_with_matches` (ค่าเริ่มต้น), `content`, `count` |
+| `-i` | boolean | ไม่ | ค้นหาโดยไม่คำนึงถึงตัวพิมพ์ใหญ่-เล็ก |
+| `-n` | boolean | ไม่ | แสดงหมายเลขบรรทัด (เฉพาะโหมด content) ค่าเริ่มต้น true |
+| `-A` | number | ไม่ | จำนวนบรรทัดที่แสดงหลังการจับคู่ |
+| `-B` | number | ไม่ | จำนวนบรรทัดที่แสดงก่อนการจับคู่ |
+| `-C` / `context` | number | ไม่ | จำนวนบรรทัดที่แสดงก่อนและหลังการจับคู่ |
+| `head_limit` | number | ไม่ | จำกัดจำนวนรายการผลลัพธ์ ค่าเริ่มต้น 0 (ไม่จำกัด) |
+| `offset` | number | ไม่ | ข้ามผลลัพธ์ N รายการแรก |
+| `multiline` | boolean | ไม่ | เปิดใช้โหมดจับคู่หลายบรรทัด ค่าเริ่มต้น false |
 
-## ตัวอย่าง
+## สถานการณ์การใช้งาน
 
-### ตัวอย่างที่ 1: หา call site ทั้งหมดของ function
-ตั้ง `pattern: "registerHandler\\("`, `output_mode: "content"`, และ `-C: 2` เพื่อดูบรรทัดโดยรอบของแต่ละการเรียก
+**เหมาะสำหรับ:**
+- ค้นหาสตริงหรือรูปแบบเฉพาะในโค้ดเบส
+- ค้นหาตำแหน่งการใช้งานของฟังก์ชัน/ตัวแปร
+- กรองผลลัพธ์การค้นหาตามประเภทไฟล์
+- นับจำนวนการจับคู่
 
-### ตัวอย่างที่ 2: นับ match ข้ามประเภท
-ตั้ง `pattern: "TODO"`, `type: "py"`, และ `output_mode: "count"` เพื่อดูจำนวน TODO ต่อไฟล์ใน Python source
+**ไม่เหมาะสำหรับ:**
+- ค้นหาไฟล์ตามชื่อ — ควรใช้ Glob
+- การสำรวจแบบเปิดที่ต้องค้นหาหลายรอบ — ควรใช้ Task (ประเภท Explore)
 
-### ตัวอย่างที่ 3: Multiline struct match
-ใช้ `pattern: "struct Config \\{[\\s\\S]*?version"` ด้วย `multiline: true` เพื่อจับ field ที่ประกาศห่างหลายบรรทัดเข้าไปใน struct ของ Go
+## ข้อควรระวัง
 
-## หมายเหตุ
+- ใช้ไวยากรณ์ ripgrep (ไม่ใช่ grep) อักขระพิเศษเช่นวงเล็บปีกกาต้องใช้ escape
+- โหมด `files_with_matches` ส่งคืนเฉพาะพาธไฟล์ มีประสิทธิภาพสูงสุด
+- โหมด `content` ส่งคืนเนื้อหาบรรทัดที่ตรงกัน รองรับบรรทัดบริบท
+- การจับคู่หลายบรรทัดต้องตั้งค่า `multiline: true`
+- ควรใช้เครื่องมือ Grep แทนคำสั่ง `grep` หรือ `rg` ใน Bash เสมอ
 
-- ชอบ `Grep` มากกว่าการรัน `grep` หรือ `rg` ผ่าน `Bash` เสมอ; tool นี้ optimize สำหรับ permission ที่ถูกต้องและ output ที่มีโครงสร้าง
-- Output mode เริ่มต้นคือ `files_with_matches` ซึ่งถูกที่สุด เปลี่ยนเป็น `content` เฉพาะเมื่อต้องการดูบรรทัดเอง
-- Context flag (`-A`, `-B`, `-C`) จะถูกละเลยเว้นแต่ `output_mode` เป็น `content`
-- ผลลัพธ์ขนาดใหญ่เผาผลาญ token ของ context ใช้ `head_limit`, `offset`, หรือ `glob`/`type` filter ที่แคบลงเพื่อรักษาการโฟกัส
-- สำหรับการค้นหาชื่อไฟล์ ให้ใช้ `Glob` แทน; สำหรับการสืบสวนแบบเปิดกว้างข้ามหลายรอบ ให้ dispatch `Agent` ด้วย Explore agent
+## ข้อความต้นฉบับ
+
+<textarea readonly>A powerful search tool built on ripgrep
+
+  Usage:
+  - ALWAYS use Grep for search tasks. NEVER invoke `grep` or `rg` as a Bash command. The Grep tool has been optimized for correct permissions and access.
+  - Supports full regex syntax (e.g., "log.*Error", "function\s+\w+")
+  - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
+  - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
+  - Use Agent tool for open-ended searches requiring multiple rounds
+  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use `interface\{\}` to find `interface{}` in Go code)
+  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like `struct \{[\s\S]*?field`, use `multiline: true`
+</textarea>

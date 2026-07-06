@@ -1,42 +1,62 @@
 # ExitPlanMode
 
-送出在計畫模式中所撰寫的實作計畫供使用者核准，若獲核准則讓工作階段離開計畫模式，以便開始進行編輯。
+## 定義
 
-## 使用時機
-
-- 在 `EnterPlanMode` 期間撰寫的計畫已完成，可供審閱。
-- 任務偏向實作（程式碼或設定變更），而非純研究，因此明確的計畫適合此任務。
-- 所有前置閱讀與分析已完成；在使用者決定之前無需進一步調查。
-- 助理已列出具體的檔案路徑、函式與步驟，而非僅是目標。
-- 使用者要求查看計畫，或計畫模式流程即將交接給編輯工具。
+退出規劃模式並將方案提交給使用者審批。方案內容從之前寫入的計畫檔案中讀取。
 
 ## 參數
 
-- `allowedPrompts`（array，選填）：使用者可在核准畫面上輸入的 prompts，用以自動核准或修改計畫。每個元素指定一個範圍化的權限（例如一個操作名稱與所適用的工具）。不設定則使用預設核准流程。
+| 參數 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| `allowedPrompts` | array | 否 | 實施方案所需的權限描述列表 |
 
-## 範例
+`allowedPrompts` 陣列中每個元素：
 
-### 範例 1：標準送出
+| 欄位 | 類型 | 必填 | 說明 |
+|------|------|------|------|
+| `tool` | enum | 是 | 適用的工具，目前僅支援 `Bash` |
+| `prompt` | string | 是 | 操作的語義描述（如 "run tests"、"install dependencies"） |
 
-在計畫模式中調查認證重構並把計畫檔案寫入磁碟後，助理不帶參數呼叫 `ExitPlanMode`。Harness 會從正式位置讀取計畫，顯示給使用者，並等待核准或拒絕。
+## 使用場景
 
-### 範例 2：預先核准的快捷動作
+**適合使用：**
+- 規劃模式中方案已完成，準備提交使用者審批
+- 僅用於需要撰寫程式碼的實施任務
 
-```
-ExitPlanMode(allowedPrompts=[
-  {"tool": "Bash", "prompt": "run tests"},
-  {"tool": "Bash", "prompt": "install dependencies"}
-])
-```
-
-讓使用者預先授權慣用的後續指令，助理在實作期間就不必為每個權限提示暫停。
+**不適合使用：**
+- 純研究/探索任務——不需要退出規劃模式
+- 想問使用者「方案可以嗎？」——這正是此工具的功能，不要用 AskUserQuestion 來問
 
 ## 注意事項
 
-- `ExitPlanMode` 只對實作類工作有意義。若使用者的請求是沒有檔案變更的研究或說明任務，直接作答——不要只為了退出而走計畫模式流程。
-- 計畫必須在呼叫此工具之前已寫入磁碟。`ExitPlanMode` 不接受將計畫內容作為參數；它從 harness 預期的路徑讀取。
-- 若使用者拒絕計畫，你會回到計畫模式。依回饋修訂後再次送出；在計畫未核准前不要開始編輯檔案。
-- 核准允許你離開計畫模式並在計畫描述的範圍內使用變更性工具（`Edit`、`Write`、`Bash` 等）。事後擴大範圍需要新的計畫或使用者明確同意。
-- 不要在呼叫此工具前用 `AskUserQuestion` 問「這個計畫可以嗎？」——請求計畫核准正是 `ExitPlanMode` 所做的事，而且在計畫送出前使用者看不到它。
-- 計畫要簡潔且可執行。審閱者應能在一分鐘內掃讀完畢，並確切了解會變更什麼。
-- 若你在實作途中發現計畫錯了，請停下來向使用者回報，而不是悄悄偏離。重新進入計畫模式是一個可行的下一步。
+- 此工具不接受方案內容作為參數——它從之前寫入的計畫檔案中讀取
+- 使用者會看到計畫檔案的內容來審批
+- 不要在呼叫此工具前用 AskUserQuestion 問「方案是否可以」，這是重複的
+- 不要在問題中提及「計畫」，因為使用者在 ExitPlanMode 之前看不到計畫內容
+
+## 原文
+
+<textarea readonly>Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval.
+
+## How This Tool Works
+- You should have already written your plan to the plan file specified in the plan mode system message
+- This tool does NOT take the plan content as a parameter - it will read the plan from the file you wrote
+- This tool simply signals that you're done planning and ready for the user to review and approve
+- The user will see the contents of your plan file when they review it
+
+## When to Use This Tool
+IMPORTANT: Only use this tool when the task requires planning the implementation steps of a task that requires writing code. For research tasks where you're gathering information, searching files, reading files or in general trying to understand the codebase - do NOT use this tool.
+
+## Before Using This Tool
+Ensure your plan is complete and unambiguous:
+- If you have unresolved questions about requirements or approach, use AskUserQuestion first (in earlier phases)
+- Once your plan is finalized, use THIS tool to request approval
+
+**Important:** Do NOT use AskUserQuestion to ask "Is this plan okay?" or "Should I proceed?" - that's exactly what THIS tool does. ExitPlanMode inherently requests user approval of your plan.
+
+## Examples
+
+1. Initial task: "Search for and understand the implementation of vim mode in the codebase" - Do not use the exit plan mode tool because you are not planning the implementation steps of a task.
+2. Initial task: "Help me implement yank mode for vim" - Use the exit plan mode tool after you have finished planning the implementation steps of the task.
+3. Initial task: "Add a new feature to handle user authentication" - If unsure about auth method (OAuth, JWT, etc.), use AskUserQuestion first, then use exit plan mode tool after clarifying the approach.
+</textarea>

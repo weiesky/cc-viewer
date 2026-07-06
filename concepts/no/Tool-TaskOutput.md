@@ -1,50 +1,40 @@
 # TaskOutput
 
-Henter den akkumulerte utdataen fra en kjørende eller fullført bakgrunnsoppgave — en bakgrunns-shell-kommando, en lokal agent eller en ekstern sesjon. Bruk det når du trenger å inspisere hva en langvarig oppgave har produsert så langt.
+## Definisjon
 
-## Når skal den brukes
-
-- En ekstern sesjon (for eksempel en cloud sandbox) kjører og du trenger dens stdout.
-- En lokal agent ble dispatchet i bakgrunnen og du vil ha delvis fremgang før den returnerer.
-- En bakgrunns-shell-kommando har kjørt lenge nok til at du vil sjekke den uten å stoppe den.
-- Du må bekrefte at en bakgrunnsoppgave faktisk gjør fremgang før du venter lenger eller kaller `TaskStop`.
-
-Ikke strekk deg etter `TaskOutput` refleksivt. For det meste av bakgrunnsarbeid finnes en mer direkte vei — se notatene nedenfor.
+Henter utdata fra bakgrunnsoppgaver som kjører eller er fullført. Gjelder for bakgrunns-shell, asynkrone agenter og fjernsesjoner.
 
 ## Parametere
 
-- `task_id` (string, påkrevd): Oppgaveidentifikatoren som returneres når bakgrunnsarbeidet ble startet. Ikke det samme som en oppgavelistes `taskId`; dette er kjøretidshåndtaket for den spesifikke utførelsen.
-- `block` (boolean, valgfri): Når `true` (standard), vent til oppgaven produserer ny utdata eller avslutter før den returnerer. Når `false`, returner umiddelbart med det som er bufret.
-- `timeout` (number, valgfri): Maksimalt antall millisekunder å blokkere før returnering. Kun meningsfull når `block` er `true`. Standard `30000`, maksimum `600000`.
+| Parameter | Type | Påkrevd | Beskrivelse |
+|-----------|------|---------|-------------|
+| `task_id` | string | Ja | Oppgave-ID |
+| `block` | boolean | Ja | Om den skal blokkere og vente til oppgaven er ferdig, standard `true` |
+| `timeout` | number | Ja | Maksimal ventetid (millisekunder), standard 30000, maks 600000 |
 
-## Eksempler
+## Bruksscenarioer
 
-### Eksempel 1
+**Egnet for bruk:**
+- Sjekke fremdriften til bakgrunnsagenter startet via Task (`run_in_background: true`)
+- Hente resultater fra bakgrunns-Bash-kommandoer
+- Vente på at asynkrone oppgaver fullføres og hente utdata
 
-Kikk på en ekstern sesjon uten å blokkere.
+**Ikke egnet for bruk:**
+- Forgrunnsoppgaver — disse returnerer resultater direkte, dette verktøyet er ikke nødvendig
 
-```
-TaskOutput(task_id: "sess_01HXYZ...", block: false)
-```
+## Merknader
 
-Returnerer hvilken som helst stdout/stderr som har blitt produsert siden oppgaven startet (eller siden ditt siste `TaskOutput`-kall, avhengig av kjøretiden).
+- `block: true` blokkerer til oppgaven er ferdig eller tidsavbruddet nås
+- `block: false` for ikke-blokkerende sjekk av gjeldende status
+- Oppgave-ID kan finnes via `/tasks`-kommandoen
+- Gjelder for alle oppgavetyper: bakgrunns-shell, asynkrone agenter, fjernsesjoner
 
-### Eksempel 2
+## Originaltekst
 
-Vent kort på at en lokal agent sender ut mer utdata.
-
-```
-TaskOutput(
-  task_id: "agent_01ABCD...",
-  block: true,
-  timeout: 10000
-)
-```
-
-## Notater
-
-- Bakgrunns-bash-kommandoer: `TaskOutput` er effektivt avviklet for dette bruksområdet. Når du starter en bakgrunns-shell-oppgave inkluderer resultatet allerede stien til utdatafilen dens — les den stien direkte med `Read`-verktøyet. `Read` gir deg vilkårlig tilgang, linjeoffsets og en stabil visning; `TaskOutput` gjør ikke det.
-- Lokale agenter (`Agent`-verktøyet dispatchet i bakgrunnen): når agenten fullføres, inneholder `Agent`-verktøyresultatet allerede det endelige svaret. Bruk det direkte. Ikke `Read` den symlinkede transkripsjonsfilen — den inneholder hele verktøykall-strømmen og vil overfylle kontekstvinduet.
-- Eksterne sesjoner: `TaskOutput` er den korrekte og ofte eneste måten å strømme tilbake utdata. Foretrekk `block: true` med en moderat `timeout` fremfor tette polling-loops.
-- En ukjent `task_id`, eller en oppgave hvis utdata har blitt søppelsamlet, returnerer en feil. Dispatch arbeidet på nytt hvis du fortsatt trenger det.
-- `TaskOutput` stopper ikke oppgaven. Bruk `TaskStop` for å avslutte.
+<textarea readonly>- Retrieves output from a running or completed task (background shell, agent, or remote session)
+- Takes a task_id parameter identifying the task
+- Returns the task output along with status information
+- Use block=true (default) to wait for task completion
+- Use block=false for non-blocking check of current status
+- Task IDs can be found using the /tasks command
+- Works with all task types: background shells, async agents, and remote sessions</textarea>

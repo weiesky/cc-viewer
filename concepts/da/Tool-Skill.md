@@ -1,47 +1,56 @@
 # Skill
 
-Invokerer en navngivet skill inde i den aktuelle samtale. Skills er færdigpakkede kapacitetsbundter — domæneviden, workflows og nogle gange værktøjsadgang — som rammen eksponerer for assistenten gennem system-påmindelser.
+## Definition
 
-## Hvornår skal den bruges
-
-- Brugeren skriver en slash-kommando som `/review` eller `/init` — slash-kommandoer er skills og skal eksekveres gennem dette værktøj.
-- Brugeren beskriver en opgave, der matcher en annonceret skills triggerbetingelser (for eksempel at bede om at scanne transkripter for gentagne tilladelsesforespørgsler matcher `fewer-permission-prompts`).
-- En skills angivne formål matcher direkte den aktuelle fil, anmodning eller samtalekontekst.
-- Specialiserede, gentagne workflows er tilgængelige som skills, og den kanoniske procedure er at foretrække frem for en ad hoc-tilgang.
-- Brugeren spørger "hvilke skills er tilgængelige" — oplist de annoncerede navne, og invokér kun, når de bekræfter.
+Udfører en skill i hovedsamtalen. Skills er specialiserede evner, som brugeren kan kalde via slash commands (f.eks. `/commit`, `/review-pr`).
 
 ## Parametre
 
-- `skill` (string, påkrævet): Det nøjagtige navn på en skill, der er listet i den aktuelle available-skills system-påmindelse. For plugin-navnerum-skills skal du bruge den fuldt kvalificerede `plugin:skill`-form (for eksempel `skill-creator:skill-creator`). Medtag ikke en indledende skråstreg.
-- `args` (string, valgfri): Frit formulerede argumenter, der sendes til skillen. Format og semantik defineres af hver skills egen dokumentation.
+| Parameter | Type | Påkrævet | Beskrivelse |
+|------|------|------|------|
+| `skill` | string | Ja | Skill-navn (f.eks. "commit", "review-pr", "pdf") |
+| `args` | string | Nej | Skill-argumenter |
 
-## Eksempler
+## Brugsscenarier
 
-### Eksempel 1: Kør en review-skill på den aktuelle branch
+**Egnet til:**
+- Brugeren har indtastet en slash command i formatet `/<skill-name>`
+- Brugerens anmodning matcher funktionaliteten af en registreret skill
 
-```
-Skill(skill="review")
-```
+**Ikke egnet til:**
+- Indbyggede CLI-kommandoer (f.eks. `/help`, `/clear`)
+- En skill der allerede kører
+- Skill-navne der ikke er i listen over tilgængelige skills
 
-`review`-skillen pakker trinnene til at gennemgå en pull request mod den aktuelle base-branch. Invokering indlæser den ramme-definerede reviewprocedure i runden.
+## Bemærkninger
 
-### Eksempel 2: Invokér en plugin-navnerum-skill med argumenter
+- Efter kald udvides skillen til et komplet prompt
+- Understøtter fuldt kvalificerede navne (f.eks. `ms-office-suite:pdf`)
+- Listen over tilgængelige skills leveres i system-reminder-beskeder
+- Når du ser et `<command-name>`-tag, betyder det, at skillen er indlæst og skal udføres direkte uden at kalde dette værktøj igen
+- Nævn ikke en skill uden faktisk at have kaldt værktøjet
 
-```
-Skill(
-  skill="skill-creator:skill-creator",
-  args="create a skill that summarizes git log for a given date range"
-)
-```
+## Originaltekst
 
-Dirigerer anmodningen gennem `skill-creator`-plugin'ets indgangspunkt, så forfatterworkflowet starter.
+<textarea readonly>Execute a skill within the main conversation
 
-## Noter
+When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.
 
-- Invokér kun skills, hvis navne fremgår ordret i available-skills system-påmindelsen, eller skills, brugeren skrev direkte som `/navn` i sin besked. Gæt eller opfind aldrig skill-navne fra hukommelse eller træningsdata — hvis skillen ikke er annonceret, kald ikke dette værktøj.
-- Når en brugers anmodning matcher en annonceret skill, er kald af `Skill` en blokerende forudsætning: invokér den, før du genererer noget andet svar om opgaven. Beskriv ikke, hvad skillen ville gøre — kør den.
-- Nævn aldrig en skill ved navn uden faktisk at invokere den. At annoncere en skill uden at kalde værktøjet er vildledende.
-- Brug ikke `Skill` til indbyggede CLI-kommandoer som `/help`, `/clear`, `/model` eller `/exit`. De håndteres af rammen direkte.
-- Invokér ikke en skill igen, som allerede kører i den aktuelle runde. Hvis du ser et `<command-name>`-tag i den aktuelle runde, er skillen allerede indlæst — følg dens instruktioner i stedet for at kalde værktøjet igen.
-- Hvis flere skills kunne anvendes, vælg den mest specifikke. For konfigurationsændringer som at tilføje tilladelser eller hooks, foretræk `update-config` frem for en generisk indstillingstilgang.
-- Skill-eksekvering kan introducere nye system-påmindelser, værktøjer eller begrænsninger for resten af runden. Genlæs samtaletilstanden, efter en skill er færdig, før du fortsætter.
+When users reference a "slash command" or "/<something>" (e.g., "/commit", "/review-pr"), they are referring to a skill. Use this tool to invoke it.
+
+How to invoke:
+- Use this tool with the skill name and optional arguments
+- Examples:
+  - `skill: "pdf"` - invoke the pdf skill
+  - `skill: "commit", args: "-m 'Fix bug'"` - invoke with arguments
+  - `skill: "review-pr", args: "123"` - invoke with arguments
+  - `skill: "ms-office-suite:pdf"` - invoke using fully qualified name
+
+Important:
+- Available skills are listed in system-reminder messages in the conversation
+- When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task
+- NEVER mention a skill without actually calling this tool
+- Do not invoke a skill that is already running
+- Do not use this tool for built-in CLI commands (like /help, /clear, etc.)
+- If you see a <command-name> tag in the current conversation turn, the skill has ALREADY been loaded - follow the instructions directly instead of calling this tool again
+</textarea>

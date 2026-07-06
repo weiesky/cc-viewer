@@ -1,47 +1,56 @@
 # Skill
 
-Invoca uma skill nomeada dentro da conversa atual. Skills são pacotes pré-configurados de capacidades — conhecimento de domínio, workflows e, às vezes, acesso a ferramentas — que o harness expõe ao assistente via avisos de sistema.
+## Definição
 
-## Quando usar
-
-- O usuário digita um slash command como `/review` ou `/init` — slash commands são skills e devem ser executadas por esta ferramenta.
-- O usuário descreve uma tarefa que corresponde às condições de gatilho de uma skill anunciada (por exemplo, pedir para escanear transcripts em busca de prompts de permissão repetidos corresponde a `fewer-permission-prompts`).
-- O propósito declarado de uma skill é uma correspondência direta para o arquivo, pedido ou contexto da conversa atual.
-- Workflows especializados e repetíveis estão disponíveis como skills e o procedimento canônico é preferível a uma abordagem ad hoc.
-- O usuário pergunta "quais skills estão disponíveis" — liste os nomes anunciados e invoque apenas quando confirmarem.
+Executa uma skill (habilidade) na conversa principal. Skills são capacidades especializadas que o usuário pode invocar através de slash commands (ex: `/commit`, `/review-pr`).
 
 ## Parâmetros
 
-- `skill` (string, obrigatório): O nome exato de uma skill listada no aviso atual de skills disponíveis. Para skills com namespace de plugin, use o formato totalmente qualificado `plugin:skill` (por exemplo `skill-creator:skill-creator`). Não inclua barra inicial.
-- `args` (string, opcional): Argumentos em texto livre passados para a skill. O formato e a semântica são definidos pela documentação de cada skill.
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|------|------|------|------|
+| `skill` | string | Sim | Nome da skill (ex: "commit", "review-pr", "pdf") |
+| `args` | string | Não | Argumentos da skill |
 
-## Exemplos
+## Cenários de Uso
 
-### Exemplo 1: Executar uma skill de revisão na branch atual
+**Adequado para:**
+- O usuário digitou um slash command no formato `/<skill-name>`
+- A solicitação do usuário corresponde à funcionalidade de uma skill registrada
 
-```
-Skill(skill="review")
-```
-
-A skill `review` empacota os passos para revisar um pull request contra a branch base atual. Invocá-la carrega o procedimento de revisão definido no harness no turno.
-
-### Exemplo 2: Invocar uma skill com namespace de plugin com argumentos
-
-```
-Skill(
-  skill="skill-creator:skill-creator",
-  args="create a skill that summarizes git log for a given date range"
-)
-```
-
-Roteia o pedido pelo ponto de entrada do plugin `skill-creator` para que o workflow de autoria seja acionado.
+**Não adequado para:**
+- Comandos CLI integrados (ex: `/help`, `/clear`)
+- Skills que já estão em execução
+- Nomes de skills que não estão na lista de skills disponíveis
 
 ## Observações
 
-- Invoque apenas skills cujos nomes aparecem literalmente no aviso de sistema de skills disponíveis, ou skills que o usuário digitou diretamente como `/name` em sua mensagem. Nunca adivinhe ou invente nomes de skill a partir de memória ou dados de treinamento — se a skill não está anunciada, não chame esta ferramenta.
-- Quando o pedido de um usuário corresponde a uma skill anunciada, chamar `Skill` é pré-requisito bloqueante: invoque-a antes de gerar qualquer outra resposta sobre a tarefa. Não descreva o que a skill faria — execute-a.
-- Nunca mencione uma skill pelo nome sem realmente invocá-la. Anunciar uma skill sem chamar a ferramenta é enganoso.
-- Não use `Skill` para comandos de CLI embutidos como `/help`, `/clear`, `/model` ou `/exit`. Esses são tratados diretamente pelo harness.
-- Não reinvoque uma skill que já está rodando no turno atual. Se você ver uma tag `<command-name>` no turno atual, a skill já foi carregada — siga suas instruções no local em vez de chamar a ferramenta de novo.
-- Se várias skills puderem se aplicar, escolha a mais específica. Para mudanças de configuração como adicionar permissões ou hooks, prefira `update-config` em vez de uma abordagem genérica de settings.
-- A execução de uma skill pode introduzir novos avisos de sistema, ferramentas ou restrições para o restante do turno. Releia o estado da conversa depois que uma skill terminar antes de prosseguir.
+- Após ser invocada, a skill se expande em um prompt completo
+- Suporta nomes totalmente qualificados (ex: `ms-office-suite:pdf`)
+- A lista de skills disponíveis é fornecida nas mensagens system-reminder
+- Quando a tag `<command-name>` é vista, significa que a skill já foi carregada e deve ser executada diretamente sem chamar esta ferramenta novamente
+- Não mencione uma skill sem realmente invocar a ferramenta
+
+## Texto original
+
+<textarea readonly>Execute a skill within the main conversation
+
+When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.
+
+When users reference a "slash command" or "/<something>" (e.g., "/commit", "/review-pr"), they are referring to a skill. Use this tool to invoke it.
+
+How to invoke:
+- Use this tool with the skill name and optional arguments
+- Examples:
+  - `skill: "pdf"` - invoke the pdf skill
+  - `skill: "commit", args: "-m 'Fix bug'"` - invoke with arguments
+  - `skill: "review-pr", args: "123"` - invoke with arguments
+  - `skill: "ms-office-suite:pdf"` - invoke using fully qualified name
+
+Important:
+- Available skills are listed in system-reminder messages in the conversation
+- When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task
+- NEVER mention a skill without actually calling this tool
+- Do not invoke a skill that is already running
+- Do not use this tool for built-in CLI commands (like /help, /clear, etc.)
+- If you see a <command-name> tag in the current conversation turn, the skill has ALREADY been loaded - follow the instructions directly instead of calling this tool again
+</textarea>

@@ -6,7 +6,7 @@ MainAgent 是 Claude Code 在非 agent team 狀態下的主幹請求鏈路。每
 
 ## 識別方式
 
-在 cc-viewer 中，MainAgent 透過 `req.mainAgent === true` 標識，由 `server/interceptor.js` 在請求擷取時自動標記。
+在 cc-viewer 中，MainAgent 透過 `req.mainAgent === true` 標識，由 `interceptor.js` 在請求擷取時自動標記。
 
 判定條件（滿足全部）：
 - 請求體包含 `system` 欄位（system prompt）

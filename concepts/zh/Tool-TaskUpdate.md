@@ -1,70 +1,123 @@
 # TaskUpdate
 
-修改已有任务——其状态、内容、归属、metadata 或依赖边。这是任务推进生命周期的方式，也是工作在 Claude Code、队友和子代理间移交的方式。
+## 定义
 
-## 何时使用
-
-- 在你开展工作时，让任务沿状态流推进。
-- 通过把自己（或另一代理）设为 `owner` 来认领任务。
-- 在你对问题有更多了解后，精化 `subject` 或 `description`。
-- 用 `addBlocks` / `addBlockedBy` 记录新发现的依赖。
-- 附加结构化 `metadata`，如外部工单 ID 或优先级提示。
+更新任务列表中某个任务的状态、内容或依赖关系。
 
 ## 参数
 
-- `taskId` (string, 必填)：要修改的任务。从 `TaskList` 或 `TaskCreate` 获取。
-- `status` (string, 可选)：`pending`、`in_progress`、`completed`、`deleted` 之一。
-- `subject` (string, 可选)：替换的祈使式标题。
-- `description` (string, 可选)：替换的详细描述。
-- `activeForm` (string, 可选)：替换的现在进行时 spinner 文本。
-- `owner` (string, 可选)：接手该任务的代理或队友 handle。
-- `metadata` (object, 可选)：要合并到任务的 metadata 键值。将某键设为 `null` 可删除它。
-- `addBlocks` (array of strings, 可选)：本任务阻塞的任务 ID 列表。
-- `addBlockedBy` (array of strings, 可选)：必须在本任务之前完成的任务 ID 列表。
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `taskId` | string | 是 | 要更新的任务 ID |
+| `status` | enum | 否 | 新状态：`pending` / `in_progress` / `completed` / `deleted` |
+| `subject` | string | 否 | 新标题 |
+| `description` | string | 否 | 新描述 |
+| `activeForm` | string | 否 | 进行中时显示的现在进行时文本 |
+| `owner` | string | 否 | 新的任务负责人（agent 名称） |
+| `metadata` | object | 否 | 要合并的元数据（设为 null 可删除键） |
+| `addBlocks` | string[] | 否 | 被此任务阻塞的任务 ID 列表 |
+| `addBlockedBy` | string[] | 否 | 阻塞此任务的前置任务 ID 列表 |
 
-## 状态流
-
-生命周期刻意线性：`pending` → `in_progress` → `completed`。`deleted` 是终态，用于撤销永远不会开展的任务。
-
-- 在你真正开始工作的那一刻才设为 `in_progress`，不要提前。对同一 owner 而言，同一时间应仅有一个任务处于 `in_progress`。
-- 只有当工作完全完成——验收标准达成、测试通过、输出写出——才设为 `completed`。若出现阻塞，保持任务 `in_progress` 并新增一个任务描述需要解决的事项。
-- 测试失败、实现部分完成或遇到未解决的错误时，绝不要把任务标为 `completed`。
-- 对被取消或重复的任务使用 `deleted`；不要把任务挪作他用。
-
-## 示例
-
-### 示例 1
-
-认领任务并开始。
+## 状态流转
 
 ```
-TaskUpdate(
-  taskId: "t_01HXYZ...",
-  status: "in_progress",
-  owner: "main-agent"
-)
+pending → in_progress → completed
 ```
 
-### 示例 2
+`deleted` 可从任何状态转入，永久移除任务。
 
-完成工作并记录后续依赖。
+## 使用场景
 
-```
-TaskUpdate(
-  taskId: "t_01HXYZ...",
-  status: "completed"
-)
+**适合使用：**
+- 开始工作时标记任务为 `in_progress`
+- 完成工作后标记任务为 `completed`
+- 设置任务间的依赖关系
+- 需求变更时更新任务内容
 
-TaskUpdate(
-  taskId: "t_01FOLLOWUP...",
-  addBlockedBy: ["t_01HXYZ..."]
-)
-```
+**重要规则：**
+- 只有在完全完成任务时才标记为 `completed`
+- 遇到错误或阻塞时保持 `in_progress`
+- 测试失败、实现不完整、遇到未解决错误时不得标记为 `completed`
 
 ## 注意事项
 
-- `metadata` 按键合并；为某键传 `null` 会删除它。若不确定当前内容，先调用 `TaskGet`。
-- `addBlocks` 与 `addBlockedBy` 追加边；它们不会移除既有边。破坏性地编辑依赖图需要专用流程——重写依赖前咨询团队负责人。
-- 修改 `subject` 时请同步更新 `activeForm`，以便 spinner 文本读起来自然。
-- 不要为了静默一个任务而把它标为 `completed`。若用户取消工作，使用 `deleted` 并在 `description` 中简要说明原因。
-- 更新前用 `TaskGet` 读取最新状态——队友可能在你上次读取和此次写入之间改动了它。
+- 更新前应先通过 TaskGet 获取任务最新状态，避免过期数据
+- 完成任务后调用 TaskList 查找下一个可用任务
+
+## 原文
+
+<textarea readonly>Use this tool to update a task in the task list.
+
+## When to Use This Tool
+
+**Mark tasks as resolved:**
+- When you have completed the work described in a task
+- When a task is no longer needed or has been superseded
+- IMPORTANT: Always mark your assigned tasks as resolved when you finish them
+- After resolving, call TaskList to find your next task
+
+- ONLY mark a task as completed when you have FULLY accomplished it
+- If you encounter errors, blockers, or cannot finish, keep the task as in_progress
+- When blocked, create a new task describing what needs to be resolved
+- Never mark a task as completed if:
+  - Tests are failing
+  - Implementation is partial
+  - You encountered unresolved errors
+  - You couldn't find necessary files or dependencies
+
+**Delete tasks:**
+- When a task is no longer relevant or was created in error
+- Setting status to `deleted` permanently removes the task
+
+**Update task details:**
+- When requirements change or become clearer
+- When establishing dependencies between tasks
+
+## Fields You Can Update
+
+- **status**: The task status (see Status Workflow below)
+- **subject**: Change the task title (imperative form, e.g., "Run tests")
+- **description**: Change the task description
+- **activeForm**: Present continuous form shown in spinner when in_progress (e.g., "Running tests")
+- **owner**: Change the task owner (agent name)
+- **metadata**: Merge metadata keys into the task (set a key to null to delete it)
+- **addBlocks**: Mark tasks that cannot start until this one completes
+- **addBlockedBy**: Mark tasks that must complete before this one can start
+
+## Status Workflow
+
+Status progresses: `pending` → `in_progress` → `completed`
+
+Use `deleted` to permanently remove a task.
+
+## Staleness
+
+Make sure to read a task's latest state using `TaskGet` before updating it.
+
+## Examples
+
+Mark task as in progress when starting work:
+```json
+{"taskId": "1", "status": "in_progress"}
+```
+
+Mark task as completed after finishing work:
+```json
+{"taskId": "1", "status": "completed"}
+```
+
+Delete a task:
+```json
+{"taskId": "1", "status": "deleted"}
+```
+
+Claim a task by setting owner:
+```json
+{"taskId": "1", "owner": "my-name"}
+```
+
+Set up task dependencies:
+```json
+{"taskId": "2", "addBlockedBy": ["1"]}
+```
+</textarea>

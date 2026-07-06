@@ -1,60 +1,75 @@
 # AskUserQuestion
 
-Sohbet arayüzü içinde kullanıcıya bir veya daha fazla yapılandırılmış çoktan seçmeli soru sunar, seçimlerini toplar ve asistana geri döndürür — serbest biçimli gidip gelmeye başvurmadan niyeti netleştirmek için kullanışlıdır.
+## Tanım
 
-## Ne Zaman Kullanılır
-
-- Bir isteğin birden fazla makul yorumu vardır ve asistan devam etmeden önce kullanıcının birini seçmesini gerekir.
-- Kullanıcının, serbest metin yanıtlarının hataya açık olacağı somut seçenekler (çerçeve, kitaplık, dosya yolu, strateji) arasından seçim yapması gerekir.
-- Önizleme panelini kullanarak alternatifleri yan yana karşılaştırmak istersiniz.
-- Birkaç ilgili karar, gidip gelmeyi azaltmak için tek bir istemde toplu hale getirilebilir.
-- Bir plan veya araç çağrısı, kullanıcının henüz belirtmediği yapılandırmaya bağlıdır.
+Yürütme sırasında kullanıcıya soru sorarak açıklama alma, varsayımları doğrulama veya karar isteme amacıyla kullanılır.
 
 ## Parametreler
 
-- `questions` (dizi, zorunlu): Tek bir istemde birlikte gösterilen bir ila dört soru. Her soru nesnesi şunları içerir:
-  - `question` (string, zorunlu): Soru işareti ile biten tam soru metni.
-  - `header` (string, zorunlu): Sorunun üstünde bir etiket olarak görüntülenen kısa bir etiket (en fazla 12 karakter).
-  - `options` (dizi, zorunlu): İki ila dört seçenek nesnesi. Her seçeneğin bir `label`'ı (1-5 kelime), `description`'ı ve opsiyonel bir `markdown` önizlemesi vardır.
-  - `multiSelect` (boolean, zorunlu): `true` olduğunda kullanıcı birden fazla seçenek seçebilir.
+| Parametre | Tür | Zorunlu | Açıklama |
+|-----------|-----|---------|----------|
+| `questions` | array | Evet | Soru listesi (1-4 soru) |
+| `answers` | object | Hayır | Kullanıcıdan toplanan yanıtlar |
+| `annotations` | object | Hayır | Her soru için notlar (örn. önizleme seçimi açıklamaları) |
+| `metadata` | object | Hayır | İzleme ve analiz için meta veriler |
 
-## Örnekler
+Her `question` nesnesi:
 
-### Örnek 1: Tek bir çerçeve seçin
+| Alan | Tür | Zorunlu | Açıklama |
+|------|-----|---------|----------|
+| `question` | string | Evet | Tam soru metni, soru işaretiyle bitmelidir |
+| `header` | string | Evet | Kısa etiket (en fazla 12 karakter), etiket çipi olarak gösterilir |
+| `options` | array | Evet | 2-4 seçenek |
+| `multiSelect` | boolean | Evet | Çoklu seçime izin verilip verilmediği |
 
-```
-AskUserQuestion(questions=[{
-  "header": "Test runner",
-  "question": "Which test runner should I configure?",
-  "multiSelect": false,
-  "options": [
-    {"label": "Vitest (Recommended)", "description": "Fast, Vite-native, Jest-compatible API"},
-    {"label": "Jest",                  "description": "Mature, broadest plugin ecosystem"},
-    {"label": "Node --test",           "description": "Zero dependencies, built in"}
-  ]
-}])
-```
+Her `option` nesnesi:
 
-### Örnek 2: İki düzenin yan yana önizlemesi
+| Alan | Tür | Zorunlu | Açıklama |
+|------|-----|---------|----------|
+| `label` | string | Evet | Seçenek görüntüleme metni (1-5 kelime) |
+| `description` | string | Evet | Seçenek açıklaması |
+| `markdown` | string | Hayır | Önizleme içeriği (ASCII düzeni, kod parçacıkları vb. için görsel karşılaştırma) |
 
-```
-AskUserQuestion(questions=[{
-  "header": "Layout",
-  "question": "Which dashboard layout do you prefer?",
-  "multiSelect": false,
-  "options": [
-    {"label": "Sidebar",  "description": "Nav on the left", "markdown": "```\n+------+---------+\n| NAV  | CONTENT |\n+------+---------+\n```"},
-    {"label": "Top bar",  "description": "Nav across top",  "markdown": "```\n+-----------------+\n|       NAV       |\n+-----------------+\n|     CONTENT     |\n+-----------------+\n```"}
-  ]
-}])
-```
+## Kullanım Senaryoları
 
-## Notlar
+**Kullanıma uygun:**
+- Kullanıcı tercihlerini veya gereksinimlerini toplama
+- Belirsiz talimatları netleştirme
+- Uygulama sürecinde karar alma
+- Kullanıcıya yön seçenekleri sunma
 
-- Arayüz her soruya otomatik olarak bir "Diğer" serbest metin seçeneği ekler. Kendi "Diğer", "Hiçbiri" veya "Özel" girişinizi eklemeyin — dahili kaçış yolunu tekrarlar.
-- Her çağrıyı bir ile dört soru, her soruyu da iki ile dört seçenek ile sınırlayın. Bu sınırları aşmak harness tarafından reddedilir.
-- Belirli bir seçeneği öneriyorsanız, onu başa koyun ve etiketine "(Recommended)" ekleyin, böylece arayüz tercih edilen yolu vurgular.
-- `markdown` alanı aracılığıyla önizlemeler yalnızca tekli seçim sorularında desteklenir. Bunları ASCII düzenler, kod parçacıkları veya yapılandırma diff'leri gibi görsel yapımlar için kullanın — etiket artı açıklamanın yettiği basit tercih sorularında değil.
-- Bir sorudaki herhangi bir seçeneğin `markdown` değeri olduğunda, arayüz solda seçenek listesi ve sağda önizleme olacak şekilde yan yana düzene geçer.
-- Plan onayı için "bu plan iyi görünüyor mu?" diye sormak amacıyla `AskUserQuestion` kullanmayın — bunun yerine tam olarak plan onayı için var olan `ExitPlanMode`'u çağırın. Plan modunda, soru metninde "plan"dan bahsetmekten de kaçının, çünkü plan `ExitPlanMode` çalışana kadar kullanıcıya görünmez.
-- API anahtarları veya parolalar gibi hassas veya serbest biçimli girdi istemek için bu aracı kullanmayın. Bunun yerine sohbette sorun.
+**Kullanıma uygun değil:**
+- "Plan uygun mu?" diye sormak — ExitPlanMode kullanılmalıdır
+
+## Dikkat Edilecekler
+
+- Kullanıcı her zaman "Other" seçerek özel girdi sağlayabilir
+- Önerilen seçenek ilk sıraya konulmalı ve label sonuna "(Recommended)" eklenmelidir
+- `markdown` önizlemesi yalnızca tek seçimli sorularda desteklenir
+- `markdown` içeren seçenekler yan yana düzene geçer
+- Planlama modunda, planı kesinleştirmeden önce gereksinimleri netleştirmek için kullanılır
+
+## Orijinal Metin
+
+<textarea readonly>Use this tool when you need to ask the user questions during execution. This allows you to:
+1. Gather user preferences or requirements
+2. Clarify ambiguous instructions
+3. Get decisions on implementation choices as you work
+4. Offer choices to the user about what direction to take.
+
+Usage notes:
+- Users will always be able to select "Other" to provide custom text input
+- Use multiSelect: true to allow multiple answers to be selected for a question
+- If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
+
+Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ExitPlanMode for plan approval. IMPORTANT: Do not reference "the plan" in your questions (e.g., "Do you have feedback about the plan?", "Does the plan look good?") because the user cannot see the plan in the UI until you call ExitPlanMode. If you need plan approval, use ExitPlanMode instead.
+
+Preview feature:
+Use the optional `markdown` field on options when presenting concrete artifacts that users need to visually compare:
+- ASCII mockups of UI layouts or components
+- Code snippets showing different implementations
+- Diagram variations
+- Configuration examples
+
+When any option has a markdown, the UI switches to a side-by-side layout with a vertical option list on the left and preview on the right. Do not use previews for simple preference questions where labels and descriptions suffice. Note: previews are only supported for single-select questions (not multiSelect).
+</textarea>

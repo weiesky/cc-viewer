@@ -1,53 +1,38 @@
 # TeamCreate
 
-Etablerer et nytt samarbeidsteam med en delt oppgaveliste og inter-agent meldingskanal. Et team er koordinasjonsprimitiv for flere-agent-arbeid — hovedsesjonen fungerer som leder og spawner navngitte lagkamerater via `Agent`-verktøyet.
+## Definisjon
 
-## Når skal den brukes
-
-- Brukeren ber eksplisitt om et team, swarm, crew eller flere-agent-samarbeid.
-- Et prosjekt har flere klart uavhengige arbeidsstrømmer som tjener på dedikerte spesialister (f.eks. frontend, backend, tester, dokumenter).
-- Du trenger en persistent delt oppgaveliste som flere agenter oppdaterer etter hvert som de gjør fremgang.
-- Du vil ha navngitte, adresserbare lagkamerater som kan utveksle meldinger via `SendMessage` i stedet for engangs-underagentkall.
-
-IKKE bruk for et enkelt delegert søk eller en engangs-parallell utvidelse — vanlige `Agent`-kall er lettere og tilstrekkelige.
+Oppretter et nytt team for å koordinere flere agenter som arbeider på et prosjekt. Team muliggjør parallell oppgavekjøring via en delt oppgaveliste og kommunikasjon mellom agenter.
 
 ## Parametere
 
-- `team_name` (string, påkrevd): Unik identifikator for teamet. Brukes som katalognavn under `~/.claude/teams/` og som `team_name`-argument når lagkamerater spawnes.
-- `description` (string, påkrevd): Kort uttalelse om teamets mål. Vises til hver lagkamerat ved spawn og skrives inn i team-konfigurasjonen.
-- `agent_type` (string, valgfri): Standard underagent-persona anvendt på lagkamerater som ikke overstyrer den. Typiske verdier er `general-purpose`, `Explore` eller `Plan`.
+| Parameter | Type | Påkrevd | Beskrivelse |
+|-----------|------|---------|-------------|
+| `team_name` | string | Ja | Navn på det nye teamet |
+| `description` | string | Nei | Teambeskrivelse / formål |
+| `agent_type` | string | Nei | Type / rolle for teamlederen |
 
-## Eksempler
+## Hva som opprettes
 
-### Eksempel 1: Opprett et refaktorerings-team
+- **Team-konfigurasjonsfil**: `~/.claude/teams/{team-name}/config.json` — lagrer medlemsliste og metadata
+- **Oppgavelistemappe**: `~/.claude/tasks/{team-name}/` — delt oppgaveliste for alle teammedlemmer
 
-```
-TeamCreate(
-  team_name="refactor-crew",
-  description="Refactor the data access layer from raw SQL to Prisma, including migrations and tests.",
-  agent_type="general-purpose"
-)
-```
+Team har et 1:1-forhold til oppgavelister.
 
-Etter opprettelse, spawn lagkamerater med `Agent` ved å bruke `team_name: "refactor-crew"` og distinkte `name`-verdier som `db-lead`, `migrations` og `tests`.
+## Team-arbeidsflyt
 
-### Eksempel 2: Opprett et undersøkelsesteam
+1. **TeamCreate** — opprett teamet og dets oppgaveliste
+2. **TaskCreate** — definer oppgaver for teamet
+3. **Agent** (med `team_name` + `name`) — start teammedlemmer som slutter seg til teamet
+4. **TaskUpdate** — tildel oppgaver til teammedlemmer via `owner`
+5. Teammedlemmer arbeider med oppgaver og kommuniserer via **SendMessage**
+6. Avslutt teammedlemmer når ferdig, deretter **TeamDelete** for opprydding
 
-```
-TeamCreate(
-  team_name="perf-investigation",
-  description="Identify and rank the top three performance regressions introduced in the last release.",
-  agent_type="Explore"
-)
-```
+## Relaterte verktøy
 
-Hver spawnet lagkamerat arver `Explore` som standard persona, som matcher den skrivebeskyttede undersøkelsesnaturen til arbeidet.
-
-## Notater
-
-- Kun ett team kan ledes om gangen fra en gitt sesjon. Fullfør eller slett gjeldende team før du oppretter et annet.
-- Et team er 1:1 med en delt oppgaveliste. Lederen eier oppgaveopprettelse, tildeling og avslutning; lagkamerater oppdaterer statusen på oppgaver de jobber med.
-- Teamkonfigurasjon persisteres på `~/.claude/teams/{team_name}/config.json`, og oppgavekatalogen lever ved siden av den. Disse filene overlever på tvers av sesjoner til de eksplisitt fjernes med `TeamDelete`.
-- Lagkamerater spawnes med `Agent`-verktøyet med matchende `team_name` pluss et distinkt `name`. `name` blir adressen brukt av `SendMessage`.
-- Velg et `team_name` som er filsystem-trygt (bokstaver, tall, bindestreker, understreker). Unngå mellomrom eller skråstreker.
-- Skriv `description` slik at en helt ny lagkamerat, som leser den uten forkunnskap, vil forstå teamets mål uten ytterligere kontekst. Den blir del av hver lagkamerats startprompt.
+| Verktøy | Formål |
+|---------|--------|
+| `TeamDelete` | Fjern team og oppgavemapper |
+| `SendMessage` | Kommunikasjon mellom agenter i teamet |
+| `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet` | Administrer den delte oppgavelisten |
+| `Agent` | Start teammedlemmer som slutter seg til teamet |

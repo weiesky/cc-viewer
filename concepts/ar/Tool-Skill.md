@@ -1,47 +1,56 @@
 # Skill
 
-يستدعي مهارة مُسمَّاة داخل المحادثة الحالية. المهارات حزم قدرات معبأة مسبقاً — معرفة مجال، وسير عمل، وأحياناً وصول إلى أدوات — يعرضها الإطار للمساعد عبر تذكيرات النظام.
+## التعريف
 
-## متى يُستخدم
-
-- عندما يكتب المستخدم أمر شرطة مائلة مثل `/review` أو `/init` — أوامر الشرطة المائلة هي مهارات ويجب تنفيذها عبر هذه الأداة.
-- عندما يصف المستخدم مهمة تطابق شروط تفعيل مهارة مُعلَنة (مثلاً طلب مسح النصوص بحثاً عن مطالبات إذن متكررة يطابق `fewer-permission-prompts`).
-- عندما يتطابق الغرض المُعلَن لمهارة مع الملف أو الطلب أو سياق المحادثة الحالية.
-- عندما تكون سير عمل متخصصة وقابلة للتكرار متوفرة كمهارات ويكون الإجراء القانوني مفضلاً على نهج مخصص.
-- عندما يسأل المستخدم «ما المهارات المتاحة» — اسرد الأسماء المُعلَنة، ولا تستدعِها إلا بعد تأكيدهم.
+تنفيذ مهارة (skill) في المحادثة الرئيسية. المهارات هي قدرات متخصصة يمكن للمستخدم استدعاؤها عبر أوامر slash (مثل `/commit`، `/review-pr`).
 
 ## المعاملات
 
-- `skill` (سلسلة، مطلوب): الاسم المضبوط لمهارة مُدرجة في تذكير النظام الحالي للمهارات المتاحة. للمهارات ذات مساحة اسم المكوِّن الإضافي، استخدم الصيغة المؤهلة بالكامل `plugin:skill` (مثل `skill-creator:skill-creator`). لا تُضمِّن شرطة مائلة في البداية.
-- `args` (سلسلة، اختياري): وسيطات نصية حرة تُمرر إلى المهارة. الصيغة والدلالات تحددها وثائق كل مهارة.
+| المعامل | النوع | مطلوب | الوصف |
+|---------|-------|-------|-------|
+| `skill` | string | نعم | اسم المهارة (مثل "commit"، "review-pr"، "pdf") |
+| `args` | string | لا | معاملات المهارة |
 
-## أمثلة
+## سيناريوهات الاستخدام
 
-### مثال 1: تشغيل مهارة مراجعة على الفرع الحالي
+**مناسب للاستخدام:**
+- أدخل المستخدم أمر slash بتنسيق `/<skill-name>`
+- طلب المستخدم يتطابق مع وظيفة مهارة مسجلة
 
-```
-Skill(skill="review")
-```
-
-تُعبئ مهارة `review` خطوات مراجعة pull request مقابل الفرع الأساسي الحالي. استدعاؤها يُحمِّل إجراء المراجعة المُعرَّف من الإطار في الدور.
-
-### مثال 2: استدعاء مهارة ذات مساحة اسم مكوِّن إضافي بوسيطات
-
-```
-Skill(
-  skill="skill-creator:skill-creator",
-  args="create a skill that summarizes git log for a given date range"
-)
-```
-
-يوجه الطلب عبر نقطة دخول المكوِّن الإضافي `skill-creator` حتى يبدأ سير عمل التأليف.
+**غير مناسب للاستخدام:**
+- أوامر CLI المدمجة (مثل `/help`، `/clear`)
+- مهارة قيد التشغيل بالفعل
+- اسم مهارة غير موجود في قائمة المهارات المتاحة
 
 ## ملاحظات
 
-- استدعِ فقط المهارات التي تظهر أسماؤها حرفياً في تذكير النظام للمهارات المتاحة، أو المهارات التي كتبها المستخدم مباشرة كـ `/name` في رسالته. لا تُخمِّن أو تخترع أسماء مهارات من الذاكرة أو بيانات التدريب — إذا لم تكن المهارة مُعلَنة، فلا تستدعِ هذه الأداة.
-- عندما يتطابق طلب المستخدم مع مهارة مُعلَنة، يكون استدعاء `Skill` شرطاً مسبقاً حاجباً: استدعِه قبل توليد أي رد آخر حول المهمة. لا تصف ما ستفعله المهارة — شغِّلها.
-- لا تذكر مهارة بالاسم أبداً دون استدعائها فعلياً. الإعلان عن مهارة دون استدعاء الأداة مضلِّل.
-- لا تستخدم `Skill` لأوامر CLI المدمجة مثل `/help` أو `/clear` أو `/model` أو `/exit`. تلك يعالجها الإطار مباشرة.
-- لا تُعد استدعاء مهارة تعمل بالفعل في الدور الحالي. إذا رأيت وسماً `<command-name>` في الدور الحالي، فالمهارة مُحمَّلة بالفعل — اتبع تعليماتها في مكانها بدلاً من استدعاء الأداة مرة أخرى.
-- إذا كان بإمكان عدة مهارات أن تنطبق، فاختر الأكثر تخصصاً. لتغييرات الإعدادات مثل إضافة أذونات أو خطافات، فضِّل `update-config` على نهج إعدادات عام.
-- قد يُدخل تنفيذ المهارة تذكيرات نظام أو أدوات أو قيوداً جديدة لبقية الدور. أعد قراءة حالة المحادثة بعد اكتمال المهارة قبل المتابعة.
+- بعد استدعاء المهارة تتوسع إلى prompt كامل
+- يدعم الأسماء المؤهلة بالكامل (مثل `ms-office-suite:pdf`)
+- قائمة المهارات المتاحة تُقدم في رسائل system-reminder
+- عند رؤية وسم `<command-name>` فهذا يعني أن المهارة محملة بالفعل، يجب التنفيذ مباشرة بدلاً من استدعاء هذه الأداة مرة أخرى
+- لا تذكر مهارة دون استدعاء الأداة فعلياً
+
+## النص الأصلي
+
+<textarea readonly>Execute a skill within the main conversation
+
+When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.
+
+When users reference a "slash command" or "/<something>" (e.g., "/commit", "/review-pr"), they are referring to a skill. Use this tool to invoke it.
+
+How to invoke:
+- Use this tool with the skill name and optional arguments
+- Examples:
+  - `skill: "pdf"` - invoke the pdf skill
+  - `skill: "commit", args: "-m 'Fix bug'"` - invoke with arguments
+  - `skill: "review-pr", args: "123"` - invoke with arguments
+  - `skill: "ms-office-suite:pdf"` - invoke using fully qualified name
+
+Important:
+- Available skills are listed in system-reminder messages in the conversation
+- When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task
+- NEVER mention a skill without actually calling this tool
+- Do not invoke a skill that is already running
+- Do not use this tool for built-in CLI commands (like /help, /clear, etc.)
+- If you see a <command-name> tag in the current conversation turn, the skill has ALREADY been loaded - follow the instructions directly instead of calling this tool again
+</textarea>

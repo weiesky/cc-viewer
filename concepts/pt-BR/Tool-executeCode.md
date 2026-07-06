@@ -1,47 +1,41 @@
-# executeCode
+# executeCode (mcp__ide__executeCode)
 
-Executa um trecho de código dentro de um kernel ou sandbox ao vivo fornecido por uma integração de IDE (por exemplo, o kernel Jupyter vinculado ao notebook atualmente aberto). A ferramenta está disponível apenas quando o Claude Code está rodando junto com uma ponte de IDE compatível, como a extensão do VS Code com um kernel Jupyter selecionado.
+## Definição
 
-## Quando usar
-
-- Rodar uma computação rápida, inspeção de dados ou plot contra o estado já carregado em um kernel Jupyter ativo.
-- Validar um trecho de código antes de colá-lo em uma célula de notebook.
-- Explorar um dataframe, variável ou modelo em memória que existe no kernel, mas não está serializado em disco.
-- Produzir um gráfico ou resultado numérico que o usuário quer renderizado inline na IDE.
-
-NÃO use para scripts autônomos que seriam melhor atendidos por `Bash` rodando `python script.py`, ou para código que precisa persistir entre um kernel novo.
+Executa código Python no kernel Jupyter do arquivo notebook atual.
 
 ## Parâmetros
 
-- `code` (string, obrigatório): O código a executar no kernel atual. Roda como se colado em uma célula de notebook — variáveis definidas persistem no kernel até que ele seja reiniciado.
-- `language` (string, opcional): A linguagem do trecho quando a ponte da IDE suporta múltiplos kernels. Mais comumente omitido; o padrão é a linguagem do kernel ativo (tipicamente Python).
+| Parâmetro | Tipo | Obrigatório | Descrição |
+|------|------|------|------|
+| `code` | string | Sim | Código Python a ser executado |
 
-## Exemplos
+## Cenários de Uso
 
-### Exemplo 1: Inspecionar um dataframe em memória
+**Adequado para:**
+- Executar código em ambiente Jupyter notebook
+- Testar trechos de código
+- Análise de dados e cálculos
 
-```
-executeCode(
-  code="df.head()\nprint(df.shape)\nprint(df.dtypes)"
-)
-```
-
-Retorna as primeiras linhas, forma e dtypes das colunas de um dataframe já carregado no kernel.
-
-### Exemplo 2: Verificação numérica rápida
-
-```
-executeCode(
-  code="import numpy as np\nnp.mean([1, 2, 3, 4, 5])"
-)
-```
-
-Executa um cálculo único sem criar uma célula de notebook.
+**Não adequado para:**
+- Execução de código fora do ambiente Jupyter — deve usar Bash
+- Modificar arquivos — deve usar Edit ou Write
 
 ## Observações
 
-- `executeCode` é uma ferramenta de ponte de IDE. Está indisponível em sessões de terminal puro do Claude Code; só aparece quando a sessão está conectada a uma IDE que expõe um kernel (por exemplo a extensão Jupyter do VS Code).
-- O estado persiste no kernel. Variáveis definidas por uma chamada `executeCode` permanecem visíveis para chamadas posteriores, para células do notebook e para o usuário — esteja atento a efeitos colaterais.
-- Código de longa duração ou bloqueante bloqueará o kernel. Mantenha trechos curtos; para trabalho de vários minutos, escreva um script real e rode-o via `Bash`.
-- A saída (stdout, valores de retorno, imagens) é retornada à sessão. Saídas muito grandes podem ser truncadas pela ponte da IDE.
-- Para edições de arquivo, prefira `Edit`, `Write` ou `NotebookEdit` — `executeCode` não é um substituto para autoria de arquivos fonte.
+- Esta é uma ferramenta MCP (Model Context Protocol), fornecida pela integração com IDE
+- O código é executado no kernel Jupyter atual, o estado persiste entre chamadas
+- A menos que o usuário solicite explicitamente, deve-se evitar declarar variáveis ou modificar o estado do kernel
+- O estado é perdido após reiniciar o kernel
+
+## Texto original
+
+<textarea readonly>Execute python code in the Jupyter kernel for the current notebook file.
+    
+    All code will be executed in the current Jupyter kernel.
+    
+    Avoid declaring variables or modifying the state of the kernel unless the user
+    explicitly asks for it.
+    
+    Any code executed will persist across calls to this tool, unless the kernel
+    has been restarted.</textarea>

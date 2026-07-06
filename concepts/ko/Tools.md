@@ -8,7 +8,7 @@ Claude Code는 Anthropic API의 tool_use 메커니즘을 통해 모델에 일련
 
 | 도구 | 용도 |
 |------|------|
-| [Agent](Tool-Agent.md) | 서브 agent (SubAgent)를 시작하여 복잡한 다단계 태스크 처리 |
+| [Task](Tool-Task.md) | 서브 agent (SubAgent)를 시작하여 복잡한 다단계 태스크 처리 |
 | [TaskOutput](Tool-TaskOutput.md) | 백그라운드 태스크의 출력 가져오기 |
 | [TaskStop](Tool-TaskStop.md) | 실행 중인 백그라운드 태스크 중지 |
 | [TaskCreate](Tool-TaskCreate.md) | 구조화된 태스크 리스트 항목 생성 |
