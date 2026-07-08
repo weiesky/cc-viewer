@@ -1,0 +1,304 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="19 7 906 506" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'PingFang SC', 'Microsoft YaHei', monospace">
+  <defs>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="#161b22"/>
+    </pattern>
+    <clipPath id="typeClip">
+      <rect x="248" y="204" width="0" height="18">
+        <animate attributeName="width" from="0" to="104" begin="0.3s" dur="1.1s" fill="freeze"/>
+      </rect>
+    </clipPath>
+    <path id="linkPC" d="M 363 225 C 470 150, 560 110, 695 110"/>
+    <path id="linkLT" d="M 363 250 C 470 252, 580 256, 713 258"/>
+    <path id="linkPH" d="M 363 275 C 460 380, 590 405, 758 405"/>
+  </defs>
+
+  <!-- 背景 -->
+  <rect x="19" y="7" width="906" height="506" rx="16" fill="#0d1117"/>
+  <rect x="19" y="7" width="906" height="506" rx="16" fill="url(#dots)"/>
+
+  <!-- 标题(左侧 cc-viewer 眼睛太阳 logo,矢量复刻自 favicon) -->
+  <g transform="translate(322,29) scale(0.3)">
+    <g fill="#d97757" stroke="none">
+      <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="60s" repeatCount="indefinite"/>
+      <path transform="rotate(0)"   d="M -5 -31 L -7 -44 L 1 -46 L 4 -32 Z"/>
+      <path transform="rotate(32)"  d="M -4 -31 L -3 -47 L 4 -45 L 5 -32 Z"/>
+      <path transform="rotate(60)"  d="M -6 -31 L -4 -41 L 4 -43 L 5 -31 Z"/>
+      <path transform="rotate(95)"  d="M -5 -31 L -7 -44 L 1 -46 L 4 -32 Z"/>
+      <path transform="rotate(122)" d="M -6 -31 L -4 -41 L 4 -43 L 5 -31 Z"/>
+      <path transform="rotate(148)" d="M -4 -31 L -3 -47 L 4 -45 L 5 -32 Z"/>
+      <path transform="rotate(182)" d="M -5 -31 L -7 -44 L 1 -46 L 4 -32 Z"/>
+      <path transform="rotate(210)" d="M -6 -31 L -4 -41 L 4 -43 L 5 -31 Z"/>
+      <path transform="rotate(243)" d="M -4 -31 L -3 -47 L 4 -45 L 5 -32 Z"/>
+      <path transform="rotate(272)" d="M -5 -31 L -7 -44 L 1 -46 L 4 -32 Z"/>
+      <path transform="rotate(300)" d="M -6 -31 L -4 -41 L 4 -43 L 5 -31 Z"/>
+      <path transform="rotate(331)" d="M -4 -31 L -3 -47 L 4 -45 L 5 -32 Z"/>
+    </g>
+    <g fill="none" stroke="#d97757" stroke-linejoin="round" stroke-linecap="round">
+      <circle r="30" stroke-width="7"/>
+      <path d="M -22 0 Q 0 -17 22 0 Q 0 17 -22 0 Z" stroke-width="5"/>
+      <circle r="10" stroke-width="7"/>
+    </g>
+  </g>
+  <text x="480" y="36" text-anchor="middle">
+    <tspan font-size="20" font-weight="700" fill="#e6edf3">cc-viewer</tspan>
+    <tspan dx="12" font-size="13" fill="#8b949e">一处部署 · 多端异步共享</tspan>
+  </text>
+  <text x="480" y="58" text-anchor="middle" font-size="12" fill="#8b949e">Deploy Claude Code CLI on one machine — use it from PC &amp; mobile, asynchronously</text>
+
+  <!-- ───────── 连线(底色) ───────── -->
+  <g fill="none" stroke="#21262d" stroke-width="2">
+    <path d="M 363 225 C 470 150, 560 110, 695 110"/>
+    <path d="M 363 250 C 470 252, 580 256, 713 258"/>
+    <path d="M 363 275 C 460 380, 590 405, 758 405"/>
+  </g>
+
+  <!-- 连线(流动虚线,部署完成后亮起) -->
+  <g fill="none" stroke-width="2" stroke-dasharray="5 11" stroke-linecap="round">
+    <path d="M 363 225 C 470 150, 560 110, 695 110" stroke="#58a6ff" opacity="0">
+      <animate attributeName="opacity" to="0.55" begin="3s" dur="0.6s" fill="freeze"/>
+      <animate attributeName="stroke-dashoffset" from="0" to="-160" begin="3s" dur="2.4s" repeatCount="indefinite"/>
+    </path>
+    <path d="M 363 250 C 470 252, 580 256, 713 258" stroke="#3fb950" opacity="0">
+      <animate attributeName="opacity" to="0.55" begin="3.2s" dur="0.6s" fill="freeze"/>
+      <animate attributeName="stroke-dashoffset" from="0" to="-160" begin="3.2s" dur="2.8s" repeatCount="indefinite"/>
+    </path>
+    <path d="M 363 275 C 460 380, 590 405, 758 405" stroke="#f778ba" opacity="0">
+      <animate attributeName="opacity" to="0.55" begin="3.4s" dur="0.6s" fill="freeze"/>
+      <animate attributeName="stroke-dashoffset" from="0" to="-160" begin="3.4s" dur="3.2s" repeatCount="indefinite"/>
+    </path>
+  </g>
+
+  <!-- 请求脉冲(设备色,主机→设备) -->
+  <circle r="4.5" fill="#58a6ff" opacity="0">
+    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.08;.9;1" begin="3.4s" dur="2.2s" repeatCount="indefinite"/>
+    <animateMotion begin="3.4s" dur="2.2s" repeatCount="indefinite"><mpath xlink:href="#linkPC" href="#linkPC"/></animateMotion>
+  </circle>
+  <circle r="4.5" fill="#3fb950" opacity="0">
+    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.08;.9;1" begin="4.1s" dur="2.6s" repeatCount="indefinite"/>
+    <animateMotion begin="4.1s" dur="2.6s" repeatCount="indefinite"><mpath xlink:href="#linkLT" href="#linkLT"/></animateMotion>
+  </circle>
+  <circle r="4.5" fill="#f778ba" opacity="0">
+    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.08;.9;1" begin="4.8s" dur="3s" repeatCount="indefinite"/>
+    <animateMotion begin="4.8s" dur="3s" repeatCount="indefinite"><mpath xlink:href="#linkPH" href="#linkPH"/></animateMotion>
+  </circle>
+
+  <!-- 响应脉冲(Claude 橙,设备→主机,keyPoints 反向) -->
+  <circle r="3.5" fill="#d97757" opacity="0">
+    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.08;.9;1" begin="5s" dur="2.4s" repeatCount="indefinite"/>
+    <animateMotion begin="5s" dur="2.4s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear"><mpath xlink:href="#linkPC" href="#linkPC"/></animateMotion>
+  </circle>
+  <circle r="3.5" fill="#d97757" opacity="0">
+    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.08;.9;1" begin="6.2s" dur="2.8s" repeatCount="indefinite"/>
+    <animateMotion begin="6.2s" dur="2.8s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear"><mpath xlink:href="#linkLT" href="#linkLT"/></animateMotion>
+  </circle>
+  <circle r="3.5" fill="#d97757" opacity="0">
+    <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.08;.9;1" begin="7.4s" dur="3.2s" repeatCount="indefinite"/>
+    <animateMotion begin="7.4s" dur="3.2s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear"><mpath xlink:href="#linkPH" href="#linkPH"/></animateMotion>
+  </circle>
+
+  <!-- ───────── 主机(左) ───────── -->
+  <g>
+    <!-- 广播波纹 -->
+    <g fill="none" stroke="#d97757">
+      <circle cx="363" cy="250" r="4" opacity="0">
+        <animate attributeName="r" values="4;36" begin="3s" dur="2.4s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values=".7;0" begin="3s" dur="2.4s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="363" cy="250" r="4" opacity="0">
+        <animate attributeName="r" values="4;36" begin="3.8s" dur="2.4s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values=".7;0" begin="3.8s" dur="2.4s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="363" cy="250" r="4" opacity="0">
+        <animate attributeName="r" values="4;36" begin="4.6s" dur="2.4s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values=".7;0" begin="4.6s" dur="2.4s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+
+    <!-- cc-viewer 窗口(三栏:文件浏览器 | 对话 | CLI) -->
+    <rect x="40" y="150" width="320" height="200" rx="10" fill="#161b22" stroke="#30363d"/>
+    <rect x="40" y="150" width="320" height="200" rx="10" fill="none" stroke="#d97757" opacity="0">
+      <animate attributeName="opacity" values="0;.45;0" begin="3s" dur="3s" repeatCount="indefinite"/>
+    </rect>
+    <line x1="40" y1="178" x2="360" y2="178" stroke="#30363d"/>
+    <circle cx="58" cy="164" r="5" fill="#ff5f56"/>
+    <circle cx="76" cy="164" r="5" fill="#ffbd2e"/>
+    <circle cx="94" cy="164" r="5" fill="#27c93f"/>
+    <text x="200" y="168" text-anchor="middle" font-size="11" fill="#8b949e">host · cc-viewer</text>
+    <text x="348" y="170" text-anchor="end" font-size="13" fill="#d97757">✳</text>
+
+    <!-- 三栏分隔 + 栏头 -->
+    <line x1="126" y1="178" x2="126" y2="350" stroke="#21262d"/>
+    <line x1="242" y1="178" x2="242" y2="350" stroke="#21262d"/>
+    <line x1="40" y1="204" x2="360" y2="204" stroke="#21262d"/>
+    <text x="52" y="196" font-size="10" fill="#8b949e">文件浏览器</text>
+    <text x="138" y="196" font-size="10" fill="#8b949e">对话</text>
+    <text x="254" y="196" font-size="10" fill="#8b949e">CLI</text>
+
+    <!-- 栏1:文件树 -->
+    <g>
+      <rect x="52" y="214" width="7" height="7" rx="1.5" fill="#58a6ff"/>
+      <rect x="64" y="216" width="42" height="4" rx="2" fill="#484f58"/>
+      <rect x="60" y="230" width="7" height="7" rx="1.5" fill="#6e7681"/>
+      <rect x="72" y="232" width="34" height="4" rx="2" fill="#30363d"/>
+      <rect x="48" y="243" width="74" height="15" rx="3" fill="#1f6feb" opacity="0.15">
+        <animate attributeName="opacity" values=".1;.28;.1" dur="3s" begin="3s" repeatCount="indefinite"/>
+      </rect>
+      <rect x="60" y="247" width="7" height="7" rx="1.5" fill="#6e7681"/>
+      <rect x="72" y="249" width="42" height="4" rx="2" fill="#58a6ff" opacity="0.8"/>
+      <rect x="52" y="264" width="7" height="7" rx="1.5" fill="#d97757"/>
+      <rect x="64" y="266" width="36" height="4" rx="2" fill="#484f58"/>
+      <rect x="52" y="281" width="7" height="7" rx="1.5" fill="#6e7681"/>
+      <rect x="64" y="283" width="30" height="4" rx="2" fill="#30363d"/>
+      <rect x="60" y="298" width="7" height="7" rx="1.5" fill="#6e7681"/>
+      <rect x="72" y="300" width="38" height="4" rx="2" fill="#30363d"/>
+    </g>
+
+    <!-- 栏2:对话(用户灰泡 / Claude 橙泡 / 正在输入) -->
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="1.2s" dur="0.3s" fill="freeze"/>
+      <rect x="158" y="212" width="72" height="16" rx="8" fill="#2d333b"/>
+      <rect x="166" y="218" width="56" height="4" rx="2" fill="#8b949e"/>
+    </g>
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="2.4s" dur="0.3s" fill="freeze"/>
+      <rect x="134" y="236" width="84" height="26" rx="8" fill="#d97757" opacity="0.92"/>
+      <rect x="142" y="243" width="66" height="4" rx="2" fill="#fff7ed" opacity="0.85"/>
+      <rect x="142" y="251" width="48" height="4" rx="2" fill="#fff7ed" opacity="0.85"/>
+    </g>
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="4.2s" dur="0.3s" fill="freeze"/>
+      <rect x="166" y="272" width="64" height="16" rx="8" fill="#2d333b"/>
+      <rect x="174" y="278" width="44" height="4" rx="2" fill="#8b949e"/>
+    </g>
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="5.2s" dur="0.3s" fill="freeze"/>
+      <circle cx="142" cy="300" r="3" fill="#6e7681">
+        <animate attributeName="opacity" values=".2;1;.2" begin="5.2s" dur="1.2s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="153" cy="300" r="3" fill="#6e7681">
+        <animate attributeName="opacity" values=".2;1;.2" begin="5.4s" dur="1.2s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="164" cy="300" r="3" fill="#6e7681">
+        <animate attributeName="opacity" values=".2;1;.2" begin="5.6s" dur="1.2s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+
+    <!-- 栏3:CLI -->
+    <text x="250" y="218" font-size="11" fill="#e6edf3" clip-path="url(#typeClip)">$ npx cc-viewer</text>
+    <text x="250" y="240" font-size="11" fill="#3fb950" opacity="0">✔ CLI ready
+      <animate attributeName="opacity" to="1" begin="1.8s" dur="0.3s" fill="freeze"/>
+    </text>
+    <text x="250" y="260" font-size="11" fill="#58a6ff" opacity="0">➜ http://:7008
+      <animate attributeName="opacity" to="1" begin="2.6s" dur="0.3s" fill="freeze"/>
+    </text>
+    <rect x="250" y="270" width="7" height="12" fill="#e6edf3" opacity="0">
+      <animate attributeName="opacity" values="1;0" begin="2.9s" dur="1s" calcMode="discrete" repeatCount="indefinite"/>
+    </rect>
+
+    <!-- Claude Code 小宠物(像素原版,部署完成后在 CLI 里出现) -->
+    <g transform="translate(278,298)" opacity="0">
+      <animate attributeName="opacity" to="1" begin="2.2s" dur="0.5s" fill="freeze"/>
+      <g shape-rendering="crispEdges">
+        <animateTransform attributeName="transform" type="translate" values="0 0;0 -3;0 0" dur="2.2s" repeatCount="indefinite"/>
+        <!-- 头顶双角 -->
+        <rect x="4" y="0" width="6" height="5" fill="#d97757"/>
+        <rect x="38" y="0" width="6" height="5" fill="#d97757"/>
+        <!-- 两只小手(左手定时挥) -->
+        <g>
+          <animateTransform attributeName="transform" type="rotate" values="0 -2 16;-35 -2 16;0 -2 16;-35 -2 16;0 -2 16;0 -2 16" keyTimes="0;.05;.1;.15;.2;1" begin="4.5s" dur="7s" repeatCount="indefinite"/>
+          <rect x="-7" y="13" width="7" height="9" fill="#d97757"/>
+        </g>
+        <rect x="48" y="13" width="7" height="9" fill="#d97757"/>
+        <!-- 身体 -->
+        <rect x="0" y="5" width="48" height="26" fill="#d97757"/>
+        <!-- 眼睛(定时眨) -->
+        <rect x="10" y="11" width="6" height="9" fill="#1c2128">
+          <animate attributeName="height" values="9;9;2;9" keyTimes="0;.9;.95;1" dur="4.6s" repeatCount="indefinite"/>
+          <animate attributeName="y" values="11;11;18;11" keyTimes="0;.9;.95;1" dur="4.6s" repeatCount="indefinite"/>
+        </rect>
+        <rect x="32" y="11" width="6" height="9" fill="#1c2128">
+          <animate attributeName="height" values="9;9;2;9" keyTimes="0;.9;.95;1" dur="4.6s" repeatCount="indefinite"/>
+          <animate attributeName="y" values="11;11;18;11" keyTimes="0;.9;.95;1" dur="4.6s" repeatCount="indefinite"/>
+        </rect>
+        <!-- 四只小脚 -->
+        <rect x="2" y="31" width="6" height="6" fill="#d97757"/>
+        <rect x="14" y="31" width="6" height="6" fill="#d97757"/>
+        <rect x="28" y="31" width="6" height="6" fill="#d97757"/>
+        <rect x="40" y="31" width="6" height="6" fill="#d97757"/>
+      </g>
+    </g>
+    <text x="200" y="368" text-anchor="middle" font-size="12" fill="#8b949e">一台设备部署 (Host)</text>
+  </g>
+
+  <!-- ───────── PC(右上) ───────── -->
+  <g>
+    <rect x="700" y="60" width="170" height="100" rx="8" fill="#161b22" stroke="#30363d"/>
+    <rect x="708" y="68" width="154" height="84" rx="4" fill="#0d1117"/>
+    <rect x="775" y="160" width="20" height="14" fill="#21262d"/>
+    <rect x="745" y="174" width="80" height="8" rx="4" fill="#30363d"/>
+    <rect x="716" y="80" height="6" rx="3" fill="#6e7681" width="0">
+      <animate attributeName="width" values="0;0;56;56;0" keyTimes="0;.04;.16;.86;1" begin="4s" dur="6s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="716" y="94" height="6" rx="3" fill="#58a6ff" width="0">
+      <animate attributeName="width" values="0;0;110;110;0" keyTimes="0;.3;.5;.86;1" begin="4s" dur="6s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="716" y="108" height="6" rx="3" fill="#58a6ff" opacity="0.55" width="0">
+      <animate attributeName="width" values="0;0;84;84;0" keyTimes="0;.5;.66;.86;1" begin="4s" dur="6s" repeatCount="indefinite"/>
+    </rect>
+    <circle cx="752" cy="196" r="3.5" fill="#58a6ff">
+      <animate attributeName="opacity" values="1;.2;1" begin="4s" dur="1.6s" repeatCount="indefinite"/>
+    </circle>
+    <text x="762" y="200" font-size="12" fill="#8b949e">PC · Desktop</text>
+  </g>
+
+  <!-- ───────── 笔记本(右中) ───────── -->
+  <g>
+    <rect x="720" y="215" width="150" height="92" rx="6" fill="#161b22" stroke="#30363d"/>
+    <rect x="728" y="223" width="134" height="76" rx="4" fill="#0d1117"/>
+    <rect x="702" y="307" width="186" height="9" rx="4.5" fill="#30363d"/>
+    <rect x="736" y="236" height="6" rx="3" fill="#6e7681" width="0">
+      <animate attributeName="width" values="0;0;48;48;0" keyTimes="0;.04;.16;.86;1" begin="5.2s" dur="7.5s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="736" y="250" height="6" rx="3" fill="#3fb950" width="0">
+      <animate attributeName="width" values="0;0;96;96;0" keyTimes="0;.3;.5;.86;1" begin="5.2s" dur="7.5s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="736" y="264" height="6" rx="3" fill="#3fb950" opacity="0.55" width="0">
+      <animate attributeName="width" values="0;0;70;70;0" keyTimes="0;.5;.66;.86;1" begin="5.2s" dur="7.5s" repeatCount="indefinite"/>
+    </rect>
+    <circle cx="760" cy="330" r="3.5" fill="#3fb950">
+      <animate attributeName="opacity" values="1;.2;1" begin="5.2s" dur="2.1s" repeatCount="indefinite"/>
+    </circle>
+    <text x="770" y="334" font-size="12" fill="#8b949e">Laptop</text>
+  </g>
+
+  <!-- ───────── 手机(右下) ───────── -->
+  <g>
+    <rect x="765" y="345" width="70" height="118" rx="12" fill="#161b22" stroke="#30363d"/>
+    <rect x="771" y="357" width="58" height="86" rx="4" fill="#0d1117"/>
+    <circle cx="800" cy="351.5" r="2" fill="#30363d"/>
+    <rect x="789" y="450" width="22" height="3" rx="1.5" fill="#30363d"/>
+    <rect x="777" y="370" height="5" rx="2.5" fill="#6e7681" width="0">
+      <animate attributeName="width" values="0;0;30;30;0" keyTimes="0;.04;.16;.86;1" begin="6s" dur="5.5s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="777" y="383" height="5" rx="2.5" fill="#f778ba" width="0">
+      <animate attributeName="width" values="0;0;46;46;0" keyTimes="0;.3;.5;.86;1" begin="6s" dur="5.5s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="777" y="396" height="5" rx="2.5" fill="#f778ba" opacity="0.55" width="0">
+      <animate attributeName="width" values="0;0;38;38;0" keyTimes="0;.5;.66;.86;1" begin="6s" dur="5.5s" repeatCount="indefinite"/>
+    </rect>
+    <circle cx="780" cy="480" r="3.5" fill="#f778ba">
+      <animate attributeName="opacity" values="1;.2;1" begin="6s" dur="1.3s" repeatCount="indefinite"/>
+    </circle>
+    <text x="790" y="484" font-size="12" fill="#8b949e">Mobile · 移动端</text>
+  </g>
+
+  <!-- 图例 -->
+  <g font-size="11" fill="#8b949e">
+    <circle cx="74" cy="498" r="4" fill="#58a6ff"/>
+    <text x="84" y="502">request · 请求</text>
+    <circle cx="196" cy="498" r="4" fill="#d97757"/>
+    <text x="206" y="502">response · 回复</text>
+    <text x="890" y="502" text-anchor="end" fill="#484f58">async · 各端独立会话</text>
+  </g>
+</svg>

@@ -1,0 +1,367 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="19 7 906 566" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'PingFang SC', 'Microsoft YaHei', monospace">
+  <defs>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="#161b22"/>
+    </pattern>
+    <clipPath id="typeClip">
+      <rect x="52" y="130" width="0" height="16">
+        <animate attributeName="width" from="0" to="56" begin="0.8s" dur="0.8s" fill="freeze"/>
+      </rect>
+    </clipPath>
+    <!-- Pipeline paths: request (upper lane) and response (lower lane), all authored in travel direction so no reversed keyPoints are needed -->
+    <path id="reqOut" d="M 270 145 C 295 138, 313 138, 338 145"/>
+    <path id="reqIn" d="M 568 145 C 593 138, 611 138, 636 145"/>
+    <path id="resOut" d="M 636 205 C 611 212, 593 212, 568 205"/>
+    <path id="resIn" d="M 338 205 C 313 212, 295 212, 270 205"/>
+    <path id="teeDrop" d="M 453 246 L 453 296"/>
+  </defs>
+
+  <!-- Background -->
+  <rect x="19" y="7" width="906" height="566" rx="16" fill="#0d1117"/>
+  <rect x="19" y="7" width="906" height="566" rx="16" fill="url(#dots)"/>
+
+  <!-- Header (eye/sun logo, vector replica of the favicon) -->
+  <g transform="translate(285,29) scale(0.3)">
+    <g fill="#d97757" stroke="none">
+      <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="60s" repeatCount="indefinite"/>
+      <path transform="rotate(0)"   d="M -5 -31 L -7 -44 L 1 -46 L 4 -32 Z"/>
+      <path transform="rotate(32)"  d="M -4 -31 L -3 -47 L 4 -45 L 5 -32 Z"/>
+      <path transform="rotate(60)"  d="M -6 -31 L -4 -41 L 4 -43 L 5 -31 Z"/>
+      <path transform="rotate(95)"  d="M -5 -31 L -7 -44 L 1 -46 L 4 -32 Z"/>
+      <path transform="rotate(122)" d="M -6 -31 L -4 -41 L 4 -43 L 5 -31 Z"/>
+      <path transform="rotate(148)" d="M -4 -31 L -3 -47 L 4 -45 L 5 -32 Z"/>
+      <path transform="rotate(182)" d="M -5 -31 L -7 -44 L 1 -46 L 4 -32 Z"/>
+      <path transform="rotate(210)" d="M -6 -31 L -4 -41 L 4 -43 L 5 -31 Z"/>
+      <path transform="rotate(243)" d="M -4 -31 L -3 -47 L 4 -45 L 5 -32 Z"/>
+      <path transform="rotate(272)" d="M -5 -31 L -7 -44 L 1 -46 L 4 -32 Z"/>
+      <path transform="rotate(300)" d="M -6 -31 L -4 -41 L 4 -43 L 5 -31 Z"/>
+      <path transform="rotate(331)" d="M -4 -31 L -3 -47 L 4 -45 L 5 -32 Z"/>
+    </g>
+    <g fill="none" stroke="#d97757" stroke-linejoin="round" stroke-linecap="round">
+      <circle r="30" stroke-width="7"/>
+      <path d="M -22 0 Q 0 -17 22 0 Q 0 17 -22 0 Z" stroke-width="5"/>
+      <circle r="10" stroke-width="7"/>
+    </g>
+  </g>
+  <text x="480" y="36" text-anchor="middle">
+    <tspan font-size="20" font-weight="700" fill="#e6edf3">cc-viewer</tspan>
+    <tspan dx="12" font-size="13" fill="#8b949e">网络封包视角 · wire-level capture</tspan>
+  </text>
+  <text x="480" y="58" text-anchor="middle" font-size="12" fill="#8b949e">patched fetch() 捕获每一个请求与回复 · every request &amp; response, captured on the wire</text>
+
+  <!-- ───────── Links (base color) ───────── -->
+  <g fill="none" stroke="#21262d" stroke-width="2" opacity="0">
+    <animate attributeName="opacity" to="1" begin="2s" dur="0.5s" fill="freeze"/>
+    <path d="M 270 145 C 295 138, 313 138, 338 145"/>
+    <path d="M 568 145 C 593 138, 611 138, 636 145"/>
+    <path d="M 636 205 C 611 212, 593 212, 568 205"/>
+    <path d="M 338 205 C 313 212, 295 212, 270 205"/>
+    <path d="M 453 246 L 453 296"/>
+  </g>
+
+  <!-- Links (flowing dashes: blue = request, orange = response/packet) -->
+  <g fill="none" stroke-width="2" stroke-dasharray="5 11" stroke-linecap="round">
+    <path d="M 270 145 C 295 138, 313 138, 338 145" stroke="#58a6ff" opacity="0">
+      <animate attributeName="opacity" to="0.55" begin="2.2s" dur="0.6s" fill="freeze"/>
+      <animate attributeName="stroke-dashoffset" from="0" to="-160" begin="2.2s" dur="2.2s" repeatCount="indefinite"/>
+    </path>
+    <path d="M 568 145 C 593 138, 611 138, 636 145" stroke="#58a6ff" opacity="0">
+      <animate attributeName="opacity" to="0.55" begin="2.4s" dur="0.6s" fill="freeze"/>
+      <animate attributeName="stroke-dashoffset" from="0" to="-160" begin="2.4s" dur="2.4s" repeatCount="indefinite"/>
+    </path>
+    <path d="M 636 205 C 611 212, 593 212, 568 205" stroke="#d97757" opacity="0">
+      <animate attributeName="opacity" to="0.55" begin="4.4s" dur="0.6s" fill="freeze"/>
+      <animate attributeName="stroke-dashoffset" from="0" to="-160" begin="4.4s" dur="2.8s" repeatCount="indefinite"/>
+    </path>
+    <path d="M 338 205 C 313 212, 295 212, 270 205" stroke="#d97757" opacity="0">
+      <animate attributeName="opacity" to="0.55" begin="5.2s" dur="0.6s" fill="freeze"/>
+      <animate attributeName="stroke-dashoffset" from="0" to="-160" begin="5.2s" dur="3.2s" repeatCount="indefinite"/>
+    </path>
+    <path d="M 453 246 L 453 296" stroke="#d97757" stroke-width="2.5" opacity="0">
+      <animate attributeName="opacity" to="0.55" begin="5.4s" dur="0.6s" fill="freeze"/>
+      <animate attributeName="stroke-dashoffset" from="0" to="-160" begin="5.4s" dur="2.6s" repeatCount="indefinite"/>
+    </path>
+  </g>
+
+  <!-- Causal pulse chain: one shared 3.2s master period; keyPoints compress travel into each pulse's 25% slot; phase = begin offset, so the chain never drifts -->
+  <circle r="4.5" fill="#58a6ff" opacity="0">
+    <animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;.02;.22;.25;1" begin="2.6s" dur="3.2s" repeatCount="indefinite"/>
+    <animateMotion begin="2.6s" dur="3.2s" repeatCount="indefinite" keyPoints="0;1;1" keyTimes="0;.25;1" calcMode="linear"><mpath xlink:href="#reqOut" href="#reqOut"/></animateMotion>
+  </circle>
+  <circle r="4.5" fill="#58a6ff" opacity="0">
+    <animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;.02;.22;.25;1" begin="3.4s" dur="3.2s" repeatCount="indefinite"/>
+    <animateMotion begin="3.4s" dur="3.2s" repeatCount="indefinite" keyPoints="0;1;1" keyTimes="0;.25;1" calcMode="linear"><mpath xlink:href="#reqIn" href="#reqIn"/></animateMotion>
+  </circle>
+  <circle r="4" fill="#d97757" opacity="0">
+    <animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;.02;.22;.25;1" begin="4.6s" dur="3.2s" repeatCount="indefinite"/>
+    <animateMotion begin="4.6s" dur="3.2s" repeatCount="indefinite" keyPoints="0;1;1" keyTimes="0;.25;1" calcMode="linear"><mpath xlink:href="#resOut" href="#resOut"/></animateMotion>
+  </circle>
+  <!-- Tee moment: identical begin — one pulse returns to the CLI, one drops into the viewer -->
+  <circle r="4" fill="#d97757" opacity="0">
+    <animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;.02;.22;.25;1" begin="5.4s" dur="3.2s" repeatCount="indefinite"/>
+    <animateMotion begin="5.4s" dur="3.2s" repeatCount="indefinite" keyPoints="0;1;1" keyTimes="0;.25;1" calcMode="linear"><mpath xlink:href="#resIn" href="#resIn"/></animateMotion>
+  </circle>
+  <circle r="4" fill="#d97757" opacity="0">
+    <animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;.02;.22;.25;1" begin="5.4s" dur="3.2s" repeatCount="indefinite"/>
+    <animateMotion begin="5.4s" dur="3.2s" repeatCount="indefinite" keyPoints="0;1;1" keyTimes="0;.25;1" calcMode="linear"><mpath xlink:href="#teeDrop" href="#teeDrop"/></animateMotion>
+  </circle>
+
+  <!-- ───────── Panel A: Claude Code CLI (left) ───────── -->
+  <g opacity="0">
+    <animate attributeName="opacity" to="1" begin="0.4s" dur="0.3s" fill="freeze"/>
+    <rect x="40" y="96" width="230" height="150" rx="10" fill="#161b22" stroke="#30363d"/>
+    <line x1="40" y1="124" x2="270" y2="124" stroke="#30363d"/>
+    <circle cx="58" cy="110" r="5" fill="#ff5f56"/>
+    <circle cx="76" cy="110" r="5" fill="#ffbd2e"/>
+    <circle cx="94" cy="110" r="5" fill="#27c93f"/>
+    <text x="180" y="114" text-anchor="middle" font-size="11" fill="#8b949e">Claude Code · CLI</text>
+    <text x="52" y="142" font-size="11" fill="#e6edf3" clip-path="url(#typeClip)">$ claude</text>
+    <text x="52" y="160" font-size="11" fill="#3fb950" opacity="0">✔ session ready
+      <animate attributeName="opacity" to="1" begin="1.8s" dur="0.3s" fill="freeze"/>
+    </text>
+    <rect x="52" y="166" width="7" height="12" fill="#e6edf3" opacity="0">
+      <animate attributeName="opacity" values="1;0" begin="2.1s" dur="1s" calcMode="discrete" repeatCount="indefinite"/>
+    </rect>
+    <!-- Contrast checklist (visual anchor for highlight #1): the local transcript only sees the conversation; system prompt / tool schemas are absent -->
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="6.5s" dur="0.5s" fill="freeze"/>
+      <text x="52" y="192" font-size="9"><tspan fill="#3fb950">✓</tspan><tspan dx="5" fill="#8b949e">messages</tspan></text>
+      <text x="52" y="206" font-size="9"><tspan fill="#ff5f56">✗</tspan><tspan dx="5" fill="#8b949e">system prompt</tspan></text>
+      <text x="52" y="220" font-size="9"><tspan fill="#ff5f56">✗</tspan><tspan dx="5" fill="#8b949e">tool schemas</tspan></text>
+      <text x="52" y="236" font-size="8" fill="#484f58">transcript 只记录对话</text>
+    </g>
+    <!-- Claude Code pixel pet (original pixel art, scaled 0.8) -->
+    <g transform="translate(192,206) scale(0.8)" opacity="0">
+      <animate attributeName="opacity" to="1" begin="2.2s" dur="0.5s" fill="freeze"/>
+      <g shape-rendering="crispEdges">
+        <animateTransform attributeName="transform" type="translate" values="0 0;0 -3;0 0" dur="2.2s" repeatCount="indefinite"/>
+        <rect x="4" y="0" width="6" height="5" fill="#d97757"/>
+        <rect x="38" y="0" width="6" height="5" fill="#d97757"/>
+        <rect x="-7" y="13" width="7" height="9" fill="#d97757"/>
+        <rect x="48" y="13" width="7" height="9" fill="#d97757"/>
+        <rect x="0" y="5" width="48" height="26" fill="#d97757"/>
+        <rect x="10" y="11" width="6" height="9" fill="#1c2128">
+          <animate attributeName="height" values="9;9;2;9" keyTimes="0;.9;.95;1" dur="4.6s" repeatCount="indefinite"/>
+          <animate attributeName="y" values="11;11;18;11" keyTimes="0;.9;.95;1" dur="4.6s" repeatCount="indefinite"/>
+        </rect>
+        <rect x="32" y="11" width="6" height="9" fill="#1c2128">
+          <animate attributeName="height" values="9;9;2;9" keyTimes="0;.9;.95;1" dur="4.6s" repeatCount="indefinite"/>
+          <animate attributeName="y" values="11;11;18;11" keyTimes="0;.9;.95;1" dur="4.6s" repeatCount="indefinite"/>
+        </rect>
+        <rect x="2" y="31" width="6" height="6" fill="#d97757"/>
+        <rect x="14" y="31" width="6" height="6" fill="#d97757"/>
+        <rect x="28" y="31" width="6" height="6" fill="#d97757"/>
+        <rect x="40" y="31" width="6" height="6" fill="#d97757"/>
+      </g>
+    </g>
+    <text x="155" y="262" text-anchor="middle" font-size="11" fill="#8b949e">本地 transcript · 只见对话</text>
+  </g>
+
+  <!-- ───────── Panel B: cc-viewer interceptor (center, the hero) ───────── -->
+  <g opacity="0">
+    <animate attributeName="opacity" to="1" begin="0.6s" dur="0.3s" fill="freeze"/>
+    <rect x="338" y="88" width="230" height="158" rx="10" fill="#161b22" stroke="#d97757" stroke-opacity="0.8"/>
+    <text x="453" y="108" text-anchor="middle" font-size="11" fill="#e6edf3">cc-viewer proxy</text>
+    <text x="453" y="122" text-anchor="middle" font-size="9" fill="#8b949e">patched globalThis.fetch()</text>
+    <!-- Two hook modes (npm injection / native binary via loopback proxy; the full env var name is ANTHROPIC_BASE_URL) -->
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="1.6s" dur="0.3s" fill="freeze"/>
+      <rect x="350" y="132" width="206" height="15" rx="3" fill="#21262d"/>
+      <text x="453" y="143" text-anchor="middle" font-size="8" fill="#8b949e">import 'cc-viewer/interceptor.js';</text>
+    </g>
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="1.9s" dur="0.3s" fill="freeze"/>
+      <rect x="350" y="152" width="206" height="15" rx="3" fill="#21262d"/>
+      <text x="453" y="163" text-anchor="middle" font-size="8" fill="#8b949e">BASE_URL=http://127.0.0.1:&lt;port&gt;</text>
+    </g>
+    <!-- Capturing indicator -->
+    <circle cx="376" cy="185" r="3.5" fill="#d97757">
+      <animate attributeName="opacity" values="1;.2;1" begin="2.6s" dur="1.6s" repeatCount="indefinite"/>
+    </circle>
+    <text x="386" y="189" font-size="9" fill="#8b949e">capturing · 捕获中</text>
+    <!-- JSONL persistence indicator (appending one line per request) -->
+    <rect x="376" y="200" width="120" height="4" rx="2" fill="#30363d"/>
+    <rect x="376" y="208" width="96" height="4" rx="2" fill="#30363d"/>
+    <rect x="376" y="216" height="4" rx="2" fill="#d97757" opacity="0.8" width="0">
+      <animate attributeName="width" values="0;0;110;110;0" keyTimes="0;.04;.2;.86;1" begin="6.2s" dur="6s" repeatCount="indefinite"/>
+    </rect>
+    <text x="453" y="236" text-anchor="middle" font-size="8" fill="#484f58">~/.claude/cc-viewer/&lt;project&gt;/*.jsonl</text>
+  </g>
+
+  <!-- ───────── Panel C: Anthropic API (right) ───────── -->
+  <g opacity="0">
+    <animate attributeName="opacity" to="1" begin="0.8s" dur="0.3s" fill="freeze"/>
+    <rect x="636" y="96" width="230" height="150" rx="10" fill="#161b22" stroke="#30363d"/>
+    <line x1="636" y1="124" x2="866" y2="124" stroke="#30363d"/>
+    <circle cx="654" cy="110" r="4" fill="#d97757"/>
+    <text x="751" y="114" text-anchor="middle" font-size="11" fill="#8b949e">api.anthropic.com</text>
+    <rect x="652" y="140" height="6" rx="3" fill="#6e7681" width="0">
+      <animate attributeName="width" values="0;0;90;90;0" keyTimes="0;.04;.16;.86;1" begin="3s" dur="6s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="652" y="156" height="6" rx="3" fill="#d97757" width="0">
+      <animate attributeName="width" values="0;0;140;140;0" keyTimes="0;.3;.5;.86;1" begin="3s" dur="6s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="652" y="172" height="6" rx="3" fill="#d97757" opacity="0.55" width="0">
+      <animate attributeName="width" values="0;0;110;110;0" keyTimes="0;.5;.66;.86;1" begin="3s" dur="6s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="652" y="188" height="6" rx="3" fill="#d97757" opacity="0.3" width="0">
+      <animate attributeName="width" values="0;0;70;70;0" keyTimes="0;.6;.76;.86;1" begin="3s" dur="6s" repeatCount="indefinite"/>
+    </rect>
+    <text x="751" y="262" text-anchor="middle" font-size="11" fill="#8b949e">完整回复流 · full SSE stream</text>
+  </g>
+
+  <!-- Tee junction: the response splits in two at Panel B's bottom edge -->
+  <g opacity="0">
+    <animate attributeName="opacity" to="1" begin="5.2s" dur="0.4s" fill="freeze"/>
+    <circle cx="453" cy="246" r="5" fill="#0d1117" stroke="#d97757" stroke-width="2"/>
+    <text x="470" y="272" font-size="10" fill="#8b949e">一份透传 · 一份存档</text>
+    <text x="470" y="284" font-size="9" fill="#484f58">one passes through, one archived</text>
+  </g>
+  <circle cx="453" cy="246" r="5" fill="none" stroke="#d97757" opacity="0">
+    <animate attributeName="r" values="5;16;16" keyTimes="0;.3;1" begin="5.4s" dur="3.2s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values=".7;0;0" keyTimes="0;.3;1" begin="5.4s" dur="3.2s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- ───────── Viewer: decomposed-packet panel (bottom) ───────── -->
+  <!-- The order tools → system → messages follows the real UI and the KV-cache prefix hierarchy (see concepts/ToolsFirst), not the literal wording of the request -->
+  <g opacity="0">
+    <animate attributeName="opacity" to="1" begin="4.2s" dur="0.4s" fill="freeze"/>
+    <rect x="40" y="296" width="826" height="214" rx="10" fill="#161b22" stroke="#30363d"/>
+    <line x1="40" y1="320" x2="866" y2="320" stroke="#30363d"/>
+    <circle cx="58" cy="308" r="5" fill="#ff5f56"/>
+    <circle cx="76" cy="308" r="5" fill="#ffbd2e"/>
+    <circle cx="94" cy="308" r="5" fill="#27c93f"/>
+    <text x="453" y="312" text-anchor="middle" font-size="11" fill="#8b949e">cc-viewer · Context 面板 · decomposed packet</text>
+  </g>
+
+  <!-- Card 1: Tools (JSON-Schema definitions, wire-only) -->
+  <g opacity="0">
+    <animate attributeName="opacity" to="1" begin="4.5s" dur="0.5s" fill="freeze"/>
+    <animateTransform attributeName="transform" type="translate" values="0 -14;0 0" begin="4.5s" dur="0.5s" fill="freeze"/>
+    <rect x="56" y="330" width="248" height="120" rx="8" fill="#0d1117" stroke="#30363d"/>
+    <text x="68" y="350" font-size="12" font-weight="700" fill="#e6edf3">工具 · Tools</text>
+    <rect x="252" y="337" width="40" height="15" rx="7.5" fill="#1f6feb" opacity="0.18"/>
+    <text x="272" y="348" text-anchor="middle" font-size="9" fill="#58a6ff">20+</text>
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="4.6s" dur="0.3s" fill="freeze"/>
+      <text x="68" y="372" font-size="9" fill="#58a6ff">Bash</text>
+      <rect x="130" y="365" width="150" height="4" rx="2" fill="#484f58"/>
+    </g>
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="4.7s" dur="0.3s" fill="freeze"/>
+      <text x="68" y="390" font-size="9" fill="#58a6ff">Read</text>
+      <rect x="130" y="383" width="124" height="4" rx="2" fill="#484f58"/>
+    </g>
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="4.8s" dur="0.3s" fill="freeze"/>
+      <text x="68" y="408" font-size="9" fill="#58a6ff">Edit</text>
+      <rect x="130" y="401" width="138" height="4" rx="2" fill="#484f58"/>
+    </g>
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="4.9s" dur="0.3s" fill="freeze"/>
+      <text x="68" y="430" font-size="8" fill="#484f58">input_schema {…} · 每个工具的完整参数定义</text>
+    </g>
+  </g>
+  <rect x="56" y="330" width="248" height="120" rx="8" fill="none" stroke="#d97757" opacity="0">
+    <animate attributeName="opacity" values="0;.5;0;0" keyTimes="0;.06;.19;1" begin="6.2s" dur="3.2s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- Card 2: System Prompt (bars are an illustrative breakdown: core/CLAUDE.md/skills/env; the real UI does not tag sub-blocks like this) -->
+  <g opacity="0">
+    <animate attributeName="opacity" to="1" begin="5s" dur="0.5s" fill="freeze"/>
+    <animateTransform attributeName="transform" type="translate" values="0 -14;0 0" begin="5s" dur="0.5s" fill="freeze"/>
+    <rect x="328" y="330" width="248" height="120" rx="8" fill="#0d1117" stroke="#30363d"/>
+    <text x="340" y="350" font-size="12" font-weight="700" fill="#e6edf3">系统提示词 · System Prompt</text>
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="5.1s" dur="0.3s" fill="freeze"/>
+      <text x="404" y="372" text-anchor="end" font-size="8" fill="#8b949e">core</text>
+      <rect x="412" y="365" width="150" height="6" rx="3" fill="#8b949e" opacity="0.5"/>
+    </g>
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="5.2s" dur="0.3s" fill="freeze"/>
+      <text x="404" y="390" text-anchor="end" font-size="8" fill="#3fb950">CLAUDE.md</text>
+      <rect x="412" y="383" width="118" height="6" rx="3" fill="#3fb950" opacity="0.6"/>
+    </g>
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="5.3s" dur="0.3s" fill="freeze"/>
+      <text x="404" y="408" text-anchor="end" font-size="8" fill="#d97757">skills</text>
+      <rect x="412" y="401" width="96" height="6" rx="3" fill="#d97757" opacity="0.6"/>
+    </g>
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="5.4s" dur="0.3s" fill="freeze"/>
+      <text x="404" y="426" text-anchor="end" font-size="8" fill="#6e7681">env</text>
+      <rect x="412" y="419" width="74" height="6" rx="3" fill="#6e7681" opacity="0.7"/>
+    </g>
+  </g>
+  <rect x="328" y="330" width="248" height="120" rx="8" fill="none" stroke="#d97757" opacity="0">
+    <animate attributeName="opacity" values="0;.5;0;0" keyTimes="0;.06;.19;1" begin="6.4s" dur="3.2s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- Card 3: Messages (grouped into turns: text / tool_use / tool_result / thinking) -->
+  <g opacity="0">
+    <animate attributeName="opacity" to="1" begin="5.5s" dur="0.5s" fill="freeze"/>
+    <animateTransform attributeName="transform" type="translate" values="0 -14;0 0" begin="5.5s" dur="0.5s" fill="freeze"/>
+    <rect x="600" y="330" width="248" height="120" rx="8" fill="#0d1117" stroke="#30363d"/>
+    <text x="612" y="350" font-size="12" font-weight="700" fill="#e6edf3">消息 · Messages</text>
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="5.6s" dur="0.3s" fill="freeze"/>
+      <rect x="760" y="360" width="76" height="14" rx="7" fill="#2d333b"/>
+      <rect x="768" y="365" width="60" height="4" rx="2" fill="#8b949e"/>
+    </g>
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="5.7s" dur="0.3s" fill="freeze"/>
+      <rect x="612" y="380" width="110" height="22" rx="8" fill="#d97757" opacity="0.92"/>
+      <rect x="620" y="386" width="94" height="4" rx="2" fill="#fff7ed" opacity="0.85"/>
+      <rect x="620" y="394" width="66" height="4" rx="2" fill="#fff7ed" opacity="0.85"/>
+    </g>
+    <g opacity="0">
+      <animate attributeName="opacity" to="1" begin="5.8s" dur="0.3s" fill="freeze"/>
+      <rect x="632" y="408" width="90" height="13" rx="6.5" fill="#2d333b" opacity="0.8"/>
+      <rect x="612" y="427" width="70" height="12" rx="6" fill="none" stroke="#6e7681" stroke-dasharray="3 3"/>
+    </g>
+    <text x="612" y="447" font-size="8" fill="#8b949e" opacity="0">text / tool_use / tool_result / thinking
+      <animate attributeName="opacity" to="1" begin="5.9s" dur="0.3s" fill="freeze"/>
+    </text>
+  </g>
+  <rect x="600" y="330" width="248" height="120" rx="8" fill="none" stroke="#d97757" opacity="0">
+    <animate attributeName="opacity" values="0;.5;0;0" keyTimes="0;.06;.19;1" begin="6.6s" dur="3.2s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- Card annotations (highlight #1: the full payload, invisible to the local transcript) -->
+  <g opacity="0" text-anchor="middle">
+    <animate attributeName="opacity" to="1" begin="6.5s" dur="0.5s" fill="freeze"/>
+    <text x="180" y="464" font-size="10" fill="#8b949e">完整 JSON-Schema 定义</text>
+    <text x="180" y="477" font-size="9" fill="#d97757" opacity="0.75">full tool schemas — not in transcripts</text>
+    <text x="452" y="464" font-size="10" fill="#8b949e">含注入的 CLAUDE.md / Skills 提醒</text>
+    <text x="452" y="477" font-size="9" fill="#d97757" opacity="0.75">wire-only · 仅封包可见</text>
+    <text x="724" y="464" font-size="10" fill="#8b949e">按对话轮次归组</text>
+    <text x="724" y="477" font-size="9" fill="#484f58">grouped into turns</text>
+  </g>
+
+  <!-- Usage strip (usage also exists in local transcripts; the emphasis here is live per-request display) -->
+  <g opacity="0">
+    <animate attributeName="opacity" to="1" begin="6s" dur="0.4s" fill="freeze"/>
+    <rect x="56" y="486" width="794" height="18" rx="6" fill="#0d1117" stroke="#21262d"/>
+    <circle cx="76" cy="495" r="3.5" fill="#58a6ff"/>
+    <text x="86" y="499" font-size="10" fill="#8b949e">input · 输入</text>
+    <circle cx="210" cy="495" r="3.5" fill="#d97757"/>
+    <text x="220" y="499" font-size="10" fill="#8b949e">output · 输出</text>
+    <circle cx="356" cy="495" r="3.5" fill="#3fb950"/>
+    <text x="366" y="499" font-size="10" fill="#8b949e">cache write · 缓存写</text>
+    <circle cx="530" cy="495" r="3.5" fill="#f778ba"/>
+    <text x="540" y="499" font-size="10" fill="#8b949e">cache read · 缓存读</text>
+    <text x="836" y="499" text-anchor="end" font-size="9" fill="#484f58">逐请求实时呈现 · live per request</text>
+  </g>
+
+  <!-- Legend -->
+  <g font-size="11" fill="#8b949e" opacity="0">
+    <animate attributeName="opacity" to="1" begin="7s" dur="0.4s" fill="freeze"/>
+    <circle cx="74" cy="532" r="4" fill="#58a6ff"/>
+    <text x="84" y="536">request · 请求</text>
+    <circle cx="196" cy="532" r="4" fill="#d97757"/>
+    <text x="206" y="536">response · 回复</text>
+    <circle cx="330" cy="532" r="4" fill="none" stroke="#d97757" stroke-width="2"/>
+    <text x="340" y="536">packet tee · 封包分流</text>
+    <text x="890" y="536" text-anchor="end" fill="#484f58">1 request → 1 jsonl entry</text>
+  </g>
+</svg>
