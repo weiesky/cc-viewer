@@ -61,6 +61,32 @@ describe('buildContextItemRawText', () => {
     assert.equal(out, JSON.stringify([userMsg, responseBody], null, 2));
   });
 
+  it('turn with rawSystem → [user, ...system, assistant] slice order', () => {
+    const userMsg = { role: 'user', content: 'hi' };
+    const sysMsg = { role: 'system', content: 'gentle reminder' };
+    const assistantMsg = { role: 'assistant', content: [{ type: 'text', text: 'ok' }] };
+    const out = buildContextItemRawText({ isTurn: true, rawUser: userMsg, rawSystem: [sysMsg], rawAssistant: assistantMsg });
+    assert.equal(out, JSON.stringify([userMsg, sysMsg, assistantMsg], null, 2));
+  });
+
+  it('last-turn response override keeps folded system messages', () => {
+    // Mirrors ContextTab turns useMemo: {...last} preserves rawSystem while
+    // rawAssistant is replaced by the full response body.
+    const userMsg = { role: 'user', content: 'hi' };
+    const sysMsg = { role: 'system', content: 'gentle reminder' };
+    const responseBody = { id: 'msg_1', content: [{ type: 'text', text: 'ok' }] };
+    const out = buildContextItemRawText({ isTurn: true, rawUser: userMsg, rawSystem: [sysMsg], rawAssistant: responseBody });
+    assert.equal(out, JSON.stringify([userMsg, sysMsg, responseBody], null, 2));
+  });
+
+  it('rawSystem null/absent → output identical to pre-rawSystem shape (old logs)', () => {
+    const userMsg = { role: 'user', content: 'hi' };
+    const assistantMsg = { role: 'assistant', content: [{ type: 'text', text: 'ok' }] };
+    const withNull = buildContextItemRawText({ isTurn: true, rawUser: userMsg, rawSystem: null, rawAssistant: assistantMsg });
+    const withoutKey = buildContextItemRawText({ isTurn: true, rawUser: userMsg, rawAssistant: assistantMsg });
+    assert.equal(withNull, withoutKey);
+  });
+
   it('_ 前缀注入键（如 _timestamp）被递归剥除', () => {
     const userMsg = { role: 'user', _timestamp: '2026-06-12T00:00:00Z', content: [{ type: 'text', text: 'hi', _meta: 1 }] };
     const out = buildContextItemRawText({ isTurn: true, rawUser: userMsg, rawAssistant: null });

@@ -1451,6 +1451,21 @@ class ChatView extends React.Component {
             <ChatMessage key={`${keyPrefix}-asst-${mi}`} role="assistant" isTeammate={teammateIdentity ? true : undefined} label={teammateIdentity?.label} animateAvatar={teammateIdentity ? false : undefined} content={asstContent} toolResultMap={toolResultMap} readContentMap={readContentMap} editSnapshotMap={editSnapshotMap} askAnswerMap={mergedAskAnswerMap} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} timestamp={ts} displayTs={msg._generatedTs} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} showThinkingSummaries={showThinkingSummaries} ptyPrompt={this.state.ptyPrompt} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} lastPendingPlanId={msgLastPlanId} lastPendingAskId={msgLastAskId} onPlanApprovalClick={this.handlePromptOptionClick} onPlanFeedbackSubmit={this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} cliMode={this.props.cliMode} onOpenFile={this.handleOpenToolFilePath} cacheTotalTokens={cacheTotalTokens} requestIndex={hasViewRequest ? reqIdx : undefined} onViewRequest={hasViewRequest ? onViewRequest : undefined} isHistoryLog={isHistoryLog} />
           );
         }
+      } else if (msg.role === 'system') {
+        // Mid-conversation system messages (mid-conversation-system beta): plain string
+        // content (task reminders, "Exited Plan Mode", ...). Rendered verbatim — do NOT
+        // route through extractDisplayText/isSystemText, they would swallow the text.
+        let sysText = '';
+        if (typeof content === 'string') {
+          sysText = content;
+        } else if (Array.isArray(content)) {
+          sysText = content.filter(b => b?.type === 'text' && b.text).map(b => b.text).join('\n\n');
+        }
+        if (sysText.trim()) {
+          renderedMessages.push(
+            <ChatMessage key={`${keyPrefix}-sys-${mi}`} role="system" text={sysText} timestamp={ts} requestIndex={hasViewRequest ? reqIdx : undefined} onViewRequest={hasViewRequest ? onViewRequest : undefined} isHistoryLog={isHistoryLog} />
+          );
+        }
       }
     }
 
@@ -3136,6 +3151,10 @@ class ChatView extends React.Component {
         if (!collectedRolesMap.has('assistant')) {
           collectedRolesMap.set('assistant', { key: 'assistant', name: modelInfo?.short || modelInfo?.name || 'Claude', avatarType: 'agent', color: modelInfo?.color || 'rgba(255,255,255,0.1)', avatarSvg: modelInfo?.svg || null });
         }
+      } else if (role === 'system') {
+        if (!collectedRolesMap.has('system')) {
+          collectedRolesMap.set('system', { key: 'system', name: t('ui.systemMessage'), avatarType: 'system', color: 'rgba(255,255,255,0.1)' });
+        }
       } else if (role === 'sub-agent-chat') {
         const label = item.props.label || 'SubAgent';
         const key = `sub:${label}`;
@@ -3165,6 +3184,7 @@ class ChatView extends React.Component {
         const role = item.props.role;
         if (role === 'user' || role === 'plan-prompt') return this.state.roleFilterSelected.has('user');
         if (role === 'assistant') return this.state.roleFilterSelected.has('assistant');
+        if (role === 'system') return this.state.roleFilterSelected.has('system');
         if (role === 'sub-agent-chat') {
           const key = `sub:${item.props.label || 'SubAgent'}`;
           return this.state.roleFilterSelected.has(key);

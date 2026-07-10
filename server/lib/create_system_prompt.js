@@ -420,9 +420,30 @@ export function loadModelTemplate() {
   return readFileSync(MODEL_TEMPLATE_URL, 'utf8')
 }
 
+// Locales with a translated systemPromptVariables.<locale>.md sibling. Mirrors the
+// UI's LANG_OPTIONS (src/i18n.js) minus 'en', which is the base file itself.
+export const VARIABLES_DOC_LOCALES = [
+  'zh', 'zh-TW', 'ko', 'ja', 'de', 'es', 'fr', 'it', 'da',
+  'pl', 'ru', 'ar', 'no', 'pt-BR', 'th', 'tr', 'uk',
+]
+
 // The human-readable reference for the ${...} template variables (rendered in the
-// "Edit System Prompt" modal's parameter-docs popup).
-export function loadVariablesDoc() {
+// "Edit System Prompt" modal's parameter-docs popup). `lang` is whitelisted against
+// VARIABLES_DOC_LOCALES; 'en', unknown values, and a missing localized file all fall
+// back to the English base document.
+export function loadVariablesDoc(lang) {
+  if (typeof lang === 'string' && VARIABLES_DOC_LOCALES.includes(lang)) {
+    try {
+      return readFileSync(
+        new URL(`../system-prompt-templates/systemPromptVariables.${lang}.md`, import.meta.url),
+        'utf8',
+      )
+    } catch (e) {
+      // A whitelisted locale should always have a shipped translation file, so a
+      // read failure here is diagnostic — log it, then fall back to the English base.
+      console.warn(`[CC Viewer] localized variables doc unreadable for ${lang}:`, e.message)
+    }
+  }
   return readFileSync(new URL('../system-prompt-templates/systemPromptVariables.md', import.meta.url), 'utf8')
 }
 

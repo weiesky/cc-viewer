@@ -237,6 +237,12 @@
   border: 1px solid var(--color-purple-border);
 }
 
+.role_system {
+  background: var(--color-warning-bg-faint);
+  color: var(--color-warning);
+  border: 1px solid var(--color-warning-border-light);
+}
+
 .roleLabel {
   font-size: 11px;
   color: var(--text-muted);

@@ -292,9 +292,8 @@
   gap: 8px;
 }
 
-/* "?" help: 16px circle next to the modal title, Tooltip on hover/tap (same spot as
-   UltraPlan's title-side ?; inside the tab row it would get pushed out of view by
-   horizontal scrolling). */
+/* "?" help: 16px circle used by the Add-model dialog's inline field helpers
+   (ModelPromptTabs.jsx FieldHelp), Tooltip on hover/tap. */
 .helpBtn {
   align-self: center;
   width: 16px;
@@ -316,10 +315,37 @@
   color: var(--color-primary);
   border-color: var(--color-primary);
 }
-/* The title "?" opens the parameter-docs modal on click (the inline field "?"s
-   keep the default hover-tooltip affordance). */
-.helpBtnClickable {
+/* Title doc button: click-only text pill next to the modal title (same visual tokens
+   as .helpBtn, shaped to fit its localized label). Opens the parameter-docs modal. */
+.paramDocBtn {
+  align-self: center;
+  height: 18px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: normal;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+  white-space: nowrap;
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.paramDocBtn:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+.paramDocBtn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
 }
 
 /* Parameter-docs modal body: scrollable rendered-markdown container. */
@@ -328,6 +354,17 @@
   overflow: auto;
   font-size: 13px;
   line-height: 1.6;
+}
+
+/* Feature blurb at the top of the parameter-docs modal (relocated from the old
+   title-"?" hover tooltip). */
+.docIntro {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-primary);
 }
 
 /* Add-model modal: one labelled row per field (label + inline "?"), then the control. */

@@ -153,11 +153,14 @@ function postModelPrompts(req, res, parsedUrl, isLocal, deps) {
 // （占位符保持字面量，不做变量替换），供「+ 添加模型」时按名称匹配/下拉选择预填。
 function getSystemPromptPresets(req, res, parsedUrl, isLocal, deps) {
   try {
+    // Optional UI-language hint for the variables doc. parsedUrl may be null in
+    // direct handler invocations (tests); the value is whitelisted downstream.
+    const lang = parsedUrl?.searchParams?.get('lang') || undefined;
     const presets = listSystemPromptPresets();
     sendJson(res, 200, {
       presets,
       categories: groupPresetsByCategory(presets),
-      variablesDoc: getSystemPromptVariablesDoc(),
+      variablesDoc: getSystemPromptVariablesDoc(lang),
     });
   } catch (e) {
     console.error('[CC Viewer] expert system-prompt-presets GET failed:', e.message);

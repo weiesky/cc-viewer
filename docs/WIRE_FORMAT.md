@@ -23,6 +23,10 @@ mainAgent entry 共 **4 种形态**，由信号字段联合判定：
 - 若违反 → `delta-reconstructor` 标 broken，由后续 checkpoint 反向修复（`server/lib/delta-reconstructor.js:95-117`）
 - `inProgress: true` entry 必有占位 message（无 `body.messages`），重建时跳过避免累积偏移
 
+**message roles**：`body.messages[].role` 除 `user` / `assistant` 外，自 Claude Code CLI 2.1.201（anthropic-beta `mid-conversation-system-2026-04-07`）起可能出现 **`system`**（content 为纯字符串，如 task 工具提醒、"## Exited Plan Mode" 通知）。实测这类消息**持久且仅追加**（跨 checkpoint 索引稳定），不违反前缀稳定不变量；delta 管线各层（fingerprint / 重建 / 合并 / slim）对 role 均不敏感，回归测试见 `delta-e2e.test.js` / `incremental-merge.test.js` 的 system-role 用例。渲染侧：ChatView 独立 system 分支 + ContextTab `groupMessagesIntoTurns`（`src/utils/contextTurns.js`）将 user↔assistant 之间的 system 消息折叠进所属 turn。若未来观测到**瞬态**（出现后又消失）的 system 消息，将违反 append-only 假设，需依赖 checkpoint 兜底并重新评估 §1 不变量。
+
+**ExitPlanMode 审批 tool_result**：同版本起审批文案标题为 `## Approved Plan (edited by user):`（旧为 `## Approved Plan:`），且 tool_use input 仅含 `allowedPrompts`（无 `plan`/`planFilePath`）；`parsePlanApproval`（`src/utils/toolResultBuilder.js`）的标题正则同时兼容两种形态。
+
 ---
 
 ## §2 关键字段词典

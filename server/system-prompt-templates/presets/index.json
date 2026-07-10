@@ -6,7 +6,7 @@
         "id": "deepseek-v4-pro",
         "title": "DeepSeek V4 Pro",
         "file": "deepseek-v4-pro.md",
-        "description": "Thorough coding agent tuned for DeepSeek V4 Pro: careful reasoning, tracked multi-step work, verify-before-done.",
+        "description": "Thorough coding agent tuned for DeepSeek V4 Pro: careful reasoning, end-to-end persistence, tracked multi-step work, verify-before-done.",
         "match": "deepseek-v4-pro",
         "defaultMode": "override"
       },
@@ -14,7 +14,7 @@
         "id": "deepseek-v4-flash",
         "title": "DeepSeek V4 Flash",
         "file": "deepseek-v4-flash.md",
-        "description": "Terse, action-biased prompt tuned for the fast DeepSeek V4 Flash model.",
+        "description": "Terse, action-biased prompt tuned for the fast DeepSeek V4 Flash model: few-line answers, smallest change that works.",
         "match": "deepseek-v4-flash",
         "defaultMode": "override"
       },
@@ -22,7 +22,7 @@
         "id": "GLM-5.2",
         "title": "GLM-5.2",
         "file": "GLM-5.2.md",
-        "description": "Balanced software-engineering agent prompt tuned for GLM-5.2.",
+        "description": "Balanced software-engineering agent prompt tuned for GLM-5.2: action-default, changes through tools, parallel tool calls.",
         "match": "glm-5.2",
         "defaultMode": "override"
       },
@@ -30,8 +30,16 @@
         "id": "Qwen-3.7-Max",
         "title": "Qwen 3.7 Max",
         "file": "Qwen-3.7-Max.md",
-        "description": "Thorough coding agent prompt tuned for Qwen 3.7 Max.",
+        "description": "Thorough coding agent prompt tuned for Qwen 3.7 Max: minimal-change discipline and persistence.",
         "match": "qwen-3.7-max",
+        "defaultMode": "override"
+      },
+      {
+        "id": "kimi-k2.7-code",
+        "title": "Kimi K2.7 Code",
+        "file": "kimi-k2.7-code.md",
+        "description": "Coding agent prompt tuned for Kimi K2.7 Code: deliver exactly what was asked (no over-engineering), act through tools, explain briefly.",
+        "match": "kimi-k2.7-code",
         "defaultMode": "override"
       }
     ]

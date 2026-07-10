@@ -47,10 +47,11 @@ export function listSystemPromptPresets() {
 
 // Returns the ${...} template-variable reference (systemPromptVariables.md) as
 // markdown, or '' if it can't be read (best-effort; the modal hides its help
-// affordance when empty).
-export function getSystemPromptVariablesDoc() {
+// affordance when empty). `lang` selects a localized systemPromptVariables.<lang>.md
+// when one exists; anything else falls back to the English base.
+export function getSystemPromptVariablesDoc(lang) {
   try {
-    return loadVariablesDoc();
+    return loadVariablesDoc(lang);
   } catch (e) {
     console.warn('[CC Viewer] system-prompt variables doc unreadable:', e.message);
     return '';

@@ -1695,6 +1695,37 @@ class ChatMessage extends React.Component {
     );
   }
 
+  renderSystemMessage() {
+    // Mid-conversation role:"system" messages (mid-conversation-system beta):
+    // housekeeping notices (task reminders, "Exited Plan Mode", ...). Rendered as a
+    // subtle collapsed meta row, same shape as skill-loaded messages.
+    const { text, timestamp } = this.props;
+    if (!text || !String(text).trim()) return null;
+    const timeStr = this.formatTime(timestamp);
+    return (
+      <div className={styles.messageRow}>
+        <div className={styles.skillSpacer} />
+        <div className={styles.contentCol}>
+          <Collapse
+            ghost
+            size="small"
+            items={[{
+              key: '1',
+              label: (
+                <span className={styles.systemMsgLabel}>
+                  ⚙️ {t('ui.systemMessage')}
+                  {timeStr && <Text className={`${styles.timeTextNoMargin} ${styles.skillTimeIndent}`}>{timeStr}</Text>}
+                </span>
+              ),
+              children: <MarkdownBlock text={String(text)} />,
+            }]}
+            className={styles.collapseNoMargin}
+          />
+        </div>
+      </div>
+    );
+  }
+
   renderTaskNotification() {
     const { taskNotification: tn, modelInfo } = this.props;
     if (!tn) return null;
@@ -1750,6 +1781,7 @@ class ChatMessage extends React.Component {
     const { role } = this.props;
     if (role === 'user') return this.renderUserMessage();
     if (role === 'skill-loaded') return this.renderSkillLoadedMessage();
+    if (role === 'system') return this.renderSystemMessage();
     if (role === 'plan-prompt') return this.renderPlanPromptMessage();
     if (role === 'assistant') return this.renderAssistantMessage();
     if (role === 'task-notification') return this.renderTaskNotification();

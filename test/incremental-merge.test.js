@@ -54,6 +54,28 @@ describe('incremental push', () => {
     assert.equal(result[0].messages[3].content, 'a2');
   });
 
+  it('passes mid-conversation role:"system" string messages through unchanged', () => {
+    // mid-conversation-system beta: deltas may append [assistant, user, system]
+    const existingMsgs = [makeMsg('user', 'q1'), makeMsg('assistant', 'a1')];
+    const session = makeSession(existingMsgs);
+    const originalRef = session.messages;
+
+    const newMsgs = [
+      makeMsg('user', 'q1'), makeMsg('assistant', 'a1'),
+      makeMsg('user', 'q2'), makeMsg('assistant', 'a2'), makeMsg('system', 'gentle reminder'),
+    ];
+    const result = mergeMainAgentSessions([session], makeEntry(newMsgs));
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0].messages, originalRef);
+    assert.equal(result[0].messages.length, 5);
+    assert.equal(result[0].messages[4].role, 'system');
+    assert.equal(result[0].messages[4].content, 'gentle reminder');
+    // fingerprint handles system role + string content (anchor validity)
+    const fp = messageFingerprint(makeMsg('system', 'gentle reminder'));
+    assert.ok(fp.startsWith('system|'), `unexpected fingerprint: ${fp}`);
+  });
+
   it('sets _timestamp on new messages only', () => {
     const ts1 = '2026-04-01T10:00:00Z';
     const ts2 = '2026-04-01T10:05:00Z';

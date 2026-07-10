@@ -351,6 +351,12 @@ describe('getSvgAvatar', () => {
   it('未知类型回落 default sub-agent svg', () => {
     assert.equal(H.getSvgAvatar('xyz'), H.getSvgAvatar('totally-unknown'));
   });
+  it('system type returns its own gear svg (distinct from default)', () => {
+    const sys = H.getSvgAvatar('system');
+    assert.ok(typeof sys === 'string' && sys.startsWith('<svg'));
+    assert.notEqual(sys, H.getSvgAvatar('totally-unknown'));
+    assert.notEqual(sys, H.getSvgAvatar('agent'));
+  });
 });
 
 describe('formatTokenCount', () => {

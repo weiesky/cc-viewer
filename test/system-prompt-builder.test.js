@@ -14,6 +14,8 @@ import {
   listTemplateVariables,
   loadModelTemplate,
   loadPreset,
+  loadVariablesDoc,
+  VARIABLES_DOC_LOCALES,
   listPresets,
   renderPreset,
   renderPresetTemplate,
@@ -152,12 +154,12 @@ describe('presets', () => {
   const manifest = listPresets();
   const global = manifest.categories.Global;
 
-  it('the manifest lists the four expected [Global] presets', () => {
+  it('the manifest lists the five expected [Global] presets', () => {
     const ids = global.map(p => p.id).sort();
-    assert.deepEqual(ids, ['GLM-5.2', 'Qwen-3.7-Max', 'deepseek-v4-flash', 'deepseek-v4-pro']);
+    assert.deepEqual(ids, ['GLM-5.2', 'Qwen-3.7-Max', 'deepseek-v4-flash', 'deepseek-v4-pro', 'kimi-k2.7-code']);
   });
 
-  for (const preset of [{ id: 'deepseek-v4-pro' }, { id: 'deepseek-v4-flash' }, { id: 'GLM-5.2' }, { id: 'Qwen-3.7-Max' }]) {
+  for (const preset of [{ id: 'deepseek-v4-pro' }, { id: 'deepseek-v4-flash' }, { id: 'GLM-5.2' }, { id: 'Qwen-3.7-Max' }, { id: 'kimi-k2.7-code' }]) {
     it(`renders preset ${preset.id} with the shared dynamic sections and no stray placeholders`, () => {
       const out = renderPreset(preset.id, { variables: fixtureVariables(), missingVariableMode: 'empty' });
       assert.doesNotMatch(out, /\$\{/);
@@ -184,6 +186,26 @@ describe('presets', () => {
     assert.throws(() => loadPreset('../systemPromptModel'), /Invalid preset id/);
     assert.throws(() => loadPreset('a/b'), /Invalid preset id/);
     assert.throws(() => loadPreset('..'), /Invalid preset id/);
+  });
+});
+
+describe('loadVariablesDoc: locale selection + fallback', () => {
+  it('whitelists lang and falls back to the English base', () => {
+    const base = loadVariablesDoc();
+    assert.ok(base.includes('${memory.dir}'));
+    assert.equal(loadVariablesDoc('en'), base, 'en is the base file itself');
+    assert.equal(loadVariablesDoc('xx'), base, 'unknown locale falls back');
+    assert.equal(loadVariablesDoc('../presets/index'), base, 'traversal-shaped lang ignored');
+  });
+
+  it('every whitelisted locale resolves to a translated doc with literal placeholders', () => {
+    const base = loadVariablesDoc();
+    for (const lang of VARIABLES_DOC_LOCALES) {
+      const doc = loadVariablesDoc(lang);
+      assert.ok(doc.length > 0, `${lang}: non-empty`);
+      assert.ok(doc.includes('${memory.dir}'), `${lang}: placeholders literal`);
+      assert.notEqual(doc, base, `${lang}: translated, not the base`);
+    }
   });
 });
 

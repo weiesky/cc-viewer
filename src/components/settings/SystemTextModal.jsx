@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Modal, Input, Switch, Spin, Tooltip, message } from 'antd';
-import { t } from '../../i18n';
+import { Modal, Input, Switch, Spin, message } from 'antd';
+import { t, getLang } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { renderMarkdown } from '../../utils/markdown';
 import { reportSwallowed } from '../../utils/errorReport';
@@ -52,7 +52,7 @@ export default function SystemTextModal({ open, onClose }) {
     Promise.allSettled([
       fetch(apiUrl('/api/expert/system-text')).then((r) => r.json()),
       fetch(apiUrl('/api/expert/model-prompts')).then((r) => r.json()),
-      fetch(apiUrl('/api/expert/system-prompt-presets')).then((r) => r.json()),
+      fetch(apiUrl(`/api/expert/system-prompt-presets?lang=${encodeURIComponent(getLang())}`)).then((r) => r.json()),
     ]).then(([sysR, mpR, presetR]) => {
       if (cancelled) return;
       const snaps = {};
@@ -255,21 +255,17 @@ export default function SystemTextModal({ open, onClose }) {
       title={(
         <span className={styles.titleRow}>
           {t('ui.expert.systemText')}
-          {/* 标题「?」：hover 显示功能说明(原「专家设置」的 about);有变量文档时点击打开 ${...} 参数参考弹窗。 */}
-          <Tooltip title={t('ui.expert.help')} placement="bottomLeft">
-            {variablesDoc ? (
-              <span
-                className={`${styles.helpBtn} ${styles.helpBtnClickable}`}
-                role="button"
-                tabIndex={0}
-                aria-label={t('ui.expert.systemText.paramDocTitle')}
-                onClick={() => setDocOpen(true)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDocOpen(true); } }}
-              >?</span>
-            ) : (
-              <span className={styles.helpBtn} aria-label={t('ui.expert.help')}>?</span>
-            )}
-          </Tooltip>
+          {/* Title doc button: click-only (no hover tooltip — a hover affordance made it read
+              as non-clickable). Opens the parameter-docs popup, whose top now carries the
+              feature blurb that used to live in the tooltip, so it stays reachable even when
+              variablesDoc failed to load. */}
+          <span
+            className={styles.paramDocBtn}
+            role="button"
+            tabIndex={0}
+            onClick={() => setDocOpen(true)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDocOpen(true); } }}
+          >{t('ui.expert.systemText.paramDocTitle')}</span>
         </span>
       )}
       open={open}
@@ -359,10 +355,15 @@ export default function SystemTextModal({ open, onClose }) {
       width="min(760px, 92vw)"
       zIndex={1300}
     >
-      <div
-        className={`${styles.docBox} chat-md`}
-        dangerouslySetInnerHTML={{ __html: docHtml }}
-      />
+      {/* Feature blurb relocated from the old title-"?" hover tooltip; plain JSX text
+          (auto-escaped), deliberately NOT concatenated into the sanitized markdown HTML. */}
+      <p className={styles.docIntro}>{t('ui.expert.help')}</p>
+      {docHtml ? (
+        <div
+          className={`${styles.docBox} chat-md`}
+          dangerouslySetInnerHTML={{ __html: docHtml }}
+        />
+      ) : null}
     </Modal>
     </>
   );

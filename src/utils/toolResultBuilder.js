@@ -380,7 +380,9 @@ export function parseAskAnswerText(text) {
 export function parsePlanApproval(text) {
   if (!text) return { status: 'pending' };
   if (/User has approved/i.test(text)) {
-    const planMatch = text.match(/##\s*Approved Plan:\s*\n([\s\S]*)/i);
+    // Heading may carry a suffix before the colon, e.g. "## Approved Plan (edited by user):"
+    // (Claude Code CLI ≥2.1.201); [^\n]* keeps matching the plain "## Approved Plan:" form.
+    const planMatch = text.match(/##\s*Approved Plan[^\n]*:\s*\n([\s\S]*)/i);
     return { status: 'approved', planContent: planMatch ? planMatch[1].trim() : '' };
   }
   if (/User rejected/i.test(text)) {

@@ -165,6 +165,37 @@ describe('Delta Storage E2E', () => {
     }
   });
 
+  it('mid-conversation role:"system" messages survive write→reconstruct at their indices', () => {
+    // Observed wire shape (mid-conversation-system beta, CLI 2.1.201): deltas append
+    // [assistant, user, system] where the system message is a plain string. Spans a
+    // checkpoint (>10 writes) so both delta-append and snapshot paths are exercised.
+    const turns = [{ newMessages: [msg('user', 'q-0')] }];
+    for (let i = 0; i < 12; i++) {
+      turns.push({
+        newMessages: i % 3 === 2
+          ? [msg('assistant', `a-${i}`), msg('user', `q-${i}`), msg('system', `reminder-${i}`)]
+          : [msg('assistant', `a-${i}`), msg('user', `q-${i}`)],
+      });
+    }
+
+    const expectedConversation = simulateInterceptorWrites(logFile, turns);
+    const entries = readLogFile(logFile);
+    const mainAgentEntries = entries.filter(e => e.mainAgent && !e.inProgress);
+    const lastEntry = mainAgentEntries[mainAgentEntries.length - 1];
+
+    assert.equal(lastEntry.body.messages.length, expectedConversation.length);
+    for (let i = 0; i < expectedConversation.length; i++) {
+      assert.equal(lastEntry.body.messages[i].role, expectedConversation[i].role, `role mismatch at ${i}`);
+      assert.equal(lastEntry.body.messages[i].content, expectedConversation[i].content, `content mismatch at ${i}`);
+    }
+    // system messages sit at their original indices
+    const sysIdx = expectedConversation.map((m, i) => (m.role === 'system' ? i : -1)).filter(i => i >= 0);
+    assert.ok(sysIdx.length >= 3, 'fixture should contain several system messages');
+    for (const i of sysIdx) {
+      assert.equal(lastEntry.body.messages[i].role, 'system');
+    }
+  });
+
   it('checkpoint 触发：第 10 条写入完整快照', () => {
     const turns = [];
     for (let i = 0; i < 12; i++) {

@@ -578,6 +578,21 @@ describe('appendToolResultMap — ExitPlanMode 审批', () => {
     assert.equal(s.latestPlanFilePath, null);
   });
 
+  it('approved with new heading variant → planContent populated + reset', () => {
+    // Claude Code CLI ≥2.1.201 emits "## Approved Plan (edited by user):" and no input.plan
+    const text = 'User has approved your plan. You can now start coding.\n\n'
+      + 'Your plan has been saved to: /Users/x/.claude/plans/p.md\n\n'
+      + '## Approved Plan (edited by user):\n# Plan\ndo things';
+    const s = M.buildToolResultMap([
+      asstMsg([use('e', 'ExitPlanMode', { allowedPrompts: [] })]),
+      userMsg([result('e', text)]),
+    ]);
+    assert.equal(s.planApprovalMap['e'].status, 'approved');
+    assert.equal(s.planApprovalMap['e'].planContent, '# Plan\ndo things');
+    assert.equal(s.latestPlanContent, null);
+    assert.equal(s.latestPlanFilePath, null);
+  });
+
   it('rejected（is_error）→ status rejected + 提取 "the user said:" feedback', () => {
     const s = M.buildToolResultMap([
       asstMsg([use('e', 'ExitPlanMode', {})]),
@@ -689,6 +704,22 @@ describe('parsePlanApproval', () => {
     const r = M.parsePlanApproval('User has approved your plan\n## Approved Plan:\nthe plan text');
     assert.equal(r.status, 'approved');
     assert.equal(r.planContent, 'the plan text');
+  });
+
+  it('approved → new heading variant "## Approved Plan (edited by user):" is extracted', () => {
+    const r = M.parsePlanApproval(
+      'User has approved your plan. You can now start coding.\n\n'
+      + 'Your plan has been saved to: /Users/x/.claude/plans/p.md\n\n'
+      + '## Approved Plan (edited by user):\n# Title\nstep 1\nstep 2'
+    );
+    assert.equal(r.status, 'approved');
+    assert.equal(r.planContent, '# Title\nstep 1\nstep 2');
+  });
+
+  it('approved → heading with trailing spaces before newline still extracts', () => {
+    const r = M.parsePlanApproval('User has approved\n## Approved Plan:  \nbody');
+    assert.equal(r.status, 'approved');
+    assert.equal(r.planContent, 'body');
   });
 
   it('approved 但无 Approved Plan 块 → planContent 空串', () => {

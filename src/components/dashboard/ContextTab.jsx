@@ -5,6 +5,7 @@ import { renderMarkdown } from '../../utils/markdown';
 import { t } from '../../i18n';
 import { getContextSidebarArrowNavigation } from '../../utils/contextSidebarNavigation';
 import { buildContextItemRawText } from '../../utils/contextRaw';
+import { parseContentBlocks, groupMessagesIntoTurns } from '../../utils/contextTurns';
 import { computeToolsDiff } from '../../utils/toolsDiff';
 import JsonViewer from '../viewers/JsonViewer';
 import ConceptHelp from '../common/ConceptHelp';
@@ -14,70 +15,8 @@ import styles from './ContextTab.module.css';
 const { Text } = Typography;
 
 // ── Block parsers ─────────────────────────────────────────────────────────────
-
-function parseContentBlocks(content) {
-  if (content == null) return [];
-
-  if (typeof content === 'string') {
-    const trimmed = content.trim();
-    return trimmed ? [{ type: 'markdown', text: trimmed }] : [];
-  }
-
-  if (Array.isArray(content)) {
-    const blocks = [];
-    for (const block of content) {
-      if (!block) continue;
-      if (block.type === 'text') {
-        const trimmed = (block.text || '').trim();
-        if (trimmed) blocks.push({ type: 'markdown', text: trimmed });
-      } else if (block.type === 'tool_use') {
-        blocks.push({
-          type: 'tool_use',
-          name: block.name || 'unknown',
-          id: block.id || '',
-          input: block.input ?? {},
-        });
-      } else if (block.type === 'tool_result') {
-        const inner = parseResultContent(block.content);
-        blocks.push({
-          type: 'tool_result',
-          tool_use_id: block.tool_use_id || '',
-          is_error: block.is_error,
-          content: inner,
-        });
-      } else if (block.type === 'thinking') {
-        const text = block.thinking || '';
-        if (text.trim()) blocks.push({ type: 'thinking', text });
-      } else if (block.type === 'image') {
-        blocks.push({ type: 'json', label: 'image', data: block });
-      } else {
-        blocks.push({ type: 'json', label: block.type || 'block', data: block });
-      }
-    }
-    return blocks;
-  }
-
-  return [{ type: 'json', label: 'content', data: content }];
-}
-
-function parseResultContent(content) {
-  if (content == null) return [];
-  if (typeof content === 'string') {
-    const trimmed = content.trim();
-    return trimmed ? [{ type: 'markdown', text: trimmed }] : [];
-  }
-  if (Array.isArray(content)) {
-    return content.flatMap((c) => {
-      if (!c) return [];
-      if (c.type === 'text') {
-        const trimmed = (c.text || '').trim();
-        return trimmed ? [{ type: 'markdown', text: trimmed }] : [];
-      }
-      return [{ type: 'json', label: c.type || 'block', data: c }];
-    });
-  }
-  return [{ type: 'json', label: 'content', data: content }];
-}
+// parseContentBlocks / parseResultContent / extractPreviewText / groupMessagesIntoTurns
+// live in src/utils/contextTurns.js (extracted for unit-testability).
 
 function parseSystemBlocks(system) {
   if (!system) return null;
@@ -114,47 +53,6 @@ function parseToolBlocks(tool) {
     blocks.push({ type: 'json', label: 'Parameters', data: schema });
   }
   return blocks;
-}
-
-// ── Message turn grouping ─────────────────────────────────────────────────────
-
-function extractPreviewText(content) {
-  if (typeof content === 'string') return content.slice(0, 60).replace(/\n/g, ' ');
-  if (Array.isArray(content)) {
-    for (const block of content) {
-      if (block?.type === 'text' && block.text?.trim()) {
-        return block.text.trim().slice(0, 60).replace(/\n/g, ' ');
-      }
-    }
-  }
-  return '';
-}
-
-// 注意：非 user 开头的消息（首条 assistant、连续 assistant 等）不进任何 turn，
-// 「原文」视图与解析视图同口径，同样不展示这些消息。
-function groupMessagesIntoTurns(messages) {
-  const turns = [];
-  let i = 0;
-  while (i < messages.length) {
-    const userMsg = messages[i];
-    if (userMsg?.role !== 'user') { i++; continue; }
-    const assistantMsg = messages[i + 1]?.role === 'assistant' ? messages[i + 1] : null;
-    turns.push({
-      id: `turn__${i}`,
-      isTurn: true,
-      turnIndex: turns.length,
-      timestamp: userMsg._timestamp || null,
-      assistantTimestamp: assistantMsg?._timestamp || null,
-      userBlocks: parseContentBlocks(userMsg?.content),
-      assistantBlocks: assistantMsg ? parseContentBlocks(assistantMsg.content) : null,
-      // 原始消息引用：供「原文」视图无损输出（解析 blocks 是单向的，不可逆）
-      rawUser: userMsg,
-      rawAssistant: assistantMsg,
-      preview: extractPreviewText(userMsg?.content),
-    });
-    i += assistantMsg ? 2 : 1;
-  }
-  return turns;
 }
 
 function formatTurnTime(isoStr) {
@@ -293,6 +191,16 @@ function TurnContent({ turn }) {
         {timeStr && <span className={styles.contentTime}>{timeStr}</span>}
       </div>
       <RenderBlocks blocks={turn.userBlocks} />
+      {turn.systemBlocks && turn.systemBlocks.map((sys, si) => (
+        <React.Fragment key={si}>
+          <div className={styles.turnDivider} />
+          <div className={styles.roleHeader}>
+            <span className={`${styles.roleBadge} ${styles.role_system}`}>system</span>
+            {sys.timestamp && <span className={styles.contentTime}>{formatTurnTime(sys.timestamp)}</span>}
+          </div>
+          <RenderBlocks blocks={sys.blocks} />
+        </React.Fragment>
+      ))}
       {turn.assistantBlocks && (
         <>
           <div className={styles.turnDivider} />

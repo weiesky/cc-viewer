@@ -29,6 +29,7 @@ const KEYS = [
   'ui.proxy.effort',        // 代理热切换 effort 下拉标签 (ProxyModal.jsx)
   'ui.proxy.effortDefault', // 代理热切换 effort「默认不强制」选项 (ProxyModal.jsx)
   'ui.proxy.modelMapHint',  // 代理热切换 扩展模型字段说明 (ProxyModal.jsx)
+  'ui.systemMessage',       // mid-conversation role:"system" meta row label (ChatMessage/ChatView role filter)
 ];
 
 describe('new UI key i18n coverage', () => {
