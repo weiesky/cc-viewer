@@ -1,0 +1,89 @@
+/* RetryConfigModal — styles for the proxy retry config modal, reusing ProxyModal's design variables. */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 6px;
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+  margin-top: 3px;
+}
+
+.divider {
+  border-top: 1px dashed var(--border-secondary);
+  margin: 8px 0 6px;
+}
+
+.fullWidth {
+  width: 100%;
+}
+
+.numField {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.unit {
+  font-size: 11px;
+  color: var(--text-gray);
+}
+
+.reservedTag {
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--color-warning-dark-bg);
+  color: var(--color-warning-light);
+  line-height: 16px;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  gap: 8px;
+}
+
+.footerRight {
+  display: flex;
+  gap: 8px;
+}
+
+.note {
+  font-size: 11px;
+  color: var(--text-gray);
+  line-height: 1.5;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-secondary);
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px 0;
+}

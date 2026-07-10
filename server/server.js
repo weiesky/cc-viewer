@@ -38,6 +38,7 @@ import { teamRoutes } from './routes/team.js';
 import { authRoutes } from './routes/auth.js';
 import { dingtalkRoutes } from './routes/dingtalk.js';
 import { imRoutes } from './routes/im.js';
+import { proxyStatsRoutes } from './routes/proxy-stats.js';
 import * as imCore from './lib/im-bridge-core.js';
 import * as imProcMgr from './lib/im-process-manager.js';
 import './lib/adapters/dingtalk-adapter.js'; // side-effect: registers the DingTalk adapter
@@ -74,9 +75,18 @@ function execWithStdin(cmd, args, input, options) {
     child.stdin.end();
   });
 }
-import { LOG_FILE, _initPromise, _resumeState, _projectName, _logDir, streamingState, resetStreamingState, PROFILE_PATH, setLivePort, getImLiveText, resetImLiveText } from './interceptor.js';
+import { LOG_FILE, _initPromise, _resumeState, _projectName, _logDir, streamingState, resetStreamingState, PROFILE_PATH, RETRY_CONFIG_PATH, _retryConfigState, setLivePort, getImLiveText, resetImLiveText } from './interceptor.js';
 import { recordInstance, listInstances } from './lib/instance-registry.js';
 import { LOG_DIR, setLogDir, getClaudeConfigDir, isBrowserOpenSuppressed } from '../findcc.js';
+import { loadRetryConfig } from './lib/proxy-retry.js';
+
+// 代理重试配置：由 interceptor._retryConfigState 提供（live binding，watchFile 热刷新）。
+// mode 默认 off（向后兼容，不重试）。env 是启动默认/兜底，retry-config.json 覆盖 env。
+// 启动日志读一次首屏值；运行时 proxy.js 每请求读 interceptor._retryConfigState 取最新。
+const _startupRetryConfig = _retryConfigState || loadRetryConfig();
+if (_startupRetryConfig.mode !== 'off' && process.env.CCV_DEBUG) {
+  console.error(`[CC Viewer] Proxy retry: mode=${_startupRetryConfig.mode}, maxRetries=${_startupRetryConfig.maxRetries}, interval=${_startupRetryConfig.retryIntervalMs}ms`);
+}
 import { t, getLang, setLang } from './i18n.js';
 import { loadAuthConfig, loadAuthState, saveAuthConfig, clearProjectOverride, generatePassword, decideAuth, parseCookies, renderLoginPage, localeFromAcceptLanguage } from './lib/auth.js';
 import { checkAndUpdate } from './lib/updater.js';
@@ -406,6 +416,13 @@ function notifyStatsWorker(logFile) {
   }
 }
 
+// 供 proxy.js 在写入代理重试明细后通知 stats-worker 重扫聚合。
+// 单独 export 避免循环依赖（proxy.js 不能直接 import server.js 的 deps）。
+export function notifyProxyStats(logFile) {
+  if (!statsWorker) startStatsWorker();
+  notifyStatsWorker(logFile);
+}
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
@@ -485,6 +502,7 @@ const deps = {
   get writeToPty() { return _writeToPty; },
   get onPtyData() { return _onPtyData; },
   get statsWorker() { return statsWorker; },
+  get retryConfig() { return _retryConfigState; },
   get workspaceLaunched() { return _workspaceLaunched; },
   setWorkspaceLaunched(v) { _workspaceLaunched = v; },
   get launchCallback() { return _launchCallback; },
@@ -611,6 +629,7 @@ const _routes = [
   ...teamRoutes,
   ...dingtalkRoutes,
   ...imRoutes,
+  ...proxyStatsRoutes,
 ];
 const dispatch = createDispatcher(_routes);
 
@@ -2280,6 +2299,7 @@ async function _doStop() {
   // 早期请求向已关闭的端口 POST 丢包。新 startViewer 的 listen 回调会再次 setLivePort
   setLivePort(null);
   try { unwatchFile(PROFILE_PATH); } catch {} // 清理 interceptor 的 StatWatcher
+  try { unwatchFile(RETRY_CONFIG_PATH); } catch {} // 清理 retry-config 的 StatWatcher
 }
 
 // ─── SDK Mode Exports ──────────────────────────────────────────

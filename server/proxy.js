@@ -1,16 +1,38 @@
 
 import { createServer } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
 import * as interceptor from './interceptor.js';
 import { setupInterceptor } from './interceptor.js';
 import { extractApiErrorMessage, formatProxyRequestError } from './lib/proxy-errors.js';
 import { getProxyDispatcher } from './lib/proxy-env.js';
 import { getClaudeConfigDir } from '../findcc.js';
+import { isAnthropicApiPath } from './lib/interceptor-core.js';
+import { executeRequest, extractModel } from './lib/proxy-retry.js';
+import { buildRecord, appendRecord, dailyFilePath, todayStr } from './lib/proxy-stats.js';
+import { LOG_DIR } from '../findcc.js';
 
 // Setup interceptor to patch fetch
 setupInterceptor();
+
+// 动态导入 server.js 的缓存 promise：避免每请求重复 import('./server.js')（ESM 首次后命中缓存，
+// 但仍省去每次调用 import() 的微任务/属性查找开销）。server.js 会在加载期 import 本模块（setupInterceptor），
+// 故不能静态 import（循环引用），用此缓存代理在首次调用时解析一次。
+let _serverModPromise = null;
+function _getServerModule() {
+  if (!_serverModPromise) _serverModPromise = import('./server.js');
+  return _serverModPromise;
+}
+// 通知 stats-worker 重扫某个 proxy 明细文件；失败时按 CCV_DEBUG 记录（stats 写入是诊断性副作用，
+// 不应静默吞掉）。server 端无 src/utils/errorReport.js，沿用本文件既有的 CCV_DEBUG console.error 模式。
+function _notifyProxyStats(fileName) {
+  _getServerModule().then(m => m.notifyProxyStats?.(fileName)).catch((err) => {
+    if (process.env.CCV_DEBUG) {
+      console.error('[CC-Viewer Proxy] notifyProxyStats failed:', err?.message || err);
+    }
+  });
+}
 
 // 强制上游返回未压缩响应，取代仅剥 zstd 的旧策略。
 // 原因：链路中的网关/代理（典型是本地 MITM 网络代理）可能把上游的压缩 body 原样透传，
@@ -111,26 +133,34 @@ export function startProxy() {
           headers: headers,
         };
 
-        // 标记此请求为 CC-Viewer 代理转发的 Claude API 请求
-        // 拦截器识别到此 Header 会强制记录，忽略 URL 匹配规则
-        fetchOptions.headers['x-cc-viewer-trace'] = 'true';
-
-        if (body.length > 0) {
-          fetchOptions.body = body;
-        }
-
         // 走用户的网络代理：Node 内置全局 fetch 既不读 http_proxy/https_proxy，也看不到
         // userland undici 的 setGlobalDispatcher，必须把代理 dispatcher 显式传进来，否则
         // 上游请求会绕过代理直连 api.anthropic.com（详见 lib/proxy-env.js 注释）。
         const proxyDispatcher = getProxyDispatcher();
-        if (proxyDispatcher) {
-          fetchOptions.dispatcher = proxyDispatcher;
-        }
 
         // 拼接完整 URL，保留 originalBaseUrl 中的路径前缀
         const cleanBase = originalBaseUrl.endsWith('/') ? originalBaseUrl.slice(0, -1) : originalBaseUrl;
         const cleanReq = req.url.startsWith('/') ? req.url.slice(1) : req.url;
         const fullUrl = `${cleanBase}/${cleanReq}`;
+
+        // 大模型 API 请求（/v1/messages 等）走重试引擎：serial/race/stagger 重试 + 明细统计。
+        // 重试引擎内部用 x-cc-viewer-trace 头让 interceptor 记录每次重试尝试到会话日志（网络视图数据源），
+        // 模型替换由重试引擎用 resolveProfileModel 纯函数完成（interceptor 对 trace 请求会再跑一次，幂等 no-op）。
+        // 非大模型 API 请求走原逻辑（同样用 x-cc-viewer-trace 让 interceptor 记录，但不经重试引擎）。
+        if (isAnthropicApiPath(fullUrl)) {
+          await handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyDispatcher);
+          return;
+        }
+
+        // ── 非大模型 API：原逻辑（透传，interceptor 记录）──
+        fetchOptions.headers['x-cc-viewer-trace'] = 'true';
+
+        if (body.length > 0) {
+          fetchOptions.body = body;
+        }
+        if (proxyDispatcher) {
+          fetchOptions.dispatcher = proxyDispatcher;
+        }
 
         const response = await fetch(fullUrl, fetchOptions);
 
@@ -200,4 +230,115 @@ export function startProxy() {
       reject(err);
     });
   });
+}
+
+// ── 大模型 API 请求处理：重试引擎 + 明细统计 ──────────────────────
+// mode=off 时仍写 1 条明细（attempts=1）以支撑可用率统计；完全禁用统计用 CCV_PROXY_STATS=off。
+// 重试配置由 interceptor._retryConfigState 提供（live binding，watchFile 热刷新），
+// 每请求取最新值，UI 改 retry-config.json 后下一个请求即生效，无需重启。
+const _retryConfigGetter = () => interceptor._retryConfigState;
+
+async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyDispatcher) {
+  const statsEnabled = process.env.CCV_PROXY_STATS !== 'off';
+  const retryConfig = _retryConfigGetter(); // live binding：每请求取最新重试配置
+  const profile = interceptor._activeProfile || null;
+
+  // 清理可能的 trace 头（singleFetch 会重新加，避免旧值干扰）；interceptor 会正常记录请求
+  // 同时清理 hop-by-hop / 传输编码头：body 已被 buffer 成完整 Buffer，
+  // 残留的 transfer-encoding:chunked / content-length 会让 undici 拒绝（invalid transfer-encoding header）
+  const retryFetchOptions = {
+    method: fetchOptions.method,
+    headers: { ...fetchOptions.headers },
+  };
+  delete retryFetchOptions.headers['x-cc-viewer-trace'];
+  delete retryFetchOptions.headers['transfer-encoding'];
+  delete retryFetchOptions.headers['Transfer-Encoding'];
+  delete retryFetchOptions.headers['connection'];
+  delete retryFetchOptions.headers['Connection'];
+  delete retryFetchOptions.headers['content-length'];
+  delete retryFetchOptions.headers['Content-Length'];
+  if (body.length > 0) {
+    retryFetchOptions.body = body;
+  }
+
+  // 模型名（用于明细记录）
+  const model = extractModel(body);
+
+  // 执行带重试的请求
+  const result = await executeRequest({
+    url: fullUrl,
+    fetchOptions: retryFetchOptions,
+    retryConfig,
+    ctx: { dispatcher: proxyDispatcher, profile },
+  });
+
+  const { response, attempts, retryCodes, durationMs, finalStatus, succeeded } = result;
+
+  // 注入 X-Forward-Attempts 头（告知客户端本次重试了几次，与 llm-retry-proxy 一致）
+  const responseHeaders = {};
+  if (response.headers && typeof response.headers.entries === 'function') {
+    for (const [key, value] of response.headers.entries()) {
+      if (key.toLowerCase() !== 'content-encoding' && key.toLowerCase() !== 'transfer-encoding' && key.toLowerCase() !== 'content-length') {
+        responseHeaders[key] = value;
+      }
+    }
+  }
+  responseHeaders['x-forward-attempts'] = String(attempts);
+
+  // 写代理重试明细（主线程写，之后通知 stats-worker 重扫聚合）
+  if (statsEnabled && interceptor._projectName) {
+    try {
+      const projectDir = join(LOG_DIR, interceptor._projectName);
+      const filePath = dailyFilePath(projectDir, todayStr());
+      const record = buildRecord({
+        method: req.method,
+        path: req.url,
+        model,
+        profileId: profile?.id || 'default',
+        profileName: profile?.name || 'Default',
+        upstreamStatus: finalStatus,
+        finalStatus,
+        attempts,
+        durationMs,
+        succeeded,
+        retryCodes,
+      });
+      appendRecord(filePath, record);
+      // 通知 stats-worker 重扫该 proxy 明细文件（缓存 dynamic import，非每请求新建）
+      const fileName = basename(filePath);
+      _notifyProxyStats(fileName);
+    } catch (err) {
+      if (process.env.CCV_DEBUG) {
+        console.error('[CC-Viewer Proxy] Failed to write proxy stats:', err.message);
+      }
+    }
+  }
+
+  // 网络异常（finalStatus=0）或竞速全失败：返回 502 + Proxy Error，与原 catch 分支一致
+  if (finalStatus === 0) {
+    res.writeHead(502, { 'x-forward-attempts': String(attempts) });
+    res.end('Proxy Error');
+    return;
+  }
+
+  // 响应客户端
+  res.writeHead(finalStatus, responseHeaders);
+
+  if (response.body) {
+    const { Readable, pipeline } = await import('node:stream');
+    // @ts-ignore
+    const nodeStream = Readable.fromWeb(response.body);
+    nodeStream.on('error', () => {});
+    pipeline(nodeStream, res, (err) => {
+      if (err && process.env.CCV_DEBUG) {
+        console.error('[CC-Viewer Proxy] Stream pipeline error:', err.message);
+      }
+    });
+  } else if (response.text) {
+    // 竞速失败兜底 response：用 text() 取 body
+    const text = await response.text();
+    res.end(text);
+  } else {
+    res.end();
+  }
 }
