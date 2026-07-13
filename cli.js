@@ -417,12 +417,18 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
       // Win 上 `start` 是 cmd.exe 内置不是 .exe，必须 shell:true；用 spawn + 数组让 Node 自己 escape。
       // 第二个 arg '""' 是 `start` 的 window-title 占位（否则 start 会把 URL 当 title）。
       const { spawn } = await import('node:child_process');
+      // Headless/container envs may lack xdg-open/open/start → spawn asynchronously emits an 'error' event,
+      // which try/catch cannot catch (it only catches synchronous throws); without a handler the process
+      // would crash. Swallow it here as a best-effort fallback.
+      let child;
       if (process.platform === 'win32') {
-        spawn('cmd.exe', ['/c', 'start', '""', url], { stdio: 'ignore', detached: true, windowsHide: true }).unref();
+        child = spawn('cmd.exe', ['/c', 'start', '""', url], { stdio: 'ignore', detached: true, windowsHide: true });
       } else {
         const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
-        spawn(cmd, [url], { stdio: 'ignore', detached: true }).unref();
+        child = spawn(cmd, [url], { stdio: 'ignore', detached: true });
       }
+      child.on('error', () => {});
+      child.unref();
     } catch {}
   }
 
@@ -600,12 +606,18 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
       // Win 上 `start` 是 cmd.exe 内置不是 .exe，必须 shell:true；用 spawn + 数组让 Node 自己 escape。
       // 第二个 arg '""' 是 `start` 的 window-title 占位（否则 start 会把 URL 当 title）。
       const { spawn } = await import('node:child_process');
+      // Headless/container envs may lack xdg-open/open/start → spawn asynchronously emits an 'error' event,
+      // which try/catch cannot catch (it only catches synchronous throws); without a handler the process
+      // would crash. Swallow it here as a best-effort fallback.
+      let child;
       if (process.platform === 'win32') {
-        spawn('cmd.exe', ['/c', 'start', '""', url], { stdio: 'ignore', detached: true, windowsHide: true }).unref();
+        child = spawn('cmd.exe', ['/c', 'start', '""', url], { stdio: 'ignore', detached: true, windowsHide: true });
       } else {
         const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
-        spawn(cmd, [url], { stdio: 'ignore', detached: true }).unref();
+        child = spawn(cmd, [url], { stdio: 'ignore', detached: true });
       }
+      child.on('error', () => {});
+      child.unref();
     } catch {}
   }
 

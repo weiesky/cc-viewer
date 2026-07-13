@@ -103,6 +103,26 @@ describe('startProxy live forwarding', () => {
     assert.equal(res.body, '');
   });
 
+  it('strips inbound chunked transfer-encoding so undici does not reject (hop-by-hop fix)', async () => {
+    // Real Claude CLI sends chunked TE; proxy buffers to a full Buffer, so the stale
+    // transfer-encoding: chunked header must be dropped before forwarding, otherwise
+    // undici throws 'invalid transfer-encoding header' and the request fails.
+    mode = 'plain';
+    const res = await new Promise((resolve, reject) => {
+      const r = request({ hostname: '127.0.0.1', port: proxyPort, path: '/v1/messages', method: 'POST' }, (resp) => {
+        let data = '';
+        resp.on('data', (c) => { data += c; });
+        resp.on('end', () => resolve({ status: resp.statusCode, body: data }));
+      });
+      r.on('error', reject);
+      // Do NOT set content-length → node http switches to chunked transfer-encoding
+      r.write(JSON.stringify({ model: 'claude-3' }));
+      r.end();
+    });
+    assert.equal(res.status, 200, 'chunked TE stripped, upstream reachable');
+    assert.match(res.body, /plain ok/);
+  });
+
   it('returns 502 Proxy Error when the upstream is unreachable (catch branch)', async () => {
     // Point at a closed port so fetch throws → catch → 502.
     const saved = process.env.ANTHROPIC_BASE_URL;

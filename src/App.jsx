@@ -400,6 +400,9 @@ class App extends AppBase {
               activeProxyId={this.state.activeProxyId}
               defaultConfig={this.state.defaultConfig}
               onProxyProfileChange={this.handleProxyProfileChange}
+              retryConfig={this.state.retryConfig}
+              retryDefaults={this.state.retryDefaults}
+              onRetryConfigChange={this.handleRetryConfigChange}
               contextBarSlot={this.state.contextBarSlot}
               claudeProjectModel={this.state.claudeProjectModel}
             />

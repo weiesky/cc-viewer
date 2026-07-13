@@ -143,6 +143,9 @@ class AppBase extends React.Component {
       proxyProfiles: [],
       activeProxyId: 'max',
       defaultConfig: null,
+      // 代理重试配置（GET /api/retry-config 注入；SSE 'retry_config' 刷新）
+      retryConfig: null,
+      retryDefaults: null,
       // ─── Approval modal global state ───
       // approvalGlobal: { ptyPlan?, ask? } currently active in the (single) ChatView mounted in this app instance.
       // Each entry carries { id, ..., handlers } as bubbled by ChatView.componentDidUpdate.
@@ -916,6 +919,14 @@ class AppBase extends React.Component {
       })
       .catch(() => { });
 
+    // 获取代理重试配置（mode/interval/maxRetries 等，运行时热切换）
+    fetch(apiUrl('/api/retry-config'))
+      .then(res => res.json())
+      .then(data => {
+        if (data?.config) this.setState({ retryConfig: data.config, retryDefaults: data.defaults || null });
+      })
+      .catch(() => { });
+
     // 获取当前监控的项目名称
     const params = new URLSearchParams(window.location.search);
     const logfile = params.get('logfile');
@@ -1622,6 +1633,13 @@ class AppBase extends React.Component {
           }
         } catch (e) { reportSwallowed('sse.proxy_profile', e); }
       });
+      this.eventSource.addEventListener('retry_config', (event) => {
+        this._resetSSETimeout();
+        try {
+          const data = JSON.parse(event.data);
+          if (data?.config) this.setState({ retryConfig: data.config });
+        } catch (e) { reportSwallowed('sse.retry_config', e); }
+      });
       this.eventSource.addEventListener('ping', () => { this._resetSSETimeout(); });
       // server_config: server 启动时一次性推 turnEnd debounce ms（CCV_TURN_END_DEBOUNCE_MS
       // 可能改过默认值），前端拿这个值同步 voicePackPlayer 的 turnEnd cooldown，避免硬常数漂移。
@@ -2178,6 +2196,27 @@ class AppBase extends React.Component {
         this.setState({ proxyProfiles: data.profiles, activeProxyId: data.active });
       })
       .catch(() => { });
+  };
+
+  // 代理重试配置保存：POST /api/retry-config（服务端写 retry-config.json + watchFile 热刷新 + SSE 回推）。
+  // 乐观更新本地 retryConfig（SSE retry_config 事件会再确认一次）；失败回滚并提示。
+  // 返回 POST 的 Promise：成功 resolve（SSE retry_config 会刷新 state）；
+  // 失败则回滚 state + message.error 后 reject，供调用方（RetryConfigModal）据以决定是否关闭/提示成功。
+  handleRetryConfigChange = (config) => {
+    const prev = this.state.retryConfig;
+    this.setState({ retryConfig: config });
+    return fetch(apiUrl('/api/retry-config'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config }),
+    })
+      .then(r => r.json())
+      .then(() => { /* SSE retry_config 会刷新；无需额外处理 */ })
+      .catch((err) => {
+        this.setState({ retryConfig: prev }); // 回滚
+        message.error(t('ui.retryConfig.saveFail'));
+        throw err; // 让调用方感知失败（不显示假成功、不关闭 Modal）
+      });
   };
 
   // ─── 偏好设置 ──────────────────────────────────────────

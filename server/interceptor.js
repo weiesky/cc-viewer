@@ -17,6 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, basename } from 'node:path';
 import { LOG_DIR } from '../findcc.js';
 import { assembleStreamMessage, createStreamAssembler, cleanupTempFiles, findRecentLog, claimUntaggedLog, logFilePrefix, isAnthropicApiPath, isMainAgentRequest, rotateLogFile, fingerprintMsg, replaceTopLevelModel, injectOutputConfigEffort, resolveProfileModel, extractAgentSpawnPairs, parseRotationContextHead } from './lib/interceptor-core.js';
+import { setRetryConfigPath, loadRetryConfig, DEFAULT_RETRY_CONFIG } from './lib/proxy-retry.js';
 
 
 
@@ -78,6 +79,26 @@ export let _cachedHaikuModel = null;
 // profile.json 存放在 LOG_DIR 下，受 --log-dir / CCV_LOG_DIR 影响
 const PROFILE_PATH = join(LOG_DIR, 'profile.json');
 let _activeProfile = null; // { id, name, baseURL?, apiKey?, effort?, ANTHROPIC_MODEL?, ANTHROPIC_DEFAULT_OPUS_MODEL?, ANTHROPIC_DEFAULT_SONNET_MODEL?, ANTHROPIC_DEFAULT_HAIKU_MODEL?, activeModel?(legacy) }
+
+// ── 代理重试配置（运行时热切换，对齐 profile 模式）──
+// retry-config.json 存全局共享的重试配置（mode/interval/maxRetries/maxConcurrent 等）。
+// env（CCV_PROXY_RETRY_*）仍是启动默认/兜底，文件字段覆盖 env（文件优先）。
+// watchFile 1.5s 跨 ccv 进程同步；proxy.js 经 namespace import 读 _retryConfigState live binding。
+const RETRY_CONFIG_PATH = join(LOG_DIR, 'retry-config.json');
+let _retryConfigState = { ...DEFAULT_RETRY_CONFIG }; // 可变，由 _loadRetryConfigState 刷新
+
+// 把配置文件路径注入 proxy-retry.js（其 resolveRetryConfig 在 fileOverride=true 时读此路径）。
+// 在模块加载阶段同步注入，确保后续 _loadRetryConfigState() 调用时路径已就绪。
+setRetryConfigPath(RETRY_CONFIG_PATH);
+
+/** 重读 retry-config.json + env 合并，刷新 _retryConfigState（live binding 消费方即取到新值）。 */
+function _loadRetryConfigState() {
+  try {
+    _retryConfigState = loadRetryConfig();
+  } catch (err) {
+    if (process.env.CCV_DEBUG) console.error('[ccv retry-config] _loadRetryConfigState failed:', err && err.message);
+  }
+}
 
 // 启动时捕获的原始配置（首次 API 请求时记录，不可变）
 let _defaultConfig = null; // { origin, authType, model }
@@ -198,7 +219,7 @@ function _replaceProxyAuthHeaders(headers, apiKey) {
   return { headers: newHeaders, matchedAuthKey, matchedXApiKey };
 }
 
-export { _activeProfile, _defaultConfig, _loadProxyProfile, PROFILE_PATH, setActiveProfileForWorkspace, getActiveProfileId };
+export { _activeProfile, _defaultConfig, _loadProxyProfile, PROFILE_PATH, setActiveProfileForWorkspace, getActiveProfileId, RETRY_CONFIG_PATH, _retryConfigState, _loadRetryConfigState };
 
 // 生成新的日志文件路径
 function generateNewLogFilePath() {
@@ -369,6 +390,10 @@ const _writeQueue = new AsyncWriteQueue(() => LOG_FILE);
 // 并挂载 watchFile 同步列表变化。
 _loadProxyProfile();
 try { watchFile(PROFILE_PATH, { interval: 1500 }, _loadProxyProfile); } catch { }
+
+// 代理重试配置：首次加载 + watchFile 跨进程同步（UI 改 retry-config.json 后 1.5s 内热刷新）。
+_loadRetryConfigState();
+try { watchFile(RETRY_CONFIG_PATH, { interval: 1500 }, _loadRetryConfigState); } catch { }
 
 const _initPromise = (async () => {
   if (!_logDir || !_projectName) return; // 工作区模式下跳过

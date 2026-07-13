@@ -3,8 +3,9 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { LOG_DIR, setLogDir, getClaudeConfigDir } from '../../findcc.js';
-import { PROFILE_PATH, _defaultConfig, getActiveProfileId, setActiveProfileForWorkspace, _loadProxyProfile } from '../interceptor.js';
+import { PROFILE_PATH, _defaultConfig, getActiveProfileId, setActiveProfileForWorkspace, _loadProxyProfile, RETRY_CONFIG_PATH, _retryConfigState, _loadRetryConfigState } from '../interceptor.js';
 import { migrateProxyProfileList } from '../lib/interceptor-core.js';
+import { DEFAULT_RETRY_CONFIG, validateRetryConfig, resolveRetryConfig } from '../lib/proxy-retry.js';
 import { discoverCcSwitchProviders, mergeImportedProfiles } from '../lib/ccswitch-import.js';
 import { setLang } from '../i18n.js';
 import { reconcileVoicePackPrefs as vpReconcile } from '../lib/voice-pack-manager.js';
@@ -303,6 +304,54 @@ function proxyProfilesPost(req, res, parsedUrl, isLocal, deps) {
   });
 }
 
+// ── 代理重试配置（GET/POST，仿 proxyProfilesGet/Post，但无密钥脱敏、无 workspace 隔离）──
+// 返回 { config, defaults }：config = 当前生效（env 基础 + retry-config.json 覆盖后的 live binding）；
+// defaults = DEFAULT_RETRY_CONFIG，供 UI「恢复默认」按钮参照。
+
+function retryConfigGet(req, res, _parsedUrl, _isLocal, _deps) {
+  try {
+    // _retryConfigState 是 live binding（watchFile 刷新），即当前生效配置。
+    // 缺省兜底：若拦截器尚未初始化（理论上不会，但防御性），即时解析一次。
+    const config = _retryConfigState || resolveRetryConfig();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ config, defaults: DEFAULT_RETRY_CONFIG }));
+  } catch {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ config: DEFAULT_RETRY_CONFIG, defaults: DEFAULT_RETRY_CONFIG }));
+  }
+}
+
+function retryConfigPost(req, res, _parsedUrl, _isLocal, deps) {
+  let body = '';
+  req.on('data', chunk => { body += chunk; if (body.length > deps.MAX_POST_BODY) req.destroy(); });
+  req.on('end', () => {
+    try {
+      const incoming = JSON.parse(body);
+      if (!incoming || typeof incoming !== 'object' || !incoming.config || typeof incoming.config !== 'object') {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid retry config: expected { config: {...} }' }));
+        return;
+      }
+      // 校验 + 归一化（与 resolveRetryConfig 共用 validateRetryConfig，单一真源）
+      const validated = validateRetryConfig(incoming.config);
+      // 合并默认值，保证写盘的是完整配置（缺字段回落默认，避免读到半截配置）
+      const toWrite = { ...DEFAULT_RETRY_CONFIG, ...validated };
+      const dir = dirname(RETRY_CONFIG_PATH);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(RETRY_CONFIG_PATH, JSON.stringify(toWrite, null, 2), { mode: 0o600 });
+      // 立即刷新本进程 live binding（不等 watchFile 1.5s 轮询）
+      _loadRetryConfigState();
+      // SSE 广播给本进程所有客户端（同 proxy_profile 模式）
+      sendEventToClients(deps.clients, 'retry_config', { config: _retryConfigState });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON' }));
+    }
+  });
+}
+
 // ── cc-switch 导入 ─────────────────────────────────────
 // cc-switch 是 Tauri 桌面应用，把供应商凭证存 SQLite（cc-switch.db providers 表）。
 // 本路由跨平台探测 cc-switch 数据目录，只读查 claude 类型供应商，映射成 cc-viewer profile。
@@ -399,6 +448,8 @@ export const preferencesRoutes = [
   { method: 'POST', match: 'exact', path: '/api/claude-settings', handler: claudeSettingsPost },
   { method: 'GET', match: 'exact', path: '/api/proxy-profiles', handler: proxyProfilesGet },
   { method: 'POST', match: 'exact', path: '/api/proxy-profiles', handler: proxyProfilesPost },
+  { method: 'GET', match: 'exact', path: '/api/retry-config', handler: retryConfigGet },
+  { method: 'POST', match: 'exact', path: '/api/retry-config', handler: retryConfigPost },
   { method: 'GET', match: 'exact', path: '/api/ccswitch-providers', handler: ccswitchProvidersGet },
   { method: 'POST', match: 'exact', path: '/api/ccswitch-import', handler: ccswitchImportPost },
 ];

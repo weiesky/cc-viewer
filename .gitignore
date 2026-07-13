@@ -10,6 +10,7 @@ coverage
 .idea/
 .DS_Store
 .omc/
+.omo/
 tmp/
 
 # Sensitive signing-related files

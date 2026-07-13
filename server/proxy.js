@@ -8,6 +8,8 @@ import { setupInterceptor } from './interceptor.js';
 import { extractApiErrorMessage, formatProxyRequestError } from './lib/proxy-errors.js';
 import { getProxyDispatcher } from './lib/proxy-env.js';
 import { getClaudeConfigDir } from '../findcc.js';
+import { isAnthropicApiPath } from './lib/interceptor-core.js';
+import { executeRequest } from './lib/proxy-retry.js';
 
 // Setup interceptor to patch fetch
 setupInterceptor();
@@ -111,26 +113,34 @@ export function startProxy() {
           headers: headers,
         };
 
-        // 标记此请求为 CC-Viewer 代理转发的 Claude API 请求
-        // 拦截器识别到此 Header 会强制记录，忽略 URL 匹配规则
-        fetchOptions.headers['x-cc-viewer-trace'] = 'true';
-
-        if (body.length > 0) {
-          fetchOptions.body = body;
-        }
-
         // 走用户的网络代理：Node 内置全局 fetch 既不读 http_proxy/https_proxy，也看不到
         // userland undici 的 setGlobalDispatcher，必须把代理 dispatcher 显式传进来，否则
         // 上游请求会绕过代理直连 api.anthropic.com（详见 lib/proxy-env.js 注释）。
         const proxyDispatcher = getProxyDispatcher();
-        if (proxyDispatcher) {
-          fetchOptions.dispatcher = proxyDispatcher;
-        }
 
         // 拼接完整 URL，保留 originalBaseUrl 中的路径前缀
         const cleanBase = originalBaseUrl.endsWith('/') ? originalBaseUrl.slice(0, -1) : originalBaseUrl;
         const cleanReq = req.url.startsWith('/') ? req.url.slice(1) : req.url;
         const fullUrl = `${cleanBase}/${cleanReq}`;
+
+        // 大模型 API 请求（/v1/messages 等）走重试引擎：serial/race/stagger 重试。
+        // 重试引擎内部用 x-cc-viewer-trace 头让 interceptor 记录每次重试尝试到会话日志（网络视图数据源），
+        // 模型替换由重试引擎用 resolveProfileModel 纯函数完成（interceptor 对 trace 请求会再跑一次，幂等 no-op）。
+        // 非大模型 API 请求走原逻辑（同样用 x-cc-viewer-trace 让 interceptor 记录，但不经重试引擎）。
+        if (isAnthropicApiPath(fullUrl)) {
+          await handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyDispatcher);
+          return;
+        }
+
+        // ── 非大模型 API：原逻辑（透传，interceptor 记录）──
+        fetchOptions.headers['x-cc-viewer-trace'] = 'true';
+
+        if (body.length > 0) {
+          fetchOptions.body = body;
+        }
+        if (proxyDispatcher) {
+          fetchOptions.dispatcher = proxyDispatcher;
+        }
 
         const response = await fetch(fullUrl, fetchOptions);
 
@@ -200,4 +210,82 @@ export function startProxy() {
       reject(err);
     });
   });
+}
+
+// ── 大模型 API 请求处理：重试引擎 ──────────────────────
+// mode=off 时退化为单次 fetch（与原透传一致）。
+// 重试配置由 interceptor._retryConfigState 提供（live binding，watchFile 热刷新），
+// 每请求取最新值，UI 改 retry-config.json 后下一个请求即生效，无需重启。
+const _retryConfigGetter = () => interceptor._retryConfigState;
+
+async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyDispatcher) {
+  const retryConfig = _retryConfigGetter(); // live binding：每请求取最新重试配置
+  const profile = interceptor._activeProfile || null;
+
+  // 清理可能的 trace 头（executeRequest 会重新加，避免旧值干扰）；interceptor 会正常记录请求
+  // 同时清理 hop-by-hop / 传输编码头：body 已被 buffer 成完整 Buffer，
+  // 残留的 transfer-encoding:chunked / content-length 会让 undici 拒绝（invalid transfer-encoding header）
+  const retryFetchOptions = {
+    method: fetchOptions.method,
+    headers: { ...fetchOptions.headers },
+  };
+  delete retryFetchOptions.headers['x-cc-viewer-trace'];
+  delete retryFetchOptions.headers['transfer-encoding'];
+  delete retryFetchOptions.headers['Transfer-Encoding'];
+  delete retryFetchOptions.headers['connection'];
+  delete retryFetchOptions.headers['Connection'];
+  delete retryFetchOptions.headers['content-length'];
+  delete retryFetchOptions.headers['Content-Length'];
+  if (body.length > 0) {
+    retryFetchOptions.body = body;
+  }
+
+  // 执行带重试的请求
+  const result = await executeRequest({
+    url: fullUrl,
+    fetchOptions: retryFetchOptions,
+    retryConfig,
+    ctx: { dispatcher: proxyDispatcher, profile },
+  });
+
+  const { response, attempts, finalStatus } = result;
+
+  // 注入 X-Forward-Attempts 头（告知客户端本次重试了几次，与 llm-retry-proxy 一致）
+  const responseHeaders = {};
+  if (response.headers && typeof response.headers.entries === 'function') {
+    for (const [key, value] of response.headers.entries()) {
+      if (key.toLowerCase() !== 'content-encoding' && key.toLowerCase() !== 'transfer-encoding' && key.toLowerCase() !== 'content-length') {
+        responseHeaders[key] = value;
+      }
+    }
+  }
+  responseHeaders['x-forward-attempts'] = String(attempts);
+
+  // 网络异常（finalStatus=0）或竞速全失败：返回 502 + Proxy Error，与原 catch 分支一致
+  if (finalStatus === 0) {
+    res.writeHead(502, { 'x-forward-attempts': String(attempts) });
+    res.end('Proxy Error');
+    return;
+  }
+
+  // 响应客户端
+  res.writeHead(finalStatus, responseHeaders);
+
+  if (response.body) {
+    const { Readable, pipeline } = await import('node:stream');
+    // @ts-ignore
+    const nodeStream = Readable.fromWeb(response.body);
+    nodeStream.on('error', () => {});
+    pipeline(nodeStream, res, (err) => {
+      if (err && process.env.CCV_DEBUG) {
+        console.error('[CC-Viewer Proxy] Stream pipeline error:', err.message);
+      }
+    });
+  } else if (response.text) {
+    // 竞速失败兜底 response：用 text() 取 body
+    const text = await response.text();
+    res.end(text);
+  } else {
+    res.end();
+  }
 }
