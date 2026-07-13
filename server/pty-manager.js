@@ -299,28 +299,39 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   // 注：currentWorkspacePath 在下方才赋值，这里用 cwd 参数判定启动目录。
   // LOG_DIR 内的 spawn(IM worker 工作目录 = <LOG_DIR>/IM_<id>/)跳过模型匹配：
   // IM 人格依赖默认 sentinel CC_APPEND_SYSTEM.md 注入，全局模型条目不得静默取代它。
-  const spawnDir = cwd || process.cwd();
-  const insideLogDir = spawnDir === LOG_DIR || spawnDir.startsWith(LOG_DIR + sep);
-  const resolvedModelId = insideLogDir ? null : _spawnModelReader(spawnDir);
-  let sysPrompt = buildSystemPromptFileArgs(spawnDir, finalExtraArgs, process.env, {
-    modelId: resolvedModelId,
-    globalModelDir: join(LOG_DIR, MODEL_PROMPT_DIR),
-  });
-  if (_systemPromptFileRejectedPaths.has(claudePath)) {
+  //
+  // 整个 system prompt 构建 + 渲染管道包在 try-catch 里：任何意外抛错（含 readClaudeProjectModel
+  // JSON 解析、buildSystemPromptFileArgs 文件系统竞态、renderSystemPromptFileArgs 的
+  // createSystemPromptVariables git 子进程异常）都走兜底——当没命中任何条目，launch 不带
+  // --system-prompt-file/--append-system-prompt-file，claude 用自身默认 system prompt 启动。
+  let sysPrompt;
+  try {
+    const spawnDir = cwd || process.cwd();
+    const insideLogDir = spawnDir === LOG_DIR || spawnDir.startsWith(LOG_DIR + sep);
+    const resolvedModelId = insideLogDir ? null : _spawnModelReader(spawnDir);
+    sysPrompt = buildSystemPromptFileArgs(spawnDir, finalExtraArgs, process.env, {
+      modelId: resolvedModelId,
+      globalModelDir: join(LOG_DIR, MODEL_PROMPT_DIR),
+    });
+    if (_systemPromptFileRejectedPaths.has(claudePath)) {
+      sysPrompt = { args: [], loaded: [], model: null };
+    } else if (resolvedModelId && !sysPrompt.model && !sysPrompt.suppressed
+      && (existsSync(join(spawnDir, MODEL_PROMPT_DIR)) || existsSync(join(LOG_DIR, MODEL_PROMPT_DIR)))) {
+      // The one diagnostic case worth a warning: a system_prompt dir is configured
+      // but the resolved model matched no entry (likely a misnamed file). Intentional
+      // skips (CCV_DISABLE_AUTO_SYSTEM_PROMPT=1, or a manual --system-prompt flag
+      // suppressing a matched entry) carry `suppressed` and stay quiet. The
+      // successful-injection notice is emitted below via emitSpawnNotice (with
+      // internal-restart suppression); no-modelId spawns are the normal quiet path.
+      console.warn(`[CC Viewer] model-specific prompt: modelId="${resolvedModelId}" resolved but no matching entry found in workspace or global ${MODEL_PROMPT_DIR}/`);
+    }
+    // Resolve `${...}` template variables in the injected files (editor stores them literal —
+    // the substitution documented by the editor's parameter reference happens here, at launch).
+    sysPrompt = renderSystemPromptFileArgs(sysPrompt, { cwd: spawnDir, modelId: resolvedModelId });
+  } catch (err) {
+    console.warn(`[CC Viewer] system prompt build/render failed, launching without injected prompt:`, err?.message || err);
     sysPrompt = { args: [], loaded: [], model: null };
-  } else if (resolvedModelId && !sysPrompt.model && !sysPrompt.suppressed
-    && (existsSync(join(spawnDir, MODEL_PROMPT_DIR)) || existsSync(join(LOG_DIR, MODEL_PROMPT_DIR)))) {
-    // The one diagnostic case worth a warning: a system_prompt dir is configured
-    // but the resolved model matched no entry (likely a misnamed file). Intentional
-    // skips (CCV_DISABLE_AUTO_SYSTEM_PROMPT=1, or a manual --system-prompt flag
-    // suppressing a matched entry) carry `suppressed` and stay quiet. The
-    // successful-injection notice is emitted below via emitSpawnNotice (with
-    // internal-restart suppression); no-modelId spawns are the normal quiet path.
-    console.warn(`[CC Viewer] model-specific prompt: modelId="${resolvedModelId}" resolved but no matching entry found in workspace or global ${MODEL_PROMPT_DIR}/`);
   }
-  // Resolve `${...}` template variables in the injected files (editor stores them literal —
-  // the substitution documented by the editor's parameter reference happens here, at launch).
-  sysPrompt = renderSystemPromptFileArgs(sysPrompt, { cwd: spawnDir, modelId: resolvedModelId });
   const launchArgs = sysPrompt.args.length ? [...finalExtraArgs, ...sysPrompt.args] : finalExtraArgs;
 
   let command = claudePath;
@@ -348,13 +359,11 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   // --allow-dangerously-skip-permissions only enables a later toggle, so it must NOT count.
   ptySkipPermissions = extraArgs.includes('--dangerously-skip-permissions');
 
-  // 注入了 system prompt 文件时向终端打印一行提示(可见性/安全)；内部重启已抑制以免重复。
-  if (sysPrompt.loaded.length && !_suppressNextSpawnNotice) {
-    const modelSuffix = sysPrompt.model ? ` (model match: ${sysPrompt.model})` : '';
-    emitSpawnNotice(`[CC Viewer] loaded ${sysPrompt.loaded.join(', ')} as system prompt${modelSuffix}`);
-  }
-  _suppressNextSpawnNotice = false;
-
+  // Register PTY event handlers IMMEDIATELY after spawn, before any other
+  // synchronous work. If the child process exits before onExit is registered
+  // (e.g. the binary is missing, crashes instantly, or rejects an injected
+  // --system-prompt-file flag), the exit event is lost — the handle releases,
+  // and without a live PTY the event loop may drain despite the HTTP servers.
   ptyProcess.onData((data) => {
     outputBuffer += data;
     if (outputBuffer.length > MAX_BUFFER) {
@@ -423,6 +432,15 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
       try { cb(exitCode); } catch { }
     }
   });
+
+  // Notice must fire AFTER onData/onExit are registered: if the child exits before onExit
+  // is attached, the exit event is lost and the process handle releases, which can drain
+  // the event loop (the HTTP servers alone may not always prevent exit on all platforms).
+  if (sysPrompt.loaded.length && !_suppressNextSpawnNotice) {
+    const modelSuffix = sysPrompt.model ? ` (model match: ${sysPrompt.model})` : '';
+    emitSpawnNotice(`[CC Viewer] loaded ${sysPrompt.loaded.join(', ')} as system prompt${modelSuffix}`);
+  }
+  _suppressNextSpawnNotice = false;
 
   return ptyProcess;
 }
