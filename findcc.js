@@ -279,9 +279,23 @@ export function resolveNpmClaudePath() {
             const match = normReal.match(/(.*node_modules\/@[^/]+\/[^/]+)\//);
             if (match) {
               const packageDir = match[1];
+              // Claude Code 1.x: cli.js (injected with interceptor)
               const cliPath = join(packageDir, CLI_ENTRY);
               if (existsSync(cliPath)) {
                 return cliPath;
+              }
+              // Claude Code 2.x: no cli.js — the npm binary itself is the entry point.
+              // The native platform binary (claude-code-darwin-arm64/claude et al.) crashes
+              // with SIGKILL when passed --settings; the npm binary works correctly.
+              const npmBinDir = join(packageDir, 'bin');
+              const binCandidates = process.platform === 'win32'
+                ? ['claude.exe', 'claude.cmd']
+                : ['claude.exe', 'claude'];
+              for (const name of binCandidates) {
+                const binPath = join(npmBinDir, name);
+                if (existsSync(binPath)) {
+                  return binPath;
+                }
               }
             }
           }
@@ -300,9 +314,22 @@ export function resolveNpmClaudePath() {
   const globalRoot = getGlobalNodeModulesDir();
   if (globalRoot) {
     for (const packageName of PACKAGES) {
-      const cliPath = join(globalRoot, packageName, CLI_ENTRY);
+      const pkgDir = join(globalRoot, packageName);
+      // Claude Code 1.x: cli.js
+      const cliPath = join(pkgDir, CLI_ENTRY);
       if (existsSync(cliPath)) {
         return cliPath;
+      }
+      // Claude Code 2.x: no cli.js, fall back to the npm binary in bin/
+      const binDir = join(pkgDir, 'bin');
+      const binCandidates = process.platform === 'win32'
+        ? ['claude.exe', 'claude.cmd']
+        : ['claude.exe', 'claude'];
+      for (const name of binCandidates) {
+        const binPath = join(binDir, name);
+        if (existsSync(binPath)) {
+          return binPath;
+        }
       }
     }
   }
