@@ -43,7 +43,11 @@ export function renderedPromptDir(pid = process.pid) {
  *          whose content was rendered point at the temp copy instead.
  */
 export function renderSystemPromptFileArgs(sysPrompt, opts = {}) {
-  const args = Array.isArray(sysPrompt?.args) ? sysPrompt.args : [];
+  // Defensive: null / non-object / missing args → pass through untouched, so the
+  // caller always gets a safe spread target and the "loaded" notice guard
+  // (sysPrompt.loaded.length) doesn't throw.
+  if (!sysPrompt || typeof sysPrompt !== 'object') return { args: [], loaded: [], model: null };
+  const args = Array.isArray(sysPrompt.args) ? sysPrompt.args : [];
   if (args.length === 0) return sysPrompt;
 
   let variables = null; // lazy: collected once, and only if some file actually has placeholders

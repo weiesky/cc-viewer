@@ -7,7 +7,7 @@
 //   node server/lib/create_system_prompt.js deepseek-v4-pro # a named preset
 //   node server/lib/create_system_prompt.js --list          # list presets
 
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { readFileSync, statSync } from 'node:fs'
 import os from 'node:os'
 import { delimiter, join, sep } from 'node:path'
@@ -54,13 +54,16 @@ function envString(name) {
 }
 
 function commandOutput(command, args, cwd) {
-  return stringOrEmpty(() =>
-    execFileSync(command, args, {
+  return stringOrEmpty(() => {
+    const result = spawnSync(command, args, {
       cwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim(),
-  )
+      timeout: 15000, // 15s hard cap: hanging git (NFS / huge repo / broken index) must not block spawn
+    });
+    if (result.error || result.status !== 0) return '';
+    return result.stdout.trim();
+  });
 }
 
 function firstNonEmpty(...values) {
