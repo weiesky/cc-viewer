@@ -38,6 +38,7 @@ import { teamRoutes } from './routes/team.js';
 import { authRoutes } from './routes/auth.js';
 import { dingtalkRoutes } from './routes/dingtalk.js';
 import { imRoutes } from './routes/im.js';
+import { proxyStatsRoutes } from './routes/proxy-stats.js';
 import * as imCore from './lib/im-bridge-core.js';
 import * as imProcMgr from './lib/im-process-manager.js';
 import './lib/adapters/dingtalk-adapter.js'; // side-effect: registers the DingTalk adapter
@@ -415,6 +416,13 @@ function notifyStatsWorker(logFile) {
   }
 }
 
+// 供 proxy.js 在写入代理重试明细后通知 stats-worker 重扫聚合。
+// 单独 export 避免循环依赖（proxy.js 不能直接 import server.js 的 deps）。
+export function notifyProxyStats(logFile) {
+  if (!statsWorker) startStatsWorker();
+  notifyStatsWorker(logFile);
+}
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
@@ -621,6 +629,7 @@ const _routes = [
   ...teamRoutes,
   ...dingtalkRoutes,
   ...imRoutes,
+  ...proxyStatsRoutes,
 ];
 const dispatch = createDispatcher(_routes);
 

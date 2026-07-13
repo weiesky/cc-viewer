@@ -1,4 +1,5 @@
 import React from 'react';
+import { lazy, Suspense } from 'react';
 import { ConfigProvider, Layout, theme, Modal, Button, Checkbox, Spin, Alert, message, Tooltip } from 'antd';
 import { UploadOutlined, DeleteOutlined, ReloadOutlined, FileZipOutlined } from '@ant-design/icons';
 import AppBase, { styles } from './AppBase';
@@ -21,6 +22,9 @@ import { classifyRequest } from './utils/requestType';
 import { apiUrl } from './utils/apiUrl';
 import { BLUR_MASK_STYLE } from './utils/modalMask';
 
+// 代理重试统计面板：懒加载，仅在 ?view=proxy-stats 时加载
+const ProxyStatsPage = lazy(() => import('./components/proxy-stats/ProxyStatsPage'));
+
 class App extends AppBase {
   constructor(props) {
     super(props);
@@ -28,6 +32,7 @@ class App extends AppBase {
     Object.assign(this.state, {
       leftPanelWidth: 380,
       terminalVisible: true,
+      proxyStatsVisible: false,
       currentTab: 'context',
       pendingCacheHighlight: null,
       contextBarSlot: null, // DOM slot registered by TerminalPanel toolbar / ChatInputBar bottom button area; AppHeader renders the usage pill bar there via createPortal
@@ -182,9 +187,19 @@ class App extends AppBase {
     });
   };
 
+  handleToggleProxyStats = () => {
+    this.setState(prev => ({
+      proxyStatsVisible: !prev.proxyStatsVisible,
+      // 互斥：打开代理统计时收起终端，避免两个视图同时 active
+      ...(prev.proxyStatsVisible ? {} : { terminalVisible: false }),
+    }));
+  }
+
   handleToggleViewMode = () => {
     this.setState(prev => {
       const newMode = prev.viewMode === 'raw' ? 'chat' : 'raw';
+      // 切换视图模式时关闭代理统计视图（否则 showProxyStats 仍占主内容区，网络视图看不到）
+      const closeProxyStats = { proxyStatsVisible: false };
       if (newMode === 'raw') {
         if (prev.selectedIndex === null) {
           const filtered = visibleRequests(prev.requests, prev.showAll);
@@ -192,9 +207,10 @@ class App extends AppBase {
             viewMode: newMode,
             selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
             scrollCenter: true,
+            ...closeProxyStats,
           };
         }
-        return { viewMode: newMode, scrollCenter: true };
+        return { viewMode: newMode, scrollCenter: true, ...closeProxyStats };
       }
       const filtered = visibleRequests(prev.requests, prev.showAll);
       const selectedReq = prev.selectedIndex != null ? filtered[prev.selectedIndex] : null;
@@ -216,9 +232,9 @@ class App extends AppBase {
             }
           }
         }
-        return { viewMode: newMode, chatScrollToTs: targetTs };
+        return { viewMode: newMode, chatScrollToTs: targetTs, ...closeProxyStats };
       }
-      return { viewMode: newMode, chatScrollToTs: null };
+      return { viewMode: newMode, chatScrollToTs: null, ...closeProxyStats };
     }, () => {
       if (this.state.viewMode === 'chat' && this.state.terminalVisible && this.state.cliMode && !isMobile) {
         requestAnimationFrame(() => {
@@ -302,6 +318,15 @@ class App extends AppBase {
   // ─── PC 渲染 ──────────────────────────────────────────
 
   render() {
+    // 代理重试统计面板：?view=proxy-stats 时独立渲染，懒加载避免进入主包
+    const viewParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('view') : null;
+    if (viewParam === 'proxy-stats') {
+      return (
+        <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spin size="large" /></div>}>
+          <ProxyStatsPage />
+        </Suspense>
+      );
+    }
     const { filteredRequests, selectedRequest, fileLoading, fileLoadingCount, mainAgentSessions, viewMode } = this.renderPrepare();
     // 「仅展示当前会话」锁定：把传给 ChatView 的会话切到「以 pin 会话结尾」，
     // 让 pin 会话从 ChatView 视角即最后一个会话（LR 卡片 / 审批 modal 等既有逻辑原样可用）。
@@ -313,6 +338,10 @@ class App extends AppBase {
     if (this.state.workspaceMode) {
       return this.renderWorkspaceMode();
     }
+
+    // 代理重试统计面板（内嵌就地切换视图）：在主内容区渲染，保留完整 AppHeader。
+    // 不用独立 Layout——否则 AppHeader 拿不到完整 props（主题/视图模式等按钮失效）。
+    const showProxyStats = this.state.proxyStatsVisible;
 
     // 单条 /ws/terminal 的开启条件:非本地日志查看且非 SDK 模式即开。
     // (历史:合并前 ChatView 的 _inputWs 始终连;v1.6.226 一度绑到 cliMode || terminalVisible,
@@ -369,7 +398,9 @@ class App extends AppBase {
               cliMode={this.state.cliMode}
               sdkMode={this.state.sdkMode}
               terminalVisible={this.state.sdkMode ? false : this.state.terminalVisible}
-              onToggleTerminal={() => this.setState(prev => ({ terminalVisible: !prev.terminalVisible }))}
+              onToggleTerminal={() => this.setState(prev => ({ terminalVisible: !prev.terminalVisible, proxyStatsVisible: false }))}
+              proxyStatsVisible={this.state.proxyStatsVisible}
+              onToggleProxyStats={this.handleToggleProxyStats}
               onReturnToWorkspaces={this.state.cliMode ? this.handleReturnToWorkspaces : null}
               contextWindow={this.state.contextWindow}
               contextBarOptimistic={this.state.contextBarOptimistic}
@@ -416,7 +447,13 @@ class App extends AppBase {
               description={<span>{t('ui.claudeMissing.desc')}<br /><code style={{ background: 'var(--bg-code)', padding: '2px 6px', borderRadius: 3 }}>npm install -g @anthropic-ai/claude-code</code> <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>{t('ui.claudeMissing.or')}</span> <a href="https://claude.ai/download" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary-light)' }}>{t('ui.claudeMissing.native')}</a></span>}
             />
           )}
-          <Layout.Content className={styles.content}>
+          <Layout.Content className={styles.content} style={showProxyStats ? { overflow: 'auto', background: 'var(--bg-base)' } : undefined}>
+            {showProxyStats ? (
+              <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}><Spin size="large" /></div>}>
+                <ProxyStatsPage onBack={() => this.setState({ proxyStatsVisible: false })} />
+              </Suspense>
+            ) : (
+            <>
             {viewMode === 'raw' && (
               filteredRequests.length === 0 ? (
                 <div className={styles.guideContainer}>
@@ -490,8 +527,10 @@ class App extends AppBase {
               )
             )}
             <div className={styles.chatViewWrapper} style={{ display: viewMode === 'chat' ? 'flex' : 'none' }}>
-              <ChatView {...this._settingsProps()} getTokenStatsContent={this._getTokenStatsContent} requests={filteredRequests} mainAgentSessions={displaySessions} sessionUpperBoundTs={sessionUpperBoundTs} streamingLatest={this.state.streamingLatest} userProfile={this.state.userProfile} collapseToolResults={prefs.collapseToolResults} expandThinking={prefs.expandThinking} showFullToolContent={prefs.showFullToolContent} onlyCurrentSession={this._isLocalLog ? false : prefs.onlyCurrentSession} isLocalLog={!!this._isLocalLog} showThinkingSummaries={prefs.showThinkingSummaries} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={this.handleScrollTsDone} cliMode={this._isLocalLog ? false : this.state.cliMode} sdkMode={this._isLocalLog ? false : this.state.sdkMode} terminalVisible={this._isLocalLog ? false : (this.state.sdkMode ? false : this.state.terminalVisible)} onToggleTerminal={() => this.setState(prev => ({ terminalVisible: !prev.terminalVisible }))} pendingUploadPaths={this.state.pendingUploadPaths} onUploadPathsConsumed={this.handleUploadPathsConsumed} uploadingDrop={this.state.uploadingDrop} fileLoading={this.state.fileLoading} isStreaming={this.state.isStreaming} hasMoreHistory={this.state.hasMoreHistory} loadingMore={this.state.loadingMore} onLoadMoreHistory={() => this.loadMoreHistory()} loadingSessionId={this.state.loadingSessionId} onLoadSession={(sid) => this.loadSession(sid)} lang={this.state.lang} autoApproveSeconds={this.state.autoApproveSeconds} onAutoApproveChange={this.handleAutoApproveChange} planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds} onPlanAutoApproveChange={this.handlePlanAutoApproveChange} onClearContextOptimistic={this.handleClearContextOptimistic} onUserMessageSent={this.handleUserMessageSent} onPendingAsk={this.handleApprovalAsk} onPendingPtyPlan={this.handleApprovalPtyPlan} ownTabId={this.state.ownTabId} projectName={this.state.projectName} setContextBarSlot={this.setContextBarSlot} />
+              <ChatView {...this._settingsProps()} getTokenStatsContent={this._getTokenStatsContent} requests={filteredRequests} mainAgentSessions={displaySessions} sessionUpperBoundTs={sessionUpperBoundTs} streamingLatest={this.state.streamingLatest} userProfile={this.state.userProfile} collapseToolResults={prefs.collapseToolResults} expandThinking={prefs.expandThinking} showFullToolContent={prefs.showFullToolContent} onlyCurrentSession={this._isLocalLog ? false : prefs.onlyCurrentSession} isLocalLog={!!this._isLocalLog} showThinkingSummaries={prefs.showThinkingSummaries} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={this.handleScrollTsDone} cliMode={this._isLocalLog ? false : this.state.cliMode} sdkMode={this._isLocalLog ? false : this.state.sdkMode} terminalVisible={this._isLocalLog ? false : (this.state.sdkMode ? false : this.state.terminalVisible)} onToggleTerminal={() => this.setState(prev => ({ terminalVisible: !prev.terminalVisible, proxyStatsVisible: false }))} pendingUploadPaths={this.state.pendingUploadPaths} onUploadPathsConsumed={this.handleUploadPathsConsumed} uploadingDrop={this.state.uploadingDrop} fileLoading={this.state.fileLoading} isStreaming={this.state.isStreaming} hasMoreHistory={this.state.hasMoreHistory} loadingMore={this.state.loadingMore} onLoadMoreHistory={() => this.loadMoreHistory()} loadingSessionId={this.state.loadingSessionId} onLoadSession={(sid) => this.loadSession(sid)} lang={this.state.lang} autoApproveSeconds={this.state.autoApproveSeconds} onAutoApproveChange={this.handleAutoApproveChange} planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds} onPlanAutoApproveChange={this.handlePlanAutoApproveChange} onClearContextOptimistic={this.handleClearContextOptimistic} onUserMessageSent={this.handleUserMessageSent} onPendingAsk={this.handleApprovalAsk} onPendingPtyPlan={this.handleApprovalPtyPlan} ownTabId={this.state.ownTabId} projectName={this.state.projectName} setContextBarSlot={this.setContextBarSlot} />
             </div>
+            </>
+            )}
           </Layout.Content>
           <div className={styles.footer}>
             <CountryFlag />

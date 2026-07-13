@@ -227,13 +227,13 @@ class AppHeader extends React.Component {
   _imStatus = {};
   _onImStatus = (id, info) => {
     const prev = this._imStatus[id];
-    if (prev && prev.enabled === info.enabled && prev.connected === info.connected && prev.state === info.state) return;
+    if (prev && prev.enabled === info.enabled && prev.connected === info.connected) return;
     this._imStatus[id] = info;
     this._pushHeaderModel();
   };
 
   _buildHeaderModel() {
-    const { viewMode, themeColor, terminalVisible, cliMode, isLocalLog, activeProxyId, proxyProfiles } = this.props;
+    const { viewMode, themeColor, terminalVisible, proxyStatsVisible, cliMode, isLocalLog, activeProxyId, proxyProfiles } = this.props;
     let proxy = null;
     if (activeProxyId && activeProxyId !== 'max') {
       const p = (proxyProfiles || []).find(x => x.id === activeProxyId);
@@ -244,12 +244,7 @@ class AppHeader extends React.Component {
       .filter(p => this._imStatus[p.id] && this._imStatus[p.id].enabled)
       .map(p => {
         const nm = t(p.labelKey);
-        return {
-          id: p.id,
-          connected: !!this._imStatus[p.id].connected,
-          state: this._imStatus[p.id].state || null, // tri-state for tab-bar consumers; older tab bars ignore it
-          name: (nm && nm !== p.labelKey) ? nm : (p.fallback || p.id),
-        };
+        return { id: p.id, connected: !!this._imStatus[p.id].connected, name: (nm && nm !== p.labelKey) ? nm : (p.fallback || p.id) };
       });
     // 钉住的快捷方式：原生 tab bar 渲染所需。基于当前(已按 viewMode 过滤的)描述符过滤，
     // 顺序=用户钉住先后(稳定)，避免 _lastHeaderModelJson 抖动。name=菜单标签(已本地化)，作 title/aria。
@@ -270,6 +265,7 @@ class AppHeader extends React.Component {
       approval: this._buildApprovalInfo(),
       theme: showThemeBlock ? { mode: themeColor === 'light' ? 'light' : 'dark', title: themeColor === 'light' ? t('ui.themeColor.light') : t('ui.themeColor.dark') } : null,
       terminal: (cliMode && viewMode === 'chat' && !isLocalLog) ? { active: !!terminalVisible, label: t('ui.terminal') } : null,
+      proxyStats: (cliMode && viewMode === 'chat' && !isLocalLog) ? { active: !!proxyStatsVisible, label: t('ui.proxyStats.title') } : null,
       viewMode: { mode: viewMode, label: viewMode === 'raw' ? t('ui.chatMode') : t('ui.rawMode') },
       im,
       pins,
@@ -307,7 +303,7 @@ class AppHeader extends React.Component {
 
   _handleHeaderAction(payload) {
     if (!payload || !payload.type) return;
-    const { themeColor, onThemeColorChange, onToggleTerminal, onToggleViewMode, onApprovalReopen } = this.props;
+    const { themeColor, onThemeColorChange, onToggleTerminal, onToggleProxyStats, onToggleViewMode, onApprovalReopen } = this.props;
     switch (payload.type) {
       case 'menuOpen': this.setState((s) => ({ electronMenuOpen: !s.electronMenuOpen })); break;
       // win32 自定义标题栏的 File/Edit/View/Window:tab bar 只放按钮,下拉在这里(全高内容视图)
@@ -321,6 +317,7 @@ class AppHeader extends React.Component {
       }, this._syncMenuBarState); break;
       case 'theme': if (onThemeColorChange) onThemeColorChange(themeColor === 'light' ? 'dark' : 'light'); break;
       case 'terminal': if (onToggleTerminal) onToggleTerminal(); break;
+      case 'proxyStats': if (onToggleProxyStats) onToggleProxyStats(); break;
       case 'viewMode': if (onToggleViewMode) onToggleViewMode(); break;
       case 'approval': if (onApprovalReopen) onApprovalReopen(); break;
       case 'proxy': this.setState({ proxyModalVisible: true }); break;
@@ -710,6 +707,8 @@ class AppHeader extends React.Component {
       nextProps.cliMode !== this.props.cliMode ||
       nextProps.sdkMode !== this.props.sdkMode ||
       nextProps.terminalVisible !== this.props.terminalVisible ||
+      nextProps.proxyStatsVisible !== this.props.proxyStatsVisible ||
+      nextProps.onToggleProxyStats !== this.props.onToggleProxyStats ||
       nextProps.contextWindow !== this.props.contextWindow ||
       nextProps.contextBarOptimistic !== this.props.contextBarOptimistic ||
       nextProps.contextBarLocked !== this.props.contextBarLocked ||
@@ -1565,7 +1564,7 @@ class AppHeader extends React.Component {
   }
 
   render() {
-    const { requestCount, requests = [], viewMode, cacheType, onToggleViewMode, onImportLocalLogs, onLangChange, isLocalLog, localLogFile, projectName, filterIrrelevant, onFilterIrrelevantChange, logDir, onLogDirChange, cliMode, terminalVisible, onToggleTerminal, onReturnToWorkspaces, contextWindow, contextBarOptimistic, serverCachedContent, resumeAutoChoice, onResumeAutoChoiceToggle, onResumeAutoChoiceChange, themeColor, onThemeColorChange, displayScale, onDisplayScaleChange, autoApproveSeconds, onAutoApproveChange } = this.props;
+    const { requestCount, requests = [], viewMode, cacheType, onToggleViewMode, onImportLocalLogs, onLangChange, isLocalLog, localLogFile, projectName, filterIrrelevant, onFilterIrrelevantChange, logDir, onLogDirChange, cliMode, terminalVisible, onToggleTerminal, proxyStatsVisible, onToggleProxyStats, onReturnToWorkspaces, contextWindow, contextBarOptimistic, serverCachedContent, resumeAutoChoice, onResumeAutoChoiceToggle, onResumeAutoChoiceChange, themeColor, onThemeColorChange, displayScale, onDisplayScaleChange, autoApproveSeconds, onAutoApproveChange } = this.props;
     const { countdownText } = this.state;
     // 这 4 个偏好的唯一真相源是 SettingsContext（P0③）。AppHeader 已绑 SettingsContext，
     // 直接派生消费 + 调 updatePreferences，不再经 App 的 prop drilling。默认值与 AppBase._prefValues() 一致。
@@ -1847,6 +1846,17 @@ class AppHeader extends React.Component {
           >
             {viewMode === 'raw' ? t('ui.chatMode') : t('ui.rawMode')}
           </Button>
+          )}
+          {!isElectronTab && cliMode && viewMode === 'chat' && !isLocalLog && (
+            <Button
+              className={styles.compactBtn}
+              type={proxyStatsVisible ? 'primary' : 'default'}
+              ghost={proxyStatsVisible}
+              icon={<ApiOutlined />}
+              onClick={onToggleProxyStats}
+            >
+              {t('ui.proxyStats.title')}
+            </Button>
           )}
         </Space>
         <MemoryDetailModal

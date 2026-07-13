@@ -3,9 +3,10 @@ import { parentPort } from 'node:worker_threads';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { resolveJsonlPath } from './jsonl-archive.js';
+import { aggregateRecords, mergeProxyFileCache } from './proxy-stats.js';
 
 // 统计 schema 版本号，新增统计字段时递增，强制旧缓存失效重新解析
-const STATS_VERSION = 8;
+const STATS_VERSION = 10;
 
 // 跨会话 / teammate 协议通知 type 白名单（须与 src/utils/contentFilter.js 的 INTER_SESSION_NOTIFICATION_TYPES
 // 一致；新增 type 时两处都要加）。单一数组派生 Set（brace 扫描用）+ 正则（isSystemText 用），避免本文件内漂移。
@@ -288,17 +289,24 @@ function generateProjectStats(projectDir, projectName, onlyFile) {
     existing = null;
   }
 
-  // 列出所有 JSONL 文件（排除 _temp.jsonl）
+  // 列出所有 JSONL 文件（排除 _temp.jsonl 和 proxy_ 明细文件——后者由单独的 proxy 聚合分支处理）
   let jsonlFiles;
   try {
     jsonlFiles = readdirSync(projectDir)
-      .filter(f => (f.endsWith('.jsonl') || f.endsWith('.jsonl.zip')) && !f.endsWith('_temp.jsonl'))
+      .filter(f => (f.endsWith('.jsonl') || f.endsWith('.jsonl.zip')) && !f.endsWith('_temp.jsonl') && !f.startsWith('proxy_'))
       .sort();
   } catch {
     return;
   }
 
-  if (jsonlFiles.length === 0) return;
+  // 无会话 JSONL 且无 proxy 明细 → 无任何可统计内容，跳过。
+  // 注意：不能仅凭 jsonlFiles.length===0 提前返回——proxy_ 明细文件可能单独存在，
+  // 仍需走到 proxyStats 聚合分支。
+  let proxyFiles = [];
+  try {
+    proxyFiles = readdirSync(projectDir).filter(f => f.startsWith('proxy_') && f.endsWith('.jsonl'));
+  } catch { /* 目录读取失败已在上文 return */ }
+  if (jsonlFiles.length === 0 && proxyFiles.length === 0) return;
 
   const filesStats = {};
   const topModels = {};
@@ -368,6 +376,12 @@ function generateProjectStats(projectDir, projectName, onlyFile) {
     totalCacheCreation += f.summary.cache_creation_input_tokens;
   }
 
+  // 代理重试明细聚合：扫描 proxy_YYYY-MM-DD.jsonl 文件，聚合成 proxyStats。
+  // 与 token 统计同文件同 worker，避免新建独立 worker。明细文件按天分片，聚合逻辑在
+  // proxy-stats.js:aggregateRecords（纯函数，可单测）。增量优化：仅对 size+mtime 变化的分片
+  // 重新解析，未变化分片复用 proxyStatsFiles 缓存（mergeProxyFileCache），避免每次全量重扫历史。
+  const { stats: proxyStats, cache: proxyStatsFiles } = aggregateProxyStats(projectDir, existing);
+
   const stats = {
     _v: STATS_VERSION,
     project: projectName,
@@ -384,6 +398,8 @@ function generateProjectStats(projectDir, projectName, onlyFile) {
       cache_read_input_tokens: totalCacheRead,
       cache_creation_input_tokens: totalCacheCreation,
     },
+    proxyStats,
+    proxyStatsFiles, // 文件级增量缓存（records+size+lastModified），仅 worker 读，前端不消费
   };
 
   try {
@@ -391,6 +407,72 @@ function generateProjectStats(projectDir, projectName, onlyFile) {
   } catch (err) {
     parentPort?.postMessage({ type: 'error', message: `Failed to write stats: ${err.message}` });
   }
+}
+
+/**
+ * 扫描项目目录下所有 proxy_YYYY-MM-DD.jsonl 明细文件，聚合成 proxyStats 结构。
+ * 增量优化：proxy 明细按天分片且仅追加——文件 size+mtime 未变即内容未变，复用上次解析的 records，
+ * 仅对变化/新增文件重新 readFileSync+解析（仿会话 JSONL 的 files[f] 缓存）。返回 { stats, cache }，
+ * cache 须回写 stats JSON 供下次运行读取，避免每次 notifyProxyStats 全量重扫历史分片。
+ *
+ * @param {string} projectDir
+ * @param {object} existing 上次的完整 stats JSON（读 proxyStatsFiles 缓存）；可为 null
+ * @returns {{stats:object, cache:object}} 聚合结果 + 新文件缓存
+ */
+function aggregateProxyStats(projectDir, existing) {
+  let proxyFiles = [];
+  try {
+    proxyFiles = readdirSync(projectDir)
+      .filter(f => f.startsWith('proxy_') && f.endsWith('.jsonl'))
+      .sort();
+  } catch {
+    return { stats: aggregateRecords([]), cache: {} };
+  }
+  if (proxyFiles.length === 0) return { stats: aggregateRecords([]), cache: {} };
+
+  // 上次缓存（仅当 schema 版本一致时复用，避免旧结构污染）
+  const cachedFiles = (existing?._v === STATS_VERSION && existing?.proxyStatsFiles) ? existing.proxyStatsFiles : {};
+
+  const files = [];
+  for (const f of proxyFiles) {
+    const filePath = join(projectDir, f);
+    let stat;
+    try {
+      stat = statSync(filePath);
+    } catch {
+      continue; // stat 失败跳过此文件
+    }
+    const size = stat.size;
+    const lastModified = stat.mtime.toISOString();
+    const cached = cachedFiles[f];
+    const unchanged = cached && cached.size === size && cached.lastModified === lastModified;
+    if (unchanged) {
+      // 命中缓存：不传 records，由 mergeProxyFileCache 复用 cached.records
+      files.push({ name: f, size, lastModified });
+    } else {
+      // 变化/新增：重新解析记录（仅变化文件）
+      const records = [];
+      try {
+        const content = readFileSync(filePath, 'utf-8');
+        for (const line of content.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            records.push(JSON.parse(trimmed));
+          } catch {
+            // 跳过无法解析的行
+          }
+        }
+      } catch {
+        // 文件读取失败：跳过（不进 cache，下次仍会重试）
+        continue;
+      }
+      files.push({ name: f, size, lastModified, records });
+    }
+  }
+
+  const { records: allRecords, cache } = mergeProxyFileCache({ existingCache: cachedFiles, files });
+  return { stats: aggregateRecords(allRecords), cache };
 }
 
 /**

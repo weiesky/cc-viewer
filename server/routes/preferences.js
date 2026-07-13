@@ -304,7 +304,7 @@ function proxyProfilesPost(req, res, parsedUrl, isLocal, deps) {
   });
 }
 
-// ── 代理重试配置（GET/POST，仿 proxyProfilesGet/Post，但无密钥脱敏、无 workspace 隔离）──
+// ── 代理重试配置（GET/POST + SSE，仿 proxyProfilesGet/Post，但无密钥脱敏、无 workspace 隔离）──
 // 返回 { config, defaults }：config = 当前生效（env 基础 + retry-config.json 覆盖后的 live binding）；
 // defaults = DEFAULT_RETRY_CONFIG，供 UI「恢复默认」按钮参照。
 
