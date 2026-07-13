@@ -359,13 +359,11 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   // --allow-dangerously-skip-permissions only enables a later toggle, so it must NOT count.
   ptySkipPermissions = extraArgs.includes('--dangerously-skip-permissions');
 
-  // 注入了 system prompt 文件时向终端打印一行提示(可见性/安全)；内部重启已抑制以免重复。
-  if (sysPrompt.loaded.length && !_suppressNextSpawnNotice) {
-    const modelSuffix = sysPrompt.model ? ` (model match: ${sysPrompt.model})` : '';
-    emitSpawnNotice(`[CC Viewer] loaded ${sysPrompt.loaded.join(', ')} as system prompt${modelSuffix}`);
-  }
-  _suppressNextSpawnNotice = false;
-
+  // Register PTY event handlers IMMEDIATELY after spawn, before any other
+  // synchronous work. If the child process exits before onExit is registered
+  // (e.g. the binary is missing, crashes instantly, or rejects an injected
+  // --system-prompt-file flag), the exit event is lost — the handle releases,
+  // and without a live PTY the event loop may drain despite the HTTP servers.
   ptyProcess.onData((data) => {
     outputBuffer += data;
     if (outputBuffer.length > MAX_BUFFER) {
@@ -434,6 +432,15 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
       try { cb(exitCode); } catch { }
     }
   });
+
+  // Notice must fire AFTER onData/onExit are registered: if the child exits before onExit
+  // is attached, the exit event is lost and the process handle releases, which can drain
+  // the event loop (the HTTP servers alone may not always prevent exit on all platforms).
+  if (sysPrompt.loaded.length && !_suppressNextSpawnNotice) {
+    const modelSuffix = sysPrompt.model ? ` (model match: ${sysPrompt.model})` : '';
+    emitSpawnNotice(`[CC Viewer] loaded ${sysPrompt.loaded.join(', ')} as system prompt${modelSuffix}`);
+  }
+  _suppressNextSpawnNotice = false;
 
   return ptyProcess;
 }
