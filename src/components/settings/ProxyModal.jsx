@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Button, Input, Radio, Select, Tag, message } from 'antd';
-import { EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, PlusOutlined, ImportOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
 import { isMobile } from '../../env';
+import { apiUrl, appendToken } from '../../utils/apiUrl';
 import { BLUR_MASK_STYLE } from '../../utils/modalMask';
 import ConceptHelp from '../common/ConceptHelp';
 import styles from './ProxyModal.module.css';
@@ -56,6 +57,39 @@ export default function ProxyModal({
   const [editingProxy, setEditingProxy] = useState(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null);
+  const [importing, setImporting] = useState(false);
+
+  // 从 cc-switch 导入：POST /api/ccswitch-import（local-only），merge 进 profile.json。
+  // 成功后主动重新 GET /api/proxy-profiles 刷新列表（不依赖 SSE——SSE proxy_profile
+  // 事件在 profile:null 时不触发重新 GET，本地有时序问题，直接 fetch 最可靠）。
+  const handleImportFromCcSwitch = async () => {
+    setImporting(true);
+    try {
+      const resp = await fetch(appendToken(apiUrl('/api/ccswitch-import')), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ setActive: false }),
+      });
+      const data = await resp.json();
+      if (data.error && data.imported === 0 && data.updated === 0) {
+        message.error(t('ui.proxy.ccswitchImportFail') + (data.error ? ': ' + data.error : ''));
+      } else {
+        message.success(t('ui.proxy.ccswitchImported', { imported: data.imported || 0, updated: data.updated || 0 }));
+        // 主动重新拉取 profile 列表刷新 UI（导入是列表变化，SSE profile:null 不触发重 GET）
+        try {
+          const pr = await fetch(appendToken(apiUrl('/api/proxy-profiles')));
+          const pd = await pr.json();
+          if (pd.profiles && onProxyProfileChange) {
+            onProxyProfileChange({ active: pd.active, profiles: pd.profiles });
+          }
+        } catch { /* 刷新失败不阻塞，SSE 兜底 */ }
+      }
+    } catch (err) {
+      message.error(t('ui.proxy.ccswitchImportFail'));
+    } finally {
+      setImporting(false);
+    }
+  };
 
   // open 变化时 reset 表单状态 + 删除确认。等价于原 AppHeader.jsx:1935 onCancel 里 setState({editingProxy:null})
   useEffect(() => {
@@ -202,6 +236,10 @@ export default function ProxyModal({
         <Button block type="dashed" icon={<PlusOutlined />} style={{ marginTop: 12 }} onClick={handleStartNew}>
           {t('ui.proxy.addProxy')}
         </Button>
+        <Button block type="dashed" icon={<ImportOutlined />} style={{ marginTop: 8 }} loading={importing} onClick={handleImportFromCcSwitch}>
+          {t('ui.proxy.ccswitchImport')}
+        </Button>
+        <div className={styles.proxyEditHint}>{t('ui.proxy.ccswitchImportHint')}</div>
       </div>
   );
 
