@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(test): **stop viewer resources before removing CLI-test temp directories** — `server-ports-busy` and `branch-server` now tear down `server.js` timers/watchers before deleting their isolated `CCV_LOG_DIR`; shared best-effort cleanup uses `fs.promises.rm` with native retries for transient `EBUSY`/`ENOTEMPTY`/`EPERM` failures.
+
 - fix(migrate): **迁移完成后仍反复提示迁移** — `pendingOf()` 仅按文件大小比对判断是否需要迁移，忽略了 `wire-v2-convert-state.json` 中的 `status: 'done'` 标记。迁移完成后活跃的 v1 日志继续增长（双写），大小不匹配导致误判为待迁移。修复：`pendingOf()` 检测到 `status === 'done'` 时直接返回无需迁移。
 
 - fix(ccswitch-import): **running cc-switch → `database is locked`** — importing from cc-switch *while it is open* failed with `导入失败（未检测到 cc-switch 或读取出错）: query failed: database is locked` because the read-only connection's first query contends with cc-switch's `BEGIN EXCLUSIVE` write lock (its real contention mode: a valid hot journal under an EXCLUSIVE transaction blocks even read-only readers, unlike `BEGIN IMMEDIATE`). The prior malformed-journal fix only caught `SQLITE_BUSY` on its own escalation path; on the main read path `BUSY` escaped to the catch-all and surfaced as the opaque `query failed: database is locked`. Fix in `server/lib/ccswitch-import.js`: detect `SQLITE_BUSY` on **every** path (the read-only open and the providers query), retry once after a 200ms backoff (cc-switch's write transactions are short — transient locks usually clear), and if still held surface the friendly `cc-switch db is locked (cc-switch may be running); retry shortly` instead of the raw wrapper. New `test/ccswitch-import.test.js` cases use a child process holding `BEGIN EXCLUSIVE` to deterministically reproduce both the held-lock (→ friendly message) and transient-lock (→ retry recovers providers) paths.

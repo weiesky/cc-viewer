@@ -12,9 +12,10 @@ import { describe, it, before, after } from 'node:test';
 import { describeCli } from './_helpers/cli-tier.mjs';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:net';
-import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { rmBestEffort } from './_helpers/rm-sync.mjs';
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-ports-busy-'));
 mkdirSync(join(tmpDir, 'logs'), { recursive: true });
@@ -36,7 +37,7 @@ delete process.env.CCV_USE_PASSWORD;
 delete process.env.CCV_PASSWORD;
 
 describeCli('server.js startViewer exhausts the port range (portsBusy)', { concurrency: false }, () => {
-  let squatter;
+  let squatter, mod;
 
   before(async () => {
     // 占住唯一端口：监听 127.0.0.1:BUSY_PORT，让 startViewer 的 probe connect 命中。
@@ -49,12 +50,12 @@ describeCli('server.js startViewer exhausts the port range (portsBusy)', { concu
 
   after(async () => {
     await new Promise((resolve) => { try { squatter.close(() => resolve()); } catch { resolve(); } });
-    rmSync(tmpDir, { recursive: true, force: true });
+    try { await mod?.stopViewer(); } finally { await rmBestEffort(tmpDir); }
   });
 
   // ── 835-839：唯一端口被占 → probe connect 成功 → tryListen(port+1) → >MAX → resolve(null) ──
   it('startViewer resolves null when every port in the range is occupied', async () => {
-    const mod = await import('../server/server.js');
+    mod = await import('../server/server.js');
     const srv = await mod.startViewer();
     assert.equal(srv, null, 'startViewer must resolve null when the port range is exhausted');
   });
