@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { t } from './server/i18n.js';
-import { INJECT_IMPORT, LEGACY_INJECT_IMPORTS, resolveCliPath, resolveNativePath, resolveNpmClaudePath, buildShellCandidates, setLogDir, LOG_DIR, hasClaude2xWrapper, getGlobalNodeModulesDir, PACKAGES, getClaudeConfigDir, isBrowserOpenSuppressed, applyAgentTeamsDefault } from './findcc.js';
+import { INJECT_IMPORT, LEGACY_INJECT_IMPORTS, resolveCliPath, resolveClaudeFromPath, resolveCodeFuseClaudePath, resolveNativePath, resolveNpmClaudePath, buildShellCandidates, setLogDir, LOG_DIR, hasClaude2xWrapper, getGlobalNodeModulesDir, PACKAGES, getClaudeConfigDir, isBrowserOpenSuppressed, applyAgentTeamsDefault } from './findcc.js';
 import { ensureHooks, removeAllManagedHooks } from './server/lib/ensure-hooks.js';
 import { injectCliJsAt, removeCliJsInjectionAt, INJECT_START as _INJECT_START, INJECT_END as _INJECT_END, buildInjectBlock as _buildInjectBlock } from './server/lib/cli-inject.js';
 import { normalizeBasePath } from './server/lib/base-path.js';
@@ -391,9 +391,24 @@ async function printMigrationBanner() {
 }
 
 async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
-  // 首先尝试 npm 版本（包括 nvm 安装），找不到再尝试 native 版本
-  let claudePath = resolveNpmClaudePath();
-  let isNpmVersion = !!claudePath;
+  // Standalone ccv does not inherit the PATH prefix installed transiently by
+  // `cfuse --ccv`. Discover the same pinned CodeFuse-managed build directly so
+  // both launch forms use the enterprise-approved executable.
+  let claudePath = resolveCodeFuseClaudePath();
+  let isNpmVersion = false;
+
+  // On machines without the managed CodeFuse build, honor the executable
+  // explicitly selected by the caller's PATH before global npm fallbacks.
+  if (!claudePath) {
+    const pathSelection = resolveClaudeFromPath();
+    claudePath = pathSelection?.path || null;
+    isNpmVersion = pathSelection?.isNpmVersion || false;
+  }
+
+  if (!claudePath) {
+    claudePath = resolveNpmClaudePath();
+    isNpmVersion = !!claudePath;
+  }
 
   if (!claudePath) {
     claudePath = resolveNativePath();

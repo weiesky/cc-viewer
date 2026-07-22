@@ -20,6 +20,9 @@ import {
   resolveNpmClaudePath,
   getGlobalNodeModulesDir,
   pickSpawnableLookupResult,
+  resolveClaudeFromPath,
+  resolveCodeFuseClaudePath,
+  DEFAULT_CODEFUSE_CLAUDE_VERSION,
   resolveNativePath,
   applyAgentTeamsDefault,
 } from '../findcc.js';
@@ -283,6 +286,80 @@ describe('findcc: resolveNpmClaudePath', () => {
 // Windows `where claude` 输出首行常是 npm 的无扩展名 sh shim（#!/bin/sh 文本），
 // 其后是 .cmd/.ps1 —— 都不是 PE，ConPTY 直接 spawn 报 "error code: 193"。
 // win32 必须只挑 .exe 行；POSIX 维持取首行的旧语义。
+
+describe('findcc: resolveClaudeFromPath', () => {
+  let base;
+
+  before(() => {
+    base = mkdtempSync(join(tmpdir(), 'findcc-path-first-'));
+  });
+
+  afterEach(() => { restoreEnv(); });
+
+  after(() => {
+    rmSync(base, { recursive: true, force: true });
+  });
+
+  it('prefers a wrapper-managed native executable outside node_modules', () => {
+    const binDir = mkdtempSync(join(base, 'native-'));
+    const managedClaude = join(binDir, 'claude');
+    writeFileSync(managedClaude, '#!/bin/sh\nexit 0\n');
+    chmodSync(managedClaude, 0o755);
+    process.env.PATH = `${binDir}:/usr/bin:/bin`;
+
+    assert.deepEqual(resolveClaudeFromPath(), {
+      path: managedClaude,
+      isNpmVersion: false,
+    });
+  });
+
+  it('resolves a legacy npm symlink to cli.js and marks it for Node', () => {
+    const root = mkdtempSync(join(base, 'legacy-'));
+    const binDir = join(root, 'bin');
+    const pkgDir = join(root, 'node_modules', '@anthropic-ai', 'claude-code');
+    const cliPath = join(pkgDir, 'cli.js');
+    mkdirSync(binDir, { recursive: true });
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(cliPath, '#!/usr/bin/env node\n');
+    chmodSync(cliPath, 0o755);
+    symlinkSync(cliPath, join(binDir, 'claude'));
+    process.env.PATH = `${binDir}:/usr/bin:/bin`;
+
+    const selected = resolveClaudeFromPath();
+    assert.ok(selected?.path.endsWith(join('@anthropic-ai', 'claude-code', 'cli.js')),
+      `expected the real cli.js path, got ${selected?.path}`);
+    assert.equal(selected?.isNpmVersion, true);
+  });
+});
+
+describe('findcc: resolveCodeFuseClaudePath', () => {
+  it('finds only the pinned CodeFuse-managed 2.1.199 build', () => {
+    const root = mkdtempSync(join(tmpdir(), 'findcc-codefuse-'));
+    try {
+      const approvedDir = join(root, DEFAULT_CODEFUSE_CLAUDE_VERSION);
+      const newerDir = join(root, '2.1.217');
+      mkdirSync(approvedDir, { recursive: true });
+      mkdirSync(newerDir, { recursive: true });
+      writeFileSync(join(approvedDir, 'claude'), 'approved');
+      writeFileSync(join(newerDir, 'claude'), 'not-yet-approved');
+
+      assert.equal(resolveCodeFuseClaudePath(root), join(approvedDir, 'claude'));
+      assert.equal(resolveCodeFuseClaudePath(root, '2.1.217'), join(newerDir, 'claude'));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects invalid version selectors and missing approved builds', () => {
+    const root = mkdtempSync(join(tmpdir(), 'findcc-codefuse-missing-'));
+    try {
+      assert.equal(resolveCodeFuseClaudePath(root), null);
+      assert.equal(resolveCodeFuseClaudePath(root, '../2.1.199'), null);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('findcc: pickSpawnableLookupResult win32 只接受 .exe', () => {
   it('win32：跳过 sh shim / .cmd / .ps1，选中 .exe 行', () => {

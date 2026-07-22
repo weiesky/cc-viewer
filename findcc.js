@@ -351,6 +351,64 @@ export function pickSpawnableLookupResult(rawOut, platform = process.platform) {
   return lines[0] || null;
 }
 
+/**
+ * Resolve the `claude` executable explicitly selected by the caller's PATH.
+ *
+ * Wrappers such as CodeFuse's `cfuse --ccv` prepend their managed Claude Code
+ * directory to PATH before launching ccv. This lookup must happen before any
+ * global npm fallback, otherwise an unrelated global @anthropic-ai install wins
+ * and the wrapper-provided (and potentially enterprise-approved) binary is lost.
+ *
+ * Returns both the path and whether Node is required for a legacy cli.js entry.
+ */
+export function resolveClaudeFromPath() {
+  const lookupCmds = process.platform === 'win32'
+    ? [`where ${BINARY_NAME}`]
+    : [`which ${BINARY_NAME}`, `command -v ${BINARY_NAME}`];
+
+  for (const cmd of lookupCmds) {
+    try {
+      const rawOut = execSync(cmd, { encoding: 'utf-8', shell: true, env: process.env, windowsHide: true });
+      const result = pickSpawnableLookupResult(rawOut);
+      if (!result || !existsSync(result)) continue;
+
+      let real = result;
+      try { real = realpathSync(result); } catch { }
+      if (real.endsWith('.js')) return { path: real, isNpmVersion: true };
+      return { path: result, isNpmVersion: false };
+    } catch {
+      // Try the next lookup command.
+    }
+  }
+
+  return null;
+}
+
+// Starpoint currently approves the CodeFuse-managed Claude Code 2.1.199 build.
+// Keep standalone `ccv` on the same binary as `cfuse --ccv`; callers can move
+// the pin deliberately after a new enterprise build has been approved.
+export const DEFAULT_CODEFUSE_CLAUDE_VERSION = '2.1.199';
+
+export function resolveCodeFuseClaudePath(
+  codeFuseClaudeRoot = null,
+  version = process.env.CCV_CODEFUSE_CLAUDE_VERSION?.trim() || DEFAULT_CODEFUSE_CLAUDE_VERSION,
+) {
+  // Never let a test process escape its disposable fixtures into the real home.
+  // Tests exercise this resolver by passing an explicit temporary root.
+  if (!codeFuseClaudeRoot) {
+    if (isRealClaudeLookupBlocked()) return null;
+    codeFuseClaudeRoot = join(homedir(), '.codefuse', 'fuse', 'engine', 'bin', 'claude');
+  }
+  if (!version || !/^\d+\.\d+\.\d+$/.test(version)) return null;
+  const versionDir = join(codeFuseClaudeRoot, version);
+  const names = process.platform === 'win32' ? ['claude.exe'] : ['claude', 'claude.exe'];
+  for (const name of names) {
+    const candidate = join(versionDir, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
 export function resolveNativePath() {
   // L7: steps 1 & 4 (platform/packaged binaries under `npm root -g`) ignore PATH isolation —
   // neutralized under test context via a null globalRoot (both helpers null-guard).

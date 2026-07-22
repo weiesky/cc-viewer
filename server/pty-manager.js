@@ -231,6 +231,14 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   }
 
   const env = { ...process.env };
+  // CodeFuse owns and versions the Claude binary used by `cfuse --ccv`. Keep
+  // that managed 2.1.x binary from invoking Claude Code's independent updater;
+  // upgrades must come from CodeFuse so the enterprise-approved version cannot
+  // be silently replaced during a CCV session.
+  const normalizedClaudePath = String(claudePath || '').replace(/\\/g, '/');
+  if (normalizedClaudePath.includes('/.codefuse/fuse/engine/bin/claude/')) {
+    env.DISABLE_AUTOUPDATER = '1';
+  }
   env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${proxyPort}`;
   env.CCV_PROXY_MODE = '1'; // 告诉 interceptor.js 不要再启动 server
   env.CCV_LOG_DIR = LOG_DIR; // 让 fork 出的 Claude Code 进程找到同一份 profile.json 等资源
