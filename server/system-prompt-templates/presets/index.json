@@ -41,6 +41,14 @@
         "description": "Coding agent prompt tuned for Kimi K2.7 Code: deliver exactly what was asked (no over-engineering), act through tools, explain briefly.",
         "match": "kimi-k2.7-code",
         "defaultMode": "override"
+      },
+      {
+        "id": "kimi-k3",
+        "title": "Kimi K3",
+        "file": "kimi-k3.md",
+        "description": "Coding agent prompt tuned for Kimi K3: deliver exactly what was asked (no over-engineering), act through tools, explain briefly.",
+        "match": "kimi-k3",
+        "defaultMode": "override"
       }
     ]
   }

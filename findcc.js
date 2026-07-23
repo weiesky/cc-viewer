@@ -1,8 +1,8 @@
-import { resolve, join, sep } from 'node:path';
+import { resolve, join, sep, delimiter, isAbsolute, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, realpathSync, readFileSync } from 'node:fs';
+import { existsSync, realpathSync, readFileSync, readdirSync, statSync, accessSync, constants as fsConstants } from 'node:fs';
 import { homedir, tmpdir, arch } from 'node:os';
-import { execSync, spawnSync } from 'node:child_process';
+import { execSync, execFileSync, spawnSync } from 'node:child_process';
 import { threadId } from 'node:worker_threads';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -172,6 +172,92 @@ const NATIVE_CANDIDATES = [
 // Command names used for which/command -v lookup
 export const BINARY_NAME = 'claude';
 
+export const CLAUDE_EXECUTABLE_PREF_KEY = 'claudeExecutablePath';
+
+export function expandClaudeExecutablePath(value, platform = process.platform) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const raw = value.trim();
+  const homeRelative = raw.startsWith('~/') || raw.startsWith('~\\');
+  const expanded = homeRelative ? join(homedir(), raw.slice(2)) : raw;
+  const absolute = platform === 'win32' ? win32.isAbsolute(expanded) : isAbsolute(expanded);
+  if (!absolute) return null;
+  return platform === 'win32' ? win32.normalize(expanded) : resolve(expanded);
+}
+
+export function resolveExplicitClaudePath(value, platform = process.platform) {
+  const expanded = expandClaudeExecutablePath(value, platform);
+  if (!expanded || !existsSync(expanded)) return null;
+  try {
+    if (!statSync(expanded).isFile()) return null;
+  } catch { return null; }
+  let real = expanded;
+  try { real = realpathSync(expanded); } catch { }
+  const isJs = real.toLowerCase().endsWith('.js');
+  try {
+    if (isJs) {
+      accessSync(real, fsConstants.R_OK);
+    } else if (platform === 'win32') {
+      if (!real.toLowerCase().endsWith('.exe')) return null;
+    } else {
+      accessSync(expanded, fsConstants.X_OK);
+    }
+  } catch {
+    return null;
+  }
+  return {
+    path: isJs ? real : expanded,
+    realPath: real,
+    isNpmVersion: isJs,
+  };
+}
+
+export function readConfiguredClaudePath(prefsFile = join(LOG_DIR, 'preferences.json')) {
+  try {
+    const prefs = JSON.parse(readFileSync(prefsFile, 'utf8'));
+    const value = prefs?.[CLAUDE_EXECUTABLE_PREF_KEY];
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function resolveConfiguredClaudePath(prefsFile) {
+  return resolveExplicitClaudePath(readConfiguredClaudePath(prefsFile));
+}
+
+function describeClaudeSelection(path, isNpmVersion, source) {
+  let realPath = path;
+  try { realPath = realpathSync(path); } catch { }
+  return { path, realPath, isNpmVersion, source };
+}
+
+/**
+ * Resolve the executable used by every CCV launch surface.
+ * A non-empty saved configuration is authoritative: if it is invalid, return
+ * an error instead of silently starting a different (possibly unapproved) build.
+ */
+export function resolvePreferredClaudeSelection({ prefsFile } = {}) {
+  const configuredValue = readConfiguredClaudePath(prefsFile);
+  if (configuredValue) {
+    const configured = resolveExplicitClaudePath(configuredValue);
+    return configured
+      ? { ...configured, source: 'configured' }
+      : { error: 'configured-invalid', configuredPath: configuredValue };
+  }
+
+  const codeFusePath = resolveCodeFuseClaudePath();
+  if (codeFusePath) return describeClaudeSelection(codeFusePath, false, 'codefuse');
+
+  const pathSelection = resolveClaudeFromPath();
+  if (pathSelection) return describeClaudeSelection(pathSelection.path, pathSelection.isNpmVersion, 'path');
+
+  const npmPath = resolveNpmClaudePath();
+  if (npmPath) return describeClaudeSelection(npmPath, true, 'npm');
+
+  const nativePath = resolveNativePath();
+  return nativePath ? describeClaudeSelection(nativePath, false, 'native') : null;
+}
+
 // The import statement injected at the top of @anthropic-ai/claude-code/cli.js.
 // EXTERNAL CONTRACT: uses bare specifier resolved via package.json `exports` —
 // the physical path can change without touching this line; keep in sync with
@@ -217,7 +303,12 @@ export function isBrowserOpenSuppressed() {
 
 export function getGlobalNodeModulesDir() {
   try {
-    return execSync('npm root -g', { encoding: 'utf-8', windowsHide: true }).trim();
+    return execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['root', '-g'], {
+      encoding: 'utf-8',
+      windowsHide: true,
+      timeout: 2000,
+      maxBuffer: 1024 * 1024,
+    }).trim();
   } catch {
     return null;
   }
@@ -559,6 +650,99 @@ export function findPlatformBinary(nodeModulesRoot) {
     }
   }
   return null;
+}
+
+/**
+ * Collect spawnable Claude Code entry points for the machine-level selector.
+ * This is intentionally read-only and never executes a discovered binary.
+ */
+export function discoverClaudeExecutables({ configuredPath = null, allowReal = false, includeDefaults = true } = {}) {
+  const found = [];
+  const seen = new Set();
+  const inferNpmVersion = (realPath) => {
+    const normalized = String(realPath).replace(/\\/g, '/');
+    const match = normalized.match(/^(.*\/node_modules\/@(?:anthropic-ai|ali)\/claude-code)(?:\/|$)/);
+    if (!match) return null;
+    try {
+      const pkg = JSON.parse(readFileSync(join(match[1], 'package.json'), 'utf8'));
+      return typeof pkg.version === 'string' ? pkg.version : null;
+    } catch { return null; }
+  };
+  const add = (value, source, version = null) => {
+    const expanded = expandClaudeExecutablePath(value);
+    const resolved = resolveExplicitClaudePath(expanded);
+    if (!resolved || seen.has(resolved.realPath)) return;
+    const { realPath } = resolved;
+    seen.add(realPath);
+    found.push({
+      path: expanded,
+      realPath,
+      source,
+      version: version || inferNpmVersion(realPath),
+      isNpmVersion: resolved.isNpmVersion,
+    });
+  };
+
+  // Keep the saved value first so the UI does not jump when it is also found
+  // through PATH or a package scan.
+  if (configuredPath) add(configuredPath, 'configured');
+  if (!includeDefaults || (isRealClaudeLookupBlocked() && !allowReal)) return found;
+
+  // CodeFuse keeps one directory per managed Claude version.
+  const codeFuseRoot = join(homedir(), '.codefuse', 'fuse', 'engine', 'bin', 'claude');
+  try {
+    const versions = readdirSync(codeFuseRoot, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && /^\d+\.\d+\.\d+$/.test(e.name))
+      .map((e) => e.name)
+      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    for (const version of versions) {
+      const names = process.platform === 'win32' ? ['claude.exe'] : ['claude', 'claude.exe'];
+      for (const name of names) add(join(codeFuseRoot, version, name), 'codefuse', version);
+    }
+  } catch { /* CodeFuse is optional. */ }
+
+  // Scan PATH directly. Avoid shelling out to `which`/`where` from the HTTP
+  // request path: a wrapper or slow shell startup must not block the viewer.
+  const pathNames = process.platform === 'win32' ? [`${BINARY_NAME}.exe`] : [BINARY_NAME];
+  for (const dir of String(process.env.PATH || '').split(delimiter).filter(Boolean)) {
+    for (const name of pathNames) add(resolve(dir, name), 'path');
+  }
+
+  // npm wrapper, its 2.x bin entry, and the platform-specific optional package.
+  const npmRoots = new Set([NODE_MODULES]);
+  const globalRoot = getGlobalNodeModulesDir();
+  if (globalRoot) npmRoots.add(globalRoot);
+  for (const root of npmRoots) {
+    for (const pkg of PACKAGES) {
+      const pkgDir = join(root, pkg);
+      add(join(pkgDir, CLI_ENTRY), 'npm');
+      add(join(pkgDir, 'bin', 'claude.exe'), 'npm');
+      add(join(pkgDir, 'bin', 'claude'), 'npm');
+    }
+    const platformBin = findPlatformBinary(root);
+    if (platformBin) add(platformBin, 'npm-platform');
+  }
+
+  // Native installer defaults and common package-manager locations.
+  const home = homedir();
+  const claudeDir = getClaudeConfigDir();
+  for (const value of NATIVE_CANDIDATES) {
+    const expanded = value.startsWith('~/.claude/')
+      ? join(claudeDir, value.slice('~/.claude/'.length))
+      : value.startsWith('~/') ? join(home, value.slice(2)) : value;
+    add(expanded, 'native');
+    if (process.platform === 'win32') add(expanded + '.exe', 'native');
+  }
+  if (process.platform === 'win32') {
+    const userProfile = process.env.USERPROFILE || home;
+    const localAppData = process.env.LOCALAPPDATA;
+    const appData = process.env.APPDATA;
+    add(join(userProfile, '.local', 'bin', 'claude.exe'), 'native');
+    if (localAppData) add(join(localAppData, 'Programs', 'claude', 'claude.exe'), 'native');
+    if (appData) add(join(appData, 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'), 'npm');
+  }
+
+  return found;
 }
 
 export function buildShellCandidates() {

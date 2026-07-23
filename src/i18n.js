@@ -5826,6 +5826,54 @@ const i18nData = {
     "ar": "دليل السجلات", "no": "Loggkatalog", "pt-BR": "Diretório de logs",
     "th": "ไดเรกทอรีบันทึก", "tr": "Günlük dizini", "uk": "Каталог журналів"
   },
+  "ui.claudeExecutable.title": {
+    "zh": "Claude 可执行文件", "en": "Claude executable", "zh-TW": "Claude 可執行檔",
+    "ko": "Claude 실행 파일", "ja": "Claude 実行ファイル", "de": "Claude-Programmdatei",
+    "es": "Ejecutable de Claude", "fr": "Exécutable Claude", "it": "Eseguibile Claude",
+    "da": "Claude-programfil", "pl": "Plik wykonywalny Claude", "ru": "Исполняемый файл Claude",
+    "ar": "ملف Claude التنفيذي", "no": "Claude-kjørbar fil", "pt-BR": "Executável do Claude",
+    "th": "ไฟล์ปฏิบัติการ Claude", "tr": "Claude yürütülebilir dosyası", "uk": "Виконуваний файл Claude"
+  },
+  "ui.claudeExecutable.help": {
+    "zh": "选择 CCV 下次启动时使用的 Claude。候选项来自 CodeFuse、PATH、npm 和常见安装目录，也可手动输入路径；清空后恢复自动选择。",
+    "en": "Choose the Claude executable for the next CCV launch. Suggestions come from CodeFuse, PATH, npm, and common install locations; custom paths are allowed. Clear to restore automatic selection.",
+    "zh-TW": "選擇 CCV 下次啟動時使用的 Claude。候選項來自 CodeFuse、PATH、npm 與常見安裝目錄，也可手動輸入；清空後恢復自動選擇。",
+    "ko": "다음 CCV 실행에서 사용할 Claude 경로를 선택합니다. 비우면 자동 선택으로 복원됩니다.",
+    "ja": "次回 CCV 起動時に使用する Claude を選択します。空にすると自動選択に戻ります。",
+    "de": "Wählt Claude für den nächsten CCV-Start. Leeren stellt die automatische Auswahl wieder her.",
+    "es": "Elige Claude para el próximo inicio de CCV. Vacía el campo para restaurar la selección automática.",
+    "fr": "Choisissez Claude pour le prochain démarrage de CCV. Videz le champ pour rétablir la sélection automatique.",
+    "it": "Scegli Claude per il prossimo avvio di CCV. Svuota il campo per ripristinare la selezione automatica.",
+    "da": "Vælg Claude til næste CCV-start. Ryd feltet for automatisk valg.",
+    "pl": "Wybierz Claude dla następnego uruchomienia CCV. Wyczyść pole, aby przywrócić wybór automatyczny.",
+    "ru": "Выберите Claude для следующего запуска CCV. Очистите поле для автовыбора.",
+    "ar": "اختر Claude لبدء CCV التالي. امسح الحقل للاختيار التلقائي.",
+    "no": "Velg Claude for neste CCV-start. Tøm feltet for automatisk valg.",
+    "pt-BR": "Escolha o Claude para a próxima inicialização do CCV. Limpe para restaurar a seleção automática.",
+    "th": "เลือก Claude สำหรับการเริ่ม CCV ครั้งถัดไป ล้างช่องเพื่อกลับไปเลือกอัตโนมัติ",
+    "tr": "Bir sonraki CCV başlatması için Claude'u seçin. Otomatik seçim için alanı temizleyin.",
+    "uk": "Виберіть Claude для наступного запуску CCV. Очистьте поле для автовибору."
+  },
+  "ui.claudeExecutable.auto": {
+    "zh": "自动选择", "en": "Automatic selection", "zh-TW": "自動選擇", "ko": "자동 선택",
+    "ja": "自動選択", "de": "Automatische Auswahl", "es": "Selección automática",
+    "fr": "Sélection automatique", "it": "Selezione automatica", "da": "Automatisk valg",
+    "pl": "Wybór automatyczny", "ru": "Автовыбор", "ar": "اختيار تلقائي",
+    "no": "Automatisk valg", "pt-BR": "Seleção automática", "th": "เลือกอัตโนมัติ",
+    "tr": "Otomatik seçim", "uk": "Автовибір"
+  },
+  "ui.claudeExecutable.saved": {
+    "zh": "Claude 路径已保存，下次启动生效", "en": "Claude path saved; it takes effect on the next launch"
+  },
+  "ui.claudeExecutable.saveFailed": {
+    "zh": "Claude 路径保存失败", "en": "Failed to save the Claude path"
+  },
+  "ui.claudeExecutable.effective": {
+    "zh": "当前运行：{path}", "en": "Currently running: {path}"
+  },
+  "ui.claudeExecutable.restartHint": {
+    "zh": "修改后在下次 Claude/CCV 启动时生效", "en": "Changes apply on the next Claude/CCV launch"
+  },
   "ui.globalSettings": {
     "zh": "全局设置",
     "en": "Global Settings",

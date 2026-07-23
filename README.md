@@ -52,6 +52,23 @@ Once started in programming mode, the web page opens automatically.
 
 cc-viewer also ships as a native desktop app: [download page](https://github.com/weiesky/cc-viewer/releases)
 
+### Choose the Claude executable
+
+On the local CCV page, open **Global Settings → Claude executable** to choose the
+Claude Code installation used by CLI, `ccv run -- claude`, and the desktop app.
+CCV suggests executables found in CodeFuse, `PATH`, npm, and common native-install
+locations. You may also enter an absolute path (or a `~/...` path). The selection
+is saved as `claudeExecutablePath` in `~/.claude/cc-viewer/preferences.json` and
+takes effect on the next launch.
+
+An explicit selection is authoritative: if it is later missing or not executable,
+CCV stops with an error instead of silently launching another version. Clear the
+field to restore automatic discovery. For headless setup, write the same absolute
+path to `claudeExecutablePath` manually. Executable selection is a machine-local
+admin setting and is not exposed to LAN clients. CCV disables Claude Code's
+self-updater for processes it launches, so upgrades remain under the control of
+the selected installation or its package manager.
+
 ### Upgrading to 1.7.0 (log format v2)
 
 Since 1.7.0, logs are stored in a per-session directory format (wire-format v2) instead of single `.jsonl` files — roughly 90% smaller on disk. Existing v1 `.jsonl` files are never modified or deleted; the log dialog lists v2 sessions by default, and a small “View legacy (v1) logs” entry (shown while old files exist) opens a v1 view where they can be viewed, migrated, or deleted. On startup, cc-viewer offers one-click migration when legacy logs are found (strongly recommended when continuing an old conversation with `claude -c`, whose first half lives in the old files). You can also migrate from the terminal:

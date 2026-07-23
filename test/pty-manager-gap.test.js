@@ -100,13 +100,13 @@ describe('pty-manager-gap: spawnClaude npm version + serverPort/token + IM_DENY'
     assert.equal(spawned[0].args[0], '--settings');
   });
 
-  it('CodeFuse-managed Claude is pinned against its independent auto-updater', async () => {
+  it('disables the auto-updater for every CCV-selected Claude executable', async () => {
     const previous = process.env.DISABLE_AUTOUPDATER;
     delete process.env.DISABLE_AUTOUPDATER;
     try {
-      const managed = '/Users/test/.codefuse/fuse/engine/bin/claude/2.1.199/claude';
-      await spawnClaude(9000, process.cwd(), [], managed);
-      assert.equal(spawned[0].command, managed);
+      const selected = '/usr/local/bin/claude';
+      await spawnClaude(9000, process.cwd(), [], selected);
+      assert.equal(spawned[0].command, selected);
       assert.equal(spawned[0].opts.env.DISABLE_AUTOUPDATER, '1');
     } finally {
       if (previous === undefined) delete process.env.DISABLE_AUTOUPDATER;

@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { Space, Tag, Button, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Tabs, Spin, Input, Select, Segmented, Tooltip, message } from 'antd';
+import { Space, Tag, Button, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Tabs, Spin, Input, Select, AutoComplete, Segmented, Tooltip, message } from 'antd';
 import { DISPLAY_SCALE_PRESETS } from '../../utils/displayScaleHelper';
 import { hasNativeZoom, isMac, isMobile } from '../../env';
 import { MessageOutlined, FileTextOutlined, DashboardOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, CopyOutlined, ApiOutlined, SwapOutlined, EditOutlined, ThunderboltOutlined, QuestionCircleOutlined, PushpinOutlined, PushpinFilled } from '@ant-design/icons';
@@ -87,7 +87,7 @@ class AppHeader extends React.Component {
 
   constructor(props) {
     super(props);
-    this.state = { countdownText: '', promptModalVisible: false, promptData: [], promptViewMode: 'original', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false, localUrl: '', pluginModalVisible: false, processModalVisible: false, logoDropdownOpen: false, electronMenuOpen: false, electronMenuBar: null, cacheHighlightIdx: null, cacheHighlightFading: false, calibrationModel: readCalibrationModel(CALIBRATION_MODELS), proxyModalVisible: false, systemTextModalVisible: false, messagingModalVisible: false, messagingInitialTool: null, imRecordVisible: false, imRecordPlatform: null, logDirDraft: null, qrPopoverOpen: false, electronQrOpen: false, electronQrAnchor: null, projectPrefsModalOpen: false, _skillsModal: { open: false, loading: false, skills: [], error: null, toggling: new Set() },
+    this.state = { countdownText: '', promptModalVisible: false, promptData: [], promptViewMode: 'original', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false, localUrl: '', pluginModalVisible: false, processModalVisible: false, logoDropdownOpen: false, electronMenuOpen: false, electronMenuBar: null, cacheHighlightIdx: null, cacheHighlightFading: false, calibrationModel: readCalibrationModel(CALIBRATION_MODELS), proxyModalVisible: false, systemTextModalVisible: false, messagingModalVisible: false, messagingInitialTool: null, imRecordVisible: false, imRecordPlatform: null, logDirDraft: null, claudeExecutableDraft: null, claudeExecutableCandidates: [], claudeExecutableEffective: null, claudeExecutablesLoading: false, qrPopoverOpen: false, electronQrOpen: false, electronQrAnchor: null, projectPrefsModalOpen: false, _skillsModal: { open: false, loading: false, skills: [], error: null, toggling: new Set() },
       // 文件系统权威的 skill 列表（/api/skills 返回）；live-tail 下作为 popover chip 和管理弹窗的共享数据源。
       // null=未加载 / false=失败 / [] 或 Array=加载结果。workspace 切换由 componentDidUpdate + seq 控制。
       _fsSkills: null,
@@ -148,6 +148,34 @@ class AppHeader extends React.Component {
     return isProxyMode(this.props.activeProxyId, this.props.defaultConfig);
   }
 
+  _openGlobalSettings = () => {
+    this.setState({ globalSettingsVisible: true, claudeExecutablesLoading: true });
+    fetch(apiUrl('/api/claude-executables'))
+      .then((res) => res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`)))
+      .then((data) => this.setState({
+        claudeExecutableCandidates: Array.isArray(data.candidates) ? data.candidates : [],
+        claudeExecutableEffective: data.effectivePath || null,
+        claudeExecutablesLoading: false,
+      }))
+      .catch(() => this.setState({ claudeExecutablesLoading: false }));
+  };
+
+  _saveClaudeExecutable = () => {
+    const current = this.context?.preferences?.claudeExecutablePath || '';
+    const draft = this.state.claudeExecutableDraft;
+    if (draft == null) return;
+    const value = String(draft).trim();
+    this.setState({ claudeExecutableDraft: null });
+    if (value === current) return;
+    this.context.updatePreferences({ claudeExecutablePath: value || null }).then((data) => {
+      if (data) message.success(t('ui.claudeExecutable.saved'));
+      else {
+        message.error(t('ui.claudeExecutable.saveFailed'));
+        this.context.refreshPreferences?.();
+      }
+    });
+  };
+
   _getMenuDescriptors() {
     const { viewMode, onImportLocalLogs, isLocalLog } = this.props;
     return [
@@ -169,7 +197,7 @@ class AppHeader extends React.Component {
       } }] : []),
       { key: 'edit-system-prompt', icon: <EditOutlined />, label: t('ui.expert.systemText'), onClick: () => this.setState({ systemTextModalVisible: true }), dividerAfter: true },
       { key: 'project-stats', icon: <BarChartOutlined />, label: t('ui.projectStats'), onClick: this.handleShowProjectStats },
-      ...(viewMode === 'raw' ? [{ key: 'global-settings', icon: <SettingOutlined />, label: t('ui.globalSettings'), onClick: () => this.setState({ globalSettingsVisible: true }) }] : []),
+      ...(viewMode === 'raw' ? [{ key: 'global-settings', icon: <SettingOutlined />, label: t('ui.globalSettings'), onClick: this._openGlobalSettings }] : []),
       ...(viewMode === 'chat' ? [{ key: 'display-settings', icon: <SettingOutlined />, label: t('ui.settings'), onClick: () => this.setState({ settingsDrawerVisible: true }) }] : []),
     ];
   }
@@ -2181,6 +2209,38 @@ class AppHeader extends React.Component {
             }}
             placeholder="~/.claude/cc-viewer"
           />
+          {_prefs._isLocal === true && (
+            <>
+              <div className={styles.settingsDivider} />
+              <div className={styles.settingsLabel}>
+                {t('ui.claudeExecutable.title')}
+                <Tooltip title={t('ui.claudeExecutable.help')}>
+                  <QuestionCircleOutlined className={styles.settingsHelpIcon} />
+                </Tooltip>
+              </div>
+              <AutoComplete
+                className={styles.claudeExecutableInput}
+                value={this.state.claudeExecutableDraft ?? (_prefs.claudeExecutablePath || '')}
+                options={this.state.claudeExecutableCandidates.map((item) => ({
+                  value: item.path,
+                  label: `${item.source}${item.version ? ` ${item.version}` : ''} — ${item.path}`,
+                }))}
+                onChange={(value) => this.setState({ claudeExecutableDraft: value })}
+                onSelect={(value) => this.setState({ claudeExecutableDraft: value }, this._saveClaudeExecutable)}
+                onBlur={this._saveClaudeExecutable}
+                onKeyDown={(e) => { if (e.key === 'Enter') this._saveClaudeExecutable(); }}
+                allowClear
+                placeholder={t('ui.claudeExecutable.auto')}
+                notFoundContent={this.state.claudeExecutablesLoading ? <Spin size="small" /> : null}
+                filterOption={(input, option) => String(option?.value || '').toLowerCase().includes(input.toLowerCase())}
+              />
+              <div className={styles.claudeExecutableHint}>
+                {this.state.claudeExecutableEffective
+                  ? t('ui.claudeExecutable.effective', { path: this.state.claudeExecutableEffective })
+                  : t('ui.claudeExecutable.restartHint')}
+              </div>
+            </>
+          )}
         </Drawer>
         <Drawer
           title={<span><BarChartOutlined className={sharedChrome.titleIcon} />{t('ui.projectStats')}</span>}

@@ -221,6 +221,8 @@ describe('getModelInfo', () => {
     assert.equal(H.getModelInfo('gemini-1.5-pro').provider, 'Gemini');
     assert.equal(H.getModelInfo('qwen-max').provider, 'Qwen');
     assert.equal(H.getModelInfo('kimi-k2').provider, 'Kimi');
+    assert.equal(H.getModelInfo('k3').provider, 'Kimi');
+    assert.equal(H.getModelInfo('K3').provider, 'Kimi');
     assert.equal(H.getModelInfo('moonshot-v1').provider, 'Kimi');
     assert.equal(H.getModelInfo('glm-4').provider, 'GLM');
     assert.equal(H.getModelInfo('chatglm3').provider, 'GLM');

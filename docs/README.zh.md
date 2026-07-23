@@ -58,6 +58,20 @@ ccv -c --d             # == claude --continue --dangerously-skip-permissions
 
 cc-viewer提供了客户端的版本：[下载地址](https://github.com/weiesky/cc-viewer/releases)
 
+### 选择 Claude 可执行文件
+
+在本机 CCV 页面打开 **全局设置 → Claude 可执行文件**，可以选择 CLI、
+`ccv run -- claude` 和桌面应用共同使用的 Claude Code。CCV 会列出在 CodeFuse、
+`PATH`、npm 及常见原生安装目录中发现的候选项，也可以手动填写绝对路径或 `~/...`
+路径。配置以 `claudeExecutablePath` 保存在
+`~/.claude/cc-viewer/preferences.json`，下次启动时生效。
+
+非空配置具有强制性：如果文件之后被移动、删除或不可执行，CCV 会明确报错并停止，
+不会静默改用其他版本。清空该字段即可恢复自动发现。无界面环境也可以直接在上述
+`preferences.json` 中写入同名配置。本配置仅允许本机管理员读写，不会向局域网客户端
+暴露。CCV 启动 Claude 时会禁用 Claude Code 自身的自动升级，由所选安装来源或包管理器
+负责升级。
+
 ### 升级到 1.7.0（日志格式 v2）
 
 自 1.7.0 起，日志以「每会话目录」格式（wire-format v2）存储，不再使用单个 `.jsonl` 文件——磁盘占用约减少 90%。已有的 v1 `.jsonl` 文件不会被修改或删除；日志对话框默认会列出 v2 会话，并提供一个小的「查看旧版（v1）日志」入口（只要旧文件仍存在便会显示），点击后会打开 v1 视图，可在其中查看、迁移或删除它们。启动时，如果发现旧版日志，cc-viewer 会提供一键迁移（在使用 `claude -c` 继续旧对话时强烈建议迁移，因为这类对话的前半部分保存在旧文件中）。你也可以在终端中迁移：

@@ -10,7 +10,7 @@
 
 import { describe, it, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, symlinkSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, symlinkSync, rmSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 
@@ -23,6 +23,11 @@ import {
   resolveClaudeFromPath,
   resolveCodeFuseClaudePath,
   DEFAULT_CODEFUSE_CLAUDE_VERSION,
+  resolveExplicitClaudePath,
+  readConfiguredClaudePath,
+  resolveConfiguredClaudePath,
+  resolvePreferredClaudeSelection,
+  discoverClaudeExecutables,
   resolveNativePath,
   applyAgentTeamsDefault,
 } from '../findcc.js';
@@ -355,6 +360,101 @@ describe('findcc: resolveCodeFuseClaudePath', () => {
     try {
       assert.equal(resolveCodeFuseClaudePath(root), null);
       assert.equal(resolveCodeFuseClaudePath(root, '../2.1.199'), null);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('findcc: configured Claude executable', () => {
+  it('reads and resolves the persisted machine-level executable path', () => {
+    const root = mkdtempSync(join(tmpdir(), 'findcc-configured-'));
+    try {
+      const executable = join(root, 'claude');
+      const prefsFile = join(root, 'preferences.json');
+      writeFileSync(executable, '#!/bin/sh\nexit 0\n');
+      chmodSync(executable, 0o755);
+      writeFileSync(prefsFile, JSON.stringify({ claudeExecutablePath: executable }));
+
+      assert.equal(readConfiguredClaudePath(prefsFile), executable);
+      assert.deepEqual(resolveConfiguredClaudePath(prefsFile), {
+        path: executable,
+        realPath: realpathSync(executable),
+        isNpmVersion: false,
+      });
+      assert.deepEqual(resolveExplicitClaudePath(executable), {
+        path: executable,
+        realPath: realpathSync(executable),
+        isNpmVersion: false,
+      });
+      assert.deepEqual(resolvePreferredClaudeSelection({ prefsFile }), {
+        path: executable,
+        realPath: realpathSync(executable),
+        isNpmVersion: false,
+        source: 'configured',
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('returns null for a missing/invalid configured path', () => {
+    const root = mkdtempSync(join(tmpdir(), 'findcc-configured-missing-'));
+    try {
+      const prefsFile = join(root, 'preferences.json');
+      writeFileSync(prefsFile, JSON.stringify({ claudeExecutablePath: join(root, 'missing') }));
+      assert.equal(resolveConfiguredClaudePath(prefsFile), null);
+      assert.equal(resolveExplicitClaudePath(''), null);
+      assert.deepEqual(resolvePreferredClaudeSelection({ prefsFile }), {
+        error: 'configured-invalid',
+        configuredPath: join(root, 'missing'),
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('collects a configured candidate without touching real machine locations in tests', () => {
+    const root = mkdtempSync(join(tmpdir(), 'findcc-discovery-'));
+    try {
+      const executable = join(root, 'claude.exe');
+      writeFileSync(executable, 'fixture');
+      chmodSync(executable, 0o755);
+      const candidates = discoverClaudeExecutables({
+        configuredPath: executable,
+        includeDefaults: false,
+      });
+      assert.equal(candidates.length, 1);
+      assert.equal(candidates[0].path, executable);
+      assert.equal(candidates[0].source, 'configured');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects relative paths and non-executable POSIX files', () => {
+    const root = mkdtempSync(join(tmpdir(), 'findcc-configured-perms-'));
+    try {
+      const executable = join(root, 'claude');
+      writeFileSync(executable, '#!/bin/sh\nexit 0\n');
+      chmodSync(executable, 0o644);
+      assert.equal(resolveExplicitClaudePath('relative/claude'), null);
+      if (process.platform !== 'win32') assert.equal(resolveExplicitClaudePath(executable), null);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects Windows shell shims but accepts an .exe entry', () => {
+    if (process.platform !== 'win32') return;
+    const root = mkdtempSync(join(tmpdir(), 'findcc-configured-win-'));
+    try {
+      const cmd = join(root, 'claude.cmd');
+      const exe = join(root, 'claude.exe');
+      writeFileSync(cmd, 'fixture');
+      writeFileSync(exe, 'fixture');
+      assert.equal(resolveExplicitClaudePath(cmd), null);
+      assert.equal(resolveExplicitClaudePath(exe)?.isNpmVersion, false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

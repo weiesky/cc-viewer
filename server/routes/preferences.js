@@ -2,7 +2,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
-import { LOG_DIR, setLogDir, getClaudeConfigDir } from '../../findcc.js';
+import { LOG_DIR, setLogDir, getClaudeConfigDir, discoverClaudeExecutables, resolveExplicitClaudePath, CLAUDE_EXECUTABLE_PREF_KEY } from '../../findcc.js';
 import { PROFILE_PATH, _defaultConfig, getActiveProfileId, setActiveProfileForWorkspace, _loadProxyProfile, RETRY_CONFIG_PATH, _retryConfigState, _loadRetryConfigState } from '../interceptor.js';
 import { migrateProxyProfileList } from '../lib/interceptor-core.js';
 import { DEFAULT_RETRY_CONFIG, validateRetryConfig, resolveRetryConfig } from '../lib/proxy-retry.js';
@@ -25,6 +25,22 @@ function stripImConfigs(obj) {
   if (obj) for (const id of listPlatforms()) delete obj[id];
 }
 
+// Loopback identifies the socket peer, not the browser page that initiated a
+// request. Since the server intentionally has permissive CORS for legacy APIs,
+// sensitive executable-selection endpoints need their own same-origin guard.
+function isSameOriginBrowserRequest(req, parsedUrl) {
+  const origin = req.headers?.origin;
+  if (!origin) return true; // CLI/native clients do not send Origin.
+  if (req.headers?.['sec-fetch-site'] === 'cross-site') return false;
+  try {
+    const originUrl = new URL(origin);
+    if (parsedUrl?.origin) return originUrl.origin.toLowerCase() === parsedUrl.origin.toLowerCase();
+    return originUrl.host.toLowerCase() === String(req.headers?.host || '').toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
 // /theme 选择器特征：选项文案高特异、不太可能出现在普通生成输出里（ESC 兜底的门控签名）
 const THEME_PICKER_RE = /Auto \(match terminal\)|colorblind-friendly/;
 
@@ -41,6 +57,9 @@ function preferencesGet(req, res, parsedUrl, isLocal, deps) {
   // 全局 auth 与每个项目的 authByProject 覆盖都要剥离(后者同样含明文密码)。
   delete prefs.auth;
   delete prefs.authByProject;
+  if (!isLocal || !isSameOriginBrowserRequest(req, parsedUrl)) {
+    delete prefs[CLAUDE_EXECUTABLE_PREF_KEY];
+  }
   stripImConfigs(prefs); // dingtalk / feishu / … — admin-only, never to a LAN client
   // 项目独立配置（多人共用一台 server 时按项目隔离偏好）：非本机(LAN)客户端若当前项目有 fork，
   // 解析出该项目的有效偏好；本机(admin)始终看全局。forks blob 绝不下发，仅以 _projectPrefsKeys
@@ -99,6 +118,30 @@ function preferencesPost(req, res, parsedUrl, isLocal, deps) {
       // 任意项目的覆盖,绕过 admin 门禁。
       delete incoming.auth;
       delete incoming.authByProject;
+      // Claude executable selection controls which local program CCV executes.
+      // It is machine-global and therefore writable only by the loopback admin,
+      // never by a remote/project-scoped preferences client.
+      if (!isLocal) {
+        delete incoming[CLAUDE_EXECUTABLE_PREF_KEY];
+      } else if (Object.prototype.hasOwnProperty.call(incoming, CLAUDE_EXECUTABLE_PREF_KEY)) {
+        const value = incoming[CLAUDE_EXECUTABLE_PREF_KEY];
+        if (!isSameOriginBrowserRequest(req, parsedUrl)) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Same-origin request required' }));
+          return;
+        }
+        if (typeof value === 'string' && value.trim()) {
+          const resolved = resolveExplicitClaudePath(value.trim().slice(0, 4096));
+          if (!resolved) {
+            res.writeHead(422, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Claude executable path is not launchable' }));
+            return;
+          }
+          incoming[CLAUDE_EXECUTABLE_PREF_KEY] = resolved.path;
+        } else {
+          incoming[CLAUDE_EXECUTABLE_PREF_KEY] = null;
+        }
+      }
       // prefsByProject(项目独立配置 fork)只能经 admin-only 的 /api/project-prefs/* 修改；元字段
       // (_isLocal/_projectScoped/…)仅 GET 回包，绝不让它们经 /api/preferences 落盘污染。
       delete incoming.prefsByProject;
@@ -168,6 +211,9 @@ function preferencesPost(req, res, parsedUrl, isLocal, deps) {
       delete prefs.auth;
       delete prefs.authByProject;
       delete prefs.prefsByProject; // fork blob 绝不回显（与 GET 一致）
+      if (!isLocal || !isSameOriginBrowserRequest(req, parsedUrl)) {
+        delete prefs[CLAUDE_EXECUTABLE_PREF_KEY];
+      }
       stripImConfigs(prefs);
       prefs.logDir = LOG_DIR;
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -179,6 +225,29 @@ function preferencesPost(req, res, parsedUrl, isLocal, deps) {
       res.end(JSON.stringify({ error: 'Failed to save preferences' }));
     }
   });
+}
+
+function claudeExecutablesGet(req, res, parsedUrl, isLocal, deps) {
+  if (!isLocal || !isSameOriginBrowserRequest(req, parsedUrl)) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: isLocal ? 'Same-origin request required' : 'Loopback only' }));
+    return;
+  }
+  let configuredPath = null;
+  try {
+    const prefs = readPrefsRaw(deps.getPrefsFile());
+    const value = prefs?.[CLAUDE_EXECUTABLE_PREF_KEY];
+    if (typeof value === 'string' && value.trim()) configuredPath = value.trim();
+  } catch { }
+  const candidates = discoverClaudeExecutables({ configuredPath }).map(({
+    path, source, version, isNpmVersion,
+  }) => ({ path, source, version, isNpmVersion }));
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({
+    configuredPath,
+    effectivePath: process.env.CCV_CLAUDE_EXECUTABLE || null,
+    candidates,
+  }));
 }
 
 function claudeSettingsGet(req, res, parsedUrl, isLocal, deps) {
@@ -481,6 +550,7 @@ async function ccswitchImportPost(req, res, _parsedUrl, isLocal, deps) {
 export const preferencesRoutes = [
   { method: 'GET', match: 'exact', path: '/api/preferences', handler: preferencesGet },
   { method: 'POST', match: 'exact', path: '/api/preferences', handler: preferencesPost },
+  { method: 'GET', match: 'exact', path: '/api/claude-executables', handler: claudeExecutablesGet },
   { method: 'GET', match: 'exact', path: '/api/claude-settings', handler: claudeSettingsGet },
   { method: 'POST', match: 'exact', path: '/api/claude-settings', handler: claudeSettingsPost },
   { method: 'GET', match: 'exact', path: '/api/proxy-profiles', handler: proxyProfilesGet },

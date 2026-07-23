@@ -105,29 +105,20 @@ if (process.versions.electron) {
   } catch { _nodePath = process.platform === 'win32' ? 'node' : '/usr/local/bin/node'; }
 }
 
-const { resolveNpmClaudePath, resolveNativePath } = await import(pathToFileURL(join(rootDir, 'findcc.js')).href);
-let claudePath = resolveNpmClaudePath();
-let isNpmVersion = !!claudePath;
-if (!claudePath) claudePath = resolveNativePath();
+const { resolvePreferredClaudeSelection } = await import(pathToFileURL(join(rootDir, 'findcc.js')).href);
+const claudeSelection = resolvePreferredClaudeSelection();
+let claudePath = claudeSelection?.path || null;
+let isNpmVersion = claudeSelection?.isNpmVersion || false;
 
-// Fallback: directly check known npm global locations
-if (!claudePath) {
-  const knownPaths = [
-    join(home, '.npm-global', 'lib', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
-    '/usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js',
-    join(home, '.npm-global', 'lib', 'node_modules', '@ali', 'claude-code', 'cli.js'),
-  ];
-  for (const p of knownPaths) {
-    if (existsSync(p)) {
-      claudePath = p;
-      isNpmVersion = true;
-      break;
-    }
-  }
+if (claudeSelection?.error === 'configured-invalid') {
+  process.env.CCV_CLAUDE_CONFIG_ERROR = claudeSelection.configuredPath;
+  devError('[Electron] Configured Claude executable is not launchable:', claudeSelection.configuredPath);
 }
 
 if (!claudePath) {
   process.env.CCV_CLAUDE_MISSING = '1';
+} else {
+  process.env.CCV_CLAUDE_EXECUTABLE = claudePath;
 }
 
 // --- Management server for workspace selector ---
