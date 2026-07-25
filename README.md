@@ -1,4 +1,5 @@
-<img width="694" height="149" alt="image" src="https://github.com/user-attachments/assets/77b85561-301f-47eb-8535-68533e3791b4" />
+<img width="1500" height="200" alt="未标题-2" src="https://github.com/user-attachments/assets/1239ca42-76c0-408b-9f8d-11ae11a48fb6" />
+
 
 
 # CC-Viewer
