@@ -301,17 +301,109 @@ export function isBrowserOpenSuppressed() {
 }
 // ████████████████████████████████████████████████████████████████████████████
 
+// `npm root -g` — the single source of truth for the global node_modules root.
+//
+// Windows: npm ships as `npm.cmd`, and since the CVE-2024-27980 fix (Node
+// 18.20.2 / 20.12.2 / 22.0.0) handing a `.cmd`/`.bat` target to execFileSync
+// throws EINVAL *synchronously*. That threw straight into the catch below and
+// returned null, so every Claude-discovery path that depends on the global root
+// silently missed an `npm i -g @anthropic-ai/claude-code` install and `ccv`
+// died with "cli.js not found" (issue #137).
+//
+// `cmd.exe /c npm root -g` is the doc-sanctioned non-shell route: the executed
+// image is cmd.exe (a real PE), and the argv is a fixed literal — no caller or
+// user input is ever interpolated, so there is no command-injection surface.
+// Exported for unit tests: the win32 branch must be assertable off-Windows.
+export function buildNpmRootCommand(platform = process.platform, env = process.env) {
+  if (platform === 'win32') {
+    return {
+      cmd: env.COMSPEC || 'cmd.exe',
+      args: ['/d', '/s', '/c', 'npm root -g'],
+      // cmd.exe must receive `npm root -g` as one token; Node's default quoting
+      // would wrap it in quotes that cmd then fails to parse.
+      windowsVerbatimArguments: true,
+    };
+  }
+  return { cmd: 'npm', args: ['root', '-g'], windowsVerbatimArguments: false };
+}
+
+// npm may prepend warnings (funding/update notices) to stdout; the resolved path
+// is the last non-empty line. Exported for unit tests.
+export function parseNpmRootOutput(raw) {
+  const lines = String(raw ?? '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  return lines.length ? lines[lines.length - 1] : null;
+}
+
 export function getGlobalNodeModulesDir() {
+  const { cmd, args, windowsVerbatimArguments } = buildNpmRootCommand();
   try {
-    return execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['root', '-g'], {
+    const out = execFileSync(cmd, args, {
       encoding: 'utf-8',
       windowsHide: true,
-      timeout: 2000,
+      // npm on Windows (cmd.exe + Defender) is routinely slower than 2s; a
+      // premature timeout was itself a source of "claude not found".
+      timeout: 10000,
       maxBuffer: 1024 * 1024,
-    }).trim();
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsVerbatimArguments,
+    });
+    const dir = parseNpmRootOutput(out);
+    if (dir && existsSync(dir)) return dir;
+    return dir || inferGlobalNodeModulesDir();
   } catch {
-    return null;
+    // npm missing, not on PATH, or slower than the timeout — fall back to the
+    // well-known layouts so discovery still works without ever running npm.
+    return inferGlobalNodeModulesDir();
   }
+}
+
+// Ordered candidate list for the npm-free global-root fallback. Pure (no fs
+// access) and parameterized so tests can assert the win32 ordering off-Windows.
+export function globalNodeModulesCandidates(platform = process.platform, env = process.env, home = homedir()) {
+  // Use the target platform's separator so the win32 branch is assertable from a
+  // POSIX test run (at runtime on Windows this is exactly what `join` does).
+  const pj = platform === 'win32' ? win32.join : join;
+  const candidates = [];
+  const prefix = env.NPM_CONFIG_PREFIX || env.npm_config_prefix;
+  if (prefix) {
+    // Windows installs land directly in <prefix>/node_modules; POSIX adds lib/.
+    candidates.push(pj(prefix, 'node_modules'), pj(prefix, 'lib', 'node_modules'));
+  }
+  if (platform === 'win32') {
+    // The default `npm i -g` target for the official Node installer.
+    if (env.APPDATA) candidates.push(pj(env.APPDATA, 'npm', 'node_modules'));
+    if (env.ProgramFiles) candidates.push(pj(env.ProgramFiles, 'nodejs', 'node_modules'));
+    if (env.LOCALAPPDATA) {
+      candidates.push(pj(env.LOCALAPPDATA, 'nvm', 'node_modules'));
+      candidates.push(pj(env.LOCALAPPDATA, 'Volta', 'tools', 'image', 'node_modules'));
+    }
+  } else {
+    candidates.push(
+      pj(home, '.npm-global', 'lib', 'node_modules'),
+      '/usr/local/lib/node_modules',
+      '/opt/homebrew/lib/node_modules',
+      pj(home, '.volta', 'tools', 'image', 'node_modules'),
+    );
+  }
+  // The dir holding cc-viewer itself IS a global node_modules when ccv was
+  // installed with `npm i -g` — a reliable last resort on any platform.
+  candidates.push(NODE_MODULES);
+  return candidates.filter(Boolean);
+}
+
+// npm-free fallback for the global node_modules root. `npm root -g` can fail for
+// reasons that have nothing to do with whether Claude Code is installed (npm not
+// on a GUI process's PATH, a corporate shim that is slow to start, EINVAL as
+// above). These are the canonical global prefixes; the first one that exists wins.
+// L7: these are absolute machine paths that ignore PATH/HOME isolation exactly
+// like the raw NATIVE_CANDIDATES — blocked under test context, where `npm root -g`
+// (real or fixture) remains the only sanctioned seam.
+export function inferGlobalNodeModulesDir() {
+  if (isRealClaudeLookupBlocked()) return null;
+  for (const dir of globalNodeModulesCandidates()) {
+    if (existsSync(dir)) return dir;
+  }
+  return null;
 }
 
 export function resolveCliPath() {

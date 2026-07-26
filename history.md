@@ -8,6 +8,9 @@
 
 - ui(proxy-stats): Config tab uses a two-column `Strategy` / `Execution Parameters` grouped layout, falling back to one column on narrow viewports.
 
+- fix(win): **Windows 上 `ccv` 误报「找不到 Claude Code cli.js」** (#137) —— `getGlobalNodeModulesDir()` 用 `execFileSync('npm.cmd', …)` 取全局 `node_modules` 根目录，而 Node 修复 CVE-2024-27980 后（18.20.2/20.12.2/22.0.0）不带 shell 直接 spawn `.cmd`/`.bat` 会同步抛 EINVAL，异常被 catch 成 `null`，导致所有依赖全局根目录的 Claude 探测全部落空——即使包就装在报错信息打印的那个目录下。改走 `cmd.exe /d /s /c npm root -g`（argv 为固定字面量，无插值），新增 `inferGlobalNodeModulesDir()` 免 npm 兜底（`NPM_CONFIG_PREFIX` / `%APPDATA%\npm` / Program Files / nvm-windows / Volta / cc-viewer 自身所在目录），超时 2s→10s，并容忍 npm 告警前缀（取最后一行非空）。
+- fix(electron/win): **打包版 Electron 开 tab 报 `spawn node ENOENT`、tab 永久卡加载中** (#129) —— tab worker 的 `fork()` 以 `where node` 结果作 `execPath`，失败时回落到裸字符串 `'node'`，而打包版 GUI 进程不继承 shell PATH，该回落无法解析。现回落到 Electron 自带二进制 + `ELECTRON_RUN_AS_NODE=1`（无需外部 Node；node-pty 预编译产物为 N-API，跨 ABI 稳定），`where` 多行输出只取 `.exe`，用真实 Node 时清除该变量；`child.on('error')` 立即 `clearTimeout` + 置 error 态并广播（不再干等 30s ready-timeout），`child.send()` 加 try/catch 经 `appendDiag` 记录，避免 `write EPIPE` 盖掉真实原因。
+
 ## 1.7.5 (2026-07-18)
 
 - ui(proxy): **fuse retry config and stats into a unified split-page** — `RetryConfigForm` extracted from RetryConfigModal as inline component; `UnifiedProxyRetryPage` with left config / right stats panels (independent scroll); recent records table filtered to errors only. Shared `isProxyMode()` utility eliminates duplicated proxy-detection logic. Proxy stats toolbar/sidebar buttons removed; unified page now reachable via hamburger menu. P1–P2 code-review fixes applied.

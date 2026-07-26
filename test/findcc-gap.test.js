@@ -2,7 +2,8 @@
 //   - setLogDir()          —— 拒空/非串/非法目录、接受 /tmp 与 ~ 展开、live-binding 生效
 //   - resolveCliPath()     —— 真实环境下返回 .../cli.js 路径
 //   - resolveNpmClaudePath() —— which/command-v 命中 node_modules 软链 / 全局兜底 / 跳过非 nm 路径
-//   - getGlobalNodeModulesDir() —— npm 缺失时返回 null（catch 分支）
+//   - getGlobalNodeModulesDir() —— npm 缺失时返回 null（catch 分支；免-npm 兜底见
+//     windows-npm-root-regression.test.js）
 //
 // 手法：findcc.test.js 对 LOG_DIR/resolveNativePath 用子进程隔离；本文件改为 in-process，
 // 通过临时覆写 process.env.PATH / NPM_CONFIG_PREFIX 隔离外部 claude/npm，after-each 还原，
@@ -147,8 +148,11 @@ describe('findcc: resolveCliPath', () => {
 describe('findcc: getGlobalNodeModulesDir', () => {
   afterEach(() => { restoreEnv(); });
 
-  it('npm 命令缺失时返回 null（catch 分支）', () => {
-    // 隔离 PATH 到只含基本工具但不含 npm；execSync("npm root -g") 抛错 → 返回 null
+  it('npm 命令缺失时返回 null（catch 分支 + L7 屏障挡掉机器路径兜底）', () => {
+    // 隔离 PATH 到只含基本工具但不含 npm；`npm root -g` 抛错 → 走 catch。
+    // catch 内的 inferGlobalNodeModulesDir() 兜底在测试上下文被 L7 屏障挡掉
+    // （见 windows-npm-root-regression.test.js：生产环境该兜底会返回真实根目录，
+    // 这正是 #137 的修复点），因此这里仍应为 null。
     process.env.PATH = '/usr/bin:/bin';
     process.env.NPM_CONFIG_PREFIX = '/tmp/findcc-gap-fake-prefix-' + Date.now();
     assert.equal(getGlobalNodeModulesDir(), null);
