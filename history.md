@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.7.8 (2026-07-26)
+
 - ui(proxy-stats): **retry stats UI redesign — Config|Stats merged into one tabbed modal** — the hamburger `retry-config` entry now opens a `ProxyStatsModal` with a `Segmented` switch (Config default); desktop and mobile no longer take separate paths. The Stats tab is a sectioned `ProxyStatsDashboard` charted by a new zero-dependency SVG `BarChart` (upstream-vs-downstream availability, retry histogram, retry-burden buckets).
 
 - feat(proxy-stats): `aggregateRecords` gains a global `retryBurden` 5-bucket distribution (0 / 1-5 / 6-20 / 21-50 / >50) plus per-bucket `retryCodeCounts` / `dominantFailStatus` / `dominantFailCount` on byModel/byPath/byProfile, surfaced as a "Dominant Fail Code" column in each dimension table.
