@@ -31,10 +31,6 @@
   fill: var(--text-secondary, #333);
   font-size: 11px;
 }
-.hLabel {
-  fill: var(--text-secondary, #333);
-  font-size: 11px;
-}
 .vValue {
   fill: var(--text-primary, #1a1a1a);
   font-size: 10px;

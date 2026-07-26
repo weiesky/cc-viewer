@@ -72,9 +72,10 @@ describe('barChartHelpers groupedBarTitle', () => {
     assert.equal(groupedBarTitle('opus', 100, 1, legend, fmt), 'opus (Downstream): 100%');
   });
 
-  it('falls back to series index when legend entry is missing', () => {
-    // legend shorter than series count → no name for that index
-    assert.equal(groupedBarTitle('opus', 7, 2, ['Upstream'], fmt), 'opus (series 2): 7%');
+  it('omits the parenthetical when the legend has no entry for that index', () => {
+    // legend shorter than series count → no name for that index. No synthetic
+    // "series N" text, which would be an untranslated user-visible string.
+    assert.equal(groupedBarTitle('opus', 7, 2, ['Upstream'], fmt), 'opus: 7%');
   });
 
   it('omits the parenthetical entirely when there is no legend', () => {

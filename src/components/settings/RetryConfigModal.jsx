@@ -26,15 +26,14 @@ const NUMERIC_FIELDS = [
 
 // ─── RetryConfigForm (named export) ──────────────────────────────────────────
 // Reusable form component with its own state management. Used inline inside the
-// unified proxy retry Config & Stats panel.
+// unified proxy retry Config & Stats panel, which owns its own close affordance —
+// hence no onCancel/embedded props here.
 //
 // Props:
 //   config     - current retry config object
 //   defaults   - default values for reset buttons
 //   onSave     - async (formData) => Promise — returns a promise; caller handles success/failure feedback
-//   onCancel   - optional close callback (provided by Modal/drawer wrappers; absent in embedded mode)
-//   embedded   - when true, hides Cancel button (no modal to close)
-export function RetryConfigForm({ config, defaults, onSave, onCancel, embedded }) {
+export function RetryConfigForm({ config, defaults, onSave }) {
   const [form, setForm] = useState(null);
   const [dirty, setDirty] = useState(false);
   const initializedRef = useRef(false);
@@ -189,9 +188,6 @@ export function RetryConfigForm({ config, defaults, onSave, onCancel, embedded }
           {t('ui.retryConfig.resetAll')}
         </Button>
         <div className={styles.footerRight}>
-          {!embedded && onCancel && (
-            <Button onClick={onCancel}>{t('ui.retryConfig.cancel')}</Button>
-          )}
           <Button type="primary" onClick={handleSave}>{t('ui.retryConfig.save')}</Button>
         </div>
       </div>

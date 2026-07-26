@@ -44,8 +44,9 @@ export function foldBars(data, { maxBars, grouped = false } = {}) {
  * in one group (e.g. upstream vs downstream availability) both read "opus: 50%".
  *
  * - With a legend entry for this series index: "label (seriesName): value"
- * - Legend shorter than series count (no name for this index): "label (series N): value"
- * - No legend at all: "label: value"
+ * - Otherwise (no legend, or no name at this index): "label: value". No synthetic
+ *   "series N" fallback: it would be an untranslated user-visible string, and the
+ *   group label plus bar order already identify the series.
  *
  * @param {string} label the group (row) label, e.g. the model name
  * @param {number} value the value of this particular bar
@@ -56,11 +57,8 @@ export function foldBars(data, { maxBars, grouped = false } = {}) {
  */
 export function groupedBarTitle(label, value, bi, legend, valueFormatter) {
   const formatted = valueFormatter(value);
-  if (Array.isArray(legend) && legend.length > 0) {
-    const name = legend[bi];
-    if (name) return `${label} (${name}): ${formatted}`;
-    return `${label} (series ${bi}): ${formatted}`;
-  }
+  const name = Array.isArray(legend) ? legend[bi] : undefined;
+  if (name) return `${label} (${name}): ${formatted}`;
   return `${label}: ${formatted}`;
 }
 

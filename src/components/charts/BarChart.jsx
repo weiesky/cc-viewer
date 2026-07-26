@@ -11,14 +11,13 @@ const DEFAULT_COLORS = [
   'var(--color-warning, #f59e0b)',
 ];
 
-// Pure-SVG bar chart. Supports vertical/horizontal and single/grouped bars.
+// Pure-SVG vertical bar chart, single or grouped series.
 // No external chart lib — keeps cc-viewer dependency-free (CLAUDE.md).
 // `memo`'d: the chart is a pure function of its props, so it skips re-render when
 // the parent (ProxyStatsDashboard) re-renders on a poll tick with unchanged data.
 function BarChart({
   data = [],
   height = 160,
-  horizontal = false,
   grouped = false,
   valueFormatter = (n) => String(n),
   maxBars,
@@ -61,15 +60,15 @@ function BarChart({
       {legend.map((label, i) => (
         <span key={i} className={styles.legendItem}>
           <span className={styles.legendSwatch}
-            style={{ background: rows[0]?.colors?.[i] || DEFAULT_COLORS[i % DEFAULT_COLORS.length] }} />
+            style={{ background: DEFAULT_COLORS[i % DEFAULT_COLORS.length] }} />
           {label}
         </span>
       ))}
     </div>
   ) : null;
 
-  const pad = 28; // left/bottom padding for labels
-  const labelPad = horizontal ? 0 : 16; // extra bottom for x labels when vertical
+  const pad = 28;      // left/bottom padding for labels
+  const labelPad = 16; // extra bottom room for the x-axis labels
   const innerW = Math.max(0, width - pad);
   const innerH = Math.max(0, height - pad - labelPad);
 
@@ -83,85 +82,52 @@ function BarChart({
   }, 1);
 
   // Vertical layout (bars grow upward)
-  if (!horizontal) {
-    const groupW = innerW / rows.length;
-    const barW = grouped
-      ? Math.max(2, (groupW * 0.6) / Math.max(1, rows[0]?.values?.length || 1))
-      : Math.max(2, groupW * 0.5);
-    const baseline = pad + innerH; // y of baseline
-    return (
-      <div ref={wrapRef} className={styles.wrap} style={{ height }}>
-        {legendEl}
-        <svg className={styles.svg} height={height} width={width} role="img" aria-label={ariaLabel}>
-          {/* 3 gridlines */}
-          {[0.25, 0.5, 0.75].map((f) => (
-            <line key={f} className={styles.gridLine}
-              x1={pad} x2={width} y1={pad + innerH * (1 - f)} y2={pad + innerH * (1 - f)} />
-          ))}
-          <line className={styles.axisLine} x1={pad} x2={width} y1={baseline} y2={baseline} />
-          {rows.map((d, gi) => {
-            const gx = pad + gi * groupW + (groupW - (grouped ? (rows[0]?.values?.length || 1) * barW : barW)) / 2;
-            const vals = grouped ? (d.values || [0]) : [d.value || 0];
-            return (
-              <g key={gi}>
-                {vals.map((v, bi) => {
-                  const h = Math.max(0, (v / maxVal) * innerH);
-                  const x = gx + bi * barW;
-                  const y = baseline - h;
-                  const color = grouped
-                    ? (d.colors?.[bi] || DEFAULT_COLORS[bi % DEFAULT_COLORS.length])
-                    : (d.color || DEFAULT_COLORS[0]);
-                  return (
-                    <g key={bi}>
-                      <rect className={styles.bar} x={x} y={y} width={Math.max(1, barW - 1)} height={h}
-                        fill={color} rx={1}>
-                        <title>{grouped
-                          ? groupedBarTitle(d.label, v, bi, legend, valueFormatter)
-                          : singleBarTitle(d.label, v, valueFormatter)}</title>
-                      </rect>
-                      {/* Direct value label on single-series bars wide enough to
-                          hold it — saves a hover for the common reading path. */}
-                      {!grouped && barW >= 18 && (
-                        <text className={styles.vValue} x={x + barW / 2} y={Math.max(8, y - 4)}
-                          textAnchor="middle">{valueFormatter(v)}</text>
-                      )}
-                    </g>
-                  );
-                })}
-                <text className={styles.vLabel} x={pad + gi * groupW + groupW / 2} y={height - 4}
-                  textAnchor="middle">{String(d.label).slice(0, 8)}</text>
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-    );
-  }
-
-  // Horizontal layout (bars grow rightward — good for long labels like status codes)
-  const rowH = Math.max(14, innerH / rows.length);
-  const labelW = pad; // left label column
+  const groupW = innerW / rows.length;
+  const barW = grouped
+    ? Math.max(2, (groupW * 0.6) / Math.max(1, rows[0]?.values?.length || 1))
+    : Math.max(2, groupW * 0.5);
+  const baseline = pad + innerH; // y of baseline
   return (
     <div ref={wrapRef} className={styles.wrap} style={{ height }}>
       {legendEl}
       <svg className={styles.svg} height={height} width={width} role="img" aria-label={ariaLabel}>
+        {/* 3 gridlines */}
         {[0.25, 0.5, 0.75].map((f) => (
           <line key={f} className={styles.gridLine}
-            x1={labelW + (width - labelW) * f} x2={labelW + (width - labelW) * f}
-            y1={0} y2={rows.length * rowH} />
+            x1={pad} x2={width} y1={pad + innerH * (1 - f)} y2={pad + innerH * (1 - f)} />
         ))}
-        {rows.map((d, i) => {
-          const v = d.value || 0;
-          const w = Math.max(0, (v / maxVal) * (width - labelW - pad / 2));
-          const y = i * rowH + 2;
+        <line className={styles.axisLine} x1={pad} x2={width} y1={baseline} y2={baseline} />
+        {rows.map((d, gi) => {
+          const gx = pad + gi * groupW + (groupW - (grouped ? (rows[0]?.values?.length || 1) * barW : barW)) / 2;
+          const vals = grouped ? (d.values || [0]) : [d.value || 0];
           return (
-            <g key={i}>
-              <text className={styles.hLabel} x={labelW - 4} y={y + rowH / 2 + 3} textAnchor="end">{String(d.label)}</text>
-              <rect className={styles.bar} x={labelW} y={y} width={Math.max(1, w)} height={Math.max(2, rowH - 4)}
-                fill={d.color || DEFAULT_COLORS[0]} rx={1}>
-                <title>{singleBarTitle(d.label, v, valueFormatter)}</title>
-              </rect>
-              <text className={styles.vValue} x={labelW + w + 4} y={y + rowH / 2 + 3}>{valueFormatter(v)}</text>
+            <g key={gi}>
+              {vals.map((v, bi) => {
+                const h = Math.max(0, (v / maxVal) * innerH);
+                const x = gx + bi * barW;
+                const y = baseline - h;
+                const color = grouped
+                  ? DEFAULT_COLORS[bi % DEFAULT_COLORS.length]
+                  : DEFAULT_COLORS[0];
+                return (
+                  <g key={bi}>
+                    <rect className={styles.bar} x={x} y={y} width={Math.max(1, barW - 1)} height={h}
+                      fill={color} rx={1}>
+                      <title>{grouped
+                        ? groupedBarTitle(d.label, v, bi, legend, valueFormatter)
+                        : singleBarTitle(d.label, v, valueFormatter)}</title>
+                    </rect>
+                    {/* Direct value label on single-series bars wide enough to
+                        hold it — saves a hover for the common reading path. */}
+                    {!grouped && barW >= 18 && (
+                      <text className={styles.vValue} x={x + barW / 2} y={Math.max(8, y - 4)}
+                        textAnchor="middle">{valueFormatter(v)}</text>
+                    )}
+                  </g>
+                );
+              })}
+              <text className={styles.vLabel} x={pad + gi * groupW + groupW / 2} y={height - 4}
+                textAnchor="middle">{String(d.label).slice(0, 8)}</text>
             </g>
           );
         })}
