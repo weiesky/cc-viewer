@@ -45,12 +45,11 @@ export default function ProxyStatsModal({ retryConfig, retryDefaults, onRetryCon
                 config={retryConfig}
                 defaults={retryDefaults}
                 onSave={handleConfigSave}
-                embedded
               />
             </div>
           </div>
         ) : (
-          <ProxyStatsDashboard embedded />
+          <ProxyStatsDashboard />
         )}
       </div>
     </div>

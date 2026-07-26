@@ -5,7 +5,6 @@
 
 /* ---- layout shells ---- */
 .embedded { padding: 14px; overflow-y: auto; height: 100%; }
-.page { padding: 20px; max-width: 1200px; margin: 0 auto; }
 /* Shared loading/empty placeholder: vertically centered with a reserved
    min-height so the modal body doesn't collapse or jump (CLS) while the
    first fetch is in flight. */
@@ -17,9 +16,8 @@
   padding: 40px 0;
 }
 
-/* ---- header (page/non-embedded mode only) ---- */
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.title { margin: 0; font-size: 18px; font-weight: 600; color: var(--text-primary, #1a1a1a); }
+/* ---- controls row (auto-refresh + manual refresh, right-aligned) ---- */
+.header { display: flex; justify-content: flex-end; align-items: center; margin-bottom: 12px; }
 
 /* ---- KPI card row ---- */
 .cardRow {

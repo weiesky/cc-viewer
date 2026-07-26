@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, Statistic, Table, Tag, Button, Switch, Spin, Empty, Space } from 'antd';
 import { ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
@@ -14,11 +14,10 @@ const AUTO_REFRESH_MS = 15000;
 // other props are unchanged (an inline arrow would force a re-render every poll).
 const fmtPercent = (n) => `${n}%`;
 
-export default function ProxyStatsDashboard({ embedded }) {
+export default function ProxyStatsDashboard() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const timerRef = useRef(null);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -35,25 +34,27 @@ export default function ProxyStatsDashboard({ embedded }) {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => {
-    if (autoRefresh) {
-      timerRef.current = setInterval(fetchData, AUTO_REFRESH_MS);
-      return () => clearInterval(timerRef.current);
-    }
+    if (!autoRefresh) return;
+    // Hold the id in a local so the cleanup closes over this effect's own timer
+    // rather than whatever a later run left on a ref.
+    const id = setInterval(fetchData, AUTO_REFRESH_MS);
+    return () => clearInterval(id);
   }, [autoRefresh, fetchData]);
 
   // Derived views of `data`. Memoized so the memoized BarChart (and antd Tables)
   // get stable prop identities across the 15s poll when data is unchanged.
   // Declared before the early returns below so hook order is stable.
+  // No pre-slice here: BarChart's `maxBars` does the truncation so the long tail
+  // is folded into a visible "…" bar rather than silently dropped.
   const byModelBars = useMemo(
-    () => (data?.byModel || []).slice(0, 10).map(m => ({
+    () => (data?.byModel || []).map(m => ({
       label: m.model,
       values: [m.upstreamAvailabilityPct, m.availabilityPct],
-      // series colors fall back to BarChart DEFAULT_COLORS (primary/success)
     })),
     [data],
   );
   const retryDistBars = useMemo(
-    () => (data?.retryDistribution || []).slice(0, 15).map(d => ({ label: String(d.retries), value: d.count })),
+    () => (data?.retryDistribution || []).map(d => ({ label: String(d.retries), value: d.count })),
     [data],
   );
   const retryBurdenBars = useMemo(
@@ -76,8 +77,8 @@ export default function ProxyStatsDashboard({ embedded }) {
 
   if (!data || !data.summary || data.summary.totalRequests === 0) {
     return (
-      <div className={embedded ? styles.embedded : styles.page}>
-        {!embedded && <DashboardHeader onRefresh={fetchData} autoRefresh={autoRefresh} setAutoRefresh={setAutoRefresh} />}
+      <div className={styles.embedded}>
+        <DashboardHeader onRefresh={fetchData} autoRefresh={autoRefresh} setAutoRefresh={setAutoRefresh} />
         <div className={styles.centerState}>
           <Empty description={t('ui.proxyStats.noData')} />
         </div>
@@ -89,8 +90,8 @@ export default function ProxyStatsDashboard({ embedded }) {
   const rescued = Math.max(0, s.totalSucceeded - s.totalFirstOk);
 
   return (
-    <div className={embedded ? styles.embedded : styles.page}>
-      {!embedded && <DashboardHeader onRefresh={fetchData} autoRefresh={autoRefresh} setAutoRefresh={setAutoRefresh} />}
+    <div className={styles.embedded}>
+      <DashboardHeader onRefresh={fetchData} autoRefresh={autoRefresh} setAutoRefresh={setAutoRefresh} />
 
       {/* §Range Overview */}
       <div className={styles.cardRow}>
@@ -265,14 +266,15 @@ function DurationRecordTable({ title, record }) {
   );
 }
 
+// Stats-tab controls row. The panel title lives in the ProxyStatsModal toolbar,
+// so this row carries only the refresh affordances and right-aligns them.
 function DashboardHeader({ onRefresh, autoRefresh, setAutoRefresh }) {
   return (
     <div className={styles.header}>
-      <h2 className={styles.title}>{t('ui.proxyStats.title')}</h2>
       <Space>
         <span>{t('ui.proxyStats.autoRefresh')}</span>
         <Switch checked={autoRefresh} onChange={setAutoRefresh} size="small" aria-label={t('ui.proxyStats.autoRefresh')} />
-        <Button icon={<ReloadOutlined />} onClick={onRefresh}>{t('ui.proxyStats.refresh')}</Button>
+        <Button size="small" icon={<ReloadOutlined />} onClick={onRefresh}>{t('ui.proxyStats.refresh')}</Button>
       </Space>
     </div>
   );
