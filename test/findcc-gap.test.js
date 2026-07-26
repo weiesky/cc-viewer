@@ -465,6 +465,231 @@ describe('findcc: configured Claude executable', () => {
   });
 });
 
+// ═══════════ resolvePreferredClaudeSelection priority: native > path > npm ═══════════
+// Regression guard (2026-07-26): on Windows, PATH may surface a postinstall stub that
+// causes ERROR_BAD_EXE_FORMAT (193 / 216); resolveNativePath was moved above PATH-based
+// and npm-based resolution so the platform binary always takes priority.
+//
+// These tests verify the full priority chain — configured → codefuse → native → path → npm —
+// by controlling which resolver succeeds and asserting the winning source.
+
+describe('findcc: resolvePreferredClaudeSelection priority (native > path > npm)', () => {
+  const isWin = process.platform === 'win32';
+  let base;
+
+  before(() => {
+    base = mkdtempSync(join(tmpdir(), 'findcc-pref-prio-'));
+  });
+
+  afterEach(() => { restoreEnv(); });
+
+  after(() => {
+    rmSync(base, { recursive: true, force: true });
+  });
+
+  // Helper: create a claude shim on PATH that symlinks to a cli.js under node_modules.
+  // resolveClaudeFromPath returns {path, isNpmVersion:true} for this; resolveNativePath
+  // step 2 skips .js targets. Requires symlink support (not available on Windows without
+  // admin / Developer Mode).
+  function setupPathCliJsShim(caseDir) {
+    const pathDir = join(caseDir, 'path-shim');
+    const pkgDir = join(caseDir, 'node_modules', '@anthropic-ai', 'claude-code');
+    mkdirSync(pathDir, { recursive: true });
+    mkdirSync(pkgDir, { recursive: true });
+    const cliJs = join(pkgDir, 'cli.js');
+    writeFileSync(cliJs, '#!/usr/bin/env node\n');
+    chmodSync(cliJs, 0o755);
+    const shim = join(pathDir, 'claude');
+    symlinkSync(cliJs, shim);
+    return pathDir;
+  }
+
+  // Helper: create a fake native binary at "<root>/local/<name>" and redirect
+  // CLAUDE_CONFIG_DIR to <root> so ~/.claude/local/claude resolves to it.
+  function setupNativeFixture(caseDir, binName = 'claude') {
+    mkdirSync(join(caseDir, 'local'), { recursive: true });
+    const binary = join(caseDir, 'local', binName);
+    writeFileSync(binary, '#!/bin/sh\nexit 0\n');
+    chmodSync(binary, 0o755);
+    return caseDir;
+  }
+
+  // POSIX-only: verify native beats path when both resolvers succeed independently.
+  // Uses a claude → cli.js symlink so that resolveNativePath step 2 skips it (.js)
+  // and falls through to the ~/.claude/local/claude candidate (step 3), while
+  // resolveClaudeFromPath still finds it as a valid npm entry.
+  it('native beats path when both resolvers can succeed independently', {
+    skip: isWin ? 'symlink requires admin / Developer Mode on Windows' : false,
+  }, () => {
+    const root = mkdtempSync(join(base, 'native-over-path-'));
+    try {
+      const nativeRoot = setupNativeFixture(join(root, 'native-root'));
+      const pathDir = setupPathCliJsShim(root);
+
+      process.env.CLAUDE_CONFIG_DIR = nativeRoot;
+      process.env.PATH = `${pathDir}:/usr/bin:/bin`;
+      delete process.env.NPM_CONFIG_PREFIX;
+
+      const result = resolvePreferredClaudeSelection();
+      assert.ok(result, 'should find a claude executable');
+      assert.equal(result.source, 'native',
+        `expected native to beat path, got source="${result.source}"`);
+      assert.equal(result.path, join(nativeRoot, 'local', 'claude'),
+        `expected native binary path, got ${result.path}`);
+      assert.equal(result.isNpmVersion, false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // POSIX-only: full chain verification — when native returns null, path beats npm.
+  it('path beats npm when native is unavailable', {
+    skip: isWin ? 'symlink requires admin / Developer Mode on Windows' : false,
+  }, () => {
+    const root = mkdtempSync(join(base, 'path-over-npm-'));
+    try {
+      const emptyNative = join(root, 'empty-native');
+      mkdirSync(emptyNative, { recursive: true });
+      const pathDir = setupPathCliJsShim(root);
+
+      process.env.CLAUDE_CONFIG_DIR = emptyNative;
+      process.env.PATH = `${pathDir}:/usr/bin:/bin`;
+      delete process.env.NPM_CONFIG_PREFIX;
+
+      const result = resolvePreferredClaudeSelection();
+      assert.ok(result, 'should find a claude executable');
+      assert.equal(result.source, 'path',
+        `expected path to beat npm when native is absent, got source="${result.source}"`);
+      assert.equal(result.isNpmVersion, true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // Cross-platform: resolveNativePath as a whole beats resolveClaudeFromPath, even
+  // when the PATH binary is a non-.js executable (so step 2 in resolveNativePath
+  // doesn't skip it). The source is still 'native' because resolveNativePath
+  // returns before resolveClaudeFromPath is ever called.
+  it('native still wins even when PATH has its own non-.js binary', () => {
+    const root = mkdtempSync(join(base, 'native-path-nonjs-'));
+    try {
+      const nativeRoot = setupNativeFixture(join(root, 'native-root'), isWin ? 'claude.exe' : 'claude');
+      const pathDir = join(root, 'path-shim');
+      mkdirSync(pathDir, { recursive: true });
+      // On Windows pickSpawnableLookupResult requires .exe; on POSIX plain name works.
+      const pathBinName = isWin ? 'claude.exe' : 'claude';
+      const pathBin = join(pathDir, pathBinName);
+      writeFileSync(pathBin, '#!/bin/sh\nexit 0\n');
+      chmodSync(pathBin, 0o755);
+
+      process.env.CLAUDE_CONFIG_DIR = nativeRoot;
+      // Use platform-native PATH separator and isolated fixture dir — no system
+      // paths to avoid accidentally picking up a real claude on CI.
+      process.env.PATH = isWin ? `${pathDir};C:\\Windows\\System32` : `${pathDir}:/usr/bin:/bin`;
+      delete process.env.NPM_CONFIG_PREFIX;
+
+      const result = resolvePreferredClaudeSelection();
+      assert.ok(result, 'should find a claude executable');
+      assert.equal(result.source, 'native',
+        `expected native source, got "${result.source}"`);
+      assert.equal(result.isNpmVersion, false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // Win32-only: direct regression test for the ERROR_BAD_EXE_FORMAT (193/216) bug.
+  // PATH exposes shims (claude with no extension, claude.cmd) that are not spawnable
+  // PE binaries — pickSpawnableLookupResult skips both. resolveNativePath falls through
+  // to step 3 and finds the real claude.exe via CLAUDE_CONFIG_DIR, so cc-viewer never
+  // tries to CreateProcess a non-PE stub.
+  it('win32: native .exe beats non-exe PATH shims (ERROR_BAD_EXE_FORMAT regression)', {
+    skip: !isWin ? 'Windows-specific regression test' : false,
+  }, () => {
+    const root = mkdtempSync(join(base, 'win32-bad-exe-format-'));
+    try {
+      // Native binary (via CLAUDE_CONFIG_DIR redirect)
+      const nativeRoot = setupNativeFixture(join(root, 'native-root'), 'claude.exe');
+
+      // PATH shims: npm postinstall-style stubs (no .exe — spawn would get error 193)
+      const pathDir = join(root, 'path-shim');
+      mkdirSync(pathDir, { recursive: true });
+      writeFileSync(join(pathDir, 'claude'), '@#!/bin/sh stub');       // no-extension shim
+      writeFileSync(join(pathDir, 'claude.cmd'), '@echo stub');        // .cmd shim
+      writeFileSync(join(pathDir, 'claude.ps1'), 'Write-Host stub');   // .ps1 shim
+
+      process.env.CLAUDE_CONFIG_DIR = nativeRoot;
+      process.env.PATH = `${pathDir};C:\\Windows\\System32`;
+      delete process.env.NPM_CONFIG_PREFIX;
+
+      const result = resolvePreferredClaudeSelection();
+      assert.ok(result, 'should find the native claude.exe');
+      assert.equal(result.source, 'native',
+        `expected native .exe to beat non-PE PATH shims, got source="${result.source}"`);
+      assert.equal(result.path, join(nativeRoot, 'local', 'claude.exe'),
+        'should return the native .exe, not a PATH shim');
+      assert.equal(result.isNpmVersion, false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('returns null when no executable is found by any resolver', () => {
+    const root = mkdtempSync(join(base, 'none-found-'));
+    try {
+      const emptyNative = join(root, 'empty-native');
+      mkdirSync(emptyNative, { recursive: true });
+      // Isolate PATH to a temp dir that contains no claude binary, so which/where
+      // will not accidentally surface a real system claude on CI machines.
+      const emptyPathDir = join(root, 'empty-path');
+      mkdirSync(emptyPathDir, { recursive: true });
+
+      process.env.CLAUDE_CONFIG_DIR = emptyNative;
+      process.env.PATH = emptyPathDir;
+      delete process.env.NPM_CONFIG_PREFIX;
+
+      const result = resolvePreferredClaudeSelection();
+      assert.equal(result, null,
+        `expected null when no claude is found, got ${JSON.stringify(result)}`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('configured path is still authoritative and bypasses the priority chain', () => {
+    const root = mkdtempSync(join(base, 'configured-auth-'));
+    try {
+      // Set up native so it would also succeed
+      const nativeRoot = setupNativeFixture(join(root, 'native-root'));
+
+      // Configured executable takes priority — use .exe on Windows
+      const binName = isWin ? 'claude.exe' : 'claude';
+      const configuredExe = join(root, binName);
+      writeFileSync(configuredExe, '#!/bin/sh\nexit 0\n');
+      chmodSync(configuredExe, 0o755);
+      const prefsFile = join(root, 'prefs.json');
+      writeFileSync(prefsFile, JSON.stringify({ claudeExecutablePath: configuredExe }));
+
+      // Isolate PATH to a temp dir — the configured path is resolved directly via
+      // resolveExplicitClaudePath before any PATH lookup, so system PATH is irrelevant.
+      const emptyPathDir = join(root, 'empty-path');
+      mkdirSync(emptyPathDir, { recursive: true });
+
+      process.env.CLAUDE_CONFIG_DIR = nativeRoot;
+      process.env.PATH = emptyPathDir;
+      delete process.env.NPM_CONFIG_PREFIX;
+
+      const result = resolvePreferredClaudeSelection({ prefsFile });
+      assert.ok(result, 'should find the configured claude');
+      assert.equal(result.source, 'configured',
+        `configured should be authoritative, got source="${result.source}"`);
+      assert.equal(result.realPath, realpathSync(configuredExe));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('findcc: pickSpawnableLookupResult win32 只接受 .exe', () => {
   it('win32：跳过 sh shim / .cmd / .ps1，选中 .exe 行', () => {
     const out = 'C:\\Users\\x\\AppData\\Roaming\\npm\\claude\r\n'

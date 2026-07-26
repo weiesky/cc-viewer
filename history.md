@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.7.9 (2026-07-26)
+
+- fix(findcc): **reorder Claude discovery priority — native binary beats PATH on Windows** — `resolvePreferredClaudeSelection` now checks `resolveNativePath()` before PATH-based and npm-based resolution. On Windows, PATH may surface a postinstall stub (no-extension shim / `.cmd` / `.ps1`) that causes `ERROR_BAD_EXE_FORMAT` (193 / 216) when spawned directly; the platform binary bypasses that. Added 6 unit tests covering the full priority chain (configured → codefuse → native → path → npm) including a Windows-specific regression test for the ERROR_BAD_EXE_FORMAT scenario.
+  - Priority order: configured → codefuse → **native** → path → npm (native moved from last to third)
+
 ## 1.7.8 (2026-07-26)
 
 - ui(proxy-stats): **retry stats UI redesign — Config|Stats merged into one tabbed modal** — the hamburger `retry-config` entry now opens a `ProxyStatsModal` with a `Segmented` switch (Config default); desktop and mobile no longer take separate paths. The Stats tab is a sectioned `ProxyStatsDashboard` charted by a new zero-dependency SVG `BarChart` (upstream-vs-downstream availability, retry histogram, retry-burden buckets).

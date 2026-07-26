@@ -248,14 +248,19 @@ export function resolvePreferredClaudeSelection({ prefsFile } = {}) {
   const codeFusePath = resolveCodeFuseClaudePath();
   if (codeFusePath) return describeClaudeSelection(codeFusePath, false, 'codefuse');
 
+  // Native path (platform-specific binary) takes priority over PATH-based and
+  // npm-based resolution. On Windows, PATH may surface a postinstall stub that
+  // causes ERROR_BAD_EXE_FORMAT (193 / 216); the platform binary bypasses that.
+  const nativePath = resolveNativePath();
+  if (nativePath) return describeClaudeSelection(nativePath, false, 'native');
+
   const pathSelection = resolveClaudeFromPath();
   if (pathSelection) return describeClaudeSelection(pathSelection.path, pathSelection.isNpmVersion, 'path');
 
   const npmPath = resolveNpmClaudePath();
   if (npmPath) return describeClaudeSelection(npmPath, true, 'npm');
 
-  const nativePath = resolveNativePath();
-  return nativePath ? describeClaudeSelection(nativePath, false, 'native') : null;
+  return null;
 }
 
 // The import statement injected at the top of @anthropic-ai/claude-code/cli.js.
