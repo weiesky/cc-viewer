@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 1.7.10 (2026-07-26)
+
+- fix(electron): **add missing `src/utils/` to electron-builder bundle** — `server/lib/v2/meta-rows.js` and `server/lib/v2/live-feed.js` import `classifyRequest` from `src/utils/requestType.js`, but `electron-builder.yml` did not include `src/utils/**/*` in its files list. The packaged Electron app crashed at startup with "Cannot find module '.../src/utils/requestType.js'". Added `src/utils/**/*` to the electron-builder files array (npm packaging was already correct via `package.json` files).
+
 ## 1.7.9 (2026-07-26)
 
 - fix(findcc): **reorder Claude discovery priority — native binary beats PATH on Windows** — `resolvePreferredClaudeSelection` now checks `resolveNativePath()` before PATH-based and npm-based resolution. On Windows, PATH may surface a postinstall stub (no-extension shim / `.cmd` / `.ps1`) that causes `ERROR_BAD_EXE_FORMAT` (193 / 216) when spawned directly; the platform binary bypasses that. Added 6 unit tests covering the full priority chain (configured → codefuse → native → path → npm) including a Windows-specific regression test for the ERROR_BAD_EXE_FORMAT scenario.
