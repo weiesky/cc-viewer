@@ -258,13 +258,17 @@ describe('proxy-stats aggregateRecords', () => {
     assert.equal(r.retryBurden.length, 5);
     const byKey = Object.fromEntries(r.retryBurden.map(b => [b.key, b.count]));
     assert.deepEqual(byKey, { '0': 3, '1_5': 1, '6_20': 1, '21_50': 1, 'over50': 1 });
-    // ranges present and stable
+    // ranges present and stable; the open-ended bucket uses null (not Infinity)
+    // so the in-process value survives JSON serialization unchanged
     const ranges = Object.fromEntries(r.retryBurden.map(b => [b.key, b.range]));
     assert.deepEqual(ranges['0'], [0, 0]);
     assert.deepEqual(ranges['1_5'], [1, 5]);
     assert.deepEqual(ranges['6_20'], [6, 20]);
     assert.deepEqual(ranges['21_50'], [21, 50]);
-    assert.deepEqual(ranges['over50'], [51, Infinity]);
+    assert.deepEqual(ranges['over50'], [51, null]);
+    // The payload is written to disk and served over HTTP, so the shape a client
+    // receives must equal the shape computed here.
+    assert.deepEqual(JSON.parse(JSON.stringify(r.retryBurden)), r.retryBurden);
   });
 
   it('空数组返回 retryBurden 为空数组', () => {

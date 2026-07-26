@@ -206,6 +206,11 @@ export function computeStreak(records) {
  * actionable buckets (0 / 1-5 / 6-20 / 21-50 / >50). Aligned with llm-retry-proxy's
  * renderBurdenChart buckets. `key` is the stable i18n id (ui.proxyStats.retryBurdenBuckets.<key>).
  *
+ * `range` is [min, max] with `max: null` meaning "open ended". Deliberately not
+ * `Infinity`: this table's shape is mirrored into the stats JSON, and
+ * JSON.stringify(Infinity) is `null` anyway — spelling it null keeps the
+ * in-process value and the serialized value identical.
+ *
  * Exposed for tests that want to assert the frozen bucket contract without re-typing
  * the boundaries.
  */
@@ -214,14 +219,16 @@ export const RETRY_BURDEN_BUCKETS = [
   { key: '1_5',    range: [1, 5] },
   { key: '6_20',   range: [6, 20] },
   { key: '21_50',  range: [21, 50] },
-  { key: 'over50', range: [51, Infinity] },
+  { key: 'over50', range: [51, null] },
 ];
 
 // Bump the bucket whose range covers `retries`. Buckets are ordered low→high
 // and non-overlapping, so the first match wins; returns void (mutates `counts`).
+// A null upper bound is open ended.
 function bumpBurden(counts, retries) {
   for (const b of counts) {
-    if (retries >= b.range[0] && retries <= b.range[1]) { b.count++; return; }
+    const [min, max] = b.range;
+    if (retries >= min && (max === null || retries <= max)) { b.count++; return; }
   }
 }
 
