@@ -1,0 +1,50 @@
+/* ProxyStatsModal — shell: header + embedded dashboard + config tab.
+   CSS vars only, no !important (CLAUDE.md). */
+.shell { display: flex; flex-direction: column; height: 100%; width: 100%; min-width: 0; }
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  padding: 10px 44px 10px 16px; /* right pad reserves the close-button hit zone */
+  border-bottom: 1px solid var(--border-primary, #f0f0f0);
+  background: var(--bg-elevated, #fafafa);
+  border-radius: 8px 8px 0 0;
+}
+
+.toolbarTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-primary, #262626);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toolbarActions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Flex column so the tab body's scroll child (.configScroll) can resolve
+   `flex: 1` + `min-height: 0` against a definite height. Without
+   `display: flex` this is a block box, the child falls back to content height,
+   and `overflow: hidden` here clips the config form instead of scrolling it. */
+.body { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+
+/* Config tab uses the stats modal's wide host without becoming a full-width
+   wall of fields. The stats tab remains full width because it bypasses this wrapper. */
+.configFormWrap { padding: 10px 18px 14px; width: 100%; max-width: 1120px; margin: 0 auto; }
+.configHeader { display: flex; align-items: center; gap: 6px; margin: 4px 4px 12px; }
+.configHeaderTitle { font-size: 15px; font-weight: 600; color: var(--text-primary, #262626); }
+.configScroll { flex: 1; min-height: 0; overflow-y: auto; }
+
+@media (max-width: 640px) {
+  .toolbar { padding: 8px 44px 8px 12px; }
+}

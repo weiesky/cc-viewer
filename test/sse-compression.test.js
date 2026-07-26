@@ -57,25 +57,10 @@ function makeRes() {
 const makeReq = (headers = {}) => { const req = new EventEmitter(); req.headers = headers; return req; };
 const url = (pathname, query = {}) => ({ pathname, searchParams: new URLSearchParams(query) });
 const tick = () => new Promise((resolve) => setImmediate(resolve));
-// Wall-clock wait (tick-count deadlines flake under parallel-suite CPU load).
+/** Wall-clock wait (tick-count deadlines flake under parallel-suite CPU load). */
 async function until(cond, ms = 10000) {
   const t0 = Date.now();
   while (!cond() && Date.now() - t0 < ms) await tick();
-}
-
-/** Streaming-decode a (possibly unterminated) brotli SSE body; poll until `until` matches. */
-async function decodeBr(res, until) {
-  const d = zlib.createBrotliDecompress();
-  const out = [];
-  d.on('data', (c) => out.push(c));
-  let fed = 0;
-  for (let i = 0; i < 500; i++) {
-    while (fed < res.chunks.length) d.write(res.chunks[fed++]);
-    await tick();
-    const text = Buffer.concat(out).toString();
-    if (!until || until(text)) return text;
-  }
-  return Buffer.concat(out).toString();
 }
 
 let events, requests, localLog, sendToClients, interceptor;
@@ -132,11 +117,20 @@ describe('GET /events wire compression', () => {
     await events(makeReq({ 'accept-encoding': 'gzip, deflate, br, zstd' }), brRes, url('/events'), true, eventsDeps());
     assert.equal(brRes.headers['Content-Encoding'], 'br');
     assert.equal(brRes.headers['Vary'], 'Accept-Encoding');
-    const decoded = await decodeBr(brRes, (t) => t.includes('event: load_end'));
+    // Deterministic decode: end the encoder to finalize the stream, then
+    // decompress synchronously. Polling a brotli *decoder* for output is fragile
+    // under CI CPU load — zlib works on the libuv threadpool, so a fixed number
+    // of event-loop turns is not a guarantee and the decode can come back empty.
+    const enc = brRes._wireEnc;
+    assert.ok(enc, 'br encoder exists');
+    const compressedLen = brRes.body().length;
+    enc.end();
+    await until(() => brRes.ended);
+    const decoded = zlib.brotliDecompressSync(brRes.body()).toString();
     brRes.emit('close');
 
     assert.equal(decoded, plainText); // every one-shot frame went through the encoder
-    assert.ok(brRes.body().length < Buffer.byteLength(plainText) / 2, 'compression actually shrank the stream');
+    assert.ok(compressedLen < Buffer.byteLength(plainText) / 2, 'compression actually shrank the stream');
   });
 
   it('CCV_WIRE_COMPRESSION=off forces plaintext even with br offered', async () => {

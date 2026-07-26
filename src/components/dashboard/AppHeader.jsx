@@ -2,7 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { Space, Tag, Button, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Tabs, Spin, Input, Select, AutoComplete, Segmented, Tooltip, message } from 'antd';
 import { DISPLAY_SCALE_PRESETS } from '../../utils/displayScaleHelper';
-import { hasNativeZoom, isMac, isMobile } from '../../env';
+import { hasNativeZoom, isMac } from '../../env';
 import { MessageOutlined, FileTextOutlined, DashboardOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, CopyOutlined, ApiOutlined, SwapOutlined, EditOutlined, ThunderboltOutlined, QuestionCircleOutlined, PushpinOutlined, PushpinFilled } from '@ant-design/icons';
 import { QRCodeCanvas } from 'qrcode.react';
 import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats, readCalibrationModel, computeContextPercent, sumUsageInputTokens, sumUsageContextTokens } from '../../utils/helpers';
@@ -32,7 +32,6 @@ import ProjectPrefsManagerModal from '../settings/ProjectPrefsManagerModal';
 import PluginModal from '../settings/PluginModal';
 import ProcessModal from '../settings/ProcessModal';
 import ProxyModal, { profileDisplayModel } from '../settings/ProxyModal';
-import RetryConfigModal from '../settings/RetryConfigModal';
 import SystemTextModal from '../settings/SystemTextModal';
 import VoicePackSettings from '../settings/VoicePackSettings';
 import ProjectAliasEditor from '../settings/ProjectAliasEditor';
@@ -187,14 +186,7 @@ class AppHeader extends React.Component {
       ...(isLocalLog ? [] : [{ key: 'messaging', icon: <DialogueIcon />, label: t('ui.messaging.menu'), onClick: () => this.setState({ messagingModalVisible: true, messagingInitialTool: null }) }]),
       { key: 'proxy-switch', icon: <SwapOutlined />, label: t('ui.proxySwitch'), onClick: () => this.setState({ proxyModalVisible: true }) },
       // Hidden on official subscription: retry orchestration targets proxy gateways only
-      ...(this._isProxyMode() ? [{ key: 'retry-config', icon: <ThunderboltOutlined />, label: t('ui.retryConfig.title'), onClick: () => {
-        // PC: open unified page (config + stats); mobile: open standalone config drawer
-        if (isMobile) {
-          this.setState({ retryConfigModalVisible: true });
-        } else {
-          this.props.onToggleProxyStats?.();
-        }
-      } }] : []),
+      ...(this._isProxyMode() ? [{ key: 'retry-config', icon: <ThunderboltOutlined />, label: t('ui.proxyStats.title'), onClick: () => this.props.onToggleProxyStats?.() }] : []),
       { key: 'edit-system-prompt', icon: <EditOutlined />, label: t('ui.expert.systemText'), onClick: () => this.setState({ systemTextModalVisible: true }), dividerAfter: true },
       { key: 'project-stats', icon: <BarChartOutlined />, label: t('ui.projectStats'), onClick: this.handleShowProjectStats },
       ...(viewMode === 'raw' ? [{ key: 'global-settings', icon: <SettingOutlined />, label: t('ui.globalSettings'), onClick: this._openGlobalSettings }] : []),
@@ -2268,13 +2260,6 @@ class AppHeader extends React.Component {
           activeProxyId={this.props.activeProxyId}
           defaultConfig={this.props.defaultConfig}
           onProxyProfileChange={this.props.onProxyProfileChange}
-        />
-        <RetryConfigModal
-          open={this.state.retryConfigModalVisible}
-          onClose={() => this.setState({ retryConfigModalVisible: false })}
-          config={this.props.retryConfig}
-          defaults={this.props.retryDefaults}
-          onConfigChange={this.props.onRetryConfigChange}
         />
         <SystemTextModal
           open={this.state.systemTextModalVisible}
