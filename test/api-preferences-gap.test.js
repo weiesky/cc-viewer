@@ -9,7 +9,7 @@
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, unlinkSync, statSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, unlinkSync, statSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -43,18 +43,18 @@ function makeRes() {
 }
 
 /** GET handler（无 body） */
-function callGet(handler, deps = baseDeps, isLocal = true, parsedUrl = { pathname: '/x' }) {
+function callGet(handler, deps = baseDeps, isLocal = true, parsedUrl = { pathname: '/x' }, headers = {}) {
   const res = makeRes();
   return new Promise((resolve) => {
     res.done = () => resolve(res);
-    handler({ headers: {} }, res, parsedUrl, isLocal, deps);
+    handler({ headers }, res, parsedUrl, isLocal, deps);
   });
 }
 
 /** POST handler（流式 body） */
-function callPost(handler, body, deps = baseDeps, isLocal = true, parsedUrl = { pathname: '/x' }) {
+function callPost(handler, body, deps = baseDeps, isLocal = true, parsedUrl = { pathname: '/x' }, headers = {}) {
   const req = new EventEmitter();
-  req.headers = {};
+  req.headers = headers;
   req.destroy = () => { req.destroyed = true; };
   const res = makeRes();
   return new Promise((resolve) => {
@@ -65,7 +65,7 @@ function callPost(handler, body, deps = baseDeps, isLocal = true, parsedUrl = { 
   });
 }
 
-let preferencesGet, preferencesPost, claudeSettingsGet, claudeSettingsPost, proxyProfilesGet, proxyProfilesPost;
+let preferencesGet, preferencesPost, claudeExecutablesGet, claudeSettingsGet, claudeSettingsPost, proxyProfilesGet, proxyProfilesPost;
 let resetThemeSync;
 before(async () => {
   const { preferencesRoutes, _resetThemeSyncForTests } = await import('../server/routes/preferences.js');
@@ -73,6 +73,7 @@ before(async () => {
   const find = (p, m) => preferencesRoutes.find((r) => r.path === p && r.method === m).handler;
   preferencesGet = find('/api/preferences', 'GET');
   preferencesPost = find('/api/preferences', 'POST');
+  claudeExecutablesGet = find('/api/claude-executables', 'GET');
   claudeSettingsGet = find('/api/claude-settings', 'GET');
   claudeSettingsPost = find('/api/claude-settings', 'POST');
   proxyProfilesGet = find('/api/proxy-profiles', 'GET');
@@ -125,6 +126,21 @@ describe('GET /api/preferences (gap)', () => {
     // wire-v2 (1.7.0): resumeAutoChoice virtual default removed — no injection.
     assert.equal('resumeAutoChoice' in data, false);
   });
+
+  it('does not expose the configured executable to a cross-origin loopback page', async () => {
+    writeFileSync(prefsFile, JSON.stringify({ claudeExecutablePath: '/private/local/claude', theme: 'dark' }));
+    const parsedUrl = new URL('http://127.0.0.1:7008/api/preferences');
+    const res = await callGet(
+      preferencesGet,
+      baseDeps,
+      true,
+      parsedUrl,
+      { origin: 'https://evil.example', host: '127.0.0.1:7008', 'sec-fetch-site': 'cross-site' },
+    );
+    const data = JSON.parse(res.body);
+    assert.equal('claudeExecutablePath' in data, false);
+    assert.equal(data.theme, 'dark');
+  });
 });
 
 describe('POST /api/preferences (gap)', () => {
@@ -139,6 +155,53 @@ describe('POST /api/preferences (gap)', () => {
     assert.equal(written.theme, 'light');
     // 回显同样不含 auth
     assert.equal('auth' in JSON.parse(res.body), false);
+  });
+
+  it('persists claudeExecutablePath only for the local admin', async () => {
+    const executable = join(tmpDir, 'selected-claude.exe');
+    writeFileSync(executable, 'fixture');
+    chmodSync(executable, 0o755);
+    const local = await callPost(preferencesPost, { claudeExecutablePath: `  ${executable}  ` });
+    assert.equal(local.statusCode, 200);
+    assert.equal(JSON.parse(readFileSync(prefsFile, 'utf8')).claudeExecutablePath, executable);
+
+    const remote = await callPost(preferencesPost, { claudeExecutablePath: '/tmp/remote-tool' }, baseDeps, false);
+    assert.equal(remote.statusCode, 200);
+    assert.equal(JSON.parse(readFileSync(prefsFile, 'utf8')).claudeExecutablePath, executable);
+    assert.equal('claudeExecutablePath' in JSON.parse(remote.body), false);
+  });
+
+  it('rejects an unlaunchable executable without overwriting the saved selection', async () => {
+    const valid = join(tmpDir, process.platform === 'win32' ? 'valid-claude.exe' : 'valid-claude');
+    const invalid = join(tmpDir, process.platform === 'win32' ? 'not-executable.cmd' : 'not-executable');
+    writeFileSync(valid, '#!/bin/sh\nexit 0\n');
+    writeFileSync(invalid, 'fixture');
+    chmodSync(valid, 0o755);
+    chmodSync(invalid, 0o644);
+    writeFileSync(prefsFile, JSON.stringify({ claudeExecutablePath: valid }));
+
+    const res = await callPost(preferencesPost, { claudeExecutablePath: invalid });
+    assert.equal(res.statusCode, 422);
+    assert.equal(JSON.parse(readFileSync(prefsFile, 'utf8')).claudeExecutablePath, valid);
+  });
+
+  it('rejects cross-origin writes to the executable selection', async () => {
+    const parsedUrl = new URL('http://127.0.0.1:7008/api/preferences');
+    const headers = { origin: 'https://evil.example', host: '127.0.0.1:7008', 'sec-fetch-site': 'cross-site' };
+    const res = await callPost(
+      preferencesPost,
+      { claudeExecutablePath: null },
+      baseDeps,
+      true,
+      parsedUrl,
+      headers,
+    );
+    assert.equal(res.statusCode, 403);
+
+    writeFileSync(prefsFile, JSON.stringify({ claudeExecutablePath: '/private/local/claude' }));
+    const unrelated = await callPost(preferencesPost, { theme: 'dark' }, baseDeps, true, parsedUrl, headers);
+    assert.equal(unrelated.statusCode, 200);
+    assert.equal('claudeExecutablePath' in JSON.parse(unrelated.body), false);
   });
 
   it('deep-merges approvalModal so a partial update keeps unrelated keys', async () => {
@@ -199,6 +262,39 @@ describe('POST /api/preferences (gap)', () => {
     const res = await callPost(preferencesPost, '{not json');
     assert.equal(res.statusCode, 400);
     assert.equal(JSON.parse(res.body).error, 'Invalid JSON');
+  });
+});
+
+describe('GET /api/claude-executables', () => {
+  beforeEach(cleanPrefs);
+
+  it('returns the saved executable as a selectable candidate', async () => {
+    const executable = join(tmpDir, 'candidate-claude.exe');
+    writeFileSync(executable, 'fixture');
+    chmodSync(executable, 0o755);
+    writeFileSync(prefsFile, JSON.stringify({ claudeExecutablePath: executable }));
+    const res = await callGet(claudeExecutablesGet);
+    const data = JSON.parse(res.body);
+    assert.equal(res.statusCode, 200);
+    assert.equal(data.configuredPath, executable);
+    assert.ok(data.candidates.some((item) => item.path === executable && item.source === 'configured'));
+  });
+
+  it('is loopback-only because it exposes and selects local executable paths', async () => {
+    const res = await callGet(claudeExecutablesGet, baseDeps, false);
+    assert.equal(res.statusCode, 403);
+  });
+
+  it('rejects a cross-origin browser request even on loopback', async () => {
+    const parsedUrl = new URL('http://127.0.0.1:7008/api/claude-executables');
+    const res = await callGet(
+      claudeExecutablesGet,
+      baseDeps,
+      true,
+      parsedUrl,
+      { origin: 'https://evil.example', host: '127.0.0.1:7008', 'sec-fetch-site': 'cross-site' },
+    );
+    assert.equal(res.statusCode, 403);
   });
 });
 

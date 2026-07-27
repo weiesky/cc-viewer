@@ -72,6 +72,12 @@ const ENTRY_FILES = [
 ];
 
 describe('cli-import-paths: static-string dynamic imports must resolve on disk', () => {
+  it('Electron uses the same preferred Claude selection as CLI launch modes', () => {
+    const source = readFileSync(join(repoRoot, 'electron/main.js'), 'utf8');
+    assert.match(source, /resolvePreferredClaudeSelection/);
+    assert.doesNotMatch(source, /let claudePath = resolveNpmClaudePath\(\)/);
+  });
+
   it('every relative direct import() target in entry files exists', () => {
     const missing = [];
     for (const rel of ENTRY_FILES) {

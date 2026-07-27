@@ -231,6 +231,9 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   }
 
   const env = { ...process.env };
+  // CCV owns executable selection. Never let the selected Claude replace itself
+  // behind that configuration (especially on enterprise allowlisted machines).
+  env.DISABLE_AUTOUPDATER = '1';
   env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${proxyPort}`;
   env.CCV_PROXY_MODE = '1'; // 告诉 interceptor.js 不要再启动 server
   env.CCV_LOG_DIR = LOG_DIR; // 让 fork 出的 Claude Code 进程找到同一份 profile.json 等资源

@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { t } from './server/i18n.js';
-import { INJECT_IMPORT, LEGACY_INJECT_IMPORTS, resolveCliPath, resolveNativePath, resolveNpmClaudePath, buildShellCandidates, setLogDir, LOG_DIR, hasClaude2xWrapper, getGlobalNodeModulesDir, PACKAGES, getClaudeConfigDir, isBrowserOpenSuppressed, applyAgentTeamsDefault } from './findcc.js';
+import { INJECT_IMPORT, LEGACY_INJECT_IMPORTS, resolveCliPath, resolvePreferredClaudeSelection, resolveNativePath, buildShellCandidates, setLogDir, LOG_DIR, hasClaude2xWrapper, getGlobalNodeModulesDir, PACKAGES, getClaudeConfigDir, isBrowserOpenSuppressed, applyAgentTeamsDefault } from './findcc.js';
 import { ensureHooks, removeAllManagedHooks } from './server/lib/ensure-hooks.js';
 import { injectCliJsAt, removeCliJsInjectionAt, INJECT_START as _INJECT_START, INJECT_END as _INJECT_END, buildInjectBlock as _buildInjectBlock } from './server/lib/cli-inject.js';
 import { normalizeBasePath } from './server/lib/base-path.js';
@@ -246,14 +246,21 @@ function removeCliJsInjection() {
   return removeCliJsInjectionAt(cliPath, INJECT_IMPORT, LEGACY_INJECT_IMPORTS);
 }
 
+function assertUsableClaudeSelection(selection) {
+  if (selection?.error === 'configured-invalid') {
+    throw new Error(
+      `configured Claude executable is not launchable: ${selection.configuredPath}. `
+      + 'Choose a valid executable or clear claudeExecutablePath to restore automatic discovery.',
+    );
+  }
+  return selection;
+}
+
 async function runProxyCommand(args) {
   try {
     // P2 detection channel ①（shell-hook 形态）：`claude -c` 经 hook 变成
     // `ccv run -- claude --ccv-internal -c …`，在 proxy/server 模块加载前打标。
     markContinueEnv(args);
-    // Dynamic import to avoid side effects when just installing
-    const { startProxy } = await import('./server/proxy.js');
-    const proxyPort = await startProxy();
 
     // args = ['run', '--', 'command', 'claude', ...] or ['run', 'claude', ...]
     // Our hook uses: ccv run -- claude --ccv-internal "$@"
@@ -286,13 +293,26 @@ async function runProxyCommand(args) {
     }
 
     const env = { ...process.env };
-    // Determine the path to the native 'claude' executable
-    if (cmd === 'claude') {
-      const nativePath = resolveNativePath();
-      if (nativePath) {
-        cmd = nativePath;
+    const requestedClaude = cmd === 'claude';
+    let npmCliEntry = null;
+    if (requestedClaude) {
+      const selection = assertUsableClaudeSelection(resolvePreferredClaudeSelection());
+      if (selection?.isNpmVersion && selection.path.endsWith('.js')) {
+        npmCliEntry = selection.path;
+        cmd = process.execPath;
+      } else if (selection?.path) {
+        cmd = selection.path;
+      }
+      if (selection?.path) {
+        process.env.CCV_CLAUDE_EXECUTABLE = selection.path;
+        env.CCV_CLAUDE_EXECUTABLE = selection.path;
+        env.DISABLE_AUTOUPDATER = '1';
       }
     }
+    // Resolve an authoritative configured executable before starting any
+    // long-lived service, so fail-closed errors leave no transient proxy behind.
+    const { startProxy } = await import('./server/proxy.js');
+    const proxyPort = await startProxy();
     env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${proxyPort}`;
     env.CCV_PROXY_MODE = '1'; // 告诉 interceptor.js 不要再启动 server
     // 剥离 cc-viewer 的内部短路开关，避免泄漏给 claude 子进程
@@ -305,7 +325,7 @@ async function runProxyCommand(args) {
     };
     let settingsJson = JSON.stringify(settingsObj);
 
-    const isClaudeCmd = cmd === 'claude' || /[\\/]claude(\.exe)?$/.test(cmd);
+    const isClaudeCmd = requestedClaude || cmd === 'claude' || /[\\/]claude(\.exe)?$/.test(cmd);
 
     // Fold a user-supplied --settings into the injected settings and emit a single flag
     // (claude is last-wins for duplicate --settings; two parallel flags let the user's
@@ -333,6 +353,7 @@ async function runProxyCommand(args) {
 
     cmdArgs.unshift(settingsJson);
     cmdArgs.unshift('--settings');
+    if (npmCliEntry) cmdArgs.unshift(npmCliEntry);
 
     const child = spawn(cmd, cmdArgs, { stdio: 'inherit', env });
 
@@ -391,18 +412,22 @@ async function printMigrationBanner() {
 }
 
 async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
-  // 首先尝试 npm 版本（包括 nvm 安装），找不到再尝试 native 版本
-  let claudePath = resolveNpmClaudePath();
-  let isNpmVersion = !!claudePath;
-
-  if (!claudePath) {
-    claudePath = resolveNativePath();
+  let selection;
+  try {
+    selection = assertUsableClaudeSelection(resolvePreferredClaudeSelection());
+  } catch (err) {
+    console.error(`[CC Viewer] ${err.message}`);
+    process.exit(1);
   }
+  const claudePath = selection?.path || null;
+  const isNpmVersion = selection?.isNpmVersion || false;
 
   if (!claudePath) {
     reportClaudeNotFound(cliPath);
     process.exit(1);
   }
+
+  process.env.CCV_CLAUDE_EXECUTABLE = claudePath;
 
   console.log(t('cli.cMode.starting'));
 

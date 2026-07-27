@@ -2087,10 +2087,12 @@ class AppBase extends React.Component {
       .catch(() => { });
   };
 
-  // 代理重试配置保存：POST /api/retry-config（服务端写 retry-config.json + watchFile 热刷新 + SSE 回推）。
-  // 乐观更新本地 retryConfig（SSE retry_config 事件会再确认一次）；失败回滚并提示。
-  // 返回 POST 的 Promise：成功 resolve（SSE retry_config 会刷新 state）；
-  // 失败则回滚 state + message.error 后 reject，供调用方（RetryConfigModal）据以决定是否关闭/提示成功。
+  // Proxy retry config save: POST /api/retry-config (server writes retry-config.json
+  // + watchFile hot-reload + pushes back via SSE). Optimistically update the local
+  // retryConfig (the SSE retry_config event re-confirms it); roll back on failure.
+  // Returns the POST Promise: resolves on success (SSE retry_config refreshes state);
+  // on failure rolls back state + shows message.error, then rejects so the caller
+  // (ProxyStatsModal / RetryConfigForm) can decide whether to keep the form open.
   handleRetryConfigChange = (config) => {
     const prev = this.state.retryConfig;
     this.setState({ retryConfig: config });
@@ -2099,12 +2101,19 @@ class AppBase extends React.Component {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ config }),
     })
-      .then(r => r.json())
-      .then(() => { /* SSE retry_config 会刷新；无需额外处理 */ })
+      .then((r) => {
+        // Check HTTP status BEFORE .json(): a 4xx/5xx with a JSON body (the
+        // server returns 400/403 + JSON on rejection) would otherwise let
+        // r.json() resolve, skip the .catch, and leave the optimistic update
+        // un-rolled-back while the form reports a false "saved".
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then(() => { /* SSE retry_config refreshes state; nothing to do here */ })
       .catch((err) => {
-        this.setState({ retryConfig: prev }); // 回滚
+        this.setState({ retryConfig: prev }); // roll back the optimistic update
         message.error(t('ui.retryConfig.saveFail'));
-        throw err; // 让调用方感知失败（不显示假成功、不关闭 Modal）
+        throw err; // let the caller sense the failure (no false success, keep Modal open)
       });
   };
 

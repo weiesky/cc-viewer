@@ -238,6 +238,21 @@
   font-size: 13px;
 }
 
+.claudeExecutableInput {
+  width: 100%;
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.claudeExecutableHint {
+  margin-top: 6px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 /* Token stats popover - empty state */
 .tokenStatsEmpty {
   padding: 8px 4px;
@@ -819,5 +834,4 @@
 /* 抽屉 header / title / close 按钮统一复用 src/App.module.css 中 mobileLogMgmtHeader /
  * mobileLogMgmtTitle / mobileLogMgmtClose 三个类（mobileSettingsOverlay / mobilePromptOverlay
  * 已先例复用），避免重复定义。 */
-
 

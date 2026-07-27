@@ -242,6 +242,96 @@ describe('proxy-stats aggregateRecords', () => {
     // Newest (largest ts) should come first
     assert.ok(r.recentRecords[0].ts >= r.recentRecords[1].ts);
   });
+
+  it('retryBurden 把 retryDistribution 重映射为 5 个分桶', () => {
+    // 7 records with retries: 0,0,0, 3, 6, 22, 60
+    const recs = [
+      buildRecord({ path: '/v1/messages', finalStatus: 200, attempts: 1, durationMs: 10 }),   // retries 0
+      buildRecord({ path: '/v1/messages', finalStatus: 200, attempts: 1, durationMs: 10 }),   // retries 0
+      buildRecord({ path: '/v1/messages', finalStatus: 200, attempts: 1, durationMs: 10 }),   // retries 0
+      buildRecord({ path: '/v1/messages', finalStatus: 200, attempts: 4, durationMs: 10, retryCodes: [503,503,503] }), // retries 3 → 1-5
+      buildRecord({ path: '/v1/messages', finalStatus: 200, attempts: 7, durationMs: 10, retryCodes: Array(6).fill(503) }), // retries 6 → 6-20
+      buildRecord({ path: '/v1/messages', finalStatus: 200, attempts: 23, durationMs: 10, retryCodes: Array(22).fill(503) }), // retries 22 → 21-50
+      buildRecord({ path: '/v1/messages', finalStatus: 200, attempts: 61, durationMs: 10, retryCodes: Array(60).fill(503) }), // retries 60 → >50
+    ];
+    const r = aggregateRecords(recs);
+    assert.equal(r.retryBurden.length, 5);
+    const byKey = Object.fromEntries(r.retryBurden.map(b => [b.key, b.count]));
+    assert.deepEqual(byKey, { '0': 3, '1_5': 1, '6_20': 1, '21_50': 1, 'over50': 1 });
+    // ranges present and stable; the open-ended bucket uses null (not Infinity)
+    // so the in-process value survives JSON serialization unchanged
+    const ranges = Object.fromEntries(r.retryBurden.map(b => [b.key, b.range]));
+    assert.deepEqual(ranges['0'], [0, 0]);
+    assert.deepEqual(ranges['1_5'], [1, 5]);
+    assert.deepEqual(ranges['6_20'], [6, 20]);
+    assert.deepEqual(ranges['21_50'], [21, 50]);
+    assert.deepEqual(ranges['over50'], [51, null]);
+    // The payload is written to disk and served over HTTP, so the shape a client
+    // receives must equal the shape computed here.
+    assert.deepEqual(JSON.parse(JSON.stringify(r.retryBurden)), r.retryBurden);
+  });
+
+  it('空数组返回 retryBurden 为空数组', () => {
+    const r = aggregateRecords([]);
+    assert.deepEqual(r.retryBurden, []);
+  });
+
+  it('边界：retries=5 进 1_5 桶，retries=6 进 6_20 桶', () => {
+    const recs = [
+      buildRecord({ path: '/v1/messages', finalStatus: 200, attempts: 6, durationMs: 10, retryCodes: Array(5).fill(503) }),  // retries 5 → 1_5
+      buildRecord({ path: '/v1/messages', finalStatus: 200, attempts: 7, durationMs: 10, retryCodes: Array(6).fill(503) }),  // retries 6 → 6_20
+    ];
+    const r = aggregateRecords(recs);
+    const byKey = Object.fromEntries(r.retryBurden.map(b => [b.key, b.count]));
+    assert.equal(byKey['1_5'], 1);
+    assert.equal(byKey['6_20'], 1);
+  });
+
+  it('byModel 每桶携带 retryCodeCounts / dominantFailStatus', () => {
+    const recs = [
+      // opus: retry_codes [503,503,429] across two records → 503×2, 429×1 → dominant 503
+      buildRecord({ model: 'opus', path: '/v1/messages', finalStatus: 200, attempts: 3, durationMs: 10, retryCodes: [503, 503] }),
+      buildRecord({ model: 'opus', path: '/v1/messages', finalStatus: 200, attempts: 2, durationMs: 10, retryCodes: [429] }),
+      // sonnet: no retries
+      buildRecord({ model: 'sonnet', path: '/v1/messages', finalStatus: 200, attempts: 1, durationMs: 10 }),
+    ];
+    const r = aggregateRecords(recs);
+    const opus = r.byModel.find(m => m.model === 'opus');
+    assert.equal(opus.dominantFailStatus, 503);
+    assert.equal(opus.dominantFailCount, 2);
+    assert.deepEqual(opus.retryCodeCounts, [{ code: 503, count: 2 }, { code: 429, count: 1 }]);
+    const sonnet = r.byModel.find(m => m.model === 'sonnet');
+    // strictEqual pins the spec contract: dominantFailStatus must be null (not undefined)
+    assert.strictEqual(sonnet.dominantFailStatus, null);
+    assert.strictEqual(sonnet.dominantFailCount, 0);
+    assert.deepEqual(sonnet.retryCodeCounts, []);
+  });
+
+  it('retryCodeCounts 取前 5 且按 count 降序', () => {
+    // 6 distinct retry codes with strictly decreasing counts: 503×6, 429×5, 500×4, 502×3, 529×2, 408×1
+    const codes = [503, 429, 500, 502, 529, 408];
+    const recs = codes.map((code, i) =>
+      buildRecord({ model: 'opus', path: '/v1/messages', finalStatus: 200, attempts: 7 - i, durationMs: 10,
+        retryCodes: Array(6 - i).fill(code) })
+    );
+    const r = aggregateRecords(recs);
+    const opus = r.byModel.find(m => m.model === 'opus');
+    assert.equal(opus.retryCodeCounts.length, 5); // capped at top-5
+    assert.equal(opus.retryCodeCounts[0].code, 503);
+    assert.equal(opus.retryCodeCounts[0].count, 6);
+    assert.equal(opus.retryCodeCounts[4].code, 529);
+    assert.equal(opus.retryCodeCounts[4].count, 2);
+  });
+
+  it('byPath 与 byProfile 也携带 dominantFailStatus', () => {
+    const recs = [
+      buildRecord({ profileId: 'px', profileName: 'X', path: '/v1/messages', model: 'opus', finalStatus: 200, attempts: 2, durationMs: 10, retryCodes: [503] }),
+    ];
+    const r = aggregateRecords(recs);
+    assert.equal(r.byPath[0].dominantFailStatus, 503);
+    assert.equal(r.byPath[0].dominantFailCount, 1);
+    assert.equal(r.byProfile[0].dominantFailStatus, 503);
+  });
 });
 
 describe('proxy-stats mergeProxyFileCache 增量缓存', () => {

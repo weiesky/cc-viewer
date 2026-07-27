@@ -25,14 +25,29 @@ function mockRes() {
 const reqWith = (acceptEncoding) => ({ headers: acceptEncoding === undefined ? {} : { 'accept-encoding': acceptEncoding } });
 const tick = () => new Promise((resolve) => setImmediate(() => setImmediate(resolve)));
 
-/** Streaming decode of a (possibly trailer-less) brotli buffer. */
-async function decodePartial(buf) {
-  const d = zlib.createBrotliDecompress();
-  const out = [];
-  d.on('data', (c) => out.push(c));
-  d.write(buf);
-  await tick();
-  return Buffer.concat(out).toString();
+/**
+ * Streaming decode of a (possibly trailer-less) brotli buffer.
+ * Driven by zlib's own write/flush callbacks rather than a fixed number of
+ * event-loop turns: zlib runs on the libuv threadpool, so under CI CPU load a
+ * tick budget is not a completion guarantee and the decode comes back empty.
+ */
+function decodePartial(buf) {
+  return new Promise((resolve, reject) => {
+    const d = zlib.createBrotliDecompress();
+    const out = [];
+    d.on('data', (c) => out.push(c));
+    d.on('error', reject);
+    d.write(buf, () => {
+      // FLUSH pushes everything currently decodable out before the callback.
+      d.flush(zlib.constants.BROTLI_OPERATION_FLUSH, () => resolve(Buffer.concat(out).toString()));
+    });
+  });
+}
+
+/** Wall-clock wait — tick-count deadlines flake under parallel-suite CPU load. */
+async function until(cond, ms = 10000) {
+  const t0 = Date.now();
+  while (!cond() && Date.now() - t0 < ms) await tick();
 }
 
 afterEach(() => { delete process.env.CCV_WIRE_COMPRESSION; delete process.env.CCV_BROTLI_QUALITY; });
@@ -107,12 +122,12 @@ describe('wire-compress streaming', () => {
     sseWrite(res, 'event: load_chunk\ndata: [');
     sseWrite(res, '{"a":1}');
     sseWrite(res, ']\n\n');
-    // flush lands a few turns after the scheduled setImmediate — poll, bounded
-    let decoded = '';
-    for (let i = 0; i < 200 && !decoded; i++) {
-      await tick();
-      if (res.compressed().length > 0) decoded = await decodePartial(res.compressed());
-    }
+    // The flush is scheduled via setImmediate, so the encoder emits a few turns
+    // later. Wait on wall-clock for bytes to appear, then decode deterministically —
+    // the point of this test is that the frame is readable WITHOUT ending the stream.
+    await until(() => res.compressed().length > 0);
+    assert.ok(res.compressed().length > 0, 'encoder flushed mid-stream');
+    const decoded = await decodePartial(res.compressed());
     assert.equal(decoded, 'event: load_chunk\ndata: [{"a":1}]\n\n');
   });
 

@@ -1,4 +1,6 @@
-<img height="200" width="1500" alt="CC-Viewer" src="https://github.com/user-attachments/assets/abec0513-1d56-4244-b7ed-9382b6c09049" />
+<img width="1500" height="100" alt="未标题-2" src="https://github.com/user-attachments/assets/543ecd96-2e2c-43ce-a396-852239eb8932" />
+
+
 
 # CC-Viewer
 
@@ -51,6 +53,23 @@ ccv -c --d             # == claude --continue --dangerously-skip-permissions
 Once started in programming mode, the web page opens automatically.
 
 cc-viewer also ships as a native desktop app: [download page](https://github.com/weiesky/cc-viewer/releases)
+
+### Choose the Claude executable
+
+On the local CCV page, open **Global Settings → Claude executable** to choose the
+Claude Code installation used by CLI, `ccv run -- claude`, and the desktop app.
+CCV suggests executables found in CodeFuse, `PATH`, npm, and common native-install
+locations. You may also enter an absolute path (or a `~/...` path). The selection
+is saved as `claudeExecutablePath` in `~/.claude/cc-viewer/preferences.json` and
+takes effect on the next launch.
+
+An explicit selection is authoritative: if it is later missing or not executable,
+CCV stops with an error instead of silently launching another version. Clear the
+field to restore automatic discovery. For headless setup, write the same absolute
+path to `claudeExecutablePath` manually. Executable selection is a machine-local
+admin setting and is not exposed to LAN clients. CCV disables Claude Code's
+self-updater for processes it launches, so upgrades remain under the control of
+the selected installation or its package manager.
 
 ### Upgrading to 1.7.0 (log format v2)
 

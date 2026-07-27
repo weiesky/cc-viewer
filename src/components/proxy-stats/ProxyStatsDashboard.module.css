@@ -1,0 +1,129 @@
+/* ProxyStatsDashboard — sectioned stats layout.
+   Uses the app's REAL semantic tokens (global.css :root), so it themes
+   correctly in both light and dark mode. CSS vars only, no !important (CLAUDE.md).
+   8dp spacing rhythm; consistent card elevation; hierarchy via size+weight. */
+
+/* ---- layout shells ---- */
+.embedded { padding: 14px; overflow-y: auto; height: 100%; }
+/* Shared loading/empty placeholder: vertically centered with a reserved
+   min-height so the modal body doesn't collapse or jump (CLS) while the
+   first fetch is in flight. */
+.centerState {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+  padding: 40px 0;
+}
+
+/* ---- controls row (auto-refresh + manual refresh, right-aligned) ---- */
+.header { display: flex; justify-content: flex-end; align-items: center; margin-bottom: 12px; }
+
+/* ---- KPI card row ---- */
+.cardRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+/* A KPI tile: tinted left accent + value-forward layout. The accent color is
+   driven per-card via the --stat-accent inline var (semantic: availability
+   threshold color, error red for failures; transparent for neutral tiles). */
+.statCard {
+  position: relative;
+  background: var(--bg-container, #fff);
+  border: 1px solid var(--border-primary, #e0e0e0);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.statCard::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--stat-accent, transparent);
+}
+.statCard:hover {
+  border-color: var(--border-hover, #c0c0c0);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+@media (prefers-reduced-motion: reduce) {
+  .statCard { transition: none; }
+  .statCard:hover { transform: none; }
+}
+.statCard :global(.ant-card-body) { padding: 12px 14px; }
+.statCard :global(.ant-statistic .ant-statistic-title) {
+  font-size: 12px; color: var(--text-tertiary, #666); margin-bottom: 4px;
+}
+.statCard :global(.ant-statistic .ant-statistic-content-value) {
+  font-size: 22px; font-weight: 600; color: var(--text-primary, #1a1a1a);
+  font-variant-numeric: tabular-nums;
+}
+.statCard :global(.ant-statistic .ant-statistic-content-suffix) {
+  font-size: 13px; color: var(--text-secondary, #333); margin-left: 2px;
+}
+
+/* ---- section card ---- */
+.section { margin-bottom: 16px; }
+.section :global(.ant-card) {
+  background: var(--bg-container, #fff);
+  border: 1px solid var(--border-primary, #e0e0e0);
+  border-radius: 8px;
+}
+.section :global(.ant-card-head) {
+  min-height: 40px; padding: 0 14px; border-bottom: 1px solid var(--border-primary, #e0e0e0);
+}
+.section :global(.ant-card-head-title) { padding: 10px 0; font-size: 14px; font-weight: 600; color: var(--text-primary, #1a1a1a); }
+.section :global(.ant-card-body) { padding: 12px 14px; }
+
+/* ---- availability streak row ---- */
+.streakRow {
+  display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+  padding: 8px 0 12px; border-bottom: 1px solid var(--border-primary, #e0e0e0); margin-bottom: 12px;
+}
+.streakRow > span:first-child,
+.streakRow > :global(.ant-space) > span:first-child { font-size: 13px; color: var(--text-tertiary, #666); }
+
+/* ---- chart block ---- */
+.chartWrap {
+  margin-top: 8px;
+  padding: 8px 4px 4px;
+  border-radius: 6px;
+}
+.chartTitle {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary, #666);
+  letter-spacing: 0.01em;
+}
+
+/* ---- retry code tags ---- */
+.codeTags {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-primary, #e0e0e0);
+  font-size: 12px; color: var(--text-tertiary, #666);
+}
+
+/* ---- duration slowest/fastest two-up ---- */
+.topRow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+
+/* ---- rescued badge (sits under downstream-availability KPI) ---- */
+.rescuedBadge {
+  display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 10px;
+  background: var(--color-success-bg-light, rgba(34,197,94,0.15));
+  color: var(--color-success, #22c55e);
+  font-size: 11px; font-weight: 500; line-height: 1.6;
+}
+
+/* ---- responsive ---- */
+@media (max-width: 820px) {
+  .topRow { grid-template-columns: 1fr; }
+  .cardRow { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+}
+@media (max-width: 480px) {
+  .cardRow { grid-template-columns: repeat(2, 1fr); }
+}

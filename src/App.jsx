@@ -26,7 +26,7 @@ import { BLUR_MASK_STYLE } from './utils/modalMask';
 import { isProxyMode } from './utils/isProxyMode';
 
 // 代理重试面板（配置+统计融合）：懒加载
-const UnifiedProxyRetryPage = lazy(() => import('./components/proxy-stats/UnifiedProxyRetryPage'));
+const ProxyStatsModal = lazy(() => import('./components/proxy-stats/ProxyStatsModal'));
 
 // Lightweight error boundary for the unified proxy page modal.
 class ProxyPageErrorBoundary extends React.Component {
@@ -749,7 +749,7 @@ class App extends AppBase {
         >
           <ProxyPageErrorBoundary>
             <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}><Spin size="large" /></div>}>
-              <UnifiedProxyRetryPage
+              <ProxyStatsModal
                 retryConfig={this.state.retryConfig}
                 retryDefaults={this.state.retryDefaults}
                 onRetryConfigChange={this.handleRetryConfigChange}

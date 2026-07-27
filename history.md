@@ -6,6 +6,28 @@
 
 - fix(ccswitch-import): **malformed leftover journal → `attempt to write a readonly database`** — importing from cc-switch failed with `导入失败（未检测到 cc-switch 或读取出错）: query failed: attempt to write a readonly database` when cc-switch had been killed mid-write and left a **malformed** `cc-switch.db-journal` (truncated/corrupt rollback journal) behind. SQLite must discard a malformed journal to open the DB, which is a write; the read-only connection (`readOnly:true`) refused it → `SQLITE_READONLY`. Root cause locked deterministically: a malformed journal trips recovery; the trigger is a torn/partial journal from an unclean crash. Fix in `server/lib/ccswitch-import.js`: keep the default read-only open, but on `SQLITE_READONLY` escalate **once** to a read-write open guarded by `PRAGMA query_only = ON` (lets SQLite recover/discard the corrupt journal, blocks our own writes), then retry — mirroring what cc-switch itself does on its next normal launch. `SQLITE_BUSY` on the escalation path surfaces a clear "db is locked; retry shortly" message; all other errors still surface their real cause (`query failed: …`, e.g. "file is not a database"). New `test/ccswitch-import.test.js` cases plant a garbage `-journal` next to a valid DB and assert recovery reads providers + cleans the journal, with a follow-up plain read-only read proving the DB is left clean.
 
+- fix(test): `windows-npm-root-regression` 的「cc-viewer 自身目录是最后兜底候选」断言改为与 `resolve(repoRoot, '..')` 比对，不再要求路径以 `node_modules` 结尾——该后缀只在 `npm i -g` 布局下成立，git clone 检出（CI）下父目录是 workspace 目录，导致 CI 失败。
+
+## 1.7.10 (2026-07-26)
+
+- fix(electron): **add missing `src/utils/` to electron-builder bundle** — `server/lib/v2/meta-rows.js` and `server/lib/v2/live-feed.js` import `classifyRequest` from `src/utils/requestType.js`, but `electron-builder.yml` did not include `src/utils/**/*` in its files list. The packaged Electron app crashed at startup with "Cannot find module '.../src/utils/requestType.js'". Added `src/utils/**/*` to the electron-builder files array (npm packaging was already correct via `package.json` files).
+
+## 1.7.9 (2026-07-26)
+
+- fix(findcc): **reorder Claude discovery priority — native binary beats PATH on Windows** — `resolvePreferredClaudeSelection` now checks `resolveNativePath()` before PATH-based and npm-based resolution. On Windows, PATH may surface a postinstall stub (no-extension shim / `.cmd` / `.ps1`) that causes `ERROR_BAD_EXE_FORMAT` (193 / 216) when spawned directly; the platform binary bypasses that. Added 6 unit tests covering the full priority chain (configured → codefuse → native → path → npm) including a Windows-specific regression test for the ERROR_BAD_EXE_FORMAT scenario.
+  - Priority order: configured → codefuse → **native** → path → npm (native moved from last to third)
+
+## 1.7.8 (2026-07-26)
+
+- ui(proxy-stats): **retry stats UI redesign — Config|Stats merged into one tabbed modal** — the hamburger `retry-config` entry now opens a `ProxyStatsModal` with a `Segmented` switch (Config default); desktop and mobile no longer take separate paths. The Stats tab is a sectioned `ProxyStatsDashboard` charted by a new zero-dependency SVG `BarChart` (upstream-vs-downstream availability, retry histogram, retry-burden buckets).
+
+- feat(proxy-stats): `aggregateRecords` gains a global `retryBurden` 5-bucket distribution (0 / 1-5 / 6-20 / 21-50 / >50) plus per-bucket `retryCodeCounts` / `dominantFailStatus` / `dominantFailCount` on byModel/byPath/byProfile, surfaced as a "Dominant Fail Code" column in each dimension table.
+
+- ui(proxy-stats): Config tab uses a two-column `Strategy` / `Execution Parameters` grouped layout, falling back to one column on narrow viewports.
+
+- fix(win): **Windows 上 `ccv` 误报「找不到 Claude Code cli.js」** (#137) —— `getGlobalNodeModulesDir()` 用 `execFileSync('npm.cmd', …)` 取全局 `node_modules` 根目录，而 Node 修复 CVE-2024-27980 后（18.20.2/20.12.2/22.0.0）不带 shell 直接 spawn `.cmd`/`.bat` 会同步抛 EINVAL，异常被 catch 成 `null`，导致所有依赖全局根目录的 Claude 探测全部落空——即使包就装在报错信息打印的那个目录下。改走 `cmd.exe /d /s /c npm root -g`（argv 为固定字面量，无插值），新增 `inferGlobalNodeModulesDir()` 免 npm 兜底（`NPM_CONFIG_PREFIX` / `%APPDATA%\npm` / Program Files / nvm-windows / Volta / cc-viewer 自身所在目录），超时 2s→10s，并容忍 npm 告警前缀（取最后一行非空）。
+- fix(electron/win): **打包版 Electron 开 tab 报 `spawn node ENOENT`、tab 永久卡加载中** (#129) —— tab worker 的 `fork()` 以 `where node` 结果作 `execPath`，失败时回落到裸字符串 `'node'`，而打包版 GUI 进程不继承 shell PATH，该回落无法解析。现回落到 Electron 自带二进制 + `ELECTRON_RUN_AS_NODE=1`（无需外部 Node；node-pty 预编译产物为 N-API，跨 ABI 稳定），`where` 多行输出只取 `.exe`，用真实 Node 时清除该变量；`child.on('error')` 立即 `clearTimeout` + 置 error 态并广播（不再干等 30s ready-timeout），`child.send()` 加 try/catch 经 `appendDiag` 记录，避免 `write EPIPE` 盖掉真实原因。
+
 ## 1.7.5 (2026-07-18)
 
 - ui(proxy): **fuse retry config and stats into a unified split-page** — `RetryConfigForm` extracted from RetryConfigModal as inline component; `UnifiedProxyRetryPage` with left config / right stats panels (independent scroll); recent records table filtered to errors only. Shared `isProxyMode()` utility eliminates duplicated proxy-detection logic. Proxy stats toolbar/sidebar buttons removed; unified page now reachable via hamburger menu. P1–P2 code-review fixes applied.
@@ -575,4 +597,3 @@
 ### 0.0.1 (2026-02-17) — 初始版本
 
 - 拦截并记录 Claude API 请求/响应
-

@@ -3,34 +3,81 @@
 .form {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 14px;
 }
 
+.configGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  /* stretch so the shorter group (Strategy: 2 rows) matches the taller one
+     (Execution: 6 rows) in height — the two background boxes align. */
+  align-items: stretch;
+}
+
+.configGroup {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+}
+
+.groupTitle {
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-primary, #262626);
+}
+
+/* label + input sit together as one centered cluster inside the group box:
+   the label is a fixed-width column (right-aligned, so labels line up down
+   the rows) and the input cell is capped at a sane width; the whole cluster
+   is horizontally centered so the inputs read as deliberately placed in the
+   middle of the panel rather than pushed to one edge of a wide box.
+   align-items: start + label padding-top keeps label optically aligned with
+   antd default-size control height. */
 .row {
   display: flex;
-  flex-direction: column;
-  margin-bottom: 6px;
+  align-items: start;
+  justify-content: center;
+  column-gap: 12px;
+  margin-bottom: 10px;
+}
+
+.row:last-child {
+  margin-bottom: 0;
 }
 
 .label {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: var(--text-tertiary);
-  margin-bottom: 4px;
+  justify-content: flex-end;
+  text-align: right;
+  font-size: 13px;
+  color: var(--text-secondary, #333);
+  padding-top: 5px;
+  /* fixed width so labels align down the rows regardless of per-label length */
+  width: 150px;
+  flex-shrink: 0;
+}
+
+/* Right column: input + its hint stacked, capped so the cluster stays compact. */
+.inputCell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  width: 320px;
+  flex-shrink: 0;
 }
 
 .hint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-tertiary);
   line-height: 1.5;
-  margin-top: 3px;
-}
-
-.divider {
-  border-top: 1px dashed var(--border-secondary);
-  margin: 8px 0 6px;
+  margin-top: 4px;
 }
 
 .fullWidth {
@@ -43,8 +90,16 @@
   gap: 6px;
 }
 
+/* Numeric InputNumber: fill the input column up to a sane cap so it reads as a
+   real input (not antd's ~100px default) without becoming a 500px number box
+   for a 0–600000 range. */
+.numInput {
+  width: 100%;
+  max-width: 220px;
+}
+
 .unit {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-gray);
 }
 
@@ -74,16 +129,36 @@
   font-size: 11px;
   color: var(--text-gray);
   line-height: 1.5;
-  margin-top: 10px;
   padding: 8px 10px;
   border-radius: 4px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-secondary);
 }
 
-.scroll {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 12px 16px 0;
+@media (max-width: 900px) {
+  .configGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* On narrow viewports (mobile / narrow desktop window) the label + input
+   cluster no longer fits side-by-side — stack label above input, both full
+   width and left-aligned so they stay readable. */
+@media (max-width: 640px) {
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    column-gap: 0;
+  }
+  .label {
+    width: auto;
+    justify-content: flex-start;
+    text-align: left;
+    padding-top: 0;
+    margin-bottom: 4px;
+  }
+  .inputCell {
+    width: auto;
+  }
 }

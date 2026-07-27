@@ -109,6 +109,24 @@ describe('L7 claude-lookup guard — PATH-independent discovery blocked in tests
       'the gate must block the npm-root-g route even when npm works and the package exists');
   });
 
+  it('npm-free machine-path fallback blocked (#137 fix must not become an L7 hole)', () => {
+    // inferGlobalNodeModulesDir() probes absolute machine roots (~/.npm-global,
+    // /usr/local/lib/node_modules, %APPDATA%\npm, cc-viewer's own parent dir …)
+    // with NO npm and NO PATH involved — exactly the vector L7 exists to close.
+    // It must stay null under the block even though production relies on it.
+    const r = probe({ INFER: 'String(m.inferGlobalNodeModulesDir())' }, blockedEnv());
+    assert.equal(r.INFER, 'null',
+      'the npm-free global-root fallback must be gated by the L7 block');
+  });
+
+  it('npm-free fallback is non-vacuous: it DOES resolve once the block is lifted', () => {
+    // Guards against the previous assertion passing for the wrong reason.
+    const r = probe({ INFER: 'String(m.inferGlobalNodeModulesDir())' },
+      blockedEnv({ CCV_TEST_ALLOW_REAL_CLAUDE: '1' }));
+    assert.notEqual(r.INFER, 'null',
+      'with the escape flag the fallback must find a real global root');
+  });
+
   it('CLAUDE_CONFIG_DIR seam preserved: seeded local/claude is still found', () => {
     const cfg = mkdtempSync(join(tmpdir(), 'ccv-guard-cfg-'));
     mkdirSync(join(cfg, 'local'), { recursive: true });

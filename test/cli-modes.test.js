@@ -219,6 +219,48 @@ describeCli('cli-modes: ccv run -- claude（native claude 分支 + thinking-disp
     assert.ok(r.stdout.includes('FAKE_CLAUDE_ARGS:'));
     assert.ok(r.stdout.includes('no-dashdash'));
   });
+
+  it('explicit configuration wins over PATH and disables Claude auto-update', () => {
+    const f = fakeClaudeBin();
+    const logDir = join(f.dir, 'logs');
+    const selected = join(f.dir, 'selected-claude');
+    mkdirSync(logDir, { recursive: true });
+    writeFileSync(selected, '#!/bin/sh\necho "SELECTED_CLAUDE updater=$DISABLE_AUTOUPDATER args=$@"\nexit 0\n');
+    chmodSync(selected, 0o755);
+    writeFileSync(join(logDir, 'preferences.json'), JSON.stringify({ claudeExecutablePath: selected }));
+
+    const r = runCli(['run', '--', 'claude', 'configured'], {
+      env: {
+        PATH: `${f.bin}:/usr/bin:/bin`,
+        HOME: f.home,
+        NPM_CONFIG_PREFIX: join(f.dir, 'noprefix'),
+        CCV_LOG_DIR: logDir,
+      },
+    });
+    assert.equal(r.exitCode, 0);
+    assert.ok(r.stdout.includes('SELECTED_CLAUDE updater=1'));
+    assert.ok(!r.stdout.includes('FAKE_CLAUDE_ARGS:'), 'PATH fallback must not run');
+  });
+
+  it('fails closed when an explicit configuration is invalid', () => {
+    const f = fakeClaudeBin();
+    const logDir = join(f.dir, 'logs-invalid');
+    const missing = join(f.dir, 'missing-claude');
+    mkdirSync(logDir, { recursive: true });
+    writeFileSync(join(logDir, 'preferences.json'), JSON.stringify({ claudeExecutablePath: missing }));
+
+    const r = runCli(['run', '--', 'claude'], {
+      env: {
+        PATH: `${f.bin}:/usr/bin:/bin`,
+        HOME: f.home,
+        NPM_CONFIG_PREFIX: join(f.dir, 'noprefix'),
+        CCV_LOG_DIR: logDir,
+      },
+    });
+    assert.equal(r.exitCode, 1);
+    assert.ok(r.stderr.includes('configured Claude executable is not launchable'));
+    assert.ok(!r.stdout.includes('FAKE_CLAUDE_ARGS:'), 'must not fall back to PATH');
+  });
 });
 
 // ════════════════════ runProxyCommand: user --settings merge (claude only) ════════════════════
@@ -307,6 +349,26 @@ describeCli('cli-modes: 默认 PTY 模式 claude 找不到 → exit 1', { concur
     assert.equal(r.exitCode, 1);
     assert.ok((r.stderr + r.stdout).includes('not found') ||
               (r.stderr + r.stdout).includes('could not find native'));
+  });
+
+  it('non-empty invalid configuration fails closed before the PTY server starts', () => {
+    const f = fakeClaudeBin();
+    const logDir = join(f.dir, 'pty-invalid-config');
+    mkdirSync(logDir, { recursive: true });
+    writeFileSync(join(logDir, 'preferences.json'), JSON.stringify({
+      claudeExecutablePath: join(f.dir, 'missing-selected-claude'),
+    }));
+    const r = runCli(['--no-open'], {
+      env: {
+        PATH: `${f.bin}:/usr/bin:/bin`,
+        HOME: f.home,
+        NPM_CONFIG_PREFIX: join(f.dir, 'noprefix'),
+        CCV_LOG_DIR: logDir,
+      },
+    });
+    assert.equal(r.exitCode, 1);
+    assert.ok(r.stderr.includes('configured Claude executable is not launchable'));
+    assert.ok(!r.stdout.includes('CC Viewer:'), 'viewer must not start with an invalid explicit selection');
   });
 });
 
