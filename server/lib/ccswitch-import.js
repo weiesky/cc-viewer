@@ -11,7 +11,9 @@
 // is delegated to the caller (preferences.js POST /api/ccswitch-import).
 //
 // Design notes:
-// - Open SQLite read-only (readOnly:true) to avoid SQLITE_BUSY locks while cc-switch is running
+// - Open SQLite read-only by default (readOnly:true) to avoid SQLITE_BUSY locks while cc-switch is running;
+//   escalate once to a read-write + query_only connection only when a malformed leftover journal forces
+//   SQLITE_READONLY recovery (see readCcSwitchProviders)
 // - Multi-path probing: each platform tries the standard Tauri dir first, then falls back to ~/.cc-switch/
 // - settings_config parsing is fully fault-tolerant: null / non-JSON / missing env are all skipped, never throws
 // - Profile ids get a ccs_ prefix to distinguish from user-created proxy_ prefixed ones; updates are idempotent (re-imports update, never duplicate)
@@ -155,18 +157,31 @@ export async function readCcSwitchProviders(dbPath) {
     // localized message off it (ui.proxy.ccswitchNodeUnsupported).
     return { profiles: [], error: 'node:sqlite unavailable on this runtime (requires Node >= 22.5 with --experimental-sqlite, or >= 23.4)' };
   }
-  let db = null;
-  try {
-    // Read-only: cc-switch stays unaffected by our reads (no SQLITE_BUSY)
-    db = new DatabaseSync(dbPath, { readOnly: true });
-  } catch (err) {
-    return { profiles: [], error: `cannot open db: ${err && err.message}` };
-  }
-  try {
+
+  // Open the db. Two contention modes from cc-switch to recover from:
+  //  (1) A leftover MALFORMED cc-switch.db-journal (cc-switch killed mid-write, leaving a
+  //      truncated/corrupt rollback journal) forces SQLite to discard it on the first page
+  //      access — a write — which a read-only connection refuses with SQLITE_READONLY
+  //      ("attempt to write a readonly database"). Escalate once to a read-write open guarded
+  //      by PRAGMA query_only=ON (lets SQLite recover, blocks our own writes), then retry.
+  //      Mirrors what cc-switch itself does on its next normal launch.
+  //  (2) A running cc-switch holding an EXCLUSIVE write lock (its real contention mode — a
+  //      valid hot journal under BEGIN EXCLUSIVE blocks even read-only readers, unlike
+  //      BEGIN IMMEDIATE) makes the read-only connection's first query throw SQLITE_BUSY
+  //      ("database is locked"). Retry once after a short backoff (cc-switch's writes are
+  //      short — transient locks usually clear), and if still held surface a friendly message
+  //      rather than the opaque `query failed: database is locked`.
+  const primaryErrCode = (e) => Number.isInteger(e && e.errcode) ? (e.errcode & 0xff) : null;
+  const isReadonlyErr = (e) => primaryErrCode(e) === 8
+    || /readonly/i.test(e && (e.errstr || e.message || ''));
+  const isBusyErr = (e) => [5, 6].includes(primaryErrCode(e))
+    || /locked|busy/i.test(e && (e.errstr || e.message || ''));
+
+  // Run the providers read against a given connection; returns the result object or throws.
+  const readProviders = (db) => {
     // providers table existence check. A query that throws here means the file is
     // unreadable as a SQLite db (corrupt / non-SQLite / truncated) — the real cause
-    // must surface, not be masked as "table not found". Let it propagate to the
-    // outer catch, which formats it as `query failed: <message>`.
+    // must surface, not be masked as "table not found".
     const r = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='providers'").get();
     if (!r) return { profiles: [], error: `providers table not found in ${dbPath}` };
 
@@ -184,10 +199,56 @@ export async function readCcSwitchProviders(dbPath) {
       }
     }
     return { profiles, currentId, error: null };
-  } catch (err) {
-    return { profiles: [], error: `query failed: ${err && err.message}` };
-  } finally {
-    try { db.close(); } catch { /* best effort */ }
+  };
+
+  // Open read-only and attempt the read. Two recovery paths:
+  //  - SQLITE_BUSY ("database is locked"): cc-switch is running and holding an EXCLUSIVE write
+  //    lock (its real contention mode — a valid hot journal under BEGIN EXCLUSIVE blocks even
+  //    read-only readers, unlike BEGIN IMMEDIATE). The lock is transient (cc-switch mid-write),
+  //    so retry once after a short backoff; if still held, surface a friendly, actionable
+  //    message instead of the opaque `query failed: database is locked` wrapper.
+  //  - SQLITE_READONLY ("attempt to write a readonly database"): a malformed leftover journal
+  //    (cc-switch killed mid-write) forces SQLite to discard it — a write the read-only
+  //    connection refuses. Escalate once to a read-write open guarded by PRAGMA query_only=ON
+  //    (lets SQLite recover, blocks our own writes), then retry. Mirrors cc-switch's own
+  //    next-launch recovery.
+  // Other errors propagate to the outer catch (formatted as `query failed: <message>`),
+  // preserving real-cause surfacing (e.g. "file is not a database").
+  const LOCKED_MSG = 'cc-switch db is locked (cc-switch may be running); retry shortly';
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // Keep the BUSY retry and READONLY escalation as independent one-shot budgets. Every open,
+  // PRAGMA and query attempt passes through the same classifier, so a real state transition such
+  // as BUSY (cc-switch was writing) → READONLY (it crashed and left a malformed journal) can use
+  // both recoveries in sequence instead of escaping through a nested retry catch.
+  let useRecoveryConnection = false;
+  let busyRetried = false;
+  while (true) {
+    let db = null;
+    let phase = 'open';
+    try {
+      db = useRecoveryConnection
+        ? new DatabaseSync(dbPath)
+        : new DatabaseSync(dbPath, { readOnly: true });
+      phase = 'query';
+      if (useRecoveryConnection) db.exec('PRAGMA query_only = ON');
+      return readProviders(db);
+    } catch (err) {
+      if (isBusyErr(err)) {
+        if (busyRetried) return { profiles: [], error: LOCKED_MSG };
+        busyRetried = true;
+        await sleep(200);
+        continue;
+      }
+      if (isReadonlyErr(err) && !useRecoveryConnection) {
+        useRecoveryConnection = true;
+        continue;
+      }
+      const prefix = phase === 'open' ? 'cannot open db' : 'query failed';
+      return { profiles: [], error: `${prefix}: ${err && err.message}` };
+    } finally {
+      try { db && db.close(); } catch { /* best effort */ }
+    }
   }
 }
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- fix(ccswitch-import): **running cc-switch → `database is locked`** — importing from cc-switch *while it is open* failed with `导入失败（未检测到 cc-switch 或读取出错）: query failed: database is locked` because the read-only connection's first query contends with cc-switch's `BEGIN EXCLUSIVE` write lock (its real contention mode: a valid hot journal under an EXCLUSIVE transaction blocks even read-only readers, unlike `BEGIN IMMEDIATE`). The prior malformed-journal fix only caught `SQLITE_BUSY` on its own escalation path; on the main read path `BUSY` escaped to the catch-all and surfaced as the opaque `query failed: database is locked`. Fix in `server/lib/ccswitch-import.js`: detect `SQLITE_BUSY` on **every** path (the read-only open and the providers query), retry once after a 200ms backoff (cc-switch's write transactions are short — transient locks usually clear), and if still held surface the friendly `cc-switch db is locked (cc-switch may be running); retry shortly` instead of the raw wrapper. New `test/ccswitch-import.test.js` cases use a child process holding `BEGIN EXCLUSIVE` to deterministically reproduce both the held-lock (→ friendly message) and transient-lock (→ retry recovers providers) paths.
+
+- fix(ccswitch-import): **malformed leftover journal → `attempt to write a readonly database`** — importing from cc-switch failed with `导入失败（未检测到 cc-switch 或读取出错）: query failed: attempt to write a readonly database` when cc-switch had been killed mid-write and left a **malformed** `cc-switch.db-journal` (truncated/corrupt rollback journal) behind. SQLite must discard a malformed journal to open the DB, which is a write; the read-only connection (`readOnly:true`) refused it → `SQLITE_READONLY`. Root cause locked deterministically: a malformed journal trips recovery; the trigger is a torn/partial journal from an unclean crash. Fix in `server/lib/ccswitch-import.js`: keep the default read-only open, but on `SQLITE_READONLY` escalate **once** to a read-write open guarded by `PRAGMA query_only = ON` (lets SQLite recover/discard the corrupt journal, blocks our own writes), then retry — mirroring what cc-switch itself does on its next normal launch. `SQLITE_BUSY` on the escalation path surfaces a clear "db is locked; retry shortly" message; all other errors still surface their real cause (`query failed: …`, e.g. "file is not a database"). New `test/ccswitch-import.test.js` cases plant a garbage `-journal` next to a valid DB and assert recovery reads providers + cleans the journal, with a follow-up plain read-only read proving the DB is left clean.
+
 - fix(test): `windows-npm-root-regression` 的「cc-viewer 自身目录是最后兜底候选」断言改为与 `resolve(repoRoot, '..')` 比对，不再要求路径以 `node_modules` 结尾——该后缀只在 `npm i -g` 布局下成立，git clone 检出（CI）下父目录是 workspace 目录，导致 CI 失败。
 
 ## 1.7.10 (2026-07-26)
@@ -593,4 +597,3 @@
 ### 0.0.1 (2026-02-17) — 初始版本
 
 - 拦截并记录 Claude API 请求/响应
-

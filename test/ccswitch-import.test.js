@@ -4,6 +4,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -426,5 +427,277 @@ describe('readCcSwitchProviders (error surfacing)', { skip: !hasSqlite }, () => 
     assert.deepEqual(profiles, []);
     assert.ok(error.includes('providers table not found'), `got: ${error}`);
     assert.ok(error.includes(dbPath), `error should name the resolved db path, got: ${error}`);
+  });
+});
+
+describe('readCcSwitchProviders (combined recovery state transitions)', { concurrency: false }, () => {
+  const sqliteError = (message, errcode) => Object.assign(new Error(message), {
+    code: 'ERR_SQLITE_ERROR',
+    errcode,
+    errstr: message,
+  });
+
+  it('BUSY → READONLY can consume both one-shot recoveries and then succeed', async () => {
+    const opens = [];
+    let attempt = 0;
+    class FakeDatabaseSync {
+      constructor(_path, opts) {
+        attempt += 1;
+        this.attempt = attempt;
+        opens.push(opts && opts.readOnly === true ? 'readonly' : 'recovery');
+      }
+      exec(sql) { assert.match(sql, /query_only/i); }
+      close() {}
+      prepare(sql) {
+        if (this.attempt === 1) throw sqliteError('database is locked', 5);
+        if (this.attempt === 2) throw sqliteError('attempt to write a readonly database', 8);
+        if (/sqlite_master/.test(sql)) return { get: () => ({ name: 'providers' }) };
+        return { all: () => [] };
+      }
+    }
+    _setDatabaseSyncForTest(FakeDatabaseSync);
+    try {
+      const result = await readCcSwitchProviders('/tmp/fake-transition.db');
+      assert.equal(result.error, null);
+      assert.deepEqual(result.profiles, []);
+      assert.deepEqual(opens, ['readonly', 'readonly', 'recovery']);
+    } finally {
+      _setDatabaseSyncForTest(null);
+    }
+  });
+
+  it('BUSY from the retry open still returns the friendly locked message', async () => {
+    let attempt = 0;
+    class FakeDatabaseSync {
+      constructor() {
+        attempt += 1;
+        if (attempt === 2) throw sqliteError('database is busy', 5);
+      }
+      close() {}
+      prepare() { throw sqliteError('database is locked', 5); }
+    }
+    _setDatabaseSyncForTest(FakeDatabaseSync);
+    try {
+      const result = await readCcSwitchProviders('/tmp/fake-open-busy.db');
+      assert.deepEqual(result.profiles, []);
+      assert.match(result.error, /cc-switch db is locked/i);
+      assert.doesNotMatch(result.error, /query failed:/i);
+    } finally {
+      _setDatabaseSyncForTest(null);
+    }
+  });
+
+  it('READONLY escalation that meets BUSY gets one backoff retry in recovery mode', async () => {
+    const opens = [];
+    let attempt = 0;
+    class FakeDatabaseSync {
+      constructor(_path, opts) {
+        attempt += 1;
+        this.attempt = attempt;
+        opens.push(opts && opts.readOnly === true ? 'readonly' : 'recovery');
+      }
+      exec(sql) { assert.match(sql, /query_only/i); }
+      close() {}
+      prepare(sql) {
+        if (this.attempt === 1) throw sqliteError('attempt to write a readonly database', 8);
+        if (this.attempt === 2) throw sqliteError('database is locked', 5);
+        if (/sqlite_master/.test(sql)) return { get: () => ({ name: 'providers' }) };
+        return { all: () => [] };
+      }
+    }
+    _setDatabaseSyncForTest(FakeDatabaseSync);
+    try {
+      const result = await readCcSwitchProviders('/tmp/fake-recovery-busy.db');
+      assert.equal(result.error, null);
+      assert.deepEqual(opens, ['readonly', 'recovery', 'recovery']);
+    } finally {
+      _setDatabaseSyncForTest(null);
+    }
+  });
+});
+
+// Regression: a malformed leftover rollback journal (cc-switch crashed mid-write, leaving a
+// truncated/corrupt cc-switch.db-journal) makes a read-only SQLite connection fail to open the
+// first query with SQLITE_READONLY ("attempt to write a readonly database"). SQLite needs to
+// discard the corrupt journal to open the DB, which is a write — refused under readOnly:true.
+// The fix escalates to a read-write open (query-only locked) on that specific error, lets SQLite
+// recover, then reads. Reproduced deterministically by planting a non-journal garbage file next
+// to an otherwise-valid DB. (A *valid* hot journal held by a running cc-switch is a SEPARATE
+// failure mode — SQLITE_BUSY "database is locked" — covered by the suite below this one; here we
+// plant garbage bytes so the recovery path for a malformed journal is exercised in isolation.)
+describe('readCcSwitchProviders (malformed journal recovery)', { skip: !hasSqlite }, () => {
+  let tmpDir;
+  before(() => { tmpDir = mkdtempSync(join(tmpdir(), 'ccv-ccswitch-journal-')); });
+  after(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort */ } });
+
+  it('残留的损坏 journal 不再以 readonly 报错，而是照常读出 providers', async () => {
+    const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
+    const dbPath = join(tmpDir, 'cc-switch.db');
+    // Build a valid cc-switch-shaped DB with one claude provider committed.
+    const db = new DatabaseSync(dbPath);
+    db.exec('PRAGMA journal_mode=DELETE');
+    db.exec('CREATE TABLE providers(id INTEGER PRIMARY KEY, app_type TEXT, name TEXT, settings_config TEXT, is_current INTEGER, sort_index INTEGER)');
+    db.exec(`INSERT INTO providers(app_type,name,settings_config,is_current,sort_index) VALUES('claude','xfyun','{"env":{"ANTHROPIC_BASE_URL":"https://x","ANTHROPIC_AUTH_TOKEN":"tok"}}',1,0)`);
+    db.close();
+    // Plant the locked trigger: a stale -journal file whose bytes are NOT a valid rollback
+    // journal. This is what cc-switch leaves behind when it is killed mid-write (truncated /
+    // torn page, or a partially flushed journal that fails SQLite's header magic check).
+    writeFileSync(dbPath + '-journal', 'NOT A VALID ROLLBACK JOURNAL - GARBAGE BYTES');
+
+    const { profiles, error } = await readCcSwitchProviders(dbPath);
+    assert.equal(error, null, `expected recovery, got error: ${error}`);
+    assert.ok(Array.isArray(profiles) && profiles.length === 1, `expected 1 profile, got: ${JSON.stringify(profiles)}`);
+    assert.equal(profiles[0].name, 'xfyun');
+    assert.ok(profiles[0].apiKey, 'credential should map through');
+    // The malformed journal must be cleaned up as part of recovery (SQLite discards it on the
+    // read-write open), so a subsequent read-only open works without any escalation.
+    assert.ok(!existsSync(dbPath + '-journal'), 'malformed journal should be discarded after recovery');
+  });
+
+  it('recovery 之后用纯只读二次读取也能成功（journal 已清）', async () => {
+    // After the previous test recovered and removed the malformed journal, a plain read-only
+    // open must succeed on its own — proving the fix left the DB in a clean state.
+    const dbPath = join(tmpDir, 'cc-switch.db');
+    const { profiles, error } = await readCcSwitchProviders(dbPath);
+    assert.equal(error, null);
+    assert.ok(profiles.length === 1 && profiles[0].name === 'xfyun');
+  });
+});
+
+// Regression: a *valid* hot journal held by a running cc-switch (a separate process in
+// BEGIN EXCLUSIVE, the real contended "cc-switch is writing" state) makes the read-only connection's
+// first query throw SQLITE_BUSY ("database is locked") — NOT SQLITE_READONLY, so the
+// malformed-journal escalation path does not catch it and it surfaces as the opaque
+// `query failed: database is locked`. The fix must detect BUSY on the main read path
+// (both the read-only open and the providers query) and surface a localized-friendly
+// "db is locked; retry shortly" instead of the raw `query failed:` wrapper.
+// Reproduced deterministically with a child process holding an EXCLUSIVE write lock —
+// a same-process writer does NOT contend (SQLite's per-process cache), so a real
+// cross-process holder is required to mirror cc-switch itself.
+describe('readCcSwitchProviders (cc-switch running, valid hot journal)', { skip: !hasSqlite }, () => {
+  let tmpDir;
+  before(() => { tmpDir = mkdtempSync(join(tmpdir(), 'ccv-ccswitch-busy-')); });
+  after(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort */ } });
+
+  function waitForLockSignal(child, label) {
+    return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        clearTimeout(timer);
+        child.stdout.off('data', onData);
+        child.off('error', onError);
+        child.off('exit', onExit);
+      };
+      const onData = (data) => {
+        if (!data.toString().includes('LOCKED')) return;
+        cleanup();
+        resolve();
+      };
+      const onError = (err) => { cleanup(); reject(err); };
+      const onExit = (code, signal) => {
+        cleanup();
+        reject(new Error(`${label} exited before LOCKED (code=${code}, signal=${signal})`));
+      };
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error(`${label} did not signal LOCKED in time`));
+      }, 5000);
+      child.stdout.on('data', onData);
+      child.once('error', onError);
+      child.once('exit', onExit);
+    });
+  }
+
+  function waitForChildExit(child, timeoutMs = 2000) {
+    if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        try { child.kill('SIGKILL'); } catch { /* best effort */ }
+        resolve();
+      }, timeoutMs);
+      child.once('exit', () => { clearTimeout(timer); resolve(); });
+    });
+  }
+
+  // Spawn a child node process that opens the DB and holds BEGIN EXCLUSIVE (without
+  // committing) until told to release. cc-switch runs as a separate process holding an
+  // EXCLUSIVE write lock during a provider switch; BEGIN IMMEDIATE from a separate process
+  // does NOT block read-only readers (SQLite serves them the pre-transaction snapshot), so
+  // only EXCLUSIVE reproduces the real "cc-switch is open" contention that throws BUSY.
+  function holdLock(dbPath) {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', `
+      import { DatabaseSync } from 'node:sqlite';
+      const db = new DatabaseSync(${JSON.stringify(dbPath)});
+      db.exec('PRAGMA journal_mode=DELETE');
+      db.exec('BEGIN EXCLUSIVE');
+      db.prepare("INSERT INTO providers(app_type,name,settings_config,is_current,sort_index) VALUES('claude','hold','{}',0,1)").run();
+      process.stdout.write('LOCKED\\n');
+      // Hold until the parent closes stdin, then roll back and exit cleanly.
+      process.stdin.resume();
+      process.stdin.on('end', () => {
+        try { db.exec('ROLLBACK'); } catch {}
+        try { db.close(); } catch {}
+        process.exit(0);
+      });
+      // keep alive
+      setInterval(() => {}, 60000);
+    `], { stdio: ['pipe', 'pipe', 'inherit'] });
+    return waitForLockSignal(child, 'lock-holder child').then(() => child);
+  }
+
+  it('cc-switch 运行中持写锁时，只读查询撞 BUSY → 报友好提示而非 query failed: ...locked', async () => {
+    const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
+    const dbPath = join(tmpDir, 'cc-switch-held.db');
+    const db = new DatabaseSync(dbPath);
+    db.exec('PRAGMA journal_mode=DELETE');
+    db.exec('CREATE TABLE providers(id INTEGER PRIMARY KEY, app_type TEXT, name TEXT, settings_config TEXT, is_current INTEGER, sort_index INTEGER)');
+    db.exec(`INSERT INTO providers(app_type,name,settings_config,is_current,sort_index) VALUES('claude','xfyun','{"env":{"ANTHROPIC_BASE_URL":"https://x","ANTHROPIC_AUTH_TOKEN":"tok"}}',1,0)`);
+    db.close();
+
+    const child = await holdLock(dbPath); // a SEPARATE process now holds BEGIN EXCLUSIVE
+    try {
+      const { profiles, error } = await readCcSwitchProviders(dbPath);
+      // Must surface a friendly, localized-keyed "locked" message — NOT the raw
+      // `query failed: database is locked` wrapper that the catch-all at the bottom emits.
+      assert.ok(error, 'expected a lock error to be surfaced when cc-switch is running');
+      assert.match(error, /locked|busy/i, `expected a lock-related message, got: ${error}`);
+      assert.ok(!/query failed:/.test(error), `must NOT surface the raw "query failed:" wrapper (got: ${error})`);
+      assert.deepEqual(profiles, []);
+    } finally {
+      child.stdin.end();
+      await waitForChildExit(child);
+    }
+  });
+
+  it('cc-switch 短暂写锁（< backoff）→ 自动重试后照常读出 providers，无错误', async () => {
+    // cc-switch's write transactions are usually short (tens of ms). The fix's single retry
+    // after a 200ms backoff must recover and return the providers — not surface a lock error —
+    // when the holder releases before the retry.
+    const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
+    const dbPath = join(tmpDir, 'cc-switch-transient.db');
+    const db = new DatabaseSync(dbPath);
+    db.exec('PRAGMA journal_mode=DELETE');
+    db.exec('CREATE TABLE providers(id INTEGER PRIMARY KEY, app_type TEXT, name TEXT, settings_config TEXT, is_current INTEGER, sort_index INTEGER)');
+    db.exec(`INSERT INTO providers(app_type,name,settings_config,is_current,sort_index) VALUES('claude','xfyun','{"env":{"ANTHROPIC_BASE_URL":"https://x","ANTHROPIC_AUTH_TOKEN":"tok"}}',1,0)`);
+    db.close();
+
+    // Holder grabs EXCLUSIVE, holds ~80ms (< the 200ms backoff), then releases. The import's
+    // first read throws BUSY; by the retry (200ms later) the lock is gone → read succeeds.
+    const child = spawn(process.execPath, ['--input-type=module', '-e', `
+      import { DatabaseSync } from 'node:sqlite';
+      const db = new DatabaseSync(${JSON.stringify(dbPath)});
+      db.exec('PRAGMA journal_mode=DELETE');
+      db.exec('BEGIN EXCLUSIVE');
+      db.prepare("INSERT INTO providers(app_type,name,settings_config,is_current,sort_index) VALUES('claude','hold','{}',0,1)").run();
+      process.stdout.write('LOCKED\\n');
+      setTimeout(() => { try { db.exec('ROLLBACK'); } catch {} db.close(); }, 80);
+    `], { stdio: ['pipe', 'pipe', 'inherit'] });
+    await waitForLockSignal(child, 'transient lock-holder');
+
+    const { profiles, error } = await readCcSwitchProviders(dbPath);
+    assert.equal(error, null, `expected recovery after retry, got error: ${error}`);
+    assert.ok(Array.isArray(profiles) && profiles.length === 1, `expected 1 profile, got: ${JSON.stringify(profiles)}`);
+    assert.equal(profiles[0].name, 'xfyun');
+    try { child.stdin.end(); } catch {}
+    await waitForChildExit(child);
   });
 });
