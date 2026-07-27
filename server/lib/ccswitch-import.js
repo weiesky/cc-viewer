@@ -171,8 +171,11 @@ export async function readCcSwitchProviders(dbPath) {
   //      ("database is locked"). Retry once after a short backoff (cc-switch's writes are
   //      short — transient locks usually clear), and if still held surface a friendly message
   //      rather than the opaque `query failed: database is locked`.
-  const isReadonlyErr = (e) => /readonly/i.test(e && (e.errstr || e.message || ''));
-  const isBusyErr = (e) => /locked|busy/i.test(e && (e.errstr || e.message || ''));
+  const primaryErrCode = (e) => Number.isInteger(e && e.errcode) ? (e.errcode & 0xff) : null;
+  const isReadonlyErr = (e) => primaryErrCode(e) === 8
+    || /readonly/i.test(e && (e.errstr || e.message || ''));
+  const isBusyErr = (e) => [5, 6].includes(primaryErrCode(e))
+    || /locked|busy/i.test(e && (e.errstr || e.message || ''));
 
   // Run the providers read against a given connection; returns the result object or throws.
   const readProviders = (db) => {
@@ -214,65 +217,38 @@ export async function readCcSwitchProviders(dbPath) {
   const LOCKED_MSG = 'cc-switch db is locked (cc-switch may be running); retry shortly';
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  let db = null;
-  try {
+  // Keep the BUSY retry and READONLY escalation as independent one-shot budgets. Every open,
+  // PRAGMA and query attempt passes through the same classifier, so a real state transition such
+  // as BUSY (cc-switch was writing) → READONLY (it crashed and left a malformed journal) can use
+  // both recoveries in sequence instead of escaping through a nested retry catch.
+  let useRecoveryConnection = false;
+  let busyRetried = false;
+  while (true) {
+    let db = null;
+    let phase = 'open';
     try {
-      db = new DatabaseSync(dbPath, { readOnly: true });
-    } catch (err) {
-      // Open itself can fail SQLITE_READONLY (malformed journal detected at open) or SQLITE_BUSY
-      // (cc-switch holding EXCLUSIVE). Retry once on BUSY before escalating/surfacing.
-      if (isBusyErr(err)) {
-        await sleep(200);
-        try { db = new DatabaseSync(dbPath, { readOnly: true }); }
-        catch (retryErr) {
-          if (isBusyErr(retryErr)) return { profiles: [], error: LOCKED_MSG };
-          if (!isReadonlyErr(retryErr)) return { profiles: [], error: `cannot open db: ${retryErr && retryErr.message}` };
-          err = retryErr; // fall through to readonly escalation below
-        }
-      }
-      if (!db) {
-        if (!isReadonlyErr(err)) return { profiles: [], error: `cannot open db: ${err && err.message}` };
-        db = new DatabaseSync(dbPath); // read-write to let SQLite discard the corrupt journal
-        db.exec('PRAGMA query_only = ON');
-      }
-    }
-    try {
+      db = useRecoveryConnection
+        ? new DatabaseSync(dbPath)
+        : new DatabaseSync(dbPath, { readOnly: true });
+      phase = 'query';
+      if (useRecoveryConnection) db.exec('PRAGMA query_only = ON');
       return readProviders(db);
     } catch (err) {
       if (isBusyErr(err)) {
-        // cc-switch is running with an EXCLUSIVE lock; retry once after a short backoff —
-        // its write transaction usually commits within tens of ms.
-        try { db.close(); } catch { /* best effort */ }
+        if (busyRetried) return { profiles: [], error: LOCKED_MSG };
+        busyRetried = true;
         await sleep(200);
-        db = new DatabaseSync(dbPath, { readOnly: true });
-        try {
-          return readProviders(db);
-        } catch (retryErr) {
-          if (isBusyErr(retryErr)) return { profiles: [], error: LOCKED_MSG };
-          throw retryErr;
-        }
+        continue;
       }
-      if (!isReadonlyErr(err)) throw err; // surface the real cause (e.g. "file is not a database")
-      // Escalate: reopen read-write, recover, lock to query-only, retry once.
-      try { db.close(); } catch { /* best effort */ }
-      try {
-        db = new DatabaseSync(dbPath);
-      } catch (openErr) {
-        if (isBusyErr(openErr)) return { profiles: [], error: LOCKED_MSG };
-        throw openErr;
+      if (isReadonlyErr(err) && !useRecoveryConnection) {
+        useRecoveryConnection = true;
+        continue;
       }
-      db.exec('PRAGMA query_only = ON');
-      try {
-        return readProviders(db);
-      } catch (retryErr) {
-        if (isBusyErr(retryErr)) return { profiles: [], error: LOCKED_MSG };
-        throw retryErr;
-      }
+      const prefix = phase === 'open' ? 'cannot open db' : 'query failed';
+      return { profiles: [], error: `${prefix}: ${err && err.message}` };
+    } finally {
+      try { db && db.close(); } catch { /* best effort */ }
     }
-  } catch (err) {
-    return { profiles: [], error: `query failed: ${err && err.message}` };
-  } finally {
-    try { db.close(); } catch { /* best effort */ }
   }
 }
 
