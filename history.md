@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(test): `windows-npm-root-regression` 的「cc-viewer 自身目录是最后兜底候选」断言改为与 `resolve(repoRoot, '..')` 比对，不再要求路径以 `node_modules` 结尾——该后缀只在 `npm i -g` 布局下成立，git clone 检出（CI）下父目录是 workspace 目录，导致 CI 失败。
+
 ## 1.7.10 (2026-07-26)
 
 - fix(electron): **add missing `src/utils/` to electron-builder bundle** — `server/lib/v2/meta-rows.js` and `server/lib/v2/live-feed.js` import `classifyRequest` from `src/utils/requestType.js`, but `electron-builder.yml` did not include `src/utils/**/*` in its files list. The packaged Electron app crashed at startup with "Cannot find module '.../src/utils/requestType.js'". Added `src/utils/**/*` to the electron-builder files array (npm packaging was already correct via `package.json` files).

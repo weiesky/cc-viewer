@@ -15,8 +15,9 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
-import { join, win32 } from 'node:path';
+import { join, resolve, win32 } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 
 import {
   buildNpmRootCommand,
@@ -122,11 +123,16 @@ describe('#137: npm-free fallback candidates', () => {
     assert.ok(!got.some(p => /AppData|ProgramFiles/i.test(p)));
   });
 
-  it("cc-viewer's own node_modules is the last resort on every platform", () => {
+  it("cc-viewer's own install dir is the last resort on every platform", () => {
+    // findcc.js appends its NODE_MODULES — the directory *holding* cc-viewer. That
+    // is a real global node_modules only when ccv came from `npm i -g`; in a git
+    // checkout (CI) it is just the workspace dir. So assert identity with that
+    // path, never a `node_modules` suffix, which is install-layout dependent.
+    const ownDir = resolve(fileURLToPath(new URL('..', import.meta.url)), '..');
     for (const platform of ['win32', 'darwin', 'linux']) {
       const got = globalNodeModulesCandidates(platform, {}, '/home/u');
-      assert.ok(got[got.length - 1].endsWith('node_modules'),
-        `${platform}: expected a node_modules tail, got ${got[got.length - 1]}`);
+      assert.equal(got[got.length - 1], ownDir,
+        `${platform}: expected cc-viewer's own dir as the tail`);
     }
   });
 });
