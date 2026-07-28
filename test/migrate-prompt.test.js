@@ -4,8 +4,9 @@
  *
  * Trigger matrix pinned here:
  *   - v1 files present & unconverted → pending (files/bytes counted)
+ *   - status:'done' short-circuits → not pending (dual-write covers tail growth)
  *   - convert state marks a file done AT ITS SIZE → not pending
- *   - a grown "done" file (active log era) → pending again
+ *   - a grown "done" file when status != 'done' → pending again
  *   - empty v1 shells are ignored; other projects with pending logs counted
  *   - /events emits the migrate_prompt frame only when pending, carrying
  *     `continued` from isContinuedLaunch()
@@ -19,7 +20,7 @@
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, mkdirSync, writeFileSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, statSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -61,7 +62,7 @@ describe('migrationStatus', () => {
     assert.equal(st.totalBytes, 128);
   });
 
-  it('convert state marks files done at size → not pending; a grown file re-pends', () => {
+  it('convert state marks files done at size → not pending; status done prevents re-pend from growth', () => {
     const f1 = `${PROJECT}_20260101_000000.jsonl`;
     const f2 = `${PROJECT}_20260102_000000.jsonl`;
     const sizeOf = (n) => statSync(join(projectDir(), n)).size;
@@ -77,7 +78,26 @@ describe('migrationStatus', () => {
 
     writeFileSync(join(projectDir(), f2), 'x'.repeat(128)); // grew after conversion
     const st = migrationStatus(tmpDir, PROJECT);
-    assert.equal(st.pending, true, 'a grown done-file is pending again (converter trust rule)');
+    assert.equal(st.pending, false, 'a grown file after status:done does not re-prompt (migration complete)');
+  });
+
+  it('a grown done-file re-pends when status is not done (converter trust rule)', () => {
+    const f1 = `${PROJECT}_20260101_000000.jsonl`;
+    const f2 = `${PROJECT}_20260102_000000.jsonl`;
+    const sizeOf = (n) => statSync(join(projectDir(), n)).size;
+    writeFileSync(join(projectDir(), 'wire-v2-convert-state.json'), JSON.stringify({
+      version: 1,
+      // No status field — simulates an in-progress/interrupted state file
+      files: [
+        { name: f1, size: sizeOf(f1), done: true },
+        { name: f2, size: sizeOf(f2), done: true },
+      ],
+    }));
+    assert.equal(migrationStatus(tmpDir, PROJECT).pending, false, 'files match recorded sizes at pre-grow');
+
+    writeFileSync(join(projectDir(), f2), 'x'.repeat(256)); // grew beyond the 128 left by previous test
+    const st = migrationStatus(tmpDir, PROJECT);
+    assert.equal(st.pending, true, 'a grown done-file re-pends when status is not done');
     assert.equal(st.files, 1);
   });
 
@@ -181,6 +201,9 @@ describe('/events migrate_prompt frame', () => {
   }
 
   it('emits the frame when the CURRENT project has pending v1 logs, with continued flag', async () => {
+    // The previous test left a convert state with status:'done' — remove it so
+    // this test sees genuinely pending (never-migrated) v1 files.
+    try { rmSync(join(tmpDir, PROJECT, 'wire-v2-convert-state.json')); } catch {}
     // Bind the interceptor to the fixture project (workspace mode boots bare;
     // initForWorkspace derives the project name from the path's basename).
     interceptor.initForWorkspace(join(tmpDir, 'ws', PROJECT));

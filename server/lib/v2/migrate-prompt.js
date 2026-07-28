@@ -12,6 +12,9 @@ import { listV1Files, listConvertibleProjects, readConvertState } from './conver
 /** Pending v1 files + bytes of ONE project dir. */
 function pendingOf(projectDir) {
   const state = readConvertState(projectDir);
+  // Migration already completed — don't re-prompt, even if v1 files grew
+  // (dual-write captures new entries in v2).
+  if (state && state.status === 'done') return { files: 0, totalBytes: 0 };
   const doneAtSize = new Map(
     (state && Array.isArray(state.files) ? state.files : [])
       .filter((f) => f && f.done)
