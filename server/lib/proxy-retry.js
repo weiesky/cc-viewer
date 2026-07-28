@@ -416,7 +416,11 @@ async function singleFetch(url, fetchOptions, ctx) {
     // connectTimeoutMs already cleared below can't help — it only bound headers.
     if (response?.body && ctx.streamIdleTimeoutMs > 0 && isStreamResponse(response)) {
       const watched = applyStreamIdleWatchdog(response.body, ctx.streamIdleTimeoutMs, ctx.signal);
-      return { ...response, body: watched, __streamWatched: true };
+      return new Response(watched, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
     }
     return response;
   } catch (err) {

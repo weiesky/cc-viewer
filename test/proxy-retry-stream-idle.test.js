@@ -26,20 +26,11 @@ function makeStreamResponse({ status = 200, contentType = 'text/event-stream', e
       if (emit) emit(controller);
     },
   });
-  const headers = new Map();
-  headers.set('content-type', contentType);
-  return {
+  return new Response(stream, {
     status,
     statusText: status === 200 ? 'OK' : 'Error',
-    ok: status > 0 && status < 400,
-    headers: {
-      get(k) { return headers.get(k.toLowerCase()) || null; },
-      entries() { return headers.entries(); },
-    },
-    body: stream,
-    text: async () => '',
-    json: async () => ({}),
-  };
+    headers: { 'content-type': contentType },
+  });
 }
 
 let _originalFetch;
@@ -86,18 +77,20 @@ describe('proxy-retry streamIdleTimeoutMs hang guard', () => {
   });
 
   it('healthy stream (chunks arriving) → watchdog resets, does NOT abort', async () => {
-    // Emit a chunk every 5ms (well under the 200ms idle budget); the stream
-    // stays healthy and the watchdog must never fire.
-    globalThis.fetch = async (_url, opts) => {
-      const signal = opts?.signal;
+    // Keep the total stream open longer than the idle budget while every gap
+    // stays below it. A watchdog that fails to reset will abort this stream.
+    globalThis.fetch = async () => {
       return makeStreamResponse({
         emit: (controller) => {
+          let chunks = 0;
           const iv = setInterval(() => {
-            if (signal?.aborted) { clearInterval(iv); controller.close(); return; }
             controller.enqueue(new TextEncoder().encode('data: hi\n\n'));
-          }, 5);
-          // stop after a few chunks
-          setTimeout(() => { clearInterval(iv); controller.close(); }, 30);
+            chunks++;
+            if (chunks === 8) {
+              clearInterval(iv);
+              controller.close();
+            }
+          }, 10);
         },
       });
     };
@@ -105,13 +98,14 @@ describe('proxy-retry streamIdleTimeoutMs hang guard', () => {
     const r = await executeRequest({
       url: 'https://example.com/v1/messages',
       fetchOptions: { method: 'POST', headers: {} },
-      retryConfig: { ...DEFAULT_RETRY_CONFIG, mode: 'serial', streamIdleTimeoutMs: 200, maxRetries: 5 },
+      retryConfig: { ...DEFAULT_RETRY_CONFIG, mode: 'serial', streamIdleTimeoutMs: 40, maxRetries: 5 },
       ctx: {},
     });
 
     assert.equal(r.finalStatus, 200);
     assert.equal(r.attempts, 1);
-    // Healthy stream must NOT be marked stalled.
-    assert.notEqual(r.__streamStalled, true, 'healthy stream must not be flagged stalled');
+    assert.equal(r.response.headers.get('content-type'), 'text/event-stream');
+    const body = await r.response.text();
+    assert.equal(body, 'data: hi\n\n'.repeat(8));
   });
 });
