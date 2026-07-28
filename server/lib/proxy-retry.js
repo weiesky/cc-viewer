@@ -17,6 +17,7 @@
 //   - race/stagger use AbortController; cancelled requests must be released correctly.
 import { resolveProfileModel } from './interceptor-core.js';
 import { readFileSync, existsSync } from 'node:fs';
+import { reportSwallowed } from './error-report.js';
 
 // ── Configuration ─────────────────────────────────────────────────
 
@@ -162,7 +163,11 @@ export function resolveRetryConfig(env = process.env, options = {}) {
         const fileRaw = JSON.parse(readFileSync(_retryConfigPath, 'utf-8'));
         Object.assign(cfg, validateRetryConfig(fileRaw));
       }
-    } catch { /* file missing/corrupt → use env only, don't block */ }
+    } catch (err) {
+      // retry-config.json written by the UI is corrupt/unreadable → fall back to env.
+      // Not fatal, but a silent swallow would hide a config the user believes is active.
+      reportSwallowed('proxyRetry.load-config-file', err);
+    }
   }
 
   return cfg;
@@ -219,7 +224,10 @@ export function isStreamResponse(response) {
   try {
     const ct = response?.headers?.get?.('content-type') || '';
     return typeof ct === 'string' && ct.toLowerCase().includes('text/event-stream');
-  } catch {
+  } catch (err) {
+    // A misbehaving header object would make us misclassify the response, which
+    // changes retry behavior (streaming 200 is never retried). Surface it.
+    reportSwallowed('proxyRetry.is-stream-response', err);
     return false;
   }
 }
@@ -233,7 +241,10 @@ export function extractModel(body) {
     const s = typeof body === 'string' ? body : body.toString('utf-8');
     const obj = JSON.parse(s);
     return typeof obj.model === 'string' ? obj.model : '';
-  } catch {
+  } catch (err) {
+    // Unparseable body → stats detail record loses the model field. Surface it
+    // so a regression in request-body handling isn't hidden behind empty models.
+    reportSwallowed('proxyRetry.extract-model', err);
     return '';
   }
 }
@@ -253,7 +264,11 @@ export function applyModelReplacement(body, profile) {
     if (!target) return body;
     obj.model = target;
     return JSON.stringify(obj);
-  } catch {
+  } catch (err) {
+    // JSON.parse failure means model replacement silently no-ops; the request
+    // still goes out with the original (un-replaced) model. Surface it so the
+    // mismatch between configured replacement and actual body isn't silent.
+    reportSwallowed('proxyRetry.apply-model-replacement', err);
     return body;
   }
 }
@@ -300,12 +315,66 @@ function computeWaitMs(status, retryAfterHeader, cfg) {
 // ── Single fetch wrapper ─────────────────────────────────────────
 
 /**
+ * Attaches a streaming-idle watchdog to a streaming response body.
+ *
+ * Why: connectTimeoutMs only bounds time-to-HEADERS; once headers arrive the
+ * connect timer is cleared and the retry loop breaks (streaming 200 is never
+ * retried — retry-before-first-byte strategy). If the upstream then stalls
+ * (200 headers but no body chunk ever arrives — a hung upstream), the piped
+ * response would hang indefinitely, pinning the client socket and the upstream
+ * socket until the client gives up. streamIdleTimeoutMs bounds the max gap
+ * between two chunks; exceeding it errors the body so proxy.js's pipeline
+ * surfaces the stall instead of hanging.
+ *
+ * Implemented as a TransformStream pass-through so response.body stays a valid
+ * ReadableStream (Readable.fromWeb in proxy.js keeps working): each enqueued
+ * chunk resets the timer; a stalled stream fires the timer, which calls
+ * controller.error(), aborting the fetch's underlying body and breaking the
+ * pipeline.
+ *
+ * @param {ReadableStream} body original streaming body
+ * @param {number} idleMs max gap between chunks (0 = disabled)
+ * @param {AbortSignal} signal external signal (race/stagger loser cancel + client disconnect)
+ * @returns {ReadableStream} watched body (same chunks, bounded idle)
+ */
+function applyStreamIdleWatchdog(body, idleMs, signal) {
+  if (!body || typeof body?.pipeThrough !== 'function') return body;
+  if (!idleMs || idleMs <= 0) return body;
+  let timer = null;
+  let aborted = false;
+  const arm = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      aborted = true;
+      controller.error(new Error(`proxy stream idle timeout (${idleMs}ms)`));
+    }, idleMs);
+  };
+  let controller;
+  const transform = new TransformStream({
+    start(ctl) { controller = ctl; arm(); if (signal) signal.addEventListener('abort', disarm, { once: true }); },
+    transform(chunk, ctl) {
+      if (aborted) return; // already errored — drop late chunks
+      ctl.enqueue(chunk);
+      arm(); // reset on each chunk
+    },
+    flush() { disarm(); },
+    cancel() { disarm(); },
+  });
+  function disarm() { if (timer) { clearTimeout(timer); timer = null; } }
+  // teeThrough keeps our transform in the path; pipeThrough returns the readable end.
+  // Only pass signal when present — pipeThrough rejects a null/undefined signal.
+  return signal
+    ? body.pipeThrough(transform, { signal })
+    : body.pipeThrough(transform);
+}
+
+/**
  * Executes a single fetch request with the x-cc-viewer-trace header + network proxy dispatcher.
  * Returns the raw Response. Does not throw (on network errors returns { __networkError: true, status: 0 }).
  *
  * @param {string} url full URL
  * @param {object} fetchOptions method/headers/body
- * @param {object} ctx { dispatcher, connectTimeoutMs, signal }
+ * @param {object} ctx { dispatcher, connectTimeoutMs, streamIdleTimeoutMs, signal }
  */
 async function singleFetch(url, fetchOptions, ctx) {
   const opts = {
@@ -342,10 +411,25 @@ async function singleFetch(url, fetchOptions, ctx) {
 
   try {
     const response = await fetch(url, opts);
+    // Streaming responses: attach the idle watchdog so a hung body (headers in,
+    // no chunks) breaks within streamIdleTimeoutMs instead of pinning sockets.
+    // connectTimeoutMs already cleared below can't help — it only bound headers.
+    if (response?.body && ctx.streamIdleTimeoutMs > 0 && isStreamResponse(response)) {
+      const watched = applyStreamIdleWatchdog(response.body, ctx.streamIdleTimeoutMs, ctx.signal);
+      return new Response(watched, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    }
     return response;
   } catch (err) {
     // Network error/timeout/cancellation → return a pseudo response; status=0 indicates an error
     const aborted = ctx.signal?.aborted || timeoutCtl?.signal.aborted;
+    // Aborts are expected (race loser cancellation, client disconnect, connect
+    // timeout) — not diagnostic. Only surface genuine network errors so a
+    // failing upstream isn't hidden behind status=0 pseudo-responses.
+    if (err && !aborted) reportSwallowed('proxyRetry.single-fetch', err);
     return {
       __networkError: true,
       __aborted: !!aborted,
@@ -416,7 +500,17 @@ export async function executeRequest({ url, fetchOptions, retryConfig, ctx }) {
   // headers well past 10s — so with retry disabled we must not introduce a new
   // failure mode. The timeout applies only when a retry mode is active.
   const effectiveConnectTimeoutMs = cfg.mode === 'off' ? 0 : cfg.connectTimeoutMs;
-  const commonCtx = { dispatcher, connectTimeoutMs: effectiveConnectTimeoutMs };
+  // streamIdleTimeoutMs is gated to retry modes only (NOT off), mirroring the
+  // connectTimeoutMs off-exclusion above. The watchdog wraps response.body in a
+  // TransformStream, but the interceptor (server/interceptor.js) already
+  // reconstructs response.body via getReader() + a new ReadableStream for
+  // logging/live-streaming; under concurrent load the watchdog's pipeThrough
+  // races that reconstruction and surfaces as a spurious `fetch failed` →
+  // status 0 → 502. off mode is the legacy pass-through path (no retry), so the
+  // watchdog's value (bound idle on a hung stream) is marginal here and the
+  // interceptor already observes the stream — serial/race/stagger keep the guard.
+  const effectiveStreamIdleMs = cfg.mode === 'off' ? 0 : (cfg.streamIdleTimeoutMs > 0 ? cfg.streamIdleTimeoutMs : 0);
+  const commonCtx = { dispatcher, connectTimeoutMs: effectiveConnectTimeoutMs, streamIdleTimeoutMs: effectiveStreamIdleMs };
 
   if (cfg.mode === 'off' || cfg.mode === 'serial') {
     // off / serial: serial retry. off = no retry (break on any status); serial = controlled by maxRetries (0=infinite, capped by deadline)

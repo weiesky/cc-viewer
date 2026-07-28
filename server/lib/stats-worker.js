@@ -177,11 +177,16 @@ function generateProjectStats(projectDir, projectName, onlyFile) {
   // Proxy retry shards (proxy_YYYY-MM-DD.jsonl) live at the project top level
   // and can exist without any v2 session (proxy-only usage) — only bail out
   // when BOTH are absent so aggregateProxyStats still runs for proxy-only dirs.
-  let proxyFiles = [];
+  // Existence-only check: the full sorted file list is read once inside
+  // aggregateProxyStats (called below), so here we just need to know whether
+  // ANY proxy shard exists — short-circuit avoids a redundant full readdir+filter.
+  let hasProxyFiles = false;
   try {
-    proxyFiles = readdirSync(projectDir).filter(f => f.startsWith('proxy_') && f.endsWith('.jsonl'));
+    for (const f of readdirSync(projectDir)) {
+      if (f.startsWith('proxy_') && f.endsWith('.jsonl')) { hasProxyFiles = true; break; }
+    }
   } catch { /* unreadable project dir → nothing to aggregate from it either */ }
-  if (sessionIds.length === 0 && proxyFiles.length === 0) return;
+  if (sessionIds.length === 0 && !hasProxyFiles) return;
 
   const filesStats = {};
   const topModels = {};
@@ -249,7 +254,7 @@ function generateProjectStats(projectDir, projectName, onlyFile) {
 
   // No parsable session yet (dirs without journals) — keep whatever exists,
   // unless proxy shards are present (they alone justify a stats write).
-  if (Object.keys(filesStats).length === 0 && proxyFiles.length === 0) return;
+  if (Object.keys(filesStats).length === 0 && !hasProxyFiles) return;
 
   // 计算全局汇总
   let totalRequests = 0;
