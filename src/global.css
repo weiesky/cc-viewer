@@ -85,6 +85,11 @@
   --color-info-light: #7dd3fc;
   --color-code-purple: #a78bfa;
   --color-code-orange: #d97757;
+  /* Chart categorical series (identity, not status — see BarChart.jsx).
+     series-1 reuses --color-primary; series-2 is a dedicated orange step
+     (NOT --color-warning/-success) chosen to clear the dataviz skill's
+     CVD/lightness-band checks against primary in both themes. */
+  --color-chart-series-2: #cf6c48;
   --code-keyword: #f87171;
   --code-string: #7dd3fc;
   --code-comment: #888;
@@ -238,6 +243,8 @@
   --color-info-light: #0969DA;
   --color-code-purple: #8250DF;
   --color-code-orange: #953800;
+  /* Chart categorical series (identity, not status) — see dark-theme block for rationale. */
+  --color-chart-series-2: #953800;
   --code-keyword: #0000FF;
   --code-string: #A31515;
   --code-comment: #6A9955;

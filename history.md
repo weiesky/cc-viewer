@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 1.7.11 (2026-07-29)
+
+- ui(proxy-stats): **retry stats chart colors aligned with the app's theme tokens** — `BarChart`'s grouped-series colors no longer reuse `--color-success`/`--color-warning` (misreadable as "good/bad" on the upstream-vs-downstream availability bars); added a dedicated `--color-chart-series-2` identity color, validated against `--color-primary` for CVD separation and lightness band in both themes. `statusColor()` and two inline `Tag` colors switched from antd's preset palette names (`'green'`/`'orange'`/`'red'`) to antd's semantic status names (`'success'`/`'warning'`/`'error'`), matching the convention already used by `DetailPanel`'s HTTP status Tag.
+
 - fix(test): **stop viewer resources before removing CLI-test temp directories** — `server-ports-busy` and `branch-server` now tear down `server.js` timers/watchers before deleting their isolated `CCV_LOG_DIR`; shared best-effort cleanup uses `fs.promises.rm` with native retries for transient `EBUSY`/`ENOTEMPTY`/`EPERM` failures.
 
 - fix(migrate): **迁移完成后仍反复提示迁移** — `pendingOf()` 仅按文件大小比对判断是否需要迁移，忽略了 `wire-v2-convert-state.json` 中的 `status: 'done'` 标记。迁移完成后活跃的 v1 日志继续增长（双写），大小不匹配导致误判为待迁移。修复：`pendingOf()` 检测到 `status === 'done'` 时直接返回无需迁移。

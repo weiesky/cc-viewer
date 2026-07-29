@@ -2,13 +2,16 @@ import React, { useEffect, useRef, useState } from 'react';
 import styles from './BarChart.module.css';
 import { foldBars, groupedBarTitle, singleBarTitle } from './barChartHelpers.js';
 
-// Default colors cycle for grouped bars. Maps to the app's REAL semantic
-// tokens (global.css :root) so bars theme correctly in light AND dark mode;
-// hex fallbacks only apply if the tokens are somehow absent.
+// Default colors cycle for grouped bars. These are IDENTITY colors (which
+// series is this bar), not status colors — deliberately distinct from
+// --color-success/-warning/-error so a chart series never gets misread as
+// "good/bad" (e.g. upstream-vs-downstream availability bars). Maps to the
+// app's REAL tokens (global.css :root) so bars theme correctly in light AND
+// dark mode; hex fallbacks match the dark-theme values (the default root)
+// and only apply if the tokens are somehow absent.
 const DEFAULT_COLORS = [
   'var(--color-primary, #1668dc)',
-  'var(--color-success, #22c55e)',
-  'var(--color-warning, #f59e0b)',
+  'var(--color-chart-series-2, #cf6c48)',
 ];
 
 // Pure-SVG vertical bar chart, single or grouped series.

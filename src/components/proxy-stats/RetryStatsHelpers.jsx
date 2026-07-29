@@ -11,12 +11,15 @@ export function fmtMs(ms) {
   return `${(ms / 1000).toFixed(2)} s`;
 }
 
-// Status code → antd Tag color
+// Status code → antd Tag color. Uses antd's preset STATUS names (not preset
+// palette names like 'green'/'orange'/'red') so this Tag's success/warning/error
+// reads consistently with the rest of the app's status Tags (e.g. DetailPanel's
+// HTTP status Tag) rather than a second, unrelated antd color scale.
 export function statusColor(status) {
   if (status === 0) return 'default';
-  if (status < 400) return 'green';
-  if (status < 500) return 'orange';
-  return 'red';
+  if (status < 400) return 'success';
+  if (status < 500) return 'warning';
+  return 'error';
 }
 
 // Availability percentage → semantic CSS color. Uses the app's REAL tokens

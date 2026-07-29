@@ -121,13 +121,13 @@ export default function ProxyStatsDashboard() {
           <Space>
             <span>{t('ui.proxyStats.currentStreak')}:</span>
             <Tag icon={s.currentStreakType === 'success' ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
-              color={s.currentStreakType === 'success' ? 'green' : 'red'}>
+              color={s.currentStreakType === 'success' ? 'success' : 'error'}>
               {s.currentStreakType === 'success' ? t('ui.proxyStats.success') : t('ui.proxyStats.failure')} × {s.currentStreakCount}
             </Tag>
           </Space>
           <Space>
             <span>{t('ui.proxyStats.worstFailureStreak')}:</span>
-            <Tag color="red">{s.worstFailureStreak}</Tag>
+            <Tag color="error">{s.worstFailureStreak}</Tag>
           </Space>
         </div>
         {/* Dual availability grouped bars: upstream vs downstream per model */}
