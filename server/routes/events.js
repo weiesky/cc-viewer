@@ -320,7 +320,7 @@ async function events(req, res, parsedUrl, isLocal, deps) {
       if (!latestContextWindow) {
         const usage = entry.response?.body?.usage;
         if (usage) {
-          const contextSize = getContextSizeForModel(entry.body?.model);
+          const contextSize = getContextSizeForModel(entry);
           const cw = buildContextWindowEvent(usage, contextSize);
           if (cw) latestContextWindow = cw;
         }

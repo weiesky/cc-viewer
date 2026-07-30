@@ -7,6 +7,10 @@
  * server-reported model in `response.body.model` (authoritative under proxy
  * hot-switch) over the client-supplied `body.model`. Returns null when both
  * are missing — callers should fall back to a sensible default.
+ *
+ * KEEP IN SYNC: server/lib/context-watcher.js getContextSizeForModel reuses
+ * this precedence for its entry path — changing the priority here must be
+ * mirrored there (and vice versa).
  */
 export function getEffectiveModel(request) {
   return request?.response?.body?.model || request?.body?.model || null;

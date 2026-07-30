@@ -196,7 +196,11 @@ describe('adaptContextWindow', () => {
     assert.equal(H.adaptContextWindow(200000, 200000), 200000);
     assert.equal(H.adaptContextWindow(200000, 5000), 200000);
   });
-  it('非 200K 分类一律原样返回（不做反向纠偏）', () => {
+  it('256K 档(kimi 精确档)用量越窗 → 纠偏到 1M;未越窗原样', () => {
+    assert.equal(H.adaptContextWindow(256000, 256001), 1000000);
+    assert.equal(H.adaptContextWindow(256000, 256000), 256000);
+  });
+  it('非 200K/256K 分类一律原样返回（不做反向纠偏，128K 永不升档）', () => {
     assert.equal(H.adaptContextWindow(1000000, 999999999), 1000000);
     assert.equal(H.adaptContextWindow(128000, 500000), 128000);
   });

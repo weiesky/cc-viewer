@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.7.12 (2026-07-30)
+
+- ui(avatar): **refresh the Kimi model logo** — new mark with the brand-blue dot kept fixed (`#1783FF`) and the "K" glyph switched to `currentColor` so it follows `--model-logo-mono` (white in dark mode, black in light mode), matching the GLM/MiniMax mono-logo theming.
+
+- feat(context): **Kimi models no longer forced into the 200K bucket** — `MODEL_CONTEXT_SIZES` gains a `/kimi|moonshot|^k3$/i → 256K` entry (Kimi's real window), so the server-computed `context_window_size` reflects the correct 256K scale; for the user-visible bar, `classifyContextWindow` buckets kimi/moonshot-prefixed models **and bare `k3`** into 1M (avoids a mid-session 200K→1M rescale; the bar simply under-reads against the true 256K ceiling). Bare `k3` must be 1M because hot-switching to `k3[1m]` makes the upstream strip the suffix and return `response.body.model: "k3"` — the response-first resolver would otherwise split the bar's denominator (200K) from the request side (1M). The `[Nk]/[Nm]` suffix still overrides everything.
+
+- fix(context): **context bar window follows the hot-switched upstream model** — the SSE `context_window` producers (`log-watcher` live path and `/events` cold-load) sized the window from the request model (`body.model`), which under proxy hot-switch is the original client model, not the real upstream one. `getContextSizeForModel` now accepts a log entry and prefers `response.body.model` (same precedence as the frontend's `getEffectiveModel`), skipping the stale startup cache on that path; `adaptContextWindow` gains a 256K→1M correction tier so an over-window kimi reading no longer pins the bar at 100%.
+
+- fix(context): **explicit `[Nk]/[Nm]` config suffix wins over upstream model normalization** — hot-switching to `k3[1m]` makes Moonshot return `response.body.model: "k3"` (the `[1m]` context marker is client-side and not echoed back); the response-first resolver then misread the window as 200K (bar showed 76% instead of 15%). New `getCalibrationModel` (context-rules.js, shared src/server) resolves the calibration model with the request-side explicit suffix taking precedence over the upstream-normalized response, falling back to response-first otherwise; both `resolveCalibrationTokens` (frontend) and `getContextSizeForModel` (server SSE) now use it, so the bar's denominator honors the configured 1M intent.
 
 ## 1.7.11 (2026-07-29)
 

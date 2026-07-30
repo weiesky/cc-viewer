@@ -171,4 +171,25 @@ describe('GET /events kv/context scan semantics', { concurrency: false }, () => 
     const tokens = chunks.map(c => JSON.parse(c.data)[0].response.body.usage.input_tokens);
     assert.deepEqual(tokens, [111, 222, 999]);
   });
+
+  it('热切换:context_window 窗口档位跟随 response.body.model(权威上游模型)', async () => {
+    // 代理热切换语义:body.model 是客户端原始模型(claude-opus-4-8),response.body.model
+    // 才是真实上游模型(kimi-k3 → 规则表 256K 档)。getContextSizeForModel 的 entry 路径
+    // 必须取后者,且不被启动缓存/请求名带偏。
+    const w = (await import('../server/interceptor.js'))._v2Writer;
+    const hot = mainAgentEntry('2026-06-06T01:03:00.000Z', 333, SID_MAIN,
+      [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'yo' }, { role: 'user', content: 'hot' }]);
+    hot.response.body.model = 'kimi-k3';
+    const h = w.ingestRequest(hot, null);
+    w.ingestCompletion(h, hot);
+    await w.flush();
+
+    const frames = await collectSSE(port, '/events', ['context_window'], 10000);
+    const cw = frames.find(f => f.event === 'context_window');
+    assert.ok(cw, `必须收到 context_window 帧（实收事件：${frames.map(f => f.event).join(',')}）`);
+    const data = JSON.parse(cw.data);
+    assert.equal(data.total_input_tokens, 333, 'context_window 应来自最新那条热切换 mainAgent');
+    assert.equal(data.context_window_size, 256000,
+      '窗口档位应跟随 response.body.model(kimi-k3 → 256K),而非请求名 claude-opus-4-8 的 1M');
+  });
 });

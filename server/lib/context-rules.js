@@ -27,6 +27,29 @@ export function parseContextSizeSuffix(modelName) {
   return m[2].toLowerCase() === 'm' ? num * 1000000 : num * 1000;
 }
 
+/**
+ * Resolve the model name to use for context-window classification (血条窗口判定专用).
+ *
+ * Precedence differs from getEffectiveModel (response-first) on one deliberate
+ * point: an EXPLICIT [Nk]/[Nm] suffix on the REQUEST model (`body.model`, which
+ * carries the user's hot-switch config / model selector intent) is authoritative
+ * and must NOT be overridden by the upstream response. Upstream APIs normalize
+ * the response `model` — e.g. hot-switching to `k3[1m]` makes Moonshot return
+ * `response.body.model: "k3"`, stripping the [1m] marker; a response-first read
+ * would then misclassify the window (bare k3 vs the configured 1M). So: request
+ * suffix wins; otherwise fall back to the response model, then the request name.
+ *
+ * @param {object|null|undefined} request log entry with body / response
+ * @returns {string|null}
+ */
+export function getCalibrationModel(request) {
+  const reqModel = request?.body?.model;
+  if (typeof reqModel === 'string' && parseContextSizeSuffix(reqModel) != null) return reqModel;
+  const respModel = request?.response?.body?.model;
+  if (typeof respModel === 'string' && respModel) return respModel;
+  return (typeof reqModel === 'string' && reqModel) ? reqModel : null;
+}
+
 // 模型家族 → 窗口档位表(有序,首条命中)。后缀解析在表外先行(见 getModelMaxTokens)。
 const MODEL_CONTEXT_SIZES = [
   // haiku 全系 200K,显式置于一切 1M 默认之前(claude-haiku-4-5 等)
@@ -48,6 +71,10 @@ const MODEL_CONTEXT_SIZES = [
   { match: /gpt-4o|o1|o3|o4/i, tokens: 128000 },
   { match: /gpt-4/i, tokens: 128000 },
   { match: /gpt-3/i, tokens: 16000 },
+  // Kimi 家族精确档:k2.x/k3 等带 kimi/moonshot 前缀的 → 256K;裸 'k3'(无前缀,
+  // 代理直连时的简写 model 名)→ 256K 精确档但 classifyContextWindow 不升 1M
+  // (见该函数的家族特判,裸 k3 归 200K 桶,超量由 adaptContextWindow 纠偏)。
+  { match: /kimi|moonshot|^k3$/i, tokens: 256000 },
   // deepseek-v4 defaults to 1M; placed before generic /deepseek/ so the
   // first-match-wins loop picks it up before falling through to 128K.
   { match: /deepseek-v4/i, tokens: 1000000 },
@@ -74,12 +101,19 @@ export function getModelMaxTokens(modelName) {
  * 不变量:只返回 1000000 或 200000(resolveCalibrationTokens 依赖此不变量)。
  * 裸 '1m' 子串(无方括号,如 deepseek-v3-1m)→ 1M 的宽松规则仅限本分类器,
  * 刻意不进 getModelMaxTokens(后者面向精确档位)。128K/16K 档归入 200K 桶。
+ * Kimi 家族特判:kimi/moonshot 前缀型号(k2.x/k3,真实窗口 256K)归 1M 桶 ——
+ * 避免会话中段从 200K 重标定到 256K/1M 的跳变;代价是相对真实 256K 上限
+ * 长期低估(约 4 倍刻度),可接受。裸 'k3' 同样归 1M:代理热切换到
+ * 'k3[1m]' 时上游会把响应 model 归一化成裸 'k3'(剥掉 [1m] 后缀),
+ * response-first 解析读到裸 'k3' 若归 200K 桶会与请求侧 1M 判定分裂,
+ * 血条分母错成 200K;且裸 'k3' 本就是 k3[1m] 的 1M 形态被剥后缀的产物。
  * @param {string} modelName
  * @returns {1000000|200000}
  */
 export function classifyContextWindow(modelName) {
   if (!modelName || typeof modelName !== 'string') return 200000;
   if (modelName.toLowerCase().includes('1m')) return 1000000;
+  if (/kimi|moonshot|^k3$/i.test(modelName)) return 1000000;
   return getModelMaxTokens(modelName) >= 1000000 ? 1000000 : 200000;
 }
 
@@ -88,7 +122,9 @@ export function classifyContextWindow(modelName) {
  * 一个真正的 200K 模型,其输入上下文(input + cache_creation + cache_read)物理上不可能
  * 超过 200K —— 超了 API 直接拒收。所以一旦真实输入用量越过 200K 还被判成 200K,必然是
  * model 名识别错了(误判),此时自动升到 1M,免得血条卡死在 100%、百分比与真实进度脱节。
- * 仅做 200K→1M 这一个方向的纠偏;其余判定(1M、各家 200K 真值等)一律原样返回。
+ * One-way upgrades only: 200K→1M and 256K→1M (the kimi exact tier used by the
+ * server-side SSE path); every other classification (1M, 128K/16K tiers, true
+ * 200K values) is returned unchanged — 128K is deliberately never promoted.
  * 注意:usedContextTokens 必须是"输入侧"用量(sumUsageInputTokens,不含 output_tokens),
  * 否则大输出会误触发。
  * @param {number} classifiedTokens classifyContextWindow / getModelMaxTokens 的结果
@@ -97,6 +133,7 @@ export function classifyContextWindow(modelName) {
  */
 export function adaptContextWindow(classifiedTokens, usedContextTokens) {
   if (classifiedTokens === 200000 && usedContextTokens > 200000) return 1000000;
+  if (classifiedTokens === 256000 && usedContextTokens > 256000) return 1000000;
   return classifiedTokens;
 }
 

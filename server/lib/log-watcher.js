@@ -156,7 +156,7 @@ export function processWatchedEntry(parsed, ctx) {
     if (cached) sendEventToClients(clients, 'kv_cache_content', cached);
     const usage = parsed.response?.body?.usage;
     if (usage) {
-      const contextSize = getContextSizeForModel(parsed.body?.model);
+      const contextSize = getContextSizeForModel(parsed);
       const cwData = buildContextWindowEvent(usage, contextSize);
       if (cwData) sendEventToClients(clients, 'context_window', cwData);
     }

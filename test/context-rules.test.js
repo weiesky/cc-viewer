@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseContextSizeSuffix,
+  getCalibrationModel,
   getModelMaxTokens,
   classifyContextWindow,
   adaptContextWindow,
@@ -25,6 +26,26 @@ describe('parseContextSizeSuffix', () => {
     assert.equal(parseContextSizeSuffix('claude-opus-4-8'), null);
     assert.equal(parseContextSizeSuffix(''), null);
     assert.equal(parseContextSizeSuffix(null), null);
+  });
+});
+
+describe('getCalibrationModel — 校准窗口判定专用解析', () => {
+  it('请求名带显式 [Nk]/[Nm] 后缀 → 请求名优先,不被响应归一化覆盖', () => {
+    // 热切换 k3[1m]:上游把响应 model 剥成裸 k3,请求侧 [1m] 意图必须胜出
+    assert.equal(getCalibrationModel({ body: { model: 'k3[1m]' }, response: { body: { model: 'k3' } } }), 'k3[1m]');
+    assert.equal(getCalibrationModel({ body: { model: 'claude-opus-4-6[1m]' }, response: { body: { model: 'claude-opus-4-6' } } }), 'claude-opus-4-6[1m]');
+  });
+  it('请求名无后缀 → response.body.model 优先(热切换权威)', () => {
+    assert.equal(getCalibrationModel({ body: { model: 'claude-opus-4-6' }, response: { body: { model: 'kimi-k3' } } }), 'kimi-k3');
+  });
+  it('无 response 模型 → 回退请求名;空串响应视为缺失', () => {
+    assert.equal(getCalibrationModel({ body: { model: 'claude-haiku-4-5' }, response: { body: { model: '' } } }), 'claude-haiku-4-5');
+    assert.equal(getCalibrationModel({ body: { model: 'claude-opus-4-1' } }), 'claude-opus-4-1');
+  });
+  it('空/非法入参 → null', () => {
+    assert.equal(getCalibrationModel(null), null);
+    assert.equal(getCalibrationModel({}), null);
+    assert.equal(getCalibrationModel({ body: {} }), null);
   });
 });
 
@@ -80,6 +101,17 @@ describe('getModelMaxTokens — 家族档位', () => {
     assert.equal(getModelMaxTokens(''), 200000);
     assert.equal(getModelMaxTokens('llama-3-70b'), 200000);
   });
+  it('kimi/moonshot 前缀型号与裸 k3 → 256K 精确档', () => {
+    assert.equal(getModelMaxTokens('kimi-k2.5'), 256000);
+    assert.equal(getModelMaxTokens('kimi-k3'), 256000);
+    assert.equal(getModelMaxTokens('moonshot-v1-k2'), 256000);
+    assert.equal(getModelMaxTokens('k3'), 256000);
+    assert.equal(getModelMaxTokens('K3'), 256000);
+  });
+  it('kimi 256K 档可被 [Nk]/[Nm] 后缀覆盖', () => {
+    assert.equal(getModelMaxTokens('kimi-k3[1m]'), 1000000);
+    assert.equal(getModelMaxTokens('k3[128k]'), 128000);
+  });
 });
 
 describe('classifyContextWindow — 校准二分类', () => {
@@ -99,6 +131,13 @@ describe('classifyContextWindow — 校准二分类', () => {
     assert.equal(classifyContextWindow('gpt-4o'), 200000);
     assert.equal(classifyContextWindow('deepseek-chat'), 200000);
   });
+  it('kimi/moonshot 前缀型号与裸 k3 均特判归 1M 桶', () => {
+    assert.equal(classifyContextWindow('kimi-k2.5'), 1000000);
+    assert.equal(classifyContextWindow('kimi-k3'), 1000000);
+    assert.equal(classifyContextWindow('moonshot-v1-k2'), 1000000);
+    // 裸 k3:热切换 k3[1m] 时上游把响应 model 剥成裸 k3,response-first 解析须仍归 1M
+    assert.equal(classifyContextWindow('k3'), 1000000);
+  });
 });
 
 describe('adaptContextWindow — 自适应纠偏', () => {
@@ -106,7 +145,11 @@ describe('adaptContextWindow — 自适应纠偏', () => {
     assert.equal(adaptContextWindow(200000, 200000), 200000);
     assert.equal(adaptContextWindow(200000, 200001), 1000000);
   });
-  it('单向:1M 判定不降级;非 200K 档不纠偏', () => {
+  it('256K 档(kimi 精确档,服务端 SSE 路径)且输入用量 > 256K → 升 1M(边界同理)', () => {
+    assert.equal(adaptContextWindow(256000, 256000), 256000);
+    assert.equal(adaptContextWindow(256000, 256001), 1000000);
+  });
+  it('单向:1M 判定不降级;128K 档永不升档', () => {
     assert.equal(adaptContextWindow(1000000, 50), 1000000);
     assert.equal(adaptContextWindow(128000, 300000), 128000);
   });

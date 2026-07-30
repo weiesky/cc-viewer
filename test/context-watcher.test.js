@@ -154,6 +154,21 @@ describe('context-watcher: readModelContextSize', () => {
       restoreContextFile();
     }
   });
+
+  it('kimi model.id → 256K(规则表新家族)', () => {
+    backupContextFile();
+    try {
+      mkdirSync(CLAUDE_DIR, { recursive: true });
+      writeFileSync(CONTEXT_WINDOW_FILE, JSON.stringify({
+        model: { id: 'kimi-k3' },
+      }) + '\n');
+      const result = readModelContextSize();
+      assert.equal(result.modelId, 'kimi-k3');
+      assert.equal(result.contextSize, 256000);
+    } finally {
+      restoreContextFile();
+    }
+  });
 });
 
 describe('context-watcher: getContextSizeForModel', () => {
@@ -173,6 +188,54 @@ describe('context-watcher: getContextSizeForModel', () => {
   it('deepseek-v4 → 1M(此前服务端漂移误判 200K 的修复)', () => { assert.equal(getContextSizeForModel('deepseek-v4'), 1000000); });
   it('旧 opus(4-1 含日期后缀)→ 200K(规则表修正)', () => { assert.equal(getContextSizeForModel('claude-opus-4-1-20250805'), 200000); });
   it('gpt-4o → 128K(三方档位与前端同源)', () => { assert.equal(getContextSizeForModel('gpt-4o'), 128000); });
+});
+
+describe('context-watcher: getContextSizeForModel — entry 形式(热切换感知)', () => {
+  // response.body.model 是代理热切换后的权威模型名(与前端 effectiveModel 同优先级);
+  // 该路径跳过启动缓存 —— 缓存是请求侧静态信息,热切换后即过期。
+  it('entry: response.body.model 优先于请求名(hot-switch → kimi-k3 = 256K)', () => {
+    const entry = { body: { model: 'claude-opus-4-6' }, response: { body: { model: 'kimi-k3' } } };
+    assert.equal(getContextSizeForModel(entry), 256000);
+  });
+  it('entry: response 模型命中缓存 base 也绕过启动缓存(规则表为准)', () => {
+    // 自包含重建启动缓存(sonnet-4-6 → 200K),不依赖前面用例的执行顺序。
+    backupContextFile();
+    try {
+      mkdirSync(CLAUDE_DIR, { recursive: true });
+      writeFileSync(CONTEXT_WINDOW_FILE, JSON.stringify({ model: { id: 'claude-sonnet-4-6[200k]' } }) + '\n');
+      readModelContextSize(); // populates _startupModelBase='sonnet-4-6', _startupContextSize=200K
+      // 请求名(无 [Nk]/[Nm] 后缀)撞缓存 base 'sonnet-4-6',但 response 是 kimi-k3
+      // → entry 路径绕过启动缓存走规则表 → 256K(而非缓存的 200K 或 opus 的 1M)。
+      const entry = { body: { model: 'claude-sonnet-4-6' }, response: { body: { model: 'kimi-k3' } } };
+      assert.equal(getContextSizeForModel(entry), 256000);
+    } finally {
+      restoreContextFile();
+    }
+  });
+  it('entry: response.body.model 为空字符串 → 视为无 response 模型,回退请求名旧路径', () => {
+    const entry = { body: { model: 'claude-haiku-4-5' }, response: { body: { model: '' } } };
+    assert.equal(getContextSizeForModel(entry), 200000);
+  });
+  it('entry: 无 response.body.model → 回退请求名旧路径(缓存优先保留)', () => {
+    const entry = { body: { model: 'claude-haiku-4-5' }, response: { body: { usage: {} } } };
+    assert.equal(getContextSizeForModel(entry), 200000);
+  });
+  it('entry: 无 response 字段 → 请求名旧路径', () => {
+    assert.equal(getContextSizeForModel({ body: { model: 'claude-opus-4-1' } }), 200000);
+  });
+  it('entry: response 模型带日期后缀/大小写混合照常命中家族表', () => {
+    const entry = { body: { model: 'claude-sonnet-4-6' }, response: { body: { model: 'DeepSeek-V4-Turbo' } } };
+    assert.equal(getContextSizeForModel(entry), 1000000);
+  });
+  it('entry: response 模型无法识别 → 规则表默认 200K(adaptContextWindow 兜底纠偏)', () => {
+    const entry = { body: { model: 'claude-opus-4-8' }, response: { body: { model: 'some-opaque-upstream-alias' } } };
+    assert.equal(getContextSizeForModel(entry), 200000);
+  });
+  it('entry: 请求名带 [1m] 后缀 → 请求后缀优先,不被响应归一化覆盖(k3[1m]→裸k3 仍 1M)', () => {
+    // 热切换配置 k3[1m]:上游响应 model 剥成裸 k3,请求侧 [1m] 意图必须胜出 → 1M。
+    const entry = { body: { model: 'k3[1m]' }, response: { body: { model: 'k3' } } };
+    assert.equal(getContextSizeForModel(entry), 1000000);
+  });
 });
 
 describe('context-watcher: readClaudeProjectModel', () => {
@@ -385,6 +448,17 @@ describe('context-watcher: buildContextWindowEvent', () => {
     assert.equal(result.used_percentage, 26); // (255000 / 1000000) * 100 ≈ 26（非卡死 100）
   });
 
+  it('自适应纠偏:判 256K(kimi 精确档)但输入 >256K → 升 1M;未越窗保持 256K', () => {
+    // 260K 输入对 256K 窗口同样物理不可能 → 升 1M,百分比按 1M 重算。
+    const over = buildContextWindowEvent({ input_tokens: 260000, output_tokens: 5000 }, 256000);
+    assert.equal(over.context_window_size, 1000000); // 256000 → 1000000
+    assert.equal(over.used_percentage, 27); // (265000 / 1000000) * 100 ≈ 27
+    // 200K 输入 < 256K → 不触发,保持 256K 档。
+    const under = buildContextWindowEvent({ input_tokens: 200000, output_tokens: 5000 }, 256000);
+    assert.equal(under.context_window_size, 256000);
+    assert.equal(under.used_percentage, 80); // (205000 / 256000) * 100 ≈ 80
+  });
+
   it('自适应纠偏:大 output 但输入侧未越窗 → 不触发(只看输入侧)', () => {
     // output 拉高 totalTokens,但 input+cache 仅 120K < 200K,不该误升。
     const usage = { input_tokens: 100000, cache_read_input_tokens: 20000, output_tokens: 150000 };
@@ -411,5 +485,46 @@ describe('context-watcher: buildContextWindowEvent', () => {
     const result = buildContextWindowEvent(usage, 200000);
     assert.equal(result.total_input_tokens, 250000);
     assert.equal(result.context_window_size, 1000000);
+  });
+});
+
+describe('log-watcher: processWatchedEntry — 实时 SSE 路径热切换感知', () => {
+  // 实时广播路径(log-watcher.js processWatchedEntry)与 /events 冷加载共用同一
+  // getContextSizeForModel entry 分支;此处直接驱动 processWatchedEntry,断言广播帧的
+  // context_window_size 跟随 response.body.model 而非请求名。
+  it('热切换 entry(请求 opus-4-6 / 响应 kimi-k3)→ 广播 context_window_size=256000', async () => {
+    const { processWatchedEntry } = await import('../server/lib/log-watcher.js');
+    const sent = [];
+    const clients = [{
+      write: (payload) => { sent.push(payload); return true; },
+      // minimal writable-ish surface used by _safeSseWrite
+      destroyed: false,
+    }];
+    const parsed = {
+      timestamp: '2026-07-30T00:00:00.000Z',
+      url: 'https://api.anthropic.com/v1/messages',
+      method: 'POST',
+      mainAgent: true,
+      body: {
+        model: 'claude-opus-4-6',
+        system: [{ type: 'text', text: 'You are Claude Code' }],
+        tools: [{ name: 'Edit' }, { name: 'Bash' }, { name: 'Task' }, { name: 'Read' }, { name: 'Write' }, { name: 'Glob' }, { name: 'Grep' }, { name: 'Agent' }, { name: 'WebFetch' }, { name: 'WebSearch' }, { name: 'NotebookEdit' }, { name: 'AskUser' }],
+        metadata: { user_id: JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: 's' }) },
+        messages: [{ role: 'user', content: 'hi' }],
+      },
+      response: { status: 200, body: { model: 'kimi-k3', usage: { input_tokens: 1000, output_tokens: 10 } } },
+    };
+    const ctx = {
+      reconstructor: { reconstruct: () => {} },
+      clients,
+      getClaudePid: () => 12345,
+      runParallelHook: () => Promise.resolve(),
+    };
+    processWatchedEntry(parsed, ctx);
+    const cwFrame = sent.find((p) => p.startsWith('event: context_window'));
+    assert.ok(cwFrame, `应广播 context_window 帧(实发 ${sent.length} 帧)`);
+    const data = JSON.parse(cwFrame.slice(cwFrame.indexOf('data:') + 5).trim());
+    assert.equal(data.context_window_size, 256000,
+      '实时路径窗口档位应跟随 response.body.model(kimi-k3 → 256K),而非请求名 opus-4-6 的 1M');
   });
 });

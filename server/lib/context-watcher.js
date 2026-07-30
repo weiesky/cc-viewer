@@ -2,7 +2,7 @@ import { readFileSync, existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { getClaudeConfigDir } from '../../findcc.js';
-import { getModelMaxTokens, adaptContextWindow, sumUsageInputTokens, sumUsageContextTokens } from './context-rules.js';
+import { getModelMaxTokens, adaptContextWindow, sumUsageInputTokens, sumUsageContextTokens, getCalibrationModel } from './context-rules.js';
 
 export const CONTEXT_WINDOW_FILE = join(getClaudeConfigDir(), 'context-window.json');
 export const CLAUDE_SETTINGS_FILE = join(getClaudeConfigDir(), 'settings.json');
@@ -43,10 +43,25 @@ export function readModelContextSize() {
 /**
  * Get context size for a given API model name (e.g. 'claude-opus-4-6-20250514').
  * Uses startup cache to avoid re-reading the file.
- * @param {string} apiModelName - model name from req.body.model
+ * Accepts either a bare model-name string (legacy path) or a full log entry.
+ * Entry input resolves the model via getCalibrationModel (context-rules.js):
+ * an explicit [Nk]/[Nm] suffix on the REQUEST model wins (the user's hot-switch
+ * config intent, e.g. k3[1m]); otherwise the upstream response.body.model is
+ * authoritative. The startup cache is request-side static info, stale after a
+ * hot-switch, so entry resolution skips it and goes straight to the family
+ * rules table. String input keeps legacy cache-first behavior unchanged.
+ * @param {string|object} modelOrEntry - model name, or log entry with body/response
  * @returns {number} context window size in tokens
  */
-export function getContextSizeForModel(apiModelName) {
+export function getContextSizeForModel(modelOrEntry) {
+  const isEntry = modelOrEntry !== null && typeof modelOrEntry === 'object';
+  // Entry input: calibration-aware resolution (request [Nk]/[Nm] suffix wins,
+  // else response model). Authoritative over the stale startup cache.
+  if (isEntry) {
+    const model = getCalibrationModel(modelOrEntry);
+    return model ? getModelMaxTokens(model) : (_startupContextSize || 200000);
+  }
+  const apiModelName = modelOrEntry;
   if (!apiModelName) return _startupContextSize || 200000;
   const lower = apiModelName.toLowerCase();
   // Extract base: 'claude-opus-4-6-20250514' → 'opus-4-6'
@@ -56,7 +71,7 @@ export function getContextSizeForModel(apiModelName) {
     return _startupContextSize;
   }
   // 完整档位表见 server/lib/context-rules.js(与前端同源;含 haiku/旧 opus/3-opus 200K、
-  // deepseek-v4 1M、gpt/deepseek 等三方档位,默认 200K)
+  // deepseek-v4 1M、kimi/moonshot 256K、gpt/deepseek 等三方档位,默认 200K)
   return getModelMaxTokens(apiModelName);
 }
 

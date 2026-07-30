@@ -65,6 +65,12 @@ describe('helpers', () => {
     it('returns 16000 for gpt-3', () => { assert.equal(H.getModelMaxTokens('gpt-3.5-turbo'), 16000); });
     it('returns 200000 for null', () => { assert.equal(H.getModelMaxTokens(null), 200000); });
     it('returns 200000 for unknown model', () => { assert.equal(H.getModelMaxTokens('llama-3'), 200000); });
+    it('returns 256000 for kimi-prefixed models and bare k3', () => {
+      assert.equal(H.getModelMaxTokens('kimi-k2.5'), 256000);
+      assert.equal(H.getModelMaxTokens('kimi-k3'), 256000);
+      assert.equal(H.getModelMaxTokens('moonshot-v1-k2'), 256000);
+      assert.equal(H.getModelMaxTokens('k3'), 256000);
+    });
   });
 
   describe('resolveCalibrationTokens', () => {
@@ -107,6 +113,19 @@ describe('helpers', () => {
     });
     it('auto + sonnet-4-6 → 200K (no opus, no 1m)', () => {
       assert.equal(H.resolveCalibrationTokens('auto', reqWith('claude-sonnet-4-6')), 200000);
+    });
+    it('auto + kimi 前缀型号 → 1M 桶 (256K 档特判,宁大勿小)', () => {
+      assert.equal(H.resolveCalibrationTokens('auto', reqWith('kimi-k2.5')), 1000000);
+      assert.equal(H.resolveCalibrationTokens('auto', reqWith('kimi-k3')), 1000000);
+    });
+    it('auto + 裸 k3 → 1M 桶 (热切换 k3[1m] 时上游剥后缀,response-first 仍须 1M)', () => {
+      assert.equal(H.resolveCalibrationTokens('auto', reqWith('k3')), 1000000);
+    });
+    it('auto + 请求 k3[1m]/响应裸 k3(上游归一化)→ 1M (请求后缀意图优先,不被响应覆盖)', () => {
+      // 热切换配置 k3[1m]:body.model 带 [1m],上游 response.body.model 归一化成裸 k3。
+      // getCalibrationModel 须采纳请求侧 [1m] 意图 → 1M,而非 response-first 的裸 k3。
+      const req = { body: { model: 'k3[1m]' }, response: { body: { model: 'k3' } } };
+      assert.equal(H.resolveCalibrationTokens('auto', req), 1000000);
     });
     it('legacy value (opus-4.7-1m) + null lastMainAgent → 1M (cold-start fallback via auto path)', () => {
       // 老用户 localStorage 残留值；AppHeader.jsx 验证逻辑会先把它兜底为 'auto'，
@@ -159,6 +178,12 @@ describe('helpers', () => {
     it('已是 1M → 原样返回(单向纠偏,不降级)', () => {
       assert.equal(H.adaptContextWindow(1000000, 50000), 1000000);
       assert.equal(H.adaptContextWindow(1000000, 900000), 1000000);
+    });
+    it('256K 档(kimi)+ 用量越过整窗(>256K) → 升 1M (256K→1M 纠偏档)', () => {
+      assert.equal(H.adaptContextWindow(256000, 300000), 1000000);
+    });
+    it('256K 档 + 用量恰好 256K(未越窗) → 保持 256K', () => {
+      assert.equal(H.adaptContextWindow(256000, 256000), 256000);
     });
   });
 
