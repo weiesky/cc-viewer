@@ -1,6 +1,6 @@
 import React from 'react';
 import { lazy, Suspense } from 'react';
-import { ConfigProvider, Layout, theme, Modal, Button, Checkbox, Spin, Alert, message, Tooltip, Popconfirm } from 'antd';
+import { ConfigProvider, Layout, theme, Modal, Button, Checkbox, Spin, Alert, message, Tooltip, Popconfirm, Select } from 'antd';
 import { UploadOutlined, DeleteOutlined, ReloadOutlined, SwapOutlined } from '@ant-design/icons';
 import AppBase, { styles } from './AppBase';
 import { isMobile, isElectron, setViewMode } from './env';
@@ -15,6 +15,7 @@ import OpenFolderIcon from './components/common/OpenFolderIcon';
 import CountryFlag from './components/common/CountryFlag';
 import UsageWindowPill from './components/dashboard/UsageWindowPill';
 import { extractLatestPlanUsage } from './utils/rateLimitParser';
+import { getProjectAlias } from './utils/projectAlias';
 import { t } from './i18n';
 import { reportSwallowed } from './utils/errorReport';
 import { filterRelevantRequests, visibleRequests, findPrevMainAgentTimestamp } from './utils/helpers';
@@ -478,6 +479,8 @@ class App extends AppBase {
 
   render() {
     const { filteredRequests, deepRequests, selectedRequest, fileLoading, fileLoadingCount, mainAgentSessions, viewMode } = this.renderPrepare();
+    // 日志弹窗：是否正在查看「非活动项目」。此时 v1 迁移按钮/横幅需隐藏（迁移只作用于活动项目）。
+    const logsViewingOther = !!(this.state.logViewProject && this.state.logViewProject !== this.state.currentProject);
     // 「仅展示当前会话」锁定：把传给 ChatView 的会话切到「以 pin 会话结尾」，
     // 让 pin 会话从 ChatView 视角即最后一个会话（LR 卡片 / 审批 modal 等既有逻辑原样可用）。
     const { sessions: displaySessions, upperBoundTs: sessionUpperBoundTs } = this._displaySessionsFor(mainAgentSessions);
@@ -809,6 +812,17 @@ class App extends AppBase {
           styles={{ body: { overflow: 'hidden' }, mask: BLUR_MASK_STYLE }}
         >
           <div className={styles.modalActions}>
+            {/* Project switcher: view another project's logs without switching
+                the active workspace. currentProject = active project (from the
+                server); logViewProject = the project being viewed ('' = active). */}
+            <Select
+              size="small"
+              style={{ minWidth: 180, marginRight: 8 }}
+              value={this.state.logViewProject || this.state.currentProject || undefined}
+              placeholder={t('ui.selectProject')}
+              options={(this.state.allLogProjects || []).map(p => ({ value: p, label: getProjectAlias(p) ? `${getProjectAlias(p)} (${p})` : p }))}
+              onChange={this.handleLogsProjectChange}
+            />
             <Button size="small" icon={<UploadOutlined />} onClick={this.handleLoadLocalJsonlFile}>
               {t('ui.loadLocalJsonl')}
             </Button>
@@ -834,11 +848,14 @@ class App extends AppBase {
             {/* v1 view entry — gated on "v1 files ON DISK" (not "unmigrated"):
                 the converter never deletes sources, so the view must stay
                 reachable after a finished migration until the user deletes the
-                leftovers from inside it. Hidden when no v1 file exists. */}
+                leftovers from inside it. Hidden when no v1 file exists.
+                查看非活动项目时禁用——v1FileCount 只反映活动项目，计数会误导。 */}
             {this.state.logView === 'v2' && this.state.v1FileCount > 0 && (
-              <Button size="small" type="link" onClick={() => this.handleSetLogView('v1')}>
-                {t('ui.viewV1Logs', { count: this.state.v1FileCount })}
-              </Button>
+              <Tooltip title={logsViewingOther ? t('ui.migrateCurrentProjectOnly') : ''}>
+                <Button size="small" type="link" disabled={logsViewingOther} onClick={() => this.handleSetLogView('v1')}>
+                  {t('ui.viewV1Logs', { count: this.state.v1FileCount })}
+                </Button>
+              </Tooltip>
             )}
             {this.state.logView === 'v1' && (
               <Button size="small" type="link" onClick={() => this.handleSetLogView('v2')}>
@@ -849,7 +866,8 @@ class App extends AppBase {
                 task is resident server-side; this row is just its remote.
                 Lives in the v1 view only (the v2 view carries no migration UI);
                 gated on "unmigrated v1 files present" (an active/just-finished
-                task stays visible so its progress/result can be read). */}
+                task stays visible so its progress/result can be read).
+                查看非活动项目（logsViewingOther）时禁用——迁移只作用于活动项目。 */}
             {this.state.logView === 'v1' && (this.state.unmigratedV1Count > 0 || this.state.wireV2Convert?.running || this.state.wireV2Convert?.state) && (() => {
               const cv = this.state.wireV2Convert;
               const st = cv && cv.state;
@@ -878,15 +896,21 @@ class App extends AppBase {
               }
               return (
                 <span className={styles.btnMarginLeft}>
-                  <Popconfirm
-                    title={t('ui.wireV2Convert')}
-                    description={t('ui.wireV2ConvertConfirm')}
-                    onConfirm={this.handleStartWireV2Convert}
-                    okText={t('ui.wireV2ConvertOk')}
-                    cancelText={t('ui.cancel')}
-                  >
-                    <Button size="small" icon={<SwapOutlined />}>{t('ui.wireV2Convert')}</Button>
-                  </Popconfirm>
+                  {logsViewingOther ? (
+                    <Tooltip title={t('ui.migrateCurrentProjectOnly')}>
+                      <Button size="small" icon={<SwapOutlined />} disabled>{t('ui.wireV2Convert')}</Button>
+                    </Tooltip>
+                  ) : (
+                    <Popconfirm
+                      title={t('ui.wireV2Convert')}
+                      description={t('ui.wireV2ConvertConfirm')}
+                      onConfirm={this.handleStartWireV2Convert}
+                      okText={t('ui.wireV2ConvertOk')}
+                      cancelText={t('ui.cancel')}
+                    >
+                      <Button size="small" icon={<SwapOutlined />}>{t('ui.wireV2Convert')}</Button>
+                    </Popconfirm>
+                  )}
                   {st && st.status === 'done' && (
                     <span className={styles.pendingHint}> {t('ui.wireV2ConvertDone', { sessions: st.sessionsConverted || 0, skipped: st.sessionsSkipped || 0 })}</span>
                   )}
@@ -904,7 +928,7 @@ class App extends AppBase {
               );
             })()}
           </div>
-          {this.state.logView === 'v1' && this.state.unmigratedV1Count > 0 && (
+          {this.state.logView === 'v1' && this.state.unmigratedV1Count > 0 && !logsViewingOther && (
             <Alert
               type="info"
               showIcon
@@ -916,24 +940,31 @@ class App extends AppBase {
               })}
             />
           )}
-          {this.state.localLogsLoading ? (
-            <div className={styles.spinCenter}><Spin /></div>
-          ) : (() => {
-            const source = this.state.logView === 'v1' ? this.state.localLogsV1 : this.state.localLogs;
-            const currentLogs = source[this.state.currentProject];
-            if (!currentLogs || currentLogs.length === 0) {
+          <div className={styles.logsModalContent}>
+            {this.state.localLogsLoading ? (
+              <div className={styles.spinCenter}><Spin /></div>
+            ) : (() => {
+              // v2 view: localLogs is the current page (flat array, server-paginated).
+              // v1 view: localLogsV1 stays the legacy grouped-by-project object;
+              // the project switcher applies to it too (logViewProject overrides).
+              const viewProject = this.state.logViewProject || this.state.currentProject;
+              const currentLogs = this.state.logView === 'v1'
+                ? this.state.localLogsV1[viewProject]
+                : this.state.localLogs;
+              if (!currentLogs || currentLogs.length === 0) {
+                return (
+                  <div className={styles.emptyCenter}>
+                    {t('ui.noLogs')}
+                  </div>
+                );
+              }
               return (
-                <div className={styles.emptyCenter}>
-                  {t('ui.noLogs')}
+                <div className={styles.logListContainer}>
+                  {this.renderLogTable(currentLogs, false)}
                 </div>
               );
-            }
-            return (
-              <div className={styles.logListContainer}>
-                {this.renderLogTable(currentLogs, false)}
-              </div>
-            );
-          })()}
+            })()}
+          </div>
         </Modal>
         </ApprovalModal>
         </TerminalWsProvider>

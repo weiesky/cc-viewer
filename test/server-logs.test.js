@@ -163,6 +163,7 @@ describeCli('server local logs endpoints', { concurrency: false }, () => {
     const { initForWorkspace } = await import('../server/interceptor.js');
     const { listV1Files } = await import('../server/lib/v2/convert.js');
     const { statSync } = await import('node:fs');
+    const { _invalidate: invalidateMig } = await import('../server/lib/v2/migrate-prompt.js');
     initForWorkspace(projectDir, { forceNew: true });
     const files = listV1Files(projectDir).map((name) => ({
       name, size: statSync(join(projectDir, name)).size, done: true,
@@ -170,12 +171,16 @@ describeCli('server local logs endpoints', { concurrency: false }, () => {
     assert.ok(files.length >= 1, 'fixture has a v1 file on disk');
     writeFileSync(join(projectDir, 'wire-v2-convert-state.json'),
       JSON.stringify({ version: 1, status: 'done', files }));
+    // The TTL memo may hold a stale result from the previous test's HTTP call
+    // — drop it so this test sees the freshly-written convert state.
+    invalidateMig();
     try {
       const def = (await httpRequest(port, '/api/local-logs')).json();
       assert.equal(def._v1FileCount, files.length, 'converter never deletes sources — entry link stays');
       assert.equal(def._unmigratedV1Count, 0, 'fully-converted files are no longer pending');
     } finally {
       rmSync(join(projectDir, 'wire-v2-convert-state.json'), { force: true });
+      invalidateMig(); // don't let the done-state memo leak into the next test
     }
   });
 

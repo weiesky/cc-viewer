@@ -122,6 +122,92 @@ describe('GET /api/local-logs', () => {
     assert.equal(data.proj.length, 2, 'two v2 sessions, zero v1 rows');
     assert.ok(data.proj.every((row) => row.kind === 'v2'));
   });
+
+  // ─── ?project= — view another project's logs (modal project switcher) ──────
+  describe('?project=', () => {
+    function writeV2Session(project, sid, startTs) {
+      const dir = join(tmpDir, project, 'sessions', sid);
+      mkdirSync(join(dir, 'conversations', 'main'), { recursive: true });
+      writeFileSync(join(dir, 'meta.json'), JSON.stringify({ wireFormat: 2, sessionId: sid, pid: 1, startTs }));
+      writeFileSync(join(dir, 'journal.jsonl'), [
+        JSON.stringify({ ph: 'meta', wireFormat: 2 }),
+        JSON.stringify({ ph: 'req', seq: 1, rid: 'r1', ts: startTs, kind: 'main', conv: 'main', epoch: 0, url: 'https://api.anthropic.com/v1/messages', method: 'POST', model: 'm', msgFrom: 0, msgTo: 1, evt: 'snapshot' }),
+        JSON.stringify({ ph: 'done', seq: 1, rid: 'r1', ts: startTs, status: 'ok' }),
+      ].join('\n') + '\n');
+      writeFileSync(join(dir, 'conversations', 'main', 'e0.jsonl'),
+        JSON.stringify({ seq: 1, rid: 'r1', t: 'snapshot', msgs: [{ role: 'user', content: [{ type: 'text', text: `${project} prompt` }] }] }) + '\n');
+    }
+
+    it('serves the requested project with _allProjects and 200', async () => {
+      writeV2Session('proj', 'aaaa1111-2222-4333-8444-bbbb55550001', '2026-06-01T10:00:00.000Z');
+      writeV2Session('other', 'bbbb2222-3333-4444-8555-cccc66660002', '2026-06-02T10:00:00.000Z');
+      const res = await callGet(h('/api/local-logs', 'GET'), url('/api/local-logs', { page: '1', pageSize: '50', project: 'other' }));
+      assert.equal(res.statusCode, 200);
+      const data = json(res);
+      // _currentProject stays the ACTIVE project ('' in this test — no workspace
+      // bound); the VIEWED project is reported separately via _viewedProject.
+      // Pinning this prevents "viewing A" from leaking into global currentProject.
+      assert.equal(data._currentProject, '');
+      assert.equal(data._viewedProject, 'other');
+      assert.ok(Array.isArray(data.items), 'paginated shape');
+      assert.equal(data.items.length, 1);
+      assert.ok(data.items[0].file.startsWith('v2:other/'), 'only other project rows');
+      assert.ok(data._allProjects.includes('proj') && data._allProjects.includes('other'), '_allProjects lists both');
+      assert.deepEqual([...data._allProjects].sort(), data._allProjects, '_allProjects sorted');
+    });
+
+    it('400 on path traversal project=..', async () => {
+      const res = await callGet(h('/api/local-logs', 'GET'), url('/api/local-logs', { page: '1', project: '..' }));
+      assert.equal(res.statusCode, 400);
+      assert.equal(json(res).error, 'Invalid project name');
+    });
+
+    it('400 on project containing a separator (a/b)', async () => {
+      // sanitizePathComponent maps '/' → '_' so the strict compare rejects it.
+      const res = await callGet(h('/api/local-logs', 'GET'), url('/api/local-logs', { page: '1', project: 'a/b' }));
+      assert.equal(res.statusCode, 400);
+      assert.equal(json(res).error, 'Invalid project name');
+    });
+
+    it('nonexistent project → 200 with empty page', async () => {
+      const res = await callGet(h('/api/local-logs', 'GET'), url('/api/local-logs', { page: '1', project: 'nonexistent' }));
+      assert.equal(res.statusCode, 200);
+      const data = json(res);
+      assert.equal(data.items.length, 0);
+      assert.equal(data.total, 0);
+      assert.ok(Array.isArray(data._allProjects));
+    });
+
+    it('page/pageSize are clamped: 0/negative/garbage fall back to sane bounds', async () => {
+      writeV2Session('proj', 'aaaa1111-2222-4333-8444-bbbb55550001', '2026-06-01T10:00:00.000Z');
+      // page=0 / page=-1 / page=abc → all treated as page 1.
+      for (const p of ['0', '-1', 'abc']) {
+        const res = await callGet(h('/api/local-logs', 'GET'), url('/api/local-logs', { page: p, project: 'proj' }));
+        assert.equal(res.statusCode, 200, `page=${p} still 200`);
+        assert.equal(json(res).page, 1, `page=${p} clamps to 1`);
+      }
+      // pageSize: 0/garbage both fall to the 50 default (parseInt → 0/NaN are
+      // falsy → `|| 50`); pageSize=9999 clamps to the 200 cap.
+      const s0 = await callGet(h('/api/local-logs', 'GET'), url('/api/local-logs', { page: '1', pageSize: '0', project: 'proj' }));
+      assert.equal(json(s0).pageSize, 50, 'pageSize=0 falls back to default 50');
+      const sBad = await callGet(h('/api/local-logs', 'GET'), url('/api/local-logs', { page: '1', pageSize: 'abc', project: 'proj' }));
+      assert.equal(json(sBad).pageSize, 50, 'pageSize=abc falls back to default 50');
+      const sBig = await callGet(h('/api/local-logs', 'GET'), url('/api/local-logs', { page: '1', pageSize: '9999', project: 'proj' }));
+      assert.equal(json(sBig).pageSize, 200, 'pageSize=9999 clamps to cap 200');
+    });
+
+    it('missing/empty ?project falls back to the active project (no 400)', async () => {
+      writeV2Session('proj', 'aaaa1111-2222-4333-8444-bbbb55550001', '2026-06-01T10:00:00.000Z');
+      // No project param at all → active project (='' here), 200, _viewedProject=''.
+      const noParam = await callGet(h('/api/local-logs', 'GET'), url('/api/local-logs', { page: '1' }));
+      assert.equal(noParam.statusCode, 200);
+      assert.equal(json(noParam)._currentProject, '');
+      assert.equal(json(noParam)._viewedProject, '');
+      // Empty project= → same fallback (empty string is falsy → skipped), not 400.
+      const emptyParam = await callGet(h('/api/local-logs', 'GET'), url('/api/local-logs', { page: '1', project: '' }));
+      assert.equal(emptyParam.statusCode, 200);
+    });
+  });
 });
 
 describe('GET /api/download-log', () => {

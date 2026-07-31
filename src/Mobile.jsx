@@ -1032,7 +1032,8 @@ class Mobile extends AppBase {
               {this.state.localLogsLoading ? (
                 <div className={styles.spinCenter}><Spin /></div>
               ) : (() => {
-                const currentLogs = this.state.localLogs[this.state.currentProject];
+                // v2 view: localLogs is the current page (flat array, server-paginated).
+                const currentLogs = this.state.localLogs;
                 if (!currentLogs || currentLogs.length === 0) {
                   return (
                     <div className={styles.emptyCenter}>

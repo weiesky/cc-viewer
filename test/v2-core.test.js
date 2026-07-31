@@ -16,6 +16,7 @@ import { join } from 'node:path';
 
 import { sanitizePathComponent, sessionPaths, ensureSessionDirSync, convEpochPath, writeFileAtomicSync, dirSizeSync } from '../server/lib/v2/layout.js';
 import { listV2Sessions } from '../server/lib/v2/adapter.js';
+import { _resetForTest as _resetSessionList } from '../server/lib/v2/session-list.js';
 import { resolveSessionDirName } from '../server/lib/v2/session-select.js';
 import { parseUserId, ConvResolver, classifyKind, firstUserPromptText } from '../server/lib/v2/identity.js';
 import { BlobStore } from '../server/lib/v2/blob-store.js';
@@ -933,6 +934,7 @@ describe('V2Writer owner claim lifecycle', () => {
     assert.equal(withLock.length, 1, 'the claimed session lists normally');
     const sizeWith = dirSizeSync(sp('proj', SID).dir);
     await w.close(); // releases the lock
+    _resetSessionList(); // journal is untouched by the lock — without this the second call is a cache hit and asserts nothing
     const withoutLock = listV2Sessions(join(dir, 'proj'));
     assert.equal(withoutLock.length, 1);
     assert.equal(withLock[0].sid, withoutLock[0].sid, 'row identity identical with/without the sidecar');

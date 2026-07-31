@@ -1,14 +1,14 @@
 // Local log management routes (moved verbatim from server.js handleRequest).
-import { existsSync, realpathSync, statSync, createReadStream, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, realpathSync, statSync, createReadStream, mkdtempSync, rmSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import AdmZip from 'adm-zip';
 import { LOG_DIR } from '../../findcc.js';
 import { _projectName, _v2Writer } from '../interceptor.js';
-import { listV2Logs, listLocalLogs, countListedV1Files, deleteLogFiles, validateLogPath } from '../lib/log-management.js';
+import { listV2Logs, listV2LogsPage, listLocalLogs, countListedV1Files, deleteLogFiles, validateLogPath } from '../lib/log-management.js';
 import { countLogEntries, streamRawEntriesAsync, readTailEntries } from '../lib/log-stream.js';
 import { sseHead, sseWrite, wireEnd } from '../lib/wire-compress.js';
-import { dirSizeSync } from '../lib/v2/layout.js';
+import { dirSizeSync, sanitizePathComponent } from '../lib/v2/layout.js';
 import { extractV2Zip } from '../lib/log-zip.js';
 import { startConvert, stopConvert, convertStatus } from '../lib/v2/convert-manager.js';
 import { migrationStatus } from '../lib/v2/migrate-prompt.js';
@@ -32,18 +32,60 @@ async function localLogs(req, res, parsedUrl, isLocal, deps) {
       res.end(JSON.stringify(v1));
       return;
     }
-    const result = listV2Logs(LOG_DIR, _projectName);
+    // Server-side pagination (2026-07-31): ?page=&pageSize= switches the v2
+    // list to a per-project page — only the requested page's sessions are
+    // summarized. Response shape becomes {items, total, page, pageSize} plus
+    // the same _-prefixed side signals below. No params = legacy grouped shape.
+    const pageParam = parsedUrl?.searchParams?.get('page');
+    let payload;
+    if (pageParam != null) {
+      // Optional ?project= views another project's logs (the modal's project
+      // switcher). Strict-compare against sanitizePathComponent (same pattern
+      // as parseV2Ref) so '..'/ separators can't traverse out of LOG_DIR;
+      // absent/empty falls back to the active project.
+      const rawProject = parsedUrl.searchParams.get('project');
+      let target = _projectName;
+      if (rawProject) {
+        if (rawProject !== sanitizePathComponent(rawProject)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid project name' }));
+          return;
+        }
+        target = rawProject;
+      }
+      const page = Math.max(1, parseInt(pageParam, 10) || 1);
+      const pageSize = Math.min(200, Math.max(1, parseInt(parsedUrl.searchParams.get('pageSize'), 10) || 50));
+      payload = listV2LogsPage(LOG_DIR, target, { page, pageSize });
+      // _currentProject must stay the ACTIVE project (_projectName), not the
+      // viewed one (listV2LogsPage sets it to `target`): the frontend's global
+      // currentProject drives the sidebar / migration counts / v1 banner, and
+      // the viewed project is carried separately by its own logViewProject
+      // state. Overwriting it here would let "viewing project A" leak into
+      // global state. _viewedProject tells the client which project this page
+      // actually lists.
+      payload._currentProject = _projectName || '';
+      payload._viewedProject = target || '';
+      // Project list for the modal's switcher dropdown. LOG_DIR's top level
+      // holds one dir per project (recycle dirs live INSIDE each project, so
+      // nothing to filter here) — but skip dot-prefixed hidden dirs.
+      try {
+        payload._allProjects = readdirSync(LOG_DIR, { withFileTypes: true })
+          .filter(e => e.isDirectory() && !e.name.startsWith('.')).map(e => e.name).sort();
+      } catch { payload._allProjects = []; }
+    } else {
+      payload = listV2Logs(LOG_DIR, _projectName);
+    }
     // Legacy v1 files are not in this list — surface two distinct signals:
     //  - _v1FileCount: v1 files ON DISK (gates the v1-view entry link; the
     //    converter never deletes sources, so this outlives a finished migration)
     //  - _unmigratedV1Count/Bytes: files still AWAITING migration (gates the
     //    migrate button + hint inside the v1 view and the startup prompt)
     const mig = migrationStatus(LOG_DIR, _projectName || '');
-    result._unmigratedV1Count = mig.files;
-    result._unmigratedV1Bytes = mig.totalBytes;
-    result._v1FileCount = _projectName ? countListedV1Files(join(LOG_DIR, _projectName)) : 0;
+    payload._unmigratedV1Count = mig.files;
+    payload._unmigratedV1Bytes = mig.totalBytes;
+    payload._v1FileCount = _projectName ? countListedV1Files(join(LOG_DIR, _projectName)) : 0;
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(result));
+    res.end(JSON.stringify(payload));
   } catch (err) {
     res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: err.message }));

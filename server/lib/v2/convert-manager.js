@@ -10,6 +10,7 @@
 import { Worker } from 'node:worker_threads';
 import { join } from 'node:path';
 import { readConvertState } from './convert.js';
+import { _invalidate as _invalidateMigrationStatus } from './migrate-prompt.js';
 
 let _running = null; // { project, logDir, worker, startedAt, progress }
 let _lastError = null; // last worker-level failure (state file may lag on hard crashes)
@@ -36,7 +37,12 @@ export function startConvert(logDir, project) {
   worker.on('message', (msg) => {
     if (!msg || !_running || _running.worker !== worker) return;
     if (msg.type === 'progress') _running.progress = msg.progress;
-    else if (msg.type === 'final' && msg.error) _lastError = msg.error;
+    else if (msg.type === 'final') {
+      if (msg.error) _lastError = msg.error;
+      // A finished conversion immediately changes what migrationStatus returns
+      // for this project — drop the memo so the next call re-scans.
+      _invalidateMigrationStatus(_running.logDir, msg.project);
+    }
   });
   worker.on('error', (err) => {
     _lastError = String(err && err.message || err);

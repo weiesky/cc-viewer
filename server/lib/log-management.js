@@ -4,6 +4,8 @@ import { join, sep, dirname, basename } from 'node:path';
 import { reconstructEntries } from './delta-reconstructor.js';
 import { sanitizePathComponent } from './v2/layout.js';
 import { listV2Sessions } from './v2/adapter.js';
+import { summarizeSessionPage } from './v2/session-list.js';
+import { listSessionIds } from './v2/replay.js';
 
 // wire-v2 S5 addressing (spec §12): 'v2:<project>/<session_id>' in every
 // existing ?file= parameter slot. Components must survive the same whitelist
@@ -120,6 +122,61 @@ export function listV2Logs(logDir, currentProjectName) {
     }
   }
   return { ...grouped, _currentProject: currentProjectName || '' };
+}
+
+/**
+ * Server-side paginated v2 log list for ONE project (2026-07-31). The modal
+ * only ever renders the current project's sessions, so instead of summarizing
+ * every session up front we page: enumerate session dirs (readdir — cheap),
+ * read each meta.json only for the startTs ordering + leader filter, sort
+ * newest-first, then run the EXPENSIVE summarize (journal fold + dir walk +
+ * prompts head) on just the `pageSize` sessions of the requested page — those
+ * go through the same row cache as listV2Sessions, so revisiting a page is
+ * ~1-3ms. Trade-off documented inline: `size==0` and `discard` verdicts live
+ * behind that summarize, so `total` is the pre-filter session count (the empty
+ * / quota-probe sessions are excluded as their pages are computed). For
+ * realistic data (empties + probes are a small minority) this keeps cold open
+ * at ~1 page of work instead of N.
+ *
+ * @returns {{items: Array, total: number, page: number, pageSize: number}}
+ *   items rows keep the exact listV2Logs shape {file, kind, timestamp, size, turns, preview}.
+ */
+export function listV2LogsPage(logDir, project, { page = 1, pageSize = 50 } = {}) {
+  const out = { items: [], total: 0, page, pageSize, _currentProject: project || '' };
+  if (!project) return out;
+  const projectDir = join(logDir, project);
+  if (!existsSync(projectDir)) return out;
+
+  // Cheap pass: order candidates by startTs without paying per-session folds.
+  const candidates = [];
+  for (const dirName of listSessionIds(projectDir)) {
+    let meta = null;
+    try { meta = JSON.parse(readFileSync(join(projectDir, 'sessions', dirName, 'meta.json'), 'utf-8')); } catch { /* journal is self-describing */ }
+    if (meta && meta.leader) continue; // teammate — folded into its leader's row
+    candidates.push({ dirName, startTs: (meta && meta.startTs) || '' });
+  }
+  // Newest first; dirName tiebreak matches listV2Logs' file tiebreak for stability.
+  candidates.sort((a, b) => b.startTs.localeCompare(a.startTs) || b.dirName.localeCompare(a.dirName));
+  out.total = candidates.length;
+
+  const start = (page - 1) * pageSize;
+  for (const c of candidates.slice(start, start + pageSize)) {
+    let s = null;
+    try { s = summarizeSessionPage(projectDir, c.dirName); } catch { continue; }
+    if (!s) continue;
+    if (s.leader) continue;
+    if (s.size === 0) continue;
+    if (s.discard) continue; // quota-probe orphans: never listed
+    out.items.push({
+      file: `v2:${project}/${s.sid}`,
+      kind: 'v2',
+      timestamp: compactLocalTs(s.startTs),
+      size: s.size,
+      turns: s.turns,
+      preview: s.preview || [],
+    });
+  }
+  return out;
 }
 
 /**

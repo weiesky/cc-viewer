@@ -7,7 +7,7 @@ import styles from '../../App.module.css';
 
 const EMPTY_SET = new Set();
 
-function LogTable({ logs, mobile, selectedLogs = EMPTY_SET, onToggleSelect, onOpenLog, onDownloadLog }) {
+function LogTable({ logs, mobile, selectedLogs = EMPTY_SET, onToggleSelect, onOpenLog, onDownloadLog, pagination = false }) {
   const columns = useMemo(() => [
     {
       title: '',
@@ -102,8 +102,16 @@ function LogTable({ logs, mobile, selectedLogs = EMPTY_SET, onToggleSelect, onOp
       dataSource={logs}
       columns={columns}
       rowKey="file"
-      pagination={false}
-      scroll={mobile ? { x: 'max-content', y: 'calc(100vh - 160px)' } : { y: 400 }}
+      pagination={pagination}
+      // Desktop scroll.y makes antd split the table into a sticky header + an
+      // internally-scrolling body, so the header stays put and the pagination
+      // (rendered after the table, outside the scrolling body) stays pinned to
+      // the bottom of the fixed-height .logsModalContent box. 505 ≈ the 600px
+      // box minus header + pagination heights; a short page just leaves stable
+      // empty space instead of collapsing. Mobile is server-paginated too, so
+      // it needs its own scroll.y (header sticky, body scrolls inside the
+      // .mobileLogMgmtBody overlay) plus x:'max-content' for wide columns.
+      scroll={mobile ? { x: 'max-content', y: 'calc(100vh - 220px)' } : { y: 505 }}
       onRow={(log) => ({
         onClick: () => {
           const checked = !selectedLogs.has(log.file);

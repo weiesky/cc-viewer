@@ -89,6 +89,24 @@
   overflow: hidden;
 }
 
+/* Desktop logs-modal content box (wraps the Spin / empty state / table). A
+   fixed height keeps the modal body from bouncing when localLogsLoading swaps
+   the table for a small spinner: the box holds the table's height whether the
+   table is present or not. Mobile is untouched — its table lives inside
+   .mobileLogMgmtBody and scrolls with the overlay (Mobile.jsx). */
+@media (min-width: 768px) {
+  .logsModalContent {
+    height: min(600px, calc(100vh - 280px));
+    display: flex;
+    flex-direction: column;
+    justify-content: center; /* keeps the spinner / empty state vertically centered */
+  }
+  .logsModalContent .logListContainer {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
 .logListItem {
   cursor: pointer;
   padding: 8px 12px;
@@ -688,7 +706,10 @@
 .mobileLogMgmtBody {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  /* Server-paginated now (50/page): the table must scroll vertically inside
+     the overlay so deeper rows/pages stay reachable on mobile. Was
+     overflow:hidden, which clipped the pager + rows beyond the viewport. */
+  overflow-y: auto;
   padding: 0 10px;
 }
 

@@ -215,10 +215,10 @@ export function sessionHasMainOrTeammateReq(dir) {
  * the moment a dir gains its first main req, the predicate flips and every
  * surface picks it up on its next scan/poll.
  *
- * KEEP IN SYNC: adapter.js listV2Sessions pre-computes the same verdict
- * inline (hasMainOrTeammate inside its existing full journal fold — unbounded,
- * vs this predicate's 8MB budget; intentional asymmetry) and then CONFIRMS a
- * discard through this predicate so the error→keep direction is shared.
+ * KEEP IN SYNC: session-list.js summarizeSession pre-computes the same verdict
+ * inline (hasMainOrTeammate inside its full journal fold — unbounded, vs this
+ * predicate's 8MB budget; intentional asymmetry) and then CONFIRMS a discard
+ * through this predicate so the error→keep direction is shared.
  * Change the rule here and there together.
  *
  * @param {string} dir - absolute session dir

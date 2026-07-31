@@ -27,16 +27,16 @@
 // (sessionId, seq) tie-break — field-equivalent to v1's "teammate writes the
 // leader's file".
 
-import { existsSync, readdirSync, readFileSync, statSync, openSync, readSync, closeSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { reportSwallowed } from '../error-report.js';
 import { isMainAgentRequest } from '../interceptor-core.js';
-import { readPromptsHead, collectPromptsFromEvents } from '../user-prompt-extract.js';
-import { readSession, readJsonlTolerant, listSessionIds } from './replay.js';
+import { readSession } from './replay.js';
 import { iterateJsonlLines } from './jsonl-read.js';
 import { isDiscardableSession } from './session-select.js';
-import { blobPath, isSupportedWireFormat, dirSizeSync } from './layout.js';
+import { blobPath, isSupportedWireFormat } from './layout.js';
 import { SingleFlight } from './singleflight.js';
+import { listV2Sessions } from './session-list.js';
 
 // Same stamping rules as the v1 interceptor (KEEP IN SYNC: server/interceptor.js
 // requestEntry construction) — recomputed from the journal's url, not from kind,
@@ -1056,109 +1056,8 @@ export async function streamV2WindowedEntries(sessionDir, opts, onEntry) {
 
 // ─── session listing (spec §12, list entry pulled forward from S6a) ─────────
 
-/** Bounded head read: parse the FIRST JSONL line of a file without loading the
- *  whole thing (a main conversation's opening snapshot can be multi-MB; the
- *  list only wants a preview). Returns null on any shortfall. */
-function readFirstJsonLine(path, budget = 256 * 1024) {
-  let fd;
-  try {
-    fd = openSync(path, 'r');
-    const buf = Buffer.alloc(budget);
-    const n = readSync(fd, buf, 0, budget, 0);
-    const head = buf.toString('utf-8', 0, n);
-    const nl = head.indexOf('\n');
-    if (nl <= 0) return null; // no complete first line inside the budget
-    return JSON.parse(head.slice(0, nl));
-  } catch {
-    return null;
-  } finally {
-    if (fd !== undefined) { try { closeSync(fd); } catch { /* already closed */ } }
-  }
-}
-
-/**
- * Summarize every session under LOG_DIR/<project>/ for the log list (spec §12).
- * Deliberately cheap: journal lines only (small) + a bounded head read of the
- * main conversation's first epoch for the preview — conversation bodies are
- * never loaded. Teammate linkage is surfaced via `leader` so the caller can
- * fold those sessions into their leader's view instead of double-listing.
- * @returns {Array<{sid, dir, startTs, leader, turns, size, preview}>}
- */
-export function listV2Sessions(projectDir) {
-  const out = [];
-  for (const sid of listSessionIds(projectDir)) {
-    try {
-      const dir = join(projectDir, 'sessions', sid);
-      if (!existsSync(join(dir, 'journal.jsonl'))) continue;
-      let meta = null;
-      try { meta = JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf-8')); } catch { /* tolerated — journal is self-describing */ }
-      if (meta && meta.wireFormat != null && !isSupportedWireFormat(meta.wireFormat)) {
-        // Reader version gate (spec §14): don't list a session this build
-        // can't read — a garbage preview/turn-count is worse than absence.
-        reportSwallowed('v2-read.unsupported-wire-format', new Error(`${sid}: wireFormat=${meta.wireFormat}`));
-        continue;
-      }
-
-      // turns = main requests that completed (journal two-phase fold). The
-      // journal sentinel is checked in the same pass: per §14 the per-file
-      // sentinel WINS over meta.json, and readSession/adapter refuse such a
-      // session — listing it would show a phantom row that opens empty.
-      const reqKind = new Map();
-      let turns = 0;
-      let sentinelVersion = null;
-      let hasMainOrTeammate = false;
-      for (const line of readJsonlTolerant(join(dir, 'journal.jsonl'))) {
-        if (line.ph === 'req') {
-          reqKind.set(line.seq, line.kind);
-          if (line.kind === 'main' || line.kind === 'teammate') hasMainOrTeammate = true;
-        }
-        else if (line.ph === 'done' && reqKind.get(line.seq) === 'main') {
-          turns++;
-          reqKind.delete(line.seq); // fold duplicate done lines (§14)
-        } else if (line.ph === 'meta' && typeof line.wireFormat === 'number' && !isSupportedWireFormat(line.wireFormat)) {
-          sentinelVersion = line.wireFormat;
-          break;
-        }
-      }
-      if (sentinelVersion != null) {
-        reportSwallowed('v2-read.unsupported-wire-format', new Error(`${sid}: wireFormat=${sentinelVersion} (journal sentinel)`));
-        continue;
-      }
-
-      // preview = ALL user prompts of the session, from the prompts.jsonl
-      // display cache (written by V2Writer / the converter; bounded head read
-      // so the list stays O(budget) per session). Sessions predating the
-      // cache fall back to the first epoch's first line — routed through the
-      // shared extractor so command/caveat chrome never leaks into the row.
-      let preview = readPromptsHead(join(dir, 'prompts.jsonl'));
-      if (preview.length === 0) {
-        const first = readFirstJsonLine(join(dir, 'conversations', 'main', 'e0.jsonl'));
-        if (first && Array.isArray(first.msgs)) {
-          preview = collectPromptsFromEvents([first]);
-        }
-      }
-
-      out.push({
-        sid,
-        dir,
-        startTs: (meta && meta.startTs) || '',
-        leader: (meta && meta.leader) || null,
-        turns,
-        size: dirSizeSync(dir),
-        preview,
-        // Discardable-session verdict. KEEP IN SYNC: session-select.js
-        // isDiscardableSession is the canonical rule; this fold pre-computes
-        // it for free over the FULL journal (the canonical scan is 8MB-
-        // budgeted — intentional asymmetry, a first main sits at the head).
-        // When the fold says discard, the canonical predicate CONFIRMS it:
-        // readJsonlTolerant swallows an I/O error (Windows EBUSY/EPERM lock)
-        // into zero lines, which must KEEP the session, not hide it — the
-        // canonical path carries that error→keep direction (ioErrorResult).
-        // Main-bearing sessions never pay the extra read; probe journals are
-        // ~3 lines.
-        discard: !(meta && meta.leader) && !hasMainOrTeammate && isDiscardableSession(dir, meta),
-      });
-    } catch { /* one unreadable session must not break the list */ }
-  }
-  return out;
-}
+// listV2Sessions is re-exported from session-list.js (P0-A row cache, 2026-07-31).
+// The full per-session summarization logic (incl. the readFirstJsonLine preview
+// fallback) moved there; this re-export keeps the public API unchanged for all
+// callers (log-management.js, routes/im.js, tests).
+export { listV2Sessions };

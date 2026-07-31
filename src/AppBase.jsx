@@ -34,6 +34,8 @@ export { styles };
 export const MAX_SESSIONS = (isMobile && !isPad) ? 30 : 100;
 // /clear 后乐观水位：把上下文血条压到这个百分比，下一次 context_window SSE 推送会自动覆盖回真实值
 export const OPTIMISTIC_CLEAR_PERCENT = 5;
+// 日志管理弹窗 v2 视图的服务端分页大小（条/页）
+const LOG_PAGE_SIZE = 50;
 
 // AntD 主题配置：模块顶层冻结常量。
 // 旧实现是 getter 每次 render 返回新字面量，导致 antd cssinjs useTheme cache 永远 miss、
@@ -108,9 +110,13 @@ class AppBase extends React.Component {
       unmigratedV1Bytes: 0,
       v1FileCount: 0,      // v1 files ON DISK — gates the v1-view entry link
       logView: 'v2',       // logs-modal view: 'v2' (default) | 'v1' (legacy files)
-      localLogs: {},       // { projectName: [{file, timestamp, size}] }
+      localLogs: [],       // v2 view: current page rows [{file, kind, timestamp, size, turns, preview}]
+      localLogsTotal: 0,   // v2 view: total sessions in current project (drives the pager)
+      localLogsPage: 1,    // v2 view: current page (server-side paginated)
       localLogsV1: {},     // v1 view data ({ projectName: [{file, timestamp, size}] })
       localLogsLoading: false,
+      allLogProjects: [],  // LOG_DIR 下所有项目名（弹窗项目切换下拉的选项）
+      logViewProject: '',  // 弹窗内「正在查看的项目」；'' = 跟随 currentProject（活动项目）
       refreshingStats: false,
       wireV2Convert: null, // wire-v2 S8 迁移任务状态快照（GET /api/wire-v2-convert），弹窗打开期间轮询
       showAll: false,
@@ -2349,21 +2355,46 @@ class AppBase extends React.Component {
 
   // ─── 日志管理 ──────────────────────────────────────────
 
-  // 集中构造 /api/local-logs URL：打开弹窗 / 刷新统计 / 删除后这几处 refetch 都经此
-  // helper（apiUrl 的 token 追加已正确处理已有 ?）。1.7.0 起列表恒为 v2 会话。
-  _localLogsUrl() {
-    return apiUrl('/api/local-logs');
+  // 集中构造 /api/local-logs URL：打开弹窗 / 刷新统计 / 删除后 / 翻页这几处 refetch 都经此
+  // helper（apiUrl 的 token 追加已正确处理已有 ?）。1.7.0 起列表恒为 v2 会话，
+  // 且走服务端分页：只取 currentProject 的当前页（LOG_PAGE_SIZE 条/页）。
+  // 查看非活动项目（logViewProject 非空且≠currentProject）时拼 ?project= 切换目标。
+  _localLogsUrl(page = this.state.localLogsPage) {
+    const { logViewProject, currentProject } = this.state;
+    const proj = (logViewProject && logViewProject !== currentProject)
+      ? `&project=${encodeURIComponent(logViewProject)}` : '';
+    return apiUrl(`/api/local-logs?page=${page}&pageSize=${LOG_PAGE_SIZE}${proj}`);
   }
 
   handleImportLocalLogs = () => {
-    this.setState({ importModalVisible: true, localLogsLoading: true });
-    fetch(this._localLogsUrl())
-      .then(res => res.json())
+    // 打开弹窗总是回到「活动项目」视图（logViewProject 重置），重新拉第 1 页。
+    this.setState({ importModalVisible: true, localLogsLoading: true, localLogsPage: 1, logViewProject: '' });
+    this._fetchV2Logs(1);
+    if (this.state.logView === 'v1') this._fetchV1Logs();
+    this._startWireV2ConvertPoll();
+  };
+
+  // v2 view: fetch one page of the current project's sessions. Server-side
+  // paginated — only this page's sessions are summarized (rest ride the row
+  // cache), so opening / paging / post-delete refetch all stay cheap.
+  // 注意：不得用响应的 _currentProject 覆盖全局 currentProject —— _currentProject
+  // 永远是「活动项目」，而查看项目由 logViewProject 自持；覆盖会让「查看项目 A」
+  // 污染全局 currentProject（Sidebar / v1 key / 迁移计数连锁错乱）。
+  _fetchV2Logs = (page) => {
+    fetch(this._localLogsUrl(page))
+      .then(res => {
+        // Non-2xx (e.g. 400 invalid project) returns an {error} body — treat as
+        // failure so we don't silently normalize it into an empty list.
+        if (!res.ok) throw new Error(`local-logs ${res.status}`);
+        return res.json();
+      })
       .then(data => {
-        const { _currentProject, _unmigratedV1Count, _unmigratedV1Bytes, _v1FileCount, ...logs } = data;
+        const { _allProjects, _unmigratedV1Count, _unmigratedV1Bytes, _v1FileCount, items, total } = data;
         this.setState({
-          localLogs: logs,
-          currentProject: _currentProject || '',
+          localLogs: Array.isArray(items) ? items : [],
+          localLogsTotal: total || 0,
+          localLogsPage: page,
+          allLogProjects: Array.isArray(_allProjects) ? _allProjects : [],
           localLogsLoading: false,
           unmigratedV1Count: _unmigratedV1Count || 0,
           unmigratedV1Bytes: _unmigratedV1Bytes || 0,
@@ -2371,17 +2402,37 @@ class AppBase extends React.Component {
         });
       })
       .catch(() => {
-        this.setState({ localLogs: {}, localLogsLoading: false });
+        this.setState({ localLogs: [], localLogsTotal: 0, localLogsLoading: false });
       });
-    if (this.state.logView === 'v1') this._fetchV1Logs();
-    this._startWireV2ConvertPoll();
+  };
+
+  handleLogPageChange = (page) => {
+    this.setState({ localLogsLoading: true });
+    this._fetchV2Logs(page);
+  };
+
+  // 弹窗项目切换：设置「正在查看的项目」，重置分页/多选后重新拉第 1 页。
+  // currentProject（活动项目）不动。v1 视图数据是全量 grouped，切 key 即可，无需 refetch。
+  handleLogsProjectChange = (project) => {
+    this.setState({
+      logViewProject: project,
+      localLogsPage: 1,
+      localLogs: [],
+      localLogsTotal: 0,
+      localLogsLoading: true,
+      selectedLogs: new Set(),
+    });
+    if (this.state.logView !== 'v1') this._fetchV2Logs(1);
   };
 
   // v1 view data — fetched lazily on entering the view (and on refreshes while
   // in it), never as part of the default modal open.
   _fetchV1Logs = () => {
     fetch(apiUrl('/api/local-logs?view=v1'))
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`local-logs?view=v1 ${res.status}`);
+        return res.json();
+      })
       .then(data => {
         const { _currentProject, ...logs } = data;
         this.setState({ localLogsV1: logs });
@@ -2477,7 +2528,7 @@ class AppBase extends React.Component {
   handleCloseImportModal = () => {
     this._stopWireV2ConvertPoll();
     // Reset to the v2 view so a reopened modal always starts on the default list.
-    this.setState({ importModalVisible: false, selectedLogs: new Set(), logView: 'v2' });
+    this.setState({ importModalVisible: false, selectedLogs: new Set(), logView: 'v2', logViewProject: '' });
   };
 
   handleRefreshStats = () => {
@@ -2488,19 +2539,45 @@ class AppBase extends React.Component {
         if (!data.ok) throw new Error(data.error || 'refresh failed');
         return fetch(this._localLogsUrl());
       })
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`local-logs ${res.status}`);
+        return res.json();
+      })
       .then(data => {
-        const { _currentProject, _unmigratedV1Count, _unmigratedV1Bytes, ...logs } = data;
-        this.setState({ localLogs: logs, refreshingStats: false, unmigratedV1Count: _unmigratedV1Count || 0, unmigratedV1Bytes: _unmigratedV1Bytes || 0 });
+        const { _currentProject, _unmigratedV1Count, _unmigratedV1Bytes, _v1FileCount, items, total } = data;
+        this.setState({
+          localLogs: Array.isArray(items) ? items : [],
+          localLogsTotal: total || 0,
+          refreshingStats: false,
+          unmigratedV1Count: _unmigratedV1Count || 0,
+          unmigratedV1Bytes: _unmigratedV1Bytes || 0,
+          v1FileCount: _v1FileCount || 0,
+        });
         message.success(t('ui.refreshStatsSuccess'));
       })
       .catch(() => {
-        this.setState({ refreshingStats: false });
+        // Reset both spinners — a failed refresh must not leave the list stuck
+        // in its loading state.
+        this.setState({ refreshingStats: false, localLogsLoading: false });
         message.error(t('ui.refreshStatsFailed'));
       });
   };
 
   renderLogTable(logs, mobile) {
+    // v2 view is server-side paginated: the pager drives _fetchV2Logs. v1 view
+    // keeps the legacy unpaged grouped list (localLogsV1), pagination=false.
+    const isV2 = this.state.logView === 'v2';
+    const pagination = isV2 ? {
+      current: this.state.localLogsPage,
+      pageSize: LOG_PAGE_SIZE,
+      total: this.state.localLogsTotal,
+      onChange: this.handleLogPageChange,
+      showSizeChanger: false,
+      // Only one page of sessions → no pager at all (no "1" button noise).
+      hideOnSinglePage: true,
+      showTotal: (total) => t('ui.logsTotal', { total }),
+      size: 'small',
+    } : false;
     return (
       <LogTable
         logs={logs}
@@ -2509,6 +2586,7 @@ class AppBase extends React.Component {
         onToggleSelect={this.handleToggleLogSelect}
         onOpenLog={this.handleOpenLogFile}
         onDownloadLog={this.handleDownloadLogFile}
+        pagination={pagination}
       />
     );
   }
@@ -2547,7 +2625,10 @@ class AppBase extends React.Component {
               if (deleted > 0) message.success(t('ui.deleteSuccess', { count: deleted }));
               if (failed > 0) message.error(t('ui.deleteFailed', { count: failed }));
               this.setState({ selectedLogs: new Set() });
-              this.handleImportLocalLogs();
+              // 留在当前查看的项目（logViewProject 不变），只重拉当前页；
+              // 不调 handleImportLocalLogs()——它会把 logViewProject 重置回活动项目。
+              if (this.state.logView === 'v1') this._fetchV1Logs();
+              else this._fetchV2Logs(this.state.localLogsPage);
             }
           })
           .catch(() => message.error('Delete failed'));

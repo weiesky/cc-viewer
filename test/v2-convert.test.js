@@ -17,6 +17,7 @@ import { join } from 'node:path';
 
 import { convertProject, listV1Files, listConvertibleProjects, readConvertState, STAGING_DIR_NAME, QUARANTINE_DIR_NAME } from '../server/lib/v2/convert.js';
 import { startConvert, stopConvert, convertStatus, isConvertRunning } from '../server/lib/v2/convert-manager.js';
+import { migrationStatus, _resetForTest as _resetMigMemo } from '../server/lib/v2/migrate-prompt.js';
 import { verifyV1File } from '../server/lib/v2/verify.js';
 import { listSessionIds } from '../server/lib/v2/replay.js';
 import { ensureSessionDirSync } from '../server/lib/v2/layout.js';
@@ -25,7 +26,7 @@ import { _resetForTest } from '../server/lib/error-report.js';
 
 let logDir;
 const PROJECT = 'proj';
-beforeEach(() => { logDir = mkdtempSync(join(tmpdir(), 'ccv-v2cvt-')); mkdirSync(join(logDir, PROJECT)); _resetForTest(); });
+beforeEach(() => { logDir = mkdtempSync(join(tmpdir(), 'ccv-v2cvt-')); mkdirSync(join(logDir, PROJECT)); _resetForTest(); _resetMigMemo(); });
 afterEach(() => { try { rmSync(logDir, { recursive: true, force: true }); } catch {} });
 
 const SID = 'a9883ab8-0ab7-459a-bcfd-4c8950a14384';
@@ -479,5 +480,28 @@ describe('convert-manager', () => {
     assert.equal(status.state && status.state.status, 'done', JSON.stringify(status));
     assert.ok(existsSync(sessionsDir(SID2)));
     assert.equal(stopConvert().ok, false, 'nothing left to stop');
+  });
+
+  it("worker 'final' invalidates the migrationStatus memo so the next call re-scans", async () => {
+    writeV1('proj_20260101_000000.jsonl', [entryOf({ messages: [textMsg('user', 'memo invalidation')], uid: jsonUid(SID2) })]);
+    // Pre-fill the memo with the pre-conversion verdict — without the
+    // invalidation hook this test fails because the stale entry is served.
+    assert.equal(migrationStatus(logDir, PROJECT).pending, true, 'pending before conversion (memoized)');
+
+    const start = startConvert(logDir, PROJECT);
+    assert.equal(start.ok, true);
+    const deadline = Date.now() + 15000;
+    let status;
+    while (Date.now() < deadline) {
+      status = convertStatus(logDir, PROJECT);
+      if (!status.running && status.state && status.state.status === 'done') break;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    assert.equal(status.state && status.state.status, 'done', JSON.stringify(status));
+
+    // The worker's 'final' message must have dropped the memo: the fresh
+    // read sees status:'done' and reports nothing pending.
+    const after = migrationStatus(logDir, PROJECT);
+    assert.equal(after.pending, false, 'finished conversion reflected immediately (memo invalidated)');
   });
 });

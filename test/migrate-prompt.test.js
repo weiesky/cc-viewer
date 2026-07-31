@@ -17,7 +17,7 @@
  * project modules (2026-06-06 incident rule); fixtures never touch a real
  * CCV_LOG_DIR.
  */
-import { describe, it, before } from 'node:test';
+import { describe, it, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, mkdirSync, writeFileSync, statSync, rmSync } from 'node:fs';
@@ -31,11 +31,61 @@ process.env.CCV_WORKSPACE_MODE = '1'; // interceptor boots project-less; tests b
 process.env.CCV_CLI_MODE = '0';
 delete process.env.CCV_CLAUDE_CONTINUE;
 
-let migrationStatus, interceptor, eventsRoutes;
+let migrationStatus, _resetMigrationStatus, _setMigrationNow, _invalidateMig, interceptor, eventsRoutes;
 before(async () => {
-  ({ migrationStatus } = await import('../server/lib/v2/migrate-prompt.js'));
+  ({ migrationStatus, _resetForTest: _resetMigrationStatus, _setNowForTest: _setMigrationNow, _invalidate: _invalidateMig } = await import('../server/lib/v2/migrate-prompt.js'));
   interceptor = await import('../server/interceptor.js');
   ({ eventsRoutes } = await import('../server/routes/events.js'));
+});
+
+// The 10s TTL memo must be dropped between tests that mutate v1 fixtures —
+// otherwise a later test reads the previous test's cached result.
+beforeEach(() => { _resetMigrationStatus(); });
+
+// ─── TTL memo behavior (P0-B) ────────────────────────────────────────────────
+// The clock is injected (house style: test/v2-singleflight.test.js mkClock) so
+// the 10s window can be driven without sleeping.
+const mkClock = () => { let t = 1000; return { now: () => t, advance: (ms) => { t += ms; } }; };
+let clock;
+describe('migrationStatus TTL memo', () => {
+  const ttlLogDir = () => join(tmpDir, 'ttlLogDir');
+  const ttlProject = 'ttlProj';
+  function writeTtlV1() {
+    mkdirSync(join(ttlLogDir(), ttlProject), { recursive: true });
+    writeFileSync(join(ttlLogDir(), ttlProject, `${ttlProject}_20260101_000000.jsonl`), 'x'.repeat(64));
+  }
+
+  beforeEach(() => {
+    clock = mkClock();
+    _setMigrationNow(clock.now);
+  });
+
+  it('serves the memoized result within the 10s TTL window (documented staleness)', () => {
+    writeTtlV1();
+    assert.equal(migrationStatus(ttlLogDir(), ttlProject).pending, true, 'pending computed fresh');
+    rmSync(join(ttlLogDir(), ttlProject, `${ttlProject}_20260101_000000.jsonl`), { force: true });
+    assert.equal(migrationStatus(ttlLogDir(), ttlProject).pending, true,
+      'v1 deletion is NOT visible within the TTL window — memo serves the cached verdict');
+  });
+
+  it('recomputes after the TTL expires', () => {
+    writeTtlV1();
+    assert.equal(migrationStatus(ttlLogDir(), ttlProject).pending, true);
+    rmSync(join(ttlLogDir(), ttlProject, `${ttlProject}_20260101_000000.jsonl`), { force: true });
+    clock.advance(10_001);
+    assert.equal(migrationStatus(ttlLogDir(), ttlProject).pending, false,
+      'past the TTL the next call re-scans and sees the deletion');
+  });
+
+  it('_invalidate drops the memo entry immediately (per project)', () => {
+    writeTtlV1();
+    assert.equal(migrationStatus(ttlLogDir(), ttlProject).pending, true);
+    rmSync(join(ttlLogDir(), ttlProject, `${ttlProject}_20260101_000000.jsonl`), { force: true });
+    assert.equal(migrationStatus(ttlLogDir(), ttlProject).pending, true, 'still cached before invalidation');
+    _invalidateMig(ttlLogDir(), ttlProject);
+    assert.equal(migrationStatus(ttlLogDir(), ttlProject).pending, false,
+      'invalidation drops exactly this entry; the next call re-scans');
+  });
 });
 
 const PROJECT = 'projMig';
@@ -74,9 +124,11 @@ describe('migrationStatus', () => {
         { name: f2, size: sizeOf(f2), done: true },
       ],
     }));
+    _resetMigrationStatus(); // drop memo from the previous test's fixtures
     assert.equal(migrationStatus(tmpDir, PROJECT).pending, false, 'fully converted project stops prompting');
 
     writeFileSync(join(projectDir(), f2), 'x'.repeat(128)); // grew after conversion
+    _resetMigrationStatus(); // drop memo from the pre-grow call above
     const st = migrationStatus(tmpDir, PROJECT);
     assert.equal(st.pending, false, 'a grown file after status:done does not re-prompt (migration complete)');
   });
@@ -93,9 +145,11 @@ describe('migrationStatus', () => {
         { name: f2, size: sizeOf(f2), done: true },
       ],
     }));
+    _resetMigrationStatus(); // drop memo from the previous test's fixtures
     assert.equal(migrationStatus(tmpDir, PROJECT).pending, false, 'files match recorded sizes at pre-grow');
 
     writeFileSync(join(projectDir(), f2), 'x'.repeat(256)); // grew beyond the 128 left by previous test
+    _resetMigrationStatus(); // drop memo from the pre-grow call above
     const st = migrationStatus(tmpDir, PROJECT);
     assert.equal(st.pending, true, 'a grown done-file re-pends when status is not done');
     assert.equal(st.files, 1);
