@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.14 (2026-08-01)
+
+- prompt(kimi): **anti-loop guardrails in the Kimi system-prompt presets** — `kimi-k3` and `kimi-k2.7-code` gain self-regulation rules: one wide read over many small reads, a hard "same file twice → never a third time" repetition check that names the offset/limit re-read pattern, a convergence budget (partial report beats endless exploration), and a forced self-assessment line every ten tool calls. Real-trace evidence: a K3 reviewer subagent read `src/App.jsx` 251 times oscillating `limit 40↔50` at the same offset, emitting zero text across 342 turns.
+
 ## 1.7.13 (2026-08-01)
 
 - perf(log-list): **session list row cache** — `GET /api/local-logs` re-scanned every session on every call (full journal fold + recursive dir walk + 256KB prompts head read per session, all sync). With 100+ sessions this blocked the event loop for seconds. New `server/lib/v2/session-list.js` caches per-session rows keyed by journal+prompts size+mtime; repeat calls drop to O(N statSync + 1 readdir) ≈ 1-3ms. All existing gates (wireFormat, sentinel, discard, error→keep) preserved verbatim. Cross-review hardening (2026-07-31): freshness key spans prompts.jsonl (written after the journal line / backfilled on crash-resume), O(N²) prune → Set, delivered rows re-copy nested preview/leader so callers can't poison the cache.
