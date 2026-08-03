@@ -122,7 +122,7 @@ class RequestList extends React.Component {
                   <div className={styles.detailRow}>
                     <span className={styles.urlText} title={displayUrl}>{urlShort}</span>
                     {req.duration && <span className={styles.duration}>{req.duration}ms</span>}
-                    {req.response && (
+                    {req.response?.status != null && (
                       <span className={statusOk ? styles.statusOk : statusErr ? styles.statusErr : styles.statusDefault}>
                         {req.response.status}
                       </span>

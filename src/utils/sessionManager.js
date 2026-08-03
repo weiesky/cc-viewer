@@ -41,6 +41,8 @@ export function assignMessageTimestamps(messages, prevMessages, isNewSession, pr
       }
     } else if (m.role === 'assistant' && !m._generatedTs && prevMainAgentTs) {
       // 已有 _timestamp 但缺 _generatedTs（混合输入：部分 entry 来自旧版本）：补 _generatedTs
+      // Synthetic v2 messages carry their own _generatedTs (stamped by the
+      // normalizer), so they never reach this branch.
       m._generatedTs = prevMainAgentTs;
     }
   }
@@ -245,14 +247,23 @@ export function applyBatchEntryTimestamps(st, entry) {
   // filter below), otherwise the first count=1 entry after a delta rebuild would
   // be swallowed and its _timestamp stolen by the next count>4 entry.
   const postClearCheckpoint = isPostClearCheckpoint(entry, prevCount);
+  // V2 transcript synthetic entries pre-stamp per-message _timestamp/_generatedTs
+  // with the real row timestamps; the positional overwrites below would flatten
+  // every message to entry.timestamp, so they become protective for synthetics.
+  const isSyntheticV2 = entry._syntheticV2 === true;
   const epoch = entry._seqEpoch || null;
   const epochChanged = !!(epoch && st.prevEpoch && epoch !== st.prevEpoch);
-  const isNewSession = isSessionBoundary(entry, { prevCount, count, prevUserId: st.prevUserId, userId, prevEpoch: st.prevEpoch, epoch });
+  // A synthetic v2 entry is a complete /clear-segmented session — always a new
+  // session (its _seqEpoch is a definitive boundary marker), even when the
+  // count-based heuristics would call it a continuation.
+  const isNewSession = isSyntheticV2 || isSessionBoundary(entry, { prevCount, count, prevUserId: st.prevUserId, userId, prevEpoch: st.prevEpoch, epoch });
   // Transient protection: very short entries (<=4 msgs) after a long conversation
   // are usually in-flight requests (request body only, no response yet) and must
   // not reset the accumulated timestamps. Real /clear starts AND epoch changes
   // (task B: a definitive new session, even when short) are exempt.
-  const isTransient = isNewSession && !postClearCheckpoint && !epochChanged && count <= 4 && prevCount > 4 && count < prevCount * 0.5;
+  // A synthetic v2 entry is never transient — it is a complete /clear-segmented
+  // session, so it must start a session even right after a long legacy one.
+  const isTransient = !isSyntheticV2 && isNewSession && !postClearCheckpoint && !epochChanged && count <= 4 && prevCount > 4 && count < prevCount * 0.5;
   if (isNewSession && !isTransient) {
     st.currentSessionId = timestamp;
     st.timestamps = [];
@@ -283,8 +294,8 @@ export function applyBatchEntryTimestamps(st, entry) {
     for (let j = 0; j < messages.length; j++) {
       const m = messages[j];
       if (!m) continue;
-      m._timestamp = st.timestamps[j];
-      if (m.role === 'assistant' && st.generatedTimestamps[j]) {
+      if (!isSyntheticV2 || m._timestamp == null) m._timestamp = st.timestamps[j];
+      if (m.role === 'assistant' && st.generatedTimestamps[j] && (!isSyntheticV2 || m._generatedTs == null)) {
         m._generatedTs = st.generatedTimestamps[j];
       }
     }

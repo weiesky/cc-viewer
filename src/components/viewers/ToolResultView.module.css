@@ -23,6 +23,7 @@
   object-fit: contain;
   border-radius: 4px;
   background: var(--bg-base-pure);
+  cursor: zoom-in;
 }
 
 .imagePlaceholder {

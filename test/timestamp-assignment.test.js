@@ -502,3 +502,73 @@ describe('resolveBubbleProducerTs', () => {
     assert.equal(resolveBubbleProducerTs({ role: 'user' }), null);
   });
 });
+
+// ============================================================================
+// applyBatchEntryTimestamps — v2 synthetic entry 保护式（真实 ts 不被位置覆写）
+// ============================================================================
+
+describe('applyBatchEntryTimestamps synthetic-v2 protective branch', () => {
+  // applyBatchEntryTimestamps needs the session-boundary imports, which the
+  // vite shims resolve — dynamic import through the register hook.
+  it('synthetic v2 entry 保留逐消息预置时间戳（不被 entry.ts 抹平）', async () => {
+    await import('./_shims/register.mjs');
+    const { applyBatchEntryTimestamps } = await import('../src/utils/sessionManager.js');
+
+    const entryTs = '2026-07-30T03:43:40.000Z';
+    const m0 = { role: 'user', content: 'a', _timestamp: '2026-07-30T03:43:40.000Z', _generatedTs: undefined, _entryTs: entryTs };
+    const m1 = { role: 'assistant', content: 'b', _timestamp: '2026-07-30T03:43:41.000Z', _generatedTs: '2026-07-30T03:43:41.000Z', _entryTs: entryTs };
+    const m2 = { role: 'user', content: 'c', _timestamp: '2026-07-30T03:43:42.000Z', _generatedTs: undefined, _entryTs: entryTs };
+    const entry = { mainAgent: true, _syntheticV2: true, timestamp: entryTs, _seqEpoch: 'v2:sid:0', body: { messages: [m0, m1, m2] } };
+    const st = { timestamps: [], generatedTimestamps: [], prevMainAgentTs: null, prevEpoch: null, prevUserId: null, currentSessionId: null };
+
+    applyBatchEntryTimestamps(st, entry);
+
+    // 逐消息真实 ts 保留（未被 entry.ts 覆盖）
+    assert.equal(m0._timestamp, '2026-07-30T03:43:40.000Z');
+    assert.equal(m1._timestamp, '2026-07-30T03:43:41.000Z');
+    assert.equal(m2._timestamp, '2026-07-30T03:43:42.000Z');
+    assert.equal(m1._generatedTs, '2026-07-30T03:43:41.000Z');
+  });
+
+  it('synthetic v2 entry 缺 _timestamp 的消息回退到位置时间戳（不产生 undefined）', async () => {
+    await import('./_shims/register.mjs');
+    const { applyBatchEntryTimestamps } = await import('../src/utils/sessionManager.js');
+
+    const entryTs = '2026-07-30T03:43:40.000Z';
+    const m0 = { role: 'user', content: 'a', _timestamp: entryTs, _entryTs: entryTs };
+    const m1 = { role: 'assistant', content: 'b' }; // 缺 _timestamp（防御性）
+    const entry = { mainAgent: true, _syntheticV2: true, timestamp: entryTs, _seqEpoch: 'v2:sid:0', body: { messages: [m0, m1] } };
+    const st = { timestamps: [], generatedTimestamps: [], prevMainAgentTs: null, prevEpoch: null, prevUserId: null, currentSessionId: null };
+
+    applyBatchEntryTimestamps(st, entry);
+
+    assert.equal(m1._timestamp, entryTs); // 回退到 entry.ts（非 undefined）
+  });
+
+  it('synthetic v2 entry 不被 transient 守卫吞掉（legacy 长会话后紧随短 v2 会话）', async () => {
+    await import('./_shims/register.mjs');
+    const { applyBatchEntryTimestamps } = await import('../src/utils/sessionManager.js');
+
+    // 前置：legacy 长会话（5 条）已累积
+    const st = {
+      timestamps: ['t1', 't2', 't3', 't4', 't5'],
+      generatedTimestamps: [null, 't1', null, 't3', null],
+      prevMainAgentTs: 't5',
+      prevEpoch: null, // 首个 v2 entry 的 prevEpoch 为 null（epochChanged 恒 false）
+      prevUserId: 'legacy-user',
+      currentSessionId: 't1',
+    };
+    // 紧随其后的短 v2 合成会话（3 条，<=4）
+    const entryTs = '2026-07-30T03:43:40.000Z';
+    const m0 = { role: 'user', content: 'a', _timestamp: entryTs, _entryTs: entryTs };
+    const m1 = { role: 'assistant', content: 'b', _timestamp: entryTs, _generatedTs: entryTs, _entryTs: entryTs };
+    const m2 = { role: 'user', content: 'c', _timestamp: entryTs, _entryTs: entryTs };
+    const entry = { mainAgent: true, _syntheticV2: true, timestamp: entryTs, _seqEpoch: 'v2:sid:0', body: { messages: [m0, m1, m2] } };
+
+    applyBatchEntryTimestamps(st, entry);
+
+    // 必须是新会话（currentSessionId 推进到 v2 entry ts，位置数组重置），不被 transient 丢弃
+    assert.equal(st.currentSessionId, entryTs);
+    assert.deepEqual(st.timestamps, [entryTs, entryTs, entryTs]);
+  });
+});

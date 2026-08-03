@@ -433,7 +433,7 @@ class DetailPanel extends React.Component {
     }
 
     const time = new Date(request.timestamp).toLocaleString('zh-CN');
-    const statusOk = request.response && request.response.status < 400;
+    const statusOk = request.response?.status != null && request.response.status < 400;
 
     // 一次 render 只解析一次上一条 MainAgent 请求——Body Diff 与 ContextTab 的 tools diff 复用同一结果，
     // 避免 getPrevMainAgentRequest()（内部可能跑 restoreSlimmedEntry 重建）被重复调用两次。
@@ -804,10 +804,10 @@ class DetailPanel extends React.Component {
               {request.proxyUrl || request.url}
             </Paragraph>
             <Space size="small" wrap>
-              <Tag color={request.method === 'POST' ? 'blue' : 'green'}>{request.method}</Tag>
+              {request.method && <Tag color={request.method === 'POST' ? 'blue' : 'green'}>{request.method}</Tag>}
               <Text type="secondary" className={styles.metaText}>🕐 {time}</Text>
               {request.duration && <Text type="secondary" className={styles.metaText}>⏱️ {request.duration}ms</Text>}
-              {request.response && (
+              {request.response?.status != null && (
                 <Tag color={statusOk ? 'success' : 'error'}>HTTP {request.response.status}</Tag>
               )}
             </Space>

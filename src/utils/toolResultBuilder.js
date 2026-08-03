@@ -188,8 +188,26 @@ export function buildSubAgentResultMap(req, globalIndex) {
   return { ...localState.toolResultMap, ...filled };
 }
 
-export function appendToolResultMap(state, messages, startIndex) {
+export function appendToolResultMap(state, messages, startIndex, extraToolUses) {
   const { toolUseMap, toolResultMap, readContentMap, editSnapshotMap, askAnswerMap, planApprovalMap, _fileState } = state;
+  // V2 live: tool_use blocks merged into an already-scanned message by a later
+  // split row are surfaced on the synthetic entry's _toolUses. Register them so
+  // their tool_result pairs with a real matchedTool (label / input / Read/Edit
+  // state). Side-effect tracking (Write/Edit/Ask/ExitPlanMode) stays in the
+  // message loop below — these blocks were already seen there when first merged.
+  if (Array.isArray(extraToolUses)) {
+    for (const block of extraToolUses) {
+      if (!block || !block.id || block.id in toolUseMap) continue;
+      let parsed = block;
+      if (typeof block.input === 'string') {
+        try {
+          const cleaned = block.input.replace(/^\[object Object\]/, '');
+          parsed = { ...block, input: JSON.parse(cleaned) };
+        } catch {}
+      }
+      toolUseMap[parsed.id] = parsed;
+    }
+  }
   for (let i = startIndex; i < messages.length; i++) {
     const msg = messages[i];
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {

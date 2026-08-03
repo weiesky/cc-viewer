@@ -22,6 +22,7 @@ import { saveEntries, loadEntries, clearEntries, getCacheMeta } from './utils/en
 import { assignMessageTimestamps, applyInPlaceLastMsgReplace, getSessionStableId, resolveDisplaySessions, getLatestSessionByActivity, resolveHydratedPin, runPinHydration, applyBatchEntryTimestamps } from './utils/sessionManager';
 import { mergeMainAgentSessions as _mergeMainAgentSessions, isMergeBlockedEntry } from './utils/sessionMerge';
 import { reconstructEntries, createIncrementalReconstructor } from '../server/lib/delta-reconstructor.js';
+import { normalizeV2Entries, createV2IncrementalReconstructor, isV2TranscriptLine, isMetadataRow } from '../server/lib/v2-transcript-normalizer.js';
 import { createEntrySlimmer, createIncrementalSlimmer, internEntryBigFields } from './utils/entry-slim.js';
 import { yieldToMain, runChunkedPass, INGEST_BATCH_SIZE } from './utils/ingestPipeline.js';
 import { rowToListItem } from './utils/v3Rows.js';
@@ -227,6 +228,10 @@ class AppBase extends React.Component {
     // 增量维护的 KV-Cache 缓存内容（稳定引用，不受 inProgress 闪烁影响）
     this._lastKvCacheContent = null;
     this._sseSlimmer = null; this._sseReconstructor = null;
+    // V2 transcript (Claude Code 2.x JSONL) live normalizer: lazy init + the
+    // cold-loaded synthetic entry used to seed its baseline on first live row.
+    this._v2SseReconstructor = null;
+    this._v2ColdSeed = null;
     // 冷启动分帧摄取管线（_runColdIngestCore）并发控制：
     // - _ingestRunning 在途时 live 条目入 _liveGateBuffer（见 handleEventMessage），
     //   提交后统一泄洪，防止 live 条目与未提交基线交错污染 sessionMerge
@@ -296,6 +301,8 @@ class AppBase extends React.Component {
     this._cacheLossMap = new Map();
     this._lastKvCacheContent = null;
     this._sseSlimmer = null; this._sseReconstructor = null;
+    this._v2SseReconstructor = null;
+    this._v2ColdSeed = null;
   }
 
   // 给子组件(ChatView / TerminalPanel)一次性注入 SettingsContext 的所有字段。
@@ -557,6 +564,10 @@ class AppBase extends React.Component {
     this._cacheLossMap = new Map();
     this._lastKvCacheContent = null;
     this._sseSlimmer = null; this._sseReconstructor = null;
+    // _v2SseReconstructor resets with the SSE state, but _v2ColdSeed must
+    // SURVIVE this pass — it is set after _processEntriesChunked and consumed
+    // by the first live flush, so clearing it here would kill the prime path.
+    this._v2SseReconstructor = null;
 
     return {
       timestamps: [],
@@ -653,7 +664,11 @@ class AppBase extends React.Component {
    *  Delta 重建必须在 entry-slim 之前：delta 条目的 body.messages 只有增量部分，
    *  先 slim 会永久丢失增量数据，导致重建后 messages 为空。 */
   async _runColdIngestCore(rawEntries, ctl) {
-    const entries = Array.isArray(rawEntries) ? reconstructEntries(rawEntries) : rawEntries;
+    // V2 transcript (Claude Code 2.x) rows are normalized into legacy-shaped
+    // synthetic entries before delta reconstruction — the reconstructor is a
+    // safe no-op on them (no _deltaFormat), and normalizing first keeps the
+    // synthetic baseline from ever preceding legacy delta rows.
+    const entries = Array.isArray(rawEntries) ? reconstructEntries(normalizeV2Entries(rawEntries)) : rawEntries;
     if (ctl.shouldAbort()) return { aborted: true };
     if (!(Array.isArray(entries) && entries.length > 0)) {
       return { aborted: false, empty: true, entries: Array.isArray(entries) ? entries : [], mainAgentSessions: [], filtered: [] };
@@ -664,6 +679,14 @@ class AppBase extends React.Component {
     if (s.aborted) return { aborted: true };
     const p = await this._processEntriesChunked(entries, ctl);
     if (p.aborted) return { aborted: true };
+    // Seed the live v2 normalizer with the newest synthetic entry (synthetics
+    // are appended last), so the first live row extends the cold session
+    // instead of replacing it (merge REBUILD would truncate otherwise).
+    // Must be set AFTER _processEntriesChunked — _initProcessState clears
+    // _v2ColdSeed, so an earlier assignment would be wiped before first use.
+    let v2Seed = null;
+    for (const e of entries) if (e._syntheticV2) v2Seed = e;
+    this._v2ColdSeed = v2Seed;
     return { aborted: false, empty: false, entries, mainAgentSessions: p.mainAgentSessions, filtered: p.filtered };
   }
 
@@ -965,6 +988,8 @@ class AppBase extends React.Component {
     this._isIncremental = false;
     this._sseSlimmer = null;
     this._sseReconstructor = null;
+    this._v2SseReconstructor = null;
+    this._v2ColdSeed = null;
     // 分帧管线闸门兜底复位（_pendingEntries 已清空，缓冲不泄洪直接丢弃）
     this._ingestToken++;
     this._ingestRunning = false;
@@ -1017,6 +1042,8 @@ class AppBase extends React.Component {
     this._v3PendingLive = [];
     this._v3AdaptSource = null;
     this._v3Adapted = null;
+    this._v2SseReconstructor = null;
+    this._v2ColdSeed = null;
   }
 
   /** Apply one live v3 frame to the assembler. Split out from the SSE
@@ -1117,7 +1144,7 @@ class AppBase extends React.Component {
     // 必须在 _teardownTransientLiveState() 之前，否则 _chunkedEntries 会被清零。
     if (this._chunkedEntries && this._chunkedEntries.length > 0 && isMobile) {
       try {
-        const partial = reconstructEntries([...this._chunkedEntries]);
+        const partial = reconstructEntries(normalizeV2Entries([...this._chunkedEntries]));
         if (Array.isArray(partial) && partial.length > 0) {
           this._batchSlim(partial);
           const { mainAgentSessions } = this._processEntries(partial);
@@ -1411,10 +1438,18 @@ class AppBase extends React.Component {
         // 本次 full_reload 的延迟 setState 不得覆盖新管线提交 —— 回调内按 token 失配丢弃。
         const reloadToken = this._ingestToken;
         try {
-          const entries = JSON.parse(event.data);
+          const parsed = JSON.parse(event.data);
+          const entries = Array.isArray(parsed) ? normalizeV2Entries(parsed) : parsed;
           if (Array.isArray(entries)) {
+            // full_reload resets the baseline: drop the stale live v2
+            // normalizer, then re-seed from the rebuilt entries AFTER
+            // _processEntries (whose _initProcessState resets the seed).
+            this._v2SseReconstructor = null;
             if (entries.length > 0) this._batchSlim(entries);
             const { mainAgentSessions, filtered } = entries.length > 0 ? this._processEntries(entries) : { mainAgentSessions: [], filtered: [] };
+            let v2Seed = null;
+            for (const e of entries) if (e._syntheticV2) v2Seed = e;
+            this._v2ColdSeed = v2Seed;
             if (entries.length > 0) {
               this.animateLoadingCount(entries.length, () => {
                 if (this._ingestToken !== reloadToken) return; // 已被新管线 supersede
@@ -1830,16 +1865,37 @@ class AppBase extends React.Component {
       if (!this._sseReconstructor) {
         this._sseReconstructor = createIncrementalReconstructor();
       }
+      // V2 transcript 增量重建器：Claude Code 2.x 顶层 message 行 → 合成 entry
+      if (!this._v2SseReconstructor) {
+        this._v2SseReconstructor = createV2IncrementalReconstructor();
+      }
 
       for (const rawEntry of batch) {
         // Legacy v1 rotation sentinel: never a renderable request.
         if (rawEntry && rawEntry.ccvRotationContext) continue;
-        // v3: intern body.tools / body.system → pool 共享引用，消除 fullEntry 累积
-        // v5: 同时 intern body.messages 内 tool_result block.content（lazy-clone 三层
-        //     messages/content/block）。下方 L1170-1175 mutate `messages[i]._timestamp`
-        //     的安全前提：浅 clone 仅 spread 顶层字段保留 _timestamp 写位；共享的
-        //     block.content 是 string primitive 不可变，跨 entry 共享 ref 不会串扰。
-        const entry = internEntryBigFields(this._sseReconstructor.reconstruct(rawEntry));
+        // V2 transcript line: normalize via the incremental normalizer. The
+        // first live row primes the cold-loaded synthetic entry so the merge
+        // appends to the existing session instead of REBUILD-truncating it.
+        // Metadata frames (mode / ai-title / ...) are dropped — isRelevantRequest
+        // would otherwise surface them as garbage request rows.
+        let entry;
+        if (isV2TranscriptLine(rawEntry)) {
+          if (this._v2SseReconstructor.empty() && this._v2ColdSeed) {
+            this._v2SseReconstructor.prime(this._v2ColdSeed);
+          }
+          entry = this._v2SseReconstructor.reconstruct(rawEntry);
+          if (!entry) continue; // sidechain row / replay of a seen uuid
+          entry = internEntryBigFields(entry);
+        } else if (isMetadataRow(rawEntry)) {
+          continue;
+        } else {
+          // v3: intern body.tools / body.system → pool 共享引用，消除 fullEntry 累积
+          // v5: 同时 intern body.messages 内 tool_result block.content（lazy-clone 三层
+          //     messages/content/block）。下方 L1170-1175 mutate `messages[i]._timestamp`
+          //     的安全前提：浅 clone 仅 spread 顶层字段保留 _timestamp 写位；共享的
+          //     block.content 是 string primitive 不可变，跨 entry 共享 ref 不会串扰。
+          entry = internEntryBigFields(this._sseReconstructor.reconstruct(rawEntry));
+        }
         const key = `${entry.timestamp}|${entry.url}`;
         const existingIndex = this._requestIndexMap.get(key);
 
@@ -2675,15 +2731,16 @@ class AppBase extends React.Component {
       this.setState({ fileLoading: false, fileLoadingCount: 0 });
       return;
     }
-    this.animateLoadingCount(entries.length, () => {
-      this._batchSlim(entries);
-      const { mainAgentSessions, filtered } = this._processEntries(entries);
+    const normalized = normalizeV2Entries(entries);
+    this.animateLoadingCount(normalized.length, () => {
+      this._batchSlim(normalized);
+      const { mainAgentSessions, filtered } = this._processEntries(normalized);
       this._isLocalLog = true;
       this._localLogFile = fileNames.length === 1 ? fileNames[0] : `${fileNames.length} files`;
       if (this.eventSource) { this.eventSource.close(); this.eventSource = null; }
       if (this._streamingOffTimer) { clearTimeout(this._streamingOffTimer); this._streamingOffTimer = null; }
       this.setState({
-        requests: entries,
+        requests: normalized,
         selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
         mainAgentSessions,
         importModalVisible: false,

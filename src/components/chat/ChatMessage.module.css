@@ -485,6 +485,7 @@
   object-fit: contain;
   border-radius: 4px;
   background: var(--bg-base-pure);
+  cursor: zoom-in;
 }
 
 .simplifiedToolResultImage + .simplifiedToolResultImage {
@@ -504,6 +505,17 @@
   border-radius: 4px;
   padding: 8px 12px;
   text-align: center;
+}
+
+/* 简化模式内联 tool_result 图片容器：block 流 + 统一 6px 间距。
+   不复用 .simplifiedToolResultPreview（popover 专用限高滚动）。 */
+.simplifiedToolResultInlineImages {
+  margin: 4px 0 2px 16px;
+  max-width: 100%;
+}
+
+.simplifiedToolResultInlineImages > * + * {
+  margin-top: 6px;
 }
 
 /* === Code pre inside tool boxes === */

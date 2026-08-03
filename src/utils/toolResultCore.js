@@ -165,3 +165,30 @@ export function compactResultPreview(entry, opts = {}) {
   if (!hasImages && !text) return null;
   return { text, images: hasImages ? images : null };
 }
+
+/**
+ * 简化模式是否应在消息流内联 tool_result 图片。
+ * 与 compactResultPreview 的跳过条件（isPermissionDenied / isInputValidationError）
+ * 保持同一语义；另外要求至少一张「可渲染」的图（有 src 的非 oversized），
+ * 纯 oversized 占位不内联（否则消息流里全是虚线占位噪音）。
+ *
+ * @param {object|null} entry - toolResultMap 条目（可能为 undefined：SubAgent 末轮
+ *   tool_use 的 result 未到位 / WebSearch / 历史计数缺口等窗口）
+ * @returns {boolean}
+ */
+export function shouldInlineToolImages(entry) {
+  if (!entry || typeof entry !== 'object') return false;
+  if (entry.isPermissionDenied || entry.isInputValidationError) return false;
+  if (!Array.isArray(entry.images) || entry.images.length === 0) return false;
+  return entry.images.some((img) => img && img.src && !img.oversized);
+}
+
+/**
+ * oversized 图片占位文案（3 处复用：ToolResultView / ChatMessage Popover / 内联块）。
+ * `[image png · 512 KB · too large to preview]`
+ */
+export function formatOversizedImagePlaceholder(img) {
+  const mediaType = (img && img.mediaType ? String(img.mediaType).replace('image/', '') : 'image');
+  const sizeKB = img && typeof img.sizeBytes === 'number' ? Math.round(img.sizeBytes / 1024) : 0;
+  return `[image ${mediaType} · ${sizeKB} KB · too large to preview]`;
+}

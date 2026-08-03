@@ -1270,10 +1270,26 @@ class ChatView extends React.Component {
     const isHistoryLog = this._getIsHistoryLog();
     // 增量 / WeakMap 缓存
     let cached = getToolResultCache(messages);
+    // V2 live split rows merge tool_use blocks into an already-scanned message
+    // (message count unchanged, content grown) — collect them so the incremental
+    // scan can re-register the newly merged tool_use ids.
+    let mergedToolUses = null;
+    if (cached) {
+      const scanEnd = Math.min(this._incToolProcessedCount, messages.length);
+      for (let i = 0; i < scanEnd; i++) {
+        const m = messages[i];
+        if (m && Array.isArray(m._toolUses) && m._toolUses.length > 0) {
+          (mergedToolUses = mergedToolUses || []).push(...m._toolUses);
+        }
+      }
+    }
     if (cached && messages.length > this._incToolProcessedCount) {
       // WeakMap 命中但 messages 增长了（push 模式增量追加）→ 只处理新增消息的 tool 映射
-      appendToolResultMap(cached, messages, this._incToolProcessedCount);
+      appendToolResultMap(cached, messages, this._incToolProcessedCount, mergedToolUses);
       this._incToolProcessedCount = messages.length;
+    } else if (cached && mergedToolUses) {
+      // 消息数未变但 content 增长了（v2 分流行合并）→ 补扫合并的 tool_use
+      appendToolResultMap(cached, messages, this._incToolProcessedCount, mergedToolUses);
     }
     if (!cached) {
       const si = parseInt(keyPrefix.slice(1), 10);
@@ -1592,6 +1608,16 @@ class ChatView extends React.Component {
         const ma = isMainAgent(req);
         if (ma && req.timestamp) {
           cache.tsToIndex[req.timestamp] = i;
+        }
+        // V2 transcript sessions render as one synthetic entry while messages
+        // carry real per-row timestamps — map those to the same entry index so
+        // the "view request" jump works from every bubble, not just the first.
+        if (ma && req._syntheticV2 && req.body && Array.isArray(req.body.messages)) {
+          for (const m of req.body.messages) {
+            if (!m) continue;
+            const ts = m._generatedTs || m._timestamp;
+            if (ts && cache.tsToIndex[ts] === undefined) cache.tsToIndex[ts] = i;
+          }
         }
         const effectiveModel = getEffectiveModel(req);
         if (ma && effectiveModel) {

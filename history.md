@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.15 (2026-08-03)
+
+- feat(chat): **render tool_result images from Claude Code 2.x session logs** — new `server/lib/v2-transcript-normalizer.js` (CLIENT-SAFE) converts the new top-level-`message` JSONL format into legacy entries (per-session grouping, `/clear` segmentation, `message.id` assistant-row merging, `uuid` dedup), wired into cold/local/live ingest. The existing `extractToolResultImages` → `ToolResultView` chain then renders base64 images unchanged.
+- ui(chat): **tool-result images open the full-screen ImageLightbox** — click-to-zoom (ChatImage pattern), `cursor: zoom-in`.
+- ui(chat): **simplified mode inlines tool-result images** — with "show full tool content" off, tool results with images render them directly under the tool pill (memoized, `loading="lazy"`); the hover preview keeps the truncated text only. New `shouldInlineToolImages` / `formatOversizedImagePlaceholder` predicates unify the oversized placeholder across ToolResultView and the pill.
+- fix(chat): synthetic entries no longer render "undefined" status/method; per-message timestamps survive `applyBatchEntryTimestamps` so v2 bubbles keep real times and the "view request" jump works.
+
 ## 1.7.14 (2026-08-01)
 
 - prompt(kimi): **anti-loop guardrails in the Kimi system-prompt presets** — `kimi-k3` and `kimi-k2.7-code` gain self-regulation rules: one wide read over many small reads, a hard "same file twice → never a third time" repetition check that names the offset/limit re-read pattern, a convergence budget (partial report beats endless exploration), and a forced self-assessment line every ten tool calls. Real-trace evidence: a K3 reviewer subagent read `src/App.jsx` 251 times oscillating `limit 40↔50` at the same offset, emitting zero text across 342 turns.

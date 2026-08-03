@@ -4,7 +4,7 @@ import { Collapse, Typography, Radio, Checkbox, Input, Button, Tooltip, Popover,
 import { SearchOutlined } from '@ant-design/icons';
 import { escapeHtml, truncateText, getSvgAvatar } from '../../utils/helpers';
 import { formatHms, formatMonthDayTime } from '../../utils/formatters';
-import { compactResultPreview } from '../../utils/toolResultCore.js';
+import { compactResultPreview, shouldInlineToolImages, formatOversizedImagePlaceholder } from '../../utils/toolResultCore.js';
 import { extractWebSearchGroups } from '../../utils/webSearchGrouping';
 import { mergeThinkingBlocks } from '../../utils/thinkingMerge';
 import WebSearchResultsView from '../viewers/WebSearchResultsView';
@@ -26,7 +26,7 @@ import { tc } from '../../utils/tClaude';
 import { getSlashCommandLabel, getSlashCommandTooltip } from '../../utils/slashCommandLabels';
 import { isPlanApprovalPrompt } from '../../utils/promptClassifier';
 import DiffView from './DiffView';
-import ToolResultView from '../viewers/ToolResultView';
+import ToolResultView, { ToolResultImage } from '../viewers/ToolResultView';
 
 import ImageLightbox from '../common/ImageLightbox';
 import defaultAvatarUrl from '../../img/default-avatar.svg';
@@ -82,6 +82,26 @@ function ChatImage({ src, alt, fallbackText }) {
     </>
   );
 }
+
+// 简化模式内联 tool_result 图片（pill 下方）。images 数组及其元素在流式期间
+// 引用稳定（ChatView 增量 toolResultMap + merge 原地 push），memo 浅比较直接
+// bailout —— 主战场是 toggleSig 全量重渲与 SubAgent 末卡每帧重渲，避免重建
+// MB 级 src 的图片树。oversized 图逐张降级为占位文案。
+const SimplifiedToolImages = React.memo(function SimplifiedToolImages({ images }) {
+  return (
+    <div className={styles.simplifiedToolResultInlineImages}>
+      {images.map((img, idx) => (
+        img && img.oversized ? (
+          <div key={`img-${idx}`} className={styles.simplifiedToolResultImagePlaceholder}>
+            {formatOversizedImagePlaceholder(img)}
+          </div>
+        ) : (
+          img && <ToolResultImage key={`img-${idx}`} img={img} className={styles.simplifiedToolResultImage} />
+        )
+      ))}
+    </div>
+  );
+});
 
 // 流式期间 ChatMessage 整树每 chunk 重渲一次；Avatar / Label 的实际 props
 // （modelInfo / name / timestamp / requestIndex）在一轮响应内都是稳定的。
@@ -1132,50 +1152,41 @@ class ChatMessage extends React.Component {
   // 紧凑模式工具按钮的 Popover 渲染。两处 caller(_renderAssistantContentLegacy 与
   // _renderAssistantContentInOrder)使用完全相同的逻辑,抽出统一维护;tr 为 toolResultMap[tu.id],
   // 可能 undefined(末轮未返回 / WebSearch / 历史未到位),compactResultPreview 内部短路返回 null。
+  // 图片已内联到消息流(pill 下方 SimplifiedToolImages),Popover 内不再渲染图片,只保留截断文本。
   _renderSimplifiedToolPill(tu, tr) {
-    // 用函数式 content 让 AntD 在 hover 触发前不构造预览(大 base64 图场景下显著省 CPU);
-    // destroyTooltipOnHide 配合 hover 关闭后释放 DOM,避免 detached node 持有图片字节。
+    // 用函数式 content 让 AntD 在 hover 触发前不构造预览(大文本场景下省 CPU);
+    // destroyTooltipOnHide 配合 hover 关闭后释放 DOM。
     const renderContent = () => {
       const preview = compactResultPreview(tr);
+      const previewText = preview && preview.text; // 图已内联,只留文本(防图片-only 空边框盒)
       return (
         <div className={styles.simplifiedToolPopoverContent}>
           {this.renderToolCall(tu)}
-          {preview && (
+          {previewText && (
             <div className={styles.simplifiedToolResultPreview}>
-              {preview.images && preview.images.map((img, idx) => (
-                img.oversized ? (
-                  <div key={`img-${idx}`} className={styles.simplifiedToolResultImagePlaceholder}>
-                    {`[image ${(img.mediaType || '').replace('image/', '')} · ${Math.round(img.sizeBytes / 1024)} KB · too large to preview]`}
-                  </div>
-                ) : (
-                  <img
-                    key={`img-${idx}`}
-                    src={img.src}
-                    alt={img.mediaType || 'image'}
-                    className={styles.simplifiedToolResultImage}
-                    loading="lazy"
-                  />
-                )
-              ))}
-              {preview.text && <div className={styles.simplifiedToolResultText}>{preview.text}</div>}
+              <div className={styles.simplifiedToolResultText}>{previewText}</div>
             </div>
           )}
         </div>
       );
     };
+    const inlineImages = shouldInlineToolImages(tr) ? tr.images : null;
     return (
-      <Popover
-        key={`stag-${tu.id}`}
-        placement="top"
-        overlayClassName="simplifiedToolPopover"
-        overlayInnerStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-hover)', borderRadius: 8, padding: 0 }}
-        content={renderContent}
-        destroyTooltipOnHide
-        mouseEnterDelay={0.5}
-        {...((isMobile && !isPad) ? { trigger: 'click', ...(!isIOS && { getPopupContainer: (node) => node.parentElement }) } : {})}
-      >
-        <span className={styles.simplifiedToolTag}>{tu.name}</span>
-      </Popover>
+      <React.Fragment key={`stag-wrap-${tu.id}`}>
+        <Popover
+          key={`stag-${tu.id}`}
+          placement="top"
+          overlayClassName="simplifiedToolPopover"
+          overlayInnerStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-hover)', borderRadius: 8, padding: 0 }}
+          content={renderContent}
+          destroyTooltipOnHide
+          mouseEnterDelay={0.5}
+          {...((isMobile && !isPad) ? { trigger: 'click', ...(!isIOS && { getPopupContainer: (node) => node.parentElement }) } : {})}
+        >
+          <span className={styles.simplifiedToolTag}>{tu.name}</span>
+        </Popover>
+        {inlineImages && <SimplifiedToolImages key={`stag-img-${tu.id}`} images={inlineImages} />}
+      </React.Fragment>
     );
   }
 

@@ -3,6 +3,8 @@ import { Typography } from 'antd';
 import { t } from '../../i18n';
 import { renderMarkdown } from '../../utils/markdown';
 import { escapeHtml } from '../../utils/helpers';
+import { formatOversizedImagePlaceholder } from '../../utils/toolResultCore.js';
+import ImageLightbox from '../common/ImageLightbox';
 import WorkflowPanel from './WorkflowPanel';
 import styles from './ToolResultView.module.css';
 
@@ -301,6 +303,32 @@ function highlight(text, lang) {
   return result;
 }
 
+// Tool-result image: click to open the full-screen ImageLightbox (same pattern
+// as ChatMessage's ChatImage). Failed loads hide silently — a broken data URL
+// is not worth an error line in the result body. Shared with ChatMessage's
+// simplified-tool popover, which passes its own className.
+export function ToolResultImage({ img, className }) {
+  const [failed, setFailed] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  if (failed) return null;
+  return (
+    <>
+      <img
+        src={img.src}
+        alt={img.mediaType || 'image'}
+        className={className || styles.imageItem}
+        loading="lazy"
+        decoding="async"
+        onClick={() => setLightboxOpen(true)}
+        onError={() => setFailed(true)}
+      />
+      {lightboxOpen && (
+        <ImageLightbox src={img.src} alt={img.mediaType || 'image'} onClose={() => setLightboxOpen(false)} />
+      )}
+    </>
+  );
+}
+
 function ToolResultView({ toolName, toolInput, resultText, images, workflow, defaultCollapsed }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed ?? false);
   useEffect(() => { setCollapsed(defaultCollapsed ?? false); }, [defaultCollapsed]);
@@ -320,10 +348,10 @@ function ToolResultView({ toolName, toolInput, resultText, images, workflow, def
       {images.map((img, idx) => (
         img.oversized ? (
           <div key={`img-${idx}`} className={styles.imagePlaceholder}>
-            {`[image ${(img.mediaType || '').replace('image/', '')} · ${Math.round(img.sizeBytes / 1024)} KB · too large to preview]`}
+            {formatOversizedImagePlaceholder(img)}
           </div>
         ) : (
-          <img key={`img-${idx}`} src={img.src} alt={img.mediaType || 'image'} className={styles.imageItem} loading="lazy" />
+          <ToolResultImage key={`img-${idx}`} img={img} />
         )
       ))}
     </div>

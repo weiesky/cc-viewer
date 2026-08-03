@@ -27,6 +27,7 @@ const CLIENT_SAFE_ALLOWLIST = new Set([
   'server/lib/context-rules.js',
   'server/lib/session-boundary.js', // wire-v2 S1: shared boundary/reverse-anchor module
   'server/lib/error-report.js', // wire-v2 S2: reportSwallowed convention, shared both sides
+  'server/lib/v2-transcript-normalizer.js', // Claude Code 2.x JSONL → legacy entry normalizer
 ]);
 
 function listFiles(dir, exts) {

@@ -225,6 +225,25 @@ describe('compensation for broken delta chain', () => {
     assert.equal(result[2].body.messages.length, 3);
   });
 
+  it('synthetic v2 entry 不作为旧 delta 的补偿候选', () => {
+    // 断裂的 delta 之后只有 synthetic v2 entry（不同的会话内容）——不应被
+    // _tryRepairFromCandidate 当作全量候选回填（否则旧请求详情会显示 v2 内容）
+    const broken = makeDeltaEntry([msg('user', 'orphan')], 4);
+    const synthetic = {
+      mainAgent: true,
+      _syntheticV2: true,
+      body: { messages: [msg('user', 'v2-1'), msg('assistant', 'v2-2'), msg('user', 'v2-3'), msg('assistant', 'v2-4')] },
+    };
+    const result = reconstructEntries([makeCheckpointEntry([msg('user', 'a')]), broken, synthetic]);
+    // 断裂的 delta 无法从 synthetic 补偿：保留 checkpoint 累积的 2 条而非 synthetic 的前 4 条
+    // （若被误补偿，messages 会是 v2 内容 'v2-1'...）
+    assert.equal(result[1].body.messages.length, 2);
+    assert.equal(result[1].body.messages[1].content, 'orphan');
+    // synthetic entry 原样保留（不入补偿、不被改写）
+    assert.equal(result[2]._syntheticV2, true);
+    assert.equal(result[2].body.messages[0].content, 'v2-1');
+  });
+
   it('多个断裂点 → 逐个补偿', () => {
     const entries = [
       // 第一个断裂：无前置 checkpoint

@@ -244,6 +244,9 @@ export function reconstructEntries(entries) {
  */
 function _tryRepairFromCandidate(brokenEntry, expectedCount, candidate) {
   if (!candidate.mainAgent || candidate.teammate || !Array.isArray(candidate.body?.messages)) return false;
+  // V2 transcript synthetic entries are never a valid repair source for legacy
+  // delta rows — their messages are a different conversation's content.
+  if (candidate._syntheticV2) return false;
   const candidateMsgs = candidate.body.messages;
   const candidateTotal = candidate._totalMessageCount || candidateMsgs.length;
   const isFullEntry = !candidate._deltaFormat || isCheckpointEntry(candidate);
