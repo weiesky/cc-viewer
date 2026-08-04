@@ -20,7 +20,7 @@ import { getDefaultBindingsForLocale as vpDefaultBindingsForLocale } from '../se
 import { mergeVoicePackInto } from '../server/lib/approval-modal-prefs';
 import { saveEntries, loadEntries, clearEntries, getCacheMeta } from './utils/entryCache';
 import { assignMessageTimestamps, applyInPlaceLastMsgReplace, getSessionStableId, resolveDisplaySessions, getLatestSessionByActivity, resolveHydratedPin, runPinHydration, applyBatchEntryTimestamps } from './utils/sessionManager';
-import { mergeMainAgentSessions as _mergeMainAgentSessions, isMergeBlockedEntry } from './utils/sessionMerge';
+import { mergeMainAgentSessions as _mergeMainAgentSessions, isMergeBlockedEntry, shouldDegradeBrokenMerge } from './utils/sessionMerge';
 import { reconstructEntries, createIncrementalReconstructor } from '../server/lib/delta-reconstructor.js';
 import { normalizeV2Entries, createV2IncrementalReconstructor, isV2TranscriptLine, isMetadataRow } from '../server/lib/v2-transcript-normalizer.js';
 import { createEntrySlimmer, createIncrementalSlimmer, internEntryBigFields } from './utils/entry-slim.js';
@@ -606,8 +606,15 @@ class AppBase extends React.Component {
       // this slim → applyBatchEntryTimestamps → merge call order.
       applyBatchEntryTimestamps(st, entry);
 
-      // session 合并（跳过 _slimmed；批量路径额外跳过 stale/broken/inProgress，见谓词 JSDoc）
-      if (!entry._slimmed && !isMergeBlockedEntry(entry, { batch: true })) {
+      // Session merge (skips _slimmed; the batch path additionally skips
+      // stale/broken/inProgress — see the predicate JSDoc). Degradation
+      // exception (shouldDegradeBrokenMerge): when a broken carrier is its
+      // session's only carrier, merge it as a truthful prefix and STAMP
+      // _partialData (the create branches propagate it, ChatView renders the
+      // banner, and the same-session defuse branch keys off it) — avoids
+      // blanking the whole chat (2026-07-26 orphan-slice regression).
+      if (!entry._slimmed && (shouldDegradeBrokenMerge(entry, st.sessions) || !isMergeBlockedEntry(entry, { batch: true }))) {
+        if (shouldDegradeBrokenMerge(entry, st.sessions)) entry._partialData = true;
         st.sessions = this.mergeMainAgentSessions(st.sessions, entry);
       }
     }

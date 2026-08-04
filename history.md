@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.16 (unreleased)
+
+- fix(v2-read): **crash orphans finalize as completed deltas on cold reads** — a dead session's req-without-done now emits as a completed delta (`response:{body:null}`) instead of an inProgress placeholder, so the client reconstructor accumulates its message slice; previously the slice was skipped, every later entry failed its `_totalMessageCount` check and the batch slimmer's last-carrier merge blanked the whole chat. Live sessions keep the placeholder (liveness gate: owner pid + journal mtime).
+- fix(chat): **degraded merge for broken carriers** — a `_reconstructBroken` entry that is its session's only carrier merges as a truthful prefix (create branches only, `_seqEpoch` three-part guard); the session is stamped `_partialData` and ChatView shows an "incomplete session" banner. Same-session merges onto a partial base whole-replace instead of prefix-extending (no tail duplication); anchor-hit merges clear the flag. Parity/reorder test pipelines kept in sync.
+
 ## 1.7.15 (2026-08-03)
 
 - feat(chat): **render tool_result images from Claude Code 2.x session logs** — new `server/lib/v2-transcript-normalizer.js` (CLIENT-SAFE) converts the new top-level-`message` JSONL format into legacy entries (per-session grouping, `/clear` segmentation, `message.id` assistant-row merging, `uuid` dedup), wired into cold/local/live ingest. The existing `extractToolResultImages` → `ToolResultView` chain then renders base64 images unchanged.

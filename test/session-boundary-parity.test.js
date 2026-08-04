@@ -28,7 +28,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createEntrySlimmer } from '../src/utils/entry-slim.js';
-import { mergeMainAgentSessions, isMergeBlockedEntry } from '../src/utils/sessionMerge.js';
+import { mergeMainAgentSessions, isMergeBlockedEntry, shouldDegradeBrokenMerge } from '../src/utils/sessionMerge.js';
 import {
   applyBatchEntryTimestamps,
   assignMessageTimestamps,
@@ -85,7 +85,13 @@ function runBatchLeg(fileEntries) {
   for (const entry of acc) {
     if (!(entry.mainAgent && entry.body && Array.isArray(entry.body.messages))) continue;
     applyBatchEntryTimestamps(st, entry);
-    if (!entry._slimmed && !isMergeBlockedEntry(entry, { batch: true })) {
+    // KEEP IN SYNC (AppBase.jsx _processOneEntry): broken-carrier degradation
+    // exception — a broken entry that is its session's only carrier merges as a
+    // partial-data session instead of blanking the whole chat; the carrier is
+    // STAMPED _partialData so the create branches propagate it and ChatView
+    // renders the incomplete-session banner.
+    if (!entry._slimmed && (shouldDegradeBrokenMerge(entry, st.sessions) || !isMergeBlockedEntry(entry, { batch: true }))) {
+      if (shouldDegradeBrokenMerge(entry, st.sessions)) entry._partialData = true;
       st.sessions = mergeMainAgentSessions(st.sessions, entry);
     }
   }
@@ -347,5 +353,50 @@ describe('session-boundary parity — task B: _seqEpoch change (short prior sess
     const { batch, live } = assertParity(sameEpoch, 'epoch-same');
     assert.equal(batch.length, 1);
     assert.equal(live.length, 1);
+  });
+});
+
+// ─── degraded-broken-carrier wiring (KEEP IN SYNC: AppBase.jsx gate) ────────
+// The batch gate stamps _partialData on a degraded carrier; the merge create
+// branch must propagate it onto the session so ChatView renders the banner.
+// Regression guard for the stamp-wiring (the flag was once only hand-set in
+// unit tests, leaving the production gate without it).
+describe('session-boundary parity — degraded broken carrier wiring', () => {
+  it('gate stamps _partialData and the created session carries it', () => {
+    const entry = entryOf(conv(4, { seed: 'd-' }), T1, 'u1', 'v2:d');
+    entry._reconstructBroken = true; // slim keeps it as the only carrier
+    const sessions = runBatchLeg([entry]);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0]._partialData, true, 'degraded carrier must stamp the session');
+  });
+
+  it('same-epoch preceding session blocks degradation (no stamp, no merge)', () => {
+    // The slim pass keeps only the LAST main entry as the messages carrier, so
+    // a same-epoch healthy entry that precedes a broken carrier gets slimmed
+    // away and never builds a session — the broken carrier is then the only
+    // non-slimmed entry and legitimately degrades (prevSessions empty). To
+    // reach the "same epoch already merged" rejection, build the preceding
+    // session directly and run the gate predicate.
+    const prev = [entryOf(conv(4, { seed: 'h-' }), T1, 'u1', 'v2:c')];
+    const broken = entryOf(conv(6, { seed: 'd-' }), T2, 'u1', 'v2:c'); // same epoch
+    broken._reconstructBroken = true;
+    assert.equal(shouldDegradeBrokenMerge(broken, prev), false, 'same-epoch predecessor must block degradation');
+    // A DIFFERENT epoch (new session) degrades and stamps a new session.
+    const other = entryOf(conv(6, { seed: 'd-' }), T2, 'u1', 'v2:d');
+    other._reconstructBroken = true;
+    assert.equal(shouldDegradeBrokenMerge(other, prev), true);
+    const sessions = runBatchLeg([other]);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0]._partialData, true);
+  });
+
+  it('anchor-hit merge clears _partialData on the live leg', () => {
+    const partial = runBatchLeg([entryOf(conv(4, { seed: 'p-' }), T1, 'u1', 'v2:p')]);
+    partial[0]._partialData = true; // simulate a degraded carrier base
+    const full = entryOf([...conv(4, { seed: 'p-' }), msg(5, 'user', 'q')], T2, 'u1', 'v2:p');
+    const live = runLiveLeg([full]);
+    // The live leg rebuilds the session from the full carrier — the partial
+    // flag must not survive a clean anchor-hit merge.
+    assert.equal(live[0]._partialData, undefined);
   });
 });

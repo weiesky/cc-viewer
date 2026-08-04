@@ -20,12 +20,13 @@
  */
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { V2Writer } from '../server/lib/v2/v2-writer.js';
 import { SessionSynthesizer, iterateV2RawEntries, readV2WindowedEntries, findTeammateSessionDirs } from '../server/lib/v2/adapter.js';
+import { LIVE_SESSION_MTIME_MS } from '../server/lib/log-management.js';
 import { readTailEntries } from '../server/lib/log-stream.js';
 import { reconstructEntries } from '../server/lib/delta-reconstructor.js';
 import { _resetForTest } from '../server/lib/error-report.js';
@@ -513,5 +514,132 @@ describe('SessionSynthesizer out-of-order conv events', () => {
     assert.equal(items.length, 2, 'both later turns emitted, none stranded behind the pointer');
     assert.equal(JSON.stringify(items[0].entry), cold[1]);
     assert.equal(JSON.stringify(items[1].entry), cold[2]);
+  });
+});
+
+// ─── cold-read orphan finalization (crash self-heal) ────────────────────────
+// A req with no done is either in-flight (live) or the writer died (orphan).
+// Cold reads of a DEAD session finalize orphans as completed deltas so the
+// client reconstructor accumulates their slices (an inProgress row is skipped,
+// which would fail every later entry's _totalMessageCount check and blank the
+// chat). Live sessions keep the placeholder — a twin completed entry arriving
+// later would be replayed as stale by the client's seq guard.
+//
+// Fixture note: V2Writer only emits snapshot events per request, but the real
+// crash shape (2026-07-26 session) is 1 snapshot + N appends with an orphan
+// append in the middle — the orphan's slice exists ONLY in its own event line.
+// These tests hand-write that shape on disk.
+describe('cold-read orphan finalization', () => {
+  const FRESHNESS = LIVE_SESSION_MTIME_MS;
+  const ORPHAN_SID = 'c7654321-89ab-4cde-8f01-23456789abcd';
+  const ts = (n) => new Date(Date.UTC(2026, 6, 26, 8, 0, n)).toISOString();
+  const reqLine = (seq, evt, msgFrom, msgTo) => ({
+    ph: 'req', seq, rid: `rid${seq}`, ts: ts(seq), kind: 'main', conv: 'main',
+    evt, msgFrom, msgTo, url: 'https://api.aicodewith.com/v1/messages?beta=true',
+    blobs: {}, params: { model: 'claude-opus-5' }, method: 'POST', isStream: true,
+  });
+  const doneLine = (seq) => ({ ph: 'done', seq, rid: `rid${seq}`, status: 'ok', http: 200, dur: 10 });
+  const evtLine = (seq, t, msgs) => ({ seq, rid: `rid${seq}`, t, msgs });
+
+  /**
+   * Hand-write an append-shaped session dir: snapshot + (optional orphan
+   * append) + closing append. Returns the session dir.
+   */
+  function makeAppendSession({ orphanSlice = null } = {}) {
+    const sid = ORPHAN_SID;
+    const sdir = join(dir, 'proj', 'sessions', `20260726080000_${sid}`);
+    mkdirSync(join(sdir, 'conversations', 'main'), { recursive: true });
+    const journal = [{ ph: 'meta', wireFormat: 2, sessionId: sid, pid: 999999999 }];
+    const conv = [evtLine(1, 'snapshot', [textMsg('user', 'turn 1')])];
+    const responses = [{ seq: 1, rid: 'rid1', body: { id: 'm1', type: 'message', role: 'assistant', content: [{ type: 'text', text: 'r1' }] } }];
+    journal.push(reqLine(1, 'snapshot', 0, 1), doneLine(1));
+    if (orphanSlice) {
+      const from = 1 + orphanSlice.length;
+      journal.push(reqLine(2, 'append', 1, from));
+      conv.push(evtLine(2, 'append', orphanSlice));
+    }
+    const tail = [textMsg('user', 'turn 4')];
+    journal.push(reqLine(3, 'append', 1 + (orphanSlice ? orphanSlice.length : 0), 2 + (orphanSlice ? orphanSlice.length : 0)), doneLine(3));
+    conv.push(evtLine(3, 'append', tail));
+    responses.push({ seq: 3, rid: 'rid3', body: { id: 'm3', type: 'message', role: 'assistant', content: [{ type: 'text', text: 'r3' }] } });
+    writeFileSync(join(sdir, 'meta.json'), JSON.stringify({ pid: 999999999, startTs: ts(0), wireFormat: 2, sessionId: sid }));
+    writeFileSync(join(sdir, 'journal.jsonl'), journal.map((l) => JSON.stringify(l)).join('\n') + '\n');
+    writeFileSync(join(sdir, 'responses.jsonl'), responses.map((l) => JSON.stringify(l)).join('\n') + '\n');
+    writeFileSync(join(sdir, 'conversations', 'main', 'e0.jsonl'), conv.map((l) => JSON.stringify(l)).join('\n') + '\n');
+    return sdir;
+  }
+
+  function deadSynth(sessionDir, lines) {
+    // Inject now past the freshness window — the fixture's pid is dead
+    // (999999999), so the mtime guard alone must not mark it live.
+    return new SessionSynthesizer(sessionDir, { deferMs: 0, now: () => Date.now() + FRESHNESS + 60_000 });
+  }
+
+  it('dead session: orphan emits as a completed delta with a null response', async () => {
+    const sessionDir = makeAppendSession({ orphanSlice: [textMsg('user', 'turn 2'), textMsg('assistant', 'r2'), textMsg('user', 'turn 3')] });
+    const lines = sessionLines(sessionDir);
+    const synth = deadSynth(sessionDir, lines);
+    feedRealistic(synth, lines);
+    const items = synth.drain();
+
+    assert.equal(items.length, 3);
+    assert.equal(items.every((i) => i.phase === 'completed'), true, 'orphan must not emit as placeholder');
+
+    const orphan = items[1].entry;
+    assert.equal(orphan.inProgress, undefined);
+    assert.equal(orphan.requestId, undefined);
+    assert.deepEqual(orphan.response, { body: null }, 'completed shape carries the no-response marker');
+    // Slice is the orphan's own append (3 messages), count is the full state.
+    assert.equal(orphan.body.messages.length, 3);
+    assert.equal(orphan._totalMessageCount, 4);
+
+    // Client batch reconstruction now accumulates the slice — no broken chain.
+    const entries = items.map((i) => i.entry);
+    reconstructEntries(entries);
+    assert.equal(entries.every((e) => e._reconstructBroken === undefined && e._staleReorder === undefined), true);
+    assert.equal(entries[2].body.messages.length, 5);
+  });
+
+  it('zero-slice orphan (retry burst, no conv events) is a harmless empty delta', async () => {
+    const sessionDir = makeAppendSession({});
+    const lines = sessionLines(sessionDir);
+    // The mid-session gap is a req2 with NO event line of its own (evt:null,
+    // msgFrom === msgTo — the 2026-07-26 seq 194-207 shape: conv present but
+    // the replay state count already matches). Like the real retry burst it
+    // has no done line either, so on a dead session it finalizes as an empty
+    // completed delta.
+    const req2 = reqLine(2, null, 1, 1);
+    lines.journal.splice(3, 0, req2);
+    const synth = deadSynth(sessionDir, lines);
+    feedRealistic(synth, lines);
+    const items = synth.drain();
+    assert.equal(items.length, 3);
+    const empty = items[1].entry;
+    assert.deepEqual(empty.body.messages, [], 'no events → empty slice');
+    assert.equal(empty._totalMessageCount, 1);
+
+    const entries = items.map((i) => i.entry);
+    reconstructEntries(entries);
+    assert.equal(entries.every((e) => e._reconstructBroken === undefined), true);
+    assert.equal(entries[2].body.messages.length, 2);
+  });
+
+  it('live session (fresh journal) cold-reads the orphan as an inProgress placeholder', async () => {
+    const w = newWriter();
+    fire(w, mainEntry([textMsg('user', 'turn 1')]));
+    fire(w, mainEntry([textMsg('user', 'turn 2')]), { complete: false });
+    await w.flush();
+
+    const sessionDir = sessionDirOf(SID);
+    const lines = sessionLines(sessionDir);
+    // Default now → journal mtime is fresh → session reads as LIVE: the orphan
+    // must stay a placeholder so its future completed twin isn't replayed stale.
+    const synth = new SessionSynthesizer(sessionDir, { deferMs: 0 });
+    feedRealistic(synth, lines);
+    const items = synth.drain();
+    assert.equal(items.length, 2);
+    assert.equal(items[0].phase, 'completed');
+    assert.equal(items[1].phase, 'placeholder');
+    assert.equal(items[1].entry.inProgress, true);
   });
 });

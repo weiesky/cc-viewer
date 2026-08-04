@@ -439,3 +439,14 @@
 .hideLastResponseDivider .lastResponseDivider {
   display: none;
 }
+
+/* Degraded partial-session banner: data incomplete (interrupted requests), best-effort recovery applied. */
+.partialDataBanner {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  padding: 6px 12px;
+  margin: 4px 16px 8px;
+}

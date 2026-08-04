@@ -24,7 +24,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createIncrementalReconstructor, reconstructEntries } from '../server/lib/delta-reconstructor.js';
 import { streamReconstructedEntries } from '../server/lib/log-stream.js';
-import { mergeMainAgentSessions, messageFingerprint, isMergeBlockedEntry } from '../src/utils/sessionMerge.js';
+import { mergeMainAgentSessions, messageFingerprint, isMergeBlockedEntry, shouldDegradeBrokenMerge } from '../src/utils/sessionMerge.js';
 import { applyInPlaceLastMsgReplace } from '../src/utils/sessionManager.js';
 
 // ============================================================================
@@ -138,8 +138,12 @@ function runBatchPipeline(fileEntries) {
   const entries = reconstructEntries(fileEntries.map(deepCopy));
   let sessions = [];
   for (const entry of entries) {
-    if (isMergeBlockedEntry(entry, { batch: true })) continue; // 守卫谓词与生产共用
+    // KEEP IN SYNC (AppBase.jsx _processOneEntry): the batch gate plus the
+    // broken-carrier degradation exception; a degraded carrier is stamped
+    // _partialData so the merge create branches propagate it.
+    if (isMergeBlockedEntry(entry, { batch: true }) && !shouldDegradeBrokenMerge(entry, sessions)) continue;
     if (!(entry.mainAgent && entry.body && Array.isArray(entry.body.messages))) continue;
+    if (shouldDegradeBrokenMerge(entry, sessions)) entry._partialData = true;
     sessions = mergeMainAgentSessions(sessions, entry);
   }
   return sessions;

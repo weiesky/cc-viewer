@@ -18,6 +18,10 @@ export { messageFingerprint };
  *    无 live-port 配置下"提问气泡请求时即显示"依赖这一行为。
  * AppBase 的 SSE 与批量两个 merge 入口、以及单测共用此谓词，防三处逻辑漂移。
  *
+ * 批量路径的降级例外见 shouldDegradeBrokenMerge：当 broken 条目恰好是它那个
+ * session 的唯一载体（slim 只留最后一条 main）时，其 messages 是可信前缀，
+ * 降级合并比整会话空白更可取（会话打 _partialData 标记，ChatView 显示提示条）。
+ *
  * @param {object} entry
  * @param {object} [options]
  * @param {boolean} [options.batch=false] - 批量（强刷/历史加载）路径
@@ -31,6 +35,36 @@ export function isMergeBlockedEntry(entry, options = {}) {
 }
 
 /**
+ * 批量路径降级例外：broken 载体能否以"可信前缀"身份合并进 mainAgentSessions。
+ *
+ * 仅在两条安全路径放行（两条都只会走进 mergeMainAgentSessions 的创建分支，
+ * 不会触发 anchor/rebuild 等可能翻倍的对齐逻辑）：
+ *  - prevSessions 为空：会话直接创建，无对齐风险；
+ *  - 双方都有 _seqEpoch 且不同：确定性会话边界，走 epochChanged append 分支
+ *    （三部分守卫防 v1 无 epoch 的条目被误放行）。
+ *
+ * `_staleReorder` 明确不降级（流内稍后有权威副本自建会话）；inProgress 不降级
+ * （批量下其 messages 是裸切片，不是可信前缀）。v1 / 无 epoch 会话的 broken
+ * 载体也刻意不降级（放松守卫会让 broken 条目掉进同会话分支，错位前缀 → 翻倍）。
+ *
+ * @param {object} entry
+ * @param {Array} prevSessions - 当前已合并的 sessions
+ * @returns {boolean} true = 允许降级合并
+ */
+export function shouldDegradeBrokenMerge(entry, prevSessions) {
+  if (!entry || !entry._reconstructBroken) return false;
+  if (entry._staleReorder || entry.inProgress) return false;
+  if (!Array.isArray(prevSessions) || prevSessions.length === 0) return true;
+  const e = entry._seqEpoch;
+  if (!e) return false; // v1 / epoch-less carriers never degrade
+  // Reject when ANY already-merged session shares the entry's epoch (a same-
+  // session broken carrier preceded by a healthy one must not degrade into the
+  // same-session merge branch). Today batches are single-session per epoch, so
+  // this is a defensive closure for future non-monotonic epoch streams.
+  return prevSessions.every((s) => !s._seqEpoch || s._seqEpoch !== e);
+}
+
+/**
  * 增量合并 mainAgent sessions。
  *
  * 核心算法：反向锚点对齐。以 `newMessages[0]` 为锚点，从 `lastSession.messages` 末尾
@@ -39,6 +73,8 @@ export function isMergeBlockedEntry(entry, options = {}) {
  *  - 命中且 overlapLen <  newLen：push `newMessages[overlapLen..]`，引用稳定。
  *  - 未命中：newLen<curLen → rebuild（/compact summary）；newLen===curLen → 整段 append（Plan Mode 全新片段）；
  *           newLen>curLen → 严格前缀扩展语义（push tail），fp 加固后真正存在重叠的窗口必被 anchor 命中。
+ *  - 降级 partial 基底（lastSession._partialData）且 anchor 未命中：任何长度的全量条目都整段替换
+ *    （partial 前缀有中段缺口、不可信，push tail 会翻倍）。
  *
  * 顶部守卫（isPostClearCheckpoint / userId / transient filter）维持 1.6.245 行为不变。
  *
@@ -68,7 +104,13 @@ export function mergeMainAgentSessions(prevSessions, entry, options = {}) {
   const entryModel = getEffectiveModel(entry);
 
   if (prevSessions.length === 0) {
-    return [{ userId, messages: newMessages, response: newResponse, entryTimestamp, model: entryModel, _seqEpoch: seqEpoch }];
+    return [{
+      userId, messages: newMessages, response: newResponse, entryTimestamp, model: entryModel, _seqEpoch: seqEpoch,
+      // Degraded-broken carrier: truthful prefix with a mid-session hole. Only
+      // the create branches carry it (a same-session merge onto a partial base
+      // is defused by the whole-replace below); ChatView renders the banner.
+      ...(entry._partialData === true && { _partialData: true }),
+    }];
   }
 
   const lastSession = prevSessions[prevSessions.length - 1];
@@ -90,7 +132,10 @@ export function mergeMainAgentSessions(prevSessions, entry, options = {}) {
     for (let i = 0; i < newMessages.length; i++) {
       if (!newMessages[i]._timestamp) newMessages[i]._timestamp = entryTimestamp;
     }
-    return [...prevSessions, { userId, messages: newMessages, response: newResponse, entryTimestamp, model: entryModel, _seqEpoch: seqEpoch }];
+    return [...prevSessions, {
+      userId, messages: newMessages, response: newResponse, entryTimestamp, model: entryModel, _seqEpoch: seqEpoch,
+      ...(entry._partialData === true && { _partialData: true }),
+    }];
   }
 
   if (!options.skipTransientFilter && isNewConversation && newMessages.length <= 4 && prevMsgCount > 4) {
@@ -119,6 +164,17 @@ export function mergeMainAgentSessions(prevSessions, entry, options = {}) {
           lastSession.messages.push(newMessages[i]);
         }
       }
+      // Anchor 对齐成功：新全量条目与 partial 前缀吻合，数据已恢复完整。
+      delete lastSession._partialData;
+    } else if (lastSession._partialData) {
+      // 降级合并的 partial 会话（中段缺口，前缀不可信）：anchor 未命中时任何
+      // 同长/更长的全量条目都是权威真值，整段替换而非前缀扩展——否则会 push 出
+      // 尾部重复（partial 里已含 416..418，新全量 419 会被 append 一遍）。
+      for (let i = 0; i < newLen; i++) {
+        if (!newMessages[i]._timestamp) newMessages[i]._timestamp = entryTimestamp;
+      }
+      lastSession.messages = newMessages;
+      delete lastSession._partialData;
     } else if (newLen < curLen) {
       // /compact summary 等真重建：替换 messages 引用。
       for (let i = 0; i < newLen; i++) {
@@ -175,6 +231,9 @@ export function mergeMainAgentSessions(prevSessions, entry, options = {}) {
     if (entryModel) lastSession.model = entryModel; // latest wins; model-less entries keep the stamp
     return [...prevSessions];
   } else {
-    return [...prevSessions, { userId, messages: newMessages, response: newResponse, entryTimestamp, model: entryModel, _seqEpoch: seqEpoch }];
+    return [...prevSessions, {
+      userId, messages: newMessages, response: newResponse, entryTimestamp, model: entryModel, _seqEpoch: seqEpoch,
+      ...(entry._partialData === true && { _partialData: true }),
+    }];
   }
 }

@@ -1772,6 +1772,16 @@ class ChatView extends React.Component {
         );
       }
 
+      // Degraded (partial-data) session banner — rendered unconditionally
+      // inside the forEach: the divider above is skipped for the first visible
+      // session, but the banner must render for it too (2026-07-26 orphan-slice
+      // regression).
+      if (session._partialData) {
+        allItems.push(
+          <div key={`partial-${si}`} className={styles.partialDataBanner}>{t('ui.partialDataBanner')}</div>
+        );
+      }
+
       // Session-level model fallback: when per-message producer resolution is null (the session's
       // carrier entry is in-flight and filtered out — the "MainAgent" flash on carried-over
       // history), fall back to the session's stamped model. The `_fromSession` marker on the

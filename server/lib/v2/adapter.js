@@ -34,6 +34,7 @@ import { isMainAgentRequest } from '../interceptor-core.js';
 import { readSession } from './replay.js';
 import { iterateJsonlLines } from './jsonl-read.js';
 import { isDiscardableSession } from './session-select.js';
+import { LIVE_SESSION_MTIME_MS } from '../log-management.js';
 import { blobPath, isSupportedWireFormat } from './layout.js';
 import { SingleFlight } from './singleflight.js';
 import { listV2Sessions } from './session-list.js';
@@ -183,6 +184,29 @@ export class SessionSynthesizer {
     this._leader = opts.teammateOf || this._meta.leader || null;
     this._loadBlob = makeBlobLoader({ blobsDir: join(sessionDir, 'blobs') }, this.sessionId);
     this.unsupported = false;
+    // Liveness gate — KEEP IN SYNC with log-management.js deleteLogFiles
+    // (same pid(0)-probe + EPERM + LIVE_SESSION_MTIME_MS mtime triple; the
+    // constant is imported here so only the ordering can drift). Cold reads
+    // finalize crash orphans as completed deltas ONLY when the session is dead.
+    // A live writer may still emit an orphan's done later — its completed twin
+    // would then be replayed by the client's seq guard as stale (_staleReorder)
+    // and the tail of the chat would vanish (cold-read + live-feed race).
+    this._sessionLive = false;
+    try {
+      const meta = this._meta;
+      if (meta && typeof meta.pid === 'number' && meta.pid !== process.pid) {
+        try { process.kill(meta.pid, 0); this._sessionLive = true; } catch (err) {
+          // EPERM = the pid exists under another user — that IS live.
+          if (err && err.code === 'EPERM') this._sessionLive = true;
+        }
+      }
+    } catch { /* unreadable meta — fall through to the mtime guard */ }
+    if (!this._sessionLive) {
+      try {
+        const jStat = statSync(join(sessionDir, 'journal.jsonl'));
+        if (this._now() - jStat.mtimeMs < LIVE_SESSION_MTIME_MS) this._sessionLive = true;
+      } catch { /* no journal — nothing fresh to protect */ }
+    }
     if (meta && meta.wireFormat != null && !isSupportedWireFormat(meta.wireFormat)) {
       this._markUnsupported(meta.wireFormat);
     }
@@ -508,9 +532,23 @@ export class SessionSynthesizer {
 
     if (this._dones.has(seq)) {
       this._tryComplete(seq);
+    } else if (this._deferMs === 0 && !this._sessionLive) {
+      // Cold read of a DEAD session: the orphan is definitively terminal. Emit
+      // it as a completed delta (no inProgress / requestId — the exact shape
+      // _complete produces) so the client batch reconstructor accumulates its
+      // message slice: inProgress rows are skipped by the reconstructor, which
+      // would otherwise drop the slice and fail every later completed entry's
+      // _totalMessageCount integrity check — blanking the whole chat.
+      entry.response = { body: null }; // mirrors _complete's no-response branch
+      // Push the SAME item reference (phase aside): _complete's dedup splice
+      // (this._out.indexOf(item)) depends on the queued object identity — a
+      // spread copy would dodge it and the twin completed frame would double.
+      item.phase = 'completed';
+      this._out.push(item);
     } else {
       // req without done — in-flight or the process died (spec §4). This IS the
-      // v1 placeholder, so it wears the same flags.
+      // v1 placeholder, so it wears the same flags. Live reads keep it so the
+      // incremental reconstructor can render the in-flight turn as it streams.
       entry.inProgress = true;
       entry.requestId = req.rid || `${seq}`;
       this._out.push(item);

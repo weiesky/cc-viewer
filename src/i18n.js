@@ -3678,6 +3678,26 @@ const i18nData = {
     "tr": "MainAgent konuşma verisi yok",
     "uk": "Немає даних діалогу MainAgent"
   },
+  "ui.partialDataBanner": {
+    "zh": "此会话数据不完整（部分请求中断），已尽力恢复",
+    "en": "This session is incomplete (some requests were interrupted); best-effort recovery applied",
+    "zh-TW": "此會話資料不完整（部分請求中斷），已盡力恢復",
+    "ko": "이 세션의 데이터가 불완전합니다(일부 요청이 중단됨). 최선을 다해 복구했습니다",
+    "ja": "このセッションのデータは不完全です（一部のリクエストが中断）。最善を尽くして復元しました",
+    "de": "Diese Sitzung ist unvollständig (einige Anfragen wurden unterbrochen); bestmögliche Wiederherstellung angewendet",
+    "es": "Esta sesión está incompleta (algunas solicitudes se interrumpieron); se aplicó la mejor recuperación posible",
+    "fr": "Cette session est incomplète (certaines requêtes ont été interrompues) ; récupération du mieux possible",
+    "it": "Questa sessione è incompleta (alcune richieste sono state interrotte); recupero del meglio possibile",
+    "da": "Denne session er ufuldstændig (nogle anmodninger blev afbrudt); bedst mulig gendannelse anvendt",
+    "pl": "Ta sesja jest niekompletna (niektóre żądania zostały przerwane); zastosowano najlepszą możliwą rekonstrukcję",
+    "ru": "Эта сессия неполна (часть запросов прервана); применено наилучшее возможное восстановление",
+    "ar": "هذه الجلسة غير مكتملة (انقطعت بعض الطلبات)؛ تم تطبيق أفضل استرداد ممكن",
+    "no": "Denne økten er ufullstendig (noen forespørsler ble avbrutt); best mulig gjenoppretting brukt",
+    "pt-BR": "Esta sessão está incompleta (algumas solicitações foram interrompidas); recuperação da melhor forma possível",
+    "th": "เซสชันนี้ไม่สมบูรณ์ (บางคำขอถูกขัดจังหวะ); ใช้การกู้คืนที่ดีที่สุดเท่าที่จะทำได้",
+    "tr": "Bu oturum eksik (bazı istekler kesildi); mümkün olan en iyi kurtarma uygulandı",
+    "uk": "Ця сесія неповна (деякі запити перервано); застосовано найкраще можливе відновлення"
+  },
   "ui.fileExplorer": {
     "zh": "文件浏览器",
     "en": "File Explorer",

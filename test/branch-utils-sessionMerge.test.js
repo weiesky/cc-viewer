@@ -325,3 +325,120 @@ describe('findReverseAnchor 间接分支', () => {
     assert.equal(out[0].messages[4]._timestamp, 'TT');
   });
 });
+
+// ─── shouldDegradeBrokenMerge 谓词 + partial 会话降级语义 ───────────────────
+// 批量路径 broken 载体的降级例外：仅当它为该 session 唯一载体（prevSessions
+// 空 / epoch 变化）时放行，合并产物打 _partialData；同会话分支遇到 partial
+// 基底且 anchor 未命中时整段替换，防止中段缺口导致的尾部重复。
+describe('shouldDegradeBrokenMerge + partial-session merge', () => {
+  let shouldDegradeBrokenMerge;
+  before(async () => {
+    const mod = await import('../src/utils/sessionMerge.js');
+    shouldDegradeBrokenMerge = mod.shouldDegradeBrokenMerge;
+  });
+
+  const brokenEntry = (opts = {}) => {
+    const e = makeEntry(opts.messages || [], opts);
+    e._reconstructBroken = true; // makeEntry 不透传自定义字段，手动打标
+    if (opts.seqEpoch) e._seqEpoch = opts.seqEpoch;
+    return e;
+  };
+
+  it('谓词：prevSessions 空 → 放行（broken 载体为唯一会话）', () => {
+    assert.equal(shouldDegradeBrokenMerge(brokenEntry(), []), true);
+    assert.equal(shouldDegradeBrokenMerge(brokenEntry(), undefined), true);
+  });
+
+  it('谓词：双方 epoch 不同 → 放行（确定性会话边界）', () => {
+    const prev = [makeSession([], {})];
+    prev[0]._seqEpoch = 'v2:aaa';
+    assert.equal(shouldDegradeBrokenMerge(brokenEntry({ seqEpoch: 'v2:bbb' }), prev), true);
+  });
+
+  it('谓词：同 epoch → 拒绝（降级会掉进同会话分支 → 错位风险）', () => {
+    const prev = [makeSession([], {})];
+    prev[0]._seqEpoch = 'v2:aaa';
+    assert.equal(shouldDegradeBrokenMerge(brokenEntry({ seqEpoch: 'v2:aaa' }), prev), false);
+  });
+
+  it('谓词：v1 无 epoch 前序会话 → 放行（v1 会话不可能是 v2 同会话，创建分支安全）', () => {
+    const prev = [makeSession([], {})]; // 无 _seqEpoch
+    assert.equal(shouldDegradeBrokenMerge(brokenEntry({ seqEpoch: 'v2:bbb' }), prev), true);
+    // entry 自身无 epoch：永不放行（v1 broken 载体不降级）
+    assert.equal(shouldDegradeBrokenMerge(brokenEntry(), prev), false);
+  });
+
+  it('谓词：staleReorder / inProgress / 非 broken → 拒绝', () => {
+    const stale = brokenEntry(); stale._staleReorder = true;
+    const prog = brokenEntry(); prog.inProgress = true;
+    const healthy = makeEntry([], {});
+    assert.equal(shouldDegradeBrokenMerge(stale, []), false);
+    assert.equal(shouldDegradeBrokenMerge(prog, []), false);
+    assert.equal(shouldDegradeBrokenMerge(healthy, []), false);
+  });
+
+  it('降级合并：prevSessions 空 → 创建会话并打 _partialData，messages 为可信前缀', () => {
+    const msgs = [strMsg('user', 'q1'), strMsg('assistant', 'r1'), strMsg('user', 'q2')];
+    const entry = brokenEntry({ messages: msgs, seqEpoch: 'v2:x' });
+    entry._partialData = true;
+    const out = mergeMainAgentSessions([], entry);
+    assert.equal(out.length, 1);
+    assert.equal(out[0]._partialData, true);
+    assert.equal(out[0].messages, msgs);
+  });
+
+  it('降级合并：epoch 变化 → 追加新会话并打 _partialData', () => {
+    const prev = [makeSession([strMsg('user', 'old')], {})];
+    prev[0]._seqEpoch = 'v2:aaa';
+    const entry = brokenEntry({ messages: [strMsg('user', 'new1')], seqEpoch: 'v2:bbb' });
+    entry._partialData = true;
+    const out = mergeMainAgentSessions(prev, entry);
+    assert.equal(out.length, 2);
+    assert.equal(out[1]._partialData, true);
+  });
+
+  it('H1：partial 基底 + 全量条目 anchor 命中补全 → 无重复且清 _partialData', () => {
+    // partial 前缀 = 真前缀（缺口在尾部）：全量条目 5 条，anchor 命中前缀 4 条
+    const partial = [
+      strMsg('user', 'q1'), strMsg('assistant', 'r1'),
+      strMsg('user', 'q2'), strMsg('assistant', 'r2'),
+    ];
+    const full = [...partial, strMsg('user', 'q3'), strMsg('assistant', 'r3')];
+    const session = makeSession(partial, {});
+    session._partialData = true;
+    const out = mergeMainAgentSessions([session], makeEntry(full, { timestamp: 'TT' }));
+    assert.equal(out[0].messages.length, 6);
+    assert.equal(out[0].messages[4].content, 'q3');
+    assert.equal(out[0]._partialData, undefined, 'anchor 对齐成功后清除 partial 标记');
+  });
+
+  it('H1：partial 基底 + anchor 未命中（中段缺口）→ 整段替换而非前缀扩展，无尾部重复', () => {
+    // partial 前缀缺中段：第 2 条被替换，后面多出的消息与新全量不一致
+    const partial = [
+      strMsg('user', 'q1'), strMsg('assistant', 'X'),   // 中段被改写
+      strMsg('user', 'q3'), strMsg('assistant', 'r3'),
+      strMsg('user', 'q4'),
+    ];
+    const full = [
+      strMsg('user', 'q1'), strMsg('assistant', 'r2'),
+      strMsg('user', 'q3'), strMsg('assistant', 'r3'),
+      strMsg('user', 'q4'), strMsg('assistant', 'r4'),
+    ];
+    const session = makeSession(partial, {});
+    session._partialData = true;
+    const out = mergeMainAgentSessions([session], makeEntry(full, { timestamp: 'TT' }));
+    assert.equal(out[0].messages.length, 6, '整段替换：恰好 6 条，无重复');
+    assert.equal(out[0].messages[1].content, 'r2');
+    assert.equal(out[0].messages[5].content, 'r4');
+    assert.equal(out[0]._partialData, undefined, '替换后清除 partial 标记');
+  });
+
+  it('正常（非 partial）会话保持原前缀扩展语义：anchor 未命中 + newLen>curLen → push tail', () => {
+    const existing = [strMsg('user', 'q1')];
+    const full = [strMsg('user', 'q1'), strMsg('assistant', 'r1'), strMsg('user', 'q2')];
+    // q1 前缀存在 → anchor 命中，tailStart=1 → push r1,q2 → 3 条
+    const out = mergeMainAgentSessions([makeSession(existing, {})], makeEntry(full, { timestamp: 'TT' }));
+    assert.equal(out[0].messages.length, 3);
+    assert.equal(out[0]._partialData, undefined);
+  });
+});
