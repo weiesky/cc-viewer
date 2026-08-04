@@ -21,12 +21,13 @@ before(async () => {
 });
 
 // ─────────────────────────── helpers ───────────────────────────
-function mkReq({ system = '', tools = [], teammate, messages = [], mainAgent, response, timestamp } = {}) {
+function mkReq({ system = '', tools = [], teammate, messages = [], mainAgent, response, timestamp, agent } = {}) {
   const req = { body: { system, tools, messages } };
   if (teammate !== undefined) req.teammate = teammate;
   if (mainAgent !== undefined) req.mainAgent = mainAgent;
   if (response !== undefined) req.response = response;
   if (timestamp !== undefined) req.timestamp = timestamp;
+  if (agent !== undefined) req.agent = agent;
   return req;
 }
 
@@ -118,6 +119,41 @@ describe('isTeammate', () => {
     const req = mkReq({ system: 'Agent Teammate Communication' });
     assert.equal(CF.isTeammate(req), true);
     assert.equal(CF.isTeammate(req), true);
+  });
+
+  // ── wire agent 身份双信号（2026-08-05 回归：2.1.199 起 subagent 也被授予
+  // SendMessage，isNativeTeammate 误判；以 x-claude-code-agent-id 形态 +
+  // cc_is_subagent=true 为硬判据，见 agent-id.js）──
+  it('持久化 agent 命名形态（name@session）→ true（Teammate）', () => {
+    const req = mkReq({ agent: { agentName: 'frontend-reviewer', named: true } });
+    assert.equal(CF.isTeammate(req), true);
+  });
+
+  it('持久化 agent 匿名 hex 形态 → false（SubAgent，否决 SendMessage 判据）', () => {
+    // 即使 tools 含 SendMessage（2.1.199 真实 subagent 形态）也否决
+    const req = mkReq({
+      agent: { agentName: null, named: false },
+      tools: [{ name: 'Bash' }, { name: 'SendMessage' }],
+      system: SDK_SYSTEM,
+    });
+    assert.equal(CF.isTeammate(req), false);
+  });
+
+  it('cc_is_subagent=true（CLI 自报）→ false（SubAgent）', () => {
+    const req = mkReq({
+      system: SDK_SYSTEM + '\nx-anthropic-billing-header: cc_version=2.1.199.cc8; cc_is_subagent=true;',
+      tools: [{ name: 'Bash' }, { name: 'SendMessage' }],
+    });
+    assert.equal(CF.isTeammate(req), false);
+  });
+
+  it('cc_is_subagent=true 优先级高于 req.teammate 之外的一切（含 SDK+SendMessage）', () => {
+    // 修复前：SDK prompt + SendMessage → isNativeTeammate true → Teammate: X（bug）
+    const req = mkReq({
+      system: 'x-anthropic-billing-header: cc_version=2.1.199.cc8; cc_is_subagent=true;\n' + SDK_SYSTEM,
+      tools: [{ name: 'Bash' }, { name: 'SendMessage' }],
+    });
+    assert.equal(CF.isTeammate(req), false);
   });
 });
 

@@ -469,7 +469,11 @@ export class SessionSynthesizer {
       isHeartbeat: HEARTBEAT_URL_RE.test(req.url || ''),
       isCountTokens: COUNT_TOKENS_URL_RE.test(req.url || ''),
       mainAgent: false, // finalized below once messages are attached
-      ...(isTeammateEntry && { teammate: leader.agentName || true, ...(leader.teamName && { teamName: leader.teamName }) }),
+      ...(isTeammateEntry && { teammate: leader.agentName || req.agent?.agentName || true, ...(leader.teamName && { teamName: leader.teamName }) }),
+      // Wire agent identity persisted by the writer (see agent-id.js) — the
+      // client uses req.agent.agentName as the display name when the heuristic
+      // registry has nothing (native teammate, cold load).
+      ...(req.agent && { agent: req.agent }),
       ...(req.proxy && { proxyProfile: req.proxy.profile, ...(req.proxy.url && { proxyUrl: req.proxy.url }) }),
     };
 

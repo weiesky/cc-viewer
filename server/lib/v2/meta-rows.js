@@ -22,7 +22,7 @@ import { iterateJsonlLines } from './jsonl-read.js';
 import { iterateV2Items, findTeammateSessionDirs } from './adapter.js';
 import { SingleFlight } from './singleflight.js';
 import { reportSwallowed } from '../error-report.js';
-import { classifyRequest } from '../../../src/utils/requestType.js';
+import { classifyRequest, withAgentNameSubType } from '../../../src/utils/requestType.js';
 
 // KEEP IN SYNC: server/lib/v2/adapter.js itemKey — (sessionId, seq) identity.
 const itemKey = (sessionId, seq) => `${sessionId}\x00${seq}`;
@@ -113,6 +113,9 @@ function foldDir(dir) {
       mainAgent: r.kind === 'main' && !isTeammateDir,
       // v1 entry contract (adapter.js:427): teammate = agentName string | true
       teammate: isTeammateDir ? ((meta.leader && meta.leader.agentName) || true) : undefined,
+      // Wire agent identity (x-claude-code-agent-id) persisted on the journal
+      // req line — the display name for native teammates (see agent-id.js).
+      agent: r.agent,
       model: r.model,
       proxyUrl: r.proxy && r.proxy.url ? r.proxy.url : undefined,
       status: d && typeof d.http === 'number' ? d.http : undefined,
@@ -318,8 +321,7 @@ async function attachBodyFields(sessionDir, rows) {
   const finish = (slot, nextEntry) => {
     const { row, entry } = slot;
     try {
-      const tag = classifyRequest(entry, nextEntry);
-      row.typeTag = tag ? { type: tag.type, subType: tag.subType ?? null } : null;
+      row.typeTag = withAgentNameSubType(classifyRequest(entry, nextEntry), entry);
     } catch (err) {
       // Diagnostic-worthy (a throw silently mis-tags the row; the live path
       // reports the same failure) — CLAUDE.md swallow rule.

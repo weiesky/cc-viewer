@@ -148,6 +148,17 @@ function isPreflightRequest(req, nextReq) {
  * @param {object} [nextReq] - 下一条请求（用于 Preflight 判断）
  */
 export function classifyRequest(req, nextReq) {
+  // Wire-v3 assembled entry: the SERVER already classified this row on the
+  // full body (system/tools intact) — trust it verbatim. The assembled body
+  // strips system/tools, so a client re-derivation (isTeammate / isMainAgent /
+  // isPreflightRequest) would mis-tag every teammate as SubAgent. No
+  // Plan/Preflight exclusion: those need nextReq lookahead, which the server
+  // already applied (cold Pass B / live correction); the client cannot
+  // re-derive them from the stripped body either.
+  if (req && req._v3Row && req._v3Row.typeTag) {
+    return req._v3Row.typeTag;
+  }
+
   // Teammate 子进程的请求优先识别（收敛于 contentFilter.isTeammate）
   if (isTeammate(req)) {
     if (req.teammate) return { type: 'Teammate', subType: req.teammate };
@@ -205,4 +216,23 @@ export function formatTeammateLabel(name, model) {
   if (!model) return `Teammate: ${displayName}`;
   const short = model.replace(/^claude-/i, '').replace(/-\d{8}$/, '');
   return `Teammate: ${displayName}(${short})`;
+}
+
+/**
+ * Normalize a classifyRequest tag, then surface the persisted agent name as the
+ * Teammate subType (ONLY for Teammate rows — a SubAgent subType is a role tag
+ * like "Bash" and must not be overwritten). Shared by the server's meta-rows
+ * Pass B and live-feed row emission so the list/chat labels never drift.
+ * KEEP IN SYNC: both server callers import this from here.
+ *
+ * @param {{type: string, subType: string|null}|null} tag
+ * @param {object} [entry] - entry carrying `agent` ({agentName, named})
+ * @returns {{type: string, subType: string|null}|null}
+ */
+export function withAgentNameSubType(tag, entry) {
+  const base = tag ? { type: tag.type, subType: tag.subType ?? null } : null;
+  if (tag && tag.type === 'Teammate' && entry && entry.agent && entry.agent.agentName) {
+    return { type: tag.type, subType: entry.agent.agentName };
+  }
+  return base;
 }

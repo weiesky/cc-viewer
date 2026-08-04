@@ -27,6 +27,7 @@ import { BlobStore } from './blob-store.js';
 import { Journal } from './journal.js';
 import { ConversationStore } from './conversation-store.js';
 import { parseUserId, classifyKind, ConvResolver } from './identity.js';
+import { parseAgentId, findHeader } from './agent-id.js';
 import { extractUserTexts, flattenPromptText, isSuggestionMode, readPromptsHead } from '../user-prompt-extract.js';
 
 // Below this many free bytes on the log volume, v2 skips writing and reports
@@ -505,6 +506,10 @@ export class V2Writer {
     }
 
     // 3. Journal req line — LAST, so it never references missing content.
+    // Persist the wire agent identity (x-claude-code-agent-id) so teammate
+    // names survive cold reads — display no longer depends on the frontend's
+    // window-scoped name registry (see agent-id.js).
+    const agent = parseAgentId(findHeader(entry.headers, 'x-claude-code-agent-id'));
     s.journal.writeReq({
       seq,
       rid,
@@ -517,6 +522,7 @@ export class V2Writer {
       ...(entry.body && entry.body.model && { model: entry.body.model }),
       ...(entry.isStream && { isStream: true }),
       ...(entry.headers && { headers: entry.headers }),
+      ...(agent && { agent }),
       ...(params && { params }),
       ...((toolsRef || sysRef) && { blobs: { ...(toolsRef && { tools: toolsRef }), ...(sysRef && { sys: sysRef }) } }),
       ...(convResult && { msgFrom: convResult.msgFrom, msgTo: convResult.msgTo }),

@@ -221,3 +221,64 @@ describe('quota probe typeTag via req.params', () => {
     assert.equal(quotaRow.typeTag?.subType, 'Quota');
   });
 });
+
+// ─── Pass B 双信号（2026-08-05 回归：2.1.199 subagent 也被授予 SendMessage，
+// cc_is_subagent / agent 形态是硬判据）─────────────────────────────────────
+describe('Pass B wire-agent classification', () => {
+  const SID2 = '22223333-4444-5555-6666-777788889999';
+  const USER2 = JSON.stringify({ device_id: 'd2', account_uuid: 'a', session_id: SID2 });
+  let dir2;
+
+  before(async () => {
+    const w = new V2Writer({ logDir: tmpRoot, project, enabled: true, minFreeBytes: 0 });
+    const mkEntry = (i, { system, tools, mainAgent = false, headers = {}, ts = null }) => ({
+      timestamp: ts || `2026-08-05T00:00:0${i}.000Z`,
+      project,
+      url: 'https://api.anthropic.com/v1/messages',
+      method: 'POST',
+      headers,
+      body: { model: 'deepseek-v4-flash', system, tools, metadata: { user_id: USER2 }, messages: [textMsg('user', `turn ${i}`)] },
+      response: null, duration: 0, isStream: false, isHeartbeat: false, isCountTokens: false,
+      mainAgent, requestId: `rid2_${i}`,
+    });
+    const fire = (e) => { const h = w.ingestRequest(e, e.body.messages); w.ingestCompletion(h, { ...e, response: { status: 200, headers: {}, body: { content: [], usage: {} } }, duration: 42 }); };
+    // anon subagent: SDK prompt + SendMessage tool + cc_is_subagent=true billing (the Explore shape)
+    fire(mkEntry(1, {
+      system: [{ type: 'text', text: 'x-anthropic-billing-header: cc_version=2.1.199.cc8; cc_is_subagent=true;' }, { type: 'text', text: 'You are a Claude agent, built on Anthropic\'s Claude Agent SDK.' }, { type: 'text', text: 'You are a file search specialist for Claude Code.' }],
+      tools: [{ name: 'Bash' }, { name: 'SendMessage' }],
+      headers: { 'x-claude-code-agent-id': 'a7eea0a140349f80d' },
+    }));
+    // named teammate: SDK prompt + SendMessage, billing WITHOUT cc_is_subagent, named wire id
+    fire(mkEntry(2, {
+      system: [{ type: 'text', text: 'x-anthropic-billing-header: cc_version=2.1.199.7a6; cc_entrypoint=cli;' }, { type: 'text', text: 'You are a Claude agent, built on Anthropic\'s Claude Agent SDK.' }],
+      tools: [{ name: 'Bash' }, { name: 'SendMessage' }],
+      headers: { 'x-claude-code-agent-id': 'frontend-reviewer@session-abc' },
+    }));
+    await w.flush();
+    const basename = resolveSessionDirName(join(tmpRoot, project), SID2) || SID2;
+    dir2 = join(tmpRoot, project, 'sessions', basename);
+  });
+
+  it('anon subagent (cc_is_subagent + SendMessage) → SubAgent, never Teammate', async () => {
+    const { rows } = await readV2RequestsMeta(dir2, {});
+    const anon = rows[0];
+    assert.equal(anon.typeTag.type, 'SubAgent');
+    assert.equal(anon.typeTag.subType, 'Search', 'file search specialist → role tag Search');
+    assert.equal(anon.agent.agentName, null);
+  });
+
+  it('named teammate → Teammate with the persisted name as subType', async () => {
+    const { rows } = await readV2RequestsMeta(dir2, {});
+    const named = rows[1];
+    assert.equal(named.typeTag.type, 'Teammate');
+    assert.equal(named.typeTag.subType, 'frontend-reviewer', 'agent name surfaced as the Teammate subType');
+    assert.equal(named.agent.agentName, 'frontend-reviewer');
+  });
+
+  it('SubAgent role tag is NOT overwritten by an agent name (withAgentNameSubType Teammate-only)', async () => {
+    const { rows } = await readV2RequestsMeta(dir2, {});
+    // anon row is SubAgent:Search — if the name override leaked to SubAgent it
+    // would be null; assert the role tag survived.
+    assert.equal(rows[0].typeTag.subType, 'Search');
+  });
+});

@@ -1605,6 +1605,11 @@ class ChatView extends React.Component {
       let lastModelName = cache.modelName;
       for (let i = startIdx; i < requests.length; i++) {
         const req = requests[i];
+        // isMainAgent short-circuits on req.mainAgent (contentFilter.js
+        // _isMainAgentImpl) — v3 kind-derived entries pass through it, and the
+        // internal isTeammate / cc_is_subagent / legacy mis-tag guards keep
+        // protecting old logs. Do NOT short-circuit on the flag here: that
+        // would bypass the guards for legacy double-tagged entries.
         const ma = isMainAgent(req);
         if (ma && req.timestamp) {
           cache.tsToIndex[req.timestamp] = i;

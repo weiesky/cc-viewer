@@ -32,7 +32,7 @@ import { isDiscardableSession } from './session-select.js';
 import { isForeignLiveOwned } from './session-owner.js';
 import { isConvertRunning } from './convert-manager.js';
 import { computeCacheLoss } from './meta-rows.js';
-import { classifyRequest } from '../../../src/utils/requestType.js';
+import { classifyRequest, withAgentNameSubType } from '../../../src/utils/requestType.js';
 
 const FSWATCH_DEBOUNCE_MS = 80;
 const SAFETY_POLL_MS = 5000;
@@ -679,6 +679,9 @@ export class V2LiveFeed {
       kind: item.kind || (item.isMain ? 'main' : (parsed.teammate ? 'teammate' : 'sub')),
       mainAgent: item.isMain === true,
       teammate: parsed.teammate || undefined,
+      // Wire agent identity (x-claude-code-agent-id) — display name for native
+      // teammates (see agent-id.js).
+      agent: parsed.agent,
       model: parsed.body?.model,
       proxyUrl: parsed.proxyUrl || undefined,
       status: parsed.response?.status,
@@ -698,8 +701,7 @@ export class V2LiveFeed {
   _emitRow(cur, item, parsed) {
     const row = this._rowFrom(item, parsed);
     try {
-      const tag = classifyRequest(parsed, null);
-      row.typeTag = tag ? { type: tag.type, subType: tag.subType ?? null } : null;
+      row.typeTag = withAgentNameSubType(classifyRequest(parsed, null), parsed);
     } catch (err) { reportSwallowed('v2-live.row-classify', err); }
     if (row.mainAgent && !row.inProgress) {
       const u = parsed.response?.body?.usage;
@@ -714,8 +716,7 @@ export class V2LiveFeed {
     const prev = cur._v3Last;
     if (prev && (prev.row.sessionId !== row.sessionId || prev.row.seq !== row.seq)) {
       try {
-        const tag = classifyRequest(prev.entry, parsed);
-        const corrected = tag ? { type: tag.type, subType: tag.subType ?? null } : null;
+        const corrected = withAgentNameSubType(classifyRequest(prev.entry, parsed), prev.entry);
         if (JSON.stringify(corrected) !== JSON.stringify(prev.row.typeTag)) {
           prev.row.typeTag = corrected;
           sendEventToClients(this._clients, 'v2_requests_delta', prev.row);

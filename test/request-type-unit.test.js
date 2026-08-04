@@ -470,3 +470,39 @@ describe('requestType — getMessageText edge via Preflight path', () => {
     assert.equal(r.type, 'SubAgent');
   });
 });
+
+// ------------------- _v3Row.typeTag early-exit (server-classified) ----------
+describe('classifyRequest _v3Row.typeTag early-exit', () => {
+  it('v3-assembled teammate entry returns the server tag verbatim (not SubAgent)', () => {
+    const req = {
+      _v3Row: { typeTag: { type: 'Teammate', subType: 'frontend-reviewer' } },
+      body: { model: 'deepseek-v4-flash', messages: [] },
+      // No system/tools — a client re-derivation would mis-tag as SubAgent.
+    };
+    assert.deepEqual(classifyRequest(req, null), { type: 'Teammate', subType: 'frontend-reviewer' });
+  });
+
+  it('v3 tag wins even when the client would derive a different type', () => {
+    const req = {
+      _v3Row: { typeTag: { type: 'SubAgent', subType: 'Bash' } },
+      body: { model: 'm', messages: [] },
+    };
+    assert.deepEqual(classifyRequest(req, null), { type: 'SubAgent', subType: 'Bash' });
+  });
+
+  it('Plan/Preflight tags are NOT excluded (server already applied lookahead)', () => {
+    const req = {
+      _v3Row: { typeTag: { type: 'Preflight', subType: null } },
+      body: { model: 'm', messages: [] },
+    };
+    assert.deepEqual(classifyRequest(req, null), { type: 'Preflight', subType: null });
+  });
+
+  it('legacy entries (no _v3Row) keep the existing classification path', () => {
+    const req = {
+      teammate: 'frontend-reviewer',
+      body: { model: 'm', messages: [] },
+    };
+    assert.equal(classifyRequest(req, null).type, 'Teammate');
+  });
+});

@@ -76,6 +76,15 @@ export function refreshResolvedModelInfo(items, resolveModelInfo) {
 export function healUnresolvedTeammateEntries(entries) {
   for (const entry of entries) {
     if (!entry || !entry.unresolved || !entry.req || !entry.req.teammate) continue;
+    // Wire-v3 entries carry the SERVER-side typeTag (via _v3Row). When the
+    // tag has a real Teammate name (extractTeammateName / persisted agent
+    // name), it may differ from req.teammate (the heuristic registry) —
+    // overwriting would DOWNGRADE a good server label ("Teammate:
+    // frontend-reviewer" → "Teammate: X"), so skip those. When the tag is
+    // Teammate WITHOUT a name (old journals, no persisted agent), let the heal
+    // upgrade from the registry's real name.
+    const tag = entry.req._v3Row && entry.req._v3Row.typeTag;
+    if (tag && tag.type === 'Teammate' && tag.subType) continue;
     const label = formatTeammateLabel(entry.req.teammate, entry.req.body?.model);
     if (label !== entry.label) entry.label = label;
     entry.unresolved = false;

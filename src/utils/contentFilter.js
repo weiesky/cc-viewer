@@ -127,19 +127,33 @@ export function isTeammate(req) {
   if (!req) return false;
   const cached = _isTeammateCache.get(req);
   if (cached !== undefined) return cached;
+  // 【最高优先级】wire agent 身份信号（x-claude-code-agent-id / cc_is_subagent，
+  // 见 agent-id.js）。自 Claude Code 2.1.199 起普通 subagent 也被授予 SendMessage
+  // 工具，isNativeTeammate 的 SendMessage 判据不再可靠——这两个信号是硬判据：
+  //  - 持久化 agent 命名形态（name@session-…）→ 一定是 Teammate；
+  //  - 持久化 agent 匿名 hex 形态 → 一定是 SubAgent（否决下方 SendMessage 判据）；
+  //  - cc_is_subagent=true（CLI 自报 billing 标记，2.1.181+）→ 一定是 SubAgent。
+  const agent = req.agent;
+  if (agent) {
+    if (agent.named) { _isTeammateCache.set(req, true); return true; }
+    _isTeammateCache.set(req, false); return false;
+  }
+  const sysText = getSystemText(req.body || {});
+  if (SUBAGENT_BILLING_RE.test(sysText)) { _isTeammateCache.set(req, false); return false; }
   // interceptor 模式：通过 process.argv 写入的 teammate 字段
   if (req.teammate) { _isTeammateCache.set(req, true); return true; }
   // native teammate：同进程内 Agent 子代理（system prompt 包含 "You are a Claude agent"）
   if (isNativeTeammate(req)) {
-    // 注入 teammate 字段供下游 requestType.js 的 formatTeammateLabel 使用
+    // 注入 teammate 字段供下游 requestType.js 的 formatTeammateLabel 使用。
+    // 持久化的 wire agent 名（x-claude-code-agent-id，见 agent-id.js）优先——
+    // 它不依赖窗口内的注册表，冷加载/时序缺失时名字仍可靠。
     if (!req.teammate) {
-      req.teammate = extractNativeTeammateName(req) || null;
+      req.teammate = req.agent?.agentName || extractNativeTeammateName(req) || null;
     }
     _isTeammateCache.set(req, true);
     return true;
   }
   // proxy 模式：通过 system prompt 检测（外部进程 teammate）
-  const sysText = getSystemText(req.body || {});
   const result = TEAMMATE_SYSTEM_RE.test(sysText);
   _isTeammateCache.set(req, result);
   return result;

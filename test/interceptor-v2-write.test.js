@@ -68,11 +68,11 @@ function readJsonl(path) {
   return readFileSync(path, 'utf-8').trim().split('\n').map(l => JSON.parse(l));
 }
 
-async function fireMainAgent(messages, respBody = { content: [], usage: { input_tokens: 3, output_tokens: 2 } }) {
+async function fireMainAgent(messages, respBody = { content: [], usage: { input_tokens: 3, output_tokens: 2 } }, extraHeaders = {}) {
   nextResponse = () => new Response(JSON.stringify(respBody), { status: 200, headers: { 'content-type': 'application/json' } });
   const res = await globalThis.fetch('https://api.anthropic.com/v1/messages?beta=true', {
     method: 'POST',
-    headers: { 'x-api-key': 'sk-test-key-000000' },
+    headers: { 'x-api-key': 'sk-test-key-000000', ...extraHeaders },
     body: JSON.stringify(mainAgentBody(messages)),
   });
   assert.equal(res.status, 200);
@@ -207,5 +207,29 @@ describe('wire-v2 唯一写路径', () => {
     assert.equal(last.msgTo, 7, '恢复后的 req 描述 7 消息 wire');
     assert.equal(last.evt, 'append');
     assert.deepEqual([last.msgFrom, last.msgTo], [3, 7], '基于恢复前的 conv 状态做增量');
+  });
+
+  it('(d) x-claude-code-agent-id 头 → journal req 行持久化 agent 字段', async () => {
+    // 前序测试已占用 seq 1..N；本测试追加 3 个请求，从末尾 seq 取各自行。
+    await fireMainAgent([textMsg('user', 'agent header')], undefined, { 'x-claude-code-agent-id': 'frontend-reviewer@session-17e1f37a' });
+    await mod._v2Writer.flush();
+    const dir = sessionDir();
+    let journal = readJsonl(join(dir, 'journal.jsonl'));
+    const reqNamed = journal.filter(l => l.ph === 'req').at(-1);
+    assert.deepEqual(reqNamed.agent, { agentName: 'frontend-reviewer', named: true },
+      'named agent identity persisted on the req line');
+
+    await fireMainAgent([textMsg('user', 'anon header')], undefined, { 'x-claude-code-agent-id': 'a7eea0a140349f80d' });
+    await mod._v2Writer.flush();
+    journal = readJsonl(join(dir, 'journal.jsonl'));
+    const reqAnon = journal.filter(l => l.ph === 'req').at(-1);
+    assert.deepEqual(reqAnon.agent, { agentName: null, named: false },
+      'anonymous hex id persisted with named:false');
+
+    await fireMainAgent([textMsg('user', 'no header')]);
+    await mod._v2Writer.flush();
+    journal = readJsonl(join(dir, 'journal.jsonl'));
+    const reqNone = journal.filter(l => l.ph === 'req').at(-1);
+    assert.equal(reqNone.agent, undefined, 'no header → no agent field');
   });
 });

@@ -80,8 +80,20 @@ export function createV3Assembler() {
         _seqEpoch: `v2:${row.sessionId}`,
         _totalMessageCount: messages.length,
         _v3Assembled: true,
+        // The SOURCE row — lets chat classification read the server-side
+        // typeTag directly (same source the request list uses), instead of
+        // re-deriving from a body stripped of system/tools. Known limitation:
+        // AppBase._applyV3Delta dedups by (sessionId, seq, inProgress), so a
+        // classification-correction re-send (Preflight/Plan lookahead) does NOT
+        // rebuild this entry — the row ref stays the FIRST one until a cold
+        // reload. Only lookahead-dependent rows are affected (Teammate/SubAgent
+        // tags are lookahead-free); tracked as backlog.
+        _v3Row: row,
       };
       if (row.teammate) entry.teammate = row.teammate;
+      // Wire agent identity (x-claude-code-agent-id) — display name for native
+      // teammates, persisted server-side (see agent-id.js).
+      if (row.agent) entry.agent = row.agent;
       if (row.proxyUrl) entry.proxyUrl = row.proxyUrl;
       if (isSnapshot) entry._isCheckpoint = true;
       if (row.inProgress) {

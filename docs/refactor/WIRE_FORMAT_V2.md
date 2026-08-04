@@ -84,6 +84,7 @@ LOG_DIR/<project>/sessions/<session_id>/
   "evt": "append" | "snapshot" | "ctl",  // 对应 conversation 行类型（§6，replace-tail 等控制行为 ctl）；无 conv 写入则省略
   "boundary": "clear" | "compact" | "replace-tail",  // 触发的边界（可省略）
   "proxy": { "profile": "…", "url": "…" }             // proxyProfile/proxyUrl（可省略）
+  "agent": { "agentName": "frontend-reviewer" | null, "named": true | false }  // 可选：从请求头 x-claude-code-agent-id 解析的 wire agent 身份（teammate/subagent 请求携带）。named=true 时 agentName 是展示名（前端不再依赖窗口内启发式注册表）；named=false 表示匿名 hex id。旧行缺失时读侧回退（见 server/lib/v2/agent-id.js）
 }
 ```
 
