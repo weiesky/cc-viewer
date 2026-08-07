@@ -31,7 +31,7 @@ import { TeamButton, TeamModal } from '../dashboard/TeamSessionPanel';
 import { WorkflowButton, WorkflowRunsModal } from '../dashboard/WorkflowRunsPanel';
 import SnapLineOverlay from '../common/SnapLineOverlay';
 import RoleFilterBar from './RoleFilterBar';
-import ChatInputBar from './ChatInputBar';
+import ChatInputBar, { resizeChatTextarea } from './ChatInputBar';
 import WorkflowLiveHud from '../viewers/WorkflowLiveHud';
 import PresetModal from '../terminal/PresetModal';
 import UltraPlanModal from '../terminal/UltraPlanModal';
@@ -2175,8 +2175,7 @@ class ChatView extends React.Component {
     const textarea = this._inputRef.current;
     if (textarea) {
       textarea.value = description;
-      textarea.style.height = 'auto';
-      textarea.style.height = Math.min(textarea.scrollHeight, (isMobile && !isPad) ? 160 : 120) + 'px';
+      resizeChatTextarea(textarea, { focused: true });
       this.setState({ inputEmpty: false });
       textarea.focus();
     } else if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
@@ -2215,8 +2214,7 @@ class ChatView extends React.Component {
       const ta = this._inputRef.current;
       if (ta) {
         ta.value = assembled;
-        ta.style.height = 'auto';
-        ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
+        resizeChatTextarea(ta, { focused: document.activeElement === ta });
       }
       this.setState({
         ultraplanModalOpen: false,
@@ -2644,7 +2642,8 @@ class ChatView extends React.Component {
     }
     if (textareaToReset) {
       textareaToReset.value = '';
-      textareaToReset.style.height = 'auto';
+      // 发送后 textarea 仍保持聚焦（现有行为）：聚焦态回落到两行，非聚焦态收回一行
+      resizeChatTextarea(textareaToReset, { focused: document.activeElement === textareaToReset });
     }
     if (!skipUiState) {
       this._clearPendingImages();
@@ -2726,7 +2725,7 @@ class ChatView extends React.Component {
       const askId = this.state.pendingAsk.id;
       // 先把 textarea 清空 + 收 pending images（与正常路径一致的视觉反馈）
       textarea.value = '';
-      textarea.style.height = 'auto';
+      resizeChatTextarea(textarea, { focused: document.activeElement === textarea });
       this._clearPendingImages();
       this.setState({ inputEmpty: true, pendingInput: userText || imagePaths, inputSuggestion: null }, () => this.scrollToBottom());
       this.handleAskCancel(askId, 'Interrupted by user');
@@ -2756,8 +2755,7 @@ class ChatView extends React.Component {
       const textarea = this._inputRef.current;
       if (textarea) {
         textarea.value = this.state.inputSuggestion;
-        textarea.style.height = 'auto';
-        textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+        resizeChatTextarea(textarea, { focused: document.activeElement === textarea });
       }
       this.setState({ inputSuggestion: null, inputEmpty: false });
       return;
@@ -2770,8 +2768,7 @@ class ChatView extends React.Component {
 
   handleInputChange = (e) => {
     const textarea = e.target;
-    textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    resizeChatTextarea(textarea, { focused: document.activeElement === textarea });
     const empty = !textarea.value.trim();
     this.setState({ inputEmpty: empty });
     if (this.state.inputSuggestion && !empty) {
@@ -2910,8 +2907,7 @@ class ChatView extends React.Component {
     if (!textarea) return;
     const cur = textarea.value;
     textarea.value = cur ? `${cur} ${quoted}` : quoted;
-    textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    resizeChatTextarea(textarea, { focused: true });
     this.setState({ inputEmpty: false });
     textarea.focus();
   };

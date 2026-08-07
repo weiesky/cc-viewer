@@ -14,6 +14,12 @@
   --bg-base-alt: #0d0d0d;
   --bg-container: #111;
   --bg-elevated: #1e1e1e;
+  /* Composer card fill: dark theme keeps the elevated tone */
+  --bg-composer: #1e1e1e;
+  /* Composer card drop shadow: subtle lift, 8px spread */
+  --shadow-composer: 0 2px 8px rgba(0, 0, 0, 0.35);
+  /* Strip behind the composer card: page color in dark, light gray in light */
+  --bg-input-strip: #0d0d0d;
   --bg-surface: #2a2a2a;
   --bg-code: #14141F;
   --bg-code-dark: #0d1117;
@@ -172,6 +178,12 @@
   --bg-base-alt: #F5F5F5;
   --bg-container: #FFFFFF;
   --bg-elevated: #F9F9F9;
+  /* Composer card fill: light theme uses pure white for contrast against the page */
+  --bg-composer: #FFFFFF;
+  /* Composer card drop shadow: subtle lift, 8px spread */
+  --shadow-composer: 0 2px 8px rgba(0, 0, 0, 0.08);
+  /* Strip behind the composer card: page color in dark, light gray in light */
+  --bg-input-strip: #F9F9F9;
   --bg-surface: #F0F0F0;
   --bg-code: #F5F5F5;
   --bg-code-dark: #F5F5F5;

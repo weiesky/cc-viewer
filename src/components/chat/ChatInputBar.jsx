@@ -16,6 +16,28 @@ const SpeechRec = typeof window !== 'undefined' && window.isSecureContext
   ? (window.SpeechRecognition || window.webkitSpeechRecognition)
   : null;
 
+// Desktop textarea vertical metrics (must stay in sync with ChatInputBar.module.css):
+// padding 12px top + 4px bottom, line-height 21px (14 * 1.5).
+const FOCUS_VPAD = 16;
+const LINE_H = 21;
+const MIN_LINES = 1;
+const MAX_LINES = 6;
+const FOCUS_LINES = 2;
+
+// Shared autosize helper: measures the content box (scrollHeight minus vertical padding)
+// so an empty textarea snaps to exactly one line; `focused` pads short content up to two lines.
+// Mobile (isMobile && !isPad) keeps the legacy total-box behavior (different padding/font metrics).
+export function resizeChatTextarea(ta, { focused = false } = {}) {
+  if (!ta) return;
+  ta.style.height = 'auto';
+  if (isMobile && !isPad) {
+    ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+    return;
+  }
+  const content = Math.min(Math.max(ta.scrollHeight - FOCUS_VPAD, LINE_H * MIN_LINES), LINE_H * MAX_LINES);
+  ta.style.height = (focused ? Math.max(content, LINE_H * FOCUS_LINES) : content) + 'px';
+}
+
 const SPEECH_LANG_MAP = {
   zh: 'zh-CN', 'zh-TW': 'zh-TW', en: 'en-US', ko: 'ko-KR',
   ja: 'ja-JP', de: 'de-DE', es: 'es-ES', fr: 'fr-FR',
@@ -46,6 +68,20 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
   const recRef = useRef(null);
   const anchorRef = useRef({ prefix: '', suffix: '' });
   const rootRef = useRef(null);
+  // Desktop-only focus expand: focused empty/one-line input grows to two lines (animated via CSS).
+  const [focusExpand, setFocusExpand] = useState(false);
+  const focusExpandRef = useRef(false);
+
+  const resizeInput = (focused) => {
+    const ta = inputRef?.current;
+    if (!ta) return;
+    resizeChatTextarea(ta, { focused });
+  };
+  const applyFocusExpand = (on) => {
+    focusExpandRef.current = on;
+    setFocusExpand(on);
+    resizeInput(on);
+  };
 
   useEffect(() => () => {
     const rec = recRef.current;
@@ -173,8 +209,7 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
         else interim += transcript;
       }
       t2.value = prefix + finalAcc + suffix;
-      t2.style.height = 'auto';
-      t2.style.height = Math.min(t2.scrollHeight, 120) + 'px';
+      resizeChatTextarea(t2, { focused: focusExpandRef.current });
       setInterimText(interim);
       onChange?.({ target: t2 });
     };
@@ -338,12 +373,14 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
           <div className={styles.textareaWithGhost}>
             <textarea
               ref={inputRef}
-              className={styles.chatTextarea}
+              className={`${styles.chatTextarea}${focusExpand ? ` ${styles.chatTextareaFocused}` : ''}`}
               placeholder={inputSuggestion ? '' : t('ui.chatInput.placeholder')}
               rows={1}
               onKeyDown={onKeyDown}
               onInput={handleTextareaInput}
               onPaste={handlePaste}
+              onFocus={() => applyFocusExpand(true)}
+              onBlur={() => applyFocusExpand(false)}
             />
             {inputSuggestion && inputEmpty && (
               <div className={styles.ghostText}>{inputSuggestion}</div>
