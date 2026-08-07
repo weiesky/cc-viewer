@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- ui(chat): **PC composer polish** — the composer card is capped at 1000px and centered on wide screens (shrinks responsively below); the card sits on its own input strip (`--bg-input-strip`, light gray `#F9F9F9` in the light theme) as a pure-white surface with a soft 8px drop shadow; and focusing the desktop textarea animates it to two lines (`height 0.2s ease`), collapsing back to content height (min one line) on blur. Autosize moved to a shared content-box helper (`resizeChatTextarea`) so an empty input snaps to exactly one line; mobile metrics/behavior unchanged.
+
 ## 1.7.17 (2026-08-05)
 
 - feat(v2): **persist agent identity from the wire header** — new `server/lib/v2/agent-id.js` parses `x-claude-code-agent-id` (`name@session-…` named / pure-hex anonymous) and the writer stores it as an optional `agent` field on journal req lines. Teammate display names no longer depend on the frontend's window-scoped heuristic registry, so names survive cold loads and mid-session gaps (new captures only).

@@ -1,15 +1,18 @@
 .chatInputBar {
-  padding: 8px 16px 12px;
-  background: var(--bg-input-bar);
+  /* 宽屏下用 max() 把卡片限宽 1000px 并居中，窄屏退化为 16px 边距。
+     外圈用 --bg-input-strip（亮 #F9F9F9 / 暗 #1e1e1e）托住白卡片 + 浅阴影。 */
+  padding: 8px max(16px, calc((100% - 1000px) / 2)) 12px;
+  background: var(--bg-input-strip);
   flex-shrink: 0;
 }
 
 .chatInputWrapper {
   display: flex;
   flex-direction: column;
-  background: var(--bg-elevated);
+  background: var(--bg-composer);
   border: 1px solid var(--border-secondary);
   border-radius: 16px;
+  box-shadow: var(--shadow-composer);
   transition: border-color 0.2s;
   overflow: visible;
 }
@@ -31,8 +34,9 @@
 
 .chatTextarea {
   width: 100%;
-  min-height: 22px;
-  max-height: 120px;
+  /* 行高 21px(14*1.5) + 上下 padding 16px：min 一行 37px，max 六行 136px */
+  min-height: 37px;
+  max-height: 136px;
   padding: 12px 14px 4px;
   background: #00000000;
   color: var(--text-primary);
@@ -43,6 +47,13 @@
   line-height: 1.5;
   font-family: var(--font-ui);
   box-sizing: border-box;
+  /* 聚焦扩展/失焦回收由 JS 写 style.height，这里负责过渡动画 */
+  transition: height 0.2s ease;
+}
+
+/* 桌面聚焦态：不足两行时补到两行总高 58px（42 内容 + 16 padding） */
+.chatTextareaFocused {
+  min-height: 58px;
 }
 
 .chatTextarea::placeholder {
@@ -532,6 +543,8 @@
     max-height: 208px;
     padding: 18px 21px 8px;
     font-size: 22px;
+    /* 移动端关闭高度动画，避免软键盘弹出时抖动 */
+    transition: none;
   }
 
   .ghostText {
@@ -627,9 +640,9 @@
 }
 
 /* ─── iPad/Pad 模式：恢复桌面默认值 ─── */
-:global(html.pad-mode) .chatInputBar { padding: 8px 16px 12px; }
+:global(html.pad-mode) .chatInputBar { padding: 8px max(16px, calc((100% - 1000px) / 2)) 12px; }
 :global(html.pad-mode) .chatInputWrapper { border-radius: 16px; }
-:global(html.pad-mode) .chatTextarea { min-height: 22px; max-height: 120px; padding: 12px 14px 4px; font-size: 14px; }
+:global(html.pad-mode) .chatTextarea { min-height: 37px; max-height: 136px; padding: 12px 14px 4px; font-size: 14px; transition: height 0.2s ease; }
 :global(html.pad-mode) .ghostText { padding: 12px 14px 4px; font-size: 14px; }
 :global(html.pad-mode) .chatInputBottom { padding: 4px 6px 6px; gap: 4px; }
 :global(html.pad-mode) .plusBtn,

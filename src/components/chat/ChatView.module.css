@@ -14,6 +14,16 @@
   flex-direction: column;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  /* 宽屏下消息列限宽 1400px 并居中；> 选择器只收窄直接子元素（消息项），
+     不影响 sticky 按钮 / roleFilterBar / 审批面板 / 输入条等兄弟区域。
+     双滚动容器（普通 .container 与 Virtuoso Scroller）共用本类，一处生效。 */
+  & > * {
+    max-width: 1400px;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
 }
 
 .mobileVirtuoso {
@@ -365,10 +375,12 @@
   position: relative;
 }
 
-/* 审批面板 + ChatInputBar 的共享定位容器。面板用 absolute bottom:100% 贴在输入栏之上。 */
+/* 审批面板 + ChatInputBar 的共享定位容器。面板用 absolute bottom:100% 贴在输入栏之上。
+   背景与外圈输入条（--bg-input-strip）一致，避免容器间露出页面底色接缝。 */
 .inputStack {
   position: relative;
   flex-shrink: 0;
+  background: var(--bg-input-strip);
 }
 
 .overlayPanel {
