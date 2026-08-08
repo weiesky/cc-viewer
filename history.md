@@ -3,6 +3,7 @@
 ## Unreleased
 
 - ui(chat): **PC composer polish** — the composer card is capped at 1000px and centered on wide screens (shrinks responsively below); the card sits on its own input strip (`--bg-input-strip`, light gray `#F9F9F9` in the light theme) as a pure-white surface with a soft 8px drop shadow; and focusing the desktop textarea animates it to two lines (`height 0.2s ease`), collapsing back to content height (min one line) on blur. Autosize moved to a shared content-box helper (`resizeChatTextarea`) so an empty input snaps to exactly one line; mobile metrics/behavior unchanged.
+- fix(system-prompt): **bare `k3` resolves to the Kimi entry** — third-party proxies normalize `k3[1m]` → bare `k3` at spawn, which never matched `KIMI` / `KIMI-K3` entries (the match is `id.includes(entryName)`, and `"k3"` contains neither). `matchModelPrompt` now expands a small alias table (`k3` → `k3` / `kimi-k3` / `kimi`) before substring matching, so the Kimi preset actually injects for kimi-profile sessions; non-alias ids are untouched.
 
 ## 1.7.17 (2026-08-05)
 

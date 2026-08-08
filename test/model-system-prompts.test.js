@@ -201,4 +201,28 @@ describe('model-system-prompts: 读写/列表/匹配', () => {
     assert.equal(matchModelPrompt('claude-opus-4-8', [{ scope: 'global' }]), null);
     assert.equal(matchModelPrompt('claude-opus-4-8', [null, { dir, scope: 'global' }])?.name, 'OPUS');
   });
+
+  it('match: 裸 k3 经别名展开命中 KIMI 与 KIMI-K3（最长名字优先）', () => {
+    const dir = join(mkTmp(), MODEL_PROMPT_DIR);
+    writeModelPrompt(dir, 'kimi', 'override', 'kimi');
+    writeModelPrompt(dir, 'kimi-k3', 'override', 'kimi-k3');
+    const r = matchModelPrompt('k3', [{ dir, scope: 'global' }]);
+    // 两个条目都能命中（kimi-k3 ⊃ kimi 都被裸 k3 的别名展开覆盖），最长名字胜出
+    assert.equal(r.name, 'KIMI-K3');
+    assert.equal(r.mode, 'override');
+  });
+
+  it('match: 裸 k3 只命中 kimi 家族，不误中 opus / sonnet', () => {
+    const dir = join(mkTmp(), MODEL_PROMPT_DIR);
+    writeModelPrompt(dir, 'opus', 'override', 'x');
+    writeModelPrompt(dir, 'sonnet', 'override', 'y');
+    assert.equal(matchModelPrompt('k3', [{ dir, scope: 'global' }]), null);
+  });
+
+  it('match: 完整拼写 kimi-k3 行为不变（别名不破坏正向匹配）', () => {
+    const dir = join(mkTmp(), MODEL_PROMPT_DIR);
+    writeModelPrompt(dir, 'kimi', 'override', 'x');
+    const r = matchModelPrompt('kimi-k3', [{ dir, scope: 'global' }]);
+    assert.equal(r.name, 'KIMI');
+  });
 });

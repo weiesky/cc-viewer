@@ -241,13 +241,36 @@ export function deleteModelPrompt(dir, name) {
  * @param {Array<{ dir: string, scope: 'workspace'|'global' }>} candidates
  * @returns {{ path: string, fileName: string, name: string, mode: 'override'|'append', scope: 'workspace'|'global' } | null}
  */
+// 模型 id 别名表：第三方代理常把模型名归一化成不带厂商前缀的简写（kimi profile 把
+// `k3[1m]` 剥后缀后得到裸 `k3`），而条目名通常带前缀（KIMI / KIMI-K3）。别名在子串
+// 匹配前把解析名展开成「所有等价拼写」，任一变体命中即算命中。key 与变体都是小写
+// 完整词（精确等值，非子串），只在解析名**恰好等于** key 时展开，避免误放大。
+// Model id aliases: third-party proxies often normalize model names to a bare
+// shorthand (the kimi profile strips `k3[1m]` → `k3`), while entry names carry the
+// vendor prefix (KIMI / KIMI-K3). Aliases expand the resolved id into every
+// equivalent spelling before substring matching. Keys and variants are lowercase
+// full words (exact equality, not substrings), so expansion only fires when the
+// resolved id IS the bare shorthand — no accidental widening.
+const MODEL_ID_ALIASES = {
+  k3: ['k3', 'kimi-k3', 'kimi'],
+};
+
+// 展开模型 id 的全部等价小写拼写（无别名时就是单元素数组）。
+// Expand a model id into every equivalent lowercase spelling.
+function modelIdVariants(id) {
+  return MODEL_ID_ALIASES[id] || [id];
+}
+
 export function matchModelPrompt(modelId, candidates) {
   if (!modelId || typeof modelId !== 'string') return null;
   if (!Array.isArray(candidates)) return null;
-  const id = modelId.toLowerCase();
+  const variants = modelIdVariants(modelId.toLowerCase());
   for (const cand of candidates) {
     if (!cand || !cand.dir) continue;
-    const hits = listModelPrompts(cand.dir).filter((e) => id.includes(e.name.toLowerCase()));
+    const hits = listModelPrompts(cand.dir).filter((e) => {
+      const entryName = e.name.toLowerCase();
+      return variants.some((v) => v.includes(entryName));
+    });
     if (!hits.length) continue;
     hits.sort((a, b) => b.name.length - a.name.length || a.name.localeCompare(b.name));
     const e = hits[0];
