@@ -122,6 +122,9 @@ function bootFixture({ startPort, endPort }) {
     fakeClaude,
     '#!/usr/bin/env node\n' +
     'process.stdout.write("FAKE_CLAUDE_UP\\n");\n' +
+    'if (process.env.CCV_TEST_FAKE_CLAUDE_EXIT_CODE !== undefined) {\n' +
+    '  process.exit(Number(process.env.CCV_TEST_FAKE_CLAUDE_EXIT_CODE));\n' +
+    '}\n' +
     'process.stdin.resume();\n' +
     'setInterval(() => {}, 1 << 30);\n',
   );
@@ -198,6 +201,32 @@ function parseLocalPort(out) {
   return m ? parseInt(m[1], 10) : null;
 }
 
+async function bootAndWaitForExit({ args, env, cwd }) {
+  const child = spawn(process.execPath, [CLI_PATH, ...args], {
+    env: { CCV_LOG_DIR: GUARD_FALLBACK_LOG_DIR, ...env },
+    cwd: cwd || REPO_ROOT,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  LIVE.add(child);
+  let out = '';
+  let exitInfo = null;
+  child.stdout.on('data', (d) => { out += d.toString(); });
+  child.stderr.on('data', (d) => { out += d.toString(); });
+  child.on('exit', (code, sig) => { exitInfo = { code, sig }; });
+
+  try {
+    await waitUntil(() => exitInfo !== null, {
+      timeoutMs: 40000, intervalMs: 50, label: 'CodeFuse-managed process exit',
+    });
+    return { stdout: out, exitCode: exitInfo.code, signal: exitInfo.sig };
+  } finally {
+    if (!exitInfo) {
+      try { child.kill('SIGKILL'); } catch {}
+    }
+    LIVE.delete(child);
+  }
+}
+
 // ════════════════════ runCliMode 真实启动（PTY 默认模式）════════════════════
 // 默认 PTY 分支（无 run / 无 -SDK）→ runCliMode：startProxy + import server.js + 等端口 +
 // spawnClaude（fake 常驻 claude）+ --no-open（跳过开浏览器）+ 打印 URL/Network + 注册 SIGINT
@@ -242,6 +271,26 @@ describeCli('cli-boot: runCliMode 真实启动 → SIGINT 干净退出', { concu
     assert.ok(/Local:\s+http:\/\/127\.0\.0\.1:179\d\d/.test(r.stdout), '应打印 Local URL');
     const boundPort = parseLocalPort(r.stdout);
     assert.ok(boundPort >= 17944 && boundPort <= 17947, `端口应在子窗内，实得 ${boundPort}`);
+  });
+});
+
+describeCli('cli-boot: CodeFuse-managed Claude exit closes CCV', { concurrency: false }, () => {
+  it('passes the final Claude exit code through and releases the viewer port', async () => {
+    const fx = bootFixture({ startPort: 17960, endPort: 17963 });
+    fx.env.CLAUDE_CONFIG_DIR = join(fx.home, '.codefuse', 'engine', 'cc');
+    fx.env.CCV_TEST_FAKE_CLAUDE_EXIT_CODE = '7';
+
+    const r = await bootAndWaitForExit({ args: ['--no-open'], env: fx.env });
+    assert.equal(r.exitCode, 7, `Claude exit 7 should be passed through; output:\n${r.stdout.slice(-800)}`);
+    assert.equal(r.signal, null);
+
+    const boundPort = parseLocalPort(r.stdout);
+    if (boundPort !== null) {
+      await waitUntil(async () => await portFree(boundPort), {
+        timeoutMs: 8000, intervalMs: 100, label: `managed port ${boundPort} freed`,
+      });
+      assert.ok(await portFree(boundPort), `managed exit should release port ${boundPort}`);
+    }
   });
 });
 

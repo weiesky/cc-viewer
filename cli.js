@@ -494,10 +494,38 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   }
 
   // 3. 启动 PTY 中的 claude
-  const { spawnClaude, killPty } = await import('./server/pty-manager.js');
+  const { spawnClaude, killPty, onPtyExit } = await import('./server/pty-manager.js');
+  const { isCodeFuseManagedEnvironment } = await import('./server/lib/codefuse-managed-mode.js');
+  const codeFuseManaged = isCodeFuseManagedEnvironment();
+  let managedExitCode = 0;
+  let removeManagedExitListener = null;
+
+  // CodeFuse waits for this wrapper process to finish before tearing down its engine.
+  // Standalone CCV intentionally remains alive after Claude exits so the browser can reconnect.
+  const cleanup = createHardenedCleanup({
+    doCleanup: () => {
+      // A signal-driven kill also produces a PTY exit event. Unsubscribe first so that event
+      // cannot look like a second cleanup request and force the hardened 130 exit path.
+      removeManagedExitListener?.();
+      removeManagedExitListener = null;
+      killPty();
+      return serverMod.stopViewer();
+    },
+    exit: (code) => process.exit(code ?? managedExitCode),
+  });
+
+  if (codeFuseManaged) {
+    removeManagedExitListener = onPtyExit((exitCode) => {
+      managedExitCode = Number.isInteger(exitCode) ? exitCode : 1;
+      cleanup();
+    });
+  }
+
   try {
     await spawnClaude(proxyPort, workingDir, extraClaudeArgs, claudePath, isNpmVersion, port, serverProtocol, serverMod.getInternalToken());
   } catch (err) {
+    removeManagedExitListener?.();
+    removeManagedExitListener = null;
     console.error('[CC Viewer] Failed to spawn Claude:', err.message);
     await serverMod.stopViewer();
     process.exit(1);
@@ -546,14 +574,9 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
 
   // 5. 注册退出处理（hardened：watchdog 5s 强退 + 连按 Ctrl+C 立退，
   //    防 Windows 上 ConPTY kill / IM teardown 挂住导致"Ctrl+C 完全无反应"）
-  const cleanup = createHardenedCleanup({
-    doCleanup: () => {
-      killPty();
-      return serverMod.stopViewer();
-    },
-  });
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
+  process.on('exit', () => removeManagedExitListener?.());
   // Windows 兜底：ConPTY 下控制台 Ctrl+C 事件偶发不送达（SIGINT 永不触发），
   // raw mode keypress 直连 cleanup。silent 模式本地终端无人读 stdin，无副作用；
   // darwin / 非 TTY 内部自动跳过。
