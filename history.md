@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.20 (2026-08-12)
+
+- fix(release): **align npm package metadata with the release tag** — bump `package.json` and `package-lock.json` to 1.7.20 after the v1.7.19 workflow attempted to republish the already-existing 1.7.18 package. This repair release republishes the CodeFuse managed-lifecycle fix to npm and unblocks the downstream Homebrew update.
+
 ## 1.7.19 (2026-08-12)
 
 - fix(codefuse): **managed `--ccv` sessions now terminate with Claude** — CCV recognizes CodeFuse's isolated `CLAUDE_CONFIG_DIR`, subscribes before spawning the PTY so immediate exits cannot be missed, tears down the viewer on the final (post-retry) Claude exit, and passes through its exit code. Standalone CCV retains its reconnect-friendly persistent lifecycle; signal cleanup unregisters the managed listener before killing the PTY to avoid a false second-interrupt exit 130.
