@@ -394,6 +394,10 @@
 .presetSelect {
   width: 100%;
 }
+/* antd Select-family controls have no default 100% width (same reason as .presetSelect) */
+.addNameAutoComplete {
+  width: 100%;
+}
 .presetMatched {
   font-size: 11px;
   color: var(--color-text-secondary, #888);

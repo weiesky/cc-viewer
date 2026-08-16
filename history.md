@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.21 (2026-08-16)
+
+- ui(system-prompt): **type-ahead model names in "+ Add model"** — the name field is now an AutoComplete fed by locally configured models: every hot-reload proxy profile's model mappings (incl. the default profile) plus settings.json's `model` / `env.ANTHROPIC_MODEL`, with `[1m]` suffixes stripped. Names already added in the selected scope are hidden, arbitrary free-form names still work, and Enter no longer submits the dialog or silently picks the first suggestion. Both fetches are non-fatal (`reportSwallowed`, empty list on failure).
+
 ## 1.7.20 (2026-08-12)
 
 - fix(release): **align npm package metadata with the release tag** — bump `package.json` and `package-lock.json` to 1.7.20 after the v1.7.19 workflow attempted to republish the already-existing 1.7.18 package. This repair release republishes the CodeFuse managed-lifecycle fix to npm and unblocks the downstream Homebrew update.

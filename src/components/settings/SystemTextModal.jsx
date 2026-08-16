@@ -4,6 +4,7 @@ import { t, getLang } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { renderMarkdown } from '../../utils/markdown';
 import { reportSwallowed } from '../../utils/errorReport';
+import { collectModelSuggestions } from '../../utils/modelSuggestions';
 import { BLUR_MASK_STYLE } from '../../utils/modalMask';
 import ModelPromptTabs from './ModelPromptTabs';
 import styles from './SystemTextModal.module.css';
@@ -35,6 +36,7 @@ export default function SystemTextModal({ open, onClose }) {
   const [persisted, setPersisted] = useState({});  // { key: true } 服务端已存在(区分新建未保存页签)
   const [activeKey, setActiveKey] = useState('default');
   const [presets, setPresets] = useState([]);      // 内置系统提示词预设 [{id,title,description,match,defaultMode,text}]
+  const [modelSuggestions, setModelSuggestions] = useState([]); // 「+ 添加模型」名称输入建议(本地已配置模型)
   const [variablesDoc, setVariablesDoc] = useState(''); // ${...} 变量参数文档(markdown)
   const [docOpen, setDocOpen] = useState(false);   // 参数文档二级弹窗开关
   const textareaRef = useRef(null);
@@ -53,7 +55,9 @@ export default function SystemTextModal({ open, onClose }) {
       fetch(apiUrl('/api/expert/system-text')).then((r) => r.json()),
       fetch(apiUrl('/api/expert/model-prompts')).then((r) => r.json()),
       fetch(apiUrl(`/api/expert/system-prompt-presets?lang=${encodeURIComponent(getLang())}`)).then((r) => r.json()),
-    ]).then(([sysR, mpR, presetR]) => {
+      fetch(apiUrl('/api/proxy-profiles')).then((r) => r.json()),
+      fetch(apiUrl('/api/claude-settings')).then((r) => r.json()),
+    ]).then(([sysR, mpR, presetR, profR, csR]) => {
       if (cancelled) return;
       const snaps = {};
       const pers = {};
@@ -95,6 +99,13 @@ export default function SystemTextModal({ open, onClose }) {
         setVariablesDoc('');
         reportSwallowed('systemPromptPresets.fetch', presetR.reason || new Error(presetR.value?.error || 'presets_unavailable'));
       }
+      // 名称建议源同为非致命：失败腿只记录并以 null 传入，输入框退化为无建议的纯输入。
+      // 守卫形状与 preset 腿一致 —— 401/500 会 resolve 成 {error} 而非 reject。
+      const profOk = profR.status === 'fulfilled' && profR.value && !profR.value.error;
+      const csOk = csR.status === 'fulfilled' && csR.value && !csR.value.error;
+      if (!profOk) reportSwallowed('modelSuggestions.proxyProfiles', profR.reason || new Error(profR.value?.error || 'proxy_profiles_unavailable'));
+      if (!csOk) reportSwallowed('modelSuggestions.claudeSettings', csR.reason || new Error(csR.value?.error || 'claude_settings_unavailable'));
+      setModelSuggestions(collectModelSuggestions(profOk ? profR.value : null, csOk ? csR.value : null));
       setEntries(list);
       setSnapshots(snaps);
       setDrafts(JSON.parse(JSON.stringify(snaps)));
@@ -286,6 +297,7 @@ export default function SystemTextModal({ open, onClose }) {
           workspaceEnabled={active}
           disabled={loading || saving}
           presets={presets}
+          suggestedModels={modelSuggestions}
           onSelect={selectTab}
           onAdd={handleAdd}
           onDelete={handleDelete}

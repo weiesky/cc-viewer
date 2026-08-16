@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Input, Segmented, Select, Modal, Tooltip } from 'antd';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Segmented, Select, Modal, Tooltip, AutoComplete } from 'antd';
 import { t } from '../../i18n';
 import ConfirmRemoveButton from '../common/ConfirmRemoveButton';
 import styles from './SystemTextModal.module.css';
@@ -39,6 +39,7 @@ export default function ModelPromptTabs({
   workspaceEnabled, // 是否有活动工作区(决定 Workspace 作用域可选与否)
   disabled,         // 加载中等全局禁用
   presets = [],     // 内置预设 [{id,title,description,match,defaultMode,text}]
+  suggestedModels = [], // 名称输入建议候选(父组件拉取，已清洗去重)
   onSelect,         // (key) => void
   onAdd,            // (name, scope, presetId) => string|null 错误文案(null=成功,父组件已建tab)
   onDelete,         // (name, scope) => void
@@ -65,6 +66,13 @@ export default function ModelPromptTabs({
   // 生效预设：用户手动选过则用其选择(含"空白"=null)；否则按名称自动匹配。
   const autoMatched = presetTouched ? null : matchPreset(presets, addName);
   const effectivePresetId = presetTouched ? pickedPreset : (autoMatched?.id || null);
+
+  // 隐藏当前作用域已添加的名字(大小写不敏感；父组件条目名为大写规范化)，
+  // 另一作用域的同名条目仍可见；切换作用域时随 addScope 重算。
+  const nameOptions = useMemo(() => {
+    const taken = new Set(entries.filter((e) => e.scope === addScope).map((e) => e.name.toLowerCase()));
+    return suggestedModels.filter((m) => !taken.has(m.toLowerCase())).map((m) => ({ value: m }));
+  }, [entries, addScope, suggestedModels]);
 
   const handleAdd = () => {
     const err = onAdd(addName.trim(), addScope, effectivePresetId);
@@ -165,12 +173,21 @@ export default function ModelPromptTabs({
               {t('ui.expert.systemText.nameLabel')}
               <FieldHelp text={t('ui.expert.systemText.modelHelp')} />
             </span>
-            <Input
+            <AutoComplete
               ref={nameRef}
+              className={styles.addNameAutoComplete}
               value={addName}
-              onChange={(e) => { setAddName(e.target.value); setAddError(null); }}
-              onPressEnter={handleAdd}
+              options={nameOptions}
+              // AutoComplete 的 onChange 传值字符串，不是 event。
+              onChange={(v) => { setAddName(v); setAddError(null); }}
               placeholder={t('ui.expert.systemText.addModelName')}
+              filterOption={(input, option) => String(option?.value || '').toLowerCase().includes(input.toLowerCase())}
+              // 回车绝不静默选中首项(也绝不提交 —— 这里故意没有 onPressEnter)。
+              defaultActiveFirstOption={false}
+              // 无建议时不出现任何下拉：与原纯输入框行为一致。
+              notFoundContent={null}
+              // 与下方预设 Select 同理：下拉渲染进弹窗内容节点，否则会被 zIndex-1300 的二级弹窗遮挡。
+              getPopupContainer={(trigger) => trigger.parentNode}
             />
           </div>
 
