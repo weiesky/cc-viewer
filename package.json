@@ -1,7 +1,7 @@
 {
   "name": "cc-viewer",
   "version": "1.7.21",
-  "description": "Claude Code logging, visualization, and management toolkit — launch a web viewer alongside Claude Code with full request/response tracing, proxy, and mobile support",
+  "description": "Claude Code logging, visualization, and management toolkit \u2014 launch a web viewer alongside Claude Code with full request/response tracing, proxy, and mobile support",
   "license": "MIT",
   "main": "server.js",
   "type": "module",
@@ -134,7 +134,8 @@
   "overrides": {
     "axios": "^1.16.1",
     "qs": "^6.15.2",
-    "node-gyp": "^12.1.0"
+    "node-gyp": "^12.1.0",
+    "fast-uri": "4.1.2"
   },
   "c8": {
     "include": [
