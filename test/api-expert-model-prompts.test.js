@@ -14,6 +14,11 @@ process.env.CCV_LOG_DIR = tmpDir;
 process.env.CLAUDE_CONFIG_DIR = tmpDir;
 process.env.CCV_WORKSPACE_MODE = '0';
 process.env.CCV_CLI_MODE = '0';
+// GET 回包新增 modelId/matched(经 resolveSpawnModel 读 process.env)：宿主 shell 导出的
+// 模型 env 会漏进来造成机器状态依赖 —— import 前一律 delete，用例内按需 set 并 restore。
+delete process.env.CLAUDE_MODEL;
+delete process.env.ANTHROPIC_MODEL;
+delete process.env.CCV_DISABLE_AUTO_SYSTEM_PROMPT;
 const wsDir = join(tmpDir, 'project');
 mkdirSync(wsDir, { recursive: true });
 process.env.CCV_PROJECT_DIR = wsDir;
@@ -150,6 +155,24 @@ describe('api expert model-prompts', () => {
       assert.ok(g.json().global.some((e) => e.name === 'SONNET'));
     } finally {
       process.env.CCV_PROJECT_DIR = saved;
+    }
+  });
+
+  it('GET 回包带 modelId/matched：env 模型命中条目时回传命中信息，未命中为 null', async () => {
+    const saved = process.env.ANTHROPIC_MODEL;
+    process.env.ANTHROPIC_MODEL = 'k3'; // 裸 k3 经别名表展开命中 KIMI-K3
+    try {
+      await callPost({ scope: 'global', name: 'kimi-k3', mode: 'override', text: 'K3-PROMPT' });
+      const hit = (await callGet()).json();
+      assert.equal(hit.modelId, 'k3');
+      assert.deepEqual(hit.matched, { scope: 'global', name: 'KIMI-K3', mode: 'override' });
+      process.env.ANTHROPIC_MODEL = 'gpt-5'; // 无对应条目 → 未命中
+      const miss = (await callGet()).json();
+      assert.equal(miss.modelId, 'gpt-5');
+      assert.equal(miss.matched, null);
+    } finally {
+      if (saved === undefined) delete process.env.ANTHROPIC_MODEL; else process.env.ANTHROPIC_MODEL = saved;
+      await callPost({ scope: 'global', name: 'kimi-k3', text: '' }); // 清理，避免影响其它断言
     }
   });
 });

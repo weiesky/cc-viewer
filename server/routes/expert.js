@@ -7,11 +7,15 @@
 // 鉴权沿用 dispatch 之前的全局鉴权（与 files-fs 写操作一致，不额外 gate isLocal）。
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { readWorkspaceSystemText, writeWorkspaceSystemText } from '../lib/system-prompt-files.js';
+import {
+  readWorkspaceSystemText, writeWorkspaceSystemText,
+  isNonEmptyFile, SYSTEM_PROMPT_FILE, APPEND_SYSTEM_PROMPT_FILE, DISABLE_AUTO_SYSTEM_PROMPT_ENV,
+} from '../lib/system-prompt-files.js';
 import {
   MODEL_PROMPT_DIR, normalizeModelName, listModelPrompts,
-  writeModelPrompt, deleteModelPrompt,
+  writeModelPrompt, deleteModelPrompt, matchModelPrompt,
 } from '../lib/model-system-prompts.js';
+import { resolveSpawnModel } from '../lib/spawn-model-resolver.js';
 import { listSystemPromptPresets, groupPresetsByCategory, getSystemPromptVariablesDoc } from '../lib/system-prompt-presets.js';
 import { LOG_DIR } from '../../findcc.js';
 
@@ -35,6 +39,30 @@ function sendJson(res, code, obj) {
     res.writeHead(code, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(obj));
   } catch { /* socket 已关闭：忽略 */ }
+}
+
+// Single source for "is a custom system prompt configured to inject" — mirrors the
+// spawn-time injection semantics of buildSystemPromptFileArgs: the env kill switch wins;
+// a matched model entry supersedes the Default sentinels for activation purposes.
+// Fidelity note: spawn-only gates this helper cannot see (insideLogDir skip, manual
+// --system-prompt-file flags, one-shot skip tokens) may rarely make "active" a false
+// positive — acceptable for a UI hint.
+function computeSystemPromptStatus(dir) {
+  if (process.env[DISABLE_AUTO_SYSTEM_PROMPT_ENV] === '1') {
+    return { active: false, modelId: null, matched: null, defaultActive: false };
+  }
+  const defaultActive = !!dir && (
+    isNonEmptyFile(join(dir, SYSTEM_PROMPT_FILE)) || isNonEmptyFile(join(dir, APPEND_SYSTEM_PROMPT_FILE))
+  );
+  const modelId = resolveSpawnModel(dir, process.env);
+  const match = modelId
+    ? matchModelPrompt(modelId, [
+        { dir: dir ? join(dir, MODEL_PROMPT_DIR) : null, scope: 'workspace' },
+        { dir: join(LOG_DIR, MODEL_PROMPT_DIR), scope: 'global' },
+      ])
+    : null;
+  const matched = match ? { scope: match.scope, name: match.name, mode: match.mode } : null;
+  return { active: !!matched || defaultActive, modelId, matched, defaultActive };
 }
 
 async function getSystemText(req, res, parsedUrl, isLocal, deps) {
@@ -95,15 +123,31 @@ async function getModelPrompts(req, res, parsedUrl, isLocal, deps) {
   try {
     const dir = await resolveDir(deps);
     const globalDir = join(LOG_DIR, MODEL_PROMPT_DIR);
+    const status = computeSystemPromptStatus(dir);
     sendJson(res, 200, {
       workspaceDir: dir || null,
       workspaceActive: !!dir,
       globalDir,
       workspace: dir ? collectModelEntries(join(dir, MODEL_PROMPT_DIR)) : [],
       global: collectModelEntries(globalDir),
+      // 当前生效配置解析出的模型 id 及其命中的条目(未命中为 null)——弹窗据此把默认页签
+      // 指向命中条目；matched.name 为规范化大写名，与页签 key 的构成一致。
+      modelId: status.modelId,
+      matched: status.matched,
     });
   } catch (e) {
     console.error('[CC Viewer] expert model-prompts GET failed:', e.message);
+    sendJson(res, 500, { error: 'read_failed' });
+  }
+}
+
+// 轻量状态查询(不内联提示词文本)：头部工具栏据此决定是否自动露出「系统提示词修改」入口。
+async function getSystemPromptStatus(req, res, parsedUrl, isLocal, deps) {
+  try {
+    const dir = await resolveDir(deps);
+    sendJson(res, 200, computeSystemPromptStatus(dir));
+  } catch (e) {
+    console.error('[CC Viewer] expert system-prompt-status GET failed:', e.message);
     sendJson(res, 500, { error: 'read_failed' });
   }
 }
@@ -174,4 +218,5 @@ export const expertRoutes = [
   { method: 'GET', match: 'exact', path: '/api/expert/model-prompts', handler: getModelPrompts },
   { method: 'POST', match: 'exact', path: '/api/expert/model-prompts', handler: postModelPrompts },
   { method: 'GET', match: 'exact', path: '/api/expert/system-prompt-presets', handler: getSystemPromptPresets },
+  { method: 'GET', match: 'exact', path: '/api/expert/system-prompt-status', handler: getSystemPromptStatus },
 ];

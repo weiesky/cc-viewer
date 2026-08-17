@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.22 (2026-08-16)
+
+- feat(system-prompt): **auto header entry + model-aware default tab for Edit System Prompt** — the entry (now a chip icon, replacing the pencil) auto-appears in the header toolbar (Web) and the native tab bar (Electron) whenever a custom prompt is configured to inject at the next launch — a model entry matching the currently resolved model (workspace or global scope), or the workspace Default sentinels — with no manual pinning needed, and disappears again when nothing is in effect (manual pins are unaffected; `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` suppresses it). Opening the modal now preselects the tab of the entry matching the active model (e.g. `k3` → `KIMI-K3`), falling back to the Default tab when nothing matches. Backed by a new lightweight `GET /api/expert/system-prompt-status` endpoint and a `matched`/`modelId` pair added to `GET /api/expert/model-prompts`, both computed server-side with the same resolver + matcher used at spawn (including the bare-`k3` → Kimi alias).
+
 ## 1.7.21 (2026-08-16)
 
 - ui(system-prompt): **type-ahead model names in "+ Add model"** — the name field is now an AutoComplete fed by locally configured models: every hot-reload proxy profile's model mappings (incl. the default profile) plus settings.json's `model` / `env.ANTHROPIC_MODEL`, with `[1m]` suffixes stripped. Names already added in the selected scope are hidden, arbitrary free-form names still work, and Enter no longer submits the dialog or silently picks the first suggestion. Both fetches are non-fatal (`reportSwallowed`, empty list on failure).

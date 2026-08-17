@@ -86,6 +86,13 @@ export default function SystemTextModal({ open, onClose }) {
             pers[key] = true;
           }
         }
+        // 默认选中「当前生效模型命中的条目」页签(服务端经 resolveSpawnModel+matchModelPrompt
+        // 算出，含 k3→KIMI 别名)；无命中或条目在两次目录扫描间被删 → 保持开头的 default 重置。
+        const mk = d.matched;
+        const matchKey = mk && typeof mk.name === 'string' && (mk.scope === 'global' || mk.scope === 'workspace')
+          ? tabKeyOf(mk.scope, mk.name)
+          : null;
+        if (matchKey && list.some((e) => tabKeyOf(e.scope, e.name) === matchKey)) setActiveKey(matchKey);
       } else {
         setGlobalDir(null);
         message.error(t('ui.expert.systemText.loadError'));

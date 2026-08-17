@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Space, Tag, Button, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Tabs, Spin, Input, Select, AutoComplete, Segmented, Tooltip, message } from 'antd';
 import { DISPLAY_SCALE_PRESETS } from '../../utils/displayScaleHelper';
 import { hasNativeZoom, isMac } from '../../env';
-import { MessageOutlined, FileTextOutlined, DashboardOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, CopyOutlined, ApiOutlined, SwapOutlined, EditOutlined, ThunderboltOutlined, QuestionCircleOutlined, PushpinOutlined, PushpinFilled } from '@ant-design/icons';
+import { MessageOutlined, FileTextOutlined, DashboardOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, CopyOutlined, ApiOutlined, SwapOutlined, ThunderboltOutlined, QuestionCircleOutlined, PushpinOutlined, PushpinFilled } from '@ant-design/icons';
 import { QRCodeCanvas } from 'qrcode.react';
 import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats, readCalibrationModel, computeContextPercent, sumUsageInputTokens, sumUsageContextTokens } from '../../utils/helpers';
 import { contextSeverityColor } from '../../utils/formatters';
@@ -14,6 +14,7 @@ import { BLUR_MASK_STYLE } from '../../utils/modalMask';
 import { sortSkillsDefault } from '../../utils/skillsParser';
 import { handleSkillToggle, handleSkillDelete } from '../../utils/skillModalController';
 import { PINNED_KEY, parsePinned, serializePinned, togglePinned } from '../../utils/pinnedMenu';
+import { reportSwallowed } from '../../utils/errorReport';
 import { classifyRequest } from '../../utils/requestType';
 import { resolveTeammateNames } from '../../utils/contentFilter';
 import { t, getLang, setLang, LANG_OPTIONS } from '../../i18n';
@@ -24,6 +25,7 @@ import ConceptHelp from '../common/ConceptHelp';
 import ToolsHelp from '../common/ToolsHelp';
 import OpenFolderIcon from '../common/OpenFolderIcon';
 import DialogueIcon from '../common/DialogueIcon';
+import ChipIcon from '../common/ChipIcon';
 import CachePopoverContent from './CachePopoverContent';
 import LiveTagPopover from './LiveTagPopover';
 import MemoryDetailModal from '../common/MemoryDetailModal';
@@ -118,6 +120,9 @@ class AppHeader extends React.Component {
       // 汉堡菜单「钉住」的菜单 key 列表（全局持久，跨项目共享；存 localStorage ccv_pinnedMenuKeys）。
       // 顺序=用户钉住先后；驱动行内钉按钮实心态、汉堡右侧快捷方式行、Electron header model 的 pins。
       pinnedKeys: parsePinned(typeof localStorage !== 'undefined' ? localStorage.getItem(PINNED_KEY) : null),
+      // 「系统提示词修改」是否有会在下次启动注入的提示词(命中当前模型的条目或工作区默认 sentinel)。
+      // 为 true 时入口自动露出在头部工具栏(无需手动钉住)；由 /api/expert/system-prompt-status 供给。
+      systemPromptActive: false,
     };
     this._countdownTimer = null;
     this._expiredTimer = null;
@@ -128,6 +133,8 @@ class AppHeader extends React.Component {
     // 切换/快速重开 popover 时旧回包不会污染新状态（参考 _memorySeq 模式）
     this._claudeMdSeq = 0;
     this._claudeMdDetailSeq = 0;
+    // 与 _fsSkillsSeq 同语义：status 拉取在途期间发生新一轮触发时，旧回包不得覆盖新状态。
+    this._systemPromptSeq = 0;
     this.updateCountdown = this.updateCountdown.bind(this);
   }
 
@@ -187,7 +194,7 @@ class AppHeader extends React.Component {
       { key: 'proxy-switch', icon: <SwapOutlined />, label: t('ui.proxySwitch'), onClick: () => this.setState({ proxyModalVisible: true }) },
       // Hidden on official subscription: retry orchestration targets proxy gateways only
       ...(this._isProxyMode() ? [{ key: 'retry-config', icon: <ThunderboltOutlined />, label: t('ui.proxyStats.title'), onClick: () => this.props.onToggleProxyStats?.() }] : []),
-      { key: 'edit-system-prompt', icon: <EditOutlined />, label: t('ui.expert.systemText'), onClick: () => this.setState({ systemTextModalVisible: true }), dividerAfter: true },
+      { key: 'edit-system-prompt', icon: <ChipIcon />, label: t('ui.expert.systemText'), onClick: () => this.setState({ systemTextModalVisible: true }), dividerAfter: true },
       { key: 'project-stats', icon: <BarChartOutlined />, label: t('ui.projectStats'), onClick: this.handleShowProjectStats },
       ...(viewMode === 'raw' ? [{ key: 'global-settings', icon: <SettingOutlined />, label: t('ui.globalSettings'), onClick: this._openGlobalSettings }] : []),
       ...(viewMode === 'chat' ? [{ key: 'display-settings', icon: <SettingOutlined />, label: t('ui.settings'), onClick: () => this.setState({ settingsDrawerVisible: true }) }] : []),
@@ -294,6 +301,10 @@ class AppHeader extends React.Component {
       .map(k => descByKey.get(k))
       .filter(Boolean)
       .map(d => ({ key: d.key, name: d.label }));
+    // 「系统提示词修改」激活且未手动钉住时自动露出(与 Web 端 pins 块同规则，见 _autoSystemPromptDesc)；
+    // tab bar 侧经 MENU_ICON['edit-system-prompt'] 取图标、menuShortcut 回传触发同一描述符 onClick。
+    const autoPin = this._autoSystemPromptDesc(descByKey);
+    if (autoPin) pins.push({ key: autoPin.key, name: autoPin.label });
     const cd = this.state.countdownText;
     const countdown = (viewMode === 'raw' && cd)
       ? { text: `${t('ui.cacheCountdown', { type: this.props.cacheType ? `(${this.props.cacheType})` : '' })} ${cd}` }
@@ -399,8 +410,29 @@ class AppHeader extends React.Component {
     if (e && e.key === 'Escape' && this.state.electronQrOpen) this.setState({ electronQrOpen: false });
   };
 
+  // 「系统提示词修改」自动露出规则(Web pins 块与 Electron header model 共用)：
+  // 激活且未被手动钉住时返回其描述符，否则 null。调用方各自决定渲染形态。
+  _autoSystemPromptDesc(descByKey) {
+    if (!this.state.systemPromptActive || this.state.pinnedKeys.includes('edit-system-prompt')) return null;
+    return descByKey.get('edit-system-prompt') || null;
+  }
+
+  // 拉取「系统提示词修改」激活态：激活时入口自动露出在头部工具栏(无需手动钉住)。
+  // 触发点：挂载 / 代理配置或工作区切换(componentDidUpdate) / 系统提示词弹窗关闭(保存即改变激活态)。
+  reloadSystemPromptStatus = () => {
+    const seq = ++this._systemPromptSeq;
+    fetch(apiUrl('/api/expert/system-prompt-status'))
+      .then((r) => r.json())
+      .then((d) => { if (seq === this._systemPromptSeq) this.setState({ systemPromptActive: !!(d && d.active) }); })
+      .catch((err) => {
+        // 瞬时失败(服务重启/远程登录窗口 401)不翻状态 —— 只认成功回包，避免入口闪烁。
+        reportSwallowed('systemPromptStatus.fetch', err);
+      });
+  };
+
   componentDidMount() {
     this.startCountdown();
+    this.reloadSystemPromptStatus();
     fetch(apiUrl('/api/local-url')).then(r => r.json()).then(data => {
       if (data.url) this.setState({ localUrl: data.url });
     }).catch(() => {});
@@ -431,6 +463,14 @@ class AppHeader extends React.Component {
     this._pushHeaderModel();
     if (prevProps.cacheExpireAt !== this.props.cacheExpireAt) {
       this.startCountdown();
+    }
+    // 激活态依赖「当前模型 + 当前工作区」：代理配置/工作区任一变化都可能翻转命中结果。
+    // proxyProfiles 引用在两次真实拉取之间保持稳定(AppBase state)，本组件的 setState 不会
+    // 改动 props → 该 guard 不会自触发循环。
+    if (prevProps.activeProxyId !== this.props.activeProxyId
+      || prevProps.proxyProfiles !== this.props.proxyProfiles
+      || prevProps.projectName !== this.props.projectName) {
+      this.reloadSystemPromptStatus();
     }
     // Workspace 切换：projectName 变了 → 旧的 _fsSkills 属于旧项目，直接作废。
     // 递增 seq 防止正在途中的 reload 回包把脏数据塞回 state。
@@ -1681,6 +1721,10 @@ class AppHeader extends React.Component {
             // 但保留在 localStorage，切回对应模式自动恢复)。Electron 下走原生 tab bar(见 _buildHeaderModel.pins)。
             const descByKey = new Map(this._getMenuDescriptors().map(d => [d.key, d]));
             const pins = this.state.pinnedKeys.map(k => descByKey.get(k)).filter(Boolean);
+            // 「系统提示词修改」激活(下次启动会注入提示词)且未被手动钉住时，入口自动露出；
+            // 合入 pins 后再判空 —— 否则零钉住用户永远看不到这个自动入口。
+            const autoDesc = this._autoSystemPromptDesc(descByKey);
+            if (autoDesc) pins.push(autoDesc);
             if (pins.length === 0) return null;
             return pins.map((d) => (
               <Tooltip key={d.key} title={d.label}>
@@ -2263,7 +2307,11 @@ class AppHeader extends React.Component {
         />
         <SystemTextModal
           open={this.state.systemTextModalVisible}
-          onClose={() => this.setState({ systemTextModalVisible: false })}
+          onClose={() => {
+            this.setState({ systemTextModalVisible: false });
+            // 弹窗内保存/删除/清空都会改变激活态 → 关闭时重拉，头部自动入口随即翻转。
+            this.reloadSystemPromptStatus();
+          }}
         />
         <MessagingModal
           open={this.state.messagingModalVisible}
