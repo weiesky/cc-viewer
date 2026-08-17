@@ -134,6 +134,14 @@ function bootFixture({ startPort, endPort }) {
   writeFileSync(fakeNpm, `#!/bin/sh\necho "${gnm}"\n`);
   chmodSync(fakeNpm, 0o755);
 
+  // fake claude shim(受限 PATH 内)：子进程的 `which claude`(resolveNativePath step 2)先命中它,
+  // 挡住绝对路径候选(/usr/local/bin/claude 等)泄漏到真机安装 —— 本机那是个 .js 符号链接,
+  // 被误当 native 直跑时 shebang 的 env node 在受限 PATH 下找不到 node → exit 127。
+  // shim 用 /bin/sh + 绝对 node 路径拉起 fake cli.js(exec 保持退出码与信号语义)。
+  const fakeClaudeShim = join(bin, 'claude');
+  writeFileSync(fakeClaudeShim, `#!/bin/sh\nexec "${process.execPath}" "${fakeClaude}" "$@"\n`);
+  chmodSync(fakeClaudeShim, 0o755);
+
   writeFileSync(join(home, '.zshrc'), '# zshrc\n');
 
   return {
