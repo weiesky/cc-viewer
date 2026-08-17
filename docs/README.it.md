@@ -10,7 +10,7 @@ Un toolkit Vibe Coding distillato dall'esperienza di sviluppo personale, costrui
 3. Registrazione completa: offre capacità complete di intercettazione e analisi del payload di Claude Code, ideale per la registrazione, l'analisi dei problemi, l'apprendimento, l'ispirazione e il reverse engineering;
 4. Apprendimento ed esperienza condivisi: sono stati accumulati numerosi materiali di studio ed esperienze di sviluppo (vedi le icone "?" in tutto il sistema);
 5. Esperienza nativa preservata: estende solo le capacità di Claude Code, senza modifiche sostanziali al kernel, mantenendo l'esperienza nativa;
-6. Supporto per modelli di terze parti: compatibile con deepseek-v4-\*, GLM 5.1, Kimi K2.6, con la capacità cc-switch integrata per commutare a caldo tra strumenti di terze parti in qualsiasi momento.
+6. Supporto per modelli di terze parti: compatibile con deepseek-v4-\*, GLM 5.1, Kimi K2.6, con la capacità cc-switch integrata per commutare a caldo tra strumenti di terze parti in qualsiasi momento. La finestra di commutazione a caldo supporta anche sorgenti per ruolo — Main Agent, Sub-Agents e Teammates possono ciascuno usare un profilo proxy diverso (predefinito: seguire il Main Agent); quando il Main Agent usa il Default integrato con l'endpoint ufficiale, l'assegnazione dei ruoli resta nascosta e dormiente.
 
 <img width="860" alt="cc-viewer — deploy once, share with every device" src="https://raw.githubusercontent.com/weiesky/cc-viewer/main/docs/cc-viewer-share.svg" />
 

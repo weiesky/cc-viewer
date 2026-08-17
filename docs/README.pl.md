@@ -10,7 +10,7 @@ Zestaw narzędzi Vibe Coding wydestylowany z własnego doświadczenia programist
 3. Pełne logowanie: zapewnia kompleksowe przechwytywanie i analizę payloadów Claude Code — idealne do logowania, debugowania, nauki, inspiracji i inżynierii wstecznej;
 4. Dzielenie się nauką i doświadczeniem: zebrano wiele materiałów dydaktycznych i doświadczeń programistycznych (patrz symbole „?" rozsiane po systemie);
 5. Zachowane natywne doświadczenie: jedynie rozszerza możliwości Claude Code bez istotnych modyfikacji jądra — natywne doświadczenie zostaje zachowane;
-6. Wsparcie modeli zewnętrznych: kompatybilny z deepseek-v4-\*, GLM 5.1, Kimi K2.6, z wbudowaną funkcją cc-switch umożliwiającą hot-switching pomiędzy narzędziami zewnętrznymi w dowolnym momencie;
+6. Wsparcie modeli zewnętrznych: kompatybilny z deepseek-v4-\*, GLM 5.1, Kimi K2.6, z wbudowaną funkcją cc-switch umożliwiającą hot-switching pomiędzy narzędziami zewnętrznymi w dowolnym momencie; okno hot-switch obsługuje także źródła per rola — Main Agent, Sub-Agents i Teammates mogą korzystać z różnych profili proxy (domyślnie: podążaj za Main Agent); gdy Main Agent używa wbudowanego Default z oficjalnym endpointem, przypisanie ról pozostaje ukryte i uśpione.
 
 <img width="860" alt="cc-viewer — deploy once, share with every device" src="https://raw.githubusercontent.com/weiesky/cc-viewer/main/docs/cc-viewer-share.svg" />
 

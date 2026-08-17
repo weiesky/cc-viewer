@@ -58,3 +58,16 @@
 - `profiles` — profile 列表，`id: "max"` 为内置直连模式，不可删除
 - 使用旧版 `models` / `activeModel` 的 profile 在加载时会自动迁移为 `ANTHROPIC_MODEL`
 - 修改文件后约 1.5 秒自动生效（通过 `fs.watchFile` 监听），无需重启
+
+## 按角色分源（高级）
+
+当主 Agent 使用某个代理 profile 时，弹窗顶部会出现「角色分工」分配区，可让**子 Agent（SubAgent）**和 **Teammate** 分别指向与主 Agent 不同的源——典型用法是主 Agent 跑贵模型、子 Agent 跑便宜模型。
+
+- 每个角色可选：**跟随主 Agent**（默认）/ **Default（内置直连）** / 任一 profile
+- **count_tokens、心跳等 utility 请求永远跟随本进程主角色的源**（主进程内 = 主 Agent；Teammate 进程内 = Teammate 自己的分配）——第三方代理常不支持这些端点
+- 子 Agent 角色只作用于带 `cc_is_subagent=true` 标记的请求（Claude Code ≥ 2.1.181）；更早版本的子代理请求与压缩/标题等轻量请求一样留在主 Agent 源
+- Teammate 两种形态都支持：独立进程（`--agent-name` 识别，切换后约 1.5 秒经文件监听热生效）与同进程团队 agent（Claude Code 2.1.x 原生 agent teams，经 system prompt 团队标记识别，随 leader 进程热生效）
+- 当主 Agent 切回 **Default 且端点为官方 api.anthropic.com** 时，分配区自动隐藏，已配置的角色分配**保留但不生效**（休眠），主 Agent 再次切到代理时原样恢复；Default 背后是自定义端点（如 env 里配了第三方地址）时分配区仍然可见且生效
+- 角色分配按 workspace 隔离，存储在各项目的 `active-profile.json`（`{ activeId, roles }`）
+
+说明：ccv 代理模式（`ccv run` / `ccv` CLI / Electron 标签页）同样按角色分流——proxy 在缓冲请求体后按角色选上游并交给重试引擎，统计按实际角色 profile 归属；唯一例外是代理模式下的**独立进程 teammate**，其官方端点休眠判定不生效（它看到的端点是本地代理地址）。

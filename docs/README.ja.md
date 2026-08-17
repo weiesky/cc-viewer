@@ -10,7 +10,7 @@ Claude Code をベースに、自身の開発経験を蒸留・蓄積した Vibe
 3. 完全なログトレース：Claude Code のペイロードを丸ごと傍受・解析できる機能を提供し、ロギング、問題分析、学習、リバースエンジニアリングに最適です；
 4. 学習・経験の共有：多くの学習資料や開発経験を蓄積しています（システム各所の「?」アイコンをご覧ください）；
 5. ネイティブ体験の維持：Claude Code の能力を強化するのみで、コアには一切実質的な変更を加えず、ネイティブ体験を保ちます；
-6. サードパーティモデル対応：deepseek-v4-\*、GLM 5.1、Kimi K2.6 に対応、cc-switch 機能を内蔵しており、サードパーティツールにいつでもホットスイッチ可能です；
+6. サードパーティモデル対応：deepseek-v4-\*、GLM 5.1、Kimi K2.6 に対応、cc-switch 機能を内蔵しており、サードパーティツールにいつでもホットスイッチ可能です；また、ホットスイッチはロールごとのソース指定にも対応しており、Main Agent、Sub-Agent、Teammate がそれぞれ異なるプロキシプロファイルを使用できます（デフォルト：Main Agent に従う）。Main Agent が公式エンドポイントの内蔵 Default を使用している場合、ロール割り当ては非表示となり、保存済みの割り当ては休眠状態のままになります。
 
 <img width="860" alt="cc-viewer — deploy once, share with every device" src="https://raw.githubusercontent.com/weiesky/cc-viewer/main/docs/cc-viewer-share.svg" />
 

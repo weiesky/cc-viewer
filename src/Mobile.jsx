@@ -983,6 +983,8 @@ class Mobile extends AppBase {
             proxyProfiles={this.state.proxyProfiles}
             activeProxyId={this.state.activeProxyId}
             defaultConfig={this.state.defaultConfig}
+            proxyRoles={this.state.proxyRoles}
+            proxyOfficialDefault={this.state.proxyOfficialDefault}
             onProxyProfileChange={this.handleProxyProfileChange}
           />
           <div className={`${styles.mobileFileExplorerOverlay} ${this.state.mobileFileExplorerVisible ? styles.mobileFileExplorerOverlayVisible : ''}`}>

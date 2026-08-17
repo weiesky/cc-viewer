@@ -605,13 +605,13 @@ describe('fetch wrapper 细分支补强（565 / 592 / 632 / 757 反向 / 776-778
     }
   });
 
-  it('_readWorkspaceActiveId：active-profile.json 的 activeId 非字符串 → 取 null（78 第二臂）', async () => {
+  it('_readWorkspaceActive：active-profile.json 的 activeId 非字符串 → 取 null（回退 profile.json.active）', async () => {
     const wsDir = mkdtempSync(join(tmpdir(), 'ccv-ws78-'));
     const r = mod.initForWorkspace(join(wsDir, 'proj78'), { forceNew: true });
     // activeId 写成 number → typeof !== 'string' → null
     writeFileSync(join(r.dir, 'active-profile.json'), JSON.stringify({ activeId: 12345 }));
     writeFileSync(mod.PROFILE_PATH, JSON.stringify({ active: 'kk', profiles: [{ id: 'kk', name: 'KK' }] }), { mode: 0o600 });
-    // _readWorkspaceActiveId 返回 null（非字符串）→ getActiveProfileId 回退 profile.json.active='kk'
+    // _readWorkspaceActive 返回 activeId=null（非字符串）→ getActiveProfileId 回退 profile.json.active='kk'
     assert.equal(mod.getActiveProfileId(), 'kk', 'activeId 非字符串 → 回退 profile.json.active');
     try { rmSync(wsDir, { recursive: true, force: true }); } catch { /* noop */ }
     // initForWorkspace 重绑了项目并重置了 v2 session 绑定 → 恢复原项目 + 重新引导，

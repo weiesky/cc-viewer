@@ -17,6 +17,7 @@ export function rowToListItem(row) {
     timestamp: row.timestamp,
     url: row.url,
     proxyUrl: row.proxyUrl,
+    proxyRole: row.proxyRole,
     duration: row.duration,
     inProgress: row.inProgress === true,
     isHeartbeat: row.kind === 'heartbeat',

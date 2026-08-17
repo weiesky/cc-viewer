@@ -14,8 +14,8 @@
  *
  * 历史注记：model 改写段曾误用 if 块级 body 变量（越界 ReferenceError 被 catch 吞掉，导致
  * 设了 activeModel 时 model 不替换）。现改用函数级 requestEntry.body 读旧值，该 BUG 已修复。
- * 1.7.0 已知缺口（生产 bug，另行上报）：v2 ingestRequest 在 proxy 改写之前执行，
- * proxyProfile/proxyUrl 落盘记账丢失 —— 本文件不断言这两个字段的持久化。
+ * 1.8 起 ingestRequest 移到 proxy 改写之后执行，proxyProfile/proxyUrl/proxyRole 落盘记账
+ * 完整 —— 本文件改写用例断言 proxyUrl，角色分流用例断言 proxyRole。
  */
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -266,6 +266,111 @@ describe('proxy 请求改写（通过真实 fetch hook）', () => {
     assert.equal(mod._activeProfile, null);
     await postJson('https://api.anthropic.com/v1/messages', { model: 'claude-x', messages: [] });
     assert.equal(lastFetchArgs[0], 'https://api.anthropic.com/v1/messages', 'origin 未改');
+  });
+});
+
+describe('按角色分流（main/subagent/teammate）', () => {
+  // 引导请求已把 _defaultConfig.origin 捕获为 api.anthropic.com → isOfficialDefaultEndpoint()=true，
+  // 本文件的休眠用例依赖这一点。文件头 CCV_PROXY_MODE=1 仅跳过自执行，不影响角色分流。
+  const SUB_SYS = 'You are Claude Code, official CLI.\ncc_is_subagent=true; effort=max';
+  const subBody = () => ({ system: [{ type: 'text', text: SUB_SYS }], messages: [], model: 'claude-x' });
+
+  function writeTwoProfiles() {
+    writeProfile({ active: 'p1', profiles: [
+      { id: 'max', name: 'Default' },
+      { id: 'p1', name: 'Main', baseURL: 'https://main.example.com', apiKey: 'sk-main' },
+      { id: 'sub1', name: 'Sub', baseURL: 'https://sub.example.com', apiKey: 'sk-sub' },
+    ] });
+  }
+
+  it('子 Agent 显式分配：cc_is_subagent=true 阳性标记请求改写到子源，proxyRole 落盘', async () => {
+    writeTwoProfiles();
+    mod.setActiveProfileForWorkspace('p1', { subagent: 'sub1', teammate: 'follow' });
+    await postJson('https://api.anthropic.com/v1/messages', subBody());
+    assert.equal(lastFetchArgs[0], 'https://sub.example.com/v1/messages', '子代理请求应改写到 sub 源');
+    assert.equal(lastFetchArgs[1].headers['x-api-key'], 'sk-sub');
+    const entry = lastCompleted();
+    assert.equal(entry.proxyProfile, 'Sub');
+    assert.equal(entry.proxyRole, 'subagent', 'proxyRole 经 journal proxy.role → adapter 回读');
+    assert.equal(entry.proxyUrl, 'https://sub.example.com/v1/messages');
+  });
+
+  it('主 Agent 请求仍走 main 源（proxyRole=main）', async () => {
+    writeTwoProfiles();
+    mod.setActiveProfileForWorkspace('p1', { subagent: 'sub1', teammate: 'follow' });
+    await postJson('https://api.anthropic.com/v1/messages', mainBody([{ role: 'user', content: 'hi' }]));
+    assert.equal(lastFetchArgs[0], 'https://main.example.com/v1/messages');
+    assert.equal(lastCompleted().proxyRole, 'main');
+  });
+
+  it('follow 默认：子标记请求跟随 main 源', async () => {
+    writeTwoProfiles();
+    mod.setActiveProfileForWorkspace('p1', { subagent: 'follow', teammate: 'follow' });
+    await postJson('https://api.anthropic.com/v1/messages', subBody());
+    assert.equal(lastFetchArgs[0], 'https://main.example.com/v1/messages', 'follow → main 源');
+    assert.equal(lastCompleted().proxyRole, 'subagent', '角色是 subagent，但解析到 main 的 profile');
+  });
+
+  it('utility 跟随 main：count_tokens 即使分配了子源也不走子源', async () => {
+    writeTwoProfiles();
+    mod.setActiveProfileForWorkspace('p1', { subagent: 'sub1', teammate: 'follow' });
+    await postJson('https://api.anthropic.com/v1/messages/count_tokens', { model: 'claude-x', messages: [] });
+    assert.equal(lastFetchArgs[0], 'https://main.example.com/v1/messages/count_tokens', 'count_tokens 跟随 main 源');
+    assert.equal(lastCompleted().proxyRole, 'main');
+  });
+
+  it('无阳性标记的非 main 请求（compaction/标题类）不会被误路由到子源', async () => {
+    writeTwoProfiles();
+    mod.setActiveProfileForWorkspace('p1', { subagent: 'sub1', teammate: 'follow' });
+    // 无 system / 无 tools / 无 cc_is_subagent 标记的轻量请求 → 角色归 main
+    await postJson('https://api.anthropic.com/v1/messages', { model: 'claude-haiku-x', messages: [{ role: 'user', content: 'summarize' }] });
+    assert.equal(lastFetchArgs[0], 'https://main.example.com/v1/messages', '正向分类：无标记请求留在 main');
+  });
+
+  it('休眠：main=Default + 官方端点（_defaultConfig 实证）→ 存储的子分配不生效但保留', async () => {
+    writeTwoProfiles();
+    mod.setActiveProfileForWorkspace('max', { subagent: 'sub1', teammate: 'follow' });
+    assert.equal(mod._activeProfile, null, 'main=Default 无改写');
+    assert.equal(mod.getStoredRoles().subagent, 'sub1', '存储值保留（休眠≠清除）');
+    await postJson('https://api.anthropic.com/v1/messages', subBody());
+    assert.equal(lastFetchArgs[0], 'https://api.anthropic.com/v1/messages', '休眠：子请求未被改写');
+    assert.equal(lastCompleted().proxyRole, undefined, '未改写则无 proxyRole');
+    // 主切回 profile → 分配复活
+    mod.setActiveProfileForWorkspace('p1');
+    assert.equal(mod.getStoredRoles().subagent, 'sub1', '切走后存储分配原样恢复');
+    await postJson('https://api.anthropic.com/v1/messages', subBody());
+    assert.equal(lastFetchArgs[0], 'https://sub.example.com/v1/messages', '复活后子请求改写生效');
+  });
+
+  it('同进程 team 成员（system 团队标记，无 argv）→ 改写到 teammate 源', async () => {
+    writeTwoProfiles();
+    writeProfile({ active: 'p1', profiles: [
+      { id: 'max', name: 'Default' },
+      { id: 'p1', name: 'Main', baseURL: 'https://main.example.com', apiKey: 'sk-main' },
+      { id: 'sub1', name: 'Sub', baseURL: 'https://sub.example.com', apiKey: 'sk-sub' },
+      { id: 'team1', name: 'Team', baseURL: 'https://team.example.com', apiKey: 'sk-team' },
+    ] });
+    mod.setActiveProfileForWorkspace('p1', { subagent: 'sub1', teammate: 'team1' });
+    // CC 2.1.x 原生 teams 的同进程 teammate：system 带团队标记、无 cc_is_subagent、无 argv
+    await postJson('https://api.anthropic.com/v1/messages', {
+      system: [{ type: 'text', text: 'You are a Claude agent, running as an agent in a team. Agent Teammate Communication: on' }],
+      messages: [{ role: 'user', content: 'tm-task' }], model: 'claude-x',
+    });
+    assert.equal(lastFetchArgs[0], 'https://team.example.com/v1/messages', '同进程 teammate 应改写到 team 源');
+    assert.equal(lastCompleted().proxyRole, 'teammate');
+  });
+
+  it('getProxyRoleProfiles：返回各角色有效 profile（含休眠置 null）', () => {
+    writeTwoProfiles();
+    mod.setActiveProfileForWorkspace('p1', { subagent: 'sub1', teammate: 'follow' });
+    let rp = mod.getProxyRoleProfiles();
+    assert.equal(rp.main?.name, 'Main');
+    assert.equal(rp.subagent?.name, 'Sub');
+    assert.equal(rp.teammate?.name, 'Main', 'teammate follow → main profile');
+    mod.setActiveProfileForWorkspace('max', { subagent: 'sub1' });
+    rp = mod.getProxyRoleProfiles();
+    assert.equal(rp.main, null);
+    assert.equal(rp.subagent, null, '官方端点 + main=Default → 休眠');
   });
 });
 

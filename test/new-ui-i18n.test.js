@@ -45,6 +45,16 @@ const KEYS = [
   'ui.retryConfig.modeLabel.serial',
   'ui.retryConfig.modeLabel.race',
   'ui.retryConfig.modeLabel.stagger',
+  // 按角色分源（ProxyModal 分配区 + AppHeader chip）:
+  'ui.proxy.assignmentTitle',
+  'ui.proxy.roleMain',
+  'ui.proxy.roleSubagent',
+  'ui.proxy.roleTeammate',
+  'ui.proxy.followMainResolved',
+  'ui.proxy.badgeMain',
+  'ui.proxy.badgeSubagent',
+  'ui.proxy.badgeTeammate',
+  'ui.proxy.roleSummary',
 ];
 
 describe('new UI key i18n coverage', () => {

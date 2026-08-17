@@ -353,7 +353,7 @@ describe('live-stream 高频 chunk → liveFlush in-flight 合并', () => {
 
 // 放最后：本块用 initForWorkspace/resetWorkspace 改写模块的 LOG_FILE 状态（resetWorkspace 把 LOG_FILE 置空），
 // 必须在所有依赖 LOG_FILE 落盘断言的用例之后，避免污染它们。
-describe('workspace active-profile 写入失败臂（_writeWorkspaceActiveId catch）', () => {
+describe('workspace active-profile 写入失败臂（_writeWorkspaceActive catch）', () => {
   let wsDir;
   before(() => {
     const logRoot = dirname(mod.PROFILE_PATH); // 模块内 LOG_DIR
@@ -369,7 +369,7 @@ describe('workspace active-profile 写入失败臂（_writeWorkspaceActiveId cat
 
   it('active-profile.json 所在目录只读 → 写入抛错被 catch，workspace=false', (t) => {
     if (process.platform === 'win32') { t.skip('chmod 0o500 是 POSIX 语义'); return; }
-    // 目录设只读：active-profile.json 的 writeFileSync 抛 EACCES → _writeWorkspaceActiveId catch（98-99）。
+    // 目录设只读：active-profile.json 的 tmp 写入抛 EACCES → _writeWorkspaceActive catch 分支。
     chmodSync(wsDir, 0o500);
     let res;
     try { res = mod.setActiveProfileForWorkspace('p1'); } finally { chmodSync(wsDir, 0o700); }

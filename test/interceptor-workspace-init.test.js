@@ -1,9 +1,9 @@
 /**
- * interceptor.js — workspace 模式 import 初始化 + 未选工作区时的 _writeWorkspaceActiveId 短路（86-90）。
+ * interceptor.js — workspace 模式 import 初始化 + 未选工作区时的 _writeWorkspaceActive 短路。
  *
  * CCV_WORKSPACE_MODE=1 时模块顶层把 _projectName/_logDir/LOG_FILE 全置空（延迟到选工作区再 init）。
  * 此时 _getActiveProfileFilePath() 因 _projectName/_logDir 为空返回 null → setActiveProfileForWorkspace
- * 调用 _writeWorkspaceActiveId 命中 `if (!p)` 诊断短路分支（86-90，返回 false）。
+ * 调用 _writeWorkspaceActive 命中 `if (!p)` 诊断短路分支（返回 false）。
  *
  * 独立测试文件 = 独立进程；interceptor.js 在保护清单：只测不改。
  */

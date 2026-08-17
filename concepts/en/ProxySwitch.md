@@ -58,3 +58,16 @@ Configuration is stored at `~/.claude/cc-viewer/profile.json`. Click the folder 
 - `profiles` — Profile list. `id: "max"` is built-in and cannot be deleted
 - Legacy profiles using `models` / `activeModel` are auto-migrated to `ANTHROPIC_MODEL` on load
 - Changes take effect within ~1.5 seconds (monitored via `fs.watchFile`), no restart needed
+
+## Per-Role Assignment (Advanced)
+
+When the Main Agent uses a proxy profile, a "Role Assignment" section appears at the top of the dialog, letting **Sub-Agents** and **Teammates** each point to a different source than the Main Agent — e.g. an expensive model for the Main Agent and a cheaper one for Sub-Agents.
+
+- Each role can be set to: **Follow Main Agent** (default) / **Default (built-in direct)** / any profile
+- **Utility requests (`count_tokens`, heartbeat) always follow the process-primary role's source** (in the leader process = the Main Agent's; inside a Teammate process = the Teammate's own assignment) — third-party proxies often lack these endpoints
+- The Sub-Agent role only applies to requests carrying the `cc_is_subagent=true` marker (Claude Code ≥ 2.1.181); older versions' sub-agent requests, compaction, and title-generation calls stay on the Main Agent's source
+- Both teammate forms are supported: separate OS processes (detected via `--agent-name`, hot-applied within ~1.5s via file watching) and in-process team agents (Claude Code 2.1.x native agent teams, detected via the team marker in the system prompt, hot-applied with the leader process)
+- When the Main Agent is set back to **Default with the official api.anthropic.com endpoint**, the assignment section hides and stored role assignments stay **dormant (kept but inactive)** — they revive as-is once the Main Agent switches to a proxy again. With Default backed by a custom endpoint (e.g. a third-party URL in env), the section stays visible and assignments apply
+- Role assignments are workspace-scoped, stored in each project's `active-profile.json` (`{ activeId, roles }`)
+
+Note: ccv proxy mode (`ccv run` / `ccv` CLI / Electron tabs) also splits by role — the proxy classifies each buffered request body, picks the role's upstream, and hands it to the retry engine, with stats attributed to the role's profile. The one exception is OS-process teammates under proxy mode, where the official-endpoint dormancy check does not apply (they see the local proxy address as the endpoint).

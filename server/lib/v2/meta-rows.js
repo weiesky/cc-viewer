@@ -118,6 +118,9 @@ function foldDir(dir) {
       agent: r.agent,
       model: r.model,
       proxyUrl: r.proxy && r.proxy.url ? r.proxy.url : undefined,
+      // proxyRole: which role (main/subagent/teammate) the rewrite applied to; only present
+      // on rewritten requests (spread-gated, same as proxyUrl). Row-level consumers TBD.
+      proxyRole: r.proxy && r.proxy.role ? r.proxy.role : undefined,
       status: d && typeof d.http === 'number' ? d.http : undefined,
       duration: d && typeof d.dur === 'number' ? d.dur : undefined,
       usage,

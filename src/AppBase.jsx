@@ -157,6 +157,10 @@ class AppBase extends React.Component {
       proxyProfiles: [],
       activeProxyId: 'max',
       defaultConfig: null,
+      // 按角色分源：子 Agent/Teammate 的存储分配（'follow'|'max'|profile id）+ 官方端点标志
+      // （main=Default 且官方端点时分配区隐藏、存储分配休眠）。两者均由 GET /api/proxy-profiles 下发。
+      proxyRoles: { subagent: 'follow', teammate: 'follow' },
+      proxyOfficialDefault: true,
       // 代理重试配置（GET /api/retry-config 注入；SSE 'retry_config' 刷新）
       retryConfig: null,
       retryDefaults: null,
@@ -870,7 +874,12 @@ class AppBase extends React.Component {
             this.handleProxyProfileChange({ active: match.id, profiles: data.profiles });
           }
         }
-        this.setState({ proxyProfiles: data.profiles, activeProxyId: activeId, defaultConfig: dc || null });
+        this.setState({
+          proxyProfiles: data.profiles, activeProxyId: activeId, defaultConfig: dc || null,
+          // 条件合并：GET 失败回退路径不带 roles/officialDefault，不能覆盖本地默认
+          ...(data.roles ? { proxyRoles: data.roles } : {}),
+          ...(typeof data.officialDefault === 'boolean' ? { proxyOfficialDefault: data.officialDefault } : {}),
+        });
       })
       .catch(() => { });
 
@@ -1601,10 +1610,16 @@ class AppBase extends React.Component {
         try {
           const data = JSON.parse(event.data);
           if (data.active) this.setState({ activeProxyId: data.active });
+          if (data.roles) this.setState({ proxyRoles: data.roles });
           if (data.profile) {
             // 刷新完整列表
             fetch(apiUrl('/api/proxy-profiles')).then(r => r.json()).then(d => {
-              if (d.profiles) this.setState({ proxyProfiles: d.profiles, activeProxyId: d.active || 'max' });
+              if (d.profiles) this.setState({
+                proxyProfiles: d.profiles,
+                activeProxyId: d.active || 'max',
+                ...(d.roles ? { proxyRoles: d.roles } : {}),
+                ...(typeof d.officialDefault === 'boolean' ? { proxyOfficialDefault: d.officialDefault } : {}),
+              });
             }).catch(() => { });
           }
         } catch (e) { reportSwallowed('sse.proxy_profile', e); }
@@ -2151,7 +2166,14 @@ class AppBase extends React.Component {
     })
       .then(r => r.json())
       .then(() => {
-        this.setState({ proxyProfiles: data.profiles, activeProxyId: data.active });
+        // roles 条件合并 + 深合并：调用点可能只提交单个角色 key（防陈旧全量覆盖），
+        // 本地 state 按 key 并入而不是整体替换；不带 roles 的调用点（自动匹配/激活/保存）
+        // 保留现值（与服务端合并语义一致）。
+        this.setState({
+          proxyProfiles: data.profiles,
+          activeProxyId: data.active,
+          ...(data.roles ? { proxyRoles: { ...this.state.proxyRoles, ...data.roles } } : {}),
+        });
       })
       .catch(() => { });
   };

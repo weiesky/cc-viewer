@@ -474,7 +474,7 @@ export class SessionSynthesizer {
       // client uses req.agent.agentName as the display name when the heuristic
       // registry has nothing (native teammate, cold load).
       ...(req.agent && { agent: req.agent }),
-      ...(req.proxy && { proxyProfile: req.proxy.profile, ...(req.proxy.url && { proxyUrl: req.proxy.url }) }),
+      ...(req.proxy && { proxyProfile: req.proxy.profile, ...(req.proxy.url && { proxyUrl: req.proxy.url }), ...(req.proxy.role && { proxyRole: req.proxy.role }) }),
     };
 
     // ---- messages + envelope ------------------------------------------------

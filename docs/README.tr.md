@@ -10,7 +10,7 @@ Claude Code üzerine inşa edilmiş, kendi geliştirme deneyiminden damıtılmı
 3. Eksiksiz log saklama — Claude Code'un tam payload'unu yakalama ve analiz etme yeteneği sağlar; loglama, sorun analizi, öğrenme ve tersine mühendislik için idealdir;
 4. Öğrenme deneyimi paylaşımı — birçok öğrenme materyali ve geliştirme deneyimi biriktirilmiştir (sistemin çeşitli yerlerindeki "?" simgelerine bakın);
 5. Native deneyimi korur — yalnızca Claude Code'un yeteneklerini geliştirir, çekirdekte herhangi bir önemli değişiklik yapmaz, native deneyimi korur;
-6. Üçüncü taraf model uyumu — deepseek-v4-\*, GLM 5.1, Kimi K2.6 ile uyumludur; yerleşik cc-switch yeteneği ile üçüncü taraf araçlar arasında istediğiniz zaman sıcak geçiş yapabilirsiniz;
+6. Üçüncü taraf model uyumu — deepseek-v4-\*, GLM 5.1, Kimi K2.6 ile uyumludur; yerleşik cc-switch yeteneği ile üçüncü taraf araçlar arasında istediğiniz zaman sıcak geçiş yapabilirsiniz; sıcak geçiş iletişim kutusu ayrıca rol bazlı kaynakları da destekler — Main Agent, Sub-Agents ve Teammates'ın her biri farklı bir proxy profili kullanabilir (varsayılan: Main Agent'ı izle); Main Agent resmi endpoint ile yerleşik Default'u kullandığında rol ataması gizli ve uykuda kalır.
 
 <img width="860" alt="cc-viewer — deploy once, share with every device" src="https://raw.githubusercontent.com/weiesky/cc-viewer/main/docs/cc-viewer-share.svg" />
 

@@ -405,6 +405,7 @@ describe('POST /api/proxy-profiles', () => {
     const frame = client.writes.find((w) => w.includes('event: proxy_profile'));
     assert.ok(frame, 'proxy_profile event broadcast to clients');
     assert.match(frame, /\*\*\*\*/, 'broadcast apiKey is masked');
+    assert.match(frame, /"roles"/, '广播帧携带角色分配（workspace 模式下为空默认 follow/follow）');
     assert.deepEqual(JSON.parse(res.body), { ok: true });
     const onDisk = JSON.parse(readFileSync(profilePath, 'utf-8'));
     // max profile 自动注入到列表首位

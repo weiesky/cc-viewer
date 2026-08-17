@@ -10,7 +10,7 @@
 3. 完整日誌留痕，提供 Claude Code 完整封包攔截分析能力，方便記錄日誌、分析問題、學習借鑑、逆向研發；
 4. 學習經驗分享，沉澱了大量學習資料與開發經驗（詳見系統中各處的「?」中）；
 5. 保持原生體驗，僅對 Claude Code 能力進行增強，對核心無任何實質性修改，保持原生體驗；
-6. 適配三方模型，已適配 deepseek-v4-\*、GLM 5.1、Kimi K2.6，內建 cc-switch 能力，可隨時熱切第三方工具；
+6. 適配三方模型，已適配 deepseek-v4-\*、GLM 5.1、Kimi K2.6，內建 cc-switch 能力，可隨時熱切第三方工具；代理熱切換還支援按角色分源——主 Agent、子 Agent、Teammate 可各自使用不同的代理 profile（預設跟隨主 Agent）；當主 Agent 使用內建 Default 且為官方端點時，角色分配入口隱藏、已配置分配休眠不生效。
 
 <img width="860" alt="cc-viewer — deploy once, share with every device" src="https://raw.githubusercontent.com/weiesky/cc-viewer/main/docs/cc-viewer-share.svg" />
 

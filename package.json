@@ -1,6 +1,6 @@
 {
   "name": "cc-viewer",
-  "version": "1.7.21",
+  "version": "1.7.22",
   "description": "Claude Code logging, visualization, and management toolkit — launch a web viewer alongside Claude Code with full request/response tracing, proxy, and mobile support",
   "license": "MIT",
   "main": "server.js",

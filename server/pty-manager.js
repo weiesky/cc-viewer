@@ -239,6 +239,12 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   env.CCV_LOG_DIR = LOG_DIR; // 让 fork 出的 Claude Code 进程找到同一份 profile.json 等资源
   // 剥离 cc-viewer 的内部短路开关，避免泄漏给 claude 子进程
   delete env.CCV_SKIP_THINKING_DISPLAY;
+  // 剥离 server 专属的模式标记：spawned claude（尤其 teammate 子进程，它们会装 fetch hook）
+  // 不是 ccv server —— 继承 CCV_WORKSPACE_MODE 会让 interceptor 的 workspace 绑定终生为空
+  // （teammate 角色分配静默失效）；CCV_ELECTRON_MULTITAB 同理只应由 server 进程持有
+  // （im-process-manager 对 IM worker 已有同款剥离先例）。
+  delete env.CCV_WORKSPACE_MODE;
+  delete env.CCV_ELECTRON_MULTITAB;
   // Claude Code NO_FLICKER 会让嵌入式 xterm 走 alt-screen 并丢失 scrollback。
   // cc-viewer 默认剥离继承值；确实需要时可显式设 CCV_KEEP_CLAUDE_CODE_NO_FLICKER=1。
   stripClaudeNoFlickerUnlessOptedIn(env);
