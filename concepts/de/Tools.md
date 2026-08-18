@@ -15,16 +15,19 @@ Im Folgenden finden Sie den kategorisierten Index aller Tools.
 | [TaskGet](Tool-TaskGet.md) | Ruft Aufgabendetails ab |
 | [TaskUpdate](Tool-TaskUpdate.md) | Aktualisiert Aufgabenstatus, Abhängigkeiten usw. |
 | [TaskList](Tool-TaskList.md) | Listet alle Aufgaben auf |
+| [ListAgents](Tool-ListAgents.md) | Listet die in der Sitzung verfügbaren Agenten auf |
 
 ## Team & Orchestrierung
 
 | Tool | Zweck |
 |------|-------|
-| [TeamCreate](Tool-TeamCreate.md) | Erstellt ein Agent-Team für kollaborative Arbeit |
-| [TeamDelete](Tool-TeamDelete.md) | Löst ein Agent-Team auf |
 | [SendMessage](Tool-SendMessage.md) | Sendet eine Nachricht an einen anderen Agent |
 | [Workflow](Tool-Workflow.md) | Führt ein deterministisches Multi-Agent-Orchestrations-Skript aus |
 | [Monitor](Tool-Monitor.md) | Streamt Ereignisse von einem lang laufenden Skript als Benachrichtigungen |
+| [SendFile](Tool-SendFile.md) | Sendet Dateien an eine andere Claude Code-Sitzung |
+| [SendUserFile](Tool-SendUserFile.md) | Sendet Dateien an den Benutzer |
+| [SendUserMessage](Tool-SendUserMessage.md) | Sendet eine Nachricht an den Benutzer (Legacy-Tool Brief) |
+| [EndConversation](Tool-EndConversation.md) | Beendet die aktuelle Unterhaltung |
 
 ## Dateioperationen
 
@@ -48,6 +51,7 @@ Im Folgenden finden Sie den kategorisierten Index aller Tools.
 | Tool | Zweck |
 |------|-------|
 | [Bash](Tool-Bash.md) | Führt Shell-Befehle aus |
+| [REPL](Tool-REPL.md) | Führt JavaScript in einer persistenten Node.js-REPL aus |
 
 ## Web
 
@@ -66,6 +70,10 @@ Im Folgenden finden Sie den kategorisierten Index aller Tools.
 | [ExitPlanMode](Tool-ExitPlanMode.md) | Verlässt den Planungsmodus und reicht den Plan zur Benutzerfreigabe ein |
 | [AskUserQuestion](Tool-AskUserQuestion.md) | Stellt dem Benutzer Fragen zur Klärung oder Entscheidungsfindung |
 | [ReportFindings](Tool-ReportFindings.md) | Berichtet Code-Review-Erkenntnisse als typisierte Liste für die Host-Benutzeroberfläche |
+| [TodoWrite](Tool-TodoWrite.md) | Schreibt eine strukturierte Aufgabenliste für die Sitzung |
+| [SendFeedback](Tool-SendFeedback.md) | Sendet strukturiertes Feedback über Claude Code an Anthropic |
+| [Projects](Tool-Projects.md) | Verwaltet Wissensbasis-Dokumente des Projekts |
+| [ProposeGoal](Tool-ProposeGoal.md) | Schlägt ein überprüfbares Abschlussziel für die Sitzung vor |
 
 ## Worktrees
 
@@ -84,6 +92,7 @@ Im Folgenden finden Sie den kategorisierten Index aller Tools.
 | [ScheduleWakeup](Tool-ScheduleWakeup.md) | Selbstteilt /loop Iterationen durch Planung des nächsten Aufwachens |
 | [PushNotification](Tool-PushNotification.md) | Sendet eine Desktop-/Mobilbenachrichtigung an den Benutzer |
 | [RemoteTrigger](Tool-RemoteTrigger.md) | Verwaltet claude.ai Remote-Trigger-Routinen |
+| [ReadNotifications](Tool-ReadNotifications.md) | Liest ausstehende Sitzungsbenachrichtigungen |
 
 ## Erweiterungen
 
@@ -91,10 +100,23 @@ Im Folgenden finden Sie den kategorisierten Index aller Tools.
 |------|-------|
 | [Skill](Tool-Skill.md) | Führt einen Skill (Slash Command) aus |
 
+## MCP & Erweiterungen
+
+| Tool | Zweck |
+|------|-------|
+| [ListMcpResources](Tool-ListMcpResources.md) | Listet Ressourcen auf, die von verbundenen MCP-Servern bereitgestellt werden |
+| [ReadMcpResource](Tool-ReadMcpResource.md) | Liest eine einzelne MCP-Server-Ressource per URI |
+| [ReadMcpResourceDir](Tool-ReadMcpResourceDir.md) | Listet eine verzeichnisartige MCP-Ressource per URI auf |
+| [SearchMcpRegistry](Tool-SearchMcpRegistry.md) | Durchsucht die MCP-Connector-Registry per Stichwort |
+| [SuggestConnectors](Tool-SuggestConnectors.md) | Löst Connector-Details aus Registry-Suchergebnissen auf |
+| [ListConnectors](Tool-ListConnectors.md) | Listet installierte MCP-Connectors auf |
+| [SuggestPluginInstall](Tool-SuggestPluginInstall.md) | Rendert eine Inline-Pluginkarte zur Installation |
+| [SuggestSkills](Tool-SuggestSkills.md) | Rendert eine Karte hinzufügbarer Skills |
+| [ListPlugins](Tool-ListPlugins.md) | Listet aktivierte claude.ai-Plugins auf |
+| [ListSkills](Tool-ListSkills.md) | Listet aktivierte claude.ai-Skills auf |
+
 ## IDE-Integration
 
 | Tool | Zweck |
 |------|-------|
-| [getDiagnostics](Tool-getDiagnostics.md) | Ruft VS Code Sprachdiagnoseinformationen ab |
-| [executeCode](Tool-executeCode.md) | Führt Code im Jupyter-Kernel aus |
 | [LSP](Tool-LSP.md) | Sprachserver-Abfragen (Definitionen, Referenzen, Symbole) |

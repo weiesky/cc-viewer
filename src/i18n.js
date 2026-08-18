@@ -7014,6 +7014,26 @@ const i18nData = {
     "tr": "IDE Entegrasyonu",
     "uk": "Інтеграція з IDE"
   },
+  "ui.toolCatalog.cat.mcp": {
+    "zh": "MCP 与扩展",
+    "en": "MCP & Extensions",
+    "zh-TW": "MCP 與擴充功能",
+    "ko": "MCP 및 확장",
+    "ja": "MCP と拡張機能",
+    "de": "MCP & Erweiterungen",
+    "es": "MCP y extensiones",
+    "fr": "MCP et extensions",
+    "it": "MCP ed estensioni",
+    "da": "MCP og udvidelser",
+    "pl": "MCP i rozszerzenia",
+    "ru": "MCP и расширения",
+    "ar": "MCP والإضافات",
+    "no": "MCP og utvidelser",
+    "pt-BR": "MCP e extensões",
+    "th": "MCP และส่วนขยาย",
+    "tr": "MCP ve Uzantılar",
+    "uk": "MCP і розширення"
+  },
   "ui.subAgentStats": {
     "zh": "SubAgent 调用统计",
     "en": "SubAgent Call Stats",

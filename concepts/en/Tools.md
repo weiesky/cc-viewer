@@ -15,16 +15,19 @@ Below is a categorized index of all tools.
 | [TaskGet](Tool-TaskGet.md) | Get task details |
 | [TaskUpdate](Tool-TaskUpdate.md) | Update task status, dependencies, etc. |
 | [TaskList](Tool-TaskList.md) | List all tasks |
+| [ListAgents](Tool-ListAgents.md) | List the agents available in the session |
 
 ## Team & Orchestration
 
 | Tool | Purpose |
 |------|---------|
-| [TeamCreate](Tool-TeamCreate.md) | Create an agent team for collaborative work |
-| [TeamDelete](Tool-TeamDelete.md) | Disband an agent team |
 | [SendMessage](Tool-SendMessage.md) | Send a message to another agent |
 | [Workflow](Tool-Workflow.md) | Run a deterministic multi-agent orchestration script |
 | [Monitor](Tool-Monitor.md) | Stream events from a long-running script as notifications |
+| [SendFile](Tool-SendFile.md) | Send files to another Claude Code session |
+| [SendUserFile](Tool-SendUserFile.md) | Send files to the user |
+| [SendUserMessage](Tool-SendUserMessage.md) | Send a message to the user (legacy Brief tool) |
+| [EndConversation](Tool-EndConversation.md) | End the current conversation |
 
 ## File Operations
 
@@ -48,6 +51,7 @@ Below is a categorized index of all tools.
 | Tool | Purpose |
 |------|---------|
 | [Bash](Tool-Bash.md) | Execute shell commands |
+| [REPL](Tool-REPL.md) | Run JavaScript in a persistent Node.js REPL |
 
 ## Web
 
@@ -66,6 +70,10 @@ Below is a categorized index of all tools.
 | [ExitPlanMode](Tool-ExitPlanMode.md) | Exit plan mode and submit the plan for user approval |
 | [AskUserQuestion](Tool-AskUserQuestion.md) | Ask the user a question for clarification or decisions |
 | [ReportFindings](Tool-ReportFindings.md) | Report code-review findings as a typed list for the host UI |
+| [TodoWrite](Tool-TodoWrite.md) | Write a structured todo list for the session |
+| [SendFeedback](Tool-SendFeedback.md) | Send structured feedback about Claude Code to Anthropic |
+| [Projects](Tool-Projects.md) | Manage project knowledge-base documents |
+| [ProposeGoal](Tool-ProposeGoal.md) | Propose a verifiable completion goal for the session |
 
 ## Worktrees
 
@@ -84,6 +92,7 @@ Below is a categorized index of all tools.
 | [ScheduleWakeup](Tool-ScheduleWakeup.md) | Self-pace /loop iterations by scheduling the next wakeup |
 | [PushNotification](Tool-PushNotification.md) | Send a desktop/mobile notification to the user |
 | [RemoteTrigger](Tool-RemoteTrigger.md) | Manage claude.ai remote-trigger routines |
+| [ReadNotifications](Tool-ReadNotifications.md) | Read pending session notifications |
 
 ## Extensions
 
@@ -91,10 +100,23 @@ Below is a categorized index of all tools.
 |------|---------|
 | [Skill](Tool-Skill.md) | Execute a skill (slash command) |
 
+## MCP & Extensions
+
+| Tool | Purpose |
+|------|---------|
+| [ListMcpResources](Tool-ListMcpResources.md) | List resources exposed by connected MCP servers |
+| [ReadMcpResource](Tool-ReadMcpResource.md) | Read a single MCP server resource by URI |
+| [ReadMcpResourceDir](Tool-ReadMcpResourceDir.md) | List a directory-style MCP resource by URI |
+| [SearchMcpRegistry](Tool-SearchMcpRegistry.md) | Search the MCP connector registry by keyword |
+| [SuggestConnectors](Tool-SuggestConnectors.md) | Resolve connector details from registry search results |
+| [ListConnectors](Tool-ListConnectors.md) | List installed MCP connectors |
+| [SuggestPluginInstall](Tool-SuggestPluginInstall.md) | Render an inline plugin install card |
+| [SuggestSkills](Tool-SuggestSkills.md) | Render a card of addable skills |
+| [ListPlugins](Tool-ListPlugins.md) | List enabled claude.ai plugins |
+| [ListSkills](Tool-ListSkills.md) | List enabled claude.ai skills |
+
 ## IDE Integration
 
 | Tool | Purpose |
 |------|---------|
-| [getDiagnostics](Tool-getDiagnostics.md) | Get VS Code language diagnostics |
-| [executeCode](Tool-executeCode.md) | Execute code in a Jupyter kernel |
 | [LSP](Tool-LSP.md) | Language-server queries (definitions, references, symbols) |

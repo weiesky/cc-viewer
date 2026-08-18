@@ -15,6 +15,7 @@ Claude Code 通过 Anthropic API 的 tool_use 机制向模型提供一组内置�
 | [TaskGet](Tool-TaskGet.md) | 获取任务详情 |
 | [TaskUpdate](Tool-TaskUpdate.md) | 更新任务状态、依赖关系等 |
 | [TaskList](Tool-TaskList.md) | 列出所有任务 |
+| [ListAgents](Tool-ListAgents.md) | 列出会话中可用的 agent |
 
 ## 文件操作
 
@@ -29,11 +30,13 @@ Claude Code 通过 Anthropic API 的 tool_use 机制向模型提供一组内置�
 
 | 工具 | 用途 |
 |------|------|
-| [TeamCreate](Tool-TeamCreate.md) | 为协作工作创建 agent 团队 |
-| [TeamDelete](Tool-TeamDelete.md) | 解散 agent 团队 |
 | [SendMessage](Tool-SendMessage.md) | 向另一个 agent 发送消息 |
 | [Workflow](Tool-Workflow.md) | 运行确定性多 agent 编排脚本 |
 | [Monitor](Tool-Monitor.md) | 将长时间运行脚本的事件流式推送为通知 |
+| [SendFile](Tool-SendFile.md) | 向另一个 Claude Code 会话发送文件 |
+| [SendUserFile](Tool-SendUserFile.md) | 向用户发送文件 |
+| [SendUserMessage](Tool-SendUserMessage.md) | 向用户发送消息（旧版 Brief 工具） |
+| [EndConversation](Tool-EndConversation.md) | 结束当前对话 |
 
 ## 搜索
 
@@ -48,6 +51,7 @@ Claude Code 通过 Anthropic API 的 tool_use 机制向模型提供一组内置�
 | 工具 | 用途 |
 |------|------|
 | [Bash](Tool-Bash.md) | 执行 shell 命令 |
+| [REPL](Tool-REPL.md) | 在持久化 Node.js REPL 中运行 JavaScript |
 
 ## Web
 
@@ -66,6 +70,10 @@ Claude Code 通过 Anthropic API 的 tool_use 机制向模型提供一组内置�
 | [ExitPlanMode](Tool-ExitPlanMode.md) | 退出规划模式并提交方案供用户审批 |
 | [AskUserQuestion](Tool-AskUserQuestion.md) | 向用户提问以获取澄清或决策 |
 | [ReportFindings](Tool-ReportFindings.md) | 将代码审查发现报告为主机 UI 的类型化列表 |
+| [TodoWrite](Tool-TodoWrite.md) | 为会话写入结构化 todo 列表 |
+| [SendFeedback](Tool-SendFeedback.md) | 向 Anthropic 发送关于 Claude Code 的结构化反馈 |
+| [Projects](Tool-Projects.md) | 管理项目知识库文档 |
+| [ProposeGoal](Tool-ProposeGoal.md) | 为会话提出可验证的完成目标 |
 
 ## 工作树
 
@@ -84,6 +92,7 @@ Claude Code 通过 Anthropic API 的 tool_use 机制向模型提供一组内置�
 | [ScheduleWakeup](Tool-ScheduleWakeup.md) | 通过安排下一次唤醒来自行调整 /loop 迭代 |
 | [PushNotification](Tool-PushNotification.md) | 向用户发送桌面/移动通知 |
 | [RemoteTrigger](Tool-RemoteTrigger.md) | 管理 claude.ai 远程触发例程 |
+| [ReadNotifications](Tool-ReadNotifications.md) | 读取会话中待处理的通知 |
 
 ## 扩展
 
@@ -91,10 +100,23 @@ Claude Code 通过 Anthropic API 的 tool_use 机制向模型提供一组内置�
 |------|------|
 | [Skill](Tool-Skill.md) | 执行技能（slash command） |
 
+## MCP 与扩展
+
+| 工具 | 用途 |
+|------|------|
+| [ListMcpResources](Tool-ListMcpResources.md) | 列出已连接 MCP 服务器暴露的资源 |
+| [ReadMcpResource](Tool-ReadMcpResource.md) | 按 URI 读取单个 MCP 服务器资源 |
+| [ReadMcpResourceDir](Tool-ReadMcpResourceDir.md) | 按 URI 列出目录型 MCP 资源 |
+| [SearchMcpRegistry](Tool-SearchMcpRegistry.md) | 按关键词搜索 MCP 连接器注册表 |
+| [SuggestConnectors](Tool-SuggestConnectors.md) | 从注册表搜索结果中解析连接器详情 |
+| [ListConnectors](Tool-ListConnectors.md) | 列出已安装的 MCP 连接器 |
+| [SuggestPluginInstall](Tool-SuggestPluginInstall.md) | 渲染内联插件安装卡片 |
+| [SuggestSkills](Tool-SuggestSkills.md) | 渲染可添加 skill 的卡片 |
+| [ListPlugins](Tool-ListPlugins.md) | 列出已启用的 claude.ai 插件 |
+| [ListSkills](Tool-ListSkills.md) | 列出已启用的 claude.ai skill |
+
 ## IDE 集成
 
 | 工具 | 用途 |
 |------|------|
-| [getDiagnostics](Tool-getDiagnostics.md) | 获取 VS Code 语言诊断信息 |
-| [executeCode](Tool-executeCode.md) | 在 Jupyter kernel 中执行代码 |
 | [LSP](Tool-LSP.md) | 语言服务器查询（定义、引用、符号） |

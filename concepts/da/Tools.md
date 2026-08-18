@@ -15,16 +15,19 @@ Nedenfor er det kategoriserede indeks over alle værktøjer.
 | [TaskGet](Tool-TaskGet.md) | Hent opgavedetaljer |
 | [TaskUpdate](Tool-TaskUpdate.md) | Opdater opgavestatus, afhængigheder osv. |
 | [TaskList](Tool-TaskList.md) | List alle opgaver |
+| [ListAgents](Tool-ListAgents.md) | List de agenter, der er tilgængelige i sessionen |
 
 ## Team og orkestrering
 
 | Værktøj | Formål |
 |------|------|
-| [TeamCreate](Tool-TeamCreate.md) | Opret et agentur for samarbejdende arbejde |
-| [TeamDelete](Tool-TeamDelete.md) | Opløs et agentur |
 | [SendMessage](Tool-SendMessage.md) | Send en besked til en anden agent |
 | [Workflow](Tool-Workflow.md) | Kør et deterministisk multi-agent orkestreringsscript |
 | [Monitor](Tool-Monitor.md) | Stream hændelser fra et langvarigt script som notifikationer |
+| [SendFile](Tool-SendFile.md) | Send filer til en anden Claude Code-session |
+| [SendUserFile](Tool-SendUserFile.md) | Send filer til brugeren |
+| [SendUserMessage](Tool-SendUserMessage.md) | Send en besked til brugeren (legacy Brief-værktøj) |
+| [EndConversation](Tool-EndConversation.md) | Afslut den aktuelle samtale |
 
 ## Filoperationer
 
@@ -48,6 +51,7 @@ Nedenfor er det kategoriserede indeks over alle værktøjer.
 | Værktøj | Formål |
 |------|------|
 | [Bash](Tool-Bash.md) | Udfør shell-kommandoer |
+| [REPL](Tool-REPL.md) | Kør JavaScript i en vedvarende Node.js REPL |
 
 ## Web
 
@@ -66,6 +70,10 @@ Nedenfor er det kategoriserede indeks over alle værktøjer.
 | [ExitPlanMode](Tool-ExitPlanMode.md) | Forlad planlægningstilstand og indsend planen til brugerens godkendelse |
 | [AskUserQuestion](Tool-AskUserQuestion.md) | Stil spørgsmål til brugeren for at få afklaring eller beslutninger |
 | [ReportFindings](Tool-ReportFindings.md) | Rapportér kodegennnemsynsfund som en typet liste til værts-brugerfladen |
+| [TodoWrite](Tool-TodoWrite.md) | Skriv en struktureret to-do-liste for sessionen |
+| [SendFeedback](Tool-SendFeedback.md) | Send struktureret feedback om Claude Code til Anthropic |
+| [Projects](Tool-Projects.md) | Administrér projekt-vidensbasedokumenter |
+| [ProposeGoal](Tool-ProposeGoal.md) | Foreslå et verificerbart færdiggørelsesmål for sessionen |
 
 ## Worktrees
 
@@ -84,6 +92,7 @@ Nedenfor er det kategoriserede indeks over alle værktøjer.
 | [ScheduleWakeup](Tool-ScheduleWakeup.md) | Selvstændigt tidspunkt /loop iterationer ved at planlægge næste vågning |
 | [PushNotification](Tool-PushNotification.md) | Send en desktop/mobil-notifikation til brugeren |
 | [RemoteTrigger](Tool-RemoteTrigger.md) | Administrer claude.ai remote-trigger rutiner |
+| [ReadNotifications](Tool-ReadNotifications.md) | Læs afventende sessionsnotifikationer |
 
 ## Udvidelser
 
@@ -91,10 +100,23 @@ Nedenfor er det kategoriserede indeks over alle værktøjer.
 |------|------|
 | [Skill](Tool-Skill.md) | Udfør en skill (slash command) |
 
+## MCP og udvidelser
+
+| Værktøj | Formål |
+|------|------|
+| [ListMcpResources](Tool-ListMcpResources.md) | List ressourcer eksponeret af forbundne MCP-servere |
+| [ReadMcpResource](Tool-ReadMcpResource.md) | Læs en enkelt MCP-server-resource ved URI |
+| [ReadMcpResourceDir](Tool-ReadMcpResourceDir.md) | List en mappeagtig MCP-resource ved URI |
+| [SearchMcpRegistry](Tool-SearchMcpRegistry.md) | Søg i MCP-connector-registret efter nøgleord |
+| [SuggestConnectors](Tool-SuggestConnectors.md) | Opløs connector-detaljer fra registersøgningsresultater |
+| [ListConnectors](Tool-ListConnectors.md) | List installerede MCP-connectors |
+| [SuggestPluginInstall](Tool-SuggestPluginInstall.md) | Gengiv et inline plugin-installationskort |
+| [SuggestSkills](Tool-SuggestSkills.md) | Gengiv et kort med skills, der kan tilføjes |
+| [ListPlugins](Tool-ListPlugins.md) | List aktiverede claude.ai-plugins |
+| [ListSkills](Tool-ListSkills.md) | List aktiverede claude.ai-skills |
+
 ## IDE-integration
 
 | Værktøj | Formål |
 |------|------|
-| [getDiagnostics](Tool-getDiagnostics.md) | Hent sprogdiagnostik fra VS Code |
-| [executeCode](Tool-executeCode.md) | Udfør kode i Jupyter-kernen |
 | [LSP](Tool-LSP.md) | Sprogsserver-forespørgsler (definitioner, referencer, symboler) |
