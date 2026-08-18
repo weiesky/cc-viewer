@@ -576,6 +576,8 @@ class App extends AppBase {
               proxyProfiles={this.state.proxyProfiles}
               activeProxyId={this.state.activeProxyId}
               defaultConfig={this.state.defaultConfig}
+              proxyRoles={this.state.proxyRoles}
+              proxyOfficialDefault={this.state.proxyOfficialDefault}
               onProxyProfileChange={this.handleProxyProfileChange}
               retryConfig={this.state.retryConfig}
               retryDefaults={this.state.retryDefaults}

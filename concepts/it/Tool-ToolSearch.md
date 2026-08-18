@@ -10,6 +10,11 @@ Recupera su richiesta le definizioni di schema complete degli «strumenti differ
 
 Se lo schema di uno strumento è già nel contesto, non cercare di nuovo — limitati a richiamarlo.
 
+## Attivazione
+
+- Attivo per default.
+- Disattivato quando `ANTHROPIC_BASE_URL` punta a un endpoint non-Anthropic (a meno che `ENABLE_TOOL_SEARCH` sia impostato), quando `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` è impostato, quando il modello non supporta i riferimenti ai tool (modelli Vertex AI precedenti a Claude 4.5), o quando negato tramite `"deny": ["ToolSearch"]`.
+
 ## Parametri
 
 - `query` (string, obbligatorio): La query usata per localizzare gli strumenti differiti. Sono supportate tre forme:

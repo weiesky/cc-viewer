@@ -10,6 +10,13 @@
 - 多くの反復にわたって特定の条件を待機する（例：トレーニングステップのマイルストーンやキューの消化）
 - 単純な「完了まで待機」には**使用しない** — その場合は `run_in_background` 付きの `Bash` を使用する。プロセス終了時に完了通知が 1 回届く
 
+## 有効化
+
+- デフォルトではオフです (サーバーサイドの機能フラグ)。
+- Amazon Bedrock、Google Cloud、Microsoft Foundry では利用できません。
+- `DISABLE_TELEMETRY` または `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` が設定されているとオフになります。
+- WebSocket ソースには Claude Code 2.1.195+ が必要です。
+
 ## パラメータ
 
 - `command`（文字列、必須）：実行するシェルコマンドまたはスクリプト。標準出力に書き込まれた各行が独立した通知イベントになる。プロセス終了でモニターが終わる。

@@ -10,6 +10,11 @@ Récupère à la demande les définitions de schéma complètes des « outils di
 
 Si le schéma d'un outil est déjà dans le contexte, ne relancez pas de recherche — appelez-le simplement.
 
+## Activation
+
+- Activé par défaut.
+- Désactivé lorsque `ANTHROPIC_BASE_URL` pointe vers un point de terminaison non Anthropic (sauf si `ENABLE_TOOL_SEARCH` est défini), lorsque `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` est défini, lorsque le modèle ne prend pas en charge les références d'outils (modèles Vertex AI antérieurs à Claude 4.5), ou lorsqu'il est refusé via `"deny": ["ToolSearch"]`.
+
 ## Paramètres
 
 - `query` (string, requis) : la requête utilisée pour localiser les outils différés. Trois formes sont prises en charge :

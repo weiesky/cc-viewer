@@ -10,6 +10,11 @@ Entrega un mensaje de un miembro del equipo a otro dentro de un equipo activo, o
 - Responder a un prompt de protocolo como una solicitud de apagado o una solicitud de aprobación de plan del líder del equipo.
 - Cerrar el ciclo al final de una tarea delegada para que el líder pueda marcar el elemento como completo.
 
+## Activación
+
+- Restringida por las mismas condiciones de mensajería entre sesiones que `ListAgents` (feature flags del lado del servidor, desactivados por defecto).
+- Los compañeros requieren además que los equipos de agentes experimentales estén habilitados.
+
 ## Parámetros
 
 - `to` (string, obligatorio): El `name` del compañero objetivo según esté registrado en el equipo, o `*` para hacer broadcast a todos los compañeros a la vez.

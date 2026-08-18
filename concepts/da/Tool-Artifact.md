@@ -2,12 +2,19 @@
 
 Render en HTML- eller Markdown-fil til et Artifact — en privat webside hostet på claude.ai, som brugeren kan åbne i en browser og senere vælge at dele. Brug det, når visuel kommunikation er bedre end terminaltekst.
 
-## Hvornår skal det bruges
+## Hvornår skal den bruges
 
 - Publicering af en visuelt resultat: en rapport, dashboard, fejlundersøgelsesnotat eller UI-mockup
 - Opdatering af en tidligere publiceret side på samme sted (samme filsti udsender igen til samme URL)
 - Lister over brugerens eksisterende artifacts for at finde en fra en tidligere session (`action: "list"`)
 - **Ikke** til indhold, der skal være lokalt, til rene tekstsvar eller noget, der kræver eksterne netværksressourcer ved visning — en streng CSP blokerer alle eksterne værter
+
+## Aktivering
+
+- Kræver et Pro-, Max-, Team- eller Enterprise-abonnement med claude.ai-login (`/login`).
+- Kun Anthropic API — ikke tilgængelig på Amazon Bedrock, Google Cloud eller Microsoft Foundry.
+- Kræver Claude Code ≥ 2.1.183 eller Desktop-appen ≥ 1.13576.0.
+- Deaktivér med settings-indstillingen `disableArtifact` eller `CLAUDE_CODE_DISABLE_ARTIFACT=1`.
 
 ## Parametre
 

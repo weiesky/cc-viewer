@@ -10,6 +10,12 @@ Modifies an existing task — its status, content, ownership, metadata, or depen
 - Recording newly discovered dependencies with `addBlocks` / `addBlockedBy`.
 - Attaching structured `metadata` such as external ticket IDs or priority hints.
 
+## Activation
+
+- Available by default on most models.
+- Not available on Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 and later families (v2.1.233+) unless opted in via `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools`, or `--tools`.
+- The whole task system is disabled when `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parameters
 
 - `taskId` (string, required): The task to modify. Obtain from `TaskList` or `TaskCreate`.

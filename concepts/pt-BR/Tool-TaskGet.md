@@ -12,6 +12,12 @@ Busca o registro completo de uma única tarefa por ID, incluindo sua descrição
 
 Prefira `TaskList` quando só precisa de uma varredura de alto nível; reserve `TaskGet` para o registro específico que você pretende ler com cuidado ou modificar.
 
+## Ativação
+
+- Disponível por padrão na maioria dos modelos.
+- Não disponível no Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 e famílias posteriores (v2.1.233+) a menos que seja habilitado via `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` ou `--tools`.
+- Todo o sistema de tarefas é desativado quando `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parâmetros
 
 - `taskId` (string, obrigatório): O identificador da tarefa retornado por `TaskCreate` ou `TaskList`. IDs são estáveis durante toda a vida da tarefa.

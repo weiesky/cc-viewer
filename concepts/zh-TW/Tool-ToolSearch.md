@@ -10,6 +10,11 @@
 
 若某個工具的結構描述已在上下文中，不要再次搜尋——直接呼叫它即可。
 
+## 啟用方式
+
+- 預設開啟。
+- 當 `ANTHROPIC_BASE_URL` 指向非 Anthropic 端點（除非設定了 `ENABLE_TOOL_SEARCH`）、設定了 `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`、模型缺乏工具參照支援（Claude 4.5 之前的 Vertex AI 模型），或透過 `"deny": ["ToolSearch"]` 拒絕時關閉。
+
 ## 參數
 
 - `query`（string，必填）：用於定位延遲載入工具的查詢。支援三種形式：

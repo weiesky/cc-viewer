@@ -9,6 +9,13 @@ Bir HTML veya Markdown dosyasını Artifact olarak oluştur — kullanıcının 
 - Kullanıcının mevcut artifaktlarını listeleme, önceki bir oturumdan birini bulmak için (`action: "list"`)
 - **Değil** yerel kalması gereken içerik, düz metin yanıtlar veya görüntüleme sırasında dış ağ kaynakları gerektiren herhangi bir şey için — katı CSP tüm harici hostları engeller
 
+## Etkinleştirme
+
+- claude.ai girişi (`/login`) olan bir Pro, Max, Team veya Enterprise planı gerektirir.
+- Yalnızca Anthropic API — Amazon Bedrock, Google Cloud veya Microsoft Foundry'de kullanılamaz.
+- Claude Code ≥ 2.1.183 veya Desktop uygulaması ≥ 1.13576.0 gerektirir.
+- `disableArtifact` ayarı veya `CLAUDE_CODE_DISABLE_ARTIFACT=1` ile devre dışı bırakın.
+
 ## Parametreler
 
 - `file_path` (dize): Oluşturulacak `.html` veya `.md` dosyasının yolu. Dosya yayınlanırken bir belge iskeletiyle sarılır, bu nedenle sayfa içeriğini doğrudan yazın — `<!DOCTYPE>`, `<html>`, `<head>` veya `<body>` etiketleri yok. Aynı yol → yeniden yayınlama sırasında aynı URL; farklı bir yol yeni bir URL talep eder.

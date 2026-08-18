@@ -1,6 +1,6 @@
 {
   "name": "cc-viewer",
-  "version": "1.7.21",
+  "version": "1.7.22",
   "description": "Claude Code logging, visualization, and management toolkit \u2014 launch a web viewer alongside Claude Code with full request/response tracing, proxy, and mobile support",
   "license": "MIT",
   "main": "server.js",
@@ -120,7 +120,7 @@
   "dependencies": {
     "@larksuiteoapi/node-sdk": "1.66.0",
     "@wecom/aibot-node-sdk": "1.0.7",
-    "adm-zip": "^0.5.17",
+    "adm-zip": "^0.6.0",
     "dingtalk-stream": "2.1.5",
     "discord.js": "14.26.4",
     "dompurify": "^3.3.3",

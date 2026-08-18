@@ -10,6 +10,11 @@ Liefert eine Nachricht von einem Teammitglied an ein anderes innerhalb eines akt
 - Antworten auf einen Protokoll-Prompt wie eine Shutdown-Anfrage oder eine Plan-Genehmigungsanfrage des Teamleiters.
 - Abschließen einer delegierten Aufgabe am Ende, damit der Leiter den Punkt als erledigt markieren kann.
 
+## Aktivierung
+
+- Unterliegt denselben Bedingungen für sitzungsübergreifendes Messaging wie `ListAgents` (serverseitige Feature-Flags, standardmäßig deaktiviert).
+- Teammitglieder erfordern zusätzlich, dass experimentelle Agenten-Teams aktiviert sind.
+
 ## Parameter
 
 - `to` (string, erforderlich): Der `name` des Zielteammitglieds, wie im Team registriert, oder `*` für eine Rundnachricht an alle Teammitglieder.

@@ -117,7 +117,7 @@ Letting Claude Code diagnose the problem on its own is more effective than askin
 
 Once the instruction is done, `findcc.js` will have been updated. If your project frequently needs local deployment, or your forked code often runs into installation issues, just keep this file — next time you can simply copy it over. At this stage many projects and companies use Claude Code on server-side hosted deployments rather than on Mac, so I split out `findcc.js` to make it easier to keep tracking upstream cc-viewer source updates.
 
-Note: this app conflicts with claude-code-switch and claude-code-router — there is a proxy contention problem, so make sure you turn off claude-code-switch and claude-code-router when using it. cc-viewer provides built-in proxy hot-reload that can replace them.
+Note: this app conflicts with claude-code-switch and claude-code-router — there is a proxy contention problem, so make sure you turn off claude-code-switch and claude-code-router when using it. cc-viewer provides built-in proxy hot-reload that can replace them. The hot-switch dialog also supports per-role sources — Main Agent, Sub-Agents and Teammates can each use a different proxy profile (default: follow the Main Agent); when the Main Agent uses the built-in Default with the official endpoint, role assignment stays hidden and dormant.
 
 ### Other helper commands
 

@@ -10,6 +10,12 @@
 - 用 `addBlocks` / `addBlockedBy` 记录新发现的依赖。
 - 附加结构化 `metadata`，如外部工单 ID 或优先级提示。
 
+## 启用方式
+
+- 在大多数模型上默认可用。
+- 在 Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 及更高版本家族（v2.1.233+）上不可用，除非通过 `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`、`--allowedTools` 或 `--tools` 选择启用。
+- 当 `CLAUDE_CODE_ENABLE_TASKS=false` 时，整个任务系统被禁用。
+
 ## 参数
 
 - `taskId` (string, 必填)：要修改的任务。从 `TaskList` 或 `TaskCreate` 获取。

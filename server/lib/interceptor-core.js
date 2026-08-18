@@ -513,3 +513,94 @@ export function injectOutputConfigEffort(jsonStr, effort, hasOutputConfig) {
   const insert = `"output_config":{"effort":${JSON.stringify(effort)}}` + (needsComma ? ',' : '');
   return jsonStr.slice(0, i + 1) + insert + jsonStr.slice(i + 1);
 }
+
+// ─── Per-role proxy assignment (main / subagent / teammate) ───
+// Storage shape: <projectDir>/active-profile.json = { activeId, roles: { subagent, teammate } }.
+// `activeId` stays the MAIN role id so older ccv versions reading the file keep working;
+// a missing `roles` key (old files) normalizes to follow/follow. Role values:
+//   'follow' (default; sub/teammate only) | 'max' (built-in Default = no rewrite) | profile id.
+// A dangling id (profile deleted later) is kept in storage but resolves to follow at read time.
+
+export const PROXY_ROLE_KEYS = ['subagent', 'teammate'];
+
+// Positive role classification for the fetch hook. Teammates are detected two ways:
+// separate OS processes carry --agent-name argv (isTeammate, passed by the caller); the
+// newer IN-PROCESS native team members (CC 2.1.x agent teams, no argv) instead carry the
+// team marker in the system prompt (TEAMMATE_SYSTEM_RE — the same KEEP-IN-SYNC trio
+// isMainAgentRequest excludes by; verified against live session blobs). 'subagent' requires
+// the explicit cc_is_subagent=true billing marker (CC ≥ 2.1.181) — older CC subagent
+// requests, compaction and title-generation calls all fall into 'main' (today's behavior)
+// rather than risk being rerouted to the subagent provider. Utility endpoints
+// (count_tokens/heartbeat) follow the process-primary role: main in the leader process,
+// teammate inside a teammate OS process (whose own conversation IS the primary one there).
+export function classifyProxyRole(body, { isTeammate = false, isCountTokens = false, isHeartbeat = false } = {}) {
+  if (isTeammate) return 'teammate';
+  if (isCountTokens || isHeartbeat) return 'main';
+  const sysText = getSystemText(body);
+  if (TEAMMATE_SYSTEM_RE.test(sysText)) return 'teammate';
+  if (SUBAGENT_BILLING_RE.test(sysText)) return 'subagent';
+  return 'main';
+}
+
+// Single resolution path from stored role ids to the effective profile object.
+// 'follow' / missing / dangling id → mainProfile; 'max' → null (explicit Default = no rewrite);
+// a listed id → the profile object (or mainProfile when absent from the map).
+export function resolveRoleProfile(role, roleIds, profilesById, mainProfile) {
+  if (role === 'main') return mainProfile || null;
+  const raw = roleIds && typeof roleIds === 'object' ? roleIds[role] : undefined;
+  if (typeof raw !== 'string' || !raw || raw === 'follow') return mainProfile || null;
+  if (raw === 'max') return null;
+  const hit = profilesById && typeof profilesById.get === 'function' ? profilesById.get(raw) : undefined;
+  return hit || mainProfile || null;
+}
+
+// Lenient shaping for values READ from disk / request bodies: keeps string values for known
+// role keys, drops unknown keys and non-string values, defaults missing keys to 'follow'.
+// Existence of a profile id is NOT enforced here (dangling ids resolve to follow downstream).
+export function normalizeRoles(raw) {
+  const out = { subagent: 'follow', teammate: 'follow' };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const k of PROXY_ROLE_KEYS) {
+    if (typeof raw[k] === 'string' && raw[k]) out[k] = raw[k];
+  }
+  return out;
+}
+
+// Merge semantics for workspace active-profile.json writes: a field left undefined preserves
+// the stored value, so profile-list CRUD (active-only writes) can never clobber role
+// assignments and role changes never clobber activeId. Per-key role merge: an incoming roles
+// object missing a key preserves the stored one (NOT reset to follow).
+// Note: only { activeId, roles } are carried — unknown future top-level keys are dropped
+// (same blast radius as the old whole-file replace). When neither an incoming activeId nor
+// a stored one exists, the key is OMITTED (not pinned to 'max') so the workspace keeps
+// following the profile.json.active global fallback.
+export function mergeActivePayload(existing, { activeId, roles } = {}) {
+  const base = (existing && typeof existing === 'object' && !Array.isArray(existing)) ? existing : {};
+  const mergedRoles = normalizeRoles(base.roles);
+  if (roles !== undefined) {
+    const inc = normalizeRoles(roles);
+    for (const k of PROXY_ROLE_KEYS) {
+      // normalizeRoles fills missing keys with 'follow'; distinguish "explicitly set to
+      // follow" from "absent" by probing the raw incoming object.
+      if (roles && typeof roles === 'object' && typeof roles[k] === 'string' && roles[k]) mergedRoles[k] = inc[k];
+    }
+  }
+  const merged = {};
+  if (activeId === undefined) {
+    if (typeof base.activeId === 'string' && base.activeId) merged.activeId = base.activeId;
+    // else: omit → reader falls back to the profile.json.active global default
+  } else {
+    merged.activeId = (typeof activeId === 'string' && activeId) ? activeId : 'max';
+  }
+  merged.roles = mergedRoles;
+  return merged;
+}
+
+// Strict validation for POST-supplied role values: follow/max always allowed; any other string
+// must reference an id present in the INCOMING profiles list (ids are validated against what
+// will be persisted, not the old file).
+export function isValidRoleValue(v, profilesById) {
+  if (v === 'follow' || v === 'max') return true;
+  if (typeof v !== 'string' || !v) return false;
+  return !!(profilesById && typeof profilesById.get === 'function' && profilesById.get(v));
+}

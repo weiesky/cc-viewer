@@ -10,6 +10,13 @@ Call the claude.ai remote-trigger API to manage scheduled and on-demand trigger 
 - Listing or auditing all current triggers to review their configuration and status
 - Updating trigger settings such as schedule, payload, or description without recreating the trigger
 
+## Activation
+
+- Requires a claude.ai Pro, Max, Team, or Enterprise plan.
+- Not available on Amazon Bedrock, Claude Platform on AWS, Google Cloud, or Microsoft Foundry.
+- Requires server-side feature flags and the `allow_remote_sessions` / `allow_routines` policy settings.
+- Not for remote sessions themselves.
+
 ## Parameters
 
 - `action` (string, required): the operation to perform — one of `list`, `get`, `create`, `update`, or `run`

@@ -10,6 +10,11 @@ Planlægger hvornår arbejdet skal genoptages i `/loop` dynamisk tilstand. Værk
 - Til at køre en autonom løkke uden bruger-prompt — send det bogstavelige sentinel `<<autonomous-loop-dynamic>>` som `prompt`
 - Til at polle en proces, hvis tilstand er ved at ændre sig snart (brug en kort forsinkelse for at holde cachen varm)
 
+## Aktivering
+
+- Ikke tilgængelig på Amazon Bedrock, Claude Platform on AWS, Google Cloud Agent Platform eller Microsoft Foundry.
+- Også slået fra, når feature-flag-hentning er deaktiveret (telemetri-/trafik-miljøvariabler).
+
 ## Parametre
 
 - `delaySeconds` (tal, påkrævet): Sekunder til genoptagelse. Runtime begrænser automatisk værdien til `[60, 3600]`, så manuel begrænsning er ikke nødvendig.

@@ -10,6 +10,11 @@ Language Server Protocol (LSP) サーバーに問い合わせてコードイン�
 - インターフェースや抽象メソッドの実装を見つける (`goToImplementation`)
 - 関数の呼び出し階層をたどる (`prepareCallHierarchy`、`incomingCalls`、`outgoingCalls`)
 
+## 有効化
+
+- その言語用のコードインテリジェンスプラグインがインストールされるまで非アクティブです (サーバーバイナリは別途インストールされます)。
+- このツールは LSP クライアントが接続されているときのみ表示されます。
+
 ## パラメータ
 
 - `operation` (string, required): 上記のいずれかの操作。

@@ -10,6 +10,11 @@ Leverer en melding fra ett teammedlem til et annet i et aktivt team, eller kring
 - Svare på en protokollforespørsel som en shutdown-forespørsel eller en plangodkjenningsforespørsel fra teamlederen.
 - Lukke sløyfen på slutten av en delegert oppgave slik at lederen kan markere punktet som fullført.
 
+## Aktivering
+
+- Gated av de samme kryss-sesjonsmelding-betingelsene som `ListAgents` (server-side feature-flags, av som standard).
+- Lagkamerater krever i tillegg at eksperimentelle agent-team er aktivert.
+
 ## Parametere
 
 - `to` (string, påkrevd): Målleagkameratens `name` som registrert i teamet, eller `*` for å kringkaste til alle lagkamerater samtidig.

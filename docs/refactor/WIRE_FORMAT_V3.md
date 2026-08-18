@@ -33,7 +33,7 @@ the live channel structure — not localhost br bytes.
 2. `v2_requests` — `{rows, totalCount, hasMore, oldestTs}`. Row schema
    (journal fold; `server/lib/v2/meta-rows.js`):
    `{seq, sessionId, timestamp, url, method, conv?, evt?, kind, mainAgent,
-   teammate?, model?, proxyUrl?, status?, duration?, usage?, inProgress,
+   teammate?, model?, proxyUrl?, proxyRole?, status?, duration?, usage?, inProgress,
    typeTag, cacheLoss}` — top-level `timestamp`/`url` keep the since-cursor
    and `timestamp|url` dedup identities; `usage` is mapped to the client
    shape (`input_tokens`…); `typeTag {type, subType}` is computed with the

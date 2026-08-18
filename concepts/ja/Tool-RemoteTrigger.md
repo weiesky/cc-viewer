@@ -10,6 +10,13 @@ claude.ai のリモートトリガー API を呼び出し、スケジュール�
 - すべての現在のトリガーを一覧表示または監査して、設定とステータスを確認
 - トリガーを再作成せずに、スケジュール、ペイロード、説明などのトリガー設定を更新
 
+## 有効化
+
+- claude.ai の Pro、Max、Team、または Enterprise プランが必要です。
+- Amazon Bedrock、Claude Platform on AWS、Google Cloud、Microsoft Foundry では利用できません。
+- サーバーサイドの機能フラグと `allow_remote_sessions` / `allow_routines` ポリシー設定が必要です。
+- リモートセッション自体では利用できません。
+
 ## パラメータ
 
 - `action` (string, 必須): 実行する操作 — `list`、`get`、`create`、`update`、`run` のいずれか

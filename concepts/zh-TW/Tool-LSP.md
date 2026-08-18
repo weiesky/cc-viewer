@@ -10,6 +10,11 @@
 - 查找介面或抽象方法的實作（`goToImplementation`）
 - 遍歷函式的呼叫階層（`prepareCallHierarchy`、`incomingCalls`、`outgoingCalls`）
 
+## 啟用方式
+
+- 在安裝該語言的程式碼智慧外掛之前保持停用（伺服器二進位檔另行安裝）。
+- 此工具僅在 LSP 用戶端連線時才會出現。
+
 ## 參數
 
 - `operation`（字串，必填）：上述操作之一。

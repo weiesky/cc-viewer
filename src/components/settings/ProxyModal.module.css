@@ -85,6 +85,47 @@
   border: none;
 }
 
+/* ── 角色分配区（main/subagent/teammate 分源） ── */
+
+.roleAssignSection {
+  margin-bottom: 10px;
+  padding: 10px 12px 6px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-secondary);
+}
+
+.roleAssignTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.roleAssignRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.roleAssignRow > label {
+  flex-shrink: 0;
+  width: 72px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.proxyRoleBadge {
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--color-selection-bg);
+  color: var(--color-primary);
+  line-height: 16px;
+  border: none;
+}
+
 .proxyItemActions {
   display: flex;
   gap: 2px;

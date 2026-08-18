@@ -14,6 +14,12 @@ Invia una notifica desktop dalla sessione corrente di Claude Code. Se Remote Con
 
 Non inviare notifiche per aggiornamenti di avanzamento di routine durante un'attività, né per confermare di aver risposto a qualcosa che l'utente ha appena chiesto e sta chiaramente attendendo. Non notificare al termine di un'attività breve — se l'utente l'ha appena inviata e sta aspettando, la notifica non aggiunge valore e riduce la fiducia nelle notifiche future. Propendi fortemente per non inviare.
 
+## Attivazione
+
+- Disattivato per default (feature flag lato server).
+- La consegna passa attraverso infrastruttura ospitata da Anthropic — non disponibile su Amazon Bedrock, Claude Platform on AWS, Google Cloud o Microsoft Foundry.
+- Il push sul telefono richiede inoltre un client Remote Control connesso.
+
 ## Parametri
 
 - `message` (stringa, obbligatorio): il corpo della notifica. Mantenerlo sotto i 200 caratteri; i sistemi operativi mobili troncano le stringhe più lunghe. Inizia con ciò su cui l'utente agirebbe: "build failed: 2 auth tests" è più utile di "task complete".

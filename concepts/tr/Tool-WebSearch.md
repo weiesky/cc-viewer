@@ -10,6 +10,12 @@ Canlı bir web araması gerçekleştirir ve asistanın modelin eğitim kesiminin
 - Model eğitildiğinden beri değişmiş olabilecek bir gerçeği doğrulamak.
 - `WebFetch` ile herhangi bir sayfayı almadan önce bir konudaki birden fazla bakış açısını keşfetmek.
 
+## Etkinleştirme
+
+- Kullanılabilirlik sağlayıcıya ve modele bağlıdır: Anthropic API ve AWS üzerinde Claude Platform'da kullanılabilir; Microsoft Foundry'de Anthropic tarafından barındırılan bir dağıtım gerektirir; Google Cloud'da Claude 4+ modelleriyle çalışır.
+- Amazon Bedrock'ta kullanılamaz.
+- `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` ile oturum başına 200 çağrıyla sınırlayın.
+
 ## Parametreler
 
 - `query` (string, zorunlu): Arama sorgusu. Minimum uzunluk 2 karakter. Sonuçların taze olması için "en son" veya "yakın zamandaki" bilgiler hakkında sorarken mevcut yılı dahil edin.

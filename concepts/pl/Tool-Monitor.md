@@ -10,6 +10,13 @@ Uruchamia monitor działający w tle, który strumieniuje zdarzenia z długo dzi
 - Oczekiwanie na określony warunek przez wiele iteracji (np. kamień milowy kroku treningowego lub opróżnienie kolejki)
 - **Nie** do prostego "czekaj aż skończy" — do tego użyj `Bash` z `run_in_background`; wyśle jedno powiadomienie o zakończeniu, gdy proces się zakończy
 
+## Aktywacja
+
+- Domyślnie wyłączony (flaga funkcji po stronie serwera).
+- Niedostępny na Amazon Bedrock, Google Cloud i Microsoft Foundry.
+- Wyłączony, gdy ustawione jest `DISABLE_TELEMETRY` lub `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`.
+- Źródło WebSocket wymaga Claude Code 2.1.195+.
+
 ## Parametry
 
 - `command` (ciąg znaków, wymagany): Polecenie powłoki lub skrypt do uruchomienia. Każda linia zapisana na standardowym wyjściu staje się oddzielnym zdarzeniem powiadomienia. Monitor kończy działanie, gdy proces się zakończy.

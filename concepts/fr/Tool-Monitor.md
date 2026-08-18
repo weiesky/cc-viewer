@@ -10,6 +10,13 @@ Lance un moniteur en arrière-plan qui diffuse des événements depuis un script
 - Attendre une condition spécifique sur de nombreuses itérations (par exemple un jalon d'étape d'entraînement ou le vidage d'une file d'attente)
 - **Pas** pour un simple "attendre jusqu'à la fin" — utiliser `Bash` avec `run_in_background` pour cela ; il émet une notification de fin lorsque le processus se termine
 
+## Activation
+
+- Désactivé par défaut (drapeau de fonctionnalité côté serveur).
+- Indisponible sur Amazon Bedrock, Google Cloud et Microsoft Foundry.
+- Désactivé lorsque `DISABLE_TELEMETRY` ou `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` est défini.
+- La source WebSocket nécessite Claude Code 2.1.195+.
+
 ## Paramètres
 
 - `command` (chaîne, obligatoire) : La commande shell ou le script à exécuter. Chaque ligne écrite sur la sortie standard devient un événement de notification distinct. Le moniteur se termine quand le processus se termine.

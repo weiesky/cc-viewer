@@ -10,6 +10,11 @@ Language Server Protocol (LSP) 서버에 질의하여 코드 인텔리전스 —
 - 인터페이스나 추상 메서드의 구현 찾기 (`goToImplementation`)
 - 함수의 호출 계층 따라가기 (`prepareCallHierarchy`, `incomingCalls`, `outgoingCalls`)
 
+## 활성화
+
+- 해당 언어의 코드 인텔리전스 플러그인이 설치되기 전까지는 비활성 상태입니다(서버 바이너리는 별도로 설치됩니다).
+- 이 도구는 LSP 클라이언트가 연결된 경우에만 나타납니다.
+
 ## 매개변수
 
 - `operation` (string, 필수): 위에 나열된 작업 중 하나.

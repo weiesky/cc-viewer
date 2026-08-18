@@ -12,6 +12,12 @@ Henter den fulde registrering for en enkelt opgave efter ID, inklusive dens besk
 
 Foretræk `TaskList`, når du kun har brug for en overordnet scanning; reservér `TaskGet` til den specifikke post, du har til hensigt at læse nøje eller ændre.
 
+## Aktivering
+
+- Tilgængelig som standard på de fleste modeller.
+- Ikke tilgængelig på Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 og nyere familier (v2.1.233+), medmindre det tilvælges via `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` eller `--tools`.
+- Hele opgavesystemet er deaktiveret, når `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parametre
 
 - `taskId` (string, påkrævet): Opgave-identifikatoren returneret af `TaskCreate` eller `TaskList`. ID'er er stabile i opgavens levetid.

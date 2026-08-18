@@ -12,6 +12,12 @@ Restituisce ogni task nel team corrente (o sessione) in forma riassuntiva. Usalo
 
 `TaskList` è in sola lettura ed economico; chiamalo liberamente ogni volta che hai bisogno di una panoramica.
 
+## Attivazione
+
+- Disponibile per default sulla maggior parte dei modelli.
+- Non disponibile su Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 e famiglie successive (v2.1.233+), salvo opt-in tramite `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` o `--tools`.
+- L'intero sistema dei task è disabilitato quando `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parametri
 
 `TaskList` non accetta parametri. Restituisce sempre l'insieme completo dei task per il contesto attivo.

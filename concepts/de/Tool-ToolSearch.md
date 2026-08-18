@@ -10,6 +10,11 @@ Ruft bei Bedarf die vollständigen Schema-Definitionen „aufgeschobener Tools" 
 
 Wenn das Schema eines Tools bereits im Kontext vorliegt, nicht erneut suchen – einfach aufrufen.
 
+## Aktivierung
+
+- Standardmäßig aktiviert.
+- Deaktiviert, wenn `ANTHROPIC_BASE_URL` auf einen Nicht-Anthropic-Endpunkt zeigt (es sei denn, `ENABLE_TOOL_SEARCH` ist gesetzt), wenn `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` gesetzt ist, wenn dem Modell die Tool-Referenz-Unterstützung fehlt (Vertex-AI-Modelle vor Claude 4.5) oder wenn die Verwendung über `"deny": ["ToolSearch"]` verweigert wird.
+
 ## Parameter
 
 - `query` (string, erforderlich): Die Anfrage zum Auffinden aufgeschobener Tools. Drei Formen werden unterstützt:

@@ -12,6 +12,12 @@
 
 对于简单的一次性动作、纯粹的对话，或两三次直接工具调用即可完成的任务，跳过 `TaskCreate`。
 
+## 启用方式
+
+- 在大多数模型上默认可用。
+- 在 Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 及更高版本家族（v2.1.233+）上不可用，除非通过 `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`、`--allowedTools` 或 `--tools` 选择启用。
+- 当 `CLAUDE_CODE_ENABLE_TASKS=false` 时，整个任务系统被禁用。
+
 ## 参数
 
 - `subject` (string, 必填)：简短的祈使式标题，例如 `Fix login redirect on Safari`。尽量不超过 80 字符。

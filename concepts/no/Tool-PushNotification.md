@@ -14,6 +14,12 @@ Sender et skrivebordsvarsel fra den gjeldende Claude Code-økten. Hvis Remote Co
 
 Send ikke et varsel for rutinemessige fremdriftsoppdateringer under en oppgave, eller for å bekrefte at du har svart på noe brukeren tydelig nettopp spurte om og fremdeles venter på. Ikke varsle når en kort oppgave er fullført — hvis brukeren nettopp sendte den inn og venter, gir varselet ingen verdi og svekker tilliten til fremtidige varsler. Hel sterkt mot ikke å sende.
 
+## Aktivering
+
+- Av som standard (server-side feature-flag).
+- Levering går gjennom Anthropic-hostet infrastruktur — ikke tilgjengelig på Amazon Bedrock, Claude Platform on AWS, Google Cloud eller Microsoft Foundry.
+- Telefonpush krever i tillegg en tilkoblet Remote Control-klient.
+
 ## Parametere
 
 - `message` (streng, obligatorisk): varselets brødtekst. Hold det under 200 tegn; mobile operativsystemer kutter av lengre strenger. Begynn med det brukeren vil handle på: "build failed: 2 auth tests" er mer nyttig enn "task complete".

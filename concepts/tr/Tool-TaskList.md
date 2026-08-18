@@ -12,6 +12,12 @@ Mevcut ekipteki (veya oturumdaki) her görevi özet biçimde döndürür. Beklen
 
 `TaskList` yalnızca okumadır ve ucuzdur; bir genel bakışa ihtiyaç duyduğunuzda serbestçe çağırın.
 
+## Etkinleştirme
+
+- Çoğu modelde varsayılan olarak kullanılabilir.
+- `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` veya `--tools` ile katılım sağlanmadıkça Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 ve sonraki ailelerde (v2.1.233+) kullanılamaz.
+- `CLAUDE_CODE_ENABLE_TASKS=false` olduğunda tüm görev sistemi devre dışıdır.
+
 ## Parametreler
 
 `TaskList` parametre almaz. Her zaman aktif bağlam için tam görev kümesini döndürür.

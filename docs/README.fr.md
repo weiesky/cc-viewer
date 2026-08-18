@@ -10,7 +10,7 @@ Une boîte à outils Vibe Coding distillée à partir de l'expérience de dével
 3. Journalisation complète : offre des capacités complètes d'interception et d'analyse de la charge utile de Claude Code, idéal pour la journalisation, l'analyse des problèmes, l'apprentissage, l'inspiration et le rétro-ingénierie ;
 4. Partage d'apprentissage et d'expérience : de nombreux supports d'apprentissage et expériences de développement ont été accumulés (voir les icônes « ? » dans tout le système) ;
 5. Expérience native préservée : étend uniquement les capacités de Claude Code, sans modifications substantielles du noyau, préservant l'expérience native ;
-6. Prise en charge des modèles tiers : compatible avec deepseek-v4-\*, GLM 5.1, Kimi K2.6, avec la capacité cc-switch intégrée pour commuter à chaud entre les outils tiers à tout moment.
+6. Prise en charge des modèles tiers : compatible avec deepseek-v4-\*, GLM 5.1, Kimi K2.6, avec la capacité cc-switch intégrée pour commuter à chaud entre les outils tiers à tout moment. La boîte de dialogue de commutation à chaud prend également en charge des sources par rôle — Main Agent, Sub-Agents et Teammates peuvent chacun utiliser un profil de proxy différent (par défaut : suivre le Main Agent) ; lorsque le Main Agent utilise le Default intégré avec l'endpoint officiel, l'attribution des rôles reste masquée et dormante.
 
 <img width="860" alt="cc-viewer — deploy once, share with every device" src="https://raw.githubusercontent.com/weiesky/cc-viewer/main/docs/cc-viewer-share.svg" />
 

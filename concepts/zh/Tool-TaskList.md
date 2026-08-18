@@ -12,6 +12,12 @@
 
 `TaskList` 只读且成本低；需要概览时随时调用。
 
+## 启用方式
+
+- 在大多数模型上默认可用。
+- 在 Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 及更高版本家族（v2.1.233+）上不可用，除非通过 `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`、`--allowedTools` 或 `--tools` 选择启用。
+- 当 `CLAUDE_CODE_ENABLE_TASKS=false` 时，整个任务系统被禁用。
+
 ## 参数
 
 `TaskList` 无参数。它总是返回当前上下文中的全量任务集合。

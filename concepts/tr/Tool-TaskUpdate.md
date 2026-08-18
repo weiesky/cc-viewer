@@ -10,6 +10,12 @@ Var olan bir görevi değiştirir — durumu, içeriği, sahipliği, meta verile
 - Yeni keşfedilen bağımlılıkları `addBlocks` / `addBlockedBy` ile kaydetmek.
 - Dış bilet ID'leri veya öncelik ipuçları gibi yapılandırılmış `metadata` eklemek.
 
+## Etkinleştirme
+
+- Çoğu modelde varsayılan olarak kullanılabilir.
+- `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` veya `--tools` ile katılım sağlanmadıkça Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 ve sonraki ailelerde (v2.1.233+) kullanılamaz.
+- `CLAUDE_CODE_ENABLE_TASKS=false` olduğunda tüm görev sistemi devre dışıdır.
+
 ## Parametreler
 
 - `taskId` (string, zorunlu): Değiştirilecek görev. `TaskList` veya `TaskCreate`'den alın.

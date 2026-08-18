@@ -12,11 +12,13 @@ import appStyles from '../../App.module.css';
 import MobileDrawerCloseButton from '../mobile/MobileDrawerCloseButton';
 
 // 代理热切换 Modal —— PC + mobile 共用。
-// 风格:半受控(proxyProfiles/activeProxyId 是父级跨组件共享数据 → props 注入;
+// 风格:半受控(proxyProfiles/activeProxyId/proxyRoles 是父级跨组件共享数据 → props 注入;
 // editingProxy/editForm 仅本 modal 用 → 内部 state)。受控风格判定原则见 PluginModal.jsx 头注释。
 // 不持有 proxy 数据本身（来自 AppBase state，通过 props 注入）；
 // 只持有交互 state：editingProxy（'__new__' / id / null）+ editForm（name/baseURL/apiKey/effort + 4 个模型字段）。
 // open false→true / true→false 双向重置 editingProxy 与 editForm,避免重开残留上次表单。
+// 角色分配区（主/子/Teammate 分源）：activeId='max' 且官方端点（proxyOfficialDefault）时整区隐藏，
+// 存储的角色分配在服务端同步休眠；分配改动与列表 CRUD 一样走 onProxyProfileChange（roles 合并语义）。
 //
 // 删除确认改为受控 Modal（deleteConfirmTarget state）替代 Modal.confirm —— 后者 portal 到 body
 // 不受父 modal 关闭联动控制 (defensive review P2-2),且在 mobile zoom:0.6 容器下不缩放。
@@ -53,6 +55,8 @@ export default function ProxyModal({
   proxyProfiles,
   activeProxyId,
   defaultConfig,
+  proxyRoles,
+  proxyOfficialDefault,
   onProxyProfileChange,
 }) {
   const [editingProxy, setEditingProxy] = useState(null);
@@ -82,6 +86,7 @@ export default function ProxyModal({
           const pr = await fetch(appendToken(apiUrl('/api/proxy-profiles')));
           const pd = await pr.json();
           if (pd.profiles && onProxyProfileChange) {
+            // 不带 roles：导入不改角色分配，服务端合并语义保留存储值（防多窗口陈旧回写）
             onProxyProfileChange({ active: pd.active, profiles: pd.profiles });
           }
         } catch (e) { reportSwallowed('fetch.ccswitch-refresh', e); /* SSE refresh is the fallback */ }
@@ -111,6 +116,11 @@ export default function ProxyModal({
 
   const profiles = proxyProfiles || [];
   const activeId = activeProxyId || 'max';
+  // 角色分配（存储值）：main=Default 且官方端点时分配区隐藏、存储分配休眠（服务端同步不生效）。
+  const roles = proxyRoles || { subagent: 'follow', teammate: 'follow' };
+  const hideRoles = activeId === 'max' && proxyOfficialDefault !== false;
+  const mainProfile = profiles.find(p => p.id === activeId) || null;
+  const followLabel = t('ui.proxy.followMainResolved', { name: mainProfile ? mainProfile.name : 'Default' });
 
   // setEditForm 必须用 prev callback,否则多字段会被单字段更新覆盖丢字段
   const updateField = (field, value) => {
@@ -150,7 +160,11 @@ export default function ProxyModal({
     if (!deleteConfirmTarget) return;
     const newProfiles = profiles.filter(x => x.id !== deleteConfirmTarget.id);
     const newActive = activeId === deleteConfirmTarget.id ? 'max' : activeId;
-    onProxyProfileChange({ active: newActive, profiles: newProfiles });
+    // 被删 profile 若是某角色的当前分配 → 该角色归 follow（客户端 scrub；服务端读取时归 follow 兜底）
+    const newRoles = { ...roles };
+    if (newRoles.subagent === deleteConfirmTarget.id) newRoles.subagent = 'follow';
+    if (newRoles.teammate === deleteConfirmTarget.id) newRoles.teammate = 'follow';
+    onProxyProfileChange({ active: newActive, profiles: newProfiles, roles: newRoles });
     setDeleteConfirmTarget(null);
   };
 
@@ -159,9 +173,18 @@ export default function ProxyModal({
   };
 
   const handleActivate = (p) => {
+    // 注意：不带 roles —— 本 handler 不改角色，回传本地 roles 会在其陈旧时（多窗口 /
+    // GET 落入 catch 回退）覆盖磁盘上的新值；服务端合并语义会原样保留存储分配。
     if (p.id !== activeId) {
       onProxyProfileChange({ active: p.id, profiles });
     }
+  };
+
+  // 分配区：主 Agent 切换与列表 radio 同义；子/Teammate 走 roles 合并（服务端合并语义持久化）。
+  // 只发变更的 key：本地 roles 尚未加载（GET 未回/失败回退默认）时，全量提交会把另一角色的
+  // 存储分配冲成 follow；单 key 提交由服务端 per-key 合并保住另一角色。
+  const handleRoleChange = (role, value) => {
+    onProxyProfileChange({ active: activeId, profiles, roles: { [role]: value } });
   };
 
   const handleSave = () => {
@@ -205,6 +228,36 @@ export default function ProxyModal({
   const bodyNode = (
     <div>
       {showMaxWarning && <div className={styles.proxyWarning}>⚠️ {t('ui.proxy.maxWarning')}</div>}
+      {!hideRoles && (
+        <div className={styles.roleAssignSection}>
+          <div className={styles.roleAssignTitle}>{t('ui.proxy.assignmentTitle')}</div>
+          <div className={styles.roleAssignRow}>
+            <label>{t('ui.proxy.roleMain')}</label>
+            <Select
+              size="small"
+              className={styles.fullWidthSelect}
+              value={activeId}
+              onChange={id => { if (id !== activeId) onProxyProfileChange({ active: id, profiles }); }}
+            >
+              {profiles.map(p => <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>)}
+            </Select>
+          </div>
+          {['subagent', 'teammate'].map(role => (
+            <div className={styles.roleAssignRow} key={role}>
+              <label>{t(role === 'subagent' ? 'ui.proxy.roleSubagent' : 'ui.proxy.roleTeammate')}</label>
+              <Select
+                size="small"
+                className={styles.fullWidthSelect}
+                value={roles[role] || 'follow'}
+                onChange={v => handleRoleChange(role, v)}
+              >
+                <Select.Option value="follow">{followLabel}</Select.Option>
+                {profiles.map(p => <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>)}
+              </Select>
+            </div>
+          ))}
+        </div>
+      )}
       <div className={styles.proxyList}>
           {profiles.map(p => (
             <div key={p.id} className={`${styles.proxyItem} ${p.id === activeId ? styles.proxyItemActive : ''}`}>
@@ -214,6 +267,10 @@ export default function ProxyModal({
                   <div className={styles.proxyItemNameRow}>
                     <span className={styles.proxyItemName}>{p.name}</span>
                     {p.id === 'max' && <Tag className={styles.proxyBuiltinTag}>{t('ui.proxy.builtin')}</Tag>}
+                    {/* 角色徽章：仅显式分配打标（follow 解析到的不打，避免"我没指定它"困惑） */}
+                    {!hideRoles && p.id === activeId && <Tag className={styles.proxyRoleBadge}>{t('ui.proxy.badgeMain')}</Tag>}
+                    {!hideRoles && roles.subagent === p.id && <Tag className={styles.proxyRoleBadge}>{t('ui.proxy.badgeSubagent')}</Tag>}
+                    {!hideRoles && roles.teammate === p.id && <Tag className={styles.proxyRoleBadge}>{t('ui.proxy.badgeTeammate')}</Tag>}
                   </div>
                   {p.id === 'max' && defaultConfig && (
                     <div className={styles.proxyItemDetail}>

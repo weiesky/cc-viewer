@@ -12,6 +12,12 @@ Henter hele posten for en enkelt oppgave med ID, inkludert beskrivelse, gjeldend
 
 Foretrekk `TaskList` når du bare trenger en oversikt på høyt nivå; reserver `TaskGet` for den spesifikke posten du har tenkt å lese nøye eller endre.
 
+## Aktivering
+
+- Tilgjengelig som standard på de fleste modeller.
+- Ikke tilgjengelig på Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 og nyere familier (v2.1.233+) med mindre man melder seg på via `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` eller `--tools`.
+- Hele oppgavesystemet er deaktivert når `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parametere
 
 - `taskId` (string, påkrevd): Oppgaveidentifikatoren returnert av `TaskCreate` eller `TaskList`. ID-er er stabile gjennom oppgavens levetid.

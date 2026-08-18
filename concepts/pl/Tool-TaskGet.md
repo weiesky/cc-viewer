@@ -12,6 +12,12 @@ Pobiera pełny rekord pojedynczego zadania po ID, wraz z jego opisem, bieżącym
 
 Preferuj `TaskList`, gdy potrzebujesz tylko przeglądu wysokiego poziomu; zarezerwuj `TaskGet` dla konkretnego rekordu, który zamierzasz dokładnie przeczytać lub zmodyfikować.
 
+## Aktywacja
+
+- Dostępne domyślnie na większości modeli.
+- Niedostępne na rodzinach Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 i nowszych (v2.1.233+), chyba że włączone przez `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` lub `--tools`.
+- Cały system zadań jest wyłączony, gdy `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parametry
 
 - `taskId` (string, wymagany): Identyfikator zadania zwrócony przez `TaskCreate` lub `TaskList`. Identyfikatory są stałe przez cały okres życia zadania.

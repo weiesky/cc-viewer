@@ -10,6 +10,12 @@
 - تسجيل تبعيات مُكتشفة حديثاً بـ `addBlocks` / `addBlockedBy`.
 - إرفاق `metadata` منظَّم مثل معرفات تذاكر خارجية أو تلميحات أولوية.
 
+## التفعيل
+
+- متاح افتراضياً في معظم النماذج.
+- غير متاح في عائلات Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 وما بعدها (v2.1.233+) ما لم يُفعَّل اختيارياً عبر `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` أو `--allowedTools` أو `--tools`.
+- يُعطَّل نظام المهام بأكمله عند `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## المعاملات
 
 - `taskId` (سلسلة، مطلوب): المهمة المراد تعديلها. احصل عليها من `TaskList` أو `TaskCreate`.

@@ -10,6 +10,13 @@
 - 在多次迭代中等待特定條件（例如訓練步驟里程碑或佇列清空）
 - **不適用於**簡單的「等待完成」場景——請改用帶 `run_in_background` 的 `Bash`，它會在程序退出時發送一次完成通知
 
+## 啟用方式
+
+- 預設關閉（伺服器端功能旗標）。
+- 在 Amazon Bedrock、Google Cloud 與 Microsoft Foundry 上不可用。
+- 當 `DISABLE_TELEMETRY` 或 `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` 被設定時關閉。
+- WebSocket 來源需要 Claude Code 2.1.195+。
+
 ## 參數
 
 - `command`（字串，必填）：要執行的 shell 命令或腳本。寫入標準輸出的每一行都會成為獨立的通知事件。程序退出後監視器結束。

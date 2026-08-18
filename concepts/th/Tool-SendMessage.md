@@ -10,6 +10,11 @@
 - ตอบกลับ protocol prompt เช่นคำขอ shutdown หรือคำขอ plan approval จาก team leader
 - ปิดลูปที่จุดสิ้นสุดของงานที่มอบหมาย เพื่อให้ leader สามารถ mark รายการว่าเสร็จแล้ว
 
+## การเปิดใช้งาน
+
+- Gated ด้วยเงื่อนไขการส่งข้อความข้ามเซสชันเดียวกับ `ListAgents` (feature flag ฝั่ง server ปิดตามค่าเริ่มต้น)
+- Teammate ต้องเปิดใช้งาน experimental agent teams เพิ่มเติมด้วย
+
 ## พารามิเตอร์
 
 - `to` (string, required): `name` ของ teammate เป้าหมายตามที่ลงทะเบียนในทีม หรือ `*` เพื่อ broadcast ไปยัง teammate ทุกคนในคราวเดียว

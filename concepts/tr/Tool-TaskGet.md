@@ -12,6 +12,12 @@ ID'ye göre tek bir görevin tam kaydını getirir — açıklaması, mevcut dur
 
 Yalnızca yüksek düzey bir tarama yapmak istediğinizde `TaskList`'i tercih edin; `TaskGet`'i dikkatlice okumayı veya değiştirmeyi planladığınız belirli kayıt için saklayın.
 
+## Etkinleştirme
+
+- Çoğu modelde varsayılan olarak kullanılabilir.
+- `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` veya `--tools` ile katılım sağlanmadıkça Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 ve sonraki ailelerde (v2.1.233+) kullanılamaz.
+- `CLAUDE_CODE_ENABLE_TASKS=false` olduğunda tüm görev sistemi devre dışıdır.
+
 ## Parametreler
 
 - `taskId` (string, zorunlu): `TaskCreate` veya `TaskList` tarafından döndürülen görev tanımlayıcısı. ID'ler görevin ömrü boyunca kararlıdır.

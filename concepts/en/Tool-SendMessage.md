@@ -10,6 +10,11 @@ Delivers a message from one team member to another within an active team, or bro
 - Replying to a protocol prompt such as a shutdown request or a plan-approval request from the team leader.
 - Closing the loop at the end of a delegated task so the leader can mark the item complete.
 
+## Activation
+
+- Gated by the same cross-session messaging conditions as `ListAgents` (server-side feature flags, off by default).
+- Teammates additionally require experimental agent teams to be enabled.
+
 ## Parameters
 
 - `to` (string, required): The target teammate's `name` as registered in the team, or `*` to broadcast to all teammates at once.

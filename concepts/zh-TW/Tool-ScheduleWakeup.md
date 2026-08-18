@@ -10,6 +10,11 @@
 - 執行無使用者提示的自主迴圈——將字面量哨兵值 `<<autonomous-loop-dynamic>>` 作為 `prompt` 傳入
 - 輪詢即將發生狀態變化的程序（使用較短延遲以保持快取熱態）
 
+## 啟用方式
+
+- 在 Amazon Bedrock、Claude Platform on AWS、Google Cloud Agent Platform 或 Microsoft Foundry 上不可用。
+- 當功能旗標擷取被停用時（遙測/流量環境變數）亦會關閉。
+
 ## 參數
 
 - `delaySeconds`（數字，必填）：距恢復的秒數。執行環境會自動將值限制在 `[60, 3600]` 範圍內，無需手動限制。

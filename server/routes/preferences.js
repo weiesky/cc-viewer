@@ -3,8 +3,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { LOG_DIR, setLogDir, getClaudeConfigDir, discoverClaudeExecutables, resolveExplicitClaudePath, CLAUDE_EXECUTABLE_PREF_KEY } from '../../findcc.js';
-import { PROFILE_PATH, _defaultConfig, getActiveProfileId, setActiveProfileForWorkspace, _loadProxyProfile, RETRY_CONFIG_PATH, _retryConfigState, _loadRetryConfigState } from '../interceptor.js';
-import { migrateProxyProfileList } from '../lib/interceptor-core.js';
+import { PROFILE_PATH, _defaultConfig, getActiveProfileId, getStoredRoles, isOfficialDefaultEndpoint, setActiveProfileForWorkspace, _loadProxyProfile, RETRY_CONFIG_PATH, _retryConfigState, _loadRetryConfigState } from '../interceptor.js';
+import { migrateProxyProfileList, isValidRoleValue, PROXY_ROLE_KEYS } from '../lib/interceptor-core.js';
 import { DEFAULT_RETRY_CONFIG, validateRetryConfig, resolveRetryConfig } from '../lib/proxy-retry.js';
 import { discoverCcSwitchProviders, mergeImportedProfiles } from '../lib/ccswitch-import.js';
 import { reportSwallowed } from '../lib/error-report.js';
@@ -307,7 +307,9 @@ function proxyProfilesGet(req, res, parsedUrl, isLocal, deps) {
     // 本机(127.0.0.1)= admin：下发明文 profile.apiKey 供本人在编辑表单(👁 折叠)里查阅/复制；已授权
     // 的远程客户端只拿脱敏值(****+后4位)。保存时若回传脱敏值，POST 侧 isMasked() 会保留磁盘原值。
     // 镜像 /api/auth/state 的密码、/api/dingtalk/status 的 appSecret 策略。
-    const full = { ...data, active: effectiveActive };
+    // roles 返回**存储值**（不做休眠调整）：休眠只是请求侧不生效，若返回有效值，UI 缓存后
+    // 在下次无关 POST 回写会把休眠中的分配清掉。officialDefault 驱动 UI 隐藏角色分配区。
+    const full = { ...data, active: effectiveActive, roles: getStoredRoles(), officialDefault: isOfficialDefaultEndpoint() };
     const payload = isLocal ? full : deps.maskProfiles(full);
     // defaultConfig.apiKey 始终脱敏：它在列表里是常显文本(无 👁 折叠)，且 Max/OAuth 默认配置的 key
     // 可能是 OAuth token；只有可编辑 profile 的 key 才按 isLocal 明文下发。
@@ -351,9 +353,24 @@ function proxyProfilesPost(req, res, parsedUrl, isLocal, deps) {
       const dir = dirname(PROFILE_PATH);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       writeFileSync(PROFILE_PATH, JSON.stringify(toWrite, null, 2), { mode: 0o600 });
-      // active 走 workspace 级别存储（当前进程独占）
-      if (typeof incoming.active === 'string' && incoming.active) {
-        setActiveProfileForWorkspace(incoming.active);
+      // 角色分配校验：只认 subagent/teammate 两个 key（roles.main 之类的杂键直接丢弃）；
+      // 值必须是 follow / max / 入参 profiles 里存在的 id（按将落盘的列表校验，而非旧文件），
+      // 非法值归 'follow'（宽容风格，不 400）。被删 profile 的悬空角色由读取时归 follow 兜底。
+      let sanitizedRoles;
+      if (incoming.roles && typeof incoming.roles === 'object' && !Array.isArray(incoming.roles)) {
+        const byId = new Map(incoming.profiles.map(p => [p.id, p]));
+        sanitizedRoles = {};
+        for (const k of PROXY_ROLE_KEYS) {
+          if (!(k in incoming.roles)) continue; // 未提交的 key 不进 patch → 合并时保留存储值
+          const v = incoming.roles[k];
+          // key 提交了但值非法（非字符串 / 悬空 id）→ 归 'follow'（显式纠正，不是保留）
+          sanitizedRoles[k] = (typeof v === 'string' && v && isValidRoleValue(v, byId)) ? v : 'follow';
+        }
+      }
+      // active/roles 走 workspace 级别存储（当前进程独占）；合并语义：缺省字段保留文件现值
+      const hasActive = typeof incoming.active === 'string' && incoming.active;
+      if (hasActive || sanitizedRoles) {
+        setActiveProfileForWorkspace(hasActive ? incoming.active : undefined, sanitizedRoles);
       } else {
         _loadProxyProfile(); // 仅列表变化时也刷新一次以反映删除 / 重命名
       }
@@ -361,7 +378,7 @@ function proxyProfilesPost(req, res, parsedUrl, isLocal, deps) {
       const effectiveActive = getActiveProfileId();
       const activeProfile = incoming.profiles?.find(p => p.id === effectiveActive) || null;
       const maskedProfile = activeProfile?.apiKey ? { ...activeProfile, apiKey: deps.maskApiKey(activeProfile.apiKey) } : activeProfile;
-      sendEventToClients(deps.clients, 'proxy_profile', { active: effectiveActive, profile: maskedProfile });
+      sendEventToClients(deps.clients, 'proxy_profile', { active: effectiveActive, profile: maskedProfile, roles: getStoredRoles() });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
     } catch {

@@ -15,16 +15,19 @@ A seguir está o índice categorizado de todas as ferramentas.
 | [TaskGet](Tool-TaskGet.md) | Obter detalhes de uma tarefa |
 | [TaskUpdate](Tool-TaskUpdate.md) | Atualizar status, dependências, etc. de uma tarefa |
 | [TaskList](Tool-TaskList.md) | Listar todas as tarefas |
+| [ListAgents](Tool-ListAgents.md) | Listar os agents disponíveis na sessão |
 
 ## Equipe e Orquestração
 
 | Ferramenta | Finalidade |
 |------|------|
-| [TeamCreate](Tool-TeamCreate.md) | Criar um time de agents para trabalho colaborativo |
-| [TeamDelete](Tool-TeamDelete.md) | Dissolver um time de agents |
 | [SendMessage](Tool-SendMessage.md) | Enviar uma mensagem para outro agent |
 | [Workflow](Tool-Workflow.md) | Rodar um script de orquestração multi-agent determinístico |
 | [Monitor](Tool-Monitor.md) | Transmitir eventos de um script de longa duração como notificações |
+| [SendFile](Tool-SendFile.md) | Enviar arquivos para outra sessão do Claude Code |
+| [SendUserFile](Tool-SendUserFile.md) | Enviar arquivos para o usuário |
+| [SendUserMessage](Tool-SendUserMessage.md) | Enviar uma mensagem para o usuário (ferramenta Brief legada) |
+| [EndConversation](Tool-EndConversation.md) | Encerrar a conversa atual |
 
 ## Operações de Arquivo
 
@@ -48,6 +51,7 @@ A seguir está o índice categorizado de todas as ferramentas.
 | Ferramenta | Finalidade |
 |------|------|
 | [Bash](Tool-Bash.md) | Executar comandos shell |
+| [REPL](Tool-REPL.md) | Executar JavaScript em um REPL Node.js persistente |
 
 ## Web
 
@@ -66,6 +70,10 @@ A seguir está o índice categorizado de todas as ferramentas.
 | [ExitPlanMode](Tool-ExitPlanMode.md) | Sair do modo de planejamento e submeter plano para aprovação do usuário |
 | [AskUserQuestion](Tool-AskUserQuestion.md) | Fazer perguntas ao usuário para obter esclarecimentos ou decisões |
 | [ReportFindings](Tool-ReportFindings.md) | Relatar achados de revisão de código como uma lista tipada para a UI hospedeira |
+| [TodoWrite](Tool-TodoWrite.md) | Escrever uma lista de tarefas estruturada para a sessão |
+| [SendFeedback](Tool-SendFeedback.md) | Enviar feedback estruturado sobre o Claude Code para a Anthropic |
+| [Projects](Tool-Projects.md) | Gerenciar documentos da base de conhecimento do projeto |
+| [ProposeGoal](Tool-ProposeGoal.md) | Propor uma meta de conclusão verificável para a sessão |
 
 ## Worktrees
 
@@ -84,6 +92,7 @@ A seguir está o índice categorizado de todas as ferramentas.
 | [ScheduleWakeup](Tool-ScheduleWakeup.md) | Auto-ritmo iterações de /loop agendando o próximo wakeup |
 | [PushNotification](Tool-PushNotification.md) | Enviar uma notificação desktop/mobile para o usuário |
 | [RemoteTrigger](Tool-RemoteTrigger.md) | Gerenciar rotinas remotas-trigger do claude.ai |
+| [ReadNotifications](Tool-ReadNotifications.md) | Ler notificações pendentes da sessão |
 
 ## Extensões
 
@@ -91,10 +100,23 @@ A seguir está o índice categorizado de todas as ferramentas.
 |------|------|
 | [Skill](Tool-Skill.md) | Executar skill (slash command) |
 
+## MCP e extensões
+
+| Ferramenta | Finalidade |
+|------|------|
+| [ListMcpResources](Tool-ListMcpResources.md) | Listar recursos expostos por servidores MCP conectados |
+| [ReadMcpResource](Tool-ReadMcpResource.md) | Ler um único recurso de servidor MCP por URI |
+| [ReadMcpResourceDir](Tool-ReadMcpResourceDir.md) | Listar um recurso MCP em estilo de diretório por URI |
+| [SearchMcpRegistry](Tool-SearchMcpRegistry.md) | Buscar o registro de conectores MCP por palavra-chave |
+| [SuggestConnectors](Tool-SuggestConnectors.md) | Resolver detalhes de conectores a partir de resultados de busca no registro |
+| [ListConnectors](Tool-ListConnectors.md) | Listar conectores MCP instalados |
+| [SuggestPluginInstall](Tool-SuggestPluginInstall.md) | Renderizar um card inline de instalação de plugin |
+| [SuggestSkills](Tool-SuggestSkills.md) | Renderizar um card de skills adicionáveis |
+| [ListPlugins](Tool-ListPlugins.md) | Listar plugins do claude.ai habilitados |
+| [ListSkills](Tool-ListSkills.md) | Listar skills do claude.ai habilitadas |
+
 ## Integração com IDE
 
 | Ferramenta | Finalidade |
 |------|------|
-| [getDiagnostics](Tool-getDiagnostics.md) | Obter informações de diagnóstico de linguagem do VS Code |
-| [executeCode](Tool-executeCode.md) | Executar código no kernel Jupyter |
 | [LSP](Tool-LSP.md) | Consultas de language-server (definições, referências, símbolos) |

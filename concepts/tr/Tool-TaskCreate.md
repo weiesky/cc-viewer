@@ -12,6 +12,12 @@ Mevcut ekibin görev listesinde (veya etkin bir ekip yoksa oturumun görev liste
 
 Önemsiz tek seferlik eylemler, saf konuşma veya iki veya üç doğrudan araç çağrısıyla tamamlanabilecek her şey için `TaskCreate`'i atlayın.
 
+## Etkinleştirme
+
+- Çoğu modelde varsayılan olarak kullanılabilir.
+- `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` veya `--tools` ile katılım sağlanmadıkça Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 ve sonraki ailelerde (v2.1.233+) kullanılamaz.
+- `CLAUDE_CODE_ENABLE_TASKS=false` olduğunda tüm görev sistemi devre dışıdır.
+
 ## Parametreler
 
 - `subject` (string, zorunlu): Kısa buyurgan başlık, örneğin `Fix login redirect on Safari`. Yaklaşık seksen karakter altında tutun.

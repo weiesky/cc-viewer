@@ -95,6 +95,7 @@ export function createV3Assembler() {
       // teammates, persisted server-side (see agent-id.js).
       if (row.agent) entry.agent = row.agent;
       if (row.proxyUrl) entry.proxyUrl = row.proxyUrl;
+      if (row.proxyRole) entry.proxyRole = row.proxyRole;
       if (isSnapshot) entry._isCheckpoint = true;
       if (row.inProgress) {
         entry.inProgress = true;

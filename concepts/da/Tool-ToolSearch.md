@@ -10,6 +10,11 @@ Henter on demand de fuldstændige schema-definitioner for "udskudte værktøjer"
 
 Hvis et værktøjs schema allerede er i konteksten, så søg ikke igen — kald det blot.
 
+## Aktivering
+
+- Slået til som standard.
+- Slået fra, når `ANTHROPIC_BASE_URL` peger på et ikke-Anthropic-endpoint (medmindre `ENABLE_TOOL_SEARCH` er sat), når `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` er sat, når modellen mangler værktøjsreference-understøttelse (Vertex AI-modeller før Claude 4.5), eller når det nægtes via `"deny": ["ToolSearch"]`.
+
 ## Parametre
 
 - `query` (string, påkrævet): Forespørgslen, der bruges til at lokalisere udskudte værktøjer. Tre former understøttes:

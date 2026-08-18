@@ -9,6 +9,13 @@ Gjengir en HTML- eller Markdown-fil som et Artifact — en privat nettside hoste
 - Viser brukerens eksisterende artifacts for å finne en fra en tidligere sesjon (`action: "list"`)
 - **Ikke** for innhold som må holdes lokalt, for rene tekstsvar eller noe som krever eksterne nettverksressurser ved visning — et strikt CSP blokkerer alle eksterne verter
 
+## Aktivering
+
+- Krever en Pro-, Max-, Team- eller Enterprise-plan med claude.ai-innlogging (`/login`).
+- Kun Anthropic API — ikke tilgjengelig på Amazon Bedrock, Google Cloud eller Microsoft Foundry.
+- Krever Claude Code ≥ 2.1.183 eller Desktop-appen ≥ 1.13576.0.
+- Deaktiver med innstillingen `disableArtifact` eller `CLAUDE_CODE_DISABLE_ARTIFACT=1`.
+
 ## Parametere
 
 - `file_path` (streng): Sti til `.html`- eller `.md`-filen som skal gjengis. Filen omgis av et dokumentskjelett ved publisering, så skriv sidekontent direkte — ingen `<!DOCTYPE>`, `<html>`, `<head>` eller `<body>`-tagger. Samme sti → samme URL ved gjenblising; en annen sti gjør krav på en ny URL.

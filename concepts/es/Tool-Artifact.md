@@ -9,6 +9,13 @@ Renderiza un archivo HTML o Markdown en un Artifact — una página web alojada 
 - Listar los artifacts existentes del usuario para encontrar uno de una sesión anterior (`action: "list"`)
 - **No** para contenido que debe mantenerse local, respuestas de texto simple o cualquier cosa que necesite recursos de red externos al visualizar — una CSP estricta bloquea cualquier host externo
 
+## Activación
+
+- Requiere un plan Pro, Max, Team o Enterprise con inicio de sesión en claude.ai (`/login`).
+- Solo en la API de Anthropic — no disponible en Amazon Bedrock, Google Cloud ni Microsoft Foundry.
+- Requiere Claude Code ≥ 2.1.183 o la app de escritorio ≥ 1.13576.0.
+- Desactívalo con el ajuste `disableArtifact` o `CLAUDE_CODE_DISABLE_ARTIFACT=1`.
+
 ## Parámetros
 
 - `file_path` (cadena): Ruta al archivo `.html` o `.md` a renderizar. El archivo se envuelve en un esqueleto de documento al publicarse, así que escribe el contenido de la página directamente — sin etiquetas `<!DOCTYPE>`, `<html>`, `<head>` o `<body>`. La misma ruta → la misma URL al redesplegar; una ruta diferente reclama una URL nueva.

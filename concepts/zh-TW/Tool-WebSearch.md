@@ -10,6 +10,12 @@
 - 驗證自模型訓練後可能已改變的事實。
 - 在用 `WebFetch` 擷取單一頁面之前，對主題探索多種觀點。
 
+## 啟用方式
+
+- 可用性依供應商與模型而定：在 Anthropic API 與 Claude Platform on AWS 上可用；在 Microsoft Foundry 上需要 Anthropic 託管的部署；在 Google Cloud 上適用於 Claude 4+ 模型。
+- 在 Amazon Bedrock 上不可用。
+- 以 `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` 將每個工作階段的上限設為 200 次呼叫。
+
 ## 參數
 
 - `query`（string，必填）：搜尋查詢。最短 2 個字元。在詢問「最新」或「近期」資訊時請加上當前年份，以確保結果新鮮。

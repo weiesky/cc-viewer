@@ -10,6 +10,11 @@ Henter ved behov de fullstendige schema-definisjonene for "utsatte verktøy" sli
 
 Hvis et verktøys schema allerede er i konteksten, søk ikke igjen — bare kall det.
 
+## Aktivering
+
+- På som standard.
+- Av når `ANTHROPIC_BASE_URL` peker mot et ikke-Anthropic-endepunkt (med mindre `ENABLE_TOOL_SEARCH` er satt), når `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` er satt, når modellen mangler verktøyreferansestøtte (Vertex AI-modeller før Claude 4.5), eller når nektet via `"deny": ["ToolSearch"]`.
+
 ## Parametere
 
 - `query` (string, påkrevd): Forespørselen som brukes til å lokalisere utsatte verktøy. Tre former støttes:

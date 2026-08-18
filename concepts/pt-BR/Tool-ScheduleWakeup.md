@@ -10,6 +10,11 @@ Agenda quando retomar o trabalho no modo dinâmico `/loop`. A ferramenta permite
 - Para executar um loop autônomo sem prompt do usuário — passe o sentinel literal `<<autonomous-loop-dynamic>>` como `prompt`
 - Para sondar um processo cujo estado está prestes a mudar (use um atraso curto para manter o cache quente)
 
+## Ativação
+
+- Não disponível no Amazon Bedrock, no Claude Platform on AWS, no Google Cloud Agent Platform ou no Microsoft Foundry.
+- Também desativado quando a busca de feature flags está desabilitada (variáveis de ambiente de telemetria/tráfego).
+
 ## Parâmetros
 
 - `delaySeconds` (número, obrigatório): Segundos até a retomada. O runtime limita automaticamente o valor a `[60, 3600]`, portanto a limitação manual não é necessária.

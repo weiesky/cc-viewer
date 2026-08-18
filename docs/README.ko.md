@@ -10,7 +10,7 @@ Claude Code를 기반으로, 자신의 개발 경험을 증류하여 축적한 V
 3. 완전한 로그 추적. Claude Code 페이로드를 완전히 가로채고 분석하는 기능을 제공하여 로깅, 문제 분석, 학습, 리버스 엔지니어링에 최적입니다;
 4. 학습 경험 공유. 풍부한 학습 자료와 개발 경험을 축적해 두었습니다(시스템 곳곳의 "?" 아이콘을 참고하세요);
 5. 네이티브 경험 유지. Claude Code의 능력을 강화할 뿐, 코어에는 어떠한 실질적인 수정도 가하지 않아 네이티브 경험을 유지합니다;
-6. 서드파티 모델 지원. deepseek-v4-\*, GLM 5.1, Kimi K2.6을 지원하며, cc-switch 기능을 내장하여 언제든지 서드파티 도구로 핫 스위칭할 수 있습니다;
+6. 서드파티 모델 지원. deepseek-v4-\*, GLM 5.1, Kimi K2.6을 지원하며, cc-switch 기능을 내장하여 언제든지 서드파티 도구로 핫 스위칭할 수 있습니다; 또한 핫 스위칭은 역할별 소스를 지원합니다 — Main Agent, Sub-Agent, Teammate가 각각 다른 프록시 프로필을 사용할 수 있습니다(기본값: Main Agent 따름). Main Agent가 공식 엔드포인트의 내장 Default를 사용할 때는 역할 할당이 숨겨지고 저장된 할당은 비활성 상태로 유지됩니다.
 
 <img width="860" alt="cc-viewer — deploy once, share with every device" src="https://raw.githubusercontent.com/weiesky/cc-viewer/main/docs/cc-viewer-share.svg" />
 

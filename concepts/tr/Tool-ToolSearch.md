@@ -10,6 +10,11 @@
 
 Bir aracın schema'sı zaten bağlamdaysa, tekrar arama yapmayın — yalnızca onu çağırın.
 
+## Etkinleştirme
+
+- Varsayılan olarak açıktır.
+- `ANTHROPIC_BASE_URL` Anthropic dışı bir uç noktayı gösterdiğinde (`ENABLE_TOOL_SEARCH` ayarlanmadıkça), `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` ayarlandığında, model araç referansı desteğinden yoksun olduğunda (Claude 4.5 öncesi Vertex AI modelleri) veya `"deny": ["ToolSearch"]` ile reddedildiğinde kapalıdır.
+
 ## Parametreler
 
 - `query` (string, zorunlu): Ertelenmiş araçları bulmak için kullanılan sorgu. Üç biçim desteklenir:

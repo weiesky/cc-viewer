@@ -10,6 +10,11 @@
 - Kullanıcı istemi olmadan özerk bir döngü çalıştırmak için — `prompt` olarak değişmez sentinel `<<autonomous-loop-dynamic>>` geçirin
 - Durumu yakında değişecek bir süreci yoklamak için (önbelleği sıcak tutmak üzere kısa bir gecikme kullanın)
 
+## Etkinleştirme
+
+- Amazon Bedrock, AWS üzerinde Claude Platform, Google Cloud Agent Platform veya Microsoft Foundry'de kullanılamaz.
+- Ayrıca özellik bayrağı getirme devre dışıyken kapalıdır (telemetri/trafik ortam değişkenleri).
+
 ## Parametreler
 
 - `delaySeconds` (sayı, gerekli): Devam edene kadar geçecek saniye sayısı. Çalışma zamanı değeri otomatik olarak `[60, 3600]` ile sınırlandırır; bu nedenle manuel sınırlandırma gerekmez.

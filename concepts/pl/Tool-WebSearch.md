@@ -10,6 +10,12 @@ Wykonuje wyszukiwanie internetowe na żywo i zwraca posortowane wyniki, których
 - Weryfikowanie faktu, który mógł się zmienić od czasu trenowania modelu.
 - Odkrywanie wielu perspektyw na temat przed pobraniem pojedynczej strony za pomocą `WebFetch`.
 
+## Aktywacja
+
+- Dostępność zależy od dostawcy i modelu: dostępne na Anthropic API i Claude Platform on AWS; na Microsoft Foundry wymaga wdrożenia hostowanego przez Anthropic; na Google Cloud działa z modelami Claude 4+.
+- Niedostępne na Amazon Bedrock.
+- Ogranicz do 200 wywołań na sesję przez `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION`.
+
 ## Parametry
 
 - `query` (string, wymagany): Zapytanie wyszukiwania. Minimalna długość 2 znaki. Dołącz bieżący rok, gdy pytasz o "najnowsze" lub "ostatnie" informacje, aby wyniki były świeże.

@@ -528,7 +528,7 @@ export class V2Writer {
       ...(convResult && { msgFrom: convResult.msgFrom, msgTo: convResult.msgTo }),
       ...(convResult && convResult.evt && { evt: convResult.evt }),
       ...(convResult && convResult.boundary && { boundary: convResult.boundary }),
-      ...(entry.proxyProfile && { proxy: { profile: entry.proxyProfile, ...(entry.proxyUrl && { url: entry.proxyUrl }) } }),
+      ...(entry.proxyProfile && { proxy: { profile: entry.proxyProfile, ...(entry.proxyUrl && { url: entry.proxyUrl }), ...(entry.proxyRole && { role: entry.proxyRole }) } }),
     });
 
     // 4. prompts.jsonl display cache — strictly AFTER the journal line (a

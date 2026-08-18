@@ -10,6 +10,11 @@
 
 如果某工具的 schema 已经在上下文里,就不要再搜一遍——直接调用即可。
 
+## 启用方式
+
+- 默认开启。
+- 当 `ANTHROPIC_BASE_URL` 指向非 Anthropic 端点（除非设置了 `ENABLE_TOOL_SEARCH`）、设置了 `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`、模型缺少工具引用支持（Claude 4.5 之前的 Vertex AI 模型），或通过 `"deny": ["ToolSearch"]` 被拒绝时关闭。
+
 ## 参数
 
 - `query` (string, 必填)：用于定位延迟工具的查询,支持三种写法:

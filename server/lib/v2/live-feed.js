@@ -684,6 +684,8 @@ export class V2LiveFeed {
       agent: parsed.agent,
       model: parsed.body?.model,
       proxyUrl: parsed.proxyUrl || undefined,
+      // proxyRole rides the adapter-synthesized entry (same spread-gate as proxyUrl).
+      proxyRole: parsed.proxyRole || undefined,
       status: parsed.response?.status,
       duration: parsed.duration,
       usage: usage ? {

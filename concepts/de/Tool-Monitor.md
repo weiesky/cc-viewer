@@ -10,6 +10,13 @@ Startet einen Hintergrundmonitor, der Ereignisse von einem lang laufenden Skript
 - Warten auf eine bestimmte Bedingung über viele Iterationen hinweg (z. B. ein Trainingsschritt-Meilenstein oder das Leeren einer Warteschlange)
 - **Nicht** für einfaches "Warten bis fertig" — dafür `Bash` mit `run_in_background` verwenden; es sendet eine Fertigstellungsbenachrichtigung, wenn der Prozess beendet wird
 
+## Aktivierung
+
+- Standardmäßig deaktiviert (serverseitiges Feature-Flag).
+- Nicht verfügbar auf Amazon Bedrock, Google Cloud und Microsoft Foundry.
+- Deaktiviert, wenn `DISABLE_TELEMETRY` oder `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` gesetzt ist.
+- Die WebSocket-Quelle erfordert Claude Code 2.1.195+.
+
 ## Parameter
 
 - `command` (Zeichenkette, erforderlich): Der auszuführende Shell-Befehl oder das Skript. Jede in die Standardausgabe geschriebene Zeile wird zu einem eigenständigen Benachrichtigungsereignis. Der Monitor endet, wenn der Prozess beendet wird.

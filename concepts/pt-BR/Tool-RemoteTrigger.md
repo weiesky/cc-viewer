@@ -10,6 +10,13 @@ Chama a API de gatilhos remotos do claude.ai para gerenciar tarefas agendadas e 
 - Listar ou auditar todos os gatilhos atuais para revisar sua configuração e status
 - Atualizar configurações de gatilho, como agendamento, carga útil ou descrição, sem precisar recriar o gatilho
 
+## Ativação
+
+- Requer um plano claude.ai Pro, Max, Team ou Enterprise.
+- Não disponível no Amazon Bedrock, no Claude Platform on AWS, no Google Cloud ou no Microsoft Foundry.
+- Requer feature flags do lado do servidor e as configurações de política `allow_remote_sessions` / `allow_routines`.
+- Não é para as próprias sessões remotas.
+
 ## Parâmetros
 
 - `action` (string, obrigatório): a operação a executar — um de `list`, `get`, `create`, `update` ou `run`

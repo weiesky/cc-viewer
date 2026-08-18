@@ -10,6 +10,11 @@ Odpytuje serwery Language Server Protocol (LSP) o inteligencję kodu — definic
 - Znaleźć implementacje interfejsu lub metody abstrakcyjnej (`goToImplementation`)
 - Przejść hierarchię wywołań funkcji (`prepareCallHierarchy`, `incomingCalls`, `outgoingCalls`)
 
+## Aktywacja
+
+- Nieaktywne, dopóki nie zostanie zainstalowana wtyczka inteligencji kodu dla danego języka (binarny plik serwera jest instalowany osobno).
+- Narzędzie pojawia się tylko wtedy, gdy podłączony jest klient LSP.
+
 ## Parametry
 
 - `operation` (string, wymagany): jedna z operacji wymienionych powyżej.

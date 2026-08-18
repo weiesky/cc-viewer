@@ -12,6 +12,12 @@
 
 사소한 일회성 작업, 순수 대화, 또는 두세 번의 직접 도구 호출로 완료 가능한 작업에는 `TaskCreate`를 건너뛰십시오.
 
+## 활성화
+
+- 대부분의 모델에서 기본적으로 사용할 수 있습니다.
+- Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 및 이후 제품군(v2.1.233+)에서는 `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools`, 또는 `--tools`로 옵트인하지 않는 한 사용할 수 없습니다.
+- `CLAUDE_CODE_ENABLE_TASKS=false`이면 전체 작업 시스템이 비활성화됩니다.
+
 ## 매개변수
 
 - `subject` (string, 필수): 짧은 명령형 제목, 예를 들어 `Fix login redirect on Safari`. 대략 80자 미만으로 유지하십시오.

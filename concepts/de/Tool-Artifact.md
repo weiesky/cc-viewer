@@ -9,6 +9,13 @@ Rendert eine HTML- oder Markdown-Datei in ein Artifact — eine standardmäßig 
 - Auflistung der bestehenden Artifacts des Benutzers, um eines aus einer früheren Sitzung zu finden (`action: "list"`)
 - **Nicht** für Inhalte, die lokal bleiben müssen, reine Textantworten oder alles, was externe Netzwerkressourcen beim Anzeigen benötigt — eine strikte CSP blockiert jeden externen Host
 
+## Aktivierung
+
+- Erfordert einen Pro-, Max-, Team- oder Enterprise-Plan mit claude.ai-Login (`/login`).
+- Nur Anthropic-API – nicht verfügbar auf Amazon Bedrock, Google Cloud oder Microsoft Foundry.
+- Erfordert Claude Code ≥ 2.1.183 oder die Desktop-App ≥ 1.13576.0.
+- Deaktivieren Sie es mit der Einstellung `disableArtifact` oder `CLAUDE_CODE_DISABLE_ARTIFACT=1`.
+
 ## Parameter
 
 - `file_path` (Zeichenkette): Pfad zur `.html` oder `.md` Datei zum Rendern. Die Datei wird zur Veröffentlichungszeit in ein Dokumentgerüst eingewickelt, daher schreiben Sie den Seiteninhalt direkt — keine `<!DOCTYPE>`, `<html>`, `<head>` oder `<body>` Tags. Derselbe Pfad → dieselbe URL bei erneuter Bereitstellung; ein anderer Pfad beansprucht eine neue URL.

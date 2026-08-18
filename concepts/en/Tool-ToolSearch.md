@@ -10,6 +10,11 @@ Fetches the full schema definitions for "deferred tools" on demand so they becom
 
 If a tool's schema is already in context, do not search again — just call it.
 
+## Activation
+
+- On by default.
+- Off when `ANTHROPIC_BASE_URL` points at a non-Anthropic endpoint (unless `ENABLE_TOOL_SEARCH` is set), when `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` is set, when the model lacks tool-reference support (Vertex AI models before Claude 4.5), or when denied via `"deny": ["ToolSearch"]`.
+
 ## Parameters
 
 - `query` (string, required): The query used to locate deferred tools. Three forms are supported:

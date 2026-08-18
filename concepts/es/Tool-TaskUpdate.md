@@ -10,6 +10,12 @@ Modifica una tarea existente — su estado, contenido, propiedad, metadatos o ar
 - Registrar dependencias recién descubiertas con `addBlocks` / `addBlockedBy`.
 - Adjuntar `metadata` estructurada como IDs de tickets externos o pistas de prioridad.
 
+## Activación
+
+- Disponible por defecto en la mayoría de los modelos.
+- No disponible en las familias Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 y posteriores (v2.1.233+) salvo que se active explícitamente mediante `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` o `--tools`.
+- Todo el sistema de tareas se desactiva cuando `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parámetros
 
 - `taskId` (string, obligatorio): La tarea a modificar. Obtenlo de `TaskList` o `TaskCreate`.

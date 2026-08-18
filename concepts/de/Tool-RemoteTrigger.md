@@ -10,6 +10,13 @@ Ruft die claude.ai Remote-Trigger-API auf, um geplante Aufgaben und bedarfsgeste
 - Auflisten oder Überprüfen aller aktuellen Trigger, um deren Konfiguration und Status zu prüfen
 - Aktualisieren von Trigger-Einstellungen wie Zeitplan, Payload oder Beschreibung, ohne den Trigger neu erstellen zu müssen
 
+## Aktivierung
+
+- Erfordert einen claude.ai-Plan Pro, Max, Team oder Enterprise.
+- Nicht verfügbar auf Amazon Bedrock, Claude Platform on AWS, Google Cloud oder Microsoft Foundry.
+- Erfordert serverseitige Feature-Flags und die Richtlinieneinstellungen `allow_remote_sessions` / `allow_routines`.
+- Nicht für Remote-Sitzungen selbst.
+
 ## Parameter
 
 - `action` (string, erforderlich): die auszuführende Operation — eines von `list`, `get`, `create`, `update` oder `run`

@@ -132,4 +132,22 @@ describe('resolveSpawnModel: 三方 profile', () => {
     assert.equal(resolveSpawnModel(spawnDir, {}, opts), 'deepseek-v4-pro', 'workspace override 生效');
     assert.equal(resolveSpawnModel('/Users/x/other', {}, opts), null, '其他 workspace 仍走全局 max → 无 profile');
   });
+
+  it('新 shape { activeId, roles }：roles 字段不影响 main 角色读取（pin）', () => {
+    const { logDir, opts } = mkRoots();
+    writeProfiles(logDir, {
+      active: 'max',
+      profiles: [{ id: 'max', name: 'Default' }, { id: 'ds', name: 'DeepSeek', ANTHROPIC_MODEL: 'deepseek-v4-pro' }],
+    });
+    const spawnDir = '/Users/x/role proj';
+    // 直接写新格式文件（含 roles）——spawn 解析只认 activeId（main 角色），roles 必须被忽略
+    const projectName = spawnDir.split('/').pop().replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+    const dir = join(logDir, projectName);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'active-profile.json'), JSON.stringify({
+      activeId: 'ds',
+      roles: { subagent: 'whatever', teammate: 'max' },
+    }));
+    assert.equal(resolveSpawnModel(spawnDir, {}, opts), 'deepseek-v4-pro', 'spawn 注入恒走 main 角色，roles 不参与');
+  });
 });

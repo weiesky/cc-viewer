@@ -10,6 +10,11 @@
 - 运行无用户提示的自主循环——将字面量哨兵值 `<<autonomous-loop-dynamic>>` 作为 `prompt` 传入
 - 轮询即将发生状态变化的进程（使用较短延迟以保持缓存热态）
 
+## 启用方式
+
+- 在 Amazon Bedrock、Claude Platform on AWS、Google Cloud Agent Platform 或 Microsoft Foundry 上不可用。
+- 当功能开关获取被禁用（遥测/流量环境变量）时也关闭。
+
 ## 参数
 
 - `delaySeconds`（数字，必填）：距恢复的秒数。运行时会自动将值限制在 `[60, 3600]` 范围内，无需手动限制。

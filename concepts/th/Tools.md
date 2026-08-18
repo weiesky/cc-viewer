@@ -15,16 +15,19 @@ Claude Code มอบชุดเครื่องมือในตัวใ�
 | [TaskGet](Tool-TaskGet.md) | รับรายละเอียดงาน |
 | [TaskUpdate](Tool-TaskUpdate.md) | อัปเดตสถานะงาน ความสัมพันธ์การพึ่งพา ฯลฯ |
 | [TaskList](Tool-TaskList.md) | แสดงรายการงานทั้งหมด |
+| [ListAgents](Tool-ListAgents.md) | แสดงรายการ agents ที่มีในเซสชัน |
 
 ## ทีมและการประสานงาน
 
 | เครื่องมือ | วัตถุประสงค์ |
 |------|------|
-| [TeamCreate](Tool-TeamCreate.md) | สร้างทีม agents สำหรับการทำงานร่วมมือ |
-| [TeamDelete](Tool-TeamDelete.md) | แยกทีม agents |
 | [SendMessage](Tool-SendMessage.md) | ส่งข้อความไปยัง agent อื่น |
 | [Workflow](Tool-Workflow.md) | รันสคริปต์การประสานงาน multi-agent ที่กำหนด |
 | [Monitor](Tool-Monitor.md) | สตรีมเหตุการณ์จากสคริปต์ที่ทำงานยาวนานเป็นการแจ้งเตือน |
+| [SendFile](Tool-SendFile.md) | ส่งไฟล์ไปยังเซสชันของ Claude Code อื่น |
+| [SendUserFile](Tool-SendUserFile.md) | ส่งไฟล์ให้ผู้ใช้ |
+| [SendUserMessage](Tool-SendUserMessage.md) | ส่งข้อความถึงผู้ใช้ (เครื่องมือ Brief รุ่นเดิม) |
+| [EndConversation](Tool-EndConversation.md) | จบ conversation ปัจจุบัน |
 
 ## การดำเนินการไฟล์
 
@@ -48,6 +51,7 @@ Claude Code มอบชุดเครื่องมือในตัวใ�
 | เครื่องมือ | วัตถุประสงค์ |
 |------|------|
 | [Bash](Tool-Bash.md) | รันคำสั่ง shell |
+| [REPL](Tool-REPL.md) | รัน JavaScript ใน Node.js REPL แบบ persistent |
 
 ## เว็บ
 
@@ -66,6 +70,10 @@ Claude Code มอบชุดเครื่องมือในตัวใ�
 | [ExitPlanMode](Tool-ExitPlanMode.md) | ออกจากโหมดวางแผนและส่งแผนให้ผู้ใช้อนุมัติ |
 | [AskUserQuestion](Tool-AskUserQuestion.md) | ถามคำถามผู้ใช้เพื่อขอคำชี้แจงหรือการตัดสินใจ |
 | [ReportFindings](Tool-ReportFindings.md) | รายงานสิ่งที่ค้นพบจากการ code-review เป็นรายการที่พิมพ์สำหรับ UI |
+| [TodoWrite](Tool-TodoWrite.md) | เขียนรายการ todo แบบมีโครงสร้างสำหรับเซสชัน |
+| [SendFeedback](Tool-SendFeedback.md) | ส่ง feedback แบบมีโครงสร้างเกี่ยวกับ Claude Code ไปยัง Anthropic |
+| [Projects](Tool-Projects.md) | จัดการเอกสารฐานความรู้ของโปรเจกต์ |
+| [ProposeGoal](Tool-ProposeGoal.md) | เสนอเป้าหมายความสำเร็จที่ตรวจสอบได้สำหรับเซสชัน |
 
 ## Worktrees
 
@@ -84,6 +92,7 @@ Claude Code มอบชุดเครื่องมือในตัวใ�
 | [ScheduleWakeup](Tool-ScheduleWakeup.md) | Self-pace การทำซ้ำ /loop โดยการตั้งเวลา wakeup ถัดไป |
 | [PushNotification](Tool-PushNotification.md) | ส่งการแจ้งเตือน desktop/mobile ให้ผู้ใช้ |
 | [RemoteTrigger](Tool-RemoteTrigger.md) | จัดการรูทีนของ claude.ai ที่เรียกใช้จากระยะไกล |
+| [ReadNotifications](Tool-ReadNotifications.md) | อ่านการแจ้งเตือนที่ค้างอยู่ของเซสชัน |
 
 ## ส่วนขยาย
 
@@ -91,10 +100,23 @@ Claude Code มอบชุดเครื่องมือในตัวใ�
 |------|------|
 | [Skill](Tool-Skill.md) | รันทักษะ (slash command) |
 
+## MCP และส่วนขยาย
+
+| เครื่องมือ | วัตถุประสงค์ |
+|------|------|
+| [ListMcpResources](Tool-ListMcpResources.md) | แสดงรายการ resource ที่ expose โดย MCP server ที่เชื่อมต่อ |
+| [ReadMcpResource](Tool-ReadMcpResource.md) | อ่าน resource เดียวของ MCP server ด้วย URI |
+| [ReadMcpResourceDir](Tool-ReadMcpResourceDir.md) | แสดงรายการ resource แบบ directory ของ MCP ด้วย URI |
+| [SearchMcpRegistry](Tool-SearchMcpRegistry.md) | ค้นหา MCP connector registry ด้วย keyword |
+| [SuggestConnectors](Tool-SuggestConnectors.md) | ดึงรายละเอียด connector จากผลการค้นหา registry |
+| [ListConnectors](Tool-ListConnectors.md) | แสดงรายการ MCP connector ที่ติดตั้ง |
+| [SuggestPluginInstall](Tool-SuggestPluginInstall.md) | แสดงการ์ดติดตั้ง plugin แบบ inline |
+| [SuggestSkills](Tool-SuggestSkills.md) | แสดงการ์ดของ skill ที่เพิ่มได้ |
+| [ListPlugins](Tool-ListPlugins.md) | แสดงรายการ plugin ของ claude.ai ที่เปิดใช้งาน |
+| [ListSkills](Tool-ListSkills.md) | แสดงรายการ skill ของ claude.ai ที่เปิดใช้งาน |
+
 ## การรวมกับ IDE
 
 | เครื่องมือ | วัตถุประสงค์ |
 |------|------|
-| [getDiagnostics](Tool-getDiagnostics.md) | รับข้อมูลการวินิจฉัยภาษาจาก VS Code |
-| [executeCode](Tool-executeCode.md) | รันโค้ดใน Jupyter kernel |
 | [LSP](Tool-LSP.md) | การสืบค้นของ language-server (คำจำกัดความ, การอ้างอิง, สัญลักษณ์) |

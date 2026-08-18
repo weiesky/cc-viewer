@@ -12,6 +12,12 @@ ID で単一タスクの完全なレコードを取得します。説明、現�
 
 高レベルのスキャンだけが必要な場合は `TaskList` を優先してください。`TaskGet` は注意深く読んだり変更したりする特定のレコードのために予約してください。
 
+## 有効化
+
+- ほとんどのモデルでデフォルトで利用可能です。
+- Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 以降のファミリー (v2.1.233+) では、`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`、`--allowedTools`、または `--tools` でオプトインしない限り利用できません。
+- タスクシステム全体は `CLAUDE_CODE_ENABLE_TASKS=false` で無効化されます。
+
 ## パラメータ
 
 - `taskId` (string, required): `TaskCreate` または `TaskList` によって返されるタスク識別子。ID はタスクの生存期間中安定しています。

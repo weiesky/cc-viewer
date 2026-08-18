@@ -10,6 +10,12 @@ Performs a live web search and returns ranked results that the assistant uses to
 - Verifying a fact that may have changed since the model was trained.
 - Discovering multiple perspectives on a topic before fetching any single page with `WebFetch`.
 
+## Activation
+
+- Availability is provider- and model-dependent: available on the Anthropic API and Claude Platform on AWS; on Microsoft Foundry it requires an Anthropic-hosted deployment; on Google Cloud it works with Claude 4+ models.
+- Not available on Amazon Bedrock.
+- Cap 200 calls per session with `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION`.
+
 ## Parameters
 
 - `query` (string, required): The search query. Minimum length 2 characters. Include the current year when asking about "latest" or "recent" information so results are fresh.

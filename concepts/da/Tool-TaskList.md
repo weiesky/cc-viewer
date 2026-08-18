@@ -12,6 +12,12 @@ Returnerer hver opgave i det aktuelle team (eller session) i opsummeret form. Br
 
 `TaskList` er skrivebeskyttet og billig; kald den frit, når du har brug for et overblik.
 
+## Aktivering
+
+- Tilgængelig som standard på de fleste modeller.
+- Ikke tilgængelig på Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 og nyere familier (v2.1.233+), medmindre det tilvælges via `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` eller `--tools`.
+- Hele opgavesystemet er deaktiveret, når `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parametre
 
 `TaskList` tager ingen parametre. Den returnerer altid det fulde opgavesæt for den aktive kontekst.

@@ -7,14 +7,14 @@ const _ccvSkipArgs = ['--version', '-v', '--v', '--help', '-h', 'doctor', 'insta
 const _ccvSkip = _ccvSkipArgs.includes(process.argv[2]);
 
 import './lib/proxy-env.js';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, watchFile } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, watchFile, unwatchFile, renameSync, rmSync } from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, basename } from 'node:path';
 import { LOG_DIR } from '../findcc.js';
-import { assembleStreamMessage, createStreamAssembler, isAnthropicApiPath, isMainAgentRequest, replaceTopLevelModel, injectOutputConfigEffort, resolveProfileModel, extractAgentSpawnPairs } from './lib/interceptor-core.js';
+import { assembleStreamMessage, createStreamAssembler, isAnthropicApiPath, isMainAgentRequest, replaceTopLevelModel, injectOutputConfigEffort, resolveProfileModel, extractAgentSpawnPairs, classifyProxyRole, resolveRoleProfile, normalizeRoles, mergeActivePayload } from './lib/interceptor-core.js';
 import { V2Writer } from './lib/v2/v2-writer.js';
 import { reportSwallowed } from './lib/error-report.js';
 import { latestMainSessionDir, sessionHasCompletedMainTurn } from './lib/v2/session-select.js';
@@ -75,12 +75,26 @@ export let _cachedHaikuModel = null;
 // Proxy profile hot-switch support
 // 数据模型：
 //   profile.json (全局共享): 仅存 profiles 列表，watchFile 跨 ccv 进程同步 CRUD。
-//     兼容老数据：若文件里仍有 active 字段，读为"全局回退默认"；但本模块不再写它。
-//   <projectDir>/active-profile.json (每 workspace 独占): 仅存 { activeId }；
-//     切换 active 只影响当前 ccv 进程的 workspace，不污染其他实例。
+//     active 字段 = main 角色的全局回退默认（setActiveProfileForWorkspace 幂等双写，
+//     供 UI 回落/老数据兼容）。
+//   <projectDir>/active-profile.json (每 workspace 独占): { activeId, roles }；
+//     activeId = main 角色（旧版 ccv 只认这个字段，向后兼容）；
+//     roles = { subagent, teammate }，取值 'follow'(默认) | 'max' | profile id。
+//     旧文件无 roles 字段 → normalizeRoles 归 follow/follow；旧版 ccv 整文件覆盖会丢
+//     roles（可接受；新版下次写只把 roles 键以默认 follow 带回，原分配不恢复）。
+//     跨进程并发写是 read-modify-write 无 CAS（同 workspace 双实例同时写不同字段会
+//     丢先写方）——概率极低，已知限制。切换 active/roles 只影响当前 workspace。
 // profile.json 存放在 LOG_DIR 下，受 --log-dir / CCV_LOG_DIR 影响
 const PROFILE_PATH = join(LOG_DIR, 'profile.json');
 let _activeProfile = null; // { id, name, baseURL?, apiKey?, effort?, ANTHROPIC_MODEL?, ANTHROPIC_DEFAULT_OPUS_MODEL?, ANTHROPIC_DEFAULT_SONNET_MODEL?, ANTHROPIC_DEFAULT_HAIKU_MODEL?, activeModel?(legacy) }
+// Per-role state (STORED values, never dormancy-adjusted — dormancy is enforced per request):
+let _roleIds = normalizeRoles(undefined); // { subagent, teammate }
+let _profilesById = new Map();            // id → profile object from profile.json
+
+// proxy 属主进程（ccv run / runCliMode / Electron mgmt+tab-worker）同样参与角色分流：
+// proxy.js 在 body 缓冲后按角色选上游 + 供重试引擎做模型替换，本 hook 对 trace 请求
+// 再跑一次同角色改写（URL 幂等、auth 注入是承重的——proxy 链路不碰 apiKey、model 已替换
+// 时 resolveProfileModel 返回 null 即 no-op），两层输入相同所以结果一致，不会双重改写。
 
 // ── 代理重试配置（运行时热切换，对齐 profile 模式）──
 // retry-config.json 存全局共享的重试配置（mode/interval/maxRetries/maxConcurrent 等）。
@@ -112,19 +126,30 @@ function _getActiveProfileFilePath() {
   return join(_logDir, 'active-profile.json');
 }
 
-function _readWorkspaceActiveId() {
+function _readWorkspaceActive() {
   const p = _getActiveProfileFilePath();
-  if (!p) return null;
+  const empty = { activeId: null, roles: normalizeRoles(undefined) };
+  if (!p) return empty;
   try {
     if (existsSync(p)) {
       const data = JSON.parse(readFileSync(p, 'utf-8'));
-      return typeof data?.activeId === 'string' ? data.activeId : null;
+      return {
+        activeId: typeof data?.activeId === 'string' ? data.activeId : null,
+        roles: normalizeRoles(data?.roles),
+      };
     }
-  } catch { }
-  return null;
+  } catch (err) {
+    // 损坏的工作区文件会把 active/roles 静默回落默认 —— 属"丢数据"级，必须记账（有节流）
+    reportSwallowed('proxy-profile.workspace-read', err);
+  }
+  return empty;
 }
 
-function _writeWorkspaceActiveId(activeId) {
+function _readWorkspaceActiveId() {
+  return _readWorkspaceActive().activeId;
+}
+
+function _writeWorkspaceActive(activeId, roles) {
   const p = _getActiveProfileFilePath();
   if (!p) {
     // 诊断用：能把"为什么 workspace 路径不可用"暴露到启动 ccv 的终端
@@ -134,8 +159,20 @@ function _writeWorkspaceActiveId(activeId) {
   }
   try {
     mkdirSync(dirname(p), { recursive: true });
-    const payload = { activeId: (activeId && typeof activeId === 'string') ? activeId : 'max' };
-    writeFileSync(p, JSON.stringify(payload, null, 2), { mode: 0o600 });
+    // 合并语义：调用方只改 activeId 时必须保留文件里的 roles（反之亦然）——roles 只存
+    // 在这个文件里，整文件覆盖会丢角色分配。tmp+rename 原子写：其他 ccv 进程（teammate /
+    // 多窗口）经 watchFile 轮询读此文件，不能读到写一半的撕裂内容。
+    let existing = null;
+    try { if (existsSync(p)) existing = JSON.parse(readFileSync(p, 'utf-8')); } catch { }
+    const payload = mergeActivePayload(existing, { activeId, roles });
+    const tmp = `${p}.tmp-${process.pid}`;
+    try {
+      writeFileSync(tmp, JSON.stringify(payload, null, 2), { mode: 0o600 });
+      renameSync(tmp, p);
+    } catch (writeErr) {
+      try { rmSync(tmp, { force: true }); } catch { } // 不留孤儿 tmp（磁盘满 / 中断场景）
+      throw writeErr;
+    }
     return true;
   } catch (err) {
     console.error('[ccv proxy-profile] workspace write failed:', p, err && err.message);
@@ -146,48 +183,56 @@ function _writeWorkspaceActiveId(activeId) {
 function _loadProxyProfile() {
   try {
     const data = JSON.parse(readFileSync(PROFILE_PATH, 'utf-8'));
+    _profilesById = new Map((Array.isArray(data.profiles) ? data.profiles : [])
+      .filter(p => p && typeof p.id === 'string').map(p => [p.id, p]));
     // active 解析优先级：workspace override > profile.json.active (兼容老数据 / 全局回退) > null
-    const wsActive = _readWorkspaceActiveId();
-    const activeId = wsActive || data.active;
+    const ws = _readWorkspaceActive();
+    _roleIds = ws.roles;
+    const activeId = ws.activeId || data.active;
     const active = data.profiles?.find(p => p.id === activeId);
     _activeProfile = (active && active.id !== 'max') ? active : null;
   } catch (err) {
     _activeProfile = null;
+    _roleIds = normalizeRoles(undefined);
+    _profilesById = new Map();
     if (process.env.CCV_DEBUG_HOTSWITCH) {
       console.error('[ccv hotswitch] _loadProxyProfile failed:', err && err.message);
     }
   }
 }
 
-// 为 server.js::POST /api/proxy-profiles 使用，切换当前 workspace 的 active。
-// 同时写两个位置，彼此互为兜底：
+// 为 server.js::POST /api/proxy-profiles 使用，切换当前 workspace 的 active / roles。
+// 合并语义：activeId 或 roles 传 undefined = 保留文件现值（只改角色不动 main，反之亦然）。
+// activeId 有参时同时写两个位置，彼此互为兜底：
 //   (1) <logDir>/active-profile.json    —— 每 workspace 独占，读取优先级最高
-//   (2) profile.json.active             —— 全局默认，watchFile 跨实例同步；用作
-//       UI 在 workspace 文件读失败 / 不存在时的回落，避免"切换后立刻回切"的幽灵 revert
-// 回落一致性：其他 ccv 实例如果自己 workspace 文件已存在，_loadProxyProfile 会优先用自己
-// 的，不受这里改动影响；只有"从未切过"的实例会跟随最新全局默认（符合直觉）。
-// 返回 { workspace: bool, profile: bool } 指示两条路径的落盘结果。
-function setActiveProfileForWorkspace(activeId) {
-  const normalizedId = (activeId && typeof activeId === 'string') ? activeId : 'max';
+//   (2) profile.json.active             —— 全局默认；用作 UI 在 workspace 文件读失败 /
+//       不存在时的回落，避免"切换后立刻回切"的幽灵 revert
+// roles-only 调用只写 (1)：profile.json 的 mtime bump 不再承担跨进程同步职责
+// （active-profile.json 自己有 watchFile，见 _armWorkspaceActiveWatcher）。
+// 返回 { workspace: bool, profile: bool } 指示两条路径的落盘结果（roles-only 时 profile 恒 false）。
+function setActiveProfileForWorkspace(activeId, roles) {
   const result = { workspace: false, profile: false };
 
-  // (1) workspace override
-  result.workspace = _writeWorkspaceActiveId(normalizedId);
+  // (1) workspace override（合并写）
+  result.workspace = _writeWorkspaceActive(activeId, roles);
 
-  // (2) profile.json.active —— 幂等更新，老数据兼容 + UI GET 回落兜底
-  try {
-    const data = existsSync(PROFILE_PATH)
-      ? JSON.parse(readFileSync(PROFILE_PATH, 'utf-8'))
-      : { profiles: [{ id: 'max', name: 'Default' }] };
-    if (data.active !== normalizedId) {
-      data.active = normalizedId;
-      mkdirSync(dirname(PROFILE_PATH), { recursive: true });
-      writeFileSync(PROFILE_PATH, JSON.stringify(data, null, 2), { mode: 0o600 });
-    }
-    result.profile = true;
-  } catch { /* 双失败场景下 result 全 false，由调用方自行兜底 */ }
+  // (2) profile.json.active —— 仅在调用方显式设置 main active 时幂等更新
+  if (activeId !== undefined) {
+    const normalizedId = (activeId && typeof activeId === 'string') ? activeId : 'max';
+    try {
+      const data = existsSync(PROFILE_PATH)
+        ? JSON.parse(readFileSync(PROFILE_PATH, 'utf-8'))
+        : { profiles: [{ id: 'max', name: 'Default' }] };
+      if (data.active !== normalizedId) {
+        data.active = normalizedId;
+        mkdirSync(dirname(PROFILE_PATH), { recursive: true });
+        writeFileSync(PROFILE_PATH, JSON.stringify(data, null, 2), { mode: 0o600 });
+      }
+      result.profile = true;
+    } catch { /* 双失败场景下 result 全 false，由调用方自行兜底 */ }
+  }
 
-  _loadProxyProfile(); // 立刻刷新本进程 _activeProfile
+  _loadProxyProfile(); // 立刻刷新本进程 _activeProfile / _roleIds
   return result;
 }
 
@@ -199,6 +244,83 @@ function getActiveProfileId() {
     const data = JSON.parse(readFileSync(PROFILE_PATH, 'utf-8'));
     return data.active || 'max';
   } catch { return 'max'; }
+}
+
+// 当前 workspace 的**存储**角色分配（不做休眠调整；命名刻意带 Stored —— 与返回有效值的
+// getActiveProfileId 区分，避免下游误以为拿到的是请求时生效值）。GET /api/proxy-profiles
+// 用它回显：休眠（main=Default+官方端点）只是请求侧不生效，存储值必须原样返回，否则 UI
+// 回写会把休眠中的分配清掉（违反"保留但休眠"语义）。
+function getStoredRoles() {
+  return _readWorkspaceActive().roles;
+}
+
+// 官方端点判定。直接注入模式：首个 API 请求捕获的 _defaultConfig.origin 即真实默认端点
+// （实证优先），未捕获时回退模块加载期从 ANTHROPIC_BASE_URL 提取的 CUSTOM_API_HOST。
+// proxy 属主进程（ccv run / CLI / Electron tab）：_defaultConfig 捕获的是**出站** URL——
+// 若首请求挂着第三方 profile，origin 被污染且永不刷新，切回 Default 后休眠将永久失效。
+// 故属主进程由 proxy.js 注册解析器：返回 main=Default 时实际会走的上游（settings/env 默认链），
+// 与 getOriginalBaseUrl(null) 同源。TDZ：CUSTOM_API_HOST 是加载后段才初始化的 const，
+// 本函数只能在模块加载完成后被调用（fetch hook / 路由 / 测试均满足）。
+let _defaultEndpointResolver = null;
+export function setDefaultEndpointResolver(fn) {
+  _defaultEndpointResolver = typeof fn === 'function' ? fn : null;
+}
+export function isOfficialDefaultEndpoint() {
+  if (_defaultEndpointResolver) {
+    try {
+      const u = _defaultEndpointResolver();
+      if (u && typeof u === 'string') return /(^|\.)anthropic\.com$/i.test(new URL(u).hostname);
+    } catch { }
+  }
+  if (_defaultConfig && typeof _defaultConfig.origin === 'string' && _defaultConfig.origin) {
+    try { return /(^|\.)anthropic\.com$/i.test(new URL(_defaultConfig.origin).hostname); } catch { }
+  }
+  return !CUSTOM_API_HOST || /(^|\.)anthropic\.com$/i.test(CUSTOM_API_HOST);
+}
+
+// 请求时的有效角色 profile（含休眠强制）。休眠规则：main=Default（无改写）且端点为官方时，
+// 存储的 sub/teammate 分配不生效（Max 订阅保护；main 切走后原样恢复）。
+function _effectiveRoleProfile(role) {
+  const p = resolveRoleProfile(role, _roleIds, _profilesById, _activeProfile);
+  if (role !== 'main' && !_activeProfile && isOfficialDefaultEndpoint()) return null;
+  return p;
+}
+
+// proxy.js 消费方：属主进程在 body 缓冲后按角色选上游，与 hook 的改写保持同一解析路径。
+function getEffectiveRoleProfile(role) {
+  return _effectiveRoleProfile(role);
+}
+
+// proxy.js 分类短路用：存在显式角色分配（非 follow）才值得在属主进程解析 body 分类——
+// 无分配时任意角色都解析到 main 活跃 profile，分类不影响选路。
+function hasExplicitRoleAssignments() {
+  return _roleIds.subagent !== 'follow' || _roleIds.teammate !== 'follow';
+}
+
+// 测试用：当前各角色的有效 profile（main 恒为 _activeProfile）。
+function getProxyRoleProfiles() {
+  return {
+    main: _activeProfile,
+    subagent: _effectiveRoleProfile('subagent'),
+    teammate: _effectiveRoleProfile('teammate'),
+  };
+}
+
+// active-profile.json 的 watchFile：roles 只存这个文件，而 roles-only 写入不会 bump
+// profile.json 的 mtime —— 没有本 watcher，teammate 进程与同项目多窗口永远看不到角色变更。
+// watchFile 对不存在的文件也会在创建时触发，与 PROFILE_PATH watcher 行为一致。
+// workspace 切换（initForWorkspace/resetWorkspace）时必须 re-arm，否则监听旧路径。
+let _workspaceActiveWatcherPath = null;
+function _armWorkspaceActiveWatcher() {
+  const p = _getActiveProfileFilePath();
+  if (p === _workspaceActiveWatcherPath) return;
+  if (_workspaceActiveWatcherPath) {
+    try { unwatchFile(_workspaceActiveWatcherPath, _loadProxyProfile); } catch { }
+  }
+  _workspaceActiveWatcherPath = p;
+  if (p) {
+    try { watchFile(p, { interval: 1500 }, _loadProxyProfile); } catch { }
+  }
 }
 
 // _loadProxyProfile 的初始调用 + watchFile 挂载挪到 _projectName/_logDir 初始化之后
@@ -221,7 +343,7 @@ function _replaceProxyAuthHeaders(headers, apiKey) {
   return { headers: newHeaders, matchedAuthKey, matchedXApiKey };
 }
 
-export { _activeProfile, _defaultConfig, _loadProxyProfile, PROFILE_PATH, setActiveProfileForWorkspace, getActiveProfileId, RETRY_CONFIG_PATH, _retryConfigState, _loadRetryConfigState };
+export { _activeProfile, _defaultConfig, _loadProxyProfile, PROFILE_PATH, setActiveProfileForWorkspace, getActiveProfileId, getStoredRoles, getProxyRoleProfiles, getEffectiveRoleProfile, hasExplicitRoleAssignments, RETRY_CONFIG_PATH, _retryConfigState, _loadRetryConfigState };
 
 // 1.7.0: the v1 single-file write path is retired — logs live in per-session
 // v2 dirs owned by V2Writer. Only the project binding (name + dir) remains
@@ -440,6 +562,7 @@ _syncContinuationMode(); // seed from the CLI env at module load (`ccv -c`)
 // 并挂载 watchFile 同步列表变化。
 _loadProxyProfile();
 try { watchFile(PROFILE_PATH, { interval: 1500 }, _loadProxyProfile); } catch { }
+_armWorkspaceActiveWatcher();
 
 // Retry config: initial load + watchFile cross-process sync (UI writes
 // retry-config.json → hot-reloaded within 1.5s, mirroring PROFILE_PATH above).
@@ -476,6 +599,7 @@ export function initForWorkspace(projectPath, { forceNew = false } = {}) { // es
   _forkLaunchMarked = false;
   _resumeLaunchMarked = false;
   _syncContinuationMode();
+  _armWorkspaceActiveWatcher(); // 工作区切换 → 监听新路径的 active-profile.json
   _loadProxyProfile(); // 重读该 workspace 的 active-profile.json
 
   return { filePath: '', dir, projectName, resumed: false };
@@ -491,6 +615,7 @@ export function resetWorkspace() {
   // cross-workspace leakage into the route's teammateNames snapshot).
   _agentSpawnRegistry.clear();
   _v2Writer.resetSessions(); // wire-v2: empty project → ingest no-ops until re-init
+  _armWorkspaceActiveWatcher(); // _projectName 已空 → 摘掉旧路径 watcher
   _loadProxyProfile(); // workspace 上下文消失，回落到 profile.json.active
 }
 
@@ -745,17 +870,31 @@ export function setupInterceptor() {
       streamingState.chunksReceived = 0;
     }
 
-    // Proxy profile request rewriting
+    // Proxy profile request rewriting —— 按角色（main/subagent/teammate）解析有效 profile。
+    // 经 classifyProxyRole 正向分类（teammate 进程恒 teammate；utility 跟随主角色；
+    // subagent 只认 cc_is_subagent=true 阳性标记；同进程 team 成员认 system 团队标记）。
+    // 休眠：main=Default 且官方端点时 sub/teammate 分配不生效（存储保留），判定在请求时做
+    // （_defaultConfig 首请求才捕获）。
+    // 短路：无 main profile 且无任何角色分配时，角色不影响结果（_effProfile 恒 null），
+    // 跳过分类的 system 文本提取开销 —— 未配置用户零成本。
     let _fetchUrl = url;
     let _fetchOpts = options;
-    if (_activeProfile && _activeProfile.baseURL && requestEntry) {
+    const _proxyRole = (!_activeProfile && _roleIds.subagent === 'follow' && _roleIds.teammate === 'follow')
+      ? 'main'
+      : classifyProxyRole(requestEntry?.body, {
+        isTeammate: _isTeammate,
+        isCountTokens: !!requestEntry?.isCountTokens,
+        isHeartbeat: !!requestEntry?.isHeartbeat,
+      });
+    const _effProfile = _effectiveRoleProfile(_proxyRole);
+    if (_effProfile && _effProfile.baseURL && requestEntry) {
       try {
         // 1. URL 重写: 用 baseURL 替换 origin，智能处理路径重叠
         //    baseURL="https://proxy.com/v1" + pathname="/v1/messages" → "https://proxy.com/v1/messages"（去重 /v1）
         //    baseURL="https://proxy.com"    + pathname="/v1/messages" → "https://proxy.com/v1/messages"（无重叠）
         if (typeof _fetchUrl === 'string') {
           const _origUrl = new URL(_fetchUrl);
-          const _baseUrl = new URL(_activeProfile.baseURL);
+          const _baseUrl = new URL(_effProfile.baseURL);
           const _basePath = _baseUrl.pathname.replace(/\/+$/, '');
           const _origPath = _origUrl.pathname;
           // 如果原始路径以 baseURL 的路径开头（如都有 /v1/），去掉重叠部分
@@ -764,11 +903,11 @@ export function setupInterceptor() {
           _fetchUrl = _baseUrl.origin + _finalPath + _origUrl.search;
         }
         // 2. Auth 替换 —— 兼容 lowercase / TitleCase，且 x-api-key / Authorization 同时替换以覆盖两种鉴权形式
-        if (_activeProfile.apiKey && _fetchOpts?.headers) {
+        if (_effProfile.apiKey && _fetchOpts?.headers) {
           const h = _fetchOpts.headers;
           if (typeof h === 'object' && !(h instanceof Headers)) {
             const { headers: newHeaders, matchedAuthKey, matchedXApiKey } =
-              _replaceProxyAuthHeaders(h, _activeProfile.apiKey);
+              _replaceProxyAuthHeaders(h, _effProfile.apiKey);
             _fetchOpts = { ..._fetchOpts, headers: newHeaders };
 
             // 诊断日志：让 stderr 能看到替换是否真的发生
@@ -776,7 +915,8 @@ export function setupInterceptor() {
             // （日志聚合/审计规则会把尾 N 字符一并标记为敏感泄漏）
             if (process.env.CCV_DEBUG_HOTSWITCH) {
               console.error('[ccv hotswitch]', {
-                profile: _activeProfile.name,
+                profile: _effProfile.name,
+                role: _proxyRole,
                 url: _fetchUrl,
                 matchedAuth: matchedAuthKey || '(none)',
                 matchedXApiKey: matchedXApiKey || '(none)',
@@ -795,7 +935,7 @@ export function setupInterceptor() {
         //    不能整体复用 requestEntry.body 重建 wire。
         const _rb = requestEntry.body;
         const _oldModel = (_rb && typeof _rb === 'object' && typeof _rb.model === 'string') ? _rb.model : undefined;
-        const _targetModel = _oldModel ? resolveProfileModel(_oldModel, _activeProfile) : null;
+        const _targetModel = _oldModel ? resolveProfileModel(_oldModel, _effProfile) : null;
         if (_targetModel && _fetchOpts?.body) {
           const _replaced = (typeof _fetchOpts.body === 'string')
             ? replaceTopLevelModel(_fetchOpts.body, _oldModel, _targetModel)
@@ -818,17 +958,18 @@ export function setupInterceptor() {
         //    且 output_config 对它们无意义。hasOutputConfig 优先用 requestEntry.body（函数级作用域，
         //    行 606 的 body 在此已越界）判定；解析失败退化为截断字符串时，回退到对 wire 串扫描
         //    "output_config"（避免误走前插路径产生重复键 → JSON "后者胜" 把注入的 effort 丢掉）。
-        if (_activeProfile.effort && typeof _fetchOpts?.body === 'string' &&
+        if (_effProfile.effort && typeof _fetchOpts?.body === 'string' &&
             !requestEntry.isCountTokens && !requestEntry.isHeartbeat) {
           const _hasOutputConfig = (_rb && typeof _rb === 'object')
             ? (!!_rb.output_config && typeof _rb.output_config === 'object')
             : _fetchOpts.body.includes('"output_config"');
-          const _injected = injectOutputConfigEffort(_fetchOpts.body, _activeProfile.effort, _hasOutputConfig);
+          const _injected = injectOutputConfigEffort(_fetchOpts.body, _effProfile.effort, _hasOutputConfig);
           if (_injected !== null) _fetchOpts = { ..._fetchOpts, body: _injected };
         }
-        // 记录 proxy 信息到日志条目
-        requestEntry.proxyProfile = _activeProfile.name;
+        // 记录 proxy 信息到日志条目（proxyRole 仅在发生改写时打标，与该条目的 proxy 信息绑定）
+        requestEntry.proxyProfile = _effProfile.name;
         requestEntry.proxyUrl = _fetchUrl;
+        requestEntry.proxyRole = _proxyRole;
       } catch { }
     }
 

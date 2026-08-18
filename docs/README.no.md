@@ -10,7 +10,7 @@ Et Vibe Coding-verktøysett destillert fra egen utviklingserfaring og bygget på
 3. Fullstendig logging: Tilbyr omfattende opphenting og analyse av Claude Code-payloads — ideelt for logging, feilsøking, læring, inspirasjon og reverse-engineering;
 4. Læring og erfaringsdeling: En rekke studiemateriell og utviklingserfaringer er samlet (se „?"-symbolene rundt om i systemet);
 5. Native opplevelse bevart: Utvider kun Claude Codes evner uten vesentlige endringer i kjernen — den native opplevelsen er bevart;
-6. Tredjepartsmodeller støttet: Kompatibel med deepseek-v4-\*, GLM 5.1, Kimi K2.6, med innebygd cc-switch-evne for hot-switching mellom tredjepartsverktøy når som helst;
+6. Tredjepartsmodeller støttet: Kompatibel med deepseek-v4-\*, GLM 5.1, Kimi K2.6, med innebygd cc-switch-evne for hot-switching mellom tredjepartsverktøy når som helst; hot-switch-dialogen støtter også kilder per rolle — Main Agent, Sub-Agents og Teammates kan hver bruke en egen proxy-profil (standard: følg Main Agent); når Main Agent bruker den innebygde Default med det offisielle endepunktet, forblir rolletildeling skjult og inaktiv.
 
 <img width="860" alt="cc-viewer — deploy once, share with every device" src="https://raw.githubusercontent.com/weiesky/cc-viewer/main/docs/cc-viewer-share.svg" />
 

@@ -12,6 +12,12 @@ Opretter en ny opgave i det aktuelle teams opgaveliste (eller sessionens opgavel
 
 Spring `TaskCreate` over for trivielle one-shot-handlinger, ren samtale eller alt, der kan gennemføres i to eller tre direkte værktøjskald.
 
+## Aktivering
+
+- Tilgængelig som standard på de fleste modeller.
+- Ikke tilgængelig på Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 og nyere familier (v2.1.233+), medmindre det tilvælges via `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` eller `--tools`.
+- Hele opgavesystemet er deaktiveret, når `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parametre
 
 - `subject` (string, påkrævet): Kort imperativ titel, f.eks. `Fix login redirect on Safari`. Hold den under cirka firs tegn.

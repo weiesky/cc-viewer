@@ -10,6 +10,11 @@ Aktif bir ekip içinde bir ekip üyesinden diğerine bir mesaj iletir veya aynı
 - Ekip lideri tarafından gelen bir kapatma isteği veya plan onay isteği gibi bir protokol istemine yanıt vermek.
 - Devredilmiş bir görevin sonunda döngüyü kapatmak, böylece lider öğeyi tamamlanmış olarak işaretleyebilir.
 
+## Etkinleştirme
+
+- `ListAgents` ile aynı oturumlar arası mesajlaşma koşullarıyla sınırlıdır (sunucu tarafı özellik bayrakları, varsayılan olarak kapalı).
+- Ekip arkadaşları ayrıca deneysel agent ekiplerinin etkinleştirilmiş olmasını gerektirir.
+
 ## Parametreler
 
 - `to` (string, zorunlu): Ekipte kayıtlı hedef ekip arkadaşının `name`'i veya aynı anda tüm ekip arkadaşlarına yayın yapmak için `*`.

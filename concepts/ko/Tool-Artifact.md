@@ -9,6 +9,13 @@ HTML 또는 Markdown 파일을 Artifact로 렌더링합니다 — claude.ai에 �
 - 사용자의 기존 artifacts를 나열하여 이전 세션에서의 파일 찾기 (`action: "list"`)
 - **하지 않을 때**: 로컬에 남겨둬야 할 콘텐츠, 일반 텍스트 답변, 보기 시 외부 네트워크 리소스가 필요한 모든 것——엄격한 CSP가 모든 외부 호스트를 차단합니다
 
+## 활성화
+
+- claude.ai 로그인(`/login`)이 있는 Pro, Max, Team, 또는 Enterprise 플랜이 필요합니다.
+- Anthropic API 전용입니다 — Amazon Bedrock, Google Cloud, Microsoft Foundry에서는 사용할 수 없습니다.
+- Claude Code ≥ 2.1.183 또는 Desktop 앱 ≥ 1.13576.0이 필요합니다.
+- `disableArtifact` 설정 또는 `CLAUDE_CODE_DISABLE_ARTIFACT=1`로 비활성화할 수 있습니다.
+
 ## 매개변수
 
 - `file_path` (문자열): 렌더링할 `.html` 또는 `.md` 파일의 경로. 파일은 발행 시 문서 틀로 래핑되므로 페이지 콘텐츠를 직접 작성합니다 — `<!DOCTYPE>`, `<html>`, `<head>` 또는 `<body>` 태그는 포함하지 않습니다. 동일 경로 → 재배포 시 동일 URL; 다른 경로는 새로운 URL을 청구합니다.

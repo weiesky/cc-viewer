@@ -10,6 +10,11 @@ Plant, wann die Arbeit im `/loop`-Dynamikmodus wiederaufgenommen werden soll. Da
 - Beim Ausführen einer autonomen Schleife ohne Benutzer-Prompt — den literalen Sentinel `<<autonomous-loop-dynamic>>` als `prompt` übergeben
 - Beim Abfragen eines Prozesses, dessen Zustand sich bald ändern wird (kurze Verzögerung zum Warmhalten des Caches)
 
+## Aktivierung
+
+- Nicht verfügbar auf Amazon Bedrock, Claude Platform on AWS, Google Cloud Agent Platform oder Microsoft Foundry.
+- Ebenfalls deaktiviert, wenn das Abrufen von Feature-Flags deaktiviert ist (Telemetrie-/Traffic-Umgebungsvariablen).
+
 ## Parameter
 
 - `delaySeconds` (Zahl, erforderlich): Sekunden bis zur Wiederaufnahme. Die Laufzeit begrenzt den Wert automatisch auf `[60, 3600]`, sodass keine manuelle Begrenzung erforderlich ist.

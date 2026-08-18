@@ -83,7 +83,7 @@ LOG_DIR/<project>/sessions/<session_id>/
   "msgFrom": 903, "msgTo": 905,   // 本事件对应 wire messages 的 [from,to) 计数（物化完整性校验）
   "evt": "append" | "snapshot" | "ctl",  // 对应 conversation 行类型（§6，replace-tail 等控制行为 ctl）；无 conv 写入则省略
   "boundary": "clear" | "compact" | "replace-tail",  // 触发的边界（可省略）
-  "proxy": { "profile": "…", "url": "…" }             // proxyProfile/proxyUrl（可省略）
+  "proxy": { "profile": "…", "url": "…", "role": "main" | "subagent" | "teammate" }  // proxyProfile/proxyUrl/proxyRole（可省略；role 仅在发生改写时记录，且与 kind 的 main/sub 是不同维度，值域勿混用）
   "agent": { "agentName": "frontend-reviewer" | null, "named": true | false }  // 可选：从请求头 x-claude-code-agent-id 解析的 wire agent 身份（teammate/subagent 请求携带）。named=true 时 agentName 是展示名（前端不再依赖窗口内启发式注册表）；named=false 表示匿名 hex id。旧行缺失时读侧回退（见 server/lib/v2/agent-id.js）
 }
 ```
@@ -208,7 +208,7 @@ wire 上存在两种编码，**解析器与 S8 转换器必须都支持**：
 | `_deltaFormat` / `_totalMessageCount` / `_conversationId` / `_isCheckpoint` | 合成 delta envelope：`_deltaFormat:1`、`_totalMessageCount`=物化计数、`_conversationId:'mainAgent'`、epoch 起点/物化重置点 `_isCheckpoint:true` |
 | `_seq` / `_seqEpoch` | journal seq / `v2:<sessionId>`（仅 main 非 teammate，同 v1 语义。注意此 `v2:` 前缀是客户端 seq 作用域的不透明串，与 §12 寻址串 `v2:<project>/<sid>` 是两个不同命名空间，勿混用） |
 | `_staleReorder` / `_reconstructBroken` | **绝不输出**（v2 源头无倒置；物化降级为内部态） |
-| `proxyProfile` / `proxyUrl` | journal req.proxy |
+| `proxyProfile` / `proxyUrl` / `proxyRole` | journal req.proxy |
 | `ccvRotationContext` 哨兵 | 不再产生（无轮转）；`teammateNames` 等价信息由 re-join 元数据合成同形哨兵，保客户端零改动 |
 
 带宽注：合成 delta envelope（而非逐条全量）使 v2 适配输出 ≈ v1 的 delta 流但**无周期 checkpoint**（epoch 起点才有），冷加载字节数低于 v1。大 epoch 的起点 checkpoint 合成必须流式（不整段驻留内存）。

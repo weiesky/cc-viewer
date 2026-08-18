@@ -8,13 +8,17 @@ import { setupInterceptor } from './interceptor.js';
 import { extractApiErrorMessage, formatProxyRequestError } from './lib/proxy-errors.js';
 import { getProxyDispatcher } from './lib/proxy-env.js';
 import { getClaudeConfigDir } from '../findcc.js';
-import { isAnthropicApiPath } from './lib/interceptor-core.js';
+import { isAnthropicApiPath, classifyProxyRole } from './lib/interceptor-core.js';
 import { executeRequest, extractModel } from './lib/proxy-retry.js';
 import { buildRecord, appendRecord, dailyFilePath, todayStr, emitProxyStatsUpdate } from './lib/proxy-stats.js';
+import { reportSwallowed } from './lib/error-report.js';
 import { LOG_DIR } from '../findcc.js';
 
 // Setup interceptor to patch fetch
 setupInterceptor();
+// 官方端点判定注册：本进程的 _defaultConfig 捕获的是出站 URL（可能被当时的 profile 污染），
+// 休眠判定的"官方端点"应回答「main=Default 时实际会去哪」——即 settings/env 默认链。
+interceptor.setDefaultEndpointResolver(() => getOriginalBaseUrl(null));
 
 // 通知 stats-worker 重扫 proxy 明细（review P2：原实现动态 import('./server.js') 反向触达
 // statsWorker 单例——若未来出现 proxy-only 进程，首条请求会因模块加载副作用意外拉起第二个
@@ -64,12 +68,14 @@ function getBaseUrlFromSettings(settingsPath) {
   return null;
 }
 
-function getOriginalBaseUrl() {
+function getOriginalBaseUrl(profileOverride) {
   // 热切换 profile 最高优先：UI 里用户选中的 baseURL 直接作为上游目标，
   // 让 log/UI 显示的 URL 与实际去向一致，且避免 settings.json 残留的本地
   // 代理 URL（如 127.0.0.1:xxxx）导致 ccv proxy 自环 404。
   // Via namespace import to pick up watchFile 刷新（ES module live binding）。
-  const ap = interceptor._activeProfile;
+  // profileOverride：调用方按角色解析后的有效 profile（undefined = 沿用 main 活跃 profile，
+  // null = 该角色显式无 profile → 落到 settings/env 默认链）。
+  const ap = profileOverride !== undefined ? profileOverride : interceptor._activeProfile;
   if (ap && ap.baseURL) return ap.baseURL;
 
   let cwd;
@@ -100,8 +106,6 @@ function getOriginalBaseUrl() {
 export function startProxy() {
   return new Promise((resolve, reject) => {
     const server = createServer(async (req, res) => {
-      const originalBaseUrl = getOriginalBaseUrl();
-
       // Use the patched fetch (which logs to cc-viewer)
       try {
         // Convert incoming headers
@@ -115,6 +119,32 @@ export function startProxy() {
           buffers.push(chunk);
         }
         const body = Buffer.concat(buffers);
+
+        // 按角色选源：LLM 路径在 body 缓冲后分类（同进程 team 标记 / cc_is_subagent），
+        // 解析该角色的有效 profile（含休眠）。roleProfile 三态：
+        //   undefined = 未分类（非 LLM 路径 / utility / 无显式角色分配）→ 沿用 main 活跃 profile
+        //   null      = 该角色显式无 profile（Default/休眠）→ settings/env 默认链
+        //   object    = 该角色自己的 profile → 其 baseURL 作上游
+        // utility（count_tokens/heartbeat）按 URL 先行排除（跟随 main，且免解析大 body）；
+        // 无显式角色分配时分类结果不影响选路，直接跳过解析（-c checkpoint 可达数十 MB）。
+        // 与 interceptor fetch hook 对 trace 请求的改写输入相同、结论一致（URL 幂等，
+        // auth 由 hook 注入，model 由重试引擎按同一 profile 替换）。已知窗口：配置在选路后、
+        // hook 改写前被热改时两层解析可不一致（单请求自愈，与 main 切换的既有竞态同类；backlog）。
+        // req.url 是 origin-form 相对路径，new URL 需补基址，否则锚定判定落空到宽松正则。
+        const _reqPath = (() => { try { return new URL(req.url || '/', 'http://x').pathname; } catch { return req.url || ''; } })();
+        const _isUtility = /\/messages\/count_tokens$/.test(_reqPath) || /^\/api\/eval\/sdk-/.test(_reqPath);
+        let roleProfile;
+        if (body.length > 0 && isAnthropicApiPath(_reqPath) && !_isUtility && interceptor.hasExplicitRoleAssignments()) {
+          let parsedBody = null;
+          try { parsedBody = JSON.parse(body.toString('utf8')); } catch { /* 非 JSON body → 保持 main 语义 */ }
+          if (parsedBody && typeof parsedBody === 'object') {
+            try {
+              const role = classifyProxyRole(parsedBody, {});
+              roleProfile = interceptor.getEffectiveRoleProfile(role);
+            } catch (err) { reportSwallowed('proxy.role-classify', err); }
+          }
+        }
+        const originalBaseUrl = getOriginalBaseUrl(roleProfile);
 
         const fetchOptions = {
           method: req.method,
@@ -136,7 +166,7 @@ export function startProxy() {
         // 模型替换由重试引擎用 resolveProfileModel 纯函数完成（interceptor 对 trace 请求会再跑一次，幂等 no-op）。
         // 非大模型 API 请求走原逻辑（同样用 x-cc-viewer-trace 让 interceptor 记录，但不经重试引擎）。
         if (isAnthropicApiPath(fullUrl)) {
-          await handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyDispatcher);
+          await handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyDispatcher, roleProfile);
           return;
         }
 
@@ -226,10 +256,11 @@ export function startProxy() {
 // 每请求取最新值，UI 改 retry-config.json 后下一个请求即生效，无需重启。
 const _retryConfigGetter = () => interceptor._retryConfigState;
 
-async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyDispatcher) {
+async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyDispatcher, roleProfile) {
   const statsEnabled = process.env.CCV_PROXY_STATS !== 'off';
   const retryConfig = _retryConfigGetter(); // live binding：每请求取最新重试配置
-  const profile = interceptor._activeProfile || null;
+  // 角色解析后的有效 profile（上游/模型替换/统计归属）。undefined = 未分类 → 沿用 main 活跃 profile。
+  const profile = roleProfile !== undefined ? roleProfile : (interceptor._activeProfile || null);
 
   // 清理可能的 trace 头（singleFetch 会重新加，避免旧值干扰）；interceptor 会正常记录请求
   // 同时清理 hop-by-hop / 传输编码头：body 已被 buffer 成完整 Buffer，

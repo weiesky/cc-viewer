@@ -800,6 +800,8 @@ class AppHeader extends React.Component {
       nextProps.proxyProfiles !== this.props.proxyProfiles ||
       nextProps.activeProxyId !== this.props.activeProxyId ||
       nextProps.defaultConfig !== this.props.defaultConfig ||
+      nextProps.proxyRoles !== this.props.proxyRoles ||
+      nextProps.proxyOfficialDefault !== this.props.proxyOfficialDefault ||
       nextProps.retryConfig !== this.props.retryConfig ||
       nextProps.retryDefaults !== this.props.retryDefaults ||
       nextProps.approvalPrefs !== this.props.approvalPrefs ||
@@ -1557,15 +1559,46 @@ class AppHeader extends React.Component {
   }
 
   // 把 LiveTagPopover（血条 + popover trigger）通过 createPortal 渲染到
+  // 代理 chip：主 Agent 用 profile 时显示主源；main=Default 但自定义端点且子/Teammate
+  // 有显式分配时也露头（否则代理中的角色流量无指示）。休眠（main=Default+官方端点）不显示。
+  _renderProxyChip() {
+    if (!this.props.activeProxyId) return null;
+    const profiles = this.props.proxyProfiles || [];
+    const roles = this.props.proxyRoles || {};
+    const activeId = this.props.activeProxyId;
+    const p = profiles.find(x => x.id === activeId);
+    const nameOf = id => (profiles.find(x => x.id === id) || {}).name || id;
+    const explicitRole = v => (v && v !== 'follow') ? (v === 'max' ? 'Default' : nameOf(v)) : null;
+    const subD = explicitRole(roles.subagent);
+    const teamD = explicitRole(roles.teammate);
+    if (activeId === 'max') {
+      const dormant = this.props.proxyOfficialDefault !== false;
+      if (dormant || (!subD && !teamD)) return null;
+    } else if (!p) return null;
+    const mainLabel = p ? `${p.name}${profileDisplayModel(p) ? ` · ${profileDisplayModel(p)}` : ''}` : 'Default';
+    const followTxt = t('ui.proxy.followMainResolved', { name: p ? p.name : 'Default' });
+    const title = t('ui.proxy.roleSummary', {
+      main: mainLabel,
+      sub: subD || followTxt,
+      team: teamD || followTxt,
+    });
+    return (
+      <Tag className={styles.proxyProfileTag} title={title} onClick={() => this.setState({ proxyModalVisible: true })}>
+        <SwapOutlined className={styles.proxySwapIcon} />
+        {mainLabel}
+        {subD ? ` · ${t('ui.proxy.badgeSubagent')}: ${subD}` : ''}
+        {teamD ? ` · ${t('ui.proxy.badgeTeammate')}: ${teamD}` : ''}
+      </Tag>
+    );
+  }
+
   // TerminalPanel 工具栏（终端开启时）或 ChatInputBar 底部按钮区（终端关闭时）
   // 提供的 slot DOM 节点。slot 由 App.jsx 集中持有；缺席时返回 null（raw 模式等）。
   // 状态/数据所有权仍在 AppHeader（_cachePopoverOpen / _fsSkills / _memory /
   // _lastContextPercent），portal 仅迁移 DOM 位置，不影响 React 子树重建。
   renderContextBarPortal() {
     const slot = this.props.contextBarSlot;
-    if (!slot) return null;
-
-    const { requests = [], isLocalLog, localLogFile, projectName, contextWindow, contextBarOptimistic, contextBarLocked, serverCachedContent, claudeProjectModel } = this.props;
+    if (!slot) return null;    const { requests = [], isLocalLog, localLogFile, projectName, contextWindow, contextBarOptimistic, contextBarLocked, serverCachedContent, claudeProjectModel } = this.props;
 
     // 计算上下文使用率:原始占用比(used / 窗口全量),与 Claude Code /context 口径一致。
     // 分子 sumUsageContextTokens = input + cache_creation(嵌套容错) + cache_read + output
@@ -1781,15 +1814,7 @@ class AppHeader extends React.Component {
             </Popover>
             );
           })()}
-          {!isElectronTab && this.props.activeProxyId && this.props.activeProxyId !== 'max' && (() => {
-            const p = (this.props.proxyProfiles || []).find(x => x.id === this.props.activeProxyId);
-            return p ? (
-              <Tag className={styles.proxyProfileTag} onClick={() => this.setState({ proxyModalVisible: true })}>
-                <SwapOutlined className={styles.proxySwapIcon} />
-                {p.name}{profileDisplayModel(p) ? ` · ${profileDisplayModel(p)}` : ''}
-              </Tag>
-            ) : null;
-          })()}
+          {!isElectronTab && this._renderProxyChip()}
           <HeaderProjectLabel projectName={projectName} isLocalLog={isLocalLog} />
           {this.renderContextBarPortal()}
         </Space>
@@ -2303,6 +2328,8 @@ class AppHeader extends React.Component {
           proxyProfiles={this.props.proxyProfiles}
           activeProxyId={this.props.activeProxyId}
           defaultConfig={this.props.defaultConfig}
+          proxyRoles={this.props.proxyRoles}
+          proxyOfficialDefault={this.props.proxyOfficialDefault}
           onProxyProfileChange={this.props.onProxyProfileChange}
         />
         <SystemTextModal

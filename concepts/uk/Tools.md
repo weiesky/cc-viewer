@@ -15,16 +15,19 @@ Claude Code надає моделі набір вбудованих інстру
 | [TaskGet](Tool-TaskGet.md) | Отримання деталей завдання |
 | [TaskUpdate](Tool-TaskUpdate.md) | Оновлення статусу завдання, залежностей тощо |
 | [TaskList](Tool-TaskList.md) | Перелік усіх завдань |
+| [ListAgents](Tool-ListAgents.md) | Перелік агентів, доступних у сесії |
 
 ## Команда та оркестровка
 
 | Інструмент | Призначення |
 |------------|-------------|
-| [TeamCreate](Tool-TeamCreate.md) | Створення команди агентів для спільної роботи |
-| [TeamDelete](Tool-TeamDelete.md) | Розформування команди агентів |
 | [SendMessage](Tool-SendMessage.md) | Відправка повідомлення іншому агенту |
 | [Workflow](Tool-Workflow.md) | Запуск детермінованого скрипту багатоагентної оркестровки |
 | [Monitor](Tool-Monitor.md) | Потокове передавання подій від тривалого скрипту як сповіщень |
+| [SendFile](Tool-SendFile.md) | Надсилання файлів іншій сесії Claude Code |
+| [SendUserFile](Tool-SendUserFile.md) | Надсилання файлів користувачу |
+| [SendUserMessage](Tool-SendUserMessage.md) | Надсилання повідомлення користувачу (застарілий інструмент Brief) |
+| [EndConversation](Tool-EndConversation.md) | Завершення поточної розмови |
 
 ## Операції з файлами
 
@@ -48,6 +51,7 @@ Claude Code надає моделі набір вбудованих інстру
 | Інструмент | Призначення |
 |------------|-------------|
 | [Bash](Tool-Bash.md) | Виконання shell-команд |
+| [REPL](Tool-REPL.md) | Запуск JavaScript у постійному Node.js REPL |
 
 ## Web
 
@@ -66,6 +70,10 @@ Claude Code надає моделі набір вбудованих інстру
 | [ExitPlanMode](Tool-ExitPlanMode.md) | Вихід з режиму планування та подання плану на затвердження користувачем |
 | [AskUserQuestion](Tool-AskUserQuestion.md) | Запитання користувачу для уточнення або прийняття рішення |
 | [ReportFindings](Tool-ReportFindings.md) | Звіт про висновки перевірки коду як типізований список для хост-інтерфейсу |
+| [TodoWrite](Tool-TodoWrite.md) | Запис структурованого todo-списку для сесії |
+| [SendFeedback](Tool-SendFeedback.md) | Надсилання структурованого відгуку про Claude Code до Anthropic |
+| [Projects](Tool-Projects.md) | Керування документами бази знань проєкту |
+| [ProposeGoal](Tool-ProposeGoal.md) | Пропозиція перевірюваної мети завершення для сесії |
 
 ## Робочі дерева
 
@@ -84,6 +92,7 @@ Claude Code надає моделі набір вбудованих інстру
 | [ScheduleWakeup](Tool-ScheduleWakeup.md) | Власний темп ітерацій /loop путём планування наступного пробудження |
 | [PushNotification](Tool-PushNotification.md) | Відправка сповіщення на робочий стіл/мобільний пристрій користувачу |
 | [RemoteTrigger](Tool-RemoteTrigger.md) | Управління claude.ai remote-trigger підпрограмами |
+| [ReadNotifications](Tool-ReadNotifications.md) | Читання очікуваних сповіщень сесії |
 
 ## Розширення
 
@@ -91,10 +100,23 @@ Claude Code надає моделі набір вбудованих інстру
 |------------|-------------|
 | [Skill](Tool-Skill.md) | Виконання навички (slash command) |
 
+## MCP і розширення
+
+| Інструмент | Призначення |
+|------------|-------------|
+| [ListMcpResources](Tool-ListMcpResources.md) | Перелік ресурсів, які надають підключені MCP-сервери |
+| [ReadMcpResource](Tool-ReadMcpResource.md) | Читання одного ресурсу MCP-сервера за URI |
+| [ReadMcpResourceDir](Tool-ReadMcpResourceDir.md) | Перелік каталогового MCP-ресурсу за URI |
+| [SearchMcpRegistry](Tool-SearchMcpRegistry.md) | Пошук у реєстрі конекторів MCP за ключовим словом |
+| [SuggestConnectors](Tool-SuggestConnectors.md) | Отримання деталей конекторів із результатів пошуку в реєстрі |
+| [ListConnectors](Tool-ListConnectors.md) | Перелік встановлених конекторів MCP |
+| [SuggestPluginInstall](Tool-SuggestPluginInstall.md) | Відображення вбудованої картки встановлення плагіна |
+| [SuggestSkills](Tool-SuggestSkills.md) | Відображення картки навичок, доступних для додавання |
+| [ListPlugins](Tool-ListPlugins.md) | Перелік увімкнених плагінів claude.ai |
+| [ListSkills](Tool-ListSkills.md) | Перелік увімкнених навичок claude.ai |
+
 ## Інтеграція з IDE
 
 | Інструмент | Призначення |
 |------------|-------------|
-| [getDiagnostics](Tool-getDiagnostics.md) | Отримання діагностичної інформації мови VS Code |
-| [executeCode](Tool-executeCode.md) | Виконання коду в Jupyter kernel |
 | [LSP](Tool-LSP.md) | Запити мовного сервера (визначення, посилання, символи) |

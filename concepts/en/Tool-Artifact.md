@@ -9,6 +9,13 @@ Render an HTML or Markdown file to an Artifact — a default-private web page ho
 - Listing the user's existing artifacts to find one from an earlier session (`action: "list"`)
 - **Not** for content that must stay local, plain-text answers, or anything needing external network resources at view time — a strict CSP blocks every external host
 
+## Activation
+
+- Requires a Pro, Max, Team, or Enterprise plan with claude.ai login (`/login`).
+- Anthropic API only — not available on Amazon Bedrock, Google Cloud, or Microsoft Foundry.
+- Requires Claude Code ≥ 2.1.183 or the Desktop app ≥ 1.13576.0.
+- Disable with the `disableArtifact` setting or `CLAUDE_CODE_DISABLE_ARTIFACT=1`.
+
 ## Parameters
 
 - `file_path` (string): Path to the `.html` or `.md` file to render. The file is wrapped in a document skeleton at publish time, so write page content directly — no `<!DOCTYPE>`, `<html>`, `<head>`, or `<body>` tags. Same path → same URL on redeploy; a different path claims a new URL.
