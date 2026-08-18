@@ -7,6 +7,12 @@ Liste les skills claude.ai activées de l'utilisateur, éventuellement filtrées
 - Vous avez besoin de la liste faisant autorité des skills actuellement activées — avant d'en invoquer une, ou pour confirmer ce qu'une carte `SuggestSkills` a ajouté.
 - L'utilisateur demande quelles skills il possède.
 
+## Activation
+
+- Nécessite la permission d'accès au registre de plugins.
+- Désactivé dans les environnements HIPAA.
+- Toujours disponible dans les sessions distantes.
+
 ## Paramètres
 
 - `keywords` (array de strings, optionnel) : filtre la liste — jusqu'à 8 éléments, 1 à 64 caractères chacun. Omettez pour tout lister.

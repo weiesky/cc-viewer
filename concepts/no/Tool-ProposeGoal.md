@@ -8,6 +8,12 @@ Foreslår et verifiserbart fullføringsmål for sesjonen. Målet vises til bruke
 - Du vil ha brukerens eksplisitte godkjenning av hva "ferdig" betyr før du gjør betydelig arbeid.
 - Brukerens egne ord allerede har uttalt utfallet, og du vil at det skal registreres som sesjonens mål.
 
+## Aktivering
+
+- Av som standard (server-side feature-flag).
+- Ekskludert fra interaktive og bakgrunnssesjoner.
+- Skrudd av av innstillingsnøkkelen `modelProposedGoals: "disabled"`.
+
 ## Parametere
 
 - `condition` (string, påkrevd): Fullføringsbetingelsen, skrevet slik at en separat evaluator kan verifisere den ut fra samtalen (f.eks. "alle tester i test/auth passerer (bun test går ut med 0)"). Maks 500 tegn — brukeren må kunne lese hele betingelsen i godkjenningsdialogen.

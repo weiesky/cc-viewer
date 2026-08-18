@@ -10,6 +10,13 @@ Llama a la API de activadores remotos de claude.ai para gestionar la ejecución 
 - Listar o auditar todos los activadores actuales para revisar su configuración y estado
 - Actualizar la configuración de un activador, como el calendario, la carga útil o la descripción, sin necesidad de recrearlo
 
+## Activación
+
+- Requiere un plan Pro, Max, Team o Enterprise de claude.ai.
+- No disponible en Amazon Bedrock, Claude Platform on AWS, Google Cloud ni Microsoft Foundry.
+- Requiere feature flags del lado del servidor y los ajustes de política `allow_remote_sessions` / `allow_routines`.
+- No es para las propias sesiones remotas.
+
 ## Parámetros
 
 - `action` (string, requerido): la operación a realizar — uno de `list`, `get`, `create`, `update` o `run`

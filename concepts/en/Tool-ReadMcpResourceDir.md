@@ -7,6 +7,10 @@ Lists the entries of a directory-style resource exposed by a connected MCP serve
 - An MCP server organizes resources hierarchically and you need to enumerate one level of that hierarchy.
 - You want to browse before reading individual resources with `ReadMcpResource`.
 
+## Activation
+
+- Always enabled, but not exposed to the model's tool list — intended for thin-client / sidecar use.
+
 ## Parameters
 
 - `server` (string, required): The MCP server name.

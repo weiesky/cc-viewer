@@ -8,6 +8,13 @@ Encerra a conversa atual e impede que novas mensagens sejam enviadas.
 
 Esta é uma ação de último recurso: as próprias regras da ferramenta exigem avisar o usuário primeiro e confirmar antes do uso, e ela nunca deve ser usada em situações de autoagressão ou relacionadas a danos.
 
+## Ativação
+
+- Requer Claude Code 2.1.213+ e um modelo da família Opus 4.8 / Sonnet 5 / Fable 5 ou posterior.
+- Somente sessões de terminal interativas — nunca em modo `--bare`, e nunca disponível para subagentes.
+- Não disponível no Amazon Bedrock, no Claude Platform on AWS, no Vertex AI, no Microsoft Foundry ou em cloud gateways.
+- Requer uma feature flag do lado do servidor — a maioria das sessões não oferece esta ferramenta.
+
 ## Parâmetros
 
 Esta ferramenta não recebe parâmetros.

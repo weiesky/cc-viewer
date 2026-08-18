@@ -14,6 +14,12 @@ Envoie une notification de bureau depuis la session Claude Code en cours. Si Rem
 
 N'envoyez pas de notification pour des mises à jour de progression routinières en cours de tâche, ni pour confirmer que vous avez répondu à quelque chose que l'utilisateur vient clairement de demander et attend. Ne notifiez pas lorsqu'une tâche courte se termine — si l'utilisateur vient de la soumettre et attend, la notification n'apporte aucune valeur et érode la confiance dans les notifications futures. Penchez fortement vers l'absence d'envoi.
 
+## Activation
+
+- Désactivé par défaut (drapeau de fonctionnalité côté serveur).
+- La livraison passe par l'infrastructure hébergée par Anthropic — non disponible sur Amazon Bedrock, Claude Platform on AWS, Google Cloud ou Microsoft Foundry.
+- Le push téléphone nécessite en plus un client Remote Control connecté.
+
 ## Paramètres
 
 - `message` (chaîne, obligatoire) : le corps de la notification. Gardez-le sous 200 caractères ; les systèmes d'exploitation mobiles tronquent les chaînes plus longues. Commencez par ce sur quoi l'utilisateur agirait : "build failed: 2 auth tests" est plus utile que "task complete".

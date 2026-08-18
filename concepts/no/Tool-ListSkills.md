@@ -7,6 +7,12 @@ Lister brukerens aktiverte claude.ai-skills, eventuelt filtrert etter nøkkelord
 - Du trenger den autoritative listen over skills som for øyeblikket er aktivert — før du påkaller en, eller for å bekrefte hva et `SuggestSkills`-kort la til.
 - Brukeren spør hvilke skills de har.
 
+## Aktivering
+
+- Krever tilgangstillatelse til plugin-registeret.
+- Deaktivert i HIPAA-miljøer.
+- Alltid tilgjengelig i eksterne sesjoner.
+
 ## Parametere
 
 - `keywords` (array av strenger, valgfri): Filtrer listen — opptil 8 elementer, hver 1–64 tegn. Utelat for å liste alt.

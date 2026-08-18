@@ -10,6 +10,11 @@ Busca sob demanda as definições completas de schema das "ferramentas adiadas" 
 
 Se o schema de uma ferramenta já está no contexto, não busque novamente — apenas chame-a.
 
+## Ativação
+
+- Ativado por padrão.
+- Desativado quando `ANTHROPIC_BASE_URL` aponta para um endpoint que não é da Anthropic (a menos que `ENABLE_TOOL_SEARCH` esteja definido), quando `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` está definido, quando o modelo não tem suporte a tool-reference (modelos Vertex AI anteriores ao Claude 4.5) ou quando negado via `"deny": ["ToolSearch"]`.
+
 ## Parâmetros
 
 - `query` (string, obrigatório): A consulta usada para localizar ferramentas adiadas. Três formas são suportadas:

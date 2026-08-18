@@ -10,6 +10,12 @@
 - Registrering af nyopdagede afhængigheder med `addBlocks` / `addBlockedBy`.
 - Vedhæft struktureret `metadata` som eksterne ticket-ID'er eller prioritetshints.
 
+## Aktivering
+
+- Tilgængelig som standard på de fleste modeller.
+- Ikke tilgængelig på Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 og nyere familier (v2.1.233+), medmindre det tilvælges via `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` eller `--tools`.
+- Hele opgavesystemet er deaktiveret, når `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parametre
 
 - `taskId` (string, påkrævet): Den opgave, der skal ændres. Hent fra `TaskList` eller `TaskCreate`.

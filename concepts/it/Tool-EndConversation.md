@@ -8,6 +8,13 @@ Termina la conversazione corrente e impedisce l'invio di qualsiasi ulteriore mes
 
 Questa è un'azione di ultima istanza: le regole del tool stesso richiedono di avvisare prima l'utente e di confermare prima dell'uso, e non deve mai essere usata in situazioni di autolesionismo o legate a danni.
 
+## Attivazione
+
+- Richiede Claude Code 2.1.213+ e un modello della famiglia Opus 4.8 / Sonnet 5 / Fable 5 o successiva.
+- Solo sessioni terminale interattive — mai in modalità `--bare`, e mai disponibile ai subagenti.
+- Non disponibile su Amazon Bedrock, Claude Platform on AWS, Vertex AI, Microsoft Foundry o gateway cloud.
+- Richiede un feature flag lato server — la maggior parte delle sessioni non offre questo tool.
+
 ## Parametri
 
 Questo tool non accetta parametri.

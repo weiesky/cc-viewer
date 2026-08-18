@@ -10,6 +10,11 @@ Planuje moment wznowienia pracy w trybie dynamicznym `/loop`. Narzędzie pozwala
 - Przy uruchamianiu autonomicznej pętli bez promptu użytkownika — przekaż dosłowny sentinel `<<autonomous-loop-dynamic>>` jako `prompt`
 - Przy odpytywaniu procesu, którego stan za chwilę się zmieni (użyj krótkiego opóźnienia, aby utrzymać pamięć podręczną ciepłą)
 
+## Aktywacja
+
+- Niedostępne na Amazon Bedrock, Claude Platform on AWS, Google Cloud Agent Platform i Microsoft Foundry.
+- Również wyłączone, gdy pobieranie flag funkcji jest wyłączone (zmienne środowiskowe telemetrii/ruchu).
+
 ## Parametry
 
 - `delaySeconds` (liczba, wymagane): Sekundy do wznowienia. Środowisko uruchomieniowe automatycznie ogranicza wartość do `[60, 3600]`, więc ręczne ograniczanie nie jest konieczne.

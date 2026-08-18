@@ -7,6 +7,11 @@ Bir veya daha fazla dosyayı başka bir Claude Code oturumuna gönderir — `Lis
 - Bir eş oturumun kendi görevine devam etmesi için çalışma dizininizden bir dosyaya ihtiyacı vardır (bir rapor, bir yama, bir fikstür).
 - Oturumlar arasında işi koordine ediyorsunuz ve yalnızca metin değil, yapıtları devretmek istiyorsunuz (metin için `SendMessage` kullanın).
 
+## Etkinleştirme
+
+- Oturumlar arası dosya aktarımı oturumda mevcut olmalıdır; olmadığında doğrulama "Cross-session file transfer is not available in this session." hatasıyla başarısız olur.
+- `ListAgents` ile aynı oturumlar arası mesajlaşma koşullarıyla sınırlıdır (sunucu tarafı özellik bayrakları, varsayılan olarak kapalı).
+
 ## Parametreler
 
 - `to` (string, zorunlu): Alıcı — `ListAgents`'tan bir eş oturum adı veya açık bir `uds:<socket>` / `bridge:<session id>` adresi.
@@ -27,6 +32,5 @@ SendFile(
 
 ## Notlar
 
-- Oturumlar arası dosya aktarımı oturumda mevcut olmalıdır; olmadığında doğrulama "Cross-session file transfer is not available in this session." hatasıyla başarısız olur.
 - Uzak makinelere aktarımlar ek onay gerektirebilir.
 - Dosya içeriğini okumak gönderimin bir parçasıdır — dosya okuma izin kuralları tarafından devre dışı bırakılmışsa reddedilir.

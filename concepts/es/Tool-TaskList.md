@@ -12,6 +12,12 @@ Devuelve cada tarea del equipo (o sesión) actual en forma resumida. Úsala para
 
 `TaskList` es de solo lectura y económico; llámalo libremente cuando necesites una visión general.
 
+## Activación
+
+- Disponible por defecto en la mayoría de los modelos.
+- No disponible en las familias Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 y posteriores (v2.1.233+) salvo que se active explícitamente mediante `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` o `--tools`.
+- Todo el sistema de tareas se desactiva cuando `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parámetros
 
 `TaskList` no recibe parámetros. Siempre devuelve el conjunto completo de tareas del contexto activo.

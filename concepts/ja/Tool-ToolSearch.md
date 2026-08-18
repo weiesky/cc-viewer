@@ -10,6 +10,11 @@
 
 ツールのスキーマがすでにコンテキストにある場合は、再度検索しないでください — そのまま呼び出してください。
 
+## 有効化
+
+- デフォルトでオンです。
+- `ANTHROPIC_BASE_URL` が非 Anthropic エンドポイントを指している場合 (`ENABLE_TOOL_SEARCH` が設定されていない限り)、`CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` が設定されている場合、モデルがツール参照をサポートしていない場合 (Claude 4.5 より前の Vertex AI モデル)、または `"deny": ["ToolSearch"]` で拒否されている場合はオフになります。
+
 ## パラメータ
 
 - `query` (string, required): 遅延ツールを特定するために使用するクエリ。3 つの形式がサポートされています:

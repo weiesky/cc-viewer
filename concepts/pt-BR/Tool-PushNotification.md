@@ -14,6 +14,12 @@ Envia uma notificação na área de trabalho a partir da sessão atual do Claude
 
 Não envie uma notificação para atualizações de progresso rotineiras durante uma tarefa, nem para confirmar que respondeu algo que o usuário claramente acabou de perguntar e está aguardando. Não notifique quando uma tarefa curta é concluída — se o usuário acabou de enviá-la e está esperando, a notificação não agrega valor e corrói a confiança nas notificações futuras. Incline-se fortemente para não enviar.
 
+## Ativação
+
+- Desativado por padrão (feature flag do lado do servidor).
+- A entrega roda através da infraestrutura hospedada pela Anthropic — não disponível no Amazon Bedrock, no Claude Platform on AWS, no Google Cloud ou no Microsoft Foundry.
+- Push para o telefone adicionalmente requer um cliente de Remote Control conectado.
+
 ## Parâmetros
 
 - `message` (string, obrigatório): o corpo da notificação. Mantenha abaixo de 200 caracteres; sistemas operacionais móveis truncam strings mais longas. Comece com o que o usuário agiria: "build failed: 2 auth tests" é mais útil do que "task complete".

@@ -10,6 +10,11 @@
 - 사용자 프롬프트 없이 자율 루프를 실행할 때 — 리터럴 센티널 `<<autonomous-loop-dynamic>>`을 `prompt`로 전달
 - 곧 상태가 변경될 프로세스를 폴링할 때 (짧은 지연으로 캐시를 워밍 상태로 유지)
 
+## 활성화
+
+- Amazon Bedrock, AWS의 Claude Platform, Google Cloud Agent Platform, Microsoft Foundry에서는 사용할 수 없습니다.
+- 기능 플래그 가져오기가 비활성화된 경우에도 꺼집니다(텔레메트리/트래픽 환경 변수).
+
 ## 매개변수
 
 - `delaySeconds` (숫자, 필수): 재개까지의 초 단위 시간. 런타임이 값을 자동으로 `[60, 3600]` 범위로 클램프하므로 직접 클램프할 필요가 없습니다.

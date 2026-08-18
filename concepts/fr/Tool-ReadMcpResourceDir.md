@@ -7,6 +7,10 @@ Liste les entrées d'une ressource de type répertoire exposée par un serveur M
 - Un serveur MCP organise ses ressources de façon hiérarchique et vous devez énumérer un niveau de cette hiérarchie.
 - Vous voulez parcourir avant de lire des ressources individuelles avec `ReadMcpResource`.
 
+## Activation
+
+- Toujours activé, mais non exposé à la liste d'outils du modèle — destiné à une utilisation thin-client / sidecar.
+
 ## Paramètres
 
 - `server` (string, requis) : le nom du serveur MCP.

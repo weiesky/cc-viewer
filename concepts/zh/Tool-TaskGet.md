@@ -12,6 +12,12 @@
 
 仅需高层次扫视时优先使用 `TaskList`；要仔细阅读或修改特定记录时才使用 `TaskGet`。
 
+## 启用方式
+
+- 在大多数模型上默认可用。
+- 在 Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 及更高版本家族（v2.1.233+）上不可用，除非通过 `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`、`--allowedTools` 或 `--tools` 选择启用。
+- 当 `CLAUDE_CODE_ENABLE_TASKS=false` 时，整个任务系统被禁用。
+
 ## 参数
 
 - `taskId` (string, 必填)：由 `TaskCreate` 或 `TaskList` 返回的任务标识符。ID 在任务生命周期内稳定。

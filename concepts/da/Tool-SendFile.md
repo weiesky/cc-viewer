@@ -7,6 +7,11 @@ Sender en eller flere filer til en anden Claude Code-session — en peer, der er
 - En peer-session har brug for en fil fra din arbejdsmappe (en rapport, en patch, en fixture) for at fortsætte sin egen opgave.
 - Du koordinerer arbejde på tværs af sessioner og vil overdrage artefakter, ikke bare tekst (brug `SendMessage` til tekst).
 
+## Aktivering
+
+- Filoverførsel på tværs af sessioner skal være tilgængelig i sessionen; når den ikke er, fejler valideringen med "Cross-session file transfer is not available in this session."
+- Gated af de samme betingelser for beskeder på tværs af sessioner som `ListAgents` (server-side feature-flags, slået fra som standard).
+
 ## Parametre
 
 - `to` (string, påkrævet): Modtager — et peer-sessionsnavn fra `ListAgents` eller en eksplicit `uds:<socket>` / `bridge:<session id>`-adresse.
@@ -27,6 +32,5 @@ SendFile(
 
 ## Noter
 
-- Filoverførsel på tværs af sessioner skal være tilgængelig i sessionen; når den ikke er, fejler valideringen med "Cross-session file transfer is not available in this session."
 - Overførsler til fjerne maskiner kan kræve yderligere godkendelse.
 - At læse filindholdet er en del af afsendelsen — afvist, hvis fillæsning er deaktiveret af tilladelsesregler.

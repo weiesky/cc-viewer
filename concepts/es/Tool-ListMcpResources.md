@@ -7,6 +7,10 @@ Lista los recursos expuestos por los servidores MCP conectados, opcionalmente fi
 - Necesitas descubrir qué recursos (archivos, registros, documentos) ofrece un servidor MCP antes de leerlos.
 - Quieres una vista general de todos los recursos de todos los servidores conectados.
 
+## Activación
+
+- Siempre habilitado, pero no expuesto en la lista de herramientas del modelo — pensado para uso thin-client / sidecar.
+
 ## Parámetros
 
 - `server` (string, opcional): Nombre del servidor por el que filtrar los recursos. Omítelo para listar recursos de todos los servidores conectados.

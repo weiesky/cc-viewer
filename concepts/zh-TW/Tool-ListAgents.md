@@ -7,6 +7,13 @@
 - 在傳送訊息之前，你需要同儕工作階段或 SubAgent 的確切名稱。
 - 你想查看目前哪些工作階段可從此處連線。
 
+## 啟用方式
+
+- 需要 Claude Code 2.1.224+ 與跨工作階段傳訊（伺服器端功能旗標，預設關閉）。
+- 跨工作階段傳訊在 Amazon Bedrock、Claude Platform on AWS、Google Cloud Agent Platform 與 Microsoft Foundry 上不可用。
+- 當 `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`、`DISABLE_TELEMETRY`、`DO_NOT_TRACK` 或 `DISABLE_GROWTHBOOK` 任一被設定時關閉。
+- 以 `CLAUDE_CODE_HARBOR_KITE=1` 強制啟用。
+
 ## 參數
 
 - `channel`（string，選填）：此建置中不可用；保持未設定。
@@ -26,4 +33,3 @@ ListAgents()
 
 - 唯讀且並行安全。
 - 雲端工作階段會收到你的訊息，但尚無法回傳訊息——請在其自己的逐字稿中閱讀其回答。
-- 可用性取決於工作階段設定（跨工作階段傳訊是受門控的功能）。

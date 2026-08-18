@@ -14,6 +14,12 @@
 
 不要在任务进行中发送常规进度更新通知，也不要在回答用户刚刚提出、显然还在等待的问题时发送通知。短任务完成时不要通知——如果用户刚提交并在等待，通知没有任何价值，反而会削弱对后续通知的信任。强烈建议默认不发送。
 
+## 启用方式
+
+- 默认关闭（服务端功能开关）。
+- 投递经由 Anthropic 托管的基础设施——在 Amazon Bedrock、Claude Platform on AWS、Google Cloud 或 Microsoft Foundry 上不可用。
+- 手机推送还需要连接 Remote Control 客户端。
+
 ## 参数
 
 - `message`（字符串，必填）：通知正文。保持在 200 个字符以内；移动操作系统会截断超长字符串。以用户会采取行动的内容开头："build failed: 2 auth tests" 比 "task complete" 更有用。

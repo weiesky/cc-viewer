@@ -7,6 +7,10 @@ Wyświetla wpisy katalogowego zasobu udostępnianego przez podłączony serwer M
 - Serwer MCP organizuje zasoby hierarchicznie, a Ty musisz wyliczyć jeden poziom tej hierarchii.
 - Chcesz przeglądać, zanim odczytasz poszczególne zasoby za pomocą `ReadMcpResource`.
 
+## Aktywacja
+
+- Zawsze włączone, ale nieujawniane na liście narzędzi modelu — przeznaczone do użytku w cienkim kliencie / sidecar.
+
 ## Parametry
 
 - `server` (string, wymagany): Nazwa serwera MCP.

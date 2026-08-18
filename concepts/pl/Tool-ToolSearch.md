@@ -10,6 +10,11 @@ Pobiera na żądanie pełne definicje schematów „odroczonych narzędzi", aby 
 
 Jeśli schemat narzędzia jest już w kontekście, nie szukaj ponownie — po prostu je wywołaj.
 
+## Aktywacja
+
+- Domyślnie włączone.
+- Wyłączone, gdy `ANTHROPIC_BASE_URL` wskazuje na punkt końcowy inny niż Anthropic (chyba że ustawione jest `ENABLE_TOOL_SEARCH`), gdy ustawione jest `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`, gdy model nie obsługuje odwołań do narzędzi (modele Vertex AI sprzed Claude 4.5) lub gdy zablokowane przez `"deny": ["ToolSearch"]`.
+
 ## Parametry
 
 - `query` (string, wymagany): Zapytanie używane do zlokalizowania odroczonych narzędzi. Obsługiwane są trzy formy:

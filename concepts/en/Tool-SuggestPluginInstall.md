@@ -6,6 +6,12 @@ Renders an inline plugin install card from `SearchPlugins` results, tying plugin
 
 - A plugin search surfaced plugins that match what the user is trying to do, and you want to offer them for installation.
 
+## Activation
+
+- Only when a Remote Control client is connected, or the session runs in a managed cloud environment.
+- Disabled under HIPAA enterprise configurations.
+- Not in brief mode.
+
 ## Parameters
 
 - `contextLabel` (string, required): Short header tying the suggestion to the user request (max 128 characters).
@@ -31,4 +37,3 @@ The card is rendered for the user; enabling the plugin happens out of band. Call
 ## Notes
 
 - Only include plugins that came from search results — never invent plugin entries.
-- Disabled under HIPAA enterprise configurations.

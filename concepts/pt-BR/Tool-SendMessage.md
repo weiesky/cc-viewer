@@ -10,6 +10,11 @@ Entrega uma mensagem de um membro da equipe para outro dentro de uma equipe ativ
 - Responder a um prompt de protocolo, como um pedido de encerramento ou um pedido de aprovação de plano do líder da equipe.
 - Fechar o ciclo ao final de uma tarefa delegada para que o líder possa marcar o item como completo.
 
+## Ativação
+
+- Gated pelas mesmas condições de mensagens entre sessões que `ListAgents` (feature flags do lado do servidor, desativadas por padrão).
+- Colegas de equipe adicionalmente exigem que os agent teams experimentais estejam habilitados.
+
 ## Parâmetros
 
 - `to` (string, obrigatório): O `name` do colega de equipe alvo registrado na equipe, ou `*` para fazer broadcast para todos os colegas de uma vez.

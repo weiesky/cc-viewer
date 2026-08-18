@@ -7,6 +7,12 @@ Wysyła jeden lub więcej plików do użytkownika — wygenerowane artefakty, zr
 - Wygenerowałeś plik, którego użytkownik potrzebuje (raport, obraz, stronę HTML) i chcesz go pokazać, a nie tylko wspomnieć o jego ścieżce.
 - Odpowiadanie z załącznikiem (`status="normal"`) lub proaktywne pokazywanie czegoś, o co użytkownik nie prosił, ale co musi teraz zobaczyć (`status="proactive"`).
 
+## Aktywacja
+
+- Dostępne tylko wtedy, gdy podłączony jest klient Remote Control lub sesja działa w zarządzanym środowisku chmurowym (np. Claude Code w przeglądarce).
+- Niedostępne na Amazon Bedrock, Google Cloud i Microsoft Foundry.
+- Wymaga, aby sesja zezwalała na wysyłanie plików (możliwość bramkowana ustawieniami/funkcjami); nieoferowane w trybie brief.
+
 ## Parametry
 
 - `files` (tablica stringów, wymagany): Ścieżki plików (bezwzględne lub względem katalogu roboczego) do wysłania do użytkownika. Zawsze przekazuj tablicę, nawet dla pojedynczego pliku.
@@ -29,5 +35,4 @@ SendUserFile(
 
 ## Uwagi
 
-- Wymaga, aby sesja zezwalała na wysyłanie plików (możliwość bramkowana ustawieniami/funkcjami); nieoferowana w trybie brief.
 - Wybierz `display="attach"` dla plików, które użytkownik zapisuje i otwiera w innej aplikacji; `render` dla wszystkiego, co powinien obejrzeć od razu.

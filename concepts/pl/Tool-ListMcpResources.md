@@ -7,6 +7,10 @@ Wyświetla zasoby udostępniane przez podłączone serwery MCP, opcjonalnie filt
 - Musisz odkryć, jakie zasoby (pliki, rekordy, dokumenty) oferuje serwer MCP, zanim je odczytasz.
 - Chcesz przegląd wszystkich zasobów ze wszystkich podłączonych serwerów.
 
+## Aktywacja
+
+- Zawsze włączone, ale nieujawniane na liście narzędzi modelu — przeznaczone do użytku w cienkim kliencie / sidecar.
+
 ## Parametry
 
 - `server` (string, opcjonalny): Nazwa serwera, według której filtrować zasoby. Pomiń, aby wyświetlić zasoby ze wszystkich podłączonych serwerów.

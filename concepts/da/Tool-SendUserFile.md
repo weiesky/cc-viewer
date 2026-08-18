@@ -7,6 +7,12 @@ Sender en eller flere filer til brugeren — genererede artefakter, skærmbilled
 - Du har produceret en fil, brugeren har brug for (en rapport, et billede, en HTML-side), og vil vise den frem, ikke bare nævne dens sti.
 - At svare med en vedhæftning (`status="normal"`) eller proaktivt vise noget frem, brugeren ikke har bedt om, men har brug for at se nu (`status="proactive"`).
 
+## Aktivering
+
+- Kun tilgængelig, når en Remote Control-klient er forbundet, eller sessionen kører i et administreret cloud-miljø (f.eks. Claude Code på nettet).
+- Ikke tilgængelig på Amazon Bedrock, Google Cloud eller Microsoft Foundry.
+- Kræver, at sessionen tillader afsendelse af filer (en settings-/feature-gated kapacitet); tilbydes ikke i brief-tilstand.
+
 ## Parametre
 
 - `files` (array af strings, påkrævet): Filstier (absolutte eller relative i forhold til cwd), der skal sendes til brugeren. Send altid et array, selv for en enkelt fil.
@@ -29,5 +35,4 @@ SendUserFile(
 
 ## Noter
 
-- Kræver, at sessionen tillader afsendelse af filer (en settings-/feature-gated kapacitet); tilbydes ikke i brief-tilstand.
 - Vælg `display="attach"` til filer, brugeren gemmer og åbner i en anden app; `render` til alt, de bør se på med det samme.

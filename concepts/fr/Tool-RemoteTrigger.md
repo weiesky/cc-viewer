@@ -10,6 +10,13 @@ Appelle l'API de déclencheurs distants de claude.ai pour gérer l'exécution de
 - Lister ou auditer tous les déclencheurs actuels pour examiner leur configuration et leur état
 - Mettre à jour les paramètres d'un déclencheur, tels que le calendrier, la charge utile ou la description, sans avoir à le recréer
 
+## Activation
+
+- Nécessite un forfait claude.ai Pro, Max, Team ou Enterprise.
+- Non disponible sur Amazon Bedrock, Claude Platform on AWS, Google Cloud ou Microsoft Foundry.
+- Nécessite des drapeaux de fonctionnalité côté serveur et les paramètres de politique `allow_remote_sessions` / `allow_routines`.
+- Pas pour les sessions distantes elles-mêmes.
+
 ## Paramètres
 
 - `action` (string, requis) : l'opération à effectuer — l'une des valeurs `list`, `get`, `create`, `update` ou `run`

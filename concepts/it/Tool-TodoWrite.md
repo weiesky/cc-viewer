@@ -8,6 +8,11 @@ Scrive una lista todo strutturata per la sessione corrente, sostituendo la lista
 - L'utente chiede esplicitamente una lista todo.
 - Vuoi marcare esattamente una voce come in corso mentre le altre restano in attesa o completate.
 
+## Attivazione
+
+- Strumento legacy: disabilitato per default nelle sessioni che offrono gli strumenti Task (`TaskCreate`, `TaskUpdate`, `TaskList`).
+- Riabilitalo con `CLAUDE_CODE_ENABLE_TASKS=0`.
+
 ## Parametri
 
 - `todos` (array, obbligatorio): La lista todo completa aggiornata. Ogni voce contiene:

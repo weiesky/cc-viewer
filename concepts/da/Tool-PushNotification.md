@@ -14,6 +14,12 @@ Sender en skrivebordsnotifikation fra den aktuelle Claude Code-session. Hvis Rem
 
 Send ikke en notifikation for rutinemæssige statusopdateringer midt i en opgave eller for at bekræfte, at du har besvaret noget, som brugeren tydeligvis netop har spurgt om og stadig venter på. Giv ikke besked, når en kort opgave er færdig — hvis brugeren netop har indsendt den og venter, tilføjer en notifikation ingen værdi og underminerer tilliden til fremtidige notifikationer. Hold dig stærkt til ikke at sende.
 
+## Aktivering
+
+- Slået fra som standard (server-side feature-flag).
+- Levering kører gennem Anthropic-hostet infrastruktur — ikke tilgængelig på Amazon Bedrock, Claude Platform on AWS, Google Cloud eller Microsoft Foundry.
+- Telefon-push kræver desuden en forbundet Remote Control-klient.
+
 ## Parametre
 
 - `message` (streng, påkrævet): notifikationens brødtekst. Hold den under 200 tegn; mobile operativsystemer afskærer længere strenge. Begynd med det, brugeren vil handle på: "build failed: 2 auth tests" er mere nyttigt end "task complete".

@@ -10,6 +10,11 @@ Consegna un messaggio da un membro del team a un altro all'interno di un team at
 - Rispondere a un prompt di protocollo come una richiesta di shutdown o una richiesta di approvazione del piano dal team leader.
 - Chiudere il cerchio alla fine di un compito delegato così che il leader possa marcare l'elemento come completato.
 
+## Attivazione
+
+- Gated dalle stesse condizioni di messaggistica tra sessioni di `ListAgents` (feature flag lato server, disattivati per default).
+- I teammate richiedono inoltre l'abilitazione dei team di agenti sperimentali.
+
 ## Parametri
 
 - `to` (string, obbligatorio): Il `name` del teammate target come registrato nel team, oppure `*` per trasmettere a tutti i teammate contemporaneamente.

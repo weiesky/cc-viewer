@@ -14,6 +14,12 @@ Wysyła powiadomienie pulpitu z bieżącej sesji Claude Code. Jeśli Remote Cont
 
 Nie wysyłaj powiadomień o rutynowych aktualizacjach postępu w trakcie zadania ani w odpowiedzi na pytanie, które użytkownik właśnie zadał i wyraźnie czeka na odpowiedź. Nie powiadamiaj o zakończeniu krótkich zadań — jeśli użytkownik dopiero je zlecił i czeka, powiadomienie nie ma żadnej wartości i podważa zaufanie do przyszłych powiadomień. Mocno skłaniaj się ku niewysy&#322;aniu.
 
+## Aktywacja
+
+- Domyślnie wyłączone (flaga funkcji po stronie serwera).
+- Dostarczanie działa przez infrastrukturę hostowaną przez Anthropic — niedostępne na Amazon Bedrock, Claude Platform on AWS, Google Cloud i Microsoft Foundry.
+- Push na telefon dodatkowo wymaga podłączonego klienta Remote Control.
+
 ## Parametry
 
 - `message` (ciąg znaków, wymagany): treść powiadomienia. Utrzymuj poniżej 200 znaków; mobilne systemy operacyjne obcinają dłuższe ciągi. Zacznij od tego, na co użytkownik będzie reagował: "build failed: 2 auth tests" jest bardziej przydatne niż "task complete".

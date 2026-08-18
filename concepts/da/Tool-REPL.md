@@ -8,6 +8,12 @@ Udfører JavaScript i en vedvarende Node.js vm-kontekst inde i sessionen. Top-ni
 - Flertrins-scripting, hvor mellemliggende tilstand skal vedvare mellem kald (tællere, akkumulerede resultater).
 - At afprøve et API's eller biblioteks opførsel interaktivt, før du skriver det ind i en fil.
 
+## Aktivering
+
+- Slået fra som standard — sæt `CLAUDE_CODE_REPL=true` for at aktivere det.
+- I terminal- (`cli`) og claude.ai-sessioner (`remote`) kan et server-side feature-flag også aktivere det.
+- Når det er slået fra, er REPL udeladt af modellens værktøjsliste. Når det er slået til, erstattes `Read`, `Glob`, `Grep`, `Bash`, `PowerShell` og `NotebookEdit` af REPL-forkortelser.
+
 ## Parametre
 
 - `code` (string, påkrævet): JavaScript-kode, der skal udføres. Understøtter top-niveau await. Tilstand vedvarer på tværs af kald.

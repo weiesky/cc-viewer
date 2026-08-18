@@ -8,6 +8,12 @@
 - 多步驟腳本作業，其中間狀態需要在呼叫之間保留（計數器、累積結果）。
 - 在寫入檔案之前，以互動方式探查 API 或函式庫的行為。
 
+## 啟用方式
+
+- 預設關閉——設定 `CLAUDE_CODE_REPL=true` 即可啟用。
+- 在終端機（`cli`）與 claude.ai（`remote`）工作階段中，伺服器端功能旗標也可能將其啟用。
+- 關閉時，REPL 會從模型的工具清單中隱藏。開啟時，`Read`、`Glob`、`Grep`、`Bash`、`PowerShell` 與 `NotebookEdit` 會被 REPL 簡寫取代。
+
 ## 參數
 
 - `code`（string，必填）：要執行的 JavaScript 程式碼。支援頂層 await。狀態在呼叫之間持續保留。

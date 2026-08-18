@@ -10,6 +10,12 @@ Udfører en live websøgning og returnerer rangerede resultater, som assistenten
 - Verificere et faktum, der kan have ændret sig, siden modellen blev trænet.
 - Opdage flere perspektiver på et emne, før du henter en enkelt side med `WebFetch`.
 
+## Aktivering
+
+- Tilgængelighed afhænger af udbyder og model: tilgængelig på Anthropic API og Claude Platform on AWS; på Microsoft Foundry kræver det en Anthropic-hostet deployment; på Google Cloud virker det med Claude 4+-modeller.
+- Ikke tilgængelig på Amazon Bedrock.
+- Sæt loft på 200 kald pr. session med `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION`.
+
 ## Parametre
 
 - `query` (string, påkrævet): Søgeforespørgslen. Minimum længde 2 tegn. Inkludér det aktuelle år, når du spørger om "nyeste" eller "seneste" information, så resultaterne er friske.

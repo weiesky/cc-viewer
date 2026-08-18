@@ -6,6 +6,10 @@ Opløser fulde connector-nyttelaster for `directoryUuid`-værdier returneret af 
 
 - Efter at `SearchMcpRegistry` returnerer kandidat-connectors, for at hente deres fulde detaljer til præsentation.
 
+## Aktivering
+
+- Kun tilgængelig i remote-sessioner (claude.ai) på first-party-API'et.
+
 ## Parametre
 
 - `uuids` (array af strings, påkrævet): `directoryUuid`- eller `server_id`-værdier at opløse. 1-32 elementer, hver 1-64 tegn.
@@ -22,4 +26,3 @@ SuggestConnectors(uuids=["d290f1ee-6c54-4b01-90e6-d701748f0851", "a1b2c3d4-0000-
 
 - Gæt aldrig UUID'er — opløs kun identifikatorer, der kom tilbage fra `SearchMcpRegistry`.
 - Værktøjet forbinder intet selv; aktivering af en connector sker uden for værktøjet.
-- Kun tilgængelig i remote-sessioner (claude.ai) på first-party-API'et.

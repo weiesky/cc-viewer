@@ -7,6 +7,11 @@ Elenca i plugin claude.ai abilitati dell'utente, opzionalmente filtrati per paro
 - Devi sapere quali plugin sono già abilitati — ad esempio, per confermare cosa è stato installato dopo una scheda di `SuggestPluginInstall`.
 - L'utente chiede quali plugin ha.
 
+## Attivazione
+
+- Richiede il permesso di accesso al registro dei plugin.
+- La disponibilità dipende dal tipo di sessione e dal feature rollout — disabilitato negli ambienti HIPAA, sempre disponibile nelle sessioni remote.
+
 ## Parametri
 
 - `keywords` (array of strings, opzionale): Filtra l'elenco — fino a 8 elementi, ciascuno di 1–64 caratteri. Ometti per elencare tutto.
@@ -28,4 +33,3 @@ ListPlugins(keywords=["figma"])
 ## Note
 
 - Se il catalogo dei plugin è irraggiungibile (forbidden), il tool degrada a un elenco vuoto con un avviso invece di fallire.
-- La disponibilità dipende dal tipo di sessione e dal feature rollout.

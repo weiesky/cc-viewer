@@ -7,6 +7,11 @@ Kullanıcının etkin claude.ai eklentilerini listeler; isteğe bağlı olarak a
 - Hangi eklentilerin zaten etkin olduğunu bilmeniz gerekiyor — örneğin, bir `SuggestPluginInstall` kartından sonra neyin yüklendiğini doğrulamak için.
 - Kullanıcı hangi eklentilere sahip olduğunu sorar.
 
+## Etkinleştirme
+
+- Eklenti kayıt defteri erişim izni gerektirir.
+- Kullanılabilirlik oturum türüne ve özellik dağıtımına bağlıdır — HIPAA ortamlarında devre dışıdır, uzak oturumlarda her zaman kullanılabilir.
+
 ## Parametreler
 
 - `keywords` (string dizisi, opsiyonel): Listeyi filtreleyin — en fazla 8 öğe, her biri 1–64 karakter. Her şeyi listelemek için atlayın.
@@ -28,4 +33,3 @@ ListPlugins(keywords=["figma"])
 ## Notlar
 
 - Eklenti kataloğuna erişilemezse (yasaklı), araç başarısız olmak yerine bir uyarıyla boş bir listeye düşer.
-- Kullanılabilirlik oturum türüne ve özellik dağıtımına bağlıdır.

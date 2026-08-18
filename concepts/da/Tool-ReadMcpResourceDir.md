@@ -7,6 +7,10 @@ Lister posterne i en mappeagtig resource, der eksponeres af en forbundet MCP-ser
 - En MCP-server organiserer ressourcer hierarkisk, og du har brug for at optælle ét niveau af det hierarki.
 - Du vil browse, før du læser individuelle ressourcer med `ReadMcpResource`.
 
+## Aktivering
+
+- Altid aktiveret, men ikke eksponeret for modellens værktøjsliste — beregnet til thin-client / sidecar-brug.
+
 ## Parametre
 
 - `server` (string, påkrævet): MCP-serverens navn.

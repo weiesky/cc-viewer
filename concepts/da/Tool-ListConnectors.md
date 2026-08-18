@@ -7,6 +7,10 @@ Lister de MCP-connectors, der er installeret til brugerens claude.ai-organisatio
 - Du har brug for at vide, hvilke connectors der allerede er installeret, før du foreslår nye.
 - Brugeren spørger, hvilke integrationer deres organisation har.
 
+## Aktivering
+
+- Kun tilgængelig i remote-sessioner (claude.ai) på first-party-API'et.
+
 ## Parametre
 
 - `keywords` (array af strings, valgfri): Filtrer listen — op til 8 elementer, hver 1-64 tegn. Udelad for at liste alt.
@@ -27,5 +31,4 @@ ListConnectors(keywords=["github"])
 
 ## Noter
 
-- Kun tilgængelig i remote-sessioner (claude.ai) på first-party-API'et.
 - Par med `SearchMcpRegistry` (opdagelse) og `SuggestConnectors` (detaljer) for hele find-og-aktivér-forløbet.

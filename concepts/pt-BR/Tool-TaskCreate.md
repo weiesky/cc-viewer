@@ -12,6 +12,12 @@ Cria uma nova tarefa na lista de tarefas da equipe atual (ou na lista de tarefas
 
 Evite `TaskCreate` para ações triviais de passo único, conversa pura ou qualquer coisa que possa ser concluída em duas ou três chamadas diretas de ferramenta.
 
+## Ativação
+
+- Disponível por padrão na maioria dos modelos.
+- Não disponível no Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 e famílias posteriores (v2.1.233+) a menos que seja habilitado via `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` ou `--tools`.
+- Todo o sistema de tarefas é desativado quando `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parâmetros
 
 - `subject` (string, obrigatório): Título curto imperativo, por exemplo `Fix login redirect on Safari`. Mantenha abaixo de cerca de oitenta caracteres.

@@ -6,6 +6,12 @@ Rendert eine Inline-Pluginkarte zur Installation aus `SearchPlugins`-Ergebnissen
 
 - Eine Plugin-Suche hat Plugins zutage gefördert, die zu dem passen, was der Benutzer vorhat, und Sie möchten sie zur Installation anbieten.
 
+## Aktivierung
+
+- Nur wenn ein Remote-Control-Client verbunden ist oder die Sitzung in einer verwalteten Cloud-Umgebung läuft.
+- Unter HIPAA-Enterprise-Konfigurationen deaktiviert.
+- Nicht im Brief-Modus.
+
 ## Parameter
 
 - `contextLabel` (string, erforderlich): Kurze Überschrift, die den Vorschlag mit der Benutzeranfrage verknüpft (maximal 128 Zeichen).
@@ -31,4 +37,3 @@ Die Karte wird für den Benutzer gerendert; das Aktivieren des Plugins erfolgt s
 ## Hinweise
 
 - Nehmen Sie nur Plugins auf, die aus Suchergebnissen stammen – erfinden Sie niemals Plugin-Einträge.
-- Unter HIPAA-Enterprise-Konfigurationen deaktiviert.

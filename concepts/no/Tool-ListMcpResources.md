@@ -7,6 +7,10 @@ Lister ressursene eksponert av tilkoblede MCP-servere, eventuelt filtrert til é
 - Du må oppdage hvilke ressurser (filer, poster, dokumenter) en MCP-server tilbyr før du leser dem.
 - Du vil ha en oversikt over alle ressurser på tvers av alle tilkoblede servere.
 
+## Aktivering
+
+- Alltid aktivert, men ikke eksponert for modellens verktøyliste — ment for thin-client / sidecar-bruk.
+
 ## Parametere
 
 - `server` (string, valgfri): Servernavn å filtrere ressurser etter. Utelat for å liste ressurser fra alle tilkoblede servere.

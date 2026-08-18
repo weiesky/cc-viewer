@@ -10,6 +10,11 @@
 
 หาก schema ของเครื่องมืออยู่ใน context อยู่แล้ว อย่าค้นหาซ้ำ — แค่เรียกใช้มันได้เลย
 
+## การเปิดใช้งาน
+
+- เปิดตามค่าเริ่มต้น
+- ปิดเมื่อ `ANTHROPIC_BASE_URL` ชี้ไปยัง endpoint ที่ไม่ใช่ของ Anthropic (เว้นแต่ตั้งค่า `ENABLE_TOOL_SEARCH`), เมื่อตั้งค่า `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`, เมื่อโมเดลไม่รองรับ tool-reference (โมเดล Vertex AI ก่อน Claude 4.5), หรือเมื่อถูกปฏิเสธผ่าน `"deny": ["ToolSearch"]`
+
 ## พารามิเตอร์
 
 - `query` (string, required): query ที่ใช้ระบุตำแหน่ง deferred tools รองรับสามรูปแบบ:

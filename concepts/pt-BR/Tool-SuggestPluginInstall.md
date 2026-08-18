@@ -6,6 +6,12 @@ Renderiza um card inline de instalação de plugin a partir de resultados de `Se
 
 - Uma busca de plugins trouxe à tona plugins que correspondem ao que o usuário está tentando fazer, e você quer oferecê-los para instalação.
 
+## Ativação
+
+- Somente quando um cliente de Remote Control está conectado, ou quando a sessão roda em um ambiente de nuvem gerenciado.
+- Desabilitado sob configurações empresariais HIPAA.
+- Não disponível no modo brief.
+
 ## Parâmetros
 
 - `contextLabel` (string, obrigatório): Cabeçalho curto vinculando a sugestão ao pedido do usuário (máximo de 128 caracteres).
@@ -31,4 +37,3 @@ O card é renderizado para o usuário; habilitar o plugin acontece out of band. 
 ## Observações
 
 - Inclua apenas plugins que vieram de resultados de busca — nunca invente entradas de plugin.
-- Desabilitado sob configurações empresariais HIPAA.

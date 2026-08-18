@@ -7,6 +7,10 @@ Elenca le voci di una risorsa in stile directory esposta da un server MCP connes
 - Un server MCP organizza le risorse gerarchicamente e devi enumerare un livello di quella gerarchia.
 - Vuoi navigare prima di leggere singole risorse con `ReadMcpResource`.
 
+## Attivazione
+
+- Sempre abilitato, ma non esposto all'elenco degli strumenti del modello — pensato per l'uso thin-client / sidecar.
+
 ## Parametri
 
 - `server` (string, obbligatorio): Il nome del server MCP.

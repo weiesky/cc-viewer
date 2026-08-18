@@ -6,6 +6,12 @@ Affiche une carte d'installation de plugin en ligne à partir des résultats de 
 
 - Une recherche de plugins a fait remonter des plugins qui correspondent à ce que l'utilisateur essaie de faire, et vous voulez les proposer à l'installation.
 
+## Activation
+
+- Uniquement lorsqu'un client Remote Control est connecté, ou lorsque la session s'exécute dans un environnement cloud géré.
+- Désactivé sous les configurations d'entreprise HIPAA.
+- Pas en mode brief.
+
 ## Paramètres
 
 - `contextLabel` (string, requis) : en-tête court reliant la suggestion à la requête de l'utilisateur (max 128 caractères).
@@ -31,4 +37,3 @@ La carte est affichée pour l'utilisateur ; l'activation du plugin se fait hors 
 ## Notes
 
 - N'incluez que les plugins issus des résultats de recherche — n'inventez jamais d'entrées de plugin.
-- Désactivé sous les configurations d'entreprise HIPAA.

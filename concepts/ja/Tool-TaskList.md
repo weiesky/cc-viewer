@@ -12,6 +12,12 @@
 
 `TaskList` は読み取り専用で安価です。概要が必要なときはいつでも自由に呼び出してください。
 
+## 有効化
+
+- ほとんどのモデルでデフォルトで利用可能です。
+- Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 以降のファミリー (v2.1.233+) では、`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`、`--allowedTools`、または `--tools` でオプトインしない限り利用できません。
+- タスクシステム全体は `CLAUDE_CODE_ENABLE_TASKS=false` で無効化されます。
+
 ## パラメータ
 
 `TaskList` はパラメータを取りません。常にアクティブなコンテキストの完全なタスクセットを返します。

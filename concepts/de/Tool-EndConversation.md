@@ -8,6 +8,13 @@ Beendet die aktuelle Unterhaltung und verhindert, dass weitere Nachrichten gesen
 
 Dies ist eine Aktion des letzten Auswegs: Die eigenen Regeln des Tools verlangen, den Benutzer vor der Verwendung zu warnen und zu bestätigen, und es darf niemals in Situationen mit Selbstverletzung oder Schaden verwendet werden.
 
+## Aktivierung
+
+- Erfordert Claude Code 2.1.213+ und ein Modell der Familie Opus 4.8 / Sonnet 5 / Fable 5 oder neuer.
+- Nur interaktive Terminal-Sitzungen – niemals im `--bare`-Modus und niemals für Subagenten verfügbar.
+- Nicht verfügbar auf Amazon Bedrock, Claude Platform on AWS, Vertex AI, Microsoft Foundry oder Cloud-Gateways.
+- Erfordert ein serverseitiges Feature-Flag – die meisten Sitzungen bieten dieses Tool nicht an.
+
 ## Parameter
 
 Dieses Tool nimmt keine Parameter entgegen.

@@ -10,6 +10,12 @@
 - บันทึก dependency ที่เพิ่งค้นพบด้วย `addBlocks` / `addBlockedBy`
 - แนบ `metadata` ที่มีโครงสร้าง เช่น external ticket ID หรือ hint ลำดับความสำคัญ
 
+## การเปิดใช้งาน
+
+- พร้อมใช้งานตามค่าเริ่มต้นในโมเดลส่วนใหญ่
+- ไม่พร้อมใช้งานในตระกูล Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 และใหม่กว่า (v2.1.233+) เว้นแต่เปิดใช้งานผ่าน `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools`, หรือ `--tools`
+- ระบบ task ทั้งหมดถูกปิดใช้งานเมื่อ `CLAUDE_CODE_ENABLE_TASKS=false`
+
 ## พารามิเตอร์
 
 - `taskId` (string, required): Task ที่จะแก้ไข รับจาก `TaskList` หรือ `TaskCreate`

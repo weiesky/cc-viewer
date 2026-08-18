@@ -10,6 +10,11 @@ Recupera bajo demanda las definiciones de esquema completas de las «herramienta
 
 Si el esquema de una herramienta ya está en el contexto, no vuelvas a buscar — simplemente invócala.
 
+## Activación
+
+- Activado por defecto.
+- Se desactiva cuando `ANTHROPIC_BASE_URL` apunta a un endpoint que no es de Anthropic (salvo que `ENABLE_TOOL_SEARCH` esté establecido), cuando `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` está establecido, cuando el modelo carece de soporte de referencia de herramientas (modelos Vertex AI anteriores a Claude 4.5), o cuando se deniega mediante `"deny": ["ToolSearch"]`.
+
 ## Parámetros
 
 - `query` (string, obligatorio): La consulta usada para localizar herramientas diferidas. Se admiten tres formas:

@@ -10,6 +10,13 @@
 - แสดงรายการหรือตรวจสอบทริกเกอร์ปัจจุบันทั้งหมดเพื่อดูการกำหนดค่าและสถานะ
 - อัปเดตการตั้งค่าทริกเกอร์ เช่น กำหนดการ เพย์โหลด หรือคำอธิบาย โดยไม่ต้องสร้างทริกเกอร์ใหม่
 
+## การเปิดใช้งาน
+
+- ต้องใช้แผน claude.ai Pro, Max, Team, หรือ Enterprise
+- ไม่พร้อมใช้งานบน Amazon Bedrock, Claude Platform on AWS, Google Cloud, หรือ Microsoft Foundry
+- ต้องใช้ feature flag ฝั่ง server และการตั้งค่านโยบาย `allow_remote_sessions` / `allow_routines`
+- ไม่ใช้สำหรับ remote sessions เอง
+
 ## พารามิเตอร์
 
 - `action` (string, จำเป็น): การดำเนินการที่จะดำเนินการ — ค่าหนึ่งใน `list`, `get`, `create`, `update` หรือ `run`

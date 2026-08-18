@@ -6,6 +6,10 @@ Résout les charges utiles complètes des connecteurs pour les valeurs `director
 
 - Après que `SearchMcpRegistry` renvoie des connecteurs candidats, pour récupérer leurs détails complets en vue de leur présentation.
 
+## Activation
+
+- Disponible uniquement dans les sessions distantes (claude.ai) sur l'API first-party.
+
 ## Paramètres
 
 - `uuids` (array de strings, requis) : valeurs `directoryUuid` ou `server_id` à résoudre. 1 à 32 éléments, 1 à 64 caractères chacun.
@@ -22,4 +26,3 @@ SuggestConnectors(uuids=["d290f1ee-6c54-4b01-90e6-d701748f0851", "a1b2c3d4-0000-
 
 - Ne devinez jamais les UUID — ne résolvez que les identifiants renvoyés par `SearchMcpRegistry`.
 - L'outil ne connecte rien lui-même ; l'activation d'un connecteur se fait hors bande.
-- Disponible uniquement dans les sessions distantes (claude.ai) sur l'API first-party.

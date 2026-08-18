@@ -6,6 +6,12 @@ Renderuje wbudowaną kartę instalacji wtyczki na podstawie wyników `SearchPlug
 
 - Wyszukiwanie wtyczek pokazało wtyczki pasujące do tego, co użytkownik próbuje zrobić, a Ty chcesz zaoferować je do instalacji.
 
+## Aktywacja
+
+- Tylko wtedy, gdy podłączony jest klient Remote Control lub sesja działa w zarządzanym środowisku chmurowym.
+- Wyłączone w konfiguracjach enterprise HIPAA.
+- Niedostępne w trybie brief.
+
 ## Parametry
 
 - `contextLabel` (string, wymagany): Krótki nagłówek wiążący sugestię z żądaniem użytkownika (maksymalnie 128 znaków).
@@ -31,4 +37,3 @@ Karta jest renderowana dla użytkownika; włączenie wtyczki odbywa się poza ty
 ## Uwagi
 
 - Uwzględniaj tylko wtyczki, które pochodzą z wyników wyszukiwania — nigdy nie wymyślaj wpisów wtyczek.
-- Wyłączone w konfiguracjach enterprise HIPAA.

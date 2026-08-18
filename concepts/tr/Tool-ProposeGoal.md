@@ -8,6 +8,12 @@ Oturum için doğrulanabilir bir tamamlama hedefi önerir. Hedef (varsayılan ol
 - Önemli miktarda iş yapmadan önce kullanıcının "bitti"nin ne anlama geldiğine ilişkin açık onayını istiyorsunuz.
 - Kullanıcının kendi sözleri sonucu zaten ifade etmiştir ve bunun oturum hedefi olarak kaydedilmesini istiyorsunuz.
 
+## Etkinleştirme
+
+- Varsayılan olarak kapalıdır (sunucu tarafı bir özellik bayrağı).
+- Etkileşimli ve arka plan oturumlarından hariç tutulur.
+- `modelProposedGoals: "disabled"` ayar anahtarıyla kapatılır.
+
 ## Parametreler
 
 - `condition` (string, zorunlu): Tamamlama koşulu; ayrı bir değerlendiricinin konuşmadan doğrulayabileceği şekilde yazılır (ör. "all tests in test/auth pass (bun test exits 0)"). En fazla 500 karakter — kullanıcı koşulun tamamını onay iletişim kutusunda okuyabilmelidir.

@@ -6,6 +6,12 @@ Mostra una scheda inline di installazione di plugin dai risultati di `SearchPlug
 
 - Una ricerca di plugin ha fatto emergere plugin che corrispondono a ciò che l'utente sta cercando di fare, e vuoi offrirli per l'installazione.
 
+## Attivazione
+
+- Solo quando un client Remote Control è connesso, o la sessione gira in un ambiente cloud gestito.
+- Disabilitato nelle configurazioni enterprise HIPAA.
+- Non in brief mode.
+
 ## Parametri
 
 - `contextLabel` (string, obbligatorio): Intestazione breve che collega il suggerimento alla richiesta dell'utente (massimo 128 caratteri).
@@ -31,4 +37,3 @@ La scheda viene mostrata all'utente; l'abilitazione del plugin avviene fuori ban
 ## Note
 
 - Includi solo plugin provenienti dai risultati di ricerca — non inventare mai voci di plugin.
-- Disabilitato nelle configurazioni enterprise HIPAA.

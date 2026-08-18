@@ -8,6 +8,11 @@ Mevcut oturum için yapılandırılmış bir todo listesi yazar ve önceki liste
 - Kullanıcı açıkça bir todo listesi ister.
 - Tam olarak bir öğeyi devam ediyor olarak işaretlemek istersiniz; geri kalanı bekliyor veya tamamlandı olarak kalır.
 
+## Etkinleştirme
+
+- Eski araç: Görev araçlarını (`TaskCreate`, `TaskUpdate`, `TaskList`) sunan oturumlarda varsayılan olarak devre dışıdır.
+- `CLAUDE_CODE_ENABLE_TASKS=0` ile yeniden etkinleştirin.
+
 ## Parametreler
 
 - `todos` (dizi, zorunlu): Eksiksiz, güncellenmiş todo listesi. Her girdi şunları içerir:

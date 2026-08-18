@@ -6,6 +6,12 @@ Mostra una scheda di skill autonome che l'utente può aggiungere (skill non anco
 
 - La richiesta dell'utente corrisponde a skill che non ha abilitate (`trigger="user_asked"` quando le ha chieste, `trigger="proactive"` quando suggerisci senza che siano state richieste).
 
+## Attivazione
+
+- Solo quando un client Remote Control è connesso, o la sessione gira in un ambiente cloud gestito.
+- Disabilitato nelle configurazioni enterprise HIPAA.
+- Non in brief mode.
+
 ## Parametri
 
 - `keywords` (array of strings, obbligatorio): Parole chiave sull'argomento tratte dalla richiesta dell'utente. 1–8 elementi, ciascuno di 1–64 caratteri.
@@ -25,4 +31,3 @@ Le skill già abilitate vengono filtrate dal risultato.
 ## Note
 
 - Mostra solo una scheda di suggerimento — l'aggiunta di una skill avviene fuori banda; chiama `ListSkills` in seguito per confermare.
-- Disabilitato nelle configurazioni enterprise HIPAA.

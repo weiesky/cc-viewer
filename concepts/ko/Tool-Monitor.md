@@ -10,6 +10,13 @@
 - 많은 반복에 걸쳐 특정 조건을 기다릴 때 (예: 학습 단계 마일스톤 또는 큐 소진)
 - 단순한 "완료까지 대기"에는 **사용하지 않는다** — 그 경우 `run_in_background`가 있는 `Bash`를 사용하면 프로세스 종료 시 완료 알림이 한 번 전송된다
 
+## 활성화
+
+- 기본적으로 꺼져 있습니다(서버 측 기능 플래그).
+- Amazon Bedrock, Google Cloud, Microsoft Foundry에서는 사용할 수 없습니다.
+- `DISABLE_TELEMETRY` 또는 `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`이 설정되면 꺼집니다.
+- WebSocket 소스에는 Claude Code 2.1.195+가 필요합니다.
+
 ## 매개변수
 
 - `command` (문자열, 필수): 실행할 셸 명령 또는 스크립트. 표준 출력에 쓰인 각 줄이 독립적인 알림 이벤트가 된다. 프로세스가 종료되면 모니터가 끝난다.

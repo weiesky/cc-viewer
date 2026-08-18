@@ -7,6 +7,10 @@ Lista as entradas de um recurso em estilo de diretório exposto por um servidor 
 - Um servidor MCP organiza recursos hierarquicamente e você precisa enumerar um nível dessa hierarquia.
 - Você quer navegar antes de ler recursos individuais com `ReadMcpResource`.
 
+## Ativação
+
+- Sempre habilitado, mas não exposto à lista de ferramentas do modelo — destinado ao uso thin-client / sidecar.
+
 ## Parâmetros
 
 - `server` (string, obrigatório): O nome do servidor MCP.

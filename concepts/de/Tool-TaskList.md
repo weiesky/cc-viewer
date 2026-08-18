@@ -12,6 +12,12 @@ Gibt jede Aufgabe im aktuellen Team (oder der Sitzung) in zusammengefasster Form
 
 `TaskList` ist schreibgeschützt und günstig; rufen Sie es beliebig auf, wann immer Sie einen Überblick benötigen.
 
+## Aktivierung
+
+- Auf den meisten Modellen standardmäßig verfügbar.
+- Nicht verfügbar auf Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 und neueren Familien (v2.1.233+), außer bei Aktivierung über `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` oder `--tools`.
+- Das gesamte Aufgaben-System ist deaktiviert, wenn `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parameter
 
 `TaskList` nimmt keine Parameter entgegen. Es gibt stets die vollständige Aufgabenmenge für den aktiven Kontext zurück.

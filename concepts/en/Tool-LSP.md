@@ -10,6 +10,11 @@ Queries Language Server Protocol (LSP) servers for code intelligence — definit
 - Find implementations of an interface or abstract method (`goToImplementation`)
 - Walk the call hierarchy of a function (`prepareCallHierarchy`, `incomingCalls`, `outgoingCalls`)
 
+## Activation
+
+- Inactive until a code-intelligence plugin for the language is installed (the server binary is installed separately).
+- The tool only appears when an LSP client is connected.
+
 ## Parameters
 
 - `operation` (string, required): one of the operations listed above.

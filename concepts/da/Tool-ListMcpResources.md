@@ -7,6 +7,10 @@ Lister de ressourcer, der eksponeres af forbundne MCP-servere, eventuelt filtrer
 - Du har brug for at opdage, hvilke ressourcer (filer, poster, dokumenter) en MCP-server tilbyder, før du læser dem.
 - Du vil have et overblik over alle ressourcer på tværs af enhver forbundet server.
 
+## Aktivering
+
+- Altid aktiveret, men ikke eksponeret for modellens værktøjsliste — beregnet til thin-client / sidecar-brug.
+
 ## Parametre
 
 - `server` (string, valgfri): Servernavn at filtrere ressourcer efter. Udelad for at liste ressourcer fra alle forbundne servere.

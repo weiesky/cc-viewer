@@ -10,6 +10,11 @@
 - 查找接口或抽象方法的实现（`goToImplementation`）
 - 遍历函数的调用层级（`prepareCallHierarchy`、`incomingCalls`、`outgoingCalls`）
 
+## 启用方式
+
+- 在安装该语言的代码智能插件之前不活动（服务器二进制文件单独安装）。
+- 仅当 LSP 客户端已连接时，此工具才会出现。
+
 ## 参数
 
 - `operation` (string, 必填)：上述操作之一。

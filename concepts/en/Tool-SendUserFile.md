@@ -7,6 +7,12 @@ Sends one or more files to the user — generated artifacts, screenshots, report
 - You produced a file the user needs (a report, an image, an HTML page) and want to surface it, not just mention its path.
 - Replying with an attachment (`status="normal"`), or proactively surfacing something the user hasn't asked for but needs to see now (`status="proactive"`).
 
+## Activation
+
+- Only available when a Remote Control client is connected, or the session runs in a managed cloud environment (e.g. Claude Code on the web).
+- Not available on Amazon Bedrock, Google Cloud, or Microsoft Foundry.
+- Requires the session to allow sending files (a settings/feature-gated capability); not offered in brief mode.
+
 ## Parameters
 
 - `files` (array of strings, required): File paths (absolute or relative to cwd) to send to the user. Always pass an array, even for a single file.
@@ -29,5 +35,4 @@ SendUserFile(
 
 ## Notes
 
-- Requires the session to allow sending files (a settings/feature-gated capability); not offered in brief mode.
 - Choose `display="attach"` for files the user saves and opens in another app; `render` for anything they should look at immediately.

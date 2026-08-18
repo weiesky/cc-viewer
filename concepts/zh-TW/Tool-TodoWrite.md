@@ -8,6 +8,11 @@
 - 使用者明確要求一份待辦清單。
 - 你想將恰好一個項目標記為進行中，其餘保持待辦或已完成。
 
+## 啟用方式
+
+- 舊版工具：在提供 Task 工具（`TaskCreate`、`TaskUpdate`、`TaskList`）的工作階段中預設停用。
+- 以 `CLAUDE_CODE_ENABLE_TASKS=0` 重新啟用。
+
 ## 參數
 
 - `todos`（array，必填）：完整的更新後待辦清單。每個條目包含：

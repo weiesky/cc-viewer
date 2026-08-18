@@ -7,6 +7,12 @@
 - 你產生了使用者需要的檔案（報告、圖片、HTML 頁面），想把它呈現出來，而不只是提及路徑。
 - 以附件回覆（`status="normal"`），或主動呈現使用者尚未要求但現在需要看到的內容（`status="proactive"`）。
 
+## 啟用方式
+
+- 僅在已連線 Remote Control 用戶端，或工作階段執行於受管理的雲端環境（例如網頁版 Claude Code）時可用。
+- 在 Amazon Bedrock、Google Cloud 或 Microsoft Foundry 上不可用。
+- 需要工作階段允許傳送檔案（受設定/功能門控的能力）；brief 模式中不提供。
+
 ## 參數
 
 - `files`（string 陣列，必填）：要傳送給使用者的檔案路徑（絕對路徑或相對於 cwd）。即使是單一檔案也務必傳入陣列。
@@ -29,5 +35,4 @@ SendUserFile(
 
 ## 注意事項
 
-- 需要工作階段允許傳送檔案（受設定/功能門控的能力）；brief 模式中不提供。
 - 使用者會儲存並在其他應用程式中開啟的檔案，選擇 `display="attach"`；任何應立即查看的內容用 `render`。

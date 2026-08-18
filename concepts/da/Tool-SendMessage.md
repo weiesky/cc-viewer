@@ -10,6 +10,11 @@ Leverer en besked fra ét teammedlem til et andet inden for et aktivt team, elle
 - Svare på en protokolforespørgsel som en nedlukningsanmodning eller en plangodkendelsesanmodning fra teamlederen.
 - Afslutte cirklen ved slutningen af en delegeret opgave, så lederen kan markere posten som fuldført.
 
+## Aktivering
+
+- Gated af de samme betingelser for beskeder på tværs af sessioner som `ListAgents` (server-side feature-flags, slået fra som standard).
+- Holdkammerater kræver desuden, at eksperimentelle agentteams er aktiveret.
+
 ## Parametre
 
 - `to` (string, påkrævet): Målholdkammeratens `name`, som registreret i teamet, eller `*` for at broadcaste til alle holdkammerater på én gang.

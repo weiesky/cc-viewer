@@ -8,6 +8,11 @@ Escribe una lista de tareas estructurada para la sesión actual, reemplazando la
 - El usuario pide explícitamente una lista de tareas.
 - Quieres marcar exactamente un elemento como en progreso mientras el resto permanecen pendientes o completados.
 
+## Activación
+
+- Herramienta heredada: desactivada por defecto en sesiones que ofrecen las herramientas de tareas (`TaskCreate`, `TaskUpdate`, `TaskList`).
+- Reactívala con `CLAUDE_CODE_ENABLE_TASKS=0`.
+
 ## Parámetros
 
 - `todos` (array, obligatorio): La lista de tareas completa y actualizada. Cada entrada tiene:

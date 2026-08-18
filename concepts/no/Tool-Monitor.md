@@ -10,6 +10,13 @@ Starter en bakgrunnsmonitor som strømmer hendelser fra et langvarig skript. Hve
 - Vente på en bestemt betingelse over mange iterasjoner (f.eks. en milepæl i et treningssteg eller tømming av en kø)
 - **Ikke** for enkelt "vent til ferdig" — bruk `Bash` med `run_in_background` for det; det sender én fullføringsvarsling når prosessen avsluttes
 
+## Aktivering
+
+- Av som standard (server-side feature-flag).
+- Utilgjengelig på Amazon Bedrock, Google Cloud og Microsoft Foundry.
+- Av når `DISABLE_TELEMETRY` eller `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` er satt.
+- WebSocket-kilden krever Claude Code 2.1.195+.
+
 ## Parametere
 
 - `command` (streng, påkrevd): Shell-kommandoen eller skriptet som skal kjøres. Hver linje skrevet til standardutdata blir en separat varslershendelse. Monitoren avsluttes når prosessen avsluttes.

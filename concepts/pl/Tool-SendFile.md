@@ -7,6 +7,11 @@ Wysyła jeden lub więcej plików do innej sesji Claude Code — sesji równorz�
 - Sesja równorzędna potrzebuje pliku z Twojego katalogu roboczego (raportu, łatki, fixture) do kontynuowania własnego zadania.
 - Koordynujesz pracę między sesjami i chcesz przekazać artefakty, nie tylko tekst (dla tekstu użyj `SendMessage`).
 
+## Aktywacja
+
+- Przesyłanie plików między sesjami musi być dostępne w sesji; gdy nie jest, walidacja kończy się komunikatem "Cross-session file transfer is not available in this session."
+- Bramkowane tymi samymi warunkami wysyłania wiadomości między sesjami co `ListAgents` (flagi funkcji po stronie serwera, domyślnie wyłączone).
+
 ## Parametry
 
 - `to` (string, wymagany): Odbiorca — nazwa sesji równorzędnej z `ListAgents` lub jawny adres `uds:<socket>` / `bridge:<session id>`.
@@ -27,6 +32,5 @@ SendFile(
 
 ## Uwagi
 
-- Przesyłanie plików między sesjami musi być dostępne w sesji; gdy nie jest, walidacja kończy się komunikatem "Cross-session file transfer is not available in this session."
 - Transfery na zdalne maszyny mogą wymagać dodatkowego zatwierdzenia.
 - Odczyt zawartości pliku jest częścią wysyłania — odmówiony, jeśli odczyt plików jest zablokowany przez reguły uprawnień.

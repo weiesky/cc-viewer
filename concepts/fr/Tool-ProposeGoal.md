@@ -8,6 +8,12 @@ Propose un objectif d'achèvement vérifiable pour la session. L'objectif est mo
 - Vous voulez l'accord explicite de l'utilisateur sur ce que « terminé » signifie avant d'entreprendre un travail substantiel.
 - Les propres mots de l'utilisateur ont déjà énoncé le résultat et vous voulez qu'il soit enregistré comme objectif de session.
 
+## Activation
+
+- Désactivé par défaut (drapeau de fonctionnalité côté serveur).
+- Exclu des sessions interactives et en arrière-plan.
+- Désactivé par la clé de paramètres `modelProposedGoals: "disabled"`.
+
 ## Paramètres
 
 - `condition` (string, requis) : la condition d'achèvement, écrite de sorte qu'un évaluateur distinct puisse la vérifier à partir de la conversation (p. ex. "all tests in test/auth pass (bun test exits 0)"). Au maximum 500 caractères — l'utilisateur doit pouvoir lire la condition entière dans la boîte de dialogue d'approbation.

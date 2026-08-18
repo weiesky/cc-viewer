@@ -8,6 +8,12 @@ Propone una meta de finalización verificable para la sesión. La meta se muestr
 - Quieres la aprobación explícita del usuario sobre qué significa "hecho" antes de hacer trabajo sustancial.
 - Las propias palabras del usuario ya expresaron el resultado y quieres registrarlo como la meta de la sesión.
 
+## Activación
+
+- Desactivado por defecto (feature flag del lado del servidor).
+- Excluido de las sesiones interactivas y en segundo plano.
+- Se desactiva con la clave de configuración `modelProposedGoals: "disabled"`.
+
 ## Parámetros
 
 - `condition` (string, obligatorio): La condición de finalización, escrita de modo que un evaluador separado pueda verificarla desde la conversación (p. ej. "all tests in test/auth pass (bun test exits 0)"). Máximo 500 caracteres — el usuario debe poder leer la condición completa en el diálogo de aprobación.

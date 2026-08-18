@@ -10,6 +10,13 @@
 - 列出或审计所有当前触发器，以查看其配置和状态
 - 更新触发器设置，例如计划、负载或描述，而无需重新创建触发器
 
+## 启用方式
+
+- 需要 claude.ai Pro、Max、Team 或 Enterprise 套餐。
+- 在 Amazon Bedrock、Claude Platform on AWS、Google Cloud 或 Microsoft Foundry 上不可用。
+- 需要服务端功能开关以及 `allow_remote_sessions` / `allow_routines` 策略设置。
+- 不适用于远程会话本身。
+
 ## 参数
 
 - `action` (string, 必填)：要执行的操作 — 可选值为 `list`、`get`、`create`、`update` 或 `run`

@@ -7,6 +7,11 @@ Sender en besked til brugeren — den primære synlige output-kanal i brief-stil
 - At svare på noget, brugeren lige sagde (`status="normal"`).
 - Proaktivt at vise noget frem, brugeren ikke har bedt om og har brug for at se nu — en opgave, der færdiggøres, mens de er væk, en blokering, du ramte, en uopfordret statusopdatering (`status="proactive"`).
 
+## Aktivering
+
+- Skjult i interaktive sessioner som standard; de fleste interaktive CLI-sessioner taler i stedet direkte til brugeren.
+- Aktiveret i brief-tilstand eller via server-side feature-flags.
+
 ## Parametre
 
 I brief-tilstand:
@@ -30,5 +35,4 @@ SendUserMessage(
 
 ## Noter
 
-- Kun aktiveret i brief-tilstand eller via den tilsvarende feature-udrulning; de fleste interaktive CLI-sessioner taler i stedet direkte til brugeren.
 - Brug `proactive` sparsomt — det er beregnet til ting, der reelt har brug for brugerens opmærksomhed nu.

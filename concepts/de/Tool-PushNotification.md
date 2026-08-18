@@ -14,6 +14,12 @@ Sendet eine Desktop-Benachrichtigung aus der aktuellen Claude Code-Sitzung. Wenn
 
 Senden Sie keine Benachrichtigung für routinemäßige Fortschrittsaktualisierungen während einer Aufgabe oder um zu bestätigen, dass eine Frage beantwortet wurde, auf die der Benutzer gerade wartet. Bei kurzen Aufgaben ist keine Benachrichtigung notwendig — wenn der Benutzer die Aufgabe gerade eingereicht hat und wartet, bietet eine Benachrichtigung keinen Mehrwert und mindert das Vertrauen in künftige Benachrichtigungen. Tendenziell sollte keine Benachrichtigung gesendet werden.
 
+## Aktivierung
+
+- Standardmäßig deaktiviert (serverseitiges Feature-Flag).
+- Die Zustellung läuft über die von Anthropic gehostete Infrastruktur – nicht verfügbar auf Amazon Bedrock, Claude Platform on AWS, Google Cloud oder Microsoft Foundry.
+- Der Telefon-Push erfordert zusätzlich einen verbundenen Remote-Control-Client.
+
 ## Parameter
 
 - `message` (Zeichenkette, erforderlich): Der Benachrichtigungstext. Unter 200 Zeichen halten; mobile Betriebssysteme kürzen längere Zeichenketten. Mit handlungsrelevantem Inhalt beginnen: "build failed: 2 auth tests" ist aussagekräftiger als "task complete".

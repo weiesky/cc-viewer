@@ -7,6 +7,12 @@
 - 你生成了用户需要的文件（报告、图片、HTML 页面），希望把它呈现出来，而不只是提及路径。
 - 以附件回复（`status="normal"`），或主动呈现用户没有要求但现在需要看到的内容（`status="proactive"`）。
 
+## 启用方式
+
+- 仅在连接了 Remote Control 客户端，或会话运行于受管云端环境（如 Claude Code on the web）时可用。
+- 在 Amazon Bedrock、Google Cloud 或 Microsoft Foundry 上不可用。
+- 需要会话允许发送文件（受设置/功能门控的能力）；brief 模式下不提供。
+
 ## 参数
 
 - `files` (array of strings, 必填)：要发给用户的文件路径（绝对路径或相对于 cwd）。即使只有一个文件也始终传数组。
@@ -29,5 +35,4 @@ SendUserFile(
 
 ## 注意事项
 
-- 需要会话允许发送文件（受设置/功能门控的能力）；brief 模式下不提供。
 - 用户会保存并在另一个应用中打开的文件选择 `display="attach"`；应该立即查看的内容用 `render`。

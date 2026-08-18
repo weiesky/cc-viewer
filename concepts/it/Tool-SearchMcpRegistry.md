@@ -7,6 +7,10 @@ Cerca nel registry dei connector MCP per parola chiave per scoprire connector ch
 - Il compito trarrebbe beneficio da un servizio esterno (un database, un issue tracker, un'API SaaS) e vuoi verificare se esiste un connector MCP per esso.
 - L'utente nomina un prodotto e chiede di connetterlo — cerca nel registry un connector corrispondente.
 
+## Attivazione
+
+- Disponibile solo nelle sessioni remote (claude.ai) sull'API first-party.
+
 ## Parametri
 
 - `keywords` (array of strings, obbligatorio): Frasi chiave che descrivono l'intento dell'utente o un prodotto nominato. 1–8 elementi, ciascuno di 1–64 caratteri.
@@ -24,5 +28,4 @@ Restituisce le voci del registry i cui connector corrispondono alle parole chiav
 ## Note
 
 - In sola lettura e sicuro per la concorrenza; i risultati hanno una dimensione massima.
-- Disponibile solo nelle sessioni remote (claude.ai) sull'API first-party.
 - La ricerca non installa nulla — è pura scoperta.

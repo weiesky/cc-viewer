@@ -14,6 +14,12 @@
 
 不要在任務執行過程中發送例行進度更新通知，也不要在回覆使用者剛提問、顯然仍在等待回覆的問題時發送通知。短任務完成時不要通知——若使用者剛提交並正在等待，通知毫無價值，反而會削弱對後續通知的信任。強烈建議預設不發送。
 
+## 啟用方式
+
+- 預設關閉（伺服器端功能旗標）。
+- 傳遞透過 Anthropic 託管的基礎設施執行——在 Amazon Bedrock、Claude Platform on AWS、Google Cloud 或 Microsoft Foundry 上不可用。
+- 手機推送另需已連線的 Remote Control 用戶端。
+
 ## 參數
 
 - `message`（字串，必填）：通知內文。請保持在 200 個字元以內；行動裝置作業系統會截斷過長的字串。以使用者會採取行動的內容開頭："build failed: 2 auth tests" 比 "task complete" 更有用。

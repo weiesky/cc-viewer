@@ -10,6 +10,12 @@ Effectue une recherche web en direct et renvoie des résultats classés que l'as
 - Vérifier un fait qui peut avoir changé depuis l'entraînement du modèle.
 - Découvrir plusieurs perspectives sur un sujet avant de récupérer une page unique avec `WebFetch`.
 
+## Activation
+
+- La disponibilité dépend du fournisseur et du modèle : disponible sur l'API Anthropic et Claude Platform on AWS ; sur Microsoft Foundry, elle nécessite un déploiement hébergé par Anthropic ; sur Google Cloud, elle fonctionne avec les modèles Claude 4+.
+- Non disponible sur Amazon Bedrock.
+- Plafonnez à 200 appels par session avec `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION`.
+
 ## Paramètres
 
 - `query` (string, requis) : la requête de recherche. Longueur minimale de 2 caractères. Incluez l'année courante lorsque vous posez des questions sur des informations « latest » ou « recent » afin que les résultats soient frais.

@@ -7,6 +7,11 @@
 - 피어 세션이 자신의 태스크를 계속하기 위해 작업 디렉터리의 파일(리포트, 패치, 픽스처)이 필요합니다.
 - 세션 간에 작업을 조율하며 텍스트가 아닌 산출물을 넘기고 싶습니다(텍스트에는 `SendMessage`를 사용하십시오).
 
+## 활성화
+
+- 세션에서 세션 간 파일 전송이 사용 가능해야 합니다. 그렇지 않으면 "Cross-session file transfer is not available in this session."으로 검증이 실패합니다.
+- `ListAgents`와 동일한 세션 간 메시징 조건(서버 측 기능 플래그, 기본적으로 꺼짐)에 의해 게이트됩니다.
+
 ## 매개변수
 
 - `to` (string, 필수): 수신자 — `ListAgents`의 피어 세션 이름, 또는 명시적인 `uds:<socket>` / `bridge:<session id>` 주소.
@@ -27,6 +32,5 @@ SendFile(
 
 ## 참고사항
 
-- 세션에서 세션 간 파일 전송이 사용 가능해야 합니다. 그렇지 않으면 "Cross-session file transfer is not available in this session."으로 검증이 실패합니다.
 - 원격 머신으로의 전송은 추가 승인이 필요할 수 있습니다.
 - 파일 내용 읽기는 전송의 일부입니다 — 권한 규칙으로 파일 읽기가 비활성화되어 있으면 거부됩니다.

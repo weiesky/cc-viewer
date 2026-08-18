@@ -10,6 +10,13 @@ Zamanlanmış görevleri ve isteğe bağlı tetikleyici yürütmelerini yönetme
 - Yapılandırmalarını ve durumlarını incelemek için mevcut tüm tetikleyicileri listeleme veya denetleme
 - Tetikleyiciyi yeniden oluşturmak zorunda kalmadan zamanlama, yük veya açıklama gibi tetikleyici ayarlarını güncelleme
 
+## Etkinleştirme
+
+- Bir claude.ai Pro, Max, Team veya Enterprise planı gerektirir.
+- Amazon Bedrock, AWS üzerinde Claude Platform, Google Cloud veya Microsoft Foundry'de kullanılamaz.
+- Sunucu tarafı özellik bayrakları ve `allow_remote_sessions` / `allow_routines` ilke ayarlarını gerektirir.
+- Uzak oturumların kendisi için değildir.
+
 ## Parametreler
 
 - `action` (string, zorunlu): gerçekleştirilecek işlem — `list`, `get`, `create`, `update` veya `run` değerlerinden biri

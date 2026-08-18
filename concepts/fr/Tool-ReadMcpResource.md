@@ -7,6 +7,10 @@ Lit une seule ressource exposée par un serveur MCP (Model Context Protocol) con
 - Un serveur MCP annonce une ressource (fichier, enregistrement, document) dont vous avez besoin du contenu dans le contexte.
 - Vous disposez d'un URI de ressource concret — provenant de `ListMcpResources`, de la documentation du serveur ou d'un résultat d'outil précédent.
 
+## Activation
+
+- Toujours activé, mais non exposé à la liste d'outils du modèle — destiné à une utilisation thin-client / sidecar.
+
 ## Paramètres
 
 - `server` (string, requis) : le nom du serveur MCP.

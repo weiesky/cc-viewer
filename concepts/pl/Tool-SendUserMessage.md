@@ -7,6 +7,11 @@ Wysyła wiadomość do użytkownika — główny kanał widocznego wyjścia w se
 - Odpowiadanie na coś, co użytkownik właśnie powiedział (`status="normal"`).
 - Proaktywne pokazywanie czegoś, o co użytkownik nie prosił i co musi teraz zobaczyć — zadanie kończące się pod jego nieobecność, blokada, na którą natrafiłeś, nieproszona aktualizacja stanu (`status="proactive"`).
 
+## Aktywacja
+
+- Domyślnie ukryte w sesjach interaktywnych; większość interaktywnych sesji CLI rozmawia z użytkownikiem bezpośrednio.
+- Włączone w trybie brief lub przez flagi funkcji po stronie serwera.
+
 ## Parametry
 
 W trybie brief:
@@ -30,5 +35,4 @@ SendUserMessage(
 
 ## Uwagi
 
-- Włączone tylko w trybie brief lub przez odpowiednie wdrożenie funkcji; większość interaktywnych sesji CLI rozmawia z użytkownikiem bezpośrednio.
 - Używaj `proactive` oszczędnie — jest przeznaczone do rzeczy, które naprawdę wymagają teraz uwagi użytkownika.

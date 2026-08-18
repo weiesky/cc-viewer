@@ -7,6 +7,10 @@
 - 任務可受惠於外部服務（資料庫、issue tracker、SaaS API），而你想檢查是否存在對應的 MCP connector。
 - 使用者指名某個產品並要求連線——搜尋登錄檔以尋找相符的 connector。
 
+## 啟用方式
+
+- 僅在第一方 API 的遠端（claude.ai）工作階段中可用。
+
 ## 參數
 
 - `keywords`（string 陣列，必填）：描述使用者意圖或指名產品的關鍵字片語。1–8 個項目，每個 1–64 個字元。
@@ -24,5 +28,4 @@ SearchMcpRegistry(keywords=["linear", "issue tracker"])
 ## 注意事項
 
 - 唯讀且並行安全；結果大小有上限。
-- 僅在第一方 API 的遠端（claude.ai）工作階段中可用。
 - 搜尋不會安裝任何東西——純粹是探索。

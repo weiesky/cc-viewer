@@ -8,6 +8,12 @@
 - 中间状态需要在调用之间保持的多步脚本（计数器、累计结果）。
 - 在写入文件之前，交互式地探测某个 API 或库的行为。
 
+## 启用方式
+
+- 默认关闭——设置 `CLAUDE_CODE_REPL=true` 启用。
+- 在终端（`cli`）和 claude.ai（`remote`）会话中，服务端功能开关也可能启用它。
+- 关闭时，REPL 不在模型的工具列表中。开启时，`Read`、`Glob`、`Grep`、`Bash`、`PowerShell` 和 `NotebookEdit` 被替换为 REPL 简写形式。
+
 ## 参数
 
 - `code` (string, 必填)：要执行的 JavaScript 代码。支持顶层 await。状态在调用之间保持。

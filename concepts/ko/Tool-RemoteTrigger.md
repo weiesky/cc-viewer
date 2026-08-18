@@ -10,6 +10,13 @@ claude.ai 원격 트리거 API를 호출하여 예약된 작업과 온디맨드 
 - 모든 현재 트리거를 나열하거나 감사하여 구성 및 상태 검토
 - 트리거를 재생성하지 않고 일정, 페이로드 또는 설명과 같은 트리거 설정 업데이트
 
+## 활성화
+
+- claude.ai Pro, Max, Team, 또는 Enterprise 플랜이 필요합니다.
+- Amazon Bedrock, AWS의 Claude Platform, Google Cloud, Microsoft Foundry에서는 사용할 수 없습니다.
+- 서버 측 기능 플래그와 `allow_remote_sessions` / `allow_routines` 정책 설정이 필요합니다.
+- 원격 세션 자체를 위한 것이 아닙니다.
+
 ## 매개변수
 
 - `action` (string, 필수): 수행할 작업 — `list`, `get`, `create`, `update`, `run` 중 하나

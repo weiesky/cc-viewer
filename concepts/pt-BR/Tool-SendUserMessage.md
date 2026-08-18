@@ -7,6 +7,11 @@ Envia uma mensagem para o usuário — o principal canal de saída visível em s
 - Responder a algo que o usuário acabou de dizer (`status="normal"`).
 - Mostrar proativamente algo que o usuário não pediu e precisa ver agora — uma tarefa concluindo enquanto ele está ausente, um bloqueio que você encontrou, uma atualização de status não solicitada (`status="proactive"`).
 
+## Ativação
+
+- Oculto em sessões interativas por padrão; a maioria das sessões CLI interativas fala com o usuário diretamente.
+- Habilitado no modo brief ou via feature flags do lado do servidor.
+
 ## Parâmetros
 
 No modo brief:
@@ -30,5 +35,4 @@ SendUserMessage(
 
 ## Observações
 
-- Habilitado apenas no modo brief ou via o rollout de recurso correspondente; a maioria das sessões CLI interativas fala com o usuário diretamente.
 - Use `proactive` com moderação — ele serve para coisas que realmente precisam da atenção do usuário agora.

@@ -7,6 +7,10 @@ Lister oppføringene i en katalog-aktig ressurs eksponert av en tilkoblet MCP-se
 - En MCP-server organiserer ressurser hierarkisk, og du trenger å oppgi ett nivå av det hierarkiet.
 - Du vil bla før du leser enkeltressurser med `ReadMcpResource`.
 
+## Aktivering
+
+- Alltid aktivert, men ikke eksponert for modellens verktøyliste — ment for thin-client / sidecar-bruk.
+
 ## Parametere
 
 - `server` (string, påkrevd): MCP-servernavnet.

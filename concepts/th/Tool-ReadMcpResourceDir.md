@@ -7,6 +7,10 @@
 - MCP server จัด resource แบบลำดับชั้น และคุณต้องการแจกแจงหนึ่งระดับของลำดับชั้นนั้น
 - คุณต้องการสำรวจก่อนอ่าน resource แต่ละรายการด้วย `ReadMcpResource`
 
+## การเปิดใช้งาน
+
+- เปิดใช้งานเสมอ แต่ไม่ถูก expose ใน tool list ของโมเดล — มีไว้สำหรับการใช้งานแบบ thin-client / sidecar
+
 ## พารามิเตอร์
 
 - `server` (string, required): ชื่อ MCP server

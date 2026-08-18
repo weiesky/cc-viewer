@@ -7,6 +7,12 @@ Lista as skills do claude.ai habilitadas do usuário, opcionalmente filtradas po
 - Você precisa da lista autoritativa de skills atualmente habilitadas — antes de invocar uma, ou para confirmar o que um card de `SuggestSkills` adicionou.
 - O usuário pergunta quais skills ele tem.
 
+## Ativação
+
+- Requer permissão de acesso ao registro de plugins.
+- Desabilitado em ambientes HIPAA.
+- Sempre disponível em sessões remotas.
+
 ## Parâmetros
 
 - `keywords` (array of strings, opcional): Filtra a lista — até 8 itens, cada um com 1–64 caracteres. Omita para listar tudo.

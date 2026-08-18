@@ -6,6 +6,12 @@ Gengiver et inline plugin-installationskort fra `SearchPlugins`-resultater og kn
 
 - En pluginsøgning viste plugins, der matcher det, brugeren forsøger at gøre, og du vil tilbyde dem til installation.
 
+## Aktivering
+
+- Kun når en Remote Control-klient er forbundet, eller sessionen kører i et administreret cloud-miljø.
+- Deaktiveret under HIPAA enterprise-konfigurationer.
+- Ikke i brief-tilstand.
+
 ## Parametre
 
 - `contextLabel` (string, påkrævet): Kort overskrift, der knytter forslaget til brugeranmodningen (maks. 128 tegn).
@@ -31,4 +37,3 @@ Kortet gengives for brugeren; aktivering af plugin'et sker uden for værktøjet.
 ## Noter
 
 - Medtag kun plugins, der kom fra søgeresultater — opfind aldrig plugin-poster.
-- Deaktiveret under HIPAA enterprise-konfigurationer.

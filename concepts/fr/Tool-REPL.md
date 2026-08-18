@@ -8,6 +8,12 @@ Exécute du JavaScript dans un contexte vm Node.js persistant au sein de la sess
 - Scripting multi-étapes où l'état intermédiaire doit persister entre les appels (compteurs, résultats accumulés).
 - Sonder le comportement d'une API ou d'une bibliothèque de façon interactive avant de l'écrire dans un fichier.
 
+## Activation
+
+- Désactivé par défaut — définissez `CLAUDE_CODE_REPL=true` pour l'activer.
+- Dans les sessions terminal (`cli`) et claude.ai (`remote`), un drapeau de fonctionnalité côté serveur peut également l'activer.
+- Lorsqu'il est désactivé, REPL est masqué de la liste d'outils du modèle. Lorsqu'il est activé, `Read`, `Glob`, `Grep`, `Bash`, `PowerShell` et `NotebookEdit` sont remplacés par les raccourcis REPL.
+
 ## Paramètres
 
 - `code` (string, requis) : code JavaScript à exécuter. Prend en charge le await de premier niveau. L'état persiste d'un appel à l'autre.

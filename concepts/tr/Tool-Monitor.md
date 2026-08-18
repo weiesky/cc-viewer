@@ -10,6 +10,13 @@ Uzun süre çalışan bir betikten olayları akışla ileten bir arka plan monit
 - Birçok yineleme boyunca belirli bir koşulu beklemek için (örneğin bir eğitim adımı kilometre taşı veya bir kuyruğun boşaltılması)
 - Basit "tamamlanana kadar bekle" için **kullanmayın** — bunun için `run_in_background` ile `Bash` kullanın; süreç sona erdiğinde tek bir tamamlama bildirimi gönderir
 
+## Etkinleştirme
+
+- Varsayılan olarak kapalıdır (sunucu tarafı bir özellik bayrağı).
+- Amazon Bedrock, Google Cloud ve Microsoft Foundry'de kullanılamaz.
+- `DISABLE_TELEMETRY` veya `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` ayarlandığında kapalıdır.
+- WebSocket kaynağı Claude Code 2.1.195+ gerektirir.
+
 ## Parametreler
 
 - `command` (dize, zorunlu): Çalıştırılacak shell komutu veya betiği. Stdout'a yazılan her satır ayrı bir bildirim olayı olur. Süreç sona erdiğinde monitör biter.

@@ -8,6 +8,13 @@ Met fin à la conversation courante et empêche l'envoi de tout message supplém
 
 C'est une action de dernier recours : les propres règles de l'outil exigent d'avertir d'abord l'utilisateur et de confirmer avant l'utilisation, et il ne doit jamais être utilisé dans des situations d'automutilation ou liées à un préjudice.
 
+## Activation
+
+- Nécessite Claude Code 2.1.213+ et un modèle de la famille Opus 4.8 / Sonnet 5 / Fable 5 ou ultérieure.
+- Sessions terminal interactives uniquement — jamais en mode `--bare`, et jamais disponible pour les sous-agents.
+- Non disponible sur Amazon Bedrock, Claude Platform on AWS, Vertex AI, Microsoft Foundry ou les passerelles cloud.
+- Nécessite un drapeau de fonctionnalité côté serveur — la plupart des sessions ne proposent pas cet outil.
+
 ## Paramètres
 
 Cet outil ne prend aucun paramètre.

@@ -8,6 +8,12 @@ Wykonuje JavaScript w trwałym kontekście vm Node.js wewnątrz sesji. Obsługiw
 - Wieloetapowe skrypty, w których stan pośredni powinien przetrwać między wywołaniami (liczniki, wyniki akumulowane).
 - Interaktywne badanie zachowania API lub biblioteki przed zapisaniem go w pliku.
 
+## Aktywacja
+
+- Domyślnie wyłączone — ustaw `CLAUDE_CODE_REPL=true`, aby je włączyć.
+- W sesjach terminalowych (`cli`) i claude.ai (`remote`) może je również włączyć flaga funkcji po stronie serwera.
+- Gdy wyłączone, REPL jest ukryte przed listą narzędzi modelu. Gdy włączone, `Read`, `Glob`, `Grep`, `Bash`, `PowerShell` i `NotebookEdit` są zastępowane skrótami REPL.
+
 ## Parametry
 
 - `code` (string, wymagany): Kod JavaScript do wykonania. Obsługuje `await` na najwyższym poziomie. Stan utrzymuje się między wywołaniami.

@@ -8,6 +8,11 @@ Writes a structured todo list for the current session, replacing the previous li
 - The user explicitly asks for a todo list.
 - You want to mark exactly one item as in progress while the rest stay pending or completed.
 
+## Activation
+
+- Legacy tool: disabled by default in sessions that offer the Task tools (`TaskCreate`, `TaskUpdate`, `TaskList`).
+- Re-enable it with `CLAUDE_CODE_ENABLE_TASKS=0`.
+
 ## Parameters
 
 - `todos` (array, required): The complete updated todo list. Each entry has:

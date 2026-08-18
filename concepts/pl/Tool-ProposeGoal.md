@@ -8,6 +8,12 @@ Proponuje weryfikowalny cel ukończenia sesji. Cel jest pokazywany użytkownikow
 - Chcesz uzyskać wyraźną akceptację użytkownika co do tego, co znaczy "gotowe", zanim wykonasz znaczącą pracę.
 - Słowa użytkownika same już określiły wynik, a Ty chcesz zapisać go jako cel sesji.
 
+## Aktywacja
+
+- Domyślnie wyłączone (flaga funkcji po stronie serwera).
+- Wykluczone z sesji interaktywnych i działających w tle.
+- Wyłączane przez klucz ustawień `modelProposedGoals: "disabled"`.
+
 ## Parametry
 
 - `condition` (string, wymagany): Warunek ukończenia, sformułowany tak, aby osobny ewaluator mógł zweryfikować go na podstawie rozmowy (np. "all tests in test/auth pass (bun test exits 0)"). Maksymalnie 500 znaków — użytkownik musi móc przeczytać cały warunek w dialogu zatwierdzenia.

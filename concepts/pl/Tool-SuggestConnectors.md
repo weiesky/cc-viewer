@@ -6,6 +6,10 @@ Rozwiązuje pełne ładunki konektorów dla wartości `directoryUuid` zwróconyc
 
 - Po tym, jak `SearchMcpRegistry` zwróci konektory kandydujące, aby pobrać ich pełne szczegóły do prezentacji.
 
+## Aktywacja
+
+- Dostępne tylko w sesjach zdalnych (claude.ai) na oficjalnym API (first-party).
+
 ## Parametry
 
 - `uuids` (tablica stringów, wymagany): Wartości `directoryUuid` lub `server_id` do rozwiązania. 1–32 elementy, każdy 1–64 znaki.
@@ -22,4 +26,3 @@ SuggestConnectors(uuids=["d290f1ee-6c54-4b01-90e6-d701748f0851", "a1b2c3d4-0000-
 
 - Nigdy nie zgaduj UUID-ów — rozwiązuj tylko identyfikatory, które wróciły z `SearchMcpRegistry`.
 - Narzędzie samo niczego nie łączy; włączenie konektora odbywa się poza tym przepływem.
-- Dostępne tylko w sesjach zdalnych (claude.ai) na oficjalnym API (first-party).

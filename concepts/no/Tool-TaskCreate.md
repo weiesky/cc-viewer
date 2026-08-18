@@ -12,6 +12,12 @@ Oppretter en ny oppgave i gjeldende teams oppgaveliste (eller sesjonens oppgavel
 
 Hopp over `TaskCreate` for trivielle engangshandlinger, ren samtale eller noe som kan fullføres i to eller tre direkte verktøykall.
 
+## Aktivering
+
+- Tilgjengelig som standard på de fleste modeller.
+- Ikke tilgjengelig på Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 og nyere familier (v2.1.233+) med mindre man melder seg på via `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` eller `--tools`.
+- Hele oppgavesystemet er deaktivert når `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parametere
 
 - `subject` (string, påkrevd): Kort imperativ tittel, f.eks. `Fix login redirect on Safari`. Hold den under omtrent åtti tegn.

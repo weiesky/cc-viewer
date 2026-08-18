@@ -7,6 +7,10 @@ Bağlı MCP sunucularının sunduğu kaynakları listeler; isteğe bağlı olara
 - Okumadan önce bir MCP sunucusunun hangi kaynakları (dosyalar, kayıtlar, dokümanlar) sunduğunu keşfetmeniz gerekiyor.
 - Bağlı tüm sunuculardaki kaynakların genel bir görünümünü istiyorsunuz.
 
+## Etkinleştirme
+
+- Her zaman etkindir, ancak modelin araç listesine sunulmaz — ince istemci / sidecar kullanımı için tasarlanmıştır.
+
 ## Parametreler
 
 - `server` (string, opsiyonel): Kaynakları filtrelemek için sunucu adı. Tüm bağlı sunuculardan kaynakları listelemek için atlayın.

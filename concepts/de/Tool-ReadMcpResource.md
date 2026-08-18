@@ -7,6 +7,10 @@ Liest eine einzelne Ressource, die von einem verbundenen MCP-Server (Model Conte
 - Ein MCP-Server kündigt eine Ressource an (Datei, Datensatz, Dokument), deren Inhalt Sie im Kontext benötigen.
 - Sie haben eine konkrete Ressourcen-URI – aus `ListMcpResources`, aus der Dokumentation des Servers oder aus einem früheren Tool-Ergebnis.
 
+## Aktivierung
+
+- Immer aktiviert, wird aber nicht in der Tool-Liste des Modells angezeigt – für Thin-Client-/Sidecar-Nutzung gedacht.
+
 ## Parameter
 
 - `server` (string, erforderlich): Der Name des MCP-Servers.

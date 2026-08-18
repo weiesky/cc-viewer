@@ -10,6 +10,11 @@ Dostarcza wiadomość od jednego członka zespołu do drugiego w ramach aktywneg
 - Odpowiadanie na monit protokolarny, taki jak prośba o wyłączenie lub prośba o zatwierdzenie planu od lidera zespołu.
 - Zamykanie pętli na końcu delegowanego zadania, aby lider mógł oznaczyć element jako ukończony.
 
+## Aktywacja
+
+- Bramkowane tymi samymi warunkami wysyłania wiadomości między sesjami co `ListAgents` (flagi funkcji po stronie serwera, domyślnie wyłączone).
+- Współpracownicy dodatkowo wymagają włączonych eksperymentalnych zespołów agentów.
+
 ## Parametry
 
 - `to` (string, wymagany): Nazwa `name` docelowego współpracownika zarejestrowanego w zespole lub `*`, aby rozesłać do wszystkich współpracowników naraz.

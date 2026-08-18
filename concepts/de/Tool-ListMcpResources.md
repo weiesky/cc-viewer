@@ -7,6 +7,10 @@ Listet die von verbundenen MCP-Servern bereitgestellten Ressourcen auf, optional
 - Sie müssen herausfinden, welche Ressourcen (Dateien, Datensätze, Dokumente) ein MCP-Server anbietet, bevor Sie sie lesen.
 - Sie möchten einen Überblick über alle Ressourcen über sämtliche verbundenen Server hinweg.
 
+## Aktivierung
+
+- Immer aktiviert, wird aber nicht in der Tool-Liste des Modells angezeigt – für Thin-Client-/Sidecar-Nutzung gedacht.
+
 ## Parameter
 
 - `server` (string, optional): Servername, nach dem die Ressourcen gefiltert werden sollen. Weglassen, um Ressourcen aller verbundenen Server aufzulisten.

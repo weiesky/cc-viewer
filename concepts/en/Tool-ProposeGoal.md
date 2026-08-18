@@ -8,6 +8,12 @@ Proposes a verifiable completion goal for the session. The goal is shown to the 
 - You want the user's explicit sign-off on what "done" means before doing substantial work.
 - The user's own words already stated the outcome and you want it recorded as the session goal.
 
+## Activation
+
+- Off by default (server-side feature flag).
+- Excluded from interactive and background sessions.
+- Turned off by the `modelProposedGoals: "disabled"` settings key.
+
 ## Parameters
 
 - `condition` (string, required): The completion condition, written so a separate evaluator can verify it from the conversation (e.g. "all tests in test/auth pass (bun test exits 0)"). At most 500 characters — the user must be able to read the whole condition in the approval dialog.

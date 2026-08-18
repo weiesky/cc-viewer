@@ -8,6 +8,11 @@ Skriver en struktureret to-do-liste for den aktuelle session og erstatter den fo
 - Brugeren beder eksplicit om en to-do-liste.
 - Du vil markere præcis ét element som i gang, mens resten forbliver afventende eller fuldførte.
 
+## Aktivering
+
+- Legacy-værktøj: deaktiveret som standard i sessioner, der tilbyder opgaveværktøjerne (`TaskCreate`, `TaskUpdate`, `TaskList`).
+- Genaktivér det med `CLAUDE_CODE_ENABLE_TASKS=0`.
+
 ## Parametre
 
 - `todos` (array, påkrævet): Den komplette, opdaterede to-do-liste. Hver post har:

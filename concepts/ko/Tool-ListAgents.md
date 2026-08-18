@@ -7,6 +7,13 @@
 - 메시지를 보내기 전에 피어 세션이나 서브에이전트의 정확한 이름이 필요합니다.
 - 이 세션에서 현재 도달 가능한 세션을 확인하고 싶습니다.
 
+## 활성화
+
+- Claude Code 2.1.224+ 및 세션 간 메시징(서버 측 기능 플래그, 기본적으로 꺼짐)이 필요합니다.
+- 세션 간 메시징은 Amazon Bedrock, AWS의 Claude Platform, Google Cloud Agent Platform, Microsoft Foundry에서 사용할 수 없습니다.
+- `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY`, `DO_NOT_TRACK`, 또는 `DISABLE_GROWTHBOOK`이 설정되면 꺼집니다.
+- `CLAUDE_CODE_HARBOR_KITE=1`로 강제 활성화할 수 있습니다.
+
 ## 매개변수
 
 - `channel` (string, 선택): 이 빌드에서는 사용할 수 없습니다. 설정하지 않은 채로 두십시오.
@@ -26,4 +33,3 @@ ListAgents()
 
 - 읽기 전용이며 동시성에 안전합니다.
 - 클라우드 세션은 메시지를 받을 수는 있지만 아직 답장할 수 없습니다 — 해당 세션의 트랜스크립트에서 답을 읽으십시오.
-- 사용 가능 여부는 세션 구성에 따라 다릅니다(세션 간 메시징은 게이트된 기능입니다).

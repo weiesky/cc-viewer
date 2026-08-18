@@ -10,6 +10,12 @@
 - モデルがトレーニングされて以降に変わった可能性のある事実を検証する。
 - `WebFetch` で特定のページを取得する前に、トピックに関する複数の視点を発見する。
 
+## 有効化
+
+- 可用性はプロバイダーとモデルに依存します: Anthropic API と Claude Platform on AWS で利用可能。Microsoft Foundry では Anthropic ホストのデプロイメントが必要です。Google Cloud では Claude 4+ モデルで動作します。
+- Amazon Bedrock では利用できません。
+- `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` でセッションあたりの呼び出しを 200 回に制限できます。
+
 ## パラメータ
 
 - `query` (string, required): 検索クエリ。最小 2 文字。「最新」または「最近」の情報について尋ねるときは、結果が新鮮になるよう現在の年を含めてください。

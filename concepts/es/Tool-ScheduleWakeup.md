@@ -10,6 +10,11 @@ Programa cuándo reanudar el trabajo en el modo dinámico `/loop`. La herramient
 - Al ejecutar un bucle autónomo sin prompt del usuario — pasar el centinela literal `<<autonomous-loop-dynamic>>` como `prompt`
 - Al sondear un proceso cuyo estado está a punto de cambiar (usar un retraso corto para mantener el caché caliente)
 
+## Activación
+
+- No disponible en Amazon Bedrock, Claude Platform on AWS, Google Cloud Agent Platform ni Microsoft Foundry.
+- También desactivado cuando la obtención de feature flags está deshabilitada (variables de entorno de telemetría/tráfico).
+
 ## Parámetros
 
 - `delaySeconds` (número, requerido): Segundos hasta la reanudación. El tiempo de ejecución limita automáticamente el valor a `[60, 3600]`, por lo que no es necesario limitarlo manualmente.

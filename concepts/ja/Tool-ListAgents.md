@@ -7,6 +7,13 @@
 - メッセージを送る前に、ピアセッションまたはサブエージェントの正確な名前が必要な場合。
 - このセッションから現在到達可能なセッションを確認したい場合。
 
+## 有効化
+
+- Claude Code 2.1.224+ とクロスセッションメッセージング (サーバーサイドの機能フラグ、デフォルトではオフ) が必要です。
+- クロスセッションメッセージングは Amazon Bedrock、Claude Platform on AWS、Google Cloud Agent Platform、Microsoft Foundry では利用できません。
+- `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`、`DISABLE_TELEMETRY`、`DO_NOT_TRACK`、または `DISABLE_GROWTHBOOK` が設定されているとオフになります。
+- `CLAUDE_CODE_HARBOR_KITE=1` で強制的に有効化できます。
+
 ## パラメータ
 
 - `channel` (string, optional): このビルドでは利用できません。未設定のままにしてください。
@@ -26,4 +33,3 @@ ListAgents()
 
 - 読み取り専用で、並行実行に対して安全です。
 - クラウドセッションはメッセージを受け取りますが、まだ返信できません — その回答はそのセッション自身のトランスクリプトで読んでください。
-- 可用性はセッション構成に依存します (クロスセッションメッセージングはゲート付き機能です)。

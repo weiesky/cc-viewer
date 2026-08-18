@@ -7,6 +7,12 @@ Envía uno o más archivos al usuario — artefactos generados, capturas de pant
 - Produjiste un archivo que el usuario necesita (un informe, una imagen, una página HTML) y quieres hacerlo visible, no solo mencionar su ruta.
 - Responder con un adjunto (`status="normal"`), o hacer visible de forma proactiva algo que el usuario no ha pedido pero necesita ver ahora (`status="proactive"`).
 
+## Activación
+
+- Solo disponible cuando hay un cliente de Remote Control conectado, o cuando la sesión se ejecuta en un entorno de nube gestionado (p. ej. Claude Code en la web).
+- No disponible en Amazon Bedrock, Google Cloud ni Microsoft Foundry.
+- Requiere que la sesión permita enviar archivos (una capacidad restringida por configuración/función); no se ofrece en modo brief.
+
 ## Parámetros
 
 - `files` (array de strings, obligatorio): Rutas de archivos (absolutas o relativas al directorio de trabajo actual) a enviar al usuario. Pasa siempre un array, incluso para un solo archivo.
@@ -29,5 +35,4 @@ SendUserFile(
 
 ## Notas
 
-- Requiere que la sesión permita enviar archivos (una capacidad restringida por configuración/función); no se ofrece en modo brief.
 - Elige `display="attach"` para archivos que el usuario guarda y abre en otra aplicación; `render` para cualquier cosa que deba mirar de inmediato.

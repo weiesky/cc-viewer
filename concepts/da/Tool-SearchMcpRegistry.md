@@ -7,6 +7,10 @@ Søger i MCP-connector-registret efter nøgleord for at opdage connectors, der k
 - Opgaven ville drage fordel af en ekstern tjeneste (en database, en issue tracker, et SaaS-API), og du vil tjekke, om der findes en MCP-connector til den.
 - Brugeren navngiver et produkt og beder om at forbinde det — søg i registret efter en matchende connector.
 
+## Aktivering
+
+- Kun tilgængelig i remote-sessioner (claude.ai) på first-party-API'et.
+
 ## Parametre
 
 - `keywords` (array af strings, påkrævet): Nøgleordsfraser, der beskriver brugerens hensigt eller et navngivet produkt. 1-8 elementer, hver 1-64 tegn.
@@ -24,5 +28,4 @@ Returnerer registerposter, hvis connectors matcher nøgleordene. Opløs fulde co
 ## Noter
 
 - Skrivebeskyttet og samtidighedssikker; resultater er begrænset i størrelse.
-- Kun tilgængelig i remote-sessioner (claude.ai) på first-party-API'et.
 - Søgning installerer intet — det er ren opdagelse.

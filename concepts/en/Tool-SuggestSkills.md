@@ -6,6 +6,12 @@ Renders a card of standalone skills the user can add (skills that are not yet en
 
 - The user's request matches skills they don't have enabled (`trigger="user_asked"` when they asked, `trigger="proactive"` when you suggest unprompted).
 
+## Activation
+
+- Only when a Remote Control client is connected, or the session runs in a managed cloud environment.
+- Disabled under HIPAA enterprise configurations.
+- Not in brief mode.
+
 ## Parameters
 
 - `keywords` (array of strings, required): Topic keywords from the user's request. 1–8 items, each 1–64 characters.
@@ -25,4 +31,3 @@ Already-enabled skills are filtered out of the result.
 ## Notes
 
 - Renders a suggestion card only — adding a skill happens out of band; call `ListSkills` afterwards to confirm.
-- Disabled under HIPAA enterprise configurations.

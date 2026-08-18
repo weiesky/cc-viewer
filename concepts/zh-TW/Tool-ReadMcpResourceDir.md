@@ -7,6 +7,10 @@
 - MCP 伺服器以階層方式組織資源，而你需要列舉該階層的某一層。
 - 你想在用 `ReadMcpResource` 讀取個別資源之前先瀏覽。
 
+## 啟用方式
+
+- 一律啟用，但不暴露於模型的工具清單——供 thin-client / sidecar 使用。
+
 ## 參數
 
 - `server`（string，必填）：MCP 伺服器名稱。

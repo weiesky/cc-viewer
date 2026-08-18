@@ -8,6 +8,12 @@ Propõe uma meta de conclusão verificável para a sessão. A meta é mostrada a
 - Você quer a aprovação explícita do usuário sobre o que significa "pronto" antes de fazer trabalho substancial.
 - As próprias palavras do usuário já declararam o resultado e você quer registrá-lo como a meta da sessão.
 
+## Ativação
+
+- Desativado por padrão (feature flag do lado do servidor).
+- Excluído de sessões interativas e em background.
+- Desativado pela chave de configuração `modelProposedGoals: "disabled"`.
+
 ## Parâmetros
 
 - `condition` (string, obrigatório): A condição de conclusão, escrita de modo que um avaliador separado possa verificá-la a partir da conversa (por exemplo, "all tests in test/auth pass (bun test exits 0)"). No máximo 500 caracteres — o usuário deve conseguir ler a condição inteira no diálogo de aprovação.

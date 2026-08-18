@@ -7,6 +7,10 @@
 - MCP server advertise resource (ไฟล์, record, เอกสาร) ที่คุณต้องการเนื้อหาใน context
 - คุณมี resource URI ที่ชัดเจน — จาก `ListMcpResources`, จาก documentation ของ server, หรือจากผลลัพธ์ของเครื่องมือครั้งก่อน
 
+## การเปิดใช้งาน
+
+- เปิดใช้งานเสมอ แต่ไม่ถูก expose ใน tool list ของโมเดล — มีไว้สำหรับการใช้งานแบบ thin-client / sidecar
+
 ## พารามิเตอร์
 
 - `server` (string, required): ชื่อ MCP server

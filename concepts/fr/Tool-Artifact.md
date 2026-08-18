@@ -9,6 +9,13 @@ Rendre un fichier HTML ou Markdown dans un Artifact — une page web hébergée 
 - Lister les artifacts existants de l'utilisateur pour en trouver un d'une session antérieure (`action: "list"`)
 - **Pas** pour du contenu qui doit rester local, des réponses en texte brut ou quoi que ce soit nécessitant des ressources réseau externes au moment de la visualisation — une CSP stricte bloque chaque hôte externe
 
+## Activation
+
+- Nécessite un forfait Pro, Max, Team ou Enterprise avec connexion claude.ai (`/login`).
+- API Anthropic uniquement — non disponible sur Amazon Bedrock, Google Cloud ou Microsoft Foundry.
+- Nécessite Claude Code ≥ 2.1.183 ou l'application Desktop ≥ 1.13576.0.
+- Désactiver avec le paramètre `disableArtifact` ou `CLAUDE_CODE_DISABLE_ARTIFACT=1`.
+
 ## Paramètres
 
 - `file_path` (chaîne) : Chemin vers le fichier `.html` ou `.md` à rendre. Le fichier est enrobé dans un squelette de document au moment de la publication, donc écrivez le contenu de la page directement — pas de balises `<!DOCTYPE>`, `<html>`, `<head>` ou `<body>`. Même chemin → même URL au redéploiement ; un chemin différent réclame une nouvelle URL.

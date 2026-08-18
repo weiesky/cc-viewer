@@ -7,6 +7,12 @@ Invia uno o più file all'utente — artefatti generati, screenshot, report — 
 - Hai prodotto un file di cui l'utente ha bisogno (un report, un'immagine, una pagina HTML) e vuoi farlo emergere, non solo menzionarne il percorso.
 - Rispondere con un allegato (`status="normal"`), oppure far emergere proattivamente qualcosa che l'utente non ha chiesto ma deve vedere ora (`status="proactive"`).
 
+## Attivazione
+
+- Disponibile solo quando un client Remote Control è connesso, o la sessione gira in un ambiente cloud gestito (ad esempio Claude Code sul web).
+- Non disponibile su Amazon Bedrock, Google Cloud o Microsoft Foundry.
+- Richiede che la sessione consenta l'invio di file (una capacità gated da impostazioni/feature); non offerta in brief mode.
+
 ## Parametri
 
 - `files` (array of strings, obbligatorio): Percorsi di file (assoluti o relativi alla cwd) da inviare all'utente. Passa sempre un array, anche per un singolo file.
@@ -29,5 +35,4 @@ SendUserFile(
 
 ## Note
 
-- Richiede che la sessione consenta l'invio di file (una capacità gated da impostazioni/feature); non offerta in brief mode.
 - Scegli `display="attach"` per file che l'utente salva e apre in un'altra app; `render` per qualsiasi cosa debba guardare immediatamente.

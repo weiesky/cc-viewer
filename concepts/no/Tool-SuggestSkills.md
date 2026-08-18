@@ -6,6 +6,12 @@ Gjengir et kort med frittstående skills brukeren kan legge til (skills som enn�
 
 - Brukerens forespørsel matcher skills de ikke har aktivert (`trigger="user_asked"` når de ba om det, `trigger="proactive"` når du foreslår uoppfordret).
 
+## Aktivering
+
+- Kun når en Remote Control-klient er tilkoblet, eller sesjonen kjører i et administrert cloud-miljø.
+- Deaktivert under HIPAA enterprise-konfigurasjoner.
+- Ikke i brief-modus.
+
 ## Parametere
 
 - `keywords` (array av strenger, påkrevd): Emnenøkkelord fra brukerens forespørsel. 1–8 elementer, hver 1–64 tegn.
@@ -25,4 +31,3 @@ Allerede aktiverte skills filtreres ut av resultatet.
 ## Notater
 
 - Gjengir kun et forslagskort — å legge til en skill skjer utenfor verktøyet; kall `ListSkills` etterpå for å bekrefte.
-- Deaktivert under HIPAA enterprise-konfigurasjoner.

@@ -7,6 +7,11 @@ Envia um ou mais arquivos para outra sessão do Claude Code — um par listado p
 - Uma sessão par precisa de um arquivo do seu diretório de trabalho (um relatório, um patch, uma fixture) para continuar sua própria tarefa.
 - Você está coordenando trabalho entre sessões e quer entregar artefatos, não apenas texto (use `SendMessage` para texto).
 
+## Ativação
+
+- A transferência de arquivos entre sessões deve estar disponível na sessão; quando não está, a validação falha com "Cross-session file transfer is not available in this session."
+- Gated pelas mesmas condições de mensagens entre sessões que `ListAgents` (feature flags do lado do servidor, desativadas por padrão).
+
 ## Parâmetros
 
 - `to` (string, obrigatório): Destinatário — um nome de sessão par de `ListAgents`, ou um endereço explícito `uds:<socket>` / `bridge:<session id>`.
@@ -27,6 +32,5 @@ SendFile(
 
 ## Observações
 
-- A transferência de arquivos entre sessões deve estar disponível na sessão; quando não está, a validação falha com "Cross-session file transfer is not available in this session."
 - Transferências para máquinas remotas podem exigir aprovação adicional.
 - Ler o conteúdo dos arquivos faz parte do envio — negado se leituras de arquivo estiverem desabilitadas por regras de permissão.

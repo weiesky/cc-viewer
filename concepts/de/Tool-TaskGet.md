@@ -12,6 +12,12 @@ Ruft den vollständigen Datensatz einer einzelnen Aufgabe per ID ab, einschließ
 
 Bevorzugen Sie `TaskList`, wenn Sie nur einen groben Überblick benötigen; reservieren Sie `TaskGet` für den konkreten Datensatz, den Sie sorgfältig lesen oder ändern wollen.
 
+## Aktivierung
+
+- Auf den meisten Modellen standardmäßig verfügbar.
+- Nicht verfügbar auf Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 und neueren Familien (v2.1.233+), außer bei Aktivierung über `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` oder `--tools`.
+- Das gesamte Aufgaben-System ist deaktiviert, wenn `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parameter
 
 - `taskId` (string, erforderlich): Der Aufgabenbezeichner, der von `TaskCreate` oder `TaskList` zurückgegeben wird. IDs sind für die Lebensdauer der Aufgabe stabil.

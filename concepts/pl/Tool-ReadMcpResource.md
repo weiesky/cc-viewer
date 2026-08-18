@@ -7,6 +7,10 @@ Odczytuje pojedynczy zasób udostępniany przez podłączony serwer MCP (Model C
 - Serwer MCP reklamuje zasób (plik, rekord, dokument), którego zawartość potrzebujesz w kontekście.
 - Masz konkretny URI zasobu — z `ListMcpResources`, z dokumentacji serwera lub z poprzedniego wyniku narzędzia.
 
+## Aktywacja
+
+- Zawsze włączone, ale nieujawniane na liście narzędzi modelu — przeznaczone do użytku w cienkim kliencie / sidecar.
+
 ## Parametry
 
 - `server` (string, wymagany): Nazwa serwera MCP.

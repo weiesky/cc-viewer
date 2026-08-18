@@ -6,6 +6,12 @@
 
 - Bir eklenti araması, kullanıcının yapmaya çalıştığı şeyle eşleşen eklentileri yüzeye çıkardı ve bunları yüklenmesi için sunmak istiyorsunuz.
 
+## Etkinleştirme
+
+- Yalnızca bir Remote Control istemcisi bağlıyken veya oturum yönetilen bir bulut ortamında çalışırken.
+- HIPAA kurumsal yapılandırmalarında devre dışıdır.
+- Brief modunda değildir.
+
 ## Parametreler
 
 - `contextLabel` (string, zorunlu): Öneriyi kullanıcı isteğine bağlayan kısa başlık (en fazla 128 karakter).
@@ -31,4 +37,3 @@ Kart kullanıcı için oluşturulur; eklentiyi etkinleştirmek bu aracın dış�
 ## Notlar
 
 - Yalnızca arama sonuçlarından gelen eklentileri dahil edin — asla eklenti girdileri uydurmayın.
-- HIPAA kurumsal yapılandırmalarında devre dışıdır.

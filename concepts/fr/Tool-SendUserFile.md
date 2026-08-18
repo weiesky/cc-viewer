@@ -7,6 +7,12 @@ Envoie un ou plusieurs fichiers à l'utilisateur — artefacts générés, captu
 - Vous avez produit un fichier dont l'utilisateur a besoin (un rapport, une image, une page HTML) et vous voulez le mettre en avant, pas seulement mentionner son chemin.
 - Répondre avec une pièce jointe (`status="normal"`), ou mettre en avant de façon proactive quelque chose que l'utilisateur n'a pas demandé mais qu'il doit voir maintenant (`status="proactive"`).
 
+## Activation
+
+- Disponible uniquement lorsqu'un client Remote Control est connecté, ou lorsque la session s'exécute dans un environnement cloud géré (p. ex. Claude Code sur le web).
+- Non disponible sur Amazon Bedrock, Google Cloud ou Microsoft Foundry.
+- Nécessite que la session autorise l'envoi de fichiers (capacité contrôlée par des paramètres/un drapeau de fonctionnalité) ; non proposé en mode brief.
+
 ## Paramètres
 
 - `files` (array de strings, requis) : chemins de fichiers (absolus ou relatifs au cwd) à envoyer à l'utilisateur. Passez toujours un array, même pour un seul fichier.
@@ -29,5 +35,4 @@ SendUserFile(
 
 ## Notes
 
-- Nécessite que la session autorise l'envoi de fichiers (capacité contrôlée par des paramètres/un drapeau de fonctionnalité) ; non proposé en mode brief.
 - Choisissez `display="attach"` pour les fichiers que l'utilisateur enregistre et ouvre dans une autre application ; `render` pour tout ce qu'il doit regarder immédiatement.

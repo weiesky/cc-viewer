@@ -10,6 +10,12 @@
 - Neu entdeckte Abhängigkeiten mit `addBlocks` / `addBlockedBy` erfassen.
 - Strukturierte `metadata` anhängen, wie externe Ticket-IDs oder Prioritätshinweise.
 
+## Aktivierung
+
+- Auf den meisten Modellen standardmäßig verfügbar.
+- Nicht verfügbar auf Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 und neueren Familien (v2.1.233+), außer bei Aktivierung über `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` oder `--tools`.
+- Das gesamte Aufgaben-System ist deaktiviert, wenn `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parameter
 
 - `taskId` (string, erforderlich): Die zu ändernde Aufgabe. Aus `TaskList` oder `TaskCreate` beziehen.

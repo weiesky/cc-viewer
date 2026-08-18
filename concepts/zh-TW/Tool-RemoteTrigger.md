@@ -10,6 +10,13 @@
 - 列出或稽核所有目前的觸發器，以檢視其設定和狀態
 - 更新觸發器設定，例如排程、負載或說明，而無需重新建立觸發器
 
+## 啟用方式
+
+- 需要 claude.ai Pro、Max、Team 或 Enterprise 方案。
+- 在 Amazon Bedrock、Claude Platform on AWS、Google Cloud 或 Microsoft Foundry 上不可用。
+- 需要伺服器端功能旗標以及 `allow_remote_sessions` / `allow_routines` 政策設定。
+- 不適用於遠端工作階段本身。
+
 ## 參數
 
 - `action` (string, 必填)：要執行的操作 — 可選值為 `list`、`get`、`create`、`update` 或 `run`

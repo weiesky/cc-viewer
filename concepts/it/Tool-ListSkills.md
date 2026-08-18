@@ -7,6 +7,12 @@ Elenca le skill claude.ai abilitate dell'utente, opzionalmente filtrate per paro
 - Hai bisogno dell'elenco autorevole delle skill attualmente abilitate — prima di invocarne una, o per confermare cosa ha aggiunto una scheda di `SuggestSkills`.
 - L'utente chiede quali skill ha.
 
+## Attivazione
+
+- Richiede il permesso di accesso al registro dei plugin.
+- Disabilitato negli ambienti HIPAA.
+- Sempre disponibile nelle sessioni remote.
+
 ## Parametri
 
 - `keywords` (array of strings, opzionale): Filtra l'elenco — fino a 8 elementi, ciascuno di 1–64 caratteri. Ometti per elencare tutto.

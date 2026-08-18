@@ -7,6 +7,13 @@ Listet die Agenten auf, an die Sie `SendMessage` senden können: In-Process-Suba
 - Sie benötigen den exakten Namen einer Peer-Sitzung oder eines Subagenten, bevor Sie ihm eine Nachricht senden.
 - Sie möchten sehen, welche Sitzungen von dieser aus derzeit erreichbar sind.
 
+## Aktivierung
+
+- Erfordert Claude Code 2.1.224+ und sitzungsübergreifendes Messaging (ein serverseitiges Feature-Flag, standardmäßig deaktiviert).
+- Sitzungsübergreifendes Messaging ist nicht verfügbar auf Amazon Bedrock, Claude Platform on AWS, Google Cloud Agent Platform und Microsoft Foundry.
+- Deaktiviert, wenn `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY`, `DO_NOT_TRACK` oder `DISABLE_GROWTHBOOK` gesetzt ist.
+- Erzwingen Sie die Aktivierung mit `CLAUDE_CODE_HARBOR_KITE=1`.
+
 ## Parameter
 
 - `channel` (string, optional): In diesem Build nicht verfügbar; nicht setzen.
@@ -26,4 +33,3 @@ Jede Zeile gibt einen Namen aus – dieser Name ist die Adresse. Senden Sie mit 
 
 - Schreibgeschützt und nebenläufigkeitssicher.
 - Eine Cloud-Sitzung empfängt Ihre Nachricht, kann aber noch nicht antworten – lesen Sie ihre Antwort in ihrem eigenen Transkript.
-- Die Verfügbarkeit hängt von der Sitzungskonfiguration ab (sitzungsübergreifendes Messaging ist ein durch Feature-Flags freigeschaltetes Feature).

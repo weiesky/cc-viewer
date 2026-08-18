@@ -12,6 +12,12 @@ Zwraca każde zadanie w bieżącym zespole (lub sesji) w formie podsumowania. U�
 
 `TaskList` jest tylko do odczytu i tani; wywołuj swobodnie, gdy potrzebujesz przeglądu.
 
+## Aktywacja
+
+- Dostępne domyślnie na większości modeli.
+- Niedostępne na rodzinach Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 i nowszych (v2.1.233+), chyba że włączone przez `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` lub `--tools`.
+- Cały system zadań jest wyłączony, gdy `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parametry
 
 `TaskList` nie przyjmuje parametrów. Zawsze zwraca pełny zbiór zadań dla aktywnego kontekstu.

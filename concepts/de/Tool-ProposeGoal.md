@@ -8,6 +8,12 @@ Schlägt ein überprüfbares Abschlussziel für die Sitzung vor. Das Ziel wird d
 - Sie möchten die ausdrückliche Freigabe des Benutzers darüber, was "fertig" bedeutet, bevor Sie umfangreiche Arbeit leisten.
 - Die eigenen Worte des Benutzers haben das Ergebnis bereits benannt, und Sie möchten es als Sitzungsziel festhalten.
 
+## Aktivierung
+
+- Standardmäßig deaktiviert (serverseitiges Feature-Flag).
+- Aus interaktiven und Hintergrund-Sitzungen ausgeschlossen.
+- Deaktiviert durch den Einstellungsschlüssel `modelProposedGoals: "disabled"`.
+
 ## Parameter
 
 - `condition` (string, erforderlich): Die Abschlussbedingung, so formuliert, dass ein separater Prüfer sie aus der Unterhaltung verifizieren kann (z. B. "all tests in test/auth pass (bun test exits 0)"). Höchstens 500 Zeichen – der Benutzer muss die gesamte Bedingung im Freigabedialog lesen können.

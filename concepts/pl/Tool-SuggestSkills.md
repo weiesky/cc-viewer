@@ -6,6 +6,12 @@ Renderuje kartę samodzielnych skilli, które użytkownik może dodać (skilli, 
 
 - Żądanie użytkownika pasuje do skilli, których nie ma włączonych (`trigger="user_asked"`, gdy sam zapytał, `trigger="proactive"`, gdy sugerujesz bez prośby).
 
+## Aktywacja
+
+- Tylko wtedy, gdy podłączony jest klient Remote Control lub sesja działa w zarządzanym środowisku chmurowym.
+- Wyłączone w konfiguracjach enterprise HIPAA.
+- Niedostępne w trybie brief.
+
 ## Parametry
 
 - `keywords` (tablica stringów, wymagany): Słowa kluczowe tematu z żądania użytkownika. 1–8 elementów, każdy 1–64 znaki.
@@ -25,4 +31,3 @@ Skille już włączone są odfiltrowywane z wyniku.
 ## Uwagi
 
 - Renderuje tylko kartę sugestii — dodanie skilla odbywa się poza tym przepływem; wywołaj potem `ListSkills`, aby potwierdzić.
-- Wyłączone w konfiguracjach enterprise HIPAA.

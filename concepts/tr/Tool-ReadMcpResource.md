@@ -7,6 +7,10 @@ Bağlı bir MCP (Model Context Protocol) sunucusunun sunduğu tek bir kaynağı 
 - Bir MCP sunucusu, içeriğine bağlamda ihtiyaç duyduğunuz bir kaynak (dosya, kayıt, doküman) reklam eder.
 - Somut bir kaynak URI'niz var — `ListMcpResources`'tan, sunucunun dokümantasyonundan veya önceki bir araç sonucundan.
 
+## Etkinleştirme
+
+- Her zaman etkindir, ancak modelin araç listesine sunulmaz — ince istemci / sidecar kullanımı için tasarlanmıştır.
+
 ## Parametreler
 
 - `server` (string, zorunlu): MCP sunucusunun adı.

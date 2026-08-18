@@ -8,6 +8,11 @@ Escreve uma lista de tarefas estruturada para a sessão atual, substituindo a li
 - O usuário pede explicitamente por uma lista de tarefas.
 - Você quer marcar exatamente um item como em andamento enquanto o restante permanece pendente ou concluído.
 
+## Ativação
+
+- Ferramenta legada: desativada por padrão em sessões que oferecem as ferramentas de tarefa (`TaskCreate`, `TaskUpdate`, `TaskList`).
+- Reative-a com `CLAUDE_CODE_ENABLE_TASKS=0`.
+
 ## Parâmetros
 
 - `todos` (array, obrigatório): A lista de tarefas completa e atualizada. Cada entrada tem:

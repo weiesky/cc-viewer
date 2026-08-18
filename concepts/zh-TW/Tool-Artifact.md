@@ -9,6 +9,13 @@
 - 列出使用者現有 artifacts 以查找來自早期工作階段的檔案（`action: "list"`）
 - **不適用於**必須保持本地的內容、純文字答案或需要在檢視時存取外部網路資源的任何東西——嚴格的 CSP 阻止所有外部主機
 
+## 啟用方式
+
+- 需要 Pro、Max、Team 或 Enterprise 方案並登入 claude.ai（`/login`）。
+- 僅限 Anthropic API——在 Amazon Bedrock、Google Cloud 或 Microsoft Foundry 上不可用。
+- 需要 Claude Code ≥ 2.1.183 或 Desktop 應用程式 ≥ 1.13576.0。
+- 以 `disableArtifact` 設定或 `CLAUDE_CODE_DISABLE_ARTIFACT=1` 停用。
+
 ## 參數
 
 - `file_path`（字串）：要渲染的 `.html` 或 `.md` 檔案路徑。檔案在發佈時被包裝在文件框架中，因此直接寫入頁面內容——不要包括 `<!DOCTYPE>`、`<html>`、`<head>` 或 `<body>` 標籤。相同路徑 → 重新部署時使用相同 URL；不同路徑則申請新 URL。

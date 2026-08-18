@@ -8,6 +8,12 @@ Executes JavaScript in a persistent Node.js vm context inside the session. Top-l
 - Multi-step scripting where intermediate state should persist between calls (counters, accumulated results).
 - Probing an API or library behavior interactively before writing it into a file.
 
+## Activation
+
+- Off by default — set `CLAUDE_CODE_REPL=true` to enable it.
+- In terminal (`cli`) and claude.ai (`remote`) sessions, a server-side feature flag may also enable it.
+- When off, REPL is hidden from the model's tool list. When on, `Read`, `Glob`, `Grep`, `Bash`, `PowerShell`, and `NotebookEdit` are replaced by REPL shorthands.
+
 ## Parameters
 
 - `code` (string, required): JavaScript code to execute. Supports top-level await. State persists across calls.

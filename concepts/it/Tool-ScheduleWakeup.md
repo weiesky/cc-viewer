@@ -10,6 +10,11 @@ Pianifica quando riprendere il lavoro in modalità dinamica `/loop`. Lo strument
 - Per eseguire un loop autonomo senza prompt dell'utente — passare il sentinel letterale `<<autonomous-loop-dynamic>>` come `prompt`
 - Per interrogare un processo il cui stato sta per cambiare (usare un breve ritardo per mantenere la cache calda)
 
+## Attivazione
+
+- Non disponibile su Amazon Bedrock, Claude Platform on AWS, Google Cloud Agent Platform o Microsoft Foundry.
+- Disattivato anche quando il recupero dei feature flag è disabilitato (variabili d'ambiente di telemetria/traffico).
+
 ## Parametri
 
 - `delaySeconds` (numero, obbligatorio): Secondi fino alla ripresa. Il runtime limita automaticamente il valore a `[60, 3600]`, quindi non è necessario limitarlo manualmente.

@@ -10,6 +10,11 @@ Interroge les serveurs Language Server Protocol (LSP) pour obtenir de l'intellig
 - Trouver les implémentations d'une interface ou d'une méthode abstraite (`goToImplementation`)
 - Parcourir la hiérarchie d'appels d'une fonction (`prepareCallHierarchy`, `incomingCalls`, `outgoingCalls`)
 
+## Activation
+
+- Inactif jusqu'à ce qu'un plugin d'intelligence de code pour le langage soit installé (le binaire du serveur est installé séparément).
+- L'outil n'apparaît que lorsqu'un client LSP est connecté.
+
 ## Paramètres
 
 - `operation` (string, requis) : l'une des opérations énumérées ci-dessus.

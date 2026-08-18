@@ -6,6 +6,12 @@ Konu anahtar kelimelerine dayanarak kullanıcının ekleyebileceği bağımsız 
 
 - Kullanıcının isteği, etkinleştirmedikleri skill'lerle eşleşir (istediklerinde `trigger="user_asked"`, istenmeden önerdiğinizde `trigger="proactive"`).
 
+## Etkinleştirme
+
+- Yalnızca bir Remote Control istemcisi bağlıyken veya oturum yönetilen bir bulut ortamında çalışırken.
+- HIPAA kurumsal yapılandırmalarında devre dışıdır.
+- Brief modunda değildir.
+
 ## Parametreler
 
 - `keywords` (string dizisi, zorunlu): Kullanıcının isteğindeki konu anahtar kelimeleri. 1–8 öğe, her biri 1–64 karakter.
@@ -25,4 +31,3 @@ Zaten etkin olan skill'ler sonuçtan filtrelenir.
 ## Notlar
 
 - Yalnızca bir öneri kartı oluşturur — bir skill eklemek bu aracın dışında gerçekleşir; doğrulamak için sonrasında `ListSkills` çağırın.
-- HIPAA kurumsal yapılandırmalarında devre dışıdır.

@@ -6,6 +6,12 @@ Muestra una tarjeta de instalación de plugin en línea a partir de resultados d
 
 - Una búsqueda de plugins hizo aflorar plugins que coinciden con lo que el usuario intenta hacer, y quieres ofrecerlos para su instalación.
 
+## Activación
+
+- Solo cuando hay un cliente de Remote Control conectado, o la sesión se ejecuta en un entorno de nube gestionado.
+- Deshabilitado bajo configuraciones empresariales HIPAA.
+- No en modo brief.
+
 ## Parámetros
 
 - `contextLabel` (string, obligatorio): Encabezado corto que vincula la sugerencia con la solicitud del usuario (máximo 128 caracteres).
@@ -31,4 +37,3 @@ La tarjeta se muestra al usuario; habilitar el plugin ocurre fuera de banda. Lla
 ## Notas
 
 - Solo incluye plugins que provengan de resultados de búsqueda — nunca inventes entradas de plugins.
-- Deshabilitado bajo configuraciones empresariales HIPAA.

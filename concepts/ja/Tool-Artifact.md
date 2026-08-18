@@ -9,6 +9,13 @@ HTML または Markdown ファイルを Artifact として レンダリングし
 - ユーザーの既存の artifacts を一覧表示して、以前のセッションのファイルを検索 (`action: "list"`)
 - **使用しない場合**: ローカルに保つ必要があるコンテンツ、プレーンテキストの回答、表示時に外部ネットワークリソースが必要なもの — 厳格な CSP はすべての外部ホストをブロックします
 
+## 有効化
+
+- claude.ai ログイン (`/login`) 付きの Pro、Max、Team、または Enterprise プランが必要です。
+- Anthropic API のみ — Amazon Bedrock、Google Cloud、Microsoft Foundry では利用できません。
+- Claude Code ≥ 2.1.183 またはデスクトップアプリ ≥ 1.13576.0 が必要です。
+- `disableArtifact` 設定または `CLAUDE_CODE_DISABLE_ARTIFACT=1` で無効化できます。
+
 ## パラメータ
 
 - `file_path`（文字列）: レンダリングするための `.html` または `.md` ファイルのパス。ファイルは公開時にドキュメントスケルトンでラップされるため、ページコンテンツを直接記述します — `<!DOCTYPE>`、`<html>`、`<head>` または `<body>` タグは含めません。同じパス → 再デプロイ時に同じ URL；別のパスは新しい URL を要求します。

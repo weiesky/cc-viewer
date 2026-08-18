@@ -2,13 +2,18 @@
 
 Forespørger Language Server Protocol-servere (LSP) for kodeintelligens — definitioner, referencer, hover, symboler, implementeringer og kaldhierarki. Mere præcist end tekstsøgning, fordi det forstår kode semantisk.
 
-## Hvornår skal det bruges
+## Hvornår skal den bruges
 
 - Spring til et symbols definition (`goToDefinition`) eller find alle referencer (`findReferences`)
 - Læs typesignaturer / dokumentation for et symbol (`hover`)
 - List symboler i én fil (`documentSymbol`) eller søg efter dem på tværs af projektet (`workspaceSymbol`)
 - Find implementeringer af en grænseflade eller abstrakt metode (`goToImplementation`)
 - Gennemløb kaldhierarkiet for en funktion (`prepareCallHierarchy`, `incomingCalls`, `outgoingCalls`)
+
+## Aktivering
+
+- Inaktiv, indtil et code-intelligence-plugin til sproget er installeret (serverbinæren installeres separat).
+- Værktøjet vises kun, når en LSP-klient er forbundet.
 
 ## Parametre
 

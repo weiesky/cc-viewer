@@ -9,6 +9,13 @@ Renderuj plik HTML lub Markdown na Artifact — prywatną stronę internetową h
 - Wyświetlanie istniejących artefaktów użytkownika w celu znalezienia artefaktu z wcześniejszej sesji (`action: "list"`)
 - **Nie** do zawartości, która musi pozostać lokalna, zwykłych odpowiedzi tekstowych ani niczego wymagającego zasobów sieciowych w czasie wyświetlania — ścisły CSP blokuje wszystkie hosty zewnętrzne
 
+## Aktywacja
+
+- Wymaga planu Pro, Max, Team lub Enterprise z zalogowaniem na claude.ai (`/login`).
+- Tylko Anthropic API — niedostępne na Amazon Bedrock, Google Cloud i Microsoft Foundry.
+- Wymaga Claude Code ≥ 2.1.183 lub aplikacji Desktop ≥ 1.13576.0.
+- Wyłącz przez ustawienie `disableArtifact` lub `CLAUDE_CODE_DISABLE_ARTIFACT=1`.
+
 ## Parametry
 
 - `file_path` (ciąg znaków): Ścieżka do pliku `.html` lub `.md` do renderowania. Plik jest zawinięty w szkielet dokumentu podczas publikacji, więc pisz zawartość strony bezpośrednio — bez tagów `<!DOCTYPE>`, `<html>`, `<head>` ani `<body>`. Ta sama ścieżka → ten sam adres URL podczas ponownego wdrożenia; inna ścieżka żąda nowego adresu URL.

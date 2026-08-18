@@ -2,7 +2,7 @@
 
 Spør Language Server Protocol-servere (LSP) om kodeintelligens — definisjoner, referanser, hover, symboler, implementeringer og kallhierarki. Mer presist enn tekstsøk fordi det forstår kode semantisk.
 
-## Når skal det brukes
+## Når skal den brukes
 
 - Hopp til et symbols definisjon (`goToDefinition`) eller finn alle referanser (`findReferences`)
 - Les typesignaturer / dokumentasjon for et symbol (`hover`)
@@ -10,7 +10,12 @@ Spør Language Server Protocol-servere (LSP) om kodeintelligens — definisjoner
 - Finn implementeringer av et grensesnitt eller en abstrakt metode (`goToImplementation`)
 - Gå gjennom kallhierarkiet til en funksjon (`prepareCallHierarchy`, `incomingCalls`, `outgoingCalls`)
 
-## Parametre
+## Aktivering
+
+- Inaktiv inntil en kodeintelligens-plugin for språket er installert (serverbinæren installeres separat).
+- Verktøyet vises kun når en LSP-klient er tilkoblet.
+
+## Parametere
 
 - `operation` (streng, påkrevd): en av operasjonene nevnt ovenfor.
 - `filePath` (streng, påkrevd): filen det skal arbeides på.

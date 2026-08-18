@@ -14,6 +14,12 @@ Sends a desktop notification from the current Claude Code session. If Remote Con
 
 Do not send a notification for routine progress updates mid-task, or to confirm you have answered a question the user clearly just asked and is still watching. Do not notify when a short task completes — if the user submitted it and is waiting, a notification adds no value and erodes trust for future ones. Err strongly toward not sending one.
 
+## Activation
+
+- Off by default (server-side feature flag).
+- Delivery runs through Anthropic-hosted infrastructure — not available on Amazon Bedrock, Claude Platform on AWS, Google Cloud, or Microsoft Foundry.
+- Phone push additionally requires a connected Remote Control client.
+
 ## Parameters
 
 - `message` (string, required): the notification body. Keep under 200 characters; mobile operating systems truncate longer strings. Lead with what the user would act on: "build failed: 2 auth tests" is more useful than "task complete."

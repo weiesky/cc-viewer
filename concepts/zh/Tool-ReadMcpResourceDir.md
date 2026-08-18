@@ -7,6 +7,10 @@
 - MCP 服务器以层级方式组织资源，你需要枚举该层级的一层。
 - 你想在用 `ReadMcpResource` 逐个读取之前先浏览。
 
+## 启用方式
+
+- 始终启用，但不暴露在模型的工具列表中——面向 thin-client / sidecar 使用。
+
 ## 参数
 
 - `server` (string, 必填)：MCP 服务器名称。

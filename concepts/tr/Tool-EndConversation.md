@@ -8,6 +8,13 @@ Mevcut konuşmayı sonlandırır ve başka mesaj gönderilmesini engeller.
 
 Bu son çare bir eylemdir: aracın kendi kuralları kullanmadan önce kullanıcıyı uyarmayı ve onay almayı gerektirir ve kendine zarar verme veya zararla ilgili durumlarda asla kullanılmamalıdır.
 
+## Etkinleştirme
+
+- Claude Code 2.1.213+ ve Opus 4.8 / Sonnet 5 / Fable 5 veya daha sonraki bir aileden bir model gerektirir.
+- Yalnızca etkileşimli terminal oturumları — asla `--bare` modunda değil ve asla alt agent'lara sunulmaz.
+- Amazon Bedrock, AWS üzerinde Claude Platform, Vertex AI, Microsoft Foundry veya bulut ağ geçitlerinde kullanılamaz.
+- Sunucu tarafı bir özellik bayrağı gerektirir — çoğu oturum bu aracı sunmaz.
+
 ## Parametreler
 
 Bu araç parametre almaz.

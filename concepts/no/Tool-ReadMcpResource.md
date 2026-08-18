@@ -7,6 +7,10 @@ Leser én enkelt ressurs eksponert av en tilkoblet MCP-server (Model Context Pro
 - En MCP-server annonserer en ressurs (fil, post, dokument) hvis innhold du trenger i konteksten.
 - Du har en konkret ressurs-URI — fra `ListMcpResources`, fra serverens dokumentasjon eller fra et tidligere verktøyresultat.
 
+## Aktivering
+
+- Alltid aktivert, men ikke eksponert for modellens verktøyliste — ment for thin-client / sidecar-bruk.
+
 ## Parametere
 
 - `server` (string, påkrevd): MCP-servernavnet.

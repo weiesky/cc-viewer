@@ -8,6 +8,11 @@
 - 用户明确要求一份 todo 列表。
 - 你想把恰好一个条目标记为进行中，其余保持待处理或已完成。
 
+## 启用方式
+
+- 遗留工具：在提供任务工具（`TaskCreate`、`TaskUpdate`、`TaskList`）的会话中默认禁用。
+- 用 `CLAUDE_CODE_ENABLE_TASKS=0` 重新启用。
+
 ## 参数
 
 - `todos` (array, 必填)：完整更新后的 todo 列表。每个条目包含：

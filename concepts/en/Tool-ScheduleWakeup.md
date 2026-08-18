@@ -10,6 +10,11 @@ Schedule when to resume work in `/loop` dynamic mode. The tool lets Claude self-
 - Running an autonomous loop with no user prompt — pass the literal sentinel `<<autonomous-loop-dynamic>>` as `prompt`
 - Polling a process that is about to change state soon (stay cache-warm with a short delay)
 
+## Activation
+
+- Not available on Amazon Bedrock, Claude Platform on AWS, Google Cloud Agent Platform, or Microsoft Foundry.
+- Also off when feature-flag fetching is disabled (telemetry/traffic env vars).
+
 ## Parameters
 
 - `delaySeconds` (number, required): Seconds from now to resume. The runtime clamps the value to `[60, 3600]`, so you do not need to clamp it yourself.

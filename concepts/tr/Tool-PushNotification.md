@@ -14,6 +14,12 @@ Geçerli Claude Code oturumundan masaüstü bildirimi gönderir. Remote Control 
 
 Görev sırasında rutin ilerleme güncellemeleri için ya da kullanıcının açıkça yeni sorduğu ve beklediği bir soruyu cevapladığınızı onaylamak için bildirim göndermeyin. Kısa bir görev tamamlandığında bildirim göndermeyin — kullanıcı görevi yeni göndermiş ve bekliyorsa bildirim bir değer katmaz ve gelecekteki bildirimlere olan güveni zayıflatır. Kesinlikle göndermeme yönünde eğilin.
 
+## Etkinleştirme
+
+- Varsayılan olarak kapalıdır (sunucu tarafı bir özellik bayrağı).
+- Teslimat Anthropic tarafından barındırılan altyapı üzerinden çalışır — Amazon Bedrock, AWS üzerinde Claude Platform, Google Cloud veya Microsoft Foundry'de kullanılamaz.
+- Telefona push ayrıca bağlı bir Remote Control istemcisi gerektirir.
+
 ## Parametreler
 
 - `message` (dize, zorunlu): bildirim gövdesi. 200 karakterin altında tutun; mobil işletim sistemleri daha uzun dizeleri keser. Kullanıcının harekete geçeceği içerikle başlayın: "build failed: 2 auth tests", "task complete" ifadesinden çok daha kullanışlıdır.

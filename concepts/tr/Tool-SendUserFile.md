@@ -7,6 +7,12 @@ Bir veya daha fazla dosyayı kullanıcıya gönderir — oluşturulan yapıtlar,
 - Kullanıcının ihtiyaç duyduğu bir dosya ürettiniz (bir rapor, bir görüntü, bir HTML sayfası) ve yalnızca yolundan bahsetmek yerine onu öne çıkarmak istiyorsunuz.
 - Ekli bir yanıt verme (`status="normal"`) veya kullanıcının istemediği ancak şimdi görmesi gereken bir şeyi proaktif olarak öne çıkarma (`status="proactive"`).
 
+## Etkinleştirme
+
+- Yalnızca bir Remote Control istemcisi bağlıyken veya oturum yönetilen bir bulut ortamında çalışırken kullanılabilir (ör. web üzerinde Claude Code).
+- Amazon Bedrock, Google Cloud veya Microsoft Foundry'de kullanılamaz.
+- Oturumun dosya göndermeye izin vermesini gerektirir (ayarlar/özellik bayrağı ile kısıtlanmış bir yetenek); brief modunda sunulmaz.
+
 ## Parametreler
 
 - `files` (string dizisi, zorunlu): Kullanıcıya gönderilecek dosya yolları (mutlak veya çalışma dizinine göreli). Tek bir dosya için bile her zaman bir dizi geçirin.
@@ -29,5 +35,4 @@ SendUserFile(
 
 ## Notlar
 
-- Oturumun dosya göndermeye izin vermesini gerektirir (ayarlar/özellik bayrağı ile kısıtlanmış bir yetenek); brief modunda sunulmaz.
 - Kullanıcının kaydedip başka bir uygulamada açacağı dosyalar için `display="attach"`; hemen bakması gereken her şey için `render` seçin.

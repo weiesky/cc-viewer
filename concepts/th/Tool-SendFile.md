@@ -7,6 +7,11 @@
 - peer session ต้องการไฟล์จาก working directory ของคุณ (รายงาน, patch, fixture) เพื่อทำงานของมันต่อ
 - คุณประสานงานข้ามเซสชันและต้องการส่งมอบ artifact ไม่ใช่แค่ข้อความ (ใช้ `SendMessage` สำหรับข้อความ)
 
+## การเปิดใช้งาน
+
+- การโอนไฟล์ข้ามเซสชันต้องพร้อมใช้งานในเซสชัน หากไม่ การตรวจสอบจะล้มเหลวพร้อมข้อความ "Cross-session file transfer is not available in this session."
+- Gated ด้วยเงื่อนไขการส่งข้อความข้ามเซสชันเดียวกับ `ListAgents` (feature flag ฝั่ง server ปิดตามค่าเริ่มต้น)
+
 ## พารามิเตอร์
 
 - `to` (string, required): ผู้รับ — ชื่อ peer session จาก `ListAgents` หรือที่อยู่แบบ `uds:<socket>` / `bridge:<session id>` ที่ชัดเจน
@@ -27,6 +32,5 @@ SendFile(
 
 ## หมายเหตุ
 
-- การส่งไฟล์ข้ามเซสชันต้องเปิดใช้งานในเซสชันนั้น หากไม่ การตรวจสอบจะล้มเหลวพร้อมข้อความ "Cross-session file transfer is not available in this session."
 - การส่งไปยังเครื่องระยะไกลอาจต้องอนุมัติเพิ่มเติม
 - การอ่านเนื้อหาไฟล์เป็นส่วนหนึ่งของการส่ง — จะถูกปฏิเสธหากการอ่านไฟล์ถูกปิดโดย permission rules

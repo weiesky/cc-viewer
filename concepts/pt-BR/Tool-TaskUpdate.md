@@ -10,6 +10,12 @@ Modifica uma tarefa existente — seu status, conteúdo, ownership, metadata ou 
 - Registrar dependências recém-descobertas com `addBlocks` / `addBlockedBy`.
 - Anexar `metadata` estruturada como IDs de tickets externos ou dicas de prioridade.
 
+## Ativação
+
+- Disponível por padrão na maioria dos modelos.
+- Não disponível no Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 e famílias posteriores (v2.1.233+) a menos que seja habilitado via `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` ou `--tools`.
+- Todo o sistema de tarefas é desativado quando `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parâmetros
 
 - `taskId` (string, obrigatório): A tarefa a modificar. Obtenha de `TaskList` ou `TaskCreate`.

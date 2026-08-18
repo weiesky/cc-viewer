@@ -8,6 +8,11 @@ Zapisuje strukturalną listę todo dla bieżącej sesji, zastępując poprzedni�
 - Użytkownik wprost prosi o listę todo.
 - Chcesz oznaczyć dokładnie jeden element jako w toku, podczas gdy reszta pozostaje oczekująca lub ukończona.
 
+## Aktywacja
+
+- Starsze narzędzie: domyślnie wyłączone w sesjach oferujących narzędzia zadań (`TaskCreate`, `TaskUpdate`, `TaskList`).
+- Włącz je ponownie przez `CLAUDE_CODE_ENABLE_TASKS=0`.
+
 ## Parametry
 
 - `todos` (tablica, wymagany): Kompletna zaktualizowana lista todo. Każdy wpis zawiera:

@@ -7,6 +7,10 @@ Bağlı bir MCP sunucusunun sunduğu dizin tarzı bir kaynağın girdilerini URI
 - Bir MCP sunucusu kaynakları hiyerarşik olarak düzenler ve bu hiyerarşinin bir düzeyini saymanız gerekir.
 - Bireysel kaynakları `ReadMcpResource` ile okumadan önce göz atmak istiyorsunuz.
 
+## Etkinleştirme
+
+- Her zaman etkindir, ancak modelin araç listesine sunulmaz — ince istemci / sidecar kullanımı için tasarlanmıştır.
+
 ## Parametreler
 
 - `server` (string, zorunlu): MCP sunucusunun adı.

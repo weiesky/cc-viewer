@@ -8,6 +8,12 @@ Foreslår et verificerbart færdiggørelsesmål for sessionen. Målet vises til 
 - Du vil have brugerens eksplicitte godkendelse af, hvad "færdig" betyder, før du udfører betydeligt arbejde.
 - Brugerens egne ord har allerede angivet udfaldet, og du vil have det registreret som sessionens mål.
 
+## Aktivering
+
+- Slået fra som standard (server-side feature-flag).
+- Udelukket fra interaktive sessioner og baggrundssessioner.
+- Slået fra af settings-nøglen `modelProposedGoals: "disabled"`.
+
 ## Parametre
 
 - `condition` (string, påkrævet): Færdiggørelsesbetingelsen, skrevet så en separat evaluator kan verificere den ud fra samtalen (f.eks. "all tests in test/auth pass (bun test exits 0)"). Højst 500 tegn — brugeren skal kunne læse hele betingelsen i godkendelsesdialogen.

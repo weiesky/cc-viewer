@@ -10,6 +10,13 @@ Kaller claude.ai's fjernutløser-API for å administrere planlagte oppgaver og o
 - Visning eller revisjon av alle gjeldende utløsere for å gjennomgå konfigurasjon og status
 - Oppdatering av utløserinnstillinger som plan, nyttelast eller beskrivelse uten å måtte gjenskape utløseren
 
+## Aktivering
+
+- Krever en claude.ai Pro-, Max-, Team- eller Enterprise-plan.
+- Ikke tilgjengelig på Amazon Bedrock, Claude Platform on AWS, Google Cloud eller Microsoft Foundry.
+- Krever server-side feature-flags og policy-innstillingene `allow_remote_sessions` / `allow_routines`.
+- Ikke for fjernsesjonene selv.
+
 ## Parametere
 
 - `action` (string, påkrevd): operasjonen som skal utføres — en av `list`, `get`, `create`, `update` eller `run`

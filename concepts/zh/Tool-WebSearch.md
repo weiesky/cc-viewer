@@ -10,6 +10,12 @@
 - 核实自模型训练以来可能已变化的事实。
 - 在用 `WebFetch` 获取某个单页之前，先对某主题了解多方观点。
 
+## 启用方式
+
+- 可用性取决于提供方和模型：在 Anthropic API 和 Claude Platform on AWS 上可用；在 Microsoft Foundry 上需要 Anthropic 托管的部署；在 Google Cloud 上适用于 Claude 4+ 模型。
+- 在 Amazon Bedrock 上不可用。
+- 用 `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` 将每个会话的调用次数上限设为 200。
+
 ## 参数
 
 - `query` (string, 必填)：搜索查询。最小长度 2 个字符。询问「最新」或「最近」的信息时，在查询中包含当前年份，以确保结果新鲜。

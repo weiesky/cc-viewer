@@ -14,6 +14,12 @@ Envía una notificación de escritorio desde la sesión actual de Claude Code. S
 
 No envíe una notificación para actualizaciones de progreso rutinarias durante una tarea, ni para confirmar que respondió algo que el usuario claramente acaba de preguntar y está esperando. No notifique cuando una tarea corta finaliza — si el usuario la acaba de enviar y está esperando, la notificación no aporta valor y erosiona la confianza en notificaciones futuras. Incline fuertemente hacia no enviarla.
 
+## Activación
+
+- Desactivado por defecto (feature flag del lado del servidor).
+- La entrega se realiza a través de infraestructura alojada por Anthropic — no disponible en Amazon Bedrock, Claude Platform on AWS, Google Cloud ni Microsoft Foundry.
+- El push al teléfono requiere además un cliente de Remote Control conectado.
+
 ## Parámetros
 
 - `message` (cadena, obligatorio): el cuerpo de la notificación. Mantenga menos de 200 caracteres; los sistemas operativos móviles truncan cadenas más largas. Comience con lo que el usuario tomaría como acción: "build failed: 2 auth tests" es más útil que "task complete".

@@ -7,6 +7,10 @@ Legge una singola risorsa esposta da un server MCP (Model Context Protocol) conn
 - Un server MCP pubblicizza una risorsa (file, record, documento) il cui contenuto ti serve nel contesto.
 - Hai una URI di risorsa concreta — da `ListMcpResources`, dalla documentazione del server, o da un risultato di tool precedente.
 
+## Attivazione
+
+- Sempre abilitato, ma non esposto all'elenco degli strumenti del modello — pensato per l'uso thin-client / sidecar.
+
 ## Parametri
 
 - `server` (string, obbligatorio): Il nome del server MCP.

@@ -10,6 +10,11 @@ Transmet un message d'un membre d'équipe à un autre au sein d'une équipe acti
 - Répondre à une invite de protocole telle qu'une demande d'arrêt ou une demande d'approbation de plan du chef d'équipe.
 - Boucler la boucle à la fin d'une tâche déléguée afin que le chef puisse marquer l'élément terminé.
 
+## Activation
+
+- Contrôlé par les mêmes conditions de messagerie inter-sessions que `ListAgents` (drapeaux de fonctionnalité côté serveur, désactivés par défaut).
+- Les coéquipiers nécessitent en plus l'activation des équipes d'agents expérimentales.
+
 ## Paramètres
 
 - `to` (string, requis) : le `name` du coéquipier cible tel qu'enregistré dans l'équipe, ou `*` pour diffuser à tous les coéquipiers à la fois.

@@ -8,6 +8,12 @@ Kjører JavaScript i en persistent Node.js vm-kontekst inne i sesjonen. Top-leve
 - Flerstegs scripting der mellomtilstand skal vedvare mellom kall (tellere, akkumulerte resultater).
 - Utforske en API eller et biblioteks oppførsel interaktivt før du skriver det inn i en fil.
 
+## Aktivering
+
+- Av som standard — sett `CLAUDE_CODE_REPL=true` for å aktivere den.
+- I terminal- (`cli`) og claude.ai- (`remote`) sesjoner kan et server-side feature-flag også aktivere den.
+- Når den er av, er REPL skjult for modellens verktøyliste. Når den er på, erstattes `Read`, `Glob`, `Grep`, `Bash`, `PowerShell` og `NotebookEdit` av REPL-forkortelser.
+
 ## Parametere
 
 - `code` (string, påkrevd): JavaScript-kode som skal kjøres. Støtter top-level await. Tilstanden vedvarer på tvers av kall.

@@ -8,6 +8,13 @@
 
 这是最后手段：工具自身的规则要求在使用前先警告用户并确认，且绝不能在自残或伤害相关情境中使用。
 
+## 启用方式
+
+- 需要 Claude Code 2.1.213+ 以及 Opus 4.8 / Sonnet 5 / Fable 5 或更高版本家族的模型。
+- 仅限交互式终端会话——绝不用于 `--bare` 模式，也绝不提供给子代理。
+- 在 Amazon Bedrock、Claude Platform on AWS、Vertex AI、Microsoft Foundry 或云网关上不可用。
+- 需要服务端功能开关——大多数会话不提供此工具。
+
 ## 参数
 
 本工具不接受任何参数。

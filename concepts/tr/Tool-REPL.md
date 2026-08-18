@@ -8,6 +8,12 @@ Oturum içinde kalıcı bir Node.js vm bağlamında JavaScript çalıştırır. 
 - Ara durumun çağrılar arasında kalması gereken çok adımlı betik yazma (sayaçlar, birikmiş sonuçlar).
 - Bir dosyaya yazmadan önce bir API'nin veya kitaplığın davranışını etkileşimli olarak araştırma.
 
+## Etkinleştirme
+
+- Varsayılan olarak kapalıdır — etkinleştirmek için `CLAUDE_CODE_REPL=true` ayarlayın.
+- Terminal (`cli`) ve claude.ai (`remote`) oturumlarında sunucu tarafı bir özellik bayrağı da bunu etkinleştirebilir.
+- Kapalıyken REPL modelin araç listesinden gizlenir. Açıkken `Read`, `Glob`, `Grep`, `Bash`, `PowerShell` ve `NotebookEdit` REPL kısayollarıyla değiştirilir.
+
 ## Parametreler
 
 - `code` (string, zorunlu): Çalıştırılacak JavaScript kodu. Üst düzey await'i destekler. Durum çağrılar arasında korunur.

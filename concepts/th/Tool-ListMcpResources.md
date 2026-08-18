@@ -7,6 +7,10 @@
 - คุณต้องค้นพบว่า MCP server นำเสนอ resource (ไฟล์, record, เอกสาร) อะไรบ้างก่อนอ่าน
 - คุณต้องการภาพรวมของ resource ทั้งหมดจากทุก server ที่เชื่อมต่อ
 
+## การเปิดใช้งาน
+
+- เปิดใช้งานเสมอ แต่ไม่ถูก expose ใน tool list ของโมเดล — มีไว้สำหรับการใช้งานแบบ thin-client / sidecar
+
 ## พารามิเตอร์
 
 - `server` (string, optional): ชื่อ server ที่ใช้กรอง resource ละเว้นเพื่อแสดงรายการ resource จากทุก server ที่เชื่อมต่อ

@@ -8,6 +8,12 @@ Propone un obiettivo di completamento verificabile per la sessione. L'obiettivo 
 - Vuoi un'esplicita approvazione dell'utente su cosa significhi "fatto" prima di svolgere un lavoro sostanziale.
 - Le parole stesse dell'utente hanno già dichiarato l'esito e vuoi registrarlo come obiettivo della sessione.
 
+## Attivazione
+
+- Disattivato per default (feature flag lato server).
+- Escluso dalle sessioni interattive e in background.
+- Disattivato dalla chiave di impostazione `modelProposedGoals: "disabled"`.
+
 ## Parametri
 
 - `condition` (string, obbligatorio): La condizione di completamento, scritta in modo che un valutatore separato possa verificarla dalla conversazione (ad esempio "all tests in test/auth pass (bun test exits 0)"). Al massimo 500 caratteri — l'utente deve poter leggere l'intera condizione nel dialogo di approvazione.

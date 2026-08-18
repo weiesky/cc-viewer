@@ -10,6 +10,13 @@
 - سرد أو مراجعة جميع المشغّلات الحالية للاطلاع على إعداداتها وحالتها
 - تحديث إعدادات المشغّل كالجدول الزمني أو الحمولة أو الوصف دون الحاجة إلى إعادة إنشائه
 
+## التفعيل
+
+- يتطلب خطة claude.ai Pro أو Max أو Team أو Enterprise.
+- غير متاح على Amazon Bedrock وClaude Platform on AWS وGoogle Cloud أو Microsoft Foundry.
+- يتطلب أعلام ميزات من جهة الخادم وإعدادات السياسة `allow_remote_sessions` / `allow_routines`.
+- ليس للجلسات البعيدة نفسها.
+
 ## المعاملات
 
 - `action` (string، مطلوب): العملية المراد تنفيذها — إحدى القيم `list` أو `get` أو `create` أو `update` أو `run`

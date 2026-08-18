@@ -10,6 +10,12 @@
 - `addBlocks` / `addBlockedBy` で新しく発見された依存関係を記録する。
 - 外部チケット ID や優先度ヒントなどの構造化された `metadata` を添付する。
 
+## 有効化
+
+- ほとんどのモデルでデフォルトで利用可能です。
+- Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 以降のファミリー (v2.1.233+) では、`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`、`--allowedTools`、または `--tools` でオプトインしない限り利用できません。
+- タスクシステム全体は `CLAUDE_CODE_ENABLE_TASKS=false` で無効化されます。
+
 ## パラメータ
 
 - `taskId` (string, required): 変更するタスク。`TaskList` または `TaskCreate` から取得。

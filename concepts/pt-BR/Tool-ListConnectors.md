@@ -7,6 +7,10 @@ Lista os conectores MCP instalados para a organização claude.ai do usuário, o
 - Você precisa saber quais conectores já estão instalados antes de sugerir novos.
 - O usuário pergunta quais integrações a organização dele tem.
 
+## Ativação
+
+- Disponível apenas em sessões remotas (claude.ai) na API first-party.
+
 ## Parâmetros
 
 - `keywords` (array of strings, opcional): Filtra a lista — até 8 itens, cada um com 1–64 caracteres. Omita para listar tudo.
@@ -27,5 +31,4 @@ ListConnectors(keywords=["github"])
 
 ## Observações
 
-- Disponível apenas em sessões remotas (claude.ai) na API first-party.
 - Combine com `SearchMcpRegistry` (descoberta) e `SuggestConnectors` (detalhes) para o fluxo completo de encontrar-e-habilitar.

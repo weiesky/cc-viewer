@@ -7,6 +7,11 @@ Invia un messaggio all'utente — il canale di output visibile primario nelle se
 - Rispondere a qualcosa che l'utente ha appena detto (`status="normal"`).
 - Far emergere proattivamente qualcosa che l'utente non ha chiesto e deve vedere ora — un compito che si completa mentre è assente, un blocco che hai incontrato, un aggiornamento di stato non richiesto (`status="proactive"`).
 
+## Attivazione
+
+- Nascosto per default nelle sessioni interattive; la maggior parte delle sessioni CLI interattive parla direttamente con l'utente.
+- Abilitato in brief mode o tramite feature flag lato server.
+
 ## Parametri
 
 In brief mode:
@@ -30,5 +35,4 @@ SendUserMessage(
 
 ## Note
 
-- Abilitato solo in brief mode o tramite il corrispondente feature rollout; la maggior parte delle sessioni CLI interattive parla direttamente con l'utente.
 - Usa `proactive` con parsimonia — è pensato per cose che richiedono genuinamente l'attenzione dell'utente ora.

@@ -10,6 +10,13 @@ Avvia un monitor in background che trasmette eventi da uno script a lunga esecuz
 - Attendere una condizione specifica su molte iterazioni (ad esempio un traguardo di un passo di addestramento o lo svuotamento di una coda)
 - **Non** per un semplice "aspetta fino al completamento" — usare `Bash` con `run_in_background` per quello; emette una notifica di completamento quando il processo termina
 
+## Attivazione
+
+- Disattivato per default (feature flag lato server).
+- Non disponibile su Amazon Bedrock, Google Cloud e Microsoft Foundry.
+- Disattivato quando `DISABLE_TELEMETRY` o `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` è impostato.
+- La sorgente WebSocket richiede Claude Code 2.1.195+.
+
 ## Parametri
 
 - `command` (stringa, obbligatorio): Il comando shell o lo script da eseguire. Ogni riga scritta nello stdout diventa un evento di notifica separato. Il monitor termina quando il processo termina.

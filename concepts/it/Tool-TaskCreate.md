@@ -12,6 +12,12 @@ Crea un nuovo task nella lista dei task del team corrente (o nella lista dei tas
 
 Salta `TaskCreate` per azioni banali one-shot, pura conversazione o qualsiasi cosa completabile in due o tre chiamate tool dirette.
 
+## Attivazione
+
+- Disponibile per default sulla maggior parte dei modelli.
+- Non disponibile su Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 e famiglie successive (v2.1.233+), salvo opt-in tramite `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` o `--tools`.
+- L'intero sistema dei task è disabilitato quando `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parametri
 
 - `subject` (string, obbligatorio): Titolo imperativo breve, ad esempio `Fix login redirect on Safari`. Mantienilo sotto circa ottanta caratteri.

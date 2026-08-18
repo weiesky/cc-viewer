@@ -8,6 +8,11 @@ Schreibt eine strukturierte Aufgabenliste für die aktuelle Sitzung und ersetzt 
 - Der Benutzer bittet ausdrücklich um eine Aufgabenliste.
 - Sie möchten genau einen Eintrag als in Bearbeitung markieren, während die übrigen ausstehend oder abgeschlossen bleiben.
 
+## Aktivierung
+
+- Legacy-Tool: standardmäßig deaktiviert in Sitzungen, die die Task-Tools (`TaskCreate`, `TaskUpdate`, `TaskList`) anbieten.
+- Reaktivieren Sie es mit `CLAUDE_CODE_ENABLE_TASKS=0`.
+
 ## Parameter
 
 - `todos` (array, erforderlich): Die vollständige aktualisierte Aufgabenliste. Jeder Eintrag hat:

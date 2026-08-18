@@ -7,6 +7,10 @@ Reads a single resource exposed by a connected MCP (Model Context Protocol) serv
 - An MCP server advertises a resource (file, record, document) whose content you need in context.
 - You have a concrete resource URI — from `ListMcpResources`, from the server's documentation, or from a previous tool result.
 
+## Activation
+
+- Always enabled, but not exposed to the model's tool list — intended for thin-client / sidecar use.
+
 ## Parameters
 
 - `server` (string, required): The MCP server name.

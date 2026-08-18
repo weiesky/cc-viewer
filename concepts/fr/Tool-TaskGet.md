@@ -12,6 +12,12 @@ Récupère l'enregistrement complet d'une tâche unique par ID, y compris sa des
 
 Préférez `TaskList` lorsque vous n'avez besoin que d'un balayage de haut niveau ; réservez `TaskGet` à l'enregistrement spécifique que vous prévoyez de lire attentivement ou de modifier.
 
+## Activation
+
+- Disponible par défaut sur la plupart des modèles.
+- Non disponible sur les familles Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 et ultérieures (v2.1.233+) à moins d'une adhésion via `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` ou `--tools`.
+- Tout le système de tâches est désactivé lorsque `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Paramètres
 
 - `taskId` (string, requis) : l'identifiant de tâche renvoyé par `TaskCreate` ou `TaskList`. Les IDs sont stables pendant toute la durée de vie de la tâche.

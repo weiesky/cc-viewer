@@ -6,6 +6,12 @@
 
 - 使用者的請求符合他們尚未啟用的 skills（他們主動要求時用 `trigger="user_asked"`，你主動建議時用 `trigger="proactive"`）。
 
+## 啟用方式
+
+- 僅在已連線 Remote Control 用戶端，或工作階段執行於受管理的雲端環境時。
+- 在 HIPAA 企業設定下停用。
+- brief 模式中不提供。
+
 ## 參數
 
 - `keywords`（string 陣列，必填）：來自使用者請求的主題關鍵字。1–8 個項目，每個 1–64 個字元。
@@ -25,4 +31,3 @@ SuggestSkills(keywords=["data visualization", "charts"], contextLabel="For build
 ## 注意事項
 
 - 僅渲染建議卡片——新增 skill 是在頻帶外進行；之後呼叫 `ListSkills` 以確認。
-- 在 HIPAA 企業設定下停用。

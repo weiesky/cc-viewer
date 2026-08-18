@@ -12,6 +12,12 @@ Tworzy nowe zadanie na liście zadań bieżącego zespołu (lub na liście zada�
 
 Pomiń `TaskCreate` dla trywialnych, jednorazowych akcji, czystych rozmów lub czegokolwiek, co można ukończyć w dwóch lub trzech bezpośrednich wywołaniach narzędzi.
 
+## Aktywacja
+
+- Dostępne domyślnie na większości modeli.
+- Niedostępne na rodzinach Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 i nowszych (v2.1.233+), chyba że włączone przez `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools` lub `--tools`.
+- Cały system zadań jest wyłączony, gdy `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parametry
 
 - `subject` (string, wymagany): Krótki tytuł w trybie rozkazującym, np. `Fix login redirect on Safari`. Utrzymuj poniżej około osiemdziesięciu znaków.

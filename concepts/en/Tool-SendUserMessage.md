@@ -7,6 +7,11 @@ Sends a message to the user — the primary visible output channel in brief-styl
 - Replying to something the user just said (`status="normal"`).
 - Proactively surfacing something the user hasn't asked for and needs to see now — a task completing while they're away, a blocker you hit, an unsolicited status update (`status="proactive"`).
 
+## Activation
+
+- Hidden in interactive sessions by default; most interactive CLI sessions talk to the user directly instead.
+- Enabled in brief mode or via server-side feature flags.
+
 ## Parameters
 
 In brief mode:
@@ -30,5 +35,4 @@ SendUserMessage(
 
 ## Notes
 
-- Only enabled in brief mode or via the corresponding feature rollout; most interactive CLI sessions talk to the user directly instead.
 - Use `proactive` sparingly — it is meant for things that genuinely need the user's attention now.

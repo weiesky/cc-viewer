@@ -6,6 +6,12 @@
 
 - ユーザーのリクエストが、有効化していないスキルに一致する場合 (ユーザーが求めた場合は `trigger="user_asked"`、求められずに提案する場合は `trigger="proactive"`)。
 
+## 有効化
+
+- Remote Control クライアントが接続されているか、セッションがマネージドクラウド環境で実行されている場合のみ。
+- HIPAA エンタープライズ構成では無効化されます。
+- brief モードでは利用できません。
+
 ## パラメータ
 
 - `keywords` (array of strings, required): ユーザーのリクエストからのトピックキーワード。1〜8 項目、各 1〜64 文字。
@@ -25,4 +31,3 @@ SuggestSkills(keywords=["data visualization", "charts"], contextLabel="For build
 ## 注意事項
 
 - 提案カードをレンダリングするだけです — スキルの追加はこのツールの外部で行われます。後で `ListSkills` を呼び出して確認してください。
-- HIPAA エンタープライズ構成では無効化されます。

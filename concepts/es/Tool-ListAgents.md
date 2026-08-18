@@ -7,6 +7,13 @@ Lista los agents a los que puedes `SendMessage`: sub-agents en proceso que lanza
 - Necesitas el nombre exacto de una sesión par o sub-agent antes de enviarle un mensaje.
 - Quieres ver qué sesiones son alcanzables actualmente desde esta.
 
+## Activación
+
+- Requiere Claude Code 2.1.224+ y mensajería entre sesiones (un feature flag del lado del servidor, desactivado por defecto).
+- La mensajería entre sesiones no está disponible en Amazon Bedrock, Claude Platform on AWS, Google Cloud Agent Platform ni Microsoft Foundry.
+- Se desactiva cuando `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY`, `DO_NOT_TRACK` o `DISABLE_GROWTHBOOK` está establecido.
+- Fuerza su activación con `CLAUDE_CODE_HARBOR_KITE=1`.
+
 ## Parámetros
 
 - `channel` (string, opcional): No disponible en esta compilación; déjalo sin establecer.
@@ -26,4 +33,3 @@ Cada fila imprime un nombre — ese nombre es la dirección. Envía con `SendMes
 
 - Solo lectura y seguro para concurrencia.
 - Una sesión en la nube recibe tu mensaje pero aún no puede responder — lee su respuesta en su propia transcripción.
-- La disponibilidad depende de la configuración de la sesión (la mensajería entre sesiones es una función restringida).

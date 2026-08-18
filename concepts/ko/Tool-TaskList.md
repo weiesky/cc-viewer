@@ -12,6 +12,12 @@
 
 `TaskList`는 읽기 전용이며 저렴합니다. 개요가 필요할 때마다 자유롭게 호출하십시오.
 
+## 활성화
+
+- 대부분의 모델에서 기본적으로 사용할 수 있습니다.
+- Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 및 이후 제품군(v2.1.233+)에서는 `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools`, 또는 `--tools`로 옵트인하지 않는 한 사용할 수 없습니다.
+- `CLAUDE_CODE_ENABLE_TASKS=false`이면 전체 작업 시스템이 비활성화됩니다.
+
 ## 매개변수
 
 `TaskList`는 매개변수를 받지 않습니다. 항상 활성 컨텍스트의 전체 작업 집합을 반환합니다.

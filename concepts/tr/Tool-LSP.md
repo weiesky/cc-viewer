@@ -10,6 +10,11 @@ Kod zekâsı için Language Server Protocol (LSP) sunucularını sorgular — ta
 - Bir arayüzün veya soyut yöntemin uygulamalarını bulmak (`goToImplementation`)
 - Bir fonksiyonun çağrı hiyerarşisinde gezinmek (`prepareCallHierarchy`, `incomingCalls`, `outgoingCalls`)
 
+## Etkinleştirme
+
+- Dil için bir kod zekâsı eklentisi yüklenene kadar etkin değildir (sunucu ikilisi ayrı olarak yüklenir).
+- Araç yalnızca bir LSP istemcisi bağlandığında görünür.
+
 ## Parametreler
 
 - `operation` (string, zorunlu): yukarıda listelenen işlemlerden biri.

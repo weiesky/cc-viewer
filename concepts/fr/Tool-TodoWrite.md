@@ -8,6 +8,11 @@
 - L'utilisateur demande explicitement une liste de tâches.
 - Vous voulez marquer exactement un élément comme en cours pendant que le reste demeure en attente ou terminé.
 
+## Activation
+
+- Outil hérité : désactivé par défaut dans les sessions qui proposent les outils de tâches (`TaskCreate`, `TaskUpdate`, `TaskList`).
+- Réactivez-le avec `CLAUDE_CODE_ENABLE_TASKS=0`.
+
 ## Paramètres
 
 - `todos` (array, requis) : la liste de tâches complète et mise à jour. Chaque entrée contient :

@@ -12,6 +12,12 @@ ID로 단일 작업의 전체 기록을 가져옵니다. 설명, 현재 상태, 
 
 고수준 스캔만 필요할 때는 `TaskList`를 선호하십시오. `TaskGet`은 주의 깊게 읽거나 수정하려는 특정 기록에 예약하십시오.
 
+## 활성화
+
+- 대부분의 모델에서 기본적으로 사용할 수 있습니다.
+- Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 및 이후 제품군(v2.1.233+)에서는 `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools`, 또는 `--tools`로 옵트인하지 않는 한 사용할 수 없습니다.
+- `CLAUDE_CODE_ENABLE_TASKS=false`이면 전체 작업 시스템이 비활성화됩니다.
+
 ## 매개변수
 
 - `taskId` (string, 필수): `TaskCreate`나 `TaskList`에서 반환된 작업 식별자. ID는 작업의 수명 동안 안정적입니다.

@@ -7,6 +7,10 @@ Lists the resources exposed by connected MCP servers, optionally filtered to one
 - You need to discover what resources (files, records, documents) an MCP server offers before reading them.
 - You want an overview of all resources across every connected server.
 
+## Activation
+
+- Always enabled, but not exposed to the model's tool list — intended for thin-client / sidecar use.
+
 ## Parameters
 
 - `server` (string, optional): Server name to filter resources by. Omit to list resources from all connected servers.

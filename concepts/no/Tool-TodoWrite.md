@@ -8,6 +8,11 @@ Skriver en strukturert todo-liste for gjeldende sesjon, og erstatter den forrige
 - Brukeren ber eksplisitt om en todo-liste.
 - Du vil merke nøyaktig ett element som in progress mens resten forblir pending eller completed.
 
+## Aktivering
+
+- Legacy-verktøy: deaktivert som standard i sesjoner som tilbyr oppgaveverktøyene (`TaskCreate`, `TaskUpdate`, `TaskList`).
+- Aktiver det på nytt med `CLAUDE_CODE_ENABLE_TASKS=0`.
+
 ## Parametere
 
 - `todos` (array, påkrevd): Den komplette oppdaterte todo-listen. Hver oppføring har:

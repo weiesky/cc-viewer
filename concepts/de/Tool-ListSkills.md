@@ -7,6 +7,12 @@ Listet die aktivierten claude.ai-Skills des Benutzers auf, optional per Stichwor
 - Sie benötigen die maßgebliche Liste der derzeit aktivierten Skills – bevor Sie einen aufrufen oder um zu bestätigen, was eine `SuggestSkills`-Karte hinzugefügt hat.
 - Der Benutzer fragt, welche Skills er hat.
 
+## Aktivierung
+
+- Erfordert die Berechtigung für den Plugin-Registry-Zugriff.
+- In HIPAA-Umgebungen deaktiviert.
+- In Remote-Sitzungen immer verfügbar.
+
 ## Parameter
 
 - `keywords` (array of strings, optional): Filtert die Liste – bis zu 8 Elemente, jedes 1–64 Zeichen. Weglassen, um alles aufzulisten.

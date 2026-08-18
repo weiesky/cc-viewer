@@ -7,6 +7,11 @@
 - 对等会话需要你工作目录中的文件（报告、补丁、fixture）来继续它自己的任务。
 - 你在跨会话协调工作，希望交接产物而不只是文本（文本用 `SendMessage`）。
 
+## 启用方式
+
+- 会话必须可用跨会话文件传输；不可用时，校验会以 "Cross-session file transfer is not available in this session." 失败。
+- 受与 `ListAgents` 相同的跨会话消息条件门控（服务端功能开关，默认关闭）。
+
 ## 参数
 
 - `to` (string, 必填)：接收方——来自 `ListAgents` 的对等会话名，或显式的 `uds:<socket>` / `bridge:<session id>` 地址。
@@ -27,6 +32,5 @@ SendFile(
 
 ## 注意事项
 
-- 会话必须可用跨会话文件传输；不可用时，校验会以 "Cross-session file transfer is not available in this session." 失败。
 - 传输到远程机器可能需要额外审批。
 - 读取文件内容是发送的一部分——若权限规则禁用了文件读取，则会被拒绝。

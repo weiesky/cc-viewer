@@ -10,6 +10,11 @@
 
 도구의 스키마가 이미 컨텍스트에 있다면 다시 검색하지 마십시오 — 그냥 호출하십시오.
 
+## 활성화
+
+- 기본적으로 켜져 있습니다.
+- `ANTHROPIC_BASE_URL`이 Anthropic이 아닌 엔드포인트를 가리키는 경우(`ENABLE_TOOL_SEARCH`가 설정된 경우 제외), `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`가 설정된 경우, 모델이 도구 참조를 지원하지 않는 경우(Claude 4.5 이전 Vertex AI 모델), 또는 `"deny": ["ToolSearch"]`로 거부된 경우 꺼집니다.
+
 ## 매개변수
 
 - `query` (string, 필수): 지연 로드 도구를 찾는 데 사용하는 쿼리. 세 가지 형식이 지원됩니다:

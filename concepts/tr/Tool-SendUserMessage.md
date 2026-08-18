@@ -7,6 +7,11 @@ Kullanıcıya bir mesaj gönderir — brief tarzı oturumlarda birincil görün�
 - Kullanıcının az önce söylediği bir şeye yanıt verme (`status="normal"`).
 - Kullanıcının istemediği ve şimdi görmesi gereken bir şeyi proaktif olarak öne çıkarma — uzaktayken tamamlanan bir görev, karşılaştığınız bir engel, istenmemiş bir durum güncellemesi (`status="proactive"`).
 
+## Etkinleştirme
+
+- Etkileşimli oturumlarda varsayılan olarak gizlidir; çoğu etkileşimli CLI oturumu bunun yerine doğrudan kullanıcıyla konuşur.
+- Brief modunda veya sunucu tarafı özellik bayrakları aracılığıyla etkindir.
+
 ## Parametreler
 
 Brief modunda:
@@ -30,5 +35,4 @@ SendUserMessage(
 
 ## Notlar
 
-- Yalnızca brief modunda veya ilgili özellik dağıtımı aracılığıyla etkindir; çoğu etkileşimli CLI oturumu bunun yerine doğrudan kullanıcıyla konuşur.
 - `proactive`'i idareli kullanın — gerçekten şimdi kullanıcının dikkatini gerektiren şeyler içindir.

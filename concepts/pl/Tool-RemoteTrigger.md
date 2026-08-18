@@ -10,6 +10,13 @@ Wywołuje API zdalnych wyzwalaczy claude.ai w celu zarządzania zaplanowanymi za
 - Wyświetlanie lub audytowanie wszystkich bieżących wyzwalaczy w celu przeglądu ich konfiguracji i stanu
 - Aktualizowanie ustawień wyzwalacza, takich jak harmonogram, ładunek lub opis, bez konieczności jego ponownego tworzenia
 
+## Aktywacja
+
+- Wymaga planu claude.ai Pro, Max, Team lub Enterprise.
+- Niedostępne na Amazon Bedrock, Claude Platform on AWS, Google Cloud i Microsoft Foundry.
+- Wymaga flag funkcji po stronie serwera oraz ustawień polityki `allow_remote_sessions` / `allow_routines`.
+- Niedostępne w samych sesjach zdalnych.
+
 ## Parametry
 
 - `action` (string, wymagany): operacja do wykonania — jedna z wartości `list`, `get`, `create`, `update` lub `run`

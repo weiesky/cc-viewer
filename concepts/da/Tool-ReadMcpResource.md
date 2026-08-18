@@ -7,6 +7,10 @@ Læser en enkelt resource, der eksponeres af en forbundet MCP-server (Model Cont
 - En MCP-server annoncerer en resource (fil, post, dokument), hvis indhold du har brug for i kontekst.
 - Du har en konkret resource-URI — fra `ListMcpResources`, fra serverens dokumentation eller fra et tidligere værktøjsresultat.
 
+## Aktivering
+
+- Altid aktiveret, men ikke eksponeret for modellens værktøjsliste — beregnet til thin-client / sidecar-brug.
+
 ## Parametre
 
 - `server` (string, påkrævet): MCP-serverens navn.

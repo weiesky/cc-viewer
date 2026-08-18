@@ -12,6 +12,12 @@ Fetches the full record for a single task by ID, including its description, curr
 
 Prefer `TaskList` when you only need a high-level scan; reserve `TaskGet` for the specific record you intend to read carefully or modify.
 
+## Activation
+
+- Available by default on most models.
+- Not available on Opus 4.8 / Sonnet 5 / Fable 5 / Mythos 5 and later families (v2.1.233+) unless opted in via `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `--allowedTools`, or `--tools`.
+- The whole task system is disabled when `CLAUDE_CODE_ENABLE_TASKS=false`.
+
 ## Parameters
 
 - `taskId` (string, required): The task identifier returned by `TaskCreate` or `TaskList`. IDs are stable for the life of the task.

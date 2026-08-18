@@ -7,6 +7,10 @@ Listet die Einträge einer verzeichnisartigen Ressource auf, die von einem verbu
 - Ein MCP-Server organisiert Ressourcen hierarchisch, und Sie müssen eine Ebene dieser Hierarchie aufzählen.
 - Sie möchten erst stöbern, bevor Sie einzelne Ressourcen mit `ReadMcpResource` lesen.
 
+## Aktivierung
+
+- Immer aktiviert, wird aber nicht in der Tool-Liste des Modells angezeigt – für Thin-Client-/Sidecar-Nutzung gedacht.
+
 ## Parameter
 
 - `server` (string, erforderlich): Der Name des MCP-Servers.
