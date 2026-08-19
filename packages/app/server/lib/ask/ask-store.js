@@ -12,9 +12,9 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { renameSyncWithRetry } from './file-api.js';
-import { withFileLockAsync } from './async-file-lock.js';
-import { LOG_DIR } from '../../findcc.js';
+import { renameSyncWithRetry } from '../file-api.js';
+import { withFileLockAsync } from '../async-file-lock.js';
+import { LOG_DIR } from '../../../findcc.js';
 
 const SCHEMA_VERSION = 1;
 

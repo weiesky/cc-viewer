@@ -27,7 +27,7 @@ function readSource(relPath) {
 
 describe('AskUserQuestion 无超时/无降级 不变量', () => {
   it('lib/ask-bridge.js 不再调 req.setTimeout（客户端无硬超时）', () => {
-    const src = readSource('packages/app/server/lib/ask-bridge.js');
+    const src = readSource('packages/app/server/lib/ask/ask-bridge.js');
     assert.ok(
       !/req\.setTimeout\s*\(/.test(src),
       'lib/ask-bridge.js 出现了 req.setTimeout — 违反"客户端无硬超时"承诺（用户视角任何 N 分钟挂起都不应被打断）',
@@ -50,13 +50,13 @@ describe('AskUserQuestion 无超时/无降级 不变量', () => {
     // server.js 必须 import 同源常量
     assert.match(
       src,
-      /import\s*\{[^}]*ASK_TIMEOUT_MS[^}]*\}\s*from\s*['"]\.\/lib\/ask-constants\.js['"]/,
-      'server.js 必须从 lib/ask-constants.js import ASK_TIMEOUT_MS',
+      /import\s*\{[^}]*ASK_TIMEOUT_MS[^}]*\}\s*from\s*['"]\.\/lib\/ask\/ask-constants\.js['"]/,
+      'server.js 必须从 lib/ask/ask-constants.js import ASK_TIMEOUT_MS',
     );
   });
 
   it('lib/ask-constants.js ASK_TIMEOUT_MS = 24h（hook 与 SDK 路径共享的"无超时"实质上限）', async () => {
-    const { ASK_TIMEOUT_MS } = await import('../packages/app/server/lib/ask-constants.js');
+    const { ASK_TIMEOUT_MS } = await import('../packages/app/server/lib/ask/ask-constants.js');
     assert.equal(ASK_TIMEOUT_MS, 24 * 60 * 60 * 1000, `ASK_TIMEOUT_MS 必须为 24h，实测 ${ASK_TIMEOUT_MS}`);
   });
 
@@ -145,7 +145,7 @@ describe('AskUserQuestion 无超时/无降级 不变量', () => {
 
   // v2a 短轮询协议锚点 —— 锁住关键协议字符串/函数名，防未来漂移破协议
   it('lib/ask-store.js SCHEMA_VERSION = 1（不变量；改 schema 必须显式 bump + 写 migration）', () => {
-    const src = readSource('packages/app/server/lib/ask-store.js');
+    const src = readSource('packages/app/server/lib/ask/ask-store.js');
     const m = src.match(/const\s+SCHEMA_VERSION\s*=\s*(\d+)/);
     assert.ok(m, 'lib/ask-store.js 必须显式声明 const SCHEMA_VERSION');
     assert.equal(Number(m[1]), 1, `SCHEMA_VERSION 当前锁定为 1，改值意味着需要写 migration —— 实测 ${m[1]}`);
@@ -154,7 +154,7 @@ describe('AskUserQuestion 无超时/无降级 不变量', () => {
   it('server.js / ask-bridge.js 共享同一 "X-Ask-Poll-Mode: short" 协议字符串', () => {
     // server 侧的 ask-hook handler 已迁出到 server/routes/ask-perm.js
     const server = readSource('packages/app/server/routes/ask-perm.js');
-    const bridge = readSource('packages/app/server/lib/ask-bridge.js');
+    const bridge = readSource('packages/app/server/lib/ask/ask-bridge.js');
     assert.ok(/['"]x-ask-poll-mode['"]/i.test(server), 'routes/ask-perm.js 必须读 X-Ask-Poll-Mode header');
     assert.ok(/['"]X-Ask-Poll-Mode['"]/.test(bridge), 'lib/ask-bridge.js 必须发 X-Ask-Poll-Mode header');
     assert.ok(/['"]short['"]/.test(server) && /['"]short['"]/.test(bridge), '协议值必须是字符串 "short"');
@@ -162,13 +162,13 @@ describe('AskUserQuestion 无超时/无降级 不变量', () => {
   });
 
   it('lib/ask-bridge.js 必须有 pollUntilAnswered（防 v2a 短轮询被悄悄删回 long-poll）', () => {
-    const src = readSource('packages/app/server/lib/ask-bridge.js');
+    const src = readSource('packages/app/server/lib/ask/ask-bridge.js');
     assert.ok(/function\s+pollUntilAnswered\b/.test(src), 'lib/ask-bridge.js 必须定义 pollUntilAnswered 函数');
     assert.ok(/getPollResult\s*\(/.test(src), 'lib/ask-bridge.js 必须使用 getPollResult 真正发 GET 请求');
   });
 
   it('lib/ask-store.js 必须导出 consumeIfFinal（防 GET handler 退回到 race-prone 的 consume+setEntry）', () => {
-    const src = readSource('packages/app/server/lib/ask-store.js');
+    const src = readSource('packages/app/server/lib/ask/ask-store.js');
     assert.ok(/export\s+(async\s+)?function\s+consumeIfFinal\b/.test(src), 'consumeIfFinal 必须 export（GET handler 依赖它消除写后读 race）');
   });
 

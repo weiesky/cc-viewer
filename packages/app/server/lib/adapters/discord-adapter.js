@@ -1,5 +1,5 @@
 // Discord adapter — the platform-specific half of the Discord bridge. The generic orchestration
-// (dedup, access control, queue, inject, chunk, turn-end reply) lives in server/lib/im-bridge-core.js;
+// (dedup, access control, queue, inject, chunk, turn-end reply) lives in server/lib/im/im-bridge-core.js;
 // this module only knows discord.js's Gateway client, inbound message shape, and outbound send.
 //
 // Uses discord.js v14: the bot dials OUT to Discord's Gateway WebSocket (no public URL). Credential is
@@ -12,7 +12,7 @@
 // Console prerequisite (no code equivalent — surfaced in the UI help): in the Discord Developer Portal,
 // create an app + bot, ENABLE the Message Content Intent (else message.content is silently empty), copy
 // the bot token, and invite the bot with the `bot`+`applications.commands` scopes and View/Send perms.
-import { registerAdapter } from '../im-bridge-core.js';
+import { registerAdapter } from '../im/im-bridge-core.js';
 
 // ─── test seam: a fake discord.js factory (zero real gateway / socket) ───
 let sdkFactory = null;

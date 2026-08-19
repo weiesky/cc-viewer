@@ -3,7 +3,7 @@
 // preferences.json holds UI prefs AND the (base64) LAN password (auth) AND per-project
 // forks (prefsByProject). Multiple writers touch it — the global POST /api/preferences,
 // lib/auth.js, and the new project-prefs routes — so every write here goes through ONE
-// async file lock + atomic tmp→rename, mirroring server/lib/ask-store.js. Same-process
+// async file lock + atomic tmp→rename, mirroring server/lib/ask/ask-store.js. Same-process
 // callers serialize via withFileLockAsync's per-lockPath Promise chain; cross-process
 // callers mutex on the lock file. This prevents a concurrent writer from clobbering the
 // password-bearing file or losing a fork update.

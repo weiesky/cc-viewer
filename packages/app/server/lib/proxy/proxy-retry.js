@@ -15,9 +15,9 @@
 //   - Streaming responses: only read status + headers to decide whether to retry; never retry after the body has
 //     started being sent (retry-before-first-byte strategy).
 //   - race/stagger use AbortController; cancelled requests must be released correctly.
-import { resolveProfileModel } from './interceptor-core.js';
+import { resolveProfileModel } from '../interceptor-core.js';
 import { readFileSync, existsSync } from 'node:fs';
-import { reportSwallowed } from './error-report.js';
+import { reportSwallowed } from '../error-report.js';
 
 // ── Configuration ─────────────────────────────────────────────────
 

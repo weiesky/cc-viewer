@@ -1,11 +1,11 @@
-// server/lib/im-lang.js 单测 —— resolvePrefLang 读 preferences.lang 与回退行为。
+// server/lib/im/im-lang.js 单测 —— resolvePrefLang 读 preferences.lang 与回退行为。
 // 测试期 LOG_DIR 被强制指向临时目录（findcc.js 的 NODE_TEST_CONTEXT 铁闸 / CCV_LOG_DIR=tmp），可安全读写。
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { LOG_DIR } from '../packages/app/findcc.js';
-import { resolvePrefLang } from '../packages/app/server/lib/im-lang.js';
+import { resolvePrefLang } from '../packages/app/server/lib/im/im-lang.js';
 
 describe('resolvePrefLang', () => {
   const prefsPath = join(LOG_DIR, 'preferences.json');

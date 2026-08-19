@@ -21,8 +21,8 @@
 //   a per-instance scratch object (token cache, send client) cleared on reset.
 import { existsSync, readFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { LOG_DIR } from '../../findcc.js';
-import { t } from '../i18n.js';
+import { LOG_DIR } from '../../../findcc.js';
+import { t } from '../../i18n.js';
 import { upsertSender } from './im-senders.js';
 
 // ─── tunables (shared across platforms; per-platform rate caps come from adapter.rateLimit) ───

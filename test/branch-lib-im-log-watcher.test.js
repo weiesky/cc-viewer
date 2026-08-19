@@ -1,4 +1,4 @@
-// 单测：server/lib/im-log-watcher.js
+// 单测：server/lib/im/im-log-watcher.js
 // 用注入的 watchImpl / mkdirImpl / existsImpl 驱动事件，避免真实 fs.watch 的跨平台时序抖动。
 // 覆盖：惰性+幂等 ensure、.jsonl 过滤（含 _temp 排除 / null 放行 / 非 jsonl 拒绝）、debounce 合并、
 //       watcher error 自撤销、目录删后重建恢复、dispose、守卫（空 id/空 logDir/dispose 后 no-op）、
@@ -7,7 +7,7 @@
 // 断言按「平台 + sessions」成对计数。
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createImLogWatcher } from '../packages/app/server/lib/im-log-watcher.js';
+import { createImLogWatcher } from '../packages/app/server/lib/im/im-log-watcher.js';
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 

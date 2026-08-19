@@ -11,7 +11,7 @@ import { openSync, closeSync, readFileSync, writeFileSync, unlinkSync, mkdirSync
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { imDir } from './im-lock.js';
-import { renameSyncWithRetry } from './file-api.js';
+import { renameSyncWithRetry } from '../file-api.js';
 
 export const MAX_SENDERS = 500;
 

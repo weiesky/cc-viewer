@@ -8,8 +8,8 @@
 //   - Fully separated from cc-viewer's existing session logs (*.jsonl written by interceptor), no cross-contamination.
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { AsyncWriteQueue } from './async-write-queue.js';
-import { reportSwallowed } from './error-report.js';
+import { AsyncWriteQueue } from '../async-write-queue.js';
+import { reportSwallowed } from '../error-report.js';
 
 // ── Detail record schema ──────────────────────────────────────────────
 // Appends one JSON line after each proxied LLM API request completes. Fields align with llm-retry-proxy's retry records.
@@ -136,7 +136,7 @@ export function flushRecords() {
 }
 
 // ── Stats-update notifier (dependency inversion, review P2) ────────────────
-// proxy.js used to dynamically import('./server.js') to reach the statsWorker
+// proxy.js used to dynamically import('../server.js') to reach the statsWorker
 // singleton — if a future proxy-only process did that first, server.js's
 // module-load side effects would boot a second viewer. The owner (server.js)
 // now registers its notify callback here at load time; proxy.js just emits.

@@ -1,4 +1,4 @@
-// 补齐 server/lib/perm-bridge.js 的分支覆盖：聚焦既有 test/perm-bridge.test.js 未覆盖的
+// 补齐 server/lib/ask/perm-bridge.js 的分支覆盖：聚焦既有 test/perm-bridge.test.js 未覆盖的
 // stdin 读取失败 catch 臂（perm-bridge.js:37-39）。
 //
 // perm-bridge.js 是一个独立可执行脚本（模块顶层即执行全部逻辑，无 export），
@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const bridgePath = join(__dirname, '..', 'packages', 'app', 'server', 'lib', 'perm-bridge.js');
+const bridgePath = join(__dirname, '..', 'packages', 'app', 'server', 'lib', 'ask', 'perm-bridge.js');
 
 /**
  * 以指定 stdin 句柄运行 perm-bridge，收集 exit code / stdout / stderr。

@@ -1,11 +1,11 @@
-// DingTalk bridge config API. See server/lib/dingtalk-config.js (storage) and
-// server/lib/dingtalk-bridge.js (the Stream client) for the underlying logic.
+// DingTalk bridge config API. See server/lib/im/dingtalk-config.js (storage) and
+// server/lib/im/dingtalk-bridge.js (the Stream client) for the underlying logic.
 //
 //   GET  /api/dingtalk/status — public; remote callers get only hasSecret, the local (admin)
 //                               caller additionally gets the plaintext appSecret to view/copy.
 //   POST /api/dingtalk/config — loopback-only (!isLocal → 403); save creds, reload bridge.
 //   POST /api/dingtalk/test   — loopback-only; validate creds (fetch an access token).
-import { loadDingTalkState, saveDingTalkConfig, loadDingTalkConfig } from '../lib/dingtalk-config.js';
+import { loadDingTalkState, saveDingTalkConfig, loadDingTalkConfig } from '../lib/im/dingtalk-config.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 

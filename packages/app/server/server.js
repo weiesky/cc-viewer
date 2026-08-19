@@ -10,9 +10,9 @@ import { promisify } from 'node:util';
 import { Worker } from 'node:worker_threads';
 import { isPathContained } from './lib/file-api.js';
 import { sseWrite, isWireV3Enabled } from './lib/wire-compress.js';
-import { setEntry as askStoreSetEntry, deleteEntry as askStoreDeleteEntry, pruneStale as askStorePruneStale, markAnswered as askStoreMarkAnswered, markCancelled as askStoreMarkCancelled, loadAskStore as askStoreLoad } from './lib/ask-store.js';
-import { ASK_TIMEOUT_MS, ASK_WAITER_REAP_INTERVAL_MS, ASK_WAITER_LIVENESS_MS } from './lib/ask-constants.js';
-import { reapDeadAskWaiters, sweepOrphanedDiskAsks } from './lib/ask-reaper.js';
+import { setEntry as askStoreSetEntry, deleteEntry as askStoreDeleteEntry, pruneStale as askStorePruneStale, markAnswered as askStoreMarkAnswered, markCancelled as askStoreMarkCancelled, loadAskStore as askStoreLoad } from './lib/ask/ask-store.js';
+import { ASK_TIMEOUT_MS, ASK_WAITER_REAP_INTERVAL_MS, ASK_WAITER_LIVENESS_MS } from './lib/ask/ask-constants.js';
+import { reapDeadAskWaiters, sweepOrphanedDiskAsks } from './lib/ask/ask-reaper.js';
 import { sdkApprovalCloseType } from './lib/sdk-adapter.js';
 import { DIST_DIR, NODE_MODULES } from './_paths.js';
 import { createDispatcher } from './routes/_dispatch.js';
@@ -41,14 +41,14 @@ import { authRoutes } from './routes/auth.js';
 import { dingtalkRoutes } from './routes/dingtalk.js';
 import { imRoutes } from './routes/im.js';
 import { proxyStatsRoutes } from './routes/proxy-stats.js';
-import { setProxyStatsListener } from './lib/proxy-stats.js';
-import * as imCore from './lib/im-bridge-core.js';
-import * as imProcMgr from './lib/im-process-manager.js';
+import { setProxyStatsListener } from './lib/proxy/proxy-stats.js';
+import * as imCore from './lib/im/im-bridge-core.js';
+import * as imProcMgr from './lib/im/im-process-manager.js';
 import './lib/adapters/dingtalk-adapter.js'; // side-effect: registers the DingTalk adapter
 import './lib/adapters/feishu-adapter.js';   // side-effect: registers the Feishu adapter
 import './lib/adapters/wecom-adapter.js';    // side-effect: registers the WeCom adapter
 import './lib/adapters/discord-adapter.js';  // side-effect: registers the Discord adapter
-import { loadConfig } from './lib/im-config.js';
+import { loadConfig } from './lib/im/im-config.js';
 
 // Windows：git.exe / cmd.exe 等 console-subsystem 子进程从无控制台的 worker node.exe 启动时
 // 会各弹一个可见控制台窗口（diff/status 轮询路径高频闪现）。在 promisify 包装层统一默认
@@ -83,7 +83,7 @@ import { V2LiveFeed } from './lib/v2/live-feed.js';
 import { sanitizePathComponent } from './lib/v2/layout.js';
 import { maybeResumeConvert } from './lib/v2/convert-manager.js';
 import { LOG_DIR, setLogDir, getClaudeConfigDir, isBrowserOpenSuppressed } from '../findcc.js';
-import { loadRetryConfig } from './lib/proxy-retry.js';
+import { loadRetryConfig } from './lib/proxy/proxy-retry.js';
 
 // 代理重试配置：由 interceptor._retryConfigState 提供（live binding，watchFile 热刷新）。
 // mode 默认 off（向后兼容，不重试）。env 是启动默认/兜底，retry-config.json 覆盖 env。
@@ -98,7 +98,7 @@ import { checkAndUpdate } from './lib/updater.js';
 import { loadPlugins, runWaterfallHook, runParallelHook } from './lib/plugin-loader.js';
 import { CONTEXT_WINDOW_FILE, readModelContextSize } from './lib/context-watcher.js';
 import { sendEventToClients, sendToClients } from './lib/log-watcher.js';
-import { createImLogWatcher } from './lib/im-log-watcher.js';
+import { createImLogWatcher } from './lib/im/im-log-watcher.js';
 import { unwatchAllWorkflows } from './lib/workflow-watcher.js';
 import { backupConfigs } from './lib/config-backup.js';
 import { normalizeBasePath, validateBasePath, stripBasePath } from './lib/base-path.js';
@@ -184,7 +184,7 @@ const pendingAskHooks = new Map(); // Map<id, { questions, res, timer, createdAt
 const ASK_HOOK_MAP_MAX = 1000;
 // 单一来源的"无超时"实质上限——延伸至 24h 兼顾防 entry 泄漏；
 // 任何引用此值的地方（HOOK_TIMEOUT / REPLAY_HOOK_TIMEOUT / 广播 timeoutMs）都从这里取。
-// 实际常量定义在 server/lib/ask-constants.js（hook 路径 + SDK 路径同源）。
+// 实际常量定义在 server/lib/ask/ask-constants.js（hook 路径 + SDK 路径同源）。
 const ASK_HOOK_TIMEOUT_MS = ASK_TIMEOUT_MS;
 
 // 内存 Map 是权威源；ask-store 是镜像（best-effort）。崩溃时只丢"未落盘窗口"内的最新一次变更。
@@ -205,7 +205,7 @@ function _persistAskDelete(id) {
 // until either an answer/cancel arrives or wait ms elapses (then 204).
 const shortPollListeners = new Map(); // id -> Set<{ res, tid, finished }>
 
-// Waiter-liveness tracking for short-poll asks (see server/lib/ask-reaper.js).
+// Waiter-liveness tracking for short-poll asks (see server/lib/ask/ask-reaper.js).
 // Memory-only BY DESIGN: persisting it would bump the ask-store SCHEMA_VERSION;
 // the reaper's boot-time orphan sweep covers restarts instead.
 const askWaiterLastPoll = new Map(); // id -> ms of last POST create / GET result poll
@@ -956,7 +956,7 @@ export async function startViewer() {
   // Waiter-liveness reaper: resolves short-poll asks whose hook process (ask-bridge)
   // died without notifying us (e.g. AskUserQuestion declined at the CLI → SIGTERM).
   // Keys on waiter liveness, never on wall-clock ask age — the "GUI effectively
-  // no-timeout" contract is untouched. See server/lib/ask-reaper.js.
+  // no-timeout" contract is untouched. See server/lib/ask/ask-reaper.js.
   const _reaperDeps = {
     pendingAskHooks,
     shortPollListeners,

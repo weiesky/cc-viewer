@@ -1,5 +1,5 @@
 /**
- * server/lib/proxy-retry.js — streaming idle timeout (streamIdleTimeoutMs).
+ * server/lib/proxy/proxy-retry.js — streaming idle timeout (streamIdleTimeoutMs).
  *
  * Covers the hang point: when an upstream returns 200 + text/event-stream headers
  * but the body never produces a data chunk (hung upstream), the connect timeout
@@ -14,7 +14,7 @@
  */
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { executeRequest, DEFAULT_RETRY_CONFIG } from '../packages/app/server/lib/proxy-retry.js';
+import { executeRequest, DEFAULT_RETRY_CONFIG } from '../packages/app/server/lib/proxy/proxy-retry.js';
 
 /**
  * Build a fake streaming Response whose body is a real ReadableStream.

@@ -1,5 +1,5 @@
 /**
- * server/lib/proxy-stats.js — pure functions for proxy retry statistics.
+ * server/lib/proxy/proxy-stats.js — pure functions for proxy retry statistics.
  * Coverage: buildRecord / isRecordSucceeded / dailyFileName / dailyFilePath /
  * parseDailyFileName / todayStr / percentile / computeStreak / aggregateRecords.
  */
@@ -9,7 +9,7 @@ import {
   buildRecord, isRecordSucceeded, dailyFileName, dailyFilePath,
   parseDailyFileName, todayStr, percentile, computeStreak, aggregateRecords,
   mergeProxyFileCache,
-} from '../packages/app/server/lib/proxy-stats.js';
+} from '../packages/app/server/lib/proxy/proxy-stats.js';
 
 describe('proxy-stats buildRecord', () => {
   it('补全默认值并派生 retries/succeeded', () => {
@@ -417,7 +417,7 @@ describe('proxy-stats mergeProxyFileCache 增量缓存', () => {
 // ── appendRecord (async write queue) + notifier registry — review P2 ─────────
 describe('proxy-stats appendRecord / notifier (review P2)', () => {
   it('appendRecord writes through the async queue; flushRecords awaits it', async () => {
-    const { appendRecord, flushRecords } = await import('../packages/app/server/lib/proxy-stats.js');
+    const { appendRecord, flushRecords } = await import('../packages/app/server/lib/proxy/proxy-stats.js');
     const { mkdtempSync, rmSync, readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const { tmpdir } = await import('node:os');
@@ -437,7 +437,7 @@ describe('proxy-stats appendRecord / notifier (review P2)', () => {
   });
 
   it('emitProxyStatsUpdate is a no-op without a listener and forwards with one', async () => {
-    const { setProxyStatsListener, emitProxyStatsUpdate } = await import('../packages/app/server/lib/proxy-stats.js');
+    const { setProxyStatsListener, emitProxyStatsUpdate } = await import('../packages/app/server/lib/proxy/proxy-stats.js');
     emitProxyStatsUpdate('proxy_x.jsonl'); // must not throw with no listener
     const seen = [];
     setProxyStatsListener((f) => seen.push(f));

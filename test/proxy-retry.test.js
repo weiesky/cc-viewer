@@ -1,5 +1,5 @@
 /**
- * server/lib/proxy-retry.js — proxy retry engine.
+ * server/lib/proxy/proxy-retry.js — proxy retry engine.
  * Covers: parseRetryAfter / shouldRetryStatus / isStreamResponse / extractModel /
  * applyModelReplacement / resolveRetryConfig / executeRequest (off/serial/race/stagger).
  *
@@ -13,7 +13,7 @@ import {
   DEFAULT_RETRY_CONFIG, resolveRetryConfig, parseRetryAfter,
   shouldRetryStatus, isStreamResponse, extractModel, applyModelReplacement,
   executeRequest,
-} from '../packages/app/server/lib/proxy-retry.js';
+} from '../packages/app/server/lib/proxy/proxy-retry.js';
 
 // ── Pure functions ────────────────────────────────────────────────
 

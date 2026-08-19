@@ -207,7 +207,7 @@ describeCli('cli-deep: -SDK runSdkMode（SDK 可用）主体抛错 → 顶层 .c
 });
 
 // ════════════════════ B3. --im → runImMode 主体 reject → 顶层 .catch ════════════════════
-// `--im dingtalk`（合法平台）→ runImMode 进入主体 → 在 `import('./server/lib/im-lock.js')`
+// `--im dingtalk`（合法平台）→ runImMode 进入主体 → 在 `import('./server/lib/im/im-lock.js')`
 // （acquireImLock 来源）处被 loader 阻断 → 抛错 → runImMode reject → 顶层 `.catch`（916-919）
 // 打印 "IM mode error:" + exit 1。既有测试只覆盖了 runImMode 内部 process.exit 早退路径。
 
@@ -215,7 +215,7 @@ describeCli('cli-deep: --im runImMode 主体抛错 → 顶层 .catch（IM mode e
   it('合法平台 + im-lock import 阻断 → "IM mode error:" 退出 1', () => {
     const home = mkTmp('ccv-deep-im-');
     const logDir = mkTmp('ccv-deep-imlog-');
-    const NODE_OPTIONS = importBlockerNodeOptions('/server/lib/im-lock.js', 'blocked-imlock-for-test');
+    const NODE_OPTIONS = importBlockerNodeOptions('/server/lib/im/im-lock.js', 'blocked-imlock-for-test');
     const r = runCli(['--im', 'dingtalk'], {
       env: {
         PATH: '/usr/bin:/bin',

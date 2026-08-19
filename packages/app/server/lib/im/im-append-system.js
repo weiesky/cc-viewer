@@ -16,10 +16,10 @@ import { openSync, writeFileSync, closeSync, mkdirSync, readFileSync, unlinkSync
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { imDir } from './im-lock.js';
-import { renameSyncWithRetry } from './file-api.js';
-import { IM_PRESET_DIR } from '../_paths.js';
+import { renameSyncWithRetry } from '../file-api.js';
+import { IM_PRESET_DIR } from '../../_paths.js';
 import { resolvePrefLang } from './im-lang.js';
-import { APPEND_SYSTEM_PROMPT_FILE } from './system-prompt-files.js';
+import { APPEND_SYSTEM_PROMPT_FILE } from '../system-prompt-files.js';
 
 // 写入上限（字符数，按 String.length / UTF-16 码元计）：远超任何合理人格定义，纯防失控大 body。
 export const MAX_IM_APPEND_SYSTEM_CHARS = 256 * 1024;

@@ -12,7 +12,7 @@ process.env.CCV_LOG_DIR = tmpDir;
 // mutates the very currentLang the bridge renders against.
 const { setLang, getLang } = await import('../packages/app/server/i18n.js');
 
-const bridge = await import('../packages/app/server/lib/dingtalk-bridge.js');
+const bridge = await import('../packages/app/server/lib/im/dingtalk-bridge.js');
 const {
   __setClientFactory, __setFetchForTests, __resetForTests, __setMaxQueueForTests,
   startBridge, notifyTurnEnd, isBridgeRunning, getBridgeStatus,

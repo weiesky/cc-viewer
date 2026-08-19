@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-wecom-bridge-test-'));
 process.env.CCV_LOG_DIR = tmpDir;
 
-const core = await import('../packages/app/server/lib/im-bridge-core.js');
+const core = await import('../packages/app/server/lib/im/im-bridge-core.js');
 const wecom = await import('../packages/app/server/lib/adapters/wecom-adapter.js');
 
 // Fake @wecom/aibot-node-sdk WSClient (EventEmitter) — zero real SDK / socket.

@@ -1,4 +1,4 @@
-// 分支覆盖补强:server/lib/im-senders.js
+// 分支覆盖补强:server/lib/im/im-senders.js
 // 目标分支:readSenders 的非对象/数组降级、upsertSender 的 profile 默认值与 name/avatar 三元 :null 臂、
 // 以及 MAX_SENDERS 淘汰排序里 (map[a].ts || 0) 的 || 0 兜底。
 import './_shims/register.mjs';
@@ -15,8 +15,8 @@ process.env.CCV_LOG_DIR = PRIV;
 
 let mod, imLock;
 before(async () => {
-  imLock = await import('../packages/app/server/lib/im-lock.js');
-  mod = await import('../packages/app/server/lib/im-senders.js');
+  imLock = await import('../packages/app/server/lib/im/im-lock.js');
+  mod = await import('../packages/app/server/lib/im/im-senders.js');
 });
 
 let n = 0;

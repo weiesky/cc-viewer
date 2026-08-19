@@ -13,7 +13,7 @@
 // admin API masks secret fields entirely (→ hasSecret).
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { LOG_DIR } from '../../findcc.js';
+import { LOG_DIR } from '../../../findcc.js';
 
 const MIN_CHUNK = 500;
 const MAX_CHUNK = 5000;

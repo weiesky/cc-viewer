@@ -14,7 +14,7 @@ import {
   imDir, readImLock, clearImLock, isPidAlive, getImLiveness, defaultProbe,
 } from './im-lock.js';
 
-const CLI_JS = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'cli.js');
+const CLI_JS = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'cli.js');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

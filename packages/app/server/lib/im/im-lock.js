@@ -12,8 +12,8 @@ import { openSync, closeSync, readFileSync, writeFileSync, unlinkSync, mkdirSync
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { get as httpGet } from 'node:http';
-import { LOG_DIR } from '../../findcc.js';
-import { renameSyncWithRetry } from './file-api.js';
+import { LOG_DIR } from '../../../findcc.js';
+import { renameSyncWithRetry } from '../file-api.js';
 
 // 启动窗：已建锁但尚未回填 port 的进程，在此时间内视为"启动中"（不可被判死/重拉）。
 export const BOOT_WINDOW_MS = 15000;

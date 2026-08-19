@@ -18,7 +18,7 @@ import { join } from 'node:path';
 const SCANNED_FILES = [
   'apps/electron/electron/main.js',
   'packages/app/server/pty-manager.js',
-  'packages/app/server/lib/im-process-manager.js',
+  'packages/app/server/lib/im/im-process-manager.js',
   'packages/app/server/lib/updater.js',
   'packages/app/server/lib/git-diff.js',
   'packages/app/server/lib/plugin-manager.js',

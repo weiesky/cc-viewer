@@ -15,7 +15,7 @@ import {
   INTER_SESSION_TYPES, isSystemText, extractUserTexts, isSuggestionMode,
   collectPromptsFromEvents, sortEpochFiles,
 } from './user-prompt-extract.js';
-import { aggregateRecords, mergeProxyFileCache, parseDailyFileName } from './proxy-stats.js';
+import { aggregateRecords, mergeProxyFileCache, parseDailyFileName } from './proxy/proxy-stats.js';
 
 // Prompt/preview extraction moved to the shared server/lib/user-prompt-extract.js
 // (also feeds the V2Writer prompts.jsonl cache and the log-list read side).

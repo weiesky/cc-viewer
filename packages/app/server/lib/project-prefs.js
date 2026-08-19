@@ -10,7 +10,7 @@
 // (toggle off) deletes the key so the project inherits global again.
 import { basename } from 'node:path';
 import { mergeApprovalModalPrefs } from './approval-modal-prefs.js';
-import { listPlatforms } from './im-config.js';
+import { listPlatforms } from './im/im-config.js';
 import { _projectName } from '../interceptor.js';
 
 // SINGLE SOURCE of "what must never live inside a fork": secrets (auth password + IM creds),

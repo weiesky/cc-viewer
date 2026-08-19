@@ -486,7 +486,7 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   // IM worker：服务器监听成功后把真实端口回填进 im.lock（manager 据此做 HTTP 身份探测）
   if (process.env.CCV_IM_PLATFORM) {
     try {
-      const { updateImLockPort } = await import('./server/lib/im-lock.js');
+      const { updateImLockPort } = await import('./server/lib/im/im-lock.js');
       updateImLockPort(process.env.CCV_IM_PLATFORM, port);
     } catch (e) {
       console.error('[CC Viewer] updateImLockPort failed:', e.message);
@@ -587,15 +587,15 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
 // 外加：全局唯一锁、CC_APPEND_SYSTEM.md 人格预置/迁移、IM 专属 env。由 im-process-manager 以 detached 子进程拉起，
 // 也可手动 `ccv --im <id>` 启动。
 async function runImMode(platformId) {
-  const { getDescriptor } = await import('./server/lib/im-config.js');
+  const { getDescriptor } = await import('./server/lib/im/im-config.js');
   if (!getDescriptor(platformId)) {
     console.error(t('cli.imUnknownPlatform', { id: platformId }));
     process.exit(1);
   }
 
-  const { acquireImLock, releaseImLock, imDir } = await import('./server/lib/im-lock.js');
-  const { ensureImAppendSystem, migrateImClaudeMd } = await import('./server/lib/im-append-system.js');
-  const { ensureImBuiltinSkills } = await import('./server/lib/im-skills.js');
+  const { acquireImLock, releaseImLock, imDir } = await import('./server/lib/im/im-lock.js');
+  const { ensureImAppendSystem, migrateImClaudeMd } = await import('./server/lib/im/im-append-system.js');
+  const { ensureImBuiltinSkills } = await import('./server/lib/im/im-skills.js');
 
   const dir = imDir(platformId);
   mkdirSync(dir, { recursive: true });

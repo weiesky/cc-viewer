@@ -1,9 +1,9 @@
 // DingTalk adapter — the platform-specific half of the DingTalk bridge. The generic
 // orchestration (dedup, access control, queue, inject, chunk, turn-end reply) lives in
-// server/lib/im-bridge-core.js; this module only knows DingTalk's Stream client, ACK protocol,
+// server/lib/im/im-bridge-core.js; this module only knows DingTalk's Stream client, ACK protocol,
 // inbound payload shape, access-token fetch, and proactive App API send endpoints.
 import { randomUUID } from 'node:crypto';
-import { registerAdapter } from '../im-bridge-core.js';
+import { registerAdapter } from '../im/im-bridge-core.js';
 import { t } from '../../i18n.js';
 
 // ─── test seam: a fake Stream client factory (zero dingtalk-stream / network) ───

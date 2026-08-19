@@ -14,8 +14,8 @@ process.env.CCV_LOG_DIR = __isoDir;
 process.env.CLAUDE_CONFIG_DIR = __isoDir;
 
 const { LOG_DIR } = await import('../packages/app/findcc.js');
-const { imDir } = await import('../packages/app/server/lib/im-lock.js');
-const { readSenders, upsertSender, MAX_SENDERS } = await import('../packages/app/server/lib/im-senders.js');
+const { imDir } = await import('../packages/app/server/lib/im/im-lock.js');
+const { readSenders, upsertSender, MAX_SENDERS } = await import('../packages/app/server/lib/im/im-senders.js');
 
 let n = 0;
 function freshId() { return `test_senders_${process.pid}_${n++}`; }

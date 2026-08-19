@@ -28,7 +28,7 @@ process.env.CCV_LOG_DIR = tmpDir;
 process.env.CLAUDE_CONFIG_DIR = tmpDir;
 
 const { askPermRoutes } = await import('../packages/app/server/routes/ask-perm.js');
-const askStore = await import('../packages/app/server/lib/ask-store.js');
+const askStore = await import('../packages/app/server/lib/ask/ask-store.js');
 
 const pendingAsksHandler = askPermRoutes.find(r => r.path === '/api/pending-asks').handler;
 const askHookHandler = askPermRoutes.find(r => r.path === '/api/ask-hook' && r.method === 'POST').handler;
@@ -529,7 +529,7 @@ describe('ask-perm 分支补洞: 路由 predicate', () => {
 
 // ════════════════════════════════════════════════════════════════════════════════
 // Waiter-liveness tracking + POST /api/ask-hook/:id/cancel (reaper support, see
-// server/lib/ask-reaper.js). English comments per current CLAUDE.md convention.
+// server/lib/ask/ask-reaper.js). English comments per current CLAUDE.md convention.
 const askHookCancelRoute = askPermRoutes.find(
   (r) => r.predicate && r.predicate('/api/ask-hook/x/cancel', 'POST')
 );

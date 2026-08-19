@@ -6,7 +6,7 @@
 // and the existing dingtalk-bridge tests keep working unchanged. Importing it registers the
 // DingTalk adapter with the core.
 import * as core from './im-bridge-core.js';
-import { __setClientFactory } from './adapters/dingtalk-adapter.js';
+import { __setClientFactory } from '../adapters/dingtalk-adapter.js';
 
 const ID = 'dingtalk';
 

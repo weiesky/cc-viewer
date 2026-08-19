@@ -12,9 +12,9 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { IM_SKILLS_DIR } from '../_paths.js';
+import { IM_SKILLS_DIR } from '../../_paths.js';
 import { imDir } from './im-lock.js';
-import { renameSyncWithRetry } from './file-api.js';
+import { renameSyncWithRetry } from '../file-api.js';
 import { resolvePrefLang } from './im-lang.js';
 
 export const BUILTIN_SKILL_NAME = 'manage-ccv-projects';

@@ -1,4 +1,4 @@
-// Unit tests for server/lib/ask-store.js
+// Unit tests for server/lib/ask/ask-store.js
 // 涉及文件锁 + tmp-rename 原子写 + corrupt 恢复，使用专用 LOG_DIR 隔离不同 test 间的全局状态。
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 const tmpRoot = mkdtempSync(join(tmpdir(), 'ccv-ask-store-test-'));
 process.env.CCV_LOG_DIR = tmpRoot;
 
-const { loadAskStore, saveAskStore, setEntry, deleteEntry, pruneStale, replaceAll, markAnswered, markCancelled, consume, consumeIfFinal } = await import('../packages/app/server/lib/ask-store.js');
+const { loadAskStore, saveAskStore, setEntry, deleteEntry, pruneStale, replaceAll, markAnswered, markCancelled, consume, consumeIfFinal } = await import('../packages/app/server/lib/ask/ask-store.js');
 
 const storeFile = join(tmpRoot, 'ask-store.json');
 const lockFile = join(tmpRoot, 'ask-store.lock');

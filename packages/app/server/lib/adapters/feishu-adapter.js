@@ -1,6 +1,6 @@
 // Feishu/Lark adapter — the platform-specific half of the Feishu bridge. The generic
 // orchestration (dedup, access control, queue, inject, chunk, turn-end reply) lives in
-// server/lib/im-bridge-core.js; this module only knows Feishu's WebSocket long-connection event
+// server/lib/im/im-bridge-core.js; this module only knows Feishu's WebSocket long-connection event
 // client, inbound payload shape, and outbound send.
 //
 // Inbound uses the official SDK's WSClient long-connection (NOT a webhook) so it works on
@@ -11,7 +11,7 @@
 // Console prerequisite (no code equivalent — surfaced to the user in the UI/README): the custom
 // app must set Event Subscription to "long connection", subscribe `im.message.receive_v1`, grant
 // the `im:message` send scope, and be published.
-import { registerAdapter } from '../im-bridge-core.js';
+import { registerAdapter } from '../im/im-bridge-core.js';
 
 // ─── test seam: a fake SDK factory ({ Client, WSClient, EventDispatcher, Domain, LoggerLevel })
 // so unit tests never import the real SDK or open a socket. ───

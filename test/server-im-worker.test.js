@@ -61,7 +61,7 @@ describeCli('server.js CLI-mode IM-worker startBridge wiring (CCV_IM_PLATFORM)',
 
   before(async () => {
     mod = await import('../packages/app/server/server.js');
-    imCore = await import('../packages/app/server/lib/im-bridge-core.js');
+    imCore = await import('../packages/app/server/lib/im/im-bridge-core.js');
     const srv = await mod.startViewer();
     assert.ok(srv, 'CLI-mode IM-worker server should start');
     port = mod.getPort();

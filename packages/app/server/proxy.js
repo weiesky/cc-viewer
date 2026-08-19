@@ -5,12 +5,12 @@ import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
 import * as interceptor from './interceptor.js';
 import { setupInterceptor } from './interceptor.js';
-import { extractApiErrorMessage, formatProxyRequestError } from './lib/proxy-errors.js';
-import { getProxyDispatcher } from './lib/proxy-env.js';
+import { extractApiErrorMessage, formatProxyRequestError } from './lib/proxy/proxy-errors.js';
+import { getProxyDispatcher } from './lib/proxy/proxy-env.js';
 import { getClaudeConfigDir } from '../findcc.js';
 import { isAnthropicApiPath, classifyProxyRole } from './lib/interceptor-core.js';
-import { executeRequest, extractModel } from './lib/proxy-retry.js';
-import { buildRecord, appendRecord, dailyFilePath, todayStr, emitProxyStatsUpdate } from './lib/proxy-stats.js';
+import { executeRequest, extractModel } from './lib/proxy/proxy-retry.js';
+import { buildRecord, appendRecord, dailyFilePath, todayStr, emitProxyStatsUpdate } from './lib/proxy/proxy-stats.js';
 import { reportSwallowed } from './lib/error-report.js';
 import { LOG_DIR } from '../findcc.js';
 

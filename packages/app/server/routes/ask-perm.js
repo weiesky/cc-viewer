@@ -1,5 +1,5 @@
 // Ask / permission hook bridge routes (moved verbatim from server.js handleRequest).
-import { loadAskStore, consumeIfFinal as askStoreConsumeIfFinal, markCancelled as askStoreMarkCancelled } from '../lib/ask-store.js';
+import { loadAskStore, consumeIfFinal as askStoreConsumeIfFinal, markCancelled as askStoreMarkCancelled } from '../lib/ask/ask-store.js';
 import { runWaterfallHook, runParallelHook } from '../lib/plugin-loader.js';
 import { sendEventToClients } from '../lib/log-watcher.js';
 

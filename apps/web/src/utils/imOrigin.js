@@ -3,7 +3,7 @@
 //   ⟦im:<id>⟧            — platform only (legacy / when sender unknown)
 //   ⟦im:<id>:<senderId>⟧ — platform + opaque sender id (used to look up name/avatar)
 //
-// KEEP IN SYNC with markOrigin() in server/lib/im-bridge-core.js. The senderId group is
+// KEEP IN SYNC with markOrigin() in server/lib/im/im-bridge-core.js. The senderId group is
 // OPTIONAL so old markers (no sender) still parse → senderId:null → callers fall back to the
 // global user profile (no regression). The bridge only embeds a senderId matching /^[^\s:⟧]+$/,
 // so the `:` separator and the `⟧` terminator are never ambiguous.

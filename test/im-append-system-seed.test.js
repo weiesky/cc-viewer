@@ -17,8 +17,8 @@ const { LOG_DIR } = await import('../packages/app/findcc.js');
 const {
   ensureImAppendSystem, buildImAppendSystemPreset, platformLabel,
   readImAppendSystem, writeImAppendSystem, migrateImClaudeMd,
-} = await import('../packages/app/server/lib/im-append-system.js');
-const { imDir } = await import('../packages/app/server/lib/im-lock.js');
+} = await import('../packages/app/server/lib/im/im-append-system.js');
+const { imDir } = await import('../packages/app/server/lib/im/im-lock.js');
 const { IM_PRESET_DIR } = await import('../packages/app/server/_paths.js');
 
 const TARGET = 'CC_APPEND_SYSTEM.md';

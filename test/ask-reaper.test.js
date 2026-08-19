@@ -1,4 +1,4 @@
-// Unit tests for server/lib/ask-reaper.js — the waiter-liveness reaper that resolves
+// Unit tests for server/lib/ask/ask-reaper.js — the waiter-liveness reaper that resolves
 // short-poll AskUserQuestion entries whose hook process (ask-bridge) died without
 // notifying the server (e.g. the ask was declined at the CLI → SIGTERM).
 //
@@ -7,7 +7,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { reapDeadAskWaiters, sweepOrphanedDiskAsks } from '../packages/app/server/lib/ask-reaper.js';
+import { reapDeadAskWaiters, sweepOrphanedDiskAsks } from '../packages/app/server/lib/ask/ask-reaper.js';
 
 const LIVENESS = 90_000;
 const INTERVAL = 30_000;

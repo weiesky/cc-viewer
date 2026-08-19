@@ -138,7 +138,7 @@ export function ensureHooks() {
 
     // AskUserQuestion hook → ask-bridge.js
     // Guard: only execute when CCVIEWER_PORT is set (i.e. launched by cc-viewer)
-    const askBridgePath = resolve(SERVER_LIB, 'ask-bridge.js');
+    const askBridgePath = resolve(SERVER_LIB, 'ask', 'ask-bridge.js');
     const askCmd = `[ -n "$CCVIEWER_PORT" ] && node "${askBridgePath}" || true ${CCV_HOOK_MARKER}`;
     const askDesired = _buildHookObj(askCmd);
     const askExisting = settings.hooks.PreToolUse.find(h => h.matcher === 'AskUserQuestion');
@@ -157,7 +157,7 @@ export function ensureHooks() {
 
     // Permission approval hook → perm-bridge.js (matcher: "" = match all tools)
     // Guard: only execute when CCVIEWER_PORT is set (i.e. launched by cc-viewer)
-    const permBridgePath = resolve(SERVER_LIB, 'perm-bridge.js');
+    const permBridgePath = resolve(SERVER_LIB, 'ask', 'perm-bridge.js');
     const permCmd = `[ -n "$CCVIEWER_PORT" ] && node "${permBridgePath}" || true ${CCV_HOOK_MARKER}`;
     const permMatcher = '';
     // Clean up legacy entries

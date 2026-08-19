@@ -17,7 +17,7 @@ const { LOG_DIR } = await import('../packages/app/findcc.js');
 const {
   imDir, lockPath, isPidAlive, readImLock, acquireImLock,
   updateImLockPort, releaseImLock, clearImLock, getImLiveness, BOOT_WINDOW_MS,
-} = await import('../packages/app/server/lib/im-lock.js');
+} = await import('../packages/app/server/lib/im/im-lock.js');
 
 // 每个用例用独立 id，避免互相干扰；beforeEach 清掉残留目录。
 let n = 0;

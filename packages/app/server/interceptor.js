@@ -6,7 +6,7 @@
 const _ccvSkipArgs = ['--version', '-v', '--v', '--help', '-h', 'doctor', 'install', 'update', 'upgrade', 'auth', 'setup-token', 'agents', 'plugin', 'plugins', 'mcp'];
 const _ccvSkip = _ccvSkipArgs.includes(process.argv[2]);
 
-import './lib/proxy-env.js';
+import './lib/proxy/proxy-env.js';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, watchFile, unwatchFile, renameSync, rmSync } from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
@@ -19,7 +19,7 @@ import { V2Writer } from './lib/v2/v2-writer.js';
 import { reportSwallowed } from './lib/error-report.js';
 import { latestMainSessionDir, sessionHasCompletedMainTurn } from './lib/v2/session-select.js';
 import { sanitizePathComponent } from './lib/v2/layout.js';
-import { setRetryConfigPath, loadRetryConfig, DEFAULT_RETRY_CONFIG } from './lib/proxy-retry.js';
+import { setRetryConfigPath, loadRetryConfig, DEFAULT_RETRY_CONFIG } from './lib/proxy/proxy-retry.js';
 
 
 

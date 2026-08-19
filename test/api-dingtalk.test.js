@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 // 现状:im-process-manager.spawnImProcess 有 L4 铁闸(NODE_TEST_CONTEXT 下拒绝真实 spawn)。
 // 本文件内任何用例【绝不允许】:设 CCV_TEST_ALLOW_IM_SPAWN、绕过铁闸、或以任何方式
 // 拉起/杀灭真实 worker;需要验证 restart 行为一律走「直接 handler + 注入 stub deps」模式
-// (见下方 allowlist describe 块)。新增用例先读 server/lib/im-process-manager.js 顶部铁闸注释。
+// (见下方 allowlist describe 块)。新增用例先读 server/lib/im/im-process-manager.js 顶部铁闸注释。
 // █████████████████████████████████████████████████████████
 // Isolate LOG_DIR (dingtalk config shares preferences.json) before any findcc-loading import.
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-dingtalk-api-test-'));
@@ -27,7 +27,7 @@ process.env.CCV_START_PORT = '19780';
 process.env.CCV_MAX_PORT = '19789';
 
 // Stub the bridge's outbound fetch so /test never touches the network.
-const bridge = await import('../packages/app/server/lib/dingtalk-bridge.js');
+const bridge = await import('../packages/app/server/lib/im/dingtalk-bridge.js');
 bridge.__setFetchForTests(async (url) => {
   if (url.includes('accessToken')) return { ok: true, json: async () => ({ accessToken: 'tok', expireIn: 7200 }) };
   return { ok: true, json: async () => ({}) };
@@ -114,7 +114,7 @@ describe('DingTalk config API (loopback=admin)', { concurrency: false }, () => {
 describe('GET /api/dingtalk/status loopback gate', () => {
   it('strips appKey / allowlist / boundConversationId / lastError for remote callers', async () => {
     const { dingtalkRoutes } = await import('../packages/app/server/routes/dingtalk.js');
-    const { saveDingTalkConfig } = await import('../packages/app/server/lib/dingtalk-config.js');
+    const { saveDingTalkConfig } = await import('../packages/app/server/lib/im/dingtalk-config.js');
     saveDingTalkConfig({ enabled: true, appKey: 'dkSECRET', appSecret: 'appSecretSECRET', allowStaffIds: ['staff-x'] });
     const route = dingtalkRoutes.find((r) => r.path === '/api/dingtalk/status' && r.method === 'GET');
     const deps = { dingtalk: { isWorker: true, getBridgeStatus: () => ({ running: true, connected: true, boundConversationId: 'cidSECRET', appKeyTail: 'CRET', lastError: 'boom' }) } };
@@ -252,7 +252,7 @@ describe('POST /api/dingtalk/test branches', () => {
 
   it('missing appKey/appSecret (none stored) → 200 { ok:false } without touching the network (dingtalk.js:114-117)', async () => {
     const { dingtalkRoutes } = await import('../packages/app/server/routes/dingtalk.js');
-    const { saveDingTalkConfig } = await import('../packages/app/server/lib/dingtalk-config.js');
+    const { saveDingTalkConfig } = await import('../packages/app/server/lib/im/dingtalk-config.js');
     // 清掉已存配置，确保 stored.appKey/appSecret 也为空 → 命中缺凭据短路。
     saveDingTalkConfig({ enabled: false, appKey: '', appSecret: '', allowStaffIds: [] });
     const route = dingtalkRoutes.find((r) => r.path === '/api/dingtalk/test' && r.method === 'POST');

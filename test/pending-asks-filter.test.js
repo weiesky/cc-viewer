@@ -20,7 +20,7 @@ const repoRoot = resolve(__dirname, '..');
 const tmpRoot = mkdtempSync(join(tmpdir(), 'ccv-pending-asks-test-'));
 process.env.CCV_LOG_DIR = tmpRoot;
 
-const { loadAskStore, saveAskStore } = await import('../packages/app/server/lib/ask-store.js');
+const { loadAskStore, saveAskStore } = await import('../packages/app/server/lib/ask/ask-store.js');
 
 const storeFile = join(tmpRoot, 'ask-store.json');
 

@@ -35,9 +35,9 @@ function writeSettings(data) {
 
 // 真实 bridge 路径（存在 → 不被 stale-purge 当作 stale）
 const repoRoot = new URL('..', import.meta.url).pathname;
-const askPath = `${repoRoot}server/lib/ask-bridge.js`;
-const permPath = `${repoRoot}server/lib/perm-bridge.js`;
-const turnEndPath = `${repoRoot}server/lib/turn-end-bridge.js`;
+const askPath = `${repoRoot}packages/app/server/lib/ask/ask-bridge.js`;
+const permPath = `${repoRoot}packages/app/server/lib/ask/perm-bridge.js`;
+const turnEndPath = `${repoRoot}packages/app/server/lib/turn-end-bridge.js`;
 
 let mod;
 before(async () => {
@@ -126,7 +126,7 @@ describe('ensure-hooks-deep: stale-path purge + legacy cleanup', () => {
     const s = loadSettings();
     const ask = s.hooks.PreToolUse.filter(h => h.matcher === 'AskUserQuestion');
     assert.equal(ask.length, 1, 'stale 被 purge，主流程重建唯一一条');
-    assert.match(ask[0].hooks[0].command, /server\/lib\/ask-bridge\.js/);
+    assert.match(ask[0].hooks[0].command, /server\/lib\/ask\/ask-bridge\.js/);
     assert.doesNotMatch(ask[0].hooks[0].command, /old\/cc-viewer\/lib/);
   });
 
@@ -144,7 +144,7 @@ describe('ensure-hooks-deep: stale-path purge + legacy cleanup', () => {
     assert.equal(s.hooks.PreToolUse.find(h => h.matcher === 'Bash|Write|Edit'), undefined, '老 matcher entry 被清');
     const fresh = s.hooks.PreToolUse.find(h => h.matcher === '');
     assert.ok(fresh, '新格式 perm entry 重建');
-    assert.match(fresh.hooks[0].command, /server\/lib\/perm-bridge\.js/);
+    assert.match(fresh.hooks[0].command, /server\/lib\/ask\/perm-bridge\.js/);
   });
 
   it('legacy cleanup：matcher=null 且含 perm-bridge → 删除', () => {

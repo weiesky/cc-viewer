@@ -1,6 +1,6 @@
 // 企业微信 (WeCom) adapter — the platform-specific half of the WeCom bridge. The generic
 // orchestration (dedup, access control, queue, inject, chunk, turn-end reply) lives in
-// server/lib/im-bridge-core.js; this module only knows WeCom's smart-robot long-connection client,
+// server/lib/im/im-bridge-core.js; this module only knows WeCom's smart-robot long-connection client,
 // inbound frame shape, and outbound send.
 //
 // Uses the 企业微信智能机器人长连接 (Smart Robot long-connection) mode via @wecom/aibot-node-sdk:
@@ -12,7 +12,7 @@
 // Console prerequisite (no code equivalent — surfaced in the UI help/README): create a 智能机器人,
 // set its API 接收模式 to 长连接, copy the botId + secret, and add the bot to a chat.
 import { randomUUID } from 'node:crypto';
-import { registerAdapter } from '../im-bridge-core.js';
+import { registerAdapter } from '../im/im-bridge-core.js';
 
 // ─── test seam: a fake SDK factory (zero real SDK / socket) ───
 let sdkFactory = null;

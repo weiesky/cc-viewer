@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-feishu-bridge-test-'));
 process.env.CCV_LOG_DIR = tmpDir;
 
-const core = await import('../packages/app/server/lib/im-bridge-core.js');
+const core = await import('../packages/app/server/lib/im/im-bridge-core.js');
 const feishu = await import('../packages/app/server/lib/adapters/feishu-adapter.js');
 
 // Fake SDK ({ Client, WSClient, EventDispatcher, Domain, LoggerLevel }) — zero real SDK / socket.

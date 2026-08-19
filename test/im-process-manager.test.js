@@ -14,11 +14,11 @@ process.env.CCV_LOG_DIR = __isoDir;
 process.env.CLAUDE_CONFIG_DIR = __isoDir;
 
 const { LOG_DIR } = await import('../packages/app/findcc.js');
-const { saveConfig } = await import('../packages/app/server/lib/im-config.js');
-const { imDir, acquireImLock, updateImLockPort, readImLock, clearImLock } = await import('../packages/app/server/lib/im-lock.js');
+const { saveConfig } = await import('../packages/app/server/lib/im/im-config.js');
+const { imDir, acquireImLock, updateImLockPort, readImLock, clearImLock } = await import('../packages/app/server/lib/im/im-lock.js');
 const {
   buildChildEnv, spawnImProcess, stopImProcess, getImProcessStatus, reconcileImProcesses,
-} = await import('../packages/app/server/lib/im-process-manager.js');
+} = await import('../packages/app/server/lib/im/im-process-manager.js');
 
 let n = 0;
 const freshId = () => `test_pm_${process.pid}_${n++}`;

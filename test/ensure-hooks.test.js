@@ -69,9 +69,9 @@ ${probeBody}
 // ── 主块：canonical 单次 import（env=default 86400），覆盖全部「与 timeout 值无关」的逻辑 ──
 let mod;
 const repoRoot = new URL('..', import.meta.url).pathname;
-const askPath = `${repoRoot}server/lib/ask-bridge.js`;
-const permPath = `${repoRoot}server/lib/perm-bridge.js`;
-const turnEndPath = `${repoRoot}server/lib/turn-end-bridge.js`;
+const askPath = `${repoRoot}packages/app/server/lib/ask/ask-bridge.js`;
+const permPath = `${repoRoot}packages/app/server/lib/ask/perm-bridge.js`;
+const turnEndPath = `${repoRoot}packages/app/server/lib/turn-end-bridge.js`;
 
 describe('lib/ensure-hooks.js — timeout field v3 migration (canonical import)', () => {
   before(async () => { mod = await import('../packages/app/server/lib/ensure-hooks.js'); });
@@ -334,9 +334,9 @@ describe('lib/ensure-hooks.js — timeout field v3 migration (canonical import)'
       const ask = s.hooks.PreToolUse.find(h => h.matcher === 'AskUserQuestion');
       const perm = s.hooks.PreToolUse.find(h => h.matcher === '');
       const turnEnd = s.hooks.Stop[0];
-      assert.match(ask.hooks[0].command, /server\/lib\/ask-bridge\.js/, 'ask path 应升级为 server/lib/');
+      assert.match(ask.hooks[0].command, /server\/lib\/ask\/ask-bridge\.js/, 'ask path 应升级为 server/lib/');
       assert.doesNotMatch(ask.hooks[0].command, /cc-viewer\/lib\/ask-bridge\.js/, 'stale lib/ 路径应被清除');
-      assert.match(perm.hooks[0].command, /server\/lib\/perm-bridge\.js/);
+      assert.match(perm.hooks[0].command, /server\/lib\/ask\/perm-bridge\.js/);
       assert.match(turnEnd.hooks[0].command, /server\/lib\/turn-end-bridge\.js/);
     });
 
@@ -388,7 +388,7 @@ describe('lib/ensure-hooks.js — timeout field v3 migration (canonical import)'
       assert.equal(oldEntry, undefined, 'pre-marker era 老 matcher entry 必须被清除');
       const fresh = s.hooks.PreToolUse.find(h => h.matcher === '');
       assert.ok(fresh, '新格式 perm-bridge entry 必须被重新插入');
-      assert.match(fresh.hooks[0].command, /server\/lib\/perm-bridge\.js/);
+      assert.match(fresh.hooks[0].command, /server\/lib\/ask\/perm-bridge\.js/);
       assert.match(fresh.hooks[0].command, /# cc-viewer-managed/);
       assert.match(fresh.hooks[0].command, /\$CCVIEWER_PORT/);
     });
@@ -414,7 +414,7 @@ describe('lib/ensure-hooks.js — timeout field v3 migration (canonical import)'
       const s = loadSettings();
       const asks = s.hooks.PreToolUse.filter(h => h.matcher === 'AskUserQuestion');
       assert.equal(asks.length, 1, '应该只有一条 AskUserQuestion entry');
-      assert.match(asks[0].hooks[0].command, /server\/lib\/ask-bridge\.js/);
+      assert.match(asks[0].hooks[0].command, /server\/lib\/ask\/ask-bridge\.js/);
       assert.doesNotMatch(asks[0].hooks[0].command, /nonexistent/);
     });
 
@@ -497,7 +497,7 @@ describe('lib/ensure-hooks.js — CCV_HOOK_TIMEOUT_S env 变体（子进程 cano
       import { writeFileSync, mkdirSync } from 'node:fs';
       import { resolve as _resolve } from 'node:path';
       const repoRoot = ${JSON.stringify(repoRoot)};
-      const askPath = repoRoot + 'server/lib/ask-bridge.js';
+      const askPath = repoRoot + 'packages/app/server/lib/ask/ask-bridge.js';
       const cmd = '[ -n "$CCVIEWER_PORT" ] && node "' + askPath + '" || true # cc-viewer-managed';
       mkdirSync(process.env.CLAUDE_CONFIG_DIR, { recursive: true });
       writeFileSync(settingsPath, JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'AskUserQuestion', hooks: [{ type: 'command', command: cmd, timeout: 86400 }] }], Stop: [] } }));

@@ -19,13 +19,13 @@
 // detached ccv worker (im-process-manager). In the MAIN process, status/process routes go through the
 // manager (lock + loopback probe of the worker). In a WORKER process (CCV_IM_PLATFORM set), status
 // reports its own in-process adapter (deps.im.getBridgeStatus) — that's what the manager probes.
-import { getDescriptor, loadConfig, loadState, saveConfig } from '../lib/im-config.js';
+import { getDescriptor, loadConfig, loadState, saveConfig } from '../lib/im/im-config.js';
 import { findRecentLog } from '../lib/interceptor-core.js';
 import { listV2Sessions } from '../lib/v2/adapter.js';
-import { readSenders } from '../lib/im-senders.js';
-import { readImAppendSystem, writeImAppendSystem, buildImAppendSystemPreset, MAX_IM_APPEND_SYSTEM_CHARS } from '../lib/im-append-system.js';
-import { imDir } from '../lib/im-lock.js';
-import { resolvePrefLang } from '../lib/im-lang.js';
+import { readSenders } from '../lib/im/im-senders.js';
+import { readImAppendSystem, writeImAppendSystem, buildImAppendSystemPreset, MAX_IM_APPEND_SYSTEM_CHARS } from '../lib/im/im-append-system.js';
+import { imDir } from '../lib/im/im-lock.js';
+import { resolvePrefLang } from '../lib/im/im-lang.js';
 import { listSkills, moveSkill, deleteSkill } from '../lib/skills-api.js';
 import { importSkillTo } from './skills.js';
 import { LOG_DIR } from '../../findcc.js';

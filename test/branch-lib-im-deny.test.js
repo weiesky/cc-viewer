@@ -1,4 +1,4 @@
-// 针对 server/lib/im-deny.js 的分支补洞测试（仅新增,不改源码/不动现有测试）。
+// 针对 server/lib/im/im-deny.js 的分支补洞测试（仅新增,不改源码/不动现有测试）。
 // 目标:把单跑口径 branch 覆盖从 ~81% 提到 >=95%。
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 let evaluateImDeny;
 before(async () => {
   // canonical 静态相对 import(不加 query),保证记账落到正确文件。
-  ({ evaluateImDeny } = await import('../packages/app/server/lib/im-deny.js'));
+  ({ evaluateImDeny } = await import('../packages/app/server/lib/im/im-deny.js'));
 });
 
 const HOME = '/home/tester';

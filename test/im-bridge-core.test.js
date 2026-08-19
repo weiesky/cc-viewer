@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-imcore-test-'));
 process.env.CCV_LOG_DIR = tmpDir;
 
-const core = await import('../packages/app/server/lib/im-bridge-core.js');
+const core = await import('../packages/app/server/lib/im/im-bridge-core.js');
 
 // Two fake adapters reuse the server.dingtalk.* i18n namespace so tr() resolves without new keys.
 function makeFake(id) {

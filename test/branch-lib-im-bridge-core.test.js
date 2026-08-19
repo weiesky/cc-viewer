@@ -1,4 +1,4 @@
-// Branch-coverage top-up for server/lib/im-bridge-core.js — targets the arms the happy-path
+// Branch-coverage top-up for server/lib/im/im-bridge-core.js — targets the arms the happy-path
 // (im-bridge-core.test.js) + deep (im-bridge-core-deep.test.js) suites leave uncovered:
 //   sendReply catch (sendOne throws), queue-full path, drainQueue no-session (not running /
 //   not claude), __setMaxQueueForTests, coreFetch test-seam, markOrigin slash + unsafe-senderId
@@ -20,7 +20,7 @@ import { tmpdir } from 'node:os';
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-branch-imbridge-'));
 process.env.CCV_LOG_DIR = tmpDir;
 
-const core = await import('../packages/app/server/lib/im-bridge-core.js');
+const core = await import('../packages/app/server/lib/im/im-bridge-core.js');
 
 // Fake adapters keyed under server.dingtalk.* i18n so tr() resolves. `opts` toggles the optional
 // adapter capabilities (ack card, resolveSender, statusFields presence).
@@ -970,7 +970,7 @@ describe('PENDING_TIMEOUT_MS env 分支（子进程 canonical import）', () => 
   it('设置 CCV_IM_PLATFORM 时模块仍正常加载（2min 真臂）', async () => {
     const { spawnSync } = await import('node:child_process');
     const { pathToFileURL } = await import('node:url');
-    const targetUrl = pathToFileURL(join(process.cwd(), 'packages', 'app', 'server', 'lib', 'im-bridge-core.js')).href;
+    const targetUrl = pathToFileURL(join(process.cwd(), 'packages', 'app', 'server', 'lib', 'im', 'im-bridge-core.js')).href;
     const r = spawnSync(process.execPath, [
       '--input-type=module', '-e',
       `await import(${JSON.stringify(targetUrl)}); console.log('OK');`,

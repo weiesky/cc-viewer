@@ -5,14 +5,14 @@ import { homedir } from 'node:os';
 import { LOG_DIR, setLogDir, getClaudeConfigDir, discoverClaudeExecutables, resolveExplicitClaudePath, CLAUDE_EXECUTABLE_PREF_KEY } from '../../findcc.js';
 import { PROFILE_PATH, _defaultConfig, getActiveProfileId, getStoredRoles, isOfficialDefaultEndpoint, setActiveProfileForWorkspace, _loadProxyProfile, RETRY_CONFIG_PATH, _retryConfigState, _loadRetryConfigState } from '../interceptor.js';
 import { migrateProxyProfileList, isValidRoleValue, PROXY_ROLE_KEYS } from '../lib/interceptor-core.js';
-import { DEFAULT_RETRY_CONFIG, validateRetryConfig, resolveRetryConfig } from '../lib/proxy-retry.js';
+import { DEFAULT_RETRY_CONFIG, validateRetryConfig, resolveRetryConfig } from '../lib/proxy/proxy-retry.js';
 import { discoverCcSwitchProviders, mergeImportedProfiles } from '../lib/ccswitch-import.js';
 import { reportSwallowed } from '../lib/error-report.js';
 import { setLang } from '../i18n.js';
 import { reconcileVoicePackPrefs as vpReconcile } from '../lib/voice-pack-manager.js';
 import { readClaudeProjectModel } from '../lib/context-watcher.js';
 import { sendEventToClients } from '../lib/log-watcher.js';
-import { listPlatforms } from '../lib/im-config.js';
+import { listPlatforms } from '../lib/im/im-config.js';
 import { mutatePrefs, applyPrefsPatch, readPrefsRaw } from '../lib/prefs-store.js';
 import {
   getCurrentProjectKey, getCurrentProjectName, hasFork, listForks, resolveScoped,

@@ -9,7 +9,7 @@
 // observable cancellable body.
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { executeRequest } from '../packages/app/server/lib/proxy-retry.js';
+import { executeRequest } from '../packages/app/server/lib/proxy/proxy-retry.js';
 
 const realFetch = globalThis.fetch;
 let calls; // [{ url, opts, signal, resolve, settled }]

@@ -31,7 +31,7 @@ process.env.CCV_LOG_DIR = tmpDir;
 process.env.CLAUDE_CONFIG_DIR = tmpDir;
 
 const { askPermRoutes } = await import('../packages/app/server/routes/ask-perm.js');
-const askStore = await import('../packages/app/server/lib/ask-store.js');
+const askStore = await import('../packages/app/server/lib/ask/ask-store.js');
 const { loadPlugins } = await import('../packages/app/server/lib/plugin-loader.js');
 
 // ── 路由 handler 提取 ──────────────────────────────────────────────────────────

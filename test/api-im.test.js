@@ -17,7 +17,7 @@ process.env.CCV_START_PORT = '19770';
 process.env.CCV_MAX_PORT = '19779';
 
 // Stub the shared bridge fetch so /test never touches the network (feishu testConnection uses it).
-const core = await import('../packages/app/server/lib/im-bridge-core.js');
+const core = await import('../packages/app/server/lib/im/im-bridge-core.js');
 core.__setFetchForTests(async (url) => {
   if (url.includes('tenant_access_token')) return { ok: true, json: async () => ({ code: 0, tenant_access_token: 't', expire: 7200 }) };
   return { ok: true, json: async () => ({ code: 0 }) };
@@ -163,7 +163,7 @@ describe('Generic /api/im/:platform config API (loopback=admin)', { concurrency:
   });
 
   it('GET /api/im/:platform/senders surfaces a persisted sender map', async () => {
-    const { upsertSender } = await import('../packages/app/server/lib/im-senders.js');
+    const { upsertSender } = await import('../packages/app/server/lib/im/im-senders.js');
     upsertSender('discord', 'snow1', { name: 'Alice', avatar: 'https://a/1.png' });
     const res = await httpRequest(port, '/api/im/discord/senders');
     assert.equal(res.status, 200);
@@ -214,7 +214,7 @@ describe('POST /api/im/:platform/config loopback-only guard', () => {
 
   it('GET status strips cred fields for a remote caller', async () => {
     const { imRoutes } = await import('../packages/app/server/routes/im.js');
-    const { saveConfig } = await import('../packages/app/server/lib/im-config.js');
+    const { saveConfig } = await import('../packages/app/server/lib/im/im-config.js');
     saveConfig('feishu', { enabled: true, appId: 'cli_SECRET', appSecret: 'sec_SECRET', region: 'lark', allowUserIds: ['ou_SECRET'] });
     const route = imRoutes.find((r) => r.predicate('/api/im/feishu/status', 'GET'));
     // isWorker:true → imStatus reports its own in-process adapter (the leaky connection we stub here);
@@ -237,7 +237,7 @@ describe('POST /api/im/:platform/config loopback-only guard', () => {
 
   it('GET /api/im/discord/status strips the token + allowlist for a remote caller', async () => {
     const { imRoutes } = await import('../packages/app/server/routes/im.js');
-    const { saveConfig } = await import('../packages/app/server/lib/im-config.js');
+    const { saveConfig } = await import('../packages/app/server/lib/im/im-config.js');
     saveConfig('discord', { enabled: true, botToken: 'tok_SECRET', allowUserIds: ['u_SECRET'] });
     const route = imRoutes.find((r) => r.predicate('/api/im/discord/status', 'GET'));
     const deps = { im: { isWorker: true, getBridgeStatus: () => ({ running: true, connected: true, boundConversationId: 'dm_SECRET', lastError: 'boom' }) } };
@@ -313,7 +313,7 @@ describe('IM routes: allowlist optional / process control / logs (manager-backed
 
   it('POST /api/im/:platform/append-system rejects content over MAX_IM_APPEND_SYSTEM_CHARS (413)', async () => {
     const { imRoutes } = await import('../packages/app/server/routes/im.js');
-    const { MAX_IM_APPEND_SYSTEM_CHARS } = await import('../packages/app/server/lib/im-append-system.js');
+    const { MAX_IM_APPEND_SYSTEM_CHARS } = await import('../packages/app/server/lib/im/im-append-system.js');
     const post = imRoutes.find((r) => r.predicate('/api/im/discord/append-system', 'POST'));
     const tooBig = 'a'.repeat(MAX_IM_APPEND_SYSTEM_CHARS + 1);
     // MAX_POST_BODY must exceed the JSON body so the size guard (413), not the body-limit, is what trips.
