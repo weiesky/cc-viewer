@@ -427,3 +427,14 @@ A1+A2+A3 合并执行（~2–3 天），中间不发布：
 8. **updater pnpm-global 探测**：`detectPnpmGlobalInstall` 按 realpath 中 `/.pnpm/cc-viewer@<version>/` 虚拟 store 段识别（含版本形态守卫），命中返回 `pnpm_managed` 并提示 `pnpm add -g`；banner 路由同步；i18n `update.pnpmManaged` ×18 语言；新增 test/updater-pnpm.test.js 26 例。
 9. **PUBLIC_DIR 探测**：`_paths.js` 的 PUBLIC_DIR 加存在性探测（app/public 不存在 → apps/web/public），生产 tarball 行为不变（本来就是死候选）。
 10. **hooks 兼容**：用户 `~/.claude/settings.json` 的 4 个 cc-viewer-managed hook 路径已更新为 packages/app/server/lib/*；根 `server/lib/` 留了 4 个临时 import-shim 供本轮会话过渡（.git/info/exclude 本地忽略，不提交；会话重启后删除，见任务 A2.7）。
+
+---
+
+## 附录：A3 实施记录（2026-08-19，已落地）
+
+与方案正文的偏差及其实证依据：
+
+1. **changesets 实际接入 v3.0.0**（方案示例写 ^2.29.0）：`privatePackages: { version: false, tag: false }` 在 v3 行为不变，演练实证 web/electron 保持 0.0.0。
+2. **`pnpm changeset init` 在非 TTY 下挂起**（v3 init 新增 GitHub integration 交互提问）→ 改为手写 `.changeset/config.json` + `.changeset/README.md`（init 的全部产物即这两件），配置项与 §2.4 一致。
+3. **演练记录**：假 changeset（`"cc-viewer": patch`）→ `changeset status` 正确识别唯一 bump 对象 → `changeset version` 产出 1.7.23 + `packages/app/CHANGELOG.md` + 消费 changeset 文件 → 全部还原（package.json 回 1.7.22、删 CHANGELOG、`pnpm install --lockfile-only` 回同步 lockfile）。
+4. **CLAUDE.md 落地两条约定**：触及 `packages/app/` 的改动必须带 changeset；`pnpm-lock.yaml` 冲突禁止手编，`pnpm install` 重解后提交。版本号只能由 `pnpm changeset version` 在发版时 bump（取代旧的「publish 时手改」约定）；A1 过渡期的 release.yml electron job 描述同步刷为 A2 终态（pnpm + isolated linker）。

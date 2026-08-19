@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.91",
+    "@changesets/cli": "^3.0.0",
     "@xterm/xterm": "^6.0.0",
     "adm-zip": "^0.5.17",
     "c8": "^11.0.0",
