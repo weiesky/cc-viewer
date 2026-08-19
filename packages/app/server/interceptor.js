@@ -20,6 +20,7 @@ import { reportSwallowed } from './lib/error-report.js';
 import { latestMainSessionDir, sessionHasCompletedMainTurn } from './lib/v2/session-select.js';
 import { sanitizePathComponent } from './lib/v2/layout.js';
 import { setRetryConfigPath, loadRetryConfig, DEFAULT_RETRY_CONFIG } from './lib/proxy/proxy-retry.js';
+import { setProjectName } from './lib/project-state.js';
 
 
 
@@ -392,6 +393,7 @@ if (process.env.CCV_WORKSPACE_MODE === '1') {
 } else {
   ({ dir: _logDir, projectName: _projectName } = resolveProjectBinding());
 }
+setProjectName(_projectName); // mirror into the shared leaf (lib readers must not import this module)
 // Deprecated (1.7.0): the v1 log file no longer exists. The always-empty
 // export keeps legacy read fallbacks ("no file → empty stream") type-stable
 // until the last consumers are deleted with the continuity machinery (P3).
@@ -584,6 +586,7 @@ export function initForWorkspace(projectPath, { forceNew = false } = {}) { // es
   try { mkdirSync(dir, { recursive: true }); } catch {}
 
   _projectName = projectName;
+  setProjectName(projectName);
   _logDir = dir;
   // Fresh workspace context — no carried names apply; future requests must
   // create session dirs under the NEW project.
@@ -608,6 +611,7 @@ export function initForWorkspace(projectPath, { forceNew = false } = {}) { // es
 // 工作区模式：重置日志状态（返回工作区列表时调用）
 export function resetWorkspace() {
   _projectName = '';
+  setProjectName('');
   _logDir = '';
   // Workspace context gone: drop carried teammate names — the registry is
   // module-global, and without this a rotation in the NEXT workspace would

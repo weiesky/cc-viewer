@@ -11,7 +11,7 @@
 import { basename } from 'node:path';
 import { mergeApprovalModalPrefs } from './approval-modal-prefs.js';
 import { listPlatforms } from './im/im-config.js';
-import { _projectName } from '../interceptor.js';
+import { getProjectName } from './project-state.js';
 
 // SINGLE SOURCE of "what must never live inside a fork": secrets (auth password + IM creds),
 // machine-level paths (logDir/claudeConfigDir), and the internal forks map. snapshotForFork /
@@ -33,17 +33,17 @@ export function getCurrentProjectKey() {
 
 /** Human-readable project name for display (interceptor's sanitized basename). */
 export function getCurrentProjectName() {
-  return _projectName || basename(getCurrentProjectKey());
+  return getProjectName() || basename(getCurrentProjectKey());
 }
 
 /**
  * Whether the server is currently serving a concrete project. In workspace mode the
- * project is unknown until a workspace is launched (interceptor _projectName / env are
+ * project is unknown until a workspace is launched (project-state name / env are
  * empty) — refuse to fork under the server's own cwd in that window.
  */
 export function hasActiveProject() {
   if (process.env.CCV_WORKSPACE_MODE === '1') {
-    return !!(process.env.CCV_PROJECT_DIR || _projectName);
+    return !!(process.env.CCV_PROJECT_DIR || getProjectName());
   }
   return true;
 }

@@ -34,7 +34,7 @@ import { isMainAgentRequest } from '../interceptor-core.js';
 import { readSession } from './replay.js';
 import { iterateJsonlLines } from './jsonl-read.js';
 import { isDiscardableSession } from './session-select.js';
-import { LIVE_SESSION_MTIME_MS } from '../log-management.js';
+import { LIVE_SESSION_MTIME_MS } from '../log-file-utils.js';
 import { blobPath, isSupportedWireFormat } from './layout.js';
 import { SingleFlight } from './singleflight.js';
 import { listV2Sessions } from './session-list.js';

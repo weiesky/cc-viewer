@@ -14,7 +14,7 @@
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
-import { evaluateImDeny } from '../im/im-deny.js';
+import { evaluateImDeny } from '../im-deny.js';
 
 const port = process.env.CCVIEWER_PORT;
 const rawProtocol = process.env.CCVIEWER_PROTOCOL;

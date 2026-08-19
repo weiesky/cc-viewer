@@ -1,6 +1,12 @@
-import { statSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { MODEL_PROMPT_DIR, matchModelPrompt } from './model-system-prompts.js';
+import { isNonEmptyFile } from './file-api.js';
+
+// isNonEmptyFile lives in file-api.js (shared leaf, cycle break:
+// model-system-prompts.js must not import this module). Re-exported here so
+// existing consumers (routes/expert.js) keep their module path.
+export { isNonEmptyFile } from './file-api.js';
 
 // 启动目录里检查的「全大写 sentinel」文件名：多词约定用下划线连接
 // (对齐 CLAUDE.md / GitHub CODE_OF_CONDUCT.md 等惯例)。
@@ -14,14 +20,7 @@ export const DISABLE_AUTO_SYSTEM_PROMPT_ENV = 'CCV_DISABLE_AUTO_SYSTEM_PROMPT';
 
 // 文件需存在、是普通文件且非空(size>0)才算数：空文件会把 system prompt 抹空，跳过更安全。
 // 坏符号链接 / 不存在 / 目录 → statSync 抛错或 isFile()=false → 返回 false。
-export function isNonEmptyFile(p) {
-  try {
-    const st = statSync(p);
-    return st.isFile() && st.size > 0;
-  } catch {
-    return false;
-  }
-}
+// (implementation: file-api.js — see the re-export above)
 
 // args 里是否已含某个 flag(同时匹配 `--x` 与 `--x=value` 两种写法，检测更稳)。
 function hasArg(args, ...names) {

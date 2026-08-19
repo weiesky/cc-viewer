@@ -27,7 +27,7 @@ import { readdirSync, existsSync, statSync, statfsSync, renameSync, rmSync, read
 import { join, basename } from 'node:path';
 import { iterateRawEntriesAsync } from '../log-stream.js';
 import { createIncrementalReconstructor } from '../delta-reconstructor.js';
-import { isLogFileName, parseLogTs } from '../log-management.js';
+import { isLogFileName, parseLogTs } from '../log-file-utils.js';
 import { reportSwallowed } from '../error-report.js';
 import { V2Writer } from './v2-writer.js';
 import { verifyV1File } from './verify.js';

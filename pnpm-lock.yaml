@@ -22,6 +22,12 @@ importers:
       '@xterm/xterm':
         specifier: ^6.0.0
         version: 6.0.0
+      acorn:
+        specifier: ^8.16.0
+        version: 8.16.0
+      acorn-jsx:
+        specifier: ^5.3.2
+        version: 5.3.2(acorn@8.16.0)
       adm-zip:
         specifier: ^0.5.17
         version: 0.5.17
@@ -7921,7 +7927,7 @@ snapshots:
       es6-error: 4.1.1
       matcher: 3.0.0
       roarr: 2.15.4
-      semver: 7.8.0
+      semver: 7.8.5
       serialize-error: 7.0.1
     optional: true
 
@@ -8745,13 +8751,13 @@ snapshots:
 
   node-abi@4.28.0:
     dependencies:
-      semver: 7.8.0
+      semver: 7.8.5
 
   node-addon-api@7.1.1: {}
 
   node-api-version@0.2.1:
     dependencies:
-      semver: 7.8.0
+      semver: 7.8.5
 
   node-gyp@12.4.0:
     dependencies:
@@ -8760,7 +8766,7 @@ snapshots:
       graceful-fs: 4.2.11
       nopt: 9.0.0
       proc-log: 6.1.0
-      semver: 7.8.0
+      semver: 7.8.5
       tar: 7.5.13
       tinyglobby: 0.2.16
       undici: 6.26.0

@@ -6,6 +6,22 @@ import { resolve, join, sep, isAbsolute } from 'node:path';
 import { realpathSync, existsSync, statSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 
 /**
+ * A path counts as a non-empty file only if it exists, is a regular file, and
+ * has size > 0 (an empty file would blank the system prompt — skipping is safer).
+ * Bad symlinks / missing paths / directories → statSync throws or isFile()=false → false.
+ * Shared leaf home (moved from system-prompt-files.js to break the
+ * model-system-prompts.js ↔ system-prompt-files.js static cycle).
+ */
+export function isNonEmptyFile(p) {
+  try {
+    const st = statSync(p);
+    return st.isFile() && st.size > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Check whether targetPath is contained within the project root directory.
  * Resolves symlinks via realpathSync. Returns false on any error.
  * @param {string} targetPath - absolute path to check

@@ -4,6 +4,7 @@ import { existsSync, realpathSync, readFileSync, readdirSync, statSync, accessSy
 import { homedir, tmpdir, arch } from 'node:os';
 import { execSync, execFileSync, spawnSync } from 'node:child_process';
 import { threadId } from 'node:worker_threads';
+import { reportSwallowed } from './server/lib/error-report.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -132,6 +133,15 @@ function resolveLogDir() {
 // Uses `let` to support runtime modification via setLogDir() (ES module live binding)
 export let LOG_DIR = resolveLogDir();
 
+// Listeners notified synchronously after LOG_DIR changes. findcc is a leaf
+// module and must not import its consumers — dependents (e.g.
+// server/lib/file-access-policy.js) register here instead of findcc importing
+// them (which used to be a lazy dynamic import to dodge the cycle).
+const _logDirListeners = [];
+export function onLogDirChange(listener) {
+  if (typeof listener === 'function') _logDirListeners.push(listener);
+}
+
 /**
  * Runtime modification of the log storage root directory.
  * Supports ~/... expansion. All modules that reference `LOG_DIR` via `import { LOG_DIR }`
@@ -146,12 +156,11 @@ export function setLogDir(dir) {
   const home = homedir();
   if (!resolved.startsWith(home) && !resolved.startsWith('/tmp/')) return false;
   LOG_DIR = resolved;
-  // workspace registry file location changes with LOG_DIR; the allowlist cache (including
-  // registered workspaces) must be invalidated. Lazy import to avoid circular dependency
-  // (file-access-policy depends on findcc and workspace-registry).
-  import('./server/lib/file-access-policy.js')
-    .then(m => m.bumpWorkspacesVersion?.())
-    .catch(() => { /* CLI-only entry points may not have the policy module loaded; side-effect free */ });
+  // workspace registry file location changes with LOG_DIR; registered listeners
+  // (the allowlist cache in file-access-policy) invalidate their caches.
+  for (const listener of _logDirListeners) {
+    try { listener(resolved); } catch (err) { reportSwallowed('findcc.logdir-listener', err); }
+  }
   return true;
 }
 

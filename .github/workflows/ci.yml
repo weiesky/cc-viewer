@@ -34,6 +34,9 @@ jobs:
       # L4: the published tarball's physical layout is a public contract — diff the
       # dry-run pack file list against the committed baseline (scripts/tarball-baseline.json)
       - run: pnpm run verify:tarball
+      # Import-boundary gate: layering classes + no static cycles inside packages/app
+      # (also wired into all pretest* hooks; explicit here for visibility)
+      - run: pnpm run verify:boundaries
       # Full suite: fast unit tier + the CCV_TEST_CLI-gated CLI/server integration tier
       # (a superset of `pnpm test`, which developers use for the fast local loop).
       - run: pnpm run test:cli

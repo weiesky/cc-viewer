@@ -1,0 +1,23 @@
+[
+  {
+    "from": "packages/app/server/interceptor.js",
+    "to": "packages/app/server/server.js",
+    "rule": "R1-dyn",
+    "reason": "Injected interceptor auto-starts the viewer after log-init (interceptor.js:1267). Static conversion would create a real ESM cycle — server.js statically imports 13 live-state symbols from interceptor.js. The lazy dynamic edge IS the seam.",
+    "since": "2026-08-19"
+  },
+  {
+    "from": "packages/app/server/workspace-registry.js",
+    "to": "packages/app/server/lib/file-access-policy.js",
+    "rule": "R1-dyn",
+    "reason": "Registry invalidates the policy allowlist cache after register/remove (workspace-registry.js:44). Static conversion would create a cycle — file-access-policy.js:17 statically imports loadWorkspaces from the registry. Proper fix (policy cache subscription) is deferred to the registry/policy split.",
+    "since": "2026-08-19"
+  },
+  {
+    "from": "packages/app/server/lib/file-access-policy.js",
+    "to": "packages/app/server/workspace-registry.js",
+    "rule": "R5",
+    "reason": "Policy reads the registry's loadWorkspaces to compute allowlist roots. Layering violation accepted until the registry/policy pair is split into its own unit — inverting it today would only move the edge (see the R1-dyn twin).",
+    "since": "2026-08-19"
+  }
+]

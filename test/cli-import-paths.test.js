@@ -66,7 +66,7 @@ function scanFileForStaticImports(fileAbs) {
 
 const ENTRY_FILES = [
   'packages/app/cli.js',
-  'packages/app/findcc.js',                  // 自身含 dynamic import('./server/lib/file-access-policy.js')
+  'packages/app/findcc.js',                  // log-dir change notification is a listener registry (onLogDirChange), no self dynamic import
   'apps/electron/electron/main.js',
   'apps/electron/electron/tab-worker.js',
 ];

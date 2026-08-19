@@ -13,7 +13,7 @@
 import { realpathSync } from 'node:fs';
 import { resolve, basename, sep, join } from 'node:path';
 import { homedir, platform, tmpdir } from 'node:os';
-import { getClaudeConfigDir } from '../../findcc.js';
+import { getClaudeConfigDir, onLogDirChange } from '../../findcc.js';
 import { loadWorkspaces } from '../workspace-registry.js';
 
 const osPlatform = platform();
@@ -104,6 +104,11 @@ export function bumpWorkspacesVersion() {
   _workspacesVersion++;
   _rootsCache = null;
 }
+
+// LOG_DIR changes relocate the workspace registry file — the allowlist cache
+// (including registered workspaces) must be invalidated. Registered at module
+// load so findcc (a leaf) never imports this module.
+onLogDirChange(() => bumpWorkspacesVersion());
 
 /**
  * 测试 / 多 process 场景显式重置 —— 测试可在更换 HOME env 后调,policy 重新解析。

@@ -12,11 +12,11 @@
 // 用 openSync(path,'wx') 原子创建：从不覆盖用户已编辑的文件（避免 existsSync→write 的 TOCTOU）。因此
 // 语言在「首次创建」时定格，之后换语言不会自动重写——重置/换语言由编辑器「恢复默认」(writeImAppendSystem) 触发。
 // 对比 server/lib/im-skills.js（内置技能）：那边是「受管同步」每次启动按包内版本覆盖内容；本模块相反，wx 创建后永不覆盖。
-import { openSync, writeFileSync, closeSync, mkdirSync, readFileSync, unlinkSync, statSync, lstatSync } from 'node:fs';
+import { openSync, writeFileSync, closeSync, mkdirSync, readFileSync, unlinkSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { imDir } from './im-lock.js';
-import { renameSyncWithRetry } from '../file-api.js';
+import { renameSyncWithRetry, isNonEmptyFile } from '../file-api.js';
 import { IM_PRESET_DIR } from '../../_paths.js';
 import { resolvePrefLang } from './im-lang.js';
 import { APPEND_SYSTEM_PROMPT_FILE } from '../system-prompt-files.js';
@@ -42,15 +42,7 @@ export function platformLabel(id, lang = resolvePrefLang(DEFAULT_LANG)) {
   return (typeof lang === 'string' && lang.startsWith('zh')) ? m.zh : m.default;
 }
 
-// 文件存在、是普通文件且非空(size>0)才算「已有内容」。坏符号链接/目录/不存在 → false。
-function isNonEmptyFile(p) {
-  try {
-    const st = statSync(p);
-    return st.isFile() && st.size > 0;
-  } catch {
-    return false;
-  }
-}
+// 文件存在、是普通文件且非空(size>0)才算「已有内容」——共享实现：../file-api.js。
 
 // 极简兜底：当 server/imPreset/<lang>.md 与 zh.md 都读不到时（理论上不会发生），至少给一份最小约束，避免崩。
 function fallbackPreset(P, id) {

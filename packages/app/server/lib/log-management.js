@@ -6,6 +6,7 @@ import { sanitizePathComponent } from './v2/layout.js';
 import { listV2Sessions } from './v2/adapter.js';
 import { summarizeSessionPage } from './v2/session-list.js';
 import { listSessionIds } from './v2/replay.js';
+import { isLogFileName, LIVE_SESSION_MTIME_MS } from './log-file-utils.js';
 
 // wire-v2 S5 addressing (spec §12): 'v2:<project>/<session_id>' in every
 // existing ?file= parameter slot. Components must survive the same whitelist
@@ -63,17 +64,10 @@ export function validateLogPath(logDir, file) {
   return realPath;
 }
 
-export function isLogFileName(name) {
-  return name.endsWith('.jsonl');
-}
-
-// 解析日志文件名里的时间戳 `YYYYMMDD_HHMMSS`（带不带 `<pid>__` 前缀都适用）。
-// 用于「按时间排序 / 判最新」——文件名整串排序会把 `<pid>__` 前缀（'1' < 'c'）的最新文件排到最底，
-// 必须按时间戳排。无法解析时返回 ''（排到最后）。v2 convert 消费，防漂移。
-export function parseLogTs(name) {
-  const m = name.match(/_(\d{8}_\d{6})\.jsonl$/);
-  return m ? m[1] : '';
-}
+// isLogFileName / parseLogTs / LIVE_SESSION_MTIME_MS live in log-file-utils.js
+// (shared leaf, cycle break: v2/* must not import this module). Re-exported here
+// so existing consumers and tests keep their module path.
+export { isLogFileName, parseLogTs, LIVE_SESSION_MTIME_MS } from './log-file-utils.js';
 
 // meta.startTs (ISO) → the v1 list's compact local-time stamp 'YYYYMMDD_HHMMSS'
 // so formatTimestamp / the desc sort work on v2 items unchanged.
@@ -371,8 +365,3 @@ export function deleteLogFiles(logDir, files, opts = {}) {
   }
   return results;
 }
-
-// A session whose journal moved within this window is treated as live and
-// refused by deleteLogFiles (cross-process guard; the in-process guard is the
-// caller's own writer state).
-export const LIVE_SESSION_MTIME_MS = 5 * 60 * 1000;

@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { isNonEmptyFile } from './system-prompt-files.js';
+import { isNonEmptyFile } from './file-api.js';
 
 // 「按模型定制 system prompt」的文件夹与文件名语法。
 // 全局目录 <LOG_DIR>/system_prompt/ 与工作区目录 <workspace>/system_prompt/ 各放一套；
