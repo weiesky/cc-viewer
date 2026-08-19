@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-imcore-deep-'));
 process.env.CCV_LOG_DIR = tmpDir;
 
-const core = await import('../server/lib/im-bridge-core.js');
+const core = await import('../packages/app/server/lib/im-bridge-core.js');
 
 // A fully-featured fake adapter: optional resolveSender / sendAckCard / updateAckCard so the
 // card and sender branches light up. Behaviour is steered per-test via the returned `rec`.

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mergeSettingsIntoArgs } from '../server/lib/settings-merge.js';
+import { mergeSettingsIntoArgs } from '../packages/app/server/lib/settings-merge.js';
 
 // claude settings objects (NOT child-process spawn environments). Defined via
 // JSON.parse instead of object literals: the test-env-isolation-guard static

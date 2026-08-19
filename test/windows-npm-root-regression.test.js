@@ -25,7 +25,7 @@ import {
   globalNodeModulesCandidates,
   getGlobalNodeModulesDir,
   inferGlobalNodeModulesDir,
-} from '../findcc.js';
+} from '../packages/app/findcc.js';
 
 const SAVED = { PATH: process.env.PATH, NPM_CONFIG_PREFIX: process.env.NPM_CONFIG_PREFIX };
 function restoreEnv() {
@@ -128,7 +128,9 @@ describe('#137: npm-free fallback candidates', () => {
     // is a real global node_modules only when ccv came from `npm i -g`; in a git
     // checkout (CI) it is just the workspace dir. So assert identity with that
     // path, never a `node_modules` suffix, which is install-layout dependent.
-    const ownDir = resolve(fileURLToPath(new URL('..', import.meta.url)), '..');
+    // Monorepo: findcc.js lives at packages/app/findcc.js → its parent-of-parent
+    // is <repo>/packages (still "just the workspace dir", not a node_modules).
+    const ownDir = resolve(fileURLToPath(new URL('../packages/app', import.meta.url)), '..');
     for (const platform of ['win32', 'darwin', 'linux']) {
       const got = globalNodeModulesCandidates(platform, {}, '/home/u');
       assert.equal(got[got.length - 1], ownDir,

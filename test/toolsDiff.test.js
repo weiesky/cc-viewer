@@ -3,7 +3,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeToolsDiff } from '../src/utils/toolsDiff.js';
+import { computeToolsDiff } from '../apps/web/src/utils/toolsDiff.js';
 
 const tool = (name) => ({ name, description: 'x', input_schema: { type: 'object' } });
 

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { resolveLocalized } from '../src/utils/resolveLocalized.js';
+import { resolveLocalized } from '../apps/web/src/utils/resolveLocalized.js';
 
 describe('resolveLocalized', () => {
   it('returns plain strings unchanged', () => {

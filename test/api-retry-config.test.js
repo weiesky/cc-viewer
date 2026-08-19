@@ -48,7 +48,7 @@ function mkSseClient() {
 
 let getRoute; let postRoute;
 before(async () => {
-  const { preferencesRoutes } = await import('../server/routes/preferences.js');
+  const { preferencesRoutes } = await import('../packages/app/server/routes/preferences.js');
   getRoute = preferencesRoutes.find((r) => r.path === '/api/retry-config' && r.method === 'GET');
   postRoute = preferencesRoutes.find((r) => r.path === '/api/retry-config' && r.method === 'POST');
   assert.ok(getRoute, 'GET /api/retry-config route must exist');

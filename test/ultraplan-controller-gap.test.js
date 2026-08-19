@@ -13,7 +13,7 @@
  */
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { UltraplanController } from '../src/utils/ultraplanController.js';
+import { UltraplanController } from '../apps/web/src/utils/ultraplanController.js';
 
 // ── Fake host (mirrors the sibling test's makeHost) ──────────────────────────────
 function makeHost({ uploadOk = true } = {}) {

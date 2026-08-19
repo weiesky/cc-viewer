@@ -26,8 +26,8 @@ import {
   _setSpawnModelReaderForTests,
   _defaultSpawnModelReader,
   _setNowForTests,
-} from '../server/pty-manager.js';
-import { LOG_DIR } from '../findcc.js';
+} from '../packages/app/server/pty-manager.js';
+import { LOG_DIR } from '../packages/app/findcc.js';
 
 // ─── getPtyPid / getPtyState / getCurrentWorkspace (no PTY running) ───
 

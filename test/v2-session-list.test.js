@@ -15,10 +15,10 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync, appendFileSync, mkdir
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { V2Writer } from '../server/lib/v2/v2-writer.js';
-import { listV2Sessions, _resetForTest } from '../server/lib/v2/session-list.js';
-import { listV2Logs, listV2LogsPage } from '../server/lib/log-management.js';
-import { resolveSessionDirName } from '../server/lib/v2/session-select.js';
+import { V2Writer } from '../packages/app/server/lib/v2/v2-writer.js';
+import { listV2Sessions, _resetForTest } from '../packages/app/server/lib/v2/session-list.js';
+import { listV2Logs, listV2LogsPage } from '../packages/app/server/lib/log-management.js';
+import { resolveSessionDirName } from '../packages/app/server/lib/v2/session-select.js';
 
 let dir;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'ccv-v2sl-')); _resetForTest(); });

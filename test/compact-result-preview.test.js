@@ -9,7 +9,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { compactResultPreview, extractToolResultImages, buildSingleToolResultCore } from '../src/utils/toolResultCore.js';
+import { compactResultPreview, extractToolResultImages, buildSingleToolResultCore } from '../apps/web/src/utils/toolResultCore.js';
 
 describe('compactResultPreview', () => {
   it('空 entry / null / undefined → null', () => {

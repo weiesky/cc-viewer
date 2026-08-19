@@ -8,7 +8,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
-import { refreshCachedItemProp } from '../src/utils/refreshCachedItemProp.js';
+import { refreshCachedItemProp } from '../apps/web/src/utils/refreshCachedItemProp.js';
 
 function mkAsst(toolName, propName, toolId, map) {
   return React.createElement('ChatMessage', {

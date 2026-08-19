@@ -13,7 +13,7 @@ import {
   sumCacheCreationTokens,
   sumUsageInputTokens,
   sumUsageContextTokens,
-} from '../server/lib/context-rules.js';
+} from '../packages/app/server/lib/context-rules.js';
 
 describe('parseContextSizeSuffix', () => {
   it('[1m]/[200k]/[500k] 解析,大小写不敏感', () => {

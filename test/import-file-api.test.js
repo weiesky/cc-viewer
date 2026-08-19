@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, rmSync, readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { validateImportDir } from '../server/lib/file-api.js';
+import { validateImportDir } from '../packages/app/server/lib/file-api.js';
 
 /**
  * Tests for the import-file endpoint's security checks and TOCTOU-safe

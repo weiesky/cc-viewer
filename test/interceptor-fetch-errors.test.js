@@ -23,7 +23,7 @@ import { createServer } from 'node:http';
 // active-profile.json 做精确 readback 断言（active-profile 请求记录 / hot-switch / SSE 解析等）。
 // 全量并行跑（node:test 每文件独立进程、共享同一默认 LOG_DIR）时别的 interceptor 测试进程写同一份
 // log/profile → 串台 → 偶发假失败（实测加压并行可 8/8 复现）。给本进程私有 LOG_DIR + CONFIG_DIR 隔离，
-// 必须在 import('../server/interceptor.js') 之前设置（模块顶层据此推导 LOG_FILE/PROFILE_PATH）。
+// 必须在 import('../packages/app/server/interceptor.js') 之前设置（模块顶层据此推导 LOG_FILE/PROFILE_PATH）。
 process.env.CCV_LOG_DIR = mkdtempSync(join(tmpdir(), 'ccv-intc-fe-'));
 process.env.CLAUDE_CONFIG_DIR = process.env.CCV_LOG_DIR;
 process.env.CCV_PROXY_MODE = '1';      // 跳过模块顶层 setupInterceptor 自执行
@@ -75,8 +75,8 @@ before(async () => {
     lastFetchArgs = [url, opts];
     return nextResponse ? nextResponse(url, opts) : new Response('{}', { status: 200 });
   };
-  mod = await import('../server/interceptor.js');
-  ({ iterateV2RawEntries } = await import('../server/lib/v2/adapter.js'));
+  mod = await import('../packages/app/server/interceptor.js');
+  ({ iterateV2RawEntries } = await import('../packages/app/server/lib/v2/adapter.js'));
   mod.setupInterceptor();
   assert.equal(mod.LOG_FILE, '', '1.7.0 起 LOG_FILE 恒为空串（v1 写路径已退役）');
   // 引导请求：携带 SID 建立 _currentSid，让后续无 metadata 请求路由到同一 session。

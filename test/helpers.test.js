@@ -20,11 +20,11 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 // extractToolResultText 不从 helpers.js 导出（文件内私有）；其公共版本在 toolResultCore.js，
 // 该模块无 svg/i18n 依赖，可直接静态 import（生产路径也复用此实现）。
-import { extractToolResultText } from '../src/utils/toolResultCore.js';
+import { extractToolResultText } from '../apps/web/src/utils/toolResultCore.js';
 
 let H;
 before(async () => {
-  H = await import('../src/utils/helpers.js');
+  H = await import('../apps/web/src/utils/helpers.js');
 });
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
@@ -720,7 +720,7 @@ describe('helpers', () => {
 // (thin re-export = 单一事实源的最强证明;若有人在 helpers 里重新实现,这里立即爆)。
 describe('context-rules 单一事实源冒烟', () => {
   it('helpers re-export 与 context-rules 为同一函数引用', async () => {
-    const R = await import('../server/lib/context-rules.js');
+    const R = await import('../packages/app/server/lib/context-rules.js');
     assert.equal(H.getModelMaxTokens, R.getModelMaxTokens);
     assert.equal(H.adaptContextWindow, R.adaptContextWindow);
     assert.equal(H.sumUsageInputTokens, R.sumUsageInputTokens);

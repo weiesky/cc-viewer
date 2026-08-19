@@ -89,7 +89,7 @@ before(() => { installBrowserEnv(); });
 // window.location.search at import time. Static `import` runs before `before()`.
 let player;
 before(async () => {
-  player = await import('../src/utils/voicePackPlayer.js');
+  player = await import('../apps/web/src/utils/voicePackPlayer.js');
 });
 
 after(() => {

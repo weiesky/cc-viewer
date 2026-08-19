@@ -45,7 +45,7 @@ describe('/api/preferences plain key passthrough (resumeAutoChoice no longer spe
   let getHandler, postHandler;
 
   before(async () => {
-    const { preferencesRoutes } = await import('../server/routes/preferences.js');
+    const { preferencesRoutes } = await import('../packages/app/server/routes/preferences.js');
     getHandler = preferencesRoutes.find((r) => r.path === '/api/preferences' && r.method === 'GET').handler;
     postHandler = preferencesRoutes.find((r) => r.path === '/api/preferences' && r.method === 'POST').handler;
     assert.ok(getHandler && postHandler, 'preferences routes must exist');

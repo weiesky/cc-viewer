@@ -66,11 +66,11 @@ async function until(cond, ms = 10000) {
 let events, requests, localLog, sendToClients, interceptor;
 
 before(async () => {
-  interceptor = await import('../server/interceptor.js');
+  interceptor = await import('../packages/app/server/interceptor.js');
   interceptor.initForWorkspace(join(tmpDir, 'cproj'), { forceNew: true });
-  const eventsMod = await import('../server/routes/events.js');
-  const logsMod = await import('../server/routes/logs.js');
-  const watcher = await import('../server/lib/log-watcher.js');
+  const eventsMod = await import('../packages/app/server/routes/events.js');
+  const logsMod = await import('../packages/app/server/routes/logs.js');
+  const watcher = await import('../packages/app/server/lib/log-watcher.js');
   const find = (routes, p, m) => routes.find((r) => r.path === p && r.method === m).handler;
   events = find(eventsMod.eventsRoutes, '/events', 'GET');
   requests = find(eventsMod.eventsRoutes, '/api/requests', 'GET');

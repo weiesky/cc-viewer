@@ -137,7 +137,7 @@ before(async () => {
     try { chmodSync(p, 0o755); } catch {}
   }
   process.env.PATH = fakeBin + ':' + origPath;
-  const mod = await import('../server/routes/files-fs.js');
+  const mod = await import('../packages/app/server/routes/files-fs.js');
   routesByPath = mod.filesFsRoutes;
 });
 

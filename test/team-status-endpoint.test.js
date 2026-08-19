@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { buildTeamStatusResponse } from '../server/lib/team-runtime.js';
+import { buildTeamStatusResponse } from '../packages/app/server/lib/team-runtime.js';
 
 // 这套测试不起 HTTP server，直接调 buildTeamStatusResponse
 // （就是 server.js 里 /api/team-status 背后唯一的业务逻辑）

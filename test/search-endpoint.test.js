@@ -38,7 +38,7 @@ describeCli('POST /api/search', { concurrency: false }, () => {
   let stopViewer, getPort, port;
 
   before(async () => {
-    const mod = await import('../server/server.js');
+    const mod = await import('../packages/app/server/server.js');
     stopViewer = mod.stopViewer;
     getPort = mod.getPort;
     const srv = await mod.startViewer();

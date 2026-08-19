@@ -7,7 +7,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractWorkflowRuns } from '../src/utils/workflowRuns.js';
+import { extractWorkflowRuns } from '../apps/web/src/utils/workflowRuns.js';
 
 let _idSeq = 0;
 

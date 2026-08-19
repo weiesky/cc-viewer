@@ -1,0 +1,71 @@
+{
+  "name": "cc-viewer",
+  "version": "1.7.22",
+  "description": "Claude Code logging, visualization, and management toolkit — launch a web viewer alongside Claude Code with full request/response tracing, proxy, and mobile support",
+  "license": "MIT",
+  "main": "server.js",
+  "type": "module",
+  "exports": {
+    ".": "./server.js",
+    "./interceptor.js": "./server/interceptor.js"
+  },
+  "author": "weiesky",
+  "bin": {
+    "ccv": "cli.js"
+  },
+  "scripts": {
+    "assemble": "node scripts/assemble-dist.mjs",
+    "prepack": "node scripts/assemble-dist.mjs",
+    "start": "node server.js",
+    "verify:wire-v2": "node cli.js verify"
+  },
+  "keywords": [
+    "claude code",
+    "devtools",
+    "logging",
+    "proxy"
+  ],
+  "contributors": [
+    {
+      "name": "weiesky",
+      "email": "sbxdwz@qq.com"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/weiesky/cc-viewer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/weiesky/cc-viewer/issues"
+  },
+  "homepage": "https://github.com/weiesky/cc-viewer#readme",
+  "engines": {
+    "node": ">=20.18.1"
+  },
+  "files": [
+    "dist/",
+    "!dist/**/*.map",
+    "server.js",
+    "cli.js",
+    "findcc.js",
+    "interceptor.js",
+    "server/",
+    "src/utils/",
+    "plugins/",
+    "concepts/",
+    "ultraAgents/"
+  ],
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "1.66.0",
+    "@wecom/aibot-node-sdk": "1.0.7",
+    "adm-zip": "^0.5.17",
+    "dingtalk-stream": "2.1.5",
+    "discord.js": "14.26.4",
+    "node-pty": "^1.1.0",
+    "undici": "^7.22.0",
+    "ws": "^8.21.0"
+  },
+  "optionalDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.91"
+  }
+}

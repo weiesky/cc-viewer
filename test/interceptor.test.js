@@ -10,7 +10,7 @@ import {
   isAnthropicApiPath,
   isMainAgentRequest,
   isPreflightEntry,
-} from '../server/lib/interceptor-core.js';
+} from '../packages/app/server/lib/interceptor-core.js';
 
 // ============================================================================
 // Test helpers
@@ -689,7 +689,7 @@ describe('interceptor', () => {
 // ─────────── spawn-pair extraction (agent spawn registry) ───────────
 describe('spawn-pair extraction (interceptor-core)', () => {
   it('extractAgentSpawnPairs pulls prefix→name pairs with client-parity normalization', async () => {
-    const { extractAgentSpawnPairs, TEAMMATE_PROMPT_PREFIX_LEN } = await import('../server/lib/interceptor-core.js');
+    const { extractAgentSpawnPairs, TEAMMATE_PROMPT_PREFIX_LEN } = await import('../packages/app/server/lib/interceptor-core.js');
     // Leading whitespace must be trimmed BEFORE slicing (parity with
     // src/utils/contentFilter.js prefix building).
     const prompt = '   You are the researcher. Investigate the failing pipeline and report everything.';
@@ -708,7 +708,7 @@ describe('spawn-pair extraction (interceptor-core)', () => {
   });
 
   it('extractAgentSpawnPairs tolerates raw-string and missing bodies', async () => {
-    const { extractAgentSpawnPairs } = await import('../server/lib/interceptor-core.js');
+    const { extractAgentSpawnPairs } = await import('../packages/app/server/lib/interceptor-core.js');
     assert.deepEqual(extractAgentSpawnPairs('raw sse fallback text'), []);
     assert.deepEqual(extractAgentSpawnPairs(null), []);
     assert.deepEqual(extractAgentSpawnPairs({}), []);

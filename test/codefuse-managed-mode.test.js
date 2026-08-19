@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { isCodeFuseManagedEnvironment } from '../server/lib/codefuse-managed-mode.js';
+import { isCodeFuseManagedEnvironment } from '../packages/app/server/lib/codefuse-managed-mode.js';
 
 describe('isCodeFuseManagedEnvironment', () => {
   const home = resolve('/tmp', 'ccv-codefuse-home');

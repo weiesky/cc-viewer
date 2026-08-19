@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createStreamAssembler } from '../server/lib/interceptor-core.js';
+import { createStreamAssembler } from '../packages/app/server/lib/interceptor-core.js';
 
 describe('createStreamAssembler', () => {
   it('hasMessage=false until message_start', () => {

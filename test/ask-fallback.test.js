@@ -3,7 +3,7 @@
 // when no transcript tool_use block portals into the modal's ask slot).
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldRenderAskFallback, ASK_FALLBACK_GRACE_MS } from '../src/utils/askFallback.js';
+import { shouldRenderAskFallback, ASK_FALLBACK_GRACE_MS } from '../apps/web/src/utils/askFallback.js';
 
 const QS = [{ question: 'a', options: [{ label: 'x' }] }];
 const OK = {

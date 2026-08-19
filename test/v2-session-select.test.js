@@ -16,7 +16,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { latestMainSessionDir, sessionHasMainTurn, isDiscardableSession } from '../server/lib/v2/session-select.js';
+import { latestMainSessionDir, sessionHasMainTurn, isDiscardableSession } from '../packages/app/server/lib/v2/session-select.js';
 
 let projectDir;
 beforeEach(() => { projectDir = mkdtempSync(join(tmpdir(), 'ccv-sel-')); });

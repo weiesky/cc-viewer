@@ -13,7 +13,7 @@
  */
 import { describe, it, before, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { TerminalWriteQueue, INBAND_RESET } from '../src/utils/terminalWriteQueue.js';
+import { TerminalWriteQueue, INBAND_RESET } from '../apps/web/src/utils/terminalWriteQueue.js';
 
 // ==== 测试夹具：mock requestAnimationFrame + xterm ====
 

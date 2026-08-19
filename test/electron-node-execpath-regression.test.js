@@ -23,7 +23,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const mainPath = join(__dirname, '..', 'electron', 'main.js');
+const mainPath = join(__dirname, '..', 'apps', 'electron', 'electron', 'main.js');
 const src = readFileSync(mainPath, 'utf8');
 
 describe('#129: Electron tab fork must not depend on an external Node on PATH', () => {

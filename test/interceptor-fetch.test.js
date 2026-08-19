@@ -12,7 +12,7 @@
  *     body 的 metadata.user_id(session_id) 决定 —— before() 先发一条带 SID 的引导请求
  *     建立 _currentSid，之后不带 metadata 的请求按 §8.3 回落路由到同一 session。
  *
- * 注意：所有 env / import 顺序敏感——env 必须在 import('../server/interceptor.js') 之前设好。
+ * 注意：所有 env / import 顺序敏感——env 必须在 import('../packages/app/server/interceptor.js') 之前设好。
  * 该文件不修改任何源码，仅 pin 当前工作区行为。
  */
 import { describe, it, before, after } from 'node:test';
@@ -98,8 +98,8 @@ before(async () => {
     lastFetchArgs = [url, opts];
     return nextResponse ? nextResponse(url, opts) : new Response('{}', { status: 200 });
   };
-  mod = await import('../server/interceptor.js');
-  ({ iterateV2RawEntries } = await import('../server/lib/v2/adapter.js'));
+  mod = await import('../packages/app/server/interceptor.js');
+  ({ iterateV2RawEntries } = await import('../packages/app/server/lib/v2/adapter.js'));
   mod.setupInterceptor();
   assert.equal(mod.LOG_FILE, '', '1.7.0 起 LOG_FILE 恒为空串（v1 写路径已退役）');
   // 引导请求：携带 SID 建立 _currentSid，让后续无 metadata 请求路由到同一 session。

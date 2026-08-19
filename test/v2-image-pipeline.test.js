@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeV2Entries } from '../server/lib/v2-transcript-normalizer.js';
-import { buildSingleToolResultCore } from '../src/utils/toolResultCore.js';
+import { normalizeV2Entries } from '../packages/app/server/lib/v2-transcript-normalizer.js';
+import { buildSingleToolResultCore } from '../apps/web/src/utils/toolResultCore.js';
 
 // ============================================================================
 // End-to-end: v2 transcript row → normalized messages → toolResultCore image

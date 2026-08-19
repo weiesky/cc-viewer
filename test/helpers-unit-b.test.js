@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 
 let H;
 before(async () => {
-  H = await import('../src/utils/helpers.js');
+  H = await import('../apps/web/src/utils/helpers.js');
 });
 
 // ─────────────────────────────────────────────────────────────

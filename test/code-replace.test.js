@@ -8,9 +8,9 @@ import { spawnSync } from 'node:child_process';
 const fixtureRoot = mkdtempSync(join(tmpdir(), 'ccv-replace-'));
 process.env.CCV_PROJECT_DIR = fixtureRoot;
 
-const { searchReplace, applyMatch, replaceInContent } = await import('../server/lib/code-replace.js');
-const { buildQueryRegExp } = await import('../server/lib/code-search.js');
-const { _resetCacheForTests } = await import('../server/lib/file-access-policy.js');
+const { searchReplace, applyMatch, replaceInContent } = await import('../packages/app/server/lib/code-replace.js');
+const { buildQueryRegExp } = await import('../packages/app/server/lib/code-search.js');
+const { _resetCacheForTests } = await import('../packages/app/server/lib/file-access-policy.js');
 
 const gitAvailable = spawnSync('git', ['--version'], { stdio: 'ignore' }).status === 0;
 function write(rel, content) {

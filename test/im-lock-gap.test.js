@@ -20,10 +20,10 @@ const __isoDir = mkdtempSync(join(tmpdir(), 'ccv-imlockgap-'));
 process.env.CCV_LOG_DIR = __isoDir;
 process.env.CLAUDE_CONFIG_DIR = __isoDir;
 
-const { LOG_DIR } = await import('../findcc.js');
+const { LOG_DIR } = await import('../packages/app/findcc.js');
 const {
   imDir, lockPath, acquireImLock, updateImLockPort, defaultProbe,
-} = await import('../server/lib/im-lock.js');
+} = await import('../packages/app/server/lib/im-lock.js');
 
 let n = 0;
 function freshId() { return `gap_lock_${process.pid}_${n++}`; }

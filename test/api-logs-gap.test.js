@@ -80,7 +80,7 @@ function url(pathname, query = {}) {
 
 let routes;
 before(async () => {
-  const mod = await import('../server/routes/logs.js');
+  const mod = await import('../packages/app/server/routes/logs.js');
   routes = mod.logsRoutes;
 });
 after(() => { rmSync(tmpDir, { recursive: true, force: true }); });

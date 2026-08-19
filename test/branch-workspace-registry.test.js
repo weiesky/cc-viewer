@@ -18,8 +18,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
-const findcc = await import('../findcc.js');
-const reg = await import('../server/workspace-registry.js');
+const findcc = await import('../packages/app/findcc.js');
+const reg = await import('../packages/app/server/workspace-registry.js');
 
 // 私有 LOG_DIR（必须在 home 下，否则 setLogDir 拒绝）
 const PRIVATE_DIR = mkdtempSync(join(homedir(), '.ccv-branch-wsreg-'));

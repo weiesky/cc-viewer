@@ -18,8 +18,8 @@ import assert from 'node:assert/strict';
 let M;
 let RP;
 before(async () => {
-  M = await import('../src/utils/entry-slim.js');
-  RP = await import('../src/utils/readResultPool.js');
+  M = await import('../apps/web/src/utils/entry-slim.js');
+  RP = await import('../apps/web/src/utils/readResultPool.js');
 });
 
 const isMainAgent = (entry) => !!entry.mainAgent;

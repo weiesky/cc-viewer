@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { sseUpdateBadgeFrame } from '../server/routes/events.js';
+import { sseUpdateBadgeFrame } from '../packages/app/server/routes/events.js';
 
 // sseUpdateBadgeFrame 给新连接的 SSE 客户端补推「有新版」徽标事件，使版本徽标跨刷新持续显示。
 describe('sseUpdateBadgeFrame', () => {

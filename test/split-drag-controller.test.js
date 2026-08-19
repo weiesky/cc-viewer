@@ -5,7 +5,7 @@
 // document suffices (fake-DOM pattern per scroll-highlight-controller.test.js).
 import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { SplitDragController, TERMINAL_WIDTH_STORAGE_KEY, SIDEBAR_WIDTH_STORAGE_KEY } from '../src/components/chat/controllers/splitDragController.js';
+import { SplitDragController, TERMINAL_WIDTH_STORAGE_KEY, SIDEBAR_WIDTH_STORAGE_KEY } from '../apps/web/src/components/chat/controllers/splitDragController.js';
 
 const savedDocument = globalThis.document;
 after(() => {

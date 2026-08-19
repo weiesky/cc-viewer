@@ -14,10 +14,10 @@
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { EVENT_KEYS } from '../server/lib/voice-pack-events.js';
+import { EVENT_KEYS } from '../packages/app/server/lib/voice-pack-events.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = join(__dirname, '..', 'public', 'voice-packs', 'default');
+const OUT_DIR = join(__dirname, '..', 'apps', 'web', 'public', 'voice-packs', 'default');
 
 const SAMPLE_RATE = 22050;
 const BITS = 16;

@@ -25,7 +25,7 @@ import { tmpdir } from 'node:os';
 import {
   discoverClaudeMdCandidates,
   readCandidateById,
-} from '../server/lib/claude-md-discovery.js';
+} from '../packages/app/server/lib/claude-md-discovery.js';
 
 function setup() {
   const TMP = mkdtempSync(join(tmpdir(), 'ccv-claude-md-disc-'));

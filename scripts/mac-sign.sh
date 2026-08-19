@@ -39,9 +39,9 @@ echo "📦 开始构建和签名..."
 echo ""
 
 # 执行构建
-npm run build && electron-builder --mac
+pnpm run build && electron-builder --mac
 
 echo ""
 echo "✅ 完成！"
 echo ""
-echo "输出目录: electron-dist/"
+echo "输出目录: apps/electron/electron-dist/"

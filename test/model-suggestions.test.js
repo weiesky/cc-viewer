@@ -3,7 +3,7 @@
 // settings.json model fields into a sanitized, deduped suggestion list).
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { collectModelSuggestions } from '../src/utils/modelSuggestions.js';
+import { collectModelSuggestions } from '../apps/web/src/utils/modelSuggestions.js';
 
 describe('collectModelSuggestions', () => {
   it('extracts all model fields from every profile plus defaultConfig', () => {

@@ -17,7 +17,7 @@ import {
   isPlanApprovalPrompt,
   pickPlanApproveOptionNumber,
   isDangerousOperationPrompt,
-} from '../src/utils/promptClassifier.js';
+} from '../apps/web/src/utils/promptClassifier.js';
 
 describe('isPlanApprovalPrompt — 入口守卫分支', () => {
   it('prompt 为 falsy 时返回 false(!prompt 臂)', () => {

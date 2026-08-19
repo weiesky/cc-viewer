@@ -10,13 +10,13 @@ import { execSync, spawnSync } from 'node:child_process';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Canonical absolute path to the target module — used by subprocess children so
 // their coverage is attributed to the real file (no query-busting URLs).
-const TARGET = join(__dirname, '..', 'server', 'lib', 'git-diff.js');
+const TARGET = join(__dirname, '..', 'packages', 'app', 'server', 'lib', 'git-diff.js');
 
 let getGitDiffs, getUnpushedCommits;
 
 before(async () => {
   // 动态 import 目标模块（避免 Vite 风格副作用，符合项目测试惯例）。
-  const mod = await import('../server/lib/git-diff.js');
+  const mod = await import('../packages/app/server/lib/git-diff.js');
   getGitDiffs = mod.getGitDiffs;
   getUnpushedCommits = mod.getUnpushedCommits;
 });

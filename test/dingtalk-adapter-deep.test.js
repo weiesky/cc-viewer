@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 
 process.env.CCV_LOG_DIR = mkdtempSync(join(tmpdir(), 'ccv-dtadapter-'));
 
-const { default: adapter, __setClientFactory } = await import('../server/lib/adapters/dingtalk-adapter.js');
+const { default: adapter, __setClientFactory } = await import('../packages/app/server/lib/adapters/dingtalk-adapter.js');
 
 // A ctx carrying a recording fetch + a store (the token cache lives on store.tokenCache).
 function makeCtx(fetchImpl) {

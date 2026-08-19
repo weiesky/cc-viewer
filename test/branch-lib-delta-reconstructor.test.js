@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 let isCheckpointEntry, isDeltaEntry, reconstructEntries, reconstructSegment, createIncrementalReconstructor;
 
 before(async () => {
-  const mod = await import('../server/lib/delta-reconstructor.js');
+  const mod = await import('../packages/app/server/lib/delta-reconstructor.js');
   isCheckpointEntry = mod.isCheckpointEntry;
   isDeltaEntry = mod.isDeltaEntry;
   reconstructEntries = mod.reconstructEntries;

@@ -16,8 +16,8 @@ let renderedPromptDir;
 let createSystemPromptVariables;
 
 before(async () => {
-  ({ renderSystemPromptFileArgs, renderedPromptDir } = await import('../server/lib/system-prompt-render.js'));
-  ({ createSystemPromptVariables } = await import('../server/lib/create_system_prompt.js'));
+  ({ renderSystemPromptFileArgs, renderedPromptDir } = await import('../packages/app/server/lib/system-prompt-render.js'));
+  ({ createSystemPromptVariables } = await import('../packages/app/server/lib/create_system_prompt.js'));
 });
 
 after(() => {

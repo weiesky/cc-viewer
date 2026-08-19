@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, mkdtempSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
-import { buildShellCandidates, getGlobalNodeModulesDir, findPackagedBinary, findPlatformBinary, detectPlatformKey, hasClaude2xWrapper } from '../findcc.js';
+import { buildShellCandidates, getGlobalNodeModulesDir, findPackagedBinary, findPlatformBinary, detectPlatformKey, hasClaude2xWrapper } from '../packages/app/findcc.js';
 
 // Test resolveLogDir by spawning a subprocess with different CCV_LOG_DIR values.
 // This avoids module cache busting which dilutes coverage.
@@ -18,7 +18,7 @@ function getLogDirWithEnv(envVal, { production = false } = {}) {
     '-e',
     `import { LOG_DIR } from './findcc.js'; process.stdout.write(LOG_DIR);`,
   ], {
-    cwd: join(import.meta.dirname, '..'),
+    cwd: join(import.meta.dirname, '..', 'packages', 'app'),
     encoding: 'utf-8',
     env,
     timeout: 5000,
@@ -66,7 +66,7 @@ describe('findcc: resolveLogDir', () => {
       '-e',
       `import { LOG_DIR } from './findcc.js'; process.stdout.write(LOG_DIR);`,
     ], {
-      cwd: join(import.meta.dirname, '..'),
+      cwd: join(import.meta.dirname, '..', 'packages', 'app'),
       encoding: 'utf-8',
       env: { ...cleanEnv, CCV_LOG_DIR: '' },
       timeout: 5000,
@@ -81,7 +81,7 @@ describe('findcc: resolveLogDir', () => {
       '-e',
       `import { LOG_DIR } from './findcc.js'; process.stdout.write(LOG_DIR);`,
     ], {
-      cwd: join(import.meta.dirname, '..'),
+      cwd: join(import.meta.dirname, '..', 'packages', 'app'),
       encoding: 'utf-8',
       env: { ...prodEnv, CCV_LOG_DIR: '', CLAUDE_CONFIG_DIR: '/tmp/custom-claude' },
       timeout: 5000,
@@ -179,7 +179,7 @@ function runResolveNativePath({ shimDir, realTarget }) {
     '-e',
     `import { resolveNativePath } from './findcc.js'; process.stdout.write(String(resolveNativePath()));`,
   ], {
-    cwd: join(import.meta.dirname, '..'),
+    cwd: join(import.meta.dirname, '..', 'packages', 'app'),
     encoding: 'utf-8',
     env: {
       PATH: `${shimDir}:/usr/bin:/bin`,
@@ -306,7 +306,7 @@ function runResolveNativePathWithConfigDir({ claudeConfigDir, fakeHome, shimDir 
     '-e',
     `import { resolveNativePath } from './findcc.js'; process.stdout.write(String(resolveNativePath()));`,
   ], {
-    cwd: join(import.meta.dirname, '..'),
+    cwd: join(import.meta.dirname, '..', 'packages', 'app'),
     encoding: 'utf-8',
     env: {
       PATH: `${shimDir || '/nonexistent'}:/usr/bin:/bin`,

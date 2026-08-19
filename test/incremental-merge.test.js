@@ -4,7 +4,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeMainAgentSessions, messageFingerprint } from '../src/utils/sessionMerge.js';
+import { mergeMainAgentSessions, messageFingerprint } from '../apps/web/src/utils/sessionMerge.js';
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 

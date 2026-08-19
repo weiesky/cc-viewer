@@ -28,10 +28,10 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, appendFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { V2Writer } from '../server/lib/v2/v2-writer.js';
-import { iterateV2RawEntries, readV2WindowedEntries, streamV2WindowedEntries } from '../server/lib/v2/adapter.js';
-import { _resetForTest } from '../server/lib/error-report.js';
-import { resolveSessionDirName } from '../server/lib/v2/session-select.js';
+import { V2Writer } from '../packages/app/server/lib/v2/v2-writer.js';
+import { iterateV2RawEntries, readV2WindowedEntries, streamV2WindowedEntries } from '../packages/app/server/lib/v2/adapter.js';
+import { _resetForTest } from '../packages/app/server/lib/error-report.js';
+import { resolveSessionDirName } from '../packages/app/server/lib/v2/session-select.js';
 
 let dir;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'ccv-v2win-')); _resetForTest(); });

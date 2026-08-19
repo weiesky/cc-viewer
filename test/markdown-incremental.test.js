@@ -18,7 +18,7 @@ let splitFrozenTail;
 let renderIncremental;
 
 before(async () => {
-  const mod = await import('../src/utils/markdownIncremental.js');
+  const mod = await import('../apps/web/src/utils/markdownIncremental.js');
   splitFrozenTail = mod.splitFrozenTail;
   renderIncremental = mod.renderIncremental;
 });

@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 //   renderAssistantText: parseSystemTags 的 LRU 包装 (Map, 上限 512, FIFO 淘汰最旧键)。
 // ============================================================================
 
-import { SYSTEM_TAGS, parseSystemTags, renderAssistantText } from '../src/utils/systemTags.js';
+import { SYSTEM_TAGS, parseSystemTags, renderAssistantText } from '../apps/web/src/utils/systemTags.js';
 
 describe('systemTags.SYSTEM_TAGS', () => {
   it('is a non-empty array of known tag names', () => {

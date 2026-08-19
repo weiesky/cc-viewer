@@ -14,7 +14,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildGitTree } from '../src/utils/gitTreeBuilder.js';
+import { buildGitTree } from '../apps/web/src/utils/gitTreeBuilder.js';
 
 describe('buildGitTree', () => {
   it('空数组返回空根节点', () => {

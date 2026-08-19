@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readdirSync, readFil
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { backupConfigs, getBackupRoot } from '../server/lib/config-backup.js';
+import { backupConfigs, getBackupRoot } from '../packages/app/server/lib/config-backup.js';
 
 function mkLogDir(files = {}) {
   const parent = mkdtempSync(join(tmpdir(), 'ccv-cfgbak-'));

@@ -12,7 +12,7 @@ import {
   filterLrContent,
   hasVisibleLrContent,
   collectLrAskQuestions,
-} from '../src/components/chat/interactionOwnership.js';
+} from '../apps/web/src/components/chat/interactionOwnership.js';
 
 const ask = (id, questions = [{ question: 'q', options: [] }]) => ({ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions } });
 const plan = (id) => ({ type: 'tool_use', id, name: 'ExitPlanMode', input: { plan: 'p' } });

@@ -8,9 +8,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync, appendFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { countLogEntries, streamReconstructedEntries, streamReconstructedEntriesAsync, streamRawEntriesAsync, readTailEntries } from '../server/lib/log-stream.js';
-import { readLogFile } from '../server/lib/log-watcher.js';
-import { reconstructSegment, reconstructEntries } from '../server/lib/delta-reconstructor.js';
+import { countLogEntries, streamReconstructedEntries, streamReconstructedEntriesAsync, streamRawEntriesAsync, readTailEntries } from '../packages/app/server/lib/log-stream.js';
+import { readLogFile } from '../packages/app/server/lib/log-watcher.js';
+import { reconstructSegment, reconstructEntries } from '../packages/app/server/lib/delta-reconstructor.js';
 
 // ============================================================================
 // Helpers

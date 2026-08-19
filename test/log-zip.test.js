@@ -18,12 +18,12 @@ process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
 
 const AdmZip = (await import('adm-zip')).default;
-const { V2Writer } = await import('../server/lib/v2/v2-writer.js');
-const { iterateV2RawEntries } = await import('../server/lib/v2/adapter.js');
-const { streamRawEntriesAsync } = await import('../server/lib/log-stream.js');
-const { resolveSessionDirName } = await import('../server/lib/v2/session-select.js');
-const { extractV2Zip, boundedGetData } = await import('../server/lib/log-zip.js');
-const { logsRoutes } = await import('../server/routes/logs.js');
+const { V2Writer } = await import('../packages/app/server/lib/v2/v2-writer.js');
+const { iterateV2RawEntries } = await import('../packages/app/server/lib/v2/adapter.js');
+const { streamRawEntriesAsync } = await import('../packages/app/server/lib/log-stream.js');
+const { resolveSessionDirName } = await import('../packages/app/server/lib/v2/session-select.js');
+const { extractV2Zip, boundedGetData } = await import('../packages/app/server/lib/log-zip.js');
+const { logsRoutes } = await import('../packages/app/server/routes/logs.js');
 
 const deps = { MAX_POST_BODY: 1024 * 1024 };
 const SID = 'a9883ab8-0ab7-459a-bcfd-4c8950a14384';

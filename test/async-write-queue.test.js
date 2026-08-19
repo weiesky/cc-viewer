@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { AsyncWriteQueue } from '../server/lib/async-write-queue.js';
+import { AsyncWriteQueue } from '../packages/app/server/lib/async-write-queue.js';
 
 describe('AsyncWriteQueue', () => {
   let tmpDir;

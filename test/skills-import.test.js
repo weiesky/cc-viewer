@@ -10,7 +10,7 @@ import AdmZip from 'adm-zip';
 // defenses (zip slip / symlink / zip bomb / name validation / sep-suffix containment) are tested
 // against shipping code, not a hand-copy. We wrap each fixture in a minimal multipart body since
 // parseSkillUpload consumes the assembled multipart buffer.
-import { parseSkillUpload, writeSkillFiles } from '../server/routes/skills.js';
+import { parseSkillUpload, writeSkillFiles } from '../packages/app/server/routes/skills.js';
 
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 

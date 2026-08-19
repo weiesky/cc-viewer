@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseImOrigin, IM_ORIGIN_RE } from '../src/utils/imOrigin.js';
+import { parseImOrigin, IM_ORIGIN_RE } from '../apps/web/src/utils/imOrigin.js';
 
 describe('parseImOrigin', () => {
   it('strips a leading dingtalk marker and reports the source', () => {

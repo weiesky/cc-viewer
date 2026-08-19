@@ -16,7 +16,7 @@
 import './_shims/register.mjs';
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { UltraplanController } from '../src/utils/ultraplanController.js';
+import { UltraplanController } from '../apps/web/src/utils/ultraplanController.js';
 
 // ── fake host：镜像邻近测试的 makeHost，但 reject 时可投掷无 message 的错误 ──────────
 function makeHost({ uploadOk = true, rejectValue = new Error('boom') } = {}) {

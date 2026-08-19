@@ -1,7 +1,7 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { EnvHttpProxyAgent, getGlobalDispatcher, setGlobalDispatcher } from 'undici';
-import { resolveProxyConfig, setupProxyEnv, getProxyDispatcher } from '../server/lib/proxy-env.js';
+import { resolveProxyConfig, setupProxyEnv, getProxyDispatcher } from '../packages/app/server/lib/proxy-env.js';
 
 describe('resolveProxyConfig', () => {
   it('无代理变量时返回全 undefined', () => {

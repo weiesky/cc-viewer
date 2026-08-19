@@ -8,8 +8,8 @@ import { tmpdir } from 'node:os';
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-discord-bridge-test-'));
 process.env.CCV_LOG_DIR = tmpDir;
 
-const core = await import('../server/lib/im-bridge-core.js');
-const discord = await import('../server/lib/adapters/discord-adapter.js');
+const core = await import('../packages/app/server/lib/im-bridge-core.js');
+const discord = await import('../packages/app/server/lib/adapters/discord-adapter.js');
 
 // Fake discord.js — { Client, GatewayIntentBits, Partials, Events }. The fake must use the SAME Events
 // values the adapter registers with.

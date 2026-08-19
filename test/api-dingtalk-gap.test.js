@@ -22,8 +22,8 @@ process.env.CLAUDE_CONFIG_DIR = tmpDir;
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
 
-const { dingtalkRoutes } = await import('../server/routes/dingtalk.js');
-const { saveDingTalkConfig } = await import('../server/lib/dingtalk-config.js');
+const { dingtalkRoutes } = await import('../packages/app/server/routes/dingtalk.js');
+const { saveDingTalkConfig } = await import('../packages/app/server/lib/dingtalk-config.js');
 
 const routeOf = (method, path) => dingtalkRoutes.find((r) => r.method === method && r.path === path).handler;
 

@@ -9,7 +9,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { assignMessageTimestamps, resolveBubbleProducerTs } from '../src/utils/sessionManager.js';
+import { assignMessageTimestamps, resolveBubbleProducerTs } from '../apps/web/src/utils/sessionManager.js';
 
 function userMsg(text) {
   return { role: 'user', content: [{ type: 'text', text }] };
@@ -512,7 +512,7 @@ describe('applyBatchEntryTimestamps synthetic-v2 protective branch', () => {
   // vite shims resolve — dynamic import through the register hook.
   it('synthetic v2 entry 保留逐消息预置时间戳（不被 entry.ts 抹平）', async () => {
     await import('./_shims/register.mjs');
-    const { applyBatchEntryTimestamps } = await import('../src/utils/sessionManager.js');
+    const { applyBatchEntryTimestamps } = await import('../apps/web/src/utils/sessionManager.js');
 
     const entryTs = '2026-07-30T03:43:40.000Z';
     const m0 = { role: 'user', content: 'a', _timestamp: '2026-07-30T03:43:40.000Z', _generatedTs: undefined, _entryTs: entryTs };
@@ -532,7 +532,7 @@ describe('applyBatchEntryTimestamps synthetic-v2 protective branch', () => {
 
   it('synthetic v2 entry 缺 _timestamp 的消息回退到位置时间戳（不产生 undefined）', async () => {
     await import('./_shims/register.mjs');
-    const { applyBatchEntryTimestamps } = await import('../src/utils/sessionManager.js');
+    const { applyBatchEntryTimestamps } = await import('../apps/web/src/utils/sessionManager.js');
 
     const entryTs = '2026-07-30T03:43:40.000Z';
     const m0 = { role: 'user', content: 'a', _timestamp: entryTs, _entryTs: entryTs };
@@ -547,7 +547,7 @@ describe('applyBatchEntryTimestamps synthetic-v2 protective branch', () => {
 
   it('synthetic v2 entry 不被 transient 守卫吞掉（legacy 长会话后紧随短 v2 会话）', async () => {
     await import('./_shims/register.mjs');
-    const { applyBatchEntryTimestamps } = await import('../src/utils/sessionManager.js');
+    const { applyBatchEntryTimestamps } = await import('../apps/web/src/utils/sessionManager.js');
 
     // 前置：legacy 长会话（5 条）已累积
     const st = {

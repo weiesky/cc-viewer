@@ -17,7 +17,7 @@ import './_shims/register.mjs';
 
 let CF;
 before(async () => {
-  CF = await import('../src/utils/contentFilter.js');
+  CF = await import('../packages/app/src/utils/contentFilter.js');
 });
 
 // ─────────────────────────── helpers ───────────────────────────
@@ -333,7 +333,7 @@ describe('isMainAgent: cc_is_subagent 排除', () => {
   });
 
   it('classifyRequest：cc_is_subagent=true 落到 SubAgent 而非 MainAgent', async () => {
-    const { classifyRequest } = await import('../src/utils/requestType.js');
+    const { classifyRequest } = await import('../packages/app/src/utils/requestType.js');
     const req = mkReq({ system: SUB_HEADER + MAIN_SYSTEM, tools: SUB_TOOLS });
     assert.equal(classifyRequest(req).type, 'SubAgent');
   });
@@ -511,7 +511,7 @@ describe('extractDisplayText', () => {
 
   // AppHeader/Mobile 实际调用 extractDisplayText(parseImOrigin(content).text)：IM 标记先剥、再剥 chrome。
   it('与 parseImOrigin 组合：IM 标记 + chrome 起首 + 真实正文 → 真实正文', async () => {
-    const { parseImOrigin } = await import('../src/utils/imOrigin.js');
+    const { parseImOrigin } = await import('../apps/web/src/utils/imOrigin.js');
     const raw = `⟦im:slack:u123⟧${REMINDER}\n\n帮我看下这个登录报错`;
     const t = CF.extractDisplayText(parseImOrigin(raw).text);
     assert.equal(t, '帮我看下这个登录报错');
@@ -937,7 +937,7 @@ describe('裸协议通知识别（parseInterSessionNotification / isSystemText /
   });
 
   it('每个白名单 type 都有 ui.teammate.* i18n 文案（防新增 type 漏配，评审 arch §5）', async () => {
-    const { t } = await import('../src/i18n.js');
+    const { t } = await import('../apps/web/src/i18n.js');
     for (const ty of CF.INTER_SESSION_NOTIFICATION_TYPES) {
       const key = `ui.teammate.${ty}`;
       assert.notEqual(t(key, { name: 'x' }), key, `${key} 缺少 i18n 文案`);

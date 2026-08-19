@@ -12,8 +12,8 @@ import { spawnSync } from 'node:child_process';
 const fixtureRoot = mkdtempSync(join(tmpdir(), 'ccv-search-'));
 process.env.CCV_PROJECT_DIR = fixtureRoot;
 
-const { searchCode, buildQueryRegExp, globToRegExp, parseRgJsonLines, looksCatastrophic, hasRipgrep } = await import('../server/lib/code-search.js');
-const { _resetCacheForTests } = await import('../server/lib/file-access-policy.js');
+const { searchCode, buildQueryRegExp, globToRegExp, parseRgJsonLines, looksCatastrophic, hasRipgrep } = await import('../packages/app/server/lib/code-search.js');
+const { _resetCacheForTests } = await import('../packages/app/server/lib/file-access-policy.js');
 const rgPresent = await hasRipgrep();
 
 function write(rel, content) {

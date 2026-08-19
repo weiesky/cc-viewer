@@ -12,11 +12,11 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-import { buildMenuModel, serializeMenuModel, ALL_COMMAND_IDS } from '../electron/menu-model.js';
-import { tFor } from '../server/i18n.js';
+import { buildMenuModel, serializeMenuModel, ALL_COMMAND_IDS } from '../apps/electron/electron/menu-model.js';
+import { tFor } from '../packages/app/server/i18n.js';
 
 const LOCALES = ['zh', 'en', 'zh-TW', 'ko', 'ja', 'de', 'es', 'fr', 'it', 'da', 'pl', 'ru', 'ar', 'no', 'pt-BR', 'th', 'tr', 'uk'];
-const I18N_SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'server', 'i18n.js'), 'utf-8');
+const I18N_SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'packages', 'app', 'server', 'i18n.js'), 'utf-8');
 
 // tFor() 缺 locale 时静默回落 en,无法据此发现漏配语言;改为直接在 i18n.js 源码里
 // 取出 key 的定义块,断言 18 个 locale 字段逐一齐全。

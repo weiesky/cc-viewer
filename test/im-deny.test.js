@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { evaluateImDeny } from '../server/lib/im-deny.js';
+import { evaluateImDeny } from '../packages/app/server/lib/im-deny.js';
 
 const HOME = '/home/tester';
 const opts = { home: HOME };

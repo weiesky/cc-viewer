@@ -26,7 +26,7 @@ let discoverClaudeMdCandidates;
 let readCandidateById;
 
 before(async () => {
-  const mod = await import('../server/lib/claude-md-discovery.js');
+  const mod = await import('../packages/app/server/lib/claude-md-discovery.js');
   discoverClaudeMdCandidates = mod.discoverClaudeMdCandidates;
   readCandidateById = mod.readCandidateById;
 });

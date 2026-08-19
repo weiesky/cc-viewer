@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
-import { ALL_TOOL_NAMES } from '../src/utils/toolCatalog.js';
+import { ALL_TOOL_NAMES } from '../apps/web/src/utils/toolCatalog.js';
 
 // 守卫:31 个有激活门槛的工具概念文档(18 语言)必须含本语言 Activation 章节,
 // 恰好一次、位于 When to Use 与 Parameters 之间;其余常开工具任何语言不得出现该章节。
 // 防止:门槛工具漏写/错位激活说明、常开工具误加章节、语言间章节漂移。
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const CONCEPTS_DIR = join(ROOT, 'concepts');
+const CONCEPTS_DIR = join(ROOT, 'packages', 'app', 'concepts');
 
 // 18 语言 Activation 章节标题(设计冻结清单)。
 const ACTIVATION_HEADINGS = {

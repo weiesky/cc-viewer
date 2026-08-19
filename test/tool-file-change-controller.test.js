@@ -4,7 +4,7 @@
 
 import { describe, it, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { ToolFileChangeController, collectToolUseBlocks } from '../src/components/chat/controllers/toolFileChangeController.js';
+import { ToolFileChangeController, collectToolUseBlocks } from '../apps/web/src/components/chat/controllers/toolFileChangeController.js';
 
 function makeHost({ currentFile = null, fileExplorerOpen = false, gitChangesOpen = false, projectDir = null } = {}) {
   const state = {

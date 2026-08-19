@@ -44,8 +44,8 @@ before(async () => {
     });
   process.argv = [process.argv[0], process.argv[1], '--agent-name', 'worker-1', '--team-name', 'fix-stuff'];
   process.chdir(workCwd);
-  mod = await import('../server/interceptor.js');
-  ({ iterateV2RawEntries } = await import('../server/lib/v2/adapter.js'));
+  mod = await import('../packages/app/server/interceptor.js');
+  ({ iterateV2RawEntries } = await import('../packages/app/server/lib/v2/adapter.js'));
 });
 
 after(() => {

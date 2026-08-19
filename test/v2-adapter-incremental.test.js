@@ -24,13 +24,13 @@ import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync, mkdirSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { V2Writer } from '../server/lib/v2/v2-writer.js';
-import { SessionSynthesizer, iterateV2RawEntries, readV2WindowedEntries, findTeammateSessionDirs } from '../server/lib/v2/adapter.js';
-import { LIVE_SESSION_MTIME_MS } from '../server/lib/log-management.js';
-import { readTailEntries } from '../server/lib/log-stream.js';
-import { reconstructEntries } from '../server/lib/delta-reconstructor.js';
-import { _resetForTest } from '../server/lib/error-report.js';
-import { resolveSessionDirName } from '../server/lib/v2/session-select.js';
+import { V2Writer } from '../packages/app/server/lib/v2/v2-writer.js';
+import { SessionSynthesizer, iterateV2RawEntries, readV2WindowedEntries, findTeammateSessionDirs } from '../packages/app/server/lib/v2/adapter.js';
+import { LIVE_SESSION_MTIME_MS } from '../packages/app/server/lib/log-management.js';
+import { readTailEntries } from '../packages/app/server/lib/log-stream.js';
+import { reconstructEntries } from '../packages/app/server/lib/delta-reconstructor.js';
+import { _resetForTest } from '../packages/app/server/lib/error-report.js';
+import { resolveSessionDirName } from '../packages/app/server/lib/v2/session-select.js';
 
 let dir;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'ccv-v2inc-')); _resetForTest(); });

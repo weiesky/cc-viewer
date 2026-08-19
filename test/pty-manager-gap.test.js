@@ -24,7 +24,7 @@ import {
   getPtySkipPermissions,
   getCurrentWorkspace,
   _clearThinkingDisplayRejectedPaths,
-} from '../server/pty-manager.js';
+} from '../packages/app/server/pty-manager.js';
 
 // 轮询直到条件满足，替代固定 setTimeout 减少 flake
 const waitUntil = async (predicate, { timeoutMs = 800, intervalMs = 5 } = {}) => {

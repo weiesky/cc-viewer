@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 
 let authRoutes;
 before(async () => {
-  ({ authRoutes } = await import('../server/routes/auth.js'));
+  ({ authRoutes } = await import('../packages/app/server/routes/auth.js'));
 });
 
 function findRoute(method, path) {

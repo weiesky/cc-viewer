@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   validateLogPath, readLocalLog, deleteLogFiles, isLogFileName, parseLogTs, listLocalLogs, LIVE_SESSION_MTIME_MS,
-} from '../server/lib/log-management.js';
+} from '../packages/app/server/lib/log-management.js';
 
 let tmpDir;
 

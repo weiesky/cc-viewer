@@ -25,7 +25,7 @@ globalThis.window = { location: { search: '' } };
 globalThis.document = { querySelector: () => null };
 
 const { loadFsSkills, loadProjectMemory, loadClaudeMdList } =
-  await import('../src/utils/seqResourceLoaders.js');
+  await import('../apps/web/src/utils/seqResourceLoaders.js');
 
 after(() => {
   if (_origWindow === undefined) delete globalThis.window; else globalThis.window = _origWindow;

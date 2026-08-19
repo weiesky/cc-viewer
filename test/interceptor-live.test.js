@@ -23,7 +23,7 @@ describe('interceptor live-streaming helpers', () => {
     });
     await new Promise((resolve) => mockServer.listen(0, '127.0.0.1', resolve));
     mockPort = mockServer.address().port;
-    mod = await import('../server/interceptor.js');
+    mod = await import('../packages/app/server/interceptor.js');
   });
 
   after(async () => {

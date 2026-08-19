@@ -33,9 +33,9 @@ delete process.env.CCV_CLAUDE_CONTINUE;
 
 let migrationStatus, _resetMigrationStatus, _setMigrationNow, _invalidateMig, interceptor, eventsRoutes;
 before(async () => {
-  ({ migrationStatus, _resetForTest: _resetMigrationStatus, _setNowForTest: _setMigrationNow, _invalidate: _invalidateMig } = await import('../server/lib/v2/migrate-prompt.js'));
-  interceptor = await import('../server/interceptor.js');
-  ({ eventsRoutes } = await import('../server/routes/events.js'));
+  ({ migrationStatus, _resetForTest: _resetMigrationStatus, _setNowForTest: _setMigrationNow, _invalidate: _invalidateMig } = await import('../packages/app/server/lib/v2/migrate-prompt.js'));
+  interceptor = await import('../packages/app/server/interceptor.js');
+  ({ eventsRoutes } = await import('../packages/app/server/routes/events.js'));
 });
 
 // The 10s TTL memo must be dropped between tests that mutate v1 fixtures —

@@ -16,7 +16,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseToolInfoFromBuffer } from '../src/utils/promptClassifier.js';
+import { parseToolInfoFromBuffer } from '../apps/web/src/utils/promptClassifier.js';
 
 describe('parseToolInfoFromBuffer — Bash', () => {
   it('extracts the command from a "Bash command" block (4-space indented body)', () => {

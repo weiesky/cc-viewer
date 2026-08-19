@@ -42,7 +42,7 @@ import net from 'node:net';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
-const CLI_PATH = resolve(REPO_ROOT, 'cli.js');
+const CLI_PATH = resolve(REPO_ROOT, 'packages', 'app', 'cli.js');
 
 // ──────────────── 进程 / 临时目录卫生 ────────────────
 const LIVE = new Set();      // 所有起过的子进程，after() 兜底全杀

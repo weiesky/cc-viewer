@@ -34,8 +34,8 @@ mkdirSync(wsDir, { recursive: true });
 const fakeClaudePath = join(tmpDir, 'fake-claude.js');
 writeFileSync(fakeClaudePath, '// noop\n');
 
-const { workspacesRoutes } = await import('../server/routes/workspaces.js');
-const ptyMgr = await import('../server/pty-manager.js');
+const { workspacesRoutes } = await import('../packages/app/server/routes/workspaces.js');
+const ptyMgr = await import('../packages/app/server/pty-manager.js');
 
 function routeFor(method, path) {
   const r = workspacesRoutes.find((x) => x.method === method && x.path === path);

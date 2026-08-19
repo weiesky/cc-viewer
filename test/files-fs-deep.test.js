@@ -126,7 +126,7 @@ function setPlatform(p) { Object.defineProperty(process, 'platform', { value: p,
 function restorePlatform() { Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true }); }
 
 before(async () => {
-  const mod = await import('../server/routes/files-fs.js');
+  const mod = await import('../packages/app/server/routes/files-fs.js');
   routesByPath = mod.filesFsRoutes;
 });
 after(() => { restorePlatform(); rmSync(tmpDir, { recursive: true, force: true }); });

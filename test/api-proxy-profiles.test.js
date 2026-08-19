@@ -38,7 +38,7 @@ describe('GET /api/proxy-profiles isLocal gate', { concurrency: false }, () => {
         { id: 'p1', name: 'deepseek', baseURL: 'https://api.deepseek.com/anthropic', apiKey: REAL_KEY, models: ['m1'], activeModel: 'm1' },
       ],
     }));
-    const { preferencesRoutes } = await import('../server/routes/preferences.js');
+    const { preferencesRoutes } = await import('../packages/app/server/routes/preferences.js');
     route = preferencesRoutes.find((r) => r.path === '/api/proxy-profiles' && r.method === 'GET');
     assert.ok(route, 'GET /api/proxy-profiles route must exist');
   });

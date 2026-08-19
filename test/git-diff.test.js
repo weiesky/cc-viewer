@@ -4,7 +4,7 @@ import { mkdirSync, rmSync, writeFileSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execSync } from 'node:child_process';
-import { getGitDiffs, countUntrackedLines } from '../server/lib/git-diff.js';
+import { getGitDiffs, countUntrackedLines } from '../packages/app/server/lib/git-diff.js';
 
 function makeTmpDir() {
   const dir = join(tmpdir(), `ccv-git-diff-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);

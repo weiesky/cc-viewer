@@ -10,8 +10,8 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isMainAgentRequest } from '../server/lib/interceptor-core.js';
-import { isMainAgentEntry } from '../server/lib/kv-cache-analyzer.js';
+import { isMainAgentRequest } from '../packages/app/server/lib/interceptor-core.js';
+import { isMainAgentEntry } from '../packages/app/server/lib/kv-cache-analyzer.js';
 
 const MAIN_TOOLS = [
   { name: 'Edit' }, { name: 'Bash' }, { name: 'Task' },

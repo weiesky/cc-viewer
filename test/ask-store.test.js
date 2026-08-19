@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 const tmpRoot = mkdtempSync(join(tmpdir(), 'ccv-ask-store-test-'));
 process.env.CCV_LOG_DIR = tmpRoot;
 
-const { loadAskStore, saveAskStore, setEntry, deleteEntry, pruneStale, replaceAll, markAnswered, markCancelled, consume, consumeIfFinal } = await import('../server/lib/ask-store.js');
+const { loadAskStore, saveAskStore, setEntry, deleteEntry, pruneStale, replaceAll, markAnswered, markCancelled, consume, consumeIfFinal } = await import('../packages/app/server/lib/ask-store.js');
 
 const storeFile = join(tmpRoot, 'ask-store.json');
 const lockFile = join(tmpRoot, 'ask-store.lock');

@@ -39,6 +39,13 @@ brew install cc-viewer
 brew upgrade cc-viewer   # 升級請用這個，brew 安裝的 ccv 不要用 npm install -g 升級
 ```
 
+#### 透過 pnpm 安裝（全域）
+
+```bash
+pnpm add -g cc-viewer
+pnpm add -g cc-viewer@latest   # 升級請用這個，pnpm 安裝的 ccv 不要用 npm install -g 升級
+```
+
 ### 啟動方式
 
 ccv 是 claude 的直接替身，所有參數透傳給 claude，同時啟動 Web Viewer。

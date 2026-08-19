@@ -14,7 +14,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
-const targetPath = join(here, '..', 'server', 'lib', 'user-profile.js');
+const targetPath = join(here, '..', 'packages', 'app', 'server', 'lib', 'user-profile.js');
 
 // 私有 LOG_DIR，目标模块加载前设好。
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-branch-userprofile-' + process.pid + '-'));
@@ -31,7 +31,7 @@ function restoreEnv() {
 }
 
 before(async () => {
-  const mod = await import('../server/lib/user-profile.js');
+  const mod = await import('../packages/app/server/lib/user-profile.js');
   getUserProfile = mod.getUserProfile;
   clearProfileCache = mod.clearProfileCache;
 });

@@ -31,8 +31,8 @@ process.env.CCV_CLI_MODE = '0';
 let routes;
 let CONCEPTS_DIR;
 before(async () => {
-  ({ teamRoutes: routes } = await import('../server/routes/team.js'));
-  ({ CONCEPTS_DIR } = await import('../server/_paths.js'));
+  ({ teamRoutes: routes } = await import('../packages/app/server/routes/team.js'));
+  ({ CONCEPTS_DIR } = await import('../packages/app/server/_paths.js'));
 });
 function handlerFor(path, method) {
   const r = routes.find(x => x.path === path && x.method === method);

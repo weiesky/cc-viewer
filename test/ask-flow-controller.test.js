@@ -7,7 +7,7 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { AskFlowController, ASK_KIND, LEGACY_ASK_PLACEHOLDER_ID } from '../src/components/chat/controllers/askFlowController.js';
+import { AskFlowController, ASK_KIND, LEGACY_ASK_PLACEHOLDER_ID } from '../apps/web/src/components/chat/controllers/askFlowController.js';
 
 // node:test 环境可能没有全局 WebSocket（Node < 22）；控制器只用到 WebSocket.OPEN 常量。
 if (typeof globalThis.WebSocket === 'undefined') globalThis.WebSocket = { OPEN: 1 };

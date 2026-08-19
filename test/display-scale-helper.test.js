@@ -4,7 +4,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DISPLAY_SCALE_PRESETS, snapToPreset, stepPreset } from '../src/utils/displayScaleHelper.js';
+import { DISPLAY_SCALE_PRESETS, snapToPreset, stepPreset } from '../apps/web/src/utils/displayScaleHelper.js';
 
 describe('snapToPreset', () => {
   it('已经是预设值时原样返回', () => {

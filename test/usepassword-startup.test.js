@@ -18,7 +18,7 @@ process.env.CCV_WORKSPACE_MODE = '1'; // skip auto-start/listen
 delete process.env.CCV_CLI_MODE;      // simulate early-load / non-CLI at module eval
 
 describe('--usePassword startup hook writes project scope', () => {
-  before(async () => { await import('../server/server.js'); });
+  before(async () => { await import('../packages/app/server/server.js'); });
   after(() => rmSync(tmpDir, { recursive: true, force: true }));
 
   it('persists under authByProject[projectDir], not the global auth key', () => {

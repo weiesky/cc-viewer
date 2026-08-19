@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldInlineToolImages, formatOversizedImagePlaceholder } from '../src/utils/toolResultCore.js';
+import { shouldInlineToolImages, formatOversizedImagePlaceholder } from '../apps/web/src/utils/toolResultCore.js';
 
 // ============================================================================
 // shouldInlineToolImages — 简化模式内联 tool_result 图片的判定

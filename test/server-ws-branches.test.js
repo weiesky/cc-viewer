@@ -158,7 +158,7 @@ describeCli('server.js terminal WS long-poll resolution branches (CLI mode)', { 
   let mod, port, base;
 
   before(async () => {
-    mod = await import('../server/server.js');
+    mod = await import('../packages/app/server/server.js');
     const srv = await mod.startViewer();
     assert.ok(srv, 'CLI-mode server should start');
     port = mod.getPort();

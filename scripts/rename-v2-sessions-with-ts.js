@@ -19,9 +19,9 @@
 import { readdirSync, statSync, existsSync, renameSync, realpathSync, writeFileSync, openSync, fsyncSync, closeSync, readFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { LOG_DIR } from '../findcc.js';
-import { compactLocalTs14 } from '../server/lib/v2/layout.js';
-import { LIVE_SESSION_MTIME_MS } from '../server/lib/log-management.js';
+import { LOG_DIR } from '../packages/app/findcc.js';
+import { compactLocalTs14 } from '../packages/app/server/lib/v2/layout.js';
+import { LIVE_SESSION_MTIME_MS } from '../packages/app/server/lib/log-management.js';
 
 // ── pure helpers (unit-tested) ──────────────────────────────────────────────
 

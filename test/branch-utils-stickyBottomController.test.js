@@ -11,7 +11,7 @@ import './_shims/register.mjs';
 
 let StickyBottomController;
 before(async () => {
-  const mod = await import('../src/utils/stickyBottomController.js');
+  const mod = await import('../apps/web/src/utils/stickyBottomController.js');
   StickyBottomController = mod.StickyBottomController;
 });
 

@@ -5,8 +5,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeBasePath, validateBasePath, stripBasePath } from '../server/lib/base-path.js';
-import { tFor } from '../server/i18n.js';
+import { normalizeBasePath, validateBasePath, stripBasePath } from '../packages/app/server/lib/base-path.js';
+import { tFor } from '../packages/app/server/i18n.js';
 
 describe('base-path lib', () => {
   describe('normalizeBasePath', () => {

@@ -10,8 +10,8 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeApprovalModalPrefs, mergeVoicePackInto } from '../server/lib/approval-modal-prefs.js';
-import { EVENT_KEYS } from '../server/lib/voice-pack-events.js';
+import { mergeApprovalModalPrefs, mergeVoicePackInto } from '../packages/app/server/lib/approval-modal-prefs.js';
+import { EVENT_KEYS } from '../packages/app/server/lib/voice-pack-events.js';
 
 describe('mergeVoicePackInto', () => {
   it('filters incoming events through EVENT_KEYS whitelist (defense-in-depth)', () => {

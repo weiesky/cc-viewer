@@ -89,7 +89,7 @@ process.env.CCV_PROJECT_DIR = PROJECT;
 process.env.CCV_LOG_DIR = LOG;
 
 // 动态 import:env 设置后再加载 policy(模块顶部锁定 homedir()/STARTUP_CWD/roots)。
-const policy = await import('../server/lib/file-access-policy.js');
+const policy = await import('../packages/app/server/lib/file-access-policy.js');
 const { isReadAllowed, getAllowedRoots, reasonToStatus, bumpWorkspacesVersion, _resetCacheForTests } = policy;
 _resetCacheForTests();
 

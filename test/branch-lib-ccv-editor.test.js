@@ -10,7 +10,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCRIPT = join(__dirname, '..', 'server', 'lib', 'ccv-editor.js');
+const SCRIPT = join(__dirname, '..', 'packages', 'app', 'server', 'lib', 'ccv-editor.js');
 
 // ccv-editor.js 是 $EDITOR 包装 CLI：模块加载即跑 main()，并调用 process.exit，
 // 唯一可观测面是 argv/env 入 + stdout/stderr/exitcode 出，故整文件用子进程黑盒驱动。
@@ -19,7 +19,7 @@ const SCRIPT = join(__dirname, '..', 'server', 'lib', 'ccv-editor.js');
 //
 // 该分支正常运行不可达(TIMEOUT=30min)。采用 launcher harness：写一个临时 .mjs，
 // 在【canonical 动态 import 目标之前】patch Date.now 让时钟跳过 30 分钟，然后
-// dynamic import('../server/lib/ccv-editor.js')。这样目标仍走真实文件、覆盖计入；
+// dynamic import('../packages/app/server/lib/ccv-editor.js')。这样目标仍走真实文件、覆盖计入；
 // 仅在测试侧控制时钟，不改源码。env 必须 spread process.env，否则子进程 NODE_V8_COVERAGE 丢失。
 
 let workDir;

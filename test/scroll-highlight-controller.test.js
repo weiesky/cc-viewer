@@ -3,7 +3,7 @@
 
 import { describe, it, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { ScrollHighlightController } from '../src/components/chat/controllers/scrollHighlightController.js';
+import { ScrollHighlightController } from '../apps/web/src/components/chat/controllers/scrollHighlightController.js';
 
 function makeContainer() {
   const handlers = new Map();

@@ -25,7 +25,7 @@ import {
   hasScratchPty,
   getScratchShellBasename,
   _setPtyImportForTests,
-} from '../server/scratch-pty-manager.js';
+} from '../packages/app/server/scratch-pty-manager.js';
 
 afterEach(() => {
   killAllScratch();

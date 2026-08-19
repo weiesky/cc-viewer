@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import {
   extractUserTexts, isSystemText, flattenPromptText, sortEpochFiles,
   collectPromptsFromEvents, readPromptsHead,
-} from '../server/lib/user-prompt-extract.js';
+} from '../packages/app/server/lib/user-prompt-extract.js';
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-upx-'));
 after(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });

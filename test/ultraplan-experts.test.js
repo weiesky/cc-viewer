@@ -10,7 +10,7 @@ import {
   reorderKeys,
   countVisible,
   canHideOne,
-} from '../src/utils/ultraplanExperts.js';
+} from '../apps/web/src/utils/ultraplanExperts.js';
 
 const custom = (id) => ({ id, title: 'T-' + id, content: 'C-' + id });
 

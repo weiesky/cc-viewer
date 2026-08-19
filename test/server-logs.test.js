@@ -25,7 +25,7 @@ process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
 
 // 隔离段之后才动态 import(此时 LOG_DIR 已固化到 __isoDir)
-const { LOG_DIR } = await import('../findcc.js');
+const { LOG_DIR } = await import('../packages/app/findcc.js');
 
 function httpRequest(port, path, { method = 'GET', body = null } = {}) {
   return new Promise((resolve, reject) => {
@@ -101,7 +101,7 @@ describeCli('server local logs endpoints', { concurrency: false }, () => {
     }
     writeFileSync(join(projectDir, fileName), entries.join('\n---\n') + '\n---\n');
 
-    const mod = await import('../server/server.js');
+    const mod = await import('../packages/app/server/server.js');
     startViewer = mod.startViewer;
     stopViewer = mod.stopViewer;
     getPort = mod.getPort;
@@ -133,7 +133,7 @@ describeCli('server local logs endpoints', { concurrency: false }, () => {
     writeFileSync(join(projectDir, pidFile), '{"timestamp":"2026-01-02T13:00:00Z","url":"/v1/messages"}\n---\n');
     // _v1FileCount / _unmigratedV1Count are CURRENT-project signals — bind the
     // workspace to the fixture project the way a real launch does.
-    const { initForWorkspace } = await import('../server/interceptor.js');
+    const { initForWorkspace } = await import('../packages/app/server/interceptor.js');
     initForWorkspace(projectDir, { forceNew: true });
     try {
       const v1 = (await httpRequest(port, '/api/local-logs?view=v1')).json();
@@ -160,10 +160,10 @@ describeCli('server local logs endpoints', { concurrency: false }, () => {
     // The converter never deletes sources: once every file is marked done AT
     // ITS CURRENT SIZE, the migrate signals go to zero while the v1-view entry
     // must stay reachable so the leftovers can still be viewed/deleted.
-    const { initForWorkspace } = await import('../server/interceptor.js');
-    const { listV1Files } = await import('../server/lib/v2/convert.js');
+    const { initForWorkspace } = await import('../packages/app/server/interceptor.js');
+    const { listV1Files } = await import('../packages/app/server/lib/v2/convert.js');
     const { statSync } = await import('node:fs');
-    const { _invalidate: invalidateMig } = await import('../server/lib/v2/migrate-prompt.js');
+    const { _invalidate: invalidateMig } = await import('../packages/app/server/lib/v2/migrate-prompt.js');
     initForWorkspace(projectDir, { forceNew: true });
     const files = listV1Files(projectDir).map((name) => ({
       name, size: statSync(join(projectDir, name)).size, done: true,

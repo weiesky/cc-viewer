@@ -12,7 +12,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildPresetShortcutsPayload } from '../src/utils/presetShortcuts.js';
+import { buildPresetShortcutsPayload } from '../apps/web/src/utils/presetShortcuts.js';
 
 describe('buildPresetShortcutsPayload', () => {
   it('空 items + undefined dismissed → 只含空 presetShortcuts', () => {

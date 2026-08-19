@@ -94,7 +94,7 @@ let preferencesGet, preferencesPost, claudeSettingsGet, claudeSettingsPost, prox
 let resetThemeSync;
 
 before(async () => {
-  const { preferencesRoutes, _resetThemeSyncForTests } = await import('../server/routes/preferences.js');
+  const { preferencesRoutes, _resetThemeSyncForTests } = await import('../packages/app/server/routes/preferences.js');
   resetThemeSync = _resetThemeSyncForTests;
   const find = (p, m) => preferencesRoutes.find((r) => r.path === p && r.method === m).handler;
   preferencesGet = find('/api/preferences', 'GET');

@@ -15,14 +15,14 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { convertProject, listV1Files, listConvertibleProjects, readConvertState, STAGING_DIR_NAME, QUARANTINE_DIR_NAME } from '../server/lib/v2/convert.js';
-import { startConvert, stopConvert, convertStatus, isConvertRunning } from '../server/lib/v2/convert-manager.js';
-import { migrationStatus, _resetForTest as _resetMigMemo } from '../server/lib/v2/migrate-prompt.js';
-import { verifyV1File } from '../server/lib/v2/verify.js';
-import { listSessionIds } from '../server/lib/v2/replay.js';
-import { ensureSessionDirSync } from '../server/lib/v2/layout.js';
-import { resolveSessionDirName } from '../server/lib/v2/session-select.js';
-import { _resetForTest } from '../server/lib/error-report.js';
+import { convertProject, listV1Files, listConvertibleProjects, readConvertState, STAGING_DIR_NAME, QUARANTINE_DIR_NAME } from '../packages/app/server/lib/v2/convert.js';
+import { startConvert, stopConvert, convertStatus, isConvertRunning } from '../packages/app/server/lib/v2/convert-manager.js';
+import { migrationStatus, _resetForTest as _resetMigMemo } from '../packages/app/server/lib/v2/migrate-prompt.js';
+import { verifyV1File } from '../packages/app/server/lib/v2/verify.js';
+import { listSessionIds } from '../packages/app/server/lib/v2/replay.js';
+import { ensureSessionDirSync } from '../packages/app/server/lib/v2/layout.js';
+import { resolveSessionDirName } from '../packages/app/server/lib/v2/session-select.js';
+import { _resetForTest } from '../packages/app/server/lib/error-report.js';
 
 let logDir;
 const PROJECT = 'proj';

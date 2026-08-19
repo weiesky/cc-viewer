@@ -16,12 +16,12 @@ import { spawnSync } from 'node:child_process';
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-branch-wecom-'));
 process.env.CCV_LOG_DIR = tmpDir;
 
-const ADAPTER_PATH = new URL('../server/lib/adapters/wecom-adapter.js', import.meta.url);
+const ADAPTER_PATH = new URL('../packages/app/server/lib/adapters/wecom-adapter.js', import.meta.url);
 let wecom; // default export (adapter object)
 let mod;   // module namespace (for __setClientFactory)
 
 before(async () => {
-  mod = await import('../server/lib/adapters/wecom-adapter.js');
+  mod = await import('../packages/app/server/lib/adapters/wecom-adapter.js');
   wecom = mod.default;
 });
 

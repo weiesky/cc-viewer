@@ -15,7 +15,7 @@ const TMP = mkdtempSync(join(tmpdir(), 'ccv-transcript-reader-'));
 process.env.CCV_PROJECTS_DIR = TMP;
 
 const { findTranscriptPath, lookupToolUseInput, clearCache } =
-  await import('../server/lib/session-transcript-reader.js');
+  await import('../packages/app/server/lib/session-transcript-reader.js');
 
 function makeAssistantLine({ tuId, name = 'ExitPlanMode', input = {}, sid = 'sid-1' }) {
   return JSON.stringify({

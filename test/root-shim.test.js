@@ -17,7 +17,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(__dirname, '..');
+// The published-package root shims live in packages/app (repo layout == tarball layout).
+const repoRoot = join(__dirname, '..', 'packages', 'app');
 
 // 静态扫源码里的 ES module export 语句，拿到对外暴露的命名导出集合。
 // 覆盖 `export const X` / `export function X` / `export async function X` /

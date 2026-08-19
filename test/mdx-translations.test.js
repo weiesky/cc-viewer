@@ -8,8 +8,8 @@ import assert from 'node:assert/strict';
 
 // 注入 mock 的 getLang 给 mdxTranslations.js 用——src/i18n.js 里的 getLang 读全局
 // currentLang 变量。测试时直接 import setLang/getLang 真实接口，setLang 切完再调 mdxTranslation。
-import { setLang } from '../src/i18n.js';
-import { mdxTranslation, TRANSLATIONS, getByPath, interpolate } from '../src/i18n/mdxTranslations.js';
+import { setLang } from '../apps/web/src/i18n.js';
+import { mdxTranslation, TRANSLATIONS, getByPath, interpolate } from '../apps/web/src/i18n/mdxTranslations.js';
 
 describe('mdxTranslation', () => {
   it('zh: 命中 toolbar.image 返回中文「插入图片」', () => {

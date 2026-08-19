@@ -110,7 +110,7 @@ function waitUntil(pred, { timeout = 1000, interval = 5 } = {}) {
 let player;
 before(async () => {
   installBrowserEnv();
-  player = await import('../src/utils/voicePackPlayer.js');
+  player = await import('../apps/web/src/utils/voicePackPlayer.js');
 });
 
 after(() => {

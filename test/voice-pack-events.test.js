@@ -8,7 +8,7 @@ import {
   DEFAULT_BINDINGS,
   BUNDLED_PACK_IDS,
   getDefaultBindingsForLocale,
-} from '../server/lib/voice-pack-events.js';
+} from '../packages/app/server/lib/voice-pack-events.js';
 
 describe('voice-pack-events.js EVENT_KEYS 不变量', () => {
   it('当前 EVENT_KEYS 锁定为 3 项 (planApproval / askQuestion / turnEnd)', () => {

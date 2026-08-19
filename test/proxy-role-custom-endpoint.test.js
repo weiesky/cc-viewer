@@ -43,8 +43,8 @@ before(async () => {
     lastFetchArgs = [url, opts];
     return nextResponse ? nextResponse(url, opts) : new Response('{}', { status: 200 });
   };
-  mod = await import('../server/interceptor.js');
-  const { preferencesRoutes } = await import('../server/routes/preferences.js');
+  mod = await import('../packages/app/server/interceptor.js');
+  const { preferencesRoutes } = await import('../packages/app/server/routes/preferences.js');
   proxyProfilesGet = preferencesRoutes.find((r) => r.path === '/api/proxy-profiles' && r.method === 'GET').handler;
   mod.setupInterceptor();
   await globalThis.fetch('https://custom.host/v1/messages', {

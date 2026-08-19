@@ -27,15 +27,15 @@ const repoRoot = join(__dirname, '..');
 // the shim and electron loaders pull in). cli.js stays at repo root; the
 // real server-side modules live under server/ since the 1.6.273 reorg.
 const ROOT_FILES = [
-  'cli.js',
-  'findcc.js',
-  'interceptor.js',
-  'server.js',
-  'server/server.js',
-  'server/proxy.js',
-  'server/interceptor.js',
-  'server/pty-manager.js',
-  'server/workspace-registry.js',
+  'packages/app/cli.js',
+  'packages/app/findcc.js',
+  'packages/app/interceptor.js',
+  'packages/app/server.js',
+  'packages/app/server/server.js',
+  'packages/app/server/proxy.js',
+  'packages/app/server/interceptor.js',
+  'packages/app/server/pty-manager.js',
+  'packages/app/server/workspace-registry.js',
 ];
 
 // Recursively list ESM source files under a directory, excluding node_modules / dist.
@@ -105,7 +105,7 @@ describe('windows-import-paths: dynamic import() must use pathToFileURL on absol
 
   it('no file under server/lib/ has a naked dynamic import()', () => {
     const violations = [];
-    for (const file of listJsFiles(join(repoRoot, 'server', 'lib'))) {
+    for (const file of listJsFiles(join(repoRoot, 'packages', 'app', 'server', 'lib'))) {
       violations.push(...scanFile(file));
     }
     assert.deepEqual(violations, [],
@@ -115,7 +115,7 @@ describe('windows-import-paths: dynamic import() must use pathToFileURL on absol
 
   it('no file under electron/ has a naked dynamic import()', () => {
     const violations = [];
-    const electronDir = join(repoRoot, 'electron');
+    const electronDir = join(repoRoot, 'apps', 'electron', 'electron');
     if (existsSync(electronDir)) {
       for (const file of listJsFiles(electronDir)) {
         violations.push(...scanFile(file));

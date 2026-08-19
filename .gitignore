@@ -1,6 +1,10 @@
 node_modules
 dist
 electron-dist
+apps/electron/stage/
+# Copied into packages/app by assemble-dist.mjs at build/pack time (published contract)
+packages/app/README.md
+packages/app/LICENSE.md
 coverage
 .claude/settings.local.json
 .claude/scheduled_tasks.lock

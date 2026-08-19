@@ -48,7 +48,7 @@ delete process.env.CCV_ALLOWED_HOSTS;
 delete process.env.CCV_USE_PASSWORD;
 delete process.env.CCV_PASSWORD;
 
-const SERVER_PATH = join(process.cwd(), 'server', 'server.js');
+const SERVER_PATH = join(process.cwd(), 'packages', 'app', 'server', 'server.js');
 // 子进程 driver 写在 tmpDir（项目 node_modules 树之外）→ bare import 'ws' 解析不到，
 // 故把 ws 入口绝对路径注入 driver，用 file:// URL 动态 import。
 const _require = createRequire(import.meta.url);
@@ -283,7 +283,7 @@ describeCli('server.js handleRequest 分支（in-process CLI server）', { concu
   let mod, port;
 
   before(async () => {
-    mod = await import('../server/server.js');
+    mod = await import('../packages/app/server/server.js');
     const srv = await mod.startViewer();
     assert.ok(srv, 'server should start');
     port = mod.getPort();
@@ -882,7 +882,7 @@ export default {
 // ════════════════════════════════════════════════════════════════════════
 describeCli('server.js turn-end 状态机 / SDK export 分支', { concurrency: false }, () => {
   let mod;
-  before(async () => { mod = await import('../server/server.js'); });
+  before(async () => { mod = await import('../packages/app/server/server.js'); });
   after(async () => {
     mod.__testing.reset();
     try { await mod.stopViewer(); } finally { await rmBestEffort(tmpDir); }

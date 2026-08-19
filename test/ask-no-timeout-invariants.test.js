@@ -27,7 +27,7 @@ function readSource(relPath) {
 
 describe('AskUserQuestion 无超时/无降级 不变量', () => {
   it('lib/ask-bridge.js 不再调 req.setTimeout（客户端无硬超时）', () => {
-    const src = readSource('server/lib/ask-bridge.js');
+    const src = readSource('packages/app/server/lib/ask-bridge.js');
     assert.ok(
       !/req\.setTimeout\s*\(/.test(src),
       'lib/ask-bridge.js 出现了 req.setTimeout — 违反"客户端无硬超时"承诺（用户视角任何 N 分钟挂起都不应被打断）',
@@ -39,7 +39,7 @@ describe('AskUserQuestion 无超时/无降级 不变量', () => {
   });
 
   it('server.js ASK_HOOK_TIMEOUT_MS 必须引用 ASK_TIMEOUT_MS（同源常量来自 lib/ask-constants.js）', () => {
-    const src = readSource('server/server.js');
+    const src = readSource('packages/app/server/server.js');
     const m = src.match(/const\s+ASK_HOOK_TIMEOUT_MS\s*=\s*([^;]+);/);
     assert.ok(m, 'server.js 必须显式声明 const ASK_HOOK_TIMEOUT_MS 作为同源常量（避免 60min/24h 字面量散落）');
     const expr = m[1].trim();
@@ -56,12 +56,12 @@ describe('AskUserQuestion 无超时/无降级 不变量', () => {
   });
 
   it('lib/ask-constants.js ASK_TIMEOUT_MS = 24h（hook 与 SDK 路径共享的"无超时"实质上限）', async () => {
-    const { ASK_TIMEOUT_MS } = await import('../server/lib/ask-constants.js');
+    const { ASK_TIMEOUT_MS } = await import('../packages/app/server/lib/ask-constants.js');
     assert.equal(ASK_TIMEOUT_MS, 24 * 60 * 60 * 1000, `ASK_TIMEOUT_MS 必须为 24h，实测 ${ASK_TIMEOUT_MS}`);
   });
 
   it('lib/sdk-manager.js askTimeoutMs 必须引用 ASK_TIMEOUT_MS（与 hook 路径同源）', () => {
-    const src = readSource('server/lib/sdk-manager.js');
+    const src = readSource('packages/app/server/lib/sdk-manager.js');
     const m = src.match(/const\s+askTimeoutMs\s*=\s*([^;]+);/);
     assert.ok(m, 'sdk-manager.js 必须声明 const askTimeoutMs');
     assert.ok(
@@ -72,7 +72,7 @@ describe('AskUserQuestion 无超时/无降级 不变量', () => {
 
   it('server.js HOOK_TIMEOUT / REPLAY_HOOK_TIMEOUT 必须引用 ASK_HOOK_TIMEOUT_MS 而非字面量', () => {
     // HOOK_TIMEOUT 在 /api/ask-hook handler 内（已迁出到 server/routes/ask-perm.js）
-    const askPermSrc = readSource('server/routes/ask-perm.js');
+    const askPermSrc = readSource('packages/app/server/routes/ask-perm.js');
     const hookTimeoutAssign = askPermSrc.match(/const\s+HOOK_TIMEOUT\s*=\s*([^;]+);/);
     assert.ok(hookTimeoutAssign, 'routes/ask-perm.js 必须声明 const HOOK_TIMEOUT');
     assert.ok(
@@ -80,7 +80,7 @@ describe('AskUserQuestion 无超时/无降级 不变量', () => {
       `HOOK_TIMEOUT 必须引用 ASK_HOOK_TIMEOUT_MS（防字面量漂移），实测 "${hookTimeoutAssign[1].trim()}"`,
     );
     // REPLAY_HOOK_TIMEOUT 在 WS reconnect replay 路径（仍在 server.js）
-    const src = readSource('server/server.js');
+    const src = readSource('packages/app/server/server.js');
     const replayAssign = src.match(/const\s+REPLAY_HOOK_TIMEOUT\s*=\s*([^;]+);/);
     assert.ok(replayAssign, 'server.js 必须声明 const REPLAY_HOOK_TIMEOUT');
     assert.ok(
@@ -90,7 +90,7 @@ describe('AskUserQuestion 无超时/无降级 不变量', () => {
   });
 
   it('server.js ASK_HOOK_MAP_MAX = 1000（防恶意 OOM 兜底，正常使用永不触发）', () => {
-    const src = readSource('server/server.js');
+    const src = readSource('packages/app/server/server.js');
     const m = src.match(/const\s+ASK_HOOK_MAP_MAX\s*=\s*(\d+)/);
     assert.ok(m, 'server.js 必须显式声明 ASK_HOOK_MAP_MAX');
     const v = Number(m[1]);
@@ -98,7 +98,7 @@ describe('AskUserQuestion 无超时/无降级 不变量', () => {
   });
 
   it('src/components/chat/AskQuestionForm.jsx 不再有 30s submitting 强释放 setTimeout', () => {
-    const src = readSource('src/components/chat/AskQuestionForm.jsx');
+    const src = readSource('apps/web/src/components/chat/AskQuestionForm.jsx');
     // 旧版用 30000 字面量 setTimeout 重置 submitting
     assert.ok(
       !/setTimeout\([^)]*submitting:\s*false[^)]*\}\s*,\s*30000\s*\)/s.test(src)
@@ -113,7 +113,7 @@ describe('AskUserQuestion 无超时/无降级 不变量', () => {
   });
 
   it('src/components/chat/AskTimeoutCountdown.jsx 含 isInfiniteTimeout 阈值分支', () => {
-    const src = readSource('src/components/chat/AskTimeoutCountdown.jsx');
+    const src = readSource('apps/web/src/components/chat/AskTimeoutCountdown.jsx');
     assert.ok(
       /NO_TIMEOUT_THRESHOLD_MS/.test(src),
       'AskTimeoutCountdown 必须定义 NO_TIMEOUT_THRESHOLD_MS 用于识别"实质无超时"模式',
@@ -128,7 +128,7 @@ describe('AskUserQuestion 无超时/无降级 不变量', () => {
 
   it('askFlowController.js _waitForHookBridge 不再有 3s 固定 fallback 上限', () => {
     // Ask 流逻辑已从 ChatView.jsx 抽到 src/components/chat/controllers/askFlowController.js（保留行为）。
-    const src = readSource('src/components/chat/controllers/askFlowController.js');
+    const src = readSource('apps/web/src/components/chat/controllers/askFlowController.js');
     // 旧版: `if (this._askHookWaitRetries > 30) {`（3s = 30 × 100ms）+ fallback PTY
     // 新版必须存在 _askHookEverActive 区分新老 CC 的逻辑
     assert.ok(
@@ -145,7 +145,7 @@ describe('AskUserQuestion 无超时/无降级 不变量', () => {
 
   // v2a 短轮询协议锚点 —— 锁住关键协议字符串/函数名，防未来漂移破协议
   it('lib/ask-store.js SCHEMA_VERSION = 1（不变量；改 schema 必须显式 bump + 写 migration）', () => {
-    const src = readSource('server/lib/ask-store.js');
+    const src = readSource('packages/app/server/lib/ask-store.js');
     const m = src.match(/const\s+SCHEMA_VERSION\s*=\s*(\d+)/);
     assert.ok(m, 'lib/ask-store.js 必须显式声明 const SCHEMA_VERSION');
     assert.equal(Number(m[1]), 1, `SCHEMA_VERSION 当前锁定为 1，改值意味着需要写 migration —— 实测 ${m[1]}`);
@@ -153,8 +153,8 @@ describe('AskUserQuestion 无超时/无降级 不变量', () => {
 
   it('server.js / ask-bridge.js 共享同一 "X-Ask-Poll-Mode: short" 协议字符串', () => {
     // server 侧的 ask-hook handler 已迁出到 server/routes/ask-perm.js
-    const server = readSource('server/routes/ask-perm.js');
-    const bridge = readSource('server/lib/ask-bridge.js');
+    const server = readSource('packages/app/server/routes/ask-perm.js');
+    const bridge = readSource('packages/app/server/lib/ask-bridge.js');
     assert.ok(/['"]x-ask-poll-mode['"]/i.test(server), 'routes/ask-perm.js 必须读 X-Ask-Poll-Mode header');
     assert.ok(/['"]X-Ask-Poll-Mode['"]/.test(bridge), 'lib/ask-bridge.js 必须发 X-Ask-Poll-Mode header');
     assert.ok(/['"]short['"]/.test(server) && /['"]short['"]/.test(bridge), '协议值必须是字符串 "short"');
@@ -162,31 +162,31 @@ describe('AskUserQuestion 无超时/无降级 不变量', () => {
   });
 
   it('lib/ask-bridge.js 必须有 pollUntilAnswered（防 v2a 短轮询被悄悄删回 long-poll）', () => {
-    const src = readSource('server/lib/ask-bridge.js');
+    const src = readSource('packages/app/server/lib/ask-bridge.js');
     assert.ok(/function\s+pollUntilAnswered\b/.test(src), 'lib/ask-bridge.js 必须定义 pollUntilAnswered 函数');
     assert.ok(/getPollResult\s*\(/.test(src), 'lib/ask-bridge.js 必须使用 getPollResult 真正发 GET 请求');
   });
 
   it('lib/ask-store.js 必须导出 consumeIfFinal（防 GET handler 退回到 race-prone 的 consume+setEntry）', () => {
-    const src = readSource('server/lib/ask-store.js');
+    const src = readSource('packages/app/server/lib/ask-store.js');
     assert.ok(/export\s+(async\s+)?function\s+consumeIfFinal\b/.test(src), 'consumeIfFinal 必须 export（GET handler 依赖它消除写后读 race）');
   });
 
   it('server.js GET /api/ask-hook/:id/result 端点存在（短轮询协议核心）', () => {
     // GET /api/ask-hook/:id/result 路由已迁出到 server/routes/ask-perm.js（用 predicate 匹配）
-    const askPermSrc = readSource('server/routes/ask-perm.js');
+    const askPermSrc = readSource('packages/app/server/routes/ask-perm.js');
     assert.ok(
       /url\.startsWith\(['"]\/api\/ask-hook\/['"]\)/.test(askPermSrc) && /\/result/.test(askPermSrc),
       'routes/ask-perm.js 必须路由 GET /api/ask-hook/:id/result 端点',
     );
     assert.ok(/shortPollListeners/.test(askPermSrc), 'routes/ask-perm.js 必须用 shortPollListeners 处理 GET listener');
     // _notifyShortPollAnswer 推送答案的逻辑仍在 server.js 的 WS answer 路径
-    const src = readSource('server/server.js');
+    const src = readSource('packages/app/server/server.js');
     assert.ok(/_notifyShortPollAnswer/.test(src), 'server.js 必须有 _notifyShortPollAnswer 推送答案');
   });
 
   it('lib/ensure-hooks.js 必须给注入 hook 加 timeout 字段（防 Claude Code 10min 中断 ask-bridge → TUI 接管）', () => {
-    const src = readSource('server/lib/ensure-hooks.js');
+    const src = readSource('packages/app/server/lib/ensure-hooks.js');
     // 锁死默认 86400 的常量赋值场景，而非任意位置含 86400 字面量（防注释里写 "// was 86400" 也通过）
     assert.match(
       src,

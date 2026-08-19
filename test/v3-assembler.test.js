@@ -19,7 +19,7 @@ process.env.CLAUDE_CONFIG_DIR = tmpDir;
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
 
-const { createV3Assembler } = await import('../src/utils/v3Assembler.js');
+const { createV3Assembler } = await import('../apps/web/src/utils/v3Assembler.js');
 
 const textMsg = (role, text) => ({ role, content: [{ type: 'text', text }] });
 
@@ -80,9 +80,9 @@ describe('cold assembly parity vs legacy entries (oracle)', () => {
   let events, interceptor, sidCounter = 0;
 
   before(async () => {
-    interceptor = await import('../server/interceptor.js');
+    interceptor = await import('../packages/app/server/interceptor.js');
     interceptor.initForWorkspace(join(tmpDir, 'asmproj'), { forceNew: true });
-    const eventsMod = await import('../server/routes/events.js');
+    const eventsMod = await import('../packages/app/server/routes/events.js');
     events = eventsMod.eventsRoutes.find((r) => r.path === '/events' && r.method === 'GET').handler;
   });
 
@@ -128,7 +128,7 @@ describe('cold assembly parity vs legacy entries (oracle)', () => {
     await w.flush();
 
     // Oracle: legacy flag-off stream, client-reconstructed
-    const { reconstructEntries } = await import('../server/lib/delta-reconstructor.js');
+    const { reconstructEntries } = await import('../packages/app/server/lib/delta-reconstructor.js');
     const off = makeRes();
     await events(makeReq(), off, url('/events'), true, eventsDeps());
     const legacyRaw = framesOf(off.text(), 'load_chunk').flat();

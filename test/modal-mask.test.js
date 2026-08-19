@@ -16,23 +16,23 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BLUR_MASK_STYLE } from '../src/utils/modalMask.js';
+import { BLUR_MASK_STYLE } from '../apps/web/src/utils/modalMask.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const APPROVAL_CSS = readFileSync(join(ROOT, 'src/components/approval/ApprovalModal.module.css'), 'utf8');
+const APPROVAL_CSS = readFileSync(join(ROOT, 'apps/web/src/components/approval/ApprovalModal.module.css'), 'utf8');
 
 // The top-level feature modals that blur the background (plus the constant's own module).
 // RetryConfigModal/ProxyStatsModal render inside the parent Proxy Stats Modal hosted by App.jsx;
 // they must not create their own mask or a second blurred overlay.
 const EXPECTED_CONSUMERS = [
-  'src/utils/modalMask.js',
-  'src/App.jsx',                                    // Log Management
-  'src/components/dashboard/AppHeader.jsx',         // Export user prompts
-  'src/components/settings/PluginModal.jsx',        // Plugin Management
-  'src/components/settings/ProcessModal.jsx',       // CCV Process Manager
-  'src/components/settings/MessagingModal.jsx',    // Messaging Integration
-  'src/components/settings/ProxyModal.jsx',         // Hot-Switch Proxy
-  'src/components/settings/SystemTextModal.jsx',    // Edit System Prompt
+  'apps/web/src/utils/modalMask.js',
+  'apps/web/src/App.jsx',                                    // Log Management
+  'apps/web/src/components/dashboard/AppHeader.jsx',         // Export user prompts
+  'apps/web/src/components/settings/PluginModal.jsx',        // Plugin Management
+  'apps/web/src/components/settings/ProcessModal.jsx',       // CCV Process Manager
+  'apps/web/src/components/settings/MessagingModal.jsx',    // Messaging Integration
+  'apps/web/src/components/settings/ProxyModal.jsx',         // Hot-Switch Proxy
+  'apps/web/src/components/settings/SystemTextModal.jsx',    // Edit System Prompt
 ].sort();
 
 describe('BLUR_MASK_STYLE — sync with the approval-overlay reference', () => {
@@ -63,7 +63,7 @@ describe('BLUR_MASK_STYLE — sync with the approval-overlay reference', () => {
 
 describe('BLUR_MASK_STYLE — exact consumer set (no other pop-up may adopt it)', () => {
   it('exactly the feature modals (plus the constant module) reference it', () => {
-    const entries = readdirSync(join(ROOT, 'src'), { recursive: true, withFileTypes: true });
+    const entries = readdirSync(join(ROOT, 'apps', 'web', 'src'), { recursive: true, withFileTypes: true });
     const consumers = [];
     for (const ent of entries) {
       if (!ent.isFile() || !/\.(js|jsx)$/.test(ent.name)) continue;
@@ -79,7 +79,7 @@ describe('BLUR_MASK_STYLE — exact consumer set (no other pop-up may adopt it)'
 
   it('each of the seven modal files wires it into a styles mask entry', () => {
     for (const file of EXPECTED_CONSUMERS) {
-      if (file === 'src/utils/modalMask.js') continue;
+      if (file === 'apps/web/src/utils/modalMask.js') continue;
       const text = readFileSync(join(ROOT, file), 'utf8');
       assert.ok(/mask:\s*BLUR_MASK_STYLE/.test(text),
         `${file} imports BLUR_MASK_STYLE but does not pass it as a \`mask:\` style entry`);

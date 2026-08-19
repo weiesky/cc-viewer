@@ -13,9 +13,9 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { iterateJsonlLines } from '../server/lib/v2/jsonl-read.js';
-import { readJsonlTolerant } from '../server/lib/v2/replay.js';
-import { _resetForTest } from '../server/lib/error-report.js';
+import { iterateJsonlLines } from '../packages/app/server/lib/v2/jsonl-read.js';
+import { readJsonlTolerant } from '../packages/app/server/lib/v2/replay.js';
+import { _resetForTest } from '../packages/app/server/lib/error-report.js';
 
 let dir;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'ccv-jsonl-')); _resetForTest(); });

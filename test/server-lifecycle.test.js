@@ -127,7 +127,7 @@ describeCli('server.js lifecycle: start/stop rounds + EADDRINUSE + SSE broadcast
   let mod;
 
   before(async () => {
-    mod = await import('../server/server.js');
+    mod = await import('../packages/app/server/server.js');
   });
 
   after(async () => {

@@ -95,8 +95,8 @@ before(async () => {
     lastFetchArgs = [url, opts];
     return nextResponse ? nextResponse(url, opts) : new Response('{}', { status: 200 });
   };
-  mod = await import('../server/interceptor.js');
-  ({ iterateV2RawEntries } = await import('../server/lib/v2/adapter.js'));
+  mod = await import('../packages/app/server/interceptor.js');
+  ({ iterateV2RawEntries } = await import('../packages/app/server/lib/v2/adapter.js'));
   mod.setupInterceptor();
   // 引导请求：携带 SID 建立 _currentSid，让后续无 metadata 请求路由到同一 session。
   await globalThis.fetch('https://api.anthropic.com/v1/messages', {

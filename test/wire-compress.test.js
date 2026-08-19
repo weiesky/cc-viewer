@@ -9,7 +9,7 @@ import zlib from 'node:zlib';
 import { Writable } from 'node:stream';
 import { finished } from 'node:stream/promises';
 
-import { sseHead, sseWrite, needsDrain, wireEnd, awaitWireDrain, isWireV3Enabled } from '../server/lib/wire-compress.js';
+import { sseHead, sseWrite, needsDrain, wireEnd, awaitWireDrain, isWireV3Enabled } from '../packages/app/server/lib/wire-compress.js';
 
 function mockRes() {
   const chunks = [];

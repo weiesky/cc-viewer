@@ -1,6 +1,9 @@
-# pnpm workspace settings (A1 stage: settings-only, no packages globs yet —
-# the packages/apps globs land in stage A2 when the directory split happens).
+# pnpm workspace settings.
 # All settings live here (not .npmrc / package.json#pnpm) to stay pnpm-11-native.
+
+packages:
+  - packages/*
+  - apps/*
 
 # Dependency build-script approvals (pnpm 11 `allowBuilds`; install hard-fails
 # with ERR_PNPM_IGNORED_BUILDS on unreviewed build scripts).
@@ -17,10 +20,6 @@ allowBuilds:
 # Carried over from package.json "overrides" (npm). node-gyp@^12.1.0 is
 # load-bearing: electron-builder chains @electron/rebuild → node-gyp, and
 # node-gyp 11 cannot build on the VS2026 Windows CI image (see release.yml).
-# NOTE (A1 transition): the same overrides are intentionally duplicated in
-# package.json — the release.yml Electron job still installs with npm in A1
-# (electron-builder × pnpm needs the hoisted linker, which lands in A2).
-# Drop the package.json copy when the Electron job switches to pnpm in A2.
 overrides:
   axios: ^1.16.1
   qs: ^6.15.2

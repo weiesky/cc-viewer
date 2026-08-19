@@ -67,7 +67,7 @@ function mkDeps() {
 
 let getRoute; let postRoute;
 before(async () => {
-  const { preferencesRoutes } = await import('../server/routes/preferences.js');
+  const { preferencesRoutes } = await import('../packages/app/server/routes/preferences.js');
   getRoute = preferencesRoutes.find((r) => r.path === '/api/ccswitch-providers' && r.method === 'GET');
   postRoute = preferencesRoutes.find((r) => r.path === '/api/ccswitch-import' && r.method === 'POST');
   assert.ok(getRoute, 'GET /api/ccswitch-providers route must exist');

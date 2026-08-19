@@ -55,7 +55,7 @@ describeCli('server.js startViewer exhausts the port range (portsBusy)', { concu
 
   // ── 835-839：唯一端口被占 → probe connect 成功 → tryListen(port+1) → >MAX → resolve(null) ──
   it('startViewer resolves null when every port in the range is occupied', async () => {
-    mod = await import('../server/server.js');
+    mod = await import('../packages/app/server/server.js');
     const srv = await mod.startViewer();
     assert.equal(srv, null, 'startViewer must resolve null when the port range is exhausted');
   });

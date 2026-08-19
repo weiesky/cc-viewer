@@ -16,9 +16,9 @@ const TMP = mkdtempSync(join(tmpdir(), 'ccv-live-'));
 process.env.CCV_PROJECTS_DIR = TMP;
 
 const { deriveLiveJournal, resolveRunDir, parsePhasesFromScript, __clearPhasesCacheForTests } =
-  await import('../server/lib/workflow-live.js');
+  await import('../packages/app/server/lib/workflow-live.js');
 const { armWorkflowLiveWatch, unwatchAllWorkflows, __setWatchImplForTests, __triggerLiveScanForTests } =
-  await import('../server/lib/workflow-watcher.js');
+  await import('../packages/app/server/lib/workflow-watcher.js');
 
 const ENC = '-proj';
 const SID = 'sid-live';

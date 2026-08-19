@@ -19,7 +19,7 @@ process.env.ANTHROPIC_BASE_URL = 'http://[not a valid url';  // new URL() 必抛
 
 let mod;
 before(async () => {
-  mod = await import('../server/interceptor.js');
+  mod = await import('../packages/app/server/interceptor.js');
 });
 after(() => {
   delete process.env.ANTHROPIC_BASE_URL;

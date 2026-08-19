@@ -10,7 +10,7 @@ import {
   stripClaudeNoFlickerUnlessOptedIn,
   KEEP_CLAUDE_FULLSCREEN_ENV,
   applyClaudeAltScreenPref,
-} from '../server/lib/terminal-env.js';
+} from '../packages/app/server/lib/terminal-env.js';
 
 const tmpDirs = [];
 

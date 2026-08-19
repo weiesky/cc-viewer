@@ -5,7 +5,7 @@
  */
 import assert from 'assert';
 import { describe, it } from 'node:test';
-import { pickPlanApproveOptionNumber } from '../src/utils/promptClassifier.js';
+import { pickPlanApproveOptionNumber } from '../apps/web/src/utils/promptClassifier.js';
 
 describe('pickPlanApproveOptionNumber', () => {
   it('picks the option matching approve keywords', () => {

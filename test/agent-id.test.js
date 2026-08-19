@@ -6,7 +6,7 @@
 // frontend's window-scoped heuristic registry.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseAgentId, findHeader } from '../server/lib/v2/agent-id.js';
+import { parseAgentId, findHeader } from '../packages/app/server/lib/v2/agent-id.js';
 
 describe('parseAgentId', () => {
   it('named teammate: name@session-<uuid>', () => {

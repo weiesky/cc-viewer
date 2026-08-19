@@ -20,7 +20,7 @@ import { registerHooks } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const TARGET = new URL('../src/utils/markdownProfiler.js', import.meta.url).href;
+const TARGET = new URL('../apps/web/src/utils/markdownProfiler.js', import.meta.url).href;
 
 // 仅对目标模块做源码重写：把 `const DEV = <import.meta.env 表达式>;` 整体替换成 DEV=true。
 // 关键：替换串与原串【等字节长度、等换行位置】（原串 102 字节、换行在 byte 46/67；
@@ -63,7 +63,7 @@ before(async () => {
   prevWindow = globalThis.window;
   globalThis.window = globalThis;           // 触发模块顶层 window.__mdStats 赋值
   delete globalThis.__mdStats;
-  mod = await import('../src/utils/markdownProfiler.js');
+  mod = await import('../apps/web/src/utils/markdownProfiler.js');
 });
 
 after(() => {

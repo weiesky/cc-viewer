@@ -10,16 +10,16 @@ process.env.CCV_LOG_DIR = tmpDir;
 
 // server/i18n.js is the same module instance the bridge's t() reads from, so setLang here
 // mutates the very currentLang the bridge renders against.
-const { setLang, getLang } = await import('../server/i18n.js');
+const { setLang, getLang } = await import('../packages/app/server/i18n.js');
 
-const bridge = await import('../server/lib/dingtalk-bridge.js');
+const bridge = await import('../packages/app/server/lib/dingtalk-bridge.js');
 const {
   __setClientFactory, __setFetchForTests, __resetForTests, __setMaxQueueForTests,
   startBridge, notifyTurnEnd, isBridgeRunning, getBridgeStatus,
   extractLastAssistantText, chunkText, testConnection,
 } = bridge;
 
-const { default: dingtalkAdapter } = await import('../server/lib/adapters/dingtalk-adapter.js');
+const { default: dingtalkAdapter } = await import('../packages/app/server/lib/adapters/dingtalk-adapter.js');
 
 const PASTE = (s) => ['\x1b[200~' + s + '\x1b[201~', '\r'];
 // The bridge prepends an IM-origin marker to every injected prompt EXCEPT slash commands.

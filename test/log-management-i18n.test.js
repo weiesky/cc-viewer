@@ -12,7 +12,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const LOCALES = ['zh', 'en', 'zh-TW', 'ko', 'ja', 'de', 'es', 'fr', 'it', 'da', 'pl', 'ru', 'ar', 'no', 'pt-BR', 'th', 'tr', 'uk'];
-const I18N_SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'i18n.js'), 'utf-8');
+const I18N_SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'apps', 'web', 'src', 'i18n.js'), 'utf-8');
 
 // 与 context-i18n.test.js 的 localeBlockOf 同款:块尾用 '\n  }' 而非首个 '}'。
 function localeBlockOf(key) {

@@ -185,7 +185,7 @@ before(async () => {
   idb = new FakeIndexedDB();
   globalThis.localStorage = storage;
   globalThis.indexedDB = idb;
-  mod = await import('../src/utils/entryCache.js');
+  mod = await import('../apps/web/src/utils/entryCache.js');
 });
 
 // 在不同 describe 之间替换 idb / storage 数据，并重置模块内单例。

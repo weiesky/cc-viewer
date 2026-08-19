@@ -4,7 +4,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { calcResizedSize } from '../src/utils/resizeCalc.js';
+import { calcResizedSize } from '../apps/web/src/utils/resizeCalc.js';
 
 describe('calcResizedSize', () => {
   const base = {

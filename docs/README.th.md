@@ -39,6 +39,13 @@ brew install cc-viewer
 brew upgrade cc-viewer   # ใช้คำสั่งนี้ในการอัปเกรด — ccv ที่ติดตั้งผ่าน brew ห้ามอัปเกรดด้วย npm install -g
 ```
 
+#### ติดตั้งผ่าน pnpm (global)
+
+```bash
+pnpm add -g cc-viewer
+pnpm add -g cc-viewer@latest   # ใช้คำสั่งนี้ในการอัปเกรด — ccv ที่ติดตั้งผ่าน pnpm ห้ามอัปเกรดด้วย npm install -g
+```
+
 ### วิธีเริ่มใช้งาน
 
 ccv คือตัวแทนของ claude โดยตรง พารามิเตอร์ทั้งหมดจะถูกส่งต่อให้ claude พร้อมกับเปิด Web Viewer

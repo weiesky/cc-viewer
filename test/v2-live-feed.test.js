@@ -17,16 +17,16 @@ import { spawnSync as spawnSyncCp } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { V2Writer } from '../server/lib/v2/v2-writer.js';
-import { V2LiveFeed } from '../server/lib/v2/live-feed.js';
-import { STAGING_DIR_NAME } from '../server/lib/v2/convert.js';
-import { sendToClients, sendEventToClients, sendEventRawToClients, sendChunkToClients } from '../server/lib/log-watcher.js';
-import { iterateV2RawEntries } from '../server/lib/v2/adapter.js';
-import { readV2RequestsMeta } from '../server/lib/v2/meta-rows.js';
-import { reconstructEntries } from '../server/lib/delta-reconstructor.js';
-import { createV3Assembler } from '../src/utils/v3Assembler.js';
-import { _resetForTest } from '../server/lib/error-report.js';
-import { resolveSessionDirName } from '../server/lib/v2/session-select.js';
+import { V2Writer } from '../packages/app/server/lib/v2/v2-writer.js';
+import { V2LiveFeed } from '../packages/app/server/lib/v2/live-feed.js';
+import { STAGING_DIR_NAME } from '../packages/app/server/lib/v2/convert.js';
+import { sendToClients, sendEventToClients, sendEventRawToClients, sendChunkToClients } from '../packages/app/server/lib/log-watcher.js';
+import { iterateV2RawEntries } from '../packages/app/server/lib/v2/adapter.js';
+import { readV2RequestsMeta } from '../packages/app/server/lib/v2/meta-rows.js';
+import { reconstructEntries } from '../packages/app/server/lib/delta-reconstructor.js';
+import { createV3Assembler } from '../apps/web/src/utils/v3Assembler.js';
+import { _resetForTest } from '../packages/app/server/lib/error-report.js';
+import { resolveSessionDirName } from '../packages/app/server/lib/v2/session-select.js';
 
 let dir;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'ccv-v2feed-')); _resetForTest(); });
@@ -493,7 +493,7 @@ describe('wire v3 live rows → client assembler', () => {
 // ─── readNewLines chunked cursor reader (issue #129 twin) ─────────────────────
 describe('readNewLines chunked cursor', () => {
   it('splits lines across tiny chunks byte-exact, carries the partial tail across calls', async () => {
-    const { readNewLines } = await import('../server/lib/v2/live-feed.js');
+    const { readNewLines } = await import('../packages/app/server/lib/v2/live-feed.js');
     const { writeFileSync, appendFileSync } = await import('node:fs');
     const p = join(dir, 'cursor.jsonl');
     const l1 = JSON.stringify({ seq: 1, t: '中文跨块内容' });
@@ -545,7 +545,7 @@ describe('discardable session attach gate', () => {
   });
 
   it('readNewLines skips an oversized line (maxLineBytes seam); neighbors survive, skip-state resets', async () => {
-    const { readNewLines } = await import('../server/lib/v2/live-feed.js');
+    const { readNewLines } = await import('../packages/app/server/lib/v2/live-feed.js');
     const { writeFileSync: wf } = await import('node:fs');
     const p = join(dir, 'oversize.jsonl');
     const big = JSON.stringify({ seq: 2, blob: 'y'.repeat(200) });

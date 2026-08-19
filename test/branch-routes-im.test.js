@@ -48,7 +48,7 @@ function call(route, { pathname, searchParams, body, isLocal = true, deps, req }
 
 describe('server/routes/im.js 分支补齐', { concurrency: false }, () => {
   let imRoutes;
-  before(async () => { ({ imRoutes } = await import('../server/routes/im.js')); });
+  before(async () => { ({ imRoutes } = await import('../packages/app/server/routes/im.js')); });
   after(() => { rmSync(tmpDir, { recursive: true, force: true }); });
 
   // ── L32: platformOf 对不匹配 IM_RE 的 pathname 返回 null → notFound ──
@@ -285,7 +285,7 @@ describe('server/routes/im.js 分支补齐', { concurrency: false }, () => {
   // 把 IM 目录下的 CC_APPEND_SYSTEM.md 造成「目录」：readFileSync 抛 EISDIR（非 ENOENT，不会回落 preset）→ rethrow → catch。
   it('GET append-system：CC_APPEND_SYSTEM.md 是目录 → readFileSync 抛 EISDIR → 500（catch 臂 + e.message）', async () => {
     const route = imRoutes.find((r) => r.predicate('/api/im/dingtalk/append-system', 'GET'));
-    const { imDir } = await import('../server/lib/im-lock.js');
+    const { imDir } = await import('../packages/app/server/lib/im-lock.js');
     const dir = imDir('dingtalk');
     mkdirSync(join(dir, 'CC_APPEND_SYSTEM.md'), { recursive: true }); // CC_APPEND_SYSTEM.md 当目录 → 读取必抛 EISDIR
     const r = await call(route, { pathname: '/api/im/dingtalk/append-system', isLocal: true, deps: { im: {} } });
@@ -296,7 +296,7 @@ describe('server/routes/im.js 分支补齐', { concurrency: false }, () => {
   // 把 IM 目录本身造成「文件」：writeImAppendSystem 内 mkdirSync(dir,{recursive:true}) 抛 EEXIST/ENOTDIR → catch。
   it('POST append-system：IM 目录是文件 → mkdirSync 抛 → 500（写失败 catch 臂）', async () => {
     const route = imRoutes.find((r) => r.predicate('/api/im/feishu/append-system', 'POST'));
-    const { imDir } = await import('../server/lib/im-lock.js');
+    const { imDir } = await import('../packages/app/server/lib/im-lock.js');
     const dir = imDir('feishu');
     writeFileSync(dir, 'iam-a-file-not-a-dir'); // IM_feishu 占成文件 → mkdirSync(recursive) 抛
     const r = await call(route, { pathname: '/api/im/feishu/append-system', body: { content: 'hello' }, isLocal: true, deps: { MAX_POST_BODY: 1e6, im: {} } });
@@ -337,7 +337,7 @@ describe('server/routes/im.js 分支补齐', { concurrency: false }, () => {
     const route = imRoutes.find((r) => r.predicate('/api/im/wecom/skills/toggle', 'POST'));
     // 构造 enable=true 时 moveSkill 内 mkdirSync(skills) 抛 EEXIST（code 不在 statusMap）→ statusMap[code]||500 默认臂。
     // from=skills-skip/<name> 作真实目录(存在)；skills 作普通文件 → mkdir 抛 EEXIST/ENOTDIR。
-    const { imDir } = await import('../server/lib/im-lock.js');
+    const { imDir } = await import('../packages/app/server/lib/im-lock.js');
     const claudeDir = join(imDir('wecom'), '.claude');
     mkdirSync(join(claudeDir, 'skills-skip', 'mkdirfail-skill'), { recursive: true });
     writeFileSync(join(claudeDir, 'skills'), 'iam-a-file-not-a-dir');
@@ -384,7 +384,7 @@ describe('server/routes/im.js 分支补齐', { concurrency: false }, () => {
   });
   it('POST skills/delete：删除已禁用项 → 200 + 目录被永久移除', async () => {
     const route = imRoutes.find((r) => r.predicate('/api/im/dingtalk/skills/delete', 'POST'));
-    const { imDir } = await import('../server/lib/im-lock.js');
+    const { imDir } = await import('../packages/app/server/lib/im-lock.js');
     const dir = join(imDir('dingtalk'), '.claude', 'skills-skip', 'im-del-off');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'SKILL.md'), '---\ndescription: x\n---\n');

@@ -21,7 +21,7 @@ let mod;
 const KEY = 'ui.enableThinkingSummariesTip'; // en 值含 "{configDir}/settings.json"
 
 before(async () => {
-  mod = await import('../src/utils/tClaude.js');
+  mod = await import('../apps/web/src/utils/tClaude.js');
 });
 
 after(() => {

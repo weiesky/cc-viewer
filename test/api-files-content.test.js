@@ -107,7 +107,7 @@ let routes;
 let planFile, fileContentGet, projectMemory, claudeMd, fileRaw, fileContentPost;
 
 before(async () => {
-  const mod = await import('../server/routes/files-content.js');
+  const mod = await import('../packages/app/server/routes/files-content.js');
   routes = mod.filesContentRoutes;
   assert.ok(Array.isArray(routes) && routes.length === 6, 'expect 6 routes');
   const byPath = (p, m) => routes.find(r => r.path === p && r.method === m)?.handler;

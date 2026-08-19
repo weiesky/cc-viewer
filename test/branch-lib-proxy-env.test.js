@@ -25,7 +25,7 @@ function clearProxyEnv() {
 }
 
 before(async () => {
-  mod = await import('../server/lib/proxy-env.js');
+  mod = await import('../packages/app/server/lib/proxy-env.js');
   savedGlobal = getGlobalDispatcher();
   for (const k of PROXY_KEYS) saved[k] = process.env[k];
 });

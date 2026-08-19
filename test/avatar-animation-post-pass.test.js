@@ -13,7 +13,7 @@ import React from 'react';
 let applyAvatarAnimationTargets, isTeammateAvatarItem;
 
 before(async () => {
-  const m = await import('../src/utils/avatarAnimationPostPass.js');
+  const m = await import('../apps/web/src/utils/avatarAnimationPostPass.js');
   applyAvatarAnimationTargets = m.applyAvatarAnimationTargets;
   isTeammateAvatarItem = m.isTeammateAvatarItem;
 });

@@ -21,7 +21,7 @@ import { join } from 'node:path';
 import {
   acquireSessionClaim, releaseSessionClaim, isForeignLiveOwned,
   readSessionClaim, ownerLockPath,
-} from '../server/lib/v2/session-owner.js';
+} from '../packages/app/server/lib/v2/session-owner.js';
 
 let dir;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'ccv-owner-')); });

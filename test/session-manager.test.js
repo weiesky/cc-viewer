@@ -12,7 +12,7 @@ import {
   resolveHydratedPin,
   runPinHydration,
   applyBatchEntryTimestamps,
-} from '../src/utils/sessionManager.js';
+} from '../apps/web/src/utils/sessionManager.js';
 
 // ─── Test helpers ─────────────────────────────────────────────────��───────────
 

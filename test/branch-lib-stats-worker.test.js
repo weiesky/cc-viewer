@@ -50,7 +50,7 @@ process.env.TMPDIR = PRIVATE_TMP;
 // 触发 import 期 parentPort?.on 注册;目标模块无导出,仅为副作用加载。
 before(async () => {
   globalThis.__SW_MSGS = [];
-  await import('../server/lib/stats-worker.js');
+  await import('../packages/app/server/lib/stats-worker.js');
   assert.ok(globalThis.__SW_PORT, 'shim parentPort 应已就绪');
 });
 

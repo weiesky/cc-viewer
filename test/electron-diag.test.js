@@ -11,7 +11,7 @@ import { mkdtempSync, readFileSync, writeFileSync, statSync, existsSync, readdir
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-import { initDiag, appendDiag, diagFlush, diagSerialize, diagRedactString } from '../electron/diag.js';
+import { initDiag, appendDiag, diagFlush, diagSerialize, diagRedactString } from '../apps/electron/electron/diag.js';
 
 let TMP;
 beforeEach(() => {

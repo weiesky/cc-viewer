@@ -52,7 +52,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
-const CLI_PATH = resolve(REPO_ROOT, 'cli.js');
+const CLI_PATH = resolve(REPO_ROOT, 'packages', 'app', 'cli.js');
 
 // ── 临时目录登记，统一在 after() 清理（先复原 chmod 再删，避免只读目录删不掉） ──
 const tmpDirs = [];

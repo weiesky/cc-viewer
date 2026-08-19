@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { deriveImConnState, imBadgeModel } from '../src/utils/imConnState.js';
+import { deriveImConnState, imBadgeModel } from '../apps/web/src/utils/imConnState.js';
 
 describe('deriveImConnState — legacy payloads (no connectionState, old workers)', () => {
   it('reproduces the chip four-state logic byte-for-byte', () => {

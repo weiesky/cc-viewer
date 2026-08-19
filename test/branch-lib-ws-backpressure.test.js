@@ -18,12 +18,12 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SRC = path.join(__dirname, '..', 'server', 'lib', 'ws-backpressure.js');
+const SRC = path.join(__dirname, '..', 'packages', 'app', 'server', 'lib', 'ws-backpressure.js');
 
 let createBackpressureGate;
 
 before(async () => {
-  ({ createBackpressureGate } = await import('../server/lib/ws-backpressure.js'));
+  ({ createBackpressureGate } = await import('../packages/app/server/lib/ws-backpressure.js'));
 });
 
 // 轮询助手(本文件未用 sleep 断言,timers 全部用 mock.timers 推进)

@@ -8,8 +8,8 @@ import {
   runWaterfallHook,
   runParallelHook,
   getPluginsInfo,
-} from '../server/lib/plugin-loader.js';
-import { LOG_DIR } from '../findcc.js';
+} from '../packages/app/server/lib/plugin-loader.js';
+import { LOG_DIR } from '../packages/app/findcc.js';
 
 const PLUGINS_DIR = getPluginsDir();
 const PREFS_FILE = join(LOG_DIR, 'preferences.json');

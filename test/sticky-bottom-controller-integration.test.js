@@ -15,7 +15,7 @@
  */
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { StickyBottomController } from '../src/utils/stickyBottomController.js';
+import { StickyBottomController } from '../apps/web/src/utils/stickyBottomController.js';
 
 let rafQueue, rafIdSeq, roInstances, origRAF, origCAF, origRO, origDoc, mockNow;
 

@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 let imTr;
 
 before(async () => {
-  ({ imTr } = await import('../src/utils/imTr.js'));
+  ({ imTr } = await import('../apps/web/src/utils/imTr.js'));
 });
 
 describe('imTr', () => {

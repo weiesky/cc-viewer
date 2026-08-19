@@ -16,7 +16,7 @@ let isImageFile;
 let isMutatingCommand;
 
 before(async () => {
-  const mod = await import('../src/utils/commandValidator.js');
+  const mod = await import('../apps/web/src/utils/commandValidator.js');
   isImageFile = mod.isImageFile;
   isMutatingCommand = mod.isMutatingCommand;
 });

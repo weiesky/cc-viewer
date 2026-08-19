@@ -22,7 +22,7 @@ import assert from 'node:assert/strict';
 let ROLE_MAP, getTeammateAvatar;
 
 before(async () => {
-  const m = await import('../src/utils/teammateAvatars.js');
+  const m = await import('../apps/web/src/utils/teammateAvatars.js');
   ROLE_MAP = m.ROLE_MAP;
   getTeammateAvatar = m.getTeammateAvatar;
 });

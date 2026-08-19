@@ -36,8 +36,8 @@ let H;       // skillModalController 模块
 let skillKey;
 
 before(async () => {
-  H = await import('../src/utils/skillModalController.js');
-  ({ skillKey } = await import('../src/utils/skillsParser.js'));
+  H = await import('../apps/web/src/utils/skillModalController.js');
+  ({ skillKey } = await import('../apps/web/src/utils/skillsParser.js'));
 });
 
 // 仿 React 类组件实例：setState 同步、支持函数式 updater（控制器只用函数式），浅合并到 host.state。

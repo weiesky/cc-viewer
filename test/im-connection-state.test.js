@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-imconnstate-test-'));
 process.env.CCV_LOG_DIR = tmpDir;
 
-const core = await import('../server/lib/im-bridge-core.js');
+const core = await import('../packages/app/server/lib/im-bridge-core.js');
 
 // Event-driven fake adapter: captures the hooks object so tests can fire onConnectionChange.
 function makeEventFake(id) {

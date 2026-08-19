@@ -20,7 +20,7 @@ const {
   clearProjectOverride,
   getPrefsPath,
   renderLoginPage,
-} = await import('../server/lib/auth.js');
+} = await import('../packages/app/server/lib/auth.js');
 
 const TOKEN = 'a'.repeat(32);
 

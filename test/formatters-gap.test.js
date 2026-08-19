@@ -10,7 +10,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatSize, formatTimestamp } from '../src/utils/formatters.js';
+import { formatSize, formatTimestamp } from '../apps/web/src/utils/formatters.js';
 
 describe('formatSize', () => {
   it('returns "0 B" for falsy byte counts (0, null, undefined, NaN)', () => {

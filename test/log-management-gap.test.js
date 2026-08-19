@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   validateLogPath, deleteLogFiles, LIVE_SESSION_MTIME_MS,
-} from '../server/lib/log-management.js';
+} from '../packages/app/server/lib/log-management.js';
 
 let tmpDir;
 function entry(ts, url) { return JSON.stringify({ timestamp: ts, url, body: { model: 'm' } }); }

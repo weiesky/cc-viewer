@@ -18,9 +18,9 @@ process.env.CLAUDE_CONFIG_DIR = tmpRoot;
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
 
-const { V2Writer } = await import('../server/lib/v2/v2-writer.js');
-const { readV2RequestsMeta } = await import('../server/lib/v2/meta-rows.js');
-const { resolveSessionDirName } = await import('../server/lib/v2/session-select.js');
+const { V2Writer } = await import('../packages/app/server/lib/v2/v2-writer.js');
+const { readV2RequestsMeta } = await import('../packages/app/server/lib/v2/meta-rows.js');
+const { resolveSessionDirName } = await import('../packages/app/server/lib/v2/session-select.js');
 
 const SID = 'a1a2a3a4-2222-4333-8444-000000000002';
 const USER_ID = JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: SID });
@@ -170,7 +170,7 @@ describe('teammate fold + sid disambiguation (review F2)', () => {
   });
 
   it('readV2SingleEntry sid param disambiguates the same seq across leader and teammate dirs', async () => {
-    const { readV2SingleEntry } = await import('../server/lib/v2/adapter.js');
+    const { readV2SingleEntry } = await import('../packages/app/server/lib/v2/adapter.js');
     const leader = await readV2SingleEntry(leaderDir, { seq: 1, sessionId: SID, cached: false });
     const teammate = await readV2SingleEntry(leaderDir, { seq: 1, sessionId: TM_SID, cached: false });
     assert.ok(leader && teammate);

@@ -13,7 +13,7 @@ import {
   DEFAULT_RETRY_CONFIG, resolveRetryConfig, parseRetryAfter,
   shouldRetryStatus, isStreamResponse, extractModel, applyModelReplacement,
   executeRequest,
-} from '../server/lib/proxy-retry.js';
+} from '../packages/app/server/lib/proxy-retry.js';
 
 // ── Pure functions ────────────────────────────────────────────────
 

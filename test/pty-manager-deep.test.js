@@ -14,7 +14,7 @@ import {
   writeToPty,
   killPty,
   getPtyState,
-} from '../server/pty-manager.js';
+} from '../packages/app/server/pty-manager.js';
 
 describe('withDefaultThinkingDisplay', () => {
   it('returns the input unchanged when it is not an array', () => {

@@ -26,7 +26,7 @@ globalThis.scheduler = {
 let mod;
 before(async () => {
   // 动态 import:此刻 globalThis.scheduler 已就位,模块顶层三元取 scheduler.yield 真分支。
-  mod = await import('../src/utils/ingestPipeline.js');
+  mod = await import('../apps/web/src/utils/ingestPipeline.js');
 });
 
 after(() => {

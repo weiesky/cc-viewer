@@ -21,7 +21,7 @@ import assert from 'node:assert/strict';
 
 let H;
 before(async () => {
-  H = await import('../src/utils/helpers.js');
+  H = await import('../apps/web/src/utils/helpers.js');
 });
 
 // 构造一个能被 contentFilter.isMainAgent 判定为 MainAgent 的最小请求。

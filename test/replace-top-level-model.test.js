@@ -6,7 +6,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { replaceTopLevelModel } from '../server/lib/interceptor-core.js';
+import { replaceTopLevelModel } from '../packages/app/server/lib/interceptor-core.js';
 
 describe('replaceTopLevelModel', () => {
   it('紧凑 JSON（CLI 实际形态）：顶层 model 被替换，其余字节原样保留', () => {

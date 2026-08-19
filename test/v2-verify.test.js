@@ -16,11 +16,11 @@ import { mkdtempSync, rmSync, mkdirSync, appendFileSync, readFileSync, writeFile
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { convertProject } from '../server/lib/v2/convert.js';
-import { resolveSessionDirName } from '../server/lib/v2/session-select.js';
-import { verifyV1File } from '../server/lib/v2/verify.js';
-import * as replay from '../server/lib/v2/replay.js';
-import { _resetForTest } from '../server/lib/error-report.js';
+import { convertProject } from '../packages/app/server/lib/v2/convert.js';
+import { resolveSessionDirName } from '../packages/app/server/lib/v2/session-select.js';
+import { verifyV1File } from '../packages/app/server/lib/v2/verify.js';
+import * as replay from '../packages/app/server/lib/v2/replay.js';
+import { _resetForTest } from '../packages/app/server/lib/error-report.js';
 
 let logDir;
 const PROJECT = 'proj';
@@ -103,8 +103,8 @@ describe('replay units', () => {
   });
 
   it('blobRefOf matches the BlobStore CAS formula', async () => {
-    const { BlobStore } = await import('../server/lib/v2/blob-store.js');
-    const { ensureSessionDirSync } = await import('../server/lib/v2/layout.js');
+    const { BlobStore } = await import('../packages/app/server/lib/v2/blob-store.js');
+    const { ensureSessionDirSync } = await import('../packages/app/server/lib/v2/layout.js');
     const paths = ensureSessionDirSync(mkdtempSync(join(tmpdir(), 'ccv-ref-')), 'p', SID);
     const store = new BlobStore(paths);
     const val = [{ name: 'Bash', x: 1 }];

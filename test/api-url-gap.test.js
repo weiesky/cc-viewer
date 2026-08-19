@@ -25,7 +25,7 @@ const _origDocument = globalThis.document;
 globalThis.window = { location: { search: '?token=SECRET&foo=bar' } };
 globalThis.document = { querySelector: () => null };
 
-const { apiUrl, getBasePath, appendToken } = await import('../src/utils/apiUrl.js');
+const { apiUrl, getBasePath, appendToken } = await import('../apps/web/src/utils/apiUrl.js');
 
 after(() => {
   if (_origWindow === undefined) delete globalThis.window; else globalThis.window = _origWindow;

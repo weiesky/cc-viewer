@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parseMemoryLink } from '../src/utils/memoryLinkParser.js';
+import { parseMemoryLink } from '../apps/web/src/utils/memoryLinkParser.js';
 
 describe('parseMemoryLink', () => {
   describe('happy path: single .md basename', () => {

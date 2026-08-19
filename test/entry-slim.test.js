@@ -14,8 +14,8 @@ import {
   internMessagesToolResultBlocks,
   _resetInternPoolsForTest,
   _getInternPoolStatsForTest,
-} from '../src/utils/entry-slim.js';
-import { _resetReadPoolForTest } from '../src/utils/readResultPool.js';
+} from '../apps/web/src/utils/entry-slim.js';
+import { _resetReadPoolForTest } from '../apps/web/src/utils/readResultPool.js';
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 

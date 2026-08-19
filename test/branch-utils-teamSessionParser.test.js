@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 let extractTeamSessions, isStrongTerminal, END_REASON;
 
 before(async () => {
-  const mod = await import('../src/utils/teamSessionParser.js');
+  const mod = await import('../apps/web/src/utils/teamSessionParser.js');
   extractTeamSessions = mod.extractTeamSessions;
   isStrongTerminal = mod.isStrongTerminal;
   END_REASON = mod.END_REASON;

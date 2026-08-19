@@ -11,7 +11,7 @@ import {
   _resetReadPoolForTest,
   _getReadPoolSizeForTest,
   _getReadPoolEvictionsForTest,
-} from '../src/utils/readResultPool.js';
+} from '../apps/web/src/utils/readResultPool.js';
 
 describe('internReadResult', () => {
   it('should share reference for identical long strings', () => {

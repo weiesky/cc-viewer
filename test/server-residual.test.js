@@ -110,7 +110,7 @@ describeCli('server.js residual: deps.setAuthConfig / clearAuthOverride via /api
   let mod, port;
 
   before(async () => {
-    mod = await import('../server/server.js');
+    mod = await import('../packages/app/server/server.js');
     const srv = await mod.startViewer();
     assert.ok(srv, 'workspace server should start');
     port = mod.getPort();
@@ -157,7 +157,7 @@ describeCli('server.js residual: _notifyParentPending switch via broadcastWsMess
   let captured;
 
   before(async () => {
-    mod = await import('../server/server.js');
+    mod = await import('../packages/app/server/server.js');
     const srv = await mod.startViewer();
     assert.ok(srv);
     port = mod.getPort();
@@ -227,7 +227,7 @@ describeCli('server.js residual: setSdkStreamingState no-edge inactive branch', 
   let mod;
 
   before(async () => {
-    mod = await import('../server/server.js');
+    mod = await import('../packages/app/server/server.js');
     const srv = await mod.startViewer();
     assert.ok(srv);
     mod.__testing.reset();
@@ -269,7 +269,7 @@ describeCli('server.js residual: beforeRequest plugin throw is SWALLOWED by load
   const PLUGIN_NAME = 'residual-throwing.js';
 
   before(async () => {
-    mod = await import('../server/server.js');
+    mod = await import('../packages/app/server/server.js');
     const srv = await mod.startViewer();
     assert.ok(srv);
     port = mod.getPort();
@@ -355,7 +355,7 @@ describeCli('server.js residual: serverStarted interactions resolvePerm / resolv
     ].join('\n');
     writeFileSync(join(pluginsDir, PLUGIN_NAME), pluginContent);
 
-    mod = await import('../server/server.js');
+    mod = await import('../packages/app/server/server.js');
     // 确保上一个 describe 的 server 已停（其 after 已 stop），干净重启让 startViewer 重新
     // loadPlugins 装载本插件 → serverStarted 触发 → interactions 暂存。
     try { await mod.stopViewer(); } catch {}

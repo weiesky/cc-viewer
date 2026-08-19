@@ -33,7 +33,7 @@ process.env.CCV_LOG_DIR = join(TMP, 'logs');
 let findTranscriptPath, lookupToolUseInput, clearCache;
 
 before(async () => {
-  const mod = await import('../server/lib/session-transcript-reader.js');
+  const mod = await import('../packages/app/server/lib/session-transcript-reader.js');
   findTranscriptPath = mod.findTranscriptPath;
   lookupToolUseInput = mod.lookupToolUseInput;
   clearCache = mod.clearCache;

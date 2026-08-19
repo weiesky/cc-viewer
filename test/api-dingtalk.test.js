@@ -27,7 +27,7 @@ process.env.CCV_START_PORT = '19780';
 process.env.CCV_MAX_PORT = '19789';
 
 // Stub the bridge's outbound fetch so /test never touches the network.
-const bridge = await import('../server/lib/dingtalk-bridge.js');
+const bridge = await import('../packages/app/server/lib/dingtalk-bridge.js');
 bridge.__setFetchForTests(async (url) => {
   if (url.includes('accessToken')) return { ok: true, json: async () => ({ accessToken: 'tok', expireIn: 7200 }) };
   return { ok: true, json: async () => ({}) };
@@ -50,7 +50,7 @@ describe('DingTalk config API (loopback=admin)', { concurrency: false }, () => {
   let stopViewer, getPort, port;
 
   before(async () => {
-    const mod = await import('../server/server.js');
+    const mod = await import('../packages/app/server/server.js');
     stopViewer = mod.stopViewer;
     getPort = mod.getPort;
     assert.ok(await mod.startViewer(), 'server should start');
@@ -113,8 +113,8 @@ describe('DingTalk config API (loopback=admin)', { concurrency: false }, () => {
 // loopback HTTP is always isLocal:true.
 describe('GET /api/dingtalk/status loopback gate', () => {
   it('strips appKey / allowlist / boundConversationId / lastError for remote callers', async () => {
-    const { dingtalkRoutes } = await import('../server/routes/dingtalk.js');
-    const { saveDingTalkConfig } = await import('../server/lib/dingtalk-config.js');
+    const { dingtalkRoutes } = await import('../packages/app/server/routes/dingtalk.js');
+    const { saveDingTalkConfig } = await import('../packages/app/server/lib/dingtalk-config.js');
     saveDingTalkConfig({ enabled: true, appKey: 'dkSECRET', appSecret: 'appSecretSECRET', allowStaffIds: ['staff-x'] });
     const route = dingtalkRoutes.find((r) => r.path === '/api/dingtalk/status' && r.method === 'GET');
     const deps = { dingtalk: { isWorker: true, getBridgeStatus: () => ({ running: true, connected: true, boundConversationId: 'cidSECRET', appKeyTail: 'CRET', lastError: 'boom' }) } };
@@ -144,7 +144,7 @@ describe('GET /api/dingtalk/status loopback gate', () => {
   });
 
   it('remote trim keeps connectionState but strips lastError; main branch carries the tri-state', async () => {
-    const { dingtalkRoutes } = await import('../server/routes/dingtalk.js');
+    const { dingtalkRoutes } = await import('../packages/app/server/routes/dingtalk.js');
     const route = dingtalkRoutes.find((r) => r.path === '/api/dingtalk/status' && r.method === 'GET');
     const mkRes = () => { let payload = ''; return { writeHead() {}, end(b) { payload = b || ''; }, get payload() { return payload; } }; };
 
@@ -172,7 +172,7 @@ describe('GET /api/dingtalk/status loopback gate', () => {
 // Cover it with a direct handler call (mirrors the auth test).
 describe('POST /api/dingtalk/config loopback-only guard', () => {
   it('rejects a remote caller with 403 before reading the body', async () => {
-    const { dingtalkRoutes } = await import('../server/routes/dingtalk.js');
+    const { dingtalkRoutes } = await import('../packages/app/server/routes/dingtalk.js');
     const route = dingtalkRoutes.find((r) => r.path === '/api/dingtalk/config' && r.method === 'POST');
     let status = 0, payload = '';
     const res = { writeHead(s) { status = s; }, end(b) { payload = b || ''; } };
@@ -201,7 +201,7 @@ describe('POST /api/dingtalk/config allowlist optional', () => {
   }
 
   it('enabled:true with empty allowStaffIds → 200 and drives restartProcess', async () => {
-    const { dingtalkRoutes } = await import('../server/routes/dingtalk.js');
+    const { dingtalkRoutes } = await import('../packages/app/server/routes/dingtalk.js');
     const route = dingtalkRoutes.find((r) => r.path === '/api/dingtalk/config' && r.method === 'POST');
     const calls = [];
     const deps = { MAX_POST_BODY: 1e6, dingtalk: { isWorker: false, restartProcess: async () => calls.push('restart'), stopProcess: async () => calls.push('stop') } };
@@ -212,7 +212,7 @@ describe('POST /api/dingtalk/config allowlist optional', () => {
   });
 
   it('invalid JSON body → 400 Invalid JSON (dingtalk.js:62-65)', async () => {
-    const { dingtalkRoutes } = await import('../server/routes/dingtalk.js');
+    const { dingtalkRoutes } = await import('../packages/app/server/routes/dingtalk.js');
     const route = dingtalkRoutes.find((r) => r.path === '/api/dingtalk/config' && r.method === 'POST');
     let status = 0, payload = '';
     let resolveEnd; const done = new Promise((r) => { resolveEnd = r; });
@@ -226,7 +226,7 @@ describe('POST /api/dingtalk/config allowlist optional', () => {
 
   it('process apply error is swallowed → still 200 (dingtalk.js:91-92)', async () => {
     // restartProcess 抛错时 catch 记日志但不影响响应：仍回 200 + connection。
-    const { dingtalkRoutes } = await import('../server/routes/dingtalk.js');
+    const { dingtalkRoutes } = await import('../packages/app/server/routes/dingtalk.js');
     const route = dingtalkRoutes.find((r) => r.path === '/api/dingtalk/config' && r.method === 'POST');
     const deps = { MAX_POST_BODY: 1e6, dingtalk: { restartProcess: async () => { throw new Error('apply-boom'); }, stopProcess: async () => {} } };
     const r = await call(route, { enabled: true, appKey: 'a', appSecret: 'b', allowStaffIds: ['s1'] }, deps);
@@ -238,7 +238,7 @@ describe('POST /api/dingtalk/config allowlist optional', () => {
 // POST /api/dingtalk/test —— loopback gate + 缺凭据短路（不触网络）
 describe('POST /api/dingtalk/test branches', () => {
   it('remote caller → 403 Loopback only before reading body (dingtalk.js:100-103)', async () => {
-    const { dingtalkRoutes } = await import('../server/routes/dingtalk.js');
+    const { dingtalkRoutes } = await import('../packages/app/server/routes/dingtalk.js');
     const route = dingtalkRoutes.find((r) => r.path === '/api/dingtalk/test' && r.method === 'POST');
     let status = 0, payload = '';
     const res = { writeHead(s) { status = s; }, end(b) { payload = b || ''; } };
@@ -251,8 +251,8 @@ describe('POST /api/dingtalk/test branches', () => {
   });
 
   it('missing appKey/appSecret (none stored) → 200 { ok:false } without touching the network (dingtalk.js:114-117)', async () => {
-    const { dingtalkRoutes } = await import('../server/routes/dingtalk.js');
-    const { saveDingTalkConfig } = await import('../server/lib/dingtalk-config.js');
+    const { dingtalkRoutes } = await import('../packages/app/server/routes/dingtalk.js');
+    const { saveDingTalkConfig } = await import('../packages/app/server/lib/dingtalk-config.js');
     // 清掉已存配置，确保 stored.appKey/appSecret 也为空 → 命中缺凭据短路。
     saveDingTalkConfig({ enabled: false, appKey: '', appSecret: '', allowStaffIds: [] });
     const route = dingtalkRoutes.find((r) => r.path === '/api/dingtalk/test' && r.method === 'POST');

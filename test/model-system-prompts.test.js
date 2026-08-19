@@ -13,7 +13,7 @@ import {
   writeModelPrompt,
   deleteModelPrompt,
   matchModelPrompt,
-} from '../server/lib/model-system-prompts.js';
+} from '../packages/app/server/lib/model-system-prompts.js';
 
 describe('model-system-prompts: 名称/文件名语法', () => {
   it('normalize: 合法名转大写', () => {

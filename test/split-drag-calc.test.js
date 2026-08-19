@@ -11,7 +11,7 @@ import {
   TERMINAL_CHAR_WIDTH,
   RESIZER_WIDTH_PX,
   SNAP_THRESHOLD_PX,
-} from '../src/utils/splitDragCalc.js';
+} from '../apps/web/src/utils/splitDragCalc.js';
 
 describe('computeTerminalSnapLines', () => {
   it('produces one line per standard column count inside the 15%-75% band', () => {

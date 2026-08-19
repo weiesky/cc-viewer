@@ -4,8 +4,8 @@
 //  - 未知/大小写偏差/含换行/空 → 返回 null,调用方回落原文
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { getSlashCommandLabel, getSlashCommandTooltip } from '../src/utils/slashCommandLabels.js';
-import { setLang, getLang } from '../src/i18n.js';
+import { getSlashCommandLabel, getSlashCommandTooltip } from '../apps/web/src/utils/slashCommandLabels.js';
+import { setLang, getLang } from '../apps/web/src/i18n.js';
 
 // 防止本测试切换 lang 污染同进程其它测试。
 let originalLang;

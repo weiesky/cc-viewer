@@ -15,7 +15,7 @@ import {
   shouldReloadStaleChunk,
   reloadOnStaleChunk,
   handleStaleChunk,
-} from '../src/utils/lazyWithReload.js';
+} from '../apps/web/src/utils/lazyWithReload.js';
 
 const RELOAD_WINDOW_MS = 5 * 60 * 1000;
 

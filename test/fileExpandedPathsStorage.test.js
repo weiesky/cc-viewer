@@ -11,7 +11,7 @@ import {
   saveExpandedPaths,
   loadGitChangesCollapsedDirs,
   saveGitChangesCollapsedDirs,
-} from '../src/utils/fileExpandedPathsStorage.js';
+} from '../apps/web/src/utils/fileExpandedPathsStorage.js';
 
 // 这套 mock 不是真 sessionStorage 的完整行为等价物，只覆盖本模块用到的
 // getItem / setItem / removeItem。type coercion 已对齐（setItem 内部 String()），

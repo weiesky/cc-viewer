@@ -28,7 +28,7 @@ function freshDir(label) {
 }
 
 before(async () => {
-  mod = await import('../server/lib/ensure-hooks.js');
+  mod = await import('../packages/app/server/lib/ensure-hooks.js');
 });
 after(() => {
   process.env.CLAUDE_CONFIG_DIR = baseHome;

@@ -31,7 +31,7 @@ process.env.CLAUDE_CONFIG_DIR = join(TMP_ROOT, 'claude');
 
 let routes;
 before(async () => {
-  ({ teamRoutes: routes } = await import('../server/routes/team.js'));
+  ({ teamRoutes: routes } = await import('../packages/app/server/routes/team.js'));
 });
 
 function handlerFor(path, method) {

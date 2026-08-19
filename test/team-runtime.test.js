@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { checkTeamRuntime, checkTeamsRuntime } from '../server/lib/team-runtime.js';
+import { checkTeamRuntime, checkTeamsRuntime } from '../packages/app/server/lib/team-runtime.js';
 
 let sandbox;
 

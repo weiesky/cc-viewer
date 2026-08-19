@@ -4,7 +4,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { publish, subscribe, getLatest, subscribeActive, getActiveWorkflows } = await import('../src/utils/workflowStore.js');
+const { publish, subscribe, getLatest, subscribeActive, getActiveWorkflows } = await import('../apps/web/src/utils/workflowStore.js');
 
 describe('workflowStore', () => {
   it('按 runId 与 taskId 双键分发', () => {

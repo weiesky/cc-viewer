@@ -25,7 +25,7 @@ const tmpHome = mkdtempSync(join(tmpdir(), 'ccv-ensure-hooks-test-'));
 process.env.CLAUDE_CONFIG_DIR = tmpHome;
 delete process.env.CCV_HOOK_TIMEOUT_S; // 主块固定走默认 86400
 
-const MODULE_PATH = fileURLToPath(new URL('../server/lib/ensure-hooks.js', import.meta.url));
+const MODULE_PATH = fileURLToPath(new URL('../packages/app/server/lib/ensure-hooks.js', import.meta.url));
 const settingsPath = () => resolve(tmpHome, 'settings.json');
 
 function loadSettings() {
@@ -74,7 +74,7 @@ const permPath = `${repoRoot}server/lib/perm-bridge.js`;
 const turnEndPath = `${repoRoot}server/lib/turn-end-bridge.js`;
 
 describe('lib/ensure-hooks.js — timeout field v3 migration (canonical import)', () => {
-  before(async () => { mod = await import('../server/lib/ensure-hooks.js'); });
+  before(async () => { mod = await import('../packages/app/server/lib/ensure-hooks.js'); });
   beforeEach(() => cleanup());
   after(() => { try { rmSync(tmpHome, { recursive: true, force: true }); } catch {} });
 

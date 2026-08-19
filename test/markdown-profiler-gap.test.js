@@ -20,7 +20,7 @@ import {
   measureParse,
   recordMountSample,
   DEV_PROFILER_ENABLED,
-} from '../src/utils/markdownProfiler.js';
+} from '../apps/web/src/utils/markdownProfiler.js';
 
 describe('measureParse — DEV=false 直通分支', () => {
   it('原样返回回调结果（不做计时、不触 performance）', () => {

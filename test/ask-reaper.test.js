@@ -7,7 +7,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { reapDeadAskWaiters, sweepOrphanedDiskAsks } from '../server/lib/ask-reaper.js';
+import { reapDeadAskWaiters, sweepOrphanedDiskAsks } from '../packages/app/server/lib/ask-reaper.js';
 
 const LIVENESS = 90_000;
 const INTERVAL = 30_000;
@@ -231,7 +231,7 @@ describe('sweepOrphanedDiskAsks', () => {
 // gate must keep wrapping the boot-sweep arm, and the stop path must dispose both
 // reaper timers (this repo has had leak-on-restart interval bugs before).
 describe('server.js reaper wiring (source invariants)', () => {
-  const src = readFileSync(new URL('../server/server.js', import.meta.url), 'utf-8');
+  const src = readFileSync(new URL('../packages/app/server/server.js', import.meta.url), 'utf-8');
 
   it('boot sweep is gated on custom CCV_START_PORT/CCV_MAX_PORT being absent', () => {
     assert.match(src, /const _customPortRange = !!\(process\.env\.CCV_START_PORT \|\| process\.env\.CCV_MAX_PORT\);/);

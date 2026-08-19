@@ -29,9 +29,9 @@ import { tmpdir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
-const INTERCEPTOR = join(REPO_ROOT, 'server', 'interceptor.js');
+const INTERCEPTOR = join(REPO_ROOT, 'packages', 'app', 'server', 'interceptor.js');
 
-// 私有 LOG 目录：必须在 import('../server/interceptor.js') 之前设好
+// 私有 LOG 目录：必须在 import('../packages/app/server/interceptor.js') 之前设好
 const logDir = mkdtempSync(join(tmpdir(), 'ccv-branch-itc-'));
 process.env.CCV_LOG_DIR = logDir;
 process.env.CCV_PROXY_MODE = '1';   // 跳过模块顶层 setupInterceptor 自执行
@@ -125,8 +125,8 @@ before(async () => {
     lastFetchArgs = [url, opts];
     return nextResponse ? nextResponse(url, opts) : new Response('{}', { status: 200 });
   };
-  mod = await import('../server/interceptor.js');
-  ({ iterateV2RawEntries } = await import('../server/lib/v2/adapter.js'));
+  mod = await import('../packages/app/server/interceptor.js');
+  ({ iterateV2RawEntries } = await import('../packages/app/server/lib/v2/adapter.js'));
   mod.setupInterceptor();
   assert.equal(mod.LOG_FILE, '', '1.7.0 起 LOG_FILE 恒为空串（v1 写路径已退役）');
   await prime();

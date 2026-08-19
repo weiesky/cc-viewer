@@ -16,14 +16,14 @@ import { join } from 'node:path';
 //   - server/routes/files-fs.js —— win32 分支均已带 windowsHide，POSIX-only 分支（open/xdg-open
 //                              /gnome-terminal 等）平台门控不可达 Windows，无需逐一加注
 const SCANNED_FILES = [
-  'electron/main.js',
-  'server/pty-manager.js',
-  'server/lib/im-process-manager.js',
-  'server/lib/updater.js',
-  'server/lib/git-diff.js',
-  'server/lib/plugin-manager.js',
-  'server/server.js',
-  'findcc.js',
+  'apps/electron/electron/main.js',
+  'packages/app/server/pty-manager.js',
+  'packages/app/server/lib/im-process-manager.js',
+  'packages/app/server/lib/updater.js',
+  'packages/app/server/lib/git-diff.js',
+  'packages/app/server/lib/plugin-manager.js',
+  'packages/app/server/server.js',
+  'packages/app/findcc.js',
 ];
 
 const ROOT = join(import.meta.dirname, '..');

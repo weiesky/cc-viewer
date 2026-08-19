@@ -12,7 +12,7 @@ let mergeMainAgentSessions;
 let messageFingerprint;
 
 before(async () => {
-  const mod = await import('../src/utils/sessionMerge.js');
+  const mod = await import('../apps/web/src/utils/sessionMerge.js');
   mergeMainAgentSessions = mod.mergeMainAgentSessions;
   messageFingerprint = mod.messageFingerprint;
 });
@@ -333,7 +333,7 @@ describe('findReverseAnchor 间接分支', () => {
 describe('shouldDegradeBrokenMerge + partial-session merge', () => {
   let shouldDegradeBrokenMerge;
   before(async () => {
-    const mod = await import('../src/utils/sessionMerge.js');
+    const mod = await import('../apps/web/src/utils/sessionMerge.js');
     shouldDegradeBrokenMerge = mod.shouldDegradeBrokenMerge;
   });
 

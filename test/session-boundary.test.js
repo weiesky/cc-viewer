@@ -17,7 +17,7 @@ import {
   isSessionBoundary,
   messageFingerprint,
   findReverseAnchor,
-} from '../server/lib/session-boundary.js';
+} from '../packages/app/server/lib/session-boundary.js';
 
 const textMsg = (role, text) => ({ role, content: [{ type: 'text', text }] });
 const clearMsg = () => textMsg('user', '<command-name>/clear</command-name>');
@@ -30,14 +30,14 @@ describe('canonical import path exposes the full shared surface', () => {
   });
 
   it('src/utils/clearCheckpoint.js shell re-exports the same function objects', async () => {
-    const shell = await import('../src/utils/clearCheckpoint.js');
+    const shell = await import('../packages/app/src/utils/clearCheckpoint.js');
     assert.equal(shell.isPostClearCheckpoint, isPostClearCheckpoint);
     assert.equal(shell.isCompactContinuation, isCompactContinuation);
     assert.equal(shell.isSessionBoundary, isSessionBoundary);
   });
 
   it('src/utils/sessionMerge.js re-exports the same messageFingerprint', async () => {
-    const merge = await import('../src/utils/sessionMerge.js');
+    const merge = await import('../apps/web/src/utils/sessionMerge.js');
     assert.equal(merge.messageFingerprint, messageFingerprint);
   });
 });

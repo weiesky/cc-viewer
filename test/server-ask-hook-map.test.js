@@ -54,7 +54,7 @@ describeCli('server ask-hook Map (concurrent asks)', { concurrency: false }, () 
   let port, stopViewer;
 
   before(async () => {
-    const mod = await import('../server/server.js');
+    const mod = await import('../packages/app/server/server.js');
     await mod.startViewer();
     port = mod.getPort();
     stopViewer = mod.stopViewer;

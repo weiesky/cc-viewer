@@ -39,6 +39,13 @@ brew install cc-viewer
 brew upgrade cc-viewer   # Güncelleme için bunu kullanın; brew ile kurulan ccv için npm install -g kullanmayın
 ```
 
+#### pnpm üzerinden kurulum (global)
+
+```bash
+pnpm add -g cc-viewer
+pnpm add -g cc-viewer@latest   # Güncelleme için bunu kullanın; pnpm ile kurulan ccv için npm install -g kullanmayın
+```
+
 ### Başlatma yöntemi
 
 ccv, claude'un doğrudan yerine geçen bir araçtır: tüm parametreler claude'a aktarılır ve aynı zamanda Web Viewer başlatılır.

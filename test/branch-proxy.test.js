@@ -47,9 +47,9 @@ function proxyReq(path, { method = 'POST', body = null } = {}) {
 }
 
 before(async () => {
-  proxyMod = await import('../server/proxy.js');
+  proxyMod = await import('../packages/app/server/proxy.js');
   ({ startProxy } = proxyMod);
-  interceptor = await import('../server/interceptor.js');
+  interceptor = await import('../packages/app/server/interceptor.js');
   proxyPort = await startProxy();
   assert.ok(proxyPort > 0);
 });

@@ -13,11 +13,11 @@ const __isoDir = mkdtempSync(join(tmpdir(), 'ccv-imlock-'));
 process.env.CCV_LOG_DIR = __isoDir;
 process.env.CLAUDE_CONFIG_DIR = __isoDir;
 
-const { LOG_DIR } = await import('../findcc.js');
+const { LOG_DIR } = await import('../packages/app/findcc.js');
 const {
   imDir, lockPath, isPidAlive, readImLock, acquireImLock,
   updateImLockPort, releaseImLock, clearImLock, getImLiveness, BOOT_WINDOW_MS,
-} = await import('../server/lib/im-lock.js');
+} = await import('../packages/app/server/lib/im-lock.js');
 
 // 每个用例用独立 id，避免互相干扰；beforeEach 清掉残留目录。
 let n = 0;

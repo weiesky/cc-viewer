@@ -19,7 +19,7 @@ import { mkdirSync, writeFileSync, rmSync, mkdtempSync, readFileSync, existsSync
 import { join, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execSync } from 'node:child_process';
-import { isPathContained } from '../server/lib/file-api.js';
+import { isPathContained } from '../packages/app/server/lib/file-api.js';
 
 const TMP = mkdtempSync(join(tmpdir(), 'ccv-git-restore-'));
 const PROJECT = join(TMP, 'project');
@@ -72,7 +72,7 @@ describe('POST /api/git-restore', { concurrency: false }, () => {
   let port;
 
   before(async () => {
-    const mod = await import('../server/server.js');
+    const mod = await import('../packages/app/server/server.js');
     const srv = await mod.startViewer();
     assert.ok(srv);
     port = mod.getPort();

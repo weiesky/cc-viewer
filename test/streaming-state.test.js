@@ -9,7 +9,7 @@ import { unwatchFile } from 'node:fs';
 let streamingState, resetStreamingState, PROFILE_PATH;
 
 before(async () => {
-  const mod = await import('../server/interceptor.js');
+  const mod = await import('../packages/app/server/interceptor.js');
   streamingState = mod.streamingState;
   resetStreamingState = mod.resetStreamingState;
   PROFILE_PATH = mod.PROFILE_PATH;

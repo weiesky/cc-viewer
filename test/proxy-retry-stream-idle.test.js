@@ -14,7 +14,7 @@
  */
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { executeRequest, DEFAULT_RETRY_CONFIG } from '../server/lib/proxy-retry.js';
+import { executeRequest, DEFAULT_RETRY_CONFIG } from '../packages/app/server/lib/proxy-retry.js';
 
 /**
  * Build a fake streaming Response whose body is a real ReadableStream.

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeV2Entries, isV2TranscriptLine, isMetadataRow, buildSyntheticEntry } from '../server/lib/v2-transcript-normalizer.js';
+import { normalizeV2Entries, isV2TranscriptLine, isMetadataRow, buildSyntheticEntry } from '../packages/app/server/lib/v2-transcript-normalizer.js';
 
 // ============================================================================
 // Test helpers — build minimal Claude Code 2.x transcript lines
@@ -236,7 +236,7 @@ describe('normalizeV2Entries', () => {
 
   it('合成 entry 通过 isMainAgent 判定', async () => {
     await import('./_shims/register.mjs');
-    const { isMainAgent } = await import('../src/utils/contentFilter.js');
+    const { isMainAgent } = await import('../packages/app/src/utils/contentFilter.js');
     const rows = [makeLine({ content: 'hi' })];
     const e = normalizeV2Entries(rows)[0];
     assert.equal(isMainAgent(e), true);

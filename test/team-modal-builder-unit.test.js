@@ -24,7 +24,7 @@ import './_shims/register.mjs';
 
 let buildTeamModalData;
 before(async () => {
-  ({ buildTeamModalData } = await import('../src/utils/teamModalBuilder.js'));
+  ({ buildTeamModalData } = await import('../apps/web/src/utils/teamModalBuilder.js'));
 });
 
 // ────────────────────────── fixtures ──────────────────────────

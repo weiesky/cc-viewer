@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickOutputType, renameForType } from '../src/utils/imageResize.js';
+import { pickOutputType, renameForType } from '../apps/web/src/utils/imageResize.js';
 
 // resizeImageIfNeeded 依赖浏览器 canvas/createImageBitmap，不在 node 单测覆盖范围。
 // 这里覆盖纯决策逻辑，保证 HEIC/AVIF/GIF 等会被归一到 JPEG 输出。

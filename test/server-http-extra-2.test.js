@@ -63,7 +63,7 @@ describeCli('server.js terminal WebSocket (CLI mode)', { concurrency: false }, (
   let mod, port, base, token;
 
   before(async () => {
-    mod = await import('../server/server.js');
+    mod = await import('../packages/app/server/server.js');
     const srv = await mod.startViewer();
     assert.ok(srv, 'CLI-mode server should start');
     port = mod.getPort();

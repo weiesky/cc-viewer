@@ -7,7 +7,7 @@
 // 断言按「平台 + sessions」成对计数。
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createImLogWatcher } from '../server/lib/im-log-watcher.js';
+import { createImLogWatcher } from '../packages/app/server/lib/im-log-watcher.js';
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 

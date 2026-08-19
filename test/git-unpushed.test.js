@@ -4,7 +4,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execSync } from 'node:child_process';
-import { getUnpushedCommits, isValidCommitHash, getGitDiffs } from '../server/lib/git-diff.js';
+import { getUnpushedCommits, isValidCommitHash, getGitDiffs } from '../packages/app/server/lib/git-diff.js';
 
 function makeTmpDir() {
   return join(tmpdir(), `ccv-git-unpushed-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);

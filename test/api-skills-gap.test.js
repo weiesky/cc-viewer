@@ -25,7 +25,7 @@ const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 let skillsRoutes, importSkillTo, parseSkillUpload;
 
 before(async () => {
-  const mod = await import('../server/routes/skills.js');
+  const mod = await import('../packages/app/server/routes/skills.js');
   skillsRoutes = mod.skillsRoutes;
   importSkillTo = mod.importSkillTo;
   parseSkillUpload = mod.parseSkillUpload;

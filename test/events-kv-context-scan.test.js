@@ -111,7 +111,7 @@ describe('GET /events kv/context scan semantics', { concurrency: false }, () => 
 
   before(async () => {
     // workspace 模式：先 initForWorkspace 绑定项目，再经 v2 writer 预写会话数据
-    const interceptor = await import('../server/interceptor.js');
+    const interceptor = await import('../packages/app/server/interceptor.js');
     interceptor.initForWorkspace(join(tmpDir, 'scanproj'), { forceNew: true });
     assert.equal(interceptor.LOG_FILE, '', '1.7.0 起 LOG_FILE 恒为空串');
 
@@ -132,7 +132,7 @@ describe('GET /events kv/context scan semantics', { concurrency: false }, () => 
     // (2) teammate 伪 mainAgent（teammate 子进程条目也可能双标 mainAgent:true）：
     //     写成 sibling teammate session（meta.leader），adapter 读 leader 时按 §10 re-join。
     //     必须不顶掉上面那条真实 mainAgent。
-    const { V2Writer } = await import('../server/lib/v2/v2-writer.js');
+    const { V2Writer } = await import('../packages/app/server/lib/v2/v2-writer.js');
     const tw = new V2Writer({ logDir: tmpDir, project: 'scanproj', leader: { agentName: 'bob' } });
     const t1 = mainAgentEntry('2026-06-06T01:02:00.000Z', 999, SID_TM,
       [{ role: 'user', content: 'tm task' }], { teammate: 'bob' });
@@ -140,7 +140,7 @@ describe('GET /events kv/context scan semantics', { concurrency: false }, () => 
     tw.ingestCompletion(th, t1);
     await tw.flush();
 
-    const mod = await import('../server/server.js');
+    const mod = await import('../packages/app/server/server.js');
     const srv = await mod.startViewer();
     assert.ok(srv, 'server should start');
     stopViewer = mod.stopViewer;
@@ -176,7 +176,7 @@ describe('GET /events kv/context scan semantics', { concurrency: false }, () => 
     // 代理热切换语义:body.model 是客户端原始模型(claude-opus-4-8),response.body.model
     // 才是真实上游模型(kimi-k3 → 规则表 256K 档)。getContextSizeForModel 的 entry 路径
     // 必须取后者,且不被启动缓存/请求名带偏。
-    const w = (await import('../server/interceptor.js'))._v2Writer;
+    const w = (await import('../packages/app/server/interceptor.js'))._v2Writer;
     const hot = mainAgentEntry('2026-06-06T01:03:00.000Z', 333, SID_MAIN,
       [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'yo' }, { role: 'user', content: 'hot' }]);
     hot.response.body.model = 'kimi-k3';

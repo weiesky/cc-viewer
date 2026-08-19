@@ -17,7 +17,7 @@ process.env.CCV_START_PORT = '19770';
 process.env.CCV_MAX_PORT = '19779';
 
 // Stub the shared bridge fetch so /test never touches the network (feishu testConnection uses it).
-const core = await import('../server/lib/im-bridge-core.js');
+const core = await import('../packages/app/server/lib/im-bridge-core.js');
 core.__setFetchForTests(async (url) => {
   if (url.includes('tenant_access_token')) return { ok: true, json: async () => ({ code: 0, tenant_access_token: 't', expire: 7200 }) };
   return { ok: true, json: async () => ({ code: 0 }) };
@@ -40,7 +40,7 @@ describe('Generic /api/im/:platform config API (loopback=admin)', { concurrency:
   let stopViewer, getPort, port;
 
   before(async () => {
-    const mod = await import('../server/server.js');
+    const mod = await import('../packages/app/server/server.js');
     stopViewer = mod.stopViewer;
     getPort = mod.getPort;
     assert.ok(await mod.startViewer(), 'server should start');
@@ -163,7 +163,7 @@ describe('Generic /api/im/:platform config API (loopback=admin)', { concurrency:
   });
 
   it('GET /api/im/:platform/senders surfaces a persisted sender map', async () => {
-    const { upsertSender } = await import('../server/lib/im-senders.js');
+    const { upsertSender } = await import('../packages/app/server/lib/im-senders.js');
     upsertSender('discord', 'snow1', { name: 'Alice', avatar: 'https://a/1.png' });
     const res = await httpRequest(port, '/api/im/discord/senders');
     assert.equal(res.status, 200);
@@ -200,7 +200,7 @@ describe('Generic /api/im/:platform config API (loopback=admin)', { concurrency:
 // Loopback HTTP is always isLocal:true, so cover the !isLocal 403 guard with a direct handler call.
 describe('POST /api/im/:platform/config loopback-only guard', () => {
   it('rejects a remote caller with 403 before reading the body', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const route = imRoutes.find((r) => r.predicate('/api/im/feishu/config', 'POST'));
     let status = 0, payload = '';
     const res = { writeHead(s) { status = s; }, end(b) { payload = b || ''; } };
@@ -213,8 +213,8 @@ describe('POST /api/im/:platform/config loopback-only guard', () => {
   });
 
   it('GET status strips cred fields for a remote caller', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
-    const { saveConfig } = await import('../server/lib/im-config.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
+    const { saveConfig } = await import('../packages/app/server/lib/im-config.js');
     saveConfig('feishu', { enabled: true, appId: 'cli_SECRET', appSecret: 'sec_SECRET', region: 'lark', allowUserIds: ['ou_SECRET'] });
     const route = imRoutes.find((r) => r.predicate('/api/im/feishu/status', 'GET'));
     // isWorker:true → imStatus reports its own in-process adapter (the leaky connection we stub here);
@@ -236,8 +236,8 @@ describe('POST /api/im/:platform/config loopback-only guard', () => {
   });
 
   it('GET /api/im/discord/status strips the token + allowlist for a remote caller', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
-    const { saveConfig } = await import('../server/lib/im-config.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
+    const { saveConfig } = await import('../packages/app/server/lib/im-config.js');
     saveConfig('discord', { enabled: true, botToken: 'tok_SECRET', allowUserIds: ['u_SECRET'] });
     const route = imRoutes.find((r) => r.predicate('/api/im/discord/status', 'GET'));
     const deps = { im: { isWorker: true, getBridgeStatus: () => ({ running: true, connected: true, boundConversationId: 'dm_SECRET', lastError: 'boom' }) } };
@@ -271,7 +271,7 @@ describe('IM routes: allowlist optional / process control / logs (manager-backed
   }
 
   it('config POST with enabled:true but NO allowlist → 200, still spawns (allowlist is optional)', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const route = imRoutes.find((r) => r.predicate('/api/im/feishu/config', 'POST'));
     const calls = [];
     const deps = { MAX_POST_BODY: 1e6, im: { isWorker: false, restartProcess: async (id) => calls.push(['restart', id]), stopProcess: async (id) => calls.push(['stop', id]) } };
@@ -283,7 +283,7 @@ describe('IM routes: allowlist optional / process control / logs (manager-backed
   });
 
   it('GET /api/im/:platform/append-system returns the preset when no file exists yet', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const route = imRoutes.find((r) => r.predicate('/api/im/discord/append-system', 'GET'));
     const r = await call(route, { pathname: '/api/im/discord/append-system', deps: { MAX_POST_BODY: 1e6 } });
     assert.equal(r.status, 200);
@@ -292,7 +292,7 @@ describe('IM routes: allowlist optional / process control / logs (manager-backed
   });
 
   it('POST /api/im/:platform/append-system persists content; GET reads it back', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const post = imRoutes.find((r) => r.predicate('/api/im/discord/append-system', 'POST'));
     const get = imRoutes.find((r) => r.predicate('/api/im/discord/append-system', 'GET'));
     const w = await call(post, { pathname: '/api/im/discord/append-system', body: { content: '# custom persona\nbe brief' }, deps: { MAX_POST_BODY: 1e6 } });
@@ -303,7 +303,7 @@ describe('IM routes: allowlist optional / process control / logs (manager-backed
   });
 
   it('POST /api/im/:platform/append-system rejects non-string content (400) and non-local caller (403)', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const post = imRoutes.find((r) => r.predicate('/api/im/discord/append-system', 'POST'));
     const bad = await call(post, { pathname: '/api/im/discord/append-system', body: { content: 123 }, deps: { MAX_POST_BODY: 1e6 } });
     assert.equal(bad.status, 400);
@@ -312,8 +312,8 @@ describe('IM routes: allowlist optional / process control / logs (manager-backed
   });
 
   it('POST /api/im/:platform/append-system rejects content over MAX_IM_APPEND_SYSTEM_CHARS (413)', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
-    const { MAX_IM_APPEND_SYSTEM_CHARS } = await import('../server/lib/im-append-system.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
+    const { MAX_IM_APPEND_SYSTEM_CHARS } = await import('../packages/app/server/lib/im-append-system.js');
     const post = imRoutes.find((r) => r.predicate('/api/im/discord/append-system', 'POST'));
     const tooBig = 'a'.repeat(MAX_IM_APPEND_SYSTEM_CHARS + 1);
     // MAX_POST_BODY must exceed the JSON body so the size guard (413), not the body-limit, is what trips.
@@ -322,7 +322,7 @@ describe('IM routes: allowlist optional / process control / logs (manager-backed
   });
 
   it('config POST enabled with whitespace-only allowlist → fires audit warning + still 200/spawns', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const route = imRoutes.find((r) => r.predicate('/api/im/feishu/config', 'POST'));
     const calls = [];
     const deps = { MAX_POST_BODY: 1e6, im: { isWorker: false, restartProcess: async (id) => calls.push(['restart', id]), stopProcess: async (id) => calls.push(['stop', id]) } };
@@ -338,7 +338,7 @@ describe('IM routes: allowlist optional / process control / logs (manager-backed
   });
 
   it('config POST with enabled:true AND allowlist → restartProcess(id)', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const route = imRoutes.find((r) => r.predicate('/api/im/feishu/config', 'POST'));
     const calls = [];
     const deps = { MAX_POST_BODY: 1e6, im: { isWorker: false, restartProcess: async (id) => calls.push(['restart', id]), stopProcess: async (id) => calls.push(['stop', id]) } };
@@ -349,7 +349,7 @@ describe('IM routes: allowlist optional / process control / logs (manager-backed
   });
 
   it('config POST with enabled:false → stopProcess(id)', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const route = imRoutes.find((r) => r.predicate('/api/im/feishu/config', 'POST'));
     const calls = [];
     const deps = { MAX_POST_BODY: 1e6, im: { isWorker: false, restartProcess: async (id) => calls.push(['restart', id]), stopProcess: async (id) => calls.push(['stop', id]) } };
@@ -359,7 +359,7 @@ describe('IM routes: allowlist optional / process control / logs (manager-backed
   });
 
   it('process POST {action:restart} drives the manager; rejects in a worker process', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const route = imRoutes.find((r) => r.predicate('/api/im/feishu/process', 'POST'));
     const calls = [];
     const mainDeps = { MAX_POST_BODY: 1e6, im: { isWorker: false, restartProcess: async (id) => calls.push(['restart', id]), getProcessStatus: async () => ({ running: true, connected: false }) } };
@@ -374,7 +374,7 @@ describe('IM routes: allowlist optional / process control / logs (manager-backed
   });
 
   it('logs GET returns {project, latest:null} when the worker has no logs', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const route = imRoutes.find((r) => r.predicate('/api/im/discord/logs', 'GET'));
     const r = await call(route, { pathname: '/api/im/discord/logs', isLocal: true, deps: { im: {} } });
     assert.equal(r.status, 200);
@@ -383,7 +383,7 @@ describe('IM routes: allowlist optional / process control / logs (manager-backed
   });
 
   it('status (main branch) carries connectionState/lastError from getProcessStatus', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const route = imRoutes.find((r) => r.predicate('/api/im/feishu/status', 'GET'));
     const deps = { im: { isWorker: false, getProcessStatus: async () => ({ state: 'ready', running: true, connected: false, connectionState: 'reconnecting', lastError: 'net down', pid: 1, port: 7000, startedAt: null }) } };
     const r = await call(route, { pathname: '/api/im/feishu/status', isLocal: true, deps });
@@ -395,7 +395,7 @@ describe('IM routes: allowlist optional / process control / logs (manager-backed
   });
 
   it('status remote trim keeps connectionState but strips lastError', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const route = imRoutes.find((r) => r.predicate('/api/im/feishu/status', 'GET'));
     const deps = { im: { isWorker: true, getBridgeStatus: () => ({ running: true, connected: false, connectionState: 'reconnecting', lastError: 'boom_SECRET', boundConversationId: 'oc_x' }) } };
     const r = await call(route, { pathname: '/api/im/feishu/status', isLocal: false, deps });
@@ -404,7 +404,7 @@ describe('IM routes: allowlist optional / process control / logs (manager-backed
   });
 
   it('config POST optimistic response includes connectionState: disconnected', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const route = imRoutes.find((r) => r.predicate('/api/im/feishu/config', 'POST'));
     const deps = { MAX_POST_BODY: 1e6, im: { isWorker: false, restartProcess: async () => {}, stopProcess: async () => {} } };
     const r = await call(route, { pathname: '/api/im/feishu/config', body: { enabled: true, appId: 'a', appSecret: 'b', allowUserIds: ['u'] }, deps });
@@ -432,7 +432,7 @@ describe('IM skill management endpoints (per-IM .claude/skills)', () => {
   }
 
   it('GET skills is empty before any import', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const route = imRoutes.find((r) => r.predicate('/api/im/wecom/skills', 'GET'));
     const r = await run(route, jsonReq(null), { pathname: '/api/im/wecom/skills' });
     assert.equal(r.status, 200);
@@ -440,7 +440,7 @@ describe('IM skill management endpoints (per-IM .claude/skills)', () => {
   });
 
   it('import a SKILL.md → GET shows it (project, enabled); toggle off → enabled:false', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const imp = imRoutes.find((r) => r.predicate('/api/im/wecom/skills/import', 'POST'));
     const get = imRoutes.find((r) => r.predicate('/api/im/wecom/skills', 'GET'));
     const tog = imRoutes.find((r) => r.predicate('/api/im/wecom/skills/toggle', 'POST'));
@@ -463,7 +463,7 @@ describe('IM skill management endpoints (per-IM .claude/skills)', () => {
   });
 
   it('import rejects non-zip/md (415) and non-local caller (403); toggle bad name → 400', async () => {
-    const { imRoutes } = await import('../server/routes/im.js');
+    const { imRoutes } = await import('../packages/app/server/routes/im.js');
     const imp = imRoutes.find((r) => r.predicate('/api/im/wecom/skills/import', 'POST'));
     const tog = imRoutes.find((r) => r.predicate('/api/im/wecom/skills/toggle', 'POST'));
     const bad = await run(imp, importReq('XB', 'evil.txt', 'x'), { pathname: '/api/im/wecom/skills/import', deps: { WINDOWS_RESERVED_NAMES: RESERVED } });

@@ -14,9 +14,9 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const MAIN_SRC = readFileSync(join(ROOT, 'electron', 'main.js'), 'utf-8');
-const TABBAR_SRC = readFileSync(join(ROOT, 'electron', 'tab-bar.html'), 'utf-8');
-const GLOBAL_CSS = readFileSync(join(ROOT, 'src', 'global.css'), 'utf-8');
+const MAIN_SRC = readFileSync(join(ROOT, 'apps', 'electron', 'electron', 'main.js'), 'utf-8');
+const TABBAR_SRC = readFileSync(join(ROOT, 'apps', 'electron', 'electron', 'tab-bar.html'), 'utf-8');
+const GLOBAL_CSS = readFileSync(join(ROOT, 'apps', 'web', 'src', 'global.css'), 'utf-8');
 
 const norm = (c) => String(c).trim().toLowerCase();
 

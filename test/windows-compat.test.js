@@ -16,9 +16,9 @@ import { mkdirSync, rmSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join, win32, posix, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execSync } from 'node:child_process';
-import { readLogFile } from '../server/lib/log-watcher.js';
-import { getUnpushedCommits } from '../server/lib/git-diff.js';
-import { renameSyncWithRetry } from '../server/lib/file-api.js';
+import { readLogFile } from '../packages/app/server/lib/log-watcher.js';
+import { getUnpushedCommits } from '../packages/app/server/lib/git-diff.js';
+import { renameSyncWithRetry } from '../packages/app/server/lib/file-api.js';
 import { existsSync, readFileSync as fsReadFileSync } from 'node:fs';
 
 describe('renameSyncWithRetry (lib/file-api.js)', () => {

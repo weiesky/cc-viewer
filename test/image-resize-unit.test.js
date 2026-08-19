@@ -6,7 +6,7 @@
 
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { resizeImageIfNeeded } from '../src/utils/imageResize.js';
+import { resizeImageIfNeeded } from '../apps/web/src/utils/imageResize.js';
 
 // ── Global mock state (tunable per test) ──
 let bitmapConfig;  // { enabled, fail, width, height, hasClose, closeThrows }

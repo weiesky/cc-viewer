@@ -29,8 +29,8 @@ const {
   checkAndUpdate,
   isAnyCcvBusy,
   detectHomebrewInstall,
-} = await import('../server/lib/updater.js');
-const { getClaudeConfigDir } = await import('../findcc.js');
+} = await import('../packages/app/server/lib/updater.js');
+const { getClaudeConfigDir } = await import('../packages/app/findcc.js');
 
 // 目标：补齐 updater.js 的分支盲点（单跑口径 branch 86.49% → >=95）。
 // 已覆盖的 happy path 见 test/updater.test.js；本文件只打剩余分支：
@@ -103,7 +103,7 @@ function enableAutoUpdates() {
 }
 
 function readPkgRemoteBump() {
-  const pkgPath = join(import.meta.dirname, '..', 'package.json');
+  const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
   const [maj, min, pat] = pkg.version.split('.').map(Number);
   return { pkg, remote: `${maj}.${min}.${pat + 1}` };
@@ -280,7 +280,7 @@ describe('updater 分支 — isNewer minor 差异臂', () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
-    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     const [maj, min] = pkg.version.split('.').map(Number);
     const remote = `${maj}.${min + 1}.0`; // 同大版本、minor 更高

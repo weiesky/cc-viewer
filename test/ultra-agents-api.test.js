@@ -4,9 +4,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { validateAgentId, isValidTextField, isNonEmptyString, listUltraAgents } from '../server/lib/ultra-agents-api.js';
-import { ultraAgentsRoutes } from '../server/routes/ultra-agents.js';
-import { ULTRAPLAN_VARIANTS } from '../src/utils/ultraplanTemplates.js';
+import { validateAgentId, isValidTextField, isNonEmptyString, listUltraAgents } from '../packages/app/server/lib/ultra-agents-api.js';
+import { ultraAgentsRoutes } from '../packages/app/server/routes/ultra-agents.js';
+import { ULTRAPLAN_VARIANTS } from '../apps/web/src/utils/ultraplanTemplates.js';
 
 describe('validateAgentId', () => {
   it('accepts safe ids', () => {

@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
-import { TOOL_CATALOG, ALL_TOOL_NAMES } from '../src/utils/toolCatalog.js';
+import { TOOL_CATALOG, ALL_TOOL_NAMES } from '../apps/web/src/utils/toolCatalog.js';
 
 // 守卫:工具目录 TOOL_CATALOG(ToolsHelp「所有工具」弹层 + ConceptHelp 白名单的单一来源)
 // 必须与已发布的 concepts/<lang>/Tool-<name>.md 文档一一对应,且新增 i18n key 18 语言齐全。
 // 防止:新增工具漏建某语言文档(运行时 404)、目录出现重复、漏配语言导致 t() 静默回落。
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const CONCEPTS_DIR = join(ROOT, 'concepts');
-const I18N_SRC = readFileSync(join(ROOT, 'src', 'i18n.js'), 'utf-8');
+const CONCEPTS_DIR = join(ROOT, 'packages', 'app', 'concepts');
+const I18N_SRC = readFileSync(join(ROOT, 'apps', 'web', 'src', 'i18n.js'), 'utf-8');
 
 // 与 server/routes/team.js concept() 同款 doc 名校验。
 const DOC_NAME_RE = /^[a-zA-Z0-9-]+$/;

@@ -71,7 +71,7 @@ describe('GET /api/project-memory', { concurrency: false }, () => {
   let port;
 
   before(async () => {
-    const mod = await import('../server/server.js');
+    const mod = await import('../packages/app/server/server.js');
     const srv = await mod.startViewer();
     assert.ok(srv);
     port = mod.getPort();

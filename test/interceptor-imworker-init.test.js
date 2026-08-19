@@ -33,7 +33,7 @@ before(async () => {
   globalThis.fetch = async () => new Response('{"content":[]}', {
     status: 200, headers: { 'content-type': 'application/json' },
   });
-  mod = await import('../server/interceptor.js');
+  mod = await import('../packages/app/server/interceptor.js');
   mod.setupInterceptor();
   await mod._initPromise;
 });

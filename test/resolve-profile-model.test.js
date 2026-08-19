@@ -10,7 +10,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveProfileModel, migrateProxyProfile, migrateProxyProfileList } from '../server/lib/interceptor-core.js';
+import { resolveProfileModel, migrateProxyProfile, migrateProxyProfileList } from '../packages/app/server/lib/interceptor-core.js';
 
 describe('resolveProfileModel', () => {
   const fam = {

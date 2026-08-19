@@ -8,7 +8,7 @@ import {
   stopSession,
   interruptTurn,
   getSessionId,
-} from '../server/lib/sdk-manager.js';
+} from '../packages/app/server/lib/sdk-manager.js';
 
 describe('sdk-manager', () => {
   describe('isSdkAvailable', () => {

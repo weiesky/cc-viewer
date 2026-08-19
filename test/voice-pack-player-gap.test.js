@@ -77,7 +77,7 @@ let warnLogs;
 let origWarn;
 before(async () => {
   installBrowserEnv();
-  player = await import('../src/utils/voicePackPlayer.js');
+  player = await import('../apps/web/src/utils/voicePackPlayer.js');
   origWarn = console.warn;
   warnLogs = [];
   console.warn = (...args) => { warnLogs.push(args); };

@@ -7,7 +7,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const { getUserProfile, clearProfileCache } = await import('../server/lib/user-profile.js');
+const { getUserProfile, clearProfileCache } = await import('../packages/app/server/lib/user-profile.js');
 
 const workDir = mkdtempSync(join(tmpdir(), 'ccv-userprofile-'));
 const savedEnv = {};

@@ -23,7 +23,7 @@ import {
   buildBracketPasteSubmitChunks,
   sanitizeBracketPasteText,
   BRACKET_PASTE_SUBMIT_SETTLE_MS,
-} from '../src/utils/ptyChunkBuilder.js';
+} from '../apps/web/src/utils/ptyChunkBuilder.js';
 
 const ARROW_DOWN = '\x1b[B';
 const ARROW_UP = '\x1b[A';

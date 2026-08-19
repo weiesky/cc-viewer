@@ -15,10 +15,10 @@ const TMP = mkdtempSync(join(tmpdir(), 'ccv-wfj-'));
 process.env.CCV_PROJECTS_DIR = TMP;
 
 const { normalizeWorkflowJournal, resolveJournalPath, readNormalizedJournal, resolveWorkflowsDir } =
-  await import('../server/lib/workflow-journal.js');
-const { clearCache } = await import('../server/lib/session-transcript-reader.js');
-const { workflowJournalRoutes } = await import('../server/routes/workflow-journal.js');
-const { __setWatchImplForTests, unwatchAllWorkflows } = await import('../server/lib/workflow-watcher.js');
+  await import('../packages/app/server/lib/workflow-journal.js');
+const { clearCache } = await import('../packages/app/server/lib/session-transcript-reader.js');
+const { workflowJournalRoutes } = await import('../packages/app/server/routes/workflow-journal.js');
+const { __setWatchImplForTests, unwatchAllWorkflows } = await import('../packages/app/server/lib/workflow-watcher.js');
 
 // 路由 happy path 会惰性 arm watch：注入假 fs.watch，规避真实 watch 的平台时序
 __setWatchImplForTests(() => ({ close() {}, on() {} }));

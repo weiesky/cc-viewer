@@ -27,8 +27,8 @@ const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-branch-askperm-'));
 process.env.CCV_LOG_DIR = tmpDir;
 process.env.CLAUDE_CONFIG_DIR = tmpDir;
 
-const { askPermRoutes } = await import('../server/routes/ask-perm.js');
-const askStore = await import('../server/lib/ask-store.js');
+const { askPermRoutes } = await import('../packages/app/server/routes/ask-perm.js');
+const askStore = await import('../packages/app/server/lib/ask-store.js');
 
 const pendingAsksHandler = askPermRoutes.find(r => r.path === '/api/pending-asks').handler;
 const askHookHandler = askPermRoutes.find(r => r.path === '/api/ask-hook' && r.method === 'POST').handler;
@@ -231,7 +231,7 @@ describe('ask-perm 分支补洞: askHook plugin 答后 persistAskDelete 抛 (167
   let loadPlugins;
   before(async () => {
     const { writeFileSync, mkdirSync } = await import('node:fs');
-    ({ loadPlugins } = await import('../server/lib/plugin-loader.js'));
+    ({ loadPlugins } = await import('../packages/app/server/lib/plugin-loader.js'));
     mkdirSync(pluginsDir, { recursive: true });
     writeFileSync(join(pluginsDir, 'ans167.mjs'),
       `export const hooks = { onAskRequest: async () => ({ answers: { Q: 'P' } }) };\n`);
@@ -419,7 +419,7 @@ describe('ask-perm 分支补洞: permHook plugin allow + res.writeHead 抛 (337 
   let loadPlugins;
   before(async () => {
     const { writeFileSync, mkdirSync } = await import('node:fs');
-    ({ loadPlugins } = await import('../server/lib/plugin-loader.js'));
+    ({ loadPlugins } = await import('../packages/app/server/lib/plugin-loader.js'));
     mkdirSync(pluginsDir, { recursive: true });
     writeFileSync(join(pluginsDir, 'perm337.mjs'),
       `export const hooks = { onPermRequest: async () => ({ decision: 'allow' }) };\n`);

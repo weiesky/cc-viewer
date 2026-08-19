@@ -3,7 +3,7 @@
 // 全程注入 now，零真实时钟。
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createResyncNudgeGate } from '../server/lib/resync-nudge-gate.js';
+import { createResyncNudgeGate } from '../packages/app/server/lib/resync-nudge-gate.js';
 
 function makeClock(start = 1000) {
   let t = start;

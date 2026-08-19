@@ -29,11 +29,11 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSy
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { uploadPlugins, installPluginFromUrl } from '../server/lib/plugin-manager.js';
+import { uploadPlugins, installPluginFromUrl } from '../packages/app/server/lib/plugin-manager.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Use the REAL extractor script — it import()s the temp plugin in a subprocess.
-const EXTRACT_SCRIPT = join(__dirname, '..', 'server', 'lib', 'extract-plugin-name.mjs');
+const EXTRACT_SCRIPT = join(__dirname, '..', 'packages', 'app', 'server', 'lib', 'extract-plugin-name.mjs');
 
 let work;
 const realFetch = globalThis.fetch;

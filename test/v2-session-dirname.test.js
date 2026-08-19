@@ -22,10 +22,10 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readdirSync,
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 
-import { V2Writer } from '../server/lib/v2/v2-writer.js';
-import { iterateV2RawEntries, findTeammateSessionDirs } from '../server/lib/v2/adapter.js';
-import { resolveSessionDirName, latestMainSessionDir } from '../server/lib/v2/session-select.js';
-import { _resetForTest } from '../server/lib/error-report.js';
+import { V2Writer } from '../packages/app/server/lib/v2/v2-writer.js';
+import { iterateV2RawEntries, findTeammateSessionDirs } from '../packages/app/server/lib/v2/adapter.js';
+import { resolveSessionDirName, latestMainSessionDir } from '../packages/app/server/lib/v2/session-select.js';
+import { _resetForTest } from '../packages/app/server/lib/error-report.js';
 
 let dir;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'ccv-dirname-')); _resetForTest(); });

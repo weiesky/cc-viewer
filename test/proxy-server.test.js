@@ -78,7 +78,7 @@ before(async () => {
   upstreamPort = upstream.address().port;
   // Route the proxy's upstream to our local server via env (getOriginalBaseUrl reads ANTHROPIC_BASE_URL).
   process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${upstreamPort}`;
-  ({ startProxy } = await import('../server/proxy.js'));
+  ({ startProxy } = await import('../packages/app/server/proxy.js'));
   proxyPort = await startProxy();
   assert.ok(proxyPort > 0);
 });
@@ -166,7 +166,7 @@ describe('retry engine end-to-end (live proxy, serial 529 → 200)', () => {
     // Drive the REAL handleLlmApiRequest → executeRequest path: write
     // retry-config.json into the isolated LOG_DIR and refresh the live
     // binding directly (the 1.5s watchFile poll is too slow for a test).
-    const { RETRY_CONFIG_PATH, _loadRetryConfigState } = await import('../server/interceptor.js');
+    const { RETRY_CONFIG_PATH, _loadRetryConfigState } = await import('../packages/app/server/interceptor.js');
     writeFileSync(RETRY_CONFIG_PATH, JSON.stringify({ mode: 'serial', maxRetries: 5, retryIntervalMs: 10, connectTimeoutMs: 0 }));
     _loadRetryConfigState();
     try {

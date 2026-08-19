@@ -16,7 +16,7 @@ process.env.CCV_LOG_DIR = tmpDir;
 let discord, adapter;
 
 before(async () => {
-  discord = await import('../server/lib/adapters/discord-adapter.js');
+  discord = await import('../packages/app/server/lib/adapters/discord-adapter.js');
   adapter = discord.default;
 });
 

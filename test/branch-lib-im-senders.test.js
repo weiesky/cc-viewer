@@ -15,8 +15,8 @@ process.env.CCV_LOG_DIR = PRIV;
 
 let mod, imLock;
 before(async () => {
-  imLock = await import('../server/lib/im-lock.js');
-  mod = await import('../server/lib/im-senders.js');
+  imLock = await import('../packages/app/server/lib/im-lock.js');
+  mod = await import('../packages/app/server/lib/im-senders.js');
 });
 
 let n = 0;

@@ -15,7 +15,7 @@ import './_shims/register.mjs';
 let isNativeTeammate, extractNativeTeammateName, extractCcVersion;
 
 before(async () => {
-  const mod = await import('../src/utils/teammateDetector.js');
+  const mod = await import('../packages/app/src/utils/teammateDetector.js');
   isNativeTeammate = mod.isNativeTeammate;
   extractNativeTeammateName = mod.extractNativeTeammateName;
   extractCcVersion = mod.extractCcVersion;

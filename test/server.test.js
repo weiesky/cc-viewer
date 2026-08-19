@@ -66,7 +66,7 @@ describeCli('server API endpoints', { concurrency: false }, () => {
   let port;
 
   before(async () => {
-    const mod = await import('../server/server.js');
+    const mod = await import('../packages/app/server/server.js');
     startViewer = mod.startViewer;
     stopViewer = mod.stopViewer;
     getPort = mod.getPort;
@@ -173,7 +173,7 @@ describeCli('server API endpoints', { concurrency: false }, () => {
   });
 
   it('GET /api/user-profile respects CCV_USER_NAME override', async () => {
-    const { clearProfileCache } = await import('../server/lib/user-profile.js');
+    const { clearProfileCache } = await import('../packages/app/server/lib/user-profile.js');
     const origName = process.env.CCV_USER_NAME;
     try {
       process.env.CCV_USER_NAME = 'TestCustomUser';
@@ -190,7 +190,7 @@ describeCli('server API endpoints', { concurrency: false }, () => {
   });
 
   it('GET /api/user-profile respects CCV_USER_AVATAR URL override', async () => {
-    const { clearProfileCache } = await import('../server/lib/user-profile.js');
+    const { clearProfileCache } = await import('../packages/app/server/lib/user-profile.js');
     const origAvatar = process.env.CCV_USER_AVATAR;
     try {
       process.env.CCV_USER_AVATAR = 'https://example.com/avatar.png';
@@ -207,7 +207,7 @@ describeCli('server API endpoints', { concurrency: false }, () => {
   });
 
   it('GET /api/user-profile falls back to OS detection when no override', async () => {
-    const { clearProfileCache } = await import('../server/lib/user-profile.js');
+    const { clearProfileCache } = await import('../packages/app/server/lib/user-profile.js');
     const origName = process.env.CCV_USER_NAME;
     const origAvatar = process.env.CCV_USER_AVATAR;
     try {

@@ -13,7 +13,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSingleToolResultCore } from '../src/utils/toolResultCore.js';
+import { buildSingleToolResultCore } from '../apps/web/src/utils/toolResultCore.js';
 
 // 内联:buildGlobalToolResultIndex 的结构算法,内部 entry 构造复用 core 函数。
 function buildGlobalToolResultIndex(requests) {

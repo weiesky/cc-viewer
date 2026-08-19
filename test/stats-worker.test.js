@@ -15,14 +15,14 @@ import assert from 'node:assert/strict';
 import { Worker } from 'node:worker_threads';
 import { writeFileSync, mkdirSync, rmSync, readFileSync, existsSync, appendFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { resolveSessionDirName } from '../server/lib/v2/session-select.js';
+import { resolveSessionDirName } from '../packages/app/server/lib/v2/session-select.js';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { V2Writer } from '../server/lib/v2/v2-writer.js';
+import { V2Writer } from '../packages/app/server/lib/v2/v2-writer.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const WORKER_PATH = join(__dirname, '..', 'server', 'lib', 'stats-worker.js');
+const WORKER_PATH = join(__dirname, '..', 'packages', 'app', 'server', 'lib', 'stats-worker.js');
 
 function makeTmpDir() {
   const dir = join(tmpdir(), `ccv-stats-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);

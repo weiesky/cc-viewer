@@ -7,8 +7,8 @@
  */
 import assert from 'assert';
 import { describe, it } from 'node:test';
-import { stripAnsi, detectPromptInBuffer, isFalsePositiveQuestion } from '../src/utils/promptDetect.js';
-import { isPlanApprovalPrompt, isDangerousOperationPrompt } from '../src/utils/promptClassifier.js';
+import { stripAnsi, detectPromptInBuffer, isFalsePositiveQuestion } from '../apps/web/src/utils/promptDetect.js';
+import { isPlanApprovalPrompt, isDangerousOperationPrompt } from '../apps/web/src/utils/promptClassifier.js';
 
 // 组合出与 ChatView._detectPrompt 等价的「检出 + false-positive 过滤」链
 function detectPrompt(rawBuf) {

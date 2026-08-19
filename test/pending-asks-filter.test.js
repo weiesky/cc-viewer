@@ -20,7 +20,7 @@ const repoRoot = resolve(__dirname, '..');
 const tmpRoot = mkdtempSync(join(tmpdir(), 'ccv-pending-asks-test-'));
 process.env.CCV_LOG_DIR = tmpRoot;
 
-const { loadAskStore, saveAskStore } = await import('../server/lib/ask-store.js');
+const { loadAskStore, saveAskStore } = await import('../packages/app/server/lib/ask-store.js');
 
 const storeFile = join(tmpRoot, 'ask-store.json');
 
@@ -40,7 +40,7 @@ describe('/api/pending-asks 端点 filter 不变量', () => {
 
   describe('源码层 invariant（防回滚）', () => {
     // /api/pending-asks handler 已迁出到 server/routes/ask-perm.js
-    const src = readFileSync(resolve(repoRoot, 'server/routes/ask-perm.js'), 'utf-8');
+    const src = readFileSync(resolve(repoRoot, 'packages/app/server/routes/ask-perm.js'), 'utf-8');
 
     it('server.js 必须有 /api/pending-asks GET handler', () => {
       assert.match(src, /\/api\/pending-asks/, 'GET /api/pending-asks 端点必须存在');

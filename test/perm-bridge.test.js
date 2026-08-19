@@ -6,7 +6,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const bridgePath = join(__dirname, '..', 'server', 'lib', 'perm-bridge.js');
+const bridgePath = join(__dirname, '..', 'packages', 'app', 'server', 'lib', 'perm-bridge.js');
 
 function runBridge(stdin, env = {}) {
   return new Promise((resolve) => {

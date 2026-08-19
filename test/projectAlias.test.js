@@ -27,7 +27,7 @@ before(() => {
 });
 
 // Import after env install.
-const mod = await import('../src/utils/projectAlias.js');
+const mod = await import('../apps/web/src/utils/projectAlias.js');
 const {
   normalizeAlias,
   getProjectAlias,

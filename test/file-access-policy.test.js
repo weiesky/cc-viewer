@@ -76,7 +76,7 @@ process.env.CLAUDE_CONFIG_DIR = CLAUDE_DIR;
 process.env.CCV_PROJECT_DIR = PROJECT;
 
 // dynamic import:env 设置后再加载 policy
-const policy = await import('../server/lib/file-access-policy.js');
+const policy = await import('../packages/app/server/lib/file-access-policy.js');
 const { isReadAllowed, getAllowedRoots, _resetCacheForTests } = policy;
 _resetCacheForTests();
 

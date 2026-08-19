@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { normalizeRoles, mergeActivePayload, resolveRoleProfile } from '../server/lib/interceptor-core.js';
+import { normalizeRoles, mergeActivePayload, resolveRoleProfile } from '../packages/app/server/lib/interceptor-core.js';
 
 /**
  * Proxy profile per-workspace active 隔离 + 角色分配（{ activeId, roles }）

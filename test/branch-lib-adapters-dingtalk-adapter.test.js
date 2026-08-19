@@ -23,7 +23,7 @@ let DWClientProtoRegister;
 let DWClientProto;
 
 before(async () => {
-  const mod = await import('../server/lib/adapters/dingtalk-adapter.js');
+  const mod = await import('../packages/app/server/lib/adapters/dingtalk-adapter.js');
   adapter = mod.default;
   __setClientFactory = mod.__setClientFactory;
 });

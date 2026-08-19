@@ -13,7 +13,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 
-const API_URL = new URL('../server/lib/ultra-agents-api.js', import.meta.url).href;
+const API_URL = new URL('../packages/app/server/lib/ultra-agents-api.js', import.meta.url).href;
 
 // 改写依赖模块：导出会抛的 listUltraAgents（+ 其它导出占位，避免别处 import 报缺失）。
 const THROWING_SRC = `
@@ -50,7 +50,7 @@ describe('GET /api/ultra-agents — listUltraAgents 抛错走 500', () => {
   before(async () => {
     installHook();
     // 带 query 串 cache-bust，确保拿到「绑定到被改写依赖」的全新路由模块实例。
-    const mod = await import('../server/routes/ultra-agents.js?throwcase=1');
+    const mod = await import('../packages/app/server/routes/ultra-agents.js?throwcase=1');
     handler = mod.ultraAgentsRoutes[0].handler;
   });
 

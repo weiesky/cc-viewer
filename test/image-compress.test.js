@@ -6,7 +6,7 @@
 
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { compressImageToDataURL } from '../src/utils/imageCompress.js';
+import { compressImageToDataURL } from '../apps/web/src/utils/imageCompress.js';
 
 // ── 全局 mock 可调状态 ──
 let readerConfig; // { result, fail }

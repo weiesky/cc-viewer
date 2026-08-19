@@ -3,8 +3,8 @@
 // flush 后 pending 必清（含下游 send 抛错跳发）/ reset / dispose。全程注入时钟驱动，零真实定时器。
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { createFloodCoalescer } from '../server/lib/pty-flood-coalescer.js';
-import { findSafeSliceStart } from '../server/pty-manager.js';
+import { createFloodCoalescer } from '../packages/app/server/lib/pty-flood-coalescer.js';
+import { findSafeSliceStart } from '../packages/app/server/pty-manager.js';
 
 const SYNC_BEGIN = '\x1b[?2026h';
 const SYNC_END = '\x1b[?2026l';
@@ -349,7 +349,7 @@ describe('pty-flood-coalescer', () => {
   it('CCV_FLOOD_PT_COALESCE_MS=0 经 env 禁用（envIntAllowZero 接受 0）', async () => {
     process.env.CCV_FLOOD_PT_COALESCE_MS = '0';
     try {
-      const { createFloodCoalescer: cfc } = await import('../server/lib/pty-flood-coalescer.js?ccv-pt-env-zero');
+      const { createFloodCoalescer: cfc } = await import('../packages/app/server/lib/pty-flood-coalescer.js?ccv-pt-env-zero');
       const clock = makeFakeClock();
       const sent = [];
       const c = cfc({
@@ -369,7 +369,7 @@ describe('pty-flood-coalescer', () => {
   it('CCV_FLOOD_PT_COALESCE_MS 非法/负值回落默认 16（envIntAllowZero）', async () => {
     process.env.CCV_FLOOD_PT_COALESCE_MS = '-5';
     try {
-      const { createFloodCoalescer: cfc } = await import('../server/lib/pty-flood-coalescer.js?ccv-pt-env-neg');
+      const { createFloodCoalescer: cfc } = await import('../packages/app/server/lib/pty-flood-coalescer.js?ccv-pt-env-neg');
       const clock = makeFakeClock();
       const sent = [];
       const c = cfc({
@@ -394,7 +394,7 @@ describe('pty-flood-coalescer', () => {
     process.env.CCV_TEST_HEX = '0x10';   // parseInt(,10) → 0，须拒绝
     process.env.CCV_TEST_ZERO = '0';
     try {
-      const { envInt, envIntAllowZero } = await import('../server/lib/pty-flood-coalescer.js?ccv-env-helpers');
+      const { envInt, envIntAllowZero } = await import('../packages/app/server/lib/pty-flood-coalescer.js?ccv-env-helpers');
       assert.equal(envInt('CCV_TEST_DEC', 7), 42, '纯十进制通过');
       assert.equal(envInt('CCV_TEST_SCI', 7), 7, "'1e9' 拒绝回落而非截断成 1");
       assert.equal(envInt('CCV_TEST_HEX', 7), 7, "'0x10' 拒绝回落而非截断成 0");
@@ -416,7 +416,7 @@ describe('pty-flood-coalescer', () => {
     process.env.CCV_TEST_16D = '9'.repeat(16);     // 16 位 > 15 位上限，同拒
     process.env.CCV_TEST_15D = '9'.repeat(15);     // 15 位边界，应通过
     try {
-      const { envInt, envIntAllowZero } = await import('../server/lib/pty-flood-coalescer.js?ccv-env-huge');
+      const { envInt, envIntAllowZero } = await import('../packages/app/server/lib/pty-flood-coalescer.js?ccv-env-huge');
       assert.equal(envInt('CCV_TEST_HUGE', 7), 7, '400 位拒绝（否则返回 Infinity）');
       assert.equal(envIntAllowZero('CCV_TEST_HUGE', 7), 7, 'allowZero 同拒');
       assert.equal(envInt('CCV_TEST_16D', 7), 7, '16 位超上限拒绝');
@@ -432,7 +432,7 @@ describe('pty-flood-coalescer', () => {
     process.env.CCV_FLOOD_FLUSH_MS = '1e9';        // 若被截成 1ms 桶宽，洪泛判定频度爆炸
     process.env.CCV_FLOOD_PT_COALESCE_MS = '0x10'; // 若被截成 0，微合并被误关
     try {
-      const { createFloodCoalescer: cfc } = await import('../server/lib/pty-flood-coalescer.js?ccv-env-strict');
+      const { createFloodCoalescer: cfc } = await import('../packages/app/server/lib/pty-flood-coalescer.js?ccv-env-strict');
       const timerMs = [];
       const c = cfc({
         send: () => {}, findSafeSliceStart,
@@ -454,7 +454,7 @@ describe('pty-flood-coalescer', () => {
     process.env.CCV_FLOOD_THRESHOLD = 'not-a-number'; // 非法 → 回落 8192
     try {
       // ESM query 缓存击穿：以新 env 重新评估模块顶层常量
-      const { createFloodCoalescer: cfc } = await import('../server/lib/pty-flood-coalescer.js?ccv-env-test');
+      const { createFloodCoalescer: cfc } = await import('../packages/app/server/lib/pty-flood-coalescer.js?ccv-env-test');
       const timerMs = [];
       const c = cfc({
         send: () => {},

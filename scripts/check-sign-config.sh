@@ -69,10 +69,10 @@ echo ""
 
 if [ -n "$IDENTITIES" ] && [ -n "$CSC_LINK" ] && [ -n "$CSC_KEY_PASSWORD" ]; then
   echo "✅ 签名配置完成！可以执行:"
-  echo "   npm run electron:build  # 仅签名"
+  echo "   pnpm run electron:build  # 仅签名"
 
   if [ -n "$APPLE_ID" ] && [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
-    echo "   npm run electron:sign   # 签名 + 公证 (推荐)"
+    echo "   pnpm run electron:sign   # 签名 + 公证 (推荐)"
   else
     echo ""
     echo "⚠️  公证配置未完成，应用将仅签名"

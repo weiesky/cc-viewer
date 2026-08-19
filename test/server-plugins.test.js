@@ -39,7 +39,7 @@ describeCli('server plugin endpoints', { concurrency: false }, () => {
   let port;
 
   before(async () => {
-    const mod = await import('../server/server.js');
+    const mod = await import('../packages/app/server/server.js');
     startViewer = mod.startViewer;
     stopViewer = mod.stopViewer;
     getPort = mod.getPort;
@@ -190,7 +190,7 @@ describeCli('server plugin endpoints', { concurrency: false }, () => {
 
   it('DELETE /api/plugins returns 500 when unlink fails (target is a directory, plugins.js:34-36)', async () => {
     // 在 pluginsDir 下造一个与「文件名」同名的子目录，unlinkSync 对目录抛错 → 命中 catch 500 臂。
-    const { getPluginsDir } = await import('../server/lib/plugin-loader.js');
+    const { getPluginsDir } = await import('../packages/app/server/lib/plugin-loader.js');
     const dirAsFile = join(getPluginsDir(), 'isdir-plugin.js');
     mkdirSync(dirAsFile, { recursive: true });
     try {

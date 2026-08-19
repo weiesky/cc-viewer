@@ -8,7 +8,7 @@ import { tmpdir, platform } from 'node:os';
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-wecom-cfg-test-'));
 process.env.CCV_LOG_DIR = tmpDir;
 
-const { getDescriptor, normalize, loadConfig, loadState, saveConfig, getPrefsPath } = await import('../server/lib/im-config.js');
+const { getDescriptor, normalize, loadConfig, loadState, saveConfig, getPrefsPath } = await import('../packages/app/server/lib/im-config.js');
 
 function reset() { if (existsSync(getPrefsPath())) rmSync(getPrefsPath()); }
 

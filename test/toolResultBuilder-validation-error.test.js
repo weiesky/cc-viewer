@@ -4,7 +4,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyToolResultError as classify } from '../src/utils/toolResultClassifier.js';
+import { classifyToolResultError as classify } from '../apps/web/src/utils/toolResultClassifier.js';
 
 describe('isInputValidationError classification', () => {
   it('matches "InputValidationError" string', () => {

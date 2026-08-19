@@ -42,8 +42,8 @@ function mkRes() {
 
 let getRoute; let postRoute; let interceptor;
 before(async () => {
-  interceptor = await import('../server/interceptor.js');
-  const { proxyStatsRoutes } = await import('../server/routes/proxy-stats.js');
+  interceptor = await import('../packages/app/server/interceptor.js');
+  const { proxyStatsRoutes } = await import('../packages/app/server/routes/proxy-stats.js');
   getRoute = proxyStatsRoutes.find((r) => r.path === '/api/proxy-stats' && r.method === 'GET');
   postRoute = proxyStatsRoutes.find((r) => r.path === '/api/refresh-proxy-stats' && r.method === 'POST');
   assert.ok(getRoute, 'GET /api/proxy-stats route must exist');

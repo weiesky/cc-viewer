@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LOG_DIR } from '../findcc.js';
-import { IM_SKILLS_DIR } from '../server/_paths.js';
-import { ensureImBuiltinSkills, resolveSkillLang, BUILTIN_SKILL_NAME } from '../server/lib/im-skills.js';
+import { LOG_DIR } from '../packages/app/findcc.js';
+import { IM_SKILLS_DIR } from '../packages/app/server/_paths.js';
+import { ensureImBuiltinSkills, resolveSkillLang, BUILTIN_SKILL_NAME } from '../packages/app/server/lib/im-skills.js';
 
 // 造一个假的 sourceRoot：<root>/zh/<skill>/SKILL.md + <root>/scripts/ccv-projects.mjs（可选 en）
 function makeSource(root, { zh = 'ZH-SKILL', en = null, script = 'SCRIPT-V1' } = {}) {

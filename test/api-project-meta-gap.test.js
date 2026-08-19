@@ -57,10 +57,10 @@ function route(path, method = 'GET') {
 }
 
 before(async () => {
-  const mod = await import('../server/routes/project-meta.js');
+  const mod = await import('../packages/app/server/routes/project-meta.js');
   routes = mod.projectMetaRoutes;
-  interceptor = await import('../server/interceptor.js');
-  ({ LOG_DIR } = await import('../findcc.js'));
+  interceptor = await import('../packages/app/server/interceptor.js');
+  ({ LOG_DIR } = await import('../packages/app/findcc.js'));
   assert.equal(LOG_DIR, LOG, 'findcc LOG_DIR must resolve into the sandbox');
 });
 

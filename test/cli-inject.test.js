@@ -18,7 +18,7 @@ import {
   buildInjectBlockRegex,
   INJECT_START,
   INJECT_END,
-} from '../server/lib/cli-inject.js';
+} from '../packages/app/server/lib/cli-inject.js';
 
 const CURRENT = "import 'cc-viewer/interceptor.js';";
 const LEGACY = ["import '../../cc-viewer/interceptor.js';"];
@@ -169,7 +169,7 @@ describe('cli-inject: buildInjectBlockRegex 覆盖当前 + 全部 LEGACY', () =>
   });
 
   it('与已发布的真实 LEGACY_INJECT_IMPORTS 数组一致', async () => {
-    const { INJECT_IMPORT, LEGACY_INJECT_IMPORTS } = await import('../findcc.js');
+    const { INJECT_IMPORT, LEGACY_INJECT_IMPORTS } = await import('../packages/app/findcc.js');
     for (const form of [INJECT_IMPORT, ...LEGACY_INJECT_IMPORTS]) {
       const block = buildInjectBlock(form) + '\n';
       assert.ok(buildInjectBlockRegex(INJECT_IMPORT, LEGACY_INJECT_IMPORTS).test(block),

@@ -20,11 +20,11 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, existsSync, readFileSync } from 'node:fs';
-import { isRealClaudeLookupBlocked, isBrowserOpenSuppressed } from '../findcc.js';
+import { isRealClaudeLookupBlocked, isBrowserOpenSuppressed } from '../packages/app/findcc.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
-const FINDCC_URL = pathToFileURL(join(REPO_ROOT, 'findcc.js')).href;
+const FINDCC_URL = pathToFileURL(join(REPO_ROOT, 'packages', 'app', 'findcc.js')).href;
 // findcc.js's un-exported NODE_MODULES = the repo's parent directory (cc-viewer's siblings).
 const REAL_NODE_MODULES = join(REPO_ROOT, '..');
 const SANITIZED_PATH = '/usr/bin:/bin';
@@ -191,13 +191,13 @@ describe('L7 wiring source-guards (consumers must keep consulting the suppressor
   // consuming source still contains the exact derivation. Deleting either line
   // re-opens real browser windows from tests without failing anything else.
   it('cli.js derives noOpen from isBrowserOpenSuppressed()', () => {
-    const src = readFileSync(join(REPO_ROOT, 'cli.js'), 'utf-8');
+    const src = readFileSync(join(REPO_ROOT, 'packages', 'app', 'cli.js'), 'utf-8');
     assert.match(src, /if \(!noOpen && isBrowserOpenSuppressed\(\)\)/,
       'cli.js must fold isBrowserOpenSuppressed() into its noOpen derivation');
   });
 
   it('server.js gates the legacy (<2.0.69) auto-open on the suppressor', () => {
-    const src = readFileSync(join(REPO_ROOT, 'server', 'server.js'), 'utf-8');
+    const src = readFileSync(join(REPO_ROOT, 'packages', 'app', 'server', 'server.js'), 'utf-8');
     assert.match(src, /&& !isBrowserOpenSuppressed\(\)/,
       'server.js legacy auto-open must be guarded by !isBrowserOpenSuppressed()');
   });

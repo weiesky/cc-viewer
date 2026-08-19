@@ -7,7 +7,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseWorkflowFromText } from '../src/utils/toolResultCore.js';
+import { parseWorkflowFromText } from '../apps/web/src/utils/toolResultCore.js';
 
 // 真实后台启动返回文本（取自 ?logfile= 历史日志条目）
 const REAL_LAUNCH_TEXT = `Workflow launched in background. Task ID: wn2lxeyto

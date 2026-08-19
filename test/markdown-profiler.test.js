@@ -12,7 +12,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { percentile, createStats } from '../src/utils/markdownProfiler.js';
+import { percentile, createStats } from '../apps/web/src/utils/markdownProfiler.js';
 
 const MAX_SAMPLES = 2000;
 

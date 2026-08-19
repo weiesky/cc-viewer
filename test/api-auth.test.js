@@ -24,7 +24,7 @@ process.env.CCV_MAX_PORT = '19719';
 // 动态 import(必须在上面设好 CCV_LOG_DIR 之后):静态 import 会被 ESM 提升到 env 设置之前,
 // 让 routes/auth.js → lib/auth.js → findcc.js 把 LOG_DIR 冻结到真实路径,从而把测试 auth
 // 写进用户真实的 preferences.json。用于下方 direct-handler 测试。
-const { authRoutes: authRoutesCache } = await import('../server/routes/auth.js');
+const { authRoutes: authRoutesCache } = await import('../packages/app/server/routes/auth.js');
 
 /** 用 node:http 发请求(loopback → 服务端视为 admin/isLocal) */
 function httpRequest(port, path, { method = 'GET', body = null } = {}) {
@@ -58,7 +58,7 @@ describe('password auth API (loopback=admin)', { concurrency: false }, () => {
   let port;
 
   before(async () => {
-    const mod = await import('../server/server.js');
+    const mod = await import('../packages/app/server/server.js');
     stopViewer = mod.stopViewer;
     getPort = mod.getPort;
     const srv = await mod.startViewer();
@@ -224,7 +224,7 @@ describe('password auth API (loopback=admin)', { concurrency: false }, () => {
 // exercise it. Call the handler directly with isLocal=false to cover the reject branch.
 describe('POST /api/auth/config admin-only guard', () => {
   it('rejects a non-local (remote) caller with 403 before reading the body', async () => {
-    const { authRoutes } = await import('../server/routes/auth.js');
+    const { authRoutes } = await import('../packages/app/server/routes/auth.js');
     const route = authRoutes.find(r => r.path === '/api/auth/config' && r.method === 'POST');
     assert.ok(route, 'config POST route must be registered');
 

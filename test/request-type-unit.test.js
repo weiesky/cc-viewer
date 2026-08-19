@@ -23,7 +23,7 @@ import assert from 'node:assert/strict';
 let classifyRequest, formatRequestTag, formatTeammateLabel;
 
 before(async () => {
-  const mod = await import('../src/utils/requestType.js');
+  const mod = await import('../packages/app/src/utils/requestType.js');
   classifyRequest = mod.classifyRequest;
   formatRequestTag = mod.formatRequestTag;
   formatTeammateLabel = mod.formatTeammateLabel;

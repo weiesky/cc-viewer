@@ -18,7 +18,7 @@ import { mkdtempSync } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
-const FINDCC_URL = pathToFileURL(join(REPO_ROOT, 'findcc.js')).href;
+const FINDCC_URL = pathToFileURL(join(REPO_ROOT, 'packages', 'app', 'findcc.js')).href;
 
 /** 子进程 import findcc 并打印 LOG_DIR。envPatch 里值为 undefined 的键会被删除。 */
 function probeLogDir(envPatch) {

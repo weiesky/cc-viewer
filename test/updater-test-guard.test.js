@@ -19,7 +19,7 @@ import { execFileSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
-const UPDATER_URL = pathToFileURL(join(REPO_ROOT, 'server', 'lib', 'updater.js')).href;
+const UPDATER_URL = pathToFileURL(join(REPO_ROOT, 'packages', 'app', 'server', 'lib', 'updater.js')).href;
 
 // 私有目录必须在 import updater 之前就位:settings 缺失 → 自动更新默认启用;
 // cache 缺失 → shouldCheck() 为真。两者共同保证调用能走到 L5 闸(而非提前 disabled/skipped)。
@@ -29,7 +29,7 @@ process.env.CLAUDE_CONFIG_DIR = tmpCfg;
 process.env.CCV_LOG_DIR = tmpLog;
 delete process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC; // 否则 isAutoUpdateEnabled 早退,测不到闸
 
-const { checkAndUpdate } = await import('../server/lib/updater.js');
+const { checkAndUpdate } = await import('../packages/app/server/lib/updater.js');
 
 const _origFetch = globalThis.fetch;
 after(() => {
@@ -59,7 +59,7 @@ describe('updater L5 铁闸(测试态零真实网络)', () => {
         injectedCalls++;
         const { version } = JSON.parse(
           // 用真实 package.json 的版本充当 remote latest → 必然走 latest 分支
-          (await import('node:fs')).readFileSync(join(REPO_ROOT, 'package.json'), 'utf-8'),
+          (await import('node:fs')).readFileSync(join(REPO_ROOT, 'packages', 'app', 'package.json'), 'utf-8'),
         );
         return { ok: true, json: async () => ({ 'dist-tags': { latest: version } }) };
       },

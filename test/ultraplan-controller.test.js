@@ -7,7 +7,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { UltraplanController } from '../src/utils/ultraplanController.js';
+import { UltraplanController } from '../apps/web/src/utils/ultraplanController.js';
 
 // ─── fake host：模拟宿主组件的 state / 上传 / 提示 / 偏好 / 关闭编辑器桥接 ───────────
 function makeHost({ uploadOk = true, initialFiles = [], initialExperts = [], variant = 'codeExpert' } = {}) {

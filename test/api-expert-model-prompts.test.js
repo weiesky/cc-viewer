@@ -23,9 +23,9 @@ const wsDir = join(tmpDir, 'project');
 mkdirSync(wsDir, { recursive: true });
 process.env.CCV_PROJECT_DIR = wsDir;
 
-const { expertRoutes } = await import('../server/routes/expert.js');
-const { MODEL_PROMPT_DIR } = await import('../server/lib/model-system-prompts.js');
-const { LOG_DIR } = await import('../findcc.js');
+const { expertRoutes } = await import('../packages/app/server/routes/expert.js');
+const { MODEL_PROMPT_DIR } = await import('../packages/app/server/lib/model-system-prompts.js');
+const { LOG_DIR } = await import('../packages/app/findcc.js');
 const wsModelDir = join(wsDir, MODEL_PROMPT_DIR);
 const globalModelDir = join(LOG_DIR, MODEL_PROMPT_DIR);
 

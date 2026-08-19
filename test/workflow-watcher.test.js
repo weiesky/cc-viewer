@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 const TMP = mkdtempSync(join(tmpdir(), 'ccv-wfw-'));
 
 const { armWorkflowWatch, unwatchAllWorkflows, __setWatchImplForTests, __triggerScanForTests } =
-  await import('../server/lib/workflow-watcher.js');
+  await import('../packages/app/server/lib/workflow-watcher.js');
 
 function fakeWatch() {
   return { close() {}, on() {} };

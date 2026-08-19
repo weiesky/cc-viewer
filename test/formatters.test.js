@@ -2,7 +2,7 @@
 // so we import the real module directly.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatPromptNavTime, formatHms, formatMonthDayTime, contextSeverityColor } from '../src/utils/formatters.js';
+import { formatPromptNavTime, formatHms, formatMonthDayTime, contextSeverityColor } from '../apps/web/src/utils/formatters.js';
 
 describe('formatPromptNavTime', () => {
   it('formats a timestamp as "MM-DD HH:MM:SS" in local time', () => {

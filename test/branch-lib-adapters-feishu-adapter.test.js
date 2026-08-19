@@ -14,12 +14,12 @@ process.env.CCV_LOG_DIR = tmpDir;
 
 let fa;
 before(async () => {
-  fa = (await import('../server/lib/adapters/feishu-adapter.js')).default;
+  fa = (await import('../packages/app/server/lib/adapters/feishu-adapter.js')).default;
 });
 
 // ── 合成一个最小 Lark SDK 工厂，并通过 connect 拿到注册好的 inbound handler ──
 async function makeHandlerVia(connectCfg = {}) {
-  const mod = await import('../server/lib/adapters/feishu-adapter.js');
+  const mod = await import('../packages/app/server/lib/adapters/feishu-adapter.js');
   const adapter = mod.default;
   const rec = { sends: [], wsOpts: null, clientOpts: null };
   let handler = null;

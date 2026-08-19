@@ -33,18 +33,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # pnpm 11 requires Node >= 22.13 (Node 20 is no longer supported), so the
+      # build job moves from Node 20 to Node 24.
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
+          cache: 'pnpm'
 
-      # A1 transition: the Electron job stays on npm. electron-builder expects a flat
-      # npm-style node_modules; the pnpm + hoisted-linker switch lands in A2 (which also
-      # bumps electron-builder to ^26.14). npm ci is impossible (no package-lock under
-      # pnpm), so use npm install; the axios/qs/node-gyp overrides stay duplicated in
-      # package.json precisely so this job keeps working.
-      - run: npm install --no-fund --no-audit
+      # A2: the Electron job runs on pnpm's default ISOLATED linker — verified end-to-end
+      # (web build + electron-builder 26.15.3 dep collection from the .pnpm store both
+      # work; 26.14+ fixed multi-package workspace collection). Do NOT switch this job to
+      # nodeLinker: hoisted — hoisted drops per-package node_modules, which breaks
+      # apps/web/build.js's vite path, and a plain-scalar `nodeLinker:` append here is a
+      # YAML syntax error (colon). The axios/qs/node-gyp overrides this job used to
+      # duplicate in package.json now live in pnpm-workspace.yaml; the pinned node-gyp
+      # ^12.1.0 keeps the VS2026 Windows image building.
+      - run: pnpm install --frozen-lockfile
 
-      - run: npm run build
+      - run: pnpm run build
+
+      - name: Assemble Electron staging
+        # The root build above assembled packages/app/dist; this composes
+        # apps/electron/stage (app payload + shell + generated package.json),
+        # which the electron-builder steps below pack. Runs on every OS so each
+        # matrix runner packs a fresh stage.
+        run: node apps/electron/scripts/assemble-app.mjs
 
       - name: Build Electron (mac)
         if: matrix.platform == 'mac'
@@ -56,7 +73,7 @@ jobs:
         # automatically.
         continue-on-error: true
         timeout-minutes: 60
-        run: npx electron-builder --mac --publish never
+        run: pnpm --filter @ccv/electron exec electron-builder --mac --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -67,7 +84,7 @@ jobs:
 
       - name: Build Electron (win)
         if: matrix.platform == 'win'
-        run: npx electron-builder --win --publish never
+        run: pnpm --filter @ccv/electron exec electron-builder --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Uncomment when Windows signing certificate is available:
@@ -76,7 +93,7 @@ jobs:
 
       - name: Build Electron (linux)
         if: matrix.platform == 'linux'
-        run: npx electron-builder --linux --publish never
+        run: pnpm --filter @ccv/electron exec electron-builder --linux --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -85,11 +102,15 @@ jobs:
         with:
           name: release-${{ matrix.platform }}
           path: |
-            electron-dist/*.dmg
-            electron-dist/*.zip
-            electron-dist/*.exe
-            electron-dist/*.AppImage
-          if-no-files-found: ignore
+            apps/electron/electron-dist/*.dmg
+            apps/electron/electron-dist/*.zip
+            apps/electron/electron-dist/*.exe
+            apps/electron/electron-dist/*.AppImage
+          # Missing artifacts on win/linux are always a bug — fail loudly. Mac keeps
+          # the tolerance: its build step is continue-on-error by design (expired
+          # Developer Agreement breaks notarization, not code) and simply skips the
+          # mac artifact.
+          if-no-files-found: ${{ matrix.platform == 'mac' && 'ignore' || 'error' }}
 
   publish:
     needs: build
@@ -147,9 +168,26 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # npm publish stays: OIDC trusted publishing is npm-only (pnpm has no support).
-      # prepublishOnly runs `npm run build` automatically (vite via pnpm-installed deps).
-      - run: npm publish --provenance
+      # A2: the publishable package is packages/app (root is a private shell).
+      # Build the web bundle + assemble packages/app/dist via the root build,
+      # then `npm pack` in packages/app (prepack re-runs the guarded assemble —
+      # idempotent) and publish the TARBALL: tarball publishes run no lifecycle
+      # scripts, and --provenance still attests the tarball digest. npm publish
+      # stays because OIDC trusted publishing is npm-only (pnpm has no support).
+      - run: pnpm run build
+
+      # Fail loudly before packing if the tag and the app version drifted apart —
+      # the publish step below addresses the tarball by version-derived name.
+      - name: Verify tag matches packages/app version
+        run: |
+          PKG_VERSION=$(node -p "require('./packages/app/package.json').version")
+          [ "$PKG_VERSION" = "${GITHUB_REF_NAME#v}" ] || { echo "::error::tag ${GITHUB_REF_NAME} != packages/app version ${PKG_VERSION}"; exit 1; }
+
+      - run: cd packages/app && npm pack
+
+      - run: npm publish "./packages/app/cc-viewer-${GITHUB_REF_NAME#v}.tgz" --provenance
+        # GITHUB_REF_NAME is the tag (vX.Y.Z); ${...#v} strips the leading v — the
+        # tgz name uses the app version, which the release process keeps in sync.
 
   # Post-release automatic Homebrew tap formula bump (reusable workflow, uses HOMEBREW_TAP_TOKEN).
   bump-homebrew:

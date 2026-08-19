@@ -26,7 +26,7 @@ delete process.env.HTTPS_PROXY;
 delete process.env.all_proxy;
 delete process.env.ALL_PROXY;
 
-const { forceIdentityAcceptEncoding, stripContentLengthHeader, startProxy } = await import('../server/proxy.js');
+const { forceIdentityAcceptEncoding, stripContentLengthHeader, startProxy } = await import('../packages/app/server/proxy.js');
 
 describe('forceIdentityAcceptEncoding', () => {
   it('returns falsy input unchanged', () => {

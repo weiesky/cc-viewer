@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 process.env.CCV_PROXY_MODE = '1';
 process.env.CCV_LOG_DIR = mkdtempSync(join(tmpdir(), 'ccv-imlive-'));
 
-const { imTextDeltaOf, getImLiveText, resetImLiveText } = await import('../server/interceptor.js');
+const { imTextDeltaOf, getImLiveText, resetImLiveText } = await import('../packages/app/server/interceptor.js');
 
 describe('imTextDeltaOf — 只认可见正文 text_delta', () => {
   it('returns the text for a text_delta event', () => {

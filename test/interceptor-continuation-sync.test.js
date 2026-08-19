@@ -38,7 +38,7 @@ delete process.env.CCV_CLAUDE_FORK_SESSION;
 delete process.env.CCV_CLAUDE_RESUME;
 
 let interceptor;
-before(async () => { interceptor = await import('../server/interceptor.js'); });
+before(async () => { interceptor = await import('../packages/app/server/interceptor.js'); });
 const writer = () => interceptor._v2Writer;
 
 describe('module-load seeding from the CLI env', () => {

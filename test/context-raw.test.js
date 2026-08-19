@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 
 let buildContextItemRawText;
 before(async () => {
-  ({ buildContextItemRawText } = await import('../src/utils/contextRaw.js'));
+  ({ buildContextItemRawText } = await import('../apps/web/src/utils/contextRaw.js'));
 });
 
 describe('buildContextItemRawText', () => {

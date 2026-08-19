@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   optionAriaLabel,
   hasOptionDescription,
-} from '../src/utils/askOptionDesc.js';
+} from '../apps/web/src/utils/askOptionDesc.js';
 
 describe('optionAriaLabel', () => {
   it('returns label when description is missing / falsy', () => {

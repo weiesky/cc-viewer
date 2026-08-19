@@ -17,9 +17,9 @@ import assert from 'node:assert/strict';
 let mergeMainAgentSessions, applyInPlaceLastMsgReplace, getEffectiveModel;
 
 before(async () => {
-  ({ mergeMainAgentSessions } = await import('../src/utils/sessionMerge.js'));
-  ({ applyInPlaceLastMsgReplace } = await import('../src/utils/sessionManager.js'));
-  ({ getEffectiveModel } = await import('../src/utils/effectiveModel.js'));
+  ({ mergeMainAgentSessions } = await import('../apps/web/src/utils/sessionMerge.js'));
+  ({ applyInPlaceLastMsgReplace } = await import('../apps/web/src/utils/sessionManager.js'));
+  ({ getEffectiveModel } = await import('../apps/web/src/utils/effectiveModel.js'));
 });
 
 function makeEntry(messages, opts = {}) {

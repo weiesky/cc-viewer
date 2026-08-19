@@ -25,9 +25,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { SingleFlight } from '../server/lib/v2/singleflight.js';
-import { V2Writer } from '../server/lib/v2/v2-writer.js';
-import { readV2WindowedEntries, _v2WindowStatsForTest } from '../server/lib/v2/adapter.js';
+import { SingleFlight } from '../packages/app/server/lib/v2/singleflight.js';
+import { V2Writer } from '../packages/app/server/lib/v2/v2-writer.js';
+import { readV2WindowedEntries, _v2WindowStatsForTest } from '../packages/app/server/lib/v2/adapter.js';
 
 // ─── SingleFlight unit ───────────────────────────────────────────────────────
 describe('SingleFlight coalescing', () => {

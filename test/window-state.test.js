@@ -8,7 +8,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { loadState, saveState, validateState } from '../electron/window-state.js';
+import { loadState, saveState, validateState } from '../apps/electron/electron/window-state.js';
 
 const WA_PRIMARY = { x: 0, y: 0, width: 1920, height: 1080 };   // 主屏 workArea
 const WA_SECOND = { x: 1920, y: 0, width: 1920, height: 1080 }; // 右侧扩展屏

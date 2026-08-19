@@ -20,7 +20,7 @@ process.env.CCV_SYNC_WRITES = '1';
 process.env.CCV_WORKSPACE_MODE = '1';  // 关键：workspace 模式 → 顶层不 init，_projectName/_logDir 为空
 
 let mod;
-before(async () => { mod = await import('../server/interceptor.js'); });
+before(async () => { mod = await import('../packages/app/server/interceptor.js'); });
 after(() => {
   delete process.env.CCV_WORKSPACE_MODE;
   try { rmSync(logDir, { recursive: true, force: true }); } catch { /* noop */ }

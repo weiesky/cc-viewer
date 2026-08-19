@@ -19,7 +19,7 @@ import {
   listPresets,
   renderPreset,
   renderPresetTemplate,
-} from '../server/lib/create_system_prompt.js';
+} from '../packages/app/server/lib/create_system_prompt.js';
 
 // A complete, fixed SystemPromptVariables object. Groups can be overridden per test.
 function fixtureVariables(overrides = {}) {

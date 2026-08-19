@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { reconstructEntries, createIncrementalReconstructor } from '../server/lib/delta-reconstructor.js';
+import { reconstructEntries, createIncrementalReconstructor } from '../packages/app/server/lib/delta-reconstructor.js';
 
 // ============================================================================
 // Test helpers

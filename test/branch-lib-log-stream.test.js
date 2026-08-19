@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 
 let mod;
 before(async () => {
-  mod = await import('../server/lib/log-stream.js');
+  mod = await import('../packages/app/server/lib/log-stream.js');
 });
 
 // ------------------------------------------------------------------

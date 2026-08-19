@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 let findUserImageRefs;
 
 before(async () => {
-  ({ findUserImageRefs } = await import('../src/utils/userImageRefs.js'));
+  ({ findUserImageRefs } = await import('../apps/web/src/utils/userImageRefs.js'));
 });
 
 describe('findUserImageRefs 分支补充', () => {

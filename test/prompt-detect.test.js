@@ -22,8 +22,8 @@ import {
   detectPromptInBuffer,
   isFalsePositiveQuestion,
   getPromptDetectStats,
-} from '../src/utils/promptDetect.js';
-import { parseToolInfoFromBuffer } from '../src/utils/promptClassifier.js';
+} from '../apps/web/src/utils/promptDetect.js';
+import { parseToolInfoFromBuffer } from '../apps/web/src/utils/promptClassifier.js';
 
 // ── 对抗样本构造：/plugins 菜单形态（旧正则的指数回溯触发器）──
 function makePluginsMenu(n, { tail = '5 plugins installed', boxDrawing = false, cjk = false } = {}) {

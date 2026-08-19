@@ -20,7 +20,7 @@ import { tmpdir } from 'node:os';
 import os from 'node:os';
 import { join } from 'node:path';
 
-const mod = await import('../server/pty-manager.js');
+const mod = await import('../packages/app/server/pty-manager.js');
 const {
   spawnClaude,
   spawnShell,
@@ -297,7 +297,7 @@ describe('branch-pty-manager: fixSpawnHelperPermissions 子进程驱动私有分
     try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
   });
 
-  const ptyManagerUrl = new URL('../server/pty-manager.js', import.meta.url).href;
+  const ptyManagerUrl = new URL('../packages/app/server/pty-manager.js', import.meta.url).href;
   const realOs = {
     platform: os.platform(), homedir: os.homedir(), tmpdir: os.tmpdir(),
     hostname: os.hostname(), EOL: os.EOL,

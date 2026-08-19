@@ -39,6 +39,13 @@ brew install cc-viewer
 brew upgrade cc-viewer   # 업그레이드는 이 명령으로 — brew 로 설치한 ccv 를 npm install -g 로 업그레이드하지 마세요
 ```
 
+#### pnpm 로 설치 (전역)
+
+```bash
+pnpm add -g cc-viewer
+pnpm add -g cc-viewer@latest   # 업그레이드는 이 명령으로 — pnpm 로 설치한 ccv 를 npm install -g 로 업그레이드하지 마세요
+```
+
 ### 시작 방법
 
 ccv 는 claude 의 드롭인 대체이며, 모든 인자를 claude 에 그대로 전달하면서 동시에 Web Viewer 를 실행합니다.

@@ -12,7 +12,7 @@
  */
 import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { createBackpressureGate } from '../server/lib/ws-backpressure.js';
+import { createBackpressureGate } from '../packages/app/server/lib/ws-backpressure.js';
 
 const OPTS = { highWater: 1000, lowWater: 200, pollMs: 100, timeoutMs: 60000 };
 

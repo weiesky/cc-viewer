@@ -24,7 +24,7 @@ const realPty = await (async () => {
 const {
   spawnShell, killPty, getPtyState, getPtyKind, getPtyPid, getOutputBuffer,
   onPtyData, onPtyExit, writeToPty, resizePty, _setPtyImportForTests,
-} = await import('../server/pty-manager.js');
+} = await import('../packages/app/server/pty-manager.js');
 
 const waitUntil = async (pred, { timeoutMs = 3000, intervalMs = 10 } = {}) => {
   const deadline = Date.now() + timeoutMs;

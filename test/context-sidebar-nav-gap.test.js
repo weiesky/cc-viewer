@@ -10,7 +10,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { getContextSidebarArrowNavigation } from '../src/utils/contextSidebarNavigation.js';
+import { getContextSidebarArrowNavigation } from '../apps/web/src/utils/contextSidebarNavigation.js';
 
 describe('getContextSidebarArrowNavigation — currentId absent from visibleIds (L14-15)', () => {
   const visibleIds = ['system__0', 'current-turn', 'tool__0'];

@@ -10,7 +10,7 @@
  */
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { clipboardKeyAction, copyTextToClipboard, planPasteSend } from '../src/utils/terminalClipboard.js';
+import { clipboardKeyAction, copyTextToClipboard, planPasteSend } from '../apps/web/src/utils/terminalClipboard.js';
 
 const kd = (over = {}) => ({ type: 'keydown', ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, key: '', code: '', ...over });
 

@@ -19,8 +19,8 @@ process.env.CCV_MAX_PORT = '18409';
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
 
-const { LOG_DIR } = await import('../findcc.js');
-const { resolveSessionDirName } = await import('../server/lib/v2/session-select.js');
+const { LOG_DIR } = await import('../packages/app/findcc.js');
+const { resolveSessionDirName } = await import('../packages/app/server/lib/v2/session-select.js');
 
 const SID = 'c1d2e3f4-1111-2222-3333-444455556666';
 const USER_ID = JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: SID });
@@ -70,7 +70,7 @@ describeCli('server v2 read path (wire-v2 S5)', { concurrency: false }, () => {
 
   before(async () => {
     // Build a real v2 session with the real writer BEFORE the server boots.
-    const { V2Writer } = await import('../server/lib/v2/v2-writer.js');
+    const { V2Writer } = await import('../packages/app/server/lib/v2/v2-writer.js');
     const w = new V2Writer({ logDir: LOG_DIR, project: projectName, enabled: true, minFreeBytes: 0 });
     const wires = [
       [textMsg('user', 'turn 1')],
@@ -93,7 +93,7 @@ describeCli('server v2 read path (wire-v2 S5)', { concurrency: false }, () => {
     await w.flush();
     v2Ref = `v2:${projectName}/${resolveSessionDirName(join(LOG_DIR, projectName), SID) || SID}`;
 
-    const mod = await import('../server/server.js');
+    const mod = await import('../packages/app/server/server.js');
     stopViewer = mod.stopViewer;
     await mod.startViewer();
     port = mod.getPort();
@@ -158,7 +158,7 @@ describeCli('server v2 read path (wire-v2 S5)', { concurrency: false }, () => {
     // so creating it after boot is fine.
     const sid3 = 'c1d2e3f4-9999-8888-7777-666655554444';
     const userId3 = JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: sid3 });
-    const { V2Writer } = await import('../server/lib/v2/v2-writer.js');
+    const { V2Writer } = await import('../packages/app/server/lib/v2/v2-writer.js');
     const w = new V2Writer({ logDir: LOG_DIR, project: projectName, enabled: true, minFreeBytes: 0 });
     const entry = {
       timestamp: '2026-07-13T06:00:00.000Z', project: projectName,

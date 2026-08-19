@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { isAlreadyMigrated, resolveStartTs, isLiveSession, planRenames } from '../scripts/rename-v2-sessions-with-ts.js';
-import { compactLocalTs14 } from '../server/lib/v2/layout.js';
+import { compactLocalTs14 } from '../packages/app/server/lib/v2/layout.js';
 
 let root;
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'ccv-rename-')); });

@@ -69,7 +69,7 @@ function baseDeps(extra = {}) {
 }
 
 before(async () => {
-  const mod = await import('../server/routes/files-fs.js');
+  const mod = await import('../packages/app/server/routes/files-fs.js');
   routesByPath = mod.filesFsRoutes;
 });
 

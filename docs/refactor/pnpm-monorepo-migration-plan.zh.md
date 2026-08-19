@@ -64,7 +64,7 @@ repo-root/
 │   └── app/        → 发布名 cc-viewer（唯一发布包；仓库布局 == tarball 布局）
 │       ├── cli.js  findcc.js  server.js  interceptor.js   # 根 shim 原样保留
 │       ├── server/            # 后端全部（i18n.js、_paths.js、routes/、lib/、imSkills/、imPreset/、system-prompt-templates/）
-│       ├── src/utils/         # ★ 只含 requestType.js + contentFilter.js（server 运行时闭包）
+│       ├── src/utils/         # ★ 只含 4 文件运行时闭包（requestType/contentFilter/teammateDetector/clearCheckpoint —— A2 实施时验证的传递闭包，比方案初稿的 2 文件多 2 个）
 │       ├── plugins/ concepts/ ultraAgents/
 │       ├── dist/              # pack 时由 apps/web/dist 拷入（gitignore，prepack 钩子）
 │       ├── scripts/assemble-dist.mjs
@@ -91,7 +91,7 @@ repo-root/
 3. pack 时做「拷贝 + import 改写」codemod —— 对 40k LOC 运行时代码做文本改写，回归风险高，违背「server 原始源码发布」约定。
 4. 整体 bundle server —— 破坏动态 import 与源码级排障，不可接受。
 
-**结论**：`packages/app` 直接承载「server + cli + findcc + shims + 2 文件共享缝 + 内容资源」，pack 时只需拷入 `dist/`（纯增量、无改写）。拆包收益照样拿到：前端 61k LOC 独立成包、electron 工具链独立、app 依赖面收敛到 9 个 runtime deps。
+**结论**：`packages/app` 直接承载「server + cli + findcc + shims + 4 文件共享缝 + 内容资源」，pack 时只需拷入 `dist/`（纯增量、无改写）。拆包收益照样拿到：前端 61k LOC 独立成包、electron 工具链独立、app 依赖面收敛到 8 个 runtime deps（dompurify 已纠正到 web devDeps）+ 1 个 optional。
 
 **评审验证通过的枢纽结论**：app 物理聚合方案下 pack 唯一增量动作就是拷 dist —— cli.js 的 13+ 处动态 import 全部是 `./server/*`、`./findcc.js`（包内闭合）；`cli.js:883`、`server.js:344` 自读 package.json 均相对自身位置；axios/qs 只出现在 overrides 而非代码。
 
@@ -181,7 +181,7 @@ catalog:                # 评审修正：服务于「根测试孪生依赖」的
 
 | 包 | dependencies | devDependencies |
 |---|---|---|
-| `cc-viewer` (app) | node-pty, undici, ws, adm-zip, discord.js, dingtalk-stream, @larksuiteoapi/node-sdk, @wecom/aibot-node-sdk（均可 `catalog:`）；optionalDependencies: @anthropic-ai/claude-agent-sdk；**engines >=20.18.1**（发布契约修正） | 无 |
+| `cc-viewer` (app) | node-pty, undici, ws, adm-zip, discord.js, dingtalk-stream, @larksuiteoapi/node-sdk, @wecom/aibot-node-sdk（**必须字面量版本** —— 发布用 `npm pack`，不会重写 catalog:/workspace: 协议，见 §A2 实施记录 R2）；optionalDependencies: @anthropic-ai/claude-agent-sdk；**engines >=20.18.1**（发布契约修正） | 无 |
 | `@ccv/web` | 无 runtime deps（全量打包进 dist） | react, react-dom, antd, …（前端全套，含 **dompurify** 从 dependencies 纠正至此）；vite, terser 等 |
 | `@ccv/electron` | **★ 评审修正（P1）：声明 app 的全部 9 个 runtime deps + optional SDK** —— electron-builder 从 yml 所在包收集生产依赖并打进 App；不声明则桌面端打包后 server 代码 `import 'node-pty'` 全部解析失败。pnpm store 去重，无体积代价 | electron, electron-builder（**升至 ^26.14.0**，26.14 才修复 hoisted 模式嵌套依赖收集）, @electron/notarize |
 
@@ -410,3 +410,20 @@ A1+A2+A3 合并执行（~2–3 天），中间不发布：
 6. **双层目录：`apps/{web,electron}` + `packages/{app}`**（2026-08-18 用户补充）——为后续 `packages/` 细粒度拆解预留语义分层，拆解时各单元无需二次搬家；分层规则见 §1.1。
 
 方案已冻结，可进入二阶段实施。
+
+---
+
+## 附录：A2 实施记录（2026-08-19，已落地）
+
+与方案正文的偏差及其实证依据：
+
+1. **共享缝 = 4 文件而非 2 文件**：`requestType.js → contentFilter.js → teammateDetector.js + clearCheckpoint.js → server/lib/session-boundary.js`（均在 app 内闭合）。web 侧改写面 15 文件 + 8 处 CLIENT-SAFE，vite build 一次通过。
+2. **catalog 弃用**：发布链路是 `npm pack`（不重写 `catalog:`/`workspace:` 协议），app 的 deps 必须字面量；根测试孪生依赖改用字面量（锁步价值随 app 侧无法用 catalog 而失效）。`assemble-dist.mjs` 内含 workspace:/catalog: 守卫。
+3. **README.md / LICENSE.md 拷入**：npm pack 只从包目录自动附带这两个文件；A2 后它们在仓库根 → assemble-dist 负责拷入 packages/app（gitignore 忽略拷贝件）。L4 契约门禁实测：A2 tarball 与 A1 基线**唯一差异 = src/utils 收敛 91 文件**，零新增。
+4. **electron 打包（spike 实证）**：`electron-builder` 必须 **≥26.14**（26.8.1 的 pnpm collector 在 pnpm 11 多包 workspace 下返回空树；实际解析 26.15.3）；`electron` devDep 必须**精确钉版**（42.0.1，hoisted 下 electron-builder 需要 fixed version 计算 electron 版本）；staging 组装（`apps/electron/scripts/assemble-app.mjs`）+ sibling 布局（stage/electron 与 stage/server 并列，rootDir 探测依赖）；**hoisted 与 isolated 两种 linker 本机均出包成功**。**UltraReview 修正：CI 最终采用默认 isolated linker** —— 原定 job 内 append `nodeLinker: hoisted` 的方案被否：(a) 该行写法是 YAML 语法错误（plain scalar 内含冒号，整个 workflow 会被 GitHub 拒收）；(b) hoisted 不落 per-package node_modules，apps/web/build.js 的 vite 路径会断，build job 的 `pnpm run build` 必败；(c) 26.15.3 在 isolated 下已实证可完整收集依赖。
+5. **release.yml npm-publish job 最终形态**：`pnpm install --frozen-lockfile` → `pnpm run build`（web + assemble）→ `cd packages/app && npm pack`（prepack 重跑带守卫的 assemble）→ `npm publish "./packages/app/cc-viewer-${GITHUB_REF_NAME#v}.tgz" --provenance`（tarball 发布不跑钩子，OIDC 正常）。
+6. **electron job Node 20 → 24**：pnpm 11 硬要求 Node ≥22.13。
+7. **测试迁移**：codemod 两轮（import 说明符 + 路径字符串）改写 473 文件中的 426 + 47；手工修正 12 个文件（root-shim/client-safe-imports 双根/cli-import-paths appRoot/windows-npm-root 期望/findcc eval cwd/i18n 七件/modal-mask 消费集/updater pkgPath 等）；codemod 误伤 1 处 legacy 注入 fixture 字符串（`import '../../cc-viewer/interceptor.js';` 是契约不是路径）已恢复。**最终 test:cli 9482 pass / 0 fail**。
+8. **updater pnpm-global 探测**：`detectPnpmGlobalInstall` 按 realpath 中 `/.pnpm/cc-viewer@<version>/` 虚拟 store 段识别（含版本形态守卫），命中返回 `pnpm_managed` 并提示 `pnpm add -g`；banner 路由同步；i18n `update.pnpmManaged` ×18 语言；新增 test/updater-pnpm.test.js 26 例。
+9. **PUBLIC_DIR 探测**：`_paths.js` 的 PUBLIC_DIR 加存在性探测（app/public 不存在 → apps/web/public），生产 tarball 行为不变（本来就是死候选）。
+10. **hooks 兼容**：用户 `~/.claude/settings.json` 的 4 个 cc-viewer-managed hook 路径已更新为 packages/app/server/lib/*；根 `server/lib/` 留了 4 个临时 import-shim 供本轮会话过渡（.git/info/exclude 本地忽略，不提交；会话重启后删除，见任务 A2.7）。

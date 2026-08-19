@@ -8,7 +8,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const bridgePath = join(__dirname, '..', 'server', 'lib', 'ask-bridge.js');
+const bridgePath = join(__dirname, '..', 'packages', 'app', 'server', 'lib', 'ask-bridge.js');
 
 // ask-bridge.js 是个 PreToolUse hook 脚本（模块加载即执行，读 stdin + 走 HTTP），
 // 唯一可观测面是 stdin/env 入 + stdout/stderr/exitcode 出，因此整文件用子进程黑盒驱动。

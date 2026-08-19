@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCRIPT = join(__dirname, '..', 'server', 'lib', 'ccv-editor.js');
+const SCRIPT = join(__dirname, '..', 'packages', 'app', 'server', 'lib', 'ccv-editor.js');
 
 /** Run ccv-editor.js as a child; resolve { code, stdout, stderr }. */
 function runEditor({ args = [], env = {} } = {}) {

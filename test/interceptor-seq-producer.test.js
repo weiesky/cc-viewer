@@ -85,8 +85,8 @@ before(async () => {
     nextResponse ? nextResponse() : new Response('{"content":[{"type":"text","text":"ok"}]}', {
       status: 200, headers: { 'content-type': 'application/json' },
     });
-  mod = await import('../server/interceptor.js');
-  ({ iterateV2RawEntries } = await import('../server/lib/v2/adapter.js'));
+  mod = await import('../packages/app/server/interceptor.js');
+  ({ iterateV2RawEntries } = await import('../packages/app/server/lib/v2/adapter.js'));
   mod.setupInterceptor();
   assert.equal(mod.LOG_FILE, '', '1.7.0 起 LOG_FILE 恒为空串');
 });

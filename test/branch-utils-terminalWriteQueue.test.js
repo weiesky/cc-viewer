@@ -23,7 +23,7 @@ import './_shims/register.mjs';
 let TerminalWriteQueue;
 
 before(async () => {
-  ({ TerminalWriteQueue } = await import('../src/utils/terminalWriteQueue.js'));
+  ({ TerminalWriteQueue } = await import('../apps/web/src/utils/terminalWriteQueue.js'));
 });
 
 // ==== 夹具：mock requestAnimationFrame + xterm ====

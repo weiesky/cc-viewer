@@ -23,9 +23,9 @@
  */
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { createFloodCoalescer } from '../server/lib/pty-flood-coalescer.js';
-import { findSafeSliceStart, splitTrailingIncomplete } from '../server/lib/ansi-safe-slice.js';
-import { TerminalWriteQueue, INBAND_RESET } from '../src/utils/terminalWriteQueue.js';
+import { createFloodCoalescer } from '../packages/app/server/lib/pty-flood-coalescer.js';
+import { findSafeSliceStart, splitTrailingIncomplete } from '../packages/app/server/lib/ansi-safe-slice.js';
+import { TerminalWriteQueue, INBAND_RESET } from '../apps/web/src/utils/terminalWriteQueue.js';
 
 // ── 裁判：迷你 VT 解析器（xterm 状态机语义子集，足以判定"残片是否上屏"）──
 function vtVisibleText(payloads) {

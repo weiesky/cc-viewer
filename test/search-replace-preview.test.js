@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 // The client preview mirror (src/utils/searchReplace.js) must stay byte-for-byte equivalent to
 // the server (server/lib/code-replace.js + buildQueryRegExp) or the inline preview diverges from
 // what gets written. Both modules are pure ESM and import cleanly under node:test.
-const client = await import('../src/utils/searchReplace.js');
-const serverReplace = await import('../server/lib/code-replace.js');
-const server = await import('../server/lib/code-search.js');
+const client = await import('../apps/web/src/utils/searchReplace.js');
+const serverReplace = await import('../packages/app/server/lib/code-replace.js');
+const server = await import('../packages/app/server/lib/code-search.js');
 const { buildQueryRegExp: serverBuildRe } = server;
 
 const CASES = [

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeThinkingBlocks } from '../src/utils/thinkingMerge.js';
+import { mergeThinkingBlocks } from '../apps/web/src/utils/thinkingMerge.js';
 
 const SEP = '\n\n---\n\n';
 const thinking = (t) => ({ type: 'thinking', thinking: t });

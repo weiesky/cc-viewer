@@ -2,7 +2,7 @@
 // convention (pure module, no browser globals; imported statically).
 import { describe, it, beforeEach, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { reportSwallowed, MAX_REPORTS_PER_TAG, _resetForTest } from '../src/utils/errorReport.js';
+import { reportSwallowed, MAX_REPORTS_PER_TAG, _resetForTest } from '../apps/web/src/utils/errorReport.js';
 
 // Save→stub→restore discipline for console.warn (same pattern as the
 // localStorage stubs in branch-utils-projectAlias.test.js).

@@ -10,7 +10,7 @@ import {
   SYSTEM_PROMPT_FILE,
   APPEND_SYSTEM_PROMPT_FILE,
   DISABLE_AUTO_SYSTEM_PROMPT_ENV,
-} from '../server/lib/system-prompt-files.js';
+} from '../packages/app/server/lib/system-prompt-files.js';
 
 describe('system-prompt-files: buildSystemPromptFileArgs', () => {
   let dirs = [];

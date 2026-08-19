@@ -5,7 +5,7 @@
 
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { downscaleForRetina } from '../src/utils/imageDownscale.js';
+import { downscaleForRetina } from '../apps/web/src/utils/imageDownscale.js';
 
 // ── 全局 mock 状态（每个 it 通过下面的 config* 字段调整行为）──
 let imgConfig;      // { width, height, fail }

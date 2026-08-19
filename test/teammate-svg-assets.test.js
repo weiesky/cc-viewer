@@ -15,7 +15,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
-const DIR = new URL('../src/img/teammates/', import.meta.url);
+const DIR = new URL('../apps/web/src/img/teammates/', import.meta.url);
 
 const ROLES = [
   'worker', 'reviewer', 'researcher', 'explorer', 'analyst', 'tracer',
@@ -58,7 +58,7 @@ describe('marvel set stays unwired (likeness/IP safety)', () => {
   // into the dist bundle and ship them in the npm artifact. Walk all source
   // files (same boundary-guard idea as client-safe-imports.test.js).
   it('no file under src/ or server/ references teammates/marvel', () => {
-    const roots = ['src', 'server'].map((d) =>
+    const roots = ['apps/web/src', 'packages/app/server'].map((d) =>
       fileURLToPath(new URL(`../${d}/`, import.meta.url)));
     const offenders = [];
     const walk = (dir) => {

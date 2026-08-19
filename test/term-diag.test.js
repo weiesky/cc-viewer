@@ -11,7 +11,7 @@ import {
   installTermDiag,
   uninstallTermDiag,
   _resetTermDiagForTest,
-} from '../src/utils/termDiag.js';
+} from '../apps/web/src/utils/termDiag.js';
 
 describe('termDiag', () => {
   beforeEach(() => _resetTermDiagForTest());

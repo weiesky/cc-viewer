@@ -54,7 +54,7 @@ function throwingSearchParams() {
 let planFile, fileContentGet, projectMemory, claudeMd, fileRaw;
 
 before(async () => {
-  const mod = await import('../server/routes/files-content.js');
+  const mod = await import('../packages/app/server/routes/files-content.js');
   const routes = mod.filesContentRoutes;
   const byPath = (p, m) => routes.find(r => r.path === p && r.method === m)?.handler;
   planFile = byPath('/api/plan-file', 'GET');

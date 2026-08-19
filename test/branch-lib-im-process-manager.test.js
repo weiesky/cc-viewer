@@ -33,8 +33,8 @@ let pm;       // im-process-manager
 let lockMod;  // im-lock (lockPath / imDir)
 
 before(async () => {
-  pm = await import('../server/lib/im-process-manager.js');
-  lockMod = await import('../server/lib/im-lock.js');
+  pm = await import('../packages/app/server/lib/im-process-manager.js');
+  lockMod = await import('../packages/app/server/lib/im-lock.js');
 });
 
 after(() => {
@@ -215,7 +215,7 @@ describe('im-process-manager 分支补强: stopImProcess 默认 timeout/poll', (
 
 describe('im-process-manager 分支补强: reconcile spawn 失败 catch(e)', () => {
   it('enabled+dead 平台 spawnImProcess 抛错时被 catch 吞掉(console.error)，不计入 spawned', async () => {
-    const { saveConfig } = await import('../server/lib/im-config.js');
+    const { saveConfig } = await import('../packages/app/server/lib/im-config.js');
     // 私有 LOG_DIR 下清空 prefs，仅启用 dingtalk
     saveConfig('dingtalk', { enabled: true, appKey: 'k', appSecret: 's' });
     wipe('dingtalk'); // 确保无锁 → getImLiveness 判 dead → 进入 spawn 分支
@@ -235,7 +235,7 @@ describe('im-process-manager 分支补强: reconcile spawn 失败 catch(e)', () 
   });
 
   it('spawn 抛出无 message 的值时 e?.message || e 取 e 本身(行 155 || 臂)', async () => {
-    const { saveConfig } = await import('../server/lib/im-config.js');
+    const { saveConfig } = await import('../packages/app/server/lib/im-config.js');
     saveConfig('dingtalk', { enabled: true, appKey: 'k', appSecret: 's' });
     wipe('dingtalk');
     const origErr = console.error;

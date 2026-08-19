@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const bridgePath = join(__dirname, '..', 'server', 'lib', 'perm-bridge.js');
+const bridgePath = join(__dirname, '..', 'packages', 'app', 'server', 'lib', 'perm-bridge.js');
 
 /**
  * 以指定 stdin 句柄运行 perm-bridge，收集 exit code / stdout / stderr。

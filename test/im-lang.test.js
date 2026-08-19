@@ -4,8 +4,8 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { LOG_DIR } from '../findcc.js';
-import { resolvePrefLang } from '../server/lib/im-lang.js';
+import { LOG_DIR } from '../packages/app/findcc.js';
+import { resolvePrefLang } from '../packages/app/server/lib/im-lang.js';
 
 describe('resolvePrefLang', () => {
   const prefsPath = join(LOG_DIR, 'preferences.json');

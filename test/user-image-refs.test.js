@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { findUserImageRefs } from '../src/utils/userImageRefs.js';
+import { findUserImageRefs } from '../apps/web/src/utils/userImageRefs.js';
 
 describe('findUserImageRefs', () => {
   it('returns [] for empty / non-string input', () => {

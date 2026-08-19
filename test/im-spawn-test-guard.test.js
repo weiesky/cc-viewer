@@ -10,7 +10,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { spawnImProcess } = await import('../server/lib/im-process-manager.js');
+const { spawnImProcess } = await import('../packages/app/server/lib/im-process-manager.js');
 
 describe('spawnImProcess L4 测试隔离铁闸', () => {
   it('测试环境 + 无注入 + 无显式放行 → 拒绝真实 spawn(blockedByTestGuard)', () => {

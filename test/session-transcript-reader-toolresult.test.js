@@ -14,7 +14,7 @@ const SAVED_PROJECTS_DIR = process.env.CCV_PROJECTS_DIR;
 const TMP = mkdtempSync(join(tmpdir(), 'ccv-tur-'));
 process.env.CCV_PROJECTS_DIR = TMP;
 
-const { lookupToolUseResult, clearCache } = await import('../server/lib/session-transcript-reader.js');
+const { lookupToolUseResult, clearCache } = await import('../packages/app/server/lib/session-transcript-reader.js');
 
 function writeUserToolResult(dir, sid, tuId, toolUseResult) {
   const projDir = join(TMP, dir);

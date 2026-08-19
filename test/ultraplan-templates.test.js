@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCustomTemplate, buildLocalUltraplan, ULTRAPLAN_VARIANTS } from '../src/utils/ultraplanTemplates.js';
-import { t } from '../src/i18n.js';
+import { buildCustomTemplate, buildLocalUltraplan, ULTRAPLAN_VARIANTS } from '../apps/web/src/utils/ultraplanTemplates.js';
+import { t } from '../apps/web/src/i18n.js';
 
 describe('ultraplanTemplates: buildCustomTemplate', () => {
   it('returns empty string for empty body', () => {

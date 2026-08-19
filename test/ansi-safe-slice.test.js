@@ -5,7 +5,7 @@
 // 而非旧实现的"跳过序列"（return j+1）。
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { findSafeSliceStart, splitTrailingIncomplete } from '../server/lib/ansi-safe-slice.js';
+import { findSafeSliceStart, splitTrailingIncomplete } from '../packages/app/server/lib/ansi-safe-slice.js';
 
 describe('ansi-safe-slice: 锚点命中', () => {
   it('rawStart 恰落在完整 ESC 序列起点 → 返回 rawStart，序列完整保留', () => {

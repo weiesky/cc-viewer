@@ -56,7 +56,7 @@ before(async () => {
   subSrv = await startUpstream('sub');
   const mainPort = mainSrv.address().port;
   const subPort = subSrv.address().port;
-  itc = await import('../server/interceptor.js');
+  itc = await import('../packages/app/server/interceptor.js');
   // profile.json：main1=主源、sub1=子源（各带 ANTHROPIC_MODEL 验证重试引擎按角色替换模型）
   mkdirSync(tmpDir, { recursive: true });
   writeFileSync(itc.PROFILE_PATH, JSON.stringify({ profiles: [
@@ -65,7 +65,7 @@ before(async () => {
     { id: 'sub1', name: 'Sub', baseURL: `http://127.0.0.1:${subPort}`, apiKey: 'sk-sub', ANTHROPIC_MODEL: 'SUB-MODEL' },
   ] }), { mode: 0o600 });
   itc.setActiveProfileForWorkspace('main1', { subagent: 'sub1', teammate: 'follow' });
-  const proxyMod = await import('../server/proxy.js');
+  const proxyMod = await import('../packages/app/server/proxy.js');
   proxyPort = await proxyMod.startProxy();
   assert.ok(proxyPort > 0);
 });

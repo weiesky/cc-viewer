@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const INTERCEPTOR = join(REPO_ROOT, 'server', 'interceptor.js');
+const INTERCEPTOR = join(REPO_ROOT, 'packages', 'app', 'server', 'interceptor.js');
 
 process.env.CCV_PROXY_MODE = '1';
 process.env.CCV_SYNC_WRITES = '1';
@@ -90,9 +90,9 @@ before(async () => {
     lastFetchArgs = [url, opts];
     return nextResponse ? nextResponse(url, opts) : new Response('{}', { status: 200 });
   };
-  mod = await import('../server/interceptor.js');
-  core = await import('../server/lib/interceptor-core.js');
-  const { preferencesRoutes } = await import('../server/routes/preferences.js');
+  mod = await import('../packages/app/server/interceptor.js');
+  core = await import('../packages/app/server/lib/interceptor-core.js');
+  const { preferencesRoutes } = await import('../packages/app/server/routes/preferences.js');
   const find = (p, m) => preferencesRoutes.find((r) => r.path === p && r.method === m).handler;
   proxyProfilesGet = find('/api/proxy-profiles', 'GET');
   proxyProfilesPost = find('/api/proxy-profiles', 'POST');

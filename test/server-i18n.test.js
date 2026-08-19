@@ -15,7 +15,7 @@ describeCli('server/i18n.js export branches', () => {
   let savedLang;
 
   before(async () => {
-    i18n = await import('../server/i18n.js');
+    i18n = await import('../packages/app/server/i18n.js');
     savedLang = i18n.getLang();
   });
 

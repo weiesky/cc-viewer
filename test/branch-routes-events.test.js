@@ -103,11 +103,11 @@ let events, turnEndNotify;
 let eventsMod;
 
 before(async () => {
-  interceptor = await import('../server/interceptor.js');
+  interceptor = await import('../packages/app/server/interceptor.js');
   await interceptor._initPromise;
   assert.equal(interceptor._projectName, projectName);
 
-  eventsMod = await import('../server/routes/events.js');
+  eventsMod = await import('../packages/app/server/routes/events.js');
   const find = (p, m) => eventsMod.eventsRoutes.find((r) => r.path === p && r.method === m).handler;
   events = find('/events', 'GET');
   turnEndNotify = find('/api/turn-end-notify', 'POST');

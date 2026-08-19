@@ -50,16 +50,16 @@ describe('project-prefs lib + routes', { concurrency: false }, () => {
   let lib, store;
 
   before(async () => {
-    const pref = await import('../server/routes/preferences.js');
+    const pref = await import('../packages/app/server/routes/preferences.js');
     prefsGet = pref.preferencesRoutes.find((r) => r.path === '/api/preferences' && r.method === 'GET').handler;
     prefsPost = pref.preferencesRoutes.find((r) => r.path === '/api/preferences' && r.method === 'POST').handler;
-    const pp = await import('../server/routes/project-prefs.js');
+    const pp = await import('../packages/app/server/routes/project-prefs.js');
     toggle = pp.projectPrefsRoutes.find((r) => r.path === '/api/project-prefs/toggle').handler;
     update = pp.projectPrefsRoutes.find((r) => r.path === '/api/project-prefs/update').handler;
     del = pp.projectPrefsRoutes.find((r) => r.path === '/api/project-prefs/delete').handler;
     list = pp.projectPrefsRoutes.find((r) => r.path === '/api/project-prefs' && r.method === 'GET').handler;
-    lib = await import('../server/lib/project-prefs.js');
-    store = await import('../server/lib/prefs-store.js');
+    lib = await import('../packages/app/server/lib/project-prefs.js');
+    store = await import('../packages/app/server/lib/prefs-store.js');
   });
 
   after(() => { rmSync(tmpDir, { recursive: true, force: true }); });

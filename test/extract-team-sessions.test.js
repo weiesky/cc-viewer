@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractTeamSessions, isStrongTerminal } from '../src/utils/teamSessionParser.js';
+import { extractTeamSessions, isStrongTerminal } from '../apps/web/src/utils/teamSessionParser.js';
 
 // Inlined function removed — now imported from src/utils/teamSessionParser.js
 

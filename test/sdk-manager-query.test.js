@@ -30,7 +30,7 @@ before(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), 'ccv-sdk-q-'));
   process.env.CCV_LOG_DIR = tmpDir;
   process.env.CLAUDE_CONFIG_DIR = tmpDir;
-  sdk = await import('../server/lib/sdk-manager.js');
+  sdk = await import('../packages/app/server/lib/sdk-manager.js');
 });
 
 after(() => {

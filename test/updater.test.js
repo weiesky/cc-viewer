@@ -4,8 +4,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from '
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { checkAndUpdate, isAnyCcvBusy, detectHomebrewInstall } from '../server/lib/updater.js';
-import { getClaudeConfigDir } from '../findcc.js';
+import { checkAndUpdate, isAnyCcvBusy, detectHomebrewInstall } from '../packages/app/server/lib/updater.js';
+import { getClaudeConfigDir } from '../packages/app/findcc.js';
 
 const CACHE_DIR = join(getClaudeConfigDir(), 'cc-viewer');
 const CACHE_FILE = join(CACHE_DIR, 'update-check.json');
@@ -187,7 +187,7 @@ describe('checkAndUpdate — fetch', () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
-    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     const [maj, min, pat] = pkg.version.split('.').map(Number);
     const remote = `${maj}.${min}.${pat + 1}`;
@@ -215,7 +215,7 @@ describe('checkAndUpdate — fetch', () => {
   it('currentVersion matches package.json', async () => {
     process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1';
     const result = await checkAndUpdate();
-    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     assert.equal(result.currentVersion, pkg.version);
   });
@@ -236,7 +236,7 @@ describe('checkAndUpdate — fetch', () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
-    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
 
     const result = await checkAndUpdate({
@@ -251,7 +251,7 @@ describe('checkAndUpdate — fetch', () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
-    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     const [maj] = pkg.version.split('.').map(Number);
     const remote = `${maj + 1}.0.0`;
@@ -292,7 +292,7 @@ describe('checkAndUpdate — fetch', () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
-    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     const [maj, min, pat] = pkg.version.split('.').map(Number);
     const remote = `${maj}.${min}.${pat + 1}`;
@@ -311,7 +311,7 @@ describe('checkAndUpdate — fetch', () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
-    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     const [maj, min, pat] = pkg.version.split('.').map(Number);
     const remote = `${maj}.${min}.${pat + 1}`;
@@ -331,7 +331,7 @@ describe('checkAndUpdate — fetch', () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
-    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     const [maj, min, pat] = pkg.version.split('.').map(Number);
     const remote = `${maj}.${min}.${pat + 1}`;
@@ -353,7 +353,7 @@ describe('checkAndUpdate — fetch', () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
-    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     const [maj, min, pat] = pkg.version.split('.').map(Number);
     const remote = `${maj}.${min}.${pat + 1}`;
@@ -504,7 +504,7 @@ describe('checkAndUpdate spawn return defense', () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
-    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     const [maj, min, pat] = pkg.version.split('.').map(Number);
     const remote = `${maj}.${min}.${pat + 1}`;
@@ -524,7 +524,7 @@ describe('checkAndUpdate spawn return defense', () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
-    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     const [maj, min, pat] = pkg.version.split('.').map(Number);
     const remote = `${maj}.${min}.${pat + 1}`;
@@ -749,7 +749,7 @@ describe('checkAndUpdate — brew_managed', () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
-    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     const [maj, min, pat] = pkg.version.split('.').map(Number);
     const remote = `${maj}.${min}.${pat + 1}`;
@@ -775,7 +775,7 @@ describe('checkAndUpdate — brew_managed', () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
-    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     const [maj] = pkg.version.split('.').map(Number);
     const remote = `${maj + 1}.0.0`;
@@ -798,7 +798,7 @@ describe('checkAndUpdate — brew_managed', () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
-    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
 
     const result = await checkAndUpdate({
@@ -812,7 +812,7 @@ describe('checkAndUpdate — brew_managed', () => {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(CACHE_FILE, JSON.stringify({ lastCheck: 0 }));
 
-    const pkgPath = join(import.meta.dirname, '..', 'package.json');
+    const pkgPath = join(import.meta.dirname, '..', 'packages', 'app', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
     const [maj, min, pat] = pkg.version.split('.').map(Number);
     const remote = `${maj}.${min}.${pat + 1}`;

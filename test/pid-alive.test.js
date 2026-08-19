@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 
-import { isPidAlive } from '../server/lib/pid-alive.js';
+import { isPidAlive } from '../packages/app/server/lib/pid-alive.js';
 
 describe('isPidAlive', () => {
   it('this process and its parent are alive', () => {

@@ -19,7 +19,7 @@ import './_shims/register.mjs';
 let renderMarkdown;
 
 before(async () => {
-  const mod = await import('../src/utils/markdown.js');
+  const mod = await import('../apps/web/src/utils/markdown.js');
   renderMarkdown = mod.renderMarkdown;
 });
 

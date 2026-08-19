@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { createHardenedCleanup, installWinKeypressFallback, killPtyTree } from '../server/lib/term-signals.js';
+import { createHardenedCleanup, installWinKeypressFallback, killPtyTree } from '../packages/app/server/lib/term-signals.js';
 
 // ── helpers ──────────────────────────────────────────────────────────────
 function makeExitSpy() {

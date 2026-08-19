@@ -8,7 +8,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { detectMdExtensions } from '../src/utils/mdExtensionDetect.js';
+import { detectMdExtensions } from '../apps/web/src/utils/mdExtensionDetect.js';
 
 const NONE = {
   hasMermaid: false,

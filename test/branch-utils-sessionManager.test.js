@@ -14,7 +14,7 @@ import './_shims/register.mjs';
 
 let SM;
 before(async () => {
-  SM = await import('../src/utils/sessionManager.js');
+  SM = await import('../apps/web/src/utils/sessionManager.js');
 });
 
 // ─── applyInPlaceLastMsgReplace 末位 _timestamp / appliedCount 分支 ──────────

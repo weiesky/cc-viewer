@@ -15,7 +15,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldPortalAskForm, isPlaceholderAskId } from '../src/utils/askPortalMatcher.js';
+import { shouldPortalAskForm, isPlaceholderAskId } from '../apps/web/src/utils/askPortalMatcher.js';
 
 describe('shouldPortalAskForm — null / undefined 早退', () => {
   it('activeAskId === null → false', () => {

@@ -14,8 +14,8 @@ import { fileURLToPath } from 'url';
 
 const LOCALES = ['zh', 'en', 'zh-TW', 'ko', 'ja', 'de', 'es', 'fr', 'it', 'da', 'pl', 'ru', 'ar', 'no', 'pt-BR', 'th', 'tr', 'uk'];
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const I18N_SRC = readFileSync(join(__dirname, '..', 'src', 'i18n.js'), 'utf-8');
-const I18N_SRV = readFileSync(join(__dirname, '..', 'server', 'i18n.js'), 'utf-8');
+const I18N_SRC = readFileSync(join(__dirname, '..', 'apps', 'web', 'src', 'i18n.js'), 'utf-8');
+const I18N_SRV = readFileSync(join(__dirname, '..', 'packages', 'app', 'server', 'i18n.js'), 'utf-8');
 
 function localeBlockOf(src, key) {
   const start = src.indexOf(`"${key}": {`);

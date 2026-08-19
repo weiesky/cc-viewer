@@ -54,9 +54,9 @@ let events, interceptor;
 let sidCounter = 0;
 
 before(async () => {
-  interceptor = await import('../server/interceptor.js');
+  interceptor = await import('../packages/app/server/interceptor.js');
   interceptor.initForWorkspace(join(tmpDir, 'rowsproj'), { forceNew: true });
-  const eventsMod = await import('../server/routes/events.js');
+  const eventsMod = await import('../packages/app/server/routes/events.js');
   events = eventsMod.eventsRoutes.find((r) => r.path === '/events' && r.method === 'GET').handler;
 });
 
@@ -177,9 +177,9 @@ describe('cold native lines (V3.S4, /events flagged)', () => {
 
 describe('live v2_requests_delta rows (V2LiveFeed wireV3)', () => {
   it('emits one row per item with usage/typeTag; cacheLoss against previous main', async () => {
-    const { V2LiveFeed } = await import('../server/lib/v2/live-feed.js');
-    const { V2Writer } = await import('../server/lib/v2/v2-writer.js');
-    const { resolveSessionDirName } = await import('../server/lib/v2/session-select.js');
+    const { V2LiveFeed } = await import('../packages/app/server/lib/v2/live-feed.js');
+    const { V2Writer } = await import('../packages/app/server/lib/v2/v2-writer.js');
+    const { resolveSessionDirName } = await import('../packages/app/server/lib/v2/session-select.js');
     const project = 'liveproj';
     const sid = '40000000-0000-4000-8000-999999999999';
     const client = { writes: [], destroyed: false, writable: true, write(p) { this.writes.push(String(p)); return true; }, once() {}, end() {} };
@@ -239,9 +239,9 @@ describe('live v2_requests_delta rows (V2LiveFeed wireV3)', () => {
   });
 
   it('typeTag correction re-sends the previous row when nextReq flips its classification (review F5)', async () => {
-    const { V2LiveFeed } = await import('../server/lib/v2/live-feed.js');
-    const { V2Writer } = await import('../server/lib/v2/v2-writer.js');
-    const { resolveSessionDirName } = await import('../server/lib/v2/session-select.js');
+    const { V2LiveFeed } = await import('../packages/app/server/lib/v2/live-feed.js');
+    const { V2Writer } = await import('../packages/app/server/lib/v2/v2-writer.js');
+    const { resolveSessionDirName } = await import('../packages/app/server/lib/v2/session-select.js');
     const project = 'corrproj';
     const sid = '40000000-0000-4000-8000-888888888888';
     const client = { writes: [], destroyed: false, writable: true, write(p) { this.writes.push(String(p)); return true; }, once() {}, end() {} };

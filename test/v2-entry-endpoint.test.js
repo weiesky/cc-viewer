@@ -24,10 +24,10 @@ process.env.CCV_CLI_MODE = '0';
 process.env.CCV_START_PORT = '18470';
 process.env.CCV_MAX_PORT = '18479';
 
-const { V2Writer } = await import('../server/lib/v2/v2-writer.js');
-const { readV2SingleEntry, iterateV2RawEntries } = await import('../server/lib/v2/adapter.js');
-const { reconstructEntries } = await import('../server/lib/delta-reconstructor.js');
-const { resolveSessionDirName } = await import('../server/lib/v2/session-select.js');
+const { V2Writer } = await import('../packages/app/server/lib/v2/v2-writer.js');
+const { readV2SingleEntry, iterateV2RawEntries } = await import('../packages/app/server/lib/v2/adapter.js');
+const { reconstructEntries } = await import('../packages/app/server/lib/delta-reconstructor.js');
+const { resolveSessionDirName } = await import('../packages/app/server/lib/v2/session-select.js');
 
 const SID = 'e1e2e3e4-1111-4222-8333-000000000001';
 const USER_ID = JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: SID });
@@ -169,10 +169,10 @@ describeCli('GET /api/v2-entry (V3.S1 route)', { concurrency: false }, () => {
   }
 
   before(async () => {
-    ({ LOG_DIR } = await import('../findcc.js'));
+    ({ LOG_DIR } = await import('../packages/app/findcc.js'));
     await buildSession(LOG_DIR, projectName);
     basename = resolveSessionDirName(join(LOG_DIR, projectName), SID) || SID;
-    const mod = await import('../server/server.js');
+    const mod = await import('../packages/app/server/server.js');
     stopViewer = mod.stopViewer;
     await mod.startViewer();
     port = mod.getPort();

@@ -16,16 +16,16 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync, appendFileSync, unlin
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { V2Writer } from '../server/lib/v2/v2-writer.js';
-import { isV2SessionDir, iterateV2RawEntries, iterateV2RawEntriesAsync, listV2Sessions, findTeammateSessionDirs } from '../server/lib/v2/adapter.js';
-import { messagesDigest, readSession } from '../server/lib/v2/replay.js';
-import { verifyV1File } from '../server/lib/v2/verify.js';
-import { createIncrementalReconstructor } from '../server/lib/delta-reconstructor.js';
-import { isPostClearCheckpoint, normalizeMsgForEquality } from '../server/lib/session-boundary.js';
-import { validateLogPath, parseV2Ref, listV2Logs } from '../server/lib/log-management.js';
-import { countLogEntries, readTailEntries, streamRawEntriesAsync } from '../server/lib/log-stream.js';
-import { _resetForTest } from '../server/lib/error-report.js';
-import { resolveSessionDirName } from '../server/lib/v2/session-select.js';
+import { V2Writer } from '../packages/app/server/lib/v2/v2-writer.js';
+import { isV2SessionDir, iterateV2RawEntries, iterateV2RawEntriesAsync, listV2Sessions, findTeammateSessionDirs } from '../packages/app/server/lib/v2/adapter.js';
+import { messagesDigest, readSession } from '../packages/app/server/lib/v2/replay.js';
+import { verifyV1File } from '../packages/app/server/lib/v2/verify.js';
+import { createIncrementalReconstructor } from '../packages/app/server/lib/delta-reconstructor.js';
+import { isPostClearCheckpoint, normalizeMsgForEquality } from '../packages/app/server/lib/session-boundary.js';
+import { validateLogPath, parseV2Ref, listV2Logs } from '../packages/app/server/lib/log-management.js';
+import { countLogEntries, readTailEntries, streamRawEntriesAsync } from '../packages/app/server/lib/log-stream.js';
+import { _resetForTest } from '../packages/app/server/lib/error-report.js';
+import { resolveSessionDirName } from '../packages/app/server/lib/v2/session-select.js';
 
 let dir;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'ccv-v2adp-')); _resetForTest(); });

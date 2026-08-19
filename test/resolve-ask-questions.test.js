@@ -11,7 +11,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveAskQuestions } from '../src/utils/askOptionDesc.js';
+import { resolveAskQuestions } from '../apps/web/src/utils/askOptionDesc.js';
 
 const Q1 = [{ question: 'a', header: 'A', options: [{ label: 'x' }] }];
 const Q2 = [

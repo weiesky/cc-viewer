@@ -13,9 +13,9 @@ process.env.CLAUDE_CONFIG_DIR = tmpDir;
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
 
-const { pinFilePath, readPin, writePin } = await import('../server/lib/session-pin-store.js');
-const { sessionPinRoutes } = await import('../server/routes/session-pin.js');
-const { initForWorkspace } = await import('../server/interceptor.js');
+const { pinFilePath, readPin, writePin } = await import('../packages/app/server/lib/session-pin-store.js');
+const { sessionPinRoutes } = await import('../packages/app/server/routes/session-pin.js');
+const { initForWorkspace } = await import('../packages/app/server/interceptor.js');
 
 after(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 

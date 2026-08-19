@@ -20,15 +20,15 @@ import {
   getDefaultBindingsForLocale,
   BUNDLED_PACK_IDS,
   EVENT_KEYS,
-} from '../server/lib/voice-pack-events.js';
+} from '../packages/app/server/lib/voice-pack-events.js';
 import {
   getBundledPackPath,
   reconcileVoicePackPrefs,
-} from '../server/lib/voice-pack-manager.js';
+} from '../packages/app/server/lib/voice-pack-manager.js';
 import {
   mergeVoicePackInto,
   mergeApprovalModalPrefs,
-} from '../server/lib/approval-modal-prefs.js';
+} from '../packages/app/server/lib/approval-modal-prefs.js';
 
 describe('sanguo end-to-end pipeline (zh user fresh launch)', () => {
   let tmpLogDir;

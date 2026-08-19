@@ -13,7 +13,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import xtermPkg from '@xterm/xterm';
-import { INBAND_RESET } from '../src/utils/terminalWriteQueue.js';
+import { INBAND_RESET } from '../apps/web/src/utils/terminalWriteQueue.js';
 
 const { Terminal } = xtermPkg;
 // 旧版完整 INBAND_RESET 值(BEL+CAN+RIS),仅用于回归对照——病根是末尾 RIS(\x1bc)清空 scrollback。

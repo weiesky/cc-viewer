@@ -34,7 +34,7 @@ let _savedLS;
 before(async () => {
   _savedLS = globalThis.localStorage;
   globalThis.localStorage = _store;
-  mod = await import('../src/utils/projectAlias.js');
+  mod = await import('../apps/web/src/utils/projectAlias.js');
 });
 
 after(() => {
@@ -186,7 +186,7 @@ describe('subscribeToAlias 在无 _bus 且无 window 环境(if(_bus) / typeof wi
     const here = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.resolve(here, '..');
     const loader = path.join(here, '_shims', 'register.mjs');
-    const target = path.join(repoRoot, 'src', 'utils', 'projectAlias.js');
+    const target = path.join(repoRoot, 'apps', 'web', 'src', 'utils', 'projectAlias.js');
     const script = `
 import ${JSON.stringify(loader)};
 import assert from 'node:assert/strict';

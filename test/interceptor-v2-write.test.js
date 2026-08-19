@@ -81,7 +81,7 @@ async function fireMainAgent(messages, respBody = { content: [], usage: { input_
 
 before(async () => {
   globalThis.fetch = async () => (nextResponse ? nextResponse() : new Response('{}', { status: 200 }));
-  mod = await import('../server/interceptor.js');
+  mod = await import('../packages/app/server/interceptor.js');
   mod.setupInterceptor();
   assert.equal(mod.LOG_FILE, '', '1.7.0 起 LOG_FILE 恒为空串（deprecated 占位导出）');
   assert.ok(mod._v2Writer.enabled, 'v2 writer 常开（唯一写路径）');

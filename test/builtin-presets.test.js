@@ -10,7 +10,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { BUILTIN_PRESETS } from '../src/utils/builtinPresets.js';
+import { BUILTIN_PRESETS } from '../apps/web/src/utils/builtinPresets.js';
 
 describe('BUILTIN_PRESETS', () => {
   it('是数组且当前仅含一个内置预置', () => {

@@ -9,7 +9,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { foldBars, groupedBarTitle, singleBarTitle } from '../src/components/charts/barChartHelpers.js';
+import { foldBars, groupedBarTitle, singleBarTitle } from '../apps/web/src/components/charts/barChartHelpers.js';
 
 describe('barChartHelpers foldBars', () => {
   it('single-series: folds tail into one "…" bar summing values', () => {

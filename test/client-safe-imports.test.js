@@ -1,13 +1,19 @@
 // CLIENT-SAFE 跨层 import 边界静态校验。
 //
-// 背景：4 个 server/lib/*.js 模块是 isomorphic 纯逻辑（零 node deps），被 src/
-// 前端代码引用：voice-pack-events.js / approval-modal-prefs.js / delta-reconstructor.js
-// / tools-xml-formatter.js。这些文件首行已加 `// CLIENT-SAFE: no node deps...`
+// 背景：8 个 server/lib/*.js 模块是 isomorphic 纯逻辑（零 node deps），被前端代码引用：
+// voice-pack-events.js / approval-modal-prefs.js / delta-reconstructor.js /
+// tools-xml-formatter.js / context-rules.js / session-boundary.js / error-report.js /
+// v2-transcript-normalizer.js。这些文件首行已加 `// CLIENT-SAFE: no node deps...`
 // 注释，但纯注释约束未来容易失守。
 //
+// Monorepo（A2 拆分）后边界变为：apps/web/src/** → packages/app/** 的相对 import
+// 必须只命中白名单 —— 含 8 个 CLIENT-SAFE server/lib 模块 + 4 个共享缝文件
+// （packages/app/src/utils/{requestType,contentFilter,teammateDetector,clearCheckpoint}.js，
+// server 端运行时也需要它们，因此物理上留在发布包内）。
+//
 // 本测试做静态校验：
-//   1. 任何 src/**/*.{js,jsx} 对 server/** 的 import 必须只命中已知 4 个 CLIENT-SAFE 文件
-//   2. 4 个 CLIENT-SAFE 文件本身不能 import `node:*` / `fs` / `process` / `child_process`
+//   1. apps/web/src 内任何跨出 apps/web 进入 packages/app 的 import 必须只命中白名单
+//   2. 白名单文件本身不能 import `node:*` / `fs` / `process` / `child_process`
 // 任一失败 → CI 红，比 ESLint plugin-import 更轻（零 devDep、零配置文件）。
 
 import { describe, it } from 'node:test';
@@ -18,7 +24,10 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
+const webSrcRoot = join(repoRoot, 'apps', 'web', 'src');
+const appRoot = join(repoRoot, 'packages', 'app');
 
+// Paths relative to packages/app (the published package root).
 const CLIENT_SAFE_ALLOWLIST = new Set([
   'server/lib/voice-pack-events.js',
   'server/lib/approval-modal-prefs.js',
@@ -28,6 +37,10 @@ const CLIENT_SAFE_ALLOWLIST = new Set([
   'server/lib/session-boundary.js', // wire-v2 S1: shared boundary/reverse-anchor module
   'server/lib/error-report.js', // wire-v2 S2: reportSwallowed convention, shared both sides
   'server/lib/v2-transcript-normalizer.js', // Claude Code 2.x JSONL → legacy entry normalizer
+  'src/utils/requestType.js', // A2 seam: imported by server/lib/v2/* at runtime
+  'src/utils/contentFilter.js',
+  'src/utils/teammateDetector.js',
+  'src/utils/clearCheckpoint.js',
 ]);
 
 function listFiles(dir, exts) {
@@ -60,20 +73,21 @@ function scanImports(fileAbs) {
   return out;
 }
 
-describe('client-safe-imports: src/ → server/** 边界', () => {
-  it('src/ 内对 server/** 的 import 必须只命中 CLIENT-SAFE 白名单', () => {
+describe('client-safe-imports: apps/web/src → packages/app/** 边界', () => {
+  it('web 内对 app 包的 import 必须只命中 CLIENT-SAFE 白名单', () => {
     const violations = [];
-    const srcFiles = listFiles(join(repoRoot, 'src'), ['.js', '.jsx', '.mjs']);
+    const srcFiles = listFiles(webSrcRoot, ['.js', '.jsx', '.mjs']);
     for (const fileAbs of srcFiles) {
       const fileDir = dirname(fileAbs);
       for (const { line, spec } of scanImports(fileAbs)) {
-        // 只关心 relative 引用 server/ 目录
+        // 只关心 relative 引用
         if (!spec.startsWith('./') && !spec.startsWith('../')) continue;
         const resolved = join(fileDir, spec);
-        const rel = relative(repoRoot, resolved);
+        // 只关心跨出 apps/web 进入 packages/app 的引用
+        const rel = relative(appRoot, resolved);
+        if (rel.startsWith('..')) continue;
         // Posix path normalization
         const relPosix = rel.replace(/\\/g, '/');
-        if (!relPosix.startsWith('server/')) continue;
         // Vite/Node 允许无扩展名 import；补 .js / .mjs 探测白名单命中
         const candidates = /\.[cm]?js$/.test(relPosix)
           ? [relPosix]
@@ -84,7 +98,7 @@ describe('client-safe-imports: src/ → server/** 边界', () => {
       }
     }
     assert.deepEqual(violations, [],
-      'src/ 跨层 import 命中非 CLIENT-SAFE 文件（要么加进白名单并确保零 node deps，要么改用其它途径）：\n' +
+      'web 跨层 import 命中非 CLIENT-SAFE 文件（要么加进白名单并确保零 node deps，要么改用其它途径）：\n' +
       violations.map(v => `  ${v.file}:${v.line}  '${v.spec}'  → ${v.resolved}`).join('\n'));
   });
 });
@@ -105,7 +119,7 @@ describe('client-safe-imports: 白名单文件零 node deps', () => {
 
   for (const rel of CLIENT_SAFE_ALLOWLIST) {
     it(`${rel} 不含 node builtin import`, () => {
-      const fileAbs = join(repoRoot, rel);
+      const fileAbs = join(appRoot, rel);
       const violations = [];
       for (const { line, spec } of scanImports(fileAbs)) {
         if (spec.startsWith('node:')) {

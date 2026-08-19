@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 
 let M;
 before(async () => {
-  M = await import('../src/utils/contextTurns.js');
+  M = await import('../apps/web/src/utils/contextTurns.js');
 });
 
 const user = (text, ts) => ({ role: 'user', content: text, ...(ts ? { _timestamp: ts } : {}) });

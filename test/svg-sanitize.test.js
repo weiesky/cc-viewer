@@ -10,7 +10,7 @@ import {
   FORBIDDEN_ANIM_TARGET,
   isHostileAnimAttr,
   SVG_SANITIZE_CONFIG,
-} from '../src/utils/svgSanitize.js';
+} from '../apps/web/src/utils/svgSanitize.js';
 
 describe('isHostileAnimAttr', () => {
   it('blocks SMIL retargeting onto event handlers', () => {

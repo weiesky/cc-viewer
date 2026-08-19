@@ -16,7 +16,7 @@ import {
   _setDatabaseSyncForTest,
   readCcSwitchProviders,
   discoverCcSwitchProviders,
-} from '../server/lib/ccswitch-import.js';
+} from '../packages/app/server/lib/ccswitch-import.js';
 
 describe('readCcSwitchProviders degradation contract (runtime without node:sqlite)', () => {
   it('reports the stable node:sqlite-unavailable error the UI keys its localized message on', async () => {

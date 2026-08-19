@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parseLoadedSkills, skillKey, skillOrderKey, sortSkillsDefault } from '../src/utils/skillsParser.js';
+import { parseLoadedSkills, skillKey, skillOrderKey, sortSkillsDefault } from '../apps/web/src/utils/skillsParser.js';
 
 describe('parseLoadedSkills', () => {
   it('returns [] when header sentence is missing', () => {

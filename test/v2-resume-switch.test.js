@@ -23,8 +23,8 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { V2Writer } from '../server/lib/v2/v2-writer.js';
-import { _resetForTest } from '../server/lib/error-report.js';
+import { V2Writer } from '../packages/app/server/lib/v2/v2-writer.js';
+import { _resetForTest } from '../packages/app/server/lib/error-report.js';
 
 let dir;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'ccv-resume-')); _resetForTest(); });

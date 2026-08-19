@@ -19,7 +19,7 @@ const {
   loadDingTalkState,
   saveDingTalkConfig,
   getPrefsPath,
-} = await import('../server/lib/dingtalk-config.js');
+} = await import('../packages/app/server/lib/dingtalk-config.js');
 
 function reset() { if (existsSync(getPrefsPath())) rmSync(getPrefsPath()); }
 

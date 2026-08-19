@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
-const CLI_PATH = resolve(REPO_ROOT, 'cli.js');
+const CLI_PATH = resolve(REPO_ROOT, 'packages', 'app', 'cli.js');
 
 /** spawn cli.js，收集 stdout/stderr/exitCode，永不抛。 */
 function runCli(args = [], opts = {}) {
@@ -469,8 +469,8 @@ describeCli('interceptor.js 根 shim：re-export', () => {
     const savedProxy = process.env.CCV_PROXY_MODE;
     process.env.CCV_PROXY_MODE = '1'; // 让拦截器保持惰性，不 patch 全局 http
     try {
-      const rootShim = await import('../interceptor.js');
-      const physical = await import('../server/interceptor.js');
+      const rootShim = await import('../packages/app/interceptor.js');
+      const physical = await import('../packages/app/server/interceptor.js');
 
       const rootKeys = Object.keys(rootShim).sort();
       const physKeys = Object.keys(physical).sort();

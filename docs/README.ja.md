@@ -39,6 +39,13 @@ brew install cc-viewer
 brew upgrade cc-viewer   # アップデート用 — brew インストールの ccv を npm install -g でアップグレードしないでください
 ```
 
+#### pnpm でインストール（グローバル）
+
+```bash
+pnpm add -g cc-viewer
+pnpm add -g cc-viewer@latest   # アップデート用 — pnpm インストールの ccv を npm install -g でアップグレードしないでください
+```
+
 ### 起動方法
 
 ccv は claude のドロップイン代替です。すべての引数を claude にパススルーしつつ、Web Viewer を同時に起動します。

@@ -2,7 +2,7 @@
 // (extracted from ChatView so the bug-prone session-boundary / dedup / no-ts logic is testable).
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPromptNavItems } from '../src/utils/promptNav.js';
+import { buildPromptNavItems } from '../apps/web/src/utils/promptNav.js';
 
 // Mimic a rendered item's shape (React element → { props }) and an authoritative session.
 const item = (role, text, timestamp) => ({ props: { role, text, timestamp } });

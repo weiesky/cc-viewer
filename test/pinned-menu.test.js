@@ -4,7 +4,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { PINNED_KEY, parsePinned, serializePinned, togglePinned } from '../src/utils/pinnedMenu.js';
+import { PINNED_KEY, parsePinned, serializePinned, togglePinned } from '../apps/web/src/utils/pinnedMenu.js';
 
 describe('pinnedMenu', () => {
   it('exports a stable localStorage key', () => {

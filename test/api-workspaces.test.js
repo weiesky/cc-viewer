@@ -36,7 +36,7 @@ mkdirSync(wsDir, { recursive: true });
 const aFile = join(tmpDir, 'a-file.txt');
 writeFileSync(aFile, 'x');
 
-const { workspacesRoutes } = await import('../server/routes/workspaces.js');
+const { workspacesRoutes } = await import('../packages/app/server/routes/workspaces.js');
 
 function routeFor(method, path) {
   const r = workspacesRoutes.find((x) => x.method === method && x.path === path);
@@ -362,7 +362,7 @@ describe('POST /api/workspaces/launch — web/CLI branch (no PTY)', () => {
   });
 
   it('scans launch args for -c/--continue and marks the launch as continued (P2 channel ②)', async () => {
-    const { isContinuedLaunch } = await import('../server/interceptor.js');
+    const { isContinuedLaunch } = await import('../packages/app/server/interceptor.js');
     // NOTE: markContinuedLaunch is sticky for the process — this test must run
     // AFTER any assertions that need isContinuedLaunch() === false.
     assert.equal(isContinuedLaunch(), false, 'pristine before the -c launch');

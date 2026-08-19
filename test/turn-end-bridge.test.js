@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCRIPT = join(__dirname, '..', 'server', 'lib', 'turn-end-bridge.js');
+const SCRIPT = join(__dirname, '..', 'packages', 'app', 'server', 'lib', 'turn-end-bridge.js');
 
 /**
  * Run turn-end-bridge.js as a child process.

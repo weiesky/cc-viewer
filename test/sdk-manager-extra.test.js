@@ -38,7 +38,7 @@ import {
   interruptTurn,
   getSessionId,
   __setQueryForTests,
-} from '../server/lib/sdk-manager.js';
+} from '../packages/app/server/lib/sdk-manager.js';
 
 // fake query：被迭代时立即抛非 AbortError，sdk-manager 在 _executeQuery 里 try/catch
 // 吞掉并照常执行 finally —— 取代「真实 query 必然立即 spawn 失败」这一环境依赖。

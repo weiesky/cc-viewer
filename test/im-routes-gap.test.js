@@ -50,8 +50,8 @@ describe('server/routes/im.js gap branches', { concurrency: false }, () => {
   let imConfig;
 
   before(async () => {
-    ({ imRoutes } = await import('../server/routes/im.js'));
-    imConfig = await import('../server/lib/im-config.js');
+    ({ imRoutes } = await import('../packages/app/server/routes/im.js'));
+    imConfig = await import('../packages/app/server/lib/im-config.js');
   });
 
   after(() => { rmSync(tmpDir, { recursive: true, force: true }); });

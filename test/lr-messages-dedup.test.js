@@ -15,7 +15,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeLrOwnership, filterLrContent } from '../src/components/chat/interactionOwnership.js';
+import { computeLrOwnership, filterLrContent } from '../apps/web/src/components/chat/interactionOwnership.js';
 
 // Thin adapter keeping the original test-case call shape.
 function predictLrOwnership({ messages, respContent, mergedAskAnswerMap = {}, localAskAnswers = {}, planApprovalMap = {}, cliMode = true, isLastSession = true }) {

@@ -8,7 +8,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isMutatingCommand, isImageFile } from '../src/utils/commandValidator.js';
+import { isMutatingCommand, isImageFile } from '../apps/web/src/utils/commandValidator.js';
 
 describe('isMutatingCommand — delete family', () => {
   it('matches rm and rm -rf', () => {

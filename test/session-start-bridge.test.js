@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCRIPT = join(__dirname, '..', 'server', 'lib', 'session-start-bridge.js');
+const SCRIPT = join(__dirname, '..', 'packages', 'app', 'server', 'lib', 'session-start-bridge.js');
 
 function runBridge({ env = {}, stdin = null } = {}) {
   return new Promise((resolve, reject) => {

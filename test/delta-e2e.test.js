@@ -7,10 +7,10 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync, appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { readLogFile } from '../server/lib/log-watcher.js';
-import { readLocalLog } from '../server/lib/log-management.js';
-import { reconstructEntries, createIncrementalReconstructor } from '../server/lib/delta-reconstructor.js';
-import { fingerprintMsg } from '../server/lib/interceptor-core.js';
+import { readLogFile } from '../packages/app/server/lib/log-watcher.js';
+import { readLocalLog } from '../packages/app/server/lib/log-management.js';
+import { reconstructEntries, createIncrementalReconstructor } from '../packages/app/server/lib/delta-reconstructor.js';
+import { fingerprintMsg } from '../packages/app/server/lib/interceptor-core.js';
 
 // ============================================================================
 // Helpers — 模拟 interceptor 的写入行为

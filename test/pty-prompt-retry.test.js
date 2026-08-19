@@ -12,7 +12,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isPlanApprovalPrompt, isDangerousOperationPrompt } from '../src/utils/promptClassifier.js';
+import { isPlanApprovalPrompt, isDangerousOperationPrompt } from '../apps/web/src/utils/promptClassifier.js';
 
 // 内联镜像 askFlowController.js 的 isValidAskPrompt 表达式
 function isValidAskPrompt(p) {

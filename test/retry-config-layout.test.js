@@ -5,13 +5,13 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const JSX = readFileSync(join(ROOT, 'src/components/settings/RetryConfigModal.jsx'), 'utf8');
-const CSS = readFileSync(join(ROOT, 'src/components/settings/RetryConfigModal.module.css'), 'utf8');
-const PANEL_JSX = readFileSync(join(ROOT, 'src/components/proxy-stats/ProxyStatsModal.jsx'), 'utf8');
-const SHELL_CSS = readFileSync(join(ROOT, 'src/components/proxy-stats/ProxyStatsModal.module.css'), 'utf8');
-const HEADER_JSX = readFileSync(join(ROOT, 'src/components/dashboard/AppHeader.jsx'), 'utf8');
-const APPBASE_JSX = readFileSync(join(ROOT, 'src/AppBase.jsx'), 'utf8');
-const DASHBOARD_JSX = readFileSync(join(ROOT, 'src/components/proxy-stats/ProxyStatsDashboard.jsx'), 'utf8');
+const JSX = readFileSync(join(ROOT, 'apps/web/src/components/settings/RetryConfigModal.jsx'), 'utf8');
+const CSS = readFileSync(join(ROOT, 'apps/web/src/components/settings/RetryConfigModal.module.css'), 'utf8');
+const PANEL_JSX = readFileSync(join(ROOT, 'apps/web/src/components/proxy-stats/ProxyStatsModal.jsx'), 'utf8');
+const SHELL_CSS = readFileSync(join(ROOT, 'apps/web/src/components/proxy-stats/ProxyStatsModal.module.css'), 'utf8');
+const HEADER_JSX = readFileSync(join(ROOT, 'apps/web/src/components/dashboard/AppHeader.jsx'), 'utf8');
+const APPBASE_JSX = readFileSync(join(ROOT, 'apps/web/src/AppBase.jsx'), 'utf8');
+const DASHBOARD_JSX = readFileSync(join(ROOT, 'apps/web/src/components/proxy-stats/ProxyStatsDashboard.jsx'), 'utf8');
 
 describe('RetryConfigForm layout', () => {
   it('groups strategy controls separately from execution parameters', () => {

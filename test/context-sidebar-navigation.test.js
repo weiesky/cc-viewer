@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { getContextSidebarArrowNavigation } from '../src/utils/contextSidebarNavigation.js';
+import { getContextSidebarArrowNavigation } from '../apps/web/src/utils/contextSidebarNavigation.js';
 
 describe('getContextSidebarArrowNavigation', () => {
   it('moves down across sections in visible order', () => {

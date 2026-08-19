@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 let getTeammateAvatar, stripSvgAnimations, shouldAnimateTeammateAvatar, pickAvatarAnimationTargets;
 
 before(async () => {
-  const m = await import('../src/utils/teammateAvatars.js');
+  const m = await import('../apps/web/src/utils/teammateAvatars.js');
   getTeammateAvatar = m.getTeammateAvatar;
   stripSvgAnimations = m.stripSvgAnimations;
   shouldAnimateTeammateAvatar = m.shouldAnimateTeammateAvatar;

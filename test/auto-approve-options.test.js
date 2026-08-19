@@ -13,7 +13,7 @@ import {
   PLAN_AUTO_APPROVE_OPTIONS,
   autoApproveValueLabel,
   autoApproveSelectOptions,
-} from '../src/utils/autoApproveOptions.js';
+} from '../apps/web/src/utils/autoApproveOptions.js';
 
 // 测试用 t:回显 key,便于断言走了哪个 i18n 分支
 const t = (key) => key;

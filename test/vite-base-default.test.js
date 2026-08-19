@@ -8,7 +8,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import config from '../vite.config.js';
+import config from '../apps/web/vite.config.js';
 
 // config() 在调用时实时读 process.env.CCV_BASE_PATH → 设/删后取 base，用后还原（避免跨测泄漏）。
 function baseFor(v) {

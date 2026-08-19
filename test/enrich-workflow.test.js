@@ -14,8 +14,8 @@ const SAVED_PROJECTS_DIR = process.env.CCV_PROJECTS_DIR;
 const TMP = mkdtempSync(join(tmpdir(), 'ccv-ewf-'));
 process.env.CCV_PROJECTS_DIR = TMP;
 
-const { enrichEntry, rawHasWorkflowToolResult } = await import('../server/lib/enrich-workflow.js');
-const { clearCache } = await import('../server/lib/session-transcript-reader.js');
+const { enrichEntry, rawHasWorkflowToolResult } = await import('../packages/app/server/lib/enrich-workflow.js');
+const { clearCache } = await import('../packages/app/server/lib/session-transcript-reader.js');
 
 function writeTranscript(dir, sid, tuId, toolUseResult) {
   const projDir = join(TMP, dir);

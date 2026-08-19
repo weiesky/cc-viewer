@@ -18,8 +18,8 @@ const wsDir = join(tmpDir, 'project');
 mkdirSync(wsDir, { recursive: true });
 process.env.CCV_PROJECT_DIR = wsDir;
 
-const { expertRoutes } = await import('../server/routes/expert.js');
-const { SYSTEM_PROMPT_FILE, APPEND_SYSTEM_PROMPT_FILE } = await import('../server/lib/system-prompt-files.js');
+const { expertRoutes } = await import('../packages/app/server/routes/expert.js');
+const { SYSTEM_PROMPT_FILE, APPEND_SYSTEM_PROMPT_FILE } = await import('../packages/app/server/lib/system-prompt-files.js');
 const SYS = join(wsDir, SYSTEM_PROMPT_FILE);
 const APP = join(wsDir, APPEND_SYSTEM_PROMPT_FILE);
 

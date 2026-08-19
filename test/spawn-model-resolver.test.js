@@ -11,7 +11,7 @@ process.env.CCV_LOG_DIR = tmp; // 防御性：本文件全程走 opts 注入，�
 
 let resolveSpawnModel;
 before(async () => {
-  ({ resolveSpawnModel } = await import('../server/lib/spawn-model-resolver.js'));
+  ({ resolveSpawnModel } = await import('../packages/app/server/lib/spawn-model-resolver.js'));
 });
 after(() => { rmSync(tmp, { recursive: true, force: true }); });
 

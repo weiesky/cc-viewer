@@ -11,7 +11,7 @@ import {
   PTY_BUFFER_MAX,
   PTY_HISTORY_CAP,
   DETECT_DEBOUNCE_MS,
-} from '../src/components/chat/controllers/ptyPromptController.js';
+} from '../apps/web/src/components/chat/controllers/ptyPromptController.js';
 
 beforeEach(() => { mock.timers.enable({ apis: ['setTimeout'] }); });
 afterEach(() => { mock.timers.reset(); });

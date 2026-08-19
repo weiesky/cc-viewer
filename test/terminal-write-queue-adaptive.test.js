@@ -11,7 +11,7 @@
  */
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { TerminalWriteQueue } from '../src/utils/terminalWriteQueue.js';
+import { TerminalWriteQueue } from '../apps/web/src/utils/terminalWriteQueue.js';
 
 const CHUNK_MAX = TerminalWriteQueue.CHUNK_SIZE;   // 32KB
 const CHUNK_MIN = TerminalWriteQueue.CHUNK_MIN;    // 4KB

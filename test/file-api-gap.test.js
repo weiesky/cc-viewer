@@ -26,7 +26,7 @@ import {
   writeFileContent,
   renameSyncWithRetry,
   ERROR_STATUS_MAP,
-} from '../server/lib/file-api.js';
+} from '../packages/app/server/lib/file-api.js';
 
 let root;
 

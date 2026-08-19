@@ -27,15 +27,15 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createEntrySlimmer } from '../src/utils/entry-slim.js';
-import { mergeMainAgentSessions, isMergeBlockedEntry, shouldDegradeBrokenMerge } from '../src/utils/sessionMerge.js';
+import { createEntrySlimmer } from '../apps/web/src/utils/entry-slim.js';
+import { mergeMainAgentSessions, isMergeBlockedEntry, shouldDegradeBrokenMerge } from '../apps/web/src/utils/sessionMerge.js';
 import {
   applyBatchEntryTimestamps,
   assignMessageTimestamps,
   applyInPlaceLastMsgReplace,
   getSessionStableId,
-} from '../src/utils/sessionManager.js';
-import { isSessionBoundary } from '../src/utils/clearCheckpoint.js';
+} from '../apps/web/src/utils/sessionManager.js';
+import { isSessionBoundary } from '../packages/app/src/utils/clearCheckpoint.js';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 

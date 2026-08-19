@@ -60,7 +60,7 @@ function waitFinish(res) {
 function url(pathname) { return { pathname, searchParams: new URLSearchParams() }; }
 
 let routes;
-before(async () => { routes = (await import('../server/routes/voice-pack.js')).voicePackRoutes; });
+before(async () => { routes = (await import('../packages/app/server/routes/voice-pack.js')).voicePackRoutes; });
 after(() => { rmSync(tmpDir, { recursive: true, force: true }); });
 
 function h(path, method) {

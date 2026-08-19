@@ -157,9 +157,9 @@ describeCli('server.js CLI-mode terminal WS with a real PTY', { concurrency: fal
   let mod, ptyMgr, scratchMgr, port, base;
 
   before(async () => {
-    mod = await import('../server/server.js');
-    ptyMgr = await import('../server/pty-manager.js');
-    scratchMgr = await import('../server/scratch-pty-manager.js');
+    mod = await import('../packages/app/server/server.js');
+    ptyMgr = await import('../packages/app/server/pty-manager.js');
+    scratchMgr = await import('../packages/app/server/scratch-pty-manager.js');
     const srv = await mod.startViewer();
     assert.ok(srv, 'CLI-mode server should start');
     port = mod.getPort();
@@ -418,7 +418,7 @@ describeCli('server.js CLI-mode terminal WS with a real PTY', { concurrency: fal
   it('streaming status timer pushes streaming_status to SSE clients when active', async () => {
     // CLI 模式下 startViewer 已起 streamingStatusTimer（每 500ms）。手动把 interceptor 的
     // streamingState 置 active，连一个 SSE，timer 下一拍即广播 streaming_status（命中 1897-1901）。
-    const ic = await import('../server/interceptor.js');
+    const ic = await import('../packages/app/server/interceptor.js');
     const sse = connectSse(port);
     // 等 SSE 连接被 server 接纳（events 路由会先推一批 init 事件）。
     await wait(150);

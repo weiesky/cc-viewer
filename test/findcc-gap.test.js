@@ -31,7 +31,7 @@ import {
   discoverClaudeExecutables,
   resolveNativePath,
   applyAgentTeamsDefault,
-} from '../findcc.js';
+} from '../packages/app/findcc.js';
 
 // ─── 环境快照：所有改写 process.env 的用例跑完后必须还原 ───
 const SAVED = {
@@ -53,7 +53,7 @@ after(() => { restoreEnv(); });
 // ════════════════════════ setLogDir ════════════════════════
 // setLogDir 改写 module-global live binding LOG_DIR。findcc.test.js 用子进程读 LOG_DIR，
 // 不在本进程断言其值，因此这里 in-process 改写不会破坏那边；本块用 import 进来的 setLogDir
-// 校验"接受/拒绝"语义，再用 import('../findcc.js') 动态读回 LOG_DIR 验证 live-binding。
+// 校验"接受/拒绝"语义，再用 import('../packages/app/findcc.js') 动态读回 LOG_DIR 验证 live-binding。
 
 describe('findcc: setLogDir 边界与安全约束', () => {
   let scratch;
@@ -72,7 +72,7 @@ describe('findcc: setLogDir 边界与安全约束', () => {
   });
 
   async function readLogDir() {
-    const mod = await import('../findcc.js');
+    const mod = await import('../packages/app/findcc.js');
     return mod.LOG_DIR;
   }
 

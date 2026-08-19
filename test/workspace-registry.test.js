@@ -17,13 +17,13 @@ process.env.CCV_LOG_DIR = __isoDir;
 process.env.CLAUDE_CONFIG_DIR = __isoDir;
 
 // 隔离段之后才动态 import(此时 LOG_DIR 已固化到 __isoDir)
-const { LOG_DIR } = await import('../findcc.js');
-const { getWorkspaces, loadWorkspaces, registerWorkspace, removeWorkspace } = await import('../server/workspace-registry.js');
+const { LOG_DIR } = await import('../packages/app/findcc.js');
+const { getWorkspaces, loadWorkspaces, registerWorkspace, removeWorkspace } = await import('../packages/app/server/workspace-registry.js');
 
 const WORKSPACES_FILE = join(LOG_DIR, 'workspaces.json');
 
 function spawnRegister(path) {
-  const moduleUrl = new URL('../server/workspace-registry.js', import.meta.url).href;
+  const moduleUrl = new URL('../packages/app/server/workspace-registry.js', import.meta.url).href;
   const script = `
     import { registerWorkspace } from ${JSON.stringify(moduleUrl)};
     await registerWorkspace(process.argv[1]);

@@ -63,7 +63,7 @@ describeCli('server.js with password auth enabled (loopback always-allow invaria
   let mod, port, token;
 
   before(async () => {
-    mod = await import('../server/server.js');
+    mod = await import('../packages/app/server/server.js');
     const srv = await mod.startViewer();
     assert.ok(srv, 'server should start with auth enabled');
     port = mod.getPort();

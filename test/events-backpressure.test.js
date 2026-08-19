@@ -8,9 +8,9 @@ import {
   sendToClients,
   sendEventToClients,
   sendChunkToClients,
-} from '../server/lib/log-watcher.js';
-import { streamRawEntriesAsync } from '../server/lib/log-stream.js';
-import { awaitDrainOrClose } from '../server/lib/sse-backpressure.js';
+} from '../packages/app/server/lib/log-watcher.js';
+import { streamRawEntriesAsync } from '../packages/app/server/lib/log-stream.js';
+import { awaitDrainOrClose } from '../packages/app/server/lib/sse-backpressure.js';
 
 /**
  * 构造一个能模拟 backpressure / dead 状态的 SSE client。

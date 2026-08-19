@@ -7,7 +7,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isSystemText, extractUserTexts } from '../server/lib/stats-worker.js';
+import { isSystemText, extractUserTexts } from '../packages/app/server/lib/stats-worker.js';
 
 describe('stats-worker isSystemText —— 跨会话队友通知过滤', () => {
   it('未包裹通知（lead / caveat / 裸协议 JSON / <teammate-message> 包裹）→ true', () => {
@@ -68,9 +68,9 @@ describe('stats-worker extractUserTexts —— 通知轮被跳过、真实 promp
 
 describe('stats-worker INTER_SESSION_TYPES —— 前后端同步守卫', () => {
   it('server INTER_SESSION_TYPES 与 frontend INTER_SESSION_NOTIFICATION_TYPES 完全一致', async () => {
-    const { INTER_SESSION_TYPES } = await import('../server/lib/stats-worker.js');
+    const { INTER_SESSION_TYPES } = await import('../packages/app/server/lib/stats-worker.js');
     await import('./_shims/register.mjs');
-    const { INTER_SESSION_NOTIFICATION_TYPES } = await import('../src/utils/contentFilter.js');
+    const { INTER_SESSION_NOTIFICATION_TYPES } = await import('../packages/app/src/utils/contentFilter.js');
     assert.deepEqual(
       [...INTER_SESSION_TYPES].sort(),
       [...INTER_SESSION_NOTIFICATION_TYPES].sort(),

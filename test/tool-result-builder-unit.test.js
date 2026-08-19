@@ -27,8 +27,8 @@ let _savedLang;
 // label 断言依赖 currentLang。Node 环境无浏览器 navigator → detectLanguage 落 'en'，
 // 但为确定性（不受 host navigator.language 影响）在 before() 显式 pin 到 'en'，after() 还原。
 before(async () => {
-  M = await import('../src/utils/toolResultBuilder.js');
-  i18n = await import('../src/i18n.js');
+  M = await import('../apps/web/src/utils/toolResultBuilder.js');
+  i18n = await import('../apps/web/src/i18n.js');
   _savedLang = i18n.getLang();
   i18n.setLang('en');
 });

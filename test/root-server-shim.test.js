@@ -34,8 +34,8 @@ describe('root server.js shim re-export', () => {
 
   before(async () => {
     // 真 import 根 shim → 执行 `export * from './server/server.js'`（覆盖那 5 行）。
-    rootMod = await import('../server.js');
-    realMod = await import('../server/server.js');
+    rootMod = await import('../packages/app/server.js');
+    realMod = await import('../packages/app/server/server.js');
   });
 
   after(() => {

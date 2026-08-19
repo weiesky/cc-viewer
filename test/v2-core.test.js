@@ -14,17 +14,17 @@ import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { sanitizePathComponent, sessionPaths, ensureSessionDirSync, convEpochPath, writeFileAtomicSync, dirSizeSync } from '../server/lib/v2/layout.js';
-import { listV2Sessions } from '../server/lib/v2/adapter.js';
-import { _resetForTest as _resetSessionList } from '../server/lib/v2/session-list.js';
-import { resolveSessionDirName } from '../server/lib/v2/session-select.js';
-import { parseUserId, ConvResolver, classifyKind, firstUserPromptText } from '../server/lib/v2/identity.js';
-import { BlobStore } from '../server/lib/v2/blob-store.js';
-import { ConversationStore } from '../server/lib/v2/conversation-store.js';
-import { Journal } from '../server/lib/v2/journal.js';
-import { V2Writer } from '../server/lib/v2/v2-writer.js';
-import { AsyncWriteQueue } from '../server/lib/async-write-queue.js';
-import { _resetForTest } from '../server/lib/error-report.js';
+import { sanitizePathComponent, sessionPaths, ensureSessionDirSync, convEpochPath, writeFileAtomicSync, dirSizeSync } from '../packages/app/server/lib/v2/layout.js';
+import { listV2Sessions } from '../packages/app/server/lib/v2/adapter.js';
+import { _resetForTest as _resetSessionList } from '../packages/app/server/lib/v2/session-list.js';
+import { resolveSessionDirName } from '../packages/app/server/lib/v2/session-select.js';
+import { parseUserId, ConvResolver, classifyKind, firstUserPromptText } from '../packages/app/server/lib/v2/identity.js';
+import { BlobStore } from '../packages/app/server/lib/v2/blob-store.js';
+import { ConversationStore } from '../packages/app/server/lib/v2/conversation-store.js';
+import { Journal } from '../packages/app/server/lib/v2/journal.js';
+import { V2Writer } from '../packages/app/server/lib/v2/v2-writer.js';
+import { AsyncWriteQueue } from '../packages/app/server/lib/async-write-queue.js';
+import { _resetForTest } from '../packages/app/server/lib/error-report.js';
 
 let dir;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'ccv-v2-')); _resetForTest(); });

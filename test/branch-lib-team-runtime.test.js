@@ -10,7 +10,7 @@ let sandbox;
 
 before(async () => {
   // 动态 import 目标模块（项目惯例：配合 _shims/register.mjs）
-  mod = await import('../server/lib/team-runtime.js');
+  mod = await import('../packages/app/server/lib/team-runtime.js');
   sandbox = mkdtempSync(join(tmpdir(), 'ccv-branch-team-rt-'));
 });
 

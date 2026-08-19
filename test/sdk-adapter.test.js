@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { sdkToJSONLEntry, buildStreamingStatus, sdkApprovalCloseType } from '../server/lib/sdk-adapter.js';
+import { sdkToJSONLEntry, buildStreamingStatus, sdkApprovalCloseType } from '../packages/app/server/lib/sdk-adapter.js';
 
 describe('sdkToJSONLEntry', () => {
   it('produces a valid JSONL entry with all fields', () => {

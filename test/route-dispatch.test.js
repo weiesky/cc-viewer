@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createDispatcher } from '../server/routes/_dispatch.js';
-import { filesContentRoutes } from '../server/routes/files-content.js';
+import { createDispatcher } from '../packages/app/server/routes/_dispatch.js';
+import { filesContentRoutes } from '../packages/app/server/routes/files-content.js';
 
 // Guards the one behavior the server.js → server/routes/* split could silently break:
 // the dispatcher must reproduce the old if-chain's matching semantics exactly —

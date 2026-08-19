@@ -73,7 +73,7 @@ function makeDeps(projectDir) {
 /** 取某个 route 的 handler */
 let routes;
 before(async () => {
-  ({ gitRoutes: routes } = await import('../server/routes/git.js'));
+  ({ gitRoutes: routes } = await import('../packages/app/server/routes/git.js'));
 });
 function handlerFor(path, method) {
   const r = routes.find(x => x.path === path && x.method === method);

@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 
 // 动态加载目标(顶层 await),避免纯 Node import 期对 src/utils Vite 风格的踩坑;
 // 本模块本身无 Vite import,但遵循子代理统一约定。
-const VPM = await import('../server/lib/voice-pack-manager.js');
+const VPM = await import('../packages/app/server/lib/voice-pack-manager.js');
 const {
   detectAudioFormat,
   saveAudio,

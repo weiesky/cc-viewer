@@ -39,6 +39,13 @@ brew install cc-viewer
 brew upgrade cc-viewer   # per gli aggiornamenti — NON usare npm install -g con le installazioni brew
 ```
 
+#### Installazione tramite pnpm (globale)
+
+```bash
+pnpm add -g cc-viewer
+pnpm add -g cc-viewer@latest   # per gli aggiornamenti — NON usare npm install -g con le installazioni pnpm
+```
+
 ### Avvio
 
 ccv è un sostituto diretto di claude — tutti gli argomenti vengono trasmessi a claude mentre viene avviato il Web Viewer.

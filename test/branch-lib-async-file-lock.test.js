@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { utimes, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { withFileLockAsync } from '../server/lib/async-file-lock.js';
+import { withFileLockAsync } from '../packages/app/server/lib/async-file-lock.js';
 
 async function waitUntil(predicate, { timeout = 3000, interval = 10 } = {}) {
   const deadline = Date.now() + timeout;

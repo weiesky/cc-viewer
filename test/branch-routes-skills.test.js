@@ -31,7 +31,7 @@ process.env.CCV_PROJECT_DIR = PROJ;
 let skillsRoutes, importSkillTo, parseSkillUpload, writeSkillFiles;
 
 before(async () => {
-  const mod = await import('../server/routes/skills.js');
+  const mod = await import('../packages/app/server/routes/skills.js');
   skillsRoutes = mod.skillsRoutes;
   importSkillTo = mod.importSkillTo;
   parseSkillUpload = mod.parseSkillUpload;

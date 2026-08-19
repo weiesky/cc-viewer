@@ -9,7 +9,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { runChunkedPass, yieldToMain, INGEST_BATCH_SIZE } from '../src/utils/ingestPipeline.js';
+import { runChunkedPass, yieldToMain, INGEST_BATCH_SIZE } from '../apps/web/src/utils/ingestPipeline.js';
 
 /** 注入式计数 yield（不真让步，保持测试同步可控） */
 function mkYield() {

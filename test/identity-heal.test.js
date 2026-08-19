@@ -14,11 +14,11 @@ import React from 'react';
 let refreshResolvedModelInfo, healUnresolvedTeammateEntries, needsFullReqRescan, formatTeammateLabel;
 
 before(async () => {
-  const heal = await import('../src/utils/identityHeal.js');
+  const heal = await import('../apps/web/src/utils/identityHeal.js');
   refreshResolvedModelInfo = heal.refreshResolvedModelInfo;
   healUnresolvedTeammateEntries = heal.healUnresolvedTeammateEntries;
   needsFullReqRescan = heal.needsFullReqRescan;
-  ({ formatTeammateLabel } = await import('../src/utils/requestType.js'));
+  ({ formatTeammateLabel } = await import('../packages/app/src/utils/requestType.js'));
 });
 
 const INFO = { name: 'claude-fable-5', svg: '<svg/>' };
@@ -169,7 +169,7 @@ describe('needsFullReqRescan', () => {
 
 describe('isRelevantRequest rotation-sentinel exclusion', () => {
   it('a ccvRotationContext frame is never a renderable request', async () => {
-    const { isRelevantRequest } = await import('../src/utils/helpers.js');
+    const { isRelevantRequest } = await import('../apps/web/src/utils/helpers.js');
     assert.equal(isRelevantRequest({
       ccvRotationContext: 1, url: 'ccv://rotation-context',
       from: 'x.jsonl', teammateNames: [], timestamp: 't',

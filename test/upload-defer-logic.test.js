@@ -5,7 +5,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldDeferSend, reduceUploading } from '../src/components/chat/uploadDeferLogic.js';
+import { shouldDeferSend, reduceUploading } from '../apps/web/src/components/chat/uploadDeferLogic.js';
 
 describe('shouldDeferSend', () => {
   it('无上传在途 → 不缓发(走立即发送,等价旧行为)', () => {

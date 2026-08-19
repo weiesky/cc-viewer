@@ -22,8 +22,8 @@ import { mkdtempSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const LOADER_URL  = new URL('../server/lib/plugin-loader.js', import.meta.url).href;
-const MANAGER_URL = new URL('../server/lib/plugin-manager.js', import.meta.url).href;
+const LOADER_URL  = new URL('../packages/app/server/lib/plugin-loader.js', import.meta.url).href;
+const MANAGER_URL = new URL('../packages/app/server/lib/plugin-manager.js', import.meta.url).href;
 
 // 可控 stub：route 模块 import 期绑定下列导出，运行期读 globalThis.__ccvPluginStub。
 const LOADER_SRC = `
@@ -91,7 +91,7 @@ describe('server/routes/plugins.js — 分支补全', () => {
     installHook();
     dir = mkdtempSync(join(tmpdir(), 'ccv-branch-plugins-'));
     // canonical import，覆盖正确记账到 server/routes/plugins.js
-    const mod = await import('../server/routes/plugins.js');
+    const mod = await import('../packages/app/server/routes/plugins.js');
     routes = mod.pluginsRoutes;
   });
 

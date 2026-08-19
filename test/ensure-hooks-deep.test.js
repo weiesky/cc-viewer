@@ -41,7 +41,7 @@ const turnEndPath = `${repoRoot}server/lib/turn-end-bridge.js`;
 
 let mod;
 before(async () => {
-  mod = await import('../server/lib/ensure-hooks.js');
+  mod = await import('../packages/app/server/lib/ensure-hooks.js');
 });
 after(() => { try { rmSync(tmpHome, { recursive: true, force: true }); } catch {} });
 beforeEach(() => { try { rmSync(settingsPath(), { force: true }); } catch {} });

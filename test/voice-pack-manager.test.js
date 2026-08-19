@@ -23,7 +23,7 @@ import {
   BUNDLED_PACK_IDS,
   EVENT_KEYS,
   MAX_AUDIO_BYTES,
-} from '../server/lib/voice-pack-manager.js';
+} from '../packages/app/server/lib/voice-pack-manager.js';
 
 function mkTmp() {
   const dir = join(tmpdir(), `ccv-voicepack-${Date.now()}-${Math.random().toString(36).slice(2)}`);

@@ -8,8 +8,8 @@ import { tmpdir, homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const CLI_PATH = resolve(__dirname, '..', 'cli.js');
-const PKG = JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf-8'));
+const CLI_PATH = resolve(__dirname, '..', 'packages', 'app', 'cli.js');
+const PKG = JSON.parse(readFileSync(resolve(__dirname, '..', 'packages', 'app', 'package.json'), 'utf-8'));
 
 /**
  * Helper: run cli.js with given args, return { stdout, stderr, exitCode }.

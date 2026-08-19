@@ -101,10 +101,10 @@ let events, sseUpdateBadgeFrame, requests, turnEndNotify;
 let interceptor, eventsMod;
 
 before(async () => {
-  interceptor = await import('../server/interceptor.js');
+  interceptor = await import('../packages/app/server/interceptor.js');
   interceptor.initForWorkspace(join(tmpDir, 'evproj'), { forceNew: true });
 
-  eventsMod = await import('../server/routes/events.js');
+  eventsMod = await import('../packages/app/server/routes/events.js');
   sseUpdateBadgeFrame = eventsMod.sseUpdateBadgeFrame;
   const find = (p, m) => eventsMod.eventsRoutes.find((r) => r.path === p && r.method === m).handler;
   events = find('/events', 'GET');

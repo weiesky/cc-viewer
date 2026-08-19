@@ -32,7 +32,7 @@ const _origFetch = globalThis.fetch;
 globalThis.window = { location: { search: '' } };
 globalThis.document = { querySelector: () => null };
 
-const { fetchAllRepos } = await import('../src/utils/gitApi.js');
+const { fetchAllRepos } = await import('../apps/web/src/utils/gitApi.js');
 
 after(() => {
   if (_origWindow === undefined) delete globalThis.window; else globalThis.window = _origWindow;

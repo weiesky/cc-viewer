@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 let evaluateImDeny;
 before(async () => {
   // canonical 静态相对 import(不加 query),保证记账落到正确文件。
-  ({ evaluateImDeny } = await import('../server/lib/im-deny.js'));
+  ({ evaluateImDeny } = await import('../packages/app/server/lib/im-deny.js'));
 });
 
 const HOME = '/home/tester';

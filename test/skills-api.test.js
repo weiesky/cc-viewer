@@ -4,8 +4,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync, symlinkSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { validateSkillName, listSkills, moveSkill, deleteSkill, readEnabledPluginInstalls } from '../server/lib/skills-api.js';
-import { writeSkillFiles } from '../server/routes/skills.js';
+import { validateSkillName, listSkills, moveSkill, deleteSkill, readEnabledPluginInstalls } from '../packages/app/server/lib/skills-api.js';
+import { writeSkillFiles } from '../packages/app/server/routes/skills.js';
 
 describe('validateSkillName', () => {
   it('accepts simple alphanumeric + hyphen', () => {

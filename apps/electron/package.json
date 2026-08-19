@@ -1,0 +1,31 @@
+{
+  "name": "@ccv/electron",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electron electron/main.js",
+    "assemble": "node scripts/assemble-app.mjs",
+    "build": "node scripts/assemble-app.mjs && electron-builder",
+    "sign": "pnpm run build && ../../scripts/mac-sign.sh",
+    "check-sign": "../../scripts/check-sign-config.sh"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "1.66.0",
+    "@wecom/aibot-node-sdk": "1.0.7",
+    "adm-zip": "^0.5.17",
+    "dingtalk-stream": "2.1.5",
+    "discord.js": "14.26.4",
+    "node-pty": "^1.1.0",
+    "undici": "^7.22.0",
+    "ws": "^8.21.0"
+  },
+  "optionalDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.91"
+  },
+  "devDependencies": {
+    "@electron/notarize": "^3.1.1",
+    "electron": "42.0.1",
+    "electron-builder": "^26.14.0"
+  }
+}

@@ -3,7 +3,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { PermissionController } from '../src/components/chat/controllers/permissionController.js';
+import { PermissionController } from '../apps/web/src/components/chat/controllers/permissionController.js';
 
 // node:test 环境可能没有全局 WebSocket；控制器只用到 WebSocket.OPEN 常量。
 if (typeof globalThis.WebSocket === 'undefined') globalThis.WebSocket = { OPEN: 1 };

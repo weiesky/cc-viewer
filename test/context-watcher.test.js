@@ -14,8 +14,8 @@ const __isoDir = mkdtempSync(join(tmpdir(), 'ccv-ctxw-'));
 process.env.CCV_LOG_DIR = __isoDir;
 process.env.CLAUDE_CONFIG_DIR = __isoDir;
 
-const { readModelContextSize, getContextSizeForModel, buildContextWindowEvent, readClaudeProjectModel, CONTEXT_WINDOW_FILE } = await import('../server/lib/context-watcher.js');
-const { getClaudeConfigDir } = await import('../findcc.js');
+const { readModelContextSize, getContextSizeForModel, buildContextWindowEvent, readClaudeProjectModel, CONTEXT_WINDOW_FILE } = await import('../packages/app/server/lib/context-watcher.js');
+const { getClaudeConfigDir } = await import('../packages/app/findcc.js');
 
 const CLAUDE_DIR = getClaudeConfigDir();
 
@@ -493,7 +493,7 @@ describe('log-watcher: processWatchedEntry — 实时 SSE 路径热切换感知'
   // getContextSizeForModel entry 分支;此处直接驱动 processWatchedEntry,断言广播帧的
   // context_window_size 跟随 response.body.model 而非请求名。
   it('热切换 entry(请求 opus-4-6 / 响应 kimi-k3)→ 广播 context_window_size=256000', async () => {
-    const { processWatchedEntry } = await import('../server/lib/log-watcher.js');
+    const { processWatchedEntry } = await import('../packages/app/server/lib/log-watcher.js');
     const sent = [];
     const clients = [{
       write: (payload) => { sent.push(payload); return true; },

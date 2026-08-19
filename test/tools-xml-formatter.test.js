@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { formatToolAsXml, formatToolsAsXml } from '../src/utils/toolsXmlFormatter.js';
+import { formatToolAsXml, formatToolsAsXml } from '../apps/web/src/utils/toolsXmlFormatter.js';
 
 const CRON_CREATE_TOOL = {
   name: 'CronCreate',

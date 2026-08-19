@@ -4,7 +4,7 @@ import {
   extractWebSearchGroups,
   safeHref,
   getHostname,
-} from '../src/utils/webSearchGrouping.js';
+} from '../apps/web/src/utils/webSearchGrouping.js';
 
 const stu = (id, query = 'q') => ({ type: 'server_tool_use', id, name: 'web_search', input: { query } });
 const wsr = (toolUseId, count = 2) => ({

@@ -39,7 +39,7 @@ before(async () => {
   // 注入 teammate argv + 切到已知 cwd（在 import 之前）。
   process.argv = [process.argv[0], process.argv[1], '--agent-name', 'worker-1', '--team-name', 'fix-stuff'];
   process.chdir(workCwd);
-  mod = await import('../server/interceptor.js');
+  mod = await import('../packages/app/server/interceptor.js');
 });
 
 after(() => {

@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCRIPT = join(__dirname, '..', 'server', 'lib', 'turn-end-bridge.js');
+const SCRIPT = join(__dirname, '..', 'packages', 'app', 'server', 'lib', 'turn-end-bridge.js');
 
 /** 以子进程跑 turn-end-bridge.js,完整透传 process.env(保覆盖记账)。 */
 function runBridge({ env = {}, stdin = null } = {}) {

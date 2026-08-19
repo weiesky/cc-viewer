@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { withFileLockAsync } from '../server/lib/async-file-lock.js';
+import { withFileLockAsync } from '../packages/app/server/lib/async-file-lock.js';
 
 describe('withFileLockAsync', () => {
   let tmpDir;

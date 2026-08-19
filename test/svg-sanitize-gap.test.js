@@ -63,7 +63,7 @@ before(async () => {
   // A window must exist so the module takes the `DOMPurify(window)` branch (real instance
   // with addHook), not the SSR stub branch.
   globalThis.window = {};
-  mod = await import('../src/utils/svgSanitize.js');
+  mod = await import('../apps/web/src/utils/svgSanitize.js');
 });
 
 after(() => {

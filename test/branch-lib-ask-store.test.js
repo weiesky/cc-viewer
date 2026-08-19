@@ -25,7 +25,7 @@ const lockFile = join(tmpRoot, 'ask-store.lock');
 
 let mod;
 before(async () => {
-  mod = await import('../server/lib/ask-store.js');
+  mod = await import('../packages/app/server/lib/ask-store.js');
 });
 
 function cleanup() {
@@ -34,7 +34,7 @@ function cleanup() {
 }
 
 // 目标源文件的绝对路径，子进程动态 import 用。
-const askStorePath = fileURLToPath(new URL('../server/lib/ask-store.js', import.meta.url));
+const askStorePath = fileURLToPath(new URL('../packages/app/server/lib/ask-store.js', import.meta.url));
 
 // 在子进程里跑一段脚本：私有只读 LOG_DIR，让 load 成功而 save 失败。
 // 返回 { status, stdout, stderr }。

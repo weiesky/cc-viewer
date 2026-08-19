@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { skillToDisplayName, mergeActiveSkills } from '../src/utils/skillsParser.js';
+import { skillToDisplayName, mergeActiveSkills } from '../apps/web/src/utils/skillsParser.js';
 
 describe('skillToDisplayName', () => {
   it('plugin with pluginName "short@marketplace" → "short:name"', () => {

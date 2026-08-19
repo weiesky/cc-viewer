@@ -11,7 +11,7 @@
 // 不覆盖此检测器，必须有单独回归守卫。
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isNativeTeammate, extractNativeTeammateName, extractCcVersion } from '../src/utils/teammateDetector.js';
+import { isNativeTeammate, extractNativeTeammateName, extractCcVersion } from '../packages/app/src/utils/teammateDetector.js';
 
 function mkReq({ system = '', tools = [], teammate = null, messages = [] } = {}) {
   const req = { body: { system, tools, messages } };

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { getInstallMethod, projectMetaRoutes } from '../server/routes/project-meta.js';
+import { getInstallMethod, projectMetaRoutes } from '../packages/app/server/routes/project-meta.js';
 
 describe('getInstallMethod', () => {
   it('returns electron when running under Electron (regardless of brew detection)', () => {

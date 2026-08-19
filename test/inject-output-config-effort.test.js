@@ -8,7 +8,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { injectOutputConfigEffort } from '../server/lib/interceptor-core.js';
+import { injectOutputConfigEffort } from '../packages/app/server/lib/interceptor-core.js';
 
 describe('injectOutputConfigEffort', () => {
   it('无 output_config：前插后为合法 JSON，effort 生效且其余字段保留', () => {

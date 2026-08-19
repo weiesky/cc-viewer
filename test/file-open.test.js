@@ -19,7 +19,7 @@ const _origFetch = globalThis.fetch;
 globalThis.window = { location: { search: '' } };
 globalThis.document = { querySelector: () => null };
 
-const { tryOpenWithSystem } = await import('../src/utils/fileOpen.js');
+const { tryOpenWithSystem } = await import('../apps/web/src/utils/fileOpen.js');
 
 after(() => {
   if (_origWindow === undefined) delete globalThis.window; else globalThis.window = _origWindow;

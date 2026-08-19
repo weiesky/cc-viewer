@@ -4,7 +4,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isPostClearCheckpoint, isCompactContinuation, isSessionBoundary } from '../src/utils/clearCheckpoint.js';
+import { isPostClearCheckpoint, isCompactContinuation, isSessionBoundary } from '../packages/app/src/utils/clearCheckpoint.js';
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 

@@ -5,7 +5,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseRateLimitHeaders, pickHeadlineWindow, extractLatestPlanUsage } from '../src/utils/rateLimitParser.js';
+import { parseRateLimitHeaders, pickHeadlineWindow, extractLatestPlanUsage } from '../apps/web/src/utils/rateLimitParser.js';
 
 // 真实下发的统一限流头（全部为字符串）。
 function realHeaders(extra = {}) {

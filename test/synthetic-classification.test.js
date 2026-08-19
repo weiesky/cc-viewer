@@ -19,8 +19,8 @@ import assert from 'node:assert/strict';
 
 let classifyRequest, formatRequestTag, isSystemText;
 before(async () => {
-  const rt = await import('../src/utils/requestType.js');
-  const cf = await import('../src/utils/contentFilter.js');
+  const rt = await import('../packages/app/src/utils/requestType.js');
+  const cf = await import('../packages/app/src/utils/contentFilter.js');
   classifyRequest = rt.classifyRequest;
   formatRequestTag = rt.formatRequestTag;
   isSystemText = cf.isSystemText;

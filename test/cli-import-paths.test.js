@@ -65,15 +65,18 @@ function scanFileForStaticImports(fileAbs) {
 }
 
 const ENTRY_FILES = [
-  'cli.js',
-  'findcc.js',                  // 自身含 dynamic import('./server/lib/file-access-policy.js')
-  'electron/main.js',
-  'electron/tab-worker.js',
+  'packages/app/cli.js',
+  'packages/app/findcc.js',                  // 自身含 dynamic import('./server/lib/file-access-policy.js')
+  'apps/electron/electron/main.js',
+  'apps/electron/electron/tab-worker.js',
 ];
+// Published-package content lives under packages/app in the monorepo — that dir
+// is what "package root" (and electron's rootDir probe) resolve to in the repo.
+const appRoot = join(repoRoot, 'packages', 'app');
 
 describe('cli-import-paths: static-string dynamic imports must resolve on disk', () => {
   it('Electron uses the same preferred Claude selection as CLI launch modes', () => {
-    const source = readFileSync(join(repoRoot, 'electron/main.js'), 'utf8');
+    const source = readFileSync(join(repoRoot, 'apps/electron/electron/main.js'), 'utf8');
     assert.match(source, /resolvePreferredClaudeSelection/);
     assert.doesNotMatch(source, /let claudePath = resolveNpmClaudePath\(\)/);
   });
@@ -104,7 +107,7 @@ describe('cli-import-paths: static-string dynamic imports must resolve on disk',
       if (!existsSync(fileAbs)) continue;
       for (const h of scanFileForStaticImports(fileAbs)) {
         if (h.kind !== 'wrapped') continue;
-        const target = resolve(repoRoot, ...h.segs);
+        const target = resolve(appRoot, ...h.segs);
         if (!existsSync(target)) missing.push({ file: rel, line: h.line, segs: h.segs, target });
       }
     }
@@ -117,7 +120,7 @@ describe('cli-import-paths: static-string dynamic imports must resolve on disk',
     // INJECT_IMPORT is injected verbatim into @anthropic-ai/claude-code/cli.js.
     // After the bare-specifier migration it goes through package exports;
     // verify the resolved physical file exists.
-    const { INJECT_IMPORT } = await import('../findcc.js');
+    const { INJECT_IMPORT } = await import('../packages/app/findcc.js');
     const m = INJECT_IMPORT.match(/^import\s+(['"])([^'"]+)\1\s*;?\s*$/);
     assert.ok(m, `INJECT_IMPORT shape unexpected: ${INJECT_IMPORT}`);
     const spec = m[2];
@@ -127,7 +130,7 @@ describe('cli-import-paths: static-string dynamic imports must resolve on disk',
       // (`<gnm>/@anthropic-ai/claude-code/cli.js`). Smoke: file at expected
       // physical path exists in this repo's server/ tree.
       const cleaned = spec.replace(/^(\.\.\/)+/, '').replace(/^cc-viewer\//, '');
-      const physical = join(repoRoot, cleaned);
+      const physical = join(appRoot, cleaned);
       assert.ok(existsSync(physical),
         `INJECT_IMPORT relative target missing: ${spec} → ${physical}`);
       return;
@@ -138,11 +141,11 @@ describe('cli-import-paths: static-string dynamic imports must resolve on disk',
     assert.ok(spec.startsWith('cc-viewer/'),
       `INJECT_IMPORT bare specifier must start with 'cc-viewer/': ${spec}`);
     const subPath = './' + spec.slice('cc-viewer/'.length);
-    const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'));
+    const pkg = JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8'));
     const mapped = pkg.exports?.[subPath];
     assert.ok(mapped,
       `package.json exports missing entry for ${subPath} (required by INJECT_IMPORT '${spec}')`);
-    const target = resolve(repoRoot, mapped);
+    const target = resolve(appRoot, mapped);
     assert.ok(existsSync(target),
       `package.json exports['${subPath}'] = '${mapped}' but file missing: ${target}`);
   });
@@ -153,14 +156,14 @@ describe('cli-import-paths: static-string dynamic imports must resolve on disk',
     // already-injected `@anthropic-ai/claude-code/cli.js` files won't crash
     // when they execute the legacy `import '../../cc-viewer/<path>'` line —
     // even before the user re-runs `ccv -logger` to upgrade the marker.
-    const { LEGACY_INJECT_IMPORTS } = await import('../findcc.js');
+    const { LEGACY_INJECT_IMPORTS } = await import('../packages/app/findcc.js');
     const broken = [];
     for (const legacy of LEGACY_INJECT_IMPORTS) {
       const m = legacy.match(/^import\s+(['"])([^'"]+)\1\s*;?\s*$/);
       if (!m) { broken.push({ legacy, reason: 'unparseable' }); continue; }
       const spec = m[2];
       const cleaned = spec.replace(/^(\.\.\/)+/, '').replace(/^cc-viewer\//, '');
-      const physical = join(repoRoot, cleaned);
+      const physical = join(appRoot, cleaned);
       if (!existsSync(physical)) broken.push({ legacy, spec, physical, reason: 'missing' });
     }
     assert.deepEqual(broken, [],

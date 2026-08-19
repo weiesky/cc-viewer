@@ -10,16 +10,11 @@
     "strictNullChecks": false
   },
   "include": [
-    "src/**/*",
-    "server/**/*",
+    "apps/web/src/**/*",
+    "apps/electron/electron/**/*",
+    "packages/app/**/*",
     "test/**/*",
-    "electron/**/*",
-    "scripts/**/*",
-    "cli.js",
-    "findcc.js",
-    "server.js",
-    "interceptor.js",
-    "vite.config.js"
+    "scripts/**/*"
   ],
   "exclude": ["node_modules", "build", "dist"]
 }

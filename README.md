@@ -35,6 +35,13 @@ brew install cc-viewer
 brew upgrade cc-viewer   # use this to upgrade; do NOT use npm install -g to upgrade a brew-installed ccv
 ```
 
+#### Install via pnpm (global)
+
+```bash
+pnpm add -g cc-viewer
+pnpm add -g cc-viewer@latest   # use this to upgrade; do NOT use npm install -g to upgrade a pnpm-installed ccv
+```
+
 ### How to start
 
 ccv is a drop-in replacement for claude — all arguments are passed through to claude while the Web Viewer is launched alongside it.

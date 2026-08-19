@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createV2IncrementalReconstructor, normalizeV2Entries } from '../server/lib/v2-transcript-normalizer.js';
+import { createV2IncrementalReconstructor, normalizeV2Entries } from '../packages/app/server/lib/v2-transcript-normalizer.js';
 
 // ============================================================================
 
@@ -176,8 +176,8 @@ describe('createV2IncrementalReconstructor', () => {
 describe('live split-row merged tool_use pairing', () => {
   it('合并进已扫描消息的 tool_use 通过 _toolUses 被重新注册', async () => {
     await import('./_shims/register.mjs');
-    const { appendToolResultMap } = await import('../src/utils/toolResultBuilder.js');
-    const { buildSingleToolResultCore } = await import('../src/utils/toolResultCore.js');
+    const { appendToolResultMap } = await import('../apps/web/src/utils/toolResultBuilder.js');
+    const { buildSingleToolResultCore } = await import('../apps/web/src/utils/toolResultCore.js');
 
     const rec = createV2IncrementalReconstructor();
     // 第一行：user 消息 + 请求（先有 tool_use 之前的文本）
