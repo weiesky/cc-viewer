@@ -14,7 +14,9 @@ The author welcomes and encourages PRs from the community. The author also doesn
 
 The suite has two tiers:
 
-- `npm run test` — the fast default tier: in-process unit tests only. Use this in your development loop.
-- `npm run test:cli` — the full suite: additionally runs the CLI/server integration suites gated behind `CCV_TEST_CLI=1` (spawned `cli.js` boots, real-port server lifecycle). CI runs this tier. Run it before submitting a PR.
+- `pnpm run test` — the fast default tier: in-process unit tests only. Use this in your development loop.
+- `pnpm run test:cli` — the full suite: additionally runs the CLI/server integration suites gated behind `CCV_TEST_CLI=1` (spawned `cli.js` boots, real-port server lifecycle). CI runs this tier. Run it before submitting a PR.
+
+(The repo uses pnpm — install with `pnpm install`; Node >=22.13 required for the dev toolchain.)
 
 Test sandboxing env switches (see the `L1`/`L7` isolation barriers in `findcc.js`): tests can never resolve or run a real `claude` binary (`CCV_TEST_ALLOW_REAL_CLAUDE=1` is the explicit per-assertion escape hatch), and browser auto-open is suppressed under tests and whenever `CCV_NO_OPEN=1` is set. New integration tests that spawn `cli.js` or bind real ports should import `describeCli` from `test/_helpers/cli-tier.mjs` for their top-level suites.

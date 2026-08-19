@@ -36,9 +36,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
-      - run: npm ci --no-fund --no-audit
+      # A1 transition: the Electron job stays on npm. electron-builder expects a flat
+      # npm-style node_modules; the pnpm + hoisted-linker switch lands in A2 (which also
+      # bumps electron-builder to ^26.14). npm ci is impossible (no package-lock under
+      # pnpm), so use npm install; the axios/qs/node-gyp overrides stay duplicated in
+      # package.json precisely so this job keeps working.
+      - run: npm install --no-fund --no-audit
 
       - run: npm run build
 
@@ -126,20 +130,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
 
       # OIDC trusted publishing requires npm >= 11.5.1 — Node 20's bundled npm 10.x cannot do
       # the OIDC token exchange, so `npm publish` fails even with a correctly configured
       # Trusted Publisher on npmjs.com (this is what broke the v1.6.346/347 releases).
       - run: npm install -g npm@latest
 
-      - run: npm ci --no-fund --no-audit
+      - run: pnpm install --frozen-lockfile
 
+      # npm publish stays: OIDC trusted publishing is npm-only (pnpm has no support).
+      # prepublishOnly runs `npm run build` automatically (vite via pnpm-installed deps).
       - run: npm publish --provenance
-        # prepublishOnly runs `npm run build` automatically.
 
   # Post-release automatic Homebrew tap formula bump (reusable workflow, uses HOMEBREW_TAP_TOKEN).
   bump-homebrew:
