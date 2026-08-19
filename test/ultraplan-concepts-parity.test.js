@@ -8,7 +8,7 @@ import { ULTRAPLAN_VARIANTS } from '../apps/web/src/utils/ultraplanTemplates.js'
 // 钉死：concepts/<lang>/UltraPlan.md 内嵌的「代码专家 / 调研专家」模板块必须与源模板
 // ULTRAPLAN_VARIANTS.codeExpert / .researchExpert 逐字节一致(因此 18 语言文档彼此也一致)。
 // 防止某语言文档被单独改写 / 漏同步而静默漂移(如新增 tools-are-loaded 一句时)。
-const CONCEPTS_DIR = fileURLToPath(new URL('../packages/app/concepts', import.meta.url));
+const CONCEPTS_DIR = fileURLToPath(new URL('../packages/content/concepts', import.meta.url));
 
 // 每个 UltraPlan.md 内有两个 <textarea readonly><system-reminder> 块:codeExpert 在前、
 // researchExpert 在后。用各自独有的前置句锚定,避免依赖出现顺序:

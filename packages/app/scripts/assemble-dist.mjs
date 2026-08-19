@@ -52,6 +52,19 @@ for (const section of ['dependencies', 'optionalDependencies', 'devDependencies'
 rmSync(APP_DIST, { recursive: true, force: true });
 cpSync(WEB_DIST, APP_DIST, { recursive: true });
 
+// Bundled content assets live in packages/content (@ccv/content) in the monorepo; the
+// published tarball must carry them at their contract paths inside packages/app.
+// (server/_paths.js probes packages/content first in dev, so these copies only matter
+// for packing — keep them idempotent and fail loudly when the source is missing.)
+const CONTENT_PKG = join(REPO_ROOT, 'packages', 'content');
+for (const rel of ['concepts', 'ultraAgents', join('server', 'imPreset'), join('server', 'imSkills')]) {
+  const from = join(CONTENT_PKG, rel);
+  if (!existsSync(from)) throw new Error(`[assemble-dist] ${from} missing — content payload incomplete`);
+  const dest = join(APP_ROOT, rel);
+  rmSync(dest, { recursive: true, force: true });
+  cpSync(from, dest, { recursive: true });
+}
+
 // npm auto-includes README*/LICENSE* from the package dir only — in the monorepo
 // they live at the repo root, so copy them in to preserve the published contract.
 for (const doc of ['README.md', 'LICENSE.md']) {

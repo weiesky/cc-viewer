@@ -1,0 +1,6 @@
+{
+  "name": "@ccv/content",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Bundled content assets for cc-viewer (concept docs, ultraAgents presets, IM skills/presets) — copied into packages/app at pack time by assemble-dist.mjs"
+}

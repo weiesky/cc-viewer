@@ -5,6 +5,10 @@ apps/electron/stage/
 # Copied into packages/app by assemble-dist.mjs at build/pack time (published contract)
 packages/app/README.md
 packages/app/LICENSE.md
+packages/app/concepts/
+packages/app/ultraAgents/
+packages/app/server/imPreset/
+packages/app/server/imSkills/
 coverage
 .claude/settings.local.json
 .claude/scheduled_tasks.lock

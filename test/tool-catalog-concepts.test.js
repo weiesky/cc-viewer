@@ -10,7 +10,7 @@ import { TOOL_CATALOG, ALL_TOOL_NAMES } from '../apps/web/src/utils/toolCatalog.
 // 防止:新增工具漏建某语言文档(运行时 404)、目录出现重复、漏配语言导致 t() 静默回落。
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const CONCEPTS_DIR = join(ROOT, 'packages', 'app', 'concepts');
+const CONCEPTS_DIR = join(ROOT, 'packages', 'content', 'concepts');
 const I18N_SRC = readFileSync(join(ROOT, 'apps', 'web', 'src', 'i18n.js'), 'utf-8');
 
 // 与 server/routes/team.js concept() 同款 doc 名校验。

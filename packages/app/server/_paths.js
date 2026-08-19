@@ -34,15 +34,31 @@ export const DIST_DIR      = join(PACKAGE_ROOT, 'dist');
 export const PUBLIC_DIR    = existsSync(join(PACKAGE_ROOT, 'public'))
   ? join(PACKAGE_ROOT, 'public')
   : resolve(PACKAGE_ROOT, '..', '..', 'apps', 'web', 'public');
-/** Multi-language concept docs (GlobalSettings.md / Tool-*.md etc.) */
-export const CONCEPTS_DIR  = join(PACKAGE_ROOT, 'concepts');
 /** Bundled plugin directory (scanned by plugin-loader at startup) */
 export const PLUGINS_DIR   = join(PACKAGE_ROOT, 'plugins');
+
+// Bundled content assets live in the @ccv/content workspace package (packages/content)
+// and are copied back into packages/app at pack time (scripts/assemble-dist.mjs).
+// Probe the content package FIRST so dev edits are live even when a stale assembled
+// copy exists in packages/app; the installed tarball has no ../content sibling and
+// falls back to the assembled in-package copy. Each probe checks a structural sentinel
+// to avoid false hits on an unrelated sibling directory.
+const CONTENT_PKG = resolve(PACKAGE_ROOT, '..', 'content');
+/** Multi-language concept docs (GlobalSettings.md / Tool-*.md etc.) */
+export const CONCEPTS_DIR  = existsSync(join(CONTENT_PKG, 'concepts', 'en'))
+  ? join(CONTENT_PKG, 'concepts')
+  : join(PACKAGE_ROOT, 'concepts');
 /** Bundled ultraplan preset expert directory (ultraAgents/*.json, served by /api/ultra-agents) */
-export const ULTRA_AGENTS_DIR = join(PACKAGE_ROOT, 'ultraAgents');
+export const ULTRA_AGENTS_DIR = existsSync(join(CONTENT_PKG, 'ultraAgents', 'code-expert.json'))
+  ? join(CONTENT_PKG, 'ultraAgents')
+  : join(PACKAGE_ROOT, 'ultraAgents');
 /** Bundled IM default skill source (server/imSkills/<lang>/<skill>/SKILL.md + scripts/*.mjs) */
-export const IM_SKILLS_DIR = join(SERVER_DIR, 'imSkills');
+export const IM_SKILLS_DIR = existsSync(join(CONTENT_PKG, 'server', 'imSkills', 'scripts'))
+  ? join(CONTENT_PKG, 'server', 'imSkills')
+  : join(SERVER_DIR, 'imSkills');
 /** Bundled IM persona preset templates (server/imPreset/<lang>.md, {platform}/{id} substituted at runtime) */
-export const IM_PRESET_DIR = join(SERVER_DIR, 'imPreset');
+export const IM_PRESET_DIR = existsSync(join(CONTENT_PKG, 'server', 'imPreset', 'en.md'))
+  ? join(CONTENT_PKG, 'server', 'imPreset')
+  : join(SERVER_DIR, 'imPreset');
 /** cc-viewer's own package.json (updater/server.js reads version) */
 export const PACKAGE_JSON  = join(PACKAGE_ROOT, 'package.json');

@@ -122,12 +122,12 @@ CC-Viewer 自动注册到 `~/.claude/settings.json` 的 `hooks.PreToolUse` 中�
 
 ### 1. AskUserQuestion 桥接
 - **匹配器**: `"AskUserQuestion"`
-- **命令**: `node <安装目录>/server/lib/ask-bridge.js`
+- **命令**: `node <安装目录>/server/lib/ask/ask-bridge.js`
 - **作用**: 将 Claude 的问题转发到 Web UI，等待用户回答
 
 ### 2. 权限审批桥接
 - **匹配器**: `""` (空 = 匹配所有工具)
-- **命令**: `node <安装目录>/server/lib/perm-bridge.js`
+- **命令**: `node <安装目录>/server/lib/ask/perm-bridge.js`
 - **作用**: 仅 `Bash`/`Edit`/`Write`/`NotebookEdit` 需要 Web UI 审批，其余自动放行
 
 ## 七、Shell 集成

@@ -10,7 +10,7 @@ import { ALL_TOOL_NAMES } from '../apps/web/src/utils/toolCatalog.js';
 // 防止:门槛工具漏写/错位激活说明、常开工具误加章节、语言间章节漂移。
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const CONCEPTS_DIR = join(ROOT, 'packages', 'app', 'concepts');
+const CONCEPTS_DIR = join(ROOT, 'packages', 'content', 'concepts');
 
 // 18 语言 Activation 章节标题(设计冻结清单)。
 const ACTIVATION_HEADINGS = {

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { logDir, loadWorkspaces, normDir, cleanEnv, adaptiveUrl } from '../packages/app/server/imSkills/scripts/ccv-projects.mjs';
+import { logDir, loadWorkspaces, normDir, cleanEnv, adaptiveUrl } from '../packages/content/server/imSkills/scripts/ccv-projects.mjs';
 
 describe('adaptiveUrl', () => {
   it('开了密码登录 → 去掉 ?token=（回裸地址）', () => {
