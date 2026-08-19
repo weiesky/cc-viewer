@@ -31,6 +31,9 @@ jobs:
       - run: pnpm rebuild node-pty
       # Static serving / SSR injection tests need real dist/
       - run: pnpm run build
+      # L4: the published tarball's physical layout is a public contract — diff the
+      # dry-run pack file list against the committed baseline (scripts/tarball-baseline.json)
+      - run: pnpm run verify:tarball
       # Full suite: fast unit tier + the CCV_TEST_CLI-gated CLI/server integration tier
       # (a superset of `pnpm test`, which developers use for the fast local loop).
       - run: pnpm run test:cli

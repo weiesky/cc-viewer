@@ -13,6 +13,7 @@
     "start": "node packages/app/server.js",
     "lint:control-bytes": "node scripts/check-no-control-bytes.js",
     "verify:wire-v2": "node packages/app/cli.js verify",
+    "verify:tarball": "node scripts/verify-tarball-contract.mjs",
     "pretest": "pnpm run lint:control-bytes",
     "pretest:cli": "pnpm run lint:control-bytes",
     "pretest:coverage": "pnpm run lint:control-bytes",

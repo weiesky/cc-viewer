@@ -176,6 +176,10 @@ jobs:
       # stays because OIDC trusted publishing is npm-only (pnpm has no support).
       - run: pnpm run build
 
+      # L4: the tarball's physical layout is a public contract — diff the dry-run pack
+      # file list against the committed baseline before the real pack ships it.
+      - run: pnpm run verify:tarball
+
       # Fail loudly before packing if the tag and the app version drifted apart —
       # the publish step below addresses the tarball by version-derived name.
       - name: Verify tag matches packages/app version
