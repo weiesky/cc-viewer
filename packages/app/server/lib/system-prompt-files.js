@@ -23,7 +23,9 @@ export const DISABLE_AUTO_SYSTEM_PROMPT_ENV = 'CCV_DISABLE_AUTO_SYSTEM_PROMPT';
 // (implementation: file-api.js — see the re-export above)
 
 // args 里是否已含某个 flag(同时匹配 `--x` 与 `--x=value` 两种写法，检测更稳)。
-function hasArg(args, ...names) {
+// Exported for pty-manager's pin path: a manually-passed flag suppresses the matching
+// pinned entry with the same semantics as the fresh-build path.
+export function hasArg(args, ...names) {
   if (!Array.isArray(args)) return false;
   return args.some(a =>
     typeof a === 'string' && names.some(n => a === n || a.startsWith(n + '='))

@@ -123,15 +123,74 @@ describe('renderSystemPromptFileArgs', () => {
     assert.equal(readFileSync(r.args[3], 'utf-8'), 'b=testos');
   });
 
-  it('empty args pass through unchanged', () => {
+  it('empty args pass through unchanged (entries normalized to [])', () => {
     const input = { args: [], loaded: [], model: null };
-    assert.equal(renderSystemPromptFileArgs(input, {}), input);
+    assert.deepEqual(renderSystemPromptFileArgs(input, {}), { args: [], loaded: [], model: null, entries: [] });
   });
 
   it('null / non-object input → safe default (entry guard, PR#128)', () => {
-    assert.deepEqual(renderSystemPromptFileArgs(null), { args: [], loaded: [], model: null });
-    assert.deepEqual(renderSystemPromptFileArgs(undefined), { args: [], loaded: [], model: null });
-    assert.deepEqual(renderSystemPromptFileArgs(42), { args: [], loaded: [], model: null });
+    assert.deepEqual(renderSystemPromptFileArgs(null), { args: [], loaded: [], model: null, entries: [] });
+    assert.deepEqual(renderSystemPromptFileArgs(undefined), { args: [], loaded: [], model: null, entries: [] });
+    assert.deepEqual(renderSystemPromptFileArgs(42), { args: [], loaded: [], model: null, entries: [] });
+  });
+});
+
+describe('renderSystemPromptFileArgs entries (snapshot content source)', () => {
+  it('exposes the rendered content for files with variables', () => {
+    const src = join(tmp, 'ENT_VARS_SYSTEM.md');
+    writeFileSync(src, 'model=${model.name}');
+    const r = renderSystemPromptFileArgs(
+      { args: ['--append-system-prompt-file', src], loaded: [], model: null },
+      { modelId: 'k3[1m]', variablesFactory: fakeFactory },
+    );
+    assert.deepEqual(r.entries, [
+      { flag: '--append-system-prompt-file', basename: 'ENT_VARS_SYSTEM.md', content: 'model=k3' },
+    ]);
+  });
+
+  it('exposes the raw launch-time bytes for pass-through files (no placeholders)', () => {
+    const src = join(tmp, 'ENT_PLAIN_SYSTEM.md');
+    writeFileSync(src, 'static text, edited later maybe');
+    const r = renderSystemPromptFileArgs(
+      { args: ['--system-prompt-file', src], loaded: [], model: null },
+      { variablesFactory: fakeFactory },
+    );
+    assert.deepEqual(r.entries, [
+      { flag: '--system-prompt-file', basename: 'ENT_PLAIN_SYSTEM.md', content: 'static text, edited later maybe' },
+    ]);
+    assert.equal(r.args[1], src, 'arg path stays the raw file');
+  });
+
+  it('marks unreadable files unavailable (snapshot writers must skip them)', () => {
+    const missing = join(tmp, 'ENT_MISSING_SYSTEM.md');
+    const origWarn = console.warn;
+    console.warn = () => {};
+    let r;
+    try {
+      r = renderSystemPromptFileArgs(
+        { args: ['--system-prompt-file', missing], loaded: [], model: null },
+        { variablesFactory: fakeFactory },
+      );
+    } finally { console.warn = origWarn; }
+    assert.equal(r.entries.length, 1);
+    assert.equal(r.entries[0].unavailable, true);
+    assert.equal(r.entries[0].content, null);
+    assert.equal(r.entries[0].basename, 'ENT_MISSING_SYSTEM.md');
+  });
+
+  it('collects entries across both injected files in arg order', () => {
+    const a = join(tmp, 'ENT_A_SYSTEM.md');
+    const b = join(tmp, 'ENT_B_APPEND.md');
+    writeFileSync(a, 'plain-a');
+    writeFileSync(b, 'b=${os.platform}');
+    const r = renderSystemPromptFileArgs(
+      { args: ['--system-prompt-file', a, '--append-system-prompt-file', b], loaded: [], model: null },
+      { variablesFactory: fakeFactory },
+    );
+    assert.deepEqual(r.entries.map(e => [e.flag, e.content]), [
+      ['--system-prompt-file', 'plain-a'],
+      ['--append-system-prompt-file', 'b=testos'],
+    ]);
   });
 });
 

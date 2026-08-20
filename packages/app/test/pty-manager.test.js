@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -992,5 +992,305 @@ describe('pty-manager: withDefaultThinkingDisplay', () => {
     // And no duplicate flag appended
     const count = out.filter(a => a === '--thinking-display').length;
     assert.equal(count, 1);
+  });
+});
+
+// ─── -c/-r resume-launch system-prompt pinning (system-prompt-snapshots.js) ─────
+// A resume launch must pin the resumed conversation's original injection verbatim
+// (never re-render variables → the prompt-prefix KV cache survives); an identified
+// target with no snapshot record → inject nothing (F2); an unidentifiable target →
+// the normal build/render pipeline.
+describe('pty-manager: -c/-r system-prompt pinning', () => {
+  const UUID_A = 'aaaa1111-89ab-4cde-8f01-23456789abcd';
+  const UUID_B = 'bbbb2222-89ab-4cde-8f01-23456789abcd';
+  const PINNED_CONTENT = 'PINNED-RENDER git-status-at-launch α';
+  const PINNED_WITH_PLACEHOLDER = 'rendered once: ${os.platform} stays literal';
+  let spawned = [];
+  let dir;
+  let fakeProjects;
+  let snaps;
+  let LOG_DIR_RESOLVED;
+
+  const storeDir = () => {
+    const key = dir.replace(/\/$/, '').split('/').pop().replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+    return join(LOG_DIR_RESOLVED, key, 'system-prompt-snapshots');
+  };
+  const pendingFile = () => join(storeDir(), 'pending.json');
+  const readPendings = () => JSON.parse(readFileSync(pendingFile(), 'utf-8')).pendings;
+  const makeTranscript = (uuid, mtimeMs) => {
+    const tDir = join(fakeProjects, dir.replace(/[^A-Za-z0-9]/g, '-'));
+    mkdirSync(tDir, { recursive: true });
+    const f = join(tDir, `${uuid}.jsonl`);
+    writeFileSync(f, '{"type":"summary"}\n{"type":"user","message":{}}\n');
+    const d = new Date(mtimeMs);
+    utimesSync(f, d, d);
+  };
+  const sysFileArg = (inst, flag) => {
+    const i = inst.args.indexOf(flag);
+    return i === -1 ? null : inst.args[i + 1];
+  };
+  // Local copies of the outer describe's helpers (const-scoped there, not visible here).
+  const waitUntil = async (predicate, { timeoutMs = 800, intervalMs = 5 } = {}) => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try { if (predicate()) return; } catch { }
+      await new Promise(r => setTimeout(r, intervalMs));
+    }
+    throw new Error(`waitUntil timeout after ${timeoutMs}ms`);
+  };
+  // Mock pty whose FIRST spawn emits errorText and exits 1 (no signal); later spawns idle.
+  const makeMockPtyOnceCrash = (errorText) => () => ({
+    spawn(command, args, opts) {
+      const dataHandlers = [];
+      const exitHandlers = [];
+      const idx = spawned.length;
+      const inst = {
+        pid: 92000 + idx, command, args, opts,
+        write() {}, resize() {}, kill() {},
+        onData(cb) { dataHandlers.push(cb); },
+        onExit(cb) { exitHandlers.push(cb); },
+      };
+      spawned.push(inst);
+      if (idx === 0) {
+        queueMicrotask(() => {
+          for (const cb of dataHandlers) cb(errorText);
+          for (const cb of exitHandlers) cb({ exitCode: 1 });
+        });
+      }
+      return inst;
+    },
+  });
+
+  beforeEach(async () => {
+    spawned = [];
+    dir = mkdtempSync(join(tmpdir(), 'ccv-pty-pin-'));
+    fakeProjects = mkdtempSync(join(tmpdir(), 'ccv-pty-pin-proj-'));
+    process.env.CCV_PROJECTS_DIR = fakeProjects;
+    snaps = await import('../server/lib/system-prompt-snapshots.js');
+    ({ LOG_DIR: LOG_DIR_RESOLVED } = await import('../findcc.js'));
+    rmSync(storeDir(), { recursive: true, force: true });
+    _setPtyImportForTests(() => ({
+      spawn(command, args, opts) {
+        const inst = {
+          pid: 91000 + spawned.length, command, args, opts,
+          write() {}, resize() {}, kill() {}, onData() {}, onExit() {},
+        };
+        spawned.push(inst);
+        return inst;
+      },
+    }));
+  });
+
+  afterEach(() => {
+    killPty();
+    _setPtyImportForTests(null);
+    delete process.env.CCV_PROJECTS_DIR;
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(fakeProjects, { recursive: true, force: true });
+    delete process.env.CCV_DISABLE_AUTO_SYSTEM_PROMPT;
+  });
+
+  it('-r <uuid> with a snapshot pins the recorded content verbatim (source file ignored, NO re-render)', async () => {
+    // The live workspace file must NOT matter on the pinned path — different content,
+    // plus a template variable that would re-render to something else if it ran.
+    writeFileSync(join(dir, 'CC_APPEND_SYSTEM.md'), 'LIVE-FILE ${os.platform}', 'utf-8');
+    makeTranscript(UUID_A, Date.now()); // gc protection: record whose transcript exists survives appendPending
+    snaps.writeSnapshot(dir, UUID_A, {
+      entries: [{ flag: '--append-system-prompt-file', basename: 'CC_APPEND_SYSTEM.md', content: PINNED_WITH_PLACEHOLDER }],
+      model: 'k3',
+    });
+
+    await spawnClaude(9999, dir, ['-r', UUID_A], '/bin/fake-claude-pin');
+
+    const pinnedPath = sysFileArg(spawned[0], '--append-system-prompt-file');
+    assert.ok(pinnedPath, 'pinned append flag present');
+    assert.ok(pinnedPath.includes('cc-viewer-rendered-prompts'), 'injected from the pinned-temp dir');
+    assert.equal(readFileSync(pinnedPath, 'utf-8'), PINNED_WITH_PLACEHOLDER,
+      'byte-identical to the snapshot — the literal ${os.platform} proves no re-render ran');
+    const pendings = readPendings();
+    assert.equal(pendings.length, 1);
+    assert.equal(pendings[0].resumeExpected, true);
+    assert.equal(pendings[0].resolvedUuid, UUID_A);
+    assert.deepEqual(pendings[0].entries.map(e => e.content), [PINNED_WITH_PLACEHOLDER]);
+    assert.ok(getOutputBuffer().includes('Resumed session'), 'pinned notice (not the fresh "loaded" one)');
+  });
+
+  it('--resume=<uuid> (equals form) pins the snapshot too', async () => {
+    makeTranscript(UUID_A, Date.now());
+    snaps.writeSnapshot(dir, UUID_A, {
+      entries: [{ flag: '--append-system-prompt-file', basename: 'CC_APPEND_SYSTEM.md', content: PINNED_CONTENT }],
+    });
+
+    await spawnClaude(9999, dir, [`--resume=${UUID_A}`], '/bin/fake-claude-pin-eq');
+
+    const pinnedPath = sysFileArg(spawned[0], '--append-system-prompt-file');
+    assert.ok(pinnedPath, 'equals-form resume resolves the snapshot');
+    assert.equal(readFileSync(pinnedPath, 'utf-8'), PINNED_CONTENT);
+    assert.equal(readPendings()[0].resolvedUuid, UUID_A);
+  });
+
+  it('-c resolves the newest MAIN transcript and pins its snapshot (sidechain/teammate ignored)', async () => {
+    makeTranscript(UUID_A, Date.now() - 60_000);
+    makeTranscript(UUID_B, Date.now());
+    snaps.writeSnapshot(dir, UUID_B, {
+      entries: [{ flag: '--append-system-prompt-file', basename: 'CC_APPEND_SYSTEM.md', content: PINNED_CONTENT }],
+    });
+    snaps.writeSnapshot(dir, UUID_A, {
+      entries: [{ flag: '--append-system-prompt-file', basename: 'CC_APPEND_SYSTEM.md', content: 'OLDER-CONTENT' }],
+    });
+
+    await spawnClaude(9999, dir, ['-c'], '/bin/fake-claude-pin-c');
+
+    const pinnedPath = sysFileArg(spawned[0], '--append-system-prompt-file');
+    assert.ok(pinnedPath, 'pinned append flag present');
+    assert.equal(readFileSync(pinnedPath, 'utf-8'), PINNED_CONTENT, 'the NEWEST transcript\'s snapshot wins');
+    assert.equal(readPendings()[0].resolvedUuid, UUID_B);
+  });
+
+  it('-r <uuid> without a snapshot → F2: no injection at all (even with live sentinel files), notice shown, NO pending', async () => {
+    writeFileSync(join(dir, 'CC_APPEND_SYSTEM.md'), 'LIVE-FILE ${os.platform}', 'utf-8');
+    makeTranscript(UUID_A, Date.now());
+
+    await spawnClaude(9999, dir, ['-r', UUID_A], '/bin/fake-claude-pin-f2');
+
+    assert.equal(sysFileArg(spawned[0], '--append-system-prompt-file'), null, 'no append injection');
+    assert.equal(sysFileArg(spawned[0], '--system-prompt-file'), null, 'no override injection');
+    assert.equal(existsSync(pendingFile()), false, 'F2 queues nothing (empty pendings never persist)');
+    assert.match(getOutputBuffer(), /systemPromptResumeNoSnapshot|No recorded system prompt/);
+  });
+
+  it('F2 notice is suppressed when no injection is configured at all (feature-less users stay quiet)', async () => {
+    makeTranscript(UUID_A, Date.now());
+    // No CC_APPEND_SYSTEM.md / CC_SYSTEM.md / system_prompt dirs in dir.
+
+    await spawnClaude(9999, dir, ['-r', UUID_A], '/bin/fake-claude-pin-f2q');
+
+    assert.equal(sysFileArg(spawned[0], '--append-system-prompt-file'), null);
+    assert.ok(!getOutputBuffer().includes('systemPromptResumeNoSnapshot')
+      && !getOutputBuffer().includes('No recorded system prompt'), 'no F2 noise for feature-less resumes');
+  });
+
+  it('-c with no transcripts at all → fresh pipeline (injection proceeds, no resume pending)', async () => {
+    writeFileSync(join(dir, 'CC_APPEND_SYSTEM.md'), 'STATIC-CONTENT', 'utf-8');
+
+    await spawnClaude(9999, dir, ['-c'], '/bin/fake-claude-pin-fresh');
+
+    const injected = sysFileArg(spawned[0], '--append-system-prompt-file');
+    assert.ok(injected, 'fresh injection proceeds');
+    assert.equal(readFileSync(injected, 'utf-8'), 'STATIC-CONTENT');
+    assert.equal(existsSync(pendingFile()), false, 'a doomed -c leaves no resume pending (the no-conversation retry respawns fresh)');
+  });
+
+  it('bare -r (interactive picker) → normal pipeline, and NO identity-less pending is queued', async () => {
+    writeFileSync(join(dir, 'CC_APPEND_SYSTEM.md'), 'STATIC-CONTENT', 'utf-8');
+
+    await spawnClaude(9999, dir, ['-r'], '/bin/fake-claude-pin-picker');
+
+    const injected = sysFileArg(spawned[0], '--append-system-prompt-file');
+    assert.ok(injected, 'picker launches keep the fresh pipeline (target unknowable at spawn)');
+    assert.equal(existsSync(pendingFile()), false,
+      'no identity-less pending — a stolen hook could bind it to an innocent conversation');
+  });
+
+  it('manual same-flag args suppress the matching pinned entry (manual-first parity with the fresh path)', async () => {
+    makeTranscript(UUID_A, Date.now());
+    snaps.writeSnapshot(dir, UUID_A, {
+      entries: [
+        { flag: '--system-prompt-file', basename: 'CC_SYSTEM.md', content: 'PINNED-OVERRIDE' },
+        { flag: '--append-system-prompt-file', basename: 'CC_APPEND_SYSTEM.md', content: PINNED_CONTENT },
+      ],
+    });
+
+    await spawnClaude(9999, dir, ['-r', UUID_A, '--append-system-prompt-file', '/myown/manual.md'], '/bin/fake-claude-pin-manual');
+
+    assert.ok(sysFileArg(spawned[0], '--system-prompt-file'), 'override pin survives');
+    assert.equal(readFileSync(sysFileArg(spawned[0], '--system-prompt-file'), 'utf-8'), 'PINNED-OVERRIDE');
+    // The append slot is the user's own manual flag — the pinned append entry must not appear twice.
+    const appendUses = spawned[0].args.filter(a => a === '--append-system-prompt-file');
+    assert.equal(appendUses.length, 1, 'only the manual append flag remains');
+    assert.equal(sysFileArg(spawned[0], '--append-system-prompt-file'), '/myown/manual.md');
+    // And the pending carries the POST-suppression snapshot entries (override only).
+    assert.deepEqual(readPendings()[0].entries.map(e => e.content), ['PINNED-OVERRIDE']);
+  });
+
+  it('manual --system-prompt flag suppresses the pinned OVERRIDE entry', async () => {
+    makeTranscript(UUID_A, Date.now());
+    snaps.writeSnapshot(dir, UUID_A, {
+      entries: [
+        { flag: '--system-prompt-file', basename: 'CC_SYSTEM.md', content: 'PINNED-OVERRIDE' },
+        { flag: '--append-system-prompt-file', basename: 'CC_APPEND_SYSTEM.md', content: PINNED_CONTENT },
+      ],
+    });
+
+    await spawnClaude(9999, dir, ['-r', UUID_A, '--system-prompt', 'inline override'], '/bin/fake-claude-pin-manual2');
+
+    assert.equal(sysFileArg(spawned[0], '--system-prompt-file'), null, 'pinned override suppressed by manual --system-prompt');
+    assert.ok(sysFileArg(spawned[0], '--append-system-prompt-file'), 'append pin survives');
+  });
+
+  it('a fully manual-suppressed pin injects nothing and queues nothing (ran without ccv injection)', async () => {
+    makeTranscript(UUID_A, Date.now());
+    snaps.writeSnapshot(dir, UUID_A, {
+      entries: [{ flag: '--append-system-prompt-file', basename: 'CC_APPEND_SYSTEM.md', content: PINNED_CONTENT }],
+    });
+
+    await spawnClaude(9999, dir, ['-r', UUID_A, '--append-system-prompt-file', '/myown/manual.md'], '/bin/fake-claude-pin-allsup');
+
+    assert.equal(spawned[0].args.filter(a => a === '--append-system-prompt-file').length, 1, 'only the manual flag');
+    assert.equal(existsSync(pendingFile()), false, 'no empty pending (writeSnapshot would refuse it anyway)');
+  });
+
+  it('flag-rejection self-heal strips pinned injection exactly once (pin path honors the retry machinery)', async () => {
+    _clearSystemPromptFileRejectedPaths();
+    makeTranscript(UUID_A, Date.now());
+    snaps.writeSnapshot(dir, UUID_A, {
+      entries: [{ flag: '--append-system-prompt-file', basename: 'CC_APPEND_SYSTEM.md', content: PINNED_CONTENT }],
+    });
+    _setPtyImportForTests(makeMockPtyOnceCrash("error: unknown option '--append-system-prompt-file'\n"));
+
+    const origError = console.error;
+    console.error = () => {};
+    try {
+      await spawnClaude(9999, dir, ['-r', UUID_A], '/bin/fake-claude-pin-reject');
+      await waitUntil(() => spawned.length >= 2);
+    } finally {
+      console.error = origError;
+    }
+
+    assert.equal(spawned.length, 2, 'initial + one retry, no loop');
+    assert.ok(sysFileArg(spawned[0], '--append-system-prompt-file'), 'first spawn injects the pinned file');
+    assert.equal(sysFileArg(spawned[1], '--append-system-prompt-file'), null, 'retry strips the pinned injection');
+    assert.equal(_isSystemPromptFileRejected('/bin/fake-claude-pin-reject'), true, 'path marked as rejecting');
+  });
+
+  it('CCV_DISABLE_AUTO_SYSTEM_PROMPT=1 disables pinning too (no injection, no pending)', async () => {
+    process.env.CCV_DISABLE_AUTO_SYSTEM_PROMPT = '1';
+    makeTranscript(UUID_A, Date.now());
+    snaps.writeSnapshot(dir, UUID_A, {
+      entries: [{ flag: '--append-system-prompt-file', basename: 'CC_APPEND_SYSTEM.md', content: PINNED_CONTENT }],
+    });
+
+    await spawnClaude(9999, dir, ['-r', UUID_A], '/bin/fake-claude-pin-env');
+
+    assert.equal(sysFileArg(spawned[0], '--append-system-prompt-file'), null);
+    assert.equal(existsSync(pendingFile()), false);
+  });
+
+  it('fresh launch (no resume flags) records a Bind A pending with the launch content', async () => {
+    writeFileSync(join(dir, 'CC_APPEND_SYSTEM.md'), 'STATIC-CONTENT', 'utf-8');
+
+    await spawnClaude(9999, dir, [], '/bin/fake-claude-pin-pending');
+
+    const pendings = readPendings();
+    assert.equal(pendings.length, 1);
+    assert.equal(pendings[0].resumeExpected, false);
+    assert.deepEqual(pendings[0].entries, [
+      { flag: '--append-system-prompt-file', basename: 'CC_APPEND_SYSTEM.md', content: 'STATIC-CONTENT' },
+    ]);
+  });
+
+  it('fresh launch without any injection writes no pending (no-record ≡ no-injection under F2)', async () => {
+    await spawnClaude(9999, dir, [], '/bin/fake-claude-pin-empty');
+    assert.equal(existsSync(pendingFile()), false);
   });
 });

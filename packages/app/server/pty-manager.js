@@ -1,17 +1,20 @@
 import { resolveNativePath, LOG_DIR } from '../findcc.js';
 import { fileURLToPath } from 'node:url';
 import { join, dirname, sep } from 'node:path';
-import { chmodSync, statSync, existsSync } from 'node:fs';
+import { chmodSync, statSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { platform, arch, homedir } from 'node:os';
 import { createRequire } from 'node:module';
 import { prepareEmbeddedShellSpawn, stripClaudeNoFlickerUnlessOptedIn, applyClaudeAltScreenPref } from './lib/terminal-env.js';
 import { killPtyTree } from './lib/term-signals.js';
 import { findSafeSliceStart, splitTrailingIncomplete } from './lib/ansi-safe-slice.js';
-import { buildSystemPromptFileArgs } from './lib/system-prompt-files.js';
-import { renderSystemPromptFileArgs } from './lib/system-prompt-render.js';
+import { buildSystemPromptFileArgs, hasArg, isNonEmptyFile, SYSTEM_PROMPT_FILE, APPEND_SYSTEM_PROMPT_FILE } from './lib/system-prompt-files.js';
+import { renderSystemPromptFileArgs, renderedPromptDir } from './lib/system-prompt-render.js';
+import { appendPending, readSnapshot, resolveContinueTargetUuid } from './lib/system-prompt-snapshots.js';
 import { MODEL_PROMPT_DIR } from './lib/model-system-prompts.js';
 import { resolveSpawnModel } from './lib/spawn-model-resolver.js';
 import { mergeSettingsIntoArgs } from './lib/settings-merge.js';
+import { reportSwallowed } from '@ccv/core/error-report';
+import { randomBytes } from 'node:crypto';
 import { t, tFor } from './i18n.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -177,6 +180,96 @@ const _skipInjectionOncePaths = new Set();
 
 // 内部重启(-c 重试 / flag 自愈)时抑制一次注入提示，避免终端重复打印同一行。
 let _suppressNextSpawnNotice = false;
+
+// ─── System-prompt pinning (resume launches must not re-render variables) ────────
+// Re-rendering ${...} variables on a `-c`/`-r` launch makes the system text diverge
+// byte-for-byte from the resumed conversation's original → the entire prompt-prefix
+// KV cache is invalidated. Instead, pin the content the RESUMED conversation was
+// launched with:
+//   target identified + snapshot record → re-inject the recorded bytes verbatim
+//     (build+render skipped entirely);
+//   target identified + no record      → inject NOTHING this launch (never alter the
+//     system text an existing context already has);
+//   target unidentifiable (-c with no transcripts, bare -r picker) → normal pipeline.
+// Store/binding semantics: server/lib/system-prompt-snapshots.js header.
+
+// Parse continuation flags from claude args: -c/--continue, -r/--resume (value as the
+// next token or in = form), --fork-session. Returns null for non-continuation launches;
+// picker=true means a valueless -r (interactive picker — target unknowable at spawn).
+// Same flag set as cli.js markContinueEnv / routes/workspaces.js.
+function parseResumeArgs(args) {
+  if (!Array.isArray(args)) return null;
+  let continued = false;
+  let resumeValue = null;
+  let picker = false;
+  let fork = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '-c' || a === '--continue') { continued = true; continue; }
+    if (a === '--fork-session') { fork = true; continue; }
+    if (a === '-r' || a === '--resume') {
+      continued = true;
+      const next = args[i + 1];
+      if (typeof next === 'string' && next && !next.startsWith('-')) { resumeValue = next; i++; }
+      else picker = true;
+      continue;
+    }
+    const m = typeof a === 'string' && a.match(/^(?:-r|--resume)=(.+)$/);
+    if (m) { continued = true; resumeValue = m[1]; }
+  }
+  return continued ? { resumeValue, picker, fork } : null;
+}
+
+// Materialize snapshot entries into temp files. Each spawn gets its own subdirectory
+// under renderedPromptDir (per-process): two sequential spawns pinning DIFFERENT
+// conversations would otherwise overwrite the same basename before claude reads it.
+// Returns the same {args, loaded, entries} shape renderSystemPromptFileArgs produces.
+function materializePinnedEntries(entries) {
+  const args = [];
+  const loaded = [];
+  const out = [];
+  for (const e of entries) {
+    try {
+      const dir = join(renderedPromptDir(), `pin-${randomBytes(4).toString('hex')}`);
+      mkdirSync(dir, { recursive: true });
+      const target = join(dir, e.basename);
+      writeFileSync(target, e.content, 'utf-8');
+      args.push(e.flag, target);
+      loaded.push(e.basename);
+      out.push({ flag: e.flag, basename: e.basename, content: e.content });
+    } catch (err) {
+      // A dropped entry breaks the byte-identity this feature exists to protect —
+      // warn visibly AND report: silent degradation here is a future cache miss.
+      console.warn(`[CC Viewer] system-prompt pin materialize failed for ${e?.basename}:`, err?.message || err);
+      reportSwallowed('pty-pin.materialize', err);
+    }
+  }
+  return { args, loaded, entries: out };
+}
+
+// Manual-first: a user-passed synonymous flag suppresses the matching pinned entry
+// (same semantics as the fresh buildSystemPromptFileArgs path). All entries
+// suppressed → no injection.
+function suppressManuallyFlaggedPinned(entries, userArgs) {
+  return entries.filter(e => {
+    const pair = e.flag === '--system-prompt-file'
+      ? ['--system-prompt', '--system-prompt-file']
+      : ['--append-system-prompt', '--append-system-prompt-file'];
+    return !hasArg(userArgs, ...pair);
+  });
+}
+
+// The F2 no-record notice only matters to users who HAVE injection configured right
+// now (sentinel files or a model-prompt dir) — for everyone else a resume silently
+// injecting nothing is exactly the status quo, and the line would be pure noise.
+function injectionConfigured(spawnDir) {
+  try {
+    return isNonEmptyFile(join(spawnDir, SYSTEM_PROMPT_FILE))
+      || isNonEmptyFile(join(spawnDir, APPEND_SYSTEM_PROMPT_FILE))
+      || existsSync(join(spawnDir, MODEL_PROMPT_DIR))
+      || existsSync(join(LOG_DIR, MODEL_PROMPT_DIR));
+  } catch { return false; }
+}
 
 // 仅用于测试/内部：清空拒绝集
 export function _clearThinkingDisplayRejectedPaths() {
@@ -351,34 +444,100 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   // buildSystemPromptFileArgs 文件系统竞态、渲染的 git 子进程异常)都走兜底——按「没命中任何
   // 条目」处理，launch 不带 --system-prompt-file/--append-system-prompt-file，claude 用自身
   // 默认 system prompt 启动。注入失败绝不能阻断 spawn。
-  let sysPrompt = { args: [], loaded: [], model: null };
-  // 一次性跳过令牌在进入管道前无条件消费(delete)：放宽半支的兜底只跳过紧随其后的这一次注入。
-  // 若放在 build 之后，build 抛错时令牌残留、会再多跳过一次(违反 exactly-once，review)。
+  let sysPrompt = { args: [], loaded: [], model: null, entries: [] };
+  // The skip-once token is consumed unconditionally BEFORE the pipeline (exactly-once
+  // semantics — a leftover token would silently skip the NEXT spawn's injection too).
   const skipOnce = _skipInjectionOncePaths.delete(claudePath);
   try {
-    const resolvedModelId = insideLogDir ? null : _spawnModelReader(spawnDir);
-    sysPrompt = buildSystemPromptFileArgs(spawnDir, finalExtraArgs, process.env, {
-      modelId: resolvedModelId,
-      globalModelDir: join(LOG_DIR, MODEL_PROMPT_DIR),
-    });
-    if (_systemPromptFileRejectedPaths.has(claudePath) || skipOnce) {
-      sysPrompt = { args: [], loaded: [], model: null };
-    } else if (resolvedModelId && !sysPrompt.model && !sysPrompt.suppressed
-      && (existsSync(join(spawnDir, MODEL_PROMPT_DIR)) || existsSync(join(LOG_DIR, MODEL_PROMPT_DIR)))) {
-      // The one diagnostic case worth a warning: a system_prompt dir is configured
-      // but the resolved model matched no entry (likely a misnamed file). Intentional
-      // skips (CCV_DISABLE_AUTO_SYSTEM_PROMPT=1, or a manual --system-prompt flag
-      // suppressing a matched entry) carry `suppressed` and stay quiet. The
-      // successful-injection notice is emitted below via emitSpawnNotice (with
-      // internal-restart suppression); no-modelId spawns are the normal quiet path.
-      console.warn(`[CC Viewer] model-specific prompt: modelId="${resolvedModelId}" resolved from active config but no matching entry found in workspace or global ${MODEL_PROMPT_DIR}/`);
+    // Continuation launches (-c/--continue/-r/--resume): pin the resumed conversation's
+    // original injection — never re-render variables (see the parseResumeArgs block
+    // above for the full semantics). IM workers (insideLogDir) skip the whole
+    // snapshot machinery: their persona file must be re-read on every launch.
+    const resume = insideLogDir ? null : parseResumeArgs(finalExtraArgs);
+    let pendingRec = null;
+    let pinned = null;
+    if (resume && process.env.CCV_DISABLE_AUTO_SYSTEM_PROMPT !== '1') {
+      const targetUuid = resume.resumeValue ?? resolveContinueTargetUuid(spawnDir);
+      if (targetUuid) {
+        const snap = readSnapshot(spawnDir, targetUuid);
+        if (snap) {
+          // Manual-flag suppression BEFORE materialize (suppressed entries never hit disk).
+          const kept = suppressManuallyFlaggedPinned(snap.entries, finalExtraArgs);
+          const m = materializePinnedEntries(kept);
+          pinned = { args: m.args, loaded: m.loaded, model: snap.model, entries: m.entries, pinned: true };
+          // The pending carries the SNAPSHOT's entries (post-suppression), not the
+          // materialized subset — a transient temp-write failure must not degrade the
+          // permanent record via Bind B.
+          pendingRec = { entries: kept, model: snap.model, resumeExpected: true, resolvedUuid: targetUuid, fork: resume.fork };
+        } else {
+          // F2: target identified but no snapshot → inject NOTHING this launch (never
+          // alter the system text an existing context already has). No record is
+          // persisted (empty-entries snapshots are never written — the no-record path
+          // reproduces the same outcome on every future resume, with zero poison
+          // surface); the terminal notice fires only when injection is configured now.
+          pinned = { args: [], loaded: [], model: null, entries: [], pinned: true, noRecord: true, noRecordNotice: injectionConfigured(spawnDir) };
+        }
+      }
+      // Bare -r (picker): the target is unknowable at spawn → normal pipeline, and NO
+      // pending — an identity-less pending could be consumed by another window's
+      // in-terminal /resume hook and would poison that conversation's record.
+      // -c with no transcripts (targetUuid null): claude fails "No conversation found"
+      // and the existing onExit retry respawns without -c — treat as fresh below.
     }
-    // Resolve `${...}` template variables in the injected files (editor stores them literal —
-    // the substitution documented by the editor's parameter reference happens here, at launch).
-    sysPrompt = renderSystemPromptFileArgs(sysPrompt, { cwd: spawnDir, modelId: resolvedModelId });
+    if (pinned) {
+      sysPrompt = pinned;
+    } else {
+      const resolvedModelId = insideLogDir ? null : _spawnModelReader(spawnDir);
+      sysPrompt = buildSystemPromptFileArgs(spawnDir, finalExtraArgs, process.env, {
+        modelId: resolvedModelId,
+        globalModelDir: join(LOG_DIR, MODEL_PROMPT_DIR),
+      });
+      if (_systemPromptFileRejectedPaths.has(claudePath) || skipOnce) {
+        sysPrompt = { args: [], loaded: [], model: null, entries: [] };
+      } else if (resolvedModelId && !sysPrompt.model && !sysPrompt.suppressed
+        && (existsSync(join(spawnDir, MODEL_PROMPT_DIR)) || existsSync(join(LOG_DIR, MODEL_PROMPT_DIR)))) {
+        // The one diagnostic case worth a warning: a system_prompt dir is configured
+        // but the resolved model matched no entry (likely a misnamed file). Intentional
+        // skips (CCV_DISABLE_AUTO_SYSTEM_PROMPT=1, or a manual --system-prompt flag
+        // suppressing a matched entry) carry `suppressed` and stay quiet. The
+        // successful-injection notice is emitted below via emitSpawnNotice (with
+        // internal-restart suppression); no-modelId spawns are the normal quiet path.
+        console.warn(`[CC Viewer] model-specific prompt: modelId="${resolvedModelId}" resolved from active config but no matching entry found in workspace or global ${MODEL_PROMPT_DIR}/`);
+      }
+      // Resolve `${...}` template variables in the injected files (editor stores them literal —
+      // the substitution documented by the editor's parameter reference happens here, at launch).
+      // Skipped entirely when the suppression above zeroed the args (original ordering:
+      // a rejected binary never pays the render cost — variable collection shells out to git).
+      if (sysPrompt.args.length > 0) {
+        sysPrompt = renderSystemPromptFileArgs(sysPrompt, { cwd: spawnDir, modelId: resolvedModelId });
+      } else {
+        sysPrompt = { ...sysPrompt, entries: [] };
+      }
+    }
+    // Unified suppression (pin and fresh alike): known-rejected binary / skip-once
+    // token → clear the injection; nothing was injected so nothing can be bound.
+    if (_systemPromptFileRejectedPaths.has(claudePath) || skipOnce) {
+      sysPrompt = { args: [], loaded: [], model: null, entries: [] };
+      pendingRec = null;
+    }
+    // Record this launch's effective injection for the binding channels:
+    // - pin-hit resume launches → resumeExpected, consumed by Bind B (SessionStart
+    //   hook) keyed to the resumed transcript uuid (or the fork's new uuid);
+    // - fresh launches with a real injection → consumed by Bind A (v2-writer's
+    //   first-main-request content match) keyed to the wire sid (== transcript uuid
+    //   for new sessions). Empty-content pendings are never queued: a fresh launch
+    //   whose entries ALL failed to read has no knowable content, and a fully
+    //   manual-suppressed pin ran without ccv injection — an empty pending could
+    //   only mislabel a session as "no injection".
+    const effectiveEntries = (sysPrompt.entries || []).filter(e => e && !e.unavailable);
+    if (pendingRec && pendingRec.entries.length === 0) pendingRec = null;
+    if (pendingRec || (!resume && !pinned && effectiveEntries.length > 0)) {
+      const rec = pendingRec || { entries: effectiveEntries, model: sysPrompt.model ?? null, resumeExpected: false, resolvedUuid: null, fork: false };
+      appendPending(spawnDir, rec);
+    }
   } catch (err) {
     console.warn('[CC Viewer] system prompt build/render failed, launching without injected prompt:', err?.message || err);
-    sysPrompt = { args: [], loaded: [], model: null };
+    sysPrompt = { args: [], loaded: [], model: null, entries: [] };
   }
   const launchArgs = sysPrompt.args.length ? [...finalExtraArgs, ...sysPrompt.args] : finalExtraArgs;
 
@@ -517,9 +676,20 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
 
   // 注入了 system prompt 文件时向终端打印一行提示(可见性/安全)；内部重启已抑制以免重复。
   // 必须在 onData/onExit 注册之后再打(PR#128)，缩小「子进程在处理器挂载前退出」的丢事件窗口。
-  if (sysPrompt.loaded.length && !_suppressNextSpawnNotice) {
+  if (sysPrompt.loaded.length && !sysPrompt.pinned && !_suppressNextSpawnNotice) {
     const modelSuffix = sysPrompt.model ? ` (model match: ${sysPrompt.model})` : '';
     emitSpawnNotice(`[CC Viewer] loaded ${sysPrompt.loaded.join(', ')} as system prompt${modelSuffix}`);
+  }
+  // Pin visibility: a snapshot hit re-injects verbatim; a no-record resume (F2)
+  // injects nothing — surfaced ONLY when injection is configured right now
+  // (noRecordNotice), otherwise the line would nag feature-less users on every -c.
+  // Mutually exclusive with the loaded notice above (the pinned path never prints it).
+  if (sysPrompt.pinned && !_suppressNextSpawnNotice) {
+    if (sysPrompt.noRecord) {
+      if (sysPrompt.noRecordNotice) emitSpawnNotice(`[CC Viewer] ${t('cli.systemPromptResumeNoSnapshot')}`);
+    } else if (sysPrompt.loaded.length) {
+      emitSpawnNotice(`[CC Viewer] ${t('cli.systemPromptPinned', { files: sysPrompt.loaded.join(', ') })}`);
+    }
   }
   // Settings-merge failures surface via emitSpawnNotice too: console.warn only reaches
   // the server stdout, invisible in the embedded terminal. Localized here (the console.warn

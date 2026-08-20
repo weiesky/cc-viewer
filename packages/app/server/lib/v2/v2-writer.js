@@ -29,6 +29,7 @@ import { ConversationStore } from './conversation-store.js';
 import { parseUserId, classifyKind, ConvResolver } from './identity.js';
 import { parseAgentId, findHeader } from './agent-id.js';
 import { extractUserTexts, flattenPromptText, isSuggestionMode, readPromptsHead } from '../user-prompt-extract.js';
+import { consumePendingForWireByKey, writeSnapshotByKey, systemTextOfBody } from '../system-prompt-snapshots.js';
 
 // Below this many free bytes on the log volume, v2 skips writing and reports
 // once — logging must not be the thing that fills the disk (plan risk #9).
@@ -427,6 +428,30 @@ export class V2Writer {
       // when the dir is first created, so this is the session's creation time
       // (live ≈ now; convert = the historical first-entry ts).
       const s = this._session(sid, parsed && entry.body.metadata.user_id, parsed && parsed.encoding, project, entry.timestamp, adoptTarget);
+
+      // System-prompt snapshot, Bind A (wire): the FIRST main request of a session
+      // carries the launch's rendered injection in body.system — match it against the
+      // project's pending queue and key the snapshot to the wire sid (== transcript
+      // uuid for fresh sessions), so a later `-c`/`-r` can pin byte-identical content
+      // instead of re-rendering variables and busting the prompt-prefix cache.
+      // count_tokens/heartbeat probes wear main-agent shapes but aren't the user's
+      // turn (same gate as the resume-switch above); adopted (-c) sessions skip —
+      // their pendings are resumeExpected, reserved for the SessionStart-hook bind.
+      // First-main-only via the per-session flag: probes may create the session state
+      // before the real turn arrives. The live-sessions-dir gate keeps the offline
+      // converter (staging dirs) from consuming LIVE pendings. Fully caught: a lost
+      // bind degrades to the no-record resume path, never to a dropped log entry.
+      if (!adoptTarget && entry.mainAgent && !entry.isCountTokens && !entry.isHeartbeat
+        && this._sessionsDirName === 'sessions'
+        && s && !s.sysPromptBindDone) {
+        s.sysPromptBindDone = true;
+        try {
+          const pend = consumePendingForWireByKey(project, systemTextOfBody(entry.body), this._logDir);
+          if (pend) {
+            writeSnapshotByKey(project, sid, { entries: pend.entries, model: pend.model, boundVia: 'wire' }, { logDir: this._logDir });
+          }
+        } catch (err) { reportSwallowed('v2-write.sys-prompt-bind', err); }
+      }
 
       // Flush requests that arrived before the first sid (they belong here).
       // Their handles are parked in _lateHandles so a completion that arrives

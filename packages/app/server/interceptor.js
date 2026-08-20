@@ -21,6 +21,7 @@ import { latestMainSessionDir, sessionHasCompletedMainTurn } from './lib/v2/sess
 import { sanitizePathComponent } from './lib/v2/layout.js';
 import { setRetryConfigPath, loadRetryConfig, DEFAULT_RETRY_CONFIG } from './lib/proxy/proxy-retry.js';
 import { setProjectName } from './lib/project-state.js';
+import { consumePendingForResume, writeSnapshot, projectKeyForCwd } from './lib/system-prompt-snapshots.js';
 
 
 
@@ -352,7 +353,7 @@ export { _activeProfile, _defaultConfig, _loadProxyProfile, PROFILE_PATH, setAct
 function resolveProjectBinding() {
   let cwd;
   try { cwd = process.cwd(); } catch { cwd = homedir(); }
-  const projectName = basename(cwd).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+  const projectName = projectKeyForCwd(cwd);
   const dir = join(LOG_DIR, projectName);
   try { mkdirSync(dir, { recursive: true }); } catch { }
   return { dir, projectName };
@@ -479,7 +480,12 @@ export function getLiveLogSource() {
 export function markSessionStart(payload) {
   try {
     const { source, sessionId, transcriptPath, cwd } = payload || {};
-    if (source !== 'resume') return;
+    // 'resume' re-binds the writer AND feeds snapshot Bind B; 'fork' feeds only
+    // Bind B (a fork mints a fresh wire sid + the fork mark suppresses adoption,
+    // so the writer routes it correctly without a switch). Everything else is
+    // ignored (startup needs nothing; /clear has epoch machinery; teammate
+    // processes inherit CCVIEWER_PORT and fire startup events — dropped here).
+    if (source !== 'resume' && source !== 'fork') return;
     if (!transcriptPath || typeof transcriptPath !== 'string') {
       console.warn('[ccv session-start] resume signal without transcript_path — ignored');
       return;
@@ -489,17 +495,32 @@ export function markSessionStart(payload) {
     // enforced when both sides are known (workspace mode may leave
     // _projectName empty until bound).
     if (cwd && typeof cwd === 'string' && _projectName) {
-      const cwdProject = basename(cwd).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+      const cwdProject = projectKeyForCwd(cwd);
       if (cwdProject !== _projectName) {
         console.warn(`[ccv session-start] resume signal from project "${cwdProject}" ignored (bound to "${_projectName}")`);
         return;
       }
     }
     const transcriptUuid = basename(transcriptPath, '.jsonl');
-    _v2Writer.beginResumeSwitch({
-      transcriptUuid,
-      hookSid: (typeof sessionId === 'string' && sessionId) ? sessionId : null,
-    });
+    if (source === 'resume') {
+      _v2Writer.beginResumeSwitch({
+        transcriptUuid,
+        hookSid: (typeof sessionId === 'string' && sessionId) ? sessionId : null,
+      });
+    }
+    // System-prompt snapshot, Bind B (system-prompt-snapshots.js): a process-level
+    // -c/-r launch queued a resumeExpected pending at spawn (pty-manager). The
+    // consume is identity-exact — source 'resume' matches on resolvedUuid, 'fork'
+    // on the fork flag — so a stolen in-terminal /resume hook or an out-of-order
+    // racing hook consumes nothing and poisons nothing; a mismatch only warns.
+    try {
+      const res = consumePendingForResume(cwd, transcriptUuid, source);
+      if (res && res.hit) {
+        writeSnapshot(cwd, transcriptUuid, { entries: res.hit.entries, model: res.hit.model, boundVia: 'hook' });
+      } else if (res && res.mismatch) {
+        console.warn(`[CC Viewer] -c/-r target mismatch (resolved ${res.mismatch}, actual ${transcriptUuid}) — system-prompt snapshot not bound`);
+      }
+    } catch (err) { reportSwallowed('session-start.sys-prompt-bind', err); }
   } catch (err) {
     reportSwallowed('session-start.mark', err);
   }
@@ -581,7 +602,7 @@ export { LOG_FILE, _initPromise, _projectName, _logDir };
 // forceNew 仅存于签名兼容（Electron multi-tab 传入）：v2 下每个 claude 进程
 // 天然是新 session，无旧文件可复用。
 export function initForWorkspace(projectPath, { forceNew = false } = {}) { // eslint-disable-line no-unused-vars
-  const projectName = basename(projectPath).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+  const projectName = projectKeyForCwd(projectPath);
   const dir = join(LOG_DIR, projectName);
   try { mkdirSync(dir, { recursive: true }); } catch {}
 

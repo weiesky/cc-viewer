@@ -1463,6 +1463,7 @@
   "server/lib/system-prompt-files.js",
   "server/lib/system-prompt-presets.js",
   "server/lib/system-prompt-render.js",
+  "server/lib/system-prompt-snapshots.js",
   "server/lib/team-runtime.js",
   "server/lib/term-signals.js",
   "server/lib/terminal-env.js",
