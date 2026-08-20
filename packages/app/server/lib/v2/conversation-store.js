@@ -17,7 +17,7 @@
 // append order is completion order, semantic order is seq.
 
 import { readdirSync } from 'node:fs';
-import { isPostClearCheckpoint, isCompactContinuation, normalizeMsgForEquality } from '../session-boundary.js';
+import { isPostClearCheckpoint, isCompactContinuation, normalizeMsgForEquality } from '@ccv/core/session-boundary';
 import { fingerprintMsg } from '../interceptor-core.js';
 import { ensureConvDirSync, convEpochPath, convDir } from './layout.js';
 

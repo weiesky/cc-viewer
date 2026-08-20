@@ -16,7 +16,7 @@ import { dirname, join, basename } from 'node:path';
 import { LOG_DIR } from '../findcc.js';
 import { assembleStreamMessage, createStreamAssembler, isAnthropicApiPath, isMainAgentRequest, replaceTopLevelModel, injectOutputConfigEffort, resolveProfileModel, extractAgentSpawnPairs, classifyProxyRole, resolveRoleProfile, normalizeRoles, mergeActivePayload } from './lib/interceptor-core.js';
 import { V2Writer } from './lib/v2/v2-writer.js';
-import { reportSwallowed } from './lib/error-report.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 import { latestMainSessionDir, sessionHasCompletedMainTurn } from './lib/v2/session-select.js';
 import { sanitizePathComponent } from './lib/v2/layout.js';
 import { setRetryConfigPath, loadRetryConfig, DEFAULT_RETRY_CONFIG } from './lib/proxy/proxy-retry.js';

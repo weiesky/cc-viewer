@@ -55,6 +55,9 @@ importers:
 
   apps/electron:
     dependencies:
+      '@ccv/core':
+        specifier: 0.0.0
+        version: link:../../packages/core
       '@larksuiteoapi/node-sdk':
         specifier: 1.66.0
         version: 1.66.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
@@ -99,6 +102,9 @@ importers:
       '@ant-design/icons':
         specifier: ^5.6.1
         version: 5.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@ccv/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@codemirror/lang-cpp':
         specifier: ^6.0.3
         version: 6.0.3
@@ -222,6 +228,9 @@ importers:
 
   packages/app:
     dependencies:
+      '@ccv/core':
+        specifier: 0.0.0
+        version: link:../core
       '@larksuiteoapi/node-sdk':
         specifier: 1.66.0
         version: 1.66.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
@@ -252,6 +261,8 @@ importers:
         version: 0.2.138(supports-color@7.2.0)(zod@4.4.3)
 
   packages/content: {}
+
+  packages/core: {}
 
 packages:
 

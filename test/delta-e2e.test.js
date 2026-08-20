@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { readLogFile } from '../packages/app/server/lib/log-watcher.js';
 import { readLocalLog } from '../packages/app/server/lib/log-management.js';
-import { reconstructEntries, createIncrementalReconstructor } from '../packages/app/server/lib/delta-reconstructor.js';
+import { reconstructEntries, createIncrementalReconstructor } from '../packages/core/src/delta-reconstructor.js';
 import { fingerprintMsg } from '../packages/app/server/lib/interceptor-core.js';
 
 // ============================================================================

@@ -16,7 +16,7 @@ import './_shims/register.mjs';
 let CF;
 let TPL;
 before(async () => {
-  CF = await import('../packages/app/src/utils/contentFilter.js');
+  CF = await import('../packages/core/src/contentFilter.js');
   TPL = await import('../apps/web/src/utils/ultraplanTemplates.js');
 });
 

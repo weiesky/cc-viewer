@@ -6,17 +6,17 @@
 //
 // NOTE: this is a deliberate server-side SUBSET of the frontend classifier.
 // The full classification (synthetic prompts, secondary recycling, …) lives in
-// src/utils/contentFilter.js:isSystemText — frontend (dist) and server are two
+// @ccv/core/contentFilter:isSystemText — frontend (dist) and server are two
 // separate bundles that cannot share a module, so only the rules that would
 // LEAK into previews are mirrored here: system tags + cross-session teammate
 // notifications.
 import { openSync, readSync, closeSync } from 'node:fs';
 
 // Cross-session / teammate protocol notification `type` whitelist (must match
-// src/utils/contentFilter.js INTER_SESSION_NOTIFICATION_TYPES; add new types in
+// @ccv/core/contentFilter INTER_SESSION_NOTIFICATION_TYPES; add new types in
 // BOTH places). One array derives the Set (brace scan) + the RegExp
 // (isSystemText) so this file cannot drift internally.
-// test/stats-worker-notification-filter.test.js guards frontend↔server sync.
+// packages/app/test/stats-worker-notification-filter.test.js guards frontend↔server sync.
 export const INTER_SESSION_TYPES = [
   'idle_notification', 'shutdown_request', 'shutdown_response', 'shutdown_approved',
   'teammate_terminated', 'plan_approval_request', 'plan_approval_response',
@@ -25,7 +25,7 @@ const INTER_SESSION_TYPES_SET = new Set(INTER_SESSION_TYPES);
 const INTER_SESSION_TYPES_RE = new RegExp(`"type"\\s*:\\s*"(?:${INTER_SESSION_TYPES.join('|')})"`);
 
 // CLI-synthesized prompts (HTTP role=user but not typed by a human): Recap /
-// Title / Compact / Topic / Summary. Must match src/utils/contentFilter.js
+// Title / Compact / Topic / Summary. Must match @ccv/core/contentFilter
 // SYNTHETIC_PROMPTS (KEEP IN SYNC — same rule set, `^`-anchored on trimmed
 // text so quoted user text is never swallowed). Without this filter they leak
 // into the "all user prompts" preview (observed on real data: "The user
@@ -112,7 +112,7 @@ export function stripSystemTags(text) {
 
 /**
  * Extract the list of user prompt texts from a wire `messages` array.
- * (Kept in sync with src/utils/contentFilter.js:classifyUserContent.)
+ * (Kept in sync with @ccv/core/contentFilter:classifyUserContent.)
  */
 export function extractUserTexts(messages) {
   const texts = [];

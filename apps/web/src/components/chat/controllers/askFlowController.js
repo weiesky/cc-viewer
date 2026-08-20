@@ -4,7 +4,7 @@
 // 用不了 hook）。React state 仍留在 ChatView.state，本控制器通过构造时注入的 `host`
 // 适配器读写 ChatView 的 state / props / ws / PTY 字段；ChatView 的 ask 方法退化为
 // 一行委托。这样渲染模型、state 位置、contextType 绑定、componentDidUpdate 冒泡、
-// WS 订阅全部不变 —— 纯逻辑搬迁，可独立单测（见 test/ask-flow-controller.test.js）。
+// WS 订阅全部不变 —— 纯逻辑搬迁，可独立单测（见 apps/web/test/ask-flow-controller.test.js）。
 //
 // host 接口约定（ChatView 构造时注入）：
 //   getState()        → live this.state（非快照，_applyCancelLocal 等依赖 setState 后同步读）
@@ -25,7 +25,7 @@ import { buildChunksForAnswer } from '../../../utils/ptyChunkBuilder.js';
 import { isPlanApprovalPrompt, isDangerousOperationPrompt } from '../../../utils/promptClassifier.js';
 
 // 故意不 import antd / i18n / 任何 JSX：让本控制器能在 node:test 下被直接 import 单测
-// （antd 在无 DOM 的 node 环境会炸——参见 test/single-ws-submit.test.js 的注释）。
+// （antd 在无 DOM 的 node 环境会炸——参见 apps/web/test/single-ws-submit.test.js 的注释）。
 // 用户可见的提示（Modal.warning + i18n 文案 + JSX）经 host.warnSubmitRetry 留在 ChatView。
 
 // pendingAsk.id 占位符 — 仅连旧 server（pre-Map ask-hook 协议、ask-hook-pending 不带 id）时启用。

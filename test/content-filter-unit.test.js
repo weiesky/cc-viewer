@@ -1,5 +1,5 @@
 /**
- * Unit tests for src/utils/contentFilter.js
+ * Unit tests for @ccv/core/contentFilter (packages/core/src/contentFilter.js)
  *
  * 覆盖目标导出：
  *   getSystemText / isTeammate / isMainAgent / isSkillText
@@ -17,7 +17,7 @@ import './_shims/register.mjs';
 
 let CF;
 before(async () => {
-  CF = await import('../packages/app/src/utils/contentFilter.js');
+  CF = await import('../packages/core/src/contentFilter.js');
 });
 
 // ─────────────────────────── helpers ───────────────────────────
@@ -333,7 +333,7 @@ describe('isMainAgent: cc_is_subagent 排除', () => {
   });
 
   it('classifyRequest：cc_is_subagent=true 落到 SubAgent 而非 MainAgent', async () => {
-    const { classifyRequest } = await import('../packages/app/src/utils/requestType.js');
+    const { classifyRequest } = await import('../packages/core/src/requestType.js');
     const req = mkReq({ system: SUB_HEADER + MAIN_SYSTEM, tools: SUB_TOOLS });
     assert.equal(classifyRequest(req).type, 'SubAgent');
   });

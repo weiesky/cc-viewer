@@ -2,7 +2,7 @@ import React from 'react';
 import { List, Tag, Empty, Tooltip } from 'antd';
 import { t } from '../../i18n';
 import { formatTokenCount, getModelShort } from '../../utils/helpers';
-import { classifyRequest, formatRequestTag } from '../../../../../packages/app/src/utils/requestType';
+import { classifyRequest, formatRequestTag } from '@ccv/core/requestType';
 import { listItemType } from '../../utils/v3Rows.js';
 import styles from './RequestList.module.css';
 

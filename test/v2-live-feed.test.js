@@ -23,9 +23,9 @@ import { STAGING_DIR_NAME } from '../packages/app/server/lib/v2/convert.js';
 import { sendToClients, sendEventToClients, sendEventRawToClients, sendChunkToClients } from '../packages/app/server/lib/log-watcher.js';
 import { iterateV2RawEntries } from '../packages/app/server/lib/v2/adapter.js';
 import { readV2RequestsMeta } from '../packages/app/server/lib/v2/meta-rows.js';
-import { reconstructEntries } from '../packages/app/server/lib/delta-reconstructor.js';
+import { reconstructEntries } from '../packages/core/src/delta-reconstructor.js';
 import { createV3Assembler } from '../apps/web/src/utils/v3Assembler.js';
-import { _resetForTest } from '../packages/app/server/lib/error-report.js';
+import { _resetForTest } from '../packages/core/src/error-report.js';
 import { resolveSessionDirName } from '../packages/app/server/lib/v2/session-select.js';
 
 let dir;

@@ -1,0 +1,13 @@
+{
+  "name": "@ccv/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared isomorphic judgment/classification modules for cc-viewer (server + web). Private workspace package; rides into the npm tarball via cc-viewer's bundledDependencies.",
+  "exports": {
+    "./*": "./src/*.js"
+  },
+  "files": [
+    "src/"
+  ]
+}

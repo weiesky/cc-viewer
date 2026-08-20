@@ -7,7 +7,7 @@ import { PROFILE_PATH, _defaultConfig, getActiveProfileId, getStoredRoles, isOff
 import { migrateProxyProfileList, isValidRoleValue, PROXY_ROLE_KEYS } from '../lib/interceptor-core.js';
 import { DEFAULT_RETRY_CONFIG, validateRetryConfig, resolveRetryConfig } from '../lib/proxy/proxy-retry.js';
 import { discoverCcSwitchProviders, mergeImportedProfiles } from '../lib/ccswitch-import.js';
-import { reportSwallowed } from '../lib/error-report.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 import { setLang } from '../i18n.js';
 import { reconcileVoicePackPrefs as vpReconcile } from '../lib/voice-pack-manager.js';
 import { readClaudeProjectModel } from '../lib/context-watcher.js';

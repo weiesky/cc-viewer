@@ -11,7 +11,7 @@ import { getClaudeConfigDir } from '../findcc.js';
 import { isAnthropicApiPath, classifyProxyRole } from './lib/interceptor-core.js';
 import { executeRequest, extractModel } from './lib/proxy/proxy-retry.js';
 import { buildRecord, appendRecord, dailyFilePath, todayStr, emitProxyStatsUpdate } from './lib/proxy/proxy-stats.js';
-import { reportSwallowed } from './lib/error-report.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 import { LOG_DIR } from '../findcc.js';
 
 // Setup interceptor to patch fetch

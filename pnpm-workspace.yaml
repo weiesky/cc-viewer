@@ -5,6 +5,13 @@ packages:
   - packages/*
   - apps/*
 
+# Link workspace packages for plain-version specs (not only `workspace:*`).
+# Required by @ccv/core: packages/app must depend on it with a plain "0.0.0"
+# spec because the published manifest can never carry pnpm-only protocols
+# (assemble-dist.mjs guards this), and the tarball resolves it via
+# bundledDependencies instead of the registry.
+linkWorkspacePackages: true
+
 # Dependency build-script approvals (pnpm 11 `allowBuilds`; install hard-fails
 # with ERR_PNPM_IGNORED_BUILDS on unreviewed build scripts).
 # node-pty is the hard requirement (native prebuild / node-gyp fallback);

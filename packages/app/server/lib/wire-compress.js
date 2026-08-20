@@ -19,7 +19,7 @@
  * knee on large sessions; q5 collapses to ~2.5x there).
  */
 import zlib from 'node:zlib';
-import { reportSwallowed } from './error-report.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 import { awaitDrainOrClose } from './sse-backpressure.js';
 
 const C = zlib.constants;

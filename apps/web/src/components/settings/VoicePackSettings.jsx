@@ -4,7 +4,7 @@ import { PlayCircleOutlined, UploadOutlined, DeleteOutlined, InfoCircleOutlined 
 import { t } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { previewEvent, stopPreview, unlockAudio } from '../../utils/voicePackPlayer';
-import { EVENT_KEYS, DEFAULT_BINDINGS } from '../../../../../packages/app/server/lib/voice-pack-events';
+import { EVENT_KEYS, DEFAULT_BINDINGS } from '@ccv/core/voice-pack-events';
 import styles from './VoicePackSettings.module.css';
 
 // User-visible list — order matters (rendered top to bottom). EVENT_KEYS is the

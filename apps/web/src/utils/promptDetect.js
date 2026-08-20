@@ -10,7 +10,7 @@
  *
  * detectPromptInBuffer 用「行式扫描」复刻旧正则语义，可证 O(n·行长)：
  * 全程只对单行跑 `^...$` 锚定、无嵌套量词的正则。语义对齐要点（以
- * test/prompt-detect.test.js 的等价回归 fixture 为准绳）：
+ * apps/web/test/prompt-detect.test.js 的等价回归 fixture 为准绳）：
  *   - 按 /\r?\n/ 分行：Windows ConPTY 输出 CRLF，行尾 \r 必须在分行时吃掉
  *     （单行正则的 `.`/`$` 都不容忍 \r，legacy 靠 [^\n] 容忍——此处对齐）；
  *   - leftmost：与 JS regex 一致，自上而下取第一个结构成立的 question 行；
@@ -25,14 +25,14 @@
  * The original regex implementation (detectPromptLegacy) and its
  * ccv_legacy_prompt_detect escape hatch were removed after the linear rewrite
  * (first shipped in 1.6.308) proved stable in the field; its behavior is
- * pinned by the golden-master corpus in test/prompt-detect.test.js.
+ * pinned by the golden-master corpus in apps/web/test/prompt-detect.test.js.
  *
  * 纯 JS、无浏览器全局依赖（node:test 可直接 import）。
  */
 import { now } from './monotime.js';
 
 // 与 ChatView._stripAnsi 同源（4 个正则均线性安全）。单一实现：ChatView 与
-// test/permission-detect.test.js 均从这里 import，消除多份拷贝漂移。
+// apps/web/test/permission-detect.test.js 均从这里 import，消除多份拷贝漂移。
 export function stripAnsi(str) {
   // Remove CSI sequences (ESC [ ... final byte), OSC sequences (ESC ] ... ST), and other escape sequences
   return str

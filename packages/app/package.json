@@ -50,12 +50,12 @@
     "findcc.js",
     "interceptor.js",
     "server/",
-    "src/utils/",
     "plugins/",
     "concepts/",
     "ultraAgents/"
   ],
   "dependencies": {
+    "@ccv/core": "0.0.0",
     "@larksuiteoapi/node-sdk": "1.66.0",
     "@wecom/aibot-node-sdk": "1.0.7",
     "adm-zip": "^0.5.17",
@@ -67,5 +67,9 @@
   },
   "optionalDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.91"
-  }
+  },
+  "//bundledDependencies": "@ccv/core is the private workspace package (packages/core). npm pack follows the pnpm workspace symlink and ships it as real files inside the tarball — no registry publish, no import rewriting.",
+  "bundledDependencies": [
+    "@ccv/core"
+  ]
 }

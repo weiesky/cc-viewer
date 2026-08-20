@@ -4,7 +4,7 @@ import { existsSync, realpathSync, readFileSync, readdirSync, statSync, accessSy
 import { homedir, tmpdir, arch } from 'node:os';
 import { execSync, execFileSync, spawnSync } from 'node:child_process';
 import { threadId } from 'node:worker_threads';
-import { reportSwallowed } from './server/lib/error-report.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -68,7 +68,7 @@ export function getClaudeConfigDir() {
   // settings.json, ensure-hooks, ~/.claude/* expansion all derive from this function — when in
   // test mode (node:test injects NODE_TEST_CONTEXT) without an explicit CLAUDE_CONFIG_DIR, always
   // use a process-private temp directory; never resolve to the real ~/.claude.
-  // Unit test: test/logdir-test-guard.test.js.
+  // Unit test: packages/app/test/logdir-test-guard.test.js.
   if (process.env.NODE_TEST_CONTEXT) {
     return join(tmpdir(), 'cc-viewer-test', `guard-cfg-${process.pid}-${threadId}`);
   }
@@ -109,7 +109,7 @@ function resolveLogDir() {
     // real user data — test cleanup then deleted it (2026-07-12: the user's global system_prompt/
     // entries were wiped this way, twice). Tests may only target disposable temp dirs: anything
     // outside the OS temp root is forced to the private guard dir. Use CCV_LOG_DIR=tmp or a
-    // mkdtemp path in tests. Unit test: test/logdir-test-guard.test.js.
+    // mkdtemp path in tests. Unit test: packages/app/test/logdir-test-guard.test.js.
     if (process.env.NODE_TEST_CONTEXT && !isDisposableTmpPath(resolved)) {
       console.warn(`[findcc] L1c test-isolation barrier: CCV_LOG_DIR="${raw}" is not under the OS temp dir — forcing a private guard LOG_DIR (tests may only target disposable temp dirs; use CCV_LOG_DIR=tmp or a mkdtemp path)`);
       return join(tmpdir(), 'cc-viewer-test', `guard-${process.pid}-${threadId}`);

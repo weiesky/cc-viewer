@@ -1,5 +1,5 @@
 // 发送链路对「图片上传仍在途」的纯判定 + uploadingItems 归约。
-// 抽成纯函数便于 node:test 单测(参考 test/single-ws-submit.test.js 的纯函数+DI 范式)。
+// 抽成纯函数便于 node:test 单测(参考 apps/web/test/single-ws-submit.test.js 的纯函数+DI 范式)。
 // 真正的 setState / URL.revokeObjectURL 副作用由 ChatView 执行,这里只算结果。
 
 /**

@@ -47,7 +47,7 @@ class FileApiError extends Error {
 /**
  * Resolve and validate a file path. No production callers (readFileContent does its own inline
  * path validation); kept as a standalone, path-traversal-defending helper covered by
- * test/file-api-gap.test.js — don't delete as "dead code" without removing that test.
+ * packages/app/test/file-api-gap.test.js — don't delete as "dead code" without removing that test.
  * @param {string} cwd - project working directory
  * @param {string} reqPath - requested path (relative or absolute)
  * @param {boolean} isEditorSession - whether this is an editor session

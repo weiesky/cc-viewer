@@ -28,7 +28,7 @@
 import { statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { iterateRawEntriesAsync } from '../log-stream.js';
-import { createIncrementalReconstructor } from '../delta-reconstructor.js';
+import { createIncrementalReconstructor } from '@ccv/core/delta-reconstructor';
 import { listSessionIds, readSession, indexSession, messagesDigest, blobRefOf } from './replay.js';
 
 const MAX_REPORTED_DIFFS = 50;

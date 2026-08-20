@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createV2IncrementalReconstructor, normalizeV2Entries } from '../packages/app/server/lib/v2-transcript-normalizer.js';
+import { createV2IncrementalReconstructor, normalizeV2Entries } from '../packages/core/src/v2-transcript-normalizer.js';
 
 // ============================================================================
 

@@ -149,7 +149,7 @@ Authoring a compliant SVG is not enough to render it. A new role also needs, in
 `src/utils/teammateAvatars.js`: the `?raw` import, a `ROLE_MAP` entry, and a
 resolution rule (`PREFIX_RULES` / `SUFFIX_RULES` / `CONTAINS_RULES` /
 `ABBREV_PREFIX_RULES`); plus the role lists pinned in
-`test/teammate-avatars.test.js` and `test/teammate-svg-assets.test.js` (ROLES
+`apps/web/test/teammate-avatars.test.js` and `test/teammate-svg-assets.test.js` (ROLES
 array). The role-count assertion in `teammate-avatars.test.js` and the pinned
 hash-fallback names will need updating — changing `ROLE_MAP` size shifts the
 name-hash fallback distribution.

@@ -12,7 +12,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { messageFingerprint, normalizeMsgForEquality } from '../session-boundary.js';
+import { messageFingerprint, normalizeMsgForEquality } from '@ccv/core/session-boundary';
 import { isSupportedWireFormat } from './layout.js';
 import { iterateJsonlLines } from './jsonl-read.js';
 

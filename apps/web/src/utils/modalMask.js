@@ -4,7 +4,7 @@
 //
 // Values mirror the AskUserQuestion / plan approval overlay (`.backdrop` in
 // src/components/approval/ApprovalModal.module.css) — KEEP IN SYNC, guarded by
-// test/modal-mask.test.js. Applied per Modal instance via the antd semantic
+// apps/web/test/modal-mask.test.js. Applied per Modal instance via the antd semantic
 // `styles={{ mask }}` API: inline style, so it cannot leak to other modals —
 // a global `.ant-modal-mask` rule would hit every Modal and Modal.confirm in
 // the app, which is explicitly out of scope.

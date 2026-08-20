@@ -50,7 +50,7 @@ const _systemPool = new Map();  // sig → system array (full, shared)
 // internToolResultIfPooled 的命中信号是 lazy-clone 决策的关键：JS string === 是值比较，
 // 普通 internToolResult 返回的 ref 无法用于 ref-不变性判断。
 import { internToolResultIfPooled } from './readResultPool.js';
-import { isCompactContinuation } from '../../../../packages/app/src/utils/clearCheckpoint.js';
+import { isCompactContinuation } from '@ccv/core/clearCheckpoint';
 
 function _toolsSig(tools) {
   if (!Array.isArray(tools) || tools.length === 0) return '';

@@ -4,7 +4,7 @@ import { basename } from 'node:path';
 import { initForWorkspace, resetWorkspace, getLiveLogSource, markContinuedLaunch, markForkSession, markResumeSession, isContinuedLaunch } from '../interceptor.js';
 import { LOG_DIR } from '../../findcc.js';
 import { migrationStatus } from '../lib/v2/migrate-prompt.js';
-import { reportSwallowed } from '../lib/error-report.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 
 // P2: claude continuation flags — the workspace launcher injects `-c` itself
 // (WorkspaceList's logCount heuristic), so argv scanning in cli.js never sees

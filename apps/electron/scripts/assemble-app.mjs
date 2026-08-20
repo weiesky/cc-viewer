@@ -14,7 +14,7 @@
 // the optional @anthropic-ai/claude-agent-sdk) into the packaged app.
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,6 @@ const APP_PAYLOAD = [
   'findcc.js',
   'server.js',
   'interceptor.js',
-  'src',
   'concepts',
   'plugins',
   'ultraAgents',
@@ -83,5 +82,20 @@ for (const section of ['dependencies', 'optionalDependencies']) {
   }
 }
 writeFileSync(join(STAGE, 'package.json'), `${JSON.stringify(stagePkg, null, 2)}\n`);
+
+// 5. Vendor @ccv/core into the stage as real files. The staged server code
+//    imports '@ccv/core/*'; the stage manifest declares it (inherited from
+//    @ccv/electron dependencies above), but the registry can never satisfy
+//    "0.0.0" — the desktop bundle must carry the package physically, exactly
+//    like the npm tarball does via bundledDependencies. The stage is a
+//    throwaway build artifact, so copying here (unlike dev node_modules) is
+//    always safe.
+const CORE_PKG = join(REPO_ROOT, 'packages', 'core');
+const CORE_STAGE = join(STAGE, 'node_modules', '@ccv', 'core');
+if (!existsSync(join(CORE_PKG, 'package.json'))) {
+  throw new Error('[assemble-app] packages/core missing — @ccv/core payload incomplete');
+}
+mkdirSync(dirname(CORE_STAGE), { recursive: true });
+cpSync(CORE_PKG, CORE_STAGE, { recursive: true, filter: (src) => !src.includes(`${sep}test`) });
 
 console.log(`[assemble-app] staged ${STAGE} (cc-viewer v${appPkg.version})`);

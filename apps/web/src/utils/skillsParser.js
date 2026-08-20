@@ -69,7 +69,7 @@ export function mergeActiveSkills(fsSkills, historicalSkills) {
 // 都按原样保留），按首个 ': '（冒号+空格）切分。description 可跨多行，遇空行 / 下一个 `- `
 // flush；遇非 dash 非续行非空文本视为列表结束。
 //
-// 纯函数，无传递依赖 —— 可直接被 node --test 导入（避免 src/utils/contentFilter.js
+// 纯函数，无传递依赖 —— 可直接被 node --test 导入（避免 @ccv/core/contentFilter
 // 里缺 .js 后缀的 import 引起的 Node ESM resolver 失败）。
 export function parseLoadedSkills(innerText) {
   if (typeof innerText !== 'string') return [];

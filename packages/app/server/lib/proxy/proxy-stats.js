@@ -9,7 +9,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { AsyncWriteQueue } from '../async-write-queue.js';
-import { reportSwallowed } from '../error-report.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 
 // ── Detail record schema ──────────────────────────────────────────────
 // Appends one JSON line after each proxied LLM API request completes. Fields align with llm-retry-proxy's retry records.

@@ -11,8 +11,12 @@
   },
   "include": [
     "apps/web/src/**/*",
+    "apps/web/test/**/*",
     "apps/electron/electron/**/*",
+    "apps/electron/test/**/*",
     "packages/app/**/*",
+    "packages/core/**/*",
+    "packages/content/test/**/*",
     "test/**/*",
     "scripts/**/*"
   ],

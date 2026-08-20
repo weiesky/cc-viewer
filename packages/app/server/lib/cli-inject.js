@@ -16,7 +16,7 @@
 //   * buildInjectBlockRegex 用 `\r?\n` 匹配，可同时识别两种形式的历史 marker；
 //   * 改成参数化 EOL 会破坏 LEGACY 形式的回归匹配（老 marker 是 `\n` 写入的）。
 // - 因此注入后 CRLF 文件**会含混合 EOL**（块内 LF + 块外 CRLF），这是已知的、
-//   被 test/cli-inject.test.js 'CRLF 文件注入后原 CRLF 部分被保留' 用例固化的行为。
+//   被 packages/app/test/cli-inject.test.js 'CRLF 文件注入后原 CRLF 部分被保留' 用例固化的行为。
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 

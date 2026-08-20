@@ -202,10 +202,10 @@ entry 形态（delta/checkpoint/`_inPlaceReplaceDetected` 信号）在**请求�
    - 信号路径：`src/utils/sessionManager.js::applyInPlaceLastMsgReplace`
    - 主合并：`src/utils/sessionMerge.js::mergeMainAgentSessions`
 6. **测试**：
-   - `test/session-manager.test.js（写侧原生测试已随 v1 写入端退役）`（服务端信号生成）
+   - `apps/web/test/session-manager.test.js（写侧原生测试已随 v1 写入端退役）`（服务端信号生成）
    - `test/delta-e2e.test.js`（端到端 wire）
-   - `test/session-manager.test.js`（客户端信号消费）
-   - `test/incremental-merge.test.js`（客户端反向锚点）
+   - `apps/web/test/session-manager.test.js`（客户端信号消费）
+   - `apps/web/test/incremental-merge.test.js`（客户端反向锚点）
 
 **搜索关键词**：协议变更时跨两端搜以下字符串，确保都同步：
 - `_inPlaceReplaceDetected`

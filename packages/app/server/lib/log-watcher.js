@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { isMainAgentEntry, extractCachedContent } from './kv-cache-analyzer.js';
 import { buildContextWindowEvent, getContextSizeForModel } from './context-watcher.js';
-import { reconstructEntries } from './delta-reconstructor.js';
+import { reconstructEntries } from '@ccv/core/delta-reconstructor';
 import { enrichEntry } from './enrich-plan-input.js';
 import { enrichEntry as enrichWorkflowEntry } from './enrich-workflow.js';
 import { sseWrite } from './wire-compress.js';

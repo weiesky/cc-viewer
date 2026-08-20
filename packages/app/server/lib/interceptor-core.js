@@ -10,8 +10,8 @@ const SUBAGENT_BILLING_RE = /cc_is_subagent=true\b/;
 // 同进程 Agent/Task 队友（teammate）：system prompt 注入团队协作标记，但继承完整 "You are Claude Code"
 // prompt + Edit/Bash/Task 工具，且不带 --agent-name 进程参数（_isTeammate 认不出），会误中下方 MainAgent
 // 启发式 → 流式期间被当 mainAgent 开 live-stream，其 thinking 污染主「最新回复」overlay。须显式排除。
-// KEEP IN SYNC: server/lib/kv-cache-analyzer.js + src/utils/contentFilter.js（三处判据必须一致）。
-// 两处服务端实现(本文件 + kv-cache-analyzer)由 test/interceptor-core-mainagent.test.js 互校防漂移；
+// KEEP IN SYNC: server/lib/kv-cache-analyzer.js + @ccv/core/contentFilter（三处判据必须一致）。
+// 两处服务端实现(本文件 + kv-cache-analyzer)由 packages/app/test/interceptor-core-mainagent.test.js 互校防漂移；
 // 前端 contentFilter 那份由 test/content-filter-unit.test.js 单测覆盖。
 const TEAMMATE_SYSTEM_RE = /running as an agent in a team|Agent Teammate Communication/i;
 // 1.7.0: the last external consumer (teammate-detect.js) retired with the
@@ -21,8 +21,8 @@ export { TEAMMATE_SYSTEM_RE, SUBAGENT_BILLING_RE };
 
 // Rotation carry-forward: prompt-prefix → teammate-name pairs extracted from a
 // mainAgent response body's Agent tool_use blocks. Prefix normalization MUST
-// match src/utils/contentFilter.js (trimStart BEFORE slice, length 60) —
-// pinned by test/interceptor.test.js parity cases.
+// match @ccv/core/contentFilter (trimStart BEFORE slice, length 60) —
+// pinned by packages/app/test/interceptor.test.js parity cases.
 export const TEAMMATE_PROMPT_PREFIX_LEN = 60;
 
 export function extractAgentSpawnPairs(responseBody) {

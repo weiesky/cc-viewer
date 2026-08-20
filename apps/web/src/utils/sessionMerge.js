@@ -1,14 +1,14 @@
 // Wire format 协议详见 docs/WIRE_FORMAT.md（服务端 entry 形态 / 关键字段 / 已知特殊窗口）
 // messageFingerprint / findReverseAnchor moved VERBATIM to the shared client-safe
-// module server/lib/session-boundary.js (wire-v2 S1) — re-exported below so the
+// module @ccv/core/session-boundary (wire-v2 S1) — re-exported below so the
 // existing test/consumer API of this module is unchanged.
-import { isPostClearCheckpoint, messageFingerprint, findReverseAnchor } from '../../../../packages/app/server/lib/session-boundary.js';
+import { isPostClearCheckpoint, messageFingerprint, findReverseAnchor } from '@ccv/core/session-boundary';
 import { getEffectiveModel } from './effectiveModel.js';
 
 export { messageFingerprint };
 
 /**
- * merge 入口守卫（KEEP IN SYNC: server/lib/delta-reconstructor.js 标记写入点）：
+ * merge 入口守卫（KEEP IN SYNC: @ccv/core/delta-reconstructor 标记写入点）：
  * 重建层标记的脏条目不得进入 mainAgentSessions 合并——
  *  - `_staleReorder`：完成序倒置的乱序条目（内容已被更新条目取代）；
  *  - `_reconstructBroken`：重建结果与 _totalMessageCount 不符且无法修复（拼接会翻倍/错位）；

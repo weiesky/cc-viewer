@@ -26,9 +26,9 @@
 import { readdirSync, existsSync, statSync, statfsSync, renameSync, rmSync, readFileSync, mkdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { iterateRawEntriesAsync } from '../log-stream.js';
-import { createIncrementalReconstructor } from '../delta-reconstructor.js';
+import { createIncrementalReconstructor } from '@ccv/core/delta-reconstructor';
 import { isLogFileName, parseLogTs } from '../log-file-utils.js';
-import { reportSwallowed } from '../error-report.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 import { V2Writer } from './v2-writer.js';
 import { verifyV1File } from './verify.js';
 import { parseUserId } from './identity.js';

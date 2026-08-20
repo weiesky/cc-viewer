@@ -1,15 +1,15 @@
 /**
  * Server-side KV-Cache content analyzer.
- * Ported from src/utils/helpers.js + src/utils/contentFilter.js
+ * Ported from apps/web/src/utils/helpers.js + @ccv/core/contentFilter
  */
 
-import { formatToolAsXml } from './tools-xml-formatter.js';
+import { formatToolAsXml } from '@ccv/core/tools-xml-formatter';
 export { formatToolAsXml };
 
 const SUBAGENT_SYSTEM_RE = /command execution specialist|file search specialist|planning specialist|general-purpose agent|security monitor|performing a web search/i;
 // cc_version 2.1.181+: billing header marks subagents (cc_is_subagent=true); genuine main omits it (never =false).
 // Such subagents inherit the full "You are Claude Code" prompt + Edit/Bash/Agent tools and would otherwise hit the
-// lightweight heuristic below. \b anchor avoids matching =truex. KEEP IN SYNC with src/utils/contentFilter.js + interceptor-core.js.
+// lightweight heuristic below. \b anchor avoids matching =truex. KEEP IN SYNC with @ccv/core/contentFilter + interceptor-core.js.
 const SUBAGENT_BILLING_RE = /cc_is_subagent=true\b/;
 const TEAMMATE_SYSTEM_RE = /running as an agent in a team|Agent Teammate Communication/i;
 
@@ -165,7 +165,7 @@ export function extractCachedContent(entry) {
   // tools: API caches in order tools → system → messages.
   // Tools are implicitly cached as part of the prefix (no cache_control needed on tools themselves).
   // Show tools when system has cached content (indicating a cache prefix exists).
-  // Keep in sync with src/utils/helpers.js extractCachedContent
+  // Keep in sync with apps/web/src/utils/helpers.js extractCachedContent
   if (Array.isArray(body.tools) && body.tools.length > 0 && result.system.length > 0) {
     for (const tool of body.tools) {
       result.tools.push(formatToolAsXml(tool));

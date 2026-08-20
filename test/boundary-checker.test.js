@@ -28,8 +28,8 @@ const MINIMAL = {
 
 test('classify assigns the documented classes', () => {
   assert.equal(classify('packages/app/findcc.js').cls, 'L0');
-  assert.equal(classify('packages/app/src/utils/contentFilter.js').cls, 'L0');
-  assert.equal(classify('packages/app/server/lib/error-report.js').cls, 'L0-leaf');
+  assert.equal(classify('packages/core/src/contentFilter.js').cls, 'CORE');
+  assert.equal(classify('packages/app/server/lib/log-file-utils.js').cls, 'L0-leaf');
   assert.equal(classify('packages/app/server/lib/v2/adapter.js').cls, 'L1-sub');
   assert.equal(classify('packages/app/server/lib/v2/adapter.js').sub, 'v2');
   // adapters/ shares the im group (one future extraction unit)
@@ -176,18 +176,58 @@ test('analyze: L0-leaf closure escape is reported (R0)', () => {
   }
 });
 
-test('analyze: R4 fires for L0 → L1, but not for L0 → L0-leaf', () => {
+test('analyze: R4 fires for L0 → L1, but not for L0 → CORE (@ccv/core)', () => {
   const root = makeTree({
     ...MINIMAL,
-    'packages/app/src/utils/a.js': "import { x } from '../../server/lib/free.js';",
-    'packages/app/src/utils/b.js': "import { y } from '../../server/lib/error-report.js';",
+    'packages/app/package.json': JSON.stringify({ name: 'cc-viewer', dependencies: { '@ccv/core': '0.0.0' } }),
+    // findcc.js is L0: → L1-lib must be flagged, → @ccv/core must not
+    'packages/app/findcc.js': "import { x } from './server/lib/free.js'; import { reportSwallowed } from '@ccv/core/error-report';",
     'packages/app/server/lib/free.js': '',
-    'packages/app/server/lib/error-report.js': '',
+    'packages/core/package.json': JSON.stringify({ name: '@ccv/core' }),
+    'packages/core/src/error-report.js': '',
   });
   try {
-    const { violations } = analyze({ roots: ['packages/app'], rootDir: root, leaves: new Set() });
+    const { violations } = analyze({ roots: ['packages/app', 'packages/core/src'], rootDir: root, leaves: new Set() });
     assert.deepEqual(violations.map(v => v.rule), ['R4']);
-    assert.ok(violations[0].from.endsWith('a.js'));
+    assert.ok(violations[0].from.endsWith('findcc.js'));
+    assert.ok(violations[0].to.endsWith('free.js'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('analyze: R8 fires for CORE → outside CORE; CORE → CORE is clean', () => {
+  const root = makeTree({
+    ...MINIMAL,
+    'packages/core/package.json': JSON.stringify({ name: '@ccv/core' }),
+    'packages/core/src/a.js': "import { b } from './b.js';",
+    'packages/core/src/b.js': '',
+    'packages/core/src/escape.js': "import { x } from '../../app/server/lib/free.js';",
+    'packages/app/server/lib/free.js': '',
+  });
+  try {
+    const { violations } = analyze({ roots: ['packages/app', 'packages/core/src'], rootDir: root, leaves: new Set() });
+    assert.deepEqual(violations.map(v => v.rule), ['R8']);
+    assert.ok(violations[0].from.endsWith('escape.js'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('analyze: @ccv/core subpaths must map to a real core file (R7 fail-closed)', () => {
+  const root = makeTree({
+    ...MINIMAL,
+    'packages/app/package.json': JSON.stringify({ name: 'cc-viewer', dependencies: { '@ccv/core': '0.0.0' } }),
+    'packages/app/server/lib/x.js': "import { a } from '@ccv/core/nope';",
+    'packages/app/server/lib/y.js': "import { b } from '@ccv/core';",
+    'packages/core/package.json': JSON.stringify({ name: '@ccv/core' }),
+    'packages/core/src/real.js': '',
+  });
+  try {
+    const { violations } = analyze({ roots: ['packages/app', 'packages/core/src'], rootDir: root, leaves: new Set() });
+    assert.deepEqual(violations.map(v => v.rule), ['R7', 'R7']);
+    assert.ok(violations.some(v => v.detail.includes('does not map')));
+    assert.ok(violations.some(v => v.detail.includes('no root export')));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -281,18 +321,41 @@ test('analyze: hard rules ignore the allowlist (R2 not exemptable)', () => {  co
   }
 });
 
-test('analyze: R6 rejects web imports of L0 files outside src/utils and the leaf list', () => {
+test('analyze: relative imports resolving into excluded app dirs are forbidden (no silent drop)', () => {
   const root = makeTree({
     ...MINIMAL,
+    'packages/app/dist/evil.js': '',
+    'packages/app/server/lib/loose.js': "import { x } from '../../dist/evil.js';",
     'apps/web/package.json': JSON.stringify({ name: '@ccv/web', dependencies: {} }),
-    'apps/web/src/a.js': "import { LOG_DIR } from '../../../packages/app/findcc.js';",
-    'apps/web/src/b.js': "import { isMainAgent } from '../../../packages/app/src/utils/contentFilter.js';",
-    'packages/app/src/utils/contentFilter.js': '',
+    'apps/web/src/w.js': "import { y } from '../../../packages/app/dist/evil.js';",
   });
   try {
     const { violations } = analyze({ roots: ['packages/app', 'apps/web/src'], rootDir: root, leaves: new Set() });
-    assert.deepEqual(violations.map(v => v.rule), ['R6']); // only the findcc import is flagged
-    assert.ok(violations[0].from.endsWith('a.js'));
+    // dist/ exists on disk but is EXCLUDE_DIRS-filtered from the walk — both edges
+    // must be flagged instead of silently dropped (web importer → R6, lib → R7)
+    assert.deepEqual(violations.map(v => v.rule).sort(), ['R6', 'R7']);
+    assert.ok(violations.every(v => v.detail.includes('excluded')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('analyze: R6 rejects ALL web → packages/app imports; web → @ccv/core is the allowed path', () => {
+  const root = makeTree({
+    ...MINIMAL,
+    'apps/web/package.json': JSON.stringify({ name: '@ccv/web', dependencies: { '@ccv/core': 'workspace:*' } }),
+    'apps/web/src/a.js': "import { LOG_DIR } from '../../../packages/app/findcc.js';",
+    'apps/web/src/b.js': "import { isMainAgent } from '@ccv/core/contentFilter';",
+    'apps/web/src/c.js': "import { x } from '../../../packages/app/server/lib/ansi-safe-slice.js';",
+    'packages/app/server/lib/ansi-safe-slice.js': '',
+    'packages/core/package.json': JSON.stringify({ name: '@ccv/core' }),
+    'packages/core/src/contentFilter.js': '',
+  });
+  try {
+    const { violations } = analyze({ roots: ['packages/app', 'apps/web/src', 'packages/core/src'], rootDir: root, leaves: new Set() });
+    // findcc (L0) and even a curated leaf (L0-leaf) are both forbidden post-inversion
+    assert.deepEqual(violations.map(v => v.rule), ['R6', 'R6']);
+    assert.ok(violations.every(v => v.from !== 'apps/web/src/b.js'));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

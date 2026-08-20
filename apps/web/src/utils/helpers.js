@@ -1,4 +1,4 @@
-import { isSkillText, isMainAgent } from '../../../../packages/app/src/utils/contentFilter.js';
+import { isSkillText, isMainAgent } from '@ccv/core/contentFilter';
 import { restoreSlimmedEntry } from './entry-slim.js';
 import { formatToolAsXml } from './toolsXmlFormatter.js';
 import modelClaudeUrl from '../img/model-claude.svg';
@@ -11,7 +11,7 @@ import modelMinimaxUrl from '../img/model-minimax.svg';
 import modelDeepseekUrl from '../img/model-deepseek.svg';
 import modelClaudeAnimatedSvg from '../img/claude/writing.svg?raw';
 
-// 上下文窗口规则唯一事实源在 server/lib/context-rules.js(CLIENT-SAFE,无 node 依赖,
+// 上下文窗口规则唯一事实源在 @ccv/core/context-rules(CLIENT-SAFE,无 node 依赖,
 // Vite 跨目录打包,先例见 toolsXmlFormatter.js)。前端一律经此处 re-export 取用,
 // 保证血条档位/纠偏/usage 分子与服务端 SSE 路径同源,杜绝三份规则表漂移的旧病。
 export {
@@ -21,8 +21,8 @@ export {
   sumUsageInputTokens,
   sumUsageContextTokens,
   getCalibrationModel,
-} from '../../../../packages/app/server/lib/context-rules.js';
-import { classifyContextWindow, adaptContextWindow, getCalibrationModel } from '../../../../packages/app/server/lib/context-rules.js';
+} from '@ccv/core/context-rules';
+import { classifyContextWindow, adaptContextWindow, getCalibrationModel } from '@ccv/core/context-rules';
 
 // getEffectiveModel moved to ./effectiveModel.js (pure, node-testable — sessionMerge/sessionManager
 // import it without helpers' Vite-only svg imports); re-exported here to keep import paths stable.

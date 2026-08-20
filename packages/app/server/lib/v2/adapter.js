@@ -29,7 +29,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
-import { reportSwallowed } from '../error-report.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 import { isMainAgentRequest } from '../interceptor-core.js';
 import { readSession } from './replay.js';
 import { iterateJsonlLines } from './jsonl-read.js';
@@ -834,7 +834,7 @@ export async function scanV2Descriptors(sessionDir) {
     // the old substring filter (`"mainAgent":true` && !`"teammate"`) also
     // admitted sub/misc entries whose backfilled body LOOKED main-agent; the
     // isMain ring drops those — intentional, more-correct behavior (pinned in
-    // test/v2-window-two-pass.test.js). Teammate-session main entries are
+    // packages/app/test/v2-window-two-pass.test.js). Teammate-session main entries are
     // excluded by both (they carry the teammate tag / isMain=false).
     if (d.isMain) {
       ring.push(d);

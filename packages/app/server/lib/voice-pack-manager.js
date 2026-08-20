@@ -11,7 +11,7 @@
 import { existsSync, mkdirSync, writeFileSync, unlinkSync, readdirSync, statSync, readFileSync, lstatSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { EVENT_KEYS, DEFAULT_BINDINGS, BUNDLED_PACK_IDS } from './voice-pack-events.js';
+import { EVENT_KEYS, DEFAULT_BINDINGS, BUNDLED_PACK_IDS } from '@ccv/core/voice-pack-events';
 import { DIST_DIR, PUBLIC_DIR } from '../_paths.js';
 
 // Bundled pack lookup order, per packId:
@@ -35,7 +35,7 @@ for (const packId of BUNDLED_PACK_IDS) {
   }
 }
 
-export { EVENT_KEYS } from './voice-pack-events.js';
+export { EVENT_KEYS } from '@ccv/core/voice-pack-events';
 export const ID_PATTERN = /^[a-f0-9-]{8,64}$/;
 export const ALLOWED_EXTS = new Set(['.mp3', '.wav', '.ogg', '.m4a']);
 export const MAX_AUDIO_BYTES = 2 * 1024 * 1024; // 2MB per file
@@ -334,6 +334,5 @@ export function reconcileVoicePackPrefs(logDir, vp) {
 // Re-export shared defaults so consumers can pull everything from one module.
 export { DEFAULT_BINDINGS, BUNDLED_PACK_IDS };
 
-// mergeApprovalModalPrefs / mergeVoicePackInto moved to server/lib/approval-modal-prefs.js
-//( — merge logic isn't voice-pack-specific). Import from
-// './approval-modal-prefs.js' directly.
+// mergeApprovalModalPrefs / mergeVoicePackInto moved to @ccv/core/approval-modal-prefs
+// (merge logic isn't voice-pack-specific). Import from '@ccv/core/approval-modal-prefs' directly.

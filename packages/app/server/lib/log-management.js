@@ -1,7 +1,7 @@
 import { existsSync, realpathSync, readdirSync, readFileSync, statSync, mkdirSync, renameSync } from 'node:fs';
 import { readFile, stat, readdir } from 'node:fs/promises';
 import { join, sep, dirname, basename } from 'node:path';
-import { reconstructEntries } from './delta-reconstructor.js';
+import { reconstructEntries } from '@ccv/core/delta-reconstructor';
 import { sanitizePathComponent } from './v2/layout.js';
 import { listV2Sessions } from './v2/adapter.js';
 import { summarizeSessionPage } from './v2/session-list.js';

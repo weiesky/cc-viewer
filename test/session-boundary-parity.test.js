@@ -35,7 +35,7 @@ import {
   applyInPlaceLastMsgReplace,
   getSessionStableId,
 } from '../apps/web/src/utils/sessionManager.js';
-import { isSessionBoundary } from '../packages/app/src/utils/clearCheckpoint.js';
+import { isSessionBoundary } from '../packages/core/src/clearCheckpoint.js';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 

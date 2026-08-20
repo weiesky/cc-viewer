@@ -24,15 +24,15 @@
 
 import { watch, existsSync, readdirSync, readFileSync, statSync, openSync, readSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
-import { reportSwallowed } from '../error-report.js';
-import { createIncrementalReconstructor } from '../delta-reconstructor.js';
+import { reportSwallowed } from '@ccv/core/error-report';
+import { createIncrementalReconstructor } from '@ccv/core/delta-reconstructor';
 import { processWatchedEntry, sendEventToClients, sendEventRawToClients } from '../log-watcher.js';
 import { SessionSynthesizer } from './adapter.js';
 import { isDiscardableSession } from './session-select.js';
 import { isForeignLiveOwned } from './session-owner.js';
 import { isConvertRunning } from './convert-manager.js';
 import { computeCacheLoss } from './meta-rows.js';
-import { classifyRequest, withAgentNameSubType } from '../../../src/utils/requestType.js';
+import { classifyRequest, withAgentNameSubType } from '@ccv/core/requestType';
 
 const FSWATCH_DEBOUNCE_MS = 80;
 const SAFETY_POLL_MS = 5000;

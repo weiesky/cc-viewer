@@ -1,0 +1,88 @@
+/**
+ * Guards for the blurred-overlay mask of the hamburger-menu feature modals.
+ *
+ * Two invariants:
+ *  1. BLUR_MASK_STYLE mirrors the AskUserQuestion / plan approval overlay
+ *     (`.backdrop` in src/components/approval/ApprovalModal.module.css). If
+ *     either side changes without the other, this suite fails (readFileSync
+ *     source-guard, same pattern as test/expert-i18n.test.js).
+ *  2. EXACTLY the feature modals consume BLUR_MASK_STYLE.
+ *     The user requirement is "blur these pop-ups and no others" — this walk
+ *     catches both a target dropping out AND another modal silently adopting
+ *     the blur.
+ */
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, dirname, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { BLUR_MASK_STYLE } from '../src/utils/modalMask.js';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const APPROVAL_CSS = readFileSync(join(ROOT, 'apps/web/src/components/approval/ApprovalModal.module.css'), 'utf8');
+
+// The top-level feature modals that blur the background (plus the constant's own module).
+// RetryConfigModal/ProxyStatsModal render inside the parent Proxy Stats Modal hosted by App.jsx;
+// they must not create their own mask or a second blurred overlay.
+const EXPECTED_CONSUMERS = [
+  'apps/web/src/utils/modalMask.js',
+  'apps/web/src/App.jsx',                                    // Log Management
+  'apps/web/src/components/dashboard/AppHeader.jsx',         // Export user prompts
+  'apps/web/src/components/settings/PluginModal.jsx',        // Plugin Management
+  'apps/web/src/components/settings/ProcessModal.jsx',       // CCV Process Manager
+  'apps/web/src/components/settings/MessagingModal.jsx',    // Messaging Integration
+  'apps/web/src/components/settings/ProxyModal.jsx',         // Hot-Switch Proxy
+  'apps/web/src/components/settings/SystemTextModal.jsx',    // Edit System Prompt
+].sort();
+
+describe('BLUR_MASK_STYLE — sync with the approval-overlay reference', () => {
+  it('is frozen (accidental mutation would leak between seven modals)', () => {
+    assert.ok(Object.isFrozen(BLUR_MASK_STYLE));
+  });
+
+  it('background matches ApprovalModal .backdrop verbatim', () => {
+    assert.ok(
+      APPROVAL_CSS.includes(`background: ${BLUR_MASK_STYLE.background}`),
+      `ApprovalModal.module.css no longer contains "background: ${BLUR_MASK_STYLE.background}" — ` +
+      'the reference overlay changed (or the constant drifted); update both together',
+    );
+  });
+
+  it('blur radius matches ApprovalModal .backdrop verbatim', () => {
+    assert.ok(
+      APPROVAL_CSS.includes(`backdrop-filter: ${BLUR_MASK_STYLE.backdropFilter}`),
+      `ApprovalModal.module.css no longer contains "backdrop-filter: ${BLUR_MASK_STYLE.backdropFilter}" — ` +
+      'the reference overlay changed (or the constant drifted); update both together',
+    );
+  });
+
+  it('webkit prefix mirrors the unprefixed value', () => {
+    assert.equal(BLUR_MASK_STYLE.WebkitBackdropFilter, BLUR_MASK_STYLE.backdropFilter);
+  });
+});
+
+describe('BLUR_MASK_STYLE — exact consumer set (no other pop-up may adopt it)', () => {
+  it('exactly the feature modals (plus the constant module) reference it', () => {
+    const entries = readdirSync(join(ROOT, 'apps', 'web', 'src'), { recursive: true, withFileTypes: true });
+    const consumers = [];
+    for (const ent of entries) {
+      if (!ent.isFile() || !/\.(js|jsx)$/.test(ent.name)) continue;
+      const abs = join(ent.parentPath ?? ent.path, ent.name);
+      if (readFileSync(abs, 'utf8').includes('BLUR_MASK_STYLE')) {
+        consumers.push(relative(ROOT, abs).split(sep).join('/'));
+      }
+    }
+    assert.deepEqual(consumers.sort(), EXPECTED_CONSUMERS,
+      'BLUR_MASK_STYLE consumer set changed — blurring a new modal (or dropping one of the seven) ' +
+      'must be a deliberate decision: update EXPECTED_CONSUMERS with it');
+  });
+
+  it('each of the seven modal files wires it into a styles mask entry', () => {
+    for (const file of EXPECTED_CONSUMERS) {
+      if (file === 'apps/web/src/utils/modalMask.js') continue;
+      const text = readFileSync(join(ROOT, file), 'utf8');
+      assert.ok(/mask:\s*BLUR_MASK_STYLE/.test(text),
+        `${file} imports BLUR_MASK_STYLE but does not pass it as a \`mask:\` style entry`);
+    }
+  });
+});

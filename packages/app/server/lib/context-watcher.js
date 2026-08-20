@@ -2,7 +2,7 @@ import { readFileSync, existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { getClaudeConfigDir } from '../../findcc.js';
-import { getModelMaxTokens, adaptContextWindow, sumUsageInputTokens, sumUsageContextTokens, getCalibrationModel } from './context-rules.js';
+import { getModelMaxTokens, adaptContextWindow, sumUsageInputTokens, sumUsageContextTokens, getCalibrationModel } from '@ccv/core/context-rules';
 
 export const CONTEXT_WINDOW_FILE = join(getClaudeConfigDir(), 'context-window.json');
 export const CLAUDE_SETTINGS_FILE = join(getClaudeConfigDir(), 'settings.json');
@@ -27,7 +27,7 @@ export function readModelContextSize() {
     const modelId = data?.model?.id || null;
     let contextSize = 200000;
     if (modelId) {
-      // [Nk]/[Nm] 后缀与家族档位统一走共享规则表(server/lib/context-rules.js)
+      // [Nk]/[Nm] 后缀与家族档位统一走共享规则表(@ccv/core/context-rules)
       contextSize = getModelMaxTokens(modelId);
       // Cache the base name → size mapping
       const base = modelId.toLowerCase().replace(/^claude-/i, '').replace(/\[.*\]/, '').trim();
@@ -70,7 +70,7 @@ export function getContextSizeForModel(modelOrEntry) {
   if (_startupModelBase && base === _startupModelBase) {
     return _startupContextSize;
   }
-  // 完整档位表见 server/lib/context-rules.js(与前端同源;含 haiku/旧 opus/3-opus 200K、
+  // 完整档位表见 @ccv/core/context-rules(与前端同源;含 haiku/旧 opus/3-opus 200K、
   // deepseek-v4 1M、kimi/moonshot 256K、gpt/deepseek 等三方档位,默认 200K)
   return getModelMaxTokens(apiModelName);
 }

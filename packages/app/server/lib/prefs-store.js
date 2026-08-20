@@ -12,7 +12,7 @@ import { join, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { renameSyncWithRetry } from './file-api.js';
 import { withFileLockAsync } from './async-file-lock.js';
-import { mergeApprovalModalPrefs } from './approval-modal-prefs.js';
+import { mergeApprovalModalPrefs } from '@ccv/core/approval-modal-prefs';
 import { reconcileVoicePackPrefs } from './voice-pack-manager.js';
 import { LOG_DIR } from '../../findcc.js';
 

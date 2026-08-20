@@ -1,47 +1,32 @@
-// CLIENT-SAFE 跨层 import 边界静态校验。
+// CLIENT-SAFE 跨层 import 边界静态校验（@ccv/core 提炼后的形态）。
 //
-// 背景：8 个 server/lib/*.js 模块是 isomorphic 纯逻辑（零 node deps），被前端代码引用：
-// voice-pack-events.js / approval-modal-prefs.js / delta-reconstructor.js /
-// tools-xml-formatter.js / context-rules.js / session-boundary.js / error-report.js /
-// v2-transcript-normalizer.js。这些文件首行已加 `// CLIENT-SAFE: no node deps...`
-// 注释，但纯注释约束未来容易失守。
+// 背景：12 个 isomorphic 纯逻辑模块（请求分类 / teammate 检测 / 会话边界 /
+// context 规则 / voice-pack 事件 / delta 重建 / v2 规范化 / error-report /
+// tools-xml）曾散居 packages/app 的 src/utils/ 与 server/lib/，web 端靠
+// `../../../../packages/app/...` 深相对路径跨包引用。它们现在是独立的私有
+// workspace 包 @ccv/core（packages/core/src/*），经 npm bundledDependencies
+// 随 cc-viewer tarball 发布；web 端一律改用 `@ccv/core/<name>` 裸说明符。
 //
-// Monorepo（A2 拆分）后边界变为：apps/web/src/** → packages/app/** 的相对 import
-// 必须只命中白名单 —— 含 8 个 CLIENT-SAFE server/lib 模块 + 4 个共享缝文件
-// （packages/app/src/utils/{requestType,contentFilter,teammateDetector,clearCheckpoint}.js，
-// server 端运行时也需要它们，因此物理上留在发布包内）。
-//
-// 本测试做静态校验：
-//   1. apps/web/src 内任何跨出 apps/web 进入 packages/app 的 import 必须只命中白名单
-//   2. 白名单文件本身不能 import `node:*` / `fs` / `process` / `child_process`
+// 本测试做静态校验（与 scripts/verify-boundaries.mjs 的 R6/R8 互补）：
+//   1. apps/web/src 内任何【相对路径】跨出 apps/web 进入 packages/** 的 import
+//      必须为零 —— R6 反转后 web → packages/app 全禁；对 packages/core 也必须走
+//      `@ccv/core/<name>` 包名说明符（相对路径绕包缝同禁），无白名单
+//   2. apps/web/src 内 `@ccv/core/<name>` 说明符必须映射到 packages/core/src/
+//      下的真实文件（防手写错子路径——根导出不存在，子路径即契约）
+//   3. packages/core/src 下任何文件不得 import `node:*` / fs / process 等
+//      node builtin —— CORE 是纯同构层（浏览器可打包），纯度失守即 CI 红
 // 任一失败 → CI 红，比 ESLint plugin-import 更轻（零 devDep、零配置文件）。
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
 const webSrcRoot = join(repoRoot, 'apps', 'web', 'src');
-const appRoot = join(repoRoot, 'packages', 'app');
-
-// Paths relative to packages/app (the published package root).
-const CLIENT_SAFE_ALLOWLIST = new Set([
-  'server/lib/voice-pack-events.js',
-  'server/lib/approval-modal-prefs.js',
-  'server/lib/delta-reconstructor.js',
-  'server/lib/tools-xml-formatter.js',
-  'server/lib/context-rules.js',
-  'server/lib/session-boundary.js', // wire-v2 S1: shared boundary/reverse-anchor module
-  'server/lib/error-report.js', // wire-v2 S2: reportSwallowed convention, shared both sides
-  'server/lib/v2-transcript-normalizer.js', // Claude Code 2.x JSONL → legacy entry normalizer
-  'src/utils/requestType.js', // A2 seam: imported by server/lib/v2/* at runtime
-  'src/utils/contentFilter.js',
-  'src/utils/teammateDetector.js',
-  'src/utils/clearCheckpoint.js',
-]);
+const coreSrcRoot = join(repoRoot, 'packages', 'core', 'src');
 
 function listFiles(dir, exts) {
   const out = [];
@@ -73,9 +58,10 @@ function scanImports(fileAbs) {
   return out;
 }
 
-describe('client-safe-imports: apps/web/src → packages/app/** 边界', () => {
-  it('web 内对 app 包的 import 必须只命中 CLIENT-SAFE 白名单', () => {
+describe('client-safe-imports: apps/web/src → packages/** 全禁', () => {
+  it('web 内不得有任何相对路径 import 跨进 packages/（app/core/content 一律禁止）', () => {
     const violations = [];
+    const packagesRoot = join(repoRoot, 'packages');
     const srcFiles = listFiles(webSrcRoot, ['.js', '.jsx', '.mjs']);
     for (const fileAbs of srcFiles) {
       const fileDir = dirname(fileAbs);
@@ -83,27 +69,47 @@ describe('client-safe-imports: apps/web/src → packages/app/** 边界', () => {
         // 只关心 relative 引用
         if (!spec.startsWith('./') && !spec.startsWith('../')) continue;
         const resolved = join(fileDir, spec);
-        // 只关心跨出 apps/web 进入 packages/app 的引用
-        const rel = relative(appRoot, resolved);
+        // 跨出 apps/web 进入任何 packages/* 即违规（R6 反转：无白名单；
+        // core 也必须走 @ccv/core 包名说明符，相对路径绕过包缝同样禁止）
+        const rel = relative(packagesRoot, resolved);
         if (rel.startsWith('..')) continue;
-        // Posix path normalization
-        const relPosix = rel.replace(/\\/g, '/');
-        // Vite/Node 允许无扩展名 import；补 .js / .mjs 探测白名单命中
-        const candidates = /\.[cm]?js$/.test(relPosix)
-          ? [relPosix]
-          : [`${relPosix}.js`, `${relPosix}.mjs`, relPosix];
-        if (!candidates.some(c => CLIENT_SAFE_ALLOWLIST.has(c))) {
-          violations.push({ file: relative(repoRoot, fileAbs), line, spec, resolved: relPosix });
+        violations.push({ file: relative(repoRoot, fileAbs), line, spec });
+      }
+    }
+    assert.deepEqual(violations, [],
+      'web 相对路径 import 跨进 packages/（共享同构模块已迁入 @ccv/core，请改用 `@ccv/core/<name>` 裸说明符）：\n' +
+      violations.map(v => `  ${v.file}:${v.line}  '${v.spec}'`).join('\n'));
+  });
+});
+
+describe('client-safe-imports: @ccv/core 子路径契约', () => {
+  it('web 内 @ccv/core/<name> 必须映射到 packages/core/src/ 真实文件', () => {
+    const violations = [];
+    const srcFiles = listFiles(webSrcRoot, ['.js', '.jsx', '.mjs']);
+    for (const fileAbs of srcFiles) {
+      for (const { line, spec } of scanImports(fileAbs)) {
+        if (spec === '@ccv/core') {
+          violations.push({ file: relative(repoRoot, fileAbs), line, spec, detail: '根导出不存在' });
+          continue;
+        }
+        if (!spec.startsWith('@ccv/core/')) continue;
+        const sub = spec.slice('@ccv/core/'.length);
+        if (sub.includes('..')) {
+          violations.push({ file: relative(repoRoot, fileAbs), line, spec, detail: '子路径不得含 ..（穿越逃出 core）' });
+          continue;
+        }
+        if (!existsSync(join(coreSrcRoot, `${sub}.js`))) {
+          violations.push({ file: relative(repoRoot, fileAbs), line, spec, detail: `packages/core/src/${sub}.js 不存在` });
         }
       }
     }
     assert.deepEqual(violations, [],
-      'web 跨层 import 命中非 CLIENT-SAFE 文件（要么加进白名单并确保零 node deps，要么改用其它途径）：\n' +
-      violations.map(v => `  ${v.file}:${v.line}  '${v.spec}'  → ${v.resolved}`).join('\n'));
+      'web 引用了不存在/非法的 @ccv/core 子路径：\n' +
+      violations.map(v => `  ${v.file}:${v.line}  '${v.spec}' — ${v.detail}`).join('\n'));
   });
 });
 
-describe('client-safe-imports: 白名单文件零 node deps', () => {
+describe('client-safe-imports: packages/core/src 零 node deps', () => {
   // 任何 node builtin 都不可 import；含 `node:*` scheme 和裸 module 名（fs/path/os/...）
   // 与 process/child_process 等运行时 API
   const NODE_BUILTINS = new Set([
@@ -117,9 +123,12 @@ describe('client-safe-imports: 白名单文件零 node deps', () => {
     'worker_threads', 'zlib',
   ]);
 
-  for (const rel of CLIENT_SAFE_ALLOWLIST) {
+  const coreFiles = listFiles(coreSrcRoot, ['.js']);
+  assert.ok(coreFiles.length > 0, 'packages/core/src 为空 —— 目录结构被破坏');
+
+  for (const fileAbs of coreFiles) {
+    const rel = relative(coreSrcRoot, fileAbs);
     it(`${rel} 不含 node builtin import`, () => {
-      const fileAbs = join(appRoot, rel);
       const violations = [];
       for (const { line, spec } of scanImports(fileAbs)) {
         if (spec.startsWith('node:')) {
@@ -129,7 +138,7 @@ describe('client-safe-imports: 白名单文件零 node deps', () => {
         }
       }
       assert.deepEqual(violations, [],
-        `${rel} 含 node builtin import，破坏 CLIENT-SAFE 契约：\n` +
+        `${rel} 含 node builtin import，破坏 CORE 纯同构契约（web 端经 vite 打包必须浏览器可运行）：\n` +
         violations.map(v => `  line ${v.line}: '${v.spec}'`).join('\n'));
     });
   }

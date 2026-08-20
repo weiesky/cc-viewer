@@ -23,9 +23,9 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
 
-// Entry-point JS files (hand-curated — cli.js + root shim + the server/ files
-// the shim and electron loaders pull in). cli.js stays at repo root; the
-// real server-side modules live under server/ since the 1.6.273 reorg.
+// Entry-point JS files (hand-curated — cli.js + root shims + the server/ files
+// the shim and electron loaders pull in). cli.js lives at packages/app/cli.js; the
+// real server-side modules live under packages/app/server/ since the 1.6.273 reorg.
 const ROOT_FILES = [
   'packages/app/cli.js',
   'packages/app/findcc.js',

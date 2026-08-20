@@ -4,10 +4,14 @@
  *
  * Enforces the layering contract of packages/app (docs/refactor/package-boundaries.zh.md):
  *
- *   L0       findcc.js, server/_paths.js, server/i18n.js, src/utils/*
- *            → may import L0 / L0-leaf / node builtins only
+ *   CORE     packages/core/src/** (@ccv/core — private workspace package, bundled
+ *            into the npm tarball) — may import only CORE (R8). The gate sees
+ *            graph edges only; node builtins never become edges, so browser
+ *            purity is enforced separately by test/client-safe-imports.test.js
+ *   L0       findcc.js, server/_paths.js, server/i18n.js
+ *            → may import L0 / L0-leaf / CORE / node builtins only
  *   L0-leaf  curated pure-leaf list below; INVARIANT: the transitive closure of
- *            every listed leaf must stay within L0 ∪ L0-leaf ∪ builtins ∪ deps
+ *            every listed leaf must stay within L0 ∪ L0-leaf ∪ CORE ∪ builtins ∪ deps
  *   L1-lib   server/lib/** loose files (default class) — may import L0/L0-leaf/
  *            L1 (lib or subsystem); must NOT import L2/L3/L4 (R5, allowlistable→L2 only)
  *   L1-sub   server/lib/{v2,ask,im,adapters,proxy}/ — same as L1-lib, plus no
@@ -22,11 +26,14 @@
  *       allowlist entry (rule "R1-dyn")
  *   R2  (hard) lib (L1) must not import server.js / routes/** / cli.js
  *   R3  no cross-subsystem imports (allowlistable)
- *   R4  (hard) L0 imports only L0 / L0-leaf / builtins
+ *   R4  (hard) L0 imports only L0 / L0-leaf / CORE
  *   R5  L1 must not import L2+ (allowlistable for L2 targets; L3/L4 stay hard via R2)
- *   R6  (hard) apps/web/src may import packages/app only at src/utils/* or L0-leaf
+ *   R6  (hard) apps/web/src must not import packages/app at all; its cross-package
+ *       imports go to @ccv/core (CORE) — every layer may import CORE
  *   R7  (hard) relative imports must resolve; relative dynamic imports must be
- *       literal specifiers; bare specifiers must be builtins or declared deps
+ *       literal specifiers; bare specifiers must be builtins or declared deps;
+ *       @ccv/core/* subpaths must map to a real packages/core/src file
+ *   R8  (hard) CORE imports only CORE (purity of the shared isomorphic layer)
  *   CLS (hard) fail-closed: every scanned file must have a boundary class
  *
  * Exceptions live in scripts/boundary-allowlist.json ({from,to,rule,reason,since}).
@@ -49,27 +56,26 @@ import jsx from 'acorn-jsx';
 const REPO_ROOT = pathResolve(dirname(fileURLToPath(import.meta.url)), '..');
 const APP_PKG = 'packages/app';
 const WEB_SRC = 'apps/web/src';
+const CORE_PKG = 'packages/core';
+const CORE_SRC = `${CORE_PKG}/src`;
+const CORE_SPEC = '@ccv/core';
 const ALLOWLIST_PATH = join(REPO_ROOT, 'scripts', 'boundary-allowlist.json');
 
-const EXCLUDE_DIRS = new Set(['node_modules', 'dist', 'scripts', 'concepts', 'ultraAgents', 'plugins', 'imPreset', 'imSkills', 'system-prompt-templates']);
+// 'test' is excluded because per-package test dirs (packages/app/test etc.) hold
+// test files, not layered source — the gate's classes don't apply to them.
+const EXCLUDE_DIRS = new Set(['node_modules', 'dist', 'scripts', 'test', 'concepts', 'ultraAgents', 'plugins', 'imPreset', 'imSkills', 'system-prompt-templates']);
 
 // Curated pure leaves (closure-invariant, see header). Additive-only direction:
 // a file may be promoted here once its closure qualifies; demotion needs review.
+// (The eight isomorphic web-shared modules lived here before the @ccv/core
+// extraction — they are the CORE class now, not leaves.)
 const L0_LEAVES = new Set([
   'lib/interceptor-core.js',
-  'lib/error-report.js',
   'lib/file-api.js',
   'lib/async-file-lock.js',
   'lib/async-write-queue.js',
   'lib/pid-alive.js',
   'lib/ansi-safe-slice.js',
-  'lib/session-boundary.js',
-  'lib/delta-reconstructor.js',
-  'lib/voice-pack-events.js',
-  'lib/context-rules.js',
-  'lib/v2-transcript-normalizer.js',
-  'lib/tools-xml-formatter.js',
-  'lib/approval-modal-prefs.js',
   'lib/log-file-utils.js',
   'lib/project-state.js',
   'lib/im-deny.js',
@@ -98,9 +104,9 @@ const BUILTINS = new Set([...builtinModules, ...builtinModules.map(m => `node:${
 /** Classify a repo-relative path. Returns {cls, sub?} or null when out of scope. */
 export function classify(rel) {
   if (rel.startsWith(`${WEB_SRC}/`)) return { cls: 'WEB' };
+  if (rel.startsWith(`${CORE_SRC}/`)) return { cls: 'CORE' };
   if (!rel.startsWith(`${APP_PKG}/`)) return null;
   if (L0_FILES.includes(rel)) return { cls: 'L0' };
-  if (rel.startsWith(`${APP_PKG}/src/utils/`)) return { cls: 'L0' };
   if (L0_LEAVES.has(rel)) return { cls: 'L0-leaf' };
   if (L4_FILES.includes(rel)) return { cls: 'L4' };
   if (L2_FILES.includes(rel)) return { cls: 'L2' };
@@ -187,6 +193,7 @@ export function resolveSpecifier(fromRel, spec, baseDir = REPO_ROOT) {
 function packageDeps(rel, baseDir) {
   const pkgPath = rel.startsWith(`${APP_PKG}/`) ? join(baseDir, APP_PKG, 'package.json')
     : rel.startsWith('apps/web/') ? join(baseDir, 'apps/web/package.json')
+    : rel.startsWith(`${CORE_PKG}/`) ? join(baseDir, CORE_PKG, 'package.json')
     : join(baseDir, 'package.json');
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
   return new Set([
@@ -224,7 +231,7 @@ export function scc(nodes, edges) {
  * Run the full gate. Returns { violations, stale, edges, files } where each
  * violation is {rule, from, to, line, dynamic, detail, allowlisted}.
  */
-export function analyze({ roots = [APP_PKG, WEB_SRC], allowlist = [], rootDir = REPO_ROOT, leaves = L0_LEAVES } = {}) {
+export function analyze({ roots = [APP_PKG, WEB_SRC, CORE_SRC], allowlist = [], rootDir = REPO_ROOT, leaves = L0_LEAVES } = {}) {
   const files = roots.flatMap(r => walkFiles(r, rootDir));
   const fileSet = new Set(files);
   const allowed = new Map(); // `${rule}|${from}|${to}` → entry
@@ -236,7 +243,7 @@ export function analyze({ roots = [APP_PKG, WEB_SRC], allowlist = [], rootDir = 
 
   const depsCache = new Map();
   const depsOf = (rel) => {
-    const key = rel.startsWith(`${APP_PKG}/`) ? APP_PKG : rel.startsWith('apps/web/') ? 'web' : 'root';
+    const key = rel.startsWith(`${APP_PKG}/`) ? APP_PKG : rel.startsWith('apps/web/') ? 'web' : rel.startsWith(`${CORE_PKG}/`) ? 'core' : 'root';
     if (!depsCache.has(key)) depsCache.set(key, packageDeps(rel, rootDir));
     return depsCache.get(key);
   };
@@ -262,12 +269,45 @@ export function analyze({ roots = [APP_PKG, WEB_SRC], allowlist = [], rootDir = 
           violations.push({ rule: 'R7', from, to: spec, line: edge.line, dynamic: edge.dynamic, detail: 'unresolved relative import' });
           continue;
         }
-        if (fileSet.has(to)) edges.push({ from, to, dynamic: edge.dynamic, line: edge.line });
-        // resolved but out of scanned scope (excluded asset dirs etc.) — not an edge
+        if (fileSet.has(to)) {
+          edges.push({ from, to, dynamic: edge.dynamic, line: edge.line });
+        } else if (to.startsWith(`${APP_PKG}/`) && /\.(m?js|jsx)$/.test(to)) {
+          // Resolved on disk but outside the walk (EXCLUDE_DIRS: dist/,
+          // node_modules/, concepts/, …) — silently dropping it would let
+          // e.g. web → packages/app/dist/x.js bypass R6 entirely. Fail loudly.
+          // Scoped to packages/app so web asset imports (apps/web/dist etc.)
+          // stay untouched. R6 attribution when the importer is WEB.
+          const fromCls = classify(from)?.cls;
+          violations.push({
+            rule: fromCls === 'WEB' ? 'R6' : 'R7', from, to, line: edge.line, dynamic: edge.dynamic,
+            detail: 'resolves into an excluded (unscanned) packages/app directory — boundary rules cannot see this edge, so it is forbidden outright',
+          });
+        }
+        // resolved but out of scanned scope outside packages/app (asset dirs
+        // of other packages etc.) — not an edge
       } else {
         const name = spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0];
         if (!BUILTINS.has(spec) && !BUILTINS.has(name) && !depsOf(from).has(name) && !depsOf(from).has(spec)) {
           violations.push({ rule: 'R7', from, to: spec, line: edge.line, dynamic: edge.dynamic, detail: 'bare specifier is neither a node builtin nor a declared dependency' });
+          continue;
+        }
+        // @ccv/core/<name> maps to packages/core/src/<name>.js (the package's
+        // exports pattern "./*" → "./src/*.js"). Resolve it into a graph edge so
+        // layering rules (R4/R6/R8/R0 closure) see the real target; a subpath
+        // with no backing file is a hard R7 failure (fail-closed).
+        if (name === CORE_SPEC && !BUILTINS.has(spec)) {
+          // strip bundler query suffixes (Vite `?raw`/`?url`) like the relative branch does
+          const sub = spec.split('?')[0].slice(CORE_SPEC.length).replace(/^\//, '');
+          if (!sub) {
+            violations.push({ rule: 'R7', from, to: spec, line: edge.line, dynamic: edge.dynamic, detail: '@ccv/core has no root export — import a subpath (@ccv/core/<module>)' });
+            continue;
+          }
+          const target = `${CORE_SRC}/${sub}.js`;
+          if (!fileSet.has(target)) {
+            violations.push({ rule: 'R7', from, to: spec, line: edge.line, dynamic: edge.dynamic, detail: `@ccv/core subpath does not map to a scanned file (${target})` });
+            continue;
+          }
+          edges.push({ from, to: target, dynamic: edge.dynamic, line: edge.line });
         }
       }
     }
@@ -292,22 +332,28 @@ export function analyze({ roots = [APP_PKG, WEB_SRC], allowlist = [], rootDir = 
 
   // R2 (hard): lib/L0 → server.js / routes / cli
   // R3: cross-subsystem (allowlistable)
-  // R4 (hard): L0 → only L0 / L0-leaf
+  // R4 (hard): L0 → only L0 / L0-leaf / CORE
   // R5: L1 → L2+ (allowlistable for L2; L3/L4 also caught by R2)
-  // R6 (hard): WEB → packages/app only src/utils or L0-leaf
+  // R6 (hard): WEB → packages/app forbidden entirely; WEB → CORE allowed
+  // R8 (hard): CORE → only CORE
   for (const edge of edges) {
     const from = clsOf(edge.from), to = clsOf(edge.to);
     if (!from.cls || !to.cls) continue;
     if (from.cls === 'WEB') {
-      const allowedTarget = edge.to.startsWith(`${APP_PKG}/src/utils/`) || leaves.has(edge.to);
-      if (to.cls !== 'WEB' && !allowedTarget) {
-        pushViolation('R6', edge, 'apps/web may import packages/app only at src/utils/* or curated L0-leaf files');
+      if (to.cls !== 'WEB' && to.cls !== 'CORE') {
+        pushViolation('R6', edge, 'apps/web must not import packages/app — shared isomorphic modules live in @ccv/core (packages/core/src)');
+      }
+      continue;
+    }
+    if (from.cls === 'CORE') {
+      if (to.cls !== 'CORE') {
+        pushViolation('R8', edge, `CORE is the shared isomorphic base layer — it may only import CORE (got ${to.cls})`);
       }
       continue;
     }
     if (from.cls === 'L0') {
-      if (to.cls !== 'L0' && to.cls !== 'L0-leaf') {
-        pushViolation('R4', edge, `L0 may only import L0 / L0-leaf (got ${to.cls})`);
+      if (to.cls !== 'L0' && to.cls !== 'L0-leaf' && to.cls !== 'CORE') {
+        pushViolation('R4', edge, `L0 may only import L0 / L0-leaf / CORE (got ${to.cls})`);
       }
       continue;
     }
@@ -324,7 +370,8 @@ export function analyze({ roots = [APP_PKG, WEB_SRC], allowlist = [], rootDir = 
     }
   }
 
-  // L0-leaf closure invariant: BFS from each leaf; every reached app file must be L0/L0-leaf
+  // L0-leaf closure invariant: BFS from each leaf; every reached file must stay
+  // within L0 / L0-leaf / CORE (CORE is below L0 in the layering — always safe)
   const adj = new Map();
   for (const e of edges) {
     if (!adj.has(e.from)) adj.set(e.from, []);
@@ -340,7 +387,7 @@ export function analyze({ roots = [APP_PKG, WEB_SRC], allowlist = [], rootDir = 
       const cur = queue.shift();
       for (const e of adj.get(cur) ?? []) {
         const cls = clsOf(e.to).cls;
-        if (cls !== 'L0' && cls !== 'L0-leaf') {
+        if (cls !== 'L0' && cls !== 'L0-leaf' && cls !== 'CORE') {
           violations.push({ rule: 'R0', from: cur, to: e.to, line: e.line, dynamic: e.dynamic, detail: `L0-leaf closure escape: ${leaf} reaches ${e.to} (${cls})` });
         }
         if (!seen.has(e.to)) { seen.add(e.to); queue.push(e.to); }

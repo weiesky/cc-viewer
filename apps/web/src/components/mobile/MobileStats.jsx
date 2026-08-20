@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats } from '../../utils/helpers';
-import { classifyRequest } from '../../../../../packages/app/src/utils/requestType';
+import { classifyRequest } from '@ccv/core/requestType';
 import ConceptHelp from '../common/ConceptHelp';
 import ToolsHelp from '../common/ToolsHelp';
 import { t } from '../../i18n';

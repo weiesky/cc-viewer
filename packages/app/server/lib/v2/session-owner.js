@@ -26,7 +26,7 @@
 import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { isPidAlive } from '../pid-alive.js';
-import { reportSwallowed } from '../error-report.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 
 export const OWNER_LOCK_NAME = 'owner.lock';
 

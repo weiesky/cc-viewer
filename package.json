@@ -21,7 +21,7 @@
     "pretest:coverage:html": "pnpm run lint:control-bytes && pnpm run verify:boundaries",
     "test": "CCV_INSTANCE_ID= CCV_LOG_DIR=tmp CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 node --test --test-force-exit --test-timeout=120000",
     "test:cli": "CCV_TEST_CLI=1 CCV_INSTANCE_ID= CCV_LOG_DIR=tmp CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 node --test --test-force-exit --test-timeout=120000",
-    "test:coverage": "CCV_TEST_CLI=1 CCV_INSTANCE_ID= CCV_LOG_DIR=tmp CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 node --test --test-force-exit --test-timeout=120000 --experimental-test-coverage --test-coverage-include='packages/app/server/**/*.js' --test-coverage-include='packages/app/src/utils/**/*.js' --test-coverage-include='packages/app/*.js'",
+    "test:coverage": "CCV_TEST_CLI=1 CCV_INSTANCE_ID= CCV_LOG_DIR=tmp CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 node --test --test-force-exit --test-timeout=120000 --experimental-test-coverage --test-coverage-include='packages/app/server/**/*.js' --test-coverage-include='packages/core/src/**/*.js' --test-coverage-include='packages/app/*.js'",
     "test:coverage:html": "CCV_TEST_CLI=1 CCV_INSTANCE_ID= CCV_LOG_DIR=tmp CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 c8 --reporter=text-summary --reporter=html node --test --test-force-exit --test-timeout=120000",
     "electron:dev": "pnpm --filter @ccv/electron run dev",
     "electron:build": "pnpm --filter @ccv/electron run build",
@@ -46,11 +46,11 @@
   "c8": {
     "include": [
       "packages/app/server/**/*.js",
-      "packages/app/src/utils/**/*.js",
+      "packages/core/src/**/*.js",
       "packages/app/*.js"
     ],
     "exclude": [
-      "test/**",
+      "**/test/**",
       "**/dist/**",
       "node_modules/**",
       "apps/**",

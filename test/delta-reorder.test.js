@@ -22,7 +22,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createIncrementalReconstructor, reconstructEntries } from '../packages/app/server/lib/delta-reconstructor.js';
+import { createIncrementalReconstructor, reconstructEntries } from '../packages/core/src/delta-reconstructor.js';
 import { streamReconstructedEntries } from '../packages/app/server/lib/log-stream.js';
 import { mergeMainAgentSessions, messageFingerprint, isMergeBlockedEntry, shouldDegradeBrokenMerge } from '../apps/web/src/utils/sessionMerge.js';
 import { applyInPlaceLastMsgReplace } from '../apps/web/src/utils/sessionManager.js';

@@ -12,7 +12,7 @@
 
 import { existsSync, statSync, openSync, readSync, closeSync } from 'node:fs';
 import { open as fsOpen, stat as fsStat } from 'node:fs/promises';
-import { isCheckpointEntry, isDeltaEntry, reconstructSegment } from './delta-reconstructor.js';
+import { isCheckpointEntry, isDeltaEntry, reconstructSegment } from '@ccv/core/delta-reconstructor';
 import { isV2SessionDir, iterateV2RawEntries, iterateV2RawEntriesAsync, readV2WindowedEntries, streamV2WindowedEntries } from './v2/adapter.js';
 
 const READ_CHUNK_SIZE = 1024 * 1024; // 1MB

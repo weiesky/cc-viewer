@@ -60,7 +60,7 @@ export function _setPtyImportForTests(fn) {
 // 官方模型会话（review round：deepseek 残留记录事故）。
 // NODE_TEST_CONTEXT 屏障保留：resolveSpawnModel 会读 process.env 的模型变量，开发机
 // shell export 会漏进单测(机器状态依赖)；测试用 _setSpawnModelReaderForTests 显式注入。
-// env/reader 参数化只为可测性(见 test/pty-manager.test.js 的 guard 单测)。
+// env/reader 参数化只为可测性(见 packages/app/test/pty-manager.test.js 的 guard 单测)。
 export function _defaultSpawnModelReader(c, env = process.env, reader = resolveSpawnModel) {
   return env.NODE_TEST_CONTEXT ? null : reader(c, env);
 }

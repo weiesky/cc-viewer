@@ -48,7 +48,7 @@ function findEmptyExitPlanModeBlocks(content, out) {
  * - Header 名规范：interceptor 走 fetch Headers.entries() 全小写（WHATWG 规范），
  *   只查小写键即可。
  * - In-place mutation by design：用 Object.assign(blk.input, patch) 而非
- *   `blk.input = {...}`。增量重建器 (server/lib/delta-reconstructor.js) 会让同一 tool_use
+ *   `blk.input = {...}`。增量重建器 (@ccv/core/delta-reconstructor) 会让同一 tool_use
  *   block 在多个 entry 间共享对象引用；in-place mutate 让后续 entry 的「Object.keys
  *   (inp).length === 0」预检自动跳过——正是我们想要的 (相同 plan，不重新查盘)。
  *   注意：此优化仅在 SSE / live 路径（共享对象）生效；REST 路径 raw → JSON.parse

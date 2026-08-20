@@ -3,7 +3,7 @@ import { ConfigProvider, Spin, Button, Badge, Switch, Select, Modal, message, To
 import { BranchesOutlined, DownloadOutlined, DeleteOutlined, RollbackOutlined, ReloadOutlined, UploadOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import AppBase, { styles, OPTIMISTIC_CLEAR_PERCENT } from './AppBase';
 import { isIOS, isPad, setViewMode } from './env';
-import { isMainAgent, classifyUserContent, extractDisplayText } from '../../../packages/app/src/utils/contentFilter';
+import { isMainAgent, classifyUserContent, extractDisplayText } from '@ccv/core/contentFilter';
 import { parseImOrigin } from './utils/imOrigin';
 import { sortSkillsDefault } from './utils/skillsParser';
 import { handleSkillToggle, handleSkillDelete } from './utils/skillModalController';

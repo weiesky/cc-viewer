@@ -14,7 +14,7 @@
 // mirroring readJsonlTolerant's torn-tail tolerance (spec §14).
 
 import { existsSync, openSync, readSync, closeSync, statSync } from 'node:fs';
-import { reportSwallowed } from '../error-report.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 
 const DEFAULT_CHUNK_BYTES = 8 * 1024 * 1024;
 // Node's max string length is 0x1fffffe8 (~512MiB) — a line this long can

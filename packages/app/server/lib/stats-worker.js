@@ -10,7 +10,7 @@ import { join, basename } from 'node:path';
 import { readJsonlTolerant, listSessionIds } from './v2/replay.js';
 import { dirSizeSync } from './v2/layout.js';
 import { isDiscardableSession } from './v2/session-select.js';
-import { reportSwallowed } from './error-report.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 import {
   INTER_SESSION_TYPES, isSystemText, extractUserTexts, isSuggestionMode,
   collectPromptsFromEvents, sortEpochFiles,

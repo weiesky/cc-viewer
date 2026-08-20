@@ -7,7 +7,7 @@
  * dropped — the wire carries rows only (~1.3KB each vs full entries).
  *
  * Two DELIBERATE classification divergences from the legacy full-entry list
- * (both more correct; pinned in test/v2-meta-rows.test.js, declared in
+ * (both more correct; pinned in packages/app/test/v2-meta-rows.test.js, declared in
  * history.md):
  *  - membership is the journal fold — a SUPERSET of the synthesizer's output
  *    (conv-gapped crash-orphans get a row; their detail fetch answers 404 and
@@ -21,8 +21,8 @@ import { readJsonlTolerant } from './replay.js';
 import { iterateJsonlLines } from './jsonl-read.js';
 import { iterateV2Items, findTeammateSessionDirs } from './adapter.js';
 import { SingleFlight } from './singleflight.js';
-import { reportSwallowed } from '../error-report.js';
-import { classifyRequest, withAgentNameSubType } from '../../../src/utils/requestType.js';
+import { reportSwallowed } from '@ccv/core/error-report';
+import { classifyRequest, withAgentNameSubType } from '@ccv/core/requestType';
 
 // KEEP IN SYNC: server/lib/v2/adapter.js itemKey — (sessionId, seq) identity.
 const itemKey = (sessionId, seq) => `${sessionId}\x00${seq}`;

@@ -128,7 +128,7 @@ describe('cold assembly parity vs legacy entries (oracle)', () => {
     await w.flush();
 
     // Oracle: legacy flag-off stream, client-reconstructed
-    const { reconstructEntries } = await import('../packages/app/server/lib/delta-reconstructor.js');
+    const { reconstructEntries } = await import('../packages/core/src/delta-reconstructor.js');
     const off = makeRes();
     await events(makeReq(), off, url('/events'), true, eventsDeps());
     const legacyRaw = framesOf(off.text(), 'load_chunk').flat();

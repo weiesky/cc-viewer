@@ -1,5 +1,5 @@
 // Skill 动态装卸 API —— 扫描并移动 `.claude/skills/` 和 `.claude/skills-skip/` 之间的 skill 文件夹。
-// 纯 Node 实现，无 React / 浏览器 依赖，方便 test/skills-api.test.js 直接 import。
+// 纯 Node 实现，无 React / 浏览器 依赖，方便 packages/app/test/skills-api.test.js 直接 import。
 
 import { existsSync, readdirSync, readFileSync, lstatSync, mkdirSync, renameSync, cpSync, rmSync, realpathSync } from 'node:fs';
 import { join, basename, sep, normalize, isAbsolute } from 'node:path';

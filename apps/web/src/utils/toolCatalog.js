@@ -7,7 +7,7 @@
  *   - the Tool-* whitelist in ConceptHelp (src/components/common/ConceptHelp.jsx)
  *
  * Keep this in sync with the shipped Tool-*.md docs — the guard test
- * `test/tool-catalog-concepts.test.js` fails if any catalog tool lacks a doc
+ * `apps/web/test/tool-catalog-concepts.test.js` fails if any catalog tool lacks a doc
  * in any language directory.
  *
  * Category `key` maps to i18n `ui.toolCatalog.cat.<key>` in src/i18n.js.

@@ -5,7 +5,7 @@ import { _projectName, getLiveLogSource, isContinuedLaunch } from '../intercepto
 import { LOG_DIR } from '../../findcc.js';
 import { streamRawEntriesAsync } from '../lib/log-stream.js';
 import { migrationStatus } from '../lib/v2/migrate-prompt.js';
-import { reportSwallowed } from '../lib/error-report.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 import { sseHead, sseWrite, needsDrain, wireEnd, awaitWireDrain } from '../lib/wire-compress.js';
 import { readV2ColdBundle } from '../lib/v2/meta-rows.js';
 import { readV2SingleEntry } from '../lib/v2/adapter.js';
@@ -13,7 +13,7 @@ import { enrichRawIfNeeded } from '../lib/enrich-plan-input.js';
 import { validateLogPath } from '../lib/log-management.js';
 import { isMainAgentEntry, extractCachedContent } from '../lib/kv-cache-analyzer.js';
 import { CONTEXT_WINDOW_FILE, readModelContextSize, buildContextWindowEvent, getContextSizeForModel } from '../lib/context-watcher.js';
-import { adaptContextWindow } from '../lib/context-rules.js';
+import { adaptContextWindow } from '@ccv/core/context-rules';
 
 function turnEndNotify(req, res, parsedUrl, isLocal, deps) {
   if (!isLocal) {

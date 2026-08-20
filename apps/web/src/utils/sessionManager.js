@@ -1,5 +1,5 @@
 // Wire format 协议详见 docs/WIRE_FORMAT.md（applyInPlaceLastMsgReplace 信号驱动短路是其客户端唯一消费方）
-import { isSessionBoundary, isPostClearCheckpoint } from '../../../../packages/app/src/utils/clearCheckpoint.js';
+import { isSessionBoundary, isPostClearCheckpoint } from '@ccv/core/clearCheckpoint';
 import { getEffectiveModel } from './effectiveModel.js';
 
 /**
@@ -353,7 +353,7 @@ export function resolveDisplaySessions(mainAgentSessions, pinnedTs, onlyCurrentS
  * 协议合同详见 `docs/WIRE_FORMAT.md` §3.3 SUGGESTION MODE 末位替换 + §2 关键字段词典
  * （`_inPlaceReplaceDetected` / `_isCheckpoint` 双信号必须齐发）。该文件是单一真理源，
  * 字段重命名 / 语义变更必须同时更新文档 + interceptor.js 写入点 + 本 helper + 双端回归测试
- * （`test/session-manager.test.js` + `test/session-manager.test.js`）。
+ * （`apps/web/test/session-manager.test.js` + `apps/web/test/session-manager.test.js`）。
  *
  * 双端 fp 函数互相独立、用途不同，**不要试图共用**：
  *  - 服务端 `server/lib/interceptor-core.js::fingerprintMsg` 用于 Plan C 检测末位 tail fp 异

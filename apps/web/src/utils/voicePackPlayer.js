@@ -15,7 +15,7 @@
 // that's fine: each tab unlocks its own audio independently per browser policy.
 
 import { apiUrl } from './apiUrl.js';
-import { BUNDLED_PACK_IDS } from '../../../../packages/app/server/lib/voice-pack-events.js';
+import { BUNDLED_PACK_IDS } from '@ccv/core/voice-pack-events';
 
 // Mirror BUNDLED_PACK_IDS into a Set for O(1) lookup in the hot URL-building
 // path. Frozen array ↔ Set conversion at module load is fine; the source list
@@ -219,7 +219,7 @@ export function unlockAudio() {
 
 // Test hook — reset module state between unit tests. **Do not call from app code.**
 // Exported as a named function so an "unused exports" linter can see it's referenced
-// by test/voice-pack-player.test.js (— without this, a future cleanup pass
+// by apps/web/test/voice-pack-player.test.js (— without this, a future cleanup pass
 // could mistake it for dead code).
 export function _resetForTests() {
   mainAudio = null;

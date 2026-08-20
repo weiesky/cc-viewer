@@ -9,7 +9,7 @@
 // A project "has a fork" iff a key exists for it (hasOwnProperty). Removing a fork
 // (toggle off) deletes the key so the project inherits global again.
 import { basename } from 'node:path';
-import { mergeApprovalModalPrefs } from './approval-modal-prefs.js';
+import { mergeApprovalModalPrefs } from '@ccv/core/approval-modal-prefs';
 import { listPlatforms } from './im/im-config.js';
 import { getProjectName } from './project-state.js';
 

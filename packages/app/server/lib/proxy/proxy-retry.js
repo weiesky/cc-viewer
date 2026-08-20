@@ -17,7 +17,7 @@
 //   - race/stagger use AbortController; cancelled requests must be released correctly.
 import { resolveProfileModel } from '../interceptor-core.js';
 import { readFileSync, existsSync } from 'node:fs';
-import { reportSwallowed } from '../error-report.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 
 // ── Configuration ─────────────────────────────────────────────────
 

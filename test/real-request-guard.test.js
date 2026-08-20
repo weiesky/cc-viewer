@@ -14,12 +14,31 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const TEST_DIR = __dirname;
+const REPO_ROOT = join(__dirname, '..');
+// Tests live in per-package test/ dirs since 2026-08-19 — the guard must sweep all of them.
+const TEST_ROOTS = [
+  __dirname,
+  join(REPO_ROOT, 'packages', 'app', 'test'),
+  join(REPO_ROOT, 'apps', 'web', 'test'),
+  join(REPO_ROOT, 'apps', 'electron', 'test'),
+  join(REPO_ROOT, 'packages', 'core', 'test'),
+  join(REPO_ROOT, 'packages', 'content', 'test'),
+];
 const SELF = 'real-request-guard.test.js';
+
+function listTestFiles(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...listTestFiles(p));
+    else if (entry.name.endsWith('.test.js')) out.push(p);
+  }
+  return out;
+}
 
 /** R1:调用了 spawnImProcess 但全文无 spawnImpl → 违规 */
 export function violatesSpawnInjection(src) {
@@ -50,13 +69,14 @@ describe('真实请求静态守卫(R1 spawn 注入 / R2 全局 fetch 纪律)', (
     assert.equal(violatesFetchDiscipline(`await fetch(url)`), false, '未赋值不管辖');
   });
 
-  it('全量 test/*.test.js:R1+R2 零违规', () => {
-    const files = readdirSync(TEST_DIR).filter((f) => f.endsWith('.test.js') && f !== SELF);
+  it('全量测试目录(根 test/ + 各包 test/):R1+R2 零违规', () => {
+    const files = TEST_ROOTS.flatMap(listTestFiles).filter((f) => !f.endsWith(SELF));
     const violations = [];
     for (const f of files) {
-      const src = readFileSync(join(TEST_DIR, f), 'utf-8');
-      if (violatesSpawnInjection(src)) violations.push(`${f} [R1: spawnImProcess 未注入 spawnImpl]`);
-      if (violatesFetchDiscipline(src)) violations.push(`${f} [R2: 全局 fetch 赋值无保存也无退出兜底]`);
+      const src = readFileSync(f, 'utf-8');
+      const rel = relative(REPO_ROOT, f);
+      if (violatesSpawnInjection(src)) violations.push(`${rel} [R1: spawnImProcess 未注入 spawnImpl]`);
+      if (violatesFetchDiscipline(src)) violations.push(`${rel} [R2: 全局 fetch 赋值无保存也无退出兜底]`);
     }
     assert.deepEqual(violations, [],
       `以下测试文件存在真实外呼/真实进程口子(规则见文件头注释):\n  ${violations.join('\n  ')}`);

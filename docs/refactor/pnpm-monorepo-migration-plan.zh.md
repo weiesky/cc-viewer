@@ -58,7 +58,7 @@ repo-root/
 ├── package.json                 # private 编排壳：根 scripts、c8、engines、packageManager、测试用 devDeps
 ├── pnpm-lock.yaml               # 唯一 lockfile
 ├── .changeset/                  # Changesets 配置（只管 cc-viewer 一个包，见 §2.4）
-├── test/                        # 全部测试保留在根（§3.3）
+├── test/                        # 仅跨层集成测试 + 根级守卫（2026-08-19 修订：单元测试迁入各包 test/）
 ├── docs/ site/ homebrew/ scripts/   # 不动（scripts 内个别路径修正，§3.2-7）
 ├── packages/
 │   └── app/        → 发布名 cc-viewer（唯一发布包；仓库布局 == tarball 布局）
@@ -96,6 +96,17 @@ repo-root/
 **评审验证通过的枢纽结论**：app 物理聚合方案下 pack 唯一增量动作就是拷 dist —— cli.js 的 13+ 处动态 import 全部是 `./server/*`、`./findcc.js`（包内闭合）；`cli.js:883`、`server.js:344` 自读 package.json 均相对自身位置；axios/qs 只出现在 overrides 而非代码。
 
 **后续可选（Phase C，不在本次范围）**：若未来愿意把 `cc-viewer-shared` 发布到 npm，或接受等深目录拷贝，再抽真正的 shared 包；本方案不阻塞该演进。
+
+> **Phase C 实施记录（2026-08-19，@ccv/core）**：shared 包已以第三条路线落地——私有 workspace 包
+> `@ccv/core`（packages/core/src，12 个同构判断模块 = 原 4 文件共享缝 + 8 个 web 共享 L0-leaf），
+> **不发布 npm**。packages/app 以普通版本号 `"@ccv/core": "0.0.0"` 声明依赖并列入
+> `bundledDependencies`：实证 npm pack（npm 11.17.0）会跟随 pnpm workspace symlink 把 core 打成
+> **真实文件**进 tarball（`node_modules/@ccv/core/**`），用户安装时 bundle 短路 registry 获取——
+> 既满足「server 原始源码发布、无 import 改写」的约束，又拿到包名互引的干净边界。配套机制：
+> `pnpm-workspace.yaml` 开 `linkWorkspacePackages: true`（普通版本号即可链 workspace 包）；
+> `.changeset/config.json` 开 `bumpVersionsWithWorkspaceProtocolOnly: true`（普通版本号内部依赖
+> 不进 changesets 版本图，否则 invalid-tree）；assemble-dist **零改动**。边界门新增 CORE 层 + R8，
+> R6 反转为 web → packages/app 全禁。详见 docs/refactor/package-boundaries.zh.md 迁移记录。
 
 ### 1.3 跨包引用方式
 
@@ -403,7 +414,7 @@ A1+A2+A3 合并执行（~2–3 天），中间不发布：
 ## 7. 已拍板决策（2026-08-18 用户确认）
 
 1. **聚合包目录名：`packages/app`**（import 路径写作 `packages/app/server/...`）。
-2. **测试目录保留在根 `test/`**，不按包拆分；路径改写走 §3.3 codemod + §3.4 手工清单。
+2. ~~**测试目录保留在根 `test/`**，不按包拆分；路径改写走 §3.3 codemod + §3.4 手工清单。~~ **（2026-08-19 用户推翻：测试全面迁入各包 test/，根 test/ 仅留跨层集成与根守卫——见文末「测试全面入包」附录）**
 3. **接受 Changesets 修正设计**：只管 `cc-viewer`（app）一个包，web/electron 版本静态。
 4. **pnpm 钉迁移日 latest 11.x**（配置双版本兼容，回退 10.x 只需一行）。
 5. **electron spike 失败不阻塞 A2**：electron/ 暂留根布局，web/app 拆分照常完成，electron 拆包顺延。
@@ -438,3 +449,15 @@ A1+A2+A3 合并执行（~2–3 天），中间不发布：
 2. **`pnpm changeset init` 在非 TTY 下挂起**（v3 init 新增 GitHub integration 交互提问）→ 改为手写 `.changeset/config.json` + `.changeset/README.md`（init 的全部产物即这两件），配置项与 §2.4 一致。
 3. **演练记录**：假 changeset（`"cc-viewer": patch`）→ `changeset status` 正确识别唯一 bump 对象 → `changeset version` 产出 1.7.23 + `packages/app/CHANGELOG.md` + 消费 changeset 文件 → 全部还原（package.json 回 1.7.22、删 CHANGELOG、`pnpm install --lockfile-only` 回同步 lockfile）。
 4. **CLAUDE.md 落地两条约定**：触及 `packages/app/` 的改动必须带 changeset；`pnpm-lock.yaml` 冲突禁止手编，`pnpm install` 重解后提交。版本号只能由 `pnpm changeset version` 在发版时 bump（取代旧的「publish 时手改」约定）；A1 过渡期的 release.yml electron job 描述同步刷为 A2 终态（pnpm + isolated linker）。
+
+---
+
+## 附录：测试全面入包实施记录（2026-08-19，已落地）
+
+**§7 决策 2 被用户推翻**：测试不再「保留在根 test/」，而是按被测代码归属迁入各包 `test/` 目录。
+
+1. **新布局**：根 `test/`（466 个 `*.test.js`）拆分为 `packages/app/test/`（282，含迁入的 `_helpers/` 与一份 `_shims/` 复制）、`apps/web/test/`（149，含一份 `_shims/` 复制）、`apps/electron/test/`（4）、`packages/core/test/`（+2 → 13）、`packages/content/test/`（1）；根 `test/` 仅留 28 个跨层集成与根级守卫测试（+ 原版 `_shims/`，3 个留根文件仍在消费）。根 `node --test` 默认递归发现全部，三个 test 脚本（test / test:cli / test:coverage*）本轮零改动。
+2. **改写规则**：import specifier 按目的地改（app 组 `../packages/app/`→`../`；core 一律改无扩展名裸导入 `@ccv/core/<name>`——exports 为 `"./*": "./src/*.js"`，带 `.js` 会解析失败）；路径常量区分两种形态——直接段形式删 `'packages','app'` 段，间接 repoRoot 形式把定义加深到三级 `..`（保留后接段）。`../../cc-viewer/interceptor.js` 是 fixture 字符串内容，不可全局替换（A2 附录 7 同款教训）。
+3. **门禁适配**：`scripts/verify-boundaries.mjs` 的 `EXCLUDE_DIRS` 新增 `'test'`（fail-closed classify 对测试文件无类别可判，不修则 pretest 全挂）；c8 exclude `test/**`→`**/test/**`；jsconfig 补三个新 test 目录。
+4. **验证**：全量 `test:cli` 0 fail（三轮）；文件守恒 466=282+149+4+2+1+28；`verify:tarball` 1564 文件与基线一致（tarball 不含测试，无需 changeset）。注意：全量 TAP 流在重负载下会非确定性截断个别文件尾部的计数（pre-existing，单跑该文件完整），逐文件精确对账应以切片/单跑为准。
+5. **顺手修复**：branch-server 与 branch-lib-im-bridge-core 两个测试从 `process.cwd()` 硬编码改为 `import.meta.url` 相对（位置无关）。

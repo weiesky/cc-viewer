@@ -8,7 +8,7 @@ import { ALL_TOOL_NAMES } from '../../utils/toolCatalog';
 import styles from './ConceptHelp.module.css';
 
 // Tool-* docs come from the shared catalog (single source of truth, guarded by
-// test/tool-catalog-concepts.test.js); the rest are non-tool concept docs.
+// apps/web/test/tool-catalog-concepts.test.js); the rest are non-tool concept docs.
 const OTHER_DOCS = [
   'SubAgent-Search',
   'MainAgent', 'Teammate', 'BodyFields', 'ResponseFields', 'Tools', 'ToolsFirst', 'CacheRebuild', 'BodyDiffJSON', 'TranslateContextPollution', 'KVCacheContent', 'ProxySwitch', 'GlobalSettings', 'QRCode', 'UltraPlan', 'CustomUltraplanExpert',
