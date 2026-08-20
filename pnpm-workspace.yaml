@@ -27,7 +27,9 @@ allowBuilds:
 # Carried over from package.json "overrides" (npm). node-gyp@^12.1.0 is
 # load-bearing: electron-builder chains @electron/rebuild → node-gyp, and
 # node-gyp 11 cannot build on the VS2026 Windows CI image (see release.yml).
+# fast-uri@4.1.2 pins CVE-2026-13676 (carried from the pre-monorepo manifest).
 overrides:
   axios: ^1.16.1
   qs: ^6.15.2
   node-gyp: ^12.1.0
+  fast-uri: 4.1.2

@@ -58,7 +58,7 @@
     "@ccv/core": "0.0.0",
     "@larksuiteoapi/node-sdk": "1.66.0",
     "@wecom/aibot-node-sdk": "1.0.7",
-    "adm-zip": "^0.5.17",
+    "adm-zip": "^0.6.0",
     "dingtalk-stream": "2.1.5",
     "discord.js": "14.26.4",
     "node-pty": "^1.1.0",

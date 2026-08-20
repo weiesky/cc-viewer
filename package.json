@@ -34,7 +34,7 @@
     "@xterm/xterm": "^6.0.0",
     "acorn": "^8.16.0",
     "acorn-jsx": "^5.3.2",
-    "adm-zip": "^0.5.17",
+    "adm-zip": "^0.6.0",
     "c8": "^11.0.0",
     "dingtalk-stream": "2.1.5",
     "marked": "^17.0.2",
