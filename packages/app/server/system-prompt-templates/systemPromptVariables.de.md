@@ -27,8 +27,6 @@ Diese Datei dokumentiert nur die Variablen in `systemPromptModel.md`, die zur La
 | `${os.hostname}` | Aktueller Hostname. | `MacBook-Pro.local` |
 | `${os.availableParallelism}` | Verfügbarer Parallelismus. | `10` |
 | `${os.totalMemory}` | Gesamtspeicher des Systems in Bytes. | `34359738368` |
-| `${os.freeMemory}` | Freier Speicher in Bytes. | `8589934592` |
-| `${os.uptime}` | Systemlaufzeit in Sekunden. | `123456` |
 
 ## Node.js-Laufzeit
 
@@ -43,8 +41,6 @@ Diese Datei dokumentiert nur die Variablen in `systemPromptModel.md`, die zur La
 
 | Variable | Description | Example |
 |---|---|---|
-| `${time.current}` | Aktuelle lokale Zeitzeichenkette. | `Thu Jul 09 2026 18:22:09 GMT+0800 (China Standard Time)` |
-| `${time.iso}` | Aktuelle ISO-Zeit. | `2026-07-09T10:22:09.000Z` |
 | `${time.date}` | Aktuelles lokales Datum. | `2026-07-09` |
 | `${time.timezone}` | Aktuelle Systemzeitzone. | `Asia/Shanghai` |
 
@@ -64,8 +60,6 @@ Diese Datei dokumentiert nur die Variablen in `systemPromptModel.md`, die zur La
 |---|---|---|
 | `${terminal.term}` | Aktuelles TERM. | `xterm-256color` |
 | `${terminal.colorTerm}` | Aktuelles COLORTERM. | `truecolor` |
-| `${terminal.columns}` | Aktuelle Terminal-Spaltenzahl. | `120` |
-| `${terminal.rows}` | Aktuelle Terminal-Zeilenzahl. | `40` |
 
 ## Dateisystem
 
@@ -91,7 +85,6 @@ Diese Datei dokumentiert nur die Variablen in `systemPromptModel.md`, die zur La
 | `${git.branch}` | Aktueller Git-Branch oder kurzer HEAD-Hash. | `main` |
 | `${git.mainBranch}` | Standard-Hauptbranch, typischerweise als PR- oder Merge-Ziel verwendet. | `main` |
 | `${git.userName}` | Aktueller Git `user.name`. | `Sky` |
-| `${git.status}` | Ausgabe von `git status --short`. | `M src/index.ts` |
 | `${git.recentCommits}` | Zusammenfassung der letzten Commits. | `abc1234 Fix prompt builder` |
 
 ## Speicher

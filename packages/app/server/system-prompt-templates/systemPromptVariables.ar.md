@@ -27,8 +27,6 @@
 | `${os.hostname}` | اسم المضيف الحالي. | `MacBook-Pro.local` |
 | `${os.availableParallelism}` | التوازي المتاح. | `10` |
 | `${os.totalMemory}` | إجمالي ذاكرة النظام بالبايتات. | `34359738368` |
-| `${os.freeMemory}` | الذاكرة المجانية بالبايتات. | `8589934592` |
-| `${os.uptime}` | وقت تشغيل النظام بالثواني. | `123456` |
 
 ## بيئة تشغيل Node.js
 
@@ -43,8 +41,6 @@
 
 | Variable | Description | Example |
 |---|---|---|
-| `${time.current}` | سلسلة الوقت المحلي الحالي. | `Thu Jul 09 2026 18:22:09 GMT+0800 (China Standard Time)` |
-| `${time.iso}` | الوقت الحالي بصيغة ISO. | `2026-07-09T10:22:09.000Z` |
 | `${time.date}` | التاريخ المحلي الحالي. | `2026-07-09` |
 | `${time.timezone}` | المنطقة الزمنية للنظام الحالية. | `Asia/Shanghai` |
 
@@ -64,8 +60,6 @@
 |---|---|---|
 | `${terminal.term}` | TERM الحالي. | `xterm-256color` |
 | `${terminal.colorTerm}` | COLORTERM الحالي. | `truecolor` |
-| `${terminal.columns}` | عدد أعمدة المحطة الطرفية الحالي. | `120` |
-| `${terminal.rows}` | عدد صفوف المحطة الطرفية الحالي. | `40` |
 
 ## نظام الملفات
 
@@ -91,7 +85,6 @@
 | `${git.branch}` | فرع git الحالي أو تجزئة HEAD المختصرة. | `main` |
 | `${git.mainBranch}` | الفرع الرئيسي الافتراضي، عادةً ما يُستخدم كهدف PR أو الدمج. | `main` |
 | `${git.userName}` | اسم git `user.name` الحالي. | `Sky` |
-| `${git.status}` | مخرجات `git status --short`. | `M src/index.ts` |
 | `${git.recentCommits}` | ملخص الالتزامات الأخيرة. | `abc1234 Fix prompt builder` |
 
 ## الذاكرة

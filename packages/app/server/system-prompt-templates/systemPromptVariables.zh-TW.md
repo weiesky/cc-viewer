@@ -27,8 +27,6 @@
 | `${os.hostname}` | 目前主機名稱。 | `MacBook-Pro.local` |
 | `${os.availableParallelism}` | 可用並行度。 | `10` |
 | `${os.totalMemory}` | 系統總記憶體，以位元組為單位。 | `34359738368` |
-| `${os.freeMemory}` | 可用記憶體，以位元組為單位。 | `8589934592` |
-| `${os.uptime}` | 系統運行時間，以秒為單位。 | `123456` |
 
 ## Node.js 執行環境
 
@@ -43,8 +41,6 @@
 
 | Variable | Description | Example |
 |---|---|---|
-| `${time.current}` | 目前本地時間字串。 | `Thu Jul 09 2026 18:22:09 GMT+0800 (China Standard Time)` |
-| `${time.iso}` | 目前 ISO 時間。 | `2026-07-09T10:22:09.000Z` |
 | `${time.date}` | 目前本地日期。 | `2026-07-09` |
 | `${time.timezone}` | 目前系統時區。 | `Asia/Shanghai` |
 
@@ -64,8 +60,6 @@
 |---|---|---|
 | `${terminal.term}` | 目前 TERM。 | `xterm-256color` |
 | `${terminal.colorTerm}` | 目前 COLORTERM。 | `truecolor` |
-| `${terminal.columns}` | 目前終端欄數。 | `120` |
-| `${terminal.rows}` | 目前終端列數。 | `40` |
 
 ## 檔案系統
 
@@ -91,7 +85,6 @@
 | `${git.branch}` | 目前 git 分支或短 HEAD 雜湊。 | `main` |
 | `${git.mainBranch}` | 預設主分支，通常用作 PR 或合併目標。 | `main` |
 | `${git.userName}` | 目前 git `user.name`。 | `Sky` |
-| `${git.status}` | `git status --short` 的輸出。 | `M src/index.ts` |
 | `${git.recentCommits}` | 最近提交的摘要。 | `abc1234 Fix prompt builder` |
 
 ## 記憶

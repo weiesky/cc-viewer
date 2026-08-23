@@ -27,8 +27,6 @@
 | `${os.hostname}` | Текущее имя хоста. | `MacBook-Pro.local` |
 | `${os.availableParallelism}` | Доступный параллелизм. | `10` |
 | `${os.totalMemory}` | Общая память системы в байтах. | `34359738368` |
-| `${os.freeMemory}` | Свободная память в байтах. | `8589934592` |
-| `${os.uptime}` | Время работы системы в секундах. | `123456` |
 
 ## Среда выполнения Node.js
 
@@ -43,8 +41,6 @@
 
 | Variable | Description | Example |
 |---|---|---|
-| `${time.current}` | Строка текущего местного времени. | `Thu Jul 09 2026 18:22:09 GMT+0800 (China Standard Time)` |
-| `${time.iso}` | Текущее время в ISO. | `2026-07-09T10:22:09.000Z` |
 | `${time.date}` | Текущая местная дата. | `2026-07-09` |
 | `${time.timezone}` | Текущий системный часовой пояс. | `Asia/Shanghai` |
 
@@ -64,8 +60,6 @@
 |---|---|---|
 | `${terminal.term}` | Текущий TERM. | `xterm-256color` |
 | `${terminal.colorTerm}` | Текущий COLORTERM. | `truecolor` |
-| `${terminal.columns}` | Текущее количество столбцов терминала. | `120` |
-| `${terminal.rows}` | Текущее количество строк терминала. | `40` |
 
 ## Файловая система
 
@@ -91,7 +85,6 @@
 | `${git.branch}` | Текущая ветка git или сокращённый хеш HEAD. | `main` |
 | `${git.mainBranch}` | Основная ветка по умолчанию, обычно используется как цель PR или слияния. | `main` |
 | `${git.userName}` | Текущее имя git `user.name`. | `Sky` |
-| `${git.status}` | Вывод `git status --short`. | `M src/index.ts` |
 | `${git.recentCommits}` | Сводка недавних коммитов. | `abc1234 Fix prompt builder` |
 
 ## Память

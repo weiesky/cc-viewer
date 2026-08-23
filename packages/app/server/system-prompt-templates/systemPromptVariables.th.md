@@ -27,8 +27,6 @@
 | `${os.hostname}` | ชื่อโฮสต์ปัจจุบัน | `MacBook-Pro.local` |
 | `${os.availableParallelism}` | ความสามารถในการประมวลผลแบบขนาน | `10` |
 | `${os.totalMemory}` | หน่วยความจำของระบบทั้งหมด เป็นไบต์ | `34359738368` |
-| `${os.freeMemory}` | หน่วยความจำว่าง เป็นไบต์ | `8589934592` |
-| `${os.uptime}` | เวลาทำงานของระบบ เป็นวินาที | `123456` |
 
 ## Runtime Node.js
 
@@ -43,8 +41,6 @@
 
 | Variable | Description | Example |
 |---|---|---|
-| `${time.current}` | สตริงเวลาท้องถิ่นปัจจุบัน | `Thu Jul 09 2026 18:22:09 GMT+0800 (China Standard Time)` |
-| `${time.iso}` | เวลา ISO ปัจจุบัน | `2026-07-09T10:22:09.000Z` |
 | `${time.date}` | วันที่ท้องถิ่นปัจจุบัน | `2026-07-09` |
 | `${time.timezone}` | โซนเวลาของระบบปัจจุบัน | `Asia/Shanghai` |
 
@@ -64,8 +60,6 @@
 |---|---|---|
 | `${terminal.term}` | TERM ปัจจุบัน | `xterm-256color` |
 | `${terminal.colorTerm}` | COLORTERM ปัจจุบัน | `truecolor` |
-| `${terminal.columns}` | จำนวนคอลัมน์เทอร์มินัลปัจจุบัน | `120` |
-| `${terminal.rows}` | จำนวนแถวเทอร์มินัลปัจจุบัน | `40` |
 
 ## ระบบไฟล์
 
@@ -91,7 +85,6 @@
 | `${git.branch}` | บรานช์ git ปัจจุบันหรือแฮช HEAD สั้น | `main` |
 | `${git.mainBranch}` | บรานช์หลักเริ่มต้น มักใช้เป็นเป้าหมาย PR หรือการผสาน | `main` |
 | `${git.userName}` | `user.name` ของ git ปัจจุบัน | `Sky` |
-| `${git.status}` | ผลลัพธ์ของ `git status --short` | `M src/index.ts` |
 | `${git.recentCommits}` | สรุปของคอมมิตล่าสุด | `abc1234 Fix prompt builder` |
 
 ## หน่วยความจำ

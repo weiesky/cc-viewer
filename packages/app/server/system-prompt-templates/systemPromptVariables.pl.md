@@ -27,8 +27,6 @@ Ten plik dokumentuje tylko zmienne w `systemPromptModel.md`, które muszą być 
 | `${os.hostname}` | Bieżąca nazwa hosta. | `MacBook-Pro.local` |
 | `${os.availableParallelism}` | Dostępny paralelizm. | `10` |
 | `${os.totalMemory}` | Całkowita pamięć systemu w bajtach. | `34359738368` |
-| `${os.freeMemory}` | Wolna pamięć w bajtach. | `8589934592` |
-| `${os.uptime}` | Czas pracy systemu w sekundach. | `123456` |
 
 ## Środowisko wykonawcze Node.js
 
@@ -43,8 +41,6 @@ Ten plik dokumentuje tylko zmienne w `systemPromptModel.md`, które muszą być 
 
 | Variable | Description | Example |
 |---|---|---|
-| `${time.current}` | Bieżący lokalny ciąg znaków czasu. | `Thu Jul 09 2026 18:22:09 GMT+0800 (China Standard Time)` |
-| `${time.iso}` | Bieżący czas ISO. | `2026-07-09T10:22:09.000Z` |
 | `${time.date}` | Bieżąca data lokalna. | `2026-07-09` |
 | `${time.timezone}` | Bieżąca strefa czasowa systemu. | `Asia/Shanghai` |
 
@@ -64,8 +60,6 @@ Ten plik dokumentuje tylko zmienne w `systemPromptModel.md`, które muszą być 
 |---|---|---|
 | `${terminal.term}` | Bieżący TERM. | `xterm-256color` |
 | `${terminal.colorTerm}` | Bieżący COLORTERM. | `truecolor` |
-| `${terminal.columns}` | Bieżąca liczba kolumn terminala. | `120` |
-| `${terminal.rows}` | Bieżąca liczba wierszy terminala. | `40` |
 
 ## System plików
 
@@ -91,7 +85,6 @@ Ten plik dokumentuje tylko zmienne w `systemPromptModel.md`, które muszą być 
 | `${git.branch}` | Bieżąca gałąź git lub krótka skrót HEAD. | `main` |
 | `${git.mainBranch}` | Domyślna gałąź główna, zazwyczaj używana jako cel PR lub połączenia. | `main` |
 | `${git.userName}` | Bieżące git `user.name`. | `Sky` |
-| `${git.status}` | Wyjście `git status --short`. | `M src/index.ts` |
 | `${git.recentCommits}` | Streszczenie niedawnych zatwierdzeń. | `abc1234 Fix prompt builder` |
 
 ## Pamięć

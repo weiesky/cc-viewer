@@ -25,13 +25,13 @@ import {
 function fixtureVariables(overrides = {}) {
   const base = {
     environment: { cwd: '/x', originalCwd: '/x', home: '/home/u', user: 'u', workspaceRoots: '/x', path: '/bin', lang: 'en_US.UTF-8' },
-    git: { isRepository: 'true', root: '/x', branch: 'main', mainBranch: 'main', userName: 'U', status: '', recentCommits: 'abc123 init' },
-    os: { platform: 'linux', type: 'Linux', arch: 'x64', shell: '/bin/bash', version: 'v', release: 'r', hostname: 'h', availableParallelism: 8, totalMemory: 100, freeMemory: 50, uptime: 10 },
+    git: { isRepository: 'true', root: '/x', branch: 'main', mainBranch: 'main', userName: 'U', recentCommits: 'abc123 init' },
+    os: { platform: 'linux', type: 'Linux', arch: 'x64', shell: '/bin/bash', version: 'v', release: 'r', hostname: 'h', availableParallelism: 8, totalMemory: 100 },
     runtime: { nodeVersion: 'v20', execPath: '/usr/bin/node', pid: 1, ppid: 0 },
-    time: { current: 'now', iso: '2026-01-01T00:00:00.000Z', date: '2026-01-01', timezone: 'UTC' },
+    time: { date: '2026-01-01', timezone: 'UTC' },
     permissions: { mode: 'default', approvalsReviewer: '' },
     sandbox: { mode: 'workspace-write', networkAccess: 'enabled', writableRoots: '/x' },
-    terminal: { term: 'xterm', colorTerm: 'truecolor', columns: 80, rows: 24 },
+    terminal: { term: 'xterm', colorTerm: 'truecolor' },
     filesystem: { tmpdir: '/tmp', pathSeparator: '/', pathDelimiter: ':' },
     model: { name: 'test-model', knowledgeCutoff: '2025' },
     memory: { dir: '/home/u/.claude/projects/-x/memory/', index: '# Memory index\n- [a](a.md) — hook', enabled: 'true' },
@@ -70,6 +70,14 @@ describe('createSystemPrompt: variable rendering + missing modes', () => {
   it('missingVariableMode "keep" preserves the raw placeholder', () => {
     const out = createSystemPrompt('a=${nope.here}', { variables: fixtureVariables(), missingVariableMode: 'keep' });
     assert.equal(out, 'a=${nope.here}');
+  });
+
+  it('删除的易变变量(git.status/os.uptime/time.current 等)在 keep 模式下对旧自定义模板保持字面,不被吞', () => {
+    // 这些变量已从 createSystemPromptVariables 删除(随 loop 漂移、误导上下文);用户旧模板若仍引用,
+    // keep 模式必须原样保留字面占位符(而非渲染空串/抛错),否则旧 prompt 静默失效。
+    const legacy = 'status=${git.status} up=${os.uptime} now=${time.current} cols=${terminal.columns} mem=${os.freeMemory} iso=${time.iso} rows=${terminal.rows}';
+    const out = createSystemPrompt(legacy, { variables: fixtureVariables(), missingVariableMode: 'keep' });
+    assert.equal(out, legacy, '已删除变量的占位符应原样保留');
   });
 
   it('missingVariableMode "throw" throws on an unknown variable', () => {

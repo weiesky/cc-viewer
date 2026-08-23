@@ -181,9 +181,6 @@ export function createSystemPromptVariables(overrides = {}, opts = {}) {
       userName: isGitRepository
         ? commandOutput('git', ['config', 'user.name'], cwd)
         : '',
-      status: isGitRepository
-        ? commandOutput('git', ['status', '--short'], cwd)
-        : '',
       recentCommits: isGitRepository
         ? commandOutput('git', ['log', '--oneline', '-5'], cwd)
         : '',
@@ -198,8 +195,6 @@ export function createSystemPromptVariables(overrides = {}, opts = {}) {
       hostname: stringOrEmpty(() => os.hostname()),
       availableParallelism: numberOrEmpty(() => os.availableParallelism()),
       totalMemory: numberOrEmpty(() => os.totalmem()),
-      freeMemory: numberOrEmpty(() => os.freemem()),
-      uptime: numberOrEmpty(() => os.uptime()),
     },
     runtime: {
       nodeVersion: stringOrEmpty(() => process.version),
@@ -208,8 +203,6 @@ export function createSystemPromptVariables(overrides = {}, opts = {}) {
       ppid: numberOrEmpty(() => process.ppid),
     },
     time: {
-      current: stringOrEmpty(() => now.toString()),
-      iso: stringOrEmpty(() => now.toISOString()),
       date: currentDate(timeZone, now),
       timezone: timeZone,
     },
@@ -234,8 +227,6 @@ export function createSystemPromptVariables(overrides = {}, opts = {}) {
     terminal: {
       term: envString('TERM'),
       colorTerm: envString('COLORTERM'),
-      columns: numberOrEmpty(() => process.stdout.columns),
-      rows: numberOrEmpty(() => process.stdout.rows),
     },
     filesystem: {
       tmpdir: stringOrEmpty(() => os.tmpdir()),

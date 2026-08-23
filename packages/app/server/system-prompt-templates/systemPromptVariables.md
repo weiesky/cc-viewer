@@ -27,8 +27,6 @@ This file documents only the variables in `systemPromptModel.md` that must be re
 | `${os.hostname}` | Current hostname. | `MacBook-Pro.local` |
 | `${os.availableParallelism}` | Available parallelism. | `10` |
 | `${os.totalMemory}` | Total system memory, in bytes. | `34359738368` |
-| `${os.freeMemory}` | Free memory, in bytes. | `8589934592` |
-| `${os.uptime}` | System uptime, in seconds. | `123456` |
 
 ## Node.js runtime
 
@@ -43,8 +41,6 @@ This file documents only the variables in `systemPromptModel.md` that must be re
 
 | Variable | Description | Example |
 |---|---|---|
-| `${time.current}` | Current local time string. | `Thu Jul 09 2026 18:22:09 GMT+0800 (China Standard Time)` |
-| `${time.iso}` | Current ISO time. | `2026-07-09T10:22:09.000Z` |
 | `${time.date}` | Current local date. | `2026-07-09` |
 | `${time.timezone}` | Current system timezone. | `Asia/Shanghai` |
 
@@ -64,8 +60,6 @@ This file documents only the variables in `systemPromptModel.md` that must be re
 |---|---|---|
 | `${terminal.term}` | Current TERM. | `xterm-256color` |
 | `${terminal.colorTerm}` | Current COLORTERM. | `truecolor` |
-| `${terminal.columns}` | Current terminal column count. | `120` |
-| `${terminal.rows}` | Current terminal row count. | `40` |
 
 ## Filesystem
 
@@ -91,7 +85,6 @@ This file documents only the variables in `systemPromptModel.md` that must be re
 | `${git.branch}` | Current git branch or short HEAD hash. | `main` |
 | `${git.mainBranch}` | Default main branch, typically used as the PR or merge target. | `main` |
 | `${git.userName}` | Current git `user.name`. | `Sky` |
-| `${git.status}` | Output of `git status --short`. | `M src/index.ts` |
 | `${git.recentCommits}` | Summary of recent commits. | `abc1234 Fix prompt builder` |
 
 ## Memory
