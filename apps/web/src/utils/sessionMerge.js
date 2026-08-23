@@ -72,7 +72,8 @@ export function shouldDegradeBrokenMerge(entry, prevSessions) {
  *  - 命中且 overlapLen === newLen：流式 no-op / suffix subset，messages 引用稳定（保 WeakMap 缓存）。
  *  - 命中且 overlapLen <  newLen：push `newMessages[overlapLen..]`，引用稳定。
  *  - 未命中：newLen<curLen → rebuild（/compact summary）；newLen===curLen → 整段 append（Plan Mode 全新片段）；
- *           newLen>curLen → 严格前缀扩展语义（push tail），fp 加固后真正存在重叠的窗口必被 anchor 命中。
+ *           newLen>curLen → 最深公共前缀扩展（截断到 fp 分叉点 L 后 push [L..]）——中断后 replay
+ *           丢 partial 的分叉形态由此保住排在分叉点的用户消息；无分叉时退化为旧的 push tail。
  *  - 降级 partial 基底（lastSession._partialData）且 anchor 未命中：任何长度的全量条目都整段替换
  *    （partial 前缀有中段缺口、不可信，push tail 会翻倍）。
  *
@@ -217,10 +218,28 @@ export function mergeMainAgentSessions(prevSessions, entry, options = {}) {
         }
       }
     } else {
-      // newLen > curLen 且 anchor (单点 newMsgs[0]) 未命中：保守回退至"严格前缀扩展"语义——
-      // 只 push newMessages[curLen..]。fp 加固后真正存在重叠的窗口必被 anchor 命中走上面分支；
-      // 这里 anchor 未命中意味着确实无重叠（罕见，仅艺测/再快照场景），保留旧推 tail 行为防回归。
-      for (let i = curLen; i < newLen; i++) {
+      // newLen > curLen 且 anchor (单点 newMsgs[0]) 未命中：最深公共前缀扩展——
+      // 逐位找双方 fp 相等的最长前缀 L，截断到 L 后 push newMessages[L..]。
+      // 中断场景（Esc/Stop/排队消息"立即追加"）：客户端会话尾部是被打断的 partial
+      // assistant，而下一轮 wire replay 丢弃该 partial、在 curLen-1 处放的是排队的
+      // user prompt——anchor 因窗口末位失配而 miss，旧的"严格前缀扩展"只 push
+      // [curLen..]，会把排在 curLen-1 的用户消息永久丢掉（prompt 不渲染、回复变孤儿）。
+      // 退化性质：无分叉时 L===curLen（与旧行为逐字节等价）；零公共前缀时 L=0 →
+      // 整段内容为 wire 真相（内容上等价于 _partialData / newLen<curLen 分支的整段替换；
+      // 本分支为原地截断+push，messages 引用保持稳定，保住 WeakMap 渲染缓存）。
+      let L = 0;
+      const limit = Math.min(curLen, newLen);
+      while (L < limit) {
+        let cfp = curFpsCache[L];
+        if (cfp === undefined) {
+          cfp = messageFingerprint(lastSession.messages[L]);
+          curFpsCache[L] = cfp;
+        }
+        if (newFps[L] !== cfp) break;
+        L++;
+      }
+      lastSession.messages.length = L;
+      for (let i = L; i < newLen; i++) {
         if (!newMessages[i]._timestamp) newMessages[i]._timestamp = entryTimestamp;
         lastSession.messages.push(newMessages[i]);
       }

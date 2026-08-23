@@ -790,6 +790,11 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   serverMod.setSdkInterruptTurn(sdkManager.interruptTurn);
   serverMod.setSdkGetPendingApprovals(sdkManager.getPendingApprovals);
   serverMod.setSdkGetInitSnapshot(sdkManager.getSdkInitSnapshot);
+  // Busy-queue bubble actions (queue-send-now / queue-remove / queue-clear / replay).
+  serverMod.setSdkSendQueuedNow(sdkManager.sendQueuedNow);
+  serverMod.setSdkRemoveQueued(sdkManager.removeQueued);
+  serverMod.setSdkClearQueued(sdkManager.clearQueued);
+  serverMod.setSdkGetQueueSnapshot(sdkManager.getQueueSnapshot);
 
   // 自动打开浏览器
   const protocol = serverMod.getProtocol();

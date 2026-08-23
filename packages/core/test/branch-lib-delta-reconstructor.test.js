@@ -479,6 +479,98 @@ describe('createIncrementalReconstructor inProgress 分支', () => {
   });
 });
 
+// ============================================================================
+// 孤儿占位符 checkpoint 基线吸收 — 被中断的请求（Esc/Stop/排队立即追加）永远等不到
+// done，占位符 inProgress 永不消散；其 checkpoint 形态携带权威全量状态，必须吸收进
+// 基线，否则后续 completed delta 的 _totalMessageCount 校验失配 → 毒化冻结整段会话。
+// ============================================================================
+describe('孤儿占位符 checkpoint 基线吸收（中断冻结修复）', () => {
+  it('批量：inProg checkpoint 吸收进基线 → 后续 completed delta 完整性通过、内容完整', () => {
+    const entries = [
+      cp([msg('user', 'q1'), msg('assistant', 'a1')], { extra: { _seq: 2, _seqEpoch: 'v2:t' } }),
+      // 占位符 delta：仍跳过（completed 孪生可能随后重复投递同一切片）
+      delta([msg('assistant', 'thinking')], 3, { inProgress: true, extra: { _seq: 3, _seqEpoch: 'v2:t' } }),
+      // 孤儿占位符 checkpoint（中断前最后一个请求的完整状态 5）→ 吸收进基线
+      cp([msg('user', 'q1'), msg('assistant', 'a1'), msg('assistant', 'thinking'), msg('user', 'tr'), msg('system', 's')],
+        { inProgress: true, extra: { _seq: 4, _seqEpoch: 'v2:t' } }),
+      // 中断后的下一个 completed 请求：会话无变化 → 空 delta，total=5（修复前在此断裂）
+      delta([], 5, { extra: { _seq: 5, _seqEpoch: 'v2:t' } }),
+      // 排队补发的 user prompt 随下一completed 到达
+      delta([msg('user', 'queued prompt'), msg('assistant', 'a2'), msg('system', 's2')], 8, { extra: { _seq: 6, _seqEpoch: 'v2:t' } }),
+    ];
+    const out = reconstructEntries(entries);
+    assert.equal(out[3]._reconstructBroken, undefined, '空 delta completed 不得标 broken');
+    const last = out[4];
+    assert.equal(last._reconstructBroken, undefined, '基线吸收后完整性校验必须通过');
+    assert.deepEqual(last.body.messages.map(m => m.content).slice(5), ['queued prompt', 'a2', 's2'], '排队消息拼接到正确位置');
+    // 占位符条目本身：inProgress 保留、内容不被改写（其展示仍由 merge 层按 inProgress 规则处理）
+    assert.equal(out[2].inProgress, true);
+    assert.deepEqual(out[2].body.messages.map(m => m.content), ['q1', 'a1', 'thinking', 'tr', 's']);
+  });
+
+  it('批量：乱序占位符 checkpoint（seq <= lastSeq）不吸收（不回卷基线）', () => {
+    const entries = [
+      cp([msg('user', 'a'), msg('assistant', 'b'), msg('user', 'c')], { extra: { _seq: 5, _seqEpoch: 'v2:t' } }),
+      cp([msg('user', 'x')], { inProgress: true, extra: { _seq: 3, _seqEpoch: 'v2:t' } }),
+      delta([msg('assistant', 'd')], 4, { extra: { _seq: 6, _seqEpoch: 'v2:t' } }),
+    ];
+    const out = reconstructEntries(entries);
+    const last = out[2];
+    assert.equal(last._reconstructBroken, undefined);
+    assert.deepEqual(last.body.messages.map(m => m.content), ['a', 'b', 'c', 'd'], '基线未被乱序占位符回卷');
+  });
+
+  it('批量：completed 孪生已落地后，同 seq 迟到的占位符 checkpoint 不吸收（`<=` 的等号臂）', () => {
+    const entries = [
+      cp([msg('user', 'a'), msg('assistant', 'b')], { extra: { _seq: 4, _seqEpoch: 'v2:t' } }),
+      // completed 终态先落（lastSeq=5）
+      cp([msg('user', 'a'), msg('assistant', 'b'), msg('user', 'c')], { extra: { _seq: 5, _seqEpoch: 'v2:t' } }),
+      // 同 seq 的占位符（起始态 [a,b]）迟到 → 吸收会回卷基线，必须跳过
+      cp([msg('user', 'a'), msg('assistant', 'b')], { inProgress: true, extra: { _seq: 5, _seqEpoch: 'v2:t' } }),
+      delta([msg('assistant', 'd')], 4, { extra: { _seq: 6, _seqEpoch: 'v2:t' } }),
+    ];
+    const out = reconstructEntries(entries);
+    const last = out[3];
+    assert.equal(last._reconstructBroken, undefined);
+    assert.deepEqual(last.body.messages.map(m => m.content), ['a', 'b', 'c', 'd'], '基线保持 completed 终态');
+  });
+
+  it('批量：inProgress 旧格式（非 delta）全量占位符不触碰基线', () => {
+    const entries = [
+      cp([msg('user', 'a')], { extra: { _seq: 1, _seqEpoch: 'v2:t' } }),
+      // 旧格式全量（无 _deltaFormat）+ inProgress：isDeltaEntry 门挡下，不重置基线
+      old([msg('user', 'old-ip')], { extra: { inProgress: true } }),
+      delta([msg('assistant', 'd')], 2, { extra: { _seq: 2, _seqEpoch: 'v2:t' } }),
+    ];
+    const out = reconstructEntries(entries);
+    assert.deepEqual(out[1].body.messages.map(m => m.content), ['old-ip'], '占位符内容不被改写');
+    assert.deepEqual(out[2].body.messages.map(m => m.content), ['a', 'd'], '基线未被旧格式占位符污染');
+  });
+
+  it('段级（reconstructSegment）：同样吸收占位符 checkpoint', () => {
+    const seg = [
+      cp([msg('user', 'q1')], { extra: { _seq: 1, _seqEpoch: 'v2:t' } }),
+      cp([msg('user', 'q1'), msg('assistant', 'a1'), msg('user', 'u2')], { inProgress: true, extra: { _seq: 2, _seqEpoch: 'v2:t' } }),
+      delta([msg('assistant', 'a2')], 4, { extra: { _seq: 3, _seqEpoch: 'v2:t' } }),
+    ];
+    const out = reconstructSegment(seg, null);
+    const last = out[2];
+    assert.equal(last._reconstructBroken, undefined);
+    assert.deepEqual(last.body.messages.map(m => m.content), ['q1', 'a1', 'u2', 'a2']);
+  });
+
+  it('增量：占位符 checkpoint 更新基线、条目原样返回，后续 completed delta 正确拼接', () => {
+    const r = createIncrementalReconstructor();
+    r.reconstruct(cp([msg('user', 'a'), msg('assistant', 'b')], { extra: { _seq: 1, _seqEpoch: 'v2:t' } }));
+    const ip = cp([msg('user', 'a'), msg('assistant', 'b'), msg('user', 'c')], { inProgress: true, extra: { _seq: 2, _seqEpoch: 'v2:t' } });
+    const outIp = r.reconstruct(ip);
+    assert.deepEqual(outIp.body.messages.map(m => m.content), ['a', 'b', 'c'], '条目内容原样返回（展示语义不变）');
+    const done = r.reconstruct(delta([msg('assistant', 'd')], 4, { extra: { _seq: 3, _seqEpoch: 'v2:t' } }));
+    assert.deepEqual(done.body.messages.map(m => m.content), ['a', 'b', 'c', 'd'], '后续 delta 基于吸收后的基线拼接');
+    assert.equal(done._reconstructBroken, undefined);
+  });
+});
+
 describe('createIncrementalReconstructor 常规分支', () => {
   it('非 delta mainAgent 旧格式 → 更新累积', () => {
     const r = createIncrementalReconstructor();

@@ -255,15 +255,16 @@ describe('mergeMainAgentSessions 分支', () => {
     assert.equal(out[0].messages[2]._timestamp, 'T2');
   });
 
-  it('anchor 未命中 + newLen>curLen → 严格前缀扩展(push tail from curLen)', () => {
+  it('anchor 未命中 + newLen>curLen + 零公共前缀 → LCP 扩展退化为整段替换（wire 真相）', () => {
     const existing = [strMsg('user', 'x')];
     const session = makeSession(existing);
-    // newMsgs[0]='DIFF' 不匹配 existing[0]，但 newLen=3>curLen=1 → push newMsgs[1..]
+    // newMsgs[0]='DIFF' 不匹配 existing[0]，L=0 → 截断旧尾部后整段替换为 wire 内容。
+    // （旧语义保留 x 再 push t1,t2，产生 [x,t1,t2] 混杂尾部——中断分叉修复后该形态
+    // 与 _partialData/newLen<curLen 分支同为"整段替换"。）
     const newMsgs = [strMsg('user', 'DIFF'), strMsg('assistant', 't1'), strMsg('user', 't2')];
     const out = mergeMainAgentSessions([session], makeEntry(newMsgs, { timestamp: 'T3' }));
     assert.equal(out[0].messages.length, 3);
-    // existing[0] 保留，push 的是 newMsgs[1],newMsgs[2]
-    assert.equal(out[0].messages[0].content, 'x');
+    assert.equal(out[0].messages[0].content, 'DIFF');
     assert.equal(out[0].messages[1].content, 't1');
     assert.equal(out[0].messages[2]._timestamp, 'T3');
   });
@@ -301,9 +302,10 @@ describe('findReverseAnchor 间接分支', () => {
     const session = makeSession(existing);
     // newMsgs[0] content=[] → fp 'user|empty' endsWith('|empty') → findReverseAnchor 返回 null
     const newMsgs = [blockMsg('user', []), strMsg('assistant', 'b'), strMsg('user', 'c')];
-    // newLen=3 > curLen=2，anchor null → push tail from curLen=2 → newMsgs[2]
+    // newLen=3 > curLen=2，anchor null → LCP：fp('user|empty') ≠ fp('a') → L=0 → 整段替换
     const out = mergeMainAgentSessions([session], makeEntry(newMsgs));
     assert.equal(out[0].messages.length, 3);
+    assert.deepEqual(out[0].messages[0].content, [], 'L=0：wire 的空块消息替换旧头部（旧语义会保留 a 产生混杂尾部）');
     assert.equal(out[0].messages[2].content, 'c');
   });
 
@@ -433,12 +435,85 @@ describe('shouldDegradeBrokenMerge + partial-session merge', () => {
     assert.equal(out[0]._partialData, undefined, '替换后清除 partial 标记');
   });
 
-  it('正常（非 partial）会话保持原前缀扩展语义：anchor 未命中 + newLen>curLen → push tail', () => {
+  it('正常（非 partial）会话前缀命中走 anchor 扩展：push 非重叠尾段', () => {
     const existing = [strMsg('user', 'q1')];
     const full = [strMsg('user', 'q1'), strMsg('assistant', 'r1'), strMsg('user', 'q2')];
     // q1 前缀存在 → anchor 命中，tailStart=1 → push r1,q2 → 3 条
     const out = mergeMainAgentSessions([makeSession(existing, {})], makeEntry(full, { timestamp: 'TT' }));
     assert.equal(out[0].messages.length, 3);
     assert.equal(out[0]._partialData, undefined);
+  });
+});
+
+// ─── 中断分叉的最深公共前缀扩展（忙时排队消息"立即追加"后的可见性修复）────────────
+// 形态：客户端会话尾部是被打断的 partial assistant，下一轮 wire replay 丢弃该 partial、
+// 在 curLen-1 处放的是排队的 user prompt → anchor 窗口末位失配 miss → 旧的 push-tail
+// 回退会把 curLen-1 处的用户消息永久跳过（prompt 不渲染、回复变孤儿气泡）。
+describe('mergeMainAgentSessions — LCP 扩展（中断分叉 / 排队消息可见性）', () => {
+  it('中断后 replay 丢弃 partial（PTY/SDK 同构）：排队 user prompt 落在分叉点，partial 被截断', () => {
+    const a1 = blockMsg('assistant', [{ type: 'tool_use', id: 'tu_1', name: 'Read' }]);
+    const tr = blockMsg('user', [{ type: 'tool_result', tool_use_id: 'tu_1', content: 'r' }]);
+    const partial = strMsg('assistant', '被中断的流式残段');
+    const session = makeSession([strMsg('user', 'q1'), a1, tr, partial], {});
+    const entry = makeEntry([
+      strMsg('user', 'q1'),
+      blockMsg('assistant', [{ type: 'tool_use', id: 'tu_1', name: 'Read' }]),
+      blockMsg('user', [{ type: 'tool_result', tool_use_id: 'tu_1', content: 'r' }]),
+      strMsg('user', '排队消息：立即追加'),
+      strMsg('assistant', 'r3'),
+    ], { timestamp: 'TT' });
+    const out = mergeMainAgentSessions([session], entry);
+    const msgs = out[0].messages;
+    assert.equal(msgs.length, 5);
+    assert.equal(msgs[3].content, '排队消息：立即追加', 'u2 落在分叉点（curLen-1）位置');
+    assert.equal(msgs[4].content, 'r3', '其后的回复紧随其后（不再是孤儿气泡）');
+    assert.ok(!msgs.some((m) => m.content === '被中断的流式残段'), 'aborted partial 被截断（对齐 wire 真相）');
+  });
+
+  it('SDK resume 形态（纯字符串序列）中断分叉 → 排队 prompt 落位', () => {
+    const session = makeSession([strMsg('user', 'u1'), strMsg('assistant', 'a1'), strMsg('assistant', 'a2-partial')], {});
+    const entry = makeEntry([strMsg('user', 'u1'), strMsg('assistant', 'a1'), strMsg('user', 'u2-queued'), strMsg('assistant', 'a3')], {});
+    const out = mergeMainAgentSessions([session], entry);
+    assert.deepEqual(out[0].messages.map((m) => m.content), ['u1', 'a1', 'u2-queued', 'a3']);
+  });
+
+  it('replay 含"重渲染的 partial"（fp 在 partial 处分叉）→ 以 wire 版本为准且 prompt 落位', () => {
+    const session = makeSession([strMsg('user', 'u1'), strMsg('assistant', 'a1'), strMsg('assistant', 'partial old')], {});
+    const entry = makeEntry([strMsg('user', 'u1'), strMsg('assistant', 'a1'), strMsg('assistant', 'partial new'), strMsg('user', 'u2'), strMsg('assistant', 'a3')], {});
+    const out = mergeMainAgentSessions([session], entry);
+    assert.deepEqual(out[0].messages.map((m) => m.content), ['u1', 'a1', 'partial new', 'u2', 'a3']);
+  });
+
+  it('连续多条排队消息：分叉点后多个 user/assistant 全部保留', () => {
+    const partial = strMsg('assistant', 'partial');
+    const session = makeSession([strMsg('user', 'q1'), strMsg('assistant', 'a1'), partial], {});
+    const entry = makeEntry([
+      strMsg('user', 'q1'), strMsg('assistant', 'a1'),
+      strMsg('user', 'u2'), strMsg('assistant', 'a3'),
+      strMsg('user', 'u3'), strMsg('assistant', 'a4'),
+    ], {});
+    const out = mergeMainAgentSessions([session], entry);
+    assert.deepEqual(out[0].messages.map((m) => m.content), ['q1', 'a1', 'u2', 'a3', 'u3', 'a4']);
+  });
+
+  it('零公共前缀（L=0）→ 整段替换为 wire 真相（旧行为会产生孤儿追加）', () => {
+    const session = makeSession([strMsg('user', 'x'), strMsg('assistant', 'y'), strMsg('user', 'z')], {});
+    const entry = makeEntry([strMsg('user', 'a'), strMsg('assistant', 'b'), strMsg('user', 'c'), strMsg('assistant', 'd')], {});
+    const out = mergeMainAgentSessions([session], entry);
+    assert.deepEqual(out[0].messages.map((m) => m.content), ['a', 'b', 'c', 'd'], '整段替换，不再产生孤儿追加');
+  });
+
+  it('重复 fp 候选骗过 anchor（窗口校验失败）但前缀全等 → L===curLen 退化：末位替换+追加，引用稳定', () => {
+    // existing 的第二条 'same' 是 anchor 的末位候选，但窗口校验在其后失配 → anchor null；
+    // LCP 前缀全等（L=3=curLen）→ 截断为 no-op、push [new-tail, extra]——
+    // 钉住"无分叉时与旧行为等价"之外的退化形态：分叉恰在末位时以 wire 末位为准。
+    const existing = [strMsg('user', 'same'), strMsg('assistant', 'mid'), strMsg('user', 'same'), strMsg('assistant', 'old-tail')];
+    const session = makeSession(existing);
+    const ref = session.messages;
+    const entry = makeEntry([strMsg('user', 'same'), strMsg('assistant', 'mid'), strMsg('user', 'same'), strMsg('assistant', 'new-tail'), strMsg('user', 'extra')], {});
+    const out = mergeMainAgentSessions([session], entry);
+    assert.strictEqual(out[0].messages, ref, '原地截断+push，messages 引用稳定（保 WeakMap 缓存）');
+    assert.equal(out[0].messages.length, 5);
+    assert.deepEqual(out[0].messages.map((m) => m.content), ['same', 'mid', 'same', 'new-tail', 'extra']);
   });
 });

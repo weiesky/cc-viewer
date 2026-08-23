@@ -504,3 +504,101 @@
   padding: 4px 12px;
   margin: 2px 16px 6px;
 }
+
+/* Queued-message bubbles — stacked above the composer while a run is busy
+   (Enter-while-streaming). Visual parity with the composer card (.chatInputWrapper):
+   same bg/border/shadow/hover border-color, and the stack uses the same horizontal
+   padding formula as .chatInputBar so bubbles are exactly as wide as — and centered
+   with — the input card (max-1000px, 16px floor). The stack is height-capped with
+   scroll so a long queue never eats the message pane (24vh for short mobile screens). */
+.queueBubbleStack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px max(16px, calc((100% - 1000px) / 2)) 6px;
+  max-height: min(132px, 24vh); /* ~3 two-line bubbles */
+  overflow-y: auto;
+}
+
+.queueBubble {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-composer);
+  border: 1px solid var(--border-secondary);
+  border-radius: 16px;
+  box-shadow: var(--shadow-composer);
+  padding: 4px 6px 4px 12px;
+  transition: border-color 0.2s;
+}
+
+/* Mirrors the composer's :focus-within border color (the card has no hover state). */
+.queueBubble:hover {
+  border-color: var(--text-disabled);
+}
+
+/* Mobile parity with .chatInputBar (21px gutters) / larger composer radius. */
+@media (max-width: 768px) {
+  .queueBubbleStack {
+    padding: 2px 21px 6px;
+  }
+
+  .queueBubble {
+    border-radius: 21px;
+  }
+}
+
+/* Pad mode restores the desktop composer formula, same as .chatInputBar. */
+:global(html.pad-mode) .queueBubbleStack { padding: 2px max(16px, calc((100% - 1000px) / 2)) 6px; }
+:global(html.pad-mode) .queueBubble { border-radius: 16px; }
+
+.queueBubbleText {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  color: var(--text-secondary);
+}
+
+/* "Send now" pill — same palette as the composer send button (.sendBtn:
+   --text-white on --bg-base-pure), fully rounded ends to sit snugly inside the bubble. */
+.queueBubbleSendNow {
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: none;
+  background: var(--text-white);
+  color: var(--bg-base-pure);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.queueBubbleSendNow:hover {
+  opacity: 0.85;
+}
+
+/* Tiny inline remove (×) — imagePreviewRemove-ish, but in-flow instead of absolute. */
+.queueBubbleRemove {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.queueBubbleRemove:hover {
+  color: var(--text-primary);
+  background: rgba(128, 128, 128, 0.12);
+}

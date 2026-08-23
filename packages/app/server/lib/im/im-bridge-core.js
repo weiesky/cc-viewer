@@ -361,9 +361,9 @@ function audit(inst, event, data) {
   } catch { /* best-effort */ }
 }
 
-/** Bracketed-paste + submit, matching the frontend's ptyChunkBuilder. Kept local so the core
- *  never imports pty-manager (which would pull node-pty into the unit test). */
-function bracketPasteSubmit(text) {
+/** Bracketed-paste + submit, matching the frontend's ptyChunkBuilder. Exported for
+ *  chat-queue.js (the chat-composer busy queue shares the exact same inject framing). */
+export function bracketPasteSubmit(text) {
   return ['\x1b[200~' + text + '\x1b[201~', '\r'];
 }
 
@@ -385,11 +385,17 @@ function markOrigin(id, senderId, content) {
  * Claude TUI. CR is removed too: it is the submit key, so leaving it in inbound text would be a
  * submit byte smuggled into the paste frame.
  */
-function sanitizeInbound(text) {
+export function sanitizeInbound(text) {
   return String(text)
     .replace(/\x1b\[20[01]~/g, '')
     // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
+}
+
+/** Cross-module injection mutex probe: chat-queue.js consults this before injecting into the
+ *  shared PTY so a chat-composer inject and an IM-bridge inject can never interleave. */
+export function anyActiveInjection() {
+  return !!activeInjection;
 }
 
 function remember(inst, msgId) {

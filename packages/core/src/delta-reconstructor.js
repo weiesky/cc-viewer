@@ -205,6 +205,46 @@ function _stepReconstruct(entry, ctx) {
 }
 
 /**
+ * 孤儿占位符 checkpoint 的基线吸收 — 三个重建 API 共用。
+ *
+ * 被中断的请求（Esc/Stop/排队消息"立即追加"）永远等不到 `done`，其占位符上的
+ * inProgress 标记永不消散。占位符 delta 必须继续排除在累积基线之外（completed 孪生
+ * 随时可能落地并重复投递同一切片）；但占位符 **checkpoint** 携带的是权威全量状态：
+ * 不吸收它，基线就停留在旧长度，随后第一条 completed delta 的长度校验
+ * （vs `_totalMessageCount`）必然失配 → 毒化冻结 → 之后整段会话在离线视图里消失
+ * （实测：排队补发的 user prompt 连同后续回答全部不显示）。
+ *
+ * 刻意绕过 seq 守卫、且不推进 lastSeq：占位符与其 completed 孪生共享同一 _seq，
+ * 不推进才能保证孪生随后仍被正常应用（checkpoint 重复重置是幂等的）。
+ * 乱序占位符（同 epoch 且 seq <= lastSeq，镜像 _seqGuardCheck 的判定）不吸收——
+ * 旧全量状态不得回卷基线；不同 epoch（进程重启 seq 归零）的占位符无从判 stale，
+ * 与守卫一样按"新写进程"放行（同 §3.7 的盲信 epoch 语义）。
+ *
+ * 依赖的不变量（WIRE_FORMAT §3.7 形态冻结）：占位符 checkpoint 的 completed 孪生
+ * 必然也是 checkpoint（同一条目对象的就地转化）——若孪生以 delta 形态携带已吸收
+ * 的切片落地，会造成重复拼接直至下一 checkpoint 自愈（有界，非污染）。
+ *
+ * @param {object} entry - inProgress 条目（调用方已判定）
+ * @param {{accumulated: Array, intState: {baselineSeen: boolean, poisoned: boolean},
+ *          seqState: {lastSeq: number, lastEpoch: string|null}}} ctx
+ */
+function _absorbOrphanCheckpoint(entry, ctx) {
+  if (!isDeltaEntry(entry)) return; // v1 旧格式全量占位符：completed 到达时按全量重置即可，维持旧行为
+  if (!isCheckpointEntry(entry)) return;
+  const msgs = entry.body?.messages;
+  if (!Array.isArray(msgs)) return;
+  const seq = entry._seq;
+  if (typeof seq === 'number') {
+    const epoch = entry._seqEpoch || null;
+    const st = ctx.seqState;
+    if (st.lastEpoch !== null && epoch === st.lastEpoch && seq <= st.lastSeq) return;
+  }
+  ctx.accumulated = [...msgs];
+  ctx.intState.baselineSeen = true;
+  ctx.intState.poisoned = false;
+}
+
+/**
  * 批量重建 — 用于 readLogFile() 和 readLocalLog()。
  * 输入已去重的条目数组，输出重建后的条目数组（原地修改 body.messages）。
  * 非 mainAgent delta 条目不受影响。
@@ -224,8 +264,14 @@ export function reconstructEntries(entries) {
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
     // 跳过 inProgress 条目：孤立的 inProgress（请求超时未完成）在 dedup 后残留，
-    // 其 delta 与后续 completed 条目重复，双重累积会导致 accumulated 偏移
-    if (entry.inProgress) continue;
+    // 其 delta 与后续 completed 条目重复，双重累积会导致 accumulated 偏移。
+    // 例外：占位符 checkpoint 携带权威全量状态 → 吸收进基线（见 _absorbOrphanCheckpoint），
+    // 否则被中断请求留下的纯占位符记录会让基线落后、随后 completed delta 的完整性校验
+    // 失配 → 毒化冻结 → 之后整段会话（含排队补发的 user prompt）在离线视图消失。
+    if (entry.inProgress) {
+      _absorbOrphanCheckpoint(entry, ctx);
+      continue;
+    }
     if (_stepReconstruct(entry, ctx)) broken.push(i);
   }
 
@@ -308,7 +354,12 @@ export function reconstructSegment(segment, nextCheckpoint, sharedSeqState) {
 
   for (let i = 0; i < segment.length; i++) {
     const entry = segment[i];
-    if (entry.inProgress) continue;
+    // inProgress 跳过规则与 reconstructEntries 同源：delta 跳过；占位符 checkpoint
+    // 吸收进基线（防中断孤儿冻结后续条目，见 _absorbOrphanCheckpoint）。
+    if (entry.inProgress) {
+      _absorbOrphanCheckpoint(entry, ctx);
+      continue;
+    }
     if (_stepReconstruct(entry, ctx)) broken.push(i);
   }
 
@@ -353,12 +404,17 @@ export function createIncrementalReconstructor() {
       // 防 completed 被"同 seq 重发"规则误吞）。
       // 这样客户端收到完整 messages（避免 delta 闪烁），
       // 而后续 completed 条目仍能基于正确的 accumulated 重建。
+      // 例外：占位符 checkpoint 携带权威全量状态 → 吸收进基线（否则被中断请求的
+      // 占位符记录会让基线落后，后续 completed delta 完整性失配 → 毒化冻结，
+      // 见 _absorbOrphanCheckpoint）；条目本身仍原样返回（展示语义不变）。
       if (entry.inProgress) {
         if (isDeltaEntry(entry) && !isCheckpointEntry(entry)) {
           const msgs = entry.body?.messages;
           if (Array.isArray(msgs)) {
             entry.body.messages = [...ctx.accumulated, ...msgs];
           }
+        } else {
+          _absorbOrphanCheckpoint(entry, ctx);
         }
         return entry;
       }

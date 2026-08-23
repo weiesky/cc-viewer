@@ -229,6 +229,9 @@ class ChatView extends React.Component {
       needsInitialSnap: initialTerminalWidth === null, // 标记是否需要初始化吸附
       inputEmpty: true,
       pendingInput: null,
+      // Server-authoritative busy queue (Enter-while-streaming) — mirrored from the
+      // `queue-state` WS broadcast; rendered as floating bubbles above the composer.
+      queuedMessages: [],
       stickyBottom: true,
       userScrolling: false, // 用户滚动意图暂停窗口（wheel/touch/pointer 拖动进行中或空窗内）
       ptyPrompt: null,
@@ -862,6 +865,17 @@ class ChatView extends React.Component {
           this._sessionItemCache = [];
           // 会话/工作区切换：清除乐观停止标志，避免陈旧 true 泄漏到新会话
           if (this.state.stopOptimistic) this._clearStopOptimistic();
+          // Session/workspace switch: drop the parked busy queue on BOTH sides — queued text
+          // belongs to the old session's context and must not fire into the new one later.
+          // MUST stay inside this guard: mainAgentSessions gets a fresh array reference on
+          // every streaming SSE tick, so an unguarded clear would destroy the queue exactly
+          // while Claude is busy (this feature's primary scenario).
+          if (this.state.queuedMessages.length) {
+            this.setState({ queuedMessages: [] });
+            if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
+              this._inputWs.send(JSON.stringify({ type: 'queue-clear' }));
+            }
+          }
         }
         this._prevSessions = this.props.mainAgentSessions;
       }
@@ -2438,6 +2452,14 @@ class ChatView extends React.Component {
               postTokens: msg.postTokens ?? null,
             }].slice(-10),
           }));
+        } else if (msg.type === 'queue-state') {
+          // Server-authoritative busy queue → floating bubbles above the composer.
+          // Full-snapshot semantics: replace, never merge.
+          this.setState({ queuedMessages: Array.isArray(msg.items) ? msg.items : [] });
+        } else if (msg.type === 'queue-rejected') {
+          // Negative ack for an optimistic enqueue (e.g. queue full): the composer was
+          // already cleared, so tell the user the message went nowhere.
+          message.warning(t('ui.chatInput.queueFull'));
         }
     } catch (e) { reportSwallowed('ws.terminal-msg', e, { msgType: msg?.type }); }
   };
@@ -2468,8 +2490,8 @@ class ChatView extends React.Component {
       }
     } catch {}
     if (this.state.pendingPermission || this.state.pendingPlanApproval || this.state.pendingAsk
-        || this.state.pendingPtyPlan || this.state.askQueue?.length) {
-      this.setState({ pendingPermission: null, permissionQueue: [], pendingPlanApproval: null, pendingAsk: null, askQueue: [], askMetaMap: {}, pendingPtyPlan: null });
+        || this.state.pendingPtyPlan || this.state.askQueue?.length || this.state.queuedMessages?.length) {
+      this.setState({ pendingPermission: null, permissionQueue: [], pendingPlanApproval: null, pendingAsk: null, askQueue: [], askMetaMap: {}, pendingPtyPlan: null, queuedMessages: [] });
     }
     // ask 实例 flag 由控制器 reset（state 键已在上面那条合并 setState 里清）
     this._askFlow.resetAskFlagsOnClose();
@@ -2722,10 +2744,11 @@ class ChatView extends React.Component {
     // 上传本身(HTTP)继续 resolve 进 pendingImages,无害,用户可稍后再发。
     this._clearDeferSend();
     if (!this._inputWs || this._inputWs.readyState !== WebSocket.OPEN) return;
-    // Stop 应 halt 所有待发：清掉 typed-interrupt 武装的 pending-flush 队列（含 500ms 兜底 timer）。
-    // 否则随后到达的 ask-hook-cancelled ack（本端 handleAskCancel 或服务端 interruptTurn 广播）会
-    // takePendingFlush 把它发出去 —— 等于点了"停止"又自动发消息。与服务端 interruptTurn 清空
-    // _messageQueue 同源（停止即丢弃在途待发）。
+    // Stop should halt everything in flight: clear the typed-interrupt armed pending-flush
+    // queue (including its 500ms fallback timers). Otherwise a later ask-hook-cancelled ack
+    // (local handleAskCancel or a server broadcast) would takePendingFlush + send it — i.e.
+    // "stop" would auto-send a message. (The server-side busy queue is NOT cleared on Stop —
+    // it stays parked per product decision; PTY mode sends queue-suppress below instead.)
     if (this._pendingFlushQueue && this._pendingFlushQueue.length) {
       for (const entry of this._pendingFlushQueue) clearTimeout(entry.tid);
       this._pendingFlushQueue.length = 0;
@@ -2746,6 +2769,11 @@ class ChatView extends React.Component {
           this._inputWs.send(JSON.stringify({ type: 'input', data: '\x1b' }));
         }
       }, STOP_FOCUS_IN_ESC_DELAY_MS);
+      // Stop keeps the busy queue parked (product decision): suppress the automatic
+      // turn-end drain so the ESC'd turn doesn't immediately fire the queued bubbles.
+      if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
+        this._inputWs.send(JSON.stringify({ type: 'queue-suppress' }));
+      }
     }
     // 乐观即时切非运行态：中断已即时发出，按钮无需等 AppBase 的 SSE+2s 才翻 false。
     this.setState({ stopOptimistic: true });
@@ -2799,6 +2827,30 @@ class ChatView extends React.Component {
         }
       }, 500);
       this._pendingFlushQueue.push({ askId, text, tid });
+      return;
+    }
+
+    // Busy → enqueue instead of sending immediately (Codex/Claude-Code queue parity):
+    // the server holds the message and broadcasts `queue-state`, rendered as floating
+    // bubbles above the composer with per-item "send now" / remove actions.
+    // No `pendingInput` here: the bubble IS the visual (setting both would double-render).
+    // `onUserMessageSent` still fires for non-/clear text so a queued follow-up unlocks
+    // the context bar the same way an immediate send would.
+    const uiStreamingNow = this.props.isStreaming && !this.state.stopOptimistic;
+    if (uiStreamingNow) {
+      const ws = this._inputWs;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return; // keep the draft (WS-closed precedent)
+      if (!/^\s*\/clear(\s|$)/.test(text)) this.props.onUserMessageSent?.();
+      textarea.value = '';
+      resizeChatTextarea(textarea, { focused: document.activeElement === textarea });
+      this._clearPendingImages();
+      this.setState({ inputEmpty: true, inputSuggestion: null });
+      if (this.props.sdkMode) {
+        // sdk-manager self-queues when busy and broadcasts queue-state.
+        ws.send(JSON.stringify({ type: 'sdk-user-message', text }));
+      } else {
+        ws.send(JSON.stringify({ type: 'queue-message', text }));
+      }
       return;
     }
 
@@ -3735,6 +3787,40 @@ class ChatView extends React.Component {
               && this.state.sdkSlashCommands.length > 0 && (
               <div className={styles.sdkNoticeBanner}>
                 {t('ui.sdkSlashHint', { commands: this.state.sdkSlashCommands.slice(0, 8).join('  ') })}
+              </div>
+            )}
+            {/* Queued-message bubbles (Enter-while-busy). FIFO top→bottom; each row offers
+                "send now" (interrupt + inject immediately) and remove. Server-authoritative:
+                rows appear/disappear only via queue-state broadcasts. */}
+            {this.state.queuedMessages.length > 0 && (
+              <div className={styles.queueBubbleStack} role="status" aria-label={t('ui.chatInput.queueHint')}>
+                {this.state.queuedMessages.map((item) => (
+                  <div className={styles.queueBubble} key={item.id} title={item.text}>
+                    <span className={styles.queueBubbleText}>{item.text}</span>
+                    <button
+                      type="button"
+                      className={styles.queueBubbleRemove}
+                      aria-label={t('ui.chatInput.queueRemove')}
+                      title={t('ui.chatInput.queueRemove')}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
+                          this._inputWs.send(JSON.stringify({ type: 'queue-remove', id: item.id }));
+                        }
+                      }}
+                    >&times;</button>
+                    <button
+                      type="button"
+                      className={styles.queueBubbleSendNow}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
+                          this._inputWs.send(JSON.stringify({ type: 'queue-send-now', id: item.id }));
+                        }
+                      }}
+                    >{t('ui.chatInput.queueSendNow')}</button>
+                  </div>
+                ))}
               </div>
             )}
             <ChatInputBar

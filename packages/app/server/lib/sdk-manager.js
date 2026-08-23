@@ -65,8 +65,14 @@ let _runWaterfallHook = null;
 // reconnect mid-approval orphans the modal and the wait silently times out to deny.
 const _pendingApprovals = new Map();
 
-// Message queue for messages sent while a query is running
+// Message queue for messages sent while a query is running. Items are { id, text, ts } —
+// the id lets web clients act on individual queued bubbles (send-now / remove) and the
+// queue-state WS broadcast keeps every client in sync (server is the source of truth).
 let _messageQueue = [];
+// Stop semantics (product decision): Stop parks the queue instead of dropping it —
+// interruptTurn sets this flag so sendUserMessage's drain loop exits without running the
+// parked items; cleared when a fresh user message / send-now starts a new turn.
+let _suppressDrain = false;
 
 export function isSdkAvailable() {
   return typeof _query === 'function';
@@ -121,23 +127,43 @@ export async function sendUserMessage(text) {
 
   // If a query is already running, queue this message and return
   if (_queryBusy) {
-    _messageQueue.push(text);
+    _messageQueue.push(_makeQueueItem(text));
+    _broadcastQueueState();
     return;
   }
 
   _queryBusy = true;
+  // A fresh user-initiated turn re-arms automatic draining of parked (Stop-kept) items.
+  _suppressDrain = false;
 
   try {
     await _executeQuery(text);
 
     // Process any queued messages
-    while (_messageQueue.length > 0) {
+    while (_messageQueue.length > 0 && !_suppressDrain) {
       const next = _messageQueue.shift();
-      await _executeQuery(next);
+      _broadcastQueueState();
+      await _executeQuery(next.text);
     }
   } finally {
     _queryBusy = false;
   }
+}
+
+function _makeQueueItem(text) {
+  return {
+    id: 'q_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+    text,
+    ts: Date.now(),
+  };
+}
+
+/** Broadcast the queue snapshot to all terminal-WS clients (drives the floating bubbles). */
+function _broadcastQueueState() {
+  if (!_broadcastWs) return;
+  try {
+    _broadcastWs({ type: 'queue-state', items: _messageQueue.map(({ id, text, ts }) => ({ id, text, ts })) });
+  } catch (err) { console.warn('[sdk-manager] queue-state broadcast threw:', err?.message); }
 }
 
 /**
@@ -527,41 +553,20 @@ export function cancelApproval(id, reason) {
 }
 
 /**
- * Interrupt the current turn (user clicked the Stop button) while KEEPING the
- * session alive so the next message resumes the same conversation.
+ * Shared interrupt core: cancel in-flight approvals (else their canUseTool promises stay
+ * parked and the timeout timers leak, and clients keep a ghost approval modal open) and
+ * close the active query iterator. `_executeQuery`'s finally block then nulls
+ * `_activeQuery`; `sendUserMessage`'s finally clears `_queryBusy`.
  *
- * Only closes the active query iterator — `_executeQuery`'s finally block then
- * nulls `_activeQuery`; `sendUserMessage`'s finally clears `_queryBusy`.
- * Crucially we do NOT call `_resetFullState()`, so `_sessionId` is preserved
- * and the next sendUserMessage resumes via `options.resume`.
- *
- * Contrast with `stopSession()` below, which is the hard process-exit cleanup
- * that also nulls `_sessionId` (loses conversation continuity).
- *
- * Also drops any queued-but-not-yet-dispatched messages (`_messageQueue`): a Stop
- * must halt pending work, otherwise `sendUserMessage`'s drain loop would immediately
- * run the next queued message right after the interrupt (e.g. a second client queued
- * a message while turn 1 streamed). Session continuity is unaffected — the queue only
- * holds not-yet-started turns.
- *
- * Returns the list of approvals that were pending at interrupt time
- * (`[{ id, kind }]`) so the caller (server.js) can broadcast modal-close
- * messages to every client. Always an array (empty when nothing was pending).
+ * Returns the list of approvals that were pending (`[{ id, kind }]`) so the caller
+ * (server.js) can broadcast modal-close messages to every client. Always an array.
  */
-export function interruptTurn() {
-  // Drain any in-flight approval BEFORE closing the query: otherwise its canUseTool
-  // promise stays parked and its timeout timer (24h ask / 5min plan-perm) leaks until
-  // expiry, and clients keep a ghost approval modal open. Mirrors _resetFullState's
-  // approval cleanup (resolve(null) → canUseTool denies; harmless since we're closing).
+function _interruptActiveQuery() {
   const cancelled = Array.from(_pendingApprovals, ([id, pending]) => ({ id, kind: pending.kind || null }));
   for (const { id } of cancelled) {
     _pendingApprovals.get(id)?.resolve(null);
   }
   _pendingApprovals.clear();
-
-  // Drop queued (not-yet-dispatched) messages so Stop actually halts pending work —
-  // else sendUserMessage's `while (_messageQueue.length)` drain runs the next one.
-  _messageQueue = [];
 
   if (_activeQuery) {
     // Best-effort streaming-mode control request (no-op / rejects in single-prompt mode → swallow).
@@ -570,6 +575,94 @@ export function interruptTurn() {
     try { if (typeof _activeQuery.close === 'function') _activeQuery.close(); } catch {}
   }
   return cancelled;
+}
+
+/**
+ * Interrupt the current turn (user clicked the Stop button) while KEEPING the
+ * session alive so the next message resumes the same conversation.
+ *
+ * Crucially we do NOT call `_resetFullState()`, so `_sessionId` is preserved
+ * and the next sendUserMessage resumes via `options.resume`.
+ *
+ * Contrast with `stopSession()` below, which is the hard process-exit cleanup
+ * that also nulls `_sessionId` (loses conversation continuity).
+ *
+ * Stop KEEPS queued messages (product decision, matching the web UX where queued bubbles
+ * stay parked after Stop): `_suppressDrain` stops sendUserMessage's drain loop from running
+ * them right after the interrupt; the park lifts when a fresh user message / send-now
+ * starts a new turn. The queue-state broadcast lets clients keep their bubbles.
+ *
+ * Returns the list of approvals that were pending at interrupt time
+ * (`[{ id, kind }]`) so the caller (server.js) can broadcast modal-close
+ * messages to every client. Always an array (empty when nothing was pending).
+ */
+export function interruptTurn() {
+  const cancelled = _interruptActiveQuery();
+  _suppressDrain = true;
+  _broadcastQueueState();
+  return cancelled;
+}
+
+/**
+ * Send-now on a queued bubble: interrupt the running turn and make this message the next
+ * one executed. Unlike Stop, this does NOT suppress draining — the in-flight
+ * sendUserMessage loop picks the prioritized item up as soon as the abort settles
+ * (JS single-threading: the splice+unshift below is synchronous, so the drain's next
+ * iteration always sees it at the head).
+ *
+ * When no turn is running (parked queue after Stop), the message is executed immediately
+ * as a fresh turn.
+ *
+ * Known semantic: if the FIRST turn is interrupted before its system/init message was
+ * processed, `_sessionId` is still null and the prioritized message starts a fresh session
+ * (the aborted first turn is not resumable) — same as Stop-then-send on turn one.
+ *
+ * Returns the cancelled-approvals list (same shape as interruptTurn) so server.js can
+ * close approval modals on all clients.
+ */
+export function sendQueuedNow(id) {
+  const idx = _messageQueue.findIndex((it) => it.id === id);
+  if (idx < 0) return []; // unknown / already dispatched — no-op BEFORE any interrupt
+  const [item] = _messageQueue.splice(idx, 1);
+  // Send-now ALWAYS means "run this now" — lift a Stop-park even when the aborted turn's
+  // unwind is still in flight (_queryBusy still true). Without this, the drain loop's
+  // `!_suppressDrain` condition would exit with the item already spliced out → silent loss.
+  _suppressDrain = false;
+
+  if (!_queryBusy) {
+    // Parked queue, idle session: run it now (broadcast happens via the drain path —
+    // here we broadcast explicitly since the item left the queue).
+    _broadcastQueueState();
+    // Fire-and-forget matches sendUserMessage's existing call sites (WS handler does not await).
+    sendUserMessage(item.text).catch((err) => console.warn('[sdk-manager] send-now query failed:', err?.message));
+    return [];
+  }
+
+  _messageQueue.unshift(item);
+  const cancelled = _interruptActiveQuery();
+  _broadcastQueueState();
+  return cancelled;
+}
+
+/** Remove one queued message (bubble ×). Returns true when found. */
+export function removeQueued(id) {
+  const idx = _messageQueue.findIndex((it) => it.id === id);
+  if (idx < 0) return false;
+  _messageQueue.splice(idx, 1);
+  _broadcastQueueState();
+  return true;
+}
+
+/** Drop all queued messages WITHOUT touching the running turn (session switch). */
+export function clearQueued() {
+  if (_messageQueue.length === 0) return;
+  _messageQueue = [];
+  _broadcastQueueState();
+}
+
+/** Queue snapshot for WS-reconnect replay (same pattern as getSdkInitSnapshot). */
+export function getQueueSnapshot() {
+  return _messageQueue.map(({ id, text, ts }) => ({ id, text, ts }));
 }
 
 /**
@@ -592,7 +685,12 @@ function _resetFullState() {
   _queryBusy = false;
   _initAnnouncedSid = '';
   _lastInitSnapshot = null;
+  const hadQueued = _messageQueue.length > 0;
   _messageQueue = [];
+  _suppressDrain = false;
+  // Only broadcast on an actual change — initSdkSession calls this before any client cares,
+  // and an empty-to-empty broadcast would just be noise on the wire.
+  if (hadQueued) _broadcastQueueState();
   // Reject all pending approvals
   for (const [, pending] of _pendingApprovals) {
     pending.resolve(null);

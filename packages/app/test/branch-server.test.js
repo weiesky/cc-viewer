@@ -239,6 +239,42 @@ try {
     send({ type: 'ask-cancel', id: 'cancel_via_sdk_1', reason: 'abort' }); // _sdkCancelApproval 路径 handled=true
     await new Promise((r) => setTimeout(r, 300));
     try { ws.close(); } catch {}
+  } else if (scenario === 'sdkQueueWs') {
+    // SDK 模式 queue-* 分支：setter 路由 + qid 正则门禁 + 连接 replay + queue-message 兜底 relay。
+    // 断言失败 → exit(4)（外层只认 status===0）。
+    const _wsmod = await import(${JSON.stringify(WS_ENTRY_URL)});
+    const WebSocket = _wsmod.WebSocket || _wsmod.default || _wsmod;
+    const tok = mod.getAccessToken();
+    const calls = { relay: [], sendNow: [], remove: [], clear: 0 };
+    mod.setSdkSendUserMessage(async (t) => { calls.relay.push(t); });
+    mod.setSdkSendQueuedNow((id) => { calls.sendNow.push(id); return [{ id: 'a9', kind: 'ask' }]; });
+    mod.setSdkRemoveQueued((id) => { calls.remove.push(id); return true; });
+    mod.setSdkClearQueued(() => { calls.clear++; });
+    mod.setSdkGetQueueSnapshot(() => [{ id: 'q_parked1', text: 'parked', ts: 1 }]);
+    const ws = new WebSocket('ws://127.0.0.1:' + port + '/ws/terminal?token=' + tok);
+    let replayed = null;
+    ws.on('message', (raw) => {
+      try { const m = JSON.parse(raw.toString()); if (m.type === 'queue-state') replayed = m; } catch {}
+    });
+    await new Promise((r) => { ws.on('open', r); ws.on('error', r); setTimeout(r, 2500); });
+    const send = (o) => { try { ws.send(JSON.stringify(o)); } catch {} };
+    send({ type: 'queue-message', text: 'relay me' });   // SDK 兜底 → _sdkSendUserMessage
+    send({ type: 'queue-send-now', id: 'q_parked1' });   // → sendQueuedNow（返回 cancelled → 广播关弹窗）
+    send({ type: 'queue-send-now', id: 'bad id!!' });    // 正则门禁丢弃
+    send({ type: 'queue-remove', id: 'q_parked1' });
+    send({ type: 'queue-clear' });
+    send({ type: 'queue-suppress' });                    // SDK 模式有意 no-op（suppress 由 interruptTurn 内部处理）
+    await new Promise((r) => setTimeout(r, 400));
+    try { ws.close(); } catch {}
+    const ok = calls.relay.join('|') === 'relay me'
+      && calls.sendNow.join(',') === 'q_parked1'
+      && calls.remove.join(',') === 'q_parked1'
+      && calls.clear === 1
+      && replayed && Array.isArray(replayed.items) && replayed.items[0] && replayed.items[0].id === 'q_parked1';
+    if (!ok) {
+      console.error('SDK_QUEUE_WS_MISMATCH ' + JSON.stringify({ calls, replayed }));
+      process.exit(4);
+    }
   } else if (scenario === 'turnEndEmit') {
     // 短 debounce + onBroadcast 抛错 → timer fire 调 _emitTurnEnd，桩抛错经 NODE_ENV=test 重抛
     // → _emitTurnEnd 外层 catch（1792-1793）。同时覆盖正常 fire（imCore.notifyTurnEnd 路径）。
@@ -488,6 +524,63 @@ describeCli('server.js handleRequest 分支（in-process CLI server）', { concu
     try { ws.close(); } catch {}
     // 不强制收到 state（无 shell 环境 spawn 可能失败）；upgrade 成功即覆盖 scratch connection 分支。
     assert.ok(opened, 'scratch upgrade 应成功（合法 id）');
+  });
+
+  it('queue-* WS 分支（PTY 模式）：enqueue 广播 / 重连 replay / id 校验 / remove / suppress / clear', async () => {
+    const tok = mod.getAccessToken();
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/terminal?token=${tok}`);
+    const opened = await new Promise((resolve) => {
+      ws.on('open', () => resolve(true));
+      ws.on('error', () => resolve(false));
+      setTimeout(() => resolve(false), 3000);
+    });
+    assert.ok(opened, 'terminal ws open');
+    const states = [];
+    ws.on('message', (raw) => {
+      try { const m = JSON.parse(raw.toString()); if (m.type === 'queue-state') states.push(m); } catch {}
+    });
+    const send = (o) => { try { ws.send(JSON.stringify(o)); } catch {} };
+
+    // enqueue → queue-state broadcast carries the item（rescue 计时 3s 前完成全部断言即可）
+    send({ type: 'queue-message', text: 'hello queue' });
+    const got = await waitUntil(() => states.some((s) => s.items?.some((it) => it.text === 'hello queue')));
+    assert.ok(got, 'enqueue broadcast a queue-state with the item');
+    const itemId = states.at(-1).items.find((it) => it.text === 'hello queue').id;
+    assert.match(itemId, /^q_[a-z0-9]+_[a-z0-9]+$/);
+
+    // 新连接 replay 非空队列快照
+    const ws2 = new WebSocket(`ws://127.0.0.1:${port}/ws/terminal?token=${tok}`);
+    const replayed = await new Promise((resolve) => {
+      ws2.on('message', (raw) => {
+        try { const m = JSON.parse(raw.toString()); if (m.type === 'queue-state') resolve(m); } catch {}
+      });
+      setTimeout(() => resolve(null), 3000);
+    });
+    assert.ok(replayed && replayed.items?.some((it) => it.id === itemId), 'reconnect replays the parked queue');
+
+    // 非法 id（含空格/路径符）被正则门禁丢弃；合法但未知 id no-op —— 队列保持原样
+    send({ type: 'queue-send-now', id: 'bad id!!' });
+    send({ type: 'queue-remove', id: '../x' });
+    send({ type: 'queue-send-now', id: 'q_unknown1' });
+    send({ type: 'queue-remove', id: 'q_unknown1' });
+    await wait(200);
+    assert.ok(states.at(-1).items.some((it) => it.id === itemId), 'invalid/unknown ids left the queue intact');
+
+    // suppress（Stop 驻车）不广播不动队列；remove 广播空队列
+    send({ type: 'queue-suppress' });
+    send({ type: 'queue-remove', id: itemId });
+    const emptied = await waitUntil(() => states.at(-1) && states.at(-1).items.length === 0);
+    assert.ok(emptied, 'remove broadcast the emptied queue');
+
+    // 再入队 → clear 清空并广播
+    send({ type: 'queue-message', text: 'second wind' });
+    await waitUntil(() => states.at(-1)?.items?.length === 1);
+    send({ type: 'queue-clear' });
+    const cleared = await waitUntil(() => states.at(-1) && states.at(-1).items.length === 0);
+    assert.ok(cleared, 'clear broadcast the emptied queue');
+
+    try { ws2.close(); } catch {}
+    try { ws.close(); } catch {}
   });
 
   it('scratch WS 反压：暂停读取 + 洪泛输出 → onBehind/makeBpLogger 触发（1120-1163/1183-1187）', async () => {
@@ -747,6 +840,17 @@ describeCli('server.js 模块加载期 / startViewer env 分支（子进程）',
       CCV_WORKSPACE_MODE: '0',
       CCV_START_PORT: '18260',
       CCV_MAX_PORT: '18279',
+    });
+    assert.equal(res.status, 0, res.stderr);
+  });
+
+  it('SDK 模式 queue-* WS 分支：setter 路由 + id 门禁 + replay + queue-message relay', () => {
+    const res = runScenario('sdkQueueWs', {
+      CCV_CLI_MODE: '1',
+      CCV_SDK_MODE: '1',
+      CCV_WORKSPACE_MODE: '0',
+      CCV_START_PORT: '18360',
+      CCV_MAX_PORT: '18379',
     });
     assert.equal(res.status, 0, res.stderr);
   });

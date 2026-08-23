@@ -818,7 +818,7 @@ describe('sdk-manager-query — interruptTurn 关活跃 query + 排空 pending �
     assert.equal(sdk.getSessionId(), 'sess-1');
   });
 
-  it('interruptTurn 丢弃队列中未派发的消息', async () => {
+  it('interruptTurn 暂停 drain 但保留队列（Stop 保留语义）', async () => {
     const { deps } = makeDeps();
     let releaseFirst;
     const firstGate = new Promise((r) => { releaseFirst = r; });
@@ -843,14 +843,16 @@ describe('sdk-manager-query — interruptTurn 关活跃 query + 排空 pending �
     const p1 = sdk.sendUserMessage('first');
     await tick(4);
     await sdk.sendUserMessage('queued'); // queued
-    // interrupt: clears the queue + closes the first round (close releases firstGate)
+    // interrupt: parks the queue (suppress drain) + closes the first round (close releases firstGate)
     sdk.interruptTurn();
     releaseFirst();
     await p1;
     await tick(6);
 
-    // Queue cleared → only the first round ran; the second must not be drained
-    assert.equal(callCount, 1, 'queued message must be dropped on interrupt');
+    // Drain suppressed → only the first round ran; the queued message is KEPT parked
+    assert.equal(callCount, 1, 'queued message must not auto-run after interrupt');
+    assert.equal(sdk.getQueueSnapshot().length, 1, 'Stop keeps the queued message parked');
+    assert.equal(sdk.getQueueSnapshot()[0].text, 'queued');
   });
 });
 
@@ -1041,6 +1043,260 @@ describe('sdk-manager-query — getPendingApprovals / onQueryError / init-compac
     assert.equal(cb[0].trigger, 'auto');
     assert.equal(cb[0].preTokens, 150000);
     assert.equal(cb[0].postTokens, 40000);
+  });
+});
+
+
+// ── Queue-state broadcast / send-now / parked-queue semantics ──
+// Helpers reused here: makeDeps (broadcasts capture), gate-pattern fake queries, tick().
+
+/** Gate-pattern fake query: round 0 parks on firstGate until released; later rounds run free. */
+function makeGatedQuery(calls) {
+  let round = 0;
+  let releaseFirst;
+  const firstGate = new Promise((r) => { releaseFirst = r; });
+  function fq({ prompt }) {
+    if (calls) calls.push(prompt);
+    const myRound = round++;
+    return {
+      async *[Symbol.asyncIterator]() {
+        yield sysInit('sess-gated');
+        if (myRound === 0) await firstGate;
+        yield resultMsg();
+      },
+      interrupt() { return Promise.resolve(); },
+      close() { releaseFirst(); },
+    };
+  }
+  return { fq, releaseFirst: () => releaseFirst() };
+}
+
+describe('sdk-manager-query — queue-state 广播与快照', () => {
+  it('忙时入队 → 广播 queue-state（{id,text,ts}），drain 后清空并再广播', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const { fq, releaseFirst } = makeGatedQuery();
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(4);
+    await sdk.sendUserMessage('second');
+
+    const last = broadcasts.filter((b) => b.type === 'queue-state').at(-1);
+    assert.equal(last.items.length, 1);
+    assert.equal(last.items[0].text, 'second');
+    assert.ok(last.items[0].id);
+    assert.equal(typeof last.items[0].ts, 'number');
+    assert.deepEqual(sdk.getQueueSnapshot(), last.items);
+
+    releaseFirst();
+    await p1;
+    await tick(6);
+    const drained = broadcasts.filter((b) => b.type === 'queue-state').at(-1);
+    assert.equal(drained.items.length, 0);
+    assert.equal(sdk.getQueueSnapshot().length, 0);
+  });
+
+  it('drain 传给 query 的是文本而非队列对象（.text 回归）', async () => {
+    const { deps } = makeDeps();
+    const calls = [];
+    const { fq, releaseFirst } = makeGatedQuery(calls);
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(4);
+    await sdk.sendUserMessage('second');
+    releaseFirst();
+    await p1;
+    await tick(6);
+
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1], 'second', 'drain must pass the queued TEXT, not the queue item object');
+  });
+});
+
+describe('sdk-manager-query — sendQueuedNow', () => {
+  it('忙时 send-now：打断当前回合，目标消息成为下一个执行项，其余随后 drain', async () => {
+    const { deps } = makeDeps();
+    const calls = [];
+    const { fq, releaseFirst } = makeGatedQuery(calls);
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(4);
+    await sdk.sendUserMessage('second');
+    await sdk.sendUserMessage('third');
+    const snap = sdk.getQueueSnapshot();
+    assert.equal(snap.length, 2);
+
+    const cancelled = sdk.sendQueuedNow(snap[1].id); // prioritize 'third'
+    assert.ok(Array.isArray(cancelled));
+    releaseFirst(); // no-op if close() already released; harmless either way
+    await p1;
+    await tick(10);
+
+    assert.deepEqual(calls, ['first', 'third', 'second'], 'prioritized item runs next; the rest drain after it');
+    assert.equal(sdk.getQueueSnapshot().length, 0);
+  });
+
+  it('未知 id → 返回 [] 且不广播不打断（守卫必须先于 interrupt）', async () => {
+    const { deps, broadcasts } = makeDeps();
+    let closeCalled = false;
+    let releaseFirst;
+    const firstGate = new Promise((r) => { releaseFirst = r; });
+    function fq() {
+      return {
+        async *[Symbol.asyncIterator]() {
+          yield sysInit('sess-guard');
+          await firstGate; // park the turn so an erroneous interrupt would be observable
+          yield resultMsg();
+        },
+        interrupt() { return Promise.resolve(); },
+        close() { closeCalled = true; },
+      };
+    }
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(4);
+    const before = broadcasts.length;
+    assert.deepEqual(sdk.sendQueuedNow('q_unknown'), []);
+    await tick(3);
+    assert.equal(broadcasts.length, before, 'unknown id must not broadcast');
+    assert.equal(closeCalled, false, 'unknown id must not interrupt the running turn');
+    releaseFirst();
+    await p1;
+    await tick(4);
+  });
+
+  it('空闲（Stop 后 parked）→ 立即执行该消息，随后 drain 其余 parked 项', async () => {
+    const { deps } = makeDeps();
+    const calls = [];
+    const { fq } = makeGatedQuery(calls);
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(4);
+    await sdk.sendUserMessage('a');
+    await sdk.sendUserMessage('b');
+    sdk.interruptTurn(); // parks [a, b]; close() releases round 0
+    await p1;
+    await tick(6);
+    assert.equal(sdk.getQueueSnapshot().length, 2);
+    assert.equal(calls.length, 1);
+
+    const bId = sdk.getQueueSnapshot()[1].id;
+    sdk.sendQueuedNow(bId); // idle → run 'b' immediately
+    await tick(10);
+
+    assert.deepEqual(calls, ['first', 'b', 'a'], 'send-now executes the picked item, then the parked rest drains');
+    assert.equal(sdk.getQueueSnapshot().length, 0);
+  });
+
+  it('P0 回归：Stop 后 unwind 窗口内（_queryBusy 仍 true）send-now 不丢消息', async () => {
+    const { deps } = makeDeps();
+    const calls = [];
+    let round = 0;
+    let releaseFirst;
+    const firstGate = new Promise((r) => { releaseFirst = r; });
+    function fq({ prompt }) {
+      calls.push(prompt);
+      const myRound = round++;
+      return {
+        async *[Symbol.asyncIterator]() {
+          yield sysInit('sess-p0');
+          if (myRound === 0) await firstGate;
+          yield resultMsg();
+        },
+        interrupt() { return Promise.resolve(); },
+        close() {}, // does NOT release the gate — the unwind stays in flight until releaseFirst()
+      };
+    }
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(4);
+    await sdk.sendUserMessage('x');
+    sdk.interruptTurn(); // suppress=true; the aborted generator is STILL parked on firstGate
+    const snap = sdk.getQueueSnapshot();
+    assert.equal(snap.length, 1);
+    sdk.sendQueuedNow(snap[0].id); // busy branch (unwind pending) — must lift the Stop-park
+    releaseFirst();
+    await p1;
+    await tick(10);
+
+    assert.deepEqual(calls, ['first', 'x'], 'send-now in the unwind window must still execute the message');
+    assert.equal(sdk.getQueueSnapshot().length, 0);
+  });
+});
+
+describe('sdk-manager-query — removeQueued / interruptTurn 广播', () => {
+  it('removeQueued 删除并广播；interruptTurn 保留队列并广播当前快照', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const calls = [];
+    const { fq, releaseFirst } = makeGatedQuery(calls);
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(4);
+    await sdk.sendUserMessage('a');
+    await sdk.sendUserMessage('b');
+
+    const snap = sdk.getQueueSnapshot();
+    assert.equal(sdk.removeQueued(snap[0].id), true);
+    assert.deepEqual(sdk.getQueueSnapshot().map((i) => i.text), ['b']);
+    assert.equal(sdk.removeQueued('q_nope'), false);
+
+    sdk.interruptTurn();
+    const qs = broadcasts.filter((m) => m.type === 'queue-state').at(-1);
+    assert.equal(qs.items.length, 1);
+    assert.equal(qs.items[0].text, 'b');
+
+    releaseFirst();
+    await p1;
+    await tick(6);
+    assert.equal(calls.length, 1, 'drain suppressed after Stop — parked item never ran');
+  });
+
+  it('drain 途中某条 query 抛错 → 后续消息仍被 drain', async () => {
+    const { deps } = makeDeps();
+    const calls = [];
+    let round = 0;
+    let releaseFirst;
+    const firstGate = new Promise((r) => { releaseFirst = r; });
+    function fq({ prompt }) {
+      calls.push(prompt);
+      const myRound = round++;
+      return {
+        async *[Symbol.asyncIterator]() {
+          yield sysInit('sess-err');
+          if (myRound === 0) await firstGate;
+          if (myRound === 1) throw new Error('boom');
+          yield resultMsg();
+        },
+        interrupt() { return Promise.resolve(); },
+        close() {},
+      };
+    }
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(4);
+    await sdk.sendUserMessage('bad');
+    await sdk.sendUserMessage('good');
+    releaseFirst();
+    await p1;
+    await tick(10);
+
+    assert.deepEqual(calls, ['first', 'bad', 'good'], 'an errored drained turn must not wedge the queue');
+    assert.equal(sdk.getQueueSnapshot().length, 0);
   });
 });
 

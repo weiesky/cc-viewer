@@ -1403,6 +1403,7 @@
   "server/lib/base-path.js",
   "server/lib/ccswitch-import.js",
   "server/lib/ccv-editor.js",
+  "server/lib/chat-queue.js",
   "server/lib/claude-md-discovery.js",
   "server/lib/cli-inject.js",
   "server/lib/code-replace.js",

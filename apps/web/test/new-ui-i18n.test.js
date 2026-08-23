@@ -62,6 +62,11 @@ const KEYS = [
   'ui.sdkError',     // SDK query-level failure toast (ChatView sdk-error branch)
   'ui.sdkCompacted', // SDK compact_boundary notice bar (ChatView sdk-compact branch)
   'ui.sdkSlashHint', // SDK slash-command hint (above the composer, when typing `/`)
+  // Busy-queue bubbles above the composer (Enter-while-streaming; ChatView queue-state branch):
+  'ui.chatInput.queueSendNow', // per-bubble "interrupt + inject now" button
+  'ui.chatInput.queueRemove',  // per-bubble discard (×) button
+  'ui.chatInput.queueHint',    // bubble-stack aria-label / explainer
+  'ui.chatInput.queueFull',    // toast when the server rejects an enqueue (queue full)
 ];
 
 describe('new UI key i18n coverage', () => {

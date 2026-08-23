@@ -44,6 +44,8 @@ import { proxyStatsRoutes } from './routes/proxy-stats.js';
 import { setProxyStatsListener } from './lib/proxy/proxy-stats.js';
 import * as imCore from './lib/im/im-bridge-core.js';
 import * as imProcMgr from './lib/im/im-process-manager.js';
+import * as chatQueue from './lib/chat-queue.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 import './lib/adapters/dingtalk-adapter.js'; // side-effect: registers the DingTalk adapter
 import './lib/adapters/feishu-adapter.js';   // side-effect: registers the Feishu adapter
 import './lib/adapters/wecom-adapter.js';    // side-effect: registers the WeCom adapter
@@ -1229,7 +1231,7 @@ export async function startViewer() {
 async function setupTerminalWebSocket(httpServer) {
   try {
     const { WebSocketServer } = await import('ws');
-    const { writeToPty, writeToPtySequential, resizePty, onPtyData, onPtyExit, getPtyState, getOutputBuffer, getCurrentWorkspace, spawnShell, findSafeSliceStart } = await import('./pty-manager.js');
+    const { writeToPty, writeToPtySequential, resizePty, onPtyData, onPtyExit, getPtyState, getPtyKind, getOutputBuffer, getCurrentWorkspace, spawnShell, findSafeSliceStart } = await import('./pty-manager.js');
     const {
       spawnScratch,
       writeScratch,
@@ -1247,6 +1249,20 @@ async function setupTerminalWebSocket(httpServer) {
     const MAX_SCRATCH_PTYS = 16;
     _writeToPty = writeToPty;
     _onPtyData = onPtyData;
+    // Chat-composer busy queue (terminal-hidden PTY mode): holds Enter-while-busy messages
+    // and injects them via the same write path the IM bridge uses. SDK mode has no PTY —
+    // sdk-manager owns its own queue there, so init is skipped entirely.
+    if (!isSdkMode) {
+      chatQueue.initChatQueue({
+        writeToPty,
+        writeToPtySequential,
+        getPtyKind,
+        isStreaming: () => streamingState.active,
+        hasPendingApproval: () => pendingAskHooks.size > 0 || pendingPermHooks.size > 0,
+        hasExternalInjection: () => imCore.anyActiveInjection(),
+        broadcastWs: broadcastWsMessage,
+      });
+    }
     const wss = new WebSocketServer({ noServer: true });
     terminalWss = wss;
     const wssScratch = new WebSocketServer({ noServer: true });
@@ -1561,6 +1577,15 @@ async function setupTerminalWebSocket(httpServer) {
         const initSnap = _sdkGetInitSnapshot();
         if (initSnap) {
           try { ws.send(JSON.stringify(initSnap)); } catch {}
+        }
+      }
+
+      // Replay the chat-composer busy queue so a refreshed/reconnected page restores the
+      // floating queued-message bubbles (server is the source of truth in both modes).
+      {
+        const qItems = (isSdkMode && _sdkGetQueueSnapshot) ? _sdkGetQueueSnapshot() : chatQueue.getSnapshot();
+        if (Array.isArray(qItems) && qItems.length) {
+          try { ws.send(JSON.stringify({ type: 'queue-state', items: qItems })); } catch {}
         }
       }
 
@@ -2010,23 +2035,64 @@ async function setupTerminalWebSocket(httpServer) {
             // no longer emits its own streaming_status.
             if (isSdkMode && _sdkInterruptTurn) {
               const cancelled = _sdkInterruptTurn() || [];
-              // Close any open approval modal on every client (the canUseTool promise was just
-              // drained server-side; reuse each kind's existing resolve/cancel broadcast type).
-              if (cancelled.length && terminalWss) {
-                for (const { id, kind } of cancelled) {
-                  if (!id) continue;
-                  const type = sdkApprovalCloseType(kind);
-                  const m = JSON.stringify({ type, id, reason: 'Turn interrupted' });
-                  terminalWss.clients.forEach((c) => {
-                    if (c.readyState === 1) { try { c.send(m); } catch {} }
-                  });
-                }
-              }
+              _broadcastApprovalCloses(cancelled, 'Turn interrupted');
             } else {
               // sdk-interrupt 收到却没生效：客户端按 props.sdkMode 发了中断，但本端不是 SDK 模式或
               // _sdkInterruptTurn 未由 cli.js 接线（client/server sdkMode 配置漂移）。此时客户端会乐观
               // 切非运行态并等 4s 兜底才翻回，输出仍在流 —— 打日志让这类错配可观测。
               console.warn('[SDK] sdk-interrupt ignored: isSdkMode=%s, handler=%s', isSdkMode, !!_sdkInterruptTurn);
+            }
+          } else if (msg.type === 'queue-message') {
+            // Chat-composer busy-queue enqueue (terminal-hidden PTY mode). These queue-* types
+            // are deliberately NOT in the SDK no-op gate above: each branch routes by mode.
+            // SDK fallback: the frontend normally still sends sdk-user-message, which
+            // self-queues server-side when busy — relay keeps the contract mode-agnostic.
+            if (typeof msg.text === 'string' && msg.text) {
+              if (isSdkMode) {
+                if (_sdkSendUserMessage) {
+                  _sdkSendUserMessage(msg.text).catch(err => {
+                    console.error('[SDK] queue-message relay error:', err.message);
+                  });
+                }
+              } else {
+                try { chatQueue.enqueue(msg.text); } catch (err) { reportSwallowed('server.queue-message', err); }
+              }
+            }
+          } else if (msg.type === 'queue-send-now') {
+            // Bubble "send now": interrupt the running turn and inject this message first.
+            const qid = (typeof msg.id === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(msg.id)) ? msg.id : null;
+            if (qid) {
+              if (isSdkMode) {
+                if (_sdkSendQueuedNow) {
+                  try { _broadcastApprovalCloses(_sdkSendQueuedNow(qid) || [], 'Queued message sent now'); }
+                  catch (err) { reportSwallowed('server.queue-send-now', err); }
+                }
+              } else {
+                try { chatQueue.sendNow(qid); } catch (err) { reportSwallowed('server.queue-send-now', err); }
+              }
+            }
+          } else if (msg.type === 'queue-remove') {
+            const qid = (typeof msg.id === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(msg.id)) ? msg.id : null;
+            if (qid) {
+              if (isSdkMode) {
+                if (_sdkRemoveQueued) { try { _sdkRemoveQueued(qid); } catch (err) { reportSwallowed('server.queue-remove', err); } }
+              } else {
+                try { chatQueue.remove(qid); } catch (err) { reportSwallowed('server.queue-remove', err); }
+              }
+            }
+          } else if (msg.type === 'queue-clear') {
+            // Session/workspace switch: drop the parked queue WITHOUT interrupting a running
+            // turn. (Stop semantics live elsewhere: PTY queue-suppress, SDK sdk-interrupt.)
+            if (isSdkMode) {
+              if (_sdkClearQueued) { try { _sdkClearQueued(); } catch (err) { reportSwallowed('server.queue-clear', err); } }
+            } else {
+              try { chatQueue.clear(); } catch (err) { reportSwallowed('server.queue-clear', err); }
+            }
+          } else if (msg.type === 'queue-suppress') {
+            // PTY Stop pressed: park the queue — the coming turn-end must not auto-drain it.
+            // (SDK mode handles this inside sdk-manager.interruptTurn; no PTY queue exists.)
+            if (!isSdkMode) {
+              try { chatQueue.suppressNextDrain(); } catch (err) { reportSwallowed('server.queue-suppress', err); }
             }
           } else if (msg.type === 'image-remove-notify' || msg.type === 'image-upload-notify') {
             // Security: only allow paths within upload directories, reject traversal
@@ -2195,6 +2261,10 @@ function _emitTurnEnd(sessionId, ts, transcriptPath = null) {
     // Forward the (clean) assistant reply for this turn to whichever IM bridge owns the in-flight
     // turn, if any. Fire-and-forget: a bridge failure must never affect SSE broadcast.
     try { imCore.notifyTurnEnd(sid, t, transcriptPath); } catch { /* best-effort */ }
+    // chat-queue drain trigger #2: post-debounce idempotent retry of the trigger at
+    // _scheduleTurnEndBroadcast entry. chatQueue no-ops internally when uninitialized
+    // (SDK mode / tests that never ran startViewer).
+    try { chatQueue.onTurnEnd(sid, t); } catch { /* best-effort */ }
     if (typeof _onTurnEndBroadcastForTests === 'function') {
       try { _onTurnEndBroadcastForTests({ sessionId: sid, ts: t }); }
       catch (e) { if (process.env.NODE_ENV === 'test') throw e; /* prod 不让测试桩污染 */ }
@@ -2208,6 +2278,11 @@ function _scheduleTurnEndBroadcast(sessionId, ts, transcriptPath = null) {
   if (_isStopping) return;
   const sid = _normalizeKey(sessionId);
   const t = ts || Date.now();
+  // chat-queue drain trigger #1: the Stop-hook POST arrival IS the authoritative
+  // "query() ended" signal — don't wait out the SSE debounce window (default 10s),
+  // or freshly-parked bubbles would sit visibly inert after every turn. The queue's
+  // internal idle poll absorbs the housekeeping/telemetry streaming tail.
+  try { chatQueue.onTurnEnd(sid, t); } catch { /* best-effort */ }
   // 注意：这里不再对 streamingState.active 做同步 race-guard。理由见上方 HISTORY 段。
   // POST 一律入桶排 timer；真正「新一轮 query()」走 _observeStreamingTick 的 rising-edge
   // cancel 兜底，不会让无效尾音播出来。
@@ -2234,6 +2309,9 @@ function _onStreamingActivated() {
   // 不播放」，直接 cancel 所有 pending（**不** flush）。这正是用户键入「请等待 10 秒钟」
   // 的本意：被打断就当没完成。
   _cancelAllPendingTurnEndBroadcasts();
+  // A new turn also lifts the chat-queue Stop-park: parked bubbles resume auto-draining
+  // at the next turn end.
+  try { chatQueue.onStreamingActivated(); } catch { /* best-effort */ }
 }
 
 // 统一的 streaming-state 观察入口。production polling 和 SDK push 都调它，测试也走它，
@@ -2334,6 +2412,9 @@ async function _doStop() {
   // → 后续 await 期间 turn-end 状态机彻底冻结，无并发改 Map 的可能。
   _isStopping = true;
   _cancelAllPendingTurnEndBroadcasts();
+  // Drop chat-queue timers (rescue / idle poll) so a stop/start cycle never injects a stale
+  // queued message into a fresh PTY session.
+  try { chatQueue.stop(); } catch { /* best-effort */ }
   // 对称 startViewer：下一次启动后第一次 active 才算 rising edge
   _lastSdkActive = false;
   _lastCliActive = false;
@@ -2421,6 +2502,23 @@ export function broadcastWsMessage(msg) {
   }
 }
 
+/**
+ * Close open approval modals on every client after a server-side drain of canUseTool
+ * approvals (sdk-interrupt Stop, or queue-send-now interrupting a turn mid-approval).
+ * Reuses each kind's existing resolve/cancel broadcast type.
+ */
+function _broadcastApprovalCloses(cancelled, reason) {
+  if (!Array.isArray(cancelled) || cancelled.length === 0 || !terminalWss) return;
+  for (const { id, kind } of cancelled) {
+    if (!id) continue;
+    const type = sdkApprovalCloseType(kind);
+    const m = JSON.stringify({ type, id, reason });
+    terminalWss.clients.forEach((c) => {
+      if (c.readyState === 1) { try { c.send(m); } catch {} }
+    });
+  }
+}
+
 /** Reference to sdk-manager's resolveApproval (set by cli.js after import). */
 let _sdkResolveApproval = null;
 export function setSdkResolveApproval(fn) { _sdkResolveApproval = fn; }
@@ -2446,6 +2544,22 @@ export function setSdkGetPendingApprovals(fn) { _sdkGetPendingApprovals = fn; }
 /** Reference to sdk-manager's getSdkInitSnapshot (set by cli.js after import). */
 let _sdkGetInitSnapshot = null;
 export function setSdkGetInitSnapshot(fn) { _sdkGetInitSnapshot = fn; }
+
+/** Reference to sdk-manager's sendQueuedNow (set by cli.js after import). */
+let _sdkSendQueuedNow = null;
+export function setSdkSendQueuedNow(fn) { _sdkSendQueuedNow = fn; }
+
+/** Reference to sdk-manager's removeQueued (set by cli.js after import). */
+let _sdkRemoveQueued = null;
+export function setSdkRemoveQueued(fn) { _sdkRemoveQueued = fn; }
+
+/** Reference to sdk-manager's clearQueued (set by cli.js after import). */
+let _sdkClearQueued = null;
+export function setSdkClearQueued(fn) { _sdkClearQueued = fn; }
+
+/** Reference to sdk-manager's getQueueSnapshot (set by cli.js after import). */
+let _sdkGetQueueSnapshot = null;
+export function setSdkGetQueueSnapshot(fn) { _sdkGetQueueSnapshot = fn; }
 
 // Auto-start the viewer after log file init completes
 // 工作区模式下由 cli.js 直接 import server.js 触发启动，跳过 _initPromise 自动启动

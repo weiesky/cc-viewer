@@ -113,6 +113,15 @@ entry 形态（delta/checkpoint/`_inPlaceReplaceDetected` 信号）在**请求�
 - 历史：1.6.251/1.6.265 修过状态 commit 层的乱序（`_commitDeltaState` 守卫），但 entry 本身的落盘序此前无防护。
 - **已知未修窗口**：proxy 模式下 teammate 流量经 proxy 进程转发记录时无 `teammate` 字段可判，理论上可与主会话共享 delta 状态机；待独立调查。
 
+### §3.8 中断分叉窗口（Esc/Stop/排队"立即追加"后的首轮 replay）
+
+用户在中断一个进行中的回合（Esc、Stop 按钮、排队气泡的「立即追加」）后发起下一轮时，客户端已合并的会话尾部是**被打断的 partial assistant**（流式期间经 inProgress 载体并入），而新一轮请求的 wire replay **丢弃**该 partial，并在同一位置（`curLen-1`）放上排队的 user prompt——双方数组在尾部末位分叉。
+
+- **旧客户端漏点**：反向锚点以 `newMessages[0]` 扫命中后因窗口末位（partial vs user prompt）失配而判 miss；anchor-miss + `newLen > curLen` 的旧回退分支只 push `newMessages[curLen..]` → 排在 `curLen-1` 的用户消息被永久跳过（其后的 assistant 回复渲染成"没有提问的"孤儿气泡）。
+- **现行为（修复后）**：该回退分支改为**最深公共前缀扩展**——按 fp 逐位求双方最长公共前缀 `L`，截断客户端分叉尾部（对齐 wire 真相）后 push `newMessages[L..]`。无分叉时 `L === curLen`（与旧 push-tail 逐字节等价）；零公共前缀时 `L=0` 整段替换（与 §3.5 rebuild / `_partialData` 分支同哲学）；replay 若包含重渲染的 partial（fp 在 partial 处分叉），以 wire 版本为准。
+- **覆盖纹理**：SDK（close 后 resume 重放）与 PTY（TUI 注入后正常发请求）同构；非中断的排队 drain（回合自然结束后补发）是 append 形态，走 anchor 分支，不受影响。
+- 回归测试：`branch-utils-sessionMerge.test.js`「LCP 扩展（中断分叉 / 排队消息可见性）」5 例。
+
 ---
 
 ## §4 信号链路图
