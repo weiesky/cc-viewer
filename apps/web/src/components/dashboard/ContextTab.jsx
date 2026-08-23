@@ -427,10 +427,18 @@ export default function ContextTab({ body, response, prevTools }) {
   // System prompt
   const systemBlocks = parseSystemBlocks(body.system);
   if (systemBlocks != null) {
+    // SDK mode captures a condensed 2-segment system array (SDK prefix + merged
+    // instructions) instead of the CLI's 3+ static/dynamic segments. Append a
+    // placeholder notice so users know the full prompt is not available here.
+    const isSdkSystem = Array.isArray(body.system)
+      && body.system.some((s) => typeof s?.text === 'string' && s.text.includes("built on Anthropic's Claude Agent SDK"));
+    const displayBlocks = isSdkSystem
+      ? [...systemBlocks, { type: 'separator' }, { type: 'markdown', text: t('ui.context.sdkSystemPromptNotice') }]
+      : systemBlocks;
     accordionSections.push({
       key: 'system',
       title: t('ui.context.systemPrompt'),
-      items: [{ id: 'system__0', label: t('ui.context.systemPrompt'), blocks: systemBlocks, raw: body.system }],
+      items: [{ id: 'system__0', label: t('ui.context.systemPrompt'), blocks: displayBlocks, raw: body.system }],
     });
   }
 

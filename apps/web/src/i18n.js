@@ -9234,6 +9234,26 @@ const i18nData = {
     "ar": "موجه النظام", "no": "System-prompt", "pt-BR": "Prompt do sistema",
     "th": "System Prompt", "tr": "Sistem Prompt'u", "uk": "Системний промпт"
   },
+  "ui.context.sdkSystemPromptNotice": {
+    "zh": "SDK 模式下无法获取完整系统提示词（仅捕获到压缩后的 2 段）。推荐用 TUI 模式打开以查看完整内容。",
+    "en": "Full system prompt is unavailable in SDK mode (only a condensed 2-segment capture). Open in TUI mode to see the complete prompt.",
+    "zh-TW": "SDK 模式下無法取得完整系統提示詞（僅擷取到壓縮後的 2 段）。建議用 TUI 模式開啟以查看完整內容。",
+    "ko": "SDK 모드에서는 전체 시스템 프롬프트를 사용할 수 없습니다(2개 세그먼트로 압축됨). TUI 모드에서 열어 전체 프롬프트를 확인하세요.",
+    "ja": "SDK モードでは完全なシステムプロンプトを取得できません（2 セグメントに圧縮されています）。TUI モードで開いて完全なプロンプトを確認してください。",
+    "de": "Der vollständige System-Prompt ist im SDK-Modus nicht verfügbar (nur eine komprimierte 2-Segment-Aufzeichnung). Öffnen Sie den TUI-Modus, um den vollständigen Prompt zu sehen.",
+    "es": "El prompt del sistema completo no está disponible en modo SDK (solo se captura una versión condensada de 2 segmentos). Ábralo en modo TUI para ver el prompt completo.",
+    "fr": "Le prompt système complet est indisponible en mode SDK (seule une capture condensée en 2 segments est disponible). Ouvrez en mode TUI pour voir le prompt complet.",
+    "it": "Il prompt di sistema completo non è disponibile in modalità SDK (solo una cattura condensata in 2 segmenti). Apri in modalità TUI per vedere il prompt completo.",
+    "da": "Den fulde system-prompt er ikke tilgængelig i SDK-tilstand (kun en komprimeret 2-segment optagelse). Åbn i TUI-tilstand for at se den fulde prompt.",
+    "pl": "Pełny prompt systemowy jest niedostępny w trybie SDK (tylko skondensowany zapis 2-segmentowy). Otwórz w trybie TUI, aby zobaczyć pełny prompt.",
+    "ru": "Полный системный промпт недоступен в режиме SDK (доступна только сжатая 2-сегментная запись). Откройте в режиме TUI, чтобы увидеть полный промпт.",
+    "ar": "موجه النظام الكامل غير متاح في وضع SDK (تم التقاط مقطعين مضغوطين فقط). افتح في وضع TUI لرؤية الموجه الكامل.",
+    "no": "Full system-prompt er ikke tilgjengelig i SDK-modus (kun en komprimert 2-segment opptak). Åpne i TUI-modus for å se hele prompten.",
+    "pt-BR": "O prompt do sistema completo não está disponível no modo SDK (apenas uma captura condensada de 2 segmentos). Abra no modo TUI para ver o prompt completo.",
+    "th": "ไม่สามารถใช้งาน System Prompt แบบเต็มในโหมด SDK ได้ (บันทึกเพียง 2 ส่วนแบบย่อ) เปิดในโหมด TUI เพื่อดูพรอมป์แบบเต็ม",
+    "tr": "Tam sistem istemi SDK modunda kullanılamaz (yalnızca 2 bölümlük sıkıştırılmış kayıt). Tam istemi görmek için TUI modunda açın.",
+    "uk": "Повний системний промпт недоступний у режимі SDK (доступний лише стиснений 2-сегментний запис). Відкрийте в режимі TUI, щоб побачити повний промпт."
+  },
   "ui.context.messages": {
     "zh": "消息", "en": "Messages", "zh-TW": "訊息",
     "ko": "메시지", "ja": "メッセージ", "de": "Nachrichten",

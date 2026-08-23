@@ -9,6 +9,7 @@ import { formatTokenCount, stripPrivateKeys, hasClaudeMdReminder, isClaudeMdRemi
 import { classifyRequest } from '@ccv/core/requestType';
 import { isMainAgent, isSystemText, extractDisplayText } from '@ccv/core/contentFilter';
 import { restoreSlimmedEntry } from '../../utils/entry-slim.js';
+import { buildRequestExpandNode } from '../../utils/requestExpand.js';
 import AppHeader from './AppHeader';
 import ContextTab from './ContextTab';
 import styles from './DetailPanel.module.css';
@@ -271,62 +272,7 @@ class DetailPanel extends React.Component {
     }
 
     const filterExpandSet = claudeMdExpandSet || skillsExpandSet;
-
-    if (reqType === 'Preflight') {
-      // Collect all object/array refs under messages and system[2] that should be expanded
-      const expandRefs = new Set();
-      const collectAll = (obj) => {
-        if (obj && typeof obj === 'object') {
-          expandRefs.add(obj);
-          if (Array.isArray(obj)) obj.forEach(collectAll);
-          else Object.values(obj).forEach(collectAll);
-        }
-      };
-      if (Array.isArray(data.messages)) collectAll(data.messages);
-      if (Array.isArray(data.system) && data.system.length >= 3) collectAll(data.system[2]);
-      return (level, value, field) => {
-        if (level < 2) return true;
-        if (expandRefs.has(value)) return true;
-        if (filterExpandSet && filterExpandSet.has(value)) return true;
-        // expand system itself at root level so the 3rd item is visible
-        if (level === 1 && field === 'system') return true;
-        return false;
-      };
-    }
-
-    if (reqType === 'MainAgent' && Array.isArray(data.messages) && data.messages.length === 1) {
-      const msg = data.messages[0];
-      const contentArr = msg && Array.isArray(msg.content) ? msg.content : null;
-      const lastContent = contentArr && contentArr.length > 0 ? contentArr[contentArr.length - 1] : null;
-      const expandRefs = new Set();
-      const collectAll = (obj) => {
-        if (obj && typeof obj === 'object') {
-          expandRefs.add(obj);
-          if (Array.isArray(obj)) obj.forEach(collectAll);
-          else Object.values(obj).forEach(collectAll);
-        }
-      };
-      if (lastContent) collectAll(lastContent);
-      expandRefs.add(data.messages);
-      if (msg && typeof msg === 'object') expandRefs.add(msg);
-      if (contentArr) expandRefs.add(contentArr);
-      return (level, value, field) => {
-        if (level < 2) return true;
-        if (expandRefs.has(value)) return true;
-        if (filterExpandSet && filterExpandSet.has(value)) return true;
-        return false;
-      };
-    }
-
-    if (filterExpandSet) {
-      return (level, value, field) => {
-        if (level < 2) return true;
-        if (filterExpandSet.has(value)) return true;
-        return false;
-      };
-    }
-
-    return undefined;
+    return buildRequestExpandNode({ data, type, reqType, filterExpandSet });
   }
 
   renderBody(data, type) {
