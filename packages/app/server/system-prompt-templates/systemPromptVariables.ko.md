@@ -27,8 +27,6 @@
 | `${os.hostname}` | 현재 호스트 이름입니다. | `MacBook-Pro.local` |
 | `${os.availableParallelism}` | 사용 가능한 병렬성입니다. | `10` |
 | `${os.totalMemory}` | 시스템 총 메모리(바이트 단위)입니다. | `34359738368` |
-| `${os.freeMemory}` | 사용 가능한 메모리(바이트 단위)입니다. | `8589934592` |
-| `${os.uptime}` | 시스템 가동 시간(초 단위)입니다. | `123456` |
 
 ## Node.js 런타임
 
@@ -43,8 +41,6 @@
 
 | Variable | Description | Example |
 |---|---|---|
-| `${time.current}` | 현재 로컬 시간 문자열입니다. | `Thu Jul 09 2026 18:22:09 GMT+0800 (China Standard Time)` |
-| `${time.iso}` | 현재 ISO 시간입니다. | `2026-07-09T10:22:09.000Z` |
 | `${time.date}` | 현재 로컬 날짜입니다. | `2026-07-09` |
 | `${time.timezone}` | 현재 시스템 시간대입니다. | `Asia/Shanghai` |
 
@@ -64,8 +60,6 @@
 |---|---|---|
 | `${terminal.term}` | 현재 TERM입니다. | `xterm-256color` |
 | `${terminal.colorTerm}` | 현재 COLORTERM입니다. | `truecolor` |
-| `${terminal.columns}` | 현재 터미널 열 개수입니다. | `120` |
-| `${terminal.rows}` | 현재 터미널 행 개수입니다. | `40` |
 
 ## 파일 시스템
 
@@ -91,7 +85,6 @@
 | `${git.branch}` | 현재 git 분기 또는 짧은 HEAD 해시입니다. | `main` |
 | `${git.mainBranch}` | 기본 주 분기로 일반적으로 PR 또는 병합 대상으로 사용됩니다. | `main` |
 | `${git.userName}` | 현재 git `user.name`입니다. | `Sky` |
-| `${git.status}` | `git status --short`의 출력입니다. | `M src/index.ts` |
 | `${git.recentCommits}` | 최근 커밋의 요약입니다. | `abc1234 Fix prompt builder` |
 
 ## 메모리

@@ -27,8 +27,6 @@ Denne filen dokumenterer bare variablene i `systemPromptModel.md` som må løses
 | `${os.hostname}` | Gjeldende vertsnavn. | `MacBook-Pro.local` |
 | `${os.availableParallelism}` | Tilgjengelig parallellisme. | `10` |
 | `${os.totalMemory}` | Total systemhukommelse i bytes. | `34359738368` |
-| `${os.freeMemory}` | Ledig hukommelse i bytes. | `8589934592` |
-| `${os.uptime}` | System oppetid i sekunder. | `123456` |
 
 ## Node.js-kjøretid
 
@@ -43,8 +41,6 @@ Denne filen dokumenterer bare variablene i `systemPromptModel.md` som må løses
 
 | Variable | Description | Example |
 |---|---|---|
-| `${time.current}` | Gjeldende lokal tidsstreng. | `Thu Jul 09 2026 18:22:09 GMT+0800 (China Standard Time)` |
-| `${time.iso}` | Gjeldende ISO tid. | `2026-07-09T10:22:09.000Z` |
 | `${time.date}` | Gjeldende lokaldato. | `2026-07-09` |
 | `${time.timezone}` | Gjeldende systemtidssone. | `Asia/Shanghai` |
 
@@ -64,8 +60,6 @@ Denne filen dokumenterer bare variablene i `systemPromptModel.md` som må løses
 |---|---|---|
 | `${terminal.term}` | Gjeldende TERM. | `xterm-256color` |
 | `${terminal.colorTerm}` | Gjeldende COLORTERM. | `truecolor` |
-| `${terminal.columns}` | Gjeldende terminal kolonne tall. | `120` |
-| `${terminal.rows}` | Gjeldende terminal rad tall. | `40` |
 
 ## Filsystem
 
@@ -91,7 +85,6 @@ Denne filen dokumenterer bare variablene i `systemPromptModel.md` som må løses
 | `${git.branch}` | Gjeldende git gren eller kort HEAD hash. | `main` |
 | `${git.mainBranch}` | Standard hoved gren, typisk brukt som PR eller sammensmeltings mål. | `main` |
 | `${git.userName}` | Gjeldende git `user.name`. | `Sky` |
-| `${git.status}` | Utdata fra `git status --short`. | `M src/index.ts` |
 | `${git.recentCommits}` | Oppsummering av nylige commits. | `abc1234 Fix prompt builder` |
 
 ## Minne

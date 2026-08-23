@@ -72,8 +72,6 @@ ${environment.workspaceRoots}
  - Hostname: ${os.hostname}
  - Available parallelism: ${os.availableParallelism}
  - Total memory bytes: ${os.totalMemory}
- - Free memory bytes: ${os.freeMemory}
- - Uptime seconds: ${os.uptime}
 
 # Runtime
  - Node.js version: ${runtime.nodeVersion}
@@ -82,8 +80,6 @@ ${environment.workspaceRoots}
  - Parent process ID: ${runtime.ppid}
 
 # Time
- - Current time: ${time.current}
- - ISO time: ${time.iso}
  - Current date: ${time.date}
  - Timezone: ${time.timezone}
 
@@ -98,8 +94,6 @@ ${sandbox.writableRoots}
 # Terminal
  - TERM: ${terminal.term}
  - COLORTERM: ${terminal.colorTerm}
- - Columns: ${terminal.columns}
- - Rows: ${terminal.rows}
 
 # Filesystem
  - Temporary directory: ${filesystem.tmpdir}
@@ -116,8 +110,6 @@ ${sandbox.writableRoots}
  - Current branch: ${git.branch}
  - Main branch: ${git.mainBranch}
  - Git user: ${git.userName}
- - Working tree status:
-${git.status}
  - Recent commits:
 ${git.recentCommits}
 

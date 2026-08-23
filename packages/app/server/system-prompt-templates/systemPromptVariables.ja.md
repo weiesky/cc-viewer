@@ -27,8 +27,6 @@
 | `${os.hostname}` | 現在のホスト名です。 | `MacBook-Pro.local` |
 | `${os.availableParallelism}` | 利用可能な並列性です。 | `10` |
 | `${os.totalMemory}` | システム総メモリ（バイト単位）です。 | `34359738368` |
-| `${os.freeMemory}` | 空きメモリ（バイト単位）です。 | `8589934592` |
-| `${os.uptime}` | システムアップタイム（秒単位）です。 | `123456` |
 
 ## Node.js ランタイム
 
@@ -43,8 +41,6 @@
 
 | Variable | Description | Example |
 |---|---|---|
-| `${time.current}` | 現在のローカル時刻文字列です。 | `Thu Jul 09 2026 18:22:09 GMT+0800 (China Standard Time)` |
-| `${time.iso}` | 現在のISO時刻です。 | `2026-07-09T10:22:09.000Z` |
 | `${time.date}` | 現在のローカル日付です。 | `2026-07-09` |
 | `${time.timezone}` | 現在のシステムタイムゾーンです。 | `Asia/Shanghai` |
 
@@ -64,8 +60,6 @@
 |---|---|---|
 | `${terminal.term}` | 現在のTERMです。 | `xterm-256color` |
 | `${terminal.colorTerm}` | 現在のCOLORTERMです。 | `truecolor` |
-| `${terminal.columns}` | 現在のターミナル列数です。 | `120` |
-| `${terminal.rows}` | 現在のターミナル行数です。 | `40` |
 
 ## ファイルシステム
 
@@ -91,7 +85,6 @@
 | `${git.branch}` | 現在のgitブランチまたは短いHEADハッシュです。 | `main` |
 | `${git.mainBranch}` | デフォルトのメインブランチで、通常PRまたはマージターゲットとして使用されます。 | `main` |
 | `${git.userName}` | 現在のgit `user.name` です。 | `Sky` |
-| `${git.status}` | `git status --short` の出力です。 | `M src/index.ts` |
 | `${git.recentCommits}` | 最近のコミットの概要です。 | `abc1234 Fix prompt builder` |
 
 ## メモリ

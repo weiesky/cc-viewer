@@ -27,8 +27,6 @@
 | `${os.hostname}` | Поточне ім'я хосту. | `MacBook-Pro.local` |
 | `${os.availableParallelism}` | Доступний паралелізм. | `10` |
 | `${os.totalMemory}` | Загальна пам'ять системи у байтах. | `34359738368` |
-| `${os.freeMemory}` | Вільна пам'ять у байтах. | `8589934592` |
-| `${os.uptime}` | Час роботи системи у секундах. | `123456` |
 
 ## Середовище виконання Node.js
 
@@ -43,8 +41,6 @@
 
 | Variable | Description | Example |
 |---|---|---|
-| `${time.current}` | Рядок поточного місцевого часу. | `Thu Jul 09 2026 18:22:09 GMT+0800 (China Standard Time)` |
-| `${time.iso}` | Поточний час у ISO. | `2026-07-09T10:22:09.000Z` |
 | `${time.date}` | Поточна місцева дата. | `2026-07-09` |
 | `${time.timezone}` | Поточний системний часовий пояс. | `Asia/Shanghai` |
 
@@ -64,8 +60,6 @@
 |---|---|---|
 | `${terminal.term}` | Поточний TERM. | `xterm-256color` |
 | `${terminal.colorTerm}` | Поточний COLORTERM. | `truecolor` |
-| `${terminal.columns}` | Поточна кількість стовпців терміналу. | `120` |
-| `${terminal.rows}` | Поточна кількість рядків терміналу. | `40` |
 
 ## Файлова система
 
@@ -91,7 +85,6 @@
 | `${git.branch}` | Поточна гілка git або скорочений хеш HEAD. | `main` |
 | `${git.mainBranch}` | Основна гілка за замовчуванням, зазвичай використовується як ціль PR або злиття. | `main` |
 | `${git.userName}` | Поточне ім'я git `user.name`. | `Sky` |
-| `${git.status}` | Результат `git status --short`. | `M src/index.ts` |
 | `${git.recentCommits}` | Резюме недавніх комітів. | `abc1234 Fix prompt builder` |
 
 ## Пам'ять

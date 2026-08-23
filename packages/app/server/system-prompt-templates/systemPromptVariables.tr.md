@@ -27,8 +27,6 @@ Bu dosya, `systemPromptModel.md` içindeki çalışma zamanında çözülmesi ge
 | `${os.hostname}` | Geçerli ana bilgisayar adı. | `MacBook-Pro.local` |
 | `${os.availableParallelism}` | Kullanılabilir paralelizm. | `10` |
 | `${os.totalMemory}` | Toplam sistem belleği, bayt cinsinden. | `34359738368` |
-| `${os.freeMemory}` | Boş bellek, bayt cinsinden. | `8589934592` |
-| `${os.uptime}` | Sistem çalışma süresi, saniye cinsinden. | `123456` |
 
 ## Node.js çalışma zamanı
 
@@ -43,8 +41,6 @@ Bu dosya, `systemPromptModel.md` içindeki çalışma zamanında çözülmesi ge
 
 | Variable | Description | Example |
 |---|---|---|
-| `${time.current}` | Geçerli yerel saat dizesi. | `Thu Jul 09 2026 18:22:09 GMT+0800 (China Standard Time)` |
-| `${time.iso}` | Geçerli ISO saati. | `2026-07-09T10:22:09.000Z` |
 | `${time.date}` | Geçerli yerel tarih. | `2026-07-09` |
 | `${time.timezone}` | Geçerli sistem saat dilimi. | `Asia/Shanghai` |
 
@@ -64,8 +60,6 @@ Bu dosya, `systemPromptModel.md` içindeki çalışma zamanında çözülmesi ge
 |---|---|---|
 | `${terminal.term}` | Geçerli TERM. | `xterm-256color` |
 | `${terminal.colorTerm}` | Geçerli COLORTERM. | `truecolor` |
-| `${terminal.columns}` | Geçerli terminal sütun sayısı. | `120` |
-| `${terminal.rows}` | Geçerli terminal satır sayısı. | `40` |
 
 ## Dosya sistemi
 
@@ -91,7 +85,6 @@ Bu dosya, `systemPromptModel.md` içindeki çalışma zamanında çözülmesi ge
 | `${git.branch}` | Geçerli git dalı veya kısa HEAD hash. | `main` |
 | `${git.mainBranch}` | Varsayılan ana dal, tipik olarak PR veya birleştirme hedefi olarak kullanılır. | `main` |
 | `${git.userName}` | Geçerli git `user.name`. | `Sky` |
-| `${git.status}` | `git status --short` çıkışı. | `M src/index.ts` |
 | `${git.recentCommits}` | Son commits özeti. | `abc1234 Fix prompt builder` |
 
 ## Bellek
