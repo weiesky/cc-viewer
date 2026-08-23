@@ -70,8 +70,27 @@ describe('isMainAgentRequest —— 既有行为防回归', () => {
     assert.equal(isMainAgentRequest(body), true);
   });
 
-  it('native teammate("You are a Claude agent" 无 "You are Claude Code")→ false', () => {
+  it('SDK 模式主会话("built on Anthropic\'s Claude Agent SDK" + 全工具含 Task)→ true', () => {
+    // SDK 模式(ccv -SDK)主会话 base prompt 不含 "You are Claude Code",而是 SDK 的
+    // "You are a Claude agent, built on Anthropic's Claude Agent SDK."。带完整主工具集(含 Task)。
     const body = mainBody('You are a Claude agent, built on Anthropic\'s Claude Agent SDK.');
+    assert.equal(isMainAgentRequest(body), true);
+  });
+
+  it('SDK 子代理(SDK base prompt 但缺 Task/Agent 生成工具)→ false', () => {
+    // 真 SDK 子代理与主会话同用 SDK base prompt,但没有 Agent/Task 生成工具 → 工具启发式挡住。
+    const subTools = [{ name: 'Edit' }, { name: 'Bash' }, { name: 'Read' }, { name: 'Write' }, { name: 'Glob' }, { name: 'Grep' }];
+    const body = mainBody('You are a Claude agent, built on Anthropic\'s Claude Agent SDK.', subTools);
+    assert.equal(isMainAgentRequest(body), false);
+  });
+
+  it('SDK base prompt + cc_is_subagent=true → false(billing 排除优先)', () => {
+    const body = mainBody(`cc_is_subagent=true;\nYou are a Claude agent, built on Anthropic's Claude Agent SDK.`);
+    assert.equal(isMainAgentRequest(body), false);
+  });
+
+  it('native teammate("You are a Claude agent" 无 SDK 子句)→ false', () => {
+    const body = mainBody('You are a Claude agent.');
     assert.equal(isMainAgentRequest(body), false);
   });
 
@@ -97,6 +116,8 @@ describe('一致性守卫: isMainAgentRequest(body) === isMainAgentEntry({ body 
     'cc_is_subagent=true': mainBody(`cc_is_subagent=true;\n${CLAUDE_CODE}`),
     'cc_is_subagent=truex': mainBody(`cc_is_subagent=truex;\n${CLAUDE_CODE}`),
     'native teammate': mainBody('You are a Claude agent.'),
+    'SDK 主会话': mainBody('You are a Claude agent, built on Anthropic\'s Claude Agent SDK.'),
+    'SDK 子代理(无 Task/Agent)': mainBody('You are a Claude agent, built on Anthropic\'s Claude Agent SDK.', [{ name: 'Edit' }, { name: 'Bash' }, { name: 'Read' }, { name: 'Write' }, { name: 'Glob' }, { name: 'Grep' }]),
     'specialist 子代理': mainBody(`${CLAUDE_CODE}\nfile search specialist`),
     '非主代理(无 Claude Code)': mainBody('Some other assistant prompt'),
   };

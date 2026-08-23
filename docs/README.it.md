@@ -65,6 +65,18 @@ Dopo l'avvio in modalità programmazione, si aprirà automaticamente una pagina 
 
 cc-viewer è anche distribuito come applicazione desktop nativa: [Pagina di download](https://github.com/weiesky/cc-viewer/releases)
 
+### Modalità SDK (headless, `ccv -SDK`)
+
+`ccv -SDK` esegue la sessione tramite l'Agent SDK invece di un terminale interattivo — nessun pannello di terminale; i messaggi vengono inviati dall'interfaccia web e tutto il resto (log di sessione, effetto macchina da scrivere in streaming, statistiche di utilizzo) funziona come in modalità terminale.
+
+```bash
+ccv -SDK                # sessione headless; chatta dal browser
+ccv -SDK -c             # continua la sessione più recente
+ccv -SDK --model sonnet # scegli un modello
+```
+
+Le approvazioni (Bash/Edit/Write/WebFetch/…) compaiono nel browser con consenti / nega / consenti per la sessione, e le richieste `AskUserQuestion` / di piano appaiono come modali. `npm publish` richiede sempre un'approvazione esplicita — anche con `--d`. Richiede il pacchetto `@anthropic-ai/claude-agent-sdk` (incluso con cc-viewer); in caso contrario, ripiega sulla modalità terminale.
+
 ### Aggiornamento a 1.7.0 (formato log v2)
 
 Dalla versione 1.7.0, i log vengono archiviati in un formato a directory per sessione (wire-format v2) anziché in singoli file `.jsonl` — con un'occupazione su disco inferiore di circa il 90%. I file `.jsonl` v1 esistenti non vengono mai modificati né eliminati; la finestra di dialogo dei log elenca per impostazione predefinita le sessioni v2 e una piccola voce “Mostra log legacy (v1)” (visibile finché esistono vecchi file) apre una vista v1 in cui possono essere visualizzati, migrati o eliminati. All'avvio, cc-viewer offre una migrazione con un clic quando vengono rilevati log legacy (fortemente consigliata quando si prosegue una vecchia conversazione con `claude -c`, la cui prima metà risiede nei vecchi file). Puoi anche migrare dal terminale:

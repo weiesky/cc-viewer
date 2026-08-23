@@ -25,6 +25,7 @@ import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
+import { streamingState } from '../server/interceptor.js';
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-lifecycle-'));
 mkdirSync(join(tmpDir, 'logs'), { recursive: true });
@@ -196,26 +197,48 @@ describeCli('server.js lifecycle: start/stop rounds + EADDRINUSE + SSE broadcast
     }
   });
 
-  it('setSdkStreamingState + broadcastTurnEnd reach a connected SSE client (clients.length>0 branch)', async () => {
+  it('streamingStatusTimer + broadcastTurnEnd reach a connected SSE client (clients.length>0 branch)', async () => {
     const srv = await mod.startViewer();
     assert.ok(srv);
     const port = mod.getPort();
     mod.__testing.reset();
 
+    // 工作区模式下 streamingStatusTimer 不随 startViewer 启动(延迟到 initPostLaunch,
+    // server.js:1105-1109 的 !isWorkspaceMode 分支)——原 setSdkStreamingState 是直推绕开了
+    // 这个前提;wire 架构下 streaming 由 500ms 轮询驱动,先显式拉起这条 timer(stopViewer
+    // 的 _doStop 负责 clearInterval,不像 initPostLaunch 那样附带 log-watch/stats-worker
+    // 等本测试清理不掉的句柄)。
+    mod.startStreamingStatusTimer();
+
     const sse = await openSse(port);
     // 等 /events 初次握手（events 路由会立即推一批初始 named events）；给握手一点时间。
     await wait(200);
 
-    // setSdkStreamingState active → 应作为 streaming_status named event 推给已连客户端。
-    mod.setSdkStreamingState({ active: true, startTime: Date.now(), model: 'test' });
-    const streaming = await sse.waitFor('streaming_status', 2000);
-    assert.ok(streaming, 'connected SSE client should receive streaming_status when SDK state goes active');
+    // setSdkStreamingState 已退役（wire 架构:SDK 子进程流量走 loopback proxy → fetch hook →
+    // interceptor 的 streamingState,与 PTY 同路)。active 边沿改从 streamingState 驱动:
+    // streamingState 是 import 的活 binding,直接赋值即被 500ms 轮询看到。
+    streamingState.active = true;
+    streamingState.startTime = Date.now();
+    streamingState.model = 'test';
+    const streaming = await sse.waitFor('streaming_status', 3000);
+    assert.ok(streaming, 'connected SSE client should receive streaming_status when streamingState goes active');
 
     // turn_end：debounce 已被 env 缩到 100ms。broadcastTurnEnd 入桶 → ~100ms 后 timer fire →
     // _emitTurnEnd → sendEventToClients(clients,'turn_end',...) 真正下发给这条 SSE。
+    // 注意:streaming active 期间 broadcastTurnEnd 会被 streaming-guard 排队(不 schedule),
+    // 所以这里先把 active 拉掉再广播,与真实「turn 结束 → streaming 停止 → turn_end」时序一致。
+    streamingState.active = false;
     let emitted = null;
     mod.__testing.onBroadcast((payload) => { emitted = payload; });
     assert.equal(mod.__testing.getDebounceMs(), 100, 'env override should shrink debounce to 100ms');
+    // 等 streaming_status inactive 边沿落地后再广播 turn_end（inactive 边沿经
+    // sendEventToClients 同步 res.write,但客户端收包+SSE 解析跨 loopback TCP 是异步的,
+    // 轮询第二条 streaming_status 而不是固定 sleep）。
+    const sawInactiveEarly = await waitUntil(
+      () => sse.events.filter((e) => e.event === 'streaming_status').length >= 2,
+      3000,
+    );
+    assert.ok(sawInactiveEarly, 'inactive streaming_status edge should reach the client');
     mod.broadcastTurnEnd('lifecycle-sse-sess', Date.now());
     const turnEnd = await sse.waitFor('turn_end', 2000);
     assert.ok(turnEnd, 'connected SSE client should receive turn_end after the debounce fires');
@@ -223,19 +246,6 @@ describeCli('server.js lifecycle: start/stop rounds + EADDRINUSE + SSE broadcast
       'onBroadcast hook should observe the emitted turn_end payload');
     const parsed = JSON.parse(turnEnd.data);
     assert.equal(parsed.sessionId, 'lifecycle-sse-sess', 'turn_end SSE payload carries the sessionId');
-
-    // streaming_status inactive 边沿也下发（changed 分支）。
-    // inactive 边沿经 sendEventToClients 同步 res.write，但客户端收包+SSE 解析跨 loopback TCP
-    // 是异步的——与 active 边沿(上面 waitFor)/turn_end 一致，这里也轮询第二条 streaming_status
-    // 落地，而不是固定 sleep 后假定已解析完（高负载下 120ms 内第二条可能尚未入 events[]）。
-    mod.setSdkStreamingState({ active: false });
-    const sawInactive = await waitUntil(
-      () => sse.events.filter((e) => e.event === 'streaming_status').length >= 2,
-      2000,
-    );
-    const streamingCount = sse.events.filter((e) => e.event === 'streaming_status').length;
-    assert.ok(sawInactive && streamingCount >= 2,
-      `both active and inactive streaming_status edges are delivered (saw ${streamingCount})`);
 
     sse.close();
     mod.__testing.reset();

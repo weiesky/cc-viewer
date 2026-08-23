@@ -65,6 +65,18 @@ Efter at programmeringstilstanden er startet, åbnes en webside automatisk.
 
 cc-viewer findes også som native desktop-app: [Downloadside](https://github.com/weiesky/cc-viewer/releases)
 
+### SDK-tilstand (headless, `ccv -SDK`)
+
+`ccv -SDK` kører sessionen gennem Agent SDK i stedet for en interaktiv terminal — intet terminalpanel, beskeder sendes fra web-UI'et, og alt andet (sessionlogs, streaming typewriter-effekt, forbrugsstatistik) fungerer på samme måde som i terminaltilstand.
+
+```bash
+ccv -SDK                # headless-session; chat fra browseren
+ccv -SDK -c             # fortsæt den seneste session
+ccv -SDK --model sonnet # vælg en model
+```
+
+Godkendelser (Bash/Edit/Write/WebFetch/…) dukker op i browseren med allow / deny / allow-for-session, og `AskUserQuestion`/plan-prompter vises som modaler. `npm publish` kræver altid en eksplicit godkendelse — selv med `--d`. Kræver pakken `@anthropic-ai/claude-agent-sdk` (medfølger cc-viewer); falder tilbage til terminaltilstand, hvis den ikke er tilgængelig.
+
 ### Opgradering til 1.7.0 (logformat v2)
 
 Fra 1.7.0 gemmes logs i et format med én mappe pr. session (wire-format v2) i stedet for enkelte `.jsonl`-filer — cirka 90 % mindre diskplads. Eksisterende v1-`.jsonl`-filer bliver aldrig ændret eller slettet; logdialogen viser som standard v2-sessioner, og en lille post “Vis ældre (v1) logs” (vises, så længe der findes gamle filer) åbner en v1-visning, hvor de kan ses, migreres eller slettes. Ved opstart tilbyder cc-viewer migrering med ét klik, når der findes ældre logs (stærkt anbefalet, når du fortsætter en gammel samtale med `claude -c`, hvis første halvdel ligger i de gamle filer). Du kan også migrere fra terminalen:

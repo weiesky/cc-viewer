@@ -53,6 +53,15 @@ export function isNativeTeammate(req) {
     return false;
   }
 
+  // SDK 主会话否决:ccv -SDK 主会话 system 同时含 "You are a Claude agent"(命中上面正则)
+  // 且 billing 标记 cc_entrypoint=sdk-ts,还被授予 SendMessage → 三条全中会被误判成 teammate
+  // (前端把每条 main 气泡双渲染成 main + teammate)。真 native teammate 经 Agent 工具启动、
+  // system 是 teammate 人格 + cc_entrypoint=cli(无 sdk-ts 主会话标记),不受此否决影响。
+  if (sysText.includes('cc_entrypoint=sdk-ts')) {
+    _cache.set(req, false);
+    return false;
+  }
+
   // SendMessage tool 是 teammate 间通信必需工具，普通 subagent 不会被授予。
   // 命中正则但没 SendMessage → 是通过 Agent tool 启动的 subagent，不是 teammate。
   const tools = req.body?.tools;

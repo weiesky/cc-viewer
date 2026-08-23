@@ -673,6 +673,11 @@ describe('pty-manager: spawnClaude integration', () => {
     // 若有人删掉 NODE_TEST_CONTEXT 守卫,第一条立即失败。
     assert.equal(_defaultSpawnModelReader('/x', { NODE_TEST_CONTEXT: '1' }, () => 'claude-opus-4-8'), null);
     assert.equal(_defaultSpawnModelReader('/x', {}, () => 'claude-opus-4-8'), 'claude-opus-4-8');
+    // opts(含 launchSettings)必须原样透传给底层 reader —— 否则 --settings 里的模型信号到不了 resolver
+    assert.equal(
+      _defaultSpawnModelReader('/x', {}, (c, env, opts) => opts?.launchSettings?.env?.ANTHROPIC_MODEL, { launchSettings: { env: { ANTHROPIC_MODEL: 'm-launch' } } }),
+      'm-launch',
+    );
   });
 
   it('default spawn model reader is inert under NODE_TEST_CONTEXT (no injected reader → no model match)', async () => {

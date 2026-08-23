@@ -65,6 +65,18 @@ Etter at programmeringsmodusen er startet, åpnes en nettside automatisk.
 
 cc-viewer kommer også som native desktop-app: [Nedlastingsside](https://github.com/weiesky/cc-viewer/releases)
 
+### SDK-modus (headless, `ccv -SDK`)
+
+`ccv -SDK` kjører økten gjennom Agent SDK i stedet for en interaktiv terminal — uten terminalpanel, meldinger sendes fra nettgrensesnittet, og alt annet (øktslogger, strømmende skrivemaskineffekt, bruksstatistikk) fungerer på samme måte som i terminalmodus.
+
+```bash
+ccv -SDK                # headless-økt; chat fra nettleseren
+ccv -SDK -c             # fortsett den siste økten
+ccv -SDK --model sonnet # velg en modell
+```
+
+Godkjenninger (Bash/Edit/Write/WebFetch/…) dukker opp i nettleseren med allow / deny / allow-for-session, og `AskUserQuestion`/plan-forespørsler vises som modaler. `npm publish` krever alltid en eksplisitt godkjenning — selv med `--d`. Krever pakken `@anthropic-ai/claude-agent-sdk` (bundlet med cc-viewer); faller tilbake til terminalmodus hvis den ikke er tilgjengelig.
+
 ### Oppgradering til 1.7.0 (loggformat v2)
 
 Fra 1.7.0 lagres logger i et format med én mappe per økt (wire-format v2) i stedet for enkeltstående `.jsonl`-filer — omtrent 90 % mindre diskplass. Eksisterende v1-`.jsonl`-filer blir aldri endret eller slettet; loggdialogen viser v2-økter som standard, og en liten oppføring “Vis eldre (v1) logger” (vises så lenge det finnes gamle filer) åpner en v1-visning der de kan vises, migreres eller slettes. Ved oppstart tilbyr cc-viewer migrering med ett klikk når eldre logger blir funnet (sterkt anbefalt når du fortsetter en gammel samtale med `claude -c`, der første halvdel ligger i de gamle filene). Du kan også migrere fra terminalen:

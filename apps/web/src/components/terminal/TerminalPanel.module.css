@@ -656,6 +656,20 @@
   flex-direction: row;
 }
 
+/* scratchOnly(右侧竖向容器,SDK 模式):scratch 面板与容器等高——去掉 max-height 上限,
+   用 flex:1 + min-height:0 让父容器(.terminalPanel flex column)把全部高度分给它。 */
+.scratchOnlyPanel {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.scratchWrapFill {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
 /* tab 侧栏 */
 .scratchTabs {
   flex-shrink: 0;

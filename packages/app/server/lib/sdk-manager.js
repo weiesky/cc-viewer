@@ -2,14 +2,21 @@
  * sdk-manager.js — Agent SDK session lifecycle manager.
  *
  * Wraps @anthropic-ai/claude-agent-sdk query() to provide:
- * - Structured message processing → JSONL entries for the frontend
+ * - User-message input and multi-turn conversation via session resume
  * - canUseTool callback for AskUserQuestion + permission approval
- * - Streaming status tracking
- * - Multi-turn conversation via session resume
+ * - Turn-end signaling (SDK 'result' message → Stop-hook equivalent)
+ *
+ * Display/persistence is NOT synthesized here: the SDK child process talks to
+ * the Anthropic API through cc-viewer's loopback proxy (ANTHROPIC_BASE_URL is
+ * injected via options.env + options.settings), so request/response capture,
+ * streaming typewriter chunks, and v2 storage all flow through the exact same
+ * wire path as PTY mode (proxy → fetch hook → V2Writer → SSE).
  */
 
-import { sdkToJSONLEntry, buildStreamingStatus } from './sdk-adapter.js';
 import { ASK_TIMEOUT_MS } from './ask/ask-constants.js';
+import { withDefaultThinkingDisplay, resolveLaunchSystemPrompt, launchArgsToExtraArgs } from './launch-config.js';
+import { evaluateImDeny } from './im-deny.js';
+import { APPROVAL_TOOLS, isPublishCommand } from './approval-policy.js';
 
 let _query;
 try {
@@ -19,41 +26,43 @@ try {
   console.warn('[SDK] Agent SDK not available:', err.message);
 }
 
-// Test seam — inject a fake query() (仿 im-bridge-core.js 的 __setFetchForTests 惯例).
-// 仅供单测注入 fake async-generator，不改任何业务逻辑。
+// Test seam — inject a fake query() (following im-bridge-core.js's __setFetchForTests
+// convention). Only lets unit tests inject a fake async-generator; no business logic changes.
 export function __setQueryForTests(fn) { _query = fn; }
-
-// Interactive tool names — filtered from entries, handled via canUseTool → WS
-const INTERACTIVE_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode']);
 
 // Session state
 let _sessionId = null;
-let _model = null;
 let _cwd = null;
-let _projectName = null;
 let _permissionMode = 'default';
-let _accumulatedMessages = [];
+let _childEnv = null;      // env handed to the SDK child (proxy injection etc.)
+let _settings = null;      // merged Settings object for options.settings
+let _launchModel = null;   // --model lifted from user args (options.model)
+let _launchResume = null;  // startup continuation intent { continue, resumeId, forkSession } — first query only
+let _userArgs = [];        // remaining user args → options.extraArgs passthrough
+let _claudeExecutable = null; // pathToClaudeCodeExecutable — resolved with the same priority as PTY mode (configured → codefuse → native → PATH → npm) so SDK sessions don't fall back to a PATH claude that host security policy may kill on headless spawn
 let _activeQuery = null;
 let _queryBusy = false; // concurrency guard
-let _sdkTools = null;    // real tools list from SDKSystemMessage
+let _initAnnouncedSid = ''; // sessionId whose slash-command surface was already announced (reset on full reset)
+let _lastInitSnapshot = null; // last sdk-init payload for WS reconnect replay
 
-// Stable timestamp per conversation turn — used as dedup key by frontend
-let _turnTimestamp = null;
-
-// Streaming accumulation state
-let _streamingContent = [];
-let _currentBlockData = null;
-let _streamingRequestId = null;
-let _streamThrottleTimer = null;
-
-// Callbacks registered by server.js
-let _onEntry = null;
-let _onStreamingStatus = null;
+// Callbacks registered by cli.js
 let _onTurnEnd = null; // SDK mode has no Stop hook (ensureHooks() skipped) — fire turnEnd directly when the SDK 'result' message arrives
+let _onQueryError = null; // query-level failure → (message: string) => void; cli.js forwards to a WS toast
 let _broadcastWs = null;
 let _runWaterfallHook = null;
 
-// Pending canUseTool promises: id → { resolve }
+// Display/persistence flows through the SAME wire path as PTY mode: the SDK child's API
+// traffic reaches ccv's loopback proxy (verified — the injected ANTHROPIC_BASE_URL survives
+// in the spawn env), the main-process fetch hook captures it, and `_v2Writer` writes the v2
+// transcript that both panels + SSE read. The SDK channel here only carries what the wire
+// path can't see: turn-end (no Stop hook in SDK mode), turn-level error toasts, the
+// sdk-init/sdk-compact lifecycle metadata, and canUseTool approvals. It deliberately does
+// NOT persist conversation content or drive streaming/typewriter — those are wire-owned.
+
+// Pending canUseTool promises: id → { kind, resolve, replay, startedAt, timeoutMs }
+// replay is the exact broadcast payload that announced this approval — retained so a
+// fresh WS connection can re-announce it (server.js connection replay), otherwise a
+// reconnect mid-approval orphans the modal and the wait silently times out to deny.
 const _pendingApprovals = new Map();
 
 // Message queue for messages sent while a query is running
@@ -66,16 +75,40 @@ export function isSdkAvailable() {
 /**
  * Initialize SDK session.
  * Does NOT start a query — waits for the first user message via sendUserMessage().
+ *
+ * @param {string} cwd
+ * @param {string} projectName
+ * @param {object} deps
+ * @param {function} deps.onTurnEnd — ({sessionId, ts}) => void, fired on SDK 'result'
+ * @param {function} [deps.onQueryError] — (message: string) => void, fired when the
+ *   query itself fails (spawn/protocol/iterator errors) — until this existed the only
+ *   surfacing was console.error, invisible in the Web UI
+ * @param {function} deps.broadcastWs — (msg) => void, terminal-WS broadcast for approvals
+ * @param {string} [deps.permissionMode]
+ * @param {function} [deps.runWaterfallHook] — plugin waterfall (onPlanRequest/onAskRequest/onPermRequest)
+ * @param {object} [deps.env] — child env (must already contain ANTHROPIC_BASE_URL → ccv proxy)
+ * @param {object} [deps.settings] — merged Settings object (env.ANTHROPIC_BASE_URL double-injection)
+ * @param {string} [deps.model] — --model lifted from user args (options.model)
+ * @param {object} [deps.launchResume] — startup continuation { continue, resumeId, forkSession }
+ * @param {string[]} [deps.userArgs] — remaining user args (extraArgs passthrough)
+ * @param {string} [deps.claudeExecutable] — resolved claude binary (options.pathToClaudeCodeExecutable);
+ *   must come from the same selection as PTY mode, else the SDK spawns a PATH claude that
+ *   host security tooling (e.g. agent-security headless guards) may SIGKILL on spawn
  */
-export function initSdkSession(cwd, projectName, { onEntry, onStreamingStatus, broadcastWs, permissionMode, runWaterfallHook, onTurnEnd }) {
+export function initSdkSession(cwd, projectName, { onTurnEnd, onQueryError, broadcastWs, permissionMode, runWaterfallHook, env, settings, model, launchResume, userArgs, claudeExecutable }) {
   _cwd = cwd;
-  _projectName = projectName;
-  _onEntry = onEntry;
-  _onStreamingStatus = onStreamingStatus;
+  void projectName; // reserved (display name comes from the wire path)
   _onTurnEnd = onTurnEnd;
+  _onQueryError = onQueryError || null;
   _broadcastWs = broadcastWs;
   _permissionMode = permissionMode || 'default';
   _runWaterfallHook = runWaterfallHook || null;
+  _childEnv = env || null;
+  _settings = settings || null;
+  _launchModel = model || null;
+  _launchResume = launchResume || null;
+  _userArgs = Array.isArray(userArgs) ? userArgs : [];
+  _claudeExecutable = claudeExecutable || null;
   _resetFullState();
 }
 
@@ -111,26 +144,59 @@ export async function sendUserMessage(text) {
  * Execute a single query for one user message.
  */
 async function _executeQuery(text) {
-  // Generate stable timestamp for this turn — all entries share it for dedup
-  _turnTimestamp = new Date().toISOString();
-  _streamingRequestId = `sdk_${Date.now()}`;
-
-  // Accumulate user message BEFORE creating entries (this is the request)
-  _accumulatedMessages.push({ role: 'user', content: text });
-
   const options = {
     cwd: _cwd,
-    includePartialMessages: true,
     permissionMode: _permissionMode,
-    canUseTool: _permissionMode === 'bypassPermissions' ? undefined : _handleCanUseTool,
+    // canUseTool is mounted in EVERY mode (including bypassPermissions) so the
+    // npm-publish hard gate survives --d, mirroring perm-bridge.js's bypass
+    // exemption. In bypass mode the callback early-allows everything except
+    // publish commands and the two interactive tools (see _handleCanUseTool).
+    canUseTool: _handleCanUseTool,
     ..._permissionMode === 'bypassPermissions' && { allowDangerouslySkipPermissions: true },
   };
+  // env carries the loopback-proxy base URL — the SDK passes it through to the
+  // spawned CLI verbatim (verified against sdk.mjs: env defaults to process.env
+  // and is only ever added to, never filtered).
+  if (_childEnv) options.env = _childEnv;
+  if (_settings) options.settings = _settings;
+  if (_launchModel) options.model = _launchModel;
+  // Same executable priority as PTY mode — without this the SDK resolves claude from
+  // PATH, which on guarded hosts picks a binary that gets SIGKILLed on headless spawn.
+  if (_claudeExecutable) options.pathToClaudeCodeExecutable = _claudeExecutable;
 
+  // Resume semantics: mid-session turns resume the captured session id; the FIRST
+  // query of a startup-continuation launch (-c/-r/--fork-session) uses the launch intent.
+  let resumeIntent = null;
   if (_sessionId) {
     options.resume = _sessionId;
+    resumeIntent = { resumeValue: _sessionId, picker: false, fork: false };
+  } else if (_launchResume) {
+    if (_launchResume.resumeId) options.resume = _launchResume.resumeId;
+    else if (_launchResume.continue) options.continue = true;
+    if (_launchResume.forkSession) options.forkSession = true;
+    resumeIntent = { resumeValue: _launchResume.resumeId ?? null, picker: false, fork: !!_launchResume.forkSession };
   }
 
-  if (_onStreamingStatus) _onStreamingStatus(buildStreamingStatus(true, { model: _model }));
+  // System-prompt injection, byte-identical to the PTY link (shared pipeline in
+  // lib/launch-config.js): fresh launch → sentinel/model-matched files (rendered);
+  // resume turn → pinned snapshot bytes (never re-rendered). Resume-turn pendings are
+  // NOT persisted — their only consumer (SessionStart-hook Bind B) is dormant in SDK mode.
+  // Injection failure must never block the query (PTY parity: PR#128 fallback).
+  const launchArgs = process.env.CCV_SKIP_THINKING_DISPLAY === '1' ? _userArgs : withDefaultThinkingDisplay(_userArgs);
+  try {
+    const lc = resolveLaunchSystemPrompt({
+      spawnDir: _cwd,
+      extraArgs: launchArgs,
+      env: _childEnv || process.env,
+      launchSettings: _settings,
+      resume: resumeIntent,
+      persistPending: !resumeIntent,
+    });
+    options.extraArgs = launchArgsToExtraArgs([...launchArgs, ...lc.sysPrompt.args]);
+  } catch (err) {
+    console.warn('[SDK] launch system-prompt resolution failed, querying without injected prompt:', err?.message || err);
+    options.extraArgs = launchArgsToExtraArgs(launchArgs);
+  }
 
   try {
     _activeQuery = _query({ prompt: text, options });
@@ -141,90 +207,68 @@ async function _executeQuery(text) {
   } catch (err) {
     if (err.name !== 'AbortError') {
       console.error('[SDK] Query error:', err.message);
+      // Surface query-level failures to the Web UI — console.error is invisible there
+      // (a dead query otherwise looks exactly like a hung one). Callback throw must
+      // never mask the original error or break the finally cleanup.
+      if (_onQueryError) {
+        try { _onQueryError(String(err?.message || err)); }
+        catch (cbErr) { console.warn('[sdk-manager] onQueryError threw:', cbErr?.message); }
+      }
     }
   } finally {
-    _resetStreamingState();
     _activeQuery = null;
-    if (_onStreamingStatus) _onStreamingStatus(buildStreamingStatus(false));
   }
 }
 
 /**
- * Process a single SDK message.
+ * Process a single SDK message. Display/persistence flows through the wire path
+ * (proxy → fetch hook → v2 transcript), same as PTY mode — here we only track session
+ * continuity, fire turn-end on 'result', surface turn errors, and broadcast the
+ * SDK-only lifecycle metadata (sdk-init / sdk-compact) the wire path never sees.
  */
 function _processMessage(msg) {
   switch (msg.type) {
     case 'system':
       if (msg.session_id) _sessionId = msg.session_id;
-      if (msg.model) _model = msg.model;
-      // Capture real tools from init message (tools is string[], convert to {name} format)
-      if (msg.subtype === 'init') {
-        if (Array.isArray(msg.tools)) _sdkTools = msg.tools.map(name => ({ name }));
-      }
-      // Handle compact boundary: reset accumulated messages since SDK compacted internally
-      if (msg.subtype === 'compact_boundary') {
-        _accumulatedMessages = [];
-      }
-      break;
-
-    case 'assistant':
-      // Main agent message (not sub-agent)
-      if (!msg.parent_tool_use_id && msg.message) {
-        _resetStreamingState();
-
-        // Snapshot messages BEFORE adding assistant (body.messages = request history, unfiltered)
-        const requestMessages = [..._accumulatedMessages];
-
-        // Accumulate the assistant response for future turns
-        // Merge with previous if both are assistant (same API turn, multiple content blocks)
-        const lastMsg = _accumulatedMessages[_accumulatedMessages.length - 1];
-        if (lastMsg && lastMsg.role === 'assistant' && Array.isArray(lastMsg.content) && Array.isArray(msg.message.content)) {
-          lastMsg.content = [...lastMsg.content, ...msg.message.content];
-        } else {
-          _accumulatedMessages.push({ role: 'assistant', content: msg.message.content });
-        }
-
-        // Only filter interactive tools from the RESPONSE content (Last Response rendering),
-        // NOT from body.messages (history) — filtering history creates orphaned tool_results
-        const filteredContent = _filterInteractiveContent(msg.message.content);
-        const displayMsg = { ...msg, message: { ...msg.message, content: filteredContent } };
-
-        // Convert to JSONL entry with stable turn timestamp and real SDK metadata
-        const entry = sdkToJSONLEntry(displayMsg, requestMessages, _model, _projectName, {
-          timestamp: _turnTimestamp,
-          tools: _sdkTools,
+      // Init carries the session's slash-command surface (no TUI `/` help in a
+      // headless session); compact_boundary is an SDK-only event (no wire delta)
+      // — broadcast both so clients see the same lifecycle cues PTY users get.
+      if (msg.subtype === 'init' && _broadcastWs
+        && Array.isArray(msg.slash_commands) && msg.slash_commands.length > 0
+        && msg.session_id !== _initAnnouncedSid) {
+        _initAnnouncedSid = msg.session_id;
+        _lastInitSnapshot = {
+          type: 'sdk-init',
+          sessionId: msg.session_id,
+          model: msg.model,
+          slashCommands: msg.slash_commands,
+          tools: msg.tools,
+        };
+        _broadcastWs(_lastInitSnapshot);
+      } else if (msg.subtype === 'compact_boundary' && _broadcastWs) {
+        const meta = msg.compact_metadata;
+        _broadcastWs({
+          type: 'sdk-compact',
+          trigger: meta && meta.trigger,
+          preTokens: meta && meta.pre_tokens,
+          postTokens: meta && meta.post_tokens,
         });
-        if (_onEntry) _onEntry(entry);
       }
-      if (msg.session_id) _sessionId = msg.session_id;
       break;
 
     case 'user':
-      // Tool results from tool execution — accumulate (skip replays)
-      if (msg.message && !msg.isReplay) {
-        // Merge with previous if both are user (consecutive tool_results for same turn)
-        const lastUserMsg = _accumulatedMessages[_accumulatedMessages.length - 1];
-        if (lastUserMsg && lastUserMsg.role === 'user' && Array.isArray(lastUserMsg.content) && Array.isArray(msg.message.content)) {
-          lastUserMsg.content = [...lastUserMsg.content, ...msg.message.content];
-        } else {
-          _accumulatedMessages.push({ role: 'user', content: msg.message.content });
-        }
-      }
-      break;
-
-    case 'stream_event':
-      if (_onStreamingStatus) {
-        _onStreamingStatus(buildStreamingStatus(true, { model: _model }));
-      }
-      if (!msg.parent_tool_use_id) {
-        _processStreamEvent(msg.event);
-      }
+    case 'assistant':
+      // Conversation content is persisted by the wire path (proxy → fetch hook → v2),
+      // not here — the SDK child's API traffic reaches ccv's proxy and is captured with
+      // full fidelity (real user prompts + tool calls), so accumulating it again would
+      // double-write. Here we only track session continuity.
+      if (msg.session_id) _sessionId = msg.session_id;
       break;
 
     case 'result':
       if (msg.session_id) _sessionId = msg.session_id;
-      if (_onStreamingStatus) _onStreamingStatus(buildStreamingStatus(false));
-      // SDK turn-end signal(). Equivalent to Claude Code's Stop hook
+      _notifyTurnError(msg);
+      // SDK turn-end signal. Equivalent to Claude Code's Stop hook
       // in CLI mode — fires once per user-prompt response when the whole chain
       // (assistant text + all tool calls + final reply) completes. SDK mode
       // doesn't go through ensureHooks() so this in-process callback is the
@@ -241,124 +285,53 @@ function _processMessage(msg) {
 }
 
 /**
- * Filter interactive tool_use blocks from an array of content blocks.
+ * Surface a failed turn to the Web UI — the wire path persists the failed entry but
+ * never pushes a toast, so a dead/errored turn would otherwise look like a hang.
  */
-function _filterInteractiveContent(content) {
-  return Array.isArray(content)
-    ? content.filter(b => b.type !== 'tool_use' || !INTERACTIVE_TOOLS.has(b.name))
-    : content;
-}
-
-/**
- * Process a single streaming event.
- * Accumulates content blocks and pushes throttled in-progress entries.
- */
-function _processStreamEvent(event) {
-  if (!event) return;
-  const type = event.type;
-
-  if (type === 'message_start') {
-    _streamingContent = [];
-    _currentBlockData = null;
-  } else if (type === 'content_block_start') {
-    const block = event.content_block;
-    if (!block) return;
-    if (block.type === 'text') {
-      _currentBlockData = { type: 'text', text: block.text || '' };
-    } else if (block.type === 'thinking') {
-      _currentBlockData = { type: 'thinking', thinking: block.thinking || '' };
-    } else if (block.type === 'tool_use') {
-      if (INTERACTIVE_TOOLS.has(block.name)) {
-        _currentBlockData = null;
-      } else {
-        _currentBlockData = { type: 'tool_use', id: block.id, name: block.name, input: {} };
-      }
-    } else {
-      _currentBlockData = null;
-    }
-  } else if (type === 'content_block_delta') {
-    const delta = event.delta;
-    if (!delta || !_currentBlockData) return;
-    if (delta.type === 'text_delta' && _currentBlockData.type === 'text') {
-      _currentBlockData.text += delta.text || '';
-      _pushStreamingEntry();
-    } else if (delta.type === 'thinking_delta' && _currentBlockData.type === 'thinking') {
-      _currentBlockData.thinking += delta.thinking || '';
-    } else if (delta.type === 'input_json_delta' && _currentBlockData.type === 'tool_use') {
-      if (!_currentBlockData._rawInput) _currentBlockData._rawInput = '';
-      _currentBlockData._rawInput += delta.partial_json || '';
-    }
-  } else if (type === 'content_block_stop') {
-    if (_currentBlockData) {
-      if (_currentBlockData.type === 'tool_use' && _currentBlockData._rawInput) {
-        try { _currentBlockData.input = JSON.parse(_currentBlockData._rawInput); } catch {}
-        delete _currentBlockData._rawInput;
-      }
-      _streamingContent.push(_currentBlockData);
-      _currentBlockData = null;
-      _pushStreamingEntry();
-    }
-  } else if (type === 'message_stop') {
-    _resetStreamingState();
-  }
-}
-
-/**
- * Push a throttled in-progress entry with accumulated streaming content.
- */
-function _pushStreamingEntry() {
-  if (_streamThrottleTimer) return;
-  _streamThrottleTimer = setTimeout(() => {
-    _streamThrottleTimer = null;
-    _flushStreamingEntry();
-  }, 100);
-}
-
-function _flushStreamingEntry() {
-  if (!_onEntry) return;
-  const content = [..._streamingContent];
-  if (_currentBlockData) {
-    const clone = { ..._currentBlockData };
-    if (clone._rawInput) delete clone._rawInput;
-    content.push(clone);
-  }
-  if (content.length === 0) return;
-
-  const syntheticMsg = {
-    message: {
-      id: _streamingRequestId,
-      type: 'message',
-      role: 'assistant',
-      model: _model,
-      content,
-      stop_reason: null,
-      usage: { input_tokens: 0, output_tokens: 0 },
-    },
-  };
-  // Use the SAME stable turn timestamp so in-progress entries dedup with the final entry
-  const entry = sdkToJSONLEntry(syntheticMsg, [..._accumulatedMessages], _model, _projectName, {
-    inProgress: true,
-    tools: _sdkTools,
-    requestId: _streamingRequestId,
-    timestamp: _turnTimestamp,
-  });
-  _onEntry(entry);
-}
-
-function _resetStreamingState() {
-  _streamingContent = [];
-  _currentBlockData = null;
-  if (_streamThrottleTimer) {
-    clearTimeout(_streamThrottleTimer);
-    _streamThrottleTimer = null;
+function _notifyTurnError(resultMsg) {
+  const isError = resultMsg.is_error === true || (resultMsg.subtype && resultMsg.subtype !== 'success');
+  if (!isError) return;
+  const errs = Array.isArray(resultMsg.errors) && resultMsg.errors.length
+    ? resultMsg.errors.join('; ')
+    : (typeof resultMsg.result === 'string' && resultMsg.result) || resultMsg.subtype || 'unknown error';
+  if (_broadcastWs) {
+    try { _broadcastWs({ type: 'sdk-error', message: String(errs) }); } catch (err) { console.warn('[sdk-manager] sdk-error broadcast threw:', err?.message); }
   }
 }
 
 /**
  * canUseTool callback — handles AskUserQuestion + permission approval.
+ *
+ * Check order mirrors perm-bridge.js precedence:
+ *   1. IM hard deny (CCV_IM_DENY=1 only) — beats everything, including the
+ *      publish force-approval below (an IM worker gets a hard deny, not a modal);
+ *   2. npm-publish hard gate — forced through the perm approval branch even in
+ *      bypassPermissions mode (perm-bridge.js's bypass exemption equivalent);
+ *   3. bypass early-allow — bypass auto-approves everything else, but NEVER
+ *      short-circuits the ExitPlanMode/AskUserQuestion interactive branches;
+ *   4. the three regular branches (plan / ask / perm).
  */
 async function _handleCanUseTool(toolName, input, options) {
   const id = options?.toolUseID || `sdk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  // 1. IM worker hard deny — must run before any auto-allow (perm-bridge.js parity).
+  if (process.env.CCV_IM_DENY === '1') {
+    const verdict = evaluateImDeny(toolName, input);
+    if (verdict.deny) {
+      return { behavior: 'deny', message: `cc-viewer IM guard: ${verdict.reason}` };
+    }
+  }
+
+  // 2. npm publish is never auto-allowed, even under --d (safety floor).
+  const isPublish = isPublishCommand(toolName, input);
+
+  // 3. Bypass mode auto-approves everything except publish and the two
+  // interactive tools — those keep their UI channels so a forwarded
+  // ExitPlanMode/AskUserQuestion still reaches the user.
+  if (_permissionMode === 'bypassPermissions' && !isPublish
+    && toolName !== 'ExitPlanMode' && toolName !== 'AskUserQuestion') {
+    return { behavior: 'allow', updatedInput: input };
+  }
 
   if (toolName === 'ExitPlanMode') {
     if (_runWaterfallHook) {
@@ -372,16 +345,17 @@ async function _handleCanUseTool(toolName, input, options) {
         }
       } catch {}
     }
+    const planPayload = { type: 'sdk-plan-pending', id, input };
     if (_broadcastWs) {
-      _broadcastWs({ type: 'sdk-plan-pending', id, input });
+      _broadcastWs(planPayload);
     }
-    const result = await _waitForApproval(id, 5 * 60 * 1000, 'plan');
+    const result = await _waitForApproval(id, 5 * 60 * 1000, 'plan', planPayload);
     if (result === null) {
       return { behavior: 'deny', message: 'Timeout waiting for plan approval' };
     }
-    // cancel sentinel guard：cancelApproval 共用 _pendingApprovals Map，
-    // 若 ask-cancel 撞到 plan id（kind tag 已防住，但保留 sentinel guard 作为防御性兜底），
-    // 不能 fall through 到 allow。
+    // cancel sentinel guard: cancelApproval shares the _pendingApprovals Map; if an
+    // ask-cancel collides with a plan id (the kind tag already guards this, but the sentinel
+    // guard is kept as defensive depth), it must not fall through to allow.
     if (result && typeof result === 'object' && result.__cancelled__ === true) {
       return { behavior: 'deny', message: result.reason || 'User aborted' };
     }
@@ -400,30 +374,33 @@ async function _handleCanUseTool(toolName, input, options) {
         }
       } catch {}
     }
-    // 24h — 与 hook 路径（server.js ASK_HOOK_TIMEOUT_MS）同源，履行"GUI 实质无超时"承诺。
-    // 实际常量定义在 server/lib/ask/ask-constants.js。
+    // 24h — same source as the hook path (server.js ASK_HOOK_TIMEOUT_MS), honoring the
+    // "GUI effectively has no timeout" promise. The actual constant lives in
+    // server/lib/ask/ask-constants.js.
     const askTimeoutMs = ASK_TIMEOUT_MS;
     const askStartedAt = Date.now();
+    const askPayload = { type: 'sdk-ask-pending', id, questions: input.questions, startedAt: askStartedAt, timeoutMs: askTimeoutMs };
     if (_broadcastWs) {
-      _broadcastWs({ type: 'sdk-ask-pending', id, questions: input.questions, startedAt: askStartedAt, timeoutMs: askTimeoutMs });
+      _broadcastWs(askPayload);
     }
-    const answers = await _waitForApproval(id, askTimeoutMs, 'ask');
+    const answers = await _waitForApproval(id, askTimeoutMs, 'ask', askPayload);
     if (answers === null) {
       return { behavior: 'deny', message: 'Timeout waiting for user answer' };
     }
-    // cancel sentinel：cancelApproval 经 _waitForApproval 注入的 { __cancelled__: true, reason }。
-    // 等价 terminal Claude Code 的 onAbort 路径 — SDK 包会把这个 deny 配成 tool_result.is_error=true
-    // 后注入 transcript，下一轮请求 transcript 闭合，会话不卡死。
-    // 加 [cc-viewer:cancel] 前缀作为协议级 sentinel — toolResultBuilder.js 用前缀匹配区分
-    // cancelled vs rejected。
+    // cancel sentinel: the { __cancelled__: true, reason } injected by cancelApproval via
+    // _waitForApproval. Equivalent to terminal Claude Code's onAbort path — the SDK package
+    // turns this deny into tool_result.is_error=true before injecting it into the
+    // transcript, so the next request's transcript closes and the session does not wedge.
+    // The [cc-viewer:cancel] prefix is a protocol-level sentinel — toolResultBuilder.js uses
+    // prefix matching to tell cancelled vs rejected apart.
     if (answers && typeof answers === 'object' && answers.__cancelled__ === true) {
       return { behavior: 'deny', message: '[cc-viewer:cancel] ' + (answers.reason || 'User aborted') };
     }
     return { behavior: 'allow', updatedInput: { questions: input.questions, answers } };
   }
 
-  // Tools that need explicit user approval via Web UI (mutating or external access)
-  const APPROVAL_TOOLS = new Set(['Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch']);
+  // Tools that need explicit user approval via Web UI (mutating or external access).
+  // The six-tool set is shared with the PTY perm-bridge via approval-policy.js.
   if (!APPROVAL_TOOLS.has(toolName)) {
     return { behavior: 'allow', updatedInput: input };
   }
@@ -446,15 +423,17 @@ async function _handleCanUseTool(toolName, input, options) {
       // unknown decision → fall through to normal approval flow
     } catch {}
   }
+  const permPayload = { type: 'perm-hook-pending', id, toolName, input };
   if (_broadcastWs) {
-    _broadcastWs({ type: 'perm-hook-pending', id, toolName, input });
+    _broadcastWs(permPayload);
   }
 
-  const result = await _waitForApproval(id, 5 * 60 * 1000, 'perm');
+  const result = await _waitForApproval(id, 5 * 60 * 1000, 'perm', permPayload);
   if (result === null) {
     return { behavior: 'deny', message: 'Timeout waiting for user approval' };
   }
-  // cancel sentinel guard：同 plan 分支防 cancelApproval 撞 perm id 误 allow
+  // cancel sentinel guard: same as the plan branch — prevents a cancelApproval colliding
+  // with a perm id from wrongly allowing
   if (result && typeof result === 'object' && result.__cancelled__ === true) {
     return { behavior: 'deny', message: result.reason || 'User aborted' };
   }
@@ -470,14 +449,18 @@ async function _handleCanUseTool(toolName, input, options) {
   return response;
 }
 
-function _waitForApproval(id, timeoutMs, kind) {
+function _waitForApproval(id, timeoutMs, kind, replay = null) {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       _pendingApprovals.delete(id);
       resolve(null);
     }, timeoutMs);
     _pendingApprovals.set(id, {
-      kind,  // 'ask' | 'plan' | 'perm' — 让 cancelApproval 区分类型，避免 ask-cancel 撞 plan/perm id
+      kind,  // 'ask' | 'plan' | 'perm' — lets cancelApproval distinguish types so an
+      // ask-cancel does not collide with a plan/perm id
+      replay,  // exact broadcast payload announced to clients — replayed to a fresh WS connection
+      startedAt: Date.now(),
+      timeoutMs,
       resolve: (value) => {
         clearTimeout(timer);
         _pendingApprovals.delete(id);
@@ -501,18 +484,39 @@ export function resolveApproval(id, value) {
 }
 
 /**
+ * Snapshot of pending approvals for WS-reconnect replay (server.js connection
+ * handler). Returns [ { id, kind, replay, startedAt, timeoutMs } ] with remaining
+ * time computed at call time; entries already past their timeout are excluded.
+ * The resolve closures are deliberately not exposed.
+ */
+export function getPendingApprovals() {
+  const now = Date.now();
+  const out = [];
+  for (const [id, p] of _pendingApprovals) {
+    const remaining = (p.timeoutMs ?? 0) - (now - (p.startedAt ?? now));
+    if (remaining <= 0) continue;
+    out.push({ id, kind: p.kind || null, replay: p.replay || null, remainingMs: remaining });
+  }
+  return out;
+}
+
+/**
  * Cancel a pending canUseTool approval — used by ask-cancel WS handler
  * (user clicked Cancel button or typed-interrupt in input bar).
  *
- * 不等价 resolveApproval(id, null)：null 在 _waitForApproval 已被 timeout 占用语义。
- * 这里 resolve 一个 { __cancelled__: true, reason } sentinel，让 canUseTool 走 deny 分支
- * 而非 allow（详见 _handleCanUseTool AskUserQuestion 块）。
+ * Not equivalent to resolveApproval(id, null): null already occupies the timeout semantics
+ * in _waitForApproval. Here we resolve a { __cancelled__: true, reason } sentinel so
+ * canUseTool takes the deny branch rather than allow (see the _handleCanUseTool
+ * AskUserQuestion block).
  *
- * kind 校验：ask-cancel 协议只对 ask 类型生效。撞到 plan / perm id 时返 false 不处理 —
- * 避免取消 ask 的信号被误用成"用户拒绝 plan"，让模型上下文写错原因。
+ * kind check: the ask-cancel protocol only applies to ask-type approvals. Colliding with a
+ * plan / perm id returns false and is not handled — so a cancel-ask signal cannot be
+ * mistaken for "the user rejected the plan", which would write a wrong reason into the
+ * model context.
  *
- * 与 resolveApproval 共享同一 _pendingApprovals Map + 同一 first-wins atomic guard
- * （pending.resolve clearTimeout + delete），cancel 与 answer 并发时后到的会 no-op。
+ * Shares the same _pendingApprovals Map and the same first-wins atomic guard
+ * (pending.resolve clearTimeout + delete) as resolveApproval, so a cancel racing an answer
+ * is a no-op for whichever arrives second.
  */
 export function cancelApproval(id, reason) {
   const pending = _pendingApprovals.get(id);
@@ -527,10 +531,9 @@ export function cancelApproval(id, reason) {
  * session alive so the next message resumes the same conversation.
  *
  * Only closes the active query iterator — `_executeQuery`'s finally block then
- * runs `_resetStreamingState()`, nulls `_activeQuery`, and emits
- * `streaming_status{active:false}`; `sendUserMessage`'s finally clears
- * `_queryBusy`. Crucially we do NOT call `_resetFullState()`, so `_sessionId`
- * is preserved and the next sendUserMessage resumes via `options.resume`.
+ * nulls `_activeQuery`; `sendUserMessage`'s finally clears `_queryBusy`.
+ * Crucially we do NOT call `_resetFullState()`, so `_sessionId` is preserved
+ * and the next sendUserMessage resumes via `options.resume`.
  *
  * Contrast with `stopSession()` below, which is the hard process-exit cleanup
  * that also nulls `_sessionId` (loses conversation continuity).
@@ -586,14 +589,10 @@ export function stopSession() {
 function _resetFullState() {
   _activeQuery = null;
   _sessionId = null;
-  _model = null;
-  _sdkTools = null;
   _queryBusy = false;
-  _accumulatedMessages = [];
-  _turnTimestamp = null;
+  _initAnnouncedSid = '';
+  _lastInitSnapshot = null;
   _messageQueue = [];
-  _resetStreamingState();
-  _streamingRequestId = null;
   // Reject all pending approvals
   for (const [, pending] of _pendingApprovals) {
     pending.resolve(null);
@@ -606,4 +605,12 @@ function _resetFullState() {
  */
 export function getSessionId() {
   return _sessionId;
+}
+
+/**
+ * Get the last sdk-init snapshot for WS reconnect replay.
+ * Returns null if no init has been announced yet (e.g. session without slash commands).
+ */
+export function getSdkInitSnapshot() {
+  return _lastInitSnapshot;
 }

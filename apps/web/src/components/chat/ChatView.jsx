@@ -166,6 +166,8 @@ class ChatView extends React.Component {
     this.virtuosoRef = React.createRef();
     this.splitContainerRef = React.createRef();
     this.innerSplitRef = React.createRef();
+    this.inputStackRef = React.createRef();
+    this._inputStackRO = null;
 
     // 增量 tool result 状态
     this._incToolState = null;
@@ -217,6 +219,11 @@ class ChatView extends React.Component {
       highlightTs: null,
       highlightFading: false,
       highlightVisibleIdx: -1,
+      // SDK-mode session surface (broadcast via terminal WS — sdk-init / sdk-compact)
+      sdkSlashCommands: [],
+      sdkModel: null,
+      sdkCompactNotices: [],
+      inputSlashPrefix: false,
       sidebarWidth: parseInt(localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY), 10) || 240,
       terminalWidth: initialTerminalWidth || 624, // 默认 80cols * 7.8px
       needsInitialSnap: initialTerminalWidth === null, // 标记是否需要初始化吸附
@@ -501,14 +508,37 @@ class ChatView extends React.Component {
     if (!useVirtuoso && this.containerRef.current) {
       this._stickyController.bind(this.containerRef.current);
     }
-    // 初始化时吸附到 60cols
-    if (this.state.needsInitialSnap && this.props.cliMode && this.props.terminalVisible) {
+    this._bindInputStackRO();
+    // 初始化时吸附到 60cols(SDK 模式无主 PTY 面板可吸附,跳过)
+    if (this.state.needsInitialSnap && this.props.cliMode && this.props.terminalVisible && !this.props.sdkMode) {
       this._snapToInitialPosition();
     }
     // 加载 Agent Team 预置项 (props.preferences 已 ready 时立即加载,
     // 否则 componentDidUpdate 接力。preset 写入由 SettingsContext.updatePreferences
     // setState 触发 props 变化,无需 window event)
     this._loadPresets();
+  }
+
+  // Measure inputStack height → root CSS variable (consumed by .inputStackSpacer and .stickyBottomBtn).
+  // Uses offsetHeight (layout px) — both consumers live in the same layout coordinate system.
+  // Called from componentDidMount and componentDidUpdate (ref may be null on first mount if loading).
+  _bindInputStackRO() {
+    const stackEl = this.inputStackRef.current;
+    if (!stackEl || !stackEl.isConnected) return;
+    if (this._inputStackRO) return; // already bound
+    const setInputStackVar = () => {
+      const el = this.inputStackRef.current;
+      if (!el || !el.isConnected) {
+        document.documentElement.style.removeProperty('--input-stack-height');
+        return;
+      }
+      document.documentElement.style.setProperty('--input-stack-height', (el.offsetHeight || 0) + 'px');
+    };
+    setInputStackVar();
+    if (typeof ResizeObserver !== 'undefined') {
+      this._inputStackRO = new ResizeObserver(setInputStackVar);
+      this._inputStackRO.observe(stackEl);
+    }
   }
 
   shouldComponentUpdate(nextProps, nextState) {
@@ -542,6 +572,7 @@ class ChatView extends React.Component {
   }
 
   componentDidUpdate(prevProps, prevState) {
+    this._bindInputStackRO();
     if (prevProps.isStreaming !== this.props.isStreaming) {
       this._streamSpinnerUrl = this.props.isStreaming
         ? (Math.random() < 0.5 ? orbitingUrl : shimmerUrl)
@@ -557,6 +588,8 @@ class ChatView extends React.Component {
         this.setState({ fileExplorerExpandedPaths: loadExpandedPaths(this.props.projectName) });
       }
       this._fileScrollSnapshot = null;
+      // Clear SDK session surface state on workspace switch to prevent stale data.
+      this.setState({ sdkCompactNotices: [], sdkSlashCommands: [], sdkModel: null, inputSlashPrefix: false });
     }
     // currentFile 变（含切到 null）→ 上一文件的 scroll 快照失效，集中在 cdU 一处清，
     // 比在 8 个 setState({currentFile:...}) 站点各加一行更稳。fileVersion bump 走的是同
@@ -964,6 +997,8 @@ class ChatView extends React.Component {
     this._scrollHighlight.dispose();
     // 流式吸底统一清理：dispose 内会卸 RO + scroll listener + document touch + cancel 全部 rAF
     if (this._stickyController) this._stickyController.dispose();
+    if (this._inputStackRO) { this._inputStackRO.disconnect(); this._inputStackRO = null; }
+    document.documentElement.style.removeProperty('--input-stack-height');
     if (this._unsubWsHandler) { try { this._unsubWsHandler(); } catch {} this._unsubWsHandler = null; }
     if (this._unsubWsState) { try { this._unsubWsState(); } catch {} this._unsubWsState = null; }
   }
@@ -2382,6 +2417,27 @@ class ChatView extends React.Component {
               return { pendingImages: next };
             });
           }
+        } else if (msg.type === 'sdk-error') {
+          // SDK query 级失败(spawn/protocol/iterator)——此前只 console.error,UI 上看与挂起无异。
+          message.error(t('ui.sdkError', { detail: msg.message || '' }));
+        } else if (msg.type === 'sdk-init') {
+          // SDK 会话的 slash 命令面 + 模型(headless 会话没有 TUI `/` 帮助)。
+          // 每个 session 只广播一次(server 侧去重),这里直接覆盖式落地即可。
+          this.setState({
+            sdkSlashCommands: Array.isArray(msg.slashCommands) ? msg.slashCommands : [],
+            sdkModel: msg.model || null,
+          });
+        } else if (msg.type === 'sdk-compact') {
+          // SDK-side compact (invisible on the wire) — render as a system notice.
+          // Cap at 10 entries to prevent unbounded growth; only the latest is rendered.
+          this.setState(prev => ({
+            sdkCompactNotices: [...(prev.sdkCompactNotices || []), {
+              ts: Date.now(),
+              trigger: msg.trigger || null,
+              preTokens: msg.preTokens ?? null,
+              postTokens: msg.postTokens ?? null,
+            }].slice(-10),
+          }));
         }
     } catch (e) { reportSwallowed('ws.terminal-msg', e, { msgType: msg?.type }); }
   };
@@ -2770,7 +2826,9 @@ class ChatView extends React.Component {
     const textarea = e.target;
     resizeChatTextarea(textarea, { focused: document.activeElement === textarea });
     const empty = !textarea.value.trim();
-    this.setState({ inputEmpty: empty });
+    // slash 前缀跟踪只为 SDK 模式的命令 hint(headless 会话没有 TUI `/` 帮助);
+    // 发送后 inputEmpty=true 会掩掉旧值,下次输入自然刷新。
+    this.setState({ inputEmpty: empty, inputSlashPrefix: !empty && textarea.value.startsWith('/') });
     if (this.state.inputSuggestion && !empty) {
       this.setState({ inputSuggestion: null });
     }
@@ -2898,8 +2956,8 @@ class ChatView extends React.Component {
 
   _handleInsertPathToChat = (filePath) => {
     const quoted = `"${filePath}"`;
-    // 终端开启时写入终端，否则写入对话输入框
-    if (this.props.terminalVisible && this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
+    // 终端开启时写入终端，否则写入对话输入框(SDK 模式无主 PTY,terminalVisible 是 scratchOpen,不路由到 PTY input)
+    if (this.props.terminalVisible && !this.props.sdkMode && this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
       this._inputWs.send(JSON.stringify({ type: 'input', data: quoted }));
       return;
     }
@@ -3370,7 +3428,7 @@ class ChatView extends React.Component {
             !filteredLastResponseItems && targetIdx != null && targetIdx >= visible.length
               ? <div key="stream-resp-anchor" ref={this._scrollTargetRef}>{streamingLiveItem}</div>
               : streamingLiveItem
-          )}</>,
+          )}<div className={styles.inputStackSpacer} aria-hidden="true" /></>,
           <Virtuoso
             ref={this.virtuosoRef}
             className={styles.mobileVirtuoso}
@@ -3428,6 +3486,7 @@ class ChatView extends React.Component {
                 ? <div key="stream-resp-anchor" ref={this._scrollTargetRef}>{streamingLiveItem}</div>
                 : streamingLiveItem
             )}
+            <div className={styles.inputStackSpacer} aria-hidden="true" />
           </div>
         )}
         {stickyBtn}
@@ -3629,7 +3688,7 @@ class ChatView extends React.Component {
             {messageList}
             {/* inputStack 把审批面板 + 输入栏包成同一个定位容器，
                 面板用 position:absolute; bottom:100% 自动贴在输入栏顶部之上，不遮挡 */}
-            <div className={styles.inputStack}>
+            <div className={styles.inputStack} ref={this.inputStackRef}>
             {/* 如果父组件处理全局渲染（移动端通过 suppressInlineApprovalPanels），跳过本地渲染 */}
             {!this.props.suppressInlineApprovalPanels && (
               <ToolApprovalPanel
@@ -3661,6 +3720,23 @@ class ChatView extends React.Component {
               />
             )}
             <WorkflowLiveHud />
+            {this.props.sdkMode && this.state.sdkCompactNotices.length > 0 && (() => {
+              const n = this.state.sdkCompactNotices[this.state.sdkCompactNotices.length - 1];
+              const tokens = (n.preTokens != null && n.postTokens != null)
+                ? ` (${Math.round(n.preTokens / 1000)}k → ${Math.round(n.postTokens / 1000)}k)`
+                : '';
+              return (
+                <div className={styles.sdkNoticeBanner} key={`sdkc-${n.ts}`}>
+                  {t('ui.sdkCompacted')}{tokens}
+                </div>
+              );
+            })()}
+            {this.props.sdkMode && !this.state.inputEmpty && this.state.inputSlashPrefix
+              && this.state.sdkSlashCommands.length > 0 && (
+              <div className={styles.sdkNoticeBanner}>
+                {t('ui.sdkSlashHint', { commands: this.state.sdkSlashCommands.slice(0, 8).join('  ') })}
+              </div>
+            )}
             <ChatInputBar
               inputRef={this._inputRef}
               inputEmpty={this.state.inputEmpty}
@@ -3774,7 +3850,7 @@ class ChatView extends React.Component {
             )}
             </div>
           </div>
-          {cliMode && !this.props.sdkMode && onToggleTerminal && (
+          {cliMode && onToggleTerminal && (
             <div
               className={styles.terminalToggle}
               onClick={onToggleTerminal}
@@ -3788,10 +3864,16 @@ class ChatView extends React.Component {
               </svg>
             </div>
           )}
+          {/* 右侧终端容器(两种模式共用):分界线 + 容器都在。SDK 模式容器内渲染 scratch-only
+              子终端(scratchOnly 分支,无主 PTY 主区/工具栏);PTY 模式渲染完整 TerminalPanel。
+              terminalVisible 在 SDK 模式下是 scratchOpen(App state)。 */}
           {terminalVisible && (
             <>
               <div className={styles.vResizer} onMouseDown={this.handleSplitMouseDown} />
               <div className={styles.terminalPanelWrap} style={{ width: terminalWidth }}>
+                {this.props.sdkMode ? (
+                  <TerminalPanel scratchOnly scratchOpen={terminalVisible} />
+                ) : (
                 <TerminalPanel claudeSettings={this.props.claudeSettings} preferences={this.props.preferences} onUpdatePreferences={this.props.onUpdatePreferences} onUpdateClaudeSettings={this.props.onUpdateClaudeSettings} onEditorOpen={(sessionId, filePath) => {
                   this.setState({
                     editorSessionId: sessionId,
@@ -3817,9 +3899,11 @@ class ChatView extends React.Component {
                 planAutoApproveSeconds={this.props.planAutoApproveSeconds}
                 onPlanAutoApproveChange={this.props.onPlanAutoApproveChange}
                 />
+                )}
               </div>
             </>
           )}
+
         </div>
       </div>
       <TeamModal session={this.state.teamModalSession} requests={this.props.requests} mainAgentSessions={this.props.mainAgentSessions} collapseToolResults={this.props.collapseToolResults} expandThinking={this.props.expandThinking} showFullToolContent={this.props.showFullToolContent} userProfile={this.props.userProfile} onViewRequest={this.props.onViewRequest} isHistoryLog={this._getIsHistoryLog()} lang={this.props.lang} onClose={() => this.setState({ teamModalSession: null })} />

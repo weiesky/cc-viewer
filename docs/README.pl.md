@@ -65,6 +65,18 @@ Po uruchomieniu trybu programowania automatycznie otwiera się strona internetow
 
 cc-viewer jest również dostarczany jako natywna aplikacja desktopowa: [Strona pobierania](https://github.com/weiesky/cc-viewer/releases)
 
+### Tryb SDK (headless, `ccv -SDK`)
+
+`ccv -SDK` uruchamia sesję przez Agent SDK zamiast interaktywnego terminala — bez panelu terminala, wiadomości są wysyłane z interfejsu webowego, a wszystko inne (logi sesji, strumieniowe drukowanie, statystyki użycia) działa tak samo jak w trybie terminala.
+
+```bash
+ccv -SDK                # sesja headless; czat z przeglądarki
+ccv -SDK -c             # kontynuuj ostatnią sesję
+ccv -SDK --model sonnet # wybierz model
+```
+
+Zapytania o uprawnienia (Bash/Edit/Write/WebFetch/…) pojawiają się w przeglądarce z opcjami allow / deny / allow-for-session, a `AskUserQuestion`/prośby planu wyświetlane są jako modale. `npm publish` zawsze wymaga wyraźnego zatwierdzenia — nawet przy `--d`. Wymaga pakietu `@anthropic-ai/claude-agent-sdk` (dołączonego do cc-viewer); jeśli jest niedostępny, używany jest tryb terminala.
+
 ### Aktualizacja do 1.7.0 (format logów v2)
 
 Od wersji 1.7.0 logi są przechowywane w formacie katalogu na sesję (wire-format v2) zamiast pojedynczych plików `.jsonl` — zajmują około 90% mniej miejsca na dysku. Istniejące pliki `.jsonl` v1 nigdy nie są modyfikowane ani usuwane; okno dialogowe logów domyślnie wyświetla sesje v2, a mały wpis „Pokaż starsze logi (v1)” (widoczny, dopóki istnieją stare pliki) otwiera widok v1, w którym można je przeglądać, migrować lub usuwać. Przy uruchomieniu cc-viewer proponuje migrację jednym kliknięciem, gdy wykryje starsze logi (zdecydowanie zalecane przy kontynuowaniu starej rozmowy poleceniem `claude -c`, której pierwsza połowa znajduje się w starych plikach). Migrację można też przeprowadzić z terminala:

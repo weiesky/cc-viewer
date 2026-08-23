@@ -10,6 +10,7 @@ import DetailPanel from './components/dashboard/DetailPanel';
 import ChatView from './components/chat/ChatView';
 import ApprovalModal from './components/approval/ApprovalModal';
 import { TerminalWsProvider } from './components/terminal/TerminalWsContext';
+import TerminalPanel from './components/terminal/TerminalPanel';
 import PanelResizer from './components/common/PanelResizer';
 import OpenFolderIcon from './components/common/OpenFolderIcon';
 import CountryFlag from './components/common/CountryFlag';
@@ -57,6 +58,8 @@ class App extends AppBase {
     Object.assign(this.state, {
       leftPanelWidth: 380,
       terminalVisible: true,
+      // SDK 模式:Header「终端」按钮切换的多 tab scratch 子终端(无主 PTY)。与 terminalVisible 独立。
+      scratchOpen: false,
       proxyStatsVisible: false,
       currentTab: 'context',
       pendingCacheHighlight: null,
@@ -325,7 +328,7 @@ class App extends AppBase {
       }
       return { viewMode: newMode, chatScrollToTs: null, ...closeProxyStats };
     }, () => {
-      if (this.state.viewMode === 'chat' && this.state.terminalVisible && this.state.cliMode && !isMobile) {
+      if (this.state.viewMode === 'chat' && this.state.terminalVisible && this.state.cliMode && !this.state.sdkMode && !isMobile) {
         requestAnimationFrame(() => {
           const ta = document.querySelector('.xterm-helper-textarea');
           if (ta) ta.focus();
@@ -495,11 +498,13 @@ class App extends AppBase {
     // 代理重试统计面板（内嵌就地切换视图）：在主内容区渲染，保留完整 AppHeader。
     // 不用独立 Layout——否则 AppHeader 拿不到完整 props（主题/视图模式等按钮失效）。
 
-    // 单条 /ws/terminal 的开启条件:非本地日志查看且非 SDK 模式即开。
+    // 单条 /ws/terminal 的开启条件:非本地日志查看即开(SDK 模式也连)。
     // (历史:合并前 ChatView 的 _inputWs 始终连;v1.6.226 一度绑到 cliMode || terminalVisible,
     // 在 mobile 隐藏终端 / web-only 浏览等场景下 hook bridge / PTY 提交全失败,触发"请求未送达"toast。
-    // 回退到与合并前 _inputWs 始终连等价的语义。SDK 模式 ws 缺失是 latent issue,本次不处理。)
-    const wsOpen = !this._isLocalLog && !this.state.sdkMode;
+    // 回退到与合并前 _inputWs 始终连等价的语义。SDK 模式曾排除在外——那是 latent issue:
+    // sdk-user-message / 审批三态全走这条 WS,断开后 web UI 发不出消息。现已恢复;
+    // PTY 专属消息(input/resize/resync)由 server 侧 isSdkMode guard no-op 兜底。)
+    const wsOpen = !this._isLocalLog;
 
     return (
       <ConfigProvider theme={this.themeConfig}>
@@ -546,8 +551,8 @@ class App extends AppBase {
               onLogDirChange={this.handleLogDirChange}
               cliMode={this.state.cliMode}
               sdkMode={this.state.sdkMode}
-              terminalVisible={this.state.sdkMode ? false : this.state.terminalVisible}
-              onToggleTerminal={() => this.setState(prev => ({ terminalVisible: !prev.terminalVisible }))}
+              terminalVisible={this.state.sdkMode ? this.state.scratchOpen : this.state.terminalVisible}
+              onToggleTerminal={() => this.setState(prev => prev.sdkMode ? ({ scratchOpen: !prev.scratchOpen }) : ({ terminalVisible: !prev.terminalVisible }))}
               proxyStatsVisible={this.state.proxyStatsVisible}
               onToggleProxyStats={this.handleToggleProxyStats}
               onReturnToWorkspaces={this.state.cliMode ? this.handleReturnToWorkspaces : null}
@@ -683,7 +688,7 @@ class App extends AppBase {
               )
             )}
             <div className={styles.chatViewWrapper} style={{ display: viewMode === 'chat' ? 'flex' : 'none' }}>
-              <ChatView loadingProgress={fileLoading ? this._loadingProgressText() : null} {...this._settingsProps()} getTokenStatsContent={this._getTokenStatsContent} requests={deepRequests} mainAgentSessions={displaySessions} sessionUpperBoundTs={sessionUpperBoundTs} streamingLatest={this.state.streamingLatest} userProfile={this.state.userProfile} collapseToolResults={prefs.collapseToolResults} expandThinking={prefs.expandThinking} showFullToolContent={prefs.showFullToolContent} onlyCurrentSession={!this._isLocalLog} isLocalLog={!!this._isLocalLog} showThinkingSummaries={prefs.showThinkingSummaries} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={this.handleScrollTsDone} cliMode={this._isLocalLog ? false : this.state.cliMode} sdkMode={this._isLocalLog ? false : this.state.sdkMode} terminalVisible={this._isLocalLog ? false : (this.state.sdkMode ? false : this.state.terminalVisible)} onToggleTerminal={() => this.setState(prev => ({ terminalVisible: !prev.terminalVisible }))} pendingUploadPaths={this.state.pendingUploadPaths} onUploadPathsConsumed={this.handleUploadPathsConsumed} uploadingDrop={this.state.uploadingDrop} fileLoading={this.state.fileLoading} isStreaming={this.state.isStreaming} lang={this.state.lang} autoApproveSeconds={this.state.autoApproveSeconds} onAutoApproveChange={this.handleAutoApproveChange} planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds} onPlanAutoApproveChange={this.handlePlanAutoApproveChange} onClearContextOptimistic={this.handleClearContextOptimistic} onUserMessageSent={this.handleUserMessageSent} onPendingAsk={this.handleApprovalAsk} onPendingPtyPlan={this.handleApprovalPtyPlan} ownTabId={this.state.ownTabId} projectName={this.state.projectName} setContextBarSlot={this.setContextBarSlot} />
+              <ChatView loadingProgress={fileLoading ? this._loadingProgressText() : null} {...this._settingsProps()} getTokenStatsContent={this._getTokenStatsContent} requests={deepRequests} mainAgentSessions={displaySessions} sessionUpperBoundTs={sessionUpperBoundTs} streamingLatest={this.state.streamingLatest} userProfile={this.state.userProfile} collapseToolResults={prefs.collapseToolResults} expandThinking={prefs.expandThinking} showFullToolContent={prefs.showFullToolContent} onlyCurrentSession={!this._isLocalLog} isLocalLog={!!this._isLocalLog} showThinkingSummaries={prefs.showThinkingSummaries} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={this.handleScrollTsDone} cliMode={this._isLocalLog ? false : this.state.cliMode} sdkMode={this._isLocalLog ? false : this.state.sdkMode} terminalVisible={this._isLocalLog ? false : (this.state.sdkMode ? this.state.scratchOpen : this.state.terminalVisible)} onToggleTerminal={() => this.setState(prev => prev.sdkMode ? ({ scratchOpen: !prev.scratchOpen }) : ({ terminalVisible: !prev.terminalVisible }))} pendingUploadPaths={this.state.pendingUploadPaths} onUploadPathsConsumed={this.handleUploadPathsConsumed} uploadingDrop={this.state.uploadingDrop} fileLoading={this.state.fileLoading} isStreaming={this.state.isStreaming} lang={this.state.lang} autoApproveSeconds={this.state.autoApproveSeconds} onAutoApproveChange={this.handleAutoApproveChange} planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds} onPlanAutoApproveChange={this.handlePlanAutoApproveChange} onClearContextOptimistic={this.handleClearContextOptimistic} onUserMessageSent={this.handleUserMessageSent} onPendingAsk={this.handleApprovalAsk} onPendingPtyPlan={this.handleApprovalPtyPlan} ownTabId={this.state.ownTabId} projectName={this.state.projectName} setContextBarSlot={this.setContextBarSlot} />
             </div>
           </Layout.Content>
           <div className={styles.footer}>

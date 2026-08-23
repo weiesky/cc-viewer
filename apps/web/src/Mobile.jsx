@@ -585,9 +585,11 @@ class Mobile extends AppBase {
       }
     }
 
-    // 单条 /ws/terminal 的开启条件:与 App 同款,回退到「非本地日志 + 非 SDK 模式都连」,
-    // 修 mobile 隐藏终端时 ChatView 的 hook bridge / PTY 提交失败回归(参看 App.jsx:305 注释)。
-    const wsOpen = !mobileIsLocalLog && !this.state.sdkMode;
+    // 单条 /ws/terminal 的开启条件:与 App 同款,非本地日志即连(SDK 模式也连——
+    // sdk-user-message / 审批全走这条 WS;参看 App.jsx wsOpen 处注释)。
+    // mobile 常挂 TerminalPanel,ws open 后会发一次 resize —— SDK 模式无 PTY,
+    // 由 server 侧 isSdkMode guard no-op 兜底。
+    const wsOpen = !mobileIsLocalLog;
 
     return (
       <TerminalWsProvider open={wsOpen}>

@@ -47,7 +47,8 @@ export function isMainAgentEntry(entry) {
   const body = entry.body || {};
   if (!body.system || !Array.isArray(body.tools)) return false;
 
-  if (!sysText.includes('You are Claude Code')) return false;
+  // SDK 模式(ccv -SDK)主会话 base prompt 含 "built on Anthropic's Claude Agent SDK."(同 interceptor-core.js 对齐)。
+  if (!sysText.includes('You are Claude Code') && !sysText.includes("built on Anthropic's Claude Agent SDK")) return false;
   if (SUBAGENT_SYSTEM_RE.test(sysText)) return false;
 
   // New architecture (v2.1.69+): deferred tool loading

@@ -13,17 +13,16 @@
  * AbortError 的 fake query】（与 sdk-manager-query.test.js 同源做法），把
  * 「query 一迭代就失败被吞」从隐性环境事实变成测试可控的注入，确定性、零网络、
  * 零长定时器地驱动 sendUserMessage → _executeQuery 的完整外壳：
- *   - 进入前 buildStreamingStatus(true) 回调
- *   - 注入的 fake query 立即失败被吞
- *   - finally 里 _resetStreamingState + buildStreamingStatus(false) 回调
+ *   - 注入的 fake query 立即失败被吞（不抛出给调用方）
  *   - 并发时的 _queryBusy 队列守卫与队列 drain 循环
  * 用例结束后在 after() 里把 _query 还原为真实 SDK query，避免污染同进程其它断言。
  *
- * 真正需要 SDK 真实会话才能到达的深层路径（_processMessage 的 message→entry
- * 转换、_processStreamEvent 流式累积、_handleCanUseTool 的 ask/plan/perm 审批
- * 与 _waitForApproval 定时器）由姊妹文件 sdk-manager-query.test.js 用更完整的
- * fake query 覆盖。本文件聚焦【可达的守卫/状态机/参数分支】并对外部可观测行为
- * 做精确断言。
+ * 注：SDK 模式的展示/流式状态已改走 wire 通路（proxy → fetch hook → SSE），
+ * sdk-manager 不再合成展示 entry / streaming status —— 外壳测试只断言
+ * 「不抛 + 无 turnEnd + session 状态正确」与 query 调用次数。
+ *
+ * 深层路径（_handleCanUseTool 的 ask/plan/perm 审批与 _waitForApproval 定时器、
+ * options 构造）由姊妹文件 sdk-manager-query.test.js 用更完整的 fake query 覆盖。
  */
 
 import { describe, it, beforeEach, before, after } from 'node:test';
@@ -42,8 +41,10 @@ import {
 
 // fake query：被迭代时立即抛非 AbortError，sdk-manager 在 _executeQuery 里 try/catch
 // 吞掉并照常执行 finally —— 取代「真实 query 必然立即 spawn 失败」这一环境依赖。
-function makeFailingQuery() {
+// calls 计数器用于外部观测 query 被启动了几次（drain / 并发守卫断言用）。
+function makeFailingQuery(state = { calls: 0 }) {
   return function fakeQuery() {
+    state.calls++;
     return {
       // eslint-disable-next-line require-yield
       async *[Symbol.asyncIterator]() {
@@ -57,18 +58,14 @@ function makeFailingQuery() {
 
 // 收集回调的小工厂：返回 deps 对象 + 各回调记录数组
 function makeDeps(extra = {}) {
-  const statuses = [];
-  const entries = [];
   const broadcasts = [];
   const turnEnds = [];
   const deps = {
-    onEntry: (e) => entries.push(e),
-    onStreamingStatus: (s) => statuses.push(s),
     broadcastWs: (m) => broadcasts.push(m),
     onTurnEnd: (x) => turnEnds.push(x),
     ...extra,
   };
-  return { deps, statuses, entries, broadcasts, turnEnds };
+  return { deps, broadcasts, turnEnds };
 }
 
 describe('sdk-manager — environment preconditions', () => {
@@ -88,8 +85,7 @@ describe('sdk-manager — initSdkSession', () => {
   it('permissionMode 缺省时不抛（内部默认 default）', () => {
     assert.doesNotThrow(() =>
       initSdkSession('/tmp/cwd', 'p', {
-        onEntry: () => {},
-        onStreamingStatus: () => {},
+        onTurnEnd: () => {},
         broadcastWs: () => {},
       }),
     );
@@ -106,12 +102,14 @@ describe('sdk-manager — initSdkSession', () => {
 // 都走「立即失败」的 fake query，把确定性从环境事实（真实二进制 spawn 必失败）改成可控注入。
 // after() 还原真实 query，避免污染同进程其它 sdk-manager 测试文件。
 let _realQuery;
+let _queryState;
 before(async () => {
   try {
     const real = await import('@anthropic-ai/claude-agent-sdk');
     _realQuery = real.query;
   } catch { _realQuery = undefined; }
-  __setQueryForTests(makeFailingQuery());
+  _queryState = { calls: 0 };
+  __setQueryForTests(makeFailingQuery(_queryState));
 });
 after(() => {
   __setQueryForTests(_realQuery);
@@ -122,55 +120,37 @@ describe('sdk-manager — sendUserMessage 驱动 _executeQuery 外壳', () => {
   beforeEach(() => {
     // 每个用例独立：先做一次硬清理，避免上一个用例残留 _queryBusy/queue。
     stopSession();
+    _queryState.calls = 0;
   });
 
-  it('default 模式：注入的 fake query 立即失败被吞 → resolve（不抛）+ 两次 streaming-status', async () => {
-    const { deps, statuses, entries, turnEnds } = makeDeps();
+  it('default 模式：注入的 fake query 立即失败被吞 → resolve（不抛）+ 无 turnEnd', async () => {
+    const { deps, turnEnds } = makeDeps();
     initSdkSession('/tmp/no-such-cwd', 'proj', deps);
 
     await assert.doesNotReject(() => sendUserMessage('hello'));
 
-    // _executeQuery 进入时 buildStreamingStatus(true)，finally 里 buildStreamingStatus(false)
-    assert.deepEqual(
-      statuses.map((s) => s.active),
-      [true, false],
-    );
-    // 第一条是 active 形态：含 model(null) + startTime + 计数器归零
-    const first = statuses[0];
-    assert.equal(first.active, true);
-    assert.equal(first.model, null);
-    assert.equal(typeof first.startTime, 'number');
-    assert.equal(first.bytesReceived, 0);
-    assert.equal(first.chunksReceived, 0);
-    // 第二条只有 active:false
-    assert.deepEqual(statuses[1], { active: false });
-
-    // query 在产生任何 assistant/result 消息前就失败 → 没有 entry，没有 turnEnd
-    assert.equal(entries.length, 0);
+    // query 启动过一次
+    assert.equal(_queryState.calls, 1);
+    // query 在产生任何 result 消息前就失败 → 没有 turnEnd
     assert.equal(turnEnds.length, 0);
     // 会话 id 仍为 null（没有 system 消息写入）
     assert.equal(getSessionId(), null);
   });
 
-  it('bypassPermissions 模式：同样走 _executeQuery 并产出 active/inactive 状态对', async () => {
-    // 该模式命中 canUseTool=undefined + allowDangerouslySkipPermissions 的 options 分支
-    const { deps, statuses } = makeDeps();
+  it('bypassPermissions 模式：同样走 _executeQuery（canUseTool=undefined 分支）且不抛', async () => {
+    const { deps } = makeDeps();
     initSdkSession('/tmp/no-such-cwd', 'proj', {
       ...deps,
       permissionMode: 'bypassPermissions',
     });
 
     await assert.doesNotReject(() => sendUserMessage('go'));
-    assert.deepEqual(
-      statuses.map((s) => s.active),
-      [true, false],
-    );
+    assert.equal(_queryState.calls, 1);
   });
 
-  it('onStreamingStatus 为空时不抛（回调可选）', async () => {
+  it('onTurnEnd 为空时不抛（回调可选）', async () => {
     initSdkSession('/tmp/no-such-cwd', 'proj', {
-      onEntry: () => {},
-      onStreamingStatus: null,
+      onTurnEnd: null,
       broadcastWs: () => {},
     });
     await assert.doesNotReject(() => sendUserMessage('x'));
@@ -180,8 +160,8 @@ describe('sdk-manager — sendUserMessage 驱动 _executeQuery 外壳', () => {
     // 第一次调用置 _queryBusy=true 并跑 _executeQuery（立即失败）；
     // 在它的 await 让出期间第二次调用应直接入队并 resolve（return undefined），
     // 不会自己再开一个并行 query。drain 循环随后跑掉第二条。
-    // 外部可观测：streaming-status 恰好两组 active/inactive 对 = 两次 _executeQuery。
-    const { deps, statuses } = makeDeps();
+    // 外部可观测：fake query 恰好被启动两次 = 两次 _executeQuery。
+    const { deps } = makeDeps();
     initSdkSession('/tmp/no-such-cwd', 'proj', deps);
 
     const p1 = sendUserMessage('first');
@@ -190,23 +170,17 @@ describe('sdk-manager — sendUserMessage 驱动 _executeQuery 外壳', () => {
     await p1;
 
     assert.equal(r2, undefined);
-    assert.deepEqual(
-      statuses.map((s) => s.active),
-      [true, false, true, false],
-    );
+    assert.equal(_queryState.calls, 2);
   });
 
-  it('连续两次（await 之间）：第二条不再被入队，独立成对触发状态', async () => {
-    const { deps, statuses } = makeDeps();
+  it('连续两次（await 之间）：第二条不再被入队，各自独立启动一次 query', async () => {
+    const { deps } = makeDeps();
     initSdkSession('/tmp/no-such-cwd', 'proj', deps);
 
     await sendUserMessage('a');
     await sendUserMessage('b');
 
-    assert.deepEqual(
-      statuses.map((s) => s.active),
-      [true, false, true, false],
-    );
+    assert.equal(_queryState.calls, 2);
   });
 });
 

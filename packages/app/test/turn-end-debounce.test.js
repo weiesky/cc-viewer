@@ -90,8 +90,10 @@ describe('turn_end trailing debounce + flush-on-rising-edge', () => {
   });
 
   it('SDK streaming rising-edge CANCELS pending (10s 内有新请求 → 不算完成 → 不播)', () => {
+    // setSdkStreamingState 已退役；SDK 泳道经 __testing.observeStreamingTick 直测
+    // （_observeStreamingTick 的 'sdk' lane 保留）。
     serverMod.broadcastTurnEnd('sid-1', 1000);
-    serverMod.setSdkStreamingState({ active: true, model: 'x' });
+    serverMod.__testing.observeStreamingTick(true, 'sdk');
     // 按用户原始语义：rising-edge 直接 cancel，不立即播放、未来也不补播
     assert.equal(broadcasts.length, 0, 'pending was cancelled, not flushed');
     assert.deepEqual(serverMod.__testing.getPendingKeys(), [], 'cleared');
@@ -100,10 +102,10 @@ describe('turn_end trailing debounce + flush-on-rising-edge', () => {
   });
 
   it('SDK stay-active does NOT re-cancel (no extra effect)', () => {
-    serverMod.setSdkStreamingState({ active: true });
-    serverMod.setSdkStreamingState({ active: false });
+    serverMod.__testing.observeStreamingTick(true, 'sdk');
+    serverMod.__testing.observeStreamingTick(false, 'sdk');
     serverMod.broadcastTurnEnd('sid-1', 1000);
-    serverMod.setSdkStreamingState({ active: false }); // 重复 inactive 不应触发
+    serverMod.__testing.observeStreamingTick(false, 'sdk'); // 重复 inactive 不应触发
     mock.timers.tick(DEBOUNCE_MS);
     assert.equal(broadcasts.length, 1, 'normal scheduled broadcast still fires');
   });

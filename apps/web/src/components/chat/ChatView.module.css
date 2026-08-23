@@ -103,7 +103,7 @@
 .stickyBottomBtn {
   position: absolute;
   right: 12px;
-  bottom: 0;
+  bottom: var(--input-stack-height, 0px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -351,6 +351,14 @@
   flex-direction: column;
 }
 
+/* SDK 模式 scratch-only 子终端容器：贴底、横向占满，高度由 scratchWrap 自身(可拖拽)决定 */
+.sdkScratchWrap {
+  flex-shrink: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .navSidebarContent {
   flex: 1;
   min-width: 0;
@@ -376,11 +384,33 @@
 }
 
 /* 审批面板 + ChatInputBar 的共享定位容器。面板用 absolute bottom:100% 贴在输入栏之上。
-   背景与外圈输入条（--bg-input-strip）一致，避免容器间露出页面底色接缝。 */
+   悬浮覆盖在消息列表上方，背景从下往上由原色渐变到透明。
+   pointer-events:none 让透明渐变区域不拦截消息区的点击/滚动。 */
 .inputStack {
-  position: relative;
-  flex-shrink: 0;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 15;
   background: var(--bg-input-strip);
+  background: linear-gradient(
+    to top,
+    var(--bg-input-strip) 0%,
+    color-mix(in srgb, var(--bg-input-strip) 85%, transparent) 55%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+/* Interactive children re-enable pointer events (card, buttons, panels). */
+.inputStack > * {
+  pointer-events: auto;
+}
+
+/* Equal-height spacer: prevents the floating inputStack from covering bottom messages. */
+.inputStackSpacer {
+  flex-shrink: 0;
+  height: var(--input-stack-height, 0px);
 }
 
 .overlayPanel {
@@ -461,4 +491,16 @@
   border-radius: 6px;
   padding: 6px 12px;
   margin: 4px 16px 8px;
+}
+
+/* SDK-mode notice banner (compact boundary / slash-command hint) — same visual
+   language as partialDataBanner, anchored above the composer. */
+.sdkNoticeBanner {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  padding: 4px 12px;
+  margin: 2px 16px 6px;
 }

@@ -17,9 +17,9 @@
 //      请求照常返回（hookResult.handled 仍为 false → 走正常路由）。本段按现状 pin：上传一个
 //      必抛的 beforeRequest 插件，断言请求仍 200（异常被 loader 吞）。665-671 的 500 分支只在
 //      runWaterfallHook 自身抛（loader 内部 bug）时可达，普通插件无法触发 → 记 skipped/notes。
-//   D. setSdkStreamingState 的 inactive→inactive 无边沿不广播分支（server.js 1985-1986 的
-//      `changed||isActive` 为 false 短路）——补 server-http-extra 只打了 active/inactive 边沿之外的
-//      「持续 inactive」一路。
+//   D. observeStreamingTick 的 sdk 泳道边沿语义（rising/falling/持续 active）——
+//      原 setSdkStreamingState 已随「SDK 模式走 wire 通路」改造退役，泳道本身
+//      仍在 _observeStreamingTick 内（经 __testing 缝直测）。
 //   E. serverStarted hook 的 interactions.getPendingPerms / resolvePerm / getPendingAsks /
 //      resolveAsk（server.js 930-968）——既有测试均未让任何插件在 serverStarted 拿到 interactions
 //      并真的 resolve 一个 pending entry。本段写一个 serverStarted 插件把 interactions 暂存到
@@ -223,7 +223,7 @@ describeCli('server.js residual: _notifyParentPending switch via broadcastWsMess
   });
 });
 
-describeCli('server.js residual: setSdkStreamingState no-edge inactive branch', { concurrency: false }, () => {
+describeCli('server.js residual: observeStreamingTick sdk-lane edge semantics', { concurrency: false }, () => {
   let mod;
 
   before(async () => {
@@ -238,19 +238,11 @@ describeCli('server.js residual: setSdkStreamingState no-edge inactive branch', 
     await stopAndSettle(mod);
   });
 
-  it('inactive→inactive emits no rising edge and takes the no-broadcast short-circuit', () => {
-    // 起点 _lastSdkActive=false（reset 后）。再喂一个 inactive：wasActive=false, isActive=false →
-    // changed=false && isActive=false → 不进 sendEventToClients 分支（server.js 1986 短路）。
-    // observeStreamingTick 也不应报 rising edge。无 SSE client，纯状态机断言。
-    let edge = null;
-    // 用 __testing.observeStreamingTick 单独验 sdk 路径 wasActive=false → false（非边沿）。
-    edge = mod.__testing.observeStreamingTick(false, 'sdk');
+  it('inactive→inactive emits no rising edge', () => {
+    // 起点 _lastSdkActive=false（reset 后）。再喂一个 inactive：wasActive=false → false（非边沿）。
+    // 无 SSE client，纯状态机断言（经 __testing 缝直测 _observeStreamingTick 的 sdk 泳道）。
+    const edge = mod.__testing.observeStreamingTick(false, 'sdk');
     assert.equal(edge, false, 'inactive observe is not a rising edge');
-    // setSdkStreamingState(inactive) 不抛、不广播（无 client 时本就 no-op，这里确认 falsy 入参归一化）。
-    assert.doesNotThrow(() => mod.setSdkStreamingState({ active: false }));
-    assert.doesNotThrow(() => mod.setSdkStreamingState(undefined));
-    assert.doesNotThrow(() => mod.setSdkStreamingState(null));
-    assert.doesNotThrow(() => mod.setSdkStreamingState({}));
   });
 
   it('active edge then inactive edge are both accepted (rising then falling)', () => {

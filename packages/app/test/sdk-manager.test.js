@@ -22,8 +22,7 @@ describe('sdk-manager', () => {
     it('does not throw when initializing', () => {
       assert.doesNotThrow(() => {
         initSdkSession('/tmp', 'test-project', {
-          onEntry: () => {},
-          onStreamingStatus: () => {},
+          onTurnEnd: () => {},
           broadcastWs: () => {},
           permissionMode: 'default',
         });
@@ -32,8 +31,7 @@ describe('sdk-manager', () => {
 
     it('resets session state on init', () => {
       initSdkSession('/tmp', 'proj', {
-        onEntry: () => {},
-        onStreamingStatus: () => {},
+        onTurnEnd: () => {},
         broadcastWs: () => {},
       });
       assert.equal(getSessionId(), null);

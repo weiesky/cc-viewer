@@ -16,6 +16,7 @@ import { ensureHooks, removeAllManagedHooks } from './server/lib/ensure-hooks.js
 import { injectCliJsAt, removeCliJsInjectionAt, INJECT_START as _INJECT_START, INJECT_END as _INJECT_END, buildInjectBlock as _buildInjectBlock } from './server/lib/cli-inject.js';
 import { normalizeBasePath } from './server/lib/base-path.js';
 import { mergeSettingsIntoArgs } from './server/lib/settings-merge.js';
+import { splitSdkLaunchArgs } from './server/lib/launch-config.js';
 import { createHardenedCleanup, installWinKeypressFallback } from './server/lib/term-signals.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -653,14 +654,21 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   const { registerWorkspace } = await import('./server/workspace-registry.js');
   await registerWorkspace(workingDir);
 
-  // 不需要 ensureHooks — SDK canUseTool 处理 AskUserQuestion + 权限
-  // 不需要 proxy — SDK 直接管理 API 通信
+  // 不需要 ensureHooks — SDK canUseTool 处理 AskUserQuestion + 权限；
+  // 也不向子进程注入 CCVIEWER_PORT，让 CCV 的 settings bridges 保持休眠，避免双通道审批。
 
-  // 设置环境标记（必须在 import server.js 之前）
+  // 设置环境标记（必须在 import proxy.js / server.js 之前 — proxy.js → interceptor.js
+  // 可能触发 server.js 加载，而 server.js 的 isCliMode/isSdkMode 在模块顶层求值且只执行一次）
   process.env.CCV_CLI_MODE = '1';
   process.env.CCV_SDK_MODE = '1';
   process.env.CCV_PROJECT_DIR = workingDir;
-  process.env.CCV_PROXY_MODE = '1'; // 使 interceptor.js 惰性
+  process.env.CCV_PROXY_MODE = '1';
+
+  // 启动本地回环代理 — SDK 子进程的 API 流量经 ANTHROPIC_BASE_URL 指向这里，
+  // 报文捕获/落盘/流式推送与 PTY 模式走同一条 wire 通路
+  const { startProxy } = await import('./server/proxy.js');
+  const proxyPort = await startProxy();
+  process.env.CCV_PROXY_PORT = String(proxyPort);
 
   // 启动 HTTP 服务器
   const serverMod = await import('./server/server.js');
@@ -685,12 +693,75 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
     permissionMode = 'bypassPermissions';
   }
 
+  // 合并用户 --settings 与注入的 env.ANTHROPIC_BASE_URL（与 PTY 的 --settings 注入
+  // 等价、同一 helper，注入键优先）；SDK 模式下经 options.settings 传给 query()。
+  // settingsMerge.args 已剥离 --settings；其余参数（--model/-c/-r 等）的映射后续接入。
+  const proxyBaseUrl = `http://127.0.0.1:${proxyPort}`;
+  const settingsMerge = mergeSettingsIntoArgs(extraClaudeArgs, { env: { ANTHROPIC_BASE_URL: proxyBaseUrl } }, { cwd: workingDir });
+  if (settingsMerge.warningDetail) {
+    console.warn(`[CC Viewer] --settings merge failed (${settingsMerge.warningDetail.reason}): ${settingsMerge.warningDetail.value}`);
+  }
+
+  // 子进程 env：代理指向 + 禁自动更新 + EDITOR 劫持（对齐 pty-manager 的注入面；
+  // 刻意不注入 CCVIEWER_PORT/PROTOCOL/INTERNAL_TOKEN — settings bridges 在 SDK 模式休眠）
+  const editorScript = resolve(__dirname, 'server', 'lib', 'ccv-editor.js');
+  const childEnv = {
+    ...process.env,
+    ANTHROPIC_BASE_URL: proxyBaseUrl,
+    // 与 PTY 子进程同款(pty-manager.js:247):SDK 子进程的 cli.js 若已被 -logger/PTY 注入
+    // interceptor,CCV_PROXY_MODE=1 让它只装 fetch hook 而不再自起 server;wire 捕获本来
+    // 就发生在主进程 proxy 的出站 fetch(ANTHROPIC_BASE_URL 指过来),此键保证子进程不双起。
+    CCV_PROXY_MODE: '1',
+    CCV_LOG_DIR: process.env.CCV_LOG_DIR || LOG_DIR,
+    DISABLE_AUTOUPDATER: '1',
+    EDITOR: `${process.execPath} ${editorScript}`,
+    VISUAL: `${process.execPath} ${editorScript}`,
+    CCV_EDITOR_PORT: String(port),
+  };
+  // 与 PTY 同款剥离(pty-manager.js:250-256):内部短路开关与 server 专属模式标记不外泄。
+  delete childEnv.CCV_SKIP_THINKING_DISPLAY;
+  delete childEnv.CCV_WORKSPACE_MODE;
+  delete childEnv.CCV_ELECTRON_MULTITAB;
+
+  // 用户参数映射到 SDK options：--model/-c/-r/--fork-session 提升为 SDK 原生 option
+  // （resume-pin 语义也需要它们），其余参数经 extraArgs 原样透传给 CLI 子进程。
+  // 不再静默丢弃任何参数。
+  const sdkArgs = splitSdkLaunchArgs(settingsMerge.args);
+  if (sdkArgs.pickerResume) {
+    console.warn('[CC Viewer] SDK mode: bare -r (interactive session picker) is not supported headless — starting a fresh session. Use -r <sessionId> to resume a specific session.');
+  }
+
   // 初始化 SDK 会话
+  // claudeExecutable 走与 PTY 相同的解析优先级(configured → codefuse → native → PATH → npm)。
+  // 缺了它 SDK 会从 PATH 解析 claude,在装有 agent-security headless guard 的机器上
+  // 会挑到一个 spawn 即被 SIGKILL 的二进制(PTY 交互式终端不在其拦截范围,headless 正中)。
+  let sdkClaudeSelection = null;
+  try {
+    sdkClaudeSelection = assertUsableClaudeSelection(resolvePreferredClaudeSelection());
+  } catch (err) {
+    console.error(`[CC Viewer] ${err.message}`);
+    process.exit(1);
+  }
+  const sdkClaudePath = sdkClaudeSelection?.path || null;
+  if (sdkClaudePath) {
+    process.env.CCV_CLAUDE_EXECUTABLE = sdkClaudePath;
+    console.log(`[CC Viewer] SDK mode: claude executable → ${sdkClaudePath} (${sdkClaudeSelection.source})`);
+  } else {
+    console.warn('[CC Viewer] SDK mode: no claude executable resolved — SDK will fall back to PATH/builtin discovery.');
+  }
+  // 观测面走与 PTY 相同的 wire 通路(SDK 子进程流量经 ANTHROPIC_BASE_URL 到 ccv proxy →
+  // fetch hook → v2 transcript → SSE),sdk-manager 不再另接 v2/streaming 注入。
   sdkManager.initSdkSession(workingDir, basename(workingDir), {
-    onEntry: (entry) => serverMod.pushSdkEntry(entry),
-    onStreamingStatus: (data) => serverMod.setSdkStreamingState(data),
     broadcastWs: (msg) => serverMod.broadcastWsMessage(msg),
     permissionMode,
+    env: childEnv,
+    settings: JSON.parse(settingsMerge.settingsJson),
+    model: sdkArgs.model,
+    claudeExecutable: sdkClaudePath,
+    launchResume: (sdkArgs.continue || sdkArgs.resume || sdkArgs.forkSession)
+      ? { continue: sdkArgs.continue, resumeId: sdkArgs.resume, forkSession: sdkArgs.forkSession }
+      : null,
+    userArgs: sdkArgs.rest,
     runWaterfallHook: (await import('./server/lib/plugin-loader.js')).runWaterfallHook,
     // Round-3 P0: SDK mode has no Stop hook (ensureHooks() skipped above), so
     // the only place we learn a turn ended is the SDK 'result' message. Forward
@@ -707,6 +778,9 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
       try { serverMod.broadcastTurnEnd(sessionId, ts); }
       catch (err) { console.warn('[sdk] broadcastTurnEnd threw:', err?.message); }
     },
+    // query 级失败(spawn/protocol/iterator)推到 Web UI toast —— 此前只有 console.error,
+    // 死掉的 query 在 UI 上看与挂起无异。
+    onQueryError: (message) => serverMod.broadcastWsMessage({ type: 'sdk-error', message }),
   });
 
   // 注册 SDK 回调到 server.js（WS 消息路由用）
@@ -714,6 +788,8 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   serverMod.setSdkCancelApproval(sdkManager.cancelApproval);
   serverMod.setSdkSendUserMessage(sdkManager.sendUserMessage);
   serverMod.setSdkInterruptTurn(sdkManager.interruptTurn);
+  serverMod.setSdkGetPendingApprovals(sdkManager.getPendingApprovals);
+  serverMod.setSdkGetInitSnapshot(sdkManager.getSdkInitSnapshot);
 
   // 自动打开浏览器
   const protocol = serverMod.getProtocol();

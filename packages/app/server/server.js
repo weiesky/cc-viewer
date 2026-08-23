@@ -97,7 +97,7 @@ import { loadAuthConfig, loadAuthState, saveAuthConfig, clearProjectOverride, ge
 import { checkAndUpdate } from './lib/updater.js';
 import { loadPlugins, runWaterfallHook, runParallelHook } from './lib/plugin-loader.js';
 import { CONTEXT_WINDOW_FILE, readModelContextSize } from './lib/context-watcher.js';
-import { sendEventToClients, sendToClients } from './lib/log-watcher.js';
+import { sendEventToClients } from './lib/log-watcher.js';
 import { createImLogWatcher } from './lib/im/im-log-watcher.js';
 import { unwatchAllWorkflows } from './lib/workflow-watcher.js';
 import { backupConfigs } from './lib/config-backup.js';
@@ -1531,6 +1531,39 @@ async function setupTerminalWebSocket(httpServer) {
         } catch {}
       }
 
+      // Replay pending perm-hook 请求(PTY 与 SDK 模式同理):perm 广播原本是一次性的,
+      // ws 断连期间打开的审批弹窗在重连后会孤儿化(server 端 long-poll/wait 仍在等,
+      // 直到超时 silent deny)。连接时重发,前端 perm 分支按 id 去重,天然幂等。
+      for (const [id, entry] of pendingPermHooks) {
+        try {
+          ws.send(JSON.stringify({ type: 'perm-hook-pending', id, toolName: entry.toolName, input: entry.input }));
+        } catch {}
+      }
+
+      // Replay SDK 模式 pendings(sdk-manager canUseTool 的 ask/plan/perm):
+      // 与上面 perm-hook 同理,但快照来自 sdk-manager(_pendingApprovals)。
+      // ask 类带 startedAt/timeoutMs —— 与 ask-hook replay 同款剩余时间重算。
+      if (isSdkMode && _sdkGetPendingApprovals) {
+        for (const p of _sdkGetPendingApprovals() || []) {
+          if (!p || !p.replay || !p.id) continue;
+          const payload = { ...p.replay };
+          if (p.kind === 'ask') {
+            payload.startedAt = now;           // 让前端按"还剩 remaining"起算
+            payload.timeoutMs = p.remainingMs; // 剩余可用时间
+          }
+          try { ws.send(JSON.stringify(payload)); } catch {}
+        }
+      }
+
+      // Replay sdk-init snapshot so a refreshed/reconnected page restores slash-command
+      // surface and model info without waiting for the next session.
+      if (isSdkMode && _sdkGetInitSnapshot) {
+        const initSnap = _sdkGetInitSnapshot();
+        if (initSnap) {
+          try { ws.send(JSON.stringify(initSnap)); } catch {}
+        }
+      }
+
       // 兜底重绘标记：claude TUI 在 alternate-screen 下只在收到 SIGWINCH 时重绘整屏。
       // 若前端首次 resize 与 PTY 当前尺寸恰好相等，pty.resize noop 不发 SIGWINCH → 前端空白。
       // 该 ws 收到第一条 resize 时（见 ws.on('message')），抖动 (rows+1) → (rows) 触发 SIGWINCH。
@@ -1656,6 +1689,13 @@ async function setupTerminalWebSocket(httpServer) {
       ws.on('message', async (raw) => {
         try {
           const msg = JSON.parse(raw.toString());
+          // SDK 模式没有 PTY：PTY 专属消息(input/sequential input/resync/resize)一律 no-op,
+          // 否则 'input' 会在无会话时触发 spawnShell() 拉出一个用户看不见的裸 shell。
+          // sdk-*/ask-*/perm-*/image-* 等控制消息不受影响。scratch WS 是独立 handler,不受此闸门影响。
+          if (isSdkMode && (msg.type === 'input' || msg.type === 'input-sequential'
+              || msg.type === 'resync-request' || msg.type === 'resize')) {
+            return;
+          }
           if (msg.type === 'input') {
             // PTY 已退出时，自动 spawn 交互式 shell
             const state = getPtyState();
@@ -1965,7 +2005,9 @@ async function setupTerminalWebSocket(httpServer) {
             }
           } else if (msg.type === 'sdk-interrupt') {
             // Stop button in SDK mode — interrupt current turn, keep session alive.
-            // _executeQuery's finally emits streaming_status{active:false} to reconcile UI.
+            // Streaming-state reconciliation comes from the wire path (proxy →
+            // fetch hook → streamingState → SSE), same as PTY mode; sdk-manager
+            // no longer emits its own streaming_status.
             if (isSdkMode && _sdkInterruptTurn) {
               const cancelled = _sdkInterruptTurn() || [];
               // Close any open approval modal on every client (the canUseTool promise was just
@@ -2259,11 +2301,12 @@ let _askOrphanSweepTimer = null;
 //  - .unref() 防止它把事件循环 keep-alive 30s(测试进程靠 --test-force-exit 兜底是时序侥幸);
 //  - _doStop 里 clearTimeout 防止 stop/start 循环(Electron tab / 测试)泄漏多个 pending 检查。
 let _updateCheckTimer = null;
-function startStreamingStatusTimer() {
+// Exported for tests: workspace-mode startViewer defers this timer to initPostLaunch, but
+// lifecycle tests need to drive the streaming_status poll directly (setSdkStreamingState
+// was retired in the wire architecture; the timer reads interceptor's streamingState).
+export function startStreamingStatusTimer() {
   if (_streamingStatusTimer) return;
   _streamingStatusTimer = setInterval(() => {
-    // SDK mode uses its own streaming state (pushed directly via setSdkStreamingState)
-    if (isSdkMode) return;
     const isActive = streamingState.active;
     const wasActive = _lastCliActive;
     // 统一走 _observeStreamingTick：内部负责 rising-edge cancel（丢弃 pending turn_end，不 flush）+ 更新 _lastCliActive。
@@ -2322,6 +2365,11 @@ async function _doStop() {
     server.closeAllConnections();
     server.close();
   }
+  // Tear down terminal WSS so stop/start cycles never leak a second listener on the same HTTP server.
+  if (terminalWss) {
+    terminalWss.close();
+    terminalWss = null;
+  }
   if (statsWorker) {
     statsWorker.terminate();
     statsWorker = null;
@@ -2351,30 +2399,9 @@ async function _doStop() {
 }
 
 // ─── SDK Mode Exports ──────────────────────────────────────────
-
-/** Push a JSONL entry to all SSE clients (for SDK mode). */
-export function pushSdkEntry(entry) {
-  if (sendToClients) sendToClients(clients, entry);
-}
-
-/**
- * Update streaming status (SDK mode). 调用约定：SDK 每个 chunk 都调一次 `{active:true,...}`，
- * turn 结束才调 `{active:false}`。rising-edge 检测统一走 `_observeStreamingTick`。
- * **SSE 推送只在 transition（edge）或仍 active 时发**，避免每 chunk 都放大 streaming_status 流量
- * （对齐 CLI polling 的 `changed || isActive` 闸门）。
- * `undefined`/`{}`/`null` 都会被当作 active=false。
- */
-export function setSdkStreamingState(data) {
-  const isActive = !!(data && data.active);
-  const wasActive = _lastSdkActive;
-  _observeStreamingTick(isActive, 'sdk');
-  const changed = wasActive !== isActive;
-  if (changed || isActive) {
-    if (clients.length > 0 && sendEventToClients) {
-      sendEventToClients(clients, 'streaming_status', data);
-    }
-  }
-}
+// NOTE: SDK-mode display/streaming data flows through the same wire path as PTY
+// mode (loopback proxy → fetch hook → V2Writer → SSE / streamingState) — there
+// are intentionally no pushSdkEntry/setSdkStreamingState shortcuts anymore.
 
 /** Broadcast a message to all terminal WS clients (for SDK canUseTool). */
 export function broadcastWsMessage(msg) {
@@ -2411,6 +2438,14 @@ export function setSdkSendUserMessage(fn) { _sdkSendUserMessage = fn; }
 /** Reference to sdk-manager's interruptTurn (set by cli.js after import). */
 let _sdkInterruptTurn = null;
 export function setSdkInterruptTurn(fn) { _sdkInterruptTurn = fn; }
+
+/** Reference to sdk-manager's getPendingApprovals (set by cli.js after import). */
+let _sdkGetPendingApprovals = null;
+export function setSdkGetPendingApprovals(fn) { _sdkGetPendingApprovals = fn; }
+
+/** Reference to sdk-manager's getSdkInitSnapshot (set by cli.js after import). */
+let _sdkGetInitSnapshot = null;
+export function setSdkGetInitSnapshot(fn) { _sdkGetInitSnapshot = fn; }
 
 // Auto-start the viewer after log file init completes
 // 工作区模式下由 cli.js 直接 import server.js 触发启动，跳过 _initPromise 自动启动

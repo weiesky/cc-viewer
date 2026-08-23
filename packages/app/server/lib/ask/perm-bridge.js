@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import { evaluateImDeny } from '../im-deny.js';
+import { APPROVAL_TOOLS, isPublishCommand } from '../approval-policy.js';
 
 const port = process.env.CCVIEWER_PORT;
 const rawProtocol = process.env.CCVIEWER_PROTOCOL;
@@ -59,9 +60,8 @@ if (!toolName || !toolInput) {
 // 硬拦截：npm publish 即使在 --d (bypass) 模式下也强制走 Web UI 审批
 // 这是安全底线，不受 --dangerously-skip-permissions 影响
 // 注：git commit / git push 不在硬拦截范围内 —— 提交可重写、push 可 force-push 回退,
-// 真正不可撤销的对外发布(npm publish)才走硬闸
-const isPublishCmd = toolName === 'Bash' && toolInput.command &&
-  /npm\s+publish/i.test(toolInput.command);
+// 真正不可撤销的对外发布(npm publish)才走硬闸。谓词共享自 approval-policy.js(SDK 链路同用)。
+const isPublishCmd = isPublishCommand(toolName, toolInput);
 
 // IM worker (skip-permissions) 硬拦截 —— 必须在下面的 bypass auto-allow 之前求值，
 // 否则 CCV_BYPASS_PERMISSIONS=1 会把一切先放行（见 plan §安全 2）。仅对 IM worker 生效。
@@ -95,7 +95,7 @@ if (toolName === 'AskUserQuestion') {
 }
 
 // These tools need explicit user approval via Web UI (mutating or external access).
-const APPROVAL_TOOLS = new Set(['Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch']);
+// The six-tool set is shared with the SDK canUseTool path via approval-policy.js.
 if (!APPROVAL_TOOLS.has(toolName)) {
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' },

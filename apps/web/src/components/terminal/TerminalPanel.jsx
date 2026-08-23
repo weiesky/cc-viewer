@@ -262,7 +262,7 @@ class TerminalPanel extends React.Component {
       lightbox: null,
       ultraplanLightbox: null,
       ultraplanConfirming: false,
-      scratchOpen: readScratchOpen(),
+      scratchOpen: this.props.scratchOnly ? !!this.props.scratchOpen : readScratchOpen(),
       scratchHeight: readScratchHeight(),
       isDraggingScratch: false,
       scratchFocused: false,
@@ -367,6 +367,8 @@ class TerminalPanel extends React.Component {
   // 1) 防 theme MutationObserver / preset-changed 等无关 setState 在拖拽中途把高度 snap 回去
   // 2) 拖拽期间每帧 setState 抖动开销大；mouseup 时一次性 setState + localStorage 提交
   _applyScratchHeight = () => {
+    // scratchOnly(右侧竖向容器)下高度由 flex:1 自适应,不写死 style.height。
+    if (this.props.scratchOnly) return;
     const el = this._scratchWrapRef.current;
     if (el) el.style.height = this.state.scratchHeight + 'px';
   };
@@ -426,6 +428,9 @@ class TerminalPanel extends React.Component {
     // 有意不在 unmount 配对卸载——app-lifetime 单例（计数器/定时器全局唯一，
     // 跨面板共享；_installed 守卫防重复安装）。
     installTermDiag();
+    // SDK 模式 scratch-only 面板：无主 PTY，跳过 xterm 初始化 / ws resize / 主终端周期任务;
+    // scratch tab 的 WS 由 ScratchTerminal 自己建(/ws/terminal-scratch),不依赖这里。
+    if (this.props.scratchOnly) return;
     this.initTerminal();
     // 注册 ws 消息 + 状态 handler。Provider 已在 App/Mobile 层根据 cliMode/terminalVisible 决定是否建立 ws。
     if (this.context && this.context.addMessageHandler) {
@@ -485,6 +490,17 @@ class TerminalPanel extends React.Component {
   }
 
   componentDidUpdate(prevProps, prevState) {
+    // scratchOnly(SDK 模式):render 直接读 props.scratchOpen(始终最新)。这里只需在「关闭→打开」
+    // 边沿触发高度应用 + refit——直接比较 prevProps/this.props,不绕 state,避免同步闭环。
+    if (this.props.scratchOnly && !prevProps.scratchOpen && this.props.scratchOpen) {
+      this._applyScratchHeight();
+      Promise.resolve().then(() => {
+        for (const tab of this.state.scratchTabs) {
+          const r = this._scratchRefs.get(tab.id);
+          r?.current?.refit();
+        }
+      });
+    }
     // SettingsContext 异步 fetch 完成后,props.claudeSettings / props.preferences 才到达;
     // 同步派生的 agentTeamEnabled 与 _loadPresetShortcuts 都在这里接力。
     if (prevProps.claudeSettings !== this.props.claudeSettings) {
@@ -501,6 +517,14 @@ class TerminalPanel extends React.Component {
         // componentDidUpdate 在 React commit 之后、浏览器 paint 之前同步触发，
         // 此时 ref.current 已是最新 DOM；直接写 style.height，不走 microtask 防 1 帧闪烁
         this._applyScratchHeight();
+        // 打开时对所有 scratch tab refit——SDK 模式下 prop 驱动显隐,首次显示时 xterm 需要
+        // 重新 fit 到真实容器尺寸(否则 0 尺寸起步会渲染错位/跑偏)。
+        Promise.resolve().then(() => {
+          for (const tab of this.state.scratchTabs) {
+            const r = this._scratchRefs.get(tab.id);
+            r?.current?.refit();
+          }
+        });
       } else if (this._scratchDragging) {
         // 拖拽过程中 scratchOpen 被外部翻 false：resizer 已卸载、pointerup 不会再触达，
         // 这里兜底恢复 body 样式与拖拽标志，防止 cursor/userSelect 残留
@@ -1623,6 +1647,84 @@ class TerminalPanel extends React.Component {
 
   render() {
     const { pendingImages, onRemovePendingImage } = this.props;
+    // SDK 模式(ccv -SDK)无主 PTY——Header 的「终端」按钮改开这个 scratch-only 面板:
+    // 只渲染多 tab scratch shell(独立 /ws/terminal-scratch WS,SDK 模式服务端可用),
+    // 跳过主 PTY 区 / 工具栏 / 虚拟键盘 / 各 Modal。scratchOpen 由 props 驱动(App state)。
+    if (this.props.scratchOnly) {
+      // 直接读 prop(不经 state):父容器用 display:none 切换显隐,TerminalPanel 始终挂载,
+      // 避免「return null → componentDidUpdate 不触发 → prop/state 同步卡死」的闭环。
+      if (!this.props.scratchOpen) return null;
+      return (
+        <div className={`${styles.terminalPanel} ${styles.scratchOnlyPanel || ''}`}>
+          {/* scratchOnly(右侧竖向容器):scratch 面板与容器等高——省掉横向 resizer 与固定 height,
+              高度由 flex:1 + min-height:0 自适应,不再写死 max-height。 */}
+          {(!isMobile || isPad) && (
+            <div ref={this._scratchWrapRef} className={`${styles.scratchWrap} ${styles.scratchWrapFill || ''}`}>
+              <div className={styles.scratchTabs} role="tablist" aria-orientation="vertical">
+                  {this.state.scratchTabs.map((tab, idx) => {
+                    const isActive = tab.id === this.state.activeScratchTabId;
+                    const isLast = this.state.scratchTabs.length === 1;
+                    const baseLabel = this.state.scratchShellBasename || 'zsh';
+                    const label = baseLabel + (this.state.scratchTabs.length > 1 ? ` ${idx + 1}` : '');
+                    return (
+                      <div
+                        key={tab.id}
+                        role="tab"
+                        aria-selected={isActive}
+                        tabIndex={isActive ? 0 : -1}
+                        className={`${styles.scratchTab}${isActive ? ` ${styles.scratchTabActive}` : ''}`}
+                        onClick={() => this.handleScratchTabClick(tab.id)}
+                        title={label}
+                      >
+                        <span className={styles.scratchTabIcon}><ScratchTerminalIcon /></span>
+                        <span className={styles.scratchTabLabel}>{label}</span>
+                        {!isLast && (
+                          <button
+                            className={styles.scratchTabClose}
+                            onClick={(e) => this.handleScratchTabClose(tab.id, e)}
+                            title={t('ui.terminal.scratchTabClose')}
+                            aria-label={t('ui.terminal.scratchTabClose')}
+                          >
+                            <CloseIcon />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <button
+                    className={styles.scratchTabAdd}
+                    onClick={this.handleScratchTabAdd}
+                    disabled={this.state.scratchTabs.length >= SCRATCH_TAB_MAX}
+                    title={t('ui.terminal.scratchTabAdd')}
+                    aria-label={t('ui.terminal.scratchTabAdd')}
+                  >
+                    <PlusIcon />
+                  </button>
+                </div>
+                <div className={`${styles.scratchPanes}${this.state.scratchFocused ? ` ${styles.scratchPanesFocused}` : ''}`}>
+                  {this.state.scratchTabs.map((tab) => {
+                    const isActive = tab.id === this.state.activeScratchTabId;
+                    return (
+                      <div
+                        key={tab.id}
+                        className={`${styles.scratchPane}${isActive ? ` ${styles.scratchPaneActive}` : ''}`}
+                        role="tabpanel"
+                      >
+                        <ScratchTerminal
+                          ref={this._getScratchRef(tab.id)}
+                          id={tab.id}
+                          onFocusChange={(f) => this.handleScratchTabFocusChange(tab.id, f)}
+                          onShellInfo={this.handleScratchShellInfo}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+          )}
+        </div>
+      );
+    }
     return (
       <div className={styles.terminalPanel}>
         {/* === 主 terminal (Claude Code TUI 渲染区) ===

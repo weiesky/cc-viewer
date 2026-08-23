@@ -1,8 +1,8 @@
 .chatInputBar {
   /* 宽屏下用 max() 把卡片限宽 1000px 并居中，窄屏退化为 16px 边距。
-     外圈用 --bg-input-strip（亮 #F9F9F9 / 暗 #1e1e1e）托住白卡片 + 浅阴影。 */
+     背景透明：渐变由外层 .inputStack 承担，卡片自身保持不透明。 */
   padding: 8px max(16px, calc((100% - 1000px) / 2)) 12px;
-  background: var(--bg-input-strip);
+  background: transparent;
   flex-shrink: 0;
 }
 
@@ -531,7 +531,6 @@
 @media (max-width: 768px) {
   .chatInputBar {
     padding: 10px 21px 16px;
-    background: transparent;
   }
 
   .chatInputWrapper {

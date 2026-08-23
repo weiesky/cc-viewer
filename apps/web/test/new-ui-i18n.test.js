@@ -1,9 +1,10 @@
 /**
- * 新增 UI key 的 i18n 18-locale 覆盖测试（非「专家设置」部分）。
+ * 18-locale i18n coverage test for the newly added UI keys (the non-"expert settings" part).
  *
- * expert-i18n.test.js 只守卫专家设置那批 key；本轮工作树里另有两个新增/复用 key
- * 已翻译全 18 语言但缺自动化守卫，漏配某语言时 t() 会静默回落到 en / key 本身。
- * 范式同 test/expert-i18n.test.js / test/quick-settings-i18n.test.js。
+ * expert-i18n.test.js only guards the expert-settings batch of keys; this working tree has
+ * additional new/reused keys already translated into all 18 languages but lacking automated
+ * guards — a missing locale silently falls back to en / the key itself via t().
+ * Same pattern as test/expert-i18n.test.js / test/quick-settings-i18n.test.js.
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,7 +15,9 @@ import { fileURLToPath } from 'url';
 const LOCALES = ['zh', 'en', 'zh-TW', 'ko', 'ja', 'de', 'es', 'fr', 'it', 'da', 'pl', 'ru', 'ar', 'no', 'pt-BR', 'th', 'tr', 'uk'];
 const I18N_SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'i18n.js'), 'utf-8');
 
-// 块尾用 '\n  }' 而非首个 '}'，避免翻译值含 '}' 时提前截断漏检其后的 locale（同 expert-i18n.test.js）。
+// Use '\n  }' rather than the first '}' to end the block, so a translation value containing
+// '}' does not truncate early and skip checking the following locales (same as
+// expert-i18n.test.js).
 function localeBlockOf(key) {
   const start = I18N_SRC.indexOf(`"${key}": {`);
   assert.ok(start >= 0, `key ${key} not found in src/i18n.js`);
@@ -24,16 +27,16 @@ function localeBlockOf(key) {
 }
 
 const KEYS = [
-  'ui.memoryOpenDir',   // 持久记忆「打开目录」按钮 (server/routes/files-fs.js openMemoryDir)
-  'ui.proxy.editProxy', // 代理设置「编辑」独立 Modal 标题 (ProxyModal.jsx)
-  'ui.proxy.effort',        // 代理热切换 effort 下拉标签 (ProxyModal.jsx)
-  'ui.proxy.effortDefault', // 代理热切换 effort「默认不强制」选项 (ProxyModal.jsx)
-  'ui.proxy.modelMapHint',  // 代理热切换 扩展模型字段说明 (ProxyModal.jsx)
+  'ui.memoryOpenDir',   // persistent memory "open directory" button (server/routes/files-fs.js openMemoryDir)
+  'ui.proxy.editProxy', // proxy settings "edit" standalone Modal title (ProxyModal.jsx)
+  'ui.proxy.effort',        // proxy hot-switch effort dropdown label (ProxyModal.jsx)
+  'ui.proxy.effortDefault', // proxy hot-switch effort "not enforced by default" option (ProxyModal.jsx)
+  'ui.proxy.modelMapHint',  // proxy hot-switch extended-model field description (ProxyModal.jsx)
   'ui.systemMessage',       // mid-conversation role:"system" meta row label (ChatMessage/ChatView role filter)
-  'ui.proxyStats.tabConfig', // 代理重试配置与统计面板「配置」tab
-  'ui.proxyStats.tabStats',  // 代理重试配置与统计面板「统计」tab
-  'ui.retryConfig.groupStrategy',  // 代理重试配置「策略配置」分组标题
-  'ui.retryConfig.groupExecution', // 代理重试配置「执行参数」分组标题
+  'ui.proxyStats.tabConfig', // proxy retry-config & stats panel "config" tab
+  'ui.proxyStats.tabStats',  // proxy retry-config & stats panel "stats" tab
+  'ui.retryConfig.groupStrategy',  // proxy retry-config "strategy config" group heading
+  'ui.retryConfig.groupExecution', // proxy retry-config "execution params" group heading
   // retry-burden 5-bucket distribution labels (retryStatsHelpers.js burdenBucketLabel):
   'ui.proxyStats.retryBurdenBuckets.0',
   'ui.proxyStats.retryBurdenBuckets.1_5',
@@ -45,7 +48,7 @@ const KEYS = [
   'ui.retryConfig.modeLabel.serial',
   'ui.retryConfig.modeLabel.race',
   'ui.retryConfig.modeLabel.stagger',
-  // 按角色分源（ProxyModal 分配区 + AppHeader chip）:
+  // Split by role (ProxyModal assignment area + AppHeader chip):
   'ui.proxy.assignmentTitle',
   'ui.proxy.roleMain',
   'ui.proxy.roleSubagent',
@@ -55,6 +58,10 @@ const KEYS = [
   'ui.proxy.badgeSubagent',
   'ui.proxy.badgeTeammate',
   'ui.proxy.roleSummary',
+  // SDK-mode path fix (wsOpen restored + error channel + P1 UI):
+  'ui.sdkError',     // SDK query-level failure toast (ChatView sdk-error branch)
+  'ui.sdkCompacted', // SDK compact_boundary notice bar (ChatView sdk-compact branch)
+  'ui.sdkSlashHint', // SDK slash-command hint (above the composer, when typing `/`)
 ];
 
 describe('new UI key i18n coverage', () => {

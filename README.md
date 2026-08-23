@@ -61,6 +61,18 @@ Once started in programming mode, the web page opens automatically.
 
 cc-viewer also ships as a native desktop app: [download page](https://github.com/weiesky/cc-viewer/releases)
 
+### SDK mode (headless, `ccv -SDK`)
+
+`ccv -SDK` runs the session through the Agent SDK instead of an interactive terminal — no terminal panel, messages are sent from the web UI, and everything else (session logs, streaming typewriter, usage stats) works the same as in terminal mode.
+
+```bash
+ccv -SDK                # headless session; chat from the browser
+ccv -SDK -c             # continue the most recent session
+ccv -SDK --model sonnet # pick a model
+```
+
+Approvals (Bash/Edit/Write/WebFetch/…) pop up in the browser with allow / deny / allow-for-session, and `AskUserQuestion` / plan prompts appear as modals. `npm publish` always requires an explicit approval — even with `--d`. Requires the `@anthropic-ai/claude-agent-sdk` package (bundled with cc-viewer); falls back to terminal mode if unavailable.
+
 ### Choose the Claude executable
 
 On the local CCV page, open **Global Settings → Claude executable** to choose the

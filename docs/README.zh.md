@@ -65,6 +65,18 @@ ccv -c --d             # == claude --continue --dangerously-skip-permissions
 
 cc-viewer提供了客户端的版本：[下载地址](https://github.com/weiesky/cc-viewer/releases)
 
+### SDK 模式（headless，`ccv -SDK`）
+
+`ccv -SDK` 通过 Agent SDK 运行会话，而不是交互式终端——没有终端面板，消息从 Web UI 发送，其他一切（会话日志、流式打字机效果、用量统计）都与终端模式相同。
+
+```bash
+ccv -SDK                # 无界面会话；从浏览器聊天
+ccv -SDK -c             # 继续最近的会话
+ccv -SDK --model sonnet # 选择模型
+```
+
+审批（Bash/Edit/Write/WebFetch/…）会以 允许 / 拒绝 / 本次会话允许 的形式在浏览器中弹出，`AskUserQuestion` / 计划提示则以模态框出现。`npm publish` 始终要求显式审批——即使带 `--d` 也是如此。需要 `@anthropic-ai/claude-agent-sdk` 包（随 cc-viewer 一起打包）；若不可用则回退到终端模式。
+
 ### 选择 Claude 可执行文件
 
 在本机 CCV 页面打开 **全局设置 → Claude 可执行文件**，可以选择 CLI、

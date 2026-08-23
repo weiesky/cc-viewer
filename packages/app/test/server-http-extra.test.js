@@ -4,7 +4,8 @@
 //   - handleRequest 前置：CCV_BASE_PATH 前缀剥离、/ws/* 早返回、Host allowlist 403
 //   - 静态文件服务：index.html 主题/base 注入、/assets 长缓存、stale chunk 404、SPA fallback
 //   - 顶层 export：getPort/getProtocol/getAccessToken/getInternalToken/getAuthConfig/getAllLocalIps
-//   - SDK export：pushSdkEntry / setSdkStreamingState / broadcastWsMessage / setSdk* 注入器
+//   - SDK export：broadcastWsMessage / setSdk* 注入器（pushSdkEntry/setSdkStreamingState
+//     已随「SDK 模式走 wire 通路」改造退役，不再存在）
 //   - broadcastTurnEnd 入队语义
 //
 // 隔离手法（参照 test/server.test.js + test/api-auth.test.js）：在 import server.js 之前
@@ -293,19 +294,6 @@ describeCli('server.js HTTP prelude + static serving + exports', { concurrency: 
 
   // ─────────── SDK / WS broadcast exports（无客户端时的安全 no-op 行为）───────────
   describe('SDK export helpers (no connected clients)', () => {
-    it('pushSdkEntry() is a no-op safe call when no SSE clients are connected', () => {
-      assert.doesNotThrow(() => mod.pushSdkEntry({ type: 'assistant', message: { content: [] } }));
-    });
-
-    it('setSdkStreamingState() handles active=true then inactive without throwing', () => {
-      assert.doesNotThrow(() => mod.setSdkStreamingState({ active: true, startTime: Date.now() }));
-      assert.doesNotThrow(() => mod.setSdkStreamingState({ active: false }));
-      // undefined / null / {} 均当作 inactive
-      assert.doesNotThrow(() => mod.setSdkStreamingState(undefined));
-      assert.doesNotThrow(() => mod.setSdkStreamingState(null));
-      assert.doesNotThrow(() => mod.setSdkStreamingState({}));
-    });
-
     it('broadcastWsMessage() with no terminalWss does not throw; ask-* type triggers parent notify path', () => {
       // workspace 模式未起 WS（terminalWss 为 null）→ 仅走 _notifyParentPending 分支。
       assert.doesNotThrow(() => mod.broadcastWsMessage({ type: 'sdk-ask-pending', id: 'x1' }));

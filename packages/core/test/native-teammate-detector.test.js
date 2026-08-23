@@ -31,6 +31,25 @@ describe('isNativeTeammate', () => {
     assert.equal(isNativeTeammate(req), true);
   });
 
+  it('SDK 主会话 (ccv -SDK): sdk-ts entrypoint + SDK prompt + SendMessage → false', () => {
+    // 用户截图的「双写」场景:SDK 主会话 system 含 billing 标记 cc_entrypoint=sdk-ts,
+    // 且被授予 SendMessage(37 主工具之一),旧判据会误判成 teammate 让前端双渲染。
+    const req = mkReq({
+      system: 'x-anthropic-billing-header: cc_version=2.1.199.ef3; cc_entrypoint=sdk-ts;\n' + SDK_SYSTEM,
+      tools: [{ name: 'Bash' }, { name: 'Edit' }, { name: 'SendMessage' }, { name: 'Agent' }, { name: 'Read' }],
+    });
+    assert.equal(isNativeTeammate(req), false);
+  });
+
+  it('真 teammate 不带 sdk-ts 标记(Agent 工具启动、entrypoint=cli)→ 仍 true(不回归)', () => {
+    const req = mkReq({
+      system: 'x-anthropic-billing-header: cc_version=2.1.199; cc_entrypoint=cli;\n' + SDK_SYSTEM + '\nYou are CRer2, review the diff',
+      tools: [{ name: 'Bash' }, { name: 'SendMessage' }],
+      messages: [{ role: 'user', content: 'You are CRer2, review the diff' }],
+    });
+    assert.equal(isNativeTeammate(req), true);
+  });
+
   it('普通 subagent (本次 bug 场景): SDK prompt 但无 SendMessage → false', () => {
     // 就是用户截图那条请求的特征：Agent SDK subagent，14 个 tools 里没 SendMessage
     const req = mkReq({

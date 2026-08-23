@@ -58,7 +58,10 @@ export function isMainAgentRequest(body) {
   if (TEAMMATE_SYSTEM_RE.test(sysText)) return false;
   // cc_is_subagent=true ⇒ 子代理，绝非 MainAgent（cc_version 2.1.181+）。从源头让新日志的 mainAgent 字段为 false。
   if (SUBAGENT_BILLING_RE.test(sysText)) return false;
-  if (!sysText.includes('You are Claude Code')) return false;
+  // SDK 模式(ccv -SDK)主会话 base prompt 是 "...built on Anthropic's Claude Agent SDK."，
+  // 非 CLI 的 "You are Claude Code"。SDK 子代理同用该 prompt,由下方工具启发式(缺 Agent/Task)排除;
+  // native teammate 已由 TEAMMATE_SYSTEM_RE 排除。用精确子串,勿放宽成 "You are a Claude agent"(误中 teammate)。
+  if (!sysText.includes('You are Claude Code') && !sysText.includes("built on Anthropic's Claude Agent SDK")) return false;
   if (SUBAGENT_SYSTEM_RE.test(sysText)) return false;
 
   const isSystemArray = Array.isArray(body.system);

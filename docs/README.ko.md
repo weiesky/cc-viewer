@@ -65,6 +65,18 @@ ccv -c --d             # == claude --continue --dangerously-skip-permissions
 
 cc-viewer 는 네이티브 데스크톱 앱도 제공합니다: [다운로드 페이지](https://github.com/weiesky/cc-viewer/releases)
 
+### SDK 모드 (headless, `ccv -SDK`)
+
+`ccv -SDK` 는 대화형 터미널 대신 Agent SDK 를 통해 세션을 실행합니다 — 터미널 패널이 없고, 메시지는 웹 UI 에서 전송되며, 그 외 모든 것(세션 로그, 스트리밍 타자기 효과, 사용량 통계)은 터미널 모드와 동일하게 작동합니다.
+
+```bash
+ccv -SDK                # 무인 세션; 브라우저에서 대화
+ccv -SDK -c             # 가장 최근 세션 계속
+ccv -SDK --model sonnet # 모델 선택
+```
+
+승인(Bash/Edit/Write/WebFetch/…)은 허용 / 거부 / 세션 동안 허용 의 형태로 브라우저에 표시되며, `AskUserQuestion` / 계획 프롬프트는 모달로 나타납니다. `npm publish` 는 항상 명시적 승인을 요구합니다 — `--d` 를 붙여도 마찬가지입니다. `@anthropic-ai/claude-agent-sdk` 패키지가 필요합니다(cc-viewer 에 함께 번들됨); 사용할 수 없으면 터미널 모드로 대체됩니다.
+
 ### 1.7.0 으로 업그레이드 (로그 형식 v2)
 
 1.7.0 부터 로그는 단일 `.jsonl` 파일 대신 세션별 디렉터리 형식(wire-format v2)으로 저장되며, 디스크 사용량이 약 90% 줄어듭니다. 기존 v1 `.jsonl` 파일은 절대 수정되거나 삭제되지 않으며, 로그 대화상자는 기본적으로 v2 세션을 표시하며, 작은 “레거시(v1) 로그 보기” 항목(오래된 파일이 있는 동안 표시됨)에서 v1 보기를 열어 확인, 마이그레이션 또는 삭제할 수 있습니다. 시작 시 레거시 로그가 발견되면 cc-viewer 가 원클릭 마이그레이션을 제공합니다(`claude -c` 로 이전 대화를 이어갈 때는 대화의 전반부가 이전 파일에 저장되어 있으므로 마이그레이션을 강력히 권장합니다). 터미널에서 마이그레이션할 수도 있습니다:

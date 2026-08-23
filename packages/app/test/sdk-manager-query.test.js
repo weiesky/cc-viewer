@@ -1,19 +1,27 @@
 /**
  * sdk-manager-query.test.js
  *
- * 覆盖目标：server/lib/sdk-manager.js 的深层路径 —— 用 __setQueryForTests 注入
- * fake async-generator（yield system/init → stream_event → assistant → user →
- * result 序列），驱动 _executeQuery / _processMessage / _processStreamEvent /
- * 流式 entry 推送 / _handleCanUseTool（ask/plan/perm）/ _waitForApproval /
- * resolveApproval / cancelApproval / interruptTurn / 队列 drain / bypassPermissions。
+ * Covers the deep paths of server/lib/sdk-manager.js — uses __setQueryForTests to inject a
+ * fake async-generator, driving _executeQuery / _processMessage / options construction
+ * (env/settings/resume/permissionMode passthrough) / _handleCanUseTool (ask/plan/perm) /
+ * _waitForApproval / resolveApproval / cancelApproval / interruptTurn / queue drain /
+ * bypassPermissions.
  *
- * 不触真 SDK 网络（fake query 完全替换 _query）。所有 await 都是确定性的：
- * fake generator 在每个 yield 之间用 microtask 让出，审批分支由测试侧调
- * resolveApproval/cancelApproval 推进，定时器用极短 timeout 或 fake 控制。
+ * Architecture premise (after the SDK-path fix): sdk-manager no longer synthesizes display
+ * entries / streaming status — the SDK subprocess's API traffic is captured by the fetch
+ * hook via the CCV loopback proxy, sharing the same wire path with PTY mode for display /
+ * persistence / streaming typewriter. So this file has no onEntry/onStreamingStatus
+ * assertions; _processMessage only tracks sessionId and maps result → onTurnEnd.
  *
- * 硬性约定遵循：node:test + assert/strict；mkdtemp + rmSync(force)；
- * env(CCV_LOG_DIR/CLAUDE_CONFIG_DIR) 先设 → 模块动态 import；afterEach 关资源；
- * 真实模块=事实源，疑似 bug 报 lead 不擅改源码。
+ * No real SDK network (fake query fully replaces _query). All awaits are deterministic:
+ * the fake generator yields to a microtask between each yield, approval branches are
+ * advanced by the test side via resolveApproval/cancelApproval, and timers use very short
+ * timeouts or fakes.
+ *
+ * Hard conventions followed: node:test + assert/strict; mkdtemp + rmSync(force); env
+ * (CCV_LOG_DIR/CLAUDE_CONFIG_DIR) set first → dynamic module import; afterEach closes
+ * resources; the real module is the source of truth — report suspected bugs to lead, do
+ * not silently alter source.
  */
 
 import { describe, it, before, after, afterEach } from 'node:test';
@@ -22,7 +30,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// ── env 先设 → 模块动态 import ──
+// ── env set first → dynamic module import ──
 let tmpDir;
 let sdk;
 
@@ -37,28 +45,23 @@ after(() => {
   if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
 });
 
-// ── 小工具 ──
+// ── helpers ──
 
-// 收集回调
+// Collect callbacks
 function makeDeps(extra = {}) {
-  const statuses = [];
-  const entries = [];
   const broadcasts = [];
   const turnEnds = [];
   const deps = {
-    onEntry: (e) => entries.push(e),
-    onStreamingStatus: (s) => statuses.push(s),
     broadcastWs: (m) => broadcasts.push(m),
     onTurnEnd: (x) => turnEnds.push(x),
     ...extra,
   };
-  return { deps, statuses, entries, broadcasts, turnEnds };
+  return { deps, broadcasts, turnEnds };
 }
 
-// 把一串预置的 msg 数组做成一个可控的 fake query()。
-// query({prompt,options}) 返回一个对象，既是 async-iterable（for await 用），
-// 又带 interrupt()/close() 方法（interruptTurn/stopSession 用）。
-// onCanUseTool: 若 options.canUseTool 存在，可在测试里通过 hooks 调用它。
+// Turn a preset msg array into a controllable fake query().
+// query({prompt,options}) returns an object that is both async-iterable (for `for await`)
+// and has interrupt()/close() methods (used by interruptTurn/stopSession).
 function makeFakeQuery(msgs, { onClose, onInterrupt, beforeYield } = {}) {
   const calls = [];
   function fakeQuery({ prompt, options }) {
@@ -69,10 +72,11 @@ function makeFakeQuery(msgs, { onClose, onInterrupt, beforeYield } = {}) {
         for (const m of msgs) {
           if (closed) return;
           if (beforeYield) {
-            // 允许测试在某条 msg 前插入副作用（如触发审批），返回 promise 则 await
+            // Allow the test to inject a side effect before a given msg (e.g. trigger an
+            // approval); if it returns a promise, await it
             await beforeYield(m, { prompt, options });
           }
-          // microtask 让出，模拟异步流
+          // yield to a microtask to simulate an async stream
           await Promise.resolve();
           if (closed) return;
           yield m;
@@ -93,59 +97,35 @@ function makeFakeQuery(msgs, { onClose, onInterrupt, beforeYield } = {}) {
   return fakeQuery;
 }
 
-// 标准 system/init 消息
+// Standard system/init message
 function sysInit(sessionId = 'sess-1', model = 'claude-opus-4-test', tools = ['Bash', 'Read', 'Edit']) {
   return { type: 'system', subtype: 'init', session_id: sessionId, model, tools };
 }
 
-// 流式 text 事件序列：start → delta → stop
-function streamTextEvents() {
-  return [
-    { type: 'stream_event', event: { type: 'message_start' } },
-    { type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'text', text: '' } } },
-    { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Hello ' } } },
-    { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'world' } } },
-    { type: 'stream_event', event: { type: 'content_block_stop' } },
-    { type: 'stream_event', event: { type: 'message_stop' } },
-  ];
-}
-
-// assistant 消息（不带 session_id，避免覆盖 system/init 落地的 id；需要时由 extra 注入）
+// Assistant message (no session_id, to avoid overwriting the id set by system/init; inject
+// it via extra when needed)
 function assistantMsg(content, extra = {}) {
   return { type: 'assistant', message: { role: 'assistant', content }, ...extra };
 }
 
-// result 消息（同上，不硬编 session_id）
+// Result message (likewise, no hard-coded session_id)
 function resultMsg(extra = {}) {
   return { type: 'result', subtype: 'success', ...extra };
 }
 
-// 等待若干 microtask（让流式 throttle 之外的同步推送/队列 drain 跑完）
+// Wait a few microtasks (let synchronous pushes / queue drain finish)
 async function tick(n = 3) {
   for (let i = 0; i < n; i++) await Promise.resolve();
 }
 
-// 轮询直到 cond() 为真（每 stepMs 查一次），超过 timeoutMs 抛错。
-// 替代「固定 sleep 后假定异步副作用已完成」——后者在高负载（全量 + c8）下，
-// 源码里的 100ms throttle timer 可能晚于固定 sleep 触发而导致假失败。
-async function waitUntil(cond, { timeoutMs = 2000, stepMs = 10, label = 'condition' } = {}) {
-  const start = Date.now();
-  for (;;) {
-    if (cond()) return;
-    if (Date.now() - start > timeoutMs) {
-      throw new Error(`waitUntil timeout after ${timeoutMs}ms waiting for: ${label}`);
-    }
-    await new Promise((r) => setTimeout(r, stepMs));
-  }
-}
-
-// afterEach 硬清理：恢复真实 query 由各 describe 自己管，但状态必须重置
+// Hard afterEach cleanup: restoring the real query is each describe's own job, but state
+// must be reset
 afterEach(() => {
   sdk.stopSession();
 });
 
 describe('sdk-manager-query — __setQueryForTests + isSdkAvailable', () => {
-  afterEach(() => { /* 不在此恢复，留给末尾 restore describe */ });
+  afterEach(() => { /* not restored here; left to the restore describe at the end */ });
 
   it('注入函数后 isSdkAvailable() 为 true；注入 null 后为 false', () => {
     const orig = sdk.isSdkAvailable();
@@ -153,7 +133,7 @@ describe('sdk-manager-query — __setQueryForTests + isSdkAvailable', () => {
     assert.equal(sdk.isSdkAvailable(), true);
     sdk.__setQueryForTests(null);
     assert.equal(sdk.isSdkAvailable(), false);
-    // 还原成一个函数以免影响后续（后续 describe 各自重设）
+    // Restore to a function so as not to affect later cases (each later describe re-sets)
     sdk.__setQueryForTests(() => ({ async *[Symbol.asyncIterator]() {} }));
     assert.equal(typeof orig, 'boolean');
   });
@@ -166,15 +146,90 @@ describe('sdk-manager-query — __setQueryForTests + isSdkAvailable', () => {
   });
 });
 
-describe('sdk-manager-query — 完整一轮：system/init → stream → assistant → user → result', () => {
-  it('驱动 _processMessage 全分支 + 流式 entry 推送 + turnEnd + sessionId/model 落地', async () => {
-    const { deps, statuses, entries, turnEnds } = makeDeps();
+describe('sdk-manager-query — options 构造（env/settings/resume 透传）', () => {
+  it('initSdkSession 传入 env/settings → 原样进入 query options', async () => {
+    const { deps } = makeDeps();
+    const childEnv = { ...process.env, ANTHROPIC_BASE_URL: 'http://127.0.0.1:43210', DISABLE_AUTOUPDATER: '1' };
+    const settings = { env: { ANTHROPIC_BASE_URL: 'http://127.0.0.1:43210' } };
+    const fq = makeFakeQuery([sysInit(), assistantMsg([{ type: 'text', text: 'ok' }]), resultMsg()]);
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', { ...deps, env: childEnv, settings });
+
+    await sdk.sendUserMessage('hi');
+    await tick(4);
+
+    const opt = fq.calls[0].options;
+    assert.equal(opt.env, childEnv, 'env 应原样透传（含 ANTHROPIC_BASE_URL 指向 CCV 代理）');
+    assert.equal(opt.env.ANTHROPIC_BASE_URL, 'http://127.0.0.1:43210');
+    assert.deepEqual(opt.settings, settings);
+    assert.equal(opt.cwd, tmpDir);
+  });
+
+  it('未传 env/settings → options 不含这两个键（SDK 侧回落 process.env 默认）', async () => {
+    const { deps } = makeDeps();
+    const fq = makeFakeQuery([sysInit(), resultMsg()]);
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    await sdk.sendUserMessage('hi');
+    await tick(4);
+
+    const opt = fq.calls[0].options;
+    assert.equal(opt.env, undefined);
+    assert.equal(opt.settings, undefined);
+  });
+
+  it('claudeExecutable 传入 → options.pathToClaudeCodeExecutable 生效(与 PTY 同优先级解析)', async () => {
+    const { deps } = makeDeps();
+    const fq = makeFakeQuery([sysInit(), resultMsg()]);
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', { ...deps, claudeExecutable: '/opt/antcc/bin/claude' });
+
+    await sdk.sendUserMessage('hi');
+    await tick(4);
+
+    const opt = fq.calls[0].options;
+    assert.equal(opt.pathToClaudeCodeExecutable, '/opt/antcc/bin/claude',
+      'SDK 必须显式指定 claude 可执行文件,否则从 PATH 解析,在 agent-security headless guard 机器上会被 SIGKILL');
+  });
+
+  it('未传 claudeExecutable → options 不含 pathToClaudeCodeExecutable 键', async () => {
+    const { deps } = makeDeps();
+    const fq = makeFakeQuery([sysInit(), resultMsg()]);
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    await sdk.sendUserMessage('hi');
+    await tick(4);
+
+    const opt = fq.calls[0].options;
+    assert.equal(opt.pathToClaudeCodeExecutable, undefined);
+  });
+
+  it('default permissionMode → options 带 canUseTool 且无 allowDangerouslySkipPermissions', async () => {
+    const { deps } = makeDeps();
+    const fq = makeFakeQuery([sysInit(), resultMsg()]);
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    await sdk.sendUserMessage('hi');
+    await tick(4);
+
+    const opt = fq.calls[0].options;
+    assert.equal(typeof opt.canUseTool, 'function');
+    assert.equal(opt.allowDangerouslySkipPermissions, undefined);
+    assert.equal(opt.permissionMode, 'default');
+  });
+});
+
+describe('sdk-manager-query — 完整一轮：init → assistant → user → result', () => {
+  it('sessionId 从 system/init 落地 + result 触发一次 onTurnEnd', async () => {
+    const { deps, turnEnds } = makeDeps();
 
     const msgs = [
       sysInit('sess-abc', 'claude-opus-4-xyz', ['Bash', 'Read']),
-      ...streamTextEvents(),
       assistantMsg([{ type: 'text', text: 'Hello world' }]),
-      // 工具结果（user 消息），非 replay → 累积
+      // tool result (user message)
       { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } },
       resultMsg(),
     ];
@@ -184,153 +239,22 @@ describe('sdk-manager-query — 完整一轮：system/init → stream → assist
     await sdk.sendUserMessage('hi there');
     await tick(5);
 
-    // sessionId / model 从 system/init 落地
+    // sessionId set from system/init
     assert.equal(sdk.getSessionId(), 'sess-abc');
 
-    // streaming-status：进入 active(true)，stream_event 期间多次 active(true)，finally/ result false
-    assert.equal(statuses[0].active, true);
-    assert.equal(statuses[statuses.length - 1].active, false);
-
-    // 至少一个最终 assistant entry（response 非 null）
-    const finalEntries = entries.filter((e) => e.response && e.response.body);
-    assert.ok(finalEntries.length >= 1, 'should produce a final assistant entry');
-    const fe = finalEntries[finalEntries.length - 1];
-    assert.equal(fe.mainAgent, true);
-    assert.equal(fe.body.model, 'claude-opus-4-xyz');
-    // tools 来自 SDK init（[{name:'Bash'},{name:'Read'}]）
-    assert.deepEqual(fe.body.tools, [{ name: 'Bash' }, { name: 'Read' }]);
-    // 响应体 content 含 text 块
-    assert.ok(fe.response.body.content.some((b) => b.type === 'text'));
-
-    // 注：流式 in-progress entry 由 100ms throttle timer flush。本用例的流在 <100ms
-    // 内整轮跑完（finally 的 _resetStreamingState 会清掉未触发的 timer），所以这里不强求
-    // in-progress entry 一定产出 —— 专门的「throttle timer」用例用 gate 持流 >100ms 验证 flush。
-
-    // result → onTurnEnd 触发一次
+    // result → triggers onTurnEnd once
     assert.equal(turnEnds.length, 1);
     assert.equal(turnEnds[0].sessionId, 'sess-abc');
     assert.equal(typeof turnEnds[0].ts, 'number');
   });
 
-  it('assistant 多 content-block 合并 + sub-agent（parent_tool_use_id）被跳过', async () => {
-    const { deps, entries } = makeDeps();
-    const msgs = [
-      sysInit(),
-      // sub-agent 消息：有 parent_tool_use_id → 不产 entry、不累积
-      assistantMsg([{ type: 'text', text: 'sub' }], { parent_tool_use_id: 'parent-1' }),
-      // 主 agent 第一段
-      assistantMsg([{ type: 'text', text: 'part1' }]),
-      // 主 agent 第二段（同 turn 多 content-block → 与上一条 assistant 合并）
-      assistantMsg([{ type: 'text', text: 'part2' }]),
-      resultMsg(),
-    ];
-    sdk.__setQueryForTests(makeFakeQuery(msgs));
-    sdk.initSdkSession(tmpDir, 'proj', deps);
-
-    await sdk.sendUserMessage('go');
-    await tick(5);
-
-    const finals = entries.filter((e) => e.response && e.response.body);
-    // 两条主 agent assistant → 两个 entry（第二条的 body.messages 含合并后的 assistant 历史）
-    assert.ok(finals.length >= 2);
-    // 第二条 entry 的 request history（body.messages）里应已含合并的 assistant 段
-    const last = finals[finals.length - 1];
-    const histAssistant = last.body.messages.filter((m) => m.role === 'assistant');
-    assert.ok(histAssistant.length >= 1);
-  });
-
-  it('compact_boundary 重置累积历史', async () => {
-    const { deps, entries } = makeDeps();
-    const msgs = [
-      sysInit(),
-      assistantMsg([{ type: 'text', text: 'before compact' }]),
-      { type: 'system', subtype: 'compact_boundary', session_id: 'sess-1' },
-      assistantMsg([{ type: 'text', text: 'after compact' }]),
-      resultMsg(),
-    ];
-    sdk.__setQueryForTests(makeFakeQuery(msgs));
-    sdk.initSdkSession(tmpDir, 'proj', deps);
-
-    await sdk.sendUserMessage('go');
-    await tick(5);
-
-    const finals = entries.filter((e) => e.response && e.response.body);
-    // compact 之后那条 assistant 的 body.messages（request history）应只含 compact 之后的 user/assistant，
-    // 不含 compact 之前的 assistant 文本
-    const afterEntry = finals[finals.length - 1];
-    const flat = JSON.stringify(afterEntry.body.messages);
-    assert.ok(!flat.includes('before compact'), 'history should be reset at compact_boundary');
-  });
-
-  it('连续两条 user(tool_result) → 合并进同一条累积 user 消息', async () => {
-    // 覆盖 _processMessage user 分支的「与上一条 user 合并」支（lastUserMsg 同 role + 数组 content）。
-    const { deps, entries } = makeDeps();
-    const msgs = [
-      sysInit(),
-      { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'a', content: 'r1' }] } },
-      { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'b', content: 'r2' }] } },
-      assistantMsg([{ type: 'text', text: 'resp' }]),
-      resultMsg(),
-    ];
-    sdk.__setQueryForTests(makeFakeQuery(msgs));
-    sdk.initSdkSession(tmpDir, 'proj', deps);
-    await sdk.sendUserMessage('go');
-    await tick(5);
-
-    const finals = entries.filter((e) => e.response && e.response.body);
-    const last = finals[finals.length - 1];
-    // body.messages 里最后一条 user 应同时含 r1 与 r2（被合并到同一条 content 数组）
-    const userMsgs = last.body.messages.filter((m) => m.role === 'user' && Array.isArray(m.content));
-    const merged = userMsgs.find((m) => m.content.some((c) => c.content === 'r1') && m.content.some((c) => c.content === 'r2'));
-    assert.ok(merged, 'consecutive tool_result user messages should merge into one content array');
-  });
-
-  it('user 消息 isReplay=true 被跳过不累积', async () => {
-    const { deps, entries } = makeDeps();
-    const msgs = [
-      sysInit(),
-      { type: 'user', isReplay: true, message: { role: 'user', content: [{ type: 'tool_result', content: 'replayed' }] } },
-      assistantMsg([{ type: 'text', text: 'resp' }]),
-      resultMsg(),
-    ];
-    sdk.__setQueryForTests(makeFakeQuery(msgs));
-    sdk.initSdkSession(tmpDir, 'proj', deps);
-    await sdk.sendUserMessage('go');
-    await tick(5);
-
-    const finals = entries.filter((e) => e.response);
-    const last = finals[finals.length - 1];
-    assert.ok(!JSON.stringify(last.body.messages).includes('replayed'), 'replay user msg should be skipped');
-  });
-});
-
-describe('sdk-manager-query — _processStreamEvent 各块类型', () => {
-  it('thinking / tool_use(input_json_delta) / interactive-tool 跳过 / 空块', async () => {
-    const { deps, entries } = makeDeps();
+  it('stream_event / 未知类型消息被安全忽略（不抛、不影响 session/turnEnd）', async () => {
+    const { deps, turnEnds } = makeDeps();
     const msgs = [
       sysInit(),
       { type: 'stream_event', event: { type: 'message_start' } },
-      // thinking 块
-      { type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'thinking', thinking: '' } } },
-      { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'mulling' } } },
-      { type: 'stream_event', event: { type: 'content_block_stop' } },
-      // tool_use 块（非交互）→ input_json_delta 累积 → stop 时 JSON.parse
-      { type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'tool_use', id: 'tu1', name: 'Bash' } } },
-      { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: '{"command":' } } },
-      { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: '"ls"}' } } },
-      { type: 'stream_event', event: { type: 'content_block_stop' } },
-      // 交互式工具（AskUserQuestion）→ _currentBlockData = null（被跳过）
-      { type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'tool_use', id: 'tu2', name: 'AskUserQuestion' } } },
-      { type: 'stream_event', event: { type: 'content_block_stop' } },
-      // 未知块类型 → _currentBlockData = null
-      { type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'image' } } },
-      { type: 'stream_event', event: { type: 'content_block_stop' } },
-      // 空 content_block（content_block_start 但 block 缺失）→ return
-      { type: 'stream_event', event: { type: 'content_block_start' } },
-      // content_block_delta 但 delta 缺失 / 无 currentBlock → return
-      { type: 'stream_event', event: { type: 'content_block_delta' } },
-      { type: 'stream_event', event: { type: 'message_stop' } },
-      assistantMsg([{ type: 'text', text: 'done' }]),
+      { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'x' } } },
+      { type: 'totally_unknown_type', foo: 'bar' },
       resultMsg(),
     ];
     sdk.__setQueryForTests(makeFakeQuery(msgs));
@@ -338,111 +262,42 @@ describe('sdk-manager-query — _processStreamEvent 各块类型', () => {
 
     await assert.doesNotReject(() => sdk.sendUserMessage('go'));
     await tick(5);
-
-    // 至少最终 assistant entry 存在 → 整条流式状态机被无错驱动
-    assert.ok(entries.some((e) => e.response && e.response.body));
-  });
-
-  it('stream_event 带 parent_tool_use_id → 不进 _processStreamEvent（仅推 status）', async () => {
-    const { deps, statuses } = makeDeps();
-    const msgs = [
-      sysInit(),
-      { type: 'stream_event', parent_tool_use_id: 'p1', event: { type: 'message_start' } },
-      assistantMsg([{ type: 'text', text: 'x' }]),
-      resultMsg(),
-    ];
-    sdk.__setQueryForTests(makeFakeQuery(msgs));
-    sdk.initSdkSession(tmpDir, 'proj', deps);
-    await sdk.sendUserMessage('go');
-    await tick(5);
-    // stream_event 仍触发了一次 active status（msg.type==='stream_event' 分支内 onStreamingStatus）
-    assert.ok(statuses.some((s) => s.active === true));
-  });
-
-  it('null event 直接 return（不抛）', async () => {
-    const { deps } = makeDeps();
-    const msgs = [
-      sysInit(),
-      { type: 'stream_event', event: null },
-      resultMsg(),
-    ];
-    sdk.__setQueryForTests(makeFakeQuery(msgs));
-    sdk.initSdkSession(tmpDir, 'proj', deps);
-    await assert.doesNotReject(() => sdk.sendUserMessage('go'));
-  });
-
-  it('throttle timer：text_delta 后持流 >100ms → flush 推一条 in-progress entry（含累积文本）', async () => {
-    const { deps, entries } = makeDeps();
-    // 用 gate 在 text_delta 之后把流卡住 >100ms，让 throttle timer 有机会 fire 出 in-progress entry，
-    // 再放行剩余 stop/result。
-    let releaseGate;
-    const gate = new Promise((r) => { releaseGate = r; });
-    function fq() {
-      return {
-        async *[Symbol.asyncIterator]() {
-          yield sysInit();
-          yield { type: 'stream_event', event: { type: 'message_start' } };
-          yield { type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'text', text: '' } } };
-          yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'streamed-chunk' } } };
-          await gate; // 持流 → 让 100ms throttle timer fire
-          yield { type: 'stream_event', event: { type: 'content_block_stop' } };
-          yield { type: 'stream_event', event: { type: 'message_stop' } };
-          yield resultMsg();
-        },
-        interrupt() { return Promise.resolve(); },
-        close() {},
-      };
-    }
-    sdk.__setQueryForTests(fq);
-    sdk.initSdkSession(tmpDir, 'proj', deps);
-    const sendP = sdk.sendUserMessage('go');
-    // 轮询等 100ms throttle timer flush 出 in-progress entry —— 不用固定 sleep 紧贴 100ms
-    // timer（全量+c8 高负载下事件循环可能 stall 到 >160ms，导致定值 sleep 假失败）。
-    // gate 仍卡着流，所以 entries 只会在 throttle timer fire 后才出现 in-progress 条目。
-    await waitUntil(() => entries.some((e) => e.inProgress === true), {
-      timeoutMs: 2000,
-      label: 'throttled in-progress entry',
-    });
-    const inProg = entries.filter((e) => e.inProgress === true);
-    assert.ok(inProg.length >= 1, 'throttled flush should emit an in-progress entry');
-    assert.equal(inProg[0].response, null);
-    assert.ok(typeof inProg[0].requestId === 'string' && inProg[0].requestId.startsWith('sdk_'));
-    // flush 出的 content（在 body.messages 之外，response===null 的 in-progress entry 把累积内容
-    // 放在 body.messages 末尾的 assistant；这里只断言确有 in-progress 推送即可）
-    releaseGate();
-    await sendP;
-    await tick(3);
+    assert.equal(sdk.getSessionId(), 'sess-1');
+    assert.equal(turnEnds.length, 1);
   });
 });
 
-describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权限审批', () => {
-  // 这些用例需要在 query 迭代期间触发 canUseTool，并在另一侧 resolveApproval。
-  // 做法：fake query 在 yield system/init 之后，调用 options.canUseTool(...)，
-  // 把它的 promise 暴露给测试侧，测试侧 resolveApproval 后 fake 再 yield result。
-
-  // 通用 driver：返回一个 fake query，迭代到 system/init 后调用 canUseTool 并把
-  // resolve/reject 通过外部 ctrl 暴露。
-  function makeCanUseToolQuery(toolName, input, ctrl) {
-    return function fakeQuery({ options }) {
-      let closed = false;
-      const iterable = {
-        async *[Symbol.asyncIterator]() {
-          yield sysInit();
-          await Promise.resolve();
-          // 触发 canUseTool —— 不 await，保存 promise 给测试推进
-          ctrl.promise = options.canUseTool(toolName, input, ctrl.cutOpts || {});
-          ctrl.captured = true;
-          // 等审批结果（测试侧 resolveApproval 后 ctrl.promise resolve）
-          ctrl.result = await ctrl.promise;
-          if (closed) return;
-          yield resultMsg();
-        },
-        interrupt() { return Promise.resolve(); },
-        close() { closed = true; },
-      };
-      return iterable;
+// Shared file-level driver: returns a fake query that calls options.canUseTool(...) after
+// iterating to system/init and exposes the promise to the test side via an external ctrl;
+// after the test side advances via resolveApproval/cancelApproval, the fake yields result.
+function makeCanUseToolQuery(toolName, input, ctrl) {
+  return function fakeQuery({ options }) {
+    let closed = false;
+    const iterable = {
+      async *[Symbol.asyncIterator]() {
+        yield sysInit();
+        await Promise.resolve();
+        // Trigger canUseTool — do not await; save the promise for the test to advance
+        ctrl.promise = options.canUseTool(toolName, input, ctrl.cutOpts || {});
+        ctrl.captured = true;
+        // Wait for the approval result (ctrl.promise resolves after the test side calls
+        // resolveApproval)
+        ctrl.result = await ctrl.promise;
+        if (closed) return;
+        yield resultMsg();
+      },
+      interrupt() { return Promise.resolve(); },
+      close() { closed = true; },
     };
-  }
+    return iterable;
+  };
+}
+
+describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权限审批', () => {
+  // These cases need to trigger canUseTool during query iteration and resolve it from the
+  // other side. Approach: after yielding system/init, the fake query calls
+  // options.canUseTool(...), exposes its promise to the test side, and only after the test
+  // side calls resolveApproval does the fake yield result.
 
   it('AskUserQuestion → broadcast sdk-ask-pending → resolveApproval(answers) → allow', async () => {
     const { deps, broadcasts } = makeDeps();
@@ -451,14 +306,14 @@ describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     const sendP = sdk.sendUserMessage('go');
-    // 等 fake 触发 canUseTool 且 broadcast 发出
+    // Wait for the fake to trigger canUseTool and the broadcast to fire
     await tick(6);
     const pending = broadcasts.find((b) => b.type === 'sdk-ask-pending');
     assert.ok(pending, 'should broadcast sdk-ask-pending');
     assert.equal(pending.id, 'ask-1');
     assert.equal(typeof pending.timeoutMs, 'number');
 
-    // 用户答题 → resolveApproval
+    // User answers → resolveApproval
     const answers = [{ answer: 'A' }];
     assert.equal(sdk.resolveApproval('ask-1', answers), true);
     await sendP;
@@ -634,12 +489,10 @@ describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权
     assert.ok(!broadcasts.some((b) => b.type === 'perm-hook-pending'));
   });
 
-  it('canUseTool 无 toolUseID 时自动生成 sdk_ 前缀 id（仍能正常 deny via timeout-less path）', async () => {
-    // 不提供 toolUseID → id 走 `sdk_${Date.now()}_${rand}` 分支。
-    // 我们无法预知 id，所以用 cancelApproval 不可行；改用 waterfall hook 直接短路 allow，
-    // 只为覆盖 id 生成分支 + Read 直通。
+  it('canUseTool 无 toolUseID 时自动生成 sdk_ 前缀 id（仍能正常 allow 直通）', async () => {
+    // No toolUseID provided → id goes through the `sdk_${Date.now()}_${rand}` branch.
     const { deps } = makeDeps();
-    const ctrl = { cutOpts: {} }; // 无 toolUseID
+    const ctrl = { cutOpts: {} }; // no toolUseID
     sdk.__setQueryForTests(makeCanUseToolQuery('Read', { file: '/y' }, ctrl));
     sdk.initSdkSession(tmpDir, 'proj', deps);
     await sdk.sendUserMessage('go');
@@ -648,14 +501,13 @@ describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权
   });
 
   it('ExitPlanMode → resolveApproval(__cancelled__ sentinel) → deny（plan cancel-sentinel guard）', async () => {
-    // 覆盖 _handleCanUseTool plan 分支的 cancel sentinel guard（不能 fall through 到 allow）。
     const { deps } = makeDeps();
     const ctrl = { cutOpts: { toolUseID: 'plan-cancel' } };
     sdk.__setQueryForTests(makeCanUseToolQuery('ExitPlanMode', { plan: 'p' }, ctrl));
     sdk.initSdkSession(tmpDir, 'proj', deps);
     const sendP = sdk.sendUserMessage('go');
     await tick(6);
-    // 直接注入 sentinel（resolveApproval 不校验 kind）
+    // Inject the sentinel directly (resolveApproval does not validate kind)
     sdk.resolveApproval('plan-cancel', { __cancelled__: true, reason: 'plan aborted' });
     await sendP;
     await tick(3);
@@ -678,15 +530,14 @@ describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权
   });
 
   it('AskUserQuestion → cancelApproval 无 reason → deny 文案回落 User aborted', async () => {
-    // 覆盖 ask 分支 `answers.reason || 'User aborted'` 的回落支（reason 为 falsy）。
     const { deps } = makeDeps();
     const ctrl = { cutOpts: { toolUseID: 'ask-noreason' } };
     sdk.__setQueryForTests(makeCanUseToolQuery('AskUserQuestion', { questions: [{ q: 'x' }] }, ctrl));
     sdk.initSdkSession(tmpDir, 'proj', deps);
     const sendP = sdk.sendUserMessage('go');
     await tick(6);
-    // cancelApproval 不带 reason → 默认 'User aborted'；但要触发 ask 分支的 || 回落，
-    // 直接注入 reason 为空串的 sentinel。
+    // Trigger the ask branch's `reason || 'User aborted'` fallback: inject a sentinel with
+    // an empty reason string
     sdk.resolveApproval('ask-noreason', { __cancelled__: true, reason: '' });
     await sendP;
     await tick(3);
@@ -704,7 +555,7 @@ describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权
     });
     const sendP = sdk.sendUserMessage('go');
     await tick(6);
-    // hook 抛错被 try/catch 吞 → 回落到 broadcast perm-hook-pending
+    // Hook throw is swallowed by try/catch → falls back to broadcasting perm-hook-pending
     assert.ok(broadcasts.some((b) => b.type === 'perm-hook-pending'));
     sdk.resolveApproval('bash-throw', { decision: 'allow' });
     await sendP;
@@ -713,15 +564,13 @@ describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权
   });
 });
 
-// 注：_waitForApproval 的超时路径（plan/ask/perm 三处 "Timeout waiting..." deny 文案 +
-// timer 回调 delete+resolve(null)，源码行 380-381 / 412-413 / 476-477）需要真实
-// 5min/24h 定时器到点才能触达。node:test 的 mock.timers 在本异步生成器 + canUseTool
-// 跨 await 边界下会与流式 100ms throttle timer 互相干扰导致 REPL 挂死（实测 SIGKILL），
-// 故不在此覆盖，记为放过。整体行覆盖已 ≥98%。
+// Note: the _waitForApproval timeout paths (the three "Timeout waiting..." deny messages
+// for plan/ask/perm) are covered by branch-lib-sdk-manager.test.js using narrowed
+// mock.timers.
 
 describe('sdk-manager-query — bypassPermissions 模式', () => {
-  it('canUseTool=undefined：options 命中 allowDangerouslySkipPermissions 分支，正常跑完一轮', async () => {
-    const { deps, entries } = makeDeps();
+  it('canUseTool 常挂(npm 硬闸需要)+ allowDangerouslySkipPermissions=true，正常跑完一轮', async () => {
+    const { deps, turnEnds } = makeDeps();
     const fq = makeFakeQuery([sysInit(), assistantMsg([{ type: 'text', text: 'ok' }]), resultMsg()]);
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', { ...deps, permissionMode: 'bypassPermissions' });
@@ -729,11 +578,136 @@ describe('sdk-manager-query — bypassPermissions 模式', () => {
     await sdk.sendUserMessage('go');
     await tick(5);
 
-    // options.canUseTool 应为 undefined，allowDangerouslySkipPermissions 为 true
+    // canUseTool is mounted in all modes (bypass is no exception — the npm publish hard
+    // gate relies on it); allowDangerouslySkipPermissions is still only set in bypass.
     const opt = fq.calls[0].options;
-    assert.equal(opt.canUseTool, undefined);
+    assert.equal(typeof opt.canUseTool, 'function');
     assert.equal(opt.allowDangerouslySkipPermissions, true);
-    assert.ok(entries.some((e) => e.response && e.response.body));
+    assert.equal(turnEnds.length, 1);
+  });
+});
+
+describe('sdk-manager-query — 审批政策链(im-deny → npm 硬闸 → bypass early-allow)', () => {
+  it('bypass + 非 publish 工具 → 直接 allow,无 broadcast 无 waterfall', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'bypass-1' } };
+    sdk.__setQueryForTests(makeCanUseToolQuery('Bash', { command: 'rm -rf build/' }, ctrl));
+    sdk.initSdkSession(tmpDir, 'proj', { ...deps, permissionMode: 'bypassPermissions' });
+
+    const sendP = sdk.sendUserMessage('go');
+    await tick(6);
+    await sendP;
+    assert.deepEqual(ctrl.result, { behavior: 'allow', updatedInput: { command: 'rm -rf build/' } });
+    assert.equal(broadcasts.length, 0, 'bypass early-allow 不得 broadcast');
+  });
+
+  it('bypass + npm publish → 强制走 perm 审批(broadcast perm-hook-pending + 5min 等待),allow 后放行', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'pub-1' } };
+    sdk.__setQueryForTests(makeCanUseToolQuery('Bash', { command: 'npm publish --provenance' }, ctrl));
+    sdk.initSdkSession(tmpDir, 'proj', { ...deps, permissionMode: 'bypassPermissions' });
+
+    const sendP = sdk.sendUserMessage('go');
+    await tick(6);
+    // publish must still raise an approval even in bypass (SDK equivalent of the
+    // perm-bridge bypass exemption)
+    const pending = broadcasts.find((b) => b.type === 'perm-hook-pending');
+    assert.ok(pending, 'bypass 下 npm publish 必须 broadcast perm-hook-pending');
+    assert.equal(pending.id, 'pub-1');
+    assert.equal(pending.toolName, 'Bash');
+    // ctrl.promise is still pending (on the 5-min _waitForApproval) → resolves to allow
+    sdk.resolveApproval('pub-1', { decision: 'allow' });
+    await sendP;
+    await tick(3);
+    assert.equal(ctrl.result.behavior, 'allow');
+  });
+
+  it('bypass + npm publish → 用户 deny → canUseTool 返回 deny', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'pub-2' } };
+    sdk.__setQueryForTests(makeCanUseToolQuery('Bash', { command: 'npm publish' }, ctrl));
+    sdk.initSdkSession(tmpDir, 'proj', { ...deps, permissionMode: 'bypassPermissions' });
+
+    const sendP = sdk.sendUserMessage('go');
+    await tick(6);
+    assert.ok(broadcasts.some((b) => b.type === 'perm-hook-pending'));
+    sdk.resolveApproval('pub-2', { decision: 'deny' });
+    await sendP;
+    await tick(3);
+    assert.equal(ctrl.result.behavior, 'deny');
+  });
+
+  it('非 bypass + npm publish → 走常规 perm 分支(Bash ∈ APPROVAL_TOOLS,行为不变)', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'pub-3' } };
+    sdk.__setQueryForTests(makeCanUseToolQuery('Bash', { command: 'npm publish' }, ctrl));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const sendP = sdk.sendUserMessage('go');
+    await tick(6);
+    assert.ok(broadcasts.some((b) => b.type === 'perm-hook-pending'));
+    sdk.resolveApproval('pub-3', 'allow');
+    await sendP;
+    await tick(3);
+    assert.equal(ctrl.result.behavior, 'allow');
+  });
+
+  it('CCV_IM_DENY=1 + 命中规则(rm -rf ~)→ 硬 deny;非 bypass 也生效;无 broadcast', async () => {
+    process.env.CCV_IM_DENY = '1';
+    try {
+      const { deps, broadcasts } = makeDeps();
+      const ctrl = { cutOpts: { toolUseID: 'im-1' } };
+      sdk.__setQueryForTests(makeCanUseToolQuery('Read', { file_path: '~/.ssh/id_rsa' }, ctrl));
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+
+      const sendP = sdk.sendUserMessage('go');
+      await tick(6);
+      await sendP;
+      assert.equal(ctrl.result.behavior, 'deny');
+      assert.ok(String(ctrl.result.message).startsWith('cc-viewer IM guard:'), 'deny 消息带 IM guard 前缀');
+      assert.equal(broadcasts.length, 0, 'im-deny 硬拒不得 broadcast 弹窗');
+    } finally {
+      delete process.env.CCV_IM_DENY;
+    }
+  });
+
+  it('CCV_IM_DENY=1 + bypass + npm publish → IM guard 赢过弹窗(硬 deny,非 perm 审批)', async () => {
+    // Ordering aligns with perm-bridge.js: im-deny is evaluated before the publish
+    // exemption — an IM worker's publish gets a hard deny rather than an approval dialog.
+    process.env.CCV_IM_DENY = '1';
+    try {
+      const { deps, broadcasts } = makeDeps();
+      const ctrl = { cutOpts: { toolUseID: 'im-pub' } };
+      sdk.__setQueryForTests(makeCanUseToolQuery('Bash', { command: 'npm publish' }, ctrl));
+      sdk.initSdkSession(tmpDir, 'proj', { ...deps, permissionMode: 'bypassPermissions' });
+
+      const sendP = sdk.sendUserMessage('go');
+      await tick(6);
+      await sendP;
+      assert.equal(ctrl.result.behavior, 'deny');
+      assert.ok(String(ctrl.result.message).startsWith('cc-viewer IM guard:'));
+      assert.equal(broadcasts.filter((b) => b.type === 'perm-hook-pending').length, 0);
+    } finally {
+      delete process.env.CCV_IM_DENY;
+    }
+  });
+
+  it('bypass + AskUserQuestion → 不被 early-allow 短路,仍走 ask 分支', async () => {
+    // bypass early-allow never short-circuits interactive tools (review point): the
+    // AskUserQuestion forwarded by the CLI under bypass must keep the user channel.
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'bypass-ask' } };
+    sdk.__setQueryForTests(makeCanUseToolQuery('AskUserQuestion', { questions: [{ q: 'pick?' }] }, ctrl));
+    sdk.initSdkSession(tmpDir, 'proj', { ...deps, permissionMode: 'bypassPermissions' });
+
+    const sendP = sdk.sendUserMessage('go');
+    await tick(6);
+    const pending = broadcasts.find((b) => b.type === 'sdk-ask-pending');
+    assert.ok(pending, 'bypass 下 AskUserQuestion 仍 broadcast sdk-ask-pending');
+    sdk.resolveApproval('bypass-ask', { 'pick?': 'A' });
+    await sendP;
+    await tick(3);
+    assert.equal(ctrl.result.behavior, 'allow');
   });
 });
 
@@ -751,7 +725,7 @@ describe('sdk-manager-query — resume / sessionId 续连', () => {
     await sdk.sendUserMessage('second');
     await tick(4);
 
-    // 第二次 query 调用的 options.resume 应为 sess-resume
+    // The second query call's options.resume should be sess-resume
     assert.equal(fq.calls.length, 2);
     assert.equal(fq.calls[1].options.resume, 'sess-resume');
   });
@@ -759,18 +733,20 @@ describe('sdk-manager-query — resume / sessionId 续连', () => {
 
 describe('sdk-manager-query — 队列 drain（忙时第二条入队后被 drain）', () => {
   it('query 进行中收到第二条 → 入队 → 第一轮结束后 drain 跑第二轮', async () => {
-    const { deps, statuses } = makeDeps();
-    // fake query 故意在 yield 之间留一个可控的 gate，让我们在第一轮 in-flight 时塞第二条
+    const { deps } = makeDeps();
+    // The fake query deliberately leaves a controllable gate between yields so we can push
+    // a second message while the first round is in flight
     let releaseFirst;
     const firstGate = new Promise((r) => { releaseFirst = r; });
     let round = 0;
     function fq({ options }) {
+      void options;
       const myRound = round++;
       return {
         async *[Symbol.asyncIterator]() {
           yield sysInit('sess-q');
           if (myRound === 0) {
-            await firstGate; // 第一轮卡住，给测试塞第二条的机会
+            await firstGate; // hold the first round so the test can push a second message
           }
           yield resultMsg();
         },
@@ -778,24 +754,24 @@ describe('sdk-manager-query — 队列 drain（忙时第二条入队后被 drain
         close() {},
       };
     }
+    fq.calls = 0;
+    const origFq = fq;
+    let callCount = 0;
+    fq = function countingFq(arg) { callCount++; return origFq(arg); };
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     const p1 = sdk.sendUserMessage('first');
-    await tick(4); // 让第一轮进入 await firstGate
-    const p2 = sdk.sendUserMessage('second'); // _queryBusy=true → 入队，立即 resolve
+    await tick(4); // let the first round reach await firstGate
+    const p2 = sdk.sendUserMessage('second'); // _queryBusy=true → queued, resolves immediately
     const r2 = await p2;
     assert.equal(r2, undefined, '入队分支直接 return undefined');
 
-    releaseFirst(); // 放行第一轮 → 结束后 drain 第二条
+    releaseFirst(); // release the first round → drains the second after it finishes
     await p1;
     await tick(6);
 
-    // 两轮 _executeQuery → 两次 active(true)（每轮 result 后会有 false×2：result handler + finally，
-    // 这是真实行为，不强求精确序列）。用 active===true 的计数判定「跑了两轮」。
-    const trueCount = statuses.filter((s) => s.active === true).length;
-    assert.equal(trueCount, 2, '入队的第二条应被 drain → 共两轮 query');
-    assert.equal(statuses[statuses.length - 1].active, false);
+    assert.equal(callCount, 2, '入队的第二条应被 drain → 共启动两次 query');
   });
 });
 
@@ -804,14 +780,14 @@ describe('sdk-manager-query — interruptTurn 关活跃 query + 排空 pending �
     const { deps, broadcasts } = makeDeps();
     const ctrl = { cutOpts: { toolUseID: 'int-1' } };
     let closeCalled = false;
-    // 自定义 fake：触发 canUseTool（park），并暴露 close
+    // Custom fake: triggers canUseTool (parked) and exposes close
     function fq({ options }) {
       return {
         async *[Symbol.asyncIterator]() {
           yield sysInit();
           await Promise.resolve();
           ctrl.promise = options.canUseTool('Bash', { command: 'ls' }, ctrl.cutOpts);
-          ctrl.result = await ctrl.promise; // 等 interrupt 把它 resolve(null) → deny
+          ctrl.result = await ctrl.promise; // interrupt resolves it to null → deny
           yield resultMsg();
         },
         interrupt() { return Promise.resolve(); },
@@ -823,7 +799,7 @@ describe('sdk-manager-query — interruptTurn 关活跃 query + 排空 pending �
 
     const sendP = sdk.sendUserMessage('go');
     await tick(6);
-    // 此刻 perm 审批 pending
+    // At this point the perm approval is pending
     assert.ok(broadcasts.some((b) => b.type === 'perm-hook-pending'));
 
     const cancelled = sdk.interruptTurn();
@@ -835,19 +811,21 @@ describe('sdk-manager-query — interruptTurn 关活跃 query + 排空 pending �
     await sendP;
     await tick(3);
     assert.equal(closeCalled, true, 'interruptTurn should close the active query');
-    // pending 被 resolve(null) → canUseTool 走 deny(timeout 文案)
+    // pending resolved to null → canUseTool goes deny (timeout wording)
     assert.equal(ctrl.result.behavior, 'deny');
-    // interrupt 不清 sessionId（保会话续连）—— init 之后无 system 落地前为 null/或已落地
-    // 这里 sysInit 已 yield，sessionId 应已落地且未被 interrupt 清掉
+    // interrupt does not clear sessionId (keeps session continuity) — after init the
+    // sessionId is set and not cleared by interrupt
     assert.equal(sdk.getSessionId(), 'sess-1');
   });
 
   it('interruptTurn 丢弃队列中未派发的消息', async () => {
-    const { deps, statuses } = makeDeps();
+    const { deps } = makeDeps();
     let releaseFirst;
     const firstGate = new Promise((r) => { releaseFirst = r; });
     let round = 0;
+    let callCount = 0;
     function fq() {
+      callCount++;
       const myRound = round++;
       return {
         async *[Symbol.asyncIterator]() {
@@ -856,7 +834,7 @@ describe('sdk-manager-query — interruptTurn 关活跃 query + 排空 pending �
           yield resultMsg();
         },
         interrupt() { return Promise.resolve(); },
-        close() { releaseFirst && releaseFirst(); }, // close 放行第一轮
+        close() { releaseFirst && releaseFirst(); }, // close releases the first round
       };
     }
     sdk.__setQueryForTests(fq);
@@ -864,16 +842,15 @@ describe('sdk-manager-query — interruptTurn 关活跃 query + 排空 pending �
 
     const p1 = sdk.sendUserMessage('first');
     await tick(4);
-    await sdk.sendUserMessage('queued'); // 入队
-    // interrupt：清队列 + close 第一轮（close 放行 firstGate）
+    await sdk.sendUserMessage('queued'); // queued
+    // interrupt: clears the queue + closes the first round (close releases firstGate)
     sdk.interruptTurn();
     releaseFirst();
     await p1;
     await tick(6);
 
-    // 队列被清 → 只跑了第一轮，第二条不应被 drain（active===true 仅一次）
-    const trueCount = statuses.filter((s) => s.active === true).length;
-    assert.equal(trueCount, 1, 'queued message must be dropped on interrupt');
+    // Queue cleared → only the first round ran; the second must not be drained
+    assert.equal(callCount, 1, 'queued message must be dropped on interrupt');
   });
 });
 
@@ -911,7 +888,6 @@ describe('sdk-manager-query — stopSession 关 query 并清会话', () => {
 
 describe('sdk-manager-query — stopSession 排空 pending 审批（_resetFullState reject 循环）', () => {
   it('审批 pending 时 stopSession → pending.resolve(null) → canUseTool 走 deny', async () => {
-    // 覆盖 _resetFullState 末尾的 for (pending) pending.resolve(null) 循环（行 598-600）。
     const { deps, broadcasts } = makeDeps();
     const ctrl = { cutOpts: { toolUseID: 'stop-perm' } };
     function fq({ options }) {
@@ -920,7 +896,7 @@ describe('sdk-manager-query — stopSession 排空 pending 审批（_resetFullSt
           yield sysInit();
           await Promise.resolve();
           ctrl.promise = options.canUseTool('Bash', { command: 'ls' }, ctrl.cutOpts);
-          ctrl.result = await ctrl.promise; // stopSession 注入 null → deny(timeout 文案)
+          ctrl.result = await ctrl.promise; // stopSession injects null → deny (timeout wording)
           yield resultMsg();
         },
         interrupt() { return Promise.resolve(); },
@@ -933,7 +909,7 @@ describe('sdk-manager-query — stopSession 排空 pending 审批（_resetFullSt
     await tick(6);
     assert.ok(broadcasts.some((b) => b.type === 'perm-hook-pending'));
 
-    sdk.stopSession(); // _resetFullState → reject pending(null)
+    sdk.stopSession(); // _resetFullState → reject pending with null
     await sendP;
     await tick(3);
     assert.equal(ctrl.result.behavior, 'deny');
@@ -943,10 +919,7 @@ describe('sdk-manager-query — stopSession 排空 pending 审批（_resetFullSt
 
 describe('sdk-manager-query — onTurnEnd 抛错被吞', () => {
   it('onTurnEnd 抛错不影响 result 处理（被 try/catch 吞 + console.warn）', async () => {
-    const entries = [];
     const deps = {
-      onEntry: (e) => entries.push(e),
-      onStreamingStatus: () => {},
       broadcastWs: () => {},
       onTurnEnd: () => { throw new Error('turnEnd boom'); },
     };
@@ -957,7 +930,123 @@ describe('sdk-manager-query — onTurnEnd 抛错被吞', () => {
   });
 });
 
-// ── 末尾：恢复真实 query，避免污染同进程内其它 sdk-manager 测试文件 ──
+// ── WS reconnect replay (getPendingApprovals) / onQueryError / init+compact broadcasts ──
+describe('sdk-manager-query — getPendingApprovals / onQueryError / init-compact 广播', () => {
+  it('perm pending 期间 getPendingApprovals 返回带 replay payload 与剩余时间的快照', async () => {
+    const { deps } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'snap-1' } };
+    sdk.__setQueryForTests(makeCanUseToolQuery('Bash', { command: 'npm publish' }, ctrl));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const sendP = sdk.sendUserMessage('go');
+    await tick(6);
+    const snap = sdk.getPendingApprovals();
+    assert.equal(snap.length, 1);
+    assert.equal(snap[0].id, 'snap-1');
+    assert.equal(snap[0].kind, 'perm');
+    assert.equal(snap[0].replay.type, 'perm-hook-pending');
+    assert.equal(snap[0].replay.toolName, 'Bash');
+    assert.deepEqual(snap[0].replay.input, { command: 'npm publish' });
+    assert.ok(snap[0].remainingMs > 0 && snap[0].remainingMs <= 5 * 60 * 1000);
+
+    sdk.resolveApproval('snap-1', { decision: 'allow' });
+    await sendP;
+    await tick(3);
+    assert.deepEqual(sdk.getPendingApprovals(), []);
+  });
+
+  it('query 迭代抛非 AbortError → onQueryError 收到 message;onTurnEnd 不触发', async () => {
+    const { deps } = makeDeps();
+    const errors = [];
+    let calls = 0;
+    function failingQuery() {
+      calls++;
+      return {
+        // eslint-disable-next-line require-yield
+        async *[Symbol.asyncIterator]() { throw new Error('boom-query'); },
+        interrupt() { return Promise.resolve(); },
+        close() {},
+      };
+    }
+    sdk.__setQueryForTests(failingQuery);
+    sdk.initSdkSession(tmpDir, 'proj', { ...deps, onQueryError: (m) => errors.push(m) });
+
+    await sdk.sendUserMessage('go');
+    await tick(4);
+    assert.equal(calls, 1);
+    assert.deepEqual(errors, ['boom-query']);
+  });
+
+  it('onQueryError 未注册 → query 失败不抛(向后兼容);onQueryError 自身抛错被吞', async () => {
+    const { deps } = makeDeps();
+    function failingQuery() {
+      return {
+        // eslint-disable-next-line require-yield
+        async *[Symbol.asyncIterator]() { throw new Error('x'); },
+        interrupt() { return Promise.resolve(); },
+        close() {},
+      };
+    }
+    sdk.__setQueryForTests(failingQuery);
+    sdk.initSdkSession(tmpDir, 'proj', deps); // no onQueryError
+    await assert.doesNotReject(() => sdk.sendUserMessage('go'));
+    await tick(4);
+
+    sdk.initSdkSession(tmpDir, 'proj', { ...deps, onQueryError: () => { throw new Error('cb boom'); } });
+    await assert.doesNotReject(() => sdk.sendUserMessage('go2'));
+    await tick(4);
+  });
+
+  it('system/init 带 slash_commands → 广播一次 sdk-init;同 session 重复 init 不重播', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const init = { ...sysInit('sess-init-1'), slash_commands: ['/compact', '/clear', '/init'] };
+    sdk.__setQueryForTests(makeFakeQuery([init, resultMsg()]));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    await sdk.sendUserMessage('first');
+    await tick(4);
+    const initB = broadcasts.filter((b) => b.type === 'sdk-init');
+    assert.equal(initB.length, 1);
+    assert.deepEqual(initB[0].slashCommands, ['/compact', '/clear', '/init']);
+    assert.equal(initB[0].sessionId, 'sess-init-1');
+
+    // Second round with the same session init → not replayed
+    sdk.__setQueryForTests(makeFakeQuery([init, resultMsg()]));
+    await sdk.sendUserMessage('second');
+    await tick(4);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-init').length, 1);
+  });
+
+  it('init 无 slash_commands / 空数组 → 不广播 sdk-init', async () => {
+    const { deps, broadcasts } = makeDeps();
+    sdk.__setQueryForTests(makeFakeQuery([{ ...sysInit('sess-noinit'), slash_commands: [] }, resultMsg()]));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(4);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-init').length, 0);
+  });
+
+  it('compact_boundary → 广播 sdk-compact(trigger/preTokens/postTokens)', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const compact = {
+      type: 'system', subtype: 'compact_boundary', session_id: 'sess-1',
+      compact_metadata: { trigger: 'auto', pre_tokens: 150000, post_tokens: 40000 },
+    };
+    sdk.__setQueryForTests(makeFakeQuery([sysInit(), compact, resultMsg()]));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+    const cb = broadcasts.filter((b) => b.type === 'sdk-compact');
+    assert.equal(cb.length, 1);
+    assert.equal(cb[0].trigger, 'auto');
+    assert.equal(cb[0].preTokens, 150000);
+    assert.equal(cb[0].postTokens, 40000);
+  });
+});
+
+
+// ── At the end: restore the real query to avoid polluting other sdk-manager test files
+// ── in the same process ──
 describe('sdk-manager-query — restore', () => {
   it('恢复真实 _query（重新 import 取得 sdk.query）', async () => {
     let realQuery;
@@ -966,7 +1055,7 @@ describe('sdk-manager-query — restore', () => {
       realQuery = real.query;
     } catch { realQuery = undefined; }
     sdk.__setQueryForTests(realQuery);
-    // 恢复后 isSdkAvailable 与真实环境一致（包已装 → true）
+    // After restore, isSdkAvailable matches the real environment (package installed → true)
     assert.equal(typeof realQuery === 'function', sdk.isSdkAvailable());
     sdk.stopSession();
   });

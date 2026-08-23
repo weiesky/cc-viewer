@@ -1,44 +1,57 @@
-// 内容分类与过滤规则
-// ChatView（对话模式）和 AppHeader（用户 Prompt 弹窗）共用此模块，确保过滤逻辑一致。
-// MainAgent / Teammate 判断也收敛于此，供全局统一调用。
+// Content classification and filtering rules.
+// ChatView (chat mode) and AppHeader (user Prompt popup) share this module so the
+// filtering logic stays consistent. MainAgent / Teammate detection also converges here for
+// unified global use.
 
-// ============== 请求体辅助 ==============
+// ============== request body helpers ==============
 
 const SUBAGENT_SYSTEM_RE = /command execution specialist|file search specialist|planning specialist|general-purpose agent|security monitor|performing a web search/i;
 
-// cc_version 2.1.181+：CLI 在 billing header 显式标注子代理（cc_is_subagent=true）；真·主代理省略此字段（从不为 =false）。
-// 这类子代理继承完整 "You are Claude Code" prompt + Edit/Bash/Agent 工具，会误中轻量 MainAgent 启发式，故须显式排除。
-// 结尾 \b 锚定：仅匹配 `=true`（其后为 `;` / 空白 / 串尾），避免 `=truex` 之类误匹配。
+// cc_version 2.1.181+: the CLI marks subagents explicitly in the billing header
+// (cc_is_subagent=true); a true main agent omits this field (never =false). Such subagents
+// inherit the full "You are Claude Code" prompt plus Edit/Bash/Agent tools, so they would
+// trip the lightweight MainAgent heuristic — hence the explicit exclusion.
+// Trailing \b anchor: only matches `=true` (followed by `;` / whitespace / end of string),
+// avoiding false matches like `=truex`.
 const SUBAGENT_BILLING_RE = /cc_is_subagent=true\b/;
 
-// Teammate 检测：system prompt 中包含 Agent Teammate Communication 标记（外部进程 teammate）
+// Teammate detection: system prompt contains the Agent Teammate Communication marker
+// (external-process teammate)
 const TEAMMATE_SYSTEM_RE = /running as an agent in a team|Agent Teammate Communication/i;
 
-// Native teammate 检测（同进程内 Agent 子代理），独立模块便于版本兼容
+// Native teammate detection (in-process Agent subagent); separate module for version
+// compatibility
 // Extensioned for server-side reuse (see requestType.js header note).
 import { isNativeTeammate, extractNativeTeammateName } from './teammateDetector.js';
 
-// ============== 跨会话 / teammate「协议通知」识别 ==============
-// harness 把跨会话 / teammate 通知作为 role=user 文本注入主会话。既有逻辑只认 <teammate-message>
-// 包裹形态与 "Another Claude session sent a message:" 前缀；这里补「裸协议 JSON」形态 + 新版 caveat 文案，
-// 统一归类为 teammate 状态气泡（非用户手输）。type 白名单与 ChatMessage 的 ui.teammate.${type} 渲染一致。
+// ============== cross-session / teammate "protocol notification" detection ==============
+// The harness injects cross-session / teammate notifications into the main session as
+// role=user text. Existing logic only recognized the <teammate-message> wrapper and the
+// "Another Claude session sent a message:" prefix; this adds the "bare protocol JSON" form
+// plus the newer caveat wording, classifying both as teammate status bubbles (not
+// user-typed input). The type whitelist matches ChatMessage's ui.teammate.${type}
+// rendering.
 export const INTER_SESSION_NOTIFICATION_TYPES = new Set([
   'idle_notification', 'shutdown_request', 'shutdown_response',
   'shutdown_approved', 'teammate_terminated',
   'plan_approval_request', 'plan_approval_response',
 ]);
 
-// harness 注入的「跨会话包裹文本」标记（英文固定）。
+// The harness-injected "cross-session wrapped text" marker (fixed English wording).
 const INTER_SESSION_LEAD_RE = /^Another Claude session sent a message:/i;
-// 尾部 caveat（新旧两种措辞）。刻意不用 /m：`(^|\n)` 提供行首锚定，`$` 表整串结尾——多行 caveat 会一并
-// 剥到空行 / 串尾，不会因 lazy + /m 只剥首行；行首锚定避免误伤用户正文中段引用此句。
+// Trailing caveat (both old and new wordings). Deliberately not using /m: `(^|\n)` anchors
+// at the start of a line and `$` marks the whole-string end — a multi-line caveat is
+// stripped all the way to a blank line / end of string, not just the first line as lazy +
+// /m would; the line-start anchor avoids stripping mid-body user quotes of this sentence.
 const INTER_SESSION_CAVEAT_RES = [
   /(^|\n)This came from another Claude session[\s\S]*?(?=\n\n|$)/i,
   /(^|\n)IMPORTANT: This is NOT from your user[\s\S]*?(?=\n\n|$)/i,
 ];
 
-// 花括号配对扫描出顶层 {...} 候选 JSON 段（跳过字符串字面量内的花括号 / 转义），返回 { raw, start, end }
-// 区间，供调用方一次性区间拼接剔除（不逐个 replace，避免 O(n²)）。用配对而非 [^{}]* 正则以正确处理嵌套。
+// Braces-pairing scan to find top-level {...} candidate JSON segments (skipping braces
+// inside string literals / escapes), returning { raw, start, end } ranges for the caller to
+// strip in one pass (not one replace each, avoiding O(n²)). Pairing is used instead of a
+// [^{}]* regex to correctly handle nesting.
 function scanTopLevelJsonObjects(s) {
   if (typeof s !== 'string' || s.indexOf('{') === -1) return [];
   const out = [];
@@ -58,9 +71,11 @@ function scanTopLevelJsonObjects(s) {
   return out;
 }
 
-// 识别 s 中的白名单协议通知 JSON：返回 { statuses:[{type,from}], rest }，rest = 剔除这些 JSON 后的剩余文本。
-// 单次扫描 + 区间拼接（O(n)）：避免对每个命中 JSON 做整串 replace 造成 O(n²)（评审 S1），同时统一原先
-// replace/split-join 两套剔除写法。非白名单 / 解析失败的 {...} 原样保留在 rest 中。
+// Identify whitelisted protocol-notification JSON in s, returning { statuses:[{type,from}],
+// rest }, where rest = the remaining text after those JSON segments are removed. A single
+// scan + range splicing (O(n)) avoids the O(n²) of a whole-string replace per hit (review
+// S1) and unifies the two former replace/split-join strip implementations. Non-whitelisted
+// or parse-failed {...} segments are kept as-is in rest.
 function extractProtocolNotifications(s) {
   const statuses = [];
   let rest = '', cursor = 0;
@@ -77,13 +92,16 @@ function extractProtocolNotifications(s) {
   return { statuses, rest };
 }
 
-// 解析「裸协议通知」文本块（不含 <teammate-message> 包裹——包裹形态由 classifyUserContent 主路径处理）。
-// 返回 { statuses:[{type,from}], rest } 或 null。必须带 harness 标记（前缀 / caveat）才认定为通知（见下）。
+// Parse a "bare protocol notification" text block (no <teammate-message> wrapper — the
+// wrapped form is handled by the classifyUserContent main path). Returns
+// { statuses:[{type,from}], rest } or null. It is only recognized as a notification if it
+// carries a harness marker (lead / caveat) — see below.
 export function parseInterSessionNotification(text) {
   if (typeof text !== 'string') return null;
   let body = text.trim();
   if (!body) return null;
-  // 去 <teammate-message> 包裹，避免与 classifyUserContent 主路径重复计入
+  // Strip the <teammate-message> wrapper to avoid double counting with the
+  // classifyUserContent main path
   body = body.replace(/<teammate-message[\s\S]*?<\/teammate-message>/gi, '').trim();
   if (!body) return null;
 
@@ -93,9 +111,12 @@ export function parseInterSessionNotification(text) {
   for (const cr of INTER_SESSION_CAVEAT_RES) {
     if (cr.test(work)) { hadCaveat = true; work = work.replace(cr, ''); }
   }
-  // 必须带 harness 标记（"Another Claude session…" 前缀 或 caveat 段）才认定为通知。真实跨会话通知一定
-  // 带其一（裸 <teammate-message> 包裹形态由 classifyUserContent 主路径单独处理）；据此，用户「整段粘贴一坨
-  // 协议形 JSON」绝不会被误判隐藏——彻底消除 over-filter 向量（评审 S2/F2，对齐用户「别过滤正常请求」诉求）。
+  // Only recognized as a notification if it carries a harness marker (the "Another Claude
+  // session…" lead or a caveat segment). A real cross-session notification always has one
+  // of them (the bare <teammate-message> wrapper is handled separately by the
+  // classifyUserContent main path); accordingly, a user pasting a chunk of protocol-like
+  // JSON is never misclassified as hidden — fully removing the over-filter vector (review
+  // S2/F2, aligning with the user's "don't filter normal requests" request).
   if (!hadLead && !hadCaveat) return null;
 
   const { statuses, rest } = extractProtocolNotifications(work);
@@ -104,7 +125,7 @@ export function parseInterSessionNotification(text) {
 }
 
 /**
- * 提取请求体中的 system prompt 文本
+ * Extract the system prompt text from a request body
  */
 export function getSystemText(body) {
   const system = body?.system;
@@ -119,20 +140,23 @@ export function getSystemText(body) {
 const _isTeammateCache = new WeakMap();
 
 /**
- * 判断请求是否为 Teammate 子进程的请求。
- * 支持两种检测：interceptor ���式（req.teammate 字段）和 proxy 模式（system prompt 标记）。
- * 全局唯一入口，与 isMainAgent 同级。
+ * Determine whether a request comes from a Teammate subprocess.
+ * Supports two detection modes: interceptor mode (req.teammate field) and proxy mode
+ * (system prompt marker). The single global entry point, alongside isMainAgent.
  */
 export function isTeammate(req) {
   if (!req) return false;
   const cached = _isTeammateCache.get(req);
   if (cached !== undefined) return cached;
-  // 【最高优先级】wire agent 身份信号（x-claude-code-agent-id / cc_is_subagent，
-  // 见 agent-id.js）。自 Claude Code 2.1.199 起普通 subagent 也被授予 SendMessage
-  // 工具，isNativeTeammate 的 SendMessage 判据不再可靠——这两个信号是硬判据：
-  //  - 持久化 agent 命名形态（name@session-…）→ 一定是 Teammate；
-  //  - 持久化 agent 匿名 hex 形态 → 一定是 SubAgent（否决下方 SendMessage 判据）；
-  //  - cc_is_subagent=true（CLI 自报 billing 标记，2.1.181+）→ 一定是 SubAgent。
+  // [Highest priority] wire agent identity signals (x-claude-code-agent-id /
+  // cc_is_subagent, see agent-id.js). Since Claude Code 2.1.199 ordinary subagents are
+  // also granted the SendMessage tool, so isNativeTeammate's SendMessage criterion is no
+  // longer reliable — these two signals are hard criteria:
+  //  - persistent named agent form (name@session-…) → always a Teammate;
+  //  - persistent anonymous hex form → always a SubAgent (overrides the SendMessage
+  //    criterion below);
+  //  - cc_is_subagent=true (CLI self-reported billing marker, 2.1.181+) → always a
+  //    SubAgent.
   const agent = req.agent;
   if (agent) {
     if (agent.named) { _isTeammateCache.set(req, true); return true; }
@@ -140,20 +164,22 @@ export function isTeammate(req) {
   }
   const sysText = getSystemText(req.body || {});
   if (SUBAGENT_BILLING_RE.test(sysText)) { _isTeammateCache.set(req, false); return false; }
-  // interceptor 模式：通过 process.argv 写入的 teammate 字段
+  // interceptor mode: teammate field written via process.argv
   if (req.teammate) { _isTeammateCache.set(req, true); return true; }
-  // native teammate：同进程内 Agent 子代理（system prompt 包含 "You are a Claude agent"）
+  // native teammate: in-process Agent subagent (system prompt contains "You are a Claude
+  // agent")
   if (isNativeTeammate(req)) {
-    // 注入 teammate 字段供下游 requestType.js 的 formatTeammateLabel 使用。
-    // 持久化的 wire agent 名（x-claude-code-agent-id，见 agent-id.js）优先——
-    // 它不依赖窗口内的注册表，冷加载/时序缺失时名字仍可靠。
+    // Inject the teammate field for downstream requestType.js formatTeammateLabel use.
+    // The persistent wire agent name (x-claude-code-agent-id, see agent-id.js) takes
+    // priority — it does not depend on the in-window registry, so the name stays reliable
+    // on cold load / timing gaps.
     if (!req.teammate) {
       req.teammate = req.agent?.agentName || extractNativeTeammateName(req) || null;
     }
     _isTeammateCache.set(req, true);
     return true;
   }
-  // proxy 模式：通过 system prompt 检测（外部进程 teammate）
+  // proxy mode: detect via system prompt (external-process teammate)
   const result = TEAMMATE_SYSTEM_RE.test(sysText);
   _isTeammateCache.set(req, result);
   return result;
@@ -163,8 +189,9 @@ export function isTeammate(req) {
 const _isMainAgentCache = new WeakMap();
 
 /**
- * 判断请求是否为 MainAgent 请求。
- * 包含 interceptor 标记校验 + 新旧架构检测，全局唯一入口。
+ * Determine whether a request is a MainAgent request.
+ * Combines interceptor-marker validation + old/new architecture detection; the single
+ * global entry point.
  */
 export function isMainAgent(req) {
   if (!req) return false;
@@ -178,38 +205,42 @@ export function isMainAgent(req) {
 function _isMainAgentImpl(req) {
   if (!req) return false;
 
-  // Teammate 子进程的请求不是 MainAgent，避免污染主会话视图
+  // A Teammate subprocess request is not a MainAgent, avoiding pollution of the main
+  // session view
   if (isTeammate(req)) return false;
 
-  // cc_is_subagent=true ⇒ 子代理，绝非 MainAgent（cc_version 2.1.181+）。须早于下方 req.mainAgent 短路，
-  // 以覆盖「已落盘旧日志」里被服务端标成 mainAgent=true 的记录（向后兼容：旧日志/真·主代理无此 token）。
+  // cc_is_subagent=true ⇒ subagent, never a MainAgent (cc_version 2.1.181+). Must precede
+  // the req.mainAgent short-circuit below to cover on-disk old logs whose records were
+  // tagged mainAgent=true by the server (backward compat: old logs / true main agents do
+  // not carry this token).
   if (SUBAGENT_BILLING_RE.test(getSystemText(req.body || {}))) return false;
 
   if (req.mainAgent) {
-    // 排除被误标记的 SubAgent（旧日志兼容）
+    // Exclude SubAgents that were mis-tagged (old-log compatibility)
     const sysText = getSystemText(req.body || {});
     if (SUBAGENT_SYSTEM_RE.test(sysText)) return false;
     return true;
   }
 
-  // 统一检测逻辑：支持新旧架构
+  // Unified detection logic: supports old and new architectures
   const body = req.body || {};
   if (!body.system || !Array.isArray(body.tools)) return false;
 
   const sysText = getSystemText(body);
 
-  // 必须包含 MainAgent 身份标识
-  if (!sysText.includes('You are Claude Code')) return false;
+  // Must contain a MainAgent identity marker (SDK-mode base prompt includes "built on
+  // Anthropic's Claude Agent SDK.")
+  if (!sysText.includes('You are Claude Code') && !sysText.includes("built on Anthropic's Claude Agent SDK")) return false;
 
-  // 排除 SubAgent
+  // Exclude SubAgents
   if (SUBAGENT_SYSTEM_RE.test(sysText)) return false;
 
-  // 新架构检测（v2.1.69+）：延迟工具加载机制
+  // New architecture detection (v2.1.69+): deferred tool loading
   const isSystemArray = Array.isArray(body.system);
   const hasToolSearch = body.tools.some(t => t.name === 'ToolSearch');
 
   if (isSystemArray && hasToolSearch) {
-    // 检查第一条消息是否包含 <available-deferred-tools>
+    // Check whether the first message contains <available-deferred-tools>
     const messages = body.messages || [];
     const firstMsgContent = messages.length > 0 ?
       (typeof messages[0].content === 'string' ? messages[0].content :
@@ -219,7 +250,8 @@ function _isMainAgentImpl(req) {
     }
   }
 
-  // v2.1.81+: 轻量 MainAgent 初始请求工具数可能 < 10，降低阈值兼容
+  // v2.1.81+: a lightweight MainAgent initial request may have < 10 tools; lower the
+  // threshold for compatibility
   if (body.tools.length > 5) {
     const hasEdit = body.tools.some(t => t.name === 'Edit');
     const hasShell = body.tools.some(t => t.name === 'Bash' || t.name === 'PowerShell');
@@ -232,13 +264,14 @@ function _isMainAgentImpl(req) {
   return false;
 }
 
-// /clear checkpoint 检测：抽到独立无依赖模块，便于 node --test 直接 import。
+// /clear checkpoint detection: extracted into a standalone dependency-free module so it can
+// be imported directly by node --test.
 export { isPostClearCheckpoint, isCompactContinuation, isSessionBoundary } from './clearCheckpoint.js';
 
-// ============== 文本内容过滤 ==============
+// ============== text content filtering ==============
 
 /**
- * 判断文本是否为 Skill 加载内容
+ * Determine whether text is Skill-loading content
  */
 export function isSkillText(text) {
   if (!text) return false;
@@ -246,7 +279,7 @@ export function isSkillText(text) {
 }
 
 /**
- * 判断文本是否为系统注入文本（不应作为用户消息展示）
+ * Determine whether text is system-injected text (should not be shown as a user message)
  */
 /**
  * Strip known system/command tags from a text block, returning only user-authored content.
@@ -263,24 +296,32 @@ function stripSystemTags(text) {
     .replace(/<command-args>[\s\S]*?<\/command-args>/gi, '')
     .replace(/<teammate-message[\s\S]*?<\/teammate-message>/gi, '')
     .replace(/<task-notification>[\s\S]*?<\/task-notification>/gi, '')
-    // harness 注入队友消息轮的包裹文本：前缀行 + 尾部 IMPORTANT 免责段。
-    // 尾段用 ^...m 多行锚定——段落必须起行才剥，用户正文中段引用该句不受影响；
-    // 只锚定句首短语、不绑定其后的破折号/措辞（harness 微调标点不致尾段泄漏成 user 气泡）
+    // harness-injected wrapper text for a teammate-message round: leading line + trailing
+    // IMPORTANT disclaimer segment. The trailing segment uses ^...m multiline anchoring —
+    // a paragraph must start at a line to be stripped, so mid-body user quotes of the
+    // sentence are unaffected; only the opening phrase is anchored, not the dash/wording
+    // after it (harness punctuation tweaks must not leak the trailing segment into a user
+    // bubble)
     .replace(/^Another Claude session sent a message:\s*/i, '')
     .replace(/^IMPORTANT: This is NOT from your user\b[\s\S]*?(?=\n\n|$)/im, '');
-  // 新版跨会话 caveat（多行安全：行首锚定，剥到空行 / 串尾）
+  // Newer cross-session caveat (multi-line safe: line-start anchored, stripped to a blank
+  // line / end of string)
   out = out.replace(/(^|\n)This came from another Claude session[\s\S]*?(?=\n\n|$)/i, '');
-  // 裸协议通知 JSON（idle / shutdown_* / teammate_terminated / plan_approval_*，含嵌套）——单次扫描剔除
-  // （O(n)，评审 S1）。与 <teammate-message> 包裹的协议 JSON 同类，剥离后二次回收只剩用户追加正文（无则空）
+  // Bare protocol-notification JSON (idle / shutdown_* / teammate_terminated /
+  // plan_approval_*, including nesting) — stripped in a single scan (O(n), review S1).
+  // Same kind as the protocol JSON in a <teammate-message> wrapper; after stripping, the
+  // second pass recovers only the user-appended body (empty if none)
   out = extractProtocolNotifications(out).rest;
   return out.trim();
 }
 
-// Claude Code 内部合成 prompt 白名单（CLI 在主会话里合成的 recap/title/compact/topic/summary 查询，
-// HTTP 层 role=user 但不是用户手输）。与 requestType.js 的 Synthetic 分类共用同一白名单，
-// 在 isSystemText 里统一过滤 → ChatView / Mobile / DetailPanel / teamModalBuilder 全链路隐藏。
-// 匹配 last user message 的起首（`^` 锚定 + trim），避免误伤用户引用原文。
-// KEEP IN SYNC: packages/core/test/synthetic-classification.test.js 有 inline 副本。
+// Claude Code internal synthetic-prompt whitelist (recap/title/compact/topic/summary
+// queries the CLI synthesizes in the main session — role=user over HTTP but not
+// user-typed). Shares the same whitelist as requestType.js's Synthetic classification and
+// is filtered uniformly in isSystemText → hidden across ChatView / Mobile / DetailPanel /
+// teamModalBuilder. Matches the start of the last user message (`^` anchor + trim) to avoid
+// harming user-quoted originals.
+// KEEP IN SYNC: packages/core/test/synthetic-classification.test.js has an inline copy.
 export const SYNTHETIC_PROMPTS = [
   { subType: 'Recap',   pattern: /^The user stepped away and is coming back\. Recap in under/i },
   { subType: 'Title',   pattern: /^(Based on the above conversation, generate a|Please write a)\s+(short|concise)\s+title/i },
@@ -299,12 +340,14 @@ export function isSyntheticPromptText(text) {
   return false;
 }
 
-// UltraPlan 输入识别：UltraPlanModal / CLI /ultraplan 都会把 ultraplanTemplates.js
-// 组装的 <system-reminder>[SCOPED INSTRUCTION]…</system-reminder> 模板前置到用户 prompt。
-// 该 marker 仅由 ultraplanTemplates.js 产出，故可作为「本轮是 UltraPlan 输入」的可靠信号。
-// stripSystemTags 会剥掉该块，所以必须在原始（未剥离）文本上判断；用负向前瞻确保 marker
-// 出现在同一个 <system-reminder>…</system-reminder> 块内部（不跨过闭合标签），避免用户正文里
-// 在某个无关 reminder 之后只是「提到」该短语时误判。
+// UltraPlan input detection: UltraPlanModal / the CLI /ultraplan both prepend the
+// <system-reminder>[SCOPED INSTRUCTION]…</system-reminder> template assembled by
+// ultraplanTemplates.js to the user prompt. Only ultraplanTemplates.js produces this
+// marker, so it is a reliable "this round is UltraPlan input" signal. stripSystemTags would
+// strip the block, so detection must run on the raw (unstripped) text; a negative
+// lookahead ensures the marker sits inside the same <system-reminder>…</system-reminder>
+// block (without crossing the closing tag), avoiding a false positive when the user body
+// merely "mentions" the phrase after some unrelated reminder.
 export function isUltraplanText(text) {
   if (!text || typeof text !== 'string') return false;
   return /<system-reminder>(?:(?!<\/system-reminder>)[\s\S])*?\[SCOPED INSTRUCTION\]/i.test(text);
@@ -314,53 +357,66 @@ export function isSystemText(text) {
   if (!text) return true;
   const trimmed = text.trim();
   if (!trimmed) return true;
-  // 包含 plan 内容的文本块不应被过滤（即使开头有系统标签）
+  // A text block containing plan content should not be filtered (even with system tags at
+  // the start)
   if (/Implement the following plan:/i.test(trimmed)) return false;
   if (/^<[a-zA-Z_][\w-]*[\s>]/i.test(trimmed)) return true;
   if (/^\[SUGGESTION MODE:/i.test(trimmed)) return true;
-  // Claude Code 输出截断时注入的系统消息
+  // System message injected when Claude Code truncates its output
   if (/^Your response was cut off because it exceeded the output token limit/i.test(trimmed)) return true;
-  // Skill 加载的文档内容
+  // Skill-loaded document content
   if (/^Base directory for this skill:/i.test(trimmed)) return true;
-  // CLI 内部合成 prompt（Recap/Title/Compact/Topic/Summary）
+  // CLI-internal synthetic prompts (Recap/Title/Compact/Topic/Summary)
   if (isSyntheticPromptText(trimmed)) return true;
-  // harness 注入的队友消息轮：包裹文本（前缀 + 尾部 IMPORTANT 段）非用户手输，
-  // teammate 内容本身经 classifyUserContent 提取为 teammateBlocks 独立渲染
+  // harness-injected teammate-message round: the wrapped text (lead + trailing IMPORTANT
+  // segment) is not user-typed; the teammate content itself is extracted by
+  // classifyUserContent into teammateBlocks and rendered separately
   if (/^Another Claude session sent a message:/i.test(trimmed)) return true;
-  // 裸协议通知（直接以协议 JSON 起头、无 "Another Claude session" 前缀）：必须 parseInterSessionNotification
-  // 命中白名单协议 JSON 才算系统文本——粘贴非协议 JSON / 含追加正文不会被误吞。caveat 是尾部 chrome
-  // （真实形态总是 JSON 在前、caveat 在后），故「起头即 caveat」的块视为用户正文，防整段消失（评审 F1）；
-  // 其 caveat chrome 在确为通知的块内由 parse / stripSystemTags 处理。
+  // Bare protocol notification (starts directly with protocol JSON, no "Another Claude
+  // session" lead): only counted as system text when parseInterSessionNotification matches
+  // whitelisted protocol JSON — pasted non-protocol JSON / bodies with appended text are
+  // not swallowed. The caveat is trailing chrome (the real form always has JSON first,
+  // caveat after), so a block that "starts with a caveat" is treated as user body to
+  // prevent the whole block from disappearing (review F1); its caveat chrome is handled by
+  // parse / stripSystemTags within blocks confirmed as notifications.
   if (trimmed.startsWith('{') && parseInterSessionNotification(trimmed)) return true;
-  // 用户拒绝 tool / 中断 Claude 时 CLI 注入的占位 user message —— 与上方 "✗ 已拒绝" badge 语义重复
-  // 涵盖历史变体："[Request interrupted by user for tool use]"、"[Request interrupted by user]"、"[Request interrupted...]"
+  // Placeholder user message the CLI injects when the user rejects a tool / interrupts
+  // Claude — semantically duplicates the "✗ rejected" badge above. Covers the historical
+  // variants: "[Request interrupted by user for tool use]", "[Request interrupted by
+  // user]", "[Request interrupted...]"
   if (/^\[Request interrupted/i.test(trimmed)) return true;
   return false;
 }
 
-// 字符串型 user/assistant message 的「可显示正文」。忠实镜像 classifyUserContent 的两段语义
-// （classifyUserContent 内「首过滤 + stripSystemTags 二次回收」两步），只是作用于字符串：
-//   Pass1：非系统文本 → 原样返回（保留用户正文中段引用的成对标签，与当前行为逐字一致，零回归）；
-//   Pass2：系统块（以 chrome 标签起首等被 isSystemText 判真）→ 剥掉已知 chrome 后再判，仍是真实正文则
-//          返回剥离后正文，否则 ''（应隐藏）。
-// 解决「系统标签起首 + 真实正文」字符串被 isSystemText 整条吞掉（数组路径有此回收，字符串路径原先没有）。
-// 注意：用户手打未闭合 <system-reminder>（无配对）仍判系统文本而隐藏——沿用当前行为，本函数不改变它。
+// The "displayable body" of a string-typed user/assistant message. Faithfully mirrors the
+// two-pass semantics of classifyUserContent (its "first filter + stripSystemTags second
+// recovery" steps), but operating on a string:
+//   Pass1: non-system text → returned as-is (preserving paired tags quoted mid-body by the
+//           user, word-for-word identical to current behavior, zero regression);
+//   Pass2: system blocks (judged true by isSystemText, e.g. starting with chrome tags) →
+//           strip known chrome, then re-judge; return the stripped body if it is still real
+//           body, otherwise '' (should be hidden).
+// Fixes the case where a "system-tag-prefixed + real body" string was fully swallowed by
+// isSystemText (the array path had this recovery; the string path previously did not).
+// Note: a user-typed unclosed <system-reminder> (no pairing) is still judged system text
+// and hidden — that current behavior is preserved; this function does not change it.
 export function extractDisplayText(str) {
   if (typeof str !== 'string' || !str.trim()) return '';
-  if (!isSystemText(str)) return str;                  // Pass1：已是用户文本，原样
-  const recovered = stripSystemTags(str);               // Pass2：二次回收
+  if (!isSystemText(str)) return str;                  // Pass1: already user text, as-is
+  const recovered = stripSystemTags(str);               // Pass2: second-pass recovery
   return (recovered && !isSystemText(recovered)) ? recovered : '';
 }
 
 /**
- * 从 user message 的 content 数组中分类提取各类文本块。
- * @param {Array} content — message.content 数组
+ * Classify and extract the various text blocks from a user message's content array.
+ * @param {Array} content — the message.content array
  * @returns {{ commands: string[], textBlocks: Array, skillBlocks: Array, teammateBlocks: Array, taskNotificationBlocks: Array }}
- *   commands              — 提取到的 slash command 名称（如 "/clear"）
- *   textBlocks            — 过滤后的普通用户文本块（不含系统文本、command 块、skill 块）
- *   skillBlocks           — skill 加载的文本块
- *   teammateBlocks        — teammate-message 解析块
- *   taskNotificationBlocks — task-notification 解析块
+ *   commands              — extracted slash command names (e.g. "/clear")
+ *   textBlocks            — filtered plain user text blocks (no system text, command
+ *                            blocks, or skill blocks)
+ *   skillBlocks           — skill-loaded text blocks
+ *   teammateBlocks        — parsed teammate-message blocks
+ *   taskNotificationBlocks — parsed task-notification blocks
  */
 export function classifyUserContent(content) {
   if (!Array.isArray(content)) return { commands: [], textBlocks: [], skillBlocks: [], teammateBlocks: [], taskNotificationBlocks: [] };
@@ -401,17 +457,22 @@ export function classifyUserContent(content) {
     }
   }
 
-  // 裸协议通知（未包 <teammate-message>）：harness 注入的 idle / shutdown_* / teammate_terminated /
-  // plan_approval_* 等，提取为 teammate 状态气泡（与包裹形态同渲染）。按 status|from 去重，避免与上面
-  // 包裹形态在「同块既有包裹又有裸 JSON」的极端场景下重复出气泡。
+  // Bare protocol notification (not wrapped in <teammate-message>): harness-injected idle /
+  // shutdown_* / teammate_terminated / plan_approval_* etc., extracted as teammate status
+  // bubbles (rendered the same as the wrapped form). Deduped by status|from to avoid a
+  // duplicate bubble alongside the wrapped form in the extreme case where one block has
+  // both a wrapper and bare JSON.
   const seenStatus = new Set(teammateBlocks.filter(t => t.status).map(t => `${t.status}|${t.statusFrom}`));
   for (const b of content) {
     if (b.type !== 'text') continue;
     const txt = b.text || '';
-    if (!txt.includes('"type"')) continue; // 廉价早退：协议通知必含 JSON 的 "type"
-    // 仅对「通知起头」的块出状态气泡（与 isSystemText 的隐藏条件对齐：前缀 lead 或 裸 JSON 起头）。
-    // 用户在正文里引用 / 转贴整条通知（caveat 起头、prose 起头）→ 该块仍是 user 气泡，不再额外塞一个
-    // 幽灵状态气泡，也不会双重渲染（评审 qa-A / auditor-F1）。
+    if (!txt.includes('"type"')) continue; // cheap early exit: a protocol notification must
+    // contain JSON's "type"
+    // Only emit a status bubble for blocks that "start with a notification" (aligned with
+    // isSystemText's hide condition: lead prefix or bare-JSON start). A user quoting /
+    // reposting a whole notification in their body (caveat-start, prose-start) keeps that
+    // block as a user bubble — no extra ghost status bubble, no double rendering (review
+    // qa-A / auditor-F1).
     const head = txt.trimStart();
     if (!head.startsWith('{') && !INTER_SESSION_LEAD_RE.test(head)) continue;
     const note = parseInterSessionNotification(txt);
@@ -456,7 +517,7 @@ export function classifyUserContent(content) {
 
   const hasCommand = content.some(b => b.type === 'text' && /<command-message>/i.test(b.text || ''));
 
-  // 提取 slash command 名称
+  // Extract slash command names
   const commands = [];
   if (hasCommand) {
     for (const b of content) {
@@ -469,13 +530,14 @@ export function classifyUserContent(content) {
     }
   }
 
-  // 过滤出非系统文本块
+  // Filter out non-system text blocks
   let textBlocks = content.filter(b => b.type === 'text' && !isSystemText(b.text));
 
-  // 二次提取：从被过滤的系统块中提取嵌入的用户文本
-  // (e.g., /ultraplan 将 skill 指令和用户输入合并在同一 <system-reminder> 块中)
-  // stripSystemTags 后再过一次 isSystemText —— 避免对 [Request interrupted ...] 这种纯标记
-  // 文本（无可剥离 XML）误回收成用户气泡
+  // Second-pass extraction: recover user text embedded in filtered system blocks
+  // (e.g., /ultraplan merges the skill instruction and the user input into the same
+  // <system-reminder> block). Run isSystemText once more after stripSystemTags — to avoid
+  // wrongly recovering pure-marker text like [Request interrupted ...] (nothing stripable)
+  // back into a user bubble
   for (const b of content) {
     if (b.type !== 'text' || !isSystemText(b.text)) continue;
     const userText = stripSystemTags(b.text);
@@ -484,18 +546,21 @@ export function classifyUserContent(content) {
     }
   }
 
-  // 过滤掉 command 相关块
+  // Filter out command-related blocks
   if (hasCommand) {
     textBlocks = textBlocks.filter(b => !/<command-message>/i.test(b.text || ''));
   }
 
-  // skill 文本（isSkillText）必然先被 isSystemText 的同一正则（"Base directory for this skill:"）
-  // 过滤，textBlocks 两条进入路径（初次过滤/二次回收）都要求 !isSystemText，故 skill 块不可能
-  // 出现在 textBlocks 中；保留 skillBlocks 键以维持返回 shape（ChatView/ImConversationModal 消费）。
+  // Skill text (isSkillText) is necessarily filtered first by the same regex in isSystemText
+  // ("Base directory for this skill:"), and both textBlocks entry paths (initial filter /
+  // second-pass recovery) require !isSystemText, so a skill block can never appear in
+  // textBlocks; the skillBlocks key is kept to preserve the returned shape (consumed by
+  // ChatView/ImConversationModal).
   const skillBlocks = [];
 
-  // 本轮是否为 UltraPlan 输入（原始文本仍含 <system-reminder>[SCOPED INSTRUCTION] marker，
-  // 此时尚未被 stripSystemTags 剥离）。消费方（ChatView）据此在用户气泡上方渲染 [UltraPlan] 标签。
+  // Whether this round is UltraPlan input (the raw text still contains the
+  // <system-reminder>[SCOPED INSTRUCTION] marker, not yet stripped by stripSystemTags).
+  // Consumers (ChatView) use this to render an [UltraPlan] tag above the user bubble.
   const ultraplan = Array.isArray(content)
     && content.some(b => b && b.type === 'text' && isUltraplanText(b.text));
 
@@ -503,8 +568,8 @@ export function classifyUserContent(content) {
 }
 
 /**
- * 从 teammate 请求的 messages 中提取名字。
- * 扫描 SendMessage 的 tool_result，查找 routing.sender 字段。
+ * Extract a name from a teammate request's messages.
+ * Scans the SendMessage tool_result for the routing.sender field.
  */
 export function extractTeammateName(body) {
   const msgs = body?.messages;
@@ -528,9 +593,9 @@ export function extractTeammateName(body) {
   return null;
 }
 
-// ============== Teammate 名称解析（prompt 内容匹配）==============
+// ============== Teammate name resolution (prompt content matching) ==============
 
-// 持久化注册表：Agent tool_use prompt 前缀 → teammate name
+// Persistent registry: Agent tool_use prompt prefix → teammate name
 const _promptRegistry = new Map();
 // Requests whose response has been scanned for Agent tool_use blocks. A request
 // is only added once its response is present, so a spawn turn that completes
@@ -539,14 +604,14 @@ const _promptRegistry = new Map();
 // cursor skipped it forever. WeakSet cannot be cleared, so it is recreated on
 // session switch.
 let _registryScanned = new WeakSet();
-// 用首条请求的 timestamp 标识会话，切换时自动 reset
+// Identify the session by the first request's timestamp; auto-reset on switch
 let _registrySessionKey = null;
 
 const PROMPT_PREFIX_LEN = 60;
 const TM_TAG_RE = /<teammate-message[^>]*>/;
 
 /**
- * 从 teammate 首条 user message 中提取 <teammate-message> 后的 prompt 内容。
+ * Extract the prompt content after <teammate-message> from a teammate's first user message.
  */
 function _extractSpawnPrompt(req) {
   const msgs = req.body?.messages;
@@ -570,8 +635,9 @@ function _extractSpawnPrompt(req) {
 }
 
 /**
- * v2.1.90+ Agent 模式：native teammate 的首条 user message 是 raw prompt（无 <teammate-message> 包装）。
- * 直接提取首条 user message 文本内容用于 prompt prefix 匹配。
+ * v2.1.90+ Agent mode: a native teammate's first user message is a raw prompt (no
+ * <teammate-message> wrapper). Extract the first user message's text directly for prompt
+ * prefix matching.
  */
 function _extractRawPrompt(req) {
   const msgs = req.body?.messages;
@@ -588,16 +654,16 @@ function _extractRawPrompt(req) {
 }
 
 /**
- * 预扫描 requests，通过匹配 MainAgent 的 Agent tool_use prompt
- * 与 native teammate 的首条消息内容，注入 req.teammate 名字。
+ * Pre-scan requests and inject req.teammate names by matching the MainAgent's Agent
+ * tool_use prompt against a native teammate's first message content.
  *
- * 必须在 classifyRequest 之前调用（classifyRequest 结果有 WeakMap 缓存）。
- * 版本兼容：已有 req.teammate（interceptor 模式）的请求不受影响。
+ * Must be called before classifyRequest (its result is WeakMap-cached). Version compatible:
+ * requests that already have req.teammate (interceptor mode) are unaffected.
  */
 export function resolveTeammateNames(requests) {
   if (!Array.isArray(requests) || requests.length === 0) return;
 
-  // 通过首条请求的 timestamp 检测会话切换，自动 reset
+  // Detect session switch via the first request's timestamp; auto-reset
   const sessionKey = requests[0]?.timestamp || null;
   if (sessionKey !== _registrySessionKey) {
     _promptRegistry.clear();
@@ -628,22 +694,22 @@ export function resolveTeammateNames(requests) {
 
   if (_promptRegistry.size === 0) return;
 
-  // Step 2: 为缺少名字的 native/proxy teammate 注入 req.teammate
+  // Step 2: inject req.teammate for native/proxy teammates that lack a name
   for (const req of requests) {
     if (req.teammate) continue;
     if (!isNativeTeammate(req) && !TEAMMATE_SYSTEM_RE.test(getSystemText(req.body || {}))) continue;
 
     let prompt = _extractSpawnPrompt(req);
-    // v2.1.90+ Agent 模式 fallback：无 <teammate-message> 时尝试 raw prompt
+    // v2.1.90+ Agent mode fallback: try the raw prompt when there is no <teammate-message>
     if (!prompt && isNativeTeammate(req)) prompt = _extractRawPrompt(req);
     if (!prompt) continue;
     const prefix = prompt.slice(0, PROMPT_PREFIX_LEN);
 
-    // 精确前缀匹配
+    // Exact prefix match
     const name = _promptRegistry.get(prefix);
     if (name) {
       req.teammate = name;
-      // 清除可能已缓存的 classifyRequest 结果（subType 为 null 的旧缓存）
+      // Clear any possibly-cached classifyRequest result (the old cache with subType null)
       if (req._cachedTeammateName === null) req._cachedTeammateName = name;
     }
   }

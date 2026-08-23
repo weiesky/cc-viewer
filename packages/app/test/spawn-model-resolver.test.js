@@ -1,5 +1,6 @@
-// resolveSpawnModel（server/lib/spawn-model-resolver.js）：spawn 时「当前生效配置」模型解析。
-// 全部数据根经 opts 注入 mkdtemp 临时目录 + fake env，绝不读真实用户数据。
+// resolveSpawnModel (server/lib/spawn-model-resolver.js): resolves the "currently effective
+// config" model at spawn time. All data roots come via opts-injected mkdtemp temp dirs +
+// fake env; real user data is never read.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -7,7 +8,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const tmp = mkdtempSync(join(tmpdir(), 'ccv-spawn-model-'));
-process.env.CCV_LOG_DIR = tmp; // 防御性：本文件全程走 opts 注入，此行只是双保险
+process.env.CCV_LOG_DIR = tmp; // defensive: this file runs entirely on opts injection; this line is just belt-and-suspenders
 
 let resolveSpawnModel;
 before(async () => {
@@ -15,7 +16,7 @@ before(async () => {
 });
 after(() => { rmSync(tmp, { recursive: true, force: true }); });
 
-// 每用例独立数据根，避免跨用例文件串扰。
+// Each case gets its own data root to avoid cross-case file interference.
 let seq = 0;
 function mkRoots() {
   const root = join(tmp, `case-${seq++}`);
@@ -32,7 +33,7 @@ function writeProfiles(logDir, obj) {
   writeFileSync(join(logDir, 'profile.json'), JSON.stringify(obj));
 }
 function writeWorkspaceActive(logDir, spawnDir, activeId) {
-  // 与 resolver/interceptor 相同的清洗规则
+  // Same sanitization rule as the resolver/interceptor
   const projectName = spawnDir.split('/').pop().replace(/[^a-zA-Z0-9_\-\.]/g, '_');
   const dir = join(logDir, projectName);
   mkdirSync(dir, { recursive: true });
@@ -52,7 +53,7 @@ describe('resolveSpawnModel: base model 优先级', () => {
     const { configDir, opts } = mkRoots();
     writeSettings(configDir, { model: 'claude-fable-5[1m]' });
     assert.equal(resolveSpawnModel('/ws', {}, opts), 'claude-fable-5[1m]');
-    const bare = mkRoots(); // 无 settings.json / profile.json
+    const bare = mkRoots(); // no settings.json / profile.json
     assert.equal(resolveSpawnModel('/ws', {}, bare.opts), null);
   });
 
@@ -86,7 +87,7 @@ describe('resolveSpawnModel: 三方 profile', () => {
     const { logDir, opts } = mkRoots();
     writeProfiles(logDir, PROFILES);
     assert.equal(resolveSpawnModel('/ws', { ANTHROPIC_MODEL: 'claude-opus-4-8' }, opts), 'deepseek-v4-opus-slot');
-    // sonnet 槽位未配置 → ANTHROPIC_MODEL(deepseek-v4-pro) 兜底
+    // sonnet slot unset → falls back to ANTHROPIC_MODEL (deepseek-v4-pro)
     assert.equal(resolveSpawnModel('/ws', { ANTHROPIC_MODEL: 'claude-sonnet-5' }, opts), 'deepseek-v4-pro');
   });
 
@@ -126,7 +127,8 @@ describe('resolveSpawnModel: 三方 profile', () => {
       active: 'max',
       profiles: [{ id: 'max', name: 'Default' }, { id: 'ds', name: 'DeepSeek', ANTHROPIC_MODEL: 'deepseek-v4-pro' }],
     });
-    // spawnDir 带需清洗的字符（空格→_），workspace 文件按清洗后的目录名落位
+    // spawnDir has chars needing sanitization (space→_), and the workspace file is placed
+    // under the sanitized directory name
     const spawnDir = '/Users/x/my project';
     writeWorkspaceActive(logDir, spawnDir, 'ds');
     assert.equal(resolveSpawnModel(spawnDir, {}, opts), 'deepseek-v4-pro', 'workspace override 生效');
@@ -140,7 +142,8 @@ describe('resolveSpawnModel: 三方 profile', () => {
       profiles: [{ id: 'max', name: 'Default' }, { id: 'ds', name: 'DeepSeek', ANTHROPIC_MODEL: 'deepseek-v4-pro' }],
     });
     const spawnDir = '/Users/x/role proj';
-    // 直接写新格式文件（含 roles）——spawn 解析只认 activeId（main 角色），roles 必须被忽略
+    // Write the new-format file directly (with roles) — spawn resolution only reads
+    // activeId (main role); roles must be ignored
     const projectName = spawnDir.split('/').pop().replace(/[^a-zA-Z0-9_\-\.]/g, '_');
     const dir = join(logDir, projectName);
     mkdirSync(dir, { recursive: true });
@@ -149,5 +152,43 @@ describe('resolveSpawnModel: 三方 profile', () => {
       roles: { subagent: 'whatever', teammate: 'max' },
     }));
     assert.equal(resolveSpawnModel(spawnDir, {}, opts), 'deepseek-v4-pro', 'spawn 注入恒走 main 角色，roles 不参与');
+  });
+});
+
+describe('resolveSpawnModel: launchSettings(合并后的 --settings 启动对象)', () => {
+  it('launcher 只在 --settings 里给模型(cfuse 链路):env.ANTHROPIC_MODEL 命中', () => {
+    const bare = mkRoots(); // no settings.json / profile.json — all other signals empty
+    assert.equal(
+      resolveSpawnModel('/ws', {}, { ...bare.opts, launchSettings: { env: { ANTHROPIC_MODEL: 'glink/Kimi-K3:glink_domestic[1m]' } } }),
+      'glink/Kimi-K3:glink_domestic[1m]',
+    );
+  });
+
+  it('launchSettings.env 压过继承的 process env;顶层 model 低于 process env、高于 settings.json', () => {
+    const { configDir, opts } = mkRoots();
+    writeSettings(configDir, { model: 'm-settings' });
+    const ls = { env: { ANTHROPIC_MODEL: 'm-launch' }, model: 'm-launch-top' };
+    assert.equal(resolveSpawnModel('/ws', { ANTHROPIC_MODEL: 'm-shell' }, { ...opts, launchSettings: ls }), 'm-launch', 'settings env 块由 claude 施加于继承 env 之上');
+    assert.equal(resolveSpawnModel('/ws', { ANTHROPIC_MODEL: 'm-shell' }, { ...opts, launchSettings: { model: 'm-launch-top' } }), 'm-shell', 'env 变量优先于 settings 顶层 model(Claude Code 自身优先级)');
+    assert.equal(resolveSpawnModel('/ws', {}, { ...opts, launchSettings: { model: 'm-launch-top' } }), 'm-launch-top');
+  });
+
+  it('launchSettings 无信号时回落 settings.json;非对象/空 env 被忽略', () => {
+    const { configDir, opts } = mkRoots();
+    writeSettings(configDir, { model: 'm-settings' });
+    assert.equal(resolveSpawnModel('/ws', {}, { ...opts, launchSettings: { env: {} } }), 'm-settings');
+    assert.equal(resolveSpawnModel('/ws', {}, { ...opts, launchSettings: 'not-an-object' }), 'm-settings');
+    assert.equal(resolveSpawnModel('/ws', {}, { ...opts, launchSettings: null }), 'm-settings');
+  });
+
+  it("launchSettings 里的 'default' 别名同样被丢弃;其 base 仍参与 profile 家族映射", () => {
+    const bare = mkRoots();
+    assert.equal(resolveSpawnModel('/ws', {}, { ...bare.opts, launchSettings: { env: { ANTHROPIC_MODEL: 'default' } } }), null);
+    const { logDir, opts } = mkRoots();
+    writeProfiles(logDir, { active: 'ds', profiles: [{ id: 'ds', name: 'DeepSeek', ANTHROPIC_MODEL: 'deepseek-v4-pro' }] });
+    assert.equal(
+      resolveSpawnModel('/ws', {}, { ...opts, launchSettings: { env: { ANTHROPIC_MODEL: 'claude-fable-5[1m]' } } }),
+      'deepseek-v4-pro',
+    );
   });
 });

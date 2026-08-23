@@ -110,6 +110,14 @@ describe('isTeammate', () => {
     assert.equal(CF.isTeammate(req), false);
   });
 
+  it('SDK 主会话(sdk-ts entrypoint + SDK prompt + SendMessage)→ false(不再双渲染)', () => {
+    const req = mkReq({
+      system: 'x-anthropic-billing-header: cc_version=2.1.199.ef3; cc_entrypoint=sdk-ts;\n' + SDK_SYSTEM,
+      tools: [{ name: 'Bash' }, { name: 'Edit' }, { name: 'SendMessage' }, { name: 'Agent' }],
+    });
+    assert.equal(CF.isTeammate(req), false);
+  });
+
   it('普通 mainAgent system → false', () => {
     const req = mkReq({ system: MAIN_SYSTEM, tools: [{ name: 'Bash' }] });
     assert.equal(CF.isTeammate(req), false);
@@ -207,6 +215,24 @@ describe('isMainAgent', () => {
     const req = mkReq({
       system: MAIN_SYSTEM + ' command execution specialist',
       tools: [{ name: 'Edit' }, { name: 'Bash' }, { name: 'Task' }, { name: 't1' }, { name: 't2' }, { name: 't3' }],
+    });
+    assert.equal(CF.isMainAgent(req), false);
+  });
+
+  it('SDK 模式主会话(SDK base prompt + 全工具含 Task)→ true', () => {
+    // ccv -SDK 主会话 system 是 SDK 的 "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
+    // 不含 "You are Claude Code"。带完整主工具集(含 Task)→ 应判 MainAgent。
+    const req = mkReq({
+      system: SDK_SYSTEM,
+      tools: [{ name: 'Edit' }, { name: 'Bash' }, { name: 'Task' }, { name: 't1' }, { name: 't2' }, { name: 't3' }],
+    });
+    assert.equal(CF.isMainAgent(req), true);
+  });
+
+  it('SDK 子代理(SDK base prompt 但缺 Task/Agent)→ false', () => {
+    const req = mkReq({
+      system: SDK_SYSTEM,
+      tools: [{ name: 'Edit' }, { name: 'Bash' }, { name: 't1' }, { name: 't2' }, { name: 't3' }, { name: 't4' }],
     });
     assert.equal(CF.isMainAgent(req), false);
   });

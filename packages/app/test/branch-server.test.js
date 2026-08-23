@@ -12,7 +12,8 @@
 //        - CCV_ALLOWED_HOSTS 显式 allow / '*' 关闭防护 / reject 403
 //        - CCV_TURN_END_DEBOUNCE_MS 各档（非数 / 越界 / 合法 / 空 / IM 默认）
 //   D. turn-end 状态机 / SDK export 分支：__testing namespace、broadcastTurnEnd、
-//      setSdkStreamingState edge、broadcastWsMessage parent 转译、_emitTurnEnd test-hook throw。
+//      broadcastWsMessage parent 转译、_emitTurnEnd test-hook throw。
+//      （setSdkStreamingState/pushSdkEntry 已随「SDK 模式走 wire 通路」改造退役）
 //
 // 隔离（与 270+ 文件并发）：私有高位端口窗 18020-18079（in-process）/ 18100+（子进程各自窗）；
 // import server.js 之前指私有 mkdtemp 到 CCV_LOG_DIR/CLAUDE_CONFIG_DIR；NODE_ENV=test 激活
@@ -950,23 +951,6 @@ describeCli('server.js turn-end 状态机 / SDK export 分支', { concurrency: f
     assert.equal(called, false); // 10s debounce 内不会 fire
   });
 
-  it('setSdkStreamingState：active=true 推送 / 重复 active 仍推 / 降为 false 推一次 / 再 false 不推', () => {
-    mod.__testing.reset();
-    // 无 client 时不真正 send，但分支求值仍计入（changed||isActive 闸门）。
-    mod.setSdkStreamingState({ active: true, startTime: Date.now() });   // changed(false→true) → 推
-    mod.setSdkStreamingState({ active: true, startTime: Date.now() });   // isActive → 推
-    mod.setSdkStreamingState({ active: false });                          // changed(true→false) → 推一次
-    mod.setSdkStreamingState(undefined);                                  // 已 false 且 undefined→false → 不推
-    mod.setSdkStreamingState(null);                                       // null→false → 不推
-    mod.setSdkStreamingState({});                                         // {}→active=false → 不推
-    mod.__testing.reset();
-    assert.ok(true);
-  });
-
-  it('pushSdkEntry 不抛（无 client 时 sendToClients no-op）', () => {
-    assert.doesNotThrow(() => mod.pushSdkEntry({ type: 'test', ts: Date.now() }));
-  });
-
   it('broadcastWsMessage：ask 类型转译给 parent（无 process.send 时 _notifyParentPending 短路）', () => {
     // 无 terminalWss / 无 process.send → 两条路径都安全 no-op，但分支求值计入。
     assert.doesNotThrow(() => mod.broadcastWsMessage({ type: 'ask-hook-resolved', id: 'x' }));
@@ -976,7 +960,7 @@ describeCli('server.js turn-end 状态机 / SDK export 分支', { concurrency: f
     assert.doesNotThrow(() => mod.broadcastWsMessage(null)); // null → 全短路
   });
 
-  it('SDK 注入器 setter 接线后 broadcastWsMessage / setSdkStreamingState 正常', () => {
+  it('SDK 注入器 setter 接线后 broadcastWsMessage 正常', () => {
     mod.setSdkResolveApproval(() => true);
     mod.setSdkCancelApproval(() => true);
     mod.setSdkSendUserMessage(async () => {});

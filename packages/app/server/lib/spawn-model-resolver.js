@@ -9,12 +9,21 @@
 //
 // Signal priority (best-effort heuristic — the shell-env vs settings.json-env ordering is
 // a repo convention, not documented Claude Code semantics; a mismatch merely means "no
-// injection" or "same-family entry", both harmless):
-//   1. active third-party proxy profile for the spawned workspace (family mapping via
-//      resolveProfileModel — the model the ccv proxy will actually route to)
+// injection" or "same-family entry", both harmless).
+// Base model, most spawn-specific first:
+//   1. the MERGED --settings launch object (opts.launchSettings — pty-manager folds the
+//      user's/launcher's --settings into the injected one): env.CLAUDE_MODEL >
+//      env.ANTHROPIC_MODEL. Wrappers like cfuse deliver the real model EXCLUSIVELY
+//      inside this blob, and claude applies a settings env block over the inherited
+//      shell env — so this outranks process env.
 //   2. env CLAUDE_MODEL > env ANTHROPIC_MODEL (shell exports inherited by the spawn)
-//   3. settings.json `env.ANTHROPIC_MODEL` > settings.json top-level `model`
+//   3. launchSettings top-level `model` (below the inherited env vars, mirroring
+//      Claude Code's own env-over-settings precedence)
+//   4. settings.json `env.ANTHROPIC_MODEL` > settings.json top-level `model`
 //      (the env block outranks the top-level field, mirroring how Claude Code applies it)
+// Then the active third-party proxy profile for the spawned workspace rewrites the base
+// via family mapping (resolveProfileModel — the model the ccv proxy will actually
+// route to).
 // Known limitation: a `--model` flag passed through extraArgs is not consulted.
 //
 // Pure disk reads — deliberately NOT importing server/interceptor.js: its module-level
@@ -79,7 +88,10 @@ function readActiveProfile(spawnDir, logDir) {
  *
  * @param {string} spawnDir workspace being launched (absolute path)
  * @param {Object} [env] environment (default process.env)
- * @param {{ logDir?: string, configDir?: string }} [opts] test seams for the data roots
+ * @param {{ logDir?: string, configDir?: string, launchSettings?: Object|null }} [opts]
+ *        logDir/configDir: test seams for the data roots;
+ *        launchSettings: the merged --settings object this spawn will run with
+ *        (highest-priority base-model signal — see header)
  * @returns {string|null}
  */
 export function resolveSpawnModel(spawnDir, env = process.env, opts = {}) {
@@ -87,7 +99,10 @@ export function resolveSpawnModel(spawnDir, env = process.env, opts = {}) {
   const configDir = opts.configDir || getClaudeConfigDir();
 
   // Base model: what claude itself is configured to request.
-  let base = nonEmpty(env?.CLAUDE_MODEL) || nonEmpty(env?.ANTHROPIC_MODEL);
+  const launch = (opts.launchSettings && typeof opts.launchSettings === 'object') ? opts.launchSettings : null;
+  let base = nonEmpty(launch?.env?.CLAUDE_MODEL) || nonEmpty(launch?.env?.ANTHROPIC_MODEL)
+    || nonEmpty(env?.CLAUDE_MODEL) || nonEmpty(env?.ANTHROPIC_MODEL)
+    || nonEmpty(launch?.model);
   if (!base) {
     const settings = readJson(join(configDir, 'settings.json'));
     base = nonEmpty(settings?.env?.ANTHROPIC_MODEL) || nonEmpty(settings?.model);

@@ -1,20 +1,19 @@
 import { resolveNativePath, LOG_DIR } from '../findcc.js';
 import { fileURLToPath } from 'node:url';
 import { join, dirname, sep } from 'node:path';
-import { chmodSync, statSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { chmodSync, statSync } from 'node:fs';
 import { platform, arch, homedir } from 'node:os';
 import { createRequire } from 'node:module';
 import { prepareEmbeddedShellSpawn, stripClaudeNoFlickerUnlessOptedIn, applyClaudeAltScreenPref } from './lib/terminal-env.js';
 import { killPtyTree } from './lib/term-signals.js';
 import { findSafeSliceStart, splitTrailingIncomplete } from './lib/ansi-safe-slice.js';
-import { buildSystemPromptFileArgs, hasArg, isNonEmptyFile, SYSTEM_PROMPT_FILE, APPEND_SYSTEM_PROMPT_FILE } from './lib/system-prompt-files.js';
-import { renderSystemPromptFileArgs, renderedPromptDir } from './lib/system-prompt-render.js';
-import { appendPending, readSnapshot, resolveContinueTargetUuid } from './lib/system-prompt-snapshots.js';
-import { MODEL_PROMPT_DIR } from './lib/model-system-prompts.js';
 import { resolveSpawnModel } from './lib/spawn-model-resolver.js';
 import { mergeSettingsIntoArgs } from './lib/settings-merge.js';
-import { reportSwallowed } from '@ccv/core/error-report';
-import { randomBytes } from 'node:crypto';
+import { MODEL_PROMPT_DIR } from './lib/model-system-prompts.js';
+// Launch-time system-prompt/thinking-display pipeline lives in lib/launch-config.js
+// (shared with the SDK link). Re-exported here for existing consumers/tests.
+import { withDefaultThinkingDisplay, resolveLaunchSystemPrompt } from './lib/launch-config.js';
+export { withDefaultThinkingDisplay } from './lib/launch-config.js';
 import { t, tFor } from './i18n.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -33,20 +32,24 @@ let exitListeners = [];
 let lastExitCode = null;
 let outputBuffer = '';
 let currentWorkspacePath = null;
-let lastWorkspacePath = null; // 进程退出后保留，用于 respawn shell
+let lastWorkspacePath = null; // kept after process exit, used for respawn shell
 let lastPtyCols = 120;
 let lastPtyRows = 30;
-// 主 PTY spawn 的在途闸：guard 在 await getPty 之前、ptyProcess 赋值在 await 之后，
-// 两条同步到达的 input 消息会越过 guard 双开（首个 pty 失引用泄漏 + 输出串扰）。
-// 同步占位一个 promise，并发调用复用它，绝不二次 spawn（仿 scratch-pty-manager._spawnInflight）。
+// In-flight guard for the main PTY spawn: the guard runs before `await getPty` and
+// ptyProcess is assigned after the await, so two synchronously-arriving input messages
+// could both pass the guard and double-spawn (the first pty loses its reference → leak +
+// output cross-talk). Synchronously reserve a promise and reuse it across concurrent calls,
+// never spawning twice (mirrors scratch-pty-manager._spawnInflight).
 let _spawnInflight = null;
-// resize 入口的 cols/rows 钳制范围：上界足够宽（4K 显示器超宽终端），下界 ≥2 列/1 行
-// 防 FitAddon 在 0 尺寸容器算出的 2×1 或畸形客户端的 NaN/负数毒化 lastPtyCols/Rows。
+// cols/rows clamp range at the resize entry: the upper bound is wide enough (4K-display
+// ultra-wide terminals), the lower bound is ≥2 cols/1 row to keep FitAddon's 2×1 (from a
+// 0-size container) or a malformed client's NaN/negative from poisoning lastPtyCols/Rows.
 const PTY_COLS_MIN = 2, PTY_COLS_MAX = 1000;
 const PTY_ROWS_MIN = 1, PTY_ROWS_MAX = 1000;
 const MAX_BUFFER = 200000;
-// 裁剪滞回：超 MAX_BUFFER 触发后一次裁到 TRIM_TO，而非每个 chunk 都裁到 MAX_BUFFER——
-// 把 ~200KB slice 重分配的频率从每 chunk 一次降到每 ~20KB 新输出一次。
+// Trim hysteresis: once MAX_BUFFER is exceeded, trim once down to TRIM_TO rather than to
+// MAX_BUFFER on every chunk — dropping the ~200KB slice reallocation frequency from once
+// per chunk to once per ~20KB of new output.
 const BUFFER_TRIM_TO = 180000;
 let batchBuffer = '';
 let batchScheduled = false;
@@ -56,25 +59,31 @@ export function _setPtyImportForTests(fn) {
   _ptyImportForTests = fn;
 }
 
-// spawn 时解析「当前生效配置」下的模型 id 供模型定制 system prompt 匹配（resolveSpawnModel：
-// 激活的三方 proxy profile 模型映射 > env CLAUDE_MODEL/ANTHROPIC_MODEL > settings.json；
-// 无实时配置信号 → null → 不注入模型条目）。旧判据读 ~/.claude.json 的 lastModelUsage
-// ——那是上次会话的使用统计而非配置，陈旧记录会把三方模型的 override 提示词强加给
-// 官方模型会话（review round：deepseek 残留记录事故）。
-// NODE_TEST_CONTEXT 屏障保留：resolveSpawnModel 会读 process.env 的模型变量，开发机
-// shell export 会漏进单测(机器状态依赖)；测试用 _setSpawnModelReaderForTests 显式注入。
-// env/reader 参数化只为可测性(见 packages/app/test/pty-manager.test.js 的 guard 单测)。
-export function _defaultSpawnModelReader(c, env = process.env, reader = resolveSpawnModel) {
-  return env.NODE_TEST_CONTEXT ? null : reader(c, env);
+// At spawn time, resolve the model id under the "currently effective config" for
+// model-customized system prompt matching (resolveSpawnModel: merged --settings launch
+// object > env CLAUDE_MODEL/ANTHROPIC_MODEL > settings.json > active third-party proxy
+// profile model mapping; no live config signal → null → no model entry injected).
+// The old criterion read lastModelUsage from ~/.claude.json — that is usage stats from the
+// previous session, not config, so a stale record could force the third-party model's
+// override prompt onto an official-model session (review round: deepseek residual-record
+// incident). The NODE_TEST_CONTEXT barrier is kept: resolveSpawnModel reads process.env
+// model vars, so a dev-machine shell export could leak into unit tests (machine-state
+// dependency); tests inject explicitly via _setSpawnModelReaderForTests. env/reader/opts
+// are parameterized only for testability (see the guard unit test in
+// packages/app/test/pty-manager.test.js).
+export function _defaultSpawnModelReader(c, env = process.env, reader = resolveSpawnModel, opts) {
+  return env.NODE_TEST_CONTEXT ? null : reader(c, env, opts);
 }
 let _spawnModelReader = _defaultSpawnModelReader;
 export function _setSpawnModelReaderForTests(fn) {
   _spawnModelReader = fn || _defaultSpawnModelReader;
 }
 
-// 启动兜底的时间源与窗口：spawn 后在窗口内死亡视为「引导期死亡」。真实引导崩溃 <1s，
-// 5s 足够；更长的窗口只会扩大「用户快速主动退出」的误报面(评审取值)。
-// _now 可注入：兜底用例需要拨表模拟「存活超窗后退出」。
+// Boot-fallback clock and window: a death within the window after spawn is treated as a
+// "boot-period death". Real boot crashes are <1s, so 5s is plenty; a longer window only
+// widens the false-positive surface for "user quickly exits on purpose" (review value).
+// _now is injectable: the fallback tests need to steer the clock to simulate "exits after
+// surviving past the window".
 const SYS_PROMPT_BOOT_WINDOW_MS = 5000;
 let _now = Date.now;
 export function _setNowForTests(fn) {
@@ -89,22 +98,26 @@ async function getPty() {
   return ptyMod.default || ptyMod;
 }
 
-// ANSI 安全截断起点：实现迁至 lib/ansi-safe-slice.js（锚点扫描算法，见该文件 doc）。
-// 保持从本模块 export——server.js 解构注入洪泛限流器、单测均从这里导入。
+// ANSI-safe slice start: the implementation moved to lib/ansi-safe-slice.js (anchor-scan
+// algorithm; see that file's doc). Kept exported from this module — server.js destructures
+// it for the flood rate-limiter and unit tests import it from here.
 export { findSafeSliceStart };
 
 // DEC Private Mode 2026 (Synchronized Output) markers.
-// xterm.js 6.0+ 原生支持：收到 BEGIN 后缓存所有写入，收到 END 后一次性渲染，
-// 消除批次内的中间帧闪烁。不支持的终端会忽略这些序列。
+// xterm.js 6.0+ supports these natively: it buffers all writes after BEGIN and renders once
+// on END, eliminating mid-batch frame flicker. Terminals that do not support them ignore
+// the sequences.
 const SYNC_BEGIN = '\x1b[?2026h';
 const SYNC_END   = '\x1b[?2026l';
 
 function flushBatch(force = false) {
   batchScheduled = false;
   if (!batchBuffer) return;
-  // 批边界半截序列缓带：每批都包 SYNC 标记，若批边界劈开一条转义序列，注入的标记
-  // 会吃掉它的 ESC、让后半段以字面渲染（`[9m`/`8;2;102m` 类残片的总根源）。半截尾巴
-  // 留到下一批（PTY 续写必然补全）；force=true（进程退出）时不缓带，冲洗全部残余。
+  // Batch-boundary half-sequence carry: every batch is wrapped in SYNC markers, so if a
+  // batch boundary splits an escape sequence the injected markers would eat its ESC and
+  // render the tail literally (the root cause of fragments like `[9m`/`8;2;102m`). The
+  // half tail is carried to the next batch (PTY continuation always completes it); when
+  // force=true (process exit) nothing is carried and all residue is flushed.
   let safe = batchBuffer;
   let carry = '';
   if (!force) [safe, carry] = splitTrailingIncomplete(batchBuffer);
@@ -116,8 +129,10 @@ function flushBatch(force = false) {
   }
 }
 
-// 向嵌入式终端注入一行合成提示(非 claude 输出)。append 到 outputBuffer 让新接入/重连客户端也能
-// 从快照看到(server.js 的 data-resync 走 getOutputBuffer)，再实时广播给当前 dataListeners。
+// Inject a synthetic notice line into the embedded terminal (not claude output). Appending
+// to outputBuffer lets newly-connected / reconnected clients see it in the snapshot
+// (server.js's data-resync reads getOutputBuffer), then broadcast live to the current
+// dataListeners.
 function emitSpawnNotice(line) {
   const chunk = `\x1b[2m${line}\x1b[0m\r\n`;
   outputBuffer += chunk;
@@ -126,9 +141,10 @@ function emitSpawnNotice(line) {
   }
 }
 
-// 走 createRequire().resolve 而非 join(__dirname, '..', 'node_modules', ...) ——
-// pnpm / yarn workspace 把 node-pty hoist 到上级 node_modules 时相对路径会找不到，
-// 静默 chmod 失败 → 运行 PTY 时 EACCES，且全程无 log 难排查。
+// Use createRequire().resolve rather than join(__dirname, '..', 'node_modules', ...) —
+// when pnpm / yarn workspaces hoist node-pty into an upper node_modules the relative path
+// would not resolve, silently failing chmod → EACCES when running the PTY, with no log to
+// debug.
 function fixSpawnHelperPermissions() {
   const os = platform();
   const cpu = arch();
@@ -138,7 +154,8 @@ function fixSpawnHelperPermissions() {
     const req = createRequire(import.meta.url);
     helperPath = req.resolve(subPath);
   } catch (err) {
-    // node-pty 没安装/没该平台 prebuild：放过，spawn 时会另报错
+    // node-pty not installed / no prebuild for this platform: skip; spawn will raise its
+    // own error
     return;
   }
   try {
@@ -151,34 +168,38 @@ function fixSpawnHelperPermissions() {
   }
 }
 
-// Opus 4.7 默认不再返回 thinking；为所有非显式覆写的调用加上 summarized。
-// 纯函数：仅根据 args 决定是否注入；用户已显式传入 `--thinking-display` 时原样返回。
-export function withDefaultThinkingDisplay(args) {
-  if (!Array.isArray(args)) return args;
-  const hasFlag = args.some(a =>
-    a === '--thinking-display' || (typeof a === 'string' && a.startsWith('--thinking-display='))
-  );
-  return hasFlag ? args : [...args, '--thinking-display', 'summarized'];
-}
+// withDefaultThinkingDisplay / parseResumeArgs / materializePinnedEntries /
+// suppressManuallyFlaggedPinned / injectionConfigured have moved to lib/launch-config.js
+// (the SDK path shares the same launch-config pipeline); withDefaultThinkingDisplay is kept
+// compatible via the top re-export.
 
-// 默认总是尝试注入 `--thinking-display summarized`；若目标 claude（或 claude-兼容 CLI/fork/wrapper）
-// 不识别该 flag，spawnClaude 的 onExit 会检测到 "unknown option" 错误，自动把 claudePath
-// 标记到本集合，下次 spawn 直接跳过注入——完全基于实际运行反馈，不依赖版本号或品牌。
+// Always try injecting `--thinking-display summarized` by default; if the target claude (or
+// a claude-compatible CLI/fork/wrapper) does not recognize the flag, spawnClaude's onExit
+// detects the "unknown option" error, marks claudePath into this set, and skips injection
+// on the next spawn — based entirely on live runtime feedback, not version numbers or
+// brand.
 const _thinkingDisplayRejectedPaths = new Set();
 
-// 启动目录里的 CC_SYSTEM.md / CC_APPEND_SYSTEM.md 自动注入 --system-prompt-file/--append-system-prompt-file。
-// 若目标 claude(或三方 fork/wrapper)不识别该 flag，onExit 检测 "unknown option" 后把 claudePath 记入此集，
-// 下次 spawn 跳过注入并去 flag 重启(对齐 _thinkingDisplayRejectedPaths 自愈)。
-// 语义：永久(进程级)——"unknown option" 是该二进制不支持 flag 的确定性能力信号。
+// CC_SYSTEM.md / CC_APPEND_SYSTEM.md in the launch dir are auto-injected as
+// --system-prompt-file/--append-system-prompt-file. If the target claude (or third-party
+// fork/wrapper) does not recognize the flag, onExit detects "unknown option" and records
+// claudePath into this set; the next spawn skips injection and restarts without the flag
+// (self-heals like _thinkingDisplayRejectedPaths). Semantics: permanent (process-level) —
+// "unknown option" is a deterministic capability signal that this binary does not support
+// the flag.
 const _systemPromptFileRejectedPaths = new Set();
 
-// 一次性跳过令牌：启动兜底一级的放宽半支(引导窗口内非信号 exit≠0)覆盖的是**瞬态**崩溃
-// (API key 失效/网络抖动/与注入无关的秒退)，不能写进上面的永久拒绝集——否则一次瞬态故障
-// 会在整个 ccv 进程生命周期内静默禁用该二进制的注入(review P1)。令牌在下一次 spawn 被
-// 消费(delete)：恰好保证去注入重试一次，之后的 spawn 恢复正常注入尝试。
+// One-shot skip token: the relaxed branch of boot-fallback tier 1 (non-signal exit≠0
+// within the boot window) covers **transient** crashes (expired API key / network jitter /
+// an unrelated instant exit) and must not be written into the permanent rejection set
+// above — otherwise a single transient fault would silently disable injection for that
+// binary for the whole ccv process lifetime (review P1). The token is consumed (delete) on
+// the next spawn: guaranteeing exactly one de-injection retry, after which normal injection
+// attempts resume.
 const _skipInjectionOncePaths = new Set();
 
-// 内部重启(-c 重试 / flag 自愈)时抑制一次注入提示，避免终端重复打印同一行。
+// Suppress one injection notice on internal restarts (-c retry / flag self-heal) so the
+// terminal does not print the same line repeatedly.
 let _suppressNextSpawnNotice = false;
 
 // ─── System-prompt pinning (resume launches must not re-render variables) ────────
@@ -192,115 +213,41 @@ let _suppressNextSpawnNotice = false;
 //     system text an existing context already has);
 //   target unidentifiable (-c with no transcripts, bare -r picker) → normal pipeline.
 // Store/binding semantics: server/lib/system-prompt-snapshots.js header.
+// Implementation: lib/launch-config.js (resolveLaunchSystemPrompt).
 
-// Parse continuation flags from claude args: -c/--continue, -r/--resume (value as the
-// next token or in = form), --fork-session. Returns null for non-continuation launches;
-// picker=true means a valueless -r (interactive picker — target unknowable at spawn).
-// Same flag set as cli.js markContinueEnv / routes/workspaces.js.
-function parseResumeArgs(args) {
-  if (!Array.isArray(args)) return null;
-  let continued = false;
-  let resumeValue = null;
-  let picker = false;
-  let fork = false;
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '-c' || a === '--continue') { continued = true; continue; }
-    if (a === '--fork-session') { fork = true; continue; }
-    if (a === '-r' || a === '--resume') {
-      continued = true;
-      const next = args[i + 1];
-      if (typeof next === 'string' && next && !next.startsWith('-')) { resumeValue = next; i++; }
-      else picker = true;
-      continue;
-    }
-    const m = typeof a === 'string' && a.match(/^(?:-r|--resume)=(.+)$/);
-    if (m) { continued = true; resumeValue = m[1]; }
-  }
-  return continued ? { resumeValue, picker, fork } : null;
-}
-
-// Materialize snapshot entries into temp files. Each spawn gets its own subdirectory
-// under renderedPromptDir (per-process): two sequential spawns pinning DIFFERENT
-// conversations would otherwise overwrite the same basename before claude reads it.
-// Returns the same {args, loaded, entries} shape renderSystemPromptFileArgs produces.
-function materializePinnedEntries(entries) {
-  const args = [];
-  const loaded = [];
-  const out = [];
-  for (const e of entries) {
-    try {
-      const dir = join(renderedPromptDir(), `pin-${randomBytes(4).toString('hex')}`);
-      mkdirSync(dir, { recursive: true });
-      const target = join(dir, e.basename);
-      writeFileSync(target, e.content, 'utf-8');
-      args.push(e.flag, target);
-      loaded.push(e.basename);
-      out.push({ flag: e.flag, basename: e.basename, content: e.content });
-    } catch (err) {
-      // A dropped entry breaks the byte-identity this feature exists to protect —
-      // warn visibly AND report: silent degradation here is a future cache miss.
-      console.warn(`[CC Viewer] system-prompt pin materialize failed for ${e?.basename}:`, err?.message || err);
-      reportSwallowed('pty-pin.materialize', err);
-    }
-  }
-  return { args, loaded, entries: out };
-}
-
-// Manual-first: a user-passed synonymous flag suppresses the matching pinned entry
-// (same semantics as the fresh buildSystemPromptFileArgs path). All entries
-// suppressed → no injection.
-function suppressManuallyFlaggedPinned(entries, userArgs) {
-  return entries.filter(e => {
-    const pair = e.flag === '--system-prompt-file'
-      ? ['--system-prompt', '--system-prompt-file']
-      : ['--append-system-prompt', '--append-system-prompt-file'];
-    return !hasArg(userArgs, ...pair);
-  });
-}
-
-// The F2 no-record notice only matters to users who HAVE injection configured right
-// now (sentinel files or a model-prompt dir) — for everyone else a resume silently
-// injecting nothing is exactly the status quo, and the line would be pure noise.
-function injectionConfigured(spawnDir) {
-  try {
-    return isNonEmptyFile(join(spawnDir, SYSTEM_PROMPT_FILE))
-      || isNonEmptyFile(join(spawnDir, APPEND_SYSTEM_PROMPT_FILE))
-      || existsSync(join(spawnDir, MODEL_PROMPT_DIR))
-      || existsSync(join(LOG_DIR, MODEL_PROMPT_DIR));
-  } catch { return false; }
-}
-
-// 仅用于测试/内部：清空拒绝集
+// Test/internal only: clear the rejection set
 export function _clearThinkingDisplayRejectedPaths() {
   _thinkingDisplayRejectedPaths.clear();
 }
 
-// 仅用于测试：查询路径是否已被标记为不支持
+// Test only: query whether a path has been marked unsupported
 export function _isThinkingDisplayRejected(claudePath) {
   return _thinkingDisplayRejectedPaths.has(claudePath);
 }
 
-// 仅用于测试：强制把路径加入拒绝集，绕过第一次 crash
+// Test only: force a path into the rejection set, bypassing the first crash
 export function _markThinkingDisplayRejected(claudePath) {
   _thinkingDisplayRejectedPaths.add(claudePath);
 }
 
-// 仅用于测试/内部：清空 system-prompt-file 拒绝集(连同一次性跳过令牌，保持用例间干净)
+// Test/internal only: clear the system-prompt-file rejection set (along with the
+// one-shot skip tokens, keeping cases clean)
 export function _clearSystemPromptFileRejectedPaths() {
   _systemPromptFileRejectedPaths.clear();
   _skipInjectionOncePaths.clear();
 }
 
-// 仅用于测试：查询路径是否已被标记为不支持 --system-prompt-file
+// Test only: query whether a path has been marked unsupported for --system-prompt-file
 export function _isSystemPromptFileRejected(claudePath) {
   return _systemPromptFileRejectedPaths.has(claudePath);
 }
 
 export async function spawnClaude(proxyPort, cwd, extraArgs = [], claudePath = null, isNpmVersion = false, serverPort = null, serverProtocol = 'http', internalToken = null) {
-  // 等待任何在途 spawn 完成再 kill+spawn，避免与 spawnShell 双开/串台（自身串行化）。
-  // while 而非 if：≥3 个并发 spawn 时，A 完成后 B 会设新的 inflight=pB，单次 if 的 C
-  // 不会复查 pB 就 kill+spawn 致 implB/implC 并发双开——循环到真正无在途为止才放行。
+  // Wait for any in-flight spawn to finish before kill+spawn, avoiding a double-spawn /
+  // cross-talk with spawnShell (self-serializing). while rather than if: with ≥3 concurrent
+  // spawns, after A finishes B sets a new inflight=pB, and a single if's C would not re-check
+  // pB before kill+spawn, letting implB/implC double-spawn — loop until there is genuinely
+  // no inflight before proceeding.
   while (_spawnInflight) { try { await _spawnInflight; } catch { } }
   if (ptyProcess) {
     killPty();
@@ -315,7 +262,7 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
 
   fixSpawnHelperPermissions();
 
-  // 如果没有提供 claudePath，尝试自动查找
+  // If claudePath was not provided, try to find it automatically
   if (!claudePath) {
     claudePath = resolveNativePath();
     if (!claudePath) {
@@ -328,22 +275,27 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   // behind that configuration (especially on enterprise allowlisted machines).
   env.DISABLE_AUTOUPDATER = '1';
   env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${proxyPort}`;
-  env.CCV_PROXY_MODE = '1'; // 告诉 interceptor.js 不要再启动 server
-  env.CCV_LOG_DIR = LOG_DIR; // 让 fork 出的 Claude Code 进程找到同一份 profile.json 等资源
-  // 剥离 cc-viewer 的内部短路开关，避免泄漏给 claude 子进程
+  env.CCV_PROXY_MODE = '1'; // tell interceptor.js not to start a server again
+  env.CCV_LOG_DIR = LOG_DIR; // let the forked Claude Code process find the same
+  // profile.json etc. resources
+  // Strip cc-viewer's internal short-circuit switch so it does not leak to the claude child
   delete env.CCV_SKIP_THINKING_DISPLAY;
-  // 剥离 server 专属的模式标记：spawned claude（尤其 teammate 子进程，它们会装 fetch hook）
-  // 不是 ccv server —— 继承 CCV_WORKSPACE_MODE 会让 interceptor 的 workspace 绑定终生为空
-  // （teammate 角色分配静默失效）；CCV_ELECTRON_MULTITAB 同理只应由 server 进程持有
-  // （im-process-manager 对 IM worker 已有同款剥离先例）。
+  // Strip server-only mode markers: a spawned claude (especially teammate subprocesses,
+  // which install a fetch hook) is not the ccv server — inheriting CCV_WORKSPACE_MODE would
+  // leave the interceptor's workspace binding permanently empty (teammate role assignment
+  // silently fails); CCV_ELECTRON_MULTITAB likewise should only be held by the server
+  // process (im-process-manager already strips the same for IM workers).
   delete env.CCV_WORKSPACE_MODE;
   delete env.CCV_ELECTRON_MULTITAB;
-  // Claude Code NO_FLICKER 会让嵌入式 xterm 走 alt-screen 并丢失 scrollback。
-  // cc-viewer 默认剥离继承值；确实需要时可显式设 CCV_KEEP_CLAUDE_CODE_NO_FLICKER=1。
+  // Claude Code's NO_FLICKER makes the embedded xterm use the alt screen and lose
+  // scrollback. cc-viewer strips the inherited value by default; set
+  // CCV_KEEP_CLAUDE_CODE_NO_FLICKER=1 explicitly when it is actually needed.
   stripClaudeNoFlickerUnlessOptedIn(env);
-  // 新版 Claude Code 默认全屏渲染(整屏原地重绘)→ 终端只剩一屏、上滚不到历史。
-  // cc-viewer 默认注入 CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 让 claude 回经典流式渲染、终端可滚历史;
-  // 想保留全屏无闪烁渲染的用户设 CCV_KEEP_CLAUDE_FULLSCREEN=1 opt-out。
+  // Newer Claude Code renders fullscreen by default (in-place redraw of the whole screen) →
+  // the terminal is left with one screen and no scroll-back into history. cc-viewer
+  // injects CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 by default so claude returns to classic
+  // streaming rendering with scrollable history; users who want fullscreen flicker-free
+  // rendering opt out with CCV_KEEP_CLAUDE_FULLSCREEN=1.
   applyClaudeAltScreenPref(env);
 
   // Resolve real Node.js path (Electron's process.execPath is the Electron binary)
@@ -374,22 +326,25 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
     }
   }
 
-  // 禁用 Claude Code CLI 的鼠标事件捕获，保住 xterm 面板原生文本选中（复制粘贴）。
-  // 不设时 Claude 会启 SGR mouse tracking (DECSET ?1000/1006)，抢走 xterm 的鼠标事件。
-  // ??= 尊重用户显式 export（比如调试时想看 mouse event）。
+  // Disable Claude Code CLI mouse-event capture to preserve native text selection
+  // (copy/paste) in the xterm panel. Without this, Claude enables SGR mouse tracking
+  // (DECSET ?1000/1006) and steals the xterm's mouse events. ??= respects an explicit user
+  // export (e.g. to see mouse events while debugging).
   env.CLAUDE_CODE_DISABLE_MOUSE ??= '1';
 
-  // 通过 --settings 注入 ANTHROPIC_BASE_URL，确保覆盖 settings.json 中的配置。
-  // 仅覆盖 env.ANTHROPIC_BASE_URL，不影响其他 settings 字段。
+  // Inject ANTHROPIC_BASE_URL via --settings to guarantee it overrides what settings.json
+  // contains. Only overrides env.ANTHROPIC_BASE_URL; other settings fields are untouched.
   const settingsObj = {
     env: {
       ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL
     }
   };
-  // IM worker（skip-permissions）注入 permissions.deny 作为第二道防御（见 plan §安全 3）。
-  // 仅追加 deny 规则（deny 优先级最高、只会收紧不会放宽），不会破坏用户既有 permissions。
-  // 注：bypass 模式下 deny 是否仍被消费取决于 Claude Code 行为；真正可靠的强制层是
-  // perm-bridge.js 的 PreToolUse deny（CCV_IM_DENY）。此处为纵深防御的 best-effort 一层。
+  // Inject permissions.deny as a second line of defense for IM workers (skip-permissions;
+  // see plan §security 3). Only appends deny rules (deny has the highest precedence and
+  // only tightens, never loosens), so it does not break the user's existing permissions.
+  // Note: under bypass mode whether deny is still honored depends on Claude Code's
+  // behavior; the truly reliable enforcement layer is perm-bridge.js's PreToolUse deny
+  // (CCV_IM_DENY). This is a best-effort defense-in-depth layer.
   if (process.env.CCV_IM_DENY === '1') {
     const home = homedir();
     settingsObj.permissions = {
@@ -398,17 +353,19 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
         'Bash(git push:*)', 'Bash(npm publish:*)', 'Bash(ssh:*)', 'Bash(scp:*)',
         `Read(${home}/.ssh/**)`, `Edit(${home}/.ssh/**)`, `Write(${home}/.ssh/**)`,
         `Read(${home}/.aws/**)`, `Edit(${home}/.aws/**)`, `Write(${home}/.aws/**)`,
-        // 精确到文件：保护 deny 机制本身(settings/hooks)与 IM 密钥库(preferences.json)，
-        // 但不封禁整个 ~/.claude —— worker 的工作目录就在 ~/.claude/cc-viewer/IM_<id>/ 下，需保持可写。
+        // File-precise: protect the deny mechanism itself (settings/hooks) and the IM
+        // credential store (preferences.json), but do not block all of ~/.claude — the
+        // worker's working directory sits under ~/.claude/cc-viewer/IM_<id>/ and must stay
+        // writable.
         `Edit(${home}/.claude/settings.json)`, `Write(${home}/.claude/settings.json)`,
         `Edit(${home}/.claude/settings.local.json)`, `Write(${home}/.claude/settings.local.json)`,
         `Edit(${home}/.claude/cc-viewer/preferences.json)`, `Write(${home}/.claude/cc-viewer/preferences.json)`,
       ],
     };
   }
-  // 注入 --thinking-display summarized；以下任一情况跳过注入：
-  // - 路径在拒绝集里（上次因此 crash 过）
-  // - 环境变量 CCV_SKIP_THINKING_DISPLAY=1（用户全局 opt-out，与 cli.js 保持一致）
+  // Inject --thinking-display summarized; skip injection when either of these holds:
+  // - the path is in the rejection set (it crashed because of this last time)
+  // - env CCV_SKIP_THINKING_DISPLAY=1 (user global opt-out, consistent with cli.js)
   const shouldInjectThinkingDisplay = !_thinkingDisplayRejectedPaths.has(claudePath)
     && process.env.CCV_SKIP_THINKING_DISPLAY !== '1';
 
@@ -430,110 +387,48 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   const userArgs = settingsMerge.args;
   const finalExtraArgs = shouldInjectThinkingDisplay ? withDefaultThinkingDisplay(userArgs) : userArgs;
 
-  // 启动目录存在 CC_SYSTEM.md / CC_APPEND_SYSTEM.md(非空)时，自动追加
-  // --system-prompt-file / --append-system-prompt-file(两者独立、用户已传同义 flag 时跳过对应项)。
-  // 模型定制：以「上次启动所用模型」在 <cwd>/system_prompt/ 与 <LOG_DIR>/system_prompt/
-  // 里模糊匹配，命中的条目整体取代上面两份默认 sentinel。
-  // 注：currentWorkspacePath 在下方才赋值，这里用 cwd 参数判定启动目录。
-  // LOG_DIR 内的 spawn(IM worker 工作目录 = <LOG_DIR>/IM_<id>/)跳过模型匹配：
-  // IM 人格依赖默认 sentinel CC_APPEND_SYSTEM.md 注入，全局模型条目不得静默取代它。
-  // (spawnDir 已在上方 settings 合并处赋值。)
-  // insideLogDir 留在 try 外：下方 onExit 的启动兜底门控也要用它。
+  // When the launch dir has a non-empty CC_SYSTEM.md / CC_APPEND_SYSTEM.md, auto-append
+  // --system-prompt-file / --append-system-prompt-file (each independent; skipped if the
+  // user already passed the synonymous flag). Model customization: fuzzy-match against
+  // <cwd>/system_prompt/ and <LOG_DIR>/system_prompt/ using "the model used on the last
+  // launch"; a matched entry wholly replaces the two default sentinels above.
+  // Note: currentWorkspacePath is only assigned below, so the cwd param decides the launch
+  // dir here. Spawns inside LOG_DIR (IM worker working dir = <LOG_DIR>/IM_<id>/) skip model
+  // matching: the IM persona relies on the default sentinel CC_APPEND_SYSTEM.md injection,
+  // and a global model entry must not silently replace it. (spawnDir was already assigned
+  // at the settings merge above.) insideLogDir stays outside the try: the onExit boot
+  // fallback gating below also uses it.
   const insideLogDir = spawnDir === LOG_DIR || spawnDir.startsWith(LOG_DIR + sep);
-  // 整个 system prompt 构建 + 渲染管道包在 try-catch 里(PR#128)：任何意外抛错(模型解析、
-  // buildSystemPromptFileArgs 文件系统竞态、渲染的 git 子进程异常)都走兜底——按「没命中任何
-  // 条目」处理，launch 不带 --system-prompt-file/--append-system-prompt-file，claude 用自身
-  // 默认 system prompt 启动。注入失败绝不能阻断 spawn。
+  // The whole system-prompt build + render pipeline is wrapped in try-catch (PR#128): any
+  // unexpected throw (model resolution, a buildSystemPromptFileArgs filesystem race, a
+  // render git-subprocess error) falls back to treating it as "no entry matched" — the
+  // launch carries no --system-prompt-file/--append-system-prompt-file and claude starts
+  // with its own default system prompt. An injection failure must never block the spawn.
   let sysPrompt = { args: [], loaded: [], model: null, entries: [] };
   // The skip-once token is consumed unconditionally BEFORE the pipeline (exactly-once
   // semantics — a leftover token would silently skip the NEXT spawn's injection too).
   const skipOnce = _skipInjectionOncePaths.delete(claudePath);
   try {
-    // Continuation launches (-c/--continue/-r/--resume): pin the resumed conversation's
-    // original injection — never re-render variables (see the parseResumeArgs block
-    // above for the full semantics). IM workers (insideLogDir) skip the whole
-    // snapshot machinery: their persona file must be re-read on every launch.
-    const resume = insideLogDir ? null : parseResumeArgs(finalExtraArgs);
-    let pendingRec = null;
-    let pinned = null;
-    if (resume && process.env.CCV_DISABLE_AUTO_SYSTEM_PROMPT !== '1') {
-      const targetUuid = resume.resumeValue ?? resolveContinueTargetUuid(spawnDir);
-      if (targetUuid) {
-        const snap = readSnapshot(spawnDir, targetUuid);
-        if (snap) {
-          // Manual-flag suppression BEFORE materialize (suppressed entries never hit disk).
-          const kept = suppressManuallyFlaggedPinned(snap.entries, finalExtraArgs);
-          const m = materializePinnedEntries(kept);
-          pinned = { args: m.args, loaded: m.loaded, model: snap.model, entries: m.entries, pinned: true };
-          // The pending carries the SNAPSHOT's entries (post-suppression), not the
-          // materialized subset — a transient temp-write failure must not degrade the
-          // permanent record via Bind B.
-          pendingRec = { entries: kept, model: snap.model, resumeExpected: true, resolvedUuid: targetUuid, fork: resume.fork };
-        } else {
-          // F2: target identified but no snapshot → inject NOTHING this launch (never
-          // alter the system text an existing context already has). No record is
-          // persisted (empty-entries snapshots are never written — the no-record path
-          // reproduces the same outcome on every future resume, with zero poison
-          // surface); the terminal notice fires only when injection is configured now.
-          pinned = { args: [], loaded: [], model: null, entries: [], pinned: true, noRecord: true, noRecordNotice: injectionConfigured(spawnDir) };
-        }
-      }
-      // Bare -r (picker): the target is unknowable at spawn → normal pipeline, and NO
-      // pending — an identity-less pending could be consumed by another window's
-      // in-terminal /resume hook and would poison that conversation's record.
-      // -c with no transcripts (targetUuid null): claude fails "No conversation found"
-      // and the existing onExit retry respawns without -c — treat as fresh below.
-    }
-    if (pinned) {
-      sysPrompt = pinned;
-    } else {
-      const resolvedModelId = insideLogDir ? null : _spawnModelReader(spawnDir);
-      sysPrompt = buildSystemPromptFileArgs(spawnDir, finalExtraArgs, process.env, {
-        modelId: resolvedModelId,
-        globalModelDir: join(LOG_DIR, MODEL_PROMPT_DIR),
-      });
-      if (_systemPromptFileRejectedPaths.has(claudePath) || skipOnce) {
-        sysPrompt = { args: [], loaded: [], model: null, entries: [] };
-      } else if (resolvedModelId && !sysPrompt.model && !sysPrompt.suppressed
-        && (existsSync(join(spawnDir, MODEL_PROMPT_DIR)) || existsSync(join(LOG_DIR, MODEL_PROMPT_DIR)))) {
-        // The one diagnostic case worth a warning: a system_prompt dir is configured
-        // but the resolved model matched no entry (likely a misnamed file). Intentional
-        // skips (CCV_DISABLE_AUTO_SYSTEM_PROMPT=1, or a manual --system-prompt flag
-        // suppressing a matched entry) carry `suppressed` and stay quiet. The
-        // successful-injection notice is emitted below via emitSpawnNotice (with
-        // internal-restart suppression); no-modelId spawns are the normal quiet path.
-        console.warn(`[CC Viewer] model-specific prompt: modelId="${resolvedModelId}" resolved from active config but no matching entry found in workspace or global ${MODEL_PROMPT_DIR}/`);
-      }
-      // Resolve `${...}` template variables in the injected files (editor stores them literal —
-      // the substitution documented by the editor's parameter reference happens here, at launch).
-      // Skipped entirely when the suppression above zeroed the args (original ordering:
-      // a rejected binary never pays the render cost — variable collection shells out to git).
-      if (sysPrompt.args.length > 0) {
-        sysPrompt = renderSystemPromptFileArgs(sysPrompt, { cwd: spawnDir, modelId: resolvedModelId });
-      } else {
-        sysPrompt = { ...sysPrompt, entries: [] };
-      }
-    }
-    // Unified suppression (pin and fresh alike): known-rejected binary / skip-once
-    // token → clear the injection; nothing was injected so nothing can be bound.
-    if (_systemPromptFileRejectedPaths.has(claudePath) || skipOnce) {
-      sysPrompt = { args: [], loaded: [], model: null, entries: [] };
-      pendingRec = null;
-    }
-    // Record this launch's effective injection for the binding channels:
-    // - pin-hit resume launches → resumeExpected, consumed by Bind B (SessionStart
-    //   hook) keyed to the resumed transcript uuid (or the fork's new uuid);
-    // - fresh launches with a real injection → consumed by Bind A (v2-writer's
-    //   first-main-request content match) keyed to the wire sid (== transcript uuid
-    //   for new sessions). Empty-content pendings are never queued: a fresh launch
-    //   whose entries ALL failed to read has no knowable content, and a fully
-    //   manual-suppressed pin ran without ccv injection — an empty pending could
-    //   only mislabel a session as "no injection".
-    const effectiveEntries = (sysPrompt.entries || []).filter(e => e && !e.unavailable);
-    if (pendingRec && pendingRec.entries.length === 0) pendingRec = null;
-    if (pendingRec || (!resume && !pinned && effectiveEntries.length > 0)) {
-      const rec = pendingRec || { entries: effectiveEntries, model: sysPrompt.model ?? null, resumeExpected: false, resolvedUuid: null, fork: false };
-      appendPending(spawnDir, rec);
+    // The whole system-prompt pipeline (resume pin / fresh sentinel+model match /
+    // ${...} render / pending record for wire-side Bind A) lives in
+    // lib/launch-config.js, shared with the SDK link. PTY-side inputs here: the
+    // rejected-binary set + skip-once token (suppressInjection) and the test-seam
+    // model reader. settingsJson is always valid JSON (from mergeSettingsIntoArgs).
+    const r = resolveLaunchSystemPrompt({
+      spawnDir,
+      extraArgs: finalExtraArgs,
+      env: process.env,
+      launchSettings: JSON.parse(settingsJson),
+      modelReader: (d, e, o) => _spawnModelReader(d, e, resolveSpawnModel, o),
+      insideLogDir,
+      logDir: LOG_DIR,
+      suppressInjection: _systemPromptFileRejectedPaths.has(claudePath) || skipOnce,
+    });
+    sysPrompt = r.sysPrompt;
+    if (r.diagnostic === 'no-match') {
+      console.warn(`[CC Viewer] model-specific prompt: modelId="${r.resolvedModelId}" resolved from active config but no matching entry found in workspace or global ${MODEL_PROMPT_DIR}/`);
+    } else if (r.diagnostic === 'no-model') {
+      console.warn(`[CC Viewer] model-specific prompt: no model id resolved from active config (--settings / env / settings.json / proxy profile) — entries in ${MODEL_PROMPT_DIR}/ skipped for this launch`);
     }
   } catch (err) {
     console.warn('[CC Viewer] system prompt build/render failed, launching without injected prompt:', err?.message || err);
@@ -544,7 +439,7 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   let command = claudePath;
   let args = ['--settings', settingsJson, ...launchArgs];
 
-  // 如果是 npm 版本（cli.js），需要使用 node 来运行
+  // If it is the npm version (cli.js), it must run under node
   if (isNpmVersion && claudePath.endsWith('.js')) {
     command = nodePath;
     args = [claudePath, '--settings', settingsJson, ...launchArgs];
@@ -569,8 +464,10 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   // --allow-dangerously-skip-permissions only enables a later toggle, so it must NOT count.
   ptySkipPermissions = extraArgs.includes('--dangerously-skip-permissions');
 
-  // PTY 事件处理器必须紧随 spawn 注册(PR#128)：若子进程在 onExit 挂载前就退出(二进制缺失/
-  // 秒崩/拒绝注入 flag)，exit 事件会丢失——句柄释放后事件循环可能排空。注入提示挪到注册之后。
+  // PTY event handlers must be registered immediately after spawn (PR#128): if the child
+  // exits before onExit is mounted (missing binary / instant crash / rejected injection
+  // flag), the exit event is lost — after the handle is released the event loop may drain.
+  // The injection notice is moved to after registration.
   ptyProcess.onData((data) => {
     outputBuffer += data;
     if (outputBuffer.length > MAX_BUFFER) {
@@ -591,14 +488,17 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
     ptyProcess = null;
     ptyKind = null;
     ptySkipPermissions = false;
-    // 引导期死亡：spawn 后窗口内退出。窗口外的退出一律不属于「注入拖崩启动」的兜底范围。
-    // 单次取 _now(评审)：一级/二级共用同一时刻，注入的 fake clock 不会在分支间发散。
+    // Boot-period death: an exit within the window after spawn. Any exit outside the window
+    // is never part of the "injection dragged the boot into a crash" fallback scope. A
+    // single _now() read (review): tiers 1/2 share the same instant, so the injected fake
+    // clock cannot diverge between branches.
     const elapsedMs = _now() - spawnedAt;
     const diedInBootWindow = elapsedMs < SYS_PROMPT_BOOT_WINDOW_MS;
 
     // Auto-retry without -c/--continue if "No conversation found"
-    // 注意：早退 return 会跳过下方的 exitListeners 广播——第一次失败的 pty 死亡对消费者
-    // 是透明的。新 pty 正常启动后自己会上报 state/exit。这样避免前端看到一次假的退出事件。
+    // Note: an early return skips the exitListeners broadcast below — the first failed pty's
+    // death is transparent to consumers. Once the new pty starts normally it reports its own
+    // state/exit. This keeps the frontend from seeing a spurious exit event.
     const hasContinue = extraArgs.includes('-c') || extraArgs.includes('--continue');
     if (hasContinue && exitCode !== 0 && outputBuffer.includes('No conversation found')) {
       console.error('[CC Viewer] -c failed (no conversation), retrying without -c');
@@ -608,11 +508,13 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
       return;
     }
 
-    // 事后兜底：如果我们注入了 --thinking-display 且 claude 以 "unknown option" 崩溃，
-    // 把该 claudePath 加入拒绝集并去掉 flag 重启一次——老版 claude / 三方 CLI fork / GLM wrapper 由此自愈。
-    // 只在「我们注入的」场景触发：extraArgs 没有 flag 但 finalExtraArgs 有 → 说明是注入的；
-    // 用户自己传了 --thinking-display 崩溃则不动，避免覆盖用户意图。
-    // 和 -c 重试一致，早退 return 跳过 exitListeners 广播，让第一次假失败对消费者透明。
+    // Post-hoc fallback: if we injected --thinking-display and claude crashed with "unknown
+    // option", add that claudePath to the rejection set and restart once without the flag —
+    // this self-heals older claude / third-party CLI forks / GLM wrappers. Only triggers in
+    // the "we injected it" case: extraArgs lacks the flag but finalExtraArgs has it → it was
+    // injected; a crash from the user's own --thinking-display is left alone to avoid
+    // overriding user intent. Like the -c retry, an early return skips the exitListeners
+    // broadcast so the first spurious failure is transparent to consumers.
     const weInjectedFlag = shouldInjectThinkingDisplay
       && !extraArgs.some(a => a === '--thinking-display' || (typeof a === 'string' && a.startsWith('--thinking-display=')));
     const flagRejected = weInjectedFlag && exitCode !== 0
@@ -625,21 +527,33 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
       return;
     }
 
-    // 事后兜底一级：注入过 system-prompt 文件的 claude 非正常死亡时，跳过注入重启一次
-    // (对齐上面的 --thinking-display 自愈；该确诊分支必须在前——用户自传 --thinking-display
-    // 且有注入时这里最多浪费一次去注入重试，第二次即广播真实报错)。两个半支的**持久性不同**：
-    //  - 精确半支(原语义)：输出含 "unknown option --system-prompt-file" —— 确诊该二进制不支持
-    //    flag(稳定能力信号)→ 写永久拒绝集；任何场景(含 IM worker，否则它永远起不来)都自愈。
-    //  - 放宽半支(启动兜底)：引导窗口内 exit≠0 —— 注入**可能**是拖崩启动的原因(也可能是无关的
-    //    瞬态故障)→ 只发一次性跳过令牌，绝不写永久集(review P1：一次瞬态崩溃不得在整个进程
-    //    生命周期内静默禁用注入)。门控 !signal(用户 Ctrl-C/关标签/切 workspace 的 killPtyTree
-    //    都是信号终止，不是引导崩溃，盲目重启会把用户刚关的会话强行拉回来；Windows ConPTY 无
-    //    POSIX 信号语义，已知限制：Ctrl-C 可能多一次无害重试)与 !insideLogDir(IM worker
-    //    「去注入重启」= 剥离 CC_APPEND_SYSTEM.md 人格后存活，比崩溃更难排查——IM 秒退只广播
-    //    真实报错)。
-    // 无死循环：respawn 时拒绝集/令牌把 loaded 清空 → 本分支不再命中，恰好重试一次。
-    // 一级重试只去掉注入、其余参数原样；根因是别的(如 API key 失效)时首次报错已实时流入
-    // 终端 scrollback 不丢失，第二次照常死亡并广播。
+    // Post-hoc fallback tier 1: when a claude that had a system-prompt file injected dies
+    // abnormally, skip injection and restart once (aligned with the --thinking-display
+    // self-heal above; this confirmed branch must come first — with a user-supplied
+    // --thinking-display plus injection, this wastes at most one de-injection retry, then
+    // the second time broadcasts the real error). The two branches have **different
+    // persistence**:
+    //  - exact branch (original semantics): output contains "unknown option
+    //    --system-prompt-file" — confirms this binary does not support the flag (a stable
+    //    capability signal) → write the permanent rejection set; heals in every scenario
+    //    (including IM workers, which would otherwise never start).
+    //  - relaxed branch (boot fallback): exit≠0 within the boot window — the injection
+    //    **may** be what dragged the boot into a crash (or it may be an unrelated transient
+    //    fault) → emit only a one-shot skip token, never write the permanent set (review
+    //    P1: a single transient crash must not silently disable injection for the whole
+    //    process lifetime). Gated by !signal (user Ctrl-C / closing a tab / switching
+    //    workspace via killPtyTree are signal terminations, not boot crashes — blindly
+    //    restarting would force-pull a session the user just closed; Windows ConPTY has no
+    //    POSIX signal semantics — known limitation: Ctrl-C may cause one harmless extra
+    //    retry) and !insideLogDir (an IM worker's "de-injection restart" = surviving after
+    //    stripping the CC_APPEND_SYSTEM.md persona, which is harder to debug than a crash —
+    //    an IM instant exit only broadcasts the real error).
+    // No infinite loop: on respawn the rejection set / token empties loaded → this branch
+    // no longer hits, retrying exactly once.
+    // Tier-1 retry only removes the injection, leaving the rest of the args as-is; when the
+    // root cause is something else (e.g. an expired API key), the first error already
+    // streamed into the terminal scrollback without loss, and the second death broadcasts
+    // as usual.
     const unknownSysFileFlag = /unknown option ['"]--(append-)?system-prompt-file/i.test(outputBuffer);
     const injectedBootCrash = !insideLogDir && !signal && diedInBootWindow;
     const sysFileRejected = sysPrompt.loaded.length > 0 && exitCode !== 0
@@ -653,29 +567,36 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
         _skipInjectionOncePaths.add(claudePath);
       }
       _suppressNextSpawnNotice = true;
-      // 措辞留有余地(评审)：引导期死亡可能与注入无关(API key/网络等)，不断言因果。
+      // Wording leaves room (review): a boot-period death may be unrelated to the injection
+      // (API key / network etc.); do not assert causation.
       emitSpawnNotice(`[CC Viewer] claude exited during boot (code ${exitCode}); the injected system prompt may or may not be the cause — retrying once without ${sysPrompt.loaded.join(', ')}`);
       spawnClaude(proxyPort, cwd, extraArgs, claudePath, isNpmVersion, serverPort, serverProtocol, internalToken);
       return;
     }
 
-    // 事后兜底二级：注入过且 exit=0 秒退 —— 无法与「用户主动快速 /exit」区分(日常高频)，
-    // 所以只打诊断提示、不自动重启、不加入拒绝集(自动关停会因使用习惯静默禁用注入，评审否决)，
-    // 也不早退——照常广播 exit，前端退出横幅路径与用户正常 /exit 完全一致。
-    // !insideLogDir：IM worker 的 pty 数据流可能被桥接转发，诊断行不该漏进 IM 会话(评审)。
+    // Post-hoc fallback tier 2: injected and an instant exit with exit=0 — indistinguishable
+    // from "the user quickly /exits" (a frequent daily action), so it only prints a
+    // diagnostic, does not auto-restart, and does not touch the rejection set (auto-stop
+    // would silently disable injection based on usage habits; rejected in review). It also
+    // does not early-return — it broadcasts exit as usual, so the frontend exit-banner path
+    // is exactly the same as a normal user /exit.
+    // !insideLogDir: an IM worker's pty data stream may be relayed via the bridge, so the
+    // diagnostic line must not leak into the IM session (review).
     if (sysPrompt.loaded.length > 0 && exitCode === 0 && diedInBootWindow && !insideLogDir) {
       emitSpawnNotice(`[CC Viewer] claude exited ${Math.round(elapsedMs / 1000)}s after launch with an injected system prompt (${sysPrompt.loaded.join(', ')}). If this keeps happening the injected prompt may be incompatible — remove the entry or set CCV_DISABLE_AUTO_SYSTEM_PROMPT=1 to skip injection.`);
     }
 
-    // 保留 lastWorkspacePath，不清除，用于 respawn
+    // Keep lastWorkspacePath (do not clear) for respawn
     currentWorkspacePath = null;
     for (const cb of exitListeners) {
       try { cb(exitCode); } catch { }
     }
   });
 
-  // 注入了 system prompt 文件时向终端打印一行提示(可见性/安全)；内部重启已抑制以免重复。
-  // 必须在 onData/onExit 注册之后再打(PR#128)，缩小「子进程在处理器挂载前退出」的丢事件窗口。
+  // Print a notice line to the terminal when a system-prompt file was injected (visibility /
+  // security); suppressed on internal restarts to avoid repetition. Must be printed after
+  // onData/onExit are registered (PR#128) to shrink the window for losing the event when
+  // the child exits before the handlers are mounted.
   if (sysPrompt.loaded.length && !sysPrompt.pinned && !_suppressNextSpawnNotice) {
     const modelSuffix = sysPrompt.model ? ` (model match: ${sysPrompt.model})` : '';
     emitSpawnNotice(`[CC Viewer] loaded ${sysPrompt.loaded.join(', ')} as system prompt${modelSuffix}`);
@@ -751,9 +672,11 @@ export function writeToPtySequential(chunks, onComplete, opts = {}) {
     const chunk = chunks[idx];
     idx++;
 
-    // 防御性纵深（server.js 入口已 every(string) 校验，这里是第二道）：非字符串 chunk 的
-    // pty.write 抛 ERR_INVALID_ARG_TYPE、下方 chunk.endsWith 也抛——在 setTimeout 上下文中
-    // 脱离任何 try/catch 会变成 uncaughtException 打挂整个进程。统一拦成失败上报。
+    // Defensive depth (server.js's entry already validates every(string); this is the second
+    // line): a non-string chunk makes pty.write throw ERR_INVALID_ARG_TYPE, and the
+    // chunk.endsWith below would also throw — inside a setTimeout context with no try/catch
+    // that would become an uncaughtException that crashes the whole process. Uniformly catch
+    // it and report a failure.
     if (typeof chunk !== 'string') {
       cleanup();
       if (onComplete) onComplete(false);
@@ -780,12 +703,12 @@ export function writeToPtySequential(chunks, onComplete, opts = {}) {
 }
 
 /**
- * 进程退出后，自动 spawn 一个交互式 shell，让终端恢复可用。
- * 返回 true 表示成功 spawn，false 表示无需或失败。
+ * After the process exits, auto-spawn an interactive shell so the terminal becomes usable
+ * again. Returns true if spawned successfully, false if unnecessary or failed.
  */
 export async function spawnShell() {
-  if (ptyProcess) return false; // 已有进程在运行
-  if (_spawnInflight) return _spawnInflight; // 复用在途 spawn，防双开
+  if (ptyProcess) return false; // a process is already running
+  if (_spawnInflight) return _spawnInflight; // reuse the in-flight spawn to avoid double
   const p = _spawnShellImpl();
   _spawnInflight = p;
   try { return await p; } finally { if (_spawnInflight === p) _spawnInflight = null; }
@@ -805,16 +728,18 @@ async function _spawnShellImpl() {
 
   // Clean env: remove cc-viewer specific vars so child shells don't inherit them
   // (prevents CCVIEWER_PORT/CCVIEWER_PROTOCOL leaking to non-cc-viewer Claude instances;
-  // 115c48b 加入 CCVIEWER_PROTOCOL 但只更新 spawnClaude，此处对齐)
+  // 115c48b added CCVIEWER_PROTOCOL but only updated spawnClaude; aligning here)
   const shellEnv = { ...process.env };
   delete shellEnv.CCVIEWER_PORT;
   delete shellEnv.CCV_EDITOR_PORT;
   delete shellEnv.CCVIEWER_PROTOCOL;
   delete shellEnv.CCVIEWER_INTERNAL_TOKEN;
-  // 交互 shell 里手动敲 claude 时也禁鼠标，理由同 spawnClaude。
+  // Also disable the mouse for claude typed by hand in the interactive shell; same reason
+  // as spawnClaude.
   shellEnv.CLAUDE_CODE_DISABLE_MOUSE ??= '1';
-  // 默认让 shell 内手敲的 claude 也回到经典流式渲染(终端可滚历史)，理由同 spawnClaude;
-  // CCV_KEEP_CLAUDE_FULLSCREEN=1 可 opt-out。
+  // By default let a hand-typed claude in the shell also return to classic streaming render
+  // (scrollable history); same reason as spawnClaude; CCV_KEEP_CLAUDE_FULLSCREEN=1 can opt
+  // out.
   applyClaudeAltScreenPref(shellEnv);
   const shellSpawn = prepareEmbeddedShellSpawn(shell, shellEnv);
 
@@ -857,9 +782,11 @@ async function _spawnShellImpl() {
   return true;
 }
 
-// cols/rows 钳制为有限正整数：FitAddon 在 0 尺寸容器会算出 2×1，畸形客户端可能发
-// NaN/0/负数——未校验直接存进 lastPtyCols/Rows 会毒化后续 pty.spawn（cols:NaN 抛错，
-// spawnShell 的异常被吞 → 终端永远拉不起且无日志）。非有限值回退到上一个有效值。
+// cols/rows clamped to finite positive integers: FitAddon computes 2×1 in a 0-size
+// container, and a malformed client may send NaN/0/negative — storing those unvalidated
+// into lastPtyCols/Rows would poison a later pty.spawn (cols:NaN throws, spawnShell's
+// exception is swallowed → the terminal never comes up, with no log). Non-finite values
+// fall back to the last valid value.
 function _clampDim(v, min, max, fallback) {
   const n = Math.floor(Number(v));
   if (!Number.isFinite(n)) return fallback;
@@ -879,11 +806,12 @@ export function killPty() {
     flushBatch(true);
     batchBuffer = '';
     batchScheduled = false;
-    // Windows：node-pty 的 ConPTY kill 有已知同步挂起问题（microsoft/node-pty#454），
-    // 挂住会连 Ctrl+C 退出链的 watchdog 一起废掉。改用 spawnSync taskkill /T /F 收割
-    // 整棵进程树（ConPTY agent + claude），有界（timeout 2s）且提供"返回时已死"语义
-    // （spawnClaude 内部 kill→respawn、workspaces stop→launch 依赖这一点）。
-    // win32 下完全跳过 ptyProcess.kill()。非 Windows 行为不变。
+    // Windows: node-pty's ConPTY kill has a known synchronous-hang issue
+    // (microsoft/node-pty#454); a hang would also take down the Ctrl+C exit-chain watchdog.
+    // Instead use spawnSync taskkill /T /F to reap the whole process tree (ConPTY agent +
+    // claude), bounded (timeout 2s) and providing "dead on return" semantics (which
+    // spawnClaude's internal kill→respawn and workspaces stop→launch rely on). ptyProcess
+    // .kill() is fully skipped on win32. Non-Windows behavior is unchanged.
     if (!killPtyTree(ptyProcess.pid)) {
       try { ptyProcess.kill(); } catch { }
     }
