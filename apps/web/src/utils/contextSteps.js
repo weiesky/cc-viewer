@@ -1,4 +1,4 @@
-// Context tab message parsing + turn grouping (extracted from ContextTab.jsx so the
+// Context tab message parsing + step grouping (extracted from ContextTab.jsx so the
 // pairing logic is unit-testable — JSX modules cannot be imported by the test harness).
 
 export function parseContentBlocks(content) {
@@ -77,15 +77,15 @@ export function extractPreviewText(content) {
   return '';
 }
 
-// 注意：非 user 开头的消息（首条 assistant、连续 assistant 等）不进任何 turn，
+// 注意：非 user 开头的消息（首条 assistant、连续 assistant 等）不进任何 step，
 // 「原文」视图与解析视图同口径，同样不展示这些消息。
 // Mid-conversation `role:"system"` messages (mid-conversation-system beta) may sit
-// between the user message and its assistant reply; they are folded into the turn
+// between the user message and its assistant reply; they are folded into the step
 // (systemBlocks/rawSystem) so the assistant pairing is not broken. Only messages
 // with role === 'system' are skipped when locating the paired assistant — any
-// other unknown role still ends the turn, matching the old strict-adjacency rule.
-export function groupMessagesIntoTurns(messages) {
-  const turns = [];
+// other unknown role still ends the step, matching the old strict-adjacency rule.
+export function groupMessagesIntoSteps(messages) {
+  const steps = [];
   let i = 0;
   while (i < messages.length) {
     const userMsg = messages[i];
@@ -94,10 +94,10 @@ export function groupMessagesIntoTurns(messages) {
     const systemMsgs = [];
     while (messages[j]?.role === 'system') { systemMsgs.push(messages[j]); j++; }
     const assistantMsg = messages[j]?.role === 'assistant' ? messages[j] : null;
-    turns.push({
-      id: `turn__${i}`,
-      isTurn: true,
-      turnIndex: turns.length,
+    steps.push({
+      id: `step__${i}`,
+      isStep: true,
+      stepIndex: steps.length,
       timestamp: userMsg._timestamp || null,
       assistantTimestamp: assistantMsg?._timestamp || null,
       userBlocks: parseContentBlocks(userMsg?.content),
@@ -113,5 +113,5 @@ export function groupMessagesIntoTurns(messages) {
     });
     i = assistantMsg ? j + 1 : i + 1;
   }
-  return turns;
+  return steps;
 }

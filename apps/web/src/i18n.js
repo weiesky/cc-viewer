@@ -9433,21 +9433,21 @@ const i18nData = {
     "ar": "التاريخ", "no": "Historikk", "pt-BR": "Histórico",
     "th": "ประวัติ", "tr": "Geçmiş", "uk": "Історія"
   },
-  "ui.context.currentTurn": {
-    "zh": "当前轮次", "en": "Current Turn", "zh-TW": "當前輪次",
-    "ko": "현재 턴", "ja": "現在のターン", "de": "Aktueller Durchgang",
-    "es": "Turno actual", "fr": "Tour actuel", "it": "Turno corrente",
-    "da": "Aktuel tur", "pl": "Bieżąca tura", "ru": "Текущий ход",
-    "ar": "الدور الحالي", "no": "Gjeldende tur", "pt-BR": "Turno atual",
-    "th": "รอบปัจจุบัน", "tr": "Mevcut tur", "uk": "Поточний хід"
+  "ui.context.currentStep": {
+    "zh": "当前步骤", "en": "Current Step", "zh-TW": "當前步驟",
+    "ko": "현재 단계", "ja": "現在のステップ", "de": "Aktueller Schritt",
+    "es": "Paso actual", "fr": "Étape actuelle", "it": "Passo corrente",
+    "da": "Aktuelt trin", "pl": "Bieżący krok", "ru": "Текущий шаг",
+    "ar": "الخطوة الحالية", "no": "Gjeldende trinn", "pt-BR": "Passo atual",
+    "th": "ขั้นตอนปัจจุบัน", "tr": "Mevcut adım", "uk": "Поточний крок"
   },
-  "ui.context.historyTurnNoTime": {
-    "zh": "历史轮次 {n}", "en": "Turn {n}", "zh-TW": "歷史輪次 {n}",
-    "ko": "턴 {n}", "ja": "ターン {n}", "de": "Runde {n}",
-    "es": "Turno {n}", "fr": "Tour {n}", "it": "Turno {n}",
-    "da": "Tur {n}", "pl": "Tura {n}", "ru": "Ход {n}",
-    "ar": "الدور {n}", "no": "Tur {n}", "pt-BR": "Turno {n}",
-    "th": "รอบ {n}", "tr": "Tur {n}", "uk": "Хід {n}"
+  "ui.context.historyStepNoTime": {
+    "zh": "历史步骤 {n}", "en": "Step {n}", "zh-TW": "歷史步驟 {n}",
+    "ko": "단계 {n}", "ja": "ステップ {n}", "de": "Schritt {n}",
+    "es": "Paso {n}", "fr": "Étape {n}", "it": "Passo {n}",
+    "da": "Trin {n}", "pl": "Krok {n}", "ru": "Шаг {n}",
+    "ar": "الخطوة {n}", "no": "Trinn {n}", "pt-BR": "Passo {n}",
+    "th": "ขั้นตอนที่ {n}", "tr": "Adım {n}", "uk": "Крок {n}"
   },
   "ui.context.viewRaw": {
     "zh": "原文", "en": "Raw", "zh-TW": "原文",

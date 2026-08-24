@@ -5,7 +5,7 @@ import { renderMarkdown } from '../../utils/markdown';
 import { t } from '../../i18n';
 import { getContextSidebarArrowNavigation } from '../../utils/contextSidebarNavigation';
 import { buildContextItemRawText } from '../../utils/contextRaw';
-import { parseContentBlocks, groupMessagesIntoTurns } from '../../utils/contextTurns';
+import { parseContentBlocks, groupMessagesIntoSteps } from '../../utils/contextSteps';
 import { computeToolsDiff } from '../../utils/toolsDiff';
 import JsonViewer from '../viewers/JsonViewer';
 import ConceptHelp from '../common/ConceptHelp';
@@ -15,8 +15,8 @@ import styles from './ContextTab.module.css';
 const { Text } = Typography;
 
 // ── Block parsers ─────────────────────────────────────────────────────────────
-// parseContentBlocks / parseResultContent / extractPreviewText / groupMessagesIntoTurns
-// live in src/utils/contextTurns.js (extracted for unit-testability).
+// parseContentBlocks / parseResultContent / extractPreviewText / groupMessagesIntoSteps
+// live in src/utils/contextSteps.js (extracted for unit-testability).
 
 function parseSystemBlocks(system) {
   if (!system) return null;
@@ -55,7 +55,7 @@ function parseToolBlocks(tool) {
   return blocks;
 }
 
-function formatTurnTime(isoStr) {
+function formatStepTime(isoStr) {
   try {
     const d = new Date(isoStr);
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
@@ -178,37 +178,37 @@ function RenderBlock({ block, compact }) {
   return null;
 }
 
-// ── Turn content renderer ─────────────────────────────────────────────────────
+// ── Step content renderer ─────────────────────────────────────────────────────
 
-function TurnContent({ turn }) {
-  const timeStr = turn.timestamp ? formatTurnTime(turn.timestamp) : null;
-  const assistantTimeStr = turn.assistantTimestamp ? formatTurnTime(turn.assistantTimestamp) : null;
+function StepContent({ step }) {
+  const timeStr = step.timestamp ? formatStepTime(step.timestamp) : null;
+  const assistantTimeStr = step.assistantTimestamp ? formatStepTime(step.assistantTimestamp) : null;
   return (
     <div>
       <div className={styles.roleHeader}>
         <span className={`${styles.roleBadge} ${styles.role_user}`}>user</span>
-        <span className={styles.roleLabel}>{`Turn ${turn.turnIndex + 1}`}</span>
+        <span className={styles.roleLabel}>{`Step ${step.stepIndex + 1}`}</span>
         {timeStr && <span className={styles.contentTime}>{timeStr}</span>}
       </div>
-      <RenderBlocks blocks={turn.userBlocks} />
-      {turn.systemBlocks && turn.systemBlocks.map((sys, si) => (
+      <RenderBlocks blocks={step.userBlocks} />
+      {step.systemBlocks && step.systemBlocks.map((sys, si) => (
         <React.Fragment key={si}>
-          <div className={styles.turnDivider} />
+          <div className={styles.stepDivider} />
           <div className={styles.roleHeader}>
             <span className={`${styles.roleBadge} ${styles.role_system}`}>system</span>
-            {sys.timestamp && <span className={styles.contentTime}>{formatTurnTime(sys.timestamp)}</span>}
+            {sys.timestamp && <span className={styles.contentTime}>{formatStepTime(sys.timestamp)}</span>}
           </div>
           <RenderBlocks blocks={sys.blocks} />
         </React.Fragment>
       ))}
-      {turn.assistantBlocks && (
+      {step.assistantBlocks && (
         <>
-          <div className={styles.turnDivider} />
+          <div className={styles.stepDivider} />
           <div className={styles.roleHeader}>
             <span className={`${styles.roleBadge} ${styles.role_assistant}`}>assistant</span>
             {assistantTimeStr && <span className={styles.contentTime}>{assistantTimeStr}</span>}
           </div>
-          <RenderBlocks blocks={turn.assistantBlocks} />
+          <RenderBlocks blocks={step.assistantBlocks} />
         </>
       )}
     </div>
@@ -328,38 +328,38 @@ export default function ContextTab({ body, response, prevTools }) {
   const sidebarRef = useRef(null);
   const contentRef = useRef(null);
 
-  // Compute turns from messages; override last turn's assistant blocks with actual response.
-  const turns = useMemo(() => {
+  // Compute steps from messages; override last step's assistant blocks with actual response.
+  const steps = useMemo(() => {
     if (!Array.isArray(body?.messages)) return [];
-    const allTurns = groupMessagesIntoTurns(body.messages);
-    if (allTurns.length === 0) return allTurns;
-    const last = allTurns[allTurns.length - 1];
+    const allSteps = groupMessagesIntoSteps(body.messages);
+    if (allSteps.length === 0) return allSteps;
+    const last = allSteps[allSteps.length - 1];
     const responseBlocks = response?.content ? parseContentBlocks(response.content) : null;
     return [
-      ...allTurns.slice(0, -1),
+      ...allSteps.slice(0, -1),
       {
         ...last,
         assistantBlocks: responseBlocks ?? last.assistantBlocks,
-        // 当前轮 assistant 原文 = 完整 response body（即该回复的原始 JSON，含 usage/model）；
+        // 当前步 assistant 原文 = 完整 response body（即该回复的原始 JSON，含 usage/model）；
         // response 为字符串/null（流式中）时回退请求体内 assistant，与解析视图同口径
         rawAssistant: responseBlocks ? response : last.rawAssistant,
       },
     ];
   }, [body, response]);
 
-  // Auto-select last turn whenever body or response changes.
+  // Auto-select last step whenever body or response changes.
   useEffect(() => {
-    if (turns.length > 0) {
-      setSelectedItem(turns[turns.length - 1]);
+    if (steps.length > 0) {
+      setSelectedItem(steps[steps.length - 1]);
     } else {
       setSelectedItem(null);
     }
   }, [body, response]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Resolve selected turn against live turns array to pick up response updates.
+  // Resolve selected step against live steps array to pick up response updates.
   // 提前到 early return 之前：rawText 的 useMemo 依赖它（hooks 顺序约束）。
-  const currentSelectedItem = selectedItem?.isTurn
-    ? (turns.find((turn) => turn.id === selectedItem.id) ?? null)
+  const currentSelectedItem = selectedItem?.isStep
+    ? (steps.find((step) => step.id === selectedItem.id) ?? null)
     : selectedItem;
 
   const rawText = useMemo(() => buildContextItemRawText(currentSelectedItem), [currentSelectedItem]);
@@ -442,26 +442,26 @@ export default function ContextTab({ body, response, prevTools }) {
     });
   }
 
-  // Messages grouped into turns; history collapsed, current always visible.
-  if (turns.length > 0) {
-    const toHistoryItem = (turn) => ({
-      ...turn,
-      label: t('ui.context.historyTurnNoTime', { n: turn.turnIndex + 1 }),
-      time: turn.timestamp ? formatTurnTime(turn.timestamp) : null,
-      sublabel: turn.preview || undefined,
+  // Messages grouped into steps; history collapsed, current always visible.
+  if (steps.length > 0) {
+    const toHistoryItem = (step) => ({
+      ...step,
+      label: t('ui.context.historyStepNoTime', { n: step.stepIndex + 1 }),
+      time: step.timestamp ? formatStepTime(step.timestamp) : null,
+      sublabel: step.preview || undefined,
     });
-    const toCurrentItem = (turn) => ({
-      ...turn,
-      label: t('ui.context.currentTurn'),
-      sublabel: turn.preview || undefined,
+    const toCurrentItem = (step) => ({
+      ...step,
+      label: t('ui.context.currentStep'),
+      sublabel: step.preview || undefined,
     });
-    const historyTurns = turns.slice(0, -1).map(toHistoryItem);
-    const currentTurn = toCurrentItem(turns[turns.length - 1]);
+    const historySteps = steps.slice(0, -1).map(toHistoryItem);
+    const currentStep = toCurrentItem(steps[steps.length - 1]);
     accordionSections.push({
       key: 'messages',
       title: t('ui.context.messages'),
-      historyItems: historyTurns.length > 0 ? historyTurns : undefined,
-      items: [currentTurn],
+      historyItems: historySteps.length > 0 ? historySteps : undefined,
+      items: [currentStep],
     });
   }
 
@@ -540,8 +540,8 @@ export default function ContextTab({ body, response, prevTools }) {
             <div key={currentSelectedItem.id} className={styles.contentInner}>
               {rawMode ? (
                 <pre className={styles.rawPre}>{rawText}</pre>
-              ) : currentSelectedItem.isTurn ? (
-                <TurnContent turn={currentSelectedItem} />
+              ) : currentSelectedItem.isStep ? (
+                <StepContent step={currentSelectedItem} />
               ) : (
                 <>
                   {currentSelectedItem.role && (

@@ -10,7 +10,7 @@ Gdy Anthropic API buduje KV-Cache, łączy kontekst w prefiks w tej **stałej ko
 ┌─────────────────────────────────────────────────┐
 │ 1. Tools (JSON Schema definitions)               │  ← Start of cache prefix
 │ 2. System Prompt                                 │
-│ 3. Messages (conversation history + current turn)│  ← End of cache prefix
+│ 3. Messages (conversation history + current step)│  ← End of cache prefix
 └─────────────────────────────────────────────────┘
 ```
 

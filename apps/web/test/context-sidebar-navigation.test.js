@@ -7,47 +7,47 @@ describe('getContextSidebarArrowNavigation', () => {
   it('moves down across sections in visible order', () => {
     const result = getContextSidebarArrowNavigation({
       currentId: 'system__0',
-      visibleIds: ['system__0', 'messages__history_toggle', 'current-turn', 'tool__0', 'tool__1'],
+      visibleIds: ['system__0', 'messages__history_toggle', 'current-step', 'tool__0', 'tool__1'],
       key: 'ArrowDown',
     });
 
     assert.equal(result, 'messages__history_toggle');
   });
 
-  it('moves from the current turn to the first tool item', () => {
+  it('moves from the current step to the first tool item', () => {
     const result = getContextSidebarArrowNavigation({
-      currentId: 'current-turn',
-      visibleIds: ['system__0', 'messages__history_toggle', 'current-turn', 'tool__0', 'tool__1'],
+      currentId: 'current-step',
+      visibleIds: ['system__0', 'messages__history_toggle', 'current-step', 'tool__0', 'tool__1'],
       key: 'ArrowDown',
     });
 
     assert.equal(result, 'tool__0');
   });
 
-  it('moves up from a tool item back to the current turn', () => {
+  it('moves up from a tool item back to the current step', () => {
     const result = getContextSidebarArrowNavigation({
       currentId: 'tool__0',
-      visibleIds: ['system__0', 'messages__history_toggle', 'current-turn', 'tool__0', 'tool__1'],
+      visibleIds: ['system__0', 'messages__history_toggle', 'current-step', 'tool__0', 'tool__1'],
       key: 'ArrowUp',
     });
 
-    assert.equal(result, 'current-turn');
+    assert.equal(result, 'current-step');
   });
 
-  it('moves between history items and current turn when history is expanded', () => {
+  it('moves between history items and current step when history is expanded', () => {
     const result = getContextSidebarArrowNavigation({
-      currentId: 'turn-18',
-      visibleIds: ['system__0', 'messages__history_toggle', 'turn-17', 'turn-18', 'current-turn', 'tool__0'],
+      currentId: 'step-18',
+      visibleIds: ['system__0', 'messages__history_toggle', 'step-17', 'step-18', 'current-step', 'tool__0'],
       key: 'ArrowDown',
     });
 
-    assert.equal(result, 'current-turn');
+    assert.equal(result, 'current-step');
   });
 
-  it('moves from the current turn to history toggle when history is collapsed', () => {
+  it('moves from the current step to history toggle when history is collapsed', () => {
     const result = getContextSidebarArrowNavigation({
-      currentId: 'current-turn',
-      visibleIds: ['system__0', 'messages__history_toggle', 'current-turn', 'tool__0'],
+      currentId: 'current-step',
+      visibleIds: ['system__0', 'messages__history_toggle', 'current-step', 'tool__0'],
       key: 'ArrowUp',
     });
 
@@ -57,7 +57,7 @@ describe('getContextSidebarArrowNavigation', () => {
   it('returns null when no move is possible', () => {
     const result = getContextSidebarArrowNavigation({
       currentId: 'tool__1',
-      visibleIds: ['system__0', 'messages__history_toggle', 'current-turn', 'tool__0', 'tool__1'],
+      visibleIds: ['system__0', 'messages__history_toggle', 'current-step', 'tool__0', 'tool__1'],
       key: 'ArrowDown',
     });
 

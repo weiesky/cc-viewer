@@ -258,7 +258,7 @@
   flex-shrink: 0;
 }
 
-.turnDivider {
+.stepDivider {
   border: none;
   border-top: 1px solid var(--border-primary);
   margin: 14px 0;

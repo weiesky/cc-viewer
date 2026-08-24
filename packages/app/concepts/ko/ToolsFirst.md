@@ -10,7 +10,7 @@ Anthropic의 API가 KV-Cache를 구성할 때, 컨텍스트를 다음 **고정�
 ┌─────────────────────────────────────────────────┐
 │ 1. Tools (JSON Schema definitions)               │  ← Start of cache prefix
 │ 2. System Prompt                                 │
-│ 3. Messages (conversation history + current turn)│  ← End of cache prefix
+│ 3. Messages (conversation history + current step)│  ← End of cache prefix
 └─────────────────────────────────────────────────┘
 ```
 
