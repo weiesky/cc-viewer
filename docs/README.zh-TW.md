@@ -172,6 +172,7 @@ ccv -h
 * **預設**分頁保留經典行為：它會將 `CC_SYSTEM.md`（覆蓋）或 `CC_APPEND_SYSTEM.md`（追加）寫入目前工作區，並在下次 ccv 啟動時以 `--system-prompt-file` / `--append-system-prompt-file` 注入。
 * **模型分頁**：點擊 **+ 新增模型**，輸入名稱（例如 `opus` 或 `Gemini3`），並選擇作用範圍——**全域**（`~/.claude/cc-viewer/system_prompt/`，套用於所有工作區）或**工作區**（`<project>/system_prompt/`）。名稱輸入框會根據本地已設定的模型提供輸入建議（來自熱更新的代理設定和 `settings.json`）；所選作用範圍中已新增的名稱會被隱藏，仍可輸入任意自訂名稱。每個分頁都有自己的追加/覆蓋開關和 Markdown 預覽。
 * 條目以大寫檔名儲存：`OPUS_SYSTEM.md`（覆蓋）或 `OPUS_APPEND_SYSTEM.md`（追加）。比對採模糊方式——以「目前生效設定」解析出的模型 ID 做不區分大小寫子字串比對（啟用的第三方 proxy profile 模型對應 > 啟動環境變數 `ANTHROPIC_MODEL`/`CLAUDE_MODEL` > `settings.json` 設定的 `model`；無任何設定訊號則不注入條目），因此無論版本為何，`opus` 都能比對到 `claude-opus-4-8[1m]`。已知限制：工作階段中途切換 proxy profile 需重新啟動 claude 工作階段才會重新比對；經額外參數透傳的 `--model` 不參與解析。工作區比對優先於全域比對；同一作用範圍內名稱最長者勝出；比對到的條目會在該次啟動中完全取代預設分頁的檔案。
+* **內建預設依預設生效：**套件為 `deepseek-v4-pro`、`deepseek-v4-flash`、`GLM-5.2`、`Qwen-3.7-Max`、`kimi-k2.7-code` 與 `kimi-k3` 內建了調校過的提示詞——當解析出的模型匹配其中之一、且沒有你自己的條目匹配時，內建提示詞會自動注入（你自己的檔案永遠優先：工作區 > 全域 > 內建）。內建分頁在模態框中帶有 **內建** 徽章：編輯並儲存即可產生你的覆寫條目，或使用分頁上的 × 來 **停用** 某個內建項目（記錄於 `<scope>/system_prompt/.builtin-disabled.json`）。被停用的內建項目會回退到預設分頁的檔案，標頭條目仍保持可見並標記為「已停用」，你可以隨時重新啟用。
 * 將分頁儲存為空白即可刪除該條目。工作階段中途切換模型會在下次重新啟動時生效。設定 `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` 可停用所有自動注入。你可以將 `<project>/system_prompt/` 提交到版本庫與團隊共享提示詞，也可以將其加入 `.gitignore` 保持私有。
 
 ### 日誌模式（檢視 claude code 完整對話）

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Segmented, Select, Modal, Tooltip, AutoComplete } from 'antd';
 import { t } from '../../i18n';
+import { isBuiltinEntryDisabled } from '../../utils/builtinPromptTabs';
 import ConfirmRemoveButton from '../common/ConfirmRemoveButton';
 import styles from './SystemTextModal.module.css';
 
@@ -28,12 +29,13 @@ function FieldHelp({ text }) {
 
 // Model tab strip inside the "Edit System Prompt" modal (strictly aligned with
 // UltraPlanModal's Chrome-tab strip): a Default tab + one tab per model entry
-// (scope badge / unsaved dot / hover delete ×) + an "+ Add model" button that
-// opens a secondary Modal (name + scope + preset, each with a label and a "?").
-// Pure presentational component: selection, entry list, and validation live in
-// the parent (onAdd returns an error message or null).
+// (scope badge / unsaved dot / hover delete ×; built-in entries show a Built-in badge,
+// a disabled badge when tombstoned, and a ↺/× disable-enable toggle instead of delete)
+// + an "+ Add model" button that opens a secondary Modal (name + scope + preset,
+// each with a label and a "?"). Pure presentational component: selection, entry list,
+// and validation live in the parent (onAdd returns an error message or null).
 export default function ModelPromptTabs({
-  entries,          // [{ name, scope: 'global'|'workspace' }]
+  entries,          // [{ name, scope: 'global'|'workspace'|'builtin', disabled?: {workspace,global} }]
   activeKey,        // 'default' | `${scope}:${name}`
   dirtyKeys,        // 有未保存修改的 key 列表
   workspaceEnabled, // 是否有活动工作区(决定 Workspace 作用域可选与否)
@@ -119,29 +121,45 @@ export default function ModelPromptTabs({
       </button>
       {entries.map((e) => {
         const key = tabKey(e);
+        // 内置条目的有效禁用态：合成规则集中在 utils/builtinPromptTabs.js（单一来源）。
+        const effDisabled = e.scope === 'builtin' && isBuiltinEntryDisabled(e);
+        const confirmTitle = e.scope === 'builtin'
+          ? (effDisabled
+            ? t('ui.expert.systemText.builtinEnableConfirm', { name: e.name })
+            : t('ui.expert.systemText.builtinDisableConfirm', { name: e.name }))
+          : t('ui.expert.systemText.deleteTab', { name: e.name });
         return (
           <span key={key} className={styles.tabWrap}>
             <button
               type="button"
-              className={`${styles.tabBtn} ${activeKey === key ? styles.tabActive : ''}`}
+              className={`${styles.tabBtn} ${activeKey === key ? styles.tabActive : ''} ${effDisabled ? styles.tabDisabled : ''}`}
               onClick={() => onSelect(key)}
               title={e.name}
             >
               <span className={styles.tabTitle}>{e.name}</span>
               <span className={styles.scopeBadge}>
-                {t(e.scope === 'global' ? 'ui.expert.systemText.scopeGlobal' : 'ui.expert.systemText.scopeWorkspace')}
+                {t(e.scope === 'global'
+                  ? 'ui.expert.systemText.scopeGlobal'
+                  : e.scope === 'builtin'
+                    ? 'ui.expert.systemText.scopeBuiltin'
+                    : 'ui.expert.systemText.scopeWorkspace')}
               </span>
+              {effDisabled && (
+                <span className={`${styles.scopeBadge} ${styles.scopeBadgeDisabled}`}>
+                  {t('ui.expert.systemText.builtinDisabledBadge')}
+                </span>
+              )}
               {dirtyKeys.includes(key) && <span className={styles.dirtyDot} />}
             </button>
             <ConfirmRemoveButton
               tag="span"
               className={styles.tabDelete}
-              title={t('ui.expert.systemText.deleteTab', { name: e.name })}
-              ariaLabel={t('ui.expert.systemText.deleteTab', { name: e.name })}
+              title={confirmTitle}
+              ariaLabel={confirmTitle}
               onConfirm={() => onDelete(e.name, e.scope)}
               disabled={disabled}
             >
-              ×
+              {effDisabled ? '↺' : '×'}
             </ConfirmRemoveButton>
           </span>
         );

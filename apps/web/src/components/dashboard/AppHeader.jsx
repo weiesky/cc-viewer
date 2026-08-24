@@ -120,9 +120,12 @@ class AppHeader extends React.Component {
       // 汉堡菜单「钉住」的菜单 key 列表（全局持久，跨项目共享；存 localStorage ccv_pinnedMenuKeys）。
       // 顺序=用户钉住先后；驱动行内钉按钮实心态、汉堡右侧快捷方式行、Electron header model 的 pins。
       pinnedKeys: parsePinned(typeof localStorage !== 'undefined' ? localStorage.getItem(PINNED_KEY) : null),
-      // 「系统提示词修改」是否有会在下次启动注入的提示词(命中当前模型的条目或工作区默认 sentinel)。
-      // 为 true 时入口自动露出在头部工具栏(无需手动钉住)；由 /api/expert/system-prompt-status 供给。
+      // 「系统提示词修改」是否有会在下次启动注入的提示词(命中当前模型的用户条目/内置 preset，
+      // 或工作区默认 sentinel)。为 true 时入口自动露出在头部工具栏(无需手动钉住)；
+      // 由 /api/expert/system-prompt-status 供给。
       systemPromptActive: false,
+      // 当前模型命中的内置 preset 被墓碑禁用：入口以「已禁用」态保活（可点入重启用）。
+      systemPromptBuiltinDisabled: false,
     };
     this._countdownTimer = null;
     this._expiredTimer = null;
@@ -411,10 +414,14 @@ class AppHeader extends React.Component {
   };
 
   // 「系统提示词修改」自动露出规则(Web pins 块与 Electron header model 共用)：
-  // 激活且未被手动钉住时返回其描述符，否则 null。调用方各自决定渲染形态。
+  // 激活（含内置 preset 生效）或内置被墓碑禁用（保活——否则禁用后入口消失、无法找回
+  // 重启用路径）且未被手动钉住时返回其描述符；禁用态在 label 上标注「已禁用」。
   _autoSystemPromptDesc(descByKey) {
-    if (!this.state.systemPromptActive || this.state.pinnedKeys.includes('edit-system-prompt')) return null;
-    return descByKey.get('edit-system-prompt') || null;
+    if (this.state.pinnedKeys.includes('edit-system-prompt')) return null;
+    if (!this.state.systemPromptActive && !this.state.systemPromptBuiltinDisabled) return null;
+    const desc = descByKey.get('edit-system-prompt') || null;
+    if (!desc || this.state.systemPromptActive) return desc;
+    return { ...desc, label: `${desc.label} (${t('ui.expert.systemText.builtinDisabledBadge')})` };
   }
 
   // 拉取「系统提示词修改」激活态：激活时入口自动露出在头部工具栏(无需手动钉住)。
@@ -423,7 +430,14 @@ class AppHeader extends React.Component {
     const seq = ++this._systemPromptSeq;
     fetch(apiUrl('/api/expert/system-prompt-status'))
       .then((r) => r.json())
-      .then((d) => { if (seq === this._systemPromptSeq) this.setState({ systemPromptActive: !!(d && d.active) }); })
+      .then((d) => {
+        if (seq === this._systemPromptSeq) {
+          this.setState({
+            systemPromptActive: !!(d && d.active),
+            systemPromptBuiltinDisabled: !!(d && d.builtinDisabled),
+          });
+        }
+      })
       .catch((err) => {
         // 瞬时失败(服务重启/远程登录窗口 401)不翻状态 —— 只认成功回包，避免入口闪烁。
         reportSwallowed('systemPromptStatus.fetch', err);

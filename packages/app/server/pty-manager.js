@@ -390,8 +390,9 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   // When the launch dir has a non-empty CC_SYSTEM.md / CC_APPEND_SYSTEM.md, auto-append
   // --system-prompt-file / --append-system-prompt-file (each independent; skipped if the
   // user already passed the synonymous flag). Model customization: fuzzy-match against
-  // <cwd>/system_prompt/ and <LOG_DIR>/system_prompt/ using "the model used on the last
-  // launch"; a matched entry wholly replaces the two default sentinels above.
+  // <cwd>/system_prompt/ and <LOG_DIR>/system_prompt/ using the model id resolved from the
+  // ACTIVE configuration (proxy profile mapping > env > settings.json); a matched entry
+  // (user file first, then built-in presets) wholly replaces the two default sentinels above.
   // Note: currentWorkspacePath is only assigned below, so the cwd param decides the launch
   // dir here. Spawns inside LOG_DIR (IM worker working dir = <LOG_DIR>/IM_<id>/) skip model
   // matching: the IM persona relies on the default sentinel CC_APPEND_SYSTEM.md injection,
@@ -425,7 +426,9 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
       suppressInjection: _systemPromptFileRejectedPaths.has(claudePath) || skipOnce,
     });
     sysPrompt = r.sysPrompt;
-    if (r.diagnostic === 'no-match') {
+    if (r.diagnostic === 'builtin-disabled') {
+      console.warn(`[CC Viewer] model-specific prompt: built-in prompt "${r.sysPrompt.builtinDisabled}" for modelId="${r.resolvedModelId}" is disabled via .builtin-disabled.json in the workspace or global ${MODEL_PROMPT_DIR}/ — falling back to defaults`);
+    } else if (r.diagnostic === 'no-match') {
       console.warn(`[CC Viewer] model-specific prompt: modelId="${r.resolvedModelId}" resolved from active config but no matching entry found in workspace or global ${MODEL_PROMPT_DIR}/`);
     } else if (r.diagnostic === 'no-model') {
       console.warn(`[CC Viewer] model-specific prompt: no model id resolved from active config (--settings / env / settings.json / proxy profile) — entries in ${MODEL_PROMPT_DIR}/ skipped for this launch`);

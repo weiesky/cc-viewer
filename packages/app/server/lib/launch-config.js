@@ -108,6 +108,10 @@ export function suppressManuallyFlaggedPinned(entries, userArgs) {
 // The F2 no-record notice only matters to users who HAVE injection configured right
 // now (sentinel files or a model-prompt dir) — for everyone else a resume silently
 // injecting nothing is exactly the status quo, and the line would be pure noise.
+// Fidelity note (accepted gap): this check does NOT see the built-in preset layer —
+// users whose only injection is a default-effective built-in (no dirs, no sentinels)
+// get no F2 notice on resume either. Deliberate: making built-in hits count would turn
+// the notice into near-constant noise for every built-in user resuming old sessions.
 export function injectionConfigured(spawnDir, logDir = LOG_DIR) {
   try {
     return isNonEmptyFile(join(spawnDir, SYSTEM_PROMPT_FILE))
@@ -152,7 +156,7 @@ function _defaultModelReader(spawnDir, env, opts) {
  *   sysPrompt: {args: string[], loaded: string[], model: string|null, entries: object[], suppressed?: string, pinned?: boolean, noRecord?: boolean, noRecordNotice?: boolean},
  *   resume: object|null,
  *   resolvedModelId: string|null,
- *   diagnostic: null|'no-match'|'no-model',
+ *   diagnostic: null|'no-match'|'no-model'|'builtin-disabled',
  * }}
  */
 export function resolveLaunchSystemPrompt(p) {
@@ -222,6 +226,10 @@ export function resolveLaunchSystemPrompt(p) {
     });
     if (suppressInjection) {
       sysPrompt = { args: [], loaded: [], model: null, entries: [] };
+    } else if (sysPrompt.builtinDisabled) {
+      // The resolved model hit a built-in preset that the user tombstone-disabled —
+      // distinct from 'no-match' (a likely misnamed file): this is an intentional opt-out.
+      out.diagnostic = 'builtin-disabled';
     } else if (resolvedModelId && !sysPrompt.model && !sysPrompt.suppressed
       && (existsSync(join(spawnDir, MODEL_PROMPT_DIR)) || existsSync(join(logDir, MODEL_PROMPT_DIR)))) {
       // A system_prompt dir is configured but the resolved model matched no entry

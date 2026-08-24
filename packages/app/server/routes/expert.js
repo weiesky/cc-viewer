@@ -15,6 +15,11 @@ import {
   MODEL_PROMPT_DIR, normalizeModelName, listModelPrompts,
   writeModelPrompt, deleteModelPrompt, matchModelPrompt,
 } from '../lib/model-system-prompts.js';
+import {
+  matchBuiltinModelPrompt, isBuiltinDisabled,
+  readBuiltinDisabled, setBuiltinDisabled, listBuiltinModelPrompts,
+} from '../lib/builtin-model-prompts.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 import { resolveSpawnModel } from '../lib/spawn-model-resolver.js';
 import { listSystemPromptPresets, groupPresetsByCategory, getSystemPromptVariablesDoc } from '../lib/system-prompt-presets.js';
 import { LOG_DIR } from '../../findcc.js';
@@ -41,12 +46,24 @@ function sendJson(res, code, obj) {
   } catch { /* socket 已关闭：忽略 */ }
 }
 
+// scope → 目标 modelPromptDir 的统一解析（postModelPrompts 普通分支与墓碑分支共用）：
+// global 直取 LOG_DIR；workspace 需活动工作区（缺失返回 {error} 由调用方回 400）。
+async function resolveScopeModelDir(deps, scope) {
+  if (scope === 'global') return { dir: join(LOG_DIR, MODEL_PROMPT_DIR) };
+  const dir = await resolveDir(deps);
+  if (!dir) return { error: 'no_active_workspace' };
+  return { dir: join(dir, MODEL_PROMPT_DIR) };
+}
+
 // Single source for "is a custom system prompt configured to inject" — mirrors the
 // spawn-time injection semantics of buildSystemPromptFileArgs: the env kill switch wins;
 // a matched model entry supersedes the Default sentinels for activation purposes.
 // Fidelity note: spawn-only gates this helper cannot see (insideLogDir skip, manual
 // --system-prompt-file flags, one-shot skip tokens) may rarely make "active" a false
-// positive — acceptable for a UI hint.
+// positive — acceptable for a UI hint. The built-in layer shares the same gates, and
+// can also false-NEGATIVE the other way: when the spawn-time model signal comes from
+// launchSettings (launcher-delivered ANTHROPIC_MODEL), this resolver may see no model
+// while spawn still injects a built-in preset (entry stays hidden). Same acceptance.
 function computeSystemPromptStatus(dir) {
   if (process.env[DISABLE_AUTO_SYSTEM_PROMPT_ENV] === '1') {
     return { active: false, modelId: null, matched: null, defaultActive: false };
@@ -61,8 +78,28 @@ function computeSystemPromptStatus(dir) {
         { dir: join(LOG_DIR, MODEL_PROMPT_DIR), scope: 'global' },
       ])
     : null;
-  const matched = match ? { scope: match.scope, name: match.name, mode: match.mode } : null;
-  return { active: !!matched || defaultActive, modelId, matched, defaultActive };
+  let matched = match ? { scope: match.scope, name: match.name, mode: match.mode } : null;
+  // 内置层镜像 spawn 语义：用户文件未命中时，内置 preset 命中（未禁用）同样构成注入；
+  // 命中被墓碑禁用则报 builtinDisabled（条件字段，仅此时出现，命名与 spawn 返回字段
+  // 对齐）——UI 据此让入口以「已禁用」态保活，点入可重启用，否则 chip 消失后无法找回禁用开关。
+  let builtinDisabledEntry;
+  if (!matched && modelId) {
+    try {
+      const builtin = matchBuiltinModelPrompt(modelId);
+      if (builtin) {
+        if (isBuiltinDisabled(builtin.name, dir ? join(dir, MODEL_PROMPT_DIR) : null, join(LOG_DIR, MODEL_PROMPT_DIR))) {
+          builtinDisabledEntry = { name: builtin.name };
+        } else {
+          matched = { scope: 'builtin', name: builtin.name, mode: builtin.mode };
+        }
+      }
+    } catch (err) {
+      reportSwallowed('expert.systemPromptStatus.builtin', err);
+    }
+  }
+  const out = { active: !!matched || defaultActive, modelId, matched, defaultActive };
+  if (builtinDisabledEntry) out.builtinDisabled = builtinDisabledEntry;
+  return out;
 }
 
 async function getSystemText(req, res, parsedUrl, isLocal, deps) {
@@ -124,12 +161,26 @@ async function getModelPrompts(req, res, parsedUrl, isLocal, deps) {
     const dir = await resolveDir(deps);
     const globalDir = join(LOG_DIR, MODEL_PROMPT_DIR);
     const status = computeSystemPromptStatus(dir);
+    // 内置 preset 条目（默认生效层）：text 为 renderPresetTemplate 输出（边界已剥离），
+    // disabled 双 scope 墓碑标志供弹窗渲染禁用态/重启用。
+    const workspaceModelDir = dir ? join(dir, MODEL_PROMPT_DIR) : null;
+    const disabledWs = readBuiltinDisabled(workspaceModelDir);
+    const disabledG = readBuiltinDisabled(globalDir);
+    const builtin = listBuiltinModelPrompts().map((e) => ({
+      id: e.id,
+      title: e.title,
+      name: e.name,
+      mode: e.mode,
+      text: e.text,
+      disabled: { workspace: disabledWs.includes(e.name), global: disabledG.includes(e.name) },
+    }));
     sendJson(res, 200, {
       workspaceDir: dir || null,
       workspaceActive: !!dir,
       globalDir,
       workspace: dir ? collectModelEntries(join(dir, MODEL_PROMPT_DIR)) : [],
       global: collectModelEntries(globalDir),
+      builtin,
       // 当前生效配置解析出的模型 id 及其命中的条目(未命中为 null)——弹窗据此把默认页签
       // 指向命中条目；matched.name 为规范化大写名，与页签 key 的构成一致。
       modelId: status.modelId,
@@ -162,29 +213,39 @@ function postModelPrompts(req, res, parsedUrl, isLocal, deps) {
   req.on('end', async () => {
     if (truncated) return; // 超限已 destroy，socket 关闭，勿再解析/回包(对齐 postSystemText)
     try {
-      const { scope, name, mode, text } = JSON.parse(body || '{}');
+      const { scope, name, mode, text, action } = JSON.parse(body || '{}');
       if (scope !== 'workspace' && scope !== 'global') {
         sendJson(res, 400, { error: 'bad_scope' });
         return;
       }
       const canonical = normalizeModelName(name);
       if (!canonical) { sendJson(res, 400, { error: 'bad_model_name' }); return; }
-      let targetDir;
-      if (scope === 'global') {
-        targetDir = join(LOG_DIR, MODEL_PROMPT_DIR);
-      } else {
-        const dir = await resolveDir(deps);
-        if (!dir) { sendJson(res, 400, { error: 'no_active_workspace' }); return; }
-        targetDir = join(dir, MODEL_PROMPT_DIR);
+      const target = await resolveScopeModelDir(deps, scope);
+      if (target.error) { sendJson(res, 400, { error: target.error }); return; }
+      // 墓碑操作（禁用/启用内置 preset 条目）。action 存在但非法 → 400 兜底：
+      // 拼错的 action 绝不可 fall-through 到下面的「空 text = 删除用户条目」分支。
+      if (action !== undefined) {
+        if (action !== 'disable-builtin' && action !== 'enable-builtin') {
+          sendJson(res, 400, { error: 'bad_action' });
+          return;
+        }
+        if (!listBuiltinModelPrompts().some((e) => e.name === canonical)) {
+          sendJson(res, 400, { error: 'unknown_builtin' });
+          return;
+        }
+        const disabled = action === 'disable-builtin';
+        setBuiltinDisabled(target.dir, canonical, disabled);
+        sendJson(res, 200, { ok: true, scope, name: canonical, disabled });
+        return;
       }
       const raw = typeof text === 'string' ? text : '';
       if (raw.trim().length === 0) {
         // 空文本 = 删除条目(对齐 system-text 的「存空即禁用」约定；此时 mode 可缺省)。
-        deleteModelPrompt(targetDir, canonical);
+        deleteModelPrompt(target.dir, canonical);
         sendJson(res, 200, { ok: true, name: canonical, scope, cleared: true });
         return;
       }
-      const result = writeModelPrompt(targetDir, canonical, mode === 'override' ? 'override' : 'append', raw);
+      const result = writeModelPrompt(target.dir, canonical, mode === 'override' ? 'override' : 'append', raw);
       sendJson(res, 200, { ok: true, scope, ...result });
     } catch (e) {
       console.error('[CC Viewer] expert model-prompts POST failed:', e.message);

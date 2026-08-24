@@ -1,7 +1,9 @@
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { MODEL_PROMPT_DIR, matchModelPrompt } from './model-system-prompts.js';
+import { isBuiltinDisabled, matchBuiltinModelPrompt, materializeBuiltinPrompt } from './builtin-model-prompts.js';
 import { isNonEmptyFile } from './file-api.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 
 // isNonEmptyFile lives in file-api.js (shared leaf, cycle break:
 // model-system-prompts.js must not import this module). Re-exported here so
@@ -42,22 +44,28 @@ export function hasArg(args, ...names) {
  *
  * 模型定制(opts.modelId 提供时)：先在 <projectDir>/system_prompt/(工作区)与
  * opts.globalModelDir(全局)里做模糊匹配；命中的条目「整体取代」上面两份默认 sentinel
- * ——即便手动 flag 抑制了注入也不再回看默认文件(条目已取而代之)。未命中/无 modelId
- * 则完全走旧逻辑。
+ * ——即便手动 flag 抑制了注入也不再回看默认文件(条目已取而代之)。未命中则进入内置层：
+ * 随包 presets(builtin-model-prompts.js)按同语义再匹配一次，命中且未被墓碑禁用时把
+ * preset 文本物化为临时文件注入；命中被禁用(builtinDisabled)或未命中才回落 sentinel。
  *
  * Decide whether to inject system-prompt file flags based on sentinel files in
  * the launch directory. When opts.modelId is given, model-specific entries in
  * the workspace/global system_prompt folders are matched first; a match fully
- * supersedes the Default sentinels. Pure function: reads fs/env only.
+ * supersedes the Default sentinels. Without a file match, shipped built-in presets
+ * act as the fallback layer (tombstone-disabled ones are skipped). Reads fs/env;
+ * writes materialized built-in temp files; the built-in layer never throws — any
+ * failure falls back to the sentinel logic via reportSwallowed.
  *
  * @param {string} projectDir 启动目录(绝对路径)
  * @param {string[]} [existingArgs] 已有的 claude 参数(用于「手动优先」判断)
  * @param {Object} [env] 环境变量(默认 process.env)
  * @param {{ modelId?: string|null, globalModelDir?: string|null }} [opts]
- * @returns {{ args: string[], loaded: string[], model: string|null, suppressed?: 'env'|'manual-flag' }}
+ * @returns {{ args: string[], loaded: string[], model: string|null, suppressed?: 'env'|'manual-flag',
+ *          builtinDisabled?: string }}
  *          args: 待追加参数；loaded: 实际加载的文件(终端提示)；model: 命中的条目名(未命中为 null)；
  *          suppressed: 注入被有意跳过的原因(env 开关 / 手动同义 flag 抑制了已命中的模型条目)——
  *          调用方(pty-manager)据此不再打「no matching entry」误导性告警。
+ *          builtinDisabled 仅在内置层命中但被墓碑禁用时出现(增量字段，否则不存在)。
  */
 export function buildSystemPromptFileArgs(projectDir, existingArgs = [], env = process.env, opts = {}) {
   const out = { args: [], loaded: [], model: null };
@@ -81,8 +89,37 @@ export function buildSystemPromptFileArgs(projectDir, existingArgs = [], env = p
       }
       return out; // 命中即返回：默认 sentinel 不再参与(含手动 flag 抑制注入的情况)。
     }
+    // 用户文件未命中 → 内置层(随包 presets)：同语义匹配 + 墓碑检查；命中即物化注入并
+    // 提前返回(同样取代 sentinel)。整层 try-catch：任何失败(preset 缺失/tmp 不可写)经
+    // reportSwallowed 回落 sentinel——内置不可用绝不应连默认注入都拖垮。
+    // No file match → built-in fallback layer (shipped presets, tombstone-aware).
+    try {
+      const builtin = matchBuiltinModelPrompt(opts.modelId);
+      if (builtin) {
+        const flagPair = builtin.mode === 'override'
+          ? ['--system-prompt', '--system-prompt-file']
+          : ['--append-system-prompt', '--append-system-prompt-file'];
+        if (hasArg(existingArgs, ...flagPair)) {
+          out.suppressed = 'manual-flag'; // 与文件命中同语义：有意跳过，非「无条目」
+          return out; // 手动抑制也提前返回(不物化、不回看 sentinel)
+        }
+        const workspaceModelDir = join(projectDir, MODEL_PROMPT_DIR);
+        if (isBuiltinDisabled(builtin.name, workspaceModelDir, opts.globalModelDir)) {
+          out.builtinDisabled = builtin.name; // 供 launch-config 区分「被禁用」与「无条目」
+          // 落回 sentinel（不 return）
+        } else {
+          const path = materializeBuiltinPrompt(builtin.id, builtin.text);
+          out.args.push(flagPair[1], path);
+          out.loaded.push(`builtin:${builtin.name}`); // 稳定标签，不打印 tmp 丑路径
+          out.model = builtin.name;
+          return out;
+        }
+      }
+    } catch (err) {
+      reportSwallowed('system-prompt-files.builtin', err);
+    }
     // No matching entry: fall through to the default sentinels. Diagnostics for
-    // this case live in the caller (pty-manager) — this stays a pure function.
+    // this case live in the caller (launch-config/pty-manager).
   }
 
   // 整段替换：CC_SYSTEM.md → --system-prompt-file (用户已传 --system-prompt[-file] 则跳过)

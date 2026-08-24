@@ -185,3 +185,60 @@ describe('api expert system-prompt-status', () => {
     }
   });
 });
+
+describe('api expert system-prompt-status — builtin 层', () => {
+  it('无用户文件 + env 裸 k3 → matched.scope=builtin（内置命中即激活）', async () => {
+    const restore = setEnv('ANTHROPIC_MODEL', 'k3');
+    try {
+      const j = (await callGet()).json();
+      assert.equal(j.modelId, 'k3');
+      assert.deepEqual(j.matched, { scope: 'builtin', name: 'KIMI-K3', mode: 'override' });
+      assert.equal(j.active, true);
+      assert.equal(j.defaultActive, false);
+      assert.equal(j.builtinDisabled, undefined, '未禁用时不得出现 tombstonedBuiltin 字段');
+    } finally {
+      restore();
+    }
+  });
+
+  it('墓碑禁用命中内置 → matched=null + tombstonedBuiltin 出现（active 视 sentinel 而定）', async () => {
+    const restore = setEnv('ANTHROPIC_MODEL', 'k3');
+    writeEntry(globalModelDir, '.builtin-disabled.json', '["KIMI-K3"]\n');
+    try {
+      const j = (await callGet()).json();
+      assert.equal(j.matched, null);
+      assert.deepEqual(j.builtinDisabled, { name: 'KIMI-K3' });
+      assert.equal(j.active, false);
+    } finally {
+      restore();
+      rmSync(join(globalModelDir, '.builtin-disabled.json'), { force: true });
+    }
+  });
+
+  it('用户文件命中时内置层不介入（无 tombstonedBuiltin）', async () => {
+    const restore = setEnv('ANTHROPIC_MODEL', 'k3');
+    writeEntry(globalModelDir, 'KIMI-K3_SYSTEM.md');
+    writeEntry(globalModelDir, '.builtin-disabled.json', '["KIMI-K3"]\n');
+    try {
+      const j = (await callGet()).json();
+      assert.deepEqual(j.matched, { scope: 'global', name: 'KIMI-K3', mode: 'override' });
+      assert.equal(j.builtinDisabled, undefined, '用户文件胜出时不得报墓碑');
+    } finally {
+      restore();
+      rmSync(join(globalModelDir, 'KIMI-K3_SYSTEM.md'), { force: true });
+      rmSync(join(globalModelDir, '.builtin-disabled.json'), { force: true });
+    }
+  });
+
+  it('无匹配模型（gpt-5）→ matched:null 且无 tombstonedBuiltin', async () => {
+    const restore = setEnv('ANTHROPIC_MODEL', 'gpt-5');
+    try {
+      const j = (await callGet()).json();
+      assert.equal(j.matched, null);
+      assert.equal(j.builtinDisabled, undefined);
+      assert.equal(j.active, false);
+    } finally {
+      restore();
+    }
+  });
+});

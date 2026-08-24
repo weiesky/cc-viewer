@@ -1,6 +1,6 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -11,6 +11,10 @@ import {
   APPEND_SYSTEM_PROMPT_FILE,
   DISABLE_AUTO_SYSTEM_PROMPT_ENV,
 } from '../server/lib/system-prompt-files.js';
+import { setBuiltinDisabled } from '../server/lib/builtin-model-prompts.js';
+
+// 物化目录隔离（materializeDir 惰性读取 env）：避免与其它并行测试文件的 GC 互删。
+process.env.CCV_BUILTIN_PROMPT_MATERIALIZE_DIR = mkdtempSync(join(tmpdir(), 'ccv-spf-mat-'));
 
 describe('system-prompt-files: buildSystemPromptFileArgs', () => {
   let dirs = [];
@@ -300,5 +304,134 @@ describe('system-prompt-files: buildSystemPromptFileArgs', () => {
 
   it('write: 无 dir → throw', () => {
     assert.throws(() => writeWorkspaceSystemText('', 'append', 'x'), /no workspace/);
+  });
+});
+
+describe('system-prompt-files: 内置 preset fallback', () => {
+  let dirs = [];
+  function mkTmp() {
+    const d = mkdtempSync(join(tmpdir(), 'ccv-sysprompt-builtin-'));
+    dirs.push(d);
+    return d;
+  }
+  afterEach(() => {
+    for (const d of dirs) { try { rmSync(d, { recursive: true, force: true }); } catch {} }
+    dirs = [];
+  });
+
+  it('无用户文件 → 内置命中取代 sentinel（model/loaded 标签，物化无边界标记）', () => {
+    const dir = mkTmp();
+    writeFileSync(join(dir, SYSTEM_PROMPT_FILE), 'default-sys');
+    const r = buildSystemPromptFileArgs(dir, [], {}, { modelId: 'k3' });
+    assert.equal(r.model, 'KIMI-K3');
+    assert.deepEqual(r.loaded, ['builtin:KIMI-K3']);
+    assert.equal(r.args[0], '--system-prompt-file');
+    assert.ok(r.args[1].includes('kimi-k3-') && r.args[1].endsWith('.md'));
+    assert.ok(existsSync(r.args[1]));
+    assert.ok(!r.args.includes(join(dir, SYSTEM_PROMPT_FILE)), 'sentinel 被内置取代');
+    const text = readFileSync(r.args[1], 'utf-8');
+    assert.ok(!text.includes('__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'), '物化文本不应含边界标记');
+    assert.ok(text.includes('${'), '模板变量应保持字面量待渲染管线替换');
+  });
+
+  it('工作区用户文件优先于内置（行为零变化）', () => {
+    const dir = mkTmp();
+    mkdirSync(join(dir, 'system_prompt'));
+    writeFileSync(join(dir, 'system_prompt', 'K3_SYSTEM.md'), 'mine');
+    const r = buildSystemPromptFileArgs(dir, [], {}, { modelId: 'k3' });
+    assert.equal(r.model, 'K3');
+    assert.deepEqual(r.args, ['--system-prompt-file', join(dir, 'system_prompt', 'K3_SYSTEM.md')]);
+  });
+
+  it('全局用户文件同样优先于内置', () => {
+    const dir = mkTmp();
+    const g = mkTmp();
+    writeFileSync(join(g, 'KIMI_SYSTEM.md'), 'mine-global');
+    const r = buildSystemPromptFileArgs(dir, [], {}, { modelId: 'k3', globalModelDir: g });
+    assert.equal(r.model, 'KIMI');
+    assert.deepEqual(r.args, ['--system-prompt-file', join(g, 'KIMI_SYSTEM.md')]);
+  });
+
+  it('global 墓碑禁用 → 回落 sentinel 且带 builtinDisabled', () => {
+    const dir = mkTmp();
+    writeFileSync(join(dir, SYSTEM_PROMPT_FILE), 'default-sys');
+    const g = mkTmp();
+    setBuiltinDisabled(g, 'KIMI-K3', true);
+    const r = buildSystemPromptFileArgs(dir, [], {}, { modelId: 'k3', globalModelDir: g });
+    assert.equal(r.model, null);
+    assert.equal(r.builtinDisabled, 'KIMI-K3');
+    assert.deepEqual(r.args, ['--system-prompt-file', join(dir, SYSTEM_PROMPT_FILE)]);
+  });
+
+  it('workspace 墓碑禁用（无 sentinel 时落空）', () => {
+    const dir = mkTmp();
+    setBuiltinDisabled(join(dir, 'system_prompt'), 'KIMI-K3', true);
+    const r = buildSystemPromptFileArgs(dir, [], {}, { modelId: 'k3' });
+    assert.equal(r.builtinDisabled, 'KIMI-K3');
+    assert.equal(r.model, null);
+    assert.deepEqual(r.args, []);
+  });
+
+  it('k3[1m] 后缀场景：用户文件仍胜内置（两层同语义，优先级不破口）', () => {
+    // env 直传带 [1m] 后缀的裸 k3 时，用户层若不做后缀剥离会静默 miss、内置反客为主——
+    // matchModelPrompt 与 matchBuiltinModelPrompt 必须同语义（同经 expandModelIdVariants）。
+    const dir = mkTmp();
+    mkdirSync(join(dir, 'system_prompt'));
+    writeFileSync(join(dir, 'system_prompt', 'KIMI-K3_SYSTEM.md'), 'mine');
+    const r = buildSystemPromptFileArgs(dir, [], {}, { modelId: 'k3[1m]' });
+    assert.equal(r.model, 'KIMI-K3');
+    assert.deepEqual(r.args, ['--system-prompt-file', join(dir, 'system_prompt', 'KIMI-K3_SYSTEM.md')]);
+  });
+
+  it('内置命中 + 手动同义 flag → suppressed:manual-flag（不注入、不物化）', () => {
+    const dir = mkTmp();
+    const matDir = process.env.CCV_BUILTIN_PROMPT_MATERIALIZE_DIR;
+    const before = new Set(readdirSync(matDir));
+    const r = buildSystemPromptFileArgs(dir, ['--system-prompt', 'x'], {}, { modelId: 'k3' });
+    assert.deepEqual(r, { args: [], loaded: [], model: null, suppressed: 'manual-flag' });
+    const after = readdirSync(matDir);
+    assert.deepEqual(after.filter((f) => !before.has(f)), [], '手动抑制不得物化 tmp 文件');
+  });
+
+  it('kill-switch 压过内置命中', () => {
+    const dir = mkTmp();
+    const r = buildSystemPromptFileArgs(dir, [], { [DISABLE_AUTO_SYSTEM_PROMPT_ENV]: '1' }, { modelId: 'k3' });
+    assert.deepEqual(r, { args: [], loaded: [], model: null, suppressed: 'env' });
+  });
+
+  it('无匹配模型（gpt-5）→ 内置层不介入，无 matched/builtinDisabled 字段', () => {
+    const dir = mkTmp();
+    const r = buildSystemPromptFileArgs(dir, [], {}, { modelId: 'gpt-5' });
+    assert.deepEqual(r, { args: [], loaded: [], model: null });
+  });
+});
+
+describe('system-prompt-files: 内置层故障降级', () => {
+  let dirs = [];
+  function mkTmp() {
+    const d = mkdtempSync(join(tmpdir(), 'ccv-sysprompt-fault-'));
+    dirs.push(d);
+    return d;
+  }
+  afterEach(() => {
+    for (const d of dirs) { try { rmSync(d, { recursive: true, force: true }); } catch {} }
+    dirs = [];
+  });
+
+  it('物化目录不可创建（指向普通文件）→ 不 throw，回落 sentinel', () => {
+    const dir = mkTmp();
+    writeFileSync(join(dir, SYSTEM_PROMPT_FILE), 'default-sys');
+    const blocker = join(mkTmp(), 'not-a-dir');
+    writeFileSync(blocker, 'x');
+    const saved = process.env.CCV_BUILTIN_PROMPT_MATERIALIZE_DIR;
+    process.env.CCV_BUILTIN_PROMPT_MATERIALIZE_DIR = blocker; // mkdirSync 必抛
+    try {
+      const r = buildSystemPromptFileArgs(dir, [], {}, { modelId: 'k3' });
+      assert.equal(r.model, null);
+      assert.equal(r.builtinDisabled, undefined);
+      assert.deepEqual(r.args, ['--system-prompt-file', join(dir, SYSTEM_PROMPT_FILE)]);
+    } finally {
+      process.env.CCV_BUILTIN_PROMPT_MATERIALIZE_DIR = saved;
+    }
   });
 });

@@ -31,6 +31,8 @@ before(async () => {
   tmpRoot = mkdtempSync(join(tmpdir(), 'ccv-launch-config-'));
   process.env.CCV_LOG_DIR = join(tmpRoot, 'logs');
   process.env.CLAUDE_CONFIG_DIR = join(tmpRoot, 'claude-config');
+  // 物化目录隔离（materializeDir 惰性读取 env）：避免与其它并行测试文件的 GC 互删。
+  process.env.CCV_BUILTIN_PROMPT_MATERIALIZE_DIR = join(tmpRoot, 'builtin-mat');
   mkdirSync(process.env.CCV_LOG_DIR, { recursive: true });
   lc = await import('../server/lib/launch-config.js');
   snapshots = await import('../server/lib/system-prompt-snapshots.js');
@@ -311,5 +313,69 @@ describe('resolveLaunchSystemPrompt — resume pin', () => {
     });
     assert.equal(r.resume, null, 'insideLogDir forces resume=null');
     assert.ok(r.sysPrompt.args.length > 0);
+  });
+});
+
+describe('resolveLaunchSystemPrompt — 内置 preset fallback', () => {
+  it('无用户文件 → 内置命中：model/loaded/matched、无 no-match 诊断、entries+pendingRec 落盘(Bind A 兼容)', () => {
+    const proj = mkProj({});
+    const r = lc.resolveLaunchSystemPrompt({
+      spawnDir: proj, extraArgs: [], env: {},
+      modelReader: () => 'k3', // persistPending 默认 true
+    });
+    assert.equal(r.sysPrompt.model, 'KIMI-K3');
+    assert.deepEqual(r.sysPrompt.loaded, ['builtin:KIMI-K3']);
+    assert.notEqual(r.diagnostic, 'no-match');
+    // 渲染管线：注入文件的全部 ${...} 变量已替换（preset 只使用已知变量 + keep 模式兜底）
+    assert.equal(r.sysPrompt.entries.length, 1);
+    assert.ok(!r.sysPrompt.entries[0].content.includes('${'), '渲染后不应残留模板变量字面量');
+    assert.equal(r.sysPrompt.entries[0].flag, '--system-prompt-file');
+    // pending 记录是 Bind A 的内容源（快照钉扎兼容）
+    assert.ok(r.pendingRec, 'pending recorded');
+    assert.equal(r.pendingRec.resumeExpected, false);
+    assert.equal(r.pendingRec.entries.length, 1);
+    assert.ok(r.pendingRec.entries[0].content.length > 0);
+  });
+
+  it('workspace 墓碑禁用 → diagnostic=builtin-disabled，回落 sentinel 注入', () => {
+    const proj = mkProj({ 'CC_SYSTEM.md': 'sentinel' });
+    mkdirSync(join(proj, 'system_prompt'));
+    writeFileSync(join(proj, 'system_prompt', '.builtin-disabled.json'), '["KIMI-K3"]\n');
+    const r = lc.resolveLaunchSystemPrompt({
+      spawnDir: proj, extraArgs: [], env: {},
+      modelReader: () => 'k3', persistPending: false,
+    });
+    assert.equal(r.diagnostic, 'builtin-disabled');
+    assert.equal(r.sysPrompt.model, null);
+    assert.deepEqual(r.sysPrompt.args, ['--system-prompt-file', join(proj, 'CC_SYSTEM.md')]);
+  });
+
+  it('global 墓碑禁用（LOG_DIR 侧）→ diagnostic=builtin-disabled', () => {
+    const proj = mkProj({});
+    const g = join(process.env.CCV_LOG_DIR, 'system_prompt');
+    mkdirSync(g, { recursive: true });
+    writeFileSync(join(g, '.builtin-disabled.json'), '["KIMI-K3"]\n');
+    try {
+      const r = lc.resolveLaunchSystemPrompt({
+        spawnDir: proj, extraArgs: [], env: {},
+        modelReader: () => 'k3', persistPending: false,
+      });
+      assert.equal(r.diagnostic, 'builtin-disabled');
+      assert.equal(r.sysPrompt.model, null);
+      assert.deepEqual(r.sysPrompt.args, []);
+    } finally {
+      rmSync(g, { recursive: true, force: true });
+    }
+  });
+
+  it('用户文件存在时内置不介入（K3_SYSTEM.md 仍胜出）', () => {
+    const proj = mkProj({});
+    mkdirSync(join(proj, 'system_prompt'));
+    writeFileSync(join(proj, 'system_prompt', 'K3_SYSTEM.md'), 'mine');
+    const r = lc.resolveLaunchSystemPrompt({
+      spawnDir: proj, extraArgs: [], env: {},
+      modelReader: () => 'k3', persistPending: false,
+    });
+    assert.equal(r.sysPrompt.model, 'K3');
   });
 });

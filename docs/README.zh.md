@@ -196,6 +196,7 @@ ccv -h
 * **默认**标签页保留经典行为：它将 `CC_SYSTEM.md`（覆盖）或 `CC_APPEND_SYSTEM.md`（追加）写入当前工作区，并在下次 ccv 启动时通过 `--system-prompt-file` / `--append-system-prompt-file` 注入。
 * **模型标签页**：点击 **+ 添加模型**，输入名称（例如 `opus` 或 `Gemini3`），并选择作用域——**全局**（`~/.claude/cc-viewer/system_prompt/`，对所有工作区生效）或**工作区**（`<project>/system_prompt/`）。名称输入框会根据本地已配置的模型提供输入建议（来自热更新的代理配置和 `settings.json`）；所选作用域中已添加的名称会被隐藏，仍可输入任意自定义名称。每个标签页都有自己的追加/覆盖开关和 Markdown 预览。
 * 条目以大写文件名存储：`OPUS_SYSTEM.md`（覆盖）或 `OPUS_APPEND_SYSTEM.md`（追加）。匹配是模糊的——按「当前生效配置」解析出的模型 ID 做不区分大小写子串匹配（激活的三方 proxy profile 模型映射 > 启动环境变量 `ANTHROPIC_MODEL`/`CLAUDE_MODEL` > `settings.json` 配置的 `model`；无任何配置信号则不注入条目），因此无论版本如何，`opus` 都能匹配 `claude-opus-4-8[1m]`。已知限制：会话中途切换 proxy profile 需重启 claude 会话才会重新匹配；经额外参数透传的 `--model` 不参与解析。工作区匹配优先于全局匹配；同一作用域内名称最长者胜出；匹配到的条目会在该次启动中完全取代默认标签页的文件。
+* **内置预设默认即生效：**软件包为 `deepseek-v4-pro`、`deepseek-v4-flash`、`GLM-5.2`、`Qwen-3.7-Max`、`kimi-k2.7-code` 和 `kimi-k3` 预置了调校过的提示词——当解析出的模型匹配其中之一、且没有你自己的条目匹配时，内置提示词会自动注入（你自己的文件始终优先：工作区 > 全局 > 内置）。内置标签页在模态框中带有 **内置** 徽标：编辑并保存即可生成你的覆盖条目，或使用标签页上的 × 来 **禁用** 某个内置项（记录在 `<scope>/system_prompt/.builtin-disabled.json` 中）。被禁用的内置项会回落到默认标签页的文件，头部条目仍保持可见并标记为「已禁用」，你可以随时重新启用。
 * 将标签页保存为空即可删除该条目。会话中途切换模型将在下次重新启动时生效。设置 `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` 可禁用所有自动注入。你可以将 `<project>/system_prompt/` 提交到版本库与团队共享提示词，也可以将其加入 `.gitignore` 保持私有。
 
 ### 日志模式（查看claude code 完整会话）

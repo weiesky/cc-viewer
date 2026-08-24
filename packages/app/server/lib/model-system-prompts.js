@@ -261,10 +261,26 @@ function modelIdVariants(id) {
   return MODEL_ID_ALIASES[id] || [id];
 }
 
+// 供内置预设匹配复用的导出包装：入参任意大小写，先剥 `[1m]` 类方括号后缀
+// （spawn 渲染管线对 model.name 做同样的剥离；上游 resolver 正常会剥，这里兜底），
+// 再 toLowerCase 展开别名——避免大写 env（如 K3）或带后缀的裸名（k3[1m]）绕过别名表。
+// 单一别名源，勿在别处复制 MODEL_ID_ALIASES。
+// Exported wrapper for the built-in preset matcher: strips a trailing bracket suffix
+// and lowercases before expanding, so uppercase ids (K3) or suffixed shorthands
+// (k3[1m]) cannot bypass the alias table.
+export function expandModelIdVariants(modelId) {
+  if (!modelId || typeof modelId !== 'string') return [];
+  const stripped = modelId.replace(/\s*\[[^\]]*\]$/, '').toLowerCase();
+  return modelIdVariants(stripped);
+}
+
 export function matchModelPrompt(modelId, candidates) {
   if (!modelId || typeof modelId !== 'string') return null;
   if (!Array.isArray(candidates)) return null;
-  const variants = modelIdVariants(modelId.toLowerCase());
+  // 与内置层（builtin-model-prompts.js）同一展开：剥 `[1m]` 类后缀 + lowercase + 别名。
+  // 若用户层不剥后缀而内置层剥（k3[1m] + 用户有 KIMI-K3_SYSTEM.md），用户文件会
+  // 静默 miss、内置反客为主 —— 违反「用户文件永远优先」，两层必须同语义。
+  const variants = expandModelIdVariants(modelId);
   for (const cand of candidates) {
     if (!cand || !cand.dir) continue;
     const hits = listModelPrompts(cand.dir).filter((e) => {

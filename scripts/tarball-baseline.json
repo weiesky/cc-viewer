@@ -1401,6 +1401,7 @@
   "server/lib/async-write-queue.js",
   "server/lib/auth.js",
   "server/lib/base-path.js",
+  "server/lib/builtin-model-prompts.js",
   "server/lib/ccswitch-import.js",
   "server/lib/ccv-editor.js",
   "server/lib/chat-queue.js",

@@ -176,3 +176,95 @@ describe('api expert model-prompts', () => {
     }
   });
 });
+
+describe('api expert model-prompts — builtin 层', () => {
+  it('GET 回包含 builtin 数组（6 条，含 disabled 双 scope 标志与剥离边界的 text）', async () => {
+    const r = (await callGet()).json();
+    assert.ok(Array.isArray(r.builtin), 'builtin field must be an array');
+    assert.equal(r.builtin.length, 6);
+    const k3 = r.builtin.find((e) => e.name === 'KIMI-K3');
+    assert.ok(k3, 'KIMI-K3 builtin entry exists');
+    assert.equal(k3.mode, 'override');
+    assert.deepEqual(k3.disabled, { workspace: false, global: false });
+    assert.ok(k3.text.length > 0);
+    assert.ok(!k3.text.includes('__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'));
+  });
+
+  it('POST action=disable-builtin → 墓碑生效；enable-builtin 恢复', async () => {
+    try {
+      const d = await callPost({ action: 'disable-builtin', scope: 'global', name: 'kimi-k3' });
+      assert.deepEqual(d.json(), { ok: true, scope: 'global', name: 'KIMI-K3', disabled: true });
+      let g = (await callGet()).json();
+      assert.equal(g.builtin.find((e) => e.name === 'KIMI-K3').disabled.global, true);
+      const e = await callPost({ action: 'enable-builtin', scope: 'global', name: 'KIMI-K3' });
+      assert.equal(e.json().disabled, false);
+      g = (await callGet()).json();
+      assert.equal(g.builtin.find((x) => x.name === 'KIMI-K3').disabled.global, false);
+    } finally {
+      // 断言失败也不能残留墓碑（会级联污染后续用例的 GET 断言）
+      await callPost({ action: 'enable-builtin', scope: 'global', name: 'KIMI-K3' });
+    }
+  });
+
+  it('bad_action（拼错 action）→ 400，且绝不 fall-through 删除用户文件', async () => {
+    try {
+      await callPost({ scope: 'global', name: 'KIMI-K3', mode: 'override', text: 'mine' });
+      const r = await callPost({ action: 'disabel-builtin', scope: 'global', name: 'KIMI-K3', text: '' });
+      assert.equal(r.code, 400);
+      assert.equal(r.json().error, 'bad_action');
+      const g = (await callGet()).json();
+      assert.ok(g.global.some((e) => e.name === 'KIMI-K3'), '用户文件不得被误删');
+    } finally {
+      await callPost({ scope: 'global', name: 'KIMI-K3', text: '' }); // 清理
+    }
+  });
+
+  it('unknown_builtin / bad_model_name / bad_scope 各 400', async () => {
+    let r = await callPost({ action: 'disable-builtin', scope: 'global', name: 'NOT-A-BUILTIN' });
+    assert.equal(r.code, 400);
+    assert.equal(r.json().error, 'unknown_builtin');
+    r = await callPost({ action: 'disable-builtin', scope: 'global', name: 'bad name' });
+    assert.equal(r.code, 400);
+    assert.equal(r.json().error, 'bad_model_name');
+    r = await callPost({ action: 'disable-builtin', scope: 'nope', name: 'KIMI-K3' });
+    assert.equal(r.code, 400);
+    assert.equal(r.json().error, 'bad_scope');
+  });
+
+  it('workspace scope 墓碑往返；无活动工作区 → no_active_workspace', async () => {
+    // resolveDir 兜底到 CCV_PROJECT_DIR（已在文件头设置）→ 有工作区
+    let r = await callPost({ action: 'disable-builtin', scope: 'workspace', name: 'KIMI-K3' }, baseDeps({ isWorkspaceMode: true }));
+    assert.equal(r.code, 200);
+    let g = (await callGet()).json();
+    assert.equal(g.builtin.find((e) => e.name === 'KIMI-K3').disabled.workspace, true);
+    await callPost({ action: 'enable-builtin', scope: 'workspace', name: 'KIMI-K3' });
+    g = (await callGet()).json();
+    assert.equal(g.builtin.find((e) => e.name === 'KIMI-K3').disabled.workspace, false);
+
+    const saved = process.env.CCV_PROJECT_DIR;
+    delete process.env.CCV_PROJECT_DIR;
+    try {
+      r = await callPost({ action: 'disable-builtin', scope: 'workspace', name: 'KIMI-K3' }, baseDeps({ isWorkspaceMode: true }));
+      assert.equal(r.code, 400);
+      assert.equal(r.json().error, 'no_active_workspace');
+    } finally {
+      process.env.CCV_PROJECT_DIR = saved;
+    }
+  });
+
+  it('GET matched：无用户文件时 env 裸 k3 → matched.scope=builtin；墓碑后 matched=null', async () => {
+    const saved = process.env.ANTHROPIC_MODEL;
+    process.env.ANTHROPIC_MODEL = 'k3';
+    try {
+      let r = (await callGet()).json();
+      assert.equal(r.modelId, 'k3');
+      assert.deepEqual(r.matched, { scope: 'builtin', name: 'KIMI-K3', mode: 'override' });
+      await callPost({ action: 'disable-builtin', scope: 'global', name: 'KIMI-K3' });
+      r = (await callGet()).json();
+      assert.equal(r.matched, null);
+    } finally {
+      if (saved === undefined) delete process.env.ANTHROPIC_MODEL; else process.env.ANTHROPIC_MODEL = saved;
+      await callPost({ action: 'enable-builtin', scope: 'global', name: 'KIMI-K3' }); // 清理墓碑
+    }
+  });
+});

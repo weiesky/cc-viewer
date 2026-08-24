@@ -266,7 +266,7 @@
   color: var(--text-secondary);
 }
 
-/* 作用域徽标(tab 内小标签:全局/工作区)。 */
+/* 作用域徽标(tab 内小标签:全局/工作区/内置)。 */
 .scopeBadge {
   font-size: 10px;
   line-height: 1.4;
@@ -274,6 +274,24 @@
   border-radius: 6px;
   background: var(--bg-surface);
   color: var(--text-muted);
+}
+
+/* 「已禁用」徽标：警示底色的弱变体(沿用主题警示色，不引入新色)。 */
+.scopeBadgeDisabled {
+  color: var(--color-warning, #d48806);
+}
+
+/* 禁用态的模型页签：整体降饱和，示意当前不生效。 */
+.tabBtn.tabDisabled {
+  opacity: 0.55;
+}
+
+/* 内置页签的「保存到作用域」切换行(modeRow 内)。 */
+.builtinScopeRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
 }
 
 /* 未保存修改的小圆点。 */
