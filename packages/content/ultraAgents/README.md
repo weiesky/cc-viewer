@@ -48,6 +48,8 @@ in `src/utils/ultraplanTemplates.js`). Preset `content` should therefore be writ
 > `src/utils/ultraplanTemplates.js`'s `ULTRAPLAN_VARIANTS.codeExpert` / `researchExpert`,
 > and is pinned byte-for-byte by `test/ultra-agents-api.test.js` — to change the body, edit that
 > source file and regenerate the JSON in this directory; do not hand-write a second copy here.
+> Other presets (e.g. `test-analysis-expert`) are authored standalone in this directory and have
+> no template source.
 
 ## Validation and Limits
 
@@ -66,6 +68,7 @@ Each file undergoes defensive validation at load time. Invalid files are skipped
 | --- | --- | --- | --- |
 | `code-expert.json` | Code Expert / 代码专家 | Inline localized (all 18 languages) | `ULTRAPLAN_VARIANTS.codeExpert` |
 | `research-expert.json` | Research Expert / 调研专家 | Inline localized (all 18 languages) | `ULTRAPLAN_VARIANTS.researchExpert` |
+| `test-analysis-expert.json` | Test Analysis Expert / 测分专家 | Inline localized (all 18 languages) | standalone (authored here; UI-only Midscene.js YAML test-case generation, generation-only) |
 
 To add a new preset: drop a new `*.json` file in this directory (file name should match `id`),
 and restart/refresh to see it in the modal.

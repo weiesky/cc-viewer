@@ -1566,5 +1566,6 @@
   "server/workspace-registry.js",
   "ultraAgents/README.md",
   "ultraAgents/code-expert.json",
-  "ultraAgents/research-expert.json"
+  "ultraAgents/research-expert.json",
+  "ultraAgents/test-analysis-expert.json"
 ]

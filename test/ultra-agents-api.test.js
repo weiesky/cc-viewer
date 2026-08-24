@@ -204,8 +204,9 @@ describe('listUltraAgents', () => {
 });
 
 describe('built-in presets match ultraplanTemplates.js', () => {
-  // 钉死：随包 ultraAgents/*.json 的 content 必须逐字节等于 ULTRAPLAN_VARIANTS，
+  // 钉死：随包 code-expert / research-expert 的 content 必须逐字节等于 ULTRAPLAN_VARIANTS，
   // 防止 demo 的 content 再次被改写成与源模板不一致的「YY 版」。
+  // （test-analysis-expert 为独立撰写的预设，无模板源，不在此约束内。）
   // content 是单语言字符串；title 为 JSON 内联本地化对象({lang: str})。
   it('code-expert / research-expert ship content verbatim from the templates', () => {
     const agents = listUltraAgents(); // 默认读包内置 ULTRA_AGENTS_DIR
