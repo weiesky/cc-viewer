@@ -11,9 +11,11 @@
 //   node scripts/verify-tarball-contract.mjs          # diff vs baseline, exit 1 on delta
 //   node scripts/verify-tarball-contract.mjs --write  # regenerate the baseline
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseNpmPackFiles } from './lib/npm-pack-json.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const APP_DIR = join(REPO_ROOT, 'packages', 'app');
@@ -25,16 +27,32 @@ function fail(msg) {
   process.exit(1);
 }
 
-// Assemble first (idempotent; fails loudly on stale/missing web dist), then pack with
-// --ignore-scripts: prepack's own stdout would otherwise corrupt npm's --json output.
+// Assemble first (idempotent; fails loudly on stale/missing web dist), then create the
+// actual tarball in a temporary directory. npm 11 can return `[]` for the combination
+// of `pack --dry-run --json` and setup-node's CI npmrc, so a dry run is not a reliable
+// source of the publish contract. Packing to a temp dir also verifies the real artifact.
+// --ignore-scripts keeps prepack's stdout from corrupting npm's --json output.
 execFileSync('pnpm', ['--filter', 'cc-viewer', 'run', 'assemble'], { cwd: REPO_ROOT, stdio: 'inherit' });
-// npm pack --dry-run --json prints [{ name, version, files: [{path}...] }] on stdout.
-const out = execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
-  cwd: APP_DIR,
-  encoding: 'utf8',
-  stdio: ['ignore', 'pipe', 'inherit'],
-});
-const files = JSON.parse(out)[0].files.map((f) => f.path).sort();
+const packDir = mkdtempSync(join(tmpdir(), 'ccv-tarball-contract-'));
+let out;
+try {
+  const npmCache = join(packDir, 'npm-cache');
+  out = execFileSync('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', packDir], {
+    cwd: APP_DIR,
+    encoding: 'utf8',
+    env: { ...process.env, npm_config_cache: npmCache, NPM_CONFIG_CACHE: npmCache },
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+} finally {
+  rmSync(packDir, { recursive: true, force: true });
+}
+
+let files;
+try {
+  files = parseNpmPackFiles(out);
+} catch (error) {
+  fail(error.message);
+}
 
 // Structural assertions for the hash-named parts of dist/.
 if (!files.includes('dist/index.html')) fail('dist/index.html missing from tarball');
