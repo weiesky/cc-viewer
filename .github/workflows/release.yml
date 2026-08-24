@@ -161,10 +161,10 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: 'pnpm'
 
-      # OIDC trusted publishing requires npm >= 11.5.1 — Node 20's bundled npm 10.x cannot do
-      # the OIDC token exchange, so `npm publish` fails even with a correctly configured
-      # Trusted Publisher on npmjs.com (this is what broke the v1.6.346/347 releases).
-      - run: npm install -g npm@latest
+      # OIDC trusted publishing requires npm >= 11.5.1. Pin the tested CLI instead of
+      # following `latest`: npm 12 changed `npm pack --json` from an array to an object
+      # and broke the v1.8.0 release gate. Upgrade this deliberately with CI coverage.
+      - run: npm install -g npm@11.19.0
 
       - run: pnpm install --frozen-lockfile
 
