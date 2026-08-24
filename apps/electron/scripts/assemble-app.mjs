@@ -16,6 +16,7 @@ import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createStageManifest } from './stage-manifest.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const ELECTRON_APP = resolve(SCRIPT_DIR, '..');
@@ -66,14 +67,7 @@ cpSync(join(ELECTRON_APP, 'electron'), join(STAGE, 'electron'), { recursive: tru
 //    exact set the shell requires.
 const appPkg = JSON.parse(readFileSync(join(APP_PKG, 'package.json'), 'utf8'));
 const electronPkg = JSON.parse(readFileSync(join(ELECTRON_APP, 'package.json'), 'utf8'));
-const stagePkg = {
-  name: 'cc-viewer',
-  version: appPkg.version,
-  main: 'electron/main.js',
-  type: 'module',
-  dependencies: { ...electronPkg.dependencies },
-  optionalDependencies: { ...electronPkg.optionalDependencies },
-};
+const stagePkg = createStageManifest(appPkg, electronPkg);
 for (const section of ['dependencies', 'optionalDependencies']) {
   for (const [name, spec] of Object.entries(stagePkg[section] ?? {})) {
     if (typeof spec === 'string' && /^(workspace|catalog):/.test(spec)) {
