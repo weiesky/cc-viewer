@@ -1575,6 +1575,7 @@ class AppHeader extends React.Component {
   // 把 LiveTagPopover（血条 + popover trigger）通过 createPortal 渲染到
   // 代理 chip：主 Agent 用 profile 时显示主源；main=Default 但自定义端点且子/Teammate
   // 有显式分配时也露头（否则代理中的角色流量无指示）。休眠（main=Default+官方端点）不显示。
+  // chip 标签只显示主源：子/Teammate 的角色分配放进 title tooltip，header 上不铺开（太冗长）。
   _renderProxyChip() {
     if (!this.props.activeProxyId) return null;
     const profiles = this.props.proxyProfiles || [];
@@ -1600,8 +1601,6 @@ class AppHeader extends React.Component {
       <Tag className={styles.proxyProfileTag} title={title} onClick={() => this.setState({ proxyModalVisible: true })}>
         <SwapOutlined className={styles.proxySwapIcon} />
         {mainLabel}
-        {subD ? ` · ${t('ui.proxy.badgeSubagent')}: ${subD}` : ''}
-        {teamD ? ` · ${t('ui.proxy.badgeTeammate')}: ${teamD}` : ''}
       </Tag>
     );
   }
