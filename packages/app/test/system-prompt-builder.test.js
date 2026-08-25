@@ -162,12 +162,12 @@ describe('presets', () => {
   const manifest = listPresets();
   const global = manifest.categories.Global;
 
-  it('the manifest lists the six expected [Global] presets', () => {
+  it('the manifest lists the seven expected [Global] presets', () => {
     const ids = global.map(p => p.id).sort();
-    assert.deepEqual(ids, ['GLM-5.2', 'Qwen-3.7-Max', 'deepseek-v4-flash', 'deepseek-v4-pro', 'kimi-k2.7-code', 'kimi-k3']);
+    assert.deepEqual(ids, ['GLM-5.2', 'GLM-5.3', 'Qwen-3.7-Max', 'deepseek-v4-flash', 'deepseek-v4-pro', 'kimi-k2.7-code', 'kimi-k3']);
   });
 
-  for (const preset of [{ id: 'deepseek-v4-pro' }, { id: 'deepseek-v4-flash' }, { id: 'GLM-5.2' }, { id: 'Qwen-3.7-Max' }, { id: 'kimi-k2.7-code' }, { id: 'kimi-k3' }]) {
+  for (const preset of [{ id: 'deepseek-v4-pro' }, { id: 'deepseek-v4-flash' }, { id: 'GLM-5.2' }, { id: 'GLM-5.3' }, { id: 'Qwen-3.7-Max' }, { id: 'kimi-k2.7-code' }, { id: 'kimi-k3' }]) {
     it(`renders preset ${preset.id} with the shared dynamic sections and no stray placeholders`, () => {
       const out = renderPreset(preset.id, { variables: fixtureVariables(), missingVariableMode: 'empty' });
       assert.doesNotMatch(out, /\$\{/);

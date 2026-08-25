@@ -27,6 +27,14 @@
         "defaultMode": "override"
       },
       {
+        "id": "GLM-5.3",
+        "title": "GLM-5.3",
+        "file": "GLM-5.3.md",
+        "description": "Forked from the GLM-5.2 preset for GLM-5.3: action-default, changes through tools, parallel tool calls, no-wait teammate rules.",
+        "match": "glm-5.3",
+        "defaultMode": "override"
+      },
+      {
         "id": "Qwen-3.7-Max",
         "title": "Qwen 3.7 Max",
         "file": "Qwen-3.7-Max.md",

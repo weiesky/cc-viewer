@@ -7,13 +7,13 @@ import assert from 'node:assert/strict';
 import { listSystemPromptPresets, groupPresetsByCategory, getSystemPromptVariablesDoc } from '../server/lib/system-prompt-presets.js';
 import { expertRoutes } from '../server/routes/expert.js';
 
-const EXPECTED_IDS = ['deepseek-v4-pro', 'deepseek-v4-flash', 'GLM-5.2', 'Qwen-3.7-Max', 'kimi-k2.7-code', 'kimi-k3'];
+const EXPECTED_IDS = ['deepseek-v4-pro', 'deepseek-v4-flash', 'GLM-5.2', 'GLM-5.3', 'Qwen-3.7-Max', 'kimi-k2.7-code', 'kimi-k3'];
 
 describe('listSystemPromptPresets', () => {
   const presets = listSystemPromptPresets();
 
-  it('returns the six [Global] presets with the expected shape', () => {
-    assert.equal(presets.length, 6);
+  it('returns the seven [Global] presets with the expected shape', () => {
+    assert.equal(presets.length, 7);
     for (const p of presets) {
       assert.equal(typeof p.id, 'string');
       assert.equal(typeof p.title, 'string');
@@ -44,7 +44,7 @@ describe('listSystemPromptPresets', () => {
   it('groupPresetsByCategory groups under Global', () => {
     const grouped = groupPresetsByCategory(presets);
     assert.deepEqual(Object.keys(grouped), ['Global']);
-    assert.equal(grouped.Global.length, 6);
+    assert.equal(grouped.Global.length, 7);
   });
 });
 
@@ -70,8 +70,8 @@ describe('GET /api/expert/system-prompt-presets', () => {
     await routeFor()({}, res, null, true, { MAX_POST_BODY: 1024, isWorkspaceMode: false });
     assert.equal(res.code, 200);
     const j = res.json();
-    assert.equal(j.presets.length, 6);
-    assert.equal(j.categories.Global.length, 6);
+    assert.equal(j.presets.length, 7);
+    assert.equal(j.categories.Global.length, 7);
     assert.ok(j.presets[0].text.includes('${'));
     assert.ok(typeof j.variablesDoc === 'string' && j.variablesDoc.length > 0, 'variablesDoc served');
     assert.ok(j.variablesDoc.includes('${memory.dir}'), 'variablesDoc is the parameter reference');

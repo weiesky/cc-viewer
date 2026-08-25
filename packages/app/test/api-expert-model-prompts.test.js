@@ -178,10 +178,10 @@ describe('api expert model-prompts', () => {
 });
 
 describe('api expert model-prompts — builtin 层', () => {
-  it('GET 回包含 builtin 数组（6 条，含 disabled 双 scope 标志与剥离边界的 text）', async () => {
+  it('GET 回包含 builtin 数组（7 条，含 disabled 双 scope 标志与剥离边界的 text）', async () => {
     const r = (await callGet()).json();
     assert.ok(Array.isArray(r.builtin), 'builtin field must be an array');
-    assert.equal(r.builtin.length, 6);
+    assert.equal(r.builtin.length, 7);
     const k3 = r.builtin.find((e) => e.name === 'KIMI-K3');
     assert.ok(k3, 'KIMI-K3 builtin entry exists');
     assert.equal(k3.mode, 'override');

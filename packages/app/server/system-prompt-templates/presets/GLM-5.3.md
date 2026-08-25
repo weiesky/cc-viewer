@@ -1,5 +1,7 @@
 <!--
-Preset: GLM-5.2  (category: Global)
+Preset: GLM-5.3  (category: Global)
+Forked from the GLM-5.2 preset (same guidance, incl. the no-wait
+teammate rules); match targets the glm-5.3 model id.
 Self-contained template: a tuned preamble plus its own dynamic sections
 (a boundary marker, an OS-only # Environment, and a verbatim # Memory; no Git).
 Edit this file directly.
