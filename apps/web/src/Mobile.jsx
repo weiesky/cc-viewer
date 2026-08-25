@@ -64,7 +64,7 @@ class Mobile extends AppBase {
       mobileCachePanelVisible: false,  // 手机模式：点击血条划出的侧边抽屉
       globalPermission: null,     // { permission, handlers } — 全局权限审批浮层
       globalPlanApproval: null,   // { plan, handlers } — 全局计划审批浮层
-      autoApproveSeconds: 0,
+      autoApproveSeconds: 3,   // 与 AppBase 一致：默认 3s 倒计时自动批准（0=关闭 / -1=免审批）
       hasGit: true,
       terminalPendingImages: [],  // 终端面板独立的 pending 图片/文件
       // ─── 血条 popover/抽屉用的状态（与 AppHeader 同语义）─────────

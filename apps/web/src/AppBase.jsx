@@ -129,7 +129,7 @@ class AppBase extends React.Component {
       // 初值 null = 还没拿到；/api/claude-settings 与 workspace_started SSE 都会塞值。
       claudeProjectModel: null,
       resumeRememberChoice: false,
-      autoApproveSeconds: 0, // 自动审批倒计时秒数，0=关闭
+      autoApproveSeconds: 3, // 自动审批倒计时秒数；默认 3s（0=关闭 / N=N 秒后自动批准 / -1=免审批）
       logDir: '',
       themeColor: /Windows/i.test(navigator.userAgent) ? 'dark' : 'light',
       displayScale: 100, // 整体显示缩放百分比(100=原始大小),仅 Electron 桌面经 webFrame.setZoomFactor 原生缩放;浏览器交由原生快捷键
