@@ -82,7 +82,9 @@ const MODEL_CONTEXT_SIZES = [
 ];
 
 /**
- * 模型名 → 上下文窗口 token 数。后缀优先,其次家族档位表,默认 200K。
+ * 模型名 → 上下文窗口 token 数。后缀优先,其次家族档位表;
+ * 无法识别的型号默认 1M(用户规约:宁可低估百分比,不让血条提前顶满)。
+ * 空/缺失名字不属于"无法识别的型号",维持 200K 静态兜底。
  * @param {string|null|undefined} modelName
  * @returns {number}
  */
@@ -93,7 +95,8 @@ export function getModelMaxTokens(modelName) {
   for (const entry of MODEL_CONTEXT_SIZES) {
     if (entry.match.test(modelName)) return entry.tokens;
   }
-  return 200000;
+  // Unrecognized model family → assume 1M (user convention).
+  return 1000000;
 }
 
 /**
@@ -107,6 +110,7 @@ export function getModelMaxTokens(modelName) {
  * 'k3[1m]' 时上游会把响应 model 归一化成裸 'k3'(剥掉 [1m] 后缀),
  * response-first 解析读到裸 'k3' 若归 200K 桶会与请求侧 1M 判定分裂,
  * 血条分母错成 200K;且裸 'k3' 本就是 k3[1m] 的 1M 形态被剥后缀的产物。
+ * 无法识别的型号经 getModelMaxTokens 落底 1M → 归 1M 桶(见该函数注释)。
  * @param {string} modelName
  * @returns {1000000|200000}
  */

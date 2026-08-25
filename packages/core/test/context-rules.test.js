@@ -96,10 +96,13 @@ describe('getModelMaxTokens — 家族档位', () => {
     assert.equal(getModelMaxTokens('gpt-3.5-turbo'), 16000);
     assert.equal(getModelMaxTokens('deepseek-chat'), 128000);
   });
-  it('空/未知回落 200K', () => {
+  it('空/缺失名字回落 200K(不属于"无法识别的型号")', () => {
     assert.equal(getModelMaxTokens(null), 200000);
     assert.equal(getModelMaxTokens(''), 200000);
-    assert.equal(getModelMaxTokens('llama-3-70b'), 200000);
+  });
+  it('无法识别的型号默认 1M(用户规约)', () => {
+    assert.equal(getModelMaxTokens('llama-3-70b'), 1000000);
+    assert.equal(getModelMaxTokens('some-opaque-upstream-alias'), 1000000);
   });
   it('kimi/moonshot 前缀型号与裸 k3 → 256K 精确档', () => {
     assert.equal(getModelMaxTokens('kimi-k2.5'), 256000);
@@ -137,6 +140,10 @@ describe('classifyContextWindow — 校准二分类', () => {
     assert.equal(classifyContextWindow('moonshot-v1-k2'), 1000000);
     // 裸 k3:热切换 k3[1m] 时上游把响应 model 剥成裸 k3,response-first 解析须仍归 1M
     assert.equal(classifyContextWindow('k3'), 1000000);
+  });
+  it('无法识别的型号归 1M 桶(getModelMaxTokens 落底 1M)', () => {
+    assert.equal(classifyContextWindow('llama-3-70b'), 1000000);
+    assert.equal(classifyContextWindow('qwen3-coder'), 1000000);
   });
 });
 

@@ -64,7 +64,7 @@ describe('helpers', () => {
     it('returns 1000000 for deepseek-v4 with surrounding chars', () => { assert.equal(H.getModelMaxTokens('mycompany-deepseek-v4-ft'), 1000000); });
     it('returns 16000 for gpt-3', () => { assert.equal(H.getModelMaxTokens('gpt-3.5-turbo'), 16000); });
     it('returns 200000 for null', () => { assert.equal(H.getModelMaxTokens(null), 200000); });
-    it('returns 200000 for unknown model', () => { assert.equal(H.getModelMaxTokens('llama-3'), 200000); });
+    it('returns 1000000 for unknown model (unrecognized → 1M)', () => { assert.equal(H.getModelMaxTokens('llama-3'), 1000000); });
     it('returns 256000 for kimi-prefixed models and bare k3', () => {
       assert.equal(H.getModelMaxTokens('kimi-k2.5'), 256000);
       assert.equal(H.getModelMaxTokens('kimi-k3'), 256000);

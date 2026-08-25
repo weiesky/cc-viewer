@@ -227,9 +227,9 @@ describe('context-watcher: getContextSizeForModel — entry 形式(热切换感�
     const entry = { body: { model: 'claude-sonnet-4-6' }, response: { body: { model: 'DeepSeek-V4-Turbo' } } };
     assert.equal(getContextSizeForModel(entry), 1000000);
   });
-  it('entry: response 模型无法识别 → 规则表默认 200K(adaptContextWindow 兜底纠偏)', () => {
+  it('entry: response 模型无法识别 → 规则表默认 1M(用户规约)', () => {
     const entry = { body: { model: 'claude-opus-4-8' }, response: { body: { model: 'some-opaque-upstream-alias' } } };
-    assert.equal(getContextSizeForModel(entry), 200000);
+    assert.equal(getContextSizeForModel(entry), 1000000);
   });
   it('entry: 请求名带 [1m] 后缀 → 请求后缀优先,不被响应归一化覆盖(k3[1m]→裸k3 仍 1M)', () => {
     // 热切换配置 k3[1m]:上游响应 model 剥成裸 k3,请求侧 [1m] 意图必须胜出 → 1M。

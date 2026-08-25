@@ -71,7 +71,7 @@ export function getContextSizeForModel(modelOrEntry) {
     return _startupContextSize;
   }
   // 完整档位表见 @ccv/core/context-rules(与前端同源;含 haiku/旧 opus/3-opus 200K、
-  // deepseek-v4 1M、kimi/moonshot 256K、gpt/deepseek 等三方档位,默认 200K)
+  // deepseek-v4 1M、kimi/moonshot 256K、gpt/deepseek 等三方档位,未识别型号默认 1M)
   return getModelMaxTokens(apiModelName);
 }
 

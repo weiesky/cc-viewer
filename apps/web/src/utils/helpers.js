@@ -49,7 +49,8 @@ const CALIBRATION_TOKEN_MAP = {
  *  分类规则（context-rules.classifyContextWindow，前后端同源）：
  *      · model 含 1m 子串（含 [1m] 后缀与裸 1m,如 deepseek-v3-1m）→ 1M
  *      · 其余按统一档位表归并:opus-4-6+/mythons/fable-5/deepseek-v4 → 1M;
- *        haiku/旧 opus(4-0/4-1/4-5)/3-opus/裸 claude/gpt/deepseek 等 → 200K 桶
+ *        haiku/旧 opus(4-0/4-1/4-5)/3-opus/裸 claude/gpt/deepseek 等 → 200K 桶;
+ *        无法识别的型号 → 1M（与冷启动兜底一致,用户规约）
  *  haiku 跳过的代价：纯 haiku 子任务期会落到 projectModelHint；该路径下 hint
  *  缺失时仍按冷启动 1M 处理，不会突然变 200K。
  *

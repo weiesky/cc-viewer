@@ -95,8 +95,8 @@ describe('getModelMaxTokens', () => {
     assert.equal(H.getModelMaxTokens('deepseek-chat'), 128000);
   });
 
-  it('未知模型回落 200000', () => {
-    assert.equal(H.getModelMaxTokens('llama-3-70b'), 200000);
+  it('未知模型回落 1M(用户规约:无法识别的型号按 1M 处理)', () => {
+    assert.equal(H.getModelMaxTokens('llama-3-70b'), 1000000);
   });
 });
 
