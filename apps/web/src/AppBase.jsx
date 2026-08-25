@@ -141,7 +141,6 @@ class AppBase extends React.Component {
       fileLoadingBytes: null,
       isDragging: false,
       selectedLogs: new Set(),   // Set<file>
-      githubStars: null,
       cliMode: false,
       sdkMode: false,
       workspaceMode: false,
@@ -916,12 +915,6 @@ class AppBase extends React.Component {
           });
         }
       })
-      .catch(() => { });
-
-    // 获取 GitHub star 数
-    fetch('https://api.github.com/repos/weiesky/cc-viewer')
-      .then(res => res.json())
-      .then(data => { if (data.stargazers_count != null) this.setState({ githubStars: data.stargazers_count }); })
       .catch(() => { });
 
     // 检测 CLI 模式 / 工作区模式

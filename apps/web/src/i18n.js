@@ -2699,26 +2699,6 @@ const i18nData = {
     "tr": "Sıfırlanıyor…",
     "uk": "Скидання…"
   },
-  "ui.usage.waiting": {
-    "zh": "等待用量数据…",
-    "en": "Waiting for usage data…",
-    "zh-TW": "等待用量資料…",
-    "ko": "사용량 데이터 대기 중…",
-    "ja": "使用量データを待機中…",
-    "de": "Warte auf Nutzungsdaten…",
-    "es": "Esperando datos de uso…",
-    "fr": "En attente des données d'utilisation…",
-    "it": "In attesa dei dati di utilizzo…",
-    "da": "Venter på forbrugsdata…",
-    "pl": "Oczekiwanie na dane o zużyciu…",
-    "ru": "Ожидание данных об использовании…",
-    "ar": "في انتظار بيانات الاستخدام…",
-    "no": "Venter på forbruksdata…",
-    "pt-BR": "Aguardando dados de uso…",
-    "th": "กำลังรอข้อมูลการใช้งาน…",
-    "tr": "Kullanım verileri bekleniyor…",
-    "uk": "Очікування даних про використання…"
-  },
   "ui.chatMode": {
     "zh": "对话",
     "en": "Chat",

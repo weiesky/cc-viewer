@@ -46,13 +46,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 等待数据的静默态:中性灰描边。 */
-.muted {
-  border-color: var(--border-light);
-  color: var(--text-disabled);
-  background: var(--bg-surface);
-}
-
 /* ---- hover popover 内容 ---- */
 .pop {
   min-width: 220px;

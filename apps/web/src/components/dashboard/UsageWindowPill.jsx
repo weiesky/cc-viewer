@@ -36,7 +36,7 @@ function windowShort(id) {
   return id === '7d' ? t('ui.usage.weeklyShort') : '5h';
 }
 
-function UsageWindowPill({ planUsage, authType }) {
+function UsageWindowPill({ planUsage }) {
   const headline = useMemo(() => pickHeadlineWindow(planUsage), [planUsage]);
 
   // 只保留填充条宽度(--usage-percent);颜色统一走 CSS 里的 --text-disabled，不再按阈值变色。
@@ -47,26 +47,8 @@ function UsageWindowPill({ planUsage, authType }) {
     };
   }, [headline]);
 
-  // 没有套餐限流数据时:OAuth(订阅)显示静默占位 pill,等待数据;其余(API Key / 未知)不渲染。
-  if (!planUsage) {
-    if (authType === 'OAuth') {
-      return (
-        <Popover
-          content={<div className={styles.pop}>{t('ui.usage.waiting')}</div>}
-          trigger="hover"
-          placement="top"
-          overlayInnerStyle={POPOVER_OVERLAY_STYLE}
-        >
-          <span className={`${styles.usagePill} ${styles.muted}`} role="button" tabIndex={0} aria-label={t('ui.usage.ariaLabel')}>
-            <span className={styles.usageContent}>
-              <span className={styles.usageText}>—</span>
-            </span>
-          </span>
-        </Popover>
-      );
-    }
-    return null;
-  }
+  // 没有套餐限流数据时整个功能隐藏(App.jsx 的门禁已保证此处基本不可达,留作防御)。
+  if (!planUsage) return null;
 
   // pill 文案:同时展示已有的两个窗口(5h / 周),例如 "5h 19% · 周 52%"。
   const pillLabel = planUsage.windows
