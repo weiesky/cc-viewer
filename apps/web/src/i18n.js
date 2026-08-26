@@ -4598,6 +4598,26 @@ const i18nData = {
     "tr": "Yerel itilmemiş commit'ler",
     "uk": "Локальні непроштовхнуті коміти"
   },
+  "ui.gitChanges.noUpstreamTip": {
+    "zh": "未配置上游——显示不在任何远端上的提交",
+    "en": "No upstream — showing commits not on any remote",
+    "zh-TW": "未設定上游——顯示不在任何遠端上的提交",
+    "ko": "업스트림 없음 — 어떤 리모트에도 없는 커밋 표시",
+    "ja": "アップストリーム未設定 — どのリモートにも存在しないコミットを表示",
+    "de": "Kein Upstream — Commits werden angezeigt, die auf keinem Remote vorhanden sind",
+    "es": "Sin upstream — mostrando commits que no están en ningún remoto",
+    "fr": "Aucun upstream — affichage des commits absents de tout dépôt distant",
+    "it": "Nessun upstream — visualizzazione dei commit non presenti su alcun remote",
+    "da": "Ingen upstream — viser commits, der ikke findes på nogen remote",
+    "pl": "Brak upstream — wyświetlanie commitów nieobecnych na żadnym zdalnym repozytorium",
+    "ru": "Нет upstream — показаны коммиты, отсутствующие на всех удалённых репозиториях",
+    "ar": "لا يوجد upstream — عرض الالتزامات غير الموجودة على أي مستودع بعيد",
+    "no": "Ingen upstream — viser commits som ikke finnes på noen remote",
+    "pt-BR": "Sem upstream — mostrando commits que não estão em nenhum remoto",
+    "th": "ไม่มี upstream — แสดงคอมมิตที่ไม่มีอยู่บนรีโมตใดเลย",
+    "tr": "Upstream yok — hiçbir uzak depoda olmayan commit'ler gösteriliyor",
+    "uk": "Немає upstream — показано коміти, яких немає на жодному віддаленому репозиторії"
+  },
   "ui.roleFilter": {
     "zh": "角色筛选",
     "en": "Role Filter",

@@ -64,11 +64,12 @@ export function countUntrackedLines(cwd, file) {
 }
 
 /**
- * Get commits between upstream and HEAD (i.e. local commits not yet pushed).
- * Returns an empty list when:
- *   - HEAD is detached (rev-parse --abbrev-ref HEAD prints "HEAD")
- *   - Branch has no upstream (@{u} resolution fails)
- *   - Working tree is at upstream (no commits ahead)
+ * Get local commits not yet pushed, between upstream and HEAD when an upstream
+ * is configured (`<upstream>..HEAD`), otherwise every HEAD commit absent from
+ * all remote-tracking refs (`git log HEAD --not --remotes`). The fallback keeps
+ * commits on branches without an upstream visible instead of silently dropping
+ * them. Returns an empty list when HEAD cannot be resolved (unborn branch) or
+ * the log command fails.
  *
  * Each commit includes its changed files via a single `git log --name-status` call,
  * to avoid one git invocation per commit.
@@ -86,20 +87,26 @@ export async function getUnpushedCommits(cwd, { maxCommits = 100 } = {}) {
   } catch {
     return { commits: [], hasUpstream: false, branch: null, upstream: null };
   }
-  if (!branch || branch === 'HEAD') {
-    return { commits: [], hasUpstream: false, branch, upstream: null };
-  }
+  // Detached HEAD prints "HEAD" — treat like a branch without upstream below.
+  const detached = !branch || branch === 'HEAD';
 
   let upstream = null;
-  try {
-    const { stdout } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'], { cwd, encoding: 'utf-8', timeout: 3000 });
-    upstream = stdout.trim();
-  } catch {
-    return { commits: [], hasUpstream: false, branch, upstream: null };
+  if (!detached) {
+    try {
+      const { stdout } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'], { cwd, encoding: 'utf-8', timeout: 3000 });
+      const name = stdout.trim();
+      if (name && SAFE_REF.test(name)) upstream = name;
+    } catch { /* no upstream configured — fall through to the remote-refs fallback */ }
   }
-  if (!upstream || !SAFE_REF.test(upstream)) {
-    return { commits: [], hasUpstream: false, branch, upstream: null };
-  }
+
+  // With an upstream: commits ahead of it. Otherwise (no upstream, invalid
+  // upstream name, detached HEAD): commits on HEAD not reachable from any
+  // remote-tracking ref. Argument order matters — `--not` flips every revision
+  // listed after it, including HEAD itself, so it must be
+  // ['HEAD', '--not', '--remotes'], never ['--not', '--remotes', 'HEAD'].
+  const rangeArgs = upstream ? [`${upstream}..HEAD`] : ['HEAD', '--not', '--remotes'];
+  const hasUpstream = !!upstream;
+  const resultBranch = detached ? null : branch;
 
   // Use NUL separators between fields and a sentinel between commits to avoid
   // getting fooled by tabs/newlines inside commit subjects.
@@ -117,13 +124,13 @@ export async function getUnpushedCommits(cwd, { maxCommits = 100 } = {}) {
         `--max-count=${maxCommits}`,
         `--pretty=format:${COMMIT_SEP}%H${FIELD_SEP}%an${FIELD_SEP}%aI${FIELD_SEP}%s`,
         '--name-status',
-        `${upstream}..HEAD`,
+        ...rangeArgs,
       ],
       { cwd, encoding: 'utf-8', timeout: 8000, maxBuffer: 10 * 1024 * 1024 }
     );
     stdout = r.stdout;
   } catch {
-    return { commits: [], hasUpstream: true, branch, upstream };
+    return { commits: [], hasUpstream, branch: resultBranch, upstream };
   }
 
   const commits = [];
@@ -163,7 +170,7 @@ export async function getUnpushedCommits(cwd, { maxCommits = 100 } = {}) {
   let truncated = commits.length === maxCommits;
   if (truncated) {
     try {
-      const r = await execFileAsync('git', ['rev-list', '--count', `${upstream}..HEAD`], { cwd, encoding: 'utf-8', timeout: 3000 });
+      const r = await execFileAsync('git', ['rev-list', '--count', ...rangeArgs], { cwd, encoding: 'utf-8', timeout: 3000 });
       const parsed = parseInt(r.stdout.trim(), 10);
       if (Number.isFinite(parsed) && parsed > 0) {
         totalCount = parsed;
@@ -172,7 +179,7 @@ export async function getUnpushedCommits(cwd, { maxCommits = 100 } = {}) {
     } catch {}
   }
 
-  return { commits, hasUpstream: true, branch, upstream, truncated, totalCount };
+  return { commits, hasUpstream, branch: resultBranch, upstream, truncated, totalCount };
 }
 
 /**

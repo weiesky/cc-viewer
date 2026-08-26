@@ -56,21 +56,95 @@ describe('getUnpushedCommits', () => {
     work = null; remote = null;
   });
 
-  it('returns empty hasUpstream=false for fresh non-tracking branch', async () => {
+  it('returns local commits with hasUpstream=false for fresh non-tracking branch', async () => {
+    // No-remote repo: `--not --remotes` matches nothing, so every reachable
+    // commit counts as unpushed (bounded by maxCommits + truncated).
     work = makeTmpDir();
     mkdirSync(work, { recursive: true });
     execSync('git init', { cwd: work, stdio: 'pipe' });
     execSync('git config user.email "t@t.com"', { cwd: work, stdio: 'pipe' });
     execSync('git config user.name "T"', { cwd: work, stdio: 'pipe' });
     execSync('git config commit.gpgsign false', { cwd: work, stdio: 'pipe' });
+    execSync('git branch -M main', { cwd: work, stdio: 'pipe' });
     writeFileSync(join(work, 'x.txt'), 'x\n');
     execSync('git add x.txt && git commit -m "init"', { cwd: work, stdio: 'pipe' });
+    const r = await getUnpushedCommits(work);
+    assert.strictEqual(r.hasUpstream, false);
+    assert.strictEqual(r.upstream, null);
+    assert.strictEqual(r.branch, 'main');
+    assert.strictEqual(r.commits.length, 1);
+    assert.strictEqual(r.commits[0].subject, 'init');
+    assert.strictEqual(r.commits[0].files.length, 1);
+    assert.strictEqual(r.commits[0].files[0].file, 'x.txt');
+  });
+
+  it('returns commits on a branch without upstream (remote present)', async () => {
+    ({ remote, work } = setupBareRemoteAndClone());
+    execSync('git checkout -b feat', { cwd: work, stdio: 'pipe' }); // no -u: no upstream
+    writeFileSync(join(work, 'b.txt'), 'B\n');
+    execSync('git add b.txt && git commit -m "feat one"', { cwd: work, stdio: 'pipe' });
+    writeFileSync(join(work, 'c.txt'), 'C\n');
+    execSync('git add c.txt && git commit -m "feat two"', { cwd: work, stdio: 'pipe' });
+
+    const r = await getUnpushedCommits(work);
+    assert.strictEqual(r.hasUpstream, false);
+    assert.strictEqual(r.upstream, null);
+    assert.strictEqual(r.branch, 'feat');
+    assert.strictEqual(r.commits.length, 2);
+    assert.strictEqual(r.commits[0].subject, 'feat two');
+    assert.strictEqual(r.commits[1].subject, 'feat one');
+  });
+
+  it('excludes commits already on a remote ref even without upstream', async () => {
+    ({ remote, work } = setupBareRemoteAndClone());
+    execSync('git checkout -b feat', { cwd: work, stdio: 'pipe' });
+    writeFileSync(join(work, 'b.txt'), 'B\n');
+    execSync('git add b.txt && git commit -m "feat one"', { cwd: work, stdio: 'pipe' });
+    // Push without -u: remote ref exists but branch still has no upstream.
+    execSync('git push origin feat', { cwd: work, stdio: 'pipe' });
+
     const r = await getUnpushedCommits(work);
     assert.strictEqual(r.hasUpstream, false);
     assert.deepStrictEqual(r.commits, []);
   });
 
-  it('returns empty hasUpstream=false for detached HEAD', async () => {
+  it('marks truncated on the no-upstream fallback path', async () => {
+    ({ remote, work } = setupBareRemoteAndClone());
+    execSync('git checkout -b feat', { cwd: work, stdio: 'pipe' });
+    for (let i = 0; i < 5; i++) {
+      writeFileSync(join(work, `f${i}.txt`), `${i}\n`);
+      execSync(`git add f${i}.txt && git commit -m "c${i}"`, { cwd: work, stdio: 'pipe' });
+    }
+    const r = await getUnpushedCommits(work, { maxCommits: 3 });
+    assert.strictEqual(r.hasUpstream, false);
+    assert.strictEqual(r.commits.length, 3);
+    assert.strictEqual(r.truncated, true);
+    assert.strictEqual(r.totalCount, 5);
+  });
+
+  it('returns empty for empty repo (unborn HEAD) without throwing', async () => {
+    work = makeTmpDir();
+    mkdirSync(work, { recursive: true });
+    execSync('git init', { cwd: work, stdio: 'pipe' });
+    const r = await getUnpushedCommits(work);
+    assert.strictEqual(r.hasUpstream, false);
+    assert.deepStrictEqual(r.commits, []);
+  });
+
+  it('returns detached-HEAD commits absent from remotes', async () => {
+    ({ remote, work } = setupBareRemoteAndClone());
+    const sha = execSync('git rev-parse HEAD', { cwd: work, encoding: 'utf-8' }).trim();
+    execSync(`git checkout --detach ${sha}`, { cwd: work, stdio: 'pipe' });
+    writeFileSync(join(work, 'b.txt'), 'B\n');
+    execSync('git add b.txt && git commit -m "detached work"', { cwd: work, stdio: 'pipe' });
+    const r = await getUnpushedCommits(work);
+    assert.strictEqual(r.hasUpstream, false);
+    assert.strictEqual(r.branch, null);
+    assert.strictEqual(r.commits.length, 1);
+    assert.strictEqual(r.commits[0].subject, 'detached work');
+  });
+
+  it('returns empty for detached HEAD with no commits absent from remotes', async () => {
     ({ remote, work } = setupBareRemoteAndClone());
     const sha = execSync('git rev-parse HEAD', { cwd: work, encoding: 'utf-8' }).trim();
     execSync(`git checkout --detach ${sha}`, { cwd: work, stdio: 'pipe' });

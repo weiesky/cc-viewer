@@ -67,6 +67,8 @@ const KEYS = [
   'ui.chatInput.queueRemove',  // per-bubble discard (×) button
   'ui.chatInput.queueHint',    // bubble-stack aria-label / explainer
   'ui.chatInput.queueFull',    // toast when the server rejects an enqueue (queue full)
+  // Git changes panel: unpushed-section tooltip when the branch has no upstream (GitChanges.jsx):
+  'ui.gitChanges.noUpstreamTip',
 ];
 
 describe('new UI key i18n coverage', () => {

@@ -335,7 +335,7 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, re
             setSelectedFile(fp); setSelectedRepo(rp); setSelectedCommitHash(ch || null);
             onFileClick && onFileClick(rp, fp, ch || null);
           };
-          const showUnpushed = repo.hasUpstream && repo.commits && repo.commits.length > 0;
+          const showUnpushed = repo.commits && repo.commits.length > 0;
           const unpushedCollapsed = !!collapsedUnpushed[repo.path];
           const expandedSet = expandedCommits[repo.path] || new Set();
           const toggleCommit = (hash) => setExpandedCommits(prev => {
@@ -370,7 +370,7 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, re
               className={styles.unpushedHeader}
               style={{ paddingLeft: 8 + baseDepth * 16 }}
               onClick={() => setCollapsedUnpushed(prev => ({ ...prev, [repo.path]: !prev[repo.path] }))}
-              title={repo.upstream ? `${repo.upstream}..HEAD` : ''}
+              title={repo.upstream ? `${repo.upstream}..HEAD` : t('ui.gitChanges.noUpstreamTip')}
             >
               <span className={`${styles.commitArrow} ${unpushedCollapsed ? '' : styles.commitArrowExpanded}`}>
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

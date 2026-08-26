@@ -362,12 +362,15 @@ describe('gitLogUnpushed GET /api/git-log-unpushed', { concurrency: false }, () 
     assert.equal(json().hasUpstream, false);
   });
 
-  it('no upstream → hasUpstream false, commits empty', async () => {
+  it('no upstream → hasUpstream false, local commits still listed', async () => {
     commit(dir, 'a.txt', 'a\n', 'c1');
     const { status, json } = await callGet(handler, '/api/git-log-unpushed', deps);
     assert.equal(status, 200);
     assert.equal(json().hasUpstream, false);
-    assert.deepEqual(json().commits, []);
+    assert.equal(json().upstream, null);
+    // 无 upstream 时回退到 `git log HEAD --not --remotes`,本地 commit 仍然可见
+    assert.equal(json().commits.length, 1);
+    assert.equal(json().commits[0].subject, 'c1');
   });
 
   it('with an upstream and unpushed commits → lists them', async () => {

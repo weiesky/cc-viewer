@@ -159,6 +159,28 @@ describe('fetchAllRepos — 主路径 /api/git-repos 成功', () => {
     assert.equal(out[0].hasUpstream, false);
   });
 
+  it('hasUpstream=false 但带 commits(无 upstream 回退)→ commits 原样透传', async () => {
+    installFetch((url) => {
+      if (url.includes('/api/git-repos')) return res({ json: { repos: [{ name: 'r', path: 'p' }] } });
+      if (url.includes('/api/git-status')) return res({ json: { changes: [] } });
+      if (url.includes('/api/git-log-unpushed')) {
+        return res({ json: {
+          commits: [{ hash: 'h9', subject: 'local only' }],
+          hasUpstream: false, branch: 'feat', upstream: null,
+        } });
+      }
+      throw new Error('unexpected');
+    });
+    const out = await fetchAllRepos();
+    assert.equal(out.length, 1);
+    assert.equal(out[0].hasUpstream, false);
+    assert.equal(out[0].upstream, null);
+    assert.equal(out[0].branch, 'feat');
+    assert.equal(out[0].commits.length, 1, 'hasUpstream=false 时 commits 不能被丢弃');
+    assert.equal(out[0].commits[0].hash, 'h9');
+    assert.equal(out[0].totalCount, 1);
+  });
+
   it('data.repos 缺失 → repoList 为 [] → 返回 []', async () => {
     installFetch((url) => {
       if (url.includes('/api/git-repos')) return res({ json: {} });

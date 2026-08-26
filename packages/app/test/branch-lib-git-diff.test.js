@@ -221,12 +221,13 @@ describe('git-diff 分支补充覆盖', () => {
     assert.deepEqual(r, []);
   });
 
-  // ---- L89 `!branch` 左臂：rev-parse 输出空字符串 → branch='' 直接返回 ----
-  it('rev-parse 输出空字符串时（branch 为空）走 !branch 早返回（假 git）', () => {
+  // ---- 空 branch 视同 detached：跳过 @{upstream} 解析，走 HEAD --not --remotes 回退 ----
+  it('rev-parse 输出空字符串时（branch 为空）视同 detached 走回退（假 git）', () => {
     const fakeGit = [
       '#!/bin/sh',
       'case "$*" in',
       '  *"rev-parse --abbrev-ref HEAD"*) printf "\\n"; exit 0;;',
+      // 回退路径的 git log 失败 → catch 返回空 commits；branch 归一为 null
       '  *) echo "unexpected: $*" >&2; exit 1;;',
       'esac',
     ].join('\n') + '\n';
@@ -236,12 +237,13 @@ describe('git-diff 分支补充覆盖', () => {
       callJs: 'return await getUnpushedCommits(REPO);',
     });
     assert.equal(r.hasUpstream, false);
-    assert.equal(r.branch, '');
+    assert.equal(r.branch, null);
     assert.equal(r.upstream, null);
+    assert.deepEqual(r.commits, []);
   });
 
-  // ---- L100 `!upstream` 左臂：@{upstream} 解析出空字符串 ----
-  it('@{upstream} 输出空字符串时走 !upstream 早返回（假 git）', () => {
+  // ---- @{upstream} 解析出空字符串：视同无 upstream,走 HEAD --not --remotes 回退 ----
+  it('@{upstream} 输出空字符串时走回退路径且 log 失败返回空（假 git）', () => {
     const fakeGit = [
       '#!/bin/sh',
       'case "$*" in',
@@ -258,6 +260,7 @@ describe('git-diff 分支补充覆盖', () => {
     assert.equal(r.hasUpstream, false);
     assert.equal(r.branch, 'main');
     assert.equal(r.upstream, null);
+    assert.deepEqual(r.commits, []);
   });
 
   // ---- L147 `st[0] || 'M'`：name-status 行首即制表符（状态字段为空）→ 回退 'M' ----
