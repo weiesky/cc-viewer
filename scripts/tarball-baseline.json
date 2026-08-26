@@ -1534,6 +1534,7 @@
   "server/scratch-pty-manager.js",
   "server/server.js",
   "server/system-prompt-templates/presets/GLM-5.2.md",
+  "server/system-prompt-templates/presets/GLM-5.3.md",
   "server/system-prompt-templates/presets/Qwen-3.7-Max.md",
   "server/system-prompt-templates/presets/deepseek-v4-flash.md",
   "server/system-prompt-templates/presets/deepseek-v4-pro.md",
