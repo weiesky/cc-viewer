@@ -1,5 +1,14 @@
 # cc-viewer
 
+## 1.8.2
+
+### Patch Changes
+
+- 72c059f: feat(system-prompt): teammate no-wait guidance in all built-in model presets + new GLM-5.3 preset; feat(context): unrecognized models default to a 1M context window; feat(permission): permission auto-approve now defaults to a 3s countdown; refactor(footer): plain GitHub link (no star-count fetch) and the plan-usage pill hides when no usage data is available.
+- feat(chat): raise the conversation render-window limits and the "load earlier" step — desktop now keeps the latest 800 items (was 400), Android mobile 400 (was 240), iOS 300 (was 150), and each "load earlier" click expands 300 more items (was 100) on all platforms. Older items remain on demand via the "load earlier" button, and the Android virtualized log-viewer path is unchanged.
+- d858204: fix(git): the Git changes panel now shows local commits on branches without an upstream — previously `getUnpushedCommits` returned an empty list whenever `@{upstream}` failed to resolve (local-only branches never pushed with `-u`, deleted remote branches, repos without any remote, detached HEAD) and the frontend hid the whole "unpushed commits" section on `hasUpstream: false`, making those commits invisible. The server now falls back to `git log HEAD --not --remotes` (commits on HEAD absent from all remote-tracking refs, capped at 100 with the truncated badge), the panel's unpushed section renders whenever commits exist, and its header tooltip explains the no-upstream case (new i18n key ×18 locales).
+- 1af3d64: fix(ultraplan): rework the "Test Analysis Expert" (测分专家) preset prompt — the plan phase is now an explicit Plan-tool workflow mirroring the Code Expert: if not already in plan mode, `EnterPlanMode` is called before synthesis, the test-analysis report IS the plan, and submission goes through two mandatory, non-skippable optimization rounds (round 1: 2-3 review agents examine the report-as-plan for coverage/technique/grounding gaps; round 2: `ExitPlanMode` approval with revise-and-resubmit on rejection). The Midscene.js YAML authoring rules are now a locked, self-contained snapshot inlined in the prompt (with `recordToReport` documented as a step-level key) — the GitHub repository reference is removed and fetching external Midscene docs is explicitly forbidden, so the preset works without GitHub access. Descriptions updated in all 18 locales — they now state up front that the preset is purpose-built for Midscene with its scope limited to UI-layer test analysis + Midscene YAML generation.
+
 ## 1.8.1
 
 ### Patch Changes

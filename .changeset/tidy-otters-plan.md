@@ -1,5 +1,0 @@
----
-"cc-viewer": patch
----
-
-fix(ultraplan): rework the "Test Analysis Expert" (测分专家) preset prompt — the plan phase is now an explicit Plan-tool workflow mirroring the Code Expert: if not already in plan mode, `EnterPlanMode` is called before synthesis, the test-analysis report IS the plan, and submission goes through two mandatory, non-skippable optimization rounds (round 1: 2-3 review agents examine the report-as-plan for coverage/technique/grounding gaps; round 2: `ExitPlanMode` approval with revise-and-resubmit on rejection). The Midscene.js YAML authoring rules are now a locked, self-contained snapshot inlined in the prompt (with `recordToReport` documented as a step-level key) — the GitHub repository reference is removed and fetching external Midscene docs is explicitly forbidden, so the preset works without GitHub access. Descriptions updated in all 18 locales — they now state up front that the preset is purpose-built for Midscene with its scope limited to UI-layer test analysis + Midscene YAML generation.
