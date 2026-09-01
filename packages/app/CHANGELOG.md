@@ -1,5 +1,11 @@
 # cc-viewer
 
+## 1.8.4
+
+### Patch Changes
+
+- fix(v2): exclude proxy_*.jsonl retry-stat shards from legacy v1 log sniffing, so proxy users (incl. fresh installs) no longer get a spurious "发现旧格式日志" migration prompt
+
 ## 1.8.3
 
 ### Patch Changes

@@ -45,12 +45,19 @@ export const STATE_FILE_NAME = 'wire-v2-convert-state.json';
 const STATE_VERSION = 1;
 const STOP_CHECK_EVERY = 50; // entries between shouldStop() polls
 
+// Proxy retry-stat shards (proxy_YYYY-MM-DD.jsonl, proxy-stats.js) live at the
+// project top level alongside v1 session logs. They are NOT conversations and
+// must never be sniffed as migratable v1 logs — otherwise every proxy user
+// (incl. fresh installs) gets a spurious "发现旧格式日志" prompt for a ~300 B
+// shard. isLogFileName only checks the .jsonl suffix, so exclude them here.
+const PROXY_SHARD_NAME = /^proxy_\d{4}-\d{2}-\d{2}\.jsonl$/;
+
 /** Enumerate a project's v1 log files, ascending by filename timestamp.
- *  Excludes `_temp.jsonl` (resume scratch). */
+ *  Excludes `_temp.jsonl` (resume scratch) and `proxy_*.jsonl` (retry stats). */
 export function listV1Files(projectDir) {
   if (!existsSync(projectDir)) return [];
   return readdirSync(projectDir)
-    .filter(name => isLogFileName(name) && !name.endsWith('_temp.jsonl'))
+    .filter(name => isLogFileName(name) && !name.endsWith('_temp.jsonl') && !PROXY_SHARD_NAME.test(name))
     .sort((a, b) => parseLogTs(a).localeCompare(parseLogTs(b)) || a.localeCompare(b));
 }
 

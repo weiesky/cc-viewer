@@ -89,6 +89,14 @@ describe('listV1Files ordering and filtering', () => {
     ]);
   });
 
+  it('excludes proxy_*.jsonl retry-stat shards (not v1 conversations)', () => {
+    const p = join(logDir, PROJECT);
+    for (const n of ['proj_20260101_000000.jsonl', 'proxy_2026-08-10.jsonl', 'proxy_2026-09-01.jsonl']) {
+      writeFileSync(join(p, n), 'x');
+    }
+    assert.deepEqual(listV1Files(p), ['proj_20260101_000000.jsonl']);
+  });
+
   it('listConvertibleProjects finds only project dirs with log files', () => {
     mkdirSync(join(logDir, 'empty'));
     writeFileSync(join(logDir, PROJECT, 'proj_20260101_000000.jsonl'), '');
