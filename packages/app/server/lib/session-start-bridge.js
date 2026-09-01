@@ -60,17 +60,21 @@ let sessionId = null;
 let transcriptPath = null;
 let source = null;
 let cwd = null;
+let agentId = null;
 try {
   const parsed = JSON.parse(stdinData);
   sessionId = parsed?.session_id || null;
   transcriptPath = parsed?.transcript_path || null;
   source = parsed?.source || null;
   cwd = parsed?.cwd || null;
+  // Present only when the hook fires from within a subagent/teammate process;
+  // the server uses it to skip session-boundary resets for shared state.
+  agentId = parsed?.agent_id || null;
 } catch { /* fine — the server tolerates missing fields */ }
 debug(`payload source=${source} session_id=${sessionId} transcript=${transcriptPath}`);
 
 const internalToken = process.env.CCVIEWER_INTERNAL_TOKEN || '';
-const body = JSON.stringify({ source, sessionId, transcriptPath, cwd, ts: Date.now() });
+const body = JSON.stringify({ source, sessionId, transcriptPath, cwd, agentId, ts: Date.now() });
 const reqOpts = {
   hostname: '127.0.0.1',
   port: parseInt(port, 10),

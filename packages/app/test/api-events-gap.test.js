@@ -202,6 +202,34 @@ describe('GET /events', () => {
     assert.equal(JSON.parse(badge.data).version, '9.9.9');
   });
 
+  it('连接即推任务清单快照:task_update 帧在 load_end 之后、内容与服务端广播同形', async () => {
+    await seedV2([mainAgentEntry('2026-06-06T01:10:00.000Z', 77)]);
+    const snap = { sessionId: 'sess-abc', tasks: [{ taskId: '1', subject: 'write code', status: 'in_progress', owner: null }] };
+    const req = new EventEmitter(); req.headers = {};
+    const res = makeRes();
+    const deps = eventsDeps({ getTaskSnapshot: () => snap });
+    await events(req, res, url('/events'), true, deps);
+    const frames = parseFrames(bodyStr(res));
+    const tu = frames.find((f) => f.event === 'task_update');
+    assert.ok(tu, 'task_update snapshot frame emitted on connect');
+    const data = JSON.parse(tu.data);
+    assert.equal(data.sessionId, 'sess-abc');
+    assert.deepEqual(data.tasks, snap.tasks);
+    assert.ok(typeof data.ts === 'number', 'frame carries ts');
+    const loadEndIdx = frames.findIndex((f) => f.event === 'load_end');
+    assert.ok(frames.indexOf(tu) > loadEndIdx, 'snapshot frame lands after load_end');
+    assert.ok(deps.clients.includes(res), 'client registered');
+  });
+
+  it('deps 无 getTaskSnapshot 时不推 task_update 帧(可选链守卫,精简 deps 袋兼容)', async () => {
+    await seedV2([mainAgentEntry('2026-06-06T01:20:00.000Z', 88)]);
+    const req = new EventEmitter(); req.headers = {};
+    const res = makeRes();
+    await events(req, res, url('/events'), true, eventsDeps());
+    const frames = parseFrames(bodyStr(res));
+    assert.equal(frames.find((f) => f.event === 'task_update'), undefined);
+  });
+
   it('honours an explicit ?limit and reports hasMore in load_start', async () => {
     await seedV2(Array.from({ length: 5 }, (_, i) => mainAgentEntry(`2026-06-06T01:0${i}:00.000Z`, 100 + i)));
     const req = new EventEmitter(); req.headers = {};

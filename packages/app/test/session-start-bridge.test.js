@@ -135,8 +135,38 @@ describe('session-start-bridge.js', { concurrency: false }, () => {
     }
   });
 
-  it('tolerates non-JSON stdin: still notifies with null fields', async () => {
+  it('forwards agent_id → agentId (the subagent/teammate discriminator for session-boundary resets)', async () => {
     const { server, hitPromise } = captureServer();
+    const port = await listen(server);
+    try {
+      // agent_id present (subagent-fired SessionStart)
+      let runP = runBridge({
+        env: { CCVIEWER_PORT: String(port) },
+        stdin: JSON.stringify({ ...HOOK_PAYLOAD, source: 'startup', agent_id: 'a1b2c3' }),
+      });
+      let cap = await hitPromise;
+      await runP;
+      assert.equal(JSON.parse(cap.body).agentId, 'a1b2c3');
+    } finally {
+      server.close();
+    }
+    // agent_id absent (main-thread SessionStart) → null, never dropped silently
+    const { server: server2, hitPromise: hit2 } = captureServer();
+    const port2 = await listen(server2);
+    try {
+      const runP = runBridge({
+        env: { CCVIEWER_PORT: String(port2) },
+        stdin: JSON.stringify(HOOK_PAYLOAD),
+      });
+      const cap = await hit2;
+      await runP;
+      assert.equal(JSON.parse(cap.body).agentId, null);
+    } finally {
+      server2.close();
+    }
+  });
+
+  it('tolerates non-JSON stdin: still notifies with null fields', async () => {    const { server, hitPromise } = captureServer();
     const port = await listen(server);
     try {
       const runP = runBridge({

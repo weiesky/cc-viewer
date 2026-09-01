@@ -69,6 +69,13 @@ const KEYS = [
   'ui.chatInput.queueFull',    // toast when the server rejects an enqueue (queue full)
   // Git changes panel: unpushed-section tooltip when the branch has no upstream (GitChanges.jsx):
   'ui.gitChanges.noUpstreamTip',
+  // Task checklist HUD docked above the composer (TaskProgressHud.jsx; fed by task-bridge hooks):
+  'ui.tasks.title',
+  'ui.tasks.progress',
+  'ui.tasks.status.pending',
+  'ui.tasks.status.inProgress',
+  'ui.tasks.status.completed',
+  'ui.tasks.owner',
 ];
 
 describe('new UI key i18n coverage', () => {

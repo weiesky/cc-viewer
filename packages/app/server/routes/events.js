@@ -90,6 +90,54 @@ function sessionStartNotify(req, res, parsedUrl, isLocal, deps) {
     }
     try { deps.onSessionStartNotify(payload); }
     catch (err) { reportSwallowed('session-start-notify.dispatch', err); }
+    // Task-checklist boundary: reset on main-agent startup/clear, skipped for
+    // subagent events (payload.agentId). Separate deps callback so it is never
+    // swallowed by markSessionStart's source early-return.
+    try { deps.onTaskSessionBoundary?.(payload); }
+    catch (err) { reportSwallowed('task-session-boundary', err); }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+}
+
+// Task-event hook notify (task-bridge.js): TaskCreated / TaskCompleted /
+// PostToolUse(TaskUpdate) → the task-checklist reducer. Same security shape
+// as sessionStartNotify (loopback-only + internal token + 16KB cap); the
+// state update + debounced SSE broadcast live behind deps.onTaskEvent
+// (server.js → lib/task-state.js).
+function taskEventNotify(req, res, parsedUrl, isLocal, deps) {
+  if (!isLocal) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Loopback only' }));
+    return;
+  }
+  if (req.headers['x-ccviewer-internal'] !== deps.INTERNAL_TOKEN) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Invalid bridge token' }));
+    return;
+  }
+  let body = '';
+  let truncated = false;
+  req.on('data', chunk => {
+    body += chunk;
+    if (body.length > 16384) { truncated = true; req.destroy(); }
+  });
+  req.on('end', () => {
+    if (truncated) {
+      console.warn('[task-event] body exceeded 16KB cap — request destroyed');
+      return; // socket already closed by destroy()
+    }
+    let payload = {};
+    let badJson = false;
+    try { payload = body ? JSON.parse(body) : {}; }
+    catch { badJson = true; console.warn('[task-event] malformed JSON body'); }
+    if (badJson) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'malformed JSON body' }));
+      return;
+    }
+    try { deps.onTaskEvent?.(payload); }
+    catch (err) { reportSwallowed('task-event.dispatch', err); }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
   });
@@ -362,6 +410,13 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   // 这样 watcher 的 sendToClients 不会在 load 阶段向该客户端推送 live entry。
   deps.clients.push(res);
 
+  // 任务清单快照补推：内存态不在冷加载数据里，页面刷新/重连后横条要等下一次
+  // 任务事件才恢复 —— 连接建立即推一份当前快照（空列表也推，清掉客户端残留）。
+  try {
+    const snap = deps.getTaskSnapshot?.();
+    if (snap) sseWrite(res, `event: task_update\ndata: ${JSON.stringify({ sessionId: snap.sessionId, tasks: snap.tasks, ts: Date.now() })}\n\n`);
+  } catch (err) { reportSwallowed('sse.task_update.snapshot', err); }
+
   // req.on('close') 在某些异常断连时不一定立即触发；res 端 close/error 兜底保证
   // 不会在 clients 数组里留下幽灵 res，防止 sendToClients 后续写入触发慢泄漏。
   const removeFromClients = () => {
@@ -402,6 +457,7 @@ async function requests(req, res) {
 export const eventsRoutes = [
   { method: 'POST', match: 'exact', path: '/api/turn-end-notify', handler: turnEndNotify },
   { method: 'POST', match: 'exact', path: '/api/session-start-notify', handler: sessionStartNotify },
+  { method: 'POST', match: 'exact', path: '/api/task-event', handler: taskEventNotify },
   { method: 'GET', match: 'exact', path: '/events', handler: events },
   { method: 'GET', match: 'exact', path: '/api/requests', handler: requests },
 ];

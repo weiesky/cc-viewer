@@ -76,9 +76,14 @@ function _looksStaleManagedCommand(cmd) {
   return !existsSync(target);
 }
 
+// All hook sections cc-viewer manages. _purgeStaleManagedHooks and
+// removeAllManagedHooks must iterate this exact set or uninstall/cleanup
+// leaves zombie entries behind (cli.js cleanup-hooks path).
+const MANAGED_SECTIONS = ['PreToolUse', 'Stop', 'SessionStart', 'TaskCreated', 'TaskCompleted', 'PostToolUse'];
+
 function _purgeStaleManagedHooks(settings) {
   let removed = 0;
-  for (const sectionKey of ['PreToolUse', 'Stop', 'SessionStart']) {
+  for (const sectionKey of MANAGED_SECTIONS) {
     const arr = settings.hooks?.[sectionKey];
     if (!Array.isArray(arr)) continue;
     for (let i = arr.length - 1; i >= 0; i--) {
@@ -99,7 +104,7 @@ function _purgeStaleManagedHooks(settings) {
 // 调用方负责 atomic write-back。返回 removed 数量。
 export function removeAllManagedHooks(settings) {
   let removed = 0;
-  for (const sectionKey of ['PreToolUse', 'Stop', 'SessionStart']) {
+  for (const sectionKey of MANAGED_SECTIONS) {
     const arr = settings.hooks?.[sectionKey];
     if (!Array.isArray(arr)) continue;
     for (let i = arr.length - 1; i >= 0; i--) {
@@ -127,9 +132,11 @@ export function ensureHooks() {
     }
 
     if (!settings.hooks) settings.hooks = {};
-    if (!Array.isArray(settings.hooks.PreToolUse)) settings.hooks.PreToolUse = [];
-    if (!Array.isArray(settings.hooks.Stop)) settings.hooks.Stop = [];
-    if (!Array.isArray(settings.hooks.SessionStart)) settings.hooks.SessionStart = [];
+    // Init every managed section from the single source of truth — adding a
+    // section to MANAGED_SECTIONS without an init here would crash the push.
+    for (const k of MANAGED_SECTIONS) {
+      if (!Array.isArray(settings.hooks[k])) settings.hooks[k] = [];
+    }
 
     let changed = false;
     // 先一次性清掉「path 已 stale 但还带 cc-viewer-managed marker」的老条目，
@@ -236,6 +243,56 @@ export function ensureHooks() {
     } else {
       settings.hooks.SessionStart.push({
         hooks: [sessionStartDesired],
+      });
+      changed = true;
+    }
+
+    // Task checklist hooks → task-bridge.js. Feed the GUI task-progress HUD:
+    // TaskCreated/TaskCompleted are matcher-less lifecycle events (a matcher
+    // would be silently ignored by Claude Code); in_progress/deleted/owner
+    // transitions have no dedicated hook event, so they ride PostToolUse with
+    // matcher 'TaskUpdate'. Find-by-command (NOT find-by-matcher): a user may
+    // legitimately have their own PostToolUse/'TaskUpdate' entry, and
+    // in-place overwriting would clobber it — multiple entries per matcher
+    // are valid config, so we always append our own.
+    const taskBridgePath = resolve(SERVER_LIB, 'task-bridge.js');
+    const taskCmd = `[ -n "$CCVIEWER_PORT" ] && node "${taskBridgePath}" || true ${CCV_HOOK_MARKER}`;
+    const taskDesired = _buildHookObj(taskCmd);
+    for (const sectionKey of ['TaskCreated', 'TaskCompleted']) {
+      const existing = settings.hooks[sectionKey].find(h => {
+        const cmd = h.hooks?.[0]?.command || '';
+        return cmd.includes('task-bridge.js');
+      });
+      if (existing) {
+        if (!_hookObjEqual(existing.hooks?.[0], taskDesired)) {
+          existing.hooks = [_mergeHookObj(existing.hooks?.[0], taskDesired)];
+          changed = true;
+        }
+      } else {
+        settings.hooks[sectionKey].push({
+          hooks: [taskDesired],
+        });
+        changed = true;
+      }
+    }
+    const taskUpdateExisting = settings.hooks.PostToolUse.find(h => {
+      const cmd = h.hooks?.[0]?.command || '';
+      return cmd.includes('task-bridge.js');
+    });
+    if (taskUpdateExisting) {
+      // Ours already exists: normalize the matcher and merge field-level.
+      if (taskUpdateExisting.matcher !== 'TaskUpdate') {
+        taskUpdateExisting.matcher = 'TaskUpdate';
+        changed = true;
+      }
+      if (!_hookObjEqual(taskUpdateExisting.hooks?.[0], taskDesired)) {
+        taskUpdateExisting.hooks = [_mergeHookObj(taskUpdateExisting.hooks?.[0], taskDesired)];
+        changed = true;
+      }
+    } else {
+      settings.hooks.PostToolUse.push({
+        matcher: 'TaskUpdate',
+        hooks: [taskDesired],
       });
       changed = true;
     }

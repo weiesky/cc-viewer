@@ -14,6 +14,7 @@ import { getProjectAlias, subscribeToAlias } from './utils/projectAlias';
 import { isMainAgent, isSessionBoundary } from '@ccv/core/contentFilter';
 import { apiUrl, getBasePath } from './utils/apiUrl';
 import { publish as publishWorkflowUpdate } from './utils/workflowStore';
+import { publish as publishTaskUpdate, clearTasks as clearTaskStore } from './utils/taskStore';
 import { reportSwallowed } from './utils/errorReport';
 import { playEvent as playVoiceEvent, unlockAudio, setTurnEndCooldownMs } from './utils/voicePackPlayer';
 import { getDefaultBindingsForLocale as vpDefaultBindingsForLocale } from '@ccv/core/voice-pack-events';
@@ -1443,6 +1444,10 @@ class AppBase extends React.Component {
         // rows would keep feeding _listSource after the reload's new baseline.
         this._v3ResetClientState();
         this.setState({ v2Rows: [], v2RowsMeta: { totalCount: 0, hasMore: false, oldestTs: '' } });
+        // NOTE: the task checklist is NOT cleared here — full_reload is a
+        // same-session wire-baseline reset; the hook-fed checklist stays valid
+        // and there is no re-push on this path (clearing would blank the HUD
+        // until the next task event).
         // animateLoadingCount 回调有数百 ms 窗口：期间若新分帧管线启动（token 再 bump），
         // 本次 full_reload 的延迟 setState 不得覆盖新管线提交 —— 回调内按 token 失配丢弃。
         const reloadToken = this._ingestToken;
@@ -1511,6 +1516,7 @@ class AppBase extends React.Component {
           this._abortColdIngest();
           this._v3ResetClientState(); // review P0-2: old project's rows/assembler must not survive the switch
           this._rebuildRequestIndex([]);
+          clearTaskStore(); // old project's task checklist must not linger into the new session
           // 切项目要连 _currentSessionId 一并清掉：否则 _maintainPinState 的 lazy-lock 兜底
           // (getSessionStableId(null) || this._currentSessionId) 会拿旧项目的会话 id 误锁新项目，
           // 在 hydrate GET 抢先返回前可能把旧 id POST 进新项目的 pin 文件。
@@ -1553,6 +1559,7 @@ class AppBase extends React.Component {
         this._teardownTransientLiveState();
         this._v3ResetClientState(); // review P0-2
         this._rebuildRequestIndex([]);
+        clearTaskStore(); // same as workspace_started: drop the old session's checklist
         this._currentSessionId = null; // 同 workspace_started：清旧会话 id，避免 lazy-lock 误锁
         this.setState({
           workspaceMode: true,
@@ -1597,6 +1604,18 @@ class AppBase extends React.Component {
         try {
           publishWorkflowUpdate(JSON.parse(event.data));
         } catch (e) { reportSwallowed('sse.workflow_update', e); }
+      });
+      // Task checklist HUD feed (task-bridge hooks → server task-state full
+      // snapshot). No sessionId guard on the client side: the snapshot id is a
+      // Claude Code session UUID while _currentSessionId is ccv's ts-based id —
+      // different identity spaces. Freshness is instead guaranteed by the
+      // clear-points (workspace_started/stopped) plus the server's
+      // session-boundary resets and per-connection snapshot replay.
+      this.eventSource.addEventListener('task_update', (event) => {
+        this._resetSSETimeout();
+        try {
+          publishTaskUpdate(JSON.parse(event.data));
+        } catch (e) { reportSwallowed('sse.task_update', e); }
       });
       this.eventSource.addEventListener('proxy_profile', (event) => {
         this._resetSSETimeout();
@@ -1719,6 +1738,10 @@ class AppBase extends React.Component {
           if (r.adopt && r.value !== this.state.pinnedSessionTs) {
             this._applyingRemotePin = true;
             this.setState({ pinnedSessionTs: r.value }, () => { this._applyingRemotePin = false; });
+            // NOTE: the task checklist is deliberately NOT cleared on pin
+            // adoption — the strip is live-session truth, and any clear would
+            // be defeated by the next task_update / reconnect snapshot anyway
+            // (review P2-1). Session boundaries (server side) own the resets.
           }
         } catch { /* tolerate parse error */ }
       });

@@ -33,6 +33,7 @@ import SnapLineOverlay from '../common/SnapLineOverlay';
 import RoleFilterBar from './RoleFilterBar';
 import ChatInputBar, { resizeChatTextarea } from './ChatInputBar';
 import WorkflowLiveHud from '../viewers/WorkflowLiveHud';
+import TaskProgressHud from './TaskProgressHud';
 import PresetModal from '../terminal/PresetModal';
 import UltraPlanModal from '../terminal/UltraPlanModal';
 import UltraplanPanel, { readUltraplanPopoverSize, ultraplanOverlayInnerStyle } from '../terminal/UltraplanPanel';
@@ -3823,6 +3824,10 @@ class ChatView extends React.Component {
                 ))}
               </div>
             )}
+            {/* Task checklist HUD (Claude Code TaskCreate/TaskUpdate via hooks).
+                Self-subscribes to taskStore; renders null when no tasks, so no
+                cliMode gate is needed here (SDK mode never receives task_update). */}
+            <TaskProgressHud />
             <ChatInputBar
               inputRef={this._inputRef}
               inputEmpty={this.state.inputEmpty}

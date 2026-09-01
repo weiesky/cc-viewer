@@ -100,6 +100,7 @@ import { checkAndUpdate } from './lib/updater.js';
 import { loadPlugins, runWaterfallHook, runParallelHook } from './lib/plugin-loader.js';
 import { CONTEXT_WINDOW_FILE, readModelContextSize } from './lib/context-watcher.js';
 import { sendEventToClients } from './lib/log-watcher.js';
+import { applyTaskEvent, resetTasks, getTaskSnapshot, shouldResetTasks } from './lib/task-state.js';
 import { createImLogWatcher } from './lib/im/im-log-watcher.js';
 import { unwatchAllWorkflows } from './lib/workflow-watcher.js';
 import { backupConfigs } from './lib/config-backup.js';
@@ -599,6 +600,26 @@ const deps = {
   // SessionStart hook notify → conversation-switch signal (in-terminal
   // /resume). The source gate + V2Writer re-bind live in the interceptor.
   onSessionStartNotify: markSessionStart,
+  // Task checklist (task-bridge.js → /api/task-event): apply to the shared
+  // in-memory reducer, then debounce-broadcast a full snapshot over SSE.
+  onTaskEvent: (payload) => {
+    try {
+      applyTaskEvent(payload);
+      _scheduleTaskUpdateBroadcast();
+    } catch (err) { reportSwallowed('task-state.apply', err); }
+  },
+  // Session-boundary reset for the task checklist. The gate itself lives in
+  // task-state.shouldResetTasks (pure, unit-tested): main-agent startup/clear
+  // resets; resume/fork to a different session resets; subagent/teammate
+  // events (payload.agentId) must not wipe the shared list.
+  onTaskSessionBoundary: (payload) => {
+    if (!shouldResetTasks(payload, getTaskSnapshot().sessionId)) return;
+    resetTasks();
+    _emitTaskUpdate();
+  },
+  // Per-connection snapshot replay for fresh SSE clients (page refresh /
+  // reconnect) — the checklist lives only in memory, not in the cold load.
+  getTaskSnapshot,
   ensureImWatch: _ensureImWatch,
   maskProfiles: _maskProfiles,
   maskApiKey: _maskApiKey,
@@ -2296,6 +2317,36 @@ function _scheduleTurnEndBroadcast(sessionId, ts, transcriptPath = null) {
   _pendingTurnEndTimers.set(sid, { timer, ts: t });
 }
 
+// Task-checklist broadcast (task-bridge.js → /api/task-event → deps.onTaskEvent).
+// Full-snapshot semantics (never deltas): the payload is the whole current
+// checklist, so bursts and lost frames self-heal on the next event. 120 ms
+// trailing debounce coalesces multi-task flips (e.g. a batch TaskCreate turn)
+// into one SSE frame.
+const TASK_UPDATE_DEBOUNCE_MS = 120;
+let _taskBroadcastTimer = null;
+
+function _emitTaskUpdate() {
+  if (clients.length === 0 || !sendEventToClients) return;
+  // Parity with _emitTurnEnd: a broadcast failure must never surface as an
+  // uncaught exception from the debounce timer.
+  try {
+    const snap = getTaskSnapshot();
+    sendEventToClients(clients, 'task_update', { sessionId: snap.sessionId, tasks: snap.tasks, ts: Date.now() });
+  } catch (err) {
+    console.warn('[task-update] broadcast failed:', err && err.message);
+  }
+}
+
+function _scheduleTaskUpdateBroadcast() {
+  if (_isStopping) return;
+  if (_taskBroadcastTimer) clearTimeout(_taskBroadcastTimer);
+  _taskBroadcastTimer = setTimeout(() => {
+    _taskBroadcastTimer = null;
+    _emitTaskUpdate();
+  }, TASK_UPDATE_DEBOUNCE_MS);
+  if (typeof _taskBroadcastTimer.unref === 'function') _taskBroadcastTimer.unref();
+}
+
 // 直接丢弃所有 pending —— 用于两条路径：(1) `_doStop` shutdown，(2) rising-edge 新请求
 // 进入（按用户原始语义不算「真任务结束」，不播放）。
 function _cancelAllPendingTurnEndBroadcasts() {
@@ -2471,6 +2522,16 @@ async function _doStop() {
     clearTimeout(_updateCheckTimer);
     _updateCheckTimer = null;
   }
+  // Task-checklist teardown: symmetric with _cancelAllPendingTurnEndBroadcasts.
+  // The debounce timer is unref'd and post-stop emits are no-ops (clients is
+  // empty), but the module-level checklist itself must not leak into the next
+  // stop/start cycle — a client connecting before the new session's startup
+  // boundary would otherwise get the PREVIOUS session's snapshot.
+  if (_taskBroadcastTimer) {
+    clearTimeout(_taskBroadcastTimer);
+    _taskBroadcastTimer = null;
+  }
+  resetTasks();
   resetStreamingState();
   // 清 interceptor 的 live-port，避免 stop/start 循环（Electron tab 切换 / 测试）间隙内
   // 早期请求向已关闭的端口 POST 丢包。新 startViewer 的 listen 回调会再次 setLivePort
