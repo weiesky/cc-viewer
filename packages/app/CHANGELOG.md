@@ -1,5 +1,11 @@
 # cc-viewer
 
+## 1.8.5
+
+### Patch Changes
+
+- 1c5fada: feat: live task checklist HUD — surface the Claude Code task strip (TaskCreated / TaskCompleted hooks + PostToolUse TaskUpdate via a new task-bridge) docked above the chat composer in cliMode, expandable to the full task list.
+
 ## 1.8.4
 
 ### Patch Changes
