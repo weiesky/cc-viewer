@@ -69,6 +69,11 @@ export default function PreferencesForm({ values = {}, onPatch }) {
           <Switch checked={v.collapseToolResults !== false} onChange={(c) => patch({ collapseToolResults: c })} />
         </Row>
       )}
+      {!v.showFullToolContent && (
+        <Row label={t('ui.minimalChat')} help={t('ui.minimalChat.help')}>
+          <Switch checked={v.minimalChat !== false} onChange={(c) => patch({ minimalChat: c })} />
+        </Row>
+      )}
       <Row label={t('ui.themeColor')}>
         <Select
           size="small"

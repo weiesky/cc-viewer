@@ -76,6 +76,9 @@ const KEYS = [
   'ui.tasks.status.inProgress',
   'ui.tasks.status.completed',
   'ui.tasks.owner',
+  // Minimal-chat preference toggle (AppHeader / Mobile / PreferencesForm; merges tool-only turns):
+  'ui.minimalChat',
+  'ui.minimalChat.help',
 ];
 
 describe('new UI key i18n coverage', () => {

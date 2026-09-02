@@ -846,6 +846,7 @@ class Mobile extends AppBase {
                     collapseToolResults={prefs.collapseToolResults}
                     expandThinking={prefs.expandThinking}
                     showFullToolContent={prefs.showFullToolContent}
+                    minimalChat={prefs.minimalChat}
                     onlyCurrentSession={!mobileIsLocalLog}
                     isLocalLog={mobileIsLocalLog}
                     showThinkingSummaries={prefs.showThinkingSummaries}
@@ -1153,6 +1154,15 @@ class Mobile extends AppBase {
                     <Switch
                       checked={prefs.collapseToolResults}
                       onChange={this.handleCollapseToolResultsChange}
+                    />
+                  </div>
+                )}
+                {!prefs.showFullToolContent && (
+                  <div className={styles.mobileSettingsRow}>
+                    <span className={styles.mobileSettingsLabel}>{t('ui.minimalChat')}</span>
+                    <Switch
+                      checked={prefs.minimalChat !== false}
+                      onChange={this.handleMinimalChatChange}
                     />
                   </div>
                 )}

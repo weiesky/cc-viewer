@@ -335,6 +335,7 @@ class AppBase extends React.Component {
       expandThinking: !!prefs.expandThinking,
       expandDiff: !!prefs.expandDiff,
       showFullToolContent: !!prefs.showFullToolContent,
+      minimalChat: prefs.minimalChat ?? true,
       showThinkingSummaries: !!cs.showThinkingSummaries,
     };
   }
@@ -2440,6 +2441,10 @@ class AppBase extends React.Component {
 
   handleShowFullToolContentChange = (checked) => {
     this.context.updatePreferences({ showFullToolContent: checked });
+  };
+
+  handleMinimalChatChange = (checked) => {
+    this.context.updatePreferences({ minimalChat: checked });
   };
 
   handleFilterIrrelevantChange = (checked) => {

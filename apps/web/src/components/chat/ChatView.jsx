@@ -15,6 +15,7 @@ import { formatPromptNavTime } from '../../utils/formatters';
 import { buildPromptNavItems } from '../../utils/promptNav';
 import { getTeammateAvatar } from '../../utils/teammateAvatars';
 import { applyAvatarAnimationTargets } from '../../utils/avatarAnimationPostPass';
+import { mergeToolRuns } from '../../utils/toolRunMerge';
 import { isSystemText, classifyUserContent, isMainAgent, isTeammate, resolveTeammateNames, extractDisplayText, isUltraplanText } from '@ccv/core/contentFilter';
 import { classifyRequest, formatRequestTag, formatTeammateLabel } from '@ccv/core/requestType';
 import { playEvent as playVoiceEvent } from '../../utils/voicePackPlayer';
@@ -199,6 +200,8 @@ class ChatView extends React.Component {
     // 每项: { session, msgsLen, subCount, items, tsEntries, lastPendingAskId, lastPendingPlanId }
     this._sessionItemCache = [];
     this._itemCacheToggleSig = null;
+    // Minimal-chat merged-run memo (utils/toolRunMerge.js): runKey → { members, element }.
+    this._toolRunCache = new Map();
 
     // 文件详情滚动位置快照（写/编辑触发 fileVersion remount 时跨实例传递）。
     // 故意用 instance ref 而非 React state：onScroll throttle 100ms 期间会高频写入，
@@ -554,6 +557,7 @@ class ChatView extends React.Component {
       nextProps.collapseToolResults !== this.props.collapseToolResults ||
       nextProps.expandThinking !== this.props.expandThinking ||
       nextProps.showFullToolContent !== this.props.showFullToolContent ||
+      nextProps.minimalChat !== this.props.minimalChat ||
       nextProps.onlyCurrentSession !== this.props.onlyCurrentSession ||
       nextProps.isLocalLog !== this.props.isLocalLog ||
       nextProps.scrollToTimestamp !== this.props.scrollToTimestamp ||
@@ -908,6 +912,7 @@ class ChatView extends React.Component {
     } else if (prevProps.collapseToolResults !== this.props.collapseToolResults
             || prevProps.expandThinking !== this.props.expandThinking
             || prevProps.showFullToolContent !== this.props.showFullToolContent
+            || prevProps.minimalChat !== this.props.minimalChat
             || prevProps.showThinkingSummaries !== this.props.showThinkingSummaries
             || prevProps.onlyCurrentSession !== this.props.onlyCurrentSession
             || prevProps.sessionUpperBoundTs !== this.props.sessionUpperBoundTs) {
@@ -1513,7 +1518,7 @@ class ChatView extends React.Component {
         }
         if (asstContent) {
           renderedMessages.push(
-            <ChatMessage key={`${keyPrefix}-asst-${mi}`} role="assistant" isTeammate={teammateIdentity ? true : undefined} label={teammateIdentity?.label} animateAvatar={teammateIdentity ? false : undefined} content={asstContent} toolResultMap={toolResultMap} readContentMap={readContentMap} editSnapshotMap={editSnapshotMap} askAnswerMap={mergedAskAnswerMap} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} timestamp={ts} displayTs={msg._generatedTs} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} showThinkingSummaries={showThinkingSummaries} ptyPrompt={this.state.ptyPrompt} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} lastPendingPlanId={msgLastPlanId} lastPendingAskId={msgLastAskId} onPlanApprovalClick={this.handlePromptOptionClick} onPlanFeedbackSubmit={this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} cliMode={this.props.cliMode} onOpenFile={this.handleOpenToolFilePath} cacheTotalTokens={cacheTotalTokens} requestIndex={hasViewRequest ? reqIdx : undefined} onViewRequest={hasViewRequest ? onViewRequest : undefined} isHistoryLog={isHistoryLog} />
+            <ChatMessage key={`${keyPrefix}-asst-${mi}`} role="assistant" isTeammate={teammateIdentity ? true : undefined} label={teammateIdentity?.label} animateAvatar={teammateIdentity ? false : undefined} content={asstContent} toolResultMap={toolResultMap} readContentMap={readContentMap} editSnapshotMap={editSnapshotMap} askAnswerMap={mergedAskAnswerMap} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} timestamp={ts} displayTs={msg._generatedTs} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} showThinkingSummaries={showThinkingSummaries} ptyPrompt={this.state.ptyPrompt} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} lastPendingPlanId={msgLastPlanId} lastPendingAskId={msgLastAskId} onPlanApprovalClick={this.handlePromptOptionClick} onPlanFeedbackSubmit={this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} cliMode={this.props.cliMode} onOpenFile={this.handleOpenToolFilePath} cacheTotalTokens={cacheTotalTokens} requestIndex={hasViewRequest ? reqIdx : undefined} onViewRequest={hasViewRequest ? onViewRequest : undefined} isHistoryLog={isHistoryLog} />
           );
         }
       } else if (msg.role === 'system') {
@@ -1600,7 +1605,7 @@ class ChatView extends React.Component {
           const lastItems = respContent
             .filter(b => b.type === 'text' && b.text)
             .map((b, bi) => (
-              <ChatMessage key={`tm-resp-${si}-${bi}`} role="assistant" isTeammate label={tmLabel} animateAvatar={false} content={[b]} timestamp={session.timestamp} modelInfo={tmModelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} onViewRequest={onViewRequest} onOpenFile={this.handleOpenToolFilePath} isHistoryLog={isHistoryLog} />
+              <ChatMessage key={`tm-resp-${si}-${bi}`} role="assistant" isTeammate label={tmLabel} animateAvatar={false} content={[b]} timestamp={session.timestamp} modelInfo={tmModelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} onViewRequest={onViewRequest} onOpenFile={this.handleOpenToolFilePath} isHistoryLog={isHistoryLog} />
             ));
           if (lastItems.length > 0) {
             this._lastResponseItems = lastItems;
@@ -1767,13 +1772,15 @@ class ChatView extends React.Component {
     const resolveModelInfo = (ts, role) => resolveProducerModelInfo(ts, role, tsToIndex, cache.modelNameByReqIdx);
     const subAgentEntries = cache.subAgentEntries;
 
-    const allItems = [];
+    // Raw, unmerged rows; `allItems` (declared below the forEach) is the
+    // minimal-chat view of it. The forEach pushes into rawAllItems.
+    const rawAllItems = [];
     const tsItemMap = {};
 
     // === session item 缓存：toggle 签名检查 ===
     const { showThinkingSummaries } = this.props;
     const activePromptIds = (this.state.ptyPromptHistory || []).filter(p => p.status === 'active').map(p => p.id).join(',');
-    const toggleSig = `${collapseToolResults}|${expandThinking}|${showFullToolContent}|${showThinkingSummaries}|${this.props.cliMode}|${this.state.ptyPrompt?.id || ''}|${activePromptIds}|${this.props.userProfile?.name || ''}|${this.props.lang || ''}|${Object.keys(this.state.localAskAnswers || {}).join(',')}`;
+    const toggleSig = `${collapseToolResults}|${expandThinking}|${showFullToolContent}|${this.props.minimalChat}|${showThinkingSummaries}|${this.props.cliMode}|${this.state.ptyPrompt?.id || ''}|${activePromptIds}|${this.props.userProfile?.name || ''}|${this.props.lang || ''}|${Object.keys(this.state.localAskAnswers || {}).join(',')}`;
     if (toggleSig !== this._itemCacheToggleSig) {
       this._sessionItemCache = [];
       this._itemCacheToggleSig = toggleSig;
@@ -1820,7 +1827,7 @@ class ChatView extends React.Component {
       // 仅展示当前会话：跳过当前(最末)session 之前的全部 session。
       if (si < startSi) return;
       if (si > startSi) {
-        allItems.push(
+        rawAllItems.push(
           <Divider key={`session-div-${si}`} className={styles.sessionDivider}>
             <Text className={styles.sessionDividerText}>{t('ui.session')}</Text>
           </Divider>
@@ -1832,7 +1839,7 @@ class ChatView extends React.Component {
       // session, but the banner must render for it too (2026-07-26 orphan-slice
       // regression).
       if (session._partialData) {
-        allItems.push(
+        rawAllItems.push(
           <div key={`partial-${si}`} className={styles.partialDataBanner}>{t('ui.partialDataBanner')}</div>
         );
       }
@@ -2000,17 +2007,17 @@ class ChatView extends React.Component {
         // 插入时间戳 <= 当前消息时间戳的 SubAgent entries
         while (subIdx < subAgentEntries.length && msgWallTs && subAgentEntries[subIdx].timestamp <= msgWallTs) {
           const sa = subAgentEntries[subIdx];
-          if (sa.timestamp) tsItemMap[sa.timestamp] = allItems.length;
+          if (sa.timestamp) tsItemMap[sa.timestamp] = rawAllItems.length;
           const subCacheTotal = sa.requestIndex != null
             ? (requestCacheTokenMap?.get(sa.requestIndex) ?? 0)
             : null;
-          allItems.push(
-            <ChatMessage key={`sub-${sa.requestIndex}-${sa.timestamp}`} role="sub-agent-chat" content={sa.content} toolResultMap={sa.toolResultMap} label={sa.label} isTeammate={sa.isTeammate} timestamp={sa.timestamp} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} requestIndex={sa.requestIndex} cacheTotalTokens={subCacheTotal} onViewRequest={onViewRequest} onOpenFile={this.handleOpenToolFilePath} isHistoryLog={isHistoryLog} />
+          rawAllItems.push(
+            <ChatMessage key={`sub-${sa.requestIndex}-${sa.timestamp}`} role="sub-agent-chat" content={sa.content} toolResultMap={sa.toolResultMap} label={sa.label} isTeammate={sa.isTeammate} timestamp={sa.timestamp} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} requestIndex={sa.requestIndex} cacheTotalTokens={subCacheTotal} onViewRequest={onViewRequest} onOpenFile={this.handleOpenToolFilePath} isHistoryLog={isHistoryLog} />
           );
           subIdx++;
         }
-        if (msgLookupTs) tsItemMap[msgLookupTs] = allItems.length;
-        allItems.push(m);
+        if (msgLookupTs) tsItemMap[msgLookupTs] = rawAllItems.length;
+        rawAllItems.push(m);
       }
       // 插入剩余的 SubAgent entries（时间戳在最后一条消息之后）
       while (subIdx < subAgentEntries.length) {
@@ -2021,12 +2028,12 @@ class ChatView extends React.Component {
         // 改用 sessionUpperBoundTs（= 下一个未展示会话的起点）截断，避免更晚会话的 sub-agent 渗入。
         const bound = nextSessionStart || this.props.sessionUpperBoundTs;
         if (bound && sa.timestamp > bound) break;
-        if (sa.timestamp) tsItemMap[sa.timestamp] = allItems.length;
+        if (sa.timestamp) tsItemMap[sa.timestamp] = rawAllItems.length;
         const subCacheTotal = sa.requestIndex != null
           ? (requestCacheTokenMap?.get(sa.requestIndex) ?? 0)
           : null;
-        allItems.push(
-          <ChatMessage key={`sub-${sa.requestIndex}-${sa.timestamp}`} role="sub-agent-chat" content={sa.content} toolResultMap={sa.toolResultMap} label={sa.label} isTeammate={sa.isTeammate} timestamp={sa.timestamp} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} requestIndex={sa.requestIndex} cacheTotalTokens={subCacheTotal} onViewRequest={onViewRequest} onOpenFile={this.handleOpenToolFilePath} isHistoryLog={isHistoryLog} />
+        rawAllItems.push(
+          <ChatMessage key={`sub-${sa.requestIndex}-${sa.timestamp}`} role="sub-agent-chat" content={sa.content} toolResultMap={sa.toolResultMap} label={sa.label} isTeammate={sa.isTeammate} timestamp={sa.timestamp} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} requestIndex={sa.requestIndex} cacheTotalTokens={subCacheTotal} onViewRequest={onViewRequest} onOpenFile={this.handleOpenToolFilePath} isHistoryLog={isHistoryLog} />
         );
         subIdx++;
       }
@@ -2041,7 +2048,7 @@ class ChatView extends React.Component {
 
           if (!shouldHide) {
             // Last Response 单独存储，不混入主列表
-            if (session.entryTimestamp) tsItemMap[session.entryTimestamp] = allItems.length;
+            if (session.entryTimestamp) tsItemMap[session.entryTimestamp] = rawAllItems.length;
             const respLastPendingAskId = lr.respLastPendingAskId;
             const respLastPendingPlanId = lr.respLastPendingPlanId;
             if (respLastPendingPlanId) buildLpid = respLastPendingPlanId;
@@ -2072,13 +2079,27 @@ class ChatView extends React.Component {
                 <Divider className={styles.lastResponseDivider}>
                   <Text type="secondary" className={styles.lastResponseLabel}>{t('ui.lastResponse')}</Text>
                 </Divider>
-                <ChatMessage key="resp-asst" role="assistant" content={lrContent} timestamp={session.entryTimestamp} modelInfo={globalModelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} toolResultMap={EMPTY_MAP} askAnswerMap={Object.keys(_localAskForSession).length > 0 ? _localAskForSession : EMPTY_MAP} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} lastPendingAskId={respLastPendingAskId} lastPendingPlanId={respLastPendingPlanId} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} ptyPrompt={this.state.ptyPrompt} cacheTotalTokens={entryCacheTotal} onPlanApprovalClick={this.handlePromptOptionClick} onPlanFeedbackSubmit={this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} cliMode={this.props.cliMode} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} onOpenFile={this.handleOpenToolFilePath} isHistoryLog={isHistoryLog} />
+                <ChatMessage key="resp-asst" role="assistant" content={lrContent} timestamp={session.entryTimestamp} modelInfo={globalModelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} toolResultMap={EMPTY_MAP} askAnswerMap={Object.keys(_localAskForSession).length > 0 ? _localAskForSession : EMPTY_MAP} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} lastPendingAskId={respLastPendingAskId} lastPendingPlanId={respLastPendingPlanId} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} ptyPrompt={this.state.ptyPrompt} cacheTotalTokens={entryCacheTotal} onPlanApprovalClick={this.handlePromptOptionClick} onPlanFeedbackSubmit={this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} cliMode={this.props.cliMode} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} onOpenFile={this.handleOpenToolFilePath} isHistoryLog={isHistoryLog} />
               </React.Fragment>
             );
           }
         }
       }
     });
+
+    // Minimal chat: merge each agent's consecutive tool-only turns into one
+    // bubble (utils/toolRunMerge.js). Runs on the built element array, so the
+    // per-session cache above stays raw; indices in tsItemMap are remapped and
+    // everything index-based below (_scrollTargetIdx, avatar pass, mobile
+    // slice) sees the merged array. Only meaningful in pill mode.
+    let allItems = rawAllItems;
+    if (this.props.minimalChat && !showFullToolContent) {
+      const merged = mergeToolRuns(rawAllItems, this._toolRunCache);
+      for (const k of Object.keys(tsItemMap)) tsItemMap[k] = merged.indexMap[tsItemMap[k]];
+      allItems = merged.items;
+    } else if (this._toolRunCache.size) {
+      this._toolRunCache.clear();
+    }
 
     // 记录滚动目标 item index
     const { scrollToTimestamp } = this.props;
@@ -3374,6 +3395,7 @@ class ChatView extends React.Component {
             collapseToolResults={this.props.collapseToolResults}
             expandThinking={this.props.expandThinking}
             showFullToolContent={this.props.showFullToolContent}
+            minimalChat={this.props.minimalChat}
             showTrailingCursor={true}
             toolResultMap={EMPTY_MAP}
             isHistoryLog={this._getIsHistoryLog()}
@@ -3409,7 +3431,11 @@ class ChatView extends React.Component {
     // (producer request 的 ts)，跟 highlightTs 同源。其他 role 没 displayTs 自动 fallback 到 timestamp。
     const highlightIdx = highlightVisibleIdx >= 0 && highlightVisibleIdx < visible.length
       ? highlightVisibleIdx
-      : (highlightTs != null ? visible.findIndex(item => (item.props?.displayTs || item.props?.timestamp) === highlightTs) : -1);
+      : (highlightTs != null ? visible.findIndex(item =>
+          (item.props?.displayTs || item.props?.timestamp) === highlightTs
+          // Minimal-chat merged run: the target may be an absorbed (non-last) member.
+          || (item.props?.runMembers || []).some(m => (m.props?.displayTs || m.props?.timestamp) === highlightTs)
+        ) : -1);
 
     const { pendingInput, stickyBottom, ptyPromptHistory } = this.state;
 

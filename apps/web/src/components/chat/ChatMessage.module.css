@@ -297,12 +297,16 @@
 /* Mid-conversation role:"system" meta row label (renderSystemMessage, "Append System Prompt").
  * Claude brand color scheme: dark theme uses the official terracotta #d97757 via
  * --color-code-orange; the light theme's darkened variant keeps 12px text readable. */
+/* Appended-system-prompt row: same muted grey as the timestamp beside it — a
+   housekeeping row, not a call to attention. Applies in every display mode. */
 .systemMsgLabel {
   font-size: 12px;
-  color: var(--color-code-orange, #d97757);
+  color: var(--text-gray);
 }
 
-/* Inline Claude starburst logo preceding the label text (SVG from getSvgAvatar('system')). */
+/* Inline Claude starburst logo preceding the label text (SVG from getSvgAvatar('system')).
+   The SVG ships fill="#D97757" as a presentation attribute; the stylesheet `fill`
+   below outranks it, so no !important is needed. */
 .systemMsgLogo {
   display: inline-block;
   width: 12px;
@@ -315,6 +319,10 @@
   width: 100%;
   height: 100%;
   display: block;
+}
+
+.systemMsgLogo svg path {
+  fill: var(--text-gray);
 }
 
 .systemTagPre {
@@ -1608,4 +1616,55 @@
 }
 @media (max-width: 768px) {
   .webSearchGroup { padding-left: 8px; }
+}
+
+/* ===== Minimal chat: merged tool runs (utils/toolRunMerge.js) ===== */
+
+/* Appended system prompt folded into a merged run — grey Claude starburst,
+   inline with the tool pills. The SVG from getSvgAvatar('system') carries
+   fill="#D97757" as a presentation attribute; a stylesheet `fill` outranks it,
+   so no !important is needed. */
+.toolRunSystemLogo {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  margin: 0 6px 0 2px;
+  vertical-align: middle;
+  cursor: default;
+  opacity: 0.8;
+}
+
+.toolRunSystemLogo svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.toolRunSystemLogo svg path {
+  fill: var(--text-muted);
+}
+
+.toolRunSystemLogo:hover {
+  opacity: 1;
+}
+
+.toolRunSystemLogo:hover svg path {
+  fill: var(--text-secondary);
+}
+
+/* First line of a run member's pill popover / the system-note popover: the
+   member's own call time (the bubble header shows only the last call). */
+.toolRunPopoverTime {
+  padding: 6px 10px 0;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+}
+
+.toolRunSystemBody {
+  max-width: 520px;
+  max-height: 50vh;
+  overflow: auto;
+  padding: 6px 10px;
+  font-size: 12px;
 }

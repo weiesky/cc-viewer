@@ -1698,6 +1698,7 @@ class AppHeader extends React.Component {
     const expandThinking = !!_prefs.expandThinking;
     const expandDiff = !!_prefs.expandDiff;
     const showFullToolContent = !!_prefs.showFullToolContent;
+    const minimalChat = _prefs.minimalChat !== false;
 
     const menuItems = this.getMenuItems();
     const isElectronTab = this._isElectronTab();
@@ -2144,6 +2145,20 @@ class AppHeader extends React.Component {
                 <Switch
                   checked={!!collapseToolResults}
                   onChange={(checked) => this.context.updatePreferences({ collapseToolResults: checked })}
+                />
+              </div>
+            )}
+            {!showFullToolContent && (
+              <div className={styles.settingsItem}>
+                <span className={styles.settingsLabel}>
+                  {t('ui.minimalChat')}
+                  <Tooltip title={t('ui.minimalChat.help')}>
+                    <QuestionCircleOutlined className={styles.settingsHelpIcon} />
+                  </Tooltip>
+                </span>
+                <Switch
+                  checked={minimalChat}
+                  onChange={(checked) => this.context.updatePreferences({ minimalChat: checked })}
                 />
               </div>
             )}
