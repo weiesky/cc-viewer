@@ -39,6 +39,37 @@ export function withDefaultThinkingDisplay(args) {
   return hasFlag ? args : [...args, '--thinking-display', 'summarized'];
 }
 
+// Tokens after a literal `--` are prompt text for claude — any flag appended there is
+// silently swallowed as part of the prompt. cc-viewer's injected flags (system-prompt
+// file args, `--thinking-display`) must therefore land in the user-flag region BEFORE
+// the first literal `--`. Both spawn links (PTY pty-manager / headless runProxyCommand)
+// share this helper so the byte order stays consistent and neither path re-introduces
+// the "flag landed after `--`" misplacement.
+//
+// Pure function — never mutates the input. Two steps:
+//   1. splice `injections` in just before the first literal `--` (or at the end when absent);
+//   2. relocate any `--thinking-display <value>` pair that ended up at/after `--`
+//      (it is appended at the very end by withDefaultThinkingDisplay) to just before `--`.
+// User-supplied `--thinking-display` written before `--` is left untouched.
+export function insertBeforeDashDash(args, injections = []) {
+  if (!Array.isArray(args)) return args;
+  const out = [...args];
+  const dd = () => out.indexOf('--');
+  if (injections.length) {
+    const at = dd();
+    out.splice(at === -1 ? out.length : at, 0, ...injections);
+  }
+  const live = dd();
+  if (live !== -1) {
+    const tdIdx = out.indexOf('--thinking-display', live);
+    if (tdIdx !== -1) {
+      const pair = out.splice(tdIdx, 2); // ['--thinking-display', value]
+      out.splice(out.indexOf('--'), 0, ...pair);
+    }
+  }
+  return out;
+}
+
 // Parse continuation flags from claude args: -c/--continue, -r/--resume (value as the
 // next token or in = form), --fork-session. Returns null for non-continuation launches;
 // picker=true means a valueless -r (interactive picker — target unknowable at spawn).

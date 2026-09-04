@@ -32,7 +32,7 @@ import { describeCli } from './_helpers/cli-tier.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import {
-  readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, existsSync, chmodSync,
+  readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, existsSync, chmodSync, readdirSync, realpathSync,
 } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -62,9 +62,12 @@ function chmodTree(dir) {
   try { chmodSync(dir, 0o755); } catch {}
 }
 
-/** spawn cli.js，收集 stdout/stderr/exitCode，永不抛。 */
+/** spawn cli.js，收集 stdout/stderr/exitCode，永不抛。
+ *  opts.deleteEnv: 合并后需移除的 env 键(process.env 里的 NODE_TEST_CONTEXT 等
+ *  会在 opts.env 之后被展开,普通 delete 无效,必须在最终合并结果上剔除)。 */
 function runCli(args = [], opts = {}) {
   const env = { CCV_LOG_DIR: 'tmp', ...process.env, ...opts.env };
+  for (const k of opts.deleteEnv || []) delete env[k];
   try {
     const stdout = execFileSync(process.execPath, [CLI_PATH, ...args], {
       encoding: 'utf-8',
@@ -327,6 +330,220 @@ describeCli('cli-modes: ccv run -- claude 用户 --settings 合并', { concurren
     assert.equal((argsLine.match(/--settings/g) || []).length, 2, 'prepended + the tool\'s own flag');
     assert.ok(argsLine.includes('{"x":1}'), 'the tool\'s own settings value must be untouched');
     assert.ok(!argsLine.includes('"x":1,'), 'no merge must have happened');
+  });
+});
+
+// ════════════════════ runProxyCommand：headless(-p) 增强上下文注入 ════════════════════
+// 改动核心:runProxyCommand 在 settings-merge / thinking-display 之后、unshift --settings
+// 之前,补上了 resolveLaunchSystemPrompt 管线(与 pty-manager.js:382-443 字节顺序对齐)。
+// 矩阵要点:
+//   - sentinel 注入:cwd 放 CC_SYSTEM.md / CC_APPEND_SYSTEM.md → argv 出现对应 -file flag。
+//   - manual-flag 抑制:用户显式 --append-system-prompt → 不重复注入(hasArg 语义)。
+//   - env 抑制:CCV_DISABLE_AUTO_SYSTEM_PROMPT=1 → 无注入。
+//   - 模型匹配:CCV_LOG_DIR/system_prompt/ 条目 + settings model 信号 → 取代默认 sentinel。
+//   - 参数顺序:--settings 永远 argv 最前;注入 args 在用户 args 之后;`--` 之后是纯 prompt。
+//   - 纯 -p 走 fresh:带 -p 也注入;不触发 resume-pin(无 -c/-r)。
+//   - isClaudeCmd 门:非 claude 命令不注入。
+// 全子进程 + fake claude echo argv,断言只读 echo 输出,不依赖真实 claude。
+
+// 在工作目录写 sentinel 文件的 fixture:复用 fakeClaudeBin 的 fake claude 脚本,
+// 额外补 cwd/logDir 两个目录。返回 { cwd, bin, home, logDir }。
+function headlessInjectFixture() {
+  const { bin } = fakeClaudeBin(); // 已含 echo-argv 的 fake claude(在独立 bin/ 目录)
+  const dir = mkTmp('ccv-g2-headless-');
+  const cwd = join(dir, 'work');
+  const home = join(dir, 'home');
+  const logDir = join(dir, 'logs');
+  mkdirSync(cwd, { recursive: true });
+  mkdirSync(home, { recursive: true });
+  mkdirSync(logDir, { recursive: true });
+  return { dir, bin, cwd, home, logDir };
+}
+
+const headlessEnvFor = (f) => ({
+  PATH: `${f.bin}:/usr/bin:/bin`,
+  HOME: f.home,
+  NPM_CONFIG_PREFIX: join(f.dir, 'noprefix'),
+  CCV_LOG_DIR: f.logDir,
+});
+
+describeCli('cli-modes: ccv run -- claude headless(-p) 增强上下文注入', { concurrency: false }, () => {
+  it('cwd 的 CC_APPEND_SYSTEM.md → 注入 --append-system-prompt-file', () => {
+    const f = headlessInjectFixture();
+    writeFileSync(join(f.cwd, 'CC_APPEND_SYSTEM.md'), 'You are a pirate.\n');
+    const r = runCli(['run', '--', 'claude', '-p', 'hello'], { env: headlessEnvFor(f), cwd: f.cwd });
+    assert.equal(r.exitCode, 0);
+    const argsLine = r.stdout.split('\n').find(l => l.includes('FAKE_CLAUDE_ARGS:')) || '';
+    assert.ok(argsLine.includes('--append-system-prompt-file'), '应注入 --append-system-prompt-file');
+    assert.ok(argsLine.includes(join(f.cwd, 'CC_APPEND_SYSTEM.md')), '注入路径应指向 cwd 的 sentinel');
+  });
+
+  it('cwd 的 CC_SYSTEM.md → 注入 --system-prompt-file(整段替换)', () => {
+    const f = headlessInjectFixture();
+    writeFileSync(join(f.cwd, 'CC_SYSTEM.md'), 'Override everything.\n');
+    const r = runCli(['run', '--', 'claude', '-p', 'hello'], { env: headlessEnvFor(f), cwd: f.cwd });
+    assert.equal(r.exitCode, 0);
+    const argsLine = r.stdout.split('\n').find(l => l.includes('FAKE_CLAUDE_ARGS:')) || '';
+    assert.ok(argsLine.includes('--system-prompt-file'), '应注入 --system-prompt-file');
+    assert.ok(argsLine.includes(join(f.cwd, 'CC_SYSTEM.md')));
+  });
+
+  it('用户显式 --append-system-prompt → 不再注入 --append-system-prompt-file(manual-flag 抑制)', () => {
+    const f = headlessInjectFixture();
+    writeFileSync(join(f.cwd, 'CC_APPEND_SYSTEM.md'), 'Should be suppressed.\n');
+    const r = runCli(['run', '--', 'claude', '-p', '--append-system-prompt', 'user-own', 'hello'],
+      { env: headlessEnvFor(f), cwd: f.cwd });
+    assert.equal(r.exitCode, 0);
+    const argsLine = r.stdout.split('\n').find(l => l.includes('FAKE_CLAUDE_ARGS:')) || '';
+    assert.ok(argsLine.includes('--append-system-prompt user-own'), '用户显式 flag 必须保留');
+    assert.ok(!argsLine.includes('--append-system-prompt-file'),
+      'hasArg 抑制:cwd sentinel 的 -file 形式不得再注入');
+  });
+
+  it('CCV_DISABLE_AUTO_SYSTEM_PROMPT=1 → 无任何 system-prompt 注入', () => {
+    const f = headlessInjectFixture();
+    writeFileSync(join(f.cwd, 'CC_APPEND_SYSTEM.md'), 'Should be disabled.\n');
+    writeFileSync(join(f.cwd, 'CC_SYSTEM.md'), 'Should be disabled.\n');
+    const r = runCli(['run', '--', 'claude', '-p', 'hello'],
+      { env: { ...headlessEnvFor(f), CCV_DISABLE_AUTO_SYSTEM_PROMPT: '1' }, cwd: f.cwd });
+    assert.equal(r.exitCode, 0);
+    const argsLine = r.stdout.split('\n').find(l => l.includes('FAKE_CLAUDE_ARGS:')) || '';
+    assert.ok(!argsLine.includes('--append-system-prompt-file'), 'env 开关应关闭 append 注入');
+    assert.ok(!argsLine.includes('--system-prompt-file'), 'env 开关应关闭 override 注入');
+  });
+
+  it('CCV_LOG_DIR/system_prompt/ 模型条目命中 → 取代默认 sentinel', () => {
+    const f = headlessInjectFixture();
+    // 默认 sentinel 也在场,但模型条目命中后应"整体取代"(不再回看 sentinel)
+    writeFileSync(join(f.cwd, 'CC_APPEND_SYSTEM.md'), 'Default sentinel, must be superseded.\n');
+    const modelDir = join(f.logDir, 'system_prompt');
+    mkdirSync(modelDir, { recursive: true });
+    // 条目文件名语法:<NAME>_APPEND_SYSTEM.md(子串匹配:条目名是模型 id 的子串)
+    writeFileSync(join(modelDir, 'DEEPSEEK-TEST_APPEND_SYSTEM.md'), 'Model-specific append.\n');
+    // 用 settings model 信号让 resolveSpawnModel 解析出模型 id
+    const settingsPath = join(f.home, '.claude', 'settings.json');
+    mkdirSync(join(f.home, '.claude'), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify({ model: 'deepseek-test' }));
+    // NODE_TEST_CONTEXT 会让 launch-config 的 _defaultModelReader 强制返回 null(防 dev-shell
+    // model env 泄漏进单测),node --test 运行时把 NODE_TEST_CONTEXT=child-v8 写进 process.env,
+    // runCli 合并时会覆盖 fixture → 模型信号被清空、匹配不触发。用 deleteEnv 在最终 env 上剔除;
+    // 同时剔除可能经 process.env 继承来的 ANTHROPIC_MODEL/CLAUDE_MODEL(env 信号优先于 settings
+    // model,会覆盖 fixture 的 deepseek-test)。
+    const envNoTestCtx = { ...headlessEnvFor(f), CLAUDE_CONFIG_DIR: join(f.home, '.claude') };
+    const r = runCli(['run', '--', 'claude', '-p', 'hello'], {
+      env: envNoTestCtx,
+      cwd: f.cwd,
+      deleteEnv: ['NODE_TEST_CONTEXT', 'ANTHROPIC_MODEL', 'CLAUDE_MODEL'],
+    });
+    assert.equal(r.exitCode, 0);
+    const argsLine = r.stdout.split('\n').find(l => l.includes('FAKE_CLAUDE_ARGS:')) || '';
+    assert.ok(argsLine.includes('DEEPSEEK-TEST_APPEND_SYSTEM.md'), '模型条目应被注入');
+    assert.ok(!argsLine.includes('CC_APPEND_SYSTEM.md'), '模型命中后默认 sentinel 应被取代');
+  });
+
+  it('参数顺序:--settings 最前,注入 args 在用户 args 之后,`--` 之后是纯 prompt', () => {
+    const f = headlessInjectFixture();
+    writeFileSync(join(f.cwd, 'CC_APPEND_SYSTEM.md'), 'Ordering check.\n');
+    const r = runCli(['run', '--', 'claude', '-p', '--', '--settings', 'not-a-flag'],
+      { env: headlessEnvFor(f), cwd: f.cwd });
+    assert.equal(r.exitCode, 0);
+    const argsLine = r.stdout.split('\n').find(l => l.includes('FAKE_CLAUDE_ARGS:')) || '';
+    // --settings 注入必须出现在 argv 最前(unshift)
+    assert.ok(argsLine.indexOf('--settings') < argsLine.indexOf('-p'),
+      '注入的 --settings 应在用户 -p 之前');
+    // 注入的 system-prompt args 必须在用户 -p 之后(claude last-wins 下 ccv 注入赢)
+    const injectIdx = argsLine.indexOf('--append-system-prompt-file');
+    assert.ok(injectIdx > argsLine.indexOf('-p'),
+      '注入的 system-prompt args 应在用户 args 之后');
+    // `--` 之后的内容是纯 prompt:mergeSettingsIntoArgs 停扫 `--`,注入 args 已先于 `--` 追加,
+    // 字节顺序上注入 args 在 `--` 之前,`--` 之后的 --settings 作为纯 prompt 文本保留
+    const dashDashIdx = argsLine.indexOf(' -- ');
+    const settingsAfterDD = argsLine.indexOf('--settings', dashDashIdx);
+    assert.ok(dashDashIdx !== -1 && settingsAfterDD !== -1,
+      '`--` 之后的 --settings 应作为纯 prompt 文本保留,不被合并');
+    assert.ok(injectIdx < dashDashIdx,
+      '注入的 system-prompt args 应在 `--` 之前(用户 args 之后、prompt 文本之前)');
+    // tests-docs P2:--thinking-display 也必须被 relocate 到 `--` 之前(不落入 prompt 区)
+    const tdIdx = argsLine.indexOf('--thinking-display');
+    assert.ok(tdIdx !== -1 && tdIdx < dashDashIdx,
+      '--thinking-display 应被 relocate 到 `--` 之前');
+  });
+
+  it('headless run 不再打印 "CC Viewer started" GUI banner(CCV_CLI_MODE=1)', () => {
+    const f = headlessInjectFixture();
+    const r = runCli(['run', '--', 'claude', '-p', 'hello'], { env: headlessEnvFor(f), cwd: f.cwd });
+    assert.equal(r.exitCode, 0);
+    // tests-docs P2:显式否定断言——一次性 run 不得输出 server 启动横幅
+    const all = r.stdout + r.stderr;
+    assert.ok(!all.includes('CC Viewer started') && !all.includes('➜ Local:'),
+      `一次性 run 不得打印 GUI 启动横幅,实得: ${all.slice(0, 200)}`);
+  });
+
+  it('纯 -p(无 -c/-r)走 fresh 管线:注入生效且不写 pin snapshot', () => {
+    const f = headlessInjectFixture();
+    writeFileSync(join(f.cwd, 'CC_APPEND_SYSTEM.md'), 'Fresh pipeline.\n');
+    const r = runCli(['run', '--', 'claude', '-p', 'hello'], { env: headlessEnvFor(f), cwd: f.cwd });
+    assert.equal(r.exitCode, 0);
+    const argsLine = r.stdout.split('\n').find(l => l.includes('FAKE_CLAUDE_ARGS:')) || '';
+    assert.ok(argsLine.includes('--append-system-prompt-file'), '纯 -p 也应注入(fresh 分支)');
+    // pin snapshot 只会写在 -c/-r resume 时;纯 -p 后 logDir 下不应出现 pin- 目录
+    const pinDirs = existsSync(f.logDir)
+      ? readdirSync(f.logDir).filter(d => d.startsWith('pin-'))
+      : [];
+    assert.deepEqual(pinDirs, [], '纯 -p 不得产生 resume-pin 物化目录');
+  });
+
+  // tests-docs P1:resume-pin 分支在 headless 路径的覆盖。-p -c 命中预置 snapshot 时应
+  // 注入 pin 的内容(而非 cwd sentinel),保证续接会话的 prompt-prefix 一致(KV cache)。
+  it('-p -c 命中 pin snapshot → 注入 pin 内容而非 cwd sentinel', () => {
+    const f = headlessInjectFixture();
+    // cwd sentinel 在场,但 pin 命中后应被取代(pin 优先)
+    writeFileSync(join(f.cwd, 'CC_APPEND_SYSTEM.md'), 'Fresh sentinel, must NOT be used on pin.\n');
+    const uuid = '12345678-1234-1234-1234-1234567890ab';
+    // transcript slug 由 spawnDir(子进程 process.cwd())派生;macOS 上 mkdtemp 返回
+    // /var/folders/... 而子进程 cd 后 process.cwd() 是 realpath 的 /private/var/folders/...,
+    // 前缀差异会让 slug 不一致 → transcript 找不到。统一用 realpath 规范化。
+    const realCwd = realpathSync(f.cwd);
+    // 1. 预置 transcript:<projects>/<slug>/<uuid>.jsonl(slug = cwd 非字母数字 → '-')
+    const slug = realCwd.replace(/[^A-Za-z0-9]/g, '-');
+    const tDir = join(f.home, '.claude', 'projects', slug);
+    mkdirSync(tDir, { recursive: true });
+    writeFileSync(join(tDir, `${uuid}.jsonl`), '{"type":"summary"}\n');
+    // 2. 预置 snapshot:<logDir>/<projectKey>/system-prompt-snapshots/<uuid>.json
+    const projectKey = 'work'; // basename(f.cwd)
+    const snapDir = join(f.logDir, projectKey, 'system-prompt-snapshots');
+    mkdirSync(snapDir, { recursive: true });
+    writeFileSync(join(snapDir, `${uuid}.json`), JSON.stringify({
+      v: 1,
+      entries: [{ flag: '--append-system-prompt-file', basename: 'CC_APPEND_SYSTEM.md', content: 'PINNED persona bytes.\n' }],
+      model: null,
+      createdAt: Date.now(),
+      boundVia: 'wire',
+    }));
+    const r = runCli(['run', '--', 'claude', '-p', '-c', 'hello'], {
+      env: { ...headlessEnvFor(f), CLAUDE_CONFIG_DIR: join(f.home, '.claude') },
+      cwd: realCwd,
+      deleteEnv: ['NODE_TEST_CONTEXT', 'ANTHROPIC_MODEL', 'CLAUDE_MODEL'],
+    });
+    assert.equal(r.exitCode, 0);
+    const argsLine = r.stdout.split('\n').find(l => l.includes('FAKE_CLAUDE_ARGS:')) || '';
+    assert.ok(argsLine.includes('--append-system-prompt-file'), 'pin 命中应注入 append flag');
+    // pin 物化到 pin- 临时目录,不应是 cwd 的 sentinel 路径
+    assert.ok(!argsLine.includes(join(realCwd, 'CC_APPEND_SYSTEM.md')),
+      'pin 命中后不得注入 cwd sentinel(pin 优先于 fresh)');
+    assert.ok(argsLine.includes('pin-'), 'pin 应物化到 pin- 临时目录');
+  });
+
+  it('非 claude 命令(run -- sometool)不注入 system-prompt args', () => {
+    const f = headlessInjectFixture();
+    writeFileSync(join(f.cwd, 'CC_APPEND_SYSTEM.md'), 'Must not leak.\n');
+    writeFileSync(join(f.bin, 'sometool'), '#!/bin/sh\necho "SOMETOOL_ARGS: $@"\nexit 0\n');
+    chmodSync(join(f.bin, 'sometool'), 0o755);
+    const r = runCli(['run', '--', 'sometool', '-p', 'hello'], { env: headlessEnvFor(f), cwd: f.cwd });
+    assert.equal(r.exitCode, 0);
+    const argsLine = r.stdout.split('\n').find(l => l.includes('SOMETOOL_ARGS:')) || '';
+    assert.ok(!argsLine.includes('--append-system-prompt-file'),
+      'isClaudeCmd 门:sometool 不得注入 system-prompt args');
   });
 });
 

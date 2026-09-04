@@ -12,7 +12,7 @@ import { mergeSettingsIntoArgs } from './lib/settings-merge.js';
 import { MODEL_PROMPT_DIR } from './lib/model-system-prompts.js';
 // Launch-time system-prompt/thinking-display pipeline lives in lib/launch-config.js
 // (shared with the SDK link). Re-exported here for existing consumers/tests.
-import { withDefaultThinkingDisplay, resolveLaunchSystemPrompt } from './lib/launch-config.js';
+import { withDefaultThinkingDisplay, resolveLaunchSystemPrompt, insertBeforeDashDash } from './lib/launch-config.js';
 export { withDefaultThinkingDisplay } from './lib/launch-config.js';
 import { t, tFor } from './i18n.js';
 
@@ -437,7 +437,13 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
     console.warn('[CC Viewer] system prompt build/render failed, launching without injected prompt:', err?.message || err);
     sysPrompt = { args: [], loaded: [], model: null, entries: [] };
   }
-  const launchArgs = sysPrompt.args.length ? [...finalExtraArgs, ...sysPrompt.args] : finalExtraArgs;
+  // Inject the system-prompt args before a literal `--` (tokens after it are prompt text
+  // and would swallow a flag), and relocate `--thinking-display` out of the prompt region
+  // too. Shared with the headless run link via launch-config.js so both spawn paths keep
+  // the same byte order.
+  const launchArgs = sysPrompt.args.length || finalExtraArgs.includes('--thinking-display')
+    ? insertBeforeDashDash(finalExtraArgs, sysPrompt.args)
+    : finalExtraArgs;
 
   let command = claudePath;
   let args = ['--settings', settingsJson, ...launchArgs];

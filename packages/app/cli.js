@@ -16,7 +16,7 @@ import { ensureHooks, removeAllManagedHooks } from './server/lib/ensure-hooks.js
 import { injectCliJsAt, removeCliJsInjectionAt, INJECT_START as _INJECT_START, INJECT_END as _INJECT_END, buildInjectBlock as _buildInjectBlock } from './server/lib/cli-inject.js';
 import { normalizeBasePath } from './server/lib/base-path.js';
 import { mergeSettingsIntoArgs } from './server/lib/settings-merge.js';
-import { splitSdkLaunchArgs } from './server/lib/launch-config.js';
+import { splitSdkLaunchArgs, resolveLaunchSystemPrompt, insertBeforeDashDash } from './server/lib/launch-config.js';
 import { createHardenedCleanup, installWinKeypressFallback } from './server/lib/term-signals.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -310,6 +310,11 @@ async function runProxyCommand(args) {
         env.DISABLE_AUTOUPDATER = '1';
       }
     }
+    // Mark CLI mode BEFORE importing proxy.js: proxy.js → interceptor.js can pull in
+    // server.js, whose isCliMode is evaluated once at module top level. Without this a
+    // one-shot run is misread as a full GUI launch and prints the "CC Viewer started"
+    // banner. Mirrors runCliMode (cli.js:476) / runSdkMode (cli.js:689).
+    process.env.CCV_CLI_MODE = '1';
     // Resolve an authoritative configured executable before starting any
     // long-lived service, so fail-closed errors leave no transient proxy behind.
     const { startProxy } = await import('./server/proxy.js');
@@ -350,6 +355,39 @@ async function runProxyCommand(args) {
     if (isClaudeCmd && process.env.CCV_SKIP_THINKING_DISPLAY !== '1') {
       const { withDefaultThinkingDisplay } = await import('./server/pty-manager.js');
       cmdArgs = withDefaultThinkingDisplay(cmdArgs);
+    }
+
+    // Headless(-p)/one-shot run link needs ccv's enhanced context too: run the full
+    // system-prompt pipeline (fresh CC_SYSTEM.md / CC_APPEND_SYSTEM.md sentinels, model
+    // matching, ${...} render; plain -p without -c/-r → parseResumeArgs returns null →
+    // the fresh branch; -p -c/-r reuse the existing resume-pin semantics). Byte order
+    // mirrors pty-manager.js: settings first (unshifted below), then user args, then the
+    // injected system-prompt args (claude is last-wins; manual-flag suppression inside the
+    // pipeline keeps an explicit user flag authoritative). suppressInjection stays false —
+    // a one-shot process has no PTY rejected-binary set / skip-once token. An injection
+    // failure must never block the spawn (same semantics as pty-manager).
+    let sysPromptArgs = [];
+    if (isClaudeCmd) {
+      try {
+        const r = resolveLaunchSystemPrompt({
+          spawnDir: process.cwd(),
+          extraArgs: cmdArgs,
+          env: process.env,
+          launchSettings: JSON.parse(settingsJson),
+          insideLogDir: false,
+          logDir: LOG_DIR,
+        });
+        sysPromptArgs = r.sysPrompt.args;
+      } catch (err) {
+        console.warn('[CC Viewer] system prompt build/render failed, launching without injected prompt:', err?.message || err);
+      }
+    }
+
+    // Inject before the literal `--` (tokens after it are prompt text and would swallow a
+    // flag), and relocate `--thinking-display` out of the prompt region too. Shared with
+    // the PTY link via launch-config.js so both paths keep the same byte order.
+    if (isClaudeCmd) {
+      cmdArgs = insertBeforeDashDash(cmdArgs, sysPromptArgs);
     }
 
     cmdArgs.unshift(settingsJson);
