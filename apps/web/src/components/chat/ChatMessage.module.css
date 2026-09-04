@@ -302,6 +302,7 @@
 .systemMsgLabel {
   font-size: 12px;
   color: var(--text-gray);
+  user-select: none;
 }
 
 /* Inline Claude starburst logo preceding the label text (SVG from getSvgAvatar('system')).

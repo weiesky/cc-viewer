@@ -161,6 +161,48 @@
   font-size: 11px;
   color: var(--text-tertiary);
 }
+.engineBadge {
+  margin-left: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+.navGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  margin-right: 2px;
+}
+.navBtn {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  padding: 0;
+  flex-shrink: 0;
+}
+.navBtn:hover:not(:disabled) {
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+}
+.navBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.navPos {
+  font-size: 10px;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-muted);
+  min-width: 34px;
+  text-align: center;
+}
 .statusError {
   font-size: 11px;
   color: var(--color-error, #e5484d);
@@ -195,6 +237,10 @@
   flex: 1;
   overflow: auto;
   padding: 2px 0 8px;
+}
+/* Virtuoso renders its own scroller inside this container — it must fill the height. */
+.resultsContainer > div {
+  height: 100%;
 }
 
 .fileGroup {
@@ -271,6 +317,11 @@
   outline: 1px solid var(--color-primary);
   outline-offset: -1px;
   background: var(--bg-surface);
+}
+/* Prev/next navigation target row. */
+.matchRowActive {
+  background: var(--bg-surface);
+  box-shadow: inset 2px 0 0 var(--color-primary);
 }
 .lineNo {
   flex-shrink: 0;

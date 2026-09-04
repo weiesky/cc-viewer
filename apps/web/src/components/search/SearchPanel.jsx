@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Modal } from 'antd';
+import { Virtuoso } from 'react-virtuoso';
 import { t } from '../../i18n';
 import { searchCode, replaceInFiles } from '../../utils/searchApi';
 import { buildQueryRegExp, looksCatastrophic, noGlobal, applyMatch, computeMatchTarget } from '../../utils/searchReplace';
@@ -66,6 +67,55 @@ function renderLineReplace(text, submatches, reInfo, regex, replaceText, styles)
   return out;
 }
 
+/** File-group header row in the virtualized result list. */
+function FileRow({ group, isCollapsed, replaceActive, isReplacing, onToggle, onReplaceFile, stop }) {
+  const dir = group.file.includes('/') ? group.file.slice(0, group.file.lastIndexOf('/')) : '';
+  const base = group.file.slice(group.file.lastIndexOf('/') + 1);
+  return (
+    <div className={styles.fileGroup}>
+      <div className={styles.fileHeader} role="button" tabIndex={0} onClick={() => onToggle(group.file)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(group.file); } }} title={group.file}>
+        <svg className={styles.chevron} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'none' }}>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+        <span className={styles.fileName}>{base}</span>
+        {dir && <span className={styles.fileDir}>{dir}</span>}
+        {replaceActive && (
+          <button type="button" className={styles.rowReplaceBtn} disabled={isReplacing} title={t('ui.search.replaceInFile')} onClick={(e) => onReplaceFile(group.file, e)} onKeyDown={stop(() => onReplaceFile(group.file))}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 4v6h6" /><path d="M3 10a9 9 0 1 1 2 6" /></svg>
+          </button>
+        )}
+        <span className={styles.matchCount}>{group.matches.length}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Single match row in the virtualized result list. */
+function MatchRow({ group, match: m, matchIndex, isActive, replaceActive, previewOn, isReplacing, reInfo, regex, replaceText, onOpen, onNavStep, onReplaceMatch, stop }) {
+  return (
+    <div
+      data-match-row
+      data-match-index={matchIndex}
+      className={isActive ? `${styles.matchRow} ${styles.matchRowActive}` : styles.matchRow}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(group.file, m)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(group.file, m); }
+        else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); onNavStep(e.key === 'ArrowDown' ? 1 : -1); }
+      }}
+    >
+      <span className={styles.lineNo}>{m.line}</span>
+      <span className={styles.lineText}>{previewOn ? renderLineReplace(m.text, m.submatches, reInfo, regex, replaceText, styles) : renderLine(m.text, m.submatches, styles)}</span>
+      {replaceActive && (
+        <button type="button" className={styles.rowReplaceBtn} disabled={isReplacing} title={t('ui.search.replaceMatch')} onClick={(e) => onReplaceMatch(group.file, m, e)} onKeyDown={stop(() => onReplaceMatch(group.file, m))}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 4v6h6" /><path d="M3 10a9 9 0 1 1 2 6" /></svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath, onReplaceApplied }) {
   const [query, setQuery] = useState(() => lsStr(LS.query));
   const [caseSensitive, setCaseSensitive] = useState(() => lsBool(LS.caseSensitive));
@@ -81,6 +131,7 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
   const [engine, setEngine] = useState('none');
   const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [slowNode, setSlowNode] = useState(false);
   const [error, setError] = useState(null);
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [isReplacing, setIsReplacing] = useState(false);
@@ -89,7 +140,7 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
   const abortRef = useRef(null);
   const debounceRef = useRef(null);
   const inputRef = useRef(null);
-  const resultsRef = useRef(null);
+  const virtuosoRef = useRef(null);
   const mountedRef = useRef(true);
   // Reset to true on (re)mount — a bare `useRef(true)` stays false after an HMR/StrictMode
   // remount reuses the ref object, which would wedge every post-replace setState (repo convention).
@@ -98,6 +149,26 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   const totalMatches = useMemo(() => results.reduce((n, r) => n + r.matches.length, 0), [results]);
+
+  // Flatten groups + visible matches into one row list for the Virtuoso scroller. Collapsed
+  // groups contribute only their header. Match rows carry a global index for prev/next nav.
+  const flatRows = useMemo(() => {
+    const rows = [];
+    let mi = 0;
+    for (const group of results) {
+      rows.push({ type: 'file', key: `f:${group.file}`, group });
+      if (!collapsed.has(group.file)) {
+        for (const m of group.matches) {
+          rows.push({ type: 'match', key: `m:${group.file}:${m.line}:${mi}`, group, match: m, matchIndex: mi++ });
+        }
+      }
+    }
+    return rows;
+  }, [results, collapsed]);
+
+  const [activeMatch, setActiveMatch] = useState(-1);
+  // Any result-set change invalidates the current match pointer.
+  useEffect(() => { setActiveMatch(-1); }, [results]);
 
   // Shared regex info for preview + single-match targeting (node/JS semantics, not rg offsets).
   const reInfo = useMemo(() => {
@@ -117,13 +188,16 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
     if (!opts?.keepNotice) setNotice(null); // a post-replace re-run keeps the replace summary
     if (!q) {
       if (abortRef.current) abortRef.current.abort();
-      setResults([]); setEngine('none'); setTruncated(false); setError(null); setLoading(false);
+      setResults([]); setEngine('none'); setTruncated(false); setError(null); setLoading(false); setSlowNode(false);
       return;
     }
     if (abortRef.current) abortRef.current.abort();
     const ac = new AbortController();
     abortRef.current = ac;
-    setLoading(true); setError(null);
+    setLoading(true); setSlowNode(false); setError(null);
+    // The node fallback engine can take seconds on large trees — surface a hint after 1s so
+    // the wait reads as "working", not "hung". Cheap client-side timer; cancelled on settle.
+    const slowTimer = setTimeout(() => { if (!ac.signal.aborted) setSlowNode(true); }, 1000);
     try {
       const data = await searchCode({
         query: q, caseSensitive, wholeWord, regex,
@@ -140,7 +214,8 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
       reportSwallowed('search', err);
       setError('error'); setResults([]); setEngine('none'); setTruncated(false);
     } finally {
-      if (!ac.signal.aborted) setLoading(false);
+      clearTimeout(slowTimer);
+      if (!ac.signal.aborted) { setLoading(false); setSlowNode(false); }
     }
   }, [query, caseSensitive, wholeWord, regex, include, exclude, showReplace]);
 
@@ -156,14 +231,54 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
   // flips the search engine (see runSearch).
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(runSearch, DEBOUNCE_MS);
+    debounceRef.current = setTimeout(() => { debounceRef.current = null; runSearch(); }, DEBOUNCE_MS);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, caseSensitive, wholeWord, regex, include, exclude, showReplace, runSearch]);
 
   useEffect(() => () => { if (abortRef.current) abortRef.current.abort(); }, []);
 
+  // Find the flatRows index of the Nth visible match row (undefined when out of range).
+  const flatIndexOfMatch = useCallback((mi) => {
+    for (let i = 0; i < flatRows.length; i++) {
+      const r = flatRows[i];
+      if (r.type === 'match' && r.matchIndex === mi) return i;
+    }
+    return -1;
+  }, [flatRows]);
+
+  const navToMatch = useCallback((mi) => {
+    if (mi < 0 || mi >= totalMatches) return;
+    const flatIdx = flatIndexOfMatch(mi);
+    if (flatIdx >= 0) virtuosoRef.current?.scrollToIndex({ index: flatIdx, align: 'center' });
+    // Focus the row once Virtuoso has actually mounted it: retry over a few animation frames
+    // (a long jump mounts the target asynchronously; a single rAF races the mount).
+    let tries = 0;
+    const tryFocus = () => {
+      const el = document.querySelector(`[data-match-index="${mi}"]`);
+      if (el) { el.focus(); return; }
+      if (++tries < 10) requestAnimationFrame(tryFocus);
+    };
+    requestAnimationFrame(tryFocus);
+  }, [totalMatches, flatIndexOfMatch]);
+
+  const navStep = useCallback((dir) => {
+    if (!totalMatches) return;
+    const next = activeMatch < 0 ? (dir > 0 ? 0 : totalMatches - 1)
+      : (activeMatch + dir + totalMatches) % totalMatches;
+    setActiveMatch(next);
+    navToMatch(next);
+  }, [totalMatches, activeMatch, navToMatch]);
+
   const onInputKeyDown = (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); if (debounceRef.current) clearTimeout(debounceRef.current); runSearch(); }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      // Enter navigates matches only when the result list already reflects the CURRENT query;
+      // a freshly-typed term (debounce pending / search in flight) must run the search first.
+      const debouncePending = !!debounceRef.current;
+      if (totalMatches > 0 && !loading && !debouncePending) { navStep(e.shiftKey ? -1 : 1); return; }
+      if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
+      runSearch();
+    }
     else if (e.key === 'Escape') { e.preventDefault(); setQuery(''); }
   };
 
@@ -174,19 +289,6 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
   });
   const allCollapsed = results.length > 0 && collapsed.size >= results.length;
   const toggleAll = () => setCollapsed(allCollapsed ? new Set() : new Set(results.map((r) => r.file)));
-
-  const onResultsKeyDown = (e) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    const rows = resultsRef.current?.querySelectorAll('[data-match-row]');
-    if (!rows || !rows.length) return;
-    e.preventDefault();
-    const arr = [...rows];
-    const idx = arr.indexOf(document.activeElement);
-    const nextIdx = e.key === 'ArrowDown'
-      ? (idx < 0 ? 0 : Math.min(idx + 1, arr.length - 1))
-      : (idx < 0 ? 0 : Math.max(idx - 1, 0));
-    arr[nextIdx]?.focus();
-  };
 
   const openMatch = (file, m) => onOpenResult?.(file, m.line, m.submatches?.[0] || null);
 
@@ -350,14 +452,28 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
 
       <div className={styles.statusRow}>
         {isReplacing && <span className={styles.statusText}>{t('ui.search.replacing')}</span>}
-        {!isReplacing && loading && <span className={styles.statusText}>{t('ui.search.searching')}</span>}
+        {!isReplacing && loading && (
+          <span className={styles.statusText}>
+            {slowNode ? t('ui.search.nodeSlowHint') : t('ui.search.searching')}
+          </span>
+        )}
         {!isReplacing && !loading && error === 'invalid_regex' && <span className={styles.statusError}>{t('ui.search.invalidRegex')}</span>}
         {!isReplacing && !loading && error === 'error' && <span className={styles.statusError}>{t('ui.search.error')}</span>}
         {!isReplacing && !loading && !error && query && results.length === 0 && <span className={styles.statusText}>{t('ui.search.noResults')}</span>}
         {!isReplacing && !loading && !error && results.length > 0 && (
           <>
-            <span className={styles.statusText} title={engine !== 'none' ? t('ui.search.viaEngine', { engine }) : undefined}>
+            <span className={styles.statusText}>
               {t('ui.search.resultSummary', { count: totalMatches, files: results.length })}
+              {engine !== 'none' && <span className={styles.engineBadge}>{t('ui.search.viaEngine', { engine })}</span>}
+            </span>
+            <span className={styles.navGroup}>
+              <button type="button" className={styles.navBtn} disabled={!totalMatches} onClick={() => navStep(-1)} title={t('ui.search.navPrev')} aria-label={t('ui.search.navPrev')}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
+              </button>
+              {activeMatch >= 0 && <span className={styles.navPos}>{activeMatch + 1}/{totalMatches}</span>}
+              <button type="button" className={styles.navBtn} disabled={!totalMatches} onClick={() => navStep(1)} title={t('ui.search.navNext')} aria-label={t('ui.search.navNext')}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+              </button>
             </span>
             <button className={styles.collapseAllBtn} onClick={toggleAll} title={allCollapsed ? t('ui.search.expandAll') : t('ui.search.collapseAll')}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -370,40 +486,16 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
       {notice && <div className={styles.notice}>{notice}</div>}
       {truncated && !loading && <div className={styles.truncated}>{t('ui.search.truncated', { count: totalMatches })}</div>}
 
-      <div className={styles.resultsContainer} ref={resultsRef} onKeyDown={onResultsKeyDown}>
-        {results.map((group) => {
-          const isCollapsed = collapsed.has(group.file);
-          const dir = group.file.includes('/') ? group.file.slice(0, group.file.lastIndexOf('/')) : '';
-          const base = group.file.slice(group.file.lastIndexOf('/') + 1);
-          return (
-            <div key={group.file} className={styles.fileGroup}>
-              <div className={styles.fileHeader} role="button" tabIndex={0} onClick={() => toggleCollapse(group.file)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCollapse(group.file); } }} title={group.file}>
-                <svg className={styles.chevron} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'none' }}>
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-                <span className={styles.fileName}>{base}</span>
-                {dir && <span className={styles.fileDir}>{dir}</span>}
-                {replaceActive && (
-                  <button type="button" className={styles.rowReplaceBtn} disabled={isReplacing} title={t('ui.search.replaceInFile')} onClick={(e) => replaceFile(group.file, e)} onKeyDown={stop(() => replaceFile(group.file))}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 4v6h6" /><path d="M3 10a9 9 0 1 1 2 6" /></svg>
-                  </button>
-                )}
-                <span className={styles.matchCount}>{group.matches.length}</span>
-              </div>
-              {!isCollapsed && group.matches.map((m, i) => (
-                <div key={`${m.line}-${i}`} data-match-row className={styles.matchRow} role="button" tabIndex={0} onClick={() => openMatch(group.file, m)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMatch(group.file, m); } }}>
-                  <span className={styles.lineNo}>{m.line}</span>
-                  <span className={styles.lineText}>{previewOn ? renderLineReplace(m.text, m.submatches, reInfo, regex, replaceText, styles) : renderLine(m.text, m.submatches, styles)}</span>
-                  {replaceActive && (
-                    <button type="button" className={styles.rowReplaceBtn} disabled={isReplacing} title={t('ui.search.replaceMatch')} onClick={(e) => replaceOneMatch(group.file, m, e)} onKeyDown={stop(() => replaceOneMatch(group.file, m))}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 4v6h6" /><path d="M3 10a9 9 0 1 1 2 6" /></svg>
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          );
-        })}
+      <div className={styles.resultsContainer}>
+        <Virtuoso
+          ref={virtuosoRef}
+          data={flatRows}
+          computeItemKey={(_, row) => row.key}
+          itemContent={(_, row) => row.type === 'file'
+            ? <FileRow group={row.group} isCollapsed={collapsed.has(row.group.file)} replaceActive={replaceActive} isReplacing={isReplacing} onToggle={toggleCollapse} onReplaceFile={replaceFile} stop={stop} />
+            : <MatchRow group={row.group} match={row.match} matchIndex={row.matchIndex} isActive={row.matchIndex === activeMatch} replaceActive={replaceActive} previewOn={previewOn} isReplacing={isReplacing} reInfo={reInfo} regex={regex} replaceText={replaceText} onOpen={openMatch} onNavStep={navStep} onReplaceMatch={replaceOneMatch} stop={stop} />
+          }
+        />
       </div>
     </div>
   );

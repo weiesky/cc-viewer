@@ -4038,6 +4038,24 @@ const i18nData = {
     "pl": "przez {engine}", "ru": "через {engine}", "ar": "عبر {engine}", "no": "via {engine}", "pt-BR": "via {engine}",
     "th": "ผ่าน {engine}", "tr": "{engine} ile", "uk": "через {engine}"
   },
+  "ui.search.navPrev": {
+    "zh": "上一个匹配 (Shift+Enter)", "en": "Previous match (Shift+Enter)", "zh-TW": "上一個匹配 (Shift+Enter)", "ko": "이전 결과 (Shift+Enter)", "ja": "前の一致 (Shift+Enter)",
+    "de": "Vorheriger Treffer (Umschalt+Eingabe)", "es": "Coincidencia anterior (Mayús+Intro)", "fr": "Correspondance précédente (Maj+Entrée)", "it": "Corrispondenza precedente (Maiusc+Invio)", "da": "Forrige match (Shift+Enter)",
+    "pl": "Poprzednie dopasowanie (Shift+Enter)", "ru": "Предыдущее совпадение (Shift+Enter)", "ar": "المطابقة السابقة (Shift+Enter)", "no": "Forrige treff (Shift+Enter)", "pt-BR": "Correspondência anterior (Shift+Enter)",
+    "th": "ผลลัพธ์ก่อนหน้า (Shift+Enter)", "tr": "Önceki eşleşme (Shift+Enter)", "uk": "Попередній збіг (Shift+Enter)"
+  },
+  "ui.search.navNext": {
+    "zh": "下一个匹配 (Enter)", "en": "Next match (Enter)", "zh-TW": "下一個匹配 (Enter)", "ko": "다음 결과 (Enter)", "ja": "次の一致 (Enter)",
+    "de": "Nächster Treffer (Eingabe)", "es": "Coincidencia siguiente (Intro)", "fr": "Correspondance suivante (Entrée)", "it": "Corrispondenza successiva (Invio)", "da": "Næste match (Enter)",
+    "pl": "Następne dopasowanie (Enter)", "ru": "Следующее совпадение (Enter)", "ar": "المطابقة التالية (Enter)", "no": "Neste treff (Enter)", "pt-BR": "Próxima correspondência (Enter)",
+    "th": "ผลลัพธ์ถัดไป (Enter)", "tr": "Sonraki eşleşme (Enter)", "uk": "Наступний збіг (Enter)"
+  },
+  "ui.search.nodeSlowHint": {
+    "zh": "正在搜索…（未检测到 ripgrep，内置引擎较慢）", "en": "Searching… (ripgrep not found, built-in engine is slower)", "zh-TW": "搜尋中…（未偵測到 ripgrep，內建引擎較慢）", "ko": "검색 중… (ripgrep을 찾을 수 없어 내장 엔진이 느립니다)", "ja": "検索中…（ripgrep が見つからないため内蔵エンジンは低速です）",
+    "de": "Suche läuft… (ripgrep nicht gefunden, integrierte Engine ist langsamer)", "es": "Buscando… (ripgrep no encontrado, el motor integrado es más lento)", "fr": "Recherche… (ripgrep introuvable, le moteur intégré est plus lent)", "it": "Ricerca… (ripgrep non trovato, il motore integrato è più lento)", "da": "Søger… (ripgrep ikke fundet, indbygget engine er langsommere)",
+    "pl": "Wyszukiwanie… (nie znaleziono ripgrep, wbudowany silnik jest wolniejszy)", "ru": "Поиск… (ripgrep не найден, встроенный движок медленнее)", "ar": "جارٍ البحث… (ripgrep غير موجود، المحرك المدمج أبطأ)", "no": "Søker… (ripgrep ikke funnet, innebygd motor er tregere)", "pt-BR": "Pesquisando… (ripgrep não encontrado, o motor integrado é mais lento)",
+    "th": "กำลังค้นหา… (ไม่พบ ripgrep เอนจินในตัวช้ากว่า)", "tr": "Aranıyor… (ripgrep bulunamadı, yerleşik motor daha yavaş)", "uk": "Пошук… (ripgrep не знайдено, вбудований рушій повільніший)"
+  },
   "ui.search.toggleReplace": {
     "zh": "切换替换", "en": "Toggle Replace", "zh-TW": "切換取代", "ko": "바꾸기 전환", "ja": "置換を切り替え",
     "de": "Ersetzen umschalten", "es": "Alternar reemplazo", "fr": "Afficher/masquer le remplacement", "it": "Mostra/nascondi sostituzione", "da": "Vis/skjul erstat",
