@@ -1,5 +1,13 @@
 # cc-viewer
 
+## 1.8.7
+
+### Patch Changes
+
+- d5e66ec: Headless `-p` / `--print` and one-shot `ccv run` sessions now carry ccv's enhanced context without starting the GUI. The `runProxyCommand` link runs the full system-prompt pipeline (`resolveLaunchSystemPrompt`), so `CC_SYSTEM.md` / `CC_APPEND_SYSTEM.md` / model-specific `system_prompt/` entries are injected exactly as in the PTY path — landing before a literal `--` so prompt text stays intact — and the link now sets `CCV_CLI_MODE=1`, so a one-shot run no longer prints the "CC Viewer started" GUI banner.
+- cdabb27: Footer geo badge (CountryFlag) now only mounts for Anthropic official subscriptions — the endpoint must be official (proxyOfficialDefault) AND plan-usage headers must have been seen; third-party proxy / self-hosted profile users no longer see the flag or fire the ipinfo.io/ipwho.is/ipapi.co lookups.
+- bd50636: Search: move the node fallback engine's file scan into a worker thread so large codebases no longer freeze the server (Electron tab backend stays responsive); virtualize the sidebar result list (react-virtuoso); add prev/next match navigation, a visible engine badge, and a slow-search hint when ripgrep is absent.
+
 ## 1.8.6
 
 ### Patch Changes
