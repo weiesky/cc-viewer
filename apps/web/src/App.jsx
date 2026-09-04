@@ -692,7 +692,12 @@ class App extends AppBase {
             </div>
           </Layout.Content>
           <div className={styles.footer}>
-            <CountryFlag />
+            {/* Geo badge is only meaningful for Anthropic official subscriptions: mount it (and
+                thereby fire its ipinfo.io lookups) only when the endpoint is official AND plan
+                usage headers have actually been seen. Mirrors the UsageWindowPill guard. */}
+            {!this._isLocalLog && this.state.proxyOfficialDefault === true && this.state.planUsage && (
+              <CountryFlag />
+            )}
             {/* 套餐用量:额度搭车在常规响应头上，自动跟随最新响应更新(仅有新响应时重算)。
                 数据拿不到时整个功能隐藏 —— 不再渲染 OAuth 静默占位 pill。 */}
             {!this._isLocalLog && this.state.planUsage && (
