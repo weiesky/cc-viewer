@@ -1,5 +1,12 @@
 # cc-viewer
 
+## 1.8.8
+
+### Patch Changes
+
+- ba3eee8: feat(files): remote (non-127.0.0.1) sessions get a "Download to local" item in the file-explorer right-click menu, streamed through the new `GET /api/download-file` attachment endpoint.
+- 57798b7: fix(logs): log-management modal — project switch no longer lags one round (refetch now runs in the setState callback, in both the selector change and the modal-reopen/migration-done paths), the pager is hidden entirely when a project has a single page of sessions (explicit `total > pageSize` gate instead of antd's `hideOnSinglePage`, which flickered while totals were stale mid-switch), and page-number items get a 4px gap.
+
 ## 1.8.7
 
 ### Patch Changes
