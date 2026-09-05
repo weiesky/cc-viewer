@@ -89,6 +89,23 @@
   overflow: hidden;
 }
 
+/* Logs-modal pager: antd renders page items flush against each other; give
+   them a 4px gap (scoped to the logs table only). antd cssinjs appends its
+   stylesheets after the app's extracted CSS, so the doubled .ant-pagination
+   class bumps specificity above the mini-pager's `margin: 0` reset. */
+.logListContainer :global(.ant-pagination.ant-pagination .ant-pagination-item),
+.logListContainer :global(.ant-pagination.ant-pagination .ant-pagination-prev),
+.logListContainer :global(.ant-pagination.ant-pagination .ant-pagination-next),
+.logListContainer :global(.ant-pagination.ant-pagination .ant-pagination-jump-prev),
+.logListContainer :global(.ant-pagination.ant-pagination .ant-pagination-jump-next) {
+  margin-inline-start: 4px;
+}
+/* rc-pagination's first ul child is the total text (showTotal), so the
+   leading control is .ant-pagination-prev — clear its gap. */
+.logListContainer :global(.ant-pagination.ant-pagination .ant-pagination-prev) {
+  margin-inline-start: 0;
+}
+
 /* Desktop logs-modal content box (wraps the Spin / empty state / table). A
    fixed height keeps the modal body from bouncing when localLogsLoading swaps
    the table for a small spinner: the box holds the table's height whether the

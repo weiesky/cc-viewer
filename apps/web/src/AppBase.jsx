@@ -2474,9 +2474,15 @@ class AppBase extends React.Component {
 
   handleImportLocalLogs = () => {
     // 打开弹窗总是回到「活动项目」视图（logViewProject 重置），重新拉第 1 页。
-    this.setState({ importModalVisible: true, localLogsLoading: true, localLogsPage: 1, logViewProject: '' });
-    this._fetchV2Logs(1);
-    if (this.state.logView === 'v1') this._fetchV1Logs();
+    this.setState({ importModalVisible: true, localLogsLoading: true, localLogsPage: 1, logViewProject: '' }, () => {
+      // setState is async: _localLogsUrl reads logViewProject from state, so
+      // the fetches must run in the callback or they would request the
+      // PREVIOUSLY viewed project (same one-round-delay class as
+      // handleLogsProjectChange; reachable when the migration completes while
+      // the modal is open on a non-active project).
+      this._fetchV2Logs(1);
+      if (this.state.logView === 'v1') this._fetchV1Logs();
+    });
     this._startWireV2ConvertPoll();
   };
 
@@ -2527,8 +2533,12 @@ class AppBase extends React.Component {
       localLogsTotal: 0,
       localLogsLoading: true,
       selectedLogs: new Set(),
+    }, () => {
+      // setState is async: _localLogsUrl reads logViewProject from state, so
+      // the fetch must run in the callback or it would request the PREVIOUS
+      // project's list (the one-round-delay bug).
+      if (this.state.logView !== 'v1') this._fetchV2Logs(1);
     });
-    if (this.state.logView !== 'v1') this._fetchV2Logs(1);
   };
 
   // v1 view data — fetched lazily on entering the view (and on refreshes while
@@ -2673,15 +2683,18 @@ class AppBase extends React.Component {
     // v2 view is server-side paginated: the pager drives _fetchV2Logs. v1 view
     // keeps the legacy unpaged grouped list (localLogsV1), pagination=false.
     const isV2 = this.state.logView === 'v2';
-    const pagination = isV2 ? {
+    const total = this.state.localLogsTotal;
+    // Gate explicitly instead of antd's hideOnSinglePage: during a project
+    // switch localLogsTotal is stale for one render, so a prop-based gate
+    // flickers the pager; here a single page of results never renders a pager
+    // (incl. the "N items" total) at all.
+    const pagination = isV2 && total > LOG_PAGE_SIZE ? {
       current: this.state.localLogsPage,
       pageSize: LOG_PAGE_SIZE,
-      total: this.state.localLogsTotal,
+      total,
       onChange: this.handleLogPageChange,
       showSizeChanger: false,
-      // Only one page of sessions → no pager at all (no "1" button noise).
-      hideOnSinglePage: true,
-      showTotal: (total) => t('ui.logsTotal', { total }),
+      showTotal: (n) => t('ui.logsTotal', { total: n }),
       size: 'small',
     } : false;
     return (
