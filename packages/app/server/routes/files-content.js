@@ -1,8 +1,9 @@
 // Read-oriented file-access routes (moved verbatim from server.js handleRequest).
-import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, realpathSync, createReadStream } from 'node:fs';
 import { join, basename, dirname, resolve, sep } from 'node:path';
 import { isReadAllowed, reasonToStatus } from '../lib/file-access-policy.js';
 import { ERROR_STATUS_MAP } from '../lib/file-api.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 import { discoverClaudeMdCandidates, readCandidateById } from '../lib/claude-md-discovery.js';
 import { getClaudeConfigDir } from '../../findcc.js';
 import { _projectName } from '../interceptor.js';
@@ -329,6 +330,70 @@ function fileRaw(req, res, parsedUrl) {
   }
 }
 
+// Browser download endpoint: unlike fileRaw (inline preview, 10MB cap), this streams
+// the file with Content-Disposition: attachment so the browser saves it to disk.
+// No size cap — a download is precisely the path for files too large to preview.
+function fileDownload(req, res, parsedUrl) {
+  const reqPath = parsedUrl.searchParams.get('path');
+  const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+  try {
+    if (!reqPath) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid path' }));
+      return;
+    }
+    // Same path contract as fileContentGet: relative paths with .. are rejected outright
+    const isAbs = /^([a-zA-Z]:[\\/]|[\\/])/.test(reqPath);
+    if (!isAbs && reqPath.includes('..')) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid path' }));
+      return;
+    }
+    const absPath = isAbs ? reqPath : resolve(cwd, reqPath);
+    const policy = isReadAllowed(absPath);
+    if (!policy.ok) {
+      const status = reasonToStatus(policy.reason);
+      const errLabel = status === 404 ? 'File not found'
+        : status === 400 ? 'Invalid path'
+        : 'Forbidden';
+      const body = { error: errLabel, reason: policy.reason };
+      if (policy.allowedRoots) body.allowedRoots = policy.allowedRoots;
+      res.writeHead(status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(body));
+      return;
+    }
+    const targetFile = policy.real;
+    const stat = statSync(targetFile);
+    if (!stat.isFile()) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not a file' }));
+      return;
+    }
+    const headers = {
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': stat.size,
+      // RFC 5987 encoding keeps non-ASCII filenames intact (same style as download-log)
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(basename(targetFile))}`,
+    };
+    if (req.method === 'HEAD') {
+      res.writeHead(200, headers);
+      res.end();
+      return;
+    }
+    res.writeHead(200, headers);
+    const stream = createReadStream(targetFile);
+    // Headers are already sent by the time any read error can fire, so we can only
+    // abort the response mid-download (client sees a truncated file) — report it.
+    stream.on('error', (err) => { reportSwallowed('fileDownload.stream', err); res.end(); });
+    stream.pipe(res);
+  } catch (err) {
+    const status = ERROR_STATUS_MAP[err.code] || 500;
+    const message = status === 500 ? `Cannot read file: ${err.message}` : err.message;
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: message }));
+  }
+}
+
 function fileContentPost(req, res) {
   const MAX_BODY = 5 * 1024 * 1024; // 5MB，与 GET 路由限制对齐
   let body = '';
@@ -427,5 +492,6 @@ export const filesContentRoutes = [
   { method: 'GET', match: 'exact', path: '/api/project-memory', handler: projectMemory },
   { method: 'GET', match: 'exact', path: '/api/claude-md', handler: claudeMd },
   { predicate: (url, method) => (url === '/api/file-raw' || url.startsWith('/api/file-raw/')) && (method === 'GET' || method === 'HEAD'), handler: fileRaw },
+  { predicate: (url, method) => url === '/api/download-file' && (method === 'GET' || method === 'HEAD'), handler: fileDownload },
   { method: 'POST', match: 'exact', path: '/api/file-content', handler: fileContentPost },
 ];

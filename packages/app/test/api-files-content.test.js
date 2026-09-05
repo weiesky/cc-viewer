@@ -7,6 +7,7 @@
  *   GET  /api/project-memory projectMemory   —— 入口 MEMORY.md + 明细 ?file= + symlink 收紧
  *   GET  /api/claude-md      claudeMd        —— 候选列表 + ?id= 读取
  *   GET|HEAD /api/file-raw   fileRaw         —— 二进制/mime/HEAD/CSP/size cap + fallback
+ *   GET|HEAD /api/download-file fileDownload —— attachment 下载/流式无上限/RFC 5987 文件名
  *   POST /api/file-content   fileContentPost —— 写覆盖/新建/超体积/非字符串 content
  *
  * 隔离策略（与 api-preferences.test.js / api-project-memory.test.js 同款）：
@@ -23,6 +24,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { Writable } from 'node:stream';
 import {
   mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync,
   symlinkSync, unlinkSync, existsSync, readFileSync,
@@ -104,22 +106,23 @@ function callPost(handler, body, { chunked = false } = {}) {
 }
 
 let routes;
-let planFile, fileContentGet, projectMemory, claudeMd, fileRaw, fileContentPost;
+let planFile, fileContentGet, projectMemory, claudeMd, fileRaw, fileContentPost, fileDownload;
 
 before(async () => {
   const mod = await import('../server/routes/files-content.js');
   routes = mod.filesContentRoutes;
-  assert.ok(Array.isArray(routes) && routes.length === 6, 'expect 6 routes');
+  assert.ok(Array.isArray(routes) && routes.length === 7, 'expect 7 routes');
   const byPath = (p, m) => routes.find(r => r.path === p && r.method === m)?.handler;
   planFile = byPath('/api/plan-file', 'GET');
   fileContentGet = byPath('/api/file-content', 'GET');
   projectMemory = byPath('/api/project-memory', 'GET');
   claudeMd = byPath('/api/claude-md', 'GET');
   fileContentPost = byPath('/api/file-content', 'POST');
-  // file-raw 用 predicate，没有 path 字段
-  fileRaw = routes.find(r => r.predicate)?.handler;
-  assert.ok(planFile && fileContentGet && projectMemory && claudeMd && fileContentPost && fileRaw,
-    'all six handlers resolved');
+  // file-raw / download-file 用 predicate，没有 path 字段
+  fileRaw = routes.find(r => r.predicate && r.predicate('/api/file-raw', 'GET'))?.handler;
+  fileDownload = routes.find(r => r.predicate && r.predicate('/api/download-file', 'GET'))?.handler;
+  assert.ok(planFile && fileContentGet && projectMemory && claudeMd && fileContentPost && fileRaw && fileDownload,
+    'all seven handlers resolved');
 });
 
 after(() => {
@@ -531,6 +534,113 @@ describe('GET|HEAD /api/file-raw', { concurrency: false }, () => {
     const r = callGet(fileRaw, '/api/file-raw', 'path=' + encodeURIComponent(big));
     assert.equal(r.status, 413);
     assert.equal(r.json().error, 'File too large');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('GET|HEAD /api/download-file', { concurrency: false }, () => {
+  /** 流式 res：createReadStream 真正 pipe 的目标，收集字节到 Buffer。 */
+  function callDownload(search, method = 'GET') {
+    return new Promise((resolveP, rejectP) => {
+      const chunks = [];
+      const res = new Writable({
+        write(chunk, _enc, cb) { chunks.push(Buffer.from(chunk)); cb(); },
+      });
+      res.statusCode = 0;
+      res.headers = null;
+      // Mirror http.ServerResponse: writeHead flips headersSent (other route-test
+      // mocks in the repo do the same).
+      res.writeHead = (code, headers) => { res.statusCode = code; res.headers = headers || null; res.headersSent = true; };
+      res.on('finish', () => resolveP({
+        status: res.statusCode,
+        headers: res.headers,
+        body: Buffer.concat(chunks),
+      }));
+      res.on('error', rejectP);
+      const req = { method };
+      const parsedUrl = { pathname: '/api/download-file', searchParams: new URLSearchParams(search) };
+      fileDownload(req, res, parsedUrl);
+    });
+  }
+
+  it('predicate 仅匹配 /api/download-file 且仅 GET/HEAD', () => {
+    const route = routes.find(r => r.predicate && r.predicate('/api/download-file', 'GET'));
+    assert.ok(route);
+    assert.equal(route.predicate('/api/download-file', 'HEAD'), true);
+    assert.equal(route.predicate('/api/download-file', 'POST'), false);
+    assert.equal(route.predicate('/api/download-file/extra', 'GET'), false);
+    assert.equal(route.predicate('/api/file-raw', 'GET'), false);
+  });
+
+  it('项目内相对路径 → 200 + attachment + 字节流与磁盘一致', async () => {
+    writeFileSync(join(PROJECT, 'dl-rel.txt'), 'download-me');
+    const r = await callDownload('path=' + encodeURIComponent('dl-rel.txt'));
+    assert.equal(r.status, 200);
+    assert.equal(r.headers['Content-Type'], 'application/octet-stream');
+    assert.equal(r.headers['Content-Length'], 'download-me'.length);
+    assert.equal(r.headers['Content-Disposition'], `attachment; filename*=UTF-8''dl-rel.txt`);
+    assert.equal(r.body.toString(), 'download-me');
+  });
+
+  it('中文文件名 → RFC 5987 filename* 编码正确', async () => {
+    writeFileSync(join(PROJECT, '报告-2026.txt'), 'cn');
+    const r = await callDownload('path=' + encodeURIComponent('报告-2026.txt'));
+    assert.equal(r.status, 200);
+    assert.equal(
+      r.headers['Content-Disposition'],
+      `attachment; filename*=UTF-8''${encodeURIComponent('报告-2026.txt')}`,
+    );
+    assert.equal(r.body.toString(), 'cn');
+  });
+
+  it('超过 fileRaw 10MB 上限的文件仍可下载（流式，无大小 cap）', async () => {
+    const big = join(PROJECT, 'big-download.bin');
+    writeFileSync(big, Buffer.alloc(11 * 1024 * 1024, 7));
+    const r = await callDownload('path=' + encodeURIComponent('big-download.bin'));
+    assert.equal(r.status, 200);
+    assert.equal(r.headers['Content-Length'], 11 * 1024 * 1024);
+    assert.equal(r.body.length, 11 * 1024 * 1024);
+  });
+
+  it('HEAD → 200 + 头齐全，无 body', async () => {
+    writeFileSync(join(PROJECT, 'dl-head.txt'), 'head-check');
+    const r = await callDownload('path=' + encodeURIComponent('dl-head.txt'), 'HEAD');
+    assert.equal(r.status, 200);
+    assert.equal(r.headers['Content-Length'], 'head-check'.length);
+    assert.equal(r.body.length, 0);
+  });
+
+  it('缺 path → 400 Invalid path', async () => {
+    const r = await callDownload('');
+    assert.equal(r.status, 400);
+    assert.equal(JSON.parse(r.body.toString()).error, 'Invalid path');
+  });
+
+  it('相对路径含 .. → 400 Invalid path', async () => {
+    const r = await callDownload('path=' + encodeURIComponent('../escape.txt'));
+    assert.equal(r.status, 400);
+    assert.equal(JSON.parse(r.body.toString()).error, 'Invalid path');
+  });
+
+  it('目录而非文件 → 400 Not a file（policy 前置预检）', async () => {
+    mkdirSync(join(PROJECT, 'dl-dir'), { recursive: true });
+    const r = await callDownload('path=' + encodeURIComponent('dl-dir'));
+    assert.equal(r.status, 400);
+    assert.equal(JSON.parse(r.body.toString()).error, 'Not a file');
+  });
+
+  it('不存在的项目内文件 → 404 File not found', async () => {
+    const r = await callDownload('path=' + encodeURIComponent('no-such-dl.txt'));
+    assert.equal(r.status, 404);
+    assert.equal(JSON.parse(r.body.toString()).error, 'File not found');
+  });
+
+  it('outside-allowlist（真实存在）→ 403 Forbidden', async () => {
+    const outside = join(TMP, 'outside-dl.txt');
+    writeFileSync(outside, 'secret');
+    const r = await callDownload('path=' + encodeURIComponent(outside));
+    assert.equal(r.status, 403);
+    assert.equal(JSON.parse(r.body.toString()).error, 'Forbidden');
   });
 });
 

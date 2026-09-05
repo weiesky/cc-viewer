@@ -1,8 +1,9 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo, useContext } from 'react';
 import { Dropdown, Modal, Input, message } from 'antd';
 import { t } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { getFileIcon } from '../../utils/fileIcons';
+import { SettingsContext } from '../../contexts/SettingsContext';
 import OpenFolderIcon from '../common/OpenFolderIcon';
 import RefreshIcon from '../common/RefreshIcon';
 import styles from './FileExplorer.module.css';
@@ -83,6 +84,12 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
   const inputRef = useRef(null);
   const submittingRef = useRef(false);
   const itemRef = useRef(null);
+  // Remote-only affordance: when accessed from another machine (server reports
+  // _isLocal === false via /api/preferences), "reveal in Finder"-style actions act on
+  // the server host, so we offer a browser download instead. Defaults to hidden until
+  // preferences load (null) — never flashes on local access.
+  const { preferences } = useContext(SettingsContext);
+  const isRemote = preferences?._isLocal === false;
 
   const childPath = path ? `${path}/${item.name}` : item.name;
   const expanded = expandedPaths.has(childPath);
@@ -348,11 +355,12 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
       { key: 'copyRelPath', label: t('ui.contextMenu.copyRelativePath') },
       { key: 'attachToChat', label: t('ui.contextMenu.attachToChat') },
       { key: 'insertPathToChat', label: t('ui.contextMenu.insertPathToChat') },
+      ...(isRemote ? [{ key: 'download', label: t('ui.contextMenu.downloadToLocal') }] : []),
       { type: 'divider' },
       { key: 'rename', label: t('ui.contextMenu.rename') },
       { key: 'delete', label: t('ui.contextMenu.delete'), danger: true },
     ];
-  }, [isDir]);
+  }, [isDir, isRemote]);
 
   const handleMenuClick = useCallback(({ key }) => {
     switch (key) {
@@ -393,6 +401,17 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
       case 'insertPathToChat':
         onInsertPathToChat?.(childPath);
         break;
+      case 'download': {
+        // Browser-native download via an attachment endpoint (same pattern as
+        // handleDownloadLogFile in AppBase.jsx). apiUrl carries base path + ?token=.
+        const a = document.createElement('a');
+        a.href = apiUrl(`/api/download-file?path=${encodeURIComponent(childPath)}`);
+        a.download = item.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        break;
+      }
       case 'rename':
         startEditing();
         break;

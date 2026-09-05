@@ -3524,6 +3524,26 @@ const i18nData = {
     "tr": "Yolu sohbete ekle",
     "uk": "Вставити шлях у чат"
   },
+  "ui.contextMenu.downloadToLocal": {
+    "zh": "下载到本地",
+    "en": "Download to local",
+    "zh-TW": "下載到本機",
+    "ko": "로컬로 다운로드",
+    "ja": "ローカルにダウンロード",
+    "de": "Lokal herunterladen",
+    "es": "Descargar al equipo local",
+    "fr": "Télécharger en local",
+    "it": "Scarica in locale",
+    "da": "Download lokalt",
+    "pl": "Pobierz lokalnie",
+    "ru": "Скачать на локальное устройство",
+    "ar": "تنزيل إلى الجهاز المحلي",
+    "no": "Last ned lokalt",
+    "pt-BR": "Baixar para o local",
+    "th": "ดาวน์โหลดไปยังเครื่อง",
+    "tr": "Yerel olarak indir",
+    "uk": "Завантажити локально"
+  },
   "ui.contextMenu.delete": {
     "zh": "删除",
     "en": "Delete",
