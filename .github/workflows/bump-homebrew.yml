@@ -63,13 +63,14 @@ jobs:
           VER: ${{ steps.ver.outputs.version }}
         run: |
           set -euo pipefail
-          # CDN propagation takes up to ~5min; retry every 30s, 10 attempts = 5min
-          for i in $(seq 1 10); do
+          # CDN propagation + Sigstore provenance logging can exceed 5min (v1.8.8 timed out at
+          # 10×30s even though the publish had succeeded); retry every 30s, 20 attempts = 10min
+          for i in $(seq 1 20); do
             if curl -fsSL "https://registry.npmjs.org/cc-viewer/${VER}" >/dev/null 2>&1; then
               echo "✓ npm has cc-viewer@${VER}"
               exit 0
             fi
-            echo "[$i/10] npm not yet showing cc-viewer@${VER}, sleeping 30s..."
+            echo "[$i/20] npm not yet showing cc-viewer@${VER}, sleeping 30s..."
             sleep 30
           done
           echo "✗ Timed out waiting for npm to publish cc-viewer@${VER}" >&2
