@@ -1,5 +1,15 @@
 # cc-viewer
 
+## 1.8.9
+
+### Patch Changes
+
+- feat(chat): the User Prompt Nav now surfaces executed Plan (ExitPlanMode), AskUserQuestion, and UltraPlan prompts as navigable entries, interleaved chronologically among the user prompts, each with a distinguishing colored badge (Plan = primary-blue outline, Ask = success green, UltraPlan = solid primary blue, matching their in-chat card/tag colors). `buildPromptNavItems` additionally scans each assistant bubble's content for the full-display tool_use blocks (whose bubbles are never merged in minimal-chat, so every card keeps a stable scroll target) and reads ChatView's `isUltraplan` prop for UltraPlan prompts; Plan shows the plan's first heading, Ask the question text, UltraPlan the task blurb. Clicking scrolls to the containing bubble with the existing highlight. The nav build is now cached on a content fingerprint (allItems/mainAgentSessions refs + filter state + visibleCount) instead of the per-render `visible` slice, so streaming no longer re-scans every assistant bubble each render. New i18n keys `ui.navBadgePlan` / `ui.navBadgeAsk` (×18 locales; UltraPlan reuses `ui.ultraplan`).
+  
+  fix(chat): the task-list HUD expand chevron no longer flashes blue on hover — it now uses the neutral surface hover (`--overlay-light-medium` + `--text-primary`) like the other toolbar icon buttons, in both light and dark themes.
+  
+  fix(tests): the win32 reveal-file explorer.exe capture stub appends (>>) instead of truncating (>), and the win32 cases read only the line appended after their baseline offset — eliminating the intermittent wrong-path failure when a prior test's detached spawn landed its capture late.
+
 ## 1.8.8
 
 ### Patch Changes
