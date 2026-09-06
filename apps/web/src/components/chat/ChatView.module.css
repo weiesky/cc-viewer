@@ -340,6 +340,51 @@
   border-bottom: none;
 }
 
+/* Type badge for Plan / AskUserQuestion nav entries: a small pill placed between the time and
+   the text. Colors follow the card convention — Plan uses primary blue (.planModeBox border),
+   Ask uses success green (.askQuestionBox). The two classes differ only in color. */
+.userPromptNavBadgePlan {
+  flex: 0 0 auto;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 3px;
+  align-self: center;
+  white-space: nowrap;
+  color: var(--color-primary-light);
+  background: var(--color-primary-bg-light);
+  border: 1px solid var(--color-primary);
+}
+
+.userPromptNavBadgeAsk {
+  flex: 0 0 auto;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 3px;
+  align-self: center;
+  white-space: nowrap;
+  color: var(--color-success-light);
+  background: var(--color-success-bg-light);
+  border: 1px solid var(--color-success);
+}
+
+/* UltraPlan badge: solid theme blue (--color-primary) with white text, matching the main
+   bubble's .ultraplanTag. It shares blue with the Plan badge but reads differently — UltraPlan
+   is a solid filled chip, Plan is a light-blue outlined pill. */
+.userPromptNavBadgeUltraplan {
+  flex: 0 0 auto;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 3px;
+  align-self: center;
+  white-space: nowrap;
+  color: #fff;
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
+}
+
 .terminalPanelWrap {
   flex-shrink: 0;
   min-width: 200px;

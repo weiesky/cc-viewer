@@ -51,8 +51,8 @@
 }
 
 .chevron:hover {
-  color: var(--color-primary);
-  background: var(--color-primary-pale);
+  color: var(--text-primary);
+  background: var(--overlay-light-medium);
 }
 
 /* Height cap keeps the expanded list from stacking with WorkflowLiveHud's 60vh

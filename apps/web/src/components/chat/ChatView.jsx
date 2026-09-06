@@ -3176,28 +3176,47 @@ class ChatView extends React.Component {
     const visible = this._currentVisible;
     if (!visible || visible.length === 0) return null;
 
-    // 缓存：visible 引用未变化时复用上次结果
-    if (this._navCacheVisible === visible && this._navCacheResult) return this._navCacheResult;
+    // Cache keyed on a content fingerprint, NOT the `visible` reference: render() rebuilds
+    // `visible` via filteredItems.slice() every pass (ChatView.jsx:3437), so a reference
+    // compare would never hit and buildPromptNavItems — which now walks every assistant
+    // bubble's content blocks — would re-run on every render / streaming token. The key is
+    // computed once per render in render() (this._navCacheKey) from the stable inputs.
+    const cacheKey = this._navCacheKey;
+    if (cacheKey != null && this._navCacheKeyUsed === cacheKey && this._navCacheResult) return this._navCacheResult;
 
     // 纯逻辑（会话边界标记 / 去重 / 图片清理 / 无 ts 容错）抽到 utils/promptNav，便于单测；此处只管缓存与渲染。
     const prompts = buildPromptNavItems(visible, this.props.mainAgentSessions);
-    if (prompts.length === 0) { this._navCacheVisible = visible; this._navCacheResult = null; return null; }
+    if (prompts.length === 0) { this._navCacheKeyUsed = cacheKey; this._navCacheResult = null; return null; }
 
     const result = (
       <div className={styles.userPromptNavWrap}>
         <div className={styles.userPromptNavTitle}>{t('ui.userPromptNav')} ({prompts.length})</div>
         <div className={styles.userPromptNavList}>
-          {prompts.map((p) => {
+          {prompts.map((p, idx) => {
             const timeStr = formatPromptNavTime(p.timestamp);
+            // Plan/Ask/UltraPlan entries get a colored badge to set them apart from plain
+            // prompts. When display is empty (streaming hollow / no plan title), the text falls
+            // back to: plan → the approval label (ui.exitPlanModeResolved), ask/ultraplan → their
+            // own badge label. kind:'prompt' has no badge and keeps the original rendering.
+            const kindUi = p.kind === 'plan'
+              ? { badgeCls: styles.userPromptNavBadgePlan, label: t('ui.navBadgePlan'), fallback: t('ui.exitPlanModeResolved') }
+              : p.kind === 'ask'
+                ? { badgeCls: styles.userPromptNavBadgeAsk, label: t('ui.navBadgeAsk'), fallback: t('ui.navBadgeAsk') }
+                : p.kind === 'ultraplan'
+                  ? { badgeCls: styles.userPromptNavBadgeUltraplan, label: t('ui.ultraplan'), fallback: t('ui.ultraplan') }
+                  : null;
+            const badge = kindUi ? <span className={kindUi.badgeCls}>{kindUi.label}</span> : null;
+            const text = p.display || (kindUi ? kindUi.fallback : '');
             return (
-              <React.Fragment key={p.visibleIdx}>
+              <React.Fragment key={`${p.kind}-${p.visibleIdx}-${idx}`}>
                 {p.newSession && (
                   <div className={styles.userPromptNavSessionSep}><span>{t('ui.session')}</span></div>
                 )}
                 <div className={styles.userPromptNavItem}
                   onClick={() => this._scrollToUserPrompt(p.visibleIdx, p.timestamp)}>
                   {timeStr && <span className={styles.userPromptNavTime}>{timeStr}</span>}
-                  <span className={styles.userPromptNavText}>{p.display}</span>
+                  {badge}
+                  <span className={styles.userPromptNavText}>{text}</span>
                 </div>
               </React.Fragment>
             );
@@ -3205,7 +3224,7 @@ class ChatView extends React.Component {
         </div>
       </div>
     );
-    this._navCacheVisible = visible;
+    this._navCacheKeyUsed = cacheKey;
     this._navCacheResult = result;
     return result;
   }
@@ -3424,6 +3443,18 @@ class ChatView extends React.Component {
     const visible = filteredItems.slice(0, _isFiltering ? filteredItems.length : visibleCount);
     // 缓存 visible，供 _buildUserPromptNav / _scrollToUserPrompt 使用
     this._currentVisible = visible;
+    // Nav-build cache fingerprint. `visible` is a fresh slice every render, so the popover can't
+    // key on its reference. Key on the inputs that actually change the nav list instead: the
+    // allItems / mainAgentSessions references (stable until a setState rebuilds them), the role
+    // filter state, and the visibleCount. A WeakMap turns each array reference into a small id.
+    this._navRefIds = this._navRefIds || { map: new WeakMap(), next: 1 };
+    const refId = (o) => {
+      if (!o || (typeof o !== 'object')) return 0;
+      let id = this._navRefIds.map.get(o);
+      if (!id) { id = this._navRefIds.next++; this._navRefIds.map.set(o, id); }
+      return id;
+    };
+    this._navCacheKey = `${refId(allItems)}:${refId(this.props.mainAgentSessions)}:${_isFiltering ? [...this.state.roleFilterSelected].sort().join(',') : ''}:${visibleCount}:${visible.length}`;
     // 优先使用精确的 visibleIdx（同一请求的多条消息共享 timestamp，findIndex 会匹配到第一条）
     // findIndex 用 displayTs ?? timestamp 作 key —— assistant bubble 的 props.timestamp 是 carrier
     // (= 下一次 entry 的 ts)，而 highlightTs 来自 scrollToTimestamp (= request 自身 ts)；只看 timestamp

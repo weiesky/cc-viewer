@@ -32,7 +32,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import {
   mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync,
-  chmodSync, lstatSync, existsSync, readFileSync,
+  chmodSync, lstatSync, existsSync, readFileSync, statSync,
 } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -111,16 +111,24 @@ const fakeBin = join(tmpDir, 'fakebin');
 const origPath = process.env.PATH;
 const STUB_NAMES = ['open', 'explorer.exe', 'cmd.exe', 'gnome-terminal', 'konsole', 'xterm', 'xdg-open'];
 
-// explorer.exe 单独用捕获 stub：把 argv 写进文件供断言 /select,"<path>" 规范形式
+// explorer.exe 单独用捕获 stub：把 argv 追加写进文件供断言 /select,"<path>" 规范形式
 // （POSIX 下 windowsVerbatimArguments 被忽略，argv 即字面值，含字面双引号）。
+// 追加（>>）而非截断（>）：detached spawn 的 stub 可能在前一个用例 settle 之后才落地，
+// 截断模式会把后到的旧行盖进当前用例正读的文件，造成偶发读到上一条路径的 flake。
 // 其余 stub 保持纯 exit 0，不动既有用例语义。
 const explorerCapture = join(tmpDir, 'explorer-args.txt');
 
-// 轮询等待 detached spawn 的捕获文件落地（固定 settle 有 race）
-async function waitForFile(p, timeoutMs = 3000) {
+// 读取从 fromLength 起新追加的一行（去掉行尾空白），规避前序用例迟到的 overwrite 行。
+function readAppendedLine(fromLength) {
+  return readFileSync(explorerCapture, 'utf-8').slice(fromLength).trimEnd();
+}
+
+// 轮询等待从 fromLength 起出现新追加内容（stub append 落盘后再读，避免读到截断中途的空文件）。
+async function waitForAppended(p, fromLength, timeoutMs = 3000) {
   const start = Date.now();
-  while (!existsSync(p)) {
-    if (Date.now() - start > timeoutMs) throw new Error(`capture file not written: ${p}`);
+  for (;;) {
+    if (existsSync(p) && statSync(p).size > fromLength) return;
+    if (Date.now() - start > timeoutMs) throw new Error(`capture not appended: ${p}`);
     await new Promise((r) => setTimeout(r, 20));
   }
 }
@@ -130,7 +138,7 @@ before(async () => {
   for (const n of STUB_NAMES) {
     const p = join(fakeBin, n);
     if (n === 'explorer.exe') {
-      writeFileSync(p, `#!/bin/sh\nprintf '%s\\n' "$@" > '${explorerCapture}'\nexit 0\n`);
+      writeFileSync(p, `#!/bin/sh\nprintf '%s\\n' "$@" >> '${explorerCapture}'\nexit 0\n`);
     } else {
       writeFileSync(p, '#!/bin/sh\nexit 0\n');
     }
@@ -208,13 +216,13 @@ describe('files-fs 分支补强', { concurrency: false }, () => {
     it('200 success on win32 branch, argv 为规范形式 /select,"<path>"（verbatim + 仅路径加引号）', async () => {
       setPlatform('win32');
       try {
-        rmSync(explorerCapture, { force: true });
+        const base = existsSync(explorerCapture) ? statSync(explorerCapture).size : 0;
         writeFileSync(join(projectDir, 'rv-w.txt'), 'x');
         const res = await callBody(handlerFor('/api/reveal-file', 'POST'), { path: 'rv-w.txt' });
         assert.equal(res.status, 200);
         assert.equal(res.data.ok, true);
-        await waitForFile(explorerCapture);
-        const argv = readFileSync(explorerCapture, 'utf-8').trimEnd();
+        await waitForAppended(explorerCapture, base);
+        const argv = readAppendedLine(base);
         // POSIX 下 windowsVerbatimArguments 被忽略，stub 收到的 argv[1] 即字面值（含字面双引号）
         assert.equal(argv, `/select,"${join(projectDir, 'rv-w.txt')}"`);
         await settle();
@@ -224,13 +232,13 @@ describe('files-fs 分支补强', { concurrency: false }, () => {
     it('win32 含空格路径同样走规范形式（整体单 arg，路径带引号）', async () => {
       setPlatform('win32');
       try {
-        rmSync(explorerCapture, { force: true });
+        const base = existsSync(explorerCapture) ? statSync(explorerCapture).size : 0;
         mkdirSync(join(projectDir, 'My Proj'), { recursive: true });
         writeFileSync(join(projectDir, 'My Proj', 'a b.txt'), 'x');
         const res = await callBody(handlerFor('/api/reveal-file', 'POST'), { path: 'My Proj/a b.txt' });
         assert.equal(res.status, 200);
-        await waitForFile(explorerCapture);
-        const argv = readFileSync(explorerCapture, 'utf-8').trimEnd();
+        await waitForAppended(explorerCapture, base);
+        const argv = readAppendedLine(base);
         assert.equal(argv, `/select,"${join(projectDir, 'My Proj', 'a b.txt')}"`);
         await settle();
       } finally { restorePlatform(); }
@@ -239,13 +247,13 @@ describe('files-fs 分支补强', { concurrency: false }, () => {
     it('win32 中文路径（含空格）同样走规范形式', async () => {
       setPlatform('win32');
       try {
-        rmSync(explorerCapture, { force: true });
+        const base = existsSync(explorerCapture) ? statSync(explorerCapture).size : 0;
         mkdirSync(join(projectDir, '中文目录'), { recursive: true });
         writeFileSync(join(projectDir, '中文目录', '文件 名.txt'), 'x');
         const res = await callBody(handlerFor('/api/reveal-file', 'POST'), { path: '中文目录/文件 名.txt' });
         assert.equal(res.status, 200);
-        await waitForFile(explorerCapture);
-        const argv = readFileSync(explorerCapture, 'utf-8').trimEnd();
+        await waitForAppended(explorerCapture, base);
+        const argv = readAppendedLine(base);
         assert.equal(argv, `/select,"${join(projectDir, '中文目录', '文件 名.txt')}"`);
         await settle();
       } finally { restorePlatform(); }
