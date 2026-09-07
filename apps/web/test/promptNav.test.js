@@ -7,7 +7,8 @@ import { buildPromptNavItems } from '../src/utils/promptNav.js';
 // Mimic a rendered item's shape (React element → { props }) and an authoritative session.
 const item = (role, text, timestamp) => ({ props: { role, text, timestamp } });
 // assistant item carries a content block array (tool_use cards live inside the bubble).
-const asstItem = (blocks, timestamp) => ({ props: { role: 'assistant', content: blocks, timestamp } });
+// displayTs = producer request ts (_generatedTs); timestamp = carrier (next request's ts).
+const asstItem = (blocks, timestamp, displayTs) => ({ props: { role: 'assistant', content: blocks, timestamp, displayTs } });
 const tu = (name, input, id) => ({ type: 'tool_use', name, input, id: id || 'tu-' + name });
 const session = (...tsList) => ({ messages: tsList.map((ts) => ({ _timestamp: ts })) });
 
@@ -200,5 +201,47 @@ describe('buildPromptNavItems', () => {
     const raw = '<system-reminder>\n[SCOPED INSTRUCTION] …\n</system-reminder>\nhello';
     const out = buildPromptNavItems([item('user', raw, 't1')], [session('t1')]);
     assert.equal(out[0].kind, 'prompt');
+  });
+
+  // Issue #142: an assistant card at the END of session A has a carrier timestamp that is already
+  // session B's first entry ts. Session attribution must use displayTs (producer request ts), not
+  // the carrier, so the trailing Plan/Ask stays in session A instead of tipping the divider.
+  it('attributes an assistant card to its producer session via displayTs, not the carrier ts', () => {
+    const visible = [
+      item('user', 'session A prompt', 'a1'),                 // session 0 request a1
+      asstItem([tu('ExitPlanMode', { plan: '# P' })], 'b1', 'a1'), // produced by a1, carried by b1 (next session's first entry)
+      item('user', 'session B prompt', 'b1'),                 // session 1 request b1
+    ];
+    const out = buildPromptNavItems(visible, [session('a1'), session('b1')]);
+    assert.equal(out.length, 3);
+    // The plan card must land in session 0 (with its producer a1), NOT session 1 (carrier b1).
+    assert.equal(out[1].kind, 'plan');
+    assert.equal(out[1].sessionIdx, 0);
+    assert.ok(!out[1].newSession);            // no divider between A's prompt and its own answer
+    assert.equal(out[2].sessionIdx, 1);
+    assert.equal(out[2].newSession, true);    // divider correctly before session B's prompt
+    // Time label uses the producer ts (a1), not the late carrier ts (b1).
+    assert.equal(out[1].timestamp, 'a1');
+  });
+
+  it('falls back to carrier timestamp when assistant displayTs is absent', () => {
+    const visible = [asstItem([tu('AskUserQuestion', { questions: [{ question: 'Q' }] })], 't2')];
+    const out = buildPromptNavItems(visible, [session('t1'), session('t2')]);
+    assert.equal(out[0].sessionIdx, 1);       // carrier t2 → session 1
+    assert.equal(out[0].timestamp, 't2');
+  });
+
+  it('guards NAV_TOOL_KIND against prototype member names', () => {
+    const visible = [
+      asstItem([
+        { type: 'tool_use', name: 'constructor', input: {} },
+        { type: 'tool_use', name: 'toString', input: {} },
+        { type: 'tool_use', name: 'hasOwnProperty', input: {} },
+        tu('ExitPlanMode', { plan: '# Real' }),
+      ], 't1'),
+    ];
+    const out = buildPromptNavItems(visible, [session('t1')]);
+    assert.deepEqual(out.map((p) => p.kind), ['plan']);   // only the real card, no phantom entries
+    assert.equal(out[0].display, 'Real');
   });
 });

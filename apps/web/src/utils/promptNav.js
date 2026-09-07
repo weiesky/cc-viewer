@@ -23,11 +23,13 @@ function truncateDisplay(text) {
   return text.length > 80 ? text.substring(0, 80) + '...' : text;
 }
 
-// Resolve the session index for an item via its carrier timestamp (shared by the user and
-// assistant branches).
+// Resolve the session index for an item. An assistant bubble's carrier `props.timestamp` is the
+// NEXT request's ts, so a Plan/Ask card sitting at the end of session A would otherwise be filed
+// under session B; `props.displayTs` (= _generatedTs, the producer request's ts) is the right key
+// (sessionManager.js:56-58). Other roles use the carrier `props.timestamp` (= their own request ts).
 function sessionIdxOf(props, tsToSession) {
-  return (props.timestamp != null && tsToSession.has(props.timestamp))
-    ? tsToSession.get(props.timestamp) : null;
+  const ts = props.role === 'assistant' ? (props.displayTs || props.timestamp) : props.timestamp;
+  return (ts != null && tsToSession.has(ts)) ? tsToSession.get(ts) : null;
 }
 
 // Extract the nav title for an ExitPlanMode card: the first markdown heading / first non-empty
@@ -83,12 +85,16 @@ export function buildPromptNavItems(visible, mainAgentSessions) {
       const content = Array.isArray(props.content) ? props.content : null;
       if (!content) continue;
       const sessionIdx = sessionIdxOf(props, tsToSession);
+      // displayTs (producer request ts) is the accurate time for the card; carrier timestamp is
+      // the next request's ts and can read minutes late (or tip into the next session).
+      const cardTs = props.displayTs || props.timestamp || null;
       for (const block of content) {
         if (!block || block.type !== 'tool_use') continue;
-        const kind = NAV_TOOL_KIND[block.name];
+        // Object.hasOwn guards against prototype members (block.name = 'constructor'/'toString').
+        const kind = Object.hasOwn(NAV_TOOL_KIND, block.name) ? NAV_TOOL_KIND[block.name] : undefined;
         if (!kind) continue;
         const display = kind === 'plan' ? planDisplayOf(block.input) : askDisplayOf(block.input);
-        prompts.push({ display, visibleIdx: i, timestamp: props.timestamp || null, sessionIdx, kind });
+        prompts.push({ display, visibleIdx: i, timestamp: cardTs, sessionIdx, kind });
       }
       continue;
     }

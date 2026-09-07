@@ -3446,7 +3446,8 @@ class ChatView extends React.Component {
     // Nav-build cache fingerprint. `visible` is a fresh slice every render, so the popover can't
     // key on its reference. Key on the inputs that actually change the nav list instead: the
     // allItems / mainAgentSessions references (stable until a setState rebuilds them), the role
-    // filter state, and the visibleCount. A WeakMap turns each array reference into a small id.
+    // filter state, the visibleCount — and the UI language, since the cached result holds already
+    // -translated badge/placeholder strings (issue #142: switching language must not reuse it).
     this._navRefIds = this._navRefIds || { map: new WeakMap(), next: 1 };
     const refId = (o) => {
       if (!o || (typeof o !== 'object')) return 0;
@@ -3454,7 +3455,7 @@ class ChatView extends React.Component {
       if (!id) { id = this._navRefIds.next++; this._navRefIds.map.set(o, id); }
       return id;
     };
-    this._navCacheKey = `${refId(allItems)}:${refId(this.props.mainAgentSessions)}:${_isFiltering ? [...this.state.roleFilterSelected].sort().join(',') : ''}:${visibleCount}:${visible.length}`;
+    this._navCacheKey = `${refId(allItems)}:${refId(this.props.mainAgentSessions)}:${_isFiltering ? [...this.state.roleFilterSelected].sort().join(',') : ''}:${visibleCount}:${visible.length}:${this.props.lang || ''}`;
     // 优先使用精确的 visibleIdx（同一请求的多条消息共享 timestamp，findIndex 会匹配到第一条）
     // findIndex 用 displayTs ?? timestamp 作 key —— assistant bubble 的 props.timestamp 是 carrier
     // (= 下一次 entry 的 ts)，而 highlightTs 来自 scrollToTimestamp (= request 自身 ts)；只看 timestamp
