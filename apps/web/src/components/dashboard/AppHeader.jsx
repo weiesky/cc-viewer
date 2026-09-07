@@ -107,7 +107,7 @@ class AppHeader extends React.Component {
       // CLAUDE.md 明细 Modal：与 _memoryDetail 分槽，避免 memory 链接点击与 CLAUDE 链接点击交叉污染
       _claudeMdDetail: null,
       // 密码登录认证态：/api/auth/state 返回 effective + scope 信息。
-      // isAdmin 仅本机(127.0.0.1)为 true，决定二维码下方是否显示管理区。
+      // isAdmin 对「本机 或 已鉴权远程」为 true，决定二维码下方是否显示管理区。
       // scope='project'|'global'(当前生效来源)；hasProjectOverride=本项目是否有专用配置；
       // global={enabled,password}=全局默认；projectDir=本 server 项目(非 CLI 为 null)。
       // 远程登录窗口期 fetch 可能 401 → catch 降级为非 admin、视为已开启，不破坏 header。
@@ -2226,7 +2226,8 @@ class AppHeader extends React.Component {
             const pp = this.props.preferences || {};
             const showToggle = !isLocalLog && !!pp._projectName && pp._isLocal === false;
             const forkKeys = Array.isArray(pp._projectPrefsKeys) ? pp._projectPrefsKeys : [];
-            const showManage = pp._isLocal === true && forkKeys.length > 0;
+            // The manage entry is open to admins (loopback OR authenticated remote = _isAdmin), matching the backend isAdminReq gate.
+            const showManage = pp._isAdmin === true && forkKeys.length > 0;
             if (!showToggle && !showManage) return null;
             return (
               <div className={styles.settingsGroupBox}>
@@ -2298,7 +2299,7 @@ class AppHeader extends React.Component {
             }}
             placeholder="~/.claude/cc-viewer"
           />
-          {_prefs._isLocal === true && (
+          {_prefs._isAdmin === true && (
             <>
               <div className={styles.settingsDivider} />
               <div className={styles.settingsLabel}>

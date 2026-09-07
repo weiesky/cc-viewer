@@ -138,6 +138,33 @@ describe('decideAuth', () => {
   it('a wrong token does not allow', () => {
     assert.equal(decideAuth(ctx({ urlToken: 'wrong', cookieToken: 'wrong', wantsHtml: true })).action, 'login-page');
   });
+
+  // ── decideAuth().isAdmin (remote-admin elevation, container/cloud) ──
+  // isAdmin must be true exactly for the credential-bearing/trusted branches, false for the
+  // unauthenticated exemptions (static asset, login page) and for rejected requests.
+  describe('decideAuth isAdmin flag', () => {
+    it('isLocal → isAdmin true', () => {
+      assert.equal(decideAuth(ctx({ isLocal: true })).isAdmin, true);
+    });
+    it('valid urlToken / cookieToken → isAdmin true', () => {
+      assert.equal(decideAuth(ctx({ urlToken: TOKEN })).isAdmin, true);
+      assert.equal(decideAuth(ctx({ cookieToken: TOKEN })).isAdmin, true);
+    });
+    it('empty-password mode → allow (read) but isAdmin FALSE (destructive actions stay credential/loopback-gated)', () => {
+      const d = decideAuth(ctx({ enabled: true, password: '' }));
+      assert.equal(d.action, 'allow', '空密码 = 不设防，读放行');
+      assert.equal(d.isAdmin, false, '空密码 ≠ admin：写/删/改密码仍需凭证或本机');
+    });
+    it('static asset / login endpoint → allow but isAdmin FALSE (no credential)', () => {
+      assert.equal(decideAuth(ctx({ isStaticAsset: true })).isAdmin, false);
+      assert.equal(decideAuth(ctx({ pathname: '/api/auth/login', enabled: true })).isAdmin, false);
+    });
+    it('rejected remote (no credential) → isAdmin false on every non-allow action', () => {
+      assert.equal(decideAuth(ctx({ wantsHtml: true, enabled: true, password: 'X1' })).isAdmin, false);   // login-page
+      assert.equal(decideAuth(ctx({ wantsHtml: false, enabled: true, password: 'X1' })).isAdmin, false);  // unauthorized
+      assert.equal(decideAuth(ctx({ enabled: false })).isAdmin, false);                                    // forbidden
+    });
+  });
 });
 
 describe('loadAuthConfig / saveAuthConfig (stored in preferences.json auth key)', () => {

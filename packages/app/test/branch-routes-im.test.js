@@ -72,6 +72,44 @@ describe('server/routes/im.js 分支补齐', { concurrency: false }, () => {
     assert.equal(r.json().process, null, 'worker 不经 manager，processInfo 为 null');
   });
 
+  // ── 远程已鉴权 admin（容器/云部署）：isLocal=false + req.ccvIsAdmin=true ──
+  // status 需补 process/pid 供前端 start() 轮询判 ready，但【不下发明文 secrets】。
+  it('GET status：远程已鉴权 admin（ccvIsAdmin）→ 补 process/pid 与 lastError，但不含明文 secrets', async () => {
+    const route = imRoutes.find((r) => r.predicate('/api/im/feishu/status', 'GET'));
+    // 主进程路径（isWorker:false）：processInfo 来自 manager；带 lastError 验证会下发（错误 chip 用）。
+    const processInfo = { state: 'ready', running: true, connected: true, pid: 4242, port: 7050, lastError: 'upstream http 500' };
+    const deps = { im: { isWorker: false, getProcessStatus: async () => processInfo } };
+    const req = { ccvIsAdmin: true, on(ev, cb) { if (ev === 'end') cb(); return this; } };
+    const r = await call(route, { pathname: '/api/im/feishu/status', isLocal: false, deps, req });
+    assert.equal(r.status, 200);
+    assert.equal(r.json().process.state, 'ready', '远程 admin 需 process.state 供 ready 判定');
+    assert.equal(r.json().pid, 4242, '主进程路径 pid 取 processInfo.pid');
+    assert.equal(r.json().process.lastError, 'upstream http 500', 'lastError 下发远程 admin（错误 chip 诊断）');
+    assert.ok(!('appSecret' in r.json()) && !('secret' in r.json()), '远程 admin 仍不下发明文密钥');
+  });
+  it('GET status：无凭证远程（isLocal=false 且无 ccvIsAdmin）→ 删减版，无 process', async () => {
+    const route = imRoutes.find((r) => r.predicate('/api/im/feishu/status', 'GET'));
+    const deps = { im: { isWorker: false, getProcessStatus: async () => ({ state: 'ready', running: true, connected: true, pid: 4242 }) } };
+    const req = { on(ev, cb) { if (ev === 'end') cb(); return this; } }; // 无 ccvIsAdmin
+    const r = await call(route, { pathname: '/api/im/feishu/status', isLocal: false, deps, req });
+    assert.equal(r.status, 200);
+    assert.equal(r.json().process, undefined, '无凭证远程不暴露 process');
+    assert.ok('hasSecret' in r.json() && 'connection' in r.json(), 'header chip 字段保留');
+  });
+  it('POST config：远程已鉴权 admin（ccvIsAdmin）→ 放行（不再 403 Loopback only）', async () => {
+    const route = imRoutes.find((r) => r.predicate('/api/im/feishu/config', 'POST'));
+    const deps = { MAX_POST_BODY: 1e6, im: { isWorker: false, restartProcess: async () => {}, stopProcess: async () => {} } };
+    const req = { ccvIsAdmin: true, on(ev, cb) { if (ev === 'data') cb(Buffer.from(JSON.stringify({ enabled: false }))); if (ev === 'end') cb(); return this; } };
+    const r = await call(route, { pathname: '/api/im/feishu/config', isLocal: false, deps, req });
+    assert.equal(r.status, 200, '远程已鉴权 admin 应可保存 IM 配置（容器部署核心场景）');
+  });
+  it('POST config：无凭证远程（无 ccvIsAdmin）→ 仍 403 Loopback only', async () => {
+    const route = imRoutes.find((r) => r.predicate('/api/im/feishu/config', 'POST'));
+    const r = await call(route, { pathname: '/api/im/feishu/config', body: { enabled: false }, isLocal: false, deps: { MAX_POST_BODY: 1e6, im: { isWorker: false } } });
+    assert.equal(r.status, 403);
+    assert.match(r.payload, /Loopback only/);
+  });
+
   // ── L61: readBody body 超 MAX_POST_BODY → req.destroy() ──
   it('POST config：body 超过 MAX_POST_BODY → req.destroy()（end 不触发，连接被毁）', async () => {
     const route = imRoutes.find((r) => r.predicate('/api/im/feishu/config', 'POST'));

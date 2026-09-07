@@ -1,11 +1,13 @@
 // DingTalk bridge config API. See server/lib/im/dingtalk-config.js (storage) and
 // server/lib/im/dingtalk-bridge.js (the Stream client) for the underlying logic.
 //
-//   GET  /api/dingtalk/status — public; remote callers get only hasSecret, the local (admin)
-//                               caller additionally gets the plaintext appSecret to view/copy.
-//   POST /api/dingtalk/config — loopback-only (!isLocal → 403); save creds, reload bridge.
-//   POST /api/dingtalk/test   — loopback-only; validate creds (fetch an access token).
+//   GET  /api/dingtalk/status — public; remote callers get only enabled+hasSecret+connection; an
+//                               authenticated remote admin additionally gets process+pid and lastError
+//                               (error chip); only the plaintext appSecret stays loopback-only.
+//   POST /api/dingtalk/config — admin-only (loopback, or authenticated remote admin); save creds, reload bridge.
+//   POST /api/dingtalk/test   — admin-only; validate creds (fetch an access token).
 import { loadDingTalkState, saveDingTalkConfig, loadDingTalkConfig } from '../lib/im/dingtalk-config.js';
+import { isAdminReq } from '../lib/is-admin.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -36,7 +38,19 @@ async function dingtalkStatus(req, res, parsedUrl, isLocal, deps) {
   }
   res.writeHead(200, JSON_HEADERS);
   if (!isLocal) {
-    // connectionState passes through as-is; lastError stays loopback-only (mirrors routes/im.js).
+    // Authenticated remote admin (container/cloud): full process/connection state (incl.
+    // `lastError` so the header chip can render the real error) — only the plaintext appSecret
+    // stays loopback-only (the frontend edit form only reads hasSecret).
+    if (isAdminReq(req, isLocal)) {
+      res.end(JSON.stringify({
+        ...loadDingTalkState(),
+        connection: conn,
+        process: processInfo,
+        pid: deps.dingtalk.isWorker ? process.pid : (processInfo?.pid ?? null),
+      }));
+      return;
+    }
+    // connectionState passes through as-is; lastError stays loopback-only (non-admin remote).
     res.end(JSON.stringify({
       enabled: loadDingTalkState().enabled,
       hasSecret: loadDingTalkState().hasSecret,
@@ -55,8 +69,9 @@ async function dingtalkStatus(req, res, parsedUrl, isLocal, deps) {
 }
 
 function dingtalkConfigPost(req, res, parsedUrl, isLocal, deps) {
-  // Loopback-only: an app_secret must never be settable over the LAN even with a valid token.
-  if (!isLocal) {
+  // Admin-only (loopback, or an authenticated remote admin): an app_secret must never be
+  // settable by an unauthenticated LAN client even with a valid token.
+  if (!isAdminReq(req, isLocal)) {
     res.writeHead(403, JSON_HEADERS);
     res.end(JSON.stringify({ error: 'Loopback only' }));
     return;
@@ -104,7 +119,7 @@ function dingtalkConfigPost(req, res, parsedUrl, isLocal, deps) {
 }
 
 function dingtalkTestPost(req, res, parsedUrl, isLocal, deps) {
-  if (!isLocal) {
+  if (!isAdminReq(req, isLocal)) {
     res.writeHead(403, JSON_HEADERS);
     res.end(JSON.stringify({ error: 'Loopback only' }));
     return;

@@ -110,6 +110,59 @@ describe('POST /api/dingtalk/test — 远程 403 与缺失凭据', () => {
     assert.equal(tested, false, '远程不得触达 testConnection');
   });
 
+  it('远程已鉴权 admin（!isLocal + ccvIsAdmin）→ 放行（容器部署远程测试连接）', async () => {
+    saveDingTalkConfig({ enabled: false, appKey: 'k', appSecret: 's', allowStaffIds: [] });
+    const handler = routeOf('POST', '/api/dingtalk/test');
+    const res = fakeRes();
+    let tested = false;
+    const deps = { MAX_POST_BODY: 1e6, dingtalk: { testConnection: async () => { tested = true; return { ok: true, detail: 'token ok' }; } } };
+    const req = { ccvIsAdmin: true, on(ev, cb) { if (ev === 'end') cb(); return this; } };
+    handler(req, res, { pathname: '/api/dingtalk/test' }, /* isLocal */ false, deps);
+    await res.done;
+    assert.equal(res.statusCode, 200, '远程已鉴权 admin 应可测试连接');
+    assert.equal(tested, true, 'admin 应触达 testConnection');
+  });
+});
+
+describe('远程已鉴权 admin（ccvIsAdmin）— status/config 分层', () => {
+  it('GET status：远程 admin → 补 process/pid 与 lastError，但不含明文 appSecret', async () => {
+    const handler = routeOf('GET', '/api/dingtalk/status');
+    const res = fakeRes();
+    const processInfo = { state: 'ready', running: true, connected: true, pid: 7777, port: 7050, lastError: 'bad creds' };
+    const deps = { dingtalk: { isWorker: false, getProcessStatus: async () => processInfo } };
+    const req = { ccvIsAdmin: true, on(ev, cb) { if (ev === 'end') cb(); return this; } };
+    handler(req, res, { pathname: '/api/dingtalk/status' }, /* isLocal */ false, deps);
+    await res.done;
+    assert.equal(res.statusCode, 200);
+    const d = JSON.parse(res.body);
+    assert.equal(d.process.state, 'ready', '远程 admin 需 process.state 供 start 轮询');
+    assert.equal(d.pid, 7777);
+    assert.equal(d.process.lastError, 'bad creds', 'lastError 下发远程 admin（错误 chip 诊断）');
+    assert.ok(!('appSecret' in d), '远程 admin 不下发明文 appSecret');
+  });
+
+  it('POST config：远程已鉴权 admin → 200 放行（不再 403）', async () => {
+    const handler = routeOf('POST', '/api/dingtalk/config');
+    const res = fakeRes();
+    const deps = { MAX_POST_BODY: 1e6, dingtalk: { isWorker: false, restartProcess: async () => {}, stopProcess: async () => {} } };
+    const req = { ccvIsAdmin: true, on(ev, cb) { if (ev === 'data') cb(Buffer.from(JSON.stringify({ enabled: false, appKey: 'k', appSecret: 's', allowStaffIds: ['u1'] }))); if (ev === 'end') cb(); return this; } };
+    handler(req, res, { pathname: '/api/dingtalk/config' }, /* isLocal */ false, deps);
+    await res.done;
+    assert.equal(res.statusCode, 200, '远程已鉴权 admin 应可保存钉钉配置');
+  });
+
+  it('POST config：无凭证远程（无 ccvIsAdmin）→ 仍 403', async () => {
+    const handler = routeOf('POST', '/api/dingtalk/config');
+    const res = fakeRes();
+    const deps = { MAX_POST_BODY: 1e6, dingtalk: { isWorker: false, restartProcess: async () => {}, stopProcess: async () => {} } };
+    handler(fakeReq(JSON.stringify({ enabled: false })), res, { pathname: '/api/dingtalk/config' }, /* isLocal */ false, deps);
+    await res.done;
+    assert.equal(res.statusCode, 403);
+    assert.match(res.body, /Loopback only/);
+  });
+});
+
+describe('POST /api/dingtalk/test — 缺失凭据', () => {
   it('appKey/appSecret 均缺失（且无已存配置）→ { ok:false, detail:"missing appKey/appSecret" }', async () => {
     // 清空已存配置，确保 stored 也无凭据 → 走 missing 分支而非 testConnection。
     saveDingTalkConfig({ enabled: false, appKey: '', appSecret: '', allowStaffIds: [] });

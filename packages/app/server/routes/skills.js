@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join, resolve, sep, dirname } from 'node:path';
 import { getClaudeConfigDir } from '../../findcc.js';
 import { listSkills, moveSkill, deleteSkill, validateSkillName } from '../lib/skills-api.js';
+import { isAdminReq } from '../lib/is-admin.js';
 
 async function skillsList(req, res) {
   try {
@@ -44,10 +45,12 @@ function skillsToggle(req, res) {
   });
 }
 
-// Skill 永久删除 —— 把单个 skill 文件夹从 skills/ 或 skills-skip/ 彻底删除（不可恢复）
-// loopback-only：不可逆 rmSync 不向局域网暴露（toggle 是可逆 move，这里更严）。
+// Permanently delete a skill — rmSync the skill folder from skills/ or skills-skip/ (irreversible).
+// admin-only: an irreversible rmSync is not exposed to unauthenticated LAN clients (toggle is a
+// reversible move — this is stricter); an authenticated remote admin (container/cloud) is allowed
+// the same as the loopback admin.
 function skillsDelete(req, res, parsedUrl, isLocal) {
-  if (!isLocal) {
+  if (!isAdminReq(req, isLocal)) {
     res.writeHead(403, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Loopback only' }));
     return;

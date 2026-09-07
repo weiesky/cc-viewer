@@ -1,13 +1,15 @@
 // Generic multi-IM bridge config + process-control API. Platform-parametric (keyed by descriptor id).
 //
-//   GET  /api/im/:platform/status  — public; remote callers get only enabled+hasSecret+connection,
-//                                    the local (admin) caller additionally gets plaintext secrets + process info.
-//   POST /api/im/:platform/config  — loopback-only; save creds, then drive the process manager
+//   GET  /api/im/:platform/status  — public; remote callers get only enabled+hasSecret+connection;
+//                                    an authenticated remote admin additionally gets process+pid and
+//                                    connection/process lastError (for the error chip); only the
+//                                    plaintext secrets stay loopback-only; the loopback admin gets all.
+//   POST /api/im/:platform/config  — admin-only (loopback, or authenticated remote admin); save creds, then drive the process manager
 //                                    (enable→stop+spawn worker, disable→stop). Allowlist is optional:
 //                                    enabling with an empty one warns (not blocked) since the worker
 //                                    runs with --dangerously-skip-permissions.
-//   POST /api/im/:platform/test    — loopback-only; validate creds (fetch an access token).
-//   POST /api/im/:platform/process — loopback-only; {action:start|stop|restart} the detached worker.
+//   POST /api/im/:platform/test    — admin-only; validate creds (fetch an access token).
+//   POST /api/im/:platform/process — admin-only; {action:start|stop|restart} the detached worker.
 //                                    'start' requires stored creds (400 `missing …` otherwise) and
 //                                    also persists enabled:true (merged into the stored config):
 //                                    a worker spawned while the config says disabled no-ops in
@@ -27,6 +29,7 @@ import { readImAppendSystem, writeImAppendSystem, buildImAppendSystemPreset, MAX
 import { imDir } from '../lib/im/im-lock.js';
 import { resolvePrefLang } from '../lib/im/im-lang.js';
 import { listSkills, moveSkill, deleteSkill } from '../lib/skills-api.js';
+import { isAdminReq } from '../lib/is-admin.js';
 import { importSkillTo } from './skills.js';
 import { LOG_DIR } from '../../findcc.js';
 import { join, basename } from 'node:path';
@@ -116,7 +119,20 @@ async function imStatus(req, res, parsedUrl, isLocal, deps) {
 
   res.writeHead(200, JSON_HEADERS);
   if (!isLocal) {
-    // Loopback gate: a token-authorized LAN client sees only what the header chip needs.
+    // Authenticated remote admin (container/cloud): full process/connection state so the settings
+    // UI start() poll sees `process.state === 'ready'` AND the header chip can render the real
+    // error (`connection.lastError` — the worker's own report, not a stored secret). Only the
+    // plaintext SECRETS stay loopback-only (the frontend edit form only ever reads hasSecret).
+    if (isAdminReq(req, isLocal)) {
+      res.end(JSON.stringify({
+        ...state,
+        connection,
+        process: processInfo,
+        pid: deps.im.isWorker ? process.pid : (processInfo?.pid ?? null),
+      }));
+      return;
+    }
+    // Unauthenticated/non-admin remote: only what the header chip needs.
     // connectionState is passed through as-is (no defaulting); lastError stays loopback-only.
     res.end(JSON.stringify({
       enabled: state.enabled,
@@ -141,7 +157,7 @@ async function imStatus(req, res, parsedUrl, isLocal, deps) {
 function imConfigPost(req, res, parsedUrl, isLocal, deps) {
   const id = platformOf(parsedUrl.pathname);
   if (!id) { notFound(res); return; }
-  if (!isLocal) { loopbackOnly(res); return; }
+  if (!isAdminReq(req, isLocal)) { loopbackOnly(res); return; }
   readBody(req, deps, async (body) => {
     let incoming;
     try { incoming = JSON.parse(body); }
@@ -182,7 +198,7 @@ function imConfigPost(req, res, parsedUrl, isLocal, deps) {
 function imTestPost(req, res, parsedUrl, isLocal, deps) {
   const id = platformOf(parsedUrl.pathname);
   if (!id) { notFound(res); return; }
-  if (!isLocal) { loopbackOnly(res); return; }
+  if (!isAdminReq(req, isLocal)) { loopbackOnly(res); return; }
   readBody(req, deps, async (body) => {
     let incoming = {};
     try { incoming = body ? JSON.parse(body) : {}; } catch { /* fall back to stored */ }
@@ -204,7 +220,7 @@ function imTestPost(req, res, parsedUrl, isLocal, deps) {
 function imProcessPost(req, res, parsedUrl, isLocal, deps) {
   const id = platformOf(parsedUrl.pathname);
   if (!id) { notFound(res); return; }
-  if (!isLocal) { loopbackOnly(res); return; }
+  if (!isAdminReq(req, isLocal)) { loopbackOnly(res); return; }
   // 只有主进程负责管理 worker；worker 自身不应被要求 spawn/stop（避免嵌套）。
   if (deps.im.isWorker) {
     res.writeHead(409, JSON_HEADERS);
@@ -273,23 +289,23 @@ function imLogs(req, res, parsedUrl, isLocal, deps) {
 }
 
 // 发送者身份映射（senderId → {name, avatar, ts}）：供「对话记录」按 senderId 显示真实姓名+头像。
-// loopback-only：姓名/头像属个人信息，不向局域网暴露（与 config/test/process 同级）。
+// admin-only: names/avatars are personal info, not exposed to unauthenticated LAN clients (same tier as config/test/process).
 function imSenders(req, res, parsedUrl, isLocal, deps) {
   const id = platformOf(parsedUrl.pathname);
   if (!id) { notFound(res); return; }
-  if (!isLocal) { loopbackOnly(res); return; }
+  if (!isAdminReq(req, isLocal)) { loopbackOnly(res); return; }
   res.writeHead(200, JSON_HEADERS);
   res.end(JSON.stringify({ platform: id, senders: readSenders(id) }));
 }
 
-// 「模型性格定义」= 该 IM worker 工作目录下的 CC_APPEND_SYSTEM.md（启动 claude 时注入为
-// --append-system-prompt-file）。loopback-only：本地文件内容、admin-only。
+// "Model persona definition" = CC_APPEND_SYSTEM.md in that IM worker's working dir (injected at claude launch as
+// --append-system-prompt-file). admin-only: local file content (loopback, or an authenticated remote admin).
 // 该文件仅在 worker 启动时读取一次，故保存后需重启该 IM worker 才生效（前端据此提示用户）。
 // ?default=1：返回当前语言的预置文本（绕过磁盘文件），供编辑器「恢复默认」按钮加载——不落盘，由用户保存才生效。
 function imAppendSystemGet(req, res, parsedUrl, isLocal, deps) {
   const id = platformOf(parsedUrl.pathname);
   if (!id) { notFound(res); return; }
-  if (!isLocal) { loopbackOnly(res); return; }
+  if (!isAdminReq(req, isLocal)) { loopbackOnly(res); return; }
   try {
     const def = parsedUrl?.searchParams?.get('default');
     const lang = resolvePrefLang();
@@ -305,7 +321,7 @@ function imAppendSystemGet(req, res, parsedUrl, isLocal, deps) {
 function imAppendSystemPost(req, res, parsedUrl, isLocal, deps) {
   const id = platformOf(parsedUrl.pathname);
   if (!id) { notFound(res); return; }
-  if (!isLocal) { loopbackOnly(res); return; }
+  if (!isAdminReq(req, isLocal)) { loopbackOnly(res); return; }
   readBody(req, deps, (body) => {
     let incoming;
     try { incoming = JSON.parse(body); }
@@ -327,13 +343,13 @@ function imAppendSystemPost(req, res, parsedUrl, isLocal, deps) {
   });
 }
 
-// 「${IM} SKILL 管理」= 该 IM worker 工作目录下的 .claude/skills/。loopback-only（本地文件操作、admin-only）。
+// "${IM} SKILL management" = the .claude/skills/ under that IM worker's working dir. admin-only (local file ops; loopback, or an authenticated remote admin).
 // 复用 skills-api 的 listSkills/moveSkill（按 projectDir 参数化）+ skills.js 的 importSkillTo（按 skillsRoot 参数化）。
 // IM worker 仅在启动时读取 skills，故增删/启停后需重启该 IM worker 才生效（前端提示用户）。
 function imSkills(req, res, parsedUrl, isLocal, deps) {
   const id = platformOf(parsedUrl.pathname);
   if (!id) { notFound(res); return; }
-  if (!isLocal) { loopbackOnly(res); return; }
+  if (!isAdminReq(req, isLocal)) { loopbackOnly(res); return; }
   try {
     const dir = imDir(id);
     // projectDir 与 homeDir 都指向 IM 目录：两次扫描命中同一 .claude/skills（user+project 重复），
@@ -350,7 +366,7 @@ function imSkills(req, res, parsedUrl, isLocal, deps) {
 function imSkillsToggle(req, res, parsedUrl, isLocal, deps) {
   const id = platformOf(parsedUrl.pathname);
   if (!id) { notFound(res); return; }
-  if (!isLocal) { loopbackOnly(res); return; }
+  if (!isAdminReq(req, isLocal)) { loopbackOnly(res); return; }
   readBody(req, deps, (body) => {
     let incoming;
     try { incoming = JSON.parse(body); }
@@ -371,7 +387,7 @@ function imSkillsToggle(req, res, parsedUrl, isLocal, deps) {
 function imSkillsDelete(req, res, parsedUrl, isLocal, deps) {
   const id = platformOf(parsedUrl.pathname);
   if (!id) { notFound(res); return; }
-  if (!isLocal) { loopbackOnly(res); return; }
+  if (!isAdminReq(req, isLocal)) { loopbackOnly(res); return; }
   readBody(req, deps, (body) => {
     let incoming;
     try { incoming = JSON.parse(body); }
@@ -392,7 +408,7 @@ function imSkillsDelete(req, res, parsedUrl, isLocal, deps) {
 function imSkillsImport(req, res, parsedUrl, isLocal, deps) {
   const id = platformOf(parsedUrl.pathname);
   if (!id) { notFound(res); return; }
-  if (!isLocal) { loopbackOnly(res); return; }
+  if (!isAdminReq(req, isLocal)) { loopbackOnly(res); return; }
   importSkillTo(req, res, { skillsRoot: join(imDir(id), '.claude', 'skills'), windowsReserved: deps.WINDOWS_RESERVED_NAMES });
 }
 

@@ -14,6 +14,7 @@ import { basename } from 'node:path';
 import { LOG_DIR } from '../../findcc.js';
 import { reconcileVoicePackPrefs as vpReconcile } from '../lib/voice-pack-manager.js';
 import { mutatePrefs, applyPrefsPatch, readPrefsRaw } from '../lib/prefs-store.js';
+import { isAdminReq } from '../lib/is-admin.js';
 import {
   getCurrentProjectKey, hasActiveProject, snapshotForFork, stripSensitive,
 } from '../lib/project-prefs.js';
@@ -73,7 +74,7 @@ async function updateHandler(req, res, parsedUrl, isLocal, deps) {
   const hasProject = typeof body.project === 'string' && body.project;
   let key;
   if (hasProject) {
-    if (!isLocal) return sendJson(res, 403, { error: 'forbidden' });
+    if (!isAdminReq(req, isLocal)) return sendJson(res, 403, { error: 'forbidden' });
     key = body.project;
   } else {
     if (!hasActiveProject()) return sendJson(res, 409, { error: 'no-active-project' });
@@ -91,9 +92,9 @@ async function updateHandler(req, res, parsedUrl, isLocal, deps) {
   sendJson(res, 200, { ok: true });
 }
 
-// POST /api/project-prefs/delete — remove a fork. Loopback admin only.
+// POST /api/project-prefs/delete — remove a fork. Admin only (loopback or authenticated remote).
 async function deleteHandler(req, res, parsedUrl, isLocal, deps) {
-  if (!isLocal) return sendJson(res, 403, { error: 'forbidden' });
+  if (!isAdminReq(req, isLocal)) return sendJson(res, 403, { error: 'forbidden' });
   let body;
   try { body = await readBody(req, deps); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
   const key = body.project;
@@ -107,9 +108,9 @@ async function deleteHandler(req, res, parsedUrl, isLocal, deps) {
   sendJson(res, 200, { ok: true });
 }
 
-// GET /api/project-prefs — every fork + contents (for the loopback management modal).
+// GET /api/project-prefs — every fork + contents (for the admin management modal).
 function listHandler(req, res, parsedUrl, isLocal, deps) {
-  if (!isLocal) return sendJson(res, 403, { error: 'forbidden' });
+  if (!isAdminReq(req, isLocal)) return sendJson(res, 403, { error: 'forbidden' });
   const prefs = readPrefsRaw();
   const forks = (prefs && prefs.prefsByProject && typeof prefs.prefsByProject === 'object') ? prefs.prefsByProject : {};
   const currentKey = getCurrentProjectKey();

@@ -1,6 +1,6 @@
 // Voice-pack routes (moved verbatim from server.js handleRequest).
 // Manages user-uploaded audio + serves the bundled "皇上系列" default pack.
-// Uploads are loopback-only — LAN clients can play but not write.
+// Uploads/deletes are admin-only (loopback, or authenticated remote admin) — other clients can play but not write.
 import { lstatSync, statSync, createReadStream } from 'node:fs';
 import { LOG_DIR } from '../../findcc.js';
 import {
@@ -18,6 +18,7 @@ import {
   EVENT_KEYS as VP_EVENT_KEYS,
   MAX_AUDIO_BYTES as VP_MAX_BYTES,
 } from '../lib/voice-pack-manager.js';
+import { isAdminReq } from '../lib/is-admin.js';
 
 function voicePackList(req, res) {
   try {
@@ -45,10 +46,10 @@ function voicePackList(req, res) {
 }
 
 function voicePackUpload(req, res, parsedUrl, isLocal) {
-  // Loopback-only — refuse LAN clients even if they hold a valid token.
-  // The token already gates LAN access but voice-pack writes touch the local FS
-  // and end up reachable from every client; keep the write side strictly local.
-  if (!isLocal) {
+  // Admin-only — refuse unauthenticated LAN clients even if they hold a valid token.
+  // The token already gates LAN access but voice-pack writes touch the local FS and end up
+  // reachable from every client; an authenticated remote admin (container/cloud) is allowed.
+  if (!isAdminReq(req, isLocal)) {
     res.writeHead(403, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Upload allowed from loopback only' }));
     return;
@@ -106,7 +107,7 @@ function voicePackUpload(req, res, parsedUrl, isLocal) {
 }
 
 function voicePackDelete(req, res, parsedUrl, isLocal) {
-  if (!isLocal) {
+  if (!isAdminReq(req, isLocal)) {
     res.writeHead(403, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Delete allowed from loopback only' }));
     return;

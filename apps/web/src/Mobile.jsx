@@ -1201,7 +1201,8 @@ class Mobile extends AppBase {
                 const pp = (this.context && this.context.preferences) || {};
                 const showToggle = !this._isLocalLog && !!pp._projectName && pp._isLocal === false;
                 const forkKeys = Array.isArray(pp._projectPrefsKeys) ? pp._projectPrefsKeys : [];
-                const showManage = pp._isLocal === true && forkKeys.length > 0;
+                // Manage entry open to admins (loopback OR authenticated remote = _isAdmin), same as AppHeader.
+                const showManage = pp._isAdmin === true && forkKeys.length > 0;
                 if (!showToggle && !showManage) return null;
                 return (
                   <div className={styles.mobileSettingsGroup}>

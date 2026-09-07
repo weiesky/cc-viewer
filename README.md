@@ -193,6 +193,19 @@ By default, remote (LAN) access requires the `?token=` query that ccv prints at 
 * **Global default + per-project override:** by default one password covers every project. From the QR popover the admin can switch between **This project** and **Global** — set a project-specific password that overrides the global default for that project only, or remove the override to inherit the global setting again. (A disabled project override means "no protection for this project", which is different from removing it.)
 * The on/off state and password(s) are persisted alongside your other settings in cc-viewer's `preferences.json` — a global `auth` key plus an optional `authByProject` map (the password is base64-obfuscated, not stored as raw plaintext; file mode `0600`). The login cookie is tied to the per-launch token, so restarting ccv requires remote devices to log in again.
 
+### Container / cloud deployment (remote admin)
+
+cc-viewer works in a single container or on a cloud host where you reach the UI from a remote browser. The main process binds `0.0.0.0` by default, so once you map the port you can open it from anywhere.
+
+* **An authenticated remote client is an admin.** Once a remote browser gets in — via the `?token=` URL printed at startup, or via password login (`ccv --usePassword`) — it can use **all** management features: configuring and starting the DingTalk/IM integrations, managing skills, voice packs, project preferences, and the auth/password settings. You no longer need to be on `127.0.0.1` to save IM credentials or start the worker.
+* **Empty-password mode is NOT admin.** If you enable password login with an empty password (explicitly "no protection"), remote clients get *read* access but are **not** admins — destructive/admin actions (deleting skills, changing the password, adjusting retry/proxy config that multiplies your paid upstream spend) still require a real credential or a loopback connection. An empty password never opens the write surface to the whole network.
+* **Plaintext secrets stay on the host.** The IM/DingTalk status endpoint tells a remote admin the process/connection state (so the UI can show "connected"), but plaintext app secrets are only ever returned to a loopback (`127.0.0.1`) client.
+* **Internal machine bridges stay loopback-locked.** The hook/notify channels the local `claude` process uses (turn-end, session-start, task-event, stream chunks) still require a loopback peer plus the per-boot internal token — remote admins cannot reach them.
+* **IM workers stay on `127.0.0.1`.** Each DingTalk/IM worker binds loopback inside the container; the main process probes it over `127.0.0.1`. In a single container this needs no extra setup.
+* **Security recommendations for a public/cloud deployment:** enable password login (or keep the random `?token=` URL secret), and put the instance behind a reverse proxy that terminates HTTPS. Persist the log/settings directory by mounting a volume at the path pointed to by `CCV_LOG_DIR` (default `~/.claude/cc-viewer`) so your preferences, auth password, and IM credentials survive container restarts.
+* **Reverse-proxy note:** access control is based on the socket peer address (`X-Forwarded-For` is deliberately not trusted, to prevent spoofing). This does not affect remote admins — they authenticate by token/password, not by IP. It only means "same-container" detection relies on a real loopback connection.
+
+
 ### Model-specific system prompts
 
 The **Edit System Prompt** modal (hamburger menu → Edit System Prompt) is tabbed:

@@ -1,11 +1,12 @@
 // Password-auth API routes. See server/lib/auth.js for the underlying logic and
 // the plan for the overall design.
 //
-//   GET  /api/auth/state   — public; reveals the plaintext password only to admin (isLocal).
-//   POST /api/auth/config  — admin-only (!isLocal → 403); enable/disable + set password.
+//   GET  /api/auth/state   — public; reveals the plaintext password only to a loopback admin.
+//   POST /api/auth/config  — admin-only (loopback, or authenticated remote admin; else 403); enable/disable + set password.
 //   POST /api/auth/login   — public + IP rate-limited; on success Set-Cookie ccv_auth=ACCESS_TOKEN.
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { generatePassword } from '../lib/auth.js';
+import { isAdminReq } from '../lib/is-admin.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -28,14 +29,15 @@ function readBody(req, deps, cb) {
   req.on('end', () => cb(body));
 }
 
-function buildState(deps, isLocal) {
+function buildState(deps, isLocal, isAdmin) {
   // Reports the EFFECTIVE config (gate enforces this) plus enough scope info for the
   // admin UI to manage both the global default and a per-project override.
-  // Passwords (effective + global) are only revealed to the admin (local).
+  // Plaintext passwords stay loopback-only even for an authenticated remote admin
+  // (mirrors the IM status secret policy); `isAdmin` reflects loopback OR remote-auth.
   const s = deps.getAuthState();
   return {
     enabled: s.effective.enabled,
-    isAdmin: isLocal,
+    isAdmin,
     password: isLocal ? s.effective.password : null,
     scope: s.scope,                       // 'project' | 'global' — which one is in effect
     hasProjectOverride: s.hasProjectOverride,
@@ -81,11 +83,11 @@ function recordFailedAttempt(ip) {
 
 function authState(req, res, parsedUrl, isLocal, deps) {
   res.writeHead(200, JSON_HEADERS);
-  res.end(JSON.stringify(buildState(deps, isLocal)));
+  res.end(JSON.stringify(buildState(deps, isLocal, isAdminReq(req, isLocal))));
 }
 
 function authConfigPost(req, res, parsedUrl, isLocal, deps) {
-  if (!isLocal) {
+  if (!isAdminReq(req, isLocal)) {
     res.writeHead(403, JSON_HEADERS);
     res.end(JSON.stringify({ error: 'admin-only' }));
     return;
@@ -104,7 +106,7 @@ function authConfigPost(req, res, parsedUrl, isLocal, deps) {
     if (incoming.clearOverride === true) {
       deps.clearAuthOverride();
       res.writeHead(200, JSON_HEADERS);
-      res.end(JSON.stringify(buildState(deps, isLocal)));
+      res.end(JSON.stringify(buildState(deps, isLocal, isAdminReq(req, isLocal))));
       return;
     }
     // Target scope: explicit 'global' → global; otherwise project when this server has a
@@ -126,7 +128,7 @@ function authConfigPost(req, res, parsedUrl, isLocal, deps) {
     }
     deps.setAuthConfig(next, scope);
     res.writeHead(200, JSON_HEADERS);
-    res.end(JSON.stringify(buildState(deps, isLocal)));
+    res.end(JSON.stringify(buildState(deps, isLocal, isAdminReq(req, isLocal))));
   });
 }
 

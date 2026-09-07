@@ -14,6 +14,7 @@ import { readClaudeProjectModel } from '../lib/context-watcher.js';
 import { sendEventToClients } from '../lib/log-watcher.js';
 import { listPlatforms } from '../lib/im/im-config.js';
 import { mutatePrefs, applyPrefsPatch, readPrefsRaw } from '../lib/prefs-store.js';
+import { isAdminReq } from '../lib/is-admin.js';
 import {
   getCurrentProjectKey, getCurrentProjectName, hasFork, listForks, resolveScoped,
 } from '../lib/project-prefs.js';
@@ -52,12 +53,16 @@ export function _resetThemeSyncForTests() { _themeSyncInFlight = false; }
 function preferencesGet(req, res, parsedUrl, isLocal, deps) {
   let prefs = {};
   try { if (existsSync(deps.getPrefsFile())) prefs = JSON.parse(readFileSync(deps.getPrefsFile(), 'utf-8')); } catch { }
+  // isAdmin = loopback OR authenticated remote (container/cloud admin); _isLocal stays the
+  // physical loopback fact. Computed once up-front so every admin gate below (fork keys,
+  // executable key, _isAdmin echo) uses the SAME value.
+  const isAdmin = isAdminReq(req, isLocal);
   // auth 配置(含明文密码)与偏好同存于 preferences.json,但绝不能从这里下发 ——
   // 密码仅由 admin-only 的 /api/auth/state 暴露给本机。否则远程密码登录用户也能读到明文。
   // 全局 auth 与每个项目的 authByProject 覆盖都要剥离(后者同样含明文密码)。
   delete prefs.auth;
   delete prefs.authByProject;
-  if (!isLocal || !isSameOriginBrowserRequest(req, parsedUrl)) {
+  if (!isAdmin || !isSameOriginBrowserRequest(req, parsedUrl)) {
     delete prefs[CLAUDE_EXECUTABLE_PREF_KEY];
   }
   stripImConfigs(prefs); // dingtalk / feishu / … — admin-only, never to a LAN client
@@ -65,8 +70,10 @@ function preferencesGet(req, res, parsedUrl, isLocal, deps) {
   // 解析出该项目的有效偏好；本机(admin)始终看全局。forks blob 绝不下发，仅以 _projectPrefsKeys
   // 元信息告知本机管理入口该不该出现。元字段以 _ 前缀标记，POST 侧会剥离不落盘。
   const _projectKey = getCurrentProjectKey();
+  // _scoped keys on isLocal (physical loopback): a remote admin still gets the scoped project
+  // view like other remote users — only the MANAGE capability (_projectPrefsKeys) is admin-gated.
   const _scoped = !isLocal && hasFork(prefs, _projectKey);
-  const _forkKeys = isLocal ? listForks(prefs) : null; // 计算需早于 delete prefsByProject
+  const _forkKeys = isAdmin ? listForks(prefs) : null; // 计算需早于 delete prefsByProject; admin（本机或远程）可见 fork 列表
   const _fork = _scoped ? prefs.prefsByProject[_projectKey] : null;
   delete prefs.prefsByProject;
   if (_scoped) {
@@ -90,11 +97,14 @@ function preferencesGet(req, res, parsedUrl, isLocal, deps) {
     prefs.approvalModal.voicePack = vpReconcile(LOG_DIR, prefs.approvalModal.voicePack);
   }
   // 项目独立配置元信息（_ 前缀 = 仅回包、不落盘；POST 侧统一剥离）：前端据此决定
-  // 非本机显示"启动项目独立配置"开关、本机在有 fork 时显示"配置管理"入口。
+  // 非本机显示"启动项目独立配置"开关、admin（本机或已鉴权远程）在有 fork 时显示"配置管理"入口。
+  // _isAdmin = loopback OR authenticated remote (container/cloud admin); _isLocal stays the
+  // physical loopback fact (drives remote-only affordances like "Download to local").
   prefs._isLocal = isLocal;
+  prefs._isAdmin = isAdmin;
   prefs._projectName = getCurrentProjectName();
   prefs._projectScoped = _scoped;
-  if (isLocal) prefs._projectPrefsKeys = _forkKeys;
+  if (isAdmin) prefs._projectPrefsKeys = _forkKeys;
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(prefs));
 }
@@ -119,9 +129,9 @@ function preferencesPost(req, res, parsedUrl, isLocal, deps) {
       delete incoming.auth;
       delete incoming.authByProject;
       // Claude executable selection controls which local program CCV executes.
-      // It is machine-global and therefore writable only by the loopback admin,
-      // never by a remote/project-scoped preferences client.
-      if (!isLocal) {
+      // It is machine-global and therefore writable only by an admin (loopback, or an
+      // authenticated remote admin) — never by an unauthenticated remote/project client.
+      if (!isAdminReq(req, isLocal)) {
         delete incoming[CLAUDE_EXECUTABLE_PREF_KEY];
       } else if (Object.prototype.hasOwnProperty.call(incoming, CLAUDE_EXECUTABLE_PREF_KEY)) {
         const value = incoming[CLAUDE_EXECUTABLE_PREF_KEY];
@@ -211,7 +221,7 @@ function preferencesPost(req, res, parsedUrl, isLocal, deps) {
       delete prefs.auth;
       delete prefs.authByProject;
       delete prefs.prefsByProject; // fork blob 绝不回显（与 GET 一致）
-      if (!isLocal || !isSameOriginBrowserRequest(req, parsedUrl)) {
+      if (!isAdminReq(req, isLocal) || !isSameOriginBrowserRequest(req, parsedUrl)) {
         delete prefs[CLAUDE_EXECUTABLE_PREF_KEY];
       }
       stripImConfigs(prefs);
@@ -228,9 +238,10 @@ function preferencesPost(req, res, parsedUrl, isLocal, deps) {
 }
 
 function claudeExecutablesGet(req, res, parsedUrl, isLocal, deps) {
-  if (!isLocal || !isSameOriginBrowserRequest(req, parsedUrl)) {
+  const isAdmin = isAdminReq(req, isLocal);
+  if (!isAdmin || !isSameOriginBrowserRequest(req, parsedUrl)) {
     res.writeHead(403, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: isLocal ? 'Same-origin request required' : 'Loopback only' }));
+    res.end(JSON.stringify({ error: isAdmin ? 'Same-origin request required' : 'Loopback only' }));
     return;
   }
   let configuredPath = null;
@@ -406,11 +417,12 @@ function retryConfigGet(req, res, _parsedUrl, _isLocal, _deps) {
 }
 
 function retryConfigPost(req, res, _parsedUrl, isLocal, deps) {
-  // Local-only, mirroring ccswitchImportPost: retry config is written to a
+  // Admin-only, mirroring ccswitchImportPost: retry config is written to a
   // cross-process file every ccv instance hot-reloads, and race/stagger with
-  // high concurrency multiplies the HOST's paid upstream requests — a LAN
-  // client must not be able to amplify the host's API spend machine-wide.
-  if (!isLocal) {
+  // high concurrency multiplies the HOST's paid upstream requests — an unauthenticated
+  // LAN client must not be able to amplify the host's API spend machine-wide.
+  // An authenticated remote admin (container/cloud) is trusted like the loopback admin.
+  if (!isAdminReq(req, isLocal)) {
     res.writeHead(403, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: false, error: 'retry config is local-only' }));
     return;
@@ -474,7 +486,7 @@ async function ccswitchProvidersGet(req, res, _parsedUrl, isLocal, _deps) {
 // POST body 可选 { setActive: true } —— 是否把 cc-switch 的 current 设为 cc-viewer active。
 // 默认不设（避免覆盖用户当前选择）。导入只 merge 列表，凭证刷新幂等。
 async function ccswitchImportPost(req, res, _parsedUrl, isLocal, deps) {
-  if (!isLocal) {
+  if (!isAdminReq(req, isLocal)) {
     res.writeHead(403, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: false, error: 'cc-switch import is local-only' }));
     return;

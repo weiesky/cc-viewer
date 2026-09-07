@@ -76,6 +76,25 @@ describe('POST /api/task-event (taskEventNotify)', () => {
     assert.match(JSON.parse(bodyStr(res)).error, /Loopback only/);
   });
 
+  // B-class regression: the isAdmin remote elevation (lib/is-admin.js, container/cloud
+  // deployment) must NOT relax the internal machine bridges. A non-loopback caller holding
+  // a VALID INTERNAL_TOKEN is still rejected — isAdmin is irrelevant to this endpoint.
+  it('403 when not loopback even with valid INTERNAL_TOKEN (isAdmin must not relax machine bridges)', async () => {
+    const req = new EventEmitter();
+    req.headers = { 'x-ccviewer-internal': TOKEN };
+    req.ccvIsAdmin = true; // simulate an authenticated remote admin reaching a B-class route
+    req.destroy = () => { req.destroyed = true; };
+    const res = makeRes();
+    await new Promise((resolve) => {
+      res.on('finish', () => resolve(res));
+      taskEventNotify(req, res, url('/api/task-event'), /* isLocal */ false, makeDeps());
+      req.emit('end');
+      setImmediate(() => resolve(res));
+    });
+    assert.equal(res.statusCode, 403, 'machine bridge stays loopback-locked regardless of isAdmin');
+    assert.match(JSON.parse(bodyStr(res)).error, /Loopback only/);
+  });
+
   it('403 when bridge token is missing/invalid', async () => {
     const res = await post({ headers: { 'x-ccviewer-internal': 'wrong' } });
     assert.equal(res.statusCode, 403);

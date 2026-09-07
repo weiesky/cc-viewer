@@ -218,10 +218,18 @@ export function parseCookies(header) {
  *   urlToken, cookieToken, accessToken,
  *   enabled, password, wantsHtml
  * }
- * → { action: 'allow' | 'login-page' | 'unauthorized' | 'forbidden' }
+ * → { action: 'allow' | 'login-page' | 'unauthorized' | 'forbidden', isAdmin: boolean }
  *
  * Caller invariants (see plan): 'login-page' / 'unauthorized' / 'forbidden' MUST
  * terminate the request; only 'allow' falls through to the Host allowlist + routing.
+ *
+ * `isAdmin` = loopback OR an authenticated remote (valid urlToken / cookieToken). It is computed
+ * from the credential-bearing allow branches, so the two can never drift apart — server.js uses
+ * it to elevate management routes (see lib/is-admin.js). Static-asset, /api/auth/login, AND the
+ * empty-password branch are allow-exempt but NOT admin: empty-password mode means "no read
+ * protection", but destructive/admin actions (delete skills, change the password, adjust
+ * retry/proxy config that multiplies the host's paid upstream spend) must NOT be opened to every
+ * unauthenticated LAN/internet client — those stay credential-or-loopback gated even in open mode.
  */
 export function decideAuth(ctx) {
   const {
@@ -229,6 +237,14 @@ export function decideAuth(ctx) {
     urlToken, cookieToken, accessToken,
     enabled, password, wantsHtml,
   } = ctx;
+
+  // Admin = the credential-bearing / trusted-peer allow branches. Deliberately EXCLUDES the
+  // empty-password allow branch: "no read protection" must not become "everyone is admin".
+  // Single source of truth for both gating and remote-admin elevation.
+  const isAdmin =
+    isLocal === true ||
+    urlToken === accessToken ||
+    cookieToken === accessToken;
 
   if (
     isStaticAsset ||
@@ -238,16 +254,16 @@ export function decideAuth(ctx) {
     cookieToken === accessToken ||
     (enabled && password === '')      // empty password = explicitly no protection
   ) {
-    return { action: 'allow' };
+    return { action: 'allow', isAdmin };
   }
 
   if (enabled) {
     // Password auth on but no valid credential: HTML navigations get the login page,
     // XHR/asset/WS get a plain 401.
-    return { action: wantsHtml ? 'login-page' : 'unauthorized' };
+    return { action: wantsHtml ? 'login-page' : 'unauthorized', isAdmin };
   }
   // Password auth off → preserve original token-only behaviour (403).
-  return { action: 'forbidden' };
+  return { action: 'forbidden', isAdmin };
 }
 
 function escapeHtml(s) {

@@ -757,17 +757,27 @@ async function handleRequest(req, res) {
   const isLocal = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1';
   const isStaticAsset = url.startsWith('/assets/') || url === '/favicon.ico';
   const wantsHtml = method === 'GET' && ((req.headers.accept || '').includes('text/html') || url === '/');
+  // Hoisted so decideAuth and the isAdmin computation share the SAME credential values.
+  const urlToken = parsedUrl.searchParams.get('token');
+  const cookieToken = parseCookies(req.headers.cookie).ccv_auth;
   const authDecision = decideAuth({
     isStaticAsset,
     pathname: url,
     isLocal,
-    urlToken: parsedUrl.searchParams.get('token'),
-    cookieToken: parseCookies(req.headers.cookie).ccv_auth,
+    urlToken,
+    cookieToken,
     accessToken: ACCESS_TOKEN,
     enabled: authConfig.enabled,
     password: authConfig.password,
     wantsHtml,
   });
+  // Remote-admin elevation (container/cloud deploy): an authenticated remote caller is
+  // treated as admin for management routes (isAdminReq in lib/is-admin.js). isAdmin comes
+  // straight from decideAuth (single source of truth — it mirrors the remote-allow branches
+  // and can never drift from them). Loopback is always admin. This MUST NOT relax the
+  // internal machine bridges (events.js hook notifies, ask-perm.js streamChunk) — those
+  // stay strictly loopback + INTERNAL_TOKEN.
+  req.ccvIsAdmin = authDecision.isAdmin === true;
   if (authDecision.action === 'login-page') {
     const lang = localeFromAcceptLanguage(req.headers['accept-language']) || getLang();
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
