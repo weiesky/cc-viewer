@@ -195,10 +195,15 @@ jobs:
 
   # Post-release automatic Homebrew tap formula bump (reusable workflow, uses HOMEBREW_TAP_TOKEN).
   bump-homebrew:
-    needs: publish
-    # Explicit needs.publish.result: a custom if would drop the implicit success() gate,
-    # causing this job to run even when publish fails (bumping a non-existent release).
-    if: ${{ needs.publish.result == 'success' && startsWith(github.ref, 'refs/tags/v') }}
+    # needs: npm-publish (NOT publish). The Homebrew formula points at the npm tarball, so the
+    # bump is only meaningful after the package is actually on the registry. Depending on
+    # `publish` (GitHub Release, needs:build only) made this job race the npm publish and time out
+    # its registry poll every release (v1.8.8/1.8.9/1.8.10). needs:npm-publish serializes it after
+    # the registry write; the callee's short poll then only absorbs CDN propagation.
+    needs: npm-publish
+    # Explicit needs.npm-publish.result: a custom if would drop the implicit success() gate,
+    # causing this job to run even when the npm publish fails (bumping a non-existent release).
+    if: ${{ needs.npm-publish.result == 'success' && startsWith(github.ref, 'refs/tags/v') }}
     uses: ./.github/workflows/bump-homebrew.yml
     with:
       version: ${{ github.ref_name }}   # vX.Y.Z; the callee strips the leading 'v'
