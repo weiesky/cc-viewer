@@ -2,7 +2,7 @@
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join, resolve, sep, dirname } from 'node:path';
 import { getClaudeConfigDir } from '../../findcc.js';
-import { listSkills, moveSkill, deleteSkill, validateSkillName } from '../lib/skills-api.js';
+import { listSkills, moveSkill, deleteSkill, validateSkillName, parseSkillFrontmatter } from '../lib/skills-api.js';
 import { isAdminReq } from '../lib/is-admin.js';
 
 async function skillsList(req, res) {
@@ -81,22 +81,35 @@ function skillsDelete(req, res, parsedUrl, isLocal) {
 // 设计要点（与原实现一致）：
 //  · 扩展名白名单只放 zip / md（忽略大小写）；其他类型 415；
 //  · zip 内必须含 SKILL.md（任意子目录、忽略大小写），取最浅的那个所在目录作为 skill 根；
-//  · skill 名优先取 SKILL.md frontmatter 的 name，回落 zip 根目录名 / 文件名（去扩展名）；
+//  · Strict spec check (unified across all three entries): SKILL.md frontmatter must contain
+//    a name (must pass validateSkillName) and a description; violations reject with
+//    INVALID_FRONTMATTER / MISSING_NAME / INVALID_NAME / MISSING_DESCRIPTION — no more
+//    filename / zip-root-dir fallback;
 //  · zip bomb 防护：单文件 ≤50MB，总解压 ≤200MB；拒绝 symlink entry。
 
-const parseNameFromMd = (text) => {
-  const m = /^---\s*\n([\s\S]*?)\n---/.exec(text);
-  if (!m) return null;
-  const nm = /^name\s*:\s*(.*)$/m.exec(m[1]);
-  if (!nm) return null;
-  return nm[1].trim().replace(/^["']|["']$/g, '');
-};
+// Shared size caps for the zip path (declared-size pass + actual-size re-check).
+const MAX_SKILL_FILE = 50 * 1024 * 1024;
+const MAX_SKILL_TOTAL = 200 * 1024 * 1024;
 
-const fallbackBaseName = (filename, stripExt) => {
-  let n = filename.replace(/^.*[\\/]/, '');
-  if (stripExt) n = n.replace(/\.[^.]+$/, '');
-  return n;
-};
+// Strict skill-spec validation shared by all three import entries (folder / zip / SKILL.md).
+// Check order is fixed (tests depend on it): no frontmatter block → INVALID_FRONTMATTER;
+// missing name → MISSING_NAME; invalid name → INVALID_NAME; missing description → MISSING_DESCRIPTION.
+function requireSkillSpec(text) {
+  const fm = parseSkillFrontmatter(text);
+  if (!fm) {
+    throw Object.assign(new Error('SKILL.md is missing valid frontmatter'), { status: 400, code: 'INVALID_FRONTMATTER' });
+  }
+  if (!fm.name) {
+    throw Object.assign(new Error('SKILL.md frontmatter is missing a name'), { status: 400, code: 'MISSING_NAME' });
+  }
+  if (!validateSkillName(fm.name)) {
+    throw Object.assign(new Error(`Invalid skill name: ${fm.name}`), { status: 400, code: 'INVALID_NAME' });
+  }
+  if (!fm.description) {
+    throw Object.assign(new Error('SKILL.md frontmatter is missing a description'), { status: 400, code: 'MISSING_DESCRIPTION' });
+  }
+  return fm;
+}
 
 /**
  * 解析一段 multipart body（已组装好的 Buffer）→ { skillName, files: [{relPath, data}] }。
@@ -136,7 +149,7 @@ export async function parseSkillUpload(buf, boundary, windowsReservedRe) {
 
   if (isMd) {
     const text = fileData.toString('utf8');
-    skillName = parseNameFromMd(text) || fallbackBaseName(originalName, true);
+    skillName = requireSkillSpec(text).name;
     skillFiles = [{ relPath: 'SKILL.md', data: fileData }];
   } else {
     const AdmZip = (await import('adm-zip')).default;
@@ -147,8 +160,6 @@ export async function parseSkillUpload(buf, boundary, windowsReservedRe) {
       throw Object.assign(new Error('Invalid zip archive'), { status: 400, code: 'INVALID_ZIP' });
     }
     const entries = zip.getEntries();
-    const MAX_PER_FILE = 50 * 1024 * 1024;
-    const MAX_TOTAL_UNCOMPRESSED = 200 * 1024 * 1024;
     let totalUncompressed = 0;
     for (const e of entries) {
       if (e.isDirectory) continue;
@@ -157,11 +168,11 @@ export async function parseSkillUpload(buf, boundary, windowsReservedRe) {
         throw Object.assign(new Error('Symlinks not allowed in zip'), { status: 400, code: 'INVALID_ZIP' });
       }
       const sizeRaw = e.header?.size || 0;
-      if (sizeRaw > MAX_PER_FILE) {
+      if (sizeRaw > MAX_SKILL_FILE) {
         throw Object.assign(new Error('File too large in archive'), { status: 400, code: 'ZIP_BOMB' });
       }
       totalUncompressed += sizeRaw;
-      if (totalUncompressed > MAX_TOTAL_UNCOMPRESSED) {
+      if (totalUncompressed > MAX_SKILL_TOTAL) {
         throw Object.assign(new Error('Archive expands too large'), { status: 400, code: 'ZIP_BOMB' });
       }
     }
@@ -179,12 +190,16 @@ export async function parseSkillUpload(buf, boundary, windowsReservedRe) {
     if (!bestSkillEntry) {
       throw Object.assign(new Error('SKILL.md not found in zip'), { status: 400, code: 'MISSING_SKILL_MD' });
     }
+    // Guard BEFORE inflating: header.size is attacker-controlled, but a declared oversize at
+    // least lets us reject before spending memory on getData() (actual-size re-check below
+    // still catches a lying small header).
+    if ((bestSkillEntry.header?.size || 0) > MAX_SKILL_FILE) {
+      throw Object.assign(new Error('File too large in archive'), { status: 400, code: 'ZIP_BOMB' });
+    }
     const lastSlash = bestSkillEntry.entryName.lastIndexOf('/');
     const skillRootPrefix = lastSlash >= 0 ? bestSkillEntry.entryName.slice(0, lastSlash + 1) : '';
     const skillMdText = bestSkillEntry.getData().toString('utf8');
-    skillName = parseNameFromMd(skillMdText)
-      || (skillRootPrefix ? skillRootPrefix.replace(/\/$/, '').split('/').pop() : null)
-      || fallbackBaseName(originalName, true);
+    skillName = requireSkillSpec(skillMdText).name;
 
     // 二次校验：header.size 来自 zip 中央目录是攻击者可控的（可谎报 size=0），用真实 data.length 复核。
     let actualTotal = 0;
@@ -194,11 +209,11 @@ export async function parseSkillUpload(buf, boundary, windowsReservedRe) {
       const rel = skillRootPrefix ? e.entryName.slice(skillRootPrefix.length) : e.entryName;
       if (!rel || rel.includes('..')) continue;
       const data = e.getData();
-      if (data.length > MAX_PER_FILE) {
+      if (data.length > MAX_SKILL_FILE) {
         throw Object.assign(new Error('File actual size too large'), { status: 400, code: 'ZIP_BOMB' });
       }
       actualTotal += data.length;
-      if (actualTotal > MAX_TOTAL_UNCOMPRESSED) {
+      if (actualTotal > MAX_SKILL_TOTAL) {
         throw Object.assign(new Error('Archive actual size too large'), { status: 400, code: 'ZIP_BOMB' });
       }
       const finalRel = rel.split('/').pop().toLowerCase() === 'skill.md'
@@ -208,6 +223,8 @@ export async function parseSkillUpload(buf, boundary, windowsReservedRe) {
     }
   }
 
+  // defense-in-depth: requireSkillSpec already validated the name (and would have
+  // thrown first); keep this re-check so future refactors can't silently skip it.
   if (!validateSkillName(skillName)) {
     throw Object.assign(new Error(`Invalid skill name: ${skillName}`), { status: 400, code: 'INVALID_NAME' });
   }
@@ -264,7 +281,8 @@ export function importSkillTo(req, res, { skillsRoot, windowsReserved }) {
   const contentLength = parseInt(req.headers['content-length'] || '0', 10);
   if (contentLength > MAX_UPLOAD) {
     res.writeHead(413, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'File too large (max 100MB)' }));
+    // code 字段供前端 skillImportErrorKey 映射成 i18n 文案,而不是裸英文
+    res.end(JSON.stringify({ error: 'File too large (max 100MB)', code: 'TOO_LARGE' }));
     return;
   }
   const boundary = boundaryMatch[1].trim().replace(/^["']|["']$/g, '');
@@ -276,7 +294,7 @@ export function importSkillTo(req, res, { skillsRoot, windowsReserved }) {
     if (totalSize > MAX_UPLOAD) {
       aborted = true;
       res.writeHead(413, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'File too large (max 100MB)' }));
+      res.end(JSON.stringify({ error: 'File too large (max 100MB)', code: 'TOO_LARGE' }));
       req.destroy();
       return;
     }

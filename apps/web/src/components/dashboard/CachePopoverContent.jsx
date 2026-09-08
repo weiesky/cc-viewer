@@ -11,6 +11,7 @@ import { isMobile } from '../../env';
 import ConceptHelp from '../common/ConceptHelp';
 import ToolsHelp from '../common/ToolsHelp';
 import OpenFolderIcon from '../common/OpenFolderIcon';
+import { skillImportErrorKey } from '../../utils/skillImportErrors';
 import { parseMemoryLink } from '../../utils/memoryLinkParser';
 import appConfig from '../../config.json';
 import styles from './CachePopoverContent.module.css';
@@ -22,12 +23,6 @@ import sharedChrome from '../common/sharedChrome.module.css';
 // 不受 Popover 影响，但为保持移动端交互一致同样走 click → Modal 路径。
 
 const CALIBRATION_MODELS = appConfig.calibrationModels;
-
-// webkitdirectory 仅 Chromium 系（Chrome/Edge）+ 桌面版 Firefox/Safari 部分支持；
-// iOS Safari / 某些移动浏览器不支持，提前 detect 隐藏"添加文件夹"项避免静默失败。
-// SSR 安全：window 不存在时为 false（fallback 到不显示文件夹入口）。
-const SUPPORTS_DIRECTORY_UPLOAD = typeof document !== 'undefined'
-  && 'webkitdirectory' in document.createElement('input');
 
 // 头部 token 血条 hover/click 弹层的纯展示组件。父级负责：
 // (a) 用 isOpen 条件挂载（父级把 popover/抽屉的 open 状态映射到是否渲染本组件 vs 占位 div），
@@ -57,26 +52,31 @@ export default function CachePopoverContent({
 }) {
   const skillFileInputRef = useRef(null);
   const skillFolderInputRef = useRef(null);
+  // Import errors render inline (Alert inside this popover) instead of the global antd
+  // message toast: the static message.error called from a native file-dialog callback does
+  // not reliably render while the dialog is closing, so users saw no feedback at all.
+  const [skillImportError, setSkillImportError] = useState(null);
 
   // skill 上传：dropdown 三入口（文件夹 / .zip / SKILL.md）共用 postSkillImport。
-  // 文件夹入口先在前端校验根目录有 SKILL.md（忽略大小写），再用 JSZip 打成 zip 复用 zip 通道。
+  // 文件夹入口用系统原生目录选择（webkitdirectory），选中后 JSZip 打包走 zip 通道；
+  // 规范校验（frontmatter 须含 name+description）由服务端统一完成，前端按错误码映射提示。
   const postSkillImport = async (file) => {
+    setSkillImportError(null);
     try {
       const form = new FormData();
       form.append('file', file);
       const resp = await fetch(apiUrl('/api/skills/import'), { method: 'POST', body: form });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        let reason = data.error || resp.statusText;
-        if (data.code === 'INVALID_TYPE') reason = t('ui.skills.invalidType');
-        else if (data.code === 'MISSING_SKILL_MD') reason = t('ui.skills.zipMissingSkillMd');
-        message.error(t('ui.skills.uploadFailed', { reason }));
+        const key = skillImportErrorKey(data.code);
+        const reason = key ? t(key) : (data.error || resp.statusText);
+        setSkillImportError(t('ui.skills.uploadFailed', { reason }));
         return;
       }
       message.success(t('ui.skills.uploadSuccess'));
       onSkillImported?.();
     } catch (err) {
-      message.error(t('ui.skills.uploadFailed', { reason: err?.message || 'network' }));
+      setSkillImportError(t('ui.skills.uploadFailed', { reason: err?.message || 'network' }));
     }
   };
 
@@ -86,7 +86,7 @@ export default function CachePopoverContent({
     if (!file) return;
     const lower = file.name.toLowerCase();
     if (!lower.endsWith('.zip') && !lower.endsWith('.md')) {
-      message.error(t('ui.skills.invalidType'));
+      setSkillImportError(t('ui.skills.invalidType'));
       return;
     }
     await postSkillImport(file);
@@ -102,7 +102,7 @@ export default function CachePopoverContent({
       return parts.length === 2 && parts[1].toLowerCase() === 'skill.md';
     });
     if (!hasRootSkillMd) {
-      message.error(t('ui.skills.folderMissingSkillMd'));
+      setSkillImportError(t('ui.skills.missingSkillMd'));
       return;
     }
     try {
@@ -118,7 +118,7 @@ export default function CachePopoverContent({
       const zipFile = new File([blob], `${rootName}.zip`, { type: 'application/zip' });
       await postSkillImport(zipFile);
     } catch (err) {
-      message.error(t('ui.skills.uploadFailed', { reason: err?.message || 'pack failed' }));
+      setSkillImportError(t('ui.skills.uploadFailed', { reason: err?.message || 'pack failed' }));
     }
   };
   // 手机端 chip 描述 Modal 的当前条目；null = 关。{ title, description } 形态由 chip render 函数填入。
@@ -263,7 +263,6 @@ export default function CachePopoverContent({
       <Space size={6}>
         {onSkillImported && (
           // 移动端（含 iPad）抽屉里去掉 Dropdown，直接 Button onClick → 文件选择器（仅 .zip/.md）。
-          // 文件夹入口在移动端浏览器普遍不支持 webkitdirectory，已被 SUPPORTS_DIRECTORY_UPLOAD 兜底。
           isMobile ? (
             <Button size="small" icon={<PlusOutlined />} onClick={() => skillFileInputRef.current?.click()}>
               {t('ui.skills.add')}
@@ -273,7 +272,7 @@ export default function CachePopoverContent({
               trigger={['click']}
               menu={{
                 items: [
-                  ...(SUPPORTS_DIRECTORY_UPLOAD ? [{ key: 'folder', icon: <FolderOpenOutlined />, label: t('ui.skills.addFolder'), onClick: () => skillFolderInputRef.current?.click() }] : []),
+                  { key: 'folder', icon: <FolderOpenOutlined />, label: t('ui.skills.addFolder'), onClick: () => skillFolderInputRef.current?.click() },
                   { key: 'zip', icon: <FileZipOutlined />, label: t('ui.skills.addZip'), onClick: () => skillFileInputRef.current?.click() },
                   { key: 'md', icon: <FileMarkdownOutlined />, label: t('ui.skills.addMd'), onClick: () => skillFileInputRef.current?.click() },
                 ],
@@ -299,16 +298,14 @@ export default function CachePopoverContent({
             accept=".zip,.md"
             onChange={handleSkillFileSelected}
           />
-          {SUPPORTS_DIRECTORY_UPLOAD && !isMobile && (
-            <input
-              type="file"
-              ref={skillFolderInputRef}
-              style={{ display: 'none' }}
-              webkitdirectory=""
-              directory=""
-              onChange={handleSkillFolderSelected}
-            />
-          )}
+          <input
+            type="file"
+            ref={skillFolderInputRef}
+            style={{ display: 'none' }}
+            webkitdirectory=""
+            directory=""
+            onChange={handleSkillFolderSelected}
+          />
         </>
       )}
     </>
@@ -474,6 +471,17 @@ export default function CachePopoverContent({
               ) : null}
               {skillsAction}
             </div>
+            {skillImportError && (
+              <Alert
+                type="error"
+                showIcon
+                banner
+                closable
+                message={skillImportError}
+                onClose={() => setSkillImportError(null)}
+                style={{ marginBottom: 8, padding: '2px 8px', fontSize: 11 }}
+              />
+            )}
             {skillsBody}
           </div>
         )}

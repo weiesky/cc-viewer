@@ -143,8 +143,7 @@
   --chat-boxer-gradient-dir: to top;
   --chat-boxer-bg-from: var(--bg-surface);
   --chat-boxer-bg-to: var(--border-secondary);
-  --chat-boxer-hover-from: var(--border-secondary);
-  --chat-boxer-hover-to: var(--border-hover);
+  --chat-boxer-hover-solid: #242424; /* 原渐变最深端 --bg-surface(#2a2a2a) 再压深一点 */
   /* Approval panel */
   --shadow-approval-heavy: rgba(0, 0, 0, 0.6);
   --shadow-approval-glow: rgba(245, 158, 11, 0.15);
@@ -303,8 +302,7 @@
   --chat-boxer-gradient-dir: to bottom;
   --chat-boxer-bg-from: #F7F7F7;
   --chat-boxer-bg-to: #F0F0F0;
-  --chat-boxer-hover-from: #EEEEEE;
-  --chat-boxer-hover-to: #E8E8E8;
+  --chat-boxer-hover-solid: #FAFAFA; /* 原渐变最浅端 #F7F7F7 再提亮一点(非纯白) */
   /* Approval panel */
   --shadow-approval-heavy: rgba(0, 0, 0, 0.1);
   --shadow-approval-glow: rgba(245, 158, 11, 0.08);
@@ -425,6 +423,33 @@ html, body, #root {
 .chat-md th, .chat-md td { border: 1px solid var(--text-gray); padding: 6px 10px; }
 .chat-md th { background: var(--bg-elevated); color: var(--text-white); }
 .chat-md a { color: var(--color-primary-lighter); }
+/* Local-file links (renderer-tagged) open in the embedded file viewer;
+   dotted underline distinguishes them from external links; solid on hover. */
+.chat-md a[data-md-file] { text-decoration: underline dotted; text-underline-offset: 2px; }
+.chat-md a[data-md-file]:hover { text-decoration: underline solid; }
+/* Verified file-path code spans: the renderer emits an inert
+   data-md-path-candidate marker on path-looking inline code; ChatView's async
+   probe (/api/files-exists) adds data-md-file-verified only for files that
+   actually exist. Styling keys on the verified attribute, so unverified spans
+   (and every read-only surface outside ChatView) render as plain code.
+   Dotted underline at rest (same affordance language as a[data-md-file]) so
+   clickability is visible without hover. Hover feedback is BORDER color only —
+   a background change on inline code hurts readability mid-sentence, and the
+   resting underline would add noise on top of the border. The transparent
+   resting border keeps the box size stable (no layout shift when the hover
+   border appears). */
+.chat-md code[data-md-file-verified] {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  border: 1px solid transparent;
+}
+.chat-md code[data-md-file-verified]:hover {
+  text-decoration: none; /* border carries the hover feedback; underline would double up */
+  color: var(--color-primary-lighter);
+  background: var(--code-inline-bg); /* pin: cancel any UA/hover background feedback */
+  border-color: var(--color-primary-lighter);
+}
 .chat-md img { cursor: pointer; max-width: 100%; height: auto; border-radius: 6px; }
 .chat-md hr { border: none; border-top: 1px solid var(--border-primary); margin: 12px 0; }
 /* chat-boxer 内的 hr 用 --border-light 避开两端渐变色（--border-primary 与 --border-secondary 都
@@ -469,7 +494,9 @@ html, body, #root {
   box-sizing: border-box;
 }
 .chat-boxer:hover {
-  background: linear-gradient(var(--chat-boxer-gradient-dir), var(--chat-boxer-hover-from), var(--chat-boxer-hover-to));
+  /* hover 切纯色(亮色主题→纯白,暗色→纯黑),不再做渐变切换;
+     边框保持 --text-muted 不变。 */
+  background: var(--chat-boxer-hover-solid);
 }
 .chat-boxer .chat-md tbody { background: var(--bg-base-pure); }
 

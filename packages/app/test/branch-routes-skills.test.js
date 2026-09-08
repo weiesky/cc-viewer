@@ -150,12 +150,12 @@ describe('skillsToggle 残余分支', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('parseSkillUpload 残余分支', () => {
-  it('md 有 frontmatter 但无 name 字段 → parseNameFromMd 返回 null，回落文件名', async () => {
-    // m 命中(有 ---\n...\n---)，但 nm 不命中(无 name:) → line 58 的 !nm 真臂 return null。
+  it('md 有 frontmatter 但无 name 字段 → 严格校验拒绝 MISSING_NAME（不再回落文件名）', async () => {
     const buf = multipart('Bn', 'OnlyDesc.md', '---\ndescription: just a desc\n---\nbody here');
-    const { skillName, files } = await parseSkillUpload(buf, 'Bn', WINDOWS_RESERVED);
-    assert.equal(skillName, 'OnlyDesc', '无 name 字段时回落到去扩展名的文件名');
-    assert.deepEqual(files.map((f) => f.relPath), ['SKILL.md']);
+    await assert.rejects(
+      () => parseSkillUpload(buf, 'Bn', WINDOWS_RESERVED),
+      (e) => e.status === 400 && e.code === 'MISSING_NAME',
+    );
   });
 
   it('multipart 缺少 filename → 400 No filename', async () => {
@@ -170,30 +170,28 @@ describe('parseSkillUpload 残余分支', () => {
 
   it('无闭合 boundary → fileData 取到 buffer 末尾(line 99 else 臂)', async () => {
     const head = Buffer.from('--Bo\r\nContent-Disposition: form-data; name="file"; filename="open.md"\r\n\r\n');
-    const md = '---\nname: open-skill\n---\nbody without trailing boundary';
+    const md = '---\nname: open-skill\ndescription: test\n---\nbody without trailing boundary';
     const buf = Buffer.concat([head, Buffer.from(md)]); // 故意不拼 \r\n--boundary
     const { skillName, files } = await parseSkillUpload(buf, 'Bo', WINDOWS_RESERVED);
     assert.equal(skillName, 'open-skill');
     assert.equal(files[0].data.toString('utf8'), md, '应切到 buffer 末尾');
   });
 
-  it('zip 含目录条目 + size=0 文件 + 根级无名 SKILL.md → 跳目录/||0/prefix=null+fallback', async () => {
+  it('zip 根级无名 SKILL.md → 严格校验拒绝 MISSING_NAME（不再回落 zip 文件名）', async () => {
     const zip = new AdmZip();
     zip.addFile('adir/', Buffer.alloc(0));                          // 目录条目 → isDirectory 跳过(121,138,159)
-    zip.addFile('SKILL.md', Buffer.from('---\ndescription: x\n---\nb')); // 根级、无 name → prefix='' → null 臂(153)+fallback(154)
+    zip.addFile('SKILL.md', Buffer.from('---\ndescription: x\n---\nb')); // 根级、无 name → MISSING_NAME
     zip.addFile('empty.txt', Buffer.alloc(0));                      // size 0 → e.header?.size || 0 的 ||0 臂(126)
     const buf = multipart('Bz', 'Bundle.zip', zip.toBuffer());
-    const { skillName, files } = await parseSkillUpload(buf, 'Bz', WINDOWS_RESERVED);
-    assert.equal(skillName, 'Bundle', '根级无名 → 回落 zip 文件名(去扩展名)');
-    const rels = files.map((f) => f.relPath);
-    assert.ok(rels.includes('SKILL.md'));
-    assert.ok(rels.includes('empty.txt'));
-    assert.ok(!rels.some((r) => r.endsWith('/')), '目录条目不应写入');
+    await assert.rejects(
+      () => parseSkillUpload(buf, 'Bz', WINDOWS_RESERVED),
+      (e) => e.status === 400 && e.code === 'MISSING_NAME',
+    );
   });
 
   it('zip 中位于 skillRoot 之外的文件被丢弃(line 160 skip 臂)', async () => {
     const zip = new AdmZip();
-    zip.addFile('root/SKILL.md', Buffer.from('---\nname: nested-ok\n---\n')); // 根 prefix = root/
+    zip.addFile('root/SKILL.md', Buffer.from('---\nname: nested-ok\ndescription: test\n---\n')); // 根 prefix = root/
     zip.addFile('root/keep.txt', Buffer.from('keep'));
     zip.addFile('sibling/outside.txt', Buffer.from('drop'));                  // 不在 root/ 下 → 跳过
     const buf = multipart('Bx', 'pkg.zip', zip.toBuffer());
@@ -263,7 +261,7 @@ describe('importSkillTo 残余分支', () => {
     const { res, done } = makeRes();
     try {
       importSkillTo(req, res, { skillsRoot: roRoot, windowsReserved: WINDOWS_RESERVED });
-      req.emit('data', multipart(boundary, 'imp-skill.md', '---\nname: imp-skill\n---\nbody'));
+      req.emit('data', multipart(boundary, 'imp-skill.md', '---\nname: imp-skill\ndescription: test\n---\nbody'));
       req.emit('end');
       const out = await done;
       assert.equal(out.status, 500);

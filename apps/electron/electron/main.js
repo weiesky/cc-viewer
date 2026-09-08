@@ -8,7 +8,7 @@
  *
  * Each tab = fork('tab-worker.js') → isolated proxy + server + PTY
  */
-import { app, BaseWindow, WebContentsView, Menu, ipcMain, dialog, Notification, screen, clipboard } from 'electron';
+import { app, BaseWindow, WebContentsView, Menu, ipcMain, dialog, Notification, screen, clipboard, shell } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join, basename, delimiter } from 'path';
 import { fork, execSync } from 'child_process';
@@ -675,6 +675,7 @@ function createTab(projectPath, extraArgs = []) {
       const url = `http://127.0.0.1:${msg.port}${msg.token ? `?token=${msg.token}` : ''}`;
       attachDiagListeners(view.webContents, 'tab', { tabId, port: msg.port, project: tab.projectName });
       attachContextMenu(view.webContents);
+      attachWindowOpenGuard(view.webContents);
       view.webContents.loadURL(url);
       tab.view = view;
 
@@ -843,6 +844,7 @@ function ensureWorkspaceView() {
     const token = mgmtServerMod.getAccessToken();
     attachDiagListeners(workspaceView.webContents, 'workspace');
     attachContextMenu(workspaceView.webContents);
+    attachWindowOpenGuard(workspaceView.webContents);
     // 加载完成后重推当前模式：首次开浮层时 sendWorkspaceMode('popup') 早于 loadURL 完成会丢，靠这里兜底（不再只依赖 React mount 端 request）。
     workspaceView.webContents.on('did-finish-load', () => sendWorkspaceMode(workspacePopupOpen ? 'popup' : 'full'));
     // 渲染进程崩溃：复位浮层标志并丢弃视图，下次开 picker 由 ensureWorkspaceView 重建，避免「崩溃后首次点 + 只清状态不打开」的双击 papercut。
@@ -1154,6 +1156,25 @@ function broadcastMenuModel() {
   }
 }
 
+// --- 新窗口拦截 ---
+// Web 端 markdown 外链渲染为 target=_blank；Electron 默认会为其开裸 BrowserWindow,
+// 改为拦截后交给系统默认浏览器(仅 http/https),其余一律 deny。
+// mailto 刻意不在白名单: openExternal 会触发 OS 级 handler 解析,攻击面不值得为
+// 一个极少点击的协议开(security review P2)。
+// 注意：渲染层 new-window 的 url 是解析后的绝对 URL，因此 file:// 链接也会走到这里并被 deny。
+function attachWindowOpenGuard(wc) {
+  wc.setWindowOpenHandler(({ url }) => {
+    // 同源（本 tab 自己的 ccv server）走应用内默认窗口 —— 日志查看器
+    // （AppBase handleOpenLogFile 的 window.open）依赖这个行为，不能甩给系统浏览器。
+    try {
+      const selfOrigin = new URL(wc.getURL()).origin;
+      if (new URL(url).origin === selfOrigin) return { action: 'allow' };
+    } catch {}
+    try { if (/^https?:/i.test(url)) shell.openExternal(url); } catch {}
+    return { action: 'deny' };
+  });
+}
+
 // --- 右键菜单 ---
 // Electron 默认没有任何右键菜单(浏览器版才有 Chrome 的)。给内容视图补一份原生编辑菜单,
 // 文案走 server/i18n.js。页面里自带 React 右键菜单的区域(文件树等)会 preventDefault,
@@ -1366,6 +1387,7 @@ if (!gotLock) {
       },
     });
     attachDiagListeners(tabBarView.webContents, 'tabBar');
+    attachWindowOpenGuard(tabBarView.webContents);
     tabBarView.webContents.loadFile(join(__dirname, 'tab-bar.html'));
     mainWindow.contentView.addChildView(tabBarView);
 

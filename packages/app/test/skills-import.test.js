@@ -48,7 +48,7 @@ describe('skills import - happy path', () => {
 
   it('imports a zip with SKILL.md at root', async () => {
     const zip = new AdmZip();
-    zip.addFile('SKILL.md', Buffer.from('---\nname: zipped\n---\n\nx'));
+    zip.addFile('SKILL.md', Buffer.from('---\nname: zipped\ndescription: test\n---\n\nx'));
     zip.addFile('helper.js', Buffer.from('export const a = 1;'));
     const result = await importSkillFromBuffer(zip.toBuffer(), 'zipped.zip', root);
     assert.equal(result.name, 'zipped');
@@ -57,15 +57,15 @@ describe('skills import - happy path', () => {
 
   it('picks the shallowest SKILL.md when multiple exist', async () => {
     const zip = new AdmZip();
-    zip.addFile('outer/SKILL.md', Buffer.from('---\nname: outer\n---\n'));
-    zip.addFile('outer/nested/SKILL.md', Buffer.from('---\nname: nested\n---\n'));
+    zip.addFile('outer/SKILL.md', Buffer.from('---\nname: outer\ndescription: test\n---\n'));
+    zip.addFile('outer/nested/SKILL.md', Buffer.from('---\nname: nested\ndescription: test\n---\n'));
     const result = await importSkillFromBuffer(zip.toBuffer(), 'pkg.zip', root);
     assert.equal(result.name, 'outer');
   });
 
   it('normalizes lowercase skill.md to SKILL.md on disk', async () => {
     const zip = new AdmZip();
-    zip.addFile('skill.md', Buffer.from('---\nname: lower\n---\n'));
+    zip.addFile('skill.md', Buffer.from('---\nname: lower\ndescription: test\n---\n'));
     const result = await importSkillFromBuffer(zip.toBuffer(), 'lower.zip', root);
     assert.ok(existsSync(join(result.path, 'SKILL.md')));
   });
@@ -95,19 +95,50 @@ describe('skills import - rejections', () => {
 
   it('rejects existing skill with 409 EXISTS', async () => {
     const zip = new AdmZip();
-    zip.addFile('SKILL.md', Buffer.from('---\nname: dup\n---\n'));
+    zip.addFile('SKILL.md', Buffer.from('---\nname: dup\ndescription: test\n---\n'));
     await importSkillFromBuffer(zip.toBuffer(), 'a.zip', root);
     const zip2 = new AdmZip();
-    zip2.addFile('SKILL.md', Buffer.from('---\nname: dup\n---\n'));
+    zip2.addFile('SKILL.md', Buffer.from('---\nname: dup\ndescription: test\n---\n'));
     await assert.rejects(importSkillFromBuffer(zip2.toBuffer(), 'b.zip', root),
       (err) => err.status === 409 && err.code === 'EXISTS');
   });
 
   it('rejects invalid skill name (e.g., contains space)', async () => {
     const zip = new AdmZip();
-    zip.addFile('SKILL.md', Buffer.from('---\nname: bad name\n---\n'));
+    zip.addFile('SKILL.md', Buffer.from('---\nname: bad name\ndescription: test\n---\n'));
     await assert.rejects(importSkillFromBuffer(zip.toBuffer(), 'bad name.zip', root),
       (err) => err.status === 400 && err.code === 'INVALID_NAME');
+  });
+
+  // requireSkillSpec 的 4 个分支顺序固定(注释注明 tests depend on it);
+  // INVALID_FRONTMATTER / MISSING_NAME / INVALID_NAME 已由上方用例覆盖,
+  // 这里补齐第 4 分支与 CRLF 容忍。
+  it('rejects frontmatter without description with MISSING_DESCRIPTION', async () => {
+    const zip = new AdmZip();
+    zip.addFile('SKILL.md', Buffer.from('---\nname: no-desc\n---\n\nbody'));
+    await assert.rejects(importSkillFromBuffer(zip.toBuffer(), 'no-desc.zip', root),
+      (err) => err.status === 400 && err.code === 'MISSING_DESCRIPTION');
+  });
+
+  it('rejects frontmatter with empty description value', async () => {
+    const zip = new AdmZip();
+    zip.addFile('SKILL.md', Buffer.from('---\nname: empty-desc\ndescription:\n---\n\nbody'));
+    await assert.rejects(importSkillFromBuffer(zip.toBuffer(), 'empty-desc.zip', root),
+      (err) => err.status === 400 && err.code === 'MISSING_DESCRIPTION');
+  });
+
+  it('accepts CRLF frontmatter (Windows-authored SKILL.md)', async () => {
+    const zip = new AdmZip();
+    zip.addFile('SKILL.md', Buffer.from('---\r\nname: win-skill\r\ndescription: from windows\r\n---\r\n\r\nbody'));
+    const result = await importSkillFromBuffer(zip.toBuffer(), 'win.zip', root);
+    assert.equal(result.name, 'win-skill');
+  });
+
+  it('strips quotes around the frontmatter name', async () => {
+    const zip = new AdmZip();
+    zip.addFile('SKILL.md', Buffer.from('---\nname: "quoted-skill"\ndescription: test\n---\n'));
+    const result = await importSkillFromBuffer(zip.toBuffer(), 'quoted.zip', root);
+    assert.equal(result.name, 'quoted-skill');
   });
 });
 
@@ -119,7 +150,7 @@ describe('skills import - security defenses', () => {
   // symlink entries (unix mode 0o120000 in attr high 16 bits) must be rejected
   it('rejects zip with symlink entry', async () => {
     const zip = new AdmZip();
-    zip.addFile('SKILL.md', Buffer.from('---\nname: linky\n---\n'));
+    zip.addFile('SKILL.md', Buffer.from('---\nname: linky\ndescription: test\n---\n'));
     zip.addFile('link', Buffer.from('/etc/passwd'));
     const entries = zip.getEntries();
     const linkEntry = entries.find((e) => e.entryName === 'link');
@@ -131,7 +162,7 @@ describe('skills import - security defenses', () => {
   // zip bomb — declared size > MAX_PER_FILE on a single entry
   it('rejects zip with single-file size exceeding 50MB', async () => {
     const zip = new AdmZip();
-    zip.addFile('SKILL.md', Buffer.from('---\nname: big\n---\n'));
+    zip.addFile('SKILL.md', Buffer.from('---\nname: big\ndescription: test\n---\n'));
     zip.addFile('huge.bin', Buffer.from('small actual content'));
     const entries = zip.getEntries();
     const huge = entries.find((e) => e.entryName === 'huge.bin');
@@ -143,7 +174,7 @@ describe('skills import - security defenses', () => {
   // zip bomb — total declared size across all entries exceeds 200MB
   it('rejects zip whose total declared size exceeds 200MB', async () => {
     const zip = new AdmZip();
-    zip.addFile('SKILL.md', Buffer.from('---\nname: total\n---\n'));
+    zip.addFile('SKILL.md', Buffer.from('---\nname: total\ndescription: test\n---\n'));
     for (let i = 0; i < 5; i++) zip.addFile(`f${i}.bin`, Buffer.from('x'));
     const entries = zip.getEntries();
     for (const e of entries) {
@@ -156,7 +187,7 @@ describe('skills import - security defenses', () => {
   // zip slip — entries with `..` should be filtered (can't escape via relative path)
   it('drops zip entries containing .. path traversal', async () => {
     const zip = new AdmZip();
-    zip.addFile('SKILL.md', Buffer.from('---\nname: travel\n---\n'));
+    zip.addFile('SKILL.md', Buffer.from('---\nname: travel\ndescription: test\n---\n'));
     zip.addFile('../escaped.txt', Buffer.from('owned'));
     const result = await importSkillFromBuffer(zip.toBuffer(), 'travel.zip', root);
     assert.ok(!result.written.some((p) => p.includes('..')));

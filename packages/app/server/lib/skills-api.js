@@ -24,43 +24,65 @@ export function validateSkillName(name) {
   return true;
 }
 
-// 解析 SKILL.md frontmatter 的 description。支持 3 种 YAML 形式：
-//   1) description: plain text            ← 单行
-//   2) description: "quoted text"         ← 带引号
-//   3) description: |                     ← block scalar（保留换行）
-//      multi\n line\n content
-//   4) description: >                     ← folded scalar（换行折成空格）
-// 失败返 null，UI 兜底"无描述"。
-function parseSkillMdFrontmatter(skillDir) {
-  const mdPath = join(skillDir, 'SKILL.md');
-  if (!existsSync(mdPath)) return null;
-  try {
-    const text = readFileSync(mdPath, 'utf8');
-    const m = /^---\s*\n([\s\S]*?)\n---/.exec(text);
-    if (!m) return null;
-    const lines = m[1].split('\n');
-    let descIdx = -1, firstVal = '';
-    for (let i = 0; i < lines.length; i++) {
-      const lm = /^description\s*:\s*(.*)$/.exec(lines[i]);
-      if (lm) { descIdx = i; firstVal = lm[1].trim(); break; }
-    }
-    if (descIdx < 0) return null;
+// Parse SKILL.md frontmatter text → { name, description } (each string|null),
+// or null when no parseable `---` frontmatter block exists.
+// name: single-line `name: value` (surrounding quotes stripped).
+// description supports 4 YAML forms:
+//   1) description: plain text            ← single line
+//   2) description: "quoted text"         ← quoted
+//   3) description: |                     ← block scalar (keeps newlines)
+//   4) description: >                     ← folded scalar (newlines → spaces)
+// Values that are empty after trimming are returned as null (treated as absent).
+export function parseSkillFrontmatter(text) {
+  // Tolerate CRLF line endings (Windows-authored SKILL.md) — otherwise the whole
+  // frontmatter block fails to match and valid skills are rejected as INVALID_FRONTMATTER.
+  const m = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---/.exec(text);
+  if (!m) return null;
+  const lines = m[1].split('\n').map((l) => l.replace(/\r$/, ''));
 
-    // block scalar: | / |- / > / >-
+  let name = null;
+  const nm = /^name\s*:\s*(.*)$/m.exec(m[1]);
+  if (nm) {
+    const v = nm[1].trim().replace(/\r$/, '').replace(/^["']|["']$/g, '');
+    name = v || null;
+  }
+
+  let description = null;
+  let descIdx = -1, firstVal = '';
+  for (let i = 0; i < lines.length; i++) {
+    const lm = /^description\s*:\s*(.*)$/.exec(lines[i]);
+    if (lm) { descIdx = i; firstVal = lm[1].trim(); break; }
+  }
+  if (descIdx >= 0) {
     if (/^[|>][-+]?$/.test(firstVal)) {
+      // block scalar: | / |- / > / >-
       const fold = firstVal.startsWith('>');
       const collected = [];
       for (let i = descIdx + 1; i < lines.length; i++) {
         const line = lines[i];
-        // 块结束：非空且不以空白字符开头（视为下一个顶级 key）
+        // Block ends at a non-empty line without leading whitespace (next top-level key).
         if (line !== '' && !/^\s/.test(line)) break;
         collected.push(line.replace(/^\s+/, ''));
       }
       while (collected.length && collected[collected.length - 1] === '') collected.pop();
-      return fold ? collected.join(' ') : collected.join('\n');
+      description = fold ? collected.join(' ') : collected.join('\n');
+    } else {
+      description = firstVal.replace(/^["']|["']$/g, '');
     }
-    // 单行 scalar（去首尾引号）
-    return firstVal.replace(/^["']|["']$/g, '');
+    if (!description || !description.trim()) description = null;
+  }
+
+  return { name, description };
+}
+
+// Read <skillDir>/SKILL.md and return the frontmatter description (delegates to
+// parseSkillFrontmatter). Returns null on any failure — the UI falls back to "no description".
+function parseSkillMdFrontmatter(skillDir) {
+  const mdPath = join(skillDir, 'SKILL.md');
+  if (!existsSync(mdPath)) return null;
+  try {
+    const fm = parseSkillFrontmatter(readFileSync(mdPath, 'utf8'));
+    return fm ? fm.description : null;
   } catch { return null; }
 }
 

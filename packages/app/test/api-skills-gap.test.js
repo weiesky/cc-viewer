@@ -5,7 +5,7 @@
 //   - importSkillTo（boundary 缺失/超长→400 / content-length 超限→413 / 流式累计超限→413 abort /
 //                    成功 200 / parse 抛 4xx→映射 / 5xx→脱敏 server_error）：198-262
 //   - skillsImport（注入 ~/.claude/skills 作为 root）：265-270
-//   - parseSkillUpload 边界：md 无 frontmatter → 回落文件名（fallbackBaseName）：63-65,87-88
+//   - parseSkillUpload 边界：md 无 frontmatter → INVALID_FRONTMATTER（严格校验，无回落）：63-65,87-88
 // 路由范式：在 import 前设 CLAUDE_CONFIG_DIR / CCV_PROJECT_DIR 隔离；req 用 EventEmitter，res 收集回包。
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -178,7 +178,7 @@ describe('POST /api/skills/import (skillsImport → importSkillTo into ~/.claude
   });
 
   it('200 imports a SKILL.md into ~/.claude/skills and returns name + path', async () => {
-    const md = '---\nname: imported-md-skill\n---\nbody';
+    const md = '---\nname: imported-md-skill\ndescription: test\n---\nbody';
     const out = await postImport({ filename: 'imported-md-skill.md', fileData: md });
     assert.equal(out.status, 200);
     assert.equal(out.data.ok, true);
@@ -203,7 +203,7 @@ describe('POST /api/skills/import (skillsImport → importSkillTo into ~/.claude
   it('409 EXISTS when the target skill dir already present (writeSkillFiles atomic mkdir)', async () => {
     // 预置同名目录 → mkdir(targetDir) 抛 EEXIST → status 409
     mkdirSync(join(tmpDir, 'skills', 'dup-skill'), { recursive: true });
-    const md = '---\nname: dup-skill\n---\nx';
+    const md = '---\nname: dup-skill\ndescription: test\n---\nx';
     const out = await postImport({ filename: 'dup-skill.md', fileData: md });
     assert.equal(out.status, 409);
     assert.equal(out.data.code, 'EXISTS');
@@ -229,25 +229,26 @@ describe('POST /api/skills/import (skillsImport → importSkillTo into ~/.claude
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('parseSkillUpload fallback name branches', () => {
-  it('md without frontmatter falls back to the filename (stripExt)', async () => {
+describe('parseSkillUpload strict frontmatter branches', () => {
+  it('md without frontmatter rejects with INVALID_FRONTMATTER (no filename fallback)', async () => {
     const boundary = 'b1';
     const buf = multipart(boundary, 'PlainNote.md', 'no frontmatter here, just body text');
-    const { skillName, files } = await parseSkillUpload(buf, boundary, WINDOWS_RESERVED);
-    assert.equal(skillName, 'PlainNote', 'falls back to base filename without extension');
-    assert.deepEqual(files.map((f) => f.relPath), ['SKILL.md']);
+    await assert.rejects(
+      () => parseSkillUpload(buf, boundary, WINDOWS_RESERVED),
+      (e) => e.status === 400 && e.code === 'INVALID_FRONTMATTER',
+    );
   });
 
-  it('zip whose SKILL.md has no name uses the zip root dir name as the skill name', async () => {
+  it('zip whose SKILL.md has no frontmatter rejects with INVALID_FRONTMATTER (no root-dir fallback)', async () => {
     const zip = new AdmZip();
     zip.addFile('rooted-skill/SKILL.md', Buffer.from('no frontmatter\nbody'));
     zip.addFile('rooted-skill/extra.txt', Buffer.from('aux'));
     const boundary = 'b2';
     const buf = multipart(boundary, 'archive.zip', zip.toBuffer());
-    const { skillName, files } = await parseSkillUpload(buf, boundary, WINDOWS_RESERVED);
-    assert.equal(skillName, 'rooted-skill', 'root dir name used when frontmatter name absent');
-    assert.ok(files.some((f) => f.relPath === 'SKILL.md'));
-    assert.ok(files.some((f) => f.relPath === 'extra.txt'));
+    await assert.rejects(
+      () => parseSkillUpload(buf, boundary, WINDOWS_RESERVED),
+      (e) => e.status === 400 && e.code === 'INVALID_FRONTMATTER',
+    );
   });
 
   it('rejects a Windows reserved device filename with 400', async () => {

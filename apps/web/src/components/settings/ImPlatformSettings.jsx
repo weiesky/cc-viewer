@@ -1,15 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Switch, Input, Button, Select, Tag, Tooltip, Dropdown, message } from 'antd';
+import { Switch, Input, Button, Select, Tag, Tooltip, Dropdown, message, Alert } from 'antd';
 import { DownOutlined, RightOutlined, QuestionCircleOutlined, PlusOutlined, SettingOutlined, FolderOpenOutlined, FileZipOutlined, FileMarkdownOutlined } from '@ant-design/icons';
 import { apiUrl } from '../../utils/apiUrl';
 import { imTr as _tr } from '../../utils/imTr';
 import { imBadgeModel } from '../../utils/imConnState';
+import { skillImportErrorKey } from '../../utils/skillImportErrors';
 import ImAppendSystemModal from './ImAppendSystemModal';
 import ImSkillsModal from './ImSkillsModal';
 import styles from './ImPlatformSettings.module.css';
-
-const SUPPORTS_DIRECTORY_UPLOAD = typeof document !== 'undefined'
-  && 'webkitdirectory' in document.createElement('input');
 
 function defaultValue(field) {
   if (field.type === 'tags') return [];
@@ -53,27 +51,32 @@ export default function ImPlatformSettings({ descriptor }) {
   const [skillsReloadKey, setSkillsReloadKey] = useState(0);     // 新增 skill 成功后 bump，触发管理弹窗重新拉取
   const skillFileInputRef = useRef(null);
   const skillFolderInputRef = useRef(null);
+  // Import errors render inline (Alert below the skill row) instead of the global antd
+  // message toast: the static message.error called from a native file-dialog callback does
+  // not reliably render while the dialog is closing, so users saw no feedback at all.
+  const [skillImportError, setSkillImportError] = useState(null);
 
   const label = (() => { try { return _tr(descriptor.labelKey, null, descriptor.fallback); } catch { return descriptor.fallback; } })();
 
-  // skill 上传到该 IM 的 .claude/skills/（dropdown 三入口共用）。文件夹入口先校验根目录有 SKILL.md，再 JSZip 打包走 zip 通道。
+  // skill 上传到该 IM 的 .claude/skills/（dropdown 三入口共用）。文件夹入口用系统原生目录选择
+  // （webkitdirectory），选中后 JSZip 打包走 zip 通道；规范校验由服务端统一完成，前端按错误码映射提示。
   const postSkillImport = async (file) => {
+    setSkillImportError(null);
     try {
       const form = new FormData();
       form.append('file', file);
       const resp = await fetch(apiUrl(`/api/im/${encodeURIComponent(descriptor.id)}/skills/import`), { method: 'POST', body: form });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        let reason = data.error || resp.statusText;
-        if (data.code === 'INVALID_TYPE') reason = _tr('ui.skills.invalidType', null, 'Only .zip or SKILL.md');
-        else if (data.code === 'MISSING_SKILL_MD') reason = _tr('ui.skills.zipMissingSkillMd', null, 'SKILL.md not found in the zip');
-        message.error(_tr('ui.skills.uploadFailed', { reason }, `Failed to add skill: ${reason}`));
+        const key = skillImportErrorKey(data.code);
+        const reason = key ? _tr(key, null, data.error || resp.statusText) : (data.error || resp.statusText);
+        setSkillImportError(_tr('ui.skills.uploadFailed', { reason }, `Failed to add skill: ${reason}`));
         return;
       }
       message.success(_tr('ui.im.skillsRestartHint', null, 'Updated — takes effect after you restart this IM'));
       setSkillsReloadKey((k) => k + 1); // 管理弹窗若开着则刷新
     } catch (err) {
-      message.error(_tr('ui.skills.uploadFailed', { reason: err?.message || 'network' }, 'Failed to add skill'));
+      setSkillImportError(_tr('ui.skills.uploadFailed', { reason: err?.message || 'network' }, 'Failed to add skill'));
     }
   };
 
@@ -82,7 +85,7 @@ export default function ImPlatformSettings({ descriptor }) {
     e.target.value = '';
     if (!file) return;
     const lower = file.name.toLowerCase();
-    if (!lower.endsWith('.zip') && !lower.endsWith('.md')) { message.error(_tr('ui.skills.invalidType', null, 'Only .zip or SKILL.md')); return; }
+    if (!lower.endsWith('.zip') && !lower.endsWith('.md')) { setSkillImportError(_tr('ui.skills.invalidType', null, 'Only .zip or SKILL.md')); return; }
     await postSkillImport(file);
   };
 
@@ -95,7 +98,7 @@ export default function ImPlatformSettings({ descriptor }) {
       const parts = (f.webkitRelativePath || '').split('/');
       return parts.length === 2 && parts[1].toLowerCase() === 'skill.md';
     });
-    if (!hasRootSkillMd) { message.error(_tr('ui.skills.folderMissingSkillMd', null, 'SKILL.md not found at the folder root')); return; }
+    if (!hasRootSkillMd) { setSkillImportError(_tr('ui.skills.missingSkillMd', null, 'SKILL.md not found')); return; }
     try {
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
@@ -108,13 +111,13 @@ export default function ImPlatformSettings({ descriptor }) {
       const rootName = (files[0].webkitRelativePath || '').split('/')[0] || 'skill';
       await postSkillImport(new File([blob], `${rootName}.zip`, { type: 'application/zip' }));
     } catch (err) {
-      message.error(_tr('ui.skills.uploadFailed', { reason: err?.message || 'pack failed' }, 'Failed to add skill'));
+      setSkillImportError(_tr('ui.skills.uploadFailed', { reason: err?.message || 'pack failed' }, 'Failed to add skill'));
     }
   };
 
   const skillAddMenu = {
     items: [
-      ...(SUPPORTS_DIRECTORY_UPLOAD ? [{ key: 'folder', icon: <FolderOpenOutlined />, label: _tr('ui.skills.addFolder', null, 'Select folder'), onClick: () => skillFolderInputRef.current?.click() }] : []),
+      { key: 'folder', icon: <FolderOpenOutlined />, label: _tr('ui.skills.addFolder', null, 'Select folder'), onClick: () => skillFolderInputRef.current?.click() },
       // 两个菜单项共用同一个隐藏 input，点击前按类型设好 accept，避免「上传 SKILL.md」也能选 zip（反之亦然）。
       { key: 'zip', icon: <FileZipOutlined />, label: _tr('ui.skills.addZip', null, 'Upload .zip'), onClick: () => { if (skillFileInputRef.current) { skillFileInputRef.current.accept = '.zip'; skillFileInputRef.current.click(); } } },
       { key: 'md', icon: <FileMarkdownOutlined />, label: _tr('ui.skills.addMd', null, 'Upload SKILL.md'), onClick: () => { if (skillFileInputRef.current) { skillFileInputRef.current.accept = '.md'; skillFileInputRef.current.click(); } } },
@@ -422,6 +425,18 @@ export default function ImPlatformSettings({ descriptor }) {
               <Button size="small" icon={<SettingOutlined />} onClick={() => setSkillsModalOpen(true)}>{_tr('ui.skillManage', null, 'Manage')}</Button>
             </span>
           </div>
+          {skillImportError && (
+            <div className={styles.row}>
+              <Alert
+                type="error"
+                showIcon
+                closable
+                message={skillImportError}
+                onClose={() => setSkillImportError(null)}
+                style={{ width: '100%', padding: '4px 8px', fontSize: 12 }}
+              />
+            </div>
+          )}
           {(descriptor.notes || []).map((n, i) => (
             <div key={i} className={n.kind === 'warn' ? styles.warn : styles.hint}>{_tr(n.key, null, n.fallback)}</div>
           ))}
@@ -432,9 +447,7 @@ export default function ImPlatformSettings({ descriptor }) {
       <ImSkillsModal open={skillsModalOpen} platform={descriptor.id} reloadKey={skillsReloadKey} onClose={() => setSkillsModalOpen(false)} />
       {/* 隐藏文件输入：放在任何 Space/flex 行之外，避免成为 flex item 撑出额外间距。 */}
       <input type="file" ref={skillFileInputRef} style={{ display: 'none' }} accept=".zip,.md" onChange={handleSkillFileSelected} />
-      {SUPPORTS_DIRECTORY_UPLOAD && (
-        <input type="file" ref={skillFolderInputRef} style={{ display: 'none' }} webkitdirectory="" directory="" onChange={handleSkillFolderSelected} />
-      )}
+      <input type="file" ref={skillFolderInputRef} style={{ display: 'none' }} webkitdirectory="" directory="" onChange={handleSkillFolderSelected} />
 
       <div className={styles.actions}>
         <Button className={styles.testBtn} onClick={testConn} loading={testing}>{_tr('ui.im.test', null, 'Test connection')}</Button>

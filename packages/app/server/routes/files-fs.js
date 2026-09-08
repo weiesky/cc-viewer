@@ -6,7 +6,7 @@ import {
 import { join, dirname, basename, resolve, sep } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import { execFile, spawn } from 'node:child_process';
-import { bumpWorkspacesVersion } from '../lib/file-access-policy.js';
+import { bumpWorkspacesVersion, isReadAllowed } from '../lib/file-access-policy.js';
 import { validateImportDir } from '../lib/file-api.js';
 import { PROFILE_PATH, _projectName, _logDir } from '../interceptor.js';
 import { LOG_DIR, getClaudeConfigDir } from '../../findcc.js';
@@ -659,6 +659,80 @@ function resolvePath(req, res, parsedUrl, isLocal, deps) {
   });
 }
 
+// Lightweight existence probe for the chat markdown code-span feature: the web
+// client batches path-looking inline code spans here and only renders them
+// clickable when the file provably exists. Uniform {exists:false} for every
+// not-readable-as-regular-file outcome (missing / outside allowlist / denied /
+// directory) — never echoes policy reasons, so this is a strictly weaker oracle
+// than /api/file-content's 404/403 split.
+const FILES_EXISTS_MAX_BATCH = 50;
+const FILES_EXISTS_MAX_PATH = 1024;
+const FILES_EXISTS_MAX_BODY = 256 * 1024; // 50 × 1024 + JSON overhead ≪ this
+
+function filesExists(req, res, parsedUrl, isLocal, deps) {
+  let body = '';
+  let aborted = false;
+  req.on('data', chunk => {
+    body += chunk;
+    if (body.length > FILES_EXISTS_MAX_BODY && !aborted) {
+      aborted = true;
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Request too large' }));
+      req.destroy();
+    }
+  });
+  req.on('end', () => {
+    if (aborted) return;
+    let parsed;
+    try { parsed = JSON.parse(body); } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid request body' }));
+      return;
+    }
+    const paths = parsed && parsed.paths;
+    if (!Array.isArray(paths)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid paths' }));
+      return;
+    }
+    if (paths.length > FILES_EXISTS_MAX_BATCH) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Too many paths' }));
+      return;
+    }
+    for (const p of paths) {
+      if (typeof p !== 'string' || p.length > FILES_EXISTS_MAX_PATH) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid path' }));
+        return;
+      }
+    }
+    const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+    const results = paths.map(p => ({ path: p, exists: probeFileExists(p, cwd) }));
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ results }));
+  });
+}
+
+function probeFileExists(p, cwd) {
+  try {
+    const isAbs = /^([a-zA-Z]:[\\/]|[\\/])/.test(p);
+    // Mirrors /api/file-content: a relative `..` segment can never be opened by
+    // the click path either, so report it as non-existent rather than 400.
+    // Segment-wise check — a legit filename like `foo..bar.md` must not match.
+    if (!isAbs && p.split(/[\\/]/).includes('..')) return false;
+    // Resolve BEFORE isReadAllowed: realpathSync inside the policy resolves
+    // relative input against process.cwd(), which is the app dir (not the
+    // project) in packaged Electron runs.
+    const absPath = isAbs ? p : resolve(cwd, p);
+    const policy = isReadAllowed(absPath);
+    if (!policy.ok) return false;
+    return statSync(policy.real).isFile();
+  } catch {
+    return false; // one bad path must not sink the whole batch
+  }
+}
+
 function createFile(req, res, parsedUrl, isLocal, deps) {
   let body = '';
   req.on('data', chunk => { body += chunk; if (body.length > deps.MAX_POST_BODY) req.destroy(); });
@@ -964,6 +1038,7 @@ export const filesFsRoutes = [
   { method: 'POST', match: 'exact', path: '/api/reveal-file', handler: revealFile },
   { method: 'POST', match: 'exact', path: '/api/open-file', handler: openFile },
   { method: 'POST', match: 'exact', path: '/api/resolve-path', handler: resolvePath },
+  { method: 'POST', match: 'exact', path: '/api/files-exists', handler: filesExists },
   { method: 'POST', match: 'exact', path: '/api/create-file', handler: createFile },
   { method: 'POST', match: 'exact', path: '/api/open-terminal', handler: openTerminal },
   { method: 'POST', match: 'exact', path: '/api/create-dir', handler: createDir },

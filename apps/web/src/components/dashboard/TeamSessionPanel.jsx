@@ -504,7 +504,11 @@ function TeamModal({ session, requests, mainAgentSessions, collapseToolResults, 
             const durStr = durSec >= 60 ? `${Math.floor(durSec/60)}m${durSec%60}s` : `${durSec}s`;
             const agentMessages = entries.filter(e => e.type === 'sub-agent' && e.label && e.label.includes(ag.name));
             const popContent = (
-              <div className={styles.teamAgentPopover}>
+              <div className={styles.teamAgentPopover} onClick={(e) => {
+                // Popover portal 到 body，不在 teamModalBody 的委托内，需同样防整页导航。
+                const fileLink = e.target.closest('.chat-md a[data-md-file]');
+                if (fileLink) e.preventDefault();
+              }}>
                 {ag.teammateMessages && ag.teammateMessages.length > 0 && (
                   <div className={styles.teamAgentPopTeammateMsg}>
                     {ag.teammateMessages.map((tm, ti) => (
@@ -554,7 +558,12 @@ function TeamModal({ session, requests, mainAgentSessions, collapseToolResults, 
             ganttHeight={ganttHeight}
             onGanttHeightChange={setGanttHeight}
           />
-          <div className={styles.teamModalBody} ref={modalBodyRef} onScroll={onScroll}>
+          <div className={styles.teamModalBody} ref={modalBodyRef} onScroll={onScroll} onClick={(e) => {
+            // TeamModal portal 在 ChatView 的 messageListWrap 委托之外：本地文件链接无法
+            // 在此内嵌打开，preventDefault 防止整页导航（外链已由 target=_blank 处理）。
+            const fileLink = e.target.closest('.chat-md a[data-md-file]');
+            if (fileLink) e.preventDefault();
+          }}>
             {entries.map((entry, i) => (
               <div key={`tw-${i}`} data-timestamp={entry.timestamp}>
                 {entry.type === 'user' && <ChatMessage role="user" text={entry.text} lang={lang} timestamp={entry.timestamp} userProfile={userProfile} modelInfo={modelInfo} requestIndex={entry.requestIndex} onViewRequest={onViewRequest} isHistoryLog={isHistoryLog} />}

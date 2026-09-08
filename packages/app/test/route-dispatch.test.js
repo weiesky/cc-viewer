@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createDispatcher } from '../server/routes/_dispatch.js';
 import { filesContentRoutes } from '../server/routes/files-content.js';
+import { filesFsRoutes } from '../server/routes/files-fs.js';
 
 // Guards the one behavior the server.js → server/routes/* split could silently break:
 // the dispatcher must reproduce the old if-chain's matching semantics exactly —
@@ -80,5 +81,14 @@ describe('files-content registry (method-distinguished + predicate routes)', () 
     assert.equal(raw.predicate('/api/file-raw/sub/path.png', 'HEAD'), true);
     assert.equal(raw.predicate('/api/file-raw', 'POST'), false);
     assert.equal(raw.predicate('/api/file-rawish', 'GET'), false);
+  });
+});
+
+describe('files-fs registry', () => {
+  it('registers exactly one POST /api/files-exists exact route', () => {
+    const matches = filesFsRoutes.filter(r => r.path === '/api/files-exists');
+    assert.equal(matches.length, 1, 'exactly one /api/files-exists route');
+    assert.equal(matches[0].method, 'POST');
+    assert.equal(matches[0].match, 'exact');
   });
 });

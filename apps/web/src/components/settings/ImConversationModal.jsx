@@ -377,7 +377,13 @@ export default function ImConversationModal({ open, onClose, platform, onOpenCon
       // header 高度由 global.css 的 `.ccvSideDrawer .ant-drawer-header` 统一压到 40px(对齐主窗口顶栏)。
       styles={{ body: { padding: 0, overflow: 'hidden', background: 'var(--bg-elevated)' }, header: { background: 'var(--bg-elevated)' } }}
     >
-      <div className={styles.scrollBody} ref={bodyRef} onScroll={handleScroll}>
+      <div className={styles.scrollBody} ref={bodyRef} onScroll={handleScroll} onClick={(e) => {
+        // 本弹窗 portal 在 ChatView 的 messageListWrap 委托之外：本地文件链接在这里无法
+        // 内嵌打开，至少 preventDefault 防止整页导航（SPA fallback 重载丢会话）。
+        // 外链已由渲染层 target=_blank 处理，不受影响。
+        const fileLink = e.target.closest('.chat-md a[data-md-file]');
+        if (fileLink) e.preventDefault();
+      }}>
         {items.length > 0 ? (
           // 有内容优先渲染（刷新期间也是），保证高度稳定、不塌缩成 Spin
           items

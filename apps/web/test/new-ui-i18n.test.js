@@ -79,6 +79,16 @@ const KEYS = [
   // Minimal-chat preference toggle (AppHeader / Mobile / PreferencesForm; merges tool-only turns):
   'ui.minimalChat',
   'ui.minimalChat.help',
+  // Strict skill-spec validation error messages shared by all skill-add entries
+  // (skillImportErrors.js; served by /api/skills/import + /api/im/:id/skills/import):
+  'ui.skills.missingSkillMd',
+  'ui.skills.invalidFrontmatter',
+  'ui.skills.missingName',
+  'ui.skills.invalidName',
+  'ui.skills.missingDescription',
+  'ui.skills.tooLarge',
+  'ui.skills.invalidZip',
+  'ui.skills.exists',
 ];
 
 describe('new UI key i18n coverage', () => {

@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -445,7 +445,7 @@ describe('IM skill management endpoints (per-IM .claude/skills)', () => {
     const get = imRoutes.find((r) => r.predicate('/api/im/wecom/skills', 'GET'));
     const tog = imRoutes.find((r) => r.predicate('/api/im/wecom/skills/toggle', 'POST'));
 
-    const md = '---\nname: my-im-skill\n---\n# hi\n';
+    const md = '---\nname: my-im-skill\ndescription: test\n---\n# hi\n';
     const w = await run(imp, importReq('XB', 'my-im-skill.md', md), { pathname: '/api/im/wecom/skills/import', deps: { WINDOWS_RESERVED_NAMES: RESERVED } });
     assert.equal(w.status, 200);
     assert.equal(w.json().name, 'my-im-skill');

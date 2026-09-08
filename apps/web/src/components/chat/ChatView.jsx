@@ -59,6 +59,7 @@ import { isMobile, isIOS, isPad } from '../../env';
 import { t } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { tryOpenWithSystem } from '../../utils/fileOpen';
+import { checkPathsExist, dedupePaths, peekPathExists, MD_PATH_CANDIDATE_ATTR, MD_FILE_VERIFIED_ATTR } from '../../utils/mdCodePathVerify';
 import { BUILTIN_PRESETS } from '../../utils/builtinPresets';
 import defaultAvatarUrl from '../../img/default-avatar.svg';
 import loadingPetUrl from '../../img/loading-pet.gif';
@@ -170,6 +171,11 @@ class ChatView extends React.Component {
     this.innerSplitRef = React.createRef();
     this.inputStackRef = React.createRef();
     this._inputStackRO = null;
+    // markdown codespan 文件路径探测(渲染期打标 → 这里异步验证存在性 → 升级可点击)
+    this._mdProbeWrapRef = React.createRef();
+    this._mdProbeObserver = null;
+    this._mdProbeObservedEl = null;
+    this._mdProbeRaf = 0;
 
     // 增量 tool result 状态
     this._incToolState = null;
@@ -486,6 +492,7 @@ class ChatView extends React.Component {
 
   componentDidMount() {
     this.startRender();
+    this._attachMdCodeProbe();
     // 注册 ws 消息 handler。Provider 本身根据 cliMode/terminalVisible 决定何时建立 ws,
     // ChatView 不再自己 connect/close;handler 在 ws 重连后会自动继续收到新消息。
     if (this.context && this.context.addMessageHandler) {
@@ -581,6 +588,8 @@ class ChatView extends React.Component {
 
   componentDidUpdate(prevProps, prevState) {
     this._bindInputStackRO();
+    // messageListWrap 节点可能因 loading↔loaded / virtuoso 切换被换掉,需要时重挂观察器
+    this._attachMdCodeProbe();
     if (prevProps.isStreaming !== this.props.isStreaming) {
       this._streamSpinnerUrl = this.props.isStreaming
         ? (Math.random() < 0.5 ? orbitingUrl : shimmerUrl)
@@ -1015,7 +1024,11 @@ class ChatView extends React.Component {
       this._pendingFlushQueue.length = 0;
     }
     this._scrollHighlight.dispose();
-    // 流式吸底统一清理：dispose 内会卸 RO + scroll listener + document touch + cancel 全部 rAF
+    // markdown codespan 探测:断开观察器 + 取消待执行 flush
+    if (this._mdProbeObserver) { this._mdProbeObserver.disconnect(); this._mdProbeObserver = null; }
+    this._mdProbeObservedEl = null;
+    if (this._mdProbeRaf) { cancelAnimationFrame(this._mdProbeRaf); this._mdProbeRaf = 0; }
+    // 流式吸底统一清理:dispose 内会卸 RO + scroll listener + document touch + cancel 全部 rAF
     if (this._stickyController) this._stickyController.dispose();
     if (this._inputStackRO) { this._inputStackRO.disconnect(); this._inputStackRO = null; }
     document.documentElement.style.removeProperty('--input-stack-height');
@@ -2974,17 +2987,126 @@ class ChatView extends React.Component {
     });
   };
 
-  // 点击工具调用中的文件路径，打开文件查看器
-  // 绝对路径需要转为项目相对路径，以便与 FileExplorer 的 TreeNode 匹配
-  handleMdImageClick = (e) => {
+  // 对话 markdown 内的点击委托（挂在 messageListWrap）：
+  //  1) 图片 → 灯箱；2) a[data-md-file]（本地文件链接，渲染层打标）→ 内嵌文件查看器；
+  //  3) code[data-md-file-verified]（反引号路径,经 /api/files-exists 验证存在）→ 同上。
+  // 外链在渲染层已带 target=_blank，无需 JS 拦截，浏览器原生处理。
+  // 顺序约束：img 分支必须在前 —— [![alt](img)](file.md) 图片套链接保持开灯箱;
+  // code 分支必须在 a[data-md-file] 之后 —— 链接内的 codespan 保持链接语义。
+  handleChatMdClick = (e) => {
     const img = e.target.closest('.chat-md img');
     if (img && img.src) {
       e.preventDefault();
       this.setState({ mdLightboxSrc: img.src });
+      return;
+    }
+    const fileLink = e.target.closest('.chat-md a[data-md-file]');
+    // 仅拦截裸左键；中键/修饰键放行默认行为（对仍有 href 的相对路径链接是导航,
+    // 对 file:// 链接 href 已被 DOMPurify 剥掉、无任何行为）
+    if (fileLink && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+      e.preventDefault();
+      this.handleOpenToolFilePath(fileLink.getAttribute('data-md-file'));
+      return;
+    }
+    // 验证过的 codespan 没有 href,所有点击都得在这里拦;同样只响应裸左键。
+    // 守卫: codespan 嵌在任意 <a> 里(外链/锚点/文件链接)都让位给链接语义,
+    // 否则 [见 `x.md`](https://a.com) 会开文件查看器而不是跳外链。
+    const verifiedCode = e.target.closest('.chat-md code[data-md-file-verified]');
+    if (verifiedCode && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey
+        && !verifiedCode.closest('.chat-md a')) {
+      e.preventDefault();
+      const line = parseInt(verifiedCode.getAttribute('data-md-file-line'), 10) || null;
+      this.handleOpenToolFilePath(verifiedCode.getAttribute('data-md-path-candidate'), line);
     }
   };
 
-  handleOpenToolFilePath = async (filePath) => {
+  // 键盘可达性: 升级后的 codespan 带 tabindex=0,Enter/Space 等价于点击
+  // (Space 默认滚动页面,必须 preventDefault); 嵌在链接里的 codespan 同样让位。
+  handleChatMdKeydown = (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (e.repeat) return; // 长按 repeat 会反复打开同一文件
+    const verifiedCode = e.target.closest('.chat-md code[data-md-file-verified]');
+    if (verifiedCode && !verifiedCode.closest('.chat-md a')) {
+      e.preventDefault();
+      const line = parseInt(verifiedCode.getAttribute('data-md-file-line'), 10) || null;
+      this.handleOpenToolFilePath(verifiedCode.getAttribute('data-md-path-candidate'), line);
+    }
+  };
+
+  // ── markdown codespan 路径探测(渲染期打标 data-md-path-candidate → 异步验证) ──
+  // 渲染管线是纯同步+按原文缓存的,存在性检查不能进去;这里挂载后扫描 DOM,
+  // 批量 POST /api/files-exists,存在则补 data-md-file-verified(点击/CSS 的锚点)。
+  // 观察 childList+subtree: dangerouslySetInnerHTML 替换是 childList 突变,
+  // 我们自己的 setAttribute 是属性突变不被观察 → 无反馈环。
+
+  _attachMdCodeProbe = () => {
+    if (typeof MutationObserver === 'undefined') return;
+    const wrap = this._mdProbeWrapRef.current;
+    if (!wrap) {
+      // 无数据/加载分支没有 ref —— 观察器必须断开,否则会一直扫描已 detach 的旧树
+      if (this._mdProbeObserver) { this._mdProbeObserver.disconnect(); this._mdProbeObserver = null; }
+      this._mdProbeObservedEl = null;
+      return;
+    }
+    if (wrap === this._mdProbeObservedEl) return;
+    if (this._mdProbeObserver) this._mdProbeObserver.disconnect();
+    this._mdProbeObserver = new MutationObserver(() => this._scheduleMdCodeVerify());
+    this._mdProbeObserver.observe(wrap, { childList: true, subtree: true });
+    this._mdProbeObservedEl = wrap;
+    // 初始扫描: observer 只对后续 mutation 触发,挂载前的历史消息要补一次
+    this._scheduleMdCodeVerify();
+  };
+
+  _scheduleMdCodeVerify = () => {
+    if (this._mdProbeRaf) return; // 本帧已排过,合并
+    this._mdProbeRaf = requestAnimationFrame(() => {
+      this._mdProbeRaf = 0;
+      this._verifyMdCodePaths();
+    });
+  };
+
+  _verifyMdCodePaths = async () => {
+    const wrap = this._mdProbeObservedEl;
+    if (!wrap || this._unmounted) return;
+    const projectKey = this.props.projectName || '';
+    const selector = 'code[data-md-path-candidate]:not([data-md-file-verified])';
+    const els = wrap.querySelectorAll(selector);
+    if (els.length === 0) return;
+    const candidates = [];
+    for (const el of els) {
+      const p = el.getAttribute(MD_PATH_CANDIDATE_ATTR);
+      if (p) candidates.push(p);
+    }
+    // 单次 flush 上限 200。批次只取【未探测过】的路径(peek 不到缓存值)——
+    // 否则 >200 候选且前 200 全部不存在时,选择器永远命中同一批已缓存元素,
+    // truncated 恒 true → 每帧自旋(drain 死循环)。剩余未探测项 >0 时才续排。
+    const unique = dedupePaths(candidates);
+    const unprobed = [];
+    for (const p of unique) {
+      if (peekPathExists(p, projectKey) === undefined) unprobed.push(p);
+    }
+    // 无未探测项:可能全是缓存的 false —— apply 一遍(覆盖重渲染丢标记的元素)后停
+    const batch = (unprobed.length > 0 ? unprobed : unique).slice(0, 200);
+    if (batch.length === 0) return;
+    const results = await checkPathsExist(batch, { projectKey });
+    // apply 双守卫: ① 项目切换后旧项目的判定不得盖到新 DOM; ② 按候选属性值
+    // 精确匹配——流式重渲染可能已在 fetch 期间换掉候选内容
+    if (this._unmounted || (this.props.projectName || '') !== projectKey) return;
+    const fresh = wrap.querySelectorAll(selector);
+    for (const el of fresh) {
+      const p = el.getAttribute(MD_PATH_CANDIDATE_ATTR);
+      if (p && results.get(p) === true) {
+        el.setAttribute(MD_FILE_VERIFIED_ATTR, '');
+        el.setAttribute('title', p);
+        // 键盘可达: <code> 默认不可聚焦,升级后补上(tab 序列 + Enter/Space 见
+        // handleChatMdKeydown)
+        el.setAttribute('tabindex', '0');
+      }
+    }
+    if (unprobed.length > 200) this._scheduleMdCodeVerify();
+  };
+
+  handleOpenToolFilePath = async (filePath, line) => {
     if (!filePath) return;
     if (tryOpenWithSystem(filePath, 'chat-message')) return;
     let resolved = filePath;
@@ -3009,7 +3131,7 @@ class ChatView extends React.Component {
     for (let i = 1; i < parts.length; i++) {
       ancestors.push(parts.slice(0, i).join('/'));
     }
-    // 移动端：通过回调打开 MobileFileExplorer
+    // 移动端：通过回调打开 MobileFileExplorer(目标协议只有 file/ancestors,行号暂不支持)
     if (this.props.onMobileOpenFile) {
       this.props.onMobileOpenFile(resolved, ancestors);
       return;
@@ -3021,7 +3143,8 @@ class ChatView extends React.Component {
       return {
         currentFile: resolved,
         currentGitDiff: null,
-        scrollToLine: null,
+        // markdown codespan 的 `:N` 行号后缀(scrollToLine 管线同搜索跳行)
+        scrollToLine: line || null,
         gitChangesOpen: false,
         fileExplorerExpandedPaths: newSet,
       };
@@ -3522,7 +3645,7 @@ class ChatView extends React.Component {
         {stickyBtn}
       </div>
     ) : (
-      <div className={styles.messageListWrap} onClick={this.handleMdImageClick}>
+      <div className={styles.messageListWrap} onClick={this.handleChatMdClick} onKeyDown={this.handleChatMdKeydown} ref={this._mdProbeWrapRef}>
         {roleFilterBar}
         {this.state.mdLightboxSrc && (
           <ImageLightbox src={this.state.mdLightboxSrc} alt="" onClose={() => this.setState({ mdLightboxSrc: null })} />
