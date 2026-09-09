@@ -1,5 +1,11 @@
 # cc-viewer
 
+## 1.8.13
+
+### Patch Changes
+
+- File browser modal: in-project drag-move (grid cells / tree rows / breadcrumbs / blank areas as move targets, hover auto-expand); fix `/api/move-file` rejecting `toDir: ''` so "drag to blank = move to project root" works. Also in this release: modal file upload (toolbar button + zoned drag-drop) and zone-scoped global drag feedback (chat+terminal zone mask, modal-open suppression).
+
 ## 1.8.12
 
 ### Patch Changes
