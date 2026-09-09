@@ -17,7 +17,8 @@ import { _projectName } from '../interceptor.js';
 const FILE_RAW_MIME = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
-  '.webp': 'image/webp', '.html': 'text/html', '.htm': 'text/html',
+  '.webp': 'image/webp', '.bmp': 'image/bmp', '.avif': 'image/avif',
+  '.html': 'text/html', '.htm': 'text/html',
   '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript',
   '.json': 'application/json', '.map': 'application/json', '.txt': 'text/plain',
   '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf',

@@ -53,6 +53,15 @@
   flex: 1;
   overflow: auto;
   padding: 4px 0;
+  /* The blank filler below the tree rows flexes to fill the leftover height,
+     so right-clicking anywhere under the list hits the container menu. */
+  display: flex;
+  flex-direction: column;
+}
+
+.treeBlankArea {
+  flex: 1;
+  min-height: 60px;
 }
 
 .treeItem {

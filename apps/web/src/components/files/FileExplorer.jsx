@@ -1,11 +1,15 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo, useContext } from 'react';
-import { Dropdown, Modal, Input, message } from 'antd';
+import { Dropdown, Modal, message } from 'antd';
 import { t } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { getFileIcon } from '../../utils/fileIcons';
 import { SettingsContext } from '../../contexts/SettingsContext';
 import OpenFolderIcon from '../common/OpenFolderIcon';
+import HtmlPreviewModal from '../common/HtmlPreviewModal';
+import FileBrowserModal from './FileBrowserModal';
 import RefreshIcon from '../common/RefreshIcon';
+import { buildFileContextMenuItems } from './fileContextMenu';
+import { createFileMenuHandler } from './fileContextMenuActions';
 import styles from './FileExplorer.module.css';
 
 function isExternalFileDrag(e) {
@@ -335,171 +339,17 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
     }
   }, [childPath, isDir, onFileRenamed, onImportFiles]);
 
-  // 右键菜单项
-  const contextMenuItems = useMemo(() => {
-    if (isDir) return [
-      { key: 'reveal', label: t('ui.contextMenu.revealInExplorer') },
-      { key: 'openTerminal', label: t('ui.contextMenu.openTerminal') },
-      { key: 'newFile', label: t('ui.contextMenu.newFile') },
-      { key: 'newDir', label: t('ui.contextMenu.newDir') },
-      { type: 'divider' },
-      { key: 'copyPath', label: t('ui.contextMenu.copyPath') },
-      { key: 'copyRelPath', label: t('ui.contextMenu.copyRelativePath') },
-      { type: 'divider' },
-      { key: 'rename', label: t('ui.contextMenu.rename') },
-      { key: 'delete', label: t('ui.contextMenu.delete'), danger: true },
-    ];
-    return [
-      { key: 'reveal', label: t('ui.contextMenu.revealInExplorer') },
-      { key: 'copyPath', label: t('ui.contextMenu.copyPath') },
-      { key: 'copyRelPath', label: t('ui.contextMenu.copyRelativePath') },
-      { key: 'attachToChat', label: t('ui.contextMenu.attachToChat') },
-      { key: 'insertPathToChat', label: t('ui.contextMenu.insertPathToChat') },
-      ...(isRemote ? [{ key: 'download', label: t('ui.contextMenu.downloadToLocal') }] : []),
-      { type: 'divider' },
-      { key: 'rename', label: t('ui.contextMenu.rename') },
-      { key: 'delete', label: t('ui.contextMenu.delete'), danger: true },
-    ];
-  }, [isDir, isRemote]);
-
-  const handleMenuClick = useCallback(({ key }) => {
-    switch (key) {
-      case 'reveal':
-        fetch(apiUrl('/api/reveal-file'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: childPath }),
-        }).catch(() => {});
-        break;
-      case 'openTerminal':
-        fetch(apiUrl('/api/open-terminal'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: childPath }),
-        }).catch(() => {});
-        break;
-      case 'copyPath':
-        fetch(apiUrl('/api/resolve-path'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: childPath }),
-        })
-          .then(r => r.json())
-          .then(data => {
-            if (data.fullPath) {
-              navigator.clipboard.writeText(data.fullPath).then(() => message.success(t('ui.copied'))).catch(() => {});
-            }
-          })
-          .catch(() => {});
-        break;
-      case 'copyRelPath':
-        navigator.clipboard.writeText(childPath).then(() => message.success(t('ui.copied'))).catch(() => {});
-        break;
-      case 'attachToChat':
-        onAttachToChat?.(childPath);
-        break;
-      case 'insertPathToChat':
-        onInsertPathToChat?.(childPath);
-        break;
-      case 'download': {
-        // Browser-native download via an attachment endpoint (same pattern as
-        // handleDownloadLogFile in AppBase.jsx). apiUrl carries base path + ?token=.
-        const a = document.createElement('a');
-        a.href = apiUrl(`/api/download-file?path=${encodeURIComponent(childPath)}`);
-        a.download = item.name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        break;
-      }
-      case 'rename':
-        startEditing();
-        break;
-      case 'newFile': {
-        const inputId = `ccv-newfile-${Date.now()}`;
-        Modal.confirm({
-          title: t('ui.contextMenu.newFile'),
-          content: <Input id={inputId} autoFocus placeholder={t('ui.contextMenu.newFilePlaceholder')} style={{ background: 'var(--bg-container)', borderColor: 'var(--border-primary)', color: 'var(--text-secondary)', caretColor: 'var(--text-secondary)' }} onPressEnter={() => { document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')?.click(); }} />,
-          okText: t('ui.contextMenu.newFile'),
-          // 失败 throw → antd Modal.confirm 保住弹窗供重试；message.error 显式提示，避免静默关闭误以为成功（同 #84 模式）。
-          onOk: async () => {
-            const input = document.getElementById(inputId);
-            const name = (input?.value || '').trim();
-            if (!name) throw new Error('Empty filename');
-            let errMsg;
-            try {
-              const r = await fetch(apiUrl('/api/create-file'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dirPath: childPath, name }),
-              });
-              if (r.ok) { if (onFileRenamed) onFileRenamed(null, `${childPath}/${name}`); return; }
-              errMsg = `HTTP ${r.status}`;
-              try { const d = await r.json(); if (d?.error) errMsg = d.error; } catch {}
-            } catch (err) {
-              errMsg = err?.message || 'network error';
-            }
-            message.error(t('ui.contextMenu.createFileFailed', { error: errMsg }));
-            throw new Error(errMsg);
-          },
-        });
-        break;
-      }
-      case 'newDir': {
-        const inputId = `ccv-newdir-${Date.now()}`;
-        Modal.confirm({
-          title: t('ui.contextMenu.newDir'),
-          content: <Input id={inputId} autoFocus placeholder={t('ui.contextMenu.newDirPlaceholder')} style={{ background: 'var(--bg-container)', borderColor: 'var(--border-primary)', color: 'var(--text-secondary)', caretColor: 'var(--text-secondary)' }} onPressEnter={() => { document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')?.click(); }} />,
-          okText: t('ui.contextMenu.newDir'),
-          onOk: async () => {
-            const input = document.getElementById(inputId);
-            const name = (input?.value || '').trim();
-            if (!name) throw new Error('Empty dir name');
-            let errMsg;
-            try {
-              const r = await fetch(apiUrl('/api/create-dir'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dirPath: childPath, name }),
-              });
-              if (r.ok) { if (onFileRenamed) onFileRenamed(null, `${childPath}/${name}`); return; }
-              errMsg = `HTTP ${r.status}`;
-              try { const d = await r.json(); if (d?.error) errMsg = d.error; } catch {}
-            } catch (err) {
-              errMsg = err?.message || 'network error';
-            }
-            message.error(t('ui.contextMenu.createDirFailed', { error: errMsg }));
-            throw new Error(errMsg);
-          },
-        });
-        break;
-      }
-      case 'delete':
-        Modal.confirm({
-          title: isDir ? t('ui.contextMenu.deleteDirConfirm', { name: item.name }) : t('ui.contextMenu.deleteConfirm', { name: item.name }),
-          okType: 'danger',
-          okText: t('ui.contextMenu.delete'),
-          onOk: async () => {
-            let errMsg;
-            try {
-              const r = await fetch(apiUrl('/api/delete-file'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: childPath }),
-              });
-              if (r.ok) { if (onFileRenamed) onFileRenamed(childPath, null); return; }
-              errMsg = `HTTP ${r.status}`;
-              try { const d = await r.json(); if (d?.error) errMsg = d.error; } catch {}
-            } catch (err) {
-              errMsg = err?.message || 'network error';
-            }
-            message.error(t('ui.contextMenu.deleteFailed', { error: errMsg }));
-            throw new Error(errMsg);
-          },
-        });
-        break;
-    }
-  }, [childPath, item.name, isDir, startEditing, onFileRenamed, onAttachToChat, onInsertPathToChat]);
+  // 右键菜单项 — 与远程文件浏览弹窗(FileBrowserModal)共享定义与动作，
+  // 按文件类型定制时只需改 fileContextMenu.js / fileContextMenuActions.jsx。
+  const contextMenuItems = useMemo(
+    () => buildFileContextMenuItems({ isDir, isRemote }),
+    [isDir, isRemote]);
+  const handleMenuClick = useMemo(
+    () => createFileMenuHandler({
+      path: childPath, name: item.name, isDir, renameMode: 'inline',
+      startEditing, onFileRenamed, onAttachToChat, onInsertPathToChat,
+    }),
+    [childPath, item.name, isDir, startEditing, onFileRenamed, onAttachToChat, onInsertPathToChat]);
 
   const treeItemDiv = (
     <div
@@ -563,6 +413,13 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
   const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
   const [htmlPreviewPath, setHtmlPreviewPath] = useState(null);
+  const [fileBrowserOpen, setFileBrowserOpen] = useState(false);
+  // Remote/container access (server reports _isLocal === false): the OS file
+  // manager open is a silent no-op there, so the header folder icon falls back
+  // to the in-app web file browser modal instead. Defaults to local behavior
+  // until preferences load (null).
+  const { preferences } = useContext(SettingsContext);
+  const isRemote = preferences?._isLocal === false;
   const [externalDragOver, setExternalDragOver] = useState(false);
   // 内部拖动（树内文件拖到容器空白处 = 移到项目根目录）的容器高亮状态。
   // 与 externalDragOver 同帧只可能有一个为 true（容器 dragOver handler 用 isInternal 二选一）。
@@ -598,101 +455,15 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
     if (refreshTrigger > 0) refreshRoot();
   }, [refreshTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const headerMenuItems = useMemo(() => [
-    { key: 'reveal', label: t('ui.contextMenu.revealInExplorer') },
-    { key: 'openTerminal', label: t('ui.contextMenu.openTerminal') },
-    { key: 'newFile', label: t('ui.contextMenu.newFile') },
-    { key: 'newDir', label: t('ui.contextMenu.newDir') },
-    { type: 'divider' },
-    { key: 'copyPath', label: t('ui.contextMenu.copyPath') },
-    { key: 'copyRelPath', label: t('ui.contextMenu.copyRelativePath') },
-  ], []);
-
-  const handleHeaderMenuClick = useCallback(({ key }) => {
-    switch (key) {
-      case 'reveal':
-        fetch(apiUrl('/api/open-project-dir'), { method: 'POST' }).catch(() => {});
-        break;
-      case 'openTerminal':
-        fetch(apiUrl('/api/open-terminal'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: '' }),
-        }).catch(() => {});
-        break;
-      case 'newFile': {
-        const inputId = `ccv-newfile-root-${Date.now()}`;
-        Modal.confirm({
-          title: t('ui.contextMenu.newFile'),
-          content: <Input id={inputId} autoFocus placeholder={t('ui.contextMenu.newFilePlaceholder')} style={{ background: 'var(--bg-container)', borderColor: 'var(--border-primary)', color: 'var(--text-secondary)', caretColor: 'var(--text-secondary)' }} onPressEnter={() => { document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')?.click(); }} />,
-          okText: t('ui.contextMenu.newFile'),
-          // 失败 throw → antd Modal.confirm 保住弹窗供重试（同 #84 模式）。
-          onOk: async () => {
-            const input = document.getElementById(inputId);
-            const name = (input?.value || '').trim();
-            if (!name) throw new Error('Empty filename');
-            let errMsg;
-            try {
-              const r = await fetch(apiUrl('/api/create-file'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dirPath: '', name }),
-              });
-              if (r.ok) { if (onFileRenamed) onFileRenamed(null, name); return; }
-              errMsg = `HTTP ${r.status}`;
-              try { const d = await r.json(); if (d?.error) errMsg = d.error; } catch {}
-            } catch (err) {
-              errMsg = err?.message || 'network error';
-            }
-            message.error(t('ui.contextMenu.createFileFailed', { error: errMsg }));
-            throw new Error(errMsg);
-          },
-        });
-        break;
-      }
-      case 'newDir': {
-        const inputId = `ccv-newdir-root-${Date.now()}`;
-        Modal.confirm({
-          title: t('ui.contextMenu.newDir'),
-          content: <Input id={inputId} autoFocus placeholder={t('ui.contextMenu.newDirPlaceholder')} style={{ background: 'var(--bg-container)', borderColor: 'var(--border-primary)', color: 'var(--text-secondary)', caretColor: 'var(--text-secondary)' }} onPressEnter={() => { document.querySelector('.ant-modal-confirm-btns .ant-btn-primary')?.click(); }} />,
-          okText: t('ui.contextMenu.newDir'),
-          onOk: async () => {
-            const input = document.getElementById(inputId);
-            const name = (input?.value || '').trim();
-            if (!name) throw new Error('Empty dir name');
-            let errMsg;
-            try {
-              const r = await fetch(apiUrl('/api/create-dir'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dirPath: '', name }),
-              });
-              if (r.ok) { if (onFileRenamed) onFileRenamed(null, name); return; }
-              errMsg = `HTTP ${r.status}`;
-              try { const d = await r.json(); if (d?.error) errMsg = d.error; } catch {}
-            } catch (err) {
-              errMsg = err?.message || 'network error';
-            }
-            message.error(t('ui.contextMenu.createDirFailed', { error: errMsg }));
-            throw new Error(errMsg);
-          },
-        });
-        break;
-      }
-      case 'copyPath':
-        fetch(apiUrl('/api/resolve-path'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: '' }),
-        }).then(r => r.json()).then(data => {
-          if (data.fullPath) navigator.clipboard.writeText(data.fullPath).then(() => message.success(t('ui.copied'))).catch(() => {});
-        }).catch(() => {});
-        break;
-      case 'copyRelPath':
-        navigator.clipboard.writeText('.').then(() => message.success(t('ui.copied'))).catch(() => {});
-        break;
-    }
-  }, [onFileRenamed]);
+  // Header 右键菜单与弹窗网格空白区域共用 'container' 定义/动作（同一 builder 保证同步）。
+  const headerMenuItems = useMemo(
+    () => buildFileContextMenuItems({ isDir: true, isRemote: false, scope: 'container' }),
+    []);
+  const handleHeaderMenuClick = useMemo(
+    () => createFileMenuHandler({
+      path: '', name: '', isDir: true, onFileRenamed,
+    }),
+    [onFileRenamed]);
 
   // Import external files (支持批量文件夹拖入，保留目录结构)
   // 入参 payload：{ topEntries, flatFiles }（drop 事件同步抽取）或 File[]（降级兼容）
@@ -895,7 +666,7 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
       <div className={styles.header}>
         <Dropdown menu={{ items: headerMenuItems, onClick: handleHeaderMenuClick }} trigger={['contextMenu']}>
           <span className={styles.headerTitle}>
-            <OpenFolderIcon apiEndpoint={apiUrl('/api/open-project-dir')} title={t('ui.openProjectDir')} size={14} />
+            <OpenFolderIcon apiEndpoint={apiUrl('/api/open-project-dir')} title={t('ui.openProjectDir')} size={14} onClick={isRemote ? () => setFileBrowserOpen(true) : undefined} />
             {t('ui.fileExplorer')}
             {/* 手动刷新：外部 mv/cp/系统级文件变化等 tool_result 感知不到的场景下用户兜底；
                 复用既有 refreshTrigger++ 链路（ChatView state.fileExplorerRefresh），TreeNode
@@ -919,38 +690,32 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
         {items && items.map(item => (
           <TreeNode key={item.name} item={item} path="" depth={0} onFileClick={onFileClick} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} currentFile={currentFile} onFileRenamed={onFileRenamed} refreshTrigger={refreshTrigger} onHtmlPreview={setHtmlPreviewPath} onAttachToChat={onAttachToChat} onInsertPathToChat={onInsertPathToChat} onImportFiles={importFiles} />
         ))}
+        {/* Blank area below the list: right-click = the header context menu
+            (same 'container' definition). Tree rows have their own Dropdown and
+            stop the event from bubbling only via antd Dropdown NOT calling
+            stopPropagation — so this spacer must stopPropagation when a click
+            lands on it directly; row right-clicks are handled by the row's own
+            Dropdown (its rc-trigger handler runs first and preventDefaults). */}
+        <Dropdown menu={{ items: headerMenuItems, onClick: handleHeaderMenuClick }} trigger={['contextMenu']}>
+          <div
+            className={styles.treeBlankArea}
+            onContextMenu={(e) => e.stopPropagation()}
+            // Blank area does not accept file drops; only forward dragover so the
+            // container-level import highlight stays consistent.
+            onDragOver={(e) => e.stopPropagation()}
+          />
+        </Dropdown>
       </div>
       {htmlPreviewPath && (
-        <Modal
-          open
-          onCancel={() => setHtmlPreviewPath(null)}
-          footer={null}
-          closable
-          maskClosable
-          zIndex={1100}
-          width="calc(100vw - 80px)"
-          title={<span style={{ color: 'var(--text-primary)', fontSize: 14 }}>{htmlPreviewPath.split('/').pop() || 'Preview'}</span>}
-          styles={{
-            header: { background: 'var(--bg-container)', borderBottom: '1px solid var(--border-primary)', padding: '12px 20px' },
-            body: { background: '#fff', height: 'calc(100vh - 160px)', overflow: 'hidden', padding: 0 },
-            mask: { background: 'rgba(0,0,0,0.7)' },
-            content: { background: 'var(--bg-container)', border: '1px solid var(--border-primary)', borderRadius: 8, padding: 0 },
-          }}
-          centered
-        >
-          <iframe
-            // 用 path-style URL 而非 ?path=...：HTML 里相对 `<script src="sorter.js">` 浏览器
-            // 才能按"同目录"解析到 `/api/file-raw/<dir>/sorter.js`，c8 / nyc 类报告才完整。
-            // path segment 各自 encode 保留分隔斜杠。
-            src={apiUrl('/api/file-raw/' + htmlPreviewPath.split('/').map(encodeURIComponent).join('/'))}
-            style={{ width: '100%', height: '100%', border: 'none' }}
-            title={htmlPreviewPath}
-            // 只放 allow-scripts 跟 server CSP 同步（取交集后才生效）。popup / form 都不放：
-            // c8 / nyc 报告纯静态交互（sortable / 折叠 / 行内 location.hash 跳转）不依赖这两个。
-            sandbox="allow-scripts"
-          />
-        </Modal>
+        <HtmlPreviewModal path={htmlPreviewPath} onClose={() => setHtmlPreviewPath(null)} />
       )}
+      <FileBrowserModal
+        open={fileBrowserOpen}
+        onClose={() => setFileBrowserOpen(false)}
+        onAttachToChat={onAttachToChat}
+        onInsertPathToChat={onInsertPathToChat}
+        onFileRenamed={onFileRenamed}
+      />
     </div>
   );
 }

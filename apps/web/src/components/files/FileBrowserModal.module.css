@@ -1,0 +1,236 @@
+/* Web file-browser modal: left tree + right Finder-style icon grid. */
+
+.layout {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+.treePane {
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-primary);
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.treeItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.treeItem:hover {
+  background: var(--bg-hover, rgba(128, 128, 128, 0.12));
+}
+
+/* Current directory in the tree: a subtler neutral wash than the blue file
+   selection (same family as the hover tint), plus bold text. */
+.treeItemCurrent {
+  background: var(--bg-hover, rgba(128, 128, 128, 0.12));
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.treeItemSelected {
+  background: var(--bg-hover, rgba(128, 128, 128, 0.12));
+}
+
+.treeItemIgnored {
+  opacity: 0.4;
+}
+
+.arrow {
+  width: 16px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s;
+}
+
+.arrowExpanded {
+  transform: rotate(90deg);
+}
+
+.treeIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.treeName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.treeLoading {
+  font-size: 10px;
+  color: var(--text-disabled);
+}
+
+.treeFailed {
+  font-size: 11px;
+  color: var(--color-error, #e0564b);
+  font-weight: 600;
+}
+
+.gridPane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.upBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.upBtn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-hover, rgba(128, 128, 128, 0.12));
+}
+
+.upBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.crumb {
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crumbLink {
+  cursor: pointer;
+}
+
+.crumbLink:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.crumbSep {
+  color: var(--text-disabled);
+  font-size: 12px;
+}
+
+.grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+  padding: 16px;
+  align-content: start;
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  content-visibility: auto;
+  contain-intrinsic-size: 96px 96px;
+}
+
+.cell:hover {
+  background: var(--bg-hover, rgba(128, 128, 128, 0.12));
+}
+
+.cellSelected {
+  background: var(--bg-hover, rgba(128, 128, 128, 0.12));
+}
+
+.cellIgnored {
+  opacity: 0.4;
+}
+
+.cellIcon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cellThumb {
+  max-width: 56px;
+  max-height: 56px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.cellName {
+  font-size: 12px;
+  color: var(--text-primary);
+  text-align: center;
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.3;
+}
+
+.statusText {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-disabled);
+  font-size: 13px;
+  padding: 40px 0;
+}
+
+.treePane .statusText {
+  padding: 20px 8px;
+}
+
+.statusRetry {
+  cursor: pointer;
+}
+
+.statusRetry:hover {
+  color: var(--text-primary);
+}
+
+.previewHost {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}

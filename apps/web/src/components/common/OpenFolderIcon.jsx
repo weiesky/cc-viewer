@@ -3,13 +3,15 @@ import styles from './OpenFolderIcon.module.css';
 
 /**
  * Folder icon that changes to a yellow open-folder on hover.
- * onClick calls the provided apiEndpoint via POST to open the directory in OS file manager.
+ * Default click calls the provided apiEndpoint via POST to open the directory in OS file manager.
+ * Pass onClick to override the default behavior (e.g. open an in-app browser modal instead).
  */
-export default function OpenFolderIcon({ apiEndpoint, title, size = 16 }) {
+export default function OpenFolderIcon({ apiEndpoint, title, size = 16, onClick }) {
   const [hovered, setHovered] = useState(false);
 
   const handleClick = (e) => {
     e.stopPropagation();
+    if (onClick) { onClick(e); return; }
     fetch(apiEndpoint, { method: 'POST' }).catch(() => {});
   };
 

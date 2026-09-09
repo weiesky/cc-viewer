@@ -17,10 +17,10 @@ const EXT_COLORS = {
   svg: '#e34c26', png: '#a86fd9', jpg: '#a86fd9', jpeg: '#a86fd9', gif: '#a86fd9', bmp: '#a86fd9', ico: '#a86fd9', icns: '#a86fd9', webp: '#a86fd9', avif: '#a86fd9',
 };
 
-export function getFileIcon(name, type) {
+export function getFileIcon(name, type, size = 14) {
   if (type === 'directory') {
     return (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--color-accent-yellow)" stroke="none">
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="var(--color-accent-yellow)" stroke="none">
         <path d="M2 6c0-1.1.9-2 2-2h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z"/>
       </svg>
     );
@@ -28,7 +28,7 @@ export function getFileIcon(name, type) {
   const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
   const color = EXT_COLORS[ext] || '#888';
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
       <polyline points="14 2 14 8 20 8"/>
     </svg>

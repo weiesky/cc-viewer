@@ -444,6 +444,20 @@ describe('GET|HEAD /api/file-raw', { concurrency: false }, () => {
     assert.deepEqual(Buffer.from(r.body), bytes);
   });
 
+  it('bmp/avif → image MIME（网格缩略图用 <img> 内联预览）', () => {
+    const cases = [
+      ['img.bmp', 'image/bmp'],
+      ['img.avif', 'image/avif'],
+    ];
+    for (const [name, mime] of cases) {
+      const p = join(PROJECT, name);
+      writeFileSync(p, Buffer.from([1, 2, 3]));
+      const r = callGet(fileRaw, '/api/file-raw', 'path=' + encodeURIComponent(p));
+      assert.equal(r.status, 200, `${name} should be 200`);
+      assert.equal(r.headers['Content-Type'], mime, `${name} mime`);
+    }
+  });
+
   it('未知扩展名 → application/octet-stream', () => {
     const p = join(PROJECT, 'data.bin');
     writeFileSync(p, Buffer.from([9, 8, 7]));
