@@ -78,15 +78,15 @@ describeCli('server API endpoints', { concurrency: false }, () => {
   });
 
   after(async () => {
-    // Wait for server to fully close to avoid EPIPE from lingering async activity
-    await new Promise((resolve) => {
-      stopViewer();
-      // Give server.close() time to finish pending connections
-      setTimeout(() => {
-        rmSync(tmpDir, { recursive: true, force: true });
-        resolve();
-      }, 200);
-    });
+    // stopViewer() returns the in-flight _doStop() promise — awaiting it guarantees
+    // SSE clients are ended (client.end()) and connections destroyed
+    // (closeAllConnections) BEFORE we rm the tmpDir, instead of racing a bare
+    // 200ms setTimeout. On CI under load the old fixed wait was too short, so a
+    // lingering SSE res got written after teardown → "write EPIPE" uncaught.
+    try { await stopViewer(); } catch { /* _doStop swallows internally */ }
+    // Small residual grace for socket close callbacks to settle.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   // --- CORS ---

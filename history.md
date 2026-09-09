@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- fix(tests): **server.test.js 的 EPIPE flake(CI 上 `write EPIPE` uncaught)** — `after` hook 改为 await `stopViewer()` 返回的 `_doStop()` promise（保证 SSE client `end()` 与 `closeAllConnections()` 完成后再 `rmSync` 临时目录），取代原来 200ms 固定等待；CI 高负载下原等待过短，残留 SSE res 在 teardown 后被写入导致 uncaughtException。
 - feat(files): **远程文件浏览弹窗支持项目内拖拽移动** — 右侧网格的文件/文件夹可像 OS 文件管理器一样拖拽换目录：拖到网格文件夹单元格或左侧目录树文件夹 = 移入该目录（文件夹悬停 500ms 自动展开，自身/子目录/同目录守卫防呆）；拖到面包屑任意段或树空白区 = 移到对应目录/项目根。内部移动逻辑抽取为共享模块 `fileMove.js`（侧边栏同步切换），drop 目标逻辑收敛为 `useFileDropTarget`（行/单元格，上传+移动双负载）与 `useInternalMoveTarget`（面包屑/树空白）。Coverage: `file-move.test.js`, `file-browser-modal.test.js`.
 - fix(server): **`/api/move-file` 接受 `toDir: ''`（移到项目根）** — 此前被 `!toDir` 误判 400，导致侧边栏文档化的「拖树内文件到空白 = 移到根」从未生效；现 `''` 合法（仅 undefined/null 视为缺失）。Coverage: `api-files-fs.test.js`.
 - feat(files): **远程文件浏览弹窗支持文件上传（按钮 + 分区拖拽）** — 工具栏最右新增上传按钮（隐藏多选 file input）上传到当前浏览目录；拖拽按落点解析目标：左侧目录树拖到文件夹节点 / 右侧网格拖到文件夹单元格 → 上传到该文件夹，网格空白 → 上传到当前目录（根 = 项目根，与侧栏空白处一致）；上传管线抽取为共享模块 `importFiles.js`（FileExplorer 与弹窗共用，含目录树展开、3 并发、汇总 toast），成功后弹窗与侧栏双端刷新。新增 i18n `ui.fileBrowserModal.upload`（×18 locales）。
