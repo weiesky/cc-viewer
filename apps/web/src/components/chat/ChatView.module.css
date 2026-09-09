@@ -53,6 +53,8 @@
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
+  /* dropZoneMask 的绝对定位参照物(zone marker 也挂在本元素上) */
+  position: relative;
 }
 
 .vResizer {
@@ -394,6 +396,30 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  /* dropZoneMask 的绝对定位参照物 */
+  position: relative;
+}
+
+/* 外部文件拖拽的分区遮罩:默认隐藏,AppBase 依据 dragover 目标在 Layout 上写入
+   data-external-drag-zone="chat" 时,对话区与终端区(同一 'chat' zone)一起点亮。
+   pointer-events:none 保证拖拽过程中聊天/终端保持可交互。 */
+.dropZoneMask {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 30; /* 高于 .inputStack(15) 与 .overlayPanel(20) */
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: var(--color-primary-bg-light);
+  outline: 2px dashed var(--color-primary);
+  outline-offset: -2px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+:global([data-external-drag-zone='chat']) .dropZoneMask {
+  display: flex;
 }
 
 /* SDK 模式 scratch-only 子终端容器：贴底、横向占满，高度由 scratchWrap 自身(可拖拽)决定 */

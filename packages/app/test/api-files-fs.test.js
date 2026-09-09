@@ -649,6 +649,18 @@ describe('/api/move-file', () => {
     assert.equal(data.error, 'Missing fromPath or toDir');
   });
 
+  it('200 with toDir === "" moves the file to the project root', async () => {
+    // 侧边栏/弹窗「拖到空白 = 移到根」依赖 toDir: '' 被接受(此前被误判 400)。
+    mkdirSync(join(projectDir, 'sub'));
+    writeFileSync(join(projectDir, 'sub', 'r.txt'), 'rootme');
+    const { status, data } = await callBody(handler(), { fromPath: 'sub/r.txt', toDir: '' });
+    assert.equal(status, 200);
+    assert.equal(data.ok, true);
+    assert.equal(data.newPath, 'r.txt');
+    assert.ok(!existsSync(join(projectDir, 'sub', 'r.txt')));
+    assert.equal(readFileSync(join(projectDir, 'r.txt'), 'utf-8'), 'rootme');
+  });
+
   it('400 on illegal paths', async () => {
     assert.equal((await callBody(handler(), { fromPath: '/a', toDir: 'd' })).status, 400);
     assert.equal((await callBody(handler(), { fromPath: 'a', toDir: '../d' })).status, 400);

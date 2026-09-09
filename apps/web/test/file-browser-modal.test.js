@@ -41,7 +41,18 @@ const I18N_KEYS = [
   'ui.fileBrowserModal.empty',
   'ui.fileBrowserModal.loadFailed',
   'ui.fileBrowserModal.gitIgnored',
+  'ui.fileBrowserModal.upload',
 ];
+
+// Slice one handler/component body out of a source file so substring checks
+// can't be satisfied by a DIFFERENT handler's copy of the same string.
+function bodyOf(src, anchor, end = '\n  }, [') {
+  const i = src.indexOf(anchor);
+  assert.ok(i >= 0, `anchor not found: ${anchor}`);
+  const j = src.indexOf(end, i);
+  assert.ok(j > i, `unterminated block after: ${anchor}`);
+  return src.slice(i, j);
+}
 
 describe('file browser modal i18n — all 18 locales', () => {
   for (const key of I18N_KEYS) {
@@ -268,5 +279,184 @@ describe('fileIcons size param', () => {
   it('getFileIcon has size = 14 default', () => {
     assert.ok(FILE_ICONS.includes('getFileIcon(name, type, size = 14)'),
       'getFileIcon must accept an optional size defaulting to 14');
+  });
+});
+
+describe('modal upload wiring (button + zoned drag-drop)', () => {
+  const IMPORT_MODULE = readFileSync(join(SRC, 'components', 'files', 'importFiles.js'), 'utf-8');
+
+  it('both surfaces share the ./importFiles pipeline', () => {
+    for (const [label, src] of [['FileExplorer', FILE_EXPLORER], ['FileBrowserModal', FILE_BROWSER_MODAL]]) {
+      assert.ok(src.includes("from './importFiles'"), `${label} must import the shared importFiles module`);
+    }
+    assert.ok(IMPORT_MODULE.includes('export async function importFiles'),
+      'importFiles.js must export the upload pipeline');
+    assert.ok(IMPORT_MODULE.includes('/api/import-file?dir=${encodeURIComponent('),
+      'uploads must go to /api/import-file with an encoded dir param');
+  });
+
+  it('modal toolbar has an upload button feeding a hidden multi-file input', () => {
+    assert.ok(FILE_BROWSER_MODAL.includes('type="file"'), 'hidden file input missing');
+    assert.ok(FILE_BROWSER_MODAL.includes('multiple\n') || FILE_BROWSER_MODAL.includes('multiple '),
+      'file input must allow multiple selection');
+    assert.ok(FILE_BROWSER_MODAL.includes('onChange={handleUploadPick}'),
+      'file input must be wired to handleUploadPick');
+    assert.ok(FILE_BROWSER_MODAL.includes("t('ui.fileBrowserModal.upload')"),
+      'upload button must use the ui.fileBrowserModal.upload label');
+    assert.ok(FILE_BROWSER_MODAL.includes("e.target.value = '';"),
+      'input value must reset so re-picking the same file re-fires onChange');
+    assert.ok(FILE_BROWSER_MODAL.includes('handleImportFiles(files, currentPath)'),
+      'toolbar pick must import into currentPath');
+  });
+
+  it('drop targets stopPropagation and extract entries synchronously', () => {
+    // Per-handler block assertions (a file-wide occurrence count would let one
+    // handler's stopPropagation go missing unnoticed → double-import / bubble).
+    const hook = readFileSync(join(SRC, 'hooks', 'useFileDropTarget.js'), 'utf-8');
+    const hookDrop = bodyOf(hook, 'const onDrop = useCallback((e) => {');
+    assert.ok(hookDrop.includes('e.stopPropagation();'),
+      'useFileDropTarget onDrop must stopPropagation (grid blank-area handler would double-fire)');
+    assert.ok(hookDrop.includes('getTopLevelEntries(e.dataTransfer.items)'),
+      'entries must be extracted synchronously in the drop handler (items go stale async)');
+    const gridDropBlock = bodyOf(FILE_BROWSER_MODAL, 'const handleGridDrop = useCallback((e) => {');
+    assert.ok(gridDropBlock.includes('getTopLevelEntries(e.dataTransfer.items)'),
+      'grid blank drop must extract entries synchronously');
+    assert.ok(gridDropBlock.includes('handleImportFiles({ topEntries, flatFiles }, currentPath)'),
+      'grid blank area must import into currentPath ("" = project root)');
+    assert.ok(FILE_BROWSER_MODAL.includes('onDrop={handleGridDrop}'),
+      'grid blank area must wire its own drop handler');
+  });
+
+  it('directory rows/cells import into their own path via the shared hook', () => {
+    // Directory rows target themselves; file rows target their parent (a drop on
+    // a file row must NOT bubble to the tree-pane "move to root" handler).
+    assert.ok(FILE_BROWSER_MODAL.includes('useFileDropTarget(isDir ? childPath : parentPathOf(childPath), onImportFiles, {'),
+      'ModalTreeNode must resolve its drop target via the shared hook (file rows → parent dir)');
+    assert.ok(FILE_BROWSER_MODAL.includes('useFileDropTarget(childPath, onImportFiles, { onMove });'),
+      'GridCell must resolve its drop target via the shared hook with onMove');
+  });
+
+  it('rows and cells are draggable in-project move sources with the sidebar contract', () => {
+    const drags = FILE_BROWSER_MODAL.split('dataTransfer.setData(\'text/x-internal-move\', \'1\')').length - 1;
+    assert.equal(drags, 2, 'row and cell onDragStart must both set the text/x-internal-move marker');
+    const plains = FILE_BROWSER_MODAL.split("dataTransfer.setData('text/plain', childPath)").length - 1;
+    assert.equal(plains, 2, 'row and cell onDragStart must both carry the fromPath as text/plain');
+    // Standalone `draggable` lines (the thumbnail's draggable={false} doesn't match).
+    const draggableCount = (FILE_BROWSER_MODAL.match(/^\s*draggable$/gm) || []).length;
+    assert.equal(draggableCount, 2, 'row and cell elements must both be draggable');
+    for (const attr of ['onDragStart={handleDragStartRow}', 'onDragStart={handleDragStartCell}',
+      'onDrop={handleDropRow}', 'onDrop={isDir ? handleDropCell : undefined}']) {
+      assert.ok(FILE_BROWSER_MODAL.includes(attr), `missing JSX wiring: ${attr}`);
+    }
+    assert.ok(FILE_BROWSER_MODAL.includes("effectAllowed = 'move'"),
+      'in-project drags must advertise move semantics');
+  });
+
+  it('the hook internal branch guards then calls onMove', () => {
+    const hook = readFileSync(join(SRC, 'hooks', 'useFileDropTarget.js'), 'utf-8');
+    const hookDrop = bodyOf(hook, 'const onDrop = useCallback((e) => {');
+    assert.ok(hookDrop.includes('if (isInternal) {'), 'internal-move branch missing from the hook drop handler');
+    assert.ok(hookDrop.includes('if (canDropMoveOn(fromPath, targetDir)) onMove(fromPath, targetDir);'),
+      'internal drop must run canDropMoveOn before onMove');
+    const hookOver = bodyOf(hook, 'const onDragOver = useCallback((e) => {');
+    assert.ok(hookOver.includes("dropEffect = isExternal ? 'copy' : 'move'"),
+      'dragover must advertise copy for external / move for internal');
+    assert.ok(hookOver.includes('onHoverExpand && !expandTimer.current'),
+      'hover auto-expand must apply to both payload families (sidebar parity)');
+  });
+
+  it('in-project move flows through fileMove + handleAfterMutation on both surfaces', () => {
+    for (const [label, src] of [['FileExplorer', FILE_EXPLORER], ['FileBrowserModal', FILE_BROWSER_MODAL]]) {
+      assert.ok(src.includes("from './fileMove'"), `${label} must import the shared fileMove module`);
+    }
+    assert.ok(FILE_EXPLORER.includes('moveFile(fromPath, childPath, { onFileRenamed })'),
+      'sidebar TreeNode must move via the shared moveFile');
+    assert.ok(FILE_EXPLORER.includes("moveFile(fromPath, '', { onFileRenamed })"),
+      'sidebar blank area must move to root via the shared moveFile');
+    assert.ok(FILE_BROWSER_MODAL.includes('moveFile(fromPath, toDir, { onFileRenamed: handleAfterMutation })'),
+      'modal handleMove must refresh modal + sidebar via handleAfterMutation');
+    // Exact count: root tree map + root crumb + segment crumbs + GridCell.
+    assert.equal(FILE_BROWSER_MODAL.split('onMove={handleMove}').length - 1, 4,
+      'onMove must be threaded to the root map, both crumbs and grid cells');
+    assert.ok(FILE_BROWSER_MODAL.includes('onMove={onMove}'),
+      'ModalTreeNode recursion must thread onMove');
+  });
+
+  it('in-project drops are accepted on grid blank, tree blank and breadcrumbs', () => {
+    const gridDropBlock = bodyOf(FILE_BROWSER_MODAL, 'const handleGridDrop = useCallback((e) => {');
+    assert.ok(gridDropBlock.includes('if (canDropMoveOn(fromPath, currentPath)) handleMove(fromPath, currentPath);'),
+      'grid blank internal drop must guard then move into currentPath');
+    assert.ok(FILE_BROWSER_MODAL.includes("useInternalMoveTarget('', handleMove)"),
+      'tree-pane blank area must move entries to the project root via the shared hook');
+    assert.ok(FILE_BROWSER_MODAL.includes('onDrop={handleTreePaneDrop}'),
+      'tree pane must wire its blank-area drop handler');
+    const crumb = bodyOf(FILE_BROWSER_MODAL, 'function CrumbDropTarget(', '\n}\n');
+    assert.ok(crumb.includes('useInternalMoveTarget(path, onMove)'),
+      'breadcrumb segments must be move targets via the shared hook');
+    assert.ok(crumb.includes('onDrop={onDrop}'), 'crumb must wire the drop handler');
+  });
+
+  it('layout catch-all swallows internal-move drags over non-target regions too', () => {
+    for (const anchor of ['const handleLayoutDragOver = useCallback((e) => {', 'const handleLayoutDrop = useCallback((e) => {']) {
+      assert.ok(bodyOf(FILE_BROWSER_MODAL, anchor).includes('isInternalMoveDrag(e)'),
+        `${anchor} must also swallow internal-move drags (else they bubble to FileExplorer = move to root)`);
+    }
+  });
+
+  it('the modal follows the sidebar refresh signal (cross-surface moves)', () => {
+    assert.ok(FILE_BROWSER_MODAL.includes('refreshTrigger = 0'),
+      'FileBrowserModal must accept a refreshTrigger prop');
+    assert.ok(FILE_BROWSER_MODAL.includes('prevRefreshTrigger.current = refreshTrigger'),
+      'modal must refresh when the sidebar-driven counter changes');
+    assert.ok(FILE_EXPLORER.includes('refreshTrigger={refreshTrigger}'),
+      'FileExplorer must pass its refreshTrigger into the modal');
+  });
+
+  it('the refreshTrigger effect is declared after refresh() (minifier TDZ regression)', () => {
+    // `const refresh` is in the TDZ at the point of an earlier useEffect whose
+    // deps reference it; the minified bundle throws "Cannot access 'refresh'
+    // before initialization" on mount (reported by user). Order is load-bearing.
+    const effectIdx = FILE_BROWSER_MODAL.indexOf('prevRefreshTrigger.current = refreshTrigger');
+    const refreshIdx = FILE_BROWSER_MODAL.indexOf('const refresh = useCallback(() => {');
+    assert.ok(effectIdx >= 0 && refreshIdx >= 0, 'expected both the effect and refresh()');
+    assert.ok(refreshIdx < effectIdx,
+      'const refresh must be declared BEFORE the refreshTrigger effect that uses it');
+  });
+
+  it('onImportFiles is threaded into ModalTreeNode, GridCell and the root map', () => {
+    assert.ok(FILE_BROWSER_MODAL.includes('onImportFiles={onImportFiles}'),
+      'ModalTreeNode recursion must thread onImportFiles');
+    assert.ok(FILE_BROWSER_MODAL.includes('onImportFiles={handleImportFiles}'),
+      'root map / GridCell must receive handleImportFiles');
+  });
+
+  it('layout catch-all swallows external drags over non-target regions', () => {
+    assert.ok(FILE_BROWSER_MODAL.includes('onDragOver={handleLayoutDragOver} onDrop={handleLayoutDrop}'),
+      'the modal layout must have a drag catch-all (no bubble to FileExplorer, no navigation)');
+  });
+
+  it('uploads refresh the modal and the sidebar via handleAfterMutation', () => {
+    assert.ok(FILE_BROWSER_MODAL.includes('importFiles(payload, targetDir, { onFileRenamed: handleAfterMutation })'),
+      'handleImportFiles must inject handleAfterMutation as onFileRenamed');
+  });
+
+  it('sidebar container handlers ignore drags over antd portals', () => {
+    const guardCount = FILE_EXPLORER.split('isOverModalPortal(e)').length - 1;
+    assert.ok(guardCount >= 2,
+      `both handleContainerDragOver and handleContainerDrop must guard with isOverModalPortal, got ${guardCount}`);
+    assert.ok(FILE_EXPLORER.includes("from '../../utils/dragGuards'"),
+      'FileExplorer must import isOverModalPortal');
+  });
+
+  it('sidebar external-drag highlight class is wired (was dead CSS)', () => {
+    assert.ok(FILE_EXPLORER.includes("externalDragOver ? ' ' + styles.fileExplorerDragOver : ''"),
+      'externalDragOver must apply styles.fileExplorerDragOver to the container');
+  });
+
+  it('no !important anywhere in the touched CSS modules', () => {
+    for (const file of ['FileBrowserModal.module.css', 'FileExplorer.module.css']) {
+      const css = readFileSync(join(SRC, 'components', 'files', file), 'utf-8');
+      assert.ok(!css.includes('!important'), `${file} must not use !important`);
+    }
   });
 });

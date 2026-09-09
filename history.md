@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- feat(files): **远程文件浏览弹窗支持项目内拖拽移动** — 右侧网格的文件/文件夹可像 OS 文件管理器一样拖拽换目录：拖到网格文件夹单元格或左侧目录树文件夹 = 移入该目录（文件夹悬停 500ms 自动展开，自身/子目录/同目录守卫防呆）；拖到面包屑任意段或树空白区 = 移到对应目录/项目根。内部移动逻辑抽取为共享模块 `fileMove.js`（侧边栏同步切换），drop 目标逻辑收敛为 `useFileDropTarget`（行/单元格，上传+移动双负载）与 `useInternalMoveTarget`（面包屑/树空白）。Coverage: `file-move.test.js`, `file-browser-modal.test.js`.
+- fix(server): **`/api/move-file` 接受 `toDir: ''`（移到项目根）** — 此前被 `!toDir` 误判 400，导致侧边栏文档化的「拖树内文件到空白 = 移到根」从未生效；现 `''` 合法（仅 undefined/null 视为缺失）。Coverage: `api-files-fs.test.js`.
+- feat(files): **远程文件浏览弹窗支持文件上传（按钮 + 分区拖拽）** — 工具栏最右新增上传按钮（隐藏多选 file input）上传到当前浏览目录；拖拽按落点解析目标：左侧目录树拖到文件夹节点 / 右侧网格拖到文件夹单元格 → 上传到该文件夹，网格空白 → 上传到当前目录（根 = 项目根，与侧栏空白处一致）；上传管线抽取为共享模块 `importFiles.js`（FileExplorer 与弹窗共用，含目录树展开、3 并发、汇总 toast），成功后弹窗与侧栏双端刷新。新增 i18n `ui.fileBrowserModal.upload`（×18 locales）。
+- feat(upload): **全局拖拽改为分区响应遮罩 + 弹层打开时屏蔽全局上传** — 桌面端全屏 overlay 拆为分区反馈：仅「对话+终端」（合并为一个 `data-drop-zone="chat"` 响应区，行为一致，落入聊天）与「文件浏览器侧栏」（接上既有外部拖入高亮）在拖拽悬停时点亮遮罩，非响应区无遮罩且落文件不再静默上传；antd Modal/Drawer 等弹层打开时（按事件 target 判定）全局拖拽整体静默，避免与弹窗自身拖放冲突；树内文件移动不再误亮聊天遮罩。Mobile 沿用旧全屏 overlay 不变。Coverage: `drag-drop-zones.test.js`, `files-import.test.js`, `file-browser-modal.test.js`.
 - feat(files): **远程文件浏览弹窗支持应用内右键菜单** — 树行/网格单元格/网格空白区域右键均弹出与侧栏完全一致的菜单（菜单定义与动作抽取为共享模块 `fileContextMenu.js` / `fileContextMenuActions.jsx`，侧栏 TreeNode、侧栏 header、弹窗三处共用，后续按文件类型定制自动多端同步）；弹窗内重命名走 Modal.confirm 输入框；新建/重命名/删除后弹窗与侧栏双端刷新；"附加到对话"/"插入路径到对话"经 FileExplorer 透传至弹窗。侧栏本地行为不变。Coverage: `file-context-menu.test.js`, `file-browser-modal.test.js`.
 - feat(files): **远程/云容器访问时,文件浏览器标题栏的"打开项目文件夹"图标改为弹出应用内 web 文件浏览器**(此前静默调用服务器端 OS 文件管理器,无 GUI 环境下无任何反应)——基于 `/api/preferences` 的 `_isLocal === false` 判定,本地访问行为不变。弹窗为大尺寸 Modal:左侧目录树(懒加载、与侧栏同款数据流)+ 右侧 Finder 式图标平铺,面包屑/上一级/刷新齐全,浏览范围限制在项目根目录内;单击选中、双击进入文件夹,双击文件在弹窗内预览(图片/代码查看器内嵌,html 走抽取共享的 `HtmlPreviewModal` 沙箱 iframe,office/pdf 远程环境下自动改为浏览器下载到本地);git 忽略项两栏均置灰。每次重开自动刷新目录快照。本地行为零变化。新增 i18n `ui.fileBrowserModal.*` ×6(×18 locales)。Coverage: `file-browser-modal.test.js`.
 

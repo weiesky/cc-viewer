@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo, useContext } from 'react';
-import { Dropdown, Modal, message } from 'antd';
+import { Dropdown } from 'antd';
 import { t } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { getFileIcon } from '../../utils/fileIcons';
@@ -10,72 +10,10 @@ import FileBrowserModal from './FileBrowserModal';
 import RefreshIcon from '../common/RefreshIcon';
 import { buildFileContextMenuItems } from './fileContextMenu';
 import { createFileMenuHandler } from './fileContextMenuActions';
+import { importFiles, isExternalFileDrag, getTopLevelEntries } from './importFiles';
+import { moveFile, canDropMoveOn } from './fileMove';
+import { isOverModalPortal } from '../../utils/dragGuards';
 import styles from './FileExplorer.module.css';
-
-function isExternalFileDrag(e) {
-  return e.dataTransfer.types.includes('Files') && !e.dataTransfer.types.includes('text/x-internal-move');
-}
-
-// Drop 同步阶段抽取顶层 FileSystemEntry；必须在 drop handler 同步周期内调用，否则 items 失效
-function getTopLevelEntries(items) {
-  if (!items || !items.length) return null;
-  const first = items[0];
-  if (typeof first.webkitGetAsEntry !== 'function') return null;
-  const entries = [];
-  for (let i = 0; i < items.length; i++) {
-    if (items[i].kind !== 'file') continue;
-    const entry = items[i].webkitGetAsEntry();
-    if (entry) entries.push(entry);
-  }
-  return entries.length ? entries : null;
-}
-
-// 批量读 DirectoryReader 直到返回空数组（Chrome 每次最多 100 项，必须循环）
-function readAllEntries(reader) {
-  return new Promise((resolve, reject) => {
-    const acc = [];
-    const readBatch = () => {
-      reader.readEntries(
-        (batch) => {
-          if (batch.length === 0) resolve(acc);
-          else { acc.push(...batch); readBatch(); }
-        },
-        reject
-      );
-    };
-    readBatch();
-  });
-}
-
-const SKIP_ENTRY_NAMES = new Set(['.DS_Store', 'Thumbs.db', '.localized']);
-
-// 递归展开 entry 树为 {file, relPath} 列表；depth cap 32 防 symlink 循环
-async function expandEntries(entries, depth) {
-  if (depth > 32) return [];
-  const results = [];
-  for (const entry of entries) {
-    if (!entry || SKIP_ENTRY_NAMES.has(entry.name)) continue;
-    if (entry.isFile) {
-      try {
-        const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
-        const rel = entry.fullPath ? (entry.fullPath.startsWith('/') ? entry.fullPath.slice(1) : entry.fullPath) : file.name;
-        results.push({ file, relPath: rel });
-      } catch (e) {
-        console.warn('[FileExplorer] skip unreadable file', entry.name, e && e.message);
-      }
-    } else if (entry.isDirectory) {
-      try {
-        const reader = entry.createReader();
-        const children = await readAllEntries(reader);
-        const sub = await expandEntries(children, depth + 1);
-        results.push(...sub);
-      } catch (e) {
-        console.warn('[FileExplorer] skip unreadable dir', entry.name, e && e.message);
-      }
-    }
-  }
-  return results;
-}
 
 function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpand, currentFile, onFileRenamed, refreshTrigger, onHtmlPreview, onAttachToChat, onInsertPathToChat, onImportFiles }) {
   const [children, setChildren] = useState(null);
@@ -312,31 +250,10 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
       if (onImportFiles) onImportFiles({ topEntries, flatFiles }, targetDir);
       return;
     }
-    // Internal move
+    // Internal move — 守卫与请求走共享模块 ./fileMove(与弹窗 FileBrowserModal 一致)
     const fromPath = e.dataTransfer.getData('text/plain');
-    if (!fromPath || !isDir) return;
-    // 不能拖到自身
-    if (fromPath === childPath) return;
-    // 不能拖到自身子目录
-    if (childPath.startsWith(fromPath + '/')) return;
-    // 不能拖到当前所在的同目录（无意义移动）
-    const fromDir = fromPath.includes('/') ? fromPath.substring(0, fromPath.lastIndexOf('/')) : '';
-    if (fromDir === childPath) return;
-    try {
-      const res = await fetch(apiUrl('/api/move-file'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fromPath, toDir: childPath }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        message.error(data.error || 'Move failed');
-        return;
-      }
-      if (onFileRenamed) onFileRenamed(fromPath, data.newPath);
-    } catch (err) {
-      message.error(err.message || 'Move failed');
-    }
+    if (!isDir || !canDropMoveOn(fromPath, childPath)) return;
+    moveFile(fromPath, childPath, { onFileRenamed });
   }, [childPath, isDir, onFileRenamed, onImportFiles]);
 
   // 右键菜单项 — 与远程文件浏览弹窗(FileBrowserModal)共享定义与动作，
@@ -465,115 +382,11 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
     }),
     [onFileRenamed]);
 
-  // Import external files (支持批量文件夹拖入，保留目录结构)
-  // 入参 payload：{ topEntries, flatFiles }（drop 事件同步抽取）或 File[]（降级兼容）
-  const importFiles = useCallback(async (payload, targetDir) => {
-    // 1. 统一为 {file, relPath}[]
-    let entries = [];
-    const topEntries = payload && payload.topEntries;
-    const flatFiles = payload && payload.flatFiles;
-    const isEntryShape = Array.isArray(topEntries) || Array.isArray(flatFiles);
-    if (isEntryShape && topEntries && topEntries.length > 0) {
-      // 有 FileSystemEntry：扫描阶段可能耗时，给个 loading
-      const hideScan = message.loading(t('ui.importScanning'), 0);
-      let scanFailed = false;
-      try {
-        entries = await expandEntries(topEntries, 0);
-      } catch (e) {
-        console.warn('[FileExplorer] expandEntries failed, falling back to flat files', e);
-        scanFailed = true;
-      } finally {
-        hideScan();
-      }
-      // 扫描失败或扫描结果为空时，降级到浏览器展平的 flatFiles（至少顶层文件能导入）
-      if ((scanFailed || entries.length === 0) && flatFiles && flatFiles.length > 0) {
-        entries = flatFiles.map(f => ({ file: f, relPath: f.name }));
-      }
-    } else if (isEntryShape && flatFiles && flatFiles.length > 0) {
-      // 浏览器不支持 webkitGetAsEntry → 降级为平铺
-      entries = flatFiles.map(f => ({ file: f, relPath: f.name }));
-    } else if (Array.isArray(payload)) {
-      // 纯 File[] 入参（兼容保留）
-      entries = payload.map(f => ({ file: f, relPath: f.name }));
-    }
-    if (entries.length === 0) {
-      // 拖入了但没有可导入文件（空文件夹 / 全是被过滤的系统文件）
-      if ((topEntries && topEntries.length > 0) || (flatFiles && flatFiles.length > 0)) {
-        message.info(t('ui.importNoFiles'));
-      }
-      return;
-    }
-
-    // 2. 大批量预警
-    if (entries.length > 1000) {
-      const proceed = await new Promise(resolve => {
-        Modal.confirm({
-          title: t('ui.importConfirmLarge', { count: entries.length }),
-          okText: t('ui.ok'),
-          cancelText: t('ui.cancel'),
-          onOk: () => resolve(true),
-          onCancel: () => resolve(false),
-        });
-      });
-      if (!proceed) return;
-    }
-
-    // 3. 并发上传（限制 3），展示持久 loading（总量已知）
-    const total = entries.length;
-    let successCount = 0;
-    const failures = [];
-    let firstOkRelPath = null;
-    const hideLoading = message.loading(t('ui.importingProgress', { total }), 0);
-
-    let idx = 0;
-    const worker = async () => {
-      while (idx < entries.length) {
-        const myIdx = idx++;
-        const { file, relPath } = entries[myIdx];
-        const lastSlash = relPath.lastIndexOf('/');
-        const subDir = lastSlash >= 0 ? relPath.slice(0, lastSlash) : '';
-        const finalDir = [targetDir, subDir].filter(Boolean).join('/');
-        const form = new FormData();
-        form.append('file', file);
-        try {
-          const res = await fetch(apiUrl(`/api/import-file?dir=${encodeURIComponent(finalDir)}`), { method: 'POST', body: form });
-          const data = await res.json();
-          if (!res.ok) {
-            failures.push({ name: relPath, error: data.error || 'Import failed' });
-          } else {
-            successCount++;
-            if (!firstOkRelPath) firstOkRelPath = data.relPath || relPath;
-          }
-        } catch (err) {
-          failures.push({ name: relPath, error: err.message || 'Import failed' });
-        }
-      }
-    };
-    const parallel = Math.min(3, entries.length);
-    await Promise.all(Array.from({ length: parallel }, () => worker()));
-    hideLoading();
-
-    // 4. 汇总消息
-    if (failures.length === 0) {
-      if (successCount === 1) {
-        message.success(t('ui.fileImported', { name: firstOkRelPath }));
-      } else {
-        message.success(t('ui.filesImported', { count: successCount }));
-      }
-    } else {
-      const preview = failures.slice(0, 3).map(f => f.name).join(', ');
-      const more = failures.length > 3 ? ` (+${failures.length - 3})` : '';
-      if (successCount > 0) {
-        message.warning(t('ui.importPartialFailed', { ok: successCount, failed: failures.length, names: preview + more }));
-      } else {
-        message.error(t('ui.importAllFailed', { failed: failures.length, names: preview + more }));
-      }
-    }
-
-    if (successCount > 0 && onFileRenamed) {
-      onFileRenamed(null, firstOkRelPath);
-    }
-  }, [onFileRenamed]);
+  // Import external files (支持批量文件夹拖入，保留目录结构) — 实现已抽取到
+  // ./importFiles 与 FileBrowserModal 共享；这里仅注入本组件的 onFileRenamed。
+  const handleImportFiles = useCallback(
+    (payload, targetDir) => importFiles(payload, targetDir, { onFileRenamed }),
+    [onFileRenamed]);
 
   // Container-level drag events for external files
   // dragover 定时器模式：持续收到 dragover 时保持高亮，300ms 无 dragover 则认为拖拽结束
@@ -597,6 +410,8 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
   }, [resetDragState]);
 
   const handleContainerDragOver = useCallback((e) => {
+    // 弹层（antd Modal/Drawer，React 冒泡会穿透 portal）打开时不响应，避免与弹窗自身的拖拽上传冲突
+    if (isOverModalPortal(e)) return;
     const isInternal = e.dataTransfer.types.includes('text/x-internal-move');
     const isExternal = isExternalFileDrag(e);
     if (!isInternal && !isExternal) return;
@@ -619,6 +434,7 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
 
   const handleContainerDrop = useCallback(async (e) => {
     resetDragState();
+    if (isOverModalPortal(e)) return;
     // 1) External file drop：保留既有 import 行为（拖外部文件到容器空白处 = 导入到根）
     if (isExternalFileDrag(e)) {
       e.preventDefault();
@@ -627,7 +443,7 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
       const topEntries = getTopLevelEntries(e.dataTransfer.items);
       const flatFiles = Array.from(e.dataTransfer.files);
       if ((topEntries && topEntries.length > 0) || flatFiles.length > 0) {
-        importFiles({ topEntries, flatFiles }, '');
+        handleImportFiles({ topEntries, flatFiles }, '');
       }
       return;
     }
@@ -644,25 +460,11 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
     }
     const fromDir = fromPath.includes('/') ? fromPath.substring(0, fromPath.lastIndexOf('/')) : '';
     if (fromDir === '') return; // 已在根，no-op（拖回原位无效果，符合直觉）
-    try {
-      const res = await fetch(apiUrl('/api/move-file'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fromPath, toDir: '' }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        message.error(data.error || 'Move failed');
-        return;
-      }
-      if (onFileRenamed) onFileRenamed(fromPath, data.newPath);
-    } catch (err) {
-      message.error(err.message || 'Move failed');
-    }
-  }, [importFiles, resetDragState, onFileRenamed]);
+    moveFile(fromPath, '', { onFileRenamed });
+  }, [handleImportFiles, resetDragState, onFileRenamed]);
 
   return (
-    <div ref={containerRef} className={`${styles.fileExplorer}${internalContainerDragOver ? ' ' + styles.internalDragOverContainer : ''}`} style={style} data-file-explorer onDragOver={handleContainerDragOver} onDrop={handleContainerDrop}>
+    <div ref={containerRef} className={`${styles.fileExplorer}${externalDragOver ? ' ' + styles.fileExplorerDragOver : ''}${internalContainerDragOver ? ' ' + styles.internalDragOverContainer : ''}`} style={style} data-file-explorer onDragOver={handleContainerDragOver} onDrop={handleContainerDrop}>
       <div className={styles.header}>
         <Dropdown menu={{ items: headerMenuItems, onClick: handleHeaderMenuClick }} trigger={['contextMenu']}>
           <span className={styles.headerTitle}>
@@ -688,7 +490,7 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
         {error && <div className={styles.error}>{error}</div>}
         {!items && !error && <div className={styles.loading}>{t('ui.loading')}</div>}
         {items && items.map(item => (
-          <TreeNode key={item.name} item={item} path="" depth={0} onFileClick={onFileClick} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} currentFile={currentFile} onFileRenamed={onFileRenamed} refreshTrigger={refreshTrigger} onHtmlPreview={setHtmlPreviewPath} onAttachToChat={onAttachToChat} onInsertPathToChat={onInsertPathToChat} onImportFiles={importFiles} />
+          <TreeNode key={item.name} item={item} path="" depth={0} onFileClick={onFileClick} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} currentFile={currentFile} onFileRenamed={onFileRenamed} refreshTrigger={refreshTrigger} onHtmlPreview={setHtmlPreviewPath} onAttachToChat={onAttachToChat} onInsertPathToChat={onInsertPathToChat} onImportFiles={handleImportFiles} />
         ))}
         {/* Blank area below the list: right-click = the header context menu
             (same 'container' definition). Tree rows have their own Dropdown and
@@ -700,9 +502,6 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
           <div
             className={styles.treeBlankArea}
             onContextMenu={(e) => e.stopPropagation()}
-            // Blank area does not accept file drops; only forward dragover so the
-            // container-level import highlight stays consistent.
-            onDragOver={(e) => e.stopPropagation()}
           />
         </Dropdown>
       </div>
@@ -715,6 +514,7 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
         onAttachToChat={onAttachToChat}
         onInsertPathToChat={onInsertPathToChat}
         onFileRenamed={onFileRenamed}
+        refreshTrigger={refreshTrigger}
       />
     </div>
   );

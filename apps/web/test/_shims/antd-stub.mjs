@@ -12,9 +12,13 @@
  */
 export async function resolve(specifier, context, nextResolve) {
   if (specifier === 'antd') {
+    // message.loading returns a hide() closer like real antd; Modal.confirm
+    // records nothing and never resolves (tests that hit the >1000-file
+    // confirm gate should inject their own behaviour via a custom stub).
     const src =
-      'export const message = { error: () => {}, success: () => {}, warning: () => {}, info: () => {} };\n' +
-      'export default { message };';
+      'export const message = { error: () => {}, success: () => {}, warning: () => {}, info: () => {}, loading: () => () => {} };\n' +
+      'export const Modal = { confirm: () => {} };\n' +
+      'export default { message, Modal };';
     return { url: `data:text/javascript,${encodeURIComponent(src)}`, shortCircuit: true };
   }
   return nextResolve(specifier, context);

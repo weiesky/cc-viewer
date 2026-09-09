@@ -522,15 +522,9 @@ class App extends AppBase {
         {/* Wire v3: no loading mask — rows land in the first frame so the
             list/detail are interactive immediately; the chat area shows its
             own inline Spin + byte progress (ChatView loadingProgress prop). */}
-        {this.state.isDragging && (
-          <div className={styles.dragOverlay}>
-            <div className={styles.dragOverlayContent}>
-              <UploadOutlined className={styles.dragIcon} />
-              <p>{t('ui.dragDropHint')}</p>
-            </div>
-          </div>
-        )}
-        <Layout className={styles.layout} ref={this._layoutRef} onDragOver={this._onDragOver} onDragLeave={this._onDragLeave} onDrop={this._onDrop}>
+        {/* 桌面分区拖拽反馈:不再渲染全屏 overlay;dragZone 写到 Layout 属性上,
+            各响应区(对话+终端)的遮罩由 CSS 按该属性点亮。Mobile 仍用自己的 overlay。 */}
+        <Layout className={styles.layout} ref={this._layoutRef} data-external-drag-zone={this.state.dragZone || undefined} onDragOver={this._onDragOver} onDragLeave={this._onDragLeave} onDrop={this._onDrop}>
           <Layout.Header className={styles.header} inert={(typeof window !== 'undefined' && window.tabBridge) ? '' : undefined} style={(typeof window !== 'undefined' && window.tabBridge) ? { height: 0, minHeight: 0, padding: 0, overflow: 'hidden', border: 'none', lineHeight: 0 } : undefined}>
             <AppHeader
               ref={this.appHeaderRef}

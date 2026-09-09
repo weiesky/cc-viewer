@@ -357,7 +357,9 @@ function moveFile(req, res, parsedUrl, isLocal, deps) {
     }
     try {
       const { fromPath, toDir } = parsed;
-      if (!fromPath || !toDir) {
+      // toDir === '' 合法:移到项目根目录(侧边栏/弹窗的「拖到空白 = 移到根」依赖于此;
+      // 此前用 !toDir 误判 400,该交互从未生效)。undefined/null/非字符串仍是缺失/非法。
+      if (!fromPath || typeof toDir !== 'string') {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Missing fromPath or toDir' }));
         return;

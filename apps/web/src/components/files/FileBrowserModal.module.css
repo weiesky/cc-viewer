@@ -46,6 +46,27 @@
   opacity: 0.4;
 }
 
+/* External file drag hovering a directory row (same recipe as the sidebar's
+   treeItemDragOver). */
+.treeItemDragOver {
+  background: var(--color-primary-bg-light);
+  outline: 2px dashed var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* Row being dragged for an in-project move (sidebar parity: opacity cue). */
+.treeItemDragging {
+  opacity: 0.5;
+}
+
+/* In-project drag over the tree-pane blank area = move to project root
+   (same recipe as the sidebar's internalDragOverContainer). */
+.treePaneDragOver {
+  outline: 2px dashed var(--color-primary);
+  outline-offset: -2px;
+  background: var(--bg-elevated);
+}
+
 .arrow {
   width: 16px;
   flex-shrink: 0;
@@ -177,6 +198,55 @@
 
 .cellIgnored {
   opacity: 0.4;
+}
+
+/* External file drag hovering a directory cell: imports land in that folder. */
+.cellDragOver {
+  background: var(--color-primary-bg-light);
+  outline: 2px dashed var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* Cell being dragged for an in-project move. */
+.cellDragging {
+  opacity: 0.5;
+}
+
+/* Breadcrumb segment hovered by an in-project drag = move target. */
+.crumbDragOver {
+  color: var(--color-primary);
+  outline: 1px dashed var(--color-primary);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+
+/* External file drag over the grid blank area: imports land in currentPath
+   ('' = project root, same as the sidebar's blank-area import). */
+.gridDragOver {
+  outline: 2px dashed var(--color-primary);
+  outline-offset: -4px;
+}
+
+/* Toolbar upload button: pinned to the far right of the breadcrumb run. */
+.uploadBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.uploadBtn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover, rgba(128, 128, 128, 0.12));
 }
 
 .cellIcon {

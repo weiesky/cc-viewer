@@ -3,6 +3,7 @@ import { ConfigProvider, theme, Modal, Spin, Button, message } from 'antd';
 import { uploadFileAndGetPath } from './components/terminal/TerminalPanel';
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { isMobile, isPad, hasNativeZoom } from './env';
+import { isOverModalPortal } from './utils/dragGuards';
 import WorkspaceList from './components/dashboard/WorkspaceList';
 import OpenFolderIcon from './components/common/OpenFolderIcon';
 import LogTable from './components/viewers/LogTable';
@@ -141,6 +142,10 @@ class AppBase extends React.Component {
       fileLoadingCount: 0,
       fileLoadingBytes: null,
       isDragging: false,
+      // 桌面分区拖拽反馈:当前外部文件拖拽悬停的响应区(目前仅 'chat' = 对话+终端合并区)。
+      // App.jsx 把它写成 Layout 的 data-external-drag-zone 属性,各 zone 的遮罩纯 CSS 点亮;
+      // Mobile 不设置该属性,沿用 isDragging 的全屏 overlay。
+      dragZone: null,
       selectedLogs: new Set(),   // Set<file>
       cliMode: false,
       sdkMode: false,
@@ -794,6 +799,10 @@ class AppBase extends React.Component {
     // 全局键盘缩放监听(Cmd/Ctrl +/-/0)仅 Electron 注册——驱动原生 setZoomFactor 并与下拉同步。
     // 纯浏览器**不**注册,把 Cmd/Ctrl +/- 交还浏览器原生缩放(不拦截)。unmount 时按同一 ref 卸载。
     if (hasNativeZoom) window.addEventListener('keydown', this._onScaleKeydown);
+    // 拖拽被 Esc/失焦取消时 dragleave/drop 都不会触发，用 dragend/drop 兜底清掉
+    // 分区遮罩与全屏 overlay（FileExplorer 有同款兜底）；否则遮罩会卡到下一次拖拽。
+    document.addEventListener('dragend', this._resetDragFeedback);
+    document.addEventListener('drop', this._resetDragFeedback);
     // claude-settings / preferences fetch 由 SettingsProvider 集中触发;
     // 这里仅订阅其 Promise,把字段同步到本地 state(沿用现有 13+ 个 setState 消费链路)。
     this.context._claudeSettingsReady.then(data => {
@@ -942,6 +951,8 @@ class AppBase extends React.Component {
   componentWillUnmount() {
     this._stopWireV2ConvertPoll();
     window.removeEventListener('keydown', this._onScaleKeydown);
+    document.removeEventListener('dragend', this._resetDragFeedback);
+    document.removeEventListener('drop', this._resetDragFeedback);
     if (Array.isArray(this._tabBridgeDisposers)) {
       for (const off of this._tabBridgeDisposers) {
         try { off(); } catch {}
@@ -2818,29 +2829,66 @@ class AppBase extends React.Component {
   // _dispatchUploadedFiles() 两个 prototype 钩子定制分发（Mobile 按终端可见性分流）。
   _isInternalDrag = (e) => e.dataTransfer.types.includes('text/x-preset-reorder');
 
+  _setDragZone = (zone) => {
+    if (this.state.dragZone !== zone) this.setState({ dragZone: zone });
+  };
+
+  _resetDragFeedback = () => {
+    if (this.state.isDragging || this.state.dragZone) {
+      this.setState({ isDragging: false, dragZone: null });
+    }
+  };
+
   _onDragOver = (e) => {
     e.preventDefault();
     if (this._isInternalDrag(e)) return;
-    // FileExplorer 区域不显示全屏 overlay，由 FileExplorer 自己处理外部拖入反馈
-    const overFileExplorer = e.target.closest && e.target.closest('[data-file-explorer]');
-    if (overFileExplorer) {
+    // 树内文件移动(text/x-internal-move)由 FileExplorer 自己高亮,不点亮任何全局遮罩
+    if (e.dataTransfer.types.includes('text/x-internal-move')) {
+      this._setDragZone(null);
       if (this.state.isDragging) this.setState({ isDragging: false });
       return;
     }
-    if (!this.state.isDragging) this.setState({ isDragging: true });
+    // 指针位于 antd 弹层(Modal/Drawer,React 冒泡穿透 portal)上方:全局拖拽整体静默,
+    // 由弹层自己(如 FileBrowserModal 的分区拖放)处理
+    if (isOverModalPortal(e)) {
+      this._setDragZone(null);
+      if (this.state.isDragging) this.setState({ isDragging: false });
+      return;
+    }
+    // FileExplorer 区域不显示全屏 overlay，由 FileExplorer 自己处理外部拖入反馈
+    const overFileExplorer = e.target.closest && e.target.closest('[data-file-explorer]');
+    if (overFileExplorer) {
+      this._setDragZone(null);
+      if (this.state.isDragging) this.setState({ isDragging: false });
+      return;
+    }
+    // Mobile 沿用旧的全屏 overlay,不参与分区反馈
+    if (isMobile) {
+      if (!this.state.isDragging) this.setState({ isDragging: true });
+      return;
+    }
+    // 桌面:只有悬停在响应区(data-drop-zone="chat" = 对话+终端)时才点亮对应遮罩;
+    // 非响应区(页眉/请求列表等)无遮罩,且 drop 时被门禁拒收
+    const overChat = e.target.closest && e.target.closest('[data-drop-zone="chat"]');
+    this._setDragZone(overChat ? 'chat' : null);
   };
 
   _onDragLeave = (e) => {
     const layout = this._layoutRef.current;
     if (layout && !layout.contains(e.relatedTarget)) {
-      this.setState({ isDragging: false });
+      this.setState({ isDragging: false, dragZone: null });
     }
   };
 
   _onDrop = (e) => {
     e.preventDefault();
     if (this._isInternalDrag(e)) return;
-    this.setState({ isDragging: false });
+    const dragZone = this.state.dragZone;
+    this.setState({ isDragging: false, dragZone: null });
+    // 弹层上方的 drop 由弹层自己消费(或忽略),全局不参与
+    if (isOverModalPortal(e)) return;
+    // 桌面分区门禁:只有落在响应区(对话+终端)才接受;页眉/请求列表等区域静默拒收
+    if (!isMobile && dragZone !== 'chat') return;
     const files = Array.from(e.dataTransfer.files);
     if (!files.length) return;
     // drop 时刻同步捕获分发上下文（Mobile 需要 mobileTerminalVisible 的当时值，非上传完成后的值）

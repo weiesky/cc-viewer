@@ -3838,7 +3838,12 @@ class ChatView extends React.Component {
           {(this.state.fileExplorerOpen || this.state.gitChangesOpen || this.state.searchOpen) && (
             <div className={styles.vResizer} onMouseDown={this.handleSidebarMouseDown} />
           )}
-          <div className={styles.chatSection}>
+          <div className={styles.chatSection} data-drop-zone="chat">
+            {/* 外部文件拖拽悬停遮罩:常置节点,仅当 AppBase 在 Layout 上写入
+                data-external-drag-zone="chat" 时由 CSS 点亮(pointer-events:none 不拦截拖拽)。
+                挂在 chatSection 层(而非内层 chatSectionFlex),与 zone marker 同元素,
+                使遮罩覆盖到与侧栏之间的 vResizer 分隔条,不留未点亮缝隙。 */}
+            <div className={styles.dropZoneMask} aria-hidden="true">{t('ui.dragDropHint')}</div>
             <div className={styles.chatSectionFlex}>
             {this.state.currentGitDiff && (
               <div className={styles.overlayPanel}>
@@ -4142,7 +4147,9 @@ class ChatView extends React.Component {
           {terminalVisible && (
             <>
               <div className={styles.vResizer} onMouseDown={this.handleSplitMouseDown} />
-              <div className={styles.terminalPanelWrap} style={{ width: terminalWidth }}>
+              <div className={styles.terminalPanelWrap} style={{ width: terminalWidth }} data-drop-zone="chat">
+                {/* 与聊天区同属 'chat' 响应区,一起激活、行为一致(落入聊天 pendingImages) */}
+                <div className={styles.dropZoneMask} aria-hidden="true">{t('ui.dragDropHint')}</div>
                 {this.props.sdkMode ? (
                   <TerminalPanel scratchOnly scratchOpen={terminalVisible} />
                 ) : (

@@ -167,6 +167,8 @@
 }
 
 
+/* Legacy full-screen drag overlay — now used ONLY by Mobile.jsx (desktop App.jsx
+   switched to zone-scoped masks driven by data-external-drag-zone). Do not delete. */
 .dragOverlay {
   position: fixed;
   top: 0;

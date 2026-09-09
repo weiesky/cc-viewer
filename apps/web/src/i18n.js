@@ -4044,6 +4044,26 @@ const i18nData = {
     "tr": "git tarafından yok sayıldı",
     "uk": "Ігнорується git"
   },
+  "ui.fileBrowserModal.upload": {
+    "zh": "上传文件",
+    "en": "Upload files",
+    "zh-TW": "上傳檔案",
+    "ko": "파일 업로드",
+    "ja": "ファイルをアップロード",
+    "de": "Dateien hochladen",
+    "es": "Subir archivos",
+    "fr": "Téléverser des fichiers",
+    "it": "Carica file",
+    "da": "Upload filer",
+    "pl": "Prześlij pliki",
+    "ru": "Загрузить файлы",
+    "ar": "تحميل الملفات",
+    "no": "Last opp filer",
+    "pt-BR": "Enviar arquivos",
+    "th": "อัปโหลดไฟล์",
+    "tr": "Dosya yükle",
+    "uk": "Завантажити файли"
+  },
   "ui.fileExplorer": {
     "zh": "文件浏览器",
     "en": "File Explorer",
