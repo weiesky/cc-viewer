@@ -53,6 +53,15 @@ export default function TaskProgressHud() {
             {`✓ ${t('ui.tasks.progress', { done, total })}`}
           </span>
           <span className={styles.current} title={current}>{current}</span>
+          {/* Progress dots: one per task, so the collapsed strip alone shows
+              how far along we are, which step is running, and how many are
+              left. Purely decorative — the role="status" count line above is
+              the accessible announcement. */}
+          <span className={styles.dots} aria-hidden="true">
+            {tasks.map((task) => (
+              <TaskStatusDot key={task.taskId} status={task.status} />
+            ))}
+          </span>
           <button
             type="button"
             className={styles.chevron}
@@ -77,20 +86,45 @@ export default function TaskProgressHud() {
   );
 }
 
+// Status → variant class, one table shared by the collapsed strip and the
+// expanded rows so the two can never drift. Values are the imported CSS-module
+// classes (not strings), so a CSS rename can never silently fall through.
+const DOT_CLASS = {
+  completed: styles.dotDone,
+  in_progress: styles.dotRunning,
+  pending: styles.dotPending,
+};
+
+// One circle per task. SVG (not Unicode ✓/●/○): those sit off-baseline inside
+// a drawn circle and their metrics vary by font. A single 16-unit viewBox
+// scales with the local font size via the .dot CSS class.
+//   completed  → filled grey disc, check punched out in the surface color
+//   in_progress → filled primary disc + the existing pulse animation
+//   pending    → hollow grey ring
+function TaskStatusDot({ status }) {
+  const variant = DOT_CLASS[status] || styles.dotPending;
+  return (
+    <svg
+      className={`${styles.dot} ${variant}${status === 'in_progress' ? ` ${styles.statePulse}` : ''}`}
+      viewBox="0 0 16 16" width="1em" height="1em"
+      aria-hidden="true" focusable="false"
+    >
+      <circle className={styles.dotRing} cx="8" cy="8" r="6.25" />
+      {status === 'completed' && (
+        <path className={styles.dotCheck} d="M5.1 8.4L7.1 10.3L10.9 5.9" />
+      )}
+    </svg>
+  );
+}
+
 function TaskRow({ task }) {
-  const glyph = task.status === 'completed' ? '✓' : task.status === 'in_progress' ? '●' : '○';
-  const glyphClass = task.status === 'completed'
-    ? styles.stateDone
-    : task.status === 'in_progress'
-      ? `${styles.stateRunning} ${styles.statePulse}`
-      : styles.statePending;
   const owner = task.owner || task.teammateName || '';
   const statusKey = task.status === 'in_progress' ? 'ui.tasks.status.inProgress'
     : task.status === 'completed' ? 'ui.tasks.status.completed'
       : 'ui.tasks.status.pending';
   return (
     <div className={styles.row}>
-      <span className={`${styles.glyph} ${glyphClass}`} aria-hidden="true">{glyph}</span>
+      <span className={styles.glyph}><TaskStatusDot status={task.status} /></span>
       <span className={styles.labelCell}>
         <span className={`${styles.label} ${task.status === 'completed' ? styles.labelDone : ''}`} title={task.description || task.subject || ''}>
           {task.subject || `#${task.taskId}`}

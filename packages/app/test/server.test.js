@@ -696,4 +696,78 @@ describeCli('server API endpoints', { concurrency: false }, () => {
     // model field present (may be undefined if interceptor sent nothing, but here we sent it)
     assert.ok('content' in sp.data, 'content field present');
   });
+
+  // --- Task checklist: UserPromptSubmit reset → SSE empty-snapshot broadcast ---
+  // Integration coverage for the real onTaskEvent → task-state reducer →
+  // debounced _emitTaskUpdate path (the unit tests use injected fake deps and
+  // never wire the SSE broadcast to the reducer).
+  it('POST /api/task-event UserPromptSubmit resets the list and broadcasts an empty task_update snapshot', async () => {
+    const token = (await import('../server/server.js')).getInternalToken();
+    const postTaskEvent = (payload) => new Promise((resolve, reject) => {
+      const req = request({
+        hostname: '127.0.0.1',
+        port,
+        path: '/api/task-event',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CCViewer-Internal': token },
+      }, (res) => {
+        res.resume();
+        res.on('end', () => resolve(res.statusCode));
+      });
+      req.on('error', reject);
+      req.write(JSON.stringify(payload));
+      req.end();
+    });
+
+    // Seed one task via the real route, then subscribe and fire the prompt reset.
+    await postTaskEvent({ hookEventName: 'TaskCreated', sessionId: 'sess-int', taskId: '1', taskSubject: 'seed' });
+
+    const frames = await new Promise((resolve, reject) => {
+      const received = [];
+      const req = request({
+        hostname: '127.0.0.1',
+        port,
+        path: '/events',
+        method: 'GET',
+        headers: { 'Accept': 'text/event-stream' },
+      }, (res) => {
+        let buf = '';
+        res.on('data', (chunk) => {
+          buf += chunk.toString();
+          let idx;
+          while ((idx = buf.indexOf('\n\n')) !== -1) {
+            const block = buf.slice(0, idx);
+            buf = buf.slice(idx + 2);
+            const lines = block.split('\n');
+            const eventLine = lines.find(l => l.startsWith('event:'));
+            const dataLine = lines.find(l => l.startsWith('data:'));
+            if (eventLine && dataLine && eventLine.slice(6).trim() === 'task_update') {
+              const dataStr = dataLine.startsWith('data: ') ? dataLine.slice(6) : dataLine.slice(5);
+              try { received.push(JSON.parse(dataStr)); } catch {}
+              // Resolve once we have seen a frame with an EMPTY tasks array —
+              // that is the reset broadcast, regardless of preceding frames.
+              if (received.some(f => Array.isArray(f.tasks) && f.tasks.length === 0)) {
+                req.destroy();
+                resolve(received);
+                return;
+              }
+            }
+          }
+        });
+        res.on('error', () => resolve(received));
+      });
+      req.on('error', () => resolve(received));
+      req.end();
+      // Let the SSE stream establish (and skip the connect-time snapshot replay),
+      // then fire the prompt reset through the real route.
+      setTimeout(() => {
+        postTaskEvent({ hookEventName: 'UserPromptSubmit', sessionId: 'sess-int' }).catch(() => {});
+      }, 150);
+      setTimeout(() => { req.destroy(); resolve(received); }, 3000);
+    });
+
+    const empty = frames.find(f => Array.isArray(f.tasks) && f.tasks.length === 0);
+    assert.ok(empty, 'should broadcast a task_update frame with an empty tasks array after the prompt reset');
+    assert.equal(empty.sessionId, null, 'reset clears the session tag in the broadcast snapshot');
+  });
 });

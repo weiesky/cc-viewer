@@ -34,6 +34,14 @@ function _touch(task) {
 export function applyTaskEvent(payload) {
   if (!payload || typeof payload !== 'object') return;
   const { hookEventName } = payload;
+  // New-prompt reset. MUST stay above the taskId guard (this event has no
+  // task_id) and MUST NOT move _sessionId — a foreign/malformed prompt event
+  // must not change the shouldResetTasks comparison base. resetTasks() nulls
+  // the tag anyway, so the next TaskCreated re-tags the session.
+  if (hookEventName === 'UserPromptSubmit') {
+    if (shouldResetTasksOnPrompt(payload, _sessionId)) resetTasks();
+    return;
+  }
   const taskId = payload.taskId != null ? String(payload.taskId) : null;
   // Validate BEFORE touching the session tag: a malformed/unknown event must
   // not move the shouldResetTasks comparison base.
@@ -137,6 +145,30 @@ export function shouldResetTasks(payload, currentSessionId) {
   if (source === 'startup' || source === 'clear') return true;
   if ((source === 'resume' || source === 'fork') && sessionId && sessionId !== currentSessionId) return true;
   return false;
+}
+
+/**
+ * New-prompt reset gate (pure, unit-tested). Claude Code fires
+ * UserPromptSubmit on every user prompt (queued-message drains included) with
+ * NO task_id; the previous turn's checklist is stale by definition, so the
+ * shared list resets and the model's next TaskUpdate rebuilds whatever it is
+ * still working on (stub semantics).
+ * Conservative guards: a teammate/subagent process inherits CCVIEWER_PORT and
+ * POSTs to the same /api/task-event, so only a prompt bearing the session we
+ * are already tracking may wipe the shared list. (agent_id is NOT reliably
+ * present on this event — the session check is the load-bearing one.)
+ * Known trade-off: while the tag is null (no main-agent task event seen yet,
+ * e.g. right after a reset — teammate TaskCreated carries agentId and does not
+ * re-tag), ANY prompt passes the gate. A teammate prompt in that window still
+ * clears the list; it self-heals on the next TaskUpdate. See task-state.test.js
+ * ("null-tag window") which locks this behavior deliberately.
+ */
+export function shouldResetTasksOnPrompt(payload, currentSessionId) {
+  const { agentId, sessionId } = payload || {};
+  if (agentId) return false;
+  if (!sessionId) return false;
+  if (currentSessionId && sessionId !== currentSessionId) return false;
+  return true;
 }
 
 /** Full-snapshot view for SSE broadcast; insertion order preserved. */

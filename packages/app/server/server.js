@@ -602,6 +602,8 @@ const deps = {
   onSessionStartNotify: markSessionStart,
   // Task checklist (task-bridge.js → /api/task-event): apply to the shared
   // in-memory reducer, then debounce-broadcast a full snapshot over SSE.
+  // UserPromptSubmit events reset the list inside the reducer, so the same
+  // path broadcasts the empty snapshot — no separate reset route/hook.
   onTaskEvent: (payload) => {
     try {
       applyTaskEvent(payload);

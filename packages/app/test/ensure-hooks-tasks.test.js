@@ -1,12 +1,15 @@
 /**
  * ensure-hooks-tasks.test.js — covers the task-checklist hook sections that
- * ensure-hooks.js injects (TaskCreated / TaskCompleted / PostToolUse matcher
- * 'TaskUpdate'), all pointing at server/lib/task-bridge.js.
+ * ensure-hooks.js injects (TaskCreated / TaskCompleted / UserPromptSubmit /
+ * PostToolUse matcher 'TaskUpdate'), all pointing at server/lib/task-bridge.js.
  *
  * Focus:
- *   - fresh install creates all three sections with guard/marker/timeout
- *   - TaskCreated/TaskCompleted entries carry NO matcher (matcher would be
- *     silently ignored by Claude Code for these lifecycle events)
+ *   - fresh install creates all four sections with guard/marker/timeout
+ *   - TaskCreated/TaskCompleted/UserPromptSubmit entries carry NO matcher
+ *     (matcher would be silently ignored by Claude Code for these events)
+ *   - UserPromptSubmit deliberately carries NO timeout field: it is the only
+ *     hook that blocks the user's own input (exit!=0 erases the prompt), so a
+ *     wedged bridge must inherit Claude Code's event default, not our 86400s
  *   - idempotent second run (no duplicates, no rewrite)
  *   - a user's own PostToolUse/'TaskUpdate' entry survives untouched — our
  *     entry must be appended as a SEPARATE entry (find-by-command), never
@@ -46,7 +49,7 @@ describe('lib/ensure-hooks.js — task checklist sections', () => {
   beforeEach(() => cleanup());
   after(() => { try { rmSync(tmpHome, { recursive: true, force: true }); } catch {} });
 
-  it('fresh install: TaskCreated / TaskCompleted / PostToolUse(TaskUpdate) all injected', () => {
+  it('fresh install: TaskCreated / TaskCompleted / UserPromptSubmit / PostToolUse(TaskUpdate) all injected', () => {
     mod.ensureHooks();
     const s = loadSettings();
     for (const key of ['TaskCreated', 'TaskCompleted']) {
@@ -58,6 +61,14 @@ describe('lib/ensure-hooks.js — task checklist sections', () => {
       assert.match(entry.hooks[0].command, /cc-viewer-managed/);
       assert.equal(entry.hooks[0].timeout, 86400);
     }
+    assert.ok(Array.isArray(s.hooks.UserPromptSubmit), 'UserPromptSubmit section created');
+    const ups = s.hooks.UserPromptSubmit.find(isTaskCmd);
+    assert.ok(ups, 'UserPromptSubmit has the task-bridge entry');
+    assert.equal(ups.matcher, undefined, 'UserPromptSubmit entry must have no matcher');
+    assert.match(ups.hooks[0].command, /CCVIEWER_PORT/);
+    assert.match(ups.hooks[0].command, /cc-viewer-managed/);
+    assert.equal(ups.hooks[0].timeout, undefined,
+      'UserPromptSubmit must NOT pin our 86400s timeout — a wedged bridge would block the user\'s own input');
     assert.ok(Array.isArray(s.hooks.PostToolUse), 'PostToolUse section created');
     const ptu = s.hooks.PostToolUse.find(isTaskCmd);
     assert.ok(ptu, 'PostToolUse has the task-bridge entry');
@@ -73,7 +84,7 @@ describe('lib/ensure-hooks.js — task checklist sections', () => {
     const after = readFileSync(settingsPath(), 'utf-8');
     assert.equal(before, after, 'second ensureHooks must be a no-op');
     const s = loadSettings();
-    for (const key of ['TaskCreated', 'TaskCompleted', 'PostToolUse']) {
+    for (const key of ['TaskCreated', 'TaskCompleted', 'UserPromptSubmit', 'PostToolUse']) {
       assert.equal(s.hooks[key].filter(isTaskCmd).length, 1, `${key}: exactly one managed entry`);
     }
   });
@@ -108,13 +119,29 @@ describe('lib/ensure-hooks.js — task checklist sections', () => {
     assert.ok(s.hooks.TaskCreated.find(isTaskCmd));
   });
 
+  it('user UserPromptSubmit entry survives alongside ours (find-by-command)', () => {
+    writeSettings({
+      hooks: {
+        UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'echo my-prompt-hook' }] }],
+      },
+    });
+    mod.ensureHooks();
+    const s = loadSettings();
+    const userEntry = s.hooks.UserPromptSubmit.find(h => h.hooks?.[0]?.command === 'echo my-prompt-hook');
+    assert.ok(userEntry, 'user UserPromptSubmit entry must survive');
+    const ours = s.hooks.UserPromptSubmit.filter(isTaskCmd);
+    assert.equal(ours.length, 1, 'our entry appended as a separate entry');
+    assert.notEqual(ours[0], userEntry);
+  });
+
   it('removeAllManagedHooks clears the new sections too (uninstall parity)', () => {
     mod.ensureHooks();
     const s = loadSettings();
     const removed = mod.removeAllManagedHooks(s);
-    assert.ok(removed >= 3, 'at least the three task entries are removed');
+    assert.ok(removed >= 4, 'at least the four task entries are removed');
     assert.equal(s.hooks.TaskCreated.filter(isTaskCmd).length, 0);
     assert.equal(s.hooks.TaskCompleted.filter(isTaskCmd).length, 0);
+    assert.equal(s.hooks.UserPromptSubmit.filter(isTaskCmd).length, 0);
     assert.equal(s.hooks.PostToolUse.filter(isTaskCmd).length, 0);
   });
 
@@ -136,5 +163,39 @@ describe('lib/ensure-hooks.js — task checklist sections', () => {
     assert.equal(entries.length, 1, 'exactly one rebuilt entry');
     assert.doesNotMatch(entries[0].hooks[0].command, /nonexistent/);
     assert.match(entries[0].hooks[0].command, /server\/lib\/task-bridge\.js/);
+  });
+
+  it('UserPromptSubmit entry strips a stale timeout from a prior managed entry (upgrade path)', () => {
+    writeSettings({
+      hooks: {
+        UserPromptSubmit: [{
+          hooks: [{
+            type: 'command',
+            command: `[ -n "$CCVIEWER_PORT" ] && node "${resolve(process.cwd(), 'server/lib/task-bridge.js')}" || true # cc-viewer-managed`,
+            timeout: 86400,
+          }],
+        }],
+      },
+    });
+    mod.ensureHooks();
+    const s = loadSettings();
+    const entry = s.hooks.UserPromptSubmit.find(isTaskCmd);
+    assert.ok(entry, 'managed UserPromptSubmit entry present');
+    assert.equal(entry.hooks[0].timeout, undefined,
+      'a timeout left by an older version must be stripped, not kept');
+  });
+
+  describe('_buildHookObj opts (direct)', () => {
+    it('default: writes the global timeout field', () => {
+      const obj = mod._buildHookObj('cmd');
+      assert.equal(obj.timeout, 86400);
+      assert.equal(obj.type, 'command');
+      assert.equal(obj.command, 'cmd');
+    });
+    it('omitTimeout: drops the timeout field entirely', () => {
+      const obj = mod._buildHookObj('cmd', { omitTimeout: true });
+      assert.equal(obj.timeout, undefined);
+      assert.ok(!('timeout' in obj), 'no timeout key at all');
+    });
   });
 });

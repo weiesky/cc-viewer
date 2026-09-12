@@ -35,8 +35,11 @@ const HOOK_TIMEOUT_FIELD = HOOK_TIMEOUT_S > 0 ? { timeout: HOOK_TIMEOUT_S } : {}
 // 构造与对比两件事必须同源，否则升级路径会漏字段。
 // merge 而非 replace：用户/第三方给同一 hook 追加 if/shell/once/async/asyncRewake 等
 // schema 合法字段时，rewrite 不能整对象覆盖把它们吞掉。
-export function _buildHookObj(command) {
-  return { type: 'command', command, ...HOOK_TIMEOUT_FIELD };
+// opts.omitTimeout: true = 不写 timeout 字段(继承 Claude Code 的该事件默认值),
+// 与 CCV_HOOK_TIMEOUT_S=0 的既有语义一致但作用于单个 hook。省略 opts 时行为完全不变。
+export function _buildHookObj(command, opts) {
+  const timeoutField = (opts && opts.omitTimeout) ? {} : HOOK_TIMEOUT_FIELD;
+  return { type: 'command', command, ...timeoutField };
 }
 export function _hookObjEqual(existing, desired) {
   if (!existing) return false;
@@ -79,7 +82,7 @@ function _looksStaleManagedCommand(cmd) {
 // All hook sections cc-viewer manages. _purgeStaleManagedHooks and
 // removeAllManagedHooks must iterate this exact set or uninstall/cleanup
 // leaves zombie entries behind (cli.js cleanup-hooks path).
-const MANAGED_SECTIONS = ['PreToolUse', 'Stop', 'SessionStart', 'TaskCreated', 'TaskCompleted', 'PostToolUse'];
+const MANAGED_SECTIONS = ['PreToolUse', 'Stop', 'SessionStart', 'TaskCreated', 'TaskCompleted', 'UserPromptSubmit', 'PostToolUse'];
 
 function _purgeStaleManagedHooks(settings) {
   let removed = 0;
@@ -293,6 +296,34 @@ export function ensureHooks() {
       settings.hooks.PostToolUse.push({
         matcher: 'TaskUpdate',
         hooks: [taskDesired],
+      });
+      changed = true;
+    }
+
+    // UserPromptSubmit hook → task-bridge.js (same bridge: its envelope
+    // normalizer already passes through task-less events). Fires on EVERY user
+    // prompt submission (queued-message drains included) and carries no
+    // task_id — it is the "new prompt" signal that clears the previous turn's
+    // checklist server-side (task-state.js shouldResetTasksOnPrompt). No
+    // matcher (unsupported by this event, silently ignored). Find-by-command
+    // so a user's own UserPromptSubmit entry is never clobbered in place.
+    // Deliberately NO timeout field: this is the only hook that blocks the
+    // user's own input (exit!=0 erases the submitted prompt), so a wedged
+    // bridge must cost Claude Code's event default (~30s), not our 86400s.
+    // The bridge itself always exits 0 with a 500ms POST timeout.
+    const userPromptDesired = _buildHookObj(taskCmd, { omitTimeout: true });
+    const userPromptExisting = settings.hooks.UserPromptSubmit.find(h => {
+      const cmd = h.hooks?.[0]?.command || '';
+      return cmd.includes('task-bridge.js');
+    });
+    if (userPromptExisting) {
+      if (!_hookObjEqual(userPromptExisting.hooks?.[0], userPromptDesired)) {
+        userPromptExisting.hooks = [_mergeHookObj(userPromptExisting.hooks?.[0], userPromptDesired)];
+        changed = true;
+      }
+    } else {
+      settings.hooks.UserPromptSubmit.push({
+        hooks: [userPromptDesired],
       });
       changed = true;
     }

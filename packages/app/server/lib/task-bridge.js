@@ -11,6 +11,7 @@
  *   "hooks": {
  *     "TaskCreated":  [{ "hooks": [{ "type": "command", "command": "... task-bridge.js ..." }] }],
  *     "TaskCompleted":[{ "hooks": [{ "type": "command", "command": "... task-bridge.js ..." }] }],
+ *     "UserPromptSubmit": [{ "hooks": [{ "type": "command", ... }] }],
  *     "PostToolUse":  [{ "matcher": "TaskUpdate", "hooks": [{ "type": "command", ... }] }]
  *   }
  *
@@ -20,13 +21,19 @@
  *   PostToolUse(TaskUpdate):   { hook_event_name: "PostToolUse", session_id, ...,
  *     tool_name: "TaskUpdate", tool_input: { taskId, status?, owner?,
  *     subject?, description?, activeForm? } }
+ *   UserPromptSubmit:          { hook_event_name, session_id, transcript_path,
+ *     cwd, prompt, prompt_id, permission_mode, session_title } — NO task_id
+ *     and agent_id NOT reliably present. The server's task-state reducer uses
+ *     it as the new-prompt signal to clear the previous turn's checklist
+ *     (gated on session equality, see shouldResetTasksOnPrompt).
  *
  * Output contract (same as session-start-bridge.js): NOTHING on stdout —
  * PostToolUse interprets stdout starting with "{" as decision JSON, and any
  * stray bytes pollute the hook chain. Optional stderr only when
  * CCVIEWER_DEBUG=1. ALWAYS exit 0: exit code 2 on TaskCreated/TaskCompleted
- * rolls back task creation / prevents completion, so a failed notify must
- * never surface as a non-zero exit.
+ * rolls back task creation / prevents completion, and on UserPromptSubmit it
+ * ERASES the user's submitted prompt — so a failed notify must never surface
+ * as a non-zero exit.
  */
 
 import { readFileSync } from 'node:fs';
@@ -83,7 +90,7 @@ const body = JSON.stringify({
   activeForm: toolInput.activeForm ?? null,
   ts: Date.now(),
 });
-debug(`payload event=${hookEventName} tool=${parsed?.tool_name} taskId=${parsed?.task_id ?? toolInput.taskId}`);
+debug(`payload event=${hookEventName} tool=${parsed?.tool_name} taskId=${parsed?.task_id ?? toolInput.taskId} session=${parsed?.session_id} agent=${parsed?.agent_id}`);
 
 const internalToken = process.env.CCVIEWER_INTERNAL_TOKEN || '';
 const reqOpts = {

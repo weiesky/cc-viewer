@@ -188,6 +188,37 @@ describe('task-bridge.js', { concurrency: false }, () => {
     }
   });
 
+  it('normalizes UserPromptSubmit payloads (no task_id, no agent_id; exit-0 + clean-stdout contract)', async () => {
+    const { server, hitPromise } = captureServer();
+    const port = await listen(server);
+    try {
+      const runP = runBridge({
+        env: { CCVIEWER_PORT: String(port) },
+        stdin: JSON.stringify({
+          hook_event_name: 'UserPromptSubmit',
+          session_id: 'sess-uuid-1',
+          transcript_path: '/t.jsonl',
+          cwd: '/p',
+          prompt: 'keep going on P2-2',
+          prompt_id: 'prompt-1',
+          permission_mode: 'default',
+          session_title: 'My session',
+        }),
+      });
+      const cap = await hitPromise;
+      const res = await runP;
+      assert.equal(res.code, 0, 'must always exit 0 (exit 2 erases the user\'s prompt)');
+      assert.equal(res.stdout, '', 'stdout must stay clean on the blocking hook path');
+      const payload = JSON.parse(cap.body);
+      assert.equal(payload.hookEventName, 'UserPromptSubmit');
+      assert.equal(payload.taskId, null, 'UserPromptSubmit carries no task_id');
+      assert.equal(payload.sessionId, 'sess-uuid-1', 'sessionId passes through for the reset gate');
+      assert.equal(payload.agentId, null, 'agent_id is not reliably present on this event');
+    } finally {
+      server.close();
+    }
+  });
+
   it('tolerates non-JSON stdin: still notifies with null fields', async () => {
     const { server, hitPromise } = captureServer();
     const port = await listen(server);

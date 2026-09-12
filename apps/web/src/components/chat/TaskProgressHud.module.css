@@ -77,6 +77,10 @@
   width: 1em;
   text-align: center;
   font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
 }
 
 .labelCell {
@@ -136,9 +140,44 @@
   white-space: nowrap;
 }
 
-.stateDone { color: var(--color-success, #3fb950); }
-.stateRunning { color: var(--color-primary); }
-.statePending { color: var(--text-gray); }
+/* Collapsed-strip dot row: dots never shrink or wrap; .current yields first
+   (it already ellipsizes), dots clip last. The ✓ done/total count keeps
+   reporting the true total, so clipping never hides the goal. */
+.dots {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow: hidden;
+}
+
+/* One 16-unit SVG (ring + optional check) scaled by the local font size:
+   ~10px in the 12px strip and ~9px in the 11px row cell. */
+.dot {
+  flex: 0 0 auto;
+  display: block;
+  width: 0.82em;
+  height: 0.82em;
+}
+
+.dotRing { fill: none; stroke: currentColor; stroke-width: 1.6; }
+
+/* The check is punched out of the filled disc in the bar's own surface color,
+   so it stays legible on both light and dark themes. */
+.dotCheck {
+  fill: none;
+  stroke: var(--bg-container);
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dotDone { color: var(--text-muted); }
+.dotDone .dotRing { fill: var(--text-muted); stroke: var(--text-muted); }
+.dotRunning { color: var(--color-primary); }
+.dotRunning .dotRing { fill: currentColor; stroke: currentColor; }
+.dotPending { color: var(--text-muted); }
 
 .statePulse { animation: ccvTaskHudPulse 1.1s ease-in-out infinite; }
 
@@ -156,6 +195,7 @@
   .wrap { padding: 2px 21px 6px; }
   .rows { max-height: 30vh; }
   .doing { display: none; }
+  .dots { gap: 2px; }
 }
 
 /* Pad mode restores the desktop composer formula, same as .chatInputBar. */

@@ -10,7 +10,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { applyTaskEvent, resetTasks, getTaskSnapshot, shouldResetTasks, __resetForTests } from '../server/lib/task-state.js';
+import { applyTaskEvent, resetTasks, getTaskSnapshot, shouldResetTasks, shouldResetTasksOnPrompt, __resetForTests } from '../server/lib/task-state.js';
 
 beforeEach(() => __resetForTests());
 
@@ -167,6 +167,91 @@ describe('lib/task-state.js', () => {
       assert.equal(shouldResetTasks({ source: 'compact' }, 'sess-1'), false);
       assert.equal(shouldResetTasks(null, 'sess-1'), false);
       assert.equal(shouldResetTasks({}, 'sess-1'), false);
+    });
+  });
+
+  describe('UserPromptSubmit (new-prompt reset)', () => {
+    const prompt = (over = {}) => ({
+      hookEventName: 'UserPromptSubmit',
+      sessionId: 'sess-1',
+      ...over,
+    });
+
+    it('main-session prompt clears the list and the session tag', () => {
+      applyTaskEvent(created({ taskId: '1' }));
+      applyTaskEvent(created({ taskId: '2', taskSubject: 'two' }));
+      applyTaskEvent(prompt());
+      const snap = getTaskSnapshot();
+      assert.equal(snap.tasks.length, 0);
+      assert.equal(snap.sessionId, null);
+    });
+
+    it('foreign-session prompt keeps the list and the session tag', () => {
+      applyTaskEvent(created({ sessionId: 'main-sess' }));
+      applyTaskEvent(prompt({ sessionId: 'other-sess' }));
+      const snap = getTaskSnapshot();
+      assert.equal(snap.tasks.length, 1, 'foreign prompt must not wipe the shared list');
+      assert.equal(snap.sessionId, 'main-sess', 'foreign prompt must not move the session tag');
+    });
+
+    it('prompt carrying agentId never clears (defensive: agent_id not reliably present)', () => {
+      applyTaskEvent(created());
+      applyTaskEvent(prompt({ agentId: 'a1' }));
+      assert.equal(getTaskSnapshot().tasks.length, 1);
+    });
+
+    it('prompt without sessionId never clears (cannot prove ownership)', () => {
+      applyTaskEvent(created());
+      applyTaskEvent(prompt({ sessionId: undefined }));
+      applyTaskEvent({ hookEventName: 'UserPromptSubmit' });
+      assert.equal(getTaskSnapshot().tasks.length, 1);
+    });
+
+    it('prompt on an empty list does not throw', () => {
+      applyTaskEvent(prompt());
+      assert.equal(getTaskSnapshot().tasks.length, 0);
+    });
+
+    it('after a prompt reset, a TaskUpdate rebuilds a stub for tasks the model still uses', () => {
+      applyTaskEvent(created({ taskId: '5', taskSubject: 'keep working' }));
+      applyTaskEvent(taskUpdate({ taskId: '5', status: 'in_progress' }));
+      applyTaskEvent(prompt());
+      assert.equal(getTaskSnapshot().tasks.length, 0);
+      applyTaskEvent(taskUpdate({ taskId: '5', status: 'in_progress' }));
+      const [t] = getTaskSnapshot().tasks;
+      assert.equal(t.taskId, '5');
+      assert.equal(t.status, 'in_progress');
+      assert.equal(t.subject, null, 'stub semantics: text fields are not replayed');
+    });
+
+    it('shouldResetTasksOnPrompt truth table', () => {
+      assert.equal(shouldResetTasksOnPrompt({ sessionId: 's' }, 's'), true);
+      assert.equal(shouldResetTasksOnPrompt({ sessionId: 's' }, null), true);
+      assert.equal(shouldResetTasksOnPrompt({ sessionId: 'x' }, 's'), false);
+      assert.equal(shouldResetTasksOnPrompt({ agentId: 'a', sessionId: 's' }, 's'), false);
+      assert.equal(shouldResetTasksOnPrompt({}, 's'), false);
+      assert.equal(shouldResetTasksOnPrompt(null, 's'), false);
+      // The !sessionId guard, independent of the session-equality column: with
+      // no tracked session the equality check passes vacuously, so only this
+      // guard keeps a task-less/foreign prompt from wiping the list.
+      assert.equal(shouldResetTasksOnPrompt({}, null), false);
+      assert.equal(shouldResetTasksOnPrompt({ agentId: 'a' }, null), false);
+    });
+
+    it('null-tag window: a teammate prompt after a reset still clears (documented accepted trade-off)', () => {
+      // After a reset the session tag is null; a teammate TaskCreated carries
+      // agentId so it does NOT re-tag (only main-agent events do). A teammate
+      // UserPromptSubmit arriving in this window passes the gate (agent_id is
+      // not reliably present on prompt events) and clears the shared list.
+      // This locks the behavior so it is a conscious decision, not a surprise.
+      applyTaskEvent(created({ sessionId: 'sess-A', taskId: '1' }));
+      applyTaskEvent(prompt({ sessionId: 'sess-A' })); // main prompt → reset, tag = null
+      assert.equal(getTaskSnapshot().sessionId, null);
+      applyTaskEvent(created({ sessionId: 'sess-TM', agentId: 'tm-1', taskId: '2' })); // teammate task, tag stays null
+      assert.equal(getTaskSnapshot().sessionId, null);
+      applyTaskEvent(prompt({ sessionId: 'sess-TM' })); // teammate prompt, no agentId on the event
+      assert.equal(getTaskSnapshot().tasks.length, 0,
+        'documented: teammate prompt in the null-tag window clears the shared list');
     });
   });
 });
