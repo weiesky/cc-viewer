@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { t } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { isImageFile } from '../../utils/commandValidator';
+import { getFileIcon } from '../../utils/fileIcons';
 import { fetchAllRepos } from '../../utils/gitApi';
 import { buildGitTree } from '../../utils/gitTreeBuilder';
 import FullFileDiffView from '../git/FullFileDiffView';
@@ -23,31 +24,6 @@ const STATUS_LABELS = {
   '??': 'U',
 };
 
-const EXT_COLORS = {
-  js: '#e8d44d', jsx: '#61dafb', ts: '#3178c6', tsx: '#3178c6',
-  json: '#999', md: '#519aba', css: '#a86fd9', scss: '#cd6799',
-  html: '#e34c26', py: '#3572a5', go: '#00add8', rs: '#dea584',
-};
-
-function getFileIcon(name) {
-  const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
-  const color = EXT_COLORS[ext] || '#888';
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-      <polyline points="14 2 14 8 20 8"/>
-    </svg>
-  );
-}
-
-function getFolderIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="#c09553" stroke="none">
-      <path d="M2 6c0-1.1.9-2 2-2h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z"/>
-    </svg>
-  );
-}
-
 function TreeDir({ name, node, depth, selectedFile, selectedRepo, repoPath, onFileClick }) {
   const dirNames = Object.keys(node.dirs).sort();
   const files = [...node.files].sort((a, b) => a.name.localeCompare(b.name));
@@ -60,7 +36,7 @@ function TreeDir({ name, node, depth, selectedFile, selectedRepo, repoPath, onFi
               <polyline points="9 6 15 12 9 18"/>
             </svg>
           </span>
-          <span className={styles.icon}>{getFolderIcon()}</span>
+          <span className={styles.icon}>{getFileIcon('', 'directory')}</span>
           <span className={styles.dirName}>{name}</span>
         </div>
       )}

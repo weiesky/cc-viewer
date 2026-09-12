@@ -24,6 +24,7 @@ const FILE_EXPLORER = readFileSync(join(SRC, 'components', 'files', 'FileExplore
 const OPEN_FOLDER_ICON = readFileSync(join(SRC, 'components', 'common', 'OpenFolderIcon.jsx'), 'utf-8');
 const FILE_BROWSER_MODAL = readFileSync(join(SRC, 'components', 'files', 'FileBrowserModal.jsx'), 'utf-8');
 const FILE_ICONS = readFileSync(join(SRC, 'utils', 'fileIcons.jsx'), 'utf-8');
+const GLOBAL_CSS = readFileSync(join(SRC, 'global.css'), 'utf-8');
 
 // 与 quick-settings-i18n.test.js 的 localeBlockOf 同款。
 function localeBlockOf(key) {
@@ -72,15 +73,17 @@ describe('file browser modal i18n — all 18 locales', () => {
 });
 
 describe('FileExplorer remote fallback trigger wiring', () => {
-  it('computes isRemote from preferences._isLocal', () => {
+  it('computes isRemote from preferences._isLocal (used by context-menu items)', () => {
     assert.ok(FILE_EXPLORER.includes('preferences?._isLocal === false'),
       'FileExplorer must derive isRemote from preferences._isLocal');
   });
-  it('orange folder icon gets a remote-conditional onClick', () => {
-    assert.ok(FILE_EXPLORER.includes('onClick={isRemote ?'),
-      'OpenFolderIcon at the header must receive onClick={isRemote ? ... : undefined}');
+  it('orange folder icon opens the in-app browser for BOTH local and remote (no isRemote branch)', () => {
+    assert.ok(FILE_EXPLORER.includes('onClick={() => setFileBrowserOpen(true)}'),
+      'OpenFolderIcon at the header must open the FileBrowserModal unconditionally');
+    assert.ok(!FILE_EXPLORER.includes('onClick={isRemote ?'),
+      'the folder icon onClick must no longer branch on isRemote');
     assert.ok(FILE_EXPLORER.includes('setFileBrowserOpen(true)'),
-      'remote onClick must open the FileBrowserModal');
+      'onClick must open the FileBrowserModal');
   });
   it('renders FileBrowserModal and shared HtmlPreviewModal', () => {
     assert.ok(FILE_EXPLORER.includes('import FileBrowserModal'), 'FileBrowserModal import missing');
@@ -279,6 +282,94 @@ describe('fileIcons size param', () => {
   it('getFileIcon has size = 14 default', () => {
     assert.ok(FILE_ICONS.includes('getFileIcon(name, type, size = 14)'),
       'getFileIcon must accept an optional size defaulting to 14');
+  });
+});
+
+describe('fileIcons type-glyph system', () => {
+  it('directory branch returns the solid folder BEFORE any name parsing', () => {
+    const dirIdx = FILE_ICONS.indexOf("if (type === 'directory')");
+    const catIdx = FILE_ICONS.indexOf('getFileType(name, type)');
+    assert.ok(dirIdx >= 0, 'directory guard missing');
+    assert.ok(catIdx > dirIdx, 'directory branch must precede category classification (GitChanges empty-name call)');
+  });
+  it('classifies via fileTypes.getFileType and colors via getExt', () => {
+    assert.ok(FILE_ICONS.includes("import { getFileType, getExt } from './fileTypes'"),
+      'fileIcons must source classification from fileTypes');
+    assert.ok(FILE_ICONS.includes('getFileType(name, type)'), 'classification call missing');
+    assert.ok(FILE_ICONS.includes('getExt(name)'), 'ext extraction call missing');
+  });
+  it('shared base document shape uses strokeWidth 2 + round caps (house style)', () => {
+    assert.ok(FILE_ICONS.includes('strokeWidth="2"'), 'base shape must use strokeWidth 2 (upgraded from 1.5)');
+    assert.ok(FILE_ICONS.includes('strokeLinecap="round"'), 'round linecap missing');
+    assert.ok(FILE_ICONS.includes('strokeLinejoin="round"'), 'round linejoin missing');
+  });
+  it('defines glyphs for the major non-code categories', () => {
+    // Match the exact `key: (c) =>` glyph-factory shape so a renamed/removed
+    // entry (e.g. `archive_REMOVED:`) cannot still satisfy a loose substring.
+    for (const key of ['code', 'markup', 'data', 'document', 'image', 'video', 'audio', 'archive', 'pdf', 'font', 'binary']) {
+      assert.ok(FILE_ICONS.includes(`${key}: (c) =>`), `GLYPH missing ${key}`);
+    }
+    // office takes (c, ext) for its sub-type badge, assert its exact shape too.
+    assert.ok(FILE_ICONS.includes('office: (c, ext) =>'), 'GLYPH missing office');
+  });
+  it('badge glyphs knock out against the surface color', () => {
+    assert.ok(FILE_ICONS.includes('var(--bg-container)'),
+      'pdf/office badge interiors must knock out to the surface color, not a hardcoded color');
+  });
+  it('mobile copies are unified onto the shared module (no drifted EXT_COLORS)', () => {
+    const MOBILE_EXPLORER = readFileSync(join(SRC, 'components', 'mobile', 'MobileFileExplorer.jsx'), 'utf-8');
+    const MOBILE_GIT = readFileSync(join(SRC, 'components', 'mobile', 'MobileGitDiff.jsx'), 'utf-8');
+    for (const [label, src] of [['MobileFileExplorer', MOBILE_EXPLORER], ['MobileGitDiff', MOBILE_GIT]]) {
+      assert.ok(src.includes("from '../../utils/fileIcons'"), `${label} must import the shared fileIcons`);
+      assert.ok(!src.includes('const EXT_COLORS'), `${label} must not keep a local EXT_COLORS copy`);
+      assert.ok(!src.includes('#c09553'), `${label} must not keep the hardcoded folder color`);
+    }
+  });
+});
+
+describe('fileIcons theme-adaptive colors', () => {
+  // Extract the three color-table blocks and assert none carry a hardcoded hex
+  // — every value must be a var(--file-icon-*) reference so the SAME JSX token
+  // resolves per-theme in global.css (no runtime theme check; see teammateAvatars).
+  function tableBlock(name) {
+    const m = FILE_ICONS.match(new RegExp(`const ${name} = \\{([\\s\\S]*?)\\};`));
+    return m ? m[1] : null;
+  }
+  it('EXT_COLORS / CATEGORY_COLORS / OFFICE_COLORS hold no hardcoded hex, only var(--file-icon-*)', () => {
+    for (const name of ['EXT_COLORS', 'CATEGORY_COLORS', 'OFFICE_COLORS']) {
+      const block = tableBlock(name);
+      assert.ok(block, `${name} table not found`);
+      assert.ok(!/#[0-9a-fA-F]{3,6}\b/.test(block), `${name} must not contain hardcoded hex colors`);
+      assert.ok(block.includes('var(--file-icon-'), `${name} must reference var(--file-icon-*)`);
+    }
+  });
+  it('fallback color is a var, not a hardcoded hex', () => {
+    assert.ok(!FILE_ICONS.includes("|| '#888888'"), 'hardcoded #888888 fallback must be replaced');
+    assert.ok(FILE_ICONS.includes("|| 'var(--file-icon-fallback)'"), 'fallback must be var(--file-icon-fallback)');
+  });
+  it('core --file-icon-* variables are defined in BOTH the dark and light blocks of global.css', () => {
+    const dark = GLOBAL_CSS.match(/:root, \[data-theme="dark"\] \{([\s\S]*?)\n\}/);
+    const light = GLOBAL_CSS.match(/\[data-theme="light"\] \{([\s\S]*?)\n\}/);
+    assert.ok(dark && light, 'could not isolate dark/light theme blocks');
+    for (const v of ['--file-icon-js', '--file-icon-pdf', '--file-icon-office-word',
+      '--file-icon-office-excel', '--file-icon-office-ppt', '--file-icon-fallback',
+      '--file-icon-archive', '--file-icon-video']) {
+      assert.ok(dark[1].includes(`${v}:`), `dark block missing ${v}`);
+      assert.ok(light[1].includes(`${v}:`), `light block missing ${v}`);
+    }
+  });
+  it('dark and light values differ for contrast-critical colors (office/js)', () => {
+    function valOf(block, v) {
+      const m = block.match(new RegExp(`${v.replace('-', '\\-')}\\s*:\\s*([^;]+);`));
+      return m ? m[1].trim() : null;
+    }
+    const dark = GLOBAL_CSS.match(/:root, \[data-theme="dark"\] \{([\s\S]*?)\n\}/)[1];
+    const light = GLOBAL_CSS.match(/\[data-theme="light"\] \{([\s\S]*?)\n\}/)[1];
+    for (const v of ['--file-icon-office-word', '--file-icon-office-excel', '--file-icon-js']) {
+      const d = valOf(dark, v), l = valOf(light, v);
+      assert.ok(d && l, `${v} must have both values`);
+      assert.notEqual(d, l, `${v} must differ between dark and light for contrast`);
+    }
   });
 });
 

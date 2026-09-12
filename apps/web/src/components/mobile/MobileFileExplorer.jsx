@@ -2,36 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { t } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { isImageFile } from '../../utils/commandValidator';
+import { getFileIcon } from '../../utils/fileIcons';
 import { loadExpandedPaths, saveExpandedPaths } from '../../utils/fileExpandedPathsStorage';
 import { useSessionStoragePersistedSet } from '../../hooks/useSessionStoragePersistedSet';
 import FileContentView from '../files/FileContentView';
 import ImageViewer from '../viewers/ImageViewer';
 import styles from './MobileFileExplorer.module.css';
-
-const EXT_COLORS = {
-  js: '#e8d44d', jsx: '#61dafb', ts: '#3178c6', tsx: '#3178c6',
-  json: '#999', md: '#519aba', css: '#a86fd9', scss: '#cd6799',
-  html: '#e34c26', py: '#3572a5', go: '#00add8', rs: '#dea584',
-};
-
-function getFileIcon(name) {
-  const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
-  const color = EXT_COLORS[ext] || '#888';
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-      <polyline points="14 2 14 8 20 8"/>
-    </svg>
-  );
-}
-
-function getFolderIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="#c09553" stroke="none">
-      <path d="M2 6c0-1.1.9-2 2-2h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z"/>
-    </svg>
-  );
-}
 
 function MobileTreeNode({ item, path, depth, expandedPaths, onToggleExpand, currentFile, onFileClick }) {
   const [children, setChildren] = useState(null);
@@ -77,7 +53,7 @@ function MobileTreeNode({ item, path, depth, expandedPaths, onToggleExpand, curr
           <span style={{ width: 16, flexShrink: 0 }} />
         )}
         <span className={styles.icon}>
-          {isDir ? getFolderIcon() : getFileIcon(item.name)}
+          {isDir ? getFileIcon(item.name, 'directory') : getFileIcon(item.name)}
         </span>
         <span className={styles.fileName}>{item.name}</span>
         {loading && <span style={{ fontSize: 10, color: 'var(--text-disabled)' }}>...</span>}
