@@ -468,7 +468,7 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
       <div className={styles.header}>
         <Dropdown menu={{ items: headerMenuItems, onClick: handleHeaderMenuClick }} trigger={['contextMenu']}>
           <span className={styles.headerTitle}>
-            <OpenFolderIcon apiEndpoint={apiUrl('/api/open-project-dir')} title={t('ui.openProjectDir')} size={14} onClick={isRemote ? () => setFileBrowserOpen(true) : undefined} />
+            <OpenFolderIcon apiEndpoint={apiUrl('/api/open-project-dir')} title={t('ui.openProjectDir')} size={14} onClick={() => setFileBrowserOpen(true)} />
             {t('ui.fileExplorer')}
             {/* 手动刷新：外部 mv/cp/系统级文件变化等 tool_result 感知不到的场景下用户兜底；
                 复用既有 refreshTrigger++ 链路（ChatView state.fileExplorerRefresh），TreeNode
