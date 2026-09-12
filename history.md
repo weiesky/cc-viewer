@@ -2,12 +2,25 @@
 
 ## Unreleased
 
+## 1.8.14
+
+- feat(files): **文件类型图标颜色做主题(暗色/亮色)适配** — 图标色板由硬编码 hex 改为一组 `--file-icon-*` CSS 变量(fileIcons.jsx 只写变量名,global.css 暗/亮两块各定义一次,与 avatar-bg 同模式),暗色保持品牌原色、亮色加深/调饱和提升对比,Office(Word/Excel/PPT)等在暗色主题下不再发闷;切换主题即时生效、无需重渲染。Coverage: `file-browser-modal.test.js`.
+- feat(files): **文件浏览器按文件类型渲染统一风格 SVG 图标** — 所有文件共享「折角文档」母形（strokeWidth 2 + 圆角，与全库图标一致）,内部按类型嵌入符号：代码 `</>`、标记 `<>`、数据 `{}`、文档横线、图片山峦、视频播放三角、音频音符、压缩包拉链、PDF/Office 右下徽章（按 Word/Excel/PPT 分色）、字体 A、二进制 01;压缩包/pdf/office/音视频/字体/二进制不再全是同一个灰色文档。分类逻辑抽为 `fileTypes.js` 纯函数（dotfile/特殊文件名/大小写/双后缀）；移动端两份漂移副本（MobileFileExplorer/MobileGitDiff）收编到共享模块，文件夹色统一为 `--color-accent-yellow`。Coverage: `file-types.test.js`, `file-browser-modal.test.js`.
+- feat(files): **文件浏览器「打开项目文件夹」图标统一弹出内置 web 文件浏览器** — 不再区分本地/远端,点击标题栏橙色文件夹图标一律弹出应用内 FileBrowserModal(此前本地访问调服务器端 OS 文件管理器,无 GUI 环境下无反应);tooltip 文案同步改为「浏览项目文件」(×18 locales)。Coverage: `file-browser-modal.test.js`.
+- feat(chat): **任务列表 HUD 折叠条新增逐任务进度圆点** — 当前任务文案后渲染一列 SVG 圆点：已完成=灰色实心圆内打勾、进行中=主色实心圆+脉冲、待处理=空心圆；展开列表状态图标统一换用同一组件（完成态由绿勾改为灰圆打勾）。Coverage: `task-progress-hud.test.js`.
+- feat(chat): **新 Prompt 到达时任务列表自动刷新** — 新增 `UserPromptSubmit` hook,新 prompt 提交时清空服务端任务表并广播空快照（带 session 相等门控防 teammate 误清）,模型继续用的任务由 TaskUpdate stub 重建。Coverage: `task-state.test.js`, `ensure-hooks-tasks.test.js`, `task-bridge.test.js`.
+
+## 1.8.13
+
 - fix(tests): **server.test.js 的 EPIPE flake(CI 上 `write EPIPE` uncaught)** — `after` hook 改为 await `stopViewer()` 返回的 `_doStop()` promise（保证 SSE client `end()` 与 `closeAllConnections()` 完成后再 `rmSync` 临时目录），取代原来 200ms 固定等待；CI 高负载下原等待过短，残留 SSE res 在 teardown 后被写入导致 uncaughtException。
 - feat(files): **远程文件浏览弹窗支持项目内拖拽移动** — 右侧网格的文件/文件夹可像 OS 文件管理器一样拖拽换目录：拖到网格文件夹单元格或左侧目录树文件夹 = 移入该目录（文件夹悬停 500ms 自动展开，自身/子目录/同目录守卫防呆）；拖到面包屑任意段或树空白区 = 移到对应目录/项目根。内部移动逻辑抽取为共享模块 `fileMove.js`（侧边栏同步切换），drop 目标逻辑收敛为 `useFileDropTarget`（行/单元格，上传+移动双负载）与 `useInternalMoveTarget`（面包屑/树空白）。Coverage: `file-move.test.js`, `file-browser-modal.test.js`.
 - fix(server): **`/api/move-file` 接受 `toDir: ''`（移到项目根）** — 此前被 `!toDir` 误判 400，导致侧边栏文档化的「拖树内文件到空白 = 移到根」从未生效；现 `''` 合法（仅 undefined/null 视为缺失）。Coverage: `api-files-fs.test.js`.
 - feat(files): **远程文件浏览弹窗支持文件上传（按钮 + 分区拖拽）** — 工具栏最右新增上传按钮（隐藏多选 file input）上传到当前浏览目录；拖拽按落点解析目标：左侧目录树拖到文件夹节点 / 右侧网格拖到文件夹单元格 → 上传到该文件夹，网格空白 → 上传到当前目录（根 = 项目根，与侧栏空白处一致）；上传管线抽取为共享模块 `importFiles.js`（FileExplorer 与弹窗共用，含目录树展开、3 并发、汇总 toast），成功后弹窗与侧栏双端刷新。新增 i18n `ui.fileBrowserModal.upload`（×18 locales）。
 - feat(upload): **全局拖拽改为分区响应遮罩 + 弹层打开时屏蔽全局上传** — 桌面端全屏 overlay 拆为分区反馈：仅「对话+终端」（合并为一个 `data-drop-zone="chat"` 响应区，行为一致，落入聊天）与「文件浏览器侧栏」（接上既有外部拖入高亮）在拖拽悬停时点亮遮罩，非响应区无遮罩且落文件不再静默上传；antd Modal/Drawer 等弹层打开时（按事件 target 判定）全局拖拽整体静默，避免与弹窗自身拖放冲突；树内文件移动不再误亮聊天遮罩。Mobile 沿用旧全屏 overlay 不变。Coverage: `drag-drop-zones.test.js`, `files-import.test.js`, `file-browser-modal.test.js`.
 - feat(files): **远程文件浏览弹窗支持应用内右键菜单** — 树行/网格单元格/网格空白区域右键均弹出与侧栏完全一致的菜单（菜单定义与动作抽取为共享模块 `fileContextMenu.js` / `fileContextMenuActions.jsx`，侧栏 TreeNode、侧栏 header、弹窗三处共用，后续按文件类型定制自动多端同步）；弹窗内重命名走 Modal.confirm 输入框；新建/重命名/删除后弹窗与侧栏双端刷新；"附加到对话"/"插入路径到对话"经 FileExplorer 透传至弹窗。侧栏本地行为不变。Coverage: `file-context-menu.test.js`, `file-browser-modal.test.js`.
+
+## 1.8.12
+
 - feat(files): **远程/云容器访问时,文件浏览器标题栏的"打开项目文件夹"图标改为弹出应用内 web 文件浏览器**(此前静默调用服务器端 OS 文件管理器,无 GUI 环境下无任何反应)——基于 `/api/preferences` 的 `_isLocal === false` 判定,本地访问行为不变。弹窗为大尺寸 Modal:左侧目录树(懒加载、与侧栏同款数据流)+ 右侧 Finder 式图标平铺,面包屑/上一级/刷新齐全,浏览范围限制在项目根目录内;单击选中、双击进入文件夹,双击文件在弹窗内预览(图片/代码查看器内嵌,html 走抽取共享的 `HtmlPreviewModal` 沙箱 iframe,office/pdf 远程环境下自动改为浏览器下载到本地);git 忽略项两栏均置灰。每次重开自动刷新目录快照。本地行为零变化。新增 i18n `ui.fileBrowserModal.*` ×6(×18 locales)。Coverage: `file-browser-modal.test.js`.
 
 ## 1.8.11

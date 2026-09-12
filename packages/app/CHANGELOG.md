@@ -1,5 +1,14 @@
 # cc-viewer
 
+## 1.8.14
+
+### Patch Changes
+
+- File explorer: the header "open project folder" icon now always opens the in-app web file browser (FileBrowserModal) for both local and remote access, instead of shelling out to the OS file manager on local access; tooltip updated to "Browse project files" (18 locales).
+- File-type icons: colors are now theme-adaptive (dark/light) via a set of `--file-icon-*` CSS variables — fileIcons.jsx references the variables and global.css defines them per theme (same pattern as avatar colors), so Office (Word/Excel/PPT) and other brand hues stay legible in the dark theme and switch instantly without a re-render.
+- File browser: per-file-type SVG icons on a shared folded-document base shape (strokeWidth 2, house style) — code/markup/data/document/image/video/audio/archive/pdf/office/font/binary each get an embedded glyph, replacing the single generic grey document for archives, PDFs, office, media, fonts and binaries. Classification extracted to a pure `fileTypes.js`; the two drifted mobile copies (MobileFileExplorer/MobileGitDiff) now reuse the shared module with the unified folder color.
+- Task-list HUD: per-task progress dots on the collapsed strip (grey checked disc = done, pulsing primary disc = running, hollow ring = pending; expanded rows share the same dot component), and the task list now resets on each new user prompt (new UserPromptSubmit managed hook → server-side reset with a session-equality gate; tasks the model keeps using are rebuilt via TaskUpdate stubs).
+
 ## 1.8.13
 
 ### Patch Changes
