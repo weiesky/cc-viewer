@@ -724,6 +724,23 @@ describeCli('server API endpoints', { concurrency: false }, () => {
 
     const frames = await new Promise((resolve, reject) => {
       const received = [];
+      let done = false;
+      let settleTimer = null;
+      let fireTimer = null;
+      let resRef = null;
+      // Finish by destroying the RESPONSE (drops incoming data locally, lets
+      // the socket close via FIN) rather than req.destroy() — an abrupt RST
+      // would leave the server's SSE res writable long enough for the 120ms
+      // debounced task_update broadcast to write to a dead socket after the
+      // test ends → "write EPIPE" uncaughtException (the 1.8.13 flake).
+      const finish = () => {
+        if (done) return;
+        done = true;
+        if (settleTimer) clearTimeout(settleTimer);
+        if (fireTimer) clearTimeout(fireTimer);
+        try { resRef && resRef.destroy(); } catch {}
+        resolve(received);
+      };
       const req = request({
         hostname: '127.0.0.1',
         port,
@@ -731,8 +748,10 @@ describeCli('server API endpoints', { concurrency: false }, () => {
         method: 'GET',
         headers: { 'Accept': 'text/event-stream' },
       }, (res) => {
+        resRef = res;
         let buf = '';
         res.on('data', (chunk) => {
+          if (done) return;
           buf += chunk.toString();
           let idx;
           while ((idx = buf.indexOf('\n\n')) !== -1) {
@@ -747,23 +766,23 @@ describeCli('server API endpoints', { concurrency: false }, () => {
               // Resolve once we have seen a frame with an EMPTY tasks array —
               // that is the reset broadcast, regardless of preceding frames.
               if (received.some(f => Array.isArray(f.tasks) && f.tasks.length === 0)) {
-                req.destroy();
-                resolve(received);
+                finish();
                 return;
               }
             }
           }
         });
-        res.on('error', () => resolve(received));
+        res.on('error', finish);
+        res.on('close', finish);
       });
-      req.on('error', () => resolve(received));
+      req.on('error', finish);
       req.end();
       // Let the SSE stream establish (and skip the connect-time snapshot replay),
       // then fire the prompt reset through the real route.
-      setTimeout(() => {
+      fireTimer = setTimeout(() => {
         postTaskEvent({ hookEventName: 'UserPromptSubmit', sessionId: 'sess-int' }).catch(() => {});
       }, 150);
-      setTimeout(() => { req.destroy(); resolve(received); }, 3000);
+      settleTimer = setTimeout(finish, 3000);
     });
 
     const empty = frames.find(f => Array.isArray(f.tasks) && f.tasks.length === 0);

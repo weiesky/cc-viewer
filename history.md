@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(tests): **server.test.js 的 UserPromptSubmit SSE 集成测试残留写 EPIPE flake** — 结束 SSE 订阅由 `req.destroy()`(abrupt RST,服务端 SSE res 残留可写,120ms debounce 广播向死 socket 写 → teardown 后 `write EPIPE` uncaught)改为 `res.destroy()`(本地弃数据、FIN 优雅关闭),并统一 `finish()` 清理定时器;对齐 48d6e0f3 的 EPIPE 修复思路。Coverage: `server.test.js`.
+
 ## 1.8.14
 
 - feat(files): **文件类型图标颜色做主题(暗色/亮色)适配** — 图标色板由硬编码 hex 改为一组 `--file-icon-*` CSS 变量(fileIcons.jsx 只写变量名,global.css 暗/亮两块各定义一次,与 avatar-bg 同模式),暗色保持品牌原色、亮色加深/调饱和提升对比,Office(Word/Excel/PPT)等在暗色主题下不再发闷;切换主题即时生效、无需重渲染。Coverage: `file-browser-modal.test.js`.
