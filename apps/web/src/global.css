@@ -135,6 +135,24 @@
   --avatar-bg-8:  #059669; --avatar-bg-9:  #e11d48; --avatar-bg-10: #0284c7; --avatar-bg-11: #dc2626;
   --avatar-bg-12: #65a30d; --avatar-bg-13: #ca8a04; --avatar-bg-14: #9333ea; --avatar-bg-15: #db2777;
   --avatar-bg-16: #6b7280; --avatar-bg-17: #1d4ed8; --avatar-bg-18: #b45309; --avatar-bg-19: #047857;
+  /* File-type icon colors (dark): brand/true hues, vivid against the dark surface.
+     Consumed by utils/fileIcons.jsx as var(--file-icon-*) so the SAME JSX color
+     token resolves per-theme — no runtime theme check (see teammateAvatars.js). */
+  --file-icon-js: #e8d44d; --file-icon-jsx: #61dafb; --file-icon-ts: #3178c6; --file-icon-tsx: #3178c6;
+  --file-icon-py: #3572a5; --file-icon-go: #00add8; --file-icon-rs: #dea584; --file-icon-rb: #cc342d;
+  --file-icon-java: #b07219; --file-icon-c: #a0a0a0; --file-icon-cpp: #f34b7d; --file-icon-h: #a0a0a0;
+  --file-icon-sh: #4eaa25; --file-icon-php: #777bb3; --file-icon-sql: #e38c00; --file-icon-vue: #41b883;
+  --file-icon-svelte: #ff3e00; --file-icon-kt: #7f52ff; --file-icon-swift: #f05138; --file-icon-lua: #6a6ad0;
+  --file-icon-r: #276dc3;
+  --file-icon-html: #e34c26; --file-icon-css: #a86fd9; --file-icon-less: #a86fd9; --file-icon-scss: #cd6799;
+  --file-icon-json: #999999; --file-icon-yml: #cb171e; --file-icon-toml: #999999;
+  --file-icon-md: #519aba; --file-icon-svg: #e34c26;
+  --file-icon-code: #888888; --file-icon-markup: #e34c26; --file-icon-data: #888888; --file-icon-document: #888888;
+  --file-icon-image: #a86fd9; --file-icon-video: #e84d8a; --file-icon-audio: #f2a93b; --file-icon-archive: #b58900;
+  --file-icon-pdf: #d32f2f; --file-icon-office: #2b579a; --file-icon-font: #8e6dbf; --file-icon-binary: #6b7280;
+  --file-icon-plain: #888888;
+  --file-icon-office-word: #2b579a; --file-icon-office-excel: #217346; --file-icon-office-ppt: #d24726;
+  --file-icon-fallback: #888888;
   /* 单色 logo（GLM/Kimi/MiniMax）随主题反转：dark=白、light=黑 */
   --model-logo-mono: #fff;
   /* Input bar / sticky */
@@ -295,6 +313,23 @@
   --avatar-bg-8:  #72b8a2; --avatar-bg-9:  #d6b7be; --avatar-bg-10: #8fb5c8; --avatar-bg-11: #d6bbbb;
   --avatar-bg-12: #a4bc83; --avatar-bg-13: #cab893; --avatar-bg-14: #d6cae2; --avatar-bg-15: #d6bbc7;
   --avatar-bg-16: #bbbcbf; --avatar-bg-17: #b2bad2; --avatar-bg-18: #c2a28a; --avatar-bg-19: #5ead97;
+  /* File-type icon colors (light): deepened/saturated so they hold contrast on
+     the white surface (pale dark-theme hues like js-yellow would wash out). */
+  --file-icon-js: #b7a000; --file-icon-jsx: #1fa9c9; --file-icon-ts: #2a5f9e; --file-icon-tsx: #2a5f9e;
+  --file-icon-py: #2b5a82; --file-icon-go: #0288ad; --file-icon-rs: #b0714a; --file-icon-rb: #a52a24;
+  --file-icon-java: #8d5a14; --file-icon-c: #555555; --file-icon-cpp: #c93a63; --file-icon-h: #555555;
+  --file-icon-sh: #3d871d; --file-icon-php: #5f6296; --file-icon-sql: #b57000; --file-icon-vue: #33956a;
+  --file-icon-svelte: #cc3200; --file-icon-kt: #6642cc; --file-icon-swift: #c0402c; --file-icon-lua: #000080;
+  --file-icon-r: #1f579c;
+  --file-icon-html: #b63d1e; --file-icon-css: #8759b0; --file-icon-less: #8759b0; --file-icon-scss: #a4527a;
+  --file-icon-json: #7a7a7a; --file-icon-yml: #a21218; --file-icon-toml: #7a7a7a;
+  --file-icon-md: #417a95; --file-icon-svg: #b63d1e;
+  --file-icon-code: #6b6b6b; --file-icon-markup: #b63d1e; --file-icon-data: #6b6b6b; --file-icon-document: #6b6b6b;
+  --file-icon-image: #8759b0; --file-icon-video: #b93a6e; --file-icon-audio: #c2872f; --file-icon-archive: #8f6c00;
+  --file-icon-pdf: #a82828; --file-icon-office: #224578; --file-icon-font: #7157a2; --file-icon-binary: #565b64;
+  --file-icon-plain: #6b6b6b;
+  --file-icon-office-word: #224578; --file-icon-office-excel: #1a5c38; --file-icon-office-ppt: #a8391e;
+  --file-icon-fallback: #6b6b6b;
   --model-logo-mono: #000;
   /* Input bar / sticky */
   --bg-input-bar: #ffffff;
