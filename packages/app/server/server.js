@@ -66,18 +66,32 @@ function execWithStdin(cmd, args, input, options) {
     const child = spawn(cmd, args, { ...options, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     let stdout = '';
     let stderr = '';
+    let settled = false;
+    const settle = (fn, val) => { if (!settled) { settled = true; fn(val); } };
     child.stdout.on('data', d => { stdout += d; });
     child.stderr.on('data', d => { stderr += d; });
-    child.on('error', reject);
+    child.on('error', (err) => settle(reject, err));
     child.on('close', code => {
       // git check-ignore exits 1 when no files are ignored — treat as success
-      resolve(stdout);
+      settle(resolve, stdout);
     });
+    // A child that exits before consuming its stdin (git check-ignore outside a
+    // repo, a killed-on-timeout child, a missing binary) closes the read end of
+    // the stdin pipe; a subsequent write then throws `write EPIPE`. Without an
+    // 'error' listener on child.stdin that EPIPE escapes as an uncaughtException
+    // (the recurring server.test.js teardown flake) — swallow it into the
+    // promise's settle path instead.
+    child.stdin.on('error', () => settle(resolve, stdout));
     if (options?.timeout) {
-      setTimeout(() => { try { child.kill(); } catch {} reject(new Error('timeout')); }, options.timeout);
+      setTimeout(() => { try { child.kill(); } catch {} settle(reject, new Error('timeout')); }, options.timeout);
     }
-    child.stdin.write(input);
-    child.stdin.end();
+    try {
+      child.stdin.write(input);
+      child.stdin.end();
+    } catch {
+      // Synchronous EPIPE/ERR_STREAM_DESTROYED when the child already exited.
+      settle(resolve, stdout);
+    }
   });
 }
 import { _initPromise, _projectName, _logDir, _v2Writer, streamingState, resetStreamingState, PROFILE_PATH, RETRY_CONFIG_PATH, _retryConfigState, setLivePort, getImLiveText, resetImLiveText, markSessionStart } from './interceptor.js';
