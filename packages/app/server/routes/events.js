@@ -6,7 +6,7 @@ import { LOG_DIR } from '../../findcc.js';
 import { streamRawEntriesAsync } from '../lib/log-stream.js';
 import { migrationStatus } from '../lib/v2/migrate-prompt.js';
 import { reportSwallowed } from '@ccv/core/error-report';
-import { sseHead, sseWrite, needsDrain, wireEnd, awaitWireDrain } from '../lib/wire-compress.js';
+import { sseHead, sseWrite, needsDrain, wireEnd, awaitWireDrain, isWireV3Enabled } from '../lib/wire-compress.js';
 import { readV2ColdBundle } from '../lib/v2/meta-rows.js';
 import { readV2SingleEntry } from '../lib/v2/adapter.js';
 import { enrichRawIfNeeded } from '../lib/enrich-plan-input.js';
@@ -248,7 +248,11 @@ async function events(req, res, parsedUrl, isLocal, deps) {
 
   // S6b: the cold-load source is the current v2 session dir when the v2
   // writer is active (adapter stream), else the v1 file.
-  const coldLoadResult = v3Cold ? null : await streamRawEntriesAsync(getLiveLogSource(), async (raw) => {
+  // serveInFlight follows the wire: the legacy entry stream ships the
+  // in-flight placeholder, which the client batch gate still blocks — the
+  // previous conversation is the better cold load there (interceptor.js
+  // getLiveLogSource header comment).
+  const coldLoadResult = v3Cold ? null : await streamRawEntriesAsync(getLiveLogSource({ serveInFlight: !!deps.wireV3 }), async (raw) => {
     // 直接发送原始 JSON 字符串，不做 parse/reconstruct/stringify
     // ExitPlanMode V2 空 input 的条目按需补全 plan / planFilePath，其它原样透传
     if (res.destroyed || !res.writable) return;
@@ -438,7 +442,9 @@ async function requests(req, res) {
   try {
     sseWrite(res, '[');
     let first = true;
-    await streamRawEntriesAsync(getLiveLogSource(), (raw) => {
+    // No deps bag on this route — read the wire flag from the same env source
+    // server.js uses (isWireV3Enabled), keeping serveInFlight wire-consistent.
+    await streamRawEntriesAsync(getLiveLogSource({ serveInFlight: isWireV3Enabled(process.env.CCV_WIRE_V3) }), (raw) => {
       if (!first) sseWrite(res, ',');
       sseWrite(res, enrichRawIfNeeded(raw));
       first = false;

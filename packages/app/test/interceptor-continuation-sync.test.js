@@ -9,9 +9,10 @@
  * The adoption decision itself is pinned in v2-continuation-adopt.test.js by
  * driving the writer directly; THIS file pins the upper half of the chain —
  * that the writer actually receives the {continued, fork, resume} the launch
- * implies — plus the getLiveLogSource cold-load fallback end-to-end (an
- * in-flight current session must fall back to the previous conversation, not
- * re-select itself).
+ * implies — plus the getLiveLogSource cold-load source end-to-end (an
+ * in-flight current session is served directly since 2026-09-13 — its conv
+ * prefix is renderable on the v3 wire — and the fallback skips foreign-live
+ * sessions).
  *
  * Module state note: the interceptor is a singleton; this file owns a fresh
  * process (node --test runs each file in its own child), envs are locked to a
@@ -91,10 +92,11 @@ describe('env channels re-sync on the next launch', () => {
 // ---------------------------------------------------------------------------
 // getLiveLogSource end-to-end: with a previous COMPLETED session P on disk and
 // the CURRENT session N still in-flight (main req written, no done), the
-// cold-load source must be P — not N, which has nothing renderable yet. This
-// is the non-adopted (`ccv` without -c) blank-flash path.
+// cold-load source is N itself since 2026-09-13 (refresh-blank fix): the v3
+// wire ships N's full conv prefix (written at request initiation), so N IS
+// renderable and serving it beats falling back to the previous conversation.
 // ---------------------------------------------------------------------------
-describe('getLiveLogSource falls back past the in-flight current session', () => {
+describe('getLiveLogSource serves the in-flight current session', () => {
   const SID_P = 'eeeeeeee-89ab-4cde-8f01-23456789abcd';
   const SID_N = 'ffffffff-89ab-4cde-8f01-23456789abcd';
   const uid = (sid) => JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: sid });
@@ -112,7 +114,7 @@ describe('getLiveLogSource falls back past the in-flight current session', () =>
     mainAgent: true, requestId: `r${Math.random()}`,
   });
 
-  it('serves the previous completed session while the current one has no done, then switches', async () => {
+  it('serves the in-flight current session (renderable via v3), not the previous one', async () => {
     interceptor.initForWorkspace(join(tmpDir, 'ws', 'projLive')); // plain launch (envs cleared above)
     const w = writer();
 
@@ -131,15 +133,51 @@ describe('getLiveLogSource falls back past the in-flight current session', () =>
     await w.flush();
     const nDir = w.currentSessionDir();
     assert.ok(nDir && nDir.includes(SID_N), 'the writer moved on to N');
-    assert.equal(interceptor.getLiveLogSource(), pDir,
-      'cold load falls back to P — the fallback must not re-select the in-flight N it just rejected');
+    assert.equal(interceptor.getLiveLogSource(), nDir,
+      'in-flight current session is served — its conv prefix is renderable on the v3 wire (2026-09-13)');
 
-    // N completes → it becomes the cold-load source.
+    // N completes → still the cold-load source (completed-turn gate).
     const e3 = entryOf(SID_N, [{ role: 'user', content: 'n' }, { role: 'assistant', content: 'r' }, { role: 'user', content: 'n2' }], '2026-07-14T10:01:00.000Z');
     const h3 = w.ingestRequest(e3, e3.body.messages);
     w.ingestCompletion(h3, { ...e3, response: { status: 200, headers: {}, body: { content: [], usage: { input_tokens: 1, output_tokens: 1 } } }, duration: 1 });
     await w.flush();
     assert.equal(interceptor.getLiveLogSource(), nDir, 'once N has a completed main turn it is served');
+  });
+
+  it('fallback lands on the prior completed session, not the sub-only current dir', () => {
+    // The current dir holds NO main req (a background sub request moved the
+    // writer's pointer) while a completed prior session exists on disk. The
+    // fallback must serve the prior conversation. NOTE: today the picker's own
+    // sessionHasMainTurn gate also rejects the sub-only dir, so this does NOT
+    // isolate the { excludeDir: dir } wiring (dropping it stays green) — it
+    // pins the user-visible outcome; the wiring itself is defense-in-depth
+    // against torn/quota-probe dir shapes no test fixture reproduces.
+    interceptor.initForWorkspace(join(tmpDir, 'ws', 'projExclude'));
+    const w = writer();
+
+    // Prior session P: one COMPLETED main turn, then hold the current pointer
+    // on an empty sub-only session N (no main req line at all).
+    const e1 = entryOf(SID_P, [{ role: 'user', content: 'p' }], '2026-07-14T09:00:00.000Z');
+    const h1 = w.ingestRequest(e1, e1.body.messages);
+    w.ingestCompletion(h1, { ...e1, response: { status: 200, headers: {}, body: { content: [], usage: { input_tokens: 1, output_tokens: 1 } } }, duration: 1 });
+    const subOnly = {
+      timestamp: '2026-07-14T10:00:00.000Z',
+      url: 'https://api.anthropic.com/v1/messages', method: 'POST',
+      body: {
+        model: 'm', system: [{ type: 'text', text: 'You are a helper subagent.' }],
+        tools: [{ name: 'Bash' }], metadata: { user_id: uid(SID_N) }, messages: [{ role: 'user', content: 'sub' }],
+      },
+      response: null, duration: 0, isStream: false, isHeartbeat: false, isCountTokens: false,
+      mainAgent: false, requestId: 'rsub',
+    };
+    w.ingestRequest(subOnly, subOnly.body.messages); // moves the current pointer to N without a main turn
+    return w.flush().then(() => {
+      const nDir = w.currentSessionDir();
+      assert.ok(nDir && nDir.includes(SID_N), 'the writer moved on to the sub-only session');
+      const src = interceptor.getLiveLogSource();
+      assert.ok(src.includes(SID_P), `fallback must land on the prior completed session, got: ${src}`);
+      assert.ok(!src.includes(SID_N), 'must not serve the no-main-turn current dir');
+    });
   });
 });
 

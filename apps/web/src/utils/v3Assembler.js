@@ -79,6 +79,11 @@ export function createV3Assembler() {
         _seq: row.seq,
         _seqEpoch: `v2:${row.sessionId}`,
         _totalMessageCount: messages.length,
+        // Contract (KEEP IN SYNC with sessionMerge.js isMergeBlockedEntry):
+        // body.messages above is ALWAYS the full accumulated prefix (conv
+        // state replay), so an in-progress entry carrying this marker is
+        // admitted by the batch merge gate. Never stamp it on a partial
+        // payload — see WIRE_FORMAT_V3.md §4 "Known-full contract".
         _v3Assembled: true,
         // The SOURCE row — lets chat classification read the server-side
         // typeTag directly (same source the request list uses), instead of

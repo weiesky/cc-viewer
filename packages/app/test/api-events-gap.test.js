@@ -299,6 +299,84 @@ describe('GET /events', () => {
     // 清理 fallback 文件，避免影响后续用例
     rmSync(cwFile, { force: true });
   });
+
+  it('in-flight first main turn: v3 cold-load serves the CURRENT session; legacy falls back (2026-09-13)', async () => {
+    // Mid-round refresh with a COMPLETED prior session P on disk and the
+    // current session N's FIRST main turn in flight (req written, no done):
+    //  - pre-fix code serves P for BOTH wires → the v3 assertions go red;
+    //  - fixed v3 gate serves N (its full conv prefix is renderable);
+    //  - serveInFlight:false restores P — the pin that the second arm is
+    //    v3-only (an Esc-aborted first turn would otherwise blank forever).
+    const w = interceptor._v2Writer;
+    w.resetSessions();
+    const mkEntry = (sid, ts, tokens, messages) => {
+      const e = mainAgentEntry(ts, tokens, {
+        body: {
+          model: 'claude-opus-4-8',
+          system: [{ type: 'text', text: 'You are Claude Code' }],
+          tools: [{ name: 'Bash' }],
+          messages,
+        },
+      });
+      e.body.metadata = { user_id: JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: sid }) };
+      return e;
+    };
+    // Prior session P: one completed main turn (2 messages), then the writer
+    // moves on to N.
+    const sidP = `10000000-0000-4000-8000-${String(++sidCounter).padStart(12, '0')}`;
+    const p1 = mkEntry(sidP, '2026-06-06T02:59:00.000Z', 111, [{ role: 'user', content: 'p-q1' }, { role: 'assistant', content: 'p-a1' }]);
+    const hp = w.ingestRequest(p1, p1.body.messages);
+    w.ingestCompletion(hp, p1);
+    // Current session N: FIRST turn in flight (no completion), 3 messages.
+    const sid = `10000000-0000-4000-8000-${String(++sidCounter).padStart(12, '0')}`;
+    const t2 = mkEntry(sid, '2026-06-06T03:01:00.000Z', 555, [{ role: 'user', content: 'q1' }, { role: 'assistant', content: 'a1' }, { role: 'user', content: 'q2-just-sent' }]);
+    w.ingestRequest(t2, t2.body.messages);
+    await w.flush();
+
+    // v3 gate (default arm): serve the in-flight CURRENT dir, not P.
+    const src = interceptor.getLiveLogSource();
+    assert.ok(src.includes(sid), `v3 source is the in-flight current dir, got: ${src}`);
+    assert.ok(!src.includes(sidP), 'must not fall back to the prior session P on the v3 wire');
+    assert.equal(src, w.currentSessionDir(), 'source is exactly the writer current dir (identity, not format)');
+    // legacy gate (serveInFlight:false): the fallback lands on P, whose only
+    // turn is completed and renderable on the legacy wire.
+    const srcLegacy = interceptor.getLiveLogSource({ serveInFlight: false });
+    assert.ok(srcLegacy.includes(sidP), `legacy source falls back to the prior completed session P, got: ${srcLegacy}`);
+
+    // wireV3: the cold bundle carries the in-flight row + the main channel conv state
+    const on = makeRes();
+    await events(new EventEmitter(), on, url('/events'), true, eventsDeps({ wireV3: true }));
+    const onFrames = parseFrames(bodyStr(on));
+    const rowsFrame = onFrames.find((f) => f.event === 'v2_requests');
+    assert.ok(rowsFrame, 'v2_requests frame emitted for the in-flight session');
+    const rows = JSON.parse(rowsFrame.data).rows;
+    const mainRow = rows.find((r) => r.mainAgent && r.inProgress);
+    assert.ok(mainRow, 'in-flight main row present in the cold bundle');
+    const convFrame = onFrames.find((f) => f.event === 'v3_conv' && JSON.parse(f.data).channel === 'main');
+    assert.ok(convFrame, 'v3_conv main channel frame present (renderable prefix)');
+    // Premise pin (the whole fix rests on it): the in-flight conv state is the
+    // FULL accumulated prefix — a regression shipping empty/delta-only in-flight
+    // conv lines must turn this red, not just shrink the payload. N=3 messages:
+    // a delta-only shipment would yield fewer.
+    const convData = JSON.parse(convFrame.data);
+    const convMsgs = convData.lines.flatMap((l) => l.msgs || (l.msg ? [l.msg] : []));
+    assert.equal(convMsgs.length, 3, 'in-flight v3_conv carries the full accumulated prefix');
+    assert.ok(convData.lines.some((l) => l.t === 'snapshot'), 'conv state anchored by a snapshot line');
+    on.emit('close');
+
+    // legacy wire: the cold load is P (serveInFlight:false), so exactly P's one
+    // completed entry streams — NOT N's in-flight placeholder.
+    const off = makeRes();
+    await events(new EventEmitter(), off, url('/events'), true, eventsDeps({ wireV3: false }));
+    const offFrames = parseFrames(bodyStr(off));
+    assert.equal(offFrames.filter((f) => f.event === 'load_chunk').length, 1, 'legacy wire streams the prior completed session P, not the in-flight N');
+    off.emit('close');
+
+    // Clean up: a lingering in-flight current session wins getLiveLogSource()
+    // (v3 arm) and poisons later cold-load cases.
+    rmSync(join(tmpDir, 'evproj', 'sessions'), { recursive: true, force: true });
+    w.resetSessions();
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -8,12 +8,19 @@ import { getEffectiveModel } from './effectiveModel.js';
 export { messageFingerprint };
 
 /**
- * merge 入口守卫（KEEP IN SYNC: @ccv/core/delta-reconstructor 标记写入点）：
+ * merge 入口守卫（KEEP IN SYNC: 标记写入点 —— @ccv/core/delta-reconstructor
+ * （_staleReorder/_reconstructBroken）；apps/web/src/utils/v3Assembler.js +
+ * @ccv/core/v2-transcript-normalizer（_v3Assembled/_syntheticV2 的
+ * messages-known-full 契约，见 WIRE_FORMAT_V3.md §4））：
  * 重建层标记的脏条目不得进入 mainAgentSessions 合并——
  *  - `_staleReorder`：完成序倒置的乱序条目（内容已被更新条目取代）；
  *  - `_reconstructBroken`：重建结果与 _totalMessageCount 不符且无法修复（拼接会翻倍/错位）；
- *  - 批量路径额外跳过 `inProgress`：孤立占位条目的 body.messages 是裸 delta 切片
- *    （批量 reconstructEntries 不为 inProgress 重建全量），merge 会触发 rebuild 截断。
+ *  - 批量路径额外跳过 `inProgress`：旧版 v1 delta 占位条目的 body.messages 是裸
+ *    delta 切片（批量 reconstructEntries 不为 inProgress 重建全量），merge 会触发
+ *    rebuild 截断。例外：`_v3Assembled` / `_syntheticV2` 载体的 messages 已是全量
+ *    前缀（v3 assembler 重放 conv store 累积态——请求发起时即落盘；normalizer 整段
+ *    输出），批量放行（2026-09-13 刷新空白修复：slim 后它们是 session 唯一载体，
+ *    拦截会让 mid-round 刷新后的对话面板空白到本轮结束）。空 messages 载体仍拦截。
  *    SSE 实时路径不拦 inProgress——watcher 增量重建器已为其拼出全量 messages，
  *    无 live-port 配置下"提问气泡请求时即显示"依赖这一行为。
  * AppBase 的 SSE 与批量两个 merge 入口、以及单测共用此谓词，防三处逻辑漂移。
@@ -30,7 +37,20 @@ export { messageFingerprint };
 export function isMergeBlockedEntry(entry, options = {}) {
   if (!entry) return true;
   if (entry._staleReorder || entry._reconstructBroken) return true;
-  if (options.batch && entry.inProgress) return true;
+  if (options.batch && entry.inProgress) {
+    // Known-full in-flight carriers are renderable, not raw slices: _v3Assembled
+    // entries replay the conv store's accumulated state (written at request
+    // initiation). _syntheticV2 is defensive only — no current producer stamps
+    // inProgress on a synthetic entry (normalizer emits completed segments) —
+    // kept as the same "messages are known-full" contract for future producers.
+    // Legacy in-flight placeholders keep the block — the batch reconstructor
+    // skips inProgress, so their messages are not trustworthy as a full prefix
+    // (delta placeholders are bare slices; even checkpoint placeholders are
+    // un-reconstructed here).
+    const isKnownFullCarrier = (entry._v3Assembled === true || entry._syntheticV2 === true)
+      && Array.isArray(entry.body?.messages) && entry.body.messages.length > 0;
+    if (!isKnownFullCarrier) return true;
+  }
   return false;
 }
 
@@ -245,7 +265,12 @@ export function mergeMainAgentSessions(prevSessions, entry, options = {}) {
       }
     }
 
-    lastSession.response = newResponse;
+    // undefined 不覆盖：in-flight 条目没有 response（v3Assembler 仅在非 inProgress
+    // 时构造），批量路径放行 in-flight 载体后（2026-09-13 刷新修复），无条件赋值会把
+    // 上一轮已完成的 Last Response 抹掉直到本轮 done 落地。两个 wire 上
+    // "response === undefined ⟺ 在飞" 恒成立（legacy completed 总带 response；
+    // v3 completed 即使 resp 缺失也构造 {body:null}）。
+    if (newResponse !== undefined) lastSession.response = newResponse;
     lastSession.entryTimestamp = entryTimestamp;
     if (entryModel) lastSession.model = entryModel; // latest wins; model-less entries keep the stamp
     return [...prevSessions];

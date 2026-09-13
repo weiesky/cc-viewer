@@ -142,8 +142,10 @@ export function sessionHasMainTurn(dir) {
  * COMPLETED_TURN_SCAN_BUDGET — wide enough that a heavy multi-agent first turn
  * whose done lands megabytes past the head is still found. Stronger than
  * `sessionHasMainTurn`: a session with only an in-flight first main request (req
- * written, response still streaming) returns false, so cold-load keeps showing
- * the previous conversation until the current one has renderable content.
+ * written, response still streaming) returns false. This no longer decides the
+ * cold-load source on its own — getLiveLogSource ORs `sessionHasMainTurn` onto
+ * it to also accept an in-flight first main req on the v3 wire, whose conv
+ * prefix is renderable at request initiation (2026-09-13 refresh-blank fix).
  * @param {string} dir - absolute session dir
  * @returns {boolean}
  */
@@ -243,11 +245,12 @@ export function isDiscardableSession(dir, meta) {
  * the identity UUID (meta.sessionId) alongside the dir so a `-c` continuation
  * can adopt this session's folder while preserving its identity.
  *
- * `excludeDir` skips one absolute session dir entirely: getLiveLogSource passes
- * its current in-flight session here, because this picker's weaker
- * has-a-main-req gate would otherwise re-select exactly the dir the caller's
- * completed-turn gate just rejected (it IS the newest once its first main req
- * is written), nullifying the fallback.
+ * `excludeDir` skips one absolute session dir entirely. getLiveLogSource passes
+ * its current dir: the caller's activated gate and this picker now share the
+ * same has-a-main-req predicate, so exclusion is no longer selection logic —
+ * it closes the TOCTOU race where a main req line lands between the caller's
+ * gate check and this picker's scan (the dir would otherwise be re-selected
+ * as the newest, nullifying the fallback).
  *
  * `skipForeignLive` (multi-window isolation, 2026-07-17) drops candidates
  * whose `owner.lock` is held by ANOTHER live process — a parallel ccv window's
@@ -294,7 +297,7 @@ export function latestMainSession(projectDir, { excludeDir = '', skipForeignLive
  * Absolute dir of the newest readable, non-teammate session that HAS a main
  * turn, or '' if there is none. Thin wrapper over {@link latestMainSession}.
  * @param {string} projectDir - absolute LOG_DIR/<project>
- * @param {{excludeDir?: string}} [opts] - see {@link latestMainSession}
+ * @param {{excludeDir?: string, skipForeignLive?: boolean}} [opts] - see {@link latestMainSession}
  * @returns {string} absolute session dir, or ''
  */
 export function latestMainSessionDir(projectDir, opts) {

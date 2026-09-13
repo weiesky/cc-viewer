@@ -70,9 +70,39 @@ describe('createV3Assembler unit', () => {
 
     const e3 = a.buildEntry(row(3, { inProgress: true }));
     assert.equal(e3.inProgress, true);
+    assert.equal(e3._v3Assembled, true, 'v3-assembled entries carry the known-full marker');
     assert.equal(e3.response, undefined);
     assert.equal(e3.body.messages[2].content[0].text, 'u2-replaced');
     assert.ok(e3.requestId);
+  });
+
+  it('in-flight cold load: last entry is inProgress + _v3Assembled with the full prefix', () => {
+    // 2026-09-13 refresh-blank fix: the batch gate only unblocks in-progress
+    // carriers whose messages are known-full — this pins that a cold
+    // snapshot taken mid-round assembles exactly that shape.
+    const a = createV3Assembler();
+    const sid = 'inflight-sid';
+    const m1 = textMsg('user', 'q1');
+    const m2 = textMsg('assistant', 'a1');
+    const m3 = textMsg('user', 'q2-just-sent');
+    a.addConvLines(sid, 'main', [
+      { seq: 1, t: 'snapshot', msgs: [m1] },
+      { seq: 1, t: 'append', msgs: [m2] },
+      { seq: 2, t: 'snapshot', msgs: [m1, m2, m3] },
+    ]);
+    a.addRespLines(sid, [{ seq: 1, body: { content: [{ type: 'text', text: 'r1' }] } }]);
+    const row = (seq, over = {}) => ({ seq, sessionId: sid, timestamp: `2026-09-13T00:00:0${seq}.000Z`, url: 'u', method: 'POST', conv: 'main', kind: 'main', mainAgent: true, model: 'm', status: 200, inProgress: false, ...over });
+
+    const completed = a.buildEntry(row(1));
+    assert.equal(completed.inProgress, undefined);
+    assert.ok(completed.response);
+
+    const inflight = a.buildEntry(row(2, { inProgress: true, status: undefined }));
+    assert.equal(inflight.inProgress, true);
+    assert.equal(inflight._v3Assembled, true);
+    assert.equal(inflight.response, undefined);
+    assert.equal(inflight.body.messages.length, 3, 'full prefix: history + the just-sent prompt');
+    assert.equal(inflight.body.messages[2].content[0].text, 'q2-just-sent');
   });
 });
 
@@ -125,6 +155,12 @@ describe('cold assembly parity vs legacy entries (oracle)', () => {
     const sub = mk(3, [textMsg('user', 'sub work')], false);
     const hs = w.ingestRequest(sub, sub.body.messages);
     w.ingestCompletion(hs, { ...sub, response: { status: 200, headers: {}, body: { content: [{ type: 'text', text: 'sub resp' }], usage: {} } }, duration: 3 });
+    // A 4th main request left IN FLIGHT (no ingestCompletion): the end-to-end
+    // pin for the 2026-09-13 refresh fix's premise — the request-initiation
+    // conv write must let the assembler build a known-full in-progress entry.
+    const t4 = [...t3, textMsg('assistant', 'r3'), textMsg('user', 'turn 4 just sent')];
+    const e4 = mk(4, t4);
+    w.ingestRequest(e4, e4.body.messages);
     await w.flush();
 
     // Oracle: legacy flag-off stream, client-reconstructed
@@ -150,8 +186,20 @@ describe('cold assembly parity vs legacy entries (oracle)', () => {
     on.emit('close');
 
     assert.equal(assembled.length, legacy.length, 'same window membership');
+    // The in-flight 4th request assembles into a known-full in-progress entry
+    // (the 2026-09-13 refresh fix premise, end-to-end through the REAL writer
+    // and /events): inProgress + _v3Assembled, full accumulated messages, no
+    // response. The legacy oracle skips in-progress entries in reconstruction,
+    // so it has no twin — compare against the seeded shape directly.
+    const inflightAsm = assembled[assembled.length - 1];
+    assert.equal(inflightAsm.inProgress, true, 'last assembled entry is the in-flight request');
+    assert.equal(inflightAsm._v3Assembled, true, 'known-full marker present');
+    assert.equal(inflightAsm.response, undefined, 'no response until the round completes');
+    assert.equal(inflightAsm.body.messages.length, t4.length, 'full accumulated prefix (history + just-sent prompt)');
+    assert.equal(inflightAsm.body.messages[t4.length - 1].content[0].text, 'turn 4 just sent');
     for (let i = 0; i < legacy.length; i++) {
       const L = legacy[i]; const A = assembled[i];
+      if (A.inProgress) continue; // legacy side is an un-reconstructed placeholder — pinned separately above
       assert.equal(A.timestamp, L.timestamp, `entry ${i} timestamp`);
       assert.equal(A.mainAgent, !!L.mainAgent, `entry ${i} mainAgent`);
       assert.deepEqual(A.body.messages, L.body.messages, `entry ${i} reconstructed messages parity`);

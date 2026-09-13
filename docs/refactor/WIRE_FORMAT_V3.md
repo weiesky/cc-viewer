@@ -95,6 +95,17 @@ client-reconstructed stream). The request list renders adapted rows
 (`_listSource()`); deep consumers read the assembled entries
 (`deepRequests`).
 
+**Known-full contract (2026-09-13):** an in-flight row's conv state IS the
+request's full accumulated `messages` — the request-initiation write
+(journal `req` + conv snapshot) lands before the response streams. The
+client batch merge gate therefore ADMITS `_v3Assembled` in-progress
+carriers with non-empty `body.messages` (a mid-round refresh renders
+immediately instead of blanking until the round ends); a server change to
+delta-only conv lines for the request-initiation write breaks this
+contract. Legacy v1 delta placeholders stay blocked — the batch
+reconstructor skips `inProgress`, so their messages are not trustworthy as
+a full prefix.
+
 ## 5. Deliberate divergences (test-pinned)
 
 - Row membership = journal fold (superset: conv-gapped crash-orphans get a

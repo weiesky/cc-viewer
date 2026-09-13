@@ -237,6 +237,62 @@ describe('streaming dedup sequence', () => {
     assert.equal(sessions[0].messages[3].content, 'final');
     assert.equal(sessions[0].response, finalResponse);
   });
+
+  it('batch-created in-flight session + completed twin → no doubling, response upgrade', () => {
+    // 2026-09-13 refresh-blank fix: a mid-round refresh now creates the
+    // session from the in-progress v3 carrier (batch path). When the round
+    // completes, the completed twin (same _seqEpoch, same messages prefix)
+    // must merge as an anchor no-op — not append a second session or double
+    // the messages — and upgrade the session response.
+    const ts = '2026-09-13T00:00:00Z';
+    const epoch = 'v2:midround';
+    const msgs = [makeMsg('user', 'q1'), makeMsg('assistant', 'a1'), makeMsg('user', 'q2')];
+    const inflight = makeEntry(msgs, { timestamp: ts, response: null });
+    inflight.response = undefined; // in-progress entries carry no response field (makeEntry defaults one)
+    inflight.inProgress = true;
+    inflight._v3Assembled = true;
+    inflight._seqEpoch = epoch;
+
+    let sessions = mergeMainAgentSessions([], inflight); // batch create branch
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].messages.length, 3);
+    assert.equal(sessions[0].response, undefined);
+    const ref = sessions[0].messages;
+
+    const finalResponse = { status: 200, body: { content: [{ type: 'text', text: 'done' }] } };
+    const completed = makeEntry([...msgs], { timestamp: ts, response: finalResponse });
+    completed._seqEpoch = epoch;
+    sessions = mergeMainAgentSessions(sessions, completed, { skipTransientFilter: true });
+
+    assert.equal(sessions.length, 1, 'completed twin must not append a second session');
+    assert.equal(sessions[0].messages.length, 3, 'identical prefix — no doubling');
+    assert.equal(sessions[0].messages, ref, 'messages reference stable (anchor no-op)');
+    assert.equal(sessions[0].response, finalResponse, 'response upgraded on completion');
+  });
+
+  it('mid-round refresh: in-flight merge must NOT wipe the previous turn response (P0)', () => {
+    // Cold window = [completed SEQ1, in-flight SEQ2] (the exact shape a
+    // mid-round refresh serves). The batch path admits the in-flight v3
+    // carrier; merging it must preserve SEQ1's response — an unconditional
+    // `lastSession.response = newResponse` wiped it to undefined and the Last
+    // Response card disappeared until the round completed.
+    const epoch = 'v2:midround-p0';
+    const r1 = { status: 200, body: { content: [{ type: 'text', text: 'a1' }] } };
+    const seq1 = makeEntry([makeMsg('user', 'q1'), makeMsg('assistant', 'a1')], { timestamp: '2026-09-13T00:00:01Z', response: r1 });
+    seq1._v3Assembled = true;
+    seq1._seqEpoch = epoch;
+    const seq2 = makeEntry([makeMsg('user', 'q1'), makeMsg('assistant', 'a1'), makeMsg('user', 'q2')], { timestamp: '2026-09-13T00:00:02Z', response: null });
+    seq2.response = undefined; // in-progress v3 entries carry no response field
+    seq2.inProgress = true;
+    seq2._v3Assembled = true;
+    seq2._seqEpoch = epoch;
+
+    let sessions = mergeMainAgentSessions([], seq1);
+    sessions = mergeMainAgentSessions(sessions, seq2);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].messages.length, 3, 'in-flight prefix merged');
+    assert.equal(sessions[0].response, r1, "previous turn's Last Response survives until the round completes");
+  });
 });
 
 // ─── 8. Shallow copy trigger ──────────────────────────────────────────────────

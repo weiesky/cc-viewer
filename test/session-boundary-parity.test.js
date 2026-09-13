@@ -400,3 +400,77 @@ describe('session-boundary parity — degraded broken carrier wiring', () => {
     assert.equal(live[0]._partialData, undefined);
   });
 });
+
+describe('session-boundary parity — mid-round refresh: in-flight known-full carrier (2026-09-13)', () => {
+  // Refresh while the last main turn is still streaming: the batch slimmer
+  // empties every earlier carrier, leaving the in-progress v3 entry as the
+  // session's ONLY carrier. Before the fix the batch gate blocked it
+  // (inProgress) and the panel went blank until the round completed. The v3
+  // assembler replays the conv store's accumulated state (written at request
+  // initiation), so its messages are the full prefix and the batch leg must
+  // build the same session the live leg built when the prompt was sent.
+  const inFlight = entryOf(conv(32), T2, 'u1', 'v2:inflight');
+  inFlight.inProgress = true;
+  inFlight._v3Assembled = true;
+  inFlight.response = undefined; // no response until the round completes
+  inFlight.body.model = 'claude-fable-5';
+  const entries = [entryOf(conv(30), T1, 'u1', 'v2:inflight'), inFlight];
+
+  it('premise guard: the slim pass really leaves the in-flight entry as the only carrier', () => {
+    const copies = entries.map(deepCopy);
+    const slimmer = createEntrySlimmer((e) => !!e.mainAgent);
+    const acc = [];
+    for (let i = 0; i < copies.length; i++) {
+      slimmer.process(copies[i], acc, i);
+      acc.push(copies[i]);
+    }
+    slimmer.finalize(acc);
+    assert.equal(acc[0]._slimmed, true, 'the completed entry must be slimmed by the in-flight one');
+    assert.equal(acc[1]._slimmed, undefined);
+    assert.equal(acc[1].body.messages.length, 32);
+  });
+
+  it('batch and live both build ONE session from the in-flight carrier', () => {
+    const { batch, live } = assertParity(entries, 'mid-round-refresh');
+    assert.equal(batch.length, 1, 'batch leg must not blank the panel mid-round');
+    assert.equal(batch[0].messages.length, 32);
+    assert.equal(batch[0].response, undefined, 'no Last Response until the round completes');
+    assert.equal(batch[0].model, 'claude-fable-5', 'session model stamps from the response-less carrier body.model');
+    assert.equal(getSessionStableId(batch[0]), T1, 'stable id stays the original session start ts');
+  });
+
+  it('without _v3Assembled the in-flight carrier stays blocked (legacy delta contract)', () => {
+    const legacy = [entryOf(conv(30), T1, 'u1', 'v2:inflight'), { ...deepCopy(inFlight), _v3Assembled: undefined }];
+    const batch = runBatchLeg(legacy);
+    assert.equal(batch.length, 0, 'unmarked in-progress carriers are raw slices — still blocked');
+  });
+});
+
+describe('session-boundary parity — first-turn-ever in-flight carrier (2026-09-13)', () => {
+  // The brand-new-conversation variant: the batch contains ONLY a lone
+  // in-flight carrier (no completed predecessor). Pre-fix the batch leg
+  // built zero sessions (blank panel); the live leg had already shown the
+  // prompt bubble. Verified end-to-end by cr-tests' real-wire probe; this
+  // pins it in-repo. NOTE: real v3 first-turn carriers also carry
+  // _isCheckpoint and no body.metadata (v3Assembler rows carry
+  // classification) — deliberately omitted here; the batch leg's boundary
+  // heuristics don't consult either on the create branch.
+  const inFlightOnly = entryOf(conv(3, { seed: 'ft-' }), T2, 'u1', 'v2:firstturn');
+  inFlightOnly.inProgress = true;
+  inFlightOnly._v3Assembled = true;
+  inFlightOnly.response = undefined;
+
+  it('batch leg builds one session from a lone in-flight carrier', () => {
+    const batch = runBatchLeg([inFlightOnly]);
+    assert.equal(batch.length, 1, 'first-turn-ever refresh must render, not blank');
+    assert.equal(batch[0].messages.length, 3);
+    assert.equal(batch[0].response, undefined);
+    assert.equal(getSessionStableId(batch[0]), T2, 'stable id is the in-flight entry ts (no predecessor)');
+  });
+
+  it('empty-messages in-flight carrier stays blocked (guard necessity)', () => {
+    const empty = { ...deepCopy(inFlightOnly), body: { messages: [], metadata: { user_id: 'u1' } } };
+    const batch = runBatchLeg([empty]);
+    assert.equal(batch.length, 0, 'an empty carrier must not create a 0-message session that wins onlyCurrentSession');
+  });
+});

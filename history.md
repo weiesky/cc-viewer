@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- fix(chat): **SSE 请求进行中刷新页面不再空白「对话」** — 批量合并路径放行 messages 已知全量的 in-flight 载体(v3 `_v3Assembled` / v2 `_syntheticV2`,legacy v1 delta 占位仍拦截),in-flight 合并不再抹掉上一轮 Last Response,冷加载源在首轮进行中时 serve 当前会话目录(v3 限定,legacy wire 行为不变)。Coverage: `branch-utils-sessionMerge.test.js`, `session-boundary-parity.test.js`, `v3-assembler.test.js`, `incremental-merge.test.js`, `api-events-gap.test.js`, `interceptor-continuation-sync.test.js`.
 - fix(tests): **server.test.js 的 UserPromptSubmit SSE 集成测试残留写 EPIPE flake** — 结束 SSE 订阅由 `req.destroy()`(abrupt RST,服务端 SSE res 残留可写,120ms debounce 广播向死 socket 写 → teardown 后 `write EPIPE` uncaught)改为 `res.destroy()`(本地弃数据、FIN 优雅关闭),并统一 `finish()` 清理定时器;对齐 48d6e0f3 的 EPIPE 修复思路。Coverage: `server.test.js`.
 
 ## 1.8.14

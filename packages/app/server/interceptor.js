@@ -17,7 +17,7 @@ import { LOG_DIR } from '../findcc.js';
 import { assembleStreamMessage, createStreamAssembler, isAnthropicApiPath, isMainAgentRequest, replaceTopLevelModel, injectOutputConfigEffort, resolveProfileModel, extractAgentSpawnPairs, classifyProxyRole, resolveRoleProfile, normalizeRoles, mergeActivePayload } from './lib/interceptor-core.js';
 import { V2Writer } from './lib/v2/v2-writer.js';
 import { reportSwallowed } from '@ccv/core/error-report';
-import { latestMainSessionDir, sessionHasCompletedMainTurn } from './lib/v2/session-select.js';
+import { latestMainSessionDir, sessionHasMainTurn, sessionHasCompletedMainTurn } from './lib/v2/session-select.js';
 import { sanitizePathComponent } from './lib/v2/layout.js';
 import { setRetryConfigPath, loadRetryConfig, DEFAULT_RETRY_CONFIG } from './lib/proxy/proxy-retry.js';
 import { setProjectName } from './lib/project-state.js';
@@ -437,21 +437,31 @@ export { _v2Writer };
 // bounded cold-load window (DEFAULT_EVENTS_LIMIT) as any session — never
 // limit=0 — so it stays memory-safe (S10). All three cold-load consumers
 // (/events, /api/requests, workspace reload) route through here.
-export function getLiveLogSource() {
+export function getLiveLogSource({ serveInFlight = true } = {}) {
   const dir = _v2Writer.currentSessionDir();
-  // "Activated" requires a COMPLETED main turn, not merely a written main
-  // request line: a session with only an in-flight first request has nothing a
-  // cold load can render yet, so keep falling back to the previous conversation
-  // (which CAN render) until the current one has a done. Removes the blank flash
-  // between "first `-c`/fresh main request written" and "its response emitted".
-  if (dir && sessionHasCompletedMainTurn(dir)) return dir; // activated current session
+  // "Activated": a completed main turn, OR — only when the caller's wire can
+  // render it — a first main turn currently in flight (req line on disk, no
+  // done yet). The in-flight case became renderable once the client batch
+  // path stopped blocking known-full in-progress carriers (v3 wire: the req
+  // + its conv state are written at request initiation, 2026-09-13
+  // refresh-blank fix), so serve OUR OWN current dir instead of falling back
+  // to the previous conversation. Legacy-wire callers pass
+  // serveInFlight:false: their cold stream carries the placeholder, which the
+  // client batch gate still blocks — serving the in-flight dir there blanks
+  // the panel where the previous conversation rendered before (worst after
+  // an Esc-aborted first turn, whose placeholder is never replaced).
+  // sessionHasMainTurn stays the second arm (not a replacement): || short-
+  // circuits on true, so its narrow head-only scan (256KB) runs ONLY when
+  // the wide completed-turn scan (8MB) already returned false — precisely
+  // the in-flight case it exists to catch, at zero extra cost otherwise.
+  if (dir && (sessionHasCompletedMainTurn(dir) || (serveInFlight && sessionHasMainTurn(dir)))) return dir; // activated current session
   if (!_projectName) return ''; // no project bound yet (mirrors v2-writer's guard)
   try {
-    // excludeDir: the current session just failed the completed-turn gate, but
-    // the picker's weaker has-a-main-req gate would re-select it (it is the
-    // newest dir once its first main req is written) — handing back exactly the
-    // blank in-flight session the strict gate rejected. Excluding it makes the
-    // fallback actually land on the previous, renderable conversation.
+    // excludeDir: the caller's activated gate and the picker now share the
+    // same has-a-main-req predicate, so exclusion is not selection logic — it
+    // closes the TOCTOU race where a main req line lands between the gate
+    // check above and the picker's scan (the current dir would otherwise be
+    // re-selected as the newest, nullifying the fallback).
     // skipForeignLive: a parallel ccv window's in-flight session must never be
     // served as THIS window's cold load (multi-window isolation); a crashed
     // window's claim expires with its pid, so its session stays selectable.

@@ -99,8 +99,9 @@ function workspacesLaunch(req, res, parsedUrl, isLocal, deps) {
       // 流式分段广播以刷新会话区域，避免全量加载 OOM
       // S6b: the live source is the v2 session dir when the v2 writer is
       // active (a fresh workspace has no session yet → empty stream, the live
-      // feed picks up from the first request).
-      const wsReloadSource = getLiveLogSource();
+      // feed picks up from the first request). Legacy-shaped reload frames —
+      // serveInFlight follows the wire flag, same as /events.
+      const wsReloadSource = getLiveLogSource({ serveInFlight: !!deps.wireV3 });
       const wsReloadTotal = await countLogEntries(wsReloadSource);
       deps.clients.forEach(client => {
         try { sseWrite(client, `event: load_start\ndata: ${JSON.stringify({ total: wsReloadTotal, incremental: false })}\n\n`); } catch {}

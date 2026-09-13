@@ -10,11 +10,13 @@ import assert from 'node:assert/strict';
 
 let mergeMainAgentSessions;
 let messageFingerprint;
+let isMergeBlockedEntry;
 
 before(async () => {
   const mod = await import('../src/utils/sessionMerge.js');
   mergeMainAgentSessions = mod.mergeMainAgentSessions;
   messageFingerprint = mod.messageFingerprint;
+  isMergeBlockedEntry = mod.isMergeBlockedEntry;
 });
 
 // ─── helpers ──────────────────────────────────────────────────────────────
@@ -515,5 +517,44 @@ describe('mergeMainAgentSessions — LCP 扩展（中断分叉 / 排队消息可
     assert.strictEqual(out[0].messages, ref, '原地截断+push，messages 引用稳定（保 WeakMap 缓存）');
     assert.equal(out[0].messages.length, 5);
     assert.deepEqual(out[0].messages.map((m) => m.content), ['same', 'mid', 'same', 'new-tail', 'extra']);
+  });
+});
+
+// ─── isMergeBlockedEntry：批量路径 inProgress 例外（2026-09-13 刷新空白修复） ───
+describe('isMergeBlockedEntry 批量 inProgress 例外', () => {
+  const inFlightEntry = (opts = {}) => ({
+    timestamp: '2026-01-01T00:00:00.000Z',
+    inProgress: true,
+    body: { messages: 'messages' in opts ? opts.messages : [strMsg('user', 'q1')], metadata: { user_id: 'user-1' } },
+    ...(opts.v3 ? { _v3Assembled: true } : {}),
+    ...(opts.synthetic ? { _syntheticV2: true } : {}),
+    ...(opts.stale ? { _staleReorder: true } : {}),
+    ...(opts.broken ? { _reconstructBroken: true } : {}),
+  });
+
+  it('批量 + inProgress 无标记 → 拦截（legacy v1 delta 裸切片）', () => {
+    assert.equal(isMergeBlockedEntry(inFlightEntry(), { batch: true }), true);
+  });
+
+  it('批量 + inProgress + _v3Assembled + 非空 messages → 放行', () => {
+    assert.equal(isMergeBlockedEntry(inFlightEntry({ v3: true }), { batch: true }), false);
+  });
+
+  it('批量 + inProgress + _syntheticV2 + 非空 messages → 放行', () => {
+    assert.equal(isMergeBlockedEntry(inFlightEntry({ synthetic: true }), { batch: true }), false);
+  });
+
+  it('批量 + inProgress + _v3Assembled + 空 messages → 拦截（防空载体造空会话）', () => {
+    assert.equal(isMergeBlockedEntry(inFlightEntry({ v3: true, messages: [] }), { batch: true }), true);
+  });
+
+  it('实时路径（无 batch 选项）+ inProgress 无标记 → 不拦截（既有行为不变）', () => {
+    assert.equal(isMergeBlockedEntry(inFlightEntry()), false);
+    assert.equal(isMergeBlockedEntry(inFlightEntry(), {}), false);
+  });
+
+  it('脏标记优先于放行标记：_staleReorder / _reconstructBroken 带 _v3Assembled 仍拦截', () => {
+    assert.equal(isMergeBlockedEntry(inFlightEntry({ v3: true, stale: true }), { batch: true }), true);
+    assert.equal(isMergeBlockedEntry(inFlightEntry({ v3: true, broken: true }), { batch: true }), true);
   });
 });
