@@ -1,5 +1,25 @@
 # cc-viewer
 
+## 1.8.15
+
+### Minor Changes
+
+- 085c215: feat(proxy): system 热切换渲染改用启动期变量快照，热切换首请求即生效（消除人格错配），并修复多处 system 改写缺陷。
+  
+  渲染机制重构：热切换 system 文本渲染不再走 setImmediate 异步旁路（旧实现首请求沿用上一个模型 persona/cc 默认——模型 A 用人格 B，反复切换时持续错配），改为启动期按 launchInfo 发布 `${...}` 变量快照（git/os/env/memory 等与启动文本一致，每次 launch 覆盖；启动无注入时也兜底收集一次，热切换渲染 preset 不再产生空 `${memory.dir}`/`${os.*}`），热切换渲染仅 time.date/model.name 实时、其余复用快照——渲染变纯字符串操作、无现场 git 子进程，切到非启动模型时同步选择 + 注入，首请求即用新模型人格。hook 同步段不再有 spawnSync。
+  
+  修复的改写缺陷：live 门从 mainAgent===true 解耦为 _proxyRole==='main'（override 自定义 persona 主场景特性不再整体失效）+ 短路口在 live 启用时强制分类（teammate/subagent 不再被误注主 persona）+ SDK 命名队友/匿名子代理经请求头 x-claude-code-agent-id 判据拦截；override 真整段替换（保留 billing 前缀块 + CLI 官方身份行块，其余 persona 块替换，cache_control 断点继承不丢失，override 文本撞保留判据不再每请求累积）；append 保留块（billing/身份行）永不并入 + 手动 --append-system-prompt[-file] 纳入手动优先；replaceTopLevelSystem 候选扫描深度感知，allowPrepend 不再把 persona 注到工具 JSON Schema；F2 resume pin 不被覆盖；proxy 死门修复。
+  
+  行为变化：system 文本随主模型热切换由「下一次 API 请求生效」改为「立即生效」；git/env 等模板变量冻结在启动值（与启动文本一致，会话中途改分支/MEMORY.md 不反映到热切换文本）；启动无注入时也会在启动期收集一次变量快照，热切换渲染 preset 不再出现空 `${memory.dir}`/`${os.*}`。
+- 5939b38: feat(system-prompt): 内置 preset 族系合并与别名扩展。Qwen-3.7-Max preset 合并为族系条目 Qwen-3（`match: qwen-3`，覆盖 qwen-3.5/3.7/3.8/coder 等整个 Qwen-3.* slug 家族）；新增 `deepseek-flash` 模型 id 别名（等同 deepseek-v4-flash，与 k3 同机制，用户条目与内置层同时生效），`deepseek-flash` 的上下文窗口档位同步对齐 1M；7 个内置 preset 增补通用条款（write-code-reads-like-surrounding-code / report-outcomes-faithfully / deepseek-v4-flash 补 system-reminder 说明）。改名兼容：旧墓碑 `QWEN-3.7-MAX` 自动归一为 `QWEN-3`，此前禁用该 preset 的用户 opt-out 继续生效；别名表查询改为原型安全（`constructor` 等模型 id 不再使匹配静默失效）。另修复 proxy 路径（ccv run / Electron tab）角色分类不读 `x-claude-code-agent-id` 头的缺陷——header-only 子代理（body 无角色标记的 SDK 身份行形态）此前会被误判 main 并注入主 persona，现与 fetch hook 判据对齐（named→teammate / anon→subagent）。
+
+### Patch Changes
+
+- 5939b38: fix(proxy): system-prompt 快照绑定(Bind A)的一次性闩不再被小模型旁路请求烧掉。会话首个 main 形状请求是标题/压缩等小模型调用时,live 层已把 body.system 改写成该模型人格 → 内容匹配失败,而旧实现在此处烧掉一次性闩,导致后续真正带注入人格的请求永不重试、会话快照永不落盘,之后所有 `-c`/`-r` 恢复都走「无记录不注入」路径(注入丢失、前缀缓存全量重写)。闩改为只锁成功消费;空注入会话的 empty 兜底语义不变。另修复 review 发现的 proxy 角色分类不读 `x-claude-code-agent-id` 头(header-only 子代理被误注主 persona)、热切换渲染在启动无注入时变量快照为 null(preset 的 `${memory.dir}`/`${os.*}` 渲染成空串)、QWEN-3 族系合并后旧墓碑(QWEN-3.7-MAX)静默失效(加一次性改名映射)、deepseek-flash 简写上下文窗口档位未对齐 1M、别名表原型键查询缺陷。
+- 60d20e6: 修复 server.test.js 在 CI 上反复出现的 `write EPIPE` uncaught flake：根治点在 `execWithStdin`（git check-ignore 封装）——其 `child.stdin.write/end` 此前未防护，子进程先于 stdin 写完即退出（非 git 目录 / 超时 kill / 二进制缺失）时向已关闭管道写入抛 EPIPE，冒泡成 uncaughtException（`child.on('error')` 只捕获 spawn 失败，不捕获 stdin 写入错误）。补 `child.stdin.on('error')` + write/end try/catch + 单例 settle，早退子进程优雅 resolve 不再冒泡。此前三次针对 SSE 路径的修复（await stopViewer / res.destroy / close SSE gracefully）未触达真正的 stdin pipe，故未根治。
+- 085c215: 修复 SSE 请求进行中刷新页面导致「对话」空白或只显示旧对话直到本轮结束：批量合并路径放行 messages 已知全量的 in-flight 载体（v3 wire `_v3Assembled` / v2 transcript `_syntheticV2`，legacy v1 delta 占位仍拦截），in-flight 条目合并不再抹掉上一轮的 Last Response，冷加载源在首轮进行中时直接 serve 当前会话目录而不再回退上一段对话（v3 wire 限定，legacy `CCV_WIRE_V3=0` 行为完全不变）。注意：修复后刷新看到的是当前会话的完整前缀（含刚发出的提问），上一段旧对话不再随冷加载返回（单会话冷包语义）；移动端 `?since=` 增量重连在 IndexedDB 缓存恢复竞态输掉时仍可能短暂只显示增量窗口（预存竞态，非本次引入）。
+- 5939b38: feat(cli): 终端集成可观测与裸续接检测(静默)。安装/升级输出提示 shell hook 需新终端生效;`/api/claude-settings` 暴露 shell hook 安装状态(只读探针,绝不自动改用户 rc),hook 缺失/损坏时仅在浏览器控制台记一条诊断日志(不弹窗);新增 resume watchdog —— 检测到「transcript 在写但请求未经 ccv」的裸 `claude -c` 续接时(注入丢失、前缀缓存将全量重写)仅控制台记录,不打扰用户。README 补充「从终端继续会话的正确姿势」(hook 生效条件、绕过后果、~5 分钟缓存 TTL)。
+
 ## 1.8.14
 
 ### Patch Changes
