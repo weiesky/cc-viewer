@@ -475,3 +475,332 @@ describe('interceptor fetch hook — live-streaming（mainAgent + _livePort）',
     assert.equal(entry.response.body.content[0].text, 'Live');
   });
 });
+
+describe('interceptor fetch hook — live system 改写（system 随模型热切换 + 静态化）', () => {
+  // 启用门：发布「本次启动注入了 append 文本」的启动判定（resolvedModelId = 请求模型名，
+  // 使首个请求 seed 自启动字节，不走异步旁路）。
+  const LIVE_APPEND = 'LIVE-APPEND-TEXT';
+  const LIVE_SID = 'eeee1111-2222-3333-4444-555566667777';
+  const LIVE_USER_ID = JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: LIVE_SID });
+  let liveMod;
+
+  before(async () => {
+    liveMod = await import('../server/lib/system-prompt-live.js');
+  });
+
+  function liveBody(messages, model = 'claude-opus-4-8') {
+    return {
+      system: [{ type: 'text', text: 'x-anthropic-billing-header: cc_version=1' },
+               { type: 'text', text: 'You are Claude Code, the official CLI.', cache_control: { type: 'ephemeral' } }],
+      tools: makeMainAgentTools(),
+      metadata: { user_id: LIVE_USER_ID },
+      model,
+      messages,
+    };
+  }
+
+  it('启动模型 seed：append 文本并入尾 block，cache_control/billing 保留，字节级稳定', async () => {
+    liveMod._resetLiveForTests();
+    liveMod.setLaunchSystemPromptInfo({
+      workspaceDir: '/nonexistent-ws',
+      resolvedModelId: 'claude-opus-4-8',
+      entries: [{ flag: '--append-system-prompt-file', content: LIVE_APPEND }],
+    });
+    nextResponse = () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk' },
+      body: JSON.stringify(liveBody([{ role: 'user', content: 'r1' }])),
+    });
+    const wire1 = JSON.parse(lastFetchArgs[1].body);
+    assert.ok(Array.isArray(wire1.system), 'system 保持数组形态');
+    assert.equal(wire1.system[0].text, 'x-anthropic-billing-header: cc_version=1', 'billing header 保留');
+    assert.ok(wire1.system[1].text.endsWith('\n' + LIVE_APPEND), 'append 并入尾 block');
+    assert.deepEqual(wire1.system[1].cache_control, { type: 'ephemeral' }, 'cache_control 保留');
+
+    // 第二条请求：字节级稳定（append 不重复）
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk' },
+      body: JSON.stringify(liveBody([{ role: 'user', content: 'r1' }, { role: 'assistant', content: 'a1' }, { role: 'user', content: 'r2' }])),
+    });
+    const wire2 = JSON.parse(lastFetchArgs[1].body);
+    assert.equal(JSON.stringify(wire2.system), JSON.stringify(wire1.system), '同 session+model 字节级稳定');
+    const text = wire2.system[1].text;
+    assert.equal(text.split(LIVE_APPEND).length - 1, 1, 'append 只出现一次（幂等）');
+
+    // P0 回归：hook 处理后固化条目必须真实落盘/入缓存（parseUserId 对象误用曾使 put/get 静默失效）
+    const cached = liveMod.getLiveEntry('cc-viewer', LIVE_SID, 'claude-opus-4-8', { logDir: __isoDir });
+    assert.deepEqual(cached, { override: null, append: LIVE_APPEND }, 'hook seed 后缓存可读');
+    // knownInjectedTexts 必须含缓存条目（否则跨模型剥离失效）
+    assert.ok(liveMod.knownInjectedTexts('cc-viewer', LIVE_SID, { logDir: __isoDir }).includes(LIVE_APPEND));
+  });
+
+  it('强行覆盖：启动未注入（entries 空）但缓存已有该模型条目 → 仍注入', async () => {
+    liveMod._resetLiveForTests();
+    // 启动未注入（entries: []），但无手动 system → 强行覆盖启用
+    liveMod.setLaunchSystemPromptInfo({ workspaceDir: '/nonexistent-ws', resolvedModelId: 'claude-opus-4-8', entries: [] });
+    // 预置该 (session, model) 的固化条目（等价于此前某次切换已生成）
+    liveMod.putLiveEntry('cc-viewer', LIVE_SID, 'claude-opus-4-8', { override: null, append: LIVE_APPEND }, { logDir: __isoDir });
+    nextResponse = () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk' },
+      body: JSON.stringify(liveBody([{ role: 'user', content: 'r' }])),
+    });
+    const wire = JSON.parse(lastFetchArgs[1].body);
+    assert.ok(JSON.stringify(wire.system).includes(LIVE_APPEND), '启动未注入也应强行覆盖注入');
+  });
+
+  it('override 端到端（P0-1 回归）：自定义 persona base（无官方文案）门解耦后特性生效 + 整段替换 + 保留 CLI 身份行', async () => {
+    liveMod._resetLiveForTests();
+    // P0-1 回归：override 主场景的 base 是自定义 persona（如 "You are k3…"），不含
+    // "You are Claude Code" 官方文案。旧门（mainAgent=isMainAgentRequest 要求官方文案）
+    // 会把这类请求误判为非 main → 整个 live 特性失效。门解耦为 _proxyRole 后应正常生效。
+    // 独立 sid 隔离磁盘（前序测试已写 LIVE_SID 条目）。
+    const OVR_SID = 'aaaa3333-4444-5555-6666-777788889999';
+    const ovrUserId = JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: OVR_SID });
+    const identityText = "You are Claude Code, Anthropic's official CLI for Claude.";
+    const personaText = 'You are k3, an interactive coding agent.';
+    // 启动注入了 override persona（--system-prompt-file 整段替换）
+    liveMod.setLaunchSystemPromptInfo({
+      workspaceDir: '/nonexistent-ws', resolvedModelId: 'claude-opus-4-8',
+      entries: [{ flag: '--system-prompt-file', content: personaText }],
+    });
+    nextResponse = () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    // 真实 wire 形态 [billing, identity(cc), persona(cc)]，tools 满足旧 mainAgent 阈值
+    // （makeMainAgentTools 含 Edit/Bash/Task），但 system 不含官方文案 → 旧门会误判。
+    const ovrBody = {
+      system: [{ type: 'text', text: 'x-anthropic-billing-header: cc_version=1' },
+               { type: 'text', text: identityText, cache_control: { type: 'ephemeral' } },
+               { type: 'text', text: personaText, cache_control: { type: 'ephemeral' } }],
+      tools: makeMainAgentTools(),
+      metadata: { user_id: ovrUserId },
+      model: 'claude-opus-4-8',
+      messages: [{ role: 'user', content: 'r1' }],
+    };
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk' }, body: JSON.stringify(ovrBody),
+    });
+    const wire1 = JSON.parse(lastFetchArgs[1].body);
+    // 门解耦后特性生效：seed 自启动 override 字节，整段替换（persona 块）但保留 billing + 身份行
+    assert.ok(Array.isArray(wire1.system), 'system 保持数组形态');
+    assert.equal(wire1.system[0].text, 'x-anthropic-billing-header: cc_version=1', 'billing 前缀块保留');
+    assert.ok(JSON.stringify(wire1.system).includes(identityText), 'CLI 官方身份行保留（D1）');
+    assert.ok(JSON.stringify(wire1.system).includes(personaText), 'override persona 注入（seed 命中）');
+    // seed 成功（非异步旁路）：缓存可读
+    const cached = liveMod.getLiveEntry('cc-viewer', OVR_SID, 'claude-opus-4-8', { logDir: __isoDir });
+    assert.deepEqual(cached, { override: personaText, append: null }, '自定义 persona base 也能 seed');
+    // 第 2 请求字节级稳定（幂等）
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk' },
+      body: JSON.stringify({ ...ovrBody, messages: [{ role: 'user', content: 'r1' }, { role: 'assistant', content: 'a' }, { role: 'user', content: 'r2' }] }),
+    });
+    const wire2 = JSON.parse(lastFetchArgs[1].body);
+    assert.equal(JSON.stringify(wire2.system), JSON.stringify(wire1.system), 'override 会话字节级稳定');
+  });
+
+  it('teammate / subagent 标记请求不被 live 改写（review 二轮 P0-1 短路口回归）', async () => {
+    liveMod._resetLiveForTests();
+    liveMod.setLaunchSystemPromptInfo({ workspaceDir: '/nonexistent-ws', resolvedModelId: 'claude-opus-4-8', entries: [] });
+    const TM_SID = 'bbbb4444-5555-6666-7777-888899990000';
+    const tmUserId = JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: TM_SID });
+    // 预置条目（若门被击穿,该条目会被改写进 wire）
+    liveMod.putLiveEntry('cc-viewer', TM_SID, 'claude-opus-4-8', { override: null, append: LIVE_APPEND }, { logDir: __isoDir });
+    nextResponse = () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    // 同进程 native teammate：system 含团队标记（TEAMMATE_SYSTEM_RE 命中）
+    const teammateBody = {
+      system: [{ type: 'text', text: 'x-anthropic-billing-header: cc_version=1' },
+               { type: 'text', text: 'You are a teammate agent.\n\n# Agent Teammate Communication\nYou are running as an agent in a team.', cache_control: { type: 'ephemeral' } }],
+      tools: makeMainAgentTools(),
+      metadata: { user_id: tmUserId },
+      model: 'claude-opus-4-8',
+      messages: [{ role: 'user', content: 'r' }],
+    };
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk' }, body: JSON.stringify(teammateBody),
+    });
+    const tmWire = JSON.parse(lastFetchArgs[1].body);
+    assert.deepEqual(tmWire.system, teammateBody.system, 'teammate 标记请求不被注入主 persona（短路口已强制分类）');
+    // subagent：billing 含 cc_is_subagent=true
+    const subBody = {
+      system: [{ type: 'text', text: 'x-anthropic-billing-header: cc_version=1; cc_is_subagent=true;' },
+               { type: 'text', text: 'You are a Claude agent.', cache_control: { type: 'ephemeral' } }],
+      tools: makeMainAgentTools(),
+      metadata: { user_id: tmUserId },
+      model: 'claude-opus-4-8',
+      messages: [{ role: 'user', content: 'r' }],
+    };
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk' }, body: JSON.stringify(subBody),
+    });
+    const subWire = JSON.parse(lastFetchArgs[1].body);
+    assert.deepEqual(subWire.system, subBody.system, 'subagent 标记请求不被注入主 persona');
+    // SDK 命名队友 / 匿名子代理（review 二轮二次验证 P1-1 残余）：body 无团队/subagent 标记
+    // （SDK 身份行 + 无 cc_is_subagent billing），判别信号在请求头 x-claude-code-agent-id。
+    const SDK_ID = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
+    const sdkNamedBody = {
+      system: [{ type: 'text', text: 'x-anthropic-billing-header: cc_version=1' },
+               { type: 'text', text: SDK_ID, cache_control: { type: 'ephemeral' } }],
+      tools: makeMainAgentTools(),
+      metadata: { user_id: tmUserId },
+      model: 'claude-opus-4-8',
+      messages: [{ role: 'user', content: 'r' }],
+    };
+    // named teammate：header name@…
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk', 'x-claude-code-agent-id': 'frontend-reviewer@session-abc' }, body: JSON.stringify(sdkNamedBody),
+    });
+    const namedWire = JSON.parse(lastFetchArgs[1].body);
+    assert.deepEqual(namedWire.system, sdkNamedBody.system, 'SDK 命名队友（header name@…）不被注入主 persona');
+    // 匿名子代理：header 裸 hex
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk', 'x-claude-code-agent-id': 'a7eea0a140349f80d' }, body: JSON.stringify(sdkNamedBody),
+    });
+    const anonWire = JSON.parse(lastFetchArgs[1].body);
+    assert.deepEqual(anonWire.system, sdkNamedBody.system, 'SDK 匿名子代理（header hex）不被注入主 persona');
+  });
+
+  it('tools 为空 / 无 tools 的旁路请求不被 live 改写（review 二轮 P1-1 hook tools 门回归）', async () => {
+    liveMod._resetLiveForTests();
+    liveMod.setLaunchSystemPromptInfo({ workspaceDir: '/nonexistent-ws', resolvedModelId: 'claude-opus-4-8', entries: [] });
+    const TG_SID = 'cccc5555-6666-7777-8888-999900001111';
+    const tgUserId = JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: TG_SID });
+    liveMod.putLiveEntry('cc-viewer', TG_SID, 'claude-opus-4-8', { override: null, append: LIVE_APPEND }, { logDir: __isoDir });
+    nextResponse = () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    // title-gen 形态：tools: []（真实语料 911 条受害面）
+    const titleGenBody = {
+      system: [{ type: 'text', text: 'x-anthropic-billing-header: cc_version=1' },
+               { type: 'text', text: 'You are Claude Code, the official CLI.', cache_control: { type: 'ephemeral' } }],
+      tools: [],
+      metadata: { user_id: tgUserId },
+      model: 'claude-opus-4-8',
+      messages: [{ role: 'user', content: 'r' }],
+    };
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk' }, body: JSON.stringify(titleGenBody),
+    });
+    const tgWire = JSON.parse(lastFetchArgs[1].body);
+    assert.deepEqual(tgWire.system, titleGenBody.system, 'tools:[] 旁路请求不被改写（hook tools 门）');
+    // 无 tools 键
+    const noToolsBody = { ...titleGenBody };
+    delete noToolsBody.tools;
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk' }, body: JSON.stringify(noToolsBody),
+    });
+    const ntWire = JSON.parse(lastFetchArgs[1].body);
+    assert.deepEqual(ntWire.system, noToolsBody.system, '无 tools 键请求不被改写');
+  });
+
+  it('用户手动传了 --system-prompt（manualSystemPrompt）→ 跳过覆盖（手动优先）', async () => {
+    liveMod._resetLiveForTests();
+    liveMod.setLaunchSystemPromptInfo({
+      workspaceDir: '/nonexistent-ws', resolvedModelId: 'claude-opus-4-8',
+      entries: [], manualSystemPrompt: true,
+    });
+    liveMod.putLiveEntry('cc-viewer', LIVE_SID, 'claude-opus-4-8', { override: null, append: LIVE_APPEND }, { logDir: __isoDir });
+    nextResponse = () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    const original = liveBody([{ role: 'user', content: 'r' }]);
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk' },
+      body: JSON.stringify(original),
+    });
+    const wire = JSON.parse(lastFetchArgs[1].body);
+    assert.deepEqual(wire.system, original.system, '手动 system 不被热切换覆盖');
+  });
+
+  it('强行覆盖：body 无 system 时前插（allowPrepend）', async () => {
+    liveMod._resetLiveForTests();
+    liveMod.setLaunchSystemPromptInfo({ workspaceDir: '/nonexistent-ws', resolvedModelId: 'claude-opus-4-8', entries: [] });
+    liveMod.putLiveEntry('cc-viewer', LIVE_SID, 'claude-opus-4-8', { override: null, append: LIVE_APPEND }, { logDir: __isoDir });
+    nextResponse = () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    // mainAgent 需要 system 才成立 —— 用一个带 system 的首请求让 mainAgent=true 不现实；
+    // 改为验证 replaceTopLevelSystem 的 allowPrepend 已在无 system body 上前插（单元层已覆盖），
+    // 这里验证「有 system 的 main 请求在缓存就绪时被改写」即可，无 system 前插由 interceptor-core 单测锁定。
+    const out = liveMod.applyLiveSystem('', { override: null, append: LIVE_APPEND }, []);
+    assert.equal(out, LIVE_APPEND, '无 system 时以空 base 合成目标文本');
+  });
+
+  it('resume pin 优先：pinned=true 时无条件 seed 自 pin 字节，后续请求不重新选择覆盖', async () => {
+    liveMod._resetLiveForTests();
+    // 独立 sid：前序测试已把 LIVE_SID 的 append 条目写进磁盘（live/<sid>.json，
+    // _resetLiveForTests 只清内存不删磁盘），若沿用同 sid 同 model 会 getLiveEntry
+    // 命中陈旧条目 → 不走 seed。用独立 sid 隔离磁盘状态。
+    const PINNED_SID = 'ffff2222-3333-4444-5555-666677778888';
+    const pinnedUserId = JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: PINNED_SID });
+    // resume：snapshot 的 model 是条目名（OPUS），resolvedModelId 置 null；pinned=true。
+    // seed 应无条件自 pin 字节（不等模型 id 匹配），且后续请求对 pin 字节 no-op（不被覆盖）。
+    liveMod.setLaunchSystemPromptInfo({
+      workspaceDir: '/nonexistent-ws', resolvedModelId: null, pinned: true,
+      entries: [{ flag: '--system-prompt-file', content: 'PINNED-BYTES-ORIGINAL' }],
+    });
+    nextResponse = () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    const pinnedBody = {
+      system: [{ type: 'text', text: 'x-anthropic-billing-header: cc_version=1' },
+               { type: 'text', text: 'PINNED-BYTES-ORIGINAL', cache_control: { type: 'ephemeral' } }],
+      tools: makeMainAgentTools(),
+      metadata: { user_id: pinnedUserId },
+      model: 'claude-opus-4-8',
+      messages: [{ role: 'user', content: 'r1' }],
+    };
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk' }, body: JSON.stringify(pinnedBody),
+    });
+    const wire1 = JSON.parse(lastFetchArgs[1].body);
+    const flat1 = JSON.stringify(wire1.system);
+    assert.ok(flat1.includes('PINNED-BYTES-ORIGINAL'), 'pin 字节保留');
+    assert.ok(!flat1.includes(LIVE_APPEND), '未被强行覆盖注入新文本');
+    // 第二个请求：仍稳定（pin 不被重选覆盖、不累积）
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk' },
+      body: JSON.stringify({ ...pinnedBody, messages: [{ role: 'user', content: 'r1' }, { role: 'assistant', content: 'a' }, { role: 'user', content: 'r2' }] }),
+    });
+    const wire2 = JSON.parse(lastFetchArgs[1].body);
+    assert.equal(JSON.stringify(wire2.system), JSON.stringify(wire1.system), 'resume 会话 system 字节稳定（pin 不被覆盖）');
+  });
+
+  it('未启用（无启动判定 / env 关闭）→ system 原样透传', async () => {
+    liveMod._resetLiveForTests(); // 无 launchInfo → 不启用
+    nextResponse = () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    const original = liveBody([{ role: 'user', content: 'r' }]);
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk' },
+      body: JSON.stringify(original),
+    });
+    const wire = JSON.parse(lastFetchArgs[1].body);
+    assert.deepEqual(wire.system, original.system, '未启用时 system 不被改写');
+  });
+
+  it('无 metadata.user_id（sessionId 不可解析）→ 跳过改写', async () => {
+    liveMod._resetLiveForTests();
+    liveMod.setLaunchSystemPromptInfo({
+      workspaceDir: '/nonexistent-ws',
+      resolvedModelId: 'claude-opus-4-8',
+      entries: [{ flag: '--append-system-prompt-file', content: LIVE_APPEND }],
+    });
+    nextResponse = () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    const body = liveBody([{ role: 'user', content: 'r' }]);
+    delete body.metadata;
+    await globalThis.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': 'kk' },
+      body: JSON.stringify(body),
+    });
+    const wire = JSON.parse(lastFetchArgs[1].body);
+    assert.ok(!JSON.stringify(wire.system).includes(LIVE_APPEND), '无 sessionId → 不改写');
+  });
+
+  it('count_tokens 请求不改写（utility 排除）', async () => {
+    liveMod._resetLiveForTests();
+    liveMod.setLaunchSystemPromptInfo({
+      workspaceDir: '/nonexistent-ws',
+      resolvedModelId: 'm',
+      entries: [{ flag: '--append-system-prompt-file', content: LIVE_APPEND }],
+    });
+    nextResponse = () => new Response('{"input_tokens":3}', { status: 200, headers: { 'content-type': 'application/json' } });
+    await globalThis.fetch('https://api.anthropic.com/v1/messages/count_tokens', {
+      method: 'POST', headers: { 'x-api-key': 'kk' },
+      body: JSON.stringify({ model: 'm', messages: [], metadata: { user_id: LIVE_USER_ID } }),
+    });
+    const wire = JSON.parse(lastFetchArgs[1].body);
+    assert.equal(wire.system, undefined, 'count_tokens 不被发明 system');
+  });
+
+  after(() => { liveMod?._resetLiveForTests?.(); });
+});

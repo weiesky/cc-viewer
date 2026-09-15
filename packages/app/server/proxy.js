@@ -9,6 +9,7 @@ import { extractApiErrorMessage, formatProxyRequestError } from './lib/proxy/pro
 import { getProxyDispatcher } from './lib/proxy/proxy-env.js';
 import { getClaudeConfigDir } from '../findcc.js';
 import { isAnthropicApiPath, classifyProxyRole } from './lib/interceptor-core.js';
+import { liveSystemPromptEnabled } from './lib/system-prompt-live.js';
 import { executeRequest, extractModel } from './lib/proxy/proxy-retry.js';
 import { buildRecord, appendRecord, dailyFilePath, todayStr, emitProxyStatsUpdate } from './lib/proxy/proxy-stats.js';
 import { reportSwallowed } from '@ccv/core/error-report';
@@ -134,13 +135,19 @@ export function startProxy() {
         const _reqPath = (() => { try { return new URL(req.url || '/', 'http://x').pathname; } catch { return req.url || ''; } })();
         const _isUtility = /\/messages\/count_tokens$/.test(_reqPath) || /^\/api\/eval\/sdk-/.test(_reqPath);
         let roleProfile;
-        if (body.length > 0 && isAnthropicApiPath(_reqPath) && !_isUtility && interceptor.hasExplicitRoleAssignments()) {
+        let _role; // live system 改写的 role 门（仅 main 生效）；未分类 → undefined → main 语义
+        const _needClassify = body.length > 0 && isAnthropicApiPath(_reqPath) && !_isUtility;
+        // 角色分类在两种情况下都必须做：显式角色分配（选路）或 live system 已启用
+        // （否则默认配置下 subagent/teammate 会以 role=undefined 穿过 proxy 侧门被注入主 system）。
+        if (_needClassify && (interceptor.hasExplicitRoleAssignments() || liveSystemPromptEnabled())) {
           let parsedBody = null;
           try { parsedBody = JSON.parse(body.toString('utf8')); } catch { /* 非 JSON body → 保持 main 语义 */ }
           if (parsedBody && typeof parsedBody === 'object') {
             try {
-              const role = classifyProxyRole(parsedBody, {});
-              roleProfile = interceptor.getEffectiveRoleProfile(role);
+              _role = classifyProxyRole(parsedBody, {});
+              if (interceptor.hasExplicitRoleAssignments()) {
+                roleProfile = interceptor.getEffectiveRoleProfile(_role);
+              }
             } catch (err) { reportSwallowed('proxy.role-classify', err); }
           }
         }
@@ -166,7 +173,7 @@ export function startProxy() {
         // 模型替换由重试引擎用 resolveProfileModel 纯函数完成（interceptor 对 trace 请求会再跑一次，幂等 no-op）。
         // 非大模型 API 请求走原逻辑（同样用 x-cc-viewer-trace 让 interceptor 记录，但不经重试引擎）。
         if (isAnthropicApiPath(fullUrl)) {
-          await handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyDispatcher, roleProfile);
+          await handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyDispatcher, roleProfile, { role: _role, isUtility: _isUtility });
           return;
         }
 
@@ -256,7 +263,7 @@ export function startProxy() {
 // 每请求取最新值，UI 改 retry-config.json 后下一个请求即生效，无需重启。
 const _retryConfigGetter = () => interceptor._retryConfigState;
 
-async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyDispatcher, roleProfile) {
+async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyDispatcher, roleProfile, liveCtx = {}) {
   const statsEnabled = process.env.CCV_PROXY_STATS !== 'off';
   const retryConfig = _retryConfigGetter(); // live binding：每请求取最新重试配置
   // 角色解析后的有效 profile（上游/模型替换/统计归属）。undefined = 未分类 → 沿用 main 活跃 profile。
@@ -299,7 +306,15 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
     url: fullUrl,
     fetchOptions: retryFetchOptions,
     retryConfig,
-    ctx: { dispatcher: proxyDispatcher, profile, signal: clientAbort.signal },
+    ctx: {
+      dispatcher: proxyDispatcher,
+      profile,
+      signal: clientAbort.signal,
+      // live system 改写上下文（system-prompt-live.js）：role 门 + 项目键。
+      role: liveCtx.role,
+      isUtility: liveCtx.isUtility === true,
+      projectKey: interceptor._projectName || '',
+    },
   });
 
   const { response, attempts, retryCodes, durationMs, finalStatus, succeeded, upstreamStatus } = result;

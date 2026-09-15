@@ -73,7 +73,9 @@ before(async () => {
 after(() => {
   try { mainSrv?.close(); } catch { }
   try { subSrv?.close(); } catch { }
-  rmSync(tmpDir, { recursive: true, force: true });
+  // live system 固化缓存会异步写 <tmpDir>/<projectKey>/system-prompt-snapshots/live/：
+  // 与 rmSync 竞态时偶发 ENOTEMPTY，maxRetries 吸收该窗口（仓库 rm-sync helper 同款思路）。
+  try { rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); } catch { }
   setTimeout(() => process.exit(0), 30).unref();
 });
 
@@ -125,4 +127,64 @@ describe('proxy 模式按角色分流（live startProxy）', () => {
     assert.equal(res.status, 200);
     assert.equal(hits.main.length, beforeM + 1, '解析失败回退 main 活跃 profile 上游');
   });
+});
+
+describe('proxy 模式 live system 改写（双写幂等 + role 门）', () => {
+  // 启用 live 改写：发布启动判定（resolvedModelId 与 MAIN-MODEL 对齐 → hook seed 后
+  // proxy 消费缓存；同 sentinel 重选场景下 append 文本必须在 wire 上恰出现一次）。
+  const LIVE_APPEND = 'PROXY-LIVE-APPEND';
+  const LIVE_SID = 'ffff1111-2222-3333-4444-555566667777';
+  const LIVE_USER_ID = JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: LIVE_SID });
+  let liveMod;
+
+  before(async () => {
+    liveMod = await import('../server/lib/system-prompt-live.js');
+    liveMod._resetLiveForTests();
+    liveMod.setLaunchSystemPromptInfo({
+      workspaceDir: '/nonexistent-ws',
+      resolvedModelId: 'MAIN-MODEL', // 与 main1 profile 的 ANTHROPIC_MODEL 对齐
+      entries: [{ flag: '--append-system-prompt-file', content: LIVE_APPEND }],
+    });
+  });
+
+  it('主请求：append 在 wire 上恰出现一次（proxy+hook 双写幂等），且字节稳定', async () => {
+    const before = hits.main.length;
+    // hook 会在首请求 seed（resolvedModelId 命中），proxy 消费同一缓存 → 幂等。
+    // tools 需满足 isMainAgentRequest 阈值（>5 且含 Edit/Bash/Task），否则 mainAgent=false 被门排除。
+    const mainTools = [
+      { name: 'Edit' }, { name: 'Bash' }, { name: 'Task' },
+      { name: 'Read' }, { name: 'Write' }, { name: 'Glob' },
+    ];
+    const body = {
+      system: [{ type: 'text', text: 'You are Claude Code, official CLI.', cache_control: { type: 'ephemeral' } }],
+      tools: mainTools,
+      metadata: { user_id: LIVE_USER_ID },
+      messages: [{ role: 'user', content: 'turn1' }],
+      model: 'claude-x',
+    };
+    const res = await proxyReq('/v1/messages', body);
+    assert.equal(res.status, 200);
+    assert.equal(hits.main.length, before + 1);
+    const wire = JSON.parse(hits.main[hits.main.length - 1].body);
+    const flat = JSON.stringify(wire.system);
+    assert.equal(flat.split(LIVE_APPEND).length - 1, 1, 'append 文本在上游 body 中恰出现一次（无重复注入）');
+    assert.equal(wire.model, 'MAIN-MODEL', '模型替换不受影响');
+  });
+
+  it('subagent（role≠main）→ live 改写跳过（角色分类标记不被破坏）', async () => {
+    const before = hits.sub.length;
+    const res = await proxyReq('/v1/messages', {
+      system: [{ type: 'text', text: 'You are Claude Code.\ncc_is_subagent=true; effort=max' }],
+      messages: [{ role: 'user', content: 'sub task' }],
+      metadata: { user_id: LIVE_USER_ID },
+      model: 'claude-x',
+    });
+    assert.equal(res.status, 200);
+    assert.equal(hits.sub.length, before + 1, '仍分流到子源');
+    const wire = JSON.parse(hits.sub[hits.sub.length - 1].body);
+    assert.ok(!JSON.stringify(wire.system).includes(LIVE_APPEND), 'subagent 不被 live 改写');
+    assert.ok(JSON.stringify(wire.system).includes('cc_is_subagent=true'), '角色标记保留');
+  });
+
+  after(() => { liveMod?._resetLiveForTests?.(); });
 });

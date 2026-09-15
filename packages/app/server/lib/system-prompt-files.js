@@ -34,6 +34,20 @@ export function hasArg(args, ...names) {
   );
 }
 
+// 取出 args 里某个 flag 的值（`--x <v>` 取下一个 token；`--x=<v>` 取等号后）。无 → null。
+// live 层用：判断「用户手动传了 --system-prompt-file」时要排除 ccv 启动阶段注入的那份
+// （用户说的手动是字面 flag，不含 ccv 注入），需比对值。
+export function argValue(args, name) {
+  if (!Array.isArray(args)) return null;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (typeof a !== 'string') continue;
+    if (a.startsWith(name + '=')) return a.slice(name.length + 1);
+    if (a === name && i + 1 < args.length && typeof args[i + 1] === 'string') return args[i + 1];
+  }
+  return null;
+}
+
 /**
  * 启动 claude 前，按「启动目录」里的 sentinel 文件决定是否注入 system prompt 文件参数。
  *

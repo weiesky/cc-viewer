@@ -21,7 +21,7 @@ const {
 
 // 与 system-prompt-templates/presets/index.json 一一对应（system-prompt-presets.test.js
 // 已钉 EXPECTED_IDS；这里只钉 name 派生，避免双重维护两份清单）。
-const EXPECTED_NAMES = ['DEEPSEEK-V4-PRO', 'DEEPSEEK-V4-FLASH', 'GLM-5.2', 'GLM-5.3', 'QWEN-3.7-MAX', 'KIMI-K2.7-CODE', 'KIMI-K3'];
+const EXPECTED_NAMES = ['DEEPSEEK-V4-PRO', 'DEEPSEEK-V4-FLASH', 'GLM-5.2', 'GLM-5.3', 'QWEN-3', 'KIMI-K2.7-CODE', 'KIMI-K3'];
 
 describe('builtin-model-prompts: 条目列表', () => {
   it('7 个内置条目，name 为 match 大写规范化，mode 全 override', () => {
@@ -48,13 +48,25 @@ describe('builtin-model-prompts: 模型匹配', () => {
     assert.equal(matchBuiltinModelPrompt('k3[1m]')?.name, 'KIMI-K3'); // 变体 'kimi-k3' 命中
   });
 
+  it('裸 deepseek-flash 经别名展开命中 DEEPSEEK-V4-FLASH（与 k3 同组简写契约）', () => {
+    assert.equal(matchBuiltinModelPrompt('deepseek-flash')?.name, 'DEEPSEEK-V4-FLASH');
+    assert.equal(matchBuiltinModelPrompt('DeepSeek-Flash')?.name, 'DEEPSEEK-V4-FLASH');
+    assert.equal(matchBuiltinModelPrompt('deepseek-flash[1m]')?.name, 'DEEPSEEK-V4-FLASH');
+  });
+
   it('厂商全名/带后缀均命中对应条目', () => {
     assert.equal(matchBuiltinModelPrompt('kimi-k3')?.name, 'KIMI-K3');
     assert.equal(matchBuiltinModelPrompt('deepseek-v4-pro-0901')?.name, 'DEEPSEEK-V4-PRO');
     assert.equal(matchBuiltinModelPrompt('glm-5.2-air')?.name, 'GLM-5.2');
     assert.equal(matchBuiltinModelPrompt('glm-5.3')?.name, 'GLM-5.3');
-    assert.equal(matchBuiltinModelPrompt('Qwen-3.7-Max')?.name, 'QWEN-3.7-MAX');
+    assert.equal(matchBuiltinModelPrompt('Qwen-3.7-Max')?.name, 'QWEN-3');
     assert.equal(matchBuiltinModelPrompt('kimi-k2.7-code-latest')?.name, 'KIMI-K2.7-CODE');
+  });
+
+  it('qwen-3 族系前缀匹配：3.5/3.7/3.8 任意后缀均命中同一条目', () => {
+    assert.equal(matchBuiltinModelPrompt('qwen-3.5-max')?.name, 'QWEN-3');
+    assert.equal(matchBuiltinModelPrompt('Qwen-3.8-Max')?.name, 'QWEN-3');
+    assert.equal(matchBuiltinModelPrompt('qwen-3-coder-plus')?.name, 'QWEN-3');
   });
 
   it('无匹配 → null；空入参 → null', () => {

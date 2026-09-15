@@ -21,13 +21,15 @@ import { randomBytes } from 'node:crypto';
 import { LOG_DIR } from '../../findcc.js';
 import { reportSwallowed } from '@ccv/core/error-report';
 import {
-  buildSystemPromptFileArgs, hasArg, isNonEmptyFile,
+  buildSystemPromptFileArgs, hasArg, argValue, isNonEmptyFile,
   SYSTEM_PROMPT_FILE, APPEND_SYSTEM_PROMPT_FILE,
 } from './system-prompt-files.js';
 import { renderSystemPromptFileArgs, renderedPromptDir } from './system-prompt-render.js';
+import { createSystemPromptVariables } from './create_system_prompt.js';
 import { appendPending, readSnapshot, resolveContinueTargetUuid } from './system-prompt-snapshots.js';
 import { MODEL_PROMPT_DIR, listModelPrompts } from './model-system-prompts.js';
 import { resolveSpawnModel } from './spawn-model-resolver.js';
+import { setLaunchSystemPromptInfo } from './system-prompt-live.js';
 
 // Opus 4.7 默认不再返回 thinking；为所有非显式覆写的调用加上 summarized。
 // 纯函数：仅根据 args 决定是否注入；用户已显式传入 `--thinking-display` 时原样返回。
@@ -210,7 +212,17 @@ export function resolveLaunchSystemPrompt(p) {
     resolvedModelId: null,
     diagnostic: null,
   };
-  if (!spawnDir) return out;
+  // The variable set collected while rendering this launch's injected files (if any).
+  // Captured via the render seam below and published to the live layer so a later hot
+  // model switch re-renders with THIS launch's variables — never by spawning git in
+  // the fetch hook. Stays null when nothing was injected or no file had `${...}`.
+  let collectedVariables = null;
+  if (!spawnDir) {
+    // 复位 live 启动判定：早退不得把上一次 launch 的注入状态泄漏给这次
+    // （什么都没注入的 launch 必须关闭 live 改写门）。
+    try { setLaunchSystemPromptInfo(null); } catch (err) { reportSwallowed('launch-config.publishLiveInfo', err); }
+    return out;
+  }
 
   // Continuation launches (-c/--continue/-r/--resume): pin the resumed conversation's
   // original injection — never re-render variables. IM workers (insideLogDir) skip the
@@ -245,6 +257,12 @@ export function resolveLaunchSystemPrompt(p) {
 
   if (pinned) {
     out.sysPrompt = pinned;
+    // resolvedModelId 仅在 fresh 分支产出（modelReader 的真模型 id）。pinned 分支的
+    // snap.model 是「条目名」（OPUS/KIMI-K3 大写 stem；sentinel 为 null），不是 wire
+    // 模型 id —— 置 null，live seed 由 pinned:true 走「无条件 seed 自 pin 字节」，
+    // 保证 resume pin 不被强行覆盖（snap.model 与 _targetModel 用 === 永不命中，
+    // 误当模型 id 会让 seed 死掉、第 2 请求被重选覆盖 pin）。
+    out.resolvedModelId = null;
   } else {
     // launchSettings is this launch's own live configuration — launchers like cfuse
     // deliver ANTHROPIC_MODEL exclusively inside it, so it must participate in model
@@ -274,8 +292,21 @@ export function resolveLaunchSystemPrompt(p) {
     }
     // Resolve `${...}` template variables in the injected files. Skipped entirely when
     // suppression zeroed the args (a rejected binary never pays the render cost).
+    // The collected variable set is captured (below) and published to the live layer
+    // so a later hot model switch re-renders with THIS launch's variables — never by
+    // spawning git inside the fetch hook. The render seam is lazy: it only fires when
+    // some injected file actually contains `${...}`, so a no-template launch collects
+    // nothing and collectedVariables stays null.
     if (sysPrompt.args.length > 0) {
-      sysPrompt = renderSystemPromptFileArgs(sysPrompt, { cwd: spawnDir, modelId: resolvedModelId });
+      sysPrompt = renderSystemPromptFileArgs(sysPrompt, {
+        cwd: spawnDir,
+        modelId: resolvedModelId,
+        variablesFactory: (overrides, opts) => {
+          const variables = createSystemPromptVariables(overrides, opts);
+          collectedVariables = variables;
+          return variables;
+        },
+      });
     } else {
       sysPrompt = { ...sysPrompt, entries: [] };
     }
@@ -299,6 +330,55 @@ export function resolveLaunchSystemPrompt(p) {
     try { appendPending(spawnDir, rec, logDir); } catch (err) { reportSwallowed('launch-config.appendPending', err); }
   }
   out.pendingRec = rec;
+
+  // 发布启动判定给 live 层（system-prompt-live.js）。强行覆盖模式：以热切换选中的
+  // 模型为准，只要该模型有对应 system 文本就注入/替换（含启动未注入的情况）。
+  // manualSystemPrompt：用户手动传了 --system-prompt（任意文本）或 --system-prompt-file
+  // 且其值不是 ccv 本次注入的路径 —— 此类会话绝不被热切换覆盖（手动优先；用户说的
+  // 手动是字面 flag，不含 ccv 启动阶段写入的那份）。
+  const _injectedSysPath = (() => {
+    const a = out.sysPrompt.args || [];
+    for (let i = 0; i + 1 < a.length; i++) {
+      if (a[i] === '--system-prompt-file') return a[i + 1];
+    }
+    return null;
+  })();
+  // ccv 本次注入的 --append-system-prompt-file 路径（同款识别，排除「手动 vs 注入」误判）
+  const _injectedAppendPath = (() => {
+    const a = out.sysPrompt.args || [];
+    for (let i = 0; i + 1 < a.length; i++) {
+      if (a[i] === '--append-system-prompt-file') return a[i + 1];
+    }
+    return null;
+  })();
+  const _manualSys =
+    hasArg(extraArgs, '--system-prompt') ||
+    (() => { const v = argValue(extraArgs, '--system-prompt-file'); return v !== null && v !== _injectedSysPath; })();
+  // 手动优先同样覆盖 append 两族：用户手传 --append-system-prompt[-file] 时启动期按
+  // 「手动优先」跳过 ccv 注入（buildSystemPromptFileArgs:148），live 层不得在请求时回补
+  // —— 同一条规则启动期生效、live 层绕过是不一致的。任一手动 flag → 关闭 live 门。
+  const _manualAppendSys =
+    hasArg(extraArgs, '--append-system-prompt') ||
+    (() => { const v = argValue(extraArgs, '--append-system-prompt-file'); return v !== null && v !== _injectedAppendPath; })();
+  try {
+    setLaunchSystemPromptInfo({
+      workspaceDir: spawnDir,
+      resolvedModelId: out.resolvedModelId,
+      entries: effectiveEntries,
+      pinned: !!pinned,
+      // suppressInjection（二进制拒绝 flag 自愈 / IM 去注入重启）必须有对应 suppressed，
+      // 否则 live 门会被击穿、把启动期明确不要的注入在请求时回补。
+      suppressed: suppressInjection ? 'suppressInjection' : (out.sysPrompt.suppressed ?? null),
+      manualSystemPrompt: _manualSys || _manualAppendSys,
+      // IM worker（spawnDir 在 LOG_DIR 内）persona 绝不被全局模型条目替换 → 拒绝 live 覆盖。
+      // F2 resume（pinned.noRecord：目标已识别但无快照）语义是「本次启动不注入任何东西，
+      // 绝不改动既有上下文的 system」→ 同样拒绝 live 覆盖（否则 resume 会话被强行注入）。
+      allowLive: !insideLogDir && !(pinned && pinned.noRecord === true),
+      // 本次启动收集到的变量集（含 git/os/env/memory…；live 层只缓存其快照部分）。
+      // 热切换渲染复用它,绝不在 fetch hook 同步段跑 git。无注入/无 ${...} → null。
+      variableSnapshot: collectedVariables,
+    });
+  } catch (err) { reportSwallowed('launch-config.publishLiveInfo', err); }
   return out;
 }
 

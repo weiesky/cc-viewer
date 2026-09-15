@@ -13,30 +13,9 @@
 // prefix (server/lib/interceptor-core.js TEAMMATE_PROMPT_PREFIX_LEN).
 export const SPAWN_PROMPT_PREFIX_LEN = 60;
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * Parse a raw metadata.user_id string into { sessionId, encoding } or null.
- * Encodings (spec §8):
- *  - 'json':      '{"device_id":…,"account_uuid":…,"session_id":"<uuid>"}'
- *  - 'delimited': 'user_<hash>_account_<acct?>_session_<uuid>'
- */
-export function parseUserId(userIdRaw) {
-  if (typeof userIdRaw !== 'string' || userIdRaw === '') return null;
-  try {
-    const obj = JSON.parse(userIdRaw);
-    if (obj && typeof obj.session_id === 'string' && obj.session_id !== '') {
-      return { sessionId: obj.session_id, encoding: 'json' };
-    }
-    return null; // valid JSON but no session_id — treat as unparseable
-  } catch { /* not JSON → try the delimited form */ }
-  const idx = userIdRaw.lastIndexOf('_session_');
-  if (idx >= 0) {
-    const tail = userIdRaw.slice(idx + '_session_'.length);
-    if (UUID_RE.test(tail)) return { sessionId: tail, encoding: 'delimited' };
-  }
-  return null;
-}
+// parseUserId lives in the shared leaf session-id.js (so lib/proxy can use it
+// without an R3 cross-subsystem edge); re-exported here for existing consumers.
+export { parseUserId } from '../session-id.js';
 
 const REMINDER_OPEN = '<system-reminder>';
 const REMINDER_CLOSE = '</system-reminder>';

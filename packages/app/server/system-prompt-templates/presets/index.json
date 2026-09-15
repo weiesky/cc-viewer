@@ -35,11 +35,11 @@
         "defaultMode": "override"
       },
       {
-        "id": "Qwen-3.7-Max",
-        "title": "Qwen 3.7 Max",
-        "file": "Qwen-3.7-Max.md",
-        "description": "Thorough coding agent prompt tuned for Qwen 3.7 Max: minimal-change discipline and persistence.",
-        "match": "qwen-3.7-max",
+        "id": "Qwen-3",
+        "title": "Qwen 3",
+        "file": "Qwen-3.md",
+        "description": "Thorough coding agent prompt for the Qwen 3 family (3.5/3.7/3.8 Max and siblings): minimal-change discipline and persistence.",
+        "match": "qwen-3",
         "defaultMode": "override"
       },
       {

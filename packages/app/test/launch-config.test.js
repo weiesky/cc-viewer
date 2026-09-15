@@ -266,6 +266,53 @@ describe('resolveLaunchSystemPrompt — resume pin', () => {
     assert.equal(readFileSync(r.sysPrompt.args[1], 'utf8'), 'PINNED BYTES');
   });
 
+  it('resume pin 发布给 live 层：pinned=true、resolvedModelId=null（snap.model 不当模型 id）、allowLive=true', async () => {
+    const live = await import('../server/lib/system-prompt-live.js');
+    live._resetLiveForTests();
+    const proj = mkProj({});
+    const uuid = '22222222-3333-4444-8555-666666666666';
+    snapshots.writeSnapshot(proj, uuid, {
+      entries: [{ flag: '--system-prompt-file', basename: 'CC_SYSTEM.md', content: 'PINNED BYTES' }],
+      model: 'OPUS', // snapshot 记录的是「条目名」，不是 wire 模型 id
+    });
+    lc.resolveLaunchSystemPrompt({
+      spawnDir: proj, extraArgs: [], env: {},
+      resume: { resumeValue: uuid, picker: false, fork: false },
+      modelReader: () => null, persistPending: false,
+    });
+    const info = live.getLaunchSystemPromptInfo();
+    assert.equal(info.pinned, true, '发布 pinned 标记');
+    assert.equal(info.resolvedModelId, null, 'pinned 分支 resolvedModelId 置 null（不靠 === 比较，走无条件 seed）');
+    assert.equal(info.allowLive, true, '非 IM worker 允许 live');
+    assert.equal(info.entries.length, 1, 'pin 字节随 entries 发布（seed 数据源）');
+    live._resetLiveForTests();
+  });
+
+  it('insideLogDir（IM worker）→ 发布 allowLive=false（persona 不被覆盖）', async () => {
+    const live = await import('../server/lib/system-prompt-live.js');
+    live._resetLiveForTests();
+    const proj = mkProj({ 'CC_APPEND_SYSTEM.md': 'persona' });
+    lc.resolveLaunchSystemPrompt({
+      spawnDir: proj, extraArgs: [], env: {},
+      insideLogDir: true, modelReader: () => null, persistPending: false,
+    });
+    assert.equal(live.getLaunchSystemPromptInfo().allowLive, false, 'IM worker 拒绝 live 覆盖');
+    live._resetLiveForTests();
+  });
+
+  it('suppressInjection → 发布 suppressed（live 门不被击穿）', async () => {
+    const live = await import('../server/lib/system-prompt-live.js');
+    live._resetLiveForTests();
+    const proj = mkProj({ 'CC_SYSTEM.md': 'x' });
+    lc.resolveLaunchSystemPrompt({
+      spawnDir: proj, extraArgs: [], env: {},
+      suppressInjection: true, modelReader: () => null, persistPending: false,
+    });
+    assert.equal(live.getLaunchSystemPromptInfo().suppressed, 'suppressInjection');
+    assert.equal(live.liveSystemPromptEnabled({}), false, 'suppressInjection 时 live 门关闭');
+    live._resetLiveForTests();
+  });
+
   it('无快照 → F2:完全不注入(不动既有上下文的 system 文本)', () => {
     const proj = mkProj({ 'CC_SYSTEM.md': 'would-be-fresh' });
     const r = lc.resolveLaunchSystemPrompt({

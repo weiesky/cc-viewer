@@ -71,7 +71,9 @@ function firstNonEmpty(...values) {
 }
 
 function currentDate(timeZone, date) {
-  if (timeZone.length > 0) {
+  // Guard: a non-string timeZone (e.g. undefined from a null snapshot) must not throw
+  // on `.length` — fall through to the ISO branch below.
+  if (typeof timeZone === 'string' && timeZone.length > 0) {
     const formatted = stringOrEmpty(() =>
       new Intl.DateTimeFormat('en-CA', {
         timeZone,
@@ -247,6 +249,97 @@ export function createSystemPromptVariables(overrides = {}, opts = {}) {
   }
 
   return mergeSystemPromptVariables(variables, overrides)
+}
+
+// ─── Cacheable variable snapshot / live re-composition ──────────────────────
+// Hot model switching re-renders the injected system text on every switch. Collecting
+// variables shells out to git (spawnSync, up to 8 calls × 15 s timeout in a repo),
+// which must never run in the fetch hook's synchronous segment. So the collected set
+// is split at the launch boundary:
+//   - snapshot: everything the launch collected EXCEPT `time.date` and `model.name` —
+//     env / os / runtime / cwd / git / memory index / timezone / knowledgeCutoff …
+//     Stable for the whole process lifetime, so a switched-model text agrees with the
+//     launch text outside the live keys.
+//   - live: `time.date` (re-derived at render time) and `model.name` (the model of
+//     THIS request). `time.timezone` stays in the snapshot on purpose: it is env/ICU
+//     derived and immutable, and reusing it keeps the Time section byte-identical to
+//     the launch text. `model.knowledgeCutoff` is env-derived too, so it stays.
+
+// A full empty-variable skeleton used when there is no snapshot at all (launch with
+// no injection / launch whose injected text had no `${...}` / pinned-resume). Rendering
+// against this yields EMPTY strings for `${git.*}` etc. — never literal `${git.branch}`
+// text in the prompt. `git.isRepository` reads as the string 'false' so the Git section
+// reads "Is a git repository: false" rather than vanishing.
+function emptySystemPromptVariableSkeleton() {
+  return {
+    environment: {
+      cwd: '', originalCwd: '', home: '', user: '', workspaceRoots: '', path: '', lang: '',
+    },
+    git: {
+      isRepository: 'false', root: '', branch: '', mainBranch: '', userName: '', recentCommits: '',
+    },
+    os: {
+      platform: '', type: '', arch: '', shell: '', version: '', release: '', hostname: '',
+      availableParallelism: '', totalMemory: '',
+    },
+    runtime: { nodeVersion: '', execPath: '', pid: '', ppid: '' },
+    permissions: { mode: '', approvalsReviewer: '' },
+    sandbox: { mode: '', networkAccess: '', writableRoots: '' },
+    terminal: { term: '', colorTerm: '' },
+    filesystem: { tmpdir: '', pathSeparator: '', pathDelimiter: '' },
+    model: { name: '', knowledgeCutoff: '' },
+    memory: { dir: '', index: '', enabled: 'false' },
+    scratchpad: { dir: '' },
+  }
+}
+
+// Guard: the cached git object must carry all 6 fields with `isRepository` as a string,
+// otherwise fall back to an all-empty git block. A malformed/partial snapshot would
+// otherwise leak a literal `${git.branch}` into the prompt under missingVariableMode
+// 'keep' (user-visible corruption).
+function sanitizeGitBlock(git) {
+  if (!git || typeof git !== 'object') return emptySystemPromptVariableSkeleton().git
+  const fields = ['isRepository', 'root', 'branch', 'mainBranch', 'userName', 'recentCommits']
+  const ok = fields.every((f) => typeof git[f] === 'string') && (git.isRepository === 'true' || git.isRepository === 'false')
+  return ok ? git : emptySystemPromptVariableSkeleton().git
+}
+
+/**
+ * Split a collected variable set into the cacheable snapshot. Removes ONLY `time.date`
+ * and `model.name` (the two live values); keeps `time.timezone` and the rest so the
+ * snapshot can be keyed by workspace and reused across every hot switch in the process.
+ * Total: unusable input → null (callers fall back to an empty skeleton).
+ */
+export function toSystemPromptVariableSnapshot(variables) {
+  if (!variables || typeof variables !== 'object') return null
+  const { time, model, ...rest } = variables // eslint-disable-line no-unused-vars
+  return {
+    ...rest,
+    git: sanitizeGitBlock(rest.git),
+    time: { timezone: (time && typeof time.timezone === 'string') ? time.timezone : '' },
+    model: {
+      knowledgeCutoff: (model && typeof model.knowledgeCutoff === 'string') ? model.knowledgeCutoff : '',
+    },
+  }
+}
+
+/**
+ * Rebuild a render-ready variable set from a snapshot + the live values.
+ * `now` is injectable for tests; production always uses the current clock.
+ * A null/partial snapshot still yields a usable set built on an empty skeleton —
+ * `${git.*}` renders as empty strings, never as literal `${git.branch}` text.
+ */
+export function fromSystemPromptVariableSnapshot(snapshot, { modelId = null, now = new Date() } = {}) {
+  const base = (snapshot && typeof snapshot === 'object') ? snapshot : emptySystemPromptVariableSkeleton()
+  const tz = (base.time && typeof base.time.timezone === 'string' && base.time.timezone)
+    ? base.time.timezone
+    : stringOrEmpty(() => Intl.DateTimeFormat().resolvedOptions().timeZone)
+  const modelName = (typeof modelId === 'string' && modelId) ? modelId.replace(/\[1m\]$/i, '') : ''
+  return mergeSystemPromptVariables(base, {
+    git: sanitizeGitBlock(base.git),
+    time: { date: currentDate(tz, now), timezone: tz },
+    model: { name: modelName },
+  })
 }
 
 function readDottedPath(path, variables) {

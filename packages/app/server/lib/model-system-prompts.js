@@ -253,6 +253,9 @@ export function deleteModelPrompt(dir, name) {
 // resolved id IS the bare shorthand — no accidental widening.
 const MODEL_ID_ALIASES = {
   k3: ['k3', 'kimi-k3', 'kimi'],
+  // deepseek 简写同理：代理/CLI 常把 `deepseek-v4-flash` 简写成 `deepseek-flash`。
+  // DeepSeek shorthand: proxies/CLIs often shorten `deepseek-v4-flash` to `deepseek-flash`.
+  'deepseek-flash': ['deepseek-flash', 'deepseek-v4-flash'],
 };
 
 // 展开模型 id 的全部等价小写拼写（无别名时就是单元素数组）。

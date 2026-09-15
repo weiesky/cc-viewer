@@ -15,9 +15,11 @@
 //   - Streaming responses: only read status + headers to decide whether to retry; never retry after the body has
 //     started being sent (retry-before-first-byte strategy).
 //   - race/stagger use AbortController; cancelled requests must be released correctly.
-import { resolveProfileModel } from '../interceptor-core.js';
+import { resolveProfileModel, replaceTopLevelSystem } from '../interceptor-core.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { reportSwallowed } from '@ccv/core/error-report';
+import { liveSystemPromptEnabled, getLiveEntry, applyLiveSystem, knownInjectedTexts } from '../system-prompt-live.js';
+import { parseUserId } from '../session-id.js';
 
 // ── Configuration ─────────────────────────────────────────────────
 
@@ -459,13 +461,62 @@ function discardBody(response) {
 // ── executeRequest ────────────────────────────────────────────────
 
 /**
+ * Live system 应用（proxy 路径）：模型替换之后执行。幂等 —— interceptor hook 对 trace
+ * 请求会再跑一次 applyLiveSystem，此时 body.system 已是目标形态，剥离已知注入后重组
+ * 得到相同值 → null（无变化），与 resolveProfileModel 的双跑幂等同理。
+ * 门：liveSystemPromptEnabled + role 为 main/未分类 + 非 utility + sessionId 可解析 +
+ * 缓存已有该 (session, model) 条目（proxy 同步段绝不新生成 —— 启动模型 seed 由 hook
+ * 先行，非启动模型的异步旁路生成也由 hook 负责；这里只消费既有缓存）。
+ */
+function applyLiveSystemPrompt(body, ctx) {
+  try {
+    if (!body || !ctx || ctx.isUtility === true) return body;
+    if (ctx.role && ctx.role !== 'main') return body;
+    if (!liveSystemPromptEnabled()) return body;
+    const projectKey = ctx.projectKey;
+    if (!projectKey) return body;
+    const s = typeof body === 'string' ? body : body.toString('utf-8');
+    const obj = JSON.parse(s);
+    if (!obj || typeof obj !== 'object') return body;
+    const sid = parseUserId(obj.metadata?.user_id)?.sessionId ?? null;
+    if (!sid) return body;
+    const model = typeof obj.model === 'string' ? obj.model : ''; // 模型替换已先行 → 生效模型
+    if (!model) return body;
+    const entry = getLiveEntry(projectKey, sid, model);
+    if (!entry) return body; // 缓存未就绪 → 放行（同进程 hook 的同步生成会补上；proxy 只消费不生成）
+    // role 门（对齐 hook，review P0-1/P1-4）：已删除 isMainAgentRequest 死门 —— 它要求
+    // system 含 "You are Claude Code" 官方文案，而 override 主场景（--system-prompt-file
+    // 整段替换）的 base 是自定义 persona，永远判 false → proxy-only 路径（CCV_WORKSPACE_MODE /
+    // Electron）live 特性整体失效；且与下方「无 system 时合成目标形态」分支自相矛盾
+    // （isMainAgentRequest 要求 body.system 存在，该分支正为「无 system」而设）。
+    // 门由 ctx.role（proxy.js 在 live 启用时分类填入，未分类 → undefined → main 语义）
+    // + ctx.isUtility 承担。结构门：tools 非空 —— 无 tools 的旁路调用（标题生成/压缩探针，
+    // 本机语料 1323 条 tools=[]）与 main 同形但绝不改写 system（旧 mainAgent 门隐式覆盖）。
+    if (!Array.isArray(obj.tools) || obj.tools.length === 0) return body;
+    // 强行覆盖：body 无 system（启动未注入）时用空字符串合成目标形态（前插由 allowPrepend 承担）。
+    const hasSystem = 'system' in obj && obj.system != null;
+    const newSystem = applyLiveSystem(hasSystem ? obj.system : '', entry, knownInjectedTexts(projectKey, sid));
+    if (newSystem === null) return body;
+    // 字节级替换（与 hook 同一原语）：巨型 -c checkpoint 只改 system 成员、不整体重建，
+    // 且与 hook 输出字节一致（hook 二次 pass 必为 no-op）。needle 定位失败才回退对象级重建。
+    const replaced = replaceTopLevelSystem(s, JSON.stringify(newSystem), { allowPrepend: !hasSystem });
+    if (replaced !== null) return replaced;
+    obj.system = newSystem;
+    return JSON.stringify(obj);
+  } catch (err) {
+    reportSwallowed('proxyRetry.live-system', err);
+    return body;
+  }
+}
+
+/**
  * Executes a request with retries. Returns { response, attempts, retryCodes, durationMs, finalStatus, upstreamStatus, succeeded }.
  *
  * @param {object} params
  * @param {string} params.url full upstream URL
  * @param {object} params.fetchOptions { method, headers, body }
  * @param {object} params.retryConfig retry config
- * @param {object} params.ctx { dispatcher, profile } network proxy dispatcher + model replacement profile
+ * @param {object} params.ctx { dispatcher, profile, role, isUtility, projectKey, launchInfo } network proxy dispatcher + model replacement profile + live system context
  * @returns {Promise<object>}
  */
 export async function executeRequest({ url, fetchOptions, retryConfig, ctx }) {
@@ -482,6 +533,10 @@ export async function executeRequest({ url, fetchOptions, retryConfig, ctx }) {
   let finalBody = fetchOptions.body;
   if (finalBody && profile) {
     finalBody = applyModelReplacement(finalBody, profile);
+  }
+  // Live system 改写（模型替换之后；幂等，hook 会再跑一次）
+  if (finalBody) {
+    finalBody = applyLiveSystemPrompt(finalBody, ctx);
   }
   const finalFetchOptions = { ...fetchOptions, body: finalBody };
 

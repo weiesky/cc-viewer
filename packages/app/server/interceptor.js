@@ -14,14 +14,17 @@ import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, basename } from 'node:path';
 import { LOG_DIR } from '../findcc.js';
-import { assembleStreamMessage, createStreamAssembler, isAnthropicApiPath, isMainAgentRequest, replaceTopLevelModel, injectOutputConfigEffort, resolveProfileModel, extractAgentSpawnPairs, classifyProxyRole, resolveRoleProfile, normalizeRoles, mergeActivePayload } from './lib/interceptor-core.js';
+import { assembleStreamMessage, createStreamAssembler, isAnthropicApiPath, isMainAgentRequest, replaceTopLevelModel, replaceTopLevelSystem, injectOutputConfigEffort, resolveProfileModel, extractAgentSpawnPairs, classifyProxyRole, resolveRoleProfile, normalizeRoles, mergeActivePayload } from './lib/interceptor-core.js';
 import { V2Writer } from './lib/v2/v2-writer.js';
 import { reportSwallowed } from '@ccv/core/error-report';
 import { latestMainSessionDir, sessionHasMainTurn, sessionHasCompletedMainTurn } from './lib/v2/session-select.js';
 import { sanitizePathComponent } from './lib/v2/layout.js';
+import { parseAgentId, findHeader } from './lib/v2/agent-id.js';
+import { parseUserId } from './lib/session-id.js';
 import { setRetryConfigPath, loadRetryConfig, DEFAULT_RETRY_CONFIG } from './lib/proxy/proxy-retry.js';
 import { setProjectName } from './lib/project-state.js';
 import { consumePendingForResume, writeSnapshot, projectKeyForCwd } from './lib/system-prompt-snapshots.js';
+import { liveSystemPromptEnabled, getLaunchSystemPromptInfo, getLiveEntry, putLiveEntry, selectEntriesForModel, applyLiveSystem, knownInjectedTexts } from './lib/system-prompt-live.js';
 
 
 
@@ -912,16 +915,39 @@ export function setupInterceptor() {
     // （_defaultConfig 首请求才捕获）。
     // 短路：无 main profile 且无任何角色分配时，角色不影响结果（_effProfile 恒 null），
     // 跳过分类的 system 文本提取开销 —— 未配置用户零成本。
+    // 但 live system 已启用时必须分类（review 第二轮 P0-1）：短路硬编码 'main' 会让同进程
+    // native teammate（含团队标记）/ subagent（含 cc_is_subagent 标记）以 'main' 穿过 live
+    // 门被强注入主 persona —— 恰是分类要保护的标记被覆盖。与 proxy.js:142 的分流同构：
+    // 仅当「确实无需分类」（无 profile + 无角色分配 + live 未启用）才短路。
     let _fetchUrl = url;
     let _fetchOpts = options;
-    const _proxyRole = (!_activeProfile && _roleIds.subagent === 'follow' && _roleIds.teammate === 'follow')
-      ? 'main'
-      : classifyProxyRole(requestEntry?.body, {
-        isTeammate: _isTeammate,
-        isCountTokens: !!requestEntry?.isCountTokens,
-        isHeartbeat: !!requestEntry?.isHeartbeat,
-      });
+    const _skipClassify = !_activeProfile && _roleIds.subagent === 'follow' && _roleIds.teammate === 'follow'
+      && !liveSystemPromptEnabled();
+    // 最高优先级硬判据（review 第二轮二次验证 P1-1 残余，与 contentFilter.js:158 同构）：
+    // 请求头 x-claude-code-agent-id 是 SDK 命名队友（name@…）/ 匿名子代理（hex）的判别信号，
+    // 不依赖 system 文本 —— body 正则（TEAMMATE_SYSTEM_RE / cc_is_subagent）对「SDK 身份行 +
+    // 无 billing 标记」的形态失效，会把这类请求误判 'main' 而注入主 persona。named→teammate、
+    // anon→subagent，覆盖 body 分类。O(1) header 查键，但在短路口（live 未启用+无配置）
+    // 无需角色时不做 —— 保持未配置用户零成本语义。
+    let _proxyRole;
+    if (_skipClassify) {
+      _proxyRole = 'main';
+    } else {
+      const _agent = parseAgentId(findHeader(requestEntry?.headers, 'x-claude-code-agent-id'));
+      _proxyRole = _agent
+        ? (_agent.named ? 'teammate' : 'subagent')
+        : classifyProxyRole(requestEntry?.body, {
+          isTeammate: _isTeammate,
+          isCountTokens: !!requestEntry?.isCountTokens,
+          isHeartbeat: !!requestEntry?.isHeartbeat,
+        });
+    }
     const _effProfile = _effectiveRoleProfile(_proxyRole);
+    // 生效模型解析提到块外：live system 改写（步骤 3.5）需要在无 baseURL 的纯模型
+    // profile 下也能拿到目标模型；_targetModel 为 null 时回落到请求自身的 model。
+    const _rb0 = requestEntry?.body;
+    const _oldModel0 = (_rb0 && typeof _rb0 === 'object' && typeof _rb0.model === 'string') ? _rb0.model : undefined;
+    const _targetModel0 = (_effProfile && _oldModel0) ? resolveProfileModel(_oldModel0, _effProfile) : null;
     if (_effProfile && _effProfile.baseURL && requestEntry) {
       try {
         // 1. URL 重写: 用 baseURL 替换 origin，智能处理路径重叠
@@ -1007,6 +1033,124 @@ export function setupInterceptor() {
         requestEntry.proxyRole = _proxyRole;
       } catch { }
     }
+
+    // 3.5. Live system 改写 —— system 文本随主模型热切换 + (sessionId, model) 静态化。
+    //    独立于上面的 baseURL 块（纯模型 profile 无 baseURL 也要生效）。门：
+    //    liveSystemPromptEnabled（启动期 ccv 确实注入且未 suppressed/env 关闭）+
+    //    role=main（teammate/subagent 跳过，保护角色分类标记）+ 非 count_tokens/heartbeat
+    //    （utility 端点绝不能发明/改写 system，会污染 token 计数）。
+    //    门判据用 _proxyRole（classifyProxyRole），不再用 requestEntry.mainAgent
+    //    （isMainAgentRequest）：后者要求 system 含 "You are Claude Code" 官方文案，
+    //    而 override 主场景（--system-prompt-file 整段替换）的 base 是自定义 persona，
+    //    会被该判据误排 → live 特性在 override 主场景整体失效。_proxyRole 对 override
+    //    persona 正确返回 'main'。isMainAgentRequest 仍用于日志/v2 分类。
+    //    判据收窄说明（review 第二轮）：旧门 isMainAgentRequest 是「system 文案子串 + tools
+    //    启发式」两重判据，新门 classifyProxyRole 仅「teammate/subagent 标记正则」一重 ——
+    //    对「无标记 teammate / 无 billing 标记 subagent」由「不改写」变为「改写」，判据
+    //    由两重降为一重。配套：tools 结构门（与 proxy-retry.js 对齐，挡 title-gen 等
+    //    tools=[] 的旁路调用）+ P0-1 短路口分类修复，把主要受害面收回。
+    //    继承性风险（残余）：同进程同 persona teammate 若不含 TEAMMATE_SYSTEM_RE 标记仍判
+    //    'main'（见 interceptor-core.js classifyProxyRole 注释），依赖该正则分类。
+    //    tools 门阈值用「非空」(>=1) 与 proxy 完全一致 —— 不设数量下限：真实语料 1~5 工具
+    //    的合法主会话/子代理变体存在（web_search 单工具、Bash+Read+WebFetch+WebSearch 4 工具），
+    //    它们靠 cc_is_subagent 标记被 classifyProxyRole 正确排除，不能靠工具数误判。
+    //    启动模型条目 seed 自启动期注入字节（零渲染）；切到其它模型时按当前选中模型
+    //    同步选择 + 渲染 —— ${...} 变量复用启动期按 launchInfo 发布的变量快照（git/os/env
+    //    与启动文本一致），仅 time/model 实时，热切换首请求即生效。
+    //    自带 try/catch + reportSwallowed：外层 baseURL 块的裸 catch 覆盖不到这里。
+    try {
+      const _hookTools = requestEntry?.body?.tools;
+      if (requestEntry && _proxyRole === 'main' &&
+          !requestEntry.isCountTokens && !requestEntry.isHeartbeat &&
+          Array.isArray(_hookTools) && _hookTools.length > 0 &&
+          liveSystemPromptEnabled()) {
+        const _targetModel = _targetModel0 || _oldModel0;
+        const _projectKey = _projectName; // 每请求快照一次：工作区切换中途不串写
+        const _sid = parseUserId(requestEntry.body?.metadata?.user_id)?.sessionId ?? null;
+        if (_targetModel && _projectKey && _sid) {
+          const _li = getLaunchSystemPromptInfo();
+          let _liveEntry = getLiveEntry(_projectKey, _sid, _targetModel);
+          // 启动模型 seed：
+          //  - pinned（resume -c/-r）：无条件 seed 自 pin 字节（不比较模型 id）——resume 的
+          //    启动模型就是 pin 的模型，seed 自 pin 字节即「pin 不被强行覆盖」（防模板漂移
+          //    重选破坏被恢复上下文的 KV-cache）。
+          //  - fresh：仅当本次启动确实注入了内容且模型匹配时 seed（不重新渲染，保住 Bind A）。
+          // 启动没注入（强行覆盖要补的场景）则 fallthrough 到下面的同步选择 + 渲染。
+          // 模型 id 判据：剥 [1m] 后缀后比较（resolveProfileModel 同款，Claude Code 1M
+          // context 标记不应影响匹配）。resolvedModelId 为 null（启动无模型信号）时不 seed
+          // —— 无法确认请求模型即启动模型，保守走同步选择（避免把启动字节错配给切换后的
+          // 不同家族模型）。该场景下同步选择用启动期变量快照渲染（${git.*} 等与启动一致）。
+          const _strip1m = (s) => (typeof s === 'string' ? s.replace(/\[1m\]/gi, '').trim() : '');
+          const _modelMatch = _li && (
+            _li.pinned === true ||
+            (_li.resolvedModelId != null && _strip1m(_targetModel) === _strip1m(_li.resolvedModelId))
+          );
+          const _seedable = _li && _li.entries.length > 0 && _modelMatch;
+          if (!_liveEntry && _seedable) {
+            const seeded = { override: null, append: null };
+            for (const e of _li.entries) {
+              if (e.flag === '--system-prompt-file') seeded.override = e.content;
+              else if (e.flag === '--append-system-prompt-file') seeded.append = e.content;
+            }
+            if (seeded.override || seeded.append) {
+              putLiveEntry(_projectKey, _sid, _targetModel, seeded);
+              _liveEntry = seeded;
+            }
+          }
+          // 强行覆盖：缓存未就绪（含「启动未注入」与「切换到非启动模型」两种）→ 同步按
+          // 当前选中模型选择 + 渲染。渲染已无现场子进程：${...} 变量取自启动期按
+          // launchInfo 发布的变量快照（git/os/env 与启动文本一致），仅 time/model 实时 ——
+          // 故热切换**首请求即生效**。旧实现的 setImmediate 异步旁路让首请求沿用上一个
+          // 模型的人格（人格错配），已拆除。选择本身是小文件同步读（模型条目 + sentinel），
+          // 固化后不再重复。
+          // pinned 双保险：F2 resume（pinned 且 entries 为空）语义是「绝不改动既有上下文
+          // 的 system」——launch-config 已对 F2 关 allowLive，这里再挡一层（防御陈旧 launchInfo）。
+          if (!_liveEntry && _li && _li.workspaceDir && !(_li.pinned === true && _li.entries.length === 0)) {
+            try {
+              const _selected = selectEntriesForModel(_targetModel, {
+                workspaceDir: _li.workspaceDir,
+                globalModelDir: join(LOG_DIR, 'system_prompt'),
+              });
+              if (_selected) {
+                // putLiveEntry 落盘失败（如超 256KB 上限/磁盘不可写）不影响当次改写：
+                // wire 仍用选中文本，只是下次请求重选一遍（与 seed 分支同一取舍）。
+                putLiveEntry(_projectKey, _sid, _targetModel, _selected);
+                _liveEntry = _selected;
+              }
+              // 无匹配条目 → _selected 为 null，当次请求不改写（selectEntriesForModel total）
+            } catch (err) { reportSwallowed('interceptor.live-system-select', err); }
+          }
+          if (_liveEntry && requestEntry.body && _fetchOpts?.body) {
+            const _known = knownInjectedTexts(_projectKey, _sid);
+            const _hadSystem = 'system' in requestEntry.body;
+            // 强行覆盖：body 无 system（启动未注入）时用空字符串合成目标形态
+            const _newSystem = applyLiveSystem(_hadSystem ? requestEntry.body.system : '', _liveEntry, _known);
+            if (_newSystem !== null) {
+              const _sysJson = JSON.stringify(_newSystem);
+              const _rawBody = typeof _fetchOpts.body === 'string'
+                ? _fetchOpts.body
+                : (Buffer.isBuffer(_fetchOpts.body) ? _fetchOpts.body.toString('utf-8') : null);
+              if (_rawBody !== null) {
+                // body 原本无 system → 允许前插（仅 main 非 utility 请求会走到这里）
+                let _rewritten = replaceTopLevelSystem(_rawBody, _sysJson, { allowPrepend: !_hadSystem });
+                if (_rewritten === null) {
+                  try {
+                    const _b = JSON.parse(_rawBody);
+                    _b.system = _newSystem;
+                    _rewritten = JSON.stringify(_b);
+                  } catch { _rewritten = null; }
+                }
+                if (_rewritten !== null) {
+                  // 保持 body 类型：进 Buffer 出 Buffer，进 string 出 string
+                  _fetchOpts = { ..._fetchOpts, body: Buffer.isBuffer(_fetchOpts.body) ? Buffer.from(_rewritten, 'utf-8') : _rewritten };
+                  requestEntry.body = { ...requestEntry.body, system: _newSystem };
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (err) { reportSwallowed('interceptor.live-system', err); }
 
     if (requestEntry) {
       // v2 req-phase ingest: journal seq is allocated inside, still in the

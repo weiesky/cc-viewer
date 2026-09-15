@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { listSystemPromptPresets, groupPresetsByCategory, getSystemPromptVariablesDoc } from '../server/lib/system-prompt-presets.js';
 import { expertRoutes } from '../server/routes/expert.js';
 
-const EXPECTED_IDS = ['deepseek-v4-pro', 'deepseek-v4-flash', 'GLM-5.2', 'GLM-5.3', 'Qwen-3.7-Max', 'kimi-k2.7-code', 'kimi-k3'];
+const EXPECTED_IDS = ['deepseek-v4-pro', 'deepseek-v4-flash', 'GLM-5.2', 'GLM-5.3', 'Qwen-3', 'kimi-k2.7-code', 'kimi-k3'];
 
 describe('listSystemPromptPresets', () => {
   const presets = listSystemPromptPresets();

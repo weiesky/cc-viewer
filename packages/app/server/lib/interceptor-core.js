@@ -399,6 +399,150 @@ export function replaceTopLevelModel(jsonStr, oldModel, newModel) {
   return jsonStr.slice(0, idx) + replaced + jsonStr.slice(idx + needle.length);
 }
 
+// ─── replaceTopLevelSystem ────────────────────────────────────────────────────
+// system 文本随主模型热切换（system-prompt-live.js）的 wire 层原语：在原始 JSON
+// 字符串上定向替换顶层 "system" 成员的值，避免对巨型 wire body（-c checkpoint
+// 可达数十 MB）做二次 JSON.parse + 全量 re-stringify。
+//
+// 与 replaceTopLevelModel 的三点差异：
+// 1. needle 只有 key（值可能极大且未知），嵌套的同名成员（如工具 input_schema
+//    里名为 "system" 的属性）会产生多候选 → 要求顶层候选唯一，否则返回 null
+//    由调用方回退 parse/stringify。
+// 2. 值的结束位置用「字符串/转义感知的有界扫描」定位（string 处理 \" 与 \\；
+//    array/object 做深度计数，跳过字符串内部）。扫描结束后校验下一个非空白字符
+//    必须是 `,` 或 `}`（顶层对象内的合法后继），否则视为定位失败返回 null。
+// 3. body 没有顶层 "system" 成员时（罕见，如某些 utility 调用），opts.allowPrepend
+//    为 true 才前插；否则返回 null。前插的重复键风险与 injectOutputConfigEffort
+//    同理——调用方必须先在解析后的 body 上确认 system 不存在。
+//
+// newSystemJson 是完整的新值 JSON（字符串或数组的序列化形态，调用方负责 JSON.stringify）。
+// 返回替换后的字符串；无法唯一定位 / 入参非法 → null（调用方回退）。
+
+// 从 jsonStr[i]（值首字符，必须为 " [ { 或字面量）扫描到值结束，返回结束下标（exclusive），
+// 无法定位 → -1。字符串处理 \" 与 \\ 转义；数组/对象做深度计数并跳过字符串内容；
+// 字面量（true/false/null/number）直接扫到分隔符。system 值在真实 wire 上只会是
+// string 或 array，其余形态防御性支持。
+function _scanJsonValueEnd(jsonStr, i) {
+  const open = jsonStr[i];
+  if (open === '"') {
+    let p = i + 1;
+    while (p < jsonStr.length) {
+      const c = jsonStr[p];
+      if (c === '\\') { p += 2; continue; }
+      if (c === '"') return p + 1;
+      p++;
+    }
+    return -1;
+  }
+  if (open === '[' || open === '{') {
+    let depth = 0;
+    let p = i;
+    while (p < jsonStr.length) {
+      const c = jsonStr[p];
+      if (c === '"') {
+        const end = _scanJsonValueEnd(jsonStr, p);
+        if (end === -1) return -1;
+        p = end;
+        continue;
+      }
+      if (c === '[' || c === '{') depth++;
+      else if (c === ']' || c === '}') {
+        depth--;
+        if (depth === 0) return p + 1;
+        if (depth < 0) return -1;
+      }
+      p++;
+    }
+    return -1;
+  }
+  // literal: true / false / null / number → 扫到 , } ] 或空白
+  const m = /^-?\d+(\.\d+)?([eE][+-]?\d+)?|^true|^false|^null/.exec(jsonStr.slice(i, i + 32));
+  return m ? i + m[0].length : -1;
+}
+
+export function replaceTopLevelSystem(jsonStr, newSystemJson, opts = {}) {
+  if (typeof jsonStr !== 'string' || !jsonStr ||
+      typeof newSystemJson !== 'string' || !newSystemJson) return null;
+  // 防御：newSystemJson 必须是合法 JSON 值（调用方 Bug 直接把垃圾写上 wire 不可接受）。
+  try { JSON.parse(newSystemJson); } catch { return null; }
+
+  const needles = ['"system":', '"system" :'];
+  // 顶层必须是对象：顶层数组（如 [{...}]）里的成员也可能通过 { 边界校验，
+  // 但那不是顶层 "system" —— 整体拒绝（调用方回退）。
+  const openIdx = jsonStr.search(/\S/);
+  if (openIdx === -1 || jsonStr[openIdx] !== '{') return null;
+  // 深度感知候选扫描（review 第二轮 P1-4）：成员边界校验（前一非空白字符是 { 或 ,）
+  // 不足以区分「顶层 system」与「嵌套同名成员」—— tools[i].input_schema.properties.system
+  // 前面同样是 {。必须跟踪 JSON 容器深度，只接受 depth===1（顶层对象内）的候选，
+  // 否则前插/替换会把 persona 写进工具 schema（顶层 system 根本没设置）。
+  //
+  // 性能（review 第二轮二次验证 P1）：逐字符深度扫描是 O(body)，对巨型 -c checkpoint
+  // （可达数十 MB）比「回退 parse+stringify」还贵 —— 而绝大多数请求（无 system 的旁路
+  // 调用、或 system 在后的大 body）根本不需要全文扫描。先用 indexOf 预筛：body 完全
+  // 不含 "system" 字样（含字符串值内）时 candidates 恒为空，直接跳过扫描（O(needle)
+  // 原生加速）；只有确实含 needle 才付出深度扫描成本。预筛命中不等于有候选（可能在
+  // 字符串值内），仍需扫描确认 —— 预筛只在「确定无 needle」时短路，语义不变。
+  const candidates = [];
+  const _hasNeedle = jsonStr.indexOf('"system"') !== -1; // 覆盖 "system": 与 "system" : 两 needle 的公共前缀
+  if (_hasNeedle) {
+    let depth = 0;
+    let p = openIdx;
+    while (p < jsonStr.length) {
+      const c = jsonStr[p];
+      if (c === '"') {
+        // 字符串内容整体跳过（含转义）—— 但先检查它是否是 depth===1 的 "system" 键
+        if (depth === 1) {
+          for (const needle of needles) {
+            if (jsonStr.startsWith(needle, p)) {
+              // 键边界：前一个非空白字符必须是 { 或 ,（顶层对象成员位置）
+              let q = p - 1;
+              while (q >= 0 && (jsonStr[q] === ' ' || jsonStr[q] === '\t' || jsonStr[q] === '\n' || jsonStr[q] === '\r')) q--;
+              if (q >= 0 && (jsonStr[q] === '{' || jsonStr[q] === ',')) {
+                candidates.push({ idx: p, needle });
+              }
+              break;
+            }
+          }
+        }
+        const end = _scanJsonValueEnd(jsonStr, p);
+        if (end === -1) return null;
+        p = end;
+        continue;
+      }
+      if (c === '{' || c === '[') depth++;
+      else if (c === '}' || c === ']') depth--;
+      p++;
+    }
+  }
+  if (candidates.length > 1) return null; // 嵌套同名成员 → 回退 parse/stringify
+
+  if (candidates.length === 0) {
+    // 无顶层 system 成员：只有显式允许才前插（utility 端点绝不能发明 system）。
+    if (opts.allowPrepend !== true) return null;
+    const i = jsonStr.indexOf('{');
+    if (i === -1) return null;
+    if (/\S/.test(jsonStr.slice(0, i))) return null; // 顶层必须是对象
+    const after = jsonStr.slice(i + 1);
+    const m = after.match(/^\s*(\S)/);
+    const needsComma = !!(m && m[1] !== '}');
+    const insert = `"system":${newSystemJson}` + (needsComma ? ',' : '');
+    return jsonStr.slice(0, i + 1) + insert + jsonStr.slice(i + 1);
+  }
+
+  const { idx, needle } = candidates[0];
+  // 值起始：跳过冒号后的空白
+  let vStart = idx + needle.length;
+  while (vStart < jsonStr.length && (jsonStr[vStart] === ' ' || jsonStr[vStart] === '\t' || jsonStr[vStart] === '\n' || jsonStr[vStart] === '\r')) vStart++;
+  if (vStart >= jsonStr.length) return null;
+  const vEnd = _scanJsonValueEnd(jsonStr, vStart);
+  if (vEnd === -1) return null;
+  // 值后边界：下一个非空白字符必须是 , 或 }（顶层对象内的合法后继）
+  let p = vEnd;
+  while (p < jsonStr.length && (jsonStr[p] === ' ' || jsonStr[p] === '\t' || jsonStr[p] === '\n' || jsonStr[p] === '\r')) p++;
+  if (p >= jsonStr.length || (jsonStr[p] !== ',' && jsonStr[p] !== '}')) return null;
+  return jsonStr.slice(0, vStart) + newSystemJson + jsonStr.slice(vEnd);
+}
+
 // proxy profile hot-switch 模型解析：按 request body 里 model 的家族名映射到 profile 的对应字段。
 // 家族用**大小写不敏感子串**匹配（/opus/i 等），只认这几个已知家族单词——
 // 因此 claude-opus-4-8、未来的 claude-opus-5 等任何版本都命中同一家族，版本升级无需重配。
