@@ -77,7 +77,10 @@ const MODEL_CONTEXT_SIZES = [
   { match: /kimi|moonshot|^k3$/i, tokens: 256000 },
   // deepseek-v4 defaults to 1M; placed before generic /deepseek/ so the
   // first-match-wins loop picks it up before falling through to 128K.
+  // The `deepseek-flash` shorthand (an alias of deepseek-v4-flash, see the prompt
+  // layer's MODEL_ID_ALIASES) must hit the same 1M tier — /deepseek/ would give 128K.
   { match: /deepseek-v4/i, tokens: 1000000 },
+  { match: /^deepseek-flash/i, tokens: 1000000 },
   { match: /deepseek/i, tokens: 128000 },
 ];
 
@@ -118,6 +121,8 @@ export function classifyContextWindow(modelName) {
   if (!modelName || typeof modelName !== 'string') return 200000;
   if (modelName.toLowerCase().includes('1m')) return 1000000;
   if (/kimi|moonshot|^k3$/i.test(modelName)) return 1000000;
+  // deepseek-flash 简写(deepseek-v4-flash 的别名)归 1M 桶,与请求侧判定对齐。
+  if (/^deepseek-flash/i.test(modelName)) return 1000000;
   return getModelMaxTokens(modelName) >= 1000000 ? 1000000 : 200000;
 }
 

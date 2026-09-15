@@ -437,17 +437,25 @@ export class V2Writer {
       // count_tokens/heartbeat probes wear main-agent shapes but aren't the user's
       // turn (same gate as the resume-switch above); adopted (-c) sessions skip —
       // their pendings are resumeExpected, reserved for the SessionStart-hook bind.
-      // First-main-only via the per-session flag: probes may create the session state
-      // before the real turn arrives. The live-sessions-dir gate keeps the offline
-      // converter (staging dirs) from consuming LIVE pendings. Fully caught: a lost
-      // bind degrades to the no-record resume path, never to a dropped log entry.
+      // The latch only locks on a SUCCESSFUL consume: a session's first main-shaped
+      // request can be a small-model side call (title/compression) whose system text
+      // the live layer already rewrote to that model's persona (interceptor.js:1124-
+      // 1151 rewrites requestEntry.body BEFORE this ingest) — it matches no pending,
+      // and latching there would permanently deny the real main-model turns that
+      // follow (observed: a session whose 8 later PRO-persona requests never rebound,
+      // leaving every later `-c` on the F2 no-record path). Unmatched requests retry;
+      // a genuinely injection-less session still consumes its EMPTY pending on some
+      // later request (the fallback just records "no injection", so deferring it is
+      // harmless). The live-sessions-dir gate keeps the offline converter (staging
+      // dirs) from consuming LIVE pendings. Fully caught: a lost bind degrades to
+      // the no-record resume path, never to a dropped log entry.
       if (!adoptTarget && entry.mainAgent && !entry.isCountTokens && !entry.isHeartbeat
         && this._sessionsDirName === 'sessions'
         && s && !s.sysPromptBindDone) {
-        s.sysPromptBindDone = true;
         try {
           const pend = consumePendingForWireByKey(project, systemTextOfBody(entry.body), this._logDir);
           if (pend) {
+            s.sysPromptBindDone = true;
             writeSnapshotByKey(project, sid, { entries: pend.entries, model: pend.model, boundVia: 'wire' }, { logDir: this._logDir });
           }
         } catch (err) { reportSwallowed('v2-write.sys-prompt-bind', err); }

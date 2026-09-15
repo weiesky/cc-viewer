@@ -34,12 +34,12 @@ function startUpstream(bucket) {
 
 let mainSrv, subSrv, proxyPort, itc;
 
-function proxyReq(path, body) {
+function proxyReq(path, body, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const payload = typeof body === 'string' ? body : JSON.stringify(body);
     const r = request({
       hostname: '127.0.0.1', port: proxyPort, path, method: 'POST',
-      headers: { 'content-length': Buffer.byteLength(payload) },
+      headers: { 'content-length': Buffer.byteLength(payload), ...extraHeaders },
     }, (res) => {
       let data = '';
       res.on('data', (c) => { data += c; });
@@ -126,6 +126,33 @@ describe('proxy 模式按角色分流（live startProxy）', () => {
     const res = await proxyReq('/v1/messages', 'not-json{{{');
     assert.equal(res.status, 200);
     assert.equal(hits.main.length, beforeM + 1, '解析失败回退 main 活跃 profile 上游');
+  });
+
+  // review P0 回归：x-claude-code-agent-id 是子代理流的 header 硬判据 —— body 不带任何
+  // 角色标记（SDK 身份行形态）时，仅凭 header 也必须分流到子源，而非误判 main。
+  it('header-only 匿名子代理（body 无标记）→ 子源上游', async () => {
+    const before = hits.sub.length;
+    const res = await proxyReq('/v1/messages', {
+      system: [{ type: 'text', text: 'You are a Claude agent, built on Anthropic\'s Claude Agent SDK.' }],
+      messages: [{ role: 'user', content: 'sub task' }],
+      model: 'claude-x',
+    }, { 'x-claude-code-agent-id': 'a7eea0a140349f80d' });
+    assert.equal(res.status, 200);
+    assert.equal(hits.sub.length, before + 1, '匿名 hex agent-id → subagent → 子源');
+    assert.equal(JSON.parse(hits.sub[hits.sub.length - 1].body).model, 'SUB-MODEL');
+  });
+
+  it('header-only 命名队友（body 无标记）→ teammate 角色（follow 语义 → 主源）', async () => {
+    const beforeM = hits.main.length;
+    const res = await proxyReq('/v1/messages', {
+      system: [{ type: 'text', text: 'You are a Claude agent, built on Anthropic\'s Claude Agent SDK.' }],
+      messages: [{ role: 'user', content: 'review diff' }],
+      model: 'claude-x',
+    }, { 'x-claude-code-agent-id': 'reviewer@session-17e1f37a-0000-0000-0000-000000000000' });
+    assert.equal(res.status, 200);
+    // teammate 分配为 follow → 跟随 main 活跃 profile（主源）；断言的是 header 被识别为
+    // teammate 角色而非误判 main 之外的崩溃/错路。
+    assert.equal(hits.main.length, beforeM + 1, 'name@… agent-id → teammate → follow 主源');
   });
 });
 

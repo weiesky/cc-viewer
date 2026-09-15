@@ -9,6 +9,7 @@ import { extractApiErrorMessage, formatProxyRequestError } from './lib/proxy/pro
 import { getProxyDispatcher } from './lib/proxy/proxy-env.js';
 import { getClaudeConfigDir } from '../findcc.js';
 import { isAnthropicApiPath, classifyProxyRole } from './lib/interceptor-core.js';
+import { parseAgentId, findHeader } from './lib/v2/agent-id.js';
 import { liveSystemPromptEnabled } from './lib/system-prompt-live.js';
 import { executeRequest, extractModel } from './lib/proxy/proxy-retry.js';
 import { buildRecord, appendRecord, dailyFilePath, todayStr, emitProxyStatsUpdate } from './lib/proxy/proxy-stats.js';
@@ -144,7 +145,17 @@ export function startProxy() {
           try { parsedBody = JSON.parse(body.toString('utf8')); } catch { /* 非 JSON body → 保持 main 语义 */ }
           if (parsedBody && typeof parsedBody === 'object') {
             try {
-              _role = classifyProxyRole(parsedBody, {});
+              // Header 硬判据优先（与 interceptor fetch hook 同构，review P0）：
+              // x-claude-code-agent-id 是 SDK 命名队友（name@…）/ 匿名子代理（hex）
+              // 的判别信号，不依赖 system 文本 —— body 正则对「SDK 身份行 + 无
+              // billing 标记」的形态失效，会把 header-only 子代理误判 'main' 而注入
+              // 主 persona。named→teammate、anon→subagent，覆盖 body 分类。
+              // Header hard-signal first (mirrors the interceptor fetch hook): the
+              // agent-id header marks sub-agent streams without relying on body markers.
+              const _agent = parseAgentId(findHeader(req.headers, 'x-claude-code-agent-id'));
+              _role = _agent
+                ? (_agent.named ? 'teammate' : 'subagent')
+                : classifyProxyRole(parsedBody, {});
               if (interceptor.hasExplicitRoleAssignments()) {
                 roleProfile = interceptor.getEffectiveRoleProfile(_role);
               }

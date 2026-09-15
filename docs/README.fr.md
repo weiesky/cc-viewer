@@ -172,7 +172,7 @@ La fenêtre modale **Modifier le prompt système** (menu hamburger → Modifier 
 * Onglet **Défaut** : écrit `CC_SYSTEM.md` (remplacer) ou `CC_APPEND_SYSTEM.md` (ajouter) dans l'espace de travail, injecté au prochain lancement de ccv.
 * **Onglets de modèle** : ajoutez un modèle par nom (`opus`, `Gemini3`, …) avec une portée **Global** (`~/.claude/cc-viewer/system_prompt/`) ou **Espace de travail** (`<project>/system_prompt/`) ; chaque onglet a son propre commutateur Ajouter/Remplacer et son aperçu. Les noms correspondent de façon approximative à l'ID de modèle résolu (`opus` correspond à `claude-opus-4-8[1m]`) ; l'espace de travail l'emporte sur global, le nom le plus long gagne, une entrée correspondante remplace entièrement les fichiers par défaut.
 * **Préréglages intégrés** : des system prompts ajustés, profondément adaptés aux familles de modèles Kimi, DeepSeek, Qwen et GLM — injectés automatiquement lorsque le modèle résolu correspond et qu'aucune de vos entrées ne correspond (vos fichiers gagnent toujours). Désactivation via le × de l'onglet.
-* Le texte système suit les bascules à chaud du modèle principal en cours de session, figé par (session, modèle) (KV-cache invalidé une seule fois au changement). Enregistrer un onglet vide supprime l'entrée. `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` désactive toute injection automatique.
+* Le texte système suit les bascules à chaud du modèle principal en cours de session, figé par (session, modèle) (KV-cache invalidé une seule fois au changement). Enregistrer un onglet vide supprime l'entrée. `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` désactive toute injection automatique, `CCV_DISABLE_LIVE_SYSTEM_PROMPT=1` uniquement le suivi en cours de session.
 
 ### Mode Logger (Visualiser les sessions complètes de Claude Code)
 

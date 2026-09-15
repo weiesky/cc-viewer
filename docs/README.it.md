@@ -172,7 +172,7 @@ La finestra modale **Modifica prompt di sistema** (menu hamburger → Modifica p
 * Scheda **Predefinito**: scrive `CC_SYSTEM.md` (sovrascrivi) o `CC_APPEND_SYSTEM.md` (aggiungi) nell'area di lavoro, iniettato al successivo avvio di ccv.
 * **Schede modello**: aggiungi un modello per nome (`opus`, `Gemini3`, …) con ambito **Globale** (`~/.claude/cc-viewer/system_prompt/`) o **Area di lavoro** (`<project>/system_prompt/`); ogni scheda ha il proprio interruttore Aggiungi/Sovrascrivi e anteprima. I nomi corrispondono in modo fuzzy all'ID del modello risolto (`opus` corrisponde a `claude-opus-4-8[1m]`); l'area di lavoro prevale sul globale, vince il nome più lungo, una voce corrispondente sostituisce completamente i file predefiniti.
 * **Preset integrati**: system prompt ottimizzati, profondamente adattati alle famiglie di modelli Kimi, DeepSeek, Qwen e GLM — iniettati automaticamente quando il modello risolto corrisponde e nessuna tua voce corrisponde (i tuoi file vincono sempre). Disattivazione dalla × della scheda.
-* Il testo di sistema segue gli hot-switch del modello principale a metà sessione, fissato per (sessione, modello) (KV-cache invalidata solo una volta al cambio). Salvare una scheda vuota elimina la voce. `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` disabilita ogni iniezione automatica.
+* Il testo di sistema segue gli hot-switch del modello principale a metà sessione, fissato per (sessione, modello) (KV-cache invalidata solo una volta al cambio). Salvare una scheda vuota elimina la voce. `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` disabilita ogni iniezione automatica, `CCV_DISABLE_LIVE_SYSTEM_PROMPT=1` solo il seguito durante la sessione.
 
 ### Modalità Logger (Visualizzare sessioni complete di Claude Code)
 

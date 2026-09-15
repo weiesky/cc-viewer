@@ -259,9 +259,11 @@ const MODEL_ID_ALIASES = {
 };
 
 // 展开模型 id 的全部等价小写拼写（无别名时就是单元素数组）。
+// 用 hasOwn 查表：普通对象下 `MODEL_ID_ALIASES['constructor']` 会取到 Object 构造器，
+// 让 .some 调用炸掉（模型 id 来自外部输入，不能信任）。
 // Expand a model id into every equivalent lowercase spelling.
 function modelIdVariants(id) {
-  return MODEL_ID_ALIASES[id] || [id];
+  return Object.hasOwn(MODEL_ID_ALIASES, id) ? MODEL_ID_ALIASES[id] : [id];
 }
 
 // 供内置预设匹配复用的导出包装：入参任意大小写，先剥 `[1m]` 类方括号后缀

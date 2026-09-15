@@ -172,7 +172,7 @@ ccv -h
 * **預設**分頁：將 `CC_SYSTEM.md`（覆蓋）或 `CC_APPEND_SYSTEM.md`（追加）寫入目前工作區，下次 ccv 啟動時注入。
 * **模型分頁**：按名稱新增模型（`opus`、`Gemini3`……），作用範圍可選**全域**（`~/.claude/cc-viewer/system_prompt/`）或**工作區**（`<project>/system_prompt/`）；每個分頁有獨立的追加/覆蓋開關和預覽。名稱按解析出的模型 ID 模糊比對（`opus` 可比對到 `claude-opus-4-8[1m]`）；工作區優先於全域，名稱最長者勝出，比對到的條目完全取代預設檔案。
 * **內建預設**：調優 system prompt，深度適配了 Kimi、DeepSeek、Qwen、GLM 的模型——解析出的模型匹配且沒有你自己的條目時自動注入（你自己的檔案永遠優先）。可透過分頁上的 × 停用某個內建項目。
-* system 文本在工作階段中途跟隨熱切換的主模型，按（工作階段，模型）固化（KV-cache 僅在切換時重建一次）。分頁儲存為空白即刪除該條目。設定 `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` 可停用所有自動注入。
+* system 文本在工作階段中途跟隨熱切換的主模型，按（工作階段，模型）固化（KV-cache 僅在切換時重建一次）。分頁儲存為空白即刪除該條目。設定 `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` 可停用所有自動注入，或設定 `CCV_DISABLE_LIVE_SYSTEM_PROMPT=1` 僅停用工作階段中跟隨。
 
 ### 日誌模式（檢視 claude code 完整對話）
 

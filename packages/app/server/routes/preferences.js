@@ -11,6 +11,7 @@ import { reportSwallowed } from '@ccv/core/error-report';
 import { setLang } from '../i18n.js';
 import { reconcileVoicePackPrefs as vpReconcile } from '../lib/voice-pack-manager.js';
 import { readClaudeProjectModel } from '../lib/context-watcher.js';
+import { inspectShellHook } from '../lib/shell-hook-inspect.js';
 import { sendEventToClients } from '../lib/log-watcher.js';
 import { listPlatforms } from '../lib/im/im-config.js';
 import { mutatePrefs, applyPrefsPatch, readPrefsRaw } from '../lib/prefs-store.js';
@@ -274,7 +275,11 @@ function claudeSettingsGet(req, res, parsedUrl, isLocal, deps) {
   // 错显 200K，详见 src/utils/helpers.js resolveCalibrationTokens）。
   const projectCwd = process.env.CCV_PROJECT_DIR || process.cwd();
   const claudeSettings = deps.claudeSettings;
-  res.end(JSON.stringify({ env, model: claudeSettings.model || null, showThinkingSummaries: claudeSettings.showThinkingSummaries || false, claudeAvailable: process.env.CCV_CLAUDE_MISSING !== '1', claudeProjectModel: readClaudeProjectModel(projectCwd) }));
+  // L1: shell hook 状态(只读;不传模板构造器 → stale 恒 false,stale 精确判定由 cli.js
+  // 侧 refreshShellHookState 负责,这里回答「装没装」足够面板提示用)。失败退化 null。
+  let shellHook = null;
+  try { shellHook = inspectShellHook(null); } catch (err) { reportSwallowed('prefs.shellHook', err); }
+  res.end(JSON.stringify({ env, model: claudeSettings.model || null, showThinkingSummaries: claudeSettings.showThinkingSummaries || false, claudeAvailable: process.env.CCV_CLAUDE_MISSING !== '1', claudeProjectModel: readClaudeProjectModel(projectCwd), shellHook }));
 }
 
 function claudeSettingsPost(req, res, parsedUrl, isLocal, deps) {

@@ -813,6 +813,15 @@ class AppBase extends React.Component {
       if (typeof data.claudeProjectModel === 'string' && data.claudeProjectModel) {
         this.setState({ claudeProjectModel: data.claudeProjectModel });
       }
+      // L1: shell hook 未安装/已损坏 —— 不弹窗(用户反馈:此类提醒静默即可),只在
+      // 控制台留一条诊断日志;状态本身仍由 /api/claude-settings 暴露给需要的 UI。
+      try {
+        const sh = data.shellHook;
+        if (sh && (sh.installed === false || sh.corrupt)) {
+          console.warn('[CC Viewer] shell hook not active (terminal `claude` bypasses ccv):',
+            sh.corrupt ? `corrupt block in ${sh.corrupt}` : 'not found in rc files; run `ccv -logger` in a new terminal to install');
+        }
+      } catch (e) { reportSwallowed('claude-settings.shell-hook-log', e); }
     });
 
     // ─── Approval modal: subscribe to electron main → tabBridge ──────────────────
@@ -1324,6 +1333,15 @@ class AppBase extends React.Component {
           const data = JSON.parse(event.data);
           this.setState({ updateInfo: { type: 'major', version: data.version } });
         } catch (e) { reportSwallowed('sse.update_major_available', e); }
+      });
+      // L2 裸续接:有会话经「绕过 ccv 的 claude -c」续接(注入丢失、前缀缓存重写)。
+      // 不弹窗(用户反馈:静默即可),只留控制台诊断日志。
+      this.eventSource.addEventListener('resume_bypassed', (event) => {
+        this._resetSSETimeout();
+        try {
+          const data = JSON.parse(event.data);
+          console.warn('[CC Viewer] a session was continued via a `claude -c` that bypassed ccv — system-prompt injection lost, prefix cache will be fully rewritten once. uuid:', data?.uuid);
+        } catch (e) { reportSwallowed('sse.resume_bypassed', e); }
       });
       this.eventSource.addEventListener('load_start', (event) => {
         this._resetSSETimeout();

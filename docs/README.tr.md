@@ -172,7 +172,7 @@ Mobil programlamaya dair hayallerinizi gerçekleştirin. Ayrıca bir eklenti mek
 * **Varsayılan** sekmesi: çalışma alanına `CC_SYSTEM.md` (üzerine yazma) veya `CC_APPEND_SYSTEM.md` (ekleme) dosyasını yazar; bir sonraki ccv başlatılışında enjekte edilir.
 * **Model sekmeleri**: ada göre model ekleyin (`opus`, `Gemini3`, …), kapsam olarak **Genel** (`~/.claude/cc-viewer/system_prompt/`) veya **Çalışma alanı** (`<project>/system_prompt/`) seçin; her sekmenin kendi Ekle/Üzerine yaz anahtarı ve önizlemesi vardır. Adlar çözümlenen model kimliğiyle bulanık eşleşir (`opus`, `claude-opus-4-8[1m]` ile eşleşir); çalışma alanı genele üstün gelir, en uzun ad kazanır, eşleşen bir girdi varsayılan dosyaların yerini tamamen alır.
 * **Yerleşik ön ayarlar**: Kimi, DeepSeek, Qwen ve GLM model ailelerine derinlemesine uyarlanmış, ince ayarlı system promptlar — çözümlenen model eşleştiğinde ve hiçbir girdiniz eşleşmediğinde otomatik olarak enjekte edilir (dosyalarınız her zaman kazanır). Sekmedeki × ile devre dışı bırakılır.
-* Sistem metni, oturum ortasında ana modelin sıcak geçişini izler ve (oturum, model) bazında sabitlenir (KV-cache yalnızca geçiş anında bir kez bozulur). Bir sekmeyi boş kaydetmek girdiyi siler. `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` tüm otomatik enjeksiyonu devre dışı bırakır.
+* Sistem metni, oturum ortasında ana modelin sıcak geçişini izler ve (oturum, model) bazında sabitlenir (KV-cache yalnızca geçiş anında bir kez bozulur). Bir sekmeyi boş kaydetmek girdiyi siler. `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` tüm otomatik enjeksiyonu, `CCV_DISABLE_LIVE_SYSTEM_PROMPT=1` yalnızca oturum içi izlemeyi devre dışı bırakır.
 
 ### Log modu (claude code'un eksiksiz oturumlarını görüntüleyin)
 

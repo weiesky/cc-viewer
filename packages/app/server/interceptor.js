@@ -25,6 +25,7 @@ import { setRetryConfigPath, loadRetryConfig, DEFAULT_RETRY_CONFIG } from './lib
 import { setProjectName } from './lib/project-state.js';
 import { consumePendingForResume, writeSnapshot, projectKeyForCwd } from './lib/system-prompt-snapshots.js';
 import { liveSystemPromptEnabled, getLaunchSystemPromptInfo, getLiveEntry, putLiveEntry, selectEntriesForModel, applyLiveSystem, knownInjectedTexts } from './lib/system-prompt-live.js';
+import { MODEL_PROMPT_DIR } from './lib/model-system-prompts.js';
 
 
 
@@ -1109,7 +1110,7 @@ export function setupInterceptor() {
             try {
               const _selected = selectEntriesForModel(_targetModel, {
                 workspaceDir: _li.workspaceDir,
-                globalModelDir: join(LOG_DIR, 'system_prompt'),
+                globalModelDir: join(LOG_DIR, MODEL_PROMPT_DIR),
               });
               if (_selected) {
                 // putLiveEntry 落盘失败（如超 256KB 上限/磁盘不可写）不影响当次改写：

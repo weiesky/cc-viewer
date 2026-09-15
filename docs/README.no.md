@@ -172,7 +172,7 @@ Modalen **Rediger systemprompt** (hamburgermeny → Rediger systemprompt) er del
 * Fanen **Standard**: skriver `CC_SYSTEM.md` (overskriv) eller `CC_APPEND_SYSTEM.md` (legg til) i arbeidsområdet, injisert ved neste ccv-oppstart.
 * **Modellfaner**: legg til en modell ved navn (`opus`, `Gemini3`, …) med omfanget **Global** (`~/.claude/cc-viewer/system_prompt/`) eller **Arbeidsområde** (`<project>/system_prompt/`); hver fane har sin egen Legg til/Overskriv-bryter og forhåndsvisning. Navn matches fuzzy mot den utledede modell-ID-en (`opus` matcher `claude-opus-4-8[1m]`); arbeidsområde slår globalt, det lengste navnet vinner, og en matchet oppføring erstatter standardfilene fullstendig.
 * **Innebygde forhåndsinnstillinger**: tilpassede system-prompter, dypt tilpasset modellfamiliene Kimi, DeepSeek, Qwen og GLM — injiseres automatisk når den utledede modellen matcher og ingen av dine oppføringer matcher (dine filer vinner alltid). Deaktivering via × på fanen.
-* Systemteksten følger hotswitch av hovedmodellen midt i en økt, festet per (økt, modell) (KV-cache brytes bare én gang ved byttet). Lagres en fane tom, slettes oppføringen. `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` deaktiverer all automatisk injeksjon.
+* Systemteksten følger hotswitch av hovedmodellen midt i en økt, festet per (økt, modell) (KV-cache brytes bare én gang ved byttet). Lagres en fane tom, slettes oppføringen. `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` deaktiverer all automatisk injeksjon, `CCV_DISABLE_LIVE_SYSTEM_PROMPT=1` bare oppfølgingen i løpet av økten.
 
 ### Logger-modus (Se komplette Claude Code-økter)
 

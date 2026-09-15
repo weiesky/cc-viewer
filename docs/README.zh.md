@@ -196,7 +196,9 @@ ccv -h
 * **默认**标签页：将 `CC_SYSTEM.md`（覆盖）或 `CC_APPEND_SYSTEM.md`（追加）写入当前工作区，下次 ccv 启动时注入。
 * **模型标签页**：按名称添加模型（`opus`、`Gemini3`……），作用域可选**全局**（`~/.claude/cc-viewer/system_prompt/`）或**工作区**（`<project>/system_prompt/`）；每个标签页有独立的追加/覆盖开关和预览。名称按解析出的模型 ID 模糊匹配（`opus` 可匹配 `claude-opus-4-8[1m]`）；工作区优先于全局，名称最长者胜出，匹配到的条目完全取代默认文件。
 * **内置预设**：调优 system prompt，深度适配了 Kimi、DeepSeek、Qwen、GLM 的模型——解析出的模型匹配且没有你自己的条目时自动注入（你自己的文件始终优先）。可通过标签页上的 × 禁用某个内置项。
-* system 文本在会话中途跟随热切换的主模型，按（会话，模型）固化（KV-cache 仅在切换时重建一次）。标签页保存为空即删除该条目。设置 `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` 可禁用所有自动注入。
+* system 文本在会话中途跟随热切换的主模型，按（会话，模型）固化（KV-cache 仅在切换时重建一次）。标签页保存为空即删除该条目。设置 `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` 可禁用所有自动注入，或设置 `CCV_DISABLE_LIVE_SYSTEM_PROMPT=1` 仅禁用会话中跟随。
+
+**从终端继续会话：**`claude -c` / `claude -r` 只有在请求经过 ccv 时才能保住注入的 system prompt（以及前缀 KV 缓存）。`ccv -logger` 安装的 shell hook 会把终端里的 `claude` 调用路由进 ccv —— 它在**新终端**里才生效（或 source 一次 rc 文件）。若绕开了它（hook 缺失、或直接调用 claude 二进制），resume 会以不同的 system 文本启动：前缀缓存被全量重写一次（下个请求重新命中；检测会静默记录到浏览器控制台）。另外缓存条目距上次请求约 5 分钟也会过期，与参数无关。拿不准时，用面板的「继续」入口续接 —— 它总会重新注入完整启动参数。
 
 ### 日志模式（查看claude code 完整会话）
 

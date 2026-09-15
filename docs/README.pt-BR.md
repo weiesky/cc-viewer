@@ -172,7 +172,7 @@ O modal **Editar prompt do sistema** (menu de hambúrguer → Editar prompt do s
 * Aba **Padrão**: grava `CC_SYSTEM.md` (sobrescrever) ou `CC_APPEND_SYSTEM.md` (acrescentar) no espaço de trabalho, injetado na próxima inicialização do ccv.
 * **Abas de modelo**: adicione um modelo pelo nome (`opus`, `Gemini3`, …) com escopo **Global** (`~/.claude/cc-viewer/system_prompt/`) ou **Espaço de trabalho** (`<project>/system_prompt/`); cada aba tem seu próprio interruptor Acrescentar/Sobrescrever e pré-visualização. Os nomes correspondem de forma difusa ao ID do modelo resolvido (`opus` corresponde a `claude-opus-4-8[1m]`); o espaço de trabalho prevalece sobre o global, vence o nome mais longo, e uma entrada correspondente substitui completamente os arquivos padrão.
 * **Presets integrados**: system prompts ajustados, profundamente adaptados às famílias de modelos Kimi, DeepSeek, Qwen e GLM — injetados automaticamente quando o modelo resolvido corresponde e nenhuma entrada sua corresponde (seus arquivos sempre vencem). Desative um pelo × da aba.
-* O texto de sistema segue as trocas a quente do modelo principal no meio da sessão, fixado por (sessão, modelo) (KV-cache invalidada apenas uma vez na troca). Salvar uma aba vazia exclui a entrada. `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` desativa toda injeção automática.
+* O texto de sistema segue as trocas a quente do modelo principal no meio da sessão, fixado por (sessão, modelo) (KV-cache invalidada apenas uma vez na troca). Salvar uma aba vazia exclui a entrada. `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` desativa toda injeção automática, `CCV_DISABLE_LIVE_SYSTEM_PROMPT=1` apenas o acompanhamento durante a sessão.
 
 ### Modo Logger (Visualizar sessões completas do Claude Code)
 

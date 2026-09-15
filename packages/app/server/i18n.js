@@ -263,8 +263,8 @@ const i18nData = {
     "uk": "⚠️  Не вдалося записати shell hook: {error}"
   },
   "cli.usage.hint": {
-    "zh": "\n如需卸载，请运行: ccv --uninstall",
-    "en": "\nTo uninstall, run: ccv --uninstall",
+    "zh": "\nShell hook 需重开终端(或 source rc 文件)后生效;此后终端里的 `claude -c` 也会经 ccv 注入。\n如需卸载，请运行: ccv --uninstall",
+    "en": "\nThe shell hook takes effect in NEW terminals (or after sourcing your rc file); afterwards `claude -c` in a terminal is also injected via ccv.\nTo uninstall, run: ccv --uninstall",
     "zh-TW": "\n如需卸載，請執行: ccv --uninstall",
     "ko": "\n제거하려면 실행: ccv --uninstall",
     "ja": "\nアンインストールするには: ccv --uninstall",

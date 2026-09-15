@@ -1,5 +1,5 @@
 {
-  "$comment": "Hand-editable manifest of built-in system-prompt presets. Each preset file (presets/<id>.md) is a self-contained template (its own boundary + OS-only Environment + verbatim Memory; no Git). `match` is a case-insensitive model-id substring used to auto-select a preset when adding a model in the Edit System Prompt modal. `defaultMode` seeds the tab's override/append toggle.",
+  "$comment": "Hand-editable manifest of built-in system-prompt presets. Each preset file (presets/<id>.md) is a self-contained template (its own boundary + OS-only Environment + verbatim Memory; no Git). `match` is a case-insensitive model-id substring with THREE effects: (1) auto-select a preset when adding a model in the Edit System Prompt modal, (2) pick the built-in prompt injected at spawn when the resolved model matches (see builtin-model-prompts.js), and (3) the preset's tombstone identity — the normalized-uppercase match is the key recorded in .builtin-disabled.json, so renaming `match` silently voids existing disables unless a TOMBSTONE_RENAMES mapping is added. `defaultMode` seeds the tab's override/append toggle.",
   "categories": {
     "Global": [
       {
@@ -30,7 +30,7 @@
         "id": "GLM-5.3",
         "title": "GLM-5.3",
         "file": "GLM-5.3.md",
-        "description": "Forked from the GLM-5.2 preset for GLM-5.3: action-default, changes through tools, parallel tool calls, no-wait teammate rules.",
+        "description": "Forked from the GLM-5.2 preset for GLM-5.3: action-default, changes through tools, parallel tool calls.",
         "match": "glm-5.3",
         "defaultMode": "override"
       },

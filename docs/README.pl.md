@@ -172,7 +172,7 @@ Okno modalne **Edytuj prompt systemowy** (menu hamburger → Edytuj prompt syste
 * Karta **Domyślny**: zapisuje `CC_SYSTEM.md` (nadpisanie) lub `CC_APPEND_SYSTEM.md` (dołączenie) w obszarze roboczym, wstrzykiwane przy następnym uruchomieniu ccv.
 * **Karty modeli**: dodaj model po nazwie (`opus`, `Gemini3`, …) z zakresem **Globalny** (`~/.claude/cc-viewer/system_prompt/`) lub **Obszar roboczy** (`<project>/system_prompt/`); każda karta ma własny przełącznik Dołącz/Nadpisz i podgląd. Nazwy dopasowywane są rozmyte do wyznaczonego ID modelu (`opus` pasuje do `claude-opus-4-8[1m]`); obszar roboczy wygrywa z globalnym, wygrywa najdłuższa nazwa, a dopasowany wpis całkowicie zastępuje pliki domyślne.
 * **Wbudowane ustawienia**: dostrojone prompty systemowe, głęboko dopasowane do rodzin modeli Kimi, DeepSeek, Qwen i GLM — wstrzykiwane automatycznie, gdy wyznaczony model pasuje, a żaden z Twoich wpisów nie pasuje (Twoje pliki zawsze wygrywają). Wyłączenie przez × na karcie.
-* Tekst systemowy podąża za gorącym przełączeniem głównego modelu w trakcie sesji, utrwalony dla pary (sesja, model) (KV-cache unieważniana tylko raz przy przełączeniu). Zapisanie pustej karty usuwa wpis. `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` wyłącza całe automatyczne wstrzykiwanie.
+* Tekst systemowy podąża za gorącym przełączeniem głównego modelu w trakcie sesji, utrwalony dla pary (sesja, model) (KV-cache unieważniana tylko raz przy przełączeniu). Zapisanie pustej karty usuwa wpis. `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` wyłącza całe automatyczne wstrzykiwanie, `CCV_DISABLE_LIVE_SYSTEM_PROMPT=1` tylko śledzenie w trakcie sesji.
 
 ### Tryb loggera (Wyświetlanie pełnych sesji Claude Code)
 

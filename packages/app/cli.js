@@ -14,6 +14,7 @@ import { t } from './server/i18n.js';
 import { INJECT_IMPORT, LEGACY_INJECT_IMPORTS, resolveCliPath, resolvePreferredClaudeSelection, resolveNativePath, buildShellCandidates, setLogDir, LOG_DIR, hasClaude2xWrapper, getGlobalNodeModulesDir, PACKAGES, getClaudeConfigDir, isBrowserOpenSuppressed, applyAgentTeamsDefault } from './findcc.js';
 import { ensureHooks, removeAllManagedHooks } from './server/lib/ensure-hooks.js';
 import { injectCliJsAt, removeCliJsInjectionAt, INJECT_START as _INJECT_START, INJECT_END as _INJECT_END, buildInjectBlock as _buildInjectBlock } from './server/lib/cli-inject.js';
+import { inspectShellHook } from './server/lib/shell-hook-inspect.js';
 import { normalizeBasePath } from './server/lib/base-path.js';
 import { mergeSettingsIntoArgs } from './server/lib/settings-merge.js';
 import { splitSdkLaunchArgs, resolveLaunchSystemPrompt, insertBeforeDashDash } from './server/lib/launch-config.js';
@@ -35,6 +36,20 @@ const INJECT_BLOCK = _buildInjectBlock(INJECT_IMPORT);
 
 const SHELL_HOOK_START = '# >>> CC-Viewer Auto-Inject >>>';
 const SHELL_HOOK_END = '# <<< CC-Viewer Auto-Inject <<<';
+
+// L1: hook 状态只读探针(server 侧经 /api/claude-settings 暴露;inspectShellHook 的
+// 实现放 server/lib/shell-hook-inspect.js,cli.js 只注入自己的模板构造器做 stale 判定)。
+const _inspectShellHookState = () => inspectShellHook(buildShellHook);
+
+// 供 server(routes/preferences.js)读取 hook 状态:GUI 启动时把最近一次检查结果写到这里,
+// 避免 server 反向 import side-effectful 的 cli.js。
+export const shellHookState = { installed: null, stale: null, path: null, corrupt: null, checkedAt: null };
+function refreshShellHookState() {
+  try {
+    const r = _inspectShellHookState();
+    Object.assign(shellHookState, r, { checkedAt: Date.now() });
+  } catch { /* 探针失败只退化为「未知」,绝不影响启动 */ }
+}
 
 const cliPath = resolveCliPath();
 
@@ -480,6 +495,10 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
 
   // 确保 AskUserQuestion hook 已注册到 ~/.claude/settings.json
   ensureHooks();
+
+  // L1: shell hook 状态检查(只读;结果经 shellHookState 暴露给 /api/claude-settings,
+  // 面板据此提示「重开终端使其生效」——绝不自动改用户 rc:删掉 = 不想装)。
+  refreshShellHookState();
 
   // 2. 设置 CLI 模式标记（必须在 import proxy.js 之前，
   //    因为 proxy.js → interceptor.js 可能触发 server.js 加载，

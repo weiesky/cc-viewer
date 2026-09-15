@@ -172,7 +172,7 @@ Das Modal **System-Prompt bearbeiten** (Hamburger-Menü → System-Prompt bearbe
 * Tab **Standard**: schreibt `CC_SYSTEM.md` (Überschreiben) oder `CC_APPEND_SYSTEM.md` (Anhängen) in den Arbeitsbereich, injiziert beim nächsten ccv-Start.
 * **Modell-Tabs**: Modell per Name hinzufügen (`opus`, `Gemini3`, …), Geltungsbereich **Global** (`~/.claude/cc-viewer/system_prompt/`) oder **Arbeitsbereich** (`<project>/system_prompt/`); jeder Tab hat einen eigenen Anhängen/Überschreiben-Schalter und eine Vorschau. Namen matchen unscharf auf die aufgelöste Modell-ID (`opus` passt auf `claude-opus-4-8[1m]`); Arbeitsbereich schlägt Global, der längste Name gewinnt, ein passender Eintrag ersetzt die Standard-Dateien vollständig.
 * **Integrierte Vorgaben**: abgestimmte System-Prompts, tief angepasst an die Modellfamilien Kimi, DeepSeek, Qwen und GLM — automatisch injiziert, wenn das aufgelöste Modell passt und kein eigener Eintrag greift (Ihre Dateien gewinnen immer). Deaktivierung über das × des Tabs.
-* Der Systemtext folgt Hot-Switches des Hauptmodells während der Sitzung, fixiert pro (Sitzung, Modell) (KV-Cache wird nur einmal beim Wechsel verworfen). Einen Tab leer zu speichern löscht den Eintrag. `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` deaktiviert jede automatische Injektion.
+* Der Systemtext folgt Hot-Switches des Hauptmodells während der Sitzung, fixiert pro (Sitzung, Modell) (KV-Cache wird nur einmal beim Wechsel verworfen). Einen Tab leer zu speichern löscht den Eintrag. `CCV_DISABLE_AUTO_SYSTEM_PROMPT=1` deaktiviert jede automatische Injektion, `CCV_DISABLE_LIVE_SYSTEM_PROMPT=1` nur das Folgen während der Sitzung.
 
 ### Logger-Modus (Vollständige Claude Code-Sitzungen anzeigen)
 

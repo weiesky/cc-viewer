@@ -78,6 +78,12 @@ describe('builtin-model-prompts: 模型匹配', () => {
     assert.equal(matchBuiltinModelPrompt(42), null);
   });
 
+  it('原型键模型 id 不炸（hasOwn 查表）: constructor/__proto__ → null 而非抛错', () => {
+    assert.equal(matchBuiltinModelPrompt('constructor'), null);
+    assert.equal(matchBuiltinModelPrompt('__proto__'), null);
+    assert.equal(matchBuiltinModelPrompt('toString'), null);
+  });
+
   it('命中结果携带 id/name/mode/text', () => {
     const hit = matchBuiltinModelPrompt('kimi-k3');
     assert.equal(hit.id, 'kimi-k3');
@@ -128,6 +134,17 @@ describe('builtin-model-prompts: 墓碑', () => {
     setBuiltinDisabled(ws, 'GLM-5.2', true);
     assert.equal(isBuiltinDisabled('GLM-5.2', ws, g), true);
     assert.equal(isBuiltinDisabled('KIMI-K3', ws, null), false); // 只看 workspace 时不受 global 影响
+  });
+
+  it('改名兼容：旧墓碑 QWEN-3.7-MAX 归一为 QWEN-3，opt-out 不被静默逆转', () => {
+    const dir = mk();
+    // 1.8.x 时代用户禁用过的条目名（族系合并前的旧 id），手工落盘模拟存量墓碑。
+    writeFileSync(join(dir, BUILTIN_DISABLED_FILE), '["QWEN-3.7-MAX"]', 'utf-8');
+    assert.deepEqual(readBuiltinDisabled(dir), ['QWEN-3']);
+    assert.equal(isBuiltinDisabled('QWEN-3', dir), true, '旧名墓碑对新条目名仍生效');
+    // 重新启用（移除禁用）也走新名。
+    setBuiltinDisabled(dir, 'QWEN-3', false);
+    assert.equal(isBuiltinDisabled('QWEN-3', dir), false);
   });
 
   it('set 对非法名 throw；dir 缺失时自动 mkdir', () => {

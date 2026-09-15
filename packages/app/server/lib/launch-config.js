@@ -294,9 +294,7 @@ export function resolveLaunchSystemPrompt(p) {
     // suppression zeroed the args (a rejected binary never pays the render cost).
     // The collected variable set is captured (below) and published to the live layer
     // so a later hot model switch re-renders with THIS launch's variables — never by
-    // spawning git inside the fetch hook. The render seam is lazy: it only fires when
-    // some injected file actually contains `${...}`, so a no-template launch collects
-    // nothing and collectedVariables stays null.
+    // spawning git inside the fetch hook.
     if (sysPrompt.args.length > 0) {
       sysPrompt = renderSystemPromptFileArgs(sysPrompt, {
         cwd: spawnDir,
@@ -311,6 +309,19 @@ export function resolveLaunchSystemPrompt(p) {
       sysPrompt = { ...sysPrompt, entries: [] };
     }
     out.sysPrompt = sysPrompt;
+  }
+
+  // The render seam above is lazy: it only fires when some injected file actually
+  // contains `${...}`, so a no-template launch collects nothing and the snapshot would
+  // stay null — in which case the live layer falls back to an empty variable skeleton
+  // and hot-switch re-renders of a built-in preset produce EMPTY `${memory.dir}` /
+  // `${os.*}` / `${environment.lang}` texts (a model told to write into a `` path).
+  // Collect unconditionally for live-eligible launches: this runs on the spawn path
+  // (git subprocess at launch is fine — the hook path is what must never spawn).
+  if (!collectedVariables && !insideLogDir && !suppressInjection && !(pinned && pinned.noRecord === true)) {
+    try {
+      collectedVariables = createSystemPromptVariables({ model: { name: out.resolvedModelId || '' } }, { cwd: spawnDir });
+    } catch (err) { reportSwallowed('launch-config.collectVariables', err); }
   }
 
   // Unified suppression (pin and fresh alike): nothing was injected → nothing can be bound.
@@ -336,21 +347,9 @@ export function resolveLaunchSystemPrompt(p) {
   // manualSystemPrompt：用户手动传了 --system-prompt（任意文本）或 --system-prompt-file
   // 且其值不是 ccv 本次注入的路径 —— 此类会话绝不被热切换覆盖（手动优先；用户说的
   // 手动是字面 flag，不含 ccv 启动阶段写入的那份）。
-  const _injectedSysPath = (() => {
-    const a = out.sysPrompt.args || [];
-    for (let i = 0; i + 1 < a.length; i++) {
-      if (a[i] === '--system-prompt-file') return a[i + 1];
-    }
-    return null;
-  })();
+  const _injectedSysPath = argValue(out.sysPrompt.args, '--system-prompt-file');
   // ccv 本次注入的 --append-system-prompt-file 路径（同款识别，排除「手动 vs 注入」误判）
-  const _injectedAppendPath = (() => {
-    const a = out.sysPrompt.args || [];
-    for (let i = 0; i + 1 < a.length; i++) {
-      if (a[i] === '--append-system-prompt-file') return a[i + 1];
-    }
-    return null;
-  })();
+  const _injectedAppendPath = argValue(out.sysPrompt.args, '--append-system-prompt-file');
   const _manualSys =
     hasArg(extraArgs, '--system-prompt') ||
     (() => { const v = argValue(extraArgs, '--system-prompt-file'); return v !== null && v !== _injectedSysPath; })();
@@ -375,7 +374,8 @@ export function resolveLaunchSystemPrompt(p) {
       // 绝不改动既有上下文的 system」→ 同样拒绝 live 覆盖（否则 resume 会话被强行注入）。
       allowLive: !insideLogDir && !(pinned && pinned.noRecord === true),
       // 本次启动收集到的变量集（含 git/os/env/memory…；live 层只缓存其快照部分）。
-      // 热切换渲染复用它,绝不在 fetch hook 同步段跑 git。无注入/无 ${...} → null。
+      // 热切换渲染复用它,绝不在 fetch hook 同步段跑 git。无注入时由上方兜底收集
+      // （否则 preset 的 ${memory.dir}/${os.*} 会渲染成空串）。
       variableSnapshot: collectedVariables,
     });
   } catch (err) { reportSwallowed('launch-config.publishLiveInfo', err); }

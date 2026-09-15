@@ -118,6 +118,37 @@ describe('Bind A: wire content-match on the session\'s first main request', () =
     assert.equal(readJson(pendingPath(dir, 'proj')).pendings.length, 2, 'both pendings stay queued');
   });
 
+  it('live-rewritten side-call first (no match) does NOT burn the latch; the real main turn still binds', async () => {
+    // 复现实测事故(2026-09-15 workspace 会话):首个 main 形状请求是小模型标题/旁路调用,
+    // live 层已把 body.system 改写成该模型人格(interceptor 改写先于 ingest) → 内容不匹配。
+    // 旧实现 sysPromptBindDone 一次性闩在此处烧掉,后续 8 次 PRO 人格请求再不尝试 → 会话永久
+    // 无快照 → 之后所有 -c 走 F2 不注入。闩现在只锁成功消费。
+    snaps.appendPending(CWD, { entries: [ENTRY], model: 'deepseek-v4-pro' }, dir);
+    const w = newWriter();
+    // seq2: flash 人格(不含 pending 内容)→ 不匹配,闩不得烧、pending 不得消费。
+    fire(w, mainEntry([textMsg('user', 'title probe')], { systemText: 'You are deepseek-flash, a fast interactive coding agent.' }));
+    assert.equal(existsSync(recordPath(dir, 'proj', SID)), false, 'side-call must not bind');
+    assert.equal(readJson(pendingPath(dir, 'proj')).pendings.length, 1, 'pending survives the unmatched side-call');
+    // seq3: 真正的主模型轮次(含 pending 内容)→ 绑定成功。
+    fire(w, mainEntry([textMsg('user', 'real turn')]));
+    await w.flush(); await w.close();
+    const rec = readJson(recordPath(dir, 'proj', SID));
+    assert.equal(rec.model, 'deepseek-v4-pro');
+    assert.equal(rec.boundVia, 'wire');
+    assert.equal(readJson(pendingPath(dir, 'proj')).pendings.length, 0, 'pending consumed by the real turn');
+  });
+
+  it('empty pending fallback still consumed on a later request once the latch stopped burning', async () => {
+    // 空注入会话(无任何内容匹配):未命中不烧闩后,empty 兜底不再限定「首个 main」,
+    // 后续某个请求仍会消费它(语义只是记录「无注入」,延迟无害)。
+    snaps.appendPending(CWD, { entries: [], model: null }, dir);
+    const w = newWriter();
+    fire(w, mainEntry([textMsg('user', 'hi')], { systemText: 'You are Claude Code. default only' }));
+    await w.flush(); await w.close();
+    assert.equal(readJson(pendingPath(dir, 'proj')).pendings.length, 0, 'empty pending consumed (records no-injection)');
+    assert.equal(existsSync(recordPath(dir, 'proj', SID)), false, 'empty entries are never persisted as a snapshot');
+  });
+
   it('adopted (-c) sessions skip the wire bind even on a content match', async () => {
     // Seed a previous main session dir for adoption to target.
     const seed = newWriter();

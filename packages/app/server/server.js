@@ -1253,6 +1253,20 @@ export async function startViewer() {
             try { await imCore.stopAll(); } catch { /* no in-process instances */ }
             imProcMgr.reconcileImProcesses().catch((e) => console.error('[CC Viewer] IM reconcile failed:', e?.message || e));
           }
+          // L2: 裸续接检测(transcript 在写但请求未经 ccv → 提示注入丢失)。仅 CLI 模式
+          // (面板场景);检测失败只退化为不提示,绝不影响启动。
+          if (isCliMode) {
+            try {
+              const { startResumeWatchdog } = await import('./lib/resume-watchdog.js');
+              startResumeWatchdog({
+                cwd: process.env.CCV_PROJECT_DIR || process.cwd(),
+                onHit: (hit) => {
+                  try { sendEventToClients(clients, 'resume_bypassed', { uuid: hit.uuid, ts: Date.now() }); }
+                  catch (e) { reportSwallowed('resume-watchdog.notify', e); }
+                },
+              });
+            } catch (e) { reportSwallowed('resume-watchdog.start', e); }
+          }
           resolve(server);
           } catch (err) {
             console.error('[CC Viewer] server start callback error:', err?.message || err);

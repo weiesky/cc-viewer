@@ -245,6 +245,44 @@ describe('resolveLaunchSystemPrompt — fresh 管线', () => {
     assert.ok(r.pendingRec, 'pending recorded');
     assert.equal(r.pendingRec.resumeExpected, false);
   });
+
+  it('无 ${...} 的纯文本注入也收集 variableSnapshot(热切换渲染 preset 不落空骨架)', async () => {
+    // review P0-2 回归：渲染缝是 lazy 的（无 ${...} 不触发 variablesFactory），此前
+    // variableSnapshot 恒 null → 热切换渲染 preset 时 ${os.*}/${memory.dir} 变空串。
+    // 现在 fresh launch 必须无条件收集并发布快照。
+    const live = await import('../server/lib/system-prompt-live.js');
+    live._resetLiveForTests();
+    try {
+      const proj = mkProj({ 'CC_SYSTEM.md': 'plain text, no placeholders' });
+      lc.resolveLaunchSystemPrompt({
+        spawnDir: proj, extraArgs: [], env: {},
+        modelReader: () => null, persistPending: false,
+      });
+      const info = live.getLaunchSystemPromptInfo(proj);
+      assert.ok(info, 'launchInfo published');
+      assert.ok(info.variableSnapshot, 'variableSnapshot collected despite no ${...} in the injected file');
+      assert.ok(typeof info.variableSnapshot.os?.platform === 'string' && info.variableSnapshot.os.platform.length > 0,
+        'snapshot carries os.platform (preset Environment section renders non-empty)');
+    } finally {
+      live._resetLiveForTests();
+    }
+  });
+
+  it('suppressInjection → 不收集 variableSnapshot(live 门已关,不付 git 成本)', async () => {
+    const live = await import('../server/lib/system-prompt-live.js');
+    live._resetLiveForTests();
+    try {
+      const proj = mkProj({});
+      lc.resolveLaunchSystemPrompt({
+        spawnDir: proj, extraArgs: [], env: {},
+        modelReader: () => null, suppressInjection: true, persistPending: false,
+      });
+      const info = live.getLaunchSystemPromptInfo(proj);
+      assert.equal(info?.variableSnapshot ?? null, null);
+    } finally {
+      live._resetLiveForTests();
+    }
+  });
 });
 
 describe('resolveLaunchSystemPrompt — resume pin', () => {

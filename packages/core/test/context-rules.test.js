@@ -85,6 +85,11 @@ describe('getModelMaxTokens — 家族档位', () => {
     assert.equal(getModelMaxTokens('claude-fable-5-1'), 1000000);
     assert.equal(getModelMaxTokens('deepseek-v4'), 1000000);
   });
+  it('deepseek-flash 简写(deepseek-v4-flash 别名)→ 1M(与 prompt 层别名对齐)', () => {
+    assert.equal(getModelMaxTokens('deepseek-flash'), 1000000);
+    assert.equal(getModelMaxTokens('deepseek-flash-0901'), 1000000);
+    assert.equal(classifyContextWindow('deepseek-flash'), 1000000);
+  });
   it('裸 claude-sonnet-4-6 维持 200K(有意为之:与 Claude Code 默认一致,[1m] 是显式 opt-in,真 1M 靠后缀或纠偏兜底)', () => {
     assert.equal(getModelMaxTokens('claude-sonnet-4-6'), 200000);
     assert.equal(getModelMaxTokens('claude-3-5-sonnet-20241022'), 200000);

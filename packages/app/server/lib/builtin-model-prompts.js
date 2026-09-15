@@ -25,6 +25,14 @@ import { reportSwallowed } from '@ccv/core/error-report';
 // Tombstone file inside a scope's model-prompt dir: a JSON array of canonical names.
 export const BUILTIN_DISABLED_FILE = '.builtin-disabled.json';
 
+// 改名/族系合并的一次性兼容映射：墓碑按规范大写名比对，preset 改名（如 Qwen-3.7-Max
+// 合并为族系条目 Qwen-3）会让旧墓碑（QWEN-3.7-MAX）静默失效 —— 用户显式 opt-out 被
+// 逆转。读墓碑时把旧名归一到现名，保住 opt-out（本模块注释承诺的「不静默逆转」原则）。
+// One-shot rename aliases: a preset rename must not silently void an existing tombstone.
+const TOMBSTONE_RENAMES = {
+  'QWEN-3.7-MAX': 'QWEN-3',
+};
+
 // 物化目录：preset 文本（边界已剥离、${...} 保持字面量，spawn 渲染管线再替换变量）
 // 写成内容寻址的临时文件，供 --system-prompt-file 注入（文件对形式是快照钉扎的前提）。
 // 惰性读取 env 覆盖（测试用）：node --test 多进程并行时共享目录会被彼此的 GC 竞态误删。
@@ -99,7 +107,10 @@ export function readBuiltinDisabled(modelPromptDir) {
     const raw = readFileSync(target, 'utf-8');
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) throw new Error('tombstone file is not a JSON array');
-    const names = parsed.map((n) => normalizeModelName(typeof n === 'string' ? n : '')).filter(Boolean);
+    const names = parsed.map((n) => {
+      const canonical = normalizeModelName(typeof n === 'string' ? n : '');
+      return TOMBSTONE_RENAMES[canonical] || canonical;
+    }).filter(Boolean);
     return [...new Set(names)].sort();
   } catch (err) {
     console.warn(`[CC Viewer] built-in prompt tombstone ${target} unreadable (${err.message}); treating as no disables`);
