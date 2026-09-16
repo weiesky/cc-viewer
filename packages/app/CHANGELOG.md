@@ -1,5 +1,11 @@
 # cc-viewer
 
+## 1.8.16
+
+### Patch Changes
+
+- feat(system-prompt): kimi-k3 preset 新增异步结果反轮询规则（等待 teammate/后台任务时停止调用工具、结束回合）；移除全部 system prompt 模板中的 defensive-engineering 句（systemPromptModel + 7 个 preset）。
+
 ## 1.8.15
 
 ### Minor Changes
