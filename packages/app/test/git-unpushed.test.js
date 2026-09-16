@@ -168,15 +168,58 @@ describe('getUnpushedCommits', () => {
     assert.strictEqual(r.commits[1].subject, 'second');
     assert.strictEqual(r.commits[0].shortHash.length, 7);
     assert.ok(/^[0-9a-f]{40}$/i.test(r.commits[0].hash));
-    // file lists
+    // file lists (real name-status letters restored; line stats on the commit)
     const f0 = r.commits[0].files;
     assert.strictEqual(f0.length, 1);
     assert.strictEqual(f0[0].file, 'b.txt');
     assert.strictEqual(f0[0].status, 'A');
+    assert.strictEqual(r.commits[0].insertions, 1);
+    assert.strictEqual(r.commits[0].deletions, 0);
     const f1 = r.commits[1].files;
     assert.strictEqual(f1.length, 1);
     assert.strictEqual(f1[0].file, 'a.txt');
     assert.strictEqual(f1[0].status, 'M');
+    assert.strictEqual(r.commits[1].insertions, 1);
+    assert.strictEqual(r.commits[1].deletions, 0);
+  });
+
+  it('reports renames as real A + D paths (--no-renames) instead of a pseudo-path', async () => {
+    ({ remote, work } = setupBareRemoteAndClone());
+    execSync('git mv a.txt renamed.txt', { cwd: work, stdio: 'pipe' });
+    execSync('git commit -m "rename a"', { cwd: work, stdio: 'pipe' });
+
+    const r = await getUnpushedCommits(work);
+    assert.strictEqual(r.commits.length, 1);
+    const files = r.commits[0].files;
+    // Without --no-renames numstat would emit `0\t0\ta.txt => renamed.txt`, which
+    // used to be stored verbatim as a nonexistent path.
+    assert.deepStrictEqual(
+      files.map(f => `${f.status}:${f.file}`).sort(),
+      ['A:renamed.txt', 'D:a.txt'],
+    );
+  });
+
+  it('reports insertions/deletions per commit and treats binary files as zero line stats', async () => {
+    ({ remote, work } = setupBareRemoteAndClone());
+    // a.txt starts as 'one\n' (1 line) → 2-line edit + delete: +1 -1
+    writeFileSync(join(work, 'a.txt'), 'one\ntwo\n');
+    execSync('git add a.txt && git commit -m "edit a"', { cwd: work, stdio: 'pipe' });
+    // Binary file (contains NUL): numstat reports '-\t-\t<path>' → no line stats
+    writeFileSync(join(work, 'bin.dat'), Buffer.from([0x00, 0x01, 0x02, 0x03]));
+    execSync('git add bin.dat && git commit -m "add bin"', { cwd: work, stdio: 'pipe' });
+
+    const r = await getUnpushedCommits(work);
+    assert.strictEqual(r.commits.length, 2);
+    const bin = r.commits[0];
+    assert.strictEqual(bin.subject, 'add bin');
+    assert.strictEqual(bin.files.length, 1);
+    assert.strictEqual(bin.files[0].file, 'bin.dat');
+    assert.strictEqual(bin.insertions, 0);
+    assert.strictEqual(bin.deletions, 0);
+    const edit = r.commits[1];
+    assert.strictEqual(edit.subject, 'edit a');
+    assert.strictEqual(edit.insertions, 1);
+    assert.strictEqual(edit.deletions, 0); // 'one\n' → 'one\ntwo\n' appends, nothing removed
   });
 
   it('returns empty commits when nothing ahead', async () => {

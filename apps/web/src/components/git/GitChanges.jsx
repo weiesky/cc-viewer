@@ -117,6 +117,18 @@ function TreeDir({ name, node, depth, repoPath, onFileClick, onOpenFile, onResto
   );
 }
 
+// Shared +n/-n line-stat badge pair; renders nothing when both counters are zero.
+// Used by the panel total, the repo header, and each unpushed-commit row.
+function StatBadges({ insertions, deletions }) {
+  if (!(insertions > 0 || deletions > 0)) return null;
+  return (
+    <>
+      <span className={`${styles.statBadge} ${styles.statInsert}`}>+{insertions}</span>
+      <span className={`${styles.statBadge} ${styles.statDelete}`}>-{deletions}</span>
+    </>
+  );
+}
+
 function CommitRow({ commit, repoPath, expanded, onToggle, onFileClick, onOpenFile, selectedFile, selectedRepo, selectedCommitHash, depth = 0 }) {
   // Memoize tree build to avoid recomputing on every parent re-render
   // (e.g. when another commit is expanded or a file is selected elsewhere).
@@ -150,7 +162,12 @@ function CommitRow({ commit, repoPath, expanded, onToggle, onFileClick, onOpenFi
         <span className={styles.commitSubject}>{commit.subject}</span>
         {commit.author && <span className={styles.commitMeta}>{commit.author}</span>}
         {dateLabel && <span className={styles.commitMeta}>{dateLabel}</span>}
-        <span className={styles.commitFileBadge}>{commit.files.length}</span>
+        <StatBadges insertions={commit.insertions} deletions={commit.deletions} />
+        {!(commit.insertions > 0 || commit.deletions > 0) && commit.files.length > 0 && (
+          // Zero line stats (binary-only, pure rename, mode-only) still touched files —
+          // fall back to the file count so the row is not indistinguishable from a no-op.
+          <span className={styles.statBadge}>{commit.files.length}</span>
+        )}
       </div>
       {expanded && commit.files.length > 0 && (
         <TreeDir
@@ -308,12 +325,7 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, re
           {onManualRefresh && (
             <RefreshIcon onClick={onManualRefresh} title={t('ui.gitChanges.refresh')} />
           )}
-          {(totalInsertions > 0 || totalDeletions > 0) && (
-            <>
-              <span className={`${styles.statBadge} ${styles.statInsert}`}>+{totalInsertions}</span>
-              <span className={`${styles.statBadge} ${styles.statDelete}`}>-{totalDeletions}</span>
-            </>
-          )}
+          <StatBadges insertions={totalInsertions} deletions={totalDeletions} />
         </span>
         <button className={styles.collapseBtn} onClick={onClose} title="Close">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -436,12 +448,7 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, re
                   <path d="M18 9a9 9 0 0 1-9 9"/>
                 </svg>
                 <span className={styles.repoName}>{repo.name}</span>
-                {(repo.insertions > 0 || repo.deletions > 0) && (
-                  <>
-                    <span className={`${styles.statBadge} ${styles.statInsert}`}>+{repo.insertions}</span>
-                    <span className={`${styles.statBadge} ${styles.statDelete}`}>-{repo.deletions}</span>
-                  </>
-                )}
+                <StatBadges insertions={repo.insertions} deletions={repo.deletions} />
                 <span className={styles.repoBadge}>{repo.changes.length}</span>
               </div>
               {!collapsed && (

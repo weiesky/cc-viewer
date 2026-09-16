@@ -263,32 +263,72 @@ describe('git-diff 分支补充覆盖', () => {
     assert.deepEqual(r.commits, []);
   });
 
-  // ---- L147 `st[0] || 'M'`：name-status 行首即制表符（状态字段为空）→ 回退 'M' ----
-  it('git log 的 name-status 行状态字段为空时文件状态回退为 M（假 git）', () => {
-    // 构造一个 commit 块：header 用 \x1e 分隔、\x1f 字段分隔，紧跟一行以 TAB 开头的文件行。
+  // ---- 双调用结构：文件列表走 name-status（真实状态字母），行统计走 numstat 按 hash 合并；
+  //      numstat 失败时保留文件列表、统计回退 0；numstat 中二进制 `-` 行不计入统计 ----
+  it('name-status 提供文件与真实状态、numstat 提供行统计并按 hash 合并（假 git）', () => {
     const SEP = String.fromCharCode(0x1e);
     const FS = String.fromCharCode(0x1f);
-    const logOut = `${SEP}abc123def4567890abc123def4567890abc12345${FS}Author${FS}2020-01-01T00:00:00Z${FS}subject\\n\\tonlyfile.txt\\n`;
+    const h = 'abc123def4567890abc123def4567890abc12345';
+    // name-status：新增 + 修改 + 一行以 TAB 开头（状态空）→ 回退 'M'
+    const nsOut = `${SEP}${h}${FS}Author${FS}2020-01-01T00:00:00Z${FS}subject\\nA\\tadded.txt\\nM\\tmod.txt\\n\\tnostatus.txt\\n`;
+    // numstat：正常 "3\t2"、二进制 "-\t-"（不计入）、非法行（无 TAB）跳过
+    const numOut = `${SEP}${h}${FS}Author${FS}2020-01-01T00:00:00Z${FS}subject\\n3\\t2\\tadded.txt\\n5\\t0\\tmod.txt\\n-\\t-\\tbin.dat\\nnotabs\\n`;
     const fakeGit = [
       '#!/bin/sh',
       'case "$*" in',
       '  *"rev-parse --abbrev-ref HEAD"*) echo "main"; exit 0;;',
       '  *"@{upstream}"*) echo "origin/main"; exit 0;;',
-      `  *" log "*) printf '%b' "${logOut}"; exit 0;;`,
-      `  *"log "*) printf '%b' "${logOut}"; exit 0;;`,
+      `  *" log "*" --numstat "*|*"log "*" --numstat "*) printf '%b' "${numOut}"; exit 0;;`,
+      `  *" log "*" --name-status "*|*"log "*" --name-status "*) printf '%b' "${nsOut}"; exit 0;;`,
       '  *) echo "unexpected: $*" >&2; exit 1;;',
       'esac',
     ].join('\n') + '\n';
     const r = runWithFakeGit({
-      tag: 'log-empty-status',
+      tag: 'log-dual-pass',
       fakeGitScript: fakeGit,
       callJs: 'return await getUnpushedCommits(REPO);',
     });
     assert.equal(r.hasUpstream, true);
     assert.equal(r.commits.length, 1);
+    const c = r.commits[0];
+    assert.equal(c.files.length, 3);
+    assert.equal(c.files[0].file, 'added.txt');
+    assert.equal(c.files[0].status, 'A'); // 真实状态字母
+    assert.equal(c.files[1].file, 'mod.txt');
+    assert.equal(c.files[1].status, 'M');
+    assert.equal(c.files[2].file, 'nostatus.txt');
+    assert.equal(c.files[2].status, 'M'); // 空状态字段回退
+    assert.equal(c.insertions, 8);  // 3 + 5，二进制 `-` 不计入
+    assert.equal(c.deletions, 2);
+  });
+
+  it('numstat 失败时保留 name-status 文件列表、行统计回退为 0（假 git）', () => {
+    const SEP = String.fromCharCode(0x1e);
+    const FS = String.fromCharCode(0x1f);
+    const h = 'def4567890abc123def4567890abc123def45678';
+    const nsOut = `${SEP}${h}${FS}Author${FS}2020-01-01T00:00:00Z${FS}subject\\nA\\tadded.txt\\n`;
+    const fakeGit = [
+      '#!/bin/sh',
+      'case "$*" in',
+      '  *"rev-parse --abbrev-ref HEAD"*) echo "main"; exit 0;;',
+      '  *"@{upstream}"*) echo "origin/main"; exit 0;;',
+      '  *"--numstat"*) echo "fatal: boom" >&2; exit 128;;',
+      `  *" log "*) printf '%b' "${nsOut}"; exit 0;;`,
+      `  *"log "*) printf '%b' "${nsOut}"; exit 0;;`,
+      '  *) echo "unexpected: $*" >&2; exit 1;;',
+      'esac',
+    ].join('\n') + '\n';
+    const r = runWithFakeGit({
+      tag: 'numstat-fail',
+      fakeGitScript: fakeGit,
+      callJs: 'return await getUnpushedCommits(REPO);',
+    });
+    assert.equal(r.commits.length, 1);
     assert.equal(r.commits[0].files.length, 1);
-    assert.equal(r.commits[0].files[0].file, 'onlyfile.txt');
-    assert.equal(r.commits[0].files[0].status, 'M'); // 空状态字段回退
+    assert.equal(r.commits[0].files[0].file, 'added.txt');
+    assert.equal(r.commits[0].files[0].status, 'A');
+    assert.equal(r.commits[0].insertions, 0);
+    assert.equal(r.commits[0].deletions, 0);
   });
 
   // ---- L168 假分支(parse 非数字) + L170：rev-list 路径覆盖 ----

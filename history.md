@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- feat(git): **本地未推送 commit 行尾徽章由文件数改为 +n/-n 行增删统计** — `getUnpushedCommits` 增加 numstat 通道按 hash 合并每 commit 行统计；文件列表仍走 name-status（保留真实 A/M/D 状态字母），双通道均加 `--no-renames`，rename 呈现为真实 A+D 路径（此前 numstat 紧凑表达式 `{old => new}` 会被当成伪文件名）；纯二进制/纯改名/mode-only 等零行统计 commit 行尾回退显示文件数，不再与空 commit 无区分。面板总计/repo 头/commit 行三处徽章抽取为共享 `StatBadges` 组件。Coverage: `git-unpushed.test.js`, `branch-lib-git-diff.test.js`.
 - feat(system-prompt): **kimi-k3 preset 新增异步结果反轮询规则** — 等待 teammate/subagent 报告或后台任务结果时不再反复调用工具轮询,结果会以消息自动送达,发现连续两回合查同一件事即停。Coverage: `system-prompt-presets.test.js`.
 - chore(system-prompt): **全部 system prompt 模板移除 defensive-engineering 句** — systemPromptModel 与 7 个 preset(GLM-5.2/5.3、Qwen-3、deepseek-v4-pro/flash、kimi-k2.7-code/k3)同步删除。
 

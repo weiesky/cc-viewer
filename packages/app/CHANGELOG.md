@@ -1,5 +1,11 @@
 # cc-viewer
 
+## 1.8.17
+
+### Patch Changes
+
+- feat(git): 本地未推送 commit 行尾徽章由文件数改为 +n/-n 行增删统计；恢复 commit 文件的真实状态字母（A/M/D），rename 以真实 A+D 路径呈现；零行统计的 commit（纯二进制/纯改名/mode-only）回退显示文件数。
+
 ## 1.8.16
 
 ### Patch Changes

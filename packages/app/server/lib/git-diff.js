@@ -71,8 +71,12 @@ export function countUntrackedLines(cwd, file) {
  * them. Returns an empty list when HEAD cannot be resolved (unborn branch) or
  * the log command fails.
  *
- * Each commit includes its changed files via a single `git log --name-status` call,
- * to avoid one git invocation per commit.
+ * Each commit includes its changed files (with real A/M/D/R status) plus per-commit
+ * insertions/deletions. A single `git log --numstat` would give stats but no status,
+ * and rename lines would carry a pseudo-path (`src/{a.js => b.js}`), so the file list
+ * still comes from one `git log --name-status` call and the stats from a second
+ * `git log --numstat` call, joined by commit hash. Passing `--no-renames` to both
+ * keeps rename entries as plain A + D real paths instead.
  *
  * @param {string} cwd
  * @param {object} [opts]
@@ -108,33 +112,53 @@ export async function getUnpushedCommits(cwd, { maxCommits = 100 } = {}) {
   const hasUpstream = !!upstream;
   const resultBranch = detached ? null : branch;
 
-  // Use NUL separators between fields and a sentinel between commits to avoid
+  // Use unit separators between fields and a sentinel between commits to avoid
   // getting fooled by tabs/newlines inside commit subjects.
   // Format: <hash>\x1f<author>\x1f<date>\x1f<subject>\n
-  // Followed by one `<status>\t<path>` line per file (from --name-status).
-  // Commits separated by `\x1e` (record separator).
+  // name-status pass: one `<status>\t<path>` line per file (R###\told\tnew for
+  // renames). numstat pass: one `<added>\t<removed>\t<path>` line per file
+  // (binary files report `-\t-\t<path>`). Commits separated by `\x1e`.
+  // `--no-renames` turns renames into plain A + D entries so every path is real.
   const COMMIT_SEP = '\x1e';
   const FIELD_SEP = '\x1f';
-  let stdout = '';
+  const prettyArg = `--pretty=format:${COMMIT_SEP}%H${FIELD_SEP}%an${FIELD_SEP}%aI${FIELD_SEP}%s`;
+  const logArgs = ['log', `--max-count=${maxCommits}`, '--no-renames'];
+  const execOpts = { cwd, encoding: 'utf-8', timeout: 8000, maxBuffer: 10 * 1024 * 1024 };
+  let nameStatusOut = '';
+  let numstatOut = '';
   try {
-    const r = await execFileAsync(
-      'git',
-      [
-        'log',
-        `--max-count=${maxCommits}`,
-        `--pretty=format:${COMMIT_SEP}%H${FIELD_SEP}%an${FIELD_SEP}%aI${FIELD_SEP}%s`,
-        '--name-status',
-        ...rangeArgs,
-      ],
-      { cwd, encoding: 'utf-8', timeout: 8000, maxBuffer: 10 * 1024 * 1024 }
-    );
-    stdout = r.stdout;
+    const r = await execFileAsync('git', [...logArgs, prettyArg, '--name-status', ...rangeArgs], execOpts);
+    nameStatusOut = r.stdout;
   } catch {
     return { commits: [], hasUpstream, branch: resultBranch, upstream };
   }
+  try {
+    const r = await execFileAsync('git', [...logArgs, prettyArg, '--numstat', ...rangeArgs], execOpts);
+    numstatOut = r.stdout;
+  } catch {
+    numstatOut = ''; // stats are best-effort — keep the file list even if numstat fails
+  }
+
+  // Sum per-commit line stats from the numstat pass, keyed by full hash.
+  const statsByHash = new Map();
+  for (const block of numstatOut.split(COMMIT_SEP)) {
+    if (!block) continue;
+    const lines = block.split(/\r?\n/);
+    const parts = (lines[0] || '').split(FIELD_SEP);
+    if (parts.length < 4) continue;
+    let insertions = 0;
+    let deletions = 0;
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split('\t');
+      if (cols.length < 3) continue;
+      insertions += parseInt(cols[0], 10) || 0; // binary '-' → NaN → 0
+      deletions += parseInt(cols[1], 10) || 0;
+    }
+    statsByHash.set(parts[0], { insertions, deletions });
+  }
 
   const commits = [];
-  const blocks = stdout.split(COMMIT_SEP).filter(Boolean);
+  const blocks = nameStatusOut.split(COMMIT_SEP).filter(Boolean);
   for (const block of blocks) {
     // git on Windows 在 piped 模式输出 CRLF；split('\n') 会让 fp 末尾带 \r，前端文件名乱码。
     const lines = block.split(/\r?\n/);
@@ -149,10 +173,13 @@ export async function getUnpushedCommits(cwd, { maxCommits = 100 } = {}) {
       const tab = line.indexOf('\t');
       if (tab < 0) continue;
       const st = line.substring(0, tab).trim();
-      const fp = line.substring(tab + 1);
+      // name-status rename rows carry two paths (old\tnew); with --no-renames
+      // they should not appear, but keep the new path if one ever slips through.
+      const fp = line.substring(tab + 1).split('\t').pop();
       if (!fp) continue;
       files.push({ status: st[0] || 'M', file: fp });
     }
+    const stats = statsByHash.get(hash) || { insertions: 0, deletions: 0 };
     commits.push({
       hash,
       shortHash: hash.substring(0, 7),
@@ -160,6 +187,8 @@ export async function getUnpushedCommits(cwd, { maxCommits = 100 } = {}) {
       date,
       subject,
       files,
+      insertions: stats.insertions,
+      deletions: stats.deletions,
     });
   }
 

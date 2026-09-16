@@ -326,12 +326,3 @@
   color: var(--text-muted);
   flex-shrink: 0;
 }
-
-.commitFileBadge {
-  font-size: 10px;
-  color: var(--text-disabled);
-  background: var(--bg-elevated);
-  padding: 1px 6px;
-  border-radius: 8px;
-  flex-shrink: 0;
-}

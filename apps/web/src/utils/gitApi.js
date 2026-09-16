@@ -20,7 +20,10 @@ export async function fetchAllRepos() {
   }
   // GET /api/git-status?repo=<path> → { changes, insertions, deletions, insertions_capped? }
   // GET /api/git-log-unpushed?repo=<path> → { commits, hasUpstream, branch?, upstream?, truncated?, totalCount? }
-  //   commit shape: { hash, shortHash, author, date (ISO), subject, files: [{status, file}] }
+  //   commit shape: { hash, shortHash, author, date (ISO), subject,
+  //     files: [{status, file}], insertions, deletions }
+  //   status 为真实 git 状态字母（A/M/D…）；insertions/deletions 为该 commit 的行增删统计
+  //   （二进制文件不计行数，纯二进制/纯改名/mode-only commit 两值均为 0）。
   //   无 upstream(或 detached HEAD)时 server 回退到 `git log HEAD --not --remotes`,
   //   即 hasUpstream=false 也可能带 commits——展示与否只看 commits.length。
   //   详见 server/lib/git-diff.js: getUnpushedCommits / server/routes/git.js: /api/git-log-unpushed handler.
