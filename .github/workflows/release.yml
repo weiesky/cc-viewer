@@ -189,9 +189,13 @@ jobs:
 
       - run: cd packages/app && npm pack
 
-      - run: npm publish "./packages/app/cc-viewer-${GITHUB_REF_NAME#v}.tgz" --provenance
+      - run: npm publish "./packages/app/cc-viewer-${GITHUB_REF_NAME#v}.tgz" --provenance --tag patch
         # GITHUB_REF_NAME is the tag (vX.Y.Z); ${...#v} strips the leading v — the
         # tgz name uses the app version, which the release process keeps in sync.
+        # --tag patch: a stray 1.9.0 was once published to npm above this patch-only
+        # version line, so npm refuses to implicitly tag a lower version as latest
+        # (E404-less hard fail at v1.8.18). Publish explicitly to the `patch`
+        # channel instead; `latest` stays on whatever holds it on the registry.
 
   # Post-release automatic Homebrew tap formula bump (reusable workflow, uses HOMEBREW_TAP_TOKEN).
   bump-homebrew:
