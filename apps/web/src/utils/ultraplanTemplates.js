@@ -63,7 +63,7 @@ Workflow:
 - Each teammate, according to their own role, covers the review dimensions one by one and independently outputs a report;
 - After consolidating the reports, perform a cross-review to identify conflicts or shared concerns;
 - Distill specific, actionable modification suggestions and annotate them with priority levels (P0/P1/P2/P3);
-- Upon completion, adopt P0 items, and selectively adopt P1 items when they are concrete and low-risk; defer P2/P3 to backlog;
+- Upon completion, adopt P0 items; adopt P1 and P2 items selectively based on evaluation; disregard P3 items.
 - After execution is complete, close the team (\`TeamDelete\`);
 - If the \`TeamDelete\` tool is unavailable, notify each teammate to exit individually;
 </system-reminder>`,

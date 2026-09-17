@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- chore(ultraplan): **代码专家评审结论处置规则文案优化** — 评审建议处置行由「采纳 P0、P1 视情况采纳、P2/P3 延后」调整为「采纳 P0；P1 与 P2 视评估选择性采纳；忽略 P3」，code-expert.json、18 语言版 UltraPlan.md 与 ultraplanTemplates.js 共 20 处同步更新。
 - fix(chat): **[对话] 面板偶发冻结（冷摄取闸门异常闩死）** — load_end 分帧管线此前无异常兜底，条目抛错会让 `_ingestRunning` 永久保持 true，live 条目全部堆进闸门缓冲永不泄洪（对话停更 + 内存增长），而服务端 30s ping 持续续期心跳看门狗使自动重连永不触发，只能刷新页面恢复（[终端] 走独立 WebSocket 不受影响）。现管线入口按 token 校验复位闸门、泄洪缓冲、重建去重索引并解除 loading；batch 路径补 null 条目守卫；v3 delta 改为构建成功后才标记去重 key；v3 冷装配抛错时泄洪已缓冲帧。Coverage: `cold-ingest-gate.test.js`, `v3-delta-seen-order.test.js`.
 - fix(sse): **客户端写失败改为上报并关闭连接** — `_safeSseWrite` 写异常此前只静默把客户端剔出广播数组，连接与 ping 保留导致前端永不重连、对话数据永久停更；现经 `reportSwallowed('sse.safe-write')` 上报并 `end()`，前端走既有自动重连恢复。Coverage: `events-backpressure.test.js`.
 - feat(git): **本地未推送 commit 行尾徽章由文件数改为 +n/-n 行增删统计** — `getUnpushedCommits` 增加 numstat 通道按 hash 合并每 commit 行统计；文件列表仍走 name-status（保留真实 A/M/D 状态字母），双通道均加 `--no-renames`，rename 呈现为真实 A+D 路径（此前 numstat 紧凑表达式 `{old => new}` 会被当成伪文件名）；纯二进制/纯改名/mode-only 等零行统计 commit 行尾回退显示文件数，不再与空 commit 无区分。面板总计/repo 头/commit 行三处徽章抽取为共享 `StatBadges` 组件。Coverage: `git-unpushed.test.js`, `branch-lib-git-diff.test.js`.
