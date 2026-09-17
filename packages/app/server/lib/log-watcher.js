@@ -5,6 +5,7 @@ import { reconstructEntries } from '@ccv/core/delta-reconstructor';
 import { enrichEntry } from './enrich-plan-input.js';
 import { enrichEntry as enrichWorkflowEntry } from './enrich-workflow.js';
 import { sseWrite } from './wire-compress.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 
 // 1.7.0: the v1 log-file tail (fs.watch + byte cursors + rotation follow)
 // retired with the v1 write path — the live channel is server/lib/v2/
@@ -66,8 +67,15 @@ function _safeSseWrite(clients, client, payload) {
     // streams. The drain listener below stays on the res: the encoder is
     // piped into it, so socket drain still propagates.
     ok = sseWrite(client, payload);
-  } catch {
+  } catch (err) {
+    // A throwing write means this connection is unusable. Removing it from
+    // `clients` alone left the socket open and the 30s ping timer alive: the
+    // browser kept renewing its heartbeat watchdog on those pings, so it never
+    // reconnected and the chat panel stalled forever while the terminal WS
+    // stayed healthy. Report and CLOSE so the client's auto-reconnect fires.
+    reportSwallowed('sse.safe-write', err);
     _removeClient(clients, client);
+    try { client.end(); } catch {}
     return false;
   }
   if (!ok) {

@@ -56,6 +56,7 @@ describe('SSE backpressure: _safeSseWrite via sendToClients', () => {
     assert.equal(clients.length, 1, 'bad client removed');
     assert.ok(clients.includes(good), 'good client kept');
     assert.equal(good.writes.length, 1);
+    assert.ok(bad.ended, 'throwing client is closed so the browser EventSource can auto-reconnect');
   });
 
   it('removes destroyed client without writing', () => {
@@ -121,6 +122,7 @@ describe('SSE backpressure: sendEventToClients', () => {
     assert.ok(clients.includes(b));
     assert.equal(a.writes.length, 1);
     assert.equal(b.writes.length, 1);
+    assert.ok(bad.ended, 'throwing client is closed so the browser EventSource can auto-reconnect');
   });
 });
 

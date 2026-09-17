@@ -250,6 +250,13 @@ class AppBase extends React.Component {
     this._ingestToken = 0;
     this._liveGateBuffer = [];
     this._ingestProgressCount = 0;
+    // V3 live-assembly window state. `_v3PendingLive.push` (v3_conv/v3_resp/
+    // v2_requests_delta listeners) and the `_ingestLiveEntry` gate read these
+    // directly — initialize so the first cold v3 load can never hit a
+    // TypeError on a queued frame.
+    this._v3Assembling = false;
+    this._v3PendingLive = [];
+    this._v3ColdRows = null;
   }
 
   /** 批量剪枝 entries：清空旧 MainAgent 的 body.messages，保留最后一条完整。
@@ -595,6 +602,11 @@ class AppBase extends React.Component {
    *  同步与分帧路径共用此方法 —— mergeMainAgentSessions 的调用序列/参数/
    *  _sessionId 赋值因此与抽取前完全相同（sessionMerge 脆弱区零语义变化）。 */
   _processOneEntry(entry, i, st) {
+    // A literal null/non-object row in a torn log is never a renderable
+    // request; skip it instead of dereferencing below. The live path guards
+    // the same shape (`if (!rawEntry || ...) continue` in _flushPendingEntries).
+    if (!entry) return;
+
     // Legacy v1 rotation-context sentinel: metadata frame from un-migrated
     // logs — never a renderable request (v2 sessions have no rotation).
     if (entry && entry.ccvRotationContext) return;
@@ -740,57 +752,113 @@ class AppBase extends React.Component {
     }
   }
 
+  /** Failure-path gate release. Only the pipeline that still owns the gate may
+   *  reset it: a superseded pipeline's rejection must NOT ++token (it would
+   *  invalidate the live newer pipeline's commit) nor drain the buffer (that
+   *  would flush live entries against an uncommitted baseline — the exact
+   *  sessionMerge hazard the gate exists to prevent). No-op when superseded. */
+  _failColdIngest(myToken) {
+    if (this._ingestToken !== myToken || this._unmounted) return;
+    // Reuse the abort body for the reset itself (+token, gate open, drain in
+    // arrival order → single scheduled flush). Bumping the token here only
+    // invalidates the failed pipeline's own (terminal) token: we are the newest
+    // at this instant, so nothing queued can be harmed.
+    this._abortColdIngest({ drain: true });
+    this._ingestProgressCount = 0;
+    this.setState({ fileLoading: false, fileLoadingCount: 0, fileLoadingBytes: null });
+    // Index repair MUST come after the gate is open and must not be able to
+    // re-latch anything: _rebuildRequestIndex dereferences e.timestamp on the
+    // committed baseline, which older caches could hold a null for.
+    try { this._repairIndexAfterFailedIngest(); }
+    catch (e) { reportSwallowed('sse.cold-ingest-repair', e); }
+  }
+
+  /** After a failed ingest the dedup index maps keys to INDICES OF THE FAILED
+   *  PIPELINE'S ARRAY, while _flushPendingEntries (now taking the drained live
+   *  entries) writes into a copy of state.requests — a stale index lands on an
+   *  unrelated row or past the end (array holes → dropped/misplaced rows until
+   *  the next reload). Re-derive it from the committed baseline.
+   *  _v2ColdSeed is preserved on purpose: the seed belongs to the committed
+   *  baseline and the next live v2 row must still prime from it, or
+   *  mergeMainAgentSessions REBUILD-truncates the cold session. */
+  _repairIndexAfterFailedIngest() {
+    const seed = this._v2ColdSeed;
+    // `|| []`: a null/undefined baseline (possible for version-drifted clients)
+    // must leave an empty-but-consistent index, and the finally guarantees the
+    // seed is restored even when _rebuildRequestIndex throws mid-rebuild —
+    // otherwise the next live v2 row REBUILD-truncates the cold session.
+    try { this._rebuildRequestIndex(this.state.requests || []); }
+    finally { this._v2ColdSeed = seed; }
+  }
+
   /** initSSE load_end 的分帧版主流程。 */
   async _runSseColdIngest(rawEntries, { isIncremental, unlockContextBar }) {
     const myToken = ++this._ingestToken;
+    // Gate closes SYNCHRONOUSLY before the first await — finish()/the v3
+    // assembly path depends on this ordering (see the load_end comment).
     this._ingestRunning = true;
-    const ctl = this._makeIngestCtl(myToken);
-    const core = await this._runColdIngestCore(rawEntries, ctl);
-    if (core.aborted) return;
-    if (core.empty) {
-      const st = { fileLoading: false, fileLoadingCount: 0, fileLoadingBytes: null };
-      if (unlockContextBar) st.contextBarLocked = false;
-      this._commitColdIngest(myToken, st);
-      return;
-    }
-    const { entries, mainAgentSessions, filtered } = core;
-
-    const newState = {
-      requests: entries,
-      selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
-      mainAgentSessions,
-      fileLoading: false,
-      fileLoadingCount: 0,
-      fileLoadingBytes: null,
-    };
-    if (unlockContextBar) newState.contextBarLocked = false;
-    this._commitColdIngest(myToken, newState, () => {
-      if (isMobile && this.state.projectName) {
-        saveEntries(this.state.projectName, entries);
+    try {
+      const ctl = this._makeIngestCtl(myToken);
+      const core = await this._runColdIngestCore(rawEntries, ctl);
+      if (core.aborted) return;
+      if (core.empty) {
+        const st = { fileLoading: false, fileLoadingCount: 0, fileLoadingBytes: null };
+        if (unlockContextBar) st.contextBarLocked = false;
+        this._commitColdIngest(myToken, st);
+        return;
       }
-    });
+      const { entries, mainAgentSessions, filtered } = core;
+
+      const newState = {
+        requests: entries,
+        selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
+        mainAgentSessions,
+        fileLoading: false,
+        fileLoadingCount: 0,
+        fileLoadingBytes: null,
+      };
+      if (unlockContextBar) newState.contextBarLocked = false;
+      this._commitColdIngest(myToken, newState, () => {
+        if (isMobile && this.state.projectName) {
+          saveEntries(this.state.projectName, entries);
+        }
+      });
+    } catch (err) {
+      // Without this catch a mid-pipeline throw would leave _ingestRunning
+      // latched true forever: every live entry would pile into the gate buffer
+      // and the chat panel would freeze until a page reload (the 30s server
+      // ping keeps renewing the heartbeat watchdog, so _reconnectSSE's abort
+      // never fires).
+      reportSwallowed('sse.cold-ingest', err, { token: myToken });
+      this._failColdIngest(myToken);
+    }
   }
 
   /** loadLocalLogFile load_end 的分帧版主流程。 */
   async _runLocalLogIngest(rawEntries) {
     const myToken = ++this._ingestToken;
     this._ingestRunning = true;
-    const ctl = this._makeIngestCtl(myToken);
-    const core = await this._runColdIngestCore(rawEntries, ctl);
-    if (core.aborted) return;
-    if (core.empty) {
-      this._commitColdIngest(myToken, { fileLoading: false, fileLoadingCount: 0, fileLoadingBytes: null, serverCachedContent: null });
-      return;
+    try {
+      const ctl = this._makeIngestCtl(myToken);
+      const core = await this._runColdIngestCore(rawEntries, ctl);
+      if (core.aborted) return;
+      if (core.empty) {
+        this._commitColdIngest(myToken, { fileLoading: false, fileLoadingCount: 0, fileLoadingBytes: null, serverCachedContent: null });
+        return;
+      }
+      this._commitColdIngest(myToken, {
+        requests: core.entries,
+        selectedIndex: core.filtered.length > 0 ? core.filtered.length - 1 : null,
+        mainAgentSessions: core.mainAgentSessions,
+        fileLoading: false,
+        fileLoadingCount: 0,
+        fileLoadingBytes: null,
+        serverCachedContent: null,
+      });
+    } catch (err) {
+      reportSwallowed('sse.local-log-ingest', err, { token: myToken });
+      this._failColdIngest(myToken);
     }
-    this._commitColdIngest(myToken, {
-      requests: core.entries,
-      selectedIndex: core.filtered.length > 0 ? core.filtered.length - 1 : null,
-      mainAgentSessions: core.mainAgentSessions,
-      fileLoading: false,
-      fileLoadingCount: 0,
-      fileLoadingBytes: null,
-      serverCachedContent: null,
-    });
   }
 
   componentDidMount() {
@@ -1096,8 +1164,18 @@ class AppBase extends React.Component {
     // seqs or the placeholder→completed transition rebuild an entry.
     const k = `${row.sessionId}\x00${row.seq}\x00${row.inProgress ? 1 : 0}`;
     if (this._v3SeenLive?.has(k)) return;
+    // Build BEFORE marking seen: if buildEntry throws on a torn row, the
+    // server may re-send the correction — marking the seq seen first would
+    // swallow that row for the rest of the session, permanently.
+    let entry;
+    try {
+      entry = this._v3Assembler().buildEntry(row);
+    } catch (e) {
+      reportSwallowed('v3.apply-delta', e, { seq: row.seq, sessionId: row.sessionId });
+      return;
+    }
     (this._v3SeenLive ??= new Set()).add(k);
-    this._ingestLiveEntry(this._v3Assembler().buildEntry(row));
+    this._ingestLiveEntry(entry);
   }
 
   /** Drain frames buffered while the cold assembly owned the assembler. */
@@ -1433,7 +1511,10 @@ class AppBase extends React.Component {
 
         // 分帧管线：reconstruct → 分帧 slim → 分帧 process → 原子提交。
         // async 不 await（EventSource 回调）；在途期间 live 条目入闸门缓冲（handleEventMessage）。
-        this._runSseColdIngest(rawEntries, { isIncremental, unlockContextBar });
+        this._runSseColdIngest(rawEntries, { isIncremental, unlockContextBar })
+          // Last-resort net: semantic gate release lives in the pipeline's own
+          // catch; this only guarantees the rejection is never silent.
+          .catch((err) => reportSwallowed('sse.cold-ingest-outer', err));
         };
 
         if (this._wireV3 && this._v3ColdRows && this._chunkedEntries.length === 0) {
@@ -1443,13 +1524,26 @@ class AppBase extends React.Component {
           (async () => {
             const entries = [];
             const asm = this._v3Assembler();
+            let assembled = false;
             try {
               for (let i = 0; i < rows.length; i++) {
                 try { entries.push(asm.buildEntry(rows[i])); } catch (e) { reportSwallowed('v3.cold-assemble', e); }
                 if ((i + 1) % 100 === 0) await yieldToMain();
               }
+              assembled = true;
+            } catch (err) {
+              reportSwallowed('v3.cold-assemble-run', err);
             } finally {
               this._v3Assembling = false;
+            }
+            if (!assembled) {
+              // Never commit a half-assembled window (it would truncate the
+              // chat): keep the previous baseline, release the gated live
+              // frames through the normal live path, unblock the overlay.
+              this._abortColdIngest({ drain: true });
+              this._v3DrainPendingLive();
+              this.setState({ fileLoading: false, fileLoadingCount: 0, fileLoadingBytes: null });
+              return;
             }
             this._chunkedEntries = entries;
             // finish() enters the ingest pipeline synchronously (sets
@@ -1626,7 +1720,7 @@ class AppBase extends React.Component {
             this.setState({ serverCachedContent: cached });
           }
         } catch (err) {
-          console.error('Failed to parse kv_cache_content:', err);
+          reportSwallowed('sse.kv_cache_content', err, { dataLen: event.data?.length });
         }
       });
       this.eventSource.addEventListener('workflow_update', (event) => {
@@ -1833,7 +1927,7 @@ class AppBase extends React.Component {
               this.setState({ isStreaming: false });
             }, 2000);
           }
-        } catch (err) { console.error('Failed to parse streaming_status:', err); }
+        } catch (err) { reportSwallowed('sse.streaming_status', err); }
       });
       this.eventSource.onerror = () => {
         console.error('SSE连接错误');
@@ -1842,7 +1936,7 @@ class AppBase extends React.Component {
         // 若流式已完成，最终 entry 的原子清除会收走 overlay。
       };
     } catch (error) {
-      console.error('EventSource初始化失败:', error);
+      reportSwallowed('sse.init', error);
       this.setState({ fileLoading: false, fileLoadingCount: 0 });
     }
   }
@@ -1885,7 +1979,8 @@ class AppBase extends React.Component {
       es.close();
       // 分帧管线（reconstruct → 分帧 slim → 分帧 process → 原子提交）：
       // 历史日志同样可能含巨型 checkpoint，同步管线会卡死主线程。
-      this._runLocalLogIngest(entries);
+      this._runLocalLogIngest(entries)
+        .catch((err) => reportSwallowed('sse.local-log-ingest-outer', err));
     });
 
     es.onerror = () => {
@@ -1903,7 +1998,7 @@ class AppBase extends React.Component {
       // 且 _sseSlimmer/_sseReconstructor 会对错误基线初始化（sessionMerge 脆弱区）。
       this._ingestLiveEntry(entry);
     } catch (error) {
-      console.error('处理事件消息失败:', error);
+      reportSwallowed('sse.message', error, { dataLen: event.data?.length });
     }
   }
 
