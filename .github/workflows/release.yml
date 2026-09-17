@@ -197,6 +197,12 @@ jobs:
         # (E404-less hard fail at v1.8.18). Publish explicitly to the `patch`
         # channel instead; `latest` stays on whatever holds it on the registry.
 
+      # Point latest at the version just published — the registry's latest must
+      # track the newest patch-line release (the 1.9.0 stray means npm will never
+      # do this implicitly). dist-tag is a registry metadata op, allowed after
+      # the OIDC-authenticated publish in the same job.
+      - run: npm dist-tag add "cc-viewer@${GITHUB_REF_NAME#v}" latest
+
   # Post-release automatic Homebrew tap formula bump (reusable workflow, uses HOMEBREW_TAP_TOKEN).
   bump-homebrew:
     # needs: npm-publish (NOT publish). The Homebrew formula points at the npm tarball, so the
