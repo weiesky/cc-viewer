@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(im): **IM 会话弹窗头部新增「停止」按钮 + 修复停止清空配置** — 「已连接 :端口」旁加停止入口，Popconfirm 确认后 POST /config {enabled:false, applyProcess:true} 停用（停进程并写盘，重启不再拉起）。服务端 /config 对「只动 enabled」的 body 改为 read-merge-write，修复停止误清空 appKey/白名单/region 的 P0；「停止」在启动轮询中禁用避免竞态。设置面板另加独立「保存」按钮（applyProcess:false 只存盘不驱动进程）。Coverage: `im-quit-button.test.js`, `im-save-button.test.js`, `im-status-i18n.test.js`, `api-im.test.js`.
+- feat(chat): **任务列表 HUD 明细由原生 title 提示改为 antd 气泡** — 任务 label 的长 description 改用悬停 Popover 气泡卡展示（可滚动、可选中复制、保留换行），折叠态当前任务、进行中 activeForm、负责人徽章与展开/收起按钮的原生 title 一并换成 antd Tooltip，气泡主题跟随全局明暗。Coverage: `task-progress-hud.test.js`.
 - chore(ultraplan): **代码专家评审结论处置规则文案优化** — 评审建议处置行由「采纳 P0、P1 视情况采纳、P2/P3 延后」调整为「采纳 P0；P1 与 P2 视评估选择性采纳；忽略 P3」，code-expert.json、18 语言版 UltraPlan.md 与 ultraplanTemplates.js 共 20 处同步更新。
 - fix(chat): **[对话] 面板偶发冻结（冷摄取闸门异常闩死）** — load_end 分帧管线此前无异常兜底，条目抛错会让 `_ingestRunning` 永久保持 true，live 条目全部堆进闸门缓冲永不泄洪（对话停更 + 内存增长），而服务端 30s ping 持续续期心跳看门狗使自动重连永不触发，只能刷新页面恢复（[终端] 走独立 WebSocket 不受影响）。现管线入口按 token 校验复位闸门、泄洪缓冲、重建去重索引并解除 loading；batch 路径补 null 条目守卫；v3 delta 改为构建成功后才标记去重 key；v3 冷装配抛错时泄洪已缓冲帧。Coverage: `cold-ingest-gate.test.js`, `v3-delta-seen-order.test.js`.
 - fix(sse): **客户端写失败改为上报并关闭连接** — `_safeSseWrite` 写异常此前只静默把客户端剔出广播数组，连接与 ping 保留导致前端永不重连、对话数据永久停更；现经 `reportSwallowed('sse.safe-write')` 上报并 `end()`，前端走既有自动重连恢复。Coverage: `events-backpressure.test.js`.

@@ -1,5 +1,12 @@
 # cc-viewer
 
+## 1.8.19
+
+### Patch Changes
+
+- feat(im): **IM 会话弹窗头部新增「停止」按钮 + 修复停止清空配置** — 「已连接 :端口」状态标签旁加停止入口,Popconfirm 二次确认后 POST /config {enabled:false, applyProcess:true} 停用该平台(停进程并写盘,重启不再自动拉起)。服务端 /config 对「只动 enabled」的 body 改为 read-merge-write,修复停止误清空 appKey/白名单/region 等字段的 P0;「停止」在启动轮询中禁用避免竞态。仅本地存活 worker 显示,停用后徽标即翻「未连接」并出现「启动」。设置面板另加独立「保存」按钮(applyProcess:false 只存盘不驱动进程),与启动/停止解耦。新增 ui.im.stopConfirm/stopFailed(×18 locales)。Coverage: `im-quit-button.test.js`, `im-save-button.test.js`, `im-status-i18n.test.js`, `api-im.test.js`.
+- feat(chat): 任务列表 HUD 明细由原生 title 提示改为 antd 气泡 — 任务 label 的长 description 改用悬停 Popover 气泡卡展示(可滚动、可选中复制、保留换行),折叠态当前任务、进行中 activeForm、负责人徽章与展开/收起按钮的原生 title 一并换成 antd Tooltip,气泡主题跟随全局明暗。Coverage: `task-progress-hud.test.js`.
+
 ## 1.8.18
 
 ### Patch Changes

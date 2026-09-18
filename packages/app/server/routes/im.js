@@ -173,8 +173,21 @@ function imConfigPost(req, res, parsedUrl, isLocal, deps) {
     // bind-first-conversation（im-bridge-core.js）——首个向机器人发消息的会话被绑定，该会话内任何人
     // 都可无审批驱动本地会话。这里打一条服务端审计（curl/headless 启用走不到前端 toast），
     // PreToolUse permissions.deny 硬拦截（perm-bridge/im-deny，独立于白名单）仍然生效。
-    if (incoming.enabled) warnIfEmptyAllowlist(id, incoming);
-    const saved = saveConfig(id, incoming);
+    //
+    // 部分更新兜底：只携带 enabled（如会话弹窗的「停止」只发 {enabled:false, applyProcess:true}）的 body
+    // 不能让 saveConfig→normalize 把缺省字段落成默认值——cred 字段（appKey/appId/botId）、白名单、
+    // region、ackCard/aiCard、maxChunkChars 都会被重置，仅 secret 字段有空值保留。检测「是否触及 enabled
+    // 之外的字段」，未触及则合并 loadConfig 的已存值（read-merge-write），只翻 enabled。设置面板的全量
+    // buildBody 触及业务字段 → 维持原样逐字节不变。
+    const desc = getDescriptor(id);
+    // `in` throws on a non-object JSON body (null / "str" / 42 / true), and the throw inside this
+    // async readBody callback writes no response → the client hangs. Neutralize to {} first
+    // (normalize() used to guard with `cfg ? … : undefined`; keep that tolerance here).
+    const incomingObj = (incoming && typeof incoming === 'object' && !Array.isArray(incoming)) ? incoming : {};
+    const touchesOthers = desc.fields.some((f) => f.key !== 'enabled' && f.key in incomingObj);
+    const effective = touchesOthers ? incomingObj : { ...loadConfig(id), enabled: !!incomingObj.enabled };
+    if (effective.enabled) warnIfEmptyAllowlist(id, effective);
+    const saved = saveConfig(id, effective);
     // applyProcess（默认 true，保持旧调用方语义）：前端 onBlur 自动保存传 false → 仅存盘、不驱动进程，
     // 否则每次输入框失焦都会重启 worker。显式「启动/停止」按钮则不传（=true），沿用下述驱动逻辑。
     // 注：applyProcess 是未知字段，saveConfig/normalize 不会把它写盘。

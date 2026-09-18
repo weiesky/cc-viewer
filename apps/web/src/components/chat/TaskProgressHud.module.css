@@ -30,12 +30,23 @@
 }
 
 .current {
-  flex: 1 1 auto;
+  /* Shrink to the text width so the Tooltip anchors to the blue text itself —
+     the arrow then tracks the text, not the full-row span. Still ellipsizes
+     when longer than the available space. The .spacer after it absorbs the
+     freed-up width so the dots/chevron stay right-aligned. */
+  flex: 0 1 auto;
   min-width: 0;
   color: var(--color-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Elastic spacer between .current and .dots: takes up the row width that
+   .current no longer grows into, right-aligning the dots + chevron. */
+.spacer {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .chevron {
@@ -93,7 +104,10 @@
 }
 
 .label {
-  flex: 1 1 auto;
+  /* Shrink to the text width (not the full row) so the detail Popover anchors to
+     the blue text itself — its arrow tracks the text end. Still ellipsizes when
+     the text is longer than the cell. */
+  flex: 0 1 auto;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -109,6 +123,10 @@
 
 .doing {
   flex: 0 0 auto;
+  /* .label no longer flex-grows (shrink-to-fit so the detail Popover anchors to the
+     text), so without this the chip would hug the label; margin-left:auto pins it
+     to the cell's right edge as before. */
+  margin-left: auto;
   max-width: 160px;
   white-space: nowrap;
   overflow: hidden;
@@ -131,6 +149,18 @@
   border-radius: 10px;
   padding: 0 8px;
   font-size: 11px;
+}
+
+/* Long task detail inside the antd Popover: pre-line keeps model-authored
+   newlines; height cap + scroll keeps a huge description from covering the
+   screen. Text stays selectable (unlike the native title tooltip). */
+.detailContent {
+  white-space: pre-line;
+  word-break: break-word;
+  max-height: 40vh;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .statusLabel {

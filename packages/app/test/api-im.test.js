@@ -84,6 +84,37 @@ describe('Generic /api/im/:platform config API (loopback=admin)', { concurrency:
     assert.equal(res.json().appId, 'cli_z');
   });
 
+  // P0 回归守卫：会话弹窗「停止」只发 {enabled:false, applyProcess:true}，不得清空其余已存字段。
+  // 服务端对「只动 enabled」的 body 做 read-merge-write（合并 loadConfig），只翻 enabled。
+  it('POST config with only {enabled} is a partial update — preserves creds/allowlist/region', async () => {
+    // 先全量写入一组字段（含 cred/secret/region/allowlist）。
+    await httpRequest(port, '/api/im/feishu/config', {
+      method: 'POST',
+      body: { enabled: true, applyProcess: false, appId: 'cli_full', appSecret: 'sec_full', region: 'lark', allowUserIds: ['ou_a', 'ou_b'], maxChunkChars: 4000, ackCard: false },
+    });
+    // 模拟「停止」：只发 enabled:false（不带任何业务字段）。
+    const res = await httpRequest(port, '/api/im/feishu/config', { method: 'POST', body: { enabled: false, applyProcess: false } });
+    assert.equal(res.status, 200);
+    const d = res.json();
+    assert.equal(d.enabled, false, 'enabled flips to false');
+    assert.equal(d.appId, 'cli_full', 'cred (appId) must be preserved, not wiped to default');
+    assert.equal(d.region, 'lark', 'region must be preserved (not reverted to feishu)');
+    assert.deepEqual(d.allowUserIds, ['ou_a', 'ou_b'], 'allowlist must be preserved');
+    assert.equal(d.maxChunkChars, 4000, 'chunk size preserved');
+    assert.equal(d.ackCard, false, 'bool field preserved');
+    assert.equal(d.hasSecret, true, 'secret preserved');
+  });
+
+  // 回归守卫：非对象 JSON body（null/"str"/42/true 是合法 JSON，会越过 400「Invalid JSON」闸门）
+  // 不得让 `f.key in incoming` 抛 TypeError 挂起请求——必须先归一成对象再读字段。
+  it('POST config with a non-object JSON body does not hang (writes a response)', async () => {
+    for (const raw of ['null', '"str"', '42', 'true']) {
+      const res = await httpRequest(port, '/api/im/feishu/config', { method: 'POST', body: raw });
+      assert.equal(res.status, 200, `body=${raw} should still get a response, not hang`);
+      assert.equal(res.json().enabled, false, 'non-object body treated as a bare disable');
+    }
+  });
+
   it('POST /api/im/feishu/test validates creds via the stubbed token fetch', async () => {
     const res = await httpRequest(port, '/api/im/feishu/test', { method: 'POST', body: { appId: 'cli_abc', appSecret: 'topsecret', region: 'lark' } });
     assert.equal(res.status, 200);

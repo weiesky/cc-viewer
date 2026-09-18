@@ -25,6 +25,8 @@ function singleLineEntryOf(key) {
 
 const KEYS = [
   'ui.im.statusReconnecting', // new: shown while the IM socket is down and the SDK auto-retries
+  'ui.im.stopConfirm',   // conversation-modal header stop Popconfirm title (disable semantics warning)
+  'ui.im.stopFailed',    // toast when the stop /config call fails
 ];
 
 describe('IM status i18n — all 18 locales', () => {

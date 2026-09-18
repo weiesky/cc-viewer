@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
-import { Drawer, Button, Spin, Empty, Tooltip, Tag, message } from 'antd';
+import { Drawer, Button, Spin, Empty, Tooltip, Tag, Popconfirm, message } from 'antd';
 import { ReloadOutlined, SettingOutlined } from '@ant-design/icons';
 import ChatMessage from '../chat/ChatMessage';
 import { cachedBuildToolResultMap } from '../../utils/toolResultBuilder';
@@ -9,6 +9,7 @@ import { reconstructEntries } from '@ccv/core/delta-reconstructor';
 import { apiUrl } from '../../utils/apiUrl';
 import { IM_PLATFORMS } from './imPlatforms';
 import { t } from '../../i18n';
+import { imTr } from '../../utils/imTr';
 import { imBadgeModel } from '../../utils/imConnState';
 import { reportSwallowed } from '../../utils/errorReport';
 import styles from './ImConversationModal.module.css';
@@ -196,6 +197,49 @@ export default function ImConversationModal({ open, onClose, platform, onOpenCon
   // startingPlatform 按平台记「正在启动谁」：全局布尔曾在「启动中切平台」时被 finally 的守卫跳过复位，
   // 导致按钮在其他平台串台出现并永久卡死 loading（review P1）。
   const [startingPlatform, setStartingPlatform] = useState(null);
+  // 停止中标记：按平台无关的单布尔即可——停止是即时操作，且「停止中切平台」时 finally 用
+  // mountedRef 守卫复位，不会像 start 那样留下永久 loading（停止无轮询等待阶段）。
+  const [stopping, setStopping] = useState(false);
+
+  // 「停止」按钮（disabled 语义）：POST /config {enabled:false, applyProcess:true} —— 停进程
+  // 并写盘 enabled:false，重启后 reconcileImProcesses 不再拉起（区别于 /process {action:'stop'}
+  // 的纯杀进程）。与设置面板 ImPlatformSettings.stop 同一语义、同一端点。
+  // 远端（LAN）客户端 status 不含 process → imProc 为 null → 按钮不渲染（/config 需 admin）。
+  //
+  // 配置字段保留由服务端兜底：imConfigPost 对「只动 enabled」的 body 做 read-merge-write
+  // （合并 loadConfig 的已存值），故此处只发 enabled/applyProcess 两个键也不会清空
+  // appKey/白名单/region 等。客户端无需回填。
+  const stopWorker = async () => {
+    const target = platform;
+    setStopping(true);
+    busyRef.current = true;
+    try {
+      const r = await fetch(apiUrl(`/api/im/${encodeURIComponent(target)}/config`), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: false, applyProcess: true }),
+      });
+      let body = null;
+      try { body = await r.json(); } catch (e) { reportSwallowed('fetch.im-stop', e); }
+      if (!r.ok || body?.ok === false) {
+        const detail = body?.detail || body?.error || '';
+        message.error(imTr('ui.im.stopFailed', null, 'Stop failed') + (detail ? `: ${detail}` : ''));
+        return;
+      }
+      // 通知头部 ImStatusChip 重新探测/停用轮询（对齐 ImPlatformSettings.postConfig 的广播）。
+      try { window.dispatchEvent(new CustomEvent('ccv:im-config-changed', { detail: { id: target } })); } catch { /* no-op */ }
+      // 立即把本弹窗徽标翻到「未连接」并让「启动」按钮出现（后台 5s 轮询会再收敛到真实态）。
+      if (mountedRef.current && platformRef.current === target) {
+        setImConn({ running: false, connected: false });
+        setImProc((p) => (p ? { ...p, state: 'dead' } : p));
+      }
+    } catch (e) {
+      reportSwallowed('fetch.im-stop', e);
+      message.error(imTr('ui.im.stopFailed', null, 'Stop failed'));
+    } finally {
+      busyRef.current = false;
+      if (mountedRef.current) setStopping(false);
+    }
+  };
 
   const startWorker = async () => {
     const target = platform;
@@ -253,6 +297,8 @@ export default function ImConversationModal({ open, onClose, platform, onOpenCon
     // dead && !lastError 等价于「徽标此刻显示未连接」（imBadgeModel 对 dead 只有 lastError 一个更高优先级
     // 分支），直接用语义字段判断，不比对 i18n key 字符串（key 重命名会静默失效，review P2）。
     const showStart = startingPlatform === platform || (imProc?.state === 'dead' && !imConn?.lastError);
+    // 停止按钮：仅在本地拿到进程信息且 worker 存活时显示（远端无 process → 隐藏；dead → 由启动接管）。
+    const showStop = !!imProc && imProc.state !== 'dead';
     return (
       <>
         {showStart ? (
@@ -263,6 +309,21 @@ export default function ImConversationModal({ open, onClose, platform, onOpenCon
         <Tag color={m.color || undefined}>
           {t(m.key)}{m.error ? `: ${m.error}` : ''}{portSuffix}
         </Tag>
+        {showStop ? (
+          <Popconfirm
+            title={imTr('ui.im.stopConfirm', null, "Stop? This stops the platform's IM service and it won't auto-start on next launch.")}
+            okText={imTr('ui.ok', null, 'OK')}
+            cancelText={imTr('ui.cancel', null, 'Cancel')}
+            okButtonProps={{ danger: true }}
+            onConfirm={stopWorker}
+          >
+            {/* 启动轮询进行中禁用停止：否则 start 的轮询循环仍可能在停止后观察到 ready/connected
+                并弹出「已连接」，与已停止的 worker 矛盾（review P1）。 */}
+            <Button type="text" size="small" danger loading={stopping} disabled={startingPlatform === platform}>
+              {t('ui.im.stop')}
+            </Button>
+          </Popconfirm>
+        ) : null}
       </>
     );
   };

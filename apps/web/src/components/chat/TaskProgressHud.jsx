@@ -1,7 +1,26 @@
 import React, { useState, useEffect } from 'react';
+import { Popover, Tooltip } from 'antd';
 import { t } from '../../i18n';
+import { isMobile, isPad, isIOS } from '../../env';
 import { subscribe, getSnapshot } from '../../utils/taskStore';
 import styles from './TaskProgressHud.module.css';
+
+// Static overlay style hoisted to module scope (same pattern as
+// LiveTagPopover) so renders don't recreate the literal. Passed via
+// styles.body — the non-deprecated antd v5 API.
+const DETAIL_POPOVER_STYLE = {
+  maxWidth: 420,
+  background: 'var(--bg-elevated)',
+  border: '1px solid var(--border-hover)',
+  borderRadius: 8,
+};
+
+// Hover never fires on touch UAs (iPadOS reports a Mac UA, so rc-trigger's
+// own hover→click fallback misses it). Mirror the repo convention
+// (ChatMessage.jsx): touch phones/pads get a click trigger instead.
+const TOUCH_TRIGGER_PROPS = (isMobile && !isPad)
+  ? { trigger: 'click', ...(!isIOS && { getPopupContainer: (node) => node.parentElement }) }
+  : {};
 
 /**
  * Claude Code 任务清单 HUD：docked 在 ChatView 输入框上方（消息滚动区之外），
@@ -39,9 +58,13 @@ export default function TaskProgressHud() {
   // present tense preferred), else the next pending task.
   const inProgress = tasks.find(x => x.status === 'in_progress');
   const nextPending = tasks.find(x => x.status === 'pending');
+  const currentTask = inProgress || nextPending;
   const current = inProgress
     ? (inProgress.activeForm || inProgress.subject || `#${inProgress.taskId}`)
     : (nextPending.subject || `#${nextPending.taskId}`);
+  // The header bubble shows the current task's DETAIL (same as a row's Popover),
+  // not the title already visible in the strip. Empty detail → no bubble.
+  const currentDetail = currentTask ? (currentTask.description || currentTask.subject || '') : '';
 
   return (
     <div className={styles.wrap}>
@@ -52,7 +75,27 @@ export default function TaskProgressHud() {
           <span className={styles.doneCount}>
             {`✓ ${t('ui.tasks.progress', { done, total })}`}
           </span>
-          <span className={styles.current} title={current}>{current}</span>
+          {/* Collapsed strip: hovering the current-task text pops the task's
+              DETAIL in a Popover (scrollable/selectable, same as a row), to the
+              RIGHT of the text so it never covers the expanded list. .current
+              shrinks to the text width (flex 0 1 auto, not block) so the anchor
+              is the blue text itself and the arrow tracks its end. Empty detail
+              → open forced false so no empty bubble shows. */}
+          <Popover
+            content={<div className={styles.detailContent}>{currentDetail}</div>}
+            trigger="hover"
+            placement="rightTop"
+            styles={{ body: DETAIL_POPOVER_STYLE }}
+            open={currentDetail ? undefined : false}
+            {...TOUCH_TRIGGER_PROPS}
+          >
+            <span className={styles.current}>{current}</span>
+          </Popover>
+          {/* Elastic spacer: pushes the dots + chevron to the right edge so the
+              current-task text stays left-aligned while .current itself shrinks
+              to the text width (for the Tooltip anchor). Without this, dropping
+              .current's flex-grow would collapse the dots/chevron onto the text. */}
+          <span className={styles.spacer} aria-hidden="true" />
           {/* Progress dots: one per task, so the collapsed strip alone shows
               how far along we are, which step is running, and how many are
               left. Purely decorative — the role="status" count line above is
@@ -62,17 +105,18 @@ export default function TaskProgressHud() {
               <TaskStatusDot key={task.taskId} status={task.status} />
             ))}
           </span>
-          <button
-            type="button"
-            className={styles.chevron}
-            aria-expanded={expanded}
-            aria-controls="task-progress-hud-list"
-            aria-label={expanded ? t('ui.collapse') : t('ui.expand')}
-            title={expanded ? t('ui.collapse') : t('ui.expand')}
-            onClick={() => setExpanded(e => !e)}
-          >
-            {expanded ? '▾' : '▸'}
-          </button>
+          <Tooltip title={expanded ? t('ui.collapse') : t('ui.expand')}>
+            <button
+              type="button"
+              className={styles.chevron}
+              aria-expanded={expanded}
+              aria-controls="task-progress-hud-list"
+              aria-label={expanded ? t('ui.collapse') : t('ui.expand')}
+              onClick={() => setExpanded(e => !e)}
+            >
+              {expanded ? '▾' : '▸'}
+            </button>
+          </Tooltip>
         </div>
         {expanded && (
           <div className={styles.rows} id="task-progress-hud-list">
@@ -119,6 +163,7 @@ function TaskStatusDot({ status }) {
 
 function TaskRow({ task }) {
   const owner = task.owner || task.teammateName || '';
+  const detail = task.description || task.subject || '';
   const statusKey = task.status === 'in_progress' ? 'ui.tasks.status.inProgress'
     : task.status === 'completed' ? 'ui.tasks.status.completed'
       : 'ui.tasks.status.pending';
@@ -126,14 +171,35 @@ function TaskRow({ task }) {
     <div className={styles.row}>
       <span className={styles.glyph}><TaskStatusDot status={task.status} /></span>
       <span className={styles.labelCell}>
-        <span className={`${styles.label} ${task.status === 'completed' ? styles.labelDone : ''}`} title={task.description || task.subject || ''}>
-          {task.subject || `#${task.taskId}`}
-        </span>
+        {/* Long detail lives in an antd Popover (scrollable, selectable) instead
+            of a native title tooltip. open forced false when there is no detail
+            so an empty bubble never shows. placement="rightTop" puts the bubble to
+            the RIGHT of the label with its LEFT arrow pointing at the text, but
+            aligned to the row's TOP so it stays clear of the trailing .doing pill
+            below (a plain "right" was measured to overlap .doing). */}
+        <Popover
+          content={<div className={styles.detailContent}>{detail}</div>}
+          trigger="hover"
+          placement="rightTop"
+          styles={{ body: DETAIL_POPOVER_STYLE }}
+          open={detail ? undefined : false}
+          {...TOUCH_TRIGGER_PROPS}
+        >
+          <span className={`${styles.label} ${task.status === 'completed' ? styles.labelDone : ''}`}>
+            {task.subject || `#${task.taskId}`}
+          </span>
+        </Popover>
         {task.status === 'in_progress' && task.activeForm && task.activeForm !== task.subject && (
-          <span className={styles.doing} title={task.activeForm}>{task.activeForm}</span>
+          <Tooltip title={task.activeForm}>
+            <span className={styles.doing}>{task.activeForm}</span>
+          </Tooltip>
         )}
       </span>
-      {owner && <span className={styles.owner} title={t('ui.tasks.owner')}>{owner}</span>}
+      {owner && (
+        <Tooltip title={t('ui.tasks.owner')}>
+          <span className={styles.owner}>{owner}</span>
+        </Tooltip>
+      )}
       <span className={styles.statusLabel}>{t(statusKey)}</span>
     </div>
   );

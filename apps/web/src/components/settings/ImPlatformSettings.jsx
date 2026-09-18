@@ -44,6 +44,7 @@ export default function ImPlatformSettings({ descriptor }) {
   const [proc, setProc] = useState(null); // { state, port, pid, ... } 仅本机 admin 有；远端为 null
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [personaOpen, setPersonaOpen] = useState(false); // 「模型性格定义」(CC_APPEND_SYSTEM.md) 编辑弹窗
@@ -287,6 +288,28 @@ export default function ImPlatformSettings({ descriptor }) {
     }
   };
 
+  // 「保存」：仅存盘（applyProcess:false，不驱动进程），与启动/停止解耦。enabled 取当前开关态，
+  // 不改 enabled——保存当前表单的凭证/字段，进程是否重启由启动/停止按钮决定。
+  const save = async () => {
+    // 脏检查：签名（含 enabled）与上次持久化一致则无事可做。
+    const sig = fieldSig(valuesRef.current, enabledRef.current);
+    if (sig === lastSavedSigRef.current) { message.success(_tr('ui.im.saved', null, 'Saved')); return; }
+    setSaving(true);
+    busyRef.current = true;
+    try {
+      const { ok, detail } = await postConfig(buildBody(valuesRef.current, enabledRef.current, false));
+      if (!ok) { message.error(_tr('ui.im.saveFailed', null, 'Save failed') + (detail ? `: ${detail}` : '')); return; }
+      lastSavedSigRef.current = sig;
+      message.success(_tr('ui.im.saved', null, 'Saved'));
+      if (isAllowlistEmpty()) {
+        message.warning(_tr('ui.im.savedNoAllowlistWarn', null, 'No sender allowlist set: the first conversation that messages the bot is bound and anyone in it can drive the local session with no approval. Add an allowlist under More settings.'), 8);
+      }
+    } finally {
+      busyRef.current = false;
+      if (mountedRef.current) setSaving(false);
+    }
+  };
+
   const testConn = async () => {
     setTesting(true);
     try {
@@ -451,6 +474,10 @@ export default function ImPlatformSettings({ descriptor }) {
 
       <div className={styles.actions}>
         <Button className={styles.testBtn} onClick={testConn} loading={testing}>{_tr('ui.im.test', null, 'Test connection')}</Button>
+        {/* 「保存」仅存盘不驱动进程（applyProcess:false），与启动/停止解耦。 */}
+        <Button onClick={save} loading={saving} disabled={starting || stopping}>
+          {_tr('ui.im.save', null, 'Save')}
+        </Button>
         <Button
           type={showStop ? 'default' : 'primary'}
           danger={showStop}
