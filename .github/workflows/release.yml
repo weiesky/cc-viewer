@@ -199,9 +199,18 @@ jobs:
 
       # Point latest at the version just published — the registry's latest must
       # track the newest patch-line release (the 1.9.0 stray means npm will never
-      # do this implicitly). dist-tag is a registry metadata op, allowed after
-      # the OIDC-authenticated publish in the same job.
-      - run: npm dist-tag add "cc-viewer@${GITHUB_REF_NAME#v}" latest
+      # do this implicitly). OIDC trusted publishing credentials authorize only
+      # `npm publish`; dist-tag is a registry metadata op that fails with E401
+      # under OIDC (seen at v1.8.19), so this step is soft-fail: it warns and
+      # reminds the maintainer to run the dist-tag manually after release.
+      - name: Point latest dist-tag at this release
+        continue-on-error: true
+        run: |
+          if npm dist-tag add "cc-viewer@${GITHUB_REF_NAME#v}" latest; then
+            echo "latest now points at ${GITHUB_REF_NAME#v}"
+          else
+            echo "::warning::dist-tag failed (expected under OIDC trusted publishing). Run manually: npm dist-tag add cc-viewer@${GITHUB_REF_NAME#v} latest"
+          fi
 
   # Post-release automatic Homebrew tap formula bump (reusable workflow, uses HOMEBREW_TAP_TOKEN).
   bump-homebrew:
