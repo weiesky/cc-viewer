@@ -67,11 +67,23 @@ async function _acquireFileLock(lockPath, opts) {
   while (true) {
     try {
       const fh = await open(lockPath, 'wx');
-      if (writePid) {
-        await fh.writeFile(JSON.stringify({ pid: process.pid, ts: Date.now() }));
+      // Register the hold IMMEDIATELY on acquisition, before the pid-write await. A SYNC caller
+      // (json-store._acquireLockSync) that runs at that await boundary would otherwise see the lock
+      // file with our own pid but hasLiveDiskHolder===false, judge it a stale crash-leftover, steal
+      // and unlink it — clobbering this async holder's critical section (the exact lost update the
+      // sync flavor's reentrancy guard exists to prevent).
+      _heldDiskLocks.add(lockPath);
+      try {
+        if (writePid) {
+          await fh.writeFile(JSON.stringify({ pid: process.pid, ts: Date.now() }));
+        }
+        await fh.close();
+        return;
+      } catch (err) {
+        _heldDiskLocks.delete(lockPath); // never fully acquired → drop the registration
+        try { await fh.close(); } catch {}
+        throw err;
       }
-      await fh.close();
-      return;
     } catch (err) {
       if (err?.code === 'EEXIST') {
         if (Date.now() < deadline) {
@@ -119,8 +131,7 @@ export async function withFileLockAsync(lockPath, fn, opts = {}) {
   await prev;
 
   try {
-    await _acquireFileLock(lockPath, opts);
-    _heldDiskLocks.add(lockPath);
+    await _acquireFileLock(lockPath, opts); // registers in _heldDiskLocks at the acquisition point
     try {
       return await fn();
     } finally {

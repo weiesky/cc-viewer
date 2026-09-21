@@ -69,11 +69,19 @@ const _origEnv = {
   USERPROFILE: process.env.USERPROFILE,
   CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
   CCV_PROJECT_DIR: process.env.CCV_PROJECT_DIR,
+  CCV_LOG_DIR: process.env.CCV_LOG_DIR,
 };
 process.env.HOME = FAKE_HOME;
 process.env.USERPROFILE = FAKE_HOME;
 process.env.CLAUDE_CONFIG_DIR = CLAUDE_DIR;
 process.env.CCV_PROJECT_DIR = PROJECT;
+// 备份根 = dirname(LOG_DIR)/cc-viewer-config-backups。把 LOG_DIR 固定到 FAKE_HOME/.claude/cc-viewer,
+// 使备份根落在 FAKE_HOME/.claude 下 —— 而 ~/.claude 是 allowlist 根,备份目录因此命中
+// sensitive-config-backup 分支(而非 outside-allowlist 兜底)。不设则 LOG_DIR 落到 NODE_TEST_CONTEXT
+// guard dir,备份根在 allowlist 外,新分支永远不会被执行到。
+const LOG_DIR = join(CLAUDE_DIR, 'cc-viewer');
+mkdirSync(LOG_DIR, { recursive: true });
+process.env.CCV_LOG_DIR = LOG_DIR;
 
 // dynamic import:env 设置后再加载 policy
 const policy = await import('../server/lib/file-access-policy.js');
@@ -87,6 +95,8 @@ after(() => {
   else process.env.CLAUDE_CONFIG_DIR = _origEnv.CLAUDE_CONFIG_DIR;
   if (_origEnv.CCV_PROJECT_DIR === undefined) delete process.env.CCV_PROJECT_DIR;
   else process.env.CCV_PROJECT_DIR = _origEnv.CCV_PROJECT_DIR;
+  if (_origEnv.CCV_LOG_DIR === undefined) delete process.env.CCV_LOG_DIR;
+  else process.env.CCV_LOG_DIR = _origEnv.CCV_LOG_DIR;
   try { rmSync(TMP, { recursive: true, force: true }); } catch {}
 });
 
@@ -172,8 +182,8 @@ describe('file-access-policy: 配置备份目录整树拒读', () => {
     _resetCacheForTests();
     const r = isReadAllowed(f);
     assert.equal(r.ok, false, 'backup dir holds credentials.json + master.key — the full decryption kit');
-    // 落在 allowlist 内 → sensitive-config-backup;不在(如测试 LOG_DIR 在 tmp 的兄弟目录)→ outside-allowlist。两者都是安全拦截。
-    assert.ok(['sensitive-config-backup', 'outside-allowlist'].includes(r.reason), `got reason=${r.reason}`);
+    // 备份根已固定到 FAKE_HOME/.claude(allowlist 根)下 → 必须精确命中新分支,而非 outside-allowlist 兜底。
+    assert.equal(r.reason, 'sensitive-config-backup', `expected the dedicated backup-deny branch, got reason=${r.reason}`);
     try { rmSync(root, { recursive: true, force: true }); } catch {}
   });
 });

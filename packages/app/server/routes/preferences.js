@@ -15,7 +15,7 @@ import { inspectShellHook } from '../lib/shell-hook-inspect.js';
 import { sendEventToClients } from '../lib/log-watcher.js';
 import { listPlatforms } from '../lib/im/im-config.js';
 import { mutatePrefs, applyPrefsPatch, readPrefsRaw } from '../lib/prefs-store.js';
-import { writeJsonAtomic, mutateJsonSync } from '../lib/json-store.js';
+import { mutateJsonSync } from '../lib/json-store.js';
 import { persistProfilesApiKeys } from '../lib/credential-access.js';
 import { isAdminReq } from '../lib/is-admin.js';
 import {
@@ -165,12 +165,18 @@ function preferencesPost(req, res, parsedUrl, isLocal, deps) {
       // 切日志目录：把旧文件的完整内容（含 auth 密码 / prefsByProject forks / 其它偏好）带到新位置，
       // 避免切目录后密码与各项目 fork 凭空消失；并把写目标在 setLogDir 前后固定为"新文件"，让本次
       // 合并只跑在一个文件 / 一把锁上（不再因 LOG_DIR 中途漂移而劈裂进程内锁队列）。
+      // logDir 是机器全局、可改变进程数据根的操作（移动 vault 根会影响 LAN 门与代理注入），
+      // 因此只允许 admin（本机 loopback 或已鉴权远程 admin）触发——未鉴权远程/项目客户端直接剥掉。
       let targetFile = deps.getPrefsFile();
       let carried = null;
       if (incoming.logDir && typeof incoming.logDir === 'string') {
-        carried = readPrefsRaw(targetFile); // 旧文件全量（锁外读，迁移属罕见 admin 操作）
-        setLogDir(incoming.logDir);
-        targetFile = deps.getPrefsFile();
+        if (!isAdminReq(req, isLocal)) {
+          delete incoming.logDir; // non-admin cannot move the data root (would open the LAN gate)
+        } else {
+          carried = readPrefsRaw(targetFile); // 旧文件全量（锁外读，迁移属罕见 admin 操作）
+          setLogDir(incoming.logDir);
+          targetFile = deps.getPrefsFile();
+        }
       }
       // 全局写入：locked + atomic（prefs-store），与 fork 写共用同一把锁，避免并发写互相覆盖含密码的
       // preferences.json。Deep-merge approvalModal 的逻辑下沉到 applyPrefsPatch，与 /api/project-prefs
@@ -313,9 +319,10 @@ function proxyProfilesGet(req, res, parsedUrl, isLocal, deps) {
       const { profiles: migrated, changed } = migrateProxyProfileList(data.profiles);
       if (changed) {
         try {
-          // 回写迁移结果时一并把 apiKey 收进 vault（避免把旧明文再次写回磁盘）。
-          // 锁内 read-merge-write（mutateJsonSync，原地改写后内核写回同一引用），
-          // 与启动期 credential-strip / proxyProfilesPost 互斥。
+          // Write the migration back while pulling apiKeys into the vault (so the old plaintext is
+          // never re-persisted). Read-merge-write INSIDE the lock (mutateJsonSync mutates in place
+          // and the kernel writes back the same reference), mutexed with the startup credential-strip
+          // and proxyProfilesPost.
           mutateJsonSync(PROFILE_PATH, (current) => {
             const base = (current && typeof current === 'object' && !Array.isArray(current)) ? current : {};
             const stripped = persistProfilesApiKeys(migrated, null, { isMaskedFn: () => false });
@@ -368,10 +375,12 @@ function proxyProfilesPost(req, res, parsedUrl, isLocal, deps) {
       if (!incoming.profiles.some(p => p.id === 'max')) {
         incoming.profiles = [{ id: 'max', name: 'Default' }, ...(incoming.profiles || [])];
       }
-      // 只写 profiles 列表到 profile.json；active 不再入文件（避免跨进程串台）
-      // 保留老数据里的 active 字段不变，以便老版本 ccv 或手动编辑者的回退能力。
-      // 锁内 read-merge-write（mutateJsonSync），与启动期 credential-strip / setActiveProfileForWorkspace
-      // 互斥 —— 无锁快照会让 persistProfilesApiKeys 的删除循环误删并发新增的 vault 条目、并覆盖整表。
+      // Only the profiles list is written to profile.json; `active` is no longer persisted here
+      // (avoids cross-process clobbering). The existing file's `active` field is preserved so an
+      // older ccv or a hand editor can still fall back to it. Read-merge-write INSIDE the lock
+      // (mutateJsonSync), mutexed with the startup credential-strip and setActiveProfileForWorkspace —
+      // an unlocked snapshot would let persistProfilesApiKeys' deletion loop remove concurrently-added
+      // vault entries and overwrite the whole list.
       // apiKey 抽出到凭证 vault（密文存 credentials.json），profile.json 不再携带 key。
       // masked 回显 → 保留该 profile 的既有 vault 条目（不动、不回写 sentinel）；
       // 新明文 → 写 vault；空 → 删该条目；被移除的 profile（全量替换端点）→ 删其 vault 条目。
@@ -553,16 +562,18 @@ async function ccswitchImportPost(req, res, _parsedUrl, isLocal, deps) {
         }
         existing = parsed;
       }
-      // merge
-      const merged = mergeImportedProfiles(existing.profiles || [], result.profiles);
-      // 落盘：锁内 read-merge-write（mutateJsonSync），与其他 profile.json 写点互斥。
-      // merge 基于上面已校验的 existing；锁内以 current 为基再写，避免覆盖并发变更。
-      // apiKey 抽出到凭证 vault；merge 语义不删除任何既有 vault 条目（不传 existingProfiles）。
-      // cc-switch 导入的是新明文 key（非 masked 回显），isMaskedFn 恒 false 即可。
-      const strippedMerged = persistProfilesApiKeys(merged.profiles, null, { isMaskedFn: () => false });
+      // Persist: locked read-merge-write (mutateJsonSync), mutexed with the other profile.json
+      // writers. The merge MUST be recomputed inside the lock against the CURRENT on-disk list —
+      // computing it outside from a pre-lock snapshot and overwriting the whole list would erase a
+      // proxy-profiles POST that lands in that window. apiKeys are pulled into the vault; merge
+      // semantics never delete existing vault entries (no existingProfiles passed). cc-switch imports
+      // fresh plaintext keys (not a masked echo), so isMaskedFn is always false. `merged` is read
+      // back out of the lock for the response counts.
+      let merged = null;
       mutateJsonSync(PROFILE_PATH, (current) => {
         const base = (current && typeof current === 'object' && !Array.isArray(current)) ? current : {};
-        base.profiles = strippedMerged;
+        merged = mergeImportedProfiles(base.profiles || [], result.profiles);
+        base.profiles = persistProfilesApiKeys(merged.profiles, null, { isMaskedFn: () => false });
         return base;
       }, { mode: 0o600, strictCorrupt: true, fallback: {} });
       // active 处理：setActive=true 且 cc-switch 有 current → 切换；否则保持现状

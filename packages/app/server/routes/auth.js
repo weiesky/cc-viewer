@@ -126,7 +126,9 @@ function authConfigPost(req, res, parsedUrl, isLocal, deps) {
     // auto-generate-on-enable path (next.password is '' here) and any edit-and-save (which would
     // delete/replace the unreadable entry). The admin recovers by restoring master.key, not by a
     // save that silently wipes the previous secret.
-    const curUnreadable = !!(scope === 'global' ? state.global : state.effective).passwordUnreadable;
+    // Read the flag from the SAME scope object as `cur` — a global-unreadable password must NOT
+    // refuse a save whose target is a fresh project override (a different vault ref).
+    const curUnreadable = !!cur.passwordUnreadable;
     if (curUnreadable) {
       res.writeHead(409, JSON_HEADERS);
       res.end(JSON.stringify({

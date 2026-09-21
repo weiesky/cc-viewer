@@ -195,19 +195,19 @@ function _writeWorkspaceActive(activeId, roles) {
 // otherwise proxy.js would forward the request to the third-party baseURL while the auth rewrite
 // is skipped, transmitting the user's default Anthropic credential to that host.
 function _resolveProfileApiKey(profile) {
-  if (!profile || profile.id === 'max') return { apiKey: '', unusable: false };
+  if (!profile || profile.id === 'max') return { apiKey: '', unusable: false, reason: '' };
   const legacyPlain = typeof profile.apiKey === 'string' ? profile.apiKey : '';
   const { value, unreadable } = readSecretOr('profile-apiKey', profile.id, legacyPlain);
-  if (unreadable) return { apiKey: '', unusable: true };
+  if (unreadable) return { apiKey: '', unusable: true, reason: 'unreadable' };
   // FAIL-CLOSED: a profile that rewrites the URL to a third-party baseURL but resolves to NO key
   // (no vault entry, no legacy plaintext) must also be excluded from routing. The URL rewrite runs
   // unconditionally while the auth rewrite is guarded by `if (_effProfile.apiKey && ...)` — with an
   // empty key the request would reach the third-party host carrying the user's own Anthropic
   // credential (the exact outcome the unreadable branch above exists to prevent).
   if (typeof profile.baseURL === 'string' && profile.baseURL && !value) {
-    return { apiKey: '', unusable: true };
+    return { apiKey: '', unusable: true, reason: 'keyless-baseurl' };
   }
-  return { apiKey: value, unusable: false };
+  return { apiKey: value, unusable: false, reason: '' };
 }
 
 /**
@@ -235,11 +235,14 @@ function _loadProxyProfile() {
     // Decrypt-backfill apiKeys; drop profiles whose key is unreadable (fail-closed).
     const profiles = [];
     for (const p of rawProfiles) {
-      const { apiKey, unusable } = _resolveProfileApiKey(p);
+      const { apiKey, unusable, reason } = _resolveProfileApiKey(p);
       if (unusable) {
         if (!_reportedUnusableProfiles.has(p.id)) {
           _reportedUnusableProfiles.add(p.id);
-          reportSwallowed('proxy-profile.key-unusable', new Error(`profile "${p.id}" dropped: apiKey unreadable (lost master.key or tampered credentials.json)`));
+          const why = reason === 'keyless-baseurl'
+            ? 'has a baseURL but no apiKey — refusing to forward your default credential to a third-party host'
+            : 'apiKey unreadable (lost master.key or tampered credentials.json)';
+          reportSwallowed('proxy-profile.key-unusable', new Error(`profile "${p.id}" dropped: ${why}`));
         }
         continue;
       }

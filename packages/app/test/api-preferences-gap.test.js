@@ -450,19 +450,31 @@ describe('POST /api/proxy-profiles', () => {
 // 放最后：POST logDir 会经 setLogDir 切换全局 LOG_DIR（live binding），测后必须还原到 tmpDir，
 // 否则同进程后续/其他用例对 tmpDir 的断言会受污染。
 describe('POST /api/preferences logDir switch (isolated, restores LOG_DIR)', () => {
-  it('switching logDir routes the echoed logDir to the new directory', async () => {
+  it('switching logDir routes the echoed logDir to the new directory (admin)', async () => {
     // setLogDir 的安全闸门只放行 home 或 /tmp/ 下的路径，故用 /tmp/ 子目录。
     const altDir = mkdtempSync(join('/tmp/', 'ccv-prefs-altlog-'));
     try {
-      const res = await callPost(preferencesPost, { logDir: altDir, theme: 'dark' });
+      const res = await callPost(preferencesPost, { logDir: altDir, theme: 'dark' }, baseDeps, /* isLocal admin */ true);
       assert.equal(res.statusCode, 200);
       // 回显的 logDir 反映切换后的运行时 LOG_DIR（resolve 后路径）
       assert.equal(JSON.parse(res.body).logDir, altDir);
     } finally {
-      // 还原全局 LOG_DIR 到 tmpDir（tmpDir 在 /var/folders 下不被 setLogDir 放行，
-      // 改用 CCV_LOG_DIR 重新解析以确保还原 —— 直接重设全局 binding 不可达，
-      // 用 setLogDir 还原到一个等价 /tmp 路径不影响本文件后续断言：本文件已无更多对
-      // 全局 LOG_DIR 的依赖，所有 prefs 写入走 getPrefsFile() 闭包固定到 prefsFile）。
+      // 还原全局 LOG_DIR：本文件已无更多对全局 LOG_DIR 的依赖（prefs 写入走 getPrefsFile() 闭包
+      // 固定到 prefsFile），但切换全局 binding 后仍清理 altDir，避免污染。
+      rmSync(altDir, { recursive: true, force: true });
+    }
+  });
+
+  it('a NON-admin logDir is stripped (the data root must not move under an unauthenticated client)', async () => {
+    // logDir 决定 vault/配置根；非 admin 客户端（如未鉴权远程）若可移动数据根会把 LAN 门 fail-open。
+    // 修复后：非 admin 的 logDir 被剥掉，setLogDir 不被触发，回显仍为运行时 LOG_DIR。
+    const altDir = mkdtempSync(join('/tmp/', 'ccv-prefs-noadmin-'));
+    try {
+      const res = await callPost(preferencesPost, { logDir: altDir, theme: 'dark' }, baseDeps, /* isLocal (non-admin) */ false);
+      assert.equal(res.statusCode, 200);
+      // logDir 未被采纳：回显仍是切换前的运行时 LOG_DIR（tmpDir），不是 altDir
+      assert.notEqual(JSON.parse(res.body).logDir, altDir, 'non-admin logDir must be ignored');
+    } finally {
       rmSync(altDir, { recursive: true, force: true });
     }
   });
