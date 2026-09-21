@@ -22,6 +22,7 @@ import { sanitizePathComponent } from './lib/v2/layout.js';
 import { parseAgentId, findHeader } from './lib/v2/agent-id.js';
 import { parseUserId } from './lib/session-id.js';
 import { setRetryConfigPath, loadRetryConfig, DEFAULT_RETRY_CONFIG } from './lib/proxy/proxy-retry.js';
+import { writeJsonAtomic } from './lib/json-store.js';
 import { setProjectName } from './lib/project-state.js';
 import { consumePendingForResume, writeSnapshot, projectKeyForCwd } from './lib/system-prompt-snapshots.js';
 import { liveSystemPromptEnabled, getLaunchSystemPromptInfo, getLiveEntry, putLiveEntry, selectEntriesForModel, applyLiveSystem, knownInjectedTexts } from './lib/system-prompt-live.js';
@@ -231,8 +232,10 @@ function setActiveProfileForWorkspace(activeId, roles) {
         : { profiles: [{ id: 'max', name: 'Default' }] };
       if (data.active !== normalizedId) {
         data.active = normalizedId;
-        mkdirSync(dirname(PROFILE_PATH), { recursive: true });
-        writeFileSync(PROFILE_PATH, JSON.stringify(data, null, 2), { mode: 0o600 });
+        // Atomic write via the json-store kernel (tmp→rename). profile.json is read by other
+        // ccv processes via watchFile, so a torn write must never be observable. Cross-process
+        // ordering stays with watchFile (no new lock) to avoid perturbing hot-switch.
+        writeJsonAtomic(PROFILE_PATH, data, { mode: 0o600 });
       }
       result.profile = true;
     } catch { /* 双失败场景下 result 全 false，由调用方自行兜底 */ }

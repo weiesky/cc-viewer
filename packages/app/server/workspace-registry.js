@@ -1,42 +1,24 @@
 // Workspace Registry - 工作区持久化管理
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
-import { renameSyncWithRetry } from './lib/file-api.js';
-import { withFileLockAsync } from './lib/async-file-lock.js';
+import { mutateJson, readJsonSafe, writeJsonAtomic } from './lib/json-store.js';
 import { dirSizeSync } from './lib/v2/layout.js';
 import { isDiscardableSession } from './lib/v2/session-select.js';
-import { join, basename, resolve } from 'node:path';
+import { join, basename, resolve, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { LOG_DIR } from '../findcc.js';
 
 // 动态获取（LOG_DIR 可能在运行时被 setLogDir 修改）
 function getWorkspacesFile() { return join(LOG_DIR, 'workspaces.json'); }
-function getLockFile() { return join(LOG_DIR, 'workspaces.lock'); }
 
 export function loadWorkspaces() {
-  try {
-    if (!existsSync(getWorkspacesFile())) return [];
-    const data = JSON.parse(readFileSync(getWorkspacesFile(), 'utf-8'));
-    return Array.isArray(data.workspaces) ? data.workspaces : [];
-  } catch {
-    return [];
-  }
+  const data = readJsonSafe(getWorkspacesFile(), {});
+  return Array.isArray(data.workspaces) ? data.workspaces : [];
 }
 
-export function saveWorkspaces(list) {
-  const tmpFile = `${getWorkspacesFile()}.tmp-${process.pid}-${randomBytes(4).toString('hex')}`;
-  try {
-    mkdirSync(LOG_DIR, { recursive: true });
-    writeFileSync(tmpFile, JSON.stringify({ workspaces: list }, null, 2));
-
-    // Windows 上 renameSync 可能会因为目标文件存在或被占用而失败。统一走 server/lib/file-api.js
-    // renameSyncWithRetry helper（同款重试策略，跟 interceptor / log-management 一致）。
-    renameSyncWithRetry(tmpFile, getWorkspacesFile());
-  } catch (err) {
-    console.error('[CC Viewer] Failed to save workspaces:', err.message);
-    // 尝试清理临时文件
-    try { unlinkSync(tmpFile); } catch { }
-  }
+// Full-list rewrite on every mutation; non-secret so no 0600 (mode:false → umask).
+// Atomicity + cross-process mutex come from mutateJson below.
+function _saveWorkspaces(list) {
+  return { workspaces: list };
 }
 
 // 失效 file-access-policy 的 allowlist roots 缓存。lazy import 避免循环依赖。
@@ -47,10 +29,10 @@ function _invalidatePolicyCache() {
 }
 
 export async function registerWorkspace(absolutePath) {
-  const result = await withFileLockAsync(getLockFile(), () => {
+  const result = await mutateJson(getWorkspacesFile(), (data) => {
     const resolvedPath = resolve(absolutePath);
     const projectName = basename(resolvedPath).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
-    const list = loadWorkspaces();
+    const list = Array.isArray(data.workspaces) ? data.workspaces : [];
     // Windows NTFS 不分大小写——`C:\App` 跟 `c:\app` 是同目录但 `===` 视为不同。
     // 仅 Win 下小写化比较；POSIX 保持原样不引入回归。
     const pathEq = (a, b) => process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
@@ -58,7 +40,7 @@ export async function registerWorkspace(absolutePath) {
     if (existing) {
       existing.lastUsed = new Date().toISOString();
       existing.projectName = projectName;
-      saveWorkspaces(list);
+      data.workspaces = list;
       return existing;
     }
     const now = new Date().toISOString();
@@ -70,25 +52,35 @@ export async function registerWorkspace(absolutePath) {
       createdAt: now,
     };
     list.push(entry);
-    saveWorkspaces(list);
+    data.workspaces = list;
     return entry;
-  }, { ensureDir: LOG_DIR });
+  }, { mode: false, fallback: {}, ensureDir: LOG_DIR });
   _invalidatePolicyCache();
   return result;
 }
 
 export async function removeWorkspace(id) {
-  const result = await withFileLockAsync(getLockFile(), () => {
-    const list = loadWorkspaces();
+  const result = await mutateJson(getWorkspacesFile(), (data) => {
+    const list = Array.isArray(data.workspaces) ? data.workspaces : [];
     const filtered = list.filter(w => w.id !== id);
     if (filtered.length !== list.length) {
-      saveWorkspaces(filtered);
+      data.workspaces = filtered;
       return true;
     }
     return false;
-  }, { ensureDir: LOG_DIR });
+  }, { mode: false, fallback: {}, ensureDir: LOG_DIR });
   if (result) _invalidatePolicyCache();
   return result;
+}
+
+// Legacy sync save entry kept for any direct caller: writes the full list atomically via the
+// kernel (non-secret → umask). mkdirSync is handled inside writeJsonAtomic.
+export function saveWorkspaces(list) {
+  try {
+    writeJsonAtomic(getWorkspacesFile(), _saveWorkspaces(list), { mode: false });
+  } catch (err) {
+    console.error('[CC Viewer] Failed to save workspaces:', err.message);
+  }
 }
 
 export async function getWorkspaces() {

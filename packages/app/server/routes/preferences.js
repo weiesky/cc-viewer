@@ -15,6 +15,7 @@ import { inspectShellHook } from '../lib/shell-hook-inspect.js';
 import { sendEventToClients } from '../lib/log-watcher.js';
 import { listPlatforms } from '../lib/im/im-config.js';
 import { mutatePrefs, applyPrefsPatch, readPrefsRaw } from '../lib/prefs-store.js';
+import { writeJsonAtomic } from '../lib/json-store.js';
 import { isAdminReq } from '../lib/is-admin.js';
 import {
   getCurrentProjectKey, getCurrentProjectName, hasFork, listForks, resolveScoped,
@@ -312,8 +313,7 @@ function proxyProfilesGet(req, res, parsedUrl, isLocal, deps) {
       if (changed) {
         data = { ...data, profiles: migrated };
         try {
-          mkdirSync(dirname(PROFILE_PATH), { recursive: true });
-          writeFileSync(PROFILE_PATH, JSON.stringify(data, null, 2), { mode: 0o600 });
+          writeJsonAtomic(PROFILE_PATH, data, { mode: 0o600 });
           _loadProxyProfile();
         } catch { /* 迁移落盘失败不阻塞 GET；下次仍会尝试 */ }
       }
@@ -366,9 +366,7 @@ function proxyProfilesPost(req, res, parsedUrl, isLocal, deps) {
       // 只写 profiles 列表到 profile.json；active 不再入文件（避免跨进程串台）
       // 保留老数据里的 active 字段不变，以便老版本 ccv 或手动编辑者的回退能力
       const toWrite = { ...existing, profiles: incoming.profiles };
-      const dir = dirname(PROFILE_PATH);
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      writeFileSync(PROFILE_PATH, JSON.stringify(toWrite, null, 2), { mode: 0o600 });
+      writeJsonAtomic(PROFILE_PATH, toWrite, { mode: 0o600 });
       // 角色分配校验：只认 subagent/teammate 两个 key（roles.main 之类的杂键直接丢弃）；
       // 值必须是 follow / max / 入参 profiles 里存在的 id（按将落盘的列表校验，而非旧文件），
       // 非法值归 'follow'（宽容风格，不 400）。被删 profile 的悬空角色由读取时归 follow 兜底。
@@ -544,10 +542,8 @@ async function ccswitchImportPost(req, res, _parsedUrl, isLocal, deps) {
       // merge
       const merged = mergeImportedProfiles(existing.profiles || [], result.profiles);
       const toWrite = { ...existing, profiles: merged.profiles };
-      // 落盘
-      const dir = dirname(PROFILE_PATH);
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      writeFileSync(PROFILE_PATH, JSON.stringify(toWrite, null, 2), { mode: 0o600 });
+      // 落盘（原子写，经由 json-store 内核）
+      writeJsonAtomic(PROFILE_PATH, toWrite, { mode: 0o600 });
       // active 处理：setActive=true 且 cc-switch 有 current → 切换；否则保持现状
       let activeChanged = false;
       if (setActive && result.currentId) {

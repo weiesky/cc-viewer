@@ -144,8 +144,9 @@ describe('workspace-registry', () => {
   });
 
   it('recovers from stale lock', async () => {
-    // Manually create a lock file with old mtime
-    const LOCK_FILE = join(LOG_DIR, 'workspaces.lock');
+    // Manually create a lock file with old mtime. The unified json-store kernel derives the
+    // lock from the data file name: `${file}.lock` → workspaces.json.lock.
+    const LOCK_FILE = join(LOG_DIR, 'workspaces.json.lock');
     const oldTime = new Date(Date.now() - 10000);
     writeFileSync(LOCK_FILE, '');
     utimesSync(LOCK_FILE, oldTime, oldTime);

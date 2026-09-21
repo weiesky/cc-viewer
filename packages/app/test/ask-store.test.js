@@ -13,7 +13,8 @@ process.env.CCV_LOG_DIR = tmpRoot;
 const { loadAskStore, saveAskStore, setEntry, deleteEntry, pruneStale, replaceAll, markAnswered, markCancelled, consume, consumeIfFinal } = await import('../server/lib/ask/ask-store.js');
 
 const storeFile = join(tmpRoot, 'ask-store.json');
-const lockFile = join(tmpRoot, 'ask-store.lock');
+// The unified json-store kernel derives the lock from the data file name: `${file}.lock`.
+const lockFile = join(tmpRoot, 'ask-store.json.lock');
 
 function cleanup() {
   try { rmSync(storeFile, { force: true }); } catch {}
