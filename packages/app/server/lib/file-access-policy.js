@@ -210,15 +210,16 @@ export function isReadAllowed(absPath) {
     }
   }
 
-  // 2b) cc-viewer 配置备份目录整树拒读 —— 每份滚动备份含 credentials.json 密文 + master.key,
-  // 二者同地即构成完整解密套件;目录默认在 ~/.claude/cc-viewer-config-backups/(与 LOG_DIR 同级的
-  // 兄弟目录),但只要落在 allowlist 内就必须拒,与 LOG_DIR 是否被搬走无关。
+  // 2b) Deny the cc-viewer config-backup dir tree — every rolling backup holds credentials.json
+  // ciphertext + master.key, which together are the full decryption kit. The dir defaults to
+  // ~/.claude/cc-viewer-config-backups/ (a sibling of LOG_DIR), but it must be denied whenever it
+  // lands inside an allowlist root, regardless of whether LOG_DIR was moved.
   try {
     const backupReal = realpathSync(getBackupRoot());
     if (isInsideRoot(real, backupReal)) {
       return { ok: false, reason: 'sensitive-config-backup' };
     }
-  } catch { /* 备份根不存在/不可 realpath → 无额外拒读 */ }
+  } catch { /* backup root missing / not realpath-able → no extra deny */ }
 
   // 3) 项目内文件豁免 sensitive 文件名(允许 fixtures/test-cert.pem 等合法 fixture)
   const projectRoot = getProjectRoot();

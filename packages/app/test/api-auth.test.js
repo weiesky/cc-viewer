@@ -402,4 +402,29 @@ describe('POST /api/auth/config PASSWORD_UNREADABLE guard', () => {
     assert.equal(r.status, 200);
     assert.equal(r.setCalled, true);
   });
+
+  it('does NOT refuse a project-scope save when only the GLOBAL password is unreadable', () => {
+    // cur (seed) and curUnreadable must come from the SAME scope object. A global-unreadable
+    // password must not block creating a fresh project override — that writes a DIFFERENT vault ref
+    // (proj:<dir>), and the seed has no override to be unreadable.
+    const state = {
+      effective: { enabled: true, password: '', passwordUnreadable: true }, // global in effect, unreadable
+      global: { enabled: true, password: '', passwordUnreadable: true },
+      scope: 'global', hasProjectOverride: false, projectDir: '/x/proj',
+    };
+    const r = callWith(state, { scope: 'project', enabled: true, password: 'PROJPW' });
+    assert.equal(r.status, 200, 'project-override save must not be blocked by an unreadable GLOBAL password');
+    assert.equal(r.setCalled, true);
+  });
+
+  it('refuses a project-scope save when the OVERRIDE password itself is unreadable', () => {
+    const state = {
+      effective: { enabled: true, password: '', passwordUnreadable: true }, // override in effect, unreadable
+      global: { enabled: false, password: '', passwordUnreadable: false },
+      scope: 'project', hasProjectOverride: true, projectDir: '/x/proj',
+    };
+    const r = callWith(state, { scope: 'project', enabled: true, password: 'NEWPW' });
+    assert.equal(r.status, 409, 'must refuse to overwrite the unreadable OVERRIDE ciphertext');
+    assert.equal(r.setCalled, false);
+  });
 });

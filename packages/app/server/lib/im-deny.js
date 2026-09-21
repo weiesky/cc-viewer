@@ -8,21 +8,25 @@
 // 注意：worker 的工作目录在 ~/.claude/cc-viewer/IM_<id>/ 下，因此**不能**整体封禁 ~/.claude，
 // 只精确保护其中的全局 settings/hooks 与 preferences.json（IM 密钥），其余留给 worker 正常读写。
 import os from 'node:os';
-import { resolve } from 'node:path';
+import { resolve, basename } from 'node:path';
 
 // 凭证目录：读 + 写都拒（含密钥/令牌）。
 const CRED_DIRS = ['.ssh', '.aws', '.gnupg', '.kube', '.docker', '.config/gcloud', '.claude/cc-viewer-config-backups'];
 // 家目录下的 shell 启动文件：写拒（被改写可植入持久化）。
 const WRITE_HOME_FILES = ['.bashrc', '.zshrc', '.bash_profile', '.zprofile', '.zshenv', '.profile', '.npmrc', '.netrc'];
-// 全局 settings/hooks：写拒（保护 deny 机制本身）。相对 ~ 解析。
+// Global settings/hooks: write-deny (protects the deny mechanism itself). Resolved against ~.
 const WRITE_REL_PATHS = ['.claude/settings.json', '.claude/settings.local.json', '.claude/cc-viewer/preferences.json', '.claude/cc-viewer/credentials.json', '.claude/cc-viewer/master.key'];
-// 家目录下的令牌/密钥文件：读拒。相对 ~ 解析。
+// Token/secret files under home: read-deny. Resolved against ~.
 const READ_REL_PATHS = ['.npmrc', '.netrc', '.claude/cc-viewer/preferences.json', '.claude/cc-viewer/credentials.json', '.claude/cc-viewer/master.key'];
 
-// 凭证 vault 文件名（裸名比对，不限目录）：LOG_DIR 可被 --log-dir / POST /api/preferences {logDir}
-// 搬走，硬编码 ~/.claude/cc-viewer 会随之失守；按文件名兜底，无论 vault 落在哪个根都拒读/拒写。
-const VAULT_BASENAMES = new Set(['credentials.json', 'master.key']);
-function isVaultFile(abs) { return VAULT_BASENAMES.has(abs.slice(abs.lastIndexOf('/') + 1)); }
+// Vault file names (bare-name match, any directory): LOG_DIR can be moved by --log-dir /
+// POST /api/preferences {logDir}, so hardcoding ~/.claude/cc-viewer would lose the vault whenever
+// the root moves. Match by file name so it stays denied regardless of root. Case-insensitive and
+// EXACT (does NOT match .bak/.old/.txt suffix variants — those are covered by the Bash-layer /i
+// regex and the backup-dir rule); basename grabs the last segment across POSIX/win32 (pathOf's
+// resolve would make lastIndexOf('/') miss on win32 backslashes).
+const VAULT_FILE_RE = /^(credentials\.json|master\.key)$/i;
+function isVaultFile(abs) { return VAULT_FILE_RE.test(basename(abs)); }
 
 // Bash 命令硬拦截规则。每条 { re, reason }。
 const BASH_DENY_RULES = [

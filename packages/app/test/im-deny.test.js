@@ -96,10 +96,26 @@ describe('im-deny: file tools', () => {
       join(HOME, 'custom-logdir/master.key'),
       '/opt/ccv/data/credentials.json',
       '/opt/ccv/data/master.key',
+      join(HOME, 'custom-logdir/Credentials.json'), // 大小写不敏感
+      join(HOME, 'custom-logdir/MASTER.KEY'),
     ];
     for (const fp of moved) {
       assert.equal(evaluateImDeny('Read', { file_path: fp }, opts).deny, true, `Read should deny (moved root): ${fp}`);
       assert.equal(evaluateImDeny('Write', { file_path: fp }, opts).deny, true, `Write should deny (moved root): ${fp}`);
+    }
+  });
+
+  it('does NOT over-block vault-name variants (worker IM_<id>/ dirs may legitimately hold such files)', () => {
+    // 精确文件名匹配:.bak/.old/.json 后缀变体与近似名不应被裸名规则误伤(由 Bash 层与备份目录规则兜住)。
+    const ok = [
+      join(HOME, '.claude/cc-viewer/IM_123/credentials.json.bak'),
+      join(HOME, '.claude/cc-viewer/IM_123/master.key.old'),
+      join(HOME, '.claude/cc-viewer/IM_123/my-credentials.json'),
+      join(HOME, '.claude/cc-viewer/IM_123/credentials.json.txt'),
+    ];
+    for (const fp of ok) {
+      assert.equal(evaluateImDeny('Read', { file_path: fp }, opts).deny, false, `Read should allow (variant): ${fp}`);
+      assert.equal(evaluateImDeny('Write', { file_path: fp }, opts).deny, false, `Write should allow (variant): ${fp}`);
     }
   });
 
