@@ -14,10 +14,15 @@ import { resolve } from 'node:path';
 const CRED_DIRS = ['.ssh', '.aws', '.gnupg', '.kube', '.docker', '.config/gcloud', '.claude/cc-viewer-config-backups'];
 // 家目录下的 shell 启动文件：写拒（被改写可植入持久化）。
 const WRITE_HOME_FILES = ['.bashrc', '.zshrc', '.bash_profile', '.zprofile', '.zshenv', '.profile', '.npmrc', '.netrc'];
-// 精确文件：写拒（保护 deny 机制本身与 IM 密钥 + 凭证 vault）。
+// 全局 settings/hooks：写拒（保护 deny 机制本身）。相对 ~ 解析。
 const WRITE_REL_PATHS = ['.claude/settings.json', '.claude/settings.local.json', '.claude/cc-viewer/preferences.json', '.claude/cc-viewer/credentials.json', '.claude/cc-viewer/master.key'];
-// 精确文件：读拒（含令牌/密钥 + 凭证 vault 密文与主密钥）。
+// 家目录下的令牌/密钥文件：读拒。相对 ~ 解析。
 const READ_REL_PATHS = ['.npmrc', '.netrc', '.claude/cc-viewer/preferences.json', '.claude/cc-viewer/credentials.json', '.claude/cc-viewer/master.key'];
+
+// 凭证 vault 文件名（裸名比对，不限目录）：LOG_DIR 可被 --log-dir / POST /api/preferences {logDir}
+// 搬走，硬编码 ~/.claude/cc-viewer 会随之失守；按文件名兜底，无论 vault 落在哪个根都拒读/拒写。
+const VAULT_BASENAMES = new Set(['credentials.json', 'master.key']);
+function isVaultFile(abs) { return VAULT_BASENAMES.has(abs.slice(abs.lastIndexOf('/') + 1)); }
 
 // Bash 命令硬拦截规则。每条 { re, reason }。
 const BASH_DENY_RULES = [
@@ -85,6 +90,7 @@ export function evaluateImDeny(toolName, toolInput = {}, opts = {}) {
   if (toolName === 'Read') {
     const abs = pathOf(toolInput, home);
     if (!abs) return { deny: false };
+    if (isVaultFile(abs)) return { deny: true, reason: 'read of the credential vault / master key' };
     if (underAny(abs, credRoots)) return { deny: true, reason: 'read of a credential directory' };
     if (READ_REL_PATHS.some((rel) => abs === resolve(home, rel))) return { deny: true, reason: 'read of a secret/credential file' };
     return { deny: false };
@@ -93,6 +99,7 @@ export function evaluateImDeny(toolName, toolInput = {}, opts = {}) {
   if (toolName === 'Edit' || toolName === 'Write' || toolName === 'NotebookEdit') {
     const abs = pathOf(toolInput, home);
     if (!abs) return { deny: false };
+    if (isVaultFile(abs)) return { deny: true, reason: 'write to the credential vault / master key' };
     if (underAny(abs, credRoots)) return { deny: true, reason: 'write to a credential directory' };
     if (WRITE_HOME_FILES.some((f) => abs === resolve(home, f))) return { deny: true, reason: 'write to a shell startup / credential file' };
     if (WRITE_REL_PATHS.some((rel) => abs === resolve(home, rel))) return { deny: true, reason: 'write to protected global config (settings/hooks or IM secrets)' };

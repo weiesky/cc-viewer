@@ -83,8 +83,10 @@ Global files directly under `LOG_DIR`:
 
 | File | Canonical module | Lock | Atomic | Mode | Domain semantics | Cloud class (§4) |
 |---|---|---|---|---|---|---|
-| `preferences.json` | `lib/prefs-store.js` | ✅ | ✅ | 0600 | UI prefs, `auth`, `authByProject`, `prefsByProject`, IM platform keys, `disabledPlugins` | **B (mixed: plain + secret)** |
-| `profile.json` | `server/interceptor.js:94` | ❌ | ❌ | 0600 | `{profiles:[{id,name,baseURL,apiKey,…}], active}` — **apiKey plaintext**, hot-reloaded via `watchFile` | **B (mixed)** |
+| `preferences.json` | `lib/prefs-store.js` (via `lib/json-store.js`) | ✅ | ✅ | 0600 | UI prefs, `auth` (enabled only), `authByProject`, `prefsByProject`, IM platform keys, `disabledPlugins` | **B (mixed: plain + secret refs)** |
+| `profile.json` | `server/interceptor.js` (via `lib/json-store.js`) | ✅ | ✅ | 0600 | `{profiles:[{id,name,baseURL,…}], active}` — **apiKey now lives in the credential vault**, hot-reloaded via `watchFile` | **B (mixed)** |
+| `credentials.json` | `lib/credential-store.js` (via `lib/json-store.js`) | ✅ | ✅ | 0600 | AES-256-GCM vault ciphertext: proxy `apiKey`, LAN password, IM secrets (`creds` map) | **E (credential, never plain)** |
+| `master.key` | `lib/credential-vault.js` | — | — | 0600 | machine-local vault key; without it the vault ciphertext is unrecoverable | **E (never leaves the machine)** |
 | `workspaces.json` | `server/workspace-registry.js:13` | ✅ | ✅ | umask | local workspace registry `{workspaces:[{id,path,projectName,lastUsed,createdAt}]}` | **C (local-only)** |
 | `ask-store.json` | `lib/ask/ask-store.js:25` | ✅ | ✅ | umask | `SCHEMA_VERSION=1`, 24h TTL prune, first-write-wins terminal guard | **D (ephemeral, no sync)** |
 | `retry-config.json` | `server/interceptor.js:109` | ❌ | ❌ | 0600 | proxy retry tuning, file overrides env | **A (plain sync)** |
@@ -96,15 +98,17 @@ Global files directly under `LOG_DIR`:
 > voice-packs, plugins dir, IM-worker dirs (`IM_<id>/*`), recycle bins, `update-check.json`.
 > These are **class D** (do not sync) — see §4.
 
-### 2.4 Files with multiple writers (fix before sync)
+### 2.4 Files with multiple writers (converged)
 
-- **`preferences.json` — 4 writers, only 2 safe:**
-  1. `lib/prefs-store.js:58` `mutatePrefs` — locked + atomic ✅
-  2. `lib/auth.js:141-163` `writePrefs` — atomic but **lock-free** (acknowledged `TODO(prefs-lock)` at `:147-151`)
-  3. `lib/im/im-config.js:133-141` `writePrefs` — **neither locked nor atomic** (direct `writeFileSync` on target)
-  4. routes go through `mutatePrefs` ✅
-- **`profile.json` — 4 writers, none locked/atomic:** `interceptor.js:235`,
-  `routes/preferences.js:316`, `:371`, `:550`.
+The config writers are now converged onto a single locked + atomic kernel (`lib/json-store.js`:
+`readJsonSafe` / `writeJsonAtomic` / `mutateJson` / `mutateJsonSync` / `withJsonLock`). The lock
+name is derived from the data file (`<file>.lock`), fixing the old fixed-basename collision.
+
+- **`preferences.json`:** `lib/prefs-store.js` (`mutatePrefs`), `lib/auth.js`, `lib/im/im-config.js`,
+  and the routes all do read-merge-write inside the kernel's lock (the old `auth.js` lock-free and
+  `im-config.js` unlocked/non-atomic writers are closed).
+- **`profile.json`:** all write sites (`interceptor.js`, `routes/preferences.js`) now write via
+  `mutateJsonSync` with `strictCorrupt` (a present-but-corrupt file is never overwritten by a fallback).
 - **`~/.claude/settings.json` — 3 writers:** `ensure-hooks.js:340` (atomic), `routes/preferences.js:295` (plain), `cli.js:1080` (plain).
 
 **Implication:** all writers of a file must go through one locked + atomic path (cc-viewer side),
@@ -114,20 +118,25 @@ otherwise cloud sync has no consistent on-disk state to materialize or compare.
 
 ## 3. Where credentials live today
 
-cc-viewer has **no** `official-auth`/`aima`/SSO and **no** hardcoded-key AES anywhere (verified by
-grep — no `createCipheriv`/`scryptSync`/hardcoded key+salt). The real credential surface:
+cc-viewer has **no** `official-auth`/`aima`/SSO. Credentials are encrypted at rest in a local
+AES-256-GCM vault (`lib/credential-vault.js` + `lib/credential-store.js`); the pre-vault plaintext /
+base64 copies in `profile.json` / `preferences.json` are migrated out on first start and no longer
+carried. The credential surface:
 
-| # | Field | File | Encoding | Write site | Read site | Risk |
+| # | Field | At rest in | Encoding | Write site | Read site | Risk |
 |---|---|---|---|---|---|---|
-| C1 | `profiles[].apiKey` | `profile.json` | **plaintext** | `routes/preferences.js:371,316,550`, `interceptor.js:235` | `interceptor.js:191,968-972` (request injection) | **highest** |
-| C2 | `auth.password` / `authByProject.*.password` | `preferences.json` | base64 | `lib/auth.js:154` | `lib/auth.js:102,118,129` | high |
-| C3 | `dingtalk/feishu/wecom/discord` `appKey/appSecret/botToken` | `preferences.json` | base64 | `lib/im/im-config.js:137` | adapters via `loadConfig` `:221` | high |
+| C1 | `profiles[].apiKey` | `credentials.json` (vault) | **AES-256-GCM** | `routes/preferences.js` (via `credential-access.js`) | `interceptor.js` (request injection, fail-closed) | **highest** |
+| C2 | `auth.password` / `authByProject.*.password` | `credentials.json` (vault) | AES-256-GCM | `lib/auth.js` | `lib/auth.js` (fail-closed) | high |
+| C3 | `dingtalk/feishu/wecom/discord` `appSecret/botToken` | `credentials.json` (vault) | AES-256-GCM | `lib/im/im-config.js` | adapters via `loadConfig` | high |
+| — | low-sensitivity IM cred fields (`appKey/appId/botId`) | `preferences.json` | base64 | `lib/im/im-config.js` | adapters | low |
 
 **Leakage amplifiers:**
 
-- `lib/config-backup.js:10` copies `preferences.json` + `profile.json` (plaintext apiKey + base64
-  secrets) into `~/.claude/cc-viewer-config-backups/<ts>/`, KEEP=10 (`:11`). **After encryption,
-  these historical backups still hold the old plaintext** and must be cleaned.
+- `lib/config-backup.js:13` copies `preferences.json` + `profile.json` + `credentials.json` +
+  `master.key` into `~/.claude/cc-viewer-config-backups/<ts>/`, KEEP=10. A backup dir therefore holds
+  the full decryption kit (ciphertext + key together) and is denied to IM sessions and the remote
+  file API. **Historical pre-encryption backups still hold the old plaintext** and are deliberately
+  KEPT as the recovery path (not auto-cleaned) — handle them as sensitive until the vault is verified.
 - `server/server.js:1139` prints the LAN password to **stderr** at startup (plaintext into process
   logs / container stdout). Same for `ACCESS_TOKEN` at `:1135`.
 - Session wire logs persist the API key masked to first-8+last-4 (`interceptor.js:850-866`) → 12
@@ -212,8 +221,10 @@ pull fails. That is tracked as a lightweight *sync-health* marker, not a write-b
 ## 6. Credentials & cloud (two strategies)
 
 Credentials (C1 apiKey, C2 password, C3 IM secrets) must be **encrypted at rest** before any cloud
-handling. The local vault cc-viewer uses is: AES-256-GCM, per-record random IV, key derived from a
-local `master.key` (`0600`, generated on first boot, **excluded from config-backup**).
+handling. The local vault cc-viewer uses is: AES-256-GCM, per-record random IV, with a machine-local
+`master.key` (`0600`, generated on first boot). `config-backup` backs `master.key` up **alongside**
+`credentials.json` (a backup dir is therefore equivalent to the vault — ciphertext + key together),
+which keeps the recovery path complete but means a backup leak is a vault leak.
 
 ### Strategy S1 — credentials never leave the machine
 
@@ -227,7 +238,9 @@ local `master.key` (`0600`, generated on first boot, **excluded from config-back
 ### Strategy S2 — ciphertext syncs, key stays local (decided direction)
 
 - Class-E credentials are pushed to cloud **only as vault ciphertext** (`base64(iv|tag|ct)`).
-  The `master.key` **never** leaves the machine.
+  The `master.key` **never** leaves the machine as part of cloud sync. (Note: `config-backup` does
+  copy it into the local rolling-backup dir alongside the ciphertext — that is a local recovery
+  path, not a cloud channel, and the backup dir is denied to IM sessions and the remote file API.)
 - Cloud stores ciphertext blobs it cannot decrypt; a machine that already has the matching
   `master.key` pulls + decrypts.
 - **Pros:** secrets roam between machines that share the key. **Cons:** key distribution becomes

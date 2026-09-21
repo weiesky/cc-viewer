@@ -345,3 +345,61 @@ describe('POST /api/auth/config scope-source selection', () => {
     assert.equal(savedCfg.enabled, false, 'must seed from global, not the active override');
   });
 });
+
+// Fail-closed: when the current scope's vault password exists but is UNREADABLE (lost master.key /
+// tampered ciphertext), cur.password collapses to '' — a save must be REFUSED (409), never overwrite
+// or clear the real ciphertext via auto-generate-on-enable or edit-and-save.
+describe('POST /api/auth/config PASSWORD_UNREADABLE guard', () => {
+  function callWith(state, body) {
+    const route = authRoutesCache.find(r => r.path === '/api/auth/config' && r.method === 'POST');
+    let setCalled = false;
+    const deps = {
+      MAX_POST_BODY: 1e6,
+      getAuthState() { return state; },
+      setAuthConfig() { setCalled = true; },
+      clearAuthOverride() {},
+    };
+    const handlers = {};
+    const req = { on(ev, cb) { handlers[ev] = cb; } };
+    let status = 0, payload = '';
+    const res = { writeHead(s) { status = s; }, end(b) { payload = b || ''; } };
+    route.handler(req, res, { pathname: '/api/auth/config' }, /* isLocal */ true, deps);
+    handlers.data(JSON.stringify(body));
+    handlers.end();
+    return { status, payload: payload ? JSON.parse(payload) : null, setCalled };
+  }
+
+  it('refuses to overwrite an unreadable global password (edit-and-save) with 409', () => {
+    const state = {
+      effective: { enabled: true, password: '', passwordUnreadable: true },
+      global: { enabled: true, password: '', passwordUnreadable: true },
+      scope: 'global', hasProjectOverride: false, projectDir: null,
+    };
+    const r = callWith(state, { scope: 'global', password: 'NEWPW' });
+    assert.equal(r.status, 409);
+    assert.equal(r.payload.code, 'PASSWORD_UNREADABLE');
+    assert.equal(r.setCalled, false, 'must NOT call setAuthConfig — would destroy the unreadable ciphertext');
+  });
+
+  it('refuses the auto-generate-on-enable path when the stored password is unreadable', () => {
+    const state = {
+      effective: { enabled: false, password: '', passwordUnreadable: true },
+      global: { enabled: false, password: '', passwordUnreadable: true },
+      scope: 'global', hasProjectOverride: false, projectDir: null,
+    };
+    const r = callWith(state, { scope: 'global', enabled: true }); // no password → would auto-generate
+    assert.equal(r.status, 409);
+    assert.equal(r.setCalled, false, 'auto-generate must not overwrite the unreadable entry');
+  });
+
+  it('allows a normal save when nothing is unreadable', () => {
+    const state = {
+      effective: { enabled: false, password: '', passwordUnreadable: false },
+      global: { enabled: false, password: '', passwordUnreadable: false },
+      scope: 'global', hasProjectOverride: false, projectDir: null,
+    };
+    const r = callWith(state, { scope: 'global', enabled: true, password: 'PW' });
+    assert.equal(r.status, 200);
+    assert.equal(r.setCalled, true);
+  });
+});

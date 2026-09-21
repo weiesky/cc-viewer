@@ -171,13 +171,21 @@ function _blockingSleep(ms) {
 }
 
 // Returns true when the lock was acquired, false on timeout (caller decides how to degrade).
-// A short deadline is used when this process itself holds the lock via the async flavor: async
-// mutators are currently synchronous (sub-ms hold), so a brief spin rides it out without either
-// freezing the loop for seconds or stealing the lock (which would lose the async writer's update).
+// When the lock is held by THIS process's async flavor (mutateJson / withJsonLock / mutatePrefs),
+// the sync caller must NOT spin-then-degrade: the async holder is alive and mid-critical-section,
+// and a sync write issued from inside that critical section would alias the SAME in-memory object
+// the async holder is about to write back — so the sync update is silently lost (the exact failure
+// this kernel exists to prevent). That reentrancy is a programming error, not a race to ride out:
+// throw so the caller fails loudly instead of corrupting state. Foreign-process contention still
+// degrades per the caller's timeout policy.
 function _acquireLockSync(lockPath, { deadline = 2000, retryMs = 25, staleThresholdMs = 5000 } = {}) {
-  const asyncHeldHere = hasLiveDiskHolder(lockPath);
-  const effectiveDeadline = asyncHeldHere ? Math.min(deadline, 250) : deadline;
-  const deadlineAt = Date.now() + effectiveDeadline;
+  if (hasLiveDiskHolder(lockPath)) {
+    const err = new Error(`mutateJsonSync re-entered a lock held by this process's async flavor: ${lockPath}`);
+    err.code = 'JSON_STORE_REENTRANT';
+    reportSwallowed('json-store.reentrant-sync', err);
+    throw err;
+  }
+  const deadlineAt = Date.now() + deadline;
   while (true) {
     let fd;
     try {
@@ -210,11 +218,15 @@ function _acquireLockSync(lockPath, { deadline = 2000, retryMs = 25, staleThresh
  * Holds the SAME `${file}.lock` as mutateJson so a sync writer and an async writer of the same
  * file still mutex cross-process. `mutator` must be synchronous (no await).
  *
- * Timeout policy (P1-F): if the lock cannot be acquired in time (a live foreign process holds
- * it), we DEGRADE to an unlocked atomic write rather than throwing — a 2s freeze plus an
- * uncaught throw out of a route callback would kill the whole server (proxy + all sessions).
- * The atomic write still can't tear the file; the residual lost-update window is the pre-kernel
- * status quo and is reported so it's visible. Pass { strict: true } to throw on timeout instead.
+ * Timeout / reentrancy policy:
+ *  - Foreign process holds the lock and it cannot be acquired in time: DEGRADE to an unlocked
+ *    atomic write rather than throwing — a 2s freeze plus an uncaught throw out of a route
+ *    callback would kill the whole server. The atomic write still can't tear the file; the
+ *    residual lost-update window is the pre-kernel status quo and is reported so it's visible.
+ *    Pass { strict: true } to throw instead.
+ *  - THIS process's async flavor holds the lock (reentrant sync call from inside an async
+ *    critical section): THROW (JSON_STORE_REENTRANT). That write would alias the async holder's
+ *    in-memory object and be silently overwritten — a fail-closed throw is the only safe answer.
  */
 export function mutateJsonSync(file, mutator, { mode = 0o600, pretty = true, fallback = {}, ensureDir, deadline, strict = false, strictCorrupt = false } = {}) {
   const dir = ensureDir ?? dirname(file);

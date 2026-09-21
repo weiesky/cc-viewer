@@ -105,7 +105,10 @@ function decodePassword(stored) {
 // resolves: project override (if the key exists) else global. To inherit global again,
 // the override must be REMOVED (clearProjectOverride), not merely disabled.
 
-function refFor(projectDir) {
+// Vault ref for the LAN password of a scope. Exported so the one-time migration
+// (credential-migrate.js) derives refs from the SAME source as the runtime readers — a divergence
+// would silently orphan every migrated secret (the writer and reader would use different keys).
+export function refFor(projectDir) {
   return projectDir ? `proj:${resolve(projectDir)}` : 'global';
 }
 

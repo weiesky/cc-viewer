@@ -19,7 +19,7 @@
  */
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, writeFileSync, mkdirSync, rmSync, mkdtempSync } from 'node:fs';
+import { existsSync, writeFileSync, readFileSync, mkdirSync, rmSync, mkdtempSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -140,11 +140,23 @@ describe('proxy profile 加载与查询', () => {
     // getActiveProfileId 读不到合法 json → 回落 'max'
     assert.equal(mod.getActiveProfileId(), 'max');
   });
+
+  it('fail-closed：有 baseURL 但无任何可用 key 的 profile 被丢弃（不转发默认凭证）', () => {
+    // 无 vault 条目、profile.json 也无明文 → 解析不到 key。这种 profile 会把 URL 重写到第三方
+    // baseURL 却跳过 auth 重写，会把用户的默认 Anthropic 凭证转发出去 —— 必须 fail-closed。
+    writeProfile({ active: 'p1', profiles: [
+      { id: 'max', name: 'Default' },
+      { id: 'p1', name: 'Keyless', baseURL: 'https://third-party.example.com/v1' }, // 无 apiKey
+    ] });
+    mod._loadProxyProfile();
+    // 安全语义：解析后该 profile 不会成为 active（被剔除出可路由表）→ 不会触发 URL/auth 重写
+    assert.equal(mod._activeProfile, null, 'keyless baseURL profile must be dropped from routing');
+  });
 });
 
 describe('setActiveProfileForWorkspace 双写', () => {
   it('普通模式下 _logDir 已初始化 → workspace 文件 + profile.json 都写成功', () => {
-    writeProfile({ active: 'max', profiles: [{ id: 'max', name: 'Default' }, { id: 'p2', name: 'P2', baseURL: 'https://b.example.com' }] });
+    writeProfile({ active: 'max', profiles: [{ id: 'max', name: 'Default' }, { id: 'p2', name: 'P2', baseURL: 'https://b.example.com', apiKey: 'sk-p2' }] });
     const result = mod.setActiveProfileForWorkspace('p2');
     assert.equal(result.workspace, true, 'workspace override 落盘');
     assert.equal(result.profile, true, 'profile.json.active 落盘');
@@ -158,6 +170,15 @@ describe('setActiveProfileForWorkspace 双写', () => {
     assert.equal(result.workspace, true);
     assert.equal(mod.getActiveProfileId(), 'max');
     assert.equal(mod._activeProfile, null);
+  });
+
+  it('profile.json 损坏时 strictCorrupt 生效 → 跳过写、保留原始字节（回归 P0）', () => {
+    const corrupt = '{ "profiles": [ { "id": "p1" }, { "id": "p2" } ], "active": "p1"'; // truncated
+    writeFileSync(mod.PROFILE_PATH, corrupt);
+    const result = mod.setActiveProfileForWorkspace('p2');
+    // strictCorrupt 让 mutateJsonSync 抛错，catch 兜住 → result.profile 为 false,磁盘字节不被覆盖
+    assert.equal(result.profile, false, 'corrupt profile.json 不应被 fallback 覆盖');
+    assert.equal(readFileSync(mod.PROFILE_PATH, 'utf-8'), corrupt, '损坏的原始字节必须保留');
   });
 });
 

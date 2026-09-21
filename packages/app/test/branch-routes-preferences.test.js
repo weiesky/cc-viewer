@@ -383,15 +383,17 @@ describe('proxyProfilesPost 分支', () => {
     assert.equal(res.statusCode, 400);
   });
 
-  it('已存在但损坏的 profile.json（existing 读取）走 catch（L203），仍写入新列表', async () => {
-    writeFileSync(profilePath, '{ broken existing profiles');
+  it('已存在但损坏的 profile.json → fail-closed 拒绝覆盖（strictCorrupt），保留原始字节', async () => {
+    // P0/P1-3 起，profile.json 写点经 mutateJsonSync + strictCorrupt:true：损坏的文件绝不
+    // 被 fallback 覆盖（避免丢失全部可恢复 profile）。请求被路由 catch 兜住返回 400，磁盘字节不变。
+    const corrupt = '{ broken existing profiles';
+    writeFileSync(profilePath, corrupt);
     const deps = ppDeps();
     const res = await callPost(proxyProfilesPost, {
       profiles: [{ id: 'max', name: 'Default' }, { id: 'c', name: 'C' }],
     }, deps);
-    assert.equal(res.statusCode, 200);
-    const onDisk = JSON.parse(readFileSync(profilePath, 'utf-8'));
-    assert.ok(onDisk.profiles.some((p) => p.id === 'c'), 'new list written despite corrupt existing');
+    assert.equal(res.statusCode, 400, 'corrupt profile.json must NOT be overwritten — fail-closed');
+    assert.equal(readFileSync(profilePath, 'utf-8'), corrupt, '原始损坏字节保留，未被新列表覆盖');
   });
 
   it('PROFILE_PATH 目录不存在时 mkdirSync 递归创建（L215）', async () => {

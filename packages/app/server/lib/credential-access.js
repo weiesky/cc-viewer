@@ -5,12 +5,14 @@
 // every credential class shares, so auth.js / im-config.js / interceptor.js / preferences.js
 // don't each re-derive (and mis-derive) them:
 //
-//   1. ONE credential root, captured at module load. PROFILE_PATH is frozen at load
-//      (interceptor.js:95) but LOG_DIR is a live binding (setLogDir); if the vault followed
-//      LOG_DIR it would split from the files it protects and both halves would fail
-//      dangerously (empty password → LAN gate opens; empty apiKey → default credential sent
-//      to a third-party host). So the credential root is captured ONCE, alongside PROFILE_PATH,
-//      and declared NOT to follow setLogDir.
+//   1. ONE credential root, resolved from the LIVE LOG_DIR binding on every access.
+//      preferences.json (holding auth.enabled + auth refs) and PROFILE_PATH resolve per call from
+//      the live LOG_DIR; if the vault root were frozen at load it would split from the files it
+//      protects whenever LOG_DIR moves (ccv --log-dir, POST /api/preferences {logDir}) — and both
+//      halves would fail dangerously (empty password → LAN gate opens; empty apiKey → default
+//      credential sent to a third-party host). So the credential root FOLLOWS LOG_DIR, keeping the
+//      vault and the config it protects on the same root. See auth.js decideAuth, which fails
+//      closed when the resolved vault entry is unreadable.
 //   2. master.key is created ONLY when the vault is empty/absent. A read path that finds
 //      ciphertext but no key must hard-fail (unreadable), never mint a fresh key that orphans
 //      every existing secret.
@@ -18,7 +20,7 @@
 //      treats an empty password as allow-all (auth.js), so a decrypt failure must surface as
 //      unreadable=true — never as ''.
 //
-// Boundary: L1-lib (imports json-store + credential-store/vault + findcc for the load-time root).
+// Boundary: L1-lib (imports json-store + credential-store/vault + findcc for the live root).
 import { existsSync, readFileSync } from 'node:fs';
 import { reportSwallowed } from '@ccv/core/error-report';
 import { LOG_DIR } from '../../findcc.js';
@@ -27,25 +29,27 @@ import {
 } from './credential-store.js';
 import { _resetKeyCache } from './credential-vault.js';
 
-// Captured at module load — deliberately NOT a live binding. See header note (1).
-const CREDENTIALS_FILE = credentialsFileFor(LOG_DIR);
-const MASTER_KEY_PATH = masterKeyPathFor(LOG_DIR);
+// Resolved from the LIVE LOG_DIR binding on every access — deliberately NOT frozen at load, so the
+// vault follows the same root as the config files it protects. See header note (1).
+function _credsFile() { return credentialsFileFor(LOG_DIR); }
+function _keyPath() { return masterKeyPathFor(LOG_DIR); }
 
-export function getCredentialsFile() { return CREDENTIALS_FILE; }
-export function getMasterKeyPath() { return MASTER_KEY_PATH; }
+export function getCredentialsFile() { return _credsFile(); }
+export function getMasterKeyPath() { return _keyPath(); }
 
 /** True when the vault holds at least one entry (so a missing master.key is a hard error). */
 function _vaultHasEntries() {
   try {
-    if (!existsSync(CREDENTIALS_FILE)) return false;
-    const data = JSON.parse(readFileSync(CREDENTIALS_FILE, 'utf-8'));
+    const file = _credsFile();
+    if (!existsSync(file)) return false;
+    const data = JSON.parse(readFileSync(file, 'utf-8'));
     return !!(data && typeof data === 'object' && data.creds && Object.keys(data.creds).length > 0);
   } catch { return false; }
 }
 
 /** True when credentials.json exists but cannot be parsed — the fail-CLOSED signal (P0-A). */
 function _vaultUnreadable() {
-  return vaultUnreadable(CREDENTIALS_FILE);
+  return vaultUnreadable(_credsFile());
 }
 
 /**
@@ -55,7 +59,7 @@ function _vaultUnreadable() {
  * key over it would let the next write overwrite ciphertext we can no longer read.
  */
 function _keyUsable() {
-  if (existsSync(MASTER_KEY_PATH)) return { ok: true };
+  if (existsSync(_keyPath())) return { ok: true };
   if (_vaultUnreadable()) {
     return { ok: false, reason: 'master.key is missing and credentials.json is unreadable; refusing to mint (would orphan existing ciphertext)' };
   }
@@ -83,7 +87,7 @@ export function readSecretOr(kind, ref, fallbackPlain = '') {
     if (_vaultUnreadable()) {
       return { value: fallbackPlain || '', unreadable: true };
     }
-    if (!hasSecret(CREDENTIALS_FILE, kind, ref)) {
+    if (!hasSecret(_credsFile(), kind, ref)) {
       return { value: fallbackPlain || '', unreadable: false };
     }
     const usable = _keyUsable();
@@ -91,7 +95,7 @@ export function readSecretOr(kind, ref, fallbackPlain = '') {
       reportSwallowed('credential-access.key-unusable', new Error(usable.reason));
       return { value: fallbackPlain || '', unreadable: true };
     }
-    const value = getSecret(CREDENTIALS_FILE, MASTER_KEY_PATH, kind, ref);
+    const value = getSecret(_credsFile(), _keyPath(), kind, ref);
     return { value, unreadable: false };
   } catch (err) {
     // Tampered ciphertext / wrong key / IO error → unreadable, never '' silently.
@@ -111,7 +115,7 @@ export function writeSecret(kind, ref, plain) {
       reportSwallowed('credential-access.key-unusable', new Error(usable.reason));
       return false;
     }
-    setSecret(CREDENTIALS_FILE, MASTER_KEY_PATH, kind, ref, plain);
+    setSecret(_credsFile(), _keyPath(), kind, ref, plain);
     return true;
   } catch (err) {
     reportSwallowed('credential-access.write', err);
@@ -122,7 +126,7 @@ export function writeSecret(kind, ref, plain) {
 /** Remove a secret. Returns true on success. */
 export function removeSecret(kind, ref) {
   try {
-    deleteSecret(CREDENTIALS_FILE, kind, ref);
+    deleteSecret(_credsFile(), kind, ref);
     return true;
   } catch (err) {
     reportSwallowed('credential-access.remove', err);
@@ -145,13 +149,13 @@ export function migrateFieldWithVerify(kind, ref, legacyPlain) {
   if (!legacyPlain) return { migrated: false, verified: false };
   try {
     // If the vault already holds this exact value, nothing to write.
-    if (hasSecret(CREDENTIALS_FILE, kind, ref)) {
-      const existing = getSecret(CREDENTIALS_FILE, MASTER_KEY_PATH, kind, ref);
+    if (hasSecret(_credsFile(), kind, ref)) {
+      const existing = getSecret(_credsFile(), _keyPath(), kind, ref);
       if (existing === legacyPlain) return { migrated: true, verified: true };
       // Differing value: fall through and let the on-disk plaintext overwrite (user's later intent).
     }
     if (!writeSecret(kind, ref, legacyPlain)) return { migrated: false, verified: false };
-    const readBack = getSecret(CREDENTIALS_FILE, MASTER_KEY_PATH, kind, ref);
+    const readBack = getSecret(_credsFile(), _keyPath(), kind, ref);
     if (readBack !== legacyPlain) {
       reportSwallowed('credential-access.migrate-verify', new Error(`read-back mismatch for ${kind}:${ref}`));
       return { migrated: false, verified: false };
@@ -165,7 +169,7 @@ export function migrateFieldWithVerify(kind, ref, legacyPlain) {
 
 /** Test hook: drop cached key state so a fresh root/key is picked up per test. */
 export function _resetCredentialAccess() {
-  _resetKeyCache(MASTER_KEY_PATH);
+  _resetKeyCache(); // clear all cached keys across roots (test hook / root change)
 }
 
 /**

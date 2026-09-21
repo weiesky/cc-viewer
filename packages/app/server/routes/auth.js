@@ -39,10 +39,13 @@ function buildState(deps, isLocal, isAdmin) {
     enabled: s.effective.enabled,
     isAdmin,
     password: isLocal ? s.effective.password : null,
+    // Surface the fail-closed signal so the admin UI can disable the password field and explain
+    // why a save would be refused (see the 409 PASSWORD_UNREADABLE branch in authConfigPost).
+    passwordUnreadable: !!s.effective.passwordUnreadable,
     scope: s.scope,                       // 'project' | 'global' — which one is in effect
     hasProjectOverride: s.hasProjectOverride,
     projectDir: s.projectDir,             // null when not project-scoped (non-CLI mode)
-    global: { enabled: s.global.enabled, password: isLocal ? s.global.password : null },
+    global: { enabled: s.global.enabled, password: isLocal ? s.global.password : null, passwordUnreadable: !!s.global.passwordUnreadable },
   };
 }
 
@@ -117,6 +120,21 @@ function authConfigPost(req, res, parsedUrl, isLocal, deps) {
     const cur = scope === 'global'
       ? state.global
       : (state.hasProjectOverride ? state.effective : { enabled: false, password: '' });
+    // Fail-closed: the current scope's vault password exists but is UNREADABLE (lost master.key /
+    // tampered ciphertext). cur.password has collapsed to '' for the gate, but the real ciphertext
+    // must NOT be destroyed. Refuse any save that would overwrite/clear it — including the
+    // auto-generate-on-enable path (next.password is '' here) and any edit-and-save (which would
+    // delete/replace the unreadable entry). The admin recovers by restoring master.key, not by a
+    // save that silently wipes the previous secret.
+    const curUnreadable = !!(scope === 'global' ? state.global : state.effective).passwordUnreadable;
+    if (curUnreadable) {
+      res.writeHead(409, JSON_HEADERS);
+      res.end(JSON.stringify({
+        error: 'LAN password is stored in the credential vault but is currently unreadable (lost master.key or corrupt credentials.json). Refusing to overwrite it. Restore master.key to recover, or clear the vault entry first.',
+        code: 'PASSWORD_UNREADABLE',
+      }));
+      return;
+    }
     const next = { enabled: cur.enabled, password: cur.password };
     if (typeof incoming.enabled === 'boolean') next.enabled = incoming.enabled;
     const passwordProvided = typeof incoming.password === 'string';
