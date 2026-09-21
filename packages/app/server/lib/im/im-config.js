@@ -14,6 +14,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { mutateJsonSync } from '../json-store.js';
+import { readSecretOr, writeSecret } from '../credential-access.js';
 import { LOG_DIR } from '../../../findcc.js';
 
 const MIN_CHUNK = 500;
@@ -131,6 +132,10 @@ function readPrefs() {
   }
 }
 
+// Credential fields (`cred`: appKey/appId/botId, LOW sensitivity) stay base64 in preferences.json.
+// Secret fields (`secret`: appSecret/botToken) live in the encrypted credential vault
+// (credentials.json, AES-256-GCM) — never in preferences.json. The legacy base64 secret fields
+// are migrated out at startup and cleared. Secrets are keyed `<platform>.<field>`.
 export function encodeSecret(plain) {
   return plain ? Buffer.from(plain, 'utf-8').toString('base64') : '';
 }
@@ -138,6 +143,8 @@ export function decodeSecret(stored) {
   if (!stored || typeof stored !== 'string') return '';
   try { return Buffer.from(stored, 'base64').toString('utf-8'); } catch { return ''; }
 }
+
+function secretRef(id, fieldKey) { return `${id}.${fieldKey}`; }
 
 function clampChunk(n, dflt = DEFAULT_CHUNK) {
   const v = Number(n);
@@ -171,13 +178,19 @@ function normField(type, v, dflt) {
   }
 }
 
-function decodeField(type, v, dflt) {
-  switch (type) {
-    case 'cred':
-    case 'secret': return decodeSecret(v);
-    case 'bool': return v !== undefined && v !== null ? !!v : (dflt !== undefined ? !!dflt : false);
+function decodeField(id, f, v) {
+  switch (f.type) {
+    case 'secret': {
+      // Vault-first, legacy base64 as the one-version read-fallback. readSecretOr distinguishes
+      // "unreadable" (lost key / tampered) from "absent"; for a bridge secret, unreadable and
+      // absent both degrade to "bridge won't start" (hasCreds false) — a down bot, never a leak.
+      const legacyPlain = decodeSecret(v);
+      return readSecretOr('im-secret', secretRef(id, f.key), legacyPlain).value;
+    }
+    case 'cred': return decodeSecret(v);
+    case 'bool': return v !== undefined && v !== null ? !!v : (f.default !== undefined ? !!f.default : false);
     case 'idlist': return normalizeIdList(v);
-    case 'chunk': return clampChunk(v, dflt);
+    case 'chunk': return clampChunk(v, f.default);
     case 'region': return v === 'lark' ? 'lark' : 'feishu';
     default: return typeof v === 'string' ? v : '';
   }
@@ -195,15 +208,30 @@ export function normalize(id, cfg) {
 function decodeStored(id, stored) {
   const desc = DESCRIPTORS[id];
   const out = {};
-  for (const f of desc.fields) out[f.key] = decodeField(f.type, stored ? stored[f.key] : undefined, f.default);
+  for (const f of desc.fields) {
+    // No on-disk entry for this field → its default. For a secret that ALSO means "don't
+    // consult the vault": a stray vault entry must not resurrect a secret for a platform the
+    // prefs say nothing about (e.g. after preferences.json was wiped while credentials.json
+    // survived). Only a field actually present on disk resolves through the vault.
+    if (!stored || typeof stored !== 'object' || !(f.key in stored)) {
+      out[f.key] = normField(f.type, undefined, f.default);
+      continue;
+    }
+    out[f.key] = decodeField(id, f, stored[f.key]);
+  }
   return out;
 }
 
-function encodeForDisk(id, n) {
+// On-disk shape for preferences.json[platform]: cred fields stay base64; a secret field is
+// CLEARED (empty string) when the vault write succeeded, or kept as base64 when it failed (so
+// the secret is not lost). `cleared` maps fieldKey → bool per secret field.
+function encodeForDisk(id, n, cleared = {}) {
   const desc = DESCRIPTORS[id];
   const out = {};
   for (const f of desc.fields) {
-    out[f.key] = (f.type === 'cred' || f.type === 'secret') ? encodeSecret(n[f.key]) : n[f.key];
+    if (f.type === 'secret') out[f.key] = cleared[f.key] ? '' : encodeSecret(n[f.key]);
+    else if (f.type === 'cred') out[f.key] = encodeSecret(n[f.key]);
+    else out[f.key] = n[f.key];
   }
   return out;
 }
@@ -231,25 +259,50 @@ export function loadState(id) {
 
 /**
  * Persist a platform's config (read-merge-write, preserving all other prefs and other
- * platforms). If a secret field is empty AND a secret is already stored, the existing
- * secret is PRESERVED (lets the admin edit other fields without re-typing the secret).
- * To remove the secret, disable the bridge. Stored base64; returns the in-memory
- * (plaintext) normalized shape.
+ * platforms). Secret fields are written to the credential vault; if a secret field is empty
+ * AND a secret is already stored (in the vault), the existing secret is PRESERVED (lets the
+ * admin edit other fields without re-typing the secret). To remove the secret, disable the
+ * bridge. cred fields stay base64 in preferences.json. Returns the in-memory (plaintext)
+ * normalized shape.
  */
 export function saveConfig(id, cfg) {
   const desc = DESCRIPTORS[id];
   const normalized = normalize(id, cfg);
-  // Read-merge-write INSIDE the kernel's sync lock: the empty-secret preservation reads the
-  // current on-disk value under the same mutex that writes it, so a concurrent prefs/auth save
-  // can't be lost between our read and write (the pre-kernel direct write had no such guard).
+  // Resolve each secret field's EFFECTIVE plaintext BEFORE writing. An empty field means "keep
+  // the stored one". The stored value may live in the VAULT and/or (pre-migration) in the legacy
+  // base64 preferences field — try the vault first, then the legacy field, so an unreadable vault
+  // (lost key / corrupt) never resolves a still-present legacy secret to empty and wipes it.
+  const legacyPlain = {};
+  const vaultUnreadableNoFallback = new Set();
   mutateJsonSync(getPrefsPath(), (prefs) => {
+    const storedCfg = prefs[desc.prefKey];
     for (const f of desc.fields) {
-      if (f.type === 'secret' && !normalized[f.key]) {
-        const existing = decodeSecret(prefs[desc.prefKey] && prefs[desc.prefKey][f.key]);
-        if (existing) normalized[f.key] = existing;
+      if (f.type !== 'secret') continue;
+      const ref = secretRef(id, f.key);
+      legacyPlain[f.key] = decodeSecret(storedCfg && storedCfg[f.key]);
+      if (!normalized[f.key]) {
+        const { value, unreadable } = readSecretOr('im-secret', ref, legacyPlain[f.key]);
+        if (value) normalized[f.key] = value;
+        else if (legacyPlain[f.key]) normalized[f.key] = legacyPlain[f.key];
+        else if (unreadable) vaultUnreadableNoFallback.add(f.key); // vault unreadable & nothing on disk
       }
     }
-    prefs[desc.prefKey] = encodeForDisk(id, normalized);
+  }, { mode: 0o600 });
+  // Write each resolved secret to the vault. A field whose vault write failed, or whose vault is
+  // unreadable with no legacy fallback, KEEPS its legacy base64 in preferences.json (secret not
+  // lost); only a field safely written to the vault is cleared from preferences.json.
+  const cleared = {};
+  for (const f of desc.fields) {
+    if (f.type !== 'secret') continue;
+    const ref = secretRef(id, f.key);
+    if (vaultUnreadableNoFallback.has(f.key)) {
+      cleared[f.key] = false; // vault unreadable & no legacy copy → keep whatever is on disk
+    } else {
+      cleared[f.key] = normalized[f.key] ? writeSecret('im-secret', ref, normalized[f.key]) : true;
+    }
+  }
+  mutateJsonSync(getPrefsPath(), (prefs) => {
+    prefs[desc.prefKey] = encodeForDisk(id, normalized, cleared);
   }, { mode: 0o600 });
   return normalized;
 }

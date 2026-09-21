@@ -20,8 +20,18 @@ const {
   saveDingTalkConfig,
   getPrefsPath,
 } = await import('../server/lib/im/dingtalk-config.js');
+const { _resetCredentialAccess, writeSecret } = await import('../server/lib/credential-access.js');
 
-function reset() { if (existsSync(getPrefsPath())) rmSync(getPrefsPath()); }
+// appSecret now lives in the credential vault (credentials.json, AES-256-GCM); preferences.json
+// keeps the secret field CLEARED (''). appKey (a low-sensitivity cred) stays base64 on disk.
+const credFile = join(tmpDir, 'credentials.json');
+const masterKey = join(tmpDir, 'master.key');
+function reset() {
+  if (existsSync(getPrefsPath())) rmSync(getPrefsPath());
+  try { rmSync(credFile, { force: true }); } catch {}
+  try { rmSync(masterKey, { force: true }); } catch {}
+  _resetCredentialAccess();
+}
 
 describe('encodeSecret / decodeSecret', () => {
   it('roundtrips and is base64 (not raw)', () => {
@@ -59,15 +69,20 @@ describe('save / load roundtrip', () => {
     assert.deepEqual(loadDingTalkConfig(), DEFAULT_DT_CONFIG);
   });
 
-  it('roundtrips through preferences.json (plaintext in memory, base64 on disk)', () => {
+  it('roundtrips through preferences.json (plaintext in memory; appKey base64 on disk; appSecret in the vault)', () => {
     reset();
     saveDingTalkConfig({ enabled: true, appKey: 'ding123', appSecret: 'topsecret', allowStaffIds: ['u1'], maxChunkChars: 2000 });
     assert.deepEqual(loadDingTalkConfig(), { enabled: true, appKey: 'ding123', appSecret: 'topsecret', allowStaffIds: ['u1'], maxChunkChars: 2000, blockOnSkipPermissions: false, ackCard: true, cardTemplateId: '', aiCardTemplateId: '', aiCardStreamKey: '' });
     const onDisk = JSON.parse(readFileSync(getPrefsPath(), 'utf-8'));
     assert.equal(onDisk.dingtalk.enabled, true);
-    assert.notEqual(onDisk.dingtalk.appSecret, 'topsecret', 'must not store raw secret');
-    assert.equal(onDisk.dingtalk.appSecret, Buffer.from('topsecret', 'utf-8').toString('base64'));
-    assert.equal(onDisk.dingtalk.appKey, Buffer.from('ding123', 'utf-8').toString('base64'));
+    // appSecret is NOT on disk (cleared); it lives as ciphertext in credentials.json
+    assert.equal(onDisk.dingtalk.appSecret, '', 'secret field cleared on disk (vault-backed)');
+    assert.equal(onDisk.dingtalk.appKey, Buffer.from('ding123', 'utf-8').toString('base64'), 'low-sensitivity cred stays base64');
+    const creds = JSON.parse(readFileSync(credFile, 'utf-8'));
+    const stored = creds.creds['im-secret:dingtalk.appSecret'];
+    assert.ok(stored, 'secret lives in the vault');
+    assert.notEqual(stored, 'topsecret');
+    assert.ok(!readFileSync(credFile, 'utf-8').includes('topsecret'), 'no plaintext anywhere');
   });
 
   it('preserves unrelated preferences (read-merge-write)', () => {
@@ -77,7 +92,8 @@ describe('save / load roundtrip', () => {
     const onDisk = JSON.parse(readFileSync(getPrefsPath(), 'utf-8'));
     assert.equal(onDisk.themeColor, 'light');
     assert.equal(onDisk.auth.password, 'eA==');
-    assert.equal(onDisk.dingtalk.appSecret, Buffer.from('s', 'utf-8').toString('base64'));
+    assert.equal(onDisk.dingtalk.appSecret, '', 'secret field cleared on disk (vault-backed)');
+    assert.equal(onDisk.dingtalk.appKey, Buffer.from('k', 'utf-8').toString('base64'));
   });
 
   it('preserves the stored secret when saved with an empty appSecret', () => {
@@ -89,6 +105,24 @@ describe('save / load roundtrip', () => {
     assert.equal(loadDingTalkConfig().appSecret, 'keepme');
     assert.equal(loadDingTalkConfig().appKey, 'k2');
     assert.equal(loadDingTalkConfig().enabled, false);
+  });
+
+  it('keeps the legacy secret when the vault is unreadable and a field is saved (no secret wipe)', () => {
+    reset();
+    // legacy (pre-migration) state: secret as base64 in preferences.json, NO vault entry yet
+    writeFileSync(getPrefsPath(), JSON.stringify({
+      dingtalk: { enabled: true, appKey: Buffer.from('k', 'utf-8').toString('base64'), appSecret: Buffer.from('SUPER-SECRET', 'utf-8').toString('base64') },
+    }));
+    // make the vault unreadable: an entry exists somewhere + master.key is gone
+    writeSecret('im-secret', 'other.field', 'x');
+    rmSync(masterKey, { force: true });
+    _resetCredentialAccess();
+    // save an unrelated field (UI sends appSecret:'' because it never holds the secret)
+    saveDingTalkConfig({ enabled: true, appKey: 'k', maxChunkChars: 1234, appSecret: '' });
+    const onDisk = JSON.parse(readFileSync(getPrefsPath(), 'utf-8'));
+    assert.notEqual(onDisk.dingtalk.appSecret, '', 'unreadable vault must NOT clear the legacy secret');
+    assert.equal(onDisk.dingtalk.appSecret, Buffer.from('SUPER-SECRET', 'utf-8').toString('base64'), 'legacy secret preserved');
+    assert.equal(loadDingTalkConfig().appSecret, 'SUPER-SECRET', 'secret still resolves for the bridge');
   });
 
   it('round-trips blockOnSkipPermissions and exposes it in admin state', () => {

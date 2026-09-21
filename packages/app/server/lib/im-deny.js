@@ -11,13 +11,13 @@ import os from 'node:os';
 import { resolve } from 'node:path';
 
 // 凭证目录：读 + 写都拒（含密钥/令牌）。
-const CRED_DIRS = ['.ssh', '.aws', '.gnupg', '.kube', '.docker', '.config/gcloud'];
+const CRED_DIRS = ['.ssh', '.aws', '.gnupg', '.kube', '.docker', '.config/gcloud', '.claude/cc-viewer-config-backups'];
 // 家目录下的 shell 启动文件：写拒（被改写可植入持久化）。
 const WRITE_HOME_FILES = ['.bashrc', '.zshrc', '.bash_profile', '.zprofile', '.zshenv', '.profile', '.npmrc', '.netrc'];
-// 精确文件：写拒（保护 deny 机制本身与 IM 密钥）。相对家目录。
-const WRITE_REL_PATHS = ['.claude/settings.json', '.claude/settings.local.json', '.claude/cc-viewer/preferences.json'];
-// 精确文件：读拒（含令牌/密钥）。相对家目录。
-const READ_REL_PATHS = ['.npmrc', '.netrc', '.claude/cc-viewer/preferences.json'];
+// 精确文件：写拒（保护 deny 机制本身与 IM 密钥 + 凭证 vault）。
+const WRITE_REL_PATHS = ['.claude/settings.json', '.claude/settings.local.json', '.claude/cc-viewer/preferences.json', '.claude/cc-viewer/credentials.json', '.claude/cc-viewer/master.key'];
+// 精确文件：读拒（含令牌/密钥 + 凭证 vault 密文与主密钥）。
+const READ_REL_PATHS = ['.npmrc', '.netrc', '.claude/cc-viewer/preferences.json', '.claude/cc-viewer/credentials.json', '.claude/cc-viewer/master.key'];
 
 // Bash 命令硬拦截规则。每条 { re, reason }。
 const BASH_DENY_RULES = [
@@ -43,8 +43,11 @@ const BASH_DENY_RULES = [
   { re: /\b(curl|wget)\b[^\n]*\s-{1,2}(d|data|data-binary|data-raw|post-file|F|form|T|upload-file)\b/i, reason: 'outbound data upload (exfil risk)' },
   { re: /\b(curl|wget)\b[^\n]*@\//i, reason: 'outbound file upload (exfil risk)' },
   // 凭证 / 密钥文件访问（Bash 层；与下面 Read/Write 路径层互为补充——cat 等会绕过路径层）。
-  // 覆盖 SSH/AWS/GnuPG/k8s/docker/gcloud/gh/npm/netrc + cc-viewer 自身的 IM 密钥库 preferences.json + 全局 settings。
-  { re: /(id_rsa|id_ed25519|id_ecdsa|authorized_keys|\.ssh\/|\.aws\/|\.gnupg\/|\.kube\/|\.docker\/|\.config\/(gcloud|gh)\/|\.netrc|\.npmrc|cc-viewer\/preferences\.json|\.claude\/settings(\.local)?\.json)\b/i, reason: 'access to credential / secret files' },
+  // 覆盖 SSH/AWS/GnuPG/k8s/docker/gcloud/gh/npm/netrc + cc-viewer 自身的 IM 密钥库 preferences.json
+  // + 凭证 vault(credentials.json/master.key，含 cc-viewer-config-backups 备份目录) + 全局 settings。
+  // credentials.json/master.key 用裸文件名匹配(不限 cc-viewer/ 前缀),并含 cred*/master* glob 形式,
+  // 防止经备份目录、相对路径或 shell glob(cred*.json master*)绕过——IM 通道宁可拦多。
+  { re: /(id_rsa|id_ed25519|id_ecdsa|authorized_keys|\.ssh\/|\.aws\/|\.gnupg\/|\.kube\/|\.docker\/|\.config\/(gcloud|gh)\/|\.netrc|\.npmrc|cc-viewer\/preferences\.json|credentials\.json|master\.key|cc-viewer-config-backups|\.claude\/settings(\.local)?\.json)\b|(cred\*|master\*)/i, reason: 'access to credential / secret files' },
 ];
 
 function underAny(absPath, roots) {

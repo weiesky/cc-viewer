@@ -118,6 +118,7 @@ import { applyTaskEvent, resetTasks, getTaskSnapshot, shouldResetTasks } from '.
 import { createImLogWatcher } from './lib/im/im-log-watcher.js';
 import { unwatchAllWorkflows } from './lib/workflow-watcher.js';
 import { backupConfigs } from './lib/config-backup.js';
+import { migrateCredentialsToVault } from './lib/credential-migrate.js';
 import { normalizeBasePath, validateBasePath, stripBasePath } from './lib/base-path.js';
 import { createHardenedCleanup } from './lib/term-signals.js';
 import { createBackpressureGate } from './lib/ws-backpressure.js';
@@ -785,6 +786,7 @@ async function handleRequest(req, res) {
     accessToken: ACCESS_TOKEN,
     enabled: authConfig.enabled,
     password: authConfig.password,
+    passwordUnreadable: authConfig.passwordUnreadable,
     wantsHtml,
   });
   // Remote-admin elevation (container/cloud deploy): an authenticated remote caller is
@@ -989,6 +991,11 @@ export async function startViewer() {
   // 启动期配置备份:preferences/profile/workspaces → LOG_DIR 外的 cc-viewer-config-backups/
   // (滚动留 10 份)。2026-06-06 事故:配置随 LOG_DIR 整树丢失后无处可恢复。fire-and-forget。
   setImmediate(() => { try { backupConfigs(); } catch { /* ignore */ } });
+
+  // 启动期一次性凭证迁移:preferences/profile 里的明文/base64 密钥 → credentials.json(AES-256-GCM)。
+  // 必须在 backupConfigs 之后挂(先留一份迁移前备份),幂等(逐字段写 vault→读回比对→剔旧字段),
+  // 失败字段保留原值不丢,下次启动重试。fire-and-forget,不阻塞启动。
+  setImmediate(() => { try { migrateCredentialsToVault(); } catch { /* ignore */ } });
 
   // 启动时清理磁盘上 ASK_HOOK_TIMEOUT_MS 之前的 ask 条目（兜底防泄漏）。
   // 内存 Map 不 hydrate：旧 res 已死、新 ask-bridge 重连同 toolUseId 会自动复用槽位
@@ -1364,6 +1371,7 @@ async function setupTerminalWebSocket(httpServer) {
         accessToken: ACCESS_TOKEN,
         enabled: authConfig.enabled,
         password: authConfig.password,
+        passwordUnreadable: authConfig.passwordUnreadable,
         wantsHtml: false,
       });
       if (wsAuth.action !== 'allow') {

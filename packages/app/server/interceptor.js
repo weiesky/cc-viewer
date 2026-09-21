@@ -22,7 +22,8 @@ import { sanitizePathComponent } from './lib/v2/layout.js';
 import { parseAgentId, findHeader } from './lib/v2/agent-id.js';
 import { parseUserId } from './lib/session-id.js';
 import { setRetryConfigPath, loadRetryConfig, DEFAULT_RETRY_CONFIG } from './lib/proxy/proxy-retry.js';
-import { writeJsonAtomic } from './lib/json-store.js';
+import { writeJsonAtomic, mutateJsonSync } from './lib/json-store.js';
+import { readSecretOr, writeSecret, removeSecret } from './lib/credential-access.js';
 import { setProjectName } from './lib/project-state.js';
 import { consumePendingForResume, writeSnapshot, projectKeyForCwd } from './lib/system-prompt-snapshots.js';
 import { liveSystemPromptEnabled, getLaunchSystemPromptInfo, getLiveEntry, putLiveEntry, selectEntriesForModel, applyLiveSystem, knownInjectedTexts } from './lib/system-prompt-live.js';
@@ -187,16 +188,61 @@ function _writeWorkspaceActive(activeId, roles) {
   }
 }
 
+// Resolve a profile's effective apiKey for request injection. The key lives in the credential
+// vault (kind=profile-apiKey, ref=profile.id); a plaintext apiKey still present in profile.json
+// is the one-version read-fallback (pre-migration). FAIL-CLOSED: a profile with a baseURL whose
+// key cannot be decrypted (lost master.key / tampered ciphertext) must be excluded from routing —
+// otherwise proxy.js would forward the request to the third-party baseURL while the auth rewrite
+// is skipped, transmitting the user's default Anthropic credential to that host.
+function _resolveProfileApiKey(profile) {
+  if (!profile || profile.id === 'max') return { apiKey: '', unusable: false };
+  const legacyPlain = typeof profile.apiKey === 'string' ? profile.apiKey : '';
+  const { value, unreadable } = readSecretOr('profile-apiKey', profile.id, legacyPlain);
+  if (unreadable) return { apiKey: '', unusable: true };
+  return { apiKey: value, unusable: false };
+}
+
+/**
+ * Decrypt-backfill apiKeys onto a raw profile.json list for READERS that consume the file
+ * directly (e.g. GET /api/proxy-profiles) rather than the in-memory _profilesById. Profiles
+ * whose key is unreadable are returned with an EMPTY apiKey (the caller masks/serves as-is);
+ * routing itself is fail-closed via _loadProxyProfile, which DROPS such profiles.
+ */
+export function hydrateProfilesWithApiKeys(profiles) {
+  return (Array.isArray(profiles) ? profiles : []).map((p) => {
+    if (!p || typeof p.id !== 'string') return p;
+    const { apiKey } = _resolveProfileApiKey(p);
+    return { ...p, apiKey };
+  });
+}
+
+// Throttle the per-profile "key unusable" diagnostic to once per profile id per process —
+// _loadProxyProfile re-runs on every 1.5s watchFile tick and would otherwise spam the log.
+const _reportedUnusableProfiles = new Set();
+
 function _loadProxyProfile() {
   try {
     const data = JSON.parse(readFileSync(PROFILE_PATH, 'utf-8'));
-    _profilesById = new Map((Array.isArray(data.profiles) ? data.profiles : [])
-      .filter(p => p && typeof p.id === 'string').map(p => [p.id, p]));
+    const rawProfiles = (Array.isArray(data.profiles) ? data.profiles : []).filter(p => p && typeof p.id === 'string');
+    // Decrypt-backfill apiKeys; drop profiles whose key is unreadable (fail-closed).
+    const profiles = [];
+    for (const p of rawProfiles) {
+      const { apiKey, unusable } = _resolveProfileApiKey(p);
+      if (unusable) {
+        if (!_reportedUnusableProfiles.has(p.id)) {
+          _reportedUnusableProfiles.add(p.id);
+          reportSwallowed('proxy-profile.key-unusable', new Error(`profile "${p.id}" dropped: apiKey unreadable (lost master.key or tampered credentials.json)`));
+        }
+        continue;
+      }
+      profiles.push({ ...p, apiKey });
+    }
+    _profilesById = new Map(profiles.map(p => [p.id, p]));
     // active 解析优先级：workspace override > profile.json.active (兼容老数据 / 全局回退) > null
     const ws = _readWorkspaceActive();
     _roleIds = ws.roles;
     const activeId = ws.activeId || data.active;
-    const active = data.profiles?.find(p => p.id === activeId);
+    const active = profiles.find(p => p.id === activeId);
     _activeProfile = (active && active.id !== 'max') ? active : null;
   } catch (err) {
     _activeProfile = null;
@@ -227,16 +273,18 @@ function setActiveProfileForWorkspace(activeId, roles) {
   if (activeId !== undefined) {
     const normalizedId = (activeId && typeof activeId === 'string') ? activeId : 'max';
     try {
-      const data = existsSync(PROFILE_PATH)
-        ? JSON.parse(readFileSync(PROFILE_PATH, 'utf-8'))
-        : { profiles: [{ id: 'max', name: 'Default' }] };
-      if (data.active !== normalizedId) {
-        data.active = normalizedId;
-        // Atomic write via the json-store kernel (tmp→rename). profile.json is read by other
-        // ccv processes via watchFile, so a torn write must never be observable. Cross-process
-        // ordering stays with watchFile (no new lock) to avoid perturbing hot-switch.
-        writeJsonAtomic(PROFILE_PATH, data, { mode: 0o600 });
-      }
+      // Read-merge-write INSIDE the shared profile.json lock (mutateJsonSync), so this whole-file
+      // update mutexes with the startup credential-strip and proxyProfilesPost — an unlocked
+      // snapshot could otherwise resurrect a stripped apiKey field or drop a concurrent list edit.
+      mutateJsonSync(PROFILE_PATH, (data) => {
+        const base = (data && typeof data === 'object' && !Array.isArray(data))
+          ? data
+          : { profiles: [{ id: 'max', name: 'Default' }] };
+        if (base.active !== normalizedId) base.active = normalizedId;
+        return base;
+      }, { mode: 0o600, fallback: { profiles: [{ id: 'max', name: 'Default' }], strictCorrupt: true } });
+      // strictCorrupt: profile.json corrupt 时抛错(下方 catch 兜住、跳过本次写),绝不用 fallback
+      // 的 {max}-only 覆盖掉磁盘上虽损坏但可能仍可人工恢复的全部 profile。
       result.profile = true;
     } catch { /* 双失败场景下 result 全 false，由调用方自行兜底 */ }
   }

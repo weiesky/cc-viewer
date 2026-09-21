@@ -9,8 +9,17 @@ const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-wecom-cfg-test-'));
 process.env.CCV_LOG_DIR = tmpDir;
 
 const { getDescriptor, normalize, loadConfig, loadState, saveConfig, getPrefsPath } = await import('../server/lib/im/im-config.js');
+const { _resetCredentialAccess } = await import('../server/lib/credential-access.js');
 
-function reset() { if (existsSync(getPrefsPath())) rmSync(getPrefsPath()); }
+// secret now lives in the credential vault (cleared from preferences.json); botId (low-sensitivity cred) stays base64.
+const credFile = join(tmpDir, 'credentials.json');
+const masterKey = join(tmpDir, 'master.key');
+function reset() {
+  if (existsSync(getPrefsPath())) rmSync(getPrefsPath());
+  try { rmSync(credFile, { force: true }); } catch {}
+  try { rmSync(masterKey, { force: true }); } catch {}
+  _resetCredentialAccess();
+}
 
 describe('wecom descriptor + normalize', () => {
   it('exposes the wecom defaults and allowList field', () => {
@@ -35,13 +44,15 @@ describe('wecom save / load roundtrip', () => {
     assert.deepEqual(loadConfig('wecom'), getDescriptor('wecom').defaults);
   });
 
-  it('roundtrips (plaintext in memory, base64 cred/secret on disk)', () => {
+  it('roundtrips (plaintext in memory; botId base64 on disk; secret in the vault)', () => {
     reset();
     saveConfig('wecom', { enabled: true, botId: 'bot_abc', secret: 'topsecret', allowUserIds: ['zhangsan'] });
     assert.deepEqual(loadConfig('wecom'), { enabled: true, botId: 'bot_abc', secret: 'topsecret', allowUserIds: ['zhangsan'], maxChunkChars: 3800, blockOnSkipPermissions: false, ackCard: true, aiCard: false });
     const onDisk = JSON.parse(readFileSync(getPrefsPath(), 'utf-8'));
-    assert.equal(onDisk.wecom.secret, Buffer.from('topsecret', 'utf-8').toString('base64'));
-    assert.equal(onDisk.wecom.botId, Buffer.from('bot_abc', 'utf-8').toString('base64'));
+    assert.equal(onDisk.wecom.secret, '', 'secret field cleared on disk (vault-backed)');
+    assert.equal(onDisk.wecom.botId, Buffer.from('bot_abc', 'utf-8').toString('base64'), 'low-sensitivity cred stays base64');
+    const creds = JSON.parse(readFileSync(credFile, 'utf-8'));
+    assert.ok(creds.creds['im-secret:wecom.secret'], 'secret lives in the vault');
   });
 
   it('preserves the stored secret when saved with an empty secret', () => {

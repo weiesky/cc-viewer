@@ -72,6 +72,34 @@ describe('im-deny: file tools', () => {
     }
   });
 
+  it('denies Read/Write of the credential vault AND its rolled backups (cc-viewer-config-backups)', () => {
+    const vault = [
+      join(HOME, '.claude/cc-viewer/credentials.json'),
+      join(HOME, '.claude/cc-viewer/master.key'),
+    ];
+    const backups = [
+      join(HOME, '.claude/cc-viewer-config-backups/20260920_180211/credentials.json'),
+      join(HOME, '.claude/cc-viewer-config-backups/20260920_180211/master.key'),
+      join(HOME, '.claude/cc-viewer-config-backups/20260920_180211/preferences.json'),
+    ];
+    for (const fp of [...vault, ...backups]) {
+      assert.equal(evaluateImDeny('Read', { file_path: fp }, opts).deny, true, `Read should deny: ${fp}`);
+      assert.equal(evaluateImDeny('Write', { file_path: fp }, opts).deny, true, `Write should deny: ${fp}`);
+    }
+  });
+
+  it('denies Bash access to credentials.json/master.key via backup dir, glob, or relative path', () => {
+    for (const cmd of [
+      'cat ~/.claude/cc-viewer-config-backups/20260920_180211/master.key',
+      'cat ~/.claude/cc-viewer-config-backups/20260920_180211/credentials.json',
+      'cat ../cc-viewer-config-backups/x/master.key',
+      'cat cred*.json master*',
+      'cat /abs/path/to/credentials.json',
+    ]) {
+      assert.equal(bash(cmd).deny, true, `Bash should deny: ${cmd}`);
+    }
+  });
+
   it('expands a leading ~/ so tilde paths cannot bypass the path layer', () => {
     assert.equal(evaluateImDeny('Read', { file_path: '~/.ssh/id_rsa' }, opts).deny, true);
     assert.equal(evaluateImDeny('Write', { file_path: '~/.aws/credentials' }, opts).deny, true);
