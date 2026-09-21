@@ -205,6 +205,8 @@ cc-viewer works in a single container or on a cloud host where you reach the UI 
 * **Security recommendations for a public/cloud deployment:** enable password login (or keep the random `?token=` URL secret), and put the instance behind a reverse proxy that terminates HTTPS. Persist the log/settings directory by mounting a volume at the path pointed to by `CCV_LOG_DIR` (default `~/.claude/cc-viewer`) so your preferences, auth password, and IM credentials survive container restarts.
 * **Reverse-proxy note:** access control is based on the socket peer address (`X-Forwarded-For` is deliberately not trusted, to prevent spoofing). This does not affect remote admins — they authenticate by token/password, not by IP. It only means "same-container" detection relies on a real loopback connection.
 
+* **Design doc:** how local config maps to a cloud database and the cloud-sync model (cloud-authoritative, local read-only fallback) is described in [Config Convergence & Cloud-Sync Advisory](./docs/config-cloud-sync.md) ([中文](./docs/config-cloud-sync.zh.md)). This is a proposal, not yet implemented.
+
 
 ### Model-specific system prompts
 

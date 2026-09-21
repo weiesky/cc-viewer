@@ -16,6 +16,10 @@ Claude Code をベースに、自身の開発経験を蒸留・蓄積した Vibe
 
 [English](../README.md) | [简体中文](./README.zh.md) | [繁體中文](./README.zh-TW.md) | [한국어](./README.ko.md) | 日本語 | [Deutsch](./README.de.md) | [Español](./README.es.md) | [Français](./README.fr.md) | [Italiano](./README.it.md) | [Dansk](./README.da.md) | [Polski](./README.pl.md) | [Русский](./README.ru.md) | [العربية](./README.ar.md) | [Norsk](./README.no.md) | [Português (Brasil)](./README.pt-BR.md) | [ไทย](./README.th.md) | [Türkçe](./README.tr.md) | [Українська](./README.uk.md)
 
+## Config Convergence & Cloud Sync (design doc)
+
+How local config maps to a cloud database and the cloud-sync model (cloud-authoritative, local read-only fallback) is described in [Config Convergence & Cloud-Sync Advisory](./config-cloud-sync.md) ([中文](./config-cloud-sync.zh.md)). This is a proposal, not yet implemented.
+
 ## 使い方
 
 ### 前提条件
