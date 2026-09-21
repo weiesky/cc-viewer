@@ -13,7 +13,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from '
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { renameSyncWithRetry } from '../file-api.js';
-import { withFileLockAsync } from '../async-file-lock.js';
+import { withJsonLock } from '../json-store.js';
 import { LOG_DIR } from '../../../findcc.js';
 
 const SCHEMA_VERSION = 1;
@@ -23,10 +23,14 @@ const SCHEMA_VERSION = 1;
 let _loggedPersistError = false;
 
 function getStoreFile() { return join(LOG_DIR, 'ask-store.json'); }
-function getLockFile() { return join(LOG_DIR, 'ask-store.lock'); }
 
+// Serialize every read-modify-write through the unified json-store kernel's async lock
+// (derived from the file name → ask-store.json.lock). The domain read/save (schema filter,
+// version wrap, entry cleaning) stays below in loadAskStore/saveAskStore; the kernel only
+// supplies the mutex via withJsonLock (lock-only, no read/write) because the store's on-disk
+// shape ({version,entries}) differs from its in-memory shape (plain entries map).
 function withLock(fn) {
-  return withFileLockAsync(getLockFile(), fn, { ensureDir: LOG_DIR });
+  return withJsonLock(getStoreFile(), fn, { ensureDir: LOG_DIR });
 }
 
 /**

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- refactor(config): **本地配置写收敛到统一 json-store 内核** — 新增 `server/lib/json-store.js`（readJsonSafe/writeJsonAtomic/mutateJson/mutateJsonSync/withJsonLock/applyJsonPatch/lockPathFor），锁名按数据文件派生修复撞锁；`preferences.json` 的多写者（im-config 原无锁无原子、auth 原无锁）收敛为锁内 read-merge-write，`profile.json` 四处写点统一原子写；prefs-store/workspace-registry/session-pin-store/ask-store 迁移到内核（对外签名不变）。Coverage: `json-store.test.js`.
+
 - feat(im): **IM 会话弹窗头部新增「停止」按钮 + 修复停止清空配置** — 「已连接 :端口」旁加停止入口，Popconfirm 确认后 POST /config {enabled:false, applyProcess:true} 停用（停进程并写盘，重启不再拉起）。服务端 /config 对「只动 enabled」的 body 改为 read-merge-write，修复停止误清空 appKey/白名单/region 的 P0；「停止」在启动轮询中禁用避免竞态。设置面板另加独立「保存」按钮（applyProcess:false 只存盘不驱动进程）。Coverage: `im-quit-button.test.js`, `im-save-button.test.js`, `im-status-i18n.test.js`, `api-im.test.js`.
 - feat(chat): **任务列表 HUD 明细由原生 title 提示改为 antd 气泡** — 任务 label 的长 description 改用悬停 Popover 气泡卡展示（可滚动、可选中复制、保留换行），折叠态当前任务、进行中 activeForm、负责人徽章与展开/收起按钮的原生 title 一并换成 antd Tooltip，气泡主题跟随全局明暗。Coverage: `task-progress-hud.test.js`.
 - chore(ultraplan): **代码专家评审结论处置规则文案优化** — 评审建议处置行由「采纳 P0、P1 视情况采纳、P2/P3 延后」调整为「采纳 P0；P1 与 P2 视评估选择性采纳；忽略 P3」，code-expert.json、18 语言版 UltraPlan.md 与 ultraplanTemplates.js 共 20 处同步更新。

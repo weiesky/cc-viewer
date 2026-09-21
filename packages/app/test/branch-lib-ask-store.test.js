@@ -21,7 +21,8 @@ const tmpRoot = mkdtempSync(join(tmpdir(), 'ccv-branch-ask-store-'));
 process.env.CCV_LOG_DIR = tmpRoot;
 
 const storeFile = join(tmpRoot, 'ask-store.json');
-const lockFile = join(tmpRoot, 'ask-store.lock');
+// The unified json-store kernel derives the lock from the data file name: `${file}.lock`.
+const lockFile = join(tmpRoot, 'ask-store.json.lock');
 
 let mod;
 before(async () => {

@@ -8,10 +8,9 @@
 // '' means no active project (workspace mode not yet launched) → read = null / write = no-op.
 // Writes are atomic (tmp + rename) so a torn read can't happen when several writers race
 // (mirrors server/lib/prefs-store.js).
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { randomBytes } from 'node:crypto';
-import { renameSyncWithRetry } from './file-api.js';
+import { writeJsonAtomic } from './json-store.js';
 
 /** Pin file path inside the project dir: `.session-pin.json`. */
 export function pinFilePath(logDir) {
@@ -32,8 +31,10 @@ export function readPin(logDir) {
 
 /**
  * Write (or clear) the pinned session id. No project (logDir = '') → no-op, returns false.
- * A null/empty pinnedSessionId deletes the file (back to "show latest"). Atomic tmp+rename.
- * Returns true on success, false on no-project / write failure (view state is best-effort).
+ * A null/empty pinnedSessionId deletes the file (back to "show latest"). Atomic via the
+ * json-store kernel (tmp + rename). Non-secret → mode:false (umask); the pin is a view
+ * preference, not a credential. Returns true on success, false on no-project / write
+ * failure (view state is best-effort).
  */
 export function writePin(logDir, pinnedSessionId) {
   if (!logDir) return false;
@@ -44,15 +45,7 @@ export function writePin(logDir, pinnedSessionId) {
       try { unlinkSync(file); } catch { /* already absent */ }
       return true;
     }
-    mkdirSync(logDir, { recursive: true });
-    const tmp = `${file}.tmp-${process.pid}-${randomBytes(4).toString('hex')}`;
-    try {
-      writeFileSync(tmp, JSON.stringify({ pinnedSessionId: id }));
-      renameSyncWithRetry(tmp, file);
-    } catch (err) {
-      try { unlinkSync(tmp); } catch {}
-      throw err;
-    }
+    writeJsonAtomic(file, { pinnedSessionId: id }, { mode: false, pretty: false });
     return true;
   } catch { return false; }
 }

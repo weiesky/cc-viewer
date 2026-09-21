@@ -8,6 +8,17 @@ import { mkdirSync } from 'node:fs';
 // 同进程内的 Promise 互斥锁（按 lockPath 分组）
 const _inProcessLocks = new Map();
 
+// Disk lock files this process currently holds via the async path (between _acquireFileLock
+// success and the matching unlink). Consulted by the SYNC lock flavor in json-store.js so it
+// never mistakes a live async holder (which yields the JS thread at every await inside its
+// critical section) for a stale own-pid lock and steals it.
+const _heldDiskLocks = new Set();
+
+/** True when this process currently holds `lockPath`'s disk lock via the async flavor. */
+export function hasLiveDiskHolder(lockPath) {
+  return _heldDiskLocks.has(lockPath);
+}
+
 function isPidAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
@@ -109,9 +120,11 @@ export async function withFileLockAsync(lockPath, fn, opts = {}) {
 
   try {
     await _acquireFileLock(lockPath, opts);
+    _heldDiskLocks.add(lockPath);
     try {
       return await fn();
     } finally {
+      _heldDiskLocks.delete(lockPath);
       try { await unlink(lockPath); } catch {}
     }
   } finally {

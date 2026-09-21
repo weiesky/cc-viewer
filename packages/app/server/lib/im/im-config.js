@@ -11,8 +11,9 @@
 // (`secret`: appSecret) are both base64-encoded on disk so preferences.json never
 // shows them in literal plaintext. This is light obfuscation, NOT encryption. The
 // admin API masks secret fields entirely (→ hasSecret).
-import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { mutateJsonSync } from '../json-store.js';
 import { LOG_DIR } from '../../../findcc.js';
 
 const MIN_CHUNK = 500;
@@ -130,16 +131,6 @@ function readPrefs() {
   }
 }
 
-function writePrefs(prefs) {
-  const p = getPrefsPath();
-  const dir = dirname(p);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
-  writeFileSync(p, JSON.stringify(prefs, null, 2), { mode: 0o600 });
-  // writeFileSync's mode only applies on creation; re-assert 0600 — the file now carries
-  // the (base64) secrets.
-  try { chmodSync(p, 0o600); } catch { /* best-effort; non-POSIX or race */ }
-}
-
 export function encodeSecret(plain) {
   return plain ? Buffer.from(plain, 'utf-8').toString('base64') : '';
 }
@@ -247,15 +238,18 @@ export function loadState(id) {
  */
 export function saveConfig(id, cfg) {
   const desc = DESCRIPTORS[id];
-  const prefs = readPrefs();
   const normalized = normalize(id, cfg);
-  for (const f of desc.fields) {
-    if (f.type === 'secret' && !normalized[f.key]) {
-      const existing = decodeSecret(prefs[desc.prefKey] && prefs[desc.prefKey][f.key]);
-      if (existing) normalized[f.key] = existing;
+  // Read-merge-write INSIDE the kernel's sync lock: the empty-secret preservation reads the
+  // current on-disk value under the same mutex that writes it, so a concurrent prefs/auth save
+  // can't be lost between our read and write (the pre-kernel direct write had no such guard).
+  mutateJsonSync(getPrefsPath(), (prefs) => {
+    for (const f of desc.fields) {
+      if (f.type === 'secret' && !normalized[f.key]) {
+        const existing = decodeSecret(prefs[desc.prefKey] && prefs[desc.prefKey][f.key]);
+        if (existing) normalized[f.key] = existing;
+      }
     }
-  }
-  prefs[desc.prefKey] = encodeForDisk(id, normalized);
-  writePrefs(prefs);
+    prefs[desc.prefKey] = encodeForDisk(id, normalized);
+  }, { mode: 0o600 });
   return normalized;
 }

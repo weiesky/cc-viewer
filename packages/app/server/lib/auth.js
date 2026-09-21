@@ -9,9 +9,9 @@
 // unit-tested directly (loopback HTTP tests always look local, so they cannot
 // exercise the remote branch — `decideAuth` covers it as a pure function).
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync, unlinkSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { renameSyncWithRetry } from './file-api.js';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { mutateJsonSync } from './json-store.js';
 import { LOG_DIR } from '../../findcc.js';
 import { tFor, localeFromAcceptLanguage } from '../i18n.js';
 
@@ -138,30 +138,6 @@ export function loadAuthState(projectDir = null) {
   };
 }
 
-function writePrefs(prefs) {
-  const p = getPrefsPath();
-  const dir = dirname(p);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
-  // Atomic tmp→rename so a crash mid-write can't truncate the password-bearing file
-  // (preferences.json also holds UI prefs + per-project forks). Mirrors prefs-store.js.
-  // TODO(prefs-lock): this path does NOT take the prefs-store lock (writePrefs is sync, its
-  // callers are sync) — auth writes are rare/admin-initiated, so the residual lost-update
-  // window vs a concurrent locked prefs write is accepted; atomicity rules out corruption.
-  // Dormant only while every mutatePrefs mutator stays synchronous (no await between its
-  // locked read and write); route auth writes through prefs-store.mutatePrefs if that changes.
-  const tmp = `${p}.tmp-${process.pid}-${randomBytes(4).toString('hex')}`;
-  try {
-    writeFileSync(tmp, JSON.stringify(prefs, null, 2), { mode: 0o600 });
-    renameSyncWithRetry(tmp, p);
-    // writeFileSync's mode only applies on creation; a pre-existing file keeps its old
-    // perms. Re-assert 0600 — preferences.json now carries the (base64) password.
-    try { chmodSync(p, 0o600); } catch { /* best-effort; non-POSIX or race */ }
-  } catch (err) {
-    try { unlinkSync(tmp); } catch {}
-    throw err;
-  }
-}
-
 /**
  * Persist auth config (read-merge-write, preserving all other prefs). `opts.scope`
  * 'global' → the `auth` key; 'project' → authByProject[opts.projectDir] (requires
@@ -170,26 +146,28 @@ function writePrefs(prefs) {
  */
 export function saveAuthConfig(cfg, opts = {}) {
   const normalized = normalizeAuth(cfg);
-  const prefs = readPrefs();
   const scope = opts.scope === 'project' && opts.projectDir ? 'project' : 'global';
-  if (scope === 'project') {
-    if (!prefs.authByProject || typeof prefs.authByProject !== 'object') prefs.authByProject = {};
-    prefs.authByProject[opts.projectDir] = encodeForDisk(normalized);
-  } else {
-    prefs.auth = encodeForDisk(normalized);
-  }
-  writePrefs(prefs);
+  // Read-merge-write INSIDE the kernel's sync lock so a concurrent prefs/IM save can't be
+  // lost between our read and write.
+  mutateJsonSync(getPrefsPath(), (prefs) => {
+    if (scope === 'project') {
+      if (!prefs.authByProject || typeof prefs.authByProject !== 'object') prefs.authByProject = {};
+      prefs.authByProject[opts.projectDir] = encodeForDisk(normalized);
+    } else {
+      prefs.auth = encodeForDisk(normalized);
+    }
+  }, { mode: 0o600 });
   return normalized;
 }
 
 /** Remove a project's override so it inherits the global default again. No-op if absent. */
 export function clearProjectOverride(projectDir) {
   if (!projectDir) return;
-  const prefs = readPrefs();
-  if (prefs.authByProject && Object.prototype.hasOwnProperty.call(prefs.authByProject, projectDir)) {
-    delete prefs.authByProject[projectDir];
-    writePrefs(prefs);
-  }
+  mutateJsonSync(getPrefsPath(), (prefs) => {
+    if (prefs.authByProject && Object.prototype.hasOwnProperty.call(prefs.authByProject, projectDir)) {
+      delete prefs.authByProject[projectDir];
+    }
+  }, { mode: 0o600 });
 }
 
 /**
