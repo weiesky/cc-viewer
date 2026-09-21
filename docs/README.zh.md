@@ -16,6 +16,10 @@
 
 [English](../README.md) | [繁體中文](./README.zh-TW.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md) | [Deutsch](./README.de.md) | [Español](./README.es.md) | [Français](./README.fr.md) | [Italiano](./README.it.md) | [Dansk](./README.da.md) | [Polski](./README.pl.md) | [Русский](./README.ru.md) | [العربية](./README.ar.md) | [Norsk](./README.no.md) | [Português (Brasil)](./README.pt-BR.md) | [ไทย](./README.th.md) | [Türkçe](./README.tr.md) | [Українська](./README.uk.md)
 
+## 配置收敛与云端同步（设计文档）
+
+本地配置如何映射到云数据库、以及云同步模型（云端为准、本地只读兜底），见 [配置收敛与云端同步建议](./config-cloud-sync.zh.md)（[English](./config-cloud-sync.md)）。此为设计方案，尚未实现。
+
 ## 使用方法
 
 ### 前提
