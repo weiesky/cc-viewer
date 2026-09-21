@@ -27,9 +27,13 @@ describe('--usePassword startup hook writes project scope', () => {
     const entry = prefs.authByProject['/tmp/usepw-proj'];
     assert.ok(entry, 'keyed by the project dir');
     assert.equal(entry.enabled, true);
-    // base64-obfuscated on disk, not raw plaintext
-    assert.equal(entry.password, Buffer.from('STARTPW42', 'utf-8').toString('base64'));
+    // password lives in the credential vault, NOT in preferences.json
+    assert.equal(entry.password, undefined, 'preferences.json must not carry the password');
     assert.equal(prefs.auth, undefined, 'must NOT write the global auth key');
+    const creds = JSON.parse(readFileSync(join(tmpDir, 'credentials.json'), 'utf-8'));
+    const stored = creds.creds['lan-password:proj:/tmp/usepw-proj'];
+    assert.ok(stored, 'override secret lives in the vault');
+    assert.notEqual(stored, 'STARTPW42', 'vault value is ciphertext, not plaintext');
   });
 
   it('clears the password env vars after consuming the hook (no leak to child env)', () => {

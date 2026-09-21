@@ -91,6 +91,10 @@ const SENSITIVE_CLAUDE_FILES = new Set([
   '.credentials.json',
   'settings.json',
   'settings.local.json',
+  // cc-viewer 凭证 vault(credentials.json 密文)与主密钥(master.key):即使 ~/.claude 在 allowlist,
+  // 也绝不跨网读(master.key 同时被下方 .key 文件名规则覆盖,这里双保险)。
+  'credentials.json',
+  'master.key',
 ]);
 
 // ─── allowlist roots 缓存 ──────────────────────────────────────────────────────

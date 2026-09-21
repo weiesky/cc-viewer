@@ -10,8 +10,9 @@
 // exercise the remote branch — `decideAuth` covers it as a pure function).
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { mutateJsonSync } from './json-store.js';
+import { readSecretOr, writeSecret, removeSecret } from './credential-access.js';
 import { LOG_DIR } from '../../findcc.js';
 import { tFor, localeFromAcceptLanguage } from '../i18n.js';
 
@@ -79,9 +80,14 @@ function normalizeAuth(cfg) {
 }
 
 // The password is kept in memory & over the admin API as plaintext (admin must be able
-// to view/copy it), but is base64-encoded on disk so preferences.json never shows the
-// raw password. This is light obfuscation, NOT real security — base64 is trivially
-// reversible; it only avoids the password sitting in literal plaintext in the file.
+// to view/copy it). On disk it lives in the encrypted credential vault (credentials.json)
+// as AES-256-GCM ciphertext — NOT in preferences.json. The legacy encoding was base64 inside
+// preferences.json (obfuscation only); those fields are migrated out at startup and cleared.
+//
+// CRITICAL fail-closed rule: a password that exists but cannot be decrypted (lost master.key,
+// tampered ciphertext) is "unreadable", NOT "empty". decideAuth treats an EMPTY password as
+// allow-all, so collapsing an unreadable secret to '' would open the LAN gate. We therefore
+// thread a `passwordUnreadable` flag through and deny on it before the empty-password branch.
 function encodePassword(plain) {
   return plain ? Buffer.from(plain, 'utf-8').toString('base64') : '';
 }
@@ -91,18 +97,29 @@ function decodePassword(stored) {
 }
 
 // ─── Scoped persistence (global default + optional per-project override) ───
-// preferences.json:
-//   auth:          { enabled, password(b64) }                  ← global default
-//   authByProject: { "<projectDir>": { enabled, password(b64) } }  ← optional overrides
+// preferences.json (after migration):
+//   auth:          { enabled }                  ← global default (password in vault)
+//   authByProject: { "<projectDir>": { enabled } }  ← optional overrides (password in vault)
+// Vault refs: 'lan-password:global' and 'lan-password:proj:<resolvedDir>'.
 // A project "has an override" iff a key exists for it (even if disabled). The gate
 // resolves: project override (if the key exists) else global. To inherit global again,
 // the override must be REMOVED (clearProjectOverride), not merely disabled.
 
-function decodeStored(a) {
-  return { enabled: !!(a && a.enabled), password: decodePassword(a && a.password) };
+function refFor(projectDir) {
+  return projectDir ? `proj:${resolve(projectDir)}` : 'global';
 }
-function encodeForDisk(normalized) {
-  return { enabled: normalized.enabled, password: encodePassword(normalized.password) };
+
+function decodeStored(a, projectDir = null) {
+  // No auth entry at all → the default "disabled, no password" shape; do NOT consult the vault
+  // (a stray vault entry must not resurrect a password for a scope the prefs say nothing about,
+  // e.g. after preferences.json was wiped/corrupt while credentials.json survived).
+  if (!a || typeof a !== 'object') return { enabled: false, password: '', passwordUnreadable: false };
+  const enabled = !!a.enabled;
+  // Legacy on-disk value (base64) is the read-fallback for the one-version transition window;
+  // the vault is authoritative when it holds the entry.
+  const legacyPlain = decodePassword(a.password);
+  const { value, unreadable } = readSecretOr('lan-password', refFor(projectDir), legacyPlain);
+  return { enabled, password: value, passwordUnreadable: unreadable };
 }
 
 /** Does this project have its own auth override? (key present, regardless of enabled) */
@@ -117,8 +134,9 @@ function hasOverride(prefs, projectDir) {
  */
 export function loadAuthConfig(projectDir = null) {
   const prefs = readPrefs();
-  const src = hasOverride(prefs, projectDir) ? prefs.authByProject[projectDir] : prefs.auth;
-  return decodeStored(src);
+  const overridden = hasOverride(prefs, projectDir);
+  const src = overridden ? prefs.authByProject[projectDir] : prefs.auth;
+  return decodeStored(src, overridden ? projectDir : null);
 }
 
 /**
@@ -130,8 +148,8 @@ export function loadAuthState(projectDir = null) {
   const prefs = readPrefs();
   const overridden = hasOverride(prefs, projectDir);
   return {
-    effective: decodeStored(overridden ? prefs.authByProject[projectDir] : prefs.auth),
-    global: decodeStored(prefs.auth),
+    effective: decodeStored(overridden ? prefs.authByProject[projectDir] : prefs.auth, overridden ? projectDir : null),
+    global: decodeStored(prefs.auth, null),
     scope: overridden ? 'project' : 'global',
     hasProjectOverride: overridden,
     projectDir: projectDir || null,
@@ -147,14 +165,22 @@ export function loadAuthState(projectDir = null) {
 export function saveAuthConfig(cfg, opts = {}) {
   const normalized = normalizeAuth(cfg);
   const scope = opts.scope === 'project' && opts.projectDir ? 'project' : 'global';
+  const projectDir = scope === 'project' ? opts.projectDir : null;
+  // Write the password to the vault FIRST. Only on success do we persist { enabled } (sans
+  // password) to preferences.json — otherwise the legacy field must be preserved so the secret
+  // is not lost. (writeSecret verifies the key is usable and reports+false on failure.)
+  const wrote = writeSecret('lan-password', refFor(projectDir), normalized.password);
   // Read-merge-write INSIDE the kernel's sync lock so a concurrent prefs/IM save can't be
   // lost between our read and write.
   mutateJsonSync(getPrefsPath(), (prefs) => {
+    // persisted shape: { enabled } plus the legacy base64 password ONLY when the vault write
+    // failed (preserves the secret for a later migration) — removed once vault-backed.
+    const legacyField = wrote ? {} : { password: encodePassword(normalized.password) };
     if (scope === 'project') {
       if (!prefs.authByProject || typeof prefs.authByProject !== 'object') prefs.authByProject = {};
-      prefs.authByProject[opts.projectDir] = encodeForDisk(normalized);
+      prefs.authByProject[opts.projectDir] = { enabled: normalized.enabled, ...legacyField };
     } else {
-      prefs.auth = encodeForDisk(normalized);
+      prefs.auth = { enabled: normalized.enabled, ...legacyField };
     }
   }, { mode: 0o600 });
   return normalized;
@@ -163,6 +189,7 @@ export function saveAuthConfig(cfg, opts = {}) {
 /** Remove a project's override so it inherits the global default again. No-op if absent. */
 export function clearProjectOverride(projectDir) {
   if (!projectDir) return;
+  removeSecret('lan-password', refFor(projectDir));
   mutateJsonSync(getPrefsPath(), (prefs) => {
     if (prefs.authByProject && Object.prototype.hasOwnProperty.call(prefs.authByProject, projectDir)) {
       delete prefs.authByProject[projectDir];
@@ -214,6 +241,7 @@ export function decideAuth(ctx) {
     isStaticAsset, pathname, isLocal,
     urlToken, cookieToken, accessToken,
     enabled, password, wantsHtml,
+    passwordUnreadable = false,
   } = ctx;
 
   // Admin = the credential-bearing / trusted-peer allow branches. Deliberately EXCLUDES the
@@ -223,6 +251,14 @@ export function decideAuth(ctx) {
     isLocal === true ||
     urlToken === accessToken ||
     cookieToken === accessToken;
+
+  // Fail-closed: a password that EXISTS but could not be decrypted (lost master.key / tampered
+  // ciphertext) must deny BEFORE the empty-password allow branch below — otherwise an unreadable
+  // secret collapses to '' and opens the LAN gate. Login page stays reachable so the admin can
+  // still authenticate via token (which does not depend on the vault).
+  if (passwordUnreadable && !isAdmin) {
+    return { action: wantsHtml ? 'login-page' : 'unauthorized', isAdmin };
+  }
 
   if (
     isStaticAsset ||

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(security): **本地凭证加密落盘到 AES-256-GCM vault** — 代理 profile 的 apiKey、LAN 密码(auth)、IM 各平台 secret 从 profile.json/preferences.json 迁出,密文存独立的 credentials.json(0600),主密钥 master.key(0600)留本地;新增 credential-vault/store/access/migrate 四个模块,启动期幂等迁移(写后读回校验,磁盘明文不一致时以磁盘为准),全程 fail-closed(apiKey 解不出的 profile 直接退出路由、LAN 密码不可读拒绝远程访问而非空密码放行);config-backup 连带备份 credentials.json+master.key 并保留历史明文备份作恢复路径;credentials.json/master.key 对 IM 会话与远程文件 API 双端拒读。低敏 IM cred 字段(appKey/appId/botId)仍 base64。升级零操作:首启自动迁移,迁移前备份保留;升级后请重启所有 ccv 进程。Coverage: `credential-vault.test.js`, `credential-store.test.js`, `credential-access.test.js`, `credential-migrate.test.js`.
+
 - refactor(config): **本地配置写收敛到统一 json-store 内核** — 新增 `server/lib/json-store.js`（readJsonSafe/writeJsonAtomic/mutateJson/mutateJsonSync/withJsonLock/applyJsonPatch/lockPathFor），锁名按数据文件派生修复撞锁；`preferences.json` 的多写者（im-config 原无锁无原子、auth 原无锁）收敛为锁内 read-merge-write，`profile.json` 四处写点统一原子写；prefs-store/workspace-registry/session-pin-store/ask-store 迁移到内核（对外签名不变）。Coverage: `json-store.test.js`.
 
 - feat(im): **IM 会话弹窗头部新增「停止」按钮 + 修复停止清空配置** — 「已连接 :端口」旁加停止入口，Popconfirm 确认后 POST /config {enabled:false, applyProcess:true} 停用（停进程并写盘，重启不再拉起）。服务端 /config 对「只动 enabled」的 body 改为 read-merge-write，修复停止误清空 appKey/白名单/region 的 P0；「停止」在启动轮询中禁用避免竞态。设置面板另加独立「保存」按钮（applyProcess:false 只存盘不驱动进程）。Coverage: `im-quit-button.test.js`, `im-save-button.test.js`, `im-status-i18n.test.js`, `api-im.test.js`.

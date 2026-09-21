@@ -353,13 +353,19 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
         'Bash(git push:*)', 'Bash(npm publish:*)', 'Bash(ssh:*)', 'Bash(scp:*)',
         `Read(${home}/.ssh/**)`, `Edit(${home}/.ssh/**)`, `Write(${home}/.ssh/**)`,
         `Read(${home}/.aws/**)`, `Edit(${home}/.aws/**)`, `Write(${home}/.aws/**)`,
-        // File-precise: protect the deny mechanism itself (settings/hooks) and the IM
-        // credential store (preferences.json), but do not block all of ~/.claude — the
-        // worker's working directory sits under ~/.claude/cc-viewer/IM_<id>/ and must stay
-        // writable.
+        // File-precise: protect the deny mechanism itself (settings/hooks), the IM
+        // credential store (preferences.json), and the credential vault (credentials.json +
+        // master.key), but do not block all of ~/.claude — the worker's working directory
+        // sits under ~/.claude/cc-viewer/IM_<id>/ and must stay writable.
         `Edit(${home}/.claude/settings.json)`, `Write(${home}/.claude/settings.json)`,
         `Edit(${home}/.claude/settings.local.json)`, `Write(${home}/.claude/settings.local.json)`,
         `Edit(${home}/.claude/cc-viewer/preferences.json)`, `Write(${home}/.claude/cc-viewer/preferences.json)`,
+        `Read(${home}/.claude/cc-viewer/credentials.json)`, `Edit(${home}/.claude/cc-viewer/credentials.json)`, `Write(${home}/.claude/cc-viewer/credentials.json)`,
+        `Read(${home}/.claude/cc-viewer/master.key)`, `Edit(${home}/.claude/cc-viewer/master.key)`, `Write(${home}/.claude/cc-viewer/master.key)`,
+        // Backup copies of the vault (cc-viewer-config-backups/<ts>/) hold the same decryption
+        // kit (credentials.json + master.key) — deny the whole subtree or an IM worker could read
+        // a rolled backup and decrypt every secret.
+        `Read(${home}/.claude/cc-viewer-config-backups/**)`, `Edit(${home}/.claude/cc-viewer-config-backups/**)`, `Write(${home}/.claude/cc-viewer-config-backups/**)`,
       ],
     };
   }

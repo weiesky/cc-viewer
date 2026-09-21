@@ -21,6 +21,7 @@ const {
   getPrefsPath,
   renderLoginPage,
 } = await import('../server/lib/auth.js');
+const { _resetCredentialAccess } = await import('../server/lib/credential-access.js');
 
 const TOKEN = 'a'.repeat(32);
 
@@ -167,83 +168,143 @@ describe('decideAuth', () => {
   });
 });
 
-describe('loadAuthConfig / saveAuthConfig (stored in preferences.json auth key)', () => {
+describe('loadAuthConfig / saveAuthConfig (password in the credential vault)', () => {
+  // The LAN password now lives in LOG_DIR/credentials.json (AES-256-GCM), NOT in
+  // preferences.json. preferences.json keeps only { enabled }. Reset wipes both stores.
+  const credFile = join(tmpDir, 'credentials.json');
+  const masterKey = join(tmpDir, 'master.key');
+  function wipeCred() {
+    try { rmSync(credFile, { force: true }); } catch {}
+    try { rmSync(masterKey, { force: true }); } catch {}
+    try { rmSync(getPrefsPath(), { force: true }); } catch {} // also drop any leftover/corrupt prefs
+    _resetCredentialAccess();
+  }
+
   it('defaults to disabled + empty when no file exists', () => {
     if (existsSync(getPrefsPath())) rmSync(getPrefsPath());
-    assert.deepEqual(loadAuthConfig(), { enabled: false, password: '' });
+    wipeCred();
+    assert.deepEqual(loadAuthConfig(), { enabled: false, password: '', passwordUnreadable: false });
   });
 
-  it('roundtrips through preferences.json (plaintext in memory, base64 on disk)', () => {
+  it('roundtrips (plaintext in memory, AES-256-GCM ciphertext in credentials.json, none in preferences.json)', () => {
+    wipeCred();
     saveAuthConfig({ enabled: true, password: 'ABC123XY' });
     // load returns plaintext (admin-facing)
-    assert.deepEqual(loadAuthConfig(), { enabled: true, password: 'ABC123XY' });
-    // on disk it's under the `auth` key, base64-encoded — NOT raw plaintext
+    assert.deepEqual(loadAuthConfig(), { enabled: true, password: 'ABC123XY', passwordUnreadable: false });
+    // preferences.json carries NO password field at all
     const onDisk = JSON.parse(readFileSync(getPrefsPath(), 'utf-8'));
     assert.equal(onDisk.auth.enabled, true);
-    assert.notEqual(onDisk.auth.password, 'ABC123XY', 'must not store raw plaintext');
-    assert.equal(onDisk.auth.password, Buffer.from('ABC123XY', 'utf-8').toString('base64'));
+    assert.equal(onDisk.auth.password, undefined, 'preferences.json must not carry the password');
+    // the secret is in credentials.json as ciphertext (not plaintext, not base64-of-plaintext)
+    const creds = JSON.parse(readFileSync(credFile, 'utf-8'));
+    const stored = creds.creds['lan-password:global'];
+    assert.ok(stored, 'vault should hold lan-password:global');
+    assert.notEqual(stored, 'ABC123XY');
+    assert.notEqual(stored, Buffer.from('ABC123XY', 'utf-8').toString('base64'));
+    assert.ok(!readFileSync(credFile, 'utf-8').includes('ABC123XY'), 'no plaintext anywhere');
   });
 
   it('preserves unrelated preferences (read-merge-write, both directions)', () => {
-    // Seed a preferences.json with non-auth keys, then save auth and confirm they survive.
+    wipeCred();
     writeFileSync(getPrefsPath(), JSON.stringify({ themeColor: 'light', logDir: '/x' }, null, 2));
     saveAuthConfig({ enabled: true, password: 'KEEP1234' });
     const onDisk = JSON.parse(readFileSync(getPrefsPath(), 'utf-8'));
     assert.equal(onDisk.themeColor, 'light');
     assert.equal(onDisk.logDir, '/x');
-    assert.equal(onDisk.auth.password, Buffer.from('KEEP1234', 'utf-8').toString('base64'));
-    assert.deepEqual(loadAuthConfig(), { enabled: true, password: 'KEEP1234' });
+    assert.equal(onDisk.auth.password, undefined);
+    assert.deepEqual(loadAuthConfig(), { enabled: true, password: 'KEEP1234', passwordUnreadable: false });
   });
 
   it('normalizes non-boolean/non-string fields', () => {
+    wipeCred();
     const saved = saveAuthConfig({ enabled: 1, password: null });
     assert.deepEqual(saved, { enabled: true, password: '' });
-    assert.deepEqual(loadAuthConfig(), { enabled: true, password: '' });
+    assert.deepEqual(loadAuthConfig(), { enabled: true, password: '', passwordUnreadable: false });
   });
 
   it('returns defaults on a corrupt file', () => {
+    wipeCred();
     saveAuthConfig({ enabled: true, password: 'x' });
     writeFileSync(getPrefsPath(), 'not json{{');
-    assert.deepEqual(loadAuthConfig(), { enabled: false, password: '' });
+    assert.deepEqual(loadAuthConfig(), { enabled: false, password: '', passwordUnreadable: false });
   });
 
   it('writes preferences.json with 0600 permissions (POSIX)', { skip: platform() === 'win32' }, () => {
+    wipeCred();
     saveAuthConfig({ enabled: true, password: 'PERMTEST' });
     const mode = statSync(getPrefsPath()).mode & 0o777;
     assert.equal(mode, 0o600);
+  });
+
+  it('master.key is created at 0600 and the vault refuses to silently re-mint when key is lost (unreadable)', { skip: platform() === 'win32' }, () => {
+    wipeCred();
+    saveAuthConfig({ enabled: true, password: 'KEYTEST' });
+    assert.equal(statSync(masterKey).mode & 0o777, 0o600);
+    // simulate master.key loss: password becomes UNREADABLE (not empty), and no new key is minted
+    rmSync(masterKey, { force: true });
+    _resetCredentialAccess(); // drop the cached key so the loss is actually observed
+    const cfg = loadAuthConfig();
+    assert.equal(cfg.passwordUnreadable, true, 'lost key → unreadable, never empty (fail-closed)');
+    assert.equal(existsSync(masterKey), false, 'must not silently mint a new key over existing ciphertext');
+    // decideAuth denies a remote unauthenticated request instead of opening the gate
+    const d = decideAuth(ctx({ enabled: cfg.enabled, password: cfg.password, passwordUnreadable: cfg.passwordUnreadable }));
+    assert.notEqual(d.action, 'allow', 'unreadable password must not fall through to allow-all');
+  });
+
+  it('FAIL-CLOSED on a corrupt credentials.json: password reads unreadable and the gate denies remote access', { skip: platform() === 'win32' }, () => {
+    wipeCred();
+    saveAuthConfig({ enabled: true, password: 'REALPW99' });
+    // corrupt the vault file itself (not the key)
+    writeFileSync(credFile, '{ not json{{', 'utf-8');
+    _resetCredentialAccess();
+    const cfg = loadAuthConfig();
+    assert.equal(cfg.enabled, true);
+    assert.equal(cfg.passwordUnreadable, true, 'corrupt vault → unreadable, never empty (would be allow-all)');
+    // remote unauthenticated request must be denied, not allowed
+    const d = decideAuth(ctx({ enabled: cfg.enabled, password: cfg.password, passwordUnreadable: cfg.passwordUnreadable, isLocal: false, urlToken: null, cookieToken: null }));
+    assert.notEqual(d.action, 'allow', 'a corrupt vault must not open the LAN gate');
   });
 });
 
 describe('scoped auth: global default + per-project override', () => {
   const PROJ = '/tmp/projA';
   const OTHER = '/tmp/projB';
-  function reset() { if (existsSync(getPrefsPath())) rmSync(getPrefsPath()); }
+  const credFile = join(tmpDir, 'credentials.json');
+  const masterKey = join(tmpDir, 'master.key');
+  function reset() {
+    if (existsSync(getPrefsPath())) rmSync(getPrefsPath());
+    try { rmSync(credFile, { force: true }); } catch {}
+    try { rmSync(masterKey, { force: true }); } catch {}
+    _resetCredentialAccess();
+  }
 
   it('with no override, a project resolves to the global default', () => {
     reset();
     saveAuthConfig({ enabled: true, password: 'GLOBALPW' }, { scope: 'global' });
-    assert.deepEqual(loadAuthConfig(PROJ), { enabled: true, password: 'GLOBALPW' });
-    assert.deepEqual(loadAuthConfig(null), { enabled: true, password: 'GLOBALPW' });
+    assert.deepEqual(loadAuthConfig(PROJ), { enabled: true, password: 'GLOBALPW', passwordUnreadable: false });
+    assert.deepEqual(loadAuthConfig(null), { enabled: true, password: 'GLOBALPW', passwordUnreadable: false });
     const st = loadAuthState(PROJ);
     assert.equal(st.scope, 'global');
     assert.equal(st.hasProjectOverride, false);
-    assert.deepEqual(st.effective, { enabled: true, password: 'GLOBALPW' });
+    assert.deepEqual(st.effective, { enabled: true, password: 'GLOBALPW', passwordUnreadable: false });
   });
 
   it('a project override wins over global (only for that project)', () => {
     reset();
     saveAuthConfig({ enabled: true, password: 'GLOBALPW' }, { scope: 'global' });
     saveAuthConfig({ enabled: true, password: 'PROJPW' }, { scope: 'project', projectDir: PROJ });
-    assert.deepEqual(loadAuthConfig(PROJ), { enabled: true, password: 'PROJPW' }); // override
-    assert.deepEqual(loadAuthConfig(OTHER), { enabled: true, password: 'GLOBALPW' }); // still global
+    assert.deepEqual(loadAuthConfig(PROJ), { enabled: true, password: 'PROJPW', passwordUnreadable: false }); // override
+    assert.deepEqual(loadAuthConfig(OTHER), { enabled: true, password: 'GLOBALPW', passwordUnreadable: false }); // still global
     const st = loadAuthState(PROJ);
     assert.equal(st.scope, 'project');
     assert.equal(st.hasProjectOverride, true);
-    assert.deepEqual(st.effective, { enabled: true, password: 'PROJPW' });
-    assert.deepEqual(st.global, { enabled: true, password: 'GLOBALPW' });
-    // on disk: override is base64 under authByProject[PROJ], not raw
+    assert.deepEqual(st.effective, { enabled: true, password: 'PROJPW', passwordUnreadable: false });
+    assert.deepEqual(st.global, { enabled: true, password: 'GLOBALPW', passwordUnreadable: false });
+    // on disk: authByProject[PROJ] carries NO password; the override secret is in the vault
     const onDisk = JSON.parse(readFileSync(getPrefsPath(), 'utf-8'));
-    assert.equal(onDisk.authByProject[PROJ].password, Buffer.from('PROJPW', 'utf-8').toString('base64'));
+    assert.equal(onDisk.authByProject[PROJ].password, undefined);
+    const creds = JSON.parse(readFileSync(credFile, 'utf-8'));
+    assert.ok(creds.creds[`lan-password:proj:${PROJ}`], 'override secret lives in the vault');
   });
 
   it('a DISABLED override still wins (does not fall back to global)', () => {
@@ -251,7 +312,7 @@ describe('scoped auth: global default + per-project override', () => {
     saveAuthConfig({ enabled: true, password: 'GLOBALPW' }, { scope: 'global' });
     saveAuthConfig({ enabled: false, password: '' }, { scope: 'project', projectDir: PROJ });
     // override exists (even disabled) → project has no protection, NOT global's
-    assert.deepEqual(loadAuthConfig(PROJ), { enabled: false, password: '' });
+    assert.deepEqual(loadAuthConfig(PROJ), { enabled: false, password: '', passwordUnreadable: false });
     assert.equal(loadAuthState(PROJ).hasProjectOverride, true);
   });
 
@@ -261,7 +322,7 @@ describe('scoped auth: global default + per-project override', () => {
     saveAuthConfig({ enabled: true, password: 'PROJPW' }, { scope: 'project', projectDir: PROJ });
     clearProjectOverride(PROJ);
     assert.equal(loadAuthState(PROJ).hasProjectOverride, false);
-    assert.deepEqual(loadAuthConfig(PROJ), { enabled: true, password: 'GLOBALPW' });
+    assert.deepEqual(loadAuthConfig(PROJ), { enabled: true, password: 'GLOBALPW', passwordUnreadable: false });
   });
 
   it('project scope without projectDir falls back to writing global', () => {

@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { LOG_DIR, setLogDir, getClaudeConfigDir, discoverClaudeExecutables, resolveExplicitClaudePath, CLAUDE_EXECUTABLE_PREF_KEY } from '../../findcc.js';
-import { PROFILE_PATH, _defaultConfig, getActiveProfileId, getStoredRoles, isOfficialDefaultEndpoint, setActiveProfileForWorkspace, _loadProxyProfile, RETRY_CONFIG_PATH, _retryConfigState, _loadRetryConfigState } from '../interceptor.js';
+import { PROFILE_PATH, _defaultConfig, getActiveProfileId, getStoredRoles, isOfficialDefaultEndpoint, setActiveProfileForWorkspace, _loadProxyProfile, hydrateProfilesWithApiKeys, RETRY_CONFIG_PATH, _retryConfigState, _loadRetryConfigState } from '../interceptor.js';
 import { migrateProxyProfileList, isValidRoleValue, PROXY_ROLE_KEYS } from '../lib/interceptor-core.js';
 import { DEFAULT_RETRY_CONFIG, validateRetryConfig, resolveRetryConfig } from '../lib/proxy/proxy-retry.js';
 import { discoverCcSwitchProviders, mergeImportedProfiles } from '../lib/ccswitch-import.js';
@@ -16,6 +16,7 @@ import { sendEventToClients } from '../lib/log-watcher.js';
 import { listPlatforms } from '../lib/im/im-config.js';
 import { mutatePrefs, applyPrefsPatch, readPrefsRaw } from '../lib/prefs-store.js';
 import { writeJsonAtomic } from '../lib/json-store.js';
+import { persistProfilesApiKeys } from '../lib/credential-access.js';
 import { isAdminReq } from '../lib/is-admin.js';
 import {
   getCurrentProjectKey, getCurrentProjectName, hasFork, listForks, resolveScoped,
@@ -313,10 +314,18 @@ function proxyProfilesGet(req, res, parsedUrl, isLocal, deps) {
       if (changed) {
         data = { ...data, profiles: migrated };
         try {
-          writeJsonAtomic(PROFILE_PATH, data, { mode: 0o600 });
+          // 回写迁移结果时一并把 apiKey 收进 vault（避免把旧明文再次写回磁盘）。
+          const stripped = persistProfilesApiKeys(migrated, null, { isMaskedFn: () => false });
+          writeJsonAtomic(PROFILE_PATH, { ...data, profiles: stripped }, { mode: 0o600 });
           _loadProxyProfile();
         } catch { /* 迁移落盘失败不阻塞 GET；下次仍会尝试 */ }
       }
+    }
+    // profile.json no longer carries apiKeys (they live in the credential vault) — decrypt-backfill
+    // them onto the list for serving. The local admin gets plaintext to view/copy; a remote caller
+    // is masked by deps.maskProfiles below (same as before).
+    if (Array.isArray(data.profiles)) {
+      data = { ...data, profiles: hydrateProfilesWithApiKeys(data.profiles) };
     }
     // 用 interceptor.getActiveProfileId() 返回 effective active（workspace > profile.json.active > 'max'）
     const effectiveActive = getActiveProfileId();
@@ -353,19 +362,15 @@ function proxyProfilesPost(req, res, parsedUrl, isLocal, deps) {
       if (!incoming.profiles.some(p => p.id === 'max')) {
         incoming.profiles = [{ id: 'max', name: 'Default' }, ...(incoming.profiles || [])];
       }
-      // 如果 apiKey 是 mask 值（未修改），从磁盘读取原始值保留
-      let existing = {};
-      try { if (existsSync(PROFILE_PATH)) existing = JSON.parse(readFileSync(PROFILE_PATH, 'utf-8')); } catch { }
-      const existingMap = {};
-      if (existing.profiles) existing.profiles.forEach(p => { if (p.apiKey) existingMap[p.id] = p.apiKey; });
-      for (const p of incoming.profiles) {
-        if (p.apiKey && deps.isMasked(p.apiKey) && existingMap[p.id]) {
-          p.apiKey = existingMap[p.id];
-        }
-      }
       // 只写 profiles 列表到 profile.json；active 不再入文件（避免跨进程串台）
       // 保留老数据里的 active 字段不变，以便老版本 ccv 或手动编辑者的回退能力
-      const toWrite = { ...existing, profiles: incoming.profiles };
+      let existing = {};
+      try { if (existsSync(PROFILE_PATH)) existing = JSON.parse(readFileSync(PROFILE_PATH, 'utf-8')); } catch { }
+      // apiKey 抽出到凭证 vault（密文存 credentials.json），profile.json 不再携带 key。
+      // masked 回显 → 保留该 profile 的既有 vault 条目（不动、不回写 sentinel）；
+      // 新明文 → 写 vault；空 → 删该条目；被移除的 profile（全量替换端点）→ 删其 vault 条目。
+      const strippedProfiles = persistProfilesApiKeys(incoming.profiles, existing.profiles, { isMaskedFn: deps.isMasked });
+      const toWrite = { ...existing, profiles: strippedProfiles };
       writeJsonAtomic(PROFILE_PATH, toWrite, { mode: 0o600 });
       // 角色分配校验：只认 subagent/teammate 两个 key（roles.main 之类的杂键直接丢弃）；
       // 值必须是 follow / max / 入参 profiles 里存在的 id（按将落盘的列表校验，而非旧文件），
@@ -541,7 +546,10 @@ async function ccswitchImportPost(req, res, _parsedUrl, isLocal, deps) {
       }
       // merge
       const merged = mergeImportedProfiles(existing.profiles || [], result.profiles);
-      const toWrite = { ...existing, profiles: merged.profiles };
+      // apiKey 抽出到凭证 vault；merge 语义不删除任何既有 vault 条目（不传 existingProfiles）。
+      // cc-switch 导入的是新明文 key（非 masked 回显），isMaskedFn 恒 false 即可。
+      const strippedMerged = persistProfilesApiKeys(merged.profiles, null, { isMaskedFn: () => false });
+      const toWrite = { ...existing, profiles: strippedMerged };
       // 落盘（原子写，经由 json-store 内核）
       writeJsonAtomic(PROFILE_PATH, toWrite, { mode: 0o600 });
       // active 处理：setActive=true 且 cc-switch 有 current → 切换；否则保持现状

@@ -427,19 +427,23 @@ describe('POST /api/proxy-profiles', () => {
   });
 
   it('preserves the on-disk apiKey when the incoming value is masked (unchanged)', async () => {
-    // 先写一个含明文 key 的 profile.json
+    // 先写一个含明文 key 的 profile.json（旧格式）
     writeFileSync(profilePath, JSON.stringify({
       profiles: [{ id: 'max', name: 'Default' }, { id: 'c', name: 'C', apiKey: 'sk-real-secret-9999' }],
     }));
     const deps = ppDeps();
-    // 回传 masked key（未修改）→ 应从磁盘恢复原值
+    // 回传 masked key（未修改）→ 保留真 key：迁入 vault，profile.json 不再携带
     const res = await callPost(proxyProfilesPost, {
       profiles: [{ id: 'max', name: 'Default' }, { id: 'c', name: 'C', apiKey: maskApiKey('sk-real-secret-9999') }],
     }, deps);
     assert.equal(res.statusCode, 200);
     const onDisk = JSON.parse(readFileSync(profilePath, 'utf-8'));
     const c = onDisk.profiles.find((p) => p.id === 'c');
-    assert.equal(c.apiKey, 'sk-real-secret-9999', 'masked echo restored to real key on disk');
+    assert.equal(c.apiKey, '', 'masked echo must not write the sentinel or plaintext to profile.json');
+    // the real key is preserved in the vault and decrypts back
+    const { getSecret } = await import('../server/lib/credential-store.js');
+    const { getCredentialsFile, getMasterKeyPath } = await import('../server/lib/credential-access.js');
+    assert.equal(getSecret(getCredentialsFile(), getMasterKeyPath(), 'profile-apiKey', 'c'), 'sk-real-secret-9999', 'masked echo must preserve the real key in the vault');
   });
 });
 

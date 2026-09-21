@@ -9,8 +9,17 @@ const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-discord-cfg-test-'));
 process.env.CCV_LOG_DIR = tmpDir;
 
 const { getDescriptor, normalize, loadConfig, loadState, saveConfig, getPrefsPath } = await import('../server/lib/im/im-config.js');
+const { _resetCredentialAccess } = await import('../server/lib/credential-access.js');
 
-function reset() { if (existsSync(getPrefsPath())) rmSync(getPrefsPath()); }
+// botToken now lives in the credential vault (cleared from preferences.json).
+const credFile = join(tmpDir, 'credentials.json');
+const masterKey = join(tmpDir, 'master.key');
+function reset() {
+  if (existsSync(getPrefsPath())) rmSync(getPrefsPath());
+  try { rmSync(credFile, { force: true }); } catch {}
+  try { rmSync(masterKey, { force: true }); } catch {}
+  _resetCredentialAccess();
+}
 
 describe('discord descriptor + normalize', () => {
   it('exposes the discord defaults (maxChunkChars 1900) and allowList field', () => {
@@ -35,13 +44,16 @@ describe('discord save / load roundtrip', () => {
     assert.deepEqual(loadConfig('discord'), getDescriptor('discord').defaults);
   });
 
-  it('roundtrips (plaintext in memory, base64 secret on disk)', () => {
+  it('roundtrips (plaintext in memory; botToken in the vault, cleared on disk)', () => {
     reset();
     saveConfig('discord', { enabled: true, botToken: 'topsecrettoken', allowUserIds: ['111'] });
     assert.deepEqual(loadConfig('discord'), { enabled: true, botToken: 'topsecrettoken', allowUserIds: ['111'], maxChunkChars: 1900, blockOnSkipPermissions: false, ackCard: true });
     const onDisk = JSON.parse(readFileSync(getPrefsPath(), 'utf-8'));
-    assert.equal(onDisk.discord.botToken, Buffer.from('topsecrettoken', 'utf-8').toString('base64'));
-    assert.notEqual(onDisk.discord.botToken, 'topsecrettoken');
+    assert.equal(onDisk.discord.botToken, '', 'secret field cleared on disk (vault-backed)');
+    const creds = JSON.parse(readFileSync(credFile, 'utf-8'));
+    const stored = creds.creds['im-secret:discord.botToken'];
+    assert.ok(stored, 'secret lives in the vault');
+    assert.notEqual(stored, 'topsecrettoken');
   });
 
   it('preserves the stored token when saved with an empty botToken', () => {

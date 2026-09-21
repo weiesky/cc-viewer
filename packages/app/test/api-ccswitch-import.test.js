@@ -147,7 +147,16 @@ describe('ccswitch routes with a fixture db', { skip: !hasSqlite, concurrency: f
     assert.equal(written.profiles[0].id, 'max', 'max must be seeded first even when profile.json never existed');
     const ccs = written.profiles.find((p) => p.id === 'ccs_row-1');
     assert.ok(ccs, 'imported provider must be persisted');
-    assert.equal(ccs.apiKey, FAKE_KEY);
+    // apiKey is stripped from profile.json and stored as ciphertext in the credential vault.
+    assert.equal(ccs.apiKey, '', 'profile.json must not carry the apiKey (vault-backed)');
+    const creds = JSON.parse(readFileSync(join(tmpDir, 'credentials.json'), 'utf-8'));
+    const storedKey = creds.creds['profile-apiKey:ccs_row-1'];
+    assert.ok(storedKey, 'apiKey must live in the credential vault');
+    assert.notEqual(storedKey, FAKE_KEY, 'vault value is ciphertext, not plaintext');
+    assert.ok(!readFileSync(join(tmpDir, 'credentials.json'), 'utf-8').includes(FAKE_KEY), 'no plaintext anywhere');
+    // and it decrypts back to the real key for injection
+    const { getSecret } = await import('../server/lib/credential-store.js');
+    assert.equal(getSecret(join(tmpDir, 'credentials.json'), join(tmpDir, 'master.key'), 'profile-apiKey', 'ccs_row-1'), FAKE_KEY);
     if (process.platform !== 'win32') {
       assert.equal(statSync(PROFILE_PATH).mode & 0o777, 0o600, 'profile.json must be created 0o600');
     }
