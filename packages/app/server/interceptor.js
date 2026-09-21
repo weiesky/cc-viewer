@@ -199,6 +199,14 @@ function _resolveProfileApiKey(profile) {
   const legacyPlain = typeof profile.apiKey === 'string' ? profile.apiKey : '';
   const { value, unreadable } = readSecretOr('profile-apiKey', profile.id, legacyPlain);
   if (unreadable) return { apiKey: '', unusable: true };
+  // FAIL-CLOSED: a profile that rewrites the URL to a third-party baseURL but resolves to NO key
+  // (no vault entry, no legacy plaintext) must also be excluded from routing. The URL rewrite runs
+  // unconditionally while the auth rewrite is guarded by `if (_effProfile.apiKey && ...)` — with an
+  // empty key the request would reach the third-party host carrying the user's own Anthropic
+  // credential (the exact outcome the unreadable branch above exists to prevent).
+  if (typeof profile.baseURL === 'string' && profile.baseURL && !value) {
+    return { apiKey: '', unusable: true };
+  }
   return { apiKey: value, unusable: false };
 }
 
@@ -282,7 +290,7 @@ function setActiveProfileForWorkspace(activeId, roles) {
           : { profiles: [{ id: 'max', name: 'Default' }] };
         if (base.active !== normalizedId) base.active = normalizedId;
         return base;
-      }, { mode: 0o600, fallback: { profiles: [{ id: 'max', name: 'Default' }], strictCorrupt: true } });
+      }, { mode: 0o600, strictCorrupt: true, fallback: { profiles: [{ id: 'max', name: 'Default' }] } });
       // strictCorrupt: profile.json corrupt 时抛错(下方 catch 兜住、跳过本次写),绝不用 fallback
       // 的 {max}-only 覆盖掉磁盘上虽损坏但可能仍可人工恢复的全部 profile。
       result.profile = true;

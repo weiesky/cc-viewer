@@ -88,6 +88,21 @@ describe('im-deny: file tools', () => {
     }
   });
 
+  it('denies the vault even after LOG_DIR is moved (裸文件名兜底,不限 ~/.claude/cc-viewer)', () => {
+    // LOG_DIR 可被 --log-dir / POST /api/preferences {logDir} 搬走;硬编码 ~/.claude/cc-viewer 会失守。
+    // credentials.json/master.key 按裸文件名拒,无论落在哪个根。
+    const moved = [
+      join(HOME, 'custom-logdir/credentials.json'),
+      join(HOME, 'custom-logdir/master.key'),
+      '/opt/ccv/data/credentials.json',
+      '/opt/ccv/data/master.key',
+    ];
+    for (const fp of moved) {
+      assert.equal(evaluateImDeny('Read', { file_path: fp }, opts).deny, true, `Read should deny (moved root): ${fp}`);
+      assert.equal(evaluateImDeny('Write', { file_path: fp }, opts).deny, true, `Write should deny (moved root): ${fp}`);
+    }
+  });
+
   it('denies Bash access to credentials.json/master.key via backup dir, glob, or relative path', () => {
     for (const cmd of [
       'cat ~/.claude/cc-viewer-config-backups/20260920_180211/master.key',

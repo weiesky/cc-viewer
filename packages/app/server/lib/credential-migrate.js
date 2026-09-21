@@ -12,20 +12,21 @@
 //
 // Boundary: L1-lib. Imports json-store + credential-access + findcc (load-time root).
 import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { reportSwallowed } from '@ccv/core/error-report';
 import { LOG_DIR } from '../../findcc.js';
 import { mutateJsonSync } from './json-store.js';
 import { migrateFieldWithVerify, getCredentialsFile } from './credential-access.js';
+import { refFor as authRefFor } from './auth.js';
+import { secretRef as imSecretRef } from './im/im-config.js';
 
 // Load-time roots, aligned with credential-access / PROFILE_PATH (not live-bound).
 const PREFS_FILE = join(LOG_DIR, 'preferences.json');
 const PROFILE_FILE = join(LOG_DIR, 'profile.json');
 
-// Ref builders — must EXACTLY match the runtime readers (auth.js refFor / im-config secretRef /
-// interceptor profile-apiKey ref) or the migrated entries won't be found at read time.
-function _authRef(projectDir) { return projectDir ? `proj:${resolve(projectDir)}` : 'global'; }
-function _imRef(platform, fieldKey) { return `${platform}.${fieldKey}`; }
+// Ref builders are imported from the OWNING runtime modules (auth.js refFor / im-config secretRef)
+// so the migrated entries are keyed EXACTLY as the runtime readers expect — a hand-copied format
+// here would silently orphan every migrated secret on a one-char divergence.
 
 function _b64Decode(stored) {
   if (!stored || typeof stored !== 'string') return '';
@@ -54,7 +55,7 @@ function migrateAuthPasswords() {
     // global
     if (prefs.auth && typeof prefs.auth === 'object' && prefs.auth.password) {
       const plain = _b64Decode(prefs.auth.password);
-      const r = migrateFieldWithVerify('lan-password', _authRef(null), plain);
+      const r = migrateFieldWithVerify('lan-password', authRefFor(null), plain);
       if (r.migrated && r.verified) { delete prefs.auth.password; result.migrated++; }
       else result.failed++;
     }
@@ -63,7 +64,7 @@ function migrateAuthPasswords() {
       for (const [dir, entry] of Object.entries(prefs.authByProject)) {
         if (!entry || typeof entry !== 'object' || !entry.password) { result.skipped++; continue; }
         const plain = _b64Decode(entry.password);
-        const r = migrateFieldWithVerify('lan-password', _authRef(dir), plain);
+        const r = migrateFieldWithVerify('lan-password', authRefFor(dir), plain);
         if (r.migrated && r.verified) { delete entry.password; result.migrated++; }
         else result.failed++;
       }
@@ -87,7 +88,7 @@ function migrateImSecrets() {
         const stored = cfg[fieldKey];
         if (!stored) { result.skipped++; continue; }
         const plain = _b64Decode(stored);
-        const r = migrateFieldWithVerify('im-secret', _imRef(platform, fieldKey), plain);
+        const r = migrateFieldWithVerify('im-secret', imSecretRef(platform, fieldKey), plain);
         if (r.migrated && r.verified) { cfg[fieldKey] = ''; result.migrated++; }
         else result.failed++;
       }

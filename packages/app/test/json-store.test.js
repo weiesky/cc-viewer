@@ -129,6 +129,30 @@ describe('json-store kernel', () => {
     assert.equal(JSON.parse(readFileSync(f, 'utf-8')).n, 2);
   });
 
+  it('mutateJsonSync THROWS on reentrant entry into an async-held lock (fail-closed, no silent lost write)', async () => {
+    const f = freshFile();
+    writeJsonAtomic(f, { n: 0 });
+    // An async mutator that yields the thread while holding the disk lock. A sync caller that
+    // re-enters from inside that critical section would alias the SAME in-memory object the async
+    // holder writes back, so its update is silently lost — the pre-fix failure. It must instead
+    // throw (fail-closed) so the write is loudly skipped, never half-committed.
+    let reentrantErr = null;
+    await mutateJson(f, async (d) => {
+      await new Promise((r) => setTimeout(r, 20)); // yield mid-critical-section
+      try {
+        mutateJsonSync(f, (syncD) => { syncD.syncWrote = 1; });
+      } catch (err) {
+        reentrantErr = err;
+      }
+      d.n = 1; // async holder's own write, committed after the (thrown) sync attempt
+    });
+    assert.ok(reentrantErr, 'reentrant sync write must throw, not silently lose its update');
+    assert.equal(reentrantErr.code, 'JSON_STORE_REENTRANT');
+    const final = JSON.parse(readFileSync(f, 'utf-8'));
+    assert.equal(final.n, 1, 'async holder update committed');
+    assert.equal(final.syncWrote, undefined, 'reentrant sync write was skipped, not half-committed');
+  });
+
   it('mutateJsonSync degrades to an unlocked write (no crash) when the lock is held by a foreign live process', () => {
     const f = freshFile();
     writeJsonAtomic(f, { n: 0 });

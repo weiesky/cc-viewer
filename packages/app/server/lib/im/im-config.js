@@ -144,7 +144,10 @@ export function decodeSecret(stored) {
   try { return Buffer.from(stored, 'base64').toString('utf-8'); } catch { return ''; }
 }
 
-function secretRef(id, fieldKey) { return `${id}.${fieldKey}`; }
+// Vault ref for an IM platform secret field. Exported so the one-time migration
+// (credential-migrate.js) derives refs from the SAME source as the runtime readers — a divergence
+// would silently orphan every migrated secret.
+export function secretRef(id, fieldKey) { return `${id}.${fieldKey}`; }
 
 function clampChunk(n, dflt = DEFAULT_CHUNK) {
   const v = Number(n);

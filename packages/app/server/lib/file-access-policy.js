@@ -15,6 +15,7 @@ import { resolve, basename, sep, join } from 'node:path';
 import { homedir, platform, tmpdir } from 'node:os';
 import { getClaudeConfigDir, onLogDirChange } from '../../findcc.js';
 import { loadWorkspaces } from '../workspace-registry.js';
+import { getBackupRoot } from './config-backup.js';
 
 const osPlatform = platform();
 const isWin = osPlatform === 'win32';
@@ -208,6 +209,16 @@ export function isReadAllowed(absPath) {
       return { ok: false, reason: 'sensitive-claude-config' };
     }
   }
+
+  // 2b) cc-viewer 配置备份目录整树拒读 —— 每份滚动备份含 credentials.json 密文 + master.key,
+  // 二者同地即构成完整解密套件;目录默认在 ~/.claude/cc-viewer-config-backups/(与 LOG_DIR 同级的
+  // 兄弟目录),但只要落在 allowlist 内就必须拒,与 LOG_DIR 是否被搬走无关。
+  try {
+    const backupReal = realpathSync(getBackupRoot());
+    if (isInsideRoot(real, backupReal)) {
+      return { ok: false, reason: 'sensitive-config-backup' };
+    }
+  } catch { /* 备份根不存在/不可 realpath → 无额外拒读 */ }
 
   // 3) 项目内文件豁免 sensitive 文件名(允许 fixtures/test-cert.pem 等合法 fixture)
   const projectRoot = getProjectRoot();

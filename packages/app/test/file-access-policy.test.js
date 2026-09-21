@@ -162,6 +162,22 @@ describe('file-access-policy: ~/.claude/ 子拦', () => {
   });
 });
 
+describe('file-access-policy: 配置备份目录整树拒读', () => {
+  it('cc-viewer-config-backups/<ts>/ 下的文件一律拒读(含 master.key 解密套件)', async () => {
+    const { getBackupRoot } = await import('../server/lib/config-backup.js');
+    const root = getBackupRoot();
+    const f = join(root, '20260101_000000', 'preferences.json');
+    mkdirSync(join(root, '20260101_000000'), { recursive: true });
+    writeFileSync(f, '{}');
+    _resetCacheForTests();
+    const r = isReadAllowed(f);
+    assert.equal(r.ok, false, 'backup dir holds credentials.json + master.key — the full decryption kit');
+    // 落在 allowlist 内 → sensitive-config-backup;不在(如测试 LOG_DIR 在 tmp 的兄弟目录)→ outside-allowlist。两者都是安全拦截。
+    assert.ok(['sensitive-config-backup', 'outside-allowlist'].includes(r.reason), `got reason=${r.reason}`);
+    try { rmSync(root, { recursive: true, force: true }); } catch {}
+  });
+});
+
 describe('file-access-policy: denylist (allowlist 命中后兜底)', () => {
   it('~/.ssh/id_rsa 通过 symlink 进项目 → 拒绝(sensitive-prefix 或 outside-allowlist)', () => {
     // FAKE_HOME 不在 SENSITIVE_PATH_PREFIXES (那是真正的 ~/.ssh) 中,所以 FAKE_HOME/.ssh

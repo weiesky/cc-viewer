@@ -10,4 +10,6 @@ Encrypt cc-viewer's local credentials at rest in a new AES-256-GCM vault, separa
 - Startup migration is idempotent with write-then-read-back verification; a differing on-disk plaintext wins. `config-backup` now also backs up `credentials.json` + `master.key` and keeps historical plaintext backups as a recovery path.
 - The vault files (`credentials.json`, `master.key`) are denied to IM-driven sessions and the remote file API (im-deny, permissions.deny, file-access-policy).
 
-No action is required on upgrade: existing plaintext/base64 secrets are migrated automatically on first start, with a pre-migration backup kept. Restart all running ccv processes after upgrading so no stale reader serves a stripped profile.json.
+No action is required on upgrade: existing plaintext/base64 secrets are migrated automatically on first start, with a pre-migration backup kept.
+
+**Upgrade step — restart everything:** after upgrading, restart all running ccv processes **and any in-flight `claude` sessions** (which carry a long-lived, already-injected copy of the old interceptor). A stale reader would serve a stripped `profile.json` whose `apiKey` is now empty; with an empty key the old interceptor skips the auth rewrite but still rewrites the URL, forwarding your default Anthropic credential to a third-party baseURL. The fail-closed guard only exists in the new code, so it cannot fire in an old process.

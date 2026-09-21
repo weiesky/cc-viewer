@@ -74,8 +74,10 @@
 
 | 文件 | 权威模块 | 锁 | 原子 | 模式 | 领域语义 | 云类别（§4） |
 |---|---|---|---|---|---|---|
-| `preferences.json` | `lib/prefs-store.js` | ✅ | ✅ | 0600 | UI 偏好、`auth`、`authByProject`、`prefsByProject`、IM 平台键、`disabledPlugins` | **B（混合：明文+密钥）** |
-| `profile.json` | `server/interceptor.js:94` | ❌ | ❌ | 0600 | `{profiles:[{id,name,baseURL,apiKey,…}], active}` —— **apiKey 明文**，`watchFile` 热加载 | **B（混合）** |
+| `preferences.json` | `lib/prefs-store.js`（经 `lib/json-store.js`） | ✅ | ✅ | 0600 | UI 偏好、`auth`（仅 enabled）、`authByProject`、`prefsByProject`、IM 平台键、`disabledPlugins` | **B（混合：明文+密钥引用）** |
+| `profile.json` | `server/interceptor.js`（经 `lib/json-store.js`） | ✅ | ✅ | 0600 | `{profiles:[{id,name,baseURL,…}], active}` —— **apiKey 现已存入凭证 vault**，`watchFile` 热加载 | **B（混合）** |
+| `credentials.json` | `lib/credential-store.js`（经 `lib/json-store.js`） | ✅ | ✅ | 0600 | AES-256-GCM vault 密文：代理 `apiKey`、LAN 密码、IM secret（`creds` 映射） | **E（凭证，绝不明文）** |
+| `master.key` | `lib/credential-vault.js` | — | — | 0600 | 本机 vault 主密钥；丢失则 vault 密文不可恢复 | **E（绝不出本机）** |
 | `workspaces.json` | `server/workspace-registry.js:13` | ✅ | ✅ | umask | 本地工作区注册表 `{workspaces:[…]}` | **C（仅本地）** |
 | `ask-store.json` | `lib/ask/ask-store.js:25` | ✅ | ✅ | umask | `SCHEMA_VERSION=1`，24h TTL 清理，首写获胜终态保护 | **D（临时，不同步）** |
 | `retry-config.json` | `server/interceptor.js:109` | ❌ | ❌ | 0600 | 代理重试调优，文件覆盖 env | **A（明文同步）** |
@@ -86,15 +88,16 @@
 > （`stats-worker.js`、`proxy-stats.js`）、system-prompt 快照/实时、voice-packs、plugins 目录、
 > IM-worker 目录（`IM_<id>/*`）、回收站、`update-check.json`。这些都属 **D 类**（不同步）——见 §4。
 
-### 2.4 多写者文件（同步前必须先收敛）
+### 2.4 多写者文件（已收敛）
 
-- **`preferences.json` —— 4 个写者，仅 2 个安全：**
-  1. `lib/prefs-store.js:58` `mutatePrefs` —— 持锁 + 原子 ✅
-  2. `lib/auth.js:141-163` `writePrefs` —— 原子但**无锁**（`:147-151` 有自认 `TODO(prefs-lock)`）
-  3. `lib/im/im-config.js:133-141` `writePrefs` —— **既无锁也不原子**（直接 `writeFileSync` 到目标）
-  4. 路由走 `mutatePrefs` ✅
-- **`profile.json` —— 4 个写者，无一持锁/原子：** `interceptor.js:235`、`routes/preferences.js:316`、
-  `:371`、`:550`。
+各配置写者已收敛到单一「持锁 + 原子」内核（`lib/json-store.js`：`readJsonSafe` / `writeJsonAtomic`
+/ `mutateJson` / `mutateJsonSync` / `withJsonLock`）。锁名按数据文件派生（`<file>.lock`），修复了旧的
+固定基名撞锁。
+
+- **`preferences.json`：** `lib/prefs-store.js`（`mutatePrefs`）、`lib/auth.js`、`lib/im/im-config.js`
+  与路由都在内核锁内做 read-merge-write（旧的 auth.js 无锁、im-config.js 无锁非原子写者已关闭）。
+- **`profile.json`：** 所有写点（`interceptor.js`、`routes/preferences.js`）均经 `mutateJsonSync` 并启用
+  `strictCorrupt`（损坏文件绝不被 fallback 覆盖）。
 - **`~/.claude/settings.json` —— 3 个写者：** `ensure-hooks.js:340`（原子）、`routes/preferences.js:295`
   （裸写）、`cli.js:1080`（裸写）。
 
@@ -105,20 +108,23 @@
 
 ## 3. 凭证现状
 
-cc-viewer **没有** `official-auth`/`aima`/SSO，也**没有**任何硬编码 key 的 AES（已用 grep 验证——
-无 `createCipheriv`/`scryptSync`/硬编码 key+salt）。真实凭证面：
+cc-viewer **没有** `official-auth`/`aima`/SSO。凭证在本机以 AES-256-GCM vault 加密落盘
+（`lib/credential-vault.js` + `lib/credential-store.js`）；vault 之前 `profile.json` / `preferences.json`
+里的明文/base64 副本已在首启迁出，不再携带。真实凭证面：
 
-| # | 字段 | 文件 | 编码 | 写入点 | 读取点 | 风险 |
+| # | 字段 | 落盘位置 | 编码 | 写入点 | 读取点 | 风险 |
 |---|---|---|---|---|---|---|
-| C1 | `profiles[].apiKey` | `profile.json` | **明文** | `routes/preferences.js:371,316,550`、`interceptor.js:235` | `interceptor.js:191,968-972`（请求注入） | **最高** |
-| C2 | `auth.password` / `authByProject.*.password` | `preferences.json` | base64 | `lib/auth.js:154` | `lib/auth.js:102,118,129` | 高 |
-| C3 | `dingtalk/feishu/wecom/discord` `appKey/appSecret/botToken` | `preferences.json` | base64 | `lib/im/im-config.js:137` | 各 adapter 经 `loadConfig` `:221` | 高 |
+| C1 | `profiles[].apiKey` | `credentials.json`（vault） | **AES-256-GCM** | `routes/preferences.js`（经 `credential-access.js`） | `interceptor.js`（请求注入，fail-closed） | **最高** |
+| C2 | `auth.password` / `authByProject.*.password` | `credentials.json`（vault） | AES-256-GCM | `lib/auth.js` | `lib/auth.js`（fail-closed） | 高 |
+| C3 | `dingtalk/feishu/wecom/discord` `appSecret/botToken` | `credentials.json`（vault） | AES-256-GCM | `lib/im/im-config.js` | 各 adapter 经 `loadConfig` | 高 |
+| — | 低敏 IM cred 字段（`appKey/appId/botId`） | `preferences.json` | base64 | `lib/im/im-config.js` | 各 adapter | 低 |
 
 **泄漏放大器：**
 
-- `lib/config-backup.js:10` 每次启动把 `preferences.json` + `profile.json`（明文 apiKey + base64
-  secret）拷进 `~/.claude/cc-viewer-config-backups/<ts>/`，保留 10 份（`:11`）。**加密改造后这些
-  历史备份仍是旧明文**，必须清理。
+- `lib/config-backup.js:13` 每次启动把 `preferences.json` + `profile.json` + `credentials.json` +
+  `master.key` 拷进 `~/.claude/cc-viewer-config-backups/<ts>/`，保留 10 份。备份目录因此持有完整解密套件
+  （密文+主密钥同地），已对 IM 会话与远程文件 API 拒读。**加密前的历史备份仍是旧明文**，刻意**保留**作
+  恢复路径（不自动清理）——在确认 vault 可读前按敏感数据处理。
 - `server/server.js:1139` 启动时把 LAN 密码打到 **stderr**（明文进入进程日志/容器 stdout）。
   `ACCESS_TOKEN` 同理（`:1135`）。
 - 会话 wire 日志把 API key 掩成首 8 + 尾 4（`interceptor.js:850-866`）→ 每请求留存 12 个明文字符，
@@ -194,7 +200,9 @@ cc-viewer **没有** `official-auth`/`aima`/SSO，也**没有**任何硬编码 k
 ## 6. 凭证与云（两种策略）
 
 凭证（C1 apiKey、C2 password、C3 IM secret）在任何云端处理前必须先**加密落盘**。本地 vault 采用：
-AES-256-GCM、每记录随机 IV、密钥派生自本地 `master.key`（`0600`，首启生成，**排除出 config-backup**）。
+AES-256-GCM、每记录随机 IV，主密钥为本机 `master.key`（`0600`，首启生成）。`config-backup` 会把
+`master.key` 与 `credentials.json` **一并**备份（备份目录因此等同于 vault——密文+主密钥同地），保证
+恢复路径完整，但也意味着备份泄露即 vault 泄露。
 
 ### 策略 S1 —— 凭证永不出本机
 
@@ -205,7 +213,9 @@ AES-256-GCM、每记录随机 IV、密钥派生自本地 `master.key`（`0600`�
 
 ### 策略 S2 —— 密文上云，密钥留本地（已定方向）
 
-- E 类凭证只以 vault 密文（`base64(iv|tag|ct)`）推上云。`master.key` **绝不**出本机。
+- E 类凭证只以 vault 密文（`base64(iv|tag|ct)`）推上云。`master.key` **绝不**作为云同步内容出本机。
+  （注意：`config-backup` 会把它与密文一并拷进本地滚动备份目录——那是本地恢复路径，不是云通道；该备份
+  目录已对 IM 会话与远程文件 API 拒读。）
 - 云端存它解不开的密文 blob；已持有对应 `master.key` 的机器拉取后解密。
 - **优点：** 密钥在共享同一密钥的机器间漫游。**缺点：** 密钥分发成为难题（带外）；云被攻破暴露
   密文（弱于 S1 但非明文）；`master.key` 丢失 = 密文不可恢复。
