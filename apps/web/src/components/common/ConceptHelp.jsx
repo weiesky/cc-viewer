@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { Modal, Spin } from 'antd';
+import { Modal } from 'antd';
+import Loading from './Loading';
 import { renderMarkdown } from '../../utils/markdown';
 import { apiUrl } from '../../utils/apiUrl';
 import { getLang } from '../../i18n';
@@ -87,7 +88,7 @@ export default function ConceptHelp({ doc, zIndex, children }) {
           wrapProps={{ onMouseDown: (e) => e.stopPropagation() }}
         >
           {loading ? (
-            <div className={styles.spinWrap}><Spin /></div>
+            <div className={styles.spinWrap}><Loading /></div>
           ) : (
             <div className={styles.modalBody} dangerouslySetInnerHTML={{ __html: html }} />
           )}

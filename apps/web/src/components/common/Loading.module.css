@@ -1,0 +1,30 @@
+/* Shared Loading (bare spinner) */
+.loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  flex-shrink: 0;
+}
+
+.loading object {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Wrapper-mode container (the content-overlay successor to antd <Spin spinning>) */
+.spinContainer {
+  position: relative;
+  display: block;
+}
+
+.spinOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-mask, rgba(255, 255, 255, 0.5));
+  z-index: 1;
+}

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, Switch, Spin, Tooltip } from 'antd';
+import { Modal, Switch, Tooltip } from 'antd';
+import Loading from '../common/Loading';
 import { DeleteOutlined, LoadingOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
 import { isMobile } from '../../env';
@@ -54,7 +55,7 @@ export default function SkillsManagerModal({
       styles={{ body: { maxHeight: '70vh', overflowY: 'auto', padding: '16px 20px', ...(isMobile ? { zoom: 0.6 } : {}) } }}
     >
       {loading ? (
-        <div className={styles.skillsEmpty}><Spin /></div>
+        <div className={styles.skillsEmpty}><Loading /></div>
       ) : error ? (
         <div className={styles.skillsEmpty}>{t('ui.skillsLoadFailed', { reason: reasonToLabel(error) || error })}</div>
       ) : skills.length === 0 ? (

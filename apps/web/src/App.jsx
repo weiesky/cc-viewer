@@ -1,8 +1,9 @@
 import React from 'react';
 import { lazy, Suspense } from 'react';
-import { ConfigProvider, Layout, theme, Modal, Button, Checkbox, Spin, Alert, message, Tooltip, Popconfirm, Select } from 'antd';
+import { ConfigProvider, Layout, theme, Modal, Button, Checkbox, Alert, message, Tooltip, Popconfirm, Select } from 'antd';
 import { UploadOutlined, DeleteOutlined, ReloadOutlined, SwapOutlined } from '@ant-design/icons';
 import AppBase, { styles } from './AppBase';
+import Loading from './components/common/Loading';
 import { isMobile, isElectron, setViewMode } from './env';
 import AppHeader from './components/dashboard/AppHeader';
 import RequestList from './components/dashboard/RequestList';
@@ -617,7 +618,7 @@ class App extends AppBase {
                 // guide during the cold load (review P1-3; the v3 path fills
                 // rows in the first frame so this rarely shows).
                 <div className={styles.centerLoading}>
-                  <Spin size="large" />
+                  <Loading size="large" />
                   <div style={{ marginTop: 8, color: 'var(--text-muted)' }}>{this._loadingProgressText()}</div>
                 </div>
               ) : filteredRequests.length === 0 ? (
@@ -704,7 +705,7 @@ class App extends AppBase {
                 keeps it visual-only; z-index stays below antd Modal/message. */}
             {this.state.resumeSwitch && (
               <div className={styles.resumeSwitchMask}>
-                <Spin size="large" />
+                <Loading size="large" />
               </div>
             )}
           </Layout.Content>
@@ -777,7 +778,7 @@ class App extends AppBase {
           }}
         >
           <ProxyPageErrorBoundary>
-            <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}><Spin size="large" /></div>}>
+            <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}><Loading size="large" /></div>}>
               <ProxyStatsModal
                 retryConfig={this.state.retryConfig}
                 retryDefaults={this.state.retryDefaults}
@@ -914,7 +915,7 @@ class App extends AppBase {
                   : t('ui.wireV2ConvertProgress', { done, total, sessions: (st && st.sessionsConverted) || 0 });
                 return (
                   <span className={styles.btnMarginLeft}>
-                    <Spin size="small" /> <span className={styles.pendingHint}>{label}</span>
+                    <Loading size="small" /> <span className={styles.pendingHint}>{label}</span>
                     <Button size="small" className={styles.btnMarginLeft} onClick={this.handleStopWireV2Convert}>
                       {t('ui.wireV2ConvertStop')}
                     </Button>
@@ -969,7 +970,7 @@ class App extends AppBase {
           )}
           <div className={styles.logsModalContent}>
             {this.state.localLogsLoading ? (
-              <div className={styles.spinCenter}><Spin /></div>
+              <div className={styles.spinCenter}><Loading /></div>
             ) : (() => {
               // v2 view: localLogs is the current page (flat array, server-paginated).
               // v1 view: localLogsV1 stays the legacy grouped-by-project object;

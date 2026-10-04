@@ -1,5 +1,5 @@
 import React from 'react';
-import { ConfigProvider, theme, Modal, Spin, Button, message } from 'antd';
+import { ConfigProvider, theme, Modal, Button, message } from 'antd';
 import { uploadFileAndGetPath } from './components/terminal/TerminalPanel';
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { isMobile, isPad, hasNativeZoom } from './env';

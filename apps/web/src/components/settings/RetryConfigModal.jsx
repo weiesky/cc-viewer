@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Segmented, Select, InputNumber, Tooltip, Button, message, Spin } from 'antd';
+import { Segmented, Select, InputNumber, Tooltip, Button, message } from 'antd';
+import Loading from '../common/Loading';
 import { UndoOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
 import { reportSwallowed } from '../../utils/errorReport';
@@ -98,7 +99,7 @@ export function RetryConfigForm({ config, defaults, onSave }) {
   if (!form) {
     return (
       <div className={styles.form} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px 0' }}>
-        <Spin size="small" />
+        <Loading size="small" />
       </div>
     );
   }

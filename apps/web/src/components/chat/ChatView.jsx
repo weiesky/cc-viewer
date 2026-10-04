@@ -1,5 +1,5 @@
 import React from 'react';
-import { Empty, Typography, Divider, Spin, Popover, Modal, message } from 'antd';
+import { Empty, Typography, Divider, Popover, Modal, message } from 'antd';
 import ChatMessage from './ChatMessage';
 import TerminalPanel, { uploadFileAndGetPath } from '../terminal/TerminalPanel';
 import FileExplorer from '../files/FileExplorer';
@@ -64,6 +64,7 @@ import { checkPathsExist, dedupePaths, peekPathExists, MD_PATH_CANDIDATE_ATTR, M
 import { BUILTIN_PRESETS } from '../../utils/builtinPresets';
 import defaultAvatarUrl from '../../img/default-avatar.svg';
 import loadingPetUrl from '../../img/loading-pet.gif';
+import Loading from '../common/Loading';
 // 用 <object type="image/svg+xml"> 替代 <img>：WeChat / Android WebView 在 <img> 的 image 路径
 // 下经常把 SMIL <animate> 当 raster 处理只渲染第 0 帧；<object> 走 SVG document 路径，所有 WebView
 // 正确播放，且不依赖 dangerouslySetInnerHTML。
@@ -3495,7 +3496,7 @@ class ChatView extends React.Component {
       if (this.props.fileLoading) {
         return (
           <div className={styles.centerEmpty}>
-            <Spin size="large" />
+            <Loading size="large" />
             {this.props.loadingProgress && (
               <div style={{ marginTop: 8, color: 'var(--text-muted)' }}>{this.props.loadingProgress}</div>
             )}
@@ -3512,7 +3513,7 @@ class ChatView extends React.Component {
     if (loading && !cliMode) {
       return (
         <div className={styles.centerEmpty}>
-          <Spin size="large" />
+          <Loading size="large" />
         </div>
       );
     }
@@ -3723,7 +3724,7 @@ class ChatView extends React.Component {
         <div ref={this.containerRef} className={styles.container}>
           {(!cliMode || loading) ? (
             <div className={styles.centerEmpty}>
-              {loading ? <Spin size="large" /> : <Empty description={t('ui.noChat')} />}
+              {loading ? <Loading size="large" /> : <Empty description={t('ui.noChat')} />}
             </div>
           ) : null}
           {pendingBubble}

@@ -9954,14 +9954,6 @@ const i18nData = {
     "tr": "Claude oturumu başlatmak için bir proje dizini seçin",
     "uk": "Виберіть каталог проєкту для запуску сеансу Claude"
   },
-  "ui.workspaces.normalLaunch": {
-    "zh": "常规启动", "en": "Launch", "zh-TW": "常規啟動",
-    "ko": "일반 시작", "ja": "通常起動", "de": "Starten",
-    "es": "Iniciar", "fr": "Lancer", "it": "Avvia",
-    "da": "Start", "pl": "Uruchom", "ru": "Запуск",
-    "ar": "تشغيل", "no": "Start", "pt-BR": "Iniciar",
-    "th": "เริ่มต้น", "tr": "Başlat", "uk": "Запуск"
-  },
   "ui.workspaces.launch": {
     "zh": "启动", "en": "Launch", "zh-TW": "啟動",
     "ko": "시작", "ja": "起動", "de": "Starten",
@@ -9993,14 +9985,6 @@ const i18nData = {
     "da": "Skift til PC-tilstand", "pl": "Przełącz na tryb PC", "ru": "Переключить в режим ПК",
     "ar": "التبديل إلى وضع الكمبيوتر", "no": "Bytt til PC-modus", "pt-BR": "Mudar para modo PC",
     "th": "สลับเป็นโหมด PC", "tr": "PC moduna geç", "uk": "Перейти в режим ПК"
-  },
-  "ui.workspaces.skipPermLaunch": {
-    "zh": "免审启动", "en": "Skip Approval", "zh-TW": "免審啟動",
-    "ko": "승인 건너뛰기", "ja": "承認スキップ", "de": "Ohne Genehmigung",
-    "es": "Sin aprobación", "fr": "Sans approbation", "it": "Senza approvazione",
-    "da": "Spring godkendelse over", "pl": "Pomiń zatwierdzenie", "ru": "Без одобрения",
-    "ar": "تخطي الموافقة", "no": "Hopp over godkjenning", "pt-BR": "Sem aprovação",
-    "th": "ข้ามการอนุมัติ", "tr": "Onay atla", "uk": "Без схвалення"
   },
   "ui.workspaces.empty": {
     "zh": "暂无工作区，添加一个项目目录开始使用", "en": "No workspaces yet. Add a project directory to get started.",
@@ -10067,13 +10051,53 @@ const i18nData = {
     "ar": "الآن", "no": "akkurat nå", "pt-BR": "agora mesmo",
     "th": "เมื่อสักครู่", "tr": "az önce", "uk": "щойно"
   },
+  "ui.workspaces.colProject": {
+    "zh": "项目", "en": "Project", "zh-TW": "專案",
+    "ko": "프로젝트", "ja": "プロジェクト", "de": "Projekt",
+    "es": "Proyecto", "fr": "Projet", "it": "Progetto",
+    "da": "Projekt", "pl": "Projekt", "ru": "Проект",
+    "ar": "المشروع", "no": "Prosjekt", "pt-BR": "Projeto",
+    "th": "โปรเจกต์", "tr": "Proje", "uk": "Проєкт"
+  },
+  "ui.workspaces.colPath": {
+    "zh": "路径", "en": "Path", "zh-TW": "路徑",
+    "ko": "경로", "ja": "パス", "de": "Pfad",
+    "es": "Ruta", "fr": "Chemin", "it": "Percorso",
+    "da": "Sti", "pl": "Ścieżka", "ru": "Путь",
+    "ar": "المسار", "no": "Sti", "pt-BR": "Caminho",
+    "th": "เส้นทาง", "tr": "Yol", "uk": "Шлях"
+  },
+  "ui.workspaces.colLastUsed": {
+    "zh": "上次使用", "en": "Last used", "zh-TW": "上次使用",
+    "ko": "마지막 사용", "ja": "最終使用", "de": "Zuletzt verwendet",
+    "es": "Último uso", "fr": "Dernière utilisation", "it": "Ultimo utilizzo",
+    "da": "Sidst brugt", "pl": "Ostatnie użycie", "ru": "Последнее использование",
+    "ar": "آخر استخدام", "no": "Sist brukt", "pt-BR": "Último uso",
+    "th": "ใช้ล่าสุด", "tr": "Son kullanım", "uk": "Останнє використання"
+  },
+  "ui.workspaces.colLogs": {
+    "zh": "日志", "en": "Logs", "zh-TW": "日誌",
+    "ko": "로그", "ja": "ログ", "de": "Protokolle",
+    "es": "Registros", "fr": "Journaux", "it": "Log",
+    "da": "Log", "pl": "Logi", "ru": "Журналы",
+    "ar": "السجلات", "no": "Logger", "pt-BR": "Registros",
+    "th": "บันทึก", "tr": "Günlükler", "uk": "Журнали"
+  },
+  "ui.workspaces.colActions": {
+    "zh": "操作", "en": "Actions", "zh-TW": "操作",
+    "ko": "작업", "ja": "操作", "de": "Aktionen",
+    "es": "Acciones", "fr": "Actions", "it": "Azioni",
+    "da": "Handlinger", "pl": "Akcje", "ru": "Действия",
+    "ar": "الإجراءات", "no": "Handlinger", "pt-BR": "Ações",
+    "th": "การกระทำ", "tr": "Eylemler", "uk": "Дії"
+  },
   "ui.workspaces.browse": {
-    "zh": "浏览目录", "en": "Browse Directory", "zh-TW": "瀏覽目錄",
-    "ko": "디렉토리 탐색", "ja": "ディレクトリを参照", "de": "Verzeichnis durchsuchen",
-    "es": "Explorar directorio", "fr": "Parcourir le répertoire", "it": "Sfoglia directory",
-    "da": "Gennemse mappe", "pl": "Przeglądaj katalog", "ru": "Обзор каталога",
-    "ar": "تصفح المجلد", "no": "Bla gjennom mappe", "pt-BR": "Explorar diretório",
-    "th": "เรียกดูไดเรกทอรี", "tr": "Dizine göz at", "uk": "Переглянути каталог"
+    "zh": "添加工作区", "en": "Add Workspace", "zh-TW": "新增工作區",
+    "ko": "워크스페이스 추가", "ja": "ワークスペースを追加", "de": "Arbeitsbereich hinzufügen",
+    "es": "Añadir espacio de trabajo", "fr": "Ajouter un espace de travail", "it": "Aggiungi area di lavoro",
+    "da": "Tilføj arbejdsområde", "pl": "Dodaj obszar roboczy", "ru": "Добавить рабочее пространство",
+    "ar": "إضافة مساحة عمل", "no": "Legg til arbeidsområde", "pt-BR": "Adicionar área de trabalho",
+    "th": "เพิ่มเวิร์กสเปซ", "tr": "Çalışma alanı ekle", "uk": "Додати робочий простір"
   },
   "ui.workspaces.selectDir": {
     "zh": "选择项目目录", "en": "Select Project Directory", "zh-TW": "選擇專案目錄",

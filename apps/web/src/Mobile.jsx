@@ -1,7 +1,8 @@
 import React from 'react';
-import { ConfigProvider, Spin, Button, Badge, Switch, Select, Modal, message, Tooltip } from 'antd';
+import { ConfigProvider, Button, Badge, Switch, Select, Modal, message, Tooltip } from 'antd';
 import { BranchesOutlined, DownloadOutlined, DeleteOutlined, RollbackOutlined, ReloadOutlined, UploadOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import AppBase, { styles, OPTIMISTIC_CLEAR_PERCENT } from './AppBase';
+import Loading from './components/common/Loading';
 import { isIOS, isPad, setViewMode } from './env';
 import { isMainAgent, classifyUserContent, extractDisplayText } from '@ccv/core/contentFilter';
 import { parseImOrigin } from './utils/imOrigin';
@@ -926,7 +927,7 @@ class Mobile extends AppBase {
               chat + terminal while a session switch is in flight. */}
           {this.state.resumeSwitch && (
             <div className={styles.mobileResumeSwitchMask}>
-              <Spin size="large" />
+              <Loading size="large" />
             </div>
           )}
           <div className={`${styles.mobileGitDiffOverlay} ${this.state.mobileGitDiffVisible ? styles.mobileGitDiffOverlayVisible : ''}`}>
@@ -1091,7 +1092,7 @@ class Mobile extends AppBase {
             </div>
             <div className={styles.mobileLogMgmtBody}>
               {this.state.localLogsLoading ? (
-                <div className={styles.spinCenter}><Spin /></div>
+                <div className={styles.spinCenter}><Loading /></div>
               ) : (() => {
                 // v2 view: localLogs is the current page (flat array, server-paginated).
                 const currentLogs = this.state.localLogs;

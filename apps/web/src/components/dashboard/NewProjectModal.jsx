@@ -17,7 +17,7 @@ export default function NewProjectModal({ open, onClose, onLaunch, themeConfig }
       open={open}
       onCancel={onClose}
       footer={null}
-      width={720}
+      width={1080}
       title={t('ui.resume.newProject')}
       destroyOnHidden
     >

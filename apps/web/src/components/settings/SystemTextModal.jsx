@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Modal, Input, Switch, Spin, message } from 'antd';
+import { Modal, Input, Switch, message } from 'antd';
+import Loading from '../common/Loading';
 import { t, getLang } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { renderMarkdown } from '../../utils/markdown';
@@ -398,7 +399,7 @@ export default function SystemTextModal({ open, onClose, project }) {
       zIndex={1100}
       styles={{ mask: BLUR_MASK_STYLE }}
     >
-      <Spin spinning={loading}>
+      <Loading spinning={loading}>
         <ModelPromptTabs
           entries={entries}
           activeKey={activeKey}
@@ -485,7 +486,7 @@ export default function SystemTextModal({ open, onClose, project }) {
         ) : (
           <div className={styles.warn}>{t('ui.expert.systemText.noWorkspace')}</div>
         )}
-      </Spin>
+      </Loading>
     </Modal>
 
     {/* 参数文档二级弹窗：渲染 ${...} 变量参考(只读)。 */}

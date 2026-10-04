@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Space, Tag, Button, Dropdown, Popover, Popconfirm, Modal, Collapse, Drawer, Switch, Tabs, Spin, Input, Select, AutoComplete, Segmented, Tooltip, message } from 'antd';
+import { Space, Tag, Button, Dropdown, Popover, Popconfirm, Modal, Collapse, Drawer, Switch, Tabs, Input, Select, AutoComplete, Segmented, Tooltip, message } from 'antd';
 import { DISPLAY_SCALE_PRESETS } from '../../utils/displayScaleHelper';
+import Loading from '../common/Loading';
 import { hasNativeZoom, isMac } from '../../env';
 import { MessageOutlined, FileTextOutlined, DashboardOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, CopyOutlined, ApiOutlined, SwapOutlined, ThunderboltOutlined, QuestionCircleOutlined, PushpinOutlined, PushpinFilled, PlusOutlined } from '@ant-design/icons';
 import { QRCodeCanvas } from 'qrcode.react';
@@ -1731,7 +1732,7 @@ class AppHeader extends React.Component {
     const { projectStats, projectStatsLoading } = this.state;
 
     if (projectStatsLoading) {
-      return <div className={styles.projectStatsCenter}><Spin /></div>;
+      return <div className={styles.projectStatsCenter}><Loading /></div>;
     }
 
     if (!projectStats) {
@@ -2600,7 +2601,7 @@ class AppHeader extends React.Component {
                 onKeyDown={(e) => { if (e.key === 'Enter') this._saveClaudeExecutable(); }}
                 allowClear
                 placeholder={t('ui.claudeExecutable.auto')}
-                notFoundContent={this.state.claudeExecutablesLoading ? <Spin size="small" /> : null}
+                notFoundContent={this.state.claudeExecutablesLoading ? <Loading size="small" /> : null}
                 filterOption={(input, option) => String(option?.value || '').toLowerCase().includes(input.toLowerCase())}
               />
               <div className={styles.claudeExecutableHint}>

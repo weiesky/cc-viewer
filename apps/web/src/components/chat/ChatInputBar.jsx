@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { Spin, Popconfirm, Popover } from 'antd';
+import { Popconfirm, Popover } from 'antd';
+import Loading from '../common/Loading';
 import { uploadFileAndGetPath } from '../terminal/TerminalPanel';
 import { apiUrl } from '../../utils/apiUrl';
 import { isMobile, isPad } from '../../env';
@@ -365,7 +366,7 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                   {item.previewUrl && (
                     <img src={item.previewUrl} className={styles.imagePreviewThumb} alt="" aria-hidden="true" />
                   )}
-                  <div className={styles.imagePreviewSpinner}><Spin size="small" /></div>
+                  <div className={styles.imagePreviewSpinner}><Loading size="small" /></div>
                 </div>
               ))}
             </div>
@@ -595,7 +596,7 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                 title={t('ui.chatInput.uploading')}
                 aria-label={t('ui.chatInput.uploading')}
               >
-                <Spin size="small" />
+                <Loading size="small" />
               </button>
             ) : (
               <button

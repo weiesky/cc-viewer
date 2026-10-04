@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
-import { Drawer, Button, Spin, Empty, Tooltip, Tag, Popconfirm, message } from 'antd';
+import { Drawer, Button, Empty, Tooltip, Tag, Popconfirm, message } from 'antd';
+import Loading from '../common/Loading';
 import { ReloadOutlined, SettingOutlined } from '@ant-design/icons';
 import ChatMessage from '../chat/ChatMessage';
 import { cachedBuildToolResultMap } from '../../utils/toolResultBuilder';
@@ -450,7 +451,7 @@ export default function ImConversationModal({ open, onClose, platform, onOpenCon
           items
         ) : loading ? (
           // 仅首屏加载（尚无内容）显示整页 Spin；刷新进度改由标题刷新图标的 spin 呈现
-          <div className={styles.center}><Spin /><span className={styles.hint}>{t('ui.imRecord.loading')}</span></div>
+          <div className={styles.center}><Loading /><span className={styles.hint}>{t('ui.imRecord.loading')}</span></div>
         ) : error ? (
           <div className={styles.center}>
             <Empty description={t('ui.imRecord.loadFailed')} />

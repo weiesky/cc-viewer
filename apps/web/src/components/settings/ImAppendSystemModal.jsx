@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Input, Spin, Button, Popconfirm, message } from 'antd';
+import { Modal, Input, Button, Popconfirm, message } from 'antd';
+import Loading from '../common/Loading';
 import { apiUrl } from '../../utils/apiUrl';
 import { imTr as _tr } from '../../utils/imTr';
 
@@ -89,7 +90,7 @@ export default function ImAppendSystemModal({ open, platform, onClose }) {
       styles={{ content: { background: 'var(--bg-elevated)' }, header: { background: 'var(--bg-elevated)' } }}
     >
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '40px 0' }}><Spin /></div>
+        <div style={{ textAlign: 'center', padding: '40px 0' }}><Loading /></div>
       ) : (
         <Input.TextArea
           value={content}

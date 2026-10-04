@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Card, Statistic, Table, Tag, Button, Switch, Spin, Empty, Space } from 'antd';
+import { Card, Statistic, Table, Tag, Button, Switch, Empty, Space } from 'antd';
+import Loading from '../common/Loading';
 import { ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
@@ -73,7 +74,7 @@ export default function ProxyStatsDashboard({ project }) {
   );
 
   if (loading && !data) {
-    return <div className={`${styles.embedded} ${styles.centerState}`}><Spin size="large" /></div>;
+    return <div className={`${styles.embedded} ${styles.centerState}`}><Loading size="large" /></div>;
   }
 
   if (!data || !data.summary || data.summary.totalRequests === 0) {

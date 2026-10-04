@@ -1,5 +1,6 @@
 import React from 'react';
-import { Tabs, Typography, Button, Tag, Empty, Space, Select, Popover, Tooltip, message, Spin } from 'antd';
+import { Tabs, Typography, Button, Tag, Empty, Space, Select, Popover, Tooltip, message } from 'antd';
+import Loading from '../common/Loading';
 import { CopyOutlined, FileTextOutlined, CodeOutlined, RightOutlined, DownOutlined } from '@ant-design/icons';
 import JsonViewer from '../viewers/JsonViewer';
 import ConceptHelp from '../common/ConceptHelp';
@@ -357,7 +358,7 @@ class DetailPanel extends React.Component {
     if (!request && this.props.detailLoading) {
       return (
         <div className={styles.emptyState}>
-          <Spin />
+          <Loading />
           <div style={{ marginTop: 8, color: 'var(--text-muted)' }}>{t('ui.detailLoading')}</div>
         </div>
       );
