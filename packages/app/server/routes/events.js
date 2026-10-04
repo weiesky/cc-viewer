@@ -9,6 +9,8 @@ import { reportSwallowed } from '@ccv/core/error-report';
 import { sseHead, sseWrite, needsDrain, wireEnd, awaitWireDrain, isWireV3Enabled } from '../lib/wire-compress.js';
 import { readV2ColdBundle } from '../lib/v2/meta-rows.js';
 import { readV2SingleEntry } from '../lib/v2/adapter.js';
+import { resolveSessionDirName, latestMainSessionDir } from '../lib/v2/session-select.js';
+import { sanitizePathComponent } from '../lib/v2/layout.js';
 import { enrichRawIfNeeded } from '../lib/enrich-plan-input.js';
 import { validateLogPath } from '../lib/log-management.js';
 import { isMainAgentEntry, extractCachedContent } from '../lib/kv-cache-analyzer.js';
@@ -188,12 +190,15 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   const updFrame = sseUpdateBadgeFrame(deps.pendingMajorUpdate);
   if (updFrame) sseWrite(res, updFrame);
 
-  // 1.7.0 迁移引导（P2）：当前项目仍有未转换的 v1 日志 → 连接即推 migrate_prompt。
+  // 1.7.0 迁移引导（P2）：「正在被查看的项目」仍有未转换的 v1 日志 → 连接即推 migrate_prompt。
   // 是否弹窗由客户端决定（「不再提醒」偏好在客户端；continued=true 时无视 dismissed
   // 再提醒一次——`-c` 续接的对话前半段在旧格式里，不迁移就看不到）。工作区切换后的
-  // 提示由 workspaces launch 路由对存量连接广播（本帧只覆盖新连接）。
+  // 提示由 workspaces launch 路由对存量连接广播（本帧只覆盖新连接）。viewedProject
+  // (declared below from ?project=) scopes the check to the project the client is
+  // actually viewing, not always the bound one.
   try {
-    const mig = migrationStatus(LOG_DIR, _projectName || '');
+    const migProject = parsedUrl.searchParams.get('project') || _projectName || '';
+    const mig = migrationStatus(LOG_DIR, migProject);
     if (mig.pending) {
       sseWrite(res, `event: migrate_prompt\ndata: ${JSON.stringify({ ...mig, continued: isContinuedLaunch() })}\n\n`);
     }
@@ -203,8 +208,15 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   const sinceParam = parsedUrl.searchParams.get('since');
   const ccParam = parseInt(parsedUrl.searchParams.get('cc'), 10) || 0;
   const projectParam = parsedUrl.searchParams.get('project');
-  const projectMatch = !projectParam || projectParam === (_projectName || '');
-  const useIncremental = !!(sinceParam && ccParam > 0 && projectMatch && !isNaN(new Date(sinceParam).getTime()));
+  // Multi-project (2026-10): a foreign `?project=` (a parallel-project VIEW)
+  // may ALSO resume incrementally — the view-state cache keeps the departing
+  // project's lastTs and the client returns with `?project=<p>&since=<lastTs>`.
+  // The previous `projectMatch` gate forced a full cold reload for any
+  // non-bound project (the "slow switch" half of the bug). `?project` already
+  // self-declares the view scope, and the cold-source resolution below serves
+  // that project's current session read-only without re-binding the server —
+  // so the bound-match condition is dropped (cc>0 + a valid date still guard).
+  const useIncremental = !!(sinceParam && ccParam > 0 && !isNaN(new Date(sinceParam).getTime()));
 
   // 分页参数：
   // - mobile 首次加载传 ?limit=200
@@ -222,6 +234,89 @@ async function events(req, res, parsedUrl, isLocal, deps) {
     }
   }
   const useLimit = effectiveLimit > 0;
+
+  // Cold-load source resolution. Two view scopes, both read-only and NEITHER
+  // re-binds the server (the bound project `_projectName` is untouched):
+  //  - `?sid=<uuid>`: THAT session's full transcript (incl. pre-attach history)
+  //    instead of the single "current" session dir. `?project=<p>` scopes the
+  //    sid lookup to project <p>'s dir; without it the lookup scans the bound
+  //    project and a foreign sid resolves to null.
+  //  - `?project=<p>` (no sid): project <p>'s CURRENT session — the newest
+  //    readable, non-teammate session with a main turn — so a parallel-project
+  //    chip can be VIEWED without respawning or killing its process.
+  const sidParamRaw = parsedUrl.searchParams.get('sid');
+  const sidParam = (typeof sidParamRaw === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sidParamRaw)) ? sidParamRaw : null;
+  // Multi-instance (2026-10-06): `?instance=<instanceKey>` narrows the view to ONE concurrent
+  // process of a same-cwd project (which otherwise share a basename session dir pool). It
+  // scopes the no-sid cold-load pick (each instance resolves to ITS OWN latest session) and is
+  // stamped on the SSE response so the per-project live feed can route to exactly the clients
+  // viewing that instance. Validated to the minted `ccv-<hex>` shape.
+  const instanceParamRaw = parsedUrl.searchParams.get('instance');
+  const instanceParam = (typeof instanceParamRaw === 'string' && /^ccv-[0-9a-f]+$/.test(instanceParamRaw)) ? instanceParamRaw : null;
+  // `projectParam` (declared above for the incremental guard) doubles as the view
+  // scope. The project this client is VIEWING: the explicit ?project= override,
+  // else the bound project. Stamped onto the SSE response so per-project feeds can
+  // route live entries to exactly the clients viewing that project.
+  const viewedProject = projectParam || (_projectName || '');
+  const resolveColdSource = () => {
+    if (sidParam) {
+      const project = projectParam || _projectName;
+      if (!project) return null;
+      try {
+        const projectDir = join(LOG_DIR, sanitizePathComponent(project));
+        const dirName = resolveSessionDirName(projectDir, sidParam);
+        return dirName ? join(projectDir, 'sessions', dirName) : null;
+      } catch (err) {
+        reportSwallowed('events.sid-resolve', err, { sid: sidParam });
+        return null;
+      }
+    }
+    // No sid: a foreign ?project= resolves to that project's current session
+    // (skipForeignLive honors multi-window isolation, same as getLiveLogSource's
+    // fallback). When it matches the bound project (or is absent) the standard
+    // live source already serves exactly this — return null to take that path.
+    // Multi-instance (2026-10-06): an explicit `?instance=` ALSO drives a cold-source pick even
+    // when the project IS the bound one — a second same-cwd instance must cold-load ITS OWN
+    // latest session, not the bound project's `_currentSid` (which the most-recent instance
+    // overwrites). Without this branch the instance filter was unreachable for the bound
+    // project and the first paint showed the OTHER instance's conversation.
+    if (projectParam && (projectParam !== (_projectName || '') || instanceParam)) {
+      try {
+        return latestMainSessionDir(join(LOG_DIR, sanitizePathComponent(projectParam)), { skipForeignLive: true, instanceKey: instanceParam || '' }) || null;
+      } catch (err) {
+        reportSwallowed('events.project-resolve', err, { project: projectParam });
+        return null;
+      }
+    }
+    return null;
+  };
+  const viewColdDir = resolveColdSource();
+  // Silent-fallback guard (design: never silently fall back). A `?sid=<uuid>`
+  // that resolves to null (the session dir was /clear-pruned or quota-cleaned)
+  // must NOT fall through to the live current session while the client believes
+  // it attached — tell the client explicitly so it can toast + auto-detach.
+  const sidNotFound = !!(sidParam && !viewColdDir);
+  if (sidNotFound) {
+    try { sseWrite(res, `event: sid-not-found\ndata: ${JSON.stringify({ sid: sidParam, ts: Date.now() })}\n\n`); } catch { }
+  }
+  // Multi-instance (2026-10-06): an explicit `?instance=` that resolves to NO session dir must
+  // likewise NOT silently fall through to the bound project's current session (the instance
+  // filter excludes legacy/other-instance dirs, so an empty result would otherwise show the
+  // WRONG project's/instance's conversation). Tell the client explicitly (same posture as
+  // sid-not-found) so it can surface an empty state instead of cross-project bleed.
+  const instanceNotFound = !!(instanceParam && !sidParam && !viewColdDir);
+  if (instanceNotFound) {
+    try { sseWrite(res, `event: sid-not-found\ndata: ${JSON.stringify({ sid: null, instance: instanceParam, reason: 'instance-no-session', ts: Date.now() })}\n\n`); } catch { }
+  }
+  // When a view-scoped dir was requested AND resolved, it replaces the live-source
+  // cold load; otherwise fall back to the standard single-current-session source.
+  const coldSource = viewColdDir || null;
+  // A client viewing a non-bound project needs that project's live feed running
+  // (its PTY is alive but its feed is lazy). Start it idempotently; the feed's
+  // per-project client filter keeps its entries scoped to this project's viewers.
+  if (viewedProject && viewedProject !== (_projectName || '') && typeof deps.ensureProjectFeed === 'function') {
+    try { deps.ensureProjectFeed(viewedProject); } catch (err) { reportSwallowed('events.ensure-feed', err, { project: viewedProject }); }
+  }
 
   // KV-Cache / context_window 追踪（扫描全量条目，不受 since 过滤影响）
   let latestKvCache = null;
@@ -243,7 +338,7 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   // Wire v3 (V3.S5): flagged + v2 source ⇒ the legacy full-entry cold stream
   // is REPLACED by rows + native lines (the byte win); the client assembler
   // rebuilds entries locally. v1 legacy files keep the entry pipeline.
-  const _v3Src = deps.wireV3 ? getLiveLogSource() : null;
+  const _v3Src = deps.wireV3 ? (coldSource || getLiveLogSource()) : null;
   const v3Cold = !!(_v3Src && existsSync(join(_v3Src, 'journal.jsonl')));
 
   // S6b: the cold-load source is the current v2 session dir when the v2
@@ -252,7 +347,7 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   // in-flight placeholder, which the client batch gate still blocks — the
   // previous conversation is the better cold load there (interceptor.js
   // getLiveLogSource header comment).
-  const coldLoadResult = v3Cold ? null : await streamRawEntriesAsync(getLiveLogSource({ serveInFlight: !!deps.wireV3 }), async (raw) => {
+  const coldLoadResult = v3Cold ? null : await streamRawEntriesAsync(coldSource || getLiveLogSource({ serveInFlight: !!deps.wireV3 }), async (raw) => {
     // 直接发送原始 JSON 字符串，不做 parse/reconstruct/stringify
     // ExitPlanMode V2 空 input 的条目按需补全 plan / planFilePath，其它原样透传
     if (res.destroyed || !res.writable) return;
@@ -412,6 +507,13 @@ async function events(req, res, parsedUrl, isLocal, deps) {
 
   // 历史数据 + KV-Cache + context_window 全部发送完毕后，才将客户端加入广播列表。
   // 这样 watcher 的 sendToClients 不会在 load 阶段向该客户端推送 live entry。
+  // Stamp the viewed project so per-project feeds route live entries to exactly
+  // the clients viewing that project (unset ⇒ the bound project, the default).
+  if (viewedProject) res._ccvViewProject = viewedProject;
+  // Multi-instance: stamp the viewed instance too, so a same-cwd project's live feed can
+  // route each instance's entries to exactly the clients viewing THAT instance (unset ⇒
+  // instance-agnostic, the pre-multi-instance default).
+  if (instanceParam) res._ccvViewInstance = instanceParam;
   deps.clients.push(res);
 
   // 任务清单快照补推：内存态不在冷加载数据里，页面刷新/重连后横条要等下一次

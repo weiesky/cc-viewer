@@ -9,38 +9,53 @@ import { killPtyTree } from './lib/term-signals.js';
 import { findSafeSliceStart, splitTrailingIncomplete } from './lib/ansi-safe-slice.js';
 import { resolveSpawnModel } from './lib/spawn-model-resolver.js';
 import { mergeSettingsIntoArgs } from './lib/settings-merge.js';
+import { projectKeyForCwd } from './lib/system-prompt-snapshots.js';
 import { MODEL_PROMPT_DIR } from './lib/model-system-prompts.js';
+import { randomBytes } from 'node:crypto';
 // Launch-time system-prompt/thinking-display pipeline lives in lib/launch-config.js
 // (shared with the SDK link). Re-exported here for existing consumers/tests.
 import { withDefaultThinkingDisplay, resolveLaunchSystemPrompt, insertBeforeDashDash } from './lib/launch-config.js';
 export { withDefaultThinkingDisplay } from './lib/launch-config.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 import { t, tFor } from './i18n.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-let ptyProcess = null;
-// Kind of the current PTY: 'claude' (real Claude Code session), 'shell' (fallback bare
-// shell auto-spawned on input), or null (none). The DingTalk bridge uses this to refuse
-// injecting into a bare shell — typing a prompt into a shell would execute it as a command.
-let ptyKind = null;
-// Whether the current Claude session was launched with --dangerously-skip-permissions
-// (cli.js canonicalizes --d/--ad before spawn). Surfaced for the bridge's RCE warning.
-let ptySkipPermissions = false;
+// Multi-PTY (2026-10): the module used to manage a SINGLE main PTY via module-level
+// singletons (`let ptyProcess` + companions). To run parallel projects — each
+// activated project's claude keeps running in the background while the main view
+// attaches to one of them — the per-PTY state now lives in a Map, plus an
+// `activePtyKey` pointer naming the PTY the main view is attached to. Every
+// existing no-arg export (writeToPty / resizePty / killPty / getPtyState / ...) keeps its
+// signature and operates on the ACTIVE entry, so all current callers (terminal WS, DingTalk
+// bridge, chat-queue, theme sync, getClaudePid) are byte-compatible in the single-PTY case.
+//
+// Map key = per-spawn `instanceKey` (2026-10-06, NOT cwd): the same cwd may host TWO
+// concurrent processes (the user can deliberately run two claude/shell instances in one
+// project dir), so cwd can no longer be the unique addressing key. Each spawn mints a fresh
+// instanceKey; the real cwd is stored on the record (`record.cwd`) so basename/cwd
+// reverse-lookups never depend on the key shape. A record's instanceKey is its identity for
+// its whole lifetime — self-heal respawns reuse the SAME key via `_respawnInto`.
+//
+// Per-PTY record shape (one per instanceKey):
+//   instanceKey, cwd, ptyProcess, ptyKind, ptySkipPermissions, lastExitCode, outputBuffer,
+//   currentWorkspacePath, lastWorkspacePath, lastPtyCols, lastPtyRows,
+//   batchBuffer, batchScheduled, sessionId
+// `dataListeners` / `exitListeners` stay GLOBAL (single main view broadcasts to its SSE/WS
+// clients); a PTY only flushes its output to them while it is the active one (see flushBatch).
+const ptys = new Map();
+// Key of the PTY the main view is attached to (null until the first spawn). All no-arg
+// exports resolve their target through this.
+let activePtyKey = null;
 let dataListeners = [];
 let exitListeners = [];
-let lastExitCode = null;
-let outputBuffer = '';
-let currentWorkspacePath = null;
-let lastWorkspacePath = null; // kept after process exit, used for respawn shell
-let lastPtyCols = 120;
-let lastPtyRows = 30;
-// In-flight guard for the main PTY spawn: the guard runs before `await getPty` and
-// ptyProcess is assigned after the await, so two synchronously-arriving input messages
-// could both pass the guard and double-spawn (the first pty loses its reference → leak +
-// output cross-talk). Synchronously reserve a promise and reuse it across concurrent calls,
-// never spawning twice (mirrors scratch-pty-manager._spawnInflight).
-let _spawnInflight = null;
+// In-flight guard for the main PTY spawn, now PER-PTY-KEY: the guard runs before
+// `await getPty` and the record is assigned after the await, so two synchronously-arriving
+// input messages could both pass the guard and double-spawn (the first pty loses its
+// reference → leak + output cross-talk). A Map so concurrent spawns for DIFFERENT projects
+// serialize independently instead of falsely blocking each other.
+const _spawnInflight = new Map();
 // cols/rows clamp range at the resize entry: the upper bound is wide enough (4K-display
 // ultra-wide terminals), the lower bound is ≥2 cols/1 row to keep FitAddon's 2×1 (from a
 // 0-size container) or a malformed client's NaN/negative from poisoning lastPtyCols/Rows.
@@ -51,9 +66,68 @@ const MAX_BUFFER = 200000;
 // MAX_BUFFER on every chunk — dropping the ~200KB slice reallocation frequency from once
 // per chunk to once per ~20KB of new output.
 const BUFFER_TRIM_TO = 180000;
-let batchBuffer = '';
-let batchScheduled = false;
 let _ptyImportForTests = null;
+
+// Mint a fresh per-spawn instanceKey. This is the PTY-map key: a crypto-random,
+// collision-proof identifier decoupled from cwd, so the same cwd may host multiple
+// concurrent records (2026-10-06). crypto.randomBytes (not Date.now/Math.random) keeps it
+// unique even across rapid same-tick spawns and steering-test clocks.
+function _mintInstanceKey() {
+  return `ccv-${randomBytes(18).toString('hex')}`;
+}
+
+// Lazily create (or fetch) the per-PTY record for an instanceKey. Every per-PTY field that
+// used to be a module singleton is initialized here so a record is always well-formed.
+// `cwd` is set at spawn time (the real, persistent working dir) and never cleared on exit —
+// reverse-lookups (basename / exact-cwd) read it, never the opaque key.
+function _getOrInit(key) {
+  let s = ptys.get(key);
+  if (!s) {
+    s = {
+      instanceKey: key,        // the Map key, mirrored on the record for convenience
+      cwd: null,               // real working dir (persistent; set at spawn, kept after exit)
+      ptyProcess: null,
+      ptyKind: null,             // 'claude' | 'shell' | null
+      ptySkipPermissions: false,
+      lastExitCode: null,
+      outputBuffer: '',
+      currentWorkspacePath: null,
+      lastWorkspacePath: null,   // kept after exit, used for respawn shell
+      lastPtyCols: 120,
+      lastPtyRows: 30,
+      batchBuffer: '',
+      batchScheduled: false,
+      sessionId: null,           // claude session uuid once its first turn mints one (fed via setPtySessionId)
+    };
+    ptys.set(key, s);
+  }
+  return s;
+}
+
+// Reverse index sessionId → PTY map key, so a chat send can be routed to the
+// exact PTY whose claude owns that conversation (2026-10-05). Maintained by
+// setPtySessionId; cleared when a record's sessionId is overwritten or reaped.
+const sidToKey = new Map();
+
+// Resolve the record the no-arg exports operate on: the ACTIVE one. Returns null when no
+// PTY has ever spawned (so callers degrade to their pre-spawn no-op behavior).
+function _active() {
+  return activePtyKey != null ? (ptys.get(activePtyKey) || null) : null;
+}
+
+// Drop entries that have no live process and no buffered output — keeps the Map from
+// growing one stale entry per spawned project over a long-lived server (mirrors
+// scratch-pty-manager.maybeReap). Never reaps the ACTIVE entry.
+function _maybeReap() {
+  if (ptys.size <= 8) return;
+  for (const [key, s] of ptys) {
+    if (key === activePtyKey) continue;
+    if (!s.ptyProcess && !s.outputBuffer) {
+      if (s.sessionId) sidToKey.delete(s.sessionId);
+      ptys.delete(key);
+    }
+  }
+}
 
 export function _setPtyImportForTests(fn) {
   _ptyImportForTests = fn;
@@ -110,19 +184,25 @@ export { findSafeSliceStart };
 const SYNC_BEGIN = '\x1b[?2026h';
 const SYNC_END   = '\x1b[?2026l';
 
-function flushBatch(force = false) {
-  batchScheduled = false;
-  if (!batchBuffer) return;
+// Flush a record's batched PTY output to the global dataListeners — but ONLY while that
+// record is the ACTIVE one (single main view): two concurrent projects' output must never
+// interleave onto the one terminal stream. A background (non-active) record still
+// accumulates outputBuffer/batchBuffer so it can be re-attached later; it just doesn't
+// broadcast. `force` flushes the trailing half-sequence carry (process exit).
+function flushBatch(s, force = false) {
+  s.batchScheduled = false;
+  if (!s.batchBuffer) return;
   // Batch-boundary half-sequence carry: every batch is wrapped in SYNC markers, so if a
   // batch boundary splits an escape sequence the injected markers would eat its ESC and
   // render the tail literally (the root cause of fragments like `[9m`/`8;2;102m`). The
   // half tail is carried to the next batch (PTY continuation always completes it); when
   // force=true (process exit) nothing is carried and all residue is flushed.
-  let safe = batchBuffer;
+  let safe = s.batchBuffer;
   let carry = '';
-  if (!force) [safe, carry] = splitTrailingIncomplete(batchBuffer);
-  batchBuffer = carry;
+  if (!force) [safe, carry] = splitTrailingIncomplete(s.batchBuffer);
+  s.batchBuffer = carry;
   if (!safe) return;
+  if (s !== _active()) return; // background PTY: buffered for later re-attach, not broadcast
   const chunk = SYNC_BEGIN + safe + SYNC_END;
   for (const cb of dataListeners) {
     try { cb(chunk); } catch { }
@@ -130,12 +210,13 @@ function flushBatch(force = false) {
 }
 
 // Inject a synthetic notice line into the embedded terminal (not claude output). Appending
-// to outputBuffer lets newly-connected / reconnected clients see it in the snapshot
-// (server.js's data-resync reads getOutputBuffer), then broadcast live to the current
-// dataListeners.
-function emitSpawnNotice(line) {
+// to the record's outputBuffer lets newly-connected / reconnected clients see it in the
+// snapshot (server.js's data-resync reads getOutputBuffer), then broadcast live to the
+// current dataListeners (only while the record is active).
+function emitSpawnNotice(s, line) {
   const chunk = `\x1b[2m${line}\x1b[0m\r\n`;
-  outputBuffer += chunk;
+  s.outputBuffer += chunk;
+  if (s !== _active()) return;
   for (const cb of dataListeners) {
     try { cb(SYNC_BEGIN + chunk + SYNC_END); } catch { }
   }
@@ -243,28 +324,57 @@ export function _isSystemPromptFileRejected(claudePath) {
 }
 
 export async function spawnClaude(proxyPort, cwd, extraArgs = [], claudePath = null, isNpmVersion = false, serverPort = null, serverProtocol = 'http', internalToken = null) {
-  // Wait for any in-flight spawn to finish before kill+spawn, avoiding a double-spawn /
-  // cross-talk with spawnShell (self-serializing). while rather than if: with ≥3 concurrent
-  // spawns, after A finishes B sets a new inflight=pB, and a single if's C would not re-check
-  // pB before kill+spawn, letting implB/implC double-spawn — loop until there is genuinely
-  // no inflight before proceeding.
-  while (_spawnInflight) { try { await _spawnInflight; } catch { } }
-  if (ptyProcess) {
-    killPty();
-  }
-  const p = _spawnClaudeImpl(proxyPort, cwd, extraArgs, claudePath, isNpmVersion, serverPort, serverProtocol, internalToken);
-  _spawnInflight = p;
-  try { return await p; } finally { if (_spawnInflight === p) _spawnInflight = null; }
+  // Mint a FRESH instanceKey for every spawn: the same cwd may host multiple concurrent
+  // records (2026-10-06), so we never reuse a cwd-derived key nor kill an existing same-cwd
+  // record here. (Self-heal / -c / injection-fallback RESPAWNS are different — they must
+  // reuse the SAME record/key, so they go through `_respawnInto`, not this public entry.)
+  // WARNING: this is the DELIBERATE-multi-instance entry — every call starts a NEW process
+  // even if one is already running for `cwd`. Callers that mean "re-open = reuse the live
+  // one" (e.g. the workspace launch route) must go through `ensurePtyForCwd` instead, or they
+  // will silently leak a duplicate process.
+  const key = _mintInstanceKey();
+  // Serialize concurrent spawns FOR THIS KEY (a fresh key means cross-instance spawns never
+  // falsely block each other; same-key contention only arises from a respawn racing a spawn).
+  while (_spawnInflight.has(key)) { try { await _spawnInflight.get(key); } catch { } }
+  const p = _spawnClaudeImpl(key, proxyPort, cwd, extraArgs, claudePath, isNpmVersion, serverPort, serverProtocol, internalToken);
+  _spawnInflight.set(key, p);
+  try { return await p; } finally { if (_spawnInflight.get(key) === p) _spawnInflight.delete(key); }
 }
 
-async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = null, isNpmVersion = false, serverPort = null, serverProtocol = 'http', internalToken = null) {
+// Self-heal respawn: re-run claude in the SAME record (same instanceKey) after a boot crash
+// / -c miss / rejected injection. Reusing the key keeps the record's identity (and its
+// sidToKey mapping once a sid resolves) stable across the retry — a fresh key would orphan
+// the old record and leave sidToKey pointing at a dead key, severing chat routing.
+function _respawnInto(key, proxyPort, cwd, extraArgs = [], claudePath = null, isNpmVersion = false, serverPort = null, serverProtocol = 'http', internalToken = null) {
+  const p = _spawnClaudeImpl(key, proxyPort, cwd, extraArgs, claudePath, isNpmVersion, serverPort, serverProtocol, internalToken);
+  _spawnInflight.set(key, p);
+  return p.finally(() => { if (_spawnInflight.get(key) === p) _spawnInflight.delete(key); });
+}
+
+async function _spawnClaudeImpl(key, proxyPort, cwd, extraArgs = [], claudePath = null, isNpmVersion = false, serverPort = null, serverProtocol = 'http', internalToken = null) {
+  const s = _getOrInit(key);
+  // NOTE: activePtyKey is set AFTER pty.spawn succeeds (below), not here — under
+  // concurrent spawns for DIFFERENT projects, the active PTY must be the one whose
+  // spawn actually completed (and completed LAST), not merely the one called last.
   const pty = await getPty();
 
   fixSpawnHelperPermissions();
 
-  // If claudePath was not provided, try to find it automatically
+  // If claudePath was not provided, prefer the launcher-verified executable
+  // (cli.js probes resolvePreferredClaudeSelection at boot and pins it into
+  // CCV_CLAUDE_EXECUTABLE — e.g. a CodeFuse-managed build that this machine's
+  // security policy allows). Falling straight to resolveNativePath() can
+  // re-resolve to a DIFFERENT binary (the npm global install) that the
+  // launcher's selection had deliberately passed over — on managed machines
+  // that binary gets SIGKILLed on exec (Gatekeeper/EDR allowlisting), so a
+  // workspace launch dies instantly and the terminal falls back to a bare
+  // shell (the "[+] new project never starts claude" bug).
   if (!claudePath) {
-    claudePath = resolveNativePath();
+    const pinned = process.env.CCV_CLAUDE_EXECUTABLE;
+    if (pinned && typeof pinned === 'string') {
+      try { if (statSync(pinned).isFile()) claudePath = pinned; } catch { }
+    }
+    if (!claudePath) claudePath = resolveNativePath();
     if (!claudePath) {
       throw new Error('claude not found');
     }
@@ -278,6 +388,36 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   env.CCV_PROXY_MODE = '1'; // tell interceptor.js not to start a server again
   env.CCV_LOG_DIR = LOG_DIR; // let the forked Claude Code process find the same
   // profile.json etc. resources
+  // Self-report project (2026-10, multi-PTY): every main-PTY claude ALSO tags its
+  // requests with `x-ccv-project-dir` = its own cwd, so the writer routes its
+  // writes to ITS project — not the (possibly re-bound) server project. This is
+  // what lets a kept-alive OLD project's background claude keep writing to its
+  // own dir after the server binding moves away. Strip CR/LF/control chars
+  // defensively (header values may not contain them).
+  {
+    const headerCwd = String(cwd || process.cwd()).replace(/[\r\n\x00-\x1f\x7f]/g, '');
+    if (headerCwd) {
+      const projectHeader = `x-ccv-project-dir: ${headerCwd}`;
+      env.ANTHROPIC_CUSTOM_HEADERS = env.ANTHROPIC_CUSTOM_HEADERS
+        ? `${env.ANTHROPIC_CUSTOM_HEADERS}\n${projectHeader}`
+        : projectHeader;
+    }
+  }
+  // Self-report instance (2026-10-06, multi-instance): alongside the project dir, tag every
+  // request with this PTY's own instanceKey (`x-ccv-instance`) so the interceptor/writer can
+  // pin the request — and later its resolved sessionId — to THIS exact process. This is what
+  // disambiguates two concurrent claude instances sharing one cwd (basename routing cannot
+  // tell them apart). Strip CR/LF/control chars defensively (header values may not contain
+  // them); the instanceKey is internally minted (`ccv-<hex>`) so it is already header-safe.
+  {
+    const instHeader = String(key || '').replace(/[\r\n\x00-\x1f\x7f]/g, '');
+    if (instHeader) {
+      const instanceHeader = `x-ccv-instance: ${instHeader}`;
+      env.ANTHROPIC_CUSTOM_HEADERS = env.ANTHROPIC_CUSTOM_HEADERS
+        ? `${env.ANTHROPIC_CUSTOM_HEADERS}\n${instanceHeader}`
+        : instanceHeader;
+    }
+  }
   // Strip cc-viewer's internal short-circuit switch so it does not leak to the claude child
   delete env.CCV_SKIP_THINKING_DISPLAY;
   // Strip server-only mode markers: a spawned claude (especially teammate subprocesses,
@@ -460,49 +600,60 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
     args = [claudePath, '--settings', settingsJson, ...launchArgs];
   }
 
-  lastExitCode = null;
-  outputBuffer = '';
-  currentWorkspacePath = cwd || process.cwd();
-  lastWorkspacePath = currentWorkspacePath;
+  s.lastExitCode = null;
+  s.outputBuffer = '';
+  s.currentWorkspacePath = cwd || process.cwd();
+  s.lastWorkspacePath = s.currentWorkspacePath;
+  // Persist the real cwd on the record (2026-10-06): the Map key is now an opaque
+  // instanceKey, so basename/cwd reverse-lookups must read this field, never the key.
+  s.instanceKey = key;
+  s.cwd = s.currentWorkspacePath;
+  // A (re)spawn starts a fresh conversation — drop any sessionId a prior life
+  // on this record resolved to, so a stale sid never misroutes a send.
+  if (s.sessionId) { sidToKey.delete(s.sessionId); s.sessionId = null; }
   // Boot-window anchor for the injection fallback tiers below (same clock as the
   // comparison — _now(), never Date.now(), so tests can steer both ends together).
   const spawnedAt = _now();
 
-  ptyProcess = pty.spawn(command, args, {
+  s.ptyProcess = pty.spawn(command, args, {
     name: 'xterm-256color',
-    cols: lastPtyCols,
-    rows: lastPtyRows,
-    cwd: currentWorkspacePath,
+    cols: s.lastPtyCols,
+    rows: s.lastPtyRows,
+    cwd: s.currentWorkspacePath,
     env,
   });
-  ptyKind = 'claude';
+  // This spawn SUCCEEDED — it becomes the main view's active PTY. Set here (after
+  // pty.spawn returns) so that under concurrent spawns for different projects the
+  // active PTY is the one whose spawn completed LAST, not the one invoked last.
+  activePtyKey = key;
+  s.ptyKind = 'claude';
   // --allow-dangerously-skip-permissions only enables a later toggle, so it must NOT count.
-  ptySkipPermissions = extraArgs.includes('--dangerously-skip-permissions');
+  s.ptySkipPermissions = extraArgs.includes('--dangerously-skip-permissions');
 
   // PTY event handlers must be registered immediately after spawn (PR#128): if the child
   // exits before onExit is mounted (missing binary / instant crash / rejected injection
   // flag), the exit event is lost — after the handle is released the event loop may drain.
   // The injection notice is moved to after registration.
-  ptyProcess.onData((data) => {
-    outputBuffer += data;
-    if (outputBuffer.length > MAX_BUFFER) {
-      const rawStart = outputBuffer.length - BUFFER_TRIM_TO;
-      const safeStart = findSafeSliceStart(outputBuffer, rawStart);
-      outputBuffer = outputBuffer.slice(safeStart);
+  s.ptyProcess.onData((data) => {
+    s.outputBuffer += data;
+    if (s.outputBuffer.length > MAX_BUFFER) {
+      const rawStart = s.outputBuffer.length - BUFFER_TRIM_TO;
+      const safeStart = findSafeSliceStart(s.outputBuffer, rawStart);
+      s.outputBuffer = s.outputBuffer.slice(safeStart);
     }
-    batchBuffer += data;
-    if (!batchScheduled) {
-      batchScheduled = true;
-      setImmediate(flushBatch);
+    s.batchBuffer += data;
+    if (!s.batchScheduled) {
+      s.batchScheduled = true;
+      setImmediate(() => flushBatch(s));
     }
   });
 
-  ptyProcess.onExit(({ exitCode, signal }) => {
-    flushBatch(true);
-    lastExitCode = exitCode;
-    ptyProcess = null;
-    ptyKind = null;
-    ptySkipPermissions = false;
+  s.ptyProcess.onExit(({ exitCode, signal }) => {
+    flushBatch(s, true);
+    s.lastExitCode = exitCode;
+    s.ptyProcess = null;
+    s.ptyKind = null;
+    s.ptySkipPermissions = false;
     // Boot-period death: an exit within the window after spawn. Any exit outside the window
     // is never part of the "injection dragged the boot into a crash" fallback scope. A
     // single _now() read (review): tiers 1/2 share the same instant, so the injected fake
@@ -515,11 +666,13 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
     // death is transparent to consumers. Once the new pty starts normally it reports its own
     // state/exit. This keeps the frontend from seeing a spurious exit event.
     const hasContinue = extraArgs.includes('-c') || extraArgs.includes('--continue');
-    if (hasContinue && exitCode !== 0 && outputBuffer.includes('No conversation found')) {
+    if (hasContinue && exitCode !== 0 && s.outputBuffer.includes('No conversation found')) {
       console.error('[CC Viewer] -c failed (no conversation), retrying without -c');
       const retryArgs = extraArgs.filter(a => a !== '-c' && a !== '--continue');
       _suppressNextSpawnNotice = true;
-      spawnClaude(proxyPort, cwd, retryArgs, claudePath, isNpmVersion, serverPort, serverProtocol, internalToken);
+      // Respawn into the SAME record/key (closure-captured), not a fresh spawn — keeps the
+      // record identity + future sid mapping stable across the retry.
+      _respawnInto(key, proxyPort, cwd, retryArgs, claudePath, isNpmVersion, serverPort, serverProtocol, internalToken);
       return;
     }
 
@@ -533,12 +686,12 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
     const weInjectedFlag = shouldInjectThinkingDisplay
       && !extraArgs.some(a => a === '--thinking-display' || (typeof a === 'string' && a.startsWith('--thinking-display=')));
     const flagRejected = weInjectedFlag && exitCode !== 0
-      && /unknown option ['"]--thinking-display/i.test(outputBuffer);
+      && /unknown option ['"]--thinking-display/i.test(s.outputBuffer);
     if (flagRejected) {
       console.error('[CC Viewer] claude rejected --thinking-display, marking as unsupported and retrying without flag');
       _thinkingDisplayRejectedPaths.add(claudePath);
       _suppressNextSpawnNotice = true;
-      spawnClaude(proxyPort, cwd, extraArgs, claudePath, isNpmVersion, serverPort, serverProtocol, internalToken);
+      _respawnInto(key, proxyPort, cwd, extraArgs, claudePath, isNpmVersion, serverPort, serverProtocol, internalToken);
       return;
     }
 
@@ -569,7 +722,7 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
     // root cause is something else (e.g. an expired API key), the first error already
     // streamed into the terminal scrollback without loss, and the second death broadcasts
     // as usual.
-    const unknownSysFileFlag = /unknown option ['"]--(append-)?system-prompt-file/i.test(outputBuffer);
+    const unknownSysFileFlag = /unknown option ['"]--(append-)?system-prompt-file/i.test(s.outputBuffer);
     const injectedBootCrash = !insideLogDir && !signal && diedInBootWindow;
     const sysFileRejected = sysPrompt.loaded.length > 0 && exitCode !== 0
       && (unknownSysFileFlag || injectedBootCrash);
@@ -584,8 +737,8 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
       _suppressNextSpawnNotice = true;
       // Wording leaves room (review): a boot-period death may be unrelated to the injection
       // (API key / network etc.); do not assert causation.
-      emitSpawnNotice(`[CC Viewer] claude exited during boot (code ${exitCode}); the injected system prompt may or may not be the cause — retrying once without ${sysPrompt.loaded.join(', ')}`);
-      spawnClaude(proxyPort, cwd, extraArgs, claudePath, isNpmVersion, serverPort, serverProtocol, internalToken);
+      emitSpawnNotice(s, `[CC Viewer] claude exited during boot (code ${exitCode}); the injected system prompt may or may not be the cause — retrying once without ${sysPrompt.loaded.join(', ')}`);
+      _respawnInto(key, proxyPort, cwd, extraArgs, claudePath, isNpmVersion, serverPort, serverProtocol, internalToken);
       return;
     }
 
@@ -598,13 +751,21 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
     // !insideLogDir: an IM worker's pty data stream may be relayed via the bridge, so the
     // diagnostic line must not leak into the IM session (review).
     if (sysPrompt.loaded.length > 0 && exitCode === 0 && diedInBootWindow && !insideLogDir) {
-      emitSpawnNotice(`[CC Viewer] claude exited ${Math.round(elapsedMs / 1000)}s after launch with an injected system prompt (${sysPrompt.loaded.join(', ')}). If this keeps happening the injected prompt may be incompatible — remove the entry or set CCV_DISABLE_AUTO_SYSTEM_PROMPT=1 to skip injection.`);
+      emitSpawnNotice(s, `[CC Viewer] claude exited ${Math.round(elapsedMs / 1000)}s after launch with an injected system prompt (${sysPrompt.loaded.join(', ')}). If this keeps happening the injected prompt may be incompatible — remove the entry or set CCV_DISABLE_AUTO_SYSTEM_PROMPT=1 to skip injection.`);
     }
 
-    // Keep lastWorkspacePath (do not clear) for respawn
-    currentWorkspacePath = null;
-    for (const cb of exitListeners) {
-      try { cb(exitCode); } catch { }
+    // Keep lastWorkspacePath (do not clear) for respawn; also keep record.cwd (the persistent
+    // real dir) so basename/cwd reverse-lookups still resolve this record after exit.
+    s.currentWorkspacePath = null;
+    // Only broadcast the ACTIVE PTY's exit to the global listeners. A background
+    // (kept-alive, background) PTY exiting must not push the "exited" banner
+    // into the foreground project's terminal, nor fire the whole-process cleanup
+    // in codefuse mode. Background exits just record lastExitCode (listLivePtys
+    // still observes them).
+    if (s === _active()) {
+      for (const cb of exitListeners) {
+        try { cb(exitCode); } catch { }
+      }
     }
   });
 
@@ -614,7 +775,7 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   // the child exits before the handlers are mounted.
   if (sysPrompt.loaded.length && !sysPrompt.pinned && !_suppressNextSpawnNotice) {
     const modelSuffix = sysPrompt.model ? ` (model match: ${sysPrompt.model})` : '';
-    emitSpawnNotice(`[CC Viewer] loaded ${sysPrompt.loaded.join(', ')} as system prompt${modelSuffix}`);
+    emitSpawnNotice(s, `[CC Viewer] loaded ${sysPrompt.loaded.join(', ')} as system prompt${modelSuffix}`);
   }
   // Pin visibility: a snapshot hit re-injects verbatim; a no-record resume (F2)
   // injects nothing — surfaced ONLY when injection is configured right now
@@ -622,9 +783,9 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   // Mutually exclusive with the loaded notice above (the pinned path never prints it).
   if (sysPrompt.pinned && !_suppressNextSpawnNotice) {
     if (sysPrompt.noRecord) {
-      if (sysPrompt.noRecordNotice) emitSpawnNotice(`[CC Viewer] ${t('cli.systemPromptResumeNoSnapshot')}`);
+      if (sysPrompt.noRecordNotice) emitSpawnNotice(s, `[CC Viewer] ${t('cli.systemPromptResumeNoSnapshot')}`);
     } else if (sysPrompt.loaded.length) {
-      emitSpawnNotice(`[CC Viewer] ${t('cli.systemPromptPinned', { files: sysPrompt.loaded.join(', ') })}`);
+      emitSpawnNotice(s, `[CC Viewer] ${t('cli.systemPromptPinned', { files: sysPrompt.loaded.join(', ') })}`);
     }
   }
   // Settings-merge failures surface via emitSpawnNotice too: console.warn only reaches
@@ -632,16 +793,18 @@ async function _spawnClaudeImpl(proxyPort, cwd, extraArgs = [], claudePath = nul
   // above stays English for greppable server logs). Must be emitted after spawn — the
   // outputBuffer reset right before pty.spawn would swallow an earlier write.
   if (settingsMerge.warningDetail && !_suppressNextSpawnNotice) {
-    emitSpawnNotice(`[CC Viewer] ${t('cli.settingsMergeFailed', settingsMerge.warningDetail)}`);
+    emitSpawnNotice(s, `[CC Viewer] ${t('cli.settingsMergeFailed', settingsMerge.warningDetail)}`);
   }
   _suppressNextSpawnNotice = false;
+  _maybeReap();
 
-  return ptyProcess;
+  return s.ptyProcess;
 }
 
 export function writeToPty(data) {
-  if (ptyProcess) {
-    ptyProcess.write(data);
+  const s = _active();
+  if (s && s.ptyProcess) {
+    s.ptyProcess.write(data);
     return true;
   }
   return false;
@@ -658,8 +821,9 @@ export function writeToPty(data) {
 export function writeToPtySequential(chunks, onComplete, opts = {}) {
   const timeoutMs = opts.timeoutMs || 4000;
   const settleMs = opts.settleMs || 150;
+  const s = _active();
 
-  if (!ptyProcess || !chunks || chunks.length === 0) {
+  if (!s || !s.ptyProcess || !chunks || chunks.length === 0) {
     if (onComplete) onComplete(false);
     return;
   }
@@ -675,7 +839,7 @@ export function writeToPtySequential(chunks, onComplete, opts = {}) {
   };
 
   const sendNext = () => {
-    if (idx >= chunks.length || !ptyProcess) {
+    if (idx >= chunks.length || !s.ptyProcess) {
       cleanup();
       // Report success only if every chunk was sent. A PTY that died mid-sequence (idx <
       // length) is a partial/failed injection — callers (e.g. the DingTalk bridge) must learn
@@ -698,7 +862,7 @@ export function writeToPtySequential(chunks, onComplete, opts = {}) {
       return;
     }
     try {
-      ptyProcess.write(chunk);
+      s.ptyProcess.write(chunk);
     } catch (e) {
       cleanup();
       if (onComplete) onComplete(false);
@@ -721,16 +885,43 @@ export function writeToPtySequential(chunks, onComplete, opts = {}) {
  * After the process exits, auto-spawn an interactive shell so the terminal becomes usable
  * again. Returns true if spawned successfully, false if unnecessary or failed.
  */
+// Module-level single in-flight guard for spawnShell. spawnShell normally derives its key
+// from the CURRENT activePtyKey at call time — but when nothing is active yet (fresh server,
+// or after a full reset), two concurrent calls would each mint a DIFFERENT instanceKey before
+// the first reaches its `await getPty()`, so a per-key inflight map cannot dedupe them and
+// two shells would open. A single shared promise serializes that whole spawn regardless of
+// which key it lands on (there is only ever one "current shell" the terminal wants).
+let _shellInflight = null;
+
+// Per-cwd in-flight guard for the launch route's ensurePtyForCwd (2026-10-06). Unlike
+// `_spawnInflight` (keyed by a freshly-minted instanceKey, so it cannot dedupe two concurrent
+// spawns of the SAME cwd), this serializes the live-scan→spawn sequence per cwd so a duplicate
+// process is not started by a double launch.
+const _cwdLaunchInflight = new Map();
+
 export async function spawnShell() {
-  if (ptyProcess) return false; // a process is already running
-  if (_spawnInflight) return _spawnInflight; // reuse the in-flight spawn to avoid double
-  const p = _spawnShellImpl();
-  _spawnInflight = p;
-  try { return await p; } finally { if (_spawnInflight === p) _spawnInflight = null; }
+  const s = _active();
+  if (s && s.ptyProcess) return false; // a process is already running
+  if (_shellInflight) return _shellInflight; // reuse the in-flight shell spawn to avoid a double-open
+  // Reuse the ACTIVE record's key when there is one (shell re-opens into the dead claude's
+  // record). Only when nothing has ever spawned do we mint a fresh instanceKey — never a
+  // cwd-derived key (the Map is keyed by instanceKey, 2026-10-06; a cwd key would break the
+  // "key is always an instanceKey" invariant).
+  const key = activePtyKey != null ? activePtyKey : _mintInstanceKey();
+  const p = (async () => {
+    if (_spawnInflight.has(key)) return _spawnInflight.get(key);
+    const inner = _spawnShellImpl(key);
+    _spawnInflight.set(key, inner);
+    try { return await inner; } finally { if (_spawnInflight.get(key) === inner) _spawnInflight.delete(key); }
+  })();
+  _shellInflight = p;
+  try { return await p; } finally { if (_shellInflight === p) _shellInflight = null; }
 }
 
-async function _spawnShellImpl() {
-  const cwd = lastWorkspacePath || process.cwd();
+async function _spawnShellImpl(key) {
+  const s = _getOrInit(key);
+  // activePtyKey set after pty.spawn succeeds (below), mirroring _spawnClaudeImpl.
+  const cwd = s.lastWorkspacePath || s.cwd || process.cwd();
 
   const pty = await getPty();
 
@@ -738,8 +929,12 @@ async function _spawnShellImpl() {
 
   const shell = process.env.SHELL || (process.platform === 'win32' ? (process.env.ComSpec || 'cmd.exe') : '/bin/sh');
 
-  lastExitCode = null;
-  currentWorkspacePath = cwd;
+  s.lastExitCode = null;
+  s.currentWorkspacePath = cwd;
+  // Persist identity on the record (mirrors _spawnClaudeImpl): the Map key is an opaque
+  // instanceKey, so cwd must live on the record for basename/cwd reverse-lookups.
+  s.instanceKey = key;
+  s.cwd = cwd;
 
   // Clean env: remove cc-viewer specific vars so child shells don't inherit them
   // (prevents CCVIEWER_PORT/CCVIEWER_PROTOCOL leaking to non-cc-viewer Claude instances;
@@ -758,39 +953,44 @@ async function _spawnShellImpl() {
   applyClaudeAltScreenPref(shellEnv);
   const shellSpawn = prepareEmbeddedShellSpawn(shell, shellEnv);
 
-  ptyProcess = pty.spawn(shellSpawn.command, shellSpawn.args, {
+  s.ptyProcess = pty.spawn(shellSpawn.command, shellSpawn.args, {
     name: 'xterm-256color',
-    cols: lastPtyCols,
-    rows: lastPtyRows,
+    cols: s.lastPtyCols,
+    rows: s.lastPtyRows,
     cwd,
     env: shellSpawn.env,
   });
-  ptyKind = 'shell';
-  ptySkipPermissions = false;
+  activePtyKey = key; // spawn succeeded → becomes the active PTY
+  s.ptyKind = 'shell';
+  s.ptySkipPermissions = false;
 
-  ptyProcess.onData((data) => {
-    outputBuffer += data;
-    if (outputBuffer.length > MAX_BUFFER) {
-      const rawStart = outputBuffer.length - BUFFER_TRIM_TO;
-      const safeStart = findSafeSliceStart(outputBuffer, rawStart);
-      outputBuffer = outputBuffer.slice(safeStart);
+  s.ptyProcess.onData((data) => {
+    s.outputBuffer += data;
+    if (s.outputBuffer.length > MAX_BUFFER) {
+      const rawStart = s.outputBuffer.length - BUFFER_TRIM_TO;
+      const safeStart = findSafeSliceStart(s.outputBuffer, rawStart);
+      s.outputBuffer = s.outputBuffer.slice(safeStart);
     }
-    batchBuffer += data;
-    if (!batchScheduled) {
-      batchScheduled = true;
-      setImmediate(flushBatch);
+    s.batchBuffer += data;
+    if (!s.batchScheduled) {
+      s.batchScheduled = true;
+      setImmediate(() => flushBatch(s));
     }
   });
 
-  ptyProcess.onExit(({ exitCode }) => {
-    flushBatch(true);
-    lastExitCode = exitCode;
-    ptyProcess = null;
-    ptyKind = null;
-    ptySkipPermissions = false;
-    currentWorkspacePath = null;
-    for (const cb of exitListeners) {
-      try { cb(exitCode); } catch { }
+  s.ptyProcess.onExit(({ exitCode }) => {
+    flushBatch(s, true);
+    s.lastExitCode = exitCode;
+    s.ptyProcess = null;
+    s.ptyKind = null;
+    s.ptySkipPermissions = false;
+    s.currentWorkspacePath = null;
+    // Same active-scope guard as the main spawn's onExit: only the foreground
+    // (active) PTY's exit is broadcast; a background shell exit stays silent.
+    if (s === _active()) {
+      for (const cb of exitListeners) {
+        try { cb(exitCode); } catch { }
+      }
     }
   });
 
@@ -809,37 +1009,370 @@ function _clampDim(v, min, max, fallback) {
 }
 
 export function resizePty(cols, rows) {
-  lastPtyCols = _clampDim(cols, PTY_COLS_MIN, PTY_COLS_MAX, lastPtyCols);
-  lastPtyRows = _clampDim(rows, PTY_ROWS_MIN, PTY_ROWS_MAX, lastPtyRows);
-  if (ptyProcess) {
-    try { ptyProcess.resize(lastPtyCols, lastPtyRows); } catch { }
+  const s = _active();
+  if (!s) return;
+  s.lastPtyCols = _clampDim(cols, PTY_COLS_MIN, PTY_COLS_MAX, s.lastPtyCols);
+  s.lastPtyRows = _clampDim(rows, PTY_ROWS_MIN, PTY_ROWS_MAX, s.lastPtyRows);
+  if (s.ptyProcess) {
+    try { s.ptyProcess.resize(s.lastPtyCols, s.lastPtyRows); } catch { }
   }
 }
 
-export function killPty() {
-  if (ptyProcess) {
-    flushBatch(true);
-    batchBuffer = '';
-    batchScheduled = false;
-    // Windows: node-pty's ConPTY kill has a known synchronous-hang issue
-    // (microsoft/node-pty#454); a hang would also take down the Ctrl+C exit-chain watchdog.
-    // Instead use spawnSync taskkill /T /F to reap the whole process tree (ConPTY agent +
-    // claude), bounded (timeout 2s) and providing "dead on return" semantics (which
-    // spawnClaude's internal kill→respawn and workspaces stop→launch rely on). ptyProcess
-    // .kill() is fully skipped on win32. Non-Windows behavior is unchanged.
-    if (!killPtyTree(ptyProcess.pid)) {
-      try { ptyProcess.kill(); } catch { }
-    }
-    ptyProcess = null;
-    ptyKind = null;
-    ptySkipPermissions = false;
+// Kill a specific record's PTY (the shared kill path for the no-arg killPty — active —
+// and killPtyFor). Keeps the record (and its lastWorkspacePath / scrollback / cwd) so a
+// later re-spawn / re-attach resumes cleanly.
+function _killPtyRecord(s) {
+  if (!s || !s.ptyProcess) return;
+  flushBatch(s, true);
+  s.batchBuffer = '';
+  s.batchScheduled = false;
+  // Windows: node-pty's ConPTY kill has a known synchronous-hang issue
+  // (microsoft/node-pty#454); a hang would also take down the Ctrl+C exit-chain watchdog.
+  // Instead use spawnSync taskkill /T /F to reap the whole process tree (ConPTY agent +
+  // claude), bounded (timeout 2s) and providing "dead on return" semantics (which
+  // spawnClaude's internal kill→respawn and workspaces stop→launch rely on). ptyProcess
+  // .kill() is fully skipped on win32. Non-Windows behavior is unchanged.
+  if (!killPtyTree(s.ptyProcess.pid)) {
+    try { s.ptyProcess.kill(); } catch { }
   }
+  s.ptyProcess = null;
+  s.ptyKind = null;
+  s.ptySkipPermissions = false;
+}
+
+export function killPty() {
+  _killPtyRecord(_active());
+}
+
+/**
+ * Kill a SPECIFIC project's main PTY (multi-PTY, 2026-10) — the per-project
+ * counterpart of killPty()/killAllMain(), powering the web header's per-tab
+ * close button (POST /api/live-processes/close). Resolution mirrors
+ * attachPtyFor (exact match on the record's stored cwd, else project-name
+ * reverse lookup). Never
+ * spawns; the record (and its scrollback/lastWorkspacePath) is kept so a
+ * later re-launch resumes cleanly — same semantics as _killPtyRecord.
+ *
+ * When the killed record was the ACTIVE one, the attachment re-anchors to
+ * another still-RUNNING record (first in Map order) so the shared terminal
+ * stream follows a live project instead of going dark; with none left alive
+ * the key stays on the dead record (no-arg readers see running:false, the
+ * same dead-state a natural exit produces). Records whose process already
+ * exited are never re-anchor targets.
+ *
+ * @returns {{ ok:boolean, key?:string, killedActive?:boolean,
+ *            reattachedTo?:string|null, reason?:string }}
+ */
+export function killPtyFor({ cwd, project, instanceKey } = {}) {
+  // Multi-instance forced disambiguation (2026-10-06): a project-name-only close that matches
+  // TWO concurrently-live same-basename records is ambiguous — killing "the first live one"
+  // would kill an arbitrary process. Refuse and surface the live candidates so the caller
+  // re-issues with an instanceKey. Single-match / instance-Keyed calls are unaffected.
+  if (!instanceKey && typeof project === 'string' && project) {
+    const live = _liveInstancesForProject(project);
+    if (live.length > 1) return { ok: false, reason: 'ambiguous', candidates: live };
+  }
+  const key = _resolveKey({ cwd, project, instanceKey });
+  if (!key) return { ok: false, reason: 'not-found' };
+  const s = ptys.get(key);
+  if (!s) return { ok: false, reason: 'not-found' };
+  _killPtyRecord(s);
+  const killedActive = key === activePtyKey;
+  let reattachedTo = null;
+  if (killedActive) {
+    for (const [k, other] of ptys) {
+      if (k !== key && other && other.ptyProcess) { reattachedTo = k; break; }
+    }
+    if (reattachedTo) activePtyKey = reattachedTo;
+  }
+  return { ok: true, key, killedActive, reattachedTo };
+}
+
+// Kill EVERY main PTY across all projects (workspaces stop / process teardown). The no-arg
+// killPty only kills the ACTIVE one; a kept-alive background project's PTY must also be
+// reaped or it leaks past the workspace session.
+export function killAllMain() {
+  for (const s of ptys.values()) _killPtyRecord(s);
+}
+
+/**
+ * Resolve a PTY-map key from an exact `cwd` or a `project` name (reverse lookup
+ * via projectKeyForCwd, the same mapping the live-processes route uses). Shared
+ * by attachPtyFor / killPtyFor — returns null when nothing matches so callers
+ * can degrade with their own not-found shape.
+ *
+ * The Map is keyed by an opaque `instanceKey` (2026-10-06), NOT cwd, so the exact-cwd
+ * branch can no longer do `ptys.has(cwd)` — it scans records for a matching `record.cwd`.
+ * A single cwd may host multiple live records (multi-instance); ties break
+ * live-before-exited, then active-before-background (mirrors the basename branch).
+ */
+function _resolveKey({ cwd, project, instanceKey } = {}) {
+  let key = null;
+  // Multi-instance (2026-10-06): an exact instanceKey hits its record directly (the Map key).
+  // Validated to the minted shape before use (defense-in-depth).
+  if (typeof instanceKey === 'string' && /^ccv-[0-9a-f]+$/.test(instanceKey) && ptys.has(instanceKey)) {
+    return instanceKey;
+  }
+  if (typeof cwd === 'string' && cwd) {
+    // Exact-cwd branch: match on the record's persistent cwd, not the (opaque) key.
+    let firstMatch = null;
+    for (const [k, s] of ptys) {
+      if (s.cwd !== cwd) continue;
+      if (!firstMatch) firstMatch = k;
+      if (s.ptyProcess && k === activePtyKey) { key = k; break; } // active + live: best
+      if (s.ptyProcess && !key) key = k;                          // any live record
+    }
+    if (!key) key = firstMatch;
+  }
+  if (!key && typeof project === 'string' && project) {
+    // Basename collisions: two records can share one project name (same
+    // basename, different dirs). Prefer a RUNNING record over an exited one,
+    // and the current active over a background one — never blindly take the
+    // first insertion (which could be a dead/duplicate record). Known blind
+    // spot: two simultaneously-live same-name records still resolve to the
+    // first live one (full disambiguation via instanceKey lands in the view-layer phase).
+    let firstMatch = null;
+    for (const [k, s] of ptys) {
+      const recCwd = s.cwd || s.currentWorkspacePath || s.lastWorkspacePath;
+      if (projectKeyForCwd(recCwd) !== project) continue;
+      if (!firstMatch) firstMatch = k;
+      if (s.ptyProcess && k === activePtyKey) { key = k; break; } // active + live: best
+      if (s.ptyProcess && !key) key = k;                          // any live record
+    }
+    if (!key) key = firstMatch;
+  }
+  return key;
+}
+
+/**
+ * Count the LIVE records whose basename matches `project` (multi-instance disambiguation,
+ * 2026-10-06). When a project-name-only attach/kill arrives while TWO same-cwd (or
+ * same-basename) instances are concurrently live, resolving to "the first live one" would
+ * silently act on an arbitrary process — the caller MUST name an instanceKey instead. Returns
+ * the live candidates so the caller can surface them for disambiguation.
+ */
+function _liveInstancesForProject(project) {
+  const live = [];
+  if (typeof project !== 'string' || !project) return live;
+  for (const [k, s] of ptys) {
+    if (!s || !s.ptyProcess) continue; // LIVE only
+    const recCwd = s.cwd || s.currentWorkspacePath || s.lastWorkspacePath;
+    if (projectKeyForCwd(recCwd) === project) live.push({ key: k, instanceKey: k, cwd: recCwd });
+  }
+  return live;
+}
+
+/**
+ * Record the claude session uuid a PTY's conversation resolved to, so chat
+ * sends can be routed by sessionId (2026-10-05). Called by the v2 writer once
+ * a request's metadata yields a sid. Replaces any prior sid mapping for the
+ * record (a /clear or -c moves the PTY to a new session).
+ */
+export function setPtySessionId(project, sessionId) {
+  if (typeof sessionId !== 'string' || !sessionId) return false;
+  const key = _resolveKey({ project });
+  if (!key) return false;
+  const s = ptys.get(key);
+  if (!s) return false;
+  if (s.sessionId && s.sessionId !== sessionId) sidToKey.delete(s.sessionId);
+  s.sessionId = sessionId;
+  sidToKey.set(sessionId, key);
+  return true;
+}
+
+/**
+ * Record the claude session uuid for a PTY addressed by its exact instanceKey
+ * (2026-10-06, multi-instance). Unlike `setPtySessionId` (basename `project`, which cannot
+ * tell two same-cwd instances apart), this pins the sid to THIS process's record via the
+ * self-reported `x-ccv-instance` header. The instanceKey is validated before use as a Map
+ * key (defense-in-depth, mirroring the `_resumeProject` sanitize in interceptor.js). On a
+ * /clear or -c the record moves to a new sid — drop the stale sid index entry first
+ * (mirrors setPtySessionId).
+ */
+export function setPtySessionIdForInstance(instanceKey, sessionId) {
+  if (typeof sessionId !== 'string' || !sessionId) return false;
+  if (typeof instanceKey !== 'string' || !/^ccv-[0-9a-f]+$/.test(instanceKey)) return false;
+  const s = ptys.get(instanceKey);
+  if (!s) return false;
+  if (s.sessionId && s.sessionId !== sessionId) sidToKey.delete(s.sessionId);
+  s.sessionId = sessionId;
+  sidToKey.set(sessionId, instanceKey);
+  return true;
+}
+
+/**
+ * Resolve the PTY-map key for a chat send anchor. Order:
+ *   1. project + sessionId TOGETHER: sessionId is trusted only when the record
+ *      that `project` resolves to actually owns that sid — during a view switch
+ *      the frontend may briefly carry the DEPARTING project's sid alongside the
+ *      NEW project, and sid-first routing would send the message back to the old
+ *      project's PTY (the exact bleed this fixes). A sid that contradicts the
+ *      project is dropped to the project route.
+ *   2. sessionId alone (no project): exact conversation → its PTY.
+ *   3. project alone: basename reverse lookup (the multi-project view anchor).
+ *   4. the active record (legacy no-anchor callers).
+ * Returns null only when nothing exists at all.
+ *
+ * Pure resolution — does NOT move `activePtyKey`. A chat send is a targeted
+ * write to one conversation's PTY; re-anchoring the global active pointer here
+ * would make resize/scrollback/getPtyState follow whichever project was last
+ * SENT to, a new cross-project bleed (review P1, 2026-10-05).
+ */
+function _resolveKeyByAnchor({ sessionId, project, instanceKey } = {}) {
+  // Multi-instance: an explicit instanceKey is the strongest anchor — it pins THIS exact
+  // process (disambiguating two same-cwd instances that basename routing cannot).
+  if (typeof instanceKey === 'string' && /^ccv-[0-9a-f]+$/.test(instanceKey)) {
+    const rec = ptys.get(instanceKey);
+    if (rec && rec.ptyProcess) return instanceKey;
+  }
+  const projKey = (typeof project === 'string' && project) ? _resolveKey({ project }) : null;
+  if (typeof sessionId === 'string' && sessionId) {
+    const key = sidToKey.get(sessionId);
+    // Only honor the sid route when the record is still LIVE (has a process). A record killed
+    // via killPtyFor keeps its sid mapping (only respawn/overwrite/reap clear it), so without
+    // the liveness check an anchored send to a just-closed project would resolve to the dead
+    // record and silently drop the message (writeToPtyFor finds no ptyProcess and returns
+    // false with no fallback).
+    const rec = key ? ptys.get(key) : null;
+    if (rec && rec.ptyProcess) {
+      // Consistency check: when the anchor also names a project, the sid must
+      // belong to that project's record — else it is a stale cross-view sid.
+      if (!projKey || projKey === key) return key;
+    }
+  }
+  if (projKey) return projKey;
+  return activePtyKey != null && ptys.has(activePtyKey) ? activePtyKey : null;
+}
+
+/** writeToPty variant routed by an explicit anchor instead of the global active pointer. */
+export function writeToPtyFor(data, { sessionId, project, instanceKey } = {}) {
+  const key = _resolveKeyByAnchor({ sessionId, project, instanceKey });
+  const s = key ? ptys.get(key) : null;
+  if (s && s.ptyProcess) {
+    s.ptyProcess.write(data);
+    return true;
+  }
+  return false;
+}
+
+/** writeToPtySequential variant routed by an explicit anchor. */
+export function writeToPtySequentialFor(chunks, onComplete, opts = {}, anchor = {}) {
+  const key = _resolveKeyByAnchor(anchor);
+  const s = key ? ptys.get(key) : null;
+  if (!s || !s.ptyProcess || !chunks || chunks.length === 0) {
+    if (onComplete) onComplete(false);
+    return;
+  }
+  const timeoutMs = opts.timeoutMs || 4000;
+  const settleMs = opts.settleMs || 150;
+  let idx = 0;
+  let dataListener = null;
+  const cleanup = () => {
+    if (dataListener) {
+      dataListeners = dataListeners.filter(l => l !== dataListener);
+      dataListener = null;
+    }
+  };
+  const sendNext = () => {
+    if (idx >= chunks.length || !s.ptyProcess) {
+      cleanup();
+      if (onComplete) onComplete(idx >= chunks.length);
+      return;
+    }
+    const chunk = chunks[idx];
+    idx++;
+    if (typeof chunk !== 'string') {
+      cleanup();
+      if (onComplete) onComplete(false);
+      return;
+    }
+    try {
+      s.ptyProcess.write(chunk);
+    } catch (e) {
+      cleanup();
+      if (onComplete) onComplete(false);
+      return;
+    }
+    const isToggleOrSubmit = chunk === ' ' || chunk === '\r'
+      || chunk === '\x1b[C' || chunk === '\x1b[A' || chunk === '\x1b[B';
+    const isPasteEnd = chunk.endsWith('\x1b[201~');
+    const delay = (isToggleOrSubmit || isPasteEnd) ? settleMs : 80;
+    setTimeout(sendNext, delay);
+  };
+  sendNext();
+}
+
+/**
+ * Attach the main view to a specific project's PTY (multi-PTY, 2026-10): moves
+ * `activePtyKey` off "last spawned wins" onto the project the user is actually
+ * VIEWING. Without this, every no-arg export (writeToPty / spawnShell /
+ * getPtyState / getOutputBuffer) stays pinned to the most recently spawned
+ * project — a parallel project launched via [+] shows the wrong project's
+ * scrollback and keystrokes land in the other project's claude (the "terminal
+ * never starts" bug).
+ *
+ * Resolution: exact `cwd` match on the record's stored cwd first; else a
+ * `project` name reverse-lookup (record cwd → projectKeyForCwd, the same
+ * mapping the live-processes route uses). Idempotent: re-attaching the
+ * already-active key is a no-op; unknown targets change nothing so callers
+ * can degrade silently. Never spawns/kills; the record's outputBuffer is
+ * untouched — the WS layer replays it as the post-attach snapshot (the batch
+ * channel must NOT re-deliver it: background output already lives in
+ * outputBuffer, so a force-flush here would double-print it in the terminal).
+ */
+export function attachPtyFor({ cwd, project, instanceKey } = {}) {
+  // Multi-instance forced disambiguation (2026-10-06): a project-name-only attach matching TWO
+  // concurrently-live same-basename records is ambiguous — attaching "the first live one" would
+  // pin the terminal to an arbitrary process. Refuse and surface the live candidates so the
+  // caller re-issues with an instanceKey. Single-match / instance-keyed calls are unaffected.
+  if (!instanceKey && typeof project === 'string' && project) {
+    const live = _liveInstancesForProject(project);
+    if (live.length > 1) return { ok: false, reason: 'ambiguous', candidates: live };
+  }
+  const key = _resolveKey({ cwd, project, instanceKey });
+  if (!key) return { ok: false, reason: 'not-found' };
+  const s = ptys.get(key);
+  if (!s) return { ok: false, reason: 'not-found' };
+  const switched = key !== activePtyKey;
+  activePtyKey = key;
+  return {
+    ok: true,
+    key,
+    switched,
+    running: !!s.ptyProcess,
+    ptyKind: s.ptyKind || null,
+    exitCode: s.lastExitCode,
+  };
+}
+
+/**
+ * parallel-project chips. Returns [{ key, instanceKey, cwd, ptyKind, pid, isActive }] for
+ * records whose process is still running (ptyProcess != null); exited-but-
+ * unreaped records are excluded. `key`/`instanceKey` are the opaque per-spawn instanceKey
+ * the Map is keyed on; `cwd` is the record's real working dir (never the key). `isActive`
+ * marks the PTY the main view is attached to. Read-only.
+ */
+export function listLivePtys() {
+  const out = [];
+  for (const [key, s] of ptys) {
+    if (!s || !s.ptyProcess) continue;
+    out.push({
+      key,
+      instanceKey: key,
+      cwd: s.cwd || s.currentWorkspacePath || '',
+      ptyKind: s.ptyKind || null,
+      pid: s.ptyProcess.pid,
+      isActive: key === activePtyKey,
+    });
+  }
+  return out;
 }
 
 export function onPtyData(cb) {
   dataListeners.push(cb);
   return () => {
     dataListeners = dataListeners.filter(l => l !== cb);
+    _maybeReap(); // a listener dropping off is a natural point to reclaim idle records
   };
 }
 
@@ -847,38 +1380,101 @@ export function onPtyExit(cb) {
   exitListeners.push(cb);
   return () => {
     exitListeners = exitListeners.filter(l => l !== cb);
+    _maybeReap();
   };
 }
 
 export function getPtyPid() {
-  return ptyProcess ? ptyProcess.pid : null;
+  const s = _active();
+  return s && s.ptyProcess ? s.ptyProcess.pid : null;
 }
 
 export function getPtyState() {
+  const s = _active();
   return {
-    running: !!ptyProcess,
-    exitCode: lastExitCode,
+    running: !!(s && s.ptyProcess),
+    exitCode: s ? s.lastExitCode : null,
   };
 }
 
 /** Kind of the active PTY: 'claude' | 'shell' | null. */
 export function getPtyKind() {
-  return ptyKind;
+  const s = _active();
+  return s ? s.ptyKind : null;
 }
 
 /** True iff the active Claude session was launched with --dangerously-skip-permissions. */
 export function getPtySkipPermissions() {
-  return ptyKind === 'claude' && ptySkipPermissions;
+  const s = _active();
+  return !!(s && s.ptyKind === 'claude' && s.ptySkipPermissions);
 }
 
 export function getCurrentWorkspace() {
+  const s = _active();
   return {
-    running: !!ptyProcess,
-    exitCode: lastExitCode,
-    cwd: currentWorkspacePath,
+    running: !!(s && s.ptyProcess),
+    exitCode: s ? s.lastExitCode : null,
+    cwd: s ? s.currentWorkspacePath : null,
   };
 }
 
 export function getOutputBuffer() {
-  return outputBuffer;
+  const s = _active();
+  return s ? s.outputBuffer : '';
+}
+
+/**
+ * Launch-or-reattach for a workspace cwd (2026-10-06, multi-instance). Now that spawnClaude
+ * mints a fresh instanceKey per call and no longer kills an existing same-cwd record, an
+ * explicit re-launch of an ALREADY-LIVE cwd would silently start a duplicate process (the
+ * old mutual-kill used to replace it). This gate restores the intended "re-open = reuse"
+ * semantics for the launch path: if a claude is already running for `cwd`, attach the main
+ * view to it and report `attached:true` WITHOUT spawning; otherwise spawn fresh.
+ *
+ * Deliberate multi-instance (a second concurrent claude in the same cwd) still goes through
+ * the public `spawnClaude` — this helper is only the de-dup guard for the launch route.
+ *
+ * @returns {Promise<{ spawned:boolean, attached:boolean, key:string|null, running:boolean }>}
+ */
+export async function ensurePtyForCwd({ cwd, proxyPort, extraArgs = [], claudePath = null, isNpmVersion = false, serverPort = null, serverProtocol = 'http', internalToken = null } = {}) {
+  if (typeof cwd !== 'string' || !cwd) return { spawned: false, attached: false, key: null, running: false };
+  // Serialize concurrent launches for the SAME cwd (review P1 / TOCTOU): the live-scan below
+  // + `spawnClaude` are two separate steps, so two simultaneous launches of one cwd could both
+  // miss the scan and both mint a fresh instanceKey (a duplicate process). `_spawnInflight` is
+  // keyed by instanceKey and cannot dedupe across distinct minted keys, so we hold a per-cwd
+  // in-flight promise here — the second caller waits for the first, then re-scans and finds
+  // the now-live record (attaching instead of spawning).
+  while (_cwdLaunchInflight.has(cwd)) { try { await _cwdLaunchInflight.get(cwd); } catch { } }
+  // Prefer an already-LIVE claude for this exact cwd (not a shell). Re-attaching rather than
+  // re-spawning preserves the running session and avoids a duplicate process.
+  for (const [k, s] of ptys) {
+    if (s && s.cwd === cwd && s.ptyProcess && s.ptyKind === 'claude') {
+      activePtyKey = k; // attach the main view to the live record
+      return { spawned: false, attached: true, key: k, running: true };
+    }
+  }
+  const p = spawnClaude(proxyPort, cwd, extraArgs, claudePath, isNpmVersion, serverPort, serverProtocol, internalToken);
+  _cwdLaunchInflight.set(cwd, p);
+  try {
+    await p;
+    return { spawned: true, attached: false, key: activePtyKey, running: true };
+  } finally {
+    if (_cwdLaunchInflight.get(cwd) === p) _cwdLaunchInflight.delete(cwd);
+  }
+}
+
+// Test only: clear ALL multi-PTY state (the Map, the active pointer, and the global
+// listener arrays) so suites that spawn real/mock PTYs don't leak records between cases.
+// The old singleton model reset via killPty() nulling one record; with a Map that no longer
+// isolates tests, so they call this in beforeEach/afterEach instead.
+export function _resetForTests() {
+  for (const s of ptys.values()) _killPtyRecord(s);
+  ptys.clear();
+  sidToKey.clear();
+  activePtyKey = null;
+  dataListeners = [];
+  exitListeners = [];
+  _spawnInflight.clear();
+  _shellInflight = null;
+  _cwdLaunchInflight.clear();
 }

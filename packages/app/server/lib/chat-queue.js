@@ -67,11 +67,12 @@ function _broadcast() {
   catch (err) { reportSwallowed('chat-queue.broadcast', err); }
 }
 
-function _makeItem(text) {
+function _makeItem(text, anchor) {
   return {
     id: 'q_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
     text,
     ts: Date.now(),
+    anchor: anchor || null,   // { project, sessionId } from the enqueueing client (2026-10-05)
   };
 }
 
@@ -95,6 +96,13 @@ function _clearEscTimer() {
  * NOTE 2: `isStreaming` (streamingState.active) flickers false between tool calls mid-turn;
  * injecting into that gap is harmless (the TUI natively queues the paste) but it means an
  * "immediate" inject can land inside the current turn's chain — accepted risk class.
+ * KNOWN LIMITATION (multi-project, 2026-10-05): the busy gate is global/bound-scoped —
+ * `isStreaming` reads the bound project's streamingState and `getPtyKind` follows the
+ * global active PTY, and `_items` is a single FIFO across projects. A message queued on
+ * project A can be head-of-line blocked by (or misjudge the busyness of) project B.
+ * Injection itself IS anchor-routed (item.anchor), so a queued message still lands on
+ * the project it was written in; only the timing/busy heuristic is not per-project.
+ * Per-project streaming state + queue isolation is a follow-up.
  */
 function _safeToInject() {
   if (!_deps) return false;
@@ -126,7 +134,12 @@ function _injectHead() {
   _injecting = true;
   const gen = _gen; // invalidate on clear()/stop(): a stale completion must not re-park
   try {
-    _deps.writeToPtySequential(bracketPasteSubmit(item.text), (ok) => {
+    // Route the inject by the enqueueing client's anchor when one was captured,
+    // so a message queued while viewing project A never lands in project B's PTY.
+    const _write = _deps.writeToPtySequentialFor && item.anchor
+      ? (chunks, done, opts) => _deps.writeToPtySequentialFor(chunks, done, opts, item.anchor)
+      : _deps.writeToPtySequential;
+    _write(bracketPasteSubmit(item.text), (ok) => {
       _injecting = false;
       if (gen !== _gen) return;
       if (!ok) {
@@ -175,7 +188,7 @@ function _pollUntilSafe(fn, onTimeout) {
  * `\x1b[201~` would otherwise break the paste frame), broadcasts, and arms a rescue timer for
  * the stale-busy case (frontend's isStreaming lags the real turn end by up to its debounce).
  */
-export function enqueue(text) {
+export function enqueue(text, anchor) {
   if (!_deps) return null;
   const clean = sanitizeInbound(text == null ? '' : String(text)).trim();
   if (!clean) return null;
@@ -186,7 +199,7 @@ export function enqueue(text) {
     catch (err) { reportSwallowed('chat-queue.reject-broadcast', err); }
     return null;
   }
-  const item = _makeItem(clean);
+  const item = _makeItem(clean, anchor);
   _items.push(item);
   _clearRescueTimer();
   _broadcast();

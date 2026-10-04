@@ -90,7 +90,7 @@ function CrumbDropTarget({ label, path, link, onNavigate, onMove, title }) {
   );
 }
 
-function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNavigate, onSelectFile, currentPath, selectedPath, treeCache, cacheEpoch, isRemote, onFileRenamed, onAttachToChat, onInsertPathToChat, onImportFiles, onMove }) {  const childPath = path ? `${path}/${item.name}` : item.name;
+function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNavigate, onSelectFile, currentPath, selectedPath, treeCache, cacheEpoch, isRemote, onFileRenamed, onAttachToChat, onInsertPathToChat, onImportFiles, onMove, project }) {  const childPath = path ? `${path}/${item.name}` : item.name;
   const isDir = item.type === 'directory';
   const expanded = expandedPaths.has(childPath);
   const isGitIgnored = item.gitIgnored || false;
@@ -107,7 +107,7 @@ function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNav
     if (isDir && expanded && children === null && !loading) {
       setLoading(true);
       setLoadFailed(false);
-      fetch(apiUrl(`/api/files?path=${encodeURIComponent(childPath)}`))
+      fetch(apiUrl(`/api/files?path=${encodeURIComponent(childPath)}${project ? `&project=${encodeURIComponent(project)}` : ''}`))
         .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
         .then(data => { treeCache.current.set(childPath, data); setChildren(data); setLoading(false); })
         // Collapse + re-expand the arrow retries the fetch (children stays null).
@@ -228,6 +228,7 @@ function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNav
           onInsertPathToChat={onInsertPathToChat}
           onImportFiles={onImportFiles}
           onMove={onMove}
+          project={project}
         />
       ))}
     </>
@@ -248,7 +249,7 @@ function isThumbnailFile(name) {
 // One grid cell with its own (memoized) context menu — building the menu and
 // handler inside entries.map would recreate O(n) closures on every render.
 // The menu items depend only on (isDir, isRemote); the handler binds the path.
-function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelect, onOpen, menuCtx, onImportFiles, onMove }) {
+function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelect, onOpen, menuCtx, onImportFiles, onMove, project }) {
   const isDir = item.type === 'directory';
   // Image cells render a real thumbnail (lazy-loaded; falls back to the file
   // icon on error, e.g. oversized >10MB or unreadable file).
@@ -308,7 +309,7 @@ function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelec
           {showThumb && !thumbFailed ? (
             <img
               className={styles.cellThumb}
-              src={apiUrl(`/api/file-raw?path=${encodeURIComponent(childPath)}`)}
+              src={apiUrl(`/api/file-raw?path=${encodeURIComponent(childPath)}${project ? `&project=${encodeURIComponent(project)}` : ''}`)}
               loading="lazy"
               alt=""
               draggable={false}
@@ -324,7 +325,7 @@ function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelec
   );
 }
 
-export default function FileBrowserModal({ open = false, onClose, onAttachToChat, onInsertPathToChat, onFileRenamed, refreshTrigger = 0 }) {
+export default function FileBrowserModal({ open = false, onClose, onAttachToChat, onInsertPathToChat, onFileRenamed, refreshTrigger = 0, project }) {
   const [currentPath, setCurrentPath] = useState('');
   const [expandedPaths, setExpandedPaths] = useState(() => new Set());
   const [selectedPath, setSelectedPath] = useState(null);
@@ -352,10 +353,10 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
   const fetchDir = useCallback((path) => {
     const cached = treeCache.current.get(path);
     if (cached) return Promise.resolve(cached);
-    return fetch(apiUrl(`/api/files?path=${encodeURIComponent(path)}`))
+    return fetch(apiUrl(`/api/files?path=${encodeURIComponent(path)}${project ? `&project=${encodeURIComponent(project)}` : ''}`))
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then(data => { treeCache.current.set(path, data); return data; });
-  }, []);
+  }, [project]);
 
   // Tree root: load on open; reload after cache invalidation (reopen/refresh).
   useEffect(() => {
@@ -681,6 +682,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
               onInsertPathToChat={onInsertPathToChat}
               onImportFiles={handleImportFiles}
               onMove={handleMove}
+              project={project}
             />
           ))}
         </aside>
@@ -688,9 +690,9 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
           {previewFile ? (
             <div className={styles.previewHost}>
               {isImageFile(previewFile) ? (
-                <ImageViewer filePath={previewFile} onClose={() => setPreviewFile(null)} />
+                <ImageViewer filePath={previewFile} onClose={() => setPreviewFile(null)} project={project} />
               ) : (
-                <FileContentView filePath={previewFile} onClose={() => setPreviewFile(null)} />
+                <FileContentView filePath={previewFile} onClose={() => setPreviewFile(null)} project={project} />
               )}
             </div>
           ) : (
@@ -794,6 +796,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
                       menuCtx={cellMenuCtx}
                       onImportFiles={handleImportFiles}
                       onMove={handleMove}
+                      project={project}
                     />
                   );
                 })}

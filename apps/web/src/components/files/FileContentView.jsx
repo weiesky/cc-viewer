@@ -323,6 +323,7 @@ export default function FileContentView({
   getRestoreScrollSnapshot,
   onConsumeScrollSnapshot,
   onDirtyChange,
+  project,
 }) {
   const [content, setContent] = useState(null);
   const [currentContent, setCurrentContent] = useState(null);
@@ -634,7 +635,7 @@ export default function FileContentView({
     setExtensionDetected(false);
     setMdxParseErrored(false);
 
-    fetch(apiUrl(`/api/file-content?path=${encodeURIComponent(filePath)}${editorSession ? '&editorSession=true' : ''}`))
+    fetch(apiUrl(`/api/file-content?path=${encodeURIComponent(filePath)}${editorSession ? '&editorSession=true' : ''}${project ? `&project=${encodeURIComponent(project)}` : ''}`))
       .then((r) => {
         if (!r.ok) {
           return r
@@ -684,7 +685,7 @@ export default function FileContentView({
           setLoading(false);
         }
       });
-  }, [filePath, editorSession, isMdFile, mdxFeatureEnabled]);
+  }, [filePath, editorSession, isMdFile, mdxFeatureEnabled, project]);
 
   useEffect(() => {
     loadFileContent();

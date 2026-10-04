@@ -2,6 +2,8 @@
 import { loadAskStore, consumeIfFinal as askStoreConsumeIfFinal, markCancelled as askStoreMarkCancelled } from '../lib/ask/ask-store.js';
 import { runWaterfallHook, runParallelHook } from '../lib/plugin-loader.js';
 import { sendEventToClients } from '../lib/log-watcher.js';
+import { filterClientsByViewProject } from '../lib/v2/view-router.js';
+import { _projectName } from '../interceptor.js';
 
 function pendingAsks(req, res, parsedUrl, isLocal, deps) {
   try {
@@ -512,13 +514,31 @@ function streamChunk(req, res, parsedUrl, isLocal, deps) {
       }
       // 用 named event 'stream-progress' 避免混入 data: 流与 dedup 冲突
       // 精简 payload：前端只需要 timestamp/url/content 渲染 Live overlay
+      // Multi-project (2026-10): stamp the SOURCE project so the broadcast can
+      // be routed only to clients VIEWING that project — an unfiltered
+      // broadcast let project A's typewriter render inside project B's view
+      // (the SSE cross-project bleed). `entry._resumeProject` is the emitting
+      // claude's own project (self-reported via x-ccv-project-dir); absent ⇒
+      // the bound project (legacy no-header producer).
+      const sourceProject = (typeof entry._resumeProject === 'string' && entry._resumeProject)
+        ? entry._resumeProject
+        : (_projectName || '');
       const _streamChunkPayload = {
         timestamp: entry.timestamp,
         url: entry.url,
         content: entry.response?.body?.content || [],
         model: entry.body?.model,
+        // B3 (multi-session view-attach): relay the session uuid so an attached
+        // client can drop the other session's typewriter. Additive — older clients
+        // ignore it.
+        sessionId: typeof entry.sessionId === 'string' ? entry.sessionId : null,
+        project: sourceProject,
       };
-      sendEventToClients(deps.clients, 'stream-progress', _streamChunkPayload);
+      sendEventToClients(
+        filterClientsByViewProject(deps.clients, sourceProject, _projectName || ''),
+        'stream-progress',
+        _streamChunkPayload,
+      );
       runParallelHook('onStreamChunk', _streamChunkPayload);
     } catch {}
     try { res.writeHead(204); res.end(); } catch {}

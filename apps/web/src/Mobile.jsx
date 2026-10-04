@@ -21,6 +21,7 @@ import MobileStats from './components/mobile/MobileStats';
 import VoicePackSettings from './components/settings/VoicePackSettings';
 import CachePopoverContent from './components/dashboard/CachePopoverContent';
 import MemoryDetailModal from './components/common/MemoryDetailModal';
+import { ResumeSessionsList } from './components/chat/ResumeSessionsPopover';
 import SkillsManagerModal from './components/settings/SkillsManagerModal';
 import ProjectPrefsManagerModal from './components/settings/ProjectPrefsManagerModal';
 import PluginModal from './components/settings/PluginModal';
@@ -29,21 +30,13 @@ import ProxyModal from './components/settings/ProxyModal';
 import OpenFolderIcon from './components/common/OpenFolderIcon';
 import appConfig from './config.json';
 import { t, getLang, setLang, LANG_OPTIONS } from './i18n';
-import { useProjectAlias } from './hooks/useProjectAlias';
 import { apiUrl } from './utils/apiUrl';
 import * as SeqLoaders from './utils/seqResourceLoaders';
 
 const CALIBRATION_MODELS = appConfig.calibrationModels;
 
-// Bridge useProjectAlias into the mobile ctx label. Mobile-side is read-only
-// for phase 1 — edit entry lives in AppHeader only because the mobile bar is
-// tight and aliasing on mobile is less common. Cross-tab / same-tab updates
-// still propagate here via the hook so a desktop alias edit reflects on
-// mobile without reload.
 function MobileCtxLabelText({ projectName }) {
-  const alias = useProjectAlias(projectName);
-  const base = `${t('ui.liveMonitoring')}${projectName ? `: ${projectName}` : ''}`;
-  return <>{base}{alias ? ` (${alias})` : ''}</>;
+  return <>{t('ui.liveMonitoring')}{projectName ? `: ${projectName}` : ''}</>;
 }
 
 class Mobile extends AppBase {
@@ -62,6 +55,7 @@ class Mobile extends AppBase {
       mobileTerminalVisible: false,
       mobileFileExplorerVisible: false,
       mobileCachePanelVisible: false,  // 手机模式：点击血条划出的侧边抽屉
+      mobileResumeVisible: false,      // /resume global session switcher modal
       globalPermission: null,     // { permission, handlers } — 全局权限审批浮层
       globalPlanApproval: null,   // { plan, handlers } — 全局计划审批浮层
       autoApproveSeconds: 3,   // 与 AppBase 一致：默认 3s 倒计时自动批准（0=关闭 / -1=免审批）
@@ -109,6 +103,7 @@ class Mobile extends AppBase {
       mobileTerminalVisible: false,
       mobileFileExplorerVisible: false,
       mobileCachePanelVisible: false,
+      mobileResumeVisible: false,
       // PC-aligned modals: 也纳入互斥关闭, 避免点击其他菜单项时这 3 个仍残留
       pluginModalVisible: false,
       processModalVisible: false,
@@ -592,7 +587,7 @@ class Mobile extends AppBase {
     const wsOpen = !mobileIsLocalLog;
 
     return (
-      <TerminalWsProvider open={wsOpen}>
+      <TerminalWsProvider open={wsOpen} viewedProject={this.state.viewedProject || this.state.projectName || null} viewedInstance={this.state.viewedInstance || null}>
       <ApprovalModal
         enabled={isPad && this.state.approvalPrefs.modalEnabled}
         soundEnabled={this.state.approvalPrefs.soundEnabled}
@@ -633,10 +628,8 @@ class Mobile extends AppBase {
               const contextPercent = mobileContextPercent;
               const ctxColor = contextSeverityColor(contextPercent);
               const ctxLabel = `${t('ui.liveMonitoring')}${this.state.projectName ? `: ${this.state.projectName}` : ''}`;
-              // ctxLabel is also used in `title` (PC hover tooltip). Alias is
-              // only rendered in the VISIBLE content via MobileCtxLabelText
-              // (using useProjectAlias for cross-tab reactivity); the tooltip
-              // can stay alias-less since mobile has no hover anyway.
+              // ctxLabel is also used in `title` (PC hover tooltip); the tooltip
+              // stays a plain label since mobile has no hover anyway.
               // 血条本体——iPad 与手机一致，作为按钮触发左侧抽屉（mobileCachePanelOverlay）。
               // mobileCachePanelVisible=true 时才 mount CachePopoverContent，维持 commit 0914cc5
               // 的"打开才解析 200 条"性能修复。
@@ -739,6 +732,35 @@ class Mobile extends AppBase {
                   </svg>
                   {t('ui.logManagement')}
                 </button>
+                {/* /resume — global session switcher (mirrors the PC sidebar /resume flyout) */}
+                {!mobileIsLocalLog && (
+                <button
+                  className={styles.mobileMenuItem}
+                  onClick={() => { this.setState({ ...this._closeAllMobileOverlays(), mobileResumeVisible: true }); }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                    <path d="M3 3v5h5" />
+                    <path d="M12 7v5l4 2" />
+                  </svg>
+                  {t('ui.resume.navTitle')}
+                </button>
+                )}
+                {/* [+] new parallel project (mirrors the PC header [+] button).
+                    Hidden in the Electron chat tab (window.tabBridge) where the
+                    picker is a dead control. */}
+                {!mobileIsLocalLog && (typeof window === 'undefined' || !window.tabBridge) && (
+                <button
+                  className={styles.mobileMenuItem}
+                  onClick={() => { this.setState({ ...this._closeAllMobileOverlays(), newProjectOpen: true }); }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  {t('ui.resume.newProject')}
+                </button>
+                )}
                 {/* 3. 用户 Prompt — 对应 PC 「查看用户 Prompt」 */}
                 <button
                   className={styles.mobileMenuItem}
@@ -869,6 +891,9 @@ class Mobile extends AppBase {
                     onPlanAutoApproveChange={this.handlePlanAutoApproveChange}
                     ownTabId={this.state.ownTabId}
                     projectName={this.state.projectName}
+                    viewedProject={this.state.viewedProject || null}
+                    viewInstance={this.state.viewedInstance || null}
+                    viewProject={this.state.viewedProject || this.state.projectName || null}
                     suppressInlineApprovalPanels={true}
                     pendingUploadPaths={this.state.pendingUploadPaths}
                     onUploadPathsConsumed={this.handleUploadPathsConsumed}
@@ -897,9 +922,16 @@ class Mobile extends AppBase {
               />
             </div>
           )}
+          {/* View-switch overlay (mobile): same signal as desktop — covers
+              chat + terminal while a session switch is in flight. */}
+          {this.state.resumeSwitch && (
+            <div className={styles.mobileResumeSwitchMask}>
+              <Spin size="large" />
+            </div>
+          )}
           <div className={`${styles.mobileGitDiffOverlay} ${this.state.mobileGitDiffVisible ? styles.mobileGitDiffOverlayVisible : ''}`}>
             <div className={styles.mobileGitDiffInner}>
-              <MobileGitDiff visible={this.state.mobileGitDiffVisible} onClose={() => this.setState({ mobileGitDiffVisible: false })} />
+              <MobileGitDiff visible={this.state.mobileGitDiffVisible} onClose={() => this.setState({ mobileGitDiffVisible: false })} project={this.state.viewedProject || this.state.projectName || null} />
             </div>
           </div>
           {/* 移动端（含 iPad）血条点击 → 从左侧划出的 cache popover 抽屉。
@@ -949,6 +981,30 @@ class Mobile extends AppBase {
             onClose={() => this.setState({ _memoryDetail: null })}
             onOpenMemoryDetail={this.loadMemoryDetail}
           />
+          {/* /resume global session switcher (mobile: tap → Modal; reuses the
+              shared ResumeSessionsList body from the desktop popover). */}
+          <Modal
+            title={t('ui.resume.recentSessions')}
+            open={this.state.mobileResumeVisible}
+            onCancel={() => this.setState({ mobileResumeVisible: false })}
+            footer={null}
+            destroyOnHidden
+          >
+            <ResumeSessionsList
+              active={this.state.mobileResumeVisible}
+              attachedUuid={this.state.attachedSid || null}
+              isStreaming={this.state.isStreaming}
+              onResumeSession={(row) => { this.setState({ mobileResumeVisible: false }); this.handleResumeSession(row); }}
+            />
+            {/* While attached to a historical session, a "back to current session"
+                action detaches back to follow-latest (mobile). */}
+            {this.state.attachedSid && (
+              <div style={{ marginTop: 8, textAlign: 'center' }}>
+                <a onClick={this.handleDetachView}>{t('ui.resume.returnToCurrent')}</a>
+              </div>
+            )}
+          </Modal>
+          {(typeof window === 'undefined' || !window.tabBridge) && this.renderNewProjectModal()}
           <MemoryDetailModal
             detail={this.state._claudeMdDetail}
             onClose={() => this.setState({ _claudeMdDetail: null })}
@@ -992,7 +1048,7 @@ class Mobile extends AppBase {
           />
           <div className={`${styles.mobileFileExplorerOverlay} ${this.state.mobileFileExplorerVisible ? styles.mobileFileExplorerOverlayVisible : ''}`}>
             <div className={styles.mobileFileExplorerInner}>
-              <MobileFileExplorer visible={this.state.mobileFileExplorerVisible} onClose={() => this.setState({ mobileFileExplorerVisible: false, mobileFileExplorerTarget: null })} targetFile={this.state.mobileFileExplorerTarget} projectName={this.state.projectName} />
+              <MobileFileExplorer visible={this.state.mobileFileExplorerVisible} onClose={() => this.setState({ mobileFileExplorerVisible: false, mobileFileExplorerTarget: null })} targetFile={this.state.mobileFileExplorerTarget} projectName={this.state.projectName} project={this.state.viewedProject || this.state.projectName || null} />
             </div>
           </div>
           <div className={`${styles.mobileStatsOverlay} ${this.state.mobileStatsVisible ? styles.mobileStatsOverlayVisible : ''}`}>

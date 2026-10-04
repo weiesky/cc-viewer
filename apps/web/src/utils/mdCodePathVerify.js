@@ -104,7 +104,9 @@ export async function checkPathsExist(paths, { projectKey = '', fetchImpl } = {}
       const res = await fetchFn(apiUrl('/api/files-exists'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths: chunk.map(e => e.p) }),
+        // Multi-project (2026-10): the probe's projectKey IS the viewed project —
+        // pass it through so the server probes THAT project's tree, not the bound one.
+        body: JSON.stringify({ paths: chunk.map(e => e.p), ...(projectKey ? { project: projectKey } : {}) }),
       });
       if (res && res.ok) {
         const data = await res.json();

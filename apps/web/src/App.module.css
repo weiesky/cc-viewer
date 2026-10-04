@@ -17,6 +17,23 @@
 .content {
   flex: 1;
   overflow: hidden;
+  position: relative;
+}
+
+/* /resume takeover overlay: translucent mask over the chat + terminal panels
+   while a session switch is in flight. pointer-events:none (visual only);
+   z-index below antd Modal mask (1000) / message (1010) so toasts stay visible. */
+.resumeSwitchMask {
+  position: absolute;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  pointer-events: none;
 }
 
 .mainContainer {
@@ -428,6 +445,21 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Mobile variant of .resumeSwitchMask: sits above chat + the terminal overlay
+   (both z-index 100) but below the mobile menu (999). */
+.mobileResumeSwitchMask {
+  position: absolute;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  pointer-events: none;
 }
 
 .mobileGitDiffOverlayVisible {

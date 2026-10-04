@@ -53,7 +53,7 @@ const STOP_CHECK_EVERY = 50; // entries between shouldStop() polls
 const PROXY_SHARD_NAME = /^proxy_\d{4}-\d{2}-\d{2}\.jsonl$/;
 
 /** Enumerate a project's v1 log files, ascending by filename timestamp.
- *  Excludes `_temp.jsonl` (resume scratch) and `proxy_*.jsonl` (retry stats). */
+ *  Excludes `_temp.jsonl` and `proxy_*.jsonl` (retry stats). */
 export function listV1Files(projectDir) {
   if (!existsSync(projectDir)) return [];
   return readdirSync(projectDir)

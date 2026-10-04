@@ -16,7 +16,6 @@ import OpenFolderIcon from './components/common/OpenFolderIcon';
 import CountryFlag from './components/common/CountryFlag';
 import UsageWindowPill from './components/dashboard/UsageWindowPill';
 import { extractLatestPlanUsage } from './utils/rateLimitParser';
-import { getProjectAlias } from './utils/projectAlias';
 import { t } from './i18n';
 import { reportSwallowed } from './utils/errorReport';
 import { filterRelevantRequests, visibleRequests, findPrevMainAgentTimestamp } from './utils/helpers';
@@ -508,7 +507,9 @@ class App extends AppBase {
 
     return (
       <ConfigProvider theme={this.themeConfig}>
-        <TerminalWsProvider open={wsOpen}>
+        {/* viewedProject: multi-PTY attach scope — the shared terminal stream
+            follows the VIEWED project (chip switch), not the last-spawned one. */}
+        <TerminalWsProvider open={wsOpen} viewedProject={this.state.viewedProject || this.state.projectName || null} viewedInstance={this.state.viewedInstance || null}>
         <ApprovalModal
           enabled={this.state.approvalPrefs.modalEnabled}
           soundEnabled={this.state.approvalPrefs.soundEnabled}
@@ -549,7 +550,6 @@ class App extends AppBase {
               onToggleTerminal={() => this.setState(prev => prev.sdkMode ? ({ scratchOpen: !prev.scratchOpen }) : ({ terminalVisible: !prev.terminalVisible }))}
               proxyStatsVisible={this.state.proxyStatsVisible}
               onToggleProxyStats={this.handleToggleProxyStats}
-              onReturnToWorkspaces={this.state.cliMode ? this.handleReturnToWorkspaces : null}
               contextWindow={this.state.contextWindow}
               contextBarOptimistic={this.state.contextBarOptimistic}
               contextBarLocked={this.state.contextBarLocked}
@@ -583,8 +583,23 @@ class App extends AppBase {
               onRetryConfigChange={this.handleRetryConfigChange}
               contextBarSlot={this.state.contextBarSlot}
               claudeProjectModel={this.state.claudeProjectModel}
+              onResumeSession={this.handleResumeSession}
+              // Electron chat tab: [+] is a dead control (the tab's tabBridge has no
+              // launchWorkspace — that lives in the workspace-popup preload, and the
+              // multitab launch route short-circuits without a launchCallback). Hide it.
+              onNewProject={(typeof window !== 'undefined' && window.tabBridge) ? null : this.handleNewProject}
+              attachedSid={this.state.attachedSid || null}
+              isStreaming={this.state.isStreaming}
+              onActivateChip={this.handleActivateChip}
+              viewedProject={this.state.viewedProject || null}
+              viewedInstance={this.state.viewedInstance || null}
+              viewProject={this.state.viewedProject || this.state.projectName || null}
+              onDetachView={this.handleDetachView}
+              onCloseProject={this.handleCloseProject}
+              onLiveProjectsChange={this.handleLiveProjectsChange}
             />
           </Layout.Header>
+          {(typeof window === 'undefined' || !window.tabBridge) && this.renderNewProjectModal()}
           {this.state.claudeMissing && (
             <Alert
               type="warning"
@@ -682,8 +697,16 @@ class App extends AppBase {
               )
             )}
             <div className={styles.chatViewWrapper} style={{ display: viewMode === 'chat' ? 'flex' : 'none' }}>
-              <ChatView loadingProgress={fileLoading ? this._loadingProgressText() : null} {...this._settingsProps()} getTokenStatsContent={this._getTokenStatsContent} requests={deepRequests} mainAgentSessions={displaySessions} sessionUpperBoundTs={sessionUpperBoundTs} streamingLatest={this.state.streamingLatest} userProfile={this.state.userProfile} collapseToolResults={prefs.collapseToolResults} expandThinking={prefs.expandThinking} showFullToolContent={prefs.showFullToolContent} minimalChat={prefs.minimalChat} onlyCurrentSession={!this._isLocalLog} isLocalLog={!!this._isLocalLog} showThinkingSummaries={prefs.showThinkingSummaries} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={this.handleScrollTsDone} cliMode={this._isLocalLog ? false : this.state.cliMode} sdkMode={this._isLocalLog ? false : this.state.sdkMode} terminalVisible={this._isLocalLog ? false : (this.state.sdkMode ? this.state.scratchOpen : this.state.terminalVisible)} onToggleTerminal={() => this.setState(prev => prev.sdkMode ? ({ scratchOpen: !prev.scratchOpen }) : ({ terminalVisible: !prev.terminalVisible }))} pendingUploadPaths={this.state.pendingUploadPaths} onUploadPathsConsumed={this.handleUploadPathsConsumed} uploadingDrop={this.state.uploadingDrop} fileLoading={this.state.fileLoading} isStreaming={this.state.isStreaming} lang={this.state.lang} autoApproveSeconds={this.state.autoApproveSeconds} onAutoApproveChange={this.handleAutoApproveChange} planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds} onPlanAutoApproveChange={this.handlePlanAutoApproveChange} onClearContextOptimistic={this.handleClearContextOptimistic} onUserMessageSent={this.handleUserMessageSent} onPendingAsk={this.handleApprovalAsk} onPendingPtyPlan={this.handleApprovalPtyPlan} ownTabId={this.state.ownTabId} projectName={this.state.projectName} setContextBarSlot={this.setContextBarSlot} />
+              <ChatView loadingProgress={fileLoading ? this._loadingProgressText() : null} {...this._settingsProps()} getTokenStatsContent={this._getTokenStatsContent} requests={deepRequests} mainAgentSessions={displaySessions} sessionUpperBoundTs={sessionUpperBoundTs} streamingLatest={this.state.streamingLatest} userProfile={this.state.userProfile} collapseToolResults={prefs.collapseToolResults} expandThinking={prefs.expandThinking} showFullToolContent={prefs.showFullToolContent} minimalChat={prefs.minimalChat} onlyCurrentSession={!this._isLocalLog} isLocalLog={!!this._isLocalLog} showThinkingSummaries={prefs.showThinkingSummaries} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={this.handleScrollTsDone} cliMode={this._isLocalLog ? false : this.state.cliMode} sdkMode={this._isLocalLog ? false : this.state.sdkMode} terminalVisible={this._isLocalLog ? false : (this.state.sdkMode ? this.state.scratchOpen : this.state.terminalVisible)} onToggleTerminal={() => this.setState(prev => prev.sdkMode ? ({ scratchOpen: !prev.scratchOpen }) : ({ terminalVisible: !prev.terminalVisible }))} pendingUploadPaths={this.state.pendingUploadPaths} onUploadPathsConsumed={this.handleUploadPathsConsumed} uploadingDrop={this.state.uploadingDrop} fileLoading={this.state.fileLoading} isStreaming={this.state.isStreaming} lang={this.state.lang} autoApproveSeconds={this.state.autoApproveSeconds} onAutoApproveChange={this.handleAutoApproveChange} planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds} onPlanAutoApproveChange={this.handlePlanAutoApproveChange} onClearContextOptimistic={this.handleClearContextOptimistic} onUserMessageSent={this.handleUserMessageSent} onPendingAsk={this.handleApprovalAsk} onPendingPtyPlan={this.handleApprovalPtyPlan} ownTabId={this.state.ownTabId} projectName={this.state.projectName} viewProject={this.state.viewedProject || this.state.projectName || null} setContextBarSlot={this.setContextBarSlot} attachedSid={this.state.attachedSid || null} viewedProject={this.state.viewedProject || null} viewInstance={this.state.viewedInstance || null} onDetachView={this.handleDetachView} />
             </div>
+            {/* View-switch overlay: covers chat + terminal while a session/project
+                switch is in flight (see AppBase resumeSwitch). pointer-events:none
+                keeps it visual-only; z-index stays below antd Modal/message. */}
+            {this.state.resumeSwitch && (
+              <div className={styles.resumeSwitchMask}>
+                <Spin size="large" />
+              </div>
+            )}
           </Layout.Content>
           <div className={styles.footer}>
             {/* Geo badge is only meaningful for Anthropic official subscriptions: mount it (and
@@ -759,6 +782,7 @@ class App extends AppBase {
                 retryConfig={this.state.retryConfig}
                 retryDefaults={this.state.retryDefaults}
                 onRetryConfigChange={this.handleRetryConfigChange}
+                project={this.state.viewedProject || this.state.projectName || null}
               />
             </Suspense>
           </ProxyPageErrorBoundary>
@@ -823,7 +847,7 @@ class App extends AppBase {
               style={{ minWidth: 180, marginRight: 8 }}
               value={this.state.logViewProject || this.state.currentProject || undefined}
               placeholder={t('ui.selectProject')}
-              options={(this.state.allLogProjects || []).map(p => ({ value: p, label: getProjectAlias(p) ? `${getProjectAlias(p)} (${p})` : p }))}
+              options={(this.state.allLogProjects || []).map(p => ({ value: p, label: p }))}
               onChange={this.handleLogsProjectChange}
             />
             <Button size="small" icon={<UploadOutlined />} onClick={this.handleLoadLocalJsonlFile}>

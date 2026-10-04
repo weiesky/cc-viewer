@@ -61,7 +61,7 @@ function TreeDir({ name, node, depth, selectedFile, selectedRepo, repoPath, onFi
   );
 }
 
-export default function MobileGitDiff({ visible, onClose }) {
+export default function MobileGitDiff({ visible, onClose, project }) {
   const [repos, setRepos] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -79,7 +79,7 @@ export default function MobileGitDiff({ visible, onClose }) {
     if (!visible) return;
     setLoading(true);
     setError(null);
-    fetchAllRepos()
+    fetchAllRepos(project)
       .then(results => {
         if (mounted.current) {
           setRepos(results);
@@ -93,7 +93,7 @@ export default function MobileGitDiff({ visible, onClose }) {
         }
       });
     return () => { mounted.current = false; };
-  }, [visible]);
+  }, [visible, project]);
 
   useEffect(() => {
     if (!selectedFile || !selectedRepo) {
@@ -106,7 +106,8 @@ export default function MobileGitDiff({ visible, onClose }) {
     setDiffError(null);
 
     const repoParam = selectedRepo && selectedRepo !== '.' ? `&repo=${encodeURIComponent(selectedRepo)}` : '';
-    fetch(apiUrl(`/api/git-diff?files=${encodeURIComponent(selectedFile)}${repoParam}`))
+    const projectParam = project ? `&project=${encodeURIComponent(project)}` : '';
+    fetch(apiUrl(`/api/git-diff?files=${encodeURIComponent(selectedFile)}${repoParam}${projectParam}`))
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -127,7 +128,7 @@ export default function MobileGitDiff({ visible, onClose }) {
           setDiffLoading(false);
         }
       });
-  }, [selectedFile, selectedRepo]);
+  }, [selectedFile, selectedRepo, project]);
 
   const totalChanges = useMemo(() => {
     if (!repos) return 0;
@@ -227,13 +228,13 @@ export default function MobileGitDiff({ visible, onClose }) {
                     <div className={styles.imagePreviewWrap}>
                       <img
                         className={styles.imagePreview}
-                        src={apiUrl(`/api/file-raw?path=${encodeURIComponent(diffDisplayPath)}`)}
+                        src={apiUrl(`/api/file-raw?path=${encodeURIComponent(diffDisplayPath)}${project ? `&project=${encodeURIComponent(project)}` : ''}`)}
                         alt={selectedFile}
                         onClick={() => setLightboxOpen(true)}
                       />
                       {lightboxOpen && (
                         <ImageLightbox
-                          src={apiUrl(`/api/file-raw?path=${encodeURIComponent(diffDisplayPath)}`)}
+                          src={apiUrl(`/api/file-raw?path=${encodeURIComponent(diffDisplayPath)}${project ? `&project=${encodeURIComponent(project)}` : ''}`)}
                           alt={selectedFile}
                           onClose={() => setLightboxOpen(false)}
                         />

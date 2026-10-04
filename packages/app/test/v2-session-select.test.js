@@ -25,11 +25,12 @@ afterEach(() => { try { rmSync(projectDir, { recursive: true, force: true }); } 
 /** Build a session dir under projectDir/sessions/<sid> with a meta.json and
  *  (optionally) a journal.jsonl. `mainTurn` (default true) writes a kind:'main'
  *  req so the session counts as "activated"; false leaves it empty/sub-only. */
-function seed(sid, { startTs, wireFormat = 2, leader = null, journal = true, mainTurn = true } = {}) {
+function seed(sid, { startTs, wireFormat = 2, leader = null, journal = true, mainTurn = true, instance = null } = {}) {
   const dir = join(projectDir, 'sessions', sid);
   mkdirSync(dir, { recursive: true });
   const meta = { wireFormat, sessionId: sid, project: 'proj', startTs };
   if (leader) meta.leader = leader;
+  if (instance) meta.instance = instance; // multi-instance: stamp the owning PTY instanceKey
   writeFileSync(join(dir, 'meta.json'), JSON.stringify(meta));
   if (journal) {
     const lines = [JSON.stringify({ ph: 'meta', wireFormat, sessionId: sid })];
@@ -50,6 +51,47 @@ const iso = (n) => new Date(Date.UTC(2026, 6, 14, 5, 0, n)).toISOString();
 describe('latestMainSessionDir', () => {
   it('returns "" when the project has no sessions', () => {
     assert.equal(latestMainSessionDir(projectDir), '');
+  });
+
+  it('instanceKey filter picks only that instance\'s latest session (multi-instance)', () => {
+    // Two same-cwd instances write DIFFERENT session dirs (distinct wire UUIDs), each stamped
+    // with its own meta.instance. An instance-scoped cold load must resolve to THAT instance's
+    // newest session, not the global newest.
+    const a1 = seed('aaaa-older', { startTs: iso(1), instance: 'ccv-aaa' });
+    const a2 = seed('aaaa-newer', { startTs: iso(5), instance: 'ccv-aaa' }); // A's newest
+    seed('bbbb-newest', { startTs: iso(9), instance: 'ccv-bbb' });            // B's (globally newest)
+    // Unscoped: global newest (B).
+    assert.equal(latestMainSessionDir(projectDir), join(projectDir, 'sessions', 'bbbb-newest'));
+    // Instance-scoped to A: A's newest, even though B's is globally newer.
+    assert.equal(latestMainSessionDir(projectDir, { instanceKey: 'ccv-aaa' }), join(projectDir, 'sessions', 'aaaa-newer'));
+    // Instance-scoped to B.
+    assert.equal(latestMainSessionDir(projectDir, { instanceKey: 'ccv-bbb' }), join(projectDir, 'sessions', 'bbbb-newest'));
+  });
+
+  it('instance scope: own session when it has content; else fall back to the project\'s content-bearing history', () => {
+    // User-pinned semantics (2026-10-06): "show the instance's session when it has content, else
+    // fall back to the project's latest session WITH content" — never a blank instance shell.
+    seed('legacy-no-inst', { startTs: iso(5) });              // no meta.instance, HAS a main turn
+    seed('aaaa-quiet', { startTs: iso(6), instance: 'ccv-aaa', mainTurn: false }); // instance, but NO content
+    seed('bbbb-active', { startTs: iso(3), instance: 'ccv-bbb' });                 // instance WITH content
+    // Instance WITH content → its own session.
+    assert.equal(latestMainSessionDir(projectDir, { instanceKey: 'ccv-bbb' }), join(projectDir, 'sessions', 'bbbb-active'));
+    // Instance that EXISTS but has NO content → fall back to the project's newest content-bearing
+    // session (here the legacy main-turn dir), NOT the instance's empty shell and NOT "".
+    assert.equal(latestMainSessionDir(projectDir, { instanceKey: 'ccv-aaa' }), join(projectDir, 'sessions', 'legacy-no-inst'));
+    // An instance with NO dir at all likewise falls back to project history (the frontend never
+    // sends a key for a non-live instance, so this is a safe degrade, not a cross-instance leak).
+    assert.equal(latestMainSessionDir(projectDir, { instanceKey: 'ccv-zzz' }), join(projectDir, 'sessions', 'legacy-no-inst'));
+    // Unscoped: the project's newest content-bearing session.
+    assert.equal(latestMainSessionDir(projectDir), join(projectDir, 'sessions', 'legacy-no-inst'));
+  });
+
+  it('instance with NO main-turn AND no project history falls back to its OWN newest dir', () => {
+    // When neither the instance nor ANY project session has a main turn (a truly fresh project),
+    // degrade to the instance's own newest dir (still strictly its own, never another's) — the
+    // cold load shows its (quiet) session rather than erroring.
+    seed('aaaa-quiet', { startTs: iso(5), instance: 'ccv-aaa', mainTurn: false });
+    assert.equal(latestMainSessionDir(projectDir, { instanceKey: 'ccv-aaa' }), join(projectDir, 'sessions', 'aaaa-quiet'));
   });
 
   it('returns "" for a falsy projectDir', () => {

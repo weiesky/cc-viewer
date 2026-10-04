@@ -107,8 +107,8 @@ async function launch({ path: projectPath, extraArgs = [], claudePath, isNpmVers
   // 之前是先 send ready 再 spawnClaude；那种顺序下前端 ws 可能在 PTY 启动前就连上，
   // outputBuffer 为空 + claude 等待输入不再重绘 → 主 TerminalPanel 黑屏。
   // 现在等 spawnClaude 完成且首条 PTY 数据落地（或 600ms 兜底超时）后再 send ready。
-  const { spawnClaude, killPty, onPtyExit, onPtyData } = await importAbs(join(rootDir, 'server', 'pty-manager.js'));
-  killPtyFn = killPty;
+  const { spawnClaude, killAllMain, onPtyExit, onPtyData } = await importAbs(join(rootDir, 'server', 'pty-manager.js'));
+  killPtyFn = killAllMain;
 
   onPtyExit((code) => {
     try { process.send({ type: 'pty-exit', code }); } catch {}
@@ -147,6 +147,13 @@ async function launch({ path: projectPath, extraArgs = [], claudePath, isNpmVers
 async function shutdown() {
   try {
     if (killPtyFn) killPtyFn();
+    // Reap scratch/resume children too — a graceful tab close goes through
+    // IPC + process.exit(0) and never raises SIGINT/SIGTERM, so the server.js
+    // _hardenedStop cleanup does not run here. Idempotent; best-effort.
+    if (rootDir) {
+      const { killAllScratch } = await importAbs(join(rootDir, 'server', 'scratch-pty-manager.js'));
+      killAllScratch();
+    }
     if (serverMod) await serverMod.stopViewer().catch(() => {});
   } catch {}
   process.exit(0);

@@ -30,6 +30,11 @@ delete process.env.CCV_ELECTRON_MULTITAB;
 // 合法 workspace 目录
 const wsDir = join(tmpDir, 'branch-proj');
 mkdirSync(wsDir, { recursive: true });
+// Each launch case uses its OWN cwd so a prior case's still-live fake PTY (the
+// injected fake never fires onExit) is not re-spawned/killed by the next case's
+// same-cwd launch.
+const wsDir2 = join(tmpDir, 'branch-proj-2');
+mkdirSync(wsDir2, { recursive: true });
 // 一个“假 claude”脚本路径（实际不会被执行，spawn 被假 pty 拦截）
 const fakeClaudePath = join(tmpDir, 'fake-claude.js');
 writeFileSync(fakeClaudePath, '// noop\n');
@@ -210,7 +215,7 @@ describe('workspacesLaunch — CCV_PROXY_PORT 已设 → spawnClaude PTY 分支 
       workspaceClaudePath: fakeClaudePath,
       workspaceClaudeArgs: ['--only-base'],
     });
-    const { status } = await launch({ path: wsDir, extraArgs: 'not-an-array' }, deps);
+    const { status } = await launch({ path: wsDir2, extraArgs: 'not-an-array' }, deps);
     assert.equal(status, 200);
     assert.ok(spawnArgs);
     const flat = spawnArgs.args.join(' ');

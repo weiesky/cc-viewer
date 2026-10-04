@@ -28,6 +28,7 @@ import { createEmptyToolState, appendToolResultMap, cachedBuildToolResultMap, ge
 import { refreshCachedItemProp } from '../../utils/refreshCachedItemProp';
 import { refreshResolvedModelInfo, healUnresolvedTeammateEntries, needsFullReqRescan } from '../../utils/identityHeal';
 import { resolveBubbleProducerTs } from '../../utils/sessionManager';
+import { terminalAnchor } from '../../utils/terminalAnchor';
 import { TeamButton, TeamModal } from '../dashboard/TeamSessionPanel';
 import { WorkflowButton, WorkflowRunsModal } from '../dashboard/WorkflowRunsPanel';
 import SnapLineOverlay from '../common/SnapLineOverlay';
@@ -255,7 +256,7 @@ class ChatView extends React.Component {
       scrollToLine: null,
       scrollToMatch: null,
       searchOpen: false,
-      fileExplorerExpandedPaths: loadExpandedPaths(props.projectName),
+      fileExplorerExpandedPaths: loadExpandedPaths(props.viewProject || props.projectName),
       gitChangesOpen: false,
       hasGit: true,
       snapLines: [],
@@ -490,6 +491,22 @@ class ChatView extends React.Component {
     }
   }
 
+  // 检测当前 viewed 项目是否有 git（优先多仓库 API，回退旧 API）。
+  // Multi-project (2026-10)：viewedProject 切换时重跑（componentDidUpdate 调用），
+  // 探测请求带 ?project=<viewProject>；无 viewProject 时走绑定项目（原行为）。
+  _detectGit() {
+    const q = this.props.viewProject ? `?project=${encodeURIComponent(this.props.viewProject)}` : '';
+    fetch(apiUrl(`/api/git-repos${q}`)).then(r => r.ok ? r.json() : Promise.reject()).then(data => {
+      if (!data.repos?.length) this.setState({ hasGit: false, gitChangesOpen: false });
+      else this.setState({ hasGit: true });
+    }).catch(() => {
+      fetch(apiUrl(`/api/git-status${q}`)).then(r => {
+        if (!r.ok) this.setState({ hasGit: false, gitChangesOpen: false });
+        else this.setState({ hasGit: true });
+      }).catch(() => this.setState({ hasGit: false, gitChangesOpen: false }));
+    });
+  }
+
   componentDidMount() {
     this.startRender();
     this._attachMdCodeProbe();
@@ -502,13 +519,7 @@ class ChatView extends React.Component {
       this._unsubWsState = this.context.addStateListener(this._onTerminalWsState);
     }
     // 检测项目是否有 git（优先多仓库 API，回退旧 API）
-    fetch(apiUrl('/api/git-repos')).then(r => r.ok ? r.json() : Promise.reject()).then(data => {
-      if (!data.repos?.length) this.setState({ hasGit: false, gitChangesOpen: false });
-    }).catch(() => {
-      fetch(apiUrl('/api/git-status')).then(r => {
-        if (!r.ok) this.setState({ hasGit: false, gitChangesOpen: false });
-      }).catch(() => this.setState({ hasGit: false, gitChangesOpen: false }));
-    });
+    this._detectGit();
     // Agent Team 启用状态从 props.claudeSettings 派生(由 SettingsContext 集中 fetch);
     // mount 时若 settings 已 ready 立即同步(启用/关闭都要覆盖乐观默认),否则等
     // componentDidUpdate 接力。claudeSettings 未 ready(null)时保留乐观默认 true。
@@ -607,6 +618,17 @@ class ChatView extends React.Component {
       this._fileScrollSnapshot = null;
       // Clear SDK session surface state on workspace switch to prevent stale data.
       this.setState({ sdkCompactNotices: [], sdkSlashCommands: [], sdkModel: null, inputSlashPrefix: false });
+    }
+    // viewed-project 切换（multi-project 2026-10）：viewProject 变了 → 文件树展开态按新 key
+    // 重 hydrate；git 检测重跑（目标项目可能有无 git）；当前文件/git diff/scroll 快照作废
+    //（它们属于上一个 viewed 项目）。
+    if (prevProps.viewProject !== this.props.viewProject) {
+      if (prevProps.viewProject) {
+        this.setState({ fileExplorerExpandedPaths: loadExpandedPaths(this.props.viewProject) });
+      }
+      this._fileScrollSnapshot = null;
+      this.setState({ currentFile: null, currentGitDiff: null });
+      this._detectGit();
     }
     // currentFile 变（含切到 null）→ 上一文件的 scroll 快照失效，集中在 cdU 一处清，
     // 比在 8 个 setState({currentFile:...}) 站点各加一行更稳。fileVersion bump 走的是同
@@ -2265,10 +2287,14 @@ class ChatView extends React.Component {
     } else if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
       // 终端模式下没有 textarea，直接通过 PTY 发送。
       // 用 bracket-paste 包裹避免 description 含 `/` `!` `\t` 等被 Ink TUI 当特殊键解析。
+      const anchor = this._terminalAnchor();
       this._inputWs.send(JSON.stringify({
         type: 'input-sequential',
         chunks: buildBracketPasteSubmitChunks(description),
         settleMs: BRACKET_PASTE_SUBMIT_SETTLE_MS,
+        project: anchor.project,
+        sessionId: anchor.sessionId,
+        ...(anchor.instanceKey ? { instanceKey: anchor.instanceKey } : {}),
       }));
     }
   };
@@ -2325,10 +2351,14 @@ class ChatView extends React.Component {
       if (this.props.sdkMode) {
         this._inputWs.send(JSON.stringify({ type: 'sdk-user-message', text: assembled }));
       } else {
+        const anchor = this._terminalAnchor();
         this._inputWs.send(JSON.stringify({
           type: 'input-sequential',
           chunks: buildBracketPasteSubmitChunks(assembled),
           settleMs: BRACKET_PASTE_SUBMIT_SETTLE_MS,
+          project: anchor.project,
+          sessionId: anchor.sessionId,
+          ...(anchor.instanceKey ? { instanceKey: anchor.instanceKey } : {}),
         }));
       }
       this.scrollToBottom();
@@ -2736,6 +2766,37 @@ class ChatView extends React.Component {
    * skipUiState=true 用于 typed-interrupt 路径 — handleInputSend 已经先 setState pendingInput
    * 给用户即时反馈，flush 时不再重复 setState 浪费一次 commit + scrollToBottom 双触发。
    */
+  // The anchor attached to every terminal-bound send frame (terminal/chat
+  // consistency, 2026-10-05): the server routes by {project, sessionId} rather
+  // than the global activePtyKey, so a send lands in the viewed conversation's
+  // PTY even mid-view-switch.
+  _terminalAnchor = () => terminalAnchor({
+    viewProject: this.props.viewProject,
+    projectName: this.props.projectName,
+    viewInstance: this.props.viewInstance,
+    attachedSid: this.props.attachedSid,
+    mainAgentSessions: this.props.mainAgentSessions,
+  });
+
+  // Send a terminal-bound frame stamped with the viewed project (so PTY
+  // interactions — arrows/enter/interrupt/suggestion — land on the viewed
+  // project's PTY, not the last-attached global one). Chat sends additionally
+  // carry sessionId; this helper covers the non-chat `input` frames.
+  _sendTerminalFrame = (frame) => {
+    const ws = this._inputWs;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    const anchor = this._terminalAnchor();
+    try {
+      // Multi-instance: stamp instanceKey too so a same-cwd project's frame lands on the
+      // viewed process, not whichever instance basename routing happens to pick.
+      ws.send(JSON.stringify({ ...frame, project: anchor.project, ...(anchor.instanceKey ? { instanceKey: anchor.instanceKey } : {}) }));
+      return true;
+    } catch (e) {
+      console.warn('[ChatView] terminal frame send failed:', e && e.message);
+      return false;
+    }
+  };
+
   _sendUserMessageImmediate = (text, textareaToReset, skipUiState) => {
     if (!text) return;
     const ws = this._inputWs;
@@ -2746,10 +2807,16 @@ class ChatView extends React.Component {
     if (this.props.sdkMode) {
       ws.send(JSON.stringify({ type: 'sdk-user-message', text }));
     } else {
-      ws.send(JSON.stringify({ type: 'input', data: text }));
+      // Anchor the send to the viewed PROJECT's live PTY (terminal/chat
+      // consistency): the server routes by {project, sessionId} instead of the
+      // global activePtyKey. When a historical session is attached (a pure
+      // view), sessionId is null and the send goes to that project's live PTY —
+      // NOT into the attached historical conversation (which has no live turn).
+      const anchor = this._terminalAnchor();
+      ws.send(JSON.stringify({ type: 'input', data: text, project: anchor.project, sessionId: anchor.sessionId, ...(anchor.instanceKey ? { instanceKey: anchor.instanceKey } : {}) }));
       setTimeout(() => {
         if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
-          this._inputWs.send(JSON.stringify({ type: 'input', data: '\r' }));
+          this._inputWs.send(JSON.stringify({ type: 'input', data: '\r', project: anchor.project, sessionId: anchor.sessionId, ...(anchor.instanceKey ? { instanceKey: anchor.instanceKey } : {}) }));
         }
       }, 50);
     }
@@ -2798,11 +2865,9 @@ class ChatView extends React.Component {
       // 关键修复：点击 HTML 停止按钮会让隐藏的 xterm 失焦，向 claude 上报 focus-out (\x1b[O)，
       // 之后 claude(Ink) 会忽略 ESC（仅在「聚焦」时把 ESC 当中断）。所以先补一个 focus-in (\x1b[I)
       // 让 claude 认为终端已聚焦，再发 ESC —— 等价于在聚焦的终端里按 Esc（终端里按 Esc 本就有效）。
-      this._inputWs.send(JSON.stringify({ type: 'input', data: '\x1b[I' }));
+      this._sendTerminalFrame({ type: 'input', data: '\x1b[I' });
       setTimeout(() => {
-        if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
-          this._inputWs.send(JSON.stringify({ type: 'input', data: '\x1b' }));
-        }
+        this._sendTerminalFrame({ type: 'input', data: '\x1b' });
       }, STOP_FOCUS_IN_ESC_DELAY_MS);
       // Stop keeps the busy queue parked (product decision): suppress the automatic
       // turn-end drain so the ESC'd turn doesn't immediately fire the queued bubbles.
@@ -2884,7 +2949,8 @@ class ChatView extends React.Component {
         // sdk-manager self-queues when busy and broadcasts queue-state.
         ws.send(JSON.stringify({ type: 'sdk-user-message', text }));
       } else {
-        ws.send(JSON.stringify({ type: 'queue-message', text }));
+        const anchor = this._terminalAnchor();
+        ws.send(JSON.stringify({ type: 'queue-message', text, project: anchor.project, sessionId: anchor.sessionId, ...(anchor.instanceKey ? { instanceKey: anchor.instanceKey } : {}) }));
       }
       return;
     }
@@ -2923,12 +2989,10 @@ class ChatView extends React.Component {
 
   handleSuggestionToTerminal = () => {
     const text = this.state.inputSuggestion;
-    if (!text || !this._inputWs || this._inputWs.readyState !== WebSocket.OPEN) return;
-    this._inputWs.send(JSON.stringify({ type: 'input', data: text }));
+    if (!text) return;
+    if (!this._sendTerminalFrame({ type: 'input', data: text })) return;
     setTimeout(() => {
-      if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
-        this._inputWs.send(JSON.stringify({ type: 'input', data: '\r' }));
-      }
+      this._sendTerminalFrame({ type: 'input', data: '\r' });
     }, 50);
     this.setState({ inputSuggestion: null, pendingInput: text }, () => this.scrollToBottom());
   };
@@ -2971,9 +3035,10 @@ class ChatView extends React.Component {
   getOpenFileDirtyPath = () => this._openFileDirty || null;
 
   handleToggleExpandPath = (path) => {
-    // capture projectName 到闭包：用户毫秒内切 workspace 时，callback 触发的写盘
-    // 应该落到"toggle 发生时"那个项目的 key，不要被切换后的 props 牵走。
-    const projectName = this.props.projectName;
+    // capture viewProject 到闭包：用户毫秒内切 viewed/workspace 时，callback 触发的写盘
+    // 应该落到"toggle 发生时"那个 viewed 项目的 key，不要被切换后的 props 牵走
+    //（multi-project 2026-10：viewProject = viewedProject || projectName）。
+    const viewProject = this.props.viewProject || this.props.projectName;
     this.setState(state => {
       const newSet = new Set(state.fileExplorerExpandedPaths);
       if (newSet.has(path)) {
@@ -2983,7 +3048,7 @@ class ChatView extends React.Component {
       }
       return { fileExplorerExpandedPaths: newSet };
     }, () => {
-      saveExpandedPaths(projectName, this.state.fileExplorerExpandedPaths);
+      saveExpandedPaths(viewProject, this.state.fileExplorerExpandedPaths);
     });
   };
 
@@ -3068,7 +3133,9 @@ class ChatView extends React.Component {
   _verifyMdCodePaths = async () => {
     const wrap = this._mdProbeObservedEl;
     if (!wrap || this._unmounted) return;
-    const projectKey = this.props.projectName || '';
+    // Multi-project (2026-10)：路径存在性判定按 viewed 项目 key 缓存与校验
+    //（viewProject = viewedProject || projectName），否则绑定项目的判定会被复用到并行视图。
+    const projectKey = this.props.viewProject || this.props.projectName || '';
     const selector = 'code[data-md-path-candidate]:not([data-md-file-verified])';
     const els = wrap.querySelectorAll(selector);
     if (els.length === 0) return;
@@ -3091,7 +3158,7 @@ class ChatView extends React.Component {
     const results = await checkPathsExist(batch, { projectKey });
     // apply 双守卫: ① 项目切换后旧项目的判定不得盖到新 DOM; ② 按候选属性值
     // 精确匹配——流式重渲染可能已在 fetch 期间换掉候选内容
-    if (this._unmounted || (this.props.projectName || '') !== projectKey) return;
+    if (this._unmounted || (this.props.viewProject || this.props.projectName || '') !== projectKey) return;
     const fresh = wrap.querySelectorAll(selector);
     for (const el of fresh) {
       const p = el.getAttribute(MD_PATH_CANDIDATE_ATTR);
@@ -3154,9 +3221,8 @@ class ChatView extends React.Component {
   _handleInsertPathToChat = (filePath) => {
     const quoted = `"${filePath}"`;
     // 终端开启时写入终端，否则写入对话输入框(SDK 模式无主 PTY,terminalVisible 是 scratchOpen,不路由到 PTY input)
-    if (this.props.terminalVisible && !this.props.sdkMode && this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
-      this._inputWs.send(JSON.stringify({ type: 'input', data: quoted }));
-      return;
+    if (this.props.terminalVisible && !this.props.sdkMode) {
+      if (this._sendTerminalFrame({ type: 'input', data: quoted })) return;
     }
     const textarea = this._inputRef.current;
     if (!textarea) return;
@@ -3287,6 +3353,26 @@ class ChatView extends React.Component {
             />
           </button>
         </Popover>
+        <div className={styles.navDivider} />
+        {/* /resume entry moved to the Header's current-project label (hover
+            dropdown) — see AppHeader HeaderResumeDropdown. The detach affordance
+            stays here because it is a chat-view concern. */}
+        {/* View-attach / parallel-project view: while the view is scoped away
+            from the bound project's current session (attached to a historical
+            session OR viewing a parallel project), a "back to current session"
+            chip lets the user detach back to follow-latest. */}
+        {(this.props.attachedSid || this.props.viewedProject) && this.props.onDetachView && (
+          <button
+            className={`${styles.navBtn || ''} ${styles.detachViewChip || ''}`}
+            title={t('ui.resume.returnToCurrent')}
+            onClick={this.props.onDetachView}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 14 4 9l5-5" />
+              <path d="M4 9h10a6 6 0 0 1 0 12h-3" />
+            </svg>
+          </button>
+        )}
       </div>
     );
   }
@@ -3750,6 +3836,7 @@ class ChatView extends React.Component {
               style={{ width: this.state.sidebarWidth }}
               refreshTrigger={this.state.fileExplorerRefresh}
               onManualRefresh={() => this.setState(prev => ({ fileExplorerRefresh: prev.fileExplorerRefresh + 1 }))}
+              project={this.props.viewProject || this.props.projectName}
               onClose={() => this._setFileExplorerOpen(false)}
               onFileClick={(path) => {
                 if (tryOpenWithSystem(path, 'file-explorer')) return;
@@ -3774,6 +3861,7 @@ class ChatView extends React.Component {
               refreshTrigger={this.state.gitChangesRefresh}
               onManualRefresh={() => this.setState(prev => ({ gitChangesRefresh: prev.gitChangesRefresh + 1 }))}
               projectName={this.props.projectName}
+              project={this.props.viewProject || this.props.projectName}
               onClose={() => this.setState({ gitChangesOpen: false })}
               onFileClick={(repoPath, filePath, commitHash) => {
                 const resolvedPath = repoPath && repoPath !== '.' ? `${repoPath}/${filePath}` : filePath;
@@ -3787,13 +3875,13 @@ class ChatView extends React.Component {
                 const ancestors = [];
                 for (let i = 1; i < parts.length; i++) ancestors.push(parts.slice(0, i).join('/'));
                 this._setFileExplorerOpen(true);
-                const projectName = this.props.projectName;
+                const viewProject = this.props.viewProject || this.props.projectName;
                 this.setState(prev => {
                   const newSet = new Set(prev.fileExplorerExpandedPaths);
                   ancestors.forEach(p => newSet.add(p));
                   return { currentGitDiff: null, currentFile: resolvedPath, scrollToLine: null, scrollToMatch: null, gitChangesOpen: false, fileExplorerExpandedPaths: newSet };
                 }, () => {
-                  saveExpandedPaths(projectName, this.state.fileExplorerExpandedPaths);
+                  saveExpandedPaths(viewProject, this.state.fileExplorerExpandedPaths);
                 });
               }}
             />
@@ -3802,6 +3890,7 @@ class ChatView extends React.Component {
             <SearchPanel
               style={{ width: this.state.sidebarWidth }}
               projectName={this.props.projectName}
+              project={this.props.viewProject || this.props.projectName}
               onClose={() => this.setState({ searchOpen: false })}
               getDirtyPath={this.getOpenFileDirtyPath}
               onReplaceApplied={(files) => {
@@ -3851,6 +3940,7 @@ class ChatView extends React.Component {
                   filePath={this.state.currentGitDiff.file}
                   repoPath={this.state.currentGitDiff.repo}
                   commitHash={this.state.currentGitDiff.commit || null}
+                  project={this.props.viewProject || this.props.projectName}
                   onClose={() => this.setState({ currentGitDiff: null })}
                   onOpenFile={(path, line) => {
                     const repo = this.state.currentGitDiff?.repo;
@@ -3862,7 +3952,7 @@ class ChatView extends React.Component {
                       ancestors.push(parts.slice(0, i).join('/'));
                     }
                     this._setFileExplorerOpen(true);
-                    const projectName = this.props.projectName;
+                    const viewProject = this.props.viewProject || this.props.projectName;
                     this.setState(prev => {
                       const newSet = new Set(prev.fileExplorerExpandedPaths);
                       ancestors.forEach(p => newSet.add(p));
@@ -3875,7 +3965,7 @@ class ChatView extends React.Component {
                         fileExplorerExpandedPaths: newSet,
                       };
                     }, () => {
-                      saveExpandedPaths(projectName, this.state.fileExplorerExpandedPaths);
+                      saveExpandedPaths(viewProject, this.state.fileExplorerExpandedPaths);
                     });
                   }}
                 />
@@ -3888,6 +3978,7 @@ class ChatView extends React.Component {
                     key={this.state.fileVersion}
                     filePath={this.state.currentFile}
                     editorSession={!!this.state.editorSessionId}
+                    project={this.props.viewProject || this.props.projectName}
                     onClose={() => {
                       if (this.state.editorSessionId) {
                         fetch(apiUrl('/api/editor-done'), {
@@ -3905,6 +3996,7 @@ class ChatView extends React.Component {
                     filePath={this.state.currentFile}
                     scrollToLine={this.state.scrollToLine}
                     scrollToMatch={this.state.scrollToMatch}
+                    project={this.props.viewProject || this.props.projectName}
                     editorSession={!!this.state.editorSessionId}
                     onUpdateScroll={this.handleUpdateFileScroll}
                     getRestoreScrollSnapshot={this.getFileScrollSnapshot}

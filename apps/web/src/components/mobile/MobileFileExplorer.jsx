@@ -9,7 +9,7 @@ import FileContentView from '../files/FileContentView';
 import ImageViewer from '../viewers/ImageViewer';
 import styles from './MobileFileExplorer.module.css';
 
-function MobileTreeNode({ item, path, depth, expandedPaths, onToggleExpand, currentFile, onFileClick }) {
+function MobileTreeNode({ item, path, depth, expandedPaths, onToggleExpand, currentFile, onFileClick, project }) {
   const [children, setChildren] = useState(null);
   const [loading, setLoading] = useState(false);
   const childPath = path ? `${path}/${item.name}` : item.name;
@@ -21,7 +21,7 @@ function MobileTreeNode({ item, path, depth, expandedPaths, onToggleExpand, curr
   useEffect(() => {
     if (isDir && expanded && children === null && !loading) {
       setLoading(true);
-      fetch(apiUrl(`/api/files?path=${encodeURIComponent(childPath)}`))
+      fetch(apiUrl(`/api/files?path=${encodeURIComponent(childPath)}${project ? `&project=${encodeURIComponent(project)}` : ''}`))
         .then(r => r.ok ? r.json() : Promise.reject())
         .then(data => { setChildren(data); setLoading(false); })
         .catch(() => { setLoading(false); });
@@ -68,19 +68,21 @@ function MobileTreeNode({ item, path, depth, expandedPaths, onToggleExpand, curr
           onToggleExpand={onToggleExpand}
           currentFile={currentFile}
           onFileClick={onFileClick}
+          project={project}
         />
       ))}
     </>
   );
 }
 
-export default function MobileFileExplorer({ visible, onClose, targetFile, projectName }) {
+export default function MobileFileExplorer({ visible, onClose, targetFile, projectName, project }) {
   const [items, setItems] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  // 持久化 + projectName 守卫 + firstMountRef + prevProjectNameRef 全套走共用 hook。
+  // 持久化 + project 守卫 + firstMountRef + prevProjectNameRef 全套走共用 hook。
+  // key 用 viewed 项目（multi-project 2026-10：project = viewedProject || projectName）。
   const [expandedPaths, setExpandedPaths] = useSessionStoragePersistedSet({
-    projectName,
+    projectName: project || projectName,
     load: loadExpandedPaths,
     save: saveExpandedPaths,
   });
@@ -100,7 +102,7 @@ export default function MobileFileExplorer({ visible, onClose, targetFile, proje
     }
     setLoading(true);
     setError(null);
-    fetch(apiUrl('/api/files?path='))
+    fetch(apiUrl(`/api/files?path=${project ? `&project=${encodeURIComponent(project)}` : ''}`))
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => {
         if (mounted.current) { setItems(data); setLoading(false); }
@@ -109,7 +111,7 @@ export default function MobileFileExplorer({ visible, onClose, targetFile, proje
         if (mounted.current) { setError(t('ui.fileLoadError')); setLoading(false); }
       });
     return () => { mounted.current = false; };
-  }, [visible]);
+  }, [visible, project]);
 
   // 从对话中点击文件路径 → 自动展开祖先目录并选中文件
   useEffect(() => {
@@ -180,6 +182,7 @@ export default function MobileFileExplorer({ visible, onClose, targetFile, proje
               onToggleExpand={handleToggleExpand}
               currentFile={currentFile}
               onFileClick={handleFileClick}
+              project={project}
             />
           ))}
         </div>
@@ -189,9 +192,9 @@ export default function MobileFileExplorer({ visible, onClose, targetFile, proje
       <div className={styles.contentSection}>
         {currentFile ? (
           isImageFile(currentFile) ? (
-            <ImageViewer filePath={currentFile} onClose={handleFileClose} />
+            <ImageViewer filePath={currentFile} onClose={handleFileClose} project={project} />
           ) : (
-            <FileContentView filePath={currentFile} onClose={handleFileClose} />
+            <FileContentView filePath={currentFile} onClose={handleFileClose} project={project} />
           )
         ) : (
           <div className={styles.contentPlaceholder}>

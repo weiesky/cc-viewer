@@ -14,14 +14,15 @@ const AUTO_REFRESH_MS = 15000;
 // other props are unchanged (an inline arrow would force a re-render every poll).
 const fmtPercent = (n) => `${n}%`;
 
-export default function ProxyStatsDashboard() {
+export default function ProxyStatsDashboard({ project }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   const fetchData = useCallback(() => {
     setLoading(true);
-    fetch(apiUrl('/api/proxy-stats'))
+    const url = project ? `/api/proxy-stats?project=${encodeURIComponent(project)}` : '/api/proxy-stats';
+    fetch(apiUrl(url))
       .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); })
       .then(d => { setData(d.proxyStats); setLoading(false); })
       .catch((err) => {
@@ -29,7 +30,7 @@ export default function ProxyStatsDashboard() {
         reportSwallowed('proxyStats.fetch', err);
         setLoading(false);
       });
-  }, []);
+  }, [project]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

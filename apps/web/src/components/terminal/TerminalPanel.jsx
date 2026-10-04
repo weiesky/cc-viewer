@@ -973,6 +973,15 @@ class TerminalPanel extends React.Component {
     try {
       if (msg.type === 'data') {
         this._throttledWrite(msg.data);
+      } else if (msg.type === 'attached') {
+        // Multi-PTY view switch (2026-10): the server re-anchored the shared
+        // stream to another project's PTY and will immediately follow with a
+        // `data` snapshot of THAT project's outputBuffer. Reset xterm + the
+        // write queue so the old project's screen doesn't blend with the
+        // incoming snapshot (same in-band-reset discipline as data-resync;
+        // INBAND_RESET keeps the xterm WriteBuffer from re-parsing torn bytes).
+        this._writeQ.reset();
+        this._writeQ.push(INBAND_RESET);
       } else if (msg.type === 'data-resync') {
         // 服务端反压恢复:丢弃本地积压、重置 xterm、写快照一步对齐到服务端当前末态
         // (与 ws close→重连全量 replay 的既有恢复惯例同款;TUI 重绘由服务端 SIGWINCH/resize 抖动驱动)。

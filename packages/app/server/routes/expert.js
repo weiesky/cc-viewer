@@ -38,6 +38,44 @@ async function resolveDir(deps) {
   return deps.isWorkspaceMode ? null : process.cwd();
 }
 
+// Multi-project (2026-10): expert GET routes resolve the viewed project ONLY
+// when ?project= is present (resolveViewRoot). Absent it they fall back to the
+// legacy resolveDir chain (live cwd > CCV_PROJECT_DIR > null-in-workspace-mode)
+// — the workspaceMode "no active workspace ⇒ null" contract is preserved
+// verbatim. POST routes keep the bound resolveDir (writes stay bound).
+async function _viewRootOrReply(req, res, parsedUrl, deps) {
+  const projectParam = parsedUrl?.searchParams?.get('project');
+  if (!projectParam) return resolveDir(deps);
+  const { resolveViewRoot } = await import('../lib/view-root.js');
+  const { loadWorkspaces } = await import('../workspace-registry.js');
+  const { listLivePtys } = await import('../pty-manager.js');
+  const r = resolveViewRoot({
+    projectParam,
+    boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
+    loadWorkspaces,
+    listLivePtys,
+  });
+  if (!r.ok) {
+    sendJson(res, r.status, { error: r.error });
+    return null;
+  }
+  return r.root;
+}
+
+async function getSystemText(req, res, parsedUrl, isLocal, deps) {
+  try {
+    const dir = await _viewRootOrReply(req, res, parsedUrl, deps);
+    // Legacy no-active-workspace surface: dir=null → readWorkspaceSystemText
+    // returns the empty append surface (active=false) — not an error.
+    const { mode, text } = readWorkspaceSystemText(dir);
+    sendJson(res, 200, { dir: dir || null, active: !!dir, mode, text });
+  } catch (e) {
+    // 原始 fs 错误只落服务端日志，对外返回通用错误码(不外泄绝对路径/系统细节)。
+    console.error('[CC Viewer] expert system-text GET failed:', e.message);
+    sendJson(res, 500, { error: 'read_failed' });
+  }
+}
+
 function sendJson(res, code, obj) {
   if (res.headersSent) return;
   try {
@@ -102,18 +140,6 @@ function computeSystemPromptStatus(dir) {
   return out;
 }
 
-async function getSystemText(req, res, parsedUrl, isLocal, deps) {
-  try {
-    const dir = await resolveDir(deps);
-    const { mode, text } = readWorkspaceSystemText(dir);
-    sendJson(res, 200, { dir: dir || null, active: !!dir, mode, text });
-  } catch (e) {
-    // 原始 fs 错误只落服务端日志，对外返回通用错误码(不外泄绝对路径/系统细节)。
-    console.error('[CC Viewer] expert system-text GET failed:', e.message);
-    sendJson(res, 500, { error: 'read_failed' });
-  }
-}
-
 function postSystemText(req, res, parsedUrl, isLocal, deps) {
   let body = '';
   let truncated = false;
@@ -158,7 +184,9 @@ function collectModelEntries(dir) {
 
 async function getModelPrompts(req, res, parsedUrl, isLocal, deps) {
   try {
-    const dir = await resolveDir(deps);
+    const dir = await _viewRootOrReply(req, res, parsedUrl, deps);
+    // dir=null（无活动工作区）不是错误：照常渲染 workspaceActive:false + 全局条目
+    //（与改动前 resolveDir 返回 null 的路径逐字节一致）。
     const globalDir = join(LOG_DIR, MODEL_PROMPT_DIR);
     const status = computeSystemPromptStatus(dir);
     // 内置 preset 条目（默认生效层）：text 为 renderPresetTemplate 输出（边界已剥离），
@@ -195,7 +223,9 @@ async function getModelPrompts(req, res, parsedUrl, isLocal, deps) {
 // 轻量状态查询(不内联提示词文本)：头部工具栏据此决定是否自动露出「系统提示词修改」入口。
 async function getSystemPromptStatus(req, res, parsedUrl, isLocal, deps) {
   try {
-    const dir = await resolveDir(deps);
+    const dir = await _viewRootOrReply(req, res, parsedUrl, deps);
+    // dir=null（无活动工作区）不是错误：computeSystemPromptStatus 容忍 null
+    //（旧 resolveDir 返回 null 的路径照常渲染全局命中）。
     sendJson(res, 200, computeSystemPromptStatus(dir));
   } catch (e) {
     console.error('[CC Viewer] expert system-prompt-status GET failed:', e.message);

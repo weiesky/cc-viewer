@@ -184,16 +184,16 @@ describe('consumption discipline', () => {
     const probe = mainEntry([textMsg('user', 'probe')], { sid: SID_A, countTokens: true });
     fire(w, probe);
     await w.flush();
-    assert.ok(w._pendingResumeSwitch, 'probe left the pending switch armed');
+    assert.ok(w._pendingResumeSwitch.get('proj'), 'probe left the pending switch armed');
 
     // Neither must a heartbeat (each exclusion arm pinned independently).
     fire(w, mainEntry([textMsg('user', 'hb')], { sid: SID_A, heartbeat: true }));
     await w.flush();
-    assert.ok(w._pendingResumeSwitch, 'heartbeat left the pending switch armed');
+    assert.ok(w._pendingResumeSwitch.get('proj'), 'heartbeat left the pending switch armed');
 
     fire(w, mainEntry([textMsg('user', 'real turn')], { sid: SID_A, ts: '2026-07-17T09:05:00.000Z' }));
     await w.flush();
-    assert.equal(w._pendingResumeSwitch, null, 'real main request consumed it');
+    assert.equal(w._pendingResumeSwitch.get('proj'), undefined, 'real main request consumed it');
     await w.close();
   });
 
@@ -201,9 +201,9 @@ describe('consumption discipline', () => {
     const w = newWriter();
     w.beginResumeSwitch({ transcriptUuid: SID_R, hookSid: HOOK_SID });
     w.beginResumeSwitch({ transcriptUuid: SID_A, hookSid: HOOK_SID });
-    assert.equal(w._pendingResumeSwitch.transcriptUuid, SID_A, 'last pick wins');
+    assert.equal(w._pendingResumeSwitch.get('proj').transcriptUuid, SID_A, 'last pick wins');
     w.resetSessions();
-    assert.equal(w._pendingResumeSwitch, null, 'workspace switch clears a stale signal');
+    assert.equal(w._pendingResumeSwitch.get('proj'), undefined, 'workspace switch clears a stale signal');
     await w.close();
   });
 
@@ -211,7 +211,7 @@ describe('consumption discipline', () => {
     const w = newWriter();
     w.beginResumeSwitch({});
     w.beginResumeSwitch({ transcriptUuid: 42 });
-    assert.equal(w._pendingResumeSwitch, null);
+    assert.equal(w._pendingResumeSwitch.get('proj'), undefined);
     await w.close();
   });
 });

@@ -116,7 +116,7 @@ function MatchRow({ group, match: m, matchIndex, isActive, replaceActive, previe
   );
 }
 
-export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath, onReplaceApplied }) {
+export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath, onReplaceApplied, project }) {
   const [query, setQuery] = useState(() => lsStr(LS.query));
   const [caseSensitive, setCaseSensitive] = useState(() => lsBool(LS.caseSensitive));
   const [wholeWord, setWholeWord] = useState(() => lsBool(LS.wholeWord));
@@ -205,7 +205,7 @@ export default function SearchPanel({ style, onClose, onOpenResult, getDirtyPath
         // Force the node engine while the replace panel is open so the previewed match spans come
         // from the SAME engine that performs the write (rg's Rust regex can differ from V8's).
         engine: showReplace ? 'node' : 'auto',
-      }, ac.signal);
+      }, ac.signal, project);
       if (ac.signal.aborted) return;
       if (data.error) { setError(data.error); setResults([]); setEngine('none'); setTruncated(false); }
       else { setResults(data.results || []); setEngine(data.engine || 'none'); setTruncated(!!data.truncated); setCollapsed(new Set()); }

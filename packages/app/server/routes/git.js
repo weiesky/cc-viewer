@@ -2,12 +2,32 @@
 import { existsSync, readdirSync, realpathSync } from 'node:fs';
 import { join, basename, resolve, sep } from 'node:path';
 import { getGitDiffs, countUntrackedLines, getUnpushedCommits, isValidCommitHash } from '../lib/git-diff.js';
+import { viewRootOrReply } from '../lib/view-root.js';
+import { loadWorkspaces } from '../workspace-registry.js';
+import { listLivePtys } from '../pty-manager.js';
 
 const GIT_RESTORE_LOCK_CLEANUP_MS = 30000;
 
-function gitRepos(req, res) {
+// Multi-project (2026-10): git READ routes resolve the viewed project via the
+// shared viewRootOrReply (?project=) and pass it as resolveRepoCwd's baseDir.
+// git-restore (destructive) keeps the bound root. SYNCHRONOUS: gitRepos was
+// sync before multi-project and its tests assert on res immediately.
+function _viewRootOrReply(req, res, parsedUrl) {
+  return viewRootOrReply(req, res, parsedUrl, {
+    boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
+    loadWorkspaces,
+    listLivePtys,
+  });
+}
+
+function gitRepos(req, res, parsedUrl) {
+  const projectDir = _viewRootOrReply(req, res, parsedUrl || new URL(req.url, 'http://localhost'));
+  if (!projectDir) return;
+  gitReposWithRoot(req, res, projectDir);
+}
+
+function gitReposWithRoot(req, res, projectDir) {
   try {
-    const projectDir = process.env.CCV_PROJECT_DIR || process.cwd();
     const repos = [];
     if (existsSync(join(projectDir, '.git'))) {
       repos.push({ name: basename(projectDir), path: '.', isRoot: true });
@@ -102,7 +122,9 @@ function gitRestore(req, res, parsedUrl, isLocal, deps) {
 async function gitStatus(req, res, parsedUrl, isLocal, deps) {
   try {
     const repoParam = parsedUrl.searchParams.get('repo');
-    const cwd = deps.resolveRepoCwd(repoParam);
+    const viewRoot = _viewRootOrReply(req, res, parsedUrl);
+    if (!viewRoot) return;
+    const cwd = deps.resolveRepoCwd(repoParam, viewRoot);
     if (!cwd) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid repo parameter', changes: [] }));
@@ -173,7 +195,9 @@ async function gitStatus(req, res, parsedUrl, isLocal, deps) {
 async function gitDiff(req, res, parsedUrl, isLocal, deps) {
   try {
     const repoParam = parsedUrl.searchParams.get('repo');
-    const cwd = deps.resolveRepoCwd(repoParam);
+    const viewRoot = _viewRootOrReply(req, res, parsedUrl);
+    if (!viewRoot) return;
+    const cwd = deps.resolveRepoCwd(repoParam, viewRoot);
     if (!cwd) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid repo parameter', diffs: [] }));
@@ -204,7 +228,9 @@ async function gitDiff(req, res, parsedUrl, isLocal, deps) {
 async function gitLogUnpushed(req, res, parsedUrl, isLocal, deps) {
   try {
     const repoParam = parsedUrl.searchParams.get('repo');
-    const cwd = deps.resolveRepoCwd(repoParam);
+    const viewRoot = _viewRootOrReply(req, res, parsedUrl);
+    if (!viewRoot) return;
+    const cwd = deps.resolveRepoCwd(repoParam, viewRoot);
     if (!cwd) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid repo parameter', commits: [], hasUpstream: false }));

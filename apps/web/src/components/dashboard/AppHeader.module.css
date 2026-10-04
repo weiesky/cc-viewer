@@ -81,15 +81,31 @@
   color: inherit;
   white-space: nowrap;
 }
-/* Reveal the inline alias edit pencil when the user hovers the project name
-   label (or when keyboard focus enters the label region — focus-within covers
-   the button itself receiving Tab focus). Stable [data-alias-edit-trigger]
-   attr instead of CSS-Modules-hashed class so this rule survives renames.
-   Once revealed at 55% opacity, the pencil's own :hover / :focus-visible
-   rules (in ProjectAliasEditor.module.css) take it to 100%. */
-.headerProjectName:hover [data-alias-edit-trigger],
-.headerProjectName:focus-within [data-alias-edit-trigger] {
-  opacity: 0.55;
+
+/* [+] new-workspace button, inline at the right of the current-project label.
+   Dashed square frame holding only a + glyph; hover reveals a "新建工作区" tip. */
+.newProjectPlusBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-inline-start: 4px;
+  padding: 0;
+  vertical-align: -2px;
+  background: transparent;
+  border: 1px dashed var(--text-muted);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.newProjectPlusBtn:hover,
+.newProjectPlusBtn:focus-visible {
+  color: var(--text-primary);
+  border-color: var(--text-primary);
 }
 
 /* Cache countdown */
@@ -725,6 +741,101 @@
 .proxyProfileTag:hover {
   color: var(--text-secondary);
   border-color: var(--text-disabled);
+}
+
+/* /resume active-process chips: reuse .proxyProfileTag pill geometry, with a
+   tinted variant for resume children. The current project's main chip is never
+   rendered (excluded upstream), so there is no "current/disabled" state. */
+.activeProcessChip {
+  margin-inline-start: 4px;
+}
+
+/* Multi-project tab bar (2026-10)：web header 的 Electron tab 栏等价物，
+   live 项目 ≥2 时显示。几何参数镜像 apps/electron tab-bar.html（28px 胶囊、
+   12px 圆角、4px 间距、180px 上限、× 仅激活 tab 显示）；强调描边用 web 主色
+   token 替代原生 shell 的 --accent。 */
+.projectTabsStrip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 44vw;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.projectTabsStrip::-webkit-scrollbar {
+  display: none;
+}
+.projectTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  min-width: 60px;
+  max-width: 180px;
+  border-radius: 12px;
+  background: var(--border-secondary);
+  border: 1px solid var(--border-light);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, box-shadow 0.2s;
+  flex-shrink: 0;
+}
+.projectTab:hover {
+  color: var(--text-secondary);
+  border-color: var(--text-disabled);
+}
+.projectTabActive,
+.projectTabActive:hover {
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+/* 左侧状态点：恒占位防 tab 名抖动（Electron tab-pending 槽同款思路）。 */
+.projectTabDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  flex-shrink: 0;
+}
+.projectTabName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.projectTabClose {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+/* 关闭按钮只在选中/hover/键盘聚焦的 tab 上显示（Electron 同规则）；
+   × 自身 tabIndex=-1 不抢焦点，:focus-within 保证键盘焦点落进 tab 时它也可见。 */
+.projectTabActive .projectTabClose,
+.projectTab:hover .projectTabClose,
+.projectTab:focus-within .projectTabClose {
+  opacity: 1;
+}
+.projectTabClose:hover {
+  background: var(--border-light);
+  color: var(--text-primary);
 }
 
 /* 钉住的快捷方式：汉堡右侧常驻入口图标。与 logoImage 同色系，hover 提亮。

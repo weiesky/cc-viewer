@@ -83,6 +83,60 @@ describe('workspace-registry', () => {
     assert.deepStrictEqual(loadWorkspaces(), []);
   });
 
+  it('register prunes a same-name stale entry whose path no longer exists', async () => {
+    // Same basename → same projectName from two different dirs. The first is
+    // deleted from disk before the second registers — registration must prune
+    // the dead residue so a later view-root lookup is not 400-ambiguous.
+    const base = `ccv-ws-${Date.now()}-twin`;
+    const deadDir = join(tmpdir(), `${base}-old`, 'twinproj');
+    const liveDir = join(tmpdir(), `${base}-new`, 'twinproj');
+    mkdirSync(deadDir, { recursive: true });
+    mkdirSync(liveDir, { recursive: true });
+    await registerWorkspace(deadDir);
+    // Simulate the checkout being moved away: rewrite the registry file with
+    // the dead path still recorded but the dir gone.
+    const { rmSync } = await import('node:fs');
+    rmSync(deadDir, { recursive: true, force: true });
+    await registerWorkspace(liveDir);
+    const list = loadWorkspaces();
+    assert.equal(list.length, 1, JSON.stringify(list));
+    assert.equal(list[0].path, liveDir);
+  });
+
+  it('register keeps a same-name entry whose path still exists', async () => {
+    // Two real dirs sharing one basename are BOTH legitimate user data —
+    // never auto-delete an existing one.
+    const base = `ccv-ws-${Date.now()}-keep`;
+    const dirA = join(tmpdir(), `${base}-a`, 'twinproj');
+    const dirB = join(tmpdir(), `${base}-b`, 'twinproj');
+    mkdirSync(dirA, { recursive: true });
+    mkdirSync(dirB, { recursive: true });
+    await registerWorkspace(dirA);
+    await registerWorkspace(dirB);
+    const list = loadWorkspaces();
+    assert.equal(list.length, 2, JSON.stringify(list));
+  });
+
+  it('re-registering an existing path does NOT prune same-name stale entries', async () => {
+    // The self-heal filter only runs on the NEW-registration branch. Reusing an
+    // existing entry (same path → early return) must not prune another entry's
+    // dead same-name residue as a side effect.
+    const base = `ccv-ws-${Date.now()}-reuse`;
+    const liveDir = join(tmpdir(), `${base}-live`, 'twinproj');
+    const deadDir = join(tmpdir(), `${base}-dead`, 'twinproj');
+    mkdirSync(liveDir, { recursive: true });
+    mkdirSync(deadDir, { recursive: true });
+    await registerWorkspace(liveDir);
+    await registerWorkspace(deadDir);
+    const { rmSync } = await import('node:fs');
+    rmSync(deadDir, { recursive: true, force: true });
+    // Re-register the LIVE dir: hits the `existing` early-return branch, so the
+    // dead same-name entry must survive this call untouched.
+    await registerWorkspace(liveDir);
+    const list = loadWorkspaces();
+    assert.equal(list.length, 2, JSON.stringify(list));
+  });
+
   it('enriches logCount and totalSize in getWorkspaces', async () => {
     const wsDir = join(tmpdir(), `ccv-ws-${Date.now()}-logs`);
     mkdirSync(wsDir, { recursive: true });

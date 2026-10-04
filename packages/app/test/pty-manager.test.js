@@ -10,6 +10,8 @@ import {
   writeToPtySequential,
   resizePty,
   killPty,
+  killAllMain,
+  _resetForTests,
   _setPtyImportForTests,
   onPtyData,
   onPtyExit,
@@ -17,6 +19,8 @@ import {
   getPtyState,
   getCurrentWorkspace,
   getOutputBuffer,
+  listLivePtys,
+  attachPtyFor,
   withDefaultThinkingDisplay,
   _clearThinkingDisplayRejectedPaths,
   _isThinkingDisplayRejected,
@@ -136,7 +140,11 @@ describe('pty-manager: spawnClaude integration', () => {
   });
 
   afterEach(() => {
-    killPty();
+    // Multi-instance (2026-10-06): each spawnClaude mints a fresh instanceKey, so records no
+    // longer collapse onto a per-cwd key — killPty() only reaps the ACTIVE one and background
+    // records would accumulate across cases (bleeding into later listLivePtys assertions).
+    // Reset the whole Map per case instead.
+    _resetForTests();
     _setPtyImportForTests(null);
     _setSpawnModelReaderForTests(null);
   });
@@ -200,12 +208,35 @@ describe('pty-manager: spawnClaude integration', () => {
     assert.doesNotThrow(() => resizePty(80, 24));
   });
 
-  it('spawnClaude kills existing PTY before spawning new one', async () => {
+  it('spawnClaude on the same cwd mints a new instance and does NOT kill the existing PTY', async () => {
+    // Multi-instance (2026-10-06): the Map is keyed by a per-spawn instanceKey, so a second
+    // spawn on the SAME cwd is a deliberate second process — it must NOT kill the first.
     await spawnClaude(9999, process.cwd(), [], '/bin/echo');
     const first = spawned[0];
     await spawnClaude(9999, process.cwd(), [], '/bin/echo');
-    assert.equal(first._isKilled(), true);
-    assert.equal(spawned.length, 2);
+    const second = spawned[1];
+    assert.equal(first._isKilled(), false, 'same-cwd re-spawn must NOT kill the existing PTY');
+    assert.equal(spawned.length, 2, 'two coexisting same-cwd PTYs');
+    const keys = listLivePtys().map(p => p.instanceKey);
+    assert.equal(new Set(keys).size, 2, 'each spawn mints a distinct instanceKey');
+    assert.equal(listLivePtys().filter(p => p.isActive).length, 1, 'exactly one active');
+    assert.equal(listLivePtys().find(p => p.isActive).instanceKey, keys[1], 'last-spawned is active');
+  });
+
+  it('listLivePtys enumerates live main PTYs across cwds, marks exactly one active, drops exited', async () => {
+    const dirA = join(process.cwd(), 'ccv-listA');
+    const dirB = join(process.cwd(), 'ccv-listB');
+    await spawnClaude(9999, dirA, [], '/bin/echo');
+    await spawnClaude(9999, dirB, [], '/bin/echo'); // different cwd → both kept alive
+    let live = listLivePtys();
+    const cwds = live.map(p => p.cwd).sort();
+    assert.deepEqual(cwds, [dirA, dirB].sort(), 'both live main PTYs listed');
+    assert.equal(live.filter(p => p.isActive).length, 1, 'exactly one active');
+    assert.equal(live.find(p => p.isActive).cwd, dirB, 'last-spawned is active');
+    // Kill the active one → it drops out of the live list (onExit nulls ptyProcess).
+    spawned.find(s => s.opts && s.opts.cwd === dirB).kill();
+    live = listLivePtys();
+    assert.deepEqual(live.map(p => p.cwd), [dirA], 'exited PTY excluded');
   });
 
   it('spawnClaude strips inherited CLAUDE_CODE_NO_FLICKER by default', async () => {
@@ -750,6 +781,46 @@ describe('pty-manager: spawnClaude integration', () => {
     assert.ok(!spawned[1].args.includes('--system-prompt-file'), 'retry strips the flag');
     assert.equal(_isSystemPromptFileRejected('/bin/fake-claude-modelheal'), true);
   });
+
+  it('claudePath=null prefers the launcher-pinned CCV_CLAUDE_EXECUTABLE over resolveNativePath', async () => {
+    // Regression (2026-10): a [+] workspace launch passes claudePath=null (the
+    // route's workspaceClaudePath was never re-pinned after f209f508 dropped the
+    // cli.js call). The fallback went straight to resolveNativePath(), which can
+    // resolve to a DIFFERENT binary than the launcher's verified selection — on
+    // managed machines that binary is SIGKILLed on exec, so the new project's
+    // claude died instantly and only a bare shell remained.
+    const pinned = '/bin/echo'; // exists on every platform we test on
+    const prev = process.env.CCV_CLAUDE_EXECUTABLE;
+    process.env.CCV_CLAUDE_EXECUTABLE = pinned;
+    try {
+      await spawnClaude(9999, process.cwd(), [], null);
+      assert.equal(spawned.length, 1);
+      assert.equal(spawned[0].command, pinned, 'spawn must use the launcher-pinned executable');
+    } finally {
+      if (prev === undefined) delete process.env.CCV_CLAUDE_EXECUTABLE;
+      else process.env.CCV_CLAUDE_EXECUTABLE = prev;
+    }
+  });
+
+  it('claudePath=null with a dangling CCV_CLAUDE_EXECUTABLE falls through to resolveNativePath', async () => {
+    const prev = process.env.CCV_CLAUDE_EXECUTABLE;
+    process.env.CCV_CLAUDE_EXECUTABLE = '/no/such/claude-binary-anywhere';
+    try {
+      // /bin/echo is what resolveNativePath-free systems would still find; here we
+      // just assert it did NOT use the dangling pin (spawn succeeded with some
+      // other command or threw 'claude not found' — either proves the pin was
+      // not blindly trusted).
+      try {
+        await spawnClaude(9999, process.cwd(), [], null);
+        assert.notEqual(spawned[0]?.command, '/no/such/claude-binary-anywhere');
+      } catch (e) {
+        assert.match(e.message, /claude not found/);
+      }
+    } finally {
+      if (prev === undefined) delete process.env.CCV_CLAUDE_EXECUTABLE;
+      else process.env.CCV_CLAUDE_EXECUTABLE = prev;
+    }
+  });
 });
 
 // ─── writeToPtySequential delay rules ───
@@ -853,7 +924,9 @@ describe('pty-manager: resize clamp / chunk validation / spawn guard', () => {
   });
 
   afterEach(() => {
-    killPty();
+    // Multi-instance (2026-10-06): the 3-concurrent-spawn case mints three records; killPty()
+    // only reaps the ACTIVE one, leaving two live records that would bleed into later cases.
+    _resetForTests();
     _setPtyImportForTests(null);
     _setSpawnModelReaderForTests(null);
   });
@@ -910,15 +983,13 @@ describe('pty-manager: resize clamp / chunk validation / spawn guard', () => {
     assert.equal(a, b);
   });
 
-  it('3 concurrent spawnClaude calls never double-open (while-gate, ≥3 并发)', async () => {
-    // spawnClaude 是 kill+respawn 语义：串行化下每次 spawn 前先 kill 上一个，全程至多一个存活。
-    // 闸用 `if` 而非 `while` 时：A 完成后 B/C 都已过 if 检查 → implB/implC 并发双开，
-    // 出现两个同时存活的 PTY。这里在每次 spawn 时断言此前所有实例都已 _killed。
-    let maxLiveAtSpawn = 0;
+  it('3 concurrent spawnClaude calls on the same cwd mint distinct instances (no kill, no lost record)', async () => {
+    // Multi-instance (2026-10-06): spawnClaude no longer does kill+respawn on a shared cwd key.
+    // Each call mints its own instanceKey, so three concurrent same-cwd spawns are three
+    // deliberate coexisting processes — none is killed, and each gets its own record (no two
+    // spawns share/overwrite one record).
     _setPtyImportForTests(() => ({
       spawn(command, args, opts) {
-        const liveBefore = spawned.filter((s) => !s._killed).length;
-        if (liveBefore > maxLiveAtSpawn) maxLiveAtSpawn = liveBefore;
         const inst = {
           pid: 25000 + spawned.length,
           command, args, opts, _killed: false,
@@ -933,9 +1004,11 @@ describe('pty-manager: resize clamp / chunk validation / spawn guard', () => {
       spawnClaude(9999, process.cwd(), [], '/bin/echo'),
       spawnClaude(9999, process.cwd(), [], '/bin/echo'),
     ]);
-    assert.equal(maxLiveAtSpawn, 0, 'no live PTY existed when a new impl spawned (no overlap)');
     const live = spawned.filter((s) => !s._killed).length;
-    assert.equal(live, 1, 'exactly one PTY survives after serialized kill+respawn');
+    assert.equal(live, 3, 'all three same-cwd instances coexist (none killed)');
+    const keys = listLivePtys().map(p => p.instanceKey);
+    assert.equal(new Set(keys).size, 3, 'each concurrent spawn mints a distinct instanceKey');
+    assert.equal(listLivePtys().filter(p => p.isActive).length, 1, 'exactly one active among them');
   });
 });
 
@@ -1297,5 +1370,158 @@ describe('pty-manager: -c/-r system-prompt pinning', () => {
   it('fresh launch without any injection writes no pending (no-record ≡ no-injection under F2)', async () => {
     await spawnClaude(9999, dir, [], '/bin/fake-claude-pin-empty');
     assert.equal(existsSync(pendingFile()), false);
+  });
+});
+
+// ─── Multi-PTY (cross-project /resume keepalive) ───
+
+describe('pty-manager: multi-PTY (cross-project keepalive)', () => {
+  let spawned = [];
+  const dirA = join(tmpdir(), 'ccv-multpty-A');
+  const dirB = join(tmpdir(), 'ccv-multpty-B');
+
+  beforeEach(() => {
+    spawned = [];
+    mkdirSync(dirA, { recursive: true });
+    mkdirSync(dirB, { recursive: true });
+    _resetForTests();
+    _setPtyImportForTests(() => ({
+      spawn(command, args, opts) {
+        const dataHandlers = [];
+        const exitHandlers = [];
+        let killed = false;
+        const inst = {
+          pid: 20000 + spawned.length,
+          command, args, opts,
+          write(data) { for (const cb of dataHandlers) cb(`out:${data}`); },
+          resize() {},
+          kill() { if (killed) return; killed = true; for (const cb of exitHandlers) cb({ exitCode: 0 }); },
+          onData(cb) { dataHandlers.push(cb); },
+          onExit(cb) { exitHandlers.push(cb); },
+          _isKilled() { return killed; },
+        };
+        spawned.push(inst);
+        return inst;
+      },
+    }));
+  });
+
+  afterEach(() => {
+    _resetForTests();
+    _setPtyImportForTests(null);
+  });
+
+  it('a cross-project spawn does NOT kill the old project PTY; it becomes active', async () => {
+    await spawnClaude(9999, dirA, [], '/bin/echo');
+    const aInst = spawned[0];
+    // Cross-project: spawn a DIFFERENT cwd. The old project's PTY must stay alive.
+    await spawnClaude(9999, dirB, [], '/bin/echo');
+    const bInst = spawned[1];
+    assert.equal(aInst._isKilled(), false, 'old project PTY must NOT be killed on a cross-project spawn');
+    assert.equal(spawned.length, 2, 'two coexisting PTYs');
+    // The new project is now the active one (no-arg exports target it).
+    assert.equal(getPtyPid(), bInst.pid, 'no-arg getPtyPid reports the ACTIVE (new) project');
+  });
+
+  it('a same-cwd re-spawn starts a SECOND coexisting instance (no kill); launch-route dedup lives in ensurePtyForCwd', async () => {
+    // Multi-instance (2026-10-06): the public spawnClaude no longer kills a same-cwd record —
+    // a second spawn on dirA is a deliberate second process. The "re-open = replace" intent
+    // for the launch route is handled by ensurePtyForCwd (attach-not-spawn), not by spawnClaude.
+    await spawnClaude(9999, dirA, [], '/bin/echo');
+    const first = spawned[0];
+    await spawnClaude(9999, dirA, [], '/bin/echo'); // same cwd → a second coexisting instance
+    const second = spawned[1];
+    assert.equal(first._isKilled(), false, 'same-cwd re-spawn must NOT kill the old PTY');
+    assert.equal(second._isKilled(), false);
+    assert.equal(getPtyPid(), second.pid, 'last-spawned becomes active');
+    assert.equal(listLivePtys().filter(p => p.cwd === dirA).length, 2, 'two live records share dirA');
+  });
+
+  it('killPty kills only the ACTIVE PTY; killAllMain reaps every project', async () => {
+    await spawnClaude(9999, dirA, [], '/bin/echo');
+    await spawnClaude(9999, dirB, [], '/bin/echo'); // active = B
+    killPty(); // kills B (active), A survives
+    assert.equal(spawned[1]._isKilled(), true, 'active (B) killed by killPty');
+    assert.equal(spawned[0]._isKilled(), false, 'background (A) survives killPty');
+    killAllMain();
+    assert.equal(spawned[0]._isKilled(), true, 'killAllMain reaps the surviving background PTY');
+  });
+
+  it('a background PTY keeps buffering output but only the ACTIVE one broadcasts', async () => {
+    await spawnClaude(9999, dirA, [], '/bin/echo');
+    const aInst = spawned[0];
+    await spawnClaude(9999, dirB, [], '/bin/echo'); // active = B
+    const chunks = [];
+    const unsub = onPtyData((d) => chunks.push(d));
+    // A is background: its output must NOT interleave onto the active stream.
+    aInst.write('from-A');
+    await new Promise((r) => setImmediate(r));
+    unsub();
+    assert.equal(chunks.some((c) => c.includes('from-A')), false, 'background PTY output is not broadcast');
+    // But A's own record still buffered it (listLivePtys still sees it live).
+    assert.ok(listLivePtys().some((p) => p.cwd === dirA), 'background PTY stays live and re-attachable');
+  });
+
+  it('attachPtyFor switches the active PTY so no-arg exports follow the viewed project', async () => {
+    await spawnClaude(9999, dirA, [], '/bin/echo');
+    const aInst = spawned[0];
+    await spawnClaude(9999, dirB, [], '/bin/echo');
+    const bInst = spawned[1];
+    // Last spawn wins by default: active = B.
+    assert.equal(getPtyPid(), bInst.pid);
+    // Attach back to A by cwd: no-arg exports must now target A.
+    const res = attachPtyFor({ cwd: dirA });
+    assert.equal(res.ok, true);
+    assert.equal(res.switched, true);
+    assert.equal(res.running, true);
+    assert.equal(getPtyPid(), aInst.pid, 'after attach, no-arg exports target the ATTACHED project');
+    // Neither PTY was spawned/killed by the attach.
+    assert.equal(spawned.length, 2);
+    assert.equal(aInst._isKilled(), false);
+    assert.equal(bInst._isKilled(), false);
+  });
+
+  it('attachPtyFor resolves by project name (projectKeyForCwd mapping)', async () => {
+    await spawnClaude(9999, dirA, [], '/bin/echo');
+    await spawnClaude(9999, dirB, [], '/bin/echo');
+    const res = attachPtyFor({ project: 'ccv-multpty-A' });
+    assert.equal(res.ok, true);
+    assert.equal(getPtyPid(), spawned[0].pid);
+  });
+
+  it('attachPtyFor is idempotent and unknown targets change nothing', async () => {
+    await spawnClaude(9999, dirA, [], '/bin/echo');
+    await spawnClaude(9999, dirB, [], '/bin/echo'); // active = B
+    const miss = attachPtyFor({ project: 'no-such-project' });
+    assert.equal(miss.ok, false);
+    assert.equal(miss.reason, 'not-found');
+    assert.equal(getPtyPid(), spawned[1].pid, 'failed attach leaves active untouched');
+    const again = attachPtyFor({ cwd: dirB });
+    assert.equal(again.ok, true);
+    assert.equal(again.switched, false, 're-attaching the active key is a no-op switch');
+    assert.equal(spawned.length, 2, 'attach never spawns');
+  });
+
+  it('attachPtyFor re-anchors the data stream: post-attach output broadcasts, pre-attach stays in outputBuffer only', async () => {
+    await spawnClaude(9999, dirA, [], '/bin/echo');
+    const aInst = spawned[0];
+    await spawnClaude(9999, dirB, [], '/bin/echo'); // active = B; A goes background
+    // A emits while background: buffered into A's outputBuffer, NOT broadcast.
+    aInst.write('bg-output');
+    await new Promise((r) => setImmediate(r));
+    const chunks = [];
+    const unsub = onPtyData((d) => chunks.push(d));
+    const res = attachPtyFor({ cwd: dirA });
+    assert.equal(res.ok, true);
+    // The background-period output was already accumulated into outputBuffer; the
+    // attach itself must NOT re-broadcast it (the WS layer replays the snapshot,
+    // and the xterm would otherwise print it twice).
+    assert.equal(chunks.some((c) => c.includes('bg-output')), false, 'attach does not re-broadcast buffered history');
+    assert.ok(getOutputBuffer().includes('bg-output'), 'history lives in the attached record outputBuffer');
+    // Post-attach output DOES broadcast (the stream is re-anchored to A).
+    aInst.write('live-output');
+    await new Promise((r) => setImmediate(r));
+    unsub();
+    assert.ok(chunks.some((c) => c.includes('live-output')), 'post-attach output broadcasts again');
   });
 });

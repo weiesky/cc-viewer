@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Space, Tag, Button, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Tabs, Spin, Input, Select, AutoComplete, Segmented, Tooltip, message } from 'antd';
+import { Space, Tag, Button, Dropdown, Popover, Popconfirm, Modal, Collapse, Drawer, Switch, Tabs, Spin, Input, Select, AutoComplete, Segmented, Tooltip, message } from 'antd';
 import { DISPLAY_SCALE_PRESETS } from '../../utils/displayScaleHelper';
 import { hasNativeZoom, isMac } from '../../env';
-import { MessageOutlined, FileTextOutlined, DashboardOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, CopyOutlined, ApiOutlined, SwapOutlined, ThunderboltOutlined, QuestionCircleOutlined, PushpinOutlined, PushpinFilled } from '@ant-design/icons';
+import { MessageOutlined, FileTextOutlined, DashboardOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, CopyOutlined, ApiOutlined, SwapOutlined, ThunderboltOutlined, QuestionCircleOutlined, PushpinOutlined, PushpinFilled, PlusOutlined } from '@ant-design/icons';
 import { QRCodeCanvas } from 'qrcode.react';
 import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats, readCalibrationModel, computeContextPercent, sumUsageInputTokens, sumUsageContextTokens } from '../../utils/helpers';
 import { contextSeverityColor } from '../../utils/formatters';
@@ -28,6 +28,8 @@ import DialogueIcon from '../common/DialogueIcon';
 import ChipIcon from '../common/ChipIcon';
 import CachePopoverContent from './CachePopoverContent';
 import LiveTagPopover from './LiveTagPopover';
+import { ResumeSessionsList } from '../chat/ResumeSessionsPopover';
+import { deriveActiveProcessChips, deriveProjectTabs } from '../../utils/resumeSessions';
 import MemoryDetailModal from '../common/MemoryDetailModal';
 import SkillsManagerModal from '../settings/SkillsManagerModal';
 import ProjectPrefsManagerModal from '../settings/ProjectPrefsManagerModal';
@@ -36,13 +38,11 @@ import ProcessModal from '../settings/ProcessModal';
 import ProxyModal, { profileDisplayModel } from '../settings/ProxyModal';
 import SystemTextModal from '../settings/SystemTextModal';
 import VoicePackSettings from '../settings/VoicePackSettings';
-import ProjectAliasEditor from '../settings/ProjectAliasEditor';
 import MessagingModal from '../settings/MessagingModal';
 import ImConversationModal from '../settings/ImConversationModal';
 import ImStatusChip from '../settings/ImStatusChip';
 import { IM_PLATFORMS } from '../settings/imPlatforms';
 import { isProxyMode } from '../../utils/isProxyMode';
-import { useProjectAlias } from '../../hooks/useProjectAlias';
 import appConfig from '../../config.json';
 import { OPTIMISTIC_CLEAR_PERCENT } from '../../AppBase';
 const CALIBRATION_MODELS = appConfig.calibrationModels;
@@ -69,17 +69,269 @@ function makeAuthState(over = {}) {
 
 // countryToFlag 已随地理位置控件一起迁到 src/components/common/CountryFlag.jsx
 
-// Bridges the useProjectAlias hook into AppHeader (class component). Renders
-// `${liveMonitoringPrefix}${projectName}${alias ? ` (${alias})` : ''}` followed
-// by the inline pencil editor (hidden when isLocalLog / no projectName).
-function HeaderProjectLabel({ projectName, isLocalLog }) {
-  const alias = useProjectAlias(projectName);
+// The current-project label. Renders `当前项目:<projectName>`; the label text
+// doubles as the hover trigger for the recent-sessions dropdown
+// (HeaderResumeDropdown below).
+function HeaderProjectLabel({ projectName }) {
   return (
     <span className={styles.headerProjectName}>
       {t('ui.liveMonitoring')}{projectName ? `:${projectName}` : ''}
-      {alias ? ` (${alias})` : ''}
-      <ProjectAliasEditor projectName={projectName} isLocalLog={isLocalLog} />
     </span>
+  );
+}
+
+// [+] new-workspace button (2026-10): a STANDALONE control sitting to the right
+// of the current-project label — deliberately NOT nested inside the label, which
+// is the recent-sessions dropdown's hover trigger. Nesting it there made hovering
+// [+] fire both the "新建工作区" tip AND the recent-sessions dropdown at once.
+// Kept independent so hovering it shows only its own tip and clicking opens only
+// the new-workspace picker.
+function NewProjectButton({ onNewProject }) {
+  if (!onNewProject) return null;
+  return (
+    <Tooltip title={t('ui.resume.newProject')} placement="bottom">
+      <button
+        type="button"
+        className={styles.newProjectPlusBtn}
+        aria-label={t('ui.resume.newProject')}
+        onClick={onNewProject}
+      >
+        <PlusOutlined />
+      </button>
+    </Tooltip>
+  );
+}
+
+// /resume entry (2026-10): the current-project label doubles as the hover
+// trigger for the current project's recent-sessions dropdown (max 5, single
+// project — no cross-project grouping). Picking a row fires onResumeSession
+// (AppBase.handleResumeSession, a pure view switch) and closes the dropdown.
+// Rendered as a plain label (no dropdown) in local-log mode or when no resume
+// handler is wired.
+function HeaderResumeDropdown({ projectName, isLocalLog, onResumeSession, attachedSid, isStreaming }) {
+  const [open, setOpen] = useState(false);
+  const label = <HeaderProjectLabel projectName={projectName} />;
+  if (!onResumeSession || isLocalLog) return label;
+  return (
+    <Popover
+      content={
+        <div style={{ maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', overflowX: 'hidden' }}>
+          <ResumeSessionsList
+            active={open}
+            onResumeSession={(row) => { setOpen(false); onResumeSession(row); }}
+            attachedUuid={attachedSid}
+            isStreaming={isStreaming}
+          />
+        </div>
+      }
+      trigger="hover"
+      placement="bottomLeft"
+      arrow={{ pointAtCenter: true }}
+      autoAdjustOverflow={false}
+      align={{ overflow: { adjustX: true, shiftY: true } }}
+      open={open}
+      onOpenChange={setOpen}
+      overlayInnerStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-light)', padding: 0 }}
+    >
+      <span style={{ display: 'inline-flex', cursor: 'default' }}>{label}</span>
+    </Popover>
+  );
+}
+
+// Parallel-project chips (2026-10): one chip per OTHER live main claude PTY
+// (one per activated project), excluding the current project (its identity is
+// already in the label to the left). Clicking a chip switches the main view to
+// that project (onActivateChip → AppBase.handleActivateChip, a pure view switch
+// — no spawn/kill). Presentational; the poll lives in HeaderProjectSwitcher.
+function HeaderActiveChips({ onActivateChip, chips }) {
+  if (!chips || !chips.length) return null;
+  return (
+    <>
+      {chips.map((chip) => (
+        <Tag
+          key={chip.key}
+          className={`${styles.proxyProfileTag} ${styles.activeProcessChip}`}
+          title={t('ui.resume.activeChipMain', { project: chip.project })}
+          onClick={() => onActivateChip(chip)}
+        >
+          {chip.label}
+        </Tag>
+      ))}
+    </>
+  );
+}
+
+// Multi-project tab bar (2026-10), the Electron-tab-bar analog for the web
+// header: one equal-width tab per LIVE project INCLUDING the current one —
+// shown only when 2+ projects are live (fewer → the legacy label+chips form,
+// see HeaderProjectSwitcher). Click a tab = pure view switch (never
+// spawns/kills); clicking the already-viewing tab is a no-op, clicking the
+// CURRENT (bound) project's tab from a parallel view detaches back to it.
+// The × close button reveals on hover/keyboard-focus and persists on the
+// viewing tab (Electron's rule), asks via Popconfirm, and kills that project's
+// main PTY server-side (AppBase.handleCloseProject). Hovering the current
+// project's tab opens the same recent-sessions dropdown the legacy label
+// carries.
+function HeaderProjectTabs({ tabs, currentProject, viewedProject, viewedInstance, onActivateChip, onDetachView, onCloseProject, onNewProject, onResumeSession, attachedSid, isStreaming }) {
+  const [resumeOpen, setResumeOpen] = useState(false);
+  const viewing = viewedProject || currentProject || null;
+  // Multi-instance: "viewing" identity is project+instance — a same-cwd twin tab is NOT the
+  // viewed one just because the basename matches.
+  const viewingInstance = viewedInstance || null;
+  // View-repair target after closing a tab: prefer the bound project when it survives, else
+  // the first remaining live tab (mirrors the server's re-attach order), else null. Carries
+  // the survivor's { project, instanceKey } so the re-view lands on the exact process.
+  const fallbackFor = (closedTab) => {
+    const rest = (tabs || []).filter((tab) => !(tab.project === closedTab.project && (tab.instanceKey || null) === (closedTab.instanceKey || null)));
+    if (!rest.length) return null;
+    const bound = rest.find((tab) => tab.project === currentProject);
+    const pick = bound || rest[0];
+    return { project: pick.project, instanceKey: pick.instanceKey || null };
+  };
+  const renderTab = (tab) => {
+    const tabInstance = tab.instanceKey || null;
+    const isViewing = tab.project === viewing && (viewedProject ? tabInstance === viewingInstance : true);
+    const isCurrent = tab.project === currentProject;
+    const onTabClick = () => {
+      if (isViewing) return;
+      if (isCurrent) { if (onDetachView) onDetachView(); return; }
+      if (onActivateChip) onActivateChip({ project: tab.project, instanceKey: tabInstance });
+    };
+    const tabBody = (
+      <div
+        className={`${styles.projectTab}${isViewing ? ` ${styles.projectTabActive}` : ''}`}
+        onClick={onTabClick}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onTabClick(); } }}
+      >
+        <span className={styles.projectTabDot} aria-hidden="true" />
+        <span className={styles.projectTabName} title={tab.project}>{tab.label}</span>
+        {onCloseProject && (
+          <Popconfirm
+            title={t('ui.projectTabs.closeConfirm', { project: tab.project })}
+            okText={t('ui.ok')}
+            cancelText={t('ui.cancel')}
+            onConfirm={() => onCloseProject(tab.project, fallbackFor(tab), tabInstance)}
+          >
+            <button
+              type="button"
+              className={styles.projectTabClose}
+              title={t('ui.projectTabs.closeTip')}
+              aria-label={t('ui.projectTabs.closeTip')}
+              // Not tabbable: the × is visually hidden on non-viewing tabs, and a
+              // keyboard user landing on an invisible control is worse than losing
+              // ×-key access (the tab body itself is the keyboard target).
+              tabIndex={-1}
+              onClick={(e) => e.stopPropagation()}
+            >
+              ×
+            </button>
+          </Popconfirm>
+        )}
+      </div>
+    );
+    // Only the CURRENT project's tab carries the recent-sessions hover dropdown
+    // (the API is bound-project scoped, same scope as the legacy label).
+    if (!isCurrent || !onResumeSession) return <React.Fragment key={tab.key}>{tabBody}</React.Fragment>;
+    return (
+      <Popover
+        key={tab.key}
+        content={
+          <div style={{ maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', overflowX: 'hidden' }}>
+            <ResumeSessionsList
+              active={resumeOpen}
+              onResumeSession={(row) => { setResumeOpen(false); onResumeSession(row); }}
+              attachedUuid={attachedSid}
+              isStreaming={isStreaming}
+            />
+          </div>
+        }
+        trigger="hover"
+        placement="bottomLeft"
+        arrow={{ pointAtCenter: true }}
+        autoAdjustOverflow={false}
+        align={{ overflow: { adjustX: true, shiftY: true } }}
+        open={resumeOpen}
+        onOpenChange={setResumeOpen}
+        overlayInnerStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-light)', padding: 0 }}
+      >
+        {tabBody}
+      </Popover>
+    );
+  };
+  return (
+    <div className={styles.projectTabsStrip}>
+      {(tabs || []).map(renderTab)}
+      <NewProjectButton onNewProject={onNewProject} />
+    </div>
+  );
+}
+
+// Header project switcher (2026-10): owns the /api/live-processes 5s poll and
+// picks the form — the Electron-style tab bar when 2+ projects are live, the
+// legacy "当前项目:X" label + [+] + parallel chips below that. Every poll
+// reports the tab list upstream (onLiveProjectsChange → AppBase) so close-
+// fallback and dead-view decisions share the one fetch.
+function HeaderProjectSwitcher(props) {
+  const { onActivateChip, currentProject, isLocalLog, onLiveProjectsChange } = props;
+  const [tabs, setTabs] = useState([]);
+  const [chips, setChips] = useState([]);
+
+  useEffect(() => {
+    // Electron chat tab: each tab is its own worker process with an empty
+    // module-local pty map (cross-tab/cross-instance main PTYs never appear), so
+    // the tabs/chips are always empty — skip the 5s polling entirely there.
+    const isElectronTab = typeof window !== 'undefined' && !!window.tabBridge;
+    if (!onActivateChip || isLocalLog || isElectronTab) { setTabs([]); setChips([]); return undefined; }
+    let cancelled = false;
+    const load = () => {
+      fetch(apiUrl('/api/live-processes'))
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+        .then(data => {
+          if (cancelled) return;
+          const cur = typeof data?.currentProject === 'string' && data.currentProject ? data.currentProject : currentProject;
+          const nextTabs = deriveProjectTabs(data?.processes);
+          setTabs(nextTabs);
+          setChips(deriveActiveProcessChips(data?.processes, cur || null));
+          if (onLiveProjectsChange) onLiveProjectsChange(nextTabs);
+        })
+        .catch(err => { if (!cancelled) reportSwallowed('activeChips.fetch', err); });
+    };
+    load();
+    const timer = setInterval(load, 5000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [onActivateChip, isLocalLog, currentProject, onLiveProjectsChange]);
+
+  if (tabs.length >= 2) {
+    return (
+      <HeaderProjectTabs
+        tabs={tabs}
+        currentProject={currentProject}
+        viewedProject={props.viewedProject}
+        viewedInstance={props.viewedInstance}
+        onActivateChip={onActivateChip}
+        onDetachView={props.onDetachView}
+        onCloseProject={props.onCloseProject}
+        onNewProject={props.onNewProject}
+        onResumeSession={props.onResumeSession}
+        attachedSid={props.attachedSid}
+        isStreaming={props.isStreaming}
+      />
+    );
+  }
+  return (
+    <>
+      <HeaderResumeDropdown
+        projectName={currentProject}
+        isLocalLog={isLocalLog}
+        onResumeSession={props.onResumeSession}
+        attachedSid={props.attachedSid}
+        isStreaming={props.isStreaming}
+      />
+      <NewProjectButton onNewProject={props.onNewProject} />
+      <HeaderActiveChips onActivateChip={onActivateChip} chips={chips} />
+    </>
   );
 }
 
@@ -428,7 +680,9 @@ class AppHeader extends React.Component {
   // 触发点：挂载 / 代理配置或工作区切换(componentDidUpdate) / 系统提示词弹窗关闭(保存即改变激活态)。
   reloadSystemPromptStatus = () => {
     const seq = ++this._systemPromptSeq;
-    fetch(apiUrl('/api/expert/system-prompt-status'))
+    // Multi-project (2026-10)：系统提示词入口可见性跟随 viewed 项目（server GET 已支持
+    // ?project=；POST 写操作仍保持绑定项目）。
+    fetch(apiUrl(this.props.viewProject ? `/api/expert/system-prompt-status?project=${encodeURIComponent(this.props.viewProject)}` : '/api/expert/system-prompt-status'))
       .then((r) => r.json())
       .then((d) => {
         if (seq === this._systemPromptSeq) {
@@ -486,13 +740,14 @@ class AppHeader extends React.Component {
       || prevProps.projectName !== this.props.projectName) {
       this.reloadSystemPromptStatus();
     }
-    // Workspace 切换：projectName 变了 → 旧的 _fsSkills 属于旧项目，直接作废。
+    // Workspace 切换 OR viewed-project 切换：viewProject 变了 → 旧的 _fsSkills/_memory/_claudeMd
+    // 属于旧 viewed 项目，直接作废（multi-project 2026-10；viewProject = viewedProject || projectName）。
     // 递增 seq 防止正在途中的 reload 回包把脏数据塞回 state。
-    if (prevProps.projectName !== this.props.projectName) {
+    if (prevProps.projectName !== this.props.projectName || prevProps.viewProject !== this.props.viewProject) {
       // seq++ 杀掉任何在途的 reloadFsSkills（即使下面不再重启新的 fetch，也要确保旧回包不会写脏数据）
       this._fsSkillsSeq++;
       this.setState({ _fsSkills: null });
-      if (!this.props.isLocalLog && this.props.projectName) this.reloadFsSkills();
+      if (!this.props.isLocalLog && this.props.viewProject) this.reloadFsSkills();
       // _memory 同样作废 —— 沿用 _fsSkills 的失效策略，下次 popover 打开时按需重拉。
       this._memorySeq++;
       this.setState({ _memory: null, _memoryDetail: null, _memoryRefreshing: false });
@@ -503,7 +758,7 @@ class AppHeader extends React.Component {
     }
   }
 
-  reloadFsSkills = async () => SeqLoaders.loadFsSkills(this, { isLocalLog: this.props.isLocalLog });
+  reloadFsSkills = async () => SeqLoaders.loadFsSkills(this, { isLocalLog: this.props.isLocalLog, project: this.props.viewProject });
 
   // 把服务端返回的认证 state 写入本地(含 scope 信息),并清空编辑草稿。
   _applyAuthState(data) {
@@ -688,7 +943,7 @@ class AppHeader extends React.Component {
     );
   }
 
-  loadMemory = async () => SeqLoaders.loadProjectMemory(this);
+  loadMemory = async () => SeqLoaders.loadProjectMemory(this, { project: this.props.viewProject });
 
   // 用户主动点击"刷新记忆"按钮：自管 seq 三态（ok/stale/fail）以决定 toast。
   // 与 loadMemory 区分的原因：lazy-load 失败不打扰用户，只在 popover 内显示 memoryLoadError；
@@ -700,7 +955,7 @@ class AppHeader extends React.Component {
     let ok = false;
     let stale = false;
     try {
-      const r = await fetch(apiUrl('/api/project-memory'));
+      const r = await fetch(apiUrl(this.props.viewProject ? `/api/project-memory?project=${encodeURIComponent(this.props.viewProject)}` : '/api/project-memory'));
       const data = await r.json();
       if (seq !== this._memorySeq) { stale = true; }
       else if (!r.ok) { this.setState({ _memory: false }); }
@@ -737,7 +992,7 @@ class AppHeader extends React.Component {
     if (open && this.state._claudeMd === null) this.loadClaudeMdList();
   };
 
-  loadClaudeMdList = async () => SeqLoaders.loadClaudeMdList(this);
+  loadClaudeMdList = async () => SeqLoaders.loadClaudeMdList(this, { project: this.props.viewProject });
 
   // 点击 CLAUDE.md chip 触发: 拉取明细到 _claudeMdDetail, MemoryDetailModal(linkMode=passthrough) 渲染。
   // tail / scope 提前注入到 detail.name 用作 Modal 标题, 避免等 server 回包再拼。
@@ -747,7 +1002,7 @@ class AppHeader extends React.Component {
     const title = `${scopeLabel} · ${tail}`;
     this.setState({ _claudeMdDetail: { name: title, loading: true } });
     try {
-      const r = await fetch(apiUrl(`/api/claude-md?id=${encodeURIComponent(id)}`));
+      const r = await fetch(apiUrl(`/api/claude-md?id=${encodeURIComponent(id)}${this.props.viewProject ? `&project=${encodeURIComponent(this.props.viewProject)}` : ''}`));
       const data = await r.json();
       if (seq !== this._claudeMdDetailSeq) return;
       if (!r.ok) {
@@ -768,7 +1023,7 @@ class AppHeader extends React.Component {
     const seq = ++this._memoryDetailSeq;
     this.setState({ _memoryDetail: { name, loading: true } });
     try {
-      const r = await fetch(apiUrl(`/api/project-memory?file=${encodeURIComponent(name)}`));
+      const r = await fetch(apiUrl(`/api/project-memory?file=${encodeURIComponent(name)}${this.props.viewProject ? `&project=${encodeURIComponent(this.props.viewProject)}` : ''}`));
       const data = await r.json();
       if (seq !== this._memoryDetailSeq) return;
       if (!r.ok) {
@@ -822,6 +1077,17 @@ class AppHeader extends React.Component {
       nextProps.approvalGlobal !== this.props.approvalGlobal ||
       nextProps.approvalDismissedIds !== this.props.approvalDismissedIds ||
       nextProps.approvalOwnPending !== this.props.approvalOwnPending ||
+      nextProps.onResumeSession !== this.props.onResumeSession ||
+      nextProps.onNewProject !== this.props.onNewProject ||
+      nextProps.attachedSid !== this.props.attachedSid ||
+      nextProps.isStreaming !== this.props.isStreaming ||
+      nextProps.onActivateChip !== this.props.onActivateChip ||
+      nextProps.viewedProject !== this.props.viewedProject ||
+      nextProps.viewedInstance !== this.props.viewedInstance ||
+      nextProps.viewProject !== this.props.viewProject ||
+      nextProps.onDetachView !== this.props.onDetachView ||
+      nextProps.onCloseProject !== this.props.onCloseProject ||
+      nextProps.onLiveProjectsChange !== this.props.onLiveProjectsChange ||
       nextState !== this.state
     );
   }
@@ -1445,7 +1711,7 @@ class AppHeader extends React.Component {
 
   handleShowProjectStats = () => {
     this.setState({ projectStatsVisible: true, projectStatsLoading: true });
-    fetch(apiUrl('/api/project-stats'))
+    fetch(apiUrl(this.props.viewProject ? `/api/project-stats?project=${encodeURIComponent(this.props.viewProject)}` : '/api/project-stats'))
       .then(res => {
         if (!res.ok) throw new Error('not found');
         return res.json();
@@ -1689,7 +1955,7 @@ class AppHeader extends React.Component {
   }
 
   render() {
-    const { requestCount, requests = [], viewMode, cacheType, onToggleViewMode, onImportLocalLogs, onLangChange, isLocalLog, localLogFile, projectName, filterIrrelevant, onFilterIrrelevantChange, logDir, onLogDirChange, cliMode, terminalVisible, onToggleTerminal, proxyStatsVisible, onToggleProxyStats, onReturnToWorkspaces, contextWindow, contextBarOptimistic, serverCachedContent, themeColor, onThemeColorChange, displayScale, onDisplayScaleChange, autoApproveSeconds, onAutoApproveChange } = this.props;
+    const { requestCount, requests = [], viewMode, cacheType, onToggleViewMode, onImportLocalLogs, onLangChange, isLocalLog, localLogFile, projectName, filterIrrelevant, onFilterIrrelevantChange, logDir, onLogDirChange, cliMode, terminalVisible, onToggleTerminal, proxyStatsVisible, onToggleProxyStats, contextWindow, contextBarOptimistic, serverCachedContent, themeColor, onThemeColorChange, displayScale, onDisplayScaleChange, autoApproveSeconds, onAutoApproveChange } = this.props;
     const { countdownText } = this.state;
     // 这 4 个偏好的唯一真相源是 SettingsContext（P0③）。AppHeader 已绑 SettingsContext，
     // 直接派生消费 + 调 updatePreferences，不再经 App 的 prop drilling。默认值与 AppBase._prefValues() 一致。
@@ -1829,7 +2095,20 @@ class AppHeader extends React.Component {
             );
           })()}
           {!isElectronTab && this._renderProxyChip()}
-          <HeaderProjectLabel projectName={projectName} isLocalLog={isLocalLog} />
+          <HeaderProjectSwitcher
+            currentProject={projectName}
+            viewedProject={this.props.viewedProject || null}
+            viewedInstance={this.props.viewedInstance || null}
+            isLocalLog={isLocalLog}
+            onActivateChip={this.props.onActivateChip}
+            onDetachView={this.props.onDetachView}
+            onCloseProject={this.props.onCloseProject}
+            onLiveProjectsChange={this.props.onLiveProjectsChange}
+            onNewProject={this.props.onNewProject}
+            onResumeSession={this.props.onResumeSession}
+            attachedSid={this.props.attachedSid}
+            isStreaming={this.props.isStreaming}
+          />
           {this.renderContextBarPortal()}
         </Space>
 
@@ -2363,6 +2642,7 @@ class AppHeader extends React.Component {
         />
         <SystemTextModal
           open={this.state.systemTextModalVisible}
+          project={this.props.viewProject}
           onClose={() => {
             this.setState({ systemTextModalVisible: false });
             // 弹窗内保存/删除/清空都会改变激活态 → 关闭时重拉，头部自动入口随即翻转。

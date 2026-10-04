@@ -772,6 +772,96 @@ describe('V2Writer', () => {
     const conv = readLines(convEpochPath(sp('proj', SID), 'main', 0));
     assert.deepEqual(conv.map(l => l.t), ['snapshot', 'snapshot'], 'post-reset ingest re-snapshots');
   });
+
+  it('resetSessions(target) drops ONLY the target project; a background project keeps its binding', async () => {
+    // Bound project = projX; a cross-project /resume child writes projY via
+    // entry._resumeProject. resetSessions('projX') must leave projY intact.
+    let bound = 'projX';
+    const w = new V2Writer({ logDir: dir, project: () => bound, enabled: true });
+    const SIDY = 'b1183ab8-0ab7-459a-bcfd-4c8950a14384';
+    const jsonY = JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: SIDY });
+    // projX session (bound) — becomes the current session.
+    w.ingestRequest(mkEntry(), mkEntry().body.messages);
+    assert.equal(w.currentSessionId(), SID, 'bound project session is current');
+    // projY session via _resumeProject override (the takeover child in another project).
+    const ey = mkEntry({ requestId: 'req_y' });
+    ey._resumeProject = 'projY';
+    ey.body = { ...ey.body, metadata: { user_id: jsonY } };
+    const hy = w.ingestRequest(ey, ey.body.messages);
+    assert.ok(hy && hy.sid === SIDY);
+    // _resumeProject traffic must NOT steal the current pointer (the blue-dot fix).
+    assert.equal(w.currentSessionId(), SID, 'current stays the bound project session');
+
+    // Switch away from projX → only projX's binding drops; the projY binding survives.
+    bound = 'projZ';
+    w.resetSessions('projX');
+    // The current pointer pointed at projX (the dropped project) → it clears.
+    assert.equal(w.currentSessionId(), null, 'current clears when its project was reset');
+    // projY's session binding survived: a fresh projY request reuses the SAME dir
+    // (no new sibling minted) — i.e. the background project keeps writing uninterrupted.
+    const ey2 = mkEntry({ requestId: 'req_y2' });
+    ey2._resumeProject = 'projY';
+    ey2.body = { ...ey2.body, metadata: { user_id: jsonY }, messages: [textMsg('user', 'again')] };
+    const hy2 = w.ingestRequest(ey2, ey2.body.messages);
+    assert.ok(hy2 && hy2.sid === SIDY);
+    await w.flush();
+    // Exactly ONE projY session dir exists (reused, not split).
+    const yDirs = readdirSync(join(dir, 'projY', 'sessions')).filter(n => n.endsWith(SIDY));
+    assert.equal(yDirs.length, 1, 'projY reuses its single session dir after the scoped reset');
+  });
+
+  it('split-field: _currentSid follows the cwd==bound main claude, NOT a kept-alive background claude (both carry the header now)', async () => {
+    // After the split-field fix, EVERY claude self-reports its project via
+    // _resumeProject (spawnClaude injects it too). _currentSid must track the claude
+    // whose project == the bound project (the active main one), and must NOT drift
+    // to a kept-alive background project's claude.
+    let bound = 'projMain';
+    const w = new V2Writer({ logDir: dir, project: () => bound, enabled: true });
+    const SIDBG = 'c2183ab8-0ab7-459a-bcfd-4c8950a14384';
+    const jsonBG = JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: SIDBG });
+    // Main claude (header == bound 'projMain') → becomes current.
+    const eMain = mkEntry();
+    eMain._resumeProject = 'projMain';
+    w.ingestRequest(eMain, eMain.body.messages);
+    assert.equal(w.currentSessionId(), SID, 'main claude (header==bound) sets current');
+    // A kept-alive background claude (header == 'projOld' ≠ bound) must NOT steal it.
+    const eBg = mkEntry({ requestId: 'req_bg' });
+    eBg._resumeProject = 'projOld';
+    eBg.body = { ...eBg.body, metadata: { user_id: jsonBG } };
+    const hBg = w.ingestRequest(eBg, eBg.body.messages);
+    assert.ok(hBg && hBg.sid === SIDBG, 'background session still routed to its own dir');
+    assert.equal(w.currentSessionId(), SID, 'background claude (header≠bound) does NOT move current');
+    // A no-header external request (legacy) is treated as the bound project's own.
+    const eLegacy = mkEntry({ requestId: 'req_leg' });
+    w.ingestRequest(eLegacy, eLegacy.body.messages);
+    assert.equal(w.currentSessionId(), SID, 'no-header request counts as the main project');
+    await w.flush();
+  });
+
+  it('cross-project cold-load dir resolution (events ?sid+?project= core): sid resolves under the SPECIFIED project dir, not the bound one', async () => {
+    // The /events ?sid=<uuid>&project=<p> override resolves the session dir under
+    // project <p> (join(LOG_DIR, sanitize(p))) — this is the whole point of the
+    // ?project= override for a cross-project attachment. Verify resolveSessionDirName
+    // finds the sid ONLY under its own project dir (not under a different/bound one).
+    const bound = 'projBound';
+    const w = new V2Writer({ logDir: dir, project: () => bound, enabled: true });
+    const SIDX = 'd3183ab8-0ab7-459a-bcfd-4c8950a14384';
+    const jsonX = JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: SIDX });
+    // A session lives under projOther (written via _resumeProject override).
+    const eX = mkEntry();
+    eX._resumeProject = 'projOther';
+    eX.body = { ...eX.body, metadata: { user_id: jsonX } };
+    w.ingestRequest(eX, eX.body.messages);
+    await w.flush();
+    // ?project=projOther resolves the sid (dir exists there)…
+    const hit = resolveSessionDirName(join(dir, 'projOther'), SIDX);
+    assert.ok(hit && hit.endsWith(SIDX), 'sid resolves under its OWN project dir');
+    // …but the same sid does NOT resolve under a different (bound) project — without
+    // the ?project= override the lookup would miss and fall back to the live source.
+    const miss = resolveSessionDirName(join(dir, 'projBound'), SIDX);
+    assert.equal(miss, null, 'sid does NOT resolve under a different project (hence ?project= is required)');
+    await w.close();
+  });
 });
 
 // ─── concurrency: N interleaved request/completion pairs, single-writer queue ─

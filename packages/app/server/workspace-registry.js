@@ -1,5 +1,6 @@
 // Workspace Registry - 工作区持久化管理
 import { readdir, stat } from 'node:fs/promises';
+import { statSync } from 'node:fs';
 import { mutateJson, readJsonSafe, writeJsonAtomic } from './lib/json-store.js';
 import { dirSizeSync } from './lib/v2/layout.js';
 import { isDiscardableSession } from './lib/v2/session-select.js';
@@ -32,7 +33,7 @@ export async function registerWorkspace(absolutePath) {
   const result = await mutateJson(getWorkspacesFile(), (data) => {
     const resolvedPath = resolve(absolutePath);
     const projectName = basename(resolvedPath).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
-    const list = Array.isArray(data.workspaces) ? data.workspaces : [];
+    let list = Array.isArray(data.workspaces) ? data.workspaces : [];
     // Windows NTFS 不分大小写——`C:\App` 跟 `c:\app` 是同目录但 `===` 视为不同。
     // 仅 Win 下小写化比较；POSIX 保持原样不引入回归。
     const pathEq = (a, b) => process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
@@ -43,6 +44,19 @@ export async function registerWorkspace(absolutePath) {
       data.workspaces = list;
       return existing;
     }
+    // Gentle self-heal (2026-10-05): a same-name entry whose path no longer
+    // exists (moved/deleted checkout residue) is pruned on register — otherwise
+    // the collision makes view-root's no-live-PTY branch 400. Same-name entries
+    // whose path still exists are kept (never auto-delete user data).
+    // Only ENOENT/ENOTDIR count as "gone": existsSync() also returns false on
+    // EIO/EACCES/EPERM/a transiently unmounted volume, which must NOT prune a
+    // legitimate workspace.
+    const isGone = (p) => {
+      try { statSync(p); return false; }
+      catch (e) { return e && (e.code === 'ENOENT' || e.code === 'ENOTDIR'); }
+    };
+    list = list.filter(w =>
+      w.projectName !== projectName || pathEq(w.path, resolvedPath) || !isGone(w.path));
     const now = new Date().toISOString();
     const entry = {
       id: randomBytes(6).toString('hex'),

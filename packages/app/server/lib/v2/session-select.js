@@ -261,12 +261,17 @@ export function isDiscardableSession(dir, meta) {
  * (getLiveLogSource fallback, _resolveAdoption) pass true; default false keeps
  * the raw picker semantics for everything else.
  * @param {string} projectDir - absolute LOG_DIR/<project>
- * @param {{excludeDir?: string, skipForeignLive?: boolean}} [opts]
+ * @param {{excludeDir?: string, skipForeignLive?: boolean, instanceKey?: string}} [opts]
+ *   `instanceKey` (multi-instance, 2026-10-06): when set, only consider session dirs whose
+ *   meta.json `instance` matches it — so two concurrent same-cwd instances (sharing one
+ *   basename project dir but distinct session dirs) each resolve to THEIR OWN latest session.
+ *   Dirs with no `instance` (legacy / external producers) are EXCLUDED under this filter.
  * @returns {{dir:string, sessionId:string}|null}
  */
-export function latestMainSession(projectDir, { excludeDir = '', skipForeignLive = false } = {}) {
+export function latestMainSession(projectDir, { excludeDir = '', skipForeignLive = false, instanceKey = '' } = {}) {
   if (!projectDir) return null;
-  const candidates = []; // { dir, sessionId, startTs }
+  const instanceCandidates = []; // session dirs stamped with the requested instanceKey
+  const projectCandidates = [];  // every eligible session dir of the project (any/no instance)
   for (const name of listSessionIds(projectDir)) {
     const dir = join(projectDir, 'sessions', name);
     if (excludeDir && dir === excludeDir) continue;
@@ -282,24 +287,41 @@ export function latestMainSession(projectDir, { excludeDir = '', skipForeignLive
     // folds in its siblings when rendered, so a teammate dir loaded directly
     // renders wrong. Keep only main (leader-less) sessions.
     if (meta.leader) continue;
-    candidates.push({ dir, sessionId: meta.sessionId || '', startTs: meta.startTs || '' });
+    const cand = { dir, sessionId: meta.sessionId || '', startTs: meta.startTs || '' };
+    projectCandidates.push(cand);
+    if (instanceKey && meta.instance === instanceKey) instanceCandidates.push(cand);
   }
-  // Newest first, then return the first that actually has a main turn — skipping
-  // a not-yet-activated newest session (the refresh-bug fix).
-  candidates.sort((a, b) => (a.startTs < b.startTs ? 1 : a.startTs > b.startTs ? -1 : 0));
-  for (const c of candidates) {
-    if (sessionHasMainTurn(c.dir)) return { dir: c.dir, sessionId: c.sessionId };
+  const byNewest = (a, b) => (a.startTs < b.startTs ? 1 : a.startTs > b.startTs ? -1 : 0);
+  const newestWithMainTurn = (list) => {
+    const sorted = [...list].sort(byNewest);
+    for (const c of sorted) { if (sessionHasMainTurn(c.dir)) return c; }
+    return null;
+  };
+  // Multi-instance (2026-10-06): "show the instance's session when it has content, else fall
+  // back to the project's latest session WITH content" (user-pinned). An instance that exists
+  // but has only sub/system requests (no user main turn — a freshly-spawned same-cwd twin, or
+  // one rebuilt by a server restart) must NOT blank the view with its empty shell, and must
+  // NOT hard-error as "not found" either. Scope: instance-with-content → that; else → the
+  // project's newest content-bearing session (the history the user actually wants back).
+  if (instanceKey) {
+    const own = newestWithMainTurn(instanceCandidates);
+    if (own) return own;
+    const proj = newestWithMainTurn(projectCandidates);
+    if (proj) return proj;
+    // Nothing with a main turn anywhere: degrade to the instance's own newest dir (a truly
+    // fresh project) — still strictly this instance, never another's.
+    const ownAny = [...instanceCandidates].sort(byNewest)[0];
+    return ownAny || null;
   }
-  return null;
+  return newestWithMainTurn(projectCandidates);
 }
 
 /**
  * Absolute dir of the newest readable, non-teammate session that HAS a main
  * turn, or '' if there is none. Thin wrapper over {@link latestMainSession}.
  * @param {string} projectDir - absolute LOG_DIR/<project>
- * @param {{excludeDir?: string, skipForeignLive?: boolean}} [opts] - see {@link latestMainSession}
+ * @param {{excludeDir?: string, skipForeignLive?: boolean, instanceKey?: string}} [opts] - see {@link latestMainSession}
  * @returns {string} absolute session dir, or ''
  */
-export function latestMainSessionDir(projectDir, opts) {
-  return latestMainSession(projectDir, opts)?.dir || '';
+export function latestMainSessionDir(projectDir, opts) {  return latestMainSession(projectDir, opts)?.dir || '';
 }

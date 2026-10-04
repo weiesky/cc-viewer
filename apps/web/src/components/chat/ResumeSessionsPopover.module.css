@@ -1,0 +1,119 @@
+/* /resume popover (sidebar hover flyout) — mirrors TeamSessionPanel popover styling. */
+
+.resumePopover {
+  min-width: 340px;
+  max-width: 440px;
+}
+
+.resumeTitle {
+  padding: 8px 12px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.resumeItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.resumeItem:hover {
+  background: var(--bg-elevated);
+}
+
+/* The live "current" session row: highlighted to tell the user "this is the one
+   you're on", but NOT clickable (taking it over would interleave writes into the
+   same transcript — the click is a deliberate no-op, so no pointer/hover). */
+.resumeItemCurrent {
+  background: var(--bg-elevated);
+  cursor: default;
+}
+.resumeItemCurrent:hover {
+  background: var(--bg-elevated);
+}
+
+/* Column order (user-specified): status | summary | last activity | project. */
+
+.resumeStatusCell {
+  flex-shrink: 0;
+  order: 0;
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Status dot — same construction as TaskProgressHud's TaskStatusDot: one 16-unit
+   SVG scaled by font size; ring stroke is always drawn, filled variants set fill. */
+.dot {
+  display: block;
+  width: 0.82em;
+  height: 0.82em;
+}
+
+.dotRing {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+
+.dotCurrent {
+  color: var(--color-primary);
+}
+
+.dotCurrent .dotRing {
+  fill: currentColor;
+}
+
+.dotInactive {
+  color: var(--text-muted);
+}
+
+/* Running overlay: pulse the dot (same rhythm as TaskProgressHud's in_progress). */
+.statePulse {
+  animation: ccvResumePulse 1.1s ease-in-out infinite;
+}
+
+@keyframes ccvResumePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .statePulse { animation: none; }
+}
+
+.resumeSummary {
+  flex: 1;
+  min-width: 0;
+  order: 1;
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resumeTime {
+  flex-shrink: 0;
+  order: 2;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.resumeEmpty {
+  padding: 16px 12px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-align: center;
+}

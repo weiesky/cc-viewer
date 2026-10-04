@@ -188,7 +188,7 @@ function CommitRow({ commit, repoPath, expanded, onToggle, onFileClick, onOpenFi
   );
 }
 
-export default function GitChanges({ style, onClose, onFileClick, onOpenFile, refreshTrigger, onManualRefresh, projectName }) {
+export default function GitChanges({ style, onClose, onFileClick, onOpenFile, refreshTrigger, onManualRefresh, projectName, project }) {
   const [repos, setRepos] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -200,12 +200,13 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, re
   // Keys: repoPath. Values: bool / Set<hash>.
   const [collapsedUnpushed, setCollapsedUnpushed] = useState({});
   const [expandedCommits, setExpandedCommits] = useState({});
-  // 工作树目录折叠状态，key 形态 `${repoPath}::${dirPath}`，按 projectName 走 sessionStorage。
+  // 工作树目录折叠状态，key 形态 `${repoPath}::${dirPath}`，按 viewed 项目走 sessionStorage
+  //（multi-project 2026-10：project = viewedProject || projectName，否则并行视图共用绑定项目的折叠态）。
   // 默认空集 = 全展开（语义跟 FileExplorer 的"展开集合"反向，由 helper 名 collapsedDirs 明示）。
   // commit details 路径下 TreeDir 不接 onToggleDir → 整段降级为纯渲染，不持久化（commit-scoped 状态短命，没必要）。
-  // 持久化 + projectName 异步到达守卫 + firstMountRef 跳首跑全套走共用 hook。
+  // 持久化 + project 异步到达守卫 + firstMountRef 跳首跑全套走共用 hook。
   const [collapsedDirs, setCollapsedDirs] = useSessionStoragePersistedSet({
-    projectName,
+    projectName: project || projectName,
     load: loadGitChangesCollapsedDirs,
     save: saveGitChangesCollapsedDirs,
   });
@@ -222,10 +223,10 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, re
   }, []);
 
   const refreshAllRepos = useCallback(() => {
-    fetchAllRepos()
+    fetchAllRepos(project)
       .then(results => { if (mounted.current) setRepos(results); })
       .catch(() => {});
-  }, []);
+  }, [project]);
 
   const handleRestore = useCallback((repoPath, filePath, fileName) => {
     Modal.confirm({
@@ -257,7 +258,7 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, re
   useEffect(() => {
     mounted.current = true;
     setLoading(true);
-    fetchAllRepos()
+    fetchAllRepos(project)
       .then(results => {
         if (mounted.current) {
           setRepos(results);
@@ -271,7 +272,7 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, re
         }
       });
     return () => { mounted.current = false; };
-  }, []);
+  }, [project]);
 
   // 工具触发的增量刷新
   useEffect(() => {

@@ -89,6 +89,18 @@ const KEYS = [
   'ui.skills.tooLarge',
   'ui.skills.invalidZip',
   'ui.skills.exists',
+  // /resume hover list: status tooltips + new-project button (ResumeSessionsPopover.jsx / AppHeader.jsx):
+  'ui.resume.statusInactive',
+  'ui.resume.switchTimeout',
+  'ui.resume.returnToCurrent',
+  'ui.resume.newProject',
+  // Multi-project tab bar: × close tooltip / confirm / failure messages (AppHeader.jsx HeaderProjectTabs):
+  'ui.projectTabs.closeTip',
+  'ui.projectTabs.closeConfirm',
+  'ui.projectTabs.closeFailed',
+  'ui.projectTabs.closeForbidden',
+  // File explorer load failure with the server-provided reason (FileExplorer.jsx):
+  'ui.fileExplorer.loadFailed',
 ];
 
 describe('new UI key i18n coverage', () => {
@@ -97,6 +109,23 @@ describe('new UI key i18n coverage', () => {
       const block = localeBlockOf(key);
       for (const loc of LOCALES) {
         assert.ok(block.includes(`"${loc}":`), `${key} 缺少 locale ${loc}`);
+      }
+    });
+  }
+
+  // Keys with an interpolation placeholder must keep the placeholder in EVERY
+  // locale — a locale that drops `{reason}` silently renders a static string
+  // (t() replaceAll finds nothing) and the user never sees the real cause.
+  const PLACEHOLDER_KEYS = [
+    ['ui.fileExplorer.loadFailed', '{reason}'],
+  ];
+  for (const [key, placeholder] of PLACEHOLDER_KEYS) {
+    it(`${key} 每个 locale 保留占位符 ${placeholder}`, () => {
+      const block = localeBlockOf(key);
+      for (const loc of LOCALES) {
+        const m = block.match(new RegExp(`"${loc.replace('-', '\\-')}":\\s*"([^"]*)"`));
+        assert.ok(m, `${key} 缺少 locale ${loc}`);
+        assert.ok(m[1].includes(placeholder), `${key} 的 ${loc} 译文丢占位符 ${placeholder}: ${m[1]}`);
       }
     });
   }

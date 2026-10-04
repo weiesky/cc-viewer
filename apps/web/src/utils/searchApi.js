@@ -8,11 +8,13 @@ import { reportSwallowed } from './errorReport';
  * @returns {Promise<{results, truncated, engine, filesScanned, error?}>}
  * @throws on network failure or non-OK status (except 400 invalid_regex, surfaced as {error})
  */
-export async function searchCode(params, signal) {
+export async function searchCode(params, signal, project) {
   const res = await fetch(apiUrl('/api/search'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
+    // Multi-project (2026-10): the search root follows the viewed project —
+    // body {project} lets the server search THAT project's tree (read-only).
+    body: JSON.stringify(project ? { ...params, project } : params),
     signal,
   });
   if (res.status === 400) {
