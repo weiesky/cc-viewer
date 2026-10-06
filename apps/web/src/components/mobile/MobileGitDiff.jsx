@@ -61,7 +61,7 @@ function TreeDir({ name, node, depth, selectedFile, selectedRepo, repoPath, onFi
   );
 }
 
-export default function MobileGitDiff({ visible, onClose, project }) {
+export default function MobileGitDiff({ visible, onClose, project, instance }) {
   const [repos, setRepos] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -79,7 +79,7 @@ export default function MobileGitDiff({ visible, onClose, project }) {
     if (!visible) return;
     setLoading(true);
     setError(null);
-    fetchAllRepos(project)
+    fetchAllRepos(project, instance)
       .then(results => {
         if (mounted.current) {
           setRepos(results);
@@ -93,7 +93,7 @@ export default function MobileGitDiff({ visible, onClose, project }) {
         }
       });
     return () => { mounted.current = false; };
-  }, [visible, project]);
+  }, [visible, project, instance]);
 
   useEffect(() => {
     if (!selectedFile || !selectedRepo) {

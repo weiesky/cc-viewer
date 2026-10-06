@@ -130,29 +130,29 @@ describe('③ resolve-path 保持 bound（不接 ?project=）', () => {
 });
 
 describe('④ viewProject 穿线契约（源码锚点）', () => {
-  it('gitApi._q 拼 ?project=；fetchAllRepos 全部请求带参', async () => {
+  it('gitApi 经 withViewParams 拼 ?project=/?instance=；fetchAllRepos 全部请求带参', async () => {
     const src = (await import('node:fs')).readFileSync(new URL('../../../apps/web/src/utils/gitApi.js', import.meta.url), 'utf8');
-    assert.ok(src.includes("function _q(project) { return project ? `&project=${encodeURIComponent(project)}` : ''; }"), 'gitApi._q helper');
-    assert.ok(/fetchAllRepos\(project\)/.test(src), 'fetchAllRepos 接受 project');
-    assert.ok((src.match(/\$\{_q\(project\)\}/g) || []).length >= 2, 'git-status/git-log-unpushed 都拼参');
+    assert.ok(src.includes("withViewParams('/api/git-repos', { project, instance })"), 'git-repos 拼 project+instance');
+    assert.ok(/fetchAllRepos\(project, instance\)/.test(src), 'fetchAllRepos 接受 project+instance');
+    assert.ok((src.match(/withViewParams\(`\/api\/git-(status|log-unpushed)\?repo=\$\{encodeURIComponent\(repo\.path\)\}`, \{ project, instance \}\)/g) || []).length >= 2, 'git-status/git-log-unpushed 都拼参');
   });
 
-  it('searchApi.searchCode 把 project 放进 body', async () => {
+  it('searchApi.searchCode 把 project+instance 放进 body', async () => {
     const src = (await import('node:fs')).readFileSync(new URL('../../../apps/web/src/utils/searchApi.js', import.meta.url), 'utf8');
-    assert.ok(/JSON\.stringify\(project ? \? \{ \.\.\.params, project \} : params\)/.test(src), 'searchCode body 带 project');
+    assert.ok(src.includes('...(project ? { project } : {})'), 'searchCode body 带 project');
+    assert.ok(src.includes('...(instance ? { instance } : {})'), 'searchCode body 带 instance');
   });
 
-  it('AppHeader seqResourceLoaders._withProject 拼 ?project=', async () => {
+  it('AppHeader seqResourceLoaders._withProject 经 withViewParams 拼 ?project=/?instance=', async () => {
     const src = (await import('node:fs')).readFileSync(new URL('../../../apps/web/src/utils/seqResourceLoaders.js', import.meta.url), 'utf8');
-    assert.ok(src.includes('function _withProject(path, project)'), 'seqResourceLoaders._withProject');
-    assert.ok(src.includes('project=${encodeURIComponent(project)}'), '拼 project= 参数');
-    assert.ok(src.includes("path.includes('?') ? '&' : '?'"), 'query 分隔符处理');
+    assert.ok(src.includes('function _withProject(path, project, instance)'), 'seqResourceLoaders._withProject(path, project, instance)');
+    assert.ok(src.includes('withViewParams(path, { project, instance })'), '委托 withViewParams 拼参');
   });
 
-  it('ImageViewer 接受 project 并拼 ?project=', async () => {
+  it('ImageViewer 接受 project+instance 并经 withViewParams 拼参', async () => {
     const src = (await import('node:fs')).readFileSync(new URL('../../../apps/web/src/components/viewers/ImageViewer.jsx', import.meta.url), 'utf8');
-    assert.ok(/ImageViewer\(\{ filePath, onClose, editorSession, project \}\)/.test(src), 'ImageViewer project prop');
-    assert.ok(src.includes("project ? `&project=${encodeURIComponent(project)}` : ''"), 'file-raw 拼 ?project=');
+    assert.ok(/ImageViewer\(\{[^}]*project[^}]*instance[^}]*\}\)/.test(src), 'ImageViewer project+instance prop');
+    assert.ok(src.includes('withViewParams('), 'file-raw 经 withViewParams 拼参');
   });
 });
 

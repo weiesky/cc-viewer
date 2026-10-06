@@ -4,7 +4,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mapResumeRow, formatRelativeTime, deriveActiveProcessChips, deriveProjectTabs, attachMainPty, closeProjectPty, resumeSession } from '../src/utils/resumeSessions.js';
+import { mapResumeRow, formatRelativeTime, deriveActiveProcessChips, deriveProjectTabs, resolveBoundInstance, attachMainPty, closeProjectPty, resumeSession } from '../src/utils/resumeSessions.js';
 
 describe('mapResumeRow', () => {
   const base = {
@@ -131,7 +131,7 @@ describe('formatRelativeTime', () => {
 });
 
 describe('deriveActiveProcessChips', () => {
-  const main = (project, cwd, active = false) => ({ kind: 'main', project, cwd, pid: 1, active });
+  const main = (project, cwd, active = false, pid = 1, instanceKey = null) => ({ kind: 'main', project, cwd, pid, active, instanceKey });
 
   it('one chip per live main PTY, bare project name', () => {
     const chips = deriveActiveProcessChips([
@@ -175,6 +175,18 @@ describe('deriveActiveProcessChips', () => {
     assert.deepEqual(chips, [], 'a nameless row would resolve to a meaningless scope — dropped');
     assert.deepEqual(deriveActiveProcessChips([], null), []);
     assert.deepEqual(deriveActiveProcessChips(null, null), []);
+  });
+
+  it('two same-basename projects (different dirs) become two suffixed chips, cwd-ascending', () => {
+    const chips = deriveActiveProcessChips([
+      main('finqa-remote-cc', '/x/finqa-remote-cc', true, 40, 'inst-a'),
+      main('finqa-remote-cc', '/y/finqa-remote-cc', false, 5, 'inst-b'),
+    ], null);
+    assert.equal(chips.length, 2);
+    // cwd-lexicographic: /x < /y, independent of pid (a respawn changes pid, never cwd).
+    assert.equal(chips.find(c => c.cwd === '/x/finqa-remote-cc').label, 'finqa-remote-cc [1]', 'cwd /x gets [1]');
+    assert.equal(chips.find(c => c.cwd === '/y/finqa-remote-cc').label, 'finqa-remote-cc [2]', 'cwd /y gets [2]');
+    assert.deepEqual(chips.map(c => c.project).sort(), ['finqa-remote-cc', 'finqa-remote-cc'], 'identity project untouched');
   });
 });
 
@@ -265,7 +277,138 @@ describe('deriveProjectTabs', () => {
 
   it('the key falls back to the project name when cwd and instanceKey are absent', () => {
     const tabs = deriveProjectTabs([{ kind: 'main', project: 'q' }]);
-    assert.deepEqual(tabs, [{ key: 'main:q', project: 'q', label: 'q', instanceKey: null }]);
+    assert.deepEqual(tabs, [{ key: 'main:q', project: 'q', label: 'q', suffix: null, cwd: null, pid: undefined, instanceKey: null, active: false }]);
+  });
+
+  it('two cross-dir same-basename projects get [1]/[2] ordered by cwd asc (respawn-stable)', () => {
+    const tabs = deriveProjectTabs([
+      main('finqa-remote-cc', '/b/finqa-remote-cc', true, 20, 'inst-a'),
+      main('finqa-remote-cc', '/a/finqa-remote-cc', false, 10, 'inst-b'),
+    ]);
+    assert.equal(tabs.length, 2);
+    // cwd-lexicographic: /a < /b regardless of pid — a self-heal respawn (new pid) never flips the tag.
+    assert.equal(tabs.find(t => t.cwd === '/a/finqa-remote-cc').label, 'finqa-remote-cc [1]', 'cwd /a gets [1]');
+    assert.equal(tabs.find(t => t.cwd === '/b/finqa-remote-cc').label, 'finqa-remote-cc [2]', 'cwd /b gets [2]');
+  });
+
+  it('the ordinal is cwd-driven, not pid-driven — a higher-pid row at an earlier cwd still gets [1]', () => {
+    // Pins the respawn-flip fix: even though /a has the LARGER pid (restarted later), its cwd
+    // sorts first, so it keeps [1]. A pid-ordered scheme would have swapped them.
+    const tabs = deriveProjectTabs([
+      main('web', '/b/web', false, 100, 'inst-b'),
+      main('web', '/a/web', true, 300, 'inst-a'),  // respawned → newer/larger pid
+    ]);
+    assert.equal(tabs.find(t => t.instanceKey === 'inst-a').label, 'web [1]', '/a keeps [1] despite larger pid');
+    assert.equal(tabs.find(t => t.instanceKey === 'inst-b').label, 'web [2]', '/b keeps [2]');
+  });
+
+  it('three same-name rows fed out of cwd order still resolve to cwd-ascending labels', () => {
+    const tabs = deriveProjectTabs([
+      main('dup', '/c3', true, 30, 'inst-x'),
+      main('dup', '/c1', false, 20, 'inst-y'),
+      main('dup', '/c2', false, 10, 'inst-z'),
+    ]);
+    assert.equal(tabs.find(t => t.instanceKey === 'inst-y').label, 'dup [1]', '/c1');
+    assert.equal(tabs.find(t => t.instanceKey === 'inst-z').label, 'dup [2]', '/c2');
+    assert.equal(tabs.find(t => t.instanceKey === 'inst-x').label, 'dup [3]', '/c3');
+  });
+
+  it('same-name rows with identical cwd tie-break by instanceKey (deterministic)', () => {
+    // Two instances of the SAME dir: cwd ties, so instanceKey (localeCompare) decides.
+    const tabs = deriveProjectTabs([
+      main('solo', '/p/solo', true, 1, 'ccv-zzz'),
+      main('solo', '/p/solo', false, 2, 'ccv-aaa'),
+    ]);
+    assert.equal(tabs.find(t => t.instanceKey === 'ccv-aaa').label, 'solo [1]', 'ccv-aaa < ccv-zzz');
+    assert.equal(tabs.find(t => t.instanceKey === 'ccv-zzz').label, 'solo [2]');
+  });
+
+  it('carries the server `active` flag + instanceKey so the header singles out ONE same-name bound tab', () => {
+    // Two same-basename projects; the bound (attached) one is active. The header reads the
+    // active row's instanceKey to break the tie when no parallel view is attached.
+    const tabs = deriveProjectTabs([
+      main('finqa-remote-cc', '/a/finqa-remote-cc', true, 20, 'inst-a'),   // bound+active
+      main('finqa-remote-cc', '/b/finqa-remote-cc', false, 10, 'inst-b'),  // parallel, not active
+    ]);
+    assert.equal(tabs.find(t => t.cwd === '/a/finqa-remote-cc').active, true, 'bound row stays active');
+    assert.equal(tabs.find(t => t.cwd === '/b/finqa-remote-cc').active, false, 'parallel row not active');
+  });
+
+  it('unique-name projects get NO suffix (label === project, suffix null)', () => {
+    const tabs = deriveProjectTabs([
+      main('alpha', '/p/alpha'),
+      main('beta', '/p/beta'),
+    ]);
+    assert.deepEqual(tabs.map(t => t.label), ['alpha', 'beta']);
+    assert.deepEqual(tabs.map(t => t.suffix), [null, null], 'no suffix when unsuffixed');
+  });
+
+  it('two same-cwd instances (same project, distinct instanceKey) each get a suffix', () => {
+    const tabs = deriveProjectTabs([
+      main('solo', '/p/solo', true, 1, 'ccv-aaa'),
+      main('solo', '/p/solo', false, 2, 'ccv-bbb'),
+    ]);
+    assert.equal(tabs.find(t => t.instanceKey === 'ccv-aaa').label, 'solo [1]');
+    assert.equal(tabs.find(t => t.instanceKey === 'ccv-bbb').label, 'solo [2]');
+  });
+
+  it('suffix is split out as a separate field for non-shrinking render', () => {
+    const tabs = deriveProjectTabs([
+      main('finqa-remote-cc', '/a/finqa-remote-cc', true, 20, 'inst-a'),
+      main('finqa-remote-cc', '/b/finqa-remote-cc', false, 10, 'inst-b'),
+    ]);
+    assert.equal(tabs.find(t => t.cwd === '/a/finqa-remote-cc').suffix, ' [1]');
+    assert.equal(tabs.find(t => t.cwd === '/b/finqa-remote-cc').suffix, ' [2]');
+  });
+
+  it('the [n] suffix is decorational — .key and .project identity are unchanged', () => {
+    const tabs = deriveProjectTabs([
+      main('finqa-remote-cc', '/a/finqa-remote-cc', true, 20, 'inst-a'),
+      main('finqa-remote-cc', '/b/finqa-remote-cc', false, 10, 'inst-b'),
+    ]);
+    assert.deepEqual(tabs.map(t => t.key).sort(), ['main:inst-a', 'main:inst-b'], 'react key unaffected');
+    assert.deepEqual(tabs.map(t => t.project).sort(), ['finqa-remote-cc', 'finqa-remote-cc'], 'identity project unaffected');
+  });
+});
+
+describe('resolveBoundInstance (pure-client bound viewing, 2026-10-07)', () => {
+  const tabs = [
+    { project: 'ccbot', instanceKey: 'inst-ccbot' },
+    { project: 'finqa-remote-cc', instanceKey: 'inst-a' },
+    { project: 'finqa-remote-cc', instanceKey: 'inst-b' },
+  ];
+
+  it('unique bound name → null (name-match suffices, no tiebreak needed)', () => {
+    // bound=ccbot matches exactly ONE tab; the finqa same-name pair is irrelevant.
+    assert.equal(resolveBoundInstance(tabs, 'ccbot', 'inst-ccbot'), null);
+  });
+
+  it('bound name duplicated by a parallel tab + key resolves → returns the key', () => {
+    // bound=/a/finqa (inst-a) shares its basename with parallel /b/finqa (inst-b).
+    const dup = [
+      { project: 'finqa-remote-cc', instanceKey: 'inst-a' },
+      { project: 'finqa-remote-cc', instanceKey: 'inst-b' },
+    ];
+    assert.equal(resolveBoundInstance(dup, 'finqa-remote-cc', 'inst-a'), 'inst-a');
+  });
+
+  it('stale key that matches no bound tab → null (degrade to name-match, never blank bound)', () => {
+    const dup = [
+      { project: 'finqa-remote-cc', instanceKey: 'inst-a' },
+      { project: 'finqa-remote-cc', instanceKey: 'inst-b' },
+    ];
+    assert.equal(resolveBoundInstance(dup, 'finqa-remote-cc', 'inst-stale'), null);
+  });
+
+  it('missing currentInstanceKey / currentProject → null (startup fallback)', () => {
+    const dup = [
+      { project: 'finqa-remote-cc', instanceKey: 'inst-a' },
+      { project: 'finqa-remote-cc', instanceKey: 'inst-b' },
+    ];
+    assert.equal(resolveBoundInstance(dup, 'finqa-remote-cc', null), null);
+    assert.equal(resolveBoundInstance(dup, 'finqa-remote-cc', ''), null);
+    assert.equal(resolveBoundInstance(dup, '', 'inst-a'), null);
+    assert.equal(resolveBoundInstance(null, 'finqa-remote-cc', 'inst-a'), null);
   });
 });
 

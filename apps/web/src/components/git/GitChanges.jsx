@@ -188,7 +188,7 @@ function CommitRow({ commit, repoPath, expanded, onToggle, onFileClick, onOpenFi
   );
 }
 
-export default function GitChanges({ style, onClose, onFileClick, onOpenFile, refreshTrigger, onManualRefresh, projectName, project }) {
+export default function GitChanges({ style, onClose, onFileClick, onOpenFile, refreshTrigger, onManualRefresh, projectName, project, instance }) {
   const [repos, setRepos] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -223,10 +223,10 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, re
   }, []);
 
   const refreshAllRepos = useCallback(() => {
-    fetchAllRepos(project)
+    fetchAllRepos(project, instance)
       .then(results => { if (mounted.current) setRepos(results); })
       .catch(() => {});
-  }, [project]);
+  }, [project, instance]);
 
   const handleRestore = useCallback((repoPath, filePath, fileName) => {
     Modal.confirm({
@@ -258,7 +258,7 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, re
   useEffect(() => {
     mounted.current = true;
     setLoading(true);
-    fetchAllRepos(project)
+    fetchAllRepos(project, instance)
       .then(results => {
         if (mounted.current) {
           setRepos(results);
@@ -272,7 +272,7 @@ export default function GitChanges({ style, onClose, onFileClick, onOpenFile, re
         }
       });
     return () => { mounted.current = false; };
-  }, [project]);
+  }, [project, instance]);
 
   // 工具触发的增量刷新
   useEffect(() => {

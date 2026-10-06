@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { apiUrl } from '../../utils/apiUrl';
+import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import { t } from '../../i18n';
 import { isImageFile } from '../../utils/commandValidator';
 import FullFileDiffView from './FullFileDiffView';
@@ -15,7 +15,7 @@ function getFirstChangedLine(oldStr, newStr) {
   return 1;
 }
 
-export default function GitDiffView({ filePath, repoPath, commitHash, onClose, onOpenFile, project }) {
+export default function GitDiffView({ filePath, repoPath, commitHash, onClose, onOpenFile, project, instance }) {
   const [diffData, setDiffData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -44,8 +44,7 @@ export default function GitDiffView({ filePath, repoPath, commitHash, onClose, o
 
     const repoParam = repoPath && repoPath !== '.' ? `&repo=${encodeURIComponent(repoPath)}` : '';
     const commitParam = commitHash ? `&commit=${encodeURIComponent(commitHash)}` : '';
-    const projectParam = project ? `&project=${encodeURIComponent(project)}` : '';
-    fetch(apiUrl(`/api/git-diff?files=${encodeURIComponent(filePath)}${repoParam}${commitParam}${projectParam}`))
+    fetch(apiUrl(withViewParams(`/api/git-diff?files=${encodeURIComponent(filePath)}${repoParam}${commitParam}`, { project, instance })))
       .then(r => {
         if (!r.ok) {
           return r.json().then(err => {
@@ -74,7 +73,7 @@ export default function GitDiffView({ filePath, repoPath, commitHash, onClose, o
       });
 
     return () => { mounted.current = false; };
-  }, [filePath, repoPath, commitHash, project]);
+  }, [filePath, repoPath, commitHash, project, instance]);
 
   const resolvedPath = repoPath && repoPath !== '.' ? `${repoPath}/${filePath}` : filePath;
 
@@ -133,13 +132,13 @@ export default function GitDiffView({ filePath, repoPath, commitHash, onClose, o
               <div className={styles.imagePreviewWrap}>
                 <img
                   className={styles.imagePreview}
-                  src={apiUrl(`/api/file-raw?path=${encodeURIComponent(resolvedPath)}${project ? `&project=${encodeURIComponent(project)}` : ''}`)}
+                  src={apiUrl(withViewParams(`/api/file-raw?path=${encodeURIComponent(resolvedPath)}`, { project, instance }))}
                   alt={resolvedPath}
                   onClick={() => setLightboxOpen(true)}
                 />
                 {lightboxOpen && (
                   <ImageLightbox
-                    src={apiUrl(`/api/file-raw?path=${encodeURIComponent(resolvedPath)}${project ? `&project=${encodeURIComponent(project)}` : ''}`)}
+                    src={apiUrl(withViewParams(`/api/file-raw?path=${encodeURIComponent(resolvedPath)}`, { project, instance }))}
                     alt={resolvedPath}
                     onClose={() => setLightboxOpen(false)}
                   />

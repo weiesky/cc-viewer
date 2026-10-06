@@ -19,7 +19,7 @@ import { reportSwallowed } from '../../utils/errorReport';
 import { classifyRequest } from '@ccv/core/requestType';
 import { resolveTeammateNames } from '@ccv/core/contentFilter';
 import { t, getLang, setLang, LANG_OPTIONS } from '../../i18n';
-import { apiUrl } from '../../utils/apiUrl';
+import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import * as SeqLoaders from '../../utils/seqResourceLoaders';
 import { SettingsContext } from '../../contexts/SettingsContext';
 import ConceptHelp from '../common/ConceptHelp';
@@ -29,7 +29,7 @@ import DialogueIcon from '../common/DialogueIcon';
 import ChipIcon from '../common/ChipIcon';
 import CachePopoverContent from './CachePopoverContent';
 import LiveTagPopover from './LiveTagPopover';
-import { deriveActiveProcessChips, deriveProjectTabs } from '../../utils/resumeSessions';
+import { deriveActiveProcessChips, deriveProjectTabs, resolveBoundInstance } from '../../utils/resumeSessions';
 import MemoryDetailModal from '../common/MemoryDetailModal';
 import SkillsManagerModal from '../settings/SkillsManagerModal';
 import ProjectPrefsManagerModal from '../settings/ProjectPrefsManagerModal';
@@ -120,6 +120,10 @@ function HeaderActiveChips({ onActivateChip, chips }) {
         <Tag
           key={chip.key}
           className={`${styles.proxyProfileTag} ${styles.activeProcessChip}`}
+          // Tooltip stays the friendly "Switch to X" wording (not cwd): chips render only
+          // in the ≤1-live-project form, so two same-basename chips never co-exist here —
+          // the [n] disambiguation the user actually sees lives on the tab bar. The label
+          // still carries any suffix; the tag has no width cap so it won't truncate.
           title={t('ui.resume.activeChipMain', { project: chip.project })}
           onClick={() => onActivateChip(chip)}
         >
@@ -141,7 +145,7 @@ function HeaderActiveChips({ onActivateChip, chips }) {
 // main PTY server-side (AppBase.handleCloseProject). Hovering the current
 // project's tab opens the same recent-sessions dropdown the legacy label
 // carries.
-function HeaderProjectTabs({ tabs, currentProject, viewedProject, viewedInstance, onActivateChip, onDetachView, onCloseProject, onNewProject }) {
+function HeaderProjectTabs({ tabs, currentProject, currentInstanceKey, viewedProject, viewedInstance, onActivateChip, onDetachView, onCloseProject, onNewProject }) {
   const viewing = viewedProject || currentProject || null;
   // Multi-instance: "viewing" identity is project+instance — a same-cwd twin tab is NOT the
   // viewed one just because the basename matches.
@@ -156,9 +160,29 @@ function HeaderProjectTabs({ tabs, currentProject, viewedProject, viewedInstance
     const pick = bound || rest[0];
     return { project: pick.project, instanceKey: pick.instanceKey || null };
   };
+  // Bound-view identity (pure-client viewing, 2026-10-07): when NO parallel view is
+  // attached, the viewed process IS the bound project, and same-basename tabs BOTH match
+  // `currentProject` — so `currentInstanceKey` (the bound project's per-server identity,
+  // from /api/live-processes, derived from the bound cwd) singles out THE bound tab.
+  // NEVER the shared `active` flag: that is the terminal attachment, which lags the 5s
+  // poll AND differs per client (two clients viewing different projects cannot both be
+  // the viewed one, so `active` cannot be a per-client view source). resolveBoundInstance
+  // returns null unless a tiebreak is genuinely needed AND resolvable, so a unique bound
+  // name or a stale key degrades to a plain name-match (never blanks the bound tab).
+  const boundViewInstance = viewedProject
+    ? null
+    : resolveBoundInstance(tabs, currentProject, currentInstanceKey);
   const renderTab = (tab) => {
     const tabInstance = tab.instanceKey || null;
-    const isViewing = tab.project === viewing && (viewedProject ? tabInstance === viewingInstance : true);
+    // Viewing identity: an attached parallel view matches by project+instanceKey exactly. With
+    // NO parallel view attached, `viewing` is the bound project NAME, which two same-basename
+    // tabs BOTH match — so when we know the bound view's instanceKey, require it; only the
+    // active row qualifies, singling out ONE tab. Unknown instanceKey → legacy name match.
+    const isViewing = tab.project === viewing && (
+      viewedProject
+        ? tabInstance === viewingInstance
+        : (boundViewInstance ? tabInstance === boundViewInstance : true)
+    );
     const isCurrent = tab.project === currentProject;
     const onTabClick = () => {
       if (isViewing) return;
@@ -174,7 +198,10 @@ function HeaderProjectTabs({ tabs, currentProject, viewedProject, viewedInstance
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onTabClick(); } }}
       >
         <span className={styles.projectTabDot} aria-hidden="true" />
-        <span className={styles.projectTabName} title={tab.project}>{tab.label}</span>
+        {/* Basename (tab.project) ellipsizes; the same-name ` [n]` discriminator lives in a
+            non-shrinking sibling so a long name can't clip it off (P0 review). */}
+        <span className={styles.projectTabName} title={tab.cwd || tab.project}>{tab.project}</span>
+        {tab.suffix && <span className={styles.projectTabIdx}>{tab.suffix}</span>}
         {onCloseProject && (
           <Popconfirm
             title={t('ui.projectTabs.closeConfirm', { project: tab.project })}
@@ -221,13 +248,17 @@ function HeaderProjectSwitcher(props) {
   const { onActivateChip, currentProject, isLocalLog, onLiveProjectsChange, liveProcessRefreshToken } = props;
   const [tabs, setTabs] = useState([]);
   const [chips, setChips] = useState([]);
+  // The bound project's per-server instanceKey (pure-client viewing, 2026-10-07), from
+  // /api/live-processes. Polled alongside tabs; used to single out the bound tab among
+  // same-basename tabs without reading the shared `active` flag.
+  const [currentInstanceKey, setCurrentInstanceKey] = useState(null);
 
   useEffect(() => {
     // Electron chat tab: each tab is its own worker process with an empty
     // module-local pty map (cross-tab/cross-instance main PTYs never appear), so
     // the tabs/chips are always empty — skip the 5s polling entirely there.
     const isElectronTab = typeof window !== 'undefined' && !!window.tabBridge;
-    if (!onActivateChip || isLocalLog || isElectronTab) { setTabs([]); setChips([]); return undefined; }
+    if (!onActivateChip || isLocalLog || isElectronTab) { setTabs([]); setChips([]); setCurrentInstanceKey(null); return undefined; }
     let cancelled = false;
     const load = () => {
       fetch(apiUrl('/api/live-processes'))
@@ -238,6 +269,7 @@ function HeaderProjectSwitcher(props) {
           const nextTabs = deriveProjectTabs(data?.processes);
           setTabs(nextTabs);
           setChips(deriveActiveProcessChips(data?.processes, cur || null));
+          setCurrentInstanceKey((typeof data?.currentInstanceKey === 'string' && data.currentInstanceKey) ? data.currentInstanceKey : null);
           if (onLiveProjectsChange) onLiveProjectsChange(nextTabs);
         })
         .catch(err => { if (!cancelled) reportSwallowed('activeChips.fetch', err); });
@@ -252,6 +284,7 @@ function HeaderProjectSwitcher(props) {
       <HeaderProjectTabs
         tabs={tabs}
         currentProject={currentProject}
+        currentInstanceKey={currentInstanceKey}
         viewedProject={props.viewedProject}
         viewedInstance={props.viewedInstance}
         onActivateChip={onActivateChip}
@@ -619,7 +652,7 @@ class AppHeader extends React.Component {
     const seq = ++this._systemPromptSeq;
     // Multi-project (2026-10)：系统提示词入口可见性跟随 viewed 项目（server GET 已支持
     // ?project=；POST 写操作仍保持绑定项目）。
-    fetch(apiUrl(this.props.viewProject ? `/api/expert/system-prompt-status?project=${encodeURIComponent(this.props.viewProject)}` : '/api/expert/system-prompt-status'))
+    fetch(apiUrl(withViewParams('/api/expert/system-prompt-status', { project: this.props.viewProject, instance: this.props.viewedInstance })))
       .then((r) => r.json())
       .then((d) => {
         if (seq === this._systemPromptSeq) {
@@ -695,7 +728,7 @@ class AppHeader extends React.Component {
     }
   }
 
-  reloadFsSkills = async () => SeqLoaders.loadFsSkills(this, { isLocalLog: this.props.isLocalLog, project: this.props.viewProject });
+  reloadFsSkills = async () => SeqLoaders.loadFsSkills(this, { isLocalLog: this.props.isLocalLog, project: this.props.viewProject, instance: this.props.viewedInstance });
 
   // 把服务端返回的认证 state 写入本地(含 scope 信息),并清空编辑草稿。
   _applyAuthState(data) {
@@ -880,7 +913,7 @@ class AppHeader extends React.Component {
     );
   }
 
-  loadMemory = async () => SeqLoaders.loadProjectMemory(this, { project: this.props.viewProject });
+  loadMemory = async () => SeqLoaders.loadProjectMemory(this, { project: this.props.viewProject, instance: this.props.viewedInstance });
 
   // 用户主动点击"刷新记忆"按钮：自管 seq 三态（ok/stale/fail）以决定 toast。
   // 与 loadMemory 区分的原因：lazy-load 失败不打扰用户，只在 popover 内显示 memoryLoadError；
@@ -892,7 +925,7 @@ class AppHeader extends React.Component {
     let ok = false;
     let stale = false;
     try {
-      const r = await fetch(apiUrl(this.props.viewProject ? `/api/project-memory?project=${encodeURIComponent(this.props.viewProject)}` : '/api/project-memory'));
+      const r = await fetch(apiUrl(withViewParams('/api/project-memory', { project: this.props.viewProject, instance: this.props.viewedInstance })));
       const data = await r.json();
       if (seq !== this._memorySeq) { stale = true; }
       else if (!r.ok) { this.setState({ _memory: false }); }
@@ -929,7 +962,7 @@ class AppHeader extends React.Component {
     if (open && this.state._claudeMd === null) this.loadClaudeMdList();
   };
 
-  loadClaudeMdList = async () => SeqLoaders.loadClaudeMdList(this, { project: this.props.viewProject });
+  loadClaudeMdList = async () => SeqLoaders.loadClaudeMdList(this, { project: this.props.viewProject, instance: this.props.viewedInstance });
 
   // 点击 CLAUDE.md chip 触发: 拉取明细到 _claudeMdDetail, MemoryDetailModal(linkMode=passthrough) 渲染。
   // tail / scope 提前注入到 detail.name 用作 Modal 标题, 避免等 server 回包再拼。
@@ -939,7 +972,7 @@ class AppHeader extends React.Component {
     const title = `${scopeLabel} · ${tail}`;
     this.setState({ _claudeMdDetail: { name: title, loading: true } });
     try {
-      const r = await fetch(apiUrl(`/api/claude-md?id=${encodeURIComponent(id)}${this.props.viewProject ? `&project=${encodeURIComponent(this.props.viewProject)}` : ''}`));
+      const r = await fetch(apiUrl(withViewParams(`/api/claude-md?id=${encodeURIComponent(id)}`, { project: this.props.viewProject, instance: this.props.viewedInstance })));
       const data = await r.json();
       if (seq !== this._claudeMdDetailSeq) return;
       if (!r.ok) {
@@ -960,7 +993,7 @@ class AppHeader extends React.Component {
     const seq = ++this._memoryDetailSeq;
     this.setState({ _memoryDetail: { name, loading: true } });
     try {
-      const r = await fetch(apiUrl(`/api/project-memory?file=${encodeURIComponent(name)}${this.props.viewProject ? `&project=${encodeURIComponent(this.props.viewProject)}` : ''}`));
+      const r = await fetch(apiUrl(withViewParams(`/api/project-memory?file=${encodeURIComponent(name)}`, { project: this.props.viewProject, instance: this.props.viewedInstance })));
       const data = await r.json();
       if (seq !== this._memoryDetailSeq) return;
       if (!r.ok) {
@@ -2576,6 +2609,7 @@ class AppHeader extends React.Component {
         <SystemTextModal
           open={this.state.systemTextModalVisible}
           project={this.props.viewProject}
+          instance={this.props.viewedInstance}
           onClose={() => {
             this.setState({ systemTextModalVisible: false });
             // 弹窗内保存/删除/清空都会改变激活态 → 关闭时重拉，头部自动入口随即翻转。

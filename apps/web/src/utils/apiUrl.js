@@ -24,3 +24,19 @@ export function apiUrl(path) {
   const fullPath = base ? base.replace(/\/$/, '') + path : path;
   return appendToken(fullPath);
 }
+
+// Multi-instance (2026-10-06): append the viewed-project `?project=` and/or the
+// per-instance `?instance=` (instanceKey, `ccv-<hex>`) query params to a path.
+// `instance` is the authoritative disambiguator when two same-basename projects
+// run at once — the backend's view-root resolves it to the exact cwd, bypassing
+// the "ambiguous project name" 400 the bare name would hit. Empty/absent values
+// are skipped and the path is returned unchanged, so project-only callers stay
+// byte-identical to before. Pure string builder (no base/token — call apiUrl on
+// the result, or use it to extend an existing apiUrl path that already has `?`).
+export function withViewParams(path, { project, instance } = {}) {
+  let out = path;
+  if (project) out += `${out.includes('?') ? '&' : '?'}project=${encodeURIComponent(project)}`;
+  if (instance) out += `${out.includes('?') ? '&' : '?'}instance=${encodeURIComponent(instance)}`;
+  return out;
+}
+

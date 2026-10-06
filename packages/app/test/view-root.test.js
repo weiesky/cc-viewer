@@ -230,4 +230,96 @@ describe('resolveViewRoot', () => {
     assert.equal(r.ok, false);
     assert.equal(r.status, 404);
   });
+
+  it('instanceParam resolves the exact dir among two same-basename live PTYs (bypasses name 400)', () => {
+    // The whole point: two dirs both named projA are live; the name path alone 400s,
+    // but a valid instanceKey pins the exact process/cwd.
+    const otherA = join(tmpDir, 'inst', 'projA');
+    mkdirSync(otherA, { recursive: true });
+    const r = resolveViewRoot({
+      projectParam: nameA, instanceParam: 'ccv-bbb222', boundCwd: boundDir,
+      loadWorkspaces: noRegistry,
+      listLivePtys: () => [
+        { cwd: projADir, instanceKey: 'ccv-aaa111' },
+        { cwd: otherA, instanceKey: 'ccv-bbb222' },
+      ],
+    });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.equal(r.root, realpathSync(otherA));
+    assert.equal(r.via, 'live-instance');
+  });
+
+  it('instanceParam alone (no projectParam) still resolves via live-instance', () => {
+    const otherA = join(tmpDir, 'inst', 'projA');
+    const r = resolveViewRoot({
+      instanceParam: 'ccv-bbb222', boundCwd: boundDir,
+      loadWorkspaces: noRegistry,
+      listLivePtys: () => [{ cwd: otherA, instanceKey: 'ccv-bbb222' }],
+    });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.equal(r.root, realpathSync(otherA));
+    assert.equal(r.via, 'live-instance');
+  });
+
+  it('unknown instanceParam falls back to the name path (single live → wins, NOT 400)', () => {
+    // Stale/closed instance: degrade to name arbitration, which a single surviving
+    // same-name live PTY wins.
+    const r = resolveViewRoot({
+      projectParam: nameA, instanceParam: 'ccv-dead99', boundCwd: boundDir,
+      loadWorkspaces: noRegistry,
+      listLivePtys: () => [{ cwd: projADir, instanceKey: 'ccv-aaa111' }],
+    });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.equal(r.root, realpathSync(projADir));
+    assert.equal(r.via, 'live');
+  });
+
+  it('unknown instanceParam + ambiguous name still 400s (degrades to name behavior)', () => {
+    const otherA = join(tmpDir, 'inst', 'projA');
+    const r = resolveViewRoot({
+      projectParam: nameA, instanceParam: 'ccv-dead99', boundCwd: boundDir,
+      loadWorkspaces: noRegistry,
+      listLivePtys: () => [{ cwd: projADir, instanceKey: 'ccv-aaa111' }, { cwd: otherA, instanceKey: 'ccv-bbb222' }],
+    });
+    assert.deepEqual(r, { ok: false, status: 400, error: 'ambiguous project name' });
+  });
+
+  it('invalid instanceParam (not ccv-hex) is ignored → name path', () => {
+    for (const bad of ['not-a-key', 'ccv-UPPER', 'ccv-12 34', '../ccv-aaa111']) {
+      const r = resolveViewRoot({
+        projectParam: nameA, instanceParam: bad, boundCwd: boundDir,
+        loadWorkspaces: noRegistry,
+        listLivePtys: () => [{ cwd: projADir, instanceKey: 'ccv-aaa111' }],
+      });
+      assert.equal(r.ok, true, bad);
+      assert.equal(r.via, 'live', bad); // fell through to the name path, not live-instance
+    }
+  });
+
+  it('instanceParam hit whose dir vanished falls through without crashing, name path arbitrates', () => {
+    // The vanished instance's live record is STILL in the map (listLivePtys only skips
+    // records with no process, not gone dirs), so the name path sees both lives → the
+    // pre-existing 400. The point: the instance branch itself must not throw/400 — it
+    // degrades to whatever the name path does.
+    const goneInst = join(tmpDir, 'gone-inst', 'projA'); // never created
+    const r = resolveViewRoot({
+      projectParam: nameA, instanceParam: 'ccv-gone11', boundCwd: boundDir,
+      loadWorkspaces: noRegistry,
+      listLivePtys: () => [{ cwd: goneInst, instanceKey: 'ccv-gone11' }, { cwd: projADir, instanceKey: 'ccv-aaa111' }],
+    });
+    assert.deepEqual(r, { ok: false, status: 400, error: 'ambiguous project name' });
+  });
+
+  it('instanceParam whose record is gone entirely (closed) falls back, single remaining live wins', () => {
+    // The stale instanceKey is not in the map at all → name path runs; the ONE surviving
+    // same-name live PTY wins arbitration (no 400).
+    const r = resolveViewRoot({
+      projectParam: nameA, instanceParam: 'ccv-dead77', boundCwd: boundDir,
+      loadWorkspaces: noRegistry,
+      listLivePtys: () => [{ cwd: projADir, instanceKey: 'ccv-aaa111' }],
+    });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.equal(r.root, realpathSync(projADir));
+    assert.equal(r.via, 'live');
+  });
 });

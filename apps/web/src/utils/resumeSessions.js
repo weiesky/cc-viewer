@@ -102,6 +102,66 @@ export function formatRelativeTime(iso, now = Date.now()) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+// Identity of a deduped live-process row. Unique across the deduped rows under the
+// byKey invariant (legacy non-instance rows survive only when unique by basename, so
+// at most one reaches here per basename; instance rows are per-spawn instanceKey). This
+// is the same value the public `key` field is built from.
+const rowId = (r) => r.instanceKey || r.cwd || r.project;
+
+/**
+ * Same-name tab/chip disambiguation (2026-10-06). Two live main PTYs can share a
+ * basename `project` AFTER dedup: two different dirs both named `finqa-remote-cc`
+ * (distinct cwd, distinct instanceKey), or two concurrent instances of the SAME dir
+ * (same cwd, distinct instanceKey). Both survive the byKey dedup (keyed per-instance),
+ * yet would render as two identical bare `label`s — ambiguous to the user. When a
+ * `project` has exactly ONE surviving row, its label stays the bare basename (no
+ * suffix noise). When 2+ rows share a `project`, suffix each with a 1-based ordinal.
+ *
+ * Ordinal key = cwd lexicographic, tie-break instanceKey. Deliberately NOT pid: the
+ * self-heal respawn re-runs claude in the SAME record/instanceKey under a NEW pid
+ * (pty-manager), so a pid-ordered ordinal would silently SWAP two tabs' `[n]` mid-
+ * session on every respawn. cwd is immutable for a cross-dir tab's identity, and
+ * instanceKey is stable across respawn for same-cwd twins — so the `[n]` a user has
+ * learned stays put across the 5s poll AND across respawns. cwd-lex also makes the
+ * tab strip's left-to-right order match the numbers (same-name rows are adjacent and
+ * already cwd-ordered by the caller's stable sort). Pure + deterministic: no
+ * Date.now()/Math.random(); a missing cwd/instanceKey degrades to a stable '' compare.
+ * @param {Array<{ project:string, cwd:string|null, instanceKey:string|null }>} rows
+ *   — already deduped + alphabetically sorted by `project`.
+ * @returns {Map<string,string>} row identity (`rowId`) → display label.
+ */
+function applySameNameIndex(rows) {
+  // Group surviving rows by basename. Iteration order matches the input (already
+  // alphabetically sorted), so groups read left-to-right as the renderer will.
+  const groups = new Map();
+  for (const r of rows || []) {
+    if (!r || !r.project) continue;
+    let g = groups.get(r.project);
+    if (!g) { g = []; groups.set(r.project, g); }
+    g.push(r);
+  }
+  const labelByRow = new Map();
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      const r = group[0];
+      labelByRow.set(rowId(r), r.project);
+      continue;
+    }
+    // Copy before sorting: the input array's order is untouched, so the caller's
+    // final `.map` keeps the alphabetical layout; the sort here only decides ordinals.
+    const ordered = [...group].sort((a, b) => {
+      const ca = String(a.cwd || '');
+      const cb = String(b.cwd || '');
+      if (ca !== cb) return ca < cb ? -1 : 1;
+      return String(a.instanceKey || '').localeCompare(String(b.instanceKey || ''));
+    });
+    ordered.forEach((r, i) => {
+      labelByRow.set(rowId(r), `${r.project} [${i + 1}]`);
+    });
+  }
+  return labelByRow;
+}
+
 /**
  * Build the Header "parallel project" chips from GET /api/live-processes — the
  * OTHER live projects the view can switch to. One chip per live main PTY (bare
@@ -113,7 +173,7 @@ export function formatRelativeTime(iso, now = Date.now()) {
  *   { kind:'main', project, cwd, pid, active?, instanceKey? }.
  * @param {string|null} currentProject - the bound project (top-level field);
  *   its main chip is excluded.
- * @returns {Array<{ key:string, project:string, label:string, cwd:string|null, instanceKey:string|null }>}
+ * @returns {Array<{ key:string, project:string, label:string, suffix:string|null, cwd:string|null, pid:number, instanceKey:string|null }>}
  */
 export function deriveActiveProcessChips(processes, currentProject) {
   // Multi-instance (2026-10-06): key by the per-process instanceKey when present so two
@@ -127,16 +187,24 @@ export function deriveActiveProcessChips(processes, currentProject) {
     if (!proj || proj === currentProject) continue;
     const hasInst = typeof p.instanceKey === 'string' && p.instanceKey;
     const id = hasInst ? p.instanceKey : proj; // instanceKey distinguishes instances; else basename (legacy)
-    if (!byKey.has(id)) byKey.set(id, { project: proj, cwd: p.cwd || null, instanceKey: hasInst || null });
+    if (!byKey.has(id)) byKey.set(id, { project: proj, cwd: p.cwd || null, instanceKey: hasInst || null, pid: p.pid });
   }
   const rows = [...byKey.values()].sort((a, b) => String(a.project).localeCompare(String(b.project)));
-  return rows.map((r) => ({
-    key: `main:${r.instanceKey || r.cwd || r.project}`,
-    project: r.project,
-    label: r.project,
-    cwd: r.cwd,
-    instanceKey: r.instanceKey,
-  }));
+  const labels = applySameNameIndex(rows);
+  return rows.map((r) => {
+    const label = labels.get(rowId(r)) || r.project;
+    return {
+      key: `main:${rowId(r)}`,
+      project: r.project,
+      label,
+      // ` [n]` split out so the tab bar can render it as a non-shrinking span (ellipsis
+      // would otherwise clip the discriminator off a long basename). null when unsuffixed.
+      suffix: label.length > r.project.length ? label.slice(r.project.length) : null,
+      cwd: r.cwd,
+      pid: r.pid,
+      instanceKey: r.instanceKey,
+    };
+  });
 }
 
 /**
@@ -145,13 +213,17 @@ export function deriveActiveProcessChips(processes, currentProject) {
  * the "当前项目:X" label + chips when 2+ projects are live, so the current
  * project must be a tab too). Same dedupe/sort/key scheme as
  * deriveActiveProcessChips. The VIEWING tab is derived client-side from
- * viewedProject || currentProject — deliberately NOT from the server's
- * `active` flag (that flag is the shared terminal attachment, which may
- * differ from this client's view), so it is not carried here. The header
- * shows the tab strip only when the result has ≥2 entries.
+ * viewedProject || currentProject — an attached parallel view matches by
+ * instanceKey, NOT by `active` (that flag is the shared terminal attachment,
+ * which may differ from this client's view). But `active` IS carried for one
+ * narrow case: when NO parallel view is attached (viewedProject null), the
+ * viewed process IS the bound project's attached PTY, i.e. exactly the
+ * `active` row — so its instanceKey singles out ONE same-basename bound tab
+ * instead of lighting up both. The header shows the tab strip only when the
+ * result has ≥2 entries.
  * @param {Array} processes - raw /api/live-processes `processes` rows:
  *   { kind:'main', project, cwd, pid, active?, instanceKey? }.
- * @returns {Array<{ key:string, project:string, label:string, instanceKey:string|null }>}
+ * @returns {Array<{ key:string, project:string, label:string, suffix:string|null, cwd:string|null, pid:number, instanceKey:string|null, active:boolean }>}
  */
 export function deriveProjectTabs(processes) {
   // Multi-instance (2026-10-06): key by instanceKey when present so two concurrent same-cwd
@@ -164,15 +236,53 @@ export function deriveProjectTabs(processes) {
     if (!proj) continue; // no usable name → no meaningful tab (same rule as chips)
     const hasInst = typeof p.instanceKey === 'string' && p.instanceKey;
     const id = hasInst ? p.instanceKey : proj; // instanceKey distinguishes instances; else basename (legacy)
-    if (!byKey.has(id)) byKey.set(id, { project: proj, cwd: p.cwd || null, instanceKey: hasInst || null });
+    if (!byKey.has(id)) byKey.set(id, { project: proj, cwd: p.cwd || null, instanceKey: hasInst || null, pid: p.pid, active: p.active === true });
   }
   const rows = [...byKey.values()].sort((a, b) => String(a.project).localeCompare(String(b.project)));
-  return rows.map((r) => ({
-    key: `main:${r.instanceKey || r.cwd || r.project}`,
-    project: r.project,
-    label: r.project,
-    instanceKey: r.instanceKey,
-  }));
+  const labels = applySameNameIndex(rows);
+  return rows.map((r) => {
+    const label = labels.get(rowId(r)) || r.project;
+    return {
+      key: `main:${rowId(r)}`,
+      project: r.project,
+      label,
+      // ` [n]` split out so the tab bar can render it as a non-shrinking span (ellipsis
+      // would otherwise clip the discriminator off a long basename). null when unsuffixed.
+      suffix: label.length > r.project.length ? label.slice(r.project.length) : null,
+      cwd: r.cwd,
+      pid: r.pid,
+      instanceKey: r.instanceKey,
+      active: r.active,
+    };
+  });
+}
+
+/**
+ * Bound-view instanceKey tiebreak (pure-client viewing, 2026-10-07): which
+ * instanceKey singles out the BOUND project's tab among same-basename tabs —
+ * WITHOUT the shared server `active` pointer (that is the terminal attachment,
+ * not this client's view: it lags the 5s poll AND two clients viewing different
+ * projects cannot both be "the viewed one", so `active` can never be a view
+ * source). The decision, encoded:
+ *   - bound name appears on <2 tabs  → return null (plain name-match suffices:
+ *     a unique bound tab needs no instance tiebreak);
+ *   - bound name duplicated AND `currentInstanceKey` actually resolves to one of
+ *     those tabs → return it (lights exactly the bound tab);
+ *   - key missing/stale (matches none) → return null, degrading to name-match
+ *     (may briefly light both same-name bound tabs — never blanks the bound tab).
+ * Pure + deterministic. `currentInstanceKey` comes from GET /api/live-processes
+ * (the bound project's per-server identity, derived from the bound cwd).
+ * @param {Array} tabs - deriveProjectTabs rows ({ project, instanceKey }).
+ * @param {string} currentProject - the bound project name.
+ * @param {string|null} currentInstanceKey - the bound project's instanceKey.
+ * @returns {string|null}
+ */
+export function resolveBoundInstance(tabs, currentProject, currentInstanceKey) {
+  if (!currentProject || !currentInstanceKey) return null;
+  const bound = (tabs || []).filter((t) => t && t.project === currentProject);
+  if (bound.length < 2) return null;
+  const hit = bound.some((t) => (t.instanceKey || null) === currentInstanceKey);
+  return hit ? currentInstanceKey : null;
 }
 
 /**

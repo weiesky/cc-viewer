@@ -648,6 +648,10 @@ class AppBase extends React.Component {
     });
     this._hydratePinSeq++;
     this._resetForViewSwitch();
+    // Pure-client viewing (2026-10-07): bump the live-processes refresh token so the
+    // header re-polls immediately on detach (parity with handleCloseProject) — closes the
+    // residual poll gap if the bound PTY/instanceKey changed while a parallel view was up.
+    this.setState((prev) => ({ liveProcessRefreshToken: (prev.liveProcessRefreshToken || 0) + 1 }));
     // Pass the bound (empty) scope explicitly — setState hasn't flushed, so initSSE reading
     // this.state would still see the departing parallel project/instance.
     this.initSSE({ sid: null, project: null, instance: null });

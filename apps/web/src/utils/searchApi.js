@@ -8,13 +8,19 @@ import { reportSwallowed } from './errorReport';
  * @returns {Promise<{results, truncated, engine, filesScanned, error?}>}
  * @throws on network failure or non-OK status (except 400 invalid_regex, surfaced as {error})
  */
-export async function searchCode(params, signal, project) {
+export async function searchCode(params, signal, project, instance) {
   const res = await fetch(apiUrl('/api/search'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     // Multi-project (2026-10): the search root follows the viewed project —
     // body {project} lets the server search THAT project's tree (read-only).
-    body: JSON.stringify(project ? { ...params, project } : params),
+    // Multi-instance (2026-10-06): body {instance} disambiguates two
+    // same-basename projects (else the server's view-root 400s "ambiguous").
+    body: JSON.stringify({
+      ...params,
+      ...(project ? { project } : {}),
+      ...(instance ? { instance } : {}),
+    }),
     signal,
   });
   if (res.status === 400) {

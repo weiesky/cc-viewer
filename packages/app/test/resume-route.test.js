@@ -143,6 +143,56 @@ describe('GET /api/live-processes', () => {
     assert.ok(Array.isArray(out.processes));
     assert.equal(out.processes.filter(p => p.kind === 'main').length, 0, 'no live main PTY → none listed');
   });
+
+  it('currentInstanceKey = the live record whose cwd equals the bound root (CCV_PROJECT_DIR)', async () => {
+    const ptyMgr = await import('../server/pty-manager.js');
+    const mainDir = join(tmpDir, 'boundProj');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(mainDir, { recursive: true });
+
+    ptyMgr._resetForTests();
+    ptyMgr._setPtyImportForTests(() => ({ spawn: () => ({ onData() {}, onExit() {}, kill() {}, resize() {}, write() {}, pid: 31313 }) }));
+    const prevProxy = process.env.CCV_PROXY_PORT;
+    const prevProjDir = process.env.CCV_PROJECT_DIR;
+    process.env.CCV_PROXY_PORT = process.env.CCV_PROXY_PORT || '9999';
+    process.env.CCV_PROJECT_DIR = mainDir; // bind the bound root to mainDir
+    try {
+      await ptyMgr.spawnClaude(9999, mainDir, [], 'claude');
+      const out = await callLive();
+      const mainRow = out.processes.find(p => p.kind === 'main' && p.cwd === mainDir);
+      assert.ok(mainRow, 'live main PTY listed');
+      assert.equal(out.currentInstanceKey, mainRow.instanceKey, 'bound instance = the live record at the bound cwd');
+    } finally {
+      ptyMgr._resetForTests();
+      ptyMgr._setPtyImportForTests(null);
+      if (prevProxy === undefined) delete process.env.CCV_PROXY_PORT; else process.env.CCV_PROXY_PORT = prevProxy;
+      if (prevProjDir === undefined) delete process.env.CCV_PROJECT_DIR; else process.env.CCV_PROJECT_DIR = prevProjDir;
+    }
+  });
+
+  it('currentInstanceKey is null when no live record sits at the bound root', async () => {
+    const ptyMgr = await import('../server/pty-manager.js');
+    const otherDir = join(tmpDir, 'otherProj');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(otherDir, { recursive: true });
+
+    ptyMgr._resetForTests();
+    ptyMgr._setPtyImportForTests(() => ({ spawn: () => ({ onData() {}, onExit() {}, kill() {}, resize() {}, write() {}, pid: 31313 }) }));
+    const prevProxy = process.env.CCV_PROXY_PORT;
+    const prevProjDir = process.env.CCV_PROJECT_DIR;
+    process.env.CCV_PROXY_PORT = process.env.CCV_PROXY_PORT || '9999';
+    process.env.CCV_PROJECT_DIR = join(tmpDir, 'no-live-here'); // bound root has NO live record
+    try {
+      await ptyMgr.spawnClaude(9999, otherDir, [], 'claude');
+      const out = await callLive();
+      assert.equal(out.currentInstanceKey, null, 'no live record at the bound cwd → null');
+    } finally {
+      ptyMgr._resetForTests();
+      ptyMgr._setPtyImportForTests(null);
+      if (prevProxy === undefined) delete process.env.CCV_PROXY_PORT; else process.env.CCV_PROXY_PORT = prevProxy;
+      if (prevProjDir === undefined) delete process.env.CCV_PROJECT_DIR; else process.env.CCV_PROJECT_DIR = prevProjDir;
+    }
+  });
 });
 
 describe('POST /api/live-processes/attach', () => {

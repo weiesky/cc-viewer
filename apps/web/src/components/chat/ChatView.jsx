@@ -58,7 +58,7 @@ import { PtyPromptController } from './controllers/ptyPromptController';
 import { TERMINAL_CHAR_WIDTH, RESIZER_WIDTH_PX } from '../../utils/splitDragCalc';
 import { isMobile, isIOS, isPad } from '../../env';
 import { t } from '../../i18n';
-import { apiUrl } from '../../utils/apiUrl';
+import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import { tryOpenWithSystem } from '../../utils/fileOpen';
 import { checkPathsExist, dedupePaths, peekPathExists, MD_PATH_CANDIDATE_ATTR, MD_FILE_VERIFIED_ATTR } from '../../utils/mdCodePathVerify';
 import { BUILTIN_PRESETS } from '../../utils/builtinPresets';
@@ -496,7 +496,7 @@ class ChatView extends React.Component {
   // Multi-project (2026-10)：viewedProject 切换时重跑（componentDidUpdate 调用），
   // 探测请求带 ?project=<viewProject>；无 viewProject 时走绑定项目（原行为）。
   _detectGit() {
-    const q = this.props.viewProject ? `?project=${encodeURIComponent(this.props.viewProject)}` : '';
+    const q = withViewParams('', { project: this.props.viewProject, instance: this.props.viewInstance });
     fetch(apiUrl(`/api/git-repos${q}`)).then(r => r.ok ? r.json() : Promise.reject()).then(data => {
       if (!data.repos?.length) this.setState({ hasGit: false, gitChangesOpen: false });
       else this.setState({ hasGit: true });
@@ -3162,7 +3162,7 @@ class ChatView extends React.Component {
     // 无未探测项:可能全是缓存的 false —— apply 一遍(覆盖重渲染丢标记的元素)后停
     const batch = (unprobed.length > 0 ? unprobed : unique).slice(0, 200);
     if (batch.length === 0) return;
-    const results = await checkPathsExist(batch, { projectKey });
+    const results = await checkPathsExist(batch, { projectKey, instance: this.props.viewInstance });
     // apply 双守卫: ① 项目切换后旧项目的判定不得盖到新 DOM; ② 按候选属性值
     // 精确匹配——流式重渲染可能已在 fetch 期间换掉候选内容
     if (this._unmounted || (this.props.viewProject || this.props.projectName || '') !== projectKey) return;
@@ -3844,6 +3844,7 @@ class ChatView extends React.Component {
               refreshTrigger={this.state.fileExplorerRefresh}
               onManualRefresh={() => this.setState(prev => ({ fileExplorerRefresh: prev.fileExplorerRefresh + 1 }))}
               project={this.props.viewProject || this.props.projectName}
+              instance={this.props.viewInstance}
               onClose={() => this._setFileExplorerOpen(false)}
               onFileClick={(path) => {
                 if (tryOpenWithSystem(path, 'file-explorer')) return;
@@ -3869,6 +3870,7 @@ class ChatView extends React.Component {
               onManualRefresh={() => this.setState(prev => ({ gitChangesRefresh: prev.gitChangesRefresh + 1 }))}
               projectName={this.props.projectName}
               project={this.props.viewProject || this.props.projectName}
+              instance={this.props.viewInstance}
               onClose={() => this.setState({ gitChangesOpen: false })}
               onFileClick={(repoPath, filePath, commitHash) => {
                 const resolvedPath = repoPath && repoPath !== '.' ? `${repoPath}/${filePath}` : filePath;
@@ -3898,6 +3900,7 @@ class ChatView extends React.Component {
               style={{ width: this.state.sidebarWidth }}
               projectName={this.props.projectName}
               project={this.props.viewProject || this.props.projectName}
+              instance={this.props.viewInstance}
               onClose={() => this.setState({ searchOpen: false })}
               getDirtyPath={this.getOpenFileDirtyPath}
               onReplaceApplied={(files) => {
@@ -3948,6 +3951,7 @@ class ChatView extends React.Component {
                   repoPath={this.state.currentGitDiff.repo}
                   commitHash={this.state.currentGitDiff.commit || null}
                   project={this.props.viewProject || this.props.projectName}
+                  instance={this.props.viewInstance}
                   onClose={() => this.setState({ currentGitDiff: null })}
                   onOpenFile={(path, line) => {
                     const repo = this.state.currentGitDiff?.repo;
@@ -3986,6 +3990,7 @@ class ChatView extends React.Component {
                     filePath={this.state.currentFile}
                     editorSession={!!this.state.editorSessionId}
                     project={this.props.viewProject || this.props.projectName}
+                    instance={this.props.viewInstance}
                     onClose={() => {
                       if (this.state.editorSessionId) {
                         fetch(apiUrl('/api/editor-done'), {
@@ -4004,6 +4009,7 @@ class ChatView extends React.Component {
                     scrollToLine={this.state.scrollToLine}
                     scrollToMatch={this.state.scrollToMatch}
                     project={this.props.viewProject || this.props.projectName}
+                    instance={this.props.viewInstance}
                     editorSession={!!this.state.editorSessionId}
                     onUpdateScroll={this.handleUpdateFileScroll}
                     getRestoreScrollSnapshot={this.getFileScrollSnapshot}

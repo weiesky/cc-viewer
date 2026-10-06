@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo, useContext } from 'react';
 import { Dropdown } from 'antd';
 import { t } from '../../i18n';
-import { apiUrl } from '../../utils/apiUrl';
+import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import { getFileIcon } from '../../utils/fileIcons';
 import { SettingsContext } from '../../contexts/SettingsContext';
 import OpenFolderIcon from '../common/OpenFolderIcon';
@@ -28,7 +28,7 @@ async function readJsonOrThrow(res) {
   throw new Error(reason);
 }
 
-function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpand, currentFile, onFileRenamed, refreshTrigger, onHtmlPreview, onAttachToChat, onInsertPathToChat, onImportFiles, project }) {
+function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpand, currentFile, onFileRenamed, refreshTrigger, onHtmlPreview, onAttachToChat, onInsertPathToChat, onImportFiles, project, instance }) {
   const [children, setChildren] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -54,7 +54,7 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(apiUrl(`/api/files?path=${encodeURIComponent(childPath)}${project ? `&project=${encodeURIComponent(project)}` : ''}`));
+      const res = await fetch(apiUrl(withViewParams(`/api/files?path=${encodeURIComponent(childPath)}`, { project, instance })));
       const data = await readJsonOrThrow(res);
       setChildren(data);
     } catch (e) {
@@ -62,7 +62,7 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
     } finally {
       setLoading(false);
     }
-  }, [childPath, project]);
+  }, [childPath, project, instance]);
 
   // expanded 变为 true 时自动加载子节点（恢复展开状态 & 从对话点击路径时级联展开）
   useEffect(() => {
@@ -332,13 +332,13 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
         <div className={styles.error} style={{ paddingLeft: 24 + depth * 16 }}>{error}</div>
       )}
       {expanded && children && children.map(child => (
-        <TreeNode key={child.name} item={child} path={childPath} depth={depth + 1} onFileClick={onFileClick} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} currentFile={currentFile} onFileRenamed={onFileRenamed} refreshTrigger={refreshTrigger} onHtmlPreview={onHtmlPreview} onAttachToChat={onAttachToChat} onInsertPathToChat={onInsertPathToChat} onImportFiles={onImportFiles} project={project} />
+        <TreeNode key={child.name} item={child} path={childPath} depth={depth + 1} onFileClick={onFileClick} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} currentFile={currentFile} onFileRenamed={onFileRenamed} refreshTrigger={refreshTrigger} onHtmlPreview={onHtmlPreview} onAttachToChat={onAttachToChat} onInsertPathToChat={onInsertPathToChat} onImportFiles={onImportFiles} project={project} instance={instance} />
       ))}
     </>
   );
 }
 
-export default function FileExplorer({ style, onClose, onFileClick, expandedPaths, onToggleExpand, currentFile, refreshTrigger, onManualRefresh, onFileRenamed, onAttachToChat, onInsertPathToChat, project }) {
+export default function FileExplorer({ style, onClose, onFileClick, expandedPaths, onToggleExpand, currentFile, refreshTrigger, onManualRefresh, onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
   const [htmlPreviewPath, setHtmlPreviewPath] = useState(null);
@@ -363,18 +363,18 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
     // otherwise a failed project A's banner persists over project B's tree
     // (items is set on success but error was never reset).
     setError(null);
-    fetch(apiUrl(`/api/files?path=${project ? `&project=${encodeURIComponent(project)}` : ''}`))
+    fetch(apiUrl(withViewParams('/api/files?path=', { project, instance })))
       .then(readJsonOrThrow)
       .then(data => { if (mounted.current) setItems(data); })
       .catch(e => { if (mounted.current) setError(t('ui.fileExplorer.loadFailed', { reason: e.message })); });
-  }, [project]);
+  }, [project, instance]);
 
   useEffect(() => {
     mounted.current = true;
 
     // 加载根目录（viewed 项目切换时重跑 —— multi-project 2026-10）
     setError(null);
-    fetch(apiUrl(`/api/files?path=${project ? `&project=${encodeURIComponent(project)}` : ''}`))
+    fetch(apiUrl(withViewParams('/api/files?path=', { project, instance })))
       .then(readJsonOrThrow)
       .then(data => { if (mounted.current) setItems(data); })
       .catch(e => { if (mounted.current) setError(t('ui.fileExplorer.loadFailed', { reason: e.message })); });
@@ -382,7 +382,7 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
     return () => {
       mounted.current = false;
     };
-  }, [project]);
+  }, [project, instance]);
 
   // 工具触发的增量刷新
   useEffect(() => {
@@ -507,7 +507,7 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
         {error && <div className={styles.error}>{error}</div>}
         {!items && !error && <div className={styles.loading}>{t('ui.loading')}</div>}
         {items && items.map(item => (
-          <TreeNode key={item.name} item={item} path="" depth={0} onFileClick={onFileClick} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} currentFile={currentFile} onFileRenamed={onFileRenamed} refreshTrigger={refreshTrigger} onHtmlPreview={setHtmlPreviewPath} onAttachToChat={onAttachToChat} onInsertPathToChat={onInsertPathToChat} onImportFiles={handleImportFiles} project={project} />
+          <TreeNode key={item.name} item={item} path="" depth={0} onFileClick={onFileClick} expandedPaths={expandedPaths} onToggleExpand={onToggleExpand} currentFile={currentFile} onFileRenamed={onFileRenamed} refreshTrigger={refreshTrigger} onHtmlPreview={setHtmlPreviewPath} onAttachToChat={onAttachToChat} onInsertPathToChat={onInsertPathToChat} onImportFiles={handleImportFiles} project={project} instance={instance} />
         ))}
         {/* Blank area below the list: right-click = the header context menu
             (same 'container' definition). Tree rows have their own Dropdown and
@@ -533,6 +533,7 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
         onFileRenamed={onFileRenamed}
         refreshTrigger={refreshTrigger}
         project={project}
+        instance={instance}
       />
     </div>
   );

@@ -45,12 +45,14 @@ async function resolveDir(deps) {
 // verbatim. POST routes keep the bound resolveDir (writes stay bound).
 async function _viewRootOrReply(req, res, parsedUrl, deps) {
   const projectParam = parsedUrl?.searchParams?.get('project');
-  if (!projectParam) return resolveDir(deps);
+  const instanceParam = parsedUrl?.searchParams?.get('instance');
+  if (!projectParam && !instanceParam) return resolveDir(deps);
   const { resolveViewRoot } = await import('../lib/view-root.js');
   const { loadWorkspaces } = await import('../workspace-registry.js');
   const { listLivePtys } = await import('../pty-manager.js');
   const r = resolveViewRoot({
     projectParam,
+    instanceParam,
     boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
     loadWorkspaces,
     listLivePtys,

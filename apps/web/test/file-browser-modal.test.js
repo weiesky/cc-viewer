@@ -123,8 +123,8 @@ describe('FileBrowserModal wiring contract', () => {
       'mask must include the 2px backdrop blur');
   });
   it('fetches directory listings through apiUrl + encodeURIComponent', () => {
-    assert.ok(FILE_BROWSER_MODAL.includes('apiUrl(`/api/files?path=${encodeURIComponent('),
-      'directory fetch must go through apiUrl + encodeURIComponent');
+    assert.ok(FILE_BROWSER_MODAL.includes('apiUrl(withViewParams(`/api/files?path=${encodeURIComponent('),
+      'directory fetch must go through apiUrl + withViewParams + encodeURIComponent');
     assert.ok(!FILE_BROWSER_MODAL.includes("'..'") && !FILE_BROWSER_MODAL.includes('".."'),
       'no raw .. path construction allowed');
   });

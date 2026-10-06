@@ -808,6 +808,12 @@
   flex: 1;
   min-width: 0;
 }
+/* Same-name ` [n]` discriminator: never shrinks, so a long basename's ellipsis
+   clips only the name and the ordinal stays visible (P0 review fix). */
+.projectTabIdx {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 .projectTabClose {
   width: 16px;
   height: 16px;

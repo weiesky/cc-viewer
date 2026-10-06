@@ -19,12 +19,13 @@ import { LOG_DIR, getClaudeConfigDir } from '../../findcc.js';
 // for the body-carrying read probes). WRITE routes keep the bound root.
 // SYNCHRONOUS: the affected handlers were sync before multi-project and their
 // tests assert on res immediately after the call.
-function _viewRootOrReply(req, res, parsedUrl, bodyProject) {
+function _viewRootOrReply(req, res, parsedUrl, bodyProject, bodyInstance) {
   return viewRootOrReply(req, res, parsedUrl, {
     boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
     loadWorkspaces,
     listLivePtys,
     bodyProject,
+    bodyInstance,
   });
 }
 
@@ -732,7 +733,7 @@ function filesExists(req, res, parsedUrl, isLocal, deps) {
         return;
       }
     }
-    const cwd = _viewRootOrReply(req, res, parsedUrl, parsed.project);
+    const cwd = _viewRootOrReply(req, res, parsedUrl, parsed.project, parsed.instance);
     if (!cwd) return;
     const results = paths.map(p => ({ path: p, exists: probeFileExists(p, cwd) }));
     res.writeHead(200, { 'Content-Type': 'application/json' });

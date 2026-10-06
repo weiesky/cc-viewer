@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { DownloadOutlined, CopyOutlined, CameraOutlined } from '@ant-design/icons';
 import { Modal, message } from 'antd';
-import { apiUrl } from '../../utils/apiUrl';
+import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import { useMarkdownExport } from '../../hooks/useMarkdownExport';
 import { detectMdExtensions } from '../../utils/mdExtensionDetect';
 import { handleStaleChunk } from '../../utils/lazyWithReload';
@@ -324,6 +324,7 @@ export default function FileContentView({
   onConsumeScrollSnapshot,
   onDirtyChange,
   project,
+  instance,
 }) {
   const [content, setContent] = useState(null);
   const [currentContent, setCurrentContent] = useState(null);
@@ -635,7 +636,7 @@ export default function FileContentView({
     setExtensionDetected(false);
     setMdxParseErrored(false);
 
-    fetch(apiUrl(`/api/file-content?path=${encodeURIComponent(filePath)}${editorSession ? '&editorSession=true' : ''}${project ? `&project=${encodeURIComponent(project)}` : ''}`))
+    fetch(apiUrl(withViewParams(`/api/file-content?path=${encodeURIComponent(filePath)}${editorSession ? '&editorSession=true' : ''}`, { project, instance })))
       .then((r) => {
         if (!r.ok) {
           return r
@@ -685,7 +686,7 @@ export default function FileContentView({
           setLoading(false);
         }
       });
-  }, [filePath, editorSession, isMdFile, mdxFeatureEnabled, project]);
+  }, [filePath, editorSession, isMdFile, mdxFeatureEnabled, project, instance]);
 
   useEffect(() => {
     loadFileContent();

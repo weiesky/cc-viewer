@@ -7,11 +7,12 @@ import { loadWorkspaces } from '../workspace-registry.js';
 
 // Multi-project (2026-10): code SEARCH (read-only) resolves the viewed project
 // via resolveViewRoot (body {project}). search-replace (destructive) stays bound.
-async function _viewRootOrReply(req, res, projectParam) {
+async function _viewRootOrReply(req, res, projectParam, instanceParam) {
   let listLivePtys = () => [];
   try { ({ listLivePtys } = await import('../pty-manager.js')); } catch { /* no pty map */ }
   return resolveViewRoot({
     projectParam,
+    instanceParam,
     boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
     loadWorkspaces,
     listLivePtys,
@@ -65,7 +66,7 @@ function searchHandler(req, res, parsedUrl, isLocal, deps) {
     }
 
     const engine = VALID_ENGINES.has(parsed.engine) ? parsed.engine : 'auto';
-    const viewR = await _viewRootOrReply(req, res, typeof parsed.project === 'string' ? parsed.project : '');
+    const viewR = await _viewRootOrReply(req, res, typeof parsed.project === 'string' ? parsed.project : '', typeof parsed.instance === 'string' ? parsed.instance : '');
     if (!viewR.ok) {
       res.writeHead(viewR.status, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: viewR.error }));

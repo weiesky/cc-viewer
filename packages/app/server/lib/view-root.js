@@ -43,13 +43,35 @@ function isValidProjectName(name) {
 /**
  * @param {object} opts
  * @param {string} [opts.projectParam] - the `?project=` override (may be ''/undefined).
+ * @param {string} [opts.instanceParam] - the `?instance=` per-spawn instanceKey override
+ *   (may be ''/undefined). Resolved BEFORE the name path: a valid live instance pins its
+ *   exact cwd (via 'live-instance'), bypassing same-basename name arbitration.
  * @param {string} opts.boundCwd - the bound project root (CCV_PROJECT_DIR || process.cwd()).
  * @param {() => Array<{path:string, projectName:string}>} opts.loadWorkspaces - registry reader.
- * @param {() => Array<{cwd:string}>} opts.listLivePtys - live PTY records.
- * @returns {{ ok:true, root:string, via:'bound'|'registry'|'live' } | { ok:false, status:number, error:string }}
+ * @param {() => Array<{cwd:string, instanceKey?:string}>} opts.listLivePtys - live PTY records.
+ * @returns {{ ok:true, root:string, via:'bound'|'registry'|'live'|'live-instance' } | { ok:false, status:number, error:string }}
  */
-export function resolveViewRoot({ projectParam, boundCwd, loadWorkspaces, listLivePtys } = {}) {
+export function resolveViewRoot({ projectParam, instanceParam, boundCwd, loadWorkspaces, listLivePtys } = {}) {
   const bound = boundCwd || process.cwd();
+  // Multi-instance (2026-10-06): `instance` is the per-spawn instanceKey, the
+  // authoritative disambiguator when two same-basename projects run at once —
+  // the name path below would 400 on that pair as "ambiguous". Resolve it FIRST
+  // (before the empty-name bound short-circuit AND name validation): a valid live
+  // instance pins the exact cwd regardless of the accompanying name, so
+  // `?instance=` works with or without `?project=`. An invalid key (regex miss) or
+  // a stale/closed instance is NOT an error — fall through to the name path (a
+  // closed twin leaves a single same-name live, which name arbitration then wins).
+  const instance = (typeof instanceParam === 'string' && /^ccv-[0-9a-f]+$/.test(instanceParam)) ? instanceParam : '';
+  if (instance) {
+    try {
+      const rec = (listLivePtys() || []).find((p) => p && p.instanceKey === instance);
+      if (rec && typeof rec.cwd === 'string' && rec.cwd) {
+        if (existsSync(rec.cwd) && statSync(rec.cwd).isDirectory()) {
+          return { ok: true, root: realpathSync(rec.cwd), via: 'live-instance' };
+        }
+      }
+    } catch { /* pty map unavailable / fs race → fall through to name path */ }
+  }
   const name = (typeof projectParam === 'string' && projectParam) || '';
   if (!name) return { ok: true, root: bound, via: 'bound' };
   if (!isValidProjectName(name)) {
@@ -161,17 +183,19 @@ export function resolveViewRoot({ projectParam, boundCwd, loadWorkspaces, listLi
  *
  * @param {object} req - the incoming request.
  * @param {object} res - the response (error written here on failure).
- * @param {URL} parsedUrl - the request URL (query `project` read here).
+ * @param {URL} parsedUrl - the request URL (query `project` and `instance` read here).
  * @param {object} opts
  * @param {string} opts.boundCwd - the bound project root (CCV_PROJECT_DIR || process.cwd()).
  * @param {() => Array} opts.loadWorkspaces - registry reader.
  * @param {() => Array} opts.listLivePtys - live PTY records.
  * @param {string} [opts.bodyProject] - POST-body project override (wins over query).
+ * @param {string} [opts.bodyInstance] - POST-body instance override (wins over query).
  * @returns {string|null} the resolved absolute root, or null (already replied).
  */
-export function viewRootOrReply(req, res, parsedUrl, { boundCwd, loadWorkspaces, listLivePtys, bodyProject } = {}) {
+export function viewRootOrReply(req, res, parsedUrl, { boundCwd, loadWorkspaces, listLivePtys, bodyProject, bodyInstance } = {}) {
   const r = resolveViewRoot({
     projectParam: (typeof bodyProject === 'string' && bodyProject) || parsedUrl?.searchParams?.get('project'),
+    instanceParam: (typeof bodyInstance === 'string' && bodyInstance) || parsedUrl?.searchParams?.get('instance'),
     boundCwd,
     loadWorkspaces,
     listLivePtys,

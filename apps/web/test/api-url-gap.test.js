@@ -25,7 +25,7 @@ const _origDocument = globalThis.document;
 globalThis.window = { location: { search: '?token=SECRET&foo=bar' } };
 globalThis.document = { querySelector: () => null };
 
-const { apiUrl, getBasePath, appendToken } = await import('../src/utils/apiUrl.js');
+const { apiUrl, getBasePath, appendToken, withViewParams } = await import('../src/utils/apiUrl.js');
 
 after(() => {
   if (_origWindow === undefined) delete globalThis.window; else globalThis.window = _origWindow;
@@ -118,5 +118,44 @@ describe('apiUrl — base 拼接 + token 组合', () => {
 
   it('无 base：path 原样 + token', () => {
     assert.equal(apiUrl('/api/git-repos'), '/api/git-repos?token=SECRET');
+  });
+});
+
+describe('withViewParams — project/instance query 拼接（multi-instance 2026-10-06）', () => {
+  it('无 project 无 instance → 原样返回（byte-identical）', () => {
+    assert.equal(withViewParams('/api/files'), '/api/files');
+    assert.equal(withViewParams('/api/files?path=/x'), '/api/files?path=/x');
+    assert.equal(withViewParams('/api/files', {}), '/api/files');
+  });
+
+  it('仅 project：无 query 用 ?，有 query 用 &', () => {
+    assert.equal(withViewParams('/api/git-repos', { project: 'finqa' }), '/api/git-repos?project=finqa');
+    assert.equal(withViewParams('/api/files?path=/x', { project: 'finqa' }), '/api/files?path=/x&project=finqa');
+  });
+
+  it('仅 instance：用 ? 起始', () => {
+    assert.equal(withViewParams('/api/files', { instance: 'ccv-aaa111' }), '/api/files?instance=ccv-aaa111');
+  });
+
+  it('project + instance 同时：两者都拼，instance 在后', () => {
+    assert.equal(
+      withViewParams('/api/files', { project: 'finqa', instance: 'ccv-bbb222' }),
+      '/api/files?project=finqa&instance=ccv-bbb222',
+    );
+  });
+
+  it('追加到已有 query 后（&instance 接在 project 后）', () => {
+    assert.equal(
+      withViewParams('/api/files?path=%2Fx', { project: 'finqa', instance: 'ccv-bbb222' }),
+      '/api/files?path=%2Fx&project=finqa&instance=ccv-bbb222',
+    );
+  });
+
+  it('project 含特殊字符 → encodeURIComponent', () => {
+    assert.equal(withViewParams('/api/files', { project: 'my proj' }), '/api/files?project=my%20proj');
+  });
+
+  it('空字符串值视为缺省（跳过）', () => {
+    assert.equal(withViewParams('/api/files', { project: '', instance: '' }), '/api/files');
   });
 });

@@ -17,14 +17,15 @@
 // 即：本文件 = 静默路径，inline = 用户触发路径。两者并存是设计选择，不是抽取漏。
 // ────────────────────────────────────────────────────────────────────────────
 
-import { apiUrl } from './apiUrl.js';
+import { apiUrl, withViewParams } from './apiUrl.js';
 
 // Multi-project (2026-10): project-scoped loaders take an optional `project`
 // (the viewed project) and append ?project= so the server resolves THAT
-// project instead of always the bound one.
-function _withProject(path, project) {
-  if (!project) return path;
-  return `${path}${path.includes('?') ? '&' : '?'}project=${encodeURIComponent(project)}`;
+// project instead of always the bound one. Multi-instance (2026-10-06):
+// `instance` (instanceKey) disambiguates two same-basename projects (else the
+// server's view-root 400s "ambiguous project name"). Both ride withViewParams.
+function _withProject(path, project, instance) {
+  return withViewParams(path, { project, instance });
 }
 
 async function _seqGuardedFetch(component, seqProp, url) {
@@ -50,9 +51,9 @@ async function _seqGuardedFetch(component, seqProp, url) {
 // 失败时若 _fsSkills 已是数组（前次成功结果）→ 保留不 clobber，
 // 避免 popover chip 从乐观态回退到历史空态。
 // 返回 { ok: true, skills } / { ok: false, reason: 'local_log'|'stale'|'http:NNN'|'network'|'parse'|<server msg> }
-export async function loadFsSkills(component, { isLocalLog, project } = {}) {
+export async function loadFsSkills(component, { isLocalLog, project, instance } = {}) {
   if (isLocalLog) return { ok: false, reason: 'local_log' };
-  const res = await _seqGuardedFetch(component, '_fsSkillsSeq', apiUrl(_withProject('/api/skills', project)));
+  const res = await _seqGuardedFetch(component, '_fsSkillsSeq', apiUrl(_withProject('/api/skills', project, instance)));
   if (res.stale) return { ok: false, reason: 'stale' };
   if (res.error) {
     component.setState(prev => ({ _fsSkills: Array.isArray(prev._fsSkills) ? prev._fsSkills : false }));
@@ -68,16 +69,16 @@ export async function loadFsSkills(component, { isLocalLog, project } = {}) {
 }
 
 // 拉取项目入口 MEMORY.md。lazy-load 失败静默回退 false；用户主动刷新走 handleRefreshMemory（带 toast）。
-export async function loadProjectMemory(component, { project } = {}) {
-  const res = await _seqGuardedFetch(component, '_memorySeq', apiUrl(_withProject('/api/project-memory', project)));
+export async function loadProjectMemory(component, { project, instance } = {}) {
+  const res = await _seqGuardedFetch(component, '_memorySeq', apiUrl(_withProject('/api/project-memory', project, instance)));
   if (res.stale) return;
   if (res.error || !res.ok) { component.setState({ _memory: false }); return; }
   component.setState({ _memory: res.data });
 }
 
 // 拉取 CLAUDE.md 候选清单。三态：null/false/[]/[{id,scope,tail,...}]。
-export async function loadClaudeMdList(component, { project } = {}) {
-  const res = await _seqGuardedFetch(component, '_claudeMdSeq', apiUrl(_withProject('/api/claude-md', project)));
+export async function loadClaudeMdList(component, { project, instance } = {}) {
+  const res = await _seqGuardedFetch(component, '_claudeMdSeq', apiUrl(_withProject('/api/claude-md', project, instance)));
   if (res.stale) return;
   if (res.error || !res.ok || !Array.isArray(res.data?.entries)) {
     component.setState({ _claudeMd: false });

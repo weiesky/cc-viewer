@@ -932,7 +932,7 @@ class Mobile extends AppBase {
           )}
           <div className={`${styles.mobileGitDiffOverlay} ${this.state.mobileGitDiffVisible ? styles.mobileGitDiffOverlayVisible : ''}`}>
             <div className={styles.mobileGitDiffInner}>
-              <MobileGitDiff visible={this.state.mobileGitDiffVisible} onClose={() => this.setState({ mobileGitDiffVisible: false })} project={this.state.viewedProject || this.state.projectName || null} />
+              <MobileGitDiff visible={this.state.mobileGitDiffVisible} onClose={() => this.setState({ mobileGitDiffVisible: false })} project={this.state.viewedProject || this.state.projectName || null} instance={this.state.viewedInstance || null} />
             </div>
           </div>
           {/* 移动端（含 iPad）血条点击 → 从左侧划出的 cache popover 抽屉。
@@ -1050,7 +1050,7 @@ class Mobile extends AppBase {
           />
           <div className={`${styles.mobileFileExplorerOverlay} ${this.state.mobileFileExplorerVisible ? styles.mobileFileExplorerOverlayVisible : ''}`}>
             <div className={styles.mobileFileExplorerInner}>
-              <MobileFileExplorer visible={this.state.mobileFileExplorerVisible} onClose={() => this.setState({ mobileFileExplorerVisible: false, mobileFileExplorerTarget: null })} targetFile={this.state.mobileFileExplorerTarget} projectName={this.state.projectName} project={this.state.viewedProject || this.state.projectName || null} />
+              <MobileFileExplorer visible={this.state.mobileFileExplorerVisible} onClose={() => this.setState({ mobileFileExplorerVisible: false, mobileFileExplorerTarget: null })} targetFile={this.state.mobileFileExplorerTarget} projectName={this.state.projectName} project={this.state.viewedProject || this.state.projectName || null} instance={this.state.viewedInstance || null} />
             </div>
           </div>
           <div className={`${styles.mobileStatsOverlay} ${this.state.mobileStatsVisible ? styles.mobileStatsOverlayVisible : ''}`}>

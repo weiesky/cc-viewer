@@ -77,15 +77,26 @@ async function getSessionsHandler(req, res, parsedUrl) {
 // uses for write routing). Read-only; a probe failure degrades to an empty list.
 async function getLiveProcessesHandler(req, res, parsedUrl) {
   const processes = [];
+  let currentInstanceKey = null;
   try {
     const { listLivePtys } = await import('../pty-manager.js');
-    for (const p of listLivePtys()) {
+    const live = listLivePtys();
+    // Bound project's own instanceKey (pure-client viewing, 2026-10-07): the identity of
+    // the BOUND project — the live record whose cwd equals the server's bound root. This
+    // is per-server and single-valued, deliberately NOT the shared `active` pointer (that
+    // is the terminal attachment, which lags and differs per client). The header uses it
+    // to single out THE bound tab among same-basename tabs without reading `active`.
+    const boundCwd = process.env.CCV_PROJECT_DIR || process.cwd();
+    for (const p of live) {
       // Multi-project (2026-10, review P1): only CLAUDE main PTYs become project
       // tabs. A scratch/$EDITOR shell (ptyKind 'shell') in a differently-named
       // cwd would otherwise surface as a closable "project" tab and flip the
       // Header into the multi-project tab-bar form on its own — violating the
       // single-project parity contract.
       if (p.ptyKind && p.ptyKind !== 'claude') continue;
+      if (!currentInstanceKey && p.instanceKey && (p.cwd || '') === boundCwd) {
+        currentInstanceKey = p.instanceKey;
+      }
       processes.push({
         kind: 'main',
         project: projectKeyForCwd(p.cwd),
@@ -98,7 +109,7 @@ async function getLiveProcessesHandler(req, res, parsedUrl) {
       });
     }
   } catch (err) { reportSwallowed('resume-route.live-main', err); }
-  sendJson(res, 200, { processes, currentProject: _projectName || '' });
+  sendJson(res, 200, { processes, currentProject: _projectName || '', currentInstanceKey });
 }
 
 // POST /api/live-processes/attach { project } — move the main view's PTY
