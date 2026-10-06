@@ -145,8 +145,12 @@ describe('AppBase.jsx 源码锚点（防未来重构漂移）', () => {
       'handleActivateChip 未传 chip 的 project+instance');
     assert.ok(/this\.initSSE\(\{ sid: null, project: null, instance: null \}\)/.test(APPBASE_SRC),
       'handleDetachView 未传空 scope');
-    assert.ok(/this\.initSSE\(\{ sid: uuid, project: null, instance: null \}\)/.test(APPBASE_SRC),
-      'handleResumeSession 未传 attach sid scope');
+    // True-resume (2026-10-06): the attach half is _applyViewAttach, which scopes initSSE by the
+    // TARGET project (parallel resume keeps the viewed project; bound resume falls back to bound).
+    assert.ok(/_applyViewAttach = \(uuid, scope = null\) => \{/.test(APPBASE_SRC),
+      '_applyViewAttach 缺 scope 参数');
+    assert.ok(/this\.initSSE\(\{ sid: uuid, project: scopeProject, instance: scopeInstance \}\)/.test(APPBASE_SRC),
+      '_applyViewAttach 未按目标 scope 传 initSSE');
   });
 
   it('多实例缓存键用 NUL 分隔（project 名含 ccv- 子串不撞复合键）', () => {

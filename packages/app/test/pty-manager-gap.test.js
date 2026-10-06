@@ -21,6 +21,8 @@ import {
   getPtyState,
   getOutputBuffer,
   getPtyKind,
+  getPtyKindFor,
+  isLiveClaudeProject,
   getPtySkipPermissions,
   getCurrentWorkspace,
   _clearThinkingDisplayRejectedPaths,
@@ -300,6 +302,56 @@ describe('pty-manager-gap: getPtyKind / getPtySkipPermissions', () => {
     assert.equal(getPtyKind(), null);
     // skipPermissions 仅在 kind==='claude' 时为 true，kind 清空后应是 false
     assert.equal(getPtySkipPermissions(), false);
+  });
+});
+
+describe('pty-manager-gap: getPtyKindFor / isLiveClaudeProject (anchor-scoped, /api/resume-session)', () => {
+  let spawned;
+
+  beforeEach(() => {
+    spawned = [];
+    _clearThinkingDisplayRejectedPaths();
+    _setPtyImportForTests(makeControllableImport(spawned));
+  });
+
+  afterEach(() => {
+    killPty();
+    _setPtyImportForTests(null);
+  });
+
+  it('getPtyKindFor resolves the named project to its kind, never the active fallback', async () => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
+    const dirA = mkdtempSync(join(tmpdir(), 'ccv-gpkf-a-'));
+    const dirB = mkdtempSync(join(tmpdir(), 'ccv-gpkf-b-'));
+    await spawnClaude(9000, dirA, [], '/bin/echo');
+    await spawnClaude(9000, dirB, [], '/bin/echo'); // active = B
+    const projA = projectKeyForCwd(dirA);
+    assert.equal(getPtyKindFor({ project: projA }), 'claude', 'resolves project A by name');
+    assert.equal(getPtyKindFor({ project: 'no-such-proj' }), null, 'unknown project → null, NOT active kind');
+  });
+
+  it('getPtyKindFor returns null for a dead record (no live ptyProcess)', async () => {
+    const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
+    const cwd = process.cwd();
+    await spawnClaude(9000, cwd, [], '/bin/echo');
+    const proj = projectKeyForCwd(cwd);
+    killPty();
+    assert.equal(getPtyKindFor({ project: proj }), null, 'dead record has no live kind');
+  });
+
+  it('isLiveClaudeProject is true only for a live claude project', async () => {
+    const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
+    const cwd = process.cwd();
+    const proj = projectKeyForCwd(cwd);
+    assert.equal(isLiveClaudeProject(proj), false, 'no spawn yet → false');
+    await spawnClaude(9000, cwd, [], '/bin/echo');
+    assert.equal(isLiveClaudeProject(proj), true, 'live claude spawn → true');
+    assert.equal(isLiveClaudeProject('definitely-not-a-project'), false);
+    killPty();
+    assert.equal(isLiveClaudeProject(proj), false, 'after kill → false');
   });
 });
 

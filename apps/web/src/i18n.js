@@ -14133,6 +14133,54 @@ const i18nData = {
     "ar": "مساحة عمل جديدة", "no": "Nytt arbeidsområde", "pt-BR": "Nova área de trabalho",
     "th": "เวิร์กสเปซใหม่", "tr": "Yeni çalışma alanı", "uk": "Новий робочий простір"
   },
+  "ui.resume.history": {
+    "zh": "历史会话", "en": "Session history", "zh-TW": "歷史會話",
+    "ko": "세션 기록", "ja": "セッション履歴", "de": "Sitzungsverlauf",
+    "es": "Historial de sesiones", "fr": "Historique des sessions", "it": "Cronologia sessioni",
+    "da": "Sessionshistorik", "pl": "Historia sesji", "ru": "История сессий",
+    "ar": "سجل الجلسات", "no": "Øktlogg", "pt-BR": "Histórico de sessões",
+    "th": "ประวัติเซสชัน", "tr": "Oturum geçmişi", "uk": "Історія сеансів"
+  },
+  "ui.resume.confirmTitle": {
+    "zh": "恢复会话", "en": "Resume session", "zh-TW": "恢復會話",
+    "ko": "세션 재개", "ja": "セッション再開", "de": "Sitzung fortsetzen",
+    "es": "Reanudar sesión", "fr": "Reprendre la session", "it": "Riprendi sessione",
+    "da": "Genoptag session", "pl": "Wznów sesję", "ru": "Возобновить сессию",
+    "ar": "استئناف الجلسة", "no": "Gjenoppta økt", "pt-BR": "Retomar sessão",
+    "th": "เริ่มเซสชันต่อ", "tr": "Oturumu sürdür", "uk": "Відновити сеанс"
+  },
+  "ui.resume.confirmContent": {
+    "zh": "切换到会话「{{name}}」？当前会话将挂起，后续消息会在该会话中继续。", "en": "Switch into session \"{{name}}\"? The current session will be suspended and new messages will continue there.", "zh-TW": "切換到會話「{{name}}」？當前會話將掛起，後續訊息會在該會話中繼續。",
+    "ko": "세션 \"{{name}}\"(으)로 전환할까요? 현재 세션은 일시 중지되고 이후 메시지는 해당 세션에서 이어집니다.", "ja": "セッション「{{name}}」に切り替えますか？現在のセッションは中断され、以降のメッセージはそのセッションで続きます。", "de": "Zu Sitzung \"{{name}}\" wechseln? Die aktuelle Sitzung wird angehalten und neue Nachrichten laufen dort weiter.",
+    "es": "¿Cambiar a la sesión \"{{name}}\"? La sesión actual se suspenderá y los nuevos mensajes continuarán allí.", "fr": "Basculer vers la session « {{name}} » ? La session actuelle sera suspendue et les nouveaux messages s'y poursuivront.", "it": "Passare alla sessione \"{{name}}\"? La sessione corrente sarà sospesa e i nuovi messaggi continueranno lì.",
+    "da": "Skift til sessionen \"{{name}}\"? Den aktuelle session pauses, og nye beskeder fortsætter der.", "pl": "Przełączyć na sesję „{{name}}”? Bieżąca sesja zostanie wstrzymana, a nowe wiadomości będą kontynuowane tam.", "ru": "Переключиться на сессию «{{name}}»? Текущая сессия будет приостановлена, а новые сообщения продолжатся в ней.",
+    "ar": "التبديل إلى الجلسة \"{{name}}\"؟ ستُعلَّق الجلسة الحالية وتستمر الرسائل الجديدة فيها.", "no": "Bytt til økten \"{{name}}\"? Gjeldende økt settes på pause og nye meldinger fortsetter der.", "pt-BR": "Mudar para a sessão \"{{name}}\"? A sessão atual será suspensa e as novas mensagens continuarão nela.",
+    "th": "สลับไปที่เซสชัน \"{{name}}\"? เซสชันปัจจุบันจะถูกพัก และข้อความใหม่จะดำเนินต่อที่นั่น", "tr": "\"{{name}}\" oturumuna geçilsin mi? Geçerli oturum askıya alınır ve yeni iletiler orada sürdürülür.", "uk": "Переключитися на сеанс «{{name}}»? Поточний сеанс буде призупинено, а нові повідомлення продовжаться там."
+  },
+  "ui.resume.confirmOk": {
+    "zh": "恢复", "en": "Resume", "zh-TW": "恢復",
+    "ko": "재개", "ja": "再開", "de": "Fortsetzen",
+    "es": "Reanudar", "fr": "Reprendre", "it": "Riprendi",
+    "da": "Genoptag", "pl": "Wznów", "ru": "Возобновить",
+    "ar": "استئناف", "no": "Gjenoppta", "pt-BR": "Retomar",
+    "th": "เริ่มต่อ", "tr": "Sürdür", "uk": "Відновити"
+  },
+  "ui.resume.busy": {
+    "zh": "当前会话运行中，请等待本轮结束后再切换", "en": "The current session is busy — wait for the turn to finish before switching.", "zh-TW": "當前會話執行中，請等待本輪結束後再切換",
+    "ko": "현재 세션이 실행 중입니다. 이번 차례가 끝난 후 전환하세요.", "ja": "現在のセッションが実行中です。ターンが終わってから切り替えてください。", "de": "Die aktuelle Sitzung ist beschäftigt — warte bis zum Ende des Durchlaufs.",
+    "es": "La sesión actual está ocupada: espera a que termine el turno antes de cambiar.", "fr": "La session actuelle est occupée — attendez la fin du tour avant de changer.", "it": "La sessione corrente è occupata: attendi la fine del turno prima di cambiare.",
+    "da": "Den aktuelle session er optaget — vent til turen er færdig, før du skifter.", "pl": "Bieżąca sesja jest zajęta — poczekaj na koniec tury przed przełączeniem.", "ru": "Текущая сессия занята — дождитесь окончания хода перед переключением.",
+    "ar": "الجلسة الحالية مشغولة — انتظر انتهاء الدورة قبل التبديل.", "no": "Gjeldende økt er opptatt — vent til runden er ferdig før du bytter.", "pt-BR": "A sessão atual está ocupada — espere o turno terminar antes de trocar.",
+    "th": "เซสชันปัจจุบันกำลังทำงาน — รอให้รอบจบก่อนสลับ", "tr": "Geçerli oturum meşgul — geçişten önce turun bitmesini bekleyin.", "uk": "Поточний сеанс зайнятий — зачекайте завершення ходу перед перемиканням."
+  },
+  "ui.resume.failed": {
+    "zh": "恢复会话失败", "en": "Failed to resume session", "zh-TW": "恢復會話失敗",
+    "ko": "세션 재개 실패", "ja": "セッションの再開に失敗しました", "de": "Sitzung konnte nicht fortgesetzt werden",
+    "es": "Error al reanudar la sesión", "fr": "Échec de la reprise de la session", "it": "Ripresa della sessione non riuscita",
+    "da": "Kunne ikke genoptage sessionen", "pl": "Nie udało się wznowić sesji", "ru": "Не удалось возобновить сессию",
+    "ar": "فشل استئناف الجلسة", "no": "Kunne ikke gjenoppta økten", "pt-BR": "Falha ao retomar a sessão",
+    "th": "เริ่มเซสชันต่อไม่สำเร็จ", "tr": "Oturum sürdürülemedi", "uk": "Не вдалося відновити сеанс"
+  },
   "ui.projectTabs.closeTip": {
     "zh": "关闭项目主进程", "en": "Close project process", "zh-TW": "關閉專案主行程",
     "ko": "프로젝트 프로세스 닫기", "ja": "プロジェクトのプロセスを閉じる", "de": "Projektprozess schließen",

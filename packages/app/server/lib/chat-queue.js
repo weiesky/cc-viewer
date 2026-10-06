@@ -348,6 +348,56 @@ export function stop() {
   _gen++;
 }
 
+const RESUME_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * True /resume (2026-10-06): inject `/resume <uuid>` into a target project's running claude
+ * PTY so the process switches INTO that session in place (Claude Code's native SessionStart
+ * hook then re-binds the v2 writer via beginResumeSwitch). This is the in-process switch —
+ * NOT a respawn — and must only happen when the TUI is observably idle.
+ *
+ * Promise-returning so the route can map the outcome to HTTP. Resolves:
+ *   { ok:true }                 — the paste was written
+ *   { ok:false, reason:'busy' } — TUI streaming / approval open / another inject or poll in
+ *                                 flight / timed out waiting for idle (never blind-injects)
+ *   { ok:false, reason:'bad-uuid' }     — sessionUuid is not a UUID shape
+ *   { ok:false, reason:'no-deps' }      — initChatQueue never ran (SDK mode / not wired)
+ *   { ok:false, reason:'write-failed' } — the PTY write failed or threw
+ *
+ * Shares the single `_injecting`/`_pollTimer` slots with the drain/sendNow paths, so it
+ * refuses up-front when either is owned (mirrors sendNow's guard) instead of clobbering a
+ * pending drain timer and stranding a queued message. The completion handler resets
+ * `_injecting` unconditionally (both callback and catch) so a mid-inject clear()/stop()
+ * generation bump can never wedge the queue.
+ */
+export function injectResumeCommand(sessionUuid, anchor) {
+  return new Promise((resolve) => {
+    if (!_deps) { resolve({ ok: false, reason: 'no-deps' }); return; }
+    const uuid = sanitizeInbound(String(sessionUuid == null ? '' : sessionUuid)).trim();
+    if (!RESUME_UUID_RE.test(uuid)) { resolve({ ok: false, reason: 'bad-uuid' }); return; }
+    // Refuse BEFORE touching _pollUntilSafe: a drain's poll owns the single _pollTimer slot,
+    // and an in-flight inject owns _injecting — barging in would strand a queued message.
+    if (_injecting || _pollTimer) { resolve({ ok: false, reason: 'busy' }); return; }
+    let settled = false;
+    const done = (r) => { if (!settled) { settled = true; resolve(r); } };
+    const inject = () => {
+      _injecting = true;
+      try {
+        _deps.writeToPtySequentialFor(bracketPasteSubmit(`/resume ${uuid}`), (ok) => {
+          _injecting = false;
+          done(ok ? { ok: true } : { ok: false, reason: 'write-failed' });
+        }, { settleMs: 250 }, anchor || {});
+      } catch (err) {
+        _injecting = false;
+        reportSwallowed('chat-queue.resume.inject', err);
+        done({ ok: false, reason: 'write-failed' });
+      }
+    };
+    if (_safeToInject()) { inject(); return; }
+    _pollUntilSafe(inject, () => done({ ok: false, reason: 'busy' }));
+  });
+}
+
 export function __resetForTests() {
   stop();
   _deps = null;

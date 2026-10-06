@@ -19,6 +19,15 @@
 //       (loopback or authenticated remote admin); 403 otherwise, 404 when the
 //       project has no record. The record is kept for a later re-launch.
 //
+//   POST /api/resume-session  { sessionUuid, project?, instanceKey? }
+//       TRUE /resume (2026-10-06): inject `/resume <uuid>` into the target
+//       project's running claude PTY so the process switches INTO that session
+//       in place (Claude Code's native SessionStart hook then re-binds the v2
+//       writer). Destructive-ish (re-points a live conversation), so admin +
+//       same-origin gated like /close. 409 busy when the TUI isn't observably
+//       idle, 409 ambiguous when a project-only target has 2+ live instances,
+//       404 when the target isn't a live claude PTY, 400 on a bad uuid.
+//
 // Boundary note (verify:boundaries): routes (L3) may import lib/ (L1) and
 // interceptor (L2) per the existing house pattern (session-pin.js / logs.js).
 // The aggregation itself lives in lib/v2/resume-list.js (pure, unit-tested);
@@ -198,9 +207,85 @@ function postLiveProcessCloseHandler(req, res, parsedUrl, isLocal, deps) {
   });
 }
 
+const RESUME_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// POST /api/resume-session { sessionUuid, project?, instanceKey? } — TRUE /resume:
+// inject `/resume <uuid>` into the target project's live claude PTY so the running
+// process switches INTO that session in place. Admin + same-origin gated (it re-points
+// a live conversation). See the header comment for the status/reason mapping.
+function postResumeSessionHandler(req, res, parsedUrl, isLocal, deps) {
+  if (!isAdminReq(req, isLocal) || !isSameOriginBrowserRequest(req, parsedUrl)) {
+    sendJson(res, 403, { ok: false, reason: 'forbidden' });
+    return;
+  }
+  let body = '';
+  req.on('data', (chunk) => { body += chunk; if (deps && body.length > deps.MAX_POST_BODY) req.destroy(); });
+  req.on('end', async () => {
+    let sessionUuid = '';
+    let project = '';
+    let instanceKey = '';
+    try {
+      const parsed = JSON.parse(body || '{}');
+      sessionUuid = typeof parsed.sessionUuid === 'string' ? parsed.sessionUuid.trim() : '';
+      project = typeof parsed.project === 'string' ? parsed.project : '';
+      instanceKey = typeof parsed.instanceKey === 'string' ? parsed.instanceKey : '';
+    } catch {
+      sendJson(res, 400, { ok: false, reason: 'bad-json' });
+      return;
+    }
+    if (!sessionUuid) {
+      sendJson(res, 400, { ok: false, reason: 'missing-session' });
+      return;
+    }
+    // Shape-validate BEFORE it ever reaches the TUI paste buffer (defense-in-depth;
+    // sanitizeInbound alone would still let `;`, quotes, `$()` through).
+    if (!RESUME_UUID_RE.test(sessionUuid)) {
+      sendJson(res, 400, { ok: false, reason: 'bad-uuid' });
+      return;
+    }
+    try {
+      const pm = await import('../pty-manager.js');
+      const targetProject = project || (_projectName || '');
+      // Multi-instance: a project-name-only resume that matches 2+ live same-basename
+      // instances is ambiguous — refuse with the candidates so the client re-issues
+      // with an instanceKey (mirror of attach/close).
+      if (!instanceKey && targetProject) {
+        const live = pm.liveInstancesForProject(targetProject);
+        if (live.length > 1) {
+          sendJson(res, 409, { ok: false, reason: 'ambiguous', candidates: live });
+          return;
+        }
+      }
+      // Strict target-kind gate (no active-PTY fallback): never inject into the wrong
+      // project's conversation when the anchor doesn't resolve, and never into a shell.
+      if (pm.getPtyKindFor({ project: targetProject || undefined, instanceKey: instanceKey || undefined }) !== 'claude') {
+        sendJson(res, 404, { ok: false, reason: 'not-found' });
+        return;
+      }
+      const chatQueue = await import('../lib/chat-queue.js');
+      const r = await chatQueue.injectResumeCommand(sessionUuid, { project: targetProject || undefined, instanceKey: instanceKey || undefined });
+      if (r.ok) {
+        // Session identity just changed — drop any still-queued composer messages so a
+        // message typed for the OLD conversation never drains into the resumed one.
+        try { chatQueue.clear(); } catch (err) { reportSwallowed('resume-route.clear-queue', err); }
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+      if (r.reason === 'busy') { sendJson(res, 409, { ok: false, reason: 'busy' }); return; }
+      if (r.reason === 'bad-uuid') { sendJson(res, 400, { ok: false, reason: 'bad-uuid' }); return; }
+      if (r.reason === 'no-deps') { sendJson(res, 409, { ok: false, reason: 'unavailable' }); return; }
+      sendJson(res, 500, { ok: false, reason: r.reason || 'inject-failed' });
+    } catch (err) {
+      reportSwallowed('resume-route.resume', err);
+      sendJson(res, 500, { ok: false, reason: 'resume-failed' });
+    }
+  });
+}
+
 export const resumeRoutes = [
   { method: 'GET', match: 'exact', path: '/api/resume-sessions', handler: getSessionsHandler },
   { method: 'GET', match: 'exact', path: '/api/live-processes', handler: getLiveProcessesHandler },
   { method: 'POST', match: 'exact', path: '/api/live-processes/attach', handler: postLiveProcessAttachHandler },
   { method: 'POST', match: 'exact', path: '/api/live-processes/close', handler: postLiveProcessCloseHandler },
+  { method: 'POST', match: 'exact', path: '/api/resume-session', handler: postResumeSessionHandler },
 ];

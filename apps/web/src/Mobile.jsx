@@ -993,6 +993,7 @@ class Mobile extends AppBase {
           >
             <ResumeSessionsList
               active={this.state.mobileResumeVisible}
+              project={this.state.viewedProject || this.state.projectName}
               attachedUuid={this.state.attachedSid || null}
               isStreaming={this.state.isStreaming}
               onResumeSession={(row) => { this.setState({ mobileResumeVisible: false }); this.handleResumeSession(row); }}

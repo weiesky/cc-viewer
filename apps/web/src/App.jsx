@@ -584,13 +584,10 @@ class App extends AppBase {
               onRetryConfigChange={this.handleRetryConfigChange}
               contextBarSlot={this.state.contextBarSlot}
               claudeProjectModel={this.state.claudeProjectModel}
-              onResumeSession={this.handleResumeSession}
-              // Electron chat tab: [+] is a dead control (the tab's tabBridge has no
-              // launchWorkspace — that lives in the workspace-popup preload, and the
-              // multitab launch route short-circuits without a launchCallback). Hide it.
+              // (2026-10-06) onResumeSession/attachedSid/isStreaming no longer flow into the
+              // Header — the recent-sessions dropdown moved to the star quick-settings menu
+              // (threaded into ChatView instead).
               onNewProject={(typeof window !== 'undefined' && window.tabBridge) ? null : this.handleNewProject}
-              attachedSid={this.state.attachedSid || null}
-              isStreaming={this.state.isStreaming}
               onActivateChip={this.handleActivateChip}
               viewedProject={this.state.viewedProject || null}
               viewedInstance={this.state.viewedInstance || null}
@@ -598,6 +595,7 @@ class App extends AppBase {
               onDetachView={this.handleDetachView}
               onCloseProject={this.handleCloseProject}
               onLiveProjectsChange={this.handleLiveProjectsChange}
+              liveProcessRefreshToken={this.state.liveProcessRefreshToken}
             />
           </Layout.Header>
           {(typeof window === 'undefined' || !window.tabBridge) && this.renderNewProjectModal()}
@@ -698,7 +696,7 @@ class App extends AppBase {
               )
             )}
             <div className={styles.chatViewWrapper} style={{ display: viewMode === 'chat' ? 'flex' : 'none' }}>
-              <ChatView loadingProgress={fileLoading ? this._loadingProgressText() : null} {...this._settingsProps()} getTokenStatsContent={this._getTokenStatsContent} requests={deepRequests} mainAgentSessions={displaySessions} sessionUpperBoundTs={sessionUpperBoundTs} streamingLatest={this.state.streamingLatest} userProfile={this.state.userProfile} collapseToolResults={prefs.collapseToolResults} expandThinking={prefs.expandThinking} showFullToolContent={prefs.showFullToolContent} minimalChat={prefs.minimalChat} onlyCurrentSession={!this._isLocalLog} isLocalLog={!!this._isLocalLog} showThinkingSummaries={prefs.showThinkingSummaries} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={this.handleScrollTsDone} cliMode={this._isLocalLog ? false : this.state.cliMode} sdkMode={this._isLocalLog ? false : this.state.sdkMode} terminalVisible={this._isLocalLog ? false : (this.state.sdkMode ? this.state.scratchOpen : this.state.terminalVisible)} onToggleTerminal={() => this.setState(prev => prev.sdkMode ? ({ scratchOpen: !prev.scratchOpen }) : ({ terminalVisible: !prev.terminalVisible }))} pendingUploadPaths={this.state.pendingUploadPaths} onUploadPathsConsumed={this.handleUploadPathsConsumed} uploadingDrop={this.state.uploadingDrop} fileLoading={this.state.fileLoading} isStreaming={this.state.isStreaming} lang={this.state.lang} autoApproveSeconds={this.state.autoApproveSeconds} onAutoApproveChange={this.handleAutoApproveChange} planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds} onPlanAutoApproveChange={this.handlePlanAutoApproveChange} onClearContextOptimistic={this.handleClearContextOptimistic} onUserMessageSent={this.handleUserMessageSent} onPendingAsk={this.handleApprovalAsk} onPendingPtyPlan={this.handleApprovalPtyPlan} ownTabId={this.state.ownTabId} projectName={this.state.projectName} viewProject={this.state.viewedProject || this.state.projectName || null} setContextBarSlot={this.setContextBarSlot} attachedSid={this.state.attachedSid || null} viewedProject={this.state.viewedProject || null} viewInstance={this.state.viewedInstance || null} onDetachView={this.handleDetachView} />
+              <ChatView loadingProgress={fileLoading ? this._loadingProgressText() : null} {...this._settingsProps()} getTokenStatsContent={this._getTokenStatsContent} requests={deepRequests} mainAgentSessions={displaySessions} sessionUpperBoundTs={sessionUpperBoundTs} streamingLatest={this.state.streamingLatest} userProfile={this.state.userProfile} collapseToolResults={prefs.collapseToolResults} expandThinking={prefs.expandThinking} showFullToolContent={prefs.showFullToolContent} minimalChat={prefs.minimalChat} onlyCurrentSession={!this._isLocalLog} isLocalLog={!!this._isLocalLog} showThinkingSummaries={prefs.showThinkingSummaries} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={this.handleScrollTsDone} cliMode={this._isLocalLog ? false : this.state.cliMode} sdkMode={this._isLocalLog ? false : this.state.sdkMode} terminalVisible={this._isLocalLog ? false : (this.state.sdkMode ? this.state.scratchOpen : this.state.terminalVisible)} onToggleTerminal={() => this.setState(prev => prev.sdkMode ? ({ scratchOpen: !prev.scratchOpen }) : ({ terminalVisible: !prev.terminalVisible }))} pendingUploadPaths={this.state.pendingUploadPaths} onUploadPathsConsumed={this.handleUploadPathsConsumed} uploadingDrop={this.state.uploadingDrop} fileLoading={this.state.fileLoading} isStreaming={this.state.isStreaming} lang={this.state.lang} autoApproveSeconds={this.state.autoApproveSeconds} onAutoApproveChange={this.handleAutoApproveChange} planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds} onPlanAutoApproveChange={this.handlePlanAutoApproveChange} onClearContextOptimistic={this.handleClearContextOptimistic} onUserMessageSent={this.handleUserMessageSent} onPendingAsk={this.handleApprovalAsk} onPendingPtyPlan={this.handleApprovalPtyPlan} ownTabId={this.state.ownTabId} projectName={this.state.projectName} viewProject={this.state.viewedProject || this.state.projectName || null} setContextBarSlot={this.setContextBarSlot} attachedSid={this.state.attachedSid || null} viewedProject={this.state.viewedProject || null} viewInstance={this.state.viewedInstance || null} onDetachView={this.handleDetachView} onResumeSession={this.handleResumeSession} />
             </div>
             {/* View-switch overlay: covers chat + terminal while a session/project
                 switch is in flight (see AppBase resumeSwitch). pointer-events:none

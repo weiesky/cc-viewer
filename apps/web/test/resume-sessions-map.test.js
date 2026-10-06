@@ -4,7 +4,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mapResumeRow, formatRelativeTime, deriveActiveProcessChips, deriveProjectTabs, attachMainPty, closeProjectPty } from '../src/utils/resumeSessions.js';
+import { mapResumeRow, formatRelativeTime, deriveActiveProcessChips, deriveProjectTabs, attachMainPty, closeProjectPty, resumeSession } from '../src/utils/resumeSessions.js';
 
 describe('mapResumeRow', () => {
   const base = {
@@ -321,5 +321,59 @@ describe('closeProjectPty', () => {
       fetchImpl: () => Promise.resolve({ ok: false, status: 404, json: () => Promise.reject(new Error('not json')) }),
     });
     assert.deepEqual(out, { ok: false, reason: 'http-404' });
+  });
+});
+
+describe('resumeSession (true /resume, 2026-10-06)', () => {
+  const UUID = 'a9883ab8-0ab7-459a-bcfd-4c8950a14384';
+
+  it('POSTs /api/resume-session with sessionUuid + project + instanceKey, resolves ok on success', async () => {
+    const calls = [];
+    const out = await resumeSession(UUID, {
+      project: 'projA', instanceKey: 'ccv-abc123',
+      fetchImpl: (path, init) => { calls.push({ path, init }); return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) }); },
+    });
+    assert.deepEqual(out, { ok: true });
+    assert.equal(calls[0].path, '/api/resume-session');
+    assert.equal(calls[0].init.method, 'POST');
+    const body = JSON.parse(calls[0].init.body);
+    assert.equal(body.sessionUuid, UUID);
+    assert.equal(body.project, 'projA');
+    assert.equal(body.instanceKey, 'ccv-abc123');
+  });
+
+  it('omits project/instanceKey from the body when absent', async () => {
+    const calls = [];
+    await resumeSession(UUID, { fetchImpl: (path, init) => { calls.push({ init }); return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) }); } });
+    const body = JSON.parse(calls[0].init.body);
+    assert.equal(body.sessionUuid, UUID);
+    assert.ok(!('project' in body) && !('instanceKey' in body));
+  });
+
+  it('rejects an empty sessionUuid without fetching', async () => {
+    let fetched = 0;
+    const out = await resumeSession('', { fetchImpl: () => { fetched++; return Promise.resolve({ ok: true }); } });
+    assert.deepEqual(out, { ok: false, reason: 'missing-session' });
+    assert.equal(fetched, 0);
+  });
+
+  it('maps 403 to forbidden', async () => {
+    const out = await resumeSession(UUID, { fetchImpl: () => Promise.resolve({ ok: false, status: 403, json: () => Promise.resolve({ ok: false, reason: 'forbidden' }) }) });
+    assert.deepEqual(out, { ok: false, reason: 'forbidden' });
+  });
+
+  it('maps 409 busy to reason:busy', async () => {
+    const out = await resumeSession(UUID, { fetchImpl: () => Promise.resolve({ ok: false, status: 409, json: () => Promise.resolve({ ok: false, reason: 'busy' }) }) });
+    assert.deepEqual(out, { ok: false, reason: 'busy' });
+  });
+
+  it('swallows network failures into reportSwallowed and resolves ok:false network', async () => {
+    const reports = [];
+    const out = await resumeSession(UUID, {
+      fetchImpl: () => Promise.reject(new Error('net down')),
+      reportImpl: (tag, err) => reports.push({ tag, msg: String(err && err.message) }),
+    });
+    assert.deepEqual(out, { ok: false, reason: 'network' });
+    assert.deepEqual(reports, [{ tag: 'pty.resume', msg: 'net down' }]);
   });
 });

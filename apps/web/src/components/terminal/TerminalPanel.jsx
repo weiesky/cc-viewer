@@ -36,6 +36,7 @@ import { resizeImageIfNeeded } from '../../utils/imageResize';
 import UltraplanPanel, { readUltraplanPopoverSize, ultraplanOverlayInnerStyle } from './UltraplanPanel';
 import { AgentTeamIcon, UploadIcon, TrashIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
 import QuickAutoApproveRows from '../common/QuickAutoApproveRows';
+import ResumeSessionsRow from '../common/ResumeSessionsRow';
 import { createQuickMenuHoverIntent } from '../../utils/quickMenuHoverIntent';
 import chrome from '../common/sharedChrome.module.css';
 
@@ -1818,6 +1819,18 @@ class TerminalPanel extends React.Component {
                     onToggle={(k) => this.setState({ quickSettingsExpanded: k })}
                     onHoverEnter={this._qmHover.enter}
                     onHoverLeave={this._qmHover.leave}
+                    middle={
+                      <ResumeSessionsRow
+                        expanded={this.state.quickSettingsExpanded === 'history'}
+                        onToggle={(k) => this.setState({ quickSettingsExpanded: k })}
+                        onHoverEnter={this._qmHover.enter}
+                        onHoverLeave={this._qmHover.leave}
+                        project={this.props.viewProject}
+                        attachedUuid={this.props.attachedSid}
+                        isStreaming={this.props.isStreaming}
+                        onResumeSession={this.props.onResumeSession}
+                      />
+                    }
                   />
                   {/* AgentTeam 快捷指令（自工具栏独立按钮迁入，置于菜单底部）：AgentTeam 启动时
                       默认开启，展示自定义快捷方式 + 预设列表；仅当用户显式关闭

@@ -11,40 +11,45 @@ import { PERM_AUTO_APPROVE_OPTIONS, PLAN_AUTO_APPROVE_OPTIONS, autoApproveValueL
 // 级联子菜单由 expandedKey 驱动显隐而非 CSS :hover —— 选完档位要立即收起，
 // 此时鼠标仍悬停在 group 上，纯 :hover 收不掉。hover-intent 由宿主经
 // onHoverEnter/onHoverLeave 注入（见 utils/quickMenuHoverIntent）。
-function QuickAutoApproveRows({ autoApproveSeconds, planAutoApproveSeconds, onAutoApproveChange, onPlanAutoApproveChange, expandedKey, onToggle, onHoverEnter, onHoverLeave }) {
+function QuickAutoApproveRows({ autoApproveSeconds, planAutoApproveSeconds, onAutoApproveChange, onPlanAutoApproveChange, expandedKey, onToggle, onHoverEnter, onHoverLeave, middle }) {
   const rows = [
     { key: 'perm', icon: <ShieldCheckIcon />, label: t('ui.permission.autoApprove.setting'), value: autoApproveSeconds, options: PERM_AUTO_APPROVE_OPTIONS, onChange: onAutoApproveChange },
     { key: 'plan', icon: <PlanClipboardIcon />, label: t('ui.approval.settings.planAutoApprove'), value: planAutoApproveSeconds, options: PLAN_AUTO_APPROVE_OPTIONS, onChange: onPlanAutoApproveChange },
   ];
-  return rows.map(row => {
+  // `middle` (2026-10-06): an optional node rendered between the perm row and the plan
+  // row — the session-history entry (star-menu migration). Rendered as a sibling inside
+  // the perm fragment so the mapped children stay keyed and the order is perm → middle → plan.
+  return rows.map((row, i) => {
     const expanded = expandedKey === row.key;
     return (
-      <div
-        key={row.key}
-        className={`${chrome.quickMenuGroup} ${expanded ? chrome.quickMenuGroupOpen : ''}`}
-        onMouseEnter={() => onHoverEnter(row.key)}
-        onMouseLeave={() => onHoverLeave(row.key)}
-      >
-        <button className={chrome.quickMenuRow} onClick={() => onToggle(expanded ? null : row.key)}>
-          <span className={chrome.quickMenuRowIcon}>{row.icon}</span>
-          <span className={chrome.quickMenuLabel}>{row.label}</span>
-          <span className={chrome.quickMenuValue}>[{autoApproveValueLabel(row.value, t)}]</span>
-          <span className={chrome.quickMenuCaret}>▸</span>
-        </button>
-        <div className={chrome.quickMenuSubWrap}>
-          <div className={chrome.quickMenuSub}>
-            {row.options.map(v => (
-              <button
-                key={v}
-                className={`${chrome.quickMenuOption} ${(row.value ?? 0) === v ? chrome.quickMenuOptionActive : ''}`}
-                onClick={() => { row.onChange?.(v); onToggle(null); }}
-              >
-                {autoApproveValueLabel(v, t)}
-              </button>
-            ))}
+      <React.Fragment key={row.key}>
+        <div
+          className={`${chrome.quickMenuGroup} ${expanded ? chrome.quickMenuGroupOpen : ''}`}
+          onMouseEnter={() => onHoverEnter(row.key)}
+          onMouseLeave={() => onHoverLeave(row.key)}
+        >
+          <button className={chrome.quickMenuRow} onClick={() => onToggle(expanded ? null : row.key)}>
+            <span className={chrome.quickMenuRowIcon}>{row.icon}</span>
+            <span className={chrome.quickMenuLabel}>{row.label}</span>
+            <span className={chrome.quickMenuValue}>[{autoApproveValueLabel(row.value, t)}]</span>
+            <span className={chrome.quickMenuCaret}>▸</span>
+          </button>
+          <div className={chrome.quickMenuSubWrap}>
+            <div className={chrome.quickMenuSub}>
+              {row.options.map(v => (
+                <button
+                  key={v}
+                  className={`${chrome.quickMenuOption} ${(row.value ?? 0) === v ? chrome.quickMenuOptionActive : ''}`}
+                  onClick={() => { row.onChange?.(v); onToggle(null); }}
+                >
+                  {autoApproveValueLabel(v, t)}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+        {i === 0 && middle ? middle : null}
+      </React.Fragment>
     );
   });
 }

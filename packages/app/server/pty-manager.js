@@ -1162,6 +1162,12 @@ function _liveInstancesForProject(project) {
   return live;
 }
 
+/** Exported read-only view of _liveInstancesForProject for the /api/resume-session route's
+ *  multi-instance ambiguity guard (mirror of killPtyFor/attachPtyFor). */
+export function liveInstancesForProject(project) {
+  return _liveInstancesForProject(project);
+}
+
 /**
  * Record the claude session uuid a PTY's conversation resolved to, so chat
  * sends can be routed by sessionId (2026-10-05). Called by the v2 writer once
@@ -1401,6 +1407,35 @@ export function getPtyState() {
 export function getPtyKind() {
   const s = _active();
   return s ? s.ptyKind : null;
+}
+
+/**
+ * Kind of an ANCHOR-SPECIFIC PTY: 'claude' | 'shell' | null (2026-10-06, for /api/resume-session).
+ * Unlike getPtyKind (active-scoped) and _resolveKeyByAnchor (which falls back to activePtyKey),
+ * this resolves STRICTLY via _resolveKey — a provided-but-unresolved project/instanceKey returns
+ * null rather than the active PTY's kind. The resume route depends on this to never inject
+ * `/resume <uuid>` into the wrong (active) project's conversation when the anchor doesn't resolve.
+ */
+export function getPtyKindFor({ project, instanceKey } = {}) {
+  const key = _resolveKey({ project, instanceKey });
+  const s = key ? ptys.get(key) : null;
+  return (s && s.ptyProcess) ? s.ptyKind : null;
+}
+
+/**
+ * True iff `project` names a currently-LIVE ccv claude PTY (main interactive, ptyKind 'claude').
+ * Used by interceptor.markSessionStart to decide whether a SessionStart hook from a non-bound
+ * cwd belongs to a parallel project this server manages (and so its resume should re-bind the
+ * writer keyed by that project) versus an unrelated process to ignore.
+ */
+export function isLiveClaudeProject(project) {
+  if (typeof project !== 'string' || !project) return false;
+  for (const [, s] of ptys) {
+    if (!s || !s.ptyProcess || s.ptyKind !== 'claude') continue;
+    const recCwd = s.cwd || s.currentWorkspacePath || s.lastWorkspacePath;
+    if (projectKeyForCwd(recCwd) === project) return true;
+  }
+  return false;
 }
 
 /** True iff the active Claude session was launched with --dangerously-skip-permissions. */

@@ -11,6 +11,7 @@ import styles from './ChatInputBar.module.css';
 import chrome from '../common/sharedChrome.module.css';
 import { AgentTeamIcon, UltraplanIcon, UploadIcon, TrashIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
 import QuickAutoApproveRows from '../common/QuickAutoApproveRows';
+import ResumeSessionsRow from '../common/ResumeSessionsRow';
 import { createQuickMenuHoverIntent } from '../../utils/quickMenuHoverIntent';
 
 const SpeechRec = typeof window !== 'undefined' && window.isSecureContext
@@ -47,7 +48,7 @@ const SPEECH_LANG_MAP = {
   tr: 'tr-TR', uk: 'uk-UA',
 };
 
-function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onClearContext, isStreaming, pendingImages, onRemovePendingImage, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, onClearContextNow, ultraplanPopover, agentTeamEnabled }) {
+function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onClearContext, isStreaming, pendingImages, onRemovePendingImage, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, onClearContextNow, ultraplanPopover, agentTeamEnabled, onResumeSession, viewProject, attachedSid }) {
   const [plusOpen, setPlusOpen] = useState(false);
   // 桌面四芒星菜单的级联展开行（与终端工具栏同款交互）：null | 'perm' | 'plan' | 'agentteam'
   const [quickExpanded, setQuickExpanded] = useState(null);
@@ -420,6 +421,18 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                       onToggle={setQuickExpanded}
                       onHoverEnter={qmHover.enter}
                       onHoverLeave={qmHover.leave}
+                      middle={
+                        <ResumeSessionsRow
+                          expanded={quickExpanded === 'history'}
+                          onToggle={setQuickExpanded}
+                          onHoverEnter={qmHover.enter}
+                          onHoverLeave={qmHover.leave}
+                          project={viewProject}
+                          attachedUuid={attachedSid}
+                          isStreaming={isStreaming}
+                          onResumeSession={onResumeSession}
+                        />
+                      }
                     />
                     {/* AgentTeam ▸：自定义快捷方式 + 预设列表。AgentTeam 启动时默认开启；
                         仅当用户显式关闭（export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0）时整组隐藏 */}

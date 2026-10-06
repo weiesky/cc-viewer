@@ -17,15 +17,21 @@ import styles from './ResumeSessionsPopover.module.css';
  * attached, the attached session is what the user is looking at). `isStreaming`
  * is the ground-truth "current session is mid-stream" flag, used to force the
  * current row's running pulse even when its journal mtime has aged out.
+ * `project` (2026-10-06, star-menu migration) scopes the list to the VIEWED
+ * project: when set, the fetch appends `?project=`; when absent it defaults to the
+ * bound project (legacy behavior, kept for the mobile Modal). Changing `project`
+ * while open aborts the in-flight fetch and re-fetches the new project's list.
  */
-export function ResumeSessionsList({ active, onResumeSession, attachedUuid, isStreaming }) {
+export function ResumeSessionsList({ active, onResumeSession, attachedUuid, isStreaming, project }) {
   const [rows, setRows] = useState(null); // null = not fetched yet / inactive
   const [currentSessionUuid, setCurrentSessionUuid] = useState(null);
 
   useEffect(() => {
     if (!active) return;
     const ctrl = new AbortController();
-    fetch(apiUrl('/api/resume-sessions?limit=5'), { signal: ctrl.signal })
+    const qs = new URLSearchParams({ limit: '5' });
+    if (typeof project === 'string' && project) qs.set('project', project);
+    fetch(apiUrl(`/api/resume-sessions?${qs.toString()}`), { signal: ctrl.signal })
       .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
       .then(data => {
         setRows(Array.isArray(data?.items) ? data.items : []);
@@ -38,7 +44,7 @@ export function ResumeSessionsList({ active, onResumeSession, attachedUuid, isSt
         setCurrentSessionUuid(null);
       });
     return () => ctrl.abort();
-  }, [active]);
+  }, [active, project]);
 
   const handlePick = useCallback((raw) => {
     // Current-live session: highlight only, no view switch. Judge on the RAW row

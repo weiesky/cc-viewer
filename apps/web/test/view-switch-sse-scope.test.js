@@ -243,12 +243,58 @@ describe('view-switch SSE scope (runtime)', () => {
     );
   });
 
-  it('handleResumeSession cold-loads ?sid=<uuid>', async () => {
+  it('handleResumeSession opens a confirm (no initSSE until confirmed)', async () => {
+    // Post-migration (2026-10-06): a row pick opens a centered Modal.confirm and returns
+    // without touching SSE; the switch only proceeds on OK via _doResumeSwitch. antd is
+    // stubbed (Proxy), so Modal.confirm is inert — this asserts the pick alone does NOT
+    // cold-load (the confirm gate is real, not a passthrough).
     const inst = await mount();
     const urls = await urlsAfter(() => inst.handleResumeSession({ sessionUuid: 'AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE' }));
+    assert.ok(
+      !urls.some((u) => u.includes('sid=')),
+      `expected no ?sid= cold-load before confirm, got ${JSON.stringify(urls)}`,
+    );
+  });
+
+  it('_applyViewAttach cold-loads ?sid=<uuid> (the post-confirm attach)', async () => {
+    // The attach half of a true resume: after the server injects /resume, the view
+    // attaches to the now-live session by cold-loading ?sid=<uuid> (lowercased).
+    const inst = await mount();
+    const urls = await urlsAfter(() => inst._applyViewAttach('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'));
     assert.ok(
       urls.some((u) => u.includes('sid=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')),
       `expected ?sid=<lowercased uuid>, got ${JSON.stringify(urls)}`,
     );
+  });
+
+  it('_applyViewAttach with a parallel-project scope cold-loads ?sid=<uuid>&project=<B> and keeps the view on B', async () => {
+    // Parallel true-resume (review P1-a): resuming into a parallel VIEWED project must keep
+    // the view on that project — the sid lives under B's dir, so the cold-load must be
+    // scoped ?sid=<uuid>&project=<B>, and viewedProject must NOT be cleared to the bound
+    // project (which would snap the view back and never render the resumed conversation).
+    const inst = await mount();
+    inst.setState({ projectName: 'boundProj', viewedProject: 'projB', viewedInstance: null });
+    await new Promise((r) => setTimeout(r, 60));
+    const urls = await urlsAfter(() => inst._applyViewAttach('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', { project: 'projB', instance: null }));
+    assert.ok(
+      urls.some((u) => u.includes('sid=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee') && u.includes('project=projB')),
+      `expected ?sid=<uuid>&project=projB, got ${JSON.stringify(urls)}`,
+    );
+    assert.equal(inst.state.viewedProject, 'projB', 'view stays on the parallel project');
+    assert.equal(inst.state.attachedSid, 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee');
+  });
+
+  it('_applyViewAttach with a bound scope clears any parallel view (bound project resume)', async () => {
+    // Bound true-resume: projectName === scope project (or scope null) → attach wins and any
+    // parallel view is cleared; the cold-load targets the bound project.
+    const inst = await mount();
+    inst.setState({ projectName: 'boundProj', viewedProject: 'projB', viewedInstance: null });
+    await new Promise((r) => setTimeout(r, 60));
+    const urls = await urlsAfter(() => inst._applyViewAttach('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', { project: 'boundProj', instance: null }));
+    assert.ok(
+      urls.some((u) => u.includes('sid=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee') && u.includes('project=boundProj')),
+      `expected ?sid=<uuid>&project=boundProj, got ${JSON.stringify(urls)}`,
+    );
+    assert.equal(inst.state.viewedProject, null, 'bound resume clears the parallel view');
   });
 });

@@ -17,7 +17,7 @@ import { apiUrl, getBasePath } from './utils/apiUrl';
 import { publish as publishWorkflowUpdate } from './utils/workflowStore';
 import { publish as publishTaskUpdate, clearTasks as clearTaskStore } from './utils/taskStore';
 import { reportSwallowed } from './utils/errorReport';
-import { attachMainPty, closeProjectPty } from './utils/resumeSessions';
+import { attachMainPty, closeProjectPty, resumeSession } from './utils/resumeSessions';
 import { createViewStateCache } from './utils/viewStateCache';
 import { playEvent as playVoiceEvent, unlockAudio, setTurnEndCooldownMs } from './utils/voicePackPlayer';
 import { getDefaultBindingsForLocale as vpDefaultBindingsForLocale } from '@ccv/core/voice-pack-events';
@@ -125,6 +125,11 @@ class AppBase extends React.Component {
       // OWN session) and pins terminal sends/attach to this exact process. null = the
       // instance-agnostic default (single-instance / bound view).
       viewedInstance: null,
+      // Bump on every successful project-tab close to force an immediate
+      // /api/live-processes re-fetch in the Header (the 5s poll is the
+      // backstop only) so the last remaining tab collapses to the
+      // single-session form at once.
+      liveProcessRefreshToken: 0,
       // View switch in flight: { uuid } while a ?sid / ?project cold load is
       // running. Drives the chat/terminal switch overlay. Cleared on load_end
       // (30s timeout backstop guards against a lost SSE event).
@@ -490,22 +495,64 @@ class AppBase extends React.Component {
     } catch {}
   }
 
-  // /resume hover-list selection (2026-10): a PURE view switch — no new process.
-  // The list is scoped to the CURRENT project (the server filters rows to the
-  // bound project), so a pick always attaches the main view to that session's
-  // transcript in place: set `attachedSid`, reset the view baseline, and re-scope
-  // the SSE to /events?sid=<uuid> so its full transcript cold-loads. The session's
-  // own claude process is untouched (never spawned or killed); follow-latest stays
-  // suspended while attached, and the detach chip returns to the live session.
+  // /resume selection (2026-10-06, star-menu migration): TRUE resume aligned with
+  // Claude Code's /resume. A pick opens a centered Modal.confirm; on OK the server
+  // injects `/resume <uuid>` into the target project's live claude PTY (the process
+  // switches INTO that session in place), then the view attaches to it so the display
+  // follows the now-live resumed conversation. Desktop (star menu) and Mobile (Modal)
+  // share this single handler, so both get the confirm + true switch.
   handleResumeSession = (row) => {
     if (!row || !row.sessionUuid) return;
     const uuid = String(row.sessionUuid).toLowerCase();
     // Already the live current session → nothing to switch (the list no-ops it too).
     if (this.state.attachedSid === uuid) return;
+    const name = (typeof row.aiTitle === 'string' && row.aiTitle)
+      || (Array.isArray(row.preview) && row.preview.length && row.preview[0])
+      || uuid;
+    Modal.confirm({
+      title: t('ui.resume.confirmTitle'),
+      content: t('ui.resume.confirmContent', { name }),
+      okText: t('ui.resume.confirmOk'),
+      cancelText: t('ui.cancel'),
+      centered: true,
+      onOk: () => this._doResumeSwitch(uuid),
+    });
+  };
+
+  // Confirm-approved true switch: inject /resume into the target PTY, then attach the view.
+  _doResumeSwitch = async (uuid) => {
+    const project = this.state.viewedProject || this.state.projectName;
+    const instanceKey = this.state.viewedInstance || null;
+    let r;
+    try {
+      r = await resumeSession(uuid, { project, instanceKey });
+    } catch (err) {
+      reportSwallowed('resume.switch', err);
+      r = { ok: false, reason: 'network' };
+    }
+    if (this._unmounted) return;
+    if (!r || !r.ok) {
+      try { message.error(t((r && r.reason === 'busy') ? 'ui.resume.busy' : 'ui.resume.failed')); } catch {}
+      return;
+    }
+    // Carry the target scope into the view attach so a resume into a PARALLEL viewed
+    // project keeps the view on that project (its session lives under its own dir) —
+    // clearing viewedProject here would collapse the view back to the bound project and
+    // the resumed conversation would never render (review P1-a).
+    this._applyViewAttach(uuid, { project, instance: instanceKey });
+  };
+
+  // The view-attach half of a resume (extracted from the old view-only path): overlay +
+  // 30s backstop + attachedSid + baseline reset + SSE re-scope to ?sid=. For a bound-project
+  // resume scope is null (project defaults to bound); for a parallel-project resume the scope
+  // keeps the viewed project/instance so the cold-load resolves the sid under THAT project's dir.
+  _applyViewAttach = (uuid, scope = null) => {
+    const scopeProject = scope && scope.project ? scope.project : null;
+    const scopeInstance = scope && scope.instance ? scope.instance : null;
     // Mark the switch in flight so the chat/terminal panels get a translucent
     // overlay until the ?sid cold load completes (load_end). A 30s backstop
     // prevents a lost SSE event from leaving the overlay up forever.
-    this.setState({ resumeSwitch: { uuid: row.sessionUuid } });
+    this.setState({ resumeSwitch: { uuid } });
     if (this._resumeSwitchTimer) clearTimeout(this._resumeSwitchTimer);
     this._resumeSwitchTimer = setTimeout(() => {
       this._resumeSwitchTimer = null;
@@ -513,11 +560,17 @@ class AppBase extends React.Component {
       this.setState({ resumeSwitch: null });
       try { message.warning(t('ui.resume.switchTimeout')); } catch {}
     }, 30000);
-    this.setState({ attachedSid: uuid, viewedProject: null, viewedInstance: null }); // attach wins over any parallel-project view
+    if (scopeProject && scopeProject !== this.state.projectName) {
+      // Parallel-project resume: keep the viewed project/instance so the view stays on it.
+      this.setState({ attachedSid: uuid, viewedProject: scopeProject, viewedInstance: scopeInstance });
+    } else {
+      // Bound-project resume: attach wins over any parallel-project view.
+      this.setState({ attachedSid: uuid, viewedProject: null, viewedInstance: null });
+    }
     this._resetForViewSwitch();
     // Pass the attached-session scope explicitly — setState hasn't flushed (React 18 batching),
     // so initSSE reading this.state would see the pre-attach view.
-    this.initSSE({ sid: uuid, project: null, instance: null });
+    this.initSSE({ sid: uuid, project: scopeProject, instance: scopeInstance });
     // Overlay clears on the cold load's load_end (handleEventMessage).
   };
 
@@ -645,6 +698,11 @@ class AppBase extends React.Component {
         } catch {}
         return;
       }
+      // Every successful close shrinks the live-processes list — tell the
+      // Header to re-fetch now instead of waiting up to 5s for the poll; the
+      // tab strip re-renders from the fresh list (collapsing to the
+      // single-session form once it drops below 2).
+      this.setState((prev) => ({ liveProcessRefreshToken: (prev.liveProcessRefreshToken || 0) + 1 }));
       // Multi-instance: closing an instance only moves the view when it is THE one being
       // viewed (same project AND same instance). A same-cwd twin's close, or closing the BOUND
       // project, leaves the current view alone (the poll drops the closed tab). Read state at
@@ -1661,7 +1719,12 @@ class AppBase extends React.Component {
       // the `ccv-` substring).
       const cacheKey = wantInstance ? `${wantProject}\x00${wantInstance}` : wantProject;
       if (wantSid) {
-        const projQ = this.state.projectName ? `&project=${encodeURIComponent(this.state.projectName)}` : '';
+        // True-resume (2026-10-06): scope the ?sid= cold-load to the session's OWN project
+        // (a parallel viewed project for a parallel resume), not the bound project — the sid
+        // resolves under its own dir (events.js ?sid=&project=). Fall back to bound when the
+        // scope carries no project (the legacy / bound resume path).
+        const sidProject = _scopeProject || this.state.projectName;
+        const projQ = sidProject ? `&project=${encodeURIComponent(sidProject)}` : '';
         url = `/events?sid=${encodeURIComponent(wantSid)}${projQ}`;
         hasCache = false;
       } else if (wantProject) {

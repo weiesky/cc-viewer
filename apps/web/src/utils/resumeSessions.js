@@ -233,3 +233,38 @@ export function closeProjectPty(project, { fetchImpl, reportImpl, instanceKey } 
     })
     .catch((err) => { doReport('pty.close', err); return { ok: false, reason: 'network' }; });
 }
+
+/**
+ * TRUE /resume (2026-10-06, star-menu migration): POST /api/resume-session to inject
+ * `/resume <uuid>` into the target project's live claude PTY, switching the running
+ * process INTO that session (subsequent messages continue it). Carries `project`
+ * (the viewed project) and `instanceKey` (multi-instance disambiguation) so the server
+ * injects into THIS exact process. Admin/same-origin gated server-side; a 409 'busy'
+ * comes back when the TUI is mid-turn/mid-approval so the caller can toast a clear
+ * reason. Never throws; network/parse failures go to reportSwallowed per the
+ * CLAUDE.md swallowed-catch convention.
+ * @returns {Promise<{ ok:boolean, reason?:string }>}
+ */
+export function resumeSession(sessionUuid, { project, instanceKey, fetchImpl, reportImpl } = {}) {
+  if (typeof sessionUuid !== 'string' || !sessionUuid) return Promise.resolve({ ok: false, reason: 'missing-session' });
+  const doFetch = fetchImpl || ((path, init) => import('./apiUrl.js').then(({ apiUrl }) => fetch(apiUrl(path), init)));
+  const doReport = reportImpl || ((tag, err) => import('./errorReport.js').then(({ reportSwallowed }) => reportSwallowed(tag, err)));
+  const payload = { sessionUuid };
+  if (typeof project === 'string' && project) payload.project = project;
+  if (typeof instanceKey === 'string' && instanceKey) payload.instanceKey = instanceKey;
+  return Promise.resolve()
+    .then(() => doFetch('/api/resume-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }))
+    .then(async (r) => {
+      if (!r) return { ok: false, reason: 'no-response' };
+      if (r.status === 403) return { ok: false, reason: 'forbidden' };
+      let body = null;
+      try { body = await r.json(); } catch { body = null; }
+      if (r.ok && body && body.ok) return { ok: true };
+      return { ok: false, reason: (body && body.reason) || ('http-' + r.status) };
+    })
+    .catch((err) => { doReport('pty.resume', err); return { ok: false, reason: 'network' }; });
+}

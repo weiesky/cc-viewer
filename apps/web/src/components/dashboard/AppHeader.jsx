@@ -29,7 +29,6 @@ import DialogueIcon from '../common/DialogueIcon';
 import ChipIcon from '../common/ChipIcon';
 import CachePopoverContent from './CachePopoverContent';
 import LiveTagPopover from './LiveTagPopover';
-import { ResumeSessionsList } from '../chat/ResumeSessionsPopover';
 import { deriveActiveProcessChips, deriveProjectTabs } from '../../utils/resumeSessions';
 import MemoryDetailModal from '../common/MemoryDetailModal';
 import SkillsManagerModal from '../settings/SkillsManagerModal';
@@ -70,9 +69,9 @@ function makeAuthState(over = {}) {
 
 // countryToFlag 已随地理位置控件一起迁到 src/components/common/CountryFlag.jsx
 
-// The current-project label. Renders `当前项目:<projectName>`; the label text
-// doubles as the hover trigger for the recent-sessions dropdown
-// (HeaderResumeDropdown below).
+// The current-project label. Renders `当前项目:<projectName>` as a plain label.
+// (2026-10-06: the hover recent-sessions dropdown was removed — session history now
+// lives in the star quick-settings menu, between the permission and plan rows.)
 function HeaderProjectLabel({ projectName }) {
   return (
     <span className={styles.headerProjectName}>
@@ -103,41 +102,10 @@ function NewProjectButton({ onNewProject }) {
   );
 }
 
-// /resume entry (2026-10): the current-project label doubles as the hover
-// trigger for the current project's recent-sessions dropdown (max 5, single
-// project — no cross-project grouping). Picking a row fires onResumeSession
-// (AppBase.handleResumeSession, a pure view switch) and closes the dropdown.
-// Rendered as a plain label (no dropdown) in local-log mode or when no resume
-// handler is wired.
-function HeaderResumeDropdown({ projectName, isLocalLog, onResumeSession, attachedSid, isStreaming }) {
-  const [open, setOpen] = useState(false);
-  const label = <HeaderProjectLabel projectName={projectName} />;
-  if (!onResumeSession || isLocalLog) return label;
-  return (
-    <Popover
-      content={
-        <div style={{ maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', overflowX: 'hidden' }}>
-          <ResumeSessionsList
-            active={open}
-            onResumeSession={(row) => { setOpen(false); onResumeSession(row); }}
-            attachedUuid={attachedSid}
-            isStreaming={isStreaming}
-          />
-        </div>
-      }
-      trigger="hover"
-      placement="bottomLeft"
-      arrow={{ pointAtCenter: true }}
-      autoAdjustOverflow={false}
-      align={{ overflow: { adjustX: true, shiftY: true } }}
-      open={open}
-      onOpenChange={setOpen}
-      overlayInnerStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-light)', padding: 0 }}
-    >
-      <span style={{ display: 'inline-flex', cursor: 'default' }}>{label}</span>
-    </Popover>
-  );
-}
+// /resume entry (2026-10, REMOVED 2026-10-06): the current-project label used to double
+// as the hover trigger for the recent-sessions dropdown. Session history moved into the
+// star quick-settings menu (ResumeSessionsRow) with a Modal.confirm + true /resume switch;
+// the header label is now a plain label (HeaderProjectLabel) with no dropdown.
 
 // Parallel-project chips (2026-10): one chip per OTHER live main claude PTY
 // (one per activated project), excluding the current project (its identity is
@@ -173,8 +141,7 @@ function HeaderActiveChips({ onActivateChip, chips }) {
 // main PTY server-side (AppBase.handleCloseProject). Hovering the current
 // project's tab opens the same recent-sessions dropdown the legacy label
 // carries.
-function HeaderProjectTabs({ tabs, currentProject, viewedProject, viewedInstance, onActivateChip, onDetachView, onCloseProject, onNewProject, onResumeSession, attachedSid, isStreaming }) {
-  const [resumeOpen, setResumeOpen] = useState(false);
+function HeaderProjectTabs({ tabs, currentProject, viewedProject, viewedInstance, onActivateChip, onDetachView, onCloseProject, onNewProject }) {
   const viewing = viewedProject || currentProject || null;
   // Multi-instance: "viewing" identity is project+instance — a same-cwd twin tab is NOT the
   // viewed one just because the basename matches.
@@ -232,34 +199,10 @@ function HeaderProjectTabs({ tabs, currentProject, viewedProject, viewedInstance
         )}
       </div>
     );
-    // Only the CURRENT project's tab carries the recent-sessions hover dropdown
-    // (the API is bound-project scoped, same scope as the legacy label).
-    if (!isCurrent || !onResumeSession) return <React.Fragment key={tab.key}>{tabBody}</React.Fragment>;
-    return (
-      <Popover
-        key={tab.key}
-        content={
-          <div style={{ maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', overflowX: 'hidden' }}>
-            <ResumeSessionsList
-              active={resumeOpen}
-              onResumeSession={(row) => { setResumeOpen(false); onResumeSession(row); }}
-              attachedUuid={attachedSid}
-              isStreaming={isStreaming}
-            />
-          </div>
-        }
-        trigger="hover"
-        placement="bottomLeft"
-        arrow={{ pointAtCenter: true }}
-        autoAdjustOverflow={false}
-        align={{ overflow: { adjustX: true, shiftY: true } }}
-        open={resumeOpen}
-        onOpenChange={setResumeOpen}
-        overlayInnerStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-light)', padding: 0 }}
-      >
-        {tabBody}
-      </Popover>
-    );
+    // (2026-10-06) The recent-sessions hover dropdown on the current-project tab was
+    // removed — session history lives in the star quick-settings menu now. Every tab
+    // renders the same body.
+    return <React.Fragment key={tab.key}>{tabBody}</React.Fragment>;
   };
   return (
     <div className={styles.projectTabsStrip}>
@@ -275,7 +218,7 @@ function HeaderProjectTabs({ tabs, currentProject, viewedProject, viewedInstance
 // reports the tab list upstream (onLiveProjectsChange → AppBase) so close-
 // fallback and dead-view decisions share the one fetch.
 function HeaderProjectSwitcher(props) {
-  const { onActivateChip, currentProject, isLocalLog, onLiveProjectsChange } = props;
+  const { onActivateChip, currentProject, isLocalLog, onLiveProjectsChange, liveProcessRefreshToken } = props;
   const [tabs, setTabs] = useState([]);
   const [chips, setChips] = useState([]);
 
@@ -302,7 +245,7 @@ function HeaderProjectSwitcher(props) {
     load();
     const timer = setInterval(load, 5000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [onActivateChip, isLocalLog, currentProject, onLiveProjectsChange]);
+  }, [onActivateChip, isLocalLog, currentProject, onLiveProjectsChange, liveProcessRefreshToken]);
 
   if (tabs.length >= 2) {
     return (
@@ -315,21 +258,14 @@ function HeaderProjectSwitcher(props) {
         onDetachView={props.onDetachView}
         onCloseProject={props.onCloseProject}
         onNewProject={props.onNewProject}
-        onResumeSession={props.onResumeSession}
-        attachedSid={props.attachedSid}
-        isStreaming={props.isStreaming}
       />
     );
   }
   return (
     <>
-      <HeaderResumeDropdown
-        projectName={currentProject}
-        isLocalLog={isLocalLog}
-        onResumeSession={props.onResumeSession}
-        attachedSid={props.attachedSid}
-        isStreaming={props.isStreaming}
-      />
+      {/* (2026-10-06) plain current-project label — the recent-sessions hover dropdown
+          moved into the star quick-settings menu (ResumeSessionsRow). */}
+      <HeaderProjectLabel projectName={currentProject} />
       <NewProjectButton onNewProject={props.onNewProject} />
       <HeaderActiveChips onActivateChip={onActivateChip} chips={chips} />
     </>
@@ -1078,10 +1014,7 @@ class AppHeader extends React.Component {
       nextProps.approvalGlobal !== this.props.approvalGlobal ||
       nextProps.approvalDismissedIds !== this.props.approvalDismissedIds ||
       nextProps.approvalOwnPending !== this.props.approvalOwnPending ||
-      nextProps.onResumeSession !== this.props.onResumeSession ||
       nextProps.onNewProject !== this.props.onNewProject ||
-      nextProps.attachedSid !== this.props.attachedSid ||
-      nextProps.isStreaming !== this.props.isStreaming ||
       nextProps.onActivateChip !== this.props.onActivateChip ||
       nextProps.viewedProject !== this.props.viewedProject ||
       nextProps.viewedInstance !== this.props.viewedInstance ||
@@ -1089,6 +1022,7 @@ class AppHeader extends React.Component {
       nextProps.onDetachView !== this.props.onDetachView ||
       nextProps.onCloseProject !== this.props.onCloseProject ||
       nextProps.onLiveProjectsChange !== this.props.onLiveProjectsChange ||
+      nextProps.liveProcessRefreshToken !== this.props.liveProcessRefreshToken ||
       nextState !== this.state
     );
   }
@@ -2105,10 +2039,8 @@ class AppHeader extends React.Component {
             onDetachView={this.props.onDetachView}
             onCloseProject={this.props.onCloseProject}
             onLiveProjectsChange={this.props.onLiveProjectsChange}
+            liveProcessRefreshToken={this.props.liveProcessRefreshToken}
             onNewProject={this.props.onNewProject}
-            onResumeSession={this.props.onResumeSession}
-            attachedSid={this.props.attachedSid}
-            isStreaming={this.props.isStreaming}
           />
           {this.renderContextBarPortal()}
         </Space>

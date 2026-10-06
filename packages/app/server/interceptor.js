@@ -566,23 +566,49 @@ export function markSessionStart(payload) {
       console.warn('[ccv session-start] resume signal without transcript_path — ignored');
       return;
     }
-    // Soft cross-project guard: a foreign project's claude that somehow
-    // carries our CCVIEWER_PORT must not re-bind THIS project's writer. Only
-    // enforced when both sides are known (workspace mode may leave
-    // _projectName empty until bound).
-    if (cwd && typeof cwd === 'string' && _projectName) {
+    // Cross-project guard (2026-10-06, relaxed for true-/resume): a foreign project's
+    // claude that somehow carries our CCVIEWER_PORT must not re-bind THIS project's
+    // writer — BUT a resume in a PARALLEL project this server also manages (a live ccv
+    // PTY whose cwd maps to that project) is legitimate and must re-bind keyed by THAT
+    // project. Resolve the target project; drop only when neither bound nor a known
+    // live ccv project. This is what lets /api/resume-session switch a parallel
+    // viewed project and still have its writer follow.
+    let resumeProject = null; // null = bound project (default)
+    if (cwd && typeof cwd === 'string') {
       const cwdProject = projectKeyForCwd(cwd);
-      if (cwdProject !== _projectName) {
-        console.warn(`[ccv session-start] resume signal from project "${cwdProject}" ignored (bound to "${_projectName}")`);
-        return;
+      if (_projectName && cwdProject === _projectName) {
+        resumeProject = null; // bound project — default key
+      } else {
+        // Synchronously resolvable? No — isLiveClaudeProject lives in pty-manager
+        // (L2), imported lazily below. Compute the candidate key here and let the
+        // async gate decide whether to arm the switch.
+        resumeProject = cwdProject || null;
       }
     }
     const transcriptUuid = basename(transcriptPath, '.jsonl');
     if (source === 'resume') {
-      _v2Writer.beginResumeSwitch({
-        transcriptUuid,
-        hookSid: (typeof sessionId === 'string' && sessionId) ? sessionId : null,
-      });
+      const armSwitch = () => {
+        _v2Writer.beginResumeSwitch({
+          transcriptUuid,
+          hookSid: (typeof sessionId === 'string' && sessionId) ? sessionId : null,
+          // Keyed by the resumed conversation's project (bound = undefined default).
+          project: resumeProject || undefined,
+        });
+      };
+      if (!resumeProject || (_projectName && resumeProject === _projectName)) {
+        armSwitch();
+      } else {
+        // Parallel project: only arm when it's a live ccv-managed claude PTY.
+        import('./pty-manager.js')
+          .then((pm) => {
+            if (pm && typeof pm.isLiveClaudeProject === 'function' && pm.isLiveClaudeProject(resumeProject)) {
+              armSwitch();
+            } else {
+              console.warn(`[ccv session-start] resume signal from unmanaged project "${resumeProject}" ignored`);
+            }
+          })
+          .catch((err) => reportSwallowed('session-start.resume-project-gate', err));
+      }
     }
     // System-prompt snapshot, Bind B (system-prompt-snapshots.js): a process-level
     // -c/-r launch queued a resumeExpected pending at spawn (pty-manager). The

@@ -226,3 +226,175 @@ describe('POST /api/live-processes/attach', () => {
     assert.equal(r.body.ok, false);
   });
 });
+
+describe('POST /api/resume-session', () => {
+  const resumeRoute = resumeRoutes.find((r) => r.method === 'POST' && r.path === '/api/resume-session').handler;
+  const RESUME_UUID = 'a9883ab8-0ab7-459a-bcfd-4c8950a14384';
+
+  function callResume(bodyObj, { origin } = {}) {
+    return new Promise((resolve) => {
+      let payload = '';
+      let status = 0;
+      const res = { writeHead(c) { status = c; }, end(b) { payload = b || ''; } };
+      const listeners = {};
+      const headers = {};
+      if (origin) headers.origin = origin;
+      const req = {
+        headers,
+        on(ev, cb) { listeners[ev] = cb; },
+        destroy() {},
+      };
+      const parsedUrl = new URL('/api/resume-session', 'http://localhost');
+      const origEnd = res.end;
+      res.end = (b) => { origEnd(b); resolve({ status, body: JSON.parse(payload || '{}') }); };
+      // isLocal=true → admin; no Origin header → same-origin passes.
+      resumeRoute(req, res, parsedUrl, true, { MAX_POST_BODY: 1 << 20 });
+      if (listeners.data) listeners.data(JSON.stringify(bodyObj ?? {}));
+      if (listeners.end) listeners.end();
+    });
+  }
+
+  async function spawnClaudeAt(dir) {
+    const ptyMgr = await import('../server/pty-manager.js');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(dir, { recursive: true });
+    await ptyMgr.spawnClaude(9999, dir, [], 'claude');
+  }
+
+  it('403 when not admin / cross-origin', async () => {
+    // Not admin: isLocal=false and no ccvIsAdmin flag → forbidden before any inject.
+    const r = await new Promise((resolve) => {
+      let payload = ''; let status = 0;
+      const res = { writeHead(c) { status = c; }, end(b) { payload = b || ''; resolve({ status, body: JSON.parse(payload || '{}') }); } };
+      resumeRoute({ headers: {}, on() {}, destroy() {} }, res, new URL('/api/resume-session', 'http://localhost'), false, { MAX_POST_BODY: 1 << 20 });
+    });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.reason, 'forbidden');
+  });
+
+  it('400 on missing sessionUuid', async () => {
+    const r = await callResume({});
+    assert.equal(r.status, 400);
+    assert.equal(r.body.reason, 'missing-session');
+  });
+
+  it('400 on a non-UUID session id (never reaches the paste buffer)', async () => {
+    const r = await callResume({ sessionUuid: 'abc; echo hi' });
+    assert.equal(r.status, 400);
+    assert.equal(r.body.reason, 'bad-uuid');
+  });
+
+  it('404 when the target is not a live claude PTY (and never falls back to active)', async () => {
+    const ptyMgr = await import('../server/pty-manager.js');
+    ptyMgr._resetForTests();
+    ptyMgr._setPtyImportForTests(() => ({ spawn: () => ({ onData() {}, onExit() {}, kill() {}, resize() {}, write() {}, pid: 50000 }) }));
+    try {
+      await spawnClaudeAt(join(tmpDir, 'resumeBoundProj'));
+      // An unknown project must NOT resolve to the active PTY (strict gate).
+      const r = await callResume({ sessionUuid: RESUME_UUID, project: 'no-such-proj' });
+      assert.equal(r.status, 404);
+      assert.equal(r.body.reason, 'not-found');
+    } finally {
+      ptyMgr._resetForTests();
+      ptyMgr._setPtyImportForTests(null);
+    }
+  });
+
+  it('200 injects /resume <uuid> into the live claude PTY (busy probes stubbed idle)', async () => {
+    const ptyMgr = await import('../server/pty-manager.js');
+    const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
+    const cq = await import('../server/lib/chat-queue.js');
+    ptyMgr._resetForTests();
+    ptyMgr._setPtyImportForTests(() => ({ spawn: () => ({ onData() {}, onExit() {}, kill() {}, resize() {}, write() {}, pid: 50001 }) }));
+    const writes = [];
+    cq.__resetForTests();
+    cq.initChatQueue({
+      writeToPty: () => {},
+      writeToPtySequential: (c, cb) => cb && cb(true),
+      writeToPtySequentialFor: (chunks, cb, opts, anchor) => { writes.push({ chunks, anchor }); cb && cb(true); },
+      getPtyKind: () => 'claude',
+      isStreaming: () => false,
+      hasPendingApproval: () => false,
+      hasExternalInjection: () => false,
+      broadcastWs: () => {},
+    });
+    try {
+      const dir = join(tmpDir, 'resumeOkProj');
+      await spawnClaudeAt(dir);
+      const proj = projectKeyForCwd(dir);
+      const r = await callResume({ sessionUuid: RESUME_UUID, project: proj });
+      assert.equal(r.status, 200);
+      assert.equal(r.body.ok, true);
+      assert.equal(writes.length, 1);
+      assert.deepEqual(writes[0].chunks, ['\x1b[200~/resume ' + RESUME_UUID + '\x1b[201~', '\r']);
+      assert.equal(writes[0].anchor.project, proj);
+    } finally {
+      cq.__resetForTests();
+      ptyMgr._resetForTests();
+      ptyMgr._setPtyImportForTests(null);
+    }
+  });
+
+  it('409 ambiguous when a project-only resume matches 2+ live same-basename instances', async () => {
+    const ptyMgr = await import('../server/pty-manager.js');
+    const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
+    const cq = await import('../server/lib/chat-queue.js');
+    ptyMgr._resetForTests();
+    let pid = 70000;
+    ptyMgr._setPtyImportForTests(() => ({ spawn: () => ({ onData() {}, onExit() {}, kill() {}, resize() {}, write() {}, pid: pid++ }) }));
+    cq.__resetForTests();
+    cq.initChatQueue({
+      writeToPty: () => {},
+      writeToPtySequential: (c, cb) => cb && cb(true),
+      writeToPtySequentialFor: (chunks, cb) => cb && cb(true),
+      getPtyKind: () => 'claude',
+      isStreaming: () => false,
+      hasPendingApproval: () => false,
+      hasExternalInjection: () => false,
+      broadcastWs: () => {},
+    });
+    try {
+      const dir = join(tmpDir, 'resumeAmbigProj');
+      await spawnClaudeAt(dir);
+      await spawnClaudeAt(dir); // second live instance, same cwd → same basename project
+      const r = await callResume({ sessionUuid: RESUME_UUID, project: projectKeyForCwd(dir) });
+      assert.equal(r.status, 409);
+      assert.equal(r.body.reason, 'ambiguous');
+      assert.ok(Array.isArray(r.body.candidates) && r.body.candidates.length === 2, 'returns both live candidates for disambiguation');
+    } finally {
+      cq.__resetForTests();
+      ptyMgr._resetForTests();
+      ptyMgr._setPtyImportForTests(null);
+    }
+  });
+
+  it('409 busy when the TUI is streaming (never blind-injects)', async () => {
+    const ptyMgr = await import('../server/pty-manager.js');
+    const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
+    const cq = await import('../server/lib/chat-queue.js');
+    ptyMgr._resetForTests();
+    ptyMgr._setPtyImportForTests(() => ({ spawn: () => ({ onData() {}, onExit() {}, kill() {}, resize() {}, write() {}, pid: 50002 }) }));
+    cq.__resetForTests();
+    cq.initChatQueue({
+      writeToPty: () => {},
+      writeToPtySequential: (c, cb) => cb && cb(true),
+      writeToPtySequentialFor: (chunks, cb) => cb && cb(true),
+      getPtyKind: () => 'claude',
+      isStreaming: () => true,            // stays busy past the 2s poll budget
+      hasPendingApproval: () => false,
+      hasExternalInjection: () => false,
+      broadcastWs: () => {},
+    });
+    try {
+      const dir = join(tmpDir, 'resumeBusyProj');
+      await spawnClaudeAt(dir);
+      const r = await callResume({ sessionUuid: RESUME_UUID, project: projectKeyForCwd(dir) });
+      assert.equal(r.status, 409);
+      assert.equal(r.body.reason, 'busy');
+    } finally {
+      cq.__resetForTests();
+      ptyMgr._resetForTests();
+      ptyMgr._setPtyImportForTests(null);
+    }
+  });
+});

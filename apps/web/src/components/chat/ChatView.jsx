@@ -594,6 +594,12 @@ class ChatView extends React.Component {
       // 审批档位值要直达终端工具栏快捷菜单：不能只依赖 preferences 引用同批变化放行
       nextProps.autoApproveSeconds !== this.props.autoApproveSeconds ||
       nextProps.planAutoApproveSeconds !== this.props.planAutoApproveSeconds ||
+      // Session-history star-menu row (2026-10-06): the viewed project + attached session +
+      // the resume handler feed the row's list scope / blue dot / confirm, so they must
+      // re-render ChatView (and re-thread into ChatInputBar/TerminalPanel) on change.
+      nextProps.viewProject !== this.props.viewProject ||
+      nextProps.attachedSid !== this.props.attachedSid ||
+      nextProps.onResumeSession !== this.props.onResumeSession ||
       nextState !== this.state
     );
   }
@@ -3355,9 +3361,9 @@ class ChatView extends React.Component {
           </button>
         </Popover>
         <div className={styles.navDivider} />
-        {/* /resume entry moved to the Header's current-project label (hover
-            dropdown) — see AppHeader HeaderResumeDropdown. The detach affordance
-            stays here because it is a chat-view concern. */}
+        {/* /resume entry moved to the star quick-settings menu (ResumeSessionsRow, between
+            the permission and plan rows) — see components/common/ResumeSessionsRow.jsx. The
+            detach affordance stays here because it is a chat-view concern. */}
         {/* View-attach / parallel-project view: while the view is scoped away
             from the bound project's current session (attached to a historical
             session OR viewing a parallel project), a "back to current session"
@@ -4173,6 +4179,9 @@ class ChatView extends React.Component {
               planAutoApproveSeconds={this.props.planAutoApproveSeconds}
               onPlanAutoApproveChange={this.props.onPlanAutoApproveChange}
               agentTeamEnabled={this.state.agentTeamEnabled}
+              onResumeSession={this.props.isLocalLog ? null : this.props.onResumeSession}
+              viewProject={this.props.viewProject}
+              attachedSid={this.props.attachedSid}
             />
             </div>
             <UltraPlanModal
@@ -4270,6 +4279,10 @@ class ChatView extends React.Component {
                 onAutoApproveChange={this.props.onAutoApproveChange}
                 planAutoApproveSeconds={this.props.planAutoApproveSeconds}
                 onPlanAutoApproveChange={this.props.onPlanAutoApproveChange}
+                isStreaming={uiStreaming}
+                onResumeSession={this.props.isLocalLog ? null : this.props.onResumeSession}
+                viewProject={this.props.viewProject}
+                attachedSid={this.props.attachedSid}
                 />
                 )}
               </div>
