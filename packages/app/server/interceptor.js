@@ -984,7 +984,14 @@ export function setupInterceptor() {
           ...(() => {
             const dir = findHeader(headers, 'x-ccv-project-dir');
             const proj = (typeof dir === 'string' && dir) ? projectKeyForCwd(dir) : '';
-            return proj ? { _resumeProject: proj } : {};
+            if (!proj) return {};
+            // Same-name session isolation (2026-10-07): also surface the RAW full cwd
+            // (`dir`, the findHeader output — NOT the projectKeyForCwd basename above)
+            // as `_resumeProjectCwd`, so the writer can stamp `meta.cwd` on the session
+            // dir. The read-side fallback then tightens by full-path cwd, telling two
+            // cross-dir same-basename projects apart (basename routing cannot). Using the
+            // basename here would never equal the read side's full-path targetCwd.
+            return { _resumeProject: proj, _resumeProjectCwd: dir };
           })(),
           // Multi-instance (2026-10-06): the spawned claude also self-reports its PTY
           // instanceKey via `x-ccv-instance` (spawnClaude injects it). Surface it as

@@ -10,7 +10,8 @@ import { sseHead, sseWrite, needsDrain, wireEnd, awaitWireDrain, isWireV3Enabled
 import { readV2ColdBundle } from '../lib/v2/meta-rows.js';
 import { readV2SingleEntry } from '../lib/v2/adapter.js';
 import { resolveSessionDirName, latestMainSessionDir } from '../lib/v2/session-select.js';
-import { sanitizePathComponent } from '../lib/v2/layout.js';
+import { sanitizePathComponent, normalizeSessionCwd } from '../lib/v2/layout.js';
+import { listLivePtys } from '../pty-manager.js';
 import { enrichRawIfNeeded } from '../lib/enrich-plan-input.js';
 import { validateLogPath } from '../lib/log-management.js';
 import { isMainAgentEntry, extractCachedContent } from '../lib/kv-cache-analyzer.js';
@@ -282,7 +283,20 @@ async function events(req, res, parsedUrl, isLocal, deps) {
     // project and the first paint showed the OTHER instance's conversation.
     if (projectParam && (projectParam !== (_projectName || '') || instanceParam)) {
       try {
-        return latestMainSessionDir(join(LOG_DIR, sanitizePathComponent(projectParam)), { skipForeignLive: true, instanceKey: instanceParam || '' }) || null;
+        // Same-name isolation (2026-10-07): resolve the TARGET instance's owning cwd so the
+        // cold-load fallback can be scoped to it (two cross-dir same-basename projects share
+        // this basename pool). The live PTY record's cwd is the same spawn cwd the writer
+        // stamped into meta.cwd (its `s.cwd`) — so compare after the same lexical normalize.
+        // Instance dead / no live record / lookup failure → '' → no cwd filter
+        // (conservative, identical to today's whole-pool fallback; never mis-excludes history).
+        let targetCwd = '';
+        if (instanceParam) {
+          try {
+            const rec = listLivePtys().find((p) => p && p.instanceKey === instanceParam);
+            targetCwd = rec && rec.cwd ? normalizeSessionCwd(rec.cwd) : '';
+          } catch (err) { targetCwd = ''; reportSwallowed('events.target-cwd', err); }
+        }
+        return latestMainSessionDir(join(LOG_DIR, sanitizePathComponent(projectParam)), { skipForeignLive: true, instanceKey: instanceParam || '', targetCwd }) || null;
       } catch (err) {
         reportSwallowed('events.project-resolve', err, { project: projectParam });
         return null;

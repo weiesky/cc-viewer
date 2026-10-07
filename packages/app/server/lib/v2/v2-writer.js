@@ -20,7 +20,7 @@ import { statfsSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, basename, sep } from 'node:path';
 import { AsyncWriteQueue } from '../async-write-queue.js';
 import { reportSwallowed } from '@ccv/core/error-report';
-import { ensureSessionDirSync, compactLocalTs14, sanitizePathComponent } from './layout.js';
+import { ensureSessionDirSync, compactLocalTs14, sanitizePathComponent, normalizeSessionCwd } from './layout.js';
 import { resolveSessionDirName, latestMainSession } from './session-select.js';
 import { acquireSessionClaim, releaseSessionClaim, isForeignLiveOwned } from './session-owner.js';
 import { BlobStore } from './blob-store.js';
@@ -293,7 +293,7 @@ export class V2Writer {
     this._claimedDirs.clear();
   }
 
-  _session(sessionId, userIdRaw, encoding, project, startTsIso, adoptTarget = null, instanceKey = null) {
+  _session(sessionId, userIdRaw, encoding, project, startTsIso, adoptTarget = null, instanceKey = null, cwd = null) {
     let s = this._sessions.get(sessionId);
     // Cross-project guard: the map is keyed by bare sid, so a sid reused across two
     // projects (a cross-project /resume takeover running alongside its old project)
@@ -325,6 +325,12 @@ export class V2Writer {
       // session dirs) — can each be told apart at the directory level by readers/feed/cold
       // load. Absent for legacy/external producers (no self-report) → instance-agnostic.
       ...(instanceKey && { instance: instanceKey }),
+      // Same-name session isolation (2026-10-07): stamp the session's owning full cwd so
+      // the read-side fallback can tighten by path, telling two cross-dir same-basename
+      // projects apart (basename routing cannot). First-write-wins, so an adopted/resumed
+      // dir keeps its ORIGINAL author's cwd — never relabeled by the adopting entry.
+      // Normalized lexically (no realpath) to match the read side's targetCwd.
+      ...(cwd && { cwd: normalizeSessionCwd(cwd) }),
       ...(this._metaExtra || {}),
     };
     const projectDir = join(this._logDir, sanitizePathComponent(project));
@@ -512,7 +518,8 @@ export class V2Writer {
       // when the dir is first created, so this is the session's creation time
       // (live ≈ now; convert = the historical first-entry ts).
       const s = this._session(sid, parsed && entry.body.metadata.user_id, parsed && parsed.encoding, project, entry.timestamp, adoptTarget,
-        (typeof entry._ccvInstance === 'string' && entry._ccvInstance) ? entry._ccvInstance : null);
+        (typeof entry._ccvInstance === 'string' && entry._ccvInstance) ? entry._ccvInstance : null,
+        (typeof entry._resumeProjectCwd === 'string' && entry._resumeProjectCwd) ? entry._resumeProjectCwd : null);
 
       // System-prompt snapshot, Bind A (wire): the FIRST main request of a session
       // carries the launch's rendered injection in body.system — match it against the

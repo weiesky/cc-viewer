@@ -25,12 +25,13 @@ afterEach(() => { try { rmSync(projectDir, { recursive: true, force: true }); } 
 /** Build a session dir under projectDir/sessions/<sid> with a meta.json and
  *  (optionally) a journal.jsonl. `mainTurn` (default true) writes a kind:'main'
  *  req so the session counts as "activated"; false leaves it empty/sub-only. */
-function seed(sid, { startTs, wireFormat = 2, leader = null, journal = true, mainTurn = true, instance = null } = {}) {
+function seed(sid, { startTs, wireFormat = 2, leader = null, journal = true, mainTurn = true, instance = null, cwd = null } = {}) {
   const dir = join(projectDir, 'sessions', sid);
   mkdirSync(dir, { recursive: true });
   const meta = { wireFormat, sessionId: sid, project: 'proj', startTs };
   if (leader) meta.leader = leader;
   if (instance) meta.instance = instance; // multi-instance: stamp the owning PTY instanceKey
+  if (cwd) meta.cwd = cwd; // same-name isolation: stamp the owning full working directory
   writeFileSync(join(dir, 'meta.json'), JSON.stringify(meta));
   if (journal) {
     const lines = [JSON.stringify({ ph: 'meta', wireFormat, sessionId: sid })];
@@ -97,6 +98,76 @@ describe('latestMainSessionDir', () => {
   it('returns "" for a falsy projectDir', () => {
     assert.equal(latestMainSessionDir(''), '');
     assert.equal(latestMainSessionDir(null), '');
+  });
+
+  // Same-name isolation (2026-10-07): the cross-instance fallback pool is scoped to the
+  // TARGET instance's cwd. Two cross-dir same-basename projects share one basename pool,
+  // so a fresh instance whose own session has no main turn must fall back only to a
+  // SAME-cwd session — never the other project's, even when the other is newest.
+  it('targetCwd scopes the fallback: a fresh instance never falls back to a cross-dir same-name project', () => {
+    seed('projA-newest', { startTs: iso(9), instance: 'ccv-a', cwd: '/a/proj' });   // the OTHER project, newest
+    seed('projB-older', { startTs: iso(3), instance: 'ccv-b', cwd: '/b/proj' });   // THIS project, older content
+    // Viewing instance ccv-c (fresh, no own session) rooted at /b/proj: must fall back to
+    // the /b/proj session, NOT the newest /a/proj one.
+    assert.equal(
+      latestMainSessionDir(projectDir, { instanceKey: 'ccv-c', targetCwd: '/b/proj' }),
+      join(projectDir, 'sessions', 'projB-older'));
+    // And the symmetric view from /a/proj picks the /a/proj session.
+    assert.equal(
+      latestMainSessionDir(projectDir, { instanceKey: 'ccv-c', targetCwd: '/a/proj' }),
+      join(projectDir, 'sessions', 'projA-newest'));
+  });
+
+  it('targetCwd keeps legacy sessions with NO meta.cwd eligible (conservative, never mis-excludes history)', () => {
+    seed('projA-newest', { startTs: iso(9), instance: 'ccv-a', cwd: '/a/proj' });  // foreign, newest
+    seed('legacy-no-cwd', { startTs: iso(3) });                                   // legacy: no cwd field
+    // Viewing /b/proj: the only same-cwd candidate is none, but the legacy no-cwd session
+    // must remain eligible (keep-missing), so it is served instead of erroring — and the
+    // foreign /a/proj session is still excluded.
+    assert.equal(
+      latestMainSessionDir(projectDir, { instanceKey: 'ccv-c', targetCwd: '/b/proj' }),
+      join(projectDir, 'sessions', 'legacy-no-cwd'));
+  });
+
+  it('same-cwd twin collaboration is unaffected by targetCwd (same cwd always matches)', () => {
+    seed('twin1-active', { startTs: iso(9), instance: 'ccv-t1', cwd: '/same/proj' });
+    seed('twin2-quiet', { startTs: iso(5), instance: 'ccv-t2', cwd: '/same/proj', mainTurn: false });
+    // Viewing the quiet twin ccv-t2 at /same/proj: falls back to the SAME-cwd twin's content.
+    assert.equal(
+      latestMainSessionDir(projectDir, { instanceKey: 'ccv-t2', targetCwd: '/same/proj' }),
+      join(projectDir, 'sessions', 'twin1-active'));
+  });
+
+  it('empty targetCwd disables the cwd filter (instance dead / cwd unknown → whole-pool fallback, as today)', () => {
+    seed('projA-newest', { startTs: iso(9), instance: 'ccv-a', cwd: '/a/proj' });
+    seed('projB-older', { startTs: iso(3), instance: 'ccv-b', cwd: '/b/proj' });
+    // No targetCwd → identical to the pre-isolation behavior: newest content anywhere wins,
+    // even across dirs. This is the deliberate conservative degrade for a dead instance.
+    assert.equal(
+      latestMainSessionDir(projectDir, { instanceKey: 'ccv-c' }),
+      join(projectDir, 'sessions', 'projA-newest'));
+  });
+
+  it('targetCwd filters ONLY the fallback pool, never the instance filter (adopted dir keeps author cwd)', () => {
+    // An adopted/resumed dir carries its ORIGINAL author's cwd (first-write-wins), which may
+    // differ from the viewing instance's own cwd. It must still resolve via the instance filter.
+    seed('adopted-foreign-cwd', { startTs: iso(9), instance: 'ccv-me', cwd: '/elsewhere/orig', mainTurn: true });
+    // Viewing instance ccv-me rooted at /b/proj: its OWN session has a main turn, so the
+    // instance filter returns it directly — targetCwd must not disqualify it.
+    assert.equal(
+      latestMainSessionDir(projectDir, { instanceKey: 'ccv-me', targetCwd: '/b/proj' }),
+      join(projectDir, 'sessions', 'adopted-foreign-cwd'));
+  });
+
+  it('targetCwd has NO effect without instanceKey (whole-pool path stays unfiltered)', () => {
+    // Pins the documented "no effect without instanceKey" contract so a future change can't
+    // silently widen the cwd filter into the no-instance whole-pool path (bound/legacy view).
+    seed('projA-newest', { startTs: iso(9), cwd: '/a/proj' });
+    seed('projB-older', { startTs: iso(3), cwd: '/b/proj' });
+    // Even with a targetCwd, the no-instance pick ignores it: newest content anywhere wins.
+    assert.equal(
+      latestMainSessionDir(projectDir, { targetCwd: '/b/proj' }),
+      join(projectDir, 'sessions', 'projA-newest'));
   });
 
   it('selects the single main session', () => {
