@@ -18,6 +18,7 @@ import { publish as publishWorkflowUpdate } from './utils/workflowStore';
 import { publish as publishTaskUpdate, clearTasks as clearTaskStore } from './utils/taskStore';
 import { reportSwallowed } from './utils/errorReport';
 import { attachMainPty, closeProjectPty, resumeSession } from './utils/resumeSessions';
+import { readViewedWorkspace, writeViewedWorkspace, clearViewedWorkspace, resolveRestoredViewScope, resolveCwdForView } from './utils/viewedWorkspaceStorage';
 import { createViewStateCache } from './utils/viewStateCache';
 import { playEvent as playVoiceEvent, unlockAudio, setTurnEndCooldownMs } from './utils/voicePackPlayer';
 import { getDefaultBindingsForLocale as vpDefaultBindingsForLocale } from '@ccv/core/voice-pack-events';
@@ -568,9 +569,20 @@ class AppBase extends React.Component {
     if (scopeProject && scopeProject !== this.state.projectName) {
       // Parallel-project resume: keep the viewed project/instance so the view stays on it.
       this.setState({ attachedSid: uuid, viewedProject: scopeProject, viewedInstance: scopeInstance });
+      // Persist the viewed workspace (project-level only — the sid attach is
+      // intentionally NOT replayed after a refresh; the restore lands on the
+      // workspace's latest session, follow-latest).
+      writeViewedWorkspace({
+        project: scopeProject,
+        instanceKey: scopeInstance,
+        cwd: resolveCwdForView(scopeProject, scopeInstance, this._lastProjectTabs || []),
+        ts: Date.now(),
+      });
     } else {
       // Bound-project resume: attach wins over any parallel-project view.
       this.setState({ attachedSid: uuid, viewedProject: null, viewedInstance: null });
+      // View is back on the bound project — drop the persisted workspace.
+      clearViewedWorkspace();
     }
     this._resetForViewSwitch();
     // Pass the attached-session scope explicitly — setState hasn't flushed (React 18 batching),
@@ -651,6 +663,9 @@ class AppBase extends React.Component {
       v2RowsMeta: { totalCount: 0, hasMore: false, oldestTs: '' },
       selectedIndex: null,
     });
+    // View returned to the bound project — drop the persisted workspace so a
+    // refresh lands on the bound view, not a stale parallel one.
+    clearViewedWorkspace();
     this._hydratePinSeq++;
     this._resetForViewSwitch();
     // Pure-client viewing (2026-10-07): bump the live-processes refresh token so the
@@ -778,6 +793,15 @@ class AppBase extends React.Component {
       try { message.warning(t('ui.resume.switchTimeout')); } catch {}
     }, 30000);
     this.setState({ viewedProject: chip.project, viewedInstance: chipInstance, attachedSid: null, pinnedSessionTs: null });
+    // Persist the viewed workspace so a refresh restores it. cwd comes from the
+    // header-reported tab list (the chip payload may not carry it) and is the
+    // restart-stable anchor for re-resolving a dead instanceKey.
+    writeViewedWorkspace({
+      project: chip.project,
+      instanceKey: chipInstance,
+      cwd: resolveCwdForView(chip.project, chipInstance, this._lastProjectTabs || []),
+      ts: Date.now(),
+    });
     this._resetForViewSwitch();
     // Pass the NEW scope explicitly: setState hasn't flushed (React 18 batching), so initSSE
     // reading this.state would target the PREVIOUS view. See initSSE(scopeOverride).
@@ -1401,8 +1425,63 @@ class AppBase extends React.Component {
     if (logfile) {
       this.loadLocalLogFile(logfile);
     } else {
-      this._scheduleInitSSE();
+      // Restore the last-viewed parallel workspace across refreshes (2026-10):
+      // a persisted scope is validated against /api/live-processes BEFORE the
+      // first SSE, so a refresh re-anchors to the workspace the user was
+      // watching instead of always collapsing to the bound project. No saved
+      // entry → the original bound boot with zero extra requests.
+      const savedView = readViewedWorkspace();
+      if (savedView) this._bootViewedWorkspace(savedView);
+      else this._scheduleInitSSE();
     }
+  }
+
+  // Viewed-workspace restore (2026-10): validate the persisted scope against a
+  // fresh /api/live-processes snapshot, then boot the SSE scoped to it. A
+  // dead/ambiguous saved scope falls back to the bound view. Validation first
+  // (not optimistic restore) because the server never auto-falls-back on a
+  // dead-but-well-formed instance (/events emits sid-not-found with reason
+  // instance-no-session, leaving an empty view).
+  _bootViewedWorkspace(saved) {
+    fetch(apiUrl('/api/live-processes'))
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (this._unmounted) return;
+        const scope = resolveRestoredViewScope(saved, {
+          processes: data && data.processes,
+          currentProject: data && data.currentProject,
+          currentInstanceKey: data && data.currentInstanceKey,
+        });
+        if (!scope) {
+          this._scheduleInitSSE();
+          return;
+        }
+        // Cross-project bleed fix (2026-10): a name-only restore (instance:null)
+        // re-resolve to the live row's instanceKey when one exists. Without it,
+        // restoring a parallel project that has a live PTY but NO session dir yet
+        // would connect with `?project=<p>` and no `&instance=` — the server's
+        // instance-no-session guard (events.js:321) needs a non-empty instance to
+        // fire, so the cold load would silently fall through to the BOUND project's
+        // current session until the viewed project's first live entry arrives.
+        // Carrying the instance keeps that guard active (empty state, not bleed).
+        let instance = scope.instance;
+        if (!instance) {
+          const row = (data && Array.isArray(data.processes) ? data.processes : [])
+            .find((p) => p && p.project === scope.project && typeof p.instanceKey === 'string' && p.instanceKey);
+          if (row) instance = row.instanceKey;
+        }
+        this.setState({ viewedProject: scope.project, viewedInstance: instance });
+        // Same idempotent multi-PTY anchor as handleActivateChip / load_end
+        // backstop (fire-and-forget). Re-anchored again at load_end.
+        attachMainPty(scope.project, { instanceKey: instance });
+        // Pass the restored scope explicitly — setState hasn't flushed (React
+        // 18 batching), so initSSE reading this.state would boot the bound view.
+        this._scheduleInitSSE({ sid: null, project: scope.project, instance });
+      })
+      .catch((err) => {
+        reportSwallowed('viewed-workspace.restore', err);
+        if (!this._unmounted) this._scheduleInitSSE();
+      });
   }
 
   componentWillUnmount() {
@@ -1446,8 +1525,8 @@ class AppBase extends React.Component {
 
   // 视图切换时关闭并重建 EventSource（initSSE 顶部统一 close + 代际守卫）——
   // 多项目视图切换后旧连接的项目作用域已错，绝不能再复用。
-  _scheduleInitSSE() {
-    const start = () => { if (!this._unmounted) this.initSSE(); };
+  _scheduleInitSSE(scopeOverride = null) {
+    const start = () => { if (!this._unmounted) this.initSSE(scopeOverride); };
     // Windows 冷启动时 V8 需要 3-5 秒编译 ~7MB JS bundle（热启动有 Code Cache 则 <0.5s）。
     // timeout 设为 5 秒确保编译完成后再建 SSE 连接，避免数据处理与编译竞争导致 tab 崩溃。
     // 浏览器空闲时会提前触发（不必等满 5 秒），所以对热启动/Mac 无感知延迟。
@@ -2154,6 +2233,12 @@ class AppBase extends React.Component {
           // A workspace switch is the authoritative project boundary: force-detach
           // any attach so a stale attach can't re-assert the old project's session.
           this.setState({ attachedSid: null, viewedProject: null, viewedInstance: null });
+          // NOTE: no clearViewedWorkspace() here. workspace_started/stopped are
+          // broadcast to EVERY SSE client (workspaces.js, not view-scoped), so an
+          // unconditional clear would wipe a workspace another browser tab just
+          // persisted. Storage is cleared only by real user actions (detach /
+          // launch / return-to-list); a stale entry is harmlessly re-validated
+          // against /api/live-processes on the next boot.
           this._applyDocTitle(data.projectName || '');
           // Reset isStreaming alongside streamingLatest — workspace switches happen
           // between user prompts and shouldn't leave streaming flags stuck. (turnEnd
@@ -2197,6 +2282,9 @@ class AppBase extends React.Component {
         this._rebuildRequestIndex([]);
         clearTaskStore(); // same as workspace_started: drop the old session's checklist
         this._currentSessionId = null; // same as workspace_started: clear the old session id so lazy-lock can't misfire
+        // NOTE: no clearViewedWorkspace() here — workspace_stopped is broadcast to
+        // every SSE client (see workspace_started note above); clearing storage on
+        // a broadcast would clobber a workspace another tab just persisted.
         this.setState({
           workspaceMode: true,
           v2Rows: [],
@@ -2787,6 +2875,8 @@ class AppBase extends React.Component {
       if (_detachedView) {
         this._hydratePinSeq++;
         this._resetForViewSwitch();
+        // Follow-latest resumed on the bound view — drop the persisted workspace.
+        clearViewedWorkspace();
         this.initSSE();
         this._maintainPinState(null);
       }
@@ -2869,6 +2959,8 @@ class AppBase extends React.Component {
       viewedInstance: null,
       attachedSid: null,
     });
+    // New bound project — drop the persisted workspace so a refresh lands on it.
+    clearViewedWorkspace();
   };
 
   handleReturnToWorkspaces = () => {
@@ -2877,6 +2969,8 @@ class AppBase extends React.Component {
         this._teardownTransientLiveState();
         this._rebuildRequestIndex([]);
         this._currentSessionId = null; // same as workspace_started: clear the old session id so lazy-lock can't misfire
+        // Returned to the workspace list (no bound project) — drop the persisted workspace.
+        clearViewedWorkspace();
         this.setState({
           workspaceMode: true,
           requests: [],
