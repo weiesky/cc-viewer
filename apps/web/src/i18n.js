@@ -14109,6 +14109,14 @@ const i18nData = {
     "ar": "انتهت مهلة التبديل: المشروع الهدف لم يستجب", "no": "Bytte utløpt: målprosjektet svarte ikke", "pt-BR": "Tempo esgotado: o projeto de destino não respondeu",
     "th": "สลับหมดเวลา: โปรเจกต์เป้าหมายไม่ตอบสนอง", "tr": "Geçiş zaman aşımı: hedef proje yanıt vermedi", "uk": "Час перемикання вийшов: цільовий проєкт не відповідає"
   },
+  "ui.resume.switching": {
+    "zh": "正在切换项目…", "en": "Switching project…", "zh-TW": "正在切換專案…",
+    "ko": "프로젝트 전환 중…", "ja": "プロジェクトを切り替えています…", "de": "Projekt wird gewechselt…",
+    "es": "Cambiando de proyecto…", "fr": "Changement de projet…", "it": "Cambio di progetto…",
+    "da": "Skifter projekt…", "pl": "Przełączanie projektu…", "ru": "Переключение проекта…",
+    "ar": "جارٍ تبديل المشروع…", "no": "Bytter prosjekt…", "pt-BR": "Trocando de projeto…",
+    "th": "กำลังสลับโปรเจกต์…", "tr": "Proje değiştiriliyor…", "uk": "Перемикання проєкту…"
+  },
   "ui.resume.returnToCurrent": {
     "zh": "返回当前会话", "en": "Back to current session", "zh-TW": "返回當前會話",
     "ko": "현재 세션으로 돌아가기", "ja": "現在のセッションに戻る", "de": "Zurück zur aktuellen Sitzung",

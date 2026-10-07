@@ -32,6 +32,7 @@ import OpenFolderIcon from './components/common/OpenFolderIcon';
 import appConfig from './config.json';
 import { t, getLang, setLang, LANG_OPTIONS } from './i18n';
 import { apiUrl } from './utils/apiUrl';
+import { setViewScope } from './utils/viewScope';
 import * as SeqLoaders from './utils/seqResourceLoaders';
 
 const CALIBRATION_MODELS = appConfig.calibrationModels;
@@ -233,6 +234,13 @@ class Mobile extends AppBase {
 
   componentDidMount() {
     super.componentDidMount();
+    // Seed the view-scope singleton on mount (componentDidUpdate doesn't fire initially).
+    setViewScope({
+      projectName: this.state.projectName,
+      viewedProject: this.state.viewedProject,
+      viewedInstance: this.state.viewedInstance,
+      boundInstance: null,
+    });
     // 检测项目是否有 git（优先多仓库 API，回退旧 API）
     fetch(apiUrl('/api/git-repos')).then(r => r.ok ? r.json() : Promise.reject()).then(data => {
       if (!data.repos?.length) this.setState({ hasGit: false, mobileGitDiffVisible: false });
@@ -319,6 +327,16 @@ class Mobile extends AppBase {
 
   componentDidUpdate(prevProps, prevState) {
     if (super.componentDidUpdate) super.componentDidUpdate(prevProps, prevState);
+    // Mirror the view scope into the module singleton (withViewParams' instance fallback).
+    // Mobile has NO onLiveProjectsChange → _boundInstance is never populated, so boundInstance
+    // is null here and only viewedInstance takes effect (Mobile is predominantly single-project;
+    // the same-name bound-view fallback stays a desktop-only concern — documented boundary).
+    setViewScope({
+      projectName: this.state.projectName,
+      viewedProject: this.state.viewedProject,
+      viewedInstance: this.state.viewedInstance,
+      boundInstance: null,
+    });
     // workspace 切换：projectName 变了 → 旧的 _fsSkills/_memory/_claudeMd 属于旧项目，作废 + 刷 seq
     if (prevState.projectName !== this.state.projectName) {
       this._fsSkillsSeq++;

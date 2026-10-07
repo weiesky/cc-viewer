@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { t } from '../../i18n';
-import { apiUrl } from '../../utils/apiUrl';
+import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import { isImageFile } from '../../utils/commandValidator';
 import { getFileIcon } from '../../utils/fileIcons';
 import { fetchAllRepos } from '../../utils/gitApi';
@@ -106,8 +106,9 @@ export default function MobileGitDiff({ visible, onClose, project, instance }) {
     setDiffError(null);
 
     const repoParam = selectedRepo && selectedRepo !== '.' ? `&repo=${encodeURIComponent(selectedRepo)}` : '';
-    const projectParam = project ? `&project=${encodeURIComponent(project)}` : '';
-    fetch(apiUrl(`/api/git-diff?files=${encodeURIComponent(selectedFile)}${repoParam}${projectParam}`))
+    // withViewParams supplies ?project= + the same-name instance fallback (viewScope) so a
+    // same-basename bound view doesn't 400 "ambiguous project name".
+    fetch(apiUrl(withViewParams(`/api/git-diff?files=${encodeURIComponent(selectedFile)}${repoParam}`, { project })))
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -228,13 +229,13 @@ export default function MobileGitDiff({ visible, onClose, project, instance }) {
                     <div className={styles.imagePreviewWrap}>
                       <img
                         className={styles.imagePreview}
-                        src={apiUrl(`/api/file-raw?path=${encodeURIComponent(diffDisplayPath)}${project ? `&project=${encodeURIComponent(project)}` : ''}`)}
+                        src={apiUrl(withViewParams(`/api/file-raw?path=${encodeURIComponent(diffDisplayPath)}`, { project }))}
                         alt={selectedFile}
                         onClick={() => setLightboxOpen(true)}
                       />
                       {lightboxOpen && (
                         <ImageLightbox
-                          src={apiUrl(`/api/file-raw?path=${encodeURIComponent(diffDisplayPath)}${project ? `&project=${encodeURIComponent(project)}` : ''}`)}
+                          src={apiUrl(withViewParams(`/api/file-raw?path=${encodeURIComponent(diffDisplayPath)}`, { project }))}
                           alt={selectedFile}
                           onClose={() => setLightboxOpen(false)}
                         />

@@ -3,7 +3,7 @@ import { Card, Statistic, Table, Tag, Button, Switch, Empty, Space } from 'antd'
 import Loading from '../common/Loading';
 import { ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
-import { apiUrl } from '../../utils/apiUrl';
+import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import { reportSwallowed } from '../../utils/errorReport';
 import BarChart from '../charts/BarChart';
 import { fmtMs, statusColor, availColor, dominantFailCell, burdenBucketLabel } from './RetryStatsHelpers';
@@ -22,7 +22,10 @@ export default function ProxyStatsDashboard({ project }) {
 
   const fetchData = useCallback(() => {
     setLoading(true);
-    const url = project ? `/api/proxy-stats?project=${encodeURIComponent(project)}` : '/api/proxy-stats';
+    // proxy-stats is name-keyed (shared), but its presence oracle (_resolveStatsName →
+    // resolveViewRoot) still 400s on two same-name live PTYs without an instance — withViewParams
+    // supplies the same-name instance fallback so the oracle resolves. Data stays name-shared.
+    const url = project ? withViewParams('/api/proxy-stats', { project }) : '/api/proxy-stats';
     fetch(apiUrl(url))
       .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); })
       .then(d => { setData(d.proxyStats); setLoading(false); })

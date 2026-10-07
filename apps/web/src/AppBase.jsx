@@ -522,7 +522,12 @@ class AppBase extends React.Component {
   // Confirm-approved true switch: inject /resume into the target PTY, then attach the view.
   _doResumeSwitch = async (uuid) => {
     const project = this.state.viewedProject || this.state.projectName;
-    const instanceKey = this.state.viewedInstance || null;
+    // Same-name fix (2026-10-07): the BOUND same-name view (viewedProject/viewedInstance null)
+    // must fall back to the bound instance, else the server's resume route 409s "ambiguous"
+    // on two same-name live PTYs. Mirrors App.jsx viewInstanceForChat's rule.
+    const viewedName = this.state.viewedProject || this.state.projectName;
+    const instanceKey = this.state.viewedInstance
+      || (viewedName === this.state.projectName ? (this._boundInstance || null) : null);
     let r;
     try {
       r = await resumeSession(uuid, { project, instanceKey });
@@ -666,8 +671,12 @@ class AppBase extends React.Component {
   // while a view switch is already in flight (resumeSwitch) so a
   // cold-load-in-progress list can't yank the rug out. (The close path does
   // NOT read this list — the header supplies the survivor via fallbackProject.)
-  handleLiveProjectsChange = (tabs) => {
+  handleLiveProjectsChange = (tabs, boundInstance = null) => {
     this._lastProjectTabs = Array.isArray(tabs) ? tabs : [];
+    // Same-name file-tree fix (2026-10-07): the bound project's instance identity, reported by
+    // the Header (resolveBoundInstance — only set when the bound name is duplicated AND
+    // resolvable). Used to disambiguate view-scoped readers (file tree) on the BOUND view.
+    this._boundInstance = boundInstance || null;
     const vp = this.state.viewedProject;
     if (!vp || this.state.resumeSwitch) return;
     const vi = this.state.viewedInstance || null;

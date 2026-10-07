@@ -788,10 +788,16 @@
   color: var(--text-secondary);
   border-color: var(--text-disabled);
 }
+/* 激活 tab：常驻强可见（不依赖 hover）——主色描边 + 主色浅底 + 主色加粗文字，
+   一眼可辨。此前仅靠 inset box-shadow 描边 + 与普通 tab 几乎相同的底色，非 hover
+   下选中态不可辨（用户反馈"只有 hover/失焦才看得见"）。 */
 .projectTabActive,
 .projectTabActive:hover {
-  color: var(--text-primary);
-  box-shadow: inset 0 0 0 2px var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 600;
+  background: var(--color-primary-bg-light);
+  border-color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
 }
 /* 左侧状态点：恒占位防 tab 名抖动（Electron tab-pending 槽同款思路）。 */
 .projectTabDot {
@@ -800,6 +806,34 @@
   border-radius: 50%;
   background: var(--color-primary);
   flex-shrink: 0;
+}
+/* 切换中旋转圆环（替换状态点，见 AppHeader isSwitching）：空心环 + 缺口旋转，
+   与任务列表 HUD 的状态 dot 同一尺寸量级与配色语义（激活=主色、未激活=灰）。
+   恒 8px 占位，与 projectTabDot 一致，切换前后 tab 名不抖动。 */
+.projectTabRing,
+.projectTabRingActive {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.6px solid var(--text-muted);
+  border-top-color: transparent;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+.projectTabRingActive {
+  border-color: var(--color-primary);
+  border-top-color: transparent;
+}
+.projectTabRingSpin {
+  animation: ccvProjectTabRingSpin 0.7s linear infinite;
+}
+/* Header 级切换指示：tab 条左缘的总圆环，与 tab 内圆环同款，垂直居中且不被压缩。 */
+.projectTabsStripSpinner {
+  align-self: center;
+  margin-right: 2px;
+}
+@keyframes ccvProjectTabRingSpin {
+  to { transform: rotate(360deg); }
 }
 .projectTabName {
   overflow: hidden;

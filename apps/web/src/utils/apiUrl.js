@@ -33,10 +33,19 @@ export function apiUrl(path) {
 // are skipped and the path is returned unchanged, so project-only callers stay
 // byte-identical to before. Pure string builder (no base/token — call apiUrl on
 // the result, or use it to extend an existing apiUrl path that already has `?`).
+//
+// Same-name fallback (2026-10-07): when the caller passes no `instance`, fall back
+// to the current view scope's instance (utils/viewScope). This is the centralized
+// "middleware" that fixes the BOUND same-basename view — every withViewParams call
+// is by definition a view-scoped read, so only these (never apiUrl's non-scoped
+// endpoints) get the instance fallback. An explicitly-passed instance always wins.
+import { resolveViewScope } from './viewScope.js';
+
 export function withViewParams(path, { project, instance } = {}) {
   let out = path;
+  const inst = instance || resolveViewScope().instance;
   if (project) out += `${out.includes('?') ? '&' : '?'}project=${encodeURIComponent(project)}`;
-  if (instance) out += `${out.includes('?') ? '&' : '?'}instance=${encodeURIComponent(instance)}`;
+  if (inst) out += `${out.includes('?') ? '&' : '?'}instance=${encodeURIComponent(inst)}`;
   return out;
 }
 

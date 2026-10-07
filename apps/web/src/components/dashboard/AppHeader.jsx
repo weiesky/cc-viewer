@@ -145,7 +145,7 @@ function HeaderActiveChips({ onActivateChip, chips }) {
 // main PTY server-side (AppBase.handleCloseProject). Hovering the current
 // project's tab opens the same recent-sessions dropdown the legacy label
 // carries.
-function HeaderProjectTabs({ tabs, currentProject, currentInstanceKey, viewedProject, viewedInstance, onActivateChip, onDetachView, onCloseProject, onNewProject }) {
+function HeaderProjectTabs({ tabs, currentProject, currentInstanceKey, viewedProject, viewedInstance, resumeSwitch, onActivateChip, onDetachView, onCloseProject, onNewProject }) {
   const viewing = viewedProject || currentProject || null;
   // Multi-instance: "viewing" identity is project+instance — a same-cwd twin tab is NOT the
   // viewed one just because the basename matches.
@@ -184,9 +184,33 @@ function HeaderProjectTabs({ tabs, currentProject, currentInstanceKey, viewedPro
         : (boundViewInstance ? tabInstance === boundViewInstance : true)
     );
     const isCurrent = tab.project === currentProject;
+    // Tab-switch loading ring (2026-10-07): between the activate click and the cold-load
+    // commit (load_end clears resumeSwitch), show a spinning ring in place of the status dot.
+    // resumeSwitch.uuid is keyed `project+instance` for an instance switch (AppBase:767);
+    // match this tab the same way. The ring follows the task-HUD dot idiom — primary (blue)
+    // for the activated tab, muted (grey) for any other tab that happens to be mid-switch.
+    const switchUuid = resumeSwitch && resumeSwitch.uuid ? resumeSwitch.uuid : null;
+    const isSwitching = !!(switchUuid
+      && (switchUuid === `${tab.project}${tabInstance}`
+          || switchUuid === tab.project
+          || (tabInstance && switchUuid.endsWith(tabInstance))));
+    const ringClass = isViewing ? styles.projectTabRingActive : styles.projectTabRing;
     const onTabClick = () => {
       if (isViewing) return;
-      if (isCurrent) { if (onDetachView) onDetachView(); return; }
+      // Same-basename fix (2026-10-07): `isCurrent` is a BASENAME match, so every same-name
+      // tab of the bound project is "current" — but only the tab whose instance IS the bound
+      // instance is the one a click should detach back to. A same-name SIBLING (different
+      // instanceKey, e.g. /a/proj bound + /b/proj) must ACTIVATE its own instance's view,
+      // not detach — otherwise, with only the two same-name tabs live, every click detached
+      // (viewedInstance→null → /events with no ?instance= → whole-pool newest) and the chat
+      // panel could never switch. (A third, differently-named project flips currentProject
+      // away, which is why it masked the bug.) boundViewInstance === null means no bound
+      // tiebreak is needed/resolvable → keep the legacy detach.
+      if (isCurrent) {
+        const isBoundInstanceTab = !boundViewInstance || tabInstance === boundViewInstance;
+        if (isBoundInstanceTab) { if (onDetachView) onDetachView(); return; }
+        // fall through to activate the sibling instance's view.
+      }
       if (onActivateChip) onActivateChip({ project: tab.project, instanceKey: tabInstance });
     };
     const tabBody = (
@@ -197,7 +221,9 @@ function HeaderProjectTabs({ tabs, currentProject, currentInstanceKey, viewedPro
         tabIndex={0}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onTabClick(); } }}
       >
-        <span className={styles.projectTabDot} aria-hidden="true" />
+        {isSwitching
+          ? <span className={`${styles.projectTabRingSpin} ${ringClass}`} aria-hidden="true" />
+          : <span className={styles.projectTabDot} aria-hidden="true" />}
         {/* Basename (tab.project) ellipsizes; the same-name ` [n]` discriminator lives in a
             non-shrinking sibling so a long name can't clip it off (P0 review). */}
         <span className={styles.projectTabName} title={tab.cwd || tab.project}>{tab.project}</span>
@@ -231,8 +257,20 @@ function HeaderProjectTabs({ tabs, currentProject, currentInstanceKey, viewedPro
     // renders the same body.
     return <React.Fragment key={tab.key}>{tabBody}</React.Fragment>;
   };
+  // Global switch indicator: while ANY tab is mid-switch (resumeSwitch set), show a single
+  // spinning ring at the strip's left edge — a header-level counterpart to the per-tab ring,
+  // so the in-flight switch is visible even when the switching tab is scrolled off / the user
+  // looks at the strip as a whole. Primary-colored (it's the active transition), same idiom.
+  const anySwitching = !!(resumeSwitch && resumeSwitch.uuid);
   return (
     <div className={styles.projectTabsStrip}>
+      {anySwitching && (
+        <span
+          className={`${styles.projectTabRingSpin} ${styles.projectTabRingActive} ${styles.projectTabsStripSpinner}`}
+          aria-hidden="true"
+          title={t('ui.resume.switching')}
+        />
+      )}
       {(tabs || []).map(renderTab)}
       <NewProjectButton onNewProject={onNewProject} />
     </div>
@@ -267,10 +305,16 @@ function HeaderProjectSwitcher(props) {
           if (cancelled) return;
           const cur = typeof data?.currentProject === 'string' && data.currentProject ? data.currentProject : currentProject;
           const nextTabs = deriveProjectTabs(data?.processes);
+          const nextCurKey = (typeof data?.currentInstanceKey === 'string' && data.currentInstanceKey) ? data.currentInstanceKey : null;
           setTabs(nextTabs);
           setChips(deriveActiveProcessChips(data?.processes, cur || null));
-          setCurrentInstanceKey((typeof data?.currentInstanceKey === 'string' && data.currentInstanceKey) ? data.currentInstanceKey : null);
-          if (onLiveProjectsChange) onLiveProjectsChange(nextTabs);
+          setCurrentInstanceKey(nextCurKey);
+          // Same-name file-tree fix (2026-10-07): also report the BOUND instance identity so the
+          // file explorer (and other view-scoped readers) can disambiguate when the BOUND view
+          // is one of two same-basename tabs. resolveBoundInstance returns the key only when the
+          // bound name is genuinely duplicated AND resolvable — else null (no tiebreak needed).
+          const boundInstance = resolveBoundInstance(nextTabs, cur || currentProject || null, nextCurKey);
+          if (onLiveProjectsChange) onLiveProjectsChange(nextTabs, boundInstance);
         })
         .catch(err => { if (!cancelled) reportSwallowed('activeChips.fetch', err); });
     };
@@ -287,6 +331,7 @@ function HeaderProjectSwitcher(props) {
         currentInstanceKey={currentInstanceKey}
         viewedProject={props.viewedProject}
         viewedInstance={props.viewedInstance}
+        resumeSwitch={props.resumeSwitch}
         onActivateChip={onActivateChip}
         onDetachView={props.onDetachView}
         onCloseProject={props.onCloseProject}
@@ -1051,6 +1096,7 @@ class AppHeader extends React.Component {
       nextProps.onActivateChip !== this.props.onActivateChip ||
       nextProps.viewedProject !== this.props.viewedProject ||
       nextProps.viewedInstance !== this.props.viewedInstance ||
+      nextProps.resumeSwitch !== this.props.resumeSwitch ||
       nextProps.viewProject !== this.props.viewProject ||
       nextProps.onDetachView !== this.props.onDetachView ||
       nextProps.onCloseProject !== this.props.onCloseProject ||
@@ -1679,7 +1725,10 @@ class AppHeader extends React.Component {
 
   handleShowProjectStats = () => {
     this.setState({ projectStatsVisible: true, projectStatsLoading: true });
-    fetch(apiUrl(this.props.viewProject ? `/api/project-stats?project=${encodeURIComponent(this.props.viewProject)}` : '/api/project-stats'))
+    // project-stats is name-keyed (shared between same-name projects), but its presence oracle
+    // (_resolveStatsName → resolveViewRoot) still 400s on two same-name live PTYs without an
+    // instance — withViewParams supplies the same-name instance fallback so the oracle resolves.
+    fetch(apiUrl(this.props.viewProject ? withViewParams('/api/project-stats', { project: this.props.viewProject }) : '/api/project-stats'))
       .then(res => {
         if (!res.ok) throw new Error('not found');
         return res.json();
