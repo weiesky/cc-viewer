@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(chat): **[对话] 用户消息默认以 Markdown 渲染** — 用户气泡文本改经 `MarkdownBlock`（marked + DOMPurify，与 assistant 同一管线），标题/列表/代码/表格/链接正常成版；气泡内 markdown 配色按深底（暗色主题蓝/亮色主题深灰）反白处理（行内 code 提亮至 `#eef3ff` 达 WCAG AA，verified 文件路径 code span 补回 hover 反白反馈），避免全局深色变量在蓝底上对比不足；图片引用仍以 React 组件内联（拆分逻辑下沉为纯函数 `segmentUserTextWithImages`）；slash 命令标签与 /compact 摘要形态不变；右对齐气泡不显示 hover「另存为」栏。多行输入的换行现渲染为真实换行（此前折叠为空格）。Coverage: `user-markdown.test.js`.
+
 - fix(multi-project): **同名项目 bound 视图下只读面板（文件树/技能/Git/专家/搜索/文件内容）不再 400 "ambiguous project name"** — 新增模块级 view scope 单例（`utils/viewScope.js`，App 每次更新镜像写入）作为单一事实源，`withViewParams` 在调用方未传 instance 时统一兜底，所有按 cwd 解析的只读请求集中消歧，不再逐点穿 instance；同一 bound 兜底应用到仍用裸 viewedInstance 的通道——终端 WebSocket 握手与 resume-session POST（否则连错同名 twin / 409），project-stats/proxy-stats 的存在性 oracle 与 MobileGitDiff 手写 `?project=` 一并收口（stats 数据仍按名共享）；另修复请求详情按 bound 项目名拼 `v2:<project>/<sid>` 导致 viewed≠bound 时 `/api/v2-entry` 404（改用 viewed 项目名）。Mobile 无 bound 兜底为已知边界（单项目为主）。顺带删除 resume.js 的临时 `[ccv-dbg]` 调试日志。Coverage: `view-scope.test.js`, `resume-route.test.js`.
 
 - fix(multi-project): **同名项目（跨目录）[对话] 面板切换跟随** — 新会话目录 meta.json 落归属完整 `cwd`（词法归一、不 realpath），`/events` 冷加载回退池按 viewed 实例 cwd（取自其存活 PTY record）收紧，不再从共享 basename 池抓最新有内容会话；同 cwd 协同不受影响、无 `meta.cwd` 存量会话保留（不误判 sid-not-found）、实例已死退化为原整池行为。前向有效：仅新会话带 cwd 归属。Coverage: `v2-session-select.test.js`, `events-samename-cwd.test.js`.

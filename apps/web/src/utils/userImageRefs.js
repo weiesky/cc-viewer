@@ -47,3 +47,32 @@ export function findUserImageRefs(text) {
   }
   return refs;
 }
+
+/**
+ * 把用户文本按图片引用切成交替段,供渲染层把 text 段走 markdown、image 段走 <img> 组件。
+ * @param {string} text
+ * @returns {Array<{ type: 'text', text: string } | { type: 'image', path: string, raw: string }>}
+ *   - 无图片引用 → 单个 text 段(原文整段一次 markdown 解析,与 assistant 同行为)
+ *   - 空的 text 段被跳过(两张图相邻/图在文首/文末时不产生空 MarkdownBlock)
+ *   注:不为 text 段补换行——text 段与 image 段由各自独立的 React 组件渲染,
+ *   marked 永远不会把二者拼进同一段 HTML,段尾追加 '\n' 只会被段落终结符吞掉。
+ */
+export function segmentUserTextWithImages(text) {
+  if (!text || typeof text !== 'string') return [{ type: 'text', text: text || '' }];
+  const refs = findUserImageRefs(text);
+  if (refs.length === 0) return [{ type: 'text', text }];
+  const segments = [];
+  let lastIndex = 0;
+  for (const ref of refs) {
+    if (ref.index > lastIndex) {
+      segments.push({ type: 'text', text: text.slice(lastIndex, ref.index) });
+    }
+    segments.push({ type: 'image', path: ref.path, raw: ref.raw });
+    lastIndex = ref.index + ref.raw.length;
+  }
+  if (lastIndex < text.length) {
+    segments.push({ type: 'text', text: text.slice(lastIndex) });
+  }
+  // 纯空白 text 段(如两张图之间只有空格)没有意义,剔除,避免空 MarkdownBlock。
+  return segments.filter((seg) => seg.type !== 'text' || seg.text.trim() !== '');
+}
