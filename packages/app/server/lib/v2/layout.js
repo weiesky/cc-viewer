@@ -6,6 +6,7 @@
 // and the swallowed ENOENT would silently drop v2 lines (plan risk F2).
 
 import { mkdirSync, writeFileSync, renameSync, existsSync, openSync, writeSync, fsyncSync, closeSync, readdirSync, statSync } from 'node:fs';
+import { readdir as readdirAsync, stat as statAsync } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 // The wire-format version this build writes AND the only one it reads.
@@ -102,6 +103,30 @@ export function dirSizeSync(dir) {
     try {
       if (e.isDirectory()) total += dirSizeSync(p);
       else if (e.isFile()) total += statSync(p).size;
+    } catch { /* raced deletion — skip */ }
+  }
+  return total;
+}
+
+/**
+ * Async sibling of dirSizeSync (2026-10-08): same semantics (recursive byte size,
+ * raced-deletion tolerant), but never blocks the event loop. Used by read-only,
+ * latency-sensitive paths (the /api/workspaces list) where freezing the whole
+ * Node process for ~2.4s while we walk 80k files is unacceptable — SSE streams
+ * and PTY output starve. The sync variant stays for offline converter / writer
+ * paths where blocking is fine (spawn-time, not request-time).
+ */
+export async function dirSizeAsync(dir) {
+  let total = 0;
+  let entries;
+  try { entries = await readdirAsync(dir, { withFileTypes: true }); } catch { return total; }
+  // Sequential per directory (avoid fd exhaustion on wide trees); parallel across
+  // sibling directories would still serialize on disk I/O in practice.
+  for (const e of entries) {
+    const p = join(dir, e.name);
+    try {
+      if (e.isDirectory()) total += await dirSizeAsync(p);
+      else if (e.isFile()) total += (await statAsync(p)).size;
     } catch { /* raced deletion — skip */ }
   }
   return total;

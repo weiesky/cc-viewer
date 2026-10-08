@@ -10091,6 +10091,14 @@ const i18nData = {
     "ar": "الإجراءات", "no": "Handlinger", "pt-BR": "Ações",
     "th": "การกระทำ", "tr": "Eylemler", "uk": "Дії"
   },
+  "ui.workspaces.showMore": {
+    "zh": "查看更多 ({count} 个)", "en": "Show more ({count})", "zh-TW": "查看更多 ({count} 個)",
+    "ko": "더 보기 ({count}개)", "ja": "さらに表示 ({count})","de": "Mehr anzeigen ({count})",
+    "es": "Ver más ({count})", "fr": "Voir plus ({count})", "it": "Mostra altro ({count})",
+    "da": "Vis flere ({count})", "pl": "Pokaż więcej ({count})", "ru": "Показать ещё ({count})",
+    "ar": "عرض المزيد ({count})", "no": "Vis flere ({count})", "pt-BR": "Mostrar mais ({count})",
+    "th": "ดูเพิ่มเติม ({count})", "tr": "Daha fazla göster ({count})", "uk": "Показати більше ({count})"
+  },
   "ui.workspaces.browse": {
     "zh": "添加工作区", "en": "Add Workspace", "zh-TW": "新增工作區",
     "ko": "워크스페이스 추가", "ja": "ワークスペースを追加", "de": "Arbeitsbereich hinzufügen",

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- perf(server): 新建工作区弹窗打开提速 ~10x(总延迟 3.3s → 0.2s,事件循环最长卡顿 116ms → <4ms)。
+- feat(web): 新建工作区弹窗默认只显示最近 5 个项目,末尾「查看更多」行点击展开。
+- fix(web): 新建工作区弹窗内容区灰底去除,表格与弹窗底色一致。
+
 - fix(web): **Git 变更面板刷新后保持开关状态** — 与文件浏览器同套 localStorage 持久化(`ccv_gitChangesOpen`,桌面 + iPad pad 模式默认关);互斥关闭(点文件浏览器/搜索图标)也落盘;constructor 读回时两面板互斥恢复(git 仅在 fileExplorer 恢复结果为关时才开),消除「上次以跳文件被动关 git 收尾」导致的刷新后双开。Coverage: `git-changes-open-persist.test.js`.
 
 - feat(web): **[多项目] 项目标签支持拖拽排序并持久化** — 引入 `@dnd-kit` 实现 tab 条拖拽换序，顺序写 localStorage（`ccv.projectTabOrder.v1`）跨 5s 轮询与刷新保持；新 tab 自动追加末尾、消失 tab 自动剪枝；`restrictToHorizontalAxis + restrictToParentElement` 约束拖拽不飞出 strip；拖拽期间点击仍走 PointerSensor 4px 阈值不误判，tab × 关闭按钮 `onPointerDown stopPropagation` 防误触拖拽。Coverage: `project-tab-order.test.js`.

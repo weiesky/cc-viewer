@@ -40,6 +40,16 @@
   box-sizing: border-box;
 }
 
+/* 嵌入 antd Modal 模式(2026-10-08):NewProjectModal 场景下去掉 .root 的整页灰底 + 大留白,
+   让内容透出 .ant-modal-content 的底色(亮白 / 暗 #1e1e1e),与弹窗融为一体。
+   声明位于 .root 之后,靠源码顺序覆盖,不加 !important。整页工作区(!embedded)和
+   Electron 浮层(.popupCard)不受影响。 */
+.modalBody {
+  background: transparent;
+  min-height: auto;
+  padding: 0;
+}
+
 .popupClose {
   position: absolute;
   top: 10px;
@@ -123,6 +133,19 @@
 
 .tr:hover {
   background: var(--bg-elevated);
+}
+
+/* 「查看更多」展开行(2026-10-08):融入表格最后一行,整行可点;主色文字提示可点,
+   hover 复用 .tr:hover 的灰色反馈。仅当 workspaces.length > 5 且未展开时渲染。 */
+.showMoreRow {
+  cursor: pointer;
+}
+
+.showMoreRow .td {
+  text-align: center;
+  color: var(--color-primary);
+  font-weight: 500;
+  padding: 10px 12px;
 }
 
 .tr + .tr .td {

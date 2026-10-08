@@ -23,6 +23,7 @@ export default function NewProjectModal({ open, onClose, onLaunch, themeConfig }
     >
       <ConfigProvider theme={themeConfig}>
         <WorkspaceList
+          embedded
           onLaunch={(payload) => {
             if (onLaunch) onLaunch(payload);
             onClose();

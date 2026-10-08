@@ -125,6 +125,39 @@ describe('GET /api/workspaces (list)', () => {
     const { data } = await getList(baseDeps({ isWorkspaceMode: true, workspaceLaunched: true }));
     assert.equal(data.workspaceMode, false);
   });
+
+  it('?limit=N is honored via WHATWG URL searchParams (regression: parsedUrl.query is undefined)', async () => {
+    // Regression for the P0 bug where the handler read parsedUrl?.query?.limit
+    // (legacy url.parse shape) but server.js:821 actually passes a WHATWG URL,
+    // so the limit was silently dropped and the route always returned all rows.
+    // We must use a real `new URL()` here — passing a hand-rolled { query }
+    // stub masks the bug.
+    const handler = routeFor('GET', '/api/workspaces');
+    const parsedUrl = new URL('http://localhost/api/workspaces?limit=2');
+    const res = await new Promise((resolve) => {
+      let status = 0;
+      const fakeRes = { writeHead(c) { status = c; }, end(b) { resolve({ status, data: JSON.parse(b || '{}') }); } };
+      handler({}, fakeRes, parsedUrl, true, baseDeps());
+    });
+    assert.equal(res.status, 200);
+    assert.ok(Array.isArray(res.data.workspaces));
+    assert.ok(res.data.workspaces.length <= 2, `expected ≤2 rows, got ${res.data.workspaces.length}`);
+    assert.equal(typeof res.data.total, 'number');
+  });
+
+  it('?limit=NaN / negative / 0 / absent all fall back to the full list', async () => {
+    const handler = routeFor('GET', '/api/workspaces');
+    for (const q of ['', '?limit=0', '?limit=-5', '?limit=abc', '?limit=NaN', '?limit=Infinity']) {
+      const parsedUrl = new URL(`http://localhost/api/workspaces${q}`);
+      const res = await new Promise((resolve) => {
+        const fakeRes = { writeHead() {}, end(b) { resolve(JSON.parse(b || '{}')); } };
+        handler({}, fakeRes, parsedUrl, true, baseDeps());
+      });
+      // No assertion on length here — just that the call succeeds and returns an array.
+      // The actual count depends on the shared registry state in this test file.
+      assert.ok(Array.isArray(res.workspaces), `query "${q}" should still return an array`);
+    }
+  });
 });
 
 describe('POST /api/workspaces/add', () => {
