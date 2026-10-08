@@ -1,5 +1,0 @@
----
-"cc-viewer": patch
----
-
-feat(web): **同一 cwd 的并行 claude 实例各自成 tab、各自看独立终端与对话** — 多实例视图层实例化：①服务端会话目录 meta.json 落 `instance`（写侧 `entry._ccvInstance` → `_session`，first-write-wins、零存量迁移），`latestMainSession` 支持按 instance 过滤，live-feed cursor 从目录 meta 读 instance 并按 viewer 的 `_ccvViewInstance` 分流（无 instance 的 viewer/会话保持全量、字节兼容）；②`/events` 接受 `?instance=` 戳 `res._ccvViewInstance`、冷加载按实例取各自最新会话；③PTY 定向 `_resolveKey`/`_resolveKeyByAnchor`/`attachPtyFor`/`killPtyFor`/`writeToPtyFor` 支持 instanceKey 精确命中（锚优先 instanceKey > sid > project），`/api/live-processes` 响应带 instanceKey、attach/close body 收 instanceKey，WS `?instance=`/`attach` 按实例路由；④前端 `viewedProject` 旁新增 `viewedInstance` 状态贯穿：tab/chip 按 instanceKey 区分（同 cwd 双实例各自成 tab、React key 唯一）、`_snapshotCurrentView` 缓存键带实例（防互恢对方 transcript）、initSSE `?instance=`、attach/close/发问锚带 instanceKey、handleLiveProjectsChange 按实例匹配（防同 cwd twin 误 detach）。Coverage: `pty-manager-instance.test.js`, `resume-sessions-map.test.js`, `terminal-anchor.test.js`, `view-cache-restore.test.js`, `view-switch-sse-scope.test.js`, `v2-session-select.test.js`, `v2-live-feed-instance.test.js`, `interceptor-instance-header.test.js`.

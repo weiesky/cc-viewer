@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- feat(web): **[多项目] 项目标签支持拖拽排序并持久化** — 引入 `@dnd-kit` 实现 tab 条拖拽换序，顺序写 localStorage（`ccv.projectTabOrder.v1`）跨 5s 轮询与刷新保持；新 tab 自动追加末尾、消失 tab 自动剪枝；`restrictToHorizontalAxis + restrictToParentElement` 约束拖拽不飞出 strip；拖拽期间点击仍走 PointerSensor 4px 阈值不误判，tab × 关闭按钮 `onPointerDown stopPropagation` 防误触拖拽。Coverage: `project-tab-order.test.js`.
+- fix(web): **切换 tab 不再闪全屏遮罩** — 删除 resume/project 切换期间的 `resumeSwitchMask` / `mobileResumeSwitchMask` 半透明遮罩，切换反馈改由 tab 条左缘全局 spinner + 切中 tab 的状态点替换环承担（`resumeSwitch` state 仍驱动，清理逻辑不变）。
+- fix(web): **项目 tab 选中文字撑开高度 + 聚焦环被全局 reset 吃掉** — `.projectTab` 补 `line-height:1` / `user-select:none` / `box-sizing:border-box`；删除全局 `*:focus { outline:none!important; box-shadow:none!important }` 与 `*:focus-visible` 同理规则（这两条会把激活 tab 的 inset box-shadow 选中环在获焦时一并抹掉，正是"激活 tab 失焦才看得见"的根因），浏览器默认 focus outline 回归；MDXEditor 工具栏显式 `outline:none` 保持单环视觉。
+
 - feat(chat): **[对话] 用户消息默认以 Markdown 渲染** — 用户气泡文本改经 `MarkdownBlock`（marked + DOMPurify，与 assistant 同一管线），标题/列表/代码/表格/链接正常成版；气泡内 markdown 配色按深底（暗色主题蓝/亮色主题深灰）反白处理（行内 code 提亮至 `#eef3ff` 达 WCAG AA，verified 文件路径 code span 补回 hover 反白反馈），避免全局深色变量在蓝底上对比不足；图片引用仍以 React 组件内联（拆分逻辑下沉为纯函数 `segmentUserTextWithImages`）；slash 命令标签与 /compact 摘要形态不变；右对齐气泡不显示 hover「另存为」栏。多行输入的换行现渲染为真实换行（此前折叠为空格）。Coverage: `user-markdown.test.js`.
 
 - fix(multi-project): **同名项目 bound 视图下只读面板（文件树/技能/Git/专家/搜索/文件内容）不再 400 "ambiguous project name"** — 新增模块级 view scope 单例（`utils/viewScope.js`，App 每次更新镜像写入）作为单一事实源，`withViewParams` 在调用方未传 instance 时统一兜底，所有按 cwd 解析的只读请求集中消歧，不再逐点穿 instance；同一 bound 兜底应用到仍用裸 viewedInstance 的通道——终端 WebSocket 握手与 resume-session POST（否则连错同名 twin / 409），project-stats/proxy-stats 的存在性 oracle 与 MobileGitDiff 手写 `?project=` 一并收口（stats 数据仍按名共享）；另修复请求详情按 bound 项目名拼 `v2:<project>/<sid>` 导致 viewed≠bound 时 `/api/v2-entry` 404（改用 viewed 项目名）。Mobile 无 bound 兜底为已知边界（单项目为主）。顺带删除 resume.js 的临时 `[ccv-dbg]` 调试日志。Coverage: `view-scope.test.js`, `resume-route.test.js`.
@@ -37,6 +41,28 @@
 - feat(git): **本地未推送 commit 行尾徽章由文件数改为 +n/-n 行增删统计** — `getUnpushedCommits` 增加 numstat 通道按 hash 合并每 commit 行统计；文件列表仍走 name-status（保留真实 A/M/D 状态字母），双通道均加 `--no-renames`，rename 呈现为真实 A+D 路径（此前 numstat 紧凑表达式 `{old => new}` 会被当成伪文件名）；纯二进制/纯改名/mode-only 等零行统计 commit 行尾回退显示文件数，不再与空 commit 无区分。面板总计/repo 头/commit 行三处徽章抽取为共享 `StatBadges` 组件。Coverage: `git-unpushed.test.js`, `branch-lib-git-diff.test.js`.
 - feat(system-prompt): **kimi-k3 preset 新增异步结果反轮询规则** — 等待 teammate/subagent 报告或后台任务结果时不再反复调用工具轮询,结果会以消息自动送达,发现连续两回合查同一件事即停。Coverage: `system-prompt-presets.test.js`.
 - chore(system-prompt): **全部 system prompt 模板移除 defensive-engineering 句** — systemPromptModel 与 7 个 preset(GLM-5.2/5.3、Qwen-3、deepseek-v4-pro/flash、kimi-k2.7-code/k3)同步删除。
+
+## 1.8.x 系列总结(2026-08-24 → 2026-10-08,15 个 patch)
+
+1.8 主线围绕 **「多项目 / 多实例」** 与 **「会话视图沉浸感」** 两条主轴演进,共 53 条变更(28 feat / 18 fix / 5 refactor / 2 perf)。
+
+**多项目并行与同名消歧(本系列最大主题)** — 从 1.8.21 的拖拽排序收尾倒推,这条线历经:Electron 风格等宽 tab 条取代单项目标签(`project-tab-bar`)→ tab × 关闭并自动重锚 → 同一 cwd 多实例并发(PTY Map 改 instanceKey 键控)→ 同名跨目录项目全链路消歧(view-scope 单例、读路由统一消歧、对话面板按 cwd 隔离)→ 视图缓存瞬时切回 + SSE 跨项目串扰修复 → 发问按锚定向(不再串话)→ 刷新后记住并行工作区视图 → 拖拽排序持久化(本条)。
+
+**SDK 模式对齐 PTY** — `ccv -SDK` headless 跑通完整 PTY 观测面(代理 + fetch hook + v2 存储 + SSE 流式);审批(allow/deny/allowSession)、AskUserQuestion / ExitPlanMode modal、终端 WS、slash 命令提示、压缩边界全部对齐;SDK 主会话不再被误判为 teammate 或 sub。
+
+**对话渲染与 markdown** — 用户消息默认 markdown 渲染(行内 code 提亮至 `#eef3ff` 达 WCAG AA);markdown 链接外链新标签打开、本地文件链接走内嵌查看器;反引号包裹的真实文件路径可点击并跳转行号;「Minimal conversation」把连续工具调用合并为单气泡;floating composer 改为渐变压底;对话窗口上限桌面 800 / Android 400 / iOS 300。
+
+**任务与协作** — Claude Code task checklist HUD 钉在 composer 上方(TaskCreated/TaskCompleted/PostToolUse 三 hook 桥接,SSE `task_update` 广播);ultraplan 新增「Test Analysis Expert」preset(Plan 工具驱动 + 双轮强制 review + Midscene YAML 生成);「历史会话」迁入星号菜单改真 /resume 切换(POST `/api/resume-session` 注入 `/resume <uuid>`)。
+
+**文件浏览与搜索** — 远程/云容器文件浏览器弹窗(树 + Finder 网格、右键菜单、拖拽移动、上传、下载到本地);搜索 worker 线程化防大仓库冻结 + 上下匹配导航;文件类型 SVG 图标主题化;Office / PDF 暗色主题对比修复。
+
+**System Prompt 体系** — 内置 7 套模型 preset 默认生效 + tombstone 禁用机制;`-c`/`-r` resume 钉住原始 system prompt(防 KV cache 失效);剔除 7 个 loop-volatile 动态变量;`ccv run` headless 也走完整注入管线。
+
+**依赖与基础设施** — 共享模块抽 `@ccv/core`(12 个 isomorphic 模块、边界 gate 接入 CI);测试按包分布式重排(466 个根 test/ 拆到 6 个 package);`json-store` 统一本地配置写内核;本地凭证 AES-256-GCM vault 加密落盘;pnpm 11 迁移 + `allowBuilds` 收紧 install 脚本。
+
+**焦点 / 遮罩 / 选中样式修复** — 删除全局 `*:focus{outline:none!important}` 与 `*:focus-visible`(它们会把激活 tab 的 box-shadow 选中环吃掉),浏览器默认 focus 环回归;删除 tab 切换的全屏 `resumeSwitchMask` 遮罩(改由 tab 圆环承担反馈);`.projectTab` 选中文字撑开高度修复。
+
+此后进入 **1.9.x** 主线。
 
 ## 1.8.14
 

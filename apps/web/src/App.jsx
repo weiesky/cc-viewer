@@ -729,14 +729,9 @@ class App extends AppBase {
             <div className={styles.chatViewWrapper} style={{ display: viewMode === 'chat' ? 'flex' : 'none' }}>
               <ChatView loadingProgress={fileLoading ? this._loadingProgressText() : null} {...this._settingsProps()} getTokenStatsContent={this._getTokenStatsContent} requests={deepRequests} mainAgentSessions={displaySessions} sessionUpperBoundTs={sessionUpperBoundTs} streamingLatest={this.state.streamingLatest} userProfile={this.state.userProfile} collapseToolResults={prefs.collapseToolResults} expandThinking={prefs.expandThinking} showFullToolContent={prefs.showFullToolContent} minimalChat={prefs.minimalChat} onlyCurrentSession={!this._isLocalLog} isLocalLog={!!this._isLocalLog} showThinkingSummaries={prefs.showThinkingSummaries} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={this.handleScrollTsDone} cliMode={this._isLocalLog ? false : this.state.cliMode} sdkMode={this._isLocalLog ? false : this.state.sdkMode} terminalVisible={this._isLocalLog ? false : (this.state.sdkMode ? this.state.scratchOpen : this.state.terminalVisible)} onToggleTerminal={() => this.setState(prev => prev.sdkMode ? ({ scratchOpen: !prev.scratchOpen }) : ({ terminalVisible: !prev.terminalVisible }))} pendingUploadPaths={this.state.pendingUploadPaths} onUploadPathsConsumed={this.handleUploadPathsConsumed} uploadingDrop={this.state.uploadingDrop} fileLoading={this.state.fileLoading} isStreaming={this.state.isStreaming} lang={this.state.lang} autoApproveSeconds={this.state.autoApproveSeconds} onAutoApproveChange={this.handleAutoApproveChange} planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds} onPlanAutoApproveChange={this.handlePlanAutoApproveChange} onClearContextOptimistic={this.handleClearContextOptimistic} onUserMessageSent={this.handleUserMessageSent} onPendingAsk={this.handleApprovalAsk} onPendingPtyPlan={this.handleApprovalPtyPlan} ownTabId={this.state.ownTabId} projectName={this.state.projectName} viewProject={this.state.viewedProject || this.state.projectName || null} setContextBarSlot={this.setContextBarSlot} attachedSid={this.state.attachedSid || null} viewedProject={this.state.viewedProject || null} viewInstance={viewInstanceForChat} onDetachView={this.handleDetachView} onResumeSession={this.handleResumeSession} />
             </div>
-            {/* View-switch overlay: covers chat + terminal while a session/project
-                switch is in flight (see AppBase resumeSwitch). pointer-events:none
-                keeps it visual-only; z-index stays below antd Modal/message. */}
-            {this.state.resumeSwitch && (
-              <div className={styles.resumeSwitchMask}>
-                <Loading size="large" />
-              </div>
-            )}
+            {/* View-switch overlay removed (2026-10-08): the tab strip already shows a
+                spinning ring (projectTabRingSpin) for the in-flight switch, and the cold
+                load is fast enough that the fullscreen mask read as flicker. */}
           </Layout.Content>
           <div className={styles.footer}>
             {/* Geo badge is only meaningful for Anthropic official subscriptions: mount it (and

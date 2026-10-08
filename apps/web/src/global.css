@@ -510,13 +510,9 @@ html, body, #root {
   height: auto;
 }
 
-/* Remove focus outlines globally.
-   !important required: AntD v5 CSS-in-JS uses class-level selectors like
-   `.ant-btn:focus` (0,0,2,0) which exceed our universal `*:focus` (0,0,1,0).
-   No clean specificity-based override without polluting JSX with extra
-   class hooks; intentional exception to the project-wide no-!important rule. */
-*:focus { outline: none !important; box-shadow: none !important; }
-*:focus-visible { outline: none !important; box-shadow: none !important; }
+/* Focus outlines: default browser UA styles apply. The previous global
+   `*:focus{outline:none!important}` block was removed per user request — keep
+   per-component focus overrides in module CSS where needed. */
 
 /* chat-boxer: 气泡容器 */
 .chat-boxer {

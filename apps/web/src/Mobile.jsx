@@ -941,13 +941,8 @@ class Mobile extends AppBase {
               />
             </div>
           )}
-          {/* View-switch overlay (mobile): same signal as desktop — covers
-              chat + terminal while a session switch is in flight. */}
-          {this.state.resumeSwitch && (
-            <div className={styles.mobileResumeSwitchMask}>
-              <Loading size="large" />
-            </div>
-          )}
+          {/* View-switch overlay removed (2026-10-08, symmetric with App.jsx): the tab
+              strip already exposes the in-flight switch via projectTabRingSpin. */}
           <div className={`${styles.mobileGitDiffOverlay} ${this.state.mobileGitDiffVisible ? styles.mobileGitDiffOverlayVisible : ''}`}>
             <div className={styles.mobileGitDiffInner}>
               <MobileGitDiff visible={this.state.mobileGitDiffVisible} onClose={() => this.setState({ mobileGitDiffVisible: false })} project={this.state.viewedProject || this.state.projectName || null} instance={this.state.viewedInstance || null} />

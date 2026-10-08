@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Space, Tag, Button, Dropdown, Popover, Popconfirm, Modal, Collapse, Drawer, Switch, Tabs, Input, Select, AutoComplete, Segmented, Tooltip, message } from 'antd';
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import { DISPLAY_SCALE_PRESETS } from '../../utils/displayScaleHelper';
 import Loading from '../common/Loading';
 import { hasNativeZoom, isMac } from '../../env';
@@ -30,6 +34,7 @@ import ChipIcon from '../common/ChipIcon';
 import CachePopoverContent from './CachePopoverContent';
 import LiveTagPopover from './LiveTagPopover';
 import { deriveActiveProcessChips, deriveProjectTabs, resolveBoundInstance } from '../../utils/resumeSessions';
+import { readProjectTabOrder, writeProjectTabOrder, mergeProjectTabOrder, reorderProjectTabIds } from '../../utils/projectTabOrder';
 import MemoryDetailModal from '../common/MemoryDetailModal';
 import SkillsManagerModal from '../settings/SkillsManagerModal';
 import ProjectPrefsManagerModal from '../settings/ProjectPrefsManagerModal';
@@ -145,11 +150,66 @@ function HeaderActiveChips({ onActivateChip, chips }) {
 // main PTY server-side (AppBase.handleCloseProject). Hovering the current
 // project's tab opens the same recent-sessions dropdown the legacy label
 // carries.
+// Single sortable wrapper around one tab body. Isolates useSortable's ref /
+// transform / listeners from the tab's own presentation so the existing
+// click/keyboard/close behavior stays untouched. dnd-kit uses the stable
+// `tab.key` as the sortable id (same id projectTabOrder persists).
+// a11y: useSortable's default attributes inject role="button" + tabIndex=0 +
+// aria-roledescription="draggable" + aria-describedby onto the wrapper, nesting
+// a button around the tabBody's own role=button tabIndex=0 (double Tab stop +
+// "button in button" for screen readers). We opt out via the attributes option:
+// no role/tabIndex on the wrapper, and we don't spread `{...attributes}` — the
+// keyboard-sorting announcements those aria-* attributes support are inert
+// anyway (no KeyboardSensor). The inner tabBody stays the single interactive
+// target.
+function SortableProjectTab({ id, children }) {
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    attributes: { role: 'presentation', roleDescription: undefined, tabIndex: -1 },
+  });
+  const style = {
+    // CSS.Translate (not Transform) keeps the tab's own box-shadow / border
+    // intact while it's being repositioned — a Transform would also scale
+    // the inset 1px ring, causing a visible pop at drop.
+    transform: CSS.Translate.toString(transform),
+    transition,
+    // Raise the dragged tab above siblings so the strip's overflow:auto
+    // doesn't clip it mid-drag; slight fade marks the "ghost" origin slot.
+    zIndex: isDragging ? 10 : undefined,
+    opacity: isDragging ? 0.85 : undefined,
+    // While dragging, the tab should feel "picked up" — pointer cursor is
+    // ambiguous, grabbing is the standard idiom.
+    cursor: isDragging ? 'grabbing' : undefined,
+    display: 'inline-flex',
+  };
+  return (
+    <div ref={setNodeRef} style={style} {...listeners}>
+      {children}
+    </div>
+  );
+}
+
 function HeaderProjectTabs({ tabs, currentProject, currentInstanceKey, viewedProject, viewedInstance, resumeSwitch, onActivateChip, onDetachView, onCloseProject, onNewProject }) {
   const viewing = viewedProject || currentProject || null;
   // Multi-instance: "viewing" identity is project+instance — a same-cwd twin tab is NOT the
   // viewed one just because the basename matches.
   const viewingInstance = viewedInstance || null;
+  // User-defined tab order (2026-10-08): the ids (tab.key) the user dragged into place,
+  // persisted to localStorage. State mirrors the storage value so a drag updates the UI
+  // immediately without waiting for the next 5s poll. Seed from storage on mount; the
+  // effect below re-reads storage whenever the poll delivers a fresh `tabs` reference
+  // so a cleared/changed storage value (other tab, devtools) is honored.
+  const [savedOrder, setSavedOrder] = useState(() => readProjectTabOrder());
+  // Re-read storage when the poll delivers a fresh `tabs` reference so a cleared/changed
+  // storage value (other tab, devtools) is honored. Skip the setState when the ids are
+  // identical — otherwise every 5s poll would re-render the strip even without a drag.
+  useEffect(() => {
+    const fresh = readProjectTabOrder();
+    setSavedOrder((prev) => {
+      if (prev.length === fresh.length && prev.every((id, i) => id === fresh[i])) return prev;
+      return fresh;
+    });
+  }, [tabs]);
   // View-repair target after closing a tab: prefer the bound project when it survives, else
   // the first remaining live tab (mirrors the server's re-attach order), else null. Carries
   // the survivor's { project, instanceKey } so the re-view lands on the exact process.
@@ -172,6 +232,28 @@ function HeaderProjectTabs({ tabs, currentProject, currentInstanceKey, viewedPro
   const boundViewInstance = viewedProject
     ? null
     : resolveBoundInstance(tabs, currentProject, currentInstanceKey);
+  // Apply the user's saved order to the fresh poll: previously-ordered tabs keep their
+  // relative position, brand-new tabs append at the end. Memoized on both inputs so a
+  // savedOrder update (post-drag) re-renders without waiting for the next 5s poll.
+  const orderedTabs = useMemo(
+    () => mergeProjectTabOrder(tabs || [], savedOrder),
+    [tabs, savedOrder],
+  );
+  // dnd-kit sensors: PointerSensor with a small activation distance so a plain click
+  // (no movement) never triggers a drag, while a ≥4px move does. Keyboard sorting is
+  // NOT enabled — tabs already have Enter/Space → activate, and adding a second keymap
+  // (Space to lift, arrows to move) would conflict.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+  );
+  const onDragEnd = (event) => {
+    const { active, over } = event || {};
+    if (!active || !over) return;
+    const next = reorderProjectTabIds(orderedTabs, String(active.id), String(over.id));
+    if (!next) return;
+    setSavedOrder(next);
+    writeProjectTabOrder(next);
+  };
   const renderTab = (tab) => {
     const tabInstance = tab.instanceKey || null;
     // Viewing identity: an attached parallel view matches by project+instanceKey exactly. With
@@ -244,6 +326,10 @@ function HeaderProjectTabs({ tabs, currentProject, currentInstanceKey, viewedPro
               // keyboard user landing on an invisible control is worse than losing
               // ×-key access (the tab body itself is the keyboard target).
               tabIndex={-1}
+              // Keep the × click from reaching dnd-kit's PointerSensor (pointerdown
+              // bubbles up to the sortable wrapper's onPointerDown listener) or the
+              // tab's own onClick — both would fire alongside the Popconfirm.
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
               ×
@@ -252,10 +338,9 @@ function HeaderProjectTabs({ tabs, currentProject, currentInstanceKey, viewedPro
         )}
       </div>
     );
-    // (2026-10-06) The recent-sessions hover dropdown on the current-project tab was
-    // removed — session history lives in the star quick-settings menu now. Every tab
-    // renders the same body.
-    return <React.Fragment key={tab.key}>{tabBody}</React.Fragment>;
+    // Every tab renders the same body, wrapped in a SortableProjectTab so the user
+    // can drag to reorder (order persisted via projectTabOrder).
+    return <SortableProjectTab key={tab.key} id={tab.key}>{tabBody}</SortableProjectTab>;
   };
   // Global switch indicator: while ANY tab is mid-switch (resumeSwitch set), show a single
   // spinning ring at the strip's left edge — a header-level counterpart to the per-tab ring,
@@ -263,17 +348,31 @@ function HeaderProjectTabs({ tabs, currentProject, currentInstanceKey, viewedPro
   // looks at the strip as a whole. Primary-colored (it's the active transition), same idiom.
   const anySwitching = !!(resumeSwitch && resumeSwitch.uuid);
   return (
-    <div className={styles.projectTabsStrip}>
-      {anySwitching && (
-        <span
-          className={`${styles.projectTabRingSpin} ${styles.projectTabRingActive} ${styles.projectTabsStripSpinner}`}
-          aria-hidden="true"
-          title={t('ui.resume.switching')}
-        />
-      )}
-      {(tabs || []).map(renderTab)}
-      <NewProjectButton onNewProject={onNewProject} />
-    </div>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+      // Constrain the drag to the strip's horizontal lane — without these modifiers
+      // the dragged tab free-floats with the pointer (could fly off the strip when
+      // the pointer leaves horizontally, which read as "the tab jumped to the
+      // corner"). restrictToHorizontalAxis locks Y, restrictToParentElement clamps
+      // the translate to the strip's bounding box.
+      modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
+    >
+      <SortableContext items={orderedTabs.map((t) => t.key)} strategy={horizontalListSortingStrategy}>
+        <div className={styles.projectTabsStrip}>
+          {anySwitching && (
+            <span
+              className={`${styles.projectTabRingSpin} ${styles.projectTabRingActive} ${styles.projectTabsStripSpinner}`}
+              aria-hidden="true"
+              title={t('ui.resume.switching')}
+            />
+          )}
+          {orderedTabs.map(renderTab)}
+          <NewProjectButton onNewProject={onNewProject} />
+        </div>
+      </SortableContext>
+    </DndContext>
   );
 }
 

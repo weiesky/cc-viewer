@@ -779,10 +779,14 @@
   border: 1px solid var(--border-light);
   color: var(--text-tertiary);
   font-size: 12px;
+  line-height: 1;
   white-space: nowrap;
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
   transition: color 0.2s, border-color 0.2s, box-shadow 0.2s;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 .projectTab:hover {
   color: var(--text-secondary);
