@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(web): **Git 变更面板刷新后保持开关状态** — 与文件浏览器同套 localStorage 持久化(`ccv_gitChangesOpen`,桌面 + iPad pad 模式默认关);互斥关闭(点文件浏览器/搜索图标)也落盘;constructor 读回时两面板互斥恢复(git 仅在 fileExplorer 恢复结果为关时才开),消除「上次以跳文件被动关 git 收尾」导致的刷新后双开。Coverage: `git-changes-open-persist.test.js`.
+
 - feat(web): **[多项目] 项目标签支持拖拽排序并持久化** — 引入 `@dnd-kit` 实现 tab 条拖拽换序，顺序写 localStorage（`ccv.projectTabOrder.v1`）跨 5s 轮询与刷新保持；新 tab 自动追加末尾、消失 tab 自动剪枝；`restrictToHorizontalAxis + restrictToParentElement` 约束拖拽不飞出 strip；拖拽期间点击仍走 PointerSensor 4px 阈值不误判，tab × 关闭按钮 `onPointerDown stopPropagation` 防误触拖拽。Coverage: `project-tab-order.test.js`.
 - fix(web): **切换 tab 不再闪全屏遮罩** — 删除 resume/project 切换期间的 `resumeSwitchMask` / `mobileResumeSwitchMask` 半透明遮罩，切换反馈改由 tab 条左缘全局 spinner + 切中 tab 的状态点替换环承担（`resumeSwitch` state 仍驱动，清理逻辑不变）。
 - fix(web): **项目 tab 选中文字撑开高度 + 聚焦环被全局 reset 吃掉** — `.projectTab` 补 `line-height:1` / `user-select:none` / `box-sizing:border-box`；删除全局 `*:focus { outline:none!important; box-shadow:none!important }` 与 `*:focus-visible` 同理规则（这两条会把激活 tab 的 inset box-shadow 选中环在获焦时一并抹掉，正是"激活 tab 失焦才看得见"的根因），浏览器默认 focus outline 回归；MDXEditor 工具栏显式 `outline:none` 保持单环视觉。
