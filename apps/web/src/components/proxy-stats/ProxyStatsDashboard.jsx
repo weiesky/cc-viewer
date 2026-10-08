@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Card, Statistic, Table, Tag, Button, Switch, Spin, Empty, Space } from 'antd';
+import { Card, Statistic, Table, Tag, Button, Switch, Empty, Space } from 'antd';
+import Loading from '../common/Loading';
 import { ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
-import { apiUrl } from '../../utils/apiUrl';
+import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import { reportSwallowed } from '../../utils/errorReport';
 import BarChart from '../charts/BarChart';
 import { fmtMs, statusColor, availColor, dominantFailCell, burdenBucketLabel } from './RetryStatsHelpers';
@@ -14,14 +15,18 @@ const AUTO_REFRESH_MS = 15000;
 // other props are unchanged (an inline arrow would force a re-render every poll).
 const fmtPercent = (n) => `${n}%`;
 
-export default function ProxyStatsDashboard() {
+export default function ProxyStatsDashboard({ project }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   const fetchData = useCallback(() => {
     setLoading(true);
-    fetch(apiUrl('/api/proxy-stats'))
+    // proxy-stats is name-keyed (shared), but its presence oracle (_resolveStatsName →
+    // resolveViewRoot) still 400s on two same-name live PTYs without an instance — withViewParams
+    // supplies the same-name instance fallback so the oracle resolves. Data stays name-shared.
+    const url = project ? withViewParams('/api/proxy-stats', { project }) : '/api/proxy-stats';
+    fetch(apiUrl(url))
       .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); })
       .then(d => { setData(d.proxyStats); setLoading(false); })
       .catch((err) => {
@@ -29,7 +34,7 @@ export default function ProxyStatsDashboard() {
         reportSwallowed('proxyStats.fetch', err);
         setLoading(false);
       });
-  }, []);
+  }, [project]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -72,7 +77,7 @@ export default function ProxyStatsDashboard() {
   );
 
   if (loading && !data) {
-    return <div className={`${styles.embedded} ${styles.centerState}`}><Spin size="large" /></div>;
+    return <div className={`${styles.embedded} ${styles.centerState}`}><Loading size="large" /></div>;
   }
 
   if (!data || !data.summary || data.summary.totalRequests === 0) {

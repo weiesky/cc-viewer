@@ -12,6 +12,10 @@ import {
   resolveHydratedPin,
   runPinHydration,
   applyBatchEntryTimestamps,
+  getSeqEpochUuid,
+  resolveTakeoverStableId,
+  shouldFollowLatest,
+  shouldReleaseTakeoverOnBoundary,
 } from '../src/utils/sessionManager.js';
 
 // ─── Test helpers ─────────────────────────────────────────────────��───────────
@@ -676,5 +680,152 @@ describe('applyBatchEntryTimestamps', () => {
     applyBatchEntryTimestamps(st, e2);
     assert.equal(st.currentSessionId, '2026-07-01T01:00:00.000Z');
     assert.equal(e2.body.messages[0]._timestamp, '2026-07-01T01:00:00.000Z');
+  });
+});
+
+// ─── getSeqEpochUuid / resolveTakeoverStableId / shouldFollowLatest ───────────
+// /resume 同项目接管（2026-10）：接管锁把视图锁到被接管会话，需把 Claude uuid
+// 经 _seqEpoch 前缀匹配映射到渲染会话的 stable id（权威 uuid→stableId，与
+// resolveDisplaySessions 后续 findIndex 比较同一对象图），并在锁持有期间豁免
+// follow-latest 三处入口。shouldFollowLatest 是该豁免的纯谓词。
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('getSeqEpochUuid', () => {
+  it('v2:<uuid> → uuid（ccv adapter / v3 形态）', () => {
+    assert.equal(getSeqEpochUuid('v2:3f4a1b2c-1111-4222-8333-abcdefabcdef'), '3f4a1b2c-1111-4222-8333-abcdefabcdef');
+  });
+
+  it('v2:<uuid>:<segIdx> → uuid（CC normalizer 分段，剥后缀）', () => {
+    assert.equal(getSeqEpochUuid('v2:3f4a1b2c-1111-4222-8333-abcdefabcdef:0'), '3f4a1b2c-1111-4222-8333-abcdefabcdef');
+    assert.equal(getSeqEpochUuid('v2:3f4a1b2c-1111-4222-8333-abcdefabcdef:12'), '3f4a1b2c-1111-4222-8333-abcdefabcdef');
+  });
+
+  it('大小写归一（uuid 比较不区分大小写）', () => {
+    assert.equal(getSeqEpochUuid('v2:3F4A1B2C-1111-4222-8333-ABCDEFABCDEF'), '3f4a1b2c-1111-4222-8333-abcdefabcdef');
+  });
+
+  it('非法输入 → null（v1 残留 / 缺 epoch / 非 uuid 中段 / 空）', () => {
+    assert.equal(getSeqEpochUuid(null), null);
+    assert.equal(getSeqEpochUuid(undefined), null);
+    assert.equal(getSeqEpochUuid(''), null);
+    assert.equal(getSeqEpochUuid('v2:'), null);
+    assert.equal(getSeqEpochUuid('v2:not-a-uuid'), null);
+    assert.equal(getSeqEpochUuid('v1:3f4a1b2c-1111-4222-8333-abcdefabcdef'), null);
+    assert.equal(getSeqEpochUuid('3f4a1b2c-1111-4222-8333-abcdefabcdef'), null);
+    assert.equal(getSeqEpochUuid(42), null);
+  });
+});
+
+describe('resolveTakeoverStableId', () => {
+  const UUID_A = '3f4a1b2c-1111-4222-8333-aaaaaaaaaaaa';
+  const UUID_B = '3f4a1b2c-1111-4222-8333-bbbbbbbbbbbb';
+
+  function takeoverSession(startTs, epoch) {
+    const s = pinnedSession(startTs);
+    s._seqEpoch = epoch;
+    return s;
+  }
+
+  it('ccv 精确形态（v2:<uuid>）命中并返回该会话 stable id（非 row.startTs）', () => {
+    const sessions = [
+      takeoverSession('2026-01-01T00:00:00Z', `v2:${UUID_A}`),
+      takeoverSession('2026-01-02T00:00:00Z', `v2:${UUID_B}`),
+    ];
+    assert.equal(resolveTakeoverStableId(sessions, UUID_A), '2026-01-01T00:00:00Z');
+    assert.equal(resolveTakeoverStableId(sessions, UUID_B), '2026-01-02T00:00:00Z');
+  });
+
+  it('segIdx 形态（v2:<uuid>:N）命中——/clear 分段不破坏匹配', () => {
+    const sessions = [takeoverSession('2026-01-01T00:00:00Z', `v2:${UUID_A}:3`)];
+    assert.equal(resolveTakeoverStableId(sessions, UUID_A), '2026-01-01T00:00:00Z');
+  });
+
+  it('uuid 大小写不敏感', () => {
+    const sessions = [takeoverSession('2026-01-01T00:00:00Z', `v2:${UUID_A}`)];
+    assert.equal(resolveTakeoverStableId(sessions, UUID_A.toUpperCase()), '2026-01-01T00:00:00Z');
+  });
+
+  it('无匹配（目标未到达 / 纯 CC 洞）→ null', () => {
+    const sessions = [takeoverSession('2026-01-01T00:00:00Z', `v2:${UUID_A}`)];
+    assert.equal(resolveTakeoverStableId(sessions, UUID_B), null);
+    // 无 epoch 会话（v1 残留）不匹配
+    assert.equal(resolveTakeoverStableId([pinnedSession('2026-01-01T00:00:00Z')], UUID_A), null);
+  });
+
+  it('空 sessions / 非法 uuid → null', () => {
+    assert.equal(resolveTakeoverStableId([], UUID_A), null);
+    assert.equal(resolveTakeoverStableId(null, UUID_A), null);
+    assert.equal(resolveTakeoverStableId([takeoverSession('2026-01-01T00:00:00Z', `v2:${UUID_A}`)], ''), null);
+    assert.equal(resolveTakeoverStableId([takeoverSession('2026-01-01T00:00:00Z', `v2:${UUID_A}`)], null), null);
+  });
+});
+
+describe('shouldFollowLatest（/resume 接管豁免谓词）', () => {
+  it('接管锁持有 → false（不 snap-back 到最新活动）', () => {
+    assert.equal(shouldFollowLatest({ effOnly: true, isHydratingPin: false, takeoverLocked: true }), false);
+  });
+
+  it('无锁且开关开且非 hydrate → true（既有行为不变）', () => {
+    assert.equal(shouldFollowLatest({ effOnly: true, isHydratingPin: false, takeoverLocked: false }), true);
+  });
+
+  it('hydrate 在途 → false（既有守卫不变）', () => {
+    assert.equal(shouldFollowLatest({ effOnly: true, isHydratingPin: true, takeoverLocked: false }), false);
+  });
+
+  it('开关关 → false（既有守卫不变）', () => {
+    assert.equal(shouldFollowLatest({ effOnly: false, isHydratingPin: false, takeoverLocked: false }), false);
+  });
+});
+
+describe('shouldReleaseTakeoverOnBoundary（/resume 接管锁释放：survive-vs-release）', () => {
+  const LOCK = '3f4a1b2c-1111-4222-8333-cccccccccccc'; // stored lowercased
+
+  it('非目标 epoch 新会话（不同 uuid）→ 释放', () => {
+    assert.equal(shouldReleaseTakeoverOnBoundary('v2:3f4a1b2c-1111-4222-8333-dddddddddddd', LOCK), true);
+  });
+
+  it('目标自身 segment churn（v2:<uuid>:N，同 uuid）→ 不释放（按 uuid 跟踪 survive）', () => {
+    assert.equal(shouldReleaseTakeoverOnBoundary(`v2:${LOCK}:0`, LOCK), false);
+    assert.equal(shouldReleaseTakeoverOnBoundary(`v2:${LOCK}:7`, LOCK), false);
+  });
+
+  it('目标精确形态（v2:<uuid>）→ 不释放', () => {
+    assert.equal(shouldReleaseTakeoverOnBoundary(`v2:${LOCK}`, LOCK), false);
+  });
+
+  it('uuid 大小写不敏感（锁已小写，epoch 大小写混合仍识别同 uuid）', () => {
+    assert.equal(shouldReleaseTakeoverOnBoundary(`v2:${LOCK.toUpperCase()}`, LOCK), false);
+  });
+
+  it('无 uuid 边界（v1 残留 / 无 epoch）→ 释放（不可能是目标自身 segment）', () => {
+    assert.equal(shouldReleaseTakeoverOnBoundary(null, LOCK), true);
+    assert.equal(shouldReleaseTakeoverOnBoundary(undefined, LOCK), true);
+    assert.equal(shouldReleaseTakeoverOnBoundary('v2:not-a-uuid', LOCK), true);
+  });
+
+  it('无锁（空 lockUuid）→ false（无可释放）', () => {
+    assert.equal(shouldReleaseTakeoverOnBoundary('v2:3f4a1b2c-1111-4222-8333-dddddddddddd', ''), false);
+    assert.equal(shouldReleaseTakeoverOnBoundary('v2:3f4a1b2c-1111-4222-8333-dddddddddddd', null), false);
+  });
+});
+
+describe('resolveTakeoverStableId — 多 /clear segment 会话', () => {
+  const UUID = '3f4a1b2c-1111-4222-8333-eeeeeeeeeeee';
+  function seg(startTs, segIdx) {
+    const s = pinnedSession(startTs);
+    s._seqEpoch = segIdx == null ? `v2:${UUID}` : `v2:${UUID}:${segIdx}`;
+    return s;
+  }
+
+  it('返回最后一个（活跃）segment 的 stable id，而非最旧的 segment 0', () => {
+    // 插入序 oldest-first：seg0 最旧、seg2 最新（claude -r 写入的是最新 segment）
+    const sessions = [seg('2026-01-01T00:00:00Z', 0), seg('2026-01-02T00:00:00Z', 1), seg('2026-01-03T00:00:00Z', 2)];
+    assert.equal(resolveTakeoverStableId(sessions, UUID), '2026-01-03T00:00:00Z');
+  });
+
+  it('混合形态（无 segIdx + 有 segIdx）仍取最后一个 uuid 匹配', () => {
+    const sessions = [seg('2026-01-01T00:00:00Z', null), seg('2026-01-02T00:00:00Z', 5)];
+    assert.equal(resolveTakeoverStableId(sessions, UUID), '2026-01-02T00:00:00Z');
   });
 });

@@ -4,10 +4,26 @@ import { join, resolve, sep, dirname } from 'node:path';
 import { getClaudeConfigDir } from '../../findcc.js';
 import { listSkills, moveSkill, deleteSkill, validateSkillName, parseSkillFrontmatter } from '../lib/skills-api.js';
 import { isAdminReq } from '../lib/is-admin.js';
+import { viewRootOrReply } from '../lib/view-root.js';
+import { loadWorkspaces } from '../workspace-registry.js';
+import { listLivePtys } from '../pty-manager.js';
 
-async function skillsList(req, res) {
+// Multi-project (2026-10): the skills LIST resolves the viewed project via
+// the shared viewRootOrReply (?project=). toggle/delete (mutations) keep the
+// bound root.
+function _viewRootOrReply(req, res, parsedUrl) {
+  return viewRootOrReply(req, res, parsedUrl, {
+    boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
+    loadWorkspaces,
+    listLivePtys,
+  });
+}
+
+async function skillsList(req, res, parsedUrl) {
   try {
-    const skills = listSkills({ projectDir: process.env.CCV_PROJECT_DIR || process.cwd() });
+    const viewRoot = _viewRootOrReply(req, res, parsedUrl);
+    if (!viewRoot) return;
+    const skills = listSkills({ projectDir: viewRoot });
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, skills }));
   } catch (err) {

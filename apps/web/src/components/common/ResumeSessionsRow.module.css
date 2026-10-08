@@ -1,0 +1,8 @@
+/* Session-history flyout (star quick-settings menu). Widen the cascade submenu so the
+ * 340px ResumeSessionsPopover list fits without wrapping; the shared .quickMenuSub
+ * already supplies the 60vh scroll cap and elevated background/border. */
+.historySub {
+  min-width: 340px;
+  max-width: 440px;
+  padding: 0; /* ResumeSessionsPopover supplies its own padding/title */
+}

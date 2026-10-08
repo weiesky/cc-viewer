@@ -44,7 +44,12 @@ async function v2Entry(req, res, parsedUrl) {
     sseWrite(res, `{"entry":${result.entry},"prevMain":${result.prevMain ?? 'null'}}`);
     wireEnd(res);
   } catch (err) {
-    console.error('[v2-entry]', file, err && err.stack || err);
+    // A NOT_FOUND here is routine, not an error: the detail-fetch target (a v3
+    // row's session dir) was quota-pruned or /clear-cleaned after the list was
+    // rendered. The 404 is the correct, sufficient response — logging it to
+    // stderr as a stack would be pure noise. Only genuine faults (validation
+    // bugs, mid-stream I/O errors) are worth the console.
+    if (err.code !== 'NOT_FOUND') console.error('[v2-entry]', file, err && err.stack || err);
     if (!res.headersSent) {
       const status = err.code === 'NOT_FOUND' ? 404 : err.code === 'ACCESS_DENIED' ? 403 : 500;
       res.writeHead(status, { 'Content-Type': 'application/json' });

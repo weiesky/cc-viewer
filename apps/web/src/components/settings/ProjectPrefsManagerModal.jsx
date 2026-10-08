@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, Collapse, Spin, Tag, Empty } from 'antd';
+import { Modal, Collapse, Tag, Empty } from 'antd';
+import Loading from '../common/Loading';
 import { DeleteOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
@@ -106,7 +107,7 @@ export default class ProjectPrefsManagerModal extends React.Component {
         styles={{ body: { maxHeight: '70vh', overflowY: 'auto', padding: '12px 16px', ...(isMobile ? { zoom: 0.6 } : {}) } }}
       >
         {loading ? (
-          <div className={styles.center}><Spin /></div>
+          <div className={styles.center}><Loading /></div>
         ) : error ? (
           <div className={styles.center}>{t('ui.projectPrefsManage.empty')}</div>
         ) : entries.length === 0 ? (

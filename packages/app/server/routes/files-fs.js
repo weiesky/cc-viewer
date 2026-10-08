@@ -8,8 +8,26 @@ import { homedir, tmpdir } from 'node:os';
 import { execFile, spawn } from 'node:child_process';
 import { bumpWorkspacesVersion, isReadAllowed } from '../lib/file-access-policy.js';
 import { validateImportDir } from '../lib/file-api.js';
+import { viewRootOrReply } from '../lib/view-root.js';
+import { loadWorkspaces } from '../workspace-registry.js';
+import { listLivePtys } from '../pty-manager.js';
 import { PROFILE_PATH, _projectName, _logDir } from '../interceptor.js';
 import { LOG_DIR, getClaudeConfigDir } from '../../findcc.js';
+
+// Multi-project (2026-10): project-scoped READ routes resolve the viewed
+// project via the shared viewRootOrReply (?project=, or POST body {project}
+// for the body-carrying read probes). WRITE routes keep the bound root.
+// SYNCHRONOUS: the affected handlers were sync before multi-project and their
+// tests assert on res immediately after the call.
+function _viewRootOrReply(req, res, parsedUrl, bodyProject, bodyInstance) {
+  return viewRootOrReply(req, res, parsedUrl, {
+    boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
+    loadWorkspaces,
+    listLivePtys,
+    bodyProject,
+    bodyInstance,
+  });
+}
 
 function upload(req, res, parsedUrl, isLocal, deps) {
   const contentType = req.headers['content-type'] || '';
@@ -245,7 +263,8 @@ async function files(req, res, parsedUrl, isLocal, deps) {
     res.end(JSON.stringify({ error: 'Invalid path' }));
     return;
   }
-  const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+  const cwd = _viewRootOrReply(req, res, parsedUrl);
+  if (!cwd) return;
   const targetDir = join(cwd, reqPath);
   try {
     const entries = readdirSync(targetDir, { withFileTypes: true });
@@ -636,7 +655,7 @@ function openFile(req, res, parsedUrl, isLocal, deps) {
 function resolvePath(req, res, parsedUrl, isLocal, deps) {
   let body = '';
   req.on('data', chunk => { body += chunk; if (body.length > deps.MAX_POST_BODY) req.destroy(); });
-  req.on('end', () => {
+  req.on('end', async () => {
     let parsed;
     try { parsed = JSON.parse(body); } catch {
       res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -650,6 +669,11 @@ function resolvePath(req, res, parsedUrl, isLocal, deps) {
         res.end(JSON.stringify({ error: 'Invalid path' }));
         return;
       }
+      // resolve-path is an internal UI helper (resolve a relative path against
+      // the project root for reveal/open actions). It stays BOUND-only (review
+      // P2-5): resolving a foreign project's root and echoing its absolute path
+      // back would make this endpoint a weak path-leak oracle for projects the
+      // caller is not viewing.
       const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
       const fullPath = relPath ? join(cwd, relPath) : cwd;
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -709,7 +733,8 @@ function filesExists(req, res, parsedUrl, isLocal, deps) {
         return;
       }
     }
-    const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+    const cwd = _viewRootOrReply(req, res, parsedUrl, parsed.project, parsed.instance);
+    if (!cwd) return;
     const results = paths.map(p => ({ path: p, exists: probeFileExists(p, cwd) }));
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ results }));

@@ -2,6 +2,22 @@
 // Scopes to the project root and delegates to lib/code-search.js and lib/code-replace.js.
 import { searchCode } from '../lib/code-search.js';
 import { searchReplace } from '../lib/code-replace.js';
+import { resolveViewRoot } from '../lib/view-root.js';
+import { loadWorkspaces } from '../workspace-registry.js';
+
+// Multi-project (2026-10): code SEARCH (read-only) resolves the viewed project
+// via resolveViewRoot (body {project}). search-replace (destructive) stays bound.
+async function _viewRootOrReply(req, res, projectParam, instanceParam) {
+  let listLivePtys = () => [];
+  try { ({ listLivePtys } = await import('../pty-manager.js')); } catch { /* no pty map */ }
+  return resolveViewRoot({
+    projectParam,
+    instanceParam,
+    boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
+    loadWorkspaces,
+    listLivePtys,
+  });
+}
 
 const VALID_ENGINES = new Set(['auto', 'ripgrep', 'node']);
 const VALID_SCOPES = new Set(['all', 'file', 'match']);
@@ -50,7 +66,13 @@ function searchHandler(req, res, parsedUrl, isLocal, deps) {
     }
 
     const engine = VALID_ENGINES.has(parsed.engine) ? parsed.engine : 'auto';
-    const root = process.env.CCV_PROJECT_DIR || process.cwd();
+    const viewR = await _viewRootOrReply(req, res, typeof parsed.project === 'string' ? parsed.project : '', typeof parsed.instance === 'string' ? parsed.instance : '');
+    if (!viewR.ok) {
+      res.writeHead(viewR.status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: viewR.error }));
+      return;
+    }
+    const root = viewR.root;
 
     try {
       const result = await searchCode({

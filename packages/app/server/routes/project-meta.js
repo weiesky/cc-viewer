@@ -4,7 +4,31 @@ import { join } from 'node:path';
 import { PACKAGE_JSON } from '../_paths.js';
 import { LOG_DIR } from '../../findcc.js';
 import { _projectName } from '../interceptor.js';
+import { sanitizePathComponent } from '../lib/v2/layout.js';
+import { resolveViewRoot } from '../lib/view-root.js';
+import { loadWorkspaces } from '../workspace-registry.js';
+import { listLivePtys } from '../pty-manager.js';
 import { detectHomebrewInstall } from '../lib/updater.js';
+
+// Multi-project (2026-10, review P2-6): stats reads for a VIEWED project must
+// not become a presence oracle over LOG_DIR — `?project=` is accepted ONLY
+// when it resolves to a registered workspace / live PTY (or the bound
+// project), never an arbitrary sanitized name.
+function _resolveStatsName(projectParam, res) {
+  if (!projectParam) return _projectName || '';
+  const r = resolveViewRoot({
+    projectParam,
+    boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
+    loadWorkspaces,
+    listLivePtys,
+  });
+  if (!r.ok) {
+    res.writeHead(r.status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: r.error }));
+    return null;
+  }
+  return sanitizePathComponent(projectParam);
+}
 
 // 判定当前 cc-viewer 的安装渠道，供前端精准匹配升级命令。
 //   - electron：桌面版（in-process server），走 GitHub Releases 重新下载安装包。
@@ -44,14 +68,19 @@ function versionInfo(req, res) {
   }
 }
 
-function projectStats(req, res) {
+function projectStats(req, res, parsedUrl) {
   try {
-    if (!_projectName) {
+    // Multi-project (2026-10): project-stats resolves the VIEWED project
+    // (?project=, registered/live only — never an arbitrary name).
+    const projectParam = parsedUrl && parsedUrl.searchParams ? parsedUrl.searchParams.get('project') : null;
+    const name = _resolveStatsName(projectParam, res);
+    if (name === null) return; // error already replied
+    if (!name) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'No project name' }));
       return;
     }
-    const statsFile = join(LOG_DIR, _projectName, `${_projectName}.json`);
+    const statsFile = join(LOG_DIR, name, `${name}.json`);
     if (!existsSync(statsFile)) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Stats file not found' }));

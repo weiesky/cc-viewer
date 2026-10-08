@@ -82,8 +82,12 @@ function workspacesLaunch(req, res, parsedUrl, isLocal, deps) {
       // 启动 PTY
       const proxyPort = process.env.CCV_PROXY_PORT;
       if (proxyPort) {
-        const { spawnClaude } = await import('../pty-manager.js');
-        await spawnClaude(parseInt(proxyPort), wsPath, mergedArgs, deps.workspaceClaudePath, deps.workspaceIsNpmVersion, deps.actualPort, deps.protocol, deps.INTERNAL_TOKEN);
+        // Multi-instance (2026-10-06): spawnClaude now mints a fresh instanceKey per call and
+        // no longer kills an existing same-cwd record, so re-launching an ALREADY-LIVE cwd
+        // here would silently start a duplicate claude. ensurePtyForCwd restores the intended
+        // "re-open = reuse" semantics: attach to the live record instead of re-spawning.
+        const { ensurePtyForCwd } = await import('../pty-manager.js');
+        await ensurePtyForCwd({ cwd: wsPath, proxyPort: parseInt(proxyPort), extraArgs: mergedArgs, claudePath: deps.workspaceClaudePath, isNpmVersion: deps.workspaceIsNpmVersion, serverPort: deps.actualPort, serverProtocol: deps.protocol, internalToken: deps.INTERNAL_TOKEN });
       }
 
       deps.setWorkspaceLaunched(true);
@@ -171,7 +175,10 @@ function workspacesDelete(req, res, parsedUrl) {
 
 function workspacesStop(req, res, parsedUrl, isLocal, deps) {
   Promise.all([
-    import('../pty-manager.js').then(({ killPty }) => killPty()),
+    // killAllMain (not killPty): a cross-project /resume takeover can leave a background
+    // project's PTY alive; stop must reap every main PTY, not just the active one, or the
+    // old project's claude leaks past the workspace session.
+    import('../pty-manager.js').then(({ killAllMain }) => killAllMain()),
     import('../scratch-pty-manager.js').then(({ killAllScratch }) => killAllScratch()).catch(() => {}),
   ]).then(() => {
     // 接续原有清理流程

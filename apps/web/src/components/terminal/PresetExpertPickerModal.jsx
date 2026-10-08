@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Button, Spin, Empty, message } from 'antd';
+import { Modal, Button, Empty, message } from 'antd';
+import Loading from '../common/Loading';
 import { t, getLang } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { resolveLocalized } from '../../utils/resolveLocalized';
@@ -78,7 +79,7 @@ export default function PresetExpertPickerModal({ open, onLoad, onClose }) {
       styles={{ content: { background: 'var(--bg-elevated)', border: '1px solid var(--border-light)' }, header: { background: 'var(--bg-elevated)', borderBottom: 'none' } }}
     >
       {loading ? (
-        <div className={styles.loading}><Spin /></div>
+        <div className={styles.loading}><Loading /></div>
       ) : agents.length === 0 ? (
         <div className={styles.loading}>
           <Empty description={t('ui.ultraplan.presetEmpty')} />

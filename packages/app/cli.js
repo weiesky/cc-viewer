@@ -19,6 +19,7 @@ import { normalizeBasePath } from './server/lib/base-path.js';
 import { mergeSettingsIntoArgs } from './server/lib/settings-merge.js';
 import { splitSdkLaunchArgs, resolveLaunchSystemPrompt, insertBeforeDashDash } from './server/lib/launch-config.js';
 import { createHardenedCleanup, installWinKeypressFallback } from './server/lib/term-signals.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -552,7 +553,7 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   }
 
   // 3. 启动 PTY 中的 claude
-  const { spawnClaude, killPty, onPtyExit } = await import('./server/pty-manager.js');
+  const { spawnClaude, killAllMain, onPtyExit } = await import('./server/pty-manager.js');
   const { isCodeFuseManagedEnvironment } = await import('./server/lib/codefuse-managed-mode.js');
   const codeFuseManaged = isCodeFuseManagedEnvironment();
   let managedExitCode = 0;
@@ -566,8 +567,20 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
       // cannot look like a second cleanup request and force the hardened 130 exit path.
       removeManagedExitListener?.();
       removeManagedExitListener = null;
-      killPty();
-      return serverMod.stopViewer();
+      // Kill ALL main PTYs, not just the active one — cross-project /resume keeps
+      // the previous project's main PTY alive, and it must not outlive this process
+      // as an orphan (node-pty children are session leaders; no OS cascade kill).
+      // killAllMain is idempotent and equals killPty() in the single-PTY case.
+      killAllMain();
+      // Reap scratch/resume children too — without this they outlive the main
+      // process as orphans (node-pty children are session leaders; the OS does
+      // not cascade-kill them). killAllScratch is idempotent.
+      return Promise.all([
+        serverMod.stopViewer(),
+        import('./server/scratch-pty-manager.js')
+          .then(({ killAllScratch }) => killAllScratch())
+          .catch((e) => reportSwallowed('cli.cleanup.scratch', e)),
+      ]);
     },
     exit: (code) => process.exit(code ?? managedExitCode),
   });
@@ -588,6 +601,16 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
     await serverMod.stopViewer();
     process.exit(1);
   }
+
+  // Keep the launcher-verified executable available to later workspace launches
+  // (POST /api/workspaces/launch → deps.workspaceClaudePath). Without this the
+  // route falls back to resolveNativePath(), which can pick a DIFFERENT binary
+  // than the one just spawned (e.g. the npm global build instead of the
+  // CodeFuse-managed one) — on managed machines that binary is SIGKILLed on
+  // exec, so a [+] project launch dies instantly (the "terminal loads history
+  // but claude never starts" bug). Restores the wiring dropped in f209f508.
+  serverMod.setWorkspaceClaudeArgs(extraClaudeArgs);
+  serverMod.setWorkspaceClaudePath(claudePath, isNpmVersion);
 
   // 4. 自动打开浏览器
   const protocol = serverMod.getProtocol();
@@ -898,7 +921,13 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   const cleanup = createHardenedCleanup({
     doCleanup: () => {
       sdkManager.stopSession();
-      return serverMod.stopViewer();
+      // Reap scratch/resume children (see runCliMode cleanup); idempotent.
+      return Promise.all([
+        serverMod.stopViewer(),
+        import('./server/scratch-pty-manager.js')
+          .then(({ killAllScratch }) => killAllScratch())
+          .catch((e) => reportSwallowed('cli.cleanup.scratch', e)),
+      ]);
     },
   });
   process.on('SIGINT', cleanup);

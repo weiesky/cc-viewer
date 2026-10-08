@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Modal, Button, Popconfirm, Spin, message } from 'antd';
+import { Modal, Button, Popconfirm, message } from 'antd';
+import Loading from '../common/Loading';
 import { t, getLang } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { renderMarkdown } from '../../utils/markdown';
@@ -176,7 +177,7 @@ export default function CustomUltraplanEditModal({ open, initial, onSave, onDele
           aria-hidden={docCollapsed}
         >
           {docLoading
-            ? <div className={styles.docLoading}><Spin /></div>
+            ? <div className={styles.docLoading}><Loading /></div>
             : <div dangerouslySetInnerHTML={{ __html: docHtml }} />}
         </div>
         {/* 折叠把手:借鉴 ChatView 的 .terminalToggle。Terminal 在右、本面板在左,chevron 方向相对反转:

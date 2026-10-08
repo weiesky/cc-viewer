@@ -146,6 +146,100 @@ export function getLatestSessionByActivity(sessions) {
 }
 
 /**
+ * Extract the Claude session uuid out of an entry/session `_seqEpoch`.
+ *
+ * Producers stamp two shapes (both carry the uuid in the second segment):
+ *   - `v2:<uuid>`        — ccv adapter (adapter.js), v3 assembler/rows
+ *   - `v2:<uuid>:<segIdx>` — CC-transcript normalizer (one segment per /clear)
+ * The trailing `:<segIdx>` is a segment counter, NOT part of the identity, so it
+ * is stripped. Returns the lowercased uuid, or null for anything that is not a
+ * well-formed `v2:` epoch (v1 leftovers, missing epoch, non-uuid middle segment).
+ *
+ * @param {*} epoch - the `_seqEpoch` value from a session or entry
+ * @returns {string|null}
+ */
+export function getSeqEpochUuid(epoch) {
+  if (typeof epoch !== 'string' || !epoch) return null;
+  const m = /^v2:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?::\d+)?$/i.exec(epoch);
+  return m ? m[1].toLowerCase() : null;
+}
+
+/**
+ * Resolve the ATTACHED session's ts-based stable id from the rendered sessions.
+ *
+ * This is the AUTHORITATIVE uuid→stableId mapping for the /resume view-attach: it
+ * reads the SAME session objects that `resolveDisplaySessions` later resolves
+ * against (`findIndex(s => getSessionStableId(s) === pinnedTs)`), so the returned
+ * id can never silently miss the way `row.startTs` can (file mtime for pure-CC
+ * rows, probe-minted dirs, resume-time re-stamped snapshots). Matches by uuid,
+ * NOT by a frozen ts, so the attached session's own `/clear` segment churn
+ * (`v2:<uuid>:N`) still resolves.
+ *
+ * @param {Array} sessions - mainAgentSessions
+ * @param {string} sessionUuid - the attached session's Claude session uuid
+ * @returns {string|null} the matched session's stable id, or null when no
+ *   rendered session carries that uuid yet (target not arrived / fresh-sid).
+ */
+export function resolveTakeoverStableId(sessions, sessionUuid) {
+  if (!Array.isArray(sessions) || typeof sessionUuid !== 'string' || !sessionUuid) return null;
+  const want = sessionUuid.toLowerCase();
+  // Iterate from the END: mainAgentSessions is insertion-ordered oldest-first, and
+  // a session resumed after N prior /clear(s) cold-loads as N+ segment objects all
+  // sharing the uuid (`v2:<uuid>:0..N`). The live segment is the LAST one — pinning
+  // to segment 0 would anchor the view to stale history (and a plain append to the
+  // latest segment has no new boundary, so the _newPinTs self-heal never fires to
+  // correct it). Return the last uuid-match, mirroring getLatestSessionByActivity's
+  // "later position wins".
+  for (let i = sessions.length - 1; i >= 0; i--) {
+    const s = sessions[i];
+    if (!s) continue;
+    if (getSeqEpochUuid(s._seqEpoch) === want) {
+      return getSessionStableId(s);
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether the follow-latest pin advance may run. Extracted as a pure predicate
+ * so the view-attach exemption is unit-testable: while the view is attached to a
+ * non-latest session, the "current session" must stay pinned to the attached one
+ * and follow-latest must NOT snap the pin back to the activity-latest session.
+ * The other two gates are the pre-existing conditions (toggle on, no hydrate in
+ * flight) — unchanged from the inline form.
+ *
+ * @param {object} g
+ * @param {boolean} g.effOnly - effective "only show current session" toggle
+ * @param {boolean} g.isHydratingPin - a server pin GET is in flight
+ * @param {boolean} g.takeoverLocked - the view is attached to a non-latest session
+ * @returns {boolean}
+ */
+export function shouldFollowLatest({ effOnly, isHydratingPin, takeoverLocked }) {
+  return !!effOnly && !isHydratingPin && !takeoverLocked;
+}
+
+/**
+ * Whether a new-session boundary should RELEASE the view-attach.
+ *
+ * The safety-critical rule, extracted as a pure predicate so the survive-vs-
+ * release decision is unit-testable: a boundary RELEASES the attach only when its
+ * epoch uuid differs from the attached uuid — i.e. the user started a genuinely
+ * NEW session (a /clear in the primary terminal, a brand-new terminal). A boundary
+ * whose epoch matches the attached uuid is the attached session's OWN segment
+ * churn (a /clear inside it → `v2:<uuid>:<seg+1>`), which must SURVIVE (the attach
+ * tracks by uuid and re-resolves), not release. A boundary with no parseable uuid
+ * (v1 leftover) also releases — it cannot be the attached session's own segment.
+ *
+ * @param {*} boundaryEpoch - the new session boundary entry's `_seqEpoch`
+ * @param {string} lockUuid - the attached session's lowercased uuid
+ * @returns {boolean} true = release the attach; false = the attached session's own segment, survive
+ */
+export function shouldReleaseTakeoverOnBoundary(boundaryEpoch, lockUuid) {
+  if (typeof lockUuid !== 'string' || !lockUuid) return false; // no lock → nothing to release
+  return getSeqEpochUuid(boundaryEpoch) !== lockUuid.toLowerCase();
+}
+
+/**
  * Pure decision for adopting a server-side pin during hydrate (page load, project
  * switch, SSE reconnect) or a `session_pin` broadcast.
  *

@@ -10,7 +10,7 @@ import styles from './ProxyStatsModal.module.css';
 // control in the toolbar. Both tabs live in one shell on every viewport; the
 // parent antd Modal (App.jsx) owns the mask/close-button, so this shell renders
 // no Modal of its own.
-export default function ProxyStatsModal({ retryConfig, retryDefaults, onRetryConfigChange }) {
+export default function ProxyStatsModal({ retryConfig, retryDefaults, onRetryConfigChange, project }) {
   const [tab, setTab] = useState('config');
 
   const handleConfigSave = async (formData) => {
@@ -49,7 +49,7 @@ export default function ProxyStatsModal({ retryConfig, retryDefaults, onRetryCon
             </div>
           </div>
         ) : (
-          <ProxyStatsDashboard />
+          <ProxyStatsDashboard project={project} />
         )}
       </div>
     </div>

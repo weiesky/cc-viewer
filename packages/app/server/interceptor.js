@@ -566,23 +566,49 @@ export function markSessionStart(payload) {
       console.warn('[ccv session-start] resume signal without transcript_path — ignored');
       return;
     }
-    // Soft cross-project guard: a foreign project's claude that somehow
-    // carries our CCVIEWER_PORT must not re-bind THIS project's writer. Only
-    // enforced when both sides are known (workspace mode may leave
-    // _projectName empty until bound).
-    if (cwd && typeof cwd === 'string' && _projectName) {
+    // Cross-project guard (2026-10-06, relaxed for true-/resume): a foreign project's
+    // claude that somehow carries our CCVIEWER_PORT must not re-bind THIS project's
+    // writer — BUT a resume in a PARALLEL project this server also manages (a live ccv
+    // PTY whose cwd maps to that project) is legitimate and must re-bind keyed by THAT
+    // project. Resolve the target project; drop only when neither bound nor a known
+    // live ccv project. This is what lets /api/resume-session switch a parallel
+    // viewed project and still have its writer follow.
+    let resumeProject = null; // null = bound project (default)
+    if (cwd && typeof cwd === 'string') {
       const cwdProject = projectKeyForCwd(cwd);
-      if (cwdProject !== _projectName) {
-        console.warn(`[ccv session-start] resume signal from project "${cwdProject}" ignored (bound to "${_projectName}")`);
-        return;
+      if (_projectName && cwdProject === _projectName) {
+        resumeProject = null; // bound project — default key
+      } else {
+        // Synchronously resolvable? No — isLiveClaudeProject lives in pty-manager
+        // (L2), imported lazily below. Compute the candidate key here and let the
+        // async gate decide whether to arm the switch.
+        resumeProject = cwdProject || null;
       }
     }
     const transcriptUuid = basename(transcriptPath, '.jsonl');
     if (source === 'resume') {
-      _v2Writer.beginResumeSwitch({
-        transcriptUuid,
-        hookSid: (typeof sessionId === 'string' && sessionId) ? sessionId : null,
-      });
+      const armSwitch = () => {
+        _v2Writer.beginResumeSwitch({
+          transcriptUuid,
+          hookSid: (typeof sessionId === 'string' && sessionId) ? sessionId : null,
+          // Keyed by the resumed conversation's project (bound = undefined default).
+          project: resumeProject || undefined,
+        });
+      };
+      if (!resumeProject || (_projectName && resumeProject === _projectName)) {
+        armSwitch();
+      } else {
+        // Parallel project: only arm when it's a live ccv-managed claude PTY.
+        import('./pty-manager.js')
+          .then((pm) => {
+            if (pm && typeof pm.isLiveClaudeProject === 'function' && pm.isLiveClaudeProject(resumeProject)) {
+              armSwitch();
+            } else {
+              console.warn(`[ccv session-start] resume signal from unmanaged project "${resumeProject}" ignored`);
+            }
+          })
+          .catch((err) => reportSwallowed('session-start.resume-project-gate', err));
+      }
     }
     // System-prompt snapshot, Bind B (system-prompt-snapshots.js): a process-level
     // -c/-r launch queued a resumeExpected pending at spawn (pty-manager). The
@@ -682,13 +708,20 @@ export function initForWorkspace(projectPath, { forceNew = false } = {}) { // es
   const dir = join(LOG_DIR, projectName);
   try { mkdirSync(dir, { recursive: true }); } catch {}
 
+  // Capture the project being switched AWAY from BEFORE rebinding: a scoped
+  // resetSessions(below) drops only THAT project's cached session bindings, so a
+  // concurrently-running BACKGROUND project (a cross-project /resume takeover's
+  // old project, still writing via entry._resumeProject) keeps its bindings and
+  // continues uninterrupted. Same-project re-init passes the same name (a no-op
+  // scoped clear of just that project, matching the old full clear for it).
+  const previousProject = _projectName;
   _projectName = projectName;
   setProjectName(projectName);
   _logDir = dir;
   // Fresh workspace context — no carried names apply; future requests must
   // create session dirs under the NEW project.
   _agentSpawnRegistry.clear();
-  _v2Writer.resetSessions(); // also clears the per-process `-c` adoption latch
+  _v2Writer.resetSessions(previousProject || null); // also clears the per-process `-c` adoption latch
   // A `--fork-session` / `-r` launch marks fork/resume intent; neither must
   // leak into a LATER workspace's `-c` (in a long-lived server that would
   // permanently suppress adoption). Clear both marks per launch and re-sync —
@@ -863,6 +896,9 @@ export function setupInterceptor() {
         if (isProxyTrace && options?.headers) {
           delete options.headers['x-cc-viewer-trace'];
         }
+        // NOTE: `x-ccv-project-dir` is stripped LATER (right before _originalFetch,
+        // after requestEntry has extracted `_resumeProject` from it) — stripping it
+        // here would delete it before the conversion copy below could read it.
 
         const timestamp = new Date().toISOString();
         let body = null;
@@ -926,10 +962,47 @@ export function setupInterceptor() {
             safeHeaders['authorization'] = '****';
           }
         }
+        // ccv-internal self-report headers (x-ccv-project-dir / x-ccv-instance) are routing
+        // metadata, not request content — drop them from the logged/forwarded `safeHeaders`
+        // copy so they never land in the on-disk journal or reach the frontend wire (they are
+        // extracted onto `_resumeProject`/`_ccvInstance` separately). Case-insensitive.
+        for (const k of Object.keys(safeHeaders)) {
+          const lk = k.toLowerCase();
+          if (lk === 'x-ccv-project-dir' || lk === 'x-ccv-instance') delete safeHeaders[k];
+        }
 
         requestEntry = {
           timestamp,
           project: (() => { try { return basename(process.cwd()); } catch { return 'unknown'; } })(),
+          // /resume global sessions: a child claude spawned for resume carries
+          // `x-ccv-project-dir` = its own cwd, so its traffic is logged under THAT
+          // project rather than this ccv process's cwd. Set ONLY the dedicated
+          // `_resumeProject` override (the writer prefers it over the bound
+          // project); `entry.project` keeps its original process-cwd meaning for
+          // every other consumer. projectKeyForCwd takes only the basename and
+          // sanitizes it, so the header cannot path-traverse.
+          ...(() => {
+            const dir = findHeader(headers, 'x-ccv-project-dir');
+            const proj = (typeof dir === 'string' && dir) ? projectKeyForCwd(dir) : '';
+            if (!proj) return {};
+            // Same-name session isolation (2026-10-07): also surface the RAW full cwd
+            // (`dir`, the findHeader output — NOT the projectKeyForCwd basename above)
+            // as `_resumeProjectCwd`, so the writer can stamp `meta.cwd` on the session
+            // dir. The read-side fallback then tightens by full-path cwd, telling two
+            // cross-dir same-basename projects apart (basename routing cannot). Using the
+            // basename here would never equal the read side's full-path targetCwd.
+            return { _resumeProject: proj, _resumeProjectCwd: dir };
+          })(),
+          // Multi-instance (2026-10-06): the spawned claude also self-reports its PTY
+          // instanceKey via `x-ccv-instance` (spawnClaude injects it). Surface it as
+          // `_ccvInstance` so the writer can pin the resolved sessionId to THIS exact process
+          // — basename routing cannot tell two same-cwd instances apart. Validated to the
+          // minted `ccv-<hex>` shape before use (it becomes a Map key downstream).
+          ...(() => {
+            const inst = findHeader(headers, 'x-ccv-instance');
+            const key = (typeof inst === 'string' && /^ccv-[0-9a-f]+$/.test(inst)) ? inst : '';
+            return key ? { _ccvInstance: key } : {};
+          })(),
           url: urlStr,
           method: options?.method || 'GET',
           headers: safeHeaders,
@@ -1231,6 +1304,32 @@ export function setupInterceptor() {
       catch (err) { reportSwallowed('interceptor.ingest-request', err); }
     }
 
+    // Strip the ccv-internal project self-report header right before forwarding
+    // upstream — AFTER requestEntry already read `_resumeProject` from it. Strip
+    // case-insensitively (the claude client applies it via ANTHROPIC_CUSTOM_HEADERS,
+    // so casing is not under ccv's control). `_fetchOpts` starts as the same object
+    // as `options` and is only shallow-copied on rewrite, so scrub BOTH.
+    // `x-ccv-instance` (the multi-instance self-report) is stripped the same way —
+    // it must never reach Anthropic.
+    const CCV_INTERNAL_HEADERS = ['x-ccv-project-dir', 'x-ccv-instance'];
+    const scrubHeaderBag = (hdrs) => {
+      if (!hdrs) return;
+      if (hdrs instanceof Headers) {
+        for (const name of CCV_INTERNAL_HEADERS) { if (hdrs.has(name)) hdrs.delete(name); }
+      } else if (typeof hdrs === 'object') {
+        for (const k of Object.keys(hdrs)) {
+          if (CCV_INTERNAL_HEADERS.includes(k.toLowerCase())) delete hdrs[k];
+        }
+      }
+    };
+    for (const optsBag of [options, _fetchOpts]) {
+      scrubHeaderBag(optsBag && optsBag.headers);
+    }
+    // Request-object form: `fetch(new Request(...))` carries headers on the Request itself
+    // (options may be undefined), so scrub those too or the internal header reaches upstream.
+    if (typeof Request !== 'undefined' && _fetchUrl instanceof Request) scrubHeaderBag(_fetchUrl.headers);
+    if (typeof Request !== 'undefined' && url instanceof Request && url !== _fetchUrl) scrubHeaderBag(url.headers);
+
     let response;
     try {
       response = await _originalFetch.call(this, _fetchUrl, _fetchOpts);
@@ -1291,6 +1390,10 @@ export function setupInterceptor() {
               url: requestEntry.url,
               response: { body: snap },
               body: { model: requestEntry.body?.model },
+              // B3 (multi-session view-attach): tag the live overlay stream with the
+              // session uuid so an attached client can show only ITS sid's typewriter
+              // and drop the other session's. Additive — older clients ignore it.
+              sessionId: parseUserId(requestEntry.body?.metadata?.user_id)?.sessionId ?? null,
             };
             sendStreamChunk(chunkEntry, ++liveChunkSeq, (ok) => {
               // 413 → 禁用当次流式，后续全由最终 v2 completion 交付
@@ -1314,6 +1417,9 @@ export function setupInterceptor() {
               url: requestEntry.url,
               response: { body: null },
               body: { model: requestEntry.body?.model },
+              // B3: same sessionId tag on the skeleton (seq 0) so the overlay filter
+              // keys on (timestamp, sessionId) from the very first frame.
+              sessionId: parseUserId(requestEntry.body?.metadata?.user_id)?.sessionId ?? null,
             }, 0, (ok) => { if (!ok) liveStreamEnabled = false; });
           }
 

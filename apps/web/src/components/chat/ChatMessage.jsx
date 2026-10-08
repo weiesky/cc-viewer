@@ -15,7 +15,7 @@ import { parseImOrigin } from '../../utils/imOrigin';
 import { getTeammateAvatar } from '../../utils/teammateAvatars';
 import { renderAssistantText } from '../../utils/systemTags';
 import { apiUrl } from '../../utils/apiUrl';
-import { findUserImageRefs } from '../../utils/userImageRefs';
+import { segmentUserTextWithImages } from '../../utils/userImageRefs';
 import { isMobile, isIOS, isPad } from '../../env';
 import AskQuestionForm from './AskQuestionForm';
 import { hasOptionDescription, resolveAskQuestions } from '../../utils/askOptionDesc';
@@ -1125,30 +1125,28 @@ class ChatMessage extends React.Component {
 
   renderUserTextWithImages(text) {
     if (!text) return text || '';
-    // 图片引用识别(含 [Image …]、引号路径、终端粘贴的裸上传路径)抽到 findUserImageRefs,
-    // 便于单测覆盖三种写法。此处只负责把命中区间替换成 <ChatImage>、其余原样保留为文本。
-    const refs = findUserImageRefs(text);
-    if (refs.length === 0) return text;
-    const parts = [];
-    let lastIndex = 0;
-    for (const ref of refs) {
-      if (ref.index > lastIndex) {
-        parts.push(<span key={`t-${lastIndex}`}>{text.slice(lastIndex, ref.index)}</span>);
-      }
-      parts.push(
-        <ChatImage
-          key={`img-${ref.index}`}
-          src={apiUrl(`/api/file-raw?path=${encodeURIComponent(ref.path)}`)}
-          alt={ref.path.split('/').pop()}
-          fallbackText={ref.raw}
-        />
-      );
-      lastIndex = ref.index + ref.raw.length;
+    // 用户文本按 markdown 渲染(与 assistant 同一管线:marked + DOMPurify);
+    // 图片引用仍以 React <ChatImage> 内联——拆分逻辑在 segmentUserTextWithImages(纯函数,可单测),
+    // 避免把 <img> 拼进 markdown HTML 字符串造成交错/消毒问题。
+    const segments = segmentUserTextWithImages(text);
+    if (segments.length === 1 && segments[0].type === 'text') {
+      return <MarkdownBlock text={segments[0].text} className={styles.userMd} />;
     }
-    if (lastIndex < text.length) {
-      parts.push(<span key={`t-${lastIndex}`}>{text.slice(lastIndex)}</span>);
-    }
-    return <>{parts}</>;
+    return (
+      <>
+        {segments.map((seg, i) => seg.type === 'image'
+          ? (
+            <ChatImage
+              key={`img-${i}`}
+              src={apiUrl(`/api/file-raw?path=${encodeURIComponent(seg.path)}`)}
+              alt={seg.path.split('/').pop()}
+              fallbackText={seg.raw}
+            />
+          )
+          : <MarkdownBlock key={`md-${i}`} text={seg.text} className={styles.userMd} />
+        )}
+      </>
+    );
   }
 
   // 紧凑模式工具按钮的 Popover 渲染。两处 caller(_renderAssistantContentLegacy 与

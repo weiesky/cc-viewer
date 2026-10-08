@@ -55,6 +55,17 @@ export function PlanClipboardIcon() {
   );
 }
 
+// Menu-row icon: session history (counter-clockwise restore clock — history/restore).
+export function HistoryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 3v5h5" />
+      <path d="M3.05 13a9 9 0 1 0 .5-5L3 8" />
+      <polyline points="12 7 12 12 15 15" />
+    </svg>
+  );
+}
+
 export function AgentTeamIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

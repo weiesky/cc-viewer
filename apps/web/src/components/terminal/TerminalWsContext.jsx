@@ -23,6 +23,7 @@ export const TerminalWsContext = createContext({
   isOpen: () => false,
   addMessageHandler: () => () => {},
   addStateListener: () => () => {},
+  attach: () => false,
 });
 
 const RECONNECT_DELAY_MS = 2000;
@@ -35,11 +36,16 @@ export class TerminalWsProvider extends React.Component {
     this.stateListeners = new Set();
     this.reconnectTimer = null;
     this._unmounted = false;
+    // The project the LAST open connection attached to — reconnects re-attach to
+    // the CURRENT prop, view switches while connected send an explicit attach.
+    this._attachedProject = null;
+    this._attachedInstance = null; // multi-instance: paired with _attachedProject
     this._ctxValue = {
       send: this.send,
       isOpen: this.isOpen,
       addMessageHandler: this.addMessageHandler,
       addStateListener: this.addStateListener,
+      attach: this.attach,
     };
   }
 
@@ -52,6 +58,15 @@ export class TerminalWsProvider extends React.Component {
       this.connect();
     } else if (prevProps.open && !this.props.open) {
       this.disconnect();
+      return;
+    }
+    // Multi-PTY view switch (2026-10): while the shared ws stays open, a change
+    // of the viewed project (chip click / launch / detach) must re-anchor the
+    // server-side active PTY — otherwise the terminal keeps showing/feeding the
+    // previously viewed project's process.
+    // Multi-instance: re-attach when EITHER the viewed project or the viewed instance changes.
+    if (this.props.open && (prevProps.viewedProject !== this.props.viewedProject || prevProps.viewedInstance !== this.props.viewedInstance)) {
+      this.attach(this.props.viewedProject, this.props.viewedInstance);
     }
   }
 
@@ -68,6 +83,14 @@ export class TerminalWsProvider extends React.Component {
       // 带上 LAN token —— 服务端 WS upgrade 与 HTTP 同款鉴权,远程 ?token= 终端必须携带凭证。
       // 密码登录用户由浏览器自动随握手发送 ccv_auth cookie,此处无 token 时原样返回。
       url = appendToken(`${protocol}//${window.location.host}${getBasePath().replace(/\/$/, '')}/ws/terminal`);
+      // Multi-PTY: pin this connection to the project being VIEWED so the server
+      // replays that project's state/buffer (not the last-spawned one).
+      const vp = this.props.viewedProject;
+      if (vp) url += `${url.includes('?') ? '&' : '?'}project=${encodeURIComponent(vp)}`;
+      // Multi-instance: pin the connection to the exact instance when a same-cwd project runs
+      // two concurrent processes (so the server replays/attaches THIS process's terminal).
+      const vi = this.props.viewedInstance;
+      if (vi) url += `${url.includes('?') ? '&' : '?'}instance=${encodeURIComponent(vi)}`;
     } catch (e) {
       return; // SSR / 测试环境兜底
     }
@@ -82,6 +105,7 @@ export class TerminalWsProvider extends React.Component {
     this.ws = ws;
 
     ws.onopen = () => {
+      this._attachedProject = this.props.viewedProject || null;
       this._notifyState('open');
     };
 
@@ -153,6 +177,22 @@ export class TerminalWsProvider extends React.Component {
   isOpen = () => {
     const ws = this.ws;
     return !!(ws && ws.readyState === WebSocket.OPEN);
+  };
+
+  /**
+   * Re-anchor the shared stream to a project's PTY (multi-PTY view switch).
+   * Idempotent; a no-op when already attached to it or while disconnected
+   * (the next connect's ?project= handshake picks up the current prop anyway).
+   * Returns whether the message was sent.
+   */
+  attach = (project, instanceKey) => {
+    const target = project || null;
+    const inst = instanceKey || null;
+    // Multi-instance: identity is project+instance — re-attach when either changes.
+    if (target === this._attachedProject && inst === (this._attachedInstance || null)) return false;
+    const sent = this.send({ type: 'attach', project: target, ...(inst ? { instanceKey: inst } : {}) });
+    if (sent) { this._attachedProject = target; this._attachedInstance = inst; }
+    return sent;
   };
 
   addMessageHandler = (fn) => {

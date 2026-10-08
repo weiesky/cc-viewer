@@ -1,5 +1,8 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   spawnScratch,
   writeScratch,
@@ -216,3 +219,4 @@ describe('scratch-pty-manager: Windows shell fallback', () => {
     }
   });
 });
+

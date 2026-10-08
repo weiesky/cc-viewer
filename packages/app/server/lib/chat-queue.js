@@ -67,11 +67,12 @@ function _broadcast() {
   catch (err) { reportSwallowed('chat-queue.broadcast', err); }
 }
 
-function _makeItem(text) {
+function _makeItem(text, anchor) {
   return {
     id: 'q_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
     text,
     ts: Date.now(),
+    anchor: anchor || null,   // { project, sessionId } from the enqueueing client (2026-10-05)
   };
 }
 
@@ -95,6 +96,13 @@ function _clearEscTimer() {
  * NOTE 2: `isStreaming` (streamingState.active) flickers false between tool calls mid-turn;
  * injecting into that gap is harmless (the TUI natively queues the paste) but it means an
  * "immediate" inject can land inside the current turn's chain — accepted risk class.
+ * KNOWN LIMITATION (multi-project, 2026-10-05): the busy gate is global/bound-scoped —
+ * `isStreaming` reads the bound project's streamingState and `getPtyKind` follows the
+ * global active PTY, and `_items` is a single FIFO across projects. A message queued on
+ * project A can be head-of-line blocked by (or misjudge the busyness of) project B.
+ * Injection itself IS anchor-routed (item.anchor), so a queued message still lands on
+ * the project it was written in; only the timing/busy heuristic is not per-project.
+ * Per-project streaming state + queue isolation is a follow-up.
  */
 function _safeToInject() {
   if (!_deps) return false;
@@ -126,7 +134,12 @@ function _injectHead() {
   _injecting = true;
   const gen = _gen; // invalidate on clear()/stop(): a stale completion must not re-park
   try {
-    _deps.writeToPtySequential(bracketPasteSubmit(item.text), (ok) => {
+    // Route the inject by the enqueueing client's anchor when one was captured,
+    // so a message queued while viewing project A never lands in project B's PTY.
+    const _write = _deps.writeToPtySequentialFor && item.anchor
+      ? (chunks, done, opts) => _deps.writeToPtySequentialFor(chunks, done, opts, item.anchor)
+      : _deps.writeToPtySequential;
+    _write(bracketPasteSubmit(item.text), (ok) => {
       _injecting = false;
       if (gen !== _gen) return;
       if (!ok) {
@@ -175,7 +188,7 @@ function _pollUntilSafe(fn, onTimeout) {
  * `\x1b[201~` would otherwise break the paste frame), broadcasts, and arms a rescue timer for
  * the stale-busy case (frontend's isStreaming lags the real turn end by up to its debounce).
  */
-export function enqueue(text) {
+export function enqueue(text, anchor) {
   if (!_deps) return null;
   const clean = sanitizeInbound(text == null ? '' : String(text)).trim();
   if (!clean) return null;
@@ -186,7 +199,7 @@ export function enqueue(text) {
     catch (err) { reportSwallowed('chat-queue.reject-broadcast', err); }
     return null;
   }
-  const item = _makeItem(clean);
+  const item = _makeItem(clean, anchor);
   _items.push(item);
   _clearRescueTimer();
   _broadcast();
@@ -333,6 +346,56 @@ export function stop() {
   _items = [];
   _suppressDrain = false;
   _gen++;
+}
+
+const RESUME_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * True /resume (2026-10-06): inject `/resume <uuid>` into a target project's running claude
+ * PTY so the process switches INTO that session in place (Claude Code's native SessionStart
+ * hook then re-binds the v2 writer via beginResumeSwitch). This is the in-process switch —
+ * NOT a respawn — and must only happen when the TUI is observably idle.
+ *
+ * Promise-returning so the route can map the outcome to HTTP. Resolves:
+ *   { ok:true }                 — the paste was written
+ *   { ok:false, reason:'busy' } — TUI streaming / approval open / another inject or poll in
+ *                                 flight / timed out waiting for idle (never blind-injects)
+ *   { ok:false, reason:'bad-uuid' }     — sessionUuid is not a UUID shape
+ *   { ok:false, reason:'no-deps' }      — initChatQueue never ran (SDK mode / not wired)
+ *   { ok:false, reason:'write-failed' } — the PTY write failed or threw
+ *
+ * Shares the single `_injecting`/`_pollTimer` slots with the drain/sendNow paths, so it
+ * refuses up-front when either is owned (mirrors sendNow's guard) instead of clobbering a
+ * pending drain timer and stranding a queued message. The completion handler resets
+ * `_injecting` unconditionally (both callback and catch) so a mid-inject clear()/stop()
+ * generation bump can never wedge the queue.
+ */
+export function injectResumeCommand(sessionUuid, anchor) {
+  return new Promise((resolve) => {
+    if (!_deps) { resolve({ ok: false, reason: 'no-deps' }); return; }
+    const uuid = sanitizeInbound(String(sessionUuid == null ? '' : sessionUuid)).trim();
+    if (!RESUME_UUID_RE.test(uuid)) { resolve({ ok: false, reason: 'bad-uuid' }); return; }
+    // Refuse BEFORE touching _pollUntilSafe: a drain's poll owns the single _pollTimer slot,
+    // and an in-flight inject owns _injecting — barging in would strand a queued message.
+    if (_injecting || _pollTimer) { resolve({ ok: false, reason: 'busy' }); return; }
+    let settled = false;
+    const done = (r) => { if (!settled) { settled = true; resolve(r); } };
+    const inject = () => {
+      _injecting = true;
+      try {
+        _deps.writeToPtySequentialFor(bracketPasteSubmit(`/resume ${uuid}`), (ok) => {
+          _injecting = false;
+          done(ok ? { ok: true } : { ok: false, reason: 'write-failed' });
+        }, { settleMs: 250 }, anchor || {});
+      } catch (err) {
+        _injecting = false;
+        reportSwallowed('chat-queue.resume.inject', err);
+        done({ ok: false, reason: 'write-failed' });
+      }
+    };
+    if (_safeToInject()) { inject(); return; }
+    _pollUntilSafe(inject, () => done({ ok: false, reason: 'busy' }));
+  });
 }
 
 export function __resetForTests() {

@@ -4384,6 +4384,26 @@ const i18nData = {
     "tr": "Yenile",
     "uk": "Оновити"
   },
+  "ui.fileExplorer.loadFailed": {
+    "zh": "加载失败：{reason}",
+    "en": "Failed to load: {reason}",
+    "zh-TW": "載入失敗：{reason}",
+    "ko": "로드 실패: {reason}",
+    "ja": "読み込みに失敗しました：{reason}",
+    "de": "Laden fehlgeschlagen: {reason}",
+    "es": "Error al cargar: {reason}",
+    "fr": "Échec du chargement : {reason}",
+    "it": "Caricamento non riuscito: {reason}",
+    "da": "Indlæsning mislykkedes: {reason}",
+    "pl": "Nie udało się załadować: {reason}",
+    "ru": "Не удалось загрузить: {reason}",
+    "ar": "فشل التحميل: {reason}",
+    "no": "Kunne ikke laste: {reason}",
+    "pt-BR": "Falha ao carregar: {reason}",
+    "th": "โหลดไม่สำเร็จ: {reason}",
+    "tr": "Yükleme başarısız: {reason}",
+    "uk": "Не вдалося завантажити: {reason}"
+  },
   "ui.gitChanges.refresh": {
     "zh": "刷新",
     "en": "Refresh",
@@ -9584,70 +9604,6 @@ const i18nData = {
     "ar": "افتراضي (مدمج)", "no": "Standard (innebygd)", "pt-BR": "Padrão (embutido)",
     "th": "ค่าเริ่มต้น (ในตัว)", "tr": "Varsayılan (yerleşik)", "uk": "За замовчуванням"
   },
-  "ui.projectAlias.tooltip": {
-    "zh": "设置项目别名", "en": "Set project alias", "zh-TW": "設定專案別名",
-    "ko": "프로젝트 별칭 설정", "ja": "プロジェクト別名を設定", "de": "Projekt-Alias festlegen",
-    "es": "Establecer alias del proyecto", "fr": "Définir l'alias du projet", "it": "Imposta alias progetto",
-    "da": "Angiv projektalias", "pl": "Ustaw alias projektu", "ru": "Задать псевдоним проекта",
-    "ar": "تعيين اسم مستعار للمشروع", "no": "Sett prosjektalias", "pt-BR": "Definir apelido do projeto",
-    "th": "ตั้งชื่อเล่นโปรเจกต์", "tr": "Proje takma adı belirle", "uk": "Задати псевдонім проєкту"
-  },
-  "ui.projectAlias.modalTitle": {
-    "zh": "项目别名", "en": "Project alias", "zh-TW": "專案別名",
-    "ko": "프로젝트 별칭", "ja": "プロジェクト別名", "de": "Projekt-Alias",
-    "es": "Alias del proyecto", "fr": "Alias du projet", "it": "Alias del progetto",
-    "da": "Projektalias", "pl": "Alias projektu", "ru": "Псевдоним проекта",
-    "ar": "اسم مستعار للمشروع", "no": "Prosjektalias", "pt-BR": "Apelido do projeto",
-    "th": "ชื่อเล่นโปรเจกต์", "tr": "Proje takma adı", "uk": "Псевдонім проєкту"
-  },
-  "ui.projectAlias.projectLabel": {
-    "zh": "项目", "en": "Project", "zh-TW": "專案",
-    "ko": "프로젝트", "ja": "プロジェクト", "de": "Projekt",
-    "es": "Proyecto", "fr": "Projet", "it": "Progetto",
-    "da": "Projekt", "pl": "Projekt", "ru": "Проект",
-    "ar": "المشروع", "no": "Prosjekt", "pt-BR": "Projeto",
-    "th": "โปรเจกต์", "tr": "Proje", "uk": "Проєкт"
-  },
-  "ui.projectAlias.placeholder": {
-    "zh": "比如:三农优化(留空清除)", "en": "e.g. work-prod (empty to clear)", "zh-TW": "例如:三農優化（留空清除）",
-    "ko": "예: work-prod (비우면 삭제)", "ja": "例: work-prod（空欄でクリア）", "de": "z. B. work-prod (leer = entfernen)",
-    "es": "p. ej. work-prod (vacío para limpiar)", "fr": "ex. work-prod (vide = effacer)", "it": "es. work-prod (vuoto = cancella)",
-    "da": "f.eks. work-prod (tom = ryd)", "pl": "np. work-prod (pusty = wyczyść)", "ru": "напр. work-prod (пусто = удалить)",
-    "ar": "مثلاً work-prod (فارغ للمسح)", "no": "f.eks. work-prod (tom = fjern)", "pt-BR": "ex. work-prod (vazio = limpar)",
-    "th": "เช่น work-prod (เว้นว่าง = ล้าง)", "tr": "ör. work-prod (boş = temizle)", "uk": "напр. work-prod (порожнє = очистити)"
-  },
-  "ui.projectAlias.save": {
-    "zh": "保存", "en": "Save", "zh-TW": "儲存",
-    "ko": "저장", "ja": "保存", "de": "Speichern",
-    "es": "Guardar", "fr": "Enregistrer", "it": "Salva",
-    "da": "Gem", "pl": "Zapisz", "ru": "Сохранить",
-    "ar": "حفظ", "no": "Lagre", "pt-BR": "Salvar",
-    "th": "บันทึก", "tr": "Kaydet", "uk": "Зберегти"
-  },
-  "ui.projectAlias.cancel": {
-    "zh": "取消", "en": "Cancel", "zh-TW": "取消",
-    "ko": "취소", "ja": "キャンセル", "de": "Abbrechen",
-    "es": "Cancelar", "fr": "Annuler", "it": "Annulla",
-    "da": "Annuller", "pl": "Anuluj", "ru": "Отмена",
-    "ar": "إلغاء", "no": "Avbryt", "pt-BR": "Cancelar",
-    "th": "ยกเลิก", "tr": "İptal", "uk": "Скасувати"
-  },
-  "ui.projectAlias.clear": {
-    "zh": "清除别名", "en": "Clear alias", "zh-TW": "清除別名",
-    "ko": "별칭 삭제", "ja": "別名を削除", "de": "Alias entfernen",
-    "es": "Borrar alias", "fr": "Effacer l'alias", "it": "Cancella alias",
-    "da": "Ryd alias", "pl": "Usuń alias", "ru": "Удалить псевдоним",
-    "ar": "مسح الاسم المستعار", "no": "Fjern alias", "pt-BR": "Limpar apelido",
-    "th": "ล้างชื่อเล่น", "tr": "Takma adı temizle", "uk": "Очистити псевдонім"
-  },
-  "ui.projectAlias.saveFailed": {
-    "zh": "保存失败,可能是浏览器隐身模式或存储已满", "en": "Save failed — private mode or storage full?", "zh-TW": "儲存失敗,可能是瀏覽器隱身模式或儲存空間已滿",
-    "ko": "저장 실패 — 비공개 모드이거나 저장 공간 부족", "ja": "保存に失敗しました（プライベートモード/容量不足？）", "de": "Speichern fehlgeschlagen — Inkognito-Modus oder voller Speicher?",
-    "es": "Fallo al guardar — ¿modo privado o almacenamiento lleno?", "fr": "Échec — mode privé ou stockage plein ?", "it": "Salvataggio fallito — modalità privata o spazio esaurito?",
-    "da": "Lagring mislykkedes — privat tilstand eller fuld?", "pl": "Zapis nieudany — tryb prywatny lub brak miejsca", "ru": "Не удалось сохранить — приватный режим или нет места",
-    "ar": "فشل الحفظ — وضع خاص أو ذاكرة ممتلئة؟", "no": "Lagring mislyktes — privat modus eller fullt?", "pt-BR": "Falha ao salvar — modo privado ou armazenamento cheio?",
-    "th": "บันทึกไม่สำเร็จ — โหมดส่วนตัวหรือพื้นที่เต็ม?", "tr": "Kaydetme başarısız — gizli mod veya depolama dolu?", "uk": "Не вдалося зберегти — приватний режим або немає місця"
-  },
   "ui.voicePack.binding.placeholder": {
     "zh": "占位音", "en": "placeholder", "zh-TW": "佔位音",
     "ko": "임시 음원", "ja": "プレースホルダー", "de": "Platzhalter",
@@ -9998,14 +9954,6 @@ const i18nData = {
     "tr": "Claude oturumu başlatmak için bir proje dizini seçin",
     "uk": "Виберіть каталог проєкту для запуску сеансу Claude"
   },
-  "ui.workspaces.normalLaunch": {
-    "zh": "常规启动", "en": "Launch", "zh-TW": "常規啟動",
-    "ko": "일반 시작", "ja": "通常起動", "de": "Starten",
-    "es": "Iniciar", "fr": "Lancer", "it": "Avvia",
-    "da": "Start", "pl": "Uruchom", "ru": "Запуск",
-    "ar": "تشغيل", "no": "Start", "pt-BR": "Iniciar",
-    "th": "เริ่มต้น", "tr": "Başlat", "uk": "Запуск"
-  },
   "ui.workspaces.launch": {
     "zh": "启动", "en": "Launch", "zh-TW": "啟動",
     "ko": "시작", "ja": "起動", "de": "Starten",
@@ -10037,14 +9985,6 @@ const i18nData = {
     "da": "Skift til PC-tilstand", "pl": "Przełącz na tryb PC", "ru": "Переключить в режим ПК",
     "ar": "التبديل إلى وضع الكمبيوتر", "no": "Bytt til PC-modus", "pt-BR": "Mudar para modo PC",
     "th": "สลับเป็นโหมด PC", "tr": "PC moduna geç", "uk": "Перейти в режим ПК"
-  },
-  "ui.workspaces.skipPermLaunch": {
-    "zh": "免审启动", "en": "Skip Approval", "zh-TW": "免審啟動",
-    "ko": "승인 건너뛰기", "ja": "承認スキップ", "de": "Ohne Genehmigung",
-    "es": "Sin aprobación", "fr": "Sans approbation", "it": "Senza approvazione",
-    "da": "Spring godkendelse over", "pl": "Pomiń zatwierdzenie", "ru": "Без одобрения",
-    "ar": "تخطي الموافقة", "no": "Hopp over godkjenning", "pt-BR": "Sem aprovação",
-    "th": "ข้ามการอนุมัติ", "tr": "Onay atla", "uk": "Без схвалення"
   },
   "ui.workspaces.empty": {
     "zh": "暂无工作区，添加一个项目目录开始使用", "en": "No workspaces yet. Add a project directory to get started.",
@@ -10111,13 +10051,53 @@ const i18nData = {
     "ar": "الآن", "no": "akkurat nå", "pt-BR": "agora mesmo",
     "th": "เมื่อสักครู่", "tr": "az önce", "uk": "щойно"
   },
+  "ui.workspaces.colProject": {
+    "zh": "项目", "en": "Project", "zh-TW": "專案",
+    "ko": "프로젝트", "ja": "プロジェクト", "de": "Projekt",
+    "es": "Proyecto", "fr": "Projet", "it": "Progetto",
+    "da": "Projekt", "pl": "Projekt", "ru": "Проект",
+    "ar": "المشروع", "no": "Prosjekt", "pt-BR": "Projeto",
+    "th": "โปรเจกต์", "tr": "Proje", "uk": "Проєкт"
+  },
+  "ui.workspaces.colPath": {
+    "zh": "路径", "en": "Path", "zh-TW": "路徑",
+    "ko": "경로", "ja": "パス", "de": "Pfad",
+    "es": "Ruta", "fr": "Chemin", "it": "Percorso",
+    "da": "Sti", "pl": "Ścieżka", "ru": "Путь",
+    "ar": "المسار", "no": "Sti", "pt-BR": "Caminho",
+    "th": "เส้นทาง", "tr": "Yol", "uk": "Шлях"
+  },
+  "ui.workspaces.colLastUsed": {
+    "zh": "上次使用", "en": "Last used", "zh-TW": "上次使用",
+    "ko": "마지막 사용", "ja": "最終使用", "de": "Zuletzt verwendet",
+    "es": "Último uso", "fr": "Dernière utilisation", "it": "Ultimo utilizzo",
+    "da": "Sidst brugt", "pl": "Ostatnie użycie", "ru": "Последнее использование",
+    "ar": "آخر استخدام", "no": "Sist brukt", "pt-BR": "Último uso",
+    "th": "ใช้ล่าสุด", "tr": "Son kullanım", "uk": "Останнє використання"
+  },
+  "ui.workspaces.colLogs": {
+    "zh": "日志", "en": "Logs", "zh-TW": "日誌",
+    "ko": "로그", "ja": "ログ", "de": "Protokolle",
+    "es": "Registros", "fr": "Journaux", "it": "Log",
+    "da": "Log", "pl": "Logi", "ru": "Журналы",
+    "ar": "السجلات", "no": "Logger", "pt-BR": "Registros",
+    "th": "บันทึก", "tr": "Günlükler", "uk": "Журнали"
+  },
+  "ui.workspaces.colActions": {
+    "zh": "操作", "en": "Actions", "zh-TW": "操作",
+    "ko": "작업", "ja": "操作", "de": "Aktionen",
+    "es": "Acciones", "fr": "Actions", "it": "Azioni",
+    "da": "Handlinger", "pl": "Akcje", "ru": "Действия",
+    "ar": "الإجراءات", "no": "Handlinger", "pt-BR": "Ações",
+    "th": "การกระทำ", "tr": "Eylemler", "uk": "Дії"
+  },
   "ui.workspaces.browse": {
-    "zh": "浏览目录", "en": "Browse Directory", "zh-TW": "瀏覽目錄",
-    "ko": "디렉토리 탐색", "ja": "ディレクトリを参照", "de": "Verzeichnis durchsuchen",
-    "es": "Explorar directorio", "fr": "Parcourir le répertoire", "it": "Sfoglia directory",
-    "da": "Gennemse mappe", "pl": "Przeglądaj katalog", "ru": "Обзор каталога",
-    "ar": "تصفح المجلد", "no": "Bla gjennom mappe", "pt-BR": "Explorar diretório",
-    "th": "เรียกดูไดเรกทอรี", "tr": "Dizine göz at", "uk": "Переглянути каталог"
+    "zh": "添加工作区", "en": "Add Workspace", "zh-TW": "新增工作區",
+    "ko": "워크스페이스 추가", "ja": "ワークスペースを追加", "de": "Arbeitsbereich hinzufügen",
+    "es": "Añadir espacio de trabajo", "fr": "Ajouter un espace de travail", "it": "Aggiungi area di lavoro",
+    "da": "Tilføj arbejdsområde", "pl": "Dodaj obszar roboczy", "ru": "Добавить рабочее пространство",
+    "ar": "إضافة مساحة عمل", "no": "Legg til arbeidsområde", "pt-BR": "Adicionar área de trabalho",
+    "th": "เพิ่มเวิร์กสเปซ", "tr": "Çalışma alanı ekle", "uk": "Додати робочий простір"
   },
   "ui.workspaces.selectDir": {
     "zh": "选择项目目录", "en": "Select Project Directory", "zh-TW": "選擇專案目錄",
@@ -14065,6 +14045,182 @@ const i18nData = {
     "ar": "استئناف الجلسة", "no": "Gjenoppta økt", "pt-BR": "Retomar sessão",
     "th": "เริ่มเซสชันต่อ", "tr": "Oturumu sürdür", "uk": "Відновити сеанс"
   },
+  "ui.resume.navTitle": {
+    "zh": "恢复会话 (/resume)", "en": "Resume session (/resume)", "zh-TW": "恢復會話 (/resume)",
+    "ko": "세션 재개 (/resume)", "ja": "セッション再開 (/resume)", "de": "Sitzung fortsetzen (/resume)",
+    "es": "Reanudar sesión (/resume)", "fr": "Reprendre la session (/resume)", "it": "Riprendi sessione (/resume)",
+    "da": "Genoptag session (/resume)", "pl": "Wznów sesję (/resume)", "ru": "Возобновить сессию (/resume)",
+    "ar": "استئناف الجلسة (/resume)", "no": "Gjenoppta økt (/resume)", "pt-BR": "Retomar sessão (/resume)",
+    "th": "เริ่มเซสชันต่อ (/resume)", "tr": "Oturumu sürdür (/resume)", "uk": "Відновити сеанс (/resume)"
+  },
+  "ui.resume.recentSessions": {
+    "zh": "最近会话", "en": "Recent sessions", "zh-TW": "最近會話",
+    "ko": "최근 세션", "ja": "最近のセッション", "de": "Letzte Sitzungen",
+    "es": "Sesiones recientes", "fr": "Sessions récentes", "it": "Sessioni recenti",
+    "da": "Seneste sessioner", "pl": "Ostatnie sesje", "ru": "Недавние сессии",
+    "ar": "الجلسات الأخيرة", "no": "Nylige økter", "pt-BR": "Sessões recentes",
+    "th": "เซสชันล่าสุด", "tr": "Son oturumlar", "uk": "Останні сеанси"
+  },
+  "ui.resume.loading": {
+    "zh": "加载中…", "en": "Loading…", "zh-TW": "載入中…",
+    "ko": "로드 중…", "ja": "読み込み中…", "de": "Laden…",
+    "es": "Cargando…", "fr": "Chargement…", "it": "Caricamento…",
+    "da": "Indlæser…", "pl": "Ładowanie…", "ru": "Загрузка…",
+    "ar": "جارٍ التحميل…", "no": "Laster…", "pt-BR": "Carregando…",
+    "th": "กำลังโหลด…", "tr": "Yükleniyor…", "uk": "Завантаження…"
+  },
+  "ui.resume.empty": {
+    "zh": "暂无会话", "en": "No sessions", "zh-TW": "尚無會話",
+    "ko": "세션 없음", "ja": "セッションなし", "de": "Keine Sitzungen",
+    "es": "Sin sesiones", "fr": "Aucune session", "it": "Nessuna sessione",
+    "da": "Ingen sessioner", "pl": "Brak sesji", "ru": "Нет сессий",
+    "ar": "لا توجد جلسات", "no": "Ingen økter", "pt-BR": "Sem sessões",
+    "th": "ไม่มีเซสชัน", "tr": "Oturum yok", "uk": "Немає сеансів"
+  },
+  "ui.resume.statusRunning": {
+    "zh": "运行中", "en": "Running", "zh-TW": "執行中",
+    "ko": "실행 중", "ja": "実行中", "de": "Läuft",
+    "es": "En ejecución", "fr": "En cours", "it": "In esecuzione",
+    "da": "Kører", "pl": "W toku", "ru": "Выполняется",
+    "ar": "قيد التشغيل", "no": "Kjører", "pt-BR": "Em execução",
+    "th": "กำลังทำงาน", "tr": "Çalışıyor", "uk": "Виконується"
+  },
+  "ui.resume.statusCurrent": {
+    "zh": "当前会话", "en": "Current session", "zh-TW": "目前會話",
+    "ko": "현재 세션", "ja": "現在のセッション", "de": "Aktuelle Sitzung",
+    "es": "Sesión actual", "fr": "Session actuelle", "it": "Sessione corrente",
+    "da": "Aktuel session", "pl": "Bieżąca sesja", "ru": "Текущая сессия",
+    "ar": "الجلسة الحالية", "no": "Gjeldende økt", "pt-BR": "Sessão atual",
+    "th": "เซสชันปัจจุบัน", "tr": "Geçerli oturum", "uk": "Поточний сеанс"
+  },
+  "ui.resume.statusInactive": {
+    "zh": "未激活", "en": "Inactive", "zh-TW": "未啟用",
+    "ko": "비활성", "ja": "未アクティブ", "de": "Nicht aktiviert",
+    "es": "Sin activar", "fr": "Non activée", "it": "Non attivata",
+    "da": "Ikke aktiveret", "pl": "Nieaktywna", "ru": "Не активирована",
+    "ar": "غير مفعّلة", "no": "Ikke aktivert", "pt-BR": "Não ativada",
+    "th": "ยังไม่ได้เปิดใช้งาน", "tr": "Etkinleştirilmedi", "uk": "Не активовано"
+  },
+  "ui.resume.switchTimeout": {
+    "zh": "切换超时：目标项目未响应", "en": "Switch timed out: target project did not respond", "zh-TW": "切換逾時：目標專案未回應",
+    "ko": "전환 시간 초과: 대상 프로젝트가 응답하지 않습니다", "ja": "切り替えがタイムアウトしました：対象プロジェクトが応答しません", "de": "Wechsel-Zeitüberschreitung: Zielprojekt antwortet nicht",
+    "es": "Cambio agotado: el proyecto de destino no respondió", "fr": "Changement expiré : le projet cible n'a pas répondu", "it": "Cambio scaduto: il progetto di destinazione non ha risposto",
+    "da": "Skift timed out: målprojektet svarede ikke", "pl": "Przekroczono czas przełączania: projekt docelowy nie odpowiada", "ru": "Превышено время переключения: целевой проект не отвечает",
+    "ar": "انتهت مهلة التبديل: المشروع الهدف لم يستجب", "no": "Bytte utløpt: målprosjektet svarte ikke", "pt-BR": "Tempo esgotado: o projeto de destino não respondeu",
+    "th": "สลับหมดเวลา: โปรเจกต์เป้าหมายไม่ตอบสนอง", "tr": "Geçiş zaman aşımı: hedef proje yanıt vermedi", "uk": "Час перемикання вийшов: цільовий проєкт не відповідає"
+  },
+  "ui.resume.switching": {
+    "zh": "正在切换项目…", "en": "Switching project…", "zh-TW": "正在切換專案…",
+    "ko": "프로젝트 전환 중…", "ja": "プロジェクトを切り替えています…", "de": "Projekt wird gewechselt…",
+    "es": "Cambiando de proyecto…", "fr": "Changement de projet…", "it": "Cambio di progetto…",
+    "da": "Skifter projekt…", "pl": "Przełączanie projektu…", "ru": "Переключение проекта…",
+    "ar": "جارٍ تبديل المشروع…", "no": "Bytter prosjekt…", "pt-BR": "Trocando de projeto…",
+    "th": "กำลังสลับโปรเจกต์…", "tr": "Proje değiştiriliyor…", "uk": "Перемикання проєкту…"
+  },
+  "ui.resume.returnToCurrent": {
+    "zh": "返回当前会话", "en": "Back to current session", "zh-TW": "返回當前會話",
+    "ko": "현재 세션으로 돌아가기", "ja": "現在のセッションに戻る", "de": "Zurück zur aktuellen Sitzung",
+    "es": "Volver a la sesión actual", "fr": "Retour à la session en cours", "it": "Torna alla sessione corrente",
+    "da": "Tilbage til aktuel session", "pl": "Wróć do bieżącej sesji", "ru": "Вернуться к текущей сессии",
+    "ar": "العودة إلى الجلسة الحالية", "no": "Tilbake til gjeldende økt", "pt-BR": "Voltar à sessão atual",
+    "th": "กลับไปที่เซสชันปัจจุบัน", "tr": "Geçerli oturuma dön", "uk": "Повернутися до поточного сеансу"
+  },
+  "ui.resume.activeChipMain": {
+    "zh": "切换到 {{project}} 的主进程", "en": "Switch to {{project}}'s main process", "zh-TW": "切換到 {{project}} 的主行程",
+    "ko": "{{project}} 메인 프로세스로 전환", "ja": "{{project}} のメインプロセスに切替", "de": "Zu {{project}}s Hauptprozess wechseln",
+    "es": "Cambiar al proceso principal de {{project}}", "fr": "Basculer vers le processus principal de {{project}}", "it": "Passa al processo principale di {{project}}",
+    "da": "Skift til {{project}}s hovedproces", "pl": "Przełącz na główny proces {{project}}", "ru": "Переключиться на основной процесс {{project}}",
+    "ar": "التبديل إلى العملية الرئيسية لـ {{project}}", "no": "Bytt til {{project}}s hovedprosess", "pt-BR": "Mudar para o processo principal de {{project}}",
+    "th": "สลับไปยังโปรเซสหลักของ {{project}}", "tr": "{{project}} ana işlemine geç", "uk": "Переключитися на основний процес {{project}}"
+  },
+  "ui.resume.newProject": {
+    "zh": "新建工作区", "en": "New workspace", "zh-TW": "新建工作區",
+    "ko": "새 워크스페이스", "ja": "新規ワークスペース", "de": "Neuer Arbeitsbereich",
+    "es": "Nuevo espacio de trabajo", "fr": "Nouvel espace de travail", "it": "Nuovo spazio di lavoro",
+    "da": "Nyt arbejdsområde", "pl": "Nowy obszar roboczy", "ru": "Новое рабочее пространство",
+    "ar": "مساحة عمل جديدة", "no": "Nytt arbeidsområde", "pt-BR": "Nova área de trabalho",
+    "th": "เวิร์กสเปซใหม่", "tr": "Yeni çalışma alanı", "uk": "Новий робочий простір"
+  },
+  "ui.resume.history": {
+    "zh": "历史会话", "en": "Session history", "zh-TW": "歷史會話",
+    "ko": "세션 기록", "ja": "セッション履歴", "de": "Sitzungsverlauf",
+    "es": "Historial de sesiones", "fr": "Historique des sessions", "it": "Cronologia sessioni",
+    "da": "Sessionshistorik", "pl": "Historia sesji", "ru": "История сессий",
+    "ar": "سجل الجلسات", "no": "Øktlogg", "pt-BR": "Histórico de sessões",
+    "th": "ประวัติเซสชัน", "tr": "Oturum geçmişi", "uk": "Історія сеансів"
+  },
+  "ui.resume.confirmTitle": {
+    "zh": "恢复会话", "en": "Resume session", "zh-TW": "恢復會話",
+    "ko": "세션 재개", "ja": "セッション再開", "de": "Sitzung fortsetzen",
+    "es": "Reanudar sesión", "fr": "Reprendre la session", "it": "Riprendi sessione",
+    "da": "Genoptag session", "pl": "Wznów sesję", "ru": "Возобновить сессию",
+    "ar": "استئناف الجلسة", "no": "Gjenoppta økt", "pt-BR": "Retomar sessão",
+    "th": "เริ่มเซสชันต่อ", "tr": "Oturumu sürdür", "uk": "Відновити сеанс"
+  },
+  "ui.resume.confirmContent": {
+    "zh": "切换到会话「{{name}}」？当前会话将挂起，后续消息会在该会话中继续。", "en": "Switch into session \"{{name}}\"? The current session will be suspended and new messages will continue there.", "zh-TW": "切換到會話「{{name}}」？當前會話將掛起，後續訊息會在該會話中繼續。",
+    "ko": "세션 \"{{name}}\"(으)로 전환할까요? 현재 세션은 일시 중지되고 이후 메시지는 해당 세션에서 이어집니다.", "ja": "セッション「{{name}}」に切り替えますか？現在のセッションは中断され、以降のメッセージはそのセッションで続きます。", "de": "Zu Sitzung \"{{name}}\" wechseln? Die aktuelle Sitzung wird angehalten und neue Nachrichten laufen dort weiter.",
+    "es": "¿Cambiar a la sesión \"{{name}}\"? La sesión actual se suspenderá y los nuevos mensajes continuarán allí.", "fr": "Basculer vers la session « {{name}} » ? La session actuelle sera suspendue et les nouveaux messages s'y poursuivront.", "it": "Passare alla sessione \"{{name}}\"? La sessione corrente sarà sospesa e i nuovi messaggi continueranno lì.",
+    "da": "Skift til sessionen \"{{name}}\"? Den aktuelle session pauses, og nye beskeder fortsætter der.", "pl": "Przełączyć na sesję „{{name}}”? Bieżąca sesja zostanie wstrzymana, a nowe wiadomości będą kontynuowane tam.", "ru": "Переключиться на сессию «{{name}}»? Текущая сессия будет приостановлена, а новые сообщения продолжатся в ней.",
+    "ar": "التبديل إلى الجلسة \"{{name}}\"؟ ستُعلَّق الجلسة الحالية وتستمر الرسائل الجديدة فيها.", "no": "Bytt til økten \"{{name}}\"? Gjeldende økt settes på pause og nye meldinger fortsetter der.", "pt-BR": "Mudar para a sessão \"{{name}}\"? A sessão atual será suspensa e as novas mensagens continuarão nela.",
+    "th": "สลับไปที่เซสชัน \"{{name}}\"? เซสชันปัจจุบันจะถูกพัก และข้อความใหม่จะดำเนินต่อที่นั่น", "tr": "\"{{name}}\" oturumuna geçilsin mi? Geçerli oturum askıya alınır ve yeni iletiler orada sürdürülür.", "uk": "Переключитися на сеанс «{{name}}»? Поточний сеанс буде призупинено, а нові повідомлення продовжаться там."
+  },
+  "ui.resume.confirmOk": {
+    "zh": "恢复", "en": "Resume", "zh-TW": "恢復",
+    "ko": "재개", "ja": "再開", "de": "Fortsetzen",
+    "es": "Reanudar", "fr": "Reprendre", "it": "Riprendi",
+    "da": "Genoptag", "pl": "Wznów", "ru": "Возобновить",
+    "ar": "استئناف", "no": "Gjenoppta", "pt-BR": "Retomar",
+    "th": "เริ่มต่อ", "tr": "Sürdür", "uk": "Відновити"
+  },
+  "ui.resume.busy": {
+    "zh": "当前会话运行中，请等待本轮结束后再切换", "en": "The current session is busy — wait for the turn to finish before switching.", "zh-TW": "當前會話執行中，請等待本輪結束後再切換",
+    "ko": "현재 세션이 실행 중입니다. 이번 차례가 끝난 후 전환하세요.", "ja": "現在のセッションが実行中です。ターンが終わってから切り替えてください。", "de": "Die aktuelle Sitzung ist beschäftigt — warte bis zum Ende des Durchlaufs.",
+    "es": "La sesión actual está ocupada: espera a que termine el turno antes de cambiar.", "fr": "La session actuelle est occupée — attendez la fin du tour avant de changer.", "it": "La sessione corrente è occupata: attendi la fine del turno prima di cambiare.",
+    "da": "Den aktuelle session er optaget — vent til turen er færdig, før du skifter.", "pl": "Bieżąca sesja jest zajęta — poczekaj na koniec tury przed przełączeniem.", "ru": "Текущая сессия занята — дождитесь окончания хода перед переключением.",
+    "ar": "الجلسة الحالية مشغولة — انتظر انتهاء الدورة قبل التبديل.", "no": "Gjeldende økt er opptatt — vent til runden er ferdig før du bytter.", "pt-BR": "A sessão atual está ocupada — espere o turno terminar antes de trocar.",
+    "th": "เซสชันปัจจุบันกำลังทำงาน — รอให้รอบจบก่อนสลับ", "tr": "Geçerli oturum meşgul — geçişten önce turun bitmesini bekleyin.", "uk": "Поточний сеанс зайнятий — зачекайте завершення ходу перед перемиканням."
+  },
+  "ui.resume.failed": {
+    "zh": "恢复会话失败", "en": "Failed to resume session", "zh-TW": "恢復會話失敗",
+    "ko": "세션 재개 실패", "ja": "セッションの再開に失敗しました", "de": "Sitzung konnte nicht fortgesetzt werden",
+    "es": "Error al reanudar la sesión", "fr": "Échec de la reprise de la session", "it": "Ripresa della sessione non riuscita",
+    "da": "Kunne ikke genoptage sessionen", "pl": "Nie udało się wznowić sesji", "ru": "Не удалось возобновить сессию",
+    "ar": "فشل استئناف الجلسة", "no": "Kunne ikke gjenoppta økten", "pt-BR": "Falha ao retomar a sessão",
+    "th": "เริ่มเซสชันต่อไม่สำเร็จ", "tr": "Oturum sürdürülemedi", "uk": "Не вдалося відновити сеанс"
+  },
+  "ui.projectTabs.closeTip": {
+    "zh": "关闭项目主进程", "en": "Close project process", "zh-TW": "關閉專案主行程",
+    "ko": "프로젝트 프로세스 닫기", "ja": "プロジェクトのプロセスを閉じる", "de": "Projektprozess schließen",
+    "es": "Cerrar proceso del proyecto", "fr": "Fermer le processus du projet", "it": "Chiudi processo del progetto",
+    "da": "Luk projektproces", "pl": "Zamknij proces projektu", "ru": "Закрыть процесс проекта",
+    "ar": "إغلاق عملية المشروع", "no": "Lukk prosjektprosess", "pt-BR": "Fechar processo do projeto",
+    "th": "ปิดโปรเซสของโปรเจกต์", "tr": "Proje işlemini kapat", "uk": "Закрити процес проєкту"
+  },
+  "ui.projectTabs.closeConfirm": {
+    "zh": "关闭项目 {{project}}？将终止其主进程（不会删除任何文件）", "en": "Close {{project}}? Its main process will be terminated (no files are deleted).", "zh-TW": "關閉專案 {{project}}？將終止其主行程（不會刪除任何檔案）",
+    "ko": "{{project}} 프로젝트를 닫을까요? 메인 프로세스가 종료됩니다(파일은 삭제되지 않습니다)", "ja": "プロジェクト {{project}} を閉じますか？メインプロセスは終了します（ファイルは削除されません）", "de": "{{project}} schließen? Der Hauptprozess wird beendet (keine Dateien werden gelöscht).",
+    "es": "¿Cerrar {{project}}? Su proceso principal se terminará (no se eliminan archivos).", "fr": "Fermer {{project}} ? Son processus principal sera arrêté (aucun fichier n'est supprimé).", "it": "Chiudere {{project}}? Il suo processo principale verrà terminato (nessun file viene eliminato).",
+    "da": "Luk {{project}}? Dets hovedproces afsluttes (ingen filer slettes).", "pl": "Zamknąć {{project}}? Jego główny proces zostanie zakończony (żadne pliki nie są usuwane).", "ru": "Закрыть {{project}}? Его основной процесс будет завершён (файлы не удаляются).",
+    "ar": "إغلاق {{project}}؟ سيتم إنهاء عمليته الرئيسية (لن تُحذف أي ملفات).", "no": "Lukke {{project}}? Hovedprosessen vil bli avsluttet (ingen filer slettes).", "pt-BR": "Fechar {{project}}? Seu processo principal será encerrado (nenhum arquivo é excluído).",
+    "th": "ปิด {{project}}? กระบวนการหลักจะถูกยุติ (ไม่มีไฟล์ใดถูกลบ)", "tr": "{{project}} kapatılsın mı? Ana işlemi sonlandırılacak (hiçbir dosya silinmez).", "uk": "Закрити {{project}}? Його основний процес буде завершено (файли не видаляються)."
+  },
+  "ui.projectTabs.closeFailed": {
+    "zh": "关闭项目失败", "en": "Failed to close project", "zh-TW": "關閉專案失敗",
+    "ko": "프로젝트 닫기 실패", "ja": "プロジェクトを閉じられませんでした", "de": "Projekt konnte nicht geschlossen werden",
+    "es": "No se pudo cerrar el proyecto", "fr": "Échec de la fermeture du projet", "it": "Impossibile chiudere il progetto",
+    "da": "Kunne ikke lukke projektet", "pl": "Nie udało się zamknąć projektu", "ru": "Не удалось закрыть проект",
+    "ar": "فشل إغلاق المشروع", "no": "Kunne ikke lukke prosjektet", "pt-BR": "Falha ao fechar o projeto",
+    "th": "ปิดโปรเจกต์ไม่สำเร็จ", "tr": "Proje kapatılamadı", "uk": "Не вдалося закрити проєкт"
+  },
+  "ui.projectTabs.closeForbidden": {
+    "zh": "无权限关闭项目（需要管理员）", "en": "Not authorized to close project (admin required)", "zh-TW": "無權限關閉專案（需要管理員）",
+    "ko": "프로젝트를 닫을 권한이 없습니다(관리자 필요)", "ja": "プロジェクトを閉じる権限がありません（管理者が必要です）", "de": "Keine Berechtigung zum Schließen des Projekts (Admin erforderlich)",
+    "es": "No autorizado para cerrar el proyecto (se requiere administrador)", "fr": "Non autorisé à fermer le projet (administrateur requis)", "it": "Non autorizzato a chiudere il progetto (richiesto amministratore)",
+    "da": "Ikke autoriseret til at lukke projektet (administrator kræves)", "pl": "Brak uprawnień do zamknięcia projektu (wymagany administrator)", "ru": "Нет прав на закрытие проекта (требуется администратор)",
+    "ar": "غير مصرح بإغلاق المشروع (يلزم مسؤول)", "no": "Ikke autorisert til å lukke prosjektet (admin kreves)", "pt-BR": "Sem permissão para fechar o projeto (admin necessário)",
+    "th": "ไม่มีสิทธิ์ปิดโปรเจกต์ (ต้องเป็นผู้ดูแลระบบ)", "tr": "Projeyi kapatma yetkiniz yok (yönetici gerekli)", "uk": "Немає прав на закриття проєкту (потрібен адміністратор)"
+  },
   "ui.slashCommand.terminalSetup": {
     "zh": "终端配置", "en": "Terminal setup", "zh-TW": "終端機設定",
     "ko": "터미널 설정", "ja": "ターミナル設定", "de": "Terminal-Setup",
@@ -14237,7 +14393,10 @@ export function t(key, params) {
   let text = locales[currentLang]?.[key] || locales['en'][key] || key;
   if (params) {
     for (const [k, v] of Object.entries(params)) {
-      text = text.replaceAll(`{${k}}`, v);
+      // Keys use the double-brace form `{{var}}` (e.g. ui.resume.activeChipMain).
+      // Match the full `{{k}}` so no stray `}` is left in the rendered text;
+      // also accept the legacy single-brace `{k}` form for older keys.
+      text = text.replaceAll(`{{${k}}}`, v).replaceAll(`{${k}}`, v);
     }
   }
   return text;

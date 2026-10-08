@@ -89,69 +89,76 @@
   margin-top: 60px;
 }
 
-/* Workspace card grid */
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 12px;
+/* Workspace table */
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
 }
 
-.card {
-  background: var(--bg-container);
-  border-color: var(--border-primary);
-  cursor: pointer;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
 }
 
-.card :global(.ant-card-body) {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+.th {
+  text-align: left;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 12px;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border-primary);
 }
 
-.cardLeft {
-  min-width: 0;
+.thActions {
+  text-align: right;
 }
 
-.cardNameRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+.tr {
+  transition: background 0.15s;
 }
 
-.cardName {
+.tr:hover {
+  background: var(--bg-elevated);
+}
+
+.tr + .tr .td {
+  border-top: 1px solid var(--border-primary);
+}
+
+.td {
+  padding: 8px 12px;
+  vertical-align: middle;
   color: var(--text-primary);
-  font-size: 15px;
 }
 
-.cardPath {
+.cellName {
+  color: var(--text-primary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.cellPath {
+  display: block;
+  max-width: 260px;
   font-size: 12px;
-  word-break: break-all;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.cardMeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 6px;
-  font-size: 12px;
+.tdMeta {
   color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
-.cardActions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: auto;
-  padding-top: 12px;
+.tdActions {
+  text-align: right;
+  white-space: nowrap;
 }
 
 /* DirBrowser modal */
@@ -251,4 +258,42 @@
 
 .dirPathInput {
   flex: 1;
+}
+
+/* DirBrowser tree */
+.dirTreeItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px 6px 0;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.dirTreeItem:hover {
+  background: var(--bg-elevated);
+}
+
+.dirTreeItemCurrent {
+  background: var(--bg-elevated);
+}
+
+.dirTreeArrow {
+  width: 16px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+}
+
+.dirTreeArrowExpanded {
+  transform: rotate(90deg);
+}
+
+.dirTreeEmpty {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 6px 16px 6px 0;
 }

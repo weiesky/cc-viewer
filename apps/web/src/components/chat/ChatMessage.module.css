@@ -201,6 +201,61 @@
   box-shadow: var(--bubble-user-highlight-shadow-light);
 }
 
+/* === Markdown inside user bubbles === */
+
+/* User bubbles are dark (accent blue in dark theme, #222 in light theme), so the
+   global .chat-md variable colors are unreadable inside them. These two-class
+   descendant selectors out-specify the global single-class .chat-md rules and
+   recolor markdown elements light-on-dark, without !important. The `userMd`
+   local class is exported to JS (styles.userMd) simply by appearing in these
+   selectors — no standalone rule needed. */
+.bubbleUser .userMd :global(p):first-child { margin-top: 0; }
+.bubbleUser .userMd :global(p):last-child { margin-bottom: 0; }
+.bubbleUser .userMd :global(strong),
+.bubbleUser .userMd :global(em),
+.bubbleUser .userMd :global(h1),
+.bubbleUser .userMd :global(h2),
+.bubbleUser .userMd :global(h3) { color: #fff; }
+/* #eef3ff on the #1668dc bubble reaches ~4.5:1 (WCAG AA for 13px code); the
+   darker scrim separates the code chip from the bubble background. */
+.bubbleUser .userMd :global(code) {
+  background: rgba(0, 0, 0, 0.4);
+  color: #eef3ff;
+}
+/* Verified file-path codespans: the global hover feedback (global.css) ties
+   with `.bubbleUser .userMd code` at (0,2,1) and loses by bundle order, so
+   user bubbles would show no hover highlight. Attribute-qualified selector
+   (0,3,1) restores it with the same affordance language. */
+.bubbleUser .userMd :global(code)[data-md-file-verified]:hover {
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-color: rgba(255, 255, 255, 0.7);
+}
+.bubbleUser .userMd :global(pre) {
+  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.bubbleUser .userMd :global(pre code) { background: none; color: #e8ecf8; }
+.bubbleUser .userMd :global(blockquote) {
+  border-left-color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.85);
+}
+.bubbleUser .userMd :global(a) { color: #cfe1ff; text-decoration: underline; }
+.bubbleUser .userMd :global(th) { background: rgba(0, 0, 0, 0.25); color: #fff; }
+.bubbleUser .userMd :global(th),
+.bubbleUser .userMd :global(td) { border-color: rgba(255, 255, 255, 0.4); }
+.bubbleUser .userMd :global(hr) { border-top-color: rgba(255, 255, 255, 0.35); }
+
+/* MarkdownBlock's hover "save as" bar sits at left:100% — designed for
+   left-aligned assistant bubbles, it would overflow the right viewport edge on
+   right-aligned user bubbles. Hide it there; long input can still be selected
+   and copied manually. Note: the attribute-substring selector couples to
+   MarkdownBlock's hashed class names (mdBlockWrapper/actionBar must survive
+   as substrings — they do with Vite's default generateScopedName; a rename in
+   MarkdownBlock.module.css silently disables this rule. Same known-tech-debt
+   pattern as MdxEditorPanel.module.css, pinned by user-markdown.test.js). */
+.bubbleUser :global([class*="mdBlockWrapper"] > [class*="actionBar"]) { display: none; }
+
 .bubbleAssistant {
   composes: bubble;
   background: var(--bg-container);

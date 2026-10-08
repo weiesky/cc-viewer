@@ -18,6 +18,7 @@ import { mutatePrefs, applyPrefsPatch, readPrefsRaw } from '../lib/prefs-store.j
 import { mutateJsonSync } from '../lib/json-store.js';
 import { persistProfilesApiKeys } from '../lib/credential-access.js';
 import { isAdminReq } from '../lib/is-admin.js';
+import { isSameOriginBrowserRequest } from '../lib/same-origin.js';
 import {
   getCurrentProjectKey, getCurrentProjectName, hasFork, listForks, resolveScoped,
 } from '../lib/project-prefs.js';
@@ -27,22 +28,6 @@ import {
 // key from any /api/preferences read/write so an authorized LAN client can never see or set them.
 function stripImConfigs(obj) {
   if (obj) for (const id of listPlatforms()) delete obj[id];
-}
-
-// Loopback identifies the socket peer, not the browser page that initiated a
-// request. Since the server intentionally has permissive CORS for legacy APIs,
-// sensitive executable-selection endpoints need their own same-origin guard.
-function isSameOriginBrowserRequest(req, parsedUrl) {
-  const origin = req.headers?.origin;
-  if (!origin) return true; // CLI/native clients do not send Origin.
-  if (req.headers?.['sec-fetch-site'] === 'cross-site') return false;
-  try {
-    const originUrl = new URL(origin);
-    if (parsedUrl?.origin) return originUrl.origin.toLowerCase() === parsedUrl.origin.toLowerCase();
-    return originUrl.host.toLowerCase() === String(req.headers?.host || '').toLowerCase();
-  } catch {
-    return false;
-  }
 }
 
 // /theme 选择器特征：选项文案高特异、不太可能出现在普通生成输出里（ESC 兜底的门控签名）

@@ -100,6 +100,12 @@ describe('same-sid re-bind (the actual /resume wire behavior)', () => {
     fire(w, mainEntry([textMsg('user', 'x'), textMsg('assistant', 'y'), textMsg('user', 'z')], { sid: SID_A, ts: '2026-07-17T09:06:00.000Z' }));
     await w.flush();
     assert.ok(journalLen(seedName) > after, 'subsequent same-sid requests stay bound to the resumed dir');
+    // Blue-dot invariant (review P1-b, 2026-10-06): `_currentSid` must stay the WIRE sid —
+    // `_sessions` is keyed by wire sid, so re-pointing it to the adopted identity (SID_R) would
+    // make currentSessionDir() miss the map and self-revert on the next turn. The resumed
+    // conversation's identity lives in the dir/meta, not in `_currentSid`.
+    assert.equal(w._currentSid, SID_A, '_currentSid stays the wire sid (not the adopted identity)');
+    assert.ok(w._sessions.get(w._currentSid), 'currentSessionDir() resolves (map key intact)');
     await w.close();
   });
 
@@ -184,16 +190,16 @@ describe('consumption discipline', () => {
     const probe = mainEntry([textMsg('user', 'probe')], { sid: SID_A, countTokens: true });
     fire(w, probe);
     await w.flush();
-    assert.ok(w._pendingResumeSwitch, 'probe left the pending switch armed');
+    assert.ok(w._pendingResumeSwitch.get('proj'), 'probe left the pending switch armed');
 
     // Neither must a heartbeat (each exclusion arm pinned independently).
     fire(w, mainEntry([textMsg('user', 'hb')], { sid: SID_A, heartbeat: true }));
     await w.flush();
-    assert.ok(w._pendingResumeSwitch, 'heartbeat left the pending switch armed');
+    assert.ok(w._pendingResumeSwitch.get('proj'), 'heartbeat left the pending switch armed');
 
     fire(w, mainEntry([textMsg('user', 'real turn')], { sid: SID_A, ts: '2026-07-17T09:05:00.000Z' }));
     await w.flush();
-    assert.equal(w._pendingResumeSwitch, null, 'real main request consumed it');
+    assert.equal(w._pendingResumeSwitch.get('proj'), undefined, 'real main request consumed it');
     await w.close();
   });
 
@@ -201,9 +207,9 @@ describe('consumption discipline', () => {
     const w = newWriter();
     w.beginResumeSwitch({ transcriptUuid: SID_R, hookSid: HOOK_SID });
     w.beginResumeSwitch({ transcriptUuid: SID_A, hookSid: HOOK_SID });
-    assert.equal(w._pendingResumeSwitch.transcriptUuid, SID_A, 'last pick wins');
+    assert.equal(w._pendingResumeSwitch.get('proj').transcriptUuid, SID_A, 'last pick wins');
     w.resetSessions();
-    assert.equal(w._pendingResumeSwitch, null, 'workspace switch clears a stale signal');
+    assert.equal(w._pendingResumeSwitch.get('proj'), undefined, 'workspace switch clears a stale signal');
     await w.close();
   });
 
@@ -211,7 +217,34 @@ describe('consumption discipline', () => {
     const w = newWriter();
     w.beginResumeSwitch({});
     w.beginResumeSwitch({ transcriptUuid: 42 });
-    assert.equal(w._pendingResumeSwitch, null);
+    assert.equal(w._pendingResumeSwitch.get('proj'), undefined);
     await w.close();
+  });
+});
+
+describe('cross-project resume switch (parallel viewed project, 2026-10-06)', () => {
+  // beginResumeSwitch/_resolveResumeSwitch are keyed per-project (_projKey). Arming a
+  // switch for project B must NOT disturb a pending switch for the bound project A, and
+  // a project-B main request must consume B's switch (re-binding B's writer) while A's
+  // stays armed. This is what lets /api/resume-session switch a parallel viewed project.
+  it('a project-B main request consumes only B’s switch; the bound project’s stays armed', async () => {
+    const boundWriter = new V2Writer({ logDir: dir, project: () => 'projA', enabled: true, minFreeBytes: 0 });
+    // Arm the bound project A's switch (no project arg → bound key).
+    boundWriter.beginResumeSwitch({ transcriptUuid: SID_R, hookSid: HOOK_SID });
+    // Arm project B's switch explicitly (parallel viewed project resume).
+    boundWriter.beginResumeSwitch({ transcriptUuid: SID_R, hookSid: HOOK_SID, project: 'projB' });
+    assert.ok(boundWriter._pendingResumeSwitch.get('projA'), 'bound A switch armed');
+    assert.ok(boundWriter._pendingResumeSwitch.get('projB'), 'parallel B switch armed');
+
+    // A project-B main request (self-reported via _resumeProject) consumes only B's switch.
+    const entryB = mainEntry([textMsg('user', 'B turn')], { sid: SID_A });
+    entryB._resumeProject = 'projB';
+    const h = boundWriter.ingestRequest(entryB, entryB.body.messages);
+    boundWriter.ingestCompletion(h, { ...entryB, response: { status: 200, headers: {}, body: { content: [], usage: { input_tokens: 1, output_tokens: 1 } } }, duration: 1 });
+    await boundWriter.flush();
+
+    assert.equal(boundWriter._pendingResumeSwitch.get('projB'), undefined, 'B main request consumed B switch');
+    assert.ok(boundWriter._pendingResumeSwitch.get('projA'), 'bound A switch still armed (not consumed by B)');
+    await boundWriter.close();
   });
 });

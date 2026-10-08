@@ -8,13 +8,11 @@
    按 CSS Cascading & Inheritance Level 5 规范，**unlayered 永远胜过任何 layered**，
    因此本文件无需 !important、也无需抬 specificity 即可干净覆盖 MDXEditor 默认样式。
 
-   全局污染对冲：cc-viewer/src/global.css 有两条 unlayered 规则会泄漏进编辑区——
-     1. `*:focus { outline: none !important }`  → 编辑区任何元素失去 focus 视觉
-     2. `* { scrollbar-* }`                       → MDXEditor 滚动条被全局接管
-   规则 1 我们用 :focus-visible 的 box-shadow 自给视觉；规则 2 接受现状（与 cc-viewer
-   全站滚动条统一是 feature 不是 bug）。此外官方 demo 的 prose 排版（h1-h6 字号阶梯、
-   p / list / blockquote 间距）MDXEditor 自身不出样式，必须在 .contentEditable 内
-   显式补齐，否则会被 cc-viewer 全局 reset 压成裸文本。
+   全局污染对冲：cc-viewer/src/global.css 有一条 unlayered 规则会泄漏进编辑区——
+     `* { scrollbar-* }`  → MDXEditor 滚动条被全局接管
+   接受现状（与 cc-viewer 全站滚动条统一是 feature 不是 bug）。此外官方 demo 的
+   prose 排版（h1-h6 字号阶梯、p / list / blockquote 间距）MDXEditor 自身不出样式，
+   必须在 .contentEditable 内显式补齐，否则会被 cc-viewer 全局 reset 压成裸文本。
 
    ⚠️ 已知技术债：本文件用了大量 :global([class*='_xxx']) 通配符匹配 MDXEditor
    内部 CSS module hash class（_toolbarRoot / _selectContent / _dialogContent /
@@ -477,10 +475,12 @@
   cursor: not-allowed;
 }
 
-/* 抵御全局 *:focus { outline: none !important }：用 box-shadow 自给 focus-visible 视觉 */
+/* Focus 视觉自给：全局 *:focus reset 已于 2026-10-08 移除，浏览器默认 outline 回归；
+   此处显式 outline:none + box-shadow 保持单环视觉，不与默认 outline 叠加。 */
 .container :global([class*='_toolbarToggleItem']:focus-visible),
 .container :global([class*='_toolbarButton']:focus-visible),
 .container :global([class*='_selectTrigger']:focus-visible) {
+  outline: none;
   box-shadow: 0 0 0 2px var(--color-primary-pale);
   border-color: var(--color-primary);
 }

@@ -40,6 +40,7 @@ import { teamRoutes } from './routes/team.js';
 import { authRoutes } from './routes/auth.js';
 import { dingtalkRoutes } from './routes/dingtalk.js';
 import { imRoutes } from './routes/im.js';
+import { resumeRoutes } from './routes/resume.js';
 import { proxyStatsRoutes } from './routes/proxy-stats.js';
 import { setProxyStatsListener } from './lib/proxy/proxy-stats.js';
 import * as imCore from './lib/im/im-bridge-core.js';
@@ -96,6 +97,7 @@ function execWithStdin(cmd, args, input, options) {
 }
 import { _initPromise, _projectName, _logDir, _v2Writer, streamingState, resetStreamingState, PROFILE_PATH, RETRY_CONFIG_PATH, _retryConfigState, setLivePort, getImLiveText, resetImLiveText, markSessionStart } from './interceptor.js';
 import { V2LiveFeed } from './lib/v2/live-feed.js';
+import { filterClientsByViewProject, projectOfSessionDir, resolveActivityFeedKey } from './lib/v2/view-router.js';
 import { sanitizePathComponent } from './lib/v2/layout.js';
 import { maybeResumeConvert } from './lib/v2/convert-manager.js';
 import { LOG_DIR, setLogDir, getClaudeConfigDir, isBrowserOpenSuppressed } from '../findcc.js';
@@ -173,9 +175,12 @@ const IGNORED_PATTERNS = new Set([
   '.idea', '.vscode'
 ]);
 
-// 多 git 仓库支持：解析 repo 参数为安全的 cwd 路径
-function resolveRepoCwd(repoParam) {
-  const projectDir = process.env.CCV_PROJECT_DIR || process.cwd();
+// 多 git 仓库支持：解析 repo 参数为安全的 cwd 路径。
+// Multi-project (2026-10): `baseDir` lets a viewed parallel project override
+// the bound root (git READ routes pass resolveViewRoot's result); omitting it
+// keeps the bound behavior byte-identical.
+function resolveRepoCwd(repoParam, baseDir) {
+  const projectDir = baseDir || process.env.CCV_PROJECT_DIR || process.cwd();
   if (!repoParam || repoParam === '.') return projectDir;
   if (repoParam.includes('/') || repoParam.includes('..') || repoParam.includes('\\')) return null;
   const candidate = join(projectDir, repoParam);
@@ -491,34 +496,108 @@ const MIME_TYPES = {
   '.woff2': 'font/woff2',
 };
 
-// S6b: v2 live feed — the live channel when the v2 writer is active. Lazy
-// singleton so worker/test paths that never watch anything pay nothing.
-let _v2LiveFeed = null;
-function _ensureV2LiveFeed() {
-  if (!_v2LiveFeed) {
-    _v2LiveFeed = new V2LiveFeed({
+// S6b: v2 live feed — the live channel when the v2 writer is active. ONE feed
+// per project (the bound project plus any project a client is currently
+// VIEWING via /events?project=). Feeds are lazy so worker/test paths that never
+// watch anything pay nothing. Keyed by the absolute project dir.
+const _v2LiveFeeds = new Map(); // projectDir → V2LiveFeed
+
+// Per-project client filter handed to every feed: a feed for project P must
+// broadcast only to SSE clients whose VIEWED project is P. Pure predicate lives
+// in lib/v2/view-router.js (unit-tested); this closure just binds the live
+// bound-project name.
+function _filterClientsByViewProject(clientList, project) {
+  return filterClientsByViewProject(clientList, project, _projectName || '');
+}
+
+function _ensureProjectFeed(projectName) {
+  if (!projectName) return null;
+  const projectDir = join(LOG_DIR, sanitizePathComponent(projectName));
+  let feed = _v2LiveFeeds.get(projectDir);
+  if (!feed) {
+    feed = new V2LiveFeed({
       clients,
       getClaudePid,
       runParallelHook,
       // The stats worker's v2 units are session dirs (stats-worker.js v9).
       notifyStatsWorker,
       wireV3: WIRE_V3,
+      project: projectName,
+      clientFilter: _filterClientsByViewProject,
     });
+    feed.start(projectDir);
+    _v2LiveFeeds.set(projectDir, feed);
+  } else if (!feed._active) {
+    feed.start(projectDir);
   }
-  return _v2LiveFeed;
+  return feed;
 }
 
-/** Start the live channel for the current project (v2 live feed). No-op until
- *  a project is bound (workspace mode defers to the launch route). */
+/** Start the live channel for the bound project (v2 live feed) and route the
+ *  writer's per-session activity to the right project's feed. No-op until a
+ *  project is bound (workspace mode defers to the launch route). */
 function startLogWatch() {
   if (!_projectName) return;
-  const feed = _ensureV2LiveFeed();
-  feed.start(join(LOG_DIR, sanitizePathComponent(_projectName)));
-  _v2Writer.setOnActivity((dir) => feed.tick(dir));
+  _ensureProjectFeed(_projectName);
+  // The writer holds sessions for EVERY live project (per-project PTYs write
+  // through it). Route each activity dir to its owning project's feed by the
+  // <LOG_DIR>/<projectSan>/sessions/ prefix, so a viewed background project's
+  // live entries reach ITS feed (and its viewing clients) too.
+  _v2Writer.setOnActivity((dir) => {
+    const feed = _feedForSessionDir(dir);
+    if (feed) feed.tick(dir);
+  });
+  // Feed each resolved (sid, project) into the PTY sid index so chat sends can
+  // be routed to the PTY owning that conversation (anchor routing, 2026-10-05).
+  // Lazy import keeps pty-manager out of the early module graph (and off the
+  // boundary allowlist); a failure must never break logging.
+  // Multi-instance (2026-10-06): prefer the instanceKey-exact route when the claude
+  // self-reported one (`x-ccv-instance`) — it pins the sid to THIS process, which basename
+  // routing cannot do for two same-cwd instances. Fall back to the basename route for
+  // legacy / external producers that send no instance header.
+  _v2Writer.setOnSessionResolved((sid, project, instanceKey) => {
+    import('./pty-manager.js')
+      .then((pm) => {
+        try {
+          const pinned = instanceKey && typeof pm.setPtySessionIdForInstance === 'function'
+            ? pm.setPtySessionIdForInstance(instanceKey, sid)
+            : false;
+          if (!pinned) pm.setPtySessionId(project, sid);
+        } catch (err) { reportSwallowed('server.sid-pin', err); }
+      })
+      .catch((err) => { reportSwallowed('server.sid-pin-import', err); });
+  });
+}
+
+// The bound project's feed (may not exist yet). Single key builder, shared by
+// both _feedForSessionDir fallbacks so the ensure/fallback keys can't drift.
+function _boundFeed() {
+  return _v2LiveFeeds.get(join(LOG_DIR, sanitizePathComponent(_projectName || ''))) || null;
+}
+
+// Resolve the live feed that owns a session dir, from its
+// <LOG_DIR>/<projectSan>/sessions/<dir> path. When the prefix isolates a
+// known project but that project has NO live feed (no client is viewing it —
+// feeds are lazy), return null rather than falling back to the bound feed:
+// the activity belongs to a DIFFERENT project, and routing it to the bound
+// project's viewers is exactly the cross-project bleed this layer exists to
+// prevent (2026-10-05). Only when the prefix does not resolve a project at all
+// (a dir outside <LOG_DIR>/<projectSan>/sessions/) do we fall back to the
+// bound feed defensively.
+function _feedForSessionDir(dir) {
+  const { feedKey, allowBoundFallback } = resolveActivityFeedKey(dir, LOG_DIR, sep);
+  // A resolved project owns this activity: route to ITS feed, or drop when it
+  // has none (lazy feeds — no viewer, no broadcast). Never re-route a foreign
+  // project's activity to the bound feed (the cross-project bleed, 2026-10-05).
+  if (feedKey) return _v2LiveFeeds.get(join(LOG_DIR, feedKey)) || null;
+  // No owning project (dir outside every <LOG_DIR>/<projectSan>/sessions/
+  // root): bound feed, defensively — the legacy single-project behavior.
+  return allowBoundFallback ? _boundFeed() : null;
 }
 
 function stopLogWatch() {
-  if (_v2LiveFeed) _v2LiveFeed.stop();
+  for (const feed of _v2LiveFeeds.values()) feed.stop();
+  _v2LiveFeeds.clear();
   _v2Writer.setOnActivity(null);
 }
 
@@ -611,6 +690,7 @@ const deps = {
   notifyParentPending: _notifyParentPending,
   startLogWatch,
   stopLogWatch,
+  ensureProjectFeed: _ensureProjectFeed,
   scheduleTurnEndBroadcast: _scheduleTurnEndBroadcast,
   // SessionStart hook notify → conversation-switch signal (in-terminal
   // /resume). The source gate + V2Writer re-bind live in the interceptor.
@@ -733,6 +813,7 @@ const _routes = [
   ...dingtalkRoutes,
   ...imRoutes,
   ...proxyStatsRoutes,
+  ...resumeRoutes,
 ];
 const dispatch = createDispatcher(_routes);
 
@@ -1299,7 +1380,7 @@ export async function startViewer() {
 async function setupTerminalWebSocket(httpServer) {
   try {
     const { WebSocketServer } = await import('ws');
-    const { writeToPty, writeToPtySequential, resizePty, onPtyData, onPtyExit, getPtyState, getPtyKind, getOutputBuffer, getCurrentWorkspace, spawnShell, findSafeSliceStart } = await import('./pty-manager.js');
+    const { writeToPty, writeToPtySequential, writeToPtyFor, writeToPtySequentialFor, resizePty, onPtyData, onPtyExit, getPtyState, getPtyKind, getOutputBuffer, getCurrentWorkspace, spawnShell, findSafeSliceStart, attachPtyFor } = await import('./pty-manager.js');
     const {
       spawnScratch,
       writeScratch,
@@ -1324,6 +1405,7 @@ async function setupTerminalWebSocket(httpServer) {
       chatQueue.initChatQueue({
         writeToPty,
         writeToPtySequential,
+        writeToPtySequentialFor,
         getPtyKind,
         isStreaming: () => streamingState.active,
         hasPendingApproval: () => pendingAskHooks.size > 0 || pendingPermHooks.size > 0,
@@ -1379,6 +1461,18 @@ async function setupTerminalWebSocket(httpServer) {
         return;
       }
       if (pathname === '/ws/terminal') {
+        // Multi-PTY view attach (2026-10): `?project=<name>` pins the freshly
+        // connected client to the project it is VIEWING, so the initial
+        // state/buffer frames below come from that project's record — not from
+        // whatever project happened to spawn last. Unknown/absent project is a
+        // silent no-op (single-project behavior unchanged).
+        const viewProject = wsUrl.searchParams.get('project');
+        // Multi-instance: `&instance=<key>` pins the attach to THAT exact process when a
+        // same-cwd project runs two concurrent instances (basename alone is ambiguous).
+        const viewInstance = wsUrl.searchParams.get('instance');
+        if (viewProject || viewInstance) {
+          try { attachPtyFor({ project: viewProject || undefined, instanceKey: viewInstance || undefined }); } catch { }
+        }
         wss.handleUpgrade(req, socket, head, (ws) => {
           wss.emit('connection', ws, req);
         });
@@ -1783,11 +1877,11 @@ async function setupTerminalWebSocket(httpServer) {
       ws.on('message', async (raw) => {
         try {
           const msg = JSON.parse(raw.toString());
-          // SDK 模式没有 PTY：PTY 专属消息(input/sequential input/resync/resize)一律 no-op,
+          // SDK 模式没有 PTY：PTY 专属消息(input/sequential input/resync/resize/attach)一律 no-op,
           // 否则 'input' 会在无会话时触发 spawnShell() 拉出一个用户看不见的裸 shell。
           // sdk-*/ask-*/perm-*/image-* 等控制消息不受影响。scratch WS 是独立 handler,不受此闸门影响。
           if (isSdkMode && (msg.type === 'input' || msg.type === 'input-sequential'
-              || msg.type === 'resync-request' || msg.type === 'resize')) {
+              || msg.type === 'resync-request' || msg.type === 'resize' || msg.type === 'attach')) {
             return;
           }
           if (msg.type === 'input') {
@@ -1814,6 +1908,12 @@ async function setupTerminalWebSocket(httpServer) {
               }
             }
             // 拦截连续 Ctrl+C：2秒内连按2次则阻止并提醒，避免误退出 CLI
+            // Anchor routing (2026-10-05): a send carries the viewed project's
+            // {project, sessionId} so the input lands on that conversation's PTY,
+            // not whichever record the global activePtyKey last pointed to. Falls
+            // back to the legacy active-targeted write when no anchor is present.
+            const _anchor = { project: typeof msg.project === 'string' ? msg.project : undefined, sessionId: typeof msg.sessionId === 'string' ? msg.sessionId : undefined, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined };
+            const _write = (data) => (_anchor.project || _anchor.sessionId || _anchor.instanceKey) ? writeToPtyFor(data, _anchor) : writeToPty(data);
             if (msg.data === '\x03') {
               const now = Date.now();
               if (!ws._ctrlCLastTime) ws._ctrlCLastTime = 0;
@@ -1823,10 +1923,10 @@ async function setupTerminalWebSocket(httpServer) {
                 // 不发送第二次 Ctrl+C 到 PTY
               } else {
                 ws._ctrlCLastTime = now;
-                writeToPty(msg.data);
+                _write(msg.data);
               }
             } else {
-              writeToPty(msg.data);
+              _write(msg.data);
             }
           } else if (msg.type === 'input-sequential') {
             // Programmatic sequential input: send chunks one by one, waiting for PTY ACK
@@ -1852,7 +1952,12 @@ async function setupTerminalWebSocket(httpServer) {
               }
             };
             if (Array.isArray(chunks) && chunks.length > 0 && chunks.every(c => typeof c === 'string')) {
-              writeToPtySequential(chunks, replyDone, { settleMs: msg.settleMs || 150 });
+              const _seqAnchor = { project: typeof msg.project === 'string' ? msg.project : undefined, sessionId: typeof msg.sessionId === 'string' ? msg.sessionId : undefined, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined };
+              if (_seqAnchor.project || _seqAnchor.sessionId || _seqAnchor.instanceKey) {
+                writeToPtySequentialFor(chunks, replyDone, { settleMs: msg.settleMs || 150 }, _seqAnchor);
+              } else {
+                writeToPtySequential(chunks, replyDone, { settleMs: msg.settleMs || 150 });
+              }
             } else {
               replyDone(false);
             }
@@ -1861,6 +1966,39 @@ async function setupTerminalWebSocket(httpServer) {
             if (resyncReqGate.shouldNudge()) {
               floodGate.reset();
               sendResync();
+            }
+          } else if (msg.type === 'attach') {
+            // Multi-PTY view attach (2026-10): the client switched the main view to
+            // another parallel project (chip click / launch / cold-load landing) —
+            // re-anchor the shared PTY stream to THAT project's record, then replay
+            // its outputBuffer so the terminal paints the right screen immediately.
+            // attachPtyFor is idempotent and never spawns/kills; an unknown project
+            // degrades to attach-failed with the current view left untouched.
+            //
+            // KNOWN LIMITATION (documented, pre-existing): the attachment is a single
+            // server-wide pointer, not per-connection. Two tabs viewing DIFFERENT
+            // projects share it — the last attach wins and the other tab's terminal
+            // follows the new project too (its chat view is unaffected: SSE per-project
+            // filtering is per-connection). Same-project tabs attach identically →
+            // no-op. A per-connection PTY mux is out of scope for this fix.
+            const target = typeof msg.project === 'string' ? msg.project : '';
+            // Multi-instance: an explicit instanceKey pins the attach to THAT exact process
+            // (a same-cwd project's basename alone is ambiguous across two live instances).
+            const targetInstance = typeof msg.instanceKey === 'string' ? msg.instanceKey : '';
+            let res = null;
+            try { res = (target || targetInstance) ? attachPtyFor({ project: target || undefined, instanceKey: targetInstance || undefined }) : null; } catch { res = null; }
+            if (res && res.ok) {
+              try { ws.send(JSON.stringify({ type: 'attached', project: target, running: res.running, ptyKind: res.ptyKind, exitCode: res.exitCode })); } catch { }
+              const snap = getOutputBuffer();
+              if (snap) {
+                try { ws.send(JSON.stringify({ type: 'data', data: snap })); } catch { }
+              }
+            } else {
+              // Multi-instance: surface an ambiguous project-name attach (with the live
+              // candidates) so the client re-issues with an instanceKey instead of silently
+              // pinning an arbitrary same-cwd process.
+              const reason = (res && res.reason) || 'not-found';
+              try { ws.send(JSON.stringify({ type: 'attach-failed', project: target, reason, ...(res && res.candidates ? { candidates: res.candidates } : {}) })); } catch { }
             }
           } else if (msg.type === 'ask-hook-answer') {
             // Client answered AskUserQuestion via hook bridge.
@@ -2124,7 +2262,9 @@ async function setupTerminalWebSocket(httpServer) {
                   });
                 }
               } else {
-                try { chatQueue.enqueue(msg.text); } catch (err) { reportSwallowed('server.queue-message', err); }
+                const _qAnchor = { project: typeof msg.project === 'string' ? msg.project : undefined, sessionId: typeof msg.sessionId === 'string' ? msg.sessionId : undefined, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined };
+                const _anchorArg = (_qAnchor.project || _qAnchor.sessionId || _qAnchor.instanceKey) ? _qAnchor : undefined;
+                try { chatQueue.enqueue(msg.text, _anchorArg); } catch (err) { reportSwallowed('server.queue-message', err); }
               }
             }
           } else if (msg.type === 'queue-send-now') {
@@ -2493,7 +2633,15 @@ export function startStreamingStatusTimer() {
       const data = isActive
         ? { ...streamingState, elapsed: Date.now() - streamingState.startTime }
         : { active: false };
-      if (clients.length > 0 && sendEventToClients) sendEventToClients(clients, 'streaming_status', data);
+      // Multi-project (2026-10): streamingState is a global singleton tracking the
+      // BOUND project's main process — route the spinner only to clients viewing
+      // that project, so a parallel project's view never shows the bound
+      // project's streaming flag (cross-project spinner bleed). (Per-project
+      // streaming state is a follow-up; today a parallel view simply shows no
+      // spinner, matching the pre-multi-PTY single-project behavior.)
+      if (clients.length > 0 && sendEventToClients) {
+        sendEventToClients(_filterClientsByViewProject(clients, _projectName || ''), 'streaming_status', data);
+      }
     }
   }, 500);
   _streamingStatusTimer.unref();
@@ -2725,7 +2873,25 @@ if (!globalThis._ccvServerSignalsRegistered) {
   process.on('exit', handleExit);
   // hardened：watchdog 5s 强退 + 重复触发立退（防 Windows 上 stopViewer 内部
   // await 挂住导致 .finally(exit) 永不执行 = Ctrl+C 完全无反应）。
-  const _hardenedStop = createHardenedCleanup({ doCleanup: () => stopViewer() });
+  // Also reap scratch/resume children at this PROCESS-level exit point —
+  // without it they orphan on SIGINT/SIGTERM (node-pty children are session
+  // leaders, not cascade-killed by the OS). killAllScratch is idempotent.
+  // _doStop (the session-level stop/start cycle point) deliberately does NOT
+  // kill scratch PTYs: Electron tab switches go through it and must not reap a
+  // resume child owned by another tab.
+  const _hardenedStop = createHardenedCleanup({
+    doCleanup: () => Promise.all([
+      stopViewer(),
+      import('./scratch-pty-manager.js')
+        .then(({ killAllScratch }) => killAllScratch())
+        .catch((e) => reportSwallowed('server.stop.scratch', e)),
+      // Also reap every kept-alive main PTY (cross-project /resume leaves old
+      // projects' main PTYs running); idempotent, equals killPty() when single.
+      import('./pty-manager.js')
+        .then(({ killAllMain }) => killAllMain())
+        .catch((e) => reportSwallowed('server.stop.mainpty', e)),
+    ]),
+  });
   process.on('SIGINT', _hardenedStop);
   process.on('SIGTERM', _hardenedStop);
 }

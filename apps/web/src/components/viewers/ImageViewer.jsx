@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { t as i18n } from '../../i18n';
-import { apiUrl } from '../../utils/apiUrl';
+import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import { sanitizeSvg } from '../../utils/svgSanitize';
 import styles from './ImageViewer.module.css';
 
@@ -14,7 +14,7 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 10;
 const ZOOM_STEP = 0.25;
 
-export default function ImageViewer({ filePath, onClose, editorSession }) {
+export default function ImageViewer({ filePath, onClose, editorSession, project, instance }) {
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [naturalSize, setNaturalSize] = useState(null);
@@ -26,7 +26,7 @@ export default function ImageViewer({ filePath, onClose, editorSession }) {
   const dragRef = useRef(null);
 
   const isSvg = (filePath || '').toLowerCase().endsWith('.svg');
-  const imgSrc = apiUrl(`/api/file-raw?path=${encodeURIComponent(filePath)}${editorSession ? '&editorSession=true' : ''}`);
+  const imgSrc = apiUrl(withViewParams(`/api/file-raw?path=${encodeURIComponent(filePath)}${editorSession ? '&editorSession=true' : ''}`, { project, instance }));
 
   // SVG: fetch raw text for inline rendering (CSS background shows through transparent areas)
   useEffect(() => {

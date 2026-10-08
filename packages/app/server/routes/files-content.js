@@ -3,10 +3,26 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, realpathS
 import { join, basename, dirname, resolve, sep } from 'node:path';
 import { isReadAllowed, reasonToStatus } from '../lib/file-access-policy.js';
 import { ERROR_STATUS_MAP } from '../lib/file-api.js';
+import { viewRootOrReply } from '../lib/view-root.js';
+import { loadWorkspaces } from '../workspace-registry.js';
+import { listLivePtys } from '../pty-manager.js';
 import { reportSwallowed } from '@ccv/core/error-report';
 import { discoverClaudeMdCandidates, readCandidateById } from '../lib/claude-md-discovery.js';
 import { getClaudeConfigDir } from '../../findcc.js';
 import { _projectName } from '../interceptor.js';
+
+// Multi-project (2026-10): project-scoped READ routes resolve the viewed
+// project via the shared viewRootOrReply (?project=). WRITE routes keep the
+// bound root. SYNCHRONOUS: these handlers were sync before multi-project, and
+// their tests (and the dispatcher's sync-call convention) assert on res
+// immediately after the call — the override must not async-ify them.
+function _viewRootOrReply(req, res, parsedUrl) {
+  return viewRootOrReply(req, res, parsedUrl, {
+    boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
+    loadWorkspaces,
+    listLivePtys,
+  });
+}
 
 // file-raw 扩展名 → MIME 映射。图片走 <img> 预览;html 走 iframe 预览(带下方 CSP sandbox);
 // 其余为 HTML 预览的同目录子资源(c8/nyc/lcov-genhtml 等静态报告):CSP sandbox 使文档
@@ -84,7 +100,12 @@ function planFile(req, res, parsedUrl) {
 
 function fileContentGet(req, res, parsedUrl) {
   const reqPath = parsedUrl.searchParams.get('path');
-  const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+  const cwd = _viewRootOrReply(req, res, parsedUrl);
+  if (!cwd) return;
+  fileContentGetWithRoot(req, res, parsedUrl, reqPath, cwd);
+}
+
+function fileContentGetWithRoot(req, res, parsedUrl, reqPath, cwd) {
   try {
     if (!reqPath) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -143,10 +164,30 @@ function projectMemory(req, res, parsedUrl) {
     res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(body));
   };
+  projectMemoryEntry(req, res, parsedUrl, respondJson);
+}
+
+// The entry wraps BOTH the view-root resolution and the read in the endpoint's
+// single error surface (the searchParams-throw defense test asserts a 500 from
+// THIS catch, regardless of which stage throws).
+function projectMemoryEntry(req, res, parsedUrl, respondJson) {
   try {
-    const cwdRaw = process.env.CCV_PROJECT_DIR || process.cwd();
-    const cwd = cwdRaw.replace(/[/\\]+$/, '');
-    const encoded = cwd.replace(/[^a-zA-Z0-9-]/g, '-');
+    const cwd = _viewRootOrReply(req, res, parsedUrl);
+    if (!cwd) return;
+    projectMemoryWithRoot(req, res, parsedUrl, respondJson, cwd);
+  } catch (err) {
+    // 与 /api/file-content 一致：已知 errno（ENOENT/EACCES 等）走 ERROR_STATUS_MAP 映射；
+    // 500 时不回显 err.message —— 可能含 ~/.claude/projects/<encoded>/memory/ 路径片段。
+    const status = ERROR_STATUS_MAP[err.code] || 500;
+    const message = status === 500 ? 'Internal error' : err.message;
+    respondJson(status, { error: message });
+  }
+}
+
+function projectMemoryWithRoot(req, res, parsedUrl, respondJson, cwd) {
+  try {
+    const cwdClean = cwd.replace(/[/\\]+$/, '');
+    const encoded = cwdClean.replace(/[^a-zA-Z0-9-]/g, '-');
     const dir = join(getClaudeConfigDir(), 'projects', encoded, 'memory');
     const fileParam = parsedUrl.searchParams.get('file');
     const MAX_BYTES = 512 * 1024;
@@ -205,8 +246,22 @@ function claudeMd(req, res, parsedUrl) {
     res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(body));
   };
+  // The entry wraps BOTH the view-root resolution and the read in the
+  // endpoint's single error surface (the searchParams-throw defense test
+  // asserts a 500 from THIS catch, regardless of which stage throws).
   try {
-    const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+    const cwd = _viewRootOrReply(req, res, parsedUrl);
+    if (!cwd) return;
+    claudeMdWithRoot(req, res, parsedUrl, respondJson, cwd);
+  } catch (err) {
+    const status = ERROR_STATUS_MAP[err.code] || 500;
+    const message = status === 500 ? 'Internal error' : err.message;
+    respondJson(status, { error: message });
+  }
+}
+
+function claudeMdWithRoot(req, res, parsedUrl, respondJson, cwd) {
+  try {
     const claudeConfigDir = getClaudeConfigDir();
     // 注入 isReadAllowed 做发现阶段预过滤: 不在 allowlist 内的祖先候选不进列表 ——
     // 否则 UI 会渲染出点击必 403 的"看得见点不开"chip。
@@ -262,7 +317,12 @@ function fileRaw(req, res, parsedUrl) {
   } else {
     reqPath = parsedUrl.searchParams.get('path');
   }
-  const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+  const cwd = _viewRootOrReply(req, res, parsedUrl);
+  if (!cwd) return;
+  fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, method);
+}
+
+function fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, method) {
   try {
     if (!reqPath) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -336,7 +396,12 @@ function fileRaw(req, res, parsedUrl) {
 // No size cap — a download is precisely the path for files too large to preview.
 function fileDownload(req, res, parsedUrl) {
   const reqPath = parsedUrl.searchParams.get('path');
-  const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+  const cwd = _viewRootOrReply(req, res, parsedUrl);
+  if (!cwd) return;
+  fileDownloadWithRoot(req, res, parsedUrl, reqPath, cwd);
+}
+
+function fileDownloadWithRoot(req, res, parsedUrl, reqPath, cwd) {
   try {
     if (!reqPath) {
       res.writeHead(400, { 'Content-Type': 'application/json' });

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Modal, Input, Switch, Spin, message } from 'antd';
+import { Modal, Input, Switch, message } from 'antd';
+import Loading from '../common/Loading';
 import { t, getLang } from '../../i18n';
-import { apiUrl } from '../../utils/apiUrl';
+import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import { renderMarkdown } from '../../utils/markdown';
 import { reportSwallowed } from '../../utils/errorReport';
 import { collectModelSuggestions } from '../../utils/modelSuggestions';
@@ -27,7 +28,7 @@ const MODEL_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/; // 与 server/lib/mod
 const EMPTY_DRAFT = { text: '', mode: 'append' };
 const tabKeyOf = (scope, name) => `${scope}:${name}`;
 
-export default function SystemTextModal({ open, onClose }) {
+export default function SystemTextModal({ open, onClose, project, instance }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState(false);   // markdown 预览开关：开=渲染预览，关=编辑
@@ -57,8 +58,8 @@ export default function SystemTextModal({ open, onClose }) {
     // 三个 GET 各自失败互不拖累(allSettled)：system-text/model-prompts 任一失败提示 loadError；
     // presets 失败为非致命(下拉降级为隐藏/仅空白)，不弹 loadError。
     Promise.allSettled([
-      fetch(apiUrl('/api/expert/system-text')).then((r) => r.json()),
-      fetch(apiUrl('/api/expert/model-prompts')).then((r) => r.json()),
+      fetch(apiUrl(withViewParams('/api/expert/system-text', { project, instance }))).then((r) => r.json()),
+      fetch(apiUrl(withViewParams('/api/expert/model-prompts', { project, instance }))).then((r) => r.json()),
       fetch(apiUrl(`/api/expert/system-prompt-presets?lang=${encodeURIComponent(getLang())}`)).then((r) => r.json()),
       fetch(apiUrl('/api/proxy-profiles')).then((r) => r.json()),
       fetch(apiUrl('/api/claude-settings')).then((r) => r.json()),
@@ -398,7 +399,7 @@ export default function SystemTextModal({ open, onClose }) {
       zIndex={1100}
       styles={{ mask: BLUR_MASK_STYLE }}
     >
-      <Spin spinning={loading}>
+      <Loading spinning={loading}>
         <ModelPromptTabs
           entries={entries}
           activeKey={activeKey}
@@ -485,7 +486,7 @@ export default function SystemTextModal({ open, onClose }) {
         ) : (
           <div className={styles.warn}>{t('ui.expert.systemText.noWorkspace')}</div>
         )}
-      </Spin>
+      </Loading>
     </Modal>
 
     {/* 参数文档二级弹窗：渲染 ${...} 变量参考(只读)。 */}

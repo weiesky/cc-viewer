@@ -6,7 +6,7 @@
 // and the swallowed ENOENT would silently drop v2 lines (plan risk F2).
 
 import { mkdirSync, writeFileSync, renameSync, existsSync, openSync, writeSync, fsyncSync, closeSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 // The wire-format version this build writes AND the only one it reads.
 // Stamped into meta.json and the journal sentinel at session creation; the
@@ -26,6 +26,29 @@ export function sanitizePathComponent(name) {
   const cleaned = String(name == null ? '' : name).replace(/[^a-zA-Z0-9._-]/g, '_');
   if (cleaned === '' || /^\.+$/.test(cleaned)) return '_';
   return cleaned;
+}
+
+/**
+ * Normalize a session's owning cwd for cross-dir same-basename comparison
+ * (2026-10-07). Lexical ONLY — `resolve` collapses `.`/`..` and duplicate
+ * separators without touching the filesystem, then a trailing-separator strip
+ * evens `/a/x` vs `/a/x/`. (On POSIX `resolve` already drops trailing slashes,
+ * so the strip is redundant there; it still guards Windows `\` and the root
+ * case.) Deliberately NOT realpath: the write side stamps the raw spawn cwd and
+ * the read side reads the live PTY record's raw cwd, and both are the SAME raw
+ * string — realpath would introduce a symlink-mismatch (/tmp → /private/tmp)
+ * where the two raw sides already agree byte-for-byte. Applied identically on
+ * the write (meta.cwd stamp), read-candidate, and read-target sides so the
+ * comparison stays symmetric across a respawn. Absolute cwds pass through
+ * deterministically; a relative cwd would resolve against process.cwd() (never
+ * occurs for a spawn cwd, which is always absolute).
+ * @param {string} cwd
+ * @returns {string} '' for empty/non-string input.
+ */
+export function normalizeSessionCwd(cwd) {
+  if (!cwd || typeof cwd !== 'string') return '';
+  const out = resolve(cwd);
+  return out.length > 1 ? out.replace(/[\\/]+$/, '') : out;
 }
 
 /** Session creation time (ISO) → a 14-digit LOCAL-time stamp `yyyymmddhhmmss`
@@ -122,8 +145,10 @@ export function writeFileAtomicSync(finalPath, data) {
  * targeting this session. Returns the paths object.
  *
  * meta: { wireFormat:2, sessionId, project, pid, startTs, userIdRaw,
- *         userIdEncoding, leader?, im? } — spec §3. Existing meta is never
- * rewritten here (later additive updates go through updateMetaSync).
+ *         userIdEncoding, leader?, im?, cwd? } — spec §3. Existing meta is never
+ * rewritten here (later additive updates go through updateMetaSync). `cwd` is
+ * the session's owning full working directory (same-name isolation, 2026-10-07);
+ * absent for legacy/external producers.
  */
 export function ensureSessionDirSync(logDir, project, sessionId, meta = {}, sessionsDirName = SESSIONS_DIR_NAME, dirName = sessionId) {
   // Path uses dirName (`<ts>_<uuid>` for live, task C); IDENTITY (meta.sessionId

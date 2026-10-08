@@ -71,7 +71,7 @@ export function dedupePaths(paths) {
  * Returns a Map<path, boolean> covering every input path. Never throws:
  * fetch failure degrades the whole batch to false (uncached).
  */
-export async function checkPathsExist(paths, { projectKey = '', fetchImpl } = {}) {
+export async function checkPathsExist(paths, { projectKey = '', instance = '', fetchImpl } = {}) {
   const fetchFn = fetchImpl || globalThis.fetch;
   const results = new Map();
   const owned = [];  // entries that own a fresh in-flight slot: { p, key, resolve }
@@ -104,7 +104,11 @@ export async function checkPathsExist(paths, { projectKey = '', fetchImpl } = {}
       const res = await fetchFn(apiUrl('/api/files-exists'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths: chunk.map(e => e.p) }),
+        // Multi-project (2026-10): the probe's projectKey IS the viewed project —
+        // pass it through so the server probes THAT project's tree, not the bound one.
+        // Multi-instance (2026-10-06): `instance` disambiguates two same-basename
+        // projects (else the server's view-root 400s "ambiguous project name").
+        body: JSON.stringify({ paths: chunk.map(e => e.p), ...(projectKey ? { project: projectKey } : {}), ...(instance ? { instance } : {}) }),
       });
       if (res && res.ok) {
         const data = await res.json();

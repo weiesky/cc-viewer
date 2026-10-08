@@ -1,9 +1,14 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Space, Tag, Button, Dropdown, Popover, Modal, Collapse, Drawer, Switch, Tabs, Spin, Input, Select, AutoComplete, Segmented, Tooltip, message } from 'antd';
+import { Space, Tag, Button, Dropdown, Popover, Popconfirm, Modal, Collapse, Drawer, Switch, Tabs, Input, Select, AutoComplete, Segmented, Tooltip, message } from 'antd';
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import { DISPLAY_SCALE_PRESETS } from '../../utils/displayScaleHelper';
+import Loading from '../common/Loading';
 import { hasNativeZoom, isMac } from '../../env';
-import { MessageOutlined, FileTextOutlined, DashboardOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, CopyOutlined, ApiOutlined, SwapOutlined, ThunderboltOutlined, QuestionCircleOutlined, PushpinOutlined, PushpinFilled } from '@ant-design/icons';
+import { MessageOutlined, FileTextOutlined, DashboardOutlined, DownloadOutlined, SettingOutlined, BarChartOutlined, CodeOutlined, CopyOutlined, ApiOutlined, SwapOutlined, ThunderboltOutlined, QuestionCircleOutlined, PushpinOutlined, PushpinFilled, PlusOutlined } from '@ant-design/icons';
 import { QRCodeCanvas } from 'qrcode.react';
 import { formatTokenCount, computeTokenStats, computeCacheRebuildStats, computeToolUsageStats, computeSkillUsageStats, readCalibrationModel, computeContextPercent, sumUsageInputTokens, sumUsageContextTokens } from '../../utils/helpers';
 import { contextSeverityColor } from '../../utils/formatters';
@@ -18,7 +23,7 @@ import { reportSwallowed } from '../../utils/errorReport';
 import { classifyRequest } from '@ccv/core/requestType';
 import { resolveTeammateNames } from '@ccv/core/contentFilter';
 import { t, getLang, setLang, LANG_OPTIONS } from '../../i18n';
-import { apiUrl } from '../../utils/apiUrl';
+import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import * as SeqLoaders from '../../utils/seqResourceLoaders';
 import { SettingsContext } from '../../contexts/SettingsContext';
 import ConceptHelp from '../common/ConceptHelp';
@@ -28,6 +33,8 @@ import DialogueIcon from '../common/DialogueIcon';
 import ChipIcon from '../common/ChipIcon';
 import CachePopoverContent from './CachePopoverContent';
 import LiveTagPopover from './LiveTagPopover';
+import { deriveActiveProcessChips, deriveProjectTabs, resolveBoundInstance } from '../../utils/resumeSessions';
+import { readProjectTabOrder, writeProjectTabOrder, mergeProjectTabOrder, reorderProjectTabIds } from '../../utils/projectTabOrder';
 import MemoryDetailModal from '../common/MemoryDetailModal';
 import SkillsManagerModal from '../settings/SkillsManagerModal';
 import ProjectPrefsManagerModal from '../settings/ProjectPrefsManagerModal';
@@ -36,13 +43,11 @@ import ProcessModal from '../settings/ProcessModal';
 import ProxyModal, { profileDisplayModel } from '../settings/ProxyModal';
 import SystemTextModal from '../settings/SystemTextModal';
 import VoicePackSettings from '../settings/VoicePackSettings';
-import ProjectAliasEditor from '../settings/ProjectAliasEditor';
 import MessagingModal from '../settings/MessagingModal';
 import ImConversationModal from '../settings/ImConversationModal';
 import ImStatusChip from '../settings/ImStatusChip';
 import { IM_PLATFORMS } from '../settings/imPlatforms';
 import { isProxyMode } from '../../utils/isProxyMode';
-import { useProjectAlias } from '../../hooks/useProjectAlias';
 import appConfig from '../../config.json';
 import { OPTIMISTIC_CLEAR_PERCENT } from '../../AppBase';
 const CALIBRATION_MODELS = appConfig.calibrationModels;
@@ -69,17 +74,378 @@ function makeAuthState(over = {}) {
 
 // countryToFlag 已随地理位置控件一起迁到 src/components/common/CountryFlag.jsx
 
-// Bridges the useProjectAlias hook into AppHeader (class component). Renders
-// `${liveMonitoringPrefix}${projectName}${alias ? ` (${alias})` : ''}` followed
-// by the inline pencil editor (hidden when isLocalLog / no projectName).
-function HeaderProjectLabel({ projectName, isLocalLog }) {
-  const alias = useProjectAlias(projectName);
+// The current-project label. Renders `当前项目:<projectName>` as a plain label.
+// (2026-10-06: the hover recent-sessions dropdown was removed — session history now
+// lives in the star quick-settings menu, between the permission and plan rows.)
+function HeaderProjectLabel({ projectName }) {
   return (
     <span className={styles.headerProjectName}>
       {t('ui.liveMonitoring')}{projectName ? `:${projectName}` : ''}
-      {alias ? ` (${alias})` : ''}
-      <ProjectAliasEditor projectName={projectName} isLocalLog={isLocalLog} />
     </span>
+  );
+}
+
+// [+] new-workspace button (2026-10): a STANDALONE control sitting to the right
+// of the current-project label — deliberately NOT nested inside the label, which
+// is the recent-sessions dropdown's hover trigger. Nesting it there made hovering
+// [+] fire both the "新建工作区" tip AND the recent-sessions dropdown at once.
+// Kept independent so hovering it shows only its own tip and clicking opens only
+// the new-workspace picker.
+function NewProjectButton({ onNewProject }) {
+  if (!onNewProject) return null;
+  return (
+    <Tooltip title={t('ui.resume.newProject')} placement="bottom">
+      <button
+        type="button"
+        className={styles.newProjectPlusBtn}
+        aria-label={t('ui.resume.newProject')}
+        onClick={onNewProject}
+      >
+        <PlusOutlined />
+      </button>
+    </Tooltip>
+  );
+}
+
+// /resume entry (2026-10, REMOVED 2026-10-06): the current-project label used to double
+// as the hover trigger for the recent-sessions dropdown. Session history moved into the
+// star quick-settings menu (ResumeSessionsRow) with a Modal.confirm + true /resume switch;
+// the header label is now a plain label (HeaderProjectLabel) with no dropdown.
+
+// Parallel-project chips (2026-10): one chip per OTHER live main claude PTY
+// (one per activated project), excluding the current project (its identity is
+// already in the label to the left). Clicking a chip switches the main view to
+// that project (onActivateChip → AppBase.handleActivateChip, a pure view switch
+// — no spawn/kill). Presentational; the poll lives in HeaderProjectSwitcher.
+function HeaderActiveChips({ onActivateChip, chips }) {
+  if (!chips || !chips.length) return null;
+  return (
+    <>
+      {chips.map((chip) => (
+        <Tag
+          key={chip.key}
+          className={`${styles.proxyProfileTag} ${styles.activeProcessChip}`}
+          // Tooltip stays the friendly "Switch to X" wording (not cwd): chips render only
+          // in the ≤1-live-project form, so two same-basename chips never co-exist here —
+          // the [n] disambiguation the user actually sees lives on the tab bar. The label
+          // still carries any suffix; the tag has no width cap so it won't truncate.
+          title={t('ui.resume.activeChipMain', { project: chip.project })}
+          onClick={() => onActivateChip(chip)}
+        >
+          {chip.label}
+        </Tag>
+      ))}
+    </>
+  );
+}
+
+// Multi-project tab bar (2026-10), the Electron-tab-bar analog for the web
+// header: one equal-width tab per LIVE project INCLUDING the current one —
+// shown only when 2+ projects are live (fewer → the legacy label+chips form,
+// see HeaderProjectSwitcher). Click a tab = pure view switch (never
+// spawns/kills); clicking the already-viewing tab is a no-op, clicking the
+// CURRENT (bound) project's tab from a parallel view detaches back to it.
+// The × close button reveals on hover/keyboard-focus and persists on the
+// viewing tab (Electron's rule), asks via Popconfirm, and kills that project's
+// main PTY server-side (AppBase.handleCloseProject). Hovering the current
+// project's tab opens the same recent-sessions dropdown the legacy label
+// carries.
+// Single sortable wrapper around one tab body. Isolates useSortable's ref /
+// transform / listeners from the tab's own presentation so the existing
+// click/keyboard/close behavior stays untouched. dnd-kit uses the stable
+// `tab.key` as the sortable id (same id projectTabOrder persists).
+// a11y: useSortable's default attributes inject role="button" + tabIndex=0 +
+// aria-roledescription="draggable" + aria-describedby onto the wrapper, nesting
+// a button around the tabBody's own role=button tabIndex=0 (double Tab stop +
+// "button in button" for screen readers). We opt out via the attributes option:
+// no role/tabIndex on the wrapper, and we don't spread `{...attributes}` — the
+// keyboard-sorting announcements those aria-* attributes support are inert
+// anyway (no KeyboardSensor). The inner tabBody stays the single interactive
+// target.
+function SortableProjectTab({ id, children }) {
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    attributes: { role: 'presentation', roleDescription: undefined, tabIndex: -1 },
+  });
+  const style = {
+    // CSS.Translate (not Transform) keeps the tab's own box-shadow / border
+    // intact while it's being repositioned — a Transform would also scale
+    // the inset 1px ring, causing a visible pop at drop.
+    transform: CSS.Translate.toString(transform),
+    transition,
+    // Raise the dragged tab above siblings so the strip's overflow:auto
+    // doesn't clip it mid-drag; slight fade marks the "ghost" origin slot.
+    zIndex: isDragging ? 10 : undefined,
+    opacity: isDragging ? 0.85 : undefined,
+    // While dragging, the tab should feel "picked up" — pointer cursor is
+    // ambiguous, grabbing is the standard idiom.
+    cursor: isDragging ? 'grabbing' : undefined,
+    display: 'inline-flex',
+  };
+  return (
+    <div ref={setNodeRef} style={style} {...listeners}>
+      {children}
+    </div>
+  );
+}
+
+function HeaderProjectTabs({ tabs, currentProject, currentInstanceKey, viewedProject, viewedInstance, resumeSwitch, onActivateChip, onDetachView, onCloseProject, onNewProject }) {
+  const viewing = viewedProject || currentProject || null;
+  // Multi-instance: "viewing" identity is project+instance — a same-cwd twin tab is NOT the
+  // viewed one just because the basename matches.
+  const viewingInstance = viewedInstance || null;
+  // User-defined tab order (2026-10-08): the ids (tab.key) the user dragged into place,
+  // persisted to localStorage. State mirrors the storage value so a drag updates the UI
+  // immediately without waiting for the next 5s poll. Seed from storage on mount; the
+  // effect below re-reads storage whenever the poll delivers a fresh `tabs` reference
+  // so a cleared/changed storage value (other tab, devtools) is honored.
+  const [savedOrder, setSavedOrder] = useState(() => readProjectTabOrder());
+  // Re-read storage when the poll delivers a fresh `tabs` reference so a cleared/changed
+  // storage value (other tab, devtools) is honored. Skip the setState when the ids are
+  // identical — otherwise every 5s poll would re-render the strip even without a drag.
+  useEffect(() => {
+    const fresh = readProjectTabOrder();
+    setSavedOrder((prev) => {
+      if (prev.length === fresh.length && prev.every((id, i) => id === fresh[i])) return prev;
+      return fresh;
+    });
+  }, [tabs]);
+  // View-repair target after closing a tab: prefer the bound project when it survives, else
+  // the first remaining live tab (mirrors the server's re-attach order), else null. Carries
+  // the survivor's { project, instanceKey } so the re-view lands on the exact process.
+  const fallbackFor = (closedTab) => {
+    const rest = (tabs || []).filter((tab) => !(tab.project === closedTab.project && (tab.instanceKey || null) === (closedTab.instanceKey || null)));
+    if (!rest.length) return null;
+    const bound = rest.find((tab) => tab.project === currentProject);
+    const pick = bound || rest[0];
+    return { project: pick.project, instanceKey: pick.instanceKey || null };
+  };
+  // Bound-view identity (pure-client viewing, 2026-10-07): when NO parallel view is
+  // attached, the viewed process IS the bound project, and same-basename tabs BOTH match
+  // `currentProject` — so `currentInstanceKey` (the bound project's per-server identity,
+  // from /api/live-processes, derived from the bound cwd) singles out THE bound tab.
+  // NEVER the shared `active` flag: that is the terminal attachment, which lags the 5s
+  // poll AND differs per client (two clients viewing different projects cannot both be
+  // the viewed one, so `active` cannot be a per-client view source). resolveBoundInstance
+  // returns null unless a tiebreak is genuinely needed AND resolvable, so a unique bound
+  // name or a stale key degrades to a plain name-match (never blanks the bound tab).
+  const boundViewInstance = viewedProject
+    ? null
+    : resolveBoundInstance(tabs, currentProject, currentInstanceKey);
+  // Apply the user's saved order to the fresh poll: previously-ordered tabs keep their
+  // relative position, brand-new tabs append at the end. Memoized on both inputs so a
+  // savedOrder update (post-drag) re-renders without waiting for the next 5s poll.
+  const orderedTabs = useMemo(
+    () => mergeProjectTabOrder(tabs || [], savedOrder),
+    [tabs, savedOrder],
+  );
+  // dnd-kit sensors: PointerSensor with a small activation distance so a plain click
+  // (no movement) never triggers a drag, while a ≥4px move does. Keyboard sorting is
+  // NOT enabled — tabs already have Enter/Space → activate, and adding a second keymap
+  // (Space to lift, arrows to move) would conflict.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+  );
+  const onDragEnd = (event) => {
+    const { active, over } = event || {};
+    if (!active || !over) return;
+    const next = reorderProjectTabIds(orderedTabs, String(active.id), String(over.id));
+    if (!next) return;
+    setSavedOrder(next);
+    writeProjectTabOrder(next);
+  };
+  const renderTab = (tab) => {
+    const tabInstance = tab.instanceKey || null;
+    // Viewing identity: an attached parallel view matches by project+instanceKey exactly. With
+    // NO parallel view attached, `viewing` is the bound project NAME, which two same-basename
+    // tabs BOTH match — so when we know the bound view's instanceKey, require it; only the
+    // active row qualifies, singling out ONE tab. Unknown instanceKey → legacy name match.
+    const isViewing = tab.project === viewing && (
+      viewedProject
+        ? tabInstance === viewingInstance
+        : (boundViewInstance ? tabInstance === boundViewInstance : true)
+    );
+    const isCurrent = tab.project === currentProject;
+    // Tab-switch loading ring (2026-10-07): between the activate click and the cold-load
+    // commit (load_end clears resumeSwitch), show a spinning ring in place of the status dot.
+    // resumeSwitch.uuid is keyed `project+instance` for an instance switch (AppBase:767);
+    // match this tab the same way. The ring follows the task-HUD dot idiom — primary (blue)
+    // for the activated tab, muted (grey) for any other tab that happens to be mid-switch.
+    const switchUuid = resumeSwitch && resumeSwitch.uuid ? resumeSwitch.uuid : null;
+    const isSwitching = !!(switchUuid
+      && (switchUuid === `${tab.project}${tabInstance}`
+          || switchUuid === tab.project
+          || (tabInstance && switchUuid.endsWith(tabInstance))));
+    const ringClass = isViewing ? styles.projectTabRingActive : styles.projectTabRing;
+    const onTabClick = () => {
+      if (isViewing) return;
+      // Same-basename fix (2026-10-07): `isCurrent` is a BASENAME match, so every same-name
+      // tab of the bound project is "current" — but only the tab whose instance IS the bound
+      // instance is the one a click should detach back to. A same-name SIBLING (different
+      // instanceKey, e.g. /a/proj bound + /b/proj) must ACTIVATE its own instance's view,
+      // not detach — otherwise, with only the two same-name tabs live, every click detached
+      // (viewedInstance→null → /events with no ?instance= → whole-pool newest) and the chat
+      // panel could never switch. (A third, differently-named project flips currentProject
+      // away, which is why it masked the bug.) boundViewInstance === null means no bound
+      // tiebreak is needed/resolvable → keep the legacy detach.
+      if (isCurrent) {
+        const isBoundInstanceTab = !boundViewInstance || tabInstance === boundViewInstance;
+        if (isBoundInstanceTab) { if (onDetachView) onDetachView(); return; }
+        // fall through to activate the sibling instance's view.
+      }
+      if (onActivateChip) onActivateChip({ project: tab.project, instanceKey: tabInstance });
+    };
+    const tabBody = (
+      <div
+        className={`${styles.projectTab}${isViewing ? ` ${styles.projectTabActive}` : ''}`}
+        onClick={onTabClick}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onTabClick(); } }}
+      >
+        {isSwitching
+          ? <span className={`${styles.projectTabRingSpin} ${ringClass}`} aria-hidden="true" />
+          : <span className={styles.projectTabDot} aria-hidden="true" />}
+        {/* Basename (tab.project) ellipsizes; the same-name ` [n]` discriminator lives in a
+            non-shrinking sibling so a long name can't clip it off (P0 review). */}
+        <span className={styles.projectTabName} title={tab.cwd || tab.project}>{tab.project}</span>
+        {tab.suffix && <span className={styles.projectTabIdx}>{tab.suffix}</span>}
+        {onCloseProject && (
+          <Popconfirm
+            title={t('ui.projectTabs.closeConfirm', { project: tab.project })}
+            okText={t('ui.ok')}
+            cancelText={t('ui.cancel')}
+            onConfirm={() => onCloseProject(tab.project, fallbackFor(tab), tabInstance)}
+          >
+            <button
+              type="button"
+              className={styles.projectTabClose}
+              title={t('ui.projectTabs.closeTip')}
+              aria-label={t('ui.projectTabs.closeTip')}
+              // Not tabbable: the × is visually hidden on non-viewing tabs, and a
+              // keyboard user landing on an invisible control is worse than losing
+              // ×-key access (the tab body itself is the keyboard target).
+              tabIndex={-1}
+              // Keep the × click from reaching dnd-kit's PointerSensor (pointerdown
+              // bubbles up to the sortable wrapper's onPointerDown listener) or the
+              // tab's own onClick — both would fire alongside the Popconfirm.
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              ×
+            </button>
+          </Popconfirm>
+        )}
+      </div>
+    );
+    // Every tab renders the same body, wrapped in a SortableProjectTab so the user
+    // can drag to reorder (order persisted via projectTabOrder).
+    return <SortableProjectTab key={tab.key} id={tab.key}>{tabBody}</SortableProjectTab>;
+  };
+  // Global switch indicator: while ANY tab is mid-switch (resumeSwitch set), show a single
+  // spinning ring at the strip's left edge — a header-level counterpart to the per-tab ring,
+  // so the in-flight switch is visible even when the switching tab is scrolled off / the user
+  // looks at the strip as a whole. Primary-colored (it's the active transition), same idiom.
+  const anySwitching = !!(resumeSwitch && resumeSwitch.uuid);
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+      // Constrain the drag to the strip's horizontal lane — without these modifiers
+      // the dragged tab free-floats with the pointer (could fly off the strip when
+      // the pointer leaves horizontally, which read as "the tab jumped to the
+      // corner"). restrictToHorizontalAxis locks Y, restrictToParentElement clamps
+      // the translate to the strip's bounding box.
+      modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
+    >
+      <SortableContext items={orderedTabs.map((t) => t.key)} strategy={horizontalListSortingStrategy}>
+        <div className={styles.projectTabsStrip}>
+          {anySwitching && (
+            <span
+              className={`${styles.projectTabRingSpin} ${styles.projectTabRingActive} ${styles.projectTabsStripSpinner}`}
+              aria-hidden="true"
+              title={t('ui.resume.switching')}
+            />
+          )}
+          {orderedTabs.map(renderTab)}
+          <NewProjectButton onNewProject={onNewProject} />
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+// Header project switcher (2026-10): owns the /api/live-processes 5s poll and
+// picks the form — the Electron-style tab bar when 2+ projects are live, the
+// legacy "当前项目:X" label + [+] + parallel chips below that. Every poll
+// reports the tab list upstream (onLiveProjectsChange → AppBase) so close-
+// fallback and dead-view decisions share the one fetch.
+function HeaderProjectSwitcher(props) {
+  const { onActivateChip, currentProject, isLocalLog, onLiveProjectsChange, liveProcessRefreshToken } = props;
+  const [tabs, setTabs] = useState([]);
+  const [chips, setChips] = useState([]);
+  // The bound project's per-server instanceKey (pure-client viewing, 2026-10-07), from
+  // /api/live-processes. Polled alongside tabs; used to single out the bound tab among
+  // same-basename tabs without reading the shared `active` flag.
+  const [currentInstanceKey, setCurrentInstanceKey] = useState(null);
+
+  useEffect(() => {
+    // Electron chat tab: each tab is its own worker process with an empty
+    // module-local pty map (cross-tab/cross-instance main PTYs never appear), so
+    // the tabs/chips are always empty — skip the 5s polling entirely there.
+    const isElectronTab = typeof window !== 'undefined' && !!window.tabBridge;
+    if (!onActivateChip || isLocalLog || isElectronTab) { setTabs([]); setChips([]); setCurrentInstanceKey(null); return undefined; }
+    let cancelled = false;
+    const load = () => {
+      fetch(apiUrl('/api/live-processes'))
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+        .then(data => {
+          if (cancelled) return;
+          const cur = typeof data?.currentProject === 'string' && data.currentProject ? data.currentProject : currentProject;
+          const nextTabs = deriveProjectTabs(data?.processes);
+          const nextCurKey = (typeof data?.currentInstanceKey === 'string' && data.currentInstanceKey) ? data.currentInstanceKey : null;
+          setTabs(nextTabs);
+          setChips(deriveActiveProcessChips(data?.processes, cur || null));
+          setCurrentInstanceKey(nextCurKey);
+          // Same-name file-tree fix (2026-10-07): also report the BOUND instance identity so the
+          // file explorer (and other view-scoped readers) can disambiguate when the BOUND view
+          // is one of two same-basename tabs. resolveBoundInstance returns the key only when the
+          // bound name is genuinely duplicated AND resolvable — else null (no tiebreak needed).
+          const boundInstance = resolveBoundInstance(nextTabs, cur || currentProject || null, nextCurKey);
+          if (onLiveProjectsChange) onLiveProjectsChange(nextTabs, boundInstance);
+        })
+        .catch(err => { if (!cancelled) reportSwallowed('activeChips.fetch', err); });
+    };
+    load();
+    const timer = setInterval(load, 5000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [onActivateChip, isLocalLog, currentProject, onLiveProjectsChange, liveProcessRefreshToken]);
+
+  if (tabs.length >= 2) {
+    return (
+      <HeaderProjectTabs
+        tabs={tabs}
+        currentProject={currentProject}
+        currentInstanceKey={currentInstanceKey}
+        viewedProject={props.viewedProject}
+        viewedInstance={props.viewedInstance}
+        resumeSwitch={props.resumeSwitch}
+        onActivateChip={onActivateChip}
+        onDetachView={props.onDetachView}
+        onCloseProject={props.onCloseProject}
+        onNewProject={props.onNewProject}
+      />
+    );
+  }
+  return (
+    <>
+      {/* (2026-10-06) plain current-project label — the recent-sessions hover dropdown
+          moved into the star quick-settings menu (ResumeSessionsRow). */}
+      <HeaderProjectLabel projectName={currentProject} />
+      <NewProjectButton onNewProject={props.onNewProject} />
+      <HeaderActiveChips onActivateChip={onActivateChip} chips={chips} />
+    </>
   );
 }
 
@@ -428,7 +794,9 @@ class AppHeader extends React.Component {
   // 触发点：挂载 / 代理配置或工作区切换(componentDidUpdate) / 系统提示词弹窗关闭(保存即改变激活态)。
   reloadSystemPromptStatus = () => {
     const seq = ++this._systemPromptSeq;
-    fetch(apiUrl('/api/expert/system-prompt-status'))
+    // Multi-project (2026-10)：系统提示词入口可见性跟随 viewed 项目（server GET 已支持
+    // ?project=；POST 写操作仍保持绑定项目）。
+    fetch(apiUrl(withViewParams('/api/expert/system-prompt-status', { project: this.props.viewProject, instance: this.props.viewedInstance })))
       .then((r) => r.json())
       .then((d) => {
         if (seq === this._systemPromptSeq) {
@@ -486,13 +854,14 @@ class AppHeader extends React.Component {
       || prevProps.projectName !== this.props.projectName) {
       this.reloadSystemPromptStatus();
     }
-    // Workspace 切换：projectName 变了 → 旧的 _fsSkills 属于旧项目，直接作废。
+    // Workspace 切换 OR viewed-project 切换：viewProject 变了 → 旧的 _fsSkills/_memory/_claudeMd
+    // 属于旧 viewed 项目，直接作废（multi-project 2026-10；viewProject = viewedProject || projectName）。
     // 递增 seq 防止正在途中的 reload 回包把脏数据塞回 state。
-    if (prevProps.projectName !== this.props.projectName) {
+    if (prevProps.projectName !== this.props.projectName || prevProps.viewProject !== this.props.viewProject) {
       // seq++ 杀掉任何在途的 reloadFsSkills（即使下面不再重启新的 fetch，也要确保旧回包不会写脏数据）
       this._fsSkillsSeq++;
       this.setState({ _fsSkills: null });
-      if (!this.props.isLocalLog && this.props.projectName) this.reloadFsSkills();
+      if (!this.props.isLocalLog && this.props.viewProject) this.reloadFsSkills();
       // _memory 同样作废 —— 沿用 _fsSkills 的失效策略，下次 popover 打开时按需重拉。
       this._memorySeq++;
       this.setState({ _memory: null, _memoryDetail: null, _memoryRefreshing: false });
@@ -503,7 +872,7 @@ class AppHeader extends React.Component {
     }
   }
 
-  reloadFsSkills = async () => SeqLoaders.loadFsSkills(this, { isLocalLog: this.props.isLocalLog });
+  reloadFsSkills = async () => SeqLoaders.loadFsSkills(this, { isLocalLog: this.props.isLocalLog, project: this.props.viewProject, instance: this.props.viewedInstance });
 
   // 把服务端返回的认证 state 写入本地(含 scope 信息),并清空编辑草稿。
   _applyAuthState(data) {
@@ -688,7 +1057,7 @@ class AppHeader extends React.Component {
     );
   }
 
-  loadMemory = async () => SeqLoaders.loadProjectMemory(this);
+  loadMemory = async () => SeqLoaders.loadProjectMemory(this, { project: this.props.viewProject, instance: this.props.viewedInstance });
 
   // 用户主动点击"刷新记忆"按钮：自管 seq 三态（ok/stale/fail）以决定 toast。
   // 与 loadMemory 区分的原因：lazy-load 失败不打扰用户，只在 popover 内显示 memoryLoadError；
@@ -700,7 +1069,7 @@ class AppHeader extends React.Component {
     let ok = false;
     let stale = false;
     try {
-      const r = await fetch(apiUrl('/api/project-memory'));
+      const r = await fetch(apiUrl(withViewParams('/api/project-memory', { project: this.props.viewProject, instance: this.props.viewedInstance })));
       const data = await r.json();
       if (seq !== this._memorySeq) { stale = true; }
       else if (!r.ok) { this.setState({ _memory: false }); }
@@ -737,7 +1106,7 @@ class AppHeader extends React.Component {
     if (open && this.state._claudeMd === null) this.loadClaudeMdList();
   };
 
-  loadClaudeMdList = async () => SeqLoaders.loadClaudeMdList(this);
+  loadClaudeMdList = async () => SeqLoaders.loadClaudeMdList(this, { project: this.props.viewProject, instance: this.props.viewedInstance });
 
   // 点击 CLAUDE.md chip 触发: 拉取明细到 _claudeMdDetail, MemoryDetailModal(linkMode=passthrough) 渲染。
   // tail / scope 提前注入到 detail.name 用作 Modal 标题, 避免等 server 回包再拼。
@@ -747,7 +1116,7 @@ class AppHeader extends React.Component {
     const title = `${scopeLabel} · ${tail}`;
     this.setState({ _claudeMdDetail: { name: title, loading: true } });
     try {
-      const r = await fetch(apiUrl(`/api/claude-md?id=${encodeURIComponent(id)}`));
+      const r = await fetch(apiUrl(withViewParams(`/api/claude-md?id=${encodeURIComponent(id)}`, { project: this.props.viewProject, instance: this.props.viewedInstance })));
       const data = await r.json();
       if (seq !== this._claudeMdDetailSeq) return;
       if (!r.ok) {
@@ -768,7 +1137,7 @@ class AppHeader extends React.Component {
     const seq = ++this._memoryDetailSeq;
     this.setState({ _memoryDetail: { name, loading: true } });
     try {
-      const r = await fetch(apiUrl(`/api/project-memory?file=${encodeURIComponent(name)}`));
+      const r = await fetch(apiUrl(withViewParams(`/api/project-memory?file=${encodeURIComponent(name)}`, { project: this.props.viewProject, instance: this.props.viewedInstance })));
       const data = await r.json();
       if (seq !== this._memoryDetailSeq) return;
       if (!r.ok) {
@@ -822,6 +1191,16 @@ class AppHeader extends React.Component {
       nextProps.approvalGlobal !== this.props.approvalGlobal ||
       nextProps.approvalDismissedIds !== this.props.approvalDismissedIds ||
       nextProps.approvalOwnPending !== this.props.approvalOwnPending ||
+      nextProps.onNewProject !== this.props.onNewProject ||
+      nextProps.onActivateChip !== this.props.onActivateChip ||
+      nextProps.viewedProject !== this.props.viewedProject ||
+      nextProps.viewedInstance !== this.props.viewedInstance ||
+      nextProps.resumeSwitch !== this.props.resumeSwitch ||
+      nextProps.viewProject !== this.props.viewProject ||
+      nextProps.onDetachView !== this.props.onDetachView ||
+      nextProps.onCloseProject !== this.props.onCloseProject ||
+      nextProps.onLiveProjectsChange !== this.props.onLiveProjectsChange ||
+      nextProps.liveProcessRefreshToken !== this.props.liveProcessRefreshToken ||
       nextState !== this.state
     );
   }
@@ -1445,7 +1824,10 @@ class AppHeader extends React.Component {
 
   handleShowProjectStats = () => {
     this.setState({ projectStatsVisible: true, projectStatsLoading: true });
-    fetch(apiUrl('/api/project-stats'))
+    // project-stats is name-keyed (shared between same-name projects), but its presence oracle
+    // (_resolveStatsName → resolveViewRoot) still 400s on two same-name live PTYs without an
+    // instance — withViewParams supplies the same-name instance fallback so the oracle resolves.
+    fetch(apiUrl(this.props.viewProject ? withViewParams('/api/project-stats', { project: this.props.viewProject }) : '/api/project-stats'))
       .then(res => {
         if (!res.ok) throw new Error('not found');
         return res.json();
@@ -1465,7 +1847,7 @@ class AppHeader extends React.Component {
     const { projectStats, projectStatsLoading } = this.state;
 
     if (projectStatsLoading) {
-      return <div className={styles.projectStatsCenter}><Spin /></div>;
+      return <div className={styles.projectStatsCenter}><Loading /></div>;
     }
 
     if (!projectStats) {
@@ -1689,7 +2071,7 @@ class AppHeader extends React.Component {
   }
 
   render() {
-    const { requestCount, requests = [], viewMode, cacheType, onToggleViewMode, onImportLocalLogs, onLangChange, isLocalLog, localLogFile, projectName, filterIrrelevant, onFilterIrrelevantChange, logDir, onLogDirChange, cliMode, terminalVisible, onToggleTerminal, proxyStatsVisible, onToggleProxyStats, onReturnToWorkspaces, contextWindow, contextBarOptimistic, serverCachedContent, themeColor, onThemeColorChange, displayScale, onDisplayScaleChange, autoApproveSeconds, onAutoApproveChange } = this.props;
+    const { requestCount, requests = [], viewMode, cacheType, onToggleViewMode, onImportLocalLogs, onLangChange, isLocalLog, localLogFile, projectName, filterIrrelevant, onFilterIrrelevantChange, logDir, onLogDirChange, cliMode, terminalVisible, onToggleTerminal, proxyStatsVisible, onToggleProxyStats, contextWindow, contextBarOptimistic, serverCachedContent, themeColor, onThemeColorChange, displayScale, onDisplayScaleChange, autoApproveSeconds, onAutoApproveChange } = this.props;
     const { countdownText } = this.state;
     // 这 4 个偏好的唯一真相源是 SettingsContext（P0③）。AppHeader 已绑 SettingsContext，
     // 直接派生消费 + 调 updatePreferences，不再经 App 的 prop drilling。默认值与 AppBase._prefValues() 一致。
@@ -1829,7 +2211,18 @@ class AppHeader extends React.Component {
             );
           })()}
           {!isElectronTab && this._renderProxyChip()}
-          <HeaderProjectLabel projectName={projectName} isLocalLog={isLocalLog} />
+          <HeaderProjectSwitcher
+            currentProject={projectName}
+            viewedProject={this.props.viewedProject || null}
+            viewedInstance={this.props.viewedInstance || null}
+            isLocalLog={isLocalLog}
+            onActivateChip={this.props.onActivateChip}
+            onDetachView={this.props.onDetachView}
+            onCloseProject={this.props.onCloseProject}
+            onLiveProjectsChange={this.props.onLiveProjectsChange}
+            liveProcessRefreshToken={this.props.liveProcessRefreshToken}
+            onNewProject={this.props.onNewProject}
+          />
           {this.renderContextBarPortal()}
         </Space>
 
@@ -2321,7 +2714,7 @@ class AppHeader extends React.Component {
                 onKeyDown={(e) => { if (e.key === 'Enter') this._saveClaudeExecutable(); }}
                 allowClear
                 placeholder={t('ui.claudeExecutable.auto')}
-                notFoundContent={this.state.claudeExecutablesLoading ? <Spin size="small" /> : null}
+                notFoundContent={this.state.claudeExecutablesLoading ? <Loading size="small" /> : null}
                 filterOption={(input, option) => String(option?.value || '').toLowerCase().includes(input.toLowerCase())}
               />
               <div className={styles.claudeExecutableHint}>
@@ -2363,6 +2756,8 @@ class AppHeader extends React.Component {
         />
         <SystemTextModal
           open={this.state.systemTextModalVisible}
+          project={this.props.viewProject}
+          instance={this.props.viewedInstance}
           onClose={() => {
             this.setState({ systemTextModalVisible: false });
             // 弹窗内保存/删除/清空都会改变激活态 → 关闭时重拉，头部自动入口随即翻转。

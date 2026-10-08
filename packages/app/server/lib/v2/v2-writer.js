@@ -17,10 +17,10 @@
 // correctness dependency.
 
 import { statfsSync, existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join, basename, sep } from 'node:path';
 import { AsyncWriteQueue } from '../async-write-queue.js';
 import { reportSwallowed } from '@ccv/core/error-report';
-import { ensureSessionDirSync, compactLocalTs14, sanitizePathComponent } from './layout.js';
+import { ensureSessionDirSync, compactLocalTs14, sanitizePathComponent, normalizeSessionCwd } from './layout.js';
 import { resolveSessionDirName, latestMainSession } from './session-select.js';
 import { acquireSessionClaim, releaseSessionClaim, isForeignLiveOwned } from './session-owner.js';
 import { BlobStore } from './blob-store.js';
@@ -78,6 +78,10 @@ export class V2Writer {
     // in-process live cursor can read the fresh appends with zero fs-watch
     // latency. Purely a nudge — the feed's data source stays the files.
     this._onActivity = typeof opts.onActivity === 'function' ? opts.onActivity : null;
+    // Fired once per request that resolves a (sid, project) pair — lets the
+    // server feed a PTY's sessionId index (pty-manager.setPtySessionId) so chat
+    // sends can be routed to the PTY owning that conversation (2026-10-05).
+    this._onSessionResolved = typeof opts.onSessionResolved === 'function' ? opts.onSessionResolved : null;
     this._sessions = new Map(); // sessionId → {paths, blobs, journal, convs, resolver}
     // Multi-window isolation (2026-07-17): session dirs this process has
     // claimed via owner.lock. Released synchronously in resetSessions()/close()
@@ -98,13 +102,16 @@ export class V2Writer {
     this._continuationLaunch = false;
     this._forkSession = false;
     this._resumeSession = false;
-    this._adopted = false;
+    // Per-project `-c` adoption latch (was a single boolean): each project may
+    // adopt at most once. Keyed by sanitized project so a scoped resetSessions(t)
+    // clears only project t's latch, not a background project's.
+    this._adopted = new Set();
     // In-terminal /resume switch (SessionStart hook, source:'resume'): the
     // next MAIN request must be re-routed to the resumed conversation's dir.
-    // {transcriptUuid, hookSid} | null; last-wins, consumed one-shot, no TTL
-    // (after a /resume the next main request belongs to the resumed
-    // conversation no matter how much later it is typed).
-    this._pendingResumeSwitch = null;
+    // Per-project (was a single value): keyed by sanitized project, so a scoped
+    // reset clears only the switched-away project's pending switch. Value:
+    // {transcriptUuid, hookSid}; consumed one-shot on the next main request.
+    this._pendingResumeSwitch = new Map();
   }
 
   /** P2: true once any session's FIRST main wire already carried assistant
@@ -131,6 +138,7 @@ export class V2Writer {
   /** Late wiring seam: the live feed is constructed by server.js AFTER this
    *  writer exists (module init order), so the nudge callback arrives here. */
   setOnActivity(fn) { this._onActivity = typeof fn === 'function' ? fn : null; }
+  setOnSessionResolved(fn) { this._onSessionResolved = typeof fn === 'function' ? fn : null; }
 
   /**
    * If this request should adopt the previous main session's folder — a `-c`
@@ -145,8 +153,14 @@ export class V2Writer {
    * history-less requests); and a previous main session exists.
    * @returns {{dirName:string, identityUUID:string}|null}
    */
+  /** Sanitized per-project key for the per-project latches (_adopted /
+   *  _pendingResumeSwitch). Single place so the latch keying can't drift. */
+  _projKey(project) {
+    return sanitizePathComponent(project || '');
+  }
+
   _resolveAdoption(sid, project, msgs, entry) {
-    if (this._adopted || this._leader) return null;
+    if (this._adopted.has(this._projKey(project)) || this._leader) return null;
     if (!this._continuationLaunch || this._forkSession || this._resumeSession) return null;
     if (this._sessions.has(sid)) return null;
     const m = Array.isArray(msgs) ? msgs
@@ -181,13 +195,17 @@ export class V2Writer {
    *  conversation was never recorded by ccv (it must not be the old wire sid:
    *  `<ts>_<oldSid>` would be re-resolved back to the OLD dir by
    *  resolveSessionDirName). Last-wins across repeated /resume picks. */
-  beginResumeSwitch({ transcriptUuid, hookSid } = {}) {
+  beginResumeSwitch({ transcriptUuid, hookSid, project } = {}) {
     try {
       if (!transcriptUuid || typeof transcriptUuid !== 'string') return;
-      this._pendingResumeSwitch = {
+      // Keyed by the project the resumed conversation belongs to (defaults to the
+      // currently-bound project — markSessionStart's guard already ensures the
+      // hook's cwd matches it). Per-project so a scoped reset clears only that one.
+      const key = sanitizePathComponent(project || this._projectFn() || '');
+      this._pendingResumeSwitch.set(key, {
         transcriptUuid,
         hookSid: (typeof hookSid === 'string' && hookSid) ? hookSid : null,
-      };
+      });
     } catch (err) {
       reportSwallowed('v2-write.resume-switch', err);
     }
@@ -210,8 +228,9 @@ export class V2Writer {
    * @returns {{dirName:string, identityUUID:string}}
    */
   _resolveResumeSwitch(sid, project, prevSid = null) {
-    const sw = this._pendingResumeSwitch;
-    this._pendingResumeSwitch = null; // one-shot
+    const key = this._projKey(project);
+    const sw = this._pendingResumeSwitch.get(key);
+    this._pendingResumeSwitch.delete(key); // one-shot
     const projectDir = join(this._logDir, sanitizePathComponent(project));
     let dirName = resolveSessionDirName(projectDir, sw.transcriptUuid, this._sessionsDirName);
     let identity = sw.transcriptUuid;
@@ -274,8 +293,17 @@ export class V2Writer {
     this._claimedDirs.clear();
   }
 
-  _session(sessionId, userIdRaw, encoding, project, startTsIso, adoptTarget = null) {
+  _session(sessionId, userIdRaw, encoding, project, startTsIso, adoptTarget = null, instanceKey = null, cwd = null) {
     let s = this._sessions.get(sessionId);
+    // Cross-project guard: the map is keyed by bare sid, so a sid reused across two
+    // projects (a cross-project /resume takeover running alongside its old project)
+    // would otherwise reuse the OTHER project's session object and cross-write into
+    // the wrong dir. On a project mismatch, drop the stale binding and rebuild for
+    // THIS project. The hot path (same project) stays an O(1) map hit.
+    if (s && s.project && project && sanitizePathComponent(s.project) !== sanitizePathComponent(project)) {
+      this._sessions.delete(sessionId);
+      s = null;
+    }
     if (s) return s; // hot path: map hit is O(1), the scan below only runs on miss
 
     // Task C: the dir name carries a creation-time prefix `<ts>_<uuid>`. On a
@@ -291,6 +319,18 @@ export class V2Writer {
       ...(userIdRaw && { userIdRaw }),
       ...(encoding && { userIdEncoding: encoding }),
       ...(this._leader && { leader: this._leader }),
+      // Multi-instance (2026-10-06): stamp the owning PTY instanceKey on the session dir's
+      // meta.json (first-write-wins), so two concurrent same-cwd claude instances — which
+      // share one basename project dir but mint DIFFERENT wire session UUIDs (different
+      // session dirs) — can each be told apart at the directory level by readers/feed/cold
+      // load. Absent for legacy/external producers (no self-report) → instance-agnostic.
+      ...(instanceKey && { instance: instanceKey }),
+      // Same-name session isolation (2026-10-07): stamp the session's owning full cwd so
+      // the read-side fallback can tighten by path, telling two cross-dir same-basename
+      // projects apart (basename routing cannot). First-write-wins, so an adopted/resumed
+      // dir keeps its ORIGINAL author's cwd — never relabeled by the adopting entry.
+      // Normalized lexically (no realpath) to match the read side's targetCwd.
+      ...(cwd && { cwd: normalizeSessionCwd(cwd) }),
       ...(this._metaExtra || {}),
     };
     const projectDir = join(this._logDir, sanitizePathComponent(project));
@@ -326,6 +366,11 @@ export class V2Writer {
       journal: new Journal(paths, this._queue),
       convs: new ConversationStore(paths, this._queue, { exactFps: this._exactConvFps }),
       resolver: new ConvResolver(),
+      // The project this session's dir lives under — needed by resetSessions(target)
+      // to clear ONLY one project's sessions on a workspace switch, leaving a
+      // concurrently-running background project's bindings (a cross-project /resume
+      // takeover's old project) intact.
+      project,
     };
     this._sessions.set(sessionId, s);
     return s;
@@ -362,7 +407,18 @@ export class V2Writer {
   ingestRequest(entry, originalMessages) {
     if (!this._enabled || !entry) return null;
     try {
-      const project = this._projectFn();
+      // Per-request project override (/resume global sessions): only when the
+      // interceptor resolved a child claude's own project from the
+      // x-ccv-project-dir header does it set `entry._resumeProject` (already
+      // sanitized). We MUST key off that explicit marker, NOT the generic
+      // `entry.project` — the latter is set for every request (to the process
+      // cwd basename) and would silently misroute the moment it diverges from
+      // the writer's bound project (e.g. fixtures / teammate reshuffles).
+      // Each entry carries its own override, so concurrent sessions from
+      // different projects never cross-assign. Falls back to the bound project.
+      const project = (typeof entry._resumeProject === 'string' && entry._resumeProject)
+        ? entry._resumeProject
+        : this._projectFn();
       if (!project) return null; // workspace not selected yet — mirrors v1's empty-LOG_FILE no-op
       if (!this._diskOk()) return null;
 
@@ -377,7 +433,41 @@ export class V2Writer {
       let sid;
       if (parsed) {
         sid = parsed.sessionId;
-        this._currentSid = sid;
+        // `_currentSid` = the session of the ACTIVE MAIN claude (the one whose cwd
+        // matches the server's currently-bound project). Every claude now
+        // self-reports its project via `x-ccv-project-dir` (spawnClaude injects it
+        // too, not just resume scratches), so `entry._resumeProject` is that
+        // claude's own project. Only the claude whose project == the bound project
+        // (`this._projectFn()`) is the main one — a kept-alive OLD project's
+        // background claude (header = old project ≠ bound) and resume scratches
+        // must NOT move `_currentSid`, or the /resume list's "current" blue dot
+        // would drift to whichever background session last emitted a request.
+        // A request with NO header at all (legacy / external producer) is treated
+        // as the main project's own (project === bound), preserving the old
+        // no-header behavior.
+        const entryProject = (typeof entry._resumeProject === 'string' && entry._resumeProject)
+          ? entry._resumeProject
+          : this._projectFn();
+        if (entryProject && entryProject === this._projectFn()) {
+          this._currentSid = sid;
+        }
+        // Feed the PTY sid index: this request's owning project just resolved a
+        // concrete sessionId, so the PTY serving that project can be addressed by
+        // sid. Multi-instance (2026-10-06): also forward the self-reported instanceKey
+        // (`_ccvInstance`) so the server can pin the sid to THIS exact process — basename
+        // routing cannot tell two same-cwd instances apart. Best-effort — a listener
+        // error must not break ingestion.
+        // MAIN-AGENT GATE (review P1, 2026-10-06): only pin a sid for the main interactive
+        // claude's own requests. A teammate/subagent child process INHERITS the parent's
+        // `ANTHROPIC_CUSTOM_HEADERS` (so it carries the parent's `x-ccv-instance`) but runs
+        // its OWN conversation/sid — without this gate it would overwrite the parent record's
+        // sessionId with the teammate's sid, mis-pinning the instance. Teammate / heartbeat /
+        // count_tokens requests are skipped.
+        const isMainAgentTurn = entry.mainAgent === true && !entry.teammate && !entry.isHeartbeat && !entry.isCountTokens;
+        if (this._onSessionResolved && entryProject && isMainAgentTurn) {
+          const instKey = (typeof entry._ccvInstance === 'string' && entry._ccvInstance) ? entry._ccvInstance : null;
+          try { this._onSessionResolved(sid, entryProject, instKey); } catch (err) { reportSwallowed('v2-write.session-resolved', err); }
+        }
       } else if (this._currentSid) {
         sid = this._currentSid; // §8.3 fallback: route metadata-less requests to the active session
       } else {
@@ -406,7 +496,7 @@ export class V2Writer {
         // probes and heartbeats wear main-agent body shapes but are not the
         // user's resumed turn — consuming on them would re-bind too early
         // with the same result, but keep the gate strict for clarity).
-        if (this._pendingResumeSwitch && entry.mainAgent
+        if (this._pendingResumeSwitch.has(this._projKey(project)) && entry.mainAgent
           && !entry.isCountTokens && !entry.isHeartbeat) {
           // Locally guarded (review P2): the switch resolution does dir-scan
           // fs work (resolveSessionDirName → readdirSync) whose residual
@@ -419,7 +509,7 @@ export class V2Writer {
         }
         if (!adoptTarget) {
           adoptTarget = this._resolveAdoption(sid, project, originalMessages, entry);
-          if (adoptTarget) this._adopted = true;
+          if (adoptTarget) this._adopted.add(this._projKey(project));
         }
       }
 
@@ -427,7 +517,9 @@ export class V2Writer {
       // the dir-name ts prefix (task C). First-write-wins: meta is only written
       // when the dir is first created, so this is the session's creation time
       // (live ≈ now; convert = the historical first-entry ts).
-      const s = this._session(sid, parsed && entry.body.metadata.user_id, parsed && parsed.encoding, project, entry.timestamp, adoptTarget);
+      const s = this._session(sid, parsed && entry.body.metadata.user_id, parsed && parsed.encoding, project, entry.timestamp, adoptTarget,
+        (typeof entry._ccvInstance === 'string' && entry._ccvInstance) ? entry._ccvInstance : null,
+        (typeof entry._resumeProjectCwd === 'string' && entry._resumeProjectCwd) ? entry._resumeProjectCwd : null);
 
       // System-prompt snapshot, Bind A (wire): the FIRST main request of a session
       // carries the launch's rendered injection in body.system — match it against the
@@ -682,6 +774,14 @@ export class V2Writer {
     return s ? s.paths.dir : null;
   }
 
+  /** The writer's current (fallback-routing) session UUID, or null before the
+   *  first sid-bearing request. Exposed so the /resume list can mark exactly ONE
+   *  row as the live "current" session (the multi-blue-dot fix) — the row whose
+   *  sessionUuid matches this id is the one the main process is actively running. */
+  currentSessionId() {
+    return this._currentSid || null;
+  }
+
   /** Lifecycle hook: drop in-memory conversation continuity so the next
    *  request snapshots fresh. Journal seq keeps counting (same process, same
    *  session dirs — seq must stay monotonic per session). NOTE: the
@@ -700,26 +800,64 @@ export class V2Writer {
     }
   }
 
-  /** Lifecycle hook (workspace switch): drop ALL cached session bindings so the
-   *  next request re-creates its session dir under the newly resolved project.
-   *  A sid that persists across the switch gets a fresh dir (and fresh seq)
-   *  under the new project — different directory, so no seq collision. */
-  resetSessions() {
+  /** Lifecycle hook (workspace switch): drop the TARGET project's cached session
+   *  bindings so the next request re-creates its session dir under the newly
+   *  resolved project. `targetProject` is the project being switched AWAY from —
+   *  only its sessions/claims are dropped, so a concurrently-running BACKGROUND
+   *  project (a cross-project /resume takeover's old project, still being written
+   *  via `entry._resumeProject`) keeps its bindings and continues uninterrupted.
+   *  With no argument (legacy callers) it clears everything, matching the old
+   *  behavior byte-for-byte. A sid that persists across the switch gets a fresh
+   *  dir (and fresh seq) under the new project — different directory, so no seq
+   *  collision. */
+  resetSessions(targetProject = null) {
     try {
+      const matchAll = targetProject == null;
+      const targetSan = matchAll ? null : sanitizePathComponent(targetProject);
       // Release live claims FIRST (before the session map is gone): a
       // switched-away workspace's dirs are dormant and legitimately adoptable
-      // by other windows from this moment on.
-      this._releaseAllClaims();
-      this._sessions.clear();
+      // by other windows from this moment on. Only the target project's claims
+      // are released on a scoped reset — the background project keeps its lock.
+      if (matchAll) {
+        this._releaseAllClaims();
+      } else {
+        // Match by the project dir prefix (<logDir>/<projectSan>) rather than by
+        // positional path segment — the old slice(-3,-2) index assumed a fixed
+        // <logDir>/<project>/sessions/<ts>_<sid> depth and broke when
+        // _sessionsDirName changed the layout (offline converter staging dirs).
+        const prefix = join(this._logDir, targetSan) + sep;
+        for (const dir of [...this._claimedDirs]) {
+          if (dir === join(this._logDir, targetSan) || dir.startsWith(prefix)) {
+            releaseSessionClaim(dir);
+            this._claimedDirs.delete(dir);
+          }
+        }
+      }
+      for (const [sid, s] of [...this._sessions]) {
+        if (matchAll || sanitizePathComponent(s.project || '') === targetSan) {
+          this._sessions.delete(sid);
+        }
+      }
       this._pendingNoSid.length = 0;
       this._lateHandles.clear();
-      this._currentSid = null;
-      // A second workspace's `-c` must be able to adopt afresh — the previous
-      // workspace's adoption doesn't carry over.
-      this._adopted = false;
-      // A /resume signal armed in the previous workspace context is
-      // meaningless after the switch (its transcript belongs to that project).
-      this._pendingResumeSwitch = null;
+      // _currentSid only clears when it pointed at the dropped project — the
+      // background project's live "current" pointer survives a scoped reset.
+      if (matchAll) {
+        this._currentSid = null;
+      } else {
+        const cur = this._currentSid ? this._sessions.get(this._currentSid) : null;
+        if (this._currentSid && !cur) this._currentSid = null;
+      }
+      // `-c` adoption latch + pending /resume switch, both per-project now: a
+      // scoped reset clears only the switched-away project's latch (a background
+      // project's armed resume switch / adoption survives); a full reset clears all.
+      if (matchAll) {
+        this._adopted.clear();
+        this._pendingResumeSwitch.clear();
+      } else {
+        this._adopted.delete(targetSan);
+        this._pendingResumeSwitch.delete(targetSan);
+      }
     } catch (err) {
       reportSwallowed('v2-write.reset-sessions', err);
     }

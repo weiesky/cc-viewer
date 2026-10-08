@@ -183,6 +183,14 @@ export class V2LiveFeed {
     // row (v2_requests_delta). Explicit ctor param — this module has no access
     // to the server deps object.
     this._wireV3 = !!opts.wireV3;
+    // Per-project view layer (2026-10): this feed's project name + an optional
+    // client filter. The server runs ONE feed per project (bound + any viewed);
+    // each broadcast must reach only the clients whose viewed project matches
+    // THIS feed's project. `clientFilter(clients, project)` returns the subset;
+    // the default (no filter) is the legacy broadcast-to-all behavior, so the
+    // single-project case is byte-identical.
+    this._project = typeof opts.project === 'string' ? opts.project : '';
+    this._clientFilter = typeof opts.clientFilter === 'function' ? opts.clientFilter : null;
     this._sessions = new Map(); // dir → cursor bundle
     this._seenDirs = new Map(); // dir → last observed journal mtimeMs (attached or not)
     this._discardGated = new Set(); // dirs refused by the discard gate — first real attach must NOT suppress history
@@ -191,6 +199,29 @@ export class V2LiveFeed {
     this._safetyTimer = null;
     this._startedAt = 0;
     this._active = false;
+  }
+
+  /** Clients this feed's broadcasts should reach right now: the full list, or
+   *  the per-project filtered subset when a filter is installed. */
+  _clientsFor() {
+    return this._clientFilter ? this._clientFilter(this._clients, this._project) : this._clients;
+  }
+
+  /**
+   * Instance-scoped variant (multi-instance, 2026-10-06): narrow the per-project clients to
+   * those viewing the SAME instance as this session. Two concurrent same-cwd instances share
+   * one project feed, so this keeps instance A's entries out of instance B's viewers.
+   * Backward compatible: a client with NO `_ccvViewInstance` stamp (the default / legacy /
+   * single-instance view) sees every session regardless of `sessionInstance`; a session with
+   * no stamped instance (legacy/external) is likewise visible to all.
+   */
+  _clientsForInstance(sessionInstance) {
+    const base = this._clientsFor();
+    if (!sessionInstance) return base; // session carries no instance → visible to all viewers
+    let anyInstanceViewer = false;
+    for (const c of base) { if (c && c._ccvViewInstance) { anyInstanceViewer = true; break; } }
+    if (!anyInstanceViewer) return base; // nobody is instance-scoped → keep legacy broadcast
+    return base.filter((c) => !c || !c._ccvViewInstance || c._ccvViewInstance === sessionInstance);
   }
 
   /** Begin (or switch to) live-following a project's sessions/ root. */
@@ -374,9 +405,14 @@ export class V2LiveFeed {
     // 4GB main-thread OOM). Seek their cursors to EOF instead: nothing is
     // read, cloned, or broadcast; the cold-load channel owns their history.
     let convertOrigin = false;
+    let sessionInstance = null;
     try {
       const meta = JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf-8'));
       convertOrigin = !!meta && meta.origin === 'convert';
+      // Multi-instance (2026-10-06): the owning PTY instanceKey stamped on meta.json (by the
+      // writer) lets this feed route the session's entries to exactly the clients viewing
+      // THAT instance of a same-cwd project. Absent for legacy/convert/external sessions.
+      sessionInstance = (meta && typeof meta.instance === 'string' && meta.instance) ? meta.instance : null;
     } catch (err) {
       // meta.json is written synchronously BEFORE the journal's first async
       // drain (ensureSessionDirSync), so journal-present + meta-ABSENT is
@@ -409,6 +445,7 @@ export class V2LiveFeed {
       dirty: false,
       suppress: !!suppressExisting,
       convertOrigin,
+      sessionInstance,
       // Journal req seqs with no done yet. The journal is only touched at
       // request start and completion, so a single >10min request would look
       // "idle" to the mtime-based eviction and get detached mid-flight — its
@@ -611,7 +648,7 @@ export class V2LiveFeed {
       try {
         processWatchedEntry(parsed, {
           reconstructor: cur.reconstructor,
-          clients: this._clients,
+          clients: this._clientsForInstance(cur.sessionInstance),
           getClaudePid: this._getClaudePid,
           runParallelHook: this._runParallelHook,
           suppressEntryBroadcast: this._wireV3,
@@ -648,7 +685,7 @@ export class V2LiveFeed {
         ? `{"sessionId":${JSON.stringify(cur.synth.sessionId)},"channel":${JSON.stringify(channel)},"line":${raw}}`
         : `{"sessionId":${JSON.stringify(cur.synth.sessionId)},"line":${raw}}`;
       const eventName = kind === 'conv' ? 'v3_conv' : 'v3_resp';
-      sendEventRawToClients(this._clients, eventName, payload);
+      sendEventRawToClients(this._clientsForInstance(cur.sessionInstance), eventName, payload);
     } catch (err) {
       reportSwallowed('v2-live.native-forward', err);
     }
@@ -721,12 +758,12 @@ export class V2LiveFeed {
         const corrected = withAgentNameSubType(classifyRequest(prev.entry, parsed), prev.entry);
         if (JSON.stringify(corrected) !== JSON.stringify(prev.row.typeTag)) {
           prev.row.typeTag = corrected;
-          sendEventToClients(this._clients, 'v2_requests_delta', prev.row);
+          sendEventToClients(this._clientsForInstance(cur.sessionInstance), 'v2_requests_delta', prev.row);
         }
       } catch (err) { reportSwallowed('v2-live.row-classify', err); }
     }
     cur._v3Last = { row, entry: parsed };
-    sendEventToClients(this._clients, 'v2_requests_delta', row);
+    sendEventToClients(this._clientsForInstance(cur.sessionInstance), 'v2_requests_delta', row);
   }
 
   // ── safety poll ────────────────────────────────────────────────────────────
