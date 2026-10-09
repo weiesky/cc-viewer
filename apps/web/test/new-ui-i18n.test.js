@@ -103,6 +103,10 @@ const KEYS = [
   'ui.fileExplorer.loadFailed',
   // New-workspace picker "show more" row (WorkspaceList.jsx):
   'ui.workspaces.showMore',
+  // Workspace help modal (WorkspaceList.jsx subtitle "(?)" trigger):
+  'ui.workspaces.help',
+  'ui.workspaces.helpTitle',
+  'ui.workspaces.helpBody',
 ];
 
 describe('new UI key i18n coverage', () => {

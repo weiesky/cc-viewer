@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button, Input, Empty, Typography, Popconfirm, message, Modal } from 'antd';
-import { FolderOpenOutlined, DeleteOutlined, PlusOutlined, RocketOutlined, ClockCircleOutlined, DatabaseOutlined, CloseOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined, ClockCircleOutlined, DatabaseOutlined, CloseOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { formatSize } from '../../utils/formatters';
+import { renderMarkdown } from '../../utils/markdown';
 import DirBrowser from './DirBrowser';
 import Loading from '../common/Loading';
 import styles from './WorkspaceList.module.css';
+import sharedChrome from '../common/sharedChrome.module.css';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 // 「查看更多」截断阈值(2026-10-08):workspace 表格默认只显示前 N 行,末尾「查看更多」
 // 展开剩余的。抽常量避免在 slice/length>N/length-N 三处重复硬编(参考 WebSearchResultsView
@@ -41,6 +43,7 @@ export default function WorkspaceList({ onLaunch, embedded = false }) {
   // (item.logCount > 0 → 续接历史会话),必须随响应就位。后端 limit 参数留给将来的真分页;
   // 实测带缓存的全量富化 ~265ms,前端截断只是显示选择,不是性能优化。
   const [showAll, setShowAll] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const fetchWorkspaces = () => {
     fetch(apiUrl('/api/workspaces'))
@@ -156,14 +159,6 @@ export default function WorkspaceList({ onLaunch, embedded = false }) {
         />
       )}
       <div className={styles.inner}>
-        <div className={styles.header}>
-          <Title level={3} className={styles.headerTitle}>
-            <FolderOpenOutlined className={styles.headerFolderIcon} />
-            {t('ui.workspaces.title')}
-          </Title>
-          <Text type="secondary" className={styles.headerSubtitle}>{t('ui.workspaces.subtitle')}</Text>
-        </div>
-
         <div className={styles.addButtonRow}>
           <Button
             type="primary"
@@ -173,6 +168,18 @@ export default function WorkspaceList({ onLaunch, embedded = false }) {
           >
             {t('ui.workspaces.browse')}
           </Button>
+          <Text type="secondary" className={styles.addButtonSubtitle}>
+            {t('ui.workspaces.subtitle')}
+            <button
+              type="button"
+              className={sharedChrome.helpIconBtn}
+              aria-label={t('ui.workspaces.help')}
+              title={t('ui.workspaces.help')}
+              onClick={() => setHelpOpen(true)}
+            >
+              <QuestionCircleOutlined />
+            </button>
+          </Text>
         </div>
 
         {loading ? (
@@ -217,7 +224,6 @@ export default function WorkspaceList({ onLaunch, embedded = false }) {
                       <Button
                         type="primary"
                         size="small"
-                        icon={<RocketOutlined />}
                         loading={launching === item.id}
                         onClick={() => handleLaunch(item)}
                       >
@@ -257,6 +263,19 @@ export default function WorkspaceList({ onLaunch, embedded = false }) {
         onClose={() => setBrowseOpen(false)}
         onSelect={handleAddFromBrowser}
       />
+
+      <Modal
+        open={helpOpen}
+        title={t('ui.workspaces.helpTitle')}
+        footer={null}
+        onCancel={() => setHelpOpen(false)}
+        width={560}
+      >
+        <div
+          className={styles.helpBody}
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(t('ui.workspaces.helpBody')) }}
+        />
+      </Modal>
     </div>
   );
 

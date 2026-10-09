@@ -4,6 +4,8 @@
 
 - fix(web): **移除对话侧栏残留的虚线分隔符和"返回当前会话"chip** — chip 与 Header 项目 tab 点击 detach 重复；虚线在 chip 不渲染时成为孤立元素。
 - fix(web): **星标快捷菜单顺序调整** — 「历史会话」行移到「Plan 自动审批」之后（新顺序：权限自动审批 → Plan 自动审批 → 历史会话 → AgentTeam）。
+- feat(web): **新建工作区弹窗加「什么是工作区」帮助入口** — 副标题末尾 `(?)` 图标点击弹出说明窗（Markdown 渲染），覆盖工作区定义、按文件夹工作的安全/上下文收益、Git 项目建议（非必选）及日志清理提示；图标样式抽进 `sharedChrome.module.css`（`.helpIconBtn`）供复用。
+- feat(web): **新建工作区弹窗毛玻璃背景** — antd Modal 与 Electron 浮层卡片统一 `var(--bg-glass)` + `backdrop-filter: blur(20px) saturate(180%)`，遮罩从 `rgba(0,0,0,.45)` 降到 `.18` 让 blur 透出后方内容；标题栏 transparent，阴影改浅+1px inset 高光。
 
 - perf(server): 新建工作区弹窗打开提速 ~10x(总延迟 3.3s → 0.2s,事件循环最长卡顿 116ms → <4ms)。
 - feat(web): 新建工作区弹窗默认只显示最近 5 个项目,末尾「查看更多」行点击展开。

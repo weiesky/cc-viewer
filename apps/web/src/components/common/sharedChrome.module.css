@@ -1,5 +1,32 @@
 /* Re-homed from dashboard/AppHeader.module.css — owned by sharedChrome. */
 
+/* Inline "(?)"" help trigger sitting at the end of a label / subtitle.
+   Shared so any row-level help affordance looks identical across the app
+   (WorkspaceList, settings rows, etc.). */
+.helpIcon {
+  margin-left: 6px;
+  font-size: 13px;
+  color: var(--text-tertiary, var(--text-muted, #999));
+  cursor: help;
+  vertical-align: middle;
+}
+
+.helpIconBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 0 0 6px;
+  cursor: pointer;
+  color: var(--text-tertiary, var(--text-muted, #999));
+  font-size: 13px;
+  vertical-align: middle;
+  display: inline-flex;
+  align-items: center;
+}
+.helpIconBtn:hover {
+  color: var(--color-primary);
+}
+
 .modelCard {
   border: 1px solid var(--border-secondary);
   border-radius: 6px;
