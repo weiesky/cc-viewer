@@ -3383,26 +3383,6 @@ class ChatView extends React.Component {
             />
           </button>
         </Popover>
-        <div className={styles.navDivider} />
-        {/* /resume entry moved to the star quick-settings menu (ResumeSessionsRow, between
-            the permission and plan rows) — see components/common/ResumeSessionsRow.jsx. The
-            detach affordance stays here because it is a chat-view concern. */}
-        {/* View-attach / parallel-project view: while the view is scoped away
-            from the bound project's current session (attached to a historical
-            session OR viewing a parallel project), a "back to current session"
-            chip lets the user detach back to follow-latest. */}
-        {(this.props.attachedSid || this.props.viewedProject) && this.props.onDetachView && (
-          <button
-            className={`${styles.navBtn || ''} ${styles.detachViewChip || ''}`}
-            title={t('ui.resume.returnToCurrent')}
-            onClick={this.props.onDetachView}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 14 4 9l5-5" />
-              <path d="M4 9h10a6 6 0 0 1 0 12h-3" />
-            </svg>
-          </button>
-        )}
       </div>
     );
   }
