@@ -1,5 +1,19 @@
 # cc-viewer
 
+## 1.9.2
+
+### Patch Changes
+
+- 649f853: fix(multi-project): **删到只剩一个项目时「当前项目」不再停留在被删项目上** — 此前关掉绑定（当前）项目只杀 PTY、不改服务端绑定，删到 <2 个 tab 回落标签形态时标签显示的是刚被删的项目、存活项目残留在 chips。现 `POST /api/live-processes/close` 检测到关的是绑定项目且有幸存者时，把服务端绑定重绑到幸存者（`initForWorkspace` + `CCV_PROJECT_DIR` + 重启 live feed），并广播 `workspace_started(rebound:true, reboundFrom)`；同 cwd 仍有存活实例时跳过重绑以免误清其会话绑定，**同名（跨目录）存活时降级为只搬 `CCV_PROJECT_DIR` 的 dir-only 重绑且不广播**（项目名不变、各端 SSE 作用域本就正确，广播只会白白重置同名视图）。客户端只在自身视图属于被关项目域时才重置并重连（`reboundFrom` 门控，`utils/reboundScope.js`）——**正在看第三个项目的 tab 不再被强拆视图**。反转了 Header 交互边界重构（3099a750）确立的「关绑定项目不动视图」契约。Coverage: `live-processes-close.test.js`, `live-processes-refresh.test.js`, `resume-sessions-map.test.js`, `rebound-scope.test.js`.
+- 649f853: fix(web): **Git 变更面板刷新后保持开关状态** — 与文件浏览器同套 localStorage 持久化(`ccv_gitChangesOpen`,桌面 + iPad pad 模式默认关);互斥关闭(点文件浏览器/搜索图标)也落盘,刷新后不再出现双面板同开。Coverage: `git-changes-open-persist.test.js`.
+- 649f853: fix(web): **移除对话侧栏残留的虚线分隔符和"返回当前会话"chip** — chip 与 Header 项目 tab 点击 detach 重复，虚线在 chip 不渲染时成为孤立元素。
+  
+  fix(web): **星标快捷菜单顺序调整** — 「历史会话」行移到「Plan 自动审批」之后（新顺序：权限自动审批 → Plan 自动审批 → 历史会话 → AgentTeam）。
+- 649f853: perf(server): **新建工作区弹窗打开提速 ~10x** + 样式/UX 调整 — `GET /api/workspaces` 重构:先排序后富化、支持 `?limit=`、复用 stats-worker 磁盘缓存、同步 fs 改异步;前端表格默认只显 5 行 + 末尾「查看更多」`<tr>` 展开;弹窗内容区灰底去除,表格与弹窗底色一致。Coverage: `workspace-registry-limit.test.js`, `workspace-list-modal.test.js`, `new-ui-i18n.test.js`.
+- 649f853: feat(web): **新建工作区弹窗加「什么是工作区」帮助入口** — 副标题末尾 `(?)` 图标点击弹出说明窗（Markdown 渲染），覆盖工作区定义、按文件夹工作的安全/上下文收益、Git 项目建议（非必选）及日志清理提示；图标样式抽进 `sharedChrome.module.css`（`.helpIconBtn`）供其他标签行复用。
+  
+  feat(web): **新建工作区弹窗毛玻璃背景** — antd Modal 与 Electron 浮层卡片统一改 `var(--bg-glass)` + `backdrop-filter: blur(20px) saturate(180%)`，遮罩从 `rgba(0,0,0,.45)` 降到 `.18` 让 blur 真正透出后方内容；标题栏强制 transparent，box-shadow 改浅+1px inset 高光避免发灰。
+
 ## 1.8.21
 
 ### Patch Changes

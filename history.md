@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.9.2
 
 - fix(multi-project): **删到只剩一个项目时「当前项目」不再停留在被删项目上** — 关绑定项目且有幸存者时服务端重绑到幸存者并广播 `workspace_started(rebound:true, reboundFrom)`；同名（跨目录）存活时降级为 dir-only（只搬 `CCV_PROJECT_DIR`）且不广播，同 cwd 存活则跳过。客户端按 `reboundFrom` 判定自身视图是否受影响，只有受影响域才重置并重连（`utils/reboundScope.js`）——看第三个项目的 tab 不再被强拆视图。（反转 Header 交互边界重构确立的「关绑定项目不动视图」契约。）Coverage: `live-processes-close.test.js`, `live-processes-refresh.test.js`, `resume-sessions-map.test.js`, `rebound-scope.test.js`.
 - fix(web): **移除对话侧栏残留的虚线分隔符和"返回当前会话"chip** — chip 与 Header 项目 tab 点击 detach 重复；虚线在 chip 不渲染时成为孤立元素。
