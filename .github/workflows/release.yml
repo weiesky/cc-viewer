@@ -189,27 +189,52 @@ jobs:
 
       - run: cd packages/app && npm pack
 
-      - run: npm publish "./packages/app/cc-viewer-${GITHUB_REF_NAME#v}.tgz" --provenance --tag patch
+      - name: Publish to npm
         # GITHUB_REF_NAME is the tag (vX.Y.Z); ${...#v} strips the leading v — the
         # tgz name uses the app version, which the release process keeps in sync.
-        # --tag patch: a stray 1.9.0 was once published to npm above this patch-only
-        # version line, so npm refuses to implicitly tag a lower version as latest
-        # (E404-less hard fail at v1.8.18). Publish explicitly to the `patch`
-        # channel instead; `latest` stays on whatever holds it on the registry.
-
-      # Point latest at the version just published — the registry's latest must
-      # track the newest patch-line release (the 1.9.0 stray means npm will never
-      # do this implicitly). OIDC trusted publishing credentials authorize only
-      # `npm publish`; dist-tag is a registry metadata op that fails with E401
-      # under OIDC (seen at v1.8.19), so this step is soft-fail: it warns and
-      # reminds the maintainer to run the dist-tag manually after release.
-      - name: Point latest dist-tag at this release
-        continue-on-error: true
+        #
+        # Tag choice — `latest` is carried BY THE PUBLISH, never by a follow-up
+        # `npm dist-tag add`: OIDC trusted publishing authorizes only
+        # `npm publish`, so `dist-tag add` always E401s in CI (v1.8.19 onwards).
+        # That used to leave `latest` lagging a release behind until a maintainer
+        # ran the dist-tag by hand with a classic token (v1.9.2 — the registry
+        # still said 1.9.1 after the release run went green).
+        #
+        # npm refuses to apply `latest` implicitly when the registry already
+        # holds a HIGHER version ("Cannot implicitly apply the latest tag…" —
+        # why v1.8.18 fell back to a `patch` channel after the stray 1.9.0).
+        # Probe for that case rather than hard-failing: publish to `latest` when
+        # this release is the highest version on the registry, otherwise publish
+        # to `patch` and warn loudly that `latest` could not be moved.
         run: |
-          if npm dist-tag add "cc-viewer@${GITHUB_REF_NAME#v}" latest; then
-            echo "latest now points at ${GITHUB_REF_NAME#v}"
+          # No -e: the `npm view` probe below is allowed to fail (it only informs
+          # the tag choice). The final `npm publish` still governs the step's
+          # exit status, so a failed publish fails the job as before.
+          set -uo pipefail
+          VER="${GITHUB_REF_NAME#v}"
+          TGZ="./packages/app/cc-viewer-${VER}.tgz"
+          # Plain x.y.z only — the regex deliberately ignores prerelease suffixes,
+          # which the changeset pipeline never emits anyway.
+          HIGHEST=$(npm view cc-viewer versions --json 2>/dev/null \
+            | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' | sort -V | tail -1)
+          if [ -n "$HIGHEST" ]; then
+            # sort -V picks whichever of the two is greater.
+            NEWEST=$(printf '%s\n%s\n' "$HIGHEST" "$VER" | sort -V | tail -1)
+            HIGHEST_DESC="$HIGHEST"
           else
-            echo "::warning::dist-tag failed (expected under OIDC trusted publishing). Run manually: npm dist-tag add cc-viewer@${GITHUB_REF_NAME#v} latest"
+            # Could not read the registry (transient registry/network hiccup).
+            # Assume this release is the newest rather than blocking: a genuine
+            # outage would fail the publish a moment later anyway, and this is
+            # the overwhelmingly common case.
+            NEWEST="$VER"
+            HIGHEST_DESC="<unknown — registry query failed>"
+          fi
+          if [ "$NEWEST" = "$VER" ]; then
+            echo "publishing $VER to 'latest' (highest currently on the registry: $HIGHEST_DESC)"
+            npm publish "$TGZ" --provenance --tag latest
+          else
+            echo "::warning::registry already holds a higher version ($HIGHEST); publishing $VER to 'patch' — 'latest' stays on $HIGHEST and must be moved manually: npm dist-tag add cc-viewer@$VER latest"
+            npm publish "$TGZ" --provenance --tag patch
           fi
 
   # Post-release automatic Homebrew tap formula bump (reusable workflow, uses HOMEBREW_TAP_TOKEN).

@@ -63,17 +63,32 @@ jobs:
           VER: ${{ steps.ver.outputs.version }}
         run: |
           set -euo pipefail
-          # CDN propagation + Sigstore provenance logging can exceed 5min (v1.8.8 timed out at
-          # 10×30s even though the publish had succeeded); retry every 30s, 20 attempts = 10min
-          for i in $(seq 1 20); do
+          # CDN propagation + Sigstore provenance logging routinely outrun this poll:
+          # v1.8.8 timed out at 5min, v1.9.2 timed out at 10min (the publish had
+          # succeeded both times — the tarball only became visible ~13min after
+          # `+ cc-viewer@x.y.z`). Keep a wide window: retry every 30s, 40 attempts
+          # = 20min. A failure here is recoverable without a new release —
+          # `gh workflow run bump-homebrew.yml -f version=<VER>`.
+          for i in $(seq 1 40); do
             if curl -fsSL "https://registry.npmjs.org/cc-viewer/${VER}" >/dev/null 2>&1; then
               echo "✓ npm has cc-viewer@${VER}"
+              # Informational, non-fatal: surface the registry dist-tags so a
+              # `latest` that failed to move is visible in the release run (the
+              # publish step is its owner; see release.yml's "Publish to npm").
+              TAGS=$(curl -fsSL "https://registry.npmjs.org/-/package/cc-viewer/dist-tags" 2>/dev/null || true)
+              echo "registry dist-tags: ${TAGS:-<unavailable>}"
+              LATEST=$(printf '%s' "$TAGS" | grep -oE '"latest":"[^"]+"' | cut -d'"' -f4 || true)
+              if [ -n "$LATEST" ] && [ "$LATEST" != "$VER" ]; then
+                echo "::warning::registry 'latest' is ${LATEST}, not ${VER} — the release did not move it (higher-version fallback?). Fix: npm dist-tag add cc-viewer@${VER} latest"
+              fi
               exit 0
             fi
-            echo "[$i/20] npm not yet showing cc-viewer@${VER}, sleeping 30s..."
+            echo "[$i/40] npm not yet showing cc-viewer@${VER}, sleeping 30s..."
             sleep 30
           done
           echo "✗ Timed out waiting for npm to publish cc-viewer@${VER}" >&2
+          echo "  (The publish may still have succeeded; re-run after it propagates:" >&2
+          echo "   gh workflow run bump-homebrew.yml -f version=${VER})" >&2
           exit 1
 
       - name: Compute tarball sha256
