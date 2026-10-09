@@ -83,7 +83,8 @@
 }
 
 /* [+] new-workspace button, inline at the right of the current-project label.
-   Dashed square frame holding only a + glyph; hover reveals a "新建工作区" tip. */
+   Dashed square frame holding only a + glyph; hover reveals a "新建工作区" tip.
+   No vertical-align offset — sits centered with the label and sibling tabs. */
 .newProjectPlusBtn {
   display: inline-flex;
   align-items: center;
@@ -92,7 +93,6 @@
   height: 16px;
   margin-inline-start: 4px;
   padding: 0;
-  vertical-align: -2px;
   background: transparent;
   border: 1px dashed var(--text-muted);
   border-radius: 4px;
@@ -102,10 +102,15 @@
   cursor: pointer;
   transition: color 0.2s, border-color 0.2s;
 }
-.newProjectPlusBtn:hover,
-.newProjectPlusBtn:focus-visible {
+.newProjectPlusBtn:hover {
   color: var(--text-primary);
   border-color: var(--text-primary);
+}
+/* Kill the focus ring on this small icon button — a visible focus rectangle
+   around a 16px dashed square reads as a visual bug, not an affordance. */
+.newProjectPlusBtn:focus,
+.newProjectPlusBtn:focus-visible {
+  outline: none;
 }
 
 /* Cache countdown */

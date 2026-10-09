@@ -105,7 +105,7 @@ describe('AppBase.jsx source anchors (refactor guard)', () => {
     // The bump must sit inside handleCloseProject's success branch, between the
     // failure guard and the closedIsViewed check, so it fires for viewed AND
     // non-viewed closes but never for failed/forbidden ones.
-    const re = /handleCloseProject = \(project, fallbackProject, instanceKey\) => \{[\s\S]{0,1600}?liveProcessRefreshToken: \(prev\.liveProcessRefreshToken \|\| 0\) \+ 1[\s\S]{0,400}?const closedIsViewed/;
+    const re = /handleCloseProject = \(project, fallbackProject, instanceKey\) => \{[\s\S]{0,1600}?liveProcessRefreshToken: \(prev\.liveProcessRefreshToken \|\| 0\) \+ 1[\s\S]{0,900}?const closedIsViewed/;
     assert.ok(re.test(APPBASE_SRC),
       'token bump must appear after the failure guard and before closedIsViewed');
     // And the failure guard must come BEFORE the bump.
@@ -128,6 +128,47 @@ describe('App.jsx source anchor (refactor guard)', () => {
     // fix goes inert — a silent regression this anchor exists to catch.
     assert.ok(/liveProcessRefreshToken=\{this\.state\.liveProcessRefreshToken\}/.test(APP_SRC),
       'App.jsx must pass liveProcessRefreshToken from state into AppHeader');
+  });
+});
+
+describe('AppBase.jsx workspace_started rebound wiring (2026-10)', () => {
+  // Anchor on the handler's function boundary first, then assert within it —
+  // a bare `rebound === true[\s\S]{0,N}` window is comment-length sensitive and
+  // has silently punched through when the surrounding commentary grew.
+  const handler = (() => {
+    const start = APPBASE_SRC.indexOf("addEventListener('workspace_started'");
+    assert.notEqual(start, -1, 'workspace_started handler present');
+    const end = APPBASE_SRC.indexOf("addEventListener('workspace_stopped'", start);
+    return end === -1 ? APPBASE_SRC.slice(start) : APPBASE_SRC.slice(start, end);
+  })();
+
+  it('gates the reset/reconnect on the shared view-domain predicate (reboundScope.js)', () => {
+    // Closing the BOUND project makes the server re-bind to a survivor and
+    // broadcast workspace_started(rebound:true, reboundFrom). WITHOUT the gate
+    // every tab — including ones viewing an unrelated third project — is
+    // force-detached and blanked. WITH it, only affected tabs reset.
+    assert.ok(handler.includes('reboundAffectsView({'),
+      'the handler must decide via the shared reboundAffectsView predicate');
+    assert.ok(/const isRebound = data\.rebound === true;/.test(handler), 'rebound marker read');
+    assert.ok(/const shouldReset = !isRebound \|\| reboundAffectsThisTab;/.test(handler),
+      'a normal switch resets unconditionally; a rebound only when it affects this tab');
+  });
+
+  it('reconnects the SSE (explicit empty scope) only for an affected rebound', () => {
+    // A rebound-afflicted tab's SSE stays stamped with the OLD bound name, so
+    // the survivor's live feed never arrives (label updates, pane stays silent).
+    const re = /if \(isRebound\) \{\s*this\._sseReconnectCount = 0;\s*this\.initSSE\(\{ sid: null, project: null, instance: null \}\);/;
+    assert.ok(re.test(handler),
+      'an affected rebound must clear the reconnect budget and initSSE({sid:null,project:null,instance:null})');
+  });
+
+  it('does not reconnect on a normal workspace_started (server replays on the live connection)', () => {
+    // The reconnect lives INSIDE the shouldReset block and is rebound-guarded;
+    // a normal launch keeps relying on the server's own full_reload/replay.
+    const resetAt = handler.indexOf('if (shouldReset) {');
+    const reconnectAt = handler.indexOf('if (isRebound) {');
+    assert.notEqual(resetAt, -1, 'shouldReset block present');
+    assert.ok(reconnectAt > resetAt, 'the reconnect is inside the shouldReset block, not before it');
   });
 });
 

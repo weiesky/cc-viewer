@@ -101,6 +101,12 @@ const KEYS = [
   'ui.projectTabs.closeForbidden',
   // File explorer load failure with the server-provided reason (FileExplorer.jsx):
   'ui.fileExplorer.loadFailed',
+  // New-workspace picker "show more" row (WorkspaceList.jsx):
+  'ui.workspaces.showMore',
+  // Workspace help modal (WorkspaceList.jsx subtitle "(?)" trigger):
+  'ui.workspaces.help',
+  'ui.workspaces.helpTitle',
+  'ui.workspaces.helpBody',
 ];
 
 describe('new UI key i18n coverage', () => {
@@ -118,6 +124,7 @@ describe('new UI key i18n coverage', () => {
   // (t() replaceAll finds nothing) and the user never sees the real cause.
   const PLACEHOLDER_KEYS = [
     ['ui.fileExplorer.loadFailed', '{reason}'],
+    ['ui.workspaces.showMore', '{count}'],
   ];
   for (const [key, placeholder] of PLACEHOLDER_KEYS) {
     it(`${key} 每个 locale 保留占位符 ${placeholder}`, () => {

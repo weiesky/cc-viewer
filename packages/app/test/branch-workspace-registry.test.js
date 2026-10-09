@@ -132,7 +132,7 @@ describe('getWorkspaces 排序与统计分支', () => {
     writeFileSync(join(aLogDir, 'note.txt'), 'x');
     // proj-b 不建日志目录 → readdir 抛错 → 外层 catch（line 106）
 
-    const list = await reg.getWorkspaces();
+    const { workspaces: list } = await reg.getWorkspaces();
     assert.equal(list.length, 2);
     // b 更晚注册，lastUsed 更新 → 排在前面（sort 比较器返回正/负）
     assert.equal(list[0].projectName, b.projectName, 'lastUsed 较新的应排前');
@@ -165,7 +165,7 @@ describe('getWorkspaces 排序与统计分支', () => {
       writeFileSync(ghost, '{"k":1}\n');
     }
 
-    const list = await reg.getWorkspaces();
+    const { workspaces: list } = await reg.getWorkspaces();
     const found = list.find((x) => x.projectName === w.projectName);
     assert.ok(found);
     // ghost 以 .jsonl 结尾 → logCount 计数（无论 stat 是否成功）

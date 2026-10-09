@@ -17,7 +17,12 @@
 //   POST /api/live-processes/close  { project }
 //       Kill that project's main PTY (the web header tab's × button). Admin-only
 //       (loopback or authenticated remote admin); 403 otherwise, 404 when the
-//       project has no record. The record is kept for a later re-launch.
+//       project has no record. The record is kept for a later re-launch. When the
+//       killed project WAS the bound one and a survivor is still live, the server
+//       re-binds its workspace identity (_projectName + CCV_PROJECT_DIR) to that
+//       survivor (a same-name/same-cwd twin degrades this to a dir-only rebind),
+//       broadcasts workspace_started(rebound:true) so every client lands on the
+//       survivor, and the response carries `rebound: { project, cwd }`.
 //
 //   POST /api/resume-session  { sessionUuid, project?, instanceKey? }
 //       TRUE /resume (2026-10-06): inject `/resume <uuid>` into the target
@@ -34,11 +39,18 @@
 // this handler is a thin HTTP wrapper.
 
 import { LOG_DIR } from '../../findcc.js';
-import { _projectName, _v2Writer } from '../interceptor.js';
+import { _projectName, _v2Writer, initForWorkspace } from '../interceptor.js';
+// Static import (not the route-local dynamic import) so the close-rebind helper
+// can call listLivePtys synchronously — a static import keeps the single shared
+// module instance, and module state is shared either way.
+import { listLivePtys } from '../pty-manager.js';
 import { listResumeSessions } from '../lib/v2/resume-list.js';
 import { projectKeyForCwd } from '../lib/system-prompt-snapshots.js';
+import { readClaudeProjectModel } from '../lib/context-watcher.js';
+import { bumpWorkspacesVersion } from '../lib/file-access-policy.js';
 import { isAdminReq } from '../lib/is-admin.js';
 import { isSameOriginBrowserRequest } from '../lib/same-origin.js';
+import { sseWrite } from '../lib/wire-compress.js';
 import { reportSwallowed } from '@ccv/core/error-report';
 
 function sendJson(res, code, obj) {
@@ -166,8 +178,11 @@ function postLiveProcessAttachHandler(req, res, parsedUrl, isLocal, deps) {
 // possible with a mere view token). 404 when the project has no record. When
 // the killed PTY was the terminal's active attachment, the server re-anchors
 // the attachment to another live record internally (killedActive in the
-// response); the client decides its own view repair from the remaining tab
-// list (it does not need the re-anchor target).
+// response). When the killed project WAS the bound one and a survivor is still
+// live, the server ALSO re-binds its workspace identity (_projectName +
+// CCV_PROJECT_DIR) to that survivor and broadcasts workspace_started(rebound:true)
+// so every client lands on the survivor (the "当前项目" label would otherwise
+// stay on the just-closed project); the response then carries `rebound`.
 function postLiveProcessCloseHandler(req, res, parsedUrl, isLocal, deps) {
   // Two gates, both required: admin identity (loopback or authenticated remote
   // admin) AND same-origin browser context. The server intentionally answers
@@ -210,12 +225,152 @@ function postLiveProcessCloseHandler(req, res, parsedUrl, isLocal, deps) {
         sendJson(res, 404, { ok: false, reason: r.reason || 'not-found' });
         return;
       }
-      sendJson(res, 200, { ok: true, project, instanceKey: r.key || instanceKey || null, killedActive: r.killedActive === true });
+      // Bound-project rebound (2026-10): when the closed PTY WAS the server's bound
+      // project, the binding (projectName / CCV_PROJECT_DIR / log dir) would otherwise
+      // keep pointing at a dead project — the "当前项目" label stays on the just-closed
+      // name while the survivor is left as a mere chip. Rebind to a survivor and
+      // broadcast workspace_started so every client (including the closing tab) lands
+      // on the survivor. Judgment is by the killed record's ORIGINAL cwd vs
+      // CCV_PROJECT_DIR — never by basename, or a same-name twin close would false-hit.
+      let rebound = null;
+      try {
+        rebound = _maybeRebindAfterClose(r, deps);
+      } catch (err) { reportSwallowed('resume-route.close-rebind', err); }
+      sendJson(res, 200, { ok: true, project, instanceKey: r.key || instanceKey || null, killedActive: r.killedActive === true, rebound });
     } catch (err) {
       reportSwallowed('resume-route.close', err);
       sendJson(res, 500, { ok: false, reason: 'close-failed' });
     }
   });
+}
+
+// Bound-project rebound helper (2026-10). After killPtyFor removed the BOUND
+// project's PTY, pick a surviving live claude record and re-bind the server's
+// workspace identity to it. A full rebind additionally broadcasts
+// workspace_started (with `rebound:true` / `reboundFrom`) so the affected SSE
+// clients re-scope to the survivor; a DIR-ONLY rebind (a same-name twin owns
+// the name's session space) moves CCV_PROJECT_DIR without broadcasting.
+// Returns { project, cwd } when a rebind happened, else null (closed project
+// was not the bound one / no survivor / a same-cwd twin still lives / Electron
+// multi-tab).
+// May throw only BEFORE the rebind is applied (a pre-state-change failure →
+// the caller wraps it into a 200 with rebound:null, which is accurate then);
+// after the state change it never throws (the restart side-effects are each
+// wrapped), so a returned rebound always matches reality.
+//
+// ORDERING INVARIANT: the broadcast (full rebind only) is emitted BEFORE the
+// best-effort feed/timer restarts, and the whole kill→rebind→broadcast block
+// is synchronous (no await) — under Node's single thread no interleaved
+// request can observe a half-applied rebind, and a throwing side-effect can no
+// longer strand the "binding moved but nobody was told" state (the broadcast
+// has already gone out by then).
+function _maybeRebindAfterClose(killResult, deps) {
+  // Electron multi-tab: the manager process does NOT own log init (the tab
+  // workers do); mirroring workspaces.js:56, skip rebind entirely there.
+  if (process.env.CCV_ELECTRON_MULTITAB === '1') return null;
+  const killedCwd = typeof killResult.cwd === 'string' ? killResult.cwd : '';
+  const boundCwd = process.env.CCV_PROJECT_DIR || process.cwd();
+  // Exact-cwd equality, no realpath — both sides stay in the same path space
+  // (a realpath would split /tmp vs /private/tmp and miss the hit).
+  if (!killedCwd || killedCwd !== boundCwd) return null;
+
+  // Pick the survivor: a still-live CLAUDE record (listLivePtys also returns
+  // 'shell' scratch PTYs, which /api/live-processes itself filters out of its
+  // own processes[]), preferring the record killPtyFor just re-anchored the
+  // terminal attachment to (reattachedTo), then the terminal's live attachment
+  // (isActive — preserves the launch-time invariant bound == attached), else
+  // the first live claude record in Map order.
+  const live = listLivePtys().filter((p) => p && p.cwd && (!p.ptyKind || p.ptyKind === 'claude'));
+  if (!live.length) return null;
+  // A same-cwd TWIN of the closed bound project still lives → the bound
+  // identity (same project name, same log dir) is already correct for it;
+  // rebinding away would only wipe that twin's session bindings for nothing.
+  if (live.some((p) => p.cwd === killedCwd)) return null;
+  const survivor = live.find((p) => p.key === killResult.reattachedTo)
+    || live.find((p) => p.isActive)
+    || live[0];
+  if (!survivor || !survivor.cwd) return null;
+
+  const killedName = projectKeyForCwd(killedCwd);
+  const survivorProject = projectKeyForCwd(survivor.cwd);
+  // initForWorkspace's scoped resetSessions keys on the SANITIZED project name
+  // (v2-writer.js). So any time the CLOSED project's name still has a live
+  // record (a same-name twin in another dir, or the survivor itself is a
+  // same-name twin), running initForWorkspace would wipe that LIVE project's
+  // session bindings. In every such case the project NAME (and thus the log
+  // dir) does not change — so do a DIR-ONLY rebind instead: point
+  // CCV_PROJECT_DIR at the survivor (file-tree/git/skills/allowlist roots follow
+  // the live project) while skipping initForWorkspace entirely.
+  const closedNameStillLive = live.some((p) => projectKeyForCwd(p.cwd) === killedName);
+  const survivorIsSameName = survivorProject === killedName;
+  const dirOnly = closedNameStillLive || survivorIsSameName;
+
+  let result;
+  if (dirOnly) {
+    // _projectName / _logDir stay (same sanitized name — already correct);
+    // only the bound ROOT moves to the surviving twin's directory. No broadcast
+    // either (see below): the name — and with it every client's SSE scope stamp
+    // — is unchanged, so there is nothing to re-scope.
+    result = { projectName: killedName };
+  } else {
+    result = initForWorkspace(survivor.cwd);
+  }
+  process.env.CCV_PROJECT_DIR = survivor.cwd;
+  // The file-access allowlist caches its roots (including the bound project
+  // dir) and is only invalidated on register/remove or LOG_DIR change — none of
+  // which fire on a close-rebind. Bump it so the survivor's dir is an allowed
+  // root even when it never went through this server's registerWorkspace.
+  try { bumpWorkspacesVersion(); } catch (err) { reportSwallowed('resume-route.close-rebind.roots', err); }
+
+  // Broadcast workspace_started to EVERY SSE client (same fan-out as launch,
+  // workspaces.js:101-107) BEFORE the throwable side-effects below, so a
+  // failure there can't leave "binding moved but clients untold" — but ONLY for
+  // a full rebind. A dir-only rebind keeps the project NAME — and with it every
+  // client's SSE scope stamp — moving only the bound ROOT to the survivor's dir,
+  // so there is nothing for any client to re-scope: a broadcast would needlessly
+  // hard-reset every same-name viewer mid-stream for a root-only change.
+  // Deliberately NO load_start/load_chunk/load_end replay: those handlers have
+  // no project guard on the client (AppBase.jsx:1990-2148) and would pour the
+  // survivor's transcript into a tab that is viewing a THIRD project. Each
+  // AFFECTED client re-scopes and cold-loads its own view on receipt (the
+  // `rebound:true` marker + its own local view state decide; see the
+  // workspace_started handler in AppBase.jsx).
+  if (!dirOnly) {
+    const payload = `event: workspace_started\ndata: ${JSON.stringify({
+      projectName: result.projectName,
+      path: survivor.cwd,
+      claudeProjectModel: readClaudeProjectModel(survivor.cwd),
+      rebound: true,
+      // The project name this client's SSE scope was stamped with before the
+      // rebind. Clients whose SSE (or an attach/parallel view) is still pinned
+      // to it are the affected domain and must reset + reconnect; a tab viewing
+      // an unrelated project must keep its view and its live feed.
+      reboundFrom: killedName,
+    })}\n\n`;
+    const clients = (deps && deps.clients) || [];
+    clients.forEach((client) => {
+      try { sseWrite(client, payload); } catch (err) { reportSwallowed('resume-route.close-rebind.write', err); }
+    });
+  }
+
+  // Best-effort feed/timer restarts for the new bound project. Without
+  // startLogWatch the survivor's writer activity hits "no feed → drop" and the
+  // real-time pane never updates until a manual refresh; statsWorker/
+  // streamingStatusTimer mirror workspaces.js:71-75. All deps.* are
+  // optional-chained so unit tests need only stub what they assert on. Each is
+  // individually wrapped AND runs AFTER the broadcast: if one throws it is
+  // reported and swallowed, never turning the (already-applied) rebind into a
+  // misleading rebound:null on the 200 response.
+  if (deps && typeof deps.startLogWatch === 'function') {
+    try { deps.startLogWatch(); } catch (err) { reportSwallowed('resume-route.close-rebind.logwatch', err); }
+  }
+  if (deps && !deps.statsWorker && typeof deps.startStatsWorker === 'function') {
+    try { deps.startStatsWorker(); } catch (err) { reportSwallowed('resume-route.close-rebind.stats', err); }
+  }
+  if (deps && typeof deps.startStreamingStatusTimer === 'function') {
+    try { deps.startStreamingStatusTimer(); } catch (err) { reportSwallowed('resume-route.close-rebind.stream', err); }
+  }
+  return { project: result.projectName, cwd: survivor.cwd };
 }
 
 const RESUME_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

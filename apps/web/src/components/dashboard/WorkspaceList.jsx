@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button, Input, Empty, Typography, Popconfirm, message, Modal } from 'antd';
-import { FolderOpenOutlined, DeleteOutlined, PlusOutlined, RocketOutlined, ClockCircleOutlined, DatabaseOutlined, CloseOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined, ClockCircleOutlined, DatabaseOutlined, CloseOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
 import { formatSize } from '../../utils/formatters';
+import { renderMarkdown } from '../../utils/markdown';
 import DirBrowser from './DirBrowser';
 import Loading from '../common/Loading';
 import styles from './WorkspaceList.module.css';
+import sharedChrome from '../common/sharedChrome.module.css';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
+
+// 「查看更多」截断阈值(2026-10-08):workspace 表格默认只显示前 N 行,末尾「查看更多」
+// 展开剩余的。抽常量避免在 slice/length>N/length-N 三处重复硬编(参考 WebSearchResultsView
+// 的 MOBILE_PREVIEW_COUNT 先例)。
+const PREVIEW_ROWS = 5;
 
 function timeAgo(isoString) {
   if (!isoString) return '';
@@ -22,20 +29,28 @@ function timeAgo(isoString) {
   return `${days}d ago`;
 }
 
-export default function WorkspaceList({ onLaunch }) {
+export default function WorkspaceList({ onLaunch, embedded = false }) {
   const [workspaces, setWorkspaces] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [launching, setLaunching] = useState(null);
   const [browseOpen, setBrowseOpen] = useState(false);
   // Electron 多 tab 模式下点「+」时，main 会把本页以浮层叠在当前 tab 之上并推 mode='popup'；
   // 此时渲染半透明遮罩 + 居中卡片。非 Electron / Mobile 永远收不到该事件，保持整页。
   const [popup, setPopup] = useState(false);
+// 「查看更多」展开态(2026-10-08):默认只显示前 PREVIEW_ROWS 行,点表格末尾的展开行才显示全部。
+  // 前端不传 ?limit= —— 是有意的:隐藏行的 logCount 驱动 handleLaunch 的 auto -c 启发式
+  // (item.logCount > 0 → 续接历史会话),必须随响应就位。后端 limit 参数留给将来的真分页;
+  // 实测带缓存的全量富化 ~265ms,前端截断只是显示选择,不是性能优化。
+  const [showAll, setShowAll] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const fetchWorkspaces = () => {
     fetch(apiUrl('/api/workspaces'))
       .then(res => res.json())
       .then(data => {
         setWorkspaces(data.workspaces || []);
+        setTotal(typeof data.total === 'number' ? data.total : (data.workspaces || []).length);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -131,7 +146,7 @@ export default function WorkspaceList({ onLaunch }) {
 
   const content = (
     <div
-      className={popup ? `${styles.root} ${styles.popupCard}` : styles.root}
+      className={popup ? `${styles.root} ${styles.popupCard}` : (embedded ? `${styles.root} ${styles.modalBody}` : styles.root)}
       onClick={popup ? (e) => e.stopPropagation() : undefined}
     >
       {popup && (
@@ -144,14 +159,6 @@ export default function WorkspaceList({ onLaunch }) {
         />
       )}
       <div className={styles.inner}>
-        <div className={styles.header}>
-          <Title level={3} className={styles.headerTitle}>
-            <FolderOpenOutlined className={styles.headerFolderIcon} />
-            {t('ui.workspaces.title')}
-          </Title>
-          <Text type="secondary" className={styles.headerSubtitle}>{t('ui.workspaces.subtitle')}</Text>
-        </div>
-
         <div className={styles.addButtonRow}>
           <Button
             type="primary"
@@ -161,6 +168,18 @@ export default function WorkspaceList({ onLaunch }) {
           >
             {t('ui.workspaces.browse')}
           </Button>
+          <Text type="secondary" className={styles.addButtonSubtitle}>
+            {t('ui.workspaces.subtitle')}
+            <button
+              type="button"
+              className={sharedChrome.helpIconBtn}
+              aria-label={t('ui.workspaces.help')}
+              title={t('ui.workspaces.help')}
+              onClick={() => setHelpOpen(true)}
+            >
+              <QuestionCircleOutlined />
+            </button>
+          </Text>
         </div>
 
         {loading ? (
@@ -185,7 +204,7 @@ export default function WorkspaceList({ onLaunch }) {
                 </tr>
               </thead>
               <tbody>
-                {workspaces.map(item => (
+                {(showAll ? workspaces : workspaces.slice(0, PREVIEW_ROWS)).map(item => (
                   <tr key={item.id} className={styles.tr}>
                     <td className={styles.td}>
                       <Text strong className={styles.cellName}>{item.projectName}</Text>
@@ -205,7 +224,6 @@ export default function WorkspaceList({ onLaunch }) {
                       <Button
                         type="primary"
                         size="small"
-                        icon={<RocketOutlined />}
                         loading={launching === item.id}
                         onClick={() => handleLaunch(item)}
                       >
@@ -227,6 +245,13 @@ export default function WorkspaceList({ onLaunch }) {
                     </td>
                   </tr>
                 ))}
+                {!showAll && workspaces.length > PREVIEW_ROWS && (
+                  <tr className={`${styles.tr} ${styles.showMoreRow}`} onClick={() => setShowAll(true)}>
+                    <td className={styles.td} colSpan={5}>
+                      {t('ui.workspaces.showMore', { count: workspaces.length - PREVIEW_ROWS })}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -238,6 +263,19 @@ export default function WorkspaceList({ onLaunch }) {
         onClose={() => setBrowseOpen(false)}
         onSelect={handleAddFromBrowser}
       />
+
+      <Modal
+        open={helpOpen}
+        title={t('ui.workspaces.helpTitle')}
+        footer={null}
+        onCancel={() => setHelpOpen(false)}
+        width={560}
+      >
+        <div
+          className={styles.helpBody}
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(t('ui.workspaces.helpBody')) }}
+        />
+      </Modal>
     </div>
   );
 

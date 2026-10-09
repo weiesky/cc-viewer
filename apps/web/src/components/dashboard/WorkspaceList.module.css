@@ -7,11 +7,12 @@
   padding: 60px 0 40px; /* 整页底部也留白，避免最后一行卡片贴底 */
 }
 
-/* 浮层模式：半透明遮罩铺满（透出后面变暗的当前项目界面），内部居中卡片 */
+/* 浮层模式：浅色半透明遮罩铺满(透出后面内容,配合.popupCard 的 backdrop-filter 形成毛玻璃);
+   改成几乎透明 + 轻微压暗,让 blur 真正生效(原先 0.45 黑会把后方糊成纯暗,毛玻璃出不来)。 */
 .scrim {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.18);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -19,7 +20,9 @@
   padding: 24px;
 }
 
-/* 浮层卡片：覆盖 .root 的整页布局，收成有限宽高、圆角、滚动的窗口 */
+/* 浮层卡片：覆盖 .root 的整页布局，收成有限宽高、圆角、滚动的窗口。
+   毛玻璃(2026-10-09):bg 改 var(--bg-glass) + backdrop-filter blur/saturate,
+   透出后方主界面;box-shadow 改深一档 + 1px inset 高光,避免玻璃下阴影发灰。 */
 .popupCard {
   display: block; /* 改块级：flex 滚动容器会吞掉尾部 padding，block 则上下都保留 */
   min-height: auto;
@@ -27,10 +30,12 @@
   width: min(880px, 92vw);
   max-height: 86vh;
   overflow: auto;
-  background: var(--bg-base);
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--border-primary);
   border-radius: 12px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
   position: relative;
 }
 
@@ -38,6 +43,16 @@
    改 border-box 让 padding 计入 100% 之内。 */
 .popupCard .inner {
   box-sizing: border-box;
+}
+
+/* 嵌入 antd Modal 模式(2026-10-08):NewProjectModal 场景下去掉 .root 的整页灰底 + 大留白,
+   让内容透出 .ant-modal-content 的底色(亮白 / 暗 #1e1e1e),与弹窗融为一体。
+   声明位于 .root 之后,靠源码顺序覆盖,不加 !important。整页工作区(!embedded)和
+   Electron 浮层(.popupCard)不受影响。 */
+.modalBody {
+  background: transparent;
+  min-height: auto;
+  padding: 0;
 }
 
 .popupClose {
@@ -54,29 +69,51 @@
   padding: 0 24px;
 }
 
-/* Header section */
-.header {
-  margin-bottom: 32px;
+/* Action row: add-workspace button + subtitle underneath. Top and bottom
+   whitespace match (symmetric bleed), and the block keeps clear distance from
+   the history table below. */
+.addButtonRow {
+  margin: 32px 0 32px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
 }
 
-.headerTitle {
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.headerFolderIcon {
-  margin-right: 8px;
-  color: var(--color-primary);
-}
-
-.headerSubtitle {
+.addButtonSubtitle {
   font-size: 13px;
 }
 
-.addButtonRow {
-  margin-bottom: 20px;
-  text-align: center;
+/* Help modal body — content is rendered via renderMarkdown, so the rules
+   below just give the generated tags basic typography. */
+.helpBody {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-primary);
+}
+.helpBody h3 {
+  margin: 16px 0 6px;
+  font-size: 14px;
+}
+.helpBody h3:first-child {
+  margin-top: 0;
+}
+.helpBody p {
+  margin: 0 0 10px;
+}
+.helpBody ul {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+.helpBody li {
+  margin-bottom: 4px;
+}
+.helpBody code {
+  background: var(--bg-elevated);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12px;
 }
 
 /* Loading / empty states */
@@ -94,6 +131,9 @@
   overflow-x: auto;
   border: 1px solid var(--border-primary);
   border-radius: 8px;
+  /* Solid body so the table reads against the frosted-glass modal: light
+     theme lands on #FFF, dark theme on #111 (both via --bg-container). */
+  background: var(--bg-container);
 }
 
 .table {
@@ -123,6 +163,19 @@
 
 .tr:hover {
   background: var(--bg-elevated);
+}
+
+/* 「查看更多」展开行(2026-10-08):融入表格最后一行,整行可点;主色文字提示可点,
+   hover 复用 .tr:hover 的灰色反馈。仅当 workspaces.length > 5 且未展开时渲染。 */
+.showMoreRow {
+  cursor: pointer;
+}
+
+.showMoreRow .td {
+  text-align: center;
+  color: var(--color-primary);
+  font-weight: 500;
+  padding: 10px 12px;
 }
 
 .tr + .tr .td {
@@ -159,6 +212,13 @@
 .tdActions {
   text-align: right;
   white-space: nowrap;
+}
+
+/* Keep some breathing room between the primary "launch" button and the
+   delete icon so the destructive action doesn't sit flush against the main
+   action. */
+.tdActions > * + * {
+  margin-left: 12px;
 }
 
 /* DirBrowser modal */

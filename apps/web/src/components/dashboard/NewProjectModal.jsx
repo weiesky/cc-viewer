@@ -20,9 +20,12 @@ export default function NewProjectModal({ open, onClose, onLaunch, themeConfig }
       width={1080}
       title={t('ui.resume.newProject')}
       destroyOnHidden
+      className="ccvGlassModal"
+      rootClassName="ccvGlassModalRoot"
     >
       <ConfigProvider theme={themeConfig}>
         <WorkspaceList
+          embedded
           onLaunch={(payload) => {
             if (onLaunch) onLaunch(payload);
             onClose();

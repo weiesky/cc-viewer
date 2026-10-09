@@ -146,7 +146,7 @@ describe('workspace-registry', () => {
     writeFileSync(join(projectDir, `${entry.projectName}_a.jsonl`), '{"a":1}\n');
     writeFileSync(join(projectDir, `${entry.projectName}_b.jsonl`), '{"b":2}\n');
     writeFileSync(join(projectDir, 'readme.txt'), 'x');
-    const list = await getWorkspaces();
+    const { workspaces: list } = await getWorkspaces();
     assert.equal(list.length, 1);
     assert.equal(list[0].logCount, 2);
     assert.ok(list[0].totalSize > 0);
@@ -175,8 +175,8 @@ describe('workspace-registry', () => {
     // (journal-only undercounts ~12x on real sessions).
     mkdirSync(join(projectDir, 'sessions', 'sid-1', 'conversations', 'main'), { recursive: true });
     writeFileSync(join(projectDir, 'sessions', 'sid-1', 'conversations', 'main', 'e0.jsonl'), 'x'.repeat(5000));
-    const list = await getWorkspaces();
-    const w = list.find(x => x.id === entry.id);
+    const { workspaces: list2 } = await getWorkspaces();
+    const w = list2.find(x => x.id === entry.id);
     assert.equal(w.sessionCount, 1, 'only session dirs with a journal count');
     assert.equal(w.unmigratedV1Count, 1, '_temp.jsonl excluded');
     assert.equal(w.logCount, 2, 'combined count keeps the auto--c heuristic alive for declined migrations');

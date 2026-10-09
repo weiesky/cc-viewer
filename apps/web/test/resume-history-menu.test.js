@@ -26,10 +26,10 @@ const CHATVIEW = read('src/components/chat/ChatView.jsx');
 const MOBILE = read('src/Mobile.jsx');
 const RESUME_UTILS = read('src/utils/resumeSessions.js');
 
-describe('star-menu migration — the history row lives between perm and plan', () => {
-  it('QuickAutoApproveRows accepts a `middle` node rendered after the perm (index 0) row', () => {
+describe('star-menu migration — the history row lives after perm and plan', () => {
+  it('QuickAutoApproveRows accepts a `middle` node rendered after the plan (index 1) row', () => {
     assert.ok(/middle/.test(QUICK_ROWS), 'QuickAutoApproveRows must accept a middle prop');
-    assert.ok(/i === 0 && middle/.test(QUICK_ROWS), 'middle must render right after the perm row');
+    assert.ok(/i === 1 && middle/.test(QUICK_ROWS), 'middle must render right after the plan row');
     assert.ok(/React\.Fragment key=\{row\.key\}/.test(QUICK_ROWS), 'middle must sit inside a keyed Fragment');
   });
 
@@ -57,7 +57,7 @@ describe('star-menu migration — the history row lives between perm and plan', 
   });
 
   it('App.jsx passes onResumeSession to ChatView and no longer to AppHeader', () => {
-    assert.ok(/onDetachView=\{this\.handleDetachView\} onResumeSession=\{this\.handleResumeSession\}/.test(APP), 'App must pass onResumeSession to ChatView');
+    assert.ok(/onResumeSession=\{this\.handleResumeSession\}/.test(APP), 'App must pass onResumeSession to ChatView');
   });
 });
 

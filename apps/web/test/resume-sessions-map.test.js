@@ -465,6 +465,23 @@ describe('closeProjectPty', () => {
     });
     assert.deepEqual(out, { ok: false, reason: 'http-404' });
   });
+
+  it('passes through the server bound-project rebound payload when present (2026-10)', async () => {
+    const out = await closeProjectPty('projA', {
+      fetchImpl: () => Promise.resolve({
+        ok: true, status: 200,
+        json: () => Promise.resolve({ ok: true, killedActive: true, rebound: { project: 'projB', cwd: '/b' } }),
+      }),
+    });
+    assert.deepEqual(out, { ok: true, rebound: { project: 'projB', cwd: '/b' } });
+  });
+
+  it('omits the rebound key entirely when the server sends none (deepEqual shape unchanged)', async () => {
+    const out = await closeProjectPty('projA', {
+      fetchImpl: () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, killedActive: false, rebound: null }) }),
+    });
+    assert.deepEqual(out, { ok: true });
+  });
 });
 
 describe('resumeSession (true /resume, 2026-10-06)', () => {

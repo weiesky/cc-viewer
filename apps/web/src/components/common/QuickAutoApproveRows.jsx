@@ -16,9 +16,10 @@ function QuickAutoApproveRows({ autoApproveSeconds, planAutoApproveSeconds, onAu
     { key: 'perm', icon: <ShieldCheckIcon />, label: t('ui.permission.autoApprove.setting'), value: autoApproveSeconds, options: PERM_AUTO_APPROVE_OPTIONS, onChange: onAutoApproveChange },
     { key: 'plan', icon: <PlanClipboardIcon />, label: t('ui.approval.settings.planAutoApprove'), value: planAutoApproveSeconds, options: PLAN_AUTO_APPROVE_OPTIONS, onChange: onPlanAutoApproveChange },
   ];
-  // `middle` (2026-10-06): an optional node rendered between the perm row and the plan
-  // row — the session-history entry (star-menu migration). Rendered as a sibling inside
-  // the perm fragment so the mapped children stay keyed and the order is perm → middle → plan.
+  // `middle` (2026-10-06): an optional node rendered after the plan row — the
+  // session-history entry (star-menu migration). Rendered as a sibling inside
+  // the plan fragment so the mapped children stay keyed and the order is
+  // perm → plan → middle.
   return rows.map((row, i) => {
     const expanded = expandedKey === row.key;
     return (
@@ -48,7 +49,7 @@ function QuickAutoApproveRows({ autoApproveSeconds, planAutoApproveSeconds, onAu
             </div>
           </div>
         </div>
-        {i === 0 && middle ? middle : null}
+        {i === 1 && middle ? middle : null}
       </React.Fragment>
     );
   });

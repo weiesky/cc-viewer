@@ -222,17 +222,6 @@
   background: var(--bg-elevated);
 }
 
-/* B2 view-attach "back to current session" chip: highlighted so it's clearly an
-   active state (view is on a historical session), hover lifts it like other nav
-   buttons. Uses the accent text color to signal "you are somewhere else". */
-.detachViewChip {
-  color: var(--color-primary, var(--text-secondary));
-}
-.detachViewChip:hover {
-  color: var(--text-primary);
-  background: var(--bg-elevated);
-}
-
 .navBtnActive {
   width: 32px;
   height: 32px;

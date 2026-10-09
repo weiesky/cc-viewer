@@ -258,7 +258,20 @@ class ChatView extends React.Component {
       scrollToMatch: null,
       searchOpen: false,
       fileExplorerExpandedPaths: loadExpandedPaths(props.viewProject || props.projectName),
-      gitChangesOpen: false,
+      // 刷新保持(2026-10-08):desktop / iPad pad 模式从 localStorage 读回(与 fileExplorerOpen
+      // 的 isPad 分支完全对称),手机恒 false(手机走 Mobile.jsx 独立 state)。默认关。
+      // 互斥恢复:git 与 fileExplorer 运行时是互斥面板,但两者 storage key 独立。若上次
+      // session 以「跳文件把 git 被动关 + fileExplorer 主动开」收尾,两条 storage 都是 true
+      // —— 刷新后若都恢复会双开并排。此处 git 仅在 fileExplorer 恢复结果为 false 时才
+      // 恢复为 true(让 fileExplorer 优先),与运行时的互斥不变量对齐。
+      gitChangesOpen: (() => {
+        if (isMobile && !isPad) return false;
+        if (localStorage.getItem('ccv_gitChangesOpen') !== 'true') return false;
+        const feOpen = !isMobile
+          ? localStorage.getItem('ccv_fileExplorerOpen') !== 'false'
+          : localStorage.getItem('ccv_fileExplorerOpen') === 'true';
+        return !feOpen;
+      })(),
       hasGit: true,
       snapLines: [],
       activeSnapLine: null,
@@ -489,6 +502,21 @@ class ChatView extends React.Component {
       }));
     } else {
       this.setState({ fileExplorerOpen: open });
+    }
+  }
+
+  // 与 _setFileExplorerOpen 完全同构:先写 localStorage,再按 opening 分支消费 _pendingGitRefresh。
+  // 主动开关走这里(nav 图标 onClick / 面板右上角 X / FileExplorer 与 Search 图标的互斥关);
+  // 被动关闭仍走直接 setState 不动 storage(_detectGit 探测无仓库、跳文件),这样切到无 git
+  // 项目再切回,面板保持用户上次的意图。
+  _setGitChangesOpen(open) {
+    try { localStorage.setItem('ccv_gitChangesOpen', String(open)); } catch { /* 隐私模式容错 */ }
+    if (open && this._pendingGitRefresh) {
+      // 关闭期间累积的修改信号在打开瞬间消费一次(与 fileExplorer 对称)
+      this._pendingGitRefresh = false;
+      this.setState(prev => ({ gitChangesOpen: true, gitChangesRefresh: (prev.gitChangesRefresh || 0) + 1 }));
+    } else {
+      this.setState({ gitChangesOpen: open });
     }
   }
 
@@ -3269,7 +3297,7 @@ class ChatView extends React.Component {
         {showFileExplorerAndGit && (
           <button
             className={this.state.fileExplorerOpen ? styles.navBtnActive : styles.navBtn}
-            onClick={() => { this._setFileExplorerOpen(!this.state.fileExplorerOpen); this.setState({ gitChangesOpen: false, searchOpen: false }); }}
+            onClick={() => { this._setFileExplorerOpen(!this.state.fileExplorerOpen); this._setGitChangesOpen(false); this.setState({ searchOpen: false }); }}
             title={t('ui.fileExplorer')}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -3280,17 +3308,11 @@ class ChatView extends React.Component {
         {showFileExplorerAndGit && this.state.hasGit && (
           <button
             className={this.state.gitChangesOpen ? styles.navBtnActive : styles.navBtn}
-            onClick={() => this.setState(prev => {
+            onClick={() => {
               this._setFileExplorerOpen(false);
-              const opening = !prev.gitChangesOpen;
-              const next = { gitChangesOpen: opening, searchOpen: false };
-              // 关闭期间累积的修改信号在打开瞬间消费一次（与 fileExplorer 对称）
-              if (opening && this._pendingGitRefresh) {
-                this._pendingGitRefresh = false;
-                next.gitChangesRefresh = (prev.gitChangesRefresh || 0) + 1;
-              }
-              return next;
-            })}
+              this._setGitChangesOpen(!this.state.gitChangesOpen);
+              this.setState({ searchOpen: false });
+            }}
             title={t('ui.gitChanges')}
           >
             <svg width="24" height="24" viewBox="0 0 1024 1024" fill="currentColor">
@@ -3301,11 +3323,12 @@ class ChatView extends React.Component {
         {showFileExplorerAndGit && (
           <button
             className={this.state.searchOpen ? styles.navBtnActive : styles.navBtn}
-            onClick={() => this.setState(prev => {
-              if (prev.searchOpen) return { searchOpen: false };
+            onClick={() => {
+              if (this.state.searchOpen) { this.setState({ searchOpen: false }); return; }
               this._setFileExplorerOpen(false);
-              return { searchOpen: true, gitChangesOpen: false };
-            })}
+              this._setGitChangesOpen(false);
+              this.setState({ searchOpen: true });
+            }}
             title={t('ui.search')}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -3360,26 +3383,6 @@ class ChatView extends React.Component {
             />
           </button>
         </Popover>
-        <div className={styles.navDivider} />
-        {/* /resume entry moved to the star quick-settings menu (ResumeSessionsRow, between
-            the permission and plan rows) — see components/common/ResumeSessionsRow.jsx. The
-            detach affordance stays here because it is a chat-view concern. */}
-        {/* View-attach / parallel-project view: while the view is scoped away
-            from the bound project's current session (attached to a historical
-            session OR viewing a parallel project), a "back to current session"
-            chip lets the user detach back to follow-latest. */}
-        {(this.props.attachedSid || this.props.viewedProject) && this.props.onDetachView && (
-          <button
-            className={`${styles.navBtn || ''} ${styles.detachViewChip || ''}`}
-            title={t('ui.resume.returnToCurrent')}
-            onClick={this.props.onDetachView}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 14 4 9l5-5" />
-              <path d="M4 9h10a6 6 0 0 1 0 12h-3" />
-            </svg>
-          </button>
-        )}
       </div>
     );
   }
@@ -3871,7 +3874,7 @@ class ChatView extends React.Component {
               projectName={this.props.projectName}
               project={this.props.viewProject || this.props.projectName}
               instance={this.props.viewInstance}
-              onClose={() => this.setState({ gitChangesOpen: false })}
+              onClose={() => this._setGitChangesOpen(false)}
               onFileClick={(repoPath, filePath, commitHash) => {
                 const resolvedPath = repoPath && repoPath !== '.' ? `${repoPath}/${filePath}` : filePath;
                 if (tryOpenWithSystem(resolvedPath, 'git-changes')) return;

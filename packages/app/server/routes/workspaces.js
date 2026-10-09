@@ -21,9 +21,15 @@ import { sseWrite } from '../lib/wire-compress.js';
 
 function workspacesList(req, res, parsedUrl, isLocal, deps) {
   import('../workspace-registry.js').then(async ({ getWorkspaces }) => {
-    const workspaces = await getWorkspaces();
+    // ?limit=N(2026-10-08):parsedUrl 是 WHATWG URL,只有 .searchParams 没有 .query。
+    // 先排序后富化,只算前 N 个的 dirSize/isDiscardable。默认 0(全部),上限 50
+    // 与 resume.js 的对齐。total 是富化前总数,预留给将来「按需加载」的前端。
+    const rawLimit = parsedUrl?.searchParams?.get('limit');
+    const parsedLimit = rawLimit != null ? Number(rawLimit) : 0;
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(Math.floor(parsedLimit), 50) : 0;
+    const { workspaces, total } = await getWorkspaces({ limit });
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ workspaces, workspaceMode: deps.isWorkspaceMode && !deps.workspaceLaunched }));
+    res.end(JSON.stringify({ workspaces, total, workspaceMode: deps.isWorkspaceMode && !deps.workspaceLaunched }));
   }).catch(err => {
     res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: err.message }));
