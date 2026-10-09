@@ -280,6 +280,9 @@ describe('POST /api/live-processes/close — bound-project rebound', () => {
     const joined = client.frames.join('');
     assert.ok(joined.includes('event: workspace_started'), 'workspace_started broadcast');
     assert.ok(joined.includes('"rebound":true'), 'rebound marker present');
+    // The client-side view-domain gate keys on this: only tabs whose effective
+    // scope is the closed project may reset/reconnect (see reboundScope.js).
+    assert.ok(joined.includes(`"reboundFrom":"${projA}"`), 'reboundFrom carries the closed bound name');
     assert.ok(!joined.includes('event: load_start'), 'no load_start replay');
     // The survivor is the only live project left, and it is B.
     const live = ptyMgr.listLivePtys();
@@ -306,7 +309,7 @@ describe('POST /api/live-processes/close — bound-project rebound', () => {
     interceptor.initForWorkspace(dirA, { forceNew: true });
   });
 
-  it('a same-basename survivor gets a DIR-ONLY rebind (no resetSessions, but CCV_PROJECT_DIR follows + broadcast)', async () => {
+  it('a same-basename survivor gets a DIR-ONLY rebind (no resetSessions, CCV_PROJECT_DIR follows, no broadcast)', async () => {
     // Two projects with the SAME basename under different parents share one
     // projectKeyForCwd name. initForWorkspace's scoped resetSessions keys on the
     // sanitized name, so a full rebind would wipe the survivor's own bindings —
@@ -344,7 +347,10 @@ describe('POST /api/live-processes/close — bound-project rebound', () => {
     assert.equal(body.rebound.cwd, twinB, 'rebound points at the surviving twin dir');
     assert.equal(process.env.CCV_PROJECT_DIR, twinB, 'CCV_PROJECT_DIR follows the survivor dir');
     assert.equal(interceptor._projectName, 'sameproj', 'project name unchanged (same basename)');
-    assert.ok(client.frames.join('').includes('"rebound":true'), 'rebound broadcast sent');
+    // A dir-only rebind keeps the project NAME, so every client's SSE scope
+    // stamp is already correct — broadcasting would hard-reset every same-name
+    // viewer (streaming/attach/scroll) for a root-only change. No broadcast.
+    assert.ok(!client.frames.join('').includes('workspace_started'), 'no broadcast for a dir-only rebind');
     // The twinB record survives untouched.
     const live = ptyMgr.listLivePtys();
     assert.equal(live.length, 1);

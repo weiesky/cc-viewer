@@ -246,22 +246,24 @@ function postLiveProcessCloseHandler(req, res, parsedUrl, isLocal, deps) {
 
 // Bound-project rebound helper (2026-10). After killPtyFor removed the BOUND
 // project's PTY, pick a surviving live claude record and re-bind the server's
-// workspace identity to it, then broadcast workspace_started (with
-// `rebound:true`) so every SSE client re-scopes to the survivor. Returns
-// { project, cwd } when a rebind happened, else null (closed project was not
-// the bound one / no survivor / a same-cwd twin still lives / Electron
+// workspace identity to it. A full rebind additionally broadcasts
+// workspace_started (with `rebound:true` / `reboundFrom`) so the affected SSE
+// clients re-scope to the survivor; a DIR-ONLY rebind (a same-name twin owns
+// the name's session space) moves CCV_PROJECT_DIR without broadcasting.
+// Returns { project, cwd } when a rebind happened, else null (closed project
+// was not the bound one / no survivor / a same-cwd twin still lives / Electron
 // multi-tab).
 // May throw only BEFORE the rebind is applied (a pre-state-change failure →
 // the caller wraps it into a 200 with rebound:null, which is accurate then);
-// after the broadcast it never throws (the restart side-effects are each
+// after the state change it never throws (the restart side-effects are each
 // wrapped), so a returned rebound always matches reality.
 //
-// ORDERING INVARIANT: the broadcast is emitted BEFORE the best-effort
-// feed/timer restarts, and the whole kill→rebind→broadcast block is
-// synchronous (no await) — under Node's single thread no interleaved request
-// can observe a half-applied rebind, and a throwing side-effect can no longer
-// strand the "binding moved but nobody was told" state (the broadcast has
-// already gone out by then).
+// ORDERING INVARIANT: the broadcast (full rebind only) is emitted BEFORE the
+// best-effort feed/timer restarts, and the whole kill→rebind→broadcast block
+// is synchronous (no await) — under Node's single thread no interleaved
+// request can observe a half-applied rebind, and a throwing side-effect can no
+// longer strand the "binding moved but nobody was told" state (the broadcast
+// has already gone out by then).
 function _maybeRebindAfterClose(killResult, deps) {
   // Electron multi-tab: the manager process does NOT own log init (the tab
   // workers do); mirroring workspaces.js:56, skip rebind entirely there.
@@ -306,7 +308,9 @@ function _maybeRebindAfterClose(killResult, deps) {
   let result;
   if (dirOnly) {
     // _projectName / _logDir stay (same sanitized name — already correct);
-    // only the bound ROOT moves to the surviving twin's directory.
+    // only the bound ROOT moves to the surviving twin's directory. No broadcast
+    // either (see below): the name — and with it every client's SSE scope stamp
+    // — is unchanged, so there is nothing to re-scope.
     result = { projectName: killedName };
   } else {
     result = initForWorkspace(survivor.cwd);
@@ -320,22 +324,34 @@ function _maybeRebindAfterClose(killResult, deps) {
 
   // Broadcast workspace_started to EVERY SSE client (same fan-out as launch,
   // workspaces.js:101-107) BEFORE the throwable side-effects below, so a
-  // failure there can't leave "binding moved but clients untold". Deliberately
-  // NO load_start/load_chunk/load_end replay: those handlers have no project
-  // guard on the client (AppBase.jsx:1990-2148) and would pour the survivor's
-  // transcript into a tab that is viewing a THIRD project. Each client
-  // re-scopes and cold-loads its own view on receipt (the `rebound:true`
-  // marker triggers the SSE reconnect).
-  const payload = `event: workspace_started\ndata: ${JSON.stringify({
-    projectName: result.projectName,
-    path: survivor.cwd,
-    claudeProjectModel: readClaudeProjectModel(survivor.cwd),
-    rebound: true,
-  })}\n\n`;
-  const clients = (deps && deps.clients) || [];
-  clients.forEach((client) => {
-    try { sseWrite(client, payload); } catch (err) { reportSwallowed('resume-route.close-rebind.write', err); }
-  });
+  // failure there can't leave "binding moved but clients untold" — but ONLY for
+  // a full rebind. A dir-only rebind keeps the project NAME — and with it every
+  // client's SSE scope stamp — moving only the bound ROOT to the survivor's dir,
+  // so there is nothing for any client to re-scope: a broadcast would needlessly
+  // hard-reset every same-name viewer mid-stream for a root-only change.
+  // Deliberately NO load_start/load_chunk/load_end replay: those handlers have
+  // no project guard on the client (AppBase.jsx:1990-2148) and would pour the
+  // survivor's transcript into a tab that is viewing a THIRD project. Each
+  // AFFECTED client re-scopes and cold-loads its own view on receipt (the
+  // `rebound:true` marker + its own local view state decide; see the
+  // workspace_started handler in AppBase.jsx).
+  if (!dirOnly) {
+    const payload = `event: workspace_started\ndata: ${JSON.stringify({
+      projectName: result.projectName,
+      path: survivor.cwd,
+      claudeProjectModel: readClaudeProjectModel(survivor.cwd),
+      rebound: true,
+      // The project name this client's SSE scope was stamped with before the
+      // rebind. Clients whose SSE (or an attach/parallel view) is still pinned
+      // to it are the affected domain and must reset + reconnect; a tab viewing
+      // an unrelated project must keep its view and its live feed.
+      reboundFrom: killedName,
+    })}\n\n`;
+    const clients = (deps && deps.clients) || [];
+    clients.forEach((client) => {
+      try { sseWrite(client, payload); } catch (err) { reportSwallowed('resume-route.close-rebind.write', err); }
+    });
+  }
 
   // Best-effort feed/timer restarts for the new bound project. Without
   // startLogWatch the survivor's writer activity hits "no feed → drop" and the

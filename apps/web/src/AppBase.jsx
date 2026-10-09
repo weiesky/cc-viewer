@@ -20,6 +20,7 @@ import { reportSwallowed } from './utils/errorReport';
 import { attachMainPty, closeProjectPty, resumeSession } from './utils/resumeSessions';
 import { readViewedWorkspace, writeViewedWorkspace, clearViewedWorkspace, resolveRestoredViewScope, resolveCwdForView } from './utils/viewedWorkspaceStorage';
 import { createViewStateCache } from './utils/viewStateCache';
+import { reboundAffectsView } from './utils/reboundScope';
 import { playEvent as playVoiceEvent, unlockAudio, setTurnEndCooldownMs } from './utils/voicePackPlayer';
 import { getDefaultBindingsForLocale as vpDefaultBindingsForLocale } from '@ccv/core/voice-pack-events';
 import { mergeVoicePackInto } from '@ccv/core/approval-modal-prefs';
@@ -713,12 +714,15 @@ class AppBase extends React.Component {
   // detach to bound when nothing survives. Closing a project we are NOT
   // viewing needs no client action — the next 5s poll drops its tab. Closing
   // the BOUND project: the server now re-binds to a surviving live project and
-  // broadcasts workspace_started(rebound:true) (routes/resume.js), so every
-  // client — this tab included — lands on the survivor through the existing
-  // workspace_started handler; no local activate here (a second switch would
-  // race the broadcast and leave a pseudo-bound `viewedProject === projectName`
-  // residue). When NO project survives there is no rebind and no broadcast —
-  // the view just stays on the dead bound project's last state.
+  // broadcasts workspace_started(rebound:true, reboundFrom) (routes/resume.js),
+  // so every client IN THAT PROJECT'S VIEW DOMAIN — this tab included — lands
+  // on the survivor through the existing workspace_started handler (which gates
+  // its reset/reconnect on reboundAffectsView; a dir-only rebind keeps the name
+  // and sends no broadcast at all); no local activate here (a second switch
+  // would race the broadcast and leave a pseudo-bound
+  // `viewedProject === projectName` residue). When NO project survives there is
+  // no rebind and no broadcast — the view just stays on the dead bound
+  // project's last state.
   handleCloseProject = (project, fallbackProject, instanceKey) => {
     if ((!project || typeof project !== 'string') && !instanceKey) return;
     // Multi-instance: a × on a same-cwd twin must carry its instanceKey, or the server would
@@ -2218,78 +2222,99 @@ class AppBase extends React.Component {
         this._resetSSETimeout();
         try {
           const data = JSON.parse(event.data);
-          // 新项目语境：允许迁移引导针对切入的项目再弹一次（P2 one-shot 守卫复位）。
-          this._migratePromptShown = false;
-          // 取消旧动画，防止旧 full_reload 回调覆盖新数据
-          if (this._loadingCountTimer) {
-            cancelAnimationFrame(this._loadingCountTimer);
-            this._loadingCountTimer = null;
-          }
-          // workspace 切换 = baseline 重置：废弃在途分帧管线，防旧项目的巨型基线
-          // 在切换后才提交、覆盖新项目数据（闸门缓冲属旧项目，直接丢弃不泄洪）
-          this._abortColdIngest();
-          this._v3ResetClientState(); // review P0-2: old project's rows/assembler must not survive the switch
-          this._rebuildRequestIndex([]);
-          clearTaskStore(); // old project's task checklist must not linger into the new session
-          // 切项目要连 _currentSessionId 一并清掉：否则 _maintainPinState 的 lazy-lock 兜底
-          // (getSessionStableId(null) || this._currentSessionId) 会拿旧项目的会话 id 误锁新项目，
-          // 在 hydrate GET 抢先返回前可能把旧 id POST 进新项目的 pin 文件。
-          this._currentSessionId = null;
-          // A workspace switch is the authoritative project boundary: force-detach
-          // any attach so a stale attach can't re-assert the old project's session.
-          this.setState({ attachedSid: null, viewedProject: null, viewedInstance: null });
-          // NOTE: no clearViewedWorkspace() here. workspace_started/stopped are
-          // broadcast to EVERY SSE client (workspaces.js, not view-scoped), so an
-          // unconditional clear would wipe a workspace another browser tab just
-          // persisted. Storage is cleared only by real user actions (detach /
-          // launch / return-to-list); a stale entry is harmlessly re-validated
-          // against /api/live-processes on the next boot.
-          this._applyDocTitle(data.projectName || '');
-          // Reset isStreaming alongside streamingLatest — workspace switches happen
-          // between user prompts and shouldn't leave streaming flags stuck. (turnEnd
-          // false-fire on this transition is no longer a concern since we hook
-          // turnEnd to the Stop SSE event, not to isStreaming falling-edge.)
-          this.setState({
-            workspaceMode: false,
-            projectName: data.projectName || '',
-            // viewMode is a pure display pref — inherit the user's current mode, don't force
-            // 'chat' (user-pinned 2026-10-06, same principle as terminalVisible). cliMode stays
-            // (a launched claude project needs the CLI surface).
-            cliMode: true,
-            requests: [],
-            v2Rows: [],
-            v2RowsMeta: { totalCount: 0, hasMore: false, oldestTs: '' },
-            mainAgentSessions: [],
-            // 切项目：清空旧项目 pin，由 App.componentDidUpdate 按新 projectName 重新 hydrate
-            pinnedSessionTs: null,
-            selectedIndex: null,
-            streamingLatest: null,
-            isStreaming: false,
-            // workspace 切换 = cwd 切换 → claude 的 lastModelUsage 也要重查；
-            // 后端在 workspace_started 一并塞了新 cwd 对应的 hint，没有就清空。
-            claudeProjectModel: (typeof data.claudeProjectModel === 'string' && data.claudeProjectModel) ? data.claudeProjectModel : null,
+          // A close of the BOUND project makes the server re-bind to a survivor
+          // and broadcast workspace_started(rebound:true, reboundFrom:<old name>).
+          // Only clients still in that project's view domain are affected: their
+          // SSE is stamped with the OLD bound name (res._ccvViewProject is frozen
+          // at connect time, events.js) and would never receive the survivor's
+          // live feed. A tab viewing an UNRELATED project (parallel view or an
+          // attached history session of a third project) keeps its view — the
+          // server no longer touches its scope — so it must NOT be force-detached
+          // / blanked. Snapshot the domain BEFORE any reset below (setState is
+          // async; a second reset would see the cleared state and vacuously pass).
+          // The dir-only rebind sends NO broadcast at all (name unchanged → every
+          // client's stamp still matches), so this only ever runs for a full rebind.
+          const isRebound = data.rebound === true;
+          const reboundAffectsThisTab = reboundAffectsView({
+            rebound: data.rebound,
+            reboundFrom: data.reboundFrom,
+            projectName: this.state.projectName,
+            viewedProject: this.state.viewedProject,
           });
-          // A workspace switch is an authoritative boundary: force-detach any
-          // attach / parallel-project view so a stale scope can't re-assert the
-          // old project's session in the new one.
-          if (this.state.attachedSid || this.state.viewedProject) {
+          // A normal (non-rebound) workspace_started is an authoritative switch
+          // for every client — reset unconditionally, exactly as before.
+          const shouldReset = !isRebound || reboundAffectsThisTab;
+          if (shouldReset) {
+            // 新项目语境：允许迁移引导针对切入的项目再弹一次（P2 one-shot 守卫复位）。
+            // (Unaffected rebound tabs keep their one-shot guards — nothing about
+            // their project changed, so no guide should re-fire.)
+            this._migratePromptShown = false;
+            // 取消旧动画，防止旧 full_reload 回调覆盖新数据
+            if (this._loadingCountTimer) {
+              cancelAnimationFrame(this._loadingCountTimer);
+              this._loadingCountTimer = null;
+            }
+            // 只在受影响域做全量重置：废弃在途分帧管线 + 清对话/任务/pin/attach，
+            // 防被关项目的残留数据在新绑定下继续渲染。
+            this._abortColdIngest();
+            this._v3ResetClientState(); // review P0-2: old project's rows/assembler must not survive the switch
+            this._rebuildRequestIndex([]);
+            clearTaskStore(); // old project's task checklist must not linger into the new session
+            // 切项目要连 _currentSessionId 一并清掉：否则 _maintainPinState 的 lazy-lock 兜底
+            // (getSessionStableId(null) || this._currentSessionId) 会拿旧项目的会话 id 误锁新项目，
+            // 在 hydrate GET 抢先返回前可能把旧 id POST 进新项目的 pin 文件。
+            this._currentSessionId = null;
+            // This view IS the one being force-detached: drop the attach so a
+            // stale attach can't re-assert the old project's session under the
+            // new binding.
             this.setState({ attachedSid: null, viewedProject: null, viewedInstance: null });
-          }
-          if (this.state.resumeSwitch) this._clearResumeSwitch();
-          if (isMobile) clearEntries();
-          // Bound-project rebound (2026-10): a close of the BOUND project made the
-          // server re-bind to a survivor (payload `rebound:true`). This client's SSE
-          // connection is still stamped with the OLD bound name (res._ccvViewProject
-          // is frozen at connect time, events.js), so the survivor's live feed would
-          // never reach it — reconnect with an explicit (empty) scope so the new
-          // connection stamps the NEW bound project. The reset above already
-          // force-detached any parallel view / attach, so every client re-scopes to
-          // the survivor here (the reset being unconditional, gating the reconnect on
-          // !viewedProject would leave a just-cleared parallel tab blank AND its feed
-          // still scoped to the old stamp). initSSE takes the scope explicitly —
-          // never read this.state here (setState hasn't flushed).
-          if (data.rebound === true) {
-            this.initSSE({ sid: null, project: null, instance: null });
+            // NOTE: no clearViewedWorkspace() here. workspace_started/stopped are
+            // broadcast to EVERY SSE client (workspaces.js, not view-scoped), so an
+            // unconditional clear would wipe a workspace another browser tab just
+            // persisted. Storage is cleared only by real user actions (detach /
+            // launch / return-to-list); a stale entry is harmlessly re-validated
+            // against /api/live-processes on the next boot.
+            this._applyDocTitle(data.projectName || '');
+            // Reset isStreaming alongside streamingLatest — workspace switches happen
+            // between user prompts and shouldn't leave streaming flags stuck. (turnEnd
+            // false-fire on this transition is no longer a concern since we hook
+            // turnEnd to the Stop SSE event, not to isStreaming falling-edge.)
+            this.setState({
+              workspaceMode: false,
+              projectName: data.projectName || '',
+              // viewMode is a pure display pref — inherit the user's current mode, don't force
+              // 'chat' (user-pinned 2026-10-06, same principle as terminalVisible). cliMode stays
+              // (a launched claude project needs the CLI surface).
+              cliMode: true,
+              requests: [],
+              v2Rows: [],
+              v2RowsMeta: { totalCount: 0, hasMore: false, oldestTs: '' },
+              mainAgentSessions: [],
+              // 切项目：清空旧项目 pin，由 App.componentDidUpdate 按新 projectName 重新 hydrate
+              pinnedSessionTs: null,
+              selectedIndex: null,
+              streamingLatest: null,
+              isStreaming: false,
+              // workspace 切换 = cwd 切换 → claude 的 lastModelUsage 也要重查；
+              // 后端在 workspace_started 一并塞了新 cwd 对应的 hint，没有就清空。
+              claudeProjectModel: (typeof data.claudeProjectModel === 'string' && data.claudeProjectModel) ? data.claudeProjectModel : null,
+            });
+            if (this.state.resumeSwitch) this._clearResumeSwitch();
+            if (isMobile) clearEntries();
+            // Reconnect with an explicit (empty) scope so the new connection
+            // stamps the NEW bound project — initSSE takes the scope explicitly,
+            // never read this.state here (setState hasn't flushed). Clear the
+            // reconnect budget first (as every other view-switch path does via
+            // _resetForViewSwitch): the desktop incremental branch reads
+            // this.state.projectName as the `?project=` anchor (AppBase.jsx:1863)
+            // and a stale OLD name would resolve the wrong view / blank.
+            // Only a rebound reconnects here — a normal workspace_started is
+            // followed by the server's own full_reload/replay on the existing
+            // connection, exactly as before.
+            if (isRebound) {
+              this._sseReconnectCount = 0;
+              this.initSSE({ sid: null, project: null, instance: null });
+            }
           }
         } catch (e) { reportSwallowed('sse.workspace_started', e); }
       });
