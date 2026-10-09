@@ -317,7 +317,14 @@ export function attachMainPty(project, { fetchImpl, reportImpl, instanceKey } = 
  * { ok:false, reason:'forbidden' } so the caller can show a permission
  * message instead of a generic failure. Never throws; network/parse failures
  * go to reportSwallowed per the CLAUDE.md swallowed-catch convention.
- * @returns {Promise<{ ok:boolean, reason?:string }>}
+ *
+ * When the closed project was the server's BOUND project and a survivor is
+ * still live, the server re-binds to that survivor and the response carries
+ * `rebound: { project, cwd }`. The client-side view repair rides the separate
+ * workspace_started(rebound) SSE broadcast (every client re-scopes); the
+ * response's `rebound` field is surfaced here for the caller's diagnostics /
+ * tests, not consumed by AppBase today.
+ * @returns {Promise<{ ok:boolean, reason?:string, rebound?:{project:string,cwd:string} }>}
  */
 export function closeProjectPty(project, { fetchImpl, reportImpl, instanceKey } = {}) {
   if ((!project || typeof project !== 'string') && !instanceKey) return Promise.resolve({ ok: false, reason: 'missing-project' });
@@ -338,7 +345,11 @@ export function closeProjectPty(project, { fetchImpl, reportImpl, instanceKey } 
       // A non-JSON error page (e.g. an older server without this route → the
       // SPA 404 HTML) must not throw here — degrade to a generic reason.
       try { body = await r.json(); } catch { body = null; }
-      if (r.ok && body && body.ok) return { ok: true };
+      // Surface the server's bound-project rebound (2026-10): the response tells
+      // the caller the binding moved to a survivor. The conditional spread keeps
+      // the no-rebound shape byte-identical to before (resume-sessions-map.test.js's
+      // deepEqual).
+      if (r.ok && body && body.ok) return { ok: true, ...(body.rebound ? { rebound: body.rebound } : {}) };
       return { ok: false, reason: (body && body.reason) || ('http-' + r.status) };
     })
     .catch((err) => { doReport('pty.close', err); return { ok: false, reason: 'network' }; });

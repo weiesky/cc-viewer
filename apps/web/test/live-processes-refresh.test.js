@@ -105,7 +105,7 @@ describe('AppBase.jsx source anchors (refactor guard)', () => {
     // The bump must sit inside handleCloseProject's success branch, between the
     // failure guard and the closedIsViewed check, so it fires for viewed AND
     // non-viewed closes but never for failed/forbidden ones.
-    const re = /handleCloseProject = \(project, fallbackProject, instanceKey\) => \{[\s\S]{0,1600}?liveProcessRefreshToken: \(prev\.liveProcessRefreshToken \|\| 0\) \+ 1[\s\S]{0,400}?const closedIsViewed/;
+    const re = /handleCloseProject = \(project, fallbackProject, instanceKey\) => \{[\s\S]{0,1600}?liveProcessRefreshToken: \(prev\.liveProcessRefreshToken \|\| 0\) \+ 1[\s\S]{0,900}?const closedIsViewed/;
     assert.ok(re.test(APPBASE_SRC),
       'token bump must appear after the failure guard and before closedIsViewed');
     // And the failure guard must come BEFORE the bump.
@@ -128,6 +128,18 @@ describe('App.jsx source anchor (refactor guard)', () => {
     // fix goes inert — a silent regression this anchor exists to catch.
     assert.ok(/liveProcessRefreshToken=\{this\.state\.liveProcessRefreshToken\}/.test(APP_SRC),
       'App.jsx must pass liveProcessRefreshToken from state into AppHeader');
+  });
+});
+
+describe('AppBase.jsx workspace_started rebound anchor (2026-10)', () => {
+  it('reconnects the SSE (explicit empty scope) when the broadcast carries rebound:true', () => {
+    // Closing the BOUND project makes the server re-bind to a survivor and
+    // broadcast workspace_started(rebound:true). Without this reconnect the
+    // client's SSE stays stamped with the OLD bound name and the survivor's
+    // live feed never arrives (the label updates but the pane stays silent).
+    const re = /data\.rebound === true[\s\S]{0,200}?this\.initSSE\(\{ sid: null, project: null, instance: null \}\)/;
+    assert.ok(re.test(APPBASE_SRC),
+      'workspace_started must initSSE({sid:null,project:null,instance:null}) on rebound:true');
   });
 });
 

@@ -712,8 +712,13 @@ class AppBase extends React.Component {
   // `fallbackProject` (bound if still live, else first remaining tab), or
   // detach to bound when nothing survives. Closing a project we are NOT
   // viewing needs no client action — the next 5s poll drops its tab. Closing
-  // the BOUND project never moves the view: the server binding stays (chat
-  // keeps its last state, terminal is dead) and the user can relaunch via [+].
+  // the BOUND project: the server now re-binds to a surviving live project and
+  // broadcasts workspace_started(rebound:true) (routes/resume.js), so every
+  // client — this tab included — lands on the survivor through the existing
+  // workspace_started handler; no local activate here (a second switch would
+  // race the broadcast and leave a pseudo-bound `viewedProject === projectName`
+  // residue). When NO project survives there is no rebind and no broadcast —
+  // the view just stays on the dead bound project's last state.
   handleCloseProject = (project, fallbackProject, instanceKey) => {
     if ((!project || typeof project !== 'string') && !instanceKey) return;
     // Multi-instance: a × on a same-cwd twin must carry its instanceKey, or the server would
@@ -2272,6 +2277,20 @@ class AppBase extends React.Component {
           }
           if (this.state.resumeSwitch) this._clearResumeSwitch();
           if (isMobile) clearEntries();
+          // Bound-project rebound (2026-10): a close of the BOUND project made the
+          // server re-bind to a survivor (payload `rebound:true`). This client's SSE
+          // connection is still stamped with the OLD bound name (res._ccvViewProject
+          // is frozen at connect time, events.js), so the survivor's live feed would
+          // never reach it — reconnect with an explicit (empty) scope so the new
+          // connection stamps the NEW bound project. The reset above already
+          // force-detached any parallel view / attach, so every client re-scopes to
+          // the survivor here (the reset being unconditional, gating the reconnect on
+          // !viewedProject would leave a just-cleared parallel tab blank AND its feed
+          // still scoped to the old stamp). initSSE takes the scope explicitly —
+          // never read this.state here (setState hasn't flushed).
+          if (data.rebound === true) {
+            this.initSSE({ sid: null, project: null, instance: null });
+          }
         } catch (e) { reportSwallowed('sse.workspace_started', e); }
       });
       this.eventSource.addEventListener('workspace_stopped', () => {

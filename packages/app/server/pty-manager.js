@@ -1060,8 +1060,13 @@ export function killPty() {
  * same dead-state a natural exit produces). Records whose process already
  * exited are never re-anchor targets.
  *
+ * The killed record's persistent `cwd` is captured BEFORE the kill and
+ * returned so the close route can tell "the BOUND project was closed" apart
+ * from "a parallel project was closed" by exact-cwd comparison against
+ * CCV_PROJECT_DIR (never by basename — same-name twins would false-hit).
+ *
  * @returns {{ ok:boolean, key?:string, killedActive?:boolean,
- *            reattachedTo?:string|null, reason?:string }}
+ *            reattachedTo?:string|null, cwd?:string, reason?:string }}
  */
 export function killPtyFor({ cwd, project, instanceKey } = {}) {
   // Multi-instance forced disambiguation (2026-10-06): a project-name-only close that matches
@@ -1076,6 +1081,10 @@ export function killPtyFor({ cwd, project, instanceKey } = {}) {
   if (!key) return { ok: false, reason: 'not-found' };
   const s = ptys.get(key);
   if (!s) return { ok: false, reason: 'not-found' };
+  // Capture the record's ORIGINAL spawn cwd before the kill (never realpath'd —
+  // both sides of the comparison stay in the same path space; a realpath would
+  // split /tmp vs /private/tmp and miss the bound-cwd match).
+  const killedCwd = s.cwd || s.currentWorkspacePath || s.lastWorkspacePath || '';
   _killPtyRecord(s);
   const killedActive = key === activePtyKey;
   let reattachedTo = null;
@@ -1085,7 +1094,7 @@ export function killPtyFor({ cwd, project, instanceKey } = {}) {
     }
     if (reattachedTo) activePtyKey = reattachedTo;
   }
-  return { ok: true, key, killedActive, reattachedTo };
+  return { ok: true, key, killedActive, reattachedTo, cwd: killedCwd };
 }
 
 // Kill EVERY main PTY across all projects (workspaces stop / process teardown). The no-arg
