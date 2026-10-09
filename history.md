@@ -14,6 +14,8 @@
 
 - fix(web): **Git 变更面板刷新后保持开关状态** — 与文件浏览器同套 localStorage 持久化(`ccv_gitChangesOpen`,桌面 + iPad pad 模式默认关);互斥关闭(点文件浏览器/搜索图标)也落盘;constructor 读回时两面板互斥恢复(git 仅在 fileExplorer 恢复结果为关时才开),消除「上次以跳文件被动关 git 收尾」导致的刷新后双开。Coverage: `git-changes-open-persist.test.js`.
 
+## 1.9.1
+
 - feat(web): **[多项目] 项目标签支持拖拽排序并持久化** — 引入 `@dnd-kit` 实现 tab 条拖拽换序，顺序写 localStorage（`ccv.projectTabOrder.v1`）跨 5s 轮询与刷新保持；新 tab 自动追加末尾、消失 tab 自动剪枝；`restrictToHorizontalAxis + restrictToParentElement` 约束拖拽不飞出 strip；拖拽期间点击仍走 PointerSensor 4px 阈值不误判，tab × 关闭按钮 `onPointerDown stopPropagation` 防误触拖拽。Coverage: `project-tab-order.test.js`.
 - fix(web): **切换 tab 不再闪全屏遮罩** — 删除 resume/project 切换期间的 `resumeSwitchMask` / `mobileResumeSwitchMask` 半透明遮罩，切换反馈改由 tab 条左缘全局 spinner + 切中 tab 的状态点替换环承担（`resumeSwitch` state 仍驱动，清理逻辑不变）。
 - fix(web): **项目 tab 选中文字撑开高度 + 聚焦环被全局 reset 吃掉** — `.projectTab` 补 `line-height:1` / `user-select:none` / `box-sizing:border-box`；删除全局 `*:focus { outline:none!important; box-shadow:none!important }` 与 `*:focus-visible` 同理规则（这两条会把激活 tab 的 inset box-shadow 选中环在获焦时一并抹掉，正是"激活 tab 失焦才看得见"的根因），浏览器默认 focus outline 回归；MDXEditor 工具栏显式 `outline:none` 保持单环视觉。
@@ -40,19 +42,44 @@
 - fix(server): **/api/v2-entry 预期内 404 不再刷 stderr** — 点开请求详情时若该会话目录已被 quota/`/clear` 清理，NOT_FOUND 不再被 `console.error` 打进终端（404 照常返回前端），只有真异常才上报。Coverage: `v2-entry-endpoint.test.js`.
 
 - refactor(chat): **Header 交互边界重构：并行项目 chips / 当前项目 resume 下拉 / [+] 新建项目** — Header 只呈现并行项目（chips 收窄为存活主 PTY、删 resume 子 chip），点击 chip 纯视图切换（服务端新增项目视图解析层：per-project live feed + `/events?project=` 跨项目冷加载与按 viewed 项目过滤广播，纯逻辑抽到 `lib/v2/view-router.js`，不杀不重启任何进程）。resume 收窄为当前项目 hover 下拉（仅该项目最近 5 条、无分组），点会话=纯视图切换（attachedSid + `?sid=` 冷加载，删独立 scratch 子进程模型、跨项目接管、`POST /api/resume-session`、`_resumeTakeover` 锁）。删除项目改名（alias）功能，原位置改 [+] 按钮：虚线 [+] 钮独立于项目名旁，弹「新建工作区」选择器（复用 WorkspaceList/DirBrowser，与 Electron 一致）launch 新起并行项目，当前 PTY 后台存活。删除跨进程注册表、`workspaces/activate`、`sdk-manager.resumeSession`。配套修复：并行视图/附着时 pin 不写进绑定项目 pin 文件（persist 分支补门控防跨项目串写）；`?sid=` 解析失败服务端显式发 `sid-not-found`、前端 toast+自动 detach（不再静默回退到 live 会话）；并行视图/附着可经「返回当前会话」chip 退出（detach 一并清 viewedProject+attachedSid）；Electron 聊天 tab 隐藏 [+] 死控件、chips 恒空故禁轮询；`migrate_prompt` 改按被查看项目计算。并发启动修复（并入）：pty-manager 新增幂等 `attachPtyFor` 附着切换（chip 纯视图切换后终端不再钉死在最后 spawn 的项目）+ cli.js 恢复 `setWorkspaceClaudePath` 回填并令 `spawnClaude` 兜底优先 `CCV_CLAUDE_EXECUTABLE`（修受管机器 launch 新项目错解析到被 SIGKILL 的 npm 版 claude、秒死只剩裸 shell）。Coverage: `resume-sessions.test.js`, `resume-route.test.js`, `resume-sessions-map.test.js`, `scratch-pty-manager.test.js`, `pty-manager.test.js`, `api-workspaces.test.js`, `branch-routes-workspaces.test.js`, `view-router.test.js`, `new-ui-i18n.test.js`.
+- feat(web): **同名项目 tab/chip 消歧为 `name [1]` / `name [2]`** — 按 cwd 字典序编号（respawn 稳定），序号用不收缩 span 防长名省略号裁切，tab hover 显示各自完整目录；修复「两个同名 tab 同时点亮」——绑定 tab 按其 instanceKey（服务端 attached PTY）单独识别。Coverage: `resume-sessions-map.test.js`.
+- fix(web): **绑定项目 tab 高亮即时且正确** — viewing 改由客户端计算（`/api/live-processes` 的 `currentInstanceKey` + 纯函数 `resolveBoundInstance` 裁决），不再依赖轮询滞后的服务端 `active` 指针，修复「绑定 tab 不亮」与点击→高亮延迟，多客户端各自正确。Coverage: `resume-sessions-map.test.js`, `resume-route.test.js`.
+- feat(web): **刷新后记住并行工作区视图** — 切换到的并行项目（chip/tab 点击或并行 /resume）持久化到 localStorage（`ccv_viewedWorkspace`：project + instanceKey + cwd），刷新先经 `/api/live-processes` 校验再恢复；instanceKey 失效按 cwd 重解析新实例，同名歧义一律回落绑定不按名猜测，真实用户动作（detach/bound resume/launch）统一清除记录。Coverage: `viewed-workspace-storage.test.js`.
 
-- feat(security): **本地凭证加密落盘到 AES-256-GCM vault** — 代理 profile 的 apiKey、LAN 密码(auth)、IM 各平台 secret 从 profile.json/preferences.json 迁出,密文存独立的 credentials.json(0600),主密钥 master.key(0600)留本地;新增 credential-vault/store/access/migrate 四个模块,启动期幂等迁移(写后读回校验,磁盘明文不一致时以磁盘为准),全程 fail-closed(apiKey 解不出的 profile 直接退出路由、LAN 密码不可读拒绝远程访问而非空密码放行);config-backup 连带备份 credentials.json+master.key 并保留历史明文备份作恢复路径;credentials.json/master.key 对 IM 会话与远程文件 API 双端拒读。低敏 IM cred 字段(appKey/appId/botId)仍 base64。升级零操作:首启自动迁移,迁移前备份保留;**升级后请重启所有 ccv 进程及运行中的 `claude` 会话**——旧 interceptor 读到剥离后的 profile.json(apiKey 为空)会跳过鉴权重写却仍重写 URL,把你的默认 Anthropic 凭证转发给第三方 baseURL,该 fail-closed 守卫只存在于新代码中,旧进程无法触发。Coverage: `credential-vault.test.js`, `credential-store.test.js`, `credential-access.test.js`, `credential-migrate.test.js`.
+## 1.8.20
 
 - refactor(config): **本地配置写收敛到统一 json-store 内核** — 新增 `server/lib/json-store.js`（readJsonSafe/writeJsonAtomic/mutateJson/mutateJsonSync/withJsonLock/applyJsonPatch/lockPathFor），锁名按数据文件派生修复撞锁；`preferences.json` 的多写者（im-config 原无锁无原子、auth 原无锁）收敛为锁内 read-merge-write，`profile.json` 四处写点统一原子写；prefs-store/workspace-registry/session-pin-store/ask-store 迁移到内核（对外签名不变）。Coverage: `json-store.test.js`.
 
+- feat(security): **本地凭证加密落盘到 AES-256-GCM vault** — 代理 profile 的 apiKey、LAN 密码(auth)、IM 各平台 secret 从 profile.json/preferences.json 迁出,密文存独立的 credentials.json(0600),主密钥 master.key(0600)留本地;新增 credential-vault/store/access/migrate 四个模块,启动期幂等迁移(写后读回校验,磁盘明文不一致时以磁盘为准),全程 fail-closed(apiKey 解不出的 profile 直接退出路由、LAN 密码不可读拒绝远程访问而非空密码放行);config-backup 连带备份 credentials.json+master.key 并保留历史明文备份作恢复路径;credentials.json/master.key 对 IM 会话与远程文件 API 双端拒读。低敏 IM cred 字段(appKey/appId/botId)仍 base64。升级零操作:首启自动迁移,迁移前备份保留;**升级后请重启所有 ccv 进程及运行中的 `claude` 会话**——旧 interceptor 读到剥离后的 profile.json(apiKey 为空)会跳过鉴权重写却仍重写 URL,把你的默认 Anthropic 凭证转发给第三方 baseURL,该 fail-closed 守卫只存在于新代码中,旧进程无法触发。Coverage: `credential-vault.test.js`, `credential-store.test.js`, `credential-access.test.js`, `credential-migrate.test.js`.
+
+## 1.8.19
+
 - feat(im): **IM 会话弹窗头部新增「停止」按钮 + 修复停止清空配置** — 「已连接 :端口」旁加停止入口，Popconfirm 确认后 POST /config {enabled:false, applyProcess:true} 停用（停进程并写盘，重启不再拉起）。服务端 /config 对「只动 enabled」的 body 改为 read-merge-write，修复停止误清空 appKey/白名单/region 的 P0；「停止」在启动轮询中禁用避免竞态。设置面板另加独立「保存」按钮（applyProcess:false 只存盘不驱动进程）。Coverage: `im-quit-button.test.js`, `im-save-button.test.js`, `im-status-i18n.test.js`, `api-im.test.js`.
 - feat(chat): **任务列表 HUD 明细由原生 title 提示改为 antd 气泡** — 任务 label 的长 description 改用悬停 Popover 气泡卡展示（可滚动、可选中复制、保留换行），折叠态当前任务、进行中 activeForm、负责人徽章与展开/收起按钮的原生 title 一并换成 antd Tooltip，气泡主题跟随全局明暗。Coverage: `task-progress-hud.test.js`.
-- chore(ultraplan): **代码专家评审结论处置规则文案优化** — 评审建议处置行由「采纳 P0、P1 视情况采纳、P2/P3 延后」调整为「采纳 P0；P1 与 P2 视评估选择性采纳；忽略 P3」，code-expert.json、18 语言版 UltraPlan.md 与 ultraplanTemplates.js 共 20 处同步更新。
+
+## 1.8.18
+
 - fix(chat): **[对话] 面板偶发冻结（冷摄取闸门异常闩死）** — load_end 分帧管线此前无异常兜底，条目抛错会让 `_ingestRunning` 永久保持 true，live 条目全部堆进闸门缓冲永不泄洪（对话停更 + 内存增长），而服务端 30s ping 持续续期心跳看门狗使自动重连永不触发，只能刷新页面恢复（[终端] 走独立 WebSocket 不受影响）。现管线入口按 token 校验复位闸门、泄洪缓冲、重建去重索引并解除 loading；batch 路径补 null 条目守卫；v3 delta 改为构建成功后才标记去重 key；v3 冷装配抛错时泄洪已缓冲帧。Coverage: `cold-ingest-gate.test.js`, `v3-delta-seen-order.test.js`.
 - fix(sse): **客户端写失败改为上报并关闭连接** — `_safeSseWrite` 写异常此前只静默把客户端剔出广播数组，连接与 ping 保留导致前端永不重连、对话数据永久停更；现经 `reportSwallowed('sse.safe-write')` 上报并 `end()`，前端走既有自动重连恢复。Coverage: `events-backpressure.test.js`.
+- chore(ultraplan): **代码专家评审结论处置规则文案优化** — 评审建议处置行由「采纳 P0、P1 视情况采纳、P2/P3 延后」调整为「采纳 P0；P1 与 P2 视评估选择性采纳；忽略 P3」，code-expert.json、18 语言版 UltraPlan.md 与 ultraplanTemplates.js 共 20 处同步更新。
+
+## 1.8.17
+
 - feat(git): **本地未推送 commit 行尾徽章由文件数改为 +n/-n 行增删统计** — `getUnpushedCommits` 增加 numstat 通道按 hash 合并每 commit 行统计；文件列表仍走 name-status（保留真实 A/M/D 状态字母），双通道均加 `--no-renames`，rename 呈现为真实 A+D 路径（此前 numstat 紧凑表达式 `{old => new}` 会被当成伪文件名）；纯二进制/纯改名/mode-only 等零行统计 commit 行尾回退显示文件数，不再与空 commit 无区分。面板总计/repo 头/commit 行三处徽章抽取为共享 `StatBadges` 组件。Coverage: `git-unpushed.test.js`, `branch-lib-git-diff.test.js`.
+
+## 1.8.16
+
 - feat(system-prompt): **kimi-k3 preset 新增异步结果反轮询规则** — 等待 teammate/subagent 报告或后台任务结果时不再反复调用工具轮询,结果会以消息自动送达,发现连续两回合查同一件事即停。Coverage: `system-prompt-presets.test.js`.
 - chore(system-prompt): **全部 system prompt 模板移除 defensive-engineering 句** — systemPromptModel 与 7 个 preset(GLM-5.2/5.3、Qwen-3、deepseek-v4-pro/flash、kimi-k2.7-code/k3)同步删除。
+
+## 1.8.15
+
+- feat(proxy): **system 文本随主模型热切换改为启动期变量快照渲染、首请求即生效（消除人格错配）** — 弃 setImmediate 异步旁路（旧实现首请求沿用上一个模型 persona），`${...}` 变量启动期快照（git/env 等冻结在启动值），热切换渲染变纯字符串操作；同步修复 override 整段替换、append 保留块、live 门按 `_proxyRole` 分类、`x-claude-code-agent-id` 判据等多处 system 改写缺陷。
+- feat(system-prompt): **内置 preset 族系合并与别名扩展** — Qwen-3.7-Max 合并为族系条目 Qwen-3（覆盖整个 Qwen-3.* slug 家族），新增 `deepseek-flash` 别名（等同 deepseek-v4-flash）；旧墓碑 `QWEN-3.7-MAX` 自动归一保持 opt-out，别名表查询原型安全。
+- fix(proxy): **system-prompt 快照绑定（Bind A）一次性闩不再被小模型旁路请求烧掉** — 会话首个 main 形状请求是标题/压缩等小模型调用时不再烧闩，后续带注入人格的请求可正常绑快照，否则 `-c`/`-r` 恢复恒走「无记录不注入」。
+- fix(tests): **根治 server.test.js 反复出现的 `write EPIPE` uncaught flake（CI）** — 真正根因在 `execWithStdin`（git check-ignore 封装）未防护的 `child.stdin.write/end`（子进程先于 stdin 写完退出即 EPIPE 冒泡 uncaught），此前三次针对 SSE 路径的修复均未触达；补 `child.stdin.on('error')` + write/end try/catch + 单例 settle。
+- fix(chat): **SSE 请求进行中刷新页面导致「对话」空白或只显示旧对话** — 批量合并路径放行 messages 已知全量的 in-flight 载体（v3 wire `_v3Assembled` / v2 transcript `_syntheticV2`），冷加载源在首轮进行中直接 serve 当前会话目录。
+- feat(cli): **终端集成可观测 + 裸续接检测（静默）** — 安装/升级输出提示 shell hook 需新终端生效；`/api/claude-settings` 暴露 hook 安装状态（只读）；检测到「transcript 在写但请求未经 ccv」的裸 `claude -c` 续接仅记控制台日志。
 
 ## 1.8.x 系列总结(2026-08-24 → 2026-10-08,15 个 patch)
 
