@@ -528,6 +528,16 @@ function _processMessage(msg) {
           preTokens: meta && meta.pre_tokens,
           postTokens: meta && meta.post_tokens,
         });
+      } else if (_broadcastWs
+        && (msg.subtype === 'task_started' || msg.subtype === 'task_progress'
+          || msg.subtype === 'task_notification' || msg.subtype === 'task_updated')) {
+        // SDK background-task / subagent progress (SDK 0.2.x system subtypes). The TODO
+        // HUD (TaskProgressHud) is hook-fed and never fires in SDK mode; this is a
+        // separate, lossless relay so clients can observe task lifecycle (incl.
+        // failed/stopped/killed terminal states the TODO HUD vocabulary lacks). The
+        // server keeps no task table here — pure forward, merge semantics left to the
+        // client (task_updated.patch is a wire-safe delta, not a full snapshot).
+        _broadcastWs({ type: 'sdk-task', ..._normalizeSdkTask(msg) });
       }
       break;
 
@@ -582,6 +592,71 @@ function _processMessage(msg) {
     default:
       break;
   }
+}
+
+/**
+ * Normalize an SDK `task_*` system message into the camelCase relay payload
+ * broadcast as `{ type: 'sdk-task', ... }`. Lossless pass-through (snake→camel
+ * only) — no status mapping, no server-side merge: `task_updated.patch` stays a
+ * delta for the client to apply, and `skip_transcript` is forwarded as
+ * `skipTranscript` so the UI stage can decide whether to hide ambient tasks.
+ *
+ * Two constraints the UI stage MUST respect (server-side, this round is pure relay):
+ *  - TWO status vocabularies share the wire: `task_notification.status` is
+ *    `completed|failed|stopped`, while `task_updated.patch.status` is
+ *    `pending|running|completed|failed|killed` — adjacent but disjoint domains.
+ *    A client that naively merges `{...task, ...frame}` then `{...frame.patch}`
+ *    will mis-render; discriminate by `subtype` before reading `status`.
+ *  - NO server-side task table → NOT reconnect-replayed (unlike sdk-init's
+ *    `_lastInitSnapshot`). A frame missed during a WS gap (page refresh / 2s
+ *    reconnect) is NOT recoverable; an in-flight task is invisible to a late
+ *    client. Accept-as-ephemeral vs add a bounded last-state map is a UI-stage
+ *    decision (see sdk-mode-todo-list; if replay is wanted, reuse task-state.js's
+ *    reducer semantics rather than growing a second table here).
+ *
+ * Note: the 4 subtypes relayed here are the PUBLIC contract (sdk.d.ts SDKMessage
+ * union). The SDK additionally emits @internal `task_summary` / `post_turn_summary`
+ * system subtypes which are deliberately NOT relayed this round — pending real-device
+ * observation (smoke item ⑧) of whether they carry signal worth a sniff-relay.
+ */
+function _normalizeSdkTask(msg) {
+  const out = {
+    subtype: msg.subtype,
+    sessionId: msg.session_id || null,
+    taskId: msg.task_id != null ? String(msg.task_id) : null,
+  };
+  if (msg.tool_use_id != null) out.toolUseId = msg.tool_use_id;
+  if (msg.description != null) out.description = msg.description;
+  if (msg.summary != null) out.summary = msg.summary;
+  if (msg.status != null) out.status = msg.status;
+  if (msg.task_type != null) out.taskType = msg.task_type;
+  if (msg.workflow_name != null) out.workflowName = msg.workflow_name;
+  if (msg.last_tool_name != null) out.lastToolName = msg.last_tool_name;
+  if (msg.output_file != null) out.outputFile = msg.output_file;
+  if (msg.prompt != null) out.prompt = msg.prompt;
+  if (msg.skip_transcript != null) out.skipTranscript = msg.skip_transcript === true;
+  if (msg.usage && typeof msg.usage === 'object') {
+    out.usage = {
+      totalTokens: msg.usage.total_tokens ?? null,
+      toolUses: msg.usage.tool_uses ?? null,
+      durationMs: msg.usage.duration_ms ?? null,
+    };
+  }
+  // task_updated: patch is a merge delta (wire-safe subset of TaskState). Forward
+  // verbatim-in-shape (camelCased) so the client merges into its own task map.
+  // An all-empty patch ({}) is a harmless no-op frame — skip it to spare a broadcast.
+  if (msg.patch && typeof msg.patch === 'object') {
+    const p = msg.patch;
+    const patch = {};
+    if (p.status != null) patch.status = p.status;
+    if (p.description != null) patch.description = p.description;
+    if (p.end_time != null) patch.endTime = p.end_time;
+    if (p.total_paused_ms != null) patch.totalPausedMs = p.total_paused_ms;
+    if (p.error != null) patch.error = p.error;
+    if (p.is_backgrounded != null) patch.isBackgrounded = p.is_backgrounded;
+    if (Object.keys(patch).length > 0) out.patch = patch;
+  }
+  return out;
 }
 
 /**

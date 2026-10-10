@@ -29,6 +29,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { _resetForTest as _resetErrReport } from '@ccv/core/error-report';
 
 // ── env set first → dynamic module import ──
 let tmpDir;
@@ -1220,6 +1221,271 @@ describe('sdk-manager-query — getPendingApprovals / onQueryError / init-compac
     assert.equal(cb[0].trigger, 'auto');
     assert.equal(cb[0].preTokens, 150000);
     assert.equal(cb[0].postTokens, 40000);
+  });
+});
+
+describe('sdk-manager-query — SDK task_* 消息无损转发为 sdk-task 广播', () => {
+  it('task_started → 广播 sdk-task(subtype/taskId/description, snake→camel)', async () => {
+    const { deps, broadcasts, turnEnds } = makeDeps();
+    const started = {
+      type: 'system', subtype: 'task_started', session_id: 'sess-1',
+      task_id: 'task-1', tool_use_id: 'tu-1', description: '探索代码库',
+      task_type: 'local_workflow', workflow_name: 'spec', prompt: 'do it',
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), started] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+
+    const t = broadcasts.filter((b) => b.type === 'sdk-task');
+    // Whole-frame deepEqual: pins EVERY forwarded field (incl. prompt) and proves the
+    // relay leaks nothing else (no uuid, no snake_case keys, no extra envelope noise).
+    assert.deepEqual(t, [{
+      type: 'sdk-task', subtype: 'task_started', sessionId: 'sess-1', taskId: 'task-1',
+      toolUseId: 'tu-1', description: '探索代码库', taskType: 'local_workflow',
+      workflowName: 'spec', prompt: 'do it',
+    }]);
+    // Pure relay: the task message itself does NOT fire onTurnEnd. The single
+    // turnEnd here comes from sendUserMessage's own result, not from task_started.
+    assert.equal(turnEnds.length, 1, 'task message must not fire onTurnEnd (the result did)');
+  });
+
+  it('task_progress → usage snake→camel(totalTokens/toolUses/durationMs) + lastToolName', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const progress = {
+      type: 'system', subtype: 'task_progress', session_id: 'sess-1',
+      task_id: 'task-2', description: '运行中',
+      usage: { total_tokens: 3400, tool_uses: 12, duration_ms: 8800 },
+      last_tool_name: 'Bash',
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), progress] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+
+    const t = broadcasts.filter((b) => b.type === 'sdk-task');
+    assert.equal(t.length, 1);
+    assert.equal(t[0].subtype, 'task_progress');
+    assert.deepEqual(t[0].usage, { totalTokens: 3400, toolUses: 12, durationMs: 8800 });
+    assert.equal(t[0].lastToolName, 'Bash');
+  });
+
+  it('task_notification → status/outputFile 透传, usage 缺省时不挂 usage 键', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const notif = {
+      type: 'system', subtype: 'task_notification', session_id: 'sess-1',
+      task_id: 'task-3', status: 'failed', output_file: '/tmp/out.txt', summary: '炸了',
+      // usage omitted — notification.usage is optional in the SDK, must be tolerated
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), notif] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+
+    const t = broadcasts.filter((b) => b.type === 'sdk-task');
+    assert.equal(t.length, 1);
+    assert.equal(t[0].subtype, 'task_notification');
+    assert.equal(t[0].status, 'failed');
+    assert.equal(t[0].outputFile, '/tmp/out.txt');
+    assert.equal(t[0].summary, '炸了');
+    assert.ok(!('usage' in t[0]), 'usage 缺省时不应出现 usage 键');
+  });
+
+  it('task_updated → patch 原样透传(merge 语义留给客户端), 字段 camelCase', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const updated = {
+      type: 'system', subtype: 'task_updated', session_id: 'sess-1', task_id: 'task-4',
+      patch: { status: 'killed', end_time: 1730000000000, total_paused_ms: 120, error: 'killed by user', is_backgrounded: true },
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), updated] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+
+    const t = broadcasts.filter((b) => b.type === 'sdk-task');
+    assert.equal(t.length, 1);
+    assert.equal(t[0].subtype, 'task_updated');
+    assert.deepEqual(t[0].patch, {
+      status: 'killed', endTime: 1730000000000, totalPausedMs: 120, error: 'killed by user', isBackgrounded: true,
+    });
+  });
+
+  it('skip_transcript:true → 仍广播且带 skipTranscript:true(隐藏决策留给 UI)', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ambient = {
+      type: 'system', subtype: 'task_started', session_id: 'sess-1',
+      task_id: 'task-amb', description: 'housekeeping', skip_transcript: true,
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), ambient] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+
+    const t = broadcasts.filter((b) => b.type === 'sdk-task');
+    assert.equal(t.length, 1);
+    assert.equal(t[0].skipTranscript, true);
+  });
+
+  it('多条 task 消息 → 各自一条 sdk-task 广播(全量转发不丢帧)', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const msgs = [
+      sysInit(),
+      { type: 'system', subtype: 'task_started', session_id: 'sess-1', task_id: 'a', description: 'x' },
+      { type: 'system', subtype: 'task_progress', session_id: 'sess-1', task_id: 'a', description: 'x', usage: { total_tokens: 1, tool_uses: 1, duration_ms: 1 } },
+      { type: 'system', subtype: 'task_notification', session_id: 'sess-1', task_id: 'a', status: 'completed', output_file: '/o', summary: 'done' },
+    ];
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: msgs }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(6);
+
+    const subtypes = broadcasts.filter((b) => b.type === 'sdk-task').map((b) => b.subtype);
+    assert.deepEqual(subtypes, ['task_started', 'task_progress', 'task_notification']);
+  });
+
+  it('无 broadcastWs → task 分支在调用前短路(非靠吞异常), 回合照常结束', async () => {
+    const warns = [];
+    const orig = console.warn;
+    console.warn = (...a) => warns.push(a.join(' '));
+    _resetErrReport(); // module-level dedup counters: keep this assertion order-independent
+    try {
+      const turnEnds = [];
+      sdk.__setQueryForTests(makeResidentQuery({
+        initMsgs: [sysInit(), { type: 'system', subtype: 'task_started', session_id: 's', task_id: 't', description: 'd' }],
+      }));
+      sdk.initSdkSession(tmpDir, 'proj', { onTurnEnd: (x) => turnEnds.push(x) }); // no broadcastWs
+      await sdk.sendUserMessage('go');
+      await tick(4);
+      assert.equal(turnEnds.length, 1);
+      assert.ok(!warns.some((w) => w.includes('sdk-manager.process-message')),
+        'guard must short-circuit BEFORE the call — a swallowed TypeError is not a pass');
+    } finally { console.warn = orig; }
+  });
+
+  it('task 消息在 respond 期间到达(回合中途) → 按到达顺序广播且不额外结束回合', async () => {
+    const { deps, broadcasts, turnEnds } = makeDeps();
+    const mid = [
+      { type: 'system', subtype: 'task_started', session_id: 'sess-1', task_id: 'm1', description: 'bg' },
+      { type: 'system', subtype: 'task_progress', session_id: 'sess-1', task_id: 'm1', description: 'bg', usage: { total_tokens: 1, tool_uses: 1, duration_ms: 1 } },
+    ];
+    sdk.__setQueryForTests(makeResidentQuery({
+      initMsgs: [sysInit()],
+      respond: () => [...mid, assistantMsg([{ type: 'text', text: 'x' }]), resultMsg()],
+    }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(6);
+    // Mid-turn frames relayed in arrival order; only the trailing result fires onTurnEnd.
+    assert.deepEqual(broadcasts.map((b) => b.type), ['sdk-task', 'sdk-task']);
+    assert.equal(turnEnds.length, 1);
+  });
+
+  it('task 消息不触碰 _queryBusy：回合在飞时到达 task 消息,第二条消息仍须入队', async () => {
+    const { deps } = makeDeps();
+    let openGate; const gate = new Promise((r) => { openGate = r; });
+    let n = 0;
+    sdk.__setQueryForTests(makeResidentQuery({
+      initMsgs: [sysInit(), { type: 'system', subtype: 'task_started', session_id: 'sess-1', task_id: 't', description: 'd' }],
+      respond: async () => { if (n++ === 0) await gate; return [resultMsg()]; },
+    }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    const p1 = sdk.sendUserMessage('first');
+    await tick(6); // task 消息已处理；'first' 回合仍在飞(respond 停在 gate)
+    const p2 = sdk.sendUserMessage('second'); // 不 await：若 _queryBusy 被破坏,此 promise 会挂到 gate 放行
+    await tick(6);
+    try {
+      assert.equal(sdk.getQueueSnapshot().length, 1, 'task msgs must not touch _queryBusy (turn in flight → must enqueue)');
+    } finally {
+      openGate(); // 断言失败也必须放行 gate,否则挂到 10s timeout(慢红)
+      await p1; await p2;
+    }
+    await tick(8);
+    assert.equal(sdk.getQueueSnapshot().length, 0);
+  });
+
+  it('两轮消息：task 消息不扰动回合 FIFO(两轮=两次 turnEnd+两次 push+单条广播)', async () => {
+    const { deps, broadcasts, turnEnds } = makeDeps();
+    const started = { type: 'system', subtype: 'task_started', session_id: 'sess-1', task_id: 'task-1', description: 'd' };
+    const fq = makeResidentQuery({ initMsgs: [sysInit(), started] });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+    assert.equal(turnEnds.length, 1);
+    await sdk.sendUserMessage('second');
+    await tick(5);
+    assert.equal(turnEnds.length, 2, '两轮各一次 turnEnd — task 消息不得吞掉/多算回合');
+    assert.equal(fq.calls[0].pushed.length, 2);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-task').length, 1);
+  });
+
+  it('patch 的 falsy 合法值(end_time:0/total_paused_ms:0/error:""/is_backgrounded:false)不得丢失', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const updated = {
+      type: 'system', subtype: 'task_updated', session_id: 'sess-1', task_id: 't-falsy',
+      patch: { end_time: 0, total_paused_ms: 0, error: '', is_backgrounded: false },
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), updated] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+    const t = broadcasts.filter((b) => b.type === 'sdk-task');
+    assert.deepEqual(t[0].patch, { endTime: 0, totalPausedMs: 0, error: '', isBackgrounded: false });
+  });
+
+  it('patch 全空 → 帧仍广播但不挂 patch 键(省一帧 no-op merge)', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const updated = {
+      type: 'system', subtype: 'task_updated', session_id: 'sess-1', task_id: 't-empty',
+      patch: {},
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), updated] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+    const t = broadcasts.filter((b) => b.type === 'sdk-task');
+    assert.equal(t.length, 1);
+    assert.equal(t[0].subtype, 'task_updated');
+    assert.ok(!('patch' in t[0]), 'all-empty patch must not be attached (a no-op merge frame)');
+  });
+
+  it('skip_transcript:false 也转发为 skipTranscript:false(布尔强转双射)', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const started = {
+      type: 'system', subtype: 'task_started', session_id: 'sess-1',
+      task_id: 't-false', description: 'd', skip_transcript: false,
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), started] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-task')[0].skipTranscript, false);
+  });
+
+  it('usage 部分缺省 → 缺省键显式补 null(不是 undefined/不丢键)', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const progress = {
+      type: 'system', subtype: 'task_progress', session_id: 'sess-1',
+      task_id: 't-part', description: 'd', usage: { tool_uses: 3, duration_ms: 9 },
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), progress] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+    const u = broadcasts.filter((b) => b.type === 'sdk-task')[0].usage;
+    assert.deepEqual(u, { totalTokens: null, toolUses: 3, durationMs: 9 });
+    assert.ok('totalTokens' in u, 'null fill, not undefined — undefined would vanish on the JSON wire');
+  });
+
+  it('非 task 的 system subtype(hook_started) → 不产生 sdk-task 广播', async () => {
+    const { deps, broadcasts } = makeDeps();
+    sdk.__setQueryForTests(makeResidentQuery({
+      initMsgs: [sysInit(), { type: 'system', subtype: 'hook_started', session_id: 'sess-1', hook_name: 'x' }],
+    }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-task').length, 0);
   });
 });
 
