@@ -410,6 +410,18 @@ function postResumeSessionHandler(req, res, parsedUrl, isLocal, deps) {
       return;
     }
     try {
+      // SDK mode: there is no claude PTY to inject `/resume` into — the sdk-manager
+      // switches the session identity directly (next user message resumes it).
+      // Read the env at request time (not module top) so tests can flip it per case.
+      if (process.env.CCV_SDK_MODE === '1') {
+        const sdk = await import('../lib/sdk-manager.js');
+        const r = sdk.switchToSession(sessionUuid);
+        if (r.ok) { sendJson(res, 200, { ok: true }); return; }
+        if (r.reason === 'busy') { sendJson(res, 409, { ok: false, reason: 'busy' }); return; }
+        if (r.reason === 'unavailable') { sendJson(res, 409, { ok: false, reason: 'unavailable' }); return; }
+        sendJson(res, 400, { ok: false, reason: r.reason || 'bad-uuid' });
+        return;
+      }
       const pm = await import('../pty-manager.js');
       const targetProject = project || (_projectName || '');
       // Multi-instance: a project-name-only resume that matches 2+ live same-basename

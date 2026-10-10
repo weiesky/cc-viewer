@@ -24,11 +24,12 @@
  * not silently alter source.
  */
 
-import { describe, it, before, after, afterEach } from 'node:test';
+import { describe, it, before, after, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { _resetForTest as _resetErrReport } from '@ccv/core/error-report';
 
 // ── env set first → dynamic module import ──
 let tmpDir;
@@ -59,41 +60,136 @@ function makeDeps(extra = {}) {
   return { deps, broadcasts, turnEnds };
 }
 
-// Turn a preset msg array into a controllable fake query().
-// query({prompt,options}) returns an object that is both async-iterable (for `for await`)
-// and has interrupt()/close() methods (used by interruptTurn/stopSession).
-function makeFakeQuery(msgs, { onClose, onInterrupt, beforeYield } = {}) {
+// Resident-mode fake query factory: the sdk-manager now constructs ONE long-lived
+// query per session (streaming input) and pushes one SDKUserMessage per turn into a
+// never-ending input queue. The fake mirrors that: it consumes the pushed messages
+// via for-await, yields the `initMsgs` once at construction, then runs respond(msg)
+// per pushed message (default: one resultMsg).
+//
+// Exposed controls:
+//   calls        — [{ options, pushed }] per construction (pushed = SDKUserMessages consumed)
+//   interruptCalls / closeCalls — control-surface counters
+//   releaseNextInterrupt() — make the NEXT interrupt() synchronously release the current
+//                   turn (yield the pending respond output), simulating the CLI's
+//                   "interrupt → turn wraps up with a result" contract
+//   autoRelease(ms) — real-timer fallback release (tests that mock setTimeout must NOT
+//                   use this — the grace timer shares the mocked API)
+//   endWith(err) — end the output stream (err → throw): session-level death
+//   released     — count of released (completed) turns
+function makeResidentQuery({ respond, initMsgs, autoRelease = 0 } = {}) {
   const calls = [];
+  let current = null;
   function fakeQuery({ prompt, options }) {
-    calls.push({ prompt, options });
-    let closed = false;
-    const iterable = {
+    const rec = { options, pushed: [] };
+    calls.push(rec);
+    const state = {
+      ended: false, err: null, released: 0,
+      interruptCalls: 0, closeCalls: 0,
+      releaseNext: false, releaseCurrent: null, turn: null,
+    };
+    current = state;
+    const api = {
       async *[Symbol.asyncIterator]() {
-        for (const m of msgs) {
-          if (closed) return;
-          if (beforeYield) {
-            // Allow the test to inject a side effect before a given msg (e.g. trigger an
-            // approval); if it returns a promise, await it
-            await beforeYield(m, { prompt, options });
-          }
-          // yield to a microtask to simulate an async stream
+        const done = () => { if (state.err) throw state.err; };
+        const runRespond = async (msg) => {
+          if (!respond) return [resultMsg()];
+          // A respond() that REJECTS parks the turn instead (gate pattern) — real CLI
+          // turns wait on tool calls; only iterator-level death (endWith) throws.
+          // The death race is wired through: endWith while respond is awaiting (its
+          // gate, an approval, …) short-circuits the wait so the death is observed.
+          try {
+            return await Promise.race([
+              respond(msg, { options, state, call: rec }),
+              new Promise((res) => { state.deathWake = () => res(undefined); }),
+            ]);
+          } catch { return null; }
+        };
+        for (const m of initMsgs || []) {
+          if (state.ended) { done(); return; }
           await Promise.resolve();
-          if (closed) return;
           yield m;
         }
+        for await (const msg of prompt) {
+          if (state.ended) { done(); return; }
+          rec.pushed.push(msg);
+          let out = await runRespond(msg);
+          if (out == null) {
+            if (state.ended) { done(); return; } // death short-circuited the respond wait
+            // Parked turn (gate / approval in flight): wait for a release — explicit
+            // (releaseCurrent), interrupt-triggered, timer-based, or close/teardown.
+            await new Promise((resolve) => {
+              state.turn = { resolve };
+              state.releaseCurrent = resolve;
+              if (state.interruptReleasePending) {
+                // The interrupt arrived while respond() was still awaiting — release now.
+                state.interruptReleasePending = false;
+                state.releaseNext = false;
+                resolve();
+              } else if (autoRelease > 0) setTimeout(resolve, autoRelease);
+            });
+            state.turn = null;
+            state.releaseCurrent = null;
+            // close()/teardown ends the stream WITHOUT completing the turn (the CLI
+            // child dies mid-turn: no result). Explicit/interrupt releases re-run
+            // respond below (the turn wraps up and yields its result).
+            if (state.ended) { done(); return; }
+            out = await runRespond(msg);
+            if (out == null) continue; // re-park refused: skip this turn's output
+          }
+          state.released++;
+          for (const m of out) {
+            if (state.ended) { done(); return; }
+            await Promise.resolve();
+            yield m;
+          }
+        }
+        done();
       },
       interrupt() {
-        if (onInterrupt) onInterrupt();
+        state.interruptCalls++;
+        // Honor a pending releaseNext request: the CLI's interrupt lets the in-flight
+        // turn wrap up and emit its (error) result. The turn may still be inside
+        // respond() (approval/gate wait) with no parked-release registered yet —
+        // remember the request until the turn parks.
+        if (state.releaseNext) {
+          if (state.releaseCurrent) {
+            state.releaseNext = false;
+            state.releaseCurrent();
+          } else {
+            state.interruptReleasePending = true;
+          }
+        }
         return Promise.resolve();
       },
       close() {
-        closed = true;
-        if (onClose) onClose();
+        state.closeCalls++;
+        state.ended = true;
+        if (state.releaseCurrent) state.releaseCurrent();
       },
     };
-    return iterable;
+    return api;
   }
   fakeQuery.calls = calls;
+  fakeQuery.current = () => current;
+  fakeQuery.releaseNextInterrupt = () => {
+    if (!current) return;
+    current.releaseNext = true;
+    // The turn may already be parked when this is called — release immediately.
+    if (current.releaseCurrent) {
+      current.releaseNext = false;
+      current.releaseCurrent();
+    }
+  };
+  fakeQuery.endWith = (err) => {
+    if (!current) return;
+    current.err = err || null;
+    current.ended = true;
+    // Wake any pending wait (parked turn OR an in-flight respond) so the iterator
+    // observes the end promptly — a death detected while idle-waiting for input only
+    // surfaces at the next turn boundary (matching the real SDK's for-await laziness).
+    if (current.releaseCurrent) current.releaseCurrent();
+    if (current.deathWake) current.deathWake();
+  };
   return fakeQuery;
 }
 
@@ -113,9 +209,24 @@ function resultMsg(extra = {}) {
   return { type: 'result', subtype: 'success', ...extra };
 }
 
+// Text a pushed SDKUserMessage carries (assertions should use this, never raw objects)
+function pushedText(msg) {
+  return msg && msg.message && msg.message.content && msg.message.content[0] && msg.message.content[0].text;
+}
+
 // Wait a few microtasks (let synchronous pushes / queue drain finish)
 async function tick(n = 3) {
   for (let i = 0; i < n; i++) await Promise.resolve();
+}
+
+// Poll a condition across microtasks — used under mock.timers to confirm a side effect
+// (e.g. interrupt() called → grace timer registered) before ticking fake time.
+async function waitMicro(cond, max = 60) {
+  for (let i = 0; i < max; i++) {
+    if (cond()) return true;
+    await Promise.resolve();
+  }
+  return cond();
 }
 
 // Hard afterEach cleanup: restoring the real query is each describe's own job, but state
@@ -151,7 +262,7 @@ describe('sdk-manager-query — options 构造（env/settings/resume 透传）',
     const { deps } = makeDeps();
     const childEnv = { ...process.env, ANTHROPIC_BASE_URL: 'http://127.0.0.1:43210', DISABLE_AUTOUPDATER: '1' };
     const settings = { env: { ANTHROPIC_BASE_URL: 'http://127.0.0.1:43210' } };
-    const fq = makeFakeQuery([sysInit(), assistantMsg([{ type: 'text', text: 'ok' }]), resultMsg()]);
+    const fq = makeResidentQuery({ initMsgs: [sysInit()], respond: () => [assistantMsg([{ type: 'text', text: 'ok' }]), resultMsg()] });
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', { ...deps, env: childEnv, settings });
 
@@ -167,7 +278,7 @@ describe('sdk-manager-query — options 构造（env/settings/resume 透传）',
 
   it('未传 env/settings → options 不含这两个键（SDK 侧回落 process.env 默认）', async () => {
     const { deps } = makeDeps();
-    const fq = makeFakeQuery([sysInit(), resultMsg()]);
+    const fq = makeResidentQuery({ initMsgs: [sysInit()] });
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
@@ -181,7 +292,7 @@ describe('sdk-manager-query — options 构造（env/settings/resume 透传）',
 
   it('claudeExecutable 传入 → options.pathToClaudeCodeExecutable 生效(与 PTY 同优先级解析)', async () => {
     const { deps } = makeDeps();
-    const fq = makeFakeQuery([sysInit(), resultMsg()]);
+    const fq = makeResidentQuery({ initMsgs: [sysInit()] });
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', { ...deps, claudeExecutable: '/opt/antcc/bin/claude' });
 
@@ -195,7 +306,7 @@ describe('sdk-manager-query — options 构造（env/settings/resume 透传）',
 
   it('未传 claudeExecutable → options 不含 pathToClaudeCodeExecutable 键', async () => {
     const { deps } = makeDeps();
-    const fq = makeFakeQuery([sysInit(), resultMsg()]);
+    const fq = makeResidentQuery({ initMsgs: [sysInit()] });
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
@@ -208,7 +319,7 @@ describe('sdk-manager-query — options 构造（env/settings/resume 透传）',
 
   it('default permissionMode → options 带 canUseTool 且无 allowDangerouslySkipPermissions', async () => {
     const { deps } = makeDeps();
-    const fq = makeFakeQuery([sysInit(), resultMsg()]);
+    const fq = makeResidentQuery({ initMsgs: [sysInit()] });
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
@@ -233,7 +344,10 @@ describe('sdk-manager-query — 完整一轮：init → assistant → user → r
       { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } },
       resultMsg(),
     ];
-    sdk.__setQueryForTests(makeFakeQuery(msgs));
+    sdk.__setQueryForTests(makeResidentQuery({
+      initMsgs: [msgs[0]],
+      respond: () => msgs.slice(1),
+    }));
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     await sdk.sendUserMessage('hi there');
@@ -251,13 +365,12 @@ describe('sdk-manager-query — 完整一轮：init → assistant → user → r
   it('stream_event / 未知类型消息被安全忽略（不抛、不影响 session/turnEnd）', async () => {
     const { deps, turnEnds } = makeDeps();
     const msgs = [
-      sysInit(),
       { type: 'stream_event', event: { type: 'message_start' } },
       { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'x' } } },
       { type: 'totally_unknown_type', foo: 'bar' },
       resultMsg(),
     ];
-    sdk.__setQueryForTests(makeFakeQuery(msgs));
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit()], respond: () => msgs }));
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     await assert.doesNotReject(() => sdk.sendUserMessage('go'));
@@ -267,30 +380,22 @@ describe('sdk-manager-query — 完整一轮：init → assistant → user → r
   });
 });
 
-// Shared file-level driver: returns a fake query that calls options.canUseTool(...) after
-// iterating to system/init and exposes the promise to the test side via an external ctrl;
-// after the test side advances via resolveApproval/cancelApproval, the fake yields result.
+// Shared file-level driver: a resident fake that, on the first pushed message, calls
+// options.canUseTool(...) and exposes its promise to the test side via ctrl; after the
+// test advances via resolveApproval/cancelApproval, the fake yields result for that turn.
 function makeCanUseToolQuery(toolName, input, ctrl) {
-  return function fakeQuery({ options }) {
-    let closed = false;
-    const iterable = {
-      async *[Symbol.asyncIterator]() {
-        yield sysInit();
-        await Promise.resolve();
-        // Trigger canUseTool — do not await; save the promise for the test to advance
-        ctrl.promise = options.canUseTool(toolName, input, ctrl.cutOpts || {});
-        ctrl.captured = true;
-        // Wait for the approval result (ctrl.promise resolves after the test side calls
-        // resolveApproval)
-        ctrl.result = await ctrl.promise;
-        if (closed) return;
-        yield resultMsg();
-      },
-      interrupt() { return Promise.resolve(); },
-      close() { closed = true; },
-    };
-    return iterable;
-  };
+  return makeResidentQuery({
+    initMsgs: [sysInit()],
+    respond: async (msg, { options }) => {
+      void msg;
+      if (ctrl.used) return [resultMsg()];
+      ctrl.used = true;
+      ctrl.promise = options.canUseTool(toolName, input, ctrl.cutOpts || {});
+      ctrl.captured = true;
+      ctrl.result = await ctrl.promise;
+      return [resultMsg()];
+    },
+  });
 }
 
 describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权限审批', () => {
@@ -571,7 +676,7 @@ describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权
 describe('sdk-manager-query — bypassPermissions 模式', () => {
   it('canUseTool 常挂(npm 硬闸需要)+ allowDangerouslySkipPermissions=true，正常跑完一轮', async () => {
     const { deps, turnEnds } = makeDeps();
-    const fq = makeFakeQuery([sysInit(), assistantMsg([{ type: 'text', text: 'ok' }]), resultMsg()]);
+    const fq = makeResidentQuery({ initMsgs: [sysInit()], respond: () => [assistantMsg([{ type: 'text', text: 'ok' }]), resultMsg()] });
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', { ...deps, permissionMode: 'bypassPermissions' });
 
@@ -712,9 +817,12 @@ describe('sdk-manager-query — 审批政策链(im-deny → npm 硬闸 → bypas
 });
 
 describe('sdk-manager-query — resume / sessionId 续连', () => {
-  it('第二轮带上 options.resume = 上一轮 sessionId', async () => {
+  it('常驻 query 只构造一次；两轮消息都推入同一输入流', async () => {
     const { deps } = makeDeps();
-    const fq = makeFakeQuery([sysInit('sess-resume'), assistantMsg([{ type: 'text', text: 'a' }]), resultMsg()]);
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-resume')],
+      respond: () => [assistantMsg([{ type: 'text', text: 'a' }]), resultMsg()],
+    });
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
@@ -725,75 +833,90 @@ describe('sdk-manager-query — resume / sessionId 续连', () => {
     await sdk.sendUserMessage('second');
     await tick(4);
 
-    // The second query call's options.resume should be sess-resume
+    // Resident: a single construction; both turns are pushed into the same input queue
+    assert.equal(fq.calls.length, 1);
+    assert.deepEqual(fq.calls[0].pushed.map(pushedText), ['first', 'second']);
+  });
+
+  it('会话死亡后下一条消息惰性重建，options.resume = 已捕获的 sessionId', async () => {
+    const { deps } = makeDeps();
+    const errors = [];
+    let generation = 0;
+    let releaseTurn;
+    const gate = new Promise((r) => { releaseTurn = r; });
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-die')],
+      respond: async () => { if (generation === 0) { await gate; return null; } return [resultMsg()]; },
+    });
+    sdk.__setQueryForTests((arg) => { generation = fq.calls.length; return fq(arg); });
+    sdk.initSdkSession(tmpDir, 'proj', { ...deps, onQueryError: (m) => errors.push(m) });
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(5);
+    assert.equal(fq.calls.length, 1);
+
+    fq.endWith(new Error('boom')); // session-level death mid-turn
+    await p1; // settled by the death path — must not hang
+    await tick(4);
+    assert.deepEqual(errors, ['boom']);
+
+    await sdk.sendUserMessage('second'); // lazy reconstruction
+    await tick(6);
     assert.equal(fq.calls.length, 2);
-    assert.equal(fq.calls[1].options.resume, 'sess-resume');
+    assert.equal(fq.calls[1].options.resume, 'sess-die');
   });
 });
 
 describe('sdk-manager-query — 队列 drain（忙时第二条入队后被 drain）', () => {
-  it('query 进行中收到第二条 → 入队 → 第一轮结束后 drain 跑第二轮', async () => {
+  it('回合进行中收到第二条 → 入队 → 第一回合 result 后 drain 推第二轮', async () => {
     const { deps } = makeDeps();
-    // The fake query deliberately leaves a controllable gate between yields so we can push
-    // a second message while the first round is in flight
     let releaseFirst;
     const firstGate = new Promise((r) => { releaseFirst = r; });
-    let round = 0;
-    function fq({ options }) {
-      void options;
-      const myRound = round++;
-      return {
-        async *[Symbol.asyncIterator]() {
-          yield sysInit('sess-q');
-          if (myRound === 0) {
-            await firstGate; // hold the first round so the test can push a second message
-          }
-          yield resultMsg();
-        },
-        interrupt() { return Promise.resolve(); },
-        close() {},
-      };
-    }
-    fq.calls = 0;
-    const origFq = fq;
-    let callCount = 0;
-    fq = function countingFq(arg) { callCount++; return origFq(arg); };
+    let idx = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-q')],
+      respond: async () => {
+        if (idx++ === 0) await firstGate; // hold the first turn so the test can queue
+        return [resultMsg()];
+      },
+    });
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     const p1 = sdk.sendUserMessage('first');
-    await tick(4); // let the first round reach await firstGate
+    await tick(5); // let the first turn reach the gate
     const p2 = sdk.sendUserMessage('second'); // _queryBusy=true → queued, resolves immediately
     const r2 = await p2;
     assert.equal(r2, undefined, '入队分支直接 return undefined');
 
-    releaseFirst(); // release the first round → drains the second after it finishes
+    releaseFirst();
     await p1;
     await tick(6);
 
-    assert.equal(callCount, 2, '入队的第二条应被 drain → 共启动两次 query');
+    assert.equal(fq.calls.length, 1, '常驻：同一构造');
+    assert.deepEqual(fq.calls[0].pushed.map(pushedText), ['first', 'second'], '入队的第二条应被 drain 推入');
   });
 });
 
-describe('sdk-manager-query — interruptTurn 关活跃 query + 排空 pending 审批', () => {
-  it('在审批 pending 时 interruptTurn → 返回 [{id,kind}] 且 query.close 被调用', async () => {
+describe('sdk-manager-query — interruptTurn 真中断 + 排空 pending 审批', () => {
+  it('在审批 pending 时 interruptTurn → 返回 [{id,kind}] 且调用 interrupt() 而非 close()', async () => {
     const { deps, broadcasts } = makeDeps();
     const ctrl = { cutOpts: { toolUseID: 'int-1' } };
-    let closeCalled = false;
-    // Custom fake: triggers canUseTool (parked) and exposes close
-    function fq({ options }) {
-      return {
-        async *[Symbol.asyncIterator]() {
-          yield sysInit();
-          await Promise.resolve();
-          ctrl.promise = options.canUseTool('Bash', { command: 'ls' }, ctrl.cutOpts);
-          ctrl.result = await ctrl.promise; // interrupt resolves it to null → deny
-          yield resultMsg();
-        },
-        interrupt() { return Promise.resolve(); },
-        close() { closeCalled = true; },
-      };
-    }
+    // interrupt() releases the parked approval turn (CLI contract: interrupt lets the
+    // turn wrap up with a synthesized result)
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit()],
+      respond: async (m, { options, state }) => {
+        void m;
+        if (ctrl.used) return [resultMsg()];
+        ctrl.used = true;
+        ctrl.promise = options.canUseTool('Bash', { command: 'ls' }, ctrl.cutOpts);
+        const approved = ctrl.promise.then((r) => { ctrl.result = r; });
+        state.releaseNext = true; // interrupt() → release → approval result → result msg
+        await approved;
+        return [resultMsg()];
+      },
+    });
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
@@ -809,12 +932,12 @@ describe('sdk-manager-query — interruptTurn 关活跃 query + 排空 pending �
     assert.equal(cancelled[0].kind, 'perm');
 
     await sendP;
-    await tick(3);
-    assert.equal(closeCalled, true, 'interruptTurn should close the active query');
-    // pending resolved to null → canUseTool goes deny (timeout wording)
+    await tick(4);
+    assert.equal(fq.current().interruptCalls, 1, 'interruptTurn 应走 interrupt()');
+    assert.equal(fq.current().closeCalls, 0, '常驻模式 Stop 不得 close 常驻进程');
+    // pending resolved to null → canUseTool goes deny
     assert.equal(ctrl.result.behavior, 'deny');
-    // interrupt does not clear sessionId (keeps session continuity) — after init the
-    // sessionId is set and not cleared by interrupt
+    // interrupt does not clear sessionId (keeps session continuity)
     assert.equal(sdk.getSessionId(), 'sess-1');
   });
 
@@ -822,68 +945,124 @@ describe('sdk-manager-query — interruptTurn 关活跃 query + 排空 pending �
     const { deps } = makeDeps();
     let releaseFirst;
     const firstGate = new Promise((r) => { releaseFirst = r; });
-    let round = 0;
-    let callCount = 0;
-    function fq() {
-      callCount++;
-      const myRound = round++;
-      return {
-        async *[Symbol.asyncIterator]() {
-          yield sysInit('sess-int');
-          if (myRound === 0) await firstGate;
-          yield resultMsg();
-        },
-        interrupt() { return Promise.resolve(); },
-        close() { releaseFirst && releaseFirst(); }, // close releases the first round
-      };
-    }
+    let idx = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-int')],
+      respond: async () => {
+        if (idx++ === 0) await firstGate;
+        return [resultMsg()];
+      },
+    });
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     const p1 = sdk.sendUserMessage('first');
-    await tick(4);
+    await tick(5);
     await sdk.sendUserMessage('queued'); // queued
-    // interrupt: parks the queue (suppress drain) + closes the first round (close releases firstGate)
+    // interrupt: parks the queue (suppress drain); release the turn manually
     sdk.interruptTurn();
     releaseFirst();
     await p1;
     await tick(6);
 
-    // Drain suppressed → only the first round ran; the queued message is KEPT parked
-    assert.equal(callCount, 1, 'queued message must not auto-run after interrupt');
+    // Drain suppressed → only the first turn was pushed; the queued message is KEPT parked
+    assert.deepEqual(fq.calls[0].pushed.map(pushedText), ['first'], 'queued message must not auto-run after interrupt');
     assert.equal(sdk.getQueueSnapshot().length, 1, 'Stop keeps the queued message parked');
     assert.equal(sdk.getQueueSnapshot()[0].text, 'queued');
+  });
+
+  it('被中断回合的 error result 不弹 sdk-error toast（interrupted 标记）', async () => {
+    const { deps, broadcasts } = makeDeps();
+    let releaseFirst;
+    const firstGate = new Promise((r) => { releaseFirst = r; });
+    let idx = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-interr')],
+      respond: async () => {
+        if (idx++ === 0) await firstGate;
+        // CLI synthesizes an error result for an aborted turn
+        return [resultMsg({ subtype: 'error_during_execution', is_error: true, errors: ['turn aborted'] })];
+      },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(5);
+    sdk.interruptTurn();
+    releaseFirst();
+    await p1;
+    await tick(4);
+
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-error').length, 0, '中断回合的错误 result 不应弹 toast');
+  });
+
+  it('grace 兜底：interrupt 后无 result → 10s 强制 settle；迟到的 result 被墓碑丢弃不错位', async () => {
+    const { deps, turnEnds } = makeDeps();
+    const calls = [];
+    let releaseFirst;
+    const firstGate = new Promise((r) => { releaseFirst = r; });
+    let idx = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-grace')],
+      respond: async (msg) => {
+        calls.push(pushedText(msg));
+        if (idx++ === 0) await firstGate; // first turn: parked until manual release
+        return [resultMsg()];
+      },
+    });
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      sdk.__setQueryForTests(fq);
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+
+      const p1 = sdk.sendUserMessage('first');
+      await tick(5);
+      sdk.interruptTurn();
+      await waitMicro(() => fq.current().interruptCalls === 1);
+      // No result arrives → grace force-settles the turn
+      mock.timers.tick(11 * 1000);
+      await p1; // settled via grace — no hang
+      await tick(6);
+      assert.equal(turnEnds.length, 0, 'grace force-settle 不伪造 turnEnd');
+
+      // The late result for the interrupted turn arrives now (gate released)…
+      releaseFirst();
+      await tick(6);
+      // …and must be tombstoned (no turnEnd, no settling of a future turn)
+      assert.equal(turnEnds.length, 0, '迟到 result 被墓碑消费');
+
+      // A fresh turn runs clean on the same resident query
+      await sdk.sendUserMessage('second');
+      await tick(8);
+      assert.deepEqual(calls, ['first', 'second']);
+      assert.equal(turnEnds.length, 1, '新回合正常触发 turnEnd');
+    } finally {
+      mock.timers.reset();
+    }
   });
 });
 
 describe('sdk-manager-query — stopSession 关 query 并清会话', () => {
   it('stopSession 调用 query.close 并把 sessionId 归 null', async () => {
     const { deps } = makeDeps();
-    let closeCalled = false;
     let releaseGate;
     const gate = new Promise((r) => { releaseGate = r; });
-    function fq() {
-      return {
-        async *[Symbol.asyncIterator]() {
-          yield sysInit('sess-stop');
-          await gate;
-          yield resultMsg();
-        },
-        interrupt() { return Promise.resolve(); },
-        close() { closeCalled = true; releaseGate(); },
-      };
-    }
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-stop')],
+      respond: async () => { await gate; return [resultMsg()]; },
+    });
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     const p = sdk.sendUserMessage('go');
-    await tick(4);
+    await tick(5);
     assert.equal(sdk.getSessionId(), 'sess-stop');
 
-    sdk.stopSession();
+    sdk.stopSession(); // teardown ends the input queue + closes the query
     await p;
     await tick(3);
-    assert.equal(closeCalled, true);
+    assert.equal(fq.current().closeCalls, 1);
     assert.equal(sdk.getSessionId(), null);
   });
 });
@@ -925,8 +1104,10 @@ describe('sdk-manager-query — onTurnEnd 抛错被吞', () => {
       broadcastWs: () => {},
       onTurnEnd: () => { throw new Error('turnEnd boom'); },
     };
-    const msgs = [sysInit(), assistantMsg([{ type: 'text', text: 'x' }]), resultMsg()];
-    sdk.__setQueryForTests(makeFakeQuery(msgs));
+    sdk.__setQueryForTests(makeResidentQuery({
+      initMsgs: [sysInit()],
+      respond: () => [assistantMsg([{ type: 'text', text: 'x' }]), resultMsg()],
+    }));
     sdk.initSdkSession(tmpDir, 'proj', deps);
     await assert.doesNotReject(() => sdk.sendUserMessage('go'));
   });
@@ -958,51 +1139,48 @@ describe('sdk-manager-query — getPendingApprovals / onQueryError / init-compac
   });
 
   it('query 迭代抛非 AbortError → onQueryError 收到 message;onTurnEnd 不触发', async () => {
-    const { deps } = makeDeps();
+    const { deps, turnEnds } = makeDeps();
     const errors = [];
-    let calls = 0;
-    function failingQuery() {
-      calls++;
-      return {
-        // eslint-disable-next-line require-yield
-        async *[Symbol.asyncIterator]() { throw new Error('boom-query'); },
-        interrupt() { return Promise.resolve(); },
-        close() {},
-      };
-    }
-    sdk.__setQueryForTests(failingQuery);
+    let generation = 0;
+    let releaseTurn;
+    const gate = new Promise((r) => { releaseTurn = r; });
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-fail')],
+      respond: async () => { if (generation === 0) { await gate; return null; } return [resultMsg()]; },
+    });
+    sdk.__setQueryForTests((arg) => { generation = fq.calls.length; return fq(arg); });
     sdk.initSdkSession(tmpDir, 'proj', { ...deps, onQueryError: (m) => errors.push(m) });
 
-    await sdk.sendUserMessage('go');
+    const sendP = sdk.sendUserMessage('go');
+    await tick(5);
+    fq.endWith(new Error('boom-query')); // iterator death mid-turn
+    await sendP; // settled by the death path — must not hang
     await tick(4);
-    assert.equal(calls, 1);
     assert.deepEqual(errors, ['boom-query']);
+    assert.equal(turnEnds.length, 0);
   });
 
-  it('onQueryError 未注册 → query 失败不抛(向后兼容);onQueryError 自身抛错被吞', async () => {
+  it('onQueryError 未注册 → 会话死亡不抛(向后兼容);onQueryError 自身抛错被吞', async () => {
     const { deps } = makeDeps();
-    function failingQuery() {
-      return {
-        // eslint-disable-next-line require-yield
-        async *[Symbol.asyncIterator]() { throw new Error('x'); },
-        interrupt() { return Promise.resolve(); },
-        close() {},
-      };
-    }
-    sdk.__setQueryForTests(failingQuery);
+    const fq = makeResidentQuery();
+    sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', deps); // no onQueryError
-    await assert.doesNotReject(() => sdk.sendUserMessage('go'));
+    const p1 = sdk.sendUserMessage('go');
+    fq.endWith(new Error('x'));
+    await assert.doesNotReject(() => p1);
     await tick(4);
 
     sdk.initSdkSession(tmpDir, 'proj', { ...deps, onQueryError: () => { throw new Error('cb boom'); } });
-    await assert.doesNotReject(() => sdk.sendUserMessage('go2'));
+    const p2 = sdk.sendUserMessage('go2');
+    fq.endWith(new Error('y'));
+    await assert.doesNotReject(() => p2);
     await tick(4);
   });
 
   it('system/init 带 slash_commands → 广播一次 sdk-init;同 session 重复 init 不重播', async () => {
     const { deps, broadcasts } = makeDeps();
     const init = { ...sysInit('sess-init-1'), slash_commands: ['/compact', '/clear', '/init'] };
-    sdk.__setQueryForTests(makeFakeQuery([init, resultMsg()]));
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [init] }));
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     await sdk.sendUserMessage('first');
@@ -1012,8 +1190,8 @@ describe('sdk-manager-query — getPendingApprovals / onQueryError / init-compac
     assert.deepEqual(initB[0].slashCommands, ['/compact', '/clear', '/init']);
     assert.equal(initB[0].sessionId, 'sess-init-1');
 
-    // Second round with the same session init → not replayed
-    sdk.__setQueryForTests(makeFakeQuery([init, resultMsg()]));
+    // Second turn on the same resident query → init is not re-emitted (the CLI sends
+    // init once per process, and even a duplicate would be deduped by session id)
     await sdk.sendUserMessage('second');
     await tick(4);
     assert.equal(broadcasts.filter((b) => b.type === 'sdk-init').length, 1);
@@ -1021,7 +1199,7 @@ describe('sdk-manager-query — getPendingApprovals / onQueryError / init-compac
 
   it('init 无 slash_commands / 空数组 → 不广播 sdk-init', async () => {
     const { deps, broadcasts } = makeDeps();
-    sdk.__setQueryForTests(makeFakeQuery([{ ...sysInit('sess-noinit'), slash_commands: [] }, resultMsg()]));
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [{ ...sysInit('sess-noinit'), slash_commands: [] }] }));
     sdk.initSdkSession(tmpDir, 'proj', deps);
     await sdk.sendUserMessage('go');
     await tick(4);
@@ -1034,7 +1212,7 @@ describe('sdk-manager-query — getPendingApprovals / onQueryError / init-compac
       type: 'system', subtype: 'compact_boundary', session_id: 'sess-1',
       compact_metadata: { trigger: 'auto', pre_tokens: 150000, post_tokens: 40000 },
     };
-    sdk.__setQueryForTests(makeFakeQuery([sysInit(), compact, resultMsg()]));
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit()], respond: () => [compact, resultMsg()] }));
     sdk.initSdkSession(tmpDir, 'proj', deps);
     await sdk.sendUserMessage('go');
     await tick(5);
@@ -1046,28 +1224,289 @@ describe('sdk-manager-query — getPendingApprovals / onQueryError / init-compac
   });
 });
 
+describe('sdk-manager-query — SDK task_* 消息无损转发为 sdk-task 广播', () => {
+  it('task_started → 广播 sdk-task(subtype/taskId/description, snake→camel)', async () => {
+    const { deps, broadcasts, turnEnds } = makeDeps();
+    const started = {
+      type: 'system', subtype: 'task_started', session_id: 'sess-1',
+      task_id: 'task-1', tool_use_id: 'tu-1', description: '探索代码库',
+      task_type: 'local_workflow', workflow_name: 'spec', prompt: 'do it',
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), started] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+
+    const t = broadcasts.filter((b) => b.type === 'sdk-task');
+    // Whole-frame deepEqual: pins EVERY forwarded field (incl. prompt) and proves the
+    // relay leaks nothing else (no uuid, no snake_case keys, no extra envelope noise).
+    assert.deepEqual(t, [{
+      type: 'sdk-task', subtype: 'task_started', sessionId: 'sess-1', taskId: 'task-1',
+      toolUseId: 'tu-1', description: '探索代码库', taskType: 'local_workflow',
+      workflowName: 'spec', prompt: 'do it',
+    }]);
+    // Pure relay: the task message itself does NOT fire onTurnEnd. The single
+    // turnEnd here comes from sendUserMessage's own result, not from task_started.
+    assert.equal(turnEnds.length, 1, 'task message must not fire onTurnEnd (the result did)');
+  });
+
+  it('task_progress → usage snake→camel(totalTokens/toolUses/durationMs) + lastToolName', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const progress = {
+      type: 'system', subtype: 'task_progress', session_id: 'sess-1',
+      task_id: 'task-2', description: '运行中',
+      usage: { total_tokens: 3400, tool_uses: 12, duration_ms: 8800 },
+      last_tool_name: 'Bash',
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), progress] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+
+    const t = broadcasts.filter((b) => b.type === 'sdk-task');
+    assert.equal(t.length, 1);
+    assert.equal(t[0].subtype, 'task_progress');
+    assert.deepEqual(t[0].usage, { totalTokens: 3400, toolUses: 12, durationMs: 8800 });
+    assert.equal(t[0].lastToolName, 'Bash');
+  });
+
+  it('task_notification → status/outputFile 透传, usage 缺省时不挂 usage 键', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const notif = {
+      type: 'system', subtype: 'task_notification', session_id: 'sess-1',
+      task_id: 'task-3', status: 'failed', output_file: '/tmp/out.txt', summary: '炸了',
+      // usage omitted — notification.usage is optional in the SDK, must be tolerated
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), notif] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+
+    const t = broadcasts.filter((b) => b.type === 'sdk-task');
+    assert.equal(t.length, 1);
+    assert.equal(t[0].subtype, 'task_notification');
+    assert.equal(t[0].status, 'failed');
+    assert.equal(t[0].outputFile, '/tmp/out.txt');
+    assert.equal(t[0].summary, '炸了');
+    assert.ok(!('usage' in t[0]), 'usage 缺省时不应出现 usage 键');
+  });
+
+  it('task_updated → patch 原样透传(merge 语义留给客户端), 字段 camelCase', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const updated = {
+      type: 'system', subtype: 'task_updated', session_id: 'sess-1', task_id: 'task-4',
+      patch: { status: 'killed', end_time: 1730000000000, total_paused_ms: 120, error: 'killed by user', is_backgrounded: true },
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), updated] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+
+    const t = broadcasts.filter((b) => b.type === 'sdk-task');
+    assert.equal(t.length, 1);
+    assert.equal(t[0].subtype, 'task_updated');
+    assert.deepEqual(t[0].patch, {
+      status: 'killed', endTime: 1730000000000, totalPausedMs: 120, error: 'killed by user', isBackgrounded: true,
+    });
+  });
+
+  it('skip_transcript:true → 仍广播且带 skipTranscript:true(隐藏决策留给 UI)', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ambient = {
+      type: 'system', subtype: 'task_started', session_id: 'sess-1',
+      task_id: 'task-amb', description: 'housekeeping', skip_transcript: true,
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), ambient] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+
+    const t = broadcasts.filter((b) => b.type === 'sdk-task');
+    assert.equal(t.length, 1);
+    assert.equal(t[0].skipTranscript, true);
+  });
+
+  it('多条 task 消息 → 各自一条 sdk-task 广播(全量转发不丢帧)', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const msgs = [
+      sysInit(),
+      { type: 'system', subtype: 'task_started', session_id: 'sess-1', task_id: 'a', description: 'x' },
+      { type: 'system', subtype: 'task_progress', session_id: 'sess-1', task_id: 'a', description: 'x', usage: { total_tokens: 1, tool_uses: 1, duration_ms: 1 } },
+      { type: 'system', subtype: 'task_notification', session_id: 'sess-1', task_id: 'a', status: 'completed', output_file: '/o', summary: 'done' },
+    ];
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: msgs }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(6);
+
+    const subtypes = broadcasts.filter((b) => b.type === 'sdk-task').map((b) => b.subtype);
+    assert.deepEqual(subtypes, ['task_started', 'task_progress', 'task_notification']);
+  });
+
+  it('无 broadcastWs → task 分支在调用前短路(非靠吞异常), 回合照常结束', async () => {
+    const warns = [];
+    const orig = console.warn;
+    console.warn = (...a) => warns.push(a.join(' '));
+    _resetErrReport(); // module-level dedup counters: keep this assertion order-independent
+    try {
+      const turnEnds = [];
+      sdk.__setQueryForTests(makeResidentQuery({
+        initMsgs: [sysInit(), { type: 'system', subtype: 'task_started', session_id: 's', task_id: 't', description: 'd' }],
+      }));
+      sdk.initSdkSession(tmpDir, 'proj', { onTurnEnd: (x) => turnEnds.push(x) }); // no broadcastWs
+      await sdk.sendUserMessage('go');
+      await tick(4);
+      assert.equal(turnEnds.length, 1);
+      assert.ok(!warns.some((w) => w.includes('sdk-manager.process-message')),
+        'guard must short-circuit BEFORE the call — a swallowed TypeError is not a pass');
+    } finally { console.warn = orig; }
+  });
+
+  it('task 消息在 respond 期间到达(回合中途) → 按到达顺序广播且不额外结束回合', async () => {
+    const { deps, broadcasts, turnEnds } = makeDeps();
+    const mid = [
+      { type: 'system', subtype: 'task_started', session_id: 'sess-1', task_id: 'm1', description: 'bg' },
+      { type: 'system', subtype: 'task_progress', session_id: 'sess-1', task_id: 'm1', description: 'bg', usage: { total_tokens: 1, tool_uses: 1, duration_ms: 1 } },
+    ];
+    sdk.__setQueryForTests(makeResidentQuery({
+      initMsgs: [sysInit()],
+      respond: () => [...mid, assistantMsg([{ type: 'text', text: 'x' }]), resultMsg()],
+    }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(6);
+    // Mid-turn frames relayed in arrival order; only the trailing result fires onTurnEnd.
+    assert.deepEqual(broadcasts.map((b) => b.type), ['sdk-task', 'sdk-task']);
+    assert.equal(turnEnds.length, 1);
+  });
+
+  it('task 消息不触碰 _queryBusy：回合在飞时到达 task 消息,第二条消息仍须入队', async () => {
+    const { deps } = makeDeps();
+    let openGate; const gate = new Promise((r) => { openGate = r; });
+    let n = 0;
+    sdk.__setQueryForTests(makeResidentQuery({
+      initMsgs: [sysInit(), { type: 'system', subtype: 'task_started', session_id: 'sess-1', task_id: 't', description: 'd' }],
+      respond: async () => { if (n++ === 0) await gate; return [resultMsg()]; },
+    }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    const p1 = sdk.sendUserMessage('first');
+    await tick(6); // task 消息已处理；'first' 回合仍在飞(respond 停在 gate)
+    const p2 = sdk.sendUserMessage('second'); // 不 await：若 _queryBusy 被破坏,此 promise 会挂到 gate 放行
+    await tick(6);
+    try {
+      assert.equal(sdk.getQueueSnapshot().length, 1, 'task msgs must not touch _queryBusy (turn in flight → must enqueue)');
+    } finally {
+      openGate(); // 断言失败也必须放行 gate,否则挂到 10s timeout(慢红)
+      await p1; await p2;
+    }
+    await tick(8);
+    assert.equal(sdk.getQueueSnapshot().length, 0);
+  });
+
+  it('两轮消息：task 消息不扰动回合 FIFO(两轮=两次 turnEnd+两次 push+单条广播)', async () => {
+    const { deps, broadcasts, turnEnds } = makeDeps();
+    const started = { type: 'system', subtype: 'task_started', session_id: 'sess-1', task_id: 'task-1', description: 'd' };
+    const fq = makeResidentQuery({ initMsgs: [sysInit(), started] });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+    assert.equal(turnEnds.length, 1);
+    await sdk.sendUserMessage('second');
+    await tick(5);
+    assert.equal(turnEnds.length, 2, '两轮各一次 turnEnd — task 消息不得吞掉/多算回合');
+    assert.equal(fq.calls[0].pushed.length, 2);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-task').length, 1);
+  });
+
+  it('patch 的 falsy 合法值(end_time:0/total_paused_ms:0/error:""/is_backgrounded:false)不得丢失', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const updated = {
+      type: 'system', subtype: 'task_updated', session_id: 'sess-1', task_id: 't-falsy',
+      patch: { end_time: 0, total_paused_ms: 0, error: '', is_backgrounded: false },
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), updated] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+    const t = broadcasts.filter((b) => b.type === 'sdk-task');
+    assert.deepEqual(t[0].patch, { endTime: 0, totalPausedMs: 0, error: '', isBackgrounded: false });
+  });
+
+  it('patch 全空 → 帧仍广播但不挂 patch 键(省一帧 no-op merge)', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const updated = {
+      type: 'system', subtype: 'task_updated', session_id: 'sess-1', task_id: 't-empty',
+      patch: {},
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), updated] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+    const t = broadcasts.filter((b) => b.type === 'sdk-task');
+    assert.equal(t.length, 1);
+    assert.equal(t[0].subtype, 'task_updated');
+    assert.ok(!('patch' in t[0]), 'all-empty patch must not be attached (a no-op merge frame)');
+  });
+
+  it('skip_transcript:false 也转发为 skipTranscript:false(布尔强转双射)', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const started = {
+      type: 'system', subtype: 'task_started', session_id: 'sess-1',
+      task_id: 't-false', description: 'd', skip_transcript: false,
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), started] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-task')[0].skipTranscript, false);
+  });
+
+  it('usage 部分缺省 → 缺省键显式补 null(不是 undefined/不丢键)', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const progress = {
+      type: 'system', subtype: 'task_progress', session_id: 'sess-1',
+      task_id: 't-part', description: 'd', usage: { tool_uses: 3, duration_ms: 9 },
+    };
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit(), progress] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+    const u = broadcasts.filter((b) => b.type === 'sdk-task')[0].usage;
+    assert.deepEqual(u, { totalTokens: null, toolUses: 3, durationMs: 9 });
+    assert.ok('totalTokens' in u, 'null fill, not undefined — undefined would vanish on the JSON wire');
+  });
+
+  it('非 task 的 system subtype(hook_started) → 不产生 sdk-task 广播', async () => {
+    const { deps, broadcasts } = makeDeps();
+    sdk.__setQueryForTests(makeResidentQuery({
+      initMsgs: [sysInit(), { type: 'system', subtype: 'hook_started', session_id: 'sess-1', hook_name: 'x' }],
+    }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(5);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-task').length, 0);
+  });
+});
+
 
 // ── Queue-state broadcast / send-now / parked-queue semantics ──
 // Helpers reused here: makeDeps (broadcasts capture), gate-pattern fake queries, tick().
 
-/** Gate-pattern fake query: round 0 parks on firstGate until released; later rounds run free. */
+/** Gate-pattern resident fake: the first turn parks on firstGate until released;
+ * later turns run free. Pushed message texts are recorded per construction. */
 function makeGatedQuery(calls) {
-  let round = 0;
   let releaseFirst;
   const firstGate = new Promise((r) => { releaseFirst = r; });
-  function fq({ prompt }) {
-    if (calls) calls.push(prompt);
-    const myRound = round++;
-    return {
-      async *[Symbol.asyncIterator]() {
-        yield sysInit('sess-gated');
-        if (myRound === 0) await firstGate;
-        yield resultMsg();
-      },
-      interrupt() { return Promise.resolve(); },
-      close() { releaseFirst(); },
-    };
-  }
+  let idx = 0;
+  const fq = makeResidentQuery({
+    initMsgs: [sysInit('sess-gated')],
+    respond: async (msg) => {
+      if (calls) calls.push(pushedText(msg));
+      if (idx++ === 0) await firstGate;
+      return [resultMsg()];
+    },
+  });
   return { fq, releaseFirst: () => releaseFirst() };
 }
 
@@ -1079,7 +1518,7 @@ describe('sdk-manager-query — queue-state 广播与快照', () => {
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     const p1 = sdk.sendUserMessage('first');
-    await tick(4);
+    await tick(5);
     await sdk.sendUserMessage('second');
 
     const last = broadcasts.filter((b) => b.type === 'queue-state').at(-1);
@@ -1091,13 +1530,13 @@ describe('sdk-manager-query — queue-state 广播与快照', () => {
 
     releaseFirst();
     await p1;
-    await tick(6);
+    await tick(8);
     const drained = broadcasts.filter((b) => b.type === 'queue-state').at(-1);
     assert.equal(drained.items.length, 0);
     assert.equal(sdk.getQueueSnapshot().length, 0);
   });
 
-  it('drain 传给 query 的是文本而非队列对象（.text 回归）', async () => {
+  it('drain 推给常驻流的是文本而非队列对象（.text 回归）', async () => {
     const { deps } = makeDeps();
     const calls = [];
     const { fq, releaseFirst } = makeGatedQuery(calls);
@@ -1105,14 +1544,13 @@ describe('sdk-manager-query — queue-state 广播与快照', () => {
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     const p1 = sdk.sendUserMessage('first');
-    await tick(4);
+    await tick(5);
     await sdk.sendUserMessage('second');
     releaseFirst();
     await p1;
-    await tick(6);
+    await tick(8);
 
-    assert.equal(calls.length, 2);
-    assert.equal(calls[1], 'second', 'drain must pass the queued TEXT, not the queue item object');
+    assert.deepEqual(calls, ['first', 'second'], 'drain must push the queued TEXT, not the queue item object');
   });
 });
 
@@ -1121,11 +1559,12 @@ describe('sdk-manager-query — sendQueuedNow', () => {
     const { deps } = makeDeps();
     const calls = [];
     const { fq, releaseFirst } = makeGatedQuery(calls);
+    fq.releaseNextInterrupt(); // interrupt() releases the gated first turn (CLI contract)
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     const p1 = sdk.sendUserMessage('first');
-    await tick(4);
+    await tick(5);
     await sdk.sendUserMessage('second');
     await sdk.sendUserMessage('third');
     const snap = sdk.getQueueSnapshot();
@@ -1133,9 +1572,9 @@ describe('sdk-manager-query — sendQueuedNow', () => {
 
     const cancelled = sdk.sendQueuedNow(snap[1].id); // prioritize 'third'
     assert.ok(Array.isArray(cancelled));
-    releaseFirst(); // no-op if close() already released; harmless either way
+    releaseFirst(); // no-op if interrupt() already released; harmless either way
     await p1;
-    await tick(10);
+    await tick(12);
 
     assert.deepEqual(calls, ['first', 'third', 'second'], 'prioritized item runs next; the rest drain after it');
     assert.equal(sdk.getQueueSnapshot().length, 0);
@@ -1143,30 +1582,22 @@ describe('sdk-manager-query — sendQueuedNow', () => {
 
   it('未知 id → 返回 [] 且不广播不打断（守卫必须先于 interrupt）', async () => {
     const { deps, broadcasts } = makeDeps();
-    let closeCalled = false;
     let releaseFirst;
     const firstGate = new Promise((r) => { releaseFirst = r; });
-    function fq() {
-      return {
-        async *[Symbol.asyncIterator]() {
-          yield sysInit('sess-guard');
-          await firstGate; // park the turn so an erroneous interrupt would be observable
-          yield resultMsg();
-        },
-        interrupt() { return Promise.resolve(); },
-        close() { closeCalled = true; },
-      };
-    }
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-guard')],
+      respond: async () => { await firstGate; return [resultMsg()]; },
+    });
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     const p1 = sdk.sendUserMessage('first');
-    await tick(4);
+    await tick(5);
     const before = broadcasts.length;
     assert.deepEqual(sdk.sendQueuedNow('q_unknown'), []);
     await tick(3);
     assert.equal(broadcasts.length, before, 'unknown id must not broadcast');
-    assert.equal(closeCalled, false, 'unknown id must not interrupt the running turn');
+    assert.equal(fq.current().interruptCalls, 0, 'unknown id must not interrupt the running turn');
     releaseFirst();
     await p1;
     await tick(4);
@@ -1175,60 +1606,51 @@ describe('sdk-manager-query — sendQueuedNow', () => {
   it('空闲（Stop 后 parked）→ 立即执行该消息，随后 drain 其余 parked 项', async () => {
     const { deps } = makeDeps();
     const calls = [];
-    const { fq } = makeGatedQuery(calls);
+    const { fq, releaseFirst } = makeGatedQuery(calls);
+    // 常驻模型下 Stop=interrupt()（CLI abort 后回合收尾出 result）；fake 侧用
+    // releaseFirst() 显式让被中断的回合收尾（语义等价，无需等 10s grace）。
+    fq.releaseNextInterrupt();
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     const p1 = sdk.sendUserMessage('first');
-    await tick(4);
+    await tick(5);
     await sdk.sendUserMessage('a');
     await sdk.sendUserMessage('b');
-    sdk.interruptTurn(); // parks [a, b]; close() releases round 0
+    sdk.interruptTurn(); // parks [a, b]; interrupt() releases the gated first turn
+    releaseFirst();      // belt-and-braces (no-op if interrupt already released)
     await p1;
-    await tick(6);
+    await tick(8);
     assert.equal(sdk.getQueueSnapshot().length, 2);
-    assert.equal(calls.length, 1);
+    assert.deepEqual(calls, ['first']);
 
     const bId = sdk.getQueueSnapshot()[1].id;
-    sdk.sendQueuedNow(bId); // idle → run 'b' immediately
-    await tick(10);
+    sdk.sendQueuedNow(bId); // idle → run 'b' immediately, then the parked rest drains
+    await tick(12);
 
     assert.deepEqual(calls, ['first', 'b', 'a'], 'send-now executes the picked item, then the parked rest drains');
     assert.equal(sdk.getQueueSnapshot().length, 0);
   });
 
-  it('P0 回归：Stop 后 unwind 窗口内（_queryBusy 仍 true）send-now 不丢消息', async () => {
+  it('P0 回归：Stop 后 unwind 窗口内（回合 result 未到）send-now 不丢消息', async () => {
     const { deps } = makeDeps();
     const calls = [];
-    let round = 0;
-    let releaseFirst;
-    const firstGate = new Promise((r) => { releaseFirst = r; });
-    function fq({ prompt }) {
-      calls.push(prompt);
-      const myRound = round++;
-      return {
-        async *[Symbol.asyncIterator]() {
-          yield sysInit('sess-p0');
-          if (myRound === 0) await firstGate;
-          yield resultMsg();
-        },
-        interrupt() { return Promise.resolve(); },
-        close() {}, // does NOT release the gate — the unwind stays in flight until releaseFirst()
-      };
-    }
+    const { fq, releaseFirst } = makeGatedQuery(calls);
+    // NOTE: no releaseNextInterrupt — the aborted turn stays parked on firstGate until
+    // the test releases it, keeping _queryBusy true through the send-now call.
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     const p1 = sdk.sendUserMessage('first');
-    await tick(4);
+    await tick(5);
     await sdk.sendUserMessage('x');
-    sdk.interruptTurn(); // suppress=true; the aborted generator is STILL parked on firstGate
+    sdk.interruptTurn(); // suppress=true; the aborted turn is STILL parked on firstGate
     const snap = sdk.getQueueSnapshot();
     assert.equal(snap.length, 1);
     sdk.sendQueuedNow(snap[0].id); // busy branch (unwind pending) — must lift the Stop-park
     releaseFirst();
     await p1;
-    await tick(10);
+    await tick(12);
 
     assert.deepEqual(calls, ['first', 'x'], 'send-now in the unwind window must still execute the message');
     assert.equal(sdk.getQueueSnapshot().length, 0);
@@ -1244,7 +1666,7 @@ describe('sdk-manager-query — removeQueued / interruptTurn 广播', () => {
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     const p1 = sdk.sendUserMessage('first');
-    await tick(4);
+    await tick(5);
     await sdk.sendUserMessage('a');
     await sdk.sendUserMessage('b');
 
@@ -1260,43 +1682,294 @@ describe('sdk-manager-query — removeQueued / interruptTurn 广播', () => {
 
     releaseFirst();
     await p1;
-    await tick(6);
-    assert.equal(calls.length, 1, 'drain suppressed after Stop — parked item never ran');
+    await tick(8);
+    assert.deepEqual(calls, ['first'], 'drain suppressed after Stop — parked item never ran');
   });
 
-  it('drain 途中某条 query 抛错 → 后续消息仍被 drain', async () => {
+  it('drain 途中回合级错误（result is_error）→ 后续消息仍被 drain', async () => {
     const { deps } = makeDeps();
     const calls = [];
-    let round = 0;
     let releaseFirst;
     const firstGate = new Promise((r) => { releaseFirst = r; });
-    function fq({ prompt }) {
-      calls.push(prompt);
-      const myRound = round++;
-      return {
-        async *[Symbol.asyncIterator]() {
-          yield sysInit('sess-err');
-          if (myRound === 0) await firstGate;
-          if (myRound === 1) throw new Error('boom');
-          yield resultMsg();
-        },
-        interrupt() { return Promise.resolve(); },
-        close() {},
-      };
-    }
+    let idx = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-err')],
+      respond: async (msg) => {
+        calls.push(pushedText(msg));
+        if (idx++ === 0) await firstGate;
+        if (idx === 2) return [resultMsg({ subtype: 'error_during_execution', is_error: true, errors: ['boom'] })];
+        return [resultMsg()];
+      },
+    });
     sdk.__setQueryForTests(fq);
     sdk.initSdkSession(tmpDir, 'proj', deps);
 
     const p1 = sdk.sendUserMessage('first');
-    await tick(4);
+    await tick(5);
     await sdk.sendUserMessage('bad');
     await sdk.sendUserMessage('good');
     releaseFirst();
     await p1;
-    await tick(10);
+    await tick(12);
 
-    assert.deepEqual(calls, ['first', 'bad', 'good'], 'an errored drained turn must not wedge the queue');
+    assert.deepEqual(calls, ['first', 'bad', 'good'], 'an errored turn must not wedge the queue');
     assert.equal(sdk.getQueueSnapshot().length, 0);
+  });
+
+  it('会话级死亡（迭代器抛错）→ 在途回合 settle，队列自动 drain 进惰性重建的新会话', async () => {
+    const { deps } = makeDeps();
+    const calls = [];
+    let releaseFirst;
+    const firstGate = new Promise((r) => { releaseFirst = r; });
+    // Generation 1 parks every turn on the gate (so endWith is observed mid-turn);
+    // generation 2 (after reconstruction) must run free.
+    let generation = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-park')],
+      respond: async (msg) => {
+        calls.push(pushedText(msg));
+        if (generation === 0) await firstGate;
+        return [resultMsg()];
+      },
+    });
+    // Wrap once: track the generation by construction count at call time.
+    sdk.__setQueryForTests((arg) => { generation = fq.calls.length; return fq(arg); });
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(5);
+    await sdk.sendUserMessage('queued');
+
+    // Kill the session mid-turn: the in-flight turn settles via the death path; the
+    // queued message drains into a lazily-reconstructed resident query.
+    fq.endWith(new Error('session died'));
+    releaseFirst();
+    await p1;
+    await tick(14);
+    assert.equal(fq.calls.length, 2, 'death → lazy reconstruction for the queued message');
+    assert.equal(fq.calls[1].options.resume, 'sess-park');
+    assert.equal(sdk.getQueueSnapshot().length, 0, 'queue drained into the new session');
+    assert.deepEqual(calls, ['first', 'queued']);
+  });
+});
+
+// ── Review-driven regression coverage: watchdog settle / tombstone misfire / signal
+// ── abort / death & switch dismiss broadcasts ──
+describe('sdk-manager-query — review 回归（watchdog / 墓碑 / signal / dismiss）', () => {
+  it('watchdog fire：队首 turn 的 promise 必须 settle + 挂墓碑；审批 pending 时豁免', async () => {
+    const { deps } = makeDeps();
+    const calls = [];
+    let releaseFirst;
+    const firstGate = new Promise((r) => { releaseFirst = r; });
+    let idx = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-wd')],
+      respond: async (msg) => {
+        calls.push(pushedText(msg));
+        if (idx++ === 0) await firstGate; // silent turn — never yields on its own
+        return [resultMsg()];
+      },
+    });
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      sdk.__setQueryForTests(fq);
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+
+      const p1 = sdk.sendUserMessage('first');
+      await tick(5);
+      // watchdog (25min) fires before any result — force-settle path
+      mock.timers.tick(26 * 60 * 1000);
+      await p1; // MUST settle (regression: shift-then-settleAll used to leak it)
+      await tick(4);
+
+      // The turn's owed result arrives late → tombstoned (no turnEnd, no mis-settle)
+      releaseFirst();
+      await tick(6);
+
+      // Next turn runs clean on the same resident query
+      await sdk.sendUserMessage('second');
+      await tick(8);
+      assert.deepEqual(calls, ['first', 'second']);
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
+  it('审批 pending 时 watchdog 不 force-settle（重挂等待审批超时）', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'wd-ask' } };
+    sdk.__setQueryForTests(makeCanUseToolQuery('AskUserQuestion', { questions: [{ q: 'hold?' }] }, ctrl));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      const sendP = sdk.sendUserMessage('go');
+      sendP.catch(() => {});
+      await waitMicro(() => broadcasts.some((b) => b.type === 'sdk-ask-pending'));
+      // Cross the watchdog window while the approval is pending: no force-settle —
+      // the queued message must NOT be pushed into the approval-parked turn.
+      await sdk.sendUserMessage('queued');
+      mock.timers.tick(26 * 60 * 1000);
+      await tick(6);
+      assert.equal(sdk.getQueueSnapshot().length, 1, '审批 pending 证明会话存活，watchdog 仅重挂');
+      // Resolve the ask → turn completes → queued message drains
+      sdk.resolveApproval('wd-ask', [{ answer: 'A' }]);
+      await tick(10);
+      assert.equal(sdk.getQueueSnapshot().length, 0);
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
+  it('墓碑误吞守护：grace settle 后迟到 result 吞掉墓碑，再下一个 result 正常 settle 新回合', async () => {
+    const { deps, turnEnds } = makeDeps();
+    const calls = [];
+    let releaseFirst;
+    const firstGate = new Promise((r) => { releaseFirst = r; });
+    let idx = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-tomb')],
+      respond: async (msg) => {
+        calls.push(pushedText(msg));
+        if (idx++ === 0) await firstGate;
+        return [resultMsg()];
+      },
+    });
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      sdk.__setQueryForTests(fq);
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+
+      const p1 = sdk.sendUserMessage('first');
+      await tick(5);
+      sdk.interruptTurn();
+      await waitMicro(() => fq.current().interruptCalls === 1);
+      mock.timers.tick(11 * 1000); // grace force-settle + tombstone
+      await tick(20);
+
+      // Start turn 2 BEFORE the late result arrives
+      const p2 = sdk.sendUserMessage('second');
+      await tick(3);
+      // The interrupted turn's result finally arrives → consumes the tombstone
+      releaseFirst();
+      await tick(6);
+      // Turn 2's own result must still settle turn 2 (regression: the tombstone
+      // branch used to skip busy=false, wedging the pipeline)
+      await p2;
+      await tick(6);
+      assert.deepEqual(calls, ['first', 'second']);
+      assert.equal(turnEnds.length, 1, '只有 turn 2 的 result 触发 turnEnd（墓碑吞掉的那次不算）');
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
+  it('signal abort（CLI 取消在途审批）→ deny + dismiss 广播 reason=aborted', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ac = new AbortController();
+    const ctrl = { cutOpts: { toolUseID: 'sig-1', signal: ac.signal } };
+    sdk.__setQueryForTests(makeCanUseToolQuery('Bash', { command: 'ls' }, ctrl));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const sendP = sdk.sendUserMessage('go');
+    sendP.catch(() => {});
+    await waitMicro(() => broadcasts.some((b) => b.type === 'perm-hook-pending'));
+    ac.abort(); // CLI-side cancel of the in-flight control request
+    await tick(6);
+
+    assert.equal(ctrl.result.behavior, 'deny');
+    const dismiss = broadcasts.filter((b) => b.type === 'perm-hook-timeout' && b.id === 'sig-1');
+    assert.equal(dismiss.length, 1);
+    assert.equal(dismiss[0].reason, 'aborted');
+    // Late resolve is a no-op (first-wins)
+    assert.equal(sdk.resolveApproval('sig-1', { decision: 'allow' }), false);
+  });
+
+  it('会话死亡时 pending 审批收到 dismiss（reason=session-ended）且 canUseTool 走 deny', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'die-perm' } };
+    const fq = makeCanUseToolQuery('Bash', { command: 'ls' }, ctrl);
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const sendP = sdk.sendUserMessage('go');
+    sendP.catch(() => {});
+    await waitMicro(() => broadcasts.some((b) => b.type === 'perm-hook-pending'));
+    fq.endWith(new Error('child died')); // session death while the modal is open
+    await tick(6);
+
+    assert.equal(ctrl.result.behavior, 'deny');
+    const dismiss = broadcasts.filter((b) => b.type === 'perm-hook-timeout' && b.id === 'die-perm');
+    assert.equal(dismiss.length, 1);
+    assert.equal(dismiss[0].reason, 'session-ended');
+    await sendP;
+  });
+
+  it('switchToSession：busy→busy；空闲切换后清队列广播 + init 快照重置 + dismiss 残留审批', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const calls = [];
+    let releaseFirst;
+    const firstGate = new Promise((r) => { releaseFirst = r; });
+    let idx = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [{ ...sysInit('sess-sw'), slash_commands: ['/compact'] }],
+      respond: async (msg) => {
+        calls.push(pushedText(msg));
+        if (idx++ === 0) await firstGate;
+        return [resultMsg()];
+      },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(5);
+    assert.ok(broadcasts.some((b) => b.type === 'sdk-init'), 'init 已广播');
+
+    // Busy → 409-equivalent
+    assert.deepEqual(sdk.switchToSession('a9883ab8-0ab7-459a-bcfd-4c8950a14384'), { ok: false, reason: 'busy' });
+    void p1; // settled by the interrupt release below (or teardown) — never awaited mid-park
+
+    // Queue a message while the first turn is still parked, then interrupt (Stop):
+    // the queue parks and the turn settles via the interrupt release.
+    await sdk.sendUserMessage('parked-msg');
+    await tick(2);
+    assert.equal(sdk.getQueueSnapshot().length, 1, 'queued while busy');
+    fq.releaseNextInterrupt(); // interrupt() releases the parked turn (CLI contract)
+    sdk.interruptTurn();
+    // Wait until the interrupted turn has actually settled: its promise resolves.
+    await p1;
+    await tick(4);
+    assert.equal(sdk.getQueueSnapshot().length, 1, 'Stop parks the queued message');
+    // The interrupt path arms the 10s grace timer (unref'd); it fires harmlessly on an
+    // empty turn list, but tick it off under mock timers so the file's tail doesn't
+    // wait on real time in strict harnesses.
+    const target = 'b9883ab8-0ab7-459a-bcfd-4c8950a14384';
+    const r = sdk.switchToSession(target);
+    assert.equal(r.ok, true);
+    assert.equal(sdk.getSessionId(), target);
+    assert.equal(sdk.getQueueSnapshot().length, 0, '切换清空队列');
+    assert.equal(sdk.getSdkInitSnapshot(), null, '旧会话 init 快照被清（重连不重放旧命令面）');
+    const qs = broadcasts.filter((b) => b.type === 'queue-state').at(-1);
+    assert.equal(qs.items.length, 0, '清空后有 queue-state 广播');
+
+    // Next message reconstructs with resume=target; the new session's init re-announces
+    await sdk.sendUserMessage('after');
+    await tick(6);
+    assert.equal(fq.calls.length, 2);
+    assert.equal(fq.calls[1].options.resume, target);
+    const initB = broadcasts.filter((b) => b.type === 'sdk-init');
+    assert.equal(initB.length, 2, '新会话的 sdk-init 重新广播');
+  });
+
+  it('switchToSession 守卫：bad-id / unavailable', async () => {
+    const { deps } = makeDeps();
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit('sess-guard2')] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    assert.deepEqual(sdk.switchToSession(''), { ok: false, reason: 'bad-id' });
+    assert.deepEqual(sdk.switchToSession(null), { ok: false, reason: 'bad-id' });
+    sdk.__setQueryForTests(null);
+    assert.deepEqual(sdk.switchToSession('a9883ab8-0ab7-459a-bcfd-4c8950a14384'), { ok: false, reason: 'unavailable' });
+    sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit('sess-guard2')] }));
   });
 });
 

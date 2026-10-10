@@ -318,13 +318,42 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   // filter excludes legacy/other-instance dirs, so an empty result would otherwise show the
   // WRONG project's/instance's conversation). Tell the client explicitly (same posture as
   // sid-not-found) so it can surface an empty state instead of cross-project bleed.
-  const instanceNotFound = !!(instanceParam && !sidParam && !viewColdDir);
-  if (instanceNotFound) {
+  //
+  // Liveness-aware (2026-10-10): a NEWLY created workspace's claude is alive but has not
+  // sent its first request yet, so it legitimately has no session dir. Flagging that as an
+  // error made the client detach back to the bound project — and the cold load below then
+  // streamed the BOUND project's current session (cross-project bleed). A LIVE instance
+  // therefore gets an EMPTY view instead: the cold stream is pinned to the empty source
+  // (load_start{total:0} → load_end, no chunks), the client stays on this instance, and the
+  // per-project live feed streams its first turn in place the moment the PTY writes its
+  // first session dir. Only a DEAD instance keeps the explicit sid-not-found posture (the
+  // client toasts + auto-detaches to the bound view — unchanged from before this fix).
+  const instanceNoSession = !!(instanceParam && !sidParam && !viewColdDir);
+  let instanceAlive = false;
+  if (instanceNoSession) {
+    try {
+      instanceAlive = listLivePtys().some((p) => p && p.instanceKey === instanceParam);
+    } catch (err) {
+      // Lookup failure degrades to the explicit dead-instance posture (never
+      // silently blank the client on a lookup error).
+      instanceAlive = false;
+      reportSwallowed('events.instance-live', err, { instance: instanceParam });
+    }
+  }
+  if (instanceNoSession && !instanceAlive) {
     try { sseWrite(res, `event: sid-not-found\ndata: ${JSON.stringify({ sid: null, instance: instanceParam, reason: 'instance-no-session', ts: Date.now() })}\n\n`); } catch { }
   }
   // When a view-scoped dir was requested AND resolved, it replaces the live-source
   // cold load; otherwise fall back to the standard single-current-session source.
   const coldSource = viewColdDir || null;
+  // An instance with no session dir has NO legitimate cold source — pin EVERY cold
+  // read to the literal empty source, whether the instance is alive (empty live view:
+  // the per-project feed streams its first turn in place once written) or dead (the
+  // client detaches on the sid-not-found above; the cold frames would be dropped by
+  // its stale guard anyway). Both fallback sites below (`coldSource || getLiveLogSource()`,
+  // on the legacy wire AND the v3 wire) would otherwise resolve the BOUND project's
+  // current session — the exact cross-project bleed this guard exists to stop.
+  const emptyLiveView = instanceNoSession;
   // A client viewing a non-bound project needs that project's live feed running
   // (its PTY is alive but its feed is lazy). Start it idempotently; the feed's
   // per-project client filter keeps its entries scoped to this project's viewers.
@@ -352,7 +381,7 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   // Wire v3 (V3.S5): flagged + v2 source ⇒ the legacy full-entry cold stream
   // is REPLACED by rows + native lines (the byte win); the client assembler
   // rebuilds entries locally. v1 legacy files keep the entry pipeline.
-  const _v3Src = deps.wireV3 ? (coldSource || getLiveLogSource()) : null;
+  const _v3Src = (deps.wireV3 && !emptyLiveView) ? (coldSource || getLiveLogSource()) : null;
   const v3Cold = !!(_v3Src && existsSync(join(_v3Src, 'journal.jsonl')));
 
   // S6b: the cold-load source is the current v2 session dir when the v2
@@ -361,7 +390,7 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   // in-flight placeholder, which the client batch gate still blocks — the
   // previous conversation is the better cold load there (interceptor.js
   // getLiveLogSource header comment).
-  const coldLoadResult = v3Cold ? null : await streamRawEntriesAsync(coldSource || getLiveLogSource({ serveInFlight: !!deps.wireV3 }), async (raw) => {
+  const coldLoadResult = v3Cold ? null : await streamRawEntriesAsync(emptyLiveView ? '' : (coldSource || getLiveLogSource({ serveInFlight: !!deps.wireV3 })), async (raw) => {
     // 直接发送原始 JSON 字符串，不做 parse/reconstruct/stringify
     // ExitPlanMode V2 空 input 的条目按需补全 plan / planFilePath，其它原样透传
     if (res.destroyed || !res.writable) return;
@@ -406,6 +435,12 @@ async function events(req, res, parsedUrl, isLocal, deps) {
       // Pass 1 完成、Pass 2 开始前：发送 load_start
       // 增量模式下不显示 loading 遮罩，非增量模式显示进度
       const loadStartData = { total: totalCount, incremental: !!useIncremental };
+      // An instance with no session dir (new workspace / pruned while alive):
+      // flag the empty view so the client invalidates any view-cache snapshot it
+      // restored for this scope — otherwise an incremental `?since&cc=` resume
+      // would merge an empty delta onto the CACHED (now-deleted) conversation and
+      // keep rendering it. load_end fires right after with zero chunks.
+      if (emptyLiveView) loadStartData.empty = true;
       // 分页模式下附加 hasMore/oldestTs（增量模式由客户端从缓存自行判断）
       if (useLimit) {
         loadStartData.hasMore = !!hasMore;
@@ -438,6 +473,9 @@ async function events(req, res, parsedUrl, isLocal, deps) {
       for (const p of native.convPayloads) v3Bytes += p.length;
       for (const p of native.respPayloads) v3Bytes += p.length;
       const loadStartData = { total: meta.totalCount, incremental: !!useIncremental, v3Bytes };
+      // Same empty-view flag as the legacy onReady path above (unreachable on the
+      // v3 wire today — an empty source is never a v2 dir — but kept symmetric).
+      if (emptyLiveView) loadStartData.empty = true;
       if (useLimit) {
         loadStartData.hasMore = !!meta.hasMore;
         loadStartData.oldestTs = meta.oldestTimestamp || '';
@@ -497,8 +535,11 @@ async function events(req, res, parsedUrl, isLocal, deps) {
     sseWrite(res, `event: context_window\ndata: ${JSON.stringify(latestContextWindow)}\n\n`);
     pushedContextWindow = true;
   }
-  // Fallback: no MainAgent in log (e.g. fresh session after -c), read context-window.json
-  if (!pushedContextWindow) {
+  // Fallback: no MainAgent in log (e.g. fresh session after -c), read context-window.json.
+  // Skipped for an empty live view: CONTEXT_WINDOW_FILE is a single GLOBAL file (not
+  // project-scoped), so pushing it here would paint another project's usage onto a
+  // brand-new workspace. The first real main turn pushes a genuine measurement instead.
+  if (!pushedContextWindow && !emptyLiveView) {
     try {
       const cwRaw = readFileSync(CONTEXT_WINDOW_FILE, 'utf-8');
       const cwFile = JSON.parse(cwRaw);

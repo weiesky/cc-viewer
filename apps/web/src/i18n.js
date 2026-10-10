@@ -14159,6 +14159,14 @@ const i18nData = {
     "ar": "انتهت مهلة التبديل: المشروع الهدف لم يستجب", "no": "Bytte utløpt: målprosjektet svarte ikke", "pt-BR": "Tempo esgotado: o projeto de destino não respondeu",
     "th": "สลับหมดเวลา: โปรเจกต์เป้าหมายไม่ตอบสนอง", "tr": "Geçiş zaman aşımı: hedef proje yanıt vermedi", "uk": "Час перемикання вийшов: цільовий проєкт не відповідає"
   },
+  "ui.resume.noSession": {
+    "zh": "该项目没有可显示的会话记录", "en": "No displayable session for this project", "zh-TW": "該專案沒有可顯示的會話記錄",
+    "ko": "이 프로젝트에 표시할 세션이 없습니다", "ja": "このプロジェクトに表示できるセッションがありません", "de": "Keine anzeigbare Sitzung für dieses Projekt",
+    "es": "No hay ninguna sesión que mostrar para este proyecto", "fr": "Aucune session à afficher pour ce projet", "it": "Nessuna sessione da mostrare per questo progetto",
+    "da": "Ingen session at vise for dette projekt", "pl": "Brak sesji do wyświetlenia dla tego projektu", "ru": "Нет сессии для отображения в этом проекте",
+    "ar": "لا توجد جلسة لعرضها لهذا المشروع", "no": "Ingen økt å vise for dette prosjektet", "pt-BR": "Nenhuma sessão para exibir neste projeto",
+    "th": "ไม่มีเซสชันที่แสดงได้สำหรับโปรเจกต์นี้", "tr": "Bu proje için gösterilecek oturum yok", "uk": "Немає сесії для відображення в цьому проєкті"
+  },
   "ui.resume.switching": {
     "zh": "正在切换项目…", "en": "Switching project…", "zh-TW": "正在切換專案…",
     "ko": "프로젝트 전환 중…", "ja": "プロジェクトを切り替えています…", "de": "Projekt wird gewechselt…",

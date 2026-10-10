@@ -36,19 +36,19 @@ import {
   stopSession,
   interruptTurn,
   getSessionId,
+  getQueueSnapshot,
   __setQueryForTests,
 } from '../server/lib/sdk-manager.js';
 
-// fake query：被迭代时立即抛非 AbortError，sdk-manager 在 _executeQuery 里 try/catch
-// 吞掉并照常执行 finally —— 取代「真实 query 必然立即 spawn 失败」这一环境依赖。
-// calls 计数器用于外部观测 query 被启动了几次（drain / 并发守卫断言用）。
+// fake query（常驻契约）：一迭代到输入流就抛非 AbortError（会话级死亡），
+// sdk-manager 在 _onResidentDeath 里吞掉并 settle 在途回合 —— 取代「真实 query 必然
+// 立即 spawn 失败」这一环境依赖。calls 计数器用于外部观测构造次数（park/重建断言用）。
 function makeFailingQuery(state = { calls: 0 }) {
-  return function fakeQuery() {
+  return function fakeQuery({ prompt }) {
     state.calls++;
     return {
-      // eslint-disable-next-line require-yield
       async *[Symbol.asyncIterator]() {
-        throw new Error('fake query immediate failure (non-AbortError)');
+        for await (const msg of prompt) { void msg; throw new Error('fake query immediate failure (non-AbortError)'); }
       },
       interrupt() { return Promise.resolve(); },
       close() {},
@@ -156,11 +156,11 @@ describe('sdk-manager — sendUserMessage 驱动 _executeQuery 外壳', () => {
     await assert.doesNotReject(() => sendUserMessage('x'));
   });
 
-  it('并发 sendUserMessage：第二条命中 _queryBusy 守卫被入队，随后 drain 执行', async () => {
-    // 第一次调用置 _queryBusy=true 并跑 _executeQuery（立即失败）；
-    // 在它的 await 让出期间第二次调用应直接入队并 resolve（return undefined），
-    // 不会自己再开一个并行 query。drain 循环随后跑掉第二条。
-    // 外部可观测：fake query 恰好被启动两次 = 两次 _executeQuery。
+  it('并发 sendUserMessage：第二条命中 _queryBusy 守卫被入队；会话死亡后自动 drain 重建', async () => {
+    // 第一次调用置 _queryBusy=true 并构造常驻 query（首条消息到达即死亡）；
+    // 在它的 await 让出期间第二次调用应直接入队并 resolve（return undefined）。
+    // 死亡路径 settle 在途回合后继续 drain：第二条被自动推入惰性重建的新会话
+    //（再次死亡）——队列最终排空，不楔形。
     const { deps } = makeDeps();
     initSdkSession('/tmp/no-such-cwd', 'proj', deps);
 
@@ -170,15 +170,22 @@ describe('sdk-manager — sendUserMessage 驱动 _executeQuery 外壳', () => {
     await p1;
 
     assert.equal(r2, undefined);
-    assert.equal(_queryState.calls, 2);
+    // 等 drain 链路（shift → sendUserMessage → 重建 → 死亡）跑完
+    let drained = false;
+    for (let i = 0; i < 200 && !drained; i++) {
+      await Promise.resolve();
+      drained = getQueueSnapshot().length === 0;
+    }
+    assert.ok(drained, '死亡后队列自动 drain（重建 → 再死亡），不楔形');
+    assert.equal(_queryState.calls, 2, '死亡触发一次惰性重建');
   });
 
-  it('连续两次（await 之间）：第二条不再被入队，各自独立启动一次 query', async () => {
+  it('连续两次（await 之间）：第二次触发惰性重建（第一代已死亡）', async () => {
     const { deps } = makeDeps();
     initSdkSession('/tmp/no-such-cwd', 'proj', deps);
 
-    await sendUserMessage('a');
-    await sendUserMessage('b');
+    await sendUserMessage('a'); // 构造 → 死亡
+    await sendUserMessage('b'); // 惰性重建 → 再死亡
 
     assert.equal(_queryState.calls, 2);
   });

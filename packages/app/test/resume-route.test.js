@@ -448,3 +448,117 @@ describe('POST /api/resume-session', () => {
     }
   });
 });
+
+describe('POST /api/resume-session — SDK mode branch (no PTY required)', () => {
+  const resumeRoute = resumeRoutes.find((r) => r.method === 'POST' && r.path === '/api/resume-session').handler;
+  const RESUME_UUID = 'a9883ab8-0ab7-459a-bcfd-4c8950a14384';
+
+  function callResume(bodyObj) {
+    return new Promise((resolve) => {
+      let payload = '';
+      let status = 0;
+      const res = { writeHead(c) { status = c; }, end(b) { payload = b || ''; resolve({ status, body: JSON.parse(payload || '{}') }); } };
+      const listeners = {};
+      const req = { headers: {}, on(ev, cb) { listeners[ev] = cb; }, destroy() {} };
+      resumeRoute(req, res, new URL('/api/resume-session', 'http://localhost'), true, { MAX_POST_BODY: 1 << 20 });
+      if (listeners.data) listeners.data(JSON.stringify(bodyObj ?? {}));
+      if (listeners.end) listeners.end();
+    });
+  }
+
+  // Minimal resident fake: every pushed message gets a result; constructions recorded.
+  function makeOkQuery(calls) {
+    return function fakeQuery({ prompt, options }) {
+      const rec = { options, pushed: [] };
+      calls.push(rec);
+      let closed = false;
+      return {
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'system', subtype: 'init', session_id: 'sess-live', model: 'm', tools: [] };
+          for await (const msg of prompt) {
+            if (closed) return;
+            rec.pushed.push(msg);
+            yield { type: 'result', subtype: 'success' };
+          }
+        },
+        interrupt() { return Promise.resolve(); },
+        close() { closed = true; },
+      };
+    };
+  }
+
+  it('SDK 模式下 200：switchToSession 切换身份，下一条消息带 options.resume 重建', async () => {
+    process.env.CCV_SDK_MODE = '1';
+    const sdk = await import('../server/lib/sdk-manager.js');
+    const calls = [];
+    sdk.__setQueryForTests(makeOkQuery(calls));
+    sdk.initSdkSession(tmpDir, 'proj', { broadcastWs: () => {}, onTurnEnd: () => {} });
+    try {
+      // 先跑一个真实回合（产生常驻 query + sessionId）
+      await sdk.sendUserMessage('hello');
+      assert.equal(sdk.getSessionId(), 'sess-live');
+
+      const r = await callResume({ sessionUuid: RESUME_UUID });
+      assert.equal(r.status, 200);
+      assert.equal(r.body.ok, true);
+      assert.equal(sdk.getSessionId(), RESUME_UUID, '身份已切到目标会话');
+
+      // 下一条消息 → 惰性重建，resume=新会话
+      await sdk.sendUserMessage('after switch');
+      assert.equal(calls.length, 2, '旧常驻 query 被拆除并重建');
+      assert.equal(calls[1].options.resume, RESUME_UUID);
+    } finally {
+      sdk.stopSession();
+      delete process.env.CCV_SDK_MODE;
+    }
+  });
+
+  it('SDK 模式下回合在途 → 409 busy', async () => {
+    process.env.CCV_SDK_MODE = '1';
+    const sdk = await import('../server/lib/sdk-manager.js');
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    sdk.__setQueryForTests(function ({ prompt, options }) {
+      void options;
+      return {
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'system', subtype: 'init', session_id: 'sess-busy', model: 'm', tools: [] };
+          for await (const msg of prompt) { void msg; await gate; yield { type: 'result', subtype: 'success' }; }
+        },
+        interrupt() { return Promise.resolve(); },
+        close() { release(); },
+      };
+    });
+    sdk.initSdkSession(tmpDir, 'proj', { broadcastWs: () => {}, onTurnEnd: () => {} });
+    try {
+      const p = sdk.sendUserMessage('hold'); // 回合在途（park 在 gate 上）
+      for (let i = 0; i < 8; i++) await Promise.resolve();
+      const r = await callResume({ sessionUuid: RESUME_UUID });
+      assert.equal(r.status, 409);
+      assert.equal(r.body.reason, 'busy');
+      release();
+      await p;
+    } finally {
+      sdk.stopSession();
+      delete process.env.CCV_SDK_MODE;
+    }
+  });
+
+  it('SDK 模式但 SDK 不可用 → 409 unavailable', async () => {
+    process.env.CCV_SDK_MODE = '1';
+    const sdk = await import('../server/lib/sdk-manager.js');
+    const saved = () => {}; // placeholder — 还原由调用方负责
+    void saved;
+    const real = sdk.isSdkAvailable();
+    sdk.__setQueryForTests(null);
+    try {
+      const r = await callResume({ sessionUuid: RESUME_UUID });
+      assert.equal(r.status, 409);
+      assert.equal(r.body.reason, 'unavailable');
+      assert.equal(real, true, '前置：本环境 SDK 包已安装');
+    } finally {
+      sdk.__setQueryForTests(makeOkQuery([])); // 恢复为可用假 query
+      delete process.env.CCV_SDK_MODE;
+    }
+  });
+});

@@ -97,20 +97,27 @@ async function waitMicro(cond, max = 60) {
   return cond();
 }
 
-// 通用：fake query 只 yield system/init，然后触发一次 canUseTool 并 await 其结果，
-// 结果写入 ctrl.result；canUseTool 内 _waitForApproval 的 setTimeout 是唯一未决定时器。
+// 通用：resident fake —— 首条推入消息触发一次 canUseTool 并 await 其结果，结果写入
+// ctrl.result；canUseTool 内 _waitForApproval 的 setTimeout 是唯一应决胜的定时器。
+// 常驻契约下 sdk-manager 以 AsyncIterable 输入流构造 query，本工厂 for-await 消费之。
+// canUseTool 结果【永不 yield result】（无限等待），否则 24h fake-tick 会让 watchdog
+// （同为 setTimeout API）先于超时 fire，把回合提前 settle。
 function makeCanUseToolQuery(toolName, input, ctrl) {
-  return function fakeQuery({ options }) {
+  return function fakeQuery({ prompt, options }) {
     let closed = false;
     return {
       async *[Symbol.asyncIterator]() {
         yield sysInit();
         await Promise.resolve();
-        ctrl.promise = options.canUseTool(toolName, input, ctrl.cutOpts || {});
-        ctrl.captured = true;
-        ctrl.result = await ctrl.promise;
-        if (closed) return;
-        yield resultMsg();
+        for await (const msg of prompt) {
+          void msg;
+          if (closed) return;
+          ctrl.promise = options.canUseTool(toolName, input, ctrl.cutOpts || {});
+          ctrl.captured = true;
+          ctrl.result = await ctrl.promise;
+          // settled by timeout / resolve / teardown — no result for this turn
+          return;
+        }
       },
       interrupt() { return Promise.resolve(); },
       close() { closed = true; },
@@ -122,13 +129,15 @@ const FIVE_MIN = 5 * 60 * 1000;
 const TWENTY_FOUR_H = 24 * 60 * 60 * 1000;
 
 // 驱动一次「canUseTool → 注册超时 setTimeout → fake-tick 到点 → Timeout deny」。
-// 返回 ctrl.result 供断言。
+// 返回 ctrl.result 供断言。注意：sendP 不 await——超时后回合被挂起（无 result），
+// 由 afterEach 的 stopSession 收尾；24h tick 下 watchdog（6min）会顺带 fire，无害。
 async function driveTimeout({ toolName, input, ctrl, broadcastType, timeoutMs }) {
   mock.timers.enable({ apis: ['setTimeout'] });
   try {
     sdk.__setQueryForTests(makeCanUseToolQuery(toolName, input, ctrl));
     sdk.initSdkSession(tmpDir, 'proj', ctrl.deps);
     const sendP = sdk.sendUserMessage('go');
+    sendP.catch(() => {}); // 防未处理拒绝（正常路径不 reject，纯保险）
     // 等 fake query 触发 canUseTool 且 broadcast 发出（证明 _waitForApproval 的
     // setTimeout 已注册），broadcast 是同步推送 → microtask 内即可见。
     const ok = await waitMicro(
@@ -136,10 +145,9 @@ async function driveTimeout({ toolName, input, ctrl, broadcastType, timeoutMs })
       80,
     );
     assert.ok(ok, `should broadcast ${broadcastType} before tick`);
-    // 到点 → 唯一的 setTimeout fire → _waitForApproval resolve(null)
+    // 到点 → 超时 setTimeout fire → _waitForApproval resolve(null) + dismiss 广播
     mock.timers.tick(timeoutMs + 10);
-    await sendP;
-    await tick(6);
+    await tick(10);
   } finally {
     mock.timers.reset();
   }
@@ -159,6 +167,10 @@ describe('sdk-manager 分支补强 — _waitForApproval 三处超时 deny', () =
     });
     assert.equal(res.behavior, 'deny');
     assert.match(res.message, /Timeout waiting for user approval/);
+    // 超时必须广播 dismiss（否则各端弹窗永挂）——perm 复用 PTY 同型 perm-hook-timeout
+    const dismiss = broadcasts.filter((b) => b.type === 'perm-hook-timeout' && b.id === 'perm-to');
+    assert.equal(dismiss.length, 1);
+    assert.equal(dismiss[0].reason, 'timeout');
   });
 
   it('plan（ExitPlanMode）超时 → deny "Timeout waiting for plan approval"', async () => {
@@ -173,6 +185,10 @@ describe('sdk-manager 分支补强 — _waitForApproval 三处超时 deny', () =
     });
     assert.equal(res.behavior, 'deny');
     assert.match(res.message, /Timeout waiting for plan approval/);
+    // plan 无专用超时类型——复用 sdk-plan-resolved（前端只比 id），reason 标记来源
+    const dismiss = broadcasts.filter((b) => b.type === 'sdk-plan-resolved' && b.id === 'plan-to');
+    assert.equal(dismiss.length, 1);
+    assert.equal(dismiss[0].reason, 'timeout');
   });
 
   it('ask（AskUserQuestion）超时 → deny "Timeout waiting for user answer"（24h 定时器）', async () => {
@@ -187,6 +203,10 @@ describe('sdk-manager 分支补强 — _waitForApproval 三处超时 deny', () =
     });
     assert.equal(res.behavior, 'deny');
     assert.match(res.message, /Timeout waiting for user answer/);
+    // ask 有专用超时类型（前端 askFlowController 已就绪，仅缺发送方）
+    const dismiss = broadcasts.filter((b) => b.type === 'sdk-ask-timeout' && b.id === 'ask-to');
+    assert.equal(dismiss.length, 1);
+    assert.equal(dismiss[0].reason, 'timeout');
   });
 });
 
@@ -209,17 +229,26 @@ describe('sdk-manager 分支补强 — _waitForApproval 超时后 _pendingApprov
   });
 });
 
-// makeFakeQuery：把一串预置 msg 做成 fake query（不触发 canUseTool 的简单流）。
-function makeFakeQuery(msgs) {
-  return function fakeQuery() {
+// makeFakeQuery：常驻契约——initMsgs 构造时吐一次，之后每条推入消息 yield perTurn
+// （默认一条 resultMsg）。
+function makeFakeQuery(initMsgs, perTurn) {
+  return function fakeQuery({ prompt }) {
     let closed = false;
     return {
       async *[Symbol.asyncIterator]() {
-        for (const m of msgs) {
+        for (const m of initMsgs || []) {
           if (closed) return;
           await Promise.resolve();
-          if (closed) return;
           yield m;
+        }
+        for await (const msg of prompt) {
+          void msg;
+          if (closed) return;
+          for (const m of (perTurn || [resultMsg()])) {
+            await Promise.resolve();
+            if (closed) return;
+            yield m;
+          }
         }
       },
       interrupt() { return Promise.resolve(); },
@@ -235,12 +264,10 @@ function assistantMsg(content, extra = {}) {
 describe('sdk-manager 分支补强 — result 带 session_id', () => {
   it('result 消息带 session_id → 落地 sessionId（覆盖 if(msg.session_id) 的 true 臂）', async () => {
     const { deps, turnEnds } = makeDeps();
-    const msgs = [
-      sysInit('sess-init'),
-      assistantMsg([{ type: 'text', text: 'x' }]),
-      resultMsg({ session_id: 'sess-from-result' }),
-    ];
-    sdk.__setQueryForTests(makeFakeQuery(msgs));
+    sdk.__setQueryForTests(makeFakeQuery(
+      [sysInit('sess-init')],
+      [assistantMsg([{ type: 'text', text: 'x' }]), resultMsg({ session_id: 'sess-from-result' })],
+    ));
     sdk.initSdkSession(tmpDir, 'proj', deps);
     await sdk.sendUserMessage('go');
     await tick(6);
@@ -254,12 +281,10 @@ describe('sdk-manager 分支补强 — result 带 session_id', () => {
 describe('sdk-manager 分支补强 — assistant/user 带 session_id', () => {
   it('assistant 消息带 session_id → 落地 sessionId', async () => {
     const { deps } = makeDeps();
-    const msgs = [
-      sysInit('sess-init2'),
-      assistantMsg([{ type: 'text', text: 'x' }], { session_id: 'sess-from-assistant' }),
-      resultMsg(),
-    ];
-    sdk.__setQueryForTests(makeFakeQuery(msgs));
+    sdk.__setQueryForTests(makeFakeQuery(
+      [sysInit('sess-init2')],
+      [assistantMsg([{ type: 'text', text: 'x' }], { session_id: 'sess-from-assistant' }), resultMsg()],
+    ));
     sdk.initSdkSession(tmpDir, 'proj', deps);
     await sdk.sendUserMessage('go');
     await tick(6);
@@ -268,12 +293,10 @@ describe('sdk-manager 分支补强 — assistant/user 带 session_id', () => {
 
   it('user 消息带 session_id → 落地 sessionId', async () => {
     const { deps } = makeDeps();
-    const msgs = [
-      sysInit('sess-init3'),
-      { type: 'user', session_id: 'sess-from-user', message: { role: 'user', content: [] } },
-      resultMsg(),
-    ];
-    sdk.__setQueryForTests(makeFakeQuery(msgs));
+    sdk.__setQueryForTests(makeFakeQuery(
+      [sysInit('sess-init3')],
+      [{ type: 'user', session_id: 'sess-from-user', message: { role: 'user', content: [] } }, resultMsg()],
+    ));
     sdk.initSdkSession(tmpDir, 'proj', deps);
     await sdk.sendUserMessage('go');
     await tick(6);
@@ -405,21 +428,24 @@ describe('sdk-manager 分支补强 — plan/perm sentinel reason 回落 + perm �
 });
 
 describe('sdk-manager 分支补强 — interruptTurn 对缺 interrupt/close 的 query', () => {
-  it('_activeQuery 无 interrupt/close 方法 → 可选链/typeof 守卫走 false 臂，不抛', async () => {
-    // 构造一个【没有 interrupt、close 不是函数】的 query iterable，park 在 await gate，
-    // 让 interruptTurn 在 _activeQuery 存在但方法缺失时安全跳过。
+  it('_activeQuery 无 interrupt/close 方法 → typeof 守卫走 false 臂，不抛', async () => {
+    // 常驻契约：构造时 prompt 是 AsyncIterable。造一个【无 interrupt、close 非函数】
+    // 的 query，回合 park 在 gate 上，interruptTurn 应安全跳过缺失的方法。
     const { deps } = makeDeps();
     let releaseGate;
     const gate = new Promise((r) => { releaseGate = r; });
-    function fq() {
+    function fq({ prompt }) {
       return {
         async *[Symbol.asyncIterator]() {
           yield sysInit('sess-noclose');
-          await gate; // park：保持 _activeQuery 非 null
-          yield resultMsg();
+          for await (const msg of prompt) {
+            void msg;
+            await gate; // park：保持 _activeQuery 非 null
+            yield resultMsg();
+          }
         },
-        // 故意不提供 interrupt（→ _activeQuery.interrupt?.() 可选链 false 臂）
-        close: 'not-a-function', // close 不是函数（→ typeof ...close==='function' false 臂）
+        // 故意不提供 interrupt（→ typeof q.interrupt==='function' false 臂）
+        close: 'not-a-function', // close 不是函数（→ typeof 守卫 false 臂，teardown 用）
       };
     }
     sdk.__setQueryForTests(fq);
@@ -430,7 +456,7 @@ describe('sdk-manager 分支补强 — interruptTurn 对缺 interrupt/close 的 
     let cancelled;
     assert.doesNotThrow(() => { cancelled = sdk.interruptTurn(); });
     assert.ok(Array.isArray(cancelled));
-    // gate 仍卡着 → 释放让生成器收尾，避免悬挂
+    // gate 仍卡着 → 释放让回合收尾（result 到达 → settle），避免悬挂
     releaseGate();
     await sendP;
     await tick(4);
@@ -440,14 +466,17 @@ describe('sdk-manager 分支补强 — interruptTurn 对缺 interrupt/close 的 
 describe('sdk-manager 分支补强 — switch default 分支', () => {
   it('未知 msg.type 命中 default: break（不抛、不改 sessionId、不触发 turnEnd 之外的副作用）', async () => {
     const { deps, turnEnds } = makeDeps();
-    function fq() {
+    function fq({ prompt }) {
       return {
         async *[Symbol.asyncIterator]() {
           yield sysInit('sess-default');
-          // 未知类型 → switch default 分支
-          yield { type: 'totally_unknown_type', foo: 'bar' };
-          yield { type: 'another_unknown' };
-          yield resultMsg();
+          for await (const msg of prompt) {
+            void msg;
+            // 未知类型 → switch default 分支
+            yield { type: 'totally_unknown_type', foo: 'bar' };
+            yield { type: 'another_unknown' };
+            yield resultMsg();
+          }
         },
         interrupt() { return Promise.resolve(); },
         close() {},

@@ -247,6 +247,9 @@ class AppBase extends React.Component {
     // Set when the in-flight initSSE is a cache-hit incremental resume (drives
     // the load_end merge branch + skips the loading overlay).
     this._hasViewCache = false;
+    // The view-cache key this SSE connection restored (project or project\x00instance),
+    // so a load_start `empty:true` frame can invalidate exactly that snapshot.
+    this._sseCacheKey = null;
     // pin 竞态守卫（_maintainPinState/_hydratePin/session_pin SSE 用）：
     //  _isHydratingPin   — 服务端 pin 的 GET 在途；期间禁 lazy-lock + 禁 persist，防抢在真值返回前误锁/回写。
     //  _applyingRemotePin — 正在采纳服务端值（hydrate/SSE）；期间禁 persist，防把服务端值当本地改动回 POST（防回环）。
@@ -1448,9 +1451,11 @@ class AppBase extends React.Component {
   // Viewed-workspace restore (2026-10): validate the persisted scope against a
   // fresh /api/live-processes snapshot, then boot the SSE scoped to it. A
   // dead/ambiguous saved scope falls back to the bound view. Validation first
-  // (not optimistic restore) because the server never auto-falls-back on a
-  // dead-but-well-formed instance (/events emits sid-not-found with reason
-  // instance-no-session, leaving an empty view).
+  // (not optimistic restore): a dead-but-well-formed instance gets sid-not-found
+  // from /events (reason instance-no-session → toast + auto-detach), so an
+  // optimistic restore would flash the view and bounce back; conversely a LIVE
+  // instance that has no session dir yet is a VALID view (empty state + live feed,
+  // events.js liveness-aware guard) and must not be pre-filtered as dead.
   _bootViewedWorkspace(saved) {
     fetch(apiUrl('/api/live-processes'))
       .then((res) => (res.ok ? res.json() : null))
@@ -1469,7 +1474,7 @@ class AppBase extends React.Component {
         // re-resolve to the live row's instanceKey when one exists. Without it,
         // restoring a parallel project that has a live PTY but NO session dir yet
         // would connect with `?project=<p>` and no `&instance=` — the server's
-        // instance-no-session guard (events.js:321) needs a non-empty instance to
+        // instance-no-session guard (events.js) needs a non-empty instance to
         // fire, so the cold load would silently fall through to the BOUND project's
         // current session until the viewed project's first live entry arrives.
         // Carrying the instance keeps that guard active (empty state, not bleed).
@@ -1779,8 +1784,8 @@ class AppBase extends React.Component {
       // Close the previous connection FIRST (multi-project switch fix, 2026-10):
       // every initSSE re-entry (view switch / detach / reconnect) used to
       // overwrite `this.eventSource` without closing it — the stale connection
-      // kept its server-side project scope (_ccvViewProject, events.js:484) and
-      // its handlers (bound to this same component) kept writing the OLD
+      // kept its server-side project scope (_ccvViewProject, stamped by events.js)
+      // and its handlers (bound to this same component) kept writing the OLD
       // project's live entries into the state the NEW project is rendering
       // (the SSE cross-project bleed). close() is idempotent; the _sseGen
       // guard below additionally drops any events a closed EventSource still
@@ -1819,6 +1824,9 @@ class AppBase extends React.Component {
       // _snapshotCurrentView; a bare concatenation could collide when a project name contains
       // the `ccv-` substring).
       const cacheKey = wantInstance ? `${wantProject}\x00${wantInstance}` : wantProject;
+      // Remembered for the load_start empty-view handler: an `empty:true` frame
+      // invalidates THIS scope's snapshot (the session it restored was deleted).
+      this._sseCacheKey = wantProject ? cacheKey : null;
       if (wantSid) {
         // True-resume (2026-10-06): scope the ?sid= cold-load to the session's OWN project
         // (a parallel viewed project for a parallel resume), not the bound project — the sid
@@ -1999,6 +2007,23 @@ class AppBase extends React.Component {
           this._chunkedEntries = [];
           this._chunkedTotal = data.total || 0;
           this._isIncremental = !!data.incremental;
+          // Empty-view flag (2026-10-10): the viewed instance has NO session dir
+          // (new workspace, or its session was pruned while the PTY stayed alive).
+          // This connection may be an incremental `?since&cc=` resume that just
+          // restored a view-cache snapshot of the now-DELETED conversation — an
+          // empty delta would otherwise merge onto that stale baseline and keep
+          // rendering it. Invalidate the snapshot and clear the restored content;
+          // load_end then commits an empty view and the per-project live feed
+          // streams the instance's first turn in place once written.
+          if (data.empty) {
+            this._viewCache.invalidate(this._sseCacheKey || '');
+            this._sseCacheKey = null;
+            this._hasViewCache = false;
+            this.setState({
+              requests: [], mainAgentSessions: [], v2Rows: [],
+              v2RowsMeta: { totalCount: 0, hasMore: false, oldestTs: '' }, selectedIndex: null,
+            });
+          }
           // Wire v3: the server pre-computes the exact frame byte total —
           // progress is received/total bytes instead of the legacy count-up.
           this._v3BytesTotal = data.v3Bytes || 0;
@@ -2027,12 +2052,18 @@ class AppBase extends React.Component {
         } catch (e) { reportSwallowed('sse.load_chunk', e, { dataLen: event.data?.length }); }
       });
       // The requested ?sid session no longer exists on disk (/clear-pruned or
-      // quota-cleaned). The server flagged it instead of silently serving the
-      // live session — toast + auto-detach back to follow-latest.
-      this.eventSource.addEventListener('sid-not-found', () => {
+      // quota-cleaned), OR the requested ?instance PTY died before its first write
+      // (reason 'instance-no-session'). A LIVE instance with no session yet never
+      // reaches this frame — the server serves an empty view and keeps the per-project
+      // live feed attached (events.js liveness-aware guard). Either way the requested
+      // view can never produce content: toast + auto-detach back to follow-latest.
+      this.eventSource.addEventListener('sid-not-found', (event) => {
         if (stale()) return;
         this._resetSSETimeout();
-        try { message.warning(t('ui.resume.switchTimeout')); } catch {}
+        let reason = null;
+        try { reason = JSON.parse(event.data)?.reason || null; }
+        catch (e) { reportSwallowed('sse.sid-not-found', e, { dataLen: event.data?.length }); }
+        try { message.warning(t(reason === 'instance-no-session' ? 'ui.resume.noSession' : 'ui.resume.switchTimeout')); } catch {}
         this.handleDetachView();
       });
       this.eventSource.addEventListener('load_end', () => {
