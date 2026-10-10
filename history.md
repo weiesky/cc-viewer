@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- fix(server): **SDK 模式审批超时后弹窗自动关闭** — 超时统一广播 dismiss（ask→`sdk-ask-timeout`、plan→`sdk-plan-resolved{reason:'timeout'}`、perm→`perm-hook-timeout`），并接通 canUseTool 的 `options.signal`。Coverage: `branch-lib-sdk-manager.test.js`.
+- fix(server): **SDK 模式改为常驻 streaming-input 进程** — 一次构造长驻 query、回合边界推一条消息；Stop 从杀进程升级为真 `interrupt()`，死亡后下一条消息以 `options.resume` 惰性重建。Coverage: `sdk-manager-query.test.js`, `sdk-manager-extra.test.js`, `branch-lib-sdk-manager.test.js`.
+- fix(server): **SDK 模式支持会话中途切换（历史会话 resume）** — `POST /api/resume-session` 新增 SDK 分支，经 `switchToSession` 切换身份、下一条消息惰性重建；回合在途 409 busy。Coverage: `resume-route.test.js`.
+
 ## 1.9.2
 
 - fix(multi-project): **删到只剩一个项目时「当前项目」不再停留在被删项目上** — 关绑定项目且有幸存者时服务端重绑到幸存者并广播 `workspace_started(rebound:true, reboundFrom)`；同名（跨目录）存活时降级为 dir-only（只搬 `CCV_PROJECT_DIR`）且不广播，同 cwd 存活则跳过。客户端按 `reboundFrom` 判定自身视图是否受影响，只有受影响域才重置并重连（`utils/reboundScope.js`）——看第三个项目的 tab 不再被强拆视图。（反转 Header 交互边界重构确立的「关绑定项目不动视图」契约。）Coverage: `live-processes-close.test.js`, `live-processes-refresh.test.js`, `resume-sessions-map.test.js`, `rebound-scope.test.js`.

@@ -2,7 +2,10 @@
  * sdk-manager.js — Agent SDK session lifecycle manager.
  *
  * Wraps @anthropic-ai/claude-agent-sdk query() to provide:
- * - User-message input and multi-turn conversation via session resume
+ * - User-message input over a RESIDENT streaming-input query (one CLI child process
+ *   per ccv session; turns are pushed as SDKUserMessages into a never-ending input
+ *   queue). Resident mode unlocks the real control surface (interrupt() etc.) —
+ *   single-prompt mode cannot interrupt and had to kill the child on every Stop.
  * - canUseTool callback for AskUserQuestion + permission approval
  * - Turn-end signaling (SDK 'result' message → Stop-hook equivalent)
  *
@@ -17,6 +20,7 @@ import { ASK_TIMEOUT_MS } from './ask/ask-constants.js';
 import { withDefaultThinkingDisplay, resolveLaunchSystemPrompt, launchArgsToExtraArgs } from './launch-config.js';
 import { evaluateImDeny } from './im-deny.js';
 import { APPROVAL_TOOLS, isPublishCommand } from './approval-policy.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 
 let _query;
 try {
@@ -40,8 +44,29 @@ let _launchModel = null;   // --model lifted from user args (options.model)
 let _launchResume = null;  // startup continuation intent { continue, resumeId, forkSession } — first query only
 let _userArgs = [];        // remaining user args → options.extraArgs passthrough
 let _claudeExecutable = null; // pathToClaudeCodeExecutable — resolved with the same priority as PTY mode (configured → codefuse → native → PATH → npm) so SDK sessions don't fall back to a PATH claude that host security policy may kill on headless spawn
+// Resident-query state. `_activeQuery` (the Query handle) and `_queryBusy` (a turn in
+// flight) are deliberately decoupled: an idle resident query is alive but not busy.
 let _activeQuery = null;
-let _queryBusy = false; // concurrency guard
+let _inputQueue = null;   // push-queue AsyncIterable handed to query() as the prompt
+let _queryBusy = false;   // a turn is in flight (including ensure + interrupt unwind)
+let _switching = false;   // teardown window of switchToSession — rejects new turns/switches
+let _pendingTurns = [];   // FIFO [{ resolve, interrupted, settled }] — one per pushed message
+let _turnInFlight = false; // sticky "a pushed turn has not produced its result" flag —
+                           // interruptTurn keys off this, NOT _pendingTurns.length (the
+                           // grace/watchdog force-settle paths drain the FIFO while the
+                           // CLI-side turn may still be running; without the sticky flag a
+                           // second Stop would silently no-op).
+let _settleGraceTimer = null; // backstop after interrupt: force-settle if no result arrives
+let _lateResultTombstones = 0; // results to discard (already force-settled via grace/watchdog)
+let _consecutiveDeaths = 0;   // backstop against respawn storms in a broken environment
+let _turnWatchdog = null; // SILENCE watchdog: re-armed on every incoming message; fires only
+                          // when the session produces nothing for the whole window
+const INTERRUPT_GRACE_MS = 10 * 1000;
+// Silence window for the watchdog. Must stay above the approval ceilings the turn can
+// legally wait on: perm/plan = 5min, AskUserQuestion = 24h ("GUI effectively has no
+// timeout" is a product contract). A pending approval exempts the turn from the
+// watchdog entirely; 25min covers long tool runs (big builds) with headroom.
+const TURN_WATCHDOG_MS = 25 * 60 * 1000;
 let _initAnnouncedSid = ''; // sessionId whose slash-command surface was already announced (reset on full reset)
 let _lastInitSnapshot = null; // last sdk-init payload for WS reconnect replay
 
@@ -115,39 +140,35 @@ export function initSdkSession(cwd, projectName, { onTurnEnd, onQueryError, broa
   _launchResume = launchResume || null;
   _userArgs = Array.isArray(userArgs) ? userArgs : [];
   _claudeExecutable = claudeExecutable || null;
+  // Re-init (tests / hot reload) must not leave a zombie resident generation alive.
+  _teardownResident();
   _resetFullState();
 }
 
 /**
- * Send a user message. Starts a new query (or resumes existing session).
- * Queues the message if a query is already running.
+ * Send a user message. Lazily constructs the resident query on the first message
+ * (a startup-continuation launchResume applies to that first construction only).
+ * Queues the message if a turn is already in flight (ccv's queue remains the single
+ * source of truth — only one message is pushed to the SDK per turn boundary, so the
+ * CLI's own command queue stays empty and Stop keeps its "park the bubbles" semantics).
+ *
+ * Never rejects for turn/session failures (those surface via onQueryError toasts);
+ * the only throw is the synchronous "SDK not available" guard cli.js relies on.
  */
 export async function sendUserMessage(text) {
   if (!_query) throw new Error('Agent SDK not available');
 
-  // If a query is already running, queue this message and return
+  // If a turn is already running, queue this message and return
   if (_queryBusy) {
     _messageQueue.push(_makeQueueItem(text));
     _broadcastQueueState();
     return;
   }
 
-  _queryBusy = true;
   // A fresh user-initiated turn re-arms automatic draining of parked (Stop-kept) items.
   _suppressDrain = false;
-
-  try {
-    await _executeQuery(text);
-
-    // Process any queued messages
-    while (_messageQueue.length > 0 && !_suppressDrain) {
-      const next = _messageQueue.shift();
-      _broadcastQueueState();
-      await _executeQuery(next.text);
-    }
-  } finally {
-    _queryBusy = false;
-  }
+  _consecutiveDeaths = 0; // explicit user action re-arms the death-drain backstop
+  await _startTurn(text);
 }
 
 function _makeQueueItem(text) {
@@ -167,9 +188,151 @@ function _broadcastQueueState() {
 }
 
 /**
- * Execute a single query for one user message.
+ * Never-ending push queue used as the resident query's streaming input.
+ * HARD INVARIANT: with canUseTool mounted, the SDK ends the child's stdin (killing
+ * the session) when this iterable completes — close() is reserved for teardown, and
+ * push() after close must silently drop (never throw: a throw would propagate into
+ * the SDK's streamInput catch and abort the whole query).
  */
-async function _executeQuery(text) {
+function _makePushQueue() {
+  const items = [];
+  let waiter = null;
+  let closed = false;
+  const q = {
+    push(item) {
+      if (closed) return; // teardown race — drop, never throw (see header comment)
+      if (waiter) { const w = waiter; waiter = null; w({ value: item, done: false }); }
+      else items.push(item);
+    },
+    close() {
+      if (closed) return;
+      closed = true;
+      items.length = 0; // a dying generation must not leak its items into the next one
+      if (waiter) { const w = waiter; waiter = null; w({ value: undefined, done: true }); }
+    },
+    isClosed() { return closed; },
+    next() {
+      if (items.length) return Promise.resolve({ value: items.shift(), done: false });
+      // A closed queue keeps resolving done on EVERY call — the SDK's consumer stops
+      // iterating after the first done, and a stale waiter must never capture a
+      // future generation's message.
+      if (closed) return Promise.resolve({ value: undefined, done: true });
+      return new Promise((resolve) => { waiter = resolve; });
+    },
+    async return() { q.close(); return { value: undefined, done: true }; },
+    [Symbol.asyncIterator]() { return this; },
+  };
+  return q;
+}
+
+function _userMessage(text) {
+  return {
+    type: 'user',
+    message: { role: 'user', content: [{ type: 'text', text }] },
+    parent_tool_use_id: null,
+  };
+}
+
+// ── Turn records (FIFO pairing of pushed messages ↔ result messages) ──
+// Every pushed user message eventually yields exactly one result from the CLI
+// (an interrupted turn still synthesizes an error_during_execution result). All
+// settle paths (result / grace force-settle / teardown settleAll) go through
+// _settleTurn, which is idempotent via rec.settled.
+function _beginTurn() {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  const rec = { resolve, interrupted: false, settled: false };
+  _pendingTurns.push(rec);
+  return { rec, promise };
+}
+
+function _settleTurn(rec) {
+  if (!rec || rec.settled) return;
+  rec.settled = true;
+  _clearGraceTimer();
+  rec.resolve();
+}
+
+function _settleAllTurns() {
+  for (const rec of _pendingTurns) _settleTurn(rec);
+  _pendingTurns = [];
+  _queryBusy = false;
+  _turnInFlight = false;
+  _clearTurnWatchdog();
+}
+
+function _clearGraceTimer() {
+  if (_settleGraceTimer) { clearTimeout(_settleGraceTimer); _settleGraceTimer = null; }
+}
+
+/** Soft SILENCE watchdog: re-armed on every incoming SDK message, so it only fires
+ * when the session has produced nothing for the full window — a genuinely stuck/dead
+ * turn. Pending approvals prove the session is alive (the child is parked waiting for
+ * our control response), so the watchdog merely re-arms in that case. Force-settle is
+ * symmetric with the interrupt grace path: settle the head turn FIRST (its promise
+ * must resolve), then tombstone the result that may still arrive. */
+function _armTurnWatchdog() {
+  _clearTurnWatchdog();
+  if (_pendingTurns.length === 0) return;
+  _turnWatchdog = setTimeout(() => {
+    _turnWatchdog = null;
+    if (_pendingTurns.length === 0) return;
+    if (_pendingApprovals.size > 0) {
+      _armTurnWatchdog(); // approval pending = alive; wait out the approval timeout instead
+      return;
+    }
+    console.warn('[sdk-manager] turn silent beyond watchdog window — force-settling (possible silent session death)');
+    _lateResultTombstones++;
+    _settleAllTurns();
+    _maybeDrain();
+  }, TURN_WATCHDOG_MS);
+  if (_turnWatchdog.unref) _turnWatchdog.unref();
+}
+
+function _clearTurnWatchdog() {
+  if (_turnWatchdog) { clearTimeout(_turnWatchdog); _turnWatchdog = null; }
+}
+
+/**
+ * Start one turn: park a turn record, ensure the resident query exists, push the
+ * message. Resolves when the turn's result arrives (or on teardown/death settle).
+ */
+async function _startTurn(text) {
+  const { rec, promise } = _beginTurn();
+  _queryBusy = true;
+  try {
+    await _ensureResidentQuery();
+  } catch (err) {
+    // Construction itself failed (e.g. options assembly) — settle immediately.
+    _pendingTurns = _pendingTurns.filter((r) => r !== rec);
+    _settleTurn(rec);
+    _queryBusy = false;
+    _notifyQueryError(err);
+    return promise;
+  }
+  // Teardown/stop raced with construction — the settle already happened; don't push.
+  if (rec.settled) return promise;
+  if (!_activeQuery || !_inputQueue) {
+    _pendingTurns = _pendingTurns.filter((r) => r !== rec);
+    _settleTurn(rec);
+    _queryBusy = false;
+    return promise;
+  }
+  _inputQueue.push(_userMessage(text));
+  _turnInFlight = true;
+  _armTurnWatchdog();
+  return promise;
+}
+
+/**
+ * Construct the resident query exactly once (no-op while one is alive). The first
+ * construction consumes the startup continuation intent (_launchResume); later
+ * reconstructions (after a session-level death) resume the captured _sessionId.
+ */
+async function _ensureResidentQuery() {
+  if (_activeQuery) return;
+  if (!_query) throw new Error('Agent SDK not available');
+
   const options = {
     cwd: _cwd,
     permissionMode: _permissionMode,
@@ -190,8 +353,10 @@ async function _executeQuery(text) {
   // PATH, which on guarded hosts picks a binary that gets SIGKILLed on headless spawn.
   if (_claudeExecutable) options.pathToClaudeCodeExecutable = _claudeExecutable;
 
-  // Resume semantics: mid-session turns resume the captured session id; the FIRST
-  // query of a startup-continuation launch (-c/-r/--fork-session) uses the launch intent.
+  // Resume semantics: a captured session id (mid-session reconstruction) resumes it;
+  // the FIRST construction of a startup-continuation launch (-c/-r/--fork-session)
+  // uses the launch intent. options.resume only takes effect at construction time —
+  // switching sessions therefore means teardown + reconstruct (see switchToSession).
   let resumeIntent = null;
   if (_sessionId) {
     options.resume = _sessionId;
@@ -224,26 +389,110 @@ async function _executeQuery(text) {
     options.extraArgs = launchArgsToExtraArgs(launchArgs);
   }
 
-  try {
-    _activeQuery = _query({ prompt: text, options });
+  const inputQueue = _makePushQueue();
+  const query = _query({ prompt: inputQueue, options });
+  _inputQueue = inputQueue;
+  _activeQuery = query;
+  // Background iteration — messages flow in for the life of the session. Its end
+  // (clean or thrown) means the child process is gone: session-level death.
+  _drainResidentIterator(query, inputQueue);
+}
 
-    for await (const msg of _activeQuery) {
-      _processMessage(msg);
-    }
-  } catch (err) {
-    if (err.name !== 'AbortError') {
-      console.error('[SDK] Query error:', err.message);
-      // Surface query-level failures to the Web UI — console.error is invisible there
-      // (a dead query otherwise looks exactly like a hung one). Callback throw must
-      // never mask the original error or break the finally cleanup.
-      if (_onQueryError) {
-        try { _onQueryError(String(err?.message || err)); }
-        catch (cbErr) { console.warn('[sdk-manager] onQueryError threw:', cbErr?.message); }
+async function _drainResidentIterator(query, inputQueue) {
+  try {
+    for await (const msg of query) {
+      // A message-processing failure (e.g. a broadcast callback throwing) must NOT be
+      // mistaken for session death — the child is still alive; only the iterator's
+      // end/throw is a death signal.
+      try {
+        _processMessage(msg);
+      } catch (msgErr) {
+        reportSwallowed('sdk-manager.process-message', msgErr);
       }
+      _armTurnWatchdog(); // silence watchdog: any message proves the session is alive
     }
-  } finally {
-    _activeQuery = null;
+    _onResidentDeath(query, inputQueue, null);
+  } catch (err) {
+    _onResidentDeath(query, inputQueue, err);
   }
+}
+
+/**
+ * Session-level death (iterator ended or threw). Stale generations (a query already
+ * replaced by teardown/switch) are ignored. The message queue PARKS instead of
+ * draining — the next explicit user message / send-now lazily reconstructs the
+ * resident query (resuming _sessionId when one was captured).
+ */
+function _onResidentDeath(query, inputQueue, err) {
+  if (_activeQuery !== query) return; // stale generation — teardown already moved on
+  _activeQuery = null;
+  _inputQueue = null;
+  _clearGraceTimer();
+  _clearTurnWatchdog();
+  _lateResultTombstones = 0;
+  if (err && err.name !== 'AbortError') {
+    console.error('[SDK] Resident query error:', err.message);
+    _notifyQueryError(err);
+  }
+  _settleAllTurns();
+  // Flush pending approvals with a dismiss broadcast, else their modals hang forever.
+  const pending = Array.from(_pendingApprovals, ([id, p]) => ({ id, kind: p.kind || null }));
+  for (const { id, kind } of pending) {
+    _pendingApprovals.get(id)?.resolve(null);
+    _broadcastApprovalDismiss(kind, id, 'session-ended');
+  }
+  _pendingApprovals.clear();
+  // Best-effort child cleanup: if the iterator died without the process exiting (rare
+  // but possible on transport errors), don't orphan the resident CLI.
+  try { if (typeof query.close === 'function') query.close(); }
+  catch (closeErr) { reportSwallowed('sdk-manager.death-close', closeErr); }
+  // Release the SDK's streamInput consumer parked on the old queue's next() waiter.
+  if (inputQueue && !inputQueue.isClosed()) inputQueue.close();
+  // Keep the pipeline moving: the queue is not suppressed here (only interruptTurn/Stop
+  // parks it), so a queued message drains into a lazily-reconstructed session. A broken
+  // environment stops that loop after two consecutive deaths (drain pauses parked;
+  // the next explicit user message re-arms it) instead of burning one spawn + error
+  // toast per queued message.
+  _consecutiveDeaths++;
+  if (_consecutiveDeaths <= 2) _maybeDrain();
+}
+
+/**
+ * Orderly teardown of the resident query (stopSession / session switch). Nulls the
+ * handles FIRST so the dying iterator's end is dismissed as stale, then ends the
+ * input queue (lets the SDK close stdin gracefully) and closes the query (terminates
+ * the child). Settles every in-flight turn promise so no caller hangs.
+ */
+function _teardownResident() {
+  const query = _activeQuery;
+  const inputQueue = _inputQueue;
+  _activeQuery = null;
+  _inputQueue = null;
+  _clearGraceTimer();
+  _clearTurnWatchdog();
+  _lateResultTombstones = 0;
+  _settleAllTurns();
+  if (inputQueue) inputQueue.close();
+  if (query) {
+    try { if (typeof query.close === 'function') query.close(); }
+    catch (err) { reportSwallowed('sdk-manager.teardown-close', err); }
+  }
+}
+
+/** Turn-level error toast (callback throw must never break the caller). */
+function _notifyQueryError(err) {
+  if (!_onQueryError) return;
+  try { _onQueryError(String(err?.message || err)); }
+  catch (cbErr) { console.warn('[sdk-manager] onQueryError threw:', cbErr?.message); }
+}
+
+/** Drain one queued message after a turn boundary (result-driven, not loop-driven). */
+function _maybeDrain() {
+  if (_suppressDrain || _queryBusy || _switching) return;
+  if (_messageQueue.length === 0) return;
+  const next = _messageQueue.shift();
+  _broadcastQueueState();
+  sendUserMessage(next.text).catch((err) => reportSwallowed('sdk-manager.drain', err));
 }
 
 /**
@@ -291,9 +540,27 @@ function _processMessage(msg) {
       if (msg.session_id) _sessionId = msg.session_id;
       break;
 
-    case 'result':
+    case 'result': {
       if (msg.session_id) _sessionId = msg.session_id;
-      _notifyTurnError(msg);
+      // Grace/watchdog tombstone: a result that arrives AFTER its turn was already
+      // force-settled belongs to that dead turn — discard it instead of letting it
+      // settle (and prematurely end) the NEXT turn. If the tombstone outlived its turn
+      // entirely (the owed result never comes) the count would swallow a FUTURE turn's
+      // result — the bookkeeping clear below keeps that mistake bounded to the
+      // turn-end signal rather than wedging _queryBusy.
+      if (_lateResultTombstones > 0) {
+        _lateResultTombstones--;
+        _clearGraceTimer();
+        _queryBusy = false;
+        _turnInFlight = false;
+        if (_pendingTurns.length === 0) _clearTurnWatchdog();
+        _maybeDrain();
+        break;
+      }
+      const rec = _pendingTurns.shift();
+      // An interrupted turn's result is expected to be an error (turn aborted) — don't
+      // toast it. Turn-end still fires, matching the PTY Stop-hook semantics.
+      if (rec && !rec.interrupted) _notifyTurnError(msg);
       // SDK turn-end signal. Equivalent to Claude Code's Stop hook
       // in CLI mode — fires once per user-prompt response when the whole chain
       // (assistant text + all tool calls + final reply) completes. SDK mode
@@ -303,7 +570,14 @@ function _processMessage(msg) {
         try { _onTurnEnd({ sessionId: _sessionId, ts: Date.now() }); }
         catch (err) { console.warn('[sdk-manager] onTurnEnd threw:', err?.message); }
       }
+      if (rec) _settleTurn(rec);
+      _clearGraceTimer();
+      _queryBusy = false;
+      _turnInFlight = false;
+      if (_pendingTurns.length === 0) _clearTurnWatchdog();
+      _maybeDrain();
       break;
+    }
 
     default:
       break;
@@ -375,7 +649,7 @@ async function _handleCanUseTool(toolName, input, options) {
     if (_broadcastWs) {
       _broadcastWs(planPayload);
     }
-    const result = await _waitForApproval(id, 5 * 60 * 1000, 'plan', planPayload);
+    const result = await _waitForApproval(id, 5 * 60 * 1000, 'plan', planPayload, options?.signal);
     if (result === null) {
       return { behavior: 'deny', message: 'Timeout waiting for plan approval' };
     }
@@ -409,7 +683,7 @@ async function _handleCanUseTool(toolName, input, options) {
     if (_broadcastWs) {
       _broadcastWs(askPayload);
     }
-    const answers = await _waitForApproval(id, askTimeoutMs, 'ask', askPayload);
+    const answers = await _waitForApproval(id, askTimeoutMs, 'ask', askPayload, options?.signal);
     if (answers === null) {
       return { behavior: 'deny', message: 'Timeout waiting for user answer' };
     }
@@ -454,7 +728,7 @@ async function _handleCanUseTool(toolName, input, options) {
     _broadcastWs(permPayload);
   }
 
-  const result = await _waitForApproval(id, 5 * 60 * 1000, 'perm', permPayload);
+  const result = await _waitForApproval(id, 5 * 60 * 1000, 'perm', permPayload, options?.signal);
   if (result === null) {
     return { behavior: 'deny', message: 'Timeout waiting for user approval' };
   }
@@ -475,10 +749,32 @@ async function _handleCanUseTool(toolName, input, options) {
   return response;
 }
 
-function _waitForApproval(id, timeoutMs, kind, replay = null) {
+/**
+ * Broadcast a modal-dismiss for a pending approval that ended WITHOUT a user answer
+ * (timeout / session teardown / CLI-side abort). Maps to the close types the web
+ * clients already handle by id:
+ *   ask → 'sdk-ask-timeout' (askFlowController), plan → 'sdk-plan-resolved',
+ *   perm → 'perm-hook-timeout' (same type the PTY hook path emits).
+ * Deliberately NOT routed through sdk-adapter's sdkApprovalCloseType: that maps ask →
+ * 'ask-hook-cancelled', whose handler flushes the user message parked behind the ask —
+ * wrong for a timeout/dismiss. Frontend handlers match on `id` only; extra fields are inert.
+ */
+function _broadcastApprovalDismiss(kind, id, reason) {
+  if (!_broadcastWs) return;
+  const type = kind === 'ask' ? 'sdk-ask-timeout'
+    : kind === 'plan' ? 'sdk-plan-resolved'
+    : 'perm-hook-timeout';
+  try {
+    _broadcastWs({ type, id, reason });
+  } catch (err) { console.warn('[sdk-manager] approval-dismiss broadcast threw:', err?.message); }
+}
+
+function _waitForApproval(id, timeoutMs, kind, replay = null, signal = null) {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       _pendingApprovals.delete(id);
+      // Close the modal on every client — a silent deny would leave it hanging forever.
+      _broadcastApprovalDismiss(kind, id, 'timeout');
       resolve(null);
     }, timeoutMs);
     _pendingApprovals.set(id, {
@@ -493,6 +789,20 @@ function _waitForApproval(id, timeoutMs, kind, replay = null) {
         resolve(value);
       },
     });
+    // CLI-side abort of the in-flight control request (e.g. interrupt while the modal is
+    // open): settle through the same first-wins path as a timeout so the promise resolves
+    // to deny and the modal closes everywhere. { once: true } prevents listener leaks.
+    if (signal && typeof signal.addEventListener === 'function') {
+      if (signal.aborted) {
+        const pending = _pendingApprovals.get(id);
+        if (pending) { _broadcastApprovalDismiss(kind, id, 'aborted'); pending.resolve(null); }
+      } else {
+        signal.addEventListener('abort', () => {
+          const pending = _pendingApprovals.get(id);
+          if (pending) { _broadcastApprovalDismiss(kind, id, 'aborted'); pending.resolve(null); }
+        }, { once: true });
+      }
+    }
   });
 }
 
@@ -553,42 +863,52 @@ export function cancelApproval(id, reason) {
 }
 
 /**
- * Shared interrupt core: cancel in-flight approvals (else their canUseTool promises stay
- * parked and the timeout timers leak, and clients keep a ghost approval modal open) and
- * close the active query iterator. `_executeQuery`'s finally block then nulls
- * `_activeQuery`; `sendUserMessage`'s finally clears `_queryBusy`.
+ * Cancel all in-flight approvals (else their canUseTool promises stay parked and the
+ * timeout timers leak, and clients keep a ghost approval modal open).
  *
  * Returns the list of approvals that were pending (`[{ id, kind }]`) so the caller
  * (server.js) can broadcast modal-close messages to every client. Always an array.
  */
-function _interruptActiveQuery() {
+function _cancelAllApprovals() {
   const cancelled = Array.from(_pendingApprovals, ([id, pending]) => ({ id, kind: pending.kind || null }));
   for (const { id } of cancelled) {
     _pendingApprovals.get(id)?.resolve(null);
   }
   _pendingApprovals.clear();
-
-  if (_activeQuery) {
-    // Best-effort streaming-mode control request (no-op / rejects in single-prompt mode → swallow).
-    try { _activeQuery.interrupt?.().catch(() => {}); } catch {}
-    // Forcefully terminate the underlying CLI subprocess — aborts an in-flight query.
-    try { if (typeof _activeQuery.close === 'function') _activeQuery.close(); } catch {}
-  }
   return cancelled;
+}
+
+/** Backstop: if no result shows up within the grace window after an interrupt, force-
+ * settle the head turn (keeping _queryBusy from wedging forever) and mark a tombstone
+ * so the result that eventually arrives is discarded instead of settling the next turn. */
+function _armSettleGrace() {
+  _clearGraceTimer();
+  _settleGraceTimer = setTimeout(() => {
+    _settleGraceTimer = null;
+    const rec = _pendingTurns[0];
+    if (!rec || !rec.interrupted) return;
+    console.warn('[sdk-manager] no result within interrupt grace — force-settling the turn');
+    _lateResultTombstones++;
+    _pendingTurns.shift();
+    _settleTurn(rec);
+    _queryBusy = false;
+    if (_pendingTurns.length === 0) _clearTurnWatchdog();
+    _maybeDrain();
+  }, INTERRUPT_GRACE_MS);
+  if (_settleGraceTimer.unref) _settleGraceTimer.unref();
 }
 
 /**
  * Interrupt the current turn (user clicked the Stop button) while KEEPING the
- * session alive so the next message resumes the same conversation.
- *
- * Crucially we do NOT call `_resetFullState()`, so `_sessionId` is preserved
- * and the next sendUserMessage resumes via `options.resume`.
+ * session alive: the resident query is a streaming-input session, so interrupt()
+ * is a real control request — the CLI aborts the current turn and synthesizes an
+ * error result for it, and the conversation (and child process) survives.
  *
  * Contrast with `stopSession()` below, which is the hard process-exit cleanup
  * that also nulls `_sessionId` (loses conversation continuity).
  *
  * Stop KEEPS queued messages (product decision, matching the web UX where queued bubbles
- * stay parked after Stop): `_suppressDrain` stops sendUserMessage's drain loop from running
+ * stay parked after Stop): `_suppressDrain` stops the result-driven drain from running
  * them right after the interrupt; the park lifts when a fresh user message / send-now
  * starts a new turn. The queue-state broadcast lets clients keep their bubbles.
  *
@@ -597,7 +917,23 @@ function _interruptActiveQuery() {
  * messages to every client. Always an array (empty when nothing was pending).
  */
 export function interruptTurn() {
-  const cancelled = _interruptActiveQuery();
+  const cancelled = _cancelAllApprovals();
+  const q = _activeQuery;
+  // Key off the sticky in-flight flag, not the FIFO: the grace/watchdog force-settle
+  // paths drain _pendingTurns while the CLI-side turn may still be running — keying on
+  // the FIFO length would make a second Stop silently skip the interrupt request.
+  if (q && _turnInFlight) {
+    _turnInFlight = false; // don't send duplicate interrupts while the abort unwinds
+    if (_pendingTurns.length > 0) _pendingTurns[0].interrupted = true;
+    if (typeof q.interrupt === 'function') {
+      try {
+        // A reject here (e.g. the control request can't reach a dying child) is NOT a
+        // death signal — only the iterator ending is. Report and move on.
+        q.interrupt().catch((err) => reportSwallowed('sdk-manager.interrupt', err));
+      } catch (err) { reportSwallowed('sdk-manager.interrupt', err); }
+    }
+    _armSettleGrace();
+  }
   _suppressDrain = true;
   _broadcastQueueState();
   return cancelled;
@@ -639,7 +975,8 @@ export function sendQueuedNow(id) {
   }
 
   _messageQueue.unshift(item);
-  const cancelled = _interruptActiveQuery();
+  const cancelled = interruptTurn();
+  _suppressDrain = false; // send-now overrides the Stop-park interruptTurn just set
   _broadcastQueueState();
   return cancelled;
 }
@@ -666,25 +1003,62 @@ export function getQueueSnapshot() {
 }
 
 /**
- * Stop the active SDK session.
+ * Stop the active SDK session (hard cleanup): tear down the resident query and reset
+ * all session state, losing conversation continuity.
  */
 export function stopSession() {
-  // Use close() instead of interrupt() — works in all modes
-  if (_activeQuery && typeof _activeQuery.close === 'function') {
-    _activeQuery.close();
-  }
+  _teardownResident();
   _resetFullState();
+}
+
+/**
+ * Switch the session to a different session id (web "resume session" entry — SDK-mode
+ * counterpart of the PTY /resume injection). options.resume only applies at query
+ * construction, so the switch tears down the resident query; the next user message
+ * lazily reconstructs it with options.resume = sessionId.
+ *
+ * Returns { ok: true } on success; { ok: false, reason } with 'busy' (a turn or another
+ * switch is in flight), 'unavailable' (SDK missing), or 'bad-id' otherwise.
+ */
+export function switchToSession(sessionId) {
+  if (!_query) return { ok: false, reason: 'unavailable' };
+  if (typeof sessionId !== 'string' || !sessionId) return { ok: false, reason: 'bad-id' };
+  if (_queryBusy || _switching) return { ok: false, reason: 'busy' };
+  _switching = true;
+  try {
+    _teardownResident();
+    // Defensive: no approvals can be pending while idle, but never leak one across
+    // a session boundary (WS reconnect replay would show a ghost modal).
+    for (const { id, kind } of _cancelAllApprovals()) {
+      _broadcastApprovalDismiss(kind, id, 'session-switch');
+    }
+    _sessionId = sessionId;
+    _launchResume = null;
+    _initAnnouncedSid = '';
+    _lastInitSnapshot = null; // don't replay the OLD session's sdk-init to the new one
+    clearQueued(); // broadcasts the emptied queue-state
+    _suppressDrain = false;
+    return { ok: true };
+  } finally {
+    _switching = false;
+  }
 }
 
 /**
  * Reset all session state.
  */
 function _resetFullState() {
-  _activeQuery = null;
   _sessionId = null;
   _queryBusy = false;
+  _switching = false;
+  _turnInFlight = false;
   _initAnnouncedSid = '';
   _lastInitSnapshot = null;
+  _pendingTurns = [];
+  _lateResultTombstones = 0;
+  _consecutiveDeaths = 0;
+  _clearGraceTimer();
+  _clearTurnWatchdog();
   const hadQueued = _messageQueue.length > 0;
   _messageQueue = [];
   _suppressDrain = false;
