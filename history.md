@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- fix(server): **新建工作区（claude 已启动、尚未发出首个请求）点击其标签不再误报「切换超时」并串流绑定项目对话** — `/events` 的 `?instance=` 无会话目录时钉死空冷源（legacy 与 v3 两处回退一律钉空串，死活实例都不再回退到绑定项目当前会话）：存活 → 空视图（`load_start{total:0,empty:true}`）+ 保持 per-project live feed，首个请求落盘即实时上屏；已死 → 维持 sid-not-found → 前端 detach 回绑定项目。`empty:true` 让客户端失效该 scope 的视图缓存快照（修复"增量恢复已删会话"残留）。前端 `sid-not-found` 按 `reason` 显示新键 `ui.resume.noSession`（18 语言）取代误导性的「切换超时」。Coverage: `events-instance-live-empty.test.js`, `sid-not-found-live-empty.test.js`.
 - fix(server): **SDK 模式审批超时后弹窗自动关闭** — 超时统一广播 dismiss（ask→`sdk-ask-timeout`、plan→`sdk-plan-resolved{reason:'timeout'}`、perm→`perm-hook-timeout`），并接通 canUseTool 的 `options.signal`。Coverage: `branch-lib-sdk-manager.test.js`.
 - fix(server): **SDK 模式改为常驻 streaming-input 进程** — 一次构造长驻 query、回合边界推一条消息；Stop 从杀进程升级为真 `interrupt()`，死亡后下一条消息以 `options.resume` 惰性重建。Coverage: `sdk-manager-query.test.js`, `sdk-manager-extra.test.js`, `branch-lib-sdk-manager.test.js`.
 - fix(server): **SDK 模式支持会话中途切换（历史会话 resume）** — `POST /api/resume-session` 新增 SDK 分支，经 `switchToSession` 切换身份、下一条消息惰性重建；回合在途 409 busy。Coverage: `resume-route.test.js`.

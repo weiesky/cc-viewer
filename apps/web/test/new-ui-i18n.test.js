@@ -92,6 +92,7 @@ const KEYS = [
   // /resume hover list: status tooltips + new-project button (ResumeSessionsPopover.jsx / AppHeader.jsx):
   'ui.resume.statusInactive',
   'ui.resume.switchTimeout',
+  'ui.resume.noSession',
   'ui.resume.returnToCurrent',
   'ui.resume.newProject',
   // Multi-project tab bar: × close tooltip / confirm / failure messages (AppHeader.jsx HeaderProjectTabs):
