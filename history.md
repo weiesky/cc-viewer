@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- feat(web): **新建工作区目录树「启动」一步直启** — 不再先入历史列表等用户再点一次,选中即调 `/api/workspaces/launch`(服务端本已 `registerWorkspace`,历史列表照常刷新);目录树条目按 path 复用列表行的 `logCount>0 → -c` 启发式,未在列表的视为新工作区不带 `-c`。
+
 ## 1.9.3
 
 - fix(server): **新建工作区（claude 已启动、尚未发出首个请求）点击其标签不再误报「切换超时」并串流绑定项目对话** — `/events` 的 `?instance=` 无会话目录时钉死空冷源（legacy 与 v3 两处回退一律钉空串，死活实例都不再回退到绑定项目当前会话）：存活 → 空视图（`load_start{total:0,empty:true}`）+ 保持 per-project live feed，首个请求落盘即实时上屏；已死 → 维持 sid-not-found → 前端 detach 回绑定项目。`empty:true` 让客户端失效该 scope 的视图缓存快照（修复"增量恢复已删会话"残留）。前端 `sid-not-found` 按 `reason` 显示新键 `ui.resume.noSession`（18 语言）取代误导性的「切换超时」。Coverage: `events-instance-live-empty.test.js`, `sid-not-found-live-empty.test.js`.

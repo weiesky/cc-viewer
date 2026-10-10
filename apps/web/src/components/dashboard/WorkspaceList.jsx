@@ -89,22 +89,14 @@ export default function WorkspaceList({ onLaunch, embedded = false }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [popup, closePopup]);
 
+  // DirBrowser 「启动」:不再走"先 add 进历史列表、用户再点一次"的旧两步,直接 launch。
+  // /launch 服务端内部已 registerWorkspace(等价于 add),历史列表由 fetchWorkspaces 刷新。
+  // logCount 未知的条目(目录树新增)按"新工作区"不带 -c;已在列表内的则复用列表行的
+  // logCount 启发式(logCount>0 → 注入 -c 续接历史会话)。
   const handleAddFromBrowser = (path) => {
     setBrowseOpen(false);
-    fetch(apiUrl('/api/workspaces/add'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path }),
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.error) {
-          message.error(data.error);
-        } else {
-          fetchWorkspaces();
-        }
-      })
-      .catch(() => message.error('Failed to add workspace'));
+    const existing = workspaces.find(w => w.path === path);
+    handleLaunch({ id: `dir:${path}`, path, logCount: existing?.logCount || 0 });
   };
 
   const handleRemove = (id) => {
