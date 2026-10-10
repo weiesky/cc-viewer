@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.9.3
 
 - fix(server): **新建工作区（claude 已启动、尚未发出首个请求）点击其标签不再误报「切换超时」并串流绑定项目对话** — `/events` 的 `?instance=` 无会话目录时钉死空冷源（legacy 与 v3 两处回退一律钉空串，死活实例都不再回退到绑定项目当前会话）：存活 → 空视图（`load_start{total:0,empty:true}`）+ 保持 per-project live feed，首个请求落盘即实时上屏；已死 → 维持 sid-not-found → 前端 detach 回绑定项目。`empty:true` 让客户端失效该 scope 的视图缓存快照（修复"增量恢复已删会话"残留）。前端 `sid-not-found` 按 `reason` 显示新键 `ui.resume.noSession`（18 语言）取代误导性的「切换超时」。Coverage: `events-instance-live-empty.test.js`, `sid-not-found-live-empty.test.js`.
 - feat(server): **SDK 模式接通后台任务消息广播** — `_processMessage` 新增 `task_started/task_progress/task_notification/task_updated` 四类 system subtype 分支，无损透传（snake→camel）为 terminal WS 的 `{type:'sdk-task', ...}` 帧；`task_updated.patch` 保持 merge 增量语义、`skip_transcript` 原样转发、纯转发不触碰回合结算。所接 4 类为 SDK 公开契约，@internal 的 `task_summary`/`post_turn_summary` 已知暂弃（待真机观察）；无 server 端任务表 → 不做 WS 重连回放（易失 vs 建表留 UI 阶段定）。本轮仅 server 打通通道，UI 落点待真机观察后定。Coverage: `sdk-manager-query.test.js`.

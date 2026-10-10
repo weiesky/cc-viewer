@@ -1,5 +1,15 @@
 # cc-viewer
 
+## 1.9.3
+
+### Patch Changes
+
+- d6cab48: fix(server): **新建工作区（claude 已启动、尚未发出首个请求）点击其标签不再误报「切换超时」并串流绑定项目对话** — `/events?project=<p>&instance=<i>` 无会话目录时钉死空冷源（`load_start{total:0,empty:true}` → `load_end`）：legacy 与 v3 wire（`_v3Src`）两处回退一律钉空串，实例存活与否都不再回退到绑定项目当前会话；空视图跳过全局 `context-window.json` 兜底。实例存活 → 不发 `sid-not-found`，视图停留新工作区空态，per-project live feed 在其首个会话目录出现时从 byte 0 实时补上；实例已死 → 维持 `sid-not-found` → 前端 toast + detach。`empty:true` 信号让客户端失效该 scope 的视图缓存快照（修复"增量恢复已删会话"残留）。前端 `sid-not-found` 按 payload `reason` 显示新键 `ui.resume.noSession`（18 语言）取代误导性的「切换超时」。Coverage: `events-instance-live-empty.test.js`, `sid-not-found-live-empty.test.js`.
+- d6cab48: fix(server): **SDK 模式审批超时后弹窗自动关闭** — 此前 `_waitForApproval` 超时静默 deny，各端 ask/plan/perm 弹窗永挂；现超时统一广播 dismiss（ask→`sdk-ask-timeout`、plan→`sdk-plan-resolved{reason:'timeout'}`、perm→`perm-hook-timeout`，前端 handler 均已就绪），并接通 canUseTool 的 `options.signal`（CLI 侧 abort 时同路 dismiss + deny）。Coverage: `branch-lib-sdk-manager.test.js`.
+- d6cab48: fix(server): **SDK 模式改为常驻 streaming-input 进程** — 每回合 spawn 新子进程 + resume 的旧模型废弃，改为一次构造 `query({prompt: 输入队列})` 长驻、回合边界向流内推一条消息：Stop 从杀进程升级为真 `interrupt()`（会话与进程都保留），解锁 SDK 流式输入模式的完整控制面；观测面（proxy/v2/SSE）与 turn_end 链路不变。死亡重建惰性化（下一条消息以 `options.resume` 续接），中断回合的迟到 result 经墓碑机制不错位 settle 后续回合。Coverage: `sdk-manager-query.test.js`, `sdk-manager-extra.test.js`, `branch-lib-sdk-manager.test.js`.
+- d6cab48: fix(server): **SDK 模式支持会话中途切换（历史会话 resume 不再是死控件）** — `POST /api/resume-session` 新增 SDK 分支：不再硬依赖存活 PTY，经 `sdk-manager.switchToSession` 拆除旧常驻 query、切换 `_sessionId`，下一条消息以 `options.resume=<目标会话>` 惰性重建；回合在途返回 409 busy，SDK 不可用返回 409 unavailable，前端链路零改动复用。Coverage: `resume-route.test.js`.
+- d6cab48: feat(server): **SDK 模式接通后台任务消息广播** — `_processMessage` 新增 `task_started/task_progress/task_notification/task_updated` 四类 system subtype 分支，无损透传（snake→camel）为 terminal WS 的 `{type:'sdk-task', ...}` 帧；`task_updated.patch` 保持 merge 增量语义留给客户端、`skip_transcript` 原样转发、纯转发不触碰回合结算（`_queryBusy`/`_pendingTurns` 不变）。说明：所接 4 类是 SDK 公开契约（sdk.d.ts SDKMessage union）；SDK 另有 @internal 的 `task_summary`/`post_turn_summary` 两类 system subtype，本轮已知且暂弃，待真机观察是否含可透传信号。本轮仅 server 打通通道（无 server 端任务表 → 不做 WS 重连回放，断连窗口错过的 delta 不可恢复；接受易失 vs 建有界 last-state map 留待 UI 阶段决策）。UI 落点待真机观察后定。Coverage: `sdk-manager-query.test.js`.
+
 ## 1.9.2
 
 ### Patch Changes
