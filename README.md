@@ -229,10 +229,6 @@ The **Edit System Prompt** modal (hamburger menu → Edit System Prompt) is tabb
 * Each request inlines Token usage stats (input/output tokens, cache creation/read, hit rate)
 * Compatible with Claude Code Router (CCR) and other proxy scenarios — falls back to matching requests by API path pattern
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/chart?repos=weiesky/cc-viewer&type=date&legend=top-left&sealed_token=j2X2_c0TE1YPvV14JRmosH_FQhqDbWyTVlXO7A-LrTISexkOoasVDprqJ6Pp0fsRHbAZlwMNMHkoqEk1uD_3vTYaT9lJW3bFbO17293VsptQjoDRtsdjCQ)](https://www.star-history.com/?repos=weiesky%2Fcc-viewer&type=date&legend=top-left)
-
 ## License
 
 MIT
