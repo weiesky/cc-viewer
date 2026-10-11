@@ -52,7 +52,7 @@
 .modalBody {
   background: transparent;
   min-height: auto;
-  padding: 0;
+  padding: 0 0 20px; /* 底部出血在 antd body 默认 24px 之上再 +20px */
 }
 
 .popupClose {
