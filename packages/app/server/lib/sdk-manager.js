@@ -716,13 +716,16 @@ function _notifyTurnError(resultMsg) {
 async function _collectContextUsage(trigger) {
   const q = _activeQuery;
   if (!q || typeof q.getContextUsage !== 'function') return { ok: false, reason: 'session-inactive' };
+  let timeoutId;
   try {
     // SDK request() has no built-in timeout — race a bound so a live-but-unresponsive
-    // child can't hold the in-flight gate forever.
-    const usage = await Promise.race([
-      q.getContextUsage(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('getContextUsage timeout')), CTX_USAGE_TIMEOUT_MS)),
-    ]);
+    // child can't hold the in-flight gate forever. unref so the timer never delays process
+    // exit; cleared once the request settles so the handle doesn't linger.
+    const timeout = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('getContextUsage timeout')), CTX_USAGE_TIMEOUT_MS);
+      if (timeoutId.unref) timeoutId.unref();
+    });
+    const usage = await Promise.race([q.getContextUsage(), timeout]);
     if (_activeQuery !== q) return { ok: false, reason: 'session-inactive' }; // stale generation
     // Degenerate resolve (null/undefined/{}) — skip rather than broadcast a usage-less frame.
     if (!usage || typeof usage !== 'object' || Array.isArray(usage) || Object.keys(usage).length === 0) {
@@ -733,6 +736,8 @@ async function _collectContextUsage(trigger) {
   } catch (err) {
     reportSwallowed('sdk-manager.context-usage', err);
     return { ok: false, reason: 'control-failed' };
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 
