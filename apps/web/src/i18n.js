@@ -9796,6 +9796,182 @@ const i18nData = {
     "tr": "Tam sistem istemi SDK modunda kullanılamaz (yalnızca 2 bölümlük sıkıştırılmış kayıt). Tam istemi görmek için TUI modunda açın.",
     "uk": "Повний системний промпт недоступний у режимі SDK (доступний лише стиснений 2-сегментний запис). Відкрийте в режимі TUI, щоб побачити повний промпт."
   },
+  "ui.contextUsage.tab": {
+    "zh": "上下文用量", "en": "Context Usage", "zh-TW": "上下文用量",
+    "ko": "컨텍스트 사용량", "ja": "コンテキスト使用量", "de": "Kontextnutzung",
+    "es": "Uso de contexto", "fr": "Utilisation du contexte", "it": "Utilizzo contesto",
+    "da": "Kontekstforbrug", "pl": "Zużycie kontekstu", "ru": "Использование контекста",
+    "ar": "استخدام السياق", "no": "Kontekstbruk", "pt-BR": "Uso de contexto",
+    "th": "การใช้งานบริบท", "tr": "Bağlam kullanımı", "uk": "Використання контексту"
+  },
+  "ui.contextUsage.title": {
+    "zh": "上下文用量", "en": "Context Usage", "zh-TW": "上下文用量",
+    "ko": "컨텍스트 사용량", "ja": "コンテキスト使用量", "de": "Kontextnutzung",
+    "es": "Uso de contexto", "fr": "Utilisation du contexte", "it": "Utilizzo contesto",
+    "da": "Kontekstforbrug", "pl": "Zużycie kontekstu", "ru": "Использование контекста",
+    "ar": "استخدام السياق", "no": "Kontekstbruk", "pt-BR": "Uso de contexto",
+    "th": "การใช้งานบริบท", "tr": "Bağlam kullanımı", "uk": "Використання контексту"
+  },
+  "ui.contextUsage.refresh": {
+    "zh": "刷新", "en": "Refresh", "zh-TW": "重新整理",
+    "ko": "새로 고침", "ja": "更新", "de": "Aktualisieren",
+    "es": "Actualizar", "fr": "Actualiser", "it": "Aggiorna",
+    "da": "Opdater", "pl": "Odśwież", "ru": "Обновить",
+    "ar": "تحديث", "no": "Oppdater", "pt-BR": "Atualizar",
+    "th": "รีเฟรช", "tr": "Yenile", "uk": "Оновити"
+  },
+  "ui.contextUsage.updatedAt": {
+    "zh": "更新于 {time}", "en": "Updated {time}", "zh-TW": "更新於 {time}",
+    "ko": "업데이트 {time}", "ja": "更新 {time}", "de": "Aktualisiert {time}",
+    "es": "Actualizado {time}", "fr": "Mis à jour {time}", "it": "Aggiornato {time}",
+    "da": "Opdateret {time}", "pl": "Zaktualizowano {time}", "ru": "Обновлено {time}",
+    "ar": "تم التحديث {time}", "no": "Oppdatert {time}", "pt-BR": "Atualizado {time}",
+    "th": "อัปเดต {time}", "tr": "Güncellendi {time}", "uk": "Оновлено {time}"
+  },
+  "ui.contextUsage.inactive": {
+    "zh": "暂无上下文用量 — 发送一条消息后开始统计。", "en": "No context usage yet — send a message to start tracking.", "zh-TW": "暫無上下文用量 — 傳送一則訊息後開始統計。",
+    "ko": "컨텍스트 사용량 없음 — 메시지를내면 추적이 시작됩니다.", "ja": "コンテキスト使用量はまだありません — メッセージを送信すると追跡を開始します。", "de": "Noch keine Kontextnutzung — senden Sie eine Nachricht, um zu beginnen.",
+    "es": "Aún no hay uso de contexto — envía un mensaje para empezar.", "fr": "Pas encore d'utilisation du contexte — envoyez un message pour commencer.", "it": "Nessun utilizzo del contesto — invia un messaggio per iniziare.",
+    "da": "Intet kontekstforbrug endnu — send en besked for at starte.", "pl": "Brak zużycia kontekstu — wyślij wiadomość, aby rozpocząć.", "ru": "Нет данных об использовании контекста — отправьте сообщение для начала.",
+    "ar": "لا يوجد استخدام للسياق بعد — أرسل رسالة للبدء.", "no": "Ingen kontekstbruk ennå — send en melding for å starte.", "pt-BR": "Ainda sem uso de contexto — envie uma mensagem para começar.",
+    "th": "ยังไม่มีการใช้งานบริบท — ส่งข้อความเพื่อเริ่มติดตาม", "tr": "Henüz bağlam kullanımı yok — başlamak için bir mesaj gönderin.", "uk": "Поки немає даних про використання контексту — надішліть повідомлення, щоб почати."
+  },
+  "ui.contextUsage.loadFailed": {
+    "zh": "加载失败", "en": "Failed to load", "zh-TW": "載入失敗",
+    "ko": "로드 실패", "ja": "読み込みに失敗しました", "de": "Laden fehlgeschlagen",
+    "es": "Error al cargar", "fr": "Échec du chargement", "it": "Caricamento fallito",
+    "da": "Indlæsning mislykkedes", "pl": "Ładowanie nie powiodło się", "ru": "Не удалось загрузить",
+    "ar": "فشل التحميل", "no": "Lasting mislyktes", "pt-BR": "Falha ao carregar",
+    "th": "โหลดล้มเหลว", "tr": "Yükleme başarısız", "uk": "Не вдалося завантажити"
+  },
+  "ui.contextUsage.retry": {
+    "zh": "重试", "en": "Retry", "zh-TW": "重試",
+    "ko": "다시 시도", "ja": "再試行", "de": "Erneut versuchen",
+    "es": "Reintentar", "fr": "Réessayer", "it": "Riprova",
+    "da": "Prøv igen", "pl": "Spróbuj ponownie", "ru": "Повторить",
+    "ar": "إعادة المحاولة", "no": "Prøv igjen", "pt-BR": "Tentar novamente",
+    "th": "ลองอีกครั้ง", "tr": "Tekrar dene", "uk": "Повторити"
+  },
+  "ui.contextUsage.usedOf": {
+    "zh": "{used} / {max}", "en": "{used} / {max}", "zh-TW": "{used} / {max}",
+    "ko": "{used} / {max}", "ja": "{used} / {max}", "de": "{used} / {max}",
+    "es": "{used} / {max}", "fr": "{used} / {max}", "it": "{used} / {max}",
+    "da": "{used} / {max}", "pl": "{used} / {max}", "ru": "{used} / {max}",
+    "ar": "{used} / {max}", "no": "{used} / {max}", "pt-BR": "{used} / {max}",
+    "th": "{used} / {max}", "tr": "{used} / {max}", "uk": "{used} / {max}"
+  },
+  "ui.contextUsage.autoCompactAt": {
+    "zh": "自动压缩于 {tokens}", "en": "Auto-compact at {tokens}", "zh-TW": "自動壓縮於 {tokens}",
+    "ko": "자동 압축 {tokens}", "ja": "自動圧縮 {tokens}", "de": "Auto-Komprimierung bei {tokens}",
+    "es": "Compactación automática a {tokens}", "fr": "Compactage auto à {tokens}", "it": "Compattazione automatica a {tokens}",
+    "da": "Auto-komprimering ved {tokens}", "pl": "Automatyczna kompresja przy {tokens}", "ru": "Автосжатие при {tokens}",
+    "ar": "ضغط تلقائي عند {tokens}", "no": "Auto-komprimering ved {tokens}", "pt-BR": "Compactação automática em {tokens}",
+    "th": "บีบอัดอัตโนมัติที่ {tokens}", "tr": "Otomatik sıkıştırma {tokens}", "uk": "Автостиснення при {tokens}"
+  },
+  "ui.contextUsage.autoCompactOff": {
+    "zh": "自动压缩已关闭", "en": "Auto-compact off", "zh-TW": "自動壓縮已關閉",
+    "ko": "자동 압축 꺼짐", "ja": "自動圧縮オフ", "de": "Auto-Komprimierung aus",
+    "es": "Compactación automática desactivada", "fr": "Compactage auto désactivé", "it": "Compattazione automatica disattivata",
+    "da": "Auto-komprimering fra", "pl": "Automatyczna kompresja wyłączona", "ru": "Автосжатие выключено",
+    "ar": "الضغط التلقائي معطل", "no": "Auto-komprimering av", "pt-BR": "Compactação automática desativada",
+    "th": "ปิดการบีบอัดอัตโนมัติ", "tr": "Otomatik sıkıştırma kapalı", "uk": "Автостиснення вимкнено"
+  },
+  "ui.contextUsage.grid": {
+    "zh": "上下文网格", "en": "Context grid", "zh-TW": "上下文網格",
+    "ko": "컨텍스트 그리드", "ja": "コンテキストグリッド", "de": "Kontextraster",
+    "es": "Cuadrícula de contexto", "fr": "Grille de contexte", "it": "Griglia del contesto",
+    "da": "Kontekstgitter", "pl": "Siatka kontekstu", "ru": "Сетка контекста",
+    "ar": "شبكة السياق", "no": "Kontekstrutenett", "pt-BR": "Grade de contexto",
+    "th": "ตารางบริบท", "tr": "Bağlam ızgarası", "uk": "Сітка контексту"
+  },
+  "ui.contextUsage.section.memoryFiles": {
+    "zh": "记忆文件", "en": "Memory files", "zh-TW": "記憶檔案",
+    "ko": "메모리 파일", "ja": "メモリファイル", "de": "Speicherdateien",
+    "es": "Archivos de memoria", "fr": "Fichiers mémoire", "it": "File di memoria",
+    "da": "Hukommelsesfiler", "pl": "Pliki pamięci", "ru": "Файлы памяти",
+    "ar": "ملفات الذاكرة", "no": "Minnefiler", "pt-BR": "Arquivos de memória",
+    "th": "ไฟล์หน่วยความจำ", "tr": "Bellek dosyaları", "uk": "Файли пам'яті"
+  },
+  "ui.contextUsage.section.mcpTools": {
+    "zh": "MCP 工具", "en": "MCP tools", "zh-TW": "MCP 工具",
+    "ko": "MCP 도구", "ja": "MCP ツール", "de": "MCP-Tools",
+    "es": "Herramientas MCP", "fr": "Outils MCP", "it": "Strumenti MCP",
+    "da": "MCP-værktøjer", "pl": "Narzędzia MCP", "ru": "Инструменты MCP",
+    "ar": "أدوات MCP", "no": "MCP-verktøy", "pt-BR": "Ferramentas MCP",
+    "th": "เครื่องมือ MCP", "tr": "MCP araçları", "uk": "Інструменти MCP"
+  },
+  "ui.contextUsage.section.deferredTools": {
+    "zh": "延迟内置工具", "en": "Deferred built-in tools", "zh-TW": "延遲內建工具",
+    "ko": "지연된 기본 도구", "ja": "遅延ビルトインツール", "de": "Verzögerte integrierte Tools",
+    "es": "Herramientas integradas diferidas", "fr": "Outils intégrés différés", "it": "Strumenti integrati differiti",
+    "da": "Udskudte indbyggede værktøjer", "pl": "Odroczone wbudowane narzędzia", "ru": "Отложенные встроенные инструменты",
+    "ar": "الأدوات المضمنة المؤجلة", "no": "Utsatte innebygde verktøy", "pt-BR": "Ferramentas integradas adiadas",
+    "th": "เครื่องมือในตัวที่เลื่อนออกไป", "tr": "Ertelenmiş yerleşik araçlar", "uk": "Відкладені вбудовані інструменти"
+  },
+  "ui.contextUsage.section.systemTools": {
+    "zh": "系统工具", "en": "System tools", "zh-TW": "系統工具",
+    "ko": "시스템 도구", "ja": "システムツール", "de": "Systemtools",
+    "es": "Herramientas del sistema", "fr": "Outils système", "it": "Strumenti di sistema",
+    "da": "Systemværktøjer", "pl": "Narzędzia systemowe", "ru": "Системные инструменты",
+    "ar": "أدوات النظام", "no": "Systemverktøy", "pt-BR": "Ferramentas do sistema",
+    "th": "เครื่องมือระบบ", "tr": "Sistem araçları", "uk": "Системні інструменти"
+  },
+  "ui.contextUsage.section.systemPromptSections": {
+    "zh": "系统提示分节", "en": "System prompt sections", "zh-TW": "系統提示分節",
+    "ko": "시스템 프롬프트 섹션", "ja": "システムプロンプトセクション", "de": "System-Prompt-Abschnitte",
+    "es": "Secciones del prompt del sistema", "fr": "Sections du prompt système", "it": "Sezioni del prompt di sistema",
+    "da": "Systemprompt-afsnit", "pl": "Sekcje promptu systemowego", "ru": "Разделы системного промпта",
+    "ar": "أقسام موجه النظام", "no": "Systemprompt-seksjoner", "pt-BR": "Seções do prompt do sistema",
+    "th": "ส่วนของ System Prompt", "tr": "Sistem istemi bölümleri", "uk": "Розділи системного промпта"
+  },
+  "ui.contextUsage.section.agents": {
+    "zh": "子代理", "en": "Agents", "zh-TW": "子代理",
+    "ko": "에이전트", "ja": "エージェント", "de": "Agenten",
+    "es": "Agentes", "fr": "Agents", "it": "Agenti",
+    "da": "Agenter", "pl": "Agenci", "ru": "Агенты",
+    "ar": "الوكلاء", "no": "Agenter", "pt-BR": "Agentes",
+    "th": "เอเจนต์", "tr": "Aracılar", "uk": "Агенти"
+  },
+  "ui.contextUsage.section.skills": {
+    "zh": "技能", "en": "Skills", "zh-TW": "技能",
+    "ko": "스킬", "ja": "スキル", "de": "Skills",
+    "es": "Habilidades", "fr": "Compétences", "it": "Skill",
+    "da": "Færdigheder", "pl": "Umiejętności", "ru": "Навыки",
+    "ar": "المهارات", "no": "Ferdigheter", "pt-BR": "Habilidades",
+    "th": "ทักษะ", "tr": "Yetenekler", "uk": "Навички"
+  },
+  "ui.contextUsage.section.slashCommands": {
+    "zh": "斜杠命令", "en": "Slash commands", "zh-TW": "斜線命令",
+    "ko": "슬래시 명령", "ja": "スラッシュコマンド", "de": "Slash-Befehle",
+    "es": "Comandos de barra", "fr": "Commandes slash", "it": "Comandi slash",
+    "da": "Skråstregskommandoer", "pl": "Polecenia ukośnikowe", "ru": "Слэш-команды",
+    "ar": "أوامر الشرطة المائلة", "no": "Skråstrekkommandoer", "pt-BR": "Comandos de barra",
+    "th": "คำสั่ง Slash", "tr": "Eğik çizgi komutları", "uk": "Слеш-команди"
+  },
+  "ui.contextUsage.section.messageBreakdown": {
+    "zh": "消息明细", "en": "Message breakdown", "zh-TW": "訊息明細",
+    "ko": "메시지 분석", "ja": "メッセージ内訳", "de": "Nachrichtenaufschlüsselung",
+    "es": "Desglose de mensajes", "fr": "Répartition des messages", "it": "Dettaglio messaggi",
+    "da": "Beskedopdeling", "pl": "Podział wiadomości", "ru": "Разбор сообщений",
+    "ar": "تفصيل الرسائل", "no": "Meldingsfordeling", "pt-BR": "Detalhamento de mensagens",
+    "th": "รายละเอียดข้อความ", "tr": "Mesaj dökümü", "uk": "Розбивка повідомлень"
+  },
+  "ui.contextUsage.section.apiUsage": {
+    "zh": "上次 API 调用", "en": "Last API call", "zh-TW": "上次 API 呼叫",
+    "ko": "마지막 API 호출", "ja": "前回の API 呼び出し", "de": "Letzter API-Aufruf",
+    "es": "Última llamada API", "fr": "Dernier appel API", "it": "Ultima chiamata API",
+    "da": "Sidste API-kald", "pl": "Ostatnie wywołanie API", "ru": "Последний вызов API",
+    "ar": "آخر استدعاء API", "no": "Siste API-kall", "pt-BR": "Última chamada de API",
+    "th": "การเรียก API ล่าสุด", "tr": "Son API çağrısı", "uk": "Останній виклик API"
+  },
+  "ui.contextUsage.deferred": {
+    "zh": "延迟", "en": "deferred", "zh-TW": "延遲",
+    "ko": "지연됨", "ja": "遅延", "de": "verzögert",
+    "es": "diferido", "fr": "différé", "it": "differito",
+    "da": "udskudt", "pl": "odroczone", "ru": "отложено",
+    "ar": "مؤجل", "no": "utsatt", "pt-BR": "adiado",
+    "th": "เลื่อนออกไป", "tr": "ertelendi", "uk": "відкладено"
+  },
   "ui.context.messages": {
     "zh": "消息", "en": "Messages", "zh-TW": "訊息",
     "ko": "메시지", "ja": "メッセージ", "de": "Nachrichten",

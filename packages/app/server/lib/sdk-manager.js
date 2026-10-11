@@ -69,6 +69,16 @@ const INTERRUPT_GRACE_MS = 10 * 1000;
 const TURN_WATCHDOG_MS = 25 * 60 * 1000;
 let _initAnnouncedSid = ''; // sessionId whose slash-command surface was already announced (reset on full reset)
 let _lastInitSnapshot = null; // last sdk-init payload for WS reconnect replay
+let _lastContextUsage = null;   // last sdk-context-usage frame for WS reconnect replay
+let _ctxUsageFetching = false;  // one getContextUsage control request in flight
+let _ctxUsageQueued = false;    // a turn-end/compact arrived while in flight → rerun once (coalesce)
+// Generation counter for the in-flight gate: _clearContextUsage bumps it so a stale
+// request's .finally can't clear the flag of a NEWER in-flight request started after a
+// session switch (the flag is only reset by the generation that set it).
+let _ctxUsageSeq = 0;
+// getContextUsage control requests have no SDK-side timeout — bound the wait so a live-but-
+// unresponsive child can't wedge the in-flight gate forever.
+const CTX_USAGE_TIMEOUT_MS = 10 * 1000;
 
 // Callbacks registered by cli.js
 let _onTurnEnd = null; // SDK mode has no Stop hook (ensureHooks() skipped) — fire turnEnd directly when the SDK 'result' message arrives
@@ -94,6 +104,11 @@ const _pendingApprovals = new Map();
 // the id lets web clients act on individual queued bubbles (send-now / remove) and the
 // queue-state WS broadcast keeps every client in sync (server is the source of truth).
 let _messageQueue = [];
+// Cap the pending backlog so a stuck/busy resident query can't grow it unbounded
+// (chat-queue.js MAX_ITEMS / im-bridge-core MAX_QUEUE parity). On overflow the item
+// is NOT pushed and a `queue-rejected` frame goes out instead of `queue-state` — the
+// frontend's `queueFull` toast (ChatView.jsx) is the user-visible signal.
+const MAX_QUEUE_ITEMS = 50;
 // Stop semantics (product decision): Stop parks the queue instead of dropping it —
 // interruptTurn sets this flag so sendUserMessage's drain loop exits without running the
 // parked items; cleared when a fresh user message / send-now starts a new turn.
@@ -160,6 +175,14 @@ export async function sendUserMessage(text) {
 
   // If a turn is already running, queue this message and return
   if (_queryBusy) {
+    if (_messageQueue.length >= MAX_QUEUE_ITEMS) {
+      // Negative ack: the frontend cleared the composer optimistically — never fail
+      // silently. Only the reject frame goes out (no queue-state — nothing changed).
+      console.warn('[sdk-manager] queue full, rejecting message');
+      try { if (_broadcastWs) _broadcastWs({ type: 'queue-rejected', reason: 'full' }); }
+      catch (err) { reportSwallowed('sdk-manager.reject-broadcast', err); }
+      return;
+    }
     _messageQueue.push(_makeQueueItem(text));
     _broadcastQueueState();
     return;
@@ -528,6 +551,9 @@ function _processMessage(msg) {
           preTokens: meta && meta.pre_tokens,
           postTokens: meta && meta.post_tokens,
         });
+        // Compaction is the only non-turn event that materially shrinks context — refresh
+        // the usage panel. Coalesced with the turn-end refresh via the in-flight gate.
+        _refreshContextUsage('compact');
       } else if (_broadcastWs
         && (msg.subtype === 'task_started' || msg.subtype === 'task_progress'
           || msg.subtype === 'task_notification' || msg.subtype === 'task_updated')) {
@@ -586,6 +612,10 @@ function _processMessage(msg) {
       _turnInFlight = false;
       if (_pendingTurns.length === 0) _clearTurnWatchdog();
       _maybeDrain();
+      // Refresh the context-usage panel AFTER the turn fully settles (fire-and-forget,
+      // never awaited in this message loop). Placement after settle/drain guarantees a
+      // synchronous throw here can't truncate turn settlement.
+      _refreshContextUsage('turn-end');
       break;
     }
 
@@ -675,6 +705,97 @@ function _notifyTurnError(resultMsg) {
 }
 
 /**
+ * Collect a context-usage snapshot via the Query control surface (`get_context_usage`).
+ * Returns { ok:true, snapshot } | { ok:false, reason:'session-inactive'|'control-failed' }.
+ * Never throws — the panel is best-effort; failures must not surface as sdk-error toasts.
+ *
+ * Identity guard (not a null check): teardown nulls `_activeQuery`, but a subsequent user
+ * message lazily rebuilds it into a NEW query object. A late-resolving control promise from
+ * the dead generation must not broadcast that session's numbers into the new panel.
+ */
+async function _collectContextUsage(trigger) {
+  const q = _activeQuery;
+  if (!q || typeof q.getContextUsage !== 'function') return { ok: false, reason: 'session-inactive' };
+  try {
+    // SDK request() has no built-in timeout — race a bound so a live-but-unresponsive
+    // child can't hold the in-flight gate forever.
+    const usage = await Promise.race([
+      q.getContextUsage(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('getContextUsage timeout')), CTX_USAGE_TIMEOUT_MS)),
+    ]);
+    if (_activeQuery !== q) return { ok: false, reason: 'session-inactive' }; // stale generation
+    // Degenerate resolve (null/undefined/{}) — skip rather than broadcast a usage-less frame.
+    if (!usage || typeof usage !== 'object' || Array.isArray(usage) || Object.keys(usage).length === 0) {
+      return { ok: false, reason: 'control-failed' };
+    }
+    _lastContextUsage = { type: 'sdk-context-usage', sessionId: _sessionId, ts: Date.now(), trigger, usage };
+    return { ok: true, snapshot: _lastContextUsage };
+  } catch (err) {
+    reportSwallowed('sdk-manager.context-usage', err);
+    return { ok: false, reason: 'control-failed' };
+  }
+}
+
+/**
+ * Fire-and-forget refresh for turn-boundary hooks (result / compact_boundary). Never
+ * awaited by the message loop. In-flight requests coalesce: a second trigger while one is
+ * running queues exactly one rerun. The fetching flag is ALWAYS reset in finally (incl.
+ * stale-generation early returns) so the gate can't wedge.
+ */
+function _refreshContextUsage(trigger) {
+  if (_ctxUsageFetching) { _ctxUsageQueued = true; return; }
+  _ctxUsageFetching = true;
+  const seq = ++_ctxUsageSeq; // capture this generation; a session switch bumps it
+  _collectContextUsage(trigger).then((r) => {
+    if (r.ok && _broadcastWs) {
+      try { _broadcastWs(r.snapshot); }
+      catch (err) { reportSwallowed('sdk-manager.context-usage-broadcast', err); }
+    }
+  }).finally(() => {
+    // Only the generation that set the flag may clear it — a stale request's finally must
+    // not clobber a NEWER in-flight request started after a session switch.
+    if (seq !== _ctxUsageSeq) return;
+    _ctxUsageFetching = false;
+    if (_ctxUsageQueued) { _ctxUsageQueued = false; _refreshContextUsage('coalesced'); }
+  });
+}
+
+/**
+ * On-demand fetch for the HTTP route: refresh the snapshot, broadcast to all clients,
+ * then reply. Unlike _refreshContextUsage this bypasses the in-flight gate (an explicit
+ * user refresh should not be swallowed by a queued turn-end) and returns the outcome.
+ */
+export async function fetchContextUsage() {
+  const r = await _collectContextUsage('request');
+  if (r.ok && _broadcastWs) {
+    try { _broadcastWs(r.snapshot); }
+    catch (err) { reportSwallowed('sdk-manager.context-usage-broadcast', err); }
+  }
+  return r;
+}
+
+/** WS reconnect replay getter (server.js connection hook), sdk-init parity. */
+export function getContextUsageSnapshot() { return _lastContextUsage; }
+
+/**
+ * Clear the usage snapshot on a session boundary (switch / full reset). Broadcasts a
+ * usage:null clear frame ONLY when a snapshot was present (an empty-to-empty broadcast
+ * would just be noise). The death path deliberately does NOT clear (same-session resume
+ * keeps the last known value, matching _lastInitSnapshot's death behavior).
+ */
+function _clearContextUsage(trigger) {
+  const had = _lastContextUsage !== null;
+  _lastContextUsage = null;
+  _ctxUsageSeq++; // invalidate any in-flight generation so its finally can't clear a newer gate
+  _ctxUsageFetching = false;
+  _ctxUsageQueued = false;
+  if (had && _broadcastWs) {
+    try { _broadcastWs({ type: 'sdk-context-usage', sessionId: _sessionId, ts: Date.now(), trigger, usage: null }); }
+    catch (err) { reportSwallowed('sdk-manager.context-usage-broadcast', err); }
+  }
+}
+
+/**
  * canUseTool callback — handles AskUserQuestion + permission approval.
  *
  * Check order mirrors perm-bridge.js precedence:
@@ -718,7 +839,7 @@ async function _handleCanUseTool(toolName, input, options) {
           }
           return { behavior: 'allow', updatedInput: input };
         }
-      } catch {}
+      } catch (err) { reportSwallowed('sdk-manager.waterfall.plan', err); }
     }
     const planPayload = { type: 'sdk-plan-pending', id, input };
     if (_broadcastWs) {
@@ -747,7 +868,7 @@ async function _handleCanUseTool(toolName, input, options) {
         if (hookResult.answers) {
           return { behavior: 'allow', updatedInput: { questions: input.questions, answers: hookResult.answers } };
         }
-      } catch {}
+      } catch (err) { reportSwallowed('sdk-manager.waterfall.ask', err); }
     }
     // 24h — same source as the hook path (server.js ASK_HOOK_TIMEOUT_MS), honoring the
     // "GUI effectively has no timeout" promise. The actual constant lives in
@@ -796,7 +917,7 @@ async function _handleCanUseTool(toolName, input, options) {
         return { behavior: 'deny', message: 'Plugin denied' };
       }
       // unknown decision → fall through to normal approval flow
-    } catch {}
+    } catch (err) { reportSwallowed('sdk-manager.waterfall.perm', err); }
   }
   const permPayload = { type: 'perm-hook-pending', id, toolName, input };
   if (_broadcastWs) {
@@ -1111,6 +1232,7 @@ export function switchToSession(sessionId) {
     _launchResume = null;
     _initAnnouncedSid = '';
     _lastInitSnapshot = null; // don't replay the OLD session's sdk-init to the new one
+    _clearContextUsage('session-switched');
     clearQueued(); // broadcasts the emptied queue-state
     _suppressDrain = false;
     return { ok: true };
@@ -1129,6 +1251,7 @@ function _resetFullState() {
   _turnInFlight = false;
   _initAnnouncedSid = '';
   _lastInitSnapshot = null;
+  _clearContextUsage('session-switched');
   _pendingTurns = [];
   _lateResultTombstones = 0;
   _consecutiveDeaths = 0;

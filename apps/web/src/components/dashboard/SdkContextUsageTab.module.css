@@ -1,0 +1,188 @@
+/* SDK-mode "Context usage" panel (SdkContextUsageTab). Session-level usage view mounted
+   as a DetailPanel tab. No !important (CLAUDE.md). */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 0;
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modelTag {
+  margin-inline-start: 0;
+}
+
+.headerSpacer {
+  flex: 1;
+}
+
+.updatedAt {
+  font-size: 12px;
+}
+
+.barSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.barMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+
+.barTrack {
+  position: relative;
+  display: flex;
+  height: 10px;
+  width: 100%;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--border-secondary, rgba(0, 0, 0, 0.08));
+}
+
+.barSeg {
+  height: 100%;
+}
+
+.thresholdMark {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--color-warning, #faad14);
+}
+
+.autoCompactOff {
+  font-size: 12px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.deferredTag {
+  margin-inline-start: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.gridSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gridLabel {
+  font-size: 12px;
+}
+
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gridRow {
+  display: flex;
+  gap: 2px;
+}
+
+.gridCell {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  display: inline-block;
+}
+
+.truncatedNote {
+  font-size: 12px;
+}
+
+.sections {
+  border-top: 1px solid var(--border-secondary, rgba(0, 0, 0, 0.06));
+}
+
+.sectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sectionSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.sectionRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sectionRowName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 12px;
+}
+
+.sectionRowTokens {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12px;
+  border-top: 1px solid var(--border-secondary, rgba(0, 0, 0, 0.06));
+  padding-top: 8px;
+}
+
+.apiUsageLabel {
+  margin-right: 4px;
+}
+
+.summaryItem {
+  font-variant-numeric: tabular-nums;
+}

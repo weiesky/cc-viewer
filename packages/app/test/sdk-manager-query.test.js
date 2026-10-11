@@ -76,7 +76,7 @@ function makeDeps(extra = {}) {
 //                   use this — the grace timer shares the mocked API)
 //   endWith(err) — end the output stream (err → throw): session-level death
 //   released     — count of released (completed) turns
-function makeResidentQuery({ respond, initMsgs, autoRelease = 0 } = {}) {
+function makeResidentQuery({ respond, initMsgs, autoRelease = 0, getContextUsage } = {}) {
   const calls = [];
   let current = null;
   function fakeQuery({ prompt, options }) {
@@ -86,9 +86,33 @@ function makeResidentQuery({ respond, initMsgs, autoRelease = 0 } = {}) {
       ended: false, err: null, released: 0,
       interruptCalls: 0, closeCalls: 0,
       releaseNext: false, releaseCurrent: null, turn: null,
+      ctxUsageCalls: 0, ctxUsagePending: null,
     };
     current = state;
     const api = {
+      // Optional control-surface mock. getContextUsage(spec): { resolve, reject, defer } —
+      // a value / Error / deferred gate. close() rejects any in-flight request (the real
+      // SDK's Query.cleanup rejects pending control responses on teardown). For deferred
+      // gates the spec's promise IS returned, so the test-owned `state.ctxUsagePending`
+      // stays readable until the test itself settles it (finally-tracking would clear it
+      // as soon as the manager's .finally ran, before the test could inspect/release).
+      async getContextUsage() {
+        state.ctxUsageCalls++;
+        const spec = typeof getContextUsage === 'function' ? getContextUsage(state.ctxUsageCalls) : getContextUsage;
+        if (spec && spec.defer) {
+          state.ctxKeepOnClose = spec.keepOnClose === true;
+          return new Promise((res, rej) => {
+            state.ctxUsagePending = {
+              resolve: (v) => { state.ctxUsagePending = null; res(v); },
+              reject: (e) => { state.ctxUsagePending = null; rej(e); },
+            };
+          });
+        }
+        if (spec && spec.reject) {
+          return Promise.reject(spec.reject instanceof Error ? spec.reject : new Error(String(spec.reject)));
+        }
+        return Promise.resolve(spec && 'resolve' in spec ? spec.resolve : spec);
+      },
       async *[Symbol.asyncIterator]() {
         const done = () => { if (state.err) throw state.err; };
         const runRespond = async (msg) => {
@@ -165,6 +189,11 @@ function makeResidentQuery({ respond, initMsgs, autoRelease = 0 } = {}) {
         state.closeCalls++;
         state.ended = true;
         if (state.releaseCurrent) state.releaseCurrent();
+        // Real SDK teardown rejects in-flight control requests (Query.cleanup). A deferred
+        // spec may opt out (keepOnClose) to model a resolve-late-after-teardown race.
+        if (state.ctxUsagePending && !state.ctxKeepOnClose) {
+          state.ctxUsagePending.reject(new Error('Query closed before response received'));
+        }
       },
     };
     return api;
@@ -1551,6 +1580,310 @@ describe('sdk-manager-query — queue-state 广播与快照', () => {
     await tick(8);
 
     assert.deepEqual(calls, ['first', 'second'], 'drain must push the queued TEXT, not the queue item object');
+  });
+
+  it('队列满(≥50) → 拒绝入队,只发 queue-rejected 不发 queue-state', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const { fq, releaseFirst } = makeGatedQuery();
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(5);
+
+    // 填满 50 条。
+    for (let i = 0; i < 50; i++) await sdk.sendUserMessage(`m${i}`); // eslint-disable-line no-await-in-loop
+    assert.equal(sdk.getQueueSnapshot().length, 50);
+    const stateBefore = broadcasts.filter((b) => b.type === 'queue-state').length;
+
+    // 第 51 条应被拒:不入队,只发 reject,不再发 queue-state。
+    await sdk.sendUserMessage('overflow');
+    assert.equal(sdk.getQueueSnapshot().length, 50, 'overflow item must NOT be enqueued');
+    const rej = broadcasts.filter((b) => b.type === 'queue-rejected');
+    assert.equal(rej.length, 1);
+    assert.equal(rej[0].reason, 'full');
+    assert.equal(broadcasts.filter((b) => b.type === 'queue-state').length, stateBefore,
+      'rejection must not trigger an extra queue-state broadcast (nothing changed)');
+
+    releaseFirst();
+    await p1;
+    await tick(8);
+  });
+});
+
+describe('sdk-manager-query — sdk-context-usage 通道', () => {
+  const USAGE = {
+    categories: [{ name: 'System prompt', tokens: 1200, color: '#8884d8' }],
+    totalTokens: 1200, maxTokens: 200000, rawMaxTokens: 200000,
+    percentage: 0.6, gridRows: [], model: 'claude-opus-4-test',
+    memoryFiles: [], mcpTools: [], agents: [], isAutoCompactEnabled: true,
+    apiUsage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+  };
+
+  function makeCtxQuery(usageSpec, calls) {
+    return makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async (msg) => { if (calls) calls.push(pushedText(msg)); return [resultMsg()]; },
+      getContextUsage: usageSpec,
+    });
+  }
+
+  it('回合 result → 恰一次 sdk-context-usage 广播(trigger:turn-end,usage 透传)', async () => {
+    const { deps, broadcasts, turnEnds } = makeDeps();
+    const fq = makeCtxQuery({ resolve: USAGE });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    await sdk.sendUserMessage('hello');
+    await tick(10);
+
+    const frames = broadcasts.filter((b) => b.type === 'sdk-context-usage');
+    assert.equal(frames.length, 1, 'exactly one usage frame per settled turn');
+    assert.equal(frames[0].trigger, 'turn-end');
+    assert.deepEqual(frames[0].usage, USAGE, 'usage payload is losslessly passed through');
+    assert.equal(typeof frames[0].ts, 'number');
+    assert.deepEqual(sdk.getContextUsageSnapshot(), frames[0], 'snapshot retained for WS replay');
+    assert.equal(turnEnds.length, 1);
+  });
+
+  it('getContextUsage reject → 不抛、不广播、无 sdk-error、onTurnEnd 照常', async () => {
+    const { deps, broadcasts, turnEnds } = makeDeps();
+    const fq = makeCtxQuery({ reject: new Error('control boom') });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    await sdk.sendUserMessage('hello');
+    await tick(10);
+
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage').length, 0);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-error').length, 0, 'control failure must not toast');
+    assert.equal(turnEnds.length, 1, 'turn-end still fires');
+    assert.equal(sdk.getContextUsageSnapshot(), null);
+  });
+
+  it('getContextUsage 同步 throw → turnEnd 仍触发(刷新调用点在 result 尾部)', async () => {
+    const { deps, broadcasts, turnEnds } = makeDeps();
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async () => [resultMsg()],
+      getContextUsage: () => { throw new Error('sync boom'); },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    await sdk.sendUserMessage('hello');
+    await tick(10);
+
+    assert.equal(turnEnds.length, 1, 'turn settlement must not be truncated by a sync throw');
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage').length, 0);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-error').length, 0);
+  });
+
+  it('退化 resolve(null/{}) → 跳过广播', async () => {
+    for (const spec of [{ resolve: null }, { resolve: {} }, { resolve: undefined }]) {
+      const { deps, broadcasts } = makeDeps();
+      const fq = makeCtxQuery(spec);
+      sdk.__setQueryForTests(fq);
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('hello'); // eslint-disable-line no-await-in-loop
+      await tick(10); // eslint-disable-line no-await-in-loop
+      assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage').length, 0,
+        `degenerate resolve ${JSON.stringify(spec)} must not broadcast`);
+      sdk.stopSession(); // eslint-disable-line no-await-in-loop
+    }
+  });
+
+  it('老 fake(无 getContextUsage)→ 静默跳过,零影响', async () => {
+    const { deps, broadcasts, turnEnds } = makeDeps();
+    const { fq, releaseFirst } = makeGatedQuery(); // bare fake, no getContextUsage
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(5);
+    releaseFirst();
+    await p1;
+    await tick(8);
+
+    assert.equal(turnEnds.length, 1);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage').length, 0);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-error').length, 0);
+  });
+
+  it('同回合 compact+result → compact 帧先出,result 在途合并为一次 coalesced 重跑', async () => {
+    const { deps, broadcasts } = makeDeps();
+    let ctxCalls = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async () => [
+        { type: 'system', subtype: 'compact_boundary', session_id: 'sess-ctx', compact_metadata: { trigger: 'auto', pre_tokens: 5000, post_tokens: 2000 } },
+        resultMsg(),
+      ],
+      getContextUsage: () => { ctxCalls++; return { resolve: USAGE }; },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    await sdk.sendUserMessage('hello');
+    await tick(12);
+
+    const frames = broadcasts.filter((b) => b.type === 'sdk-context-usage');
+    // compact_boundary arrives first and starts a control request; result lands while it
+    // is still in flight, so the gate coalesces it into ONE rerun. The deterministic
+    // sequence is [compact, coalesced] — assert it exactly so deleting the compact
+    // trigger fails the test.
+    assert.equal(ctxCalls, 2, 'compact fires, turn-end coalesces into one rerun');
+    assert.deepEqual(frames.map((f) => f.trigger), ['compact', 'coalesced']);
+    assert.equal(frames.at(-1).usage && frames.at(-1).usage.totalTokens, USAGE.totalTokens);
+  });
+
+  it('in-flight 合并:第一次 park 后跑完第 2 回合仍 ==1,release 后 ==2', async () => {
+    const { deps, broadcasts } = makeDeps();
+    let releaseCtx;
+    const gate = new Promise((r) => { releaseCtx = r; });
+    let ctxCalls = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async () => [resultMsg()],
+      getContextUsage: () => { ctxCalls++; return ctxCalls === 1 ? { defer: true } : { resolve: USAGE }; },
+    });
+    // Patch the deferred gate onto the first call.
+    fq.current && (fq.current.ctxGate = gate);
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    await sdk.sendUserMessage('t1');
+    await tick(8);
+    assert.equal(ctxCalls, 1, 'first control request in flight');
+    const state = fq.current();
+    assert.ok(state.ctxUsagePending, 'first request parked');
+
+    // Second turn completes while the first control request is still parked.
+    await sdk.sendUserMessage('t2');
+    await tick(8);
+    assert.equal(ctxCalls, 1, 'in-flight request coalesces — no parallel second call');
+
+    // Release the parked first request → exactly one queued rerun fires.
+    state.ctxUsagePending.resolve(USAGE);
+    await tick(4);
+    assert.equal(ctxCalls, 2, 'exactly one queued rerun after release');
+    await tick(8); // let the rerun's fast control request settle and broadcast
+    const frames = broadcasts.filter((b) => b.type === 'sdk-context-usage');
+    assert.equal(frames.length, 2, 'two broadcasts (first + rerun)');
+    assert.equal(frames.at(-1).trigger, 'coalesced');
+  });
+
+  it('stale generation(identity-guard):park→switch→重建→release 旧 deferred 仍不广播', async () => {
+    const { deps, broadcasts } = makeDeps();
+    let ctxCalls = 0;
+    // keepOnClose: model a control request that outlives teardown and resolves LATE —
+    // the identity guard (not the close-reject) is what must block the broadcast.
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async () => [resultMsg()],
+      getContextUsage: () => { ctxCalls++; return { defer: true, keepOnClose: true }; },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    await sdk.sendUserMessage('t1');
+    await tick(8);
+    const oldState = fq.current();
+    const oldPending = oldState.ctxUsagePending;
+    assert.ok(oldPending, 'old generation control parked');
+
+    // Switch session while the control request is in flight.
+    const sw = sdk.switchToSession('sess-new');
+    assert.equal(sw.ok, true);
+
+    // New turn lazily rebuilds _activeQuery into a NEW object.
+    await sdk.sendUserMessage('t2');
+    await tick(8);
+
+    // NOW the OLD generation's parked request resolves late — must NOT broadcast.
+    oldPending.resolve(USAGE);
+    await tick(8);
+    const after = broadcasts.filter((b) => b.type === 'sdk-context-usage');
+    assert.equal(after.filter((f) => f.usage && f.usage.totalTokens === USAGE.totalTokens && f.trigger === 'turn-end' && f.sessionId === 'sess-ctx').length, 0,
+      'stale-generation resolve must not broadcast into the new session');
+  });
+
+  it('close→reject 在途 control:teardown 后 reject-late 不广播', async () => {
+    const { deps, broadcasts } = makeDeps();
+    let ctxCalls = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async () => [resultMsg()],
+      getContextUsage: () => { ctxCalls++; return { defer: true }; },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    await sdk.sendUserMessage('t1');
+    await tick(8);
+    assert.ok(fq.current().ctxUsagePending, 'control parked');
+
+    // stopSession tears down the resident query; close() rejects the in-flight request.
+    sdk.stopSession();
+    await tick(8);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.usage).length, 0,
+      'teardown-rejected control must not broadcast');
+  });
+
+  it('switchToSession(有快照)→ 广播 usage:null 清帧 + 快照归 null', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const fq = makeCtxQuery({ resolve: USAGE });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    await sdk.sendUserMessage('hello');
+    await tick(10);
+    assert.notEqual(sdk.getContextUsageSnapshot(), null, 'snapshot present before switch');
+
+    const sw = sdk.switchToSession('sess-new');
+    assert.equal(sw.ok, true);
+    assert.equal(sdk.getContextUsageSnapshot(), null, 'snapshot cleared on switch');
+    const clearFrames = broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.usage === null);
+    assert.equal(clearFrames.length, 1, 'exactly one clear frame');
+    assert.equal(clearFrames[0].trigger, 'session-switched');
+  });
+
+  it('10s 超时楔子:挂起的 control 释放门闸,下一回合仍能刷新', async () => {
+    // A live-but-unresponsive child must not wedge the in-flight gate forever: after the
+    // CTX_USAGE_TIMEOUT_MS race fires, the gate frees and the next turn-end can refresh.
+    const { deps, broadcasts } = makeDeps();
+    let ctxCalls = 0;
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      const fq = makeResidentQuery({
+        initMsgs: [sysInit('sess-ctx')],
+        respond: async () => [resultMsg()],
+        // First call parks forever (keepOnClose so teardown doesn't reject it); the
+        // second (post-timeout) resolves fast.
+        getContextUsage: () => { ctxCalls++; return ctxCalls === 1 ? { defer: true, keepOnClose: true } : { resolve: USAGE }; },
+      });
+      sdk.__setQueryForTests(fq);
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+
+      await sdk.sendUserMessage('t1');
+      await tick(6);
+      assert.equal(ctxCalls, 1, 'first control request parked');
+
+      // No response within 10s → the timeout race rejects the wait and frees the gate.
+      mock.timers.tick(11 * 1000);
+      await tick(6);
+      assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage').length, 0, 'no broadcast from the wedged request');
+
+      // Next turn-end starts a NEW control request (gate was released).
+      await sdk.sendUserMessage('t2');
+      await tick(10);
+      assert.equal(ctxCalls, 2, 'gate released — next turn-end refreshes');
+      const frames = broadcasts.filter((b) => b.type === 'sdk-context-usage');
+      assert.equal(frames.length, 1);
+      assert.equal(frames[0].trigger, 'turn-end');
+    } finally {
+      mock.timers.reset();
+    }
   });
 });
 

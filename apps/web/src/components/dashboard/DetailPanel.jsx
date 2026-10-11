@@ -13,6 +13,7 @@ import { restoreSlimmedEntry } from '../../utils/entry-slim.js';
 import { buildRequestExpandNode } from '../../utils/requestExpand.js';
 import AppHeader from './AppHeader';
 import ContextTab from './ContextTab';
+import SdkContextUsageTab from './SdkContextUsageTab';
 import styles from './DetailPanel.module.css';
 
 const { Text, Paragraph } = Typography;
@@ -139,6 +140,7 @@ class DetailPanel extends React.Component {
       nextProps.onTabChange !== this.props.onTabChange ||
       nextProps.selectedIndex !== this.props.selectedIndex ||
       nextProps.expandDiff !== this.props.expandDiff ||
+      nextProps.sdkMode !== this.props.sdkMode ||
       nextProps.pendingCacheHighlight !== this.props.pendingCacheHighlight ||
       nextState.bodyViewMode !== this.state.bodyViewMode ||
       (onCacheTab && nextState.cacheHighlightIdx !== this.state.cacheHighlightIdx) ||
@@ -727,6 +729,17 @@ class DetailPanel extends React.Component {
           </div>
         ),
       },
+      // SDK-mode only: session-level context usage (vs ContextTab's per-request view).
+      // Mounted lazily by antd Tabs on first open; stays subscribed when switched away.
+      ...(this.props.sdkMode ? [{
+        key: 'context-usage',
+        label: t('ui.contextUsage.tab'),
+        children: (
+          <div className={`${styles.tabContent} ${styles.cacheTabContent}`}>
+            <SdkContextUsageTab />
+          </div>
+        ),
+      }] : []),
     ];
 
     const usage = request.response?.body?.usage;
@@ -784,7 +797,7 @@ class DetailPanel extends React.Component {
         </div>
 
         <Tabs
-          activeKey={currentTab}
+          activeKey={tabItems.some((x) => x.key === currentTab) ? currentTab : 'context'}
           onChange={onTabChange}
           items={tabItems}
           size="small"

@@ -721,6 +721,7 @@ class App extends AppBase {
                     detailLoading={!!(selectedRequest?._v3Row && this.state.detailLoading)}
                     detailError={selectedRequest?._v3Row ? this.state.detailError : null}
                     onDetailRetry={this.handleDetailRetry}
+                    sdkMode={this._isLocalLog ? false : this.state.sdkMode}
                   />
                 </div>
               </div>

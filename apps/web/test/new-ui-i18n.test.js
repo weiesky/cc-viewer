@@ -126,6 +126,11 @@ describe('new UI key i18n coverage', () => {
   const PLACEHOLDER_KEYS = [
     ['ui.fileExplorer.loadFailed', '{reason}'],
     ['ui.workspaces.showMore', '{count}'],
+    // SDK「Context 用量」面板的插值键。
+    ['ui.contextUsage.updatedAt', '{time}'],
+    ['ui.contextUsage.usedOf', '{used}'],
+    ['ui.contextUsage.usedOf', '{max}'],
+    ['ui.contextUsage.autoCompactAt', '{tokens}'],
   ];
   for (const [key, placeholder] of PLACEHOLDER_KEYS) {
     it(`${key} 每个 locale 保留占位符 ${placeholder}`, () => {

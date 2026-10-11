@@ -26,6 +26,29 @@ function localeBlockOf(key) {
 
 const KEYS = [
   'ui.context.viewRaw', // 新增:右侧面板「原文」switch 标签
+  // SDK 模式「Context 用量」面板(SdkContextUsageTab.jsx)的全部文案键。
+  'ui.contextUsage.tab',
+  'ui.contextUsage.title',
+  'ui.contextUsage.refresh',
+  'ui.contextUsage.updatedAt',
+  'ui.contextUsage.inactive',
+  'ui.contextUsage.loadFailed',
+  'ui.contextUsage.retry',
+  'ui.contextUsage.usedOf',
+  'ui.contextUsage.autoCompactAt',
+  'ui.contextUsage.autoCompactOff',
+  'ui.contextUsage.grid',
+  'ui.contextUsage.section.memoryFiles',
+  'ui.contextUsage.section.mcpTools',
+  'ui.contextUsage.section.deferredTools',
+  'ui.contextUsage.section.systemTools',
+  'ui.contextUsage.section.systemPromptSections',
+  'ui.contextUsage.section.agents',
+  'ui.contextUsage.section.skills',
+  'ui.contextUsage.section.slashCommands',
+  'ui.contextUsage.section.messageBreakdown',
+  'ui.contextUsage.section.apiUsage',
+  'ui.contextUsage.deferred',
 ];
 
 describe('context tab i18n — all 18 locales', () => {

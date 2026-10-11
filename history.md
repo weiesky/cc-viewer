@@ -2,7 +2,9 @@
 
 ## Unreleased
 
+- feat(sdk): **SDK 模式新增「Context 用量」面板** — sdk-manager 回合结束/compact 后经 query control 请求拉取上下文用量并广播 `sdk-context-usage`(快照随 WS 重连回放、切会话广播清帧),新增 `GET /api/sdk-context-usage` 按需拉取;详情面板 SDK 模式新增「Context 用量」标签页:类别构成条(含 auto-compact 阈值刻度)、上下文网格、记忆文件/MCP 工具/系统提示分节/子代理/技能/消息明细全字段(18 语言)。control 失败仅 `reportSwallowed`,不打扰 UI。Coverage: `sdk-manager-query.test.js`, `sdk-context-route.test.js`, `context-usage-view.test.js`, `context-i18n.test.js`, `sdk-context-usage-tab.test.js`.
 - feat(web): **新建工作区目录树「启动」一步直启** — 不再先入历史列表等用户再点一次,选中即调 `/api/workspaces/launch`(服务端本已 `registerWorkspace`,历史列表照常刷新);目录树条目按 path 复用列表行的 `logCount>0 → -c` 启发式,未在列表的视为新工作区不带 `-c`。
+- fix(sdk): **三处健壮性/文案修正** — ① `_runWaterfallHook` 的 plan/ask/perm 三处静默 `catch {}` 改 `reportSwallowed`;② `_messageQueue` 加 `MAX_QUEUE_ITEMS=50` 上限,超限只发 `queue-rejected{reason:'full'}`(前端 `queueFull` toast 从死监听接通);③ README `ccv -SDK` 笔误改 `ccv --sdk`,"no terminal panel" 改为承认 Header 的 scratch 多 tab 终端存在。Coverage: `sdk-manager-query.test.js`.
 
 ## 1.9.3
 
