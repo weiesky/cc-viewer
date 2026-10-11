@@ -162,6 +162,10 @@ class AppBase extends React.Component {
       // 用作 AppHeader 血条 calibration 'auto' 启动期的回落 hint（避 haiku init ping 误判 200K）。
       // 初值 null = 还没拿到；/api/claude-settings 与 workspace_started SSE 都会塞值。
       claudeProjectModel: null,
+      // SDK-mode session launch model (from the sdk-init WS message, lifted up from ChatView
+      // via onSdkModel). Rendered in AppHeader's proxy-chip slot as a hot-switch fallback —
+      // only when the proxy chip renders nothing. null = unknown / not SDK mode.
+      sdkModel: null,
       resumeRememberChoice: false,
       autoApproveSeconds: 3, // 自动审批倒计时秒数；默认 3s（0=关闭 / N=N 秒后自动批准 / -1=免审批）
       logDir: '',
@@ -562,7 +566,11 @@ class AppBase extends React.Component {
     // Mark the switch in flight so the chat/terminal panels get a translucent
     // overlay until the ?sid cold load completes (load_end). A 30s backstop
     // prevents a lost SSE event from leaving the overlay up forever.
-    this.setState({ resumeSwitch: { uuid } });
+    // Also drop the SDK launch model: a resume-switch changes session identity, and the
+    // header chip would otherwise show the OLD session's model until the resumed session's
+    // first turn re-broadcasts sdk-init. (workspace_started already clears it for full
+    // workspace switches; this covers the same-workspace resume-switch gap.)
+    this.setState({ resumeSwitch: { uuid }, sdkModel: null });
     if (this._resumeSwitchTimer) clearTimeout(this._resumeSwitchTimer);
     this._resumeSwitchTimer = setTimeout(() => {
       this._resumeSwitchTimer = null;
@@ -2329,6 +2337,9 @@ class AppBase extends React.Component {
               // workspace 切换 = cwd 切换 → claude 的 lastModelUsage 也要重查；
               // 后端在 workspace_started 一并塞了新 cwd 对应的 hint，没有就清空。
               claudeProjectModel: (typeof data.claudeProjectModel === 'string' && data.claudeProjectModel) ? data.claudeProjectModel : null,
+              // Workspace switch = a new SDK session; drop the old session's launch model so
+              // a stale chip never lingers into the new workspace (the next sdk-init refills).
+              sdkModel: null,
             });
             if (this.state.resumeSwitch) this._clearResumeSwitch();
             if (isMobile) clearEntries();
@@ -2999,6 +3010,9 @@ class AppBase extends React.Component {
   handleUserMessageSent = () => {
     if (this.state.contextBarLocked) this.setState({ contextBarLocked: false });
   };
+
+  // SDK-mode launch model lifted from ChatView's sdk-init handler → AppHeader proxy-chip slot.
+  handleSdkModel = (model) => { this.setState({ sdkModel: model || null }); };
 
   // ─── 模式切换 ──────────────────────────────────────────
 

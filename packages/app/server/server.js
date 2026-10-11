@@ -42,6 +42,7 @@ import { dingtalkRoutes } from './routes/dingtalk.js';
 import { imRoutes } from './routes/im.js';
 import { resumeRoutes } from './routes/resume.js';
 import { sdkContextRoutes } from './routes/sdk-context.js';
+import { sdkMcpStatusRoutes } from './routes/sdk-mcp-status.js';
 import { proxyStatsRoutes } from './routes/proxy-stats.js';
 import { setProxyStatsListener } from './lib/proxy/proxy-stats.js';
 import * as imCore from './lib/im/im-bridge-core.js';
@@ -816,6 +817,7 @@ const _routes = [
   ...proxyStatsRoutes,
   ...resumeRoutes,
   ...sdkContextRoutes,
+  ...sdkMcpStatusRoutes,
 ];
 const dispatch = createDispatcher(_routes);
 
@@ -1751,6 +1753,15 @@ async function setupTerminalWebSocket(httpServer) {
         const cuSnap = _sdkGetContextUsageSnapshot();
         if (cuSnap) {
           try { ws.send(JSON.stringify(cuSnap)); } catch {}
+        }
+      }
+
+      // Replay the last sdk-mcp-status snapshot (sdk-context-usage parity). A null snapshot
+      // sends no frame; the panel then falls back to its HTTP pull.
+      if (isSdkMode && _sdkGetMcpStatusSnapshot) {
+        const mcpSnap = _sdkGetMcpStatusSnapshot();
+        if (mcpSnap) {
+          try { ws.send(JSON.stringify(mcpSnap)); } catch {}
         }
       }
 
@@ -2816,6 +2827,10 @@ export function setSdkGetInitSnapshot(fn) { _sdkGetInitSnapshot = fn; }
 /** Reference to sdk-manager's getContextUsageSnapshot (set by cli.js after import). */
 let _sdkGetContextUsageSnapshot = null;
 export function setSdkGetContextUsageSnapshot(fn) { _sdkGetContextUsageSnapshot = fn; }
+
+/** Reference to sdk-manager's getMcpStatusSnapshot (set by cli.js after import). */
+let _sdkGetMcpStatusSnapshot = null;
+export function setSdkGetMcpStatusSnapshot(fn) { _sdkGetMcpStatusSnapshot = fn; }
 
 /** Reference to sdk-manager's sendQueuedNow (set by cli.js after import). */
 let _sdkSendQueuedNow = null;

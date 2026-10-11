@@ -69,14 +69,14 @@ ccv -c --d             # == claude --continue --dangerously-skip-permissions
 
 cc-viewer はネイティブデスクトップアプリも提供しています：[ダウンロードページ](https://github.com/weiesky/cc-viewer/releases)
 
-### SDK モード (headless, `ccv -SDK`)
+### SDK モード (headless, `ccv --sdk`)
 
-`ccv -SDK` は、インタラクティブなターミナルではなく Agent SDK を通じてセッションを実行します — ターミナルパネルはなく、メッセージは Web UI から送信され、その他すべて(セッションログ、ストリーミングのタイプライター効果、使用量統計)はターミナルモードと同じように動作します。
+`ccv --sdk` は、インタラクティブなターミナルではなく Agent SDK を通じてセッションを実行します — 主 PTY はなく、メッセージは Web UI から送信され、その他すべて(セッションログ、ストリーミングのタイプライター効果、使用量統計)はターミナルモードと同じように動作します。ヘッダーには引き続き「ターミナル」ボタンがありますが、これはプロジェクトの PTY ではなく、独立したスクラッチのマルチタブシェル(SDK セッションとは無関係)を開きます。
 
 ```bash
-ccv -SDK                # ヘッドレスセッション; ブラウザからチャット
-ccv -SDK -c             # 直近のセッションを継続
-ccv -SDK --model sonnet # モデルを選択
+ccv --sdk                # ヘッドレスセッション; ブラウザからチャット
+ccv --sdk -c             # 直近のセッションを継続
+ccv --sdk --model sonnet # モデルを選択
 ```
 
 承認(Bash/Edit/Write/WebFetch/…)は、許可 / 拒否 / セッション中許可 の形式でブラウザに表示され、`AskUserQuestion` / プランのプロンプトはモーダルとして表示されます。`npm publish` は常に明示的な承認が必要です — `--d` でも同じです。`@anthropic-ai/claude-agent-sdk` パッケージが必要です(cc-viewer に同梱); 利用できない場合はターミナルモードにフォールバックします。

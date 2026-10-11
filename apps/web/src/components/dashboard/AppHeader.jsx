@@ -20,6 +20,7 @@ import { sortSkillsDefault } from '../../utils/skillsParser';
 import { handleSkillToggle, handleSkillDelete } from '../../utils/skillModalController';
 import { PINNED_KEY, parsePinned, serializePinned, togglePinned } from '../../utils/pinnedMenu';
 import { reportSwallowed } from '../../utils/errorReport';
+import { shouldRenderSdkModelChip } from '../../utils/sdkModelChip';
 import { classifyRequest } from '@ccv/core/requestType';
 import { resolveTeammateNames } from '@ccv/core/contentFilter';
 import { t, getLang, setLang, LANG_OPTIONS } from '../../i18n';
@@ -1169,6 +1170,7 @@ class AppHeader extends React.Component {
       nextProps.logDir !== this.props.logDir ||
       nextProps.cliMode !== this.props.cliMode ||
       nextProps.sdkMode !== this.props.sdkMode ||
+      nextProps.sdkModel !== this.props.sdkModel ||
       nextProps.terminalVisible !== this.props.terminalVisible ||
       nextProps.proxyStatsVisible !== this.props.proxyStatsVisible ||
       nextProps.onToggleProxyStats !== this.props.onToggleProxyStats ||
@@ -1959,7 +1961,6 @@ class AppHeader extends React.Component {
   // 有显式分配时也露头（否则代理中的角色流量无指示）。休眠（main=Default+官方端点）不显示。
   // chip 标签只显示主源：子/Teammate 的角色分配放进 title tooltip，header 上不铺开（太冗长）。
   _renderProxyChip() {
-    if (!this.props.activeProxyId) return null;
     const profiles = this.props.proxyProfiles || [];
     const roles = this.props.proxyRoles || {};
     const activeId = this.props.activeProxyId;
@@ -1968,10 +1969,26 @@ class AppHeader extends React.Component {
     const explicitRole = v => (v && v !== 'follow') ? (v === 'max' ? 'Default' : nameOf(v)) : null;
     const subD = explicitRole(roles.subagent);
     const teamD = explicitRole(roles.teammate);
-    if (activeId === 'max') {
-      const dormant = this.props.proxyOfficialDefault !== false;
-      if (dormant || (!subD && !teamD)) return null;
-    } else if (!p) return null;
+    // Whether the proxy hot-switch chip renders anything. Mirrors the early-return guards
+    // below; when false, the slot is empty and the SDK launch-model chip may fill it.
+    let proxyChipVisible = !!activeId;
+    if (proxyChipVisible) {
+      if (activeId === 'max') {
+        const dormant = this.props.proxyOfficialDefault !== false;
+        if (dormant || (!subD && !teamD)) proxyChipVisible = false;
+      } else if (!p) proxyChipVisible = false;
+    }
+    if (!proxyChipVisible) {
+      // Hot-switch takes priority: the SDK launch-model chip only fills this slot when the
+      // proxy chip renders nothing (official Default / dormant). Non-clickable — it is a
+      // read-only model hint, unrelated to the proxy editor.
+      if (!shouldRenderSdkModelChip({ sdkMode: this.props.sdkMode, sdkModel: this.props.sdkModel, proxyChipVisible })) return null;
+      return (
+        <Tag className={styles.sdkModelTag} title={t('ui.sdkModel', { model: this.props.sdkModel })}>
+          {this.props.sdkModel}
+        </Tag>
+      );
+    }
     const mainLabel = p ? `${p.name}${profileDisplayModel(p) ? ` · ${profileDisplayModel(p)}` : ''}` : 'Default';
     const followTxt = t('ui.proxy.followMainResolved', { name: p ? p.name : 'Default' });
     const title = t('ui.proxy.roleSummary', {

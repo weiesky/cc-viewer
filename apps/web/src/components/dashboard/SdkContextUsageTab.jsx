@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect, useCallback } from 'react';
+import React, { useContext, useState, useEffect, useCallback, useReducer } from 'react';
 import { Button, Typography, Tooltip, Empty, Collapse, Tag } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
@@ -22,17 +22,12 @@ const { Text } = Typography;
  */
 export default function SdkContextUsageTab() {
   const ws = useContext(TerminalWsContext);
-  const [detail, setDetail] = useState(null); // { usage, ts, trigger }
-  const [status, setStatus] = useState('loading'); // loading | ready | inactive | error
+  // useReducer (not useState+useCallback): the reducer's dispatch is a STABLE identity by
+  // React contract, so `load`'s [dispatch] dep never churns and the mount effect below runs
+  // exactly once per `ws` change. With useState+useCallback([detail,status]) the dispatch
+  // identity changed on every successful pull → load/effect re-ran → infinite refetch loop.
+  const [{ detail, status }, dispatch] = useReducer(nextPanelState, { detail: null, status: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
-
-  // One transition helper: every event (WS frame / HTTP reply / error) flows through the
-  // pure reducer so the ts guard + status mapping live in exactly one tested place.
-  const dispatch = useCallback((event) => {
-    const next = nextPanelState({ detail, status }, event);
-    setDetail(next.detail);
-    setStatus(next.status);
-  }, [detail, status]);
 
   const load = useCallback(async () => {
     setRefreshing(true);

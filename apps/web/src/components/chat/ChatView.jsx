@@ -233,7 +233,6 @@ class ChatView extends React.Component {
       highlightVisibleIdx: -1,
       // SDK-mode session surface (broadcast via terminal WS — sdk-init / sdk-compact)
       sdkSlashCommands: [],
-      sdkModel: null,
       sdkCompactNotices: [],
       inputSlashPrefix: false,
       sidebarWidth: parseInt(localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY), 10) || 240,
@@ -652,7 +651,7 @@ class ChatView extends React.Component {
       }
       this._fileScrollSnapshot = null;
       // Clear SDK session surface state on workspace switch to prevent stale data.
-      this.setState({ sdkCompactNotices: [], sdkSlashCommands: [], sdkModel: null, inputSlashPrefix: false });
+      this.setState({ sdkCompactNotices: [], sdkSlashCommands: [], inputSlashPrefix: false });
     }
     // viewed-project 切换（multi-project 2026-10）：viewProject 变了 → 文件树展开态按新 key
     // 重 hydrate；git 检测重跑（目标项目可能有无 git）；当前文件/git diff/scroll 快照作废
@@ -2537,10 +2536,14 @@ class ChatView extends React.Component {
         } else if (msg.type === 'sdk-init') {
           // SDK 会话的 slash 命令面 + 模型(headless 会话没有 TUI `/` 帮助)。
           // 每个 session 只广播一次(server 侧去重),这里直接覆盖式落地即可。
+          const model = msg.model || null;
           this.setState({
             sdkSlashCommands: Array.isArray(msg.slashCommands) ? msg.slashCommands : [],
-            sdkModel: msg.model || null,
           });
+          // Lift the launch model up to AppBase so AppHeader can render it in the proxy-chip
+          // slot as a hot-switch fallback (AppHeader can't subscribe to TerminalWsContext —
+          // single contextType — so the value travels up via this callback; AppBase owns it).
+          if (typeof this.props.onSdkModel === 'function') this.props.onSdkModel(model);
         } else if (msg.type === 'sdk-compact') {
           // SDK-side compact (invisible on the wire) — render as a system notice.
           // Cap at 10 entries to prevent unbounded growth; only the latest is rendered.

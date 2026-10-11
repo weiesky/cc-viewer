@@ -62,6 +62,7 @@ const KEYS = [
   'ui.sdkError',     // SDK query-level failure toast (ChatView sdk-error branch)
   'ui.sdkCompacted', // SDK compact_boundary notice bar (ChatView sdk-compact branch)
   'ui.sdkSlashHint', // SDK slash-command hint (above the composer, when typing `/`)
+  'ui.sdkModel', // SDK launch-model chip (AppHeader proxy-chip slot, hot-switch fallback)
   // Busy-queue bubbles above the composer (Enter-while-streaming; ChatView queue-state branch):
   'ui.chatInput.queueSendNow', // per-bubble "interrupt + inject now" button
   'ui.chatInput.queueRemove',  // per-bubble discard (×) button
@@ -131,6 +132,10 @@ describe('new UI key i18n coverage', () => {
     ['ui.contextUsage.usedOf', '{used}'],
     ['ui.contextUsage.usedOf', '{max}'],
     ['ui.contextUsage.autoCompactAt', '{tokens}'],
+    // SDK 会话模型 chip 与「MCP 状态」面板的插值键。
+    ['ui.sdkModel', '{model}'],
+    ['ui.mcpStatus.updatedAt', '{time}'],
+    ['ui.mcpStatus.toolCount', '{count}'],
   ];
   for (const [key, placeholder] of PLACEHOLDER_KEYS) {
     it(`${key} 每个 locale 保留占位符 ${placeholder}`, () => {

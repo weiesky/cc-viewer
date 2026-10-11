@@ -1541,6 +1541,7 @@
   "server/routes/proxy-stats.js",
   "server/routes/resume.js",
   "server/routes/sdk-context.js",
+  "server/routes/sdk-mcp-status.js",
   "server/routes/search.js",
   "server/routes/session-pin.js",
   "server/routes/skills.js",

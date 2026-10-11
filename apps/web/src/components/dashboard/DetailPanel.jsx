@@ -14,6 +14,7 @@ import { buildRequestExpandNode } from '../../utils/requestExpand.js';
 import AppHeader from './AppHeader';
 import ContextTab from './ContextTab';
 import SdkContextUsageTab from './SdkContextUsageTab';
+import SdkMcpStatusTab from './SdkMcpStatusTab';
 import styles from './DetailPanel.module.css';
 
 const { Text, Paragraph } = Typography;
@@ -737,6 +738,17 @@ class DetailPanel extends React.Component {
         children: (
           <div className={`${styles.tabContent} ${styles.cacheTabContent}`}>
             <SdkContextUsageTab />
+          </div>
+        ),
+      }] : []),
+      // SDK-mode only: session-level MCP server connection status (on-demand pull + WS
+      // reconnect replay; no turn-driven push since MCP state is not turn-correlated).
+      ...(this.props.sdkMode ? [{
+        key: 'mcp-status',
+        label: t('ui.mcpStatus.tab'),
+        children: (
+          <div className={`${styles.tabContent} ${styles.cacheTabContent}`}>
+            <SdkMcpStatusTab />
           </div>
         ),
       }] : []),

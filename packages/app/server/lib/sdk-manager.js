@@ -79,6 +79,11 @@ let _ctxUsageSeq = 0;
 // getContextUsage control requests have no SDK-side timeout — bound the wait so a live-but-
 // unresponsive child can't wedge the in-flight gate forever.
 const CTX_USAGE_TIMEOUT_MS = 10 * 1000;
+// Last sdk-mcp-status frame for WS reconnect replay. mcpServerStatus() is on-demand only
+// (HTTP pull + reconnect replay + clear-on-switch) — unlike context usage it is NOT
+// turn-correlated, so it gets no turn-end/compact trigger and none of the in-flight gate
+// (fetching/queued/seq) machinery above. It reuses the same CTX_USAGE_TIMEOUT_MS bound.
+let _lastMcpStatus = null;
 
 // Callbacks registered by cli.js
 let _onTurnEnd = null; // SDK mode has no Stop hook (ensureHooks() skipped) — fire turnEnd directly when the SDK 'result' message arrives
@@ -801,6 +806,70 @@ function _clearContextUsage(trigger) {
 }
 
 /**
+ * Collect an MCP-server-status snapshot via the Query control surface (`mcp_status`).
+ * Returns { ok:true, snapshot } | { ok:false, reason:'session-inactive'|'control-failed' }.
+ * Never throws — the panel is best-effort; failures must not surface as sdk-error toasts.
+ *
+ * Mirrors _collectContextUsage with ONE inversion: mcpServerStatus() resolves to an ARRAY
+ * (McpServerStatus[]), so the degenerate guard accepts any array — an EMPTY array is a
+ * legitimate "no MCP servers configured" result that must be broadcast, not a failure —
+ * and rejects non-arrays. Same identity guard (stale-generation) and 10s timeout bound.
+ */
+async function _collectMcpStatus(trigger) {
+  const q = _activeQuery;
+  if (!q || typeof q.mcpServerStatus !== 'function') return { ok: false, reason: 'session-inactive' };
+  let timeoutId;
+  try {
+    const timeout = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('mcpServerStatus timeout')), CTX_USAGE_TIMEOUT_MS);
+      if (timeoutId.unref) timeoutId.unref();
+    });
+    const servers = await Promise.race([q.mcpServerStatus(), timeout]);
+    if (_activeQuery !== q) return { ok: false, reason: 'session-inactive' }; // stale generation
+    // Degenerate resolve (non-array) — skip rather than broadcast a malformed frame.
+    if (!Array.isArray(servers)) return { ok: false, reason: 'control-failed' };
+    _lastMcpStatus = { type: 'sdk-mcp-status', sessionId: _sessionId, ts: Date.now(), trigger, servers };
+    return { ok: true, snapshot: _lastMcpStatus };
+  } catch (err) {
+    reportSwallowed('sdk-manager.mcp-status', err);
+    return { ok: false, reason: 'control-failed' };
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * On-demand fetch for the HTTP route: refresh the snapshot, broadcast to all clients,
+ * then reply. fetchContextUsage parity — bypasses any gate (explicit user refresh).
+ */
+export async function fetchMcpStatus() {
+  const r = await _collectMcpStatus('request');
+  if (r.ok && _broadcastWs) {
+    try { _broadcastWs(r.snapshot); }
+    catch (err) { reportSwallowed('sdk-manager.mcp-status-broadcast', err); }
+  }
+  return r;
+}
+
+/** WS reconnect replay getter (server.js connection hook), getContextUsageSnapshot parity. */
+export function getMcpStatusSnapshot() { return _lastMcpStatus; }
+
+/**
+ * Clear the MCP-status snapshot on a session boundary (switch / full reset). Broadcasts a
+ * servers:null clear frame ONLY when a snapshot was present. No seq bump — there is no
+ * in-flight gate to invalidate; the identity guard already covers the stale case. The
+ * death path deliberately does NOT clear (same-session resume keeps the last known value).
+ */
+function _clearMcpStatus(trigger) {
+  const had = _lastMcpStatus !== null;
+  _lastMcpStatus = null;
+  if (had && _broadcastWs) {
+    try { _broadcastWs({ type: 'sdk-mcp-status', sessionId: _sessionId, ts: Date.now(), trigger, servers: null }); }
+    catch (err) { reportSwallowed('sdk-manager.mcp-status-broadcast', err); }
+  }
+}
+
+/**
  * canUseTool callback — handles AskUserQuestion + permission approval.
  *
  * Check order mirrors perm-bridge.js precedence:
@@ -1238,6 +1307,7 @@ export function switchToSession(sessionId) {
     _initAnnouncedSid = '';
     _lastInitSnapshot = null; // don't replay the OLD session's sdk-init to the new one
     _clearContextUsage('session-switched');
+    _clearMcpStatus('session-switched');
     clearQueued(); // broadcasts the emptied queue-state
     _suppressDrain = false;
     return { ok: true };
@@ -1257,6 +1327,7 @@ function _resetFullState() {
   _initAnnouncedSid = '';
   _lastInitSnapshot = null;
   _clearContextUsage('session-switched');
+  _clearMcpStatus('session-switched');
   _pendingTurns = [];
   _lateResultTombstones = 0;
   _consecutiveDeaths = 0;

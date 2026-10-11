@@ -69,14 +69,14 @@ Po uruchomieniu trybu programowania automatycznie otwiera się strona internetow
 
 cc-viewer jest również dostarczany jako natywna aplikacja desktopowa: [Strona pobierania](https://github.com/weiesky/cc-viewer/releases)
 
-### Tryb SDK (headless, `ccv -SDK`)
+### Tryb SDK (headless, `ccv --sdk`)
 
-`ccv -SDK` uruchamia sesję przez Agent SDK zamiast interaktywnego terminala — bez panelu terminala, wiadomości są wysyłane z interfejsu webowego, a wszystko inne (logi sesji, strumieniowe drukowanie, statystyki użycia) działa tak samo jak w trybie terminala.
+`ccv --sdk` uruchamia sesję przez Agent SDK zamiast interaktywnego terminala — bez głównego PTY, wiadomości są wysyłane z interfejsu webowego, a wszystko inne (logi sesji, strumieniowe drukowanie, statystyki użycia) działa tak samo jak w trybie terminala. Nagłówek nadal udostępnia przycisk **Terminal**, ale otwiera on samodzielną powłokę roboczą z wieloma kartami (niezwiązaną z sesją SDK), a nie projektowy PTY.
 
 ```bash
-ccv -SDK                # sesja headless; czat z przeglądarki
-ccv -SDK -c             # kontynuuj ostatnią sesję
-ccv -SDK --model sonnet # wybierz model
+ccv --sdk                # sesja headless; czat z przeglądarki
+ccv --sdk -c             # kontynuuj ostatnią sesję
+ccv --sdk --model sonnet # wybierz model
 ```
 
 Zapytania o uprawnienia (Bash/Edit/Write/WebFetch/…) pojawiają się w przeglądarce z opcjami allow / deny / allow-for-session, a `AskUserQuestion`/prośby planu wyświetlane są jako modale. `npm publish` zawsze wymaga wyraźnego zatwierdzenia — nawet przy `--d`. Wymaga pakietu `@anthropic-ai/claude-agent-sdk` (dołączonego do cc-viewer); jeśli jest niedostępny, używany jest tryb terminala.

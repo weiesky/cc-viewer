@@ -1503,6 +1503,26 @@ const i18nData = {
     "tr": "Kullanılabilir komutlar: {commands}",
     "uk": "Доступні команди: {commands}"
   },
+  "ui.sdkModel": {
+    "zh": "SDK 会话模型:{model}",
+    "en": "SDK session model: {model}",
+    "zh-TW": "SDK 工作階段模型:{model}",
+    "ko": "SDK 세션 모델: {model}",
+    "ja": "SDK セッションモデル: {model}",
+    "de": "SDK-Sitzungsmodell: {model}",
+    "es": "Modelo de la sesión SDK: {model}",
+    "fr": "Modèle de la session SDK : {model}",
+    "it": "Modello della sessione SDK: {model}",
+    "da": "SDK-sessionens model: {model}",
+    "pl": "Model sesji SDK: {model}",
+    "ru": "Модель сеанса SDK: {model}",
+    "ar": "نموذج جلسة SDK: {model}",
+    "no": "SDK-øktens modell: {model}",
+    "pt-BR": "Modelo da sessão SDK: {model}",
+    "th": "โมเดลเซสชัน SDK: {model}",
+    "tr": "SDK oturum modeli: {model}",
+    "uk": "Модель сесії SDK: {model}"
+  },
   "ui.uploadZipInvalid": {
     "zh": "{name} 不是有效的 v2 会话压缩包",
     "en": "{name} is not a valid v2 session archive",
@@ -9971,6 +9991,134 @@ const i18nData = {
     "da": "udskudt", "pl": "odroczone", "ru": "отложено",
     "ar": "مؤجل", "no": "utsatt", "pt-BR": "adiado",
     "th": "เลื่อนออกไป", "tr": "ertelendi", "uk": "відкладено"
+  },
+  "ui.mcpStatus.tab": {
+    "zh": "MCP 状态", "en": "MCP status", "zh-TW": "MCP 狀態",
+    "ko": "MCP 상태", "ja": "MCP ステータス", "de": "MCP-Status",
+    "es": "Estado MCP", "fr": "Statut MCP", "it": "Stato MCP",
+    "da": "MCP-status", "pl": "Status MCP", "ru": "Статус MCP",
+    "ar": "حالة MCP", "no": "MCP-status", "pt-BR": "Status MCP",
+    "th": "สถานะ MCP", "tr": "MCP durumu", "uk": "Статус MCP"
+  },
+  "ui.mcpStatus.title": {
+    "zh": "MCP 服务器状态", "en": "MCP server status", "zh-TW": "MCP 伺服器狀態",
+    "ko": "MCP 서버 상태", "ja": "MCP サーバーステータス", "de": "MCP-Serverstatus",
+    "es": "Estado del servidor MCP", "fr": "Statut du serveur MCP", "it": "Stato del server MCP",
+    "da": "MCP-serverstatus", "pl": "Status serwera MCP", "ru": "Статус сервера MCP",
+    "ar": "حالة خادم MCP", "no": "MCP-serverstatus", "pt-BR": "Status do servidor MCP",
+    "th": "สถานะเซิร์ฟเวอร์ MCP", "tr": "MCP sunucu durumu", "uk": "Статус сервера MCP"
+  },
+  "ui.mcpStatus.refresh": {
+    "zh": "刷新", "en": "Refresh", "zh-TW": "重新整理",
+    "ko": "새로고침", "ja": "更新", "de": "Aktualisieren",
+    "es": "Actualizar", "fr": "Actualiser", "it": "Aggiorna",
+    "da": "Opdater", "pl": "Odśwież", "ru": "Обновить",
+    "ar": "تحديث", "no": "Oppdater", "pt-BR": "Atualizar",
+    "th": "รีเฟรช", "tr": "Yenile", "uk": "Оновити"
+  },
+  "ui.mcpStatus.updatedAt": {
+    "zh": "更新于 {time}", "en": "Updated {time}", "zh-TW": "更新於 {time}",
+    "ko": "{time} 업데이트됨", "ja": "更新: {time}", "de": "Aktualisiert {time}",
+    "es": "Actualizado {time}", "fr": "Mis à jour {time}", "it": "Aggiornato {time}",
+    "da": "Opdateret {time}", "pl": "Zaktualizowano {time}", "ru": "Обновлено {time}",
+    "ar": "تم التحديث {time}", "no": "Oppdatert {time}", "pt-BR": "Atualizado {time}",
+    "th": "อัปเดต {time}", "tr": "Güncellendi {time}", "uk": "Оновлено {time}"
+  },
+  "ui.mcpStatus.inactive": {
+    "zh": "当前无活动会话", "en": "No active session", "zh-TW": "目前無作用中工作階段",
+    "ko": "활성 세션 없음", "ja": "アクティブなセッションがありません", "de": "Keine aktive Sitzung",
+    "es": "Sin sesión activa", "fr": "Aucune session active", "it": "Nessuna sessione attiva",
+    "da": "Ingen aktiv session", "pl": "Brak aktywnej sesji", "ru": "Нет активной сессии",
+    "ar": "لا توجد جلسة نشطة", "no": "Ingen aktiv økt", "pt-BR": "Nenhuma sessão ativa",
+    "th": "ไม่มีเซสชันที่ใช้งาน", "tr": "Aktif oturum yok", "uk": "Немає активної сесії"
+  },
+  "ui.mcpStatus.empty": {
+    "zh": "未配置 MCP 服务器", "en": "No MCP servers configured", "zh-TW": "未設定 MCP 伺服器",
+    "ko": "구성된 MCP 서버 없음", "ja": "MCP サーバーが設定されていません", "de": "Keine MCP-Server konfiguriert",
+    "es": "No hay servidores MCP configurados", "fr": "Aucun serveur MCP configuré", "it": "Nessun server MCP configurato",
+    "da": "Ingen MCP-servere konfigureret", "pl": "Brak skonfigurowanych serwerów MCP", "ru": "Серверы MCP не настроены",
+    "ar": "لم يتم تكوين خوادم MCP", "no": "Ingen MCP-servere konfigurert", "pt-BR": "Nenhum servidor MCP configurado",
+    "th": "ไม่มีเซิร์ฟเวอร์ MCP ที่กำหนดค่า", "tr": "Yapılandırılmış MCP sunucusu yok", "uk": "Сервери MCP не налаштовані"
+  },
+  "ui.mcpStatus.loadFailed": {
+    "zh": "加载失败", "en": "Failed to load", "zh-TW": "載入失敗",
+    "ko": "로드 실패", "ja": "読み込みに失敗しました", "de": "Laden fehlgeschlagen",
+    "es": "Error al cargar", "fr": "Échec du chargement", "it": "Caricamento non riuscito",
+    "da": "Indlæsning mislykkedes", "pl": "Ładowanie nie powiodło się", "ru": "Не удалось загрузить",
+    "ar": "فشل التحميل", "no": "Kunne ikke laste", "pt-BR": "Falha ao carregar",
+    "th": "โหลดไม่สำเร็จ", "tr": "Yükleme başarısız", "uk": "Не вдалося завантажити"
+  },
+  "ui.mcpStatus.retry": {
+    "zh": "重试", "en": "Retry", "zh-TW": "重試",
+    "ko": "다시 시도", "ja": "再試行", "de": "Wiederholen",
+    "es": "Reintentar", "fr": "Réessayer", "it": "Riprova",
+    "da": "Prøv igen", "pl": "Ponów", "ru": "Повторить",
+    "ar": "إعادة المحاولة", "no": "Prøv igjen", "pt-BR": "Tentar novamente",
+    "th": "ลองอีกครั้ง", "tr": "Yeniden dene", "uk": "Повторити"
+  },
+  "ui.mcpStatus.errorLabel": {
+    "zh": "错误", "en": "Error", "zh-TW": "錯誤",
+    "ko": "오류", "ja": "エラー", "de": "Fehler",
+    "es": "Error", "fr": "Erreur", "it": "Errore",
+    "da": "Fejl", "pl": "Błąd", "ru": "Ошибка",
+    "ar": "خطأ", "no": "Feil", "pt-BR": "Erro",
+    "th": "ข้อผิดพลาด", "tr": "Hata", "uk": "Помилка"
+  },
+  "ui.mcpStatus.toolCount": {
+    "zh": "{count} 个工具", "en": "{count} tools", "zh-TW": "{count} 個工具",
+    "ko": "도구 {count}개", "ja": "{count} ツール", "de": "{count} Tools",
+    "es": "{count} herramientas", "fr": "{count} outils", "it": "{count} strumenti",
+    "da": "{count} værktøjer", "pl": "{count} narzędzi", "ru": "Инструментов: {count}",
+    "ar": "{count} أدوات", "no": "{count} verktøy", "pt-BR": "{count} ferramentas",
+    "th": "{count} เครื่องมือ", "tr": "{count} araç", "uk": "Інструментів: {count}"
+  },
+  "ui.mcpStatus.status.connected": {
+    "zh": "已连接", "en": "Connected", "zh-TW": "已連線",
+    "ko": "연결됨", "ja": "接続済み", "de": "Verbunden",
+    "es": "Conectado", "fr": "Connecté", "it": "Connesso",
+    "da": "Tilsluttet", "pl": "Połączono", "ru": "Подключено",
+    "ar": "متصل", "no": "Tilkoblet", "pt-BR": "Conectado",
+    "th": "เชื่อมต่อแล้ว", "tr": "Bağlandı", "uk": "Підключено"
+  },
+  "ui.mcpStatus.status.failed": {
+    "zh": "失败", "en": "Failed", "zh-TW": "失敗",
+    "ko": "실패", "ja": "失敗", "de": "Fehlgeschlagen",
+    "es": "Fallido", "fr": "Échoué", "it": "Non riuscito",
+    "da": "Mislykkedes", "pl": "Niepowodzenie", "ru": "Ошибка",
+    "ar": "فشل", "no": "Mislyktes", "pt-BR": "Falhou",
+    "th": "ล้มเหลว", "tr": "Başarısız", "uk": "Помилка"
+  },
+  "ui.mcpStatus.status.needsAuth": {
+    "zh": "需要授权", "en": "Needs auth", "zh-TW": "需要授權",
+    "ko": "인증 필요", "ja": "認証が必要", "de": "Authentifizierung erforderlich",
+    "es": "Requiere autenticación", "fr": "Authentification requise", "it": "Richiede autenticazione",
+    "da": "Kræver godkendelse", "pl": "Wymaga uwierzytelnienia", "ru": "Требуется авторизация",
+    "ar": "يتطلب المصادقة", "no": "Krever autentisering", "pt-BR": "Requer autenticação",
+    "th": "ต้องยืนยันตัวตน", "tr": "Kimlik doğrulama gerekli", "uk": "Потрібна авторизація"
+  },
+  "ui.mcpStatus.status.pending": {
+    "zh": "待处理", "en": "Pending", "zh-TW": "待處理",
+    "ko": "대기 중", "ja": "保留中", "de": "Ausstehend",
+    "es": "Pendiente", "fr": "En attente", "it": "In sospeso",
+    "da": "Afventer", "pl": "Oczekujące", "ru": "Ожидание",
+    "ar": "قيد الانتظار", "no": "Venter", "pt-BR": "Pendente",
+    "th": "รอดำเนินการ", "tr": "Beklemede", "uk": "Очікування"
+  },
+  "ui.mcpStatus.status.disabled": {
+    "zh": "已禁用", "en": "Disabled", "zh-TW": "已停用",
+    "ko": "비활성화됨", "ja": "無効", "de": "Deaktiviert",
+    "es": "Deshabilitado", "fr": "Désactivé", "it": "Disabilitato",
+    "da": "Deaktiveret", "pl": "Wyłączone", "ru": "Отключено",
+    "ar": "معطل", "no": "Deaktivert", "pt-BR": "Desabilitado",
+    "th": "ปิดใช้งาน", "tr": "Devre dışı", "uk": "Вимкнено"
+  },
+  "ui.mcpStatus.status.unknown": {
+    "zh": "未知", "en": "Unknown", "zh-TW": "未知",
+    "ko": "알 수 없음", "ja": "不明", "de": "Unbekannt",
+    "es": "Desconocido", "fr": "Inconnu", "it": "Sconosciuto",
+    "da": "Ukendt", "pl": "Nieznany", "ru": "Неизвестно",
+    "ar": "غير معروف", "no": "Ukjent", "pt-BR": "Desconhecido",
+    "th": "ไม่ทราบ", "tr": "Bilinmiyor", "uk": "Невідомо"
   },
   "ui.context.messages": {
     "zh": "消息", "en": "Messages", "zh-TW": "訊息",

@@ -69,14 +69,14 @@ ccv -c --d             # == claude --continue --dangerously-skip-permissions
 
 cc-viewer 는 네이티브 데스크톱 앱도 제공합니다: [다운로드 페이지](https://github.com/weiesky/cc-viewer/releases)
 
-### SDK 모드 (headless, `ccv -SDK`)
+### SDK 모드 (headless, `ccv --sdk`)
 
-`ccv -SDK` 는 대화형 터미널 대신 Agent SDK 를 통해 세션을 실행합니다 — 터미널 패널이 없고, 메시지는 웹 UI 에서 전송되며, 그 외 모든 것(세션 로그, 스트리밍 타자기 효과, 사용량 통계)은 터미널 모드와 동일하게 작동합니다.
+`ccv --sdk` 는 대화형 터미널 대신 Agent SDK 를 통해 세션을 실행합니다 — 메인 PTY 가 없고, 메시지는 웹 UI 에서 전송되며, 그 외 모든 것(세션 로그, 스트리밍 타자기 효과, 사용량 통계)은 터미널 모드와 동일하게 작동합니다. 헤더에는 여전히 「터미널」 버튼이 있지만, 이는 프로젝트 PTY 가 아니라 독립적인 스크래치 멀티탭 셸(SDK 세션과 무관)을 엽니다.
 
 ```bash
-ccv -SDK                # 무인 세션; 브라우저에서 대화
-ccv -SDK -c             # 가장 최근 세션 계속
-ccv -SDK --model sonnet # 모델 선택
+ccv --sdk                # 무인 세션; 브라우저에서 대화
+ccv --sdk -c             # 가장 최근 세션 계속
+ccv --sdk --model sonnet # 모델 선택
 ```
 
 승인(Bash/Edit/Write/WebFetch/…)은 허용 / 거부 / 세션 동안 허용 의 형태로 브라우저에 표시되며, `AskUserQuestion` / 계획 프롬프트는 모달로 나타납니다. `npm publish` 는 항상 명시적 승인을 요구합니다 — `--d` 를 붙여도 마찬가지입니다. `@anthropic-ai/claude-agent-sdk` 패키지가 필요합니다(cc-viewer 에 함께 번들됨); 사용할 수 없으면 터미널 모드로 대체됩니다.

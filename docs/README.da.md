@@ -69,14 +69,14 @@ Efter at programmeringstilstanden er startet, åbnes en webside automatisk.
 
 cc-viewer findes også som native desktop-app: [Downloadside](https://github.com/weiesky/cc-viewer/releases)
 
-### SDK-tilstand (headless, `ccv -SDK`)
+### SDK-tilstand (headless, `ccv --sdk`)
 
-`ccv -SDK` kører sessionen gennem Agent SDK i stedet for en interaktiv terminal — intet terminalpanel, beskeder sendes fra web-UI'et, og alt andet (sessionlogs, streaming typewriter-effekt, forbrugsstatistik) fungerer på samme måde som i terminaltilstand.
+`ccv --sdk` kører sessionen gennem Agent SDK i stedet for en interaktiv terminal — ingen primær PTY, beskeder sendes fra web-UI'et, og alt andet (sessionlogs, streaming typewriter-effekt, forbrugsstatistik) fungerer på samme måde som i terminaltilstand. Headeren viser stadig en **Terminal**-knap, men den åbner en uafhængig scratch-shell med flere faner (uden forbindelse til SDK-sessionen), ikke en projekt-PTY.
 
 ```bash
-ccv -SDK                # headless-session; chat fra browseren
-ccv -SDK -c             # fortsæt den seneste session
-ccv -SDK --model sonnet # vælg en model
+ccv --sdk                # headless-session; chat fra browseren
+ccv --sdk -c             # fortsæt den seneste session
+ccv --sdk --model sonnet # vælg en model
 ```
 
 Godkendelser (Bash/Edit/Write/WebFetch/…) dukker op i browseren med allow / deny / allow-for-session, og `AskUserQuestion`/plan-prompter vises som modaler. `npm publish` kræver altid en eksplicit godkendelse — selv med `--d`. Kræver pakken `@anthropic-ai/claude-agent-sdk` (medfølger cc-viewer); falder tilbage til terminaltilstand, hvis den ikke er tilgængelig.

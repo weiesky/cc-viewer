@@ -748,6 +748,17 @@
   border-color: var(--text-disabled);
 }
 
+/* SDK-mode launch-model chip: same pill geometry as .proxyProfileTag (it fills the same
+   slot as a hot-switch fallback) but read-only — no pointer cursor / hover affordance. */
+.sdkModelTag {
+  border-radius: 12px;
+  background: var(--border-secondary);
+  border: 1px solid var(--border-light);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  cursor: default;
+}
+
 /* /resume active-process chips: reuse .proxyProfileTag pill geometry, with a
    tinted variant for resume children. The current project's main chip is never
    rendered (excluded upstream), so there is no "current/disabled" state. */

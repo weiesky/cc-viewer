@@ -69,14 +69,14 @@ Programlama modunu başlattıktan sonra web sayfası otomatik olarak açılır.
 
 cc-viewer'ın istemci sürümü de mevcuttur: [İndirme bağlantısı](https://github.com/weiesky/cc-viewer/releases)
 
-### SDK modu (headless, `ccv -SDK`)
+### SDK modu (headless, `ccv --sdk`)
 
-`ccv -SDK`, oturumu etkileşimli bir terminal yerine Agent SDK üzerinden çalıştırır — terminal paneli yoktur, mesajlar web arayüzünden gönderilir ve diğer her şey (oturum logları, akışlı daktilo, kullanım istatistikleri) terminal moduyla aynı şekilde çalışır.
+`ccv --sdk`, oturumu etkileşimli bir terminal yerine Agent SDK üzerinden çalıştırır — ana PTY yoktur, mesajlar web arayüzünden gönderilir ve diğer her şey (oturum logları, akışlı daktilo, kullanım istatistikleri) terminal moduyla aynı şekilde çalışır. Başlıkta hâlâ bir **Terminal** düğmesi bulunur, ancak bu düğme projenin PTY'sini değil, bağımsız bir karalama çok sekmeli kabuğu (SDK oturumuyla ilgisiz) açar.
 
 ```bash
-ccv -SDK                # headless oturum; tarayıcıdan sohbet edin
-ccv -SDK -c             # en son oturuma devam et
-ccv -SDK --model sonnet # bir model seç
+ccv --sdk                # headless oturum; tarayıcıdan sohbet edin
+ccv --sdk -c             # en son oturuma devam et
+ccv --sdk --model sonnet # bir model seç
 ```
 
 Onaylar (Bash/Edit/Write/WebFetch/…) tarayıcıda izin ver / reddet / oturum için izin ver olarak açılır ve `AskUserQuestion` / plan istemleri modallar olarak görünür. `npm publish` her zaman açık bir onay gerektirir — `--d` ile bile. `@anthropic-ai/claude-agent-sdk` paketini gerektirir (cc-viewer ile birlikte gelir); kullanılamıyorsa terminal moduna döner.

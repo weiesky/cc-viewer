@@ -69,14 +69,14 @@ ccv -c --d             # == claude --continue --dangerously-skip-permissions
 
 cc-viewer 也提供了客戶端版本：[下載連結](https://github.com/weiesky/cc-viewer/releases)
 
-### SDK 模式（headless，`ccv -SDK`）
+### SDK 模式（headless，`ccv --sdk`）
 
-`ccv -SDK` 會透過 Agent SDK 執行工作階段，而不是互動式終端機——沒有終端機面板，訊息從 Web UI 發送，其他一切（工作階段日誌、串流打字機效果、用量統計）都與終端機模式相同。
+`ccv --sdk` 會透過 Agent SDK 執行工作階段，而不是互動式終端機——沒有主 PTY，訊息從 Web UI 發送，其他一切（工作階段日誌、串流打字機效果、用量統計）都與終端機模式相同。標頭仍保留「終端機」按鈕，但它開啟的是獨立的 scratch 多標籤 shell（與 SDK 工作階段無關），而非專案 PTY。
 
 ```bash
-ccv -SDK                # 無介面工作階段；從瀏覽器聊天
-ccv -SDK -c             # 繼續最近的工作階段
-ccv -SDK --model sonnet # 選擇模型
+ccv --sdk                # 無介面工作階段；從瀏覽器聊天
+ccv --sdk -c             # 繼續最近的工作階段
+ccv --sdk --model sonnet # 選擇模型
 ```
 
 審批（Bash/Edit/Write/WebFetch/…）會以 允許 / 拒絕 / 本次工作階段允許 的形式在瀏覽器中彈出，`AskUserQuestion` / 計畫提示則以模式對話框出現。`npm publish` 一律要求明確審批——即使帶 `--d` 亦然。需要 `@anthropic-ai/claude-agent-sdk` 套件（隨 cc-viewer 一起打包）；若無法使用則退回終端機模式。

@@ -69,14 +69,14 @@ Etter at programmeringsmodusen er startet, åpnes en nettside automatisk.
 
 cc-viewer kommer også som native desktop-app: [Nedlastingsside](https://github.com/weiesky/cc-viewer/releases)
 
-### SDK-modus (headless, `ccv -SDK`)
+### SDK-modus (headless, `ccv --sdk`)
 
-`ccv -SDK` kjører økten gjennom Agent SDK i stedet for en interaktiv terminal — uten terminalpanel, meldinger sendes fra nettgrensesnittet, og alt annet (øktslogger, strømmende skrivemaskineffekt, bruksstatistikk) fungerer på samme måte som i terminalmodus.
+`ccv --sdk` kjører økten gjennom Agent SDK i stedet for en interaktiv terminal — uten hoved-PTY, meldinger sendes fra nettgrensesnittet, og alt annet (øktslogger, strømmende skrivemaskineffekt, bruksstatistikk) fungerer på samme måte som i terminalmodus. Toppteksten viser fortsatt en **Terminal**-knapp, men den åpner et uavhengig skrape-skall med flere faner (uten tilknytning til SDK-økten), ikke en prosjekt-PTY.
 
 ```bash
-ccv -SDK                # headless-økt; chat fra nettleseren
-ccv -SDK -c             # fortsett den siste økten
-ccv -SDK --model sonnet # velg en modell
+ccv --sdk                # headless-økt; chat fra nettleseren
+ccv --sdk -c             # fortsett den siste økten
+ccv --sdk --model sonnet # velg en modell
 ```
 
 Godkjenninger (Bash/Edit/Write/WebFetch/…) dukker opp i nettleseren med allow / deny / allow-for-session, og `AskUserQuestion`/plan-forespørsler vises som modaler. `npm publish` krever alltid en eksplisitt godkjenning — selv med `--d`. Krever pakken `@anthropic-ai/claude-agent-sdk` (bundlet med cc-viewer); faller tilbake til terminalmodus hvis den ikke er tilgjengelig.

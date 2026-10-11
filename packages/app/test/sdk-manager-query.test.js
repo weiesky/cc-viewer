@@ -76,7 +76,7 @@ function makeDeps(extra = {}) {
 //                   use this — the grace timer shares the mocked API)
 //   endWith(err) — end the output stream (err → throw): session-level death
 //   released     — count of released (completed) turns
-function makeResidentQuery({ respond, initMsgs, autoRelease = 0, getContextUsage } = {}) {
+function makeResidentQuery({ respond, initMsgs, autoRelease = 0, getContextUsage, mcpServerStatus } = {}) {
   const calls = [];
   let current = null;
   function fakeQuery({ prompt, options }) {
@@ -87,6 +87,7 @@ function makeResidentQuery({ respond, initMsgs, autoRelease = 0, getContextUsage
       interruptCalls: 0, closeCalls: 0,
       releaseNext: false, releaseCurrent: null, turn: null,
       ctxUsageCalls: 0, ctxUsagePending: null,
+      mcpStatusCalls: 0, mcpStatusPending: null,
     };
     current = state;
     const api = {
@@ -105,6 +106,26 @@ function makeResidentQuery({ respond, initMsgs, autoRelease = 0, getContextUsage
             state.ctxUsagePending = {
               resolve: (v) => { state.ctxUsagePending = null; res(v); },
               reject: (e) => { state.ctxUsagePending = null; rej(e); },
+            };
+          });
+        }
+        if (spec && spec.reject) {
+          return Promise.reject(spec.reject instanceof Error ? spec.reject : new Error(String(spec.reject)));
+        }
+        return Promise.resolve(spec && 'resolve' in spec ? spec.resolve : spec);
+      },
+      // Optional control-surface mock, getContextUsage parity. mcpServerStatus(spec):
+      // { resolve, reject, defer, keepOnClose } — a value / Error / deferred gate. The
+      // resolve value is an ARRAY (McpServerStatus[]); an empty array is legitimate.
+      async mcpServerStatus() {
+        state.mcpStatusCalls++;
+        const spec = typeof mcpServerStatus === 'function' ? mcpServerStatus(state.mcpStatusCalls) : mcpServerStatus;
+        if (spec && spec.defer) {
+          state.mcpKeepOnClose = spec.keepOnClose === true;
+          return new Promise((res, rej) => {
+            state.mcpStatusPending = {
+              resolve: (v) => { state.mcpStatusPending = null; res(v); },
+              reject: (e) => { state.mcpStatusPending = null; rej(e); },
             };
           });
         }
@@ -193,6 +214,9 @@ function makeResidentQuery({ respond, initMsgs, autoRelease = 0, getContextUsage
         // spec may opt out (keepOnClose) to model a resolve-late-after-teardown race.
         if (state.ctxUsagePending && !state.ctxKeepOnClose) {
           state.ctxUsagePending.reject(new Error('Query closed before response received'));
+        }
+        if (state.mcpStatusPending && !state.mcpKeepOnClose) {
+          state.mcpStatusPending.reject(new Error('Query closed before response received'));
         }
       },
     };
@@ -1884,6 +1908,253 @@ describe('sdk-manager-query — sdk-context-usage 通道', () => {
     } finally {
       mock.timers.reset();
     }
+  });
+});
+
+describe('sdk-manager-query — sdk-mcp-status 通道', () => {
+  const SERVERS = [
+    { name: 'tavily', status: 'connected', serverInfo: { name: 'tavily', version: '1.2.0' }, tools: [{ name: 'web_search' }] },
+    { name: 'broken', status: 'failed', error: 'spawn ENOENT' },
+  ];
+
+  function makeMcpQuery(mcpSpec) {
+    return makeResidentQuery({
+      initMsgs: [sysInit('sess-mcp')],
+      respond: async () => [resultMsg()],
+      mcpServerStatus: mcpSpec,
+    });
+  }
+
+  // mcpServerStatus is ON-DEMAND only (HTTP pull / explicit fetch) — no turn-end trigger —
+  // so tests drive it via fetchMcpStatus() against a live resident query.
+  it('fetchMcpStatus(live query)→ 恰一次 sdk-mcp-status 广播 + servers 无损 + snapshot 留存', async () => {
+    const { deps, broadcasts } = makeDeps();
+    sdk.__setQueryForTests(makeMcpQuery({ resolve: SERVERS }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('hello'); // build the resident query
+    await tick(6);
+
+    const r = await sdk.fetchMcpStatus();
+    assert.equal(r.ok, true);
+    assert.equal(r.snapshot.trigger, 'request');
+    assert.equal(typeof r.snapshot.ts, 'number');
+    const frames = broadcasts.filter((b) => b.type === 'sdk-mcp-status');
+    assert.equal(frames.length, 1, 'exactly one sdk-mcp-status broadcast');
+    assert.deepEqual(frames[0].servers, SERVERS, 'servers passed through losslessly');
+    assert.deepEqual(sdk.getMcpStatusSnapshot(), frames[0], 'snapshot retained for WS replay');
+    sdk.stopSession();
+    await tick(3);
+  });
+
+  it('空数组 [] → ok:true 且广播 servers:[](数组守卫反转,空≠失败)', async () => {
+    const { deps, broadcasts } = makeDeps();
+    sdk.__setQueryForTests(makeMcpQuery({ resolve: [] }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('hello');
+    await tick(6);
+
+    const r = await sdk.fetchMcpStatus();
+    assert.equal(r.ok, true, 'an empty array is a legitimate "no MCP servers" result');
+    const frames = broadcasts.filter((b) => b.type === 'sdk-mcp-status');
+    assert.equal(frames.length, 1);
+    assert.deepEqual(frames[0].servers, []);
+    sdk.stopSession();
+    await tick(3);
+  });
+
+  it('退化 resolve(非数组 null/{}/undefined/字符串/数字)→ ok:false,不广播、无 sdk-error', async () => {
+    for (const spec of [{ resolve: null }, { resolve: {} }, { resolve: undefined }, { resolve: 'x' }, { resolve: 42 }]) {
+      const { deps, broadcasts } = makeDeps();
+      sdk.__setQueryForTests(makeMcpQuery(spec));
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('hello'); // eslint-disable-line no-await-in-loop
+      await tick(6); // eslint-disable-line no-await-in-loop
+      const r = await sdk.fetchMcpStatus(); // eslint-disable-line no-await-in-loop
+      assert.equal(r.ok, false, `non-array resolve ${JSON.stringify(spec)} must fail`);
+      assert.equal(r.reason, 'control-failed');
+      assert.equal(broadcasts.filter((b) => b.type === 'sdk-mcp-status').length, 0, 'no broadcast on degenerate resolve');
+      assert.equal(broadcasts.filter((b) => b.type === 'sdk-error').length, 0, 'control failure must not toast');
+      sdk.stopSession(); // eslint-disable-line no-await-in-loop
+      await tick(3); // eslint-disable-line no-await-in-loop
+    }
+  });
+
+  it('mcpServerStatus reject → {ok:false, control-failed},不广播、无 sdk-error', async () => {
+    const { deps, broadcasts } = makeDeps();
+    sdk.__setQueryForTests(makeMcpQuery({ reject: new Error('control boom') }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('hello');
+    await tick(6);
+
+    const r = await sdk.fetchMcpStatus();
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, 'control-failed');
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-mcp-status').length, 0);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-error').length, 0);
+    assert.equal(sdk.getMcpStatusSnapshot(), null);
+    sdk.stopSession();
+    await tick(3);
+  });
+
+  it('mcpServerStatus 同步 throw → 不抛,ok:false,不广播', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-mcp')],
+      respond: async () => [resultMsg()],
+      mcpServerStatus: () => { throw new Error('sync boom'); },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('hello');
+    await tick(6);
+
+    const r = await sdk.fetchMcpStatus();
+    assert.equal(r.ok, false);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-mcp-status').length, 0);
+    sdk.stopSession();
+    await tick(3);
+  });
+
+  it('无常驻 query → {ok:false, session-inactive}', async () => {
+    const { deps } = makeDeps();
+    sdk.__setQueryForTests(makeMcpQuery({ resolve: SERVERS }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    sdk.stopSession(); // tear down → _activeQuery null
+    await tick(3);
+    const r = await sdk.fetchMcpStatus();
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, 'session-inactive');
+  });
+
+  it('老 fake(无 mcpServerStatus)→ typeof 守卫 session-inactive,零影响', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const { fq, releaseFirst } = makeGatedQuery(); // base fake
+    // makeResidentQuery always defines mcpServerStatus now; strip it per-construction to
+    // model a legacy query whose control surface predates the method (typeof guard fires).
+    const origFq = fq;
+    const legacyFq = (args) => { const api = origFq(args); delete api.mcpServerStatus; return api; };
+    legacyFq.calls = origFq.calls; legacyFq.current = origFq.current;
+    legacyFq.releaseNextInterrupt = origFq.releaseNextInterrupt; legacyFq.endWith = origFq.endWith;
+    sdk.__setQueryForTests(legacyFq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    const p1 = sdk.sendUserMessage('first');
+    await tick(5);
+    releaseFirst();
+    await p1;
+    await tick(6);
+
+    const r = await sdk.fetchMcpStatus();
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, 'session-inactive');
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-mcp-status').length, 0);
+    sdk.stopSession();
+    await tick(3);
+  });
+
+  it('stale generation(identity-guard):park→switch→重建→release 旧 deferred 仍不广播', async () => {
+    const { deps, broadcasts } = makeDeps();
+    // keepOnClose: model a control request that outlives teardown and resolves LATE —
+    // the identity guard (not the close-reject) is what must block the broadcast.
+    const fq = makeMcpQuery(() => ({ defer: true, keepOnClose: true }));
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('t1');
+    await tick(6);
+
+    const p = sdk.fetchMcpStatus(); // parks on the deferred gate
+    await tick(4);
+    const oldState = fq.current();
+    const oldPending = oldState.mcpStatusPending;
+    assert.ok(oldPending, 'old generation control parked');
+
+    // Switch session while the control request is in flight (teardown nulls _activeQuery).
+    const sw = sdk.switchToSession('sess-new');
+    assert.equal(sw.ok, true);
+    await sdk.sendUserMessage('t2'); // lazily rebuilds _activeQuery into a NEW object
+    await tick(6);
+
+    // NOW the OLD generation's parked request resolves late — must NOT broadcast.
+    oldPending.resolve(SERVERS);
+    const r = await p;
+    await tick(4);
+    assert.equal(r.ok, false, 'stale-generation resolve reports session-inactive');
+    assert.equal(r.reason, 'session-inactive');
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-mcp-status' && Array.isArray(b.servers) && b.sessionId === 'sess-mcp').length, 0,
+      'stale-generation resolve must not broadcast into the new session');
+    sdk.stopSession();
+    await tick(3);
+  });
+
+  it('close→reject 在途 control:teardown 后 reject-late 不广播', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const fq = makeMcpQuery(() => ({ defer: true }));
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('t1');
+    await tick(6);
+
+    const p = sdk.fetchMcpStatus();
+    await tick(4);
+    assert.ok(fq.current().mcpStatusPending, 'control parked');
+
+    // stopSession tears down the resident query; close() rejects the in-flight request.
+    sdk.stopSession();
+    const r = await p;
+    await tick(4);
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, 'control-failed');
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-mcp-status' && Array.isArray(b.servers)).length, 0,
+      'teardown-rejected control must not broadcast');
+  });
+
+  it('switchToSession(有快照)→ 广播 servers:null 清帧 + 快照归 null', async () => {
+    const { deps, broadcasts } = makeDeps();
+    sdk.__setQueryForTests(makeMcpQuery({ resolve: SERVERS }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('hello');
+    await tick(6);
+    await sdk.fetchMcpStatus();
+    await tick(3);
+    assert.notEqual(sdk.getMcpStatusSnapshot(), null, 'snapshot present before switch');
+
+    const sw = sdk.switchToSession('sess-new');
+    assert.equal(sw.ok, true);
+    assert.equal(sdk.getMcpStatusSnapshot(), null, 'snapshot cleared on switch');
+    const clearFrames = broadcasts.filter((b) => b.type === 'sdk-mcp-status' && b.servers === null);
+    assert.equal(clearFrames.length, 1, 'exactly one clear frame');
+    assert.equal(clearFrames[0].trigger, 'session-switched');
+    sdk.stopSession();
+    await tick(3);
+  });
+
+  it('10s 超时楔子:挂起的 control 超时后报 control-failed,不楔死', async () => {
+    // A live-but-unresponsive child must not hang fetchMcpStatus forever: after the
+    // CTX_USAGE_TIMEOUT_MS race fires, the collect returns control-failed.
+    const { deps, broadcasts } = makeDeps();
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      const fq = makeMcpQuery(() => ({ defer: true, keepOnClose: true })); // parks forever
+      sdk.__setQueryForTests(fq);
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('t1');
+      await tick(6);
+
+      const p = sdk.fetchMcpStatus();
+      await tick(4);
+      assert.ok(fq.current().mcpStatusPending, 'control parked');
+
+      // No response within 10s → the timeout race rejects the wait.
+      mock.timers.tick(11 * 1000);
+      const r = await p;
+      await tick(4);
+      assert.equal(r.ok, false, 'wedged control times out to control-failed');
+      assert.equal(r.reason, 'control-failed');
+      assert.equal(broadcasts.filter((b) => b.type === 'sdk-mcp-status' && Array.isArray(b.servers)).length, 0, 'no broadcast from the wedged request');
+    } finally {
+      mock.timers.reset();
+    }
+    sdk.stopSession();
+    await tick(3);
   });
 });
 

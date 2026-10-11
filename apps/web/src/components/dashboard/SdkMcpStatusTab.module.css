@@ -1,0 +1,94 @@
+/* SDK-mode "MCP server status" panel (SdkMcpStatusTab). Session-level MCP connection view
+   mounted as a DetailPanel tab. No !important (CLAUDE.md). */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 0;
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.headerSpacer {
+  flex: 1;
+}
+
+.updatedAt {
+  font-size: 12px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.listRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-secondary, rgba(0, 0, 0, 0.06));
+}
+
+.serverName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.version {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.toolCount {
+  font-size: 12px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.statusTag {
+  margin-inline-end: 0;
+  flex-shrink: 0;
+}
+
+.errorBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-secondary, rgba(0, 0, 0, 0.06));
+}
+
+.errorRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.errorLabel {
+  flex-shrink: 0;
+}
+
+.errorText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

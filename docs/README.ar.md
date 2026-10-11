@@ -69,14 +69,14 @@ ccv -c --d             # == claude --continue --dangerously-skip-permissions
 
 يوفر cc-viewer أيضًا إصدار العميل: [رابط التنزيل](https://github.com/weiesky/cc-viewer/releases)
 
-### وضع SDK (بدون واجهة، `ccv -SDK`)
+### وضع SDK (بدون واجهة، `ccv --sdk`)
 
-يعمل `ccv -SDK` على تشغيل الجلسة عبر Agent SDK بدلاً من الطرفية التفاعلية — بدون لوحة طرفية، تُرسل الرسائل من واجهة الويب، ويعمل كل شيء آخر (سجلات الجلسة، الكتابة المتدفقة، إحصائيات الاستخدام) كما في وضع الطرفية.
+يعمل `ccv --sdk` على تشغيل الجلسة عبر Agent SDK بدلاً من الطرفية التفاعلية — بدون PTY رئيسي، تُرسل الرسائل من واجهة الويب، ويعمل كل شيء آخر (سجلات الجلسة، الكتابة المتدفقة، إحصائيات الاستخدام) كما في وضع الطرفية. لا تزال الترويسة تعرض زر **Terminal**، لكنه يفتح صدفة scratch مستقلة متعددة التبويبات (لا علاقة لها بجلسة SDK)، وليس PTY الخاص بالمشروع.
 
 ```bash
-ccv -SDK                # headless session; chat from the browser
-ccv -SDK -c             # continue the most recent session
-ccv -SDK --model sonnet # pick a model
+ccv --sdk                # headless session; chat from the browser
+ccv --sdk -c             # continue the most recent session
+ccv --sdk --model sonnet # pick a model
 ```
 
 تظهر موافقات (Bash/Edit/Write/WebFetch/…) في المتصفح مع خيارات السماح / الرفض / السماح للجلسة، وتظهر مطالبات `AskUserQuestion` / الخطة كنوافذ منبثقة. يتطلب `npm publish` دائمًا موافقة صريحة — حتى مع `--d`. يتطلب حزمة `@anthropic-ai/claude-agent-sdk` (مضمّنة مع cc-viewer)؛ ويعود إلى وضع الطرفية إذا لم تكن متاحة.

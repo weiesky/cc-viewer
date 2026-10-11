@@ -69,14 +69,14 @@ Después de iniciar en modo programación, se abrirá automáticamente una pági
 
 cc-viewer también se distribuye como aplicación de escritorio nativa: [Página de descarga](https://github.com/weiesky/cc-viewer/releases)
 
-### Modo SDK (headless, `ccv -SDK`)
+### Modo SDK (headless, `ccv --sdk`)
 
-`ccv -SDK` ejecuta la sesión a través del Agent SDK en lugar de un terminal interactivo — sin panel de terminal; los mensajes se envían desde la interfaz web, y todo lo demás (registros de sesión, efecto máquina de escribir en streaming, estadísticas de uso) funciona igual que en el modo terminal.
+`ccv --sdk` ejecuta la sesión a través del Agent SDK en lugar de un terminal interactivo — sin PTY principal; los mensajes se envían desde la interfaz web, y todo lo demás (registros de sesión, efecto máquina de escribir en streaming, estadísticas de uso) funciona igual que en el modo terminal. La cabecera sigue mostrando un botón **Terminal**, pero abre un shell independiente de borrador con múltiples pestañas (ajeno a la sesión SDK), no un PTY del proyecto.
 
 ```bash
-ccv -SDK                # sesión headless; chatea desde el navegador
-ccv -SDK -c             # continúa la sesión más reciente
-ccv -SDK --model sonnet # elige un modelo
+ccv --sdk                # sesión headless; chatea desde el navegador
+ccv --sdk -c             # continúa la sesión más reciente
+ccv --sdk --model sonnet # elige un modelo
 ```
 
 Las aprobaciones (Bash/Edit/Write/WebFetch/…) aparecen en el navegador con permitir / denegar / permitir durante la sesión, y los mensajes de `AskUserQuestion` / plan se muestran como modales. `npm publish` siempre requiere una aprobación explícita — incluso con `--d`. Requiere el paquete `@anthropic-ai/claude-agent-sdk` (incluido con cc-viewer); si no está disponible, se recurre al modo terminal.
