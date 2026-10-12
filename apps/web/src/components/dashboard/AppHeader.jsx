@@ -311,7 +311,7 @@ function HeaderProjectTabs({ tabs, currentProject, currentInstanceKey, viewedPro
             non-shrinking sibling so a long name can't clip it off (P0 review). */}
         <span className={styles.projectTabName} title={tab.cwd || tab.project}>{tab.project}</span>
         {tab.suffix && <span className={styles.projectTabIdx}>{tab.suffix}</span>}
-        {onCloseProject && (
+        {onCloseProject && tab.closable !== false && (
           <Popconfirm
             title={t('ui.projectTabs.closeConfirm', { project: tab.project })}
             okText={t('ui.ok')}

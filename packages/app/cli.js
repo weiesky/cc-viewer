@@ -870,6 +870,20 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
     onQueryError: (message) => serverMod.broadcastWsMessage({ type: 'sdk-error', message }),
   });
 
+  // Per-cwd multi-session (2026-10-12): hand the boot launch config (proxy env, model,
+  // permission, executable, user args) to the manager as a process-level template. The
+  // workspace-launch route uses it to register a session for a NEW cwd — without it the new
+  // session would get no env (bypassing the proxy → no transcript, no per-cwd routing).
+  // launchResume is boot-only and deliberately NOT templated.
+  sdkManager.setSdkLaunchConfig({
+    permissionMode,
+    env: childEnv,
+    settings: JSON.parse(settingsMerge.settingsJson),
+    model: sdkArgs.model,
+    userArgs: sdkArgs.rest,
+    claudeExecutable: sdkClaudePath,
+  });
+
   // 注册 SDK 回调到 server.js（WS 消息路由用）
   serverMod.setSdkResolveApproval(sdkManager.resolveApproval);
   serverMod.setSdkCancelApproval(sdkManager.cancelApproval);
@@ -879,6 +893,7 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   serverMod.setSdkGetInitSnapshot(sdkManager.getSdkInitSnapshot);
   serverMod.setSdkGetContextUsageSnapshot(sdkManager.getContextUsageSnapshot);
   serverMod.setSdkGetMcpStatusSnapshot(sdkManager.getMcpStatusSnapshot);
+  serverMod.setSdkGetSessionStateSnapshot(sdkManager.getSessionStateSnapshot);
   // Busy-queue bubble actions (queue-send-now / queue-remove / queue-clear / replay).
   serverMod.setSdkSendQueuedNow(sdkManager.sendQueuedNow);
   serverMod.setSdkRemoveQueued(sdkManager.removeQueued);

@@ -584,7 +584,9 @@ describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权
     await tick(4);
     assert.equal(ctrl.result.behavior, 'allow');
     assert.deepEqual(ctrl.result.updatedInput, { file: '/x' });
-    assert.equal(broadcasts.length, 0);
+    // turn-level sdk-session-state frames (running/idle) are expected on every turn;
+    // this assertion guards that no APPROVAL/modal frame fires for a plain Read.
+    assert.deepEqual(broadcasts.filter((b) => b.type !== 'sdk-session-state'), []);
   });
 
   it('权限审批工具（Bash）→ broadcast perm-hook-pending → resolveApproval({decision:allow,allowSession}) → allow + updatedPermissions', async () => {
@@ -645,6 +647,38 @@ describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权
     assert.equal(ctrl.result.behavior, 'deny');
     assert.match(ctrl.result.message, /Plugin denied/);
     assert.ok(!broadcasts.some((b) => b.type === 'perm-hook-pending'));
+  });
+
+  it('stopSession 清掉进程级 wiring：再 init 省略 runWaterfallHook 不继承上一个 hook（防跨用例泄漏）', async () => {
+    // Regression: initSdkSession 只在「显式传入」时覆盖进程级回调（省略即保留，
+    // 保护 cli.js 的进程级接线不被 per-workspace launch init 冲掉）。该守卫的反面
+    // 是「上一个注册者的 hook 会泄漏到下一个 init」——stopSession 是硬清边界，必须
+    // 彻底断线，否则在同一个 tmpDir 上先注册 deny hook、再跑 sentinel 用例时，perm
+    // 分支会先撞到残留的 onPermRequest=deny → 'Plugin denied'，永远到不了 sentinel guard。
+    const { deps } = makeDeps();
+    const ctrlA = { cutOpts: { toolUseID: 'leak-a' } };
+    sdk.__setQueryForTests(makeCanUseToolQuery('Bash', { command: 'ls' }, ctrlA));
+    sdk.initSdkSession(tmpDir, 'proj', {
+      ...deps,
+      runWaterfallHook: async (name) => (name === 'onPermRequest' ? { decision: 'deny' } : {}),
+    });
+    await sdk.sendUserMessage('go');
+    await tick(4);
+    assert.equal(ctrlA.result.behavior, 'deny'); // poisoned generation: hook denies
+
+    sdk.stopSession(); // hard boundary — must drop the wiring
+
+    // Re-init WITHOUT runWaterfallHook on the SAME cwd: the deny hook must NOT survive.
+    const ctrlB = { cutOpts: { toolUseID: 'leak-b' } };
+    sdk.__setQueryForTests(makeCanUseToolQuery('Bash', { command: 'ls' }, ctrlB));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    const sendP = sdk.sendUserMessage('go');
+    await tick(6);
+    // No waterfall → reaches the perm broadcast + _waitForApproval; resolve it to allow.
+    assert.equal(sdk.resolveApproval('leak-b', { decision: 'allow' }), true, 'no residual hook: normal approval flow reached');
+    await sendP;
+    await tick(4);
+    assert.equal(ctrlB.result.behavior, 'allow', 'stale onPermRequest hook must not survive stopSession');
   });
 
   it('canUseTool 无 toolUseID 时自动生成 sdk_ 前缀 id（仍能正常 allow 直通）', async () => {
@@ -756,7 +790,7 @@ describe('sdk-manager-query — 审批政策链(im-deny → npm 硬闸 → bypas
     await tick(6);
     await sendP;
     assert.deepEqual(ctrl.result, { behavior: 'allow', updatedInput: { command: 'rm -rf build/' } });
-    assert.equal(broadcasts.length, 0, 'bypass early-allow 不得 broadcast');
+    assert.deepEqual(broadcasts.filter((b) => b.type !== 'sdk-session-state'), [], 'bypass early-allow 不得 broadcast(回合状态帧除外)');
   });
 
   it('bypass + npm publish → 强制走 perm 审批(broadcast perm-hook-pending + 5min 等待),allow 后放行', async () => {
@@ -823,7 +857,7 @@ describe('sdk-manager-query — 审批政策链(im-deny → npm 硬闸 → bypas
       await sendP;
       assert.equal(ctrl.result.behavior, 'deny');
       assert.ok(String(ctrl.result.message).startsWith('cc-viewer IM guard:'), 'deny 消息带 IM guard 前缀');
-      assert.equal(broadcasts.length, 0, 'im-deny 硬拒不得 broadcast 弹窗');
+      assert.deepEqual(broadcasts.filter((b) => b.type !== 'sdk-session-state'), [], 'im-deny 硬拒不得 broadcast 弹窗(回合状态帧除外)');
     } finally {
       delete process.env.CCV_IM_DENY;
     }
@@ -1291,10 +1325,11 @@ describe('sdk-manager-query — SDK task_* 消息无损转发为 sdk-task 广播
     await tick(5);
 
     const t = broadcasts.filter((b) => b.type === 'sdk-task');
-    // Whole-frame deepEqual: pins EVERY forwarded field (incl. prompt) and proves the
-    // relay leaks nothing else (no uuid, no snake_case keys, no extra envelope noise).
+    // Whole-frame deepEqual: pins EVERY forwarded field (incl. prompt and the per-session
+    // routing cwd the multi-session registry stamps on every frame) and proves the relay
+    // leaks nothing else (no uuid, no snake_case keys, no extra envelope noise).
     assert.deepEqual(t, [{
-      type: 'sdk-task', subtype: 'task_started', sessionId: 'sess-1', taskId: 'task-1',
+      type: 'sdk-task', cwd: tmpDir, subtype: 'task_started', sessionId: 'sess-1', taskId: 'task-1',
       toolUseId: 'tu-1', description: '探索代码库', taskType: 'local_workflow',
       workflowName: 'spec', prompt: 'do it',
     }]);
@@ -1429,7 +1464,9 @@ describe('sdk-manager-query — SDK task_* 消息无损转发为 sdk-task 广播
     await sdk.sendUserMessage('go');
     await tick(6);
     // Mid-turn frames relayed in arrival order; only the trailing result fires onTurnEnd.
-    assert.deepEqual(broadcasts.map((b) => b.type), ['sdk-task', 'sdk-task']);
+    // (Turn-level sdk-session-state running/idle frames bracket the turn — filter to
+    // the sdk-task vocabulary this assertion is about.)
+    assert.deepEqual(broadcasts.filter((b) => b.type !== 'sdk-session-state').map((b) => b.type), ['sdk-task', 'sdk-task']);
     assert.equal(turnEnds.length, 1);
   });
 

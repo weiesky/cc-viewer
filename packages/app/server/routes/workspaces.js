@@ -85,9 +85,26 @@ function workspacesLaunch(req, res, parsedUrl, isLocal, deps) {
       // it to the latest main session.
       if (mergedArgs.some((a) => RESUME_FLAGS.has(a))) markResumeSession();
 
+      // SDK mode (2026-10-12, per-cwd multi-session): launch = register/activate this cwd's
+      // resident SDK session — NOT a phantom claude PTY the SDK UI never consumes. PTY mode is
+      // untouched (the proxyPort branch below stays PTY-only).
+      if (deps.isSdkMode) {
+        try {
+          const sdk = await import('../lib/sdk-manager.js');
+          if (!sdk.setActiveSdkSession(wsPath)) {
+            // New cwd: register a session carrying the PROCESS-LEVEL launch config template
+            // (registered by cli.js at boot) so its query gets the proxy env / model /
+            // permission / executable — without it the child would bypass the ccv proxy
+            // (no transcript) and skip the per-cwd routing header. Process-global callbacks
+            // (broadcast/turn-end) are reused via initSdkSession's only-if-provided guard.
+            sdk.initSdkSession(wsPath, result.projectName, sdk.getSdkLaunchConfig() || undefined);
+          }
+        } catch (err) { reportSwallowed('workspaces.sdk-launch', err); }
+      }
+
       // 启动 PTY
       const proxyPort = process.env.CCV_PROXY_PORT;
-      if (proxyPort) {
+      if (proxyPort && !deps.isSdkMode) {
         // Multi-instance (2026-10-06): spawnClaude now mints a fresh instanceKey per call and
         // no longer kills an existing same-cwd record, so re-launching an ALREADY-LIVE cwd
         // here would silently start a duplicate claude. ensurePtyForCwd restores the intended
@@ -186,6 +203,12 @@ function workspacesStop(req, res, parsedUrl, isLocal, deps) {
     // old project's claude leaks past the workspace session.
     import('../pty-manager.js').then(({ killAllMain }) => killAllMain()),
     import('../scratch-pty-manager.js').then(({ killAllScratch }) => killAllScratch()).catch(() => {}),
+    // SDK multi-session (2026-10-12): returning to the workspace list must also stop every
+    // resident SDK session, or they (and their child claude processes) accumulate for the
+    // whole process lifetime.
+    deps.isSdkMode
+      ? import('../lib/sdk-manager.js').then((m) => m.stopSession()).catch((err) => reportSwallowed('workspaces.sdk-stop', err))
+      : Promise.resolve(),
   ]).then(() => {
     // 接续原有清理流程
 

@@ -943,7 +943,7 @@ class ChatView extends React.Component {
           if (this.state.queuedMessages.length) {
             this.setState({ queuedMessages: [] });
             if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
-              this._inputWs.send(JSON.stringify({ type: 'queue-clear' }));
+              this._inputWs.send(JSON.stringify({ type: 'queue-clear', project: this.props.viewProject || this.props.projectName }));
             }
           }
         }
@@ -4111,7 +4111,7 @@ class ChatView extends React.Component {
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
                         if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
-                          this._inputWs.send(JSON.stringify({ type: 'queue-remove', id: item.id }));
+                          this._inputWs.send(JSON.stringify({ type: 'queue-remove', id: item.id, project: this.props.viewProject || this.props.projectName }));
                         }
                       }}
                     >&times;</button>
@@ -4121,7 +4121,7 @@ class ChatView extends React.Component {
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
                         if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
-                          this._inputWs.send(JSON.stringify({ type: 'queue-send-now', id: item.id }));
+                          this._inputWs.send(JSON.stringify({ type: 'queue-send-now', id: item.id, project: this.props.viewProject || this.props.projectName }));
                         }
                       }}
                     >{t('ui.chatInput.queueSendNow')}</button>

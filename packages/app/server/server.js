@@ -1497,8 +1497,12 @@ async function setupTerminalWebSocket(httpServer) {
         // SDK multi-session (2026-10-12): remember this connection's viewed project so
         // broadcastWsMessage can route cwd-tagged SDK frames only to the client(s) watching
         // that workspace. No ?project= → bound view → receives every project (old behavior).
-        wss.once('connection', (ws) => { try { ws._ccvViewProject = viewProject || null; } catch {} });
+        // Set it directly in THIS upgrade's callback (fires once per connection, so reconnects
+        // get re-stamped) — NOT via a one-shot wss.once('connection') listener, which would
+        // only ever stamp the FIRST connection and leave every later/reconnected client
+        // unstamped (receiving all workspaces' frames).
         wss.handleUpgrade(req, socket, head, (ws) => {
+          try { ws._ccvViewProject = viewProject || null; } catch {}
           wss.emit('connection', ws, req);
         });
       } else if (pathname === '/ws/terminal-scratch') {
@@ -1744,6 +1748,19 @@ async function setupTerminalWebSocket(httpServer) {
         } catch {}
       }
 
+      // SDK multi-session (2026-10-12): replay frames are per-session too. A reconnected
+      // client must only restore the workspace it is VIEWING — otherwise a background
+      // workspace's approval/spinner/queue would pop into the foreground. Filter each
+      // snapshot by this connection's `_ccvViewProject` (bound view / no ?project= → all).
+      const _viewProj = ws._ccvViewProject || null;
+      const _base = (c) => (typeof c === 'string' && c) ? c.replace(/\\/g, '/').split('/').filter(Boolean).pop() : null;
+      const _sdkFrameForView = (frame) => {
+        if (!frame || typeof frame !== 'object') return true;      // no cwd → view-agnostic, replay
+        if (!_viewProj) return true;                               // bound view → all workspaces
+        const fproj = (typeof frame.cwd === 'string' && frame.cwd) ? _base(frame.cwd) : null;
+        return !fproj || fproj === _viewProj;                      // no-cwd frame → replay; else must match
+      };
+
       // Replay SDK 模式 pendings(sdk-manager canUseTool 的 ask/plan/perm):
       // 与上面 perm-hook 同理,但快照来自 sdk-manager(_pendingApprovals)。
       // ask 类带 startedAt/timeoutMs —— 与 ask-hook replay 同款剩余时间重算。
@@ -1751,6 +1768,7 @@ async function setupTerminalWebSocket(httpServer) {
         for (const p of _sdkGetPendingApprovals() || []) {
           if (!p || !p.replay || !p.id) continue;
           const payload = { ...p.replay };
+          if (!_sdkFrameForView(payload)) continue; // 别的工作区的待审批不进本视图
           if (p.kind === 'ask') {
             payload.startedAt = now;           // 让前端按"还剩 remaining"起算
             payload.timeoutMs = p.remainingMs; // 剩余可用时间
@@ -1763,7 +1781,7 @@ async function setupTerminalWebSocket(httpServer) {
       // surface and model info without waiting for the next session.
       if (isSdkMode && _sdkGetInitSnapshot) {
         const initSnap = _sdkGetInitSnapshot();
-        if (initSnap) {
+        if (initSnap && _sdkFrameForView(initSnap)) {
           try { ws.send(JSON.stringify(initSnap)); } catch {}
         }
       }
@@ -1773,7 +1791,7 @@ async function setupTerminalWebSocket(httpServer) {
       // stays at its idle default).
       if (isSdkMode && _sdkGetSessionStateSnapshot) {
         const stateSnap = _sdkGetSessionStateSnapshot();
-        if (stateSnap) {
+        if (stateSnap && _sdkFrameForView(stateSnap)) {
           try { ws.send(JSON.stringify(stateSnap)); } catch {}
         }
       }
@@ -1782,7 +1800,7 @@ async function setupTerminalWebSocket(httpServer) {
       // latest numbers (null snapshot → no frame, the panel falls back to its HTTP pull).
       if (isSdkMode && _sdkGetContextUsageSnapshot) {
         const cuSnap = _sdkGetContextUsageSnapshot();
-        if (cuSnap) {
+        if (cuSnap && _sdkFrameForView(cuSnap)) {
           try { ws.send(JSON.stringify(cuSnap)); } catch {}
         }
       }
@@ -1791,7 +1809,7 @@ async function setupTerminalWebSocket(httpServer) {
       // sends no frame; the panel then falls back to its HTTP pull.
       if (isSdkMode && _sdkGetMcpStatusSnapshot) {
         const mcpSnap = _sdkGetMcpStatusSnapshot();
-        if (mcpSnap) {
+        if (mcpSnap && _sdkFrameForView(mcpSnap)) {
           try { ws.send(JSON.stringify(mcpSnap)); } catch {}
         }
       }
@@ -1801,7 +1819,8 @@ async function setupTerminalWebSocket(httpServer) {
       {
         const qItems = (isSdkMode && _sdkGetQueueSnapshot) ? _sdkGetQueueSnapshot() : chatQueue.getSnapshot();
         if (Array.isArray(qItems) && qItems.length) {
-          try { ws.send(JSON.stringify({ type: 'queue-state', items: qItems })); } catch {}
+          const qFrame = { type: 'queue-state', items: qItems };
+          if (_sdkFrameForView(qFrame)) { try { ws.send(JSON.stringify(qFrame)); } catch {} }
         }
       }
 
@@ -2336,7 +2355,10 @@ async function setupTerminalWebSocket(httpServer) {
             if (qid) {
               if (isSdkMode) {
                 if (_sdkSendQueuedNow) {
-                  try { _broadcastApprovalCloses(_sdkSendQueuedNow(qid) || [], 'Queued message sent now'); }
+                  // Multi-session: address the bubble's own workspace (the viewed project), not
+                  // the global active session — bubbles are cwd-scoped, the action must match.
+                  const qAnchor = (typeof msg.project === 'string' && msg.project) ? { project: msg.project } : undefined;
+                  try { _broadcastApprovalCloses(_sdkSendQueuedNow(qid, qAnchor) || [], 'Queued message sent now'); }
                   catch (err) { reportSwallowed('server.queue-send-now', err); }
                 }
               } else {
@@ -2347,7 +2369,7 @@ async function setupTerminalWebSocket(httpServer) {
             const qid = (typeof msg.id === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(msg.id)) ? msg.id : null;
             if (qid) {
               if (isSdkMode) {
-                if (_sdkRemoveQueued) { try { _sdkRemoveQueued(qid); } catch (err) { reportSwallowed('server.queue-remove', err); } }
+                if (_sdkRemoveQueued) { const qAnchor = (typeof msg.project === 'string' && msg.project) ? { project: msg.project } : undefined; try { _sdkRemoveQueued(qid, qAnchor); } catch (err) { reportSwallowed('server.queue-remove', err); } }
               } else {
                 try { chatQueue.remove(qid); } catch (err) { reportSwallowed('server.queue-remove', err); }
               }
@@ -2356,7 +2378,7 @@ async function setupTerminalWebSocket(httpServer) {
             // Session/workspace switch: drop the parked queue WITHOUT interrupting a running
             // turn. (Stop semantics live elsewhere: PTY queue-suppress, SDK sdk-interrupt.)
             if (isSdkMode) {
-              if (_sdkClearQueued) { try { _sdkClearQueued(); } catch (err) { reportSwallowed('server.queue-clear', err); } }
+              if (_sdkClearQueued) { const qAnchor = (typeof msg.project === 'string' && msg.project) ? { project: msg.project } : undefined; try { _sdkClearQueued(qAnchor); } catch (err) { reportSwallowed('server.queue-clear', err); } }
             } else {
               try { chatQueue.clear(); } catch (err) { reportSwallowed('server.queue-clear', err); }
             }

@@ -121,6 +121,30 @@ async function getLiveProcessesHandler(req, res, parsedUrl) {
       });
     }
   } catch (err) { reportSwallowed('resume-route.live-main', err); }
+  // SDK mode (2026-10-12): SDK sessions are NOT PTYs, so listLivePtys() never contains them —
+  // without an entry the header's tab/chip source has no anchor for an SDK workspace, and the
+  // first launch's PTY-less list collapsed to just the new project. Enumerate the per-cwd SDK
+  // session registry (multi-session) as `kind:'main'` entries so each launched workspace shows
+  // up exactly like a PTY project. `active` marks the session the SDK composer is bound to;
+  // `closable:false` (no PTY to kill) tells the header to suppress the ×.
+  if (process.env.CCV_SDK_MODE === '1') {
+    try {
+      const sdk = await import('../lib/sdk-manager.js');
+      for (const e of sdk.listSdkSessions()) {
+        if (!e || !e.cwd) continue;
+        if (processes.some((p) => p && p.cwd === e.cwd)) continue; // a real PTY already covers this cwd
+        processes.push({
+          kind: 'main',
+          project: projectKeyForCwd(e.cwd),
+          cwd: e.cwd,
+          pid: null,
+          active: e.active === true,
+          instanceKey: null,
+          closable: false, // SDK resident query — killed via session switch, not the × close path
+        });
+      }
+    } catch (err) { reportSwallowed('resume-route.live-sdk', err); }
+  }
   sendJson(res, 200, { processes, currentProject: _projectName || '', currentInstanceKey });
 }
 
@@ -415,7 +439,10 @@ function postResumeSessionHandler(req, res, parsedUrl, isLocal, deps) {
       // Read the env at request time (not module top) so tests can flip it per case.
       if (process.env.CCV_SDK_MODE === '1') {
         const sdk = await import('../lib/sdk-manager.js');
-        const r = sdk.switchToSession(sessionUuid);
+        // Multi-session (2026-10-12): honor the requested workspace — resume the VIEWED
+        // session, not always the active one. project is the workspace name from the client.
+        const anchor = (typeof project === 'string' && project) ? { project } : undefined;
+        const r = sdk.switchToSession(sessionUuid, anchor);
         if (r.ok) { sendJson(res, 200, { ok: true }); return; }
         if (r.reason === 'busy') { sendJson(res, 409, { ok: false, reason: 'busy' }); return; }
         if (r.reason === 'unavailable') { sendJson(res, 409, { ok: false, reason: 'unavailable' }); return; }

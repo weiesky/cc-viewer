@@ -73,8 +73,8 @@ describe('queue bubbles — render block', () => {
 
   it('maps queuedMessages with per-item remove + send-now buttons', () => {
     assert.ok(jsx.includes('this.state.queuedMessages.map'), 'renders one bubble per queued item');
-    assert.ok(jsx.includes("{ type: 'queue-remove', id: item.id }"), 'remove button sends queue-remove');
-    assert.ok(jsx.includes("{ type: 'queue-send-now', id: item.id }"), 'send-now button sends queue-send-now');
+    assert.ok(jsx.includes("type: 'queue-remove', id: item.id"), 'remove button sends queue-remove');
+    assert.ok(jsx.includes("type: 'queue-send-now', id: item.id"), 'send-now button sends queue-send-now');
     assert.ok(jsx.includes("t('ui.chatInput.queueSendNow')"), 'send-now label is i18n');
     assert.ok(jsx.includes("t('ui.chatInput.queueRemove')"), 'remove label is i18n');
   });

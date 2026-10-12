@@ -277,7 +277,9 @@ describe('deriveProjectTabs', () => {
 
   it('the key falls back to the project name when cwd and instanceKey are absent', () => {
     const tabs = deriveProjectTabs([{ kind: 'main', project: 'q' }]);
-    assert.deepEqual(tabs, [{ key: 'main:q', project: 'q', label: 'q', suffix: null, cwd: null, pid: undefined, instanceKey: null, active: false }]);
+    // `closable` defaults to true; only a no-process row (the SDK resident session,
+    // `closable:false` from /api/live-processes) is non-closable.
+    assert.deepEqual(tabs, [{ key: 'main:q', project: 'q', label: 'q', suffix: null, cwd: null, pid: undefined, instanceKey: null, active: false, closable: true }]);
   });
 
   it('two cross-dir same-basename projects get [1]/[2] ordered by cwd asc (respawn-stable)', () => {
