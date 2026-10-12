@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import { createConnection } from 'node:net';
 import { randomBytes } from 'node:crypto';
-import { readFileSync, existsSync, unwatchFile, statSync, renameSync, unlinkSync } from 'node:fs';
+import { readFileSync, existsSync, unwatchFile, statSync, renameSync, unlinkSync, realpathSync } from 'node:fs';
 import { join, extname, resolve, sep } from 'node:path';
 import { platform, networkInterfaces, tmpdir } from 'node:os';
 import { execFile, exec, spawn } from 'node:child_process';
@@ -1401,7 +1401,7 @@ export async function startViewer() {
 async function setupTerminalWebSocket(httpServer) {
   try {
     const { WebSocketServer } = await import('ws');
-    const { writeToPty, writeToPtySequential, writeToPtyFor, writeToPtySequentialFor, resizePty, onPtyData, onPtyExit, getPtyState, getPtyKind, getOutputBuffer, getCurrentWorkspace, spawnShell, findSafeSliceStart, attachPtyFor } = await import('./pty-manager.js');
+    const { writeToPty, writeToPtySequential, writeToPtyFor, writeToPtySequentialFor, resizePty, onPtyData, onPtyExit, getPtyState, getPtyKind, getOutputBuffer, getCurrentWorkspace, spawnShell, findSafeSliceStart, attachPtyFor, listLivePtys } = await import('./pty-manager.js');
     const {
       spawnScratch,
       writeScratch,
@@ -1413,10 +1413,18 @@ async function setupTerminalWebSocket(httpServer) {
       getScratchOutputBuffer,
       getScratchShellBasename,
       getScratchPtyCount,
+      getScratchPtyCountForCwd,
       hasScratchPty,
     } = await import('./scratch-pty-manager.js');
+    const { loadWorkspaces } = await import('./workspace-registry.js');
+    const { resolveViewRoot } = await import('./lib/view-root.js');
     const SCRATCH_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
-    const MAX_SCRATCH_PTYS = 16;
+    // Per-workspace cap = 2x the client's tab cap (8), same semantics as the old global
+    // 16 for single-workspace use. Hidden workspaces keep their PTYs alive by design
+    // (per-workspace tab groups restore on switch-back), so the global bound must be
+    // larger yet finite — each entry is a real shell process.
+    const MAX_SCRATCH_PTYS_PER_CWD = 16;
+    const MAX_SCRATCH_PTYS_TOTAL = 64;
     _writeToPty = writeToPty;
     _onPtyData = onPtyData;
     // Chat-composer busy queue (terminal-hidden PTY mode): holds Enter-while-busy messages
@@ -1512,17 +1520,53 @@ async function setupTerminalWebSocket(httpServer) {
           socket.destroy();
           return;
         }
-        // 硬上限基于后端 ptys Map 大小（含 running 与已退出未回收），
-        // 已有 id 走重连路径不计入新增配额；防止用户关浏览器后老 pty 仍存活、
-        // 新会话又能开 16 个导致总量翻番的累积膨胀
-        if (!hasScratchPty(scratchId) && getScratchPtyCount() >= MAX_SCRATCH_PTYS) {
-          socket.destroy();
+        // Single upgrade hand-off used by the accept and both reject branches below.
+        const handOffScratch = () => {
+          req.ccvScratchId = scratchId;
+          wssScratch.handleUpgrade(req, socket, head, (ws) => {
+            wssScratch.emit('connection', ws, req);
+          });
+        };
+        // Multi-project (2026-10-12): ?project=/?instance= pin the scratch shell's cwd to
+        // the VIEWED workspace — same resolution as every project-scoped READ route
+        // (resolveViewRoot is sync: fs + sync registry read). No params → bound root.
+        // Accepted: with no instance and a same-basename twin live, the name path can
+        // resolve to the twin's dir (the single-live-PTY rule designed for READ routes);
+        // an unresolvable/ambiguous name takes the fatal-toast path below instead, so a
+        // wrong-cwd spawn is bounded to that deliberate arbitration, never silent.
+        const vr = resolveViewRoot({
+          projectParam: wsUrl.searchParams.get('project'),
+          instanceParam: wsUrl.searchParams.get('instance'),
+          boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
+          loadWorkspaces,
+          listLivePtys,
+        });
+        if (!vr.ok) {
+          // Unresolvable/deleted/ambiguous workspace: do NOT bare-destroy — the client
+          // would retry every 2s forever. Complete the upgrade, report once with a fatal
+          // toast (client stops reconnecting), then close. Nothing spawns on this path.
+          req.ccvScratchReject = vr.error || 'workspace unavailable';
+          handOffScratch();
           return;
         }
-        req.ccvScratchId = scratchId;
-        wssScratch.handleUpgrade(req, socket, head, (ws) => {
-          wssScratch.emit('connection', ws, req);
-        });
+        // Normalize once: the bound branch of resolveViewRoot returns the root un-normalized,
+        // named branches realpathSync — without this the same dir can key two buckets.
+        let scratchCwd = vr.root;
+        try { scratchCwd = realpathSync(vr.root); } catch { }
+        // Hard caps (per-workspace + global) on the ptys Map size (running and
+        // exited-not-yet-reaped entries included); an existing id+cwd reconnect is exempt
+        // so it can't be locked out by its own still-alive entry. Rejection goes through
+        // the same fatal-toast hand-off as a resolve failure (never a bare destroy) so the
+        // client stops reconnecting instead of retrying every 2s against a full bucket.
+        if (!hasScratchPty(scratchId, { cwd: scratchCwd })
+          && (getScratchPtyCount() >= MAX_SCRATCH_PTYS_TOTAL
+            || getScratchPtyCountForCwd(scratchCwd) >= MAX_SCRATCH_PTYS_PER_CWD)) {
+          req.ccvScratchReject = 'scratch terminal limit reached';
+          handOffScratch();
+          return;
+        }
+        req.ccvScratchCwd = scratchCwd;
+        handOffScratch();
       } else {
         socket.destroy();
       }
@@ -1590,19 +1634,30 @@ async function setupTerminalWebSocket(httpServer) {
     // scratch 终端 WS：极简版，仅承载 input/resize/data/exit + 显式 kill；不掺杂 hook/SDK/preset
     wssScratch.on('connection', async (ws, req) => {
       const id = req.ccvScratchId;
+      // Resolve-failure branch from the upgrade handler: report once, close, spawn nothing.
+      // The client treats fatal toasts as stop-reconnecting (no 2s retry loop against a
+      // deleted/ambiguous workspace).
+      if (req.ccvScratchReject) {
+        try { ws.send(JSON.stringify({ type: 'toast', message: req.ccvScratchReject, fatal: true })); } catch {}
+        try { ws.close(); } catch {}
+        return;
+      }
+      // cwd resolved once at upgrade time; every manager call for this connection uses it
+      // so no call site can drift to a different (id-only/STARTUP_CWD) bucket.
+      const opts = req.ccvScratchCwd ? { cwd: req.ccvScratchCwd } : undefined;
       // 懒启动 scratch shell（首次连接才 spawn）
       try {
-        if (!getScratchState(id).running) {
-          await spawnScratch(id);
+        if (!getScratchState(id, opts).running) {
+          await spawnScratch(id, opts);
         }
       } catch (err) {
         try { ws.send(JSON.stringify({ type: 'toast', message: `scratch spawn failed: ${err.message}` })); } catch {}
       }
 
-      const state = getScratchState(id);
-      try { ws.send(JSON.stringify({ type: 'state', running: state.running, exitCode: state.exitCode, shellBasename: getScratchShellBasename() })); } catch {}
+      const state = getScratchState(id, opts);
+      try { ws.send(JSON.stringify({ type: 'state', running: state.running, exitCode: state.exitCode, cwd: state.cwd, shellBasename: getScratchShellBasename() })); } catch {}
 
-      const buffer = getScratchOutputBuffer(id);
+      const buffer = getScratchOutputBuffer(id, opts);
       if (buffer) {
         try { ws.send(JSON.stringify({ type: 'data', data: buffer })); } catch {}
       }
@@ -1619,7 +1674,7 @@ async function setupTerminalWebSocket(httpServer) {
       // 调用前须 floodGate.reset()（快照已含 pending 字节，残留会在快照后回灌重复）。
       const sendScratchResync = () => {
         if (ws.readyState !== 1) return;
-        try { ws.send(JSON.stringify({ type: 'data-resync', data: getScratchOutputBuffer(id) })); } catch {}
+        try { ws.send(JSON.stringify({ type: 'data-resync', data: getScratchOutputBuffer(id, opts) })); } catch {}
       };
       const resyncReqGate = createResyncNudgeGate({ cooldownMs: RESYNC_REQ_COOLDOWN_MS });
       const bpGate = createBackpressureGate({
@@ -1664,25 +1719,25 @@ async function setupTerminalWebSocket(httpServer) {
 
       const removeDataListener = onScratchData(id, (data) => {
         floodGate.offer(data);
-      });
+      }, opts);
 
       const removeExitListener = onScratchExit(id, (exitCode) => {
         if (ws.readyState === 1) {
           try { ws.send(JSON.stringify({ type: 'exit', exitCode })); } catch {}
         }
-      });
+      }, opts);
 
       ws.on('message', async (raw) => {
         try {
           const msg = JSON.parse(raw.toString());
           if (msg.type === 'input') {
-            const s = getScratchState(id);
+            const s = getScratchState(id, opts);
             if (!s.running) {
-              try { await spawnScratch(id); } catch {}
+              try { await spawnScratch(id, opts); } catch {}
             }
-            writeScratch(id, msg.data);
+            writeScratch(id, msg.data, opts);
           } else if (msg.type === 'resize') {
-            resizeScratch(id, msg.cols, msg.rows);
+            resizeScratch(id, msg.cols, msg.rows, opts);
           } else if (msg.type === 'resync-request') {
             // 客户端 write-queue 积压丢弃后请求快照对齐（utils/terminalWriteQueue.js onTrim）
             if (resyncReqGate.shouldNudge()) {
@@ -1691,7 +1746,7 @@ async function setupTerminalWebSocket(httpServer) {
             }
           } else if (msg.type === 'kill') {
             // 用户主动关闭 tab：杀 pty（killScratch 内部 ptys.delete 后配额自动释放）；前端会随后 close ws
-            killScratch(id);
+            killScratch(id, opts);
           }
         } catch {}
       });
@@ -1701,8 +1756,10 @@ async function setupTerminalWebSocket(httpServer) {
         floodGate.dispose();
         removeDataListener();
         removeExitListener();
-        // pty 本身**不杀**（保留以支持刷新重连），由 kill 消息或 /api/workspaces/stop 触发；
-        // 配额由 ptys Map 自身大小决定，不需在此手动维护连接集合
+        // The pty itself is deliberately NOT killed (kept for refresh-reconnect and for
+        // per-workspace tab-group restore on switch-back); teardown happens via the kill
+        // message or /api/workspaces/stop. Cap accounting is driven by the ptys Map size,
+        // so no connection set is maintained here.
       });
     });
 

@@ -59,15 +59,23 @@ const WEBGL_RENDERER = isAndroid || (isMac && !isIOS
 
 const SCRATCH_OPEN_KEY = 'cc-viewer-scratch-open';
 const SCRATCH_HEIGHT_KEY = 'cc-viewer-scratch-height';
-const SCRATCH_TABS_KEY = 'cc-viewer-scratch-tabs';
-const SCRATCH_ACTIVE_TAB_KEY = 'cc-viewer-scratch-active-tab';
+// Tab groups are per-workspace since 2026-10-12: storage helpers live in
+// utils/scratchTabsStorage.js (tab ids/keys/limits moved with them).
+import {
+  SCRATCH_TAB_MAX,
+  genScratchTabId,
+  groupKeyOf,
+  isPendingGroupKey,
+  loadScratchGroup,
+  persistScratchGroup,
+  claimLegacyScratch,
+  mergePendingScratchGroup,
+} from '../../utils/scratchTabsStorage.js';
 // 注：.scratchWrap 用 outline + outline-offset:-4px 画 focus 环（不占布局），存储/clamp 的高度
 // 即可见高度本身，不再被边框吞噬；fitAddon 自动 refit，与历史 session 存储值兼容。
 const SCRATCH_HEIGHT_MIN = 100;
 const SCRATCH_HEIGHT_MAX = 600;
 const SCRATCH_HEIGHT_DEFAULT = 200;
-const SCRATCH_TAB_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
-const SCRATCH_TAB_MAX = 8;
 
 function readScratchOpen() {
   try { return localStorage.getItem(SCRATCH_OPEN_KEY) === 'true'; } catch { return false; }
@@ -78,46 +86,6 @@ function readScratchHeight() {
     if (!Number.isFinite(v)) return SCRATCH_HEIGHT_DEFAULT;
     return Math.max(SCRATCH_HEIGHT_MIN, Math.min(SCRATCH_HEIGHT_MAX, v));
   } catch { return SCRATCH_HEIGHT_DEFAULT; }
-}
-
-function genScratchTabId() {
-  // 与服务端 SCRATCH_ID_RE `/^[A-Za-z0-9_-]{1,64}$/` 兼容
-  const rand = (typeof crypto !== 'undefined' && crypto.randomUUID)
-    ? crypto.randomUUID().replace(/-/g, '')
-    : Math.random().toString(36).slice(2) + Date.now().toString(36);
-  return ('t-' + rand).slice(0, 64);
-}
-
-function readScratchTabs() {
-  try {
-    const raw = localStorage.getItem(SCRATCH_TABS_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    const out = [];
-    for (const t of arr) {
-      if (t && typeof t.id === 'string' && SCRATCH_TAB_ID_RE.test(t.id)) {
-        out.push({ id: t.id });
-        if (out.length >= SCRATCH_TAB_MAX) break;
-      }
-    }
-    return out;
-  } catch { return []; }
-}
-
-function readScratchActiveTab(tabs) {
-  try {
-    const v = localStorage.getItem(SCRATCH_ACTIVE_TAB_KEY);
-    if (v && tabs.some(t => t.id === v)) return v;
-  } catch {}
-  return tabs[0]?.id ?? '';
-}
-
-function writeScratchTabs(tabs) {
-  try { localStorage.setItem(SCRATCH_TABS_KEY, JSON.stringify(tabs)); } catch {}
-}
-function writeScratchActiveTab(id) {
-  try { localStorage.setItem(SCRATCH_ACTIVE_TAB_KEY, id); } catch {}
 }
 
 // 真实 $SHELL basename 由后端 WS state 消息上报后填进 state.scratchShellBasename，
@@ -267,20 +235,52 @@ class TerminalPanel extends React.Component {
       scratchHeight: readScratchHeight(),
       isDraggingScratch: false,
       scratchFocused: false,
-      scratchTabs: (() => {
-        const t = readScratchTabs();
-        return t.length > 0 ? t : [{ id: genScratchTabId() }];
-      })(),
+      scratchTabs: [],
       activeScratchTabId: '',
       scratchShellBasename: '',
     };
-    // 持久化 active id（先用 readScratchActiveTab 选；下面 mount 后再 sync 到 localStorage）
-    this.state.activeScratchTabId = readScratchActiveTab(this.state.scratchTabs);
+    // Per-workspace tab group (multi-project 2026-10-12): load the group for the
+    // current view. The ctor runs while viewProject is still null (projectName /
+    // viewedProject resolve asynchronously in AppBase); this first group is the boot
+    // pending bucket. Mark it so ScratchTerminal does NOT connect yet (a bound-root
+    // shell spawned now would be orphaned by the merge once the real workspace name
+    // resolves); the componentDidUpdate swap clears the flag and lets tabs connect.
+    this._scratchPending = !this._scratchGroupKeyOf(this.props);
+    const g = this._applyScratchGroup(this._scratchGroupKeyOf(this.props));
+    this.state.scratchTabs = g.tabs;
+    this.state.activeScratchTabId = g.activeId;
     this._scratchWrapRef = React.createRef();
     this._scratchRefs = new Map(); // id -> React.createRef()
     this._scratchDragging = false;
     this._scratchDragLastH = null;
     this._scratchPointerId = null;
+  }
+
+  // Group identity for the current view: `project\x00instance` for instance-pinned
+  // same-basename twins, `project` for named views, '' for the bound/unnamed view.
+  _scratchGroupKeyOf(props) {
+    return groupKeyOf(props.viewProject, props.viewInstance);
+  }
+
+  // Apply the group for a key: load it (seeding a default tab on first visit), persist
+  // it back, adopt the legacy global keys once for the first named group, and remember
+  // the key on this._scratchGroupKey so every later mutation (_persistScratch) writes
+  // under the current group. The persist is best-effort (localStorage exemption): a
+  // quota/private-mode failure leaves the group memory-only for this session.
+  _applyScratchGroup(groupKey) {
+    const g = loadScratchGroup(groupKey);
+    const tabs = g.tabs.length > 0 ? g.tabs : [{ id: genScratchTabId() }];
+    const activeId = tabs.some(t => t.id === g.activeId) ? g.activeId : tabs[0].id;
+    persistScratchGroup(groupKey, tabs, activeId);
+    if (g.migratedFromLegacy) claimLegacyScratch();
+    this._scratchGroupKey = groupKey;
+    return { tabs, activeId };
+  }
+
+  // Persist the current group. All callers run inside a setState callback, so
+  // this.state is already committed to the values being written — no-arg is correct.
+  _persistScratch() {
+    persistScratchGroup(this._scratchGroupKey, this.state.scratchTabs, this.state.activeScratchTabId);
   }
 
   _getScratchRef(id) {
@@ -295,7 +295,7 @@ class TerminalPanel extends React.Component {
   handleScratchTabClick = (id) => {
     if (id === this.state.activeScratchTabId) return;
     this.setState({ activeScratchTabId: id }, () => {
-      writeScratchActiveTab(id);
+      this._persistScratch();
       const r = this._scratchRefs.get(id);
       if (r?.current) {
         r.current.refit();
@@ -309,8 +309,7 @@ class TerminalPanel extends React.Component {
     const newId = genScratchTabId();
     const tabs = [...this.state.scratchTabs, { id: newId }];
     this.setState({ scratchTabs: tabs, activeScratchTabId: newId }, () => {
-      writeScratchTabs(tabs);
-      writeScratchActiveTab(newId);
+      this._persistScratch();
       // 等下一帧 ScratchTerminal mount + 显示后再 refit/focus
       Promise.resolve().then(() => {
         const r = this._scratchRefs.get(newId);
@@ -334,8 +333,7 @@ class TerminalPanel extends React.Component {
       active = (this.state.scratchTabs[idx + 1] ?? this.state.scratchTabs[idx - 1])?.id ?? tabs[0]?.id ?? '';
     }
     this.setState({ scratchTabs: tabs, activeScratchTabId: active }, () => {
-      writeScratchTabs(tabs);
-      writeScratchActiveTab(active);
+      this._persistScratch();
       if (active) {
         const r = this._scratchRefs.get(active);
         r?.current?.refit();
@@ -485,9 +483,8 @@ class TerminalPanel extends React.Component {
     });
     this._themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     if (this.state.scratchOpen) this._applyScratchHeight();
-    // mount 时 sync tab 列表 / active id 到 localStorage（兼容旧版本只有 open/height 的存档）
-    writeScratchTabs(this.state.scratchTabs);
-    if (this.state.activeScratchTabId) writeScratchActiveTab(this.state.activeScratchTabId);
+    // Tab group persistence already happened in the ctor (_applyScratchGroup) — the old
+    // mount-time sync is gone (it was unreachable in scratchOnly mode anyway).
   }
 
   componentDidUpdate(prevProps, prevState) {
@@ -537,6 +534,56 @@ class TerminalPanel extends React.Component {
         this.setState({ isDraggingScratch: false });
       }
     }
+    // Viewed-workspace switch (multi-project 2026-10-12): each workspace owns a scratch
+    // tab group. Persist the outgoing group, then load the incoming one. The old
+    // ScratchTerminal components unmount — their ws closes but the server PTYs stay
+    // alive, so switching back re-attaches them via the outputBuffer replay. Groups
+    // with distinct ids remount; groups reusing the same ids (boot merge / legacy
+    // adoption) do NOT remount — ScratchTerminal re-anchors its ws on the project prop
+    // change instead. NEVER kill here.
+    const prevScratchKey = this._scratchGroupKeyOf(prevProps);
+    const nextScratchKey = this._scratchGroupKeyOf(this.props);
+    if (prevScratchKey !== nextScratchKey) {
+      let g;
+      let mergedLegacy = false;
+      if (isPendingGroupKey(prevScratchKey) && !isPendingGroupKey(nextScratchKey)) {
+        // Boot null→named resolution: merge the pending boot bucket into the named
+        // group. mergePendingScratchGroup assembles named > pending > legacy (the
+        // pre-feature archive is adopted HERE — the pending persist would short-circuit
+        // a later loadScratchGroup adoption and let the legacy tabs drift into
+        // whichever OTHER workspace the user opens first).
+        g = mergePendingScratchGroup(nextScratchKey);
+        mergedLegacy = g.migratedFromLegacy;
+        if (g.tabs.length === 0) g = null;
+      }
+      if (!g) {
+        // Best-effort persist: on a localStorage failure the outgoing group's only copy
+        // is lost when the swap below overwrites state (accepted localStorage exemption
+        // — pre-feature behavior was identical, one lost write per failed mutation).
+        persistScratchGroup(prevScratchKey, this.state.scratchTabs, this.state.activeScratchTabId);
+        g = this._applyScratchGroup(nextScratchKey);
+      } else {
+        this._scratchGroupKey = nextScratchKey;
+        persistScratchGroup(nextScratchKey, g.tabs, g.activeId);
+        if (mergedLegacy) claimLegacyScratch();
+      }
+      // The resolved group is no longer the boot pending bucket: tabs may connect.
+      this._scratchPending = false;
+      // Prune refs of the outgoing group's ids (stale-ref hygiene).
+      const nextIds = new Set(g.tabs.map(t => t.id));
+      for (const id of [...this._scratchRefs.keys()]) {
+        if (!nextIds.has(id)) this._scratchRefs.delete(id);
+      }
+      // scratchFocused reset: the unmounting tab's onFocusChange(false) carries the OLD
+      // id and is dropped by handleScratchTabFocusChange — without this the focus ring
+      // would stay lit on the new group.
+      this.setState({ scratchTabs: g.tabs, activeScratchTabId: g.activeId, scratchFocused: false }, () => {
+        // The active pane just became display:flex (display:none skips ResizeObserver);
+        // refit it. Deliberately no focus steal on a workspace switch.
+        const r = this._scratchRefs.get(g.activeId);
+        r?.current?.refit();
+      });
+    }
   }
 
   _loadPresetShortcuts() {
@@ -580,6 +627,9 @@ class TerminalPanel extends React.Component {
 
   componentWillUnmount() {
     this._qmHover.cancel();
+    // Persist the current group: the workspace-list round trip unmounts this panel
+    // without a componentDidUpdate swap, so mutations since the last swap would be lost.
+    persistScratchGroup(this._scratchGroupKey, this.state.scratchTabs, this.state.activeScratchTabId);
     // mid-drag 卸载兜底：恢复 body 样式，标记终止
     if (this._scratchDragging) {
       document.body.style.cursor = '';
@@ -1684,7 +1734,7 @@ class TerminalPanel extends React.Component {
                         tabIndex={isActive ? 0 : -1}
                         className={`${styles.scratchTab}${isActive ? ` ${styles.scratchTabActive}` : ''}`}
                         onClick={() => this.handleScratchTabClick(tab.id)}
-                        title={label}
+                        title={this.props.viewProject ? `${label} · ${this.props.viewProject}` : label}
                       >
                         <span className={styles.scratchTabIcon}><ScratchTerminalIcon /></span>
                         <span className={styles.scratchTabLabel}>{label}</span>
@@ -1723,6 +1773,9 @@ class TerminalPanel extends React.Component {
                         <ScratchTerminal
                           ref={this._getScratchRef(tab.id)}
                           id={tab.id}
+                          project={this.props.viewProject || null}
+                          instance={this.props.viewInstance || null}
+                          allowBoundScope={!this._scratchPending}
                           onFocusChange={(f) => this.handleScratchTabFocusChange(tab.id, f)}
                           onShellInfo={this.handleScratchShellInfo}
                         />
@@ -2004,7 +2057,7 @@ class TerminalPanel extends React.Component {
                       tabIndex={isActive ? 0 : -1}
                       className={`${styles.scratchTab}${isActive ? ` ${styles.scratchTabActive}` : ''}`}
                       onClick={() => this.handleScratchTabClick(tab.id)}
-                      title={label}
+                      title={this.props.viewProject ? `${label} · ${this.props.viewProject}` : label}
                     >
                       <span className={styles.scratchTabIcon}><ScratchTerminalIcon /></span>
                       <span className={styles.scratchTabLabel}>{label}</span>
@@ -2043,6 +2096,9 @@ class TerminalPanel extends React.Component {
                       <ScratchTerminal
                         ref={this._getScratchRef(tab.id)}
                         id={tab.id}
+                        project={this.props.viewProject || null}
+                        instance={this.props.viewInstance || null}
+                        allowBoundScope={!this._scratchPending}
                         onFocusChange={(f) => this.handleScratchTabFocusChange(tab.id, f)}
                         onShellInfo={this.handleScratchShellInfo}
                       />

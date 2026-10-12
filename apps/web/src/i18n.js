@@ -10776,6 +10776,26 @@ const i18nData = {
     "tr": "Yüksekliği ayarlamak için sürükleyin",
     "uk": "Перетягніть, щоб змінити висоту"
   },
+  "ui.terminal.scratchUnavailable": {
+    "zh": "⚠ 此工作区的临时终端不可用:{{message}}",
+    "en": "⚠ Scratch terminal unavailable for this workspace: {{message}}",
+    "zh-TW": "⚠ 此工作區的臨時終端不可用:{{message}}",
+    "ko": "⚠ 이 작업 영역에서 스크래치 터미널을 사용할 수 없습니다: {{message}}",
+    "ja": "⚠ このワークスペースではスクラッチターミナルを使用できません:{{message}}",
+    "de": "⚠ Scratch-Terminal für diesen Arbeitsbereich nicht verfügbar: {{message}}",
+    "es": "⚠ Terminal temporal no disponible para este espacio de trabajo: {{message}}",
+    "fr": "⚠ Terminal temporaire indisponible pour cet espace de travail : {{message}}",
+    "it": "⚠ Terminale scratch non disponibile per questo workspace: {{message}}",
+    "da": "⚠ Scratch-terminal ikke tilgængelig for dette arbejdsområde: {{message}}",
+    "pl": "⚠ Terminal tymczasowy niedostępny dla tego obszaru roboczego: {{message}}",
+    "ru": "⚠ Временный терминал недоступен для этого рабочего пространства: {{message}}",
+    "ar": "⚠ الطرفية المؤقتة غير متاحة لمساحة العمل هذه: {{message}}",
+    "no": "⚠ Scratch-terminal utilgjengelig for dette arbeidsområdet: {{message}}",
+    "pt-BR": "⚠ Terminal temporário indisponível para este espaço de trabalho: {{message}}",
+    "th": "⚠ เทอร์มินัลชั่วคราวไม่พร้อมใช้งานสำหรับพื้นที่ทำงานนี้: {{message}}",
+    "tr": "⚠ Bu çalışma alanı için scratch terminal kullanılamıyor: {{message}}",
+    "uk": "⚠ Тимчасовий термінал недоступний для цього робочого простору: {{message}}"
+  },
   "ui.terminal.scratchTerminalOpen": {
     "zh": "打开临时终端",
     "en": "Open scratch terminal",

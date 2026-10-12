@@ -624,7 +624,10 @@ class ChatView extends React.Component {
       // Session-history star-menu row (2026-10-06): the viewed project + attached session +
       // the resume handler feed the row's list scope / blue dot / confirm, so they must
       // re-render ChatView (and re-thread into ChatInputBar/TerminalPanel) on change.
+      // viewInstance joins viewProject (2026-10-12): TerminalPanel renders per-workspace
+      // scratch groups keyed on both — an instance-only change must re-render too.
       nextProps.viewProject !== this.props.viewProject ||
+      nextProps.viewInstance !== this.props.viewInstance ||
       nextProps.attachedSid !== this.props.attachedSid ||
       nextProps.onResumeSession !== this.props.onResumeSession ||
       nextState !== this.state
@@ -4273,7 +4276,7 @@ class ChatView extends React.Component {
                 {/* 与聊天区同属 'chat' 响应区,一起激活、行为一致(落入聊天 pendingImages) */}
                 <div className={styles.dropZoneMask} aria-hidden="true">{t('ui.dragDropHint')}</div>
                 {this.props.sdkMode ? (
-                  <TerminalPanel scratchOnly scratchOpen={terminalVisible} />
+                  <TerminalPanel scratchOnly scratchOpen={terminalVisible} viewProject={this.props.viewProject} viewInstance={this.props.viewInstance} />
                 ) : (
                 <TerminalPanel claudeSettings={this.props.claudeSettings} preferences={this.props.preferences} onUpdatePreferences={this.props.onUpdatePreferences} onUpdateClaudeSettings={this.props.onUpdateClaudeSettings} onEditorOpen={(sessionId, filePath) => {
                   this.setState({
@@ -4302,6 +4305,7 @@ class ChatView extends React.Component {
                 isStreaming={uiStreaming}
                 onResumeSession={this.props.isLocalLog ? null : this.props.onResumeSession}
                 viewProject={this.props.viewProject}
+                viewInstance={this.props.viewInstance}
                 attachedSid={this.props.attachedSid}
                 />
                 )}

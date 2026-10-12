@@ -15,6 +15,7 @@ import {
   resizeScratch,
   killScratch,
   killAllScratch,
+  killScratchForCwd,
   onScratchData,
   onScratchExit,
   getScratchPid,
@@ -22,6 +23,7 @@ import {
   getScratchOutputBuffer,
   getScratchActiveCount,
   getScratchPtyCount,
+  getScratchPtyCountForCwd,
   hasScratchPty,
   getScratchShellBasename,
   _setPtyImportForTests,
@@ -331,5 +333,269 @@ describe('scratch-pty-manager-gap: 多 id 隔离', () => {
     assert.equal(getScratchOutputBuffer('iso-a'), 'AAA');
     assert.equal(getScratchOutputBuffer('iso-b'), 'BBB');
     ua(); ub();
+  });
+});
+
+// Multi-project (2026-10-12): scratch PTYs are keyed by (id, cwd) — same tab id under
+// two resolved workspace cwds must be two fully isolated shells.
+describe('scratch-pty-manager-gap: per-cwd composite key isolation', () => {
+  const DIR_A = '/tmp/ccv-scratch-a';
+  const DIR_B = '/tmp/ccv-scratch-b';
+
+  it('same id under two cwds spawns two isolated ptys with correct cwd', async () => {
+    const spawned = [];
+    _setPtyImportForTests(makeControllableImport(spawned));
+    await spawnScratch('cw-x', { cwd: DIR_A });
+    await spawnScratch('cw-x', { cwd: DIR_B });
+    assert.equal(spawned.length, 2);
+    assert.equal(spawned[0].opts.cwd, DIR_A);
+    assert.equal(spawned[1].opts.cwd, DIR_B);
+    assert.equal(getScratchPtyCount(), 2);
+    assert.equal(getScratchPtyCountForCwd(DIR_A), 1);
+    assert.equal(getScratchPtyCountForCwd(DIR_B), 1);
+    assert.equal(hasScratchPty('cw-x', { cwd: DIR_A }), true);
+    assert.equal(hasScratchPty('cw-x', { cwd: DIR_B }), true);
+    assert.equal(getScratchState('cw-x', { cwd: DIR_A }).cwd, DIR_A);
+    assert.equal(getScratchState('cw-x', { cwd: DIR_B }).cwd, DIR_B);
+  });
+
+  it('write/buffer/listener are scoped per cwd (no cross-talk)', async () => {
+    const spawned = [];
+    _setPtyImportForTests(makeControllableImport(spawned));
+    const aRecv = [];
+    const bRecv = [];
+    const ua = onScratchData('cw-iso', (c) => aRecv.push(c), { cwd: DIR_A });
+    const ub = onScratchData('cw-iso', (c) => bRecv.push(c), { cwd: DIR_B });
+    await spawnScratch('cw-iso', { cwd: DIR_A });
+    await spawnScratch('cw-iso', { cwd: DIR_B });
+    writeScratch('cw-iso', 'echo a\n', { cwd: DIR_A });
+    writeScratch('cw-iso', 'echo b\n', { cwd: DIR_B });
+    assert.deepEqual(spawned[0].writes, ['echo a\n']);
+    assert.deepEqual(spawned[1].writes, ['echo b\n']);
+    spawned[0]._emitData('OUT-A');
+    spawned[1]._emitData('OUT-B');
+    await waitImmediate();
+    assert.equal(aRecv.join(''), 'OUT-A');
+    assert.equal(bRecv.join(''), 'OUT-B');
+    assert.equal(getScratchOutputBuffer('cw-iso', { cwd: DIR_A }), 'OUT-A');
+    assert.equal(getScratchOutputBuffer('cw-iso', { cwd: DIR_B }), 'OUT-B');
+    ua(); ub();
+  });
+
+  it('killScratch with cwd kills only that bucket; killAllScratch reaps the rest', async () => {
+    const spawned = [];
+    _setPtyImportForTests(makeControllableImport(spawned));
+    await spawnScratch('cw-k', { cwd: DIR_A });
+    await spawnScratch('cw-k', { cwd: DIR_B });
+    killScratch('cw-k', { cwd: DIR_A });
+    assert.equal(spawned[0]._isKilled(), true);
+    assert.equal(spawned[1]._isKilled(), false);
+    assert.equal(getScratchPtyCount(), 1);
+    assert.equal(getScratchState('cw-k', { cwd: DIR_B }).running, true);
+    killAllScratch();
+    assert.equal(getScratchPtyCount(), 0);
+  });
+
+  it('no-cwd callers stay on the STARTUP_CWD bucket (back-compat)', async () => {
+    const spawned = [];
+    _setPtyImportForTests(makeControllableImport(spawned));
+    await spawnScratch('cw-legacy');
+    assert.equal(spawned.length, 1);
+    assert.notEqual(spawned[0].opts.cwd, DIR_A);
+    assert.equal(getScratchState('cw-legacy').cwd, spawned[0].opts.cwd);
+    // A cwd-scoped connection with the same id is a different bucket.
+    await spawnScratch('cw-legacy', { cwd: DIR_A });
+    assert.equal(spawned.length, 2);
+    assert.equal(hasScratchPty('cw-legacy'), true);
+    assert.equal(hasScratchPty('cw-legacy', { cwd: DIR_A }), true);
+  });
+
+  it('onExit reaps the dead entry when no listeners remain (cap hygiene)', async () => {
+    const spawned = [];
+    _setPtyImportForTests(makeControllableImport(spawned));
+    await spawnScratch('cw-exit', { cwd: DIR_A });
+    assert.equal(getScratchPtyCount(), 1);
+    spawned[0]._emitExit(0);
+    await waitImmediate();
+    // No listeners were registered → entry reaped instead of lingering against caps.
+    assert.equal(getScratchPtyCount(), 0);
+    assert.equal(getScratchPtyCountForCwd(DIR_A), 0);
+  });
+
+  it('onExit keeps the entry while a listener is still attached', async () => {
+    const spawned = [];
+    _setPtyImportForTests(makeControllableImport(spawned));
+    const codes = [];
+    const un = onScratchExit('cw-exit2', (c) => codes.push(c), { cwd: DIR_A });
+    await spawnScratch('cw-exit2', { cwd: DIR_A });
+    spawned[0]._emitExit(3);
+    await waitImmediate();
+    assert.deepEqual(codes, [3]);
+    assert.equal(getScratchPtyCount(), 1);
+    assert.equal(getScratchState('cw-exit2', { cwd: DIR_A }).exitCode, 3);
+    un();
+    assert.equal(getScratchPtyCount(), 0);
+  });
+
+  it('concurrent spawnScratch for different cwds do not share the inflight promise', async () => {
+    const spawned = [];
+    _setPtyImportForTests(makeControllableImport(spawned));
+    const [pa, pb] = await Promise.all([
+      spawnScratch('cw-inf', { cwd: DIR_A }),
+      spawnScratch('cw-inf', { cwd: DIR_B }),
+    ]);
+    assert.notEqual(pa, pb);
+    assert.equal(spawned.length, 2);
+  });
+});
+
+// Cap bookkeeping + inflight rejection cleanup (review 2026-10-12): the WS-layer cap
+// reads these counters — a bucket leak or a stuck inflight entry fails silently there.
+describe('scratch-pty-manager-gap: cap counters & inflight rejection', () => {
+  const DIR_A = '/tmp/ccv-scratch-a';
+  const DIR_B = '/tmp/ccv-scratch-b';
+
+  it('cap counters do not leak across cwd buckets', async () => {
+    const spawned = [];
+    _setPtyImportForTests(makeControllableImport(spawned));
+    await spawnScratch('cap-1', { cwd: DIR_A });
+    await spawnScratch('cap-2', { cwd: DIR_A });
+    await spawnScratch('cap-3', { cwd: DIR_B });
+    assert.equal(getScratchPtyCountForCwd(DIR_A), 2);
+    assert.equal(getScratchPtyCountForCwd(DIR_B), 1);
+    killScratch('cap-1', { cwd: DIR_A });
+    assert.equal(getScratchPtyCountForCwd(DIR_A), 1);
+    assert.equal(getScratchPtyCountForCwd(DIR_B), 1, 'killing in A must not touch B');
+    assert.equal(getScratchPtyCount(), 2);
+  });
+
+  it('resizeScratch/getScratchPid are scoped per cwd', async () => {
+    const spawned = [];
+    _setPtyImportForTests(makeControllableImport(spawned));
+    await spawnScratch('cap-r', { cwd: DIR_A });
+    await spawnScratch('cap-r', { cwd: DIR_B });
+    resizeScratch('cap-r', 120, 40, { cwd: DIR_B });
+    assert.equal(spawned[0].lastResize, null, 'bucket A must not receive B resize');
+    assert.deepEqual(spawned[1].lastResize, { cols: 120, rows: 40 });
+    assert.equal(getScratchPid('cap-r', { cwd: DIR_A }), spawned[0].pid);
+    assert.equal(getScratchPid('cap-r', { cwd: DIR_B }), spawned[1].pid);
+  });
+
+  it('a rejected spawn clears its per-key inflight entry (retry works, other keys unblocked)', async () => {
+    const spawned = [];
+    let failOnce = true;
+    _setPtyImportForTests(() => ({
+      spawn(command, args, opts) {
+        if (failOnce) { failOnce = false; throw new Error('boom'); }
+        return makeControllableImport(spawned)().spawn(command, args, opts);
+      },
+    }));
+    await assert.rejects(spawnScratch('inf-1', { cwd: DIR_A }), /boom/);
+    // Same key retries and succeeds (finally cleared the inflight entry).
+    const p = await spawnScratch('inf-1', { cwd: DIR_A });
+    assert.ok(p, 'retry after rejection must respawn');
+    // A different cwd bucket was never blocked by the rejected key.
+    const p2 = await spawnScratch('inf-1', { cwd: DIR_B });
+    assert.ok(p2);
+    assert.equal(spawned.length, 2);
+  });
+});
+
+// Regression (review 2026-10-12): kill+quick-respawn under the same key — the old
+// process's async onExit must not maybeReap the NEW live record.
+describe('scratch-pty-manager-gap: kill+respawn onExit identity', () => {
+  const DIR_A = '/tmp/ccv-scratch-a';
+
+  it('stale onExit after kill+respawn does not delete the new live entry', async () => {
+    const spawned = [];
+    _setPtyImportForTests(makeControllableImport(spawned));
+    await spawnScratch('reap-1', { cwd: DIR_A });
+    const oldProc = spawned[0];
+    killScratch('reap-1', { cwd: DIR_A });
+    // Respawn the same (id, cwd) BEFORE the old process's exit event lands.
+    await spawnScratch('reap-1', { cwd: DIR_A });
+    const newProc = spawned[1];
+    assert.notEqual(newProc, oldProc);
+    assert.equal(getScratchState('reap-1', { cwd: DIR_A }).running, true);
+    assert.equal(getScratchPtyCount(), 1);
+    // The old process's exit event arrives late — it must NOT reap the new record.
+    oldProc._emitExit(0);
+    await waitImmediate();
+    assert.equal(getScratchPtyCount(), 1, 'stale onExit must not delete the new entry');
+    assert.equal(getScratchState('reap-1', { cwd: DIR_A }).running, true);
+    assert.equal(hasScratchPty('reap-1', { cwd: DIR_A }), true);
+    // And the new shell is still reachable (writable / killable).
+    assert.equal(writeScratch('reap-1', 'echo hi\n', { cwd: DIR_A }), true);
+    killAllScratch();
+    assert.equal(newProc._isKilled(), true, 'the new shell must remain killable');
+  });
+});
+
+// killScratchForCwd (2026-10-12): closing a project/instance must reap only that
+// workspace's scratch shells — never a same-basename sibling's (twins have distinct cwds).
+describe('scratch-pty-manager-gap: killScratchForCwd', () => {
+  const DIR_A = '/tmp/ccv-scratch-a';
+  const DIR_B = '/tmp/ccv-scratch-b';
+
+  it('reaps only the matching cwd bucket, returns the count, leaves siblings running', async () => {
+    const spawned = [];
+    _setPtyImportForTests(makeControllableImport(spawned));
+    await spawnScratch('w-1', { cwd: DIR_A });
+    await spawnScratch('w-2', { cwd: DIR_A });
+    await spawnScratch('w-3', { cwd: DIR_B });
+    const n = killScratchForCwd(DIR_A);
+    assert.equal(n, 2, 'should reap both A shells');
+    assert.equal(spawned[0]._isKilled(), true);
+    assert.equal(spawned[1]._isKilled(), true);
+    assert.equal(spawned[2]._isKilled(), false, 'sibling cwd B must be untouched');
+    assert.equal(getScratchPtyCountForCwd(DIR_A), 0);
+    assert.equal(getScratchPtyCountForCwd(DIR_B), 1);
+    assert.equal(getScratchState('w-3', { cwd: DIR_B }).running, true);
+  });
+
+  it('no match (or empty cwd) is a no-op', async () => {
+    const spawned = [];
+    _setPtyImportForTests(makeControllableImport(spawned));
+    await spawnScratch('w-x', { cwd: DIR_A });
+    assert.equal(killScratchForCwd('/tmp/ccv-scratch-nonexistent'), 0);
+    assert.equal(killScratchForCwd(''), 0);
+    assert.equal(killScratchForCwd(null), 0);
+    assert.equal(getScratchPtyCount(), 1);
+    assert.equal(spawned[0]._isKilled(), false);
+  });
+});
+
+// Stale-record guard (review 2026-10-12): a reap (killAll / killScratchForCwd) landing
+// inside the async getPty() window must not let the spawn attach a live process to the
+// orphaned state object — the shell would become unreachable (invisible to kill/caps).
+describe('scratch-pty-manager-gap: reap-during-spawn guard', () => {
+  const DIR_A = '/tmp/ccv-scratch-a';
+
+  it('spawn rejects (and does not leak a reachable shell) when the record is reaped mid-spawn', async () => {
+    // A pty import whose getPty() await yields several macrotasks — a wide window so the
+    // reap reliably lands before pty.spawn runs.
+    let spawned = 0;
+    _setPtyImportForTests(async () => {
+      for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+      return {
+        spawn() {
+          spawned++;
+          return {
+            pid: 88000 + spawned,
+            writes: [],
+            write() {}, resize() {}, kill() {},
+            onData() {}, onExit() {},
+          };
+        },
+      };
+    });
+    const p = spawnScratch('race-1', { cwd: DIR_A });
+    // Reap immediately after the spawn starts (still inside the getPty() window).
+    killScratchForCwd(DIR_A);
+    await assert.rejects(p, /reaped during spawn/);
+    // No reachable record survives: the shell (if the pty import even spawned) is not
+    // addressable, and no entry lingers against the caps.
+    assert.equal(getScratchPtyCountForCwd(DIR_A), 0);
+    assert.equal(getScratchState('race-1', { cwd: DIR_A }).running, false);
   });
 });

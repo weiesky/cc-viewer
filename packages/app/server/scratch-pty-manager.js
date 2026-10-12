@@ -25,9 +25,23 @@ const MAX_BUFFER = 50000;
 // 裁剪滞回：超 MAX_BUFFER 后一次裁到 TRIM_TO，降低每 chunk slice 重分配频率（同 pty-manager.js）
 const BUFFER_TRIM_TO = 45000;
 
-// id -> { ptyProcess, dataListeners, exitListeners, lastExitCode, outputBuffer, lastCols, lastRows, batchBuffer, batchScheduled }
+// Multi-project (2026-10-12): scratch PTYs are keyed by (tab id, resolved workspace
+// cwd) so each viewed workspace owns an isolated shell group; switching away keeps the
+// old group's processes alive and switching back re-attaches them. Callers that omit
+// cwd fall back to STARTUP_CWD (pre-multi-project API shape — keeps older tests and
+// any un-updated call site on a single, well-defined bucket).
+function effCwd(opts) {
+  return (opts && typeof opts.cwd === 'string' && opts.cwd) ? opts.cwd : STARTUP_CWD;
+}
+function keyFor(id, cwd) {
+  // Space separator is collision-free: the id charset (SCRATCH_ID_RE, [A-Za-z0-9_-])
+  // excludes spaces, so the first space always delimits even when the cwd contains them.
+  return `${id} ${cwd || STARTUP_CWD}`;
+}
+
+// composite key -> { ptyProcess, dataListeners, exitListeners, lastExitCode, outputBuffer, lastCols, lastRows, batchBuffer, batchScheduled, cwd }
 const ptys = new Map();
-// id -> in-flight spawn Promise，防同 id 并发 spawn 双开
+// composite key -> in-flight spawn Promise; dedupes concurrent spawns for the same id+cwd
 const _spawnInflight = new Map();
 let _ptyImportForTests = null;
 
@@ -43,7 +57,7 @@ async function getPty() {
   return ptyMod.default || ptyMod;
 }
 
-function newState() {
+function newState(cwd) {
   return {
     ptyProcess: null,
     dataListeners: [],
@@ -54,23 +68,28 @@ function newState() {
     lastRows: 24,
     batchBuffer: '',
     batchScheduled: false,
+    cwd: cwd || STARTUP_CWD,
   };
 }
 
 // 仅在确实有消费方时才创建条目；为 onScratchData/onScratchExit 与 spawnScratch 复用
-function getOrInit(id) {
-  let s = ptys.get(id);
+function getOrInit(id, cwd) {
+  const k = keyFor(id, cwd);
+  let s = ptys.get(k);
   if (!s) {
-    s = newState();
-    ptys.set(id, s);
+    s = newState(cwd);
+    ptys.set(k, s);
   }
-  return s;
+  return { k, s };
 }
 
-// 当某 id 既无 pty 又无监听器时清掉空记录，防止懒注册场景下 Map 长尾膨胀
-function maybeReap(id, s) {
+// 当某 key 既无 pty 又无监听器时清掉空记录，防止懒注册场景下 Map 长尾膨胀。
+// Identity check: a kill+quick-respawn replaces the entry under the same key — the old
+// process's async onExit must not delete the NEW live record (leaks an unreachable
+// shell and desyncs the caps).
+function maybeReap(k, s) {
   if (!s.ptyProcess && s.dataListeners.length === 0 && s.exitListeners.length === 0) {
-    ptys.delete(id);
+    if (ptys.get(k) === s) ptys.delete(k);
   }
 }
 
@@ -117,14 +136,24 @@ function fixSpawnHelperPermissions() {
 // 注：spawn 失败时 s 留在 Map 但 s.ptyProcess 仍为 null。server connection handler 在
 // 失败后仍会通过 onScratchData/onScratchExit 注册 listener；ws.close 时它们通过 maybeReap
 // 清空记录，所以无长期泄漏。已知降级体验：用户看到空终端，下次 input 会再试一次 spawn。
-export async function spawnScratch(id) {
+// Multi-project: the shell's cwd comes from the viewed-workspace resolution threaded
+// through opts.cwd (server.js upgrade handler); STARTUP_CWD remains the fallback.
+export async function spawnScratch(id, opts) {
   if (!id || typeof id !== 'string') throw new Error('spawnScratch requires id');
-  const s = getOrInit(id);
+  const cwd = effCwd(opts);
+  const { k, s } = getOrInit(id, cwd);
   if (s.ptyProcess) return s.ptyProcess;
-  if (_spawnInflight.has(id)) return _spawnInflight.get(id);
+  if (_spawnInflight.has(k)) return _spawnInflight.get(k);
   const p = (async () => {
     const pty = await getPty();
     fixSpawnHelperPermissions();
+    // Stale-record guard: a killAll/killForCwd during the async getPty() window deletes
+    // the record from ptys. Without this check the freshly spawned process below would
+    // be assigned to an orphaned state object — a live shell no Map entry can reach
+    // (invisible to getScratchPid/writeScratch/kill, uncounted against the caps).
+    if (ptys.get(k) !== s) {
+      throw new Error('scratch record reaped during spawn');
+    }
 
     const shell = process.env.SHELL || (process.platform === 'win32' ? (process.env.ComSpec || 'cmd.exe') : '/bin/sh');
     const env = { ...process.env };
@@ -142,16 +171,23 @@ export async function spawnScratch(id) {
     applyClaudeAltScreenPref(env);
     const shellSpawn = prepareEmbeddedShellSpawn(shell, env);
 
-    s.lastExitCode = null;
-    s.outputBuffer = '';
-
-    s.ptyProcess = pty.spawn(shellSpawn.command, shellSpawn.args, {
+    const proc = pty.spawn(shellSpawn.command, shellSpawn.args, {
       name: 'xterm-256color',
       cols: s.lastCols,
       rows: s.lastRows,
-      cwd: STARTUP_CWD,
+      cwd: s.cwd,
       env: shellSpawn.env,
     });
+    // The synchronous spawn above cannot interleave with a reap, but belt-and-braces:
+    // re-check before publishing so a process is never attached to a reaped record.
+    if (ptys.get(k) !== s) {
+      try { proc.kill(); } catch { }
+      throw new Error('scratch record reaped during spawn');
+    }
+
+    s.lastExitCode = null;
+    s.outputBuffer = '';
+    s.ptyProcess = proc;
 
     s.ptyProcess.onData((data) => {
       s.outputBuffer += data;
@@ -174,20 +210,23 @@ export async function spawnScratch(id) {
       for (const cb of [...s.exitListeners]) {
         try { cb(exitCode); } catch { }
       }
+      // A shell that exits while its page is away (switch-away already removed
+      // listeners) would otherwise linger as a dead entry against the caps.
+      maybeReap(k, s);
     });
 
     return s.ptyProcess;
   })();
-  _spawnInflight.set(id, p);
+  _spawnInflight.set(k, p);
   try {
     return await p;
   } finally {
-    _spawnInflight.delete(id);
+    _spawnInflight.delete(k);
   }
 }
 
-export function writeScratch(id, data) {
-  const s = ptys.get(id);
+export function writeScratch(id, data, opts) {
+  const s = ptys.get(keyFor(id, effCwd(opts)));
   if (s?.ptyProcess) {
     s.ptyProcess.write(data);
     return true;
@@ -203,8 +242,8 @@ function _clampScratchDim(v, min, max, fallback) {
   return Math.max(min, Math.min(max, n));
 }
 
-export function resizeScratch(id, cols, rows) {
-  const s = ptys.get(id);
+export function resizeScratch(id, cols, rows, opts) {
+  const s = ptys.get(keyFor(id, effCwd(opts)));
   if (!s) return;
   s.lastCols = _clampScratchDim(cols, 2, 1000, s.lastCols);
   s.lastRows = _clampScratchDim(rows, 1, 1000, s.lastRows);
@@ -213,8 +252,10 @@ export function resizeScratch(id, cols, rows) {
   }
 }
 
-export function killScratch(id) {
-  const s = ptys.get(id);
+// Shared teardown for killScratch/killAllScratch: kill the process tree, flush the
+// batch pipeline, then drop the record entirely (listeners included — the frontend
+// ws.close path unsubscribes separately).
+function _killEntry(k, s) {
   if (!s) return;
   if (s.ptyProcess) {
     flushBatch(s, true);
@@ -227,50 +268,80 @@ export function killScratch(id) {
     }
     s.ptyProcess = null;
   }
-  // 显式 kill 后整条记录清掉，监听器一并丢弃（前端 ws.close 也会清）
-  ptys.delete(id);
+  ptys.delete(k);
+}
+
+export function killScratch(id, opts) {
+  _killEntry(keyFor(id, effCwd(opts)), ptys.get(keyFor(id, effCwd(opts))));
 }
 
 export function killAllScratch() {
-  for (const id of [...ptys.keys()]) {
-    killScratch(id);
+  for (const [k, s] of [...ptys.entries()]) {
+    _killEntry(k, s);
   }
 }
 
-export function onScratchData(id, cb) {
-  const s = getOrInit(id);
+// Kill every scratch PTY belonging to ONE workspace cwd (closing a project/instance via
+// /api/live-processes/close). The match is against the record's stored spawn cwd, which
+// was realpathSync-normalized at the upgrade — so callers pass candidates in BOTH path
+// spaces (raw spawn cwd + its realpath): when the workspace dir was later deleted,
+// realpathSync(raw) throws and only the raw candidate can match, while the bucket key
+// may be the realpath. Same-basename twins have distinct cwds, so this never reaps a
+// sibling workspace's shells. Accepts a single cwd string or an array of candidates.
+// Returns the number reaped.
+export function killScratchForCwd(cwd) {
+  const cands = (Array.isArray(cwd) ? cwd : [cwd]).filter((c) => typeof c === 'string' && c);
+  if (cands.length === 0) return 0;
+  let n = 0;
+  for (const [k, s] of [...ptys.entries()]) {
+    if (s && cands.includes(s.cwd)) {
+      _killEntry(k, s);
+      n++;
+    }
+  }
+  return n;
+}
+
+export function onScratchData(id, cb, opts) {
+  const cwd = effCwd(opts);
+  const { k, s } = getOrInit(id, cwd);
   s.dataListeners.push(cb);
   return () => {
     s.dataListeners = s.dataListeners.filter(l => l !== cb);
-    maybeReap(id, s);
+    maybeReap(k, s);
   };
 }
 
-export function onScratchExit(id, cb) {
-  const s = getOrInit(id);
+export function onScratchExit(id, cb, opts) {
+  const cwd = effCwd(opts);
+  const { k, s } = getOrInit(id, cwd);
   s.exitListeners.push(cb);
   return () => {
     s.exitListeners = s.exitListeners.filter(l => l !== cb);
-    maybeReap(id, s);
+    maybeReap(k, s);
   };
 }
 
-export function getScratchPid(id) {
-  const s = ptys.get(id);
+export function getScratchPid(id, opts) {
+  const s = ptys.get(keyFor(id, effCwd(opts)));
   return s?.ptyProcess ? s.ptyProcess.pid : null;
 }
 
-export function getScratchState(id) {
-  const s = ptys.get(id);
+export function getScratchState(id, opts) {
+  const cwd = effCwd(opts);
+  const s = ptys.get(keyFor(id, cwd));
   return {
     running: !!(s?.ptyProcess),
     exitCode: s?.lastExitCode ?? null,
-    cwd: STARTUP_CWD,
+    // The record always carries its real spawn cwd; only a missing record falls back to
+    // the requested cwd (pre-spawn probe). No `|| cwd` blur — a corrupted record must
+    // surface, not silently report the requester's cwd.
+    cwd: s ? s.cwd : cwd,
   };
 }
 
-export function getScratchOutputBuffer(id) {
-  return ptys.get(id)?.outputBuffer ?? '';
+export function getScratchOutputBuffer(id, opts) {
+  return ptys.get(keyFor(id, effCwd(opts)))?.outputBuffer ?? '';
 }
 
 export function getScratchStartupCwd() {
@@ -288,9 +359,19 @@ export function getScratchPtyCount() {
   return ptys.size;
 }
 
+// Per-workspace cap companion to the global count above: entries belonging to one
+// resolved cwd (hidden workspaces keep their PTYs alive by design, so the global cap
+// alone would starve multi-workspace use).
+export function getScratchPtyCountForCwd(cwd) {
+  const target = effCwd({ cwd });
+  let n = 0;
+  for (const s of ptys.values()) if (s.cwd === target) n++;
+  return n;
+}
+
 // 服务端 upgrade 阶段判断 id 是否是"已有重连"，避免 cap 误伤老 tab 重连
-export function hasScratchPty(id) {
-  return ptys.has(id);
+export function hasScratchPty(id, opts) {
+  return ptys.has(keyFor(id, effCwd(opts)));
 }
 
 // 当前 spawn 用的 shell basename（zsh / bash / fish 等），供前端渲染 tab 标签

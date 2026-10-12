@@ -33,6 +33,7 @@ const KEYS = [
   'ui.terminal.agentTeam',              // 复用:AgentTeam 行标签(终端菜单 + 聊天输入栏快捷菜单)
   'ui.terminal.customShortcuts',        // 复用:AgentTeam 子菜单「自定义快捷方式」入口
   'ui.terminal.upload',                 // 复用:聊天输入栏快捷菜单「上传文件」行
+  'ui.terminal.scratchUnavailable',     // 新增:工作区不可解析时 scratch 终端内的 fatal 提示
   'ui.chatInput.clearContext',          // 复用:聊天输入栏快捷菜单「清空上下文」行
   'ui.chatInput.clearContextConfirm',   // 复用:清空上下文 Popconfirm 文案
   'ui.chatInput.more',                  // 复用:聊天输入栏 [+] 按钮 tooltip

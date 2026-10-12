@@ -462,3 +462,101 @@ describe('POST /api/live-processes/close — bound-project rebound', () => {
     }
   });
 });
+
+// Scratch cleanup on close (2026-10-12): closing a project must reap that workspace's
+// scratch (mini-terminal) shells via killScratchForCwd — the realpath bridge between
+// the killed record's raw spawn cwd and the realpath-keyed scratch buckets. Sibling
+// workspaces' shells survive. Scratch PTYs are faked via scratch-pty-manager's own seam.
+describe('POST /api/live-processes/close — scratch cleanup', () => {
+  const scratchFakes = [];
+  function fakeScratchImport() {
+    return {
+      spawn: () => {
+        const p = makeFakePty(70000 + scratchFakes.length);
+        scratchFakes.push(p);
+        return p;
+      },
+    };
+  }
+
+  it('closing a project reaps its scratch shells; a sibling workspace keeps its own', async () => {
+    const scratchMgr = await import('../server/scratch-pty-manager.js');
+    scratchMgr._setPtyImportForTests(fakeScratchImport);
+    try {
+      // Spawn one scratch shell per project, keyed to each realpath'd cwd (as the
+      // upgrade handler does).
+      const { realpathSync } = await import('node:fs');
+      await scratchMgr.spawnScratch('tab-a', { cwd: realpathSync(dirA) });
+      await scratchMgr.spawnScratch('tab-b', { cwd: realpathSync(dirB) });
+      assert.equal(scratchMgr.getScratchPtyCountForCwd(realpathSync(dirA)), 1);
+      assert.equal(scratchMgr.getScratchPtyCountForCwd(realpathSync(dirB)), 1);
+
+      const { status, body } = await callClose({ body: JSON.stringify({ project: projA }) });
+      assert.equal(status, 200);
+      assert.equal(body.ok, true);
+
+      assert.equal(scratchMgr.getScratchPtyCountForCwd(realpathSync(dirA)), 0, 'A scratch reaped');
+      assert.equal(scratchFakes[0].killed, true, 'A shell process killed');
+      assert.equal(scratchMgr.getScratchPtyCountForCwd(realpathSync(dirB)), 1, 'B scratch survives');
+      assert.equal(scratchFakes[1].killed, false, 'B shell untouched');
+    } finally {
+      scratchMgr._setPtyImportForTests(null);
+      try { scratchMgr.killAllScratch(); } catch {}
+    }
+  });
+
+  it('reaps even when the workspace dir was deleted before close (raw+realpath candidates)', async () => {
+    const scratchMgr = await import('../server/scratch-pty-manager.js');
+    scratchMgr._setPtyImportForTests(fakeScratchImport);
+    // A dedicated dir we can delete mid-test without disturbing the shared dirA/dirB.
+    const dirGone = join(tmpDir, 'closeProjGone');
+    mkdirSync(dirGone, { recursive: true });
+    const { realpathSync } = await import('node:fs');
+    const projGone = projectKeyForCwd(dirGone);
+    try {
+      await ptyMgr.spawnClaude(9999, dirGone, [], 'claude');
+      await scratchMgr.spawnScratch('tab-g', { cwd: realpathSync(dirGone) });
+      assert.equal(scratchMgr.getScratchPtyCountForCwd(realpathSync(dirGone)), 1);
+      // Delete the workspace dir: realpathSync(raw) now throws — the close must still
+      // hit the realpath-keyed bucket via the raw candidate.
+      rmSync(dirGone, { recursive: true, force: true });
+
+      const { status, body } = await callClose({ body: JSON.stringify({ project: projGone }) });
+      assert.equal(status, 200);
+      assert.equal(body.ok, true);
+      assert.equal(scratchMgr.getScratchPtyCount(), 0, 'scratch reaped despite deleted dir');
+      assert.equal(scratchFakes[scratchFakes.length - 1].killed, true);
+    } finally {
+      scratchMgr._setPtyImportForTests(null);
+      try { scratchMgr.killAllScratch(); } catch {}
+    }
+  });
+
+  it('does NOT reap a shared bucket when a surviving live instance shares the cwd', async () => {
+    const scratchMgr = await import('../server/scratch-pty-manager.js');
+    scratchMgr._setPtyImportForTests(fakeScratchImport);
+    const { realpathSync } = await import('node:fs');
+    try {
+      // beforeEach already spawned one instance in dirA; spawn a SECOND one so two live
+      // records share the cwd (deliberate multi-instance — pty-manager allows it).
+      await ptyMgr.spawnClaude(9999, dirA, [], 'claude');
+      await scratchMgr.spawnScratch('tab-s', { cwd: realpathSync(dirA) });
+      const liveBefore = ptyMgr.listLivePtys().filter((p) => p.cwd === dirA);
+      assert.ok(liveBefore.length >= 2, `precondition: two live instances share dirA, got ${liveBefore.length}`);
+      const victimKey = liveBefore[0].instanceKey;
+      const survivorKey = liveBefore[1].instanceKey;
+
+      const { status, body } = await callClose({ body: JSON.stringify({ project: projA, instanceKey: victimKey }) });
+      assert.equal(status, 200);
+      assert.equal(body.ok, true);
+
+      assert.equal(scratchMgr.getScratchPtyCountForCwd(realpathSync(dirA)), 1,
+        'shared scratch bucket must survive closing one of two same-cwd instances');
+      assert.equal(scratchFakes[scratchFakes.length - 1].killed, false);
+      assert.ok(ptyMgr.listLivePtys().some((p) => p.instanceKey === survivorKey), 'the sibling instance survives');
+    } finally {
+      scratchMgr._setPtyImportForTests(null);
+      try { scratchMgr.killAllScratch(); } catch {}
+    }
+  });
+});

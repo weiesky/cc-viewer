@@ -9,6 +9,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
+import { t } from '../../i18n';
 import { darkTerminalTheme, lightTerminalTheme, terminalFontFamily } from './terminalThemes';
 import { isWindows, isMac } from '../../env';
 import styles from './TerminalPanel.module.css';
@@ -16,7 +17,7 @@ import { TerminalWriteQueue, INBAND_RESET } from '../../utils/terminalWriteQueue
 import { diagCount } from '../../utils/termDiag';
 import { sanitizeBracketPasteText } from '../../utils/ptyChunkBuilder';
 import { clipboardKeyAction, copyTextToClipboard, planPasteSend } from '../../utils/terminalClipboard';
-import { appendToken, getBasePath } from '../../utils/apiUrl';
+import { appendToken, getBasePath, withViewParams } from '../../utils/apiUrl';
 
 class ScratchTerminal extends React.Component {
   constructor(props) {
@@ -39,6 +40,16 @@ class ScratchTerminal extends React.Component {
       }
     );
     this._closing = false;
+    this._fatal = false;
+  }
+
+  // A connection is allowed only once the view has resolved to a real workspace scope
+  // (project / instance) — or when the parent explicitly permits a bound-root shell
+  // (scratchOnly SDK panel, or a steady bound view whose group is NOT the boot pending
+  // bucket about to be swapped away). This is what stops the boot sequence from
+  // spawning a bound-root shell the merge would then orphan.
+  _hasScope() {
+    return !!(this.props.project || this.props.instance || this.props.allowBoundScope);
   }
 
   // write-queue 积压丢弃后请求服务端快照对齐（服务端回 data-resync）。
@@ -54,7 +65,9 @@ class ScratchTerminal extends React.Component {
 
   componentDidMount() {
     this.initTerminal();
-    this.connectWebSocket();
+    // Defer the connection until a real scope exists (see _hasScope): a boot-pending
+    // tab must not spawn a bound-root shell that the merge would orphan.
+    if (this._hasScope()) this.connectWebSocket();
     this.setupResizeObserver();
     this._themeObserver = new MutationObserver(() => {
       if (this.terminal) {
@@ -63,6 +76,43 @@ class ScratchTerminal extends React.Component {
       }
     });
     this._themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
+
+  componentDidUpdate(prevProps) {
+    // Workspace switch (multi-project 2026-10-12): the scratch group swapped under us
+    // but this tab id repeated (boot rename / legacy adoption / same-id groups) —
+    // re-anchor the ws to the new workspace's cwd. NEVER send kill here: the old
+    // (id, cwd) PTY must stay alive so switching back re-attaches it (per-workspace
+    // groups survive switch-away). INBAND_RESET + the server's outputBuffer replay
+    // rebuild the screen, same discipline as the close→reconnect path.
+    if (this._closing) return;
+    const hadScope = !!(prevProps.project || prevProps.instance || prevProps.allowBoundScope);
+    const hasScope = this._hasScope();
+    // Scope became available (boot: pending → resolved workspace) or the scope changed
+    // (workspace switch / instance pin). Either way (re)anchor the connection.
+    if (hasScope && (!hadScope || prevProps.project !== this.props.project || prevProps.instance !== this.props.instance)) {
+      this._restartConnection();
+    }
+  }
+
+  _restartConnection() {
+    // A pending reconnect from the old socket must not fire after the restart (it would
+    // open a SECOND live socket and double-render every chunk).
+    if (this._wsReconnectTimer) { clearTimeout(this._wsReconnectTimer); this._wsReconnectTimer = null; }
+    if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.onmessage = null;
+      this.ws.onopen = null;
+      try { this.ws.close(); } catch {}
+      this.ws = null;
+    }
+    // A fatal server rejection clears on restart — the new workspace may resolve fine.
+    this._fatal = false;
+    this._writeQ.reset();
+    this._writeQ.push(INBAND_RESET);
+    // May be called from a never-connected state (scope just resolved): connecting for
+    // the first time is exactly right then.
+    this.connectWebSocket();
   }
 
   componentWillUnmount() {
@@ -232,11 +282,21 @@ class ScratchTerminal extends React.Component {
 
   connectWebSocket() {
     if (this._closing) return;
+    // Re-entry guard: a live (or still-opening) socket must never be duplicated — the
+    // 2s reconnect timer and _restartConnection can otherwise stack two sockets whose
+    // onmessage handlers both write into the same queue (every chunk rendered twice).
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
     const id = this.props.id;
     if (!id) return; // 没 id 不能连
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // ?project=/&instance= pin the shell's cwd to the VIEWED workspace (server resolves
+    // via resolveViewRoot; absent → bound root). withViewParams also falls back to the
+    // viewScope singleton for instance, but the explicit props make boot deterministic.
     // 带上 LAN token(已有 ?id= → appendToken 用 & 续接);密码登录用户走 cookie。见 TerminalWsContext。
-    const wsUrl = appendToken(`${protocol}//${window.location.host}${getBasePath().replace(/\/$/, '')}/ws/terminal-scratch?id=${encodeURIComponent(id)}`);
+    const wsUrl = appendToken(withViewParams(
+      `${protocol}//${window.location.host}${getBasePath().replace(/\/$/, '')}/ws/terminal-scratch?id=${encodeURIComponent(id)}`,
+      { project: this.props.project || null, instance: this.props.instance || null },
+    ));
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onmessage = (event) => {
@@ -260,7 +320,16 @@ class ScratchTerminal extends React.Component {
           // xterm 在 dispose 与同步 ws 消息之间存在窗口，写入 disposed terminal 会抛——保险起见 try/catch
           try { if (this.terminal) this.terminal.write(`\r\n\x1b[90m[scratch shell exited: ${msg.exitCode ?? '?'}]\x1b[0m\r\n`); } catch {}
         } else if (msg.type === 'toast') {
-          try { if (this.terminal) this.terminal.write(`\r\n\x1b[33m⚠ ${msg.message}\x1b[0m\r\n`); } catch {}
+          // fatal toasts (resolve-failure / cap-rejection) are followed by a server-side
+          // close: stop reconnecting instead of retrying every 2s forever. Cleared on
+          // the next _restartConnection (view change). A NON-fatal toast (e.g. spawn
+          // failure) keeps the connection — and the reconnect discipline — untouched.
+          if (msg.fatal) {
+            this._fatal = true;
+            try { if (this.terminal) this.terminal.write(`\r\n\x1b[33m${t('ui.terminal.scratchUnavailable', { message: msg.message || '' })}\x1b[0m\r\n`); } catch {}
+          } else {
+            try { if (this.terminal) this.terminal.write(`\r\n\x1b[33m⚠ ${msg.message}\x1b[0m\r\n`); } catch {}
+          }
         }
       } catch {
         // 解析失败/handler 抛错 = 该条消息整体丢弃（流中间挖洞）→ 请求快照对齐兜底
@@ -269,7 +338,7 @@ class ScratchTerminal extends React.Component {
     };
 
     this.ws.onclose = () => {
-      if (this._closing) return;
+      if (this._closing || this._fatal) return;
       // 重连前清屏 + 清写队列（同 TerminalPanel 的 close 处理）：服务端每次新连接都无条件
       // 重发完整 replay buffer(≤50KB)，不 reset 会让旧内容整段在 scrollback 重复渲染。
       // 重置走带内序列防 WriteBuffer 残留撕裂（见 terminalWriteQueue.INBAND_RESET doc）。

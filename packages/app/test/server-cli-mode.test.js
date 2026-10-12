@@ -21,7 +21,7 @@ import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 import { request } from 'node:http';
 import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-cli-mode-'));
@@ -38,6 +38,9 @@ process.env.CCV_MAX_PORT = '17909';
 delete process.env.CCV_IM_PLATFORM;
 delete process.env.CCV_BASE_PATH;
 delete process.env.CCV_ALLOWED_HOSTS;
+// Hermetic bound root: the scratch upgrade resolves boundCwd as CCV_PROJECT_DIR || cwd —
+// a developer shell inside a ccv-managed terminal could leak a foreign CCV_PROJECT_DIR.
+delete process.env.CCV_PROJECT_DIR;
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -329,6 +332,121 @@ describeCli('server.js CLI-mode terminal WS with a real PTY', { concurrency: fal
     await c2.close();
     // 收尾杀掉这个保留的 pty。
     try { scratchMgr.killScratch(sid); } catch {}
+  });
+
+  // ─────────── scratch 多工作区（2026-10-12）：?project= 决定 spawn cwd + 按 cwd 隔离 ───────────
+  it('scratch ws with ?project= spawns in the resolved workspace cwd', async () => {
+    const { realpathSync } = await import('node:fs');
+    const boundRoot = realpathSync(process.cwd());
+    const boundName = basename(boundRoot);
+    const sid = 'scr_cwd_1';
+    const conn = await connectWs(base, '/ws/terminal-scratch?id=' + sid + '&project=' + encodeURIComponent(boundName));
+    const stateMsg = await conn.waitFor((m) => m.type === 'state', 3000);
+    assert.ok(stateMsg, 'state frame expected');
+    assert.equal(stateMsg.cwd, boundRoot, 'state.cwd should be the realpath of the bound project root');
+    await waitUntil(() => scratchMgr.getScratchState(sid, { cwd: boundRoot }).running === true, { label: 'scratch spawned in bound cwd' });
+    await conn.close();
+    try { scratchMgr.killScratch(sid, { cwd: boundRoot }); } catch {}
+  });
+
+  it('scratch ws with an unknown or invalid ?project= gets a fatal toast then close (no spawn)', async () => {
+    const before = scratchMgr.getScratchPtyCount();
+    const c1 = await connectWs(base, '/ws/terminal-scratch?id=scr_bad_1&project=' + encodeURIComponent('definitely-not-a-workspace'));
+    const t1 = await c1.waitFor((m) => m.type === 'toast' && m.fatal === true, 3000);
+    assert.ok(t1, 'unknown project should report a fatal toast');
+    const c2 = await connectWs(base, '/ws/terminal-scratch?id=scr_bad_2&project=' + encodeURIComponent('a/b'));
+    const t2 = await c2.waitFor((m) => m.type === 'toast' && m.fatal === true, 3000);
+    assert.ok(t2, 'invalid project name should report a fatal toast');
+    await wait(120);
+    assert.equal(scratchMgr.getScratchPtyCount(), before, 'rejected upgrades must not spawn anything');
+    // The server already closed these sockets — ws.close() on a CLOSED socket never
+    // emits 'close' again, so the helper's close() would wait forever. terminate instead.
+    try { c1.ws.terminate(); } catch {}
+    try { c2.ws.terminate(); } catch {}
+  });
+
+  it('scratch ws over the per-cwd cap gets a fatal toast and spawns nothing', async () => {
+    const { realpathSync } = await import('node:fs');
+    const boundRoot = realpathSync(process.cwd());
+    const boundName = basename(boundRoot);
+    // Fill the bound cwd bucket to the per-cwd cap (16) with mock PTYs — cheap, no real
+    // shells. The cap decision (wrong counter / inverted bound / stale scratchCwd) is
+    // exactly what no other layer tests end-to-end.
+    const spawned = [];
+    scratchMgr._setPtyImportForTests(() => ({
+      spawn(command, args, opts) {
+        const inst = {
+          pid: 60000 + spawned.length,
+          writes: [],
+          write() {},
+          resize() {},
+          kill() {},
+          onData() {},
+          onExit() {},
+        };
+        spawned.push(inst);
+        return inst;
+      },
+    }));
+    try {
+      for (let i = 0; i < 16; i++) {
+        await scratchMgr.spawnScratch(`cap-fill-${i}`, { cwd: boundRoot });
+      }
+      assert.equal(scratchMgr.getScratchPtyCountForCwd(boundRoot), 16, 'precondition: bucket full');
+      const before = spawned.length;
+      const c = await connectWs(base, '/ws/terminal-scratch?id=cap-new&project=' + encodeURIComponent(boundName));
+      const t = await c.waitFor((m) => m.type === 'toast' && m.fatal === true, 3000);
+      assert.ok(t, 'over-cap upgrade should report a fatal toast');
+      assert.match(t.message, /limit reached/i);
+      await wait(120);
+      assert.equal(spawned.length, before, 'over-cap upgrade must not spawn');
+      try { c.ws.terminate(); } catch {}
+      // Reconnect exemption: an existing (id, cwd) bucket bypasses the cap.
+      const c2 = await connectWs(base, '/ws/terminal-scratch?id=cap-fill-0&project=' + encodeURIComponent(boundName));
+      const st = await c2.waitFor((m) => m.type === 'state', 3000);
+      assert.ok(st, 'existing (id,cwd) reconnect must be exempt from the cap');
+      await c2.close();
+    } finally {
+      scratchMgr._setPtyImportForTests(null);
+      try { scratchMgr.killAllScratch(); } catch {}
+    }
+  });
+
+  it('same scratch id under two projects stays isolated; kill only tears down its own cwd bucket', async () => {
+    const { realpathSync } = await import('node:fs');
+    const boundRoot = realpathSync(process.cwd());
+    const boundName = basename(boundRoot);
+    // 注册第二个工作区目录（registry 在 tmp CCV_LOG_DIR 下，干净）。
+    const wsB = mkdtempSync(join(tmpdir(), 'ccv-scratch-wsb-'));
+    const sid = 'scr_dual_1';
+    let cA = null;
+    let cB = null;
+    try {
+      const wsBRoot = realpathSync(wsB);
+      const wsBName = basename(wsBRoot);
+      const { registerWorkspace } = await import('../server/workspace-registry.js');
+      await registerWorkspace(wsBRoot);
+      // 同 id 分别连两个 project → 两个桶各一个 PTY。
+      cA = await connectWs(base, '/ws/terminal-scratch?id=' + sid + '&project=' + encodeURIComponent(boundName));
+      await cA.waitFor((m) => m.type === 'state', 3000);
+      cB = await connectWs(base, '/ws/terminal-scratch?id=' + sid + '&project=' + encodeURIComponent(wsBName));
+      const sB = await cB.waitFor((m) => m.type === 'state', 3000);
+      assert.equal(sB.cwd, wsBRoot, 'second connection should resolve to workspace B');
+      await waitUntil(() => scratchMgr.getScratchPtyCountForCwd(boundRoot) >= 1
+        && scratchMgr.getScratchPtyCountForCwd(wsBRoot) >= 1, { label: 'both cwd buckets spawned' });
+      // kill B → A 存活。
+      cB.send({ type: 'kill' });
+      await waitUntil(() => scratchMgr.getScratchState(sid, { cwd: wsBRoot }).running === false, { label: 'B killed' });
+      assert.equal(scratchMgr.getScratchState(sid, { cwd: boundRoot }).running, true, 'bucket A survives kill on B');
+    } finally {
+      // Failure-safe cleanup: a mid-test assert/timeout must not leak the sockets, the
+      // scratch PTYs, or the mkdtemp workspace dir.
+      try { if (cA) await cA.close(); } catch {}
+      try { if (cB) await cB.close(); } catch {}
+      try { scratchMgr.killScratch(sid, { cwd: realpathSync(process.cwd()) }); } catch {}
+      try { scratchMgr.killScratch(sid, { cwd: realpathSync(wsB) }); } catch {}
+      try { rmSync(wsB, { recursive: true, force: true }); } catch {}
+    }
   });
 
   // ─────────── startStreamingStatusTimer 间隔体：active 时向 SSE 推 streaming_status ───────────

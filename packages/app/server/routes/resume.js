@@ -38,6 +38,8 @@
 // The aggregation itself lives in lib/v2/resume-list.js (pure, unit-tested);
 // this handler is a thin HTTP wrapper.
 
+import { realpathSync } from 'node:fs';
+import { join, dirname, basename } from 'node:path';
 import { LOG_DIR } from '../../findcc.js';
 import { _projectName, _v2Writer, initForWorkspace } from '../interceptor.js';
 // Static import (not the route-local dynamic import) so the close-rebind helper
@@ -260,6 +262,38 @@ function postLiveProcessCloseHandler(req, res, parsedUrl, isLocal, deps) {
       try {
         rebound = _maybeRebindAfterClose(r, deps);
       } catch (err) { reportSwallowed('resume-route.close-rebind', err); }
+      // Closing a project/instance must also reap its scratch (mini-terminal) shells, or
+      // the viewed-then-switched-away workspace's shells stay alive as orphans until a
+      // full workspacesStop/process exit. The killed record's original spawn cwd keys
+      // the scratch buckets; scratch cwds were realpathSync-normalized at the upgrade,
+      // so match BOTH path spaces — when the workspace dir was later deleted,
+      // realpathSync(raw) throws and the raw spawn cwd is the only way to still hit the
+      // (realpath-keyed) bucket. Skip the reap when a surviving live claude record shares
+      // the cwd (a deliberate same-cwd second instance): its viewers still use those
+      // shared scratch shells.
+      try {
+        if (r.cwd) {
+          // listLivePtys() already only yields LIVE records (ptyProcess non-null), so a
+          // cwd match here is a surviving instance sharing the dir.
+          const survivorSharesCwd = listLivePtys().some((p) => p && p.cwd === r.cwd);
+          if (!survivorSharesCwd) {
+            // Build the candidate set in BOTH path spaces (raw spawn cwd + realpath).
+            // A deleted workspace dir makes realpathSync(raw) throw — then fall back to
+            // realpath(dirname)+basename, which still resolves a deleted LEAF dir through
+            // macOS's /tmp→/private/tmp and /var→/private/var symlinks (the exact case
+            // where the realpath-keyed bucket would otherwise be missed and leak).
+            const cands = [r.cwd];
+            const add = (p) => { if (p && !cands.includes(p)) cands.push(p); };
+            try {
+              add(realpathSync(r.cwd));
+            } catch {
+              try { add(join(realpathSync(dirname(r.cwd)), basename(r.cwd))); } catch { /* give up */ }
+            }
+            const { killScratchForCwd } = await import('../scratch-pty-manager.js');
+            killScratchForCwd(cands);
+          }
+        }
+      } catch (err) { reportSwallowed('resume-route.close-kill-scratch', err); }
       sendJson(res, 200, { ok: true, project, instanceKey: r.key || instanceKey || null, killedActive: r.killedActive === true, rebound });
     } catch (err) {
       reportSwallowed('resume-route.close', err);

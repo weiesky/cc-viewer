@@ -939,6 +939,11 @@ class Mobile extends AppBase {
                 onAutoApproveChange={this.handleAutoApproveChange}
                 planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds}
                 onPlanAutoApproveChange={this.handlePlanAutoApproveChange}
+                viewProject={this.state.viewedProject || this.state.projectName || null}
+                viewInstance={this.state.viewedInstance
+                  || ((this.state.viewedProject || this.state.projectName) === this.state.projectName
+                      ? (this._boundInstance || null)
+                      : null)}
               />
             </div>
           )}
