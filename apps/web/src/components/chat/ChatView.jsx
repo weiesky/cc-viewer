@@ -2383,7 +2383,9 @@ class ChatView extends React.Component {
       inputSuggestion: null,
     }, () => {
       if (this.props.sdkMode) {
-        this._inputWs.send(JSON.stringify({ type: 'sdk-user-message', text: assembled }));
+        // Multi-session: stamp the viewed workspace so the server routes this turn to that
+        // cwd's SDK session (and switches the active session to it), not the global last one.
+        this._inputWs.send(JSON.stringify({ type: 'sdk-user-message', text: assembled, project: this.props.viewProject || this.props.projectName }));
       } else {
         const anchor = this._terminalAnchor();
         this._inputWs.send(JSON.stringify({
@@ -2544,6 +2546,12 @@ class ChatView extends React.Component {
           // slot as a hot-switch fallback (AppHeader can't subscribe to TerminalWsContext —
           // single contextType — so the value travels up via this callback; AppBase owns it).
           if (typeof this.props.onSdkModel === 'function') this.props.onSdkModel(model);
+        } else if (msg.type === 'sdk-session-state') {
+          // Turn-level busy truth (idle/running/requires_action) — lift to AppBase,
+          // which owns the spinner's turn-level state (same onSdkModel lift pattern).
+          // cwd travels so AppBase can drop frames from background workspaces
+          // (multi-workspace SDK: one broadcast reaches every viewer).
+          if (typeof this.props.onSdkSessionState === 'function') this.props.onSdkSessionState(msg.state, { sessionId: msg.sessionId || null, cwd: msg.cwd || null });
         } else if (msg.type === 'sdk-compact') {
           // SDK-side compact (invisible on the wire) — render as a system notice.
           // Cap at 10 entries to prevent unbounded growth; only the latest is rendered.
@@ -2843,7 +2851,7 @@ class ChatView extends React.Component {
     // 其他正常用户消息（包括 slash 命令）都视为「新请求」并解锁血条。
     if (!/^\s*\/clear(\s|$)/.test(text)) this.props.onUserMessageSent?.();
     if (this.props.sdkMode) {
-      ws.send(JSON.stringify({ type: 'sdk-user-message', text }));
+      ws.send(JSON.stringify({ type: 'sdk-user-message', text, project: this.props.viewProject || this.props.projectName }));
     } else {
       // Anchor the send to the viewed PROJECT's live PTY (terminal/chat
       // consistency): the server routes by {project, sessionId} instead of the
@@ -2897,7 +2905,7 @@ class ChatView extends React.Component {
     // SDK 模式模型不在 PTY 里，ESC 无效 → 发 sdk-interrupt 让服务端 close 当前 query（保留会话）；
     // CLI/PTY 模式 → ESC 打断 Claude TUI 当前生成。
     if (this.props.sdkMode) {
-      this._inputWs.send(JSON.stringify({ type: 'sdk-interrupt' }));
+      this._inputWs.send(JSON.stringify({ type: 'sdk-interrupt', project: this.props.viewProject || this.props.projectName }));
     } else {
       // CLI/PTY 模式：ESC 打断 Claude TUI 当前生成。
       // 关键修复：点击 HTML 停止按钮会让隐藏的 xterm 失焦，向 claude 上报 focus-out (\x1b[O)，
@@ -2985,7 +2993,7 @@ class ChatView extends React.Component {
       this.setState({ inputEmpty: true, inputSuggestion: null });
       if (this.props.sdkMode) {
         // sdk-manager self-queues when busy and broadcasts queue-state.
-        ws.send(JSON.stringify({ type: 'sdk-user-message', text }));
+        ws.send(JSON.stringify({ type: 'sdk-user-message', text, project: this.props.viewProject || this.props.projectName }));
       } else {
         const anchor = this._terminalAnchor();
         ws.send(JSON.stringify({ type: 'queue-message', text, project: anchor.project, sessionId: anchor.sessionId, ...(anchor.instanceKey ? { instanceKey: anchor.instanceKey } : {}) }));

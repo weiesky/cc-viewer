@@ -52,6 +52,17 @@ export function resetStreamingState() {
   streamingState.chunksReceived = 0;
 }
 
+// Turn-level active flag (whole user-prompt turn, incl. local tool execution
+// between API calls). Lives here — next to streamingState — because the PTY hook
+// paths (server.js onTaskEvent / queue-suppress) and the SSE connect replay
+// (routes/events.js) share the value, and interceptor.js is already imported by
+// both. SDK mode does NOT use this flag — it relays session_state_changed over
+// the terminal WS instead (sdk-manager `_announceSessionState`). Transitions are
+// broadcast by the caller (server.js `_broadcastTurnActive`); this module is
+// state-only on purpose.
+export const turnActive = { active: false };
+export function setTurnActive(v) { turnActive.active = !!v; }
+
 // ─── IM 逐字流式的文本源 ───
 // 钉钉 AI 卡片流式（server/lib/adapters/dingtalk-adapter.js）需要「对话过程中」的主 agent 增量文本。
 // 复用本拦截器对主 agent SSE 的增量解析，累计 text_delta（跳过 thinking_delta，与 im-bridge-core

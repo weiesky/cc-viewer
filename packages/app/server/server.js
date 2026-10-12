@@ -97,7 +97,7 @@ function execWithStdin(cmd, args, input, options) {
     }
   });
 }
-import { _initPromise, _projectName, _logDir, _v2Writer, streamingState, resetStreamingState, PROFILE_PATH, RETRY_CONFIG_PATH, _retryConfigState, setLivePort, getImLiveText, resetImLiveText, markSessionStart } from './interceptor.js';
+import { _initPromise, _projectName, _logDir, _v2Writer, streamingState, resetStreamingState, turnActive, setTurnActive, PROFILE_PATH, RETRY_CONFIG_PATH, _retryConfigState, setLivePort, getImLiveText, resetImLiveText, markSessionStart } from './interceptor.js';
 import { V2LiveFeed } from './lib/v2/live-feed.js';
 import { filterClientsByViewProject, projectOfSessionDir, resolveActivityFeedKey } from './lib/v2/view-router.js';
 import { sanitizePathComponent } from './lib/v2/layout.js';
@@ -119,6 +119,7 @@ import { loadPlugins, runWaterfallHook, runParallelHook } from './lib/plugin-loa
 import { CONTEXT_WINDOW_FILE, readModelContextSize } from './lib/context-watcher.js';
 import { sendEventToClients } from './lib/log-watcher.js';
 import { applyTaskEvent, resetTasks, getTaskSnapshot, shouldResetTasks } from './lib/task-state.js';
+import { projectKeyForCwd } from './lib/system-prompt-snapshots.js';
 import { createImLogWatcher } from './lib/im/im-log-watcher.js';
 import { unwatchAllWorkflows } from './lib/workflow-watcher.js';
 import { backupConfigs } from './lib/config-backup.js';
@@ -694,6 +695,15 @@ const deps = {
   stopLogWatch,
   ensureProjectFeed: _ensureProjectFeed,
   scheduleTurnEndBroadcast: _scheduleTurnEndBroadcast,
+  // Raw Stop-hook POST arrival (routes/events.js turnEndNotify): clears the
+  // turn-level loading flag immediately — the debounced `turn_end` SSE frame is
+  // voice-pack semantics and too slow for the spinner. This is the ONLY clear
+  // path when the turn produced no API traffic (hook-only turn), so it must not
+  // wait on the debounce timer.
+  onTurnActiveClear: () => { _setTurnActive(false, null); },
+  // SSE connect replay: a page refresh mid-turn restores the spinner without
+  // waiting for the next streaming tick (routes/events.js events() connect block).
+  getPtyTurnActive: () => turnActive.active,
   // SessionStart hook notify → conversation-switch signal (in-terminal
   // /resume). The source gate + V2Writer re-bind live in the interceptor.
   onSessionStartNotify: markSessionStart,
@@ -705,6 +715,13 @@ const deps = {
     try {
       applyTaskEvent(payload);
       _scheduleTaskUpdateBroadcast();
+      // Turn-level loading: a new main-agent prompt marks the turn active.
+      // Subagent/teammate events are excluded inside the predicate (agentId +
+      // the load-bearing sessionId gate against the currently tracked turn).
+      if (isTurnStartTaskEvent(payload, _turnSessionId)) {
+        _turnSessionId = payload.sessionId;
+        _setTurnActive(true, payload.sessionId);
+      }
     } catch (err) { reportSwallowed('task-state.apply', err); }
   },
   // Session-boundary reset for the task checklist. The gate itself lives in
@@ -1477,6 +1494,10 @@ async function setupTerminalWebSocket(httpServer) {
         if (viewProject || viewInstance) {
           try { attachPtyFor({ project: viewProject || undefined, instanceKey: viewInstance || undefined }); } catch { }
         }
+        // SDK multi-session (2026-10-12): remember this connection's viewed project so
+        // broadcastWsMessage can route cwd-tagged SDK frames only to the client(s) watching
+        // that workspace. No ?project= → bound view → receives every project (old behavior).
+        wss.once('connection', (ws) => { try { ws._ccvViewProject = viewProject || null; } catch {} });
         wss.handleUpgrade(req, socket, head, (ws) => {
           wss.emit('connection', ws, req);
         });
@@ -1747,6 +1768,16 @@ async function setupTerminalWebSocket(httpServer) {
         }
       }
 
+      // Replay the last sdk-session-state frame so a page refreshed mid-turn restores
+      // the spinner immediately (sdk-init snapshot parity; null → no frame, client
+      // stays at its idle default).
+      if (isSdkMode && _sdkGetSessionStateSnapshot) {
+        const stateSnap = _sdkGetSessionStateSnapshot();
+        if (stateSnap) {
+          try { ws.send(JSON.stringify(stateSnap)); } catch {}
+        }
+      }
+
       // Replay the last sdk-context-usage snapshot so a reconnected panel restores the
       // latest numbers (null snapshot → no frame, the panel falls back to its HTTP pull).
       if (isSdkMode && _sdkGetContextUsageSnapshot) {
@@ -1899,11 +1930,17 @@ async function setupTerminalWebSocket(httpServer) {
       ws.on('message', async (raw) => {
         try {
           const msg = JSON.parse(raw.toString());
-          // SDK 模式没有 PTY：PTY 专属消息(input/sequential input/resync/resize/attach)一律 no-op,
+          // SDK 模式没有 PTY：PTY 专属消息(input/sequential input/resync/resize)一律 no-op,
           // 否则 'input' 会在无会话时触发 spawnShell() 拉出一个用户看不见的裸 shell。
           // sdk-*/ask-*/perm-*/image-* 等控制消息不受影响。scratch WS 是独立 handler,不受此闸门影响。
-          if (isSdkMode && (msg.type === 'input' || msg.type === 'input-sequential'
-              || msg.type === 'resync-request' || msg.type === 'resize' || msg.type === 'attach')) {
+          // attach 例外:SDK 模式虽无 PTY 可挂,但 attach 携带的是视图身份变更(chip 切换),
+          // 必须刷新该连接的 cwd-路由 stamp,否则广播过滤(_ccvViewProject)停留在旧视图,
+          // 新视图的 sdk-session-state/审批/队列帧会被静默丢弃。
+          if (msg.type === 'attach') {
+            try { ws._ccvViewProject = (typeof msg.project === 'string' && msg.project) || null; } catch {}
+            if (isSdkMode) return;
+          } else if (isSdkMode && (msg.type === 'input' || msg.type === 'input-sequential'
+              || msg.type === 'resync-request' || msg.type === 'resize')) {
             return;
           }
           if (msg.type === 'input') {
@@ -2251,9 +2288,11 @@ async function setupTerminalWebSocket(httpServer) {
               });
             }
           } else if (msg.type === 'sdk-user-message') {
-            // User message in SDK mode — relay to sdk-manager
+            // User message in SDK mode — relay to sdk-manager, addressed to the viewed
+            // workspace's session (multi-session). msg.project is the workspace basename.
             if (_sdkSendUserMessage && msg.text) {
-              _sdkSendUserMessage(msg.text).catch(err => {
+              const anchor = (typeof msg.project === 'string' && msg.project) ? { project: msg.project } : undefined;
+              _sdkSendUserMessage(msg.text, anchor).catch(err => {
                 console.error('[SDK] sendUserMessage error:', err.message);
               });
             }
@@ -2263,7 +2302,8 @@ async function setupTerminalWebSocket(httpServer) {
             // fetch hook → streamingState → SSE), same as PTY mode; sdk-manager
             // no longer emits its own streaming_status.
             if (isSdkMode && _sdkInterruptTurn) {
-              const cancelled = _sdkInterruptTurn() || [];
+              const anchor = (typeof msg.project === 'string' && msg.project) ? { project: msg.project } : undefined;
+              const cancelled = _sdkInterruptTurn(anchor) || [];
               _broadcastApprovalCloses(cancelled, 'Turn interrupted');
             } else {
               // sdk-interrupt 收到却没生效：客户端按 props.sdkMode 发了中断，但本端不是 SDK 模式或
@@ -2279,7 +2319,8 @@ async function setupTerminalWebSocket(httpServer) {
             if (typeof msg.text === 'string' && msg.text) {
               if (isSdkMode) {
                 if (_sdkSendUserMessage) {
-                  _sdkSendUserMessage(msg.text).catch(err => {
+                  const anchor = (typeof msg.project === 'string' && msg.project) ? { project: msg.project } : undefined;
+                  _sdkSendUserMessage(msg.text, anchor).catch(err => {
                     console.error('[SDK] queue-message relay error:', err.message);
                   });
                 }
@@ -2324,6 +2365,10 @@ async function setupTerminalWebSocket(httpServer) {
             // (SDK mode handles this inside sdk-manager.interruptTurn; no PTY queue exists.)
             if (!isSdkMode) {
               try { chatQueue.suppressNextDrain(); } catch (err) { reportSwallowed('server.queue-suppress', err); }
+              // The Stop hook does NOT fire on user interrupt (documented Claude Code
+              // behavior), so the web Stop button must clear the turn-level loading
+              // flag itself or the spinner would outlive the interrupted turn.
+              _setTurnActive(false, null);
             }
           } else if (msg.type === 'image-remove-notify' || msg.type === 'image-upload-notify') {
             // Security: only allow paths within upload directories, reject traversal
@@ -2440,6 +2485,9 @@ export function getAuthConfig() {
 // 的 hook（如 Stop 输入带 `is_final_turn:true`、SDK `result` 带 `subtype:'final'`、
 // 或 `onUserTurnEnd` 回调）就拆掉。拆除时一并 grep 上面 SUNSET-MARKER 标签
 // 定位所有相关代码（server / voicePackPlayer / test / history.md）。
+// 相邻信号说明(2026-10-12):本防抖 `turn_end` 只服务语音包/IM/队列;对话 spinner 的
+// 回合级信号是 `turn_active`(PTY,见下方 Turn-level active state 段)与 SDK 的
+// `sdk-session-state`(WS)。三者语义不同,勿混用。
 //
 // **用户原始语义**：「等 10 秒钟。如果这 10 秒钟内没有新的请求发起，那么就认为
 // 任务真的已经完成了，开始执行播放」—— 隐含：10s 内**有**新请求 → 不算完成 →
@@ -2575,6 +2623,90 @@ function _onStreamingActivated() {
   try { chatQueue.onStreamingActivated(); } catch { /* best-effort */ }
 }
 
+// ── Turn-level active state ────────────────────────────────────────────────
+// `streamingState.active` flips per API call, so the spinner dies during local
+// tool execution between calls (see turn-end-bridge.js header). The turn-level
+// truth lives in interceptor.js (`turnActive` + setTurnActive, shared by PTY
+// hook paths here and the SDK push path in cli.js) so it survives server.js
+// stop/start cycles the same way streamingState does.
+// PTY: set by the UserPromptSubmit hook (task-bridge → /api/task-event),
+// cleared by the raw Stop-hook POST arrival (pre-debounce, pre-SSE) or an
+// explicit user interrupt. No streaming rising-edge fallback by design:
+// housekeeping/telemetry requests after query() end would re-light it for the
+// whole staleness window (see HISTORY note at _scheduleTurnEndBroadcast).
+// Single global flag, same constraint as streamingState (one streaming session
+// per server process). Broadcasts/replay reach only viewers of the BOUND project
+// (more filtered than streaming_status, which broadcasts bound-project state to
+// all clients): a chip-switched parallel view sees no spinner, matching the
+// pre-multi-PTY single-project posture (see the streaming_status timer comment).
+//
+// Heartbeat: while the flag is up, re-broadcast `turn_active` every
+// TURN_ACTIVE_HEARTBEAT_MS. Local tool execution (Bash > 30s builds/tests) produces
+// NO turn-level frames and NO API traffic — without a heartbeat the client's
+// staleness escape cannot distinguish "silent tool" from "lost Stop POST" and
+// would kill the spinner mid-turn. The heartbeat rides the same view-project
+// filter; when the flag drops (Stop POST / interrupt), it stops, and the client
+// backstop still catches a process-death/stuck-server within one window.
+
+// Pure predicate (unit-tested): does this /api/task-event payload mark a new
+// main-agent user prompt? Mirrors task-state.js's shouldResetTasksOnPrompt gate:
+// agentId excludes teammate/subagent when present, but agentId is NOT reliably
+// present on UserPromptSubmit (task-bridge header), so the sessionId check is the
+// load-bearing one — a prompt from a DIFFERENT session than the one we track must
+// not light the main view. currentSessionId follows the same convention as
+// task-state: null window (nothing tracked yet) passes, matching the checklist.
+export function isTurnStartTaskEvent(payload, currentSessionId) {
+  if (!payload || payload.hookEventName !== 'UserPromptSubmit') return false;
+  if (payload.agentId) return false;
+  if (!payload.sessionId) return false;
+  if (currentSessionId && payload.sessionId !== currentSessionId) return false;
+  return true;
+}
+
+const TURN_ACTIVE_HEARTBEAT_MS = 10 * 1000;
+let _turnActiveHeartbeat = null;
+// Session tag of the turn that lit the flag — the load-bearing gate for
+// UserPromptSubmit (agentId is unreliable on this hook; see task-state.js). A Stop
+// POST clears the flag but keeps the tag: the NEXT prompt re-tags, and a stale tag
+// must not reject it (the tag only rejects prompts from a DIFFERENT live session).
+let _turnSessionId = null;
+
+function _armTurnActiveHeartbeat(sessionId) {
+  if (_turnActiveHeartbeat) return; // already armed
+  _turnActiveHeartbeat = setInterval(() => {
+    if (_isStopping || !turnActive.active) { _clearTurnActiveHeartbeat(); return; }
+    _broadcastTurnActive(true, sessionId || null);
+  }, TURN_ACTIVE_HEARTBEAT_MS);
+  if (typeof _turnActiveHeartbeat.unref === 'function') _turnActiveHeartbeat.unref();
+}
+
+function _clearTurnActiveHeartbeat() {
+  if (_turnActiveHeartbeat) { clearInterval(_turnActiveHeartbeat); _turnActiveHeartbeat = null; }
+}
+
+function _broadcastTurnActive(active, sessionId) {
+  if (_isStopping) return;
+  if (!sendEventToClients || clients.length === 0) return;
+  try {
+    sendEventToClients(
+      _filterClientsByViewProject(clients, _projectName || ''),
+      'turn_active',
+      { active, sessionId: sessionId || null, ts: Date.now() },
+    );
+  } catch (err) { reportSwallowed('turn-active.broadcast', err); }
+}
+
+// State-change guard: only broadcast on real transitions (SDK paths share the
+// turn-end entry points and would otherwise emit duplicate frames). The heartbeat
+// is armed/disarmed here so it tracks the flag exactly.
+function _setTurnActive(active, sessionId) {
+  const next = !!active;
+  if (next === turnActive.active) return;
+  setTurnActive(next);
+  if (next) _armTurnActiveHeartbeat(sessionId); else _clearTurnActiveHeartbeat();
+  _broadcastTurnActive(next, sessionId);
+}
+
 // 统一的 streaming-state 观察入口。production polling 和 SDK push 都调它，测试也走它，
 // 不再为「测试桩」单独维护 mirror state（杜绝逻辑漂移）。返回是否检测到 rising edge。
 // `_isStopping` 时直接返回 false：shutdown 中迟到的 tick 不应再去 flush。
@@ -2604,6 +2736,9 @@ export const __testing = (process.env.NODE_ENV === 'test') ? {
     _lastCliActive = false;
     _stoppingPromise = null;
     _onTurnEndBroadcastForTests = null;
+    setTurnActive(false);
+    _clearTurnActiveHeartbeat();
+    _turnSessionId = null;
   },
   onBroadcast(fn) { _onTurnEndBroadcastForTests = fn; },
   getPendingKeys() { return [..._pendingTurnEndTimers.keys()]; },
@@ -2611,6 +2746,21 @@ export const __testing = (process.env.NODE_ENV === 'test') ? {
   observeStreamingTick(activeNow, mode = 'cli') { return _observeStreamingTick(activeNow, mode); },
   scheduleTurnEnd(sessionId, ts) { _scheduleTurnEndBroadcast(sessionId, ts); },
   getDebounceMs() { return TURN_END_DEBOUNCE_MS; },
+  getPtyTurnActive() { return turnActive.active; },
+  setPtyTurnActive(v, sessionId = null) { _setTurnActive(v, sessionId); },
+  // Routes the payload through the SAME predicate the deps.onTaskEvent closure
+  // uses, so tests exercise the production gate rather than a mirror of it.
+  notifyTaskEvent(payload) {
+    if (isTurnStartTaskEvent(payload, _turnSessionId)) {
+      _turnSessionId = payload?.sessionId || null;
+      _setTurnActive(true, payload?.sessionId);
+    }
+  },
+  // Clear drops the flag but KEEPS the session tag: the next prompt of the SAME
+  // session re-lights fast (tag match), while a foreign session's prompt stays
+  // rejected. The tag resets only on test reset / server stop.
+  clearPtyTurnActive() { _setTurnActive(false, null); },
+  getTurnSessionId() { return _turnSessionId; },
 } : Object.freeze({
   reset() {},
   onBroadcast() {},
@@ -2619,6 +2769,10 @@ export const __testing = (process.env.NODE_ENV === 'test') ? {
   observeStreamingTick() { return false; },
   scheduleTurnEnd() {},
   getDebounceMs() { return TURN_END_DEBOUNCE_MS; },
+  getPtyTurnActive() { return false; },
+  setPtyTurnActive() {},
+  notifyTaskEvent() {},
+  clearPtyTurnActive() {},
 });
 
 /**
@@ -2687,6 +2841,7 @@ async function _doStop() {
   // 对称 startViewer：下一次启动后第一次 active 才算 rising edge
   _lastSdkActive = false;
   _lastCliActive = false;
+  _clearTurnActiveHeartbeat();
   // Tear down all IM bridge connections so a stop/start cycle (Electron tab switch, tests) never
   // leaks a second WS to the same app. Idempotent + swallows errors.
   // IM teardown + serverStopping hook 共用一个 3s 总预算（保持串行语义）：
@@ -2751,6 +2906,11 @@ async function _doStop() {
   }
   resetTasks();
   resetStreamingState();
+  // Turn-level flag dies with the server, cleared AFTER connections close (same slot
+  // as resetStreamingState): a task-event arriving during the 3s IM-teardown window
+  // must not re-light the flag for the fresh process's first SSE replay.
+  setTurnActive(false);
+  _clearTurnActiveHeartbeat();
   // 清 interceptor 的 live-port，避免 stop/start 循环（Electron tab 切换 / 测试）间隙内
   // 早期请求向已关闭的端口 POST 丢包。新 startViewer 的 listen 回调会再次 setLivePort
   setLivePort(null);
@@ -2766,9 +2926,21 @@ async function _doStop() {
 /** Broadcast a message to all terminal WS clients (for SDK canUseTool). */
 export function broadcastWsMessage(msg) {
   if (terminalWss) {
+    // SDK multi-session (2026-10-12): a cwd-tagged frame belongs to one workspace's session.
+    // Route it only to clients viewing that workspace (or the bound view with no ?project=),
+    // so a background workspace's approval/queue/spinner never bleeds into the foreground.
+    // Untagged frames keep the historical broadcast-to-all behavior.
+    const frameCwd = (msg && typeof msg === 'object' && typeof msg.cwd === 'string' && msg.cwd) ? msg.cwd : null;
+    // The client stamp is the SANITIZED project key (projectKeyForCwd), so the raw
+    // basename would misroute any cwd with chars outside [a-zA-Z0-9._-] (spaces, CJK)
+    // — every frame for such a workspace would be silently dropped for its viewer.
+    let frameProj = null;
+    if (frameCwd) frameProj = projectKeyForCwd(frameCwd) || null;
     const str = typeof msg === 'string' ? msg : JSON.stringify(msg);
     terminalWss.clients.forEach((c) => {
-      if (c.readyState === 1) try { c.send(str); } catch {}
+      if (c.readyState !== 1) return;
+      if (frameProj && c._ccvViewProject && c._ccvViewProject !== frameProj) return; // other workspace's frame
+      try { c.send(str); } catch {}
     });
   }
   // 仅对 ask 类型转译给主进程；perm-hook-* / sdk-plan-* 维持 inline-only（红线）。
@@ -2831,6 +3003,10 @@ export function setSdkGetContextUsageSnapshot(fn) { _sdkGetContextUsageSnapshot 
 /** Reference to sdk-manager's getMcpStatusSnapshot (set by cli.js after import). */
 let _sdkGetMcpStatusSnapshot = null;
 export function setSdkGetMcpStatusSnapshot(fn) { _sdkGetMcpStatusSnapshot = fn; }
+
+/** Reference to sdk-manager's getSessionStateSnapshot (set by cli.js after import). */
+let _sdkGetSessionStateSnapshot = null;
+export function setSdkGetSessionStateSnapshot(fn) { _sdkGetSessionStateSnapshot = fn; }
 
 /** Reference to sdk-manager's sendQueuedNow (set by cli.js after import). */
 let _sdkSendQueuedNow = null;

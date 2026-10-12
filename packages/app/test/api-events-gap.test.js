@@ -230,6 +230,26 @@ describe('GET /events', () => {
     assert.equal(frames.find((f) => f.event === 'task_update'), undefined);
   });
 
+  it('turn_active connect replay: bound viewer gets the frame when the flag is up', async () => {
+    await seedV2([mainAgentEntry('2026-06-06T01:30:00.000Z', 99)]);
+    const req = new EventEmitter(); req.headers = {};
+    const res = makeRes();
+    await events(req, res, url('/events'), true, eventsDeps({ getPtyTurnActive: () => true }));
+    const frames = parseFrames(bodyStr(res));
+    const ta = frames.find((f) => f.event === 'turn_active');
+    assert.ok(ta, 'turn_active replay frame emitted on connect');
+    assert.equal(JSON.parse(ta.data).active, true);
+  });
+
+  it('turn_active connect replay: no frame when the flag is down', async () => {
+    await seedV2([mainAgentEntry('2026-06-06T01:31:00.000Z', 100)]);
+    const req = new EventEmitter(); req.headers = {};
+    const res = makeRes();
+    await events(req, res, url('/events'), true, eventsDeps({ getPtyTurnActive: () => false }));
+    const frames = parseFrames(bodyStr(res));
+    assert.equal(frames.find((f) => f.event === 'turn_active'), undefined);
+  });
+
   it('honours an explicit ?limit and reports hasMore in load_start', async () => {
     await seedV2(Array.from({ length: 5 }, (_, i) => mainAgentEntry(`2026-06-06T01:0${i}:00.000Z`, 100 + i)));
     const req = new EventEmitter(); req.headers = {};
@@ -453,6 +473,28 @@ describe('POST /api/turn-end-notify', () => {
     assert.deepEqual(JSON.parse(bodyStr(res)), { ok: true });
     assert.equal(depsT._calls.length, 1, 'scheduleTurnEndBroadcast called once');
     assert.deepEqual(depsT._calls[0], ['s1', 999, '/p']);
+  });
+
+  it('fires onTurnActiveClear on the RAW POST arrival (pre-debounce spinner clear)', async () => {
+    // The raw Stop POST is the ONLY clear path for a hook-only turn — the deps key
+    // must be wired, or the spinner outlives such turns (deletion/rename of the key
+    // would otherwise keep this suite green via the optional-call).
+    let cleared = 0;
+    const deps = { ...depsT(), onTurnActiveClear: () => { cleared++; } };
+    const res = await postT({
+      headers: { 'x-ccviewer-internal': TOKEN },
+      body: JSON.stringify({ sessionId: 's1', ts: 1 }),
+    }, deps);
+    assert.equal(res.statusCode, 200);
+    assert.equal(cleared, 1, 'onTurnActiveClear fired exactly once on valid POST');
+  });
+
+  it('does NOT fire onTurnActiveClear when the token is rejected (403)', async () => {
+    let cleared = 0;
+    const deps = { ...depsT(), onTurnActiveClear: () => { cleared++; } };
+    const res = await postT({ headers: { 'x-ccviewer-internal': 'wrong' } }, deps);
+    assert.equal(res.statusCode, 403);
+    assert.equal(cleared, 0);
   });
 
   it('400 on malformed JSON body (valid token)', async () => {

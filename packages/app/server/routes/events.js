@@ -50,6 +50,11 @@ function turnEndNotify(req, res, parsedUrl, isLocal, deps) {
       return;
     }
     deps.scheduleTurnEndBroadcast(payload.sessionId || null, payload.ts || Date.now(), payload.transcriptPath || null);
+    // Turn-level loading clears on the RAW Stop POST arrival — the debounced
+    // `turn_end` SSE frame (voice-pack semantics) would keep the spinner up for
+    // the whole debounce window. Idempotent on the server side.
+    try { deps.onTurnActiveClear?.(); }
+    catch (err) { reportSwallowed('turn-end-notify.turn-active-clear', err); }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
   });
@@ -577,6 +582,21 @@ async function events(req, res, parsedUrl, isLocal, deps) {
     const snap = deps.getTaskSnapshot?.();
     if (snap) sseWrite(res, `event: task_update\ndata: ${JSON.stringify({ sessionId: snap.sessionId, tasks: snap.tasks, ts: Date.now() })}\n\n`);
   } catch (err) { reportSwallowed('sse.task_update.snapshot', err); }
+
+  // Turn-level loading replay: a page refresh mid-turn restores the spinner in the
+  // same connect block (turn-level state is in-memory only, not in the cold load).
+  // The flag is a bound-project global (same constraint as streamingState), so the
+  // replay only goes to viewers of the bound project — a chip-switched parallel view
+  // must not latch the bound project's spinner. NOTE: this makes turn_active MORE
+  // filtered than streaming_status/turn_end (which broadcast to all); the parallel
+  // view simply shows no spinner for its own project, matching the pre-multi-PTY
+  // single-project posture documented at the streaming_status timer.
+  try {
+    const viewedIsBound = !viewedProject || viewedProject === (_projectName || '');
+    if (viewedIsBound && deps.getPtyTurnActive?.()) {
+      sseWrite(res, `event: turn_active\ndata: ${JSON.stringify({ active: true, sessionId: null, ts: Date.now() })}\n\n`);
+    }
+  } catch (err) { reportSwallowed('sse.turn_active.replay', err); }
 
   // req.on('close') 在某些异常断连时不一定立即触发；res 端 close/error 兜底保证
   // 不会在 clients 数组里留下幽灵 res，防止 sendToClients 后续写入触发慢泄漏。

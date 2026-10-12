@@ -44,6 +44,12 @@ export const OPTIMISTIC_CLEAR_PERCENT = 5;
 // 日志管理弹窗 v2 视图的服务端分页大小（条/页）
 const LOG_PAGE_SIZE = 50;
 
+// Staleness bound for the turn-level loading flag: a hook-only turn whose Stop
+// POST was lost (or PTY hooks deleted post-boot) would otherwise pin the spinner
+// forever. Zero streaming activity for this long ⇒ the clear signal was lost;
+// fall back to the legacy debounced behavior (never worse than pre-turnActive).
+const TURN_ACTIVE_STALE_MS = 30 * 1000;
+
 // AntD 主题配置：模块顶层冻结常量。
 // 旧实现是 getter 每次 render 返回新字面量，导致 antd cssinjs useTheme cache 永远 miss、
 // flattenToken 反复跑。顶层常量保证主题不变时引用稳定。
@@ -194,6 +200,13 @@ class AppBase extends React.Component {
       contextBarOptimistic: false, // /clear 后的乐观水位重置，下一次 context_window SSE 自动清除
       contextBarLocked: false, // /clear 触发后强制血条 0K (0%)，到用户发出非 /clear 消息时解锁
       isStreaming: false,
+      // Turn-level loading truth (whole user-prompt turn, incl. local tool execution
+      // between API calls). Sources: PTY = `turn_active` SSE (UserPromptSubmit hook /
+      // raw Stop POST / queue-suppress); SDK = `sdk-session-state` WS (lifted from
+      // ChatView via onSdkSessionState). `isStreaming` still tracks per-API-call
+      // streaming; its falling edge is GATED by this flag so the spinner survives
+      // tool gaps. See the streaming_status handler below.
+      turnActive: false,
       streamingLatest: null, // { timestamp, url, content, model } — Live typewriter overlay for latest assistant message
       proxyProfiles: [],
       activeProxyId: 'max',
@@ -570,7 +583,10 @@ class AppBase extends React.Component {
     // header chip would otherwise show the OLD session's model until the resumed session's
     // first turn re-broadcasts sdk-init. (workspace_started already clears it for full
     // workspace switches; this covers the same-workspace resume-switch gap.)
-    this.setState({ resumeSwitch: { uuid }, sdkModel: null });
+    this.setState({ resumeSwitch: { uuid }, sdkModel: null, turnActive: false });
+    if (this._turnStaleTimer) { clearTimeout(this._turnStaleTimer); this._turnStaleTimer = null; }
+    this._turnActiveSince = null;
+    this._turnSignalTs = null;
     if (this._resumeSwitchTimer) clearTimeout(this._resumeSwitchTimer);
     this._resumeSwitchTimer = setTimeout(() => {
       this._resumeSwitchTimer = null;
@@ -631,7 +647,13 @@ class AppBase extends React.Component {
     // view's prev.requests on the next frame (the streaming-switch bleed).
     this._pendingEntries = [];
     if (this._flushRafId) { cancelAnimationFrame(this._flushRafId); this._flushRafId = null; }
-    this.setState({ streamingLatest: null, isStreaming: false });
+    // The departing view's turn-level state must not leak into the new view — the
+    // new view's own turn frames are keyed to a different session/project and the
+    // clearing frame for the old turn may never arrive here (view-filtered).
+    if (this._turnStaleTimer) { clearTimeout(this._turnStaleTimer); this._turnStaleTimer = null; }
+    this._turnActiveSince = null;
+    this._turnSignalTs = null;
+    this.setState({ streamingLatest: null, isStreaming: false, turnActive: false });
   }
 
   // Detach the view back to follow-latest (the "return to current session" chip,
@@ -812,7 +834,10 @@ class AppBase extends React.Component {
       this.setState({ resumeSwitch: null });
       try { message.warning(t('ui.resume.switchTimeout')); } catch {}
     }, 30000);
-    this.setState({ viewedProject: chip.project, viewedInstance: chipInstance, attachedSid: null, pinnedSessionTs: null });
+    this.setState({ viewedProject: chip.project, viewedInstance: chipInstance, attachedSid: null, pinnedSessionTs: null, turnActive: false });
+    if (this._turnStaleTimer) { clearTimeout(this._turnStaleTimer); this._turnStaleTimer = null; }
+    this._turnActiveSince = null;
+    this._turnSignalTs = null;
     // Persist the viewed workspace so a refresh restores it. cwd comes from the
     // header-reported tab list (the chip payload may not carry it) and is the
     // restart-stable anchor for re-resolving a dead instanceKey.
@@ -1527,6 +1552,7 @@ class AppBase extends React.Component {
     if (this._sseTimeoutTimer) clearTimeout(this._sseTimeoutTimer);
     if (this._sseReconnectTimer) clearTimeout(this._sseReconnectTimer);
     if (this._streamingOffTimer) clearTimeout(this._streamingOffTimer);
+    if (this._turnStaleTimer) { clearTimeout(this._turnStaleTimer); this._turnStaleTimer = null; }
     if (this._streamingRaf) { cancelAnimationFrame(this._streamingRaf); this._streamingRaf = null; }
     if (this._clearOptimisticTimer) clearTimeout(this._clearOptimisticTimer);
     if (this._resumeSwitchTimer) { clearTimeout(this._resumeSwitchTimer); this._resumeSwitchTimer = null; }
@@ -1563,6 +1589,10 @@ class AppBase extends React.Component {
     this._pendingEntries = [];
     if (this._flushRafId) { cancelAnimationFrame(this._flushRafId); this._flushRafId = null; }
     if (this._streamingOffTimer) { clearTimeout(this._streamingOffTimer); this._streamingOffTimer = null; }
+    if (this._turnStaleTimer) { clearTimeout(this._turnStaleTimer); this._turnStaleTimer = null; }
+    this._turnActiveSince = null;
+    this._turnSignalTs = null;
+    if (this.state.turnActive) this.setState({ turnActive: false });
     if (this._loadingCountRafId) { cancelAnimationFrame(this._loadingCountRafId); this._loadingCountRafId = null; }
     this._chunkedEntries = [];
     this._chunkedTotal = 0;
@@ -2334,6 +2364,7 @@ class AppBase extends React.Component {
               selectedIndex: null,
               streamingLatest: null,
               isStreaming: false,
+              turnActive: false, // new workspace/view owns its own turn state
               // workspace 切换 = cwd 切换 → claude 的 lastModelUsage 也要重查；
               // 后端在 workspace_started 一并塞了新 cwd 对应的 hint，没有就清空。
               claudeProjectModel: (typeof data.claudeProjectModel === 'string' && data.claudeProjectModel) ? data.claudeProjectModel : null,
@@ -2386,6 +2417,7 @@ class AppBase extends React.Component {
           streamingLatest: null,
           contextBarLocked: false,
           isStreaming: false,
+          turnActive: false, // new workspace/view owns its own turn state
         });
       });
       this.eventSource.addEventListener('context_window', (event) => {
@@ -2582,6 +2614,17 @@ class AppBase extends React.Component {
           }
         } catch { /* tolerate parse error */ }
       });
+      // turn_active SSE — turn-level loading truth (PTY mode): the UserPromptSubmit
+      // hook lights it at prompt time; the RAW Stop-hook POST clears it (pre-debounce).
+      // This is what keeps the spinner alive across local tool execution gaps.
+      this.eventSource.addEventListener('turn_active', (event) => {
+        if (stale() || !this.eventSource) return;
+        this._resetSSETimeout();
+        try {
+          const data = JSON.parse(event?.data || '{}');
+          this._applyTurnActive(!!data.active);
+        } catch (err) { reportSwallowed('sse.turn_active', err); }
+      });
       // turn_end SSE — broadcast by /api/turn-end-notify whenever Claude Code's Stop hook
       // fires (real end of a user-prompt turn). This is the **authoritative** turnEnd
       // signal — far more accurate than isStreaming falling-edge, which resets per-API-call
@@ -2593,6 +2636,13 @@ class AppBase extends React.Component {
         // after a view switch (gen guard, 2026-10).
         if (stale() || !this.eventSource) return;
         this._resetSSETimeout();
+        // Turn-level clear, debounced sibling of `turn_active:false` — the raw Stop
+        // POST usually cleared it already; this catches the SDK-mode fallback (the
+        // sdk-session-state idle frame may never arrive on older CLIs). turn_end is
+        // NOT view-project filtered server-side, so PTY mode deliberately ignores it
+        // here (turn_active owns PTY clearing) to avoid a foreign project's turn end
+        // killing this view's spinner.
+        if (this.state.sdkMode) this._applyTurnActive(false);
         const vp = this.state.approvalPrefs && this.state.approvalPrefs.voicePack;
         if (vp && vp.enabled && vp.events && vp.events.turnEnd) {
           let serverTs = null;
@@ -2629,6 +2679,7 @@ class AppBase extends React.Component {
           if (data.active) {
             // 立即显示 loading
             clearTimeout(this._streamingOffTimer);
+            this._turnSignalTs = Date.now(); // API activity also proves the turn is alive
             // agent 开始响应 = 新一轮已落实 → 顺手解锁血条。
             // 覆盖 onUserMessageSent 没触发的极端情况（WS 抖动 / 外部输入 /
             // pty 直接键入），避免 lock 永久卡 0%。
@@ -2636,10 +2687,26 @@ class AppBase extends React.Component {
             if (this.state.contextBarLocked) patch.contextBarLocked = false;
             this.setState(patch);
           } else {
-            // 延迟隐藏，避免工具调用间隙导致 spinner 频繁闪烁
+            // Delayed hide so the spinner doesn't flicker between tool calls.
+            // turnActive gates the clear: while a turn is in flight (incl. local tool
+            // execution) the spinner stays; the turn-level signal (turn_active:false /
+            // sdk idle / turn_end) owns the real clear.
             clearTimeout(this._streamingOffTimer);
             this._streamingOffTimer = setTimeout(() => {
-              this.setState({ isStreaming: false });
+              this._streamingOffTimer = null;
+              if (!this.state.turnActive) {
+                this.setState({ isStreaming: false });
+                return;
+              }
+              // Turn still running — keep the spinner. Staleness escape: if no API
+              // stream has been ACTIVE for TURN_ACTIVE_STALE_MS, the turn-level clear
+              // was lost (hook-only turn + lost Stop POST); fall back to the legacy
+              // debounced behavior (never worse than pre-turnActive). Measured from
+              // the last ACTIVE tick, not the last tick — stray inactive ticks from
+              // housekeeping traffic must not postpone the escape forever. Re-arm so
+              // the escape is re-evaluated even when no further frames arrive (the
+              // server sends inactive frames only on the falling edge).
+              this._checkTurnActiveStale();
             }, 2000);
           }
         } catch (err) { reportSwallowed('sse.streaming_status', err); }
@@ -2803,6 +2870,27 @@ class AppBase extends React.Component {
           if (kvCached && (kvCached.system.length > 0 || kvCached.messages.length > 0 || kvCached.tools.length > 0)) {
             this._lastKvCacheContent = kvCached;
           }
+        }
+
+        // PTY Esc-interrupt sniffing: the Stop hook does NOT fire on user interrupt
+        // (documented Claude Code behavior) and a terminal-typed Esc produces no WS
+        // control frame — the observable trace is the CLI's placeholder user entry
+        // "[Request interrupted ...]". Match ONLY the full-placeholder form (whole
+        // message == marker): real journals show the marker MERGED with the user's
+        // next prompt as one message, and a prefix match would wrongly clear the
+        // fresh turn's flag on its first request. A bare Esc produces no API request
+        // at all — that path is covered by the queue-suppress clear (web Stop) and
+        // the staleness backstop, not by this sniff.
+        // Entry shape: live/v2 entries carry body.messages (the request.body.messages
+        // path has no producer in this repo — kept as a harmless fallback).
+        if (this.state.turnActive && !this.state.sdkMode && isMainAgent(entry)) {
+          const msgs = entry?.request?.body?.messages || entry?.body?.messages;
+          const last = Array.isArray(msgs) && msgs.length ? msgs[msgs.length - 1] : null;
+          const c = last?.role === 'user' ? last.content : null;
+          const text = typeof c === 'string' ? c
+            // eslint-disable-next-line no-nested-ternary -- compact block-to-text flatten
+            : (Array.isArray(c) ? c.map((b) => (b && b.type === 'text' ? b.text : '') || '').join('') : '');
+          if (/^\s*\[Request interrupted[^\]]*\]\s*$/i.test(text)) this._applyTurnActive(false);
         }
 
         // Live overlay 原子清除：最终 entry（非 inProgress）到达且 timestamp 匹配 → 同 setState 清除 overlay
@@ -3014,6 +3102,66 @@ class AppBase extends React.Component {
   // SDK-mode launch model lifted from ChatView's sdk-init handler → AppHeader proxy-chip slot.
   handleSdkModel = (model) => { this.setState({ sdkModel: model || null }); };
 
+  // Turn-level loading truth, single writer for all sources (turn_active SSE,
+  // sdk-session-state WS via handleSdkSessionState, turn_end fallback). Lighting
+  // also marks the timestamp the staleness backstop measures from; clearing also
+  // drops isStreaming so the spinner dies with the turn, not 2s later.
+  _applyTurnActive = (active) => {
+    this._turnSignalTs = Date.now(); // any turn-level frame proves the turn is alive
+    if (active) {
+      if (this.state.turnActive) return; // idempotent
+      this._turnActiveSince = Date.now();
+      clearTimeout(this._turnStaleTimer);
+      this._turnStaleTimer = setTimeout(this._checkTurnActiveStale, TURN_ACTIVE_STALE_MS);
+      this.setState({ turnActive: true });
+      return;
+    }
+    if (!this.state.turnActive) return; // idempotent
+    this._turnActiveSince = null;
+    clearTimeout(this._turnStaleTimer);
+    this._turnStaleTimer = null;
+    clearTimeout(this._streamingOffTimer);
+    this.setState({ turnActive: false, isStreaming: false });
+  };
+
+  // Staleness escape for the turn-level flag, self-rescheduling: fires only when the
+  // turn has produced NEITHER API activity NOR any turn-level frame for
+  // TURN_ACTIVE_STALE_MS — the signature of a lost Stop POST / killed PTY / dead
+  // server. While the flag is legitimately up, the server's TURN_ACTIVE_HEARTBEAT
+  // (PTY: ~10s turn_active re-broadcast; SDK: requires_action/session frames) keeps
+  // refreshing `_turnSignalTs`, so long silent local tools (Bash builds/tests) are
+  // NOT killed; only a genuinely signal-dead turn is. Re-arms itself because no
+  // further streaming_status frame may ever arrive.
+  _checkTurnActiveStale = () => {
+    if (!this.state.turnActive) return;
+    const silentFor = Date.now() - (this._turnSignalTs || 0);
+    if (this._turnActiveSince && silentFor > TURN_ACTIVE_STALE_MS) {
+      console.warn('[turn-active] no turn-end signal and no turn-level activity for 30s — clearing stale loading flag');
+      this._applyTurnActive(false);
+      return;
+    }
+    clearTimeout(this._turnStaleTimer);
+    this._turnStaleTimer = setTimeout(this._checkTurnActiveStale, TURN_ACTIVE_STALE_MS);
+  };
+
+  // SDK-mode session state (idle/running/requires_action), lifted from ChatView's
+  // terminal-WS dispatch. Anything non-idle means the turn is still in flight
+  // (requires_action = waiting on approval/question — also "not done").
+  handleSdkSessionState = (state, meta) => {
+    // Multi-workspace guard: compare by WORKSPACE (frame cwd vs viewed project), not
+    // by wire sessionId — the viewed workspace's active SDK session legitimately
+    // differs from attachedSid (a /resume-attached historical session), and the
+    // attachedSid comparison would drop the viewed workspace's own frames whenever
+    // the two diverge. Unknown-state frames are treated as idle-safe: only the two
+    // known active states light the spinner.
+    if (meta?.cwd) {
+      const viewed = this.state.viewedProject || this.state.projectName || '';
+      const frameProj = meta.cwd.replace(/\\/g, '/').split('/').filter(Boolean).pop() || '';
+      if (viewed && frameProj && frameProj !== viewed) return; // background workspace's frame
+    }
+    this._applyTurnActive(state === 'running' || state === 'requires_action');
+  };
+
   // ─── 模式切换 ──────────────────────────────────────────
 
   handleWorkspaceLaunch = ({ projectName }) => {
@@ -3073,6 +3221,7 @@ class AppBase extends React.Component {
           streamingLatest: null,
           contextBarLocked: false,
           isStreaming: false,
+          turnActive: false, // new workspace/view owns its own turn state
         });
       })
       .catch(() => {});

@@ -788,6 +788,13 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   const childEnv = {
     ...process.env,
     ANTHROPIC_BASE_URL: proxyBaseUrl,
+    // Opt the CLI child into emitting `session_state_changed` messages (idle /
+    // running / requires_action) — the authoritative turn-level busy signal the
+    // conversation spinner needs. Gated emission point in the CLI binary; harmless
+    // on older CLIs (unknown env is ignored, sdk-manager falls back to
+    // push-running/result-idle broadcasts). Top-level childEnv, not settings.env:
+    // the settings merge path could be overridden by user settings.
+    CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1',
     // 与 PTY 子进程同款(pty-manager.js:247):SDK 子进程的 cli.js 若已被 -logger/PTY 注入
     // interceptor,CCV_PROXY_MODE=1 让它只装 fetch hook 而不再自起 server;wire 捕获本来
     // 就发生在主进程 proxy 的出站 fetch(ANTHROPIC_BASE_URL 指过来),此键保证子进程不双起。

@@ -896,6 +896,7 @@ class Mobile extends AppBase {
                     onScrollTsDone={() => {}}
                     cliMode={this.state.cliMode}
                     sdkMode={this.state.sdkMode}
+                    onSdkSessionState={this.handleSdkSessionState}
                     terminalVisible={this.state.mobileTerminalVisible}
                     mobileChatVisible={true}
                     fileLoading={this.state.fileLoading}

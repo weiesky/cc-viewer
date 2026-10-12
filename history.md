@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(ui): **对话 loading 覆盖整个回合,本地工具执行期不再误熄** — 原信号粒度是单个 API 请求,两次调用间隙跑本地工具时 spinner 熄灭,像任务已结束。新增回合级 turnActive:PTY 由 UserPromptSubmit hook 亮起、Stop hook 原始 POST 到达即灭(不等 10s 语音防抖)、停止按钮/终端 Esc(嗅探「Request interrupted」条目)主动灭;SDK 转发 CLI 原生 `session_state_changed`(注入 `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1` 解锁),push→running / result→idle / 中断·死亡→idle 全版本兜底;帧带 cwd 按工作区路由、前端按查看会话过滤,多工作区不串扰。灭灯改为回合级信号把关 2s 防抖,亮灯时机不变;hook 缺失精确退化旧行为;30s 双无(无 API 活动且无回合级信号)自调度陈旧兜底防卡死;多工作区切换双端复位。行为变化:工具间隙按 Enter 转为入队。Coverage: `turn-active.test.js`, `cli-sdk-session-state-env.test.js`, `turn-active-gating.test.js`, `sse-connection-gen.test.js`, `api-events-gap.test.js`.
+
 - fix(web): **修复两个 SDK 面板的无限拉取环** — `SdkMcpStatusTab` 与克隆母版 `SdkContextUsageTab` 改用 `useReducer` 驱动面板状态（dispatch 身份恒定）,消除 `useState+useCallback([detail,status])` 导致的「成功拉取→dispatch/load 身份变更→挂载 effect 重跑→再次 load()」无限自旋（~1 请求/RTT，且服务端每轮向所有 WS 客户端广播）。新增 `sdk-panel-stable-dispatch.test.js` 源契约防回归。
 - feat(sdk): **SDK 模式新增「MCP 状态」面板 + sdkModel 模型 chip** — ① 接通 `mcpServerStatus()` 控制请求：新增 `GET /api/sdk-mcp-server-status` 按需拉取（身份守卫防代际串扰 + 10s 超时防楔 + 数组守卫反转，空数组 `[]` 为合法"无 MCP 服务器"），详情面板新增 SDK-only「MCP 状态」标签页按 server 列出连接状态徽标/版本/工具数/failed 错误文本（按需拉取 + WS 重连回放 + 切会话清帧，不挂回合触发器——MCP 状态不与回合相关）。② `sdkModel` 死状态接通渲染：SDK 启动模型提升到 AppBase，在 AppHeader 代理热切换 chip 槽位作回退展示（热切换优先——仅官方 Default、代理 chip 不渲染时露头，只读不可点击）。Coverage: `sdk-manager-query.test.js`, `sdk-mcp-status-route.test.js`, `mcp-status-view.test.js`, `sdk-mcp-status-tab.test.js`, `mcp-status-i18n.test.js`, `sdk-model-chip.test.js`, `new-ui-i18n.test.js`.
 - docs(readme): **同步 17 个翻译版 README 的 SDK 段** — `ccv -SDK` 笔误改 `ccv --sdk`，"no terminal panel" 改为承认 Header 的 scratch 多 tab 终端存在（对齐 c05d409e 的英文版修正）。
