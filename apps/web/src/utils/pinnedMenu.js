@@ -1,11 +1,14 @@
-// 汉堡菜单「钉住 → 快捷方式」的全局持久化（localStorage，跨项目共享）。
-// 纯函数：parse / serialize / toggle；localStorage I/O 留在组件侧（AppHeader）。
-// 存储值是一个菜单 key 字符串数组，顺序即用户钉住（pin）的先后顺序。
+// Pinned-state logic for the hamburger menu's "pin → shortcut" feature.
+// Authoritative persistence: server-side preferences.json (`pinnedMenuKeys`, a real string
+// array, order = pin chronology) via the /api/preferences channel. The legacy localStorage
+// key `ccv_pinnedMenuKeys` (a JSON string) now serves only as the one-shot migration source.
+// Pure functions only: parse / toggle / normalize / resolve; all I/O stays in AppHeader.
 
 export const PINNED_KEY = 'ccv_pinnedMenuKeys';
 
-// 解析 localStorage 原始字符串 → string[]。
-// 任何异常（null / 非 JSON / 非数组）一律降级为 []，并过滤掉非字符串元素 + 去重。
+// Parse a legacy localStorage raw string → string[].
+// Any anomaly (null / non-JSON / non-array) degrades to []; non-string elements are dropped
+// and duplicates removed.
 export function parsePinned(raw) {
   if (typeof raw !== 'string' || raw === '') return [];
   let arr;
@@ -15,41 +18,40 @@ export function parsePinned(raw) {
     return [];
   }
   if (!Array.isArray(arr)) return [];
-  const seen = new Set();
-  const out = [];
-  for (const item of arr) {
-    if (typeof item !== 'string' || item === '') continue;
-    if (seen.has(item)) continue;
-    seen.add(item);
-    out.push(item);
-  }
-  return out;
+  return normalizePinnedKeys(arr);
 }
 
-// 序列化 string[] → 可写入 localStorage 的字符串。
-export function serializePinned(arr) {
-  return JSON.stringify(Array.isArray(arr) ? arr : []);
-}
-
-// 切换某个 key 的钉住状态：已存在则移除，不存在则追加到末尾（保持插入顺序）。
-// 返回新数组（不修改入参）；顺带去重。
+// Toggle one key's pinned state: remove if present, append to the end otherwise
+// (insertion order is preserved). Returns a new array (input is not mutated), normalized.
 export function togglePinned(arr, key) {
-  const list = parsePinnedArray(arr);
+  const list = normalizePinnedKeys(arr);
   if (typeof key !== 'string' || key === '') return list;
   if (list.includes(key)) return list.filter(k => k !== key);
   return [...list, key];
 }
 
-// 内部：把任意入参规整成「去重的字符串数组」，避免脏数据传播。
-function parsePinnedArray(arr) {
-  if (!Array.isArray(arr)) return [];
+// Normalize any input into a deduped array of non-empty strings. Shared by the preferences
+// array (authoritative) and the legacy JSON string (after parsePinned) so dirty data never
+// propagates into state.
+export function normalizePinnedKeys(value) {
+  if (!Array.isArray(value)) return [];
   const seen = new Set();
   const out = [];
-  for (const item of arr) {
+  for (const item of value) {
     if (typeof item !== 'string' || item === '') continue;
     if (seen.has(item)) continue;
     seen.add(item);
     out.push(item);
   }
   return out;
+}
+
+// Authoritative resolve on hydrate: a preferences array wins (empty array = the user cleared
+// every pin — still authoritative, no fallback); only a non-array / absent value falls back
+// to the legacy localStorage string. migrated=true iff the keys came from a non-empty legacy
+// value, which tells the caller to write them back to preferences and clear the legacy key.
+export function resolvePinnedKeys(prefsValue, legacyRaw) {
+  if (Array.isArray(prefsValue)) return { keys: normalizePinnedKeys(prefsValue), migrated: false };
+  const keys = parsePinned(legacyRaw);
+  return { keys, migrated: keys.length > 0 };
 }
