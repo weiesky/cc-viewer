@@ -857,12 +857,15 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
     // 若 SDK 内部异常吞掉了 result 消息这条信号就丢了 —— 至少打个 warn 让排查时有线索。
     // 显式 typeof 检查：以前用可选链 `?.()` 在 export 缺失时返回 undefined → catch 永远不触发
     // → 「至少 warn」承诺落空，turn-end 静默丢，bug 极难追。
-    onTurnEnd: ({ sessionId, ts }) => {
+    onTurnEnd: ({ sessionId, ts, cwd }) => {
       if (typeof serverMod.broadcastTurnEnd !== 'function') {
         console.warn('[sdk] serverMod.broadcastTurnEnd is not a function (export missing?); turn-end signal dropped');
         return;
       }
-      try { serverMod.broadcastTurnEnd(sessionId, ts); }
+      // Per-workspace (2026-10): forward the session cwd so the server routes the
+      // turn_end to THIS workspace's scope (SDK has no Stop-hook POST; without a
+      // scope hint every SDK turn-end resolved to the bound project).
+      try { serverMod.broadcastTurnEnd(sessionId, ts, null, cwd); }
       catch (err) { console.warn('[sdk] broadcastTurnEnd threw:', err?.message); }
     },
     // query 级失败(spawn/protocol/iterator)推到 Web UI toast —— 此前只有 console.error,

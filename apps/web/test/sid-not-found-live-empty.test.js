@@ -234,10 +234,10 @@ describe('sid-not-found reason handling (runtime)', () => {
   const NO_SESSION_TEXT = 'No displayable session for this project';
   const TIMEOUT_TEXT = 'Switch timed out: target project did not respond';
 
-  /** initSSE against a fresh EventSource and return its sid-not-found listener. */
+  /** Activate a scope onto a fresh EventSource and return its sid-not-found listener. */
   async function listenerFor(inst, scope) {
     currentES = null;
-    inst.initSSE(scope);
+    inst._activateScope(scope);
     await new Promise((r) => setTimeout(r, 40));
     assert.ok(currentES, 'an EventSource was constructed');
     const fns = currentES.listeners['sid-not-found'] || [];
@@ -273,15 +273,25 @@ describe('sid-not-found reason handling (runtime)', () => {
     assert.ok(warnings().includes(TIMEOUT_TEXT));
   });
 
-  it('a stale (pre-reconnect) listener is guarded off by the sse generation check', async () => {
+  it('a sid-not-found on a BACKGROUND channel never detaches or toasts the rendered view', async () => {
+    // Per-workspace channels (2026-10): switching the rendered view to the bound
+    // scope leaves the projB channel alive as a background tap. Its own
+    // sid-not-found frame only invalidates that scope (committed=false → the
+    // next activate goes cold) — toast/detach stay rendered-view actions.
+    // (The per-socket generation guard itself is covered by
+    // sse-connection-gen.test.js against the real channel manager.)
     const inst = await mount();
     const fn = await listenerFor(inst, { sid: null, project: 'projB', instance: 'ccv-deadbeef' });
-    // Reconnect: bumps the generation, making the previously captured listener stale.
+    // Re-render the bound scope: the projB channel becomes a background tap.
     await listenerFor(inst, { sid: null, project: null, instance: null });
+    const projBChannel = inst._channels.get('project:projB\x00ccv-deadbeef');
+    assert.ok(projBChannel, 'the projB channel is still alive in the background');
+    assert.notEqual(inst._channels.getRendered(), projBChannel, 'projB is no longer rendered');
     globalThis.__ccvWarnings = [];
     fn({ data: JSON.stringify({ sid: null, instance: 'ccv-deadbeef', reason: 'instance-no-session', ts: 2 }) });
-    assert.equal(inst.detachCalls, 0, 'stale listeners must not fire (sse-connection-gen contract)');
-    assert.deepEqual(warnings(), [], 'a stale listener must not toast at all');
+    assert.equal(inst.detachCalls, 0, 'a background channel must not detach the rendered view');
+    assert.deepEqual(warnings(), [], 'a background channel must not toast at all');
+    assert.equal(projBChannel.vm.committed, false, 'the dead scope is invalidated for its next activate');
   });
 
   it('empty view mainline: load_end clears the switch overlay with NO toast and NO detach', async () => {
@@ -291,7 +301,7 @@ describe('sid-not-found reason handling (runtime)', () => {
     // to hang until the 30s backstop). No sid-not-found ⇒ no toast, no detach.
     const inst = await mount();
     currentES = null;
-    inst.initSSE({ sid: null, project: 'projB', instance: 'ccv-livebeef' });
+    inst._activateScope({ sid: null, project: 'projB', instance: 'ccv-livebeef' });
     await new Promise((r) => setTimeout(r, 40));
     assert.ok(currentES, 'an EventSource was constructed');
     // Arm the probe FIRST, then raise the overlay — initSSE's own mount-time
@@ -328,7 +338,7 @@ describe('sid-not-found reason handling (runtime)', () => {
     // Simulate the cache-hit paint that initSSE performs before the delta.
     inst.setState({ requests: [{ timestamp: '2026-10-10T06:00:00.000Z', url: 'u', mainAgent: true }] });
     currentES = null;
-    inst.initSSE({ sid: null, project: 'projB', instance: 'ccv-livebeef' });
+    inst._activateScope({ sid: null, project: 'projB', instance: 'ccv-livebeef' });
     await new Promise((r) => setTimeout(r, 40));
     assert.ok(currentES, 'an EventSource was constructed');
     globalThis.__ccvWarnings = [];

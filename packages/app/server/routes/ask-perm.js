@@ -2,7 +2,7 @@
 import { loadAskStore, consumeIfFinal as askStoreConsumeIfFinal, markCancelled as askStoreMarkCancelled } from '../lib/ask/ask-store.js';
 import { runWaterfallHook, runParallelHook } from '../lib/plugin-loader.js';
 import { sendEventToClients } from '../lib/log-watcher.js';
-import { filterClientsByViewProject } from '../lib/v2/view-router.js';
+import { filterClientsByScope } from '../lib/v2/view-router.js';
 import { _projectName } from '../interceptor.js';
 
 function pendingAsks(req, res, parsedUrl, isLocal, deps) {
@@ -517,12 +517,16 @@ function streamChunk(req, res, parsedUrl, isLocal, deps) {
       // Multi-project (2026-10): stamp the SOURCE project so the broadcast can
       // be routed only to clients VIEWING that project — an unfiltered
       // broadcast let project A's typewriter render inside project B's view
-      // (the SSE cross-project bleed). `entry._resumeProject` is the emitting
-      // claude's own project (self-reported via x-ccv-project-dir); absent ⇒
-      // the bound project (legacy no-header producer).
-      const sourceProject = (typeof entry._resumeProject === 'string' && entry._resumeProject)
-        ? entry._resumeProject
-        : (_projectName || '');
+      // (the SSE cross-project bleed). The interceptor now stamps the chunk
+      // with the emitting claude's self-reported project/instance (x-ccv-
+      // project-dir / x-ccv-instance); `entry._resumeProject` is the fallback
+      // for older producers, and absent everything ⇒ the bound project.
+      const sourceProject = (typeof entry.project === 'string' && entry.project)
+        ? entry.project
+        : (typeof entry._resumeProject === 'string' && entry._resumeProject)
+          ? entry._resumeProject
+          : (_projectName || '');
+      const sourceInstance = (typeof entry.instance === 'string' && entry.instance) ? entry.instance : null;
       const _streamChunkPayload = {
         timestamp: entry.timestamp,
         url: entry.url,
@@ -533,9 +537,10 @@ function streamChunk(req, res, parsedUrl, isLocal, deps) {
         // ignore it.
         sessionId: typeof entry.sessionId === 'string' ? entry.sessionId : null,
         project: sourceProject,
+        instance: sourceInstance,
       };
       sendEventToClients(
-        filterClientsByViewProject(deps.clients, sourceProject, _projectName || ''),
+        filterClientsByScope(deps.clients, sourceProject, sourceInstance, _projectName || ''),
         'stream-progress',
         _streamChunkPayload,
       );

@@ -96,7 +96,7 @@ describe('viewed-project scoping + true /resume confirm', () => {
     assert.ok(/if \(scopeProject && scopeProject !== this\.state\.projectName\)/.test(APPBASE), '_applyViewAttach must branch on parallel vs bound scope');
     assert.ok(/viewedProject: scopeProject, viewedInstance: scopeInstance/.test(APPBASE), 'parallel resume must keep viewedProject/viewedInstance');
     assert.ok(/viewedProject: null, viewedInstance: null/.test(APPBASE), 'bound resume must clear the parallel view');
-    assert.ok(/this\.initSSE\(\{ sid: uuid, project: scopeProject, instance: scopeInstance \}\)/.test(APPBASE), '_applyViewAttach must scope initSSE by the target project');
+    assert.ok(/this\._activateScope\(\{ sid: uuid, project: scopeProject, instance: scopeInstance \}/.test(APPBASE), '_applyViewAttach must activate the target project scope');
   });
 
   it('resumeSession util POSTs /api/resume-session with instanceKey support', () => {

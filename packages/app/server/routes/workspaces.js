@@ -1,7 +1,7 @@
 // Workspace routes (moved verbatim from server.js handleRequest).
 import { existsSync, statSync } from 'node:fs';
 import { basename } from 'node:path';
-import { initForWorkspace, resetWorkspace, getLiveLogSource, markContinuedLaunch, markForkSession, markResumeSession, isContinuedLaunch } from '../interceptor.js';
+import { initForWorkspace, resetWorkspace, getLiveLogSource, markContinuedLaunch, markForkSession, markResumeSession, isContinuedLaunch, clearScopeState } from '../interceptor.js';
 import { LOG_DIR } from '../../findcc.js';
 import { migrationStatus } from '../lib/v2/migrate-prompt.js';
 import { reportSwallowed } from '@ccv/core/error-report';
@@ -219,6 +219,12 @@ function workspacesStop(req, res, parsedUrl, isLocal, deps) {
     // 重置 interceptor 状态
     resetWorkspace();
     deps.setWorkspaceLaunched(false);
+    // Per-workspace: tear down every scope's streaming/turn buckets AND the
+    // server-side per-scope maps (session tags, streaming edges) — a PTY
+    // killed here fires no Stop POST, so without this the killed workspaces'
+    // buckets stay `active` forever and a stale session tag rejects the fresh
+    // session's first UserPromptSubmit on a same-name relaunch.
+    try { (deps.resetScopeRuntime ? deps.resetScopeRuntime() : clearScopeState()); } catch { /* best-effort */ }
 
     // 通知所有 SSE 客户端
     deps.clients.forEach(client => {

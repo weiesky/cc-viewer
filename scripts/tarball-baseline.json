@@ -1462,6 +1462,7 @@
   "server/lib/resume-watchdog.js",
   "server/lib/resync-nudge-gate.js",
   "server/lib/same-origin.js",
+  "server/lib/scope-router.js",
   "server/lib/sdk-adapter.js",
   "server/lib/sdk-manager.js",
   "server/lib/search-worker.js",

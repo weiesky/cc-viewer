@@ -7,6 +7,7 @@ import { streamRawEntriesAsync } from '../lib/log-stream.js';
 import { migrationStatus } from '../lib/v2/migrate-prompt.js';
 import { reportSwallowed } from '@ccv/core/error-report';
 import { sseHead, sseWrite, needsDrain, wireEnd, awaitWireDrain, isWireV3Enabled } from '../lib/wire-compress.js';
+import { scopeKeyForProducer } from '../lib/scope-router.js';
 import { readV2ColdBundle } from '../lib/v2/meta-rows.js';
 import { readV2SingleEntry } from '../lib/v2/adapter.js';
 import { resolveSessionDirName, latestMainSessionDir } from '../lib/v2/session-select.js';
@@ -49,11 +50,17 @@ function turnEndNotify(req, res, parsedUrl, isLocal, deps) {
       res.end(JSON.stringify({ error: 'malformed JSON body' }));
       return;
     }
-    deps.scheduleTurnEndBroadcast(payload.sessionId || null, payload.ts || Date.now(), payload.transcriptPath || null);
+    // Per-workspace: resolve the emitting claude's scope (sid→PTY first, cwd
+    // fallback, bound last) so the turn_end frame and the immediate turn-active
+    // clear land on exactly one workspace's viewers.
+    const scope = typeof deps.resolveScopeForHookPayload === 'function'
+      ? deps.resolveScopeForHookPayload(payload)
+      : { project: '', instance: null };
+    deps.scheduleTurnEndBroadcast(payload.sessionId || null, payload.ts || Date.now(), payload.transcriptPath || null, scope);
     // Turn-level loading clears on the RAW Stop POST arrival — the debounced
     // `turn_end` SSE frame (voice-pack semantics) would keep the spinner up for
     // the whole debounce window. Idempotent on the server side.
-    try { deps.onTurnActiveClear?.(); }
+    try { deps.onTurnActiveClear?.(scope); }
     catch (err) { reportSwallowed('turn-end-notify.turn-active-clear', err); }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
@@ -544,7 +551,11 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   // Skipped for an empty live view: CONTEXT_WINDOW_FILE is a single GLOBAL file (not
   // project-scoped), so pushing it here would paint another project's usage onto a
   // brand-new workspace. The first real main turn pushes a genuine measurement instead.
-  if (!pushedContextWindow && !emptyLiveView) {
+  // Per-workspace: the same global-file constraint applies to ANY non-bound view —
+  // a parallel project's viewers must not see the bound project's global fallback
+  // either (their live feed pushes their own measurement on the next main turn).
+  const viewedIsBound = !viewedProject || viewedProject === (_projectName || '');
+  if (!pushedContextWindow && !emptyLiveView && viewedIsBound) {
     try {
       const cwRaw = readFileSync(CONTEXT_WINDOW_FILE, 'utf-8');
       const cwFile = JSON.parse(cwRaw);
@@ -578,22 +589,33 @@ async function events(req, res, parsedUrl, isLocal, deps) {
 
   // 任务清单快照补推：内存态不在冷加载数据里，页面刷新/重连后横条要等下一次
   // 任务事件才恢复 —— 连接建立即推一份当前快照（空列表也推，清掉客户端残留）。
+  // Per-workspace: the snapshot comes from the VIEWED scope's bucket, so a
+  // parallel view never receives the bound project's checklist (and vice versa).
+  // The scope key is built by the SAME normalizer the producers use (bound
+  // collapses to ''), so a bound view and its producer always meet in one bucket.
+  const _viewScopeKey = scopeKeyForProducer(
+    { project: viewedProject || null, instance: instanceParam || null },
+    _projectName || '',
+  );
   try {
-    const snap = deps.getTaskSnapshot?.();
+    const snap = typeof deps.getTaskSnapshot === 'function' ? deps.getTaskSnapshot(_viewScopeKey) : null;
     if (snap) sseWrite(res, `event: task_update\ndata: ${JSON.stringify({ sessionId: snap.sessionId, tasks: snap.tasks, ts: Date.now() })}\n\n`);
   } catch (err) { reportSwallowed('sse.task_update.snapshot', err); }
 
   // Turn-level loading replay: a page refresh mid-turn restores the spinner in the
   // same connect block (turn-level state is in-memory only, not in the cold load).
-  // The flag is a bound-project global (same constraint as streamingState), so the
-  // replay only goes to viewers of the bound project — a chip-switched parallel view
-  // must not latch the bound project's spinner. NOTE: this makes turn_active MORE
-  // filtered than streaming_status/turn_end (which broadcast to all); the parallel
-  // view simply shows no spinner for its own project, matching the pre-multi-PTY
-  // single-project posture documented at the streaming_status timer.
+  // Per-workspace: the replay reads the VIEWED scope's bucket, so a parallel
+  // view restores ITS OWN spinner (previously bound-only — the parallel view
+  // simply never showed one).
   try {
-    const viewedIsBound = !viewedProject || viewedProject === (_projectName || '');
-    if (viewedIsBound && deps.getPtyTurnActive?.()) {
+    // 按返回值区分（不是按存在性）：getTurnActiveFor 存在但查不到该 scope 的
+    // 活跃回合（false/undefined）时，仍回落 legacy 的 bound-only getPtyTurnActive —
+    // 否则一个「存在但恒 false」的退化实现会静默消灭整个连接回放。
+    const _forScope = typeof deps.getTurnActiveFor === 'function' ? deps.getTurnActiveFor(_viewScopeKey) : undefined;
+    const _turnActive = (_forScope !== undefined && _forScope !== null)
+      ? _forScope
+      : (viewedIsBound && deps.getPtyTurnActive?.());
+    if (_turnActive) {
       sseWrite(res, `event: turn_active\ndata: ${JSON.stringify({ active: true, sessionId: null, ts: Date.now() })}\n\n`);
     }
   } catch (err) { reportSwallowed('sse.turn_active.replay', err); }

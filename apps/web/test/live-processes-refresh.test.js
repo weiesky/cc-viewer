@@ -135,10 +135,11 @@ describe('AppBase.jsx workspace_started rebound wiring (2026-10)', () => {
   // Anchor on the handler's function boundary first, then assert within it —
   // a bare `rebound === true[\s\S]{0,N}` window is comment-length sensitive and
   // has silently punched through when the surrounding commentary grew.
+  // Per-workspace channels (2026-10): the handler body is `_onWorkspaceStarted`.
   const handler = (() => {
-    const start = APPBASE_SRC.indexOf("addEventListener('workspace_started'");
+    const start = APPBASE_SRC.indexOf('_onWorkspaceStarted(channel, event) {');
     assert.notEqual(start, -1, 'workspace_started handler present');
-    const end = APPBASE_SRC.indexOf("addEventListener('workspace_stopped'", start);
+    const end = APPBASE_SRC.indexOf('_onWorkspaceStopped(channel, event) {', start);
     return end === -1 ? APPBASE_SRC.slice(start) : APPBASE_SRC.slice(start, end);
   })();
 
@@ -154,12 +155,14 @@ describe('AppBase.jsx workspace_started rebound wiring (2026-10)', () => {
       'a normal switch resets unconditionally; a rebound only when it affects this tab');
   });
 
-  it('reconnects the SSE (explicit empty scope) only for an affected rebound', () => {
-    // A rebound-afflicted tab's SSE stays stamped with the OLD bound name, so
-    // the survivor's live feed never arrives (label updates, pane stays silent).
-    const re = /if \(isRebound\) \{\s*this\._sseReconnectCount = 0;\s*this\.initSSE\(\{ sid: null, project: null, instance: null \}\);/;
+  it('re-activates the bound scope (explicit empty scope) only for an affected rebound', () => {
+    // A rebound-afflicted tab's channels stay stamped with the OLD bound name,
+    // so the survivor's live feed never arrives (label updates, pane stays
+    // silent). The rebound closes the dead-domain channels and re-activates the
+    // bound scope cold with an explicit empty scope.
+    const re = /if \(isRebound\) \{[\s\S]{0,300}?this\._closeReboundChannels\(data\.reboundFrom\);[\s\S]{0,200}?this\._activateScope\(\{ sid: null, project: null, instance: null \}, \{ reason: 'rebound' \}\);/;
     assert.ok(re.test(handler),
-      'an affected rebound must clear the reconnect budget and initSSE({sid:null,project:null,instance:null})');
+      'an affected rebound must close the dead-domain channels and activateScope({sid:null,project:null,instance:null})');
   });
 
   it('does not reconnect on a normal workspace_started (server replays on the live connection)', () => {
@@ -169,6 +172,10 @@ describe('AppBase.jsx workspace_started rebound wiring (2026-10)', () => {
     const reconnectAt = handler.indexOf('if (isRebound) {');
     assert.notEqual(resetAt, -1, 'shouldReset block present');
     assert.ok(reconnectAt > resetAt, 'the reconnect is inside the shouldReset block, not before it');
+    // …and an UNAFFECTED tab still closes the dead-domain channels (the bound
+    // stamp died for every client), without any view reset.
+    assert.ok(/else if \(isRebound\) \{[\s\S]{0,200}?this\._closeReboundChannels\(data\.reboundFrom\);/.test(handler),
+      'an unaffected rebound must still close the dead-domain channels');
   });
 });
 

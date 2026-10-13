@@ -798,7 +798,10 @@ function _createSession(key, cwd) {
         // doesn't go through ensureHooks() so this in-process callback is the
         // only way the renderer learns the turn is over.
         if (_onTurnEnd) {
-          try { _onTurnEnd({ sessionId: _sessionId, ts: Date.now() }); }
+          // Per-workspace (2026-10): carry the session's own cwd so the server
+          // can route turn_end to THIS workspace's SSE scope (SDK mode has no
+          // Stop-hook POST, so this callback is the only turn-end producer).
+          try { _onTurnEnd({ sessionId: _sessionId, ts: Date.now(), cwd: _cwd }); }
           catch (err) { console.warn('[sdk-manager] onTurnEnd threw:', err?.message); }
         }
         if (rec) _settleTurn(rec);

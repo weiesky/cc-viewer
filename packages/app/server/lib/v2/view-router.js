@@ -39,6 +39,54 @@ export function filterClientsByViewProject(clientList, project, boundProject) {
 }
 
 /**
+ * Instance-narrowed variant of filterClientsByViewProject (multi-instance,
+ * 2026-10-06 rule lifted from live-feed._clientsForInstance): a frame stamped
+ * with an instance is visible to every viewer of the project EXCEPT clients
+ * stamped with a DIFFERENT instance. Unset on either side ⇒ visible (a client
+ * with no `_ccvViewInstance` stamp sees every instance; a frame with no
+ * instance reaches all of the project's viewers).
+ *
+ * @param {Array} clientList - SSE response objects.
+ * @param {string} project - the frame's project ('' ⇒ bound).
+ * @param {string|null} instance - the frame's instance, when known.
+ * @param {string} boundProject - the server's bound project.
+ * @returns {Array} the subset of clients that should receive the frame.
+ */
+export function filterClientsByScope(clientList, project, instance, boundProject) {
+  // Composition over duplication: project half, then the shared instance rule —
+  // the two can never drift apart.
+  return filterClientsByInstance(filterClientsByViewProject(clientList, project, boundProject), instance);
+}
+
+/**
+ * Instance-only narrowing over an ALREADY project-filtered client list — the
+ * live-feed composes its own project filter (`opts.clientFilter`, which may be
+ * a server-supplied closure rather than the pure predicate) with this rule.
+ * Same semantics as the instance half of filterClientsByScope: unset on either
+ * side ⇒ visible; nobody instance-stamped ⇒ the input array (same reference).
+ *
+ * @param {Array} clientList - already project-filtered SSE responses.
+ * @param {string|null} instance - the frame's instance, when known.
+ * @returns {Array}
+ */
+export function filterClientsByInstance(clientList, instance) {
+  if (!instance) return clientList;
+  // Exclude ONLY clients explicitly stamped with a DIFFERENT instance. An
+  // UNSTAMPED (project-level) viewer of the same project must also receive the
+  // frame: if an earlier `active:true` frame reached it while no instance viewer
+  // was online, the matching `active:false` must reach it too or its spinner
+  // never clears (the clear would be narrowed away the moment a parallel
+  // instance chip connects). Keeping active/clear on the SAME recipient set
+  // avoids that split delivery.
+  // Fast path: nobody is excluded (no differently-stamped client) ⇒ return the
+  // SAME array reference (no filter alloc), preserving legacy identity.
+  let anyExcluded = false;
+  for (const c of clientList) { if (c && c._ccvViewInstance && c._ccvViewInstance !== instance) { anyExcluded = true; break; } }
+  if (!anyExcluded) return clientList;
+  return clientList.filter((c) => !c || !c._ccvViewInstance || c._ccvViewInstance === instance);
+}
+
+/**
  * Extract the owning project dir name from a session dir path of the form
  * `<LOG_DIR>/<projectSan>/sessions/<dirName>`. Returns the on-disk `<projectSan>`
  * segment, or '' when `dir` is not under `<LOG_DIR>/`. Pure string parsing — the

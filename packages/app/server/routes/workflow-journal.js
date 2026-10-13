@@ -33,10 +33,13 @@ function workflowJournal(req, res, parsedUrl, isLocal, deps) {
     }
 
     // 惰性 arm：只监视真有人在看的 session workflows 目录，后续 journal 覆写经 SSE 实时推送。
+    // Per-workspace: the server-supplied filter routes the frames to only this
+    // project's viewers (absent ⇒ legacy broadcast-to-all).
+    const _wfFilter = typeof deps.filterClientsByViewProject === 'function' ? deps.filterClientsByViewProject : null;
     const wfDir = resolveWorkflowsDir(session, project);
     if (wfDir && deps && Array.isArray(deps.clients)) {
       try {
-        armWorkflowWatch({ workflowsDir: wfDir, sessionId: session, project, clients: deps.clients });
+        armWorkflowWatch({ workflowsDir: wfDir, sessionId: session, project, clients: deps.clients, clientFilter: _wfFilter });
       } catch {}
     }
 
@@ -57,7 +60,7 @@ function workflowJournal(req, res, parsedUrl, isLocal, deps) {
       const live = runDir ? deriveLiveJournal(runDir, runId) : null;
       if (live) {
         if (deps && Array.isArray(deps.clients)) {
-          try { armWorkflowLiveWatch({ runDir, runId, sessionId: session, project, clients: deps.clients }); } catch {}
+          try { armWorkflowLiveWatch({ runDir, runId, sessionId: session, project, clients: deps.clients, clientFilter: _wfFilter }); } catch {}
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, data: live }));

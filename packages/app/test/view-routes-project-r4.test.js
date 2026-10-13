@@ -162,6 +162,8 @@ describe('⑤ sid-detach 场景语义（镜像 + 锚点）', () => {
     // handleDetachView 的触发条件是 attachedSid || viewedProject —— 纯 sid-detach 同样命中。
     assert.ok(/if \(!this\.state\.attachedSid && !this\.state\.viewedProject\) return;/.test(src), 'sid-only detach 不被跳过');
     assert.ok(/handleDetachView = \(\) => \{[\s\S]{0,1200}?requests: \[\],/.test(src), 'sid-detach 同样清 entries');
-    assert.ok(/handleDetachView = \(\) => \{[\s\S]{0,1200}?resumeSwitch: \{ uuid: this\.state\.projectName \|\| 'bound' \}/.test(src), 'sid-detach 同样置遮罩');
+    // Per-workspace channels (2026-10): 遮罩改由 _activateScope 的 cold 路径负责
+    // （overlayUuid 传入；暖通道瞬时重绘无遮罩），不再在 handler 里直接 setState resumeSwitch。
+    assert.ok(/handleDetachView = \(\) => \{[\s\S]{0,1600}?_activateScope\(\{ sid: null, project: null, instance: null \}, \{[\s\S]{0,200}?overlayUuid: this\.state\.projectName \|\| 'bound'/.test(src), 'sid-detach 走 _activateScope 且 cold 遮罩键保持 bound 语义');
   });
 });

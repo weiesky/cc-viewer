@@ -26,6 +26,7 @@ import { writeJsonAtomic, mutateJsonSync } from './lib/json-store.js';
 import { readSecretOr, writeSecret, removeSecret } from './lib/credential-access.js';
 import { setProjectName } from './lib/project-state.js';
 import { consumePendingForResume, writeSnapshot, projectKeyForCwd } from './lib/system-prompt-snapshots.js';
+import { BOUND_SCOPE, scopeKeyOf } from './lib/scope-router.js';
 import { liveSystemPromptEnabled, getLaunchSystemPromptInfo, getLiveEntry, putLiveEntry, selectEntriesForModel, applyLiveSystem, knownInjectedTexts } from './lib/system-prompt-live.js';
 import { MODEL_PROMPT_DIR } from './lib/model-system-prompts.js';
 
@@ -42,6 +43,126 @@ let _liveProtocol = 'http';
 export function setLivePort(port, protocol) { _livePort = port ? String(port) : null; _liveProtocol = protocol || 'http'; }
 
 // 流式请求的实时状态（供 server.js SSE 推送）
+// Per-workspace (2026-10): state is keyed by producer scope ('' = the bound
+// project — the legacy singleton bucket; a foreign project/instance gets its
+// own bucket). `streamingState` below is literally the '' bucket's object, so
+// every legacy reader/writer (IM bridge, chat-queue, tests) keeps working
+// unchanged; scoped callers go through streamingStateFor()/resetStreamingStateFor().
+const _SCOPE_STATE_CAP = 16;
+const _streamingByScope = new Map(); // scopeKey → {active, requestId, startTime, model, bytesReceived, chunksReceived}
+const _turnByScope = new Map();      // scopeKey → {active, sessionId}
+
+function _newStreamingBucket() {
+  return { active: false, requestId: null, startTime: null, model: null, bytesReceived: 0, chunksReceived: 0 };
+}
+
+/** Producer scope for one intercepted request entry: the bound project's own
+ *  claude (self-report header present but matching the bound name) collapses to
+ *  ''; a foreign project keeps its name, narrowed by instance when present. */
+export function scopeKeyForEntry(entry) {
+  if (!entry || typeof entry !== 'object') return BOUND_SCOPE;
+  const p = (typeof entry._resumeProject === 'string' && entry._resumeProject) || '';
+  if (!p || p === (_projectName || '')) return BOUND_SCOPE;
+  return scopeKeyOf(p, (typeof entry._ccvInstance === 'string' && entry._ccvInstance) || null);
+}
+
+/** Get (or create) the streaming bucket for a scope. LRU-capped: an evicted
+ *  bucket is only ever an INACTIVE tail — the bound bucket and any active
+ *  (in-flight) bucket are never evicted, or a mid-turn eviction would either
+ *  resurrect as a spurious rising edge or strand the spinner on. */
+export function streamingStateFor(scopeKey) {
+  const k = (typeof scopeKey === 'string' && scopeKey) || BOUND_SCOPE;
+  let b = _streamingByScope.get(k);
+  if (b) {
+    // refresh recency
+    _streamingByScope.delete(k);
+    _streamingByScope.set(k, b);
+    return b;
+  }
+  b = k === BOUND_SCOPE ? streamingState : _newStreamingBucket();
+  _streamingByScope.set(k, b);
+  _evictScopeMaps(_streamingByScope);
+  return b;
+}
+
+function _evictScopeMaps(map) {
+  while (map.size > _SCOPE_STATE_CAP) {
+    let evicted = false;
+    for (const [k, v] of map) {
+      if (k === BOUND_SCOPE) continue;
+      if (v && v.active) continue; // never evict an in-flight bucket
+      map.delete(k);
+      evicted = true;
+      break;
+    }
+    if (!evicted) break; // everything left is bound or active — stop
+  }
+}
+
+/** Reset one scope's streaming bucket in place (same object identity kept). */
+export function resetStreamingStateFor(scopeKey) {
+  const b = streamingStateFor(scopeKey);
+  b.active = false;
+  b.requestId = null;
+  b.startTime = null;
+  b.model = null;
+  b.bytesReceived = 0;
+  b.chunksReceived = 0;
+}
+
+/** Iterate active streaming buckets (server streaming-status timer). */
+export function activeStreamingScopes() {
+  const out = [];
+  for (const [k, v] of _streamingByScope) if (v && v.active) out.push(k);
+  return out;
+}
+
+/** Iterate active turn buckets (server turn-active heartbeat). */
+export function activeTurnScopes() {
+  const out = [];
+  for (const [k, v] of _turnByScope) if (v && v.active) out.push(k);
+  return out;
+}
+
+/** Get (or create) the turn bucket for a scope. */
+export function turnStateFor(scopeKey) {
+  const k = (typeof scopeKey === 'string' && scopeKey) || BOUND_SCOPE;
+  let b = _turnByScope.get(k);
+  if (b) {
+    _turnByScope.delete(k);
+    _turnByScope.set(k, b);
+    return b;
+  }
+  b = k === BOUND_SCOPE ? turnActive : { active: false };
+  _turnByScope.set(k, b);
+  _evictScopeMaps(_turnByScope);
+  return b;
+}
+
+/** Tear down every non-bound scope bucket (stop/start cycles, workspace stop). */
+export function clearScopeState() {
+  for (const k of [..._streamingByScope.keys()]) if (k !== BOUND_SCOPE) _streamingByScope.delete(k);
+  for (const k of [..._turnByScope.keys()]) if (k !== BOUND_SCOPE) _turnByScope.delete(k);
+  resetStreamingState();
+  turnActive.active = false;
+}
+
+/** Tear down ONE scope's buckets (a PTY died / its workspace stopped mid-turn).
+ *  Without this a silently-killed workspace leaves its bucket `active:true`
+ *  forever — the heartbeat/streaming timer keeps re-broadcasting it and the
+ *  client's staleness escape is perpetually reset by those same frames (the
+ *  permanent-spinner leak). The bound bucket resets in place (identity kept). */
+export function clearScopeStateFor(scopeKey) {
+  const k = (typeof scopeKey === 'string' && scopeKey) || BOUND_SCOPE;
+  if (k === BOUND_SCOPE) {
+    resetStreamingState();
+    turnActive.active = false;
+    return;
+  }
+  _streamingByScope.delete(k);
+  _turnByScope.delete(k);
+}
+
 export const streamingState = { active: false, requestId: null, startTime: null, model: null, bytesReceived: 0, chunksReceived: 0 };
 export function resetStreamingState() {
   streamingState.active = false;
@@ -51,6 +172,9 @@ export function resetStreamingState() {
   streamingState.bytesReceived = 0;
   streamingState.chunksReceived = 0;
 }
+// The bound bucket IS the legacy singleton — register it so scoped iteration
+// sees it too (identity must stay this exact object for legacy readers).
+_streamingByScope.set(BOUND_SCOPE, streamingState);
 
 // Turn-level active flag (whole user-prompt turn, incl. local tool execution
 // between API calls). Lives here — next to streamingState — because the PTY hook
@@ -62,6 +186,20 @@ export function resetStreamingState() {
 // state-only on purpose.
 export const turnActive = { active: false };
 export function setTurnActive(v) { turnActive.active = !!v; }
+// The bound turn bucket IS the legacy singleton (same posture as streamingState).
+_turnByScope.set(BOUND_SCOPE, turnActive);
+
+/** Producer-scope stamp for a live stream chunk payload: raw (unnormalized)
+ *  _resumeProject/_ccvInstance — the ask-perm route normalizes against the
+ *  bound project. Absent when the producer self-reported nothing (bound claude
+ *  without headers ⇒ the route falls back to bound, today's behavior). */
+export function _scopeStampForChunk(entry) {
+  if (!entry || typeof entry !== 'object') return {};
+  const out = {};
+  if (typeof entry._resumeProject === 'string' && entry._resumeProject) out.project = entry._resumeProject;
+  if (typeof entry._ccvInstance === 'string' && entry._ccvInstance) out.instance = entry._ccvInstance;
+  return out;
+}
 
 // ─── IM 逐字流式的文本源 ───
 // 钉钉 AI 卡片流式（server/lib/adapters/dingtalk-adapter.js）需要「对话过程中」的主 agent 增量文本。
@@ -1046,14 +1184,22 @@ export function setupInterceptor() {
     if (requestEntry) requestEntry.requestId = requestId;
 
     // 流式请求状态追踪（仅对 Claude API 流式请求）
-    if (requestEntry?.isStream) {
-      streamingState.active = true;
-      streamingState.requestId = requestId;
-      streamingState.startTime = Date.now();
-      streamingState.model = requestEntry.body?.model || '';
-      streamingState.bytesReceived = 0;
-      streamingState.chunksReceived = 0;
+    // Per-workspace: the bucket belongs to the request's producer scope ('' =
+    // bound). The KEY is captured once here — NOT re-derived at the stream tail:
+    // `_projectName` can be rebound mid-flight (workspace launch/stop), and a
+    // recomputed key would reset a DIFFERENT bucket while the activation bucket
+    // stays `active` forever (the stuck-spinner regression).
+    const streamingScopeKey = requestEntry?.isStream ? scopeKeyForEntry(requestEntry) : null;
+    const streamingBucket = streamingScopeKey !== null ? streamingStateFor(streamingScopeKey) : null;
+    if (streamingBucket) {
+      streamingBucket.active = true;
+      streamingBucket.requestId = requestId;
+      streamingBucket.startTime = Date.now();
+      streamingBucket.model = requestEntry.body?.model || '';
+      streamingBucket.bytesReceived = 0;
+      streamingBucket.chunksReceived = 0;
     }
+    const _resetStreamingBucket = () => { if (streamingScopeKey !== null) resetStreamingStateFor(streamingScopeKey); };
 
     // Proxy profile request rewriting —— 按角色（main/subagent/teammate）解析有效 profile。
     // 经 classifyProxyRole 正向分类（teammate 进程恒 teammate；utility 跟随主角色；
@@ -1345,7 +1491,7 @@ export function setupInterceptor() {
     try {
       response = await _originalFetch.call(this, _fetchUrl, _fetchOpts);
     } catch (err) {
-      if (requestEntry?.isStream) resetStreamingState();
+      if (streamingBucket) _resetStreamingBucket();
       throw err;
     }
 
@@ -1405,6 +1551,10 @@ export function setupInterceptor() {
               // session uuid so an attached client can show only ITS sid's typewriter
               // and drop the other session's. Additive — older clients ignore it.
               sessionId: parseUserId(requestEntry.body?.metadata?.user_id)?.sessionId ?? null,
+              // Per-workspace (2026-10): the typewriter's producer scope — without
+              // it ask-perm's project filter fell back to the BOUND project (dead
+              // filter) and a parallel workspace's stream painted on the bound view.
+              ..._scopeStampForChunk(requestEntry),
             };
             sendStreamChunk(chunkEntry, ++liveChunkSeq, (ok) => {
               // 413 → 禁用当次流式，后续全由最终 v2 completion 交付
@@ -1431,6 +1581,7 @@ export function setupInterceptor() {
               // B3: same sessionId tag on the skeleton (seq 0) so the overlay filter
               // keys on (timestamp, sessionId) from the very first frame.
               sessionId: parseUserId(requestEntry.body?.metadata?.user_id)?.sessionId ?? null,
+              ..._scopeStampForChunk(requestEntry),
             }, 0, (ok) => { if (!ok) liveStreamEnabled = false; });
           }
 
@@ -1488,20 +1639,20 @@ export function setupInterceptor() {
                       streamedChunks = [];
                       streamedContentLen = 0;
                       requestEntry.response = null;
-                      resetStreamingState();
+                      _resetStreamingBucket();
                     } catch (err) {
                       requestEntry.response.body = fullContent.slice(0, 1000);
                       _writeCompletedEntry(requestEntry, _v2Handle);
                       streamedChunks = [];
                       streamedContentLen = 0;
                       requestEntry.response = null;
-                      resetStreamingState();
+                      _resetStreamingBucket();
                     }
                     controller.close();
                     break;
                   }
-                  streamingState.bytesReceived += value.byteLength;
-                  streamingState.chunksReceived++;
+                  streamingBucket.bytesReceived += value.byteLength;
+                  streamingBucket.chunksReceived++;
                   const chunk = decoder.decode(value, { stream: true });
                   streamedChunks.push(chunk);
                   streamedContentLen += chunk.length;
@@ -1554,7 +1705,7 @@ export function setupInterceptor() {
                   }
                 }
               } catch (err) {
-                resetStreamingState();
+                _resetStreamingBucket();
                 controller.error(err);
               }
             }
@@ -1574,7 +1725,7 @@ export function setupInterceptor() {
             body: '[Streaming Response - Capture failed]'
           };
           _writeCompletedEntry(requestEntry, _v2Handle);
-          resetStreamingState();
+          _resetStreamingBucket();
         }
       } else {
         // 对于非流式响应，可以安全读取body

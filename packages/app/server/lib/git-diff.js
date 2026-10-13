@@ -11,6 +11,12 @@ const execFileAsync = (cmd, args, opts) => _execFileAsyncRaw(cmd, args, { window
 const UNTRACKED_MAX_BYTES = 5 * 1024 * 1024;
 const BINARY_PROBE_BYTES = 8192;
 
+// Per-invocation git timeout. The fake-git test fixture (a PATH-injected POSIX
+// sh script) is far slower to exec than real git, so under the full-suite
+// concurrency load the old 3s wall was flaky. 10s keeps production responsive
+// while leaving ample headroom for the slower fixture.
+const GIT_TIMEOUT_MS = 10000;
+
 // Reject only `..` as a path *segment* (start, between slashes, or end).
 // Substring match (`'node..modules'.includes('..')`) was rejecting valid paths.
 const PATH_TRAVERSAL = /(?:^|\/)\.\.(?:\/|$)/;
@@ -86,7 +92,7 @@ export function countUntrackedLines(cwd, file) {
 export async function getUnpushedCommits(cwd, { maxCommits = 100 } = {}) {
   let branch = null;
   try {
-    const { stdout } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd, encoding: 'utf-8', timeout: 3000 });
+    const { stdout } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd, encoding: 'utf-8', timeout: GIT_TIMEOUT_MS });
     branch = stdout.trim();
   } catch {
     return { commits: [], hasUpstream: false, branch: null, upstream: null };
@@ -97,7 +103,7 @@ export async function getUnpushedCommits(cwd, { maxCommits = 100 } = {}) {
   let upstream = null;
   if (!detached) {
     try {
-      const { stdout } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'], { cwd, encoding: 'utf-8', timeout: 3000 });
+      const { stdout } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'], { cwd, encoding: 'utf-8', timeout: GIT_TIMEOUT_MS });
       const name = stdout.trim();
       if (name && SAFE_REF.test(name)) upstream = name;
     } catch { /* no upstream configured — fall through to the remote-refs fallback */ }
@@ -199,7 +205,7 @@ export async function getUnpushedCommits(cwd, { maxCommits = 100 } = {}) {
   let truncated = commits.length === maxCommits;
   if (truncated) {
     try {
-      const r = await execFileAsync('git', ['rev-list', '--count', ...rangeArgs], { cwd, encoding: 'utf-8', timeout: 3000 });
+      const r = await execFileAsync('git', ['rev-list', '--count', ...rangeArgs], { cwd, encoding: 'utf-8', timeout: GIT_TIMEOUT_MS });
       const parsed = parseInt(r.stdout.trim(), 10);
       if (Number.isFinite(parsed) && parsed > 0) {
         totalCount = parsed;
@@ -242,7 +248,7 @@ export async function getGitDiffs(cwd, files, commitHash) {
       const { stdout } = await execFileAsync(
         'git',
         ['diff-tree', '-r', '--no-commit-id', '--name-status', '--root', commitHash],
-        { cwd, encoding: 'utf-8', timeout: 5000, maxBuffer: 5 * 1024 * 1024 }
+        { cwd, encoding: 'utf-8', timeout: GIT_TIMEOUT_MS, maxBuffer: 5 * 1024 * 1024 }
       );
       commitStatusMap = new Map();
       for (const line of stdout.split('\n')) {
@@ -272,7 +278,7 @@ export async function getGitDiffs(cwd, files, commitHash) {
         is_new = status === 'A';
         is_deleted = status === 'D';
       } else {
-        const { stdout: statusOutput } = await execFileAsync('git', ['status', '--porcelain', '--', file], { cwd, encoding: 'utf-8', timeout: 3000 });
+        const { stdout: statusOutput } = await execFileAsync('git', ['status', '--porcelain', '--', file], { cwd, encoding: 'utf-8', timeout: GIT_TIMEOUT_MS });
         if (!statusOutput.trim()) continue;
         status = statusOutput.substring(0, 2).trim();
         is_new = status === 'A' || status === '??';
@@ -286,7 +292,7 @@ export async function getGitDiffs(cwd, files, commitHash) {
           const numstatArgs = useCommit
             ? ['diff-tree', '-r', '--no-commit-id', '--numstat', '--root', commitHash, '--', file]
             : ['diff', '--numstat', 'HEAD', '--', file];
-          const { stdout: diffCheck } = await execFileAsync('git', numstatArgs, { cwd, encoding: 'utf-8', timeout: 3000 });
+          const { stdout: diffCheck } = await execFileAsync('git', numstatArgs, { cwd, encoding: 'utf-8', timeout: GIT_TIMEOUT_MS });
           if (diffCheck.includes('-\t-\t')) {
             is_binary = true;
           }
@@ -301,7 +307,7 @@ export async function getGitDiffs(cwd, files, commitHash) {
         if (!is_new) {
           try {
             const oldRef = useCommit ? `${commitHash}^:${file}` : `HEAD:${file}`;
-            const { stdout } = await execFileAsync('git', ['show', oldRef], { cwd, encoding: 'utf-8', timeout: 5000, maxBuffer: 5 * 1024 * 1024 });
+            const { stdout } = await execFileAsync('git', ['show', oldRef], { cwd, encoding: 'utf-8', timeout: GIT_TIMEOUT_MS, maxBuffer: 5 * 1024 * 1024 });
             old_content = stdout;
           } catch {
             old_content = '';
@@ -312,7 +318,7 @@ export async function getGitDiffs(cwd, files, commitHash) {
         if (!is_deleted) {
           if (useCommit) {
             try {
-              const { stdout } = await execFileAsync('git', ['show', `${commitHash}:${file}`], { cwd, encoding: 'utf-8', timeout: 5000, maxBuffer: 5 * 1024 * 1024 });
+              const { stdout } = await execFileAsync('git', ['show', `${commitHash}:${file}`], { cwd, encoding: 'utf-8', timeout: GIT_TIMEOUT_MS, maxBuffer: 5 * 1024 * 1024 });
               new_content = stdout;
               if (Buffer.byteLength(new_content, 'utf-8') > 5 * 1024 * 1024) {
                 diffs.push({ file, status, is_large: true, size: Buffer.byteLength(new_content, 'utf-8') });

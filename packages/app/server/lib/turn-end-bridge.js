@@ -60,16 +60,21 @@ try {
 } catch { /* stdin may not be piped — fine, still notify */ }
 let sessionId = null;
 let transcriptPath = null;
+let cwd = null;
 try {
   const parsed = JSON.parse(stdinData);
   sessionId = parsed?.session_id || null;
   // transcript_path lets the DingTalk bridge read the final assistant turn straight from
   // Claude's own JSONL (the clean source, free of ANSI noise / the log-dedup bug).
   transcriptPath = parsed?.transcript_path || null;
+  // Per-workspace routing (2026-10): the Stop-hook stdin carries the session cwd —
+  // the server prefers sessionId→PTY resolution, with this cwd as the fallback
+  // scope hint (same precedence the task bridge already uses).
+  cwd = parsed?.cwd || null;
 } catch { /* fine */ }
 
 const internalToken = process.env.CCVIEWER_INTERNAL_TOKEN || '';
-const body = JSON.stringify({ sessionId, transcriptPath, ts: Date.now() });
+const body = JSON.stringify({ sessionId, transcriptPath, cwd, ts: Date.now() });
 const reqOpts = {
   hostname: '127.0.0.1',
   port: parseInt(port, 10),

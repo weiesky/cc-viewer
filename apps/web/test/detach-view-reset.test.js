@@ -90,9 +90,16 @@ describe('handleDetachView 全量重置（对话区错乱修复）', () => {
 });
 
 describe('AppBase.jsx 源码锚点（防未来重构漂移）', () => {
-  it('handleDetachView 清全部对话 state 并置 resumeSwitch 遮罩', () => {
-    assert.ok(/handleDetachView = \(\) => \{[\s\S]{0,1200}?resumeSwitch: \{ uuid: this\.state\.projectName \|\| 'bound' \}/.test(APPBASE_SRC),
-      'handleDetachView 缺 resumeSwitch 遮罩');
+  it('handleDetachView 清全部对话 state 并冷激活绑定 scope（遮罩在 _activateScope 冷路径）', () => {
+    // Per-workspace channels (2026-10): the detach path clears the departing
+    // view's slice, then activates the bound scope. The switch overlay is armed
+    // by the COLD activate path only (a warm bound channel repaints instantly
+    // with no overlay) — anchored there with the legacy projectName-or-'bound'
+    // key.
+    const detachRe = /handleDetachView = \(\) => \{[\s\S]{0,2000}?_activateScope\(\{ sid: null, project: null, instance: null \}, \{[\s\S]{0,200}?overlayUuid: this\.state\.projectName \|\| 'bound'/;
+    assert.ok(detachRe.test(APPBASE_SRC), 'handleDetachView 未走 _activateScope（绑定 scope + 遮罩 key）');
+    assert.ok(/_coldActivate[\s\S]{0,2000}?this\.setState\(\{ resumeSwitch: \{ uuid \} \}\)/.test(APPBASE_SRC),
+      '_activateScope 冷路径缺 resumeSwitch 遮罩');
     assert.ok(/handleDetachView = \(\) => \{[\s\S]{0,1600}?requests: \[\],/.test(APPBASE_SRC), 'handleDetachView 缺 requests 清空');
     assert.ok(/handleDetachView = \(\) => \{[\s\S]{0,1600}?mainAgentSessions: \[\],/.test(APPBASE_SRC), 'handleDetachView 缺 mainAgentSessions 清空');
     assert.ok(/handleDetachView = \(\) => \{[\s\S]{0,1600}?v2Rows: \[\],/.test(APPBASE_SRC), 'handleDetachView 缺 v2Rows 清空');

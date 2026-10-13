@@ -255,3 +255,44 @@ describe('lib/task-state.js', () => {
     });
   });
 });
+
+describe('per-workspace buckets', () => {
+  it('a parallel workspace bucket never clobbers the bound bucket', () => {
+    __resetForTests();
+    applyTaskEvent({ hookEventName: 'TaskCreated', taskId: 't1', taskSubject: 'bound task', sessionId: 's-bound' }, '');
+    applyTaskEvent({ hookEventName: 'TaskCreated', taskId: 't1', taskSubject: 'parallel task', sessionId: 's-par' }, 'proj-par');
+    const bound = getTaskSnapshot('');
+    const par = getTaskSnapshot('proj-par');
+    assert.equal(bound.tasks.length, 1);
+    assert.equal(bound.tasks[0].subject, 'bound task');
+    assert.equal(par.tasks.length, 1);
+    assert.equal(par.tasks[0].subject, 'parallel task');
+    __resetForTests();
+  });
+
+  it('resetTasks(bucket) clears only that bucket', () => {
+    __resetForTests();
+    applyTaskEvent({ hookEventName: 'TaskCreated', taskId: 't1', taskSubject: 'a', sessionId: 's1' }, '');
+    applyTaskEvent({ hookEventName: 'TaskCreated', taskId: 't2', taskSubject: 'b', sessionId: 's2' }, 'proj-par');
+    resetTasks('proj-par');
+    assert.equal(getTaskSnapshot('proj-par').tasks.length, 0);
+    assert.equal(getTaskSnapshot('').tasks.length, 1);
+    __resetForTests();
+  });
+
+  it('UserPromptSubmit resets only its own bucket', () => {
+    __resetForTests();
+    applyTaskEvent({ hookEventName: 'TaskCreated', taskId: 't1', taskSubject: 'a', sessionId: 's1' }, '');
+    applyTaskEvent({ hookEventName: 'UserPromptSubmit', sessionId: 's2' }, 'proj-par');
+    assert.equal(getTaskSnapshot('').tasks.length, 1, 'bound list untouched by a foreign prompt');
+    __resetForTests();
+  });
+
+  it('default argument is the bound bucket (legacy parity)', () => {
+    __resetForTests();
+    applyTaskEvent({ hookEventName: 'TaskCreated', taskId: 't1', taskSubject: 'legacy', sessionId: 's1' });
+    assert.equal(getTaskSnapshot().tasks.length, 1);
+    assert.equal(getTaskSnapshot('').tasks.length, 1, 'no-arg and bound bucket are the same view');
+    __resetForTests();
+  });
+});

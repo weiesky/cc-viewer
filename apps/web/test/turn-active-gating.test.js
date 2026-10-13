@@ -139,21 +139,28 @@ describe('turnActive 把关的 streaming 状态机(镜像)', () => {
 
 describe('AppBase.jsx 源码锚点(防重构漂移)', () => {
   it('防抖回调内有 turnActive 把关(turnActive 为 true 不清 isStreaming)', () => {
+    // Per-workspace channels (2026-10): turn state is read from the frame's OWN
+    // channel vm (a tap channel's debounce must never inspect the rendered view).
     assert.ok(
-      /_streamingOffTimer = setTimeout\(\(\) => \{[\s\S]{0,200}?this\.state\.turnActive/.test(APPBASE_SRC),
-      'streaming off 防抖回调必须先查 turnActive');
+      /vm\.streamingOffTimer = setTimeout\(\(\) => \{[\s\S]{0,200}?vm\.react\.turnActive/.test(APPBASE_SRC),
+      'streaming off 防抖回调必须先查该 channel 的 turnActive');
   });
 
   it('turnActive 下降沿同时清 isStreaming(回合结束即灭灯)', () => {
     assert.ok(
-      /_applyTurnActive[\s\S]{0,800}?setState\(\{ turnActive: false, isStreaming: false \}\)/.test(APPBASE_SRC),
+      /_applyTurnActive = \(active, channel = null\)[\s\S]{0,1100}?turnActive: false, isStreaming: false/.test(APPBASE_SRC),
       '_applyTurnActive(false) 必须同时清 isStreaming');
   });
 
   it('turn_active SSE 监听已接线且带 stale 守卫', () => {
+    // The binder registers every name in the frame-handler table on the socket
+    // with the per-channel stale() guard, then dispatches per-name.
     assert.ok(
-      /addEventListener\('turn_active'[\s\S]{0,300}?stale\(\)/.test(APPBASE_SRC),
-      '缺少 turn_active SSE 监听或 stale 守卫');
+      /'turn_active': '_onTurnActive',/.test(APPBASE_SRC),
+      '缺少 turn_active 帧处理器注册');
+    assert.ok(
+      /_bindChannelEvents\(channel, es, stale\) \{[\s\S]{0,300}?es\.addEventListener\(name, \(event\) => \{[\s\S]{0,120}?if \(stale\(\)\) return;/.test(APPBASE_SRC),
+      '缺少带 stale 守卫的命名帧绑定');
   });
 
   it('SDK 模式经 onSdkSessionState 上提(白名单活跃态 + 按 viewed workspace 过滤)', () => {
