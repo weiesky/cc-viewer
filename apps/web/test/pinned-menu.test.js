@@ -4,10 +4,10 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { PINNED_KEY, parsePinned, serializePinned, togglePinned } from '../src/utils/pinnedMenu.js';
+import { PINNED_KEY, parsePinned, togglePinned, normalizePinnedKeys, resolvePinnedKeys } from '../src/utils/pinnedMenu.js';
 
 describe('pinnedMenu', () => {
-  it('exports a stable localStorage key', () => {
+  it('exports the legacy localStorage key (migration source only)', () => {
     assert.equal(PINNED_KEY, 'ccv_pinnedMenuKeys');
   });
 
@@ -35,20 +35,6 @@ describe('pinnedMenu', () => {
     });
   });
 
-  describe('serializePinned', () => {
-    it('serializes an array', () => {
-      assert.equal(serializePinned(['a', 'b']), '["a","b"]');
-    });
-    it('coerces non-array to []', () => {
-      assert.equal(serializePinned(null), '[]');
-      assert.equal(serializePinned('x'), '[]');
-    });
-    it('round-trips with parsePinned', () => {
-      const arr = ['import-local', 'messaging'];
-      assert.deepEqual(parsePinned(serializePinned(arr)), arr);
-    });
-  });
-
   describe('togglePinned', () => {
     it('appends a missing key to the end (insertion order)', () => {
       assert.deepEqual(togglePinned(['a'], 'b'), ['a', 'b']);
@@ -70,6 +56,56 @@ describe('pinnedMenu', () => {
     it('ignores empty / non-string keys', () => {
       assert.deepEqual(togglePinned(['a'], ''), ['a']);
       assert.deepEqual(togglePinned(['a'], null), ['a']);
+    });
+  });
+
+  describe('normalizePinnedKeys', () => {
+    it('returns [] for non-array input', () => {
+      assert.deepEqual(normalizePinnedKeys(null), []);
+      assert.deepEqual(normalizePinnedKeys('["a"]'), []);
+      assert.deepEqual(normalizePinnedKeys({}), []);
+    });
+    it('drops non-string / empty elements and dedupes', () => {
+      assert.deepEqual(normalizePinnedKeys(['a', 1, null, '', 'a', 'b']), ['a', 'b']);
+    });
+    it('returns a new array (no alias of the input)', () => {
+      const input = ['a'];
+      const out = normalizePinnedKeys(input);
+      assert.notEqual(out, input);
+      assert.deepEqual(out, ['a']);
+    });
+  });
+
+  describe('resolvePinnedKeys', () => {
+    it('prefers an authoritative preferences array (empty array included)', () => {
+      assert.deepEqual(resolvePinnedKeys(['a', 'b'], '["x"]'), { keys: ['a', 'b'], migrated: false });
+      // An explicit empty array means the user cleared every pin — authoritative, no fallback.
+      assert.deepEqual(resolvePinnedKeys([], '["x"]'), { keys: [], migrated: false });
+    });
+    it('falls back to the legacy localStorage string and flags migration', () => {
+      assert.deepEqual(resolvePinnedKeys(undefined, '["a","b"]'), { keys: ['a', 'b'], migrated: true });
+      assert.deepEqual(resolvePinnedKeys(null, '["a"]'), { keys: ['a'], migrated: true });
+    });
+    it('no legacy value -> empty, no migration', () => {
+      assert.deepEqual(resolvePinnedKeys(undefined, null), { keys: [], migrated: false });
+      assert.deepEqual(resolvePinnedKeys(undefined, ''), { keys: [], migrated: false });
+      assert.deepEqual(resolvePinnedKeys(undefined, 'garbage'), { keys: [], migrated: false });
+    });
+    it('treats a corrupt non-array preferences value as absent', () => {
+      assert.deepEqual(resolvePinnedKeys('junk', '["x"]'), { keys: ['x'], migrated: true });
+      assert.deepEqual(resolvePinnedKeys({}, null), { keys: [], migrated: false });
+      assert.deepEqual(resolvePinnedKeys(42, null), { keys: [], migrated: false });
+    });
+    it('normalizes dirty arrays from preferences', () => {
+      assert.deepEqual(resolvePinnedKeys(['a', 1, '', 'a', null, 'b'], null), { keys: ['a', 'b'], migrated: false });
+    });
+    it('legacy strings that are valid JSON but contain no usable key do not trigger migration', () => {
+      // [1,2,null] / [""] parse fine but normalize to [] — a migration of "nothing" must not run.
+      assert.deepEqual(resolvePinnedKeys(undefined, '[1,2,null]'), { keys: [], migrated: false });
+      assert.deepEqual(resolvePinnedKeys(undefined, '[""]'), { keys: [], migrated: false });
+    });
+    it('nested arrays inside preferences are flattened by normalization', () => {
+      assert.deepEqual(resolvePinnedKeys([['a'], 'b'], null), { keys: ['b'], migrated: false });
     });
   });
 });

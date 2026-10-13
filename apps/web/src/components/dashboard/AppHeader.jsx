@@ -18,7 +18,7 @@ import { parseImOrigin } from '../../utils/imOrigin';
 import { BLUR_MASK_STYLE } from '../../utils/modalMask';
 import { sortSkillsDefault } from '../../utils/skillsParser';
 import { handleSkillToggle, handleSkillDelete } from '../../utils/skillModalController';
-import { PINNED_KEY, parsePinned, serializePinned, togglePinned } from '../../utils/pinnedMenu';
+import { PINNED_KEY, togglePinned, normalizePinnedKeys, resolvePinnedKeys } from '../../utils/pinnedMenu';
 import { reportSwallowed } from '../../utils/errorReport';
 import { shouldRenderSdkModelChip } from '../../utils/sdkModelChip';
 import { classifyRequest } from '@ccv/core/requestType';
@@ -71,6 +71,31 @@ function makeAuthState(over = {}) {
     global: { enabled: false, password: null },
     ...over,
   };
+}
+
+// Legacy localStorage helper for the pinned menu. The authoritative store is now
+// preferences.json (`pinnedMenuKeys`); the legacy key is only read as the one-shot
+// migration source, and cleared once the server holds an authoritative array.
+function readLegacyPinnedRaw() {
+  try { return typeof localStorage !== 'undefined' ? localStorage.getItem(PINNED_KEY) : null; } catch { return null; }
+}
+function clearLegacyPinnedRaw() {
+  try { localStorage.removeItem(PINNED_KEY); } catch {}
+}
+// Element-wise equality for pinned key arrays (order matters — it is the pin chronology).
+function sameKeys(a, b) {
+  return a.length === b.length && a.every((k, i) => k === b[i]);
+}
+// Initial pinned keys for the constructor: an already-loaded preferences array wins
+// (authoritative, e.g. on remount after an error boundary); everything else starts empty and
+// waits for the authoritative hydrate. Deliberately NOT seeded from the legacy localStorage
+// value: a stale seed could be POSTed over a newer server value (cross-browser pins) or be
+// reverted by a late initial GET via the componentDidUpdate sync channel. Starting empty
+// makes every write originate from a server-confirmed base; pins appear one RTT later.
+function initialPinnedKeys(context) {
+  const prefsValue = context?.preferences?.pinnedMenuKeys;
+  if (Array.isArray(prefsValue)) return normalizePinnedKeys(prefsValue);
+  return [];
 }
 
 // countryToFlag 已随地理位置控件一起迁到 src/components/common/CountryFlag.jsx
@@ -453,7 +478,7 @@ function HeaderProjectSwitcher(props) {
 class AppHeader extends React.Component {
   static contextType = SettingsContext;
 
-  constructor(props) {
+  constructor(props, context) {
     super(props);
     this.state = { countdownText: '', promptModalVisible: false, promptData: [], promptViewMode: 'original', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false, localUrl: '', pluginModalVisible: false, processModalVisible: false, logoDropdownOpen: false, electronMenuOpen: false, electronMenuBar: null, cacheHighlightIdx: null, cacheHighlightFading: false, calibrationModel: readCalibrationModel(CALIBRATION_MODELS), proxyModalVisible: false, systemTextModalVisible: false, messagingModalVisible: false, messagingInitialTool: null, imRecordVisible: false, imRecordPlatform: null, logDirDraft: null, claudeExecutableDraft: null, claudeExecutableCandidates: [], claudeExecutableEffective: null, claudeExecutablesLoading: false, qrPopoverOpen: false, electronQrOpen: false, electronQrAnchor: null, projectPrefsModalOpen: false, _skillsModal: { open: false, loading: false, skills: [], error: null, toggling: new Set() },
       // 文件系统权威的 skill 列表（/api/skills 返回）；live-tail 下作为 popover chip 和管理弹窗的共享数据源。
@@ -484,9 +509,12 @@ class AppHeader extends React.Component {
       _authSaving: false,
       // 管理区当前选中的作用域 tab；null=跟随生效 scope。切换 tab 时清空草稿。
       _authScope: null,
-      // 汉堡菜单「钉住」的菜单 key 列表（全局持久，跨项目共享；存 localStorage ccv_pinnedMenuKeys）。
-      // 顺序=用户钉住先后；驱动行内钉按钮实心态、汉堡右侧快捷方式行、Electron header model 的 pins。
-      pinnedKeys: parsePinned(typeof localStorage !== 'undefined' ? localStorage.getItem(PINNED_KEY) : null),
+      // Pinned hamburger-menu keys (order = pin chronology; drives the solid pin button, the
+      // shortcut row, and Electron's header-model pins). Authoritative source: preferences.json
+      // `pinnedMenuKeys` (migrated 2026-10 from localStorage ccv_pinnedMenuKeys). Starts empty
+      // until the authoritative hydrate (_hydratePinnedKeys) lands; afterwards componentDidUpdate
+      // re-syncs it on external prefs changes (project-scoped toggle / refreshPreferences).
+      pinnedKeys: initialPinnedKeys(context),
       // 「系统提示词修改」是否有会在下次启动注入的提示词(命中当前模型的用户条目/内置 preset，
       // 或工作区默认 sentinel)。为 true 时入口自动露出在头部工具栏(无需手动钉住)；
       // 由 /api/expert/system-prompt-status 供给。
@@ -506,6 +534,13 @@ class AppHeader extends React.Component {
     // 与 _fsSkillsSeq 同语义：status 拉取在途期间发生新一轮触发时，旧回包不得覆盖新状态。
     this._systemPromptSeq = 0;
     this.updateCountdown = this.updateCountdown.bind(this);
+    // Pinned-menu persistence guards: _pinnedTouched latches once the user toggles (the hydrate
+    // must never overwrite an in-flight user action); _prefsHydrated marks that the user's value
+    // is confirmed on the server (the componentDidUpdate sync channel stays gated until then);
+    // _persistQueue serializes persistence POSTs.
+    this._pinnedTouched = false;
+    this._persistQueue = Promise.resolve(null);
+    this._prefsHydrated = false;
   }
 
   // ===== Electron 原生 tab bar header 桥接（把部分控件迁移到最顶部 tab bar）=====
@@ -571,14 +606,72 @@ class AppHeader extends React.Component {
     ];
   }
 
-  // 切换某菜单项的钉住状态：更新 state + 写 localStorage(全局持久)。
-  // componentDidUpdate 会自动 _pushHeaderModel()，Electron 侧无需在此显式推送。
+  // Toggle one menu key's pinned state. setState is the optimistic update; persistence runs in
+  // the commit callback (side effects must not live in the updater — StrictMode may double-invoke
+  // it). componentDidUpdate pushes the header model, so Electron needs no explicit push here.
   togglePin = (key) => {
-    this.setState((s) => {
-      const next = togglePinned(s.pinnedKeys, key);
-      try { localStorage.setItem(PINNED_KEY, serializePinned(next)); } catch {}
-      return { pinnedKeys: next };
+    this.setState(
+      (s) => ({ pinnedKeys: togglePinned(s.pinnedKeys, key) }),
+      () => {
+        this._pinnedTouched = true;
+        this._queuePersistPinnedKeys(this.state.pinnedKeys);
+      },
+    );
+  };
+
+  // Serialize persistence POSTs: rapid pin clicks must not race — the server applies whole-array
+  // last-write-wins, so an out-of-order arrival would silently drop a pin until the next refresh.
+  // The leading .catch keeps the chain alive if a future updatePreferences ever rejects (today it
+  // resolves null on failure — see SettingsContext). On failure, refresh to converge back to the
+  // server value (same precedent as _saveClaudeExecutable; no toast for this lightweight action).
+  _queuePersistPinnedKeys(keys) {
+    this._persistQueue = this._persistQueue.catch(() => null).then(() =>
+      this.context.updatePreferences({ pinnedMenuKeys: keys }),
+    );
+    this._persistQueue.then((resp) => {
+      if (resp === null) this.context.refreshPreferences?.();
     });
+  }
+
+  // One-shot authoritative hydrate + legacy migration (runs once on mount, idempotent):
+  // - A GET failure surfaces as {} from SettingsContext; a successful payload always carries the
+  //   logDir stamp (routes/preferences.js), so a missing stamp means "not authoritative" → keep
+  //   state as-is and leave the legacy key untouched for the next boot.
+  // - An authoritative array (even empty) is applied to state (skipped once the user has toggled —
+  //   see below) and clears the legacy key immediately: it will never be read again, and clearing
+  //   it up-front prevents a stale seed from resurfacing if the server key is ever removed.
+  // - Migration: prefs lacks pinnedMenuKeys but legacy localStorage has a value → POST it back
+  //   through _persistQueue (never racing an in-flight user toggle — the server applies
+  //   whole-array LWW), and clear the legacy key only after the POST succeeds.
+  // - If the user already toggled during the hydrate window (_pinnedTouched), the late initial
+  //   GET payload must NOT be applied: it predates the user's POST and would revert their action.
+  //   _prefsHydrated stays closed (keeping the componentDidUpdate sync channel gated) until the
+  //   user's queued POST lands — only then is the server confirmed to hold their value.
+  //   Note the pre-hydrate toggle's POST is whole-array LWW against the server's current value
+  //   (accepted semantics — the window is one RTT and a merge cannot be computed without an
+  //   authoritative base).
+  _hydratePinnedKeys = (data) => {
+    if (!data || typeof data.logDir !== 'string') return;
+    if (!this._pinnedTouched) {
+      this._prefsHydrated = true;
+      const { keys, migrated } = resolvePinnedKeys(data.pinnedMenuKeys, readLegacyPinnedRaw());
+      if (!sameKeys(keys, this.state.pinnedKeys)) this.setState({ pinnedKeys: keys });
+      if (migrated) {
+        this._persistQueue = this._persistQueue.catch(() => null).then(() =>
+          this.context.updatePreferences({ pinnedMenuKeys: keys }),
+        );
+        this._persistQueue.then((resp) => { if (resp) clearLegacyPinnedRaw(); });
+      } else if (Array.isArray(data.pinnedMenuKeys)) {
+        clearLegacyPinnedRaw();
+      }
+    } else {
+      this._persistQueue.then((resp) => {
+        if (resp) {
+          this._prefsHydrated = true;
+          clearLegacyPinnedRaw();
+        }
+      });
+    }
   };
 
   // 由描述符构建 antd Dropdown items：按 dividerAfter 插入分隔线；每行 label 包成
@@ -833,6 +926,9 @@ class AppHeader extends React.Component {
     this.context._claudeSettingsReady.then(data => {
       if (data && data.model) this.setState({ settingsModel: data.model });
     });
+    // Authoritative hydrate + one-shot legacy migration for pinned menu keys
+    // (same _prefsReady subscription precedent as AppBase.componentDidMount).
+    this.context._prefsReady.then(this._hydratePinnedKeys);
     // 预热：live-tail 下提前拉一次文件系统 skill，首次打开 popover 就是权威视图而非闪一下历史。
     if (!this.props.isLocalLog) this.reloadFsSkills();
     // ipinfo.io 请求已移到 CountryFlag 组件里
@@ -844,6 +940,23 @@ class AppHeader extends React.Component {
 
   componentDidUpdate(prevProps) {
     this._pushHeaderModel();
+    // Authoritative prefs changed (project-scoped toggle / refreshPreferences) → pins follow the
+    // new scope's value. Content-compared (sameKeys) so our own optimistic writes never re-enter
+    // setState (no update loop); state always holds a normalized copy, never a prefs reference.
+    // Until the user's value is confirmed on the server (hydrate landed, or — after a pre-hydrate
+    // toggle — their queued POST succeeded), a late initial-GET payload must not revert their
+    // action: the channel stays gated on _prefsHydrated.
+    if (prevProps.preferences !== this.props.preferences) {
+      const prefsValue = this.context?.preferences?.pinnedMenuKeys;
+      const authoritative = Array.isArray(prefsValue) && (!this._pinnedTouched || this._prefsHydrated);
+      if (authoritative) {
+        // Any authoritative array reaching us through this channel means preferences are
+        // flowing again — mark hydrated so later scope switches / refreshes keep following.
+        this._prefsHydrated = true;
+        const keys = normalizePinnedKeys(prefsValue);
+        if (!sameKeys(keys, this.state.pinnedKeys)) this.setState({ pinnedKeys: keys });
+      }
+    }
     if (prevProps.cacheExpireAt !== this.props.cacheExpireAt) {
       this.startCountdown();
     }
@@ -1189,6 +1302,7 @@ class AppHeader extends React.Component {
       nextProps.proxyOfficialDefault !== this.props.proxyOfficialDefault ||
       nextProps.retryConfig !== this.props.retryConfig ||
       nextProps.retryDefaults !== this.props.retryDefaults ||
+      nextProps.preferences !== this.props.preferences ||
       nextProps.approvalPrefs !== this.props.approvalPrefs ||
       nextProps.approvalGlobal !== this.props.approvalGlobal ||
       nextProps.approvalDismissedIds !== this.props.approvalDismissedIds ||
@@ -2164,7 +2278,7 @@ class AppHeader extends React.Component {
           })()}
           {!isElectronTab && (() => {
             // 钉住的快捷方式：汉堡右侧的常驻入口。按描述符过滤(mode-gated 项当前不存在则跳过渲染，
-            // 但保留在 localStorage，切回对应模式自动恢复)。Electron 下走原生 tab bar(见 _buildHeaderModel.pins)。
+            // 但保留在 pinnedMenuKeys，切回对应模式自动恢复)。Electron 下走原生 tab bar(见 _buildHeaderModel.pins)。
             const descByKey = new Map(this._getMenuDescriptors().map(d => [d.key, d]));
             const pins = this.state.pinnedKeys.map(k => descByKey.get(k)).filter(Boolean);
             // 「系统提示词修改」激活(下次启动会注入提示词)且未被手动钉住时，入口自动露出；
