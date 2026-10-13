@@ -262,6 +262,23 @@ function postLiveProcessCloseHandler(req, res, parsedUrl, isLocal, deps) {
       try {
         rebound = _maybeRebindAfterClose(r, deps);
       } catch (err) { reportSwallowed('resume-route.close-rebind', err); }
+      // A PTY killed here fires no Stop POST, so its scope's streaming/turn
+      // bucket would stay `active:true` forever — the heartbeat/streaming timer
+      // keeps re-broadcasting it and the client's 30s staleness escape is
+      // perpetually reset by those same frames (the permanent-spinner leak).
+      // Reap exactly that scope. The producer buckets it under
+      // projectKeyForCwd(cwd) (interceptor scopeKeyForEntry / server
+      // _resolveScopeForHookPayload), NOT the instanceKey — so resolve the same
+      // project-scoped key here, collapsed to '' when it was the bound project.
+      try {
+        if (r.cwd && deps.clearScopeRuntimeFor) {
+          const { projectKeyForCwd } = await import('../lib/system-prompt-snapshots.js');
+          const { normalizeProducerScope, scopeKeyOf } = await import('../lib/scope-router.js');
+          const proj = projectKeyForCwd(r.cwd);
+          const n = normalizeProducerScope({ project: proj, instance: null }, deps.projectName || '');
+          deps.clearScopeRuntimeFor(scopeKeyOf(n.project, n.instance));
+        }
+      } catch (err) { reportSwallowed('resume-route.close-clear-scope', err); }
       // Closing a project/instance must also reap its scratch (mini-terminal) shells, or
       // the viewed-then-switched-away workspace's shells stay alive as orphans until a
       // full workspacesStop/process exit. The killed record's original spawn cwd keys

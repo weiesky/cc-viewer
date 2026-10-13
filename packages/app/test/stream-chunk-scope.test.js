@@ -36,10 +36,11 @@ const streamChunk = streamChunkRoute.handler;
 
 /** A fake SSE client: captures every sendEventToClients payload routed to it.
  *  `_ccvViewProject` is the per-connection stamp events.js applies (:484). */
-function mkSseClient(viewProject) {
+function mkSseClient(viewProject, viewInstance) {
   const writes = [];
   return {
     _ccvViewProject: viewProject,
+    _ccvViewInstance: viewInstance,
     writes,
     // sendEventToClients writes via sseWrite(res, frame) → res.write
     write(chunk) { writes.push(chunk); return true; },
@@ -110,5 +111,50 @@ describe('streamChunk multi-project scoping', () => {
     const clients = [legacyClient];
     await callStreamChunk({ ...baseEntry, _chunkSeq: 3 }, clients);
     assert.ok(legacyClient.writes.join('').includes('stream-progress'), 'legacy single-project client unaffected');
+  });
+
+  // ── New-field routing (entry.project / entry.instance) — the "dead code made
+  // live" point of 5c28d4c5. The interceptor stamps the chunk with the emitting
+  // claude's self-reported project/instance; entry.project now WINS over the
+  // _resumeProject fallback, and entry.instance narrows to the matching instance.
+  it('entry.project wins over entry._resumeProject when both are present', async () => {
+    const viewerSelf = mkSseClient('projSelf');
+    const viewerResume = mkSseClient('projResume');
+    const clients = [viewerSelf, viewerResume];
+    await callStreamChunk({ ...baseEntry, project: 'projSelf', _resumeProject: 'projResume', _chunkSeq: 4 }, clients);
+    assert.ok(viewerSelf.writes.join('').includes('"project":"projSelf"'), 'self-reported project routes to its viewers');
+    assert.equal(viewerResume.writes.join(''), '', 'the _resumeProject fallback must NOT win over entry.project');
+  });
+
+  it('entry.instance narrows the broadcast to the matching instance viewer only', async () => {
+    const viewerI1 = mkSseClient('projA', 'ccv-i1');
+    const viewerI2 = mkSseClient('projA', 'ccv-i2');
+    const clients = [viewerI1, viewerI2];
+    await callStreamChunk({ ...baseEntry, project: 'projA', instance: 'ccv-i1', _chunkSeq: 5 }, clients);
+    assert.ok(viewerI1.writes.join('').includes('"instance":"ccv-i1"'), 'matching instance viewer receives the chunk');
+    assert.equal(viewerI2.writes.join(''), '', 'a DIFFERENT instance viewer of the same project is excluded');
+  });
+
+  it('an UNSTAMPED-instance viewer of the same project still receives the instance frame (active/clear same set)', async () => {
+    // P2-b fix: a project-level viewer (no _ccvViewInstance) of the source
+    // project must receive an instance-stamped frame — excluding only clients
+    // stamped with a DIFFERENT instance. This keeps the streaming_status/turn
+    // active frame and its later clear on the SAME recipient set, so a project
+    // viewer's spinner is never stranded by a parallel instance chip coming online.
+    const viewerProjectLevel = mkSseClient('projA', undefined);
+    const viewerOtherInst = mkSseClient('projA', 'ccv-i2');
+    const clients = [viewerProjectLevel, viewerOtherInst];
+    await callStreamChunk({ ...baseEntry, project: 'projA', instance: 'ccv-i1', _chunkSeq: 6 }, clients);
+    assert.ok(viewerProjectLevel.writes.join('').includes('stream-progress'), 'project-level (unstamped-instance) viewer of the same project is kept');
+    assert.equal(viewerOtherInst.writes.join(''), '', 'different-instance viewer is still excluded');
+  });
+
+  it('no stamp at all still falls back to the bound project (legacy regression guard)', async () => {
+    const viewerBound = mkSseClient('boundProj');
+    const viewerForeign = mkSseClient('projX');
+    const clients = [viewerBound, viewerForeign];
+    await callStreamChunk({ ...baseEntry, _chunkSeq: 7 }, clients);
+    assert.ok(viewerBound.writes.join('').includes('"project":"boundProj"'), 'absent everything ⇒ bound project');
+    assert.equal(viewerForeign.writes.join(''), '', 'foreign viewer excluded');
   });
 });

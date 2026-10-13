@@ -97,7 +97,7 @@ function execWithStdin(cmd, args, input, options) {
     }
   });
 }
-import { _initPromise, _projectName, _logDir, _v2Writer, streamingState, resetStreamingState, turnActive, setTurnActive, PROFILE_PATH, RETRY_CONFIG_PATH, _retryConfigState, setLivePort, getImLiveText, resetImLiveText, markSessionStart, streamingStateFor, turnStateFor, activeStreamingScopes, activeTurnScopes, clearScopeState } from './interceptor.js';
+import { _initPromise, _projectName, _logDir, _v2Writer, streamingState, resetStreamingState, turnActive, setTurnActive, PROFILE_PATH, RETRY_CONFIG_PATH, _retryConfigState, setLivePort, getImLiveText, resetImLiveText, markSessionStart, streamingStateFor, turnStateFor, activeStreamingScopes, activeTurnScopes, clearScopeState, clearScopeStateFor } from './interceptor.js';
 import { V2LiveFeed } from './lib/v2/live-feed.js';
 import { filterClientsByViewProject, filterClientsByScope, projectOfSessionDir, resolveActivityFeedKey } from './lib/v2/view-router.js';
 import { BOUND_SCOPE, scopeKeyOf, parseScopeKey, normalizeProducerScope } from './lib/scope-router.js';
@@ -663,6 +663,9 @@ const deps = {
   get retryConfig() { return _retryConfigState; },
   get workspaceLaunched() { return _workspaceLaunched; },
   setWorkspaceLaunched(v) { _workspaceLaunched = v; },
+  // Bound project name (reassignable via interceptor) — getter so routes read
+  // the live value at request time (e.g. resume.js scope-key resolution).
+  get projectName() { return _projectName || ''; },
   get launchCallback() { return _launchCallback; },
   get workspaceClaudeArgs() { return _workspaceClaudeArgs; },
   get workspaceClaudePath() { return _workspaceClaudePath; },
@@ -696,6 +699,12 @@ const deps = {
   stopLogWatch,
   ensureProjectFeed: _ensureProjectFeed,
   scheduleTurnEndBroadcast: _scheduleTurnEndBroadcast,
+  // Full per-scope reap on workspace stop (interceptor buckets + the two
+  // server-side scope maps); a PTY killed here fires no Stop POST, so without
+  // this the killed scopes leak active buckets and stale session tags.
+  resetScopeRuntime: (...args) => resetScopeRuntime(...args),
+  // Single-scope reap for /api/live-processes/close (see that route).
+  clearScopeRuntimeFor: (...args) => clearScopeRuntimeFor(...args),
   // Raw Stop-hook POST arrival (routes/events.js turnEndNotify): clears the
   // turn-level loading flag immediately — the debounced `turn_end` SSE frame is
   // voice-pack semantics and too slow for the spinner. This is the ONLY clear
@@ -742,7 +751,10 @@ const deps = {
     const key = scopeKeyOf(sc.project, sc.instance);
     if (!shouldResetTasks(payload, getTaskSnapshot(key).sessionId)) return;
     resetTasks(key);
-    _emitTaskUpdate(key);
+    // Coalesce with any TaskCreated events that follow in the same SessionStart
+    // batch, and honor the _isStopping freeze — a synchronous _emitTaskUpdate
+    // here would duplicate the batch frame and write to dying connections.
+    _scheduleTaskUpdateBroadcast(key);
   },
   // Per-connection snapshot replay for fresh SSE clients (page refresh /
   // reconnect) — the checklist lives only in memory, not in the cold load.
@@ -2754,6 +2766,7 @@ const TASK_UPDATE_DEBOUNCE_MS = 120;
 const _taskBroadcastTimers = new Map(); // scopeKey → timer
 
 function _emitTaskUpdate(scopeKey = BOUND_SCOPE) {
+  if (_isStopping) return; // frozen state machine after stop: no late frames
   if (clients.length === 0 || !sendEventToClients) return;
   // Parity with _emitTurnEnd: a broadcast failure must never surface as an
   // uncaught exception from the debounce timer.
@@ -3046,7 +3059,14 @@ export function startStreamingStatusTimer() {
     // Bound scope first (the common single-workspace case is exactly one
     // iteration), then any parallel-workspace scopes with their own buckets.
     _streamingTickOnce(BOUND_SCOPE);
-    for (const key of activeStreamingScopes()) {
+    // Tick active scopes AND every scope we have a last-active edge record for.
+    // activeStreamingScopes() alone only yields active:true buckets — a scope
+    // that just fell inactive would never be ticked again, so its falling edge
+    // is never observed (_lastCliActiveByScope stays true) and the rising-edge
+    // pending-turn_end cancel never fires for it from the second round on.
+    const keys = new Set(activeStreamingScopes());
+    for (const key of _lastCliActiveByScope.keys()) keys.add(key);
+    for (const key of keys) {
       if (key !== BOUND_SCOPE) _streamingTickOnce(key);
     }
   }, 500);
@@ -3059,6 +3079,32 @@ export function stopViewer() {
   _stoppingPromise = _doStop();
   return _stoppingPromise;
 }
+
+// Reset every per-scope runtime structure: interceptor scope buckets plus the
+// two server-side maps that must not outlive the workspaces they describe —
+// _turnSessionIdByScope (a stale tag rejects the fresh session's first
+// UserPromptSubmit) and _lastCliActiveByScope (a stale edge breaks the
+// rising-edge cancel). Shared by _doStop and workspacesStop so both stop
+// paths reap the same set.
+export function resetScopeRuntime() {
+  _lastSdkActive = false;
+  _lastCliActiveByScope.clear();
+  _turnSessionIdByScope.clear();
+  try { clearScopeState(); } catch { /* best-effort */ }
+}
+
+// Reap ONE scope's runtime state (a single workspace's PTY was killed via
+// /api/live-processes/close — no Stop POST fires). Without this the killed
+// scope's bucket stays `active:true` forever: the heartbeat/streaming timer
+// keeps re-broadcasting it and the client's 30s staleness escape is
+// perpetually reset by those same frames (the permanent-spinner leak).
+export function clearScopeRuntimeFor(scopeKey) {
+  const key = (typeof scopeKey === 'string' && scopeKey) || BOUND_SCOPE;
+  try { clearScopeStateFor(key); } catch { /* best-effort */ }
+  _turnSessionIdByScope.delete(key);
+  _lastCliActiveByScope.delete(key);
+}
+
 async function _doStop() {
   // _isStopping 设 true 后：①新 schedule 全部入口短路（_scheduleTurnEndBroadcast 入口检查）
   // ②迟到的 streaming tick 也短路（_observeStreamingTick 入口检查）
@@ -3068,19 +3114,12 @@ async function _doStop() {
   // Drop chat-queue timers (rescue / idle poll) so a stop/start cycle never injects a stale
   // queued message into a fresh PTY session.
   try { chatQueue.stop(); } catch { /* best-effort */ }
-  // 对称 startViewer：下一次启动后第一次 active 才算 rising edge
-  _lastSdkActive = false;
-  _lastCliActiveByScope.clear();
   _clearTurnActiveHeartbeat();
-  // Per-workspace: tear down every non-bound scope bucket (stop/start cycles,
-  // workspace stop) so a restarted server never replays a stale spinner for a
-  // workspace that no longer exists. The bound bucket resets in place (legacy
-  // readers keep the same object identity).
-  try { clearScopeState(); } catch { /* best-effort */ }
-  // Symmetric: the per-scope session tags must not outlive the process either —
-  // a stale tag rejects the fresh session's first UserPromptSubmit after a
-  // stop/start cycle (isTurnStartTaskEvent's sid gate).
-  _turnSessionIdByScope.clear();
+  // Per-workspace: tear down every scope bucket plus the per-scope session tags
+  // and streaming-edge records, so a restarted server never replays a stale
+  // spinner / rejects a fresh session's first prompt for a workspace that no
+  // longer exists.
+  resetScopeRuntime();
   // Tear down all IM bridge connections so a stop/start cycle (Electron tab switch, tests) never
   // leaks a second WS to the same app. Idempotent + swallows errors.
   // IM teardown + serverStopping hook 共用一个 3s 总预算（保持串行语义）：

@@ -2079,7 +2079,12 @@ class AppBase extends React.Component {
       // scope carries no project (the legacy / bound resume path).
       const sidProject = _scopeProject || this.state.projectName;
       const projQ = sidProject ? `&project=${encodeURIComponent(sidProject)}` : '';
-      url = `/events?sid=${encodeURIComponent(wantSid)}${projQ}`;
+      // Multi-instance: carry the instance too so the server's view-scope key
+      // (events.js _viewScopeKey) matches the producer's project\x00instance
+      // bucket — without it the connect-time task/turn_active replay reads an
+      // empty project-level bucket for a parallel-instance sid attach.
+      const sidInstQ = _scopeInstance ? `&instance=${encodeURIComponent(_scopeInstance)}` : '';
+      url = `/events?sid=${encodeURIComponent(wantSid)}${projQ}${sidInstQ}`;
       hasCache = false;
     } else if (wantProject) {
       // Multi-project instant switch-back (2026-10): restore the cached view
@@ -2145,7 +2150,10 @@ class AppBase extends React.Component {
     }
     const hadRenderedChannel = !!this._channels.getRendered();
     const plan = this._channelUrlFor(norm, { reconnect: false });
-    const ch = this._channels.ensure(key, { url: plan.url, cold: true, rendered: true });
+    // Pass the full scope so a `sid:` channel keeps its project/instance (the
+    // key alone can't reverse them) — every scope read downstream then sees the
+    // parallel-viewed project, not the bound one.
+    const ch = this._channels.ensure(key, { url: plan.url, cold: true, rendered: true, scope: norm });
     this._channels.setRendered(key);
     const vm = ch.vm;
     // Pre-channel baseline: on the very first activation the visible slice may
@@ -2230,7 +2238,11 @@ class AppBase extends React.Component {
     if (!this._channels.reconnect(ch.key, { url })) {
       // Reconnect budget exhausted — force a fresh connection at the same URL
       // (the manager's reconnect is budget-limited; a view switch must not
-      // leave the rendered channel dead).
+      // leave the rendered channel dead). This is a COLD path: the server may
+      // replay a fresh window, so reset the v3 baseline rather than merging new
+      // rows onto a possibly-dead committed vm (stale baseline + replay = wrong
+      // merge). The vm is already off the warm gate (committed=false above).
+      this._v3ResetClientState(ch);
       this._channels.ensure(ch.key, { url, cold: true, rendered: true });
     }
     if (!incremental) {
@@ -2371,6 +2383,16 @@ class AppBase extends React.Component {
     // 到下次 session_pin 或切项目。GET 幂等，_applyingRemotePin 防回写。pin 是 bound 作用域的
     // 状态 —— 只有 bound channel 的连线需要同步。
     if (channel.key === BOUND_CHANNEL_KEY) this._hydratePin();
+    // Connected == healthy: clear the reconnect counter on EVERY successful
+    // open (native EventSource auto-reconnect fires onopen too, not just the
+    // manager's budget path). The old `_onLoadEnd` clear at :2586 only runs for
+    // the RENDERED channel — a tap channel's load_end returns early at :2577,
+    // so a heartbeat-watchdog reconnect (manager `reconnect()`) would leave its
+    // `reconnectsSinceCommit` stuck > 0 and every later warm switch would
+    // degrade to a warm-stale cold rebuild instead of an instant swap. Same for
+    // `journalDropped`, which is otherwise only reset at a rendered load_start.
+    channel.vm.reconnectsSinceCommit = 0;
+    channel.vm.journalDropped = false;
   }
 
   /** `data:` (live entry) frames: the rendered channel feeds the live ingest
@@ -2782,6 +2804,16 @@ class AppBase extends React.Component {
         projectName: this.state.projectName,
         viewedProject: this.state.viewedProject,
       });
+      // Snapshot the bound name BEFORE any reset (setState is async): a
+      // NON-rebound workspace_started from ANOTHER tab launching a new
+      // workspace changes this tab's bound domain from A to B too, but the
+      // `else if (isRebound)` branch below only fires on rebound — so a tap
+      // channel stamped with the old bound name A would stay warm (committed,
+      // fresh socket) and a later warm switch would paint A's dead session and
+      // never self-heal (filterClientsByViewProject routes only B's frames to
+      // the new stamp, while ping keeps the watchdog alive). Mirror the
+      // rebound teardown for that case (same as _onWorkspaceStopped does).
+      const prevBoundProject = this.state.projectName || '';
       // A normal (non-rebound) workspace_started is an authoritative switch
       // for every client — reset unconditionally, exactly as before.
       const shouldReset = !isRebound || reboundAffectsThisTab;
@@ -2860,6 +2892,12 @@ class AppBase extends React.Component {
         if (isRebound) {
           this._closeReboundChannels(data.reboundFrom);
           this._activateScope({ sid: null, project: null, instance: null }, { reason: 'rebound' });
+        } else if (prevBoundProject && data.projectName && data.projectName !== prevBoundProject) {
+          // Non-rebound bound-domain change (another tab launched a new
+          // workspace): close channels stamped with the dead bound name (the
+          // bound channel itself + any tap scoped to it). A same-name relaunch
+          // sends no such frame, so single-workspace byte-parity is preserved.
+          this._closeReboundChannels(prevBoundProject);
         }
       } else if (isRebound) {
         // Unaffected tab: its VIEW stays, but the bound channel's scope domain
@@ -3115,15 +3153,11 @@ class AppBase extends React.Component {
       const r = resolveHydratedPin(data.pinnedSessionId, this._derivedLatestId(), this._effectiveOnlyCurrentSession());
       if (r.adopt && r.value !== channel.vm.react.pinnedSessionTs) {
         this._applyingRemotePin = true;
-        if (this._isRenderedChannel(channel)) {
-          this.setState({ pinnedSessionTs: r.value }, () => { this._applyingRemotePin = false; });
-          channel.vm.react.pinnedSessionTs = r.value;
-        } else {
-          // Background bound channel: adopt into its slice only (this.state
-          // belongs to the rendered view) — a later warm switch carries it.
-          channel.vm.react.pinnedSessionTs = r.value;
-          this._applyingRemotePin = false;
-        }
+        // Route through the single commit choke point: it writes vm.react and,
+        // when this is the rendered channel, mirrors to this.state (invoking cb
+        // after setState). A background bound channel gets only its own slice —
+        // a later warm switch carries it. No manual vm.react double-write.
+        this._commitChannel(channel, { pinnedSessionTs: r.value }, () => { this._applyingRemotePin = false; });
         // NOTE: the task checklist is deliberately NOT cleared on pin
         // adoption — the strip is live-session truth, and any clear would
         // be defeated by the next task_update / reconnect snapshot anyway

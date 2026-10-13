@@ -71,9 +71,18 @@ export function filterClientsByScope(clientList, project, instance, boundProject
  */
 export function filterClientsByInstance(clientList, instance) {
   if (!instance) return clientList;
-  let anyInstanceViewer = false;
-  for (const c of clientList) { if (c && c._ccvViewInstance) { anyInstanceViewer = true; break; } }
-  if (!anyInstanceViewer) return clientList;
+  // Exclude ONLY clients explicitly stamped with a DIFFERENT instance. An
+  // UNSTAMPED (project-level) viewer of the same project must also receive the
+  // frame: if an earlier `active:true` frame reached it while no instance viewer
+  // was online, the matching `active:false` must reach it too or its spinner
+  // never clears (the clear would be narrowed away the moment a parallel
+  // instance chip connects). Keeping active/clear on the SAME recipient set
+  // avoids that split delivery.
+  // Fast path: nobody is excluded (no differently-stamped client) ⇒ return the
+  // SAME array reference (no filter alloc), preserving legacy identity.
+  let anyExcluded = false;
+  for (const c of clientList) { if (c && c._ccvViewInstance && c._ccvViewInstance !== instance) { anyExcluded = true; break; } }
+  if (!anyExcluded) return clientList;
   return clientList.filter((c) => !c || !c._ccvViewInstance || c._ccvViewInstance === instance);
 }
 

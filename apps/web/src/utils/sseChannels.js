@@ -63,11 +63,16 @@ export function createChannelManager({
   const channels = new Map();
   let renderedKey = null;
 
-  function _newChannel(key, url) {
-    const scope = scopeOfKey(key);
+  function _newChannel(key, url, scope = null) {
+    // Prefer the caller-supplied scope over reverse-parsing the key: a `sid:`
+    // key carries no project/instance, so scopeOfKey would null them out and
+    // every scope read (stream-progress gate, reconnect URL, workflow filter)
+    // would then fall back to the BOUND project — wrong for a parallel-view sid
+    // attach. The key stays the identity; the scope is what the producer sees.
+    const resolvedScope = scope || scopeOfKey(key);
     const ch = {
       key,
-      scope,
+      scope: resolvedScope,
       es: null,
       url: url || null,
       gen: 0,
@@ -76,7 +81,7 @@ export function createChannelManager({
       reconnectTimer: null,
       lastFrameAt: 0,
       closed: false,
-      vm: typeof handlers.onCreate === 'function' ? handlers.onCreate(key, scope) : {},
+      vm: typeof handlers.onCreate === 'function' ? handlers.onCreate(key, resolvedScope) : {},
     };
     if (url) _connect(ch, url);
     return ch;
@@ -153,7 +158,7 @@ export function createChannelManager({
    * itself — closing it under the caller's feet. With the flag, the demoted
    * previous rendered channel is the victim (the intended LRU semantics).
    */
-  function ensure(key, { url, cold = false, rendered = false } = {}) {
+  function ensure(key, { url, cold = false, rendered = false, scope = null } = {}) {
     if (rendered) renderedKey = key;
     let ch = channels.get(key);
     if (ch) {
@@ -163,7 +168,7 @@ export function createChannelManager({
       if (url && cold) _connect(ch, url);
       return ch;
     }
-    ch = _newChannel(key, url);
+    ch = _newChannel(key, url, scope);
     channels.set(key, ch);
     _evictIfNeeded();
     return ch;

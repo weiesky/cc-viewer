@@ -57,8 +57,8 @@ describe('server.js streaming_status 源码锚点', () => {
     assert.ok(tickOnce.test(SERVER_SRC), 'streaming_status 由 _streamingTickOnce 逐 scope 发送');
     const boundFilter = /const target = sc\.project\s*\?\s*filterClientsByScope\(clients, sc\.project, sc\.instance, _projectName \|\| ''\)\s*:\s*_filterClientsByViewProject\(clients, _projectName \|\| ''\);/;
     assert.ok(boundFilter.test(SERVER_SRC), 'bound scope 走 _filterClientsByViewProject、并行 scope 走 filterClientsByScope');
-    const timerIter = /_streamingTickOnce\(BOUND_SCOPE\);[\s\S]*?for \(const key of activeStreamingScopes\(\)\)/;
-    assert.ok(timerIter.test(SERVER_SRC), '定时器先 bound 后遍历活跃 scope');
+    const timerIter = /_streamingTickOnce\(BOUND_SCOPE\);[\s\S]*?activeStreamingScopes\(\)[\s\S]*?_lastCliActiveByScope\.keys\(\)[\s\S]*?_streamingTickOnce\(key\)/;
+    assert.ok(timerIter.test(SERVER_SRC), '定时器先 bound,再遍历活跃 scope ∪ 已记录 last-active 的 scope(覆盖 falling edge)');
   });
 
   it('_filterClientsByViewProject 是 filterClientsByViewProject 的绑定项目柯里化', () => {

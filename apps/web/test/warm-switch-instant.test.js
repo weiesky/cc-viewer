@@ -298,4 +298,75 @@ describe('warm switch is instant (runtime, per-workspace channels)', () => {
     assert.equal(since, '2026-10-13T00:02:00Z', 'resume URL carries the committed cursor');
     assert.equal(new URLSearchParams(resumeES.url.split('?')[1]).get('cc'), '1', 'cc = baseline count');
   });
+
+  it('evict over cap: snapshot pre-merges journal; re-enter resumes via ?since&cc on the evicted baseline', async () => {
+    const { inst, mine } = await mountIsolated();
+    // Bound channel committed with a 1-entry baseline.
+    const boundES = mine()[0];
+    fire(boundES, 'load_start', { total: 1, incremental: false });
+    fire(boundES, 'load_chunk', `[${entry('2026-10-13T00:00:01Z', 'bound hi')}]`);
+    fire(boundES, 'load_end', {});
+    await sleep(250);
+
+    // Enter projA cold and commit a 1-entry baseline (its lastTs = 00:00:10Z).
+    inst.handleActivateChip({ project: 'projA' });
+    await sleep(30);
+    const projAES = mine()[1];
+    fire(projAES, 'load_start', { total: 1, incremental: false });
+    fire(projAES, 'load_chunk', `[${entry('2026-10-13T00:00:10Z', 'A hi')}]`);
+    fire(projAES, 'load_end', {});
+    await sleep(250);
+    const projACh = inst._channels.get('project:projA');
+    assert.equal(projACh.vm.committed, true, 'projA committed');
+
+    // Move to bound so projA becomes a background tap, then deliver a LIVE
+    // entry to projA's socket — it must journal (not touch the rendered view).
+    inst.handleDetachView();
+    await sleep(60);
+    assert.equal(inst._channels.getRendered().key, 'bound', 'bound is rendered again');
+    fireData(projAES, entry('2026-10-13T00:00:20Z', 'A tail'));
+    await sleep(60);
+    assert.ok(projACh.vm.journal.length >= 1, 'tap channel journaled the live entry');
+    assert.equal(inst.state.requests.length, 1, 'rendered bound view untouched by the tap frame');
+
+    // Drive two MORE cold parallel enters to exceed maxChannels=3. Rendered is
+    // bound, so the LRU victim is the oldest non-bound/non-rendered channel:
+    // projA. Its evict must snapshot to the view cache with the journal merged
+    // into the baseline (so `since` sits at the journaled tail, not the stale
+    // committed one).
+    inst.handleActivateChip({ project: 'projB' });
+    await sleep(30);
+    const projBES = mine().find((es) => es.url.includes('project=projB'));
+    fire(projBES, 'load_start', { total: 1, incremental: false });
+    fire(projBES, 'load_chunk', `[${entry('2026-10-13T00:00:30Z', 'B hi')}]`);
+    fire(projBES, 'load_end', {});
+    await sleep(250);
+
+    inst.handleActivateChip({ project: 'projC' });
+    await sleep(30);
+    const projCES = mine().find((es) => es.url.includes('project=projC'));
+    fire(projCES, 'load_start', { total: 1, incremental: false });
+    fire(projCES, 'load_chunk', `[${entry('2026-10-13T00:00:40Z', 'C hi')}]`);
+    fire(projCES, 'load_end', {});
+    await sleep(250);
+
+    // projA evicted (cap 3: rendered projC + bound + the most-recent projB).
+    assert.equal(inst._channels.get('project:projA'), null, 'projA channel was evicted over cap');
+    const snap = inst._viewCache.restore('projA');
+    assert.ok(snap, 'evict snapshotted projA to the view cache');
+    assert.equal(snap.lastTs, '2026-10-13T00:00:20Z', 'snapshot cursor pre-merged the journal tail (not the stale committed 00:00:10Z)');
+    assert.ok(snap.requests.some((r) => (r.entries || r).toString().includes('A tail') || JSON.stringify(r).includes('A tail')),
+      'snapshot requests carry the journaled tail entry');
+
+    // Re-enter projA: no live channel, so it cold-loads from the cache cursor —
+    // the URL must carry ?since=<journaled tail>&cc (incremental, not a full window).
+    const before = mine().length;
+    inst.handleActivateChip({ project: 'projA' });
+    await sleep(40);
+    const reenter = mine().slice(before).find((es) => es.url.includes('project=projA'));
+    assert.ok(reenter, 're-entering the evicted project opened a fresh EventSource');
+    const q = new URLSearchParams(reenter.url.split('?')[1]);
+    assert.equal(q.get('since'), '2026-10-13T00:00:20Z', 're-enter resumes from the evicted (journal-merged) cursor');
+    assert.ok(Number(q.get('cc')) > 0, 'cc guard present for the incremental resume');
+  });
 });
