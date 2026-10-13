@@ -2920,8 +2920,14 @@ class ChatView extends React.Component {
       }, STOP_FOCUS_IN_ESC_DELAY_MS);
       // Stop keeps the busy queue parked (product decision): suppress the automatic
       // turn-end drain so the ESC'd turn doesn't immediately fire the queued bubbles.
+      // Per-workspace (2026-10): carry the view's project/instance so the server
+      // clears exactly this scope's turn flag (absent ⇒ bound).
       if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
-        this._inputWs.send(JSON.stringify({ type: 'queue-suppress' }));
+        this._inputWs.send(JSON.stringify({
+          type: 'queue-suppress',
+          project: this.props.viewProject || this.props.projectName || null,
+          instanceKey: this.props.viewInstance || null,
+        }));
       }
     }
     // 乐观即时切非运行态：中断已即时发出，按钮无需等 AppBase 的 SSE+2s 才翻 false。

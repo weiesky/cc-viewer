@@ -33,6 +33,8 @@ import { createEntrySlimmer, createIncrementalSlimmer, internEntryBigFields } fr
 import { yieldToMain, runChunkedPass, INGEST_BATCH_SIZE } from './utils/ingestPipeline.js';
 import { rowToListItem } from './utils/v3Rows.js';
 import { createV3Assembler } from './utils/v3Assembler.js';
+import { createChannelState, appendJournal, cacheKeyForScope, clearChannelTimers } from './utils/viewChannelState';
+import { createChannelManager, scopeKeyFor, scopeOfKey, BOUND_CHANNEL_KEY } from './utils/sseChannels';
 import { reinitializeMermaid } from './hooks/useMermaidRender';
 import styles from './App.module.css';
 
@@ -49,6 +51,47 @@ const LOG_PAGE_SIZE = 50;
 // forever. Zero streaming activity for this long ⇒ the clear signal was lost;
 // fall back to the legacy debounced behavior (never worse than pre-turnActive).
 const TURN_ACTIVE_STALE_MS = 30 * 1000;
+
+// SSE channel watchdog: no frame of ANY kind for this long ⇒ reconnect. Also
+// the freshness bound of the warm-switch gate (a channel whose last frame is
+// older than this is treated as stale and resumed with ?since).
+const CHANNEL_HEARTBEAT_MS = 45000;
+// View-switch overlay backstop: a lost load_end must not pin the overlay up.
+const RESUME_SWITCH_BACKSTOP_MS = 30000;
+
+// Named SSE frames → the AppBase handler each dispatches to. Every handler is
+// channel-aware: `(channel, event) => void`. Registration wraps each with the
+// per-channel stale() guard + heartbeat touch (see _bindChannelEvents).
+const CHANNEL_FRAME_HANDLERS = {
+  'stream-progress': '_onStreamProgress',
+  'migrate_prompt': '_onMigratePrompt',
+  'update_major_available': '_onUpdateMajorAvailable',
+  'resume_bypassed': '_onResumeBypassed',
+  'load_start': '_onLoadStart',
+  'load_chunk': '_onLoadChunk',
+  'sid-not-found': '_onSidNotFound',
+  'load_end': '_onLoadEnd',
+  'full_reload': '_onFullReload',
+  'workspace_started': '_onWorkspaceStarted',
+  'workspace_stopped': '_onWorkspaceStopped',
+  'context_window': '_onContextWindow',
+  'kv_cache_content': '_onKvCacheContent',
+  'workflow_update': '_onWorkflowUpdate',
+  'task_update': '_onTaskUpdate',
+  'proxy_profile': '_onProxyProfile',
+  'retry_config': '_onRetryConfig',
+  'ping': '_onPing',
+  'server_config': '_onServerConfig',
+  'v2_requests': '_onV2Requests',
+  'v2_requests_delta': '_onV2RequestsDelta',
+  'v3_conv': '_onV3Conv',
+  'v3_resp': '_onV3Resp',
+  'session_pin': '_onSessionPin',
+  'turn_active': '_onTurnActive',
+  'turn_end': '_onTurnEnd',
+  'im_log_update': '_onImLogUpdate',
+  'streaming_status': '_onStreamingStatus',
+};
 
 // AntD 主题配置：模块顶层冻结常量。
 // 旧实现是 getter 每次 render 返回新字面量，导致 antd cssinjs useTheme cache 永远 miss、
@@ -254,19 +297,11 @@ class AppBase extends React.Component {
         },
       },
     };
-    this.eventSource = null;
-    this._currentSessionId = null;
     // Per-project view-state cache (multi-project tab switch, 2026-10): keeps a
     // bounded snapshot of each departing project's conversation view so switching
     // BACK restores instantly + resumes with `?project=<p>&since=<lastTs>` (the
     // "slow switch" fix), instead of a full cold reload every time.
     this._viewCache = createViewStateCache();
-    // Set when the in-flight initSSE is a cache-hit incremental resume (drives
-    // the load_end merge branch + skips the loading overlay).
-    this._hasViewCache = false;
-    // The view-cache key this SSE connection restored (project or project\x00instance),
-    // so a load_start `empty:true` frame can invalidate exactly that snapshot.
-    this._sseCacheKey = null;
     // pin 竞态守卫（_maintainPinState/_hydratePin/session_pin SSE 用）：
     //  _isHydratingPin   — 服务端 pin 的 GET 在途；期间禁 lazy-lock + 禁 persist，防抢在真值返回前误锁/回写。
     //  _applyingRemotePin — 正在采纳服务端值（hydrate/SSE）；期间禁 persist，防把服务端值当本地改动回 POST（防回环）。
@@ -279,25 +314,14 @@ class AppBase extends React.Component {
     // View-attach (attachedSid state, ?sid re-scope, sid filters) is always on;
     // with no attach in effect (attachedSid null) it reduces to the pre-attach
     // behavior exactly.
-    // 跟踪上一次 mainAgent entry 的 timestamp，给新增 assistant msg 赋 _generatedTs（生成时 ts）。
-    // 解决 bubble 时间标签晚一拍的 bug：assistant 响应是上一次 API 调用产出的，
-    // 被这次 API 调用带进 body.messages，旧逻辑统一赋 entry.timestamp 导致显示成"下一次 ts"。
-    this._prevMainAgentTs = null;
     this._autoSelectTimer = null;
-    this._chunkedEntries = [];   // 分段加载缓冲
-    this._chunkedTotal = 0;
     this.mainContainerRef = React.createRef();
     this._layoutRef = React.createRef();
-    // P0 perf: O(1) request dedup index
+    // P0 perf: O(1) request dedup index (rendered view; rebuilt on every switch)
     this._requestIndexMap = new Map();
-    // P0 perf: rAF batching for SSE messages
+    // P0 perf: rAF batching for SSE messages (rendered view)
     this._pendingEntries = [];
     this._flushRafId = null;
-    // P0 perf: pre-computed cache loss map
-    this._cacheLossMap = new Map();
-    this._cacheLossProcessedCount = 0;
-    this._cacheLossLastMainAgent = null;
-    this._cacheLossShowAll = undefined;
     // 增量维护的 KV-Cache 缓存内容（稳定引用，不受 inProgress 闪烁影响）
     this._lastKvCacheContent = null;
     this._sseSlimmer = null; this._sseReconstructor = null;
@@ -317,10 +341,38 @@ class AppBase extends React.Component {
     // V3 live-assembly window state. `_v3PendingLive.push` (v3_conv/v3_resp/
     // v2_requests_delta listeners) and the `_ingestLiveEntry` gate read these
     // directly — initialize so the first cold v3 load can never hit a
-    // TypeError on a queued frame.
+    // TypeError on a queued frame. Single-instance: only the rendered channel
+    // ever cold-loads (tap channels drop load frames).
     this._v3Assembling = false;
+    this._v3AssemblingChannel = null;
     this._v3PendingLive = [];
     this._v3ColdRows = null;
+    // Per-workspace SSE channels (2026-10): one persistent EventSource per view
+    // scope. The RENDERED channel's vm.react is the authoritative copy of this
+    // view's state slice; background ("tap") channels keep their own vm and a
+    // live-entry journal, so switching back is a warm state swap — no teardown,
+    // no cold load, and no cross-scope state on one connection.
+    this._channels = createChannelManager({
+      openEventSource: (url) => new EventSource(apiUrl(url)),
+      // rendered + bound + the most-recent parallel view (HTTP/1.1 ~6/origin).
+      maxChannels: 3,
+      heartbeatMs: CHANNEL_HEARTBEAT_MS,
+      reconnectBudget: 10,
+      // Legacy reconnect pacing (matches the pre-channel _reconnectSSE backoff).
+      backoff: (n) => Math.min(2000 * Math.pow(2, n - 1), 32000),
+      onEvict: (ch) => this._onChannelEvict(ch),
+      handlers: {
+        onCreate: () => createChannelState(),
+        onFrame: (channel, name, event) => this._onChannelFrame(channel, name, event),
+        onBind: (channel, es, stale) => this._bindChannelEvents(channel, es, stale),
+        onOpen: (channel) => this._onChannelOpen(channel),
+        onError: () => console.error('SSE连接错误'),
+        onHeartbeatTimeout: (channel) => this._onChannelHeartbeatTimeout(channel),
+      },
+    });
+    // ?logfile= read-only mode runs with NO channel; the local vm backs the
+    // rendered view there so every vm-scoped reader stays on one code path.
+    this._localVm = createChannelState();
   }
 
   /** 批量剪枝 entries：清空旧 MainAgent 的 body.messages，保留最后一条完整。
@@ -350,9 +402,10 @@ class AppBase extends React.Component {
       this._requestIndexMap.set(`${e.timestamp}|${e.url}`, i);
     }
     // Reset incremental cache loss state — next render will do a full pass
-    this._cacheLossProcessedCount = 0;
-    this._cacheLossLastMainAgent = null;
-    this._cacheLossMap = new Map();
+    const vm = this._renderedVm();
+    vm.cacheLossProcessedCount = 0;
+    vm.cacheLossLastMainAgent = null;
+    vm.cacheLossMap = new Map();
     this._lastKvCacheContent = null;
     this._sseSlimmer = null; this._sseReconstructor = null;
     this._v2SseReconstructor = null;
@@ -576,24 +629,14 @@ class AppBase extends React.Component {
   _applyViewAttach = (uuid, scope = null) => {
     const scopeProject = scope && scope.project ? scope.project : null;
     const scopeInstance = scope && scope.instance ? scope.instance : null;
-    // Mark the switch in flight so the chat/terminal panels get a translucent
-    // overlay until the ?sid cold load completes (load_end). A 30s backstop
-    // prevents a lost SSE event from leaving the overlay up forever.
-    // Also drop the SDK launch model: a resume-switch changes session identity, and the
+    // Drop the SDK launch model: a resume-switch changes session identity, and the
     // header chip would otherwise show the OLD session's model until the resumed session's
     // first turn re-broadcasts sdk-init. (workspace_started already clears it for full
     // workspace switches; this covers the same-workspace resume-switch gap.)
-    this.setState({ resumeSwitch: { uuid }, sdkModel: null, turnActive: false });
-    if (this._turnStaleTimer) { clearTimeout(this._turnStaleTimer); this._turnStaleTimer = null; }
-    this._turnActiveSince = null;
-    this._turnSignalTs = null;
-    if (this._resumeSwitchTimer) clearTimeout(this._resumeSwitchTimer);
-    this._resumeSwitchTimer = setTimeout(() => {
-      this._resumeSwitchTimer = null;
-      if (this._unmounted) return;
-      this.setState({ resumeSwitch: null });
-      try { message.warning(t('ui.resume.switchTimeout')); } catch {}
-    }, 30000);
+    // The switch overlay + 30s backstop + the turn-state reset are armed by
+    // _activateScope's cold path (a warm re-attach skips them: the view is
+    // already whole).
+    this.setState({ sdkModel: null });
     if (scopeProject && scopeProject !== this.state.projectName) {
       // Parallel-project resume: keep the viewed project/instance so the view stays on it.
       this.setState({ attachedSid: uuid, viewedProject: scopeProject, viewedInstance: scopeInstance });
@@ -612,11 +655,10 @@ class AppBase extends React.Component {
       // View is back on the bound project — drop the persisted workspace.
       clearViewedWorkspace();
     }
-    this._resetForViewSwitch();
     // Pass the attached-session scope explicitly — setState hasn't flushed (React 18 batching),
-    // so initSSE reading this.state would see the pre-attach view.
-    this.initSSE({ sid: uuid, project: scopeProject, instance: scopeInstance });
-    // Overlay clears on the cold load's load_end (handleEventMessage).
+    // so reading this.state here would see the pre-attach view.
+    this._activateScope({ sid: uuid, project: scopeProject, instance: scopeInstance }, { reason: 'attach', overlayUuid: uuid });
+    // Overlay clears on the cold load's load_end (_onLoadEnd).
   };
 
   // Unified "is the view pinned to a non-latest session" predicate. True while a
@@ -628,31 +670,43 @@ class AppBase extends React.Component {
 
   // Full baseline reset for a view switch (attach / detach / boundary-detach),
   // mirroring what workspace_started does. Shared by every view-switch path so
-  // they can't drift apart. Covers: in-flight ingest pipeline, v3 assembler
-  // state, the O(1) request dedup index (else live flush mis-dedups into array
-  // holes), the current-session pointer, the desktop-reconnect `since` branch
-  // (else an attach-after-reconnect builds an empty incremental view), and the
-  // live typewriter overlay (else a mid-stream primary turn bleeds over the
-  // attached view). `?sid` cold load then rebuilds from a clean baseline.
-  _resetForViewSwitch() {
+  // they can't drift apart. Covers: in-flight ingest pipeline, the incoming
+  // channel's v3 assembler state, the O(1) request dedup index (else live flush
+  // mis-dedups into array holes), the current-session pointer, and the live
+  // typewriter overlay (else a mid-stream primary turn bleeds over the attached
+  // view). `?sid` cold load then rebuilds from a clean baseline.
+  // `channel` = the channel being switched TO (its transient state is reset;
+  // the departing channel's vm keeps its own turn state for a possible return).
+  _resetForViewSwitch(channel = null) {
     this._abortColdIngest();
-    this._v3ResetClientState();
+    const ch = channel || this._channels.getRendered();
+    this._v3ResetClientState(ch);
     this._rebuildRequestIndex([]);
-    this._currentSessionId = null;
-    this._sseReconnectCount = 0;
-    this._pendingStreamingLatest = null;
+    if (ch) ch.vm.currentSessionId = null;
     // Drop buffered-but-unflushed live entries of the departing view, mirroring
     // handleDetachView / _teardownTransientLiveState: an entry pushed into
     // _pendingEntries BEFORE the switch would otherwise flush into the NEW
     // view's prev.requests on the next frame (the streaming-switch bleed).
     this._pendingEntries = [];
     if (this._flushRafId) { cancelAnimationFrame(this._flushRafId); this._flushRafId = null; }
-    // The departing view's turn-level state must not leak into the new view — the
-    // new view's own turn frames are keyed to a different session/project and the
-    // clearing frame for the old turn may never arrive here (view-filtered).
-    if (this._turnStaleTimer) { clearTimeout(this._turnStaleTimer); this._turnStaleTimer = null; }
-    this._turnActiveSince = null;
-    this._turnSignalTs = null;
+    // The incoming channel's turn-level scratch is cleared so the departing
+    // view's state can never leak into it (its own turn frames are keyed to a
+    // different session/project and the clearing frame for the old turn may
+    // never arrive here — view-filtered).
+    if (ch) {
+      const vm = ch.vm;
+      vm.pendingStreamingLatest = null;
+      if (vm.turnStaleTimer) { clearTimeout(vm.turnStaleTimer); vm.turnStaleTimer = null; }
+      vm.turnActiveSince = null;
+      vm.turnSignalTs = null;
+      vm.react.streamingLatest = null;
+      vm.react.isStreaming = false;
+      vm.react.turnActive = false;
+    } else {
+      this._localVm.react.streamingLatest = null;
+      this._localVm.react.isStreaming = false;
+      this._localVm.react.turnActive = false;
+    }
     this.setState({ streamingLatest: null, isStreaming: false, turnActive: false });
   }
 
@@ -676,16 +730,6 @@ class AppBase extends React.Component {
     // would flush into the bound view after the reset).
     this._pendingEntries = [];
     if (this._flushRafId) { cancelAnimationFrame(this._flushRafId); this._flushRafId = null; }
-    // Switch overlay until the bound cold load commits (same 30s backstop as
-    // handleActivateChip; cleared at load_end).
-    this.setState({ resumeSwitch: { uuid: this.state.projectName || 'bound' } });
-    if (this._resumeSwitchTimer) clearTimeout(this._resumeSwitchTimer);
-    this._resumeSwitchTimer = setTimeout(() => {
-      this._resumeSwitchTimer = null;
-      if (this._unmounted) return;
-      this.setState({ resumeSwitch: null });
-      try { message.warning(t('ui.resume.switchTimeout')); } catch {}
-    }, 30000);
     this.setState({
       attachedSid: null,
       viewedProject: null,
@@ -701,14 +745,18 @@ class AppBase extends React.Component {
     // refresh lands on the bound view, not a stale parallel one.
     clearViewedWorkspace();
     this._hydratePinSeq++;
-    this._resetForViewSwitch();
     // Pure-client viewing (2026-10-07): bump the live-processes refresh token so the
     // header re-polls immediately on detach (parity with handleCloseProject) — closes the
     // residual poll gap if the bound PTY/instanceKey changed while a parallel view was up.
     this.setState((prev) => ({ liveProcessRefreshToken: (prev.liveProcessRefreshToken || 0) + 1 }));
-    // Pass the bound (empty) scope explicitly — setState hasn't flushed, so initSSE reading
-    // this.state would still see the departing parallel project/instance.
-    this.initSSE({ sid: null, project: null, instance: null });
+    // Pass the bound (empty) scope explicitly — setState hasn't flushed, so reading
+    // this.state would still see the departing parallel project/instance. A warm
+    // bound channel repaints instantly (the pre-cleared state above is overwritten
+    // by its slice); only a cold one shows the switch overlay.
+    this._activateScope({ sid: null, project: null, instance: null }, {
+      reason: 'detach',
+      overlayUuid: this.state.projectName || 'bound',
+    });
     this._maintainPinState(null);
   };
 
@@ -821,23 +869,7 @@ class AppBase extends React.Component {
     // WS-side attach, this POST covers the server-side anchor for non-WS readers.
     // Multi-instance: carry the instanceKey so the server attaches THIS exact process.
     attachMainPty(chip.project, { instanceKey: chipInstance });
-    // Mark the switch in flight so the chat/terminal panels get a translucent
-    // overlay until the ?project= cold load completes (load_end). A 30s backstop
-    // prevents a lost SSE event from leaving the overlay up forever (symmetric
-    // with the ?sid resume path). Keyed by project+instance so a same-cwd twin
-    // switch is not mistaken for a no-op re-click.
-    this.setState({ resumeSwitch: { uuid: chipInstance ? `${chip.project}${chipInstance}` : chip.project } });
-    if (this._resumeSwitchTimer) clearTimeout(this._resumeSwitchTimer);
-    this._resumeSwitchTimer = setTimeout(() => {
-      this._resumeSwitchTimer = null;
-      if (this._unmounted) return;
-      this.setState({ resumeSwitch: null });
-      try { message.warning(t('ui.resume.switchTimeout')); } catch {}
-    }, 30000);
-    this.setState({ viewedProject: chip.project, viewedInstance: chipInstance, attachedSid: null, pinnedSessionTs: null, turnActive: false });
-    if (this._turnStaleTimer) { clearTimeout(this._turnStaleTimer); this._turnStaleTimer = null; }
-    this._turnActiveSince = null;
-    this._turnSignalTs = null;
+    this.setState({ viewedProject: chip.project, viewedInstance: chipInstance, attachedSid: null, pinnedSessionTs: null });
     // Persist the viewed workspace so a refresh restores it. cwd comes from the
     // header-reported tab list (the chip payload may not carry it) and is the
     // restart-stable anchor for re-resolving a dead instanceKey.
@@ -847,10 +879,15 @@ class AppBase extends React.Component {
       cwd: resolveCwdForView(chip.project, chipInstance, this._lastProjectTabs || []),
       ts: Date.now(),
     });
-    this._resetForViewSwitch();
-    // Pass the NEW scope explicitly: setState hasn't flushed (React 18 batching), so initSSE
-    // reading this.state would target the PREVIOUS view. See initSSE(scopeOverride).
-    this.initSSE({ sid: null, project: chip.project, instance: chipInstance });
+    // Warm switch: the chip's channel repaints instantly (no overlay, no new
+    // EventSource). Cold switch: overlay + 30s backstop until load_end, keyed by
+    // project+instance so a same-cwd twin switch is not mistaken for a no-op.
+    // Pass the NEW scope explicitly: setState hasn't flushed (React 18 batching),
+    // so reading this.state would target the PREVIOUS view.
+    this._activateScope({ sid: null, project: chip.project, instance: chipInstance }, {
+      reason: 'activate',
+      overlayUuid: chipInstance ? `${chip.project}${chipInstance}` : chip.project,
+    });
   };
 
   // Header [+] button: open / close the new-parallel-project picker modal.
@@ -916,7 +953,7 @@ class AppBase extends React.Component {
         // neutered because _maintainPinState's follow-latest is already exempted.
         if (this._viewAttached()) return;
         this._applyingRemotePin = true;
-        this.setState({ pinnedSessionTs: val }, () => { this._applyingRemotePin = false; });
+        this._commitChannel(this._channels.getRendered(), { pinnedSessionTs: val }, () => { this._applyingRemotePin = false; });
       },
       persistLocal: () => this._persistPin(),
       clearGate: () => { this._isHydratingPin = false; },
@@ -934,7 +971,7 @@ class AppBase extends React.Component {
     if (this.state.attachedSid && prevState && prevState.mainAgentSessions !== this.state.mainAgentSessions) {
       const stableId = resolveTakeoverStableId(this.state.mainAgentSessions, this.state.attachedSid);
       if (stableId && stableId !== this.state.pinnedSessionTs) {
-        this.setState({ pinnedSessionTs: stableId });
+        this._commitChannel(this._channels.getRendered(), { pinnedSessionTs: stableId });
       }
     }
     this._maintainPinState(prevState);
@@ -957,14 +994,14 @@ class AppBase extends React.Component {
       // element: mainAgentSessions is insertion-ordered, and with interleaved
       // multi-terminal sessions or a truncated reconnect replay the tail is often
       // an old session — following it anchored (and persisted) the wrong pin.
-      const latestId = this._derivedLatestId() || this._currentSessionId || null;
+      const latestId = this._derivedLatestId() || this._renderedVm().currentSessionId || null;
       // 始终跟随最新会话（不再只在「开关刚打开 / pin 为空」时锁一次）：这样即便持久化的 pin
       // 指向旧会话（cc-viewer 关闭期间新终端已启动，重开后 batch 重载出新会话），也会自动切到
       // 最新会话。因为没有「手动锁定任意旧会话」的 UI，「当前会话」恒等于最新会话，此推进安全。
       // 不变式：切项目那一拍这里的乐观锁不会被持久化——下面同一趟的 _hydratePin() 会同步置
       // _isHydratingPin=true，把下一拍 persist 分支挡掉（由 hydrate 的服务端真值收口），故无需在此回写。
       if (latestId && this.state.pinnedSessionTs !== latestId) {
-        this.setState({ pinnedSessionTs: latestId });
+        this._commitChannel(this._channels.getRendered(), { pinnedSessionTs: latestId });
       }
     }
 
@@ -997,7 +1034,7 @@ class AppBase extends React.Component {
     for (let i = 0; i < entries.length; i++) {
       this._processOneEntry(entries[i], i, st);
     }
-    this._currentSessionId = st.currentSessionId;
+    this._renderedVm().currentSessionId = st.currentSessionId;
     return { mainAgentSessions: st.sessions, filtered: st.filtered };
   }
 
@@ -1006,9 +1043,10 @@ class AppBase extends React.Component {
   _initProcessState() {
     // _rebuildRequestIndex 内联
     this._requestIndexMap.clear();
-    this._cacheLossProcessedCount = 0;
-    this._cacheLossLastMainAgent = null;
-    this._cacheLossMap = new Map();
+    const vm = this._renderedVm();
+    vm.cacheLossProcessedCount = 0;
+    vm.cacheLossLastMainAgent = null;
+    vm.cacheLossMap = new Map();
     this._lastKvCacheContent = null;
     this._sseSlimmer = null; this._sseReconstructor = null;
     // _v2SseReconstructor resets with the SSE state, but _v2ColdSeed must
@@ -1079,7 +1117,7 @@ class AppBase extends React.Component {
     const st = this._initProcessState();
     const r = await runChunkedPass(entries.length, (i) => this._processOneEntry(entries[i], i, st), ctl);
     if (r.aborted) return { aborted: true };
-    this._currentSessionId = st.currentSessionId;
+    this._renderedVm().currentSessionId = st.currentSessionId;
     return { aborted: false, mainAgentSessions: st.sessions, filtered: st.filtered };
   }
 
@@ -1149,10 +1187,18 @@ class AppBase extends React.Component {
     return { aborted: false, empty: false, entries, mainAgentSessions: p.mainAgentSessions, filtered: p.filtered };
   }
 
-  /** 管线提交：单次原子 setState；回调里关闸 + 泄洪 live 缓冲（对已提交基线重建）。 */
-  _commitColdIngest(myToken, newState, after) {
+  /** 管线提交：单次原子 setState；回调里关闸 + 泄洪 live 缓冲（对已提交基线重建）。
+   *  `channel` 是发起这次管线的 channel：提交期间视图已切走（或 channel 不再渲染）
+   *  则整体丢弃 —— 旧视图的基线绝不能落进新视图（也不落进非渲染 channel 的视图态）。 */
+  _commitColdIngest(myToken, newState, channel, after) {
     if (this._ingestToken !== myToken || this._unmounted) return; // 已被 supersede
-    this.setState(newState, () => {
+    const ch = channel === undefined ? this._channels.getRendered() : channel;
+    if (ch && ch !== this._channels.getRendered()) return; // the view moved on
+    // Committed HERE, not at load_end: a load_end whose pipeline was aborted by
+    // a view switch never landed a whole baseline — the channel must not pass
+    // the warm gate (its vm.react would be a stale/empty slice).
+    if (ch) ch.vm.committed = true;
+    this._commitChannel(ch, newState, () => {
       if (this._ingestToken !== myToken) return; // setState 提交期间又被 supersede
       this._ingestRunning = false;
       const buffered = this._liveGateBuffer;
@@ -1195,7 +1241,11 @@ class AppBase extends React.Component {
     // at this instant, so nothing queued can be harmed.
     this._abortColdIngest({ drain: true });
     this._ingestProgressCount = 0;
-    this.setState({ fileLoading: false, fileLoadingCount: 0, fileLoadingBytes: null });
+    // A failed pipeline landed no baseline — the rendered channel must not pass
+    // the warm gate afterwards (its next activate re-colds).
+    const vm = this._renderedVm();
+    if (vm) vm.committed = false;
+    this._commitChannel(this._channels.getRendered(), { fileLoading: false, fileLoadingCount: 0, fileLoadingBytes: null });
     // Index repair MUST come after the gate is open and must not be able to
     // re-latch anything: _rebuildRequestIndex dereferences e.timestamp on the
     // committed baseline, which older caches could hold a null for.
@@ -1217,12 +1267,14 @@ class AppBase extends React.Component {
     // must leave an empty-but-consistent index, and the finally guarantees the
     // seed is restored even when _rebuildRequestIndex throws mid-rebuild —
     // otherwise the next live v2 row REBUILD-truncates the cold session.
-    try { this._rebuildRequestIndex(this.state.requests || []); }
+    try { this._rebuildRequestIndex(this._renderedVm().react.requests || []); }
     finally { this._v2ColdSeed = seed; }
   }
 
-  /** initSSE load_end 的分帧版主流程。 */
-  async _runSseColdIngest(rawEntries, { isIncremental, unlockContextBar }) {
+  /** load_end 的分帧版主流程。`channel` = the channel whose baseline this is. */
+  async _runSseColdIngest(rawEntries, { isIncremental, unlockContextBar, channel = null }) {
+    const ch = channel || this._channels.getRendered();
+    if (!ch) return;
     const myToken = ++this._ingestToken;
     // Gate closes SYNCHRONOUSLY before the first await — finish()/the v3
     // assembly path depends on this ordering (see the load_end comment).
@@ -1250,7 +1302,7 @@ class AppBase extends React.Component {
           st.selectedIndex = null;
         }
         if (unlockContextBar) st.contextBarLocked = false;
-        this._commitColdIngest(myToken, st);
+        this._commitColdIngest(myToken, st, ch);
         return;
       }
       const { entries, mainAgentSessions, filtered } = core;
@@ -1264,7 +1316,7 @@ class AppBase extends React.Component {
         fileLoadingBytes: null,
       };
       if (unlockContextBar) newState.contextBarLocked = false;
-      this._commitColdIngest(myToken, newState, () => {
+      this._commitColdIngest(myToken, newState, ch, () => {
         // Multi-project (2026-10): while VIEWING a parallel project, `entries`
         // belong to THAT project — persisting them under the BOUND project's
         // IndexedDB key would make the next cold start's incremental resume
@@ -1277,14 +1329,14 @@ class AppBase extends React.Component {
       // Without this catch a mid-pipeline throw would leave _ingestRunning
       // latched true forever: every live entry would pile into the gate buffer
       // and the chat panel would freeze until a page reload (the 30s server
-      // ping keeps renewing the heartbeat watchdog, so _reconnectSSE's abort
+      // ping keeps renewing the heartbeat watchdog, so the reconnect abort
       // never fires).
       reportSwallowed('sse.cold-ingest', err, { token: myToken });
       this._failColdIngest(myToken);
     }
   }
 
-  /** loadLocalLogFile load_end 的分帧版主流程。 */
+  /** loadLocalLogFile load_end 的分帧版主流程（local-log 无 channel，走 _localVm）。 */
   async _runLocalLogIngest(rawEntries) {
     const myToken = ++this._ingestToken;
     this._ingestRunning = true;
@@ -1293,7 +1345,7 @@ class AppBase extends React.Component {
       const core = await this._runColdIngestCore(rawEntries, ctl);
       if (core.aborted) return;
       if (core.empty) {
-        this._commitColdIngest(myToken, { fileLoading: false, fileLoadingCount: 0, fileLoadingBytes: null, serverCachedContent: null });
+        this._commitColdIngest(myToken, { fileLoading: false, fileLoadingCount: 0, fileLoadingBytes: null, serverCachedContent: null }, null);
         return;
       }
       this._commitColdIngest(myToken, {
@@ -1304,7 +1356,7 @@ class AppBase extends React.Component {
         fileLoadingCount: 0,
         fileLoadingBytes: null,
         serverCachedContent: null,
-      });
+      }, null);
     } catch (err) {
       reportSwallowed('sse.local-log-ingest', err, { token: myToken });
       this._failColdIngest(myToken);
@@ -1442,7 +1494,10 @@ class AppBase extends React.Component {
             if (cached && this.state.requests.length === 0) {
               this._batchSlim(cached);
               const { mainAgentSessions, filtered } = this._processEntries(cached);
-              this.setState({
+              // Channel-routed so the restore lands on whichever vm backs the
+              // view at this instant (the boot channel, seeded from _localVm
+              // when no channel exists yet — see _coldActivate).
+              this._commitChannel(null, {
                 requests: cached,
                 selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
                 mainAgentSessions,
@@ -1522,7 +1577,7 @@ class AppBase extends React.Component {
         // backstop (fire-and-forget). Re-anchored again at load_end.
         attachMainPty(scope.project, { instanceKey: instance });
         // Pass the restored scope explicitly — setState hasn't flushed (React
-        // 18 batching), so initSSE reading this.state would boot the bound view.
+        // 18 batching), so reading this.state would boot the bound view.
         this._scheduleInitSSE({ sid: null, project: scope.project, instance });
       })
       .catch((err) => {
@@ -1543,38 +1598,99 @@ class AppBase extends React.Component {
       this._tabBridgeDisposers = null;
     }
     this._unmounted = true;
-    if (this.eventSource) this.eventSource.close();
+    for (const key of this._channels.keys()) {
+      const ch = this._channels.get(key);
+      if (ch) clearChannelTimers(ch.vm, {
+        clearTimeout: (id) => clearTimeout(id),
+        cancelAnimationFrame: (id) => cancelAnimationFrame(id),
+      });
+    }
+    this._channels.closeAll();
+    clearChannelTimers(this._localVm, {
+      clearTimeout: (id) => clearTimeout(id),
+      cancelAnimationFrame: (id) => cancelAnimationFrame(id),
+    });
     if (this._localLogES) { this._localLogES.close(); this._localLogES = null; }
     if (this._autoSelectTimer) clearTimeout(this._autoSelectTimer);
     if (this._loadingCountTimer) cancelAnimationFrame(this._loadingCountTimer);
     if (this._loadingCountRafId) cancelAnimationFrame(this._loadingCountRafId);
     if (this._cacheSaveTimer) clearTimeout(this._cacheSaveTimer);
-    if (this._sseTimeoutTimer) clearTimeout(this._sseTimeoutTimer);
-    if (this._sseReconnectTimer) clearTimeout(this._sseReconnectTimer);
-    if (this._streamingOffTimer) clearTimeout(this._streamingOffTimer);
-    if (this._turnStaleTimer) { clearTimeout(this._turnStaleTimer); this._turnStaleTimer = null; }
-    if (this._streamingRaf) { cancelAnimationFrame(this._streamingRaf); this._streamingRaf = null; }
-    if (this._clearOptimisticTimer) clearTimeout(this._clearOptimisticTimer);
     if (this._resumeSwitchTimer) { clearTimeout(this._resumeSwitchTimer); this._resumeSwitchTimer = null; }
-    this._pendingStreamingLatest = null;
   }
 
-  // ─── SSE 通信 ───────────────────────────────────────────
+  // ─── SSE 通信（per-workspace channels, 2026-10）───────────
+  //
+  // One persistent EventSource per view scope, owned by this._channels
+  // (utils/sseChannels.js). The channel the user is LOOKING at is "rendered":
+  // its vm.react slice is mirrored into this.state and every view-scoped write
+  // goes through _commitChannel(channel, patch). Background channels ("taps")
+  // keep their own vm — live frames update it / append to its journal — so a
+  // switch back is a warm state swap with no teardown and no cold load.
 
-  // SSE 心跳超时检测：45s 内无任何事件则判定连接断开
-  _resetSSETimeout = () => {
-    if (this._sseTimeoutTimer) clearTimeout(this._sseTimeoutTimer);
-    this._sseReconnectCount = 0; // 收到事件说明连接正常，重置重连计数
-    this._sseTimeoutTimer = setTimeout(() => {
-      console.warn('SSE heartbeat timeout, reconnecting...');
-      this._reconnectSSE();
-    }, 45000);
-  };
+  /** The vm backing the rendered view. ?logfile= read-only mode has no SSE
+   *  channel at all — the local vm keeps every vm-scoped reader on one path. */
+  _renderedVm() {
+    const ch = this._channels.getRendered();
+    return (ch && ch.vm) || this._localVm;
+  }
 
-  // 视图切换时关闭并重建 EventSource（initSSE 顶部统一 close + 代际守卫）——
-  // 多项目视图切换后旧连接的项目作用域已错，绝不能再复用。
+  _isRenderedChannel(channel) {
+    return !!channel && channel === this._channels.getRendered();
+  }
+
+  // 心跳续期：命名事件不经过 manager 的 onmessage 触达路径，必须显式续期，
+  // 否则 45s 看门狗会在只收命名帧（ping 等）的连接上误判断开。
+  _touchChannel(channel) {
+    if (!channel) return;
+    this._channels.touch(channel.key); // refresh lastFrameAt + re-arm the watchdog
+    channel.lastFrameAt = Date.now();
+  }
+
+  /**
+   * 视图态提交唯一咽喉：先写 channel.vm.react（权威副本），再按需镜像进
+   * this.state（仅当该 channel 正在渲染）。全局/偏好类 setState 不走这里。
+   * cb 仅在真正 setState 时作为 React 回调执行（非渲染 channel 同步执行）。
+   */
+  _commitChannel(channel, patch, cb) {
+    if (!patch) return;
+    const ch = channel || this._channels.getRendered();
+    const vm = (ch && ch.vm) || this._localVm;
+    if (vm) {
+      Object.assign(vm.react, patch);
+      this._updateVmCursor(vm);
+    }
+    if (!ch || ch === this._channels.getRendered()) {
+      if (typeof cb === 'function') this.setState(patch, cb); else this.setState(patch);
+    } else if (typeof cb === 'function') {
+      cb();
+    }
+  }
+
+  /** Resume cursor of a vm: the tail of the COMMITTED entry baseline (requests
+   *  only — the ?since replay is entry-based; rows may run ahead when the
+   *  channel journals live v3 deltas without merging them into requests). */
+  _updateVmCursor(vm) {
+    if (!vm) return;
+    const reqs = vm.react.requests || [];
+    let lastTs = null;
+    for (let i = reqs.length - 1; i >= 0; i--) {
+      const ts = reqs[i] && reqs[i].timestamp;
+      if (typeof ts === 'string' && ts) { lastTs = ts; break; }
+    }
+    vm.lastCommittedTs = lastTs;
+    vm.lastCommittedCount = reqs.length;
+  }
+
+  /** Re-seed the v2 cold seed from a committed baseline (mirrors the pipeline
+   *  tail: synthetic entries are appended last, so the newest one wins). */
+  _seedV2ColdSeed(requests) {
+    let seed = null;
+    for (const e of requests || []) if (e && e._syntheticV2) seed = e;
+    this._v2ColdSeed = seed;
+  }
+
   _scheduleInitSSE(scopeOverride = null) {
-    const start = () => { if (!this._unmounted) this.initSSE(scopeOverride); };
+    const start = () => { if (!this._unmounted) this._activateScopeOf(scopeOverride, { reason: 'boot', overlay: false }); };
     // Windows 冷启动时 V8 需要 3-5 秒编译 ~7MB JS bundle（热启动有 Code Cache 则 <0.5s）。
     // timeout 设为 5 秒确保编译完成后再建 SSE 连接，避免数据处理与编译竞争导致 tab 崩溃。
     // 浏览器空闲时会提前触发（不必等满 5 秒），所以对热启动/Mac 无感知延迟。
@@ -1585,18 +1701,37 @@ class AppBase extends React.Component {
     }
   }
 
-  _teardownTransientLiveState = () => {
+  /** Boot/reconnect scope resolution: an explicit override wins (setState hasn't
+   *  flushed under React 18 batching); else read current state. */
+  _activateScopeOf(scopeOverride, opts) {
+    const scope = scopeOverride || {
+      sid: this.state.attachedSid || null,
+      project: this.state.viewedProject,
+      instance: this.state.viewedInstance,
+    };
+    this._activateScope(scope, opts);
+  }
+
+  /** Tear down one channel's transient live state (turn flags + timers + the
+   *  single-instance pipeline scratch). Defaults to the rendered channel. */
+  _teardownTransientLiveState(channel = null) {
+    const ch = channel || this._channels.getRendered();
+    const vm = (ch && ch.vm) || this._localVm;
     this._pendingEntries = [];
     if (this._flushRafId) { cancelAnimationFrame(this._flushRafId); this._flushRafId = null; }
-    if (this._streamingOffTimer) { clearTimeout(this._streamingOffTimer); this._streamingOffTimer = null; }
-    if (this._turnStaleTimer) { clearTimeout(this._turnStaleTimer); this._turnStaleTimer = null; }
-    this._turnActiveSince = null;
-    this._turnSignalTs = null;
-    if (this.state.turnActive) this.setState({ turnActive: false });
+    if (vm) {
+      if (vm.streamingOffTimer) { clearTimeout(vm.streamingOffTimer); vm.streamingOffTimer = null; }
+      if (vm.turnStaleTimer) { clearTimeout(vm.turnStaleTimer); vm.turnStaleTimer = null; }
+      vm.turnActiveSince = null;
+      vm.turnSignalTs = null;
+      if (vm.react.turnActive) this._commitChannel(ch, { turnActive: false });
+      if (ch) {
+        vm.chunkedEntries = [];
+        vm.chunkedTotal = 0;
+        vm.isIncremental = false;
+      }
+    }
     if (this._loadingCountRafId) { cancelAnimationFrame(this._loadingCountRafId); this._loadingCountRafId = null; }
-    this._chunkedEntries = [];
-    this._chunkedTotal = 0;
-    this._isIncremental = false;
     this._sseSlimmer = null;
     this._sseReconstructor = null;
     this._v2SseReconstructor = null;
@@ -1605,7 +1740,7 @@ class AppBase extends React.Component {
     this._ingestToken++;
     this._ingestRunning = false;
     this._liveGateBuffer = [];
-  };
+  }
 
   /** Loading progress fragment: byte progress on the v3 wire (server sends
    *  the exact frame byte total in load_start), legacy count-up otherwise. */
@@ -1621,92 +1756,113 @@ class AppBase extends React.Component {
 
   /** Wire v3 loading progress: accumulate received frame bytes, rAF-throttled
    *  into state (mirrors the legacy count-up throttling). */
-  _v3TrackBytes(event) {
-    if (!this._v3BytesTotal || this._isIncremental) return;
-    this._v3RecvBytes += (event?.data?.length || 0);
-    if (!this._v3BytesRafId) {
-      this._v3BytesRafId = requestAnimationFrame(() => {
-        this._v3BytesRafId = null;
-        if (this.state.fileLoading) {
-          this.setState({ fileLoadingBytes: { recv: Math.min(this._v3RecvBytes, this._v3BytesTotal), total: this._v3BytesTotal } });
+  _v3TrackBytes(channel, event) {
+    const vm = channel.vm;
+    if (!vm.v3BytesTotal || vm.isIncremental) return;
+    vm.v3RecvBytes += (event?.data?.length || 0);
+    if (!vm.v3BytesRafId) {
+      vm.v3BytesRafId = requestAnimationFrame(() => {
+        vm.v3BytesRafId = null;
+        if (vm.react.fileLoading) {
+          this._commitChannel(channel, { fileLoadingBytes: { recv: Math.min(vm.v3RecvBytes, vm.v3BytesTotal), total: vm.v3BytesTotal } });
         }
       });
     }
   }
 
-  /** Wire v3 (V3.S5): lazy assembler — replays native conv/responses lines
-   *  into v1-shape entries for the existing ingest pipeline. */
-  _v3Assembler() {
-    if (!this._v3AssemblerInst) this._v3AssemblerInst = createV3Assembler();
-    return this._v3AssemblerInst;
+  /** Wire v3 (V3.S5): per-channel lazy assembler — replays native conv/
+   *  responses lines into v1-shape entries for the existing ingest pipeline.
+   *  Per-channel (not shared) so a background switch never wipes a mid-stream
+   *  channel pointer (the single-shared-assembler warm-switch corruption). */
+  _v3Assembler(channel = null) {
+    const ch = channel || this._channels.getRendered();
+    const vm = (ch && ch.vm) || this._localVm;
+    if (!vm.v3AssemblerInst) vm.v3AssemblerInst = createV3Assembler();
+    return vm.v3AssemblerInst;
   }
 
   /** Wire v3 baseline reset (review P0-2): every path that resets the entry
    *  baseline (fresh cold reset frame, workspace switch, full_reload) must
    *  also drop the v3 client state, or the assembler's channel pointers, the
    *  live dedup set and the rows list leak across cycles — stale-project rows
-   *  in the list, 404 detail fetches, unbounded growth on reconnecting tabs. */
-  _v3ResetClientState() {
-    try { this._v3AssemblerInst?.reset(); } catch (e) { reportSwallowed('v3.reset', e); }
-    this._v3SeenLive?.clear();
+   *  in the list, 404 detail fetches, unbounded growth on reconnecting tabs.
+   *  Resets ONE channel's assembler state + the single-instance cold scratch. */
+  _v3ResetClientState(channel = null) {
+    const ch = channel || this._channels.getRendered();
+    const vm = (ch && ch.vm) || this._localVm;
+    try { vm?.v3AssemblerInst?.reset(); } catch (e) { reportSwallowed('v3.reset', e); }
+    vm?.v3SeenLive?.clear();
+    if (vm) { vm.v3AdaptSource = null; vm.v3Adapted = null; }
     this._v3ColdRows = null;
     this._v3PendingLive = [];
-    this._v3AdaptSource = null;
-    this._v3Adapted = null;
     this._v2SseReconstructor = null;
     this._v2ColdSeed = null;
   }
 
-  /** Apply one live v3 frame to the assembler. Split out from the SSE
-   *  handlers so frames buffered during the async cold assembly (review
-   *  P1-1: a live delta advancing the shared channel ptr mid-assembly
-   *  corrupts the remaining cold rows) replay through identical logic. */
-  _applyV3Conv(data) {
-    if (data.lines) this._v3Assembler().addConvLines(data.sessionId, data.channel, data.lines);
-    else if (data.line) this._v3Assembler().addConvLines(data.sessionId, data.channel, data.line);
+  /** Deliver one assembled live entry to a channel: the rendered channel goes
+   *  through the live ingest pipeline; a tap channel journals it (drained on
+   *  the next warm switch). */
+  _deliverChannelEntry(channel, entry) {
+    if (!channel || this._isRenderedChannel(channel)) this._ingestLiveEntry(entry);
+    else appendJournal(channel.vm, entry);
   }
 
-  _applyV3Resp(data) {
-    this._v3Assembler().addRespLines(data.sessionId, data.lines ?? data.line);
+  /** Apply one live v3 frame to the channel's assembler. Split out from the
+   *  SSE handlers so frames buffered during the async cold assembly (review
+   *  P1-1: a live delta advancing the channel ptr mid-assembly corrupts the
+   *  remaining cold rows) replay through identical logic. */
+  _applyV3Conv(channel, data) {
+    const asm = this._v3Assembler(channel);
+    if (data.lines) asm.addConvLines(data.sessionId, data.channel, data.lines);
+    else if (data.line) asm.addConvLines(data.sessionId, data.channel, data.line);
   }
 
-  _applyV3Delta(row) {
-    this._ingestV2Rows([row], { reset: false });
+  _applyV3Resp(channel, data) {
+    this._v3Assembler(channel).addRespLines(data.sessionId, data.lines ?? data.line);
+  }
+
+  _applyV3Delta(channel, row) {
+    const vm = channel.vm;
+    this._ingestV2Rows(channel, [row], { reset: false });
     // Correction re-sends replace the ROW (typeTag/cacheLoss); only new
     // seqs or the placeholder→completed transition rebuild an entry.
     const k = `${row.sessionId}\x00${row.seq}\x00${row.inProgress ? 1 : 0}`;
-    if (this._v3SeenLive?.has(k)) return;
+    if (vm.v3SeenLive?.has(k)) return;
     // Build BEFORE marking seen: if buildEntry throws on a torn row, the
     // server may re-send the correction — marking the seq seen first would
     // swallow that row for the rest of the session, permanently.
     let entry;
     try {
-      entry = this._v3Assembler().buildEntry(row);
+      entry = this._v3Assembler(channel).buildEntry(row);
     } catch (e) {
       reportSwallowed('v3.apply-delta', e, { seq: row.seq, sessionId: row.sessionId });
       return;
     }
-    (this._v3SeenLive ??= new Set()).add(k);
-    this._ingestLiveEntry(entry);
+    (vm.v3SeenLive ??= new Set()).add(k);
+    this._deliverChannelEntry(channel, entry);
   }
 
-  /** Drain frames buffered while the cold assembly owned the assembler. */
+  /** Drain frames buffered while the cold assembly owned the assembler. Each
+   *  frame is re-dispatched to ITS OWN channel (a mid-assembly view switch can
+   *  leave foreign-channel frames in the shared buffer). */
   _v3DrainPendingLive() {
     const pending = this._v3PendingLive || [];
     this._v3PendingLive = [];
     for (const p of pending) {
       try {
-        if (p.kind === 'conv') this._applyV3Conv(p.data);
-        else if (p.kind === 'resp') this._applyV3Resp(p.data);
-        else if (p.kind === 'delta') this._applyV3Delta(p.data);
+        const ch = p.channel;
+        if (!ch || this._channels.get(ch.key) !== ch) continue; // channel closed — drop
+        if (p.kind === 'conv') this._applyV3Conv(ch, p.data);
+        else if (p.kind === 'resp') this._applyV3Resp(ch, p.data);
+        else if (p.kind === 'delta') this._applyV3Delta(ch, p.data);
       } catch (e) { reportSwallowed('v3.pending-drain', e); }
     }
   }
 
-  /** Live entry injection shared by the legacy `data:` frames (via
-   *  handleEventMessage) and the V3.S5 assembler-built entries. Gated during
-   *  the ingest pipeline AND the v3 chunked cold assembly (both commit via
-   *  the pipeline, which drains the gate buffer). */
+  /** Live entry injection shared by the rendered channel's legacy `data:`
+   *  frames (via _onChannelMessage) and its V3.S5 assembler-built entries.
+   *  Gated during the ingest pipeline AND the v3 chunked cold assembly (both
+   *  commit via the pipeline, which drains the gate buffer). */
   _ingestLiveEntry(entry) {
     if (this._ingestRunning || this._v3Assembling) {
       this._liveGateBuffer.push(entry);
@@ -1718,41 +1874,70 @@ class AppBase extends React.Component {
     }
   }
 
+  /** Gate release: buffered-but-unflushed live entries re-enter the normal
+   *  flush path in arrival order (single scheduled flush). */
+  _drainLiveGate() {
+    const buffered = this._liveGateBuffer;
+    this._liveGateBuffer = [];
+    if (buffered.length > 0) {
+      this._pendingEntries.push(...buffered);
+      if (!this._flushRafId) {
+        this._flushRafId = requestAnimationFrame(this._flushPendingEntries);
+      }
+    }
+  }
+
   /** Wire v3 (V3.S3a): ingest metadata rows. `reset` replaces the whole list
    *  (cold v2_requests frame — reconnects re-send it, so replace is idempotent);
    *  otherwise upsert by (sessionId, seq) — live deltas send a placeholder row,
    *  its completed upgrade, and possibly a classification correction. */
-  _ingestV2Rows(rows, { reset = false, totalCount, hasMore, oldestTs } = {}) {
-    this.setState((prev) => {
-      let next;
-      if (reset) {
-        next = rows;
-      } else {
-        next = prev.v2Rows.slice();
-        const idx = new Map(next.map((r, i) => [`${r.sessionId}\x00${r.seq}`, i]));
-        for (const row of rows) {
-          const k = `${row.sessionId}\x00${row.seq}`;
-          const at = idx.get(k);
-          if (at !== undefined) next[at] = row;
-          else { idx.set(k, next.length); next.push(row); }
-        }
+  _ingestV2Rows(channel, rows, { reset = false, totalCount, hasMore, oldestTs } = {}) {
+    const ch = channel || this._channels.getRendered();
+    const vm = (ch && ch.vm) || this._localVm;
+    const prevRows = Array.isArray(vm.react.v2Rows) ? vm.react.v2Rows : [];
+    let next;
+    if (reset) {
+      next = rows;
+    } else {
+      next = prevRows.slice();
+      const idx = new Map(next.map((r, i) => [`${r.sessionId}\x00${r.seq}`, i]));
+      for (const row of rows) {
+        const k = `${row.sessionId}\x00${row.seq}`;
+        const at = idx.get(k);
+        if (at !== undefined) next[at] = row;
+        else { idx.set(k, next.length); next.push(row); }
       }
-      const meta = reset
-        ? { totalCount: totalCount ?? rows.length, hasMore: !!hasMore, oldestTs: oldestTs || '' }
-        : { ...prev.v2RowsMeta, totalCount: prev.v2RowsMeta.totalCount + (next.length - prev.v2Rows.length) };
-      return { v2Rows: next, v2RowsMeta: meta };
-    });
+    }
+    const meta = reset
+      ? { totalCount: totalCount ?? rows.length, hasMore: !!hasMore, oldestTs: oldestTs || '' }
+      : { ...vm.react.v2RowsMeta, totalCount: (vm.react.v2RowsMeta.totalCount || 0) + (next.length - prevRows.length) };
+    this._commitChannel(ch, { v2Rows: next, v2RowsMeta: meta });
   }
 
-  _reconnectSSE() {
+  /** Reconnect ONE channel (heartbeat timeout / explicit). The rendered
+   *  channel keeps the legacy semantics (mobile partial save, transient
+   *  teardown, state resets); a tap channel just drops its live timers and
+   *  resumes incrementally — the single-instance pipeline and this.state are
+   *  never touched for it. */
+  _reconnectChannel(channel) {
+    if (!channel) return;
+    const isRendered = this._isRenderedChannel(channel);
+    const vm = channel.vm;
     // SSE 连接真死（心跳超时 / 重试上限），清除流式 overlay 避免卡死
-    if (this.state.streamingLatest) this.setState({ streamingLatest: null });
-    if (this._sseReconnectCount >= 10) {
+    if (vm.react.streamingLatest) this._commitChannel(channel, { streamingLatest: null });
+    const plan = this._channelUrlFor(channel.scope, { reconnect: true, channel });
+    if (!this._channels.reconnect(channel.key, { url: plan.url })) {
       console.error('SSE reconnect limit reached');
       return;
     }
-    this._sseReconnectCount = (this._sseReconnectCount || 0) + 1;
-    if (this.eventSource) { this.eventSource.close(); this.eventSource = null; }
+    vm.hasViewCache = !!plan.hasCache;
+    if (!isRendered) {
+      clearChannelTimers(vm, {
+        clearTimeout: (id) => clearTimeout(id),
+        cancelAnimationFrame: (id) => cancelAnimationFrame(id),
+      });
+      return;
+    }
 
     // 必须在部分保存之前废弃在途分帧管线（review P1）：下方部分保存会同步跑
     // _processEntries → 清空 _requestIndexMap 等实例状态，若在途管线未先废弃，
@@ -1762,15 +1947,15 @@ class AppBase extends React.Component {
     // drain 进去也会被立即清掉 —— 泄洪在此既无意义也有合并陈旧基线的风险。
     this._abortColdIngest();
 
-    // 必须在 _teardownTransientLiveState() 之前，否则 _chunkedEntries 会被清零。
-    if (this._chunkedEntries && this._chunkedEntries.length > 0 && isMobile) {
+    // 必须在 _teardownTransientLiveState() 之前，否则分段加载缓冲会被清零。
+    if (vm.chunkedEntries && vm.chunkedEntries.length > 0 && isMobile) {
       try {
-        const partial = reconstructEntries(normalizeV2Entries([...this._chunkedEntries]));
+        const partial = reconstructEntries(normalizeV2Entries([...vm.chunkedEntries]));
         if (Array.isArray(partial) && partial.length > 0) {
           this._batchSlim(partial);
           const { mainAgentSessions } = this._processEntries(partial);
           // 保持 fileLoading: true，重连后继续加载
-          this.setState({ requests: partial, mainAgentSessions });
+          this._commitChannel(channel, { requests: partial, mainAgentSessions });
           if (this.state.projectName) {
             const meta = getCacheMeta();
             const existingCount = (meta && meta.projectName === this.state.projectName) ? meta.count : 0;
@@ -1784,14 +1969,19 @@ class AppBase extends React.Component {
       }
     }
 
-    this._teardownTransientLiveState();
-    this.setState({ isStreaming: false, contextBarLocked: false });
-    if (this._sseReconnectTimer) clearTimeout(this._sseReconnectTimer);
-    const delay = Math.min(2000 * Math.pow(2, (this._sseReconnectCount || 1) - 1), 32000);
-    this._sseReconnectTimer = setTimeout(() => { this.initSSE(); }, delay);
+    this._teardownTransientLiveState(channel);
+    this._commitChannel(channel, { isStreaming: false, contextBarLocked: false });
+    if (!plan.hasCache) this._commitChannel(channel, { fileLoading: true, fileLoadingCount: 0 });
+    // The manager's reconnect timer opens the new socket (its gen guard drops
+    // late frames from the old one).
   }
 
-  animateLoadingCount(target, onDone) {
+  _onChannelHeartbeatTimeout(channel) {
+    console.warn('SSE heartbeat timeout, reconnecting...');
+    this._reconnectChannel(channel);
+  }
+
+  animateLoadingCount(target, onDone, channel = null) {
     if (this._loadingCountTimer) {
       cancelAnimationFrame(this._loadingCountTimer);
       this._loadingCountTimer = null;
@@ -1801,7 +1991,9 @@ class AppBase extends React.Component {
     const step = (now) => {
       const progress = Math.min((now - start) / duration, 1);
       const current = Math.round(progress * target);
-      this.setState({ fileLoadingCount: current });
+      // Channel-scoped so an animation still in flight at a view switch can
+      // never write the new view's counter (the final commit is token-gated).
+      this._commitChannel(channel, { fileLoadingCount: current });
       if (progress < 1) {
         this._loadingCountTimer = requestAnimationFrame(step);
       } else {
@@ -1812,915 +2004,1230 @@ class AppBase extends React.Component {
     this._loadingCountTimer = requestAnimationFrame(step);
   }
 
+  // ── 视图激活（_activateScope） ─────────────────────────────
+  // 切视图 = 激活一个 scope 对应的 channel：cold（无 channel / 未 commit）
+  // 走今天的冷加载流程（遮罩 + ensure + load_end 提交）；warm（channel 已 commit
+  // 且连接新鲜）直接整片换 state（无遮罩、无新连接）；warm-stale（连接不新鲜 /
+  // journal 溢出）先瞬时上屏再按 ?since 增量续拉。
+  //
   // Multi-instance / view-switch P0 fix (2026-10-06): React 18 batches setState, so reading
   // this.state.viewedProject/viewedInstance/attachedSid synchronously right after a setState
   // yields the PREVIOUS view's values — the SSE cold load would then target the wrong
   // project/instance (one step behind). Callers that just changed the view pass the NEW scope
-  // explicitly via `scopeOverride`; everyone else falls back to current state.
-  initSSE(scopeOverride = null) {
+  // explicitly; `_activateScopeOf` falls back to current state for boot/reconnect only.
+  _activateScope(scope = {}, { reason = 'activate', overlay = null, overlayUuid = null } = {}) {
     try {
-      // Close the previous connection FIRST (multi-project switch fix, 2026-10):
-      // every initSSE re-entry (view switch / detach / reconnect) used to
-      // overwrite `this.eventSource` without closing it — the stale connection
-      // kept its server-side project scope (_ccvViewProject, stamped by events.js)
-      // and its handlers (bound to this same component) kept writing the OLD
-      // project's live entries into the state the NEW project is rendering
-      // (the SSE cross-project bleed). close() is idempotent; the _sseGen
-      // guard below additionally drops any events a closed EventSource still
-      // has queued.
-      if (this.eventSource) { try { this.eventSource.close(); } catch {} this.eventSource = null; }
-      // Connection generation: bumped on every initSSE. Every listener below
-      // captures `gen` and early-returns when it no longer matches, so a late
-      // event from a superseded/closed connection can never write state.
-      const gen = (this._sseGen = (this._sseGen || 0) + 1);
-      const stale = () => gen !== this._sseGen;
-      // 尝试使用缓存元数据进行增量加载
-      let url = '/events';
-      let hasCache = false;
-      // View-attach: while attached to a sid, cold-load THAT session's full
-      // transcript via /events?sid=<uuid> and skip every incremental branch
-      // (mobile cache / desktop `since`) — those are scoped to the CURRENT session
-      // and would either clobber it or, combined with ?sid, filter the historical
-      // transcript to empty. _resetForViewSwitch already zeroed _sseReconnectCount,
-      // but the explicit guard here is the authoritative gate.
-      // Scope resolution: prefer an explicit override from the caller (a just-issued setState
-      // hasn't flushed under React 18 batching, so this.state would be one step stale); else
-      // read current state (reconnects / initial mount have no in-flight view change).
-      const _scopeSid = scopeOverride ? (scopeOverride.sid ?? null) : (this.state.attachedSid || null);
-      const _scopeProject = scopeOverride ? (scopeOverride.project ?? null) : this.state.viewedProject;
-      const _scopeInstance = scopeOverride ? (scopeOverride.instance ?? null) : this.state.viewedInstance;
-      const wantSid = _scopeSid;
-      // Parallel-project view: while viewing another project, cold-load THAT
-      // project's current session via /events?project=<name>. Also skips the
-      // incremental branches (they're scoped to the bound project's session).
-      const wantProject = (!wantSid && _scopeProject) ? _scopeProject : null;
-      // Multi-instance: scope the view to the exact instance (cold-load picks THAT instance's
-      // latest session, the live feed routes only its entries). Paired with wantProject.
-      const wantInstance = (wantProject && _scopeInstance) ? _scopeInstance : null;
-      const instQ = wantInstance ? `&instance=${encodeURIComponent(wantInstance)}` : '';
-      // Multi-instance cache key: project + instance, NUL-separated (must match
-      // _snapshotCurrentView; a bare concatenation could collide when a project name contains
-      // the `ccv-` substring).
-      const cacheKey = wantInstance ? `${wantProject}\x00${wantInstance}` : wantProject;
-      // Remembered for the load_start empty-view handler: an `empty:true` frame
-      // invalidates THIS scope's snapshot (the session it restored was deleted).
-      this._sseCacheKey = wantProject ? cacheKey : null;
-      if (wantSid) {
-        // True-resume (2026-10-06): scope the ?sid= cold-load to the session's OWN project
-        // (a parallel viewed project for a parallel resume), not the bound project — the sid
-        // resolves under its own dir (events.js ?sid=&project=). Fall back to bound when the
-        // scope carries no project (the legacy / bound resume path).
-        const sidProject = _scopeProject || this.state.projectName;
-        const projQ = sidProject ? `&project=${encodeURIComponent(sidProject)}` : '';
-        url = `/events?sid=${encodeURIComponent(wantSid)}${projQ}`;
-        hasCache = false;
-      } else if (wantProject) {
-        // Multi-project instant switch-back (2026-10): restore the cached view
-        // of this project (if any) and resume INCREMENTALLY from its lastTs —
-        // renders instantly with no overlay, then merges the missed delta.
-        // Without a cached cursor, fall back to a full cold load.
-        const cached = this._viewCache.restore(cacheKey);
-        if (cached && cached.lastTs) {
-          url = `/events?project=${encodeURIComponent(wantProject)}${instQ}&since=${encodeURIComponent(cached.lastTs)}&cc=${cached.count}`;
-          hasCache = true;
-          this._hasViewCache = true;
-          // Instant paint: put the cached view back on screen NOW (no overlay);
-          // the incremental delta merges on top at load_end.
-          this.setState({
-            requests: cached.requests,
-            v2Rows: cached.v2Rows,
-            v2RowsMeta: cached.v2RowsMeta,
-            mainAgentSessions: cached.mainAgentSessions,
-            pinnedSessionTs: cached.pinnedSessionTs,
-            selectedIndex: cached.selectedIndex,
-          });
-          // A cache hit means the view is already complete — clear the switch
-          // overlay immediately instead of waiting for the delta's load_end.
-          if (this.state.resumeSwitch) this._clearResumeSwitch();
-        } else {
-          url = `/events?project=${encodeURIComponent(wantProject)}${instQ}&limit=${isMobile ? 200 : 400}`;
-          hasCache = false;
-          this._hasViewCache = false;
-        }
-      } else if (isMobile) {
-        const meta = getCacheMeta();
-        if (meta && meta.lastTs && meta.count > 0) {
-          url = `/events?since=${encodeURIComponent(meta.lastTs)}&cc=${meta.count}&project=${encodeURIComponent(meta.projectName || '')}`;
-          hasCache = true;
-        }
-      }
-      // 桌面端重连：用最后接收到的时间戳做增量加载，避免全量重载放大卡顿
-      if (!wantSid && !wantProject && !hasCache && !isMobile && this._sseReconnectCount > 0 && this.state.requests.length > 0) {
-        const reqs = this.state.requests;
-        let lastTs = null;
-        for (let i = reqs.length - 1; i >= 0; i--) {
-          if (reqs[i]?.timestamp) { lastTs = reqs[i].timestamp; break; }
-        }
-        if (lastTs && this.state.projectName) {
-          url = `/events?since=${encodeURIComponent(lastTs)}&cc=${reqs.length}&project=${encodeURIComponent(this.state.projectName)}`;
-          hasCache = true;
-        }
-      }
-      // 无缓存时限制首屏加载量，剩余按需分页。
-      // 移动端 200 条；桌面端 400 条（Windows 上 1000 条的同步重建 + React 渲染
-      // 可达 10-15s，超出 Chrome tab kill 阈值导致崩溃）。view-scope 分支（?sid/?project）
-      // 已自带 limit 且不是增量缓存路径，必须排除——否则这里的 fallback 会覆盖掉
-      // 它们的 url，使 ?sid/?project= 根本发不到服务端。
-      if (!hasCache && !wantSid && !wantProject) {
-        url = `/events?limit=${isMobile ? 200 : 400}`;
-      }
-      // 只有在无缓存时才显示 loading 遮罩
-      if (!hasCache) {
-        this.setState({ fileLoading: true, fileLoadingCount: 0 });
-      }
-      this.eventSource = new EventSource(apiUrl(url));
-      // 每次收到任何 SSE 事件（包括心跳注释帧触发的隐式活动）都重置超时
-      this.eventSource.onmessage = (event) => { if (stale()) return; this._resetSSETimeout(); this.handleEventMessage(event); };
-      this.eventSource.onopen = () => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        // 每次连上都补一次 pin GET 同步：浏览器原生 EventSource 自愈重连复用同一 EventSource、
-        // 不走 _reconnectSSE（不增 _sseReconnectCount），故不能只在 wasReconnect 时同步，否则原生重连
-        // 期间他端改的 pin 会一直 stale 到下次 session_pin 或切项目。GET 幂等，_applyingRemotePin 防回写。
-        this._hydratePin();
+      const norm = {
+        sid: scope.sid || null,
+        project: scope.project || null,
+        instance: scope.instance || null,
       };
-      // Live streaming overlay: 直接更新 streamingLatest state（不走 reconstructor / dedup）
-      // rAF coalesce + startTransition：每个 SSE chunk 只在下一帧合并成一次 setState，
-      // 并标记为低优先级渲染，避免阻塞用户输入。最终 chunk 经 entry path 交付而非
-      // stream-progress，所以丢掉 trailing stream-progress 是安全的。
-      this.eventSource.addEventListener('stream-progress', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          const data = JSON.parse(event.data);
-          // B2 view-attach: while attached to a sid, drop the live
-          // typewriter for any OTHER session — the primary session keeps streaming
-          // and its overlay must not bleed over the attached view. Frames without a
-          // sessionId (older server) fall through to today's behavior.
-          if (this.state.attachedSid && data.sessionId
-              && data.sessionId.toLowerCase() !== this.state.attachedSid) return;
-          // Multi-project (2026-10): drop the live typewriter for any project
-          // OTHER than the one currently viewed — the payload now carries the
-          // source project server-side (ask-perm.js streamChunk). Frames without
-          // a project (older server) fall through to today's behavior.
-          const _viewing = this.state.viewedProject || this.state.projectName || '';
-          if (data.project && _viewing && data.project !== _viewing) return;
-          // 防 stale：若 requests 中已有同 timestamp 的完成条目，说明最终 entry 已到达，
-          // 此 chunk 是乱序/延迟到达的旧包，直接丢弃以免复活已清除的 overlay
-          const existingFinal = this.state.requests.find(r =>
-            r && r.timestamp === data.timestamp && !r.inProgress
-          );
-          if (existingFinal) return;
-          // streamingLatest 生命周期只由两种信号终结（不再用短 timeout 兜底）：
-          // 1) 正常：最终 entry 到达时 _flushPendingEntries 原子清除
-          // 2) 异常：SSE 连接真死 (_reconnectSSE)
-          // 避免长 thinking / 网络抖动 / 切 tab 等场景误杀 overlay。
-          this._pendingStreamingLatest = {
-            timestamp: data.timestamp,
-            url: data.url,
-            content: data.content || [],
-            model: data.model,
-            updatedAt: Date.now(),
-          };
-          if (this._streamingRaf) return;
-          this._streamingRaf = requestAnimationFrame(() => {
-            this._streamingRaf = null;
-            const pending = this._pendingStreamingLatest;
-            this._pendingStreamingLatest = null;
-            if (!pending) return;
-            React.startTransition(() => {
-              this.setState({ streamingLatest: pending });
-            });
-          });
-        } catch (e) { reportSwallowed('sse.stream-progress', e); }
-      });
-      // update_completed 事件已废弃：自 1.6.203 起后台 detached npm install 负责升级，
-      // 当前进程内存里仍是旧版本，广播"已升级完成"会误导用户。保留 update_major_available
-      // 作为"有新版可用"的统一信号（包含跨大版本提示 + 本版本忙时跳过两种场景）。
-      // 1.7.0 P2：存在未迁移 v1 日志 → 弹迁移引导。是否展示由客户端决定：
-      // 「不再提醒」偏好挡常规提示；continued=true（-c 续接旧对话）无视 dismissed
-      // 再提醒——前半段对话在旧格式里，不迁移就看不到。
-      // One-shot per page load (review P1)：/events 每次【重连】（心跳超时、网络
-      // 抖动）都会重推本帧，且 continued 分支绕过 dismissed —— 不设一次性守卫
-      // 会反复弹窗，甚至在用户已行动后再弹。工作区切换的广播携带新项目语境，
-      // 由 workspace_started 重置守卫。
-      this.eventSource.addEventListener('migrate_prompt', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          const data = JSON.parse(event.data);
-          if (this._migratePromptShown) return; // already shown/acted this page
-          (this.context._prefsReady || Promise.resolve({})).then((initialPrefs) => {
-            if (this._migratePromptShown) return; // raced a second frame
-            const prefs = this.context?.preferences || initialPrefs;
-            if (prefs?.wireV2MigratePromptDismissed && !data.continued) return;
-            this._migratePromptShown = true;
-            this.setState({ migratePromptVisible: true, migratePromptData: data });
-          });
-        } catch (e) { reportSwallowed('sse.migrate_prompt', e); }
-      });
-      this.eventSource.addEventListener('update_major_available', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          const data = JSON.parse(event.data);
-          this.setState({ updateInfo: { type: 'major', version: data.version } });
-        } catch (e) { reportSwallowed('sse.update_major_available', e); }
-      });
-      // L2 裸续接:有会话经「绕过 ccv 的 claude -c」续接(注入丢失、前缀缓存重写)。
-      // 不弹窗(用户反馈:静默即可),只留控制台诊断日志。
-      this.eventSource.addEventListener('resume_bypassed', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          const data = JSON.parse(event.data);
-          console.warn('[CC Viewer] a session was continued via a `claude -c` that bypassed ccv — system-prompt injection lost, prefix cache will be fully rewritten once. uuid:', data?.uuid);
-        } catch (e) { reportSwallowed('sse.resume_bypassed', e); }
-      });
-      this.eventSource.addEventListener('load_start', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          const data = JSON.parse(event.data);
-          this._chunkedEntries = [];
-          this._chunkedTotal = data.total || 0;
-          this._isIncremental = !!data.incremental;
-          // Empty-view flag (2026-10-10): the viewed instance has NO session dir
-          // (new workspace, or its session was pruned while the PTY stayed alive).
-          // This connection may be an incremental `?since&cc=` resume that just
-          // restored a view-cache snapshot of the now-DELETED conversation — an
-          // empty delta would otherwise merge onto that stale baseline and keep
-          // rendering it. Invalidate the snapshot and clear the restored content;
-          // load_end then commits an empty view and the per-project live feed
-          // streams the instance's first turn in place once written.
-          if (data.empty) {
-            this._viewCache.invalidate(this._sseCacheKey || '');
-            this._sseCacheKey = null;
-            this._hasViewCache = false;
-            this.setState({
-              requests: [], mainAgentSessions: [], v2Rows: [],
-              v2RowsMeta: { totalCount: 0, hasMore: false, oldestTs: '' }, selectedIndex: null,
-            });
-          }
-          // Wire v3: the server pre-computes the exact frame byte total —
-          // progress is received/total bytes instead of the legacy count-up.
-          this._v3BytesTotal = data.v3Bytes || 0;
-          this._v3RecvBytes = 0;
-          // 增量模式下已有缓存数据在显示，不需要 loading 遮罩
-          if (!this._isIncremental) {
-            this.setState({ fileLoading: true, fileLoadingCount: 0, fileLoadingBytes: this._v3BytesTotal > 0 ? { recv: 0, total: this._v3BytesTotal } : null });
-          }
-        } catch (e) { reportSwallowed('sse.load_start', e); }
-      });
-      this.eventSource.addEventListener('load_chunk', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          const chunk = JSON.parse(event.data);
-          if (Array.isArray(chunk)) {
-            this._chunkedEntries.push(...chunk);
-            // 增量模式下静默累积；非增量模式用 rAF 节流，每帧最多更新一次计数
-            if (!this._isIncremental && !this._loadingCountRafId) {
-              this._loadingCountRafId = requestAnimationFrame(() => {
-                this._loadingCountRafId = null;
-                this.setState({ fileLoadingCount: this._chunkedEntries.length });
-              });
-            }
-          }
-        } catch (e) { reportSwallowed('sse.load_chunk', e, { dataLen: event.data?.length }); }
-      });
-      // The requested ?sid session no longer exists on disk (/clear-pruned or
-      // quota-cleaned), OR the requested ?instance PTY died before its first write
-      // (reason 'instance-no-session'). A LIVE instance with no session yet never
-      // reaches this frame — the server serves an empty view and keeps the per-project
-      // live feed attached (events.js liveness-aware guard). Either way the requested
-      // view can never produce content: toast + auto-detach back to follow-latest.
-      this.eventSource.addEventListener('sid-not-found', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        let reason = null;
-        try { reason = JSON.parse(event.data)?.reason || null; }
-        catch (e) { reportSwallowed('sse.sid-not-found', e, { dataLen: event.data?.length }); }
-        try { message.warning(t(reason === 'instance-no-session' ? 'ui.resume.noSession' : 'ui.resume.switchTimeout')); } catch {}
-        this.handleDetachView();
-      });
-      this.eventSource.addEventListener('load_end', () => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        // A view switch's cold load completed: clear the switch overlay.
-        if (this.state.resumeSwitch) this._clearResumeSwitch();
-        // Multi-PTY: the cold load of a viewed project is done — re-anchor the
-        // terminal attachment as a backstop (covers server restarts / races where
-        // the click-time attach landed before the record existed). Idempotent.
-        if (this.state.viewedProject) attachMainPty(this.state.viewedProject, { instanceKey: this.state.viewedInstance || null });
-        if (this._loadingCountRafId) { cancelAnimationFrame(this._loadingCountRafId); this._loadingCountRafId = null; }
-        // Wire v3 (V3.S5): flagged cold loads carry no legacy chunks — build
-        // the window's entries from rows + native lines instead. All v3
-        // frames precede load_end on the wire, so the assembler is complete.
-        // Assembly is CHUNKED with main-thread yields (a synchronous build
-        // over the whole window blocks paint — the loading UI would freeze);
-        // live entries arriving during the async window are gated into
-        // _liveGateBuffer (drained by the pipeline commit, same as during
-        // the ingest pipeline itself).
-        const finish = () => {
-        const delta = this._chunkedEntries;
-        this._chunkedEntries = [];
-        this._chunkedTotal = 0;
-        const isIncremental = this._isIncremental;
-        this._isIncremental = false;
-        // 解锁信号：增量模式下出现至少一条**带 body.messages 的 mainAgent** 条目，说明
-        // mainAgent 真有新一轮请求落盘。仅看 delta.length>0 会被 SSE 重连时 backlog
-        // replay 的旧 entry（synthetic、post-stop hook 等）误触发；mainAgent + body.messages
-        // 才是"用户实际发了内容"的最强信号。覆盖 TerminalPanel /clear 后用户没走 ChatView
-        // 输入框（pty 直接键入 / 外部 hook / Agent 自驱）时血条卡 0% 的场景。
-        // 注：解锁不再单独 setState，并入分帧管线末段的原子提交（避免与主提交分帧）。
-        let unlockContextBar = false;
-        if (isIncremental && this.state.contextBarLocked) {
-          const hasMainAgentTurn = delta.some(e => {
-            if (!e || !e.mainAgent) return false;
-            const msgs = e.body?.messages;
-            return Array.isArray(msgs) && msgs.length > 0;
-          });
-          if (hasMainAgentTurn) unlockContextBar = true;
-        }
+      const key = scopeKeyFor(norm);
+      const existing = this._channels.get(key);
+      const vm = existing ? existing.vm : null;
+      const warm = !!vm && vm.committed && !vm.journalDropped
+        && existing.es && existing.es.readyState !== 2 // 2 = CLOSED
+        && (Date.now() - (existing.lastFrameAt || 0)) < CHANNEL_HEARTBEAT_MS
+        && (vm.reconnectsSinceCommit || 0) === 0;
+      if (warm) {
+        this._channels.setRendered(key);
+        this._warmActivate(existing);
+        return;
+      }
+      if (vm && vm.committed) {
+        this._channels.setRendered(key);
+        this._warmStaleActivate(existing);
+        return;
+      }
+      this._coldActivate(norm, key, { reason, overlay, overlayUuid });
+    } catch (err) {
+      reportSwallowed('sse.activate-scope', err, { reason });
+    }
+  }
 
-        // 增量模式：Map 去重合并（delta 条目覆盖同 key 的缓存条目）。
-        // 覆盖两条增量路径：mobile 缓存（既有）与多项目视图缓存恢复（_hasViewCache，
-        // 恢复时已把 cached requests setState 为合并基线，这里直接复用同一合并）。
-        let rawEntries;
-        if (isIncremental && (isMobile || this._hasViewCache) && this.state.requests.length > 0) {
-          if (delta.length === 0) {
-            // 无新数据，缓存已是最新，跳过重建
-            const st = { fileLoading: false, fileLoadingCount: 0, fileLoadingBytes: null };
-            if (unlockContextBar) st.contextBarLocked = false;
-            this.setState(st);
-            this._hasViewCache = false;
-            return;
-          }
-          const eKey = (e, i) => (e.timestamp && e.url) ? `${e.timestamp}|${e.url}` : `__nokey_c${i}`;
-          const map = new Map();
-          this.state.requests.forEach((e, i) => map.set(eKey(e, i), e));
-          delta.forEach((e, i) => map.set((e.timestamp && e.url) ? `${e.timestamp}|${e.url}` : `__nokey_d${i}`, e));
-          // 注意：合并结果含 state.requests 的 live 引用 —— 分帧 slim/process 期间这些对象被
-          // 原地变异（intern/_slimmed），让步间隙的 render 会看到中间态。旧同步代码同样原地
-          // 变异（只是单任务内完成）；最终原子提交会以干净引用整体覆盖。
-          rawEntries = Array.from(map.values());
-        } else {
-          rawEntries = delta;
-        }
+  // ── URL 选择（从 initSSE 抽出，逐字节保持原 URL 形状） ─────────
+  // Returns { url, hasCache, cacheKey, cached } — the caller applies the
+  // cache-hit paint / loading overlay (side effects stay at the call site so
+  // this stays a pure URL decision). `reconnect` is the old
+  // `_sseReconnectCount > 0` gate for the desktop incremental-resume branch and
+  // reads the channel's committed baseline instead of the rendered state.
+  _channelUrlFor(scope, { reconnect = false, channel = null } = {}) {
+    const _scopeSid = (scope && scope.sid) || null;
+    const _scopeProject = (scope && scope.project) || null;
+    const _scopeInstance = (scope && scope.instance) || null;
+    const wantSid = _scopeSid;
+    // Parallel-project view: while viewing another project, cold-load THAT
+    // project's current session via /events?project=<name>. Also skips the
+    // incremental branches (they're scoped to the bound project's session).
+    const wantProject = (!wantSid && _scopeProject) ? _scopeProject : null;
+    // Multi-instance: scope the view to the exact instance (cold-load picks THAT instance's
+    // latest session, the live feed routes only its entries). Paired with wantProject.
+    const wantInstance = (wantProject && _scopeInstance) ? _scopeInstance : null;
+    const instQ = wantInstance ? `&instance=${encodeURIComponent(wantInstance)}` : '';
+    // Multi-instance cache key: project + instance, NUL-separated (must match
+    // _snapshotCurrentView; a bare concatenation could collide when a project name contains
+    // the `ccv-` substring).
+    const cacheKey = wantInstance ? `${wantProject}\x00${wantInstance}` : wantProject;
+    // 尝试使用缓存元数据进行增量加载
+    let url = '/events';
+    let hasCache = false;
+    let cached = null;
+    if (wantSid) {
+      // True-resume (2026-10-06): scope the ?sid= cold-load to the session's OWN project
+      // (a parallel viewed project for a parallel resume), not the bound project — the sid
+      // resolves under its own dir (events.js ?sid=&project=). Fall back to bound when the
+      // scope carries no project (the legacy / bound resume path).
+      const sidProject = _scopeProject || this.state.projectName;
+      const projQ = sidProject ? `&project=${encodeURIComponent(sidProject)}` : '';
+      url = `/events?sid=${encodeURIComponent(wantSid)}${projQ}`;
+      hasCache = false;
+    } else if (wantProject) {
+      // Multi-project instant switch-back (2026-10): restore the cached view
+      // of this project (if any) and resume INCREMENTALLY from its lastTs —
+      // renders instantly with no overlay, then merges the missed delta.
+      // Without a cached cursor, fall back to a full cold load.
+      const hit = this._viewCache.restore(cacheKey);
+      if (hit && hit.lastTs) {
+        url = `/events?project=${encodeURIComponent(wantProject)}${instQ}&since=${encodeURIComponent(hit.lastTs)}&cc=${hit.count}`;
+        hasCache = true;
+        cached = hit;
+      } else {
+        url = `/events?project=${encodeURIComponent(wantProject)}${instQ}&limit=${isMobile ? 200 : 400}`;
+        hasCache = false;
+      }
+    } else if (isMobile) {
+      const meta = getCacheMeta();
+      if (meta && meta.lastTs && meta.count > 0) {
+        url = `/events?since=${encodeURIComponent(meta.lastTs)}&cc=${meta.count}&project=${encodeURIComponent(meta.projectName || '')}`;
+        hasCache = true;
+      }
+    }
+    // 桌面端重连：用最后接收到的时间戳做增量加载，避免全量重载放大卡顿
+    if (!wantSid && !wantProject && !hasCache && !isMobile && reconnect) {
+      const reqs = (channel && channel.vm.react.requests) || this.state.requests || [];
+      let lastTs = null;
+      for (let i = reqs.length - 1; i >= 0; i--) {
+        if (reqs[i]?.timestamp) { lastTs = reqs[i].timestamp; break; }
+      }
+      if (lastTs && this.state.projectName) {
+        url = `/events?since=${encodeURIComponent(lastTs)}&cc=${reqs.length}&project=${encodeURIComponent(this.state.projectName)}`;
+        hasCache = true;
+      }
+    }
+    // 无缓存时限制首屏加载量，剩余按需分页。
+    // 移动端 200 条；桌面端 400 条（Windows 上 1000 条的同步重建 + React 渲染
+    // 可达 10-15s，超出 Chrome tab kill 阈值导致崩溃）。view-scope 分支（?sid/?project）
+    // 已自带 limit 且不是增量缓存路径，必须排除——否则这里的 fallback 会覆盖掉
+    // 它们的 url，使 ?sid/?project= 根本发不到服务端。
+    if (!hasCache && !wantSid && !wantProject) {
+      url = `/events?limit=${isMobile ? 200 : 400}`;
+    }
+    return { url, hasCache, cacheKey: wantProject ? cacheKey : null, cached };
+  }
 
-        // 分帧管线：reconstruct → 分帧 slim → 分帧 process → 原子提交。
-        // async 不 await（EventSource 回调）；在途期间 live 条目入闸门缓冲（handleEventMessage）。
-        this._hasViewCache = false;
-        this._runSseColdIngest(rawEntries, { isIncremental, unlockContextBar })
-          // Last-resort net: semantic gate release lives in the pipeline's own
-          // catch; this only guarantees the rejection is never silent.
-          .catch((err) => reportSwallowed('sse.cold-ingest-outer', err));
-        };
+  _coldActivate(norm, key, { reason = 'activate', overlay = null, overlayUuid = null } = {}) {
+    // Mark the incoming channel as the render target BEFORE ensure's over-cap
+    // eviction pass (the demoted previous rendered channel is the victim).
+    const showOverlay = overlay === null ? (reason !== 'boot' && reason !== 'rebound') : !!overlay;
+    if (showOverlay) {
+      // Mark the switch in flight so the chat/terminal panels get a translucent
+      // overlay until the cold load completes (load_end). A 30s backstop
+      // prevents a lost SSE event from leaving the overlay up forever.
+      const uuid = overlayUuid || norm.sid || norm.project || (this.state.projectName || 'bound');
+      this.setState({ resumeSwitch: { uuid } });
+      if (this._resumeSwitchTimer) clearTimeout(this._resumeSwitchTimer);
+      this._resumeSwitchTimer = setTimeout(() => {
+        this._resumeSwitchTimer = null;
+        if (this._unmounted) return;
+        this.setState({ resumeSwitch: null });
+        try { message.warning(t('ui.resume.switchTimeout')); } catch {}
+      }, RESUME_SWITCH_BACKSTOP_MS);
+    }
+    const hadRenderedChannel = !!this._channels.getRendered();
+    const plan = this._channelUrlFor(norm, { reconnect: false });
+    const ch = this._channels.ensure(key, { url: plan.url, cold: true, rendered: true });
+    this._channels.setRendered(key);
+    const vm = ch.vm;
+    // Pre-channel baseline: on the very first activation the visible slice may
+    // already carry content — the mobile IndexedDB restore paints before the
+    // (idle-scheduled) SSE boots. Seed the virgin channel with it so the
+    // `?since` delta merges on top of that baseline like the pre-channel code
+    // (which read the same this.state).
+    if (!hadRenderedChannel && vm.react.requests.length === 0 && this._localVm.react.requests.length > 0) {
+      Object.assign(vm.react, this._localVm.react);
+    }
+    // Remembered for the load_start empty-view handler: an `empty:true` frame
+    // invalidates THIS scope's snapshot (the session it restored was deleted).
+    vm.cacheKey = plan.cacheKey;
+    vm.hasViewCache = !!plan.cached;
+    this._resetForViewSwitch(ch);
+    if (plan.cached) {
+      // Instant paint: put the cached view back on screen NOW (no overlay);
+      // the incremental delta merges on top at load_end.
+      const cached = plan.cached;
+      this._commitChannel(ch, {
+        requests: cached.requests,
+        v2Rows: cached.v2Rows,
+        v2RowsMeta: cached.v2RowsMeta,
+        mainAgentSessions: cached.mainAgentSessions,
+        pinnedSessionTs: cached.pinnedSessionTs,
+        selectedIndex: cached.selectedIndex,
+      });
+      // A cache hit means the view is already complete — clear the switch
+      // overlay immediately instead of waiting for the delta's load_end.
+      if (this.state.resumeSwitch) this._clearResumeSwitch();
+    }
+    // 只有在无缓存时才显示 loading 遮罩
+    if (!plan.hasCache) this._commitChannel(ch, { fileLoading: true, fileLoadingCount: 0, fileLoadingBytes: null });
+    this._syncTaskStoreForChannel(ch);
+  }
 
-        if (this._wireV3 && this._v3ColdRows && this._chunkedEntries.length === 0) {
-          const rows = this._v3ColdRows;
-          this._v3ColdRows = null;
-          this._v3Assembling = true;
-          (async () => {
-            const entries = [];
-            const asm = this._v3Assembler();
-            let assembled = false;
-            try {
-              for (let i = 0; i < rows.length; i++) {
-                try { entries.push(asm.buildEntry(rows[i])); } catch (e) { reportSwallowed('v3.cold-assemble', e); }
-                if ((i + 1) % 100 === 0) await yieldToMain();
-              }
-              assembled = true;
-            } catch (err) {
-              reportSwallowed('v3.cold-assemble-run', err);
-            } finally {
-              this._v3Assembling = false;
-            }
-            if (!assembled) {
-              // Never commit a half-assembled window (it would truncate the
-              // chat): keep the previous baseline, release the gated live
-              // frames through the normal live path, unblock the overlay.
-              this._abortColdIngest({ drain: true });
-              this._v3DrainPendingLive();
-              this.setState({ fileLoading: false, fileLoadingCount: 0, fileLoadingBytes: null });
-              return;
-            }
-            this._chunkedEntries = entries;
-            // finish() enters the ingest pipeline synchronously (sets
-            // _ingestRunning before any await), so draining the buffered live
-            // frames AFTER it routes their entries into the pipeline's gate
-            // buffer — no window where a live entry merges against the
-            // pre-commit baseline (review P1-1).
-            finish();
-            this._v3DrainPendingLive();
-          })();
-          return;
-        }
-        this._v3ColdRows = null;
-        finish();
+  /** Warm switch: the channel is committed, fresh and connected — swap its
+   *  whole slice in (no overlay, no new EventSource) and replay the live
+   *  entries it journaled while in the background through the incremental
+   *  ingest pipeline. */
+  _warmActivate(ch) {
+    const vm = ch.vm;
+    this._resetPipelineScratch();
+    this.setState(vm.react);
+    this._rebuildRequestIndex(vm.react.requests);
+    this._seedV2ColdSeed(vm.react.requests);
+    this._syncTaskStoreForChannel(ch);
+    const journal = vm.journal;
+    vm.journal = [];
+    if (journal.length > 0) {
+      // The journal is consumed here: until the merge commits it, the vm.react
+      // tail is no longer complete — a switch that aborts the drain must leave
+      // the channel cold / ?since-resumable (committed flips true at commit).
+      vm.committed = false;
+      const unlockContextBar = this._contextBarUnlocks(vm.react, journal);
+      const merged = this._mergeIncrementalEntries(vm.react.requests, journal);
+      // async 不 await：live 条目在管线在途期间入闸门缓冲（_runSseColdIngest）。
+      this._runSseColdIngest(merged, { isIncremental: true, unlockContextBar, channel: ch })
+        .catch((err) => reportSwallowed('sse.cold-ingest-outer', err));
+    }
+  }
+
+  /** Warm-stale: committed but the connection is not fresh (dead socket /
+   *  reconnected / stale heartbeat) or the journal overflowed. Paint the
+   *  committed slice instantly, then resume incrementally from the committed
+   *  cursor (entries the journal could not cover replay via ?since). */
+  _warmStaleActivate(ch) {
+    const vm = ch.vm;
+    this._resetPipelineScratch();
+    this.setState(vm.react);
+    this._rebuildRequestIndex(vm.react.requests);
+    this._seedV2ColdSeed(vm.react.requests);
+    this._syncTaskStoreForChannel(ch);
+    // The ?since resume re-fetches whatever the (possibly dropped) journal
+    // held, so it is never drained here. Until that resume commits, the tail
+    // after lastCommittedTs is not covered by the vm — keep the channel off
+    // the warm gate (an aborted resume then forces a cold load, never a gap).
+    vm.committed = false;
+    vm.journal = [];
+    const { url, incremental } = this._warmStaleUrl(ch);
+    vm.hasViewCache = incremental;
+    if (!this._channels.reconnect(ch.key, { url })) {
+      // Reconnect budget exhausted — force a fresh connection at the same URL
+      // (the manager's reconnect is budget-limited; a view switch must not
+      // leave the rendered channel dead).
+      this._channels.ensure(ch.key, { url, cold: true, rendered: true });
+    }
+    if (!incremental) {
+      this._commitChannel(ch, { fileLoading: true, fileLoadingCount: 0, fileLoadingBytes: null });
+    }
+  }
+
+  /** Incremental resume URL for a committed-but-stale channel. Project scopes
+   *  use the view-cache shape (?project&since&cc); the bound scope uses the
+   *  desktop-reconnect shape (?since&cc&project). Falls back to the generic
+   *  URL builder when no cursor exists (or for sid scopes, which have no
+   *  incremental form). */
+  _warmStaleUrl(ch) {
+    const vm = ch.vm;
+    const proj = ch.scope.project || this.state.projectName;
+    if (!isMobile && !ch.scope.sid && proj && vm.lastCommittedTs && vm.lastCommittedCount > 0) {
+      const instQ = ch.scope.instance ? `&instance=${encodeURIComponent(ch.scope.instance)}` : '';
+      const since = `since=${encodeURIComponent(vm.lastCommittedTs)}&cc=${vm.lastCommittedCount}`;
+      return ch.scope.project
+        ? { url: `/events?project=${encodeURIComponent(proj)}${instQ}&${since}`, incremental: true }
+        : { url: `/events?${since}&project=${encodeURIComponent(proj)}`, incremental: true };
+    }
+    const plan = this._channelUrlFor(ch.scope, { reconnect: true, channel: ch });
+    return { url: plan.url, incremental: plan.hasCache };
+  }
+
+  /** The single-instance pipeline scratch reset (rendered-view ingest +
+   *  live-batch state). Channel-scoped state is left alone on purpose. */
+  _resetPipelineScratch() {
+    this._abortColdIngest();
+    this._v3ColdRows = null;
+    this._v3PendingLive = [];
+    this._v2SseReconstructor = null;
+    this._v2ColdSeed = null;
+    this._pendingEntries = [];
+    if (this._flushRafId) { cancelAnimationFrame(this._flushRafId); this._flushRafId = null; }
+  }
+
+  /** Incremental-merge unlock signal (shared by load_end and the warm drain):
+   *  at least one mainAgent entry with real body.messages means the session
+   *  actually advanced — the optimistic /clear lock can release. */
+  _contextBarUnlocks(viewState, delta) {
+    if (!viewState || !viewState.contextBarLocked) return false;
+    return (delta || []).some((e) => {
+      if (!e || !e.mainAgent) return false;
+      const msgs = e.body?.messages;
+      return Array.isArray(msgs) && msgs.length > 0;
+    });
+  }
+
+  /** eKey dedup merge (delta wins over the base, new keys append in order) —
+   *  the load_end incremental merge and the warm journal drain share it. */
+  _mergeIncrementalEntries(base, delta) {
+    const map = new Map();
+    (base || []).forEach((e, i) => {
+      const k = (e && e.timestamp && e.url) ? `${e.timestamp}|${e.url}` : `__nokey_c${i}`;
+      map.set(k, e);
+    });
+    (delta || []).forEach((e, i) => {
+      const k = (e && e.timestamp && e.url) ? `${e.timestamp}|${e.url}` : `__nokey_d${i}`;
+      map.set(k, e);
+    });
+    return Array.from(map.values());
+  }
+
+  /** Evicted channel (LRU over cap): cancel its timers and keep a view-cache
+   *  snapshot so a later return still hits the incremental resume path. The
+   *  snapshot pre-merges the journal into requests so its `since` cursor sits
+   *  on the same baseline the restored requests end at (v3 rows may run ahead
+   *  of requests while a tap journals). */
+  _onChannelEvict(ch) {
+    try {
+      clearChannelTimers(ch.vm, {
+        clearTimeout: (id) => clearTimeout(id),
+        cancelAnimationFrame: (id) => cancelAnimationFrame(id),
       });
-      this.eventSource.addEventListener('full_reload', (event) => {
+      const key = cacheKeyForScope(ch.scope);
+      if (key) {
+        const requests = (ch.vm.journal && ch.vm.journal.length > 0)
+          ? this._mergeIncrementalEntries(ch.vm.react.requests, ch.vm.journal)
+          : ch.vm.react.requests;
+        this._viewCache.snapshot(key, { ...ch.vm.react, requests });
+      }
+    } catch (err) {
+      reportSwallowed('sse.channel-evict', err, { key: ch && ch.key });
+    }
+  }
+
+  /** Task checklist follows the rendered scope: republish the channel's last
+   *  known snapshot (its own connect-time replay will refresh it), or clear
+   *  when it has none — the departing project's checklist must not linger. */
+  _syncTaskStoreForChannel(ch) {
+    try {
+      const snap = ch && ch.vm && ch.vm.taskSnapshot;
+      if (snap) publishTaskUpdate(snap);
+      else clearTaskStore();
+    } catch (err) { reportSwallowed('task.scope-sync', err); }
+  }
+
+  /** workspace_started(rebound): every channel whose server-side scope domain
+   *  died with the old bound project is closed outright — the bound channel
+   *  always (its ?project stamp is the dead name) plus any channel scoped to
+   *  the departed project. */
+  _closeReboundChannels(reboundFrom) {
+    for (const key of this._channels.keys()) {
+      const scope = scopeOfKey(key);
+      if (key === BOUND_CHANNEL_KEY || (reboundFrom && scope.project === reboundFrom)) {
+        this._channels.close(key);
+      }
+    }
+  }
+
+  // ── channel 绑定 / 帧分发 ────────────────────────────────
+  /** Register every named SSE listener on a (re)connected socket, wrapped with
+   *  the per-channel stale() guard (a superseded socket's late frames are
+   *  dropped) and the heartbeat touch. */
+  _bindChannelEvents(channel, es, stale) {
+    for (const name of Object.keys(CHANNEL_FRAME_HANDLERS)) {
+      es.addEventListener(name, (event) => {
         if (stale()) return;
-        this._resetSSETimeout();
-        // 服务端要求整体重载 = baseline 重置：废弃在途分帧管线（防其稍后提交陈旧基线），
-        // 闸门缓冲泄回 _pendingEntries（dedup 兜底与重载数据的重复）。
-        this._abortColdIngest({ drain: true });
-        // Baseline reset also drops the v3 client state (review P0-2): stale
-        // rows would keep feeding _listSource after the reload's new baseline.
-        this._v3ResetClientState();
-        this.setState({ v2Rows: [], v2RowsMeta: { totalCount: 0, hasMore: false, oldestTs: '' } });
-        // NOTE: the task checklist is NOT cleared here — full_reload is a
-        // same-session wire-baseline reset; the hook-fed checklist stays valid
-        // and there is no re-push on this path (clearing would blank the HUD
-        // until the next task event).
-        // animateLoadingCount 回调有数百 ms 窗口：期间若新分帧管线启动（token 再 bump），
-        // 本次 full_reload 的延迟 setState 不得覆盖新管线提交 —— 回调内按 token 失配丢弃。
-        const reloadToken = this._ingestToken;
-        try {
-          const parsed = JSON.parse(event.data);
-          const entries = Array.isArray(parsed) ? normalizeV2Entries(parsed) : parsed;
-          if (Array.isArray(entries)) {
-            // full_reload resets the baseline: drop the stale live v2
-            // normalizer, then re-seed from the rebuilt entries AFTER
-            // _processEntries (whose _initProcessState resets the seed).
-            this._v2SseReconstructor = null;
-            if (entries.length > 0) this._batchSlim(entries);
-            const { mainAgentSessions, filtered } = entries.length > 0 ? this._processEntries(entries) : { mainAgentSessions: [], filtered: [] };
-            let v2Seed = null;
-            for (const e of entries) if (e._syntheticV2) v2Seed = e;
-            this._v2ColdSeed = v2Seed;
-            if (entries.length > 0) {
-              this.animateLoadingCount(entries.length, () => {
-                if (this._ingestToken !== reloadToken) return; // 已被新管线 supersede
-                this.setState({
-                  requests: entries,
-                  selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
-                  mainAgentSessions,
-                  fileLoading: false,
-                  fileLoadingCount: 0,
-                  serverCachedContent: null,
-                });
-                if (isMobile && this.state.projectName) {
-                  saveEntries(this.state.projectName, entries);
-                }
-              });
-            } else {
-              this.setState({
-                requests: entries,
-                selectedIndex: null,
-                mainAgentSessions,
-                fileLoading: false,
-                fileLoadingCount: 0,
-                serverCachedContent: null,
-              });
-              if (isMobile) clearEntries();
-            }
-          } else {
-            this.setState({ fileLoading: false, fileLoadingCount: 0 });
-          }
-        } catch (e) {
-          // A silently failed full reload discards the server's baseline — report, then recover.
-          reportSwallowed('sse.full_reload', e);
-          this.setState({ fileLoading: false, fileLoadingCount: 0 });
-        }
+        this._touchChannel(channel);
+        this._onChannelFrame(channel, name, event);
       });
-      // 工作区模式事件
-      this.eventSource.addEventListener('workspace_started', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          const data = JSON.parse(event.data);
-          // A close of the BOUND project makes the server re-bind to a survivor
-          // and broadcast workspace_started(rebound:true, reboundFrom:<old name>).
-          // Only clients still in that project's view domain are affected: their
-          // SSE is stamped with the OLD bound name (res._ccvViewProject is frozen
-          // at connect time, events.js) and would never receive the survivor's
-          // live feed. A tab viewing an UNRELATED project (parallel view or an
-          // attached history session of a third project) keeps its view — the
-          // server no longer touches its scope — so it must NOT be force-detached
-          // / blanked. Snapshot the domain BEFORE any reset below (setState is
-          // async; a second reset would see the cleared state and vacuously pass).
-          // The dir-only rebind sends NO broadcast at all (name unchanged → every
-          // client's stamp still matches), so this only ever runs for a full rebind.
-          const isRebound = data.rebound === true;
-          const reboundAffectsThisTab = reboundAffectsView({
-            rebound: data.rebound,
-            reboundFrom: data.reboundFrom,
-            projectName: this.state.projectName,
-            viewedProject: this.state.viewedProject,
-          });
-          // A normal (non-rebound) workspace_started is an authoritative switch
-          // for every client — reset unconditionally, exactly as before.
-          const shouldReset = !isRebound || reboundAffectsThisTab;
-          if (shouldReset) {
-            // 新项目语境：允许迁移引导针对切入的项目再弹一次（P2 one-shot 守卫复位）。
-            // (Unaffected rebound tabs keep their one-shot guards — nothing about
-            // their project changed, so no guide should re-fire.)
-            this._migratePromptShown = false;
-            // 取消旧动画，防止旧 full_reload 回调覆盖新数据
-            if (this._loadingCountTimer) {
-              cancelAnimationFrame(this._loadingCountTimer);
-              this._loadingCountTimer = null;
-            }
-            // 只在受影响域做全量重置：废弃在途分帧管线 + 清对话/任务/pin/attach，
-            // 防被关项目的残留数据在新绑定下继续渲染。
-            this._abortColdIngest();
-            this._v3ResetClientState(); // review P0-2: old project's rows/assembler must not survive the switch
-            this._rebuildRequestIndex([]);
-            clearTaskStore(); // old project's task checklist must not linger into the new session
-            // 切项目要连 _currentSessionId 一并清掉：否则 _maintainPinState 的 lazy-lock 兜底
-            // (getSessionStableId(null) || this._currentSessionId) 会拿旧项目的会话 id 误锁新项目，
-            // 在 hydrate GET 抢先返回前可能把旧 id POST 进新项目的 pin 文件。
-            this._currentSessionId = null;
-            // This view IS the one being force-detached: drop the attach so a
-            // stale attach can't re-assert the old project's session under the
-            // new binding.
-            this.setState({ attachedSid: null, viewedProject: null, viewedInstance: null });
-            // NOTE: no clearViewedWorkspace() here. workspace_started/stopped are
-            // broadcast to EVERY SSE client (workspaces.js, not view-scoped), so an
-            // unconditional clear would wipe a workspace another browser tab just
-            // persisted. Storage is cleared only by real user actions (detach /
-            // launch / return-to-list); a stale entry is harmlessly re-validated
-            // against /api/live-processes on the next boot.
-            this._applyDocTitle(data.projectName || '');
-            // Reset isStreaming alongside streamingLatest — workspace switches happen
-            // between user prompts and shouldn't leave streaming flags stuck. (turnEnd
-            // false-fire on this transition is no longer a concern since we hook
-            // turnEnd to the Stop SSE event, not to isStreaming falling-edge.)
-            this.setState({
-              workspaceMode: false,
-              projectName: data.projectName || '',
-              // viewMode is a pure display pref — inherit the user's current mode, don't force
-              // 'chat' (user-pinned 2026-10-06, same principle as terminalVisible). cliMode stays
-              // (a launched claude project needs the CLI surface).
-              cliMode: true,
-              requests: [],
-              v2Rows: [],
-              v2RowsMeta: { totalCount: 0, hasMore: false, oldestTs: '' },
-              mainAgentSessions: [],
-              // 切项目：清空旧项目 pin，由 App.componentDidUpdate 按新 projectName 重新 hydrate
-              pinnedSessionTs: null,
-              selectedIndex: null,
-              streamingLatest: null,
-              isStreaming: false,
-              turnActive: false, // new workspace/view owns its own turn state
-              // workspace 切换 = cwd 切换 → claude 的 lastModelUsage 也要重查；
-              // 后端在 workspace_started 一并塞了新 cwd 对应的 hint，没有就清空。
-              claudeProjectModel: (typeof data.claudeProjectModel === 'string' && data.claudeProjectModel) ? data.claudeProjectModel : null,
-              // Workspace switch = a new SDK session; drop the old session's launch model so
-              // a stale chip never lingers into the new workspace (the next sdk-init refills).
-              sdkModel: null,
-            });
-            if (this.state.resumeSwitch) this._clearResumeSwitch();
-            if (isMobile) clearEntries();
-            // Reconnect with an explicit (empty) scope so the new connection
-            // stamps the NEW bound project — initSSE takes the scope explicitly,
-            // never read this.state here (setState hasn't flushed). Clear the
-            // reconnect budget first (as every other view-switch path does via
-            // _resetForViewSwitch): the desktop incremental branch reads
-            // this.state.projectName as the `?project=` anchor (AppBase.jsx:1863)
-            // and a stale OLD name would resolve the wrong view / blank.
-            // Only a rebound reconnects here — a normal workspace_started is
-            // followed by the server's own full_reload/replay on the existing
-            // connection, exactly as before.
-            if (isRebound) {
-              this._sseReconnectCount = 0;
-              this.initSSE({ sid: null, project: null, instance: null });
-            }
-          }
-        } catch (e) { reportSwallowed('sse.workspace_started', e); }
-      });
-      this.eventSource.addEventListener('workspace_stopped', () => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        this._teardownTransientLiveState();
-        this._v3ResetClientState(); // review P0-2
-        this._rebuildRequestIndex([]);
-        clearTaskStore(); // same as workspace_started: drop the old session's checklist
-        this._currentSessionId = null; // same as workspace_started: clear the old session id so lazy-lock can't misfire
-        // NOTE: no clearViewedWorkspace() here — workspace_stopped is broadcast to
-        // every SSE client (see workspace_started note above); clearing storage on
-        // a broadcast would clobber a workspace another tab just persisted.
-        this.setState({
-          workspaceMode: true,
-          v2Rows: [],
-          v2RowsMeta: { totalCount: 0, hasMore: false, oldestTs: '' },
-          requests: [],
-          mainAgentSessions: [],
-          projectName: '',
-          pinnedSessionTs: null,
-          attachedSid: null, // switching projects is an authoritative boundary: force-detach any attach
-          viewedProject: null,
-          viewedInstance: null,
-          selectedIndex: null,
-          streamingLatest: null,
-          contextBarLocked: false,
-          isStreaming: false,
-          turnActive: false, // new workspace/view owns its own turn state
+    }
+  }
+
+  /** Frame dispatch: `message` (data:) → live entry pipeline/journal; named
+   *  frames → the matching `_on<Name>(channel, event)` handler. */
+  _onChannelFrame(channel, name, event) {
+    if (name === 'message') return this._onChannelMessage(channel, event);
+    const fn = this[CHANNEL_FRAME_HANDLERS[name]];
+    if (typeof fn === 'function') fn.call(this, channel, event);
+  }
+
+  _onChannelOpen(channel) {
+    // 每次连上都补一次 pin GET 同步：浏览器原生 EventSource 自愈重连复用同一 EventSource，
+    // 不经过重连预算路径，故不能只在显式重连时同步，否则原生重连期间他端改的 pin 会一直 stale
+    // 到下次 session_pin 或切项目。GET 幂等，_applyingRemotePin 防回写。pin 是 bound 作用域的
+    // 状态 —— 只有 bound channel 的连线需要同步。
+    if (channel.key === BOUND_CHANNEL_KEY) this._hydratePin();
+  }
+
+  /** `data:` (live entry) frames: the rendered channel feeds the live ingest
+   *  pipeline; a tap channel journals the entry for the warm switch. */
+  _onChannelMessage(channel, event) {
+    try {
+      const entry = JSON.parse(event.data);
+      this._deliverChannelEntry(channel, entry);
+    } catch (error) {
+      reportSwallowed('sse.message', error, { dataLen: event.data?.length });
+    }
+  }
+
+  // Live streaming overlay: 直接更新 streamingLatest state（不走 reconstructor / dedup）
+  // rAF coalesce + startTransition：每个 SSE chunk 只在下一帧合并成一次 setState，
+  // 并标记为低优先级渲染，避免阻塞用户输入。最终 chunk 经 entry path 交付而非
+  // stream-progress，所以丢掉 trailing stream-progress 是安全的。
+  _onStreamProgress(channel, event) {
+    try {
+      const data = JSON.parse(event.data);
+      const vm = channel.vm;
+      // B2 view-attach: while attached to a sid, drop the live
+      // typewriter for any OTHER session — the primary session keeps streaming
+      // and its overlay must not bleed over the attached view. Frames without a
+      // sessionId (older server) fall through to today's behavior.
+      // (Attach only ever scopes the rendered view; taps are read unfiltered.)
+      if (this._isRenderedChannel(channel) && this.state.attachedSid && data.sessionId
+          && data.sessionId.toLowerCase() !== this.state.attachedSid) return;
+      // Multi-project (2026-10): drop the live typewriter for any project OTHER
+      // than the one THIS CHANNEL is scoped to (a tap compares against its own
+      // project — inverting the old rendered-only read, which made a
+      // background channel's guard test the wrong view).
+      const _viewing = channel.scope.project || this.state.projectName || '';
+      if (data.project && _viewing && data.project !== _viewing) return;
+      // 防 stale：若 requests 中已有同 timestamp 的完成条目，说明最终 entry 已到达，
+      // 此 chunk 是乱序/延迟到达的旧包，直接丢弃以免复活已清除的 overlay
+      const existingFinal = vm.react.requests.find(r =>
+        r && r.timestamp === data.timestamp && !r.inProgress
+      );
+      if (existingFinal) return;
+      // streamingLatest 生命周期只由两种信号终结（不再用短 timeout 兜底）：
+      // 1) 正常：最终 entry 到达时 _flushPendingEntries 原子清除
+      // 2) 异常：SSE 连接真死 (_reconnectChannel)
+      // 避免长 thinking / 网络抖动 / 切 tab 等场景误杀 overlay。
+      vm.pendingStreamingLatest = {
+        timestamp: data.timestamp,
+        url: data.url,
+        content: data.content || [],
+        model: data.model,
+        updatedAt: Date.now(),
+      };
+      if (vm.streamingRaf) return;
+      vm.streamingRaf = requestAnimationFrame(() => {
+        vm.streamingRaf = null;
+        const pending = vm.pendingStreamingLatest;
+        vm.pendingStreamingLatest = null;
+        if (!pending) return;
+        React.startTransition(() => {
+          this._commitChannel(channel, { streamingLatest: pending });
         });
       });
-      this.eventSource.addEventListener('context_window', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          const data = JSON.parse(event.data);
-          // 收到新的 context_window 测量 → 同步解锁血条。
-          // 兜底场景：onUserMessageSent / load_end fallback 都没触发解锁时
-          //（WS 抖动、非增量 load、纯外部输入），SSE 推送的真实测量值就是
-          //「会话已推进」的最强信号，避免 lock 永久卡 0%。
-          this.setState({ contextWindow: data, contextBarOptimistic: false, contextBarLocked: false });
-          if (this._clearOptimisticTimer) { clearTimeout(this._clearOptimisticTimer); this._clearOptimisticTimer = null; }
-        } catch (e) { reportSwallowed('sse.context_window', e); }
+    } catch (e) { reportSwallowed('sse.stream-progress', e); }
+  }
+
+  // update_completed 事件已废弃：自 1.6.203 起后台 detached npm install 负责升级，
+  // 当前进程内存里仍是旧版本，广播"已升级完成"会误导用户。保留 update_major_available
+  // 作为"有新版可用"的统一信号（包含跨大版本提示 + 本版本忙时跳过两种场景）。
+  // 1.7.0 P2：存在未迁移 v1 日志 → 弹迁移引导。是否展示由客户端决定：
+  // 「不再提醒」偏好挡常规提示；continued=true（-c 续接旧对话）无视 dismissed
+  // 再提醒——前半段对话在旧格式里，不迁移就看不到。
+  // One-shot per page load (review P1)：/events 每次【重连】（心跳超时、网络
+  // 抖动）都会重推本帧，且 continued 分支绕过 dismissed —— 不设一次性守卫
+  // 会反复弹窗，甚至在用户已行动后再弹。工作区切换的广播携带新项目语境，
+  // 由 workspace_started 重置守卫。
+  _onMigratePrompt(channel, event) {
+    if (!this._isRenderedChannel(channel)) return; // global frame — rendered view only
+    try {
+      const data = JSON.parse(event.data);
+      if (this._migratePromptShown) return; // already shown/acted this page
+      (this.context._prefsReady || Promise.resolve({})).then((initialPrefs) => {
+        if (this._migratePromptShown) return; // raced a second frame
+        const prefs = this.context?.preferences || initialPrefs;
+        if (prefs?.wireV2MigratePromptDismissed && !data.continued) return;
+        this._migratePromptShown = true;
+        this.setState({ migratePromptVisible: true, migratePromptData: data });
       });
-      this.eventSource.addEventListener('kv_cache_content', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          const cached = JSON.parse(event.data);
-          // 防御：忽略无实际内容的 kv_cache_content（避免空数据覆盖有效缓存）
-          if (cached && (cached.system?.length > 0 || cached.messages?.length > 0 || cached.tools?.length > 0)) {
-            this.setState({ serverCachedContent: cached });
-          }
-        } catch (err) {
-          reportSwallowed('sse.kv_cache_content', err, { dataLen: event.data?.length });
+    } catch (e) { reportSwallowed('sse.migrate_prompt', e); }
+  }
+  _onUpdateMajorAvailable(channel, event) {
+    if (!this._isRenderedChannel(channel)) return; // global frame — rendered view only
+    try {
+      const data = JSON.parse(event.data);
+      this.setState({ updateInfo: { type: 'major', version: data.version } });
+    } catch (e) { reportSwallowed('sse.update_major_available', e); }
+  }
+
+  // L2 裸续接:有会话经「绕过 ccv 的 claude -c」续接(注入丢失、前缀缓存重写)。
+  // 不弹窗(用户反馈:静默即可),只留控制台诊断日志。
+  _onResumeBypassed(channel, event) {
+    if (!this._isRenderedChannel(channel)) return; // global frame — rendered view only
+    try {
+      const data = JSON.parse(event.data);
+      console.warn('[CC Viewer] a session was continued via a `claude -c` that bypassed ccv — system-prompt injection lost, prefix cache will be fully rewritten once. uuid:', data?.uuid);
+    } catch (e) { reportSwallowed('sse.resume_bypassed', e); }
+  }
+
+  _onLoadStart(channel, event) {
+    try {
+      const data = JSON.parse(event.data);
+      const vm = channel.vm;
+      if (!this._isRenderedChannel(channel)) {
+        // Tap channel: load frames never render here. An empty window marks the
+        // scope stale (next activate goes cold); everything else is dropped —
+        // a reconnected tap is marked stale (reconnectsSinceCommit) and the
+        // next switch re-fetches the gap via ?since.
+        if (data.empty) {
+          this._viewCache.invalidate(cacheKeyForScope(channel.scope) || '');
+          vm.committed = false;
         }
-      });
-      this.eventSource.addEventListener('workflow_update', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          publishWorkflowUpdate(JSON.parse(event.data));
-        } catch (e) { reportSwallowed('sse.workflow_update', e); }
-      });
-      // Task checklist HUD feed (task-bridge hooks → server task-state full
-      // snapshot). No sessionId guard on the client side: the snapshot id is a
-      // Claude Code session UUID while _currentSessionId is ccv's ts-based id —
-      // different identity spaces. Freshness is instead guaranteed by the
-      // clear-points (workspace_started/stopped) plus the server's
-      // session-boundary resets and per-connection snapshot replay.
-      this.eventSource.addEventListener('task_update', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          const data = JSON.parse(event.data);
-          // B2 view-attach: while attached to a sid, hide the primary
-          // session's task checklist — it is not the attached sid's, and the resume
-          // child never feeds the shared list (scope limit: we can only HIDE the
-          // primary's checklist while attached, not show the attached child's).
-          if (this.state.attachedSid && data && data.sessionId
-              && String(data.sessionId).toLowerCase() !== this.state.attachedSid) return;
-          publishTaskUpdate(data);
-        } catch (e) { reportSwallowed('sse.task_update', e); }
-      });
-      this.eventSource.addEventListener('proxy_profile', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          const data = JSON.parse(event.data);
-          if (data.active) this.setState({ activeProxyId: data.active });
-          if (data.roles) this.setState({ proxyRoles: data.roles });
-          if (data.profile) {
-            // 刷新完整列表
-            fetch(apiUrl('/api/proxy-profiles')).then(r => r.json()).then(d => {
-              if (d.profiles) this.setState({
-                proxyProfiles: d.profiles,
-                activeProxyId: d.active || 'max',
-                ...(d.roles ? { proxyRoles: d.roles } : {}),
-                ...(typeof d.officialDefault === 'boolean' ? { proxyOfficialDefault: d.officialDefault } : {}),
-              });
-            }).catch(() => { });
-          }
-        } catch (e) { reportSwallowed('sse.proxy_profile', e); }
-      });
-      this.eventSource.addEventListener('retry_config', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          const data = JSON.parse(event.data);
-          if (data?.config) this.setState({ retryConfig: data.config });
-        } catch (e) { reportSwallowed('sse.retry_config', e); }
-      });
-      this.eventSource.addEventListener('ping', () => { if (stale()) return; this._resetSSETimeout(); });
-      // server_config: server 启动时一次性推 turnEnd debounce ms（CCV_TURN_END_DEBOUNCE_MS
-      // 可能改过默认值），前端拿这个值同步 voicePackPlayer 的 turnEnd cooldown，避免硬常数漂移。
-      this.eventSource.addEventListener('server_config', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          const cfg = JSON.parse(event?.data || '{}');
-          if (typeof cfg.turnEndDebounceMs === 'number') setTurnEndCooldownMs(cfg.turnEndDebounceMs);
-          // Wire v3 flag: synchronous instance field (NOT React state) — the
-          // load_chunk/v2_requests handlers in this same load cycle must read
-          // the fresh value; setState would lag a task behind. A forceUpdate
-          // is unnecessary: rows arriving (setState) re-render, and flag-off
-          // keeps v2Rows empty so _listSource stays on the legacy source.
-          this._wireV3 = cfg.wireV3 === true;
-          // Version-skew guard (review P2-a): a reconnect that reaches an
-          // UPGRADED server would feed this stale bundle a wire it may not
-          // understand — reload to pull the matching dist (index.html is
-          // no-store, assets content-hashed, so this always heals).
-          if (cfg.build) {
-            if (this._serverBuild && this._serverBuild !== cfg.build) {
-              window.location.reload();
-              return;
-            }
-            this._serverBuild = cfg.build;
-          }
-        } catch { /* tolerate parse error */ }
-      });
-      // Wire v3 (V3.S2/S3a): request-list metadata rows. Cold frame replaces
-      // the row source wholesale; live deltas upsert by (sessionId, seq).
-      // V3.S5: the same rows drive the entry assembler — the cold frame's
-      // entries land in _chunkedEntries (the legacy chunk buffer, processed at
-      // load_end by the existing pipeline); live rows inject one entry each.
-      this.eventSource.addEventListener('v2_requests', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        this._v3TrackBytes(event);
-        try {
-          const data = JSON.parse(event?.data || '{}');
-          const rows = Array.isArray(data.rows) ? data.rows : [];
-          // Full reset frame (fresh cold load / reconnect replay): drop every
-          // piece of v3 client state FIRST — a reconnect re-sends the window
-          // and the assembler/seen-set/rows must not accumulate across cycles
-          // (review P0-2: stale rows after workspace switch; unbounded growth;
-          // stale channel ptr mis-assembly). Incremental frames (since-scoped
-          // delta window, review P1-2) upsert instead.
-          if (data.incremental) {
-            this._ingestV2Rows(rows, { reset: false });
-          } else {
-            this._v3ResetClientState();
-            this._ingestV2Rows(rows, { reset: true, totalCount: data.totalCount, hasMore: data.hasMore, oldestTs: data.oldestTs });
-          }
-          this._v3ColdRows = rows; // consumed at load_end (after v3_conv/v3_resp frames land)
-        } catch (e) { reportSwallowed('sse.v2_requests', e); }
-      });
-      this.eventSource.addEventListener('v2_requests_delta', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          const row = JSON.parse(event?.data || '{}');
-          if (!row || !Number.isInteger(row.seq)) return;
-          if (this._v3Assembling) { this._v3PendingLive.push({ kind: 'delta', data: row }); return; }
-          this._applyV3Delta(row);
-        } catch (e) { reportSwallowed('sse.v2_requests_delta', e); }
-      });
-      this.eventSource.addEventListener('v3_conv', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        this._v3TrackBytes(event);
-        try {
-          const data = JSON.parse(event?.data || '{}');
-          if (this._v3Assembling) { this._v3PendingLive.push({ kind: 'conv', data }); return; }
-          this._applyV3Conv(data);
-        } catch (e) { reportSwallowed('sse.v3_conv', e); }
-      });
-      this.eventSource.addEventListener('v3_resp', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        this._v3TrackBytes(event);
-        try {
-          const data = JSON.parse(event?.data || '{}');
-          if (this._v3Assembling) { this._v3PendingLive.push({ kind: 'resp', data }); return; }
-          this._applyV3Resp(data);
-        } catch (e) { reportSwallowed('sse.v3_resp', e); }
-      });
-      // session_pin SSE — 本进程任一端改了「当前会话」pin 后广播，让同实例多端（电脑+手机）实时一致。
-      // 采纳服务端值时置 _applyingRemotePin，避免 _maintainPinState 把它当本地改动回 POST（防回环）。
-      // A broadcast value that mismatches the locally derived latest is rejected via
-      // resolveHydratedPin (another client may have derived a stale "latest"). No
-      // POST-back on reject — re-persisting inside the broadcast handler could
-      // ping-pong between clients; healing flows through _maintainPinState's
-      // normal persist path instead.
-      this.eventSource.addEventListener('session_pin', (event) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          // /resume view-attach: while attached, a remote/broadcast pin must not
-          // clobber the attached session — the local deliberate attach wins
-          // (P0-2 entry point 2/3). Project switch / cold reload is the
-          // authoritative "remote truth" boundary and releases the attach there.
-          if (this._viewAttached()) return;
-          const data = JSON.parse(event?.data || '{}');
-          const r = resolveHydratedPin(data.pinnedSessionId, this._derivedLatestId(), this._effectiveOnlyCurrentSession());
-          if (r.adopt && r.value !== this.state.pinnedSessionTs) {
-            this._applyingRemotePin = true;
-            this.setState({ pinnedSessionTs: r.value }, () => { this._applyingRemotePin = false; });
-            // NOTE: the task checklist is deliberately NOT cleared on pin
-            // adoption — the strip is live-session truth, and any clear would
-            // be defeated by the next task_update / reconnect snapshot anyway
-            // (review P2-1). Session boundaries (server side) own the resets.
-          }
-        } catch { /* tolerate parse error */ }
-      });
-      // turn_active SSE — turn-level loading truth (PTY mode): the UserPromptSubmit
-      // hook lights it at prompt time; the RAW Stop-hook POST clears it (pre-debounce).
-      // This is what keeps the spinner alive across local tool execution gaps.
-      this.eventSource.addEventListener('turn_active', (event) => {
-        if (stale() || !this.eventSource) return;
-        this._resetSSETimeout();
-        try {
-          const data = JSON.parse(event?.data || '{}');
-          this._applyTurnActive(!!data.active);
-        } catch (err) { reportSwallowed('sse.turn_active', err); }
-      });
-      // turn_end SSE — broadcast by /api/turn-end-notify whenever Claude Code's Stop hook
-      // fires (real end of a user-prompt turn). This is the **authoritative** turnEnd
-      // signal — far more accurate than isStreaming falling-edge, which resets per-API-call
-      // and would mis-fire during slow tool execution. 30s cooldown lives in voicePackPlayer.
-      this.eventSource.addEventListener('turn_end', (event) => {
-        // Guard against a teardown race: SSE chunks in flight when _reconnectSSE
-        // closes the current EventSource can still fire here before the listener
-        // unbinds (round-3 quality P1), or a superseded connection's late frame
-        // after a view switch (gen guard, 2026-10).
-        if (stale() || !this.eventSource) return;
-        this._resetSSETimeout();
-        // Turn-level clear, debounced sibling of `turn_active:false` — the raw Stop
-        // POST usually cleared it already; this catches the SDK-mode fallback (the
-        // sdk-session-state idle frame may never arrive on older CLIs). turn_end is
-        // NOT view-project filtered server-side, so PTY mode deliberately ignores it
-        // here (turn_active owns PTY clearing) to avoid a foreign project's turn end
-        // killing this view's spinner.
-        if (this.state.sdkMode) this._applyTurnActive(false);
-        const vp = this.state.approvalPrefs && this.state.approvalPrefs.voicePack;
-        if (vp && vp.enabled && vp.events && vp.events.turnEnd) {
-          let serverTs = null;
-          try { serverTs = (JSON.parse(event?.data || '{}'))?.ts || null; } catch { /* fine */ }
-          try {
-            playVoiceEvent('turnEnd', vp, {
-              // Prefer the server-supplied ts so a re-broadcast (server bug, two
-              // SSE delivery paths) is deduped by the player. Falls back to a
-              // unique key if absent — relies on COOLDOWN_MS.turnEnd to suppress.
-              dedupeKey: `turnEnd:${serverTs || Date.now()}`,
-            });
-          } catch { /* never propagate */ }
+        return;
+      }
+      // A new baseline is being built: until this load COMMITS (see
+      // _commitColdIngest) the vm must not pass the warm gate — a switch that
+      // aborts the in-flight pipeline would otherwise leave a slice that is
+      // missing this load's whole window.
+      vm.committed = false;
+      vm.chunkedEntries = [];
+      vm.chunkedTotal = data.total || 0;
+      vm.isIncremental = !!data.incremental;
+      // Empty-view flag (2026-10-10): the viewed instance has NO session dir
+      // (new workspace, or its session was pruned while the PTY stayed alive).
+      // This connection may be an incremental `?since&cc=` resume that just
+      // restored a view-cache snapshot of the now-DELETED conversation — an
+      // empty delta would otherwise merge onto that stale baseline and keep
+      // rendering it. Invalidate the snapshot and clear the restored content;
+      // load_end then commits an empty view and the per-project live feed
+      // streams the instance's first turn in place once written.
+      if (data.empty) {
+        this._viewCache.invalidate(vm.cacheKey || '');
+        vm.cacheKey = null;
+        vm.hasViewCache = false;
+        this._commitChannel(channel, {
+          requests: [], mainAgentSessions: [], v2Rows: [],
+          v2RowsMeta: { totalCount: 0, hasMore: false, oldestTs: '' }, selectedIndex: null,
+        });
+      }
+      // Wire v3: the server pre-computes the exact frame byte total —
+      // progress is received/total bytes instead of the legacy count-up.
+      vm.v3BytesTotal = data.v3Bytes || 0;
+      vm.v3RecvBytes = 0;
+      // 增量模式下已有缓存数据在显示，不需要 loading 遮罩
+      if (!vm.isIncremental) {
+        this._commitChannel(channel, { fileLoading: true, fileLoadingCount: 0, fileLoadingBytes: vm.v3BytesTotal > 0 ? { recv: 0, total: vm.v3BytesTotal } : null });
+      }
+    } catch (e) { reportSwallowed('sse.load_start', e); }
+  }
+
+  _onLoadChunk(channel, event) {
+    if (!this._isRenderedChannel(channel)) return; // tap: see _onLoadStart
+    try {
+      const chunk = JSON.parse(event.data);
+      const vm = channel.vm;
+      if (Array.isArray(chunk)) {
+        if (!Array.isArray(vm.chunkedEntries)) vm.chunkedEntries = [];
+        vm.chunkedEntries.push(...chunk);
+        // 增量模式下静默累积；非增量模式用 rAF 节流，每帧最多更新一次计数
+        if (!vm.isIncremental && !this._loadingCountRafId) {
+          this._loadingCountRafId = requestAnimationFrame(() => {
+            this._loadingCountRafId = null;
+            this._commitChannel(channel, { fileLoadingCount: (vm.chunkedEntries || []).length });
+          });
         }
-      });
-      // im_log_update SSE — 主服务 fs.watch 到某 IM worker 日志目录写入时广播（IM worker 独立端口，
-      // turn_end 落在 worker 自己进程，主服务收不到，故用日志落盘信号驱动「对话记录」自动刷新）。
-      // AppBase 不直接持有 ImConversationModal，转成 window 事件解耦派发，弹窗打开时自行监听并重拉。
-      this.eventSource.addEventListener('im_log_update', (event) => {
-        if (stale() || !this.eventSource) return;
-        this._resetSSETimeout();
-        let platform = null;
-        if (typeof event?.data === 'string') {
-          try { platform = JSON.parse(event.data)?.platform || null; } catch { /* tolerate */ }
-        }
-        if (platform) {
-          try { window.dispatchEvent(new CustomEvent('ccv:im-log-update', { detail: { platform } })); } catch { /* noop */ }
-        }
-      });
-      this.eventSource.addEventListener('streaming_status', (e) => {
-        if (stale()) return;
-        this._resetSSETimeout();
-        try {
-          const data = JSON.parse(e.data);
-          if (data.active) {
-            // 立即显示 loading
-            clearTimeout(this._streamingOffTimer);
-            this._turnSignalTs = Date.now(); // API activity also proves the turn is alive
-            // agent 开始响应 = 新一轮已落实 → 顺手解锁血条。
-            // 覆盖 onUserMessageSent 没触发的极端情况（WS 抖动 / 外部输入 /
-            // pty 直接键入），避免 lock 永久卡 0%。
-            const patch = { isStreaming: true };
-            if (this.state.contextBarLocked) patch.contextBarLocked = false;
-            this.setState(patch);
-          } else {
-            // Delayed hide so the spinner doesn't flicker between tool calls.
-            // turnActive gates the clear: while a turn is in flight (incl. local tool
-            // execution) the spinner stays; the turn-level signal (turn_active:false /
-            // sdk idle / turn_end) owns the real clear.
-            clearTimeout(this._streamingOffTimer);
-            this._streamingOffTimer = setTimeout(() => {
-              this._streamingOffTimer = null;
-              if (!this.state.turnActive) {
-                this.setState({ isStreaming: false });
-                return;
-              }
-              // Turn still running — keep the spinner. Staleness escape: if no API
-              // stream has been ACTIVE for TURN_ACTIVE_STALE_MS, the turn-level clear
-              // was lost (hook-only turn + lost Stop POST); fall back to the legacy
-              // debounced behavior (never worse than pre-turnActive). Measured from
-              // the last ACTIVE tick, not the last tick — stray inactive ticks from
-              // housekeeping traffic must not postpone the escape forever. Re-arm so
-              // the escape is re-evaluated even when no further frames arrive (the
-              // server sends inactive frames only on the falling edge).
-              this._checkTurnActiveStale();
-            }, 2000);
-          }
-        } catch (err) { reportSwallowed('sse.streaming_status', err); }
-      });
-      this.eventSource.onerror = () => {
-        console.error('SSE连接错误');
-        // 不清 streamingLatest：浏览器会自动 3s 重连，新 chunk 到达会覆盖 state；
-        // 若彻底断连，45s heartbeat 超时触发 _reconnectSSE，那里会清 overlay；
-        // 若流式已完成，最终 entry 的原子清除会收走 overlay。
-      };
-    } catch (error) {
-      reportSwallowed('sse.init', error);
-      this.setState({ fileLoading: false, fileLoadingCount: 0 });
+      }
+    } catch (e) { reportSwallowed('sse.load_chunk', e, { dataLen: event.data?.length }); }
+  }
+
+  // The requested ?sid session no longer exists on disk (/clear-pruned or
+  // quota-cleaned), OR the requested ?instance PTY died before its first write
+  // (reason 'instance-no-session'). A LIVE instance with no session yet never
+  // reaches this frame — the server serves an empty view and keeps the per-project
+  // live feed attached (events.js liveness-aware guard). Either way the requested
+  // view can never produce content: toast + auto-detach back to follow-latest.
+  // On a BACKGROUND channel the frame only invalidates that scope (its next
+  // activate goes cold) — toast/detach are rendered-view actions.
+  _onSidNotFound(channel, event) {
+    channel.vm.committed = false;
+    if (!this._isRenderedChannel(channel)) return;
+    let reason = null;
+    try { reason = JSON.parse(event.data)?.reason || null; }
+    catch (e) { reportSwallowed('sse.sid-not-found', e, { dataLen: event.data?.length }); }
+    try { message.warning(t(reason === 'instance-no-session' ? 'ui.resume.noSession' : 'ui.resume.switchTimeout')); } catch {}
+    this.handleDetachView();
+  }
+  _onLoadEnd(channel, event) {
+    const vm = channel.vm;
+    if (!this._isRenderedChannel(channel)) {
+      // Tap channel: its own load never commits (see _onLoadStart) — drop the
+      // buffered chunks; a ?since resume at the next switch covers the window.
+      vm.chunkedEntries = [];
+      vm.chunkedTotal = 0;
+      return;
     }
+    // The reconnect counter is cleared with the whole load; the committed flag
+    // flips at the pipeline's commit (_commitColdIngest), not here.
+    vm.reconnectsSinceCommit = 0;
+    // A view switch's cold load completed: clear the switch overlay.
+    if (this.state.resumeSwitch) this._clearResumeSwitch();
+    // Multi-PTY: the cold load of a viewed project is done — re-anchor the
+    // terminal attachment as a backstop (covers server restarts / races where
+    // the click-time attach landed before the record existed). Idempotent.
+    if (this.state.viewedProject) attachMainPty(this.state.viewedProject, { instanceKey: this.state.viewedInstance || null });
+    if (this._loadingCountRafId) { cancelAnimationFrame(this._loadingCountRafId); this._loadingCountRafId = null; }
+    // Wire v3 (V3.S5): flagged cold loads carry no legacy chunks — build
+    // the window's entries from rows + native lines instead. All v3
+    // frames precede load_end on the wire, so the assembler is complete.
+    // Assembly is CHUNKED with main-thread yields (a synchronous build
+    // over the whole window blocks paint — the loading UI would freeze);
+    // live entries arriving during the async window are gated into
+    // _liveGateBuffer (drained by the pipeline commit, same as during
+    // the ingest pipeline itself).
+    const finish = () => {
+      const delta = Array.isArray(vm.chunkedEntries) ? vm.chunkedEntries : [];
+      vm.chunkedEntries = [];
+      vm.chunkedTotal = 0;
+      const isIncremental = vm.isIncremental;
+      vm.isIncremental = false;
+      // 解锁信号：增量模式下出现至少一条**带 body.messages 的 mainAgent** 条目，说明
+      // mainAgent 真有新一轮请求落盘。仅看 delta.length>0 会被 SSE 重连时 backlog
+      // replay 的旧 entry（synthetic、post-stop hook 等）误触发；mainAgent + body.messages
+      // 才是"用户实际发了内容"的最强信号。覆盖 TerminalPanel /clear 后用户没走 ChatView
+      // 输入框（pty 直接键入 / 外部 hook / Agent 自驱）时血条卡 0% 的场景。
+      // 注：解锁不再单独 setState，并入分帧管线末段的原子提交（避免与主提交分帧）。
+      const unlockContextBar = isIncremental && this._contextBarUnlocks(vm.react, delta);
+
+      // 增量模式：Map 去重合并（delta 条目覆盖同 key 的缓存条目）。
+      // 覆盖两条增量路径：mobile 缓存（既有）与多项目视图缓存恢复（vm.hasViewCache，
+      // 恢复时已把 cached requests 提交为合并基线，这里直接复用同一合并）。
+      let rawEntries;
+      if (isIncremental && (isMobile || vm.hasViewCache) && vm.react.requests.length > 0) {
+        if (delta.length === 0) {
+          // 无新数据，缓存已是最新，跳过重建（基线本就是完整的 → 记为 committed）
+          const st = { fileLoading: false, fileLoadingCount: 0, fileLoadingBytes: null };
+          if (unlockContextBar) st.contextBarLocked = false;
+          vm.committed = true;
+          this._commitChannel(channel, st);
+          vm.hasViewCache = false;
+          return;
+        }
+        // 注意：合并结果含 vm.react.requests 的 live 引用 —— 分帧 slim/process 期间这些对象被
+        // 原地变异（intern/_slimmed），让步间隙的 render 会看到中间态。旧同步代码同样原地
+        // 变异（只是单任务内完成）；最终原子提交会以干净引用整体覆盖。
+        rawEntries = this._mergeIncrementalEntries(vm.react.requests, delta);
+      } else {
+        rawEntries = delta;
+      }
+
+      // 分帧管线：reconstruct → 分帧 slim → 分帧 process → 原子提交。
+      // async 不 await（EventSource 回调）；在途期间 live 条目入闸门缓冲（_onChannelMessage）。
+      vm.hasViewCache = false;
+      this._runSseColdIngest(rawEntries, { isIncremental, unlockContextBar, channel })
+        // Last-resort net: semantic gate release lives in the pipeline's own
+        // catch; this only guarantees the rejection is never silent.
+        .catch((err) => reportSwallowed('sse.cold-ingest-outer', err));
+    };
+
+    if (this._wireV3 && this._v3ColdRows && (!vm.chunkedEntries || vm.chunkedEntries.length === 0)) {
+      const rows = this._v3ColdRows;
+      this._v3ColdRows = null;
+      this._v3Assembling = true;
+      this._v3AssemblingChannel = channel;
+      (async () => {
+        const entries = [];
+        const asm = this._v3Assembler(channel);
+        let assembled = false;
+        try {
+          for (let i = 0; i < rows.length; i++) {
+            try { entries.push(asm.buildEntry(rows[i])); } catch (e) { reportSwallowed('v3.cold-assemble', e); }
+            if ((i + 1) % 100 === 0) await yieldToMain();
+          }
+          assembled = true;
+        } catch (err) {
+          reportSwallowed('v3.cold-assemble-run', err);
+        } finally {
+          this._v3Assembling = false;
+          this._v3AssemblingChannel = null;
+        }
+        if (this._channels.getRendered() !== channel) {
+          // The view moved on mid-assembly: this window belongs to a channel
+          // that no longer renders. A channel-scoped assembler makes the late
+          // build harmless, but committing it would corrupt the NEW view — drop
+          // it (the channel stays uncommitted → its next activate goes cold)
+          // and release whatever live frames the gate buffered, each to its own
+          // channel.
+          this._drainLiveGate();
+          this._v3DrainPendingLive();
+          return;
+        }
+        if (!assembled) {
+          // Never commit a half-assembled window (it would truncate the
+          // chat): keep the previous baseline, release the gated live
+          // frames through the normal live path, unblock the overlay.
+          this._abortColdIngest({ drain: true });
+          this._v3DrainPendingLive();
+          this._commitChannel(channel, { fileLoading: false, fileLoadingCount: 0, fileLoadingBytes: null });
+          return;
+        }
+        vm.chunkedEntries = entries;
+        // finish() enters the ingest pipeline synchronously (sets
+        // _ingestRunning before any await), so draining the buffered live
+        // frames AFTER it routes their entries into the pipeline's gate
+        // buffer — no window where a live entry merges against the
+        // pre-commit baseline (review P1-1).
+        finish();
+        this._v3DrainPendingLive();
+      })();
+      return;
+    }
+    this._v3ColdRows = null;
+    finish();
+  }
+  _onFullReload(channel, event) {
+    if (!this._isRenderedChannel(channel)) {
+      // Tap channel: the server is re-sending the whole window — its own view
+      // can only be rebuilt by a cold load, so invalidate it outright.
+      channel.vm.committed = false;
+      return;
+    }
+    // 服务端要求整体重载 = baseline 重置：废弃在途分帧管线（防其稍后提交陈旧基线），
+    // 闸门缓冲泄回 _pendingEntries（dedup 兜底与重载数据的重复）。
+    this._abortColdIngest({ drain: true });
+    // Baseline reset also drops the v3 client state (review P0-2): stale
+    // rows would keep feeding _listSource after the reload's new baseline.
+    this._v3ResetClientState(channel);
+    this._commitChannel(channel, { v2Rows: [], v2RowsMeta: { totalCount: 0, hasMore: false, oldestTs: '' } });
+    // NOTE: the task checklist is NOT cleared here — full_reload is a
+    // same-session wire-baseline reset; the hook-fed checklist stays valid
+    // and there is no re-push on this path (clearing would blank the HUD
+    // until the next task event).
+    // animateLoadingCount 回调有数百 ms 窗口：期间若新分帧管线启动（token 再 bump），
+    // 本次 full_reload 的延迟 setState 不得覆盖新管线提交 —— 回调内按 token 失配丢弃。
+    const reloadToken = this._ingestToken;
+    try {
+      const parsed = JSON.parse(event.data);
+      const entries = Array.isArray(parsed) ? normalizeV2Entries(parsed) : parsed;
+      if (Array.isArray(entries)) {
+        // full_reload resets the baseline: drop the stale live v2
+        // normalizer, then re-seed from the rebuilt entries AFTER
+        // _processEntries (whose _initProcessState resets the seed).
+        this._v2SseReconstructor = null;
+        if (entries.length > 0) this._batchSlim(entries);
+        const { mainAgentSessions, filtered } = entries.length > 0 ? this._processEntries(entries) : { mainAgentSessions: [], filtered: [] };
+        this._seedV2ColdSeed(entries);
+        if (entries.length > 0) {
+          this.animateLoadingCount(entries.length, () => {
+            if (this._ingestToken !== reloadToken) return; // 已被新管线 supersede
+            this._commitChannel(channel, {
+              requests: entries,
+              selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
+              mainAgentSessions,
+              fileLoading: false,
+              fileLoadingCount: 0,
+              serverCachedContent: null,
+            });
+            if (isMobile && this.state.projectName) {
+              saveEntries(this.state.projectName, entries);
+            }
+          }, channel);
+        } else {
+          this._commitChannel(channel, {
+            requests: entries,
+            selectedIndex: null,
+            mainAgentSessions,
+            fileLoading: false,
+            fileLoadingCount: 0,
+            serverCachedContent: null,
+          });
+          if (isMobile) clearEntries();
+        }
+      } else {
+        this._commitChannel(channel, { fileLoading: false, fileLoadingCount: 0 });
+      }
+    } catch (e) {
+      // A silently failed full reload discards the server's baseline — report, then recover.
+      reportSwallowed('sse.full_reload', e);
+      this._commitChannel(channel, { fileLoading: false, fileLoadingCount: 0 });
+    }
+  }
+  // 工作区模式事件
+  _onWorkspaceStarted(channel, event) {
+    if (!this._isRenderedChannel(channel)) return; // global frame — rendered view only
+    try {
+      const data = JSON.parse(event.data);
+      // A close of the BOUND project makes the server re-bind to a survivor
+      // and broadcast workspace_started(rebound:true, reboundFrom:<old name>).
+      // Only clients still in that project's view domain are affected: their
+      // SSE is stamped with the OLD bound name (res._ccvViewProject is frozen
+      // at connect time, events.js) and would never receive the survivor's
+      // live feed. A tab viewing an UNRELATED project (parallel view or an
+      // attached history session of a third project) keeps its view — the
+      // server no longer touches its scope — so it must NOT be force-detached
+      // / blanked. Snapshot the domain BEFORE any reset below (setState is
+      // async; a second reset would see the cleared state and vacuously pass).
+      // The dir-only rebind sends NO broadcast at all (name unchanged → every
+      // client's stamp still matches), so this only ever runs for a full rebind.
+      const isRebound = data.rebound === true;
+      const reboundAffectsThisTab = reboundAffectsView({
+        rebound: data.rebound,
+        reboundFrom: data.reboundFrom,
+        projectName: this.state.projectName,
+        viewedProject: this.state.viewedProject,
+      });
+      // A normal (non-rebound) workspace_started is an authoritative switch
+      // for every client — reset unconditionally, exactly as before.
+      const shouldReset = !isRebound || reboundAffectsThisTab;
+      if (shouldReset) {
+        // 新项目语境：允许迁移引导针对切入的项目再弹一次（P2 one-shot 守卫复位）。
+        // (Unaffected rebound tabs keep their one-shot guards — nothing about
+        // their project changed, so no guide should re-fire.)
+        this._migratePromptShown = false;
+        // 取消旧动画，防止旧 full_reload 回调覆盖新数据
+        if (this._loadingCountTimer) {
+          cancelAnimationFrame(this._loadingCountTimer);
+          this._loadingCountTimer = null;
+        }
+        // 只在受影响域做全量重置：废弃在途分帧管线 + 清对话/任务/pin/attach，
+        // 防被关项目的残留数据在新绑定下继续渲染。
+        this._abortColdIngest();
+        this._v3ResetClientState(channel); // review P0-2: old project's rows/assembler must not survive the switch
+        this._rebuildRequestIndex([]);
+        clearTaskStore(); // old project's task checklist must not linger into the new session
+        // 切项目要连当前 session id 一并清掉：否则 _maintainPinState 的 lazy-lock 兜底
+        // (getSessionStableId(null) || vm.currentSessionId) 会拿旧项目的会话 id 误锁新项目，
+        // 在 hydrate GET 抢先返回前可能把旧 id POST 进新项目的 pin 文件。
+        channel.vm.currentSessionId = null;
+        // This view IS the one being force-detached: drop the attach so a
+        // stale attach can't re-assert the old project's session under the
+        // new binding.
+        this.setState({ attachedSid: null, viewedProject: null, viewedInstance: null });
+        // NOTE: no clearViewedWorkspace() here. workspace_started/stopped are
+        // broadcast to EVERY SSE client (workspaces.js, not view-scoped), so an
+        // unconditional clear would wipe a workspace another browser tab just
+        // persisted. Storage is cleared only by real user actions (detach /
+        // launch / return-to-list); a stale entry is harmlessly re-validated
+        // against /api/live-processes on the next boot.
+        this._applyDocTitle(data.projectName || '');
+        // Reset isStreaming alongside streamingLatest — workspace switches happen
+        // between user prompts and shouldn't leave streaming flags stuck. (turnEnd
+        // false-fire on this transition is no longer a concern since we hook
+        // turnEnd to the Stop SSE event, not to isStreaming falling-edge.)
+        this._commitChannel(channel, {
+          requests: [],
+          v2Rows: [],
+          v2RowsMeta: { totalCount: 0, hasMore: false, oldestTs: '' },
+          mainAgentSessions: [],
+          // 切项目：清空旧项目 pin，由 App.componentDidUpdate 按新 projectName 重新 hydrate
+          pinnedSessionTs: null,
+          selectedIndex: null,
+          streamingLatest: null,
+          isStreaming: false,
+          turnActive: false, // new workspace/view owns its own turn state
+          contextBarLocked: false,
+        });
+        this.setState({
+          workspaceMode: false,
+          projectName: data.projectName || '',
+          // viewMode is a pure display pref — inherit the user's current mode, don't force
+          // 'chat' (user-pinned 2026-10-06, same principle as terminalVisible). cliMode stays
+          // (a launched claude project needs the CLI surface).
+          cliMode: true,
+          // workspace 切换 = cwd 切换 → claude 的 lastModelUsage 也要重查；
+          // 后端在 workspace_started 一并塞了新 cwd 对应的 hint，没有就清空。
+          claudeProjectModel: (typeof data.claudeProjectModel === 'string' && data.claudeProjectModel) ? data.claudeProjectModel : null,
+          // Workspace switch = a new SDK session; drop the old session's launch model so
+          // a stale chip never lingers into the new workspace (the next sdk-init refills).
+          sdkModel: null,
+        });
+        if (this.state.resumeSwitch) this._clearResumeSwitch();
+        if (isMobile) clearEntries();
+        // A rebound closes every channel whose server-side stamp died with the
+        // old bound project; an affected tab then re-activates the (new) bound
+        // scope COLD with an explicit empty scope so the new connection stamps
+        // the NEW bound project — `_activateScope` takes the scope explicitly,
+        // never read this.state here (setState hasn't flushed).
+        // Only a rebound reconnects here — a normal workspace_started is
+        // followed by the server's own full_reload/replay on the existing
+        // connection, exactly as before.
+        if (isRebound) {
+          this._closeReboundChannels(data.reboundFrom);
+          this._activateScope({ sid: null, project: null, instance: null }, { reason: 'rebound' });
+        }
+      } else if (isRebound) {
+        // Unaffected tab: its VIEW stays, but the bound channel's scope domain
+        // is gone regardless (the bound name changed for every client).
+        this._closeReboundChannels(data.reboundFrom);
+      }
+    } catch (e) { reportSwallowed('sse.workspace_started', e); }
+  }
+
+  _onWorkspaceStopped(channel, event) {
+    if (!this._isRenderedChannel(channel)) return; // global frame — rendered view only
+    this._teardownTransientLiveState(channel);
+    this._v3ResetClientState(channel); // review P0-2
+    this._rebuildRequestIndex([]);
+    clearTaskStore(); // same as workspace_started: drop the old session's checklist
+    channel.vm.currentSessionId = null; // same as workspace_started: clear the old session id so lazy-lock can't misfire
+    // No bound project survives: every channel's scope domain is gone.
+    for (const key of this._channels.keys()) {
+      const ch = this._channels.get(key);
+      if (ch) clearChannelTimers(ch.vm, {
+        clearTimeout: (id) => clearTimeout(id),
+        cancelAnimationFrame: (id) => cancelAnimationFrame(id),
+      });
+    }
+    this._channels.closeAll();
+    // NOTE: no clearViewedWorkspace() here — workspace_stopped is broadcast to
+    // every SSE client (see workspace_started note above); clearing storage on
+    // a broadcast would clobber a workspace another tab just persisted.
+    this.setState({
+      workspaceMode: true,
+      v2Rows: [],
+      v2RowsMeta: { totalCount: 0, hasMore: false, oldestTs: '' },
+      requests: [],
+      mainAgentSessions: [],
+      projectName: '',
+      pinnedSessionTs: null,
+      attachedSid: null, // switching projects is an authoritative boundary: force-detach any attach
+      viewedProject: null,
+      viewedInstance: null,
+      selectedIndex: null,
+      streamingLatest: null,
+      contextBarLocked: false,
+      isStreaming: false,
+      turnActive: false, // new workspace/view owns its own turn state
+    });
+  }
+  _onContextWindow(channel, event) {
+    try {
+      const data = JSON.parse(event.data);
+      const vm = channel.vm;
+      // 收到新的 context_window 测量 → 同步解锁血条。
+      // 兜底场景：onUserMessageSent / load_end fallback 都没触发解锁时
+      //（WS 抖动、非增量 load、纯外部输入），SSE 推送的真实测量值就是
+      //「会话已推进」的最强信号，避免 lock 永久卡 0%。
+      this._commitChannel(channel, { contextWindow: data, contextBarOptimistic: false, contextBarLocked: false });
+      if (vm.clearOptimisticTimer) { clearTimeout(vm.clearOptimisticTimer); vm.clearOptimisticTimer = null; }
+    } catch (e) { reportSwallowed('sse.context_window', e); }
+  }
+
+  _onKvCacheContent(channel, event) {
+    try {
+      const cached = JSON.parse(event.data);
+      // 防御：忽略无实际内容的 kv_cache_content（避免空数据覆盖有效缓存）
+      if (cached && (cached.system?.length > 0 || cached.messages?.length > 0 || cached.tools?.length > 0)) {
+        this._commitChannel(channel, { serverCachedContent: cached });
+      }
+    } catch (err) {
+      reportSwallowed('sse.kv_cache_content', err, { dataLen: event.data?.length });
+    }
+  }
+
+  _onWorkflowUpdate(channel, event) {
+    try {
+      const data = JSON.parse(event.data);
+      // Scope guard: the additive payload.project must match THIS channel's
+      // project (bound channel → the bound project name). Frames without a
+      // project (older server) still pass.
+      const p = data && data.project;
+      if (p) {
+        const isBound = channel.key === BOUND_CHANNEL_KEY;
+        const matches = (channel.scope.project && p === channel.scope.project)
+          || (isBound && p === (this.state.projectName || ''));
+        if (!matches) return;
+      }
+      publishWorkflowUpdate(data);
+    } catch (e) { reportSwallowed('sse.workflow_update', e); }
+  }
+
+  // Task checklist HUD feed (task-bridge hooks → server task-state full
+  // snapshot). No sessionId guard on the client side: the snapshot id is a
+  // Claude Code session UUID while vm.currentSessionId is ccv's ts-based id —
+  // different identity spaces. Freshness is instead guaranteed by the
+  // clear-points (workspace_started/stopped) plus the server's
+  // session-boundary resets and per-connection snapshot replay.
+  // A BACKGROUND channel never publishes (that would clobber the rendered
+  // view's checklist) — its snapshot is kept on the vm and republished when
+  // the channel becomes rendered.
+  _onTaskUpdate(channel, event) {
+    try {
+      const data = JSON.parse(event.data);
+      if (!this._isRenderedChannel(channel)) { channel.vm.taskSnapshot = data; return; }
+      // B2 view-attach: while attached to a sid, hide the primary
+      // session's task checklist — it is not the attached sid's, and the resume
+      // child never feeds the shared list (scope limit: we can only HIDE the
+      // primary's checklist while attached, not show the attached child's).
+      if (this.state.attachedSid && data && data.sessionId
+          && String(data.sessionId).toLowerCase() !== this.state.attachedSid) return;
+      channel.vm.taskSnapshot = data;
+      publishTaskUpdate(data);
+    } catch (e) { reportSwallowed('sse.task_update', e); }
+  }
+
+  _onProxyProfile(channel, event) {
+    if (!this._isRenderedChannel(channel)) return; // global frame — rendered view only
+    try {
+      const data = JSON.parse(event.data);
+      if (data.active) this.setState({ activeProxyId: data.active });
+      if (data.roles) this.setState({ proxyRoles: data.roles });
+      if (data.profile) {
+        // 刷新完整列表
+        fetch(apiUrl('/api/proxy-profiles')).then(r => r.json()).then(d => {
+          if (d.profiles) this.setState({
+            proxyProfiles: d.profiles,
+            activeProxyId: d.active || 'max',
+            ...(d.roles ? { proxyRoles: d.roles } : {}),
+            ...(typeof d.officialDefault === 'boolean' ? { proxyOfficialDefault: d.officialDefault } : {}),
+          });
+        }).catch(() => { });
+      }
+    } catch (e) { reportSwallowed('sse.proxy_profile', e); }
+  }
+
+  _onRetryConfig(channel, event) {
+    if (!this._isRenderedChannel(channel)) return; // global frame — rendered view only
+    try {
+      const data = JSON.parse(event.data);
+      if (data?.config) this.setState({ retryConfig: data.config });
+    } catch (e) { reportSwallowed('sse.retry_config', e); }
+  }
+
+  // Keep-alive: the binder already touched the channel's heartbeat on arrival.
+  _onPing() {}
+
+  // server_config: server 启动时一次性推 turnEnd debounce ms（CCV_TURN_END_DEBOUNCE_MS
+  // 可能改过默认值），前端拿这个值同步 voicePackPlayer 的 turnEnd cooldown，避免硬常数漂移。
+  // Processed on EVERY channel: the write is idempotent (same value on every socket).
+  _onServerConfig(channel, event) {
+    try {
+      const cfg = JSON.parse(event?.data || '{}');
+      if (typeof cfg.turnEndDebounceMs === 'number') setTurnEndCooldownMs(cfg.turnEndDebounceMs);
+      // Wire v3 flag: synchronous instance field (NOT React state) — the
+      // load_chunk/v2_requests handlers in this same load cycle must read
+      // the fresh value; setState would lag a task behind. A forceUpdate
+      // is unnecessary: rows arriving (setState) re-render, and flag-off
+      // keeps v2Rows empty so _listSource stays on the legacy source.
+      this._wireV3 = cfg.wireV3 === true;
+      // Version-skew guard (review P2-a): a reconnect that reaches an
+      // UPGRADED server would feed this stale bundle a wire it may not
+      // understand — reload to pull the matching dist (index.html is
+      // no-store, assets content-hashed, so this always heals).
+      if (cfg.build) {
+        if (this._serverBuild && this._serverBuild !== cfg.build) {
+          window.location.reload();
+          return;
+        }
+        this._serverBuild = cfg.build;
+      }
+    } catch { /* tolerate parse error */ }
+  }
+
+  // Wire v3 (V3.S2/S3a): request-list metadata rows. Cold frame replaces
+  // the row source wholesale; live deltas upsert by (sessionId, seq).
+  // V3.S5: the same rows drive the entry assembler — the cold frame's
+  // entries land in the channel's chunk buffer (the legacy chunk buffer,
+  // processed at load_end by the existing pipeline); live rows inject one
+  // entry each.
+  _onV2Requests(channel, event) {
+    this._v3TrackBytes(channel, event);
+    if (!this._isRenderedChannel(channel)) return; // tap: the row window is re-fetched at the next switch
+    try {
+      const data = JSON.parse(event?.data || '{}');
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      // Full reset frame (fresh cold load / reconnect replay): drop every
+      // piece of v3 client state FIRST — a reconnect re-sends the window
+      // and the assembler/seen-set/rows must not accumulate across cycles
+      // (review P0-2: stale rows after workspace switch; unbounded growth;
+      // stale channel ptr mis-assembly). Incremental frames (since-scoped
+      // delta window, review P1-2) upsert instead.
+      if (data.incremental) {
+        this._ingestV2Rows(channel, rows, { reset: false });
+      } else {
+        this._v3ResetClientState(channel);
+        this._ingestV2Rows(channel, rows, { reset: true, totalCount: data.totalCount, hasMore: data.hasMore, oldestTs: data.oldestTs });
+      }
+      this._v3ColdRows = rows; // consumed at load_end (after v3_conv/v3_resp frames land)
+    } catch (e) { reportSwallowed('sse.v2_requests', e); }
+  }
+
+  _onV2RequestsDelta(channel, event) {
+    try {
+      const row = JSON.parse(event?.data || '{}');
+      if (!row || !Number.isInteger(row.seq)) return;
+      // The assembly gate only guards the channel being assembled — a
+      // different channel's live rows are independent (per-channel assemblers).
+      if (this._v3Assembling && this._v3AssemblingChannel === channel) {
+        this._v3PendingLive.push({ kind: 'delta', data: row, channel });
+        return;
+      }
+      this._applyV3Delta(channel, row);
+    } catch (e) { reportSwallowed('sse.v2_requests_delta', e); }
+  }
+
+  _onV3Conv(channel, event) {
+    this._v3TrackBytes(channel, event);
+    try {
+      const data = JSON.parse(event?.data || '{}');
+      if (this._v3Assembling && this._v3AssemblingChannel === channel) {
+        this._v3PendingLive.push({ kind: 'conv', data, channel });
+        return;
+      }
+      this._applyV3Conv(channel, data);
+    } catch (e) { reportSwallowed('sse.v3_conv', e); }
+  }
+
+  _onV3Resp(channel, event) {
+    this._v3TrackBytes(channel, event);
+    try {
+      const data = JSON.parse(event?.data || '{}');
+      if (this._v3Assembling && this._v3AssemblingChannel === channel) {
+        this._v3PendingLive.push({ kind: 'resp', data, channel });
+        return;
+      }
+      this._applyV3Resp(channel, data);
+    } catch (e) { reportSwallowed('sse.v3_resp', e); }
+  }
+  // session_pin SSE — 本进程任一端改了「当前会话」pin 后广播，让同实例多端（电脑+手机）实时一致。
+  // 采纳服务端值时置 _applyingRemotePin，避免 _maintainPinState 把它当本地改动回 POST（防回环）。
+  // A broadcast value that mismatches the locally derived latest is rejected via
+  // resolveHydratedPin (another client may have derived a stale "latest"). No
+  // POST-back on reject — re-persisting inside the broadcast handler could
+  // ping-pong between clients; healing flows through _maintainPinState's
+  // normal persist path instead. The pin is bound-scope state: only the bound
+  // channel adopts (a viewed parallel/sid scope keeps its own pin).
+  _onSessionPin(channel, event) {
+    if (channel.key !== BOUND_CHANNEL_KEY) return;
+    try {
+      // /resume view-attach: while attached, a remote/broadcast pin must not
+      // clobber the attached session — the local deliberate attach wins
+      // (P0-2 entry point 2/3). Project switch / cold reload is the
+      // authoritative "remote truth" boundary and releases the attach there.
+      if (this._viewAttached()) return;
+      const data = JSON.parse(event?.data || '{}');
+      const r = resolveHydratedPin(data.pinnedSessionId, this._derivedLatestId(), this._effectiveOnlyCurrentSession());
+      if (r.adopt && r.value !== channel.vm.react.pinnedSessionTs) {
+        this._applyingRemotePin = true;
+        if (this._isRenderedChannel(channel)) {
+          this.setState({ pinnedSessionTs: r.value }, () => { this._applyingRemotePin = false; });
+          channel.vm.react.pinnedSessionTs = r.value;
+        } else {
+          // Background bound channel: adopt into its slice only (this.state
+          // belongs to the rendered view) — a later warm switch carries it.
+          channel.vm.react.pinnedSessionTs = r.value;
+          this._applyingRemotePin = false;
+        }
+        // NOTE: the task checklist is deliberately NOT cleared on pin
+        // adoption — the strip is live-session truth, and any clear would
+        // be defeated by the next task_update / reconnect snapshot anyway
+        // (review P2-1). Session boundaries (server side) own the resets.
+      }
+    } catch { /* tolerate parse error */ }
+  }
+
+  // turn_active SSE — turn-level loading truth (PTY mode): the UserPromptSubmit
+  // hook lights it at prompt time; the RAW Stop-hook POST clears it (pre-debounce).
+  // This is what keeps the spinner alive across local tool execution gaps.
+  _onTurnActive(channel, event) {
+    try {
+      const data = JSON.parse(event?.data || '{}');
+      this._applyTurnActive(!!data.active, channel);
+    } catch (err) { reportSwallowed('sse.turn_active', err); }
+  }
+
+  // turn_end SSE — broadcast by /api/turn-end-notify whenever Claude Code's Stop hook
+  // fires (real end of a user-prompt turn). This is the **authoritative** turnEnd
+  // signal — far more accurate than isStreaming falling-edge, which resets per-API-call
+  // and would mis-fire during slow tool execution. 30s cooldown lives in voicePackPlayer.
+  // Frames are scope-routed server-side (additive project/instance); a stale
+  // mismatch is still dropped defensively. The turn-level clear applies to the
+  // frame's OWN channel; only the rendered channel plays the voicePack — a
+  // background project's turn end must not ring (or kill this view's spinner).
+  _onTurnEnd(channel, event) {
+    let data = {};
+    try { data = JSON.parse(event?.data || '{}') || {}; } catch { /* fine */ }
+    if (data.project) {
+      const proj = channel.scope.project
+        || (channel.key === BOUND_CHANNEL_KEY ? (this.state.projectName || '') : '');
+      if (proj && data.project !== proj) return;
+    }
+    if (data.instance && channel.scope.instance && data.instance !== channel.scope.instance) return;
+    this._applyTurnActive(false, channel);
+    if (!this._isRenderedChannel(channel)) return;
+    const vp = this.state.approvalPrefs && this.state.approvalPrefs.voicePack;
+    if (vp && vp.enabled && vp.events && vp.events.turnEnd) {
+      const serverTs = data.ts || null;
+      try {
+        playVoiceEvent('turnEnd', vp, {
+          // Prefer the server-supplied ts so a re-broadcast (server bug, two
+          // SSE delivery paths) is deduped by the player. Falls back to a
+          // unique key if absent — relies on COOLDOWN_MS.turnEnd to suppress.
+          dedupeKey: `turnEnd:${serverTs || Date.now()}`,
+        });
+      } catch { /* never propagate */ }
+    }
+  }
+
+  // im_log_update SSE — 主服务 fs.watch 到某 IM worker 日志目录写入时广播（IM worker 独立端口，
+  // turn_end 落在 worker 自己进程，主服务收不到，故用日志落盘信号驱动「对话记录」自动刷新）。
+  // AppBase 不直接持有 ImConversationModal，转成 window 事件解耦派发，弹窗打开时自行监听并重拉。
+  _onImLogUpdate(channel, event) {
+    if (!this._isRenderedChannel(channel)) return; // global frame — rendered view only
+    let platform = null;
+    if (typeof event?.data === 'string') {
+      try { platform = JSON.parse(event.data)?.platform || null; } catch { /* tolerate */ }
+    }
+    if (platform) {
+      try { window.dispatchEvent(new CustomEvent('ccv:im-log-update', { detail: { platform } })); } catch { /* noop */ }
+    }
+  }
+
+  _onStreamingStatus(channel, event) {
+    try {
+      const data = JSON.parse(event.data);
+      const vm = channel.vm;
+      if (data.active) {
+        // 立即显示 loading
+        clearTimeout(vm.streamingOffTimer);
+        vm.streamingOffTimer = null;
+        vm.turnSignalTs = Date.now(); // API activity also proves the turn is alive
+        // agent 开始响应 = 新一轮已落实 → 顺手解锁血条。
+        // 覆盖 onUserMessageSent 没触发的极端情况（WS 抖动 / 外部输入 /
+        // pty 直接键入），避免 lock 永久卡 0%。
+        const patch = { isStreaming: true };
+        if (vm.react.contextBarLocked) patch.contextBarLocked = false;
+        this._commitChannel(channel, patch);
+      } else {
+        // Delayed hide so the spinner doesn't flicker between tool calls.
+        // turnActive gates the clear: while a turn is in flight (incl. local tool
+        // execution) the spinner stays; the turn-level signal (turn_active:false /
+        // sdk idle / turn_end) owns the real clear.
+        clearTimeout(vm.streamingOffTimer);
+        vm.streamingOffTimer = setTimeout(() => {
+          vm.streamingOffTimer = null;
+          if (!vm.react.turnActive) {
+            this._commitChannel(channel, { isStreaming: false });
+            return;
+          }
+          // Turn still running — keep the spinner. Staleness escape: if no API
+          // stream has been ACTIVE for TURN_ACTIVE_STALE_MS, the turn-level clear
+          // was lost (hook-only turn + lost Stop POST); fall back to the legacy
+          // debounced behavior (never worse than pre-turnActive). Measured from
+          // the last ACTIVE tick, not the last tick — stray inactive ticks from
+          // housekeeping traffic must not postpone the escape forever. Re-arm so
+          // the escape is re-evaluated even when no further frames arrive (the
+          // server sends inactive frames only on the falling edge).
+          this._checkTurnActiveStale(channel);
+        }, 2000);
+      }
+    } catch (err) { reportSwallowed('sse.streaming_status', err); }
   }
 
   loadLocalLogFile(file) {
@@ -2728,7 +3235,8 @@ class AppBase extends React.Component {
     // 与 /events (CLI 模式) 完全隔离，不会触发 terminal/workspace 等 CLI 行为
     this._isLocalLog = true;
     this._localLogFile = file;
-    this.setState({ fileLoading: true, fileLoadingCount: 0, serverCachedContent: null });
+    // ?logfile= 只读模式没有 channel —— 视图态走 _localVm（_commitChannel(null)）。
+    this._commitChannel(null, { fileLoading: true, fileLoadingCount: 0, serverCachedContent: null });
 
     // 关闭上一次的加载连接（防止快速切换时资源泄漏）
     if (this._localLogES) { this._localLogES.close(); this._localLogES = null; }
@@ -2741,7 +3249,7 @@ class AppBase extends React.Component {
 
     es.addEventListener('load_start', () => {
       try {
-        this.setState({ fileLoadingCount: 0 });
+        this._commitChannel(null, { fileLoadingCount: 0 });
       } catch (e) { reportSwallowed('sse.local-log.load_start', e); }
     });
 
@@ -2752,7 +3260,7 @@ class AppBase extends React.Component {
           for (const entry of chunk) {
             entries.push(entry);
           }
-          this.setState({ fileLoadingCount: entries.length });
+          this._commitChannel(null, { fileLoadingCount: entries.length });
         }
       } catch (e) { reportSwallowed('sse.local-log.load_chunk', e, { dataLen: event.data?.length }); }
     });
@@ -2768,20 +3276,8 @@ class AppBase extends React.Component {
     es.onerror = () => {
       es.close();
       console.error('加载日志文件 SSE 连接错误');
-      this.setState({ fileLoading: false, fileLoadingCount: 0 });
+      this._commitChannel(null, { fileLoading: false, fileLoadingCount: 0 });
     };
-  }
-
-  handleEventMessage(event) {
-    try {
-      const entry = JSON.parse(event.data);
-      // 冷启动分帧管线在途：live 条目入闸门缓冲，提交后统一泄洪（_commitColdIngest）。
-      // 否则 live flush 会基于旧 prev.requests 合并、随后被管线的基线提交整体覆盖，
-      // 且 _sseSlimmer/_sseReconstructor 会对错误基线初始化（sessionMerge 脆弱区）。
-      this._ingestLiveEntry(entry);
-    } catch (error) {
-      reportSwallowed('sse.message', error, { dataLen: event.data?.length });
-    }
   }
 
   _flushPendingEntries = () => {
@@ -2790,26 +3286,31 @@ class AppBase extends React.Component {
     this._pendingEntries = [];
     if (batch.length === 0) return;
 
-    // Hoisted to the _flushPendingEntries scope (NOT the setState updater below):
-    // both the updater (which sets it) AND the setState callback (which reads it to
-    // re-scope the SSE) must close over it — declaring it inside the updater would
-    // leave the callback's reference out of scope (the runtime "_detachedView is
-    // not defined" crash after minification renamed the updater-local one).
+    // Hoisted to the _flushPendingEntries scope (NOT the commit below): the
+    // returned patch (which sets it) AND the setState callback (which reads it to
+    // re-scope the SSE) must close over it.
     let _detachedView = false;
 
-    this.setState(prev => {
+    // The live flush is single-instance and always belongs to the RENDERED
+    // channel: read its authoritative slice (kept in sync synchronously by
+    // _commitChannel) rather than React's possibly-unflushed state. `prev`
+    // aliases that slice so the loop below reads like the pre-channel code.
+    const channel = this._channels.getRendered();
+    const vm = (channel && channel.vm) || this._localVm;
+    {
+      const prev = vm.react;
       const requests = [...prev.requests]; // one copy per frame, not per message
 
-      let cacheExpireAt = prev.cacheExpireAt;
-      let cacheType = prev.cacheType;
+      let cacheExpireAt = this.state.cacheExpireAt;
+      let cacheType = this.state.cacheType;
       let mainAgentSessions = prev.mainAgentSessions;
       let shouldClearStreaming = false;  // 检测到最终 entry 时原子清除 Live overlay
       // 本窗口实时新会话（/clear、/resume）时推进 pin —— 仅实时追加路径会跟随，
       // 整体重载（_processEntries）不动 pin，于是多开时 [对话] 不被重载/他实例拖走。
       let _newPinTs = null;
-      // B2: `_detachedView` (hoisted above, shared with the setState callback) is
-      // set here when a live boundary detaches the view (a genuinely-new primary
-      // session). The returned state then clears attachedSid/pin.
+      // B2: `_detachedView` (hoisted above, shared with the callback) is set here
+      // when a live boundary detaches the view (a genuinely-new primary session).
+      // The committed state then clears attachedSid/pin.
 
       // P0 perf: lazy init 增量剪枝器
       if (!this._sseSlimmer) {
@@ -2883,14 +3384,14 @@ class AppBase extends React.Component {
         // the staleness backstop, not by this sniff.
         // Entry shape: live/v2 entries carry body.messages (the request.body.messages
         // path has no producer in this repo — kept as a harmless fallback).
-        if (this.state.turnActive && !this.state.sdkMode && isMainAgent(entry)) {
+        if (prev.turnActive && !this.state.sdkMode && isMainAgent(entry)) {
           const msgs = entry?.request?.body?.messages || entry?.body?.messages;
           const last = Array.isArray(msgs) && msgs.length ? msgs[msgs.length - 1] : null;
           const c = last?.role === 'user' ? last.content : null;
           const text = typeof c === 'string' ? c
             // eslint-disable-next-line no-nested-ternary -- compact block-to-text flatten
             : (Array.isArray(c) ? c.map((b) => (b && b.type === 'text' ? b.text : '') || '').join('') : '');
-          if (/^\s*\[Request interrupted[^\]]*\]\s*$/i.test(text)) this._applyTurnActive(false);
+          if (/^\s*\[Request interrupted[^\]]*\]\s*$/i.test(text)) this._applyTurnActive(false, channel);
         }
 
         // Live overlay 原子清除：最终 entry（非 inProgress）到达且 timestamp 匹配 → 同 setState 清除 overlay
@@ -2961,12 +3462,12 @@ class AppBase extends React.Component {
           // SSE 实时流每条 entry 都是完整 request+response，不存在"中间态"；
           // 历史代码曾在此处 `if (isTransient) continue` 跳过极短 entry 防中间态污染，
           // 但这会把真实的 /clear → 短对话（如 "hi"）也丢掉 —— 交给 mergeMainAgentSessions
-          // 的 skipTransientFilter: true 统一放行，isNewSession 单独驱动 _currentSessionId。
+          // 的 skipTransientFilter: true 统一放行，isNewSession 单独驱动 vm.currentSessionId。
           if (isNewSession) {
-            this._currentSessionId = timestamp;
-            // 新 session 起点：reset _prevMainAgentTs 防跨 session 串场（旧 session 的末尾 ts
+            vm.currentSessionId = timestamp;
+            // 新 session 起点：reset prevMainAgentTs 防跨 session 串场（旧 session 的末尾 ts
             // 不应作为新 session 第一条 assistant msg 的"生成时 ts"）
-            this._prevMainAgentTs = null;
+            vm.prevMainAgentTs = null;
             // /resume view-attach release trigger (non-target new session): while
             // attached, a session boundary whose epoch does NOT prefix-match the
             // attached uuid means the user started a genuinely NEW session (a
@@ -2977,21 +3478,21 @@ class AppBase extends React.Component {
             // Read the uuid from _viewAttached() (attachedSid preferred, fallback
             // the takeover lock) so the durable attach is guarded, not just the
             // transient lock (P0-2). The detach itself clears BOTH and re-scopes
-            // SSE in the setState callback below (updater can't initSSE).
+            // SSE in the commit callback below (the boundary tick can't re-activate).
             const _attachUuid = this.state.attachedSid || null;
             if (_attachUuid && shouldReleaseTakeoverOnBoundary(entry._seqEpoch, _attachUuid)) {
-              _detachedView = true; // → clear attachedSid/pin in the returned state, re-scope SSE in the callback
+              _detachedView = true; // → clear attachedSid/pin in the committed state, re-scope SSE in the callback
               // Fall through to the normal follow-latest advance below.
             }
             // 开启「仅展示当前会话」时，跟随本窗口新会话：把 pin 推进到新会话起点 ts
             //（= 新会话 messages[0]._timestamp，与 getSessionStableId 一致）。
             if (this._effectiveOnlyCurrentSession()) _newPinTs = timestamp;
-          } else if (this._currentSessionId === null) {
-            this._currentSessionId = timestamp;
+          } else if (vm.currentSessionId === null) {
+            vm.currentSessionId = timestamp;
           }
 
           // 赋 _timestamp 和 _generatedTs（assistant 角色新增 msg 拿 prevMainAgentTs 反映生成时 ts）
-          assignMessageTimestamps(messages, prevMessages, isNewSession, prevCount, timestamp, this._prevMainAgentTs);
+          assignMessageTimestamps(messages, prevMessages, isNewSession, prevCount, timestamp, vm.prevMainAgentTs);
           // 信号驱动短路：服务端已检测到末位替换（_inPlaceReplaceDetected:true）→ 直接 in-place
           // 替换 lastSession.messages 末位，避开 sessionMerge prefix-overlap 算法在
           // newLen===currentLen+末位fp异 场景必然 overlap=0 → push 整段 → 翻倍的陷阱。
@@ -3008,11 +3509,11 @@ class AppBase extends React.Component {
           // 记录本次 mainAgent entry 的 timestamp，给下一次 entry 处理时
           // 当作 _generatedTs 赋给新增 assistant msg（反映"生成时刻"）。
           // 必须放在 if (isMainAgent && !_slimmed) 块内 —— timestamp 是该块内的 const
-          this._prevMainAgentTs = timestamp;
+          vm.prevMainAgentTs = timestamp;
         }
 
         // 标记 entry 的 _sessionId
-        entry._sessionId = this._currentSessionId;
+        entry._sessionId = vm.currentSessionId;
       }
 
       let selectedIndex = prev.selectedIndex;
@@ -3023,47 +3524,51 @@ class AppBase extends React.Component {
       if (selectedIndex === null && requests.length > 0) {
         if (this._autoSelectTimer) clearTimeout(this._autoSelectTimer);
         this._autoSelectTimer = setTimeout(() => {
-          this.setState(s => {
-            if (s.selectedIndex === null && s.requests.length > 0) {
-              const filtered = visibleRequests(s.requests, s.showAll);
-              return filtered.length > 0 ? { selectedIndex: filtered.length - 1 } : null;
-            }
-            return null;
-          });
+          const ch2 = this._channels.getRendered();
+          const vm2 = (ch2 && ch2.vm) || this._localVm;
+          if (vm2.react.selectedIndex === null && vm2.react.requests.length > 0) {
+            const filtered = visibleRequests(vm2.react.requests, this.state.showAll);
+            this._commitChannel(ch2, { selectedIndex: filtered.length > 0 ? filtered.length - 1 : null });
+          }
         }, 200);
       }
 
-      return {
-        requests, cacheExpireAt, cacheType, mainAgentSessions,
+      // The view slice commits through the choke point; cacheExpireAt/cacheType
+      // (localStorage cache countdown) and attachedSid are AppBase-level fields
+      // that must never enter a channel's vm.
+      this._commitChannel(channel, {
+        requests, mainAgentSessions,
         ...(shouldClearStreaming && { streamingLatest: null }),
         ...(_newPinTs != null && { pinnedSessionTs: _newPinTs }),
-        // B2 detach: a genuine new-primary boundary released the attach — clear
-        // the durable attach + pin so follow-latest resumes (the takeover lock was
-        // already released inside the updater; the SSE re-scope runs in the callback).
-        ...(_detachedView && { attachedSid: null, pinnedSessionTs: null }),
-      };
-    }, () => {
-      // B2 detach follow-through: re-scope the SSE back to no-sid and restore
-      // follow-latest now that the view is no longer attached. Runs in the callback
-      // because initSSE can't be called inside the updater.
-      if (_detachedView) {
-        this._hydratePinSeq++;
-        this._resetForViewSwitch();
-        // Follow-latest resumed on the bound view — drop the persisted workspace.
-        clearViewedWorkspace();
-        this.initSSE();
-        this._maintainPinState(null);
-      }
-      // 移动端：防抖 5s 批量写入缓存
-      if (isMobile && this.state.projectName) {
-        if (this._cacheSaveTimer) clearTimeout(this._cacheSaveTimer);
-        this._cacheSaveTimer = setTimeout(() => {
-          if (this.state.projectName) {
-            saveEntries(this.state.projectName, this.state.requests);
-          }
-        }, 5000);
-      }
-    });
+      });
+      const globals = { cacheExpireAt, cacheType };
+      // B2 detach: a genuine new-primary boundary released the attach — clear
+      // the durable attach + pin so follow-latest resumes (the takeover lock was
+      // already released above; the SSE re-scope runs in the callback).
+      if (_detachedView) { globals.attachedSid = null; globals.pinnedSessionTs = null; }
+      this.setState(globals, () => {
+        // B2 detach follow-through: re-scope the SSE back to no-sid and restore
+        // follow-latest now that the view is no longer attached. Runs in the
+        // callback because the re-activation can't run inside the patch.
+        if (_detachedView) {
+          this._hydratePinSeq++;
+          this._resetForViewSwitch();
+          // Follow-latest resumed on the bound view — drop the persisted workspace.
+          clearViewedWorkspace();
+          this._activateScopeOf(null, { reason: 'boundary-detach', overlay: false });
+          this._maintainPinState(null);
+        }
+        // 移动端：防抖 5s 批量写入缓存
+        if (isMobile && this.state.projectName) {
+          if (this._cacheSaveTimer) clearTimeout(this._cacheSaveTimer);
+          this._cacheSaveTimer = setTimeout(() => {
+            if (this.state.projectName) {
+              saveEntries(this.state.projectName, this.state.requests);
+            }
+          }, 5000);
+        }
+      });
+    }
   };
 
   // ─── 数据处理 ───────────────────────────────────────────
@@ -3075,7 +3580,8 @@ class AppBase extends React.Component {
   // ─── 选中 & 导航 ───────────────────────────────────────
 
   handleSelectRequest = (index) => {
-    this.setState({ selectedIndex: index, scrollCenter: false });
+    this._commitChannel(this._channels.getRendered(), { selectedIndex: index });
+    this.setState({ scrollCenter: false });
   };
 
   handleScrollDone = () => { this.setState({ scrollCenter: false }); };
@@ -3086,17 +3592,20 @@ class AppBase extends React.Component {
   // 同时进入 locked 状态：忽略 SSE / 其他 re-render，强制血条 0K (0%)，直到用户
   // 通过 _sendUserMessageImmediate 发出一条非 /clear 消息（见 handleUserMessageSent）。
   handleClearContextOptimistic = () => {
-    this.setState({ contextBarOptimistic: true, contextBarLocked: true });
-    if (this._clearOptimisticTimer) clearTimeout(this._clearOptimisticTimer);
-    this._clearOptimisticTimer = setTimeout(() => {
-      this.setState({ contextBarOptimistic: false });
-      this._clearOptimisticTimer = null;
+    const ch = this._channels.getRendered();
+    const vm = (ch && ch.vm) || this._localVm;
+    this._commitChannel(ch, { contextBarOptimistic: true, contextBarLocked: true });
+    if (vm.clearOptimisticTimer) clearTimeout(vm.clearOptimisticTimer);
+    vm.clearOptimisticTimer = setTimeout(() => {
+      this._commitChannel(ch, { contextBarOptimistic: false });
+      vm.clearOptimisticTimer = null;
     }, 30000);
   };
 
   // ChatView 在 _sendUserMessageImmediate 里对非 /clear 文本调用本方法解锁血条。
   handleUserMessageSent = () => {
-    if (this.state.contextBarLocked) this.setState({ contextBarLocked: false });
+    const vm = this._renderedVm();
+    if (vm.react.contextBarLocked) this._commitChannel(this._channels.getRendered(), { contextBarLocked: false });
   };
 
   // SDK-mode launch model lifted from ChatView's sdk-init handler → AppHeader proxy-chip slot.
@@ -3106,22 +3615,27 @@ class AppBase extends React.Component {
   // sdk-session-state WS via handleSdkSessionState, turn_end fallback). Lighting
   // also marks the timestamp the staleness backstop measures from; clearing also
   // drops isStreaming so the spinner dies with the turn, not 2s later.
-  _applyTurnActive = (active) => {
-    this._turnSignalTs = Date.now(); // any turn-level frame proves the turn is alive
+  // `channel` targets one scope (defaults to the rendered channel — the WS
+  // caller and the Esc sniff are rendered-scope signals).
+  _applyTurnActive = (active, channel = null) => {
+    const ch = channel || this._channels.getRendered();
+    const vm = (ch && ch.vm) || this._localVm;
+    vm.turnSignalTs = Date.now(); // any turn-level frame proves the turn is alive
     if (active) {
-      if (this.state.turnActive) return; // idempotent
-      this._turnActiveSince = Date.now();
-      clearTimeout(this._turnStaleTimer);
-      this._turnStaleTimer = setTimeout(this._checkTurnActiveStale, TURN_ACTIVE_STALE_MS);
-      this.setState({ turnActive: true });
+      if (vm.react.turnActive) return; // idempotent
+      vm.turnActiveSince = Date.now();
+      clearTimeout(vm.turnStaleTimer);
+      vm.turnStaleTimer = setTimeout(() => this._checkTurnActiveStale(ch), TURN_ACTIVE_STALE_MS);
+      this._commitChannel(ch, { turnActive: true });
       return;
     }
-    if (!this.state.turnActive) return; // idempotent
-    this._turnActiveSince = null;
-    clearTimeout(this._turnStaleTimer);
-    this._turnStaleTimer = null;
-    clearTimeout(this._streamingOffTimer);
-    this.setState({ turnActive: false, isStreaming: false });
+    if (!vm.react.turnActive) return; // idempotent
+    vm.turnActiveSince = null;
+    clearTimeout(vm.turnStaleTimer);
+    vm.turnStaleTimer = null;
+    clearTimeout(vm.streamingOffTimer);
+    vm.streamingOffTimer = null;
+    this._commitChannel(ch, { turnActive: false, isStreaming: false });
   };
 
   // Staleness escape for the turn-level flag, self-rescheduling: fires only when the
@@ -3129,19 +3643,21 @@ class AppBase extends React.Component {
   // TURN_ACTIVE_STALE_MS — the signature of a lost Stop POST / killed PTY / dead
   // server. While the flag is legitimately up, the server's TURN_ACTIVE_HEARTBEAT
   // (PTY: ~10s turn_active re-broadcast; SDK: requires_action/session frames) keeps
-  // refreshing `_turnSignalTs`, so long silent local tools (Bash builds/tests) are
+  // refreshing `turnSignalTs`, so long silent local tools (Bash builds/tests) are
   // NOT killed; only a genuinely signal-dead turn is. Re-arms itself because no
   // further streaming_status frame may ever arrive.
-  _checkTurnActiveStale = () => {
-    if (!this.state.turnActive) return;
-    const silentFor = Date.now() - (this._turnSignalTs || 0);
-    if (this._turnActiveSince && silentFor > TURN_ACTIVE_STALE_MS) {
+  _checkTurnActiveStale = (channel = null) => {
+    const ch = channel || this._channels.getRendered();
+    const vm = (ch && ch.vm) || this._localVm;
+    if (!vm.react.turnActive) return;
+    const silentFor = Date.now() - (vm.turnSignalTs || 0);
+    if (vm.turnActiveSince && silentFor > TURN_ACTIVE_STALE_MS) {
       console.warn('[turn-active] no turn-end signal and no turn-level activity for 30s — clearing stale loading flag');
-      this._applyTurnActive(false);
+      this._applyTurnActive(false, ch);
       return;
     }
-    clearTimeout(this._turnStaleTimer);
-    this._turnStaleTimer = setTimeout(this._checkTurnActiveStale, TURN_ACTIVE_STALE_MS);
+    clearTimeout(vm.turnStaleTimer);
+    vm.turnStaleTimer = setTimeout(() => this._checkTurnActiveStale(ch), TURN_ACTIVE_STALE_MS);
   };
 
   // SDK-mode session state (idle/running/requires_action), lifted from ChatView's
@@ -3172,11 +3688,14 @@ class AppBase extends React.Component {
     // explicit attach re-anchors to the project the user just picked, whichever
     // order the spawns landed in. Idempotent.
     if (projectName) attachMainPty(projectName);
+    const ch = this._channels.getRendered();
+    const vm = (ch && ch.vm) || this._localVm;
     // 切 project：清掉旧 project 残留的 /clear optimistic 30s timer，避免延迟到新 project 触发。
-    if (this._clearOptimisticTimer) {
-      clearTimeout(this._clearOptimisticTimer);
-      this._clearOptimisticTimer = null;
+    if (vm.clearOptimisticTimer) {
+      clearTimeout(vm.clearOptimisticTimer);
+      vm.clearOptimisticTimer = null;
     }
+    this._commitChannel(ch, { contextBarLocked: false, contextBarOptimistic: false });
     this.setState({
       workspaceMode: false,
       projectName,
@@ -3188,8 +3707,6 @@ class AppBase extends React.Component {
       // Do NOT force-close the terminal panel: a workspace (re)launch keeps the user's CURRENT
       // terminal-visibility preference (user-pinned 2026-10-06). The old hard `terminalVisible:
       // false` collapsed the panel the user had open for no reason.
-      contextBarLocked: false,
-      contextBarOptimistic: false,
       // A workspace (re)launch is an authoritative switch to the NEW bound project — clear any
       // parallel-project / instance view so no departing-view state lingers into it.
       viewedProject: null,
@@ -3198,30 +3715,45 @@ class AppBase extends React.Component {
     });
     // New bound project — drop the persisted workspace so a refresh lands on it.
     clearViewedWorkspace();
+    // Post-stop relaunch (review P1): after workspace_stopped's closeAll there
+    // is NO channel left — the server-side workspace_started replay would have
+    // no connection to arrive on and the panel would stay blank until refresh.
+    // Rebuild the bound channel whenever (a) nothing is rendered, or (b) the
+    // rendered channel is scoped to a DIFFERENT project (its server-side stamp
+    // can't have followed the launch's rebind, so it would sit on a dead view).
+    // A live BOUND channel (normal launch) is left exactly as-is (server replays onto it).
+    const rendered = this._channels.getRendered();
+    const renderedIsBound = rendered && rendered.key === 'bound';
+    if (!rendered || !renderedIsBound) {
+      this._activateScope({ sid: null, project: null, instance: null }, { reason: 'launch-rebind' });
+    }
   };
 
   handleReturnToWorkspaces = () => {
     fetch(apiUrl('/api/workspaces/stop'), { method: 'POST' })
       .then(() => {
-        this._teardownTransientLiveState();
+        const ch = this._channels.getRendered();
+        this._teardownTransientLiveState(ch);
         this._rebuildRequestIndex([]);
-        this._currentSessionId = null; // same as workspace_started: clear the old session id so lazy-lock can't misfire
+        if (ch) ch.vm.currentSessionId = null; // same as workspace_started: clear the old session id so lazy-lock can't misfire
         // Returned to the workspace list (no bound project) — drop the persisted workspace.
         clearViewedWorkspace();
-        this.setState({
-          workspaceMode: true,
+        this._commitChannel(ch, {
           requests: [],
           mainAgentSessions: [],
-          projectName: '',
           pinnedSessionTs: null,
-          attachedSid: null, // switching projects is an authoritative boundary: force-detach any attach
-          viewedProject: null,
-          viewedInstance: null,
           selectedIndex: null,
           streamingLatest: null,
           contextBarLocked: false,
           isStreaming: false,
           turnActive: false, // new workspace/view owns its own turn state
+        });
+        this.setState({
+          workspaceMode: true,
+          projectName: '',
+          attachedSid: null, // switching projects is an authoritative boundary: force-detach any attach
+          viewedProject: null,
+          viewedInstance: null,
         });
       })
       .catch(() => {});
@@ -3502,14 +4034,12 @@ class AppBase extends React.Component {
   };
 
   handleFilterIrrelevantChange = (checked) => {
-    this.setState(prev => {
-      const newShowAll = !checked;
-      const newFiltered = visibleRequests(prev.requests, newShowAll);
-      return {
-        showAll: newShowAll,
-        selectedIndex: newFiltered.length > 0 ? newFiltered.length - 1 : null,
-      };
+    const newShowAll = !checked;
+    const newFiltered = visibleRequests(this.state.requests, newShowAll);
+    this._commitChannel(this._channels.getRendered(), {
+      selectedIndex: newFiltered.length > 0 ? newFiltered.length - 1 : null,
     });
+    this.setState({ showAll: newShowAll });
     this.context.updatePreferences({ filterIrrelevant: checked });
   };
 
@@ -3845,26 +4375,36 @@ class AppBase extends React.Component {
   _finishLocalLoad = (entries, fileNames) => {
     if (entries.length === 0) {
       message.error(t('ui.noLogs'));
-      this.setState({ fileLoading: false, fileLoadingCount: 0 });
+      this._commitChannel(null, { fileLoading: false, fileLoadingCount: 0 });
       return;
     }
     const normalized = normalizeV2Entries(entries);
     this.animateLoadingCount(normalized.length, () => {
       this._batchSlim(normalized);
+      // Local-log mode renders the dedicated local vm — close every SSE channel
+      // first so the local view is authoritative for every reader.
+      for (const key of this._channels.keys()) {
+        const ch = this._channels.get(key);
+        if (ch) clearChannelTimers(ch.vm, {
+          clearTimeout: (id) => clearTimeout(id),
+          cancelAnimationFrame: (id) => cancelAnimationFrame(id),
+        });
+      }
+      this._channels.closeAll();
       const { mainAgentSessions, filtered } = this._processEntries(normalized);
       this._isLocalLog = true;
       this._localLogFile = fileNames.length === 1 ? fileNames[0] : `${fileNames.length} files`;
-      if (this.eventSource) { this.eventSource.close(); this.eventSource = null; }
-      if (this._streamingOffTimer) { clearTimeout(this._streamingOffTimer); this._streamingOffTimer = null; }
-      this.setState({
+      const vm = this._localVm;
+      if (vm.streamingOffTimer) { clearTimeout(vm.streamingOffTimer); vm.streamingOffTimer = null; }
+      this._commitChannel(null, {
         requests: normalized,
         selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
         mainAgentSessions,
-        importModalVisible: false,
         fileLoading: false,
         fileLoadingCount: 0,
       });
-    });
+      this.setState({ importModalVisible: false });
+    }, null);
   };
 
   // ─── 拖拽上传（App / Mobile 共享）─────────────────────────
@@ -3982,17 +4522,21 @@ class AppBase extends React.Component {
   _listSource() {
     const rows = this.state.v2Rows;
     if (!this._wireV3 || !rows || rows.length === 0) return this.state.requests;
-    if (this._v3AdaptSource !== rows) {
-      this._v3AdaptSource = rows;
-      this._v3Adapted = rows.map(rowToListItem);
+    // Adapt cache lives on the RENDERED channel's vm — a warm switch restores
+    // the right rows→items mapping, never another scope's.
+    const vm = this._renderedVm();
+    if (vm.v3AdaptSource !== rows) {
+      vm.v3AdaptSource = rows;
+      vm.v3Adapted = rows.map(rowToListItem);
     }
-    return this._v3Adapted;
+    return vm.v3Adapted;
   }
 
   renderPrepare() {
     const { selectedIndex, showAll, fileLoading, fileLoadingCount, mainAgentSessions, viewMode } = this.state;
     const requests = this._listSource();
     const useRows = requests !== this.state.requests;
+    const loss = this._renderedVm();
 
     // 过滤心跳请求
     if (this._filteredSource !== requests || this._filteredShowAll !== showAll) {
@@ -4005,27 +4549,27 @@ class AppBase extends React.Component {
     // 增量 cache loss map — legacy path only: rows carry server-computed
     // cacheLoss inline (adapted items have no bodies for the client compute).
     if (useRows) {
-      this._cacheLossMap = new Map();
-      this._cacheLossLastMainAgent = null;
-      this._cacheLossProcessedCount = 0;
+      loss.cacheLossMap = new Map();
+      loss.cacheLossLastMainAgent = null;
+      loss.cacheLossProcessedCount = 0;
     } else {
-      if (this._cacheLossShowAll !== showAll) {
-        this._cacheLossShowAll = showAll;
-        this._cacheLossMap = new Map();
-        this._cacheLossLastMainAgent = null;
-        this._cacheLossProcessedCount = 0;
+      if (loss.cacheLossShowAll !== showAll) {
+        loss.cacheLossShowAll = showAll;
+        loss.cacheLossMap = new Map();
+        loss.cacheLossLastMainAgent = null;
+        loss.cacheLossProcessedCount = 0;
       }
-      if (filteredRequests.length < this._cacheLossProcessedCount) {
-        this._cacheLossMap = new Map();
-        this._cacheLossLastMainAgent = null;
-        this._cacheLossProcessedCount = 0;
+      if (filteredRequests.length < loss.cacheLossProcessedCount) {
+        loss.cacheLossMap = new Map();
+        loss.cacheLossLastMainAgent = null;
+        loss.cacheLossProcessedCount = 0;
       }
-      if (filteredRequests.length > this._cacheLossProcessedCount) {
-        this._cacheLossLastMainAgent = appendCacheLossMap(
-          this._cacheLossMap, filteredRequests,
-          this._cacheLossProcessedCount, this._cacheLossLastMainAgent
+      if (filteredRequests.length > loss.cacheLossProcessedCount) {
+        loss.cacheLossLastMainAgent = appendCacheLossMap(
+          loss.cacheLossMap, filteredRequests,
+          loss.cacheLossProcessedCount, loss.cacheLossLastMainAgent
         );
-        this._cacheLossProcessedCount = filteredRequests.length;
+        loss.cacheLossProcessedCount = filteredRequests.length;
       }
     }
 

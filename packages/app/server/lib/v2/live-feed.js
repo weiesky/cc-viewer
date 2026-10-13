@@ -27,6 +27,7 @@ import { join } from 'node:path';
 import { reportSwallowed } from '@ccv/core/error-report';
 import { createIncrementalReconstructor } from '@ccv/core/delta-reconstructor';
 import { processWatchedEntry, sendEventToClients, sendEventRawToClients } from '../log-watcher.js';
+import { filterClientsByInstance } from './view-router.js';
 import { SessionSynthesizer } from './adapter.js';
 import { isDiscardableSession } from './session-select.js';
 import { isForeignLiveOwned } from './session-owner.js';
@@ -214,14 +215,14 @@ export class V2LiveFeed {
    * Backward compatible: a client with NO `_ccvViewInstance` stamp (the default / legacy /
    * single-instance view) sees every session regardless of `sessionInstance`; a session with
    * no stamped instance (legacy/external) is likewise visible to all.
+   *
+   * The project half keeps going through `_clientsFor()` (the server's filter
+   * closure — not necessarily the pure predicate); only the instance narrowing
+   * is delegated to the shared rule (view-router.filterClientsByInstance) so it
+   * can never drift from the server-side scoped broadcasts.
    */
   _clientsForInstance(sessionInstance) {
-    const base = this._clientsFor();
-    if (!sessionInstance) return base; // session carries no instance → visible to all viewers
-    let anyInstanceViewer = false;
-    for (const c of base) { if (c && c._ccvViewInstance) { anyInstanceViewer = true; break; } }
-    if (!anyInstanceViewer) return base; // nobody is instance-scoped → keep legacy broadcast
-    return base.filter((c) => !c || !c._ccvViewInstance || c._ccvViewInstance === sessionInstance);
+    return filterClientsByInstance(this._clientsFor(), sessionInstance || null);
   }
 
   /** Begin (or switch to) live-following a project's sessions/ root. */

@@ -84,7 +84,10 @@ describe('_resetForViewSwitch 清场（流式切换串扰修复）', () => {
 
 describe('AppBase.jsx 源码锚点（防未来重构漂移）', () => {
   it('_resetForViewSwitch 丢弃 _pendingEntries 并取消 _flushRafId', () => {
-    const re = /_resetForViewSwitch\(\) \{[\s\S]{0,600}?this\._pendingEntries = \[\];[\s\S]{0,160}?this\._flushRafId = null;/;
+    // Per-workspace channels (2026-10): the reset takes the TARGET channel
+    // (per-channel assembler/turn state) — the single-instance pipeline
+    // scratch (pending entries + flush rAF) is reset identically.
+    const re = /_resetForViewSwitch\(channel = null\) \{[\s\S]{0,900}?this\._pendingEntries = \[\];[\s\S]{0,160}?this\._flushRafId = null;/;
     assert.ok(re.test(WEB_SRC), '_resetForViewSwitch 缺 _pendingEntries 清空 / _flushRafId 取消');
   });
 });

@@ -116,46 +116,50 @@ describe('AppBase.jsx 源码锚点（防未来重构漂移）', () => {
     assert.ok(APPBASE_SRC.includes('this._viewCache = createViewStateCache();'), '缺少 _viewCache 实例化');
   });
 
-  it('wantProject 分支命中缓存走 ?since 并立即 setState cached', () => {
+  it('wantProject 分支命中缓存走 ?since 并立即提交 cached', () => {
     // 多实例化后缓存键是 project+instance 的复合 cacheKey（同 cwd 双实例各自隔离）。
-    assert.ok(/const cached = this\._viewCache\.restore\(cacheKey\);/.test(APPBASE_SRC), 'wantProject 缺缓存 restore');
-    assert.ok(/cached && cached\.lastTs[\s\S]{0,160}?since=\$\{encodeURIComponent\(cached\.lastTs\)\}/.test(APPBASE_SRC), '缓存命中缺 ?since URL');
+    assert.ok(/const hit = this\._viewCache\.restore\(cacheKey\);/.test(APPBASE_SRC), 'wantProject 缺缓存 restore');
+    assert.ok(/hit && hit\.lastTs[\s\S]{0,180}?since=\$\{encodeURIComponent\(hit\.lastTs\)\}/.test(APPBASE_SRC), '缓存命中缺 ?since URL');
     assert.ok(/if \(this\.state\.resumeSwitch\) this\._clearResumeSwitch\(\);/.test(APPBASE_SRC), '缓存命中缺立即清遮罩');
   });
 
-  it('load_end 增量合并分支放宽为 mobile 或 _hasViewCache', () => {
-    assert.ok(/isIncremental && \(isMobile \|\| this\._hasViewCache\) && this\.state\.requests\.length > 0/.test(APPBASE_SRC),
+  it('load_end 增量合并分支放宽为 mobile 或 vm.hasViewCache', () => {
+    assert.ok(/isIncremental && \(isMobile \|\| vm\.hasViewCache\) && vm\.react\.requests\.length > 0/.test(APPBASE_SRC),
       'load_end 合并分支未放宽到视图缓存');
   });
 
-  it('stream-progress handler 有项目守卫', () => {
+  it('stream-progress handler 有按 channel scope 的项目守卫', () => {
+    // Per-workspace channels: the guard compares against THIS channel's project
+    // (a tap channel must not test the rendered view's project).
+    assert.ok(/const _viewing = channel\.scope\.project \|\| this\.state\.projectName \|\| '';/.test(APPBASE_SRC),
+      'stream-progress 缺按 channel scope 的项目守卫');
     assert.ok(/data\.project && _viewing && data\.project !== _viewing\) return;/.test(APPBASE_SRC),
-      'stream-progress 缺项目守卫');
+      'stream-progress 缺项目守卫早退');
   });
 
-  it('P0 回归：initSSE 接受 scopeOverride，视图切换不在 setState 后同步读 stale state', () => {
-    // React 18 batches setState, so initSSE must NOT read this.state.viewedProject/viewedInstance
-    // right after a view-switch setState (it would target the PREVIOUS view). Pin the fix:
-    // initSSE takes an explicit scopeOverride and the switch handlers pass the NEW scope.
-    assert.ok(/initSSE\(scopeOverride = null\)/.test(APPBASE_SRC), 'initSSE 缺 scopeOverride 参数');
-    assert.ok(/_scopeProject = scopeOverride/.test(APPBASE_SRC), 'initSSE 未用 scopeOverride 解析 project');
-    assert.ok(/_scopeInstance = scopeOverride/.test(APPBASE_SRC), 'initSSE 未用 scopeOverride 解析 instance');
-    // handleActivateChip / handleDetachView / handleResumeSession 必须传新 scope。
-    assert.ok(/this\.initSSE\(\{ sid: null, project: chip\.project, instance: chipInstance \}\)/.test(APPBASE_SRC),
+  it('P0 回归：_activateScope 接受显式 scope，视图切换不在 setState 后同步读 stale state', () => {
+    // React 18 batches setState, so the activation must NOT read
+    // this.state.viewedProject/viewedInstance right after a view-switch setState
+    // (it would target the PREVIOUS view). Pin the fix: _activateScope takes an
+    // explicit scope and the switch handlers pass the NEW scope.
+    assert.ok(/_activateScope\(scope = \{\}/.test(APPBASE_SRC), '_activateScope 缺显式 scope 参数');
+    // handleActivateChip / handleDetachView / _applyViewAttach 必须传新 scope。
+    assert.ok(/this\._activateScope\(\{ sid: null, project: chip\.project, instance: chipInstance \}/.test(APPBASE_SRC),
       'handleActivateChip 未传 chip 的 project+instance');
-    assert.ok(/this\.initSSE\(\{ sid: null, project: null, instance: null \}\)/.test(APPBASE_SRC),
+    assert.ok(/this\._activateScope\(\{ sid: null, project: null, instance: null \}, \{[\s\S]{0,120}?reason: 'detach'/.test(APPBASE_SRC),
       'handleDetachView 未传空 scope');
-    // True-resume (2026-10-06): the attach half is _applyViewAttach, which scopes initSSE by the
-    // TARGET project (parallel resume keeps the viewed project; bound resume falls back to bound).
+    // True-resume (2026-10-06): the attach half is _applyViewAttach, which scopes the
+    // activation by the TARGET project (parallel resume keeps the viewed project;
+    // bound resume falls back to bound).
     assert.ok(/_applyViewAttach = \(uuid, scope = null\) => \{/.test(APPBASE_SRC),
       '_applyViewAttach 缺 scope 参数');
-    assert.ok(/this\.initSSE\(\{ sid: uuid, project: scopeProject, instance: scopeInstance \}\)/.test(APPBASE_SRC),
-      '_applyViewAttach 未按目标 scope 传 initSSE');
+    assert.ok(/this\._activateScope\(\{ sid: uuid, project: scopeProject, instance: scopeInstance \}/.test(APPBASE_SRC),
+      '_applyViewAttach 未按目标 scope 激活');
   });
 
   it('多实例缓存键用 NUL 分隔（project 名含 ccv- 子串不撞复合键）', () => {
-    // _snapshotCurrentView 写入键与 initSSE 读取键必须同为 `${proj}\x00${inst}`。
+    // _snapshotCurrentView 写入键与 _channelUrlFor 读取键必须同为 `${proj}\x00${inst}`。
     assert.ok(/`\$\{proj\}\\x00\$\{this\.state\.viewedInstance\}`/.test(APPBASE_SRC), '_snapshotCurrentView 缓存键未 NUL 分隔');
-    assert.ok(/`\$\{wantProject\}\\x00\$\{wantInstance\}`/.test(APPBASE_SRC), 'initSSE 缓存键未 NUL 分隔');
+    assert.ok(/`\$\{wantProject\}\\x00\$\{wantInstance\}`/.test(APPBASE_SRC), '_channelUrlFor 缓存键未 NUL 分隔');
   });
 });

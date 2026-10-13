@@ -11,7 +11,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { sep, join } from 'node:path';
 
-import { filterClientsByViewProject, projectOfSessionDir, resolveActivityFeedKey } from '../server/lib/v2/view-router.js';
+import { filterClientsByViewProject, filterClientsByScope, projectOfSessionDir, resolveActivityFeedKey } from '../server/lib/v2/view-router.js';
 
 describe('filterClientsByViewProject', () => {
   const c = (vp) => (vp === undefined ? {} : { _ccvViewProject: vp });
@@ -110,5 +110,51 @@ describe('resolveActivityFeedKey (streaming-switch bleed: no-feed-is-drop routin
     const finqa = resolveActivityFeedKey(join(LOG, 'finqa-remote-cc', 'sessions', 'f1'), LOG, sep);
     assert.deepEqual(sage, { feedKey: 'sage', allowBoundFallback: false });
     assert.deepEqual(finqa, { feedKey: 'finqa-remote-cc', allowBoundFallback: false });
+  });
+});
+
+describe('filterClientsByScope', () => {
+  const c = (vp, vi) => {
+    const o = {};
+    if (vp !== undefined) o._ccvViewProject = vp;
+    if (vi !== undefined) o._ccvViewInstance = vi;
+    return o;
+  };
+
+  it('reduces to filterClientsByViewProject when instance is unset (same reference)', () => {
+    const clients = [c(), c('A'), c('B')];
+    const out = filterClientsByScope(clients, 'B', null, 'B');
+    assert.deepEqual(out, [clients[0], clients[2]], 'unstamped ⇒ bound B; foreign A excluded');
+  });
+
+  it('single-project bound fast path with instance is still reference-identical when nobody is instance-stamped', () => {
+    const clients = [c(), c(), c()];
+    const out = filterClientsByScope(clients, 'A', 'ccv-aa', 'A');
+    assert.equal(out, clients, 'bound project + no instance viewers → same array');
+  });
+
+  it('instance narrowing: only the matching instance viewer + unstamped clients kept', () => {
+    const instA = c('P', 'ccv-aa'), instB = c('P', 'ccv-bb'), un = c('P'), other = c('Q');
+    const clients = [instA, instB, un, other];
+    const out = filterClientsByScope(clients, 'P', 'ccv-aa', 'B');
+    assert.deepEqual(out, [instA, un], 'different-instance and foreign-project viewers excluded');
+  });
+
+  it('frame without instance reaches every instance viewer of the project', () => {
+    const instA = c('P', 'ccv-aa'), instB = c('P', 'ccv-bb'), un = c();
+    const clients = [instA, instB, un];
+    const out = filterClientsByScope(clients, 'P', null, 'P');
+    assert.deepEqual(out, [instA, instB, un]);
+  });
+
+  it('null entries survive only when no narrowing actually runs', () => {
+    // Force filterClientsByViewProject OFF its fast path (a DIFFERENT-project stamp
+    // exists) so the project filter's own .filter executes — then null is dropped
+    // regardless of narrowing. This pins down that filterClientsByScope adds no
+    // null handling of its own beyond the two delegated predicates.
+    const instA = c('P', 'ccv-aa');
+    const clients = [null, instA, c('Q')];
+    assert.deepEqual(filterClientsByScope(clients, 'P', null, 'P'), [instA]);
+    assert.deepEqual(filterClientsByScope(clients, 'P', 'ccv-aa', 'P'), [instA]);
   });
 });

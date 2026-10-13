@@ -97,9 +97,10 @@ function execWithStdin(cmd, args, input, options) {
     }
   });
 }
-import { _initPromise, _projectName, _logDir, _v2Writer, streamingState, resetStreamingState, turnActive, setTurnActive, PROFILE_PATH, RETRY_CONFIG_PATH, _retryConfigState, setLivePort, getImLiveText, resetImLiveText, markSessionStart } from './interceptor.js';
+import { _initPromise, _projectName, _logDir, _v2Writer, streamingState, resetStreamingState, turnActive, setTurnActive, PROFILE_PATH, RETRY_CONFIG_PATH, _retryConfigState, setLivePort, getImLiveText, resetImLiveText, markSessionStart, streamingStateFor, turnStateFor, activeStreamingScopes, activeTurnScopes, clearScopeState } from './interceptor.js';
 import { V2LiveFeed } from './lib/v2/live-feed.js';
-import { filterClientsByViewProject, projectOfSessionDir, resolveActivityFeedKey } from './lib/v2/view-router.js';
+import { filterClientsByViewProject, filterClientsByScope, projectOfSessionDir, resolveActivityFeedKey } from './lib/v2/view-router.js';
+import { BOUND_SCOPE, scopeKeyOf, parseScopeKey, normalizeProducerScope } from './lib/scope-router.js';
 import { sanitizePathComponent } from './lib/v2/layout.js';
 import { maybeResumeConvert } from './lib/v2/convert-manager.js';
 import { LOG_DIR, setLogDir, getClaudeConfigDir, isBrowserOpenSuppressed } from '../findcc.js';
@@ -118,7 +119,7 @@ import { checkAndUpdate } from './lib/updater.js';
 import { loadPlugins, runWaterfallHook, runParallelHook } from './lib/plugin-loader.js';
 import { CONTEXT_WINDOW_FILE, readModelContextSize } from './lib/context-watcher.js';
 import { sendEventToClients } from './lib/log-watcher.js';
-import { applyTaskEvent, resetTasks, getTaskSnapshot, shouldResetTasks } from './lib/task-state.js';
+import { applyTaskEvent, resetTasks, resetAllTasks, getTaskSnapshot, shouldResetTasks } from './lib/task-state.js';
 import { projectKeyForCwd } from './lib/system-prompt-snapshots.js';
 import { createImLogWatcher } from './lib/im/im-log-watcher.js';
 import { unwatchAllWorkflows } from './lib/workflow-watcher.js';
@@ -700,10 +701,13 @@ const deps = {
   // voice-pack semantics and too slow for the spinner. This is the ONLY clear
   // path when the turn produced no API traffic (hook-only turn), so it must not
   // wait on the debounce timer.
-  onTurnActiveClear: () => { _setTurnActive(false, null); },
+  onTurnActiveClear: (scope = null) => { _setTurnActive(false, null, scope); },
   // SSE connect replay: a page refresh mid-turn restores the spinner without
   // waiting for the next streaming tick (routes/events.js events() connect block).
-  getPtyTurnActive: () => turnActive.active,
+  getPtyTurnActive: (scopeKey = BOUND_SCOPE) => turnStateFor(scopeKey).active,
+  resolveScopeForHookPayload: _resolveScopeForHookPayload,
+  getTurnActiveFor: (scopeKey = BOUND_SCOPE) => turnStateFor(scopeKey).active,
+  filterClientsByViewProject: _filterClientsByViewProject,
   // SessionStart hook notify → conversation-switch signal (in-terminal
   // /resume). The source gate + V2Writer re-bind live in the interceptor.
   onSessionStartNotify: markSessionStart,
@@ -713,25 +717,32 @@ const deps = {
   // path broadcasts the empty snapshot — no separate reset route/hook.
   onTaskEvent: (payload) => {
     try {
-      applyTaskEvent(payload);
-      _scheduleTaskUpdateBroadcast();
+      const sc = _resolveScopeForHookPayload(payload);
+      const key = scopeKeyOf(sc.project, sc.instance);
+      applyTaskEvent(payload, key);
+      _scheduleTaskUpdateBroadcast(key);
       // Turn-level loading: a new main-agent prompt marks the turn active.
       // Subagent/teammate events are excluded inside the predicate (agentId +
-      // the load-bearing sessionId gate against the currently tracked turn).
-      if (isTurnStartTaskEvent(payload, _turnSessionId)) {
-        _turnSessionId = payload.sessionId;
-        _setTurnActive(true, payload.sessionId);
+      // the load-bearing sessionId gate against the currently tracked turn of
+      // THIS scope — a foreign workspace's prompt must not light this one).
+      if (isTurnStartTaskEvent(payload, _turnSessionIdByScope.get(key) || null)) {
+        _turnSessionIdByScope.set(key, payload.sessionId);
+        _setTurnActive(true, payload.sessionId, sc);
       }
     } catch (err) { reportSwallowed('task-state.apply', err); }
   },
   // Session-boundary reset for the task checklist. The gate itself lives in
   // task-state.shouldResetTasks (pure, unit-tested): main-agent startup/clear
   // resets; resume/fork to a different session resets; subagent/teammate
-  // events (payload.agentId) must not wipe the shared list.
+  // events (payload.agentId) must not wipe the shared list. Per-workspace: the
+  // bucket is resolved from the same hook-payload scope — a background
+  // workspace's SessionStart must never clear the bound project's checklist.
   onTaskSessionBoundary: (payload) => {
-    if (!shouldResetTasks(payload, getTaskSnapshot().sessionId)) return;
-    resetTasks();
-    _emitTaskUpdate();
+    const sc = _resolveScopeForHookPayload(payload);
+    const key = scopeKeyOf(sc.project, sc.instance);
+    if (!shouldResetTasks(payload, getTaskSnapshot(key).sessionId)) return;
+    resetTasks(key);
+    _emitTaskUpdate(key);
   },
   // Per-connection snapshot replay for fresh SSE clients (page refresh /
   // reconnect) — the checklist lives only in memory, not in the cold load.
@@ -1089,6 +1100,10 @@ export async function startViewer() {
   _stoppingPromise = null;
   // 加载插件（需要在创建服务器之前，以便通过 hook 获取 HTTPS 证书）
   await loadPlugins();
+  // Per-workspace: warm the pty-manager namespace for the synchronous hook
+  // scope resolver (fire-and-forget; the import completes long before the
+  // first hook POST in practice, and the resolver degrades to cwd/bound hints).
+  _warmScopeResolver().catch(() => {});
 
   // 启动期配置备份:preferences/profile/workspaces → LOG_DIR 外的 cc-viewer-config-backups/
   // (滚动留 10 份)。2026-06-06 事故:配置随 LOG_DIR 整树丢失后无处可恢复。fire-and-forget。
@@ -2447,7 +2462,13 @@ async function setupTerminalWebSocket(httpServer) {
               // The Stop hook does NOT fire on user interrupt (documented Claude Code
               // behavior), so the web Stop button must clear the turn-level loading
               // flag itself or the spinner would outlive the interrupted turn.
-              _setTurnActive(false, null);
+              // Per-workspace: the message carries the view's project/instance so
+              // the clear lands on exactly that scope (absent ⇒ bound).
+              const qScope = normalizeProducerScope(
+                { project: (typeof msg.project === 'string' && msg.project) || null, instance: (typeof msg.instanceKey === 'string' && msg.instanceKey) || null },
+                _projectName || '',
+              );
+              _setTurnActive(false, null, qScope);
             }
           } else if (msg.type === 'image-remove-notify' || msg.type === 'image-upload-notify') {
             // Security: only allow paths within upload directories, reject traversal
@@ -2602,19 +2623,82 @@ const TURN_END_DEBOUNCE_MS = (() => {
 })();
 let _isStopping = false;
 let _lastSdkActive = false;
-let _lastCliActive = false;
+// Per-scope CLI streaming edge state ('' = bound — the legacy single flag).
+const _lastCliActiveByScope = new Map();
 let _onTurnEndBroadcastForTests = null;
 
 function _normalizeKey(sessionId) {
   return (typeof sessionId === 'string' && sessionId) ? sessionId : null;
 }
 
-function _emitTurnEnd(sessionId, ts, transcriptPath = null) {
+// ── Per-workspace scope resolution (2026-10) ────────────────────────────────
+// ONE resolver for every hook-origin frame (turn_end / task_update / turn
+// boundary): the same precedence everywhere so a workspace's frames can never
+// split across two scope buckets. Order:
+//   1. sessionId → the live PTY record that owns it (exact project+instance);
+//   2. payload.cwd → projectKeyForCwd (no instance — hooks report no instance);
+//   3. the bound project ('' sentinel).
+// A dead record / a foreign sessionId yields null from the resolver and falls
+// through to the cwd/bound hints, never to a corpse scope.
+function _resolveScopeForHookPayload(payload) {
+  const p = payload || {};
+  try {
+    const sid = _normalizeKey(p.sessionId);
+    if (sid) {
+      // Lazy import kept out of the module graph (pty-manager pulls node-pty).
+      const pm = _ptyManagerForScope || null;
+      const rec = pm && typeof pm.resolvePtyForSession === 'function' ? pm.resolvePtyForSession(sid) : null;
+      if (rec && rec.project) {
+        return normalizeProducerScope({ project: rec.project, instance: rec.instanceKey || null }, _projectName || '');
+      }
+    }
+  } catch (err) { reportSwallowed('scope.resolve-sid', err); }
+  const cwd = (typeof p.cwd === 'string' && p.cwd) || '';
+  if (cwd) {
+    try {
+      const proj = projectKeyForCwd(cwd);
+      if (proj) {
+        // Upgrade to the exact instance ONLY when exactly one live record owns
+        // this cwd — a project-level frame (instance=null) reaches EVERY viewer
+        // of the project, over-delivering a same-cwd twin's hook to its sibling.
+        // Two live twins → no honest pick → keep project-level (today's behavior,
+        // and the twins' viewers share the cwd anyway).
+        const pm = _ptyManagerForScope || null;
+        const inst = pm && typeof pm.resolveInstanceForCwd === 'function' ? pm.resolveInstanceForCwd(cwd) : null;
+        if (!inst && pm && typeof pm.resolvePtyForSession === 'function') {
+          // Diagnostic only: a project-level frame for a cwd that HAS live
+          // instances is the over-delivery window — observable on real hardware.
+          try {
+            const liveCount = (pm.listLivePtys?.() || []).filter((r) => r && r.cwd && projectKeyForCwd(r.cwd) === proj).length;
+            if (liveCount > 1) reportSwallowed('scope.cwd-ambiguous', new Error(`cwd has ${liveCount} live instances, scope stays project-level`), { cwd: proj });
+          } catch { /* best-effort */ }
+        }
+        return normalizeProducerScope({ project: proj, instance: inst }, _projectName || '');
+      }
+    } catch (err) { reportSwallowed('scope.resolve-cwd', err); }
+  }
+  return { project: '', instance: null };
+}
+
+// Cached pty-manager namespace (first successful lazy import). Scope resolution
+// is synchronous (hook POST handlers are not async); the import completes at
+// startup via _warmScopeResolver, so production never sees the null window.
+let _ptyManagerForScope = null;
+async function _warmScopeResolver() {
+  try { _ptyManagerForScope = await import('./pty-manager.js'); }
+  catch (err) { reportSwallowed('scope.resolver-warm', err); }
+}
+
+function _emitTurnEnd(sessionId, ts, transcriptPath = null, scope = null) {
   const sid = _normalizeKey(sessionId);
   const t = ts || Date.now();
+  const sc = scope || { project: '', instance: null };
   try {
     if (clients.length > 0 && sendEventToClients) {
-      sendEventToClients(clients, 'turn_end', { sessionId: sid, ts: t });
+      const target = sc.project
+        ? filterClientsByScope(clients, sc.project, sc.instance, _projectName || '')
+        : _filterClientsByViewProject(clients, _projectName || '');
+      sendEventToClients(target, 'turn_end', { sessionId: sid, ts: t, project: sc.project || (_projectName || ''), instance: sc.instance || null });
     }
     // Forward the (clean) assistant reply for this turn to whichever IM bridge owns the in-flight
     // turn, if any. Fire-and-forget: a bridge failure must never affect SSE broadcast.
@@ -2632,10 +2716,13 @@ function _emitTurnEnd(sessionId, ts, transcriptPath = null) {
   }
 }
 
-function _scheduleTurnEndBroadcast(sessionId, ts, transcriptPath = null) {
+function _scheduleTurnEndBroadcast(sessionId, ts, transcriptPath = null, scope = null) {
   if (_isStopping) return;
   const sid = _normalizeKey(sessionId);
   const t = ts || Date.now();
+  // Resolve the scope ONCE at POST time: the debounced emit must not re-derive
+  // it from live state that a later switch may have changed.
+  const sc = scope || { project: '', instance: null };
   // chat-queue drain trigger #1: the Stop-hook POST arrival IS the authoritative
   // "query() ended" signal — don't wait out the SSE debounce window (default 10s),
   // or freshly-parked bubbles would sit visibly inert after every turn. The queue's
@@ -2648,10 +2735,10 @@ function _scheduleTurnEndBroadcast(sessionId, ts, transcriptPath = null) {
   if (existing) clearTimeout(existing.timer);
   const timer = setTimeout(() => {
     _pendingTurnEndTimers.delete(sid);
-    _emitTurnEnd(sid, t, transcriptPath);
+    _emitTurnEnd(sid, t, transcriptPath, sc);
   }, TURN_END_DEBOUNCE_MS);
   if (typeof timer.unref === 'function') timer.unref();
-  _pendingTurnEndTimers.set(sid, { timer, ts: t });
+  _pendingTurnEndTimers.set(sid, { timer, ts: t, scopeKey: scopeKeyOf(sc.project, sc.instance) });
 }
 
 // Task-checklist broadcast (task-bridge.js → /api/task-event → deps.onTaskEvent).
@@ -2660,28 +2747,39 @@ function _scheduleTurnEndBroadcast(sessionId, ts, transcriptPath = null) {
 // trailing debounce coalesces multi-task flips (e.g. a batch TaskCreate turn)
 // into one SSE frame.
 const TASK_UPDATE_DEBOUNCE_MS = 120;
-let _taskBroadcastTimer = null;
+// Per-workspace: one debounce timer PER SCOPE — a single shared timer let a
+// later scope's schedule clearTimeout an earlier scope's pending frame and
+// drop it whole (a scope with a single TaskCreated then going quiet would
+// never show it). Mirrored after _pendingTurnEndTimers.
+const _taskBroadcastTimers = new Map(); // scopeKey → timer
 
-function _emitTaskUpdate() {
+function _emitTaskUpdate(scopeKey = BOUND_SCOPE) {
   if (clients.length === 0 || !sendEventToClients) return;
   // Parity with _emitTurnEnd: a broadcast failure must never surface as an
   // uncaught exception from the debounce timer.
   try {
-    const snap = getTaskSnapshot();
-    sendEventToClients(clients, 'task_update', { sessionId: snap.sessionId, tasks: snap.tasks, ts: Date.now() });
+    const snap = getTaskSnapshot(scopeKey);
+    const sc = parseScopeKey(scopeKey);
+    const target = sc.project
+      ? filterClientsByScope(clients, sc.project, sc.instance, _projectName || '')
+      : _filterClientsByViewProject(clients, _projectName || '');
+    sendEventToClients(target, 'task_update', { sessionId: snap.sessionId, tasks: snap.tasks, ts: Date.now(), project: sc.project || (_projectName || ''), instance: sc.instance || null });
   } catch (err) {
     console.warn('[task-update] broadcast failed:', err && err.message);
   }
 }
 
-function _scheduleTaskUpdateBroadcast() {
+function _scheduleTaskUpdateBroadcast(scopeKey = BOUND_SCOPE) {
   if (_isStopping) return;
-  if (_taskBroadcastTimer) clearTimeout(_taskBroadcastTimer);
-  _taskBroadcastTimer = setTimeout(() => {
-    _taskBroadcastTimer = null;
-    _emitTaskUpdate();
+  const key = scopeKey || BOUND_SCOPE;
+  const existing = _taskBroadcastTimers.get(key);
+  if (existing) clearTimeout(existing);
+  const timer = setTimeout(() => {
+    _taskBroadcastTimers.delete(key);
+    _emitTaskUpdate(key);
   }, TASK_UPDATE_DEBOUNCE_MS);
-  if (typeof _taskBroadcastTimer.unref === 'function') _taskBroadcastTimer.unref();
+  if (typeof timer.unref === 'function') timer.unref();
+  _taskBroadcastTimers.set(key, timer);
 }
 
 // 直接丢弃所有 pending —— 用于两条路径：(1) `_doStop` shutdown，(2) rising-edge 新请求
@@ -2692,11 +2790,21 @@ function _cancelAllPendingTurnEndBroadcasts() {
   _pendingTurnEndTimers.clear();
 }
 
-function _onStreamingActivated() {
-  // rising-edge：Claude 又开始新一轮 query()，按用户原始语义「10s 内有新请求 → 不算完成 →
-  // 不播放」，直接 cancel 所有 pending（**不** flush）。这正是用户键入「请等待 10 秒钟」
-  // 的本意：被打断就当没完成。
-  _cancelAllPendingTurnEndBroadcasts();
+// Cancel the pending turn_end broadcasts of ONE scope (rising-edge new request
+// in that scope — by the user's original semantics "a new request within 10s ⇒
+// not really finished ⇒ don't play"). Other scopes' pending timers are
+// untouched (a foreign workspace's turn must never cancel this one's).
+function _cancelPendingTurnEndForScope(scopeKey) {
+  if (_pendingTurnEndTimers.size === 0) return;
+  for (const [sid, entry] of _pendingTurnEndTimers) {
+    if ((entry.scopeKey || BOUND_SCOPE) !== scopeKey) continue;
+    clearTimeout(entry.timer);
+    _pendingTurnEndTimers.delete(sid);
+  }
+}
+
+function _onStreamingActivated(scopeKey = BOUND_SCOPE) {
+  _cancelPendingTurnEndForScope(scopeKey);
   // A new turn also lifts the chat-queue Stop-park: parked bubbles resume auto-draining
   // at the next turn end.
   try { chatQueue.onStreamingActivated(); } catch { /* best-effort */ }
@@ -2713,18 +2821,18 @@ function _onStreamingActivated() {
 // explicit user interrupt. No streaming rising-edge fallback by design:
 // housekeeping/telemetry requests after query() end would re-light it for the
 // whole staleness window (see HISTORY note at _scheduleTurnEndBroadcast).
-// Single global flag, same constraint as streamingState (one streaming session
-// per server process). Broadcasts/replay reach only viewers of the BOUND project
-// (more filtered than streaming_status, which broadcasts bound-project state to
-// all clients): a chip-switched parallel view sees no spinner, matching the
-// pre-multi-PTY single-project posture (see the streaming_status timer comment).
+// Per-workspace (2026-10): the flag is bucketed per producer scope ('' = the
+// bound project — the legacy singleton). Broadcasts/replay reach exactly that
+// scope's viewers, so a parallel workspace's prompt lights ITS OWN spinner
+// (previously bound-only — a chip-switched parallel view saw none).
 //
-// Heartbeat: while the flag is up, re-broadcast `turn_active` every
-// TURN_ACTIVE_HEARTBEAT_MS. Local tool execution (Bash > 30s builds/tests) produces
-// NO turn-level frames and NO API traffic — without a heartbeat the client's
-// staleness escape cannot distinguish "silent tool" from "lost Stop POST" and
-// would kill the spinner mid-turn. The heartbeat rides the same view-project
-// filter; when the flag drops (Stop POST / interrupt), it stops, and the client
+// Heartbeat: while any scope's flag is up, re-broadcast `turn_active` per scope
+// every TURN_ACTIVE_HEARTBEAT_MS (each scope with its own session tag). Local
+// tool execution (Bash > 30s builds/tests) produces NO turn-level frames and NO
+// API traffic — without a heartbeat the client's staleness escape cannot
+// distinguish "silent tool" from "lost Stop POST" and would kill the spinner
+// mid-turn. The heartbeat rides the same view-project filter; when a scope's
+// flag drops (Stop POST / interrupt) it leaves the iteration, and the client
 // backstop still catches a process-death/stuck-server within one window.
 
 // Pure predicate (unit-tested): does this /api/task-event payload mark a new
@@ -2744,17 +2852,24 @@ export function isTurnStartTaskEvent(payload, currentSessionId) {
 
 const TURN_ACTIVE_HEARTBEAT_MS = 10 * 1000;
 let _turnActiveHeartbeat = null;
-// Session tag of the turn that lit the flag — the load-bearing gate for
-// UserPromptSubmit (agentId is unreliable on this hook; see task-state.js). A Stop
-// POST clears the flag but keeps the tag: the NEXT prompt re-tags, and a stale tag
-// must not reject it (the tag only rejects prompts from a DIFFERENT live session).
-let _turnSessionId = null;
+// Per-scope session tags of the turns that lit each flag — the load-bearing
+// gate for UserPromptSubmit (agentId is unreliable on this hook; see
+// task-state.js). Keyed by scope ('' = bound). A Stop POST clears the flag but
+// keeps the tag: the NEXT prompt of the same session re-tags, and a stale tag
+// must not reject it (the tag only rejects prompts from a DIFFERENT live
+// session of the SAME scope).
+const _turnSessionIdByScope = new Map();
 
-function _armTurnActiveHeartbeat(sessionId) {
+function _armTurnActiveHeartbeat() {
   if (_turnActiveHeartbeat) return; // already armed
   _turnActiveHeartbeat = setInterval(() => {
-    if (_isStopping || !turnActive.active) { _clearTurnActiveHeartbeat(); return; }
-    _broadcastTurnActive(true, sessionId || null);
+    const scopes = activeTurnScopes();
+    if (_isStopping || scopes.length === 0) { _clearTurnActiveHeartbeat(); return; }
+    // Broadcast each scope's own tag — a foreign session's sid must never ride
+    // this scope's heartbeat (the connect replay validates against it).
+    for (const key of scopes) {
+      _broadcastTurnActive(true, _turnSessionIdByScope.get(key) || null, parseScopeKey(key));
+    }
   }, TURN_ACTIVE_HEARTBEAT_MS);
   if (typeof _turnActiveHeartbeat.unref === 'function') _turnActiveHeartbeat.unref();
 }
@@ -2763,39 +2878,51 @@ function _clearTurnActiveHeartbeat() {
   if (_turnActiveHeartbeat) { clearInterval(_turnActiveHeartbeat); _turnActiveHeartbeat = null; }
 }
 
-function _broadcastTurnActive(active, sessionId) {
+function _broadcastTurnActive(active, sessionId, scope = null) {
   if (_isStopping) return;
   if (!sendEventToClients || clients.length === 0) return;
+  const sc = scope || { project: '', instance: null };
   try {
     sendEventToClients(
-      _filterClientsByViewProject(clients, _projectName || ''),
+      sc.project
+        ? filterClientsByScope(clients, sc.project, sc.instance, _projectName || '')
+        : _filterClientsByViewProject(clients, _projectName || ''),
       'turn_active',
-      { active, sessionId: sessionId || null, ts: Date.now() },
+      { active, sessionId: sessionId || null, ts: Date.now(), project: sc.project || (_projectName || ''), instance: sc.instance || null },
     );
   } catch (err) { reportSwallowed('turn-active.broadcast', err); }
 }
 
 // State-change guard: only broadcast on real transitions (SDK paths share the
 // turn-end entry points and would otherwise emit duplicate frames). The heartbeat
-// is armed/disarmed here so it tracks the flag exactly.
-function _setTurnActive(active, sessionId) {
+// is armed/disarmed here so it tracks the flag exactly. Scope defaults to bound
+// ('') — the legacy single-workspace behavior is byte-identical.
+function _setTurnActive(active, sessionId, scope = null) {
+  const sc = scope || { project: '', instance: null };
+  const key = scopeKeyOf(sc.project, sc.instance);
+  const bucket = turnStateFor(key);
   const next = !!active;
-  if (next === turnActive.active) return;
-  setTurnActive(next);
-  if (next) _armTurnActiveHeartbeat(sessionId); else _clearTurnActiveHeartbeat();
-  _broadcastTurnActive(next, sessionId);
+  if (next === bucket.active) return;
+  bucket.active = next;
+  if (key === BOUND_SCOPE) setTurnActive(next);
+  if (next) _turnSessionIdByScope.set(key, sessionId || null);
+  if (activeTurnScopes().length > 0) _armTurnActiveHeartbeat(); else _clearTurnActiveHeartbeat();
+  _broadcastTurnActive(next, sessionId, sc);
 }
 
 // 统一的 streaming-state 观察入口。production polling 和 SDK push 都调它，测试也走它，
 // 不再为「测试桩」单独维护 mirror state（杜绝逻辑漂移）。返回是否检测到 rising edge。
 // `_isStopping` 时直接返回 false：shutdown 中迟到的 tick 不应再去 flush。
-function _observeStreamingTick(activeNow, mode /* 'cli' | 'sdk' */) {
+// Per-workspace: scopeKey defaults to bound (''); the rising-edge cancel only
+// clears THAT scope's pending turn_end timers. The 'sdk' mode lane has no
+// production caller (tests only) and stays a single bound-scope flag.
+function _observeStreamingTick(activeNow, mode /* 'cli' | 'sdk' */, scopeKey = BOUND_SCOPE) {
   if (_isStopping) return false;
   const isActive = !!activeNow;
-  const wasActive = mode === 'sdk' ? _lastSdkActive : _lastCliActive;
-  if (mode === 'sdk') _lastSdkActive = isActive; else _lastCliActive = isActive;
+  const wasActive = mode === 'sdk' ? _lastSdkActive : (_lastCliActiveByScope.get(scopeKey) || false);
+  if (mode === 'sdk') _lastSdkActive = isActive; else _lastCliActiveByScope.set(scopeKey, isActive);
   if (isActive && !wasActive) {
-    _onStreamingActivated();
+    _onStreamingActivated(scopeKey);
     return true;
   }
   return false;
@@ -2812,34 +2939,38 @@ export const __testing = (process.env.NODE_ENV === 'test') ? {
     _cancelAllPendingTurnEndBroadcasts();
     _isStopping = false;
     _lastSdkActive = false;
-    _lastCliActive = false;
+    _lastCliActiveByScope.clear();
     _stoppingPromise = null;
     _onTurnEndBroadcastForTests = null;
     setTurnActive(false);
     _clearTurnActiveHeartbeat();
-    _turnSessionId = null;
+    _turnSessionIdByScope.clear();
+    clearScopeState();
   },
   onBroadcast(fn) { _onTurnEndBroadcastForTests = fn; },
   getPendingKeys() { return [..._pendingTurnEndTimers.keys()]; },
   setIsStopping(v) { _isStopping = !!v; },
-  observeStreamingTick(activeNow, mode = 'cli') { return _observeStreamingTick(activeNow, mode); },
-  scheduleTurnEnd(sessionId, ts) { _scheduleTurnEndBroadcast(sessionId, ts); },
+  observeStreamingTick(activeNow, mode = 'cli', scopeKey = BOUND_SCOPE) { return _observeStreamingTick(activeNow, mode, scopeKey); },
+  scheduleTurnEnd(sessionId, ts, scope = null) { _scheduleTurnEndBroadcast(sessionId, ts, null, scope); },
   getDebounceMs() { return TURN_END_DEBOUNCE_MS; },
-  getPtyTurnActive() { return turnActive.active; },
-  setPtyTurnActive(v, sessionId = null) { _setTurnActive(v, sessionId); },
+  getPtyTurnActive(scopeKey = BOUND_SCOPE) { return turnStateFor(scopeKey).active; },
+  setPtyTurnActive(v, sessionId = null, scope = null) { _setTurnActive(v, sessionId, scope); },
   // Routes the payload through the SAME predicate the deps.onTaskEvent closure
   // uses, so tests exercise the production gate rather than a mirror of it.
   notifyTaskEvent(payload) {
-    if (isTurnStartTaskEvent(payload, _turnSessionId)) {
-      _turnSessionId = payload?.sessionId || null;
-      _setTurnActive(true, payload?.sessionId);
+    const sc = _resolveScopeForHookPayload(payload);
+    const key = scopeKeyOf(sc.project, sc.instance);
+    if (isTurnStartTaskEvent(payload, _turnSessionIdByScope.get(key) || null)) {
+      _turnSessionIdByScope.set(key, payload?.sessionId || null);
+      _setTurnActive(true, payload?.sessionId, sc);
     }
   },
   // Clear drops the flag but KEEPS the session tag: the next prompt of the SAME
   // session re-lights fast (tag match), while a foreign session's prompt stays
   // rejected. The tag resets only on test reset / server stop.
-  clearPtyTurnActive() { _setTurnActive(false, null); },
-  getTurnSessionId() { return _turnSessionId; },
+  clearPtyTurnActive(scope = null) { _setTurnActive(false, null, scope); },
+  getTurnSessionId(scopeKey = BOUND_SCOPE) { return _turnSessionIdByScope.get(scopeKey) || null; },
+  resolveScopeForHookPayload(payload) { return _resolveScopeForHookPayload(payload); },
 } : Object.freeze({
   reset() {},
   onBroadcast() {},
@@ -2857,10 +2988,16 @@ export const __testing = (process.env.NODE_ENV === 'test') ? {
 /**
  * Schedule a debounced turn_end SSE broadcast. **Returns immediately**; actual SSE write
  * happens up to TURN_END_DEBOUNCE_MS later (default 10s; clamped [100,60000]).
- * 详细语义见 SUNSET-MARKER patch-note。
+ * 详细语义见上方 SUNSET-MARKER 注释块（ccv-turn-end-debounce）。
+ * Per-workspace: `cwd` (SDK 'result' path) routes the frame to that workspace's
+ * scope; absent ⇒ the bound project (legacy). (A pre-resolved scope can instead
+ * be passed straight to `_scheduleTurnEndBroadcast` by the hook routes.)
  */
-export function broadcastTurnEnd(sessionId = null, ts = Date.now()) {
-  _scheduleTurnEndBroadcast(sessionId, ts);
+export function broadcastTurnEnd(sessionId = null, ts = Date.now(), transcriptPath = null, cwd = null) {
+  const scope = cwd
+    ? normalizeProducerScope({ project: projectKeyForCwd(cwd) || '', instance: null }, _projectName || '')
+    : null;
+  _scheduleTurnEndBroadcast(sessionId, ts, transcriptPath, scope);
 }
 
 // 流式状态 SSE 推送定时器：检测 streamingState 变化并广播给所有客户端。
@@ -2876,27 +3013,41 @@ let _updateCheckTimer = null;
 // Exported for tests: workspace-mode startViewer defers this timer to initPostLaunch, but
 // lifecycle tests need to drive the streaming_status poll directly (setSdkStreamingState
 // was retired in the wire architecture; the timer reads interceptor's streamingState).
+// One 500ms tick over ONE scope's streaming bucket: rising-edge cancel + the
+// changed-or-active broadcast, routed to exactly that scope's viewers.
+function _streamingTickOnce(scopeKey) {
+  const st = streamingStateFor(scopeKey);
+  const isActive = st.active;
+  const wasActive = _lastCliActiveByScope.get(scopeKey) || false;
+  // 统一走 _observeStreamingTick：内部负责 rising-edge cancel（丢弃该 scope 的
+  // pending turn_end，不 flush）+ 更新该 scope 的 edge 记录。
+  _observeStreamingTick(isActive, 'cli', scopeKey);
+  const changed = wasActive !== isActive;
+  if (changed || isActive) {
+    const data = isActive
+      ? { ...st, elapsed: Date.now() - st.startTime }
+      : { active: false };
+    // Per-workspace: each scope's spinner reaches only its own viewers. The
+    // bound scope ('') rides the legacy project filter — byte-identical to the
+    // old bound-only broadcast when no parallel workspace exists.
+    if (clients.length > 0 && sendEventToClients) {
+      const sc = parseScopeKey(scopeKey);
+      const target = sc.project
+        ? filterClientsByScope(clients, sc.project, sc.instance, _projectName || '')
+        : _filterClientsByViewProject(clients, _projectName || '');
+      sendEventToClients(target, 'streaming_status', { ...data, project: sc.project || (_projectName || ''), instance: sc.instance || null });
+    }
+  }
+}
+
 export function startStreamingStatusTimer() {
   if (_streamingStatusTimer) return;
   _streamingStatusTimer = setInterval(() => {
-    const isActive = streamingState.active;
-    const wasActive = _lastCliActive;
-    // 统一走 _observeStreamingTick：内部负责 rising-edge cancel（丢弃 pending turn_end，不 flush）+ 更新 _lastCliActive。
-    _observeStreamingTick(isActive, 'cli');
-    const changed = wasActive !== isActive;
-    if (changed || isActive) {
-      const data = isActive
-        ? { ...streamingState, elapsed: Date.now() - streamingState.startTime }
-        : { active: false };
-      // Multi-project (2026-10): streamingState is a global singleton tracking the
-      // BOUND project's main process — route the spinner only to clients viewing
-      // that project, so a parallel project's view never shows the bound
-      // project's streaming flag (cross-project spinner bleed). (Per-project
-      // streaming state is a follow-up; today a parallel view simply shows no
-      // spinner, matching the pre-multi-PTY single-project behavior.)
-      if (clients.length > 0 && sendEventToClients) {
-        sendEventToClients(_filterClientsByViewProject(clients, _projectName || ''), 'streaming_status', data);
-      }
+    // Bound scope first (the common single-workspace case is exactly one
+    // iteration), then any parallel-workspace scopes with their own buckets.
+    _streamingTickOnce(BOUND_SCOPE);
+    for (const key of activeStreamingScopes()) {
+      if (key !== BOUND_SCOPE) _streamingTickOnce(key);
     }
   }, 500);
   _streamingStatusTimer.unref();
@@ -2919,8 +3070,17 @@ async function _doStop() {
   try { chatQueue.stop(); } catch { /* best-effort */ }
   // 对称 startViewer：下一次启动后第一次 active 才算 rising edge
   _lastSdkActive = false;
-  _lastCliActive = false;
+  _lastCliActiveByScope.clear();
   _clearTurnActiveHeartbeat();
+  // Per-workspace: tear down every non-bound scope bucket (stop/start cycles,
+  // workspace stop) so a restarted server never replays a stale spinner for a
+  // workspace that no longer exists. The bound bucket resets in place (legacy
+  // readers keep the same object identity).
+  try { clearScopeState(); } catch { /* best-effort */ }
+  // Symmetric: the per-scope session tags must not outlive the process either —
+  // a stale tag rejects the fresh session's first UserPromptSubmit after a
+  // stop/start cycle (isTurnStartTaskEvent's sid gate).
+  _turnSessionIdByScope.clear();
   // Tear down all IM bridge connections so a stop/start cycle (Electron tab switch, tests) never
   // leaks a second WS to the same app. Idempotent + swallows errors.
   // IM teardown + serverStopping hook 共用一个 3s 总预算（保持串行语义）：
@@ -2979,11 +3139,9 @@ async function _doStop() {
   // empty), but the module-level checklist itself must not leak into the next
   // stop/start cycle — a client connecting before the new session's startup
   // boundary would otherwise get the PREVIOUS session's snapshot.
-  if (_taskBroadcastTimer) {
-    clearTimeout(_taskBroadcastTimer);
-    _taskBroadcastTimer = null;
-  }
-  resetTasks();
+  for (const t of _taskBroadcastTimers.values()) clearTimeout(t);
+  _taskBroadcastTimers.clear();
+  resetAllTasks();
   resetStreamingState();
   // Turn-level flag dies with the server, cleared AFTER connections close (same slot
   // as resetStreamingState): a task-event arriving during the 3s IM-teardown window

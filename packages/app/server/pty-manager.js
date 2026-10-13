@@ -1,4 +1,5 @@
 import { resolveNativePath, LOG_DIR } from '../findcc.js';
+import { normalizeSessionCwd } from './lib/v2/layout.js';
 import { fileURLToPath } from 'node:url';
 import { join, dirname, sep } from 'node:path';
 import { chmodSync, statSync } from 'node:fs';
@@ -1213,6 +1214,58 @@ export function setPtySessionIdForInstance(instanceKey, sessionId) {
   s.sessionId = sessionId;
   sidToKey.set(sessionId, instanceKey);
   return true;
+}
+
+/**
+ * Resolve a claude session uuid to its owning PTY record's scope identity, for
+ * producer-side event routing (2026-10 per-workspace SSE channels). Returns
+ * null for a dead record: sidToKey survives killPtyFor (only respawn/overwrite
+ * /reap clear it, see setPtySessionId), so without the liveness gate a just-
+ * closed workspace's turn-end/task frames would resolve to a corpse scope.
+ * @param {string} sessionId
+ * @returns {{instanceKey: string, cwd: string|null, project: string}|null}
+ */
+export function resolvePtyForSession(sessionId) {
+  if (typeof sessionId !== 'string' || !sessionId) return null;
+  const key = sidToKey.get(sessionId);
+  if (!key) return null;
+  const rec = ptys.get(key);
+  if (!rec || !rec.ptyProcess) return null;
+  const cwd = (typeof rec.cwd === 'string' && rec.cwd) || null;
+  return { instanceKey: key, cwd, project: cwd ? projectKeyForCwd(cwd) : '' };
+}
+
+/**
+ * Resolve a cwd to its SINGLE live PTY instanceKey, for hook-scope resolution
+ * (2026-10 per-workspace SSE channels). A hook payload that only carries cwd
+ * (no sessionId hit) would otherwise degrade to project-level scope — and
+ * `filterClientsByScope` treats instance=null as "every viewer of the project",
+ * over-delivering the frame to a same-cwd twin. Upgrade to the exact instance
+ * ONLY when exactly one live record owns this cwd; with two live twins there
+ * is no honest pick, so the caller keeps project-level (today's behavior).
+ * Matches on the record's persistent `cwd` (never realpath'd — both sides stay
+ * in the same path space), after a lexical normalize so a trailing slash or
+ * `/tmp` vs `/private/tmp` alias from the hook's stdin can't split the match.
+ * @param {string} cwd
+ * @returns {string|null} the sole live instanceKey, or null (none / ambiguous)
+ */
+export function resolveInstanceForCwd(cwd) {
+  if (typeof cwd !== 'string' || !cwd) return null;
+  let norm;
+  try { norm = normalizeSessionCwd(cwd); } catch { norm = cwd; }
+  if (!norm) return null;
+  let found = null;
+  for (const [k, rec] of ptys) {
+    if (!rec || !rec.ptyProcess) continue; // LIVE only — a dead record must not claim the scope
+    const recCwd = rec.cwd || null;
+    if (!recCwd) continue;
+    let recNorm;
+    try { recNorm = normalizeSessionCwd(recCwd); } catch { recNorm = recCwd; }
+    if (recNorm !== norm) continue;
+    if (found !== null) return null; // a second live twin — ambiguous, keep project-level
+    found = k;
+  }
+  return found;
 }
 
 /**

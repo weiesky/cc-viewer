@@ -19,10 +19,13 @@
  */
 
 // Hard caps, both defensive: the project count matches the realistic live-tab
-// count (each live main PTY is one project; 8 is generous), and the per-entry
-// window matches the cold-load limit (AppBase wantProject branch: 400 desktop
-// / 200 mobile) so a cached snapshot never holds more than a cold load would.
-const MAX_PROJECTS = 8;
+// count (each live main PTY is one project; 5 covers the common case), and the
+// per-entry window matches the cold-load limit (AppBase wantProject branch: 400
+// desktop / 200 mobile) so a cached snapshot never holds more than a cold load
+// would. Live-channel retention is capped separately (sseChannels maxChannels=3);
+// this cache is the resume path for every channel beyond that — 5 keeps the
+// common multi-workspace set warm without unbounded growth.
+const MAX_PROJECTS = 5;
 const DEFAULT_WINDOW = 400;
 
 /** Newest entry timestamp of a snapshot — the `since` resume cursor.

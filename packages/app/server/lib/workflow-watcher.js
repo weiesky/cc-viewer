@@ -39,7 +39,7 @@ function _signature(p) {
 function _isJournalFile(f) { return f.startsWith('wf_') && f.endsWith('.json'); }
 
 function _scan(state) {
-  const { workflowsDir, sessionId, project, clients, seen } = state;
+  const { workflowsDir, sessionId, project, clients, clientFilter, seen } = state;
   let files;
   try { files = readdirSync(workflowsDir); } catch { return; }
   for (const f of files) {
@@ -51,7 +51,11 @@ function _scan(state) {
     seen.set(f, sig);
     const data = readNormalizedJournal(p);
     if (!data) continue;
-    sendEventToClients(clients, 'workflow_update', {
+    // Per-workspace: a journal belongs to one project; when a client filter is
+    // installed the frame reaches only that project's viewers (legacy default:
+    // broadcast to all).
+    const target = typeof clientFilter === 'function' ? clientFilter(clients, project) : clients;
+    sendEventToClients(target, 'workflow_update', {
       sessionId,
       project: project || null,
       runId: data.runId,
@@ -99,7 +103,7 @@ function _baseline(state) {
  * 武装对某 workflows 目录的监视。同目录重复调用只刷新 clients 引用。
  * @param {{ workflowsDir: string, sessionId?: string, project?: string, clients: Array }} opts
  */
-export function armWorkflowWatch({ workflowsDir, sessionId, project, clients } = {}) {
+export function armWorkflowWatch({ workflowsDir, sessionId, project, clients, clientFilter } = {}) {
   if (!workflowsDir || !Array.isArray(clients)) return null;
 
   const existing = _armed.get(workflowsDir);
@@ -107,6 +111,7 @@ export function armWorkflowWatch({ workflowsDir, sessionId, project, clients } =
 
   const state = {
     workflowsDir, sessionId, project, clients,
+    clientFilter: typeof clientFilter === 'function' ? clientFilter : null,
     seen: new Map(), watcher: null,
     debounceTimer: null, safetyTimer: null, presenceTimer: null,
   };
@@ -177,13 +182,14 @@ function _authoritativeJournalExists(runDir, runId) {
 }
 
 function _scanLive(state) {
-  const { runDir, runId, sessionId, project, clients } = state;
+  const { runDir, runId, sessionId, project, clients, clientFilter } = state;
   const data = deriveLiveJournal(runDir, runId);
   if (data) {
     const sig = _liveSignature(data);
     if (sig !== state.lastSig) {  // 有实质变化才广播
       state.lastSig = sig;
-      sendEventToClients(clients, 'workflow_update', {
+      const target = typeof clientFilter === 'function' ? clientFilter(clients, project) : clients;
+      sendEventToClients(target, 'workflow_update', {
         sessionId,
         project: project || null,
         runId: data.runId,
@@ -228,7 +234,7 @@ function _startLiveWatch(state) {
  * 同 runDir 重复调用只刷新 clients。arm 时立即广播一次当前推导态（闭合 REST/arm 竞态）。
  * @param {{ runDir: string, runId: string, sessionId?: string, project?: string, clients: Array }} opts
  */
-export function armWorkflowLiveWatch({ runDir, runId, sessionId, project, clients } = {}) {
+export function armWorkflowLiveWatch({ runDir, runId, sessionId, project, clients, clientFilter } = {}) {
   if (!runDir || !runId || !Array.isArray(clients)) return null;
 
   const existing = _armedLive.get(runDir);
@@ -236,6 +242,7 @@ export function armWorkflowLiveWatch({ runDir, runId, sessionId, project, client
 
   const state = {
     runDir, runId, sessionId, project, clients,
+    clientFilter: typeof clientFilter === 'function' ? clientFilter : null,
     lastSig: null, watcher: null,
     debounceTimer: null, safetyTimer: null, presenceTimer: null,
   };

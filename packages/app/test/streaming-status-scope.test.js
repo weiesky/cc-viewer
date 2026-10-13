@@ -49,13 +49,28 @@ describe('streaming_status 绑定项目过滤语义', () => {
 });
 
 describe('server.js streaming_status 源码锚点', () => {
-  it('streaming_status 广播经 _filterClientsByViewProject 且以绑定项目为目标', () => {
-    const re = /sendEventToClients\(_filterClientsByViewProject\(clients, _projectName \|\| ''\), 'streaming_status', data\)/;
-    assert.ok(re.test(SERVER_SRC), 'streaming_status 必须经绑定项目过滤');
+  it('streaming_status 逐 scope 发送：bound 经 _filterClientsByViewProject、并行经 filterClientsByScope', () => {
+    // Per-workspace (2026-10): the timer is _streamingTickOnce per scope — the
+    // bound scope keeps the legacy project filter (byte-identical), a parallel
+    // scope rides filterClientsByScope (project+instance).
+    const tickOnce = /function _streamingTickOnce\(scopeKey\) \{[\s\S]*?sendEventToClients\(target, 'streaming_status',/;
+    assert.ok(tickOnce.test(SERVER_SRC), 'streaming_status 由 _streamingTickOnce 逐 scope 发送');
+    const boundFilter = /const target = sc\.project\s*\?\s*filterClientsByScope\(clients, sc\.project, sc\.instance, _projectName \|\| ''\)\s*:\s*_filterClientsByViewProject\(clients, _projectName \|\| ''\);/;
+    assert.ok(boundFilter.test(SERVER_SRC), 'bound scope 走 _filterClientsByViewProject、并行 scope 走 filterClientsByScope');
+    const timerIter = /_streamingTickOnce\(BOUND_SCOPE\);[\s\S]*?for \(const key of activeStreamingScopes\(\)\)/;
+    assert.ok(timerIter.test(SERVER_SRC), '定时器先 bound 后遍历活跃 scope');
   });
 
   it('_filterClientsByViewProject 是 filterClientsByViewProject 的绑定项目柯里化', () => {
     const re = /function _filterClientsByViewProject\(clientList, project\) \{\s*return filterClientsByViewProject\(clientList, project, _projectName \|\| ''\);/;
     assert.ok(re.test(SERVER_SRC), '_filterClientsByViewProject 绑定 _projectName');
+  });
+
+  it('legacy parity: bound scope 发送仍经 target 路由到 streaming_status', () => {
+    // 只锚「经 target 发送到 streaming_status」这一行为事实；不钉 payload 形状——
+    // additive 的 project/instance 是兼容策略（older clients ignore extra keys），
+    // 不是字节契约，逐字钉死会与上方注释自相矛盾且对恢复零附加键的未来重构误伤。
+    const payload = /sendEventToClients\(target, 'streaming_status',/;
+    assert.ok(payload.test(SERVER_SRC), 'streaming_status 经 target 路由发送');
   });
 });

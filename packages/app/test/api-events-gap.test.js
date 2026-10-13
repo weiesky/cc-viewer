@@ -250,6 +250,34 @@ describe('GET /events', () => {
     assert.equal(frames.find((f) => f.event === 'turn_active'), undefined);
   });
 
+  it('turn_active connect replay: a scoped getTurnActiveFor reporting true wins over the legacy fallback', async () => {
+    await seedV2([mainAgentEntry('2026-06-06T01:32:00.000Z', 101)]);
+    const req = new EventEmitter(); req.headers = {};
+    const res = makeRes();
+    // getTurnActiveFor wins when it returns a definite value (the legacy
+    // getPtyTurnActive would have said false here — the scope read must win).
+    await events(req, res, url('/events'), true, eventsDeps({
+      getTurnActiveFor: (scopeKey) => scopeKey === '',
+      getPtyTurnActive: () => false,
+    }));
+    const frames = parseFrames(bodyStr(res));
+    assert.ok(frames.find((f) => f.event === 'turn_active'), 'scoped true must light the replay');
+  });
+
+  it('turn_active connect replay: getTurnActiveFor returning undefined falls THROUGH to the legacy bound flag', async () => {
+    await seedV2([mainAgentEntry('2026-06-06T01:33:00.000Z', 102)]);
+    const req = new EventEmitter(); req.headers = {};
+    const res = makeRes();
+    // A scoped read that yields no verdict (undefined) must not suppress the
+    // legacy bound-only replay — the regression the value-based branch fixes.
+    await events(req, res, url('/events'), true, eventsDeps({
+      getTurnActiveFor: () => undefined,
+      getPtyTurnActive: () => true,
+    }));
+    const frames = parseFrames(bodyStr(res));
+    assert.ok(frames.find((f) => f.event === 'turn_active'), 'undefined scoped read falls through to legacy');
+  });
+
   it('honours an explicit ?limit and reports hasMore in load_start', async () => {
     await seedV2(Array.from({ length: 5 }, (_, i) => mainAgentEntry(`2026-06-06T01:0${i}:00.000Z`, 100 + i)));
     const req = new EventEmitter(); req.headers = {};
@@ -472,7 +500,7 @@ describe('POST /api/turn-end-notify', () => {
     assert.equal(res.statusCode, 200);
     assert.deepEqual(JSON.parse(bodyStr(res)), { ok: true });
     assert.equal(depsT._calls.length, 1, 'scheduleTurnEndBroadcast called once');
-    assert.deepEqual(depsT._calls[0], ['s1', 999, '/p']);
+    assert.deepEqual(depsT._calls[0], ['s1', 999, '/p', { project: '', instance: null }], 'scope resolved (no resolver dep → bound sentinel)');
   });
 
   it('fires onTurnActiveClear on the RAW POST arrival (pre-debounce spinner clear)', async () => {
