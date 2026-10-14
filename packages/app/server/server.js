@@ -33,7 +33,7 @@ import { filesFsRoutes } from './routes/files-fs.js';
 import { searchRoutes } from './routes/search.js';
 import { workspacesRoutes } from './routes/workspaces.js';
 import { expertRoutes } from './routes/expert.js';
-import { eventsRoutes } from './routes/events.js';
+import { eventsRoutes, serveEventStream, paramsFromParsedUrl } from './routes/events.js';
 import { v2Routes } from './routes/v2.js';
 import { askPermRoutes } from './routes/ask-perm.js';
 import { teamRoutes } from './routes/team.js';
@@ -327,6 +327,7 @@ const _editorCleanupTimer = setInterval(() => {
 }, 60000);
 _editorCleanupTimer.unref(); // Don't keep process alive for cleanup
 let terminalWss = null; // WebSocketServer reference for broadcasting
+let streamMux = null;   // /ws/mux dialogue-channel stream mux (SSE stays the fallback)
 let _writeToPty = null; // PTY write function reference (set by setupTerminalWebSocket)
 let _onPtyData = null;  // PTY data listener registration (set by setupTerminalWebSocket)
 export function setWorkspaceClaudeArgs(args) {
@@ -1473,6 +1474,18 @@ async function setupTerminalWebSocket(httpServer) {
     terminalWss = wss;
     const wssScratch = new WebSocketServer({ noServer: true });
 
+    // /ws/mux dialogue-channel stream mux (WS-mux migration phase B). Each logical stream is
+    // served by routes/events.js's serveEventStream — the SAME implementation behind the SSE
+    // /events route, so a mux stream produces the identical frame sequence (SSE stays the
+    // fallback transport). serveStream takes the sink + the open frame's raw query string,
+    // re-parsed through the SAME paramsFromParsedUrl so the two transports never drift.
+    const { createStreamMuxServer } = await import('./lib/ws-mux.js');
+    streamMux = createStreamMuxServer({
+      WebSocketServer,
+      serveStream: (sink, qs) => serveEventStream(sink, paramsFromParsedUrl(new URL(`http://x/?${qs || ''}`)), deps),
+      reportSwallowed,
+    });
+
     // 多客户端共享 PTY 的尺寸冲突解决：
     // 移动端优先——只要有移动端在线，PTY 始终使用移动端尺寸，
     // PC 端的 resize 仅存储不生效，避免宽屏尺寸导致移动端乱码。
@@ -1594,6 +1607,12 @@ async function setupTerminalWebSocket(httpServer) {
         }
         req.ccvScratchCwd = scratchCwd;
         handOffScratch();
+      } else if (pathname === '/ws/mux') {
+        // Dialogue-channel stream mux. Auth already enforced by decideAuth above (token from
+        // ?token= / ccv_auth cookie — tokenInterceptor/appendToken put it on the ws:// URL
+        // exactly like /ws/terminal). No socket-level ?project= stamp: each logical stream
+        // carries its own scope in its `open` frame (one mux socket serves many workspaces).
+        streamMux.handleUpgrade(req, socket, head);
       } else {
         socket.destroy();
       }
@@ -3143,6 +3162,13 @@ async function _doStop() {
   // Truncate in place (not `clients = []`) so the array reference stays stable across
   // stop/start cycles — deps.clients holds this same reference.
   clients.length = 0;
+  // Tear down the /ws/mux dialogue mux: server.close()/closeAllConnections() do NOT reach
+  // upgraded WebSocket sockets, so the mux must terminate its own sockets (and its per-socket
+  // ping timers / streams) or an Electron stop/start cycle would leak them.
+  if (streamMux) {
+    try { streamMux.close(); } catch { /* best-effort */ }
+    streamMux = null;
+  }
   if (server) {
     // 销毁所有活跃连接，防止 keep-alive 阻止进程退出
     server.closeAllConnections();
