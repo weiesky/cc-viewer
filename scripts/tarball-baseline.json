@@ -1521,6 +1521,7 @@
   "server/lib/workflow-live.js",
   "server/lib/workflow-watcher.js",
   "server/lib/ws-backpressure.js",
+  "server/lib/ws-mux.js",
   "server/proxy.js",
   "server/pty-manager.js",
   "server/routes/_dispatch.js",

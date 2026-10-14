@@ -123,9 +123,14 @@ describe('AppBase.jsx 源码锚点（防未来重构漂移）', () => {
     assert.ok(/if \(this\.state\.resumeSwitch\) this\._clearResumeSwitch\(\);/.test(APPBASE_SRC), '缓存命中缺立即清遮罩');
   });
 
-  it('load_end 增量合并分支放宽为 mobile 或 vm.hasViewCache', () => {
-    assert.ok(/isIncremental && \(isMobile \|\| vm\.hasViewCache\) && vm\.react\.requests\.length > 0/.test(APPBASE_SRC),
-      'load_end 合并分支未放宽到视图缓存');
+  it('load_end 增量合并分支放宽为「基线非空即合并」（覆盖 mobile/view-cache/WS-mux 同 URL 重连）', () => {
+    // WS-mux 迁移：合并条件从「isIncremental && (isMobile || vm.hasViewCache)」进一步放宽为
+    // 「isIncremental && 基线非空」——transport 的同 URL 重连也产增量 delta，而合并按
+    // timestamp|url 幂等。锚点钉死新形状，防止回退到「增量 delta 整片替换基线」的截断缺陷。
+    assert.ok(/isIncremental && vm\.react\.requests\.length > 0/.test(APPBASE_SRC),
+      'load_end 合并分支未放宽到「基线非空即合并」');
+    assert.ok(!/isIncremental && \(isMobile \|\| vm\.hasViewCache\)/.test(APPBASE_SRC),
+      'load_end 合并分支仍残留 mobile/hasViewCache 窄守卫');
   });
 
   it('stream-progress handler 有按 channel scope 的项目守卫', () => {

@@ -176,7 +176,10 @@ describe('channel isolation: background frames never touch the rendered view', (
       }
       addEventListener(name, fn) { (this.listeners[name] ||= []).push(fn); }
     };
-    globalThis.WebSocket = class { constructor() { this.readyState = 0; } send() {} close() {} };
+    // WS-mux: AppBase now opens the dialogue channel via createMuxTransport. Throwing in
+    // the constructor is the capability-probe failure → the transport synchronously falls
+    // back to a native EventSource on the same url, so these tests keep observing pure SSE.
+    globalThis.WebSocket = class { constructor() { throw new Error('ws disabled in test'); } };
 
     await buildAppBaseBundle();
     React = (await import('react')).default;

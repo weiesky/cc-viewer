@@ -158,6 +158,28 @@ function taskEventNotify(req, res, parsedUrl, isLocal, deps) {
   });
 }
 
+/**
+ * Parse the /events query into the canonical params object — the SINGLE parser shared by
+ * both transports (SSE: from the request URL; WS mux: from the `open` frame's raw query
+ * string fed through `new URL('?'+qs, …)`), so the two can never drift. Keeping `?limit`
+ * absent-vs-0 distinct (absent ⇒ DEFAULT_EVENTS_LIMIT, explicit 0 ⇒ "all") is load-bearing.
+ */
+export function paramsFromParsedUrl(parsedUrl) {
+  const g = (k) => parsedUrl.searchParams.get(k);
+  const sidRaw = g('sid');
+  const instanceRaw = g('instance');
+  const limitRaw = g('limit');
+  return {
+    sid: (typeof sidRaw === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sidRaw)) ? sidRaw : null,
+    project: g('project'),
+    instance: (typeof instanceRaw === 'string' && /^ccv-[0-9a-f]+$/.test(instanceRaw)) ? instanceRaw : null,
+    since: g('since'),
+    cc: parseInt(g('cc'), 10) || 0,
+    limitRaw,                       // keep the raw string so "absent" (null) ≠ "explicit 0"
+    limitGiven: limitRaw !== null,
+  };
+}
+
 // SSE endpoint
 // 构造「有新版」徽标的 SSE 帧（pending = {version, source}）。pending 为空返回 null。
 // 抽成纯函数便于单测帧格式；events() 在新连接上调用它补推，使版本徽标跨刷新持续显示。
@@ -167,15 +189,50 @@ export function sseUpdateBadgeFrame(pending) {
     : null;
 }
 
-async function events(req, res, parsedUrl, isLocal, deps) {
-  // Negotiated Content-Encoding (br|identity). From here on, every byte of
-  // this response MUST go through sseWrite — a bare res.write would corrupt
-  // the compressed stream (see server/lib/wire-compress.js).
-  sseHead(req, res, 200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-  });
+/**
+ * The sink contract — the transport-agnostic target the serve core writes to. An SSE
+ * `res` is adapted with `registrable === res`; a WS-mux logical stream provides its own
+ * shim (which IS the registrable). Both produce the identical (name, data) frame sequence
+ * by construction, because both run through this one function.
+ *   sink.write(text) -> bool     opaque SSE byte-append (a load_chunk is split across 3 writes)
+ *   sink.alive() -> bool         !destroyed && writable
+ *   sink.needsDrain() -> bool    socket-level backpressure signal
+ *   sink.awaitDrain() -> Promise resolves on drain / close / error / 30s timeout
+ *   sink.registrable             the object pushed into deps.clients (gets _ccvView* stamps)
+ */
+
+/**
+ * serveEventStream — THE single implementation of one /events stream, behind both the SSE
+ * route and the WS-mux stream. Resolves after history + kv/context + the broadcast-list
+ * push (so callers awaiting it observe the client registered). Returns { dispose } —
+ * dispose is idempotent: clears the per-stream pingTimer and splices the registrable out
+ * of deps.clients.
+ */
+export async function serveEventStream(sink, params, deps) {
+  const registrable = sink.registrable;
+  let closed = false;
+  let pingTimer = null;
+  const dispose = () => {
+    if (closed) return;
+    closed = true;
+    if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+    const idx = deps.clients.indexOf(registrable);
+    if (idx !== -1) deps.clients.splice(idx, 1);
+  };
+  // Register the close hook at the ENTRY (not after the history stream): a client that
+  // disconnects mid-cold-load must still clear the pingTimer and never be pushed — the
+  // previous tail-registration leaked the timer and pushed a dead res in that window.
+  sink.onClose?.(dispose);
+
+  const { sidParam, projectParam, instanceParam, sinceParam, ccParam, limitRaw, limitGiven } = {
+    sidParam: params.sid,
+    projectParam: params.project,
+    instanceParam: params.instance,
+    sinceParam: params.since,
+    ccParam: params.cc,
+    limitRaw: params.limitRaw,
+    limitGiven: params.limitGiven,
+  };
 
   // 注意：不要在此处 clients.push(res)！
   // 必须等 load_end + kv_cache + context_window 全部发送完毕后再加入广播列表，
@@ -184,8 +241,8 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   // 已处理的 live entry，导致 对话条目"显示→消失→重现"闪烁。
 
   // SSE 心跳保活：每 30s 发送 ping 事件，防止连接被 OS/代理/浏览器静默断开
-  const pingTimer = setInterval(() => {
-    try { sseWrite(res, 'event: ping\ndata: {}\n\n'); } catch {}
+  pingTimer = setInterval(() => {
+    try { sink.write('event: ping\ndata: {}\n\n'); } catch {}
   }, 30000);
 
   // server_config: 给前端推一次性的关键运行时常量，让前端 cooldown / debounce 等
@@ -193,15 +250,15 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   // 见 server.js 顶部 turnEnd debounce 的 SUNSET-MARKER 注释。
   // write 失败要 warn：之前静默吞会让 env override 漂移到前端硬常量 10s 而无人发觉。
   try {
-    sseWrite(res, `event: server_config\ndata: ${JSON.stringify({ turnEndDebounceMs: deps.turnEndDebounceMs, wireV3: !!deps.wireV3, build: deps.serverBuild || '' })}\n\n`);
+    sink.write(`event: server_config\ndata: ${JSON.stringify({ turnEndDebounceMs: deps.turnEndDebounceMs, wireV3: !!deps.wireV3, build: deps.serverBuild || '' })}\n\n`);
   } catch (err) {
     console.warn(`[server_config] SSE write failed (turnEndDebounceMs=${deps.turnEndDebounceMs}):`, err && err.message);
   }
 
   // 补推「有新版」徽标：复用启动检查缓存的结果，让刷新/新标签页连上即恢复徽标。
-  // 置于 deps.clients.push(res) 之前 → 新客户端仅得一份，不与一次性广播竞态。
+  // 置于 deps.clients.push 之前 → 新客户端仅得一份，不与一次性广播竞态。
   const updFrame = sseUpdateBadgeFrame(deps.pendingMajorUpdate);
-  if (updFrame) sseWrite(res, updFrame);
+  if (updFrame) sink.write(updFrame);
 
   // 1.7.0 迁移引导（P2）：「正在被查看的项目」仍有未转换的 v1 日志 → 连接即推 migrate_prompt。
   // 是否弹窗由客户端决定（「不再提醒」偏好在客户端；continued=true 时无视 dismissed
@@ -210,17 +267,15 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   // (declared below from ?project=) scopes the check to the project the client is
   // actually viewing, not always the bound one.
   try {
-    const migProject = parsedUrl.searchParams.get('project') || _projectName || '';
+    const migProject = projectParam || _projectName || '';
     const mig = migrationStatus(LOG_DIR, migProject);
     if (mig.pending) {
-      sseWrite(res, `event: migrate_prompt\ndata: ${JSON.stringify({ ...mig, continued: isContinuedLaunch() })}\n\n`);
+      sink.write(`event: migrate_prompt\ndata: ${JSON.stringify({ ...mig, continued: isContinuedLaunch() })}\n\n`);
     }
   } catch (e) { reportSwallowed('sse.migrate_prompt', e); }
 
-  // 增量加载参数：移动端带 since/cc/project 请求增量数据
-  const sinceParam = parsedUrl.searchParams.get('since');
-  const ccParam = parseInt(parsedUrl.searchParams.get('cc'), 10) || 0;
-  const projectParam = parsedUrl.searchParams.get('project');
+  // 增量加载参数：移动端带 since/cc/project 请求增量数据（sinceParam/ccParam/projectParam
+  // 已在头部从 params 解构）。
   // Multi-project (2026-10): a foreign `?project=` (a parallel-project VIEW)
   // may ALSO resume incrementally — the view-state cache keeps the departing
   // project's lastTs and the client returns with `?project=<p>&since=<lastTs>`.
@@ -231,12 +286,12 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   // so the bound-match condition is dropped (cc>0 + a valid date still guard).
   const useIncremental = !!(sinceParam && ccParam > 0 && !isNaN(new Date(sinceParam).getTime()));
 
-  // 分页参数：
+  // 分页参数（limitRaw/limitGiven 已在头部从 params 解构，保留 absent≠0 语义）：
   // - mobile 首次加载传 ?limit=200
   // - bare desktop 请求（无任何 query 参数）默认套 DEFAULT_EVENTS_LIMIT
   // - 显式 ?limit=0 表示"我要全量"（保留旧行为入口）
-  const limitParamRaw = parsedUrl.searchParams.get('limit');
-  const limitParamGiven = limitParamRaw !== null;
+  const limitParamRaw = limitRaw;
+  const limitParamGiven = limitGiven;
   const limitParamNum = parseInt(limitParamRaw, 10);
   let effectiveLimit = 0;
   if (!useIncremental) {
@@ -257,18 +312,10 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   //  - `?project=<p>` (no sid): project <p>'s CURRENT session — the newest
   //    readable, non-teammate session with a main turn — so a parallel-project
   //    chip can be VIEWED without respawning or killing its process.
-  const sidParamRaw = parsedUrl.searchParams.get('sid');
-  const sidParam = (typeof sidParamRaw === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sidParamRaw)) ? sidParamRaw : null;
-  // Multi-instance (2026-10-06): `?instance=<instanceKey>` narrows the view to ONE concurrent
-  // process of a same-cwd project (which otherwise share a basename session dir pool). It
-  // scopes the no-sid cold-load pick (each instance resolves to ITS OWN latest session) and is
-  // stamped on the SSE response so the per-project live feed can route to exactly the clients
-  // viewing that instance. Validated to the minted `ccv-<hex>` shape.
-  const instanceParamRaw = parsedUrl.searchParams.get('instance');
-  const instanceParam = (typeof instanceParamRaw === 'string' && /^ccv-[0-9a-f]+$/.test(instanceParamRaw)) ? instanceParamRaw : null;
+  // sidParam / instanceParam 已在头部从 params 解构并校验（sid=uuid 形状、instance=ccv-<hex>）。
   // `projectParam` (declared above for the incremental guard) doubles as the view
   // scope. The project this client is VIEWING: the explicit ?project= override,
-  // else the bound project. Stamped onto the SSE response so per-project feeds can
+  // else the bound project. Stamped onto the sink registrable so per-project feeds can
   // route live entries to exactly the clients viewing that project.
   const viewedProject = projectParam || (_projectName || '');
   const resolveColdSource = () => {
@@ -323,7 +370,7 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   // it attached — tell the client explicitly so it can toast + auto-detach.
   const sidNotFound = !!(sidParam && !viewColdDir);
   if (sidNotFound) {
-    try { sseWrite(res, `event: sid-not-found\ndata: ${JSON.stringify({ sid: sidParam, ts: Date.now() })}\n\n`); } catch { }
+    try { sink.write(`event: sid-not-found\ndata: ${JSON.stringify({ sid: sidParam, ts: Date.now() })}\n\n`); } catch { }
   }
   // Multi-instance (2026-10-06): an explicit `?instance=` that resolves to NO session dir must
   // likewise NOT silently fall through to the bound project's current session (the instance
@@ -353,7 +400,7 @@ async function events(req, res, parsedUrl, isLocal, deps) {
     }
   }
   if (instanceNoSession && !instanceAlive) {
-    try { sseWrite(res, `event: sid-not-found\ndata: ${JSON.stringify({ sid: null, instance: instanceParam, reason: 'instance-no-session', ts: Date.now() })}\n\n`); } catch { }
+    try { sink.write(`event: sid-not-found\ndata: ${JSON.stringify({ sid: null, instance: instanceParam, reason: 'instance-no-session', ts: Date.now() })}\n\n`); } catch { }
   }
   // When a view-scoped dir was requested AND resolved, it replaces the live-source
   // cold load; otherwise fall back to the standard single-current-session source.
@@ -405,30 +452,28 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   const coldLoadResult = v3Cold ? null : await streamRawEntriesAsync(emptyLiveView ? '' : (coldSource || getLiveLogSource({ serveInFlight: !!deps.wireV3 })), async (raw) => {
     // 直接发送原始 JSON 字符串，不做 parse/reconstruct/stringify
     // ExitPlanMode V2 空 input 的条目按需补全 plan / planFilePath，其它原样透传
-    if (res.destroyed || !res.writable) return;
+    if (!sink.alive()) return;
     const out = enrichRawIfNeeded(raw);
     // SSE data 字段不允许裸换行，去除 pretty-printed JSON 的换行
-    // 写入路径整体 try-catch 兜底：连接在 res.write 之间被对端 RST/destroy 时不至于
-    // 把 EPIPE 抛穿 async callback；res.on('close'|'error') 已会做 clients 数组清理。
+    // 写入路径整体 try-catch 兜底：连接在 write 之间被对端 RST/destroy 时不至于
+    // 把 EPIPE 抛穿 async callback；sink 的 close/error 已会做 clients 数组清理。
     let drained = true;
     try {
-      sseWrite(res, 'event: load_chunk\ndata: [');
-      const ok = sseWrite(res, out.includes('\n') ? out.replace(/\n/g, '') : out);
-      sseWrite(res, ']\n\n');
-      // Two pressure signals: `ok` is the write target's input buffer (the
-      // ENCODER on compressed paths — its backlog would otherwise be invisible
-      // because compressed output is 20-80x smaller and rarely fills the
-      // socket), needsDrain(res) is the socket itself. awaitWireDrain below
-      // waits on whichever stream actually applies the pressure.
-      drained = ok && !needsDrain(res);
+      sink.write('event: load_chunk\ndata: [');
+      const ok = sink.write(out.includes('\n') ? out.replace(/\n/g, '') : out);
+      sink.write(']\n\n');
+      // Two pressure signals: `ok` is the write target's input buffer (the ENCODER on
+      // compressed SSE paths), sink.needsDrain() is the socket itself. sink.awaitDrain()
+      // below waits on whichever stream actually applies the pressure.
+      drained = ok && !sink.needsDrain();
     } catch {
       return;
     }
     // 写缓冲满则等 drain（或 close/error/超时任一 fulfill），防止浏览器侧 renderer OOM。
-    // helper 内部会在 fulfill 时把另外两个监听器从 res 上摘掉，避免 N 次 backpressure
+    // helper 内部会在 fulfill 时把另外两个监听器从 sink 上摘掉，避免 N 次 backpressure
     // 累积出 N 个 stale close/error listener 触发 MaxListenersExceededWarning。
     if (!drained) {
-      await awaitWireDrain(res, deps.SSE_BACKPRESSURE_TIMEOUT_MS);
+      await sink.awaitDrain();
     }
   }, {
     since: useIncremental ? sinceParam : undefined,
@@ -458,7 +503,7 @@ async function events(req, res, parsedUrl, isLocal, deps) {
         loadStartData.hasMore = !!hasMore;
         loadStartData.oldestTs = oldestTs || '';
       }
-      sseWrite(res, `event: load_start\ndata: ${JSON.stringify(loadStartData)}\n\n`);
+      sink.write(`event: load_start\ndata: ${JSON.stringify(loadStartData)}\n\n`);
     },
   });
 
@@ -492,10 +537,10 @@ async function events(req, res, parsedUrl, isLocal, deps) {
         loadStartData.hasMore = !!meta.hasMore;
         loadStartData.oldestTs = meta.oldestTimestamp || '';
       }
-      sseWrite(res, `event: load_start\ndata: ${JSON.stringify(loadStartData)}\n\n`);
-      sseWrite(res, `event: v2_requests\ndata: ${rowsPayload}\n\n`);
-      for (const payload of native.convPayloads) sseWrite(res, `event: v3_conv\ndata: ${payload}\n\n`);
-      for (const payload of native.respPayloads) sseWrite(res, `event: v3_resp\ndata: ${payload}\n\n`);
+      sink.write(`event: load_start\ndata: ${JSON.stringify(loadStartData)}\n\n`);
+      sink.write(`event: v2_requests\ndata: ${rowsPayload}\n\n`);
+      for (const payload of native.convPayloads) sink.write(`event: v3_conv\ndata: ${payload}\n\n`);
+      for (const payload of native.respPayloads) sink.write(`event: v3_resp\ndata: ${payload}\n\n`);
       // kv-cache / context_window sources: rebuild the newest completed
       // mainAgent rows. Depth 3 mirrors the legacy scan-ring fallback (review
       // P2-e): the newest main may lack usage/cached-content or be a
@@ -508,7 +553,7 @@ async function events(req, res, parsedUrl, isLocal, deps) {
     } catch (err) { reportSwallowed('sse.v2_requests', err); }
   }
 
-  sseWrite(res, `event: load_end\ndata: {}\n\n`);
+  sink.write(`event: load_end\ndata: {}\n\n`);
 
   // S10a: v2 sources no longer invoke onScan (the two-pass window never
   // stringifies out-of-window entries) — the adapter returns the newest-main
@@ -541,10 +586,10 @@ async function events(req, res, parsedUrl, isLocal, deps) {
 
   // 发送最新 MainAgent 的 KV-Cache 和 context_window
   if (latestKvCache) {
-    sseWrite(res, `event: kv_cache_content\ndata: ${JSON.stringify(latestKvCache)}\n\n`);
+    sink.write(`event: kv_cache_content\ndata: ${JSON.stringify(latestKvCache)}\n\n`);
   }
   if (latestContextWindow) {
-    sseWrite(res, `event: context_window\ndata: ${JSON.stringify(latestContextWindow)}\n\n`);
+    sink.write(`event: context_window\ndata: ${JSON.stringify(latestContextWindow)}\n\n`);
     pushedContextWindow = true;
   }
   // Fallback: no MainAgent in log (e.g. fresh session after -c), read context-window.json.
@@ -571,7 +616,7 @@ async function events(req, res, parsedUrl, isLocal, deps) {
         const effectiveSize = adaptContextWindow(contextSize, inputTokens);
         const usedPct = effectiveSize > 0 ? Math.round((totalTokens / effectiveSize) * 100) : 0;
         const data = { ...cw, context_window_size: effectiveSize, used_percentage: usedPct, remaining_percentage: 100 - usedPct };
-        sseWrite(res, `event: context_window\ndata: ${JSON.stringify(data)}\n\n`);
+        sink.write(`event: context_window\ndata: ${JSON.stringify(data)}\n\n`);
       }
     } catch { }
   }
@@ -580,12 +625,16 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   // 这样 watcher 的 sendToClients 不会在 load 阶段向该客户端推送 live entry。
   // Stamp the viewed project so per-project feeds route live entries to exactly
   // the clients viewing that project (unset ⇒ the bound project, the default).
-  if (viewedProject) res._ccvViewProject = viewedProject;
+  // Stamped on the REGISTRABLE (the object in deps.clients): for SSE that is the res
+  // itself; for a WS-mux stream it is the per-stream shim (never the shared socket).
+  if (viewedProject) registrable._ccvViewProject = viewedProject;
   // Multi-instance: stamp the viewed instance too, so a same-cwd project's live feed can
   // route each instance's entries to exactly the clients viewing THAT instance (unset ⇒
   // instance-agnostic, the pre-multi-instance default).
-  if (instanceParam) res._ccvViewInstance = instanceParam;
-  deps.clients.push(res);
+  if (instanceParam) registrable._ccvViewInstance = instanceParam;
+  // Push-guard: a client whose close fired mid-cold-load (dispose already ran via the
+  // entry-registered onClose hook) must NOT be re-added to the broadcast list.
+  if (!closed) deps.clients.push(registrable);
 
   // 任务清单快照补推：内存态不在冷加载数据里，页面刷新/重连后横条要等下一次
   // 任务事件才恢复 —— 连接建立即推一份当前快照（空列表也推，清掉客户端残留）。
@@ -599,7 +648,7 @@ async function events(req, res, parsedUrl, isLocal, deps) {
   );
   try {
     const snap = typeof deps.getTaskSnapshot === 'function' ? deps.getTaskSnapshot(_viewScopeKey) : null;
-    if (snap) sseWrite(res, `event: task_update\ndata: ${JSON.stringify({ sessionId: snap.sessionId, tasks: snap.tasks, ts: Date.now() })}\n\n`);
+    if (snap) sink.write(`event: task_update\ndata: ${JSON.stringify({ sessionId: snap.sessionId, tasks: snap.tasks, ts: Date.now() })}\n\n`);
   } catch (err) { reportSwallowed('sse.task_update.snapshot', err); }
 
   // Turn-level loading replay: a page refresh mid-turn restores the spinner in the
@@ -616,20 +665,45 @@ async function events(req, res, parsedUrl, isLocal, deps) {
       ? _forScope
       : (viewedIsBound && deps.getPtyTurnActive?.());
     if (_turnActive) {
-      sseWrite(res, `event: turn_active\ndata: ${JSON.stringify({ active: true, sessionId: null, ts: Date.now() })}\n\n`);
+      sink.write(`event: turn_active\ndata: ${JSON.stringify({ active: true, sessionId: null, ts: Date.now() })}\n\n`);
     }
   } catch (err) { reportSwallowed('sse.turn_active.replay', err); }
 
-  // req.on('close') 在某些异常断连时不一定立即触发；res 端 close/error 兜底保证
-  // 不会在 clients 数组里留下幽灵 res，防止 sendToClients 后续写入触发慢泄漏。
-  const removeFromClients = () => {
-    clearInterval(pingTimer);
-    const idx = deps.clients.indexOf(res);
-    if (idx !== -1) deps.clients.splice(idx, 1);
+  // Close cleanup lives in the entry-registered dispose (sink.onClose at the top): it clears
+  // the pingTimer and splices the registrable out of deps.clients, covering a disconnect at
+  // ANY point (mid-cold-load included — the previous tail-only listener leaked that window).
+  return { dispose };
+}
+
+// /events route handler — a thin SSE-only shell over serveEventStream. It negotiates the
+// wire encoding, adapts the res into the sink contract, and lets the sink's onClose hook
+// register dispose on the transport's req/res close/error. The WS-mux path calls
+// serveEventStream directly with its own shim (whose onClose fires on stream teardown).
+async function events(req, res, parsedUrl, isLocal, deps) {
+  // Negotiated Content-Encoding (br|identity). From here on, every byte of this response
+  // MUST go through sseWrite — a bare res.write would corrupt the compressed stream.
+  sseHead(req, res, 200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  });
+  // onClose is set BEFORE serveEventStream runs so the entry-registered hook captures it:
+  // serveEventStream calls sink.onClose(dispose) at entry, and we fan dispose out to the
+  // req/res lifecycle. (req close may not fire on some abrupt disconnects; res close/error
+  // backstop guarantees no ghost res is left in clients — preventing a slow write leak.)
+  const sink = {
+    registrable: res,
+    write: (s) => sseWrite(res, s),
+    alive: () => !res.destroyed && res.writable !== false,
+    needsDrain: () => needsDrain(res),
+    awaitDrain: () => awaitWireDrain(res, deps.SSE_BACKPRESSURE_TIMEOUT_MS),
+    onClose: (dispose) => {
+      req.on('close', dispose);
+      res.on('close', dispose);
+      res.on('error', dispose);
+    },
   };
-  req.on('close', removeFromClients);
-  res.on('close', removeFromClients);
-  res.on('error', removeFromClients);
+  await serveEventStream(sink, paramsFromParsedUrl(parsedUrl), deps);
 }
 
 // API endpoint

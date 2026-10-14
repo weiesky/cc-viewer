@@ -35,6 +35,7 @@ import { rowToListItem } from './utils/v3Rows.js';
 import { createV3Assembler } from './utils/v3Assembler.js';
 import { createChannelState, appendJournal, cacheKeyForScope, clearChannelTimers } from './utils/viewChannelState';
 import { createChannelManager, scopeKeyFor, scopeOfKey, BOUND_CHANNEL_KEY } from './utils/sseChannels';
+import { createMuxTransport } from './utils/wsMuxTransport';
 import { reinitializeMermaid } from './hooks/useMermaidRender';
 import styles from './App.module.css';
 
@@ -352,8 +353,26 @@ class AppBase extends React.Component {
     // view's state slice; background ("tap") channels keep their own vm and a
     // live-entry journal, so switching back is a warm state swap — no teardown,
     // no cold load, and no cross-scope state on one connection.
-    this._channels = createChannelManager({
+    // WS-mux transport: prefers ONE shared /ws/mux socket (a logical stream per scope) and
+    // transparently falls back to a native EventSource on the SAME url when the mux cannot
+    // serve (capability) or a single stream fails (per-stream). SSE is the always-on fallback.
+    // onRuntimeFallback: the transport exhausted its transient-reconnect budget → the facade
+    // is handed back CLOSED. Rebuild that channel immediately (fresh-cursor reconnect) instead
+    // of waiting the 45s heartbeat — otherwise the view sits frozen for up to 45s where a
+    // native EventSource would have self-healed in seconds.
+    this._streamTransport = createMuxTransport({
       openEventSource: (url) => new EventSource(apiUrl(url)),
+      reportSwallowed,
+      onRuntimeFallback: (facade) => {
+        try {
+          for (const ch of this._channels._channels.values()) {
+            if (ch.es === facade && !ch.closed) { this._onChannelHeartbeatTimeout(ch); break; }
+          }
+        } catch (err) { reportSwallowed('ws.mux.handback', err); }
+      },
+    });
+    this._channels = createChannelManager({
+      openEventSource: (url) => this._streamTransport.open(url),
       // rendered + bound + the most-recent parallel view (HTTP/1.1 ~6/origin).
       maxChannels: 3,
       heartbeatMs: CHANNEL_HEARTBEAT_MS,
@@ -1606,6 +1625,7 @@ class AppBase extends React.Component {
       });
     }
     this._channels.closeAll();
+    this._streamTransport?.closeAll();
     clearChannelTimers(this._localVm, {
       clearTimeout: (id) => clearTimeout(id),
       cancelAnimationFrame: (id) => cancelAnimationFrame(id),
@@ -2628,10 +2648,12 @@ class AppBase extends React.Component {
       const unlockContextBar = isIncremental && this._contextBarUnlocks(vm.react, delta);
 
       // 增量模式：Map 去重合并（delta 条目覆盖同 key 的缓存条目）。
-      // 覆盖两条增量路径：mobile 缓存（既有）与多项目视图缓存恢复（vm.hasViewCache，
-      // 恢复时已把 cached requests 提交为合并基线，这里直接复用同一合并）。
+      // 覆盖所有增量路径：mobile 缓存、多项目视图缓存恢复（vm.hasViewCache）、以及 WS-mux
+      // transport 的同 URL 重连（其 delta 是相对原 since/cc 游标的增量，而 vm.react.requests
+      // 已是合并基线）。合并本身按 timestamp|url 幂等——只要基线非空就合并，避免「增量 delta
+      // 整片替换基线」把视口历史截断为 since 之后的部分（既有缺陷，被 transport 主动重连放大）。
       let rawEntries;
-      if (isIncremental && (isMobile || vm.hasViewCache) && vm.react.requests.length > 0) {
+      if (isIncremental && vm.react.requests.length > 0) {
         if (delta.length === 0) {
           // 无新数据，缓存已是最新，跳过重建（基线本就是完整的 → 记为 committed）
           const st = { fileLoading: false, fileLoadingCount: 0, fileLoadingBytes: null };
@@ -2923,6 +2945,7 @@ class AppBase extends React.Component {
       });
     }
     this._channels.closeAll();
+    this._streamTransport?.closeAll();
     // NOTE: no clearViewedWorkspace() here — workspace_stopped is broadcast to
     // every SSE client (see workspace_started note above); clearing storage on
     // a broadcast would clobber a workspace another tab just persisted.
@@ -4425,6 +4448,7 @@ class AppBase extends React.Component {
         });
       }
       this._channels.closeAll();
+      this._streamTransport?.closeAll();
       const { mainAgentSessions, filtered } = this._processEntries(normalized);
       this._isLocalLog = true;
       this._localLogFile = fileNames.length === 1 ? fileNames[0] : `${fileNames.length} files`;
