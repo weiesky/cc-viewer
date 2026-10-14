@@ -29,7 +29,8 @@
     "electron:dev": "pnpm --filter @ccv/electron run dev",
     "electron:build": "pnpm --filter @ccv/electron run build",
     "electron:sign": "pnpm --filter @ccv/electron run sign",
-    "electron:check-sign": "pnpm --filter @ccv/electron run check-sign"
+    "electron:check-sign": "pnpm --filter @ccv/electron run check-sign",
+    "verify:mac-keychain": "node --test scripts/test/mac-keychain.test.mjs"
   },
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.91",
