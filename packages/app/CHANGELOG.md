@@ -1,5 +1,13 @@
 # cc-viewer
 
+## 1.9.5
+
+### Patch Changes
+
+- 5c28d4c: feat(sse): **多工作区并发改为「每工作区一条常驻独立 SSE 通道」** — 原「一条连接按查看作用域撕了重建」在多工作区并发下让 spinner/streaming/任务清单/血条/打字机等「特殊状态」跨工作区纠缠。服务端：streaming/turn 状态由进程级单例改为按 scope 键控的 Map（bound 归一化为 `''` 哨兵），`turn_end`/`task_update`/`stream-progress`/`session_pin`/`workflow_update` 全部按 scope 路由（hook 负载统一经 sid→cwd→bound 解析器定 scope；stream chunk 的 project 过滤原是投射错误的死代码，本次顺带真正生效——这是唯一的非等价点）。前端：AppBase 的单 EventSource 换成 `createChannelManager`——每作用域（bound/project/project+instance/sid）一条常驻通道（上限 3 条规避 HTTP/1.1 连接上限），渲染视图只从「渲染中通道」的独立 vm 取数，切回暖通道瞬时渲染零网络零遮罩。单工作区下只剩一条通道、一个状态桶，行为与旧版等价。
+- 2dbe5cd: feat(web): 汉堡菜单「钉住」持久化从 localStorage(`ccv_pinnedMenuKeys`,JSON 字符串)迁移到 preferences.json 的 `pinnedMenuKeys`(真数组,顺序=钉住先后),跨浏览器/设备一致,并随「项目独立配置」fork 到项目作用域(跟随默认,服务端零改动)。首启一次性迁移:preferences 缺该键而 legacy localStorage 有值 → 写回并清理旧键;服务端已持有权威数组时直接清理遗留旧键(防死数据复活)。初值不用 legacy 乐观种子、恒从空开始等权威水合(pins 晚一个 RTT 出现),杜绝陈旧种子覆盖他端 pin;水合窗口内用户已 toggle 时,迟到的初始 GET 不回退其操作(`_pinnedTouched` 闩锁 + `_prefsHydrated` 门控,用户 POST 落盘后才开闸;该 POST 对服务端当前值为整数组 LWW 覆盖,窗口仅一个 RTT,为已接受的取舍),全部写回经 `_persistQueue` promise 链串行化(乱序会丢 pin)且链自愈;GET 失败按 logDir stamp 判别、保留现状不清旧键。日志模式(isLocalLog)统一走 preferences,不再保留 localStorage 双轨。Coverage: `pinned-menu.test.js`, `pinned-menu-prefs-migration.test.js`.
+- db2ada0: feat(sse): **对话实时通道改为「单条 WebSocket 多路复用」，SSE 自动降级兜底** — 每作用域（bound/project/project+instance/sid）原本各占一条常驻 SSE 连接，受浏览器 HTTP/1.1 每域约 6 连接上限挤压。现把对话通道迁到一条共享 `/ws/mux` WebSocket：每条逻辑流按 `streamId` 复用同一连接（open/close/open-ack/frame/error/close 帧，qs 原始 query 直通、per-stream seq 游标不回退、25s 应用层心跳），HTTP 连接压力自此解除（应用层通道上限 maxChannels=3 暂不变，抬上限留待后续）。SSE 路径完整保留为兜底：握手失败/无 `/ws/mux` 路由（旧服务端）/运行中断线预算耗尽时，按能力探测自动回落——握手/能力失败回落同一 URL 的原生 EventSource（携带 since/cc 游标）；运行中断线先按预算重连 WS，耗尽则交还通道管理器走心跳路径用新游标重建（可能再选回 WS）。用户无感知、数据不丢；瞬时抖动只触发重连而非永久降级，能力缺失才页级回落（不落盘、刷新重探）。服务端发射面经 sink 抽象泛化（WS 逻辑流伪装成 SSE res 入 `clients`，广播/过滤/直写点零改动），`serveEventStream` 抽为 SSE/WS 共享的唯一播出实现，单工作区下两者帧载荷逐字节一致（等价性测试钉死）。WS 握手开启 `perMessageDeflate`（ws 内建 zlib，无新依赖），补上 mux 通道相对 SSE brotli 的压缩差距（实测可追回大部分字节放大）。顺带修复：桌面端增量 URL 同连重放时的视口截断（`_onLoadEnd` 合并条件放宽为「基线非空即合并」，合并按 timestamp|url 幂等）。Coverage: `ws-mux.test.js`, `ws-mux-equivalence.test.js`, `ws-mux-channel.test.js` + 既有 SSE/通道回归网。
+
 ## 1.9.4
 
 ### Patch Changes
