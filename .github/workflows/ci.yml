@@ -26,6 +26,7 @@ jobs:
       # -logger shell hook tests need real zsh (not included in ubuntu runner by default)
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
       - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm run verify:mac-keychain
       # --ignore-scripts (supply-chain hardening; retained) skips native compilation and
       # bypasses the allowBuilds allowlist; cli/PTY tests need node-pty, so rebuild it explicitly
       - run: pnpm rebuild node-pty

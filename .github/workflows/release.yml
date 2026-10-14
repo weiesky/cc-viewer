@@ -54,6 +54,9 @@ jobs:
       # ^12.1.0 keeps the VS2026 Windows image building.
       - run: pnpm install --frozen-lockfile
 
+      - name: Verify macOS keychain password handling
+        run: pnpm run verify:mac-keychain
+
       - run: pnpm run build
 
       - name: Assemble Electron staging
@@ -65,13 +68,6 @@ jobs:
 
       - name: Build Electron (mac)
         if: matrix.platform == 'mac'
-        # Apple notarization (notarytool) returns HTTP 403 when the Developer Agreement has
-        # expired or is unsigned — unrelated to code. Tolerate the failure: mark only this step
-        # as failed and skip the mac artifact, but do not block the entire release pipeline —
-        # win/linux artifacts, GitHub Release, and Homebrew bump proceed as normal. Once the
-        # agreement is re-signed at developer.apple.com, mac notarization and upload resume
-        # automatically.
-        continue-on-error: true
         timeout-minutes: 60
         run: pnpm --filter @ccv/electron exec electron-builder --mac --publish never
         env:
@@ -106,11 +102,7 @@ jobs:
             apps/electron/electron-dist/*.zip
             apps/electron/electron-dist/*.exe
             apps/electron/electron-dist/*.AppImage
-          # Missing artifacts on win/linux are always a bug — fail loudly. Mac keeps
-          # the tolerance: its build step is continue-on-error by design (expired
-          # Developer Agreement breaks notarization, not code) and simply skips the
-          # mac artifact.
-          if-no-files-found: ${{ matrix.platform == 'mac' && 'ignore' || 'error' }}
+          if-no-files-found: error
 
   publish:
     needs: build
