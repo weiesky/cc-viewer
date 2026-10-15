@@ -68,6 +68,9 @@
   display: flex;
   align-items: center;
   height: 26px;
+  /* .treeContainer 是 column flexbox；缺省 flex-shrink:1 会在行溢出视口时
+     把每行压到 26px 以下，行高/行距随展开抖动。钉住行高，溢出交给 overflow:auto 滚动。 */
+  flex-shrink: 0;
   padding: 0 8px;
   cursor: pointer;
   color: var(--text-secondary);
