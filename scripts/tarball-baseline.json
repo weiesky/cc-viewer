@@ -1465,6 +1465,7 @@
   "server/lib/scope-router.js",
   "server/lib/sdk-adapter.js",
   "server/lib/sdk-manager.js",
+  "server/lib/sdk-session-index.js",
   "server/lib/search-worker.js",
   "server/lib/session-id.js",
   "server/lib/session-pin-store.js",

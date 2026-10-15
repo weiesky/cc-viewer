@@ -1326,10 +1326,13 @@ describe('sdk-manager-query — SDK task_* 消息无损转发为 sdk-task 广播
 
     const t = broadcasts.filter((b) => b.type === 'sdk-task');
     // Whole-frame deepEqual: pins EVERY forwarded field (incl. prompt and the per-session
-    // routing cwd the multi-session registry stamps on every frame) and proves the relay
-    // leaks nothing else (no uuid, no snake_case keys, no extra envelope noise).
+    // routing cwd + instanceKey the multi-session registry stamps on every frame) and
+    // proves the relay leaks nothing else (no uuid, no snake_case keys, no extra envelope
+    // noise). instanceKey is the cwd-stable key — read it off the registry rather than
+    // hardcoding a hash.
+    const expectedKey = sdk.listSdkSessions().find((s) => s.cwd === tmpDir).instanceKey;
     assert.deepEqual(t, [{
-      type: 'sdk-task', cwd: tmpDir, subtype: 'task_started', sessionId: 'sess-1', taskId: 'task-1',
+      type: 'sdk-task', cwd: tmpDir, instanceKey: expectedKey, subtype: 'task_started', sessionId: 'sess-1', taskId: 'task-1',
       toolUseId: 'tu-1', description: '探索代码库', taskType: 'local_workflow',
       workflowName: 'spec', prompt: 'do it',
     }]);

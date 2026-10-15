@@ -25,6 +25,7 @@ const { resumeRoutes } = await import('../server/routes/resume.js');
 const { initForWorkspace } = await import('../server/interceptor.js');
 const { registerWorkspace } = await import('../server/workspace-registry.js');
 const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
+const { registerSdkSessionLister } = await import('../server/lib/sdk-session-index.js');
 
 // 绑定项目 + 一个 registered 的并行项目（有真实目录与文件）。
 const boundDir = join(tmpDir, 'boundProj');
@@ -42,6 +43,7 @@ await registerWorkspace(parallelDir);
 
 after(() => {
   delete process.env.CCV_PROJECT_DIR;
+  registerSdkSessionLister(null);
   try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
 });
 
@@ -88,6 +90,33 @@ describe('/api/files ?project=', () => {
     assert.equal(status, 404);
     assert.equal(body?.error, 'unknown project');
   });
+
+  it('SDK instance identity loads the exact same-name workspace instead of returning ambiguous', async () => {
+    const dirA = join(tmpDir, 'sdk-a', 'sameFiles');
+    const dirB = join(tmpDir, 'sdk-b', 'sameFiles');
+    mkdirSync(dirA, { recursive: true });
+    mkdirSync(dirB, { recursive: true });
+    writeFileSync(join(dirA, 'from-a.txt'), 'a');
+    writeFileSync(join(dirB, 'from-b.txt'), 'b');
+    await registerWorkspace(dirA);
+    await registerWorkspace(dirB);
+    const keyA = 'ccv-' + 'a'.repeat(32);
+    const keyB = 'ccv-' + 'b'.repeat(32);
+    registerSdkSessionLister(() => [
+      { cwd: dirA, instanceKey: keyA, active: false },
+      { cwd: dirB, instanceKey: keyB, active: true },
+    ]);
+    try {
+      const ambiguous = await callGet(files, '/api/files?path=.&project=sameFiles');
+      assert.equal(ambiguous.status, 400);
+      const exact = await callGet(files, `/api/files?path=.&project=sameFiles&instance=${keyB}`);
+      assert.equal(exact.status, 200);
+      assert.ok(JSON.stringify(exact.body).includes('from-b.txt'));
+      assert.ok(!JSON.stringify(exact.body).includes('from-a.txt'));
+    } finally {
+      registerSdkSessionLister(null);
+    }
+  });
 });
 
 describe('/api/skills ?project=', () => {
@@ -122,6 +151,70 @@ describe('/api/project-stats + /api/proxy-stats ?project=', () => {
   it('proxy-stats 无 ?project= → 绑定项目（parity：有 _projectName 时不 404）', async () => {
     const { status } = await callGet(xStats, '/api/proxy-stats');
     assert.ok(status !== 500, `parity 不 500: ${status}`);
+  });
+
+  it('stats routes consume instance identity instead of rejecting a same-name SDK project', async () => {
+    const dir = join(tmpDir, 'sdk-b', 'sameFiles');
+    const key = 'ccv-' + 'b'.repeat(32);
+    registerSdkSessionLister(() => [{ cwd: dir, instanceKey: key, active: true }]);
+    try {
+      const query = `project=sameFiles&instance=${key}`;
+      const projectStats = await callGet(pStats, `/api/project-stats?${query}`);
+      assert.notEqual(projectStats.status, 400);
+      const proxyStats = await callGet(xStats, `/api/proxy-stats?${query}`);
+      assert.equal(proxyStats.status, 200);
+      assert.ok('proxyStats' in (proxyStats.body || {}));
+    } finally {
+      registerSdkSessionLister(null);
+    }
+  });
+
+  it('a forged arbitrary name paired with a valid instance must NOT bypass the LOG_DIR guard', async () => {
+    // Regression (review P1): resolveViewRoot resolves a valid instance BEFORE name
+    // validation, so the stats name must derive from the RESOLVED project — never the raw
+    // ?project= — or any live instance key becomes a LOG_DIR presence oracle over names.
+    const dir = join(tmpDir, 'sdk-b', 'sameFiles');
+    const key = 'ccv-' + 'b'.repeat(32);
+    registerSdkSessionLister(() => [{ cwd: dir, instanceKey: key, active: true }]);
+    // Plant BOTH stores with discriminating sentinels: the forged name's own store
+    // (the oracle victim) and the resolved project's store. Pre-fix the response leaks
+    // the victim's sentinel; a correct route must serve the RESOLVED project's data.
+    const forgedName = 'not-a-registered-name';
+    mkdirSync(join(tmpDir, forgedName), { recursive: true });
+    writeFileSync(join(tmpDir, forgedName, `${forgedName}.json`), JSON.stringify({ sentinel: 'VICTIM-STORE', totals: { inputTokens: 999999 } }));
+    mkdirSync(join(tmpDir, 'sameFiles'), { recursive: true });
+    writeFileSync(join(tmpDir, 'sameFiles', 'sameFiles.json'), JSON.stringify({ sentinel: 'RESOLVED-STORE', totals: { inputTokens: 111 } }));
+    try {
+      const forged = `project=${forgedName}&instance=${key}`;
+      const p = await callGet(pStats, `/api/project-stats?${forged}`);
+      assert.equal(p.status, 200, 'resolved project has a stats file');
+      assert.equal(p.body && p.body.sentinel, 'RESOLVED-STORE',
+        'the response must describe the RESOLVED project, never the forged name\'s store (oracle closed)');
+      // The forged name's own store must never be the lookup target for any request shape.
+      const probe = await callGet(pStats, `/api/project-stats?project=${forgedName}`);
+      assert.equal(probe.status, 404, 'the unregistered name alone stays 404 (never served, even though its store exists on disk)');
+      assert.notEqual(probe.body && probe.body.sentinel, 'VICTIM-STORE');
+    } finally {
+      registerSdkSessionLister(null);
+    }
+  });
+
+  it('stats follow a leaf-symlinked workspace by its RAW basename (store key), not the realpath target', async () => {
+    // Regression (review round-2): resolveViewRoot realpathSync()s its root, but the
+    // LOG_DIR store is keyed by the RAW launch basename (interceptor.initForWorkspace).
+    // A leaf-symlinked workspace must read ITS OWN store, not the link target's.
+    const { symlinkSync } = await import('node:fs');
+    const realLeaf = join(tmpDir, 'symlink-target', 'realLeafDir');
+    mkdirSync(realLeaf, { recursive: true });
+    const alias = join(tmpDir, 'aliasLeaf');
+    try { symlinkSync(realLeaf, alias, 'dir'); } catch { return; } // platform without symlink perms: skip
+    const aliasName = projectKeyForCwd(alias);
+    mkdirSync(join(tmpDir, aliasName), { recursive: true });
+    writeFileSync(join(tmpDir, aliasName, `${aliasName}.json`), JSON.stringify({ sentinel: 'ALIAS-STORE', totals: { inputTokens: 222 } }));
+    await registerWorkspace(alias);
+    const p = await callGet(pStats, `/api/project-stats?project=${encodeURIComponent(aliasName)}`);
+    assert.equal(p.status, 200, JSON.stringify(p.body));
+    assert.equal(p.body && p.body.sentinel, 'ALIAS-STORE', 'symlinked leaf reads its own store name, not the realpath target\'s');
   });
 });
 

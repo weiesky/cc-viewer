@@ -327,6 +327,9 @@ const _editorCleanupTimer = setInterval(() => {
 }, 60000);
 _editorCleanupTimer.unref(); // Don't keep process alive for cleanup
 let terminalWss = null; // WebSocketServer reference for broadcasting
+// Test seam: inject a stubbed client set so broadcastWsMessage's instance-narrowing
+// predicate is directly unit-testable (ws-instance-isolation.test.js).
+export function setTerminalWssForTests(wss) { terminalWss = wss; }
 let streamMux = null;   // /ws/mux dialogue-channel stream mux (SSE stays the fallback)
 let _writeToPty = null; // PTY write function reference (set by setupTerminalWebSocket)
 let _onPtyData = null;  // PTY data listener registration (set by setupTerminalWebSocket)
@@ -2060,6 +2063,7 @@ async function setupTerminalWebSocket(httpServer) {
           // 新视图的 sdk-session-state/审批/队列帧会被静默丢弃。
           if (msg.type === 'attach') {
             try { ws._ccvViewProject = (typeof msg.project === 'string' && msg.project) || null; } catch {}
+            try { ws._ccvViewInstance = (typeof msg.instanceKey === 'string' && msg.instanceKey) || null; } catch {}
             if (isSdkMode) return;
           } else if (isSdkMode && (msg.type === 'input' || msg.type === 'input-sequential'
               || msg.type === 'resync-request' || msg.type === 'resize')) {
@@ -2413,7 +2417,7 @@ async function setupTerminalWebSocket(httpServer) {
             // User message in SDK mode — relay to sdk-manager, addressed to the viewed
             // workspace's session (multi-session). msg.project is the workspace basename.
             if (_sdkSendUserMessage && msg.text) {
-              const anchor = (typeof msg.project === 'string' && msg.project) ? { project: msg.project } : undefined;
+              const anchor = ((typeof msg.project === 'string' && msg.project) || (typeof msg.instanceKey === 'string' && msg.instanceKey)) ? { project: msg.project, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined } : undefined;
               _sdkSendUserMessage(msg.text, anchor).catch(err => {
                 console.error('[SDK] sendUserMessage error:', err.message);
               });
@@ -2424,7 +2428,7 @@ async function setupTerminalWebSocket(httpServer) {
             // fetch hook → streamingState → SSE), same as PTY mode; sdk-manager
             // no longer emits its own streaming_status.
             if (isSdkMode && _sdkInterruptTurn) {
-              const anchor = (typeof msg.project === 'string' && msg.project) ? { project: msg.project } : undefined;
+              const anchor = ((typeof msg.project === 'string' && msg.project) || (typeof msg.instanceKey === 'string' && msg.instanceKey)) ? { project: msg.project, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined } : undefined;
               const cancelled = _sdkInterruptTurn(anchor) || [];
               _broadcastApprovalCloses(cancelled, 'Turn interrupted');
             } else {
@@ -2441,7 +2445,7 @@ async function setupTerminalWebSocket(httpServer) {
             if (typeof msg.text === 'string' && msg.text) {
               if (isSdkMode) {
                 if (_sdkSendUserMessage) {
-                  const anchor = (typeof msg.project === 'string' && msg.project) ? { project: msg.project } : undefined;
+                  const anchor = ((typeof msg.project === 'string' && msg.project) || (typeof msg.instanceKey === 'string' && msg.instanceKey)) ? { project: msg.project, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined } : undefined;
                   _sdkSendUserMessage(msg.text, anchor).catch(err => {
                     console.error('[SDK] queue-message relay error:', err.message);
                   });
@@ -2460,7 +2464,7 @@ async function setupTerminalWebSocket(httpServer) {
                 if (_sdkSendQueuedNow) {
                   // Multi-session: address the bubble's own workspace (the viewed project), not
                   // the global active session — bubbles are cwd-scoped, the action must match.
-                  const qAnchor = (typeof msg.project === 'string' && msg.project) ? { project: msg.project } : undefined;
+                  const qAnchor = ((typeof msg.project === 'string' && msg.project) || (typeof msg.instanceKey === 'string' && msg.instanceKey)) ? { project: msg.project, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined } : undefined;
                   try { _broadcastApprovalCloses(_sdkSendQueuedNow(qid, qAnchor) || [], 'Queued message sent now'); }
                   catch (err) { reportSwallowed('server.queue-send-now', err); }
                 }
@@ -2472,7 +2476,7 @@ async function setupTerminalWebSocket(httpServer) {
             const qid = (typeof msg.id === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(msg.id)) ? msg.id : null;
             if (qid) {
               if (isSdkMode) {
-                if (_sdkRemoveQueued) { const qAnchor = (typeof msg.project === 'string' && msg.project) ? { project: msg.project } : undefined; try { _sdkRemoveQueued(qid, qAnchor); } catch (err) { reportSwallowed('server.queue-remove', err); } }
+                if (_sdkRemoveQueued) { const qAnchor = ((typeof msg.project === 'string' && msg.project) || (typeof msg.instanceKey === 'string' && msg.instanceKey)) ? { project: msg.project, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined } : undefined; try { _sdkRemoveQueued(qid, qAnchor); } catch (err) { reportSwallowed('server.queue-remove', err); } }
               } else {
                 try { chatQueue.remove(qid); } catch (err) { reportSwallowed('server.queue-remove', err); }
               }
@@ -2481,7 +2485,7 @@ async function setupTerminalWebSocket(httpServer) {
             // Session/workspace switch: drop the parked queue WITHOUT interrupting a running
             // turn. (Stop semantics live elsewhere: PTY queue-suppress, SDK sdk-interrupt.)
             if (isSdkMode) {
-              if (_sdkClearQueued) { const qAnchor = (typeof msg.project === 'string' && msg.project) ? { project: msg.project } : undefined; try { _sdkClearQueued(qAnchor); } catch (err) { reportSwallowed('server.queue-clear', err); } }
+              if (_sdkClearQueued) { const qAnchor = ((typeof msg.project === 'string' && msg.project) || (typeof msg.instanceKey === 'string' && msg.instanceKey)) ? { project: msg.project, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined } : undefined; try { _sdkClearQueued(qAnchor); } catch (err) { reportSwallowed('server.queue-clear', err); } }
             } else {
               try { chatQueue.clear(); } catch (err) { reportSwallowed('server.queue-clear', err); }
             }
@@ -3226,8 +3230,7 @@ async function _doStop() {
 // are intentionally no pushSdkEntry/setSdkStreamingState shortcuts anymore.
 
 /** Broadcast a message to all terminal WS clients (for SDK canUseTool). */
-export function broadcastWsMessage(msg) {
-  if (terminalWss) {
+export function broadcastWsMessage(msg) {  if (terminalWss) {
     // SDK multi-session (2026-10-12): a cwd-tagged frame belongs to one workspace's session.
     // Route it only to clients viewing that workspace (or the bound view with no ?project=),
     // so a background workspace's approval/queue/spinner never bleeds into the foreground.
@@ -3238,10 +3241,17 @@ export function broadcastWsMessage(msg) {
     // — every frame for such a workspace would be silently dropped for its viewer.
     let frameProj = null;
     if (frameCwd) frameProj = projectKeyForCwd(frameCwd) || null;
+    // Same-name twin isolation (review P2): a frame tagged with an instance key narrows
+    // delivery to clients viewing THAT instance — otherwise two same-basename workspaces
+    // (same frameProj) would cross-deliver (e.g. a close teardown's idle/queue-state wipe
+    // killing the surviving twin viewer's spinner and queue bubbles). Untagged/cwd-only
+    // frames keep the historical project-level behavior.
+    const frameInstance = (msg && typeof msg === 'object' && typeof msg.instanceKey === 'string' && msg.instanceKey) ? msg.instanceKey : null;
     const str = typeof msg === 'string' ? msg : JSON.stringify(msg);
     terminalWss.clients.forEach((c) => {
       if (c.readyState !== 1) return;
       if (frameProj && c._ccvViewProject && c._ccvViewProject !== frameProj) return; // other workspace's frame
+      if (frameInstance && c._ccvViewInstance && c._ccvViewInstance !== frameInstance) return; // other instance of the same project
       try { c.send(str); } catch {}
     });
   }

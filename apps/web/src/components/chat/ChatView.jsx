@@ -946,7 +946,7 @@ class ChatView extends React.Component {
           if (this.state.queuedMessages.length) {
             this.setState({ queuedMessages: [] });
             if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
-              this._inputWs.send(JSON.stringify({ type: 'queue-clear', project: this.props.viewProject || this.props.projectName }));
+              this._inputWs.send(JSON.stringify({ type: 'queue-clear', project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
             }
           }
         }
@@ -2388,7 +2388,7 @@ class ChatView extends React.Component {
       if (this.props.sdkMode) {
         // Multi-session: stamp the viewed workspace so the server routes this turn to that
         // cwd's SDK session (and switches the active session to it), not the global last one.
-        this._inputWs.send(JSON.stringify({ type: 'sdk-user-message', text: assembled, project: this.props.viewProject || this.props.projectName }));
+        this._inputWs.send(JSON.stringify({ type: 'sdk-user-message', text: assembled, project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
       } else {
         const anchor = this._terminalAnchor();
         this._inputWs.send(JSON.stringify({
@@ -2569,6 +2569,10 @@ class ChatView extends React.Component {
         } else if (msg.type === 'queue-state') {
           // Server-authoritative busy queue → floating bubbles above the composer.
           // Full-snapshot semantics: replace, never merge.
+          // Same-name twin guard: a frame stamped with an instance key belongs to THAT
+          // workspace's session — a viewer of the same-basename twin must ignore it, or
+          // closing one workspace wipes the other's queue bubbles (review P2).
+          if (msg.instanceKey && (this.props.viewInstance || null) && msg.instanceKey !== this.props.viewInstance) return;
           this.setState({ queuedMessages: Array.isArray(msg.items) ? msg.items : [] });
         } else if (msg.type === 'queue-rejected') {
           // Negative ack for an optimistic enqueue (e.g. queue full): the composer was
@@ -2854,7 +2858,7 @@ class ChatView extends React.Component {
     // 其他正常用户消息（包括 slash 命令）都视为「新请求」并解锁血条。
     if (!/^\s*\/clear(\s|$)/.test(text)) this.props.onUserMessageSent?.();
     if (this.props.sdkMode) {
-      ws.send(JSON.stringify({ type: 'sdk-user-message', text, project: this.props.viewProject || this.props.projectName }));
+      ws.send(JSON.stringify({ type: 'sdk-user-message', text, project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
     } else {
       // Anchor the send to the viewed PROJECT's live PTY (terminal/chat
       // consistency): the server routes by {project, sessionId} instead of the
@@ -2908,7 +2912,7 @@ class ChatView extends React.Component {
     // SDK 模式模型不在 PTY 里，ESC 无效 → 发 sdk-interrupt 让服务端 close 当前 query（保留会话）；
     // CLI/PTY 模式 → ESC 打断 Claude TUI 当前生成。
     if (this.props.sdkMode) {
-      this._inputWs.send(JSON.stringify({ type: 'sdk-interrupt', project: this.props.viewProject || this.props.projectName }));
+      this._inputWs.send(JSON.stringify({ type: 'sdk-interrupt', project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
     } else {
       // CLI/PTY 模式：ESC 打断 Claude TUI 当前生成。
       // 关键修复：点击 HTML 停止按钮会让隐藏的 xterm 失焦，向 claude 上报 focus-out (\x1b[O)，
@@ -3002,7 +3006,7 @@ class ChatView extends React.Component {
       this.setState({ inputEmpty: true, inputSuggestion: null });
       if (this.props.sdkMode) {
         // sdk-manager self-queues when busy and broadcasts queue-state.
-        ws.send(JSON.stringify({ type: 'sdk-user-message', text, project: this.props.viewProject || this.props.projectName }));
+        ws.send(JSON.stringify({ type: 'sdk-user-message', text, project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
       } else {
         const anchor = this._terminalAnchor();
         ws.send(JSON.stringify({ type: 'queue-message', text, project: anchor.project, sessionId: anchor.sessionId, ...(anchor.instanceKey ? { instanceKey: anchor.instanceKey } : {}) }));
@@ -4120,7 +4124,7 @@ class ChatView extends React.Component {
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
                         if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
-                          this._inputWs.send(JSON.stringify({ type: 'queue-remove', id: item.id, project: this.props.viewProject || this.props.projectName }));
+                          this._inputWs.send(JSON.stringify({ type: 'queue-remove', id: item.id, project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
                         }
                       }}
                     >&times;</button>
@@ -4130,7 +4134,7 @@ class ChatView extends React.Component {
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
                         if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
-                          this._inputWs.send(JSON.stringify({ type: 'queue-send-now', id: item.id, project: this.props.viewProject || this.props.projectName }));
+                          this._inputWs.send(JSON.stringify({ type: 'queue-send-now', id: item.id, project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
                         }
                       }}
                     >{t('ui.chatInput.queueSendNow')}</button>

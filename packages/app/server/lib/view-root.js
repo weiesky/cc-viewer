@@ -26,6 +26,7 @@
 
 import { realpathSync, existsSync, statSync } from 'node:fs';
 import { projectKeyForCwd } from './system-prompt-snapshots.js';
+import { listSdkSessionInstances } from './sdk-session-index.js';
 
 // A project name must be sanitizer-stable: projectKeyForCwd maps every legal
 // basename to [a-zA-Z0-9_\-\.] (collapsing only ALL-dot degenerate names to
@@ -49,11 +50,13 @@ function isValidProjectName(name) {
  * @param {string} opts.boundCwd - the bound project root (CCV_PROJECT_DIR || process.cwd()).
  * @param {() => Array<{path:string, projectName:string}>} opts.loadWorkspaces - registry reader.
  * @param {() => Array<{cwd:string, instanceKey?:string}>} opts.listLivePtys - live PTY records.
- * @returns {{ ok:true, root:string, via:'bound'|'registry'|'live'|'live-instance' } | { ok:false, status:number, error:string }}
+ * @returns {{ ok:true, root:string, projectName:string, via:'bound'|'registry'|'live'|'live-instance' } | { ok:false, status:number, error:string }}
+ *   `root` is the realpath'd real dir; `projectName` is the RAW-path store key
+ *   (basename of the matched candidate BEFORE realpath) — the wire/log-store name.
+ *   They differ for a leaf-symlinked workspace, and the store is keyed by the raw name.
  */
-export function resolveViewRoot({ projectParam, instanceParam, boundCwd, loadWorkspaces, listLivePtys } = {}) {
-  const bound = boundCwd || process.cwd();
-  // Multi-instance (2026-10-06): `instance` is the per-spawn instanceKey, the
+export function resolveViewRoot({ projectParam, instanceParam, boundCwd, loadWorkspaces, listLivePtys, listSdkSessions = listSdkSessionInstances } = {}) {
+  const bound = boundCwd || process.cwd();// Multi-instance (2026-10-06): `instance` is the per-spawn instanceKey, the
   // authoritative disambiguator when two same-basename projects run at once —
   // the name path below would 400 on that pair as "ambiguous". Resolve it FIRST
   // (before the empty-name bound short-circuit AND name validation): a valid live
@@ -67,13 +70,21 @@ export function resolveViewRoot({ projectParam, instanceParam, boundCwd, loadWor
       const rec = (listLivePtys() || []).find((p) => p && p.instanceKey === instance);
       if (rec && typeof rec.cwd === 'string' && rec.cwd) {
         if (existsSync(rec.cwd) && statSync(rec.cwd).isDirectory()) {
-          return { ok: true, root: realpathSync(rec.cwd), via: 'live-instance' };
+          return { ok: true, root: realpathSync(rec.cwd), projectName: projectKeyForCwd(rec.cwd), via: 'live-instance' };
         }
       }
     } catch { /* pty map unavailable / fs race → fall through to name path */ }
+    try {
+      const rec = (listSdkSessions() || []).find((s) => s && s.instanceKey === instance);
+      if (rec && typeof rec.cwd === 'string' && rec.cwd) {
+        if (existsSync(rec.cwd) && statSync(rec.cwd).isDirectory()) {
+          return { ok: true, root: realpathSync(rec.cwd), projectName: projectKeyForCwd(rec.cwd), via: 'live-instance' };
+        }
+      }
+    } catch { /* SDK registry unavailable / fs race → fall through to name path */ }
   }
   const name = (typeof projectParam === 'string' && projectParam) || '';
-  if (!name) return { ok: true, root: bound, via: 'bound' };
+  if (!name) return { ok: true, root: bound, projectName: projectKeyForCwd(bound), via: 'bound' };
   if (!isValidProjectName(name)) {
     return { ok: false, status: 400, error: 'invalid project name' };
   }
@@ -103,6 +114,14 @@ export function resolveViewRoot({ projectParam, instanceParam, boundCwd, loadWor
       }
     }
   } catch { /* pty map unavailable → registry-only */ }
+  try {
+    for (const s of listSdkSessions() || []) {
+      const cwd = s && s.cwd;
+      if (typeof cwd === 'string' && cwd && projectKeyForCwd(cwd) === name) {
+        candidates.push({ path: cwd, via: 'live' });
+      }
+    }
+  } catch { /* SDK registry unavailable → PTY/registry-only */ }
 
   // Dedupe by path string (a project live AND registered under the SAME path
   // is one candidate). Keys are the raw candidate paths — not realpathSync —
@@ -132,7 +151,7 @@ export function resolveViewRoot({ projectParam, instanceParam, boundCwd, loadWor
         if (!existsSync(root) || !statSync(root).isDirectory()) {
           return { ok: false, status: 404, error: 'project dir missing' };
         }
-        return { ok: true, root: realpathSync(root), via: 'live' };
+        return { ok: true, root: realpathSync(root), projectName: projectKeyForCwd(root), via: 'live' };
       } catch {
         return { ok: false, status: 404, error: 'project dir unreadable' };
       }
@@ -156,7 +175,7 @@ export function resolveViewRoot({ projectParam, instanceParam, boundCwd, loadWor
     }
     const root = alive[0].path;
     try {
-      return { ok: true, root: realpathSync(root), via: alive[0].via };
+      return { ok: true, root: realpathSync(root), projectName: projectKeyForCwd(root), via: alive[0].via };
     } catch {
       return { ok: false, status: 404, error: 'project dir unreadable' };
     }
@@ -166,7 +185,7 @@ export function resolveViewRoot({ projectParam, instanceParam, boundCwd, loadWor
     if (!existsSync(root) || !statSync(root).isDirectory()) {
       return { ok: false, status: 404, error: 'project dir missing' };
     }
-    return { ok: true, root: realpathSync(root), via: uniq[0].via };
+    return { ok: true, root: realpathSync(root), projectName: projectKeyForCwd(root), via: uniq[0].via };
   } catch {
     return { ok: false, status: 404, error: 'project dir unreadable' };
   }
@@ -192,13 +211,14 @@ export function resolveViewRoot({ projectParam, instanceParam, boundCwd, loadWor
  * @param {string} [opts.bodyInstance] - POST-body instance override (wins over query).
  * @returns {string|null} the resolved absolute root, or null (already replied).
  */
-export function viewRootOrReply(req, res, parsedUrl, { boundCwd, loadWorkspaces, listLivePtys, bodyProject, bodyInstance } = {}) {
+export function viewRootOrReply(req, res, parsedUrl, { boundCwd, loadWorkspaces, listLivePtys, listSdkSessions, bodyProject, bodyInstance } = {}) {
   const r = resolveViewRoot({
     projectParam: (typeof bodyProject === 'string' && bodyProject) || parsedUrl?.searchParams?.get('project'),
     instanceParam: (typeof bodyInstance === 'string' && bodyInstance) || parsedUrl?.searchParams?.get('instance'),
     boundCwd,
     loadWorkspaces,
     listLivePtys,
+    listSdkSessions,
   });
   if (!r.ok) {
     res.writeHead(r.status, { 'Content-Type': 'application/json' });

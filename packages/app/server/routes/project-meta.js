@@ -14,10 +14,11 @@ import { detectHomebrewInstall } from '../lib/updater.js';
 // not become a presence oracle over LOG_DIR — `?project=` is accepted ONLY
 // when it resolves to a registered workspace / live PTY (or the bound
 // project), never an arbitrary sanitized name.
-function _resolveStatsName(projectParam, res) {
-  if (!projectParam) return _projectName || '';
+function _resolveStatsName(projectParam, instanceParam, res) {
+  if (!projectParam && !instanceParam) return _projectName || '';
   const r = resolveViewRoot({
     projectParam,
+    instanceParam,
     boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
     loadWorkspaces,
     listLivePtys,
@@ -27,7 +28,12 @@ function _resolveStatsName(projectParam, res) {
     res.end(JSON.stringify({ error: r.error }));
     return null;
   }
-  return sanitizePathComponent(projectParam);
+  // The log-store name derives from the RAW matched path (basename BEFORE the
+  // resolver's realpath), which the wire/store layer keys on — never from the raw
+  // ?project= (forged names + a live instance would otherwise become a LOG_DIR
+  // presence oracle) and never from the realpath'd root (a leaf-symlinked workspace
+  // would then read the target's store name instead of its own).
+  return sanitizePathComponent(r.projectName);
 }
 
 // 判定当前 cc-viewer 的安装渠道，供前端精准匹配升级命令。
@@ -73,7 +79,8 @@ function projectStats(req, res, parsedUrl) {
     // Multi-project (2026-10): project-stats resolves the VIEWED project
     // (?project=, registered/live only — never an arbitrary name).
     const projectParam = parsedUrl && parsedUrl.searchParams ? parsedUrl.searchParams.get('project') : null;
-    const name = _resolveStatsName(projectParam, res);
+    const instanceParam = parsedUrl && parsedUrl.searchParams ? parsedUrl.searchParams.get('instance') : null;
+    const name = _resolveStatsName(projectParam, instanceParam, res);
     if (name === null) return; // error already replied
     if (!name) {
       res.writeHead(404, { 'Content-Type': 'application/json' });

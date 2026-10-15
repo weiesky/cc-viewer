@@ -26,7 +26,7 @@ describe('queue bubbles — state + WS wiring', () => {
 
   it('queue-state WS branch replaces queuedMessages from the server snapshot', () => {
     assert.ok(jsx.includes("msg.type === 'queue-state'"), 'queue-state branch exists');
-    const branch = jsx.match(/msg\.type === 'queue-state'[\s\S]{0,400}?setState\(\{ queuedMessages: Array\.isArray\(msg\.items\)/);
+    const branch = jsx.match(/msg\.type === 'queue-state'[\s\S]{0,600}?setState\(\{ queuedMessages: Array\.isArray\(msg\.items\)/);
     assert.ok(branch, 'queue-state branch setStates queuedMessages from msg.items');
   });
 

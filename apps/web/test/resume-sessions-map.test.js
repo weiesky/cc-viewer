@@ -277,9 +277,20 @@ describe('deriveProjectTabs', () => {
 
   it('the key falls back to the project name when cwd and instanceKey are absent', () => {
     const tabs = deriveProjectTabs([{ kind: 'main', project: 'q' }]);
-    // `closable` defaults to true; only a no-process row (the SDK resident session,
-    // `closable:false` from /api/live-processes) is non-closable.
+    // `closable` defaults to true for SDK and PTY rows; a server can still explicitly
+    // suppress the action for a row that has no closeable lifecycle.
     assert.deepEqual(tabs, [{ key: 'main:q', project: 'q', label: 'q', suffix: null, cwd: null, pid: undefined, instanceKey: null, active: false, closable: true }]);
+  });
+
+  it('SDK rows with cwd-stable instance keys become separate closable same-name tabs', () => {
+    const tabs = deriveProjectTabs([
+      { kind: 'main', project: 'same', cwd: '/a/same', pid: null, instanceKey: 'ccv-aaa111', active: false },
+      { kind: 'main', project: 'same', cwd: '/b/same', pid: null, instanceKey: 'ccv-bbb222', active: true },
+    ]);
+    assert.equal(tabs.length, 2);
+    assert.ok(tabs.every((t) => t.closable), 'every SDK tab exposes the close action');
+    assert.deepEqual(tabs.map((t) => t.label), ['same [1]', 'same [2]']);
+    assert.equal(resolveBoundInstance(tabs, 'same', 'ccv-bbb222'), 'ccv-bbb222');
   });
 
   it('two cross-dir same-basename projects get [1]/[2] ordered by cwd asc (respawn-stable)', () => {

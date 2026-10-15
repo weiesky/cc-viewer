@@ -236,8 +236,8 @@ export function deriveProjectTabs(processes) {
     if (!proj) continue; // no usable name → no meaningful tab (same rule as chips)
     const hasInst = typeof p.instanceKey === 'string' && p.instanceKey;
     const id = hasInst ? p.instanceKey : proj; // instanceKey distinguishes instances; else basename (legacy)
-    // `closable:false` marks a row with no killable process (the SDK resident session) — the
-    // header suppresses the × for it. Default true (a real PTY row stays closable).
+    // `closable:false` lets the server suppress the × for a row without a closeable
+    // lifecycle. PTY and SDK workspace sessions default to closable.
     if (!byKey.has(id)) byKey.set(id, { project: proj, cwd: p.cwd || null, instanceKey: hasInst || null, pid: p.pid, active: p.active === true, closable: p.closable !== false });
   }
   const rows = [...byKey.values()].sort((a, b) => String(a.project).localeCompare(String(b.project)));

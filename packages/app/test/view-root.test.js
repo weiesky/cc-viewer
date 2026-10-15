@@ -33,7 +33,7 @@ const noLive = () => [];
 describe('resolveViewRoot', () => {
   it('no override → bound (byte-identical to pre-multi-project)', () => {
     const r = resolveViewRoot({ boundCwd: boundDir, loadWorkspaces: noRegistry, listLivePtys: noLive });
-    assert.deepEqual(r, { ok: true, root: boundDir, via: 'bound' });
+    assert.deepEqual(r, { ok: true, root: boundDir, projectName: 'bound', via: 'bound' });
   });
 
   it('bound project by name → bound root', () => {
@@ -321,5 +321,51 @@ describe('resolveViewRoot', () => {
     assert.equal(r.ok, true, JSON.stringify(r));
     assert.equal(r.root, realpathSync(projADir));
     assert.equal(r.via, 'live');
+  });
+
+  it('SDK instanceParam resolves its exact cwd among same-basename workspaces', () => {
+    const otherA = join(tmpDir, 'sdk-inst', 'projA');
+    mkdirSync(otherA, { recursive: true });
+    const r = resolveViewRoot({
+      projectParam: nameA, instanceParam: 'ccv-5dc222', boundCwd: boundDir,
+      loadWorkspaces: () => [{ path: projADir, projectName: nameA }, { path: otherA, projectName: nameA }],
+      listLivePtys: noLive,
+      listSdkSessions: () => [
+        { cwd: projADir, instanceKey: 'ccv-5dc111' },
+        { cwd: otherA, instanceKey: 'ccv-5dc222' },
+      ],
+    });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.equal(r.root, realpathSync(otherA));
+    assert.equal(r.via, 'live-instance');
+  });
+
+  it('one live SDK session disambiguates a same-name registry twin like a live PTY', () => {
+    const otherA = join(tmpDir, 'sdk-live', 'projA');
+    mkdirSync(otherA, { recursive: true });
+    const r = resolveViewRoot({
+      projectParam: nameA, boundCwd: boundDir,
+      loadWorkspaces: () => [{ path: projADir, projectName: nameA }, { path: otherA, projectName: nameA }],
+      listLivePtys: noLive,
+      listSdkSessions: () => [{ cwd: projADir, instanceKey: 'ccv-5dc111' }],
+    });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.equal(r.root, realpathSync(projADir));
+    assert.equal(r.via, 'live');
+  });
+
+  it('two live same-name SDK sessions without an instance stay ambiguous', () => {
+    const otherA = join(tmpDir, 'sdk-two', 'projA');
+    mkdirSync(otherA, { recursive: true });
+    const r = resolveViewRoot({
+      projectParam: nameA, boundCwd: boundDir,
+      loadWorkspaces: noRegistry,
+      listLivePtys: noLive,
+      listSdkSessions: () => [
+        { cwd: projADir, instanceKey: 'ccv-5dc111' },
+        { cwd: otherA, instanceKey: 'ccv-5dc222' },
+      ],
+    });
+    assert.deepEqual(r, { ok: false, status: 400, error: 'ambiguous project name' });
   });
 });
