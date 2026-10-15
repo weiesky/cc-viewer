@@ -129,6 +129,12 @@ export function createMuxTransport({
     try { sessionStore?.removeItem(PROBE_KEY); } catch { /* benign */ }
   }
 
+  // [ws.mux.diag] Temporary diagnostics for the refresh-after-upgrade failure hunt
+  // (2026-10-15): WS socket never delivers frames to the browser while the server
+  // verifiably sends them. REMOVE once the root cause is fixed (grep "ws.mux.diag").
+  function _diag(...args) { console.log('[ws.mux.diag]', ...args); }
+  function _diagWarn(...args) { console.warn('[ws.mux.diag]', ...args); }
+
   // ── facade ──────────────────────────────────────────────────────────────────
   function createFacade(url) {
     const fac = {
@@ -206,20 +212,23 @@ export function createMuxTransport({
 
   // ── public open ──────────────────────────────────────────────────────────────
   function open(url) {
+    _diag('open', { url, dead, sockState: sock ? sock.state : null, facades: facades.size });
     const fac = createFacade(url);
     facades.add(fac);
-    if (dead === 'capability') { _openNative(fac); return fac; }
+    if (dead === 'capability') { _diag('open→es(capability-dead)', { url }); _openNative(fac); return fac; }
     // A socket mid-transient-reconnect is still the mux path: queue the facade onto the
     // pending reconnect rather than spawning a second socket or wrongly downgrading to SSE.
     if (sock && sock.state === 'reconnecting') {
+      _diag('open→pendingMigrate', { url });
       fac._backend = 'mux';
       fac._streamId = mintStreamId();
       fac.readyState = ES_CONNECTING;
       pendingMigrate.add(fac);
       return fac;
     }
-    if (!_ensureSocket()) { _openNative(fac); return fac; }
+    if (!_ensureSocket()) { _diag('open→es(ensure-socket-failed)', { url }); _openNative(fac); return fac; }
     _attachMux(fac);
+    _diag('open→mux', { url, streamId: fac._streamId, sockState: sock.state });
     return fac;
   }
 
@@ -279,11 +288,13 @@ export function createMuxTransport({
     // works; otherwise (reconnect dial, or a page that has seen the mux serve) it's transient.
     s.deadlineTimer = setT(() => {
       if (sock !== s || s.state === 'open') return;
+      _diagWarn('dial-timeout', { retry: s.retry, everOpened: s.everOpened, everProven });
       if (s.retry === 0 && !s.everOpened && !everProven) _capabilityFallback('dial-timeout');
       else { try { ws.close(); } catch { /* benign */ } }
     }, DIAL_TIMEOUT_MS);
     ws.onopen = () => {
       if (sock !== s) return;
+      _diag('socket.onopen', { retry: s.retry, everProven, extensions: ws.extensions || null });
       if (s.deadlineTimer) { clearT(s.deadlineTimer); s.deadlineTimer = null; }
       s.state = 'open';
       s.everOpened = true;
@@ -293,17 +304,24 @@ export function createMuxTransport({
       for (const f of s.streams.values()) { _sendOpen(f); _armAck(f); }
       _armWatchdog();
     };
-    ws.onmessage = (ev) => { if (sock !== s) return; s.lastInboundAt = now(); _onSocketMessage(ev); };
-    ws.onerror = () => {
+    ws.onmessage = (ev) => {
       if (sock !== s) return;
+      s.lastInboundAt = now();
+      _diag('socket.onmessage', { bytes: (typeof ev.data === 'string' ? ev.data.length : 0), head: (typeof ev.data === 'string' ? ev.data.slice(0, 60) : '<binary>') });
+      _onSocketMessage(ev);
+    };
+    ws.onerror = (ev) => {
+      if (sock !== s) return;
+      _diagWarn('socket.onerror', { everOpened: s.everOpened, retry: s.retry, everProven, type: ev?.type });
       // A failure before THIS page's first successful open AND while the mux has never been
       // proven is the capability signal (upgrade refused / no /ws/mux route). Any failure once
       // the mux has proven itself (or mid-reconnect-chain) is one transient attempt.
       if (!s.everOpened && s.retry === 0 && !everProven) _capabilityFallback('handshake-error');
       else _onTransientDrop();
     };
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       if (sock !== s || dead === 'capability') return;
+      _diagWarn('socket.onclose', { code: ev?.code, reason: ev?.reason || '', state: s.state, everOpened: s.everOpened, retry: s.retry, everProven });
       // Intentional close (watchdog/closeAll) or an already-handled drop → not a capability read.
       if (s.state === 'reconnecting') return;   // MUTANT: intentionalClose guard removed
       if (!s.everOpened && s.retry === 0 && !everProven) { _capabilityFallback('handshake-close'); return; }
@@ -329,6 +347,7 @@ export function createMuxTransport({
     try { msg = JSON.parse(ev.data); } catch (err) { reportSwallowed('ws.decode', err); return; }
     if (!msg || typeof msg.type !== 'string') return;
     if (msg.type === 'ping') {
+      _diag('ping', { facades: facades.size, muxOpen: [...facades].filter((f) => f._backend === 'mux' && f.readyState !== ES_CLOSED).length });
       _send({ type: 'pong', ts: now() });
       // Fan the server keepalive out per-stream as a synthetic 'ping' named frame so the
       // manager's 45s watchdog is fed for every idle mux channel (mirrors SSE event: ping).
@@ -337,8 +356,9 @@ export function createMuxTransport({
     }
     if (msg.type === 'open-ack') {
       const fac = sock.streams.get(msg.streamId);
-      if (!fac) return;
+      if (!fac) { _diagWarn('open-ack.orphan', { streamId: msg.streamId, streams: [...sock.streams.keys()] }); return; }
       _clearAck(fac);
+      _diag('open-ack', { streamId: msg.streamId, epoch: msg.epoch });
       // Reset the per-stream dedup cursor on ack. Dedup is keyed on the per-stream seq alone:
       // streamId is re-minted on every (re)connect so a replayed frame from a prior incarnation
       // can never collide; epoch is recorded for diagnostics only (a future cross-socket replay
@@ -352,9 +372,10 @@ export function createMuxTransport({
     }
     if (msg.type === 'frame') {
       const fac = sock.streams.get(msg.streamId);
-      if (!fac || fac.readyState === ES_CLOSED) return;
+      if (!fac) { _diagWarn('frame.orphan', { streamId: msg.streamId, name: msg.name, seq: msg.seq, streams: [...sock.streams.keys()].length }); return; }
+      if (fac.readyState === ES_CLOSED) { _diagWarn('frame.closed-facade', { streamId: msg.streamId, name: msg.name, seq: msg.seq }); return; }
       // Cursor non-regression guard (defensive; TCP is ordered): drop a replayed frame.
-      if (typeof msg.seq === 'number' && msg.seq <= fac._cursor.lastSeq && fac._cursor.lastSeq !== 0) return;
+      if (typeof msg.seq === 'number' && msg.seq <= fac._cursor.lastSeq && fac._cursor.lastSeq !== 0) { _diagWarn('frame.dup', { streamId: msg.streamId, name: msg.name, seq: msg.seq, lastSeq: fac._cursor.lastSeq }); return; }
       if (typeof msg.seq === 'number') fac._cursor.lastSeq = msg.seq;
       _dispatch(fac, msg.name, msg.data);
       return;
@@ -383,6 +404,7 @@ export function createMuxTransport({
     if (dead === 'capability') return;
     dead = 'capability';
     _probeClear();
+    _diagWarn('capability-fallback', { reason, err: err ? String(err && err.message || err) : null });
     reportSwallowed('ws.mux.fallback', err || new Error(`capability:${reason}`));
     const s = sock;
     sock = null;
@@ -402,6 +424,7 @@ export function createMuxTransport({
   /** PER-STREAM fallback: only this stream reopens as a native EventSource. */
   function _fallbackStream(fac, reason) {
     if (fac._backend !== 'mux' || fac.readyState === ES_CLOSED) return;
+    _diagWarn('fallback-stream', { reason, streamId: fac._streamId, url: fac.url });
     reportSwallowed('ws.mux.fallback', new Error(`stream:${reason}`));
     // Release the server-side stream before detaching (else it leaks a slot in
     // MAX_STREAMS_PER_SOCKET and keeps being broadcast to a streamId nobody reads, while a
@@ -416,6 +439,7 @@ export function createMuxTransport({
   function _onTransientDrop() {
     const s = sock;
     if (!s || s.state === 'reconnecting') return;   // already handling this drop
+    _diagWarn('transient-drop', { retry: s.retry, everOpened: s.everOpened, streams: s.streams.size, idleFor: now() - s.lastInboundAt });
     if (s.watchdogTimer) { clearT(s.watchdogTimer); s.watchdogTimer = null; }
     if (s.deadlineTimer) { clearT(s.deadlineTimer); s.deadlineTimer = null; }
     s.retry += 1;
@@ -489,6 +513,7 @@ export function createMuxTransport({
 
   function _openNative(fac) {
     _clearAck(fac);
+    _diag('open-native', { url: fac.url, backend: fac._backend, streamId: fac._streamId });
     fac._backend = 'es';
     const es = openEventSource(fac.url);   // SAME url → same scope/since/cc semantics
     fac._es = es;
@@ -531,6 +556,7 @@ export function createMuxTransport({
       // residual ordering where onclose lands while state is still 'open'.
       const s = sock;
       s.intentionalClose = true;
+      _diagWarn('watchdog.idle-timeout', { idleFor: now() - s.lastInboundAt, streams: s.streams.size });
       try { s.ws.close(); } catch { /* benign */ }
       _onTransientDrop();
       return;

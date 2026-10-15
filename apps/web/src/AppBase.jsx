@@ -1997,7 +1997,17 @@ class AppBase extends React.Component {
   }
 
   _onChannelHeartbeatTimeout(channel) {
+    // [ws.mux.diag] temporary — lastFrameAt tells us whether ANY frame (ping included)
+    // arrived since the last heartbeat arm, which separates "server silent" from "touch lost".
     console.warn('SSE heartbeat timeout, reconnecting...');
+    console.log('[ws.mux.diag] heartbeat-timeout', {
+      key: channel.key,
+      lastFrameAgo: Date.now() - (channel.lastFrameAt || 0),
+      readyState: channel.es ? channel.es.readyState : null,
+      backend: channel.es ? channel.es._backend || 'es' : null,
+      reconnects: channel.vm && channel.vm.reconnectsSinceCommit,
+      committed: !!(channel.vm && channel.vm.committed),
+    });
     this._reconnectChannel(channel);
   }
 

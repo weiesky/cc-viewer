@@ -333,7 +333,7 @@ describe('ws-mux backpressure', { concurrency: false }, () => {
     const ws = connect(mm.mux);
     ws.receive({ type: 'open', streamId: 's1', qs: '' });
     ws.bufferedAmount = 5 * 1024 * 1024;    // behind
-    liveSink.write('data: ' + 'x'.repeat(9 * 1024 * 1024) + '\n\n');   // > 8MB cap
+    liveSink.write('data: ' + 'x'.repeat(33 * 1024 * 1024) + '\n\n');   // > 32MB cap
     assert.ok(ws.closedWith, 'socket closed on queue overflow');
     m.mux.close(); mm.mux.close();
   });

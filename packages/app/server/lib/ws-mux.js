@@ -50,9 +50,11 @@ const HEARTBEAT_SEND_MS = 25_000;   // app-level ping cadence (chisel: proxies k
 const HEARTBEAT_REAP_MS = 60_000;   // no inbound frame for this long → terminate the socket
 const MAX_STREAMS_PER_SOCKET = 8;
 // Per-socket queue is a pure MEMORY SAFETY NET (the primary slow-consumer eviction is the
-// per-stream 30s backpressure rule inherited from _safeSseWrite). Sized well above any
-// legitimate burst so it only trips on a wedged socket, never on a fast-producer burst.
-const QUEUE_MAX_BYTES = 8 * 1024 * 1024;
+// per-stream 30s backpressure rule inherited from _safeSseWrite). Sized above any legitimate
+// cold-load burst so it only trips on a genuinely wedged socket, never on a fast-producer
+// burst. (8MB was empirically too small for the cc-viewer project's own ~11MB v3 cold load;
+// 32MB covers ~40k-row sessions while still bounding a truly dead client's damage.)
+const QUEUE_MAX_BYTES = 32 * 1024 * 1024;
 const HIGH_WATER = 1024 * 1024;     // mirrors terminal's hysteresis band
 const LOW_WATER = 256 * 1024;
 
@@ -241,11 +243,17 @@ export function createStreamMuxServer({
   clearTimeout: clearT = clearTimeout,
   now = Date.now,
 } = {}) {
-  // perMessageDeflate: the dialogue channel carries the app's largest transfers (cold-load
-  // windows); without it the mux would send verbatim JSON where the SSE path gets per-connection
-  // brotli (measured 21-88x on real sessions). ws's built-in permessage-deflate (zlib) recovers
-  // most of that with no new dependency. (SSE keeps its stronger brotli; this closes the gap.)
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024, perMessageDeflate: true });
+  // perMessageDeflate DISABLED (2026-10-15, queue-overflow postmortem): the dialogue
+  // channel's cold-load bursts are its largest transfers. With deflate on, `ws.send()`
+  // enqueues into Node's zlib pending queue — `ws.bufferedAmount` counts those bytes
+  // BEFORE they hit TCP, so the backpressure gate sees a phantom backlog, marks the
+  // socket behind, and starts queueing frames (including pings). The queue then grows
+  // monotonically until the 8/64MB cap kills the connection with `queue-overflow`,
+  // starving the client of heartbeats → channel watchdog fires → loop. SSE's brotli
+  // path compresses per-write and never shares this failure mode. The byte win is not
+  // worth a self-inflicted wedged socket; the client still gets SSE-grade compression
+  // on the fallback path.
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024, perMessageDeflate: false });
   const sockets = new Set();
   wss.on('error', (err) => reportSwallowed('ws.mux.server', err));
   wss.on('connection', (ws) => handleConnection(ws));
