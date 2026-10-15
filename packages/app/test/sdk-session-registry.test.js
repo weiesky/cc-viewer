@@ -84,7 +84,7 @@ describe('sdk-manager per-cwd session registry', () => {
     assert.equal(last.model, 'model-a');
   });
 
-  it('each session self-tags x-ccv-project-dir = its own cwd (transcript routing)', async () => {
+  it('each session self-tags x-ccv-project-dir AND x-ccv-instance = its own identity', async () => {
     const rec = [];
     sdk.__setQueryForTests(makeQuery(rec));
     const env = { ANTHROPIC_BASE_URL: 'http://127.0.0.1:43210' };
@@ -95,6 +95,20 @@ describe('sdk-manager per-cwd session registry', () => {
     assert.equal(opt.cwd, '/wa');
     assert.ok(String(opt.env.ANTHROPIC_CUSTOM_HEADERS).includes('x-ccv-project-dir: /wa'),
       'child env carries the per-cwd project header');
+    const inst = sdk.listSdkSessions().find((s) => s.cwd === '/wa').instanceKey;
+    assert.ok(String(opt.env.ANTHROPIC_CUSTOM_HEADERS).includes(`x-ccv-instance: ${inst}`),
+      'child env self-reports the stable instanceKey (same-name twin wire isolation)');
+    // Every frame the session emits carries the routing envelope (cwd + sessionId +
+    // instanceKey) so a same-basename twin viewer never eats its lifecycle frames.
+    const frames = [];
+    sdk.stopSession();
+    sdk.__setQueryForTests(makeQuery([]));
+    sdk.initSdkSession('/wb', 'wb', { ...deps, broadcastWs: (m) => frames.push(m) });
+    await sdk.sendUserMessage('drive');
+    await tick();
+    assert.ok(frames.length > 0, 'frames emitted');
+    assert.ok(frames.every((f) => f.instanceKey && /^ccv-[0-9a-f]+$/.test(f.instanceKey)),
+      'every broadcast frame is stamped with the session instanceKey');
   });
 
   it('setActiveSdkSession keeps the OUTGOING session resident (concurrent-keep, lazy switch)', async () => {
@@ -214,5 +228,141 @@ describe('sdk-manager per-cwd session registry', () => {
     sdk.initSdkSession('/a', 'a', deps);
     sdk.initSdkSession('/b', 'b', deps);
     assert.equal(sdk.listSdkSessions().length, 2, 'trailing-slash collapses; distinct dirs stay separate');
+  });
+
+  it('instance keys are stable per normalized cwd and distinct for same-basename dirs', () => {
+    sdk.__setQueryForTests(makeQuery([]));
+    sdk.initSdkSession('/a/same/', 'same', deps);
+    const first = sdk.listSdkSessions()[0].instanceKey;
+    assert.match(first, /^ccv-[0-9a-f]+$/);
+    sdk.initSdkSession('/a/same', 'same', deps);
+    assert.equal(sdk.listSdkSessions()[0].instanceKey, first);
+    sdk.initSdkSession('/b/same', 'same', deps);
+    const rows = sdk.listSdkSessions();
+    assert.equal(rows.length, 2);
+    assert.notEqual(rows[0].instanceKey, rows[1].instanceKey);
+    sdk.stopSession();
+    sdk.initSdkSession('/a/same', 'same', deps);
+    assert.equal(sdk.listSdkSessions()[0].instanceKey, first, 'close/restart registration keeps cwd identity');
+  });
+
+  it('an exact instance anchor routes between same-basename sessions', async () => {
+    const rec = [];
+    sdk.__setQueryForTests(makeQuery(rec));
+    sdk.initSdkSession('/x/same', 'same', deps);
+    sdk.initSdkSession('/y/same', 'same', deps);
+    const target = sdk.listSdkSessions().find((s) => s.cwd === '/x/same');
+    await sdk.sendUserMessage('targeted', { project: 'same', instanceKey: target.instanceKey });
+    await tick();
+    assert.ok(rec.some((r) => r.cwd === '/x/same'), 'instance key beats the ambiguous project name');
+    assert.equal(sdk.getActiveSdkCwd(), '/x/same');
+  });
+
+  it('a stale instance anchor is dropped, never degraded to a same-basename sibling', async () => {
+    const rec = [];
+    const errors = [];
+    const errDeps = { broadcastWs() {}, onTurnEnd() {}, onQueryError: (m) => errors.push(m) };
+    sdk.__setQueryForTests(makeQuery(rec));
+    sdk.initSdkSession('/x/same', 'same', errDeps);
+    sdk.initSdkSession('/y/same', 'same', errDeps);
+    const closed = sdk.listSdkSessions().find((s) => s.cwd === '/x/same');
+    sdk.closeSdkSession({ instanceKey: closed.instanceKey });
+    // The surviving workspace shares the basename; the stale key must not degrade
+    // to name routing (that would deliver the message into /y/same).
+    await sdk.sendUserMessage('must-not-land', { project: 'same', instanceKey: closed.instanceKey });
+    await tick();
+    assert.ok(!rec.length, 'no query may be constructed for the dead instance');
+    assert.equal(sdk.getActiveSdkCwd(), '/y/same', 'active pointer untouched by the dropped send');
+    assert.equal(sdk.attachSdkSession({ project: 'same', instanceKey: closed.instanceKey }).ok, false);
+    assert.equal(sdk.switchToSession('sid-x', { project: 'same', instanceKey: closed.instanceKey }).reason, 'bad-id');
+    assert.equal(sdk.getSessionId({ cwd: '/y/same' }) === null, true, 'survivor never adopted the dead session id');
+    assert.equal(errors.length, 1, 'the dropped send surfaces a user-visible error instead of vanishing');
+  });
+
+  it('closeSdkSession tears down only its target and reanchors an active close', async () => {
+    const rec = [];
+    sdk.__setQueryForTests(makeQuery(rec));
+    sdk.initSdkSession('/wa', 'wa', deps);
+    await sdk.sendUserMessage('wa-first');
+    await tick();
+    sdk.initSdkSession('/wb', 'wb', deps);
+    await sdk.sendUserMessage('wb-first');
+    await tick();
+    const wa = sdk.listSdkSessions().find((s) => s.cwd === '/wa');
+    const closed = sdk.closeSdkSession({ instanceKey: wa.instanceKey });
+    assert.equal(closed.ok, true);
+    assert.equal(closed.killedActive, false);
+    assert.deepEqual(sdk.listSdkSessions().map((s) => s.cwd), ['/wb']);
+    assert.equal(sdk.getActiveSdkCwd(), '/wb');
+    assert.equal(sdk.getSessionId(), 's-/wb', 'sibling continuity survives');
+
+    const active = sdk.listSdkSessions()[0];
+    const activeClose = sdk.closeSdkSession({ instanceKey: active.instanceKey });
+    assert.equal(activeClose.killedActive, true);
+    assert.equal(activeClose.reattachedTo, null);
+    assert.equal(sdk.getActiveSdkCwd(), '');
+    assert.deepEqual(sdk.listSdkSessions(), []);
+    assert.equal(sdk.closeSdkSession({ instanceKey: active.instanceKey }).reason, 'not-found');
+  });
+
+  it('closeSdkSession dismisses pending approvals and clears the queue on close', async () => {
+    // The ONLY difference between close() and bare teardown() is the approval-dismiss
+    // broadcast loop — pin it so a regression to teardown() can never pass silently
+    // (without it every client keeps the ghost modal until the 5min/24h timeout).
+    const frames = [];
+    const wiredDeps = { broadcastWs: (m) => frames.push(m), onTurnEnd() {} };
+    let canUseToolOpts = null;
+    let approvalStarted = false;
+    sdk.__setQueryForTests(({ prompt, options }) => {
+      const q = (async function* () {
+        yield { type: 'system', subtype: 'init', session_id: 's-approve', model: 'm', slash_commands: [] };
+        for await (const item of prompt) {
+          void item;
+          // Trigger one permission approval and park on it forever. Await it inline so
+          // the close's resolve(null) is observable to the test.
+          approvalStarted = true;
+          canUseToolOpts = await options.canUseTool('Bash', { command: 'ls' }, { toolUseID: 'perm-close-1' });
+          return; // never yields a result — the turn stays open until close
+        }
+      })();
+      q.close = () => {};
+      q.interrupt = () => Promise.resolve();
+      return q;
+    });
+    sdk.initSdkSession('/wa', 'wa', wiredDeps);
+    const sendP = sdk.sendUserMessage('go');
+    sendP.catch(() => {});
+    // Wait for the approval to register + broadcast its pending frame (poll — the
+    // canUseTool call happens one microtask chain after the init message).
+    for (let i = 0; i < 80 && !approvalStarted; i++) await new Promise((r) => setTimeout(r, 2));
+    assert.ok(approvalStarted, 'precondition: canUseTool invoked');
+    assert.ok(frames.some((f) => f.type === 'perm-hook-pending' && f.id === 'perm-close-1'),
+      'precondition: approval pending and announced');
+    const closed = sdk.closeSdkSession({ cwd: '/wa' });
+    assert.equal(closed.ok, true);
+    const dismiss = frames.filter((f) => f.type === 'perm-hook-timeout' && f.id === 'perm-close-1' && f.reason === 'session-closed');
+    assert.equal(dismiss.length, 1, 'close must broadcast the session-closed dismissal so modals close');
+    await sendP; // the parked turn settles at close, never hangs
+    await tick();
+    assert.deepEqual(canUseToolOpts, { behavior: 'deny', message: 'Timeout waiting for user approval' },
+      'the resolved-null approval takes the deny branch instead of leaking its timer');
+    assert.equal(sdk.listSdkSessions().length, 0);
+  });
+
+  it('name-only close refuses same-basename ambiguity and attach activates an exact instance', () => {
+    sdk.__setQueryForTests(makeQuery([]));
+    sdk.initSdkSession('/x/same', 'same', deps);
+    sdk.initSdkSession('/y/same', 'same', deps);
+    const ambiguous = sdk.closeSdkSession({ project: 'same' });
+    assert.equal(ambiguous.ok, false);
+    assert.equal(ambiguous.reason, 'ambiguous');
+    assert.equal(ambiguous.candidates.length, 2);
+    assert.equal(sdk.listSdkSessions().length, 2);
+    const target = sdk.listSdkSessions().find((s) => s.cwd === '/x/same');
+    const attached = sdk.attachSdkSession({ project: 'same', instanceKey: target.instanceKey });
+    assert.equal(attached.ok, true);
+    assert.equal(attached.cwd, '/x/same');
+    assert.equal(sdk.getActiveSdkCwd(), '/x/same');
+    assert.equal(sdk.attachSdkSession({ project: 'same' }).reason, 'ambiguous');
   });
 });

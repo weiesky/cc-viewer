@@ -35,6 +35,7 @@ delete process.env.CCV_ELECTRON_MULTITAB;
 
 const { resumeRoutes } = await import('../server/routes/resume.js');
 const ptyMgr = await import('../server/pty-manager.js');
+const sdk = await import('../server/lib/sdk-manager.js');
 const interceptor = await import('../server/interceptor.js');
 const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
 
@@ -140,6 +141,8 @@ beforeEach(async () => {
 afterEach(() => {
   ptyMgr._resetForTests();
   ptyMgr._setPtyImportForTests(null);
+  sdk.stopSession();
+  sdk.__setQueryForTests(undefined);
 });
 
 describe('POST /api/live-processes/close', () => {
@@ -558,5 +561,67 @@ describe('POST /api/live-processes/close — scratch cleanup', () => {
       scratchMgr._setPtyImportForTests(null);
       try { scratchMgr.killAllScratch(); } catch {}
     }
+  });
+});
+
+describe('POST /api/live-processes/close — SDK sessions', () => {
+  it('closes only the exact SDK instance and rebinds a bound active workspace to its survivor', async () => {
+    ptyMgr._resetForTests();
+    sdk.stopSession();
+    sdk.__setQueryForTests(() => { throw new Error('query should stay lazy'); });
+    const sdkA = join(tmpDir, 'sdkCloseA');
+    const sdkB = join(tmpDir, 'sdkCloseB');
+    mkdirSync(sdkA, { recursive: true });
+    mkdirSync(sdkB, { recursive: true });
+    interceptor.initForWorkspace(sdkA, { forceNew: true });
+    process.env.CCV_PROJECT_DIR = sdkA;
+    sdk.initSdkSession(sdkA, projectKeyForCwd(sdkA), {});
+    sdk.initSdkSession(sdkB, projectKeyForCwd(sdkB), {});
+    sdk.setActiveSdkSession(sdkA);
+    const target = sdk.listSdkSessions().find((s) => s.cwd === sdkA);
+    const client = makeSseClient();
+    let clearedScope = null;
+    const deps = reboundDeps({
+      clients: [client],
+      projectName: projectKeyForCwd(sdkA),
+      clearScopeRuntimeFor(scope) { clearedScope = scope; },
+    });
+    try {
+      const { status, body } = await callClose({
+        body: JSON.stringify({ project: projectKeyForCwd(sdkA), instanceKey: target.instanceKey }),
+        deps,
+      });
+      assert.equal(status, 200);
+      assert.equal(body.ok, true);
+      assert.equal(body.instanceKey, target.instanceKey);
+      assert.deepEqual(sdk.listSdkSessions().map((s) => s.cwd), [sdkB]);
+      assert.equal(sdk.getActiveSdkCwd(), sdkB);
+      assert.equal(process.env.CCV_PROJECT_DIR, sdkB);
+      assert.equal(interceptor._projectName, projectKeyForCwd(sdkB));
+      assert.deepEqual(body.rebound, { project: projectKeyForCwd(sdkB), cwd: sdkB });
+      assert.ok(client.frames.join('').includes('workspace_started'));
+      assert.notEqual(clearedScope, null, 'closed SDK scope runtime is reaped');
+      assert.equal(ptyMgr.listLivePtys().length, 0, 'SDK close never invents or kills a PTY');
+    } finally {
+      delete process.env.CCV_PROJECT_DIR;
+    }
+  });
+
+  it('an exact SDK key cannot kill a same-name PTY', async () => {
+    const sameA = join(tmpDir, 'sdk-x', 'sameClose');
+    const sameB = join(tmpDir, 'sdk-y', 'sameClose');
+    mkdirSync(sameA, { recursive: true });
+    mkdirSync(sameB, { recursive: true });
+    sdk.initSdkSession(sameA, 'sameClose', {});
+    sdk.initSdkSession(sameB, 'sameClose', {});
+    await ptyMgr.spawnClaude(9999, sameA, [], 'claude');
+    const before = ptyMgr.listLivePtys().length;
+    const target = sdk.listSdkSessions().find((s) => s.cwd === sameB);
+    const closed = await callClose({ body: JSON.stringify({ project: 'sameClose', instanceKey: target.instanceKey }) });
+    assert.equal(closed.status, 200);
+    assert.equal(closed.body.ok, true);
+    assert.ok(!sdk.listSdkSessions().some((s) => s.cwd === sameB));
+    assert.ok(sdk.listSdkSessions().some((s) => s.cwd === sameA));
+    assert.equal(ptyMgr.listLivePtys().length, before, 'an SDK key must not kill the same-name PTY');
   });
 });

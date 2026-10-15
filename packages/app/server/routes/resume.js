@@ -54,6 +54,7 @@ import { isAdminReq } from '../lib/is-admin.js';
 import { isSameOriginBrowserRequest } from '../lib/same-origin.js';
 import { sseWrite } from '../lib/wire-compress.js';
 import { reportSwallowed } from '@ccv/core/error-report';
+import { findSdkSessionByInstance, listSdkSessionInstances } from '../lib/sdk-session-index.js';
 
 function sendJson(res, code, obj) {
   res.writeHead(code, { 'Content-Type': 'application/json' });
@@ -128,21 +129,22 @@ async function getLiveProcessesHandler(req, res, parsedUrl) {
   // first launch's PTY-less list collapsed to just the new project. Enumerate the per-cwd SDK
   // session registry (multi-session) as `kind:'main'` entries so each launched workspace shows
   // up exactly like a PTY project. `active` marks the session the SDK composer is bound to;
-  // `closable:false` (no PTY to kill) tells the header to suppress the ×.
+  // a cwd-stable instanceKey drives exact view routing and the per-session × close path.
   if (process.env.CCV_SDK_MODE === '1') {
     try {
       const sdk = await import('../lib/sdk-manager.js');
       for (const e of sdk.listSdkSessions()) {
         if (!e || !e.cwd) continue;
         if (processes.some((p) => p && p.cwd === e.cwd)) continue; // a real PTY already covers this cwd
+        const boundCwd = process.env.CCV_PROJECT_DIR || process.cwd();
+        if (!currentInstanceKey && e.instanceKey && e.cwd === boundCwd) currentInstanceKey = e.instanceKey;
         processes.push({
           kind: 'main',
           project: projectKeyForCwd(e.cwd),
           cwd: e.cwd,
           pid: null,
           active: e.active === true,
-          instanceKey: null,
-          closable: false, // SDK resident query — killed via session switch, not the × close path
+          instanceKey: e.instanceKey || null,
         });
       }
     } catch (err) { reportSwallowed('resume-route.live-sdk', err); }
@@ -176,6 +178,25 @@ function postLiveProcessAttachHandler(req, res, parsedUrl, isLocal, deps) {
       return;
     }
     try {
+      const sdkAnchor = instanceKey && findSdkSessionByInstance(instanceKey)
+        ? { instanceKey }
+        : (!instanceKey && listSdkSessionInstances().length ? { project: project || undefined } : null);
+      if (sdkAnchor) {
+        const sdk = await import('../lib/sdk-manager.js');
+        const r = sdk.attachSdkSession(sdkAnchor);
+        if (r.ok) {
+          sendJson(res, 200, { ok: true, project, instanceKey: r.instanceKey, running: true, ptyKind: 'sdk', switched: r.switched });
+          return;
+        }
+        if (r.reason === 'ambiguous') {
+          sendJson(res, 409, { ok: false, reason: 'ambiguous', candidates: r.candidates || [] });
+          return;
+        }
+        if (instanceKey) {
+          sendJson(res, 404, { ok: false, reason: 'not-found' });
+          return;
+        }
+      }
       const { attachPtyFor } = await import('../pty-manager.js');
       const r = attachPtyFor({ project: project || undefined, instanceKey: instanceKey || undefined });
       if (!r.ok) {
@@ -238,8 +259,22 @@ function postLiveProcessCloseHandler(req, res, parsedUrl, isLocal, deps) {
       return;
     }
     try {
-      const { killPtyFor } = await import('../pty-manager.js');
-      const r = killPtyFor({ project: project || undefined, instanceKey: instanceKey || undefined });
+      const sdkByInstance = instanceKey ? findSdkSessionByInstance(instanceKey) : null;
+      let r;
+      let survivorRecords = null;
+      if (sdkByInstance) {
+        const sdk = await import('../lib/sdk-manager.js');
+        r = sdk.closeSdkSession({ instanceKey });
+        survivorRecords = listSdkSessionInstances().map((s) => ({ key: s.instanceKey, cwd: s.cwd, isActive: s.active === true }));
+      } else {
+        const { killPtyFor } = await import('../pty-manager.js');
+        r = killPtyFor({ project: project || undefined, instanceKey: instanceKey || undefined });
+        if (!r.ok && r.reason === 'not-found' && listSdkSessionInstances().length) {
+          const sdk = await import('../lib/sdk-manager.js');
+          r = sdk.closeSdkSession({ project: project || undefined, instanceKey: instanceKey || undefined });
+          if (r.ok) survivorRecords = listSdkSessionInstances().map((s) => ({ key: s.instanceKey, cwd: s.cwd, isActive: s.active === true }));
+        }
+      }
       if (!r.ok) {
         // Multi-instance: an ambiguous project-name-only close (2+ live same-basename
         // instances) is a 409 with the live candidates, so the client re-issues with an
@@ -260,7 +295,7 @@ function postLiveProcessCloseHandler(req, res, parsedUrl, isLocal, deps) {
       // CCV_PROJECT_DIR — never by basename, or a same-name twin close would false-hit.
       let rebound = null;
       try {
-        rebound = _maybeRebindAfterClose(r, deps);
+        rebound = _maybeRebindAfterClose(r, deps, survivorRecords);
       } catch (err) { reportSwallowed('resume-route.close-rebind', err); }
       // A PTY killed here fires no Stop POST, so its scope's streaming/turn
       // bucket would stay `active:true` forever — the heartbeat/streaming timer
@@ -311,7 +346,7 @@ function postLiveProcessCloseHandler(req, res, parsedUrl, isLocal, deps) {
           }
         }
       } catch (err) { reportSwallowed('resume-route.close-kill-scratch', err); }
-      sendJson(res, 200, { ok: true, project, instanceKey: r.key || instanceKey || null, killedActive: r.killedActive === true, rebound });
+      sendJson(res, 200, { ok: true, project, instanceKey: r.instanceKey || r.key || instanceKey || null, killedActive: r.killedActive === true, rebound });
     } catch (err) {
       reportSwallowed('resume-route.close', err);
       sendJson(res, 500, { ok: false, reason: 'close-failed' });
@@ -339,7 +374,7 @@ function postLiveProcessCloseHandler(req, res, parsedUrl, isLocal, deps) {
 // request can observe a half-applied rebind, and a throwing side-effect can no
 // longer strand the "binding moved but nobody was told" state (the broadcast
 // has already gone out by then).
-function _maybeRebindAfterClose(killResult, deps) {
+function _maybeRebindAfterClose(killResult, deps, survivorRecords = null) {
   // Electron multi-tab: the manager process does NOT own log init (the tab
   // workers do); mirroring workspaces.js:56, skip rebind entirely there.
   if (process.env.CCV_ELECTRON_MULTITAB === '1') return null;
@@ -355,7 +390,7 @@ function _maybeRebindAfterClose(killResult, deps) {
   // terminal attachment to (reattachedTo), then the terminal's live attachment
   // (isActive — preserves the launch-time invariant bound == attached), else
   // the first live claude record in Map order.
-  const live = listLivePtys().filter((p) => p && p.cwd && (!p.ptyKind || p.ptyKind === 'claude'));
+  const live = survivorRecords || listLivePtys().filter((p) => p && p.cwd && (!p.ptyKind || p.ptyKind === 'claude'));
   if (!live.length) return null;
   // A same-cwd TWIN of the closed bound project still lives → the bound
   // identity (same project name, same log dir) is already correct for it;
@@ -492,7 +527,9 @@ function postResumeSessionHandler(req, res, parsedUrl, isLocal, deps) {
         const sdk = await import('../lib/sdk-manager.js');
         // Multi-session (2026-10-12): honor the requested workspace — resume the VIEWED
         // session, not always the active one. project is the workspace name from the client.
-        const anchor = (typeof project === 'string' && project) ? { project } : undefined;
+        const anchor = (project || instanceKey)
+          ? { project: project || undefined, instanceKey: instanceKey || undefined }
+          : undefined;
         const r = sdk.switchToSession(sessionUuid, anchor);
         if (r.ok) { sendJson(res, 200, { ok: true }); return; }
         if (r.reason === 'busy') { sendJson(res, 409, { ok: false, reason: 'busy' }); return; }

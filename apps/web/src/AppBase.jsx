@@ -1998,6 +1998,20 @@ class AppBase extends React.Component {
 
   _onChannelHeartbeatTimeout(channel) {
     console.warn('SSE heartbeat timeout, reconnecting...');
+    // [ws.mux.diag] gated probe (localStorage.ccv_ws_mux_diag==='1') — lastFrameAgo
+    // separates "server silent" from "touch lost" when diagnosing heartbeat loops.
+    try {
+      if (localStorage.getItem('ccv_ws_mux_diag') === '1') {
+        console.log('[ws.mux.diag] heartbeat-timeout', {
+          key: channel.key,
+          lastFrameAgo: Date.now() - (channel.lastFrameAt || 0),
+          readyState: channel.es ? channel.es.readyState : null,
+          backend: channel.es ? channel.es._backend || 'es' : null,
+          reconnects: channel.vm && channel.vm.reconnectsSinceCommit,
+          committed: !!(channel.vm && channel.vm.committed),
+        });
+      }
+    } catch { /* localStorage guarded — benign */ }
     this._reconnectChannel(channel);
   }
 

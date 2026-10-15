@@ -50,9 +50,14 @@ const HEARTBEAT_SEND_MS = 25_000;   // app-level ping cadence (chisel: proxies k
 const HEARTBEAT_REAP_MS = 60_000;   // no inbound frame for this long → terminate the socket
 const MAX_STREAMS_PER_SOCKET = 8;
 // Per-socket queue is a pure MEMORY SAFETY NET (the primary slow-consumer eviction is the
-// per-stream 30s backpressure rule inherited from _safeSseWrite). Sized well above any
-// legitimate burst so it only trips on a wedged socket, never on a fast-producer burst.
-const QUEUE_MAX_BYTES = 8 * 1024 * 1024;
+// per-stream 30s backpressure rule inherited from _safeSseWrite). Sized above any legitimate
+// cold-load burst so it only trips on a genuinely wedged socket, never on a fast-producer
+// burst. Postmortem (2026-10-15): cc-viewer's own ~11MB v3 cold load exceeded the old 8MB
+// cap — the CAP RAISE is the load-bearing fix; the perMessageDeflate disable below is
+// prophylactic (it removes bufferedAmount inflation so the gate stops false-tripping, but
+// even with deflate on the 32MB cap absorbs the burst: measured peak 10.6MB).
+// 32MB covers ~40k-row sessions while still bounding a truly dead client's damage.
+export const QUEUE_MAX_BYTES = 32 * 1024 * 1024;
 const HIGH_WATER = 1024 * 1024;     // mirrors terminal's hysteresis band
 const LOW_WATER = 256 * 1024;
 
@@ -241,11 +246,25 @@ export function createStreamMuxServer({
   clearTimeout: clearT = clearTimeout,
   now = Date.now,
 } = {}) {
-  // perMessageDeflate: the dialogue channel carries the app's largest transfers (cold-load
-  // windows); without it the mux would send verbatim JSON where the SSE path gets per-connection
-  // brotli (measured 21-88x on real sessions). ws's built-in permessage-deflate (zlib) recovers
-  // most of that with no new dependency. (SSE keeps its stronger brotli; this closes the gap.)
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024, perMessageDeflate: true });
+  // perMessageDeflate DISABLED (2026-10-15, queue-overflow postmortem): with deflate on,
+  // ws.send() enqueues into Node's zlib pending queue and ws.bufferedAmount counts those
+  // bytes BEFORE they reach TCP (sender.js adds the UNCOMPRESSED size to _bufferedBytes
+  // pre-compress, subtracting only in the zlib callback). During a cold-load burst the gate
+  // then sees a phantom backlog, marks the socket behind, and queues frames — pings included —
+  // so the queue grows until the cap kills the connection (1011 queue-overflow) and the
+  // client's channel watchdog fires into a reconnect→overflow loop.
+  //
+  // Measured (real ws, ~11MB burst): peak bufferedAmount ~1.05MB in BOTH modes — deflate's
+  // contribution is queue DWELL TIME, not peak depth. The cap raise above is what actually
+  // prevents the overflow; disabling deflate keeps the gate's behind-detection honest.
+  //
+  // Trade-off (accepted): the mux path is now UNCOMPRESSED — MuxSink._wireEnc stays falsy,
+  // so the SSE brotli encoder never runs here (only the SSE fallback compresses). On
+  // localhost/LAN the wire growth is irrelevant; on a slow remote link a cold load is
+  // slower than it would be compressed, and an SSE-fallback user can cold-load FASTER than
+  // a healthy-mux user. The structural fix (cold-load history over one compressed HTTP
+  // fetch, WS reserved for control + live deltas) is tracked as follow-up work.
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024, perMessageDeflate: false });
   const sockets = new Set();
   wss.on('error', (err) => reportSwallowed('ws.mux.server', err));
   wss.on('connection', (ws) => handleConnection(ws));

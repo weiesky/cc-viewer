@@ -34,6 +34,7 @@ process.env.CCV_CLI_MODE = '0';
 const { eventsRoutes } = await import('../server/routes/events.js');
 const { initForWorkspace } = await import('../server/interceptor.js');
 const ptyMgr = await import('../server/pty-manager.js');
+const { registerSdkSessionLister } = await import('../server/lib/sdk-session-index.js');
 const { spawnClaude, _setPtyImportForTests, _resetForTests, listLivePtys } = ptyMgr;
 
 // Two REAL dirs, same basename "proj", in different parents → one shared pool.
@@ -121,6 +122,7 @@ before(async () => {
 });
 
 after(() => {
+  try { registerSdkSessionLister(null); } catch {}
   try { _setPtyImportForTests(null); } catch {}
   try { _resetForTests(); } catch {}
   try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
@@ -156,5 +158,19 @@ describe('/events cold-load same-name cwd scoping', () => {
     const parsedUrl = new URL(`/events?project=proj&instance=${freshA}&limit=400`, 'http://localhost');
     await eventsHandler(mkReq(), res, parsedUrl, true, mkDeps());
     assert.equal(pickedTs(res), TS_A, 'must cold-load the SAME-cwd (/a/proj) newest session');
+  });
+
+  it('an SDK instance uses its registry cwd for the same-name fallback pool', async () => {
+    const sdkKey = 'ccv-' + 'c'.repeat(32);
+    registerSdkSessionLister(() => [{ cwd: dirB, instanceKey: sdkKey, active: true }]);
+    try {
+      const res = mkRes();
+      const parsedUrl = new URL(`/events?project=proj&instance=${sdkKey}&limit=400`, 'http://localhost');
+      await eventsHandler(mkReq(), res, parsedUrl, true, mkDeps());
+      assert.equal(pickedTs(res), TS_B, 'SDK cwd must exclude the other same-name directory history');
+      assert.ok(!res.frames.join('').includes('sid-not-found'));
+    } finally {
+      registerSdkSessionLister(null);
+    }
   });
 });

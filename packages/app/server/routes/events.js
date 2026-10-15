@@ -13,6 +13,7 @@ import { readV2SingleEntry } from '../lib/v2/adapter.js';
 import { resolveSessionDirName, latestMainSessionDir } from '../lib/v2/session-select.js';
 import { sanitizePathComponent, normalizeSessionCwd } from '../lib/v2/layout.js';
 import { listLivePtys } from '../pty-manager.js';
+import { findSdkSessionByInstance } from '../lib/sdk-session-index.js';
 import { enrichRawIfNeeded } from '../lib/enrich-plan-input.js';
 import { validateLogPath } from '../lib/log-management.js';
 import { isMainAgentEntry, extractCachedContent } from '../lib/kv-cache-analyzer.js';
@@ -351,7 +352,8 @@ export async function serveEventStream(sink, params, deps) {
         let targetCwd = '';
         if (instanceParam) {
           try {
-            const rec = listLivePtys().find((p) => p && p.instanceKey === instanceParam);
+            const rec = listLivePtys().find((p) => p && p.instanceKey === instanceParam)
+              || findSdkSessionByInstance(instanceParam);
             targetCwd = rec && rec.cwd ? normalizeSessionCwd(rec.cwd) : '';
           } catch (err) { targetCwd = ''; reportSwallowed('events.target-cwd', err); }
         }
@@ -391,7 +393,8 @@ export async function serveEventStream(sink, params, deps) {
   let instanceAlive = false;
   if (instanceNoSession) {
     try {
-      instanceAlive = listLivePtys().some((p) => p && p.instanceKey === instanceParam);
+      instanceAlive = listLivePtys().some((p) => p && p.instanceKey === instanceParam)
+        || !!findSdkSessionByInstance(instanceParam);
     } catch (err) {
       // Lookup failure degrades to the explicit dead-instance posture (never
       // silently blank the client on a lookup error).

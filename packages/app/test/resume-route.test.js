@@ -21,11 +21,15 @@ process.env.CCV_CLI_MODE = '0';
 
 const { resumeRoutes } = await import('../server/routes/resume.js');
 const { initForWorkspace } = await import('../server/interceptor.js');
+const sdk = await import('../server/lib/sdk-manager.js');
 
 // Bind a live project so _projectName is non-empty (the list is scoped to it).
 initForWorkspace(join(tmpDir, 'currentProj'), { forceNew: true });
 
-after(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
+after(() => {
+  try { sdk.stopSession(); sdk.__setQueryForTests(undefined); } catch {}
+  try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+});
 
 const getSessions = resumeRoutes.find((r) => r.method === 'GET' && r.path === '/api/resume-sessions').handler;
 
@@ -193,6 +197,32 @@ describe('GET /api/live-processes', () => {
       if (prevProjDir === undefined) delete process.env.CCV_PROJECT_DIR; else process.env.CCV_PROJECT_DIR = prevProjDir;
     }
   });
+
+  it('SDK rows are independently closable and expose the bound instance identity', async () => {
+    const ptyMgr = await import('../server/pty-manager.js');
+    ptyMgr._resetForTests();
+    sdk.stopSession();
+    sdk.__setQueryForTests(() => { throw new Error('query should stay lazy'); });
+    const dir = join(tmpDir, 'sdkLiveProj');
+    const prevMode = process.env.CCV_SDK_MODE;
+    const prevProjDir = process.env.CCV_PROJECT_DIR;
+    process.env.CCV_SDK_MODE = '1';
+    process.env.CCV_PROJECT_DIR = dir;
+    try {
+      sdk.initSdkSession(dir, 'sdkLiveProj', {});
+      const out = await callLive();
+      const row = out.processes.find((p) => p.cwd === dir);
+      assert.ok(row, 'SDK session must be listed');
+      assert.match(row.instanceKey, /^ccv-[0-9a-f]+$/);
+      assert.notEqual(row.closable, false, 'Header must not suppress the SDK close button');
+      assert.equal(out.currentInstanceKey, row.instanceKey);
+    } finally {
+      sdk.stopSession();
+      sdk.__setQueryForTests(undefined);
+      if (prevMode === undefined) delete process.env.CCV_SDK_MODE; else process.env.CCV_SDK_MODE = prevMode;
+      if (prevProjDir === undefined) delete process.env.CCV_PROJECT_DIR; else process.env.CCV_PROJECT_DIR = prevProjDir;
+    }
+  });
 });
 
 describe('POST /api/live-processes/attach', () => {
@@ -274,6 +304,33 @@ describe('POST /api/live-processes/attach', () => {
     const r = await callAttach({});
     assert.equal(r.status, 400);
     assert.equal(r.body.ok, false);
+  });
+
+  it('attaches an exact SDK instance and refuses an ambiguous SDK project name', async () => {
+    const ptyMgr = await import('../server/pty-manager.js');
+    ptyMgr._resetForTests();
+    sdk.stopSession();
+    sdk.__setQueryForTests(() => { throw new Error('query should stay lazy'); });
+    const dirA = join(tmpDir, 'sdk-a', 'same');
+    const dirB = join(tmpDir, 'sdk-b', 'same');
+    try {
+      sdk.initSdkSession(dirA, 'same', {});
+      sdk.initSdkSession(dirB, 'same', {});
+      const target = sdk.listSdkSessions().find((s) => s.cwd === dirA);
+      const attached = await callAttach({ project: 'same', instanceKey: target.instanceKey });
+      assert.equal(attached.status, 200);
+      assert.equal(attached.body.ok, true);
+      assert.equal(attached.body.ptyKind, 'sdk');
+      assert.equal(sdk.getActiveSdkCwd(), dirA);
+      const ambiguous = await callAttach({ project: 'same' });
+      assert.equal(ambiguous.status, 409);
+      assert.equal(ambiguous.body.reason, 'ambiguous');
+      assert.equal(ambiguous.body.candidates.length, 2);
+      assert.equal(sdk.getActiveSdkCwd(), dirA, 'failed attach must not move active');
+    } finally {
+      sdk.stopSession();
+      sdk.__setQueryForTests(undefined);
+    }
   });
 });
 

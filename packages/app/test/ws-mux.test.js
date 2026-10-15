@@ -20,6 +20,7 @@ import {
   validateOpenParams,
   createStreamMuxServer,
   MUX_CODES,
+  QUEUE_MAX_BYTES,
 } from '../server/lib/ws-mux.js';
 import { sendToClients, sendEventToClients } from '../server/lib/log-watcher.js';
 import { filterClientsByScope } from '../server/lib/v2/view-router.js';
@@ -51,13 +52,14 @@ function makeServer(over = {}) {
   const wss = new FakeWss();
   const reports = [];
   const serveCalls = [];
+  const wssOpts = [];
   const mux = createStreamMuxServer({
-    WebSocketServer: function () { return wss; },
+    WebSocketServer: function (opts) { wssOpts.push(opts); return wss; },
     serveStream: over.serveStream || ((sink, qs) => { serveCalls.push({ sink, qs }); return { dispose() { this.disposed = true; } }; }),
     reportSwallowed: (tag, err, extra) => reports.push({ tag, err, extra }),
     ...over,
   });
-  return { mux, wss, reports, serveCalls };
+  return { mux, wss, reports, serveCalls, wssOpts };
 }
 
 function connect(mux) {
@@ -333,7 +335,9 @@ describe('ws-mux backpressure', { concurrency: false }, () => {
     const ws = connect(mm.mux);
     ws.receive({ type: 'open', streamId: 's1', qs: '' });
     ws.bufferedAmount = 5 * 1024 * 1024;    // behind
-    liveSink.write('data: ' + 'x'.repeat(9 * 1024 * 1024) + '\n\n');   // > 8MB cap
+    // One frame just over the exported cap — derived, so a future cap change fails loudly
+    // here instead of silently testing nothing.
+    liveSink.write('data: ' + 'x'.repeat(QUEUE_MAX_BYTES + 1024 * 1024) + '\n\n');
     assert.ok(ws.closedWith, 'socket closed on queue overflow');
     m.mux.close(); mm.mux.close();
   });
@@ -358,6 +362,39 @@ describe('ws-mux backpressure', { concurrency: false }, () => {
     const clients = [liveSink];
     sendToClients(clients, { ts: 1 });
     assert.equal(clients.length, 0, 'dead shim removed from clients');
+    mm.mux.close();
+  });
+});
+
+// ── regression guards (the queue-overflow postmortem, 2026-10-15) ────────────
+
+describe('ws-mux regression guards', { concurrency: false }, () => {
+  it('perMessageDeflate stays DISABLED on the mux WSS (re-enabling reintroduces queue-overflow)', () => {
+    // The deflate pending queue inflates ws.bufferedAmount before bytes reach TCP;
+    // the backpressure gate then marks the socket behind during a legitimate cold-load
+    // burst and queues frames (pings included) until the cap kills the connection.
+    // Pin the flag so "restore compression" can't silently bring the outage back.
+    const m = makeServer();
+    assert.equal(m.wssOpts.length, 1, 'WSS constructed exactly once');
+    assert.equal(m.wssOpts[0].perMessageDeflate, false, 'perMessageDeflate must stay false');
+    m.mux.close();
+  });
+
+  it('a legitimate ~11MB fast-consumer cold burst does NOT queue or overflow', () => {
+    // The incident: cc-viewer's own v3 cold load is ~11MB of framed JSON. With the old
+    // 8MB cap + deflate-inflated bufferedAmount this overflowed. A healthy fast consumer
+    // (bufferedAmount never over the 1MB high-water) must never enter the behind state,
+    // no matter how large the burst.
+    let liveSink = null;
+    const mm = makeServer({ serveStream: (s) => { liveSink = s; return { dispose() {} }; } });
+    const ws = connect(mm.mux);
+    ws.receive({ type: 'open', streamId: 's1', qs: '' });
+    // bufferedAmount stays 0 (fast consumer) — push 12MB through in one go.
+    const chunk = 'x'.repeat(1024 * 1024);
+    for (let i = 0; i < 12; i++) liveSink.write(`data: ${chunk}\n\n`);
+    assert.equal(ws.closedWith, null, 'socket must not close on a legitimate burst');
+    // 12 data frames + the open-ack that preceded them.
+    assert.equal(ws.sent.filter((f) => JSON.parse(f).type === 'frame').length, 12, 'all frames delivered synchronously');
     mm.mux.close();
   });
 });

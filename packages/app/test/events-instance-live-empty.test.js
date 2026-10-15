@@ -40,6 +40,7 @@ const { eventsRoutes } = await import('../server/routes/events.js');
 const interceptor = await import('../server/interceptor.js');
 const { initForWorkspace } = interceptor;
 const ptyMgr = await import('../server/pty-manager.js');
+const { registerSdkSessionLister } = await import('../server/lib/sdk-session-index.js');
 const { spawnClaude, _setPtyImportForTests, _resetForTests, listLivePtys } = ptyMgr;
 
 // Bound project (has a session — the pre-fix bleed source) and the viewed
@@ -172,6 +173,7 @@ before(async () => {
 });
 
 after(() => {
+  try { registerSdkSessionLister(null); } catch {}
   try { _setPtyImportForTests(null); } catch {}
   try { _resetForTests(); } catch {}
   try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
@@ -185,6 +187,24 @@ async function spawnFresh(cwd) {
 }
 
 describe('/events live-instance empty view', () => {
+  it('a live SDK instance with no session dir gets the same empty view, not sid-not-found', async () => {
+    const sdkKey = 'ccv-' + 'd'.repeat(32);
+    registerSdkSessionLister(() => [{ cwd: dirB, instanceKey: sdkKey, active: true }]);
+    try {
+      const res = mkRes();
+      const parsedUrl = new URL(`/events?project=projB&instance=${sdkKey}&limit=400`, 'http://localhost');
+      await eventsHandler(mkReq(), res, parsedUrl, true, mkDeps());
+      assert.ok(!res.frames.join('').includes('sid-not-found'), 'registered SDK session is live');
+      const ls = loadStart(res);
+      assert.ok(ls);
+      assert.equal(ls.total, 0);
+      assert.equal(ls.empty, true);
+      assert.equal(frameNamed(res, 'load_chunk').length, 0, 'no bound content may bleed into the SDK view');
+    } finally {
+      registerSdkSessionLister(null);
+    }
+  });
+
   it('a LIVE instance with no session dir gets an empty view, NOT sid-not-found, and NO bound-project bleed', async () => {
     const freshB = await spawnFresh(dirB);
     const res = mkRes();

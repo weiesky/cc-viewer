@@ -32,6 +32,8 @@ import { evaluateImDeny } from './im-deny.js';
 import { APPROVAL_TOOLS, isPublishCommand } from './approval-policy.js';
 import { reportSwallowed } from '@ccv/core/error-report';
 import { resolve as _pathResolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import { registerSdkSessionLister } from './sdk-session-index.js';
 
 let _query;
 try {
@@ -71,7 +73,13 @@ function _getOrCreateSession(cwd) {
 // The ACTIVE session (the one the composer talks to). May be null before any init.
 function _active() { return _activeKey != null ? _sessions.get(_activeKey) : null; }
 
-// Resolve an anchor { cwd|project } to a Session WITHOUT switching active (read ops).
+function _matchesProject(sess, project) {
+  const rawBase = String(sess.cwd || '').replace(/\\/g, '/').split('/').filter(Boolean).pop();
+  const sanitized = rawBase ? rawBase.replace(/[^a-zA-Z0-9_\-.]/g, '_') : null;
+  return sanitized === project || rawBase === project;
+}
+
+// Resolve an anchor { instanceKey|cwd|project } to a Session WITHOUT switching active (read ops).
 // `cwd` is an absolute path (exact key match); `project` is the SANITIZED project name the
 // web client sends (ChatView stamps `viewProject || projectName`, where projectName =
 // projectKeyForCwd(cwd) — non [a-zA-Z0-9_-] chars become `_`, so a dir with spaces/CJK sends
@@ -80,8 +88,18 @@ function _active() { return _activeKey != null ? _sessions.get(_activeKey) : nul
 // guess). Returns null when the anchor resolves to no registered session.
 function _sessionForAnchor(anchor) {
   if (!anchor || typeof anchor !== 'object') return null;
+  const instanceKey = (typeof anchor.instanceKey === 'string' && anchor.instanceKey) || null;
   const cwd = (typeof anchor.cwd === 'string' && anchor.cwd) || null;
   const project = (typeof anchor.project === 'string' && anchor.project) || null;
+  if (instanceKey) {
+    for (const s of _sessions.values()) {
+      if (s.instanceKey === instanceKey) return s;
+    }
+    // An exact instance that no longer exists must never fall back to a
+    // same-basename sibling — that would execute the user's action in the
+    // wrong workspace. The caller's unknown-anchor path drops + reports it.
+    return null;
+  }
   if (cwd) return _sessions.get(_normalizeCwd(cwd)) || null;
   if (!project) return null;
   // exact-path form of a project (an absolute path was passed as `project`) — try key first.
@@ -89,9 +107,7 @@ function _sessionForAnchor(anchor) {
   if (byKey) return byKey;
   let found = null;
   for (const s of _sessions.values()) {
-    const rawBase = String(s.cwd || '').replace(/\\/g, '/').split('/').filter(Boolean).pop();
-    const sanitized = rawBase ? rawBase.replace(/[^a-zA-Z0-9_\-.]/g, '_') : null;
-    if (sanitized === project || rawBase === project) { if (found) return null; found = s; } // ambiguous → null
+    if (_matchesProject(s, project)) { if (found) return null; found = s; } // ambiguous → null
   }
   return found;
 }
@@ -100,11 +116,16 @@ function _sessionForAnchor(anchor) {
 export function __listSessionsForTests() { return [..._sessions.keys()]; }
 export function __getSessionKeyForTests(cwd) { return _normalizeCwd(cwd); }
 
-/** Enumerate the per-cwd SDK session registry for the header's live list. Each entry:
- * { key, cwd, active }. Read-only. */
+/** Enumerate the per-cwd SDK session registry for live workspace routing. Each entry:
+ * { key, cwd, active, instanceKey }. Read-only. NOTE: `key` is the registry's
+ * normalized-cwd key; attach/close responses instead alias `key` to the instanceKey
+ * for killPtyFor-shape parity (resume.js consumes `r.key === reattachedTo`). Callers
+ * must not mix the two namespaces. */
 export function listSdkSessions() {
-  return [..._sessions.values()].map((s) => ({ key: s.key, cwd: s.cwd, active: s.key === _activeKey }));
+  return [..._sessions.values()].map((s) => ({ key: s.key, cwd: s.cwd, active: s.key === _activeKey, instanceKey: s.instanceKey }));
 }
+
+registerSdkSessionLister(listSdkSessions);
 
 // Silence window for the watchdog. Must stay above the approval ceilings the turn can
 // legally wait on: perm/plan = 5min, AskUserQuestion = 24h ("GUI effectively has no
@@ -275,6 +296,7 @@ function _normalizeSdkTask(msg) {
 // `let` (rebinding, not a frozen property) so assignment paths like
 // `_messageQueue = []` keep working.
 function _createSession(key, cwd) {
+  const instanceKey = `ccv-${createHash('sha256').update(key).digest('hex').slice(0, 32)}`;
   // Launch config (per-session identity; adopted on lazy reconstruction)
   let _cwd = cwd;
   let _permissionMode = 'default';
@@ -337,13 +359,14 @@ function _createSession(key, cwd) {
   let _suppressDrain = false;
 
     // Wrap the process-global _broadcastWs so EVERY frame this session emits carries
-    // its routing identity (cwd + sessionId): with concurrent sessions on one WS, the
-    // frontend filters frames by cwd — without it every workspace's clients would see
-    // every other workspace's spinner/queue/modal frames.
+    // its routing identity (cwd + sessionId + instanceKey): with concurrent sessions on
+    // one WS, the frontend/server filter frames by workspace+instance — without it every
+    // workspace's (or same-basename twin's) clients would see every other workspace's
+    // spinner/queue/modal frames.
   function _broadcast(payload) {
     if (!_broadcastWs) return;
     try {
-      _broadcastWs({ cwd: _cwd, sessionId: _sessionId || null, ...payload });
+      _broadcastWs({ cwd: _cwd, sessionId: _sessionId || null, instanceKey, ...payload });
     } catch (err) { reportSwallowed('sdk-manager.broadcast', err); }
   }
 
@@ -440,7 +463,7 @@ function _createSession(key, cwd) {
         // Negative ack: the frontend cleared the composer optimistically — never fail
         // silently. Only the reject frame goes out (no queue-state — nothing changed).
         console.warn('[sdk-manager] queue full, rejecting message');
-        try { if (_broadcastWs) _broadcastWs({ type: 'queue-rejected', reason: 'full', cwd: _cwd, sessionId: _sessionId || null }); }
+        try { if (_broadcastWs) _broadcastWs({ type: 'queue-rejected', reason: 'full', cwd: _cwd, sessionId: _sessionId || null, instanceKey }); }
         catch (err) { reportSwallowed('sdk-manager.reject-broadcast', err); }
         return;
       }
@@ -459,7 +482,7 @@ function _createSession(key, cwd) {
   function _broadcastQueueState() {
     if (!_broadcastWs) return;
     try {
-      _broadcastWs({ type: 'queue-state', cwd: _cwd, sessionId: _sessionId || null, items: _messageQueue.map(({ id, text, ts }) => ({ id, text, ts })) });
+      _broadcastWs({ type: 'queue-state', cwd: _cwd, sessionId: _sessionId || null, instanceKey, items: _messageQueue.map(({ id, text, ts }) => ({ id, text, ts })) });
     } catch (err) { console.warn('[sdk-manager] queue-state broadcast threw:', err?.message); }
   }
 
@@ -531,8 +554,15 @@ function _createSession(key, cwd) {
       const headerCwd = String(_cwd).replace(/[\r\n\x00-\x1f\x7f]/g, '');
       if (headerCwd) {
         const projectHeader = `x-ccv-project-dir: ${headerCwd}`;
+        // Same-name twin isolation (review P2): also self-report this session's stable
+        // instanceKey so the interceptor stamps `_ccvInstance` → v2 meta.instance →
+        // scoped instance routing, exactly like a PTY spawn. Without it, two same-basename
+        // SDK workspaces share project-scoped frames (close teardown kills the twin's
+        // spinner/queue bubbles) and cold-load instance filters never match SDK sessions.
+        const instanceHeader = `x-ccv-instance: ${instanceKey}`;
+        const injected = `${projectHeader}\n${instanceHeader}`;
         options.env.ANTHROPIC_CUSTOM_HEADERS = options.env.ANTHROPIC_CUSTOM_HEADERS
-          ? `${options.env.ANTHROPIC_CUSTOM_HEADERS}\n${projectHeader}` : projectHeader;
+          ? `${options.env.ANTHROPIC_CUSTOM_HEADERS}\n${injected}` : injected;
       }
     }
     if (_settings) options.settings = _settings;
@@ -695,8 +725,8 @@ function _createSession(key, cwd) {
     const valid = state === 'idle' || state === 'running' || state === 'requires_action';
     if (!valid || state === _lastSessionState) return;
     _lastSessionState = state;
-    // _broadcast carries the routing envelope (cwd + sessionId) — every frame needs
-    // it so concurrent sessions' clients filter correctly.
+    // _broadcast carries the routing envelope (cwd + sessionId + instanceKey) — every
+    // frame needs it so concurrent sessions' clients filter correctly.
     _broadcast({ type: 'sdk-session-state', state });
   }
 
@@ -728,6 +758,7 @@ function _createSession(key, cwd) {
             slashCommands: msg.slash_commands,
             tools: msg.tools,
             cwd: _cwd,
+            instanceKey,
           };
           _broadcastWs(_lastInitSnapshot);
         } else if (msg.subtype === 'compact_boundary' && _broadcastWs) {
@@ -739,6 +770,7 @@ function _createSession(key, cwd) {
             postTokens: meta && meta.post_tokens,
             cwd: _cwd,
             sessionId: _sessionId || null,
+            instanceKey,
           });
           // Compaction is the only non-turn event that materially shrinks context — refresh
           // the usage panel. Coalesced with the turn-end refresh via the in-flight gate.
@@ -752,7 +784,7 @@ function _createSession(key, cwd) {
           // failed/stopped/killed terminal states the TODO HUD vocabulary lacks). The
           // server keeps no task table here — pure forward, merge semantics left to the
           // client (task_updated.patch is a wire-safe delta, not a full snapshot).
-          _broadcastWs({ type: 'sdk-task', cwd: _cwd, ..._normalizeSdkTask(msg) });
+          _broadcastWs({ type: 'sdk-task', cwd: _cwd, instanceKey, ..._normalizeSdkTask(msg) });
         }
         break;
 
@@ -837,7 +869,7 @@ function _createSession(key, cwd) {
       ? resultMsg.errors.join('; ')
       : (typeof resultMsg.result === 'string' && resultMsg.result) || resultMsg.subtype || 'unknown error';
     if (_broadcastWs) {
-      try { _broadcastWs({ type: 'sdk-error', message: String(errs), cwd: _cwd, sessionId: _sessionId || null }); } catch (err) { console.warn('[sdk-manager] sdk-error broadcast threw:', err?.message); }
+      try { _broadcastWs({ type: 'sdk-error', message: String(errs), cwd: _cwd, sessionId: _sessionId || null, instanceKey }); } catch (err) { console.warn('[sdk-manager] sdk-error broadcast threw:', err?.message); }
     }
   }
 
@@ -915,7 +947,7 @@ function _createSession(key, cwd) {
     _ctxUsageFetching = false;
     _ctxUsageQueued = false;
     if (had && _broadcastWs) {
-      try { _broadcastWs({ type: 'sdk-context-usage', sessionId: _sessionId, ts: Date.now(), trigger, usage: null, cwd: _cwd }); }
+      try { _broadcastWs({ type: 'sdk-context-usage', sessionId: _sessionId, ts: Date.now(), trigger, usage: null, cwd: _cwd, instanceKey }); }
       catch (err) { reportSwallowed('sdk-manager.context-usage-broadcast', err); }
     }
   }
@@ -963,7 +995,7 @@ function _createSession(key, cwd) {
     const had = _lastMcpStatus !== null;
     _lastMcpStatus = null;
     if (had && _broadcastWs) {
-      try { _broadcastWs({ type: 'sdk-mcp-status', sessionId: _sessionId, ts: Date.now(), trigger, servers: null, cwd: _cwd }); }
+      try { _broadcastWs({ type: 'sdk-mcp-status', sessionId: _sessionId, ts: Date.now(), trigger, servers: null, cwd: _cwd, instanceKey }); }
       catch (err) { reportSwallowed('sdk-manager.mcp-status-broadcast', err); }
     }
   }
@@ -1134,7 +1166,7 @@ function _createSession(key, cwd) {
       : kind === 'plan' ? 'sdk-plan-resolved'
       : 'perm-hook-timeout';
     try {
-      _broadcastWs({ type, id, reason, cwd: _cwd, sessionId: _sessionId || null });
+      _broadcastWs({ type, id, reason, cwd: _cwd, sessionId: _sessionId || null, instanceKey });
     } catch (err) { console.warn('[sdk-manager] approval-dismiss broadcast threw:', err?.message); }
   }
 
@@ -1451,6 +1483,7 @@ function _createSession(key, cwd) {
   // body, now per-session). `init` = config adoption + that teardown/reset pair.
   return {
     key,
+    instanceKey,
     get cwd() { return _cwd; },
     get config() {
       return {
@@ -1503,6 +1536,13 @@ function _createSession(key, cwd) {
     },
     switchToSession: _switchToSession,
     getSessionId: () => _sessionId,
+    close: () => {
+      for (const { id, kind } of _cancelAllApprovals()) {
+        _broadcastApprovalDismiss(kind, id, 'session-closed');
+      }
+      _teardownResident();
+      _resetFullState();
+    },
     teardown: () => {
       _teardownResident();
       _resetFullState();
@@ -1567,26 +1607,32 @@ export function initSdkSession(cwd, projectName, { onTurnEnd, onQueryError, broa
  */
 export async function sendUserMessage(text, anchor) {
   if (!_query) throw new Error('Agent SDK not available');
-  const sess = _active();
-  if (!sess) {
-    // Uninitialized — the old module's state machine only came alive after
-    // initSdkSession; a pre-init send just resolves (the SDK-unavailable guard
-    // above already covered the only documented throw).
-    return;
-  }
-  if (anchor && (anchor.cwd || anchor.project)) {
+  if (anchor && (anchor.cwd || anchor.project || anchor.instanceKey)) {
     const target = _sessionForAnchor(anchor);
     if (!target) {
-      // A mis-resolved anchor must not silently drop the user's message — log + report.
-      const targetName = anchor.cwd || anchor.project;
+      // A mis-resolved anchor must not silently drop the user's message — log + report,
+      // and surface a toast through the same channel query errors use (the composer was
+      // already cleared client-side; without this the text vanishes without a trace).
+      const targetName = anchor.cwd || anchor.project || anchor.instanceKey;
       console.warn(`[sdk-manager] no SDK session registered for "${targetName}" — message dropped`);
       reportSwallowed('sdk-manager.route', new Error(`no SDK session for ${targetName}`));
+      if (_onQueryError) {
+        try { _onQueryError(`Workspace "${targetName}" is no longer available — message not sent.`); }
+        catch (err) { console.warn('[sdk-manager] onQueryError threw:', err?.message); }
+      }
       return;
     }
     if (target.key !== _activeKey) {
       _activeKey = target.key; // an action re-routes the active session (lazy: no teardown)
     }
     return target.sendUserMessage(text);
+  }
+  const sess = _active();
+  if (!sess) {
+    // Uninitialized — the old module's state machine only came alive after
+    // initSdkSession; a pre-init send just resolves (the SDK-unavailable guard
+    // above already covered the only documented throw).
+    return;
   }
   return sess.sendUserMessage(text);
 }
@@ -1709,6 +1755,80 @@ export function setActiveSdkSession(cwd) {
   if (!key || !_sessions.has(key)) return false;
   _activeKey = key; // lazy switch: the target's state machine is intact by construction
   return true;
+}
+
+/** Activate a workspace by the same exact instance/cwd/project anchor used by SDK actions. */
+export function attachSdkSession(anchor) {
+  if (anchor && anchor.project && !anchor.instanceKey && !anchor.cwd) {
+    const matches = [..._sessions.values()].filter((s) => _matchesProject(s, anchor.project));
+    if (matches.length > 1) {
+      return {
+        ok: false,
+        reason: 'ambiguous',
+        candidates: matches.map((s) => ({ key: s.instanceKey /* aliases instanceKey for killPtyFor-shape parity */, instanceKey: s.instanceKey, cwd: s.cwd })),
+      };
+    }
+  }
+  const sess = _sessionForAnchor(anchor);
+  if (!sess) return { ok: false, reason: 'not-found' };
+  const switched = sess.key !== _activeKey;
+  _activeKey = sess.key;
+  // `key` aliases instanceKey for killPtyFor-shape parity (NOT the registry cwd key).
+  return { ok: true, key: sess.instanceKey, instanceKey: sess.instanceKey, cwd: sess.cwd, switched };
+}
+
+/**
+ * Close exactly one registered SDK workspace. A name-only anchor refuses
+ * same-basename ambiguity; an exact instance key never falls back to a name.
+ */
+export function closeSdkSession(anchor = {}) {
+  const instanceKey = typeof anchor.instanceKey === 'string' ? anchor.instanceKey : '';
+  let sess = null;
+  if (instanceKey) {
+    sess = _sessionForAnchor({ instanceKey });
+    if (!sess) return { ok: false, reason: 'not-found' };
+  } else if (anchor.cwd) {
+    sess = _sessionForAnchor({ cwd: anchor.cwd });
+  } else if (anchor.project) {
+    const matches = [..._sessions.values()].filter((s) => _matchesProject(s, anchor.project));
+    if (matches.length > 1) {
+      return {
+        ok: false,
+        reason: 'ambiguous',
+        candidates: matches.map((s) => ({ key: s.instanceKey /* aliases instanceKey for killPtyFor-shape parity */, instanceKey: s.instanceKey, cwd: s.cwd })),
+      };
+    }
+    sess = matches[0] || null;
+  }
+  if (!sess) return { ok: false, reason: 'not-found' };
+
+  const killedActive = sess.key === _activeKey;
+  const result = {
+    ok: true,
+    // `key` aliases instanceKey here (killPtyFor-shape parity: resume.js matches
+    // `p.key === killResult.reattachedTo`). It is NOT the registry's cwd key —
+    // the registry key is `sess.key`, a different namespace. Do not conflate.
+    key: sess.instanceKey,
+    instanceKey: sess.instanceKey,
+    cwd: sess.cwd,
+    killedActive,
+    reattachedTo: null,
+  };
+  // Remove the registry identity BEFORE user-callback-facing teardown frames. A
+  // close/relaunch triggered by one of those frames must register a fresh session,
+  // never be deleted by the tail of the older close operation.
+  _sessions.delete(sess.key);
+  if (killedActive) {
+    const survivor = _sessions.values().next().value || null;
+    _activeKey = survivor ? survivor.key : null;
+    result.reattachedTo = survivor ? survivor.instanceKey : null;
+  }
+  try {
+    sess.close();
+  } catch (err) {
+    reportSwallowed('sdk-manager.close', err);
+  }
+  return result;
 }
 
 /** The active session's cwd (header/switch addressing). '' when none. */
