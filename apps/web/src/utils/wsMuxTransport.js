@@ -129,11 +129,13 @@ export function createMuxTransport({
     try { sessionStore?.removeItem(PROBE_KEY); } catch { /* benign */ }
   }
 
-  // [ws.mux.diag] Temporary diagnostics for the refresh-after-upgrade failure hunt
-  // (2026-10-15): WS socket never delivers frames to the browser while the server
-  // verifiably sends them. REMOVE once the root cause is fixed (grep "ws.mux.diag").
-  function _diag(...args) { console.log('[ws.mux.diag]', ...args); }
-  function _diagWarn(...args) { console.warn('[ws.mux.diag]', ...args); }
+  // [ws.mux.diag] Diagnostics for the queue-overflow postmortem (2026-10-15), GATED behind
+  // localStorage.ccv_ws_mux_diag==='1' (termDiag.js precedent) — the per-frame probe would
+  // otherwise flood the console during exactly the cold-load burst under diagnosis.
+  // Evaluated once at transport creation; flip the flag + reload to toggle.
+  const _diagEnabled = (() => { try { return localStorage.getItem('ccv_ws_mux_diag') === '1'; } catch { return false; } })();
+  function _diag(...args) { if (_diagEnabled) console.log('[ws.mux.diag]', ...args); }
+  function _diagWarn(...args) { if (_diagEnabled) console.warn('[ws.mux.diag]', ...args); }
 
   // ── facade ──────────────────────────────────────────────────────────────────
   function createFacade(url) {
@@ -307,7 +309,9 @@ export function createMuxTransport({
     ws.onmessage = (ev) => {
       if (sock !== s) return;
       s.lastInboundAt = now();
-      _diag('socket.onmessage', { bytes: (typeof ev.data === 'string' ? ev.data.length : 0), head: (typeof ev.data === 'string' ? ev.data.slice(0, 60) : '<binary>') });
+      // [ws.mux.diag] The flag check is inlined here so the per-frame slice/allocation
+      // only happens when the gate is open — the cold-load burst is thousands of frames.
+      if (_diagEnabled) _diag('socket.onmessage', { bytes: (typeof ev.data === 'string' ? ev.data.length : 0), head: (typeof ev.data === 'string' ? ev.data.slice(0, 60) : '<binary>') });
       _onSocketMessage(ev);
     };
     ws.onerror = (ev) => {
