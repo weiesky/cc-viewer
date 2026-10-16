@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { skillToDisplayName, mergeActiveSkills } from '../src/utils/skillsParser.js';
+import { skillToDisplayName, mergeActiveSkills, groupActiveSkillsByScope } from '../src/utils/skillsParser.js';
 
 describe('skillToDisplayName', () => {
   it('plugin with pluginName "short@marketplace" → "short:name"', () => {
@@ -52,7 +52,7 @@ describe('mergeActiveSkills', () => {
       { name: 'a', source: 'user', enabled: true, description: 'da' },
       { name: 'b', source: 'user', enabled: false, description: 'db' },
     ];
-    assert.deepEqual(mergeActiveSkills(fs, []), [{ name: 'a', description: 'da' }]);
+    assert.deepEqual(mergeActiveSkills(fs, []), [{ name: 'a', description: 'da', source: 'user' }]);
   });
 
   it('filters out builtin source entries', () => {
@@ -60,7 +60,7 @@ describe('mergeActiveSkills', () => {
       { name: 'init', source: 'builtin', enabled: true, description: null },
       { name: 'x', source: 'user', enabled: true, description: 'dx' },
     ];
-    assert.deepEqual(mergeActiveSkills(fs, []), [{ name: 'x', description: 'dx' }]);
+    assert.deepEqual(mergeActiveSkills(fs, []), [{ name: 'x', description: 'dx', source: 'user' }]);
   });
 
   it('filters out entries whose display name is in BUILTIN_SKILL_NAMES even when source claims user', () => {
@@ -69,7 +69,7 @@ describe('mergeActiveSkills', () => {
       { name: 'init', source: 'user', enabled: true, description: 'd' },
       { name: 'keep', source: 'user', enabled: true, description: 'dk' },
     ];
-    assert.deepEqual(mergeActiveSkills(fs, []), [{ name: 'keep', description: 'dk' }]);
+    assert.deepEqual(mergeActiveSkills(fs, []), [{ name: 'keep', description: 'dk', source: 'user' }]);
   });
 
   it('dedups user + project with same bare name (later entry wins)', () => {
@@ -77,7 +77,7 @@ describe('mergeActiveSkills', () => {
       { name: 'foo', source: 'user', enabled: true, description: 'user-desc' },
       { name: 'foo', source: 'project', enabled: true, description: 'project-desc' },
     ];
-    assert.deepEqual(mergeActiveSkills(fs, []), [{ name: 'foo', description: 'project-desc' }]);
+    assert.deepEqual(mergeActiveSkills(fs, []), [{ name: 'foo', description: 'project-desc', source: 'project' }]);
   });
 
   it('plugin + user with same bare name → kept separately (different display names)', () => {
@@ -87,8 +87,8 @@ describe('mergeActiveSkills', () => {
     ];
     const result = mergeActiveSkills(fs, []);
     assert.equal(result.length, 2);
-    assert.deepEqual(result.find(r => r.name === 'creator'), { name: 'creator', description: 'u' });
-    assert.deepEqual(result.find(r => r.name === 'creator:creator'), { name: 'creator:creator', description: 'p' });
+    assert.deepEqual(result.find(r => r.name === 'creator'), { name: 'creator', description: 'u', source: 'user' });
+    assert.deepEqual(result.find(r => r.name === 'creator:creator'), { name: 'creator:creator', description: 'p', source: 'plugin' });
   });
 
   it('plugin fallback to bare name (missing @) + user same name → dedup, later wins', () => {
@@ -98,7 +98,7 @@ describe('mergeActiveSkills', () => {
       { name: 'foo', source: 'user', enabled: true, description: 'user-d' },
       { name: 'foo', source: 'plugin', enabled: true, pluginName: 'no-marketplace', description: 'plugin-d' },
     ];
-    assert.deepEqual(mergeActiveSkills(fs, []), [{ name: 'foo', description: 'plugin-d' }]);
+    assert.deepEqual(mergeActiveSkills(fs, []), [{ name: 'foo', description: 'plugin-d', source: 'plugin' }]);
   });
 
   it('description priority: fs → historical → empty', () => {
@@ -112,9 +112,9 @@ describe('mergeActiveSkills', () => {
       { name: 'b', description: 'from-history-b' },
     ];
     assert.deepEqual(mergeActiveSkills(fs, historical), [
-      { name: 'a', description: 'from-fs' },
-      { name: 'b', description: 'from-history-b' },
-      { name: 'c', description: '' },
+      { name: 'a', description: 'from-fs', source: 'user' },
+      { name: 'b', description: 'from-history-b', source: 'user' },
+      { name: 'c', description: '', source: 'user' },
     ]);
   });
 
@@ -127,12 +127,66 @@ describe('mergeActiveSkills', () => {
       { name: 'creator:foo', description: 'hist-desc' },
     ];
     assert.deepEqual(mergeActiveSkills(fs, historical), [
-      { name: 'creator:foo', description: 'hist-desc' },
+      { name: 'creator:foo', description: 'hist-desc', source: 'plugin' },
     ]);
   });
 
   it('ignores null / malformed entries without crashing', () => {
     const fs = [null, undefined, { source: 'user', enabled: true }, { name: 'ok', source: 'user', enabled: true, description: 'd' }];
-    assert.deepEqual(mergeActiveSkills(fs, []), [{ name: 'ok', description: 'd' }]);
+    assert.deepEqual(mergeActiveSkills(fs, []), [{ name: 'ok', description: 'd', source: 'user' }]);
+  });
+});
+
+describe('groupActiveSkillsByScope', () => {
+  it('splits user → global, project → project, plugin → plugin', () => {
+    const skills = [
+      { name: 'a', description: '', source: 'user' },
+      { name: 'b', description: '', source: 'project' },
+      { name: 'c', description: '', source: 'plugin' },
+    ];
+    const groups = groupActiveSkillsByScope(skills);
+    assert.deepEqual(groups.global.map(s => s.name), ['a']);
+    assert.deepEqual(groups.project.map(s => s.name), ['b']);
+    assert.deepEqual(groups.plugin.map(s => s.name), ['c']);
+  });
+
+  it('unknown source falls back to global', () => {
+    const skills = [{ name: 'x', description: '', source: 'other' }];
+    const groups = groupActiveSkillsByScope(skills);
+    assert.deepEqual(groups.global.map(s => s.name), ['x']);
+    assert.deepEqual(groups.project, []);
+    assert.deepEqual(groups.plugin, []);
+  });
+
+  it('source:undefined (malformed entry) falls back to global without crashing', () => {
+    // mergeActiveSkills only guards `s.source === 'builtin'`, so an entry with no source
+    // passes through with source:undefined and lands in the global bucket.
+    const skills = [{ name: 'orphan', description: '' }];
+    const groups = groupActiveSkillsByScope(skills);
+    assert.deepEqual(groups.global.map(s => s.name), ['orphan']);
+    assert.deepEqual(groups.project, []);
+    assert.deepEqual(groups.plugin, []);
+  });
+
+  it('preserves insertion order within a group', () => {
+    const skills = [
+      { name: 'a', description: '', source: 'user' },
+      { name: 'b', description: '', source: 'user' },
+      { name: 'c', description: '', source: 'user' },
+    ];
+    const groups = groupActiveSkillsByScope(skills);
+    assert.deepEqual(groups.global.map(s => s.name), ['a', 'b', 'c']);
+  });
+
+  it('null / non-array input returns empty groups', () => {
+    assert.deepEqual(groupActiveSkillsByScope(null), { global: [], project: [], plugin: [] });
+    assert.deepEqual(groupActiveSkillsByScope(undefined), { global: [], project: [], plugin: [] });
+    assert.deepEqual(groupActiveSkillsByScope('str'), { global: [], project: [], plugin: [] });
+  });
+
+  it('skips null entries without crashing', () => {
+    const skills = [null, { name: 'ok', description: '', source: 'user' }, undefined];
+    const groups = groupActiveSkillsByScope(skills);
+    assert.deepEqual(groups.global.map(s => s.name), ['ok']);
   });
 });

@@ -50,6 +50,8 @@ export function sortSkillsDefault(skills) {
 // - 只保留 enabled=true 且非 builtin 的条目
 // - description 优先 fs（SKILL.md frontmatter），缺失时回退历史 system-reminder 的 desc，再缺则空串
 // - 按显示名去重（user/project 同名只保留最后一条；plugin 因为带前缀天然不冲突）
+// - Returned items keep the raw `source` field (user / project / plugin) so the popover
+//   can group chips into per-scope rows.
 export function mergeActiveSkills(fsSkills, historicalSkills) {
   if (!Array.isArray(fsSkills)) return null;
   const descMap = new Map((historicalSkills || []).map(s => [s.name, s.description]));
@@ -58,9 +60,29 @@ export function mergeActiveSkills(fsSkills, historicalSkills) {
     if (!s || !s.enabled || s.source === 'builtin') continue;
     const name = skillToDisplayName(s);
     if (!name || BUILTIN_SKILL_NAMES.has(name)) continue;
-    out.set(name, { name, description: s.description || descMap.get(name) || '' });
+    out.set(name, {
+      name,
+      description: s.description || descMap.get(name) || '',
+      source: s.source,
+    });
   }
   return [...out.values()];
+}
+
+// Bucket mergeActiveSkills output by scope for the "Active Skills" grouped rows.
+// Returns { global, project, plugin }; user maps to global (~/.claude/skills/ is user-level / global).
+// The historical fallback path (mergeActiveSkills returned null) never reaches this function — the
+// caller renders a single merged row there instead.
+export function groupActiveSkillsByScope(skills) {
+  const groups = { global: [], project: [], plugin: [] };
+  if (!Array.isArray(skills)) return groups;
+  for (const s of skills) {
+    if (!s) continue;
+    if (s.source === 'project') groups.project.push(s);
+    else if (s.source === 'plugin') groups.plugin.push(s);
+    else groups.global.push(s); // user 及其它未知 source 归到 global
+  }
+  return groups;
 }
 
 // 从 <system-reminder> 内部文本里抽出 skills 列表。

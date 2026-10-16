@@ -3765,7 +3765,7 @@ class ChatView extends React.Component {
         {stickyBtn}
       </div>
     ) : (
-      <div className={styles.messageListWrap} onClick={this.handleChatMdClick} onKeyDown={this.handleChatMdKeydown} ref={this._mdProbeWrapRef}>
+      <div className={roleFilterBar ? `${styles.messageListWrap} ${styles.withRoleFilter}` : styles.messageListWrap} onClick={this.handleChatMdClick} onKeyDown={this.handleChatMdKeydown} ref={this._mdProbeWrapRef}>
         {roleFilterBar}
         {this.state.mdLightboxSrc && (
           <ImageLightbox src={this.state.mdLightboxSrc} alt="" onClose={() => this.setState({ mdLightboxSrc: null })} />

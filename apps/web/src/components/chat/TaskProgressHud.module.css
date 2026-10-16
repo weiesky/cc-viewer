@@ -7,7 +7,10 @@
 }
 
 .bar {
-  background: var(--bg-container);
+  /* Frosted glass (matches WorkspaceList .popupCard): translucent bg + backdrop blur. */
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--border-secondary);
   border-radius: 8px;
   font-size: 12px;

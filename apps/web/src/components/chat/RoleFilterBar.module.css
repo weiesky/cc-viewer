@@ -1,13 +1,23 @@
 .roleFilterBar {
+  /* Float above the message list so the frosted glass reveals the content scrolling
+     beneath it. The sibling scroll container gets a matching padding-top compensation
+     via .withRoleFilter in ChatView.module.css. */
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 0 12px;
   height: 41px;
-  background: var(--bg-base-pure);
+  /* Frosted glass (matches WorkspaceList .popupCard): translucent bg + backdrop blur. */
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-bottom: 1px solid var(--border-secondary);
   overflow-x: auto;
-  flex-shrink: 0;
 }
 .roleChip, .roleChipActive {
   display: flex;
@@ -16,7 +26,8 @@
   padding: 3px 8px;
   border-radius: 12px;
   border: 1px solid var(--border-secondary);
-  background: #00000000;
+  /* Solid surface (same as .cacheToolChip) so chips stay legible over the frosted bar. */
+  background: var(--bg-surface);
   color: var(--text-tertiary);
   font-size: 11px;
   cursor: pointer;

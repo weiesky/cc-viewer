@@ -90,6 +90,10 @@ const KEYS = [
   'ui.skills.tooLarge',
   'ui.skills.invalidZip',
   'ui.skills.exists',
+  // Skill scope row labels in the token-bar popover (CachePopoverContent.jsx):
+  'ui.skillScopeRow.global',
+  'ui.skillScopeRow.project',
+  'ui.skillScopeRow.plugin',
   // /resume hover list: status tooltips + new-project button (ResumeSessionsPopover.jsx / AppHeader.jsx):
   'ui.resume.statusInactive',
   'ui.resume.switchTimeout',

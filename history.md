@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(web): **会话区顶部条磨砂玻璃化** — RoleFilterBar 与 TaskProgressHud 改 `var(--bg-glass)` + `backdrop-filter: blur(20px) saturate(180%)`；RoleFilterBar 浮到消息列表上方，滚动区向上铺垫 + 41px 等高 padding 补偿；role chip 加实体 `var(--bg-surface)` 底色。
+- feat(web): **「当前在用 Skill」按作用域分行展示** — 血条弹层的 skill chip 列表按来源拆为「全局 Skill」/「项目级 Skill」/「插件 Skill」三行（`user`→全局、`project`→项目级、`plugin`→插件），每行带作用域标签；fsSkills 数据未就绪时回退到原有单条合并行。新增 `groupActiveSkillsByScope()` 纯函数，`mergeActiveSkills()` 返回值新增 `source` 字段，新增 i18n keys `ui.skillScopeRow.*`（×18 locales）。Coverage: `skill-display-name.test.js`, `new-ui-i18n.test.js`.
 - fix(web): **文件树行高不再被压缩抖动** — `.treeItem` 补 `flex-shrink: 0`，展开大量目录时行高/行距保持恒定 26px，溢出由滚动条承担而不是被 flex 算法等比压缩。
 - fix(sse): **WS-mux 冷启动 queue-overflow 修复** — 刷新后对话空白的根因：`perMessageDeflate` 让 `ws.bufferedAmount` 计入 Node 进程内 zlib 队列（数据未进 TCP 已计数），背压闸门误判「客户端慢」开始入队，ping 也被卷入，队列单调增长至 8MB 上限后以 `1011 queue-overflow` 杀连接，看门狗死循环。现禁掉 mux 的 perMessageDeflate（SSE brotli 路径不受影响），队列安全网 8MB→32MB（cc-viewer 项目自身 ~11MB v3 冷启动已超旧上限）。前端 `wsMuxTransport` 与 `_onChannelHeartbeatTimeout` 留 `[ws.mux.diag]` 临时探针，真机确认后清除。Coverage: `ws-mux.test.js`.
 - fix(sdk): **SDK 多工作区支持单独关闭并按实例精确加载文件** — 每个 SDK 工作区使用 cwd 稳定实例标识，header 可直接 × 关单个会话且不影响其他工作区；同名工作区的文件树、统计、搜索与冷加载按实例/cwd 消歧，不再频繁报 `ambiguous project name`，消息、中断与队列操作也精确路由到当前工作区。Coverage: `sdk-session-index.test.js`, `sdk-session-registry.test.js`, `live-processes-close.test.js`, `resume-route.test.js`, `view-root.test.js`, `view-routes-project.test.js`, `events-instance-live-empty.test.js`, `events-samename-cwd.test.js`, `sdk-workspace-anchors.test.js`.
