@@ -102,6 +102,14 @@
   flex-direction: column;
 }
 
+/* When the frosted-glass role filter bar floats at the top, the message scroll area
+   must extend beneath it (so the blur has content to reveal) while keeping the first
+   rows visible — pad the top by exactly the bar's height. */
+.messageListWrap.withRoleFilter > .container,
+.messageListWrap.withRoleFilter > .mobileVirtuoso {
+  padding-top: 41px; /* RoleFilterBar height */
+}
+
 .stickyBottomBtn {
   position: absolute;
   right: 12px;

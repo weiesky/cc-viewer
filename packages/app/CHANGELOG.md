@@ -1,5 +1,12 @@
 # cc-viewer
 
+## 1.9.7
+
+### Patch Changes
+
+- d906edb: feat(web): **会话区顶部条磨砂玻璃化** — 角色过滤条（RoleFilterBar）与任务清单条（TaskProgressHud）背景改为 `var(--bg-glass)` + `backdrop-filter: blur(20px) saturate(180%)`（对齐「新建工作区」弹窗毛玻璃）；RoleFilterBar 改为 `position: absolute` 浮在消息列表上方，消息滚动区（普通 `.container` 与 Virtuoso）向上延伸铺垫在其下方、bar 出现时按 41px 等高 `padding-top` 补偿首行可见性；role chip 加实体 `var(--bg-surface)` 底色避免毛玻璃上发虚。
+- d906edb: feat(web): 「当前在用 Skill」按作用域分行展示 — 血条弹层中的 skill chip 列表从单条合并行拆分为「全局 Skill」/「项目级 Skill」/「插件 Skill」三个带标签的分组（数据来自 `/api/skills` 的 `source` 字段）。历史 system-reminder 回退路径（fsSkills 未加载完成时）保持原有单条合并行。新增 `groupActiveSkillsByScope()` 纯函数分桶，`mergeActiveSkills()` 返回值保留 `source` 字段。新增 i18n keys `ui.skillScopeRow.global/project/plugin`（×18 locales）。Coverage: `skill-display-name.test.js`, `new-ui-i18n.test.js`.
+
 ## 1.9.6
 
 ### Patch Changes
