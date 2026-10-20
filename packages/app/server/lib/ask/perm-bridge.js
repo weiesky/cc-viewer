@@ -14,6 +14,7 @@
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
+import { resolve, sep } from 'node:path';
 import { evaluateImDeny } from '../im-deny.js';
 import { APPROVAL_TOOLS, isPublishCommand } from '../approval-policy.js';
 
@@ -94,9 +95,65 @@ if (toolName === 'AskUserQuestion') {
   process.exit(0);
 }
 
-// These tools need explicit user approval via Web UI (mutating or external access).
-// The six-tool set is shared with the SDK canUseTool path via approval-policy.js.
-if (!APPROVAL_TOOLS.has(toolName)) {
+// ExitPlanMode is intentionally left as an explicit allow in PTY mode. Routing it to
+// the generic permission panel would conflict with the existing inline plan-approval
+// card (which uses PTY arrow-key detection) and would let the generic auto-approve
+// countdown/instant bypass the independent planAutoApproveSeconds setting. SDK mode
+// handles ExitPlanMode through its own dedicated branch in sdk-manager.js.
+if (toolName === 'ExitPlanMode') {
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' },
+  }) + '\n');
+  process.exit(0);
+} else if (toolName === 'Read' && typeof toolInput?.file_path === 'string') {
+  // Read inside the session cwd is safe to auto-allow; outside the session cwd
+  // Claude Code's own ask rules would override a PreToolUse allow and still prompt.
+  // Let those fall through to the PermissionRequest hook (perm-request-bridge.js)
+  // which can approve them silently with an updatedDirectories session grant.
+  // Use the hook payload's cwd (the actual session cwd) rather than the server env
+  // so multi-workspace sessions classify inside/outside correctly.
+  const sessionCwd = payload?.cwd || process.env.CCV_PROJECT_DIR;
+  if (sessionCwd) {
+    const filePath = resolve(toolInput.file_path);
+    const root = resolve(sessionCwd);
+    if (filePath === root || filePath.startsWith(root + sep)) {
+      process.stdout.write(JSON.stringify({
+        hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' },
+      }) + '\n');
+      process.exit(0);
+    }
+    // Outside session cwd → fall through to PermissionRequest hook
+    process.stdout.write(JSON.stringify({ continue: true, suppressOutput: true }) + '\n');
+    process.exit(0);
+  }
+  // No session cwd → fall back to default behavior (explicit allow)
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' },
+  }) + '\n');
+  process.exit(0);
+} else if ((toolName === 'Glob' || toolName === 'Grep') && typeof toolInput?.pattern === 'string') {
+  // Glob/Grep carry { pattern, path? }; the path field (not file_path) determines the
+  // base directory. When omitted, Claude Code resolves against the session cwd.
+  const sessionCwd = payload?.cwd || process.env.CCV_PROJECT_DIR;
+  if (sessionCwd) {
+    const baseDir = toolInput.path ? resolve(toolInput.path) : resolve(sessionCwd);
+    const root = resolve(sessionCwd);
+    if (baseDir === root || baseDir.startsWith(root + sep)) {
+      process.stdout.write(JSON.stringify({
+        hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' },
+      }) + '\n');
+      process.exit(0);
+    }
+    // Outside session cwd → fall through to PermissionRequest hook
+    process.stdout.write(JSON.stringify({ continue: true, suppressOutput: true }) + '\n');
+    process.exit(0);
+  }
+  // No session cwd → fall back to default behavior (explicit allow)
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' },
+  }) + '\n');
+  process.exit(0);
+} else if (!APPROVAL_TOOLS.has(toolName)) {
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' },
   }) + '\n');

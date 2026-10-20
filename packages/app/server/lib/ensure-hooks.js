@@ -82,7 +82,7 @@ function _looksStaleManagedCommand(cmd) {
 // All hook sections cc-viewer manages. _purgeStaleManagedHooks and
 // removeAllManagedHooks must iterate this exact set or uninstall/cleanup
 // leaves zombie entries behind (cli.js cleanup-hooks path).
-const MANAGED_SECTIONS = ['PreToolUse', 'Stop', 'SessionStart', 'TaskCreated', 'TaskCompleted', 'UserPromptSubmit', 'PostToolUse'];
+const MANAGED_SECTIONS = ['PreToolUse', 'PermissionRequest', 'Stop', 'SessionStart', 'TaskCreated', 'TaskCompleted', 'UserPromptSubmit', 'PostToolUse'];
 
 function _purgeStaleManagedHooks(settings) {
   let removed = 0;
@@ -196,6 +196,38 @@ export function ensureHooks() {
       settings.hooks.PreToolUse.push({
         matcher: permMatcher,
         hooks: [permDesired]
+      });
+      changed = true;
+    }
+
+    // PermissionRequest hook → perm-request-bridge.js (matcher: 'Read|Glob|Grep')
+    // Catches permission prompts that PreToolUse could not resolve (e.g. Read/Glob/Grep
+    // outside the launch directory where Claude Code ask rules override a hook allow).
+    // Find-by-command (NOT find-by-matcher): a user may legitimately have their own
+    // PermissionRequest entry, and in-place overwriting would clobber it — multiple
+    // entries per matcher are valid config, so we always append our own.
+    // Matcher is scoped to Read|Glob|Grep because the bridge only silently allows those
+    // tools; other tools still get a prompt and do not need the bridge process.
+    const permRequestBridgePath = resolve(SERVER_LIB, 'ask', 'perm-request-bridge.js');
+    const permRequestCmd = `[ -n "$CCVIEWER_PORT" ] && node "${permRequestBridgePath}" || true ${CCV_HOOK_MARKER}`;
+    const permRequestDesired = _buildHookObj(permRequestCmd);
+    const permRequestExisting = settings.hooks.PermissionRequest.find(h => {
+      const cmd = h.hooks?.[0]?.command || '';
+      return cmd.includes('perm-request-bridge.js');
+    });
+    if (permRequestExisting) {
+      if (permRequestExisting.matcher !== 'Read|Glob|Grep') {
+        permRequestExisting.matcher = 'Read|Glob|Grep';
+        changed = true;
+      }
+      if (!_hookObjEqual(permRequestExisting.hooks?.[0], permRequestDesired)) {
+        permRequestExisting.hooks = [_mergeHookObj(permRequestExisting.hooks?.[0], permRequestDesired)];
+        changed = true;
+      }
+    } else {
+      settings.hooks.PermissionRequest.push({
+        matcher: 'Read|Glob|Grep',
+        hooks: [permRequestDesired]
       });
       changed = true;
     }

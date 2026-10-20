@@ -29,11 +29,12 @@
 import { ASK_TIMEOUT_MS } from './ask/ask-constants.js';
 import { withDefaultThinkingDisplay, resolveLaunchSystemPrompt, launchArgsToExtraArgs } from './launch-config.js';
 import { evaluateImDeny } from './im-deny.js';
-import { APPROVAL_TOOLS, isPublishCommand } from './approval-policy.js';
+import { APPROVAL_TOOLS, isOverTrustDir, isPublishCommand } from './approval-policy.js';
 import { reportSwallowed } from '@ccv/core/error-report';
-import { resolve as _pathResolve } from 'node:path';
+import { resolve as _pathResolve, dirname as _pathDirname, sep as _pathSep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { registerSdkSessionLister } from './sdk-session-index.js';
+import { readPrefsRaw } from './prefs-store.js';
 
 let _query;
 try {
@@ -1103,6 +1104,38 @@ function _createSession(key, cwd) {
     // Tools that need explicit user approval via Web UI (mutating or external access).
     // The six-tool set is shared with the PTY perm-bridge via approval-policy.js.
     if (!APPROVAL_TOOLS.has(toolName)) {
+      // Read/Glob/Grep outside the session cwd would still hit Claude Code's own ask
+      // rules even if we allow here. Only add a session-level directory grant when the
+      // user has enabled auto-approval; otherwise the plain allow still stands but the
+      // directory is not trusted for subsequent calls.
+      if (toolName === 'Read' || toolName === 'Glob' || toolName === 'Grep') {
+        const prefs = readPrefsRaw();
+        const autoApproveSeconds = Number(prefs.autoApproveSeconds);
+        const shouldGrantDir = autoApproveSeconds === -1 || autoApproveSeconds > 0;
+        const sessionCwd = _cwd || process.env.CCV_PROJECT_DIR;
+        if (sessionCwd && shouldGrantDir) {
+          let targetDir = null;
+          if (toolName === 'Read' && typeof input?.file_path === 'string') {
+            targetDir = _pathDirname(_pathResolve(input.file_path));
+          } else if ((toolName === 'Glob' || toolName === 'Grep') && typeof input?.pattern === 'string') {
+            targetDir = input.path ? _pathResolve(input.path) : _pathResolve(sessionCwd);
+          }
+          if (targetDir) {
+            const root = _pathResolve(sessionCwd);
+            if (!(targetDir === root || targetDir.startsWith(root + _pathSep))) {
+              if (!isOverTrustDir(targetDir)) {
+                return {
+                  behavior: 'allow',
+                  updatedInput: input,
+                  updatedPermissions: [
+                    { type: 'addDirectories', directories: [targetDir], destination: 'session' },
+                  ],
+                };
+              }
+            }
+          }
+        }
+      }
       return { behavior: 'allow', updatedInput: input };
     }
 

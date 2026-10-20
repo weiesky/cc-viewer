@@ -4,6 +4,9 @@ import { runWaterfallHook, runParallelHook } from '../lib/plugin-loader.js';
 import { sendEventToClients } from '../lib/log-watcher.js';
 import { filterClientsByScope } from '../lib/v2/view-router.js';
 import { _projectName } from '../interceptor.js';
+import { readPrefsRaw } from '../lib/prefs-store.js';
+import { getCurrentProjectKey, hasFork, resolveScoped } from '../lib/project-prefs.js';
+import { reportSwallowed } from '@ccv/core/error-report';
 
 function pendingAsks(req, res, parsedUrl, isLocal, deps) {
   try {
@@ -376,15 +379,20 @@ function askHookCancel(req, res, parsedUrl, isLocal, deps) {
 // Permission hook bridge: receive tool permission request from perm-bridge.js, long-poll for user decision
 function permHook(req, res, parsedUrl, isLocal, deps) {
   let body = '';
+  let bodyTooLarge = false;
   req.on('data', (chunk) => {
+    if (bodyTooLarge) return;
     body += chunk;
     if (body.length > 1000000) {
-      res.writeHead(413, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Request body too large' }));
-      return;
+      bodyTooLarge = true;
+      req.destroy();
     }
   });
   req.on('end', async () => {
+    if (bodyTooLarge) {
+      try { if (!res.headersSent) { res.writeHead(413, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Request body too large' })); } } catch {}
+      return;
+    }
     try {
       const { toolName, input } = JSON.parse(body);
       if (!toolName) {
@@ -468,6 +476,88 @@ function permHook(req, res, parsedUrl, isLocal, deps) {
     } catch {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid request body' }));
+    }
+  });
+}
+
+// PermissionRequest hook bridge: receive permission-prompt notification from
+// perm-request-bridge.js and decide whether to auto-approve based on the current
+// project's autoApproveSeconds preference. This runs when a permission prompt is
+// about to be shown (e.g. Read/Glob outside the launch directory) and lets us
+// suppress it silently when the user has enabled auto-approval.
+//
+// Security model: this endpoint is a machine bridge (called by the loopback
+// perm-request-bridge.js hook), not a user prefs read. It must therefore resolve
+// the project fork from the payload cwd regardless of isLocal, and restrict the
+// silent allow to Read/Glob only — all other tools return 'ask' so user ask-rules
+// and sensitive operations still prompt.
+function permRequestHook(req, res, parsedUrl, isLocal, deps) {
+  let body = '';
+  let bodyTooLarge = false;
+  req.on('data', (chunk) => {
+    if (bodyTooLarge) return;
+    body += chunk;
+    if (body.length > 1000000) {
+      bodyTooLarge = true;
+      req.destroy();
+    }
+  });
+  req.on('end', async () => {
+    if (bodyTooLarge) {
+      try { if (!res.headersSent) { res.writeHead(413, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Request body too large' })); } } catch {}
+      return;
+    }
+    try {
+      const { toolName, input, cwd } = JSON.parse(body);
+      if (!toolName) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing toolName' }));
+        return;
+      }
+
+      // Only Read/Glob/Grep may be silently allowed; everything else falls through to
+      // the normal prompt so user-configured ask rules are never bypassed.
+      if (toolName !== 'Read' && toolName !== 'Glob' && toolName !== 'Grep') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ decision: 'ask' }));
+        return;
+      }
+
+      // Plugin hook: let plugins handle permission requests directly.
+      try {
+        const hookResult = await runWaterfallHook('onPermRequest', { toolName, input, mode: 'permission-request' });
+        if (hookResult.decision === 'allow' || hookResult.decision === 'deny') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ decision: hookResult.decision }));
+          return;
+        }
+      } catch (err) { reportSwallowed('ask-perm.permRequestHook.waterfall', err); }
+
+      const prefs = readPrefsRaw(deps.getPrefsFile?.() || undefined);
+      // Resolve the project fork from the payload cwd (the actual session cwd),
+      // not the server's current CCV_PROJECT_DIR, so multi-workspace setups read
+      // the correct project's autoApproveSeconds.
+      const projectKey = typeof cwd === 'string' && cwd ? cwd : getCurrentProjectKey();
+      const scoped = hasFork(prefs, projectKey);
+      const effective = scoped ? resolveScoped(prefs, prefs.prefsByProject[projectKey]) : prefs;
+      const autoApproveSeconds = Number(effective.autoApproveSeconds);
+
+      // autoApproveSeconds: 0 = off/manual, >0 = countdown, -1 = instant.
+      // For PermissionRequest the prompt is already imminent; we only suppress it
+      // when the user has explicitly enabled auto-approval. Both instant (-1) and
+      // countdown (>0) are treated as allow here because the user has already
+      // opted into automatic approval; the countdown variant simply adds a visible
+      // delay in the UI, which is irrelevant for a headless hook.
+      const shouldAutoAllow = autoApproveSeconds === -1 || autoApproveSeconds > 0;
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ decision: shouldAutoAllow ? 'allow' : 'ask' }));
+    } catch (err) {
+      reportSwallowed('ask-perm.permRequestHook.parse', err);
+      if (!res.headersSent) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid request body' }));
+      }
     }
   });
 }
@@ -556,5 +646,6 @@ export const askPermRoutes = [
   { predicate: (url, method) => url.startsWith('/api/ask-hook/') && url.includes('/result') && method === 'GET', handler: askHookResult },
   { predicate: (url, method) => url.startsWith('/api/ask-hook/') && url.includes('/cancel') && method === 'POST', handler: askHookCancel },
   { method: 'POST', match: 'exact', path: '/api/perm-hook', handler: permHook },
+  { method: 'POST', match: 'exact', path: '/api/perm-request-hook', handler: permRequestHook },
   { method: 'POST', match: 'exact', path: '/api/stream-chunk', handler: streamChunk },
 ];

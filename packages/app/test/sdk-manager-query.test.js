@@ -589,6 +589,167 @@ describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权
     assert.deepEqual(broadcasts.filter((b) => b.type !== 'sdk-session-state'), []);
   });
 
+  it('非审批类工具（Agent）→ 直接 allow，不 broadcast', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'agent-1' } };
+    sdk.__setQueryForTests(makeCanUseToolQuery('Agent', { description: 'sub' }, ctrl));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(4);
+    assert.equal(ctrl.result.behavior, 'allow');
+    assert.deepEqual(ctrl.result.updatedInput, { description: 'sub' });
+    assert.deepEqual(broadcasts.filter((b) => b.type !== 'sdk-session-state'), []);
+  });
+
+  it('非审批类工具（mcp__*）→ 直接 allow，不 broadcast', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'mcp-1' } };
+    sdk.__setQueryForTests(makeCanUseToolQuery('mcp__github__create_issue', { title: 'x' }, ctrl));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('go');
+    await tick(4);
+    assert.equal(ctrl.result.behavior, 'allow');
+    assert.deepEqual(ctrl.result.updatedInput, { title: 'x' });
+    assert.deepEqual(broadcasts.filter((b) => b.type !== 'sdk-session-state'), []);
+  });
+
+  it('目录外 Read + 自动审批开启 → allow + updatedPermissions.addDirectories', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'read-out' } };
+    const prevProjectDir = process.env.CCV_PROJECT_DIR;
+    process.env.CCV_PROJECT_DIR = tmpDir;
+    // Enable auto-approve so the session directory grant is added
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({ autoApproveSeconds: -1 }));
+    try {
+      sdk.__setQueryForTests(makeCanUseToolQuery('Read', { file_path: '/outside/subdir/file.txt' }, ctrl));
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('go');
+      await tick(4);
+      assert.equal(ctrl.result.behavior, 'allow');
+      assert.deepEqual(ctrl.result.updatedInput, { file_path: '/outside/subdir/file.txt' });
+      assert.deepEqual(ctrl.result.updatedPermissions, [
+        { type: 'addDirectories', directories: ['/outside/subdir'], destination: 'session' },
+      ]);
+      assert.deepEqual(broadcasts.filter((b) => b.type !== 'sdk-session-state'), []);
+    } finally {
+      if (prevProjectDir === undefined) delete process.env.CCV_PROJECT_DIR;
+      else process.env.CCV_PROJECT_DIR = prevProjectDir;
+      try { rmSync(join(tmpDir, 'preferences.json'), { force: true }); } catch {}
+    }
+  });
+
+  it('目录外 Read + 自动审批关闭 → allow 但无 updatedPermissions', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'read-out-off' } };
+    const prevProjectDir = process.env.CCV_PROJECT_DIR;
+    process.env.CCV_PROJECT_DIR = tmpDir;
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({ autoApproveSeconds: 0 }));
+    try {
+      sdk.__setQueryForTests(makeCanUseToolQuery('Read', { file_path: '/outside/file.txt' }, ctrl));
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('go');
+      await tick(4);
+      assert.equal(ctrl.result.behavior, 'allow');
+      assert.equal(ctrl.result.updatedPermissions, undefined);
+      assert.deepEqual(broadcasts.filter((b) => b.type !== 'sdk-session-state'), []);
+    } finally {
+      if (prevProjectDir === undefined) delete process.env.CCV_PROJECT_DIR;
+      else process.env.CCV_PROJECT_DIR = prevProjectDir;
+      try { rmSync(join(tmpDir, 'preferences.json'), { force: true }); } catch {}
+    }
+  });
+
+  it('目录外 Grep + 自动审批开启 → allow + updatedPermissions.addDirectories', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'grep-out' } };
+    const prevProjectDir = process.env.CCV_PROJECT_DIR;
+    process.env.CCV_PROJECT_DIR = tmpDir;
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({ autoApproveSeconds: -1 }));
+    try {
+      sdk.__setQueryForTests(makeCanUseToolQuery('Grep', { pattern: 'foo', path: '/outside/subdir' }, ctrl));
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('go');
+      await tick(4);
+      assert.equal(ctrl.result.behavior, 'allow');
+      assert.deepEqual(ctrl.result.updatedPermissions, [
+        { type: 'addDirectories', directories: ['/outside/subdir'], destination: 'session' },
+      ]);
+      assert.deepEqual(broadcasts.filter((b) => b.type !== 'sdk-session-state'), []);
+    } finally {
+      if (prevProjectDir === undefined) delete process.env.CCV_PROJECT_DIR;
+      else process.env.CCV_PROJECT_DIR = prevProjectDir;
+      try { rmSync(join(tmpDir, 'preferences.json'), { force: true }); } catch {}
+    }
+  });
+
+  it('目录外 Glob + 自动审批开启 → allow + updatedPermissions.addDirectories', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'glob-out' } };
+    const prevProjectDir = process.env.CCV_PROJECT_DIR;
+    process.env.CCV_PROJECT_DIR = tmpDir;
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({ autoApproveSeconds: -1 }));
+    try {
+      sdk.__setQueryForTests(makeCanUseToolQuery('Glob', { pattern: '**/*.js', path: '/outside/subdir' }, ctrl));
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('go');
+      await tick(4);
+      assert.equal(ctrl.result.behavior, 'allow');
+      assert.deepEqual(ctrl.result.updatedPermissions, [
+        { type: 'addDirectories', directories: ['/outside/subdir'], destination: 'session' },
+      ]);
+      assert.deepEqual(broadcasts.filter((b) => b.type !== 'sdk-session-state'), []);
+    } finally {
+      if (prevProjectDir === undefined) delete process.env.CCV_PROJECT_DIR;
+      else process.env.CCV_PROJECT_DIR = prevProjectDir;
+      try { rmSync(join(tmpDir, 'preferences.json'), { force: true }); } catch {}
+    }
+  });
+
+  it('目录外 Read + 自动审批开启 + 过度信任目录 → allow 但无 updatedPermissions', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'read-etc' } };
+    const prevProjectDir = process.env.CCV_PROJECT_DIR;
+    process.env.CCV_PROJECT_DIR = tmpDir;
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({ autoApproveSeconds: -1 }));
+    try {
+      sdk.__setQueryForTests(makeCanUseToolQuery('Read', { file_path: '/etc/passwd' }, ctrl));
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('go');
+      await tick(4);
+      assert.equal(ctrl.result.behavior, 'allow');
+      assert.equal(ctrl.result.updatedPermissions, undefined);
+      assert.deepEqual(broadcasts.filter((b) => b.type !== 'sdk-session-state'), []);
+    } finally {
+      if (prevProjectDir === undefined) delete process.env.CCV_PROJECT_DIR;
+      else process.env.CCV_PROJECT_DIR = prevProjectDir;
+      try { rmSync(join(tmpDir, 'preferences.json'), { force: true }); } catch {}
+    }
+  });
+
+  it('目录内 Read → 直接 allow，无 updatedPermissions', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const ctrl = { cutOpts: { toolUseID: 'read-in' } };
+    const prevProjectDir = process.env.CCV_PROJECT_DIR;
+    process.env.CCV_PROJECT_DIR = tmpDir;
+    try {
+      sdk.__setQueryForTests(makeCanUseToolQuery('Read', { file_path: join(tmpDir, 'file.txt') }, ctrl));
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('go');
+      await tick(4);
+      assert.equal(ctrl.result.behavior, 'allow');
+      assert.equal(ctrl.result.updatedPermissions, undefined);
+      assert.deepEqual(broadcasts.filter((b) => b.type !== 'sdk-session-state'), []);
+    } finally {
+      if (prevProjectDir === undefined) delete process.env.CCV_PROJECT_DIR;
+      else process.env.CCV_PROJECT_DIR = prevProjectDir;
+    }
+  });
+
   it('权限审批工具（Bash）→ broadcast perm-hook-pending → resolveApproval({decision:allow,allowSession}) → allow + updatedPermissions', async () => {
     const { deps, broadcasts } = makeDeps();
     const ctrl = { cutOpts: { toolUseID: 'bash-1', suggestions: [{ type: 'addRules' }] } };

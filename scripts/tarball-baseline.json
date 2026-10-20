@@ -1397,6 +1397,7 @@
   "server/lib/ask/ask-reaper.js",
   "server/lib/ask/ask-store.js",
   "server/lib/ask/perm-bridge.js",
+  "server/lib/ask/perm-request-bridge.js",
   "server/lib/async-file-lock.js",
   "server/lib/async-write-queue.js",
   "server/lib/auth.js",

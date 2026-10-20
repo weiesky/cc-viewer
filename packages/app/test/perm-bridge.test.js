@@ -142,18 +142,106 @@ describe('perm-bridge.js', () => {
     assert.equal(output.hookSpecificOutput.permissionDecision, undefined);
   });
 
-  it('returns explicit allow for Read (not in APPROVAL_TOOLS)', async () => {
-    const input = JSON.stringify({ tool_name: 'Read', tool_input: { file_path: '/tmp/x' } });
-    const { code, stdout } = await runBridge(input, { CCVIEWER_PORT: '9999' });
+  it('returns explicit allow for Read inside CCV_PROJECT_DIR', async () => {
+    const input = JSON.stringify({ tool_name: 'Read', tool_input: { file_path: '/proj/src/file.txt' } });
+    const { code, stdout } = await runBridge(input, { CCVIEWER_PORT: '9999', CCV_PROJECT_DIR: '/proj' });
     assert.equal(code, 0);
     const output = JSON.parse(stdout.trim());
-    assert.equal(output.hookSpecificOutput.hookEventName, 'PreToolUse');
     assert.equal(output.hookSpecificOutput.permissionDecision, 'allow');
   });
 
-  for (const tool of ['Glob', 'Grep', 'Agent', 'TaskCreate', 'TaskUpdate',
-    'TaskList', 'TaskGet', 'CronCreate', 'CronDelete', 'CronList', 'SendMessage',
-    'EnterPlanMode', 'ExitPlanMode', 'Skill', 'EnterWorktree', 'ExitWorktree']) {
+  it('returns continue for Read outside CCV_PROJECT_DIR (falls through to PermissionRequest)', async () => {
+    const input = JSON.stringify({ tool_name: 'Read', tool_input: { file_path: '/other/file.txt' } });
+    const { code, stdout } = await runBridge(input, { CCVIEWER_PORT: '9999', CCV_PROJECT_DIR: '/proj' });
+    assert.equal(code, 0);
+    const output = JSON.parse(stdout.trim());
+    assert.equal(output.continue, true);
+    assert.equal(output.suppressOutput, true);
+  });
+
+  it('returns explicit allow for Read when CCV_PROJECT_DIR is not set', async () => {
+    const input = JSON.stringify({ tool_name: 'Read', tool_input: { file_path: '/tmp/x' } });
+    const { code, stdout } = await runBridge(input, { CCVIEWER_PORT: '9999', CCV_PROJECT_DIR: '' });
+    assert.equal(code, 0);
+    const output = JSON.parse(stdout.trim());
+    assert.equal(output.hookSpecificOutput.permissionDecision, 'allow');
+  });
+
+  it('returns explicit allow for Grep inside CCV_PROJECT_DIR', async () => {
+    const input = JSON.stringify({ tool_name: 'Grep', tool_input: { pattern: 'foo', path: '/proj/src' } });
+    const { code, stdout } = await runBridge(input, { CCVIEWER_PORT: '9999', CCV_PROJECT_DIR: '/proj' });
+    assert.equal(code, 0);
+    const output = JSON.parse(stdout.trim());
+    assert.equal(output.hookSpecificOutput.permissionDecision, 'allow');
+  });
+
+  it('returns continue for Grep outside CCV_PROJECT_DIR (falls through to PermissionRequest)', async () => {
+    const input = JSON.stringify({ tool_name: 'Grep', tool_input: { pattern: 'foo', path: '/other' } });
+    const { code, stdout } = await runBridge(input, { CCVIEWER_PORT: '9999', CCV_PROJECT_DIR: '/proj' });
+    assert.equal(code, 0);
+    const output = JSON.parse(stdout.trim());
+    assert.equal(output.continue, true);
+    assert.equal(output.suppressOutput, true);
+  });
+
+  it('returns explicit allow for Glob inside CCV_PROJECT_DIR', async () => {
+    const input = JSON.stringify({ tool_name: 'Glob', tool_input: { pattern: '**/*.js', path: '/proj/src' } });
+    const { code, stdout } = await runBridge(input, { CCVIEWER_PORT: '9999', CCV_PROJECT_DIR: '/proj' });
+    assert.equal(code, 0);
+    const output = JSON.parse(stdout.trim());
+    assert.equal(output.hookSpecificOutput.permissionDecision, 'allow');
+  });
+
+  it('returns continue for Glob outside CCV_PROJECT_DIR (falls through to PermissionRequest)', async () => {
+    const input = JSON.stringify({ tool_name: 'Glob', tool_input: { pattern: '**/*.js', path: '/other' } });
+    const { code, stdout } = await runBridge(input, { CCVIEWER_PORT: '9999', CCV_PROJECT_DIR: '/proj' });
+    assert.equal(code, 0);
+    const output = JSON.parse(stdout.trim());
+    assert.equal(output.continue, true);
+    assert.equal(output.suppressOutput, true);
+  });
+
+  it('returns explicit allow for Glob with no path (defaults to project dir)', async () => {
+    const input = JSON.stringify({ tool_name: 'Glob', tool_input: { pattern: '**/*.js' } });
+    const { code, stdout } = await runBridge(input, { CCVIEWER_PORT: '9999', CCV_PROJECT_DIR: '/proj' });
+    assert.equal(code, 0);
+    const output = JSON.parse(stdout.trim());
+    assert.equal(output.hookSpecificOutput.permissionDecision, 'allow');
+  });
+
+  // Tools outside APPROVAL_TOOLS are still silently allowed (no web approval panel).
+  for (const tool of ['Grep', 'Agent', 'Skill', 'Workflow', 'Artifact', 'DesignSync',
+    'EnterPlanMode', 'EnterWorktree', 'ExitWorktree',
+    'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger', 'Monitor', 'REPL', 'SendUserFile',
+    'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'SendMessage',
+    'mcp__github__create_issue', 'mcp__chrome__navigate']) {
+    it(`returns explicit allow for ${tool} (not in APPROVAL_TOOLS)`, async () => {
+      const input = JSON.stringify({ tool_name: tool, tool_input: { x: 1 } });
+      const { code, stdout } = await runBridge(input, { CCVIEWER_PORT: '9999' });
+      assert.equal(code, 0);
+      const output = JSON.parse(stdout.trim());
+      assert.equal(output.hookSpecificOutput.permissionDecision, 'allow');
+    });
+  }
+
+  it('returns explicit allow for ExitPlanMode (kept as allow to avoid conflicting with existing plan UI)', async () => {
+    const input = JSON.stringify({ tool_name: 'ExitPlanMode', tool_input: {} });
+    const { code, stdout } = await runBridge(input, { CCVIEWER_PORT: '9999' });
+    assert.equal(code, 0);
+    const output = JSON.parse(stdout.trim());
+    assert.equal(output.hookSpecificOutput.permissionDecision, 'allow');
+  });
+
+  it('returns explicit allow for PowerShell (not in APPROVAL_TOOLS)', async () => {
+    const input = JSON.stringify({ tool_name: 'PowerShell', tool_input: { command: 'Get-ChildItem' } });
+    const { code, stdout } = await runBridge(input, { CCVIEWER_PORT: '9999' });
+    assert.equal(code, 0);
+    const output = JSON.parse(stdout.trim());
+    assert.equal(output.hookSpecificOutput.permissionDecision, 'allow');
+  });
+
+  // Still auto-allowed (not in APPROVAL_TOOLS, no special handling)
+  for (const tool of ['Grep', 'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet', 'SendMessage']) {
     it(`returns explicit allow for ${tool} (not in APPROVAL_TOOLS)`, async () => {
       const input = JSON.stringify({ tool_name: tool, tool_input: { x: 1 } });
       const { code, stdout } = await runBridge(input, { CCVIEWER_PORT: '9999' });

@@ -206,6 +206,71 @@ describe('lib/ensure-hooks.js — timeout field v3 migration (canonical import)'
       assert.equal(perm.hooks[0].timeout, 86400);
     });
 
+    it('PermissionRequest hook 注册：matcher=Read|Glob|Grep、带 guard/marker/timeout，幂等', () => {
+      mod.ensureHooks();
+      const s = loadSettings();
+      assert.ok(Array.isArray(s.hooks.PermissionRequest), 'PermissionRequest 段被创建');
+      const entry = s.hooks.PermissionRequest.find(h => (h.hooks?.[0]?.command || '').includes('perm-request-bridge.js'));
+      assert.ok(entry, 'perm-request-bridge 条目存在');
+      assert.equal(entry.matcher, 'Read|Glob|Grep', 'matcher 限定 Read|Glob|Grep，避免无关工具启动 bridge 进程');
+      assert.match(entry.hooks[0].command, /CCVIEWER_PORT/);
+      assert.match(entry.hooks[0].command, /cc-viewer-managed/);
+      assert.equal(entry.hooks[0].timeout, 86400);
+      // Idempotent: a second run must not duplicate the entry.
+      mod.ensureHooks();
+      const s2 = loadSettings();
+      const count = s2.hooks.PermissionRequest.filter(h => (h.hooks?.[0]?.command || '').includes('perm-request-bridge.js')).length;
+      assert.equal(count, 1, '重复运行不重复注入');
+    });
+
+    it('用户在 PermissionRequest 已有第三方 hook → 不被破坏', () => {
+      writeSettings({
+        hooks: {
+          PermissionRequest: [
+            { matcher: '', hooks: [{ type: 'command', command: 'echo USER-AUDIT-HOOK' }] },
+          ],
+          Stop: [],
+        },
+      });
+      mod.ensureHooks();
+      const s = loadSettings();
+      const mine = s.hooks.PermissionRequest.find(h => (h.hooks?.[0]?.command || '').includes('USER-AUDIT-HOOK'));
+      assert.ok(mine, '第三方 PermissionRequest hook 原样保留');
+      assert.equal(mine.matcher, '');
+      assert.ok(s.hooks.PermissionRequest.some(h => (h.hooks?.[0]?.command || '').includes('perm-request-bridge.js')));
+    });
+
+    it('perm-request-bridge hook 缺 timeout → ensureHooks 必须加上', () => {
+      const permRequestPath = `${repoRoot}packages/app/server/lib/ask/perm-request-bridge.js`;
+      const oldCmd = `[ -n "$CCVIEWER_PORT" ] && node "${permRequestPath}" || true # cc-viewer-managed`;
+      writeSettings({
+        hooks: {
+          PermissionRequest: [{ matcher: 'Read|Glob', hooks: [{ type: 'command', command: oldCmd }] }],
+          Stop: [],
+        },
+      });
+      mod.ensureHooks();
+      const s = loadSettings();
+      const entry = s.hooks.PermissionRequest.find(h => (h.hooks?.[0]?.command || '').includes('perm-request-bridge.js'));
+      assert.equal(entry.hooks[0].timeout, 86400);
+    });
+
+    it('removeAllManagedHooks 清除 PermissionRequest 中的 cc-viewer-managed entry', () => {
+      const settings = {
+        hooks: {
+          PermissionRequest: [
+            { matcher: 'Read|Glob', hooks: [{ type: 'command', command: 'node "/path/ok.js" # cc-viewer-managed', timeout: 86400 }] },
+            { matcher: '', hooks: [{ type: 'command', command: 'node "/some-third-party.js"' }] },
+          ],
+          Stop: [],
+        },
+      };
+      const removed = mod.removeAllManagedHooks(settings);
+      assert.equal(removed, 1, 'PermissionRequest 中的 cc-viewer-managed entry 必须被清除');
+      assert.equal(settings.hooks.PermissionRequest.length, 1, '仅第三方 entry 留下');
+      assert.equal(settings.hooks.PermissionRequest[0].matcher, '');
+    });
+
     it('turn-end-bridge hook 缺 timeout → ensureHooks 必须加上', () => {
       const oldCmd = `[ -n "$CCVIEWER_PORT" ] && node "${turnEndPath}" || true # cc-viewer-managed`;
       writeSettings({

@@ -36,6 +36,7 @@ const askHookHandler = askPermRoutes.find(r => r.path === '/api/ask-hook' && r.m
 const askHookResultRoute = askPermRoutes.find(r => r.predicate && r.predicate('/api/ask-hook/x/result', 'GET'));
 const askHookResultHandler = askHookResultRoute.handler;
 const permHookHandler = askPermRoutes.find(r => r.path === '/api/perm-hook').handler;
+const permRequestHookHandler = askPermRoutes.find(r => r.path === '/api/perm-request-hook').handler;
 const streamChunkHandler = askPermRoutes.find(r => r.path === '/api/stream-chunk').handler;
 
 after(() => { rmSync(tmpDir, { recursive: true, force: true }); });
@@ -438,6 +439,142 @@ describe('ask-perm 分支补洞: permHook plugin allow + res.writeHead 抛 (337 
     const id = [...deps.pendingPermHooks.keys()][0];
     assert.ok(id, '337 catch 后应继续注册 entry');
     clearTimeout(deps.pendingPermHooks.get(id).timer);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+describe('ask-perm 分支补洞: permRequestHook', () => {
+  it('body too large → 413，后续 data/end 不再处理', async () => {
+    const req = makeReq();
+    const res = makeRes();
+    const deps = makeDeps();
+    permRequestHookHandler(req, res, { pathname: '/x' }, true, deps);
+    req.emit('data', 'x'.repeat(1000001));
+    req.emit('data', 'more');
+    req.emit('end');
+    await new Promise(r => setTimeout(r, 5));
+    assert.equal(res.status, 413);
+    assert.equal(res.json.error, 'Request body too large');
+  });
+
+  it('body too large 时 res.writeHead 抛 → catch{} 吞错', async () => {
+    const req = makeReq();
+    const res = makeThrowingRes();
+    const deps = makeDeps();
+    permRequestHookHandler(req, res, { pathname: '/x' }, true, deps);
+    req.emit('data', 'x'.repeat(1000001));
+    await new Promise(r => setTimeout(r, 5));
+    assert.equal(res.headersSent, false);
+  });
+
+  it('missing toolName → 400', async () => {
+    const { res } = await drivePost(permRequestHookHandler, { input: {} });
+    assert.equal(res.status, 400);
+    assert.equal(res.json.error, 'Missing toolName');
+  });
+
+  it('plugin decision=allow → 200 allow', async () => {
+    const pluginsDir = join(tmpDir, 'plugins');
+    const { writeFileSync, mkdirSync } = await import('node:fs');
+    mkdirSync(pluginsDir, { recursive: true });
+    writeFileSync(join(pluginsDir, 'pr-allow.mjs'),
+      `export const hooks = { onPermRequest: async () => ({ decision: 'allow' }) };\n`);
+    const { loadPlugins } = await import('../server/lib/plugin-loader.js');
+    await loadPlugins();
+    try {
+      const { res } = await drivePost(permRequestHookHandler, { toolName: 'Read', input: { file_path: '/x' } });
+      assert.equal(res.status, 200);
+      assert.equal(res.json.decision, 'allow');
+    } finally {
+      rmSync(pluginsDir, { recursive: true, force: true });
+      await loadPlugins();
+    }
+  });
+
+  it('plugin decision=deny → 200 deny', async () => {
+    const pluginsDir = join(tmpDir, 'plugins');
+    const { writeFileSync, mkdirSync } = await import('node:fs');
+    mkdirSync(pluginsDir, { recursive: true });
+    writeFileSync(join(pluginsDir, 'pr-deny.mjs'),
+      `export const hooks = { onPermRequest: async () => ({ decision: 'deny' }) };\n`);
+    const { loadPlugins } = await import('../server/lib/plugin-loader.js');
+    await loadPlugins();
+    try {
+      const { res } = await drivePost(permRequestHookHandler, { toolName: 'Read', input: { file_path: '/x' } });
+      assert.equal(res.status, 200);
+      assert.equal(res.json.decision, 'deny');
+    } finally {
+      rmSync(pluginsDir, { recursive: true, force: true });
+      await loadPlugins();
+    }
+  });
+
+  it('plugin waterfall 抛错 → reportSwallowed + 继续走偏好判断', async () => {
+    const pluginsDir = join(tmpDir, 'plugins');
+    const { writeFileSync, mkdirSync } = await import('node:fs');
+    mkdirSync(pluginsDir, { recursive: true });
+    writeFileSync(join(pluginsDir, 'pr-throw.mjs'),
+      `export const hooks = { onPermRequest: async () => { throw new Error('hook boom'); } };\n`);
+    const { loadPlugins } = await import('../server/lib/plugin-loader.js');
+    await loadPlugins();
+    try {
+      const { res } = await drivePost(permRequestHookHandler, { toolName: 'Read', input: { file_path: '/x' } });
+      // 抛错被吞后继续：默认无 autoApproveSeconds → ask
+      assert.equal(res.status, 200);
+      assert.equal(res.json.decision, 'ask');
+    } finally {
+      rmSync(pluginsDir, { recursive: true, force: true });
+      await loadPlugins();
+    }
+  });
+
+  it('autoApproveSeconds=-1 → allow', async () => {
+    const deps = makeDeps();
+    // 直接写 preferences.json
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({ autoApproveSeconds: -1 }));
+    const { res } = await drivePost(permRequestHookHandler, { toolName: 'Read', input: { file_path: '/x' } }, { deps });
+    assert.equal(res.status, 200);
+    assert.equal(res.json.decision, 'allow');
+  });
+
+  it('autoApproveSeconds=3 → allow（倒计时也视为自动审批）', async () => {
+    const deps = makeDeps();
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({ autoApproveSeconds: 3 }));
+    const { res } = await drivePost(permRequestHookHandler, { toolName: 'Read', input: { file_path: '/x' } }, { deps });
+    assert.equal(res.status, 200);
+    assert.equal(res.json.decision, 'allow');
+  });
+
+  it('autoApproveSeconds=0 → ask', async () => {
+    const deps = makeDeps();
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({ autoApproveSeconds: 0 }));
+    const { res } = await drivePost(permRequestHookHandler, { toolName: 'Read', input: { file_path: '/x' } }, { deps });
+    assert.equal(res.status, 200);
+    assert.equal(res.json.decision, 'ask');
+  });
+
+  it('autoApproveSeconds 缺失 → ask', async () => {
+    const deps = makeDeps();
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({}));
+    const { res } = await drivePost(permRequestHookHandler, { toolName: 'Read', input: { file_path: '/x' } }, { deps });
+    assert.equal(res.status, 200);
+    assert.equal(res.json.decision, 'ask');
+  });
+
+  it('JSON parse 失败 → 400 + reportSwallowed', async () => {
+    const req = makeReq();
+    const res = makeRes();
+    const deps = makeDeps();
+    permRequestHookHandler(req, res, { pathname: '/x' }, true, deps);
+    req.emit('data', 'not-json');
+    req.emit('end');
+    await new Promise(r => setTimeout(r, 5));
+    assert.equal(res.status, 400);
+    assert.equal(res.json.error, 'Invalid request body');
   });
 });
 
