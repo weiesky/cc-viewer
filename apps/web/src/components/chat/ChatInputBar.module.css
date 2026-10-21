@@ -276,7 +276,7 @@
   min-width: 200px;
 }
 
-/* 独立圆钮内共享图标统一尺寸（UploadIcon 等不自带宽高；
+/* 独立圆钮内共享图标统一尺寸（UltraplanIcon/TrashIcon 等不自带宽高；
    移动端 23px / pad 16px 的媒体查询按既有选择器继续覆盖） */
 .plusBtn svg {
   width: 16px;

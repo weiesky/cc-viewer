@@ -419,6 +419,12 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
               <div className={`${styles.plusMenu}${!isMobile ? ` ${styles.plusMenuQuick}` : ''}`}>
                 {!isMobile ? (
                   <>
+                    {/* Upload lives as a top-level row of the (+) menu (same cascade-row look as the
+                        settings rows below); pick/paste/drag all share the runUpload chain */}
+                    <button className={chrome.quickMenuRow} onClick={handleUploadPick}>
+                      <span className={chrome.quickMenuRowIcon}><UploadIcon /></span>
+                      <span className={chrome.quickMenuLabel}>{t('ui.terminal.upload')}</span>
+                    </button>
                     {/* 桌面：与终端工具栏四芒星菜单同款级联结构（共享 QuickAutoApproveRows）。
                         改值必须走 AppBase handler（经 ChatView 钻取的 onAutoApproveChange /
                         onPlanAutoApproveChange），原因见组件内注释 */}
@@ -519,8 +525,9 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
               </>
             )}
           </div>
-          {/* UltraPlan / 上传 / 清空上下文平铺为输入栏独立圆钮（顺序与终端工具栏一致）；
-              移动端按需求只外置 UltraPlan，上传/清空仍留在 [+] 平铺菜单内。
+          {/* UltraPlan / clear-context stay as standalone round buttons in the input bar (same order as
+              the terminal toolbar); upload moved into the (+) menu.
+              Mobile per requirement only lifts UltraPlan out; upload/clear stay in the (+) flat menu.
               桌面 ultraplanPopover 由 ChatView 组装（终端同款 UltraplanPanel + 守卫），
               按钮点击走 onOpenUltraPlan 开、onOpenChange 只关——镜像终端单向模式 */}
           {onOpenUltraPlan && (ultraplanPopover ? (
@@ -542,11 +549,6 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
               <UltraplanIcon />
             </button>
           ))}
-          {!isMobile && (
-            <button className={styles.plusBtn} title={t('ui.terminal.upload')} onClick={handleUploadPick}>
-              <UploadIcon />
-            </button>
-          )}
           {!isMobile && onClearContextNow && (() => {
             // 与终端工具栏清空按钮同款 Popconfirm 气泡确认（非居中 Modal）：
             // i18n 是单句 "X？Y。" 结构，按 ? / ？ 拆成 title + description 以换行呈现

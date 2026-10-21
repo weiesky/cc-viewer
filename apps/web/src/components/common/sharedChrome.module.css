@@ -209,7 +209,8 @@
 }
 
 .quickMenuGroup:hover .quickMenuRow,
-.quickMenuGroupOpen .quickMenuRow {
+.quickMenuGroupOpen .quickMenuRow,
+button.quickMenuRow:hover {
   background: var(--border-secondary);
 }
 
