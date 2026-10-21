@@ -304,7 +304,9 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
     input.click();
   };
 
-  if (terminalVisible) {
+  // SDK 模式：terminalVisible 是 scratchOpen（伴随 scratch 终端开关），对话输入框必须始终可见，
+  // 不随终端开合隐藏。仅 PTY 模式（terminalVisible = 主 PTY 面板）才在终端打开时让位。
+  if (terminalVisible && !sdkMode) {
     if (!inputSuggestion) return null;
     return (
       <div className={styles.suggestionChip} onClick={onSuggestionClick}>
