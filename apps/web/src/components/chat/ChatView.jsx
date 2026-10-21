@@ -59,6 +59,11 @@ import { TERMINAL_CHAR_WIDTH, RESIZER_WIDTH_PX } from '../../utils/splitDragCalc
 import { isMobile, isIOS, isPad } from '../../env';
 import { t } from '../../i18n';
 import { apiUrl, withViewParams } from '../../utils/apiUrl';
+import {
+  CLOSED_SLASH_MENU, getSlashMenuContext, normalizeSdkCommands,
+  buildSlashMenuModel, composeOutgoingText,
+} from '../../utils/slashCommandMenu';
+import { projectKeyFromCwd } from '../../utils/projectKeyFromCwd';
 import { tryOpenWithSystem } from '../../utils/fileOpen';
 import { checkPathsExist, dedupePaths, peekPathExists, MD_PATH_CANDIDATE_ATTR, MD_FILE_VERIFIED_ATTR } from '../../utils/mdCodePathVerify';
 import { BUILTIN_PRESETS } from '../../utils/builtinPresets';
@@ -232,9 +237,13 @@ class ChatView extends React.Component {
       highlightFading: false,
       highlightVisibleIdx: -1,
       // SDK-mode session surface (broadcast via terminal WS — sdk-init / sdk-compact)
-      sdkSlashCommands: [],
       sdkCompactNotices: [],
-      inputSlashPrefix: false,
+      // `/` skill-menu surface: menu open/query/active + two data sources (SDK broadcast
+      // sdk-skills vs. the /api/skills fallback) — see utils/slashCommandMenu.js.
+      slashMenu: { ...CLOSED_SLASH_MENU },
+      sdkSkillCommands: [],
+      sdkSkillsReady: false,
+      slashMenuFsSkills: null, // null = not loaded yet, false = load failed, array = loaded
       sidebarWidth: parseInt(localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY), 10) || 240,
       terminalWidth: initialTerminalWidth || 624, // 默认 80cols * 7.8px
       needsInitialSnap: initialTerminalWidth === null, // 标记是否需要初始化吸附
@@ -341,6 +350,11 @@ class ChatView extends React.Component {
     // _inputWs 现在是 getter(挂在原型),不在 constructor 上设字段,避免覆盖 getter
     this._unsubWsHandler = null;
     this._unsubWsState = null;
+    // `/` skill-menu fetch sequencing: bumped on workspace switch / unmount to invalidate
+    // an in-flight /api/skills pull; `_slashSkillsLoading` dedupes concurrent pulls.
+    this._slashSkillsSeq = 0;
+    this._slashSkillsLoading = false;
+    this._slashSkillsFailedAt = 0; // last /api/skills failure ts — gates the retry cooldown
     this._inputRef = React.createRef();
     this._stopOptimisticTimer = null; // 乐观停止兜底定时器
     // PTY byte-stream state (buffer/carry/debounce/current-prompt mirror/auto-allow
@@ -653,8 +667,11 @@ class ChatView extends React.Component {
         this.setState({ fileExplorerExpandedPaths: loadExpandedPaths(this.props.projectName) });
       }
       this._fileScrollSnapshot = null;
-      // Clear SDK session surface state on workspace switch to prevent stale data.
-      this.setState({ sdkCompactNotices: [], sdkSlashCommands: [], inputSlashPrefix: false });
+      // Clear SDK session surface on workspace switch to prevent stale data.
+      this.setState({ sdkCompactNotices: [] });
+      // `'' → 真实名` 是延迟初始化（/api/project-name 异步到达），不是真切换：跳过 reset，
+      // 否则刷新后刚回放落地的 sdk-skills 会被立即清空、menu 永久退到 fs 回退。
+      if (prevProps.projectName) this._resetSlashMenuSurface();
     }
     // viewed-project 切换（multi-project 2026-10）：viewProject 变了 → 文件树展开态按新 key
     // 重 hydrate；git 检测重跑（目标项目可能有无 git）；当前文件/git diff/scroll 快照作废
@@ -666,6 +683,21 @@ class ChatView extends React.Component {
       this._fileScrollSnapshot = null;
       this.setState({ currentFile: null, currentGitDiff: null });
       this._detectGit();
+    }
+    // Viewed-project / viewed-instance switch: the `/` menu's skill list belongs to the
+    // previous workspace/instance — reset it so a stale list never bleeds across views.
+    // `null → 真实值` 是视图恢复的延迟初始化（ws 连接/校验异步），不是真切换，跳过 reset。
+    const viewSwitched = (prevProps.viewProject && prevProps.viewProject !== this.props.viewProject)
+      || (prevProps.viewInstance && prevProps.viewInstance !== this.props.viewInstance);
+    if (viewSwitched) {
+      this._resetSlashMenuSurface();
+    }
+    // Close the `/` menu when its composer becomes hidden/inert — terminal opened or local-log
+    // view entered — otherwise a stale open menu (old query) revives over the remounted empty
+    // textarea and keeps swallowing ↑↓/Tab/Enter.
+    if ((this.props.terminalVisible && !prevProps.terminalVisible)
+      || (this.props.isLocalLog && !prevProps.isLocalLog)) {
+      this._closeSlashMenu();
     }
     // currentFile 变（含切到 null）→ 上一文件的 scroll 快照失效，集中在 cdU 一处清，
     // 比在 8 个 setState({currentFile:...}) 站点各加一行更稳。fileVersion bump 走的是同
@@ -715,14 +747,16 @@ class ChatView extends React.Component {
       }
     }
     // 派生 pendingPtyPlan from _currentLastPendingPlanId（与 inline 卡片同源）。
-    // _currentLastPendingPlanId 由 buildAllItems 末尾镜像；只在 cliMode 下生效（红线 2：sdkMode 走 inline-only）。
+    // _currentLastPendingPlanId 由 buildAllItems 末尾镜像；只在 cliMode && !sdkMode 下生效
+    // （红线 2：SDK 模式走底部 ToolApprovalPanel 的 sdk-plan-* 通道，PTY 卡片/全局 modal 一律不激活，
+    // 否则点「批准」会发 PTY 击键 input——服务端 SDK 模式丢弃 input，canUseTool 承诺永不 resolve，卡死）。
     // _resolvedPlanIds 守用户已操作但 JSONL 还没回写 planApprovalMap 的短暂窗口（提交后到 tool_result 落盘之间），
     // 防 CDU 把 modal 重弹；过期项在 lpid 变化时（即旧 plan 真正 resolve）下面分支自动清出。
     {
       const lpid = this._currentLastPendingPlanId || null;
       const curPtyPlan = this.state.pendingPtyPlan;
       const skipped = lpid && this._resolvedPlanIds.has(lpid);
-      if (this.props.cliMode && lpid && !skipped) {
+      if (this.props.cliMode && !this.props.sdkMode && lpid && !skipped) {
         if (!curPtyPlan || curPtyPlan.id !== lpid) {
           this.setState({ pendingPtyPlan: { id: lpid, prompt: null } });
         }
@@ -1036,6 +1070,7 @@ class ChatView extends React.Component {
 
   componentWillUnmount() {
     this._unmounted = true;
+    this._slashSkillsSeq++; // invalidate any in-flight /api/skills pull so it never setStates post-unmount
     this._splitDrag.dispose();
     if (this._planAutoTimer) { clearInterval(this._planAutoTimer); this._planAutoTimer = null; }
     // 缓发超时 timer + 残留上传占位的 objectURL 清扫(卸载中 drain/超时回调已各自 _unmounted 守卫)。
@@ -1574,7 +1609,9 @@ class ChatView extends React.Component {
         // 定向传递 lastPendingAskId/PlanId：只传给"owner message"（即 streaming 中最新一份），
         // 避免同 toolId 出现在多条 message 时让多个 ChatMessage 都进 isInteractive 路径并双重 portal
         const msgLastAskId = (mi === lastPendingAskOwnerIdx) ? lastPendingAskId : null;
-        const msgLastPlanId = (mi === lastPendingPlanOwnerIdx) ? lastPendingPlanId : null;
+        // SDK 模式下 plan 审批走底部 ToolApprovalPanel（sdk-plan-* 通道），inline 卡片保持只读
+        // （isInteractive = pending && cliMode && id===lastPendingPlanId），传 null 防 PTY 击键路径激活。
+        const msgLastPlanId = (mi === lastPendingPlanOwnerIdx && !this.props.sdkMode) ? lastPendingPlanId : null;
         // Normalize the two content shapes into one block list (null → skip):
         // array content drops system-text blocks (e.g. SUGGESTION MODE); string
         // content renders only if text survives chrome-stripping.
@@ -1956,7 +1993,9 @@ class ChatView extends React.Component {
         mergedAskAnswerMap,
         localAskAnswers: this.state.localAskAnswers || {},
         sessionPlanApprovalMap,
-        cliMode: this.props.cliMode,
+        // SDK 模式把 cliMode 压成 false：lrWillOwnPlan 与 pendingPtyPlan 派生（cDU）同源门控，
+        // 防未来 lrWillOwnPlan 的新消费方在 SDK 模式下拿到「可交互」信号。
+        cliMode: this.props.cliMode && !this.props.sdkMode,
       });
       const lrWillOwnAsk = lr.lrWillOwnAsk;
       const lrWillOwnPlan = lr.lrWillOwnPlan;
@@ -2122,7 +2161,8 @@ class ChatView extends React.Component {
             // Last Response 单独存储，不混入主列表
             if (session.entryTimestamp) tsItemMap[session.entryTimestamp] = rawAllItems.length;
             const respLastPendingAskId = lr.respLastPendingAskId;
-            const respLastPendingPlanId = lr.respLastPendingPlanId;
+            // SDK 模式 LR 卡片同样只读：plan 审批由底部 ToolApprovalPanel 承担（同消息列表守卫）。
+            const respLastPendingPlanId = this.props.sdkMode ? null : lr.respLastPendingPlanId;
             if (respLastPendingPlanId) buildLpid = respLastPendingPlanId;
             // 收集 Last Response 中所有 AskUserQuestion 的问题文本，用于 prompt 去重
             this._lastResponseAskQuestions = collectLrAskQuestions(respContent);
@@ -2304,6 +2344,7 @@ class ChatView extends React.Component {
   _doClearContext = () => {
     const textarea = this._inputRef.current;
     if (!textarea) return;
+    this._closeSlashMenu();
     textarea.value = '/clear';
     // /clear 不应被「上传缓发」卡住:先撤销缓发 + 清空上传占位(并 revoke url),
     // setState 提交后再发 → handleInputSend 守卫看到 uploadingItems 为空,不会 defer。
@@ -2315,6 +2356,7 @@ class ChatView extends React.Component {
 
   handlePresetSend = (description) => {
     if (!description) return;
+    this._closeSlashMenu();
     const textarea = this._inputRef.current;
     if (textarea) {
       textarea.value = description;
@@ -2540,15 +2582,25 @@ class ChatView extends React.Component {
           message.error(t('ui.sdkError', { detail: msg.message || '' }));
         } else if (msg.type === 'sdk-init') {
           // SDK 会话的 slash 命令面 + 模型(headless 会话没有 TUI `/` 帮助)。
-          // 每个 session 只广播一次(server 侧去重),这里直接覆盖式落地即可。
+          // 每个 session 只广播一次(server 侧去重)。模型上提给 AppHeader 渲染。
           const model = msg.model || null;
-          this.setState({
-            sdkSlashCommands: Array.isArray(msg.slashCommands) ? msg.slashCommands : [],
-          });
           // Lift the launch model up to AppBase so AppHeader can render it in the proxy-chip
           // slot as a hot-switch fallback (AppHeader can't subscribe to TerminalWsContext —
           // single contextType — so the value travels up via this callback; AppBase owns it).
           if (typeof this.props.onSdkModel === 'function') this.props.onSdkModel(model);
+        } else if (msg.type === 'sdk-skills') {
+          // Skill menu surface (supportedCommands: name + description + argumentHint).
+          // Guard against background-workspace / cross-instance frames before landing. No
+          // sdkMode gate here — the frame only ever exists in SDK mode, and WS replay can
+          // arrive before /api/cli-mode flips sdkMode true; landing it unconditionally (like
+          // the sdk-init branch) keeps the surface available, while buildSlashMenuModel still
+          // only consumes it when sdkMode is on.
+          if (!this._sdkSkillsFrameMatchesView(msg)) return;
+          this.setState(prev => ({
+            sdkSkillCommands: normalizeSdkCommands(msg.commands),
+            sdkSkillsReady: true,
+            slashMenu: prev.slashMenu.open ? { ...prev.slashMenu, activeIndex: 0 } : prev.slashMenu,
+          }));
         } else if (msg.type === 'sdk-session-state') {
           // Turn-level busy truth (idle/running/requires_action) — lift to AppBase,
           // which owns the spinner's turn-level state (same onSdkModel lift pattern).
@@ -2621,7 +2673,7 @@ class ChatView extends React.Component {
   _startPlanAutoApprove = (planId) => {
     if (this._planAutoTimer) return;                                   // 已在倒计时
     const seconds = this.props.planAutoApproveSeconds;                 // 0=关 / N=N 秒倒计时 / -1=立即
-    if (!this.props.cliMode || !seconds) return;                       // 0/undefined → 关闭
+    if (!this.props.cliMode || this.props.sdkMode || !seconds) return;  // 0/undefined → 关闭；SDK 模式不接入（走 sdk-plan-answer）
     if (!planId || this._planAutoCancelled.has(planId)) return;        // 已被用户取消的 plan 不再重启
     const ws = this._inputWs;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;               // ws 未就绪 → 不启动（避免空发）
@@ -2667,6 +2719,8 @@ class ChatView extends React.Component {
 
   handlePromptOptionClick = (number) => {
     if (this._promptSubmitting) return;
+    // SDK 模式没有 PTY：input 帧会被服务端丢弃，击键式审批必然空转（plan 走 sdk-plan-answer）。
+    if (this.props.sdkMode) return;
     const ws = this._inputWs;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     // ptyPrompt 可能为 null（ExitPlanMode 渲染后 PTY prompt 尚未检测到），
@@ -2745,6 +2799,7 @@ class ChatView extends React.Component {
   };
 
   handlePlanFeedbackSubmit = (number, text) => {
+    if (this.props.sdkMode) return; // 同 handlePromptOptionClick：SDK 模式无 PTY，击键必被丢弃
     const ws = this._inputWs;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     let prompt = this.state.ptyPrompt;
@@ -2850,8 +2905,93 @@ class ChatView extends React.Component {
     }
   };
 
+  // Second-line guard for sdk-skills frames (the server already routes by view project).
+  // Mirrors AppBase.handleSdkSessionState's cwd-basename check, plus an instanceKey check
+  // so two same-basename instances don't cross-populate the menu.
+  _sdkSkillsFrameMatchesView = (msg) => {
+    if (msg && msg.cwd) {
+      // `viewed` (viewProject/projectName) is a SANITIZED project key — the server derives
+      // it via projectKeyForCwd; compare against the frame's cwd sanitized the same way or a
+      // space/CJK workspace would drop its own legitimate frames.
+      const viewed = this.props.viewProject || this.props.projectName || '';
+      const frameProj = projectKeyFromCwd(msg.cwd);
+      if (viewed && frameProj && frameProj !== viewed) return false;
+    }
+    const vi = this.props.viewInstance || null;
+    if (vi && msg && msg.instanceKey && msg.instanceKey !== vi) return false;
+    return true;
+  };
+
+  _closeSlashMenu = () => {
+    if (this.state.slashMenu.open) this.setState({ slashMenu: { ...CLOSED_SLASH_MENU } });
+  };
+
+  _resetSlashMenuSurface = () => {
+    this._slashSkillsSeq++; // invalidate any in-flight /api/skills pull
+    // Clear the in-flight gate too — the stale request's .finally won't (seq no longer
+    // matches), so without this the latch stays true and the menu never reloads.
+    this._slashSkillsLoading = false;
+    this._slashSkillsFailedAt = 0;
+    this.setState({
+      slashMenu: { ...CLOSED_SLASH_MENU },
+      sdkSkillCommands: [],
+      sdkSkillsReady: false,
+      slashMenuFsSkills: null,
+    });
+  };
+
+  _buildSlashMenuModel = () => buildSlashMenuModel({
+    sdkReady: !!(this.props.sdkMode && this.state.sdkSkillsReady),
+    sdkCommands: this.state.sdkSkillCommands,
+    fsSkills: Array.isArray(this.state.slashMenuFsSkills) ? this.state.slashMenuFsSkills : null,
+    query: this.state.slashMenu.query,
+  });
+
+  // Lazy /api/skills pull — the fallback + grouping source for the `/` menu. Runs even in
+  // SDK mode (its `source` field classifies SDK skill names into personal/builtin). Loads
+  // once per workspace; seq-guarded so a workspace switch can't land a stale result.
+  // Failure is retryable: `slashMenuFsSkills=false` + a timestamp, so a later menu open
+  // re-arms the pull after a short cooldown instead of pinning "no skills" for the view's life.
+  _ensureSlashSkillsLoaded = () => {
+    if (this.props.isLocalLog) return;
+    if (this._slashSkillsLoading || this.state.slashMenuFsSkills !== null) return;
+    // Retry window after a failed pull.
+    if (this._slashSkillsFailedAt && Date.now() - this._slashSkillsFailedAt < 5000) return;
+    const seq = ++this._slashSkillsSeq;
+    this._slashSkillsLoading = true;
+    fetch(apiUrl(withViewParams('/api/skills', {
+      project: this.props.viewProject || this.props.projectName,
+      instance: this.props.viewInstance || undefined,
+    })))
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`http:${r.status}`))))
+      .then(data => {
+        if (seq !== this._slashSkillsSeq) return;
+        const skills = data && Array.isArray(data.skills) ? data.skills : [];
+        this._slashSkillsFailedAt = 0;
+        this.setState({ slashMenuFsSkills: skills });
+      })
+      .catch((err) => {
+        if (seq !== this._slashSkillsSeq) return;
+        reportSwallowed('chat.slash-skills-fetch', err);
+        this._slashSkillsFailedAt = Date.now();
+        this.setState({ slashMenuFsSkills: false });
+      })
+      .finally(() => {
+        if (seq === this._slashSkillsSeq) this._slashSkillsLoading = false;
+      });
+  };
+
+  // 打开菜单时若上次失败且已过冷却，允许重试（清回 null 重新拉）。
+  _retrySlashSkillsIfFailed = () => {
+    if (this.state.slashMenuFsSkills === false
+      && (!this._slashSkillsFailedAt || Date.now() - this._slashSkillsFailedAt >= 5000)) {
+      this.setState({ slashMenuFsSkills: null }, () => this._ensureSlashSkillsLoaded());
+    }
+  };
+
   _sendUserMessageImmediate = (text, textareaToReset, skipUiState) => {
     if (!text) return;
+    this._closeSlashMenu();
     const ws = this._inputWs;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     // /clear 自身不解锁血条 lock（lock 是清空确认后由 AppBase.handleClearContextOptimistic 设置）；
@@ -2951,10 +3091,12 @@ class ChatView extends React.Component {
       return;
     }
     const userText = textarea.value.trim();
-    // 拼接 pendingImages 路径到消息前面（发送时才注入，支持用户删除后不发）
+    // 拼接 pendingImages 路径（发送时才注入，支持用户删除后不发）。slash 命令必须保持在
+    // 消息开头，图片路径排在其后；普通文本维持图片在前的旧行为。
     const imagePaths = this.state.pendingImages.map(img => `"${img.path.replace(/"/g, '')}"`).join(' ');
-    const text = imagePaths ? (userText ? `${imagePaths} ${userText}` : imagePaths) : userText;
+    const text = composeOutgoingText(userText, imagePaths);
     if (!text) return;
+    this._closeSlashMenu();
 
     // 发起新一轮：清除可能仍挂着的乐观停止标志，确保新 run 的按钮正确显示为停止态。
     if (this.state.stopOptimistic) this._clearStopOptimistic();
@@ -3018,6 +3160,37 @@ class ChatView extends React.Component {
   };
 
   handleInputKeyDown = (e) => {
+    // `/` skill menu takes precedence while open AND actually visible (same condition the
+    // render uses) — an open-but-hidden menu (terminal shown / local-log) must not intercept.
+    const slashMenuLive = this.state.slashMenu.open && !this.props.terminalVisible && !this.props.isLocalLog;
+    if (slashMenuLive && !e.isComposing && e.keyCode !== 229) {
+      const model = this._buildSlashMenuModel();
+      const count = model.flatItems.length;
+      const plain = !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        this._closeSlashMenu();
+        return;
+      }
+      if (count > 0 && plain && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+        e.preventDefault();
+        const cur = Math.min(this.state.slashMenu.activeIndex, count - 1);
+        const next = e.key === 'ArrowDown' ? Math.min(count - 1, cur + 1) : Math.max(0, cur - 1);
+        this.setState(prev => ({ slashMenu: { ...prev.slashMenu, activeIndex: next } }));
+        return;
+      }
+      if (count > 0 && plain && e.key === 'Tab') {
+        e.preventDefault();
+        this.handleSlashMenuSelect(this.state.slashMenu.activeIndex);
+        return;
+      }
+      if (count > 0 && plain && e.key === 'Enter') {
+        e.preventDefault();
+        this.handleSlashMenuSelect(this.state.slashMenu.activeIndex);
+        return;
+      }
+      // count === 0: fall through so Enter still sends the typed `/xyz` text.
+    }
     if (e.key === 'Tab' && this.state.inputSuggestion) {
       e.preventDefault();
       const textarea = this._inputRef.current;
@@ -3034,16 +3207,45 @@ class ChatView extends React.Component {
     }
   };
 
+  // Insert the picked skill as `/name ` (never auto-send) so the user can add args.
+  handleSlashMenuSelect = (index) => {
+    const model = this._buildSlashMenuModel();
+    const item = model.flatItems[index];
+    if (!item) { this._closeSlashMenu(); return; }
+    const ta = this._inputRef.current;
+    if (!ta) { this._closeSlashMenu(); return; }
+    const nextValue = `/${item.name} `;
+    ta.value = nextValue;
+    resizeChatTextarea(ta, { focused: true });
+    this.setState({ inputEmpty: false, inputSuggestion: null, slashMenu: { ...CLOSED_SLASH_MENU } }, () => {
+      ta.focus();
+      try { ta.setSelectionRange(nextValue.length, nextValue.length); } catch { /* caret best-effort */ }
+    });
+  };
+
+  handleSlashMenuHover = (index) => {
+    if (index === this.state.slashMenu.activeIndex) return;
+    this.setState(prev => ({ slashMenu: { ...prev.slashMenu, activeIndex: index } }));
+  };
+
   handleInputChange = (e) => {
     const textarea = e.target;
     resizeChatTextarea(textarea, { focused: document.activeElement === textarea });
     const empty = !textarea.value.trim();
-    // slash 前缀跟踪只为 SDK 模式的命令 hint(headless 会话没有 TUI `/` 帮助);
-    // 发送后 inputEmpty=true 会掩掉旧值,下次输入自然刷新。
-    this.setState({ inputEmpty: empty, inputSlashPrefix: !empty && textarea.value.startsWith('/') });
-    if (this.state.inputSuggestion && !empty) {
-      this.setState({ inputSuggestion: null });
-    }
+    // IME composition mid-gesture: don't recompute the menu (avoids flicker); close it.
+    const composing = !!(e.nativeEvent && e.nativeEvent.isComposing);
+    const ctx = (!this.props.isLocalLog && !composing)
+      ? getSlashMenuContext(textarea.value, textarea.selectionStart)
+      : null;
+    if (ctx) this._retrySlashSkillsIfFailed();
+    if (ctx) this._ensureSlashSkillsLoaded();
+    this.setState(prev => ({
+      inputEmpty: empty,
+      inputSuggestion: (prev.inputSuggestion && !empty) ? null : prev.inputSuggestion,
+      slashMenu: ctx
+        ? { open: true, query: ctx.query, activeIndex: ctx.query === prev.slashMenu.query ? prev.slashMenu.activeIndex : 0 }
+        : { ...CLOSED_SLASH_MENU },
+    }));
   };
 
   handleSuggestionToTerminal = () => {
@@ -3283,6 +3485,7 @@ class ChatView extends React.Component {
     if (this.props.terminalVisible && !this.props.sdkMode) {
       if (this._sendTerminalFrame({ type: 'input', data: quoted })) return;
     }
+    this._closeSlashMenu();
     const textarea = this._inputRef.current;
     if (!textarea) return;
     const cur = textarea.value;
@@ -3505,6 +3708,13 @@ class ChatView extends React.Component {
   render() {
     const { mainAgentSessions, cliMode, terminalVisible, onToggleTerminal } = this.props;
     const { allItems, visibleCount, loading, terminalWidth, sidebarWidth, lastResponseItems } = this.state;
+    // `/` skill menu derived model (rebuilt only from current state; empty when closed).
+    const slashMenuModel = this.state.slashMenu.open ? this._buildSlashMenuModel() : { groups: [], flatItems: [] };
+    // Loading = menu open but neither data source has landed yet (SDK broadcast pending and
+    // the /api/skills fallback still in flight).
+    const slashMenuLoading = this.state.slashMenu.open
+      && !(this.props.sdkMode && this.state.sdkSkillsReady)
+      && this.state.slashMenuFsSkills === null;
     const streamSpinnerUrl = this._streamSpinnerUrl || shimmerUrl;
 
     // 计算 SnapLineOverlay 的 currentLeft（侧栏拖拽时用侧栏宽度，终端拖拽时用终端位置）
@@ -4102,12 +4312,6 @@ class ChatView extends React.Component {
                 </div>
               );
             })()}
-            {this.props.sdkMode && !this.state.inputEmpty && this.state.inputSlashPrefix
-              && this.state.sdkSlashCommands.length > 0 && (
-              <div className={styles.sdkNoticeBanner}>
-                {t('ui.sdkSlashHint', { commands: this.state.sdkSlashCommands.slice(0, 8).join('  ') })}
-              </div>
-            )}
             {/* Queued-message bubbles (Enter-while-busy). FIFO top→bottom; each row offers
                 "send now" (interrupt + inject immediately) and remove. Server-authoritative:
                 rows appear/disappear only via queue-state broadcasts. */}
@@ -4151,6 +4355,14 @@ class ChatView extends React.Component {
               inputEmpty={this.state.inputEmpty}
               inputSuggestion={this.state.inputSuggestion}
               terminalVisible={terminalVisible}
+              sdkMode={this.props.sdkMode}
+              slashMenuOpen={this.state.slashMenu.open && !terminalVisible && !this.props.isLocalLog}
+              slashMenuGroups={slashMenuModel.groups}
+              slashMenuActiveIndex={this.state.slashMenu.activeIndex}
+              slashMenuLoading={slashMenuLoading}
+              onSlashMenuHover={this.handleSlashMenuHover}
+              onSlashMenuSelect={this.handleSlashMenuSelect}
+              onSlashMenuClose={this._closeSlashMenu}
               onKeyDown={this.handleInputKeyDown}
               onChange={this.handleInputChange}
               onSend={this.handleInputSend}

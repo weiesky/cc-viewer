@@ -36,6 +36,7 @@ import { createV3Assembler } from './utils/v3Assembler.js';
 import { createChannelState, appendJournal, cacheKeyForScope, clearChannelTimers } from './utils/viewChannelState';
 import { createChannelManager, scopeKeyFor, scopeOfKey, BOUND_CHANNEL_KEY } from './utils/sseChannels';
 import { createMuxTransport } from './utils/wsMuxTransport';
+import { projectKeyFromCwd } from './utils/projectKeyFromCwd';
 import { reinitializeMermaid } from './hooks/useMermaidRender';
 import styles from './App.module.css';
 
@@ -3742,8 +3743,10 @@ class AppBase extends React.Component {
     // the two diverge. Unknown-state frames are treated as idle-safe: only the two
     // known active states light the spinner.
     if (meta?.cwd) {
+      // viewed is a SANITIZED project key (server projectKeyForCwd); compare against the
+      // frame's cwd sanitized the same way or a space/CJK workspace drops its own frames.
       const viewed = this.state.viewedProject || this.state.projectName || '';
-      const frameProj = meta.cwd.replace(/\\/g, '/').split('/').filter(Boolean).pop() || '';
+      const frameProj = projectKeyFromCwd(meta.cwd);
       if (viewed && frameProj && frameProj !== viewed) return; // background workspace's frame
     }
     this._applyTurnActive(state === 'running' || state === 'requires_action');

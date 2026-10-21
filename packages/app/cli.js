@@ -894,6 +894,7 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   serverMod.setSdkInterruptTurn(sdkManager.interruptTurn);
   serverMod.setSdkGetPendingApprovals(sdkManager.getPendingApprovals);
   serverMod.setSdkGetInitSnapshot(sdkManager.getSdkInitSnapshot);
+  serverMod.setSdkGetSkillsSnapshot(sdkManager.getSkillsSnapshot);
   serverMod.setSdkGetContextUsageSnapshot(sdkManager.getContextUsageSnapshot);
   serverMod.setSdkGetMcpStatusSnapshot(sdkManager.getMcpStatusSnapshot);
   serverMod.setSdkGetSessionStateSnapshot(sdkManager.getSessionStateSnapshot);

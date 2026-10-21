@@ -1,0 +1,146 @@
+/* `/` skill menu — anchored to .chatTextareaWrap (position: relative), expands upward.
+   Visual language mirrors the composer's + menu (--bg-elevated / --border-hover / radius). */
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 99;
+}
+
+.menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 100;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-hover);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px var(--overlay-dark-light);
+  padding: 6px;
+  max-height: min(340px, 42vh);
+  max-height: min(340px, 42dvh);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.statusRow {
+  padding: 12px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.group + .group {
+  margin-top: 4px;
+  border-top: 1px solid var(--border-light);
+  padding-top: 4px;
+}
+
+.groupTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.12s;
+}
+
+.item:hover {
+  background: var(--bg-surface);
+}
+
+.itemActive,
+.itemActive:hover {
+  background: var(--bg-surface);
+}
+
+.itemName {
+  flex-shrink: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.itemActive .itemName {
+  color: var(--color-primary-light, var(--color-primary));
+}
+
+.itemHint {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.itemDesc {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.footer {
+  margin-top: 4px;
+  padding: 6px 10px 2px;
+  border-top: 1px solid var(--border-light);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+@media (max-width: 640px) {
+  .menu {
+    padding: 4px;
+    max-height: 32vh;
+    max-height: 32dvh;
+  }
+
+  .item {
+    padding: 9px 10px;
+  }
+
+  /* 手机端 chatInner 是 zoom:0.6 / scale(0.6)（App.module.css），菜单在缩放容器内，
+     13/12/11px 会渲染成 ~8/7px 不可读；对照移动端 textarea 放大到 22px，这里补到 20-22px 档。
+     pad-mode 的 zoom:1 覆盖不受此媒体查询影响。 */
+  .item {
+    font-size: 22px;
+  }
+
+  .itemDesc {
+    font-size: 20px;
+  }
+
+  .groupTitle,
+  .statusRow {
+    font-size: 19px;
+  }
+
+  /* Touch has no keyboard nav — the footer hint is noise there. */
+  .footer {
+    display: none;
+  }
+}

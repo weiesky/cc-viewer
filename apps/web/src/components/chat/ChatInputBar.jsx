@@ -12,6 +12,7 @@ import chrome from '../common/sharedChrome.module.css';
 import { AgentTeamIcon, UltraplanIcon, UploadIcon, TrashIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
 import QuickAutoApproveRows from '../common/QuickAutoApproveRows';
 import ResumeSessionsRow from '../common/ResumeSessionsRow';
+import SlashCommandMenu from './SlashCommandMenu';
 import { createQuickMenuHoverIntent } from '../../utils/quickMenuHoverIntent';
 
 const SpeechRec = typeof window !== 'undefined' && window.isSecureContext
@@ -48,7 +49,7 @@ const SPEECH_LANG_MAP = {
   tr: 'tr-TR', uk: 'uk-UA',
 };
 
-function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onClearContext, isStreaming, pendingImages, onRemovePendingImage, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, onClearContextNow, ultraplanPopover, agentTeamEnabled, onResumeSession, viewProject, attachedSid }) {
+function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, sdkMode, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onClearContext, isStreaming, pendingImages, onRemovePendingImage, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, onClearContextNow, ultraplanPopover, agentTeamEnabled, onResumeSession, viewProject, attachedSid, slashMenuOpen, slashMenuGroups, slashMenuActiveIndex, slashMenuLoading, onSlashMenuHover, onSlashMenuSelect, onSlashMenuClose }) {
   const [plusOpen, setPlusOpen] = useState(false);
   // 桌面四芒星菜单的级联展开行（与终端工具栏同款交互）：null | 'perm' | 'plan' | 'agentteam'
   const [quickExpanded, setQuickExpanded] = useState(null);
@@ -303,7 +304,9 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
     input.click();
   };
 
-  if (terminalVisible) {
+  // SDK 模式：terminalVisible 是 scratchOpen（伴随 scratch 终端开关），对话输入框必须始终可见，
+  // 不随终端开合隐藏。仅 PTY 模式（terminalVisible = 主 PTY 面板）才在终端打开时让位。
+  if (terminalVisible && !sdkMode) {
     if (!inputSuggestion) return null;
     return (
       <div className={styles.suggestionChip} onClick={onSuggestionClick}>
@@ -391,6 +394,15 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
               <div className={styles.interimPreview}>{interimText}</div>
             )}
           </div>
+          <SlashCommandMenu
+            open={slashMenuOpen}
+            groups={slashMenuGroups}
+            activeIndex={slashMenuActiveIndex}
+            loading={slashMenuLoading}
+            onHover={onSlashMenuHover}
+            onSelect={onSlashMenuSelect}
+            onClose={onSlashMenuClose}
+          />
         </div>
         <div className={styles.chatInputBottom}>
           <div className={styles.chatInputBottomLeft}>
@@ -409,6 +421,18 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
               <div className={`${styles.plusMenu}${!isMobile ? ` ${styles.plusMenuQuick}` : ''}`}>
                 {!isMobile ? (
                   <>
+                    {/* Upload lives as a top-level row of the (+) menu (same cascade-row look as the
+                        settings rows below); pick/paste/drag all share the runUpload chain.
+                        onMouseEnter 收起任何展开的级联行：顶层行不参与 hover-intent，从「历史会话」
+                        等组斜向移入时若不显式收起，子菜单会残留展开。 */}
+                    <button
+                      className={chrome.quickMenuRow}
+                      onClick={handleUploadPick}
+                      onMouseEnter={() => { qmHover.cancel(); if (quickExpanded) setQuickExpanded(null); }}
+                    >
+                      <span className={chrome.quickMenuRowIcon}><UploadIcon /></span>
+                      <span className={chrome.quickMenuLabel}>{t('ui.terminal.upload')}</span>
+                    </button>
                     {/* 桌面：与终端工具栏四芒星菜单同款级联结构（共享 QuickAutoApproveRows）。
                         改值必须走 AppBase handler（经 ChatView 钻取的 onAutoApproveChange /
                         onPlanAutoApproveChange），原因见组件内注释 */}
@@ -421,6 +445,7 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                       onToggle={setQuickExpanded}
                       onHoverEnter={qmHover.enter}
                       onHoverLeave={qmHover.leave}
+                      hidePlan={!!sdkMode}
                       middle={
                         <ResumeSessionsRow
                           expanded={quickExpanded === 'history'}
@@ -508,8 +533,9 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
               </>
             )}
           </div>
-          {/* UltraPlan / 上传 / 清空上下文平铺为输入栏独立圆钮（顺序与终端工具栏一致）；
-              移动端按需求只外置 UltraPlan，上传/清空仍留在 [+] 平铺菜单内。
+          {/* UltraPlan / clear-context stay as standalone round buttons in the input bar (same order as
+              the terminal toolbar); upload moved into the (+) menu.
+              Mobile per requirement only lifts UltraPlan out; upload/clear stay in the (+) flat menu.
               桌面 ultraplanPopover 由 ChatView 组装（终端同款 UltraplanPanel + 守卫），
               按钮点击走 onOpenUltraPlan 开、onOpenChange 只关——镜像终端单向模式 */}
           {onOpenUltraPlan && (ultraplanPopover ? (
@@ -531,11 +557,6 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
               <UltraplanIcon />
             </button>
           ))}
-          {!isMobile && (
-            <button className={styles.plusBtn} title={t('ui.terminal.upload')} onClick={handleUploadPick}>
-              <UploadIcon />
-            </button>
-          )}
           {!isMobile && onClearContextNow && (() => {
             // 与终端工具栏清空按钮同款 Popconfirm 气泡确认（非居中 Modal）：
             // i18n 是单句 "X？Y。" 结构，按 ? / ？ 拆成 title + description 以换行呈现

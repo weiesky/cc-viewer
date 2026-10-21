@@ -76,7 +76,7 @@ function makeDeps(extra = {}) {
 //                   use this — the grace timer shares the mocked API)
 //   endWith(err) — end the output stream (err → throw): session-level death
 //   released     — count of released (completed) turns
-function makeResidentQuery({ respond, initMsgs, autoRelease = 0, getContextUsage, mcpServerStatus } = {}) {
+function makeResidentQuery({ respond, initMsgs, autoRelease = 0, getContextUsage, mcpServerStatus, supportedCommands } = {}) {
   const calls = [];
   let current = null;
   function fakeQuery({ prompt, options }) {
@@ -88,8 +88,10 @@ function makeResidentQuery({ respond, initMsgs, autoRelease = 0, getContextUsage
       releaseNext: false, releaseCurrent: null, turn: null,
       ctxUsageCalls: 0, ctxUsagePending: null,
       mcpStatusCalls: 0, mcpStatusPending: null,
+      supportedCommandsCalls: 0, supportedCommandsPending: null,
     };
     current = state;
+    rec.state = state; // cross-generation counters (e.g. supportedCommandsCalls) aggregate via calls[].state
     const api = {
       // Optional control-surface mock. getContextUsage(spec): { resolve, reject, defer } —
       // a value / Error / deferred gate. close() rejects any in-flight request (the real
@@ -134,6 +136,11 @@ function makeResidentQuery({ respond, initMsgs, autoRelease = 0, getContextUsage
         }
         return Promise.resolve(spec && 'resolve' in spec ? spec.resolve : spec);
       },
+      // Optional control-surface mock, getContextUsage parity. supportedCommands(spec):
+      // { resolve, reject, defer, keepOnClose } — the resolve value is a SlashCommand[]
+      // (skill surface). Counted so tests can assert the once-per-query-generation dedupe.
+      // Attached conditionally below (only when the caller passes supportedCommands) so
+      // canUseTool/queue/task fakes that never opt in have no such method and emit no frame.
       async *[Symbol.asyncIterator]() {
         const done = () => { if (state.err) throw state.err; };
         const runRespond = async (msg) => {
@@ -218,8 +225,32 @@ function makeResidentQuery({ respond, initMsgs, autoRelease = 0, getContextUsage
         if (state.mcpStatusPending && !state.mcpKeepOnClose) {
           state.mcpStatusPending.reject(new Error('Query closed before response received'));
         }
+        if (state.supportedCommandsPending && !state.scKeepOnClose) {
+          state.supportedCommandsPending.reject(new Error('Query closed before response received'));
+        }
       },
     };
+    // Attach supportedCommands only when the caller opted in — otherwise the query has no
+    // such control method (older SDK), and sdk-manager's typeof guard skips the fetch.
+    if (supportedCommands !== undefined) {
+      api.supportedCommands = async () => {
+        state.supportedCommandsCalls++;
+        const spec = typeof supportedCommands === 'function' ? supportedCommands(state.supportedCommandsCalls) : supportedCommands;
+        if (spec && spec.defer) {
+          state.scKeepOnClose = spec.keepOnClose === true;
+          return new Promise((res, rej) => {
+            state.supportedCommandsPending = {
+              resolve: (v) => { state.supportedCommandsPending = null; res(v); },
+              reject: (e) => { state.supportedCommandsPending = null; rej(e); },
+            };
+          });
+        }
+        if (spec && spec.reject) {
+          return Promise.reject(spec.reject instanceof Error ? spec.reject : new Error(String(spec.reject)));
+        }
+        return Promise.resolve(spec && 'resolve' in spec ? spec.resolve : spec);
+      };
+    }
     return api;
   }
   fakeQuery.calls = calls;
@@ -1469,6 +1500,179 @@ describe('sdk-manager-query — getPendingApprovals / onQueryError / init-compac
     assert.equal(cb[0].trigger, 'auto');
     assert.equal(cb[0].preTokens, 150000);
     assert.equal(cb[0].postTokens, 40000);
+  });
+
+  describe('sdk-skills 通道 (supportedCommands)', () => {
+    it('init → 拉取 supportedCommands 并广播一次 sdk-skills,快照可取', async () => {
+      const { deps, broadcasts } = makeDeps();
+      const commands = [{ name: 'review', description: 'Review a PR', argumentHint: '<pr>', aliases: ['code-review'] }];
+      sdk.__setQueryForTests(makeResidentQuery({
+        initMsgs: [{ ...sysInit('sess-skills-1'), skills: ['review'] }],
+        supportedCommands: { resolve: commands },
+      }));
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('go');
+      await tick(6);
+      const sk = broadcasts.filter((b) => b.type === 'sdk-skills');
+      assert.equal(sk.length, 1, '广播一次 sdk-skills');
+      assert.deepEqual(sk[0].commands, commands, 'commands 透传');
+      assert.equal(sk[0].sessionId, 'sess-skills-1');
+      assert.deepEqual(sdk.getSkillsSnapshot(), sk[0], '快照即该帧');
+    });
+
+    it('supportedCommands reject → 无 sdk-skills 帧、无 sdk-error', async () => {
+      const { deps, broadcasts } = makeDeps();
+      sdk.__setQueryForTests(makeResidentQuery({
+        initMsgs: [sysInit('sess-skills-rej')],
+        supportedCommands: { reject: new Error('boom') },
+      }));
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('go');
+      await tick(6);
+      assert.equal(broadcasts.filter((b) => b.type === 'sdk-skills').length, 0);
+      assert.equal(broadcasts.filter((b) => b.type === 'sdk-error').length, 0);
+      assert.equal(sdk.getSkillsSnapshot(), null);
+    });
+
+    it('init 无 slash_commands 仍拉取技能', async () => {
+      const { deps, broadcasts } = makeDeps();
+      sdk.__setQueryForTests(makeResidentQuery({
+        initMsgs: [{ ...sysInit('sess-skills-noslash'), slash_commands: [], skills: ['loop'] }],
+        supportedCommands: { resolve: [{ name: 'loop', description: 'x', argumentHint: '', aliases: [] }] },
+      }));
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('go');
+      await tick(6);
+      assert.equal(broadcasts.filter((b) => b.type === 'sdk-init').length, 0, '空 slash_commands 不广播 sdk-init');
+      assert.equal(broadcasts.filter((b) => b.type === 'sdk-skills').length, 1, '但仍拉取技能');
+    });
+
+    it('同一 query 重复 init 只调用一次 supportedCommands', async () => {
+      const { deps } = makeDeps();
+      // Emit init TWICE from the same resident query so the dedupe guard is actually
+      // exercised (a single init would pass even with the guard removed).
+      const fq = makeResidentQuery({
+        initMsgs: [sysInit('sess-skills-dupe'), sysInit('sess-skills-dupe')],
+        supportedCommands: { resolve: [] },
+      });
+      sdk.__setQueryForTests(fq);
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('one');
+      await tick(6);
+      assert.equal(fq.current().supportedCommandsCalls, 1, '一次 query 重复 init 只拉一次');
+    });
+
+    it('切换 session 后迟到的 resolve 不广播旧命令,快照清空且新代重新拉取', async () => {
+      const { deps, broadcasts } = makeDeps();
+      let firstResolve;
+      const fq = makeResidentQuery({
+        initMsgs: [{ ...sysInit('sess-skills-old'), skills: ['old-skill', 'fresh'] }],
+        supportedCommands: (n) => (n === 1
+          ? { defer: true, keepOnClose: true }   // 第一代挂起,close 不拒,模拟迟到 resolve
+          : { resolve: [{ name: 'fresh', description: '', argumentHint: '', aliases: [] }] }),
+      });
+      sdk.__setQueryForTests(fq);
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('go');
+      await tick(6);
+      // 先落地一个非空快照，验证切换确实清空它（而非空转）。命令名需在 skills 白名单内才不被过滤。
+      firstResolve = fq.current().supportedCommandsPending && fq.current().supportedCommandsPending.resolve;
+      assert.ok(firstResolve, '第一代 supportedCommands 挂起中');
+      firstResolve([{ name: 'old-skill', description: '', argumentHint: '', aliases: [] }]);
+      await tick(6);
+      assert.ok(sdk.getSkillsSnapshot(), '切换前已有快照');
+      assert.equal(sdk.getSkillsSnapshot().commands[0].name, 'old-skill');
+      // 切走 → teardown + 清快照
+      sdk.switchToSession('sess-skills-new');
+      assert.equal(sdk.getSkillsSnapshot(), null, '切换后快照清空');
+      // 切换后新代 query 应重新拉取（teardown 重置 _skillsLoadedQuery）
+      await sdk.sendUserMessage('after-switch');
+      await tick(6);
+      // supportedCommandsCalls is per-generation state — aggregate across query generations
+      // (switch rebuilt the resident query, so fq.current() alone only sees the new one).
+      const totalCalls = fq.calls.reduce((n, c) => n + (c.state ? c.state.supportedCommandsCalls : 0), 0);
+      assert.equal(totalCalls, 2, '新代 query 重新拉取');
+    });
+
+    it('supportedCommands 命令面按 init.skills 收敛为纯 skill（过滤 TUI 内置命令）', async () => {
+      const { deps, broadcasts } = makeDeps();
+      // init.skills 是 skill 白名单（含 plugin:skill / :suffix 形式）；supportedCommands
+      // 返回全量命令面（含 /clear /model 等 TUI 内置命令），应只保留白名单内的 skill。
+      sdk.__setQueryForTests(makeResidentQuery({
+        initMsgs: [{ ...sysInit('sess-skills-filter'), skills: ['review', 'plugin:docx', ':pdf'] }],
+        supportedCommands: {
+          resolve: [
+            { name: 'review', description: 'r', argumentHint: '', aliases: [] },
+            { name: 'clear', description: 'c', argumentHint: '', aliases: [] },
+            { name: 'model', description: 'm', argumentHint: '', aliases: [] },
+            { name: 'docx', description: 'd', argumentHint: '', aliases: [] },
+            { name: 'pdf', description: 'p', argumentHint: '', aliases: [] },
+          ],
+        },
+      }));
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('go');
+      await tick(6);
+      const sk = broadcasts.filter((b) => b.type === 'sdk-skills');
+      assert.equal(sk.length, 1);
+      const names = sk[0].commands.map((c) => c.name).sort();
+      assert.deepEqual(names, ['docx', 'pdf', 'review'], 'TUI 内置命令被过滤，仅留 skill');
+    });
+
+    it('init 帧无 skills 字段时不过滤（保守放行）', async () => {
+      const { deps, broadcasts } = makeDeps();
+      sdk.__setQueryForTests(makeResidentQuery({
+        initMsgs: [sysInit('sess-skills-nofilter')],
+        supportedCommands: { resolve: [{ name: 'anything', description: '', argumentHint: '', aliases: [] }] },
+      }));
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('go');
+      await tick(6);
+      const sk = broadcasts.filter((b) => b.type === 'sdk-skills');
+      assert.equal(sk.length, 1);
+      assert.equal(sk[0].commands.length, 1, '无白名单时全量透传');
+    });
+
+    it('sdk-skills 帧携带 cwd + instanceKey 路由信封', async () => {
+      const { deps, broadcasts } = makeDeps();
+      sdk.__setQueryForTests(makeResidentQuery({
+        initMsgs: [{ ...sysInit('sess-skills-env'), skills: ['review'] }],
+        supportedCommands: { resolve: [{ name: 'review', description: '', argumentHint: '', aliases: [] }] },
+      }));
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('go');
+      await tick(6);
+      const sk = broadcasts.find((b) => b.type === 'sdk-skills');
+      assert.ok(sk, '有 sdk-skills 帧');
+      assert.equal(sk.cwd, tmpDir, '带 cwd');
+      assert.ok('instanceKey' in sk, '带 instanceKey 字段');
+      assert.equal(typeof sk.ts, 'number', '带 ts');
+      // 快照与帧内容等价（非同一引用比较）
+      assert.deepEqual(JSON.parse(JSON.stringify(sdk.getSkillsSnapshot())), JSON.parse(JSON.stringify(sk)));
+    });
+
+    it('切换 session 期间迟到的旧代 resolve 不落新快照（stale-generation 守卫）', async () => {
+      const { deps, broadcasts } = makeDeps();
+      let oldResolve;
+      const fq = makeResidentQuery({
+        initMsgs: [{ ...sysInit('sess-stale-old'), skills: ['old-skill'] }],
+        supportedCommands: { defer: true, keepOnClose: true }, // 挂起，close 不拒，模拟迟到
+      });
+      sdk.__setQueryForTests(fq);
+      sdk.initSdkSession(tmpDir, 'proj', deps);
+      await sdk.sendUserMessage('go');
+      await tick(6);
+      oldResolve = fq.current().supportedCommandsPending && fq.current().supportedCommandsPending.resolve;
+      assert.ok(oldResolve, '旧代 supportedCommands 挂起中');
+      assert.equal(sdk.getSkillsSnapshot(), null, '尚无快照');
+      // 切走：teardown 清快照 + _activeQuery 换代。此后旧代迟到 resolve 应被守卫丢弃。
+      sdk.switchToSession('sess-stale-new');
+      await tick(6);
+      oldResolve([{ name: 'old-skill', description: '', argumentHint: '', aliases: [] }]);
+      await tick(6);
+      assert.equal(broadcasts.filter((b) => b.type === 'sdk-skills').length, 0, '旧代迟到 resolve 不广播');
+      assert.equal(sdk.getSkillsSnapshot(), null, '旧代迟到 resolve 不落快照');
+    });
   });
 });
 
