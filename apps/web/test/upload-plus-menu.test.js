@@ -23,7 +23,7 @@ describe('upload entry folded into the ChatInputBar (+) menu', () => {
     const desktopBranch = CHAT_INPUT.match(/\{!isMobile \? \(([\s\S]{0,2000}?)<QuickAutoApproveRows/);
     assert.ok(desktopBranch, 'desktop (+) menu branch must exist before QuickAutoApproveRows');
     assert.ok(
-      /<button className=\{chrome\.quickMenuRow\} onClick=\{handleUploadPick\}>[\s\S]{0,200}?<UploadIcon \/>[\s\S]{0,200}?ui\.terminal\.upload/.test(desktopBranch[1]),
+      /<button[\s\S]{0,200}?className=\{chrome\.quickMenuRow\}[\s\S]{0,200}?onClick=\{handleUploadPick\}[\s\S]{0,300}?<UploadIcon \/>[\s\S]{0,200}?ui\.terminal\.upload/.test(desktopBranch[1]),
       'desktop (+) menu must contain a quickMenuRow upload button with UploadIcon + ui.terminal.upload label',
     );
   });

@@ -422,8 +422,14 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                 {!isMobile ? (
                   <>
                     {/* Upload lives as a top-level row of the (+) menu (same cascade-row look as the
-                        settings rows below); pick/paste/drag all share the runUpload chain */}
-                    <button className={chrome.quickMenuRow} onClick={handleUploadPick}>
+                        settings rows below); pick/paste/drag all share the runUpload chain.
+                        onMouseEnter 收起任何展开的级联行：顶层行不参与 hover-intent，从「历史会话」
+                        等组斜向移入时若不显式收起，子菜单会残留展开。 */}
+                    <button
+                      className={chrome.quickMenuRow}
+                      onClick={handleUploadPick}
+                      onMouseEnter={() => { qmHover.cancel(); if (quickExpanded) setQuickExpanded(null); }}
+                    >
                       <span className={chrome.quickMenuRowIcon}><UploadIcon /></span>
                       <span className={chrome.quickMenuLabel}>{t('ui.terminal.upload')}</span>
                     </button>
