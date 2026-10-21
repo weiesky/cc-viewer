@@ -12,6 +12,7 @@ import chrome from '../common/sharedChrome.module.css';
 import { AgentTeamIcon, UltraplanIcon, UploadIcon, TrashIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
 import QuickAutoApproveRows from '../common/QuickAutoApproveRows';
 import ResumeSessionsRow from '../common/ResumeSessionsRow';
+import SlashCommandMenu from './SlashCommandMenu';
 import { createQuickMenuHoverIntent } from '../../utils/quickMenuHoverIntent';
 
 const SpeechRec = typeof window !== 'undefined' && window.isSecureContext
@@ -48,7 +49,7 @@ const SPEECH_LANG_MAP = {
   tr: 'tr-TR', uk: 'uk-UA',
 };
 
-function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onClearContext, isStreaming, pendingImages, onRemovePendingImage, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, onClearContextNow, ultraplanPopover, agentTeamEnabled, onResumeSession, viewProject, attachedSid }) {
+function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onClearContext, isStreaming, pendingImages, onRemovePendingImage, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, onClearContextNow, ultraplanPopover, agentTeamEnabled, onResumeSession, viewProject, attachedSid, slashMenuOpen, slashMenuGroups, slashMenuActiveIndex, slashMenuLoading, onSlashMenuHover, onSlashMenuSelect, onSlashMenuClose }) {
   const [plusOpen, setPlusOpen] = useState(false);
   // 桌面四芒星菜单的级联展开行（与终端工具栏同款交互）：null | 'perm' | 'plan' | 'agentteam'
   const [quickExpanded, setQuickExpanded] = useState(null);
@@ -391,6 +392,15 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
               <div className={styles.interimPreview}>{interimText}</div>
             )}
           </div>
+          <SlashCommandMenu
+            open={slashMenuOpen}
+            groups={slashMenuGroups}
+            activeIndex={slashMenuActiveIndex}
+            loading={slashMenuLoading}
+            onHover={onSlashMenuHover}
+            onSelect={onSlashMenuSelect}
+            onClose={onSlashMenuClose}
+          />
         </div>
         <div className={styles.chatInputBottom}>
           <div className={styles.chatInputBottomLeft}>

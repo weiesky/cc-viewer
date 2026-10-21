@@ -63,6 +63,13 @@ const KEYS = [
   'ui.sdkCompacted', // SDK compact_boundary notice bar (ChatView sdk-compact branch)
   'ui.sdkSlashHint', // SDK slash-command hint (above the composer, when typing `/`)
   'ui.sdkModel', // SDK launch-model chip (AppHeader proxy-chip slot, hot-switch fallback)
+  // `/` skill menu (SlashCommandMenu.jsx; grouped personal/builtin listbox):
+  'ui.slashMenu.personalSkills', // personal-skills group title
+  'ui.slashMenu.builtinSkills',  // builtin-skills group title
+  'ui.slashMenu.loading',        // loading placeholder while sources land
+  'ui.slashMenu.noResults',      // empty-filter placeholder
+  'ui.slashMenu.ariaLabel',      // listbox aria-label
+  'ui.slashMenu.footerHint',     // keyboard-nav footer hint
   // Busy-queue bubbles above the composer (Enter-while-streaming; ChatView queue-state branch):
   'ui.chatInput.queueSendNow', // per-bubble "interrupt + inject now" button
   'ui.chatInput.queueRemove',  // per-bubble discard (×) button

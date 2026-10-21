@@ -1554,6 +1554,7 @@ async function setupTerminalWebSocket(httpServer) {
         // unstamped (receiving all workspaces' frames).
         wss.handleUpgrade(req, socket, head, (ws) => {
           try { ws._ccvViewProject = viewProject || null; } catch {}
+          try { ws._ccvViewInstance = viewInstance || null; } catch {}
           wss.emit('connection', ws, req);
         });
       } else if (pathname === '/ws/terminal-scratch') {
@@ -1859,11 +1860,13 @@ async function setupTerminalWebSocket(httpServer) {
       // workspace's approval/spinner/queue would pop into the foreground. Filter each
       // snapshot by this connection's `_ccvViewProject` (bound view / no ?project= → all).
       const _viewProj = ws._ccvViewProject || null;
-      const _base = (c) => (typeof c === 'string' && c) ? c.replace(/\\/g, '/').split('/').filter(Boolean).pop() : null;
       const _sdkFrameForView = (frame) => {
         if (!frame || typeof frame !== 'object') return true;      // no cwd → view-agnostic, replay
         if (!_viewProj) return true;                               // bound view → all workspaces
-        const fproj = (typeof frame.cwd === 'string' && frame.cwd) ? _base(frame.cwd) : null;
+        // The view stamp is a SANITIZED project key (projectKeyForCwd), so compare against the
+        // frame's cwd sanitized the same way — a raw basename would silently drop legit frames
+        // for space/CJK workspace names.
+        const fproj = (typeof frame.cwd === 'string' && frame.cwd) ? (projectKeyForCwd(frame.cwd) || null) : null;
         return !fproj || fproj === _viewProj;                      // no-cwd frame → replay; else must match
       };
 
@@ -1889,6 +1892,20 @@ async function setupTerminalWebSocket(httpServer) {
         const initSnap = _sdkGetInitSnapshot();
         if (initSnap && _sdkFrameForView(initSnap)) {
           try { ws.send(JSON.stringify(initSnap)); } catch {}
+        }
+      }
+
+      // Replay the sdk-skills surface (supportedCommands) so a refreshed page repopulates
+      // the `/` skill menu without a fresh init. Anchor by view instance (exact) when stamped,
+      // else by view project; an ambiguous same-name project resolves to null → no frame, and
+      // the client stays on its /api/skills fallback.
+      if (isSdkMode && _sdkGetSkillsSnapshot) {
+        const anchor = ws._ccvViewInstance
+          ? { instanceKey: ws._ccvViewInstance }
+          : (_viewProj ? { project: _viewProj } : null);
+        const skillsSnap = anchor ? _sdkGetSkillsSnapshot(anchor) : _sdkGetSkillsSnapshot();
+        if (skillsSnap && _sdkFrameForView(skillsSnap)) {
+          try { ws.send(JSON.stringify(skillsSnap)); } catch {}
         }
       }
 
@@ -2064,7 +2081,28 @@ async function setupTerminalWebSocket(httpServer) {
           if (msg.type === 'attach') {
             try { ws._ccvViewProject = (typeof msg.project === 'string' && msg.project) || null; } catch {}
             try { ws._ccvViewInstance = (typeof msg.instanceKey === 'string' && msg.instanceKey) || null; } catch {}
-            if (isSdkMode) return;
+            if (isSdkMode) {
+              // Re-attach switched the viewed workspace — re-send that view's sdk-skills
+              // surface so the `/` menu isn't stuck on the /api/skills fallback until the next
+              // session init. Anchor by the JUST-stamped view instance (exact) else project;
+              // ambiguous same-name project yields no frame and the client keeps its fallback.
+              // (Must live here, before the return: the PTY attach branch below is unreachable
+              // in SDK mode, and _sdkGetSkillsSnapshot is only registered under runSdkMode.)
+              if (_sdkGetSkillsSnapshot) {
+                const anchor = ws._ccvViewInstance
+                  ? { instanceKey: ws._ccvViewInstance }
+                  : (ws._ccvViewProject ? { project: ws._ccvViewProject } : null);
+                const skillsSnap = anchor ? _sdkGetSkillsSnapshot(anchor) : _sdkGetSkillsSnapshot();
+                if (skillsSnap) {
+                  // Filter against the freshly-stamped view (NOT the connection-time _viewProj).
+                  const fp = (typeof skillsSnap.cwd === 'string' && skillsSnap.cwd) ? (projectKeyForCwd(skillsSnap.cwd) || null) : null;
+                  if (!fp || !ws._ccvViewProject || fp === ws._ccvViewProject) {
+                    try { ws.send(JSON.stringify(skillsSnap)); } catch { }
+                  }
+                }
+              }
+              return;
+            }
           } else if (isSdkMode && (msg.type === 'input' || msg.type === 'input-sequential'
               || msg.type === 'resync-request' || msg.type === 'resize')) {
             return;
@@ -3307,6 +3345,8 @@ export function setSdkGetPendingApprovals(fn) { _sdkGetPendingApprovals = fn; }
 /** Reference to sdk-manager's getSdkInitSnapshot (set by cli.js after import). */
 let _sdkGetInitSnapshot = null;
 export function setSdkGetInitSnapshot(fn) { _sdkGetInitSnapshot = fn; }
+let _sdkGetSkillsSnapshot = null;
+export function setSdkGetSkillsSnapshot(fn) { _sdkGetSkillsSnapshot = fn; }
 
 /** Reference to sdk-manager's getContextUsageSnapshot (set by cli.js after import). */
 let _sdkGetContextUsageSnapshot = null;

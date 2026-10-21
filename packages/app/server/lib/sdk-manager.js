@@ -327,6 +327,13 @@ function _createSession(key, cwd) {
   let _sessionId = null;
   let _initAnnouncedSid = ''; // sessionId whose slash-command surface was already announced (reset on full reset)
   let _lastInitSnapshot = null; // last sdk-init payload for WS reconnect replay
+  // Last sdk-skills frame (supportedCommands() result) for WS reconnect replay, and the
+  // resident query it was loaded from (dedupes the once-per-query-generation fetch).
+  let _lastSkillsSnapshot = null;
+  let _skillsLoadedQuery = null;
+  // init 帧的 skills 白名单（name / plugin:skill / :suffix 形式），用于把 supportedCommands()
+  // 的全量命令面收敛为纯 skill 面；null = 该 init 帧未提供（不做过滤，保守放行）。
+  let _initSkills = null;
   // Last announced session state ('idle' | 'running' | 'requires_action' | null) — the
   // turn-level busy truth for the conversation spinner. Sources, most authoritative
   // first: CLI-emitted session_state_changed (gated behind CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS,
@@ -690,6 +697,8 @@ function _createSession(key, cwd) {
     const inputQueue = _inputQueue;
     _activeQuery = null;
     _inputQueue = null;
+    _skillsLoadedQuery = null; // next resident query re-pulls supportedCommands() on init
+    _initSkills = null;        // re-captured from the next init frame
     _clearGraceTimer();
     _clearTurnWatchdog();
     _lateResultTombstones = 0;
@@ -748,20 +757,33 @@ function _createSession(key, cwd) {
         // push/result fallbacks keep the spinner correct at result granularity.
         if (msg.subtype === 'session_state_changed') {
           _announceSessionState(msg.state);
-        } else if (msg.subtype === 'init' && _broadcastWs
-          && Array.isArray(msg.slash_commands) && msg.slash_commands.length > 0
-          && msg.session_id !== _initAnnouncedSid) {
-          _initAnnouncedSid = msg.session_id;
-          _lastInitSnapshot = {
-            type: 'sdk-init',
-            sessionId: msg.session_id,
-            model: msg.model,
-            slashCommands: msg.slash_commands,
-            tools: msg.tools,
-            cwd: _cwd,
-            instanceKey,
-          };
-          _broadcastWs(_lastInitSnapshot);
+        } else if (msg.subtype === 'init') {
+          if (_broadcastWs && Array.isArray(msg.slash_commands) && msg.slash_commands.length > 0
+            && msg.session_id !== _initAnnouncedSid) {
+            _initAnnouncedSid = msg.session_id;
+            _lastInitSnapshot = {
+              type: 'sdk-init',
+              sessionId: msg.session_id,
+              model: msg.model,
+              slashCommands: msg.slash_commands,
+              tools: msg.tools,
+              cwd: _cwd,
+              instanceKey,
+            };
+            _broadcastWs(_lastInitSnapshot);
+          }
+          // Skill menu surface: pull the full supportedCommands() (name + description +
+          // argumentHint) once per resident-query generation. Done even when slash_commands
+          // is empty/absent — a session with no TUI commands can still expose skills.
+          // supportedCommands() returns the whole command surface (incl. /clear, /compact,
+          // /model, /usage), so keep ONLY real skills: intersect with the init frame's
+          // `skills` allowlist (name / plugin:skill / :suffix forms) to honour the
+          // "slash menu indexes skills only" decision.
+          if (_broadcastWs && _activeQuery && _skillsLoadedQuery !== _activeQuery) {
+            _skillsLoadedQuery = _activeQuery;
+            _initSkills = Array.isArray(msg.skills) ? msg.skills : null;
+            _loadSupportedCommands();
+          }
         } else if (msg.subtype === 'compact_boundary' && _broadcastWs) {
           const meta = msg.compact_metadata;
           _broadcastWs({
@@ -951,6 +973,58 @@ function _createSession(key, cwd) {
       try { _broadcastWs({ type: 'sdk-context-usage', sessionId: _sessionId, ts: Date.now(), trigger, usage: null, cwd: _cwd, instanceKey }); }
       catch (err) { reportSwallowed('sdk-manager.context-usage-broadcast', err); }
     }
+  }
+
+  /**
+   * Pull the SDK's supportedCommands() (skill surface: name + description + argumentHint)
+   * once per resident-query generation and broadcast it as an `sdk-skills` frame, retained
+   * for WS reconnect replay. Fire-and-forget from the init branch — never awaited. Bounded
+   * by CTX_USAGE_TIMEOUT_MS; on timeout/rejection/stale generation it reports and broadcasts
+   * nothing (clients fall back to /api/skills). Raw commands are passed through; the web
+   * client's normalizeSdkCommands does the safe-name filtering.
+   */
+  function _loadSupportedCommands() {
+    const q = _activeQuery;
+    if (!q || typeof q.supportedCommands !== 'function') return;
+    let timeoutId;
+    const timeout = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('supportedCommands timeout')), CTX_USAGE_TIMEOUT_MS);
+      if (timeoutId.unref) timeoutId.unref();
+    });
+    Promise.race([Promise.resolve().then(() => q.supportedCommands()), timeout]).then((commands) => {
+      if (_activeQuery !== q) return; // stale generation (session switch/death) — drop
+      // Keep only real skills: supportedCommands() also returns TUI built-ins (/clear,
+      // /compact, /model, /usage). When the init frame supplied a skills allowlist, filter
+      // by it (name, plugin:skill, or :suffix). No allowlist → pass through (conservative).
+      let filtered = Array.isArray(commands) ? commands : [];
+      if (Array.isArray(_initSkills) && _initSkills.length > 0) {
+        const allow = new Set();
+        for (const s of _initSkills) {
+          if (typeof s !== 'string' || !s) continue;
+          allow.add(s);                       // exact (name or plugin:skill)
+          const idx = s.lastIndexOf(':');
+          if (idx >= 0) allow.add(s.slice(idx + 1)); // :suffix form → bare name
+        }
+        filtered = filtered.filter(c => c && (allow.has(c.name)
+          || (typeof c.name === 'string' && allow.has(c.name.replace(/^plugin.*:/, '')))));
+      }
+      _lastSkillsSnapshot = {
+        type: 'sdk-skills',
+        sessionId: _sessionId || null,
+        ts: Date.now(),
+        cwd: _cwd,
+        instanceKey,
+        commands: filtered,
+      };
+      if (_broadcastWs) {
+        try { _broadcastWs(_lastSkillsSnapshot); }
+        catch (err) { reportSwallowed('sdk-manager.skills-broadcast', err); }
+      }
+    }).catch((err) => {
+      reportSwallowed('sdk-manager.supported-commands', err);
+    }).finally(() => {
+      if (timeoutId) clearTimeout(timeoutId);
+    });
   }
 
   /**
@@ -1464,6 +1538,7 @@ function _createSession(key, cwd) {
       _launchResume = null;
       _initAnnouncedSid = '';
       _lastInitSnapshot = null; // don't replay the OLD session's sdk-init to the new one
+      _lastSkillsSnapshot = null; // same for the skill surface
       _lastSessionState = null; // same for the session-state snapshot — new session starts idle
       _clearContextUsage('session-switched');
       _clearMcpStatus('session-switched');
@@ -1485,6 +1560,7 @@ function _createSession(key, cwd) {
     _turnInFlight = false;
     _initAnnouncedSid = '';
     _lastInitSnapshot = null;
+    _lastSkillsSnapshot = null;
     // Tell clients BEFORE nulling the snapshot: a re-init/launch mid-turn would
     // otherwise leave the spinner lit with no frame ever clearing it (the new
     // session starts idle and the state-change guard would swallow the first
@@ -1546,6 +1622,7 @@ function _createSession(key, cwd) {
     },
     getContextUsageSnapshot: () => _lastContextUsage,
     getMcpStatusSnapshot: () => _lastMcpStatus,
+    getSkillsSnapshot: () => _lastSkillsSnapshot,
     fetchContextUsage: async () => {
       // On-demand fetch for the HTTP route: refresh the snapshot, broadcast to all clients,
       // then reply. Unlike _refreshContextUsage this bypasses the in-flight gate (an explicit
@@ -1898,6 +1975,16 @@ export function getSessionId(anchor) {
 export function getSdkInitSnapshot(anchor) {
   const sess = anchor ? _sessionForAnchor(anchor) : _active();
   return sess ? sess.getSdkInitSnapshot() : null;
+}
+
+/**
+ * Last sdk-skills frame (supportedCommands() result) for WS reconnect replay. Null until
+ * the first init-driven pull resolves; an absent frame leaves the client on its /api/skills
+ * fallback. No anchor → active session.
+ */
+export function getSkillsSnapshot(anchor) {
+  const sess = anchor ? _sessionForAnchor(anchor) : _active();
+  return sess ? sess.getSkillsSnapshot() : null;
 }
 
 /**
