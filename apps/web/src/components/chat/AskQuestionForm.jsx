@@ -224,6 +224,10 @@ export default class AskQuestionForm extends React.Component {
                       otherText: { ...prev.otherText, [qi]: e.target.value },
                     }))}
                     autoFocus
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                   />
                 </div>
               )}
