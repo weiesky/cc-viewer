@@ -747,14 +747,16 @@ class ChatView extends React.Component {
       }
     }
     // 派生 pendingPtyPlan from _currentLastPendingPlanId（与 inline 卡片同源）。
-    // _currentLastPendingPlanId 由 buildAllItems 末尾镜像；只在 cliMode 下生效（红线 2：sdkMode 走 inline-only）。
+    // _currentLastPendingPlanId 由 buildAllItems 末尾镜像；只在 cliMode && !sdkMode 下生效
+    // （红线 2：SDK 模式走底部 ToolApprovalPanel 的 sdk-plan-* 通道，PTY 卡片/全局 modal 一律不激活，
+    // 否则点「批准」会发 PTY 击键 input——服务端 SDK 模式丢弃 input，canUseTool 承诺永不 resolve，卡死）。
     // _resolvedPlanIds 守用户已操作但 JSONL 还没回写 planApprovalMap 的短暂窗口（提交后到 tool_result 落盘之间），
     // 防 CDU 把 modal 重弹；过期项在 lpid 变化时（即旧 plan 真正 resolve）下面分支自动清出。
     {
       const lpid = this._currentLastPendingPlanId || null;
       const curPtyPlan = this.state.pendingPtyPlan;
       const skipped = lpid && this._resolvedPlanIds.has(lpid);
-      if (this.props.cliMode && lpid && !skipped) {
+      if (this.props.cliMode && !this.props.sdkMode && lpid && !skipped) {
         if (!curPtyPlan || curPtyPlan.id !== lpid) {
           this.setState({ pendingPtyPlan: { id: lpid, prompt: null } });
         }
@@ -1607,7 +1609,9 @@ class ChatView extends React.Component {
         // 定向传递 lastPendingAskId/PlanId：只传给"owner message"（即 streaming 中最新一份），
         // 避免同 toolId 出现在多条 message 时让多个 ChatMessage 都进 isInteractive 路径并双重 portal
         const msgLastAskId = (mi === lastPendingAskOwnerIdx) ? lastPendingAskId : null;
-        const msgLastPlanId = (mi === lastPendingPlanOwnerIdx) ? lastPendingPlanId : null;
+        // SDK 模式下 plan 审批走底部 ToolApprovalPanel（sdk-plan-* 通道），inline 卡片保持只读
+        // （isInteractive = pending && cliMode && id===lastPendingPlanId），传 null 防 PTY 击键路径激活。
+        const msgLastPlanId = (mi === lastPendingPlanOwnerIdx && !this.props.sdkMode) ? lastPendingPlanId : null;
         // Normalize the two content shapes into one block list (null → skip):
         // array content drops system-text blocks (e.g. SUGGESTION MODE); string
         // content renders only if text survives chrome-stripping.
@@ -1989,7 +1993,9 @@ class ChatView extends React.Component {
         mergedAskAnswerMap,
         localAskAnswers: this.state.localAskAnswers || {},
         sessionPlanApprovalMap,
-        cliMode: this.props.cliMode,
+        // SDK 模式把 cliMode 压成 false：lrWillOwnPlan 与 pendingPtyPlan 派生（cDU）同源门控，
+        // 防未来 lrWillOwnPlan 的新消费方在 SDK 模式下拿到「可交互」信号。
+        cliMode: this.props.cliMode && !this.props.sdkMode,
       });
       const lrWillOwnAsk = lr.lrWillOwnAsk;
       const lrWillOwnPlan = lr.lrWillOwnPlan;
@@ -2155,7 +2161,8 @@ class ChatView extends React.Component {
             // Last Response 单独存储，不混入主列表
             if (session.entryTimestamp) tsItemMap[session.entryTimestamp] = rawAllItems.length;
             const respLastPendingAskId = lr.respLastPendingAskId;
-            const respLastPendingPlanId = lr.respLastPendingPlanId;
+            // SDK 模式 LR 卡片同样只读：plan 审批由底部 ToolApprovalPanel 承担（同消息列表守卫）。
+            const respLastPendingPlanId = this.props.sdkMode ? null : lr.respLastPendingPlanId;
             if (respLastPendingPlanId) buildLpid = respLastPendingPlanId;
             // 收集 Last Response 中所有 AskUserQuestion 的问题文本，用于 prompt 去重
             this._lastResponseAskQuestions = collectLrAskQuestions(respContent);
@@ -2666,7 +2673,7 @@ class ChatView extends React.Component {
   _startPlanAutoApprove = (planId) => {
     if (this._planAutoTimer) return;                                   // 已在倒计时
     const seconds = this.props.planAutoApproveSeconds;                 // 0=关 / N=N 秒倒计时 / -1=立即
-    if (!this.props.cliMode || !seconds) return;                       // 0/undefined → 关闭
+    if (!this.props.cliMode || this.props.sdkMode || !seconds) return;  // 0/undefined → 关闭；SDK 模式不接入（走 sdk-plan-answer）
     if (!planId || this._planAutoCancelled.has(planId)) return;        // 已被用户取消的 plan 不再重启
     const ws = this._inputWs;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;               // ws 未就绪 → 不启动（避免空发）
@@ -2712,6 +2719,8 @@ class ChatView extends React.Component {
 
   handlePromptOptionClick = (number) => {
     if (this._promptSubmitting) return;
+    // SDK 模式没有 PTY：input 帧会被服务端丢弃，击键式审批必然空转（plan 走 sdk-plan-answer）。
+    if (this.props.sdkMode) return;
     const ws = this._inputWs;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     // ptyPrompt 可能为 null（ExitPlanMode 渲染后 PTY prompt 尚未检测到），
@@ -2790,6 +2799,7 @@ class ChatView extends React.Component {
   };
 
   handlePlanFeedbackSubmit = (number, text) => {
+    if (this.props.sdkMode) return; // 同 handlePromptOptionClick：SDK 模式无 PTY，击键必被丢弃
     const ws = this._inputWs;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     let prompt = this.state.ptyPrompt;
@@ -4345,6 +4355,14 @@ class ChatView extends React.Component {
               inputEmpty={this.state.inputEmpty}
               inputSuggestion={this.state.inputSuggestion}
               terminalVisible={terminalVisible}
+              sdkMode={this.props.sdkMode}
+              slashMenuOpen={this.state.slashMenu.open && !terminalVisible && !this.props.isLocalLog}
+              slashMenuGroups={slashMenuModel.groups}
+              slashMenuActiveIndex={this.state.slashMenu.activeIndex}
+              slashMenuLoading={slashMenuLoading}
+              onSlashMenuHover={this.handleSlashMenuHover}
+              onSlashMenuSelect={this.handleSlashMenuSelect}
+              onSlashMenuClose={this._closeSlashMenu}
               onKeyDown={this.handleInputKeyDown}
               onChange={this.handleInputChange}
               onSend={this.handleInputSend}
