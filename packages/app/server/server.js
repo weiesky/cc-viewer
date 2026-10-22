@@ -48,7 +48,7 @@ import { setProxyStatsListener } from './lib/proxy/proxy-stats.js';
 import * as imCore from './lib/im/im-bridge-core.js';
 import * as imProcMgr from './lib/im/im-process-manager.js';
 import * as chatQueue from './lib/chat-queue.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from './lib/error-report.js';
 import './lib/adapters/dingtalk-adapter.js'; // side-effect: registers the DingTalk adapter
 import './lib/adapters/feishu-adapter.js';   // side-effect: registers the Feishu adapter
 import './lib/adapters/wecom-adapter.js';    // side-effect: registers the WeCom adapter
@@ -3279,6 +3279,9 @@ export function broadcastWsMessage(msg) {  if (terminalWss) {
     // — every frame for such a workspace would be silently dropped for its viewer.
     let frameProj = null;
     if (frameCwd) frameProj = projectKeyForCwd(frameCwd) || null;
+    // Anchors (e.g. the sdk-manager route-failure fallback) carry a project key but no
+    // cwd — honor it so those frames don't broadcast to every viewer.
+    if (!frameProj && msg && typeof msg === 'object' && typeof msg.project === 'string' && msg.project) frameProj = msg.project;
     // Same-name twin isolation (review P2): a frame tagged with an instance key narrows
     // delivery to clients viewing THAT instance — otherwise two same-basename workspaces
     // (same frameProj) would cross-deliver (e.g. a close teardown's idle/queue-state wipe

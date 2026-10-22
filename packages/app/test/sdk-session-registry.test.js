@@ -261,7 +261,8 @@ describe('sdk-manager per-cwd session registry', () => {
   it('a stale instance anchor is dropped, never degraded to a same-basename sibling', async () => {
     const rec = [];
     const errors = [];
-    const errDeps = { broadcastWs() {}, onTurnEnd() {}, onQueryError: (m) => errors.push(m) };
+    const metas = [];
+    const errDeps = { broadcastWs() {}, onTurnEnd() {}, onQueryError: (m, meta) => { errors.push(m); metas.push(meta); } };
     sdk.__setQueryForTests(makeQuery(rec));
     sdk.initSdkSession('/x/same', 'same', errDeps);
     sdk.initSdkSession('/y/same', 'same', errDeps);
@@ -277,6 +278,13 @@ describe('sdk-manager per-cwd session registry', () => {
     assert.equal(sdk.switchToSession('sid-x', { project: 'same', instanceKey: closed.instanceKey }).reason, 'bad-id');
     assert.equal(sdk.getSessionId({ cwd: '/y/same' }) === null, true, 'survivor never adopted the dead session id');
     assert.equal(errors.length, 1, 'the dropped send surfaces a user-visible error instead of vanishing');
+    // Module-level route failure has no session closure — meta comes from the anchor
+    // (production anchors never carry cwd), so this frame scopes by project + instanceKey.
+    assert.equal(metas.length, 1);
+    assert.equal(metas[0].instanceKey, closed.instanceKey);
+    assert.equal(metas[0].cwd, null);
+    assert.equal(metas[0].sessionId, null);
+    assert.equal(metas[0].project, 'same', 'anchor project key rides along so the broadcast can scope it');
   });
 
   it('closeSdkSession tears down only its target and reanchors an active close', async () => {

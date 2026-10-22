@@ -1276,6 +1276,29 @@ describe('sdk-manager-query — interruptTurn 真中断 + 排空 pending 审批'
     assert.equal(broadcasts.filter((b) => b.type === 'sdk-error').length, 0, '中断回合的错误 result 不应弹 toast');
   });
 
+  it('失败回合广播 sdk-error 帧且带完整路由信封（cwd/sessionId/instanceKey)，回合仍收尾', async () => {
+    const { deps, broadcasts, turnEnds } = makeDeps();
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-turn-err')],
+      respond: () => [resultMsg({ subtype: 'error_during_execution', is_error: true, errors: ['API Error: 502 Proxy Error'] })],
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    await sdk.sendUserMessage('boom');
+    await tick(5);
+
+    const frames = broadcasts.filter((b) => b.type === 'sdk-error');
+    assert.equal(frames.length, 1, 'errored result must broadcast exactly one sdk-error frame');
+    assert.equal(frames[0].message, 'API Error: 502 Proxy Error');
+    assert.equal(frames[0].cwd, tmpDir, 'frame carries the session cwd for project routing');
+    assert.equal(frames[0].sessionId, 'sess-turn-err');
+    const expectedKey = sdk.listSdkSessions().find((s) => s.cwd === tmpDir).instanceKey;
+    assert.equal(frames[0].instanceKey, expectedKey);
+    assert.match(frames[0].instanceKey, /^ccv-[0-9a-f]+$/);
+    assert.equal(turnEnds.length, 1, 'failed turn must still settle (onTurnEnd) instead of hanging');
+  });
+
   it('grace 兜底：interrupt 后无 result → 10s 强制 settle；迟到的 result 被墓碑丢弃不错位', async () => {
     const { deps, turnEnds } = makeDeps();
     const calls = [];
@@ -1420,6 +1443,7 @@ describe('sdk-manager-query — getPendingApprovals / onQueryError / init-compac
   it('query 迭代抛非 AbortError → onQueryError 收到 message;onTurnEnd 不触发', async () => {
     const { deps, turnEnds } = makeDeps();
     const errors = [];
+    const metas = [];
     let generation = 0;
     let releaseTurn;
     const gate = new Promise((r) => { releaseTurn = r; });
@@ -1428,7 +1452,7 @@ describe('sdk-manager-query — getPendingApprovals / onQueryError / init-compac
       respond: async () => { if (generation === 0) { await gate; return null; } return [resultMsg()]; },
     });
     sdk.__setQueryForTests((arg) => { generation = fq.calls.length; return fq(arg); });
-    sdk.initSdkSession(tmpDir, 'proj', { ...deps, onQueryError: (m) => errors.push(m) });
+    sdk.initSdkSession(tmpDir, 'proj', { ...deps, onQueryError: (m, meta) => { errors.push(m); metas.push(meta); } });
 
     const sendP = sdk.sendUserMessage('go');
     await tick(5);
@@ -1437,6 +1461,12 @@ describe('sdk-manager-query — getPendingApprovals / onQueryError / init-compac
     await tick(4);
     assert.deepEqual(errors, ['boom-query']);
     assert.equal(turnEnds.length, 0);
+    // Routing envelope comes from the session closure (callers pass no meta).
+    assert.equal(metas.length, 1, 'onQueryError receives a routing meta second arg');
+    assert.equal(metas[0].cwd, tmpDir);
+    assert.equal(metas[0].sessionId, 'sess-fail');
+    const expectedKey = sdk.listSdkSessions().find((s) => s.cwd === tmpDir).instanceKey;
+    assert.equal(metas[0].instanceKey, expectedKey);
   });
 
   it('onQueryError 未注册 → 会话死亡不抛(向后兼容);onQueryError 自身抛错被吞', async () => {
@@ -1454,6 +1484,23 @@ describe('sdk-manager-query — getPendingApprovals / onQueryError / init-compac
     fq.endWith(new Error('y'));
     await assert.doesNotReject(() => p2);
     await tick(4);
+  });
+
+  it('query 迭代抛 AbortError → onQueryError 不触发(teardown/interrupt 语义,非错误)', async () => {
+    const { deps } = makeDeps();
+    const errors = [];
+    const fq = makeResidentQuery({ initMsgs: [sysInit('sess-abort')] });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', { ...deps, onQueryError: (m) => errors.push(m) });
+
+    const p = sdk.sendUserMessage('go');
+    await tick(5);
+    const abortErr = new Error('aborted');
+    abortErr.name = 'AbortError';
+    fq.endWith(abortErr);
+    await p;
+    await tick(4);
+    assert.deepEqual(errors, [], 'AbortError death must not surface as an sdk-error');
   });
 
   it('system/init 带 slash_commands → 广播一次 sdk-init;同 session 重复 init 不重播', async () => {

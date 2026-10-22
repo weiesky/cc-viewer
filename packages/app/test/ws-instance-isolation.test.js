@@ -48,4 +48,24 @@ describe('broadcastWsMessage instance narrowing', () => {
       mod.setTerminalWssForTests(null);
     }
   });
+
+  it('a project-tagged (cwd-less) frame scopes to that project viewer, not to everyone', () => {
+    const wss = { clients: new Set() };
+    const a = makeClient('same', null);
+    const other = makeClient('other-proj', null);
+    const unstamped = makeClient(null, null);
+    wss.clients.add(a);
+    wss.clients.add(other);
+    wss.clients.add(unstamped);
+    mod.setTerminalWssForTests(wss);
+    try {
+      // The sdk-manager route-failure fallback carries {project, instanceKey} but no cwd.
+      mod.broadcastWsMessage({ type: 'sdk-error', message: 'Workspace "same" is no longer available', project: 'same', instanceKey: 'ccv-aaa111' });
+      assert.equal(a.sent.length, 1, 'the owning project viewer receives the frame');
+      assert.equal(other.sent.length, 0, 'another project viewer must NOT receive it');
+      assert.equal(unstamped.sent.length, 1, 'unstamped clients keep historical receive-all behavior');
+    } finally {
+      mod.setTerminalWssForTests(null);
+    }
+  });
 });

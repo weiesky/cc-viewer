@@ -30,7 +30,7 @@ import { ASK_TIMEOUT_MS } from './ask/ask-constants.js';
 import { withDefaultThinkingDisplay, resolveLaunchSystemPrompt, launchArgsToExtraArgs } from './launch-config.js';
 import { evaluateImDeny } from './im-deny.js';
 import { APPROVAL_TOOLS, isOverTrustDir, isPublishCommand } from './approval-policy.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 import { resolve as _pathResolve, dirname as _pathDirname, sep as _pathSep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { registerSdkSessionLister } from './sdk-session-index.js';
@@ -147,7 +147,7 @@ const MAX_QUEUE_ITEMS = 50;
 // Callbacks registered by cli.js (one wiring for the whole process; every session
 // reuses the same callbacks — they broadcast to the shared terminal WS).
 let _onTurnEnd = null; // SDK mode has no Stop hook (ensureHooks() skipped) — fire turnEnd directly when the SDK 'result' message arrives
-let _onQueryError = null; // query-level failure → (message: string) => void; cli.js forwards to a WS toast
+let _onQueryError = null; // query-level failure → (message: string, meta: {cwd, sessionId, instanceKey}) => void; cli.js forwards it as a scoped sdk-error WS frame (dialogue row + toast)
 let _broadcastWs = null;
 let _runWaterfallHook = null;
 
@@ -710,10 +710,12 @@ function _createSession(key, cwd) {
     }
   }
 
-  /** Turn-level error toast (callback throw must never break the caller). */
+  /** Query-level error signal; the routing envelope always comes from this
+   * session's closure (callback throw must never break the caller). */
   function _notifyQueryError(err) {
     if (!_onQueryError) return;
-    try { _onQueryError(String(err?.message || err)); }
+    const context = { cwd: _cwd, sessionId: _sessionId || null, instanceKey };
+    try { _onQueryError(String(err?.message || err), context); }
     catch (cbErr) { console.warn('[sdk-manager] onQueryError threw:', cbErr?.message); }
   }
 
@@ -883,7 +885,8 @@ function _createSession(key, cwd) {
 
   /**
    * Surface a failed turn to the Web UI — the wire path persists the failed entry but
-   * never pushes a toast, so a dead/errored turn would otherwise look like a hang.
+   * never signals it, so a dead/errored turn would otherwise look like a hang. The
+   * sdk-error frame renders as a persistent dialogue row plus a toast client-side.
    */
   function _notifyTurnError(resultMsg) {
     const isError = resultMsg.is_error === true || (resultMsg.subtype && resultMsg.subtype !== 'success');
@@ -1674,9 +1677,9 @@ export function isSdkAvailable() {
  * @param {string} projectName
  * @param {object} deps
  * @param {function} deps.onTurnEnd — ({sessionId, ts}) => void, fired on SDK 'result'
- * @param {function} [deps.onQueryError] — (message: string) => void, fired when the
- *   query itself fails (spawn/protocol/iterator errors) — until this existed the only
- *   surfacing was console.error, invisible in the Web UI
+ * @param {function} [deps.onQueryError] — (message: string, meta: {cwd, sessionId, instanceKey}) => void,
+ *   fired when the query itself fails (spawn/protocol/iterator errors); meta carries the session's
+ *   routing envelope so the sdk-error frame scopes to the owning workspace's viewers
  * @param {function} deps.broadcastWs — (msg) => void, terminal-WS broadcast for approvals
  * @param {string} [deps.permissionMode]
  * @param {function} [deps.runWaterfallHook] — plugin waterfall (onPlanRequest/onAskRequest/onPermRequest)
@@ -1727,7 +1730,11 @@ export async function sendUserMessage(text, anchor) {
       console.warn(`[sdk-manager] no SDK session registered for "${targetName}" — message dropped`);
       reportSwallowed('sdk-manager.route', new Error(`no SDK session for ${targetName}`));
       if (_onQueryError) {
-        try { _onQueryError(`Workspace "${targetName}" is no longer available — message not sent.`); }
+        // Module-level fallback has no session closure. Anchors never carry cwd
+        // (server.js builds {project, instanceKey} only) — pass the project key so
+        // broadcastWsMessage can scope the frame; instanceKey narrows further when present.
+        const meta = { cwd: anchor.cwd || null, sessionId: null, instanceKey: anchor.instanceKey || null, project: anchor.project || null };
+        try { _onQueryError(`Workspace "${targetName}" is no longer available — message not sent.`, meta); }
         catch (err) { console.warn('[sdk-manager] onQueryError threw:', err?.message); }
       }
       return;

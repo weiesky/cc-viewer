@@ -921,6 +921,7 @@ class Mobile extends AppBase {
                     onMobileOpenFile={this._handleMobileOpenFile}
                     onClearContextOptimistic={this.handleClearContextOptimistic}
                     onUserMessageSent={this.handleUserMessageSent}
+                    attachedSid={this.state.attachedSid || null}
                   />
                 </div>
             </>

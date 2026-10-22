@@ -11,7 +11,7 @@ import GitChanges from '../git/GitChanges';
 import GitDiffView from '../git/GitDiffView';
 import ToolApprovalPanel from '../approval/ToolApprovalPanel';
 import { getModelInfo, getEffectiveModel, resolveProducerModelInfo, AUTO_APPROVE_INSTANT } from '../../utils/helpers';
-import { formatPromptNavTime } from '../../utils/formatters';
+import { formatPromptNavTime, formatHms } from '../../utils/formatters';
 import { buildPromptNavItems } from '../../utils/promptNav';
 import { getTeammateAvatar } from '../../utils/teammateAvatars';
 import { applyAvatarAnimationTargets } from '../../utils/avatarAnimationPostPass';
@@ -238,6 +238,9 @@ class ChatView extends React.Component {
       highlightVisibleIdx: -1,
       // SDK-mode session surface (broadcast via terminal WS — sdk-init / sdk-compact)
       sdkCompactNotices: [],
+      // SDK turn/query failures pinned in the dialogue tail (sdk-error WS frame) —
+      // merged by message with a recurrence count; cleared on the next explicit send.
+      sdkErrors: [],
       // `/` skill-menu surface: menu open/query/active + two data sources (SDK broadcast
       // sdk-skills vs. the /api/skills fallback) — see utils/slashCommandMenu.js.
       slashMenu: { ...CLOSED_SLASH_MENU },
@@ -668,7 +671,7 @@ class ChatView extends React.Component {
       }
       this._fileScrollSnapshot = null;
       // Clear SDK session surface on workspace switch to prevent stale data.
-      this.setState({ sdkCompactNotices: [] });
+      this.setState({ sdkCompactNotices: [], sdkErrors: [] });
       // `'' → 真实名` 是延迟初始化（/api/project-name 异步到达），不是真切换：跳过 reset，
       // 否则刷新后刚回放落地的 sdk-skills 会被立即清空、menu 永久退到 fs 回退。
       if (prevProps.projectName) this._resetSlashMenuSurface();
@@ -691,6 +694,8 @@ class ChatView extends React.Component {
       || (prevProps.viewInstance && prevProps.viewInstance !== this.props.viewInstance);
     if (viewSwitched) {
       this._resetSlashMenuSurface();
+      // Pinned sdk-error rows belong to the previous view's workspace/instance.
+      this._clearSdkErrors();
     }
     // Close the `/` menu when its composer becomes hidden/inert — terminal opened or local-log
     // view entered — otherwise a stale open menu (old query) revives over the remounted empty
@@ -899,6 +904,15 @@ class ChatView extends React.Component {
       const el = useVirtuoso ? this._virtuosoScrollerEl : this.containerRef.current;
       if (el) this._stickyController.startSmoothFollow(el);
     }
+    // sdk-error rows grow the tail too: desktop/iOS use a plain .container whose
+    // content growth never re-sticks — follow explicitly when pinned at the bottom.
+    if (prevState.sdkErrors !== this.state.sdkErrors && (this.state.sdkErrors || []).length > 0 && this.state.stickyBottom) {
+      const el = useVirtuoso ? this._virtuosoScrollerEl : this.containerRef.current;
+      if (el) this._stickyController.startSmoothFollow(el);
+    }
+    // Session switch within the same workspace (resume/detach changes attachedSid) —
+    // the pinned rows belong to the previous session.
+    if (prevProps.attachedSid !== this.props.attachedSid) this._clearSdkErrors();
     // Streaming border fade-out: when isStreaming goes from true to false, trigger fade
     if (prevProps.isStreaming && !this.props.isStreaming) {
       this.setState({ streamingFading: true });
@@ -2430,6 +2444,7 @@ class ChatView extends React.Component {
       if (this.props.sdkMode) {
         // Multi-session: stamp the viewed workspace so the server routes this turn to that
         // cwd's SDK session (and switches the active session to it), not the global last one.
+        this._clearSdkErrors();
         this._inputWs.send(JSON.stringify({ type: 'sdk-user-message', text: assembled, project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
       } else {
         const anchor = this._terminalAnchor();
@@ -2578,8 +2593,20 @@ class ChatView extends React.Component {
             });
           }
         } else if (msg.type === 'sdk-error') {
-          // SDK query 级失败(spawn/protocol/iterator)——此前只 console.error,UI 上看与挂起无异。
-          message.error(t('ui.sdkError', { detail: msg.message || '' }));
+          // SDK turn/query failure — toast (eager alert) plus a persistent row pinned in
+          // the dialogue tail, so a dead turn no longer looks like a silent hang. Same
+          // view guard as sdk-skills: background workspace/instance frames must not land here.
+          if (!this._sdkSkillsFrameMatchesView(msg)) return;
+          const detail = String(msg.message || '');
+          message.error(t('ui.sdkError', { detail }));
+          const ts = Date.now();
+          this.setState(prev => {
+            // Same error recurring → refresh the single row (count+1, move to tail)
+            // instead of stacking duplicate rows; cap applies to distinct messages.
+            const kept = (prev.sdkErrors || []).filter(e => e.message !== detail);
+            const prevEntry = (prev.sdkErrors || []).find(e => e.message === detail);
+            return { sdkErrors: [...kept, { message: detail, ts, count: (prevEntry?.count || 0) + 1 }].slice(-3) };
+          });
         } else if (msg.type === 'sdk-init') {
           // SDK 会话的 slash 命令面 + 模型(headless 会话没有 TUI `/` 帮助)。
           // 每个 session 只广播一次(server 侧去重)。模型上提给 AppHeader 渲染。
@@ -2907,7 +2934,8 @@ class ChatView extends React.Component {
 
   // Second-line guard for sdk-skills frames (the server already routes by view project).
   // Mirrors AppBase.handleSdkSessionState's cwd-basename check, plus an instanceKey check
-  // so two same-basename instances don't cross-populate the menu.
+  // so two same-basename instances don't cross-populate the menu. Also scopes the
+  // sdk-error dialogue row/toast: a background workspace's failure must not land here.
   _sdkSkillsFrameMatchesView = (msg) => {
     if (msg && msg.cwd) {
       // `viewed` (viewProject/projectName) is a SANITIZED project key — the server derives
@@ -2916,10 +2944,54 @@ class ChatView extends React.Component {
       const viewed = this.props.viewProject || this.props.projectName || '';
       const frameProj = projectKeyFromCwd(msg.cwd);
       if (viewed && frameProj && frameProj !== viewed) return false;
+    } else if (msg && msg.project) {
+      // Cwd-less frames (route-failure fallback) carry the sanitized project key directly.
+      const viewed = this.props.viewProject || this.props.projectName || '';
+      if (viewed && msg.project !== viewed) return false;
     }
     const vi = this.props.viewInstance || null;
     if (vi && msg && msg.instanceKey && msg.instanceKey !== vi) return false;
     return true;
+  };
+
+  // An explicit user send starts a fresh turn: drop the pinned error rows (a retry's
+  // own failure re-posts a row). Cleared here — NOT on sdk-session-state 'running' —
+  // because the server's queue auto-drain announces running right after the error
+  // frame, which would wipe the row before the user ever sees it.
+  _clearSdkErrors = () => {
+    if ((this.state.sdkErrors || []).length) this.setState({ sdkErrors: [] });
+  };
+
+  // Persistent sdk-error rows pinned at the dialogue tail (all three messageList
+  // branches render them). One live region for the stack; rows are plain divs.
+  // P2-5 a11y: a visually-hidden live region carries a one-line announcement of the
+  // LATEST error (always mounted, so the first error is reliably announced; the visible
+  // stack itself is not a live region, so recurrences never re-read 3 stack traces).
+  _renderSdkErrorAnnouncer = () => {
+    const rows = this.state.sdkErrors || [];
+    if (!this.props.sdkMode) return null;
+    const latest = rows.length ? rows[rows.length - 1] : null;
+    return (
+      <div className={styles.srOnly} role="status">
+        {latest ? t('ui.sdkError', { detail: latest.message }) : ''}
+      </div>
+    );
+  };
+
+  _renderSdkErrors = (emptyState = false) => {
+    const rows = this.state.sdkErrors || [];
+    if (rows.length === 0) return null;
+    return (
+      <div className={emptyState ? `${styles.sdkErrorStack} ${styles.sdkErrorStackEmpty}` : styles.sdkErrorStack}>
+        {rows.map(({ message: detail, ts, count }) => (
+          <div key={detail} className={styles.sdkErrorRow}>
+            {t('ui.sdkError', { detail })}
+            {count > 1 ? <span className={styles.sdkErrorCount}>×{count}</span> : null}
+            <span className={styles.sdkErrorTs}>{formatHms(new Date(ts))}</span>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   _closeSlashMenu = () => {
@@ -2998,6 +3070,7 @@ class ChatView extends React.Component {
     // 其他正常用户消息（包括 slash 命令）都视为「新请求」并解锁血条。
     if (!/^\s*\/clear(\s|$)/.test(text)) this.props.onUserMessageSent?.();
     if (this.props.sdkMode) {
+      this._clearSdkErrors();
       ws.send(JSON.stringify({ type: 'sdk-user-message', text, project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
     } else {
       // Anchor the send to the viewed PROJECT's live PTY (terminal/chat
@@ -3148,6 +3221,7 @@ class ChatView extends React.Component {
       this.setState({ inputEmpty: true, inputSuggestion: null });
       if (this.props.sdkMode) {
         // sdk-manager self-queues when busy and broadcasts queue-state.
+        this._clearSdkErrors();
         ws.send(JSON.stringify({ type: 'sdk-user-message', text, project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
       } else {
         const anchor = this._terminalAnchor();
@@ -3971,6 +4045,10 @@ class ChatView extends React.Component {
             </div>
           ) : null}
           {pendingBubble}
+          {this._renderSdkErrors(true)}
+          {/* Keeps the floating composer from overlapping the error rows; .sdkErrorStackEmpty
+              self-anchors to the bottom via margin-top:auto in this column flex container. */}
+          <div className={styles.inputStackSpacer} aria-hidden="true" />
         </div>
         {stickyBtn}
       </div>
@@ -3988,7 +4066,7 @@ class ChatView extends React.Component {
             <div className={streamingLiveItem ? styles.hideLastResponseDivider : undefined}>
               {filteredLastResponseItems}
             </div>
-          )}{pendingBubble}{streamingLiveItem && (
+          )}{pendingBubble}{this._renderSdkErrors()}{streamingLiveItem && (
             !filteredLastResponseItems && targetIdx != null && targetIdx >= visible.length
               ? <div key="stream-resp-anchor" ref={this._scrollTargetRef}>{streamingLiveItem}</div>
               : streamingLiveItem
@@ -4045,6 +4123,7 @@ class ChatView extends React.Component {
               </div>
             )}
             {pendingBubble}
+            {this._renderSdkErrors()}
             {streamingLiveItem && (
               !filteredLastResponseItems && targetIdx != null && targetIdx >= visible.length
                 ? <div key="stream-resp-anchor" ref={this._scrollTargetRef}>{streamingLiveItem}</div>
@@ -4301,6 +4380,7 @@ class ChatView extends React.Component {
               />
             )}
             <WorkflowLiveHud />
+            {this._renderSdkErrorAnnouncer()}
             {this.props.sdkMode && this.state.sdkCompactNotices.length > 0 && (() => {
               const n = this.state.sdkCompactNotices[this.state.sdkCompactNotices.length - 1];
               const tokens = (n.preTokens != null && n.postTokens != null)
@@ -4338,6 +4418,9 @@ class ChatView extends React.Component {
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
                         if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
+                          // "Send now" starts a fresh turn immediately — same explicit-send
+                          // clear as the composer send paths.
+                          this._clearSdkErrors();
                           this._inputWs.send(JSON.stringify({ type: 'queue-send-now', id: item.id, project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
                         }
                       }}

@@ -868,9 +868,10 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
       try { serverMod.broadcastTurnEnd(sessionId, ts, null, cwd); }
       catch (err) { console.warn('[sdk] broadcastTurnEnd threw:', err?.message); }
     },
-    // query 级失败(spawn/protocol/iterator)推到 Web UI toast —— 此前只有 console.error,
-    // 死掉的 query 在 UI 上看与挂起无异。
-    onQueryError: (message) => serverMod.broadcastWsMessage({ type: 'sdk-error', message }),
+    // Query-level failure (spawn/protocol/iterator) → Web UI. The frame feeds a
+    // persistent dialogue row plus a toast; meta (cwd/sessionId/instanceKey, filled by
+    // the sdk-manager session closure) routes it to the owning workspace's viewers.
+    onQueryError: (message, meta) => serverMod.broadcastWsMessage({ type: 'sdk-error', message, ...(meta || {}) }),
   });
 
   // Per-cwd multi-session (2026-10-12): hand the boot launch config (proxy env, model,
