@@ -28,6 +28,7 @@ const EXPECTED_CONSUMERS = [
   'apps/web/src/utils/modalMask.js',
   'apps/web/src/App.jsx',                                    // Log Management
   'apps/web/src/components/dashboard/AppHeader.jsx',         // Export user prompts
+  'apps/web/src/components/plugins/PluginPanelModal.jsx',    // Remote plugin panels
   'apps/web/src/components/settings/PluginModal.jsx',        // Plugin Management
   'apps/web/src/components/settings/ProcessModal.jsx',       // CCV Process Manager
   'apps/web/src/components/settings/MessagingModal.jsx',    // Messaging Integration

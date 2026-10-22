@@ -4,6 +4,12 @@
 
 CC-Viewer provides a lightweight plugin mechanism that allows injecting custom logic at specific lifecycle points. This is particularly useful for enterprise deployments — for example, replacing the QR code's LAN URL with a corporate proxy URL.
 
+> **Two plugin shapes.** This document covers the single-file **hook plugins**. cc-viewer
+> also supports directory-shaped **service plugins**: an independent HTTP/WS service
+> mounted on the same port, an optional React panel in the web UI, and a full
+> `activate`/`deactivate`/`onError` lifecycle with hot reload. See
+> [plugin-services.md](./plugin-services.md) ([中文](./plugin-services.zh.md)).
+
 ## Quick Start
 
 1. Create the plugins directory:
@@ -312,7 +318,7 @@ export default {
 
 ## Notes
 
-* Plugins are loaded once at server startup. Adding/removing plugins requires a restart.
+* Plugins are loaded at server startup and can be **reloaded at runtime** via `POST /api/plugins/reload` (or the Reload button in Plugin Management), so adding or removing plugins needs no restart. Directory plugins' `main.mjs` edits are re-imported on reload (fingerprint cache-bust), and service child code restarts on reload. Editing a **helper** imported by `main.mjs` does **not** take effect on reload (Node ESM caches the helper under its unqueried URL; touching `main.mjs` does not help) — restart cc-viewer. Single-file hook plugin edits also require restarting cc-viewer.
 * If the plugins directory does not exist, the loader silently returns with zero overhead.
 * Plugin files are sorted by filename before loading, which determines waterfall execution order.
 * Use filename prefixes (e.g., `00-first.js`, `99-last.js`) to control execution order.

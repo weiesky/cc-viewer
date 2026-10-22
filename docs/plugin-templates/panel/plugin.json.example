@@ -1,0 +1,12 @@
+{
+  "name": "hello-panel",
+  "version": "1.0.0",
+  "description": "Example cc-viewer panel plugin",
+  "panel": {
+    "entry": "panel/index.js",
+    "title": { "en": "Hello Panel", "zh": "你好面板" },
+    "icon": "appstore",
+    "width": 900,
+    "desktopOnly": false
+  }
+}

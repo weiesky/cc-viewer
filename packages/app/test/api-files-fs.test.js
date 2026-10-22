@@ -68,7 +68,7 @@ function handlerFor(path, method) {
 }
 
 // 调用一个 body-reading POST handler（rename/move/delete/create-file/create-dir/resolve），返回 {status, headers, data, raw}
-function callBody(handler, body, { parsedUrl = { searchParams: new URLSearchParams() }, isLocal = true, headers = {} } = {}) {
+function callBody(handler, body, { parsedUrl, isLocal = true, headers = {} } = {}) {
   return new Promise((resolve) => {
     const req = new EventEmitter();
     req.headers = headers;
@@ -100,7 +100,7 @@ function callGet(handler, searchParams = {}, { isLocal = true } = {}) {
 }
 
 /** 调用 multipart upload/import handler。 */
-function callMultipart(handler, { reqHeaders, reqUrl, bodyBuf, emitChunks, parsedUrl = { searchParams: new URLSearchParams() }, isLocal = true } = {}) {
+function callMultipart(handler, { reqHeaders, reqUrl, bodyBuf, emitChunks, parsedUrl, isLocal = true } = {}) {
   return new Promise((resolve) => {
     const req = new EventEmitter();
     req.headers = reqHeaders || {};
@@ -111,7 +111,9 @@ function callMultipart(handler, { reqHeaders, reqUrl, bodyBuf, emitChunks, parse
       writeHead(code) { status = code; },
       end(b) { raw = b || ''; let d; try { d = JSON.parse(raw); } catch { d = raw; } resolve({ status, data: d }); },
     };
-    handler(req, res, parsedUrl, isLocal, deps);
+    // importFile reads dir from parsedUrl.searchParams (already safely parsed by handleRequest); default to building it from req.url
+    const effectiveParsedUrl = parsedUrl || new URL(req.url, 'http://localhost');
+    handler(req, res, effectiveParsedUrl, isLocal, deps);
     const chunks = emitChunks || (bodyBuf ? [bodyBuf] : []);
     for (const c of chunks) req.emit('data', c);
     req.emit('end');

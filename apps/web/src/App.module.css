@@ -1125,3 +1125,13 @@
 :global(html.pad-mode) .mobileDrawerInner {
   zoom: 1;
 }
+
+/* Plugin panel body: does not use mobileDrawerInner's zoom:0.6 (that is for desktop-density
+   React panels; remote panels are responsive apps rendered full-size with their own viewport). */
+.mobilePluginPanelBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}

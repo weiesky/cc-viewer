@@ -3,6 +3,7 @@ import { Modal, Button, Switch, Input, message } from 'antd';
 import { ApiOutlined, PlusOutlined, ReloadOutlined, DeleteOutlined, CloudDownloadOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
 import { apiUrl } from '../../utils/apiUrl';
+import { serviceStateLabel } from '../../utils/pluginPanels';
 import { isMobile } from '../../env';
 import { BLUR_MASK_STYLE } from '../../utils/modalMask';
 import { SettingsContext } from '../../contexts/SettingsContext';
@@ -93,7 +94,7 @@ export default function PluginModal({ open, onClose }) {
         if (!disabledPlugins.includes(name)) disabledPlugins.push(name);
       }
       return context.updatePreferences({ disabledPlugins })
-        .then(() => fetch(apiUrl('/api/plugins/reload'), { method: 'POST' }))
+        .then(() => fetch(apiUrl(`/api/plugins/reload${enabled ? '' : '?reason=disable'}`), { method: 'POST' }))
         .then(r => {
           if (!r.ok) throw new Error(r.status);
           return r.json();
@@ -105,17 +106,19 @@ export default function PluginModal({ open, onClose }) {
     }).catch(() => {});
   };
 
-  const handleDeletePlugin = (file, name) => {
-    setDeleteTarget({ file, name });
+  const handleDeletePlugin = (file, name, dir) => {
+    setDeleteTarget({ file, name, dir });
     setDeleteConfirmVisible(true);
   };
 
   const handleDeletePluginConfirm = () => {
     const file = deleteTarget?.file;
-    if (!file) return;
+    const dir = deleteTarget?.dir;
+    if (!file && !dir) return;
     setDeleteConfirmVisible(false);
     setDeleteTarget(null);
-    fetch(apiUrl(`/api/plugins?file=${encodeURIComponent(file)}`), { method: 'DELETE' })
+    const query = dir ? `dir=${encodeURIComponent(dir)}` : `file=${encodeURIComponent(file)}`;
+    fetch(apiUrl(`/api/plugins?${query}`), { method: 'DELETE' })
       .then(r => {
         if (!r.ok) throw new Error(r.status);
         return r.json();
@@ -127,6 +130,19 @@ export default function PluginModal({ open, onClose }) {
         }
       })
       .catch(() => {});
+  };
+
+  const handleRestartService = (name) => {
+    fetch(apiUrl(`/api/plugins/restart?name=${encodeURIComponent(name)}`), { method: 'POST' })
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || data.ok === false) throw new Error(data.error || 'restart failed');
+        message.success(t('ui.plugins.restart') + ' ✓');
+        fetchPlugins();
+      })
+      .catch(err => {
+        message.error(err.message || 'restart failed');
+      });
   };
 
   const handleReloadPlugins = () => {
@@ -286,6 +302,7 @@ export default function PluginModal({ open, onClose }) {
           </code>
         </div>
       )}
+      <div className={styles.pluginDirHint}>{t('ui.plugins.serviceHint')}</div>
       {pluginsList.length === 0 ? (
         <div className={styles.pluginEmpty}>
           <div className={styles.pluginEmptyTitle}>{t('ui.plugins.empty')}</div>
@@ -294,10 +311,24 @@ export default function PluginModal({ open, onClose }) {
       ) : (
         <div className={styles.pluginList}>
           {pluginsList.map(p => (
-            <div key={p.file} className={styles.pluginItem}>
+            <div key={p.file || p.dir || p.name} className={styles.pluginItem}>
               <div className={styles.pluginInfo}>
                 <span className={styles.pluginName}>{p.name}</span>
-                <span className={styles.pluginFile}>{p.file}</span>
+                <span className={styles.pluginFile}>{p.file || p.dir}</span>
+                {p.type === 'service' && (
+                  <span className={styles.pluginHookTag}>{t('ui.plugins.type.service')}</span>
+                )}
+                {p.type === 'panel' && (
+                  <span className={styles.pluginHookTag}>{t('ui.plugins.type.panel')}</span>
+                )}
+                {p.type === 'dir' && (
+                  <span className={styles.pluginHookTag}>{t('ui.plugins.type.dir')}</span>
+                )}
+                {p.serviceStatus && (
+                  <span className={`${styles.pluginFile} ${p.serviceStatus.state === 'error' || p.serviceStatus.state === 'crashed' ? styles.pluginStatusError : ''}`}>
+                    {serviceStateLabel(p.serviceStatus.state)}{p.serviceStatus.lastError ? ` · ${p.serviceStatus.lastError}` : ''}
+                  </span>
+                )}
                 {p.hooks.length > 0 && (
                   <span className={styles.pluginHooks}>
                     {p.hooks.map(h => <span key={h} className={styles.pluginHookTag}>{h}</span>)}
@@ -305,6 +336,15 @@ export default function PluginModal({ open, onClose }) {
                 )}
               </div>
               <div className={styles.pluginActions}>
+                {p.type === 'service' && p.enabled && (
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    title={t('ui.plugins.restart')}
+                    onClick={() => handleRestartService(p.name)}
+                  />
+                )}
                 <Switch
                   size="small"
                   checked={p.enabled}
@@ -315,7 +355,7 @@ export default function PluginModal({ open, onClose }) {
                   size="small"
                   danger
                   icon={<DeleteOutlined />}
-                  onClick={() => handleDeletePlugin(p.file, p.name)}
+                  onClick={() => handleDeletePlugin(p.file, p.name, p.dir)}
                 />
               </div>
             </div>
@@ -337,7 +377,7 @@ export default function PluginModal({ open, onClose }) {
       cancelText="Cancel"
       styles={{ body: isMobile ? { zoom: 0.6 } : {} }}
     >
-      <p>{deleteTarget ? t('ui.plugins.deleteConfirm', { name: deleteTarget.name }) : ''}</p>
+      <p>{deleteTarget ? t(deleteTarget.dir ? 'ui.plugins.deleteDirConfirm' : 'ui.plugins.deleteConfirm', { name: deleteTarget.name }) : ''}</p>
     </Modal>
   );
 

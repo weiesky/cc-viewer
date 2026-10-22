@@ -1,0 +1,16 @@
+{
+  "name": "ccv-hello-panel",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Template for a cc-viewer plugin panel (remote React component).",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "antd": "^5.29.2"
+  }
+}

@@ -24,6 +24,8 @@ import { join } from 'node:path';
 
 const LOADER_URL  = new URL('../server/lib/plugin-loader.js', import.meta.url).href;
 const MANAGER_URL = new URL('../server/lib/plugin-manager.js', import.meta.url).href;
+const RUNTIME_URL = new URL('../server/lib/plugin-runtime.js', import.meta.url).href;
+const PANELS_URL  = new URL('../server/lib/plugin-panels.js', import.meta.url).href;
 
 // 可控 stub：route 模块经 import 绑定下面的导出，运行期读 globalThis.__ccvPluginStub。
 const LOADER_SRC = `
@@ -31,6 +33,7 @@ const ctl = () => globalThis.__ccvPluginStub;
 export function getPluginsDir() { return ctl().pluginsDir; }
 export async function loadPlugins() { if (ctl().loadPluginsThrows) throw new Error(ctl().loadPluginsThrows); return ctl().plugins; }
 export function getPluginsInfo() { return ctl().plugins; }
+export function getPluginEntries() { return ctl().entries || []; }
 export async function runWaterfallHook() { return undefined; }
 export async function runParallelHook() { return undefined; }
 `;
@@ -38,6 +41,24 @@ const MANAGER_SRC = `
 const ctl = () => globalThis.__ccvPluginStub;
 export function uploadPlugins() { /* not used here */ }
 export async function installPluginFromUrl() { if (ctl().installThrows) throw new Error(ctl().installThrows); ctl().installCalled = true; }
+export function deletePluginDir() { ctl().deleteDirCalled = true; return { deleted: 'x' }; }
+`;
+const RUNTIME_SRC = `
+const ctl = () => globalThis.__ccvPluginStub;
+export async function reloadRuntime() {
+  if (ctl().loadPluginsThrows) throw new Error(ctl().loadPluginsThrows);
+  return { ok: true, generation: 1, plugins: [] };
+}
+export async function unloadPlugin() { return { ok: true, unloaded: true }; }
+export async function restartPlugin() { return { ok: true, status: {} }; }
+export function getRuntimePluginStatus() { return null; }
+export function isRuntimeStopping() { return false; }
+export function tryProxyHttp() { return false; }
+export function tryProxyUpgrade() { return false; }
+`;
+const PANELS_SRC = `
+export function buildPanelDescriptor(entry) { return { name: entry.name }; }
+export function servePanelFile() { return true; }
 `;
 
 let hookRegistered = false;
@@ -48,6 +69,8 @@ function installHook() {
     load(url, context, nextLoad) {
       if (url === LOADER_URL)  return { format: 'module', shortCircuit: true, source: LOADER_SRC };
       if (url === MANAGER_URL) return { format: 'module', shortCircuit: true, source: MANAGER_SRC };
+      if (url === RUNTIME_URL) return { format: 'module', shortCircuit: true, source: RUNTIME_SRC };
+      if (url === PANELS_URL)  return { format: 'module', shortCircuit: true, source: PANELS_SRC };
       return nextLoad(url, context);
     },
   });
@@ -61,9 +84,12 @@ function fakeRes() {
   return res;
 }
 
-// 假 req：按需在 data/end 上回放一段 body（用于 POST 处理器）。
+// Fake req: replays the body on data/end when provided. Write handlers also read
+// headers + ccvIsAdmin for the admin/same-origin gate.
 function fakeReq(bodyStr) {
   return {
+    headers: {},
+    ccvIsAdmin: true,
     on(ev, cb) {
       if (ev === 'data' && bodyStr) cb(Buffer.from(bodyStr));
       if (ev === 'end') cb();

@@ -4,6 +4,11 @@
 
 CC-Viewer 提供了一套轻量级插件机制，允许在特定生命周期节点注入自定义逻辑。这对企业内部部署尤其有用——例如将二维码的局域网 URL 替换为企业内部代理地址。
 
+> **两类插件形态。** 本文档讲单文件 **hook 插件**。cc-viewer 还支持目录形态的
+> **服务插件**：挂载在同一端口下的独立 HTTP/WS 服务、Web UI 中的 React 面板、
+> 以及支持热装载的 `activate`/`deactivate`/`onError` 完整生命周期。见
+> [plugin-services.zh.md](./plugin-services.zh.md)（[English](./plugin-services.md)）。
+
 ## 快速开始
 
 ### 第 1 步：创建插件目录
@@ -383,7 +388,7 @@ export default {
 
 ## 注意事项
 
-- 插件在服务器启动时加载一次。新增或删除插件文件后需要重启 cc-viewer。
+- 插件在服务器启动时加载，运行期可通过 `POST /api/plugins/reload`（或插件管理里的「重载」按钮）**热装载**——增删插件无需重启。目录插件的 `main.mjs` 修改会在 reload 时重新 import（指纹 cache-bust），服务子进程代码也会在 reload 时整体重启。但修改 `main.mjs` 引用的 **helper** 不会生效（Node ESM 按无 query 的 URL 缓存 helper，touch `main.mjs` 也无效），需重启 cc-viewer；单文件 hook 插件修改后同样需**重启 cc-viewer**。
 - 如果插件目录不存在，加载器静默返回，零性能开销。
 - 插件使用 ESM 格式（`export default`），支持 `.js` 和 `.mjs` 后缀。
 - 插件目录路径：`~/.claude/cc-viewer/plugins/`，企业 IT 可预置此目录。

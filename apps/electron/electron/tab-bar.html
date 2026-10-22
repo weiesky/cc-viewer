@@ -496,7 +496,8 @@
     if (Array.isArray(m.pins)) {
       m.pins.forEach((p) => {
         if (!p || !p.key) return; // 容错：非法条目不中断整簇渲染
-        const def = MENU_ICON[p.key];
+        // Dynamic keys (plugin-panel:<name> etc.) have no dedicated icon - fall back to the plugin management icon
+        const def = MENU_ICON[p.key] || (p.key.startsWith('plugin-panel:') ? MENU_ICON['plugin-management'] : null);
         if (!def) return;
         // 图标条目两种形态：纯 path 字符串(共享 MENU_ICON_VB 网格)或 { vb, path }(自带网格,如芯片图标)。
         const isStr = typeof def === 'string';

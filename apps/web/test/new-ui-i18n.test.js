@@ -33,6 +33,19 @@ const KEYS = [
   'ui.proxy.effortDefault', // proxy hot-switch effort "not enforced by default" option (ProxyModal.jsx)
   'ui.proxy.modelMapHint',  // proxy hot-switch extended-model field description (ProxyModal.jsx)
   'ui.systemMessage',       // mid-conversation role:"system" meta row label (ChatMessage/ChatView role filter)
+  // remote plugin panel shell (PanelHost.jsx / PluginPanelModal.jsx):
+  'ui.pluginPanel.loading',
+  'ui.pluginPanel.loadFailed',
+  'ui.pluginPanel.renderFailed',
+  'ui.pluginPanel.retry',
+  'ui.pluginPanel.close',
+  'ui.pluginPanel.serviceNotReady',
+  // plugin management: service/panel badges + restart + directory hints (PluginModal.jsx)
+  'ui.plugins.type.service',
+  'ui.plugins.type.panel',
+  'ui.plugins.restart',
+  'ui.plugins.serviceHint',
+  'ui.plugins.deleteDirConfirm',
   'ui.proxyStats.tabConfig', // proxy retry-config & stats panel "config" tab
   'ui.proxyStats.tabStats',  // proxy retry-config & stats panel "stats" tab
   'ui.retryConfig.groupStrategy',  // proxy retry-config "strategy config" group heading

@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync, unlinkSync, rmSync, realpathSync, readFileSync } from 'node:fs';
+import { join, relative, isAbsolute } from 'node:path';
 import { execFile } from 'node:child_process';
 import { tmpdir } from 'node:os';
+import { PLUGIN_NAME_RE } from './plugin-manifest.js';
 
 /**
  * Upload plugin files from a file list.
@@ -115,4 +116,47 @@ export async function installPluginFromUrl(pluginsDir, fileUrl, extractNameScrip
   }
   writeFileSync(join(pluginsDir, filename), content, 'utf-8');
   return { filename };
+}
+
+/**
+ * Delete a directory plugin (service/panel plugin with plugin.json).
+ * Validates: slug shape, realpath containment inside pluginsDir (symlink-safe),
+ * presence of plugin.json, manifest name matching the directory name.
+ * Caller must stop/unload the plugin's service BEFORE calling this (Windows: the
+ * child's cwd is the plugin dir, deletion would EBUSY while it runs).
+ * @param {string} pluginsDir
+ * @param {string} dirName
+ * @throws {Error} with statusCode on validation failure
+ */
+export function deletePluginDir(pluginsDir, dirName) {
+  if (!dirName || !PLUGIN_NAME_RE.test(dirName)) {
+    throw Object.assign(new Error('Invalid directory name'), { statusCode: 400 });
+  }
+  const target = join(pluginsDir, dirName);
+  if (!existsSync(target)) {
+    throw Object.assign(new Error('Directory not found'), { statusCode: 404 });
+  }
+  const realRoot = realpathSync(pluginsDir);
+  const realTarget = realpathSync(target);
+  const rootCmp = process.platform === 'win32' ? realRoot.toLowerCase() : realRoot;
+  const targetCmp = process.platform === 'win32' ? realTarget.toLowerCase() : realTarget;
+  const rel = relative(rootCmp, targetCmp);
+  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
+    throw Object.assign(new Error('Directory escapes plugins root'), { statusCode: 400 });
+  }
+  const manifestPath = join(realTarget, 'plugin.json');
+  if (!existsSync(manifestPath)) {
+    throw Object.assign(new Error('Not a directory plugin (missing plugin.json)'), { statusCode: 400 });
+  }
+  try {
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+    if (manifest.name && manifest.name !== dirName) {
+      throw Object.assign(new Error(`Manifest name "${manifest.name}" does not match directory "${dirName}"`), { statusCode: 400 });
+    }
+  } catch (err) {
+    if (err.statusCode) throw err;
+    throw Object.assign(new Error('plugin.json is not valid JSON'), { statusCode: 400 });
+  }
+  rmSync(realTarget, { recursive: true, force: true });
+  return { deleted: dirName };
 }

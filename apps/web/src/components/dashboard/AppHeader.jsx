@@ -40,6 +40,9 @@ import MemoryDetailModal from '../common/MemoryDetailModal';
 import SkillsManagerModal from '../settings/SkillsManagerModal';
 import ProjectPrefsManagerModal from '../settings/ProjectPrefsManagerModal';
 import PluginModal from '../settings/PluginModal';
+import PluginPanelModal from '../plugins/PluginPanelModal';
+import { PanelIcon } from '../plugins/panelIcons';
+import { fetchPluginPanels, invalidatePluginPanels, panelTitle } from '../../utils/pluginPanels';
 import ProcessModal from '../settings/ProcessModal';
 import ProxyModal, { profileDisplayModel } from '../settings/ProxyModal';
 import SystemTextModal from '../settings/SystemTextModal';
@@ -480,7 +483,7 @@ class AppHeader extends React.Component {
 
   constructor(props, context) {
     super(props);
-    this.state = { countdownText: '', promptModalVisible: false, promptData: [], promptViewMode: 'original', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false, localUrl: '', pluginModalVisible: false, processModalVisible: false, logoDropdownOpen: false, electronMenuOpen: false, electronMenuBar: null, cacheHighlightIdx: null, cacheHighlightFading: false, calibrationModel: readCalibrationModel(CALIBRATION_MODELS), proxyModalVisible: false, systemTextModalVisible: false, messagingModalVisible: false, messagingInitialTool: null, imRecordVisible: false, imRecordPlatform: null, logDirDraft: null, claudeExecutableDraft: null, claudeExecutableCandidates: [], claudeExecutableEffective: null, claudeExecutablesLoading: false, qrPopoverOpen: false, electronQrOpen: false, electronQrAnchor: null, projectPrefsModalOpen: false, _skillsModal: { open: false, loading: false, skills: [], error: null, toggling: new Set() },
+    this.state = { countdownText: '', promptModalVisible: false, promptData: [], promptViewMode: 'original', settingsDrawerVisible: false, globalSettingsVisible: false, projectStatsVisible: false, projectStats: null, projectStatsLoading: false, localUrl: '', pluginModalVisible: false, processModalVisible: false, logoDropdownOpen: false, electronMenuOpen: false, electronMenuBar: null, cacheHighlightIdx: null, cacheHighlightFading: false, calibrationModel: readCalibrationModel(CALIBRATION_MODELS), proxyModalVisible: false, systemTextModalVisible: false, messagingModalVisible: false, messagingInitialTool: null, imRecordVisible: false, imRecordPlatform: null, logDirDraft: null, claudeExecutableDraft: null, claudeExecutableCandidates: [], claudeExecutableEffective: null, claudeExecutablesLoading: false, qrPopoverOpen: false, electronQrOpen: false, electronQrAnchor: null, projectPrefsModalOpen: false, pluginPanels: [], activePluginPanel: null, pluginPanelAttempt: 0, _skillsModal: { open: false, loading: false, skills: [], error: null, toggling: new Set() },
       // 文件系统权威的 skill 列表（/api/skills 返回）；live-tail 下作为 popover chip 和管理弹窗的共享数据源。
       // null=未加载 / false=失败 / [] 或 Array=加载结果。workspace 切换由 componentDidUpdate + seq 控制。
       _fsSkills: null,
@@ -589,10 +592,19 @@ class AppHeader extends React.Component {
 
   _getMenuDescriptors() {
     const { viewMode, onImportLocalLogs, isLocalLog } = this.props;
+    const panelDescriptors = this.state.pluginPanels
+      .filter(p => p.entryUrl)
+      .map(p => ({
+        key: `plugin-panel:${p.name}`,
+        icon: <PanelIcon name={p.icon} />,
+        label: panelTitle(p),
+        onClick: () => this.setState({ activePluginPanel: p, pluginPanelAttempt: 0 }),
+      }));
     return [
       { key: 'import-local', icon: <FileTextOutlined />, label: t('ui.importLocalLogs'), onClick: onImportLocalLogs },
       { key: 'export-prompts', icon: <MessageOutlined />, label: t('ui.exportPrompts'), onClick: this.handleShowPrompts },
       { key: 'plugin-management', icon: <ApiOutlined />, label: t('ui.pluginManagement'), onClick: this.handleShowPlugins },
+      ...panelDescriptors,
       { key: 'process-management', icon: <DashboardOutlined />, label: t('ui.processManagement'), onClick: this.handleShowProcesses },
       // 日志模式下 IM 无法正常配置/使用，隐藏 IM 配置入口
       ...(isLocalLog ? [] : [{ key: 'messaging', icon: <DialogueIcon />, label: t('ui.messaging.menu'), onClick: () => this.setState({ messagingModalVisible: true, messagingInitialTool: null }) }]),
@@ -909,6 +921,7 @@ class AppHeader extends React.Component {
   componentDidMount() {
     this.startCountdown();
     this.reloadSystemPromptStatus();
+    this._refreshPluginPanels();
     fetch(apiUrl('/api/local-url')).then(r => r.json()).then(data => {
       if (data.url) this.setState({ localUrl: data.url });
     }).catch(() => {});
@@ -1957,6 +1970,22 @@ class AppHeader extends React.Component {
 
   // 菜单 item onClick 简化:打开 modal,组件内部 useEffect 自动 fetch
   handleShowPlugins = () => this.setState({ pluginModalVisible: true });
+
+  _refreshPluginPanels = async (force = false) => {
+    const { panels } = await fetchPluginPanels({ force });
+    if (panels) this.setState({ pluginPanels: panels });
+  };
+
+  _handlePluginPanelClose = () => this.setState({ activePluginPanel: null });
+
+  _handlePluginPanelRetry = () => this.setState((s) => ({ pluginPanelAttempt: s.pluginPanelAttempt + 1 }));
+
+  _handlePluginModalClose = () => {
+    this.setState({ pluginModalVisible: false });
+    // Plugin management changes (enable/disable/delete/install/reload) affect the panel list
+    invalidatePluginPanels();
+    this._refreshPluginPanels(true);
+  };
   handleShowProcesses = () => this.setState({ processModalVisible: true });
 
   renderProjectStatsContent() {
@@ -2220,7 +2249,7 @@ class AppHeader extends React.Component {
       <div className={styles.headerBar}>
         <Space size="middle" align="center">
           {!isElectronTab && (
-          <Dropdown menu={{ items: menuItems, className: 'logo-dropdown-menu' }} trigger={['hover']} onOpenChange={(open) => this.setState({ logoDropdownOpen: open })} align={{ offset: [-4, 0] }}>
+          <Dropdown menu={{ items: menuItems, className: 'logo-dropdown-menu' }} trigger={['hover']} onOpenChange={(open) => { this.setState({ logoDropdownOpen: open }); if (open) this._refreshPluginPanels(); }} align={{ offset: [-4, 0] }}>
             <span className={`${styles.logoWrap}${this.state.logoDropdownOpen ? ` ${styles.logoWrapActive}` : ''}`}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`${styles.logoImage}${this.state.logoDropdownOpen ? ` ${styles.logoImageActive}` : ''}`}><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </span>
@@ -2230,7 +2259,7 @@ class AppHeader extends React.Component {
             <Dropdown
               menu={{ items: menuItems, className: 'logo-dropdown-menu' }}
               open={!!this.state.electronMenuOpen}
-              onOpenChange={(open) => this.setState({ electronMenuOpen: open })}
+              onOpenChange={(open) => { this.setState({ electronMenuOpen: open }); if (open) this._refreshPluginPanels(); }}
               trigger={['click']}
               placement="bottomLeft"
               getPopupContainer={() => document.body}
@@ -2869,7 +2898,18 @@ class AppHeader extends React.Component {
         {/* 插件 / 进程 / 代理三个 modal 已抽到独立组件，详见 PluginModal/ProcessModal/ProxyModal */}
         <PluginModal
           open={this.state.pluginModalVisible}
-          onClose={() => this.setState({ pluginModalVisible: false })}
+          onClose={this._handlePluginModalClose}
+        />
+        <PluginPanelModal
+          panel={this.state.activePluginPanel}
+          open={!!this.state.activePluginPanel}
+          onClose={this._handlePluginPanelClose}
+          attempt={this.state.pluginPanelAttempt}
+          onRetry={this._handlePluginPanelRetry}
+          theme={this.props.themeColor}
+          lang={getLang()}
+          project={this.props.viewProject ?? null}
+          instance={this.props.viewedInstance ?? null}
         />
         <ProcessModal
           open={this.state.processModalVisible}

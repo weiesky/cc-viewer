@@ -38,6 +38,7 @@ import { createChannelManager, scopeKeyFor, scopeOfKey, BOUND_CHANNEL_KEY } from
 import { createMuxTransport } from './utils/wsMuxTransport';
 import { projectKeyFromCwd } from './utils/projectKeyFromCwd';
 import { reinitializeMermaid } from './hooks/useMermaidRender';
+import './components/plugins/panelRuntime'; // side-effect: installs window.CCV before any panel bundle runs
 import styles from './App.module.css';
 
 export { styles };

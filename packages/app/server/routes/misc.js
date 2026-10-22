@@ -2,6 +2,8 @@
 import { getUserProfile } from '../lib/user-profile.js';
 import { runWaterfallHook } from '../lib/plugin-loader.js';
 import { normalizeBasePath } from '../lib/base-path.js';
+import { isAdminReq } from '../lib/is-admin.js';
+import { isSameOriginBrowserRequest } from '../lib/same-origin.js';
 
 async function userProfile(req, res) {
   const profile = await getUserProfile();
@@ -10,6 +12,15 @@ async function userProfile(req, res) {
 }
 
 async function localUrl(req, res, parsedUrl, isLocal, deps) {
+  // The response embeds the full ACCESS_TOKEN. Without this gate the permissive global
+  // CORS prelude would let any cross-site page read the token from a loopback server
+  // (loopback skips auth) and then bypass every Origin/admin check end-to-end.
+  // CLI/native clients (no Origin header) and same-origin admin pages stay allowed.
+  if (!isAdminReq(req, isLocal) || !isSameOriginBrowserRequest(req, parsedUrl)) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Forbidden: admin and same-origin required' }));
+    return;
+  }
   const localIp = deps.getLocalIp();
   // 反代子路径部署时分享/二维码 URL 也要带前缀，否则扫码绕过代理直连源站端口（与
   // server.startedNetwork 启动打印保持一致）。未设 CCV_BASE_PATH 时为空串，行为不变。

@@ -24,6 +24,8 @@ import { join } from 'node:path';
 
 const LOADER_URL  = new URL('../server/lib/plugin-loader.js', import.meta.url).href;
 const MANAGER_URL = new URL('../server/lib/plugin-manager.js', import.meta.url).href;
+const RUNTIME_URL = new URL('../server/lib/plugin-runtime.js', import.meta.url).href;
+const PANELS_URL  = new URL('../server/lib/plugin-panels.js', import.meta.url).href;
 
 // 可控 stub：route 模块 import 期绑定下列导出，运行期读 globalThis.__ccvPluginStub。
 const LOADER_SRC = `
@@ -31,6 +33,7 @@ const ctl = () => globalThis.__ccvPluginStub;
 export function getPluginsDir() { return ctl().pluginsDir; }
 export async function loadPlugins() { if (ctl().loadPluginsThrows) throw new Error(ctl().loadPluginsThrows); ctl().loadCalled = true; return ctl().plugins; }
 export function getPluginsInfo() { return ctl().plugins; }
+export function getPluginEntries() { return ctl().entries || []; }
 export async function runWaterfallHook() { return undefined; }
 export async function runParallelHook() { return undefined; }
 `;
@@ -44,6 +47,36 @@ export async function installPluginFromUrl() {
   if (ctl().installThrows) { const e = new Error(ctl().installThrows); if (ctl().installStatus) e.statusCode = ctl().installStatus; throw e; }
   ctl().installCalled = true;
 }
+export function deletePluginDir() {
+  ctl().order?.push('deleteDir');
+  if (ctl().deleteDirThrows) { const e = new Error(ctl().deleteDirThrows); if (ctl().deleteDirStatus) e.statusCode = ctl().deleteDirStatus; throw e; }
+  ctl().deleteDirCalled = true;
+  return { deleted: 'x' };
+}
+`;
+const RUNTIME_SRC = `
+const ctl = () => globalThis.__ccvPluginStub;
+export async function reloadRuntime() {
+  ctl().order?.push('reload');
+  if (ctl().loadPluginsThrows) throw new Error(ctl().loadPluginsThrows);
+  if (ctl().reloadResult) return ctl().reloadResult;
+  ctl().loadCalled = true;
+  return { ok: true, generation: 1, plugins: [] };
+}
+export async function unloadPlugin() {
+  ctl().order?.push('unload');
+  if (ctl().unloadError) return { ok: false, error: ctl().unloadError };
+  return { ok: true, unloaded: true };
+}
+export async function restartPlugin() { return ctl().restartResult || { ok: true, status: {} }; }
+export function getRuntimePluginStatus() { return null; }
+export function isRuntimeStopping() { return !!ctl().runtimeStopping; }
+export function tryProxyHttp() { return false; }
+export function tryProxyUpgrade() { return false; }
+`;
+const PANELS_SRC = `
+export function buildPanelDescriptor(entry) { return { name: entry.name }; }
+export function servePanelFile() { return true; }
 `;
 
 let hookRegistered = false;
@@ -54,6 +87,8 @@ function installHook() {
     load(url, context, nextLoad) {
       if (url === LOADER_URL)  return { format: 'module', shortCircuit: true, source: LOADER_SRC };
       if (url === MANAGER_URL) return { format: 'module', shortCircuit: true, source: MANAGER_SRC };
+      if (url === RUNTIME_URL) return { format: 'module', shortCircuit: true, source: RUNTIME_SRC };
+      if (url === PANELS_URL)  return { format: 'module', shortCircuit: true, source: PANELS_SRC };
       return nextLoad(url, context);
     },
   });
@@ -69,11 +104,14 @@ function fakeRes() {
   return res;
 }
 
-// 假 req：按需在 data/end 上回放 body。可分多块回放以触发 body.length 累加。
-function fakeReq(chunks) {
+// Fake req: replays the body on data/end when provided. Write handlers additionally read
+// headers + ccvIsAdmin for the admin/same-origin gate, so those are configurable here.
+function fakeReq(chunks, { admin = true, headers = {} } = {}) {
   const list = chunks == null ? [] : (Array.isArray(chunks) ? chunks : [chunks]);
   return {
     destroyed: false,
+    headers,
+    ccvIsAdmin: admin,
     destroy() { this.destroyed = true; },
     on(ev, cb) {
       if (ev === 'data') { for (const c of list) cb(Buffer.from(c)); }
@@ -104,9 +142,13 @@ describe('server/routes/plugins.js — 分支补全', () => {
       installStatus: null,
       uploadThrows: null,
       uploadStatus: null,
+      runtimeStopping: false,
       installCalled: false,
       uploadCalled: false,
       loadCalled: false,
+      order: [],
+      unloadError: null,
+      reloadResult: null,
     };
   });
 
@@ -185,6 +227,50 @@ describe('server/routes/plugins.js — 分支补全', () => {
     assert.equal(res.statusCode, 500);
     assert.equal(JSON.parse(res.body).error, 'load-after-delete-failed');
     assert.equal(existsSync(join(dir, file)), false);
+  });
+
+  // ---------- pluginsDelete ?dir=：unload → deleteDir → reload orchestration ----------
+  it('DELETE /api/plugins?dir=：unload → deleteDir → reload in order, then 200', async () => {
+    const handler = routeOf('DELETE', '/api/plugins');
+    const res = fakeRes();
+    await handler(fakeReq(), res, parsed('dir=demo'));
+    assert.equal(res.statusCode, 200);
+    const data = JSON.parse(res.body);
+    assert.equal(data.ok, true);
+    assert.equal(data.generation, 1);
+    assert.deepEqual(globalThis.__ccvPluginStub.order, ['unload', 'deleteDir', 'reload']);
+    assert.equal(globalThis.__ccvPluginStub.deleteDirCalled, true);
+  });
+
+  it('DELETE /api/plugins?dir=：unloadPlugin ok:false → 503, no delete/reload', async () => {
+    globalThis.__ccvPluginStub.unloadError = 'plugin runtime is stopping';
+    const handler = routeOf('DELETE', '/api/plugins');
+    const res = fakeRes();
+    await handler(fakeReq(), res, parsed('dir=demo'));
+    assert.equal(res.statusCode, 503);
+    assert.equal(JSON.parse(res.body).error, 'plugin runtime is stopping');
+    assert.deepEqual(globalThis.__ccvPluginStub.order, ['unload']);
+  });
+
+  it('DELETE /api/plugins?dir=：deletePluginDir throws statusCode 400 → 400', async () => {
+    globalThis.__ccvPluginStub.deleteDirThrows = 'Invalid plugin name';
+    globalThis.__ccvPluginStub.deleteDirStatus = 400;
+    const handler = routeOf('DELETE', '/api/plugins');
+    const res = fakeRes();
+    await handler(fakeReq(), res, parsed('dir=demo'));
+    assert.equal(res.statusCode, 400);
+    assert.equal(JSON.parse(res.body).error, 'Invalid plugin name');
+    assert.deepEqual(globalThis.__ccvPluginStub.order, ['unload', 'deleteDir']);
+  });
+
+  it('DELETE /api/plugins?dir=：reloadRuntime ok:false → 503', async () => {
+    globalThis.__ccvPluginStub.reloadResult = { ok: false, error: 'plugin runtime is stopping', generation: 1 };
+    const handler = routeOf('DELETE', '/api/plugins');
+    const res = fakeRes();
+    await handler(fakeReq(), res, parsed('dir=demo'));
+    assert.equal(res.statusCode, 503);
+    assert.equal(JSON.parse(res.body).error, 'plugin runtime is stopping');
+    assert.deepEqual(globalThis.__ccvPluginStub.order, ['unload', 'deleteDir', 'reload']);
   });
 
   // ---------- pluginsReload：成功 + catch（line 46-48）----------
@@ -295,5 +381,49 @@ describe('server/routes/plugins.js — 分支补全', () => {
     await res.done;
     assert.equal(res.statusCode, 500);
     assert.equal(JSON.parse(res.body).error, 'Failed to fetch');
+  });
+
+  // ---------- Write endpoints: admin + same-origin gate ----------
+  it('rejects cross-site Origin on write endpoints with 403', async () => {
+    for (const [method, path] of [
+      ['DELETE', '/api/plugins'],
+      ['POST', '/api/plugins/reload'],
+      ['POST', '/api/plugins/restart'],
+      ['POST', '/api/plugins/upload'],
+      ['POST', '/api/plugins/install-from-url'],
+    ]) {
+      const handler = routeOf(method, path);
+      const res = fakeRes();
+      await handler(fakeReq('', { headers: { origin: 'https://evil.example' } }), res, parsed('name=x'), true, { MAX_POST_BODY: 1e6 });
+      await res.done;
+      assert.equal(res.statusCode, 403, `${method} ${path} must reject cross-site origins`);
+      assert.match(JSON.parse(res.body).error, /same-origin/);
+    }
+  });
+
+  it('rejects non-admin callers on write endpoints with 403', async () => {
+    const handler = routeOf('POST', '/api/plugins/reload');
+    const res = fakeRes();
+    await handler(fakeReq('', { admin: false }), res, parsed(''), false);
+    assert.equal(res.statusCode, 403);
+  });
+
+  it('allows CLI/native writes (no Origin) and same-origin browser writes', async () => {
+    for (const headers of [{}, { origin: 'http://127.0.0.1:7008' }]) {
+      const handler = routeOf('POST', '/api/plugins/reload');
+      const res = fakeRes();
+      // Real dispatch passes a URL instance (host + origin); mirror that shape.
+      await handler(fakeReq('', { headers }), res, new URL('http://127.0.0.1:7008/api/plugins/reload'));
+      assert.equal(res.statusCode, 200, `origin=${headers.origin || '<none>'} should pass`);
+    }
+  });
+
+  it('refuses writes while the runtime is stopping (503)', async () => {
+    globalThis.__ccvPluginStub.runtimeStopping = true;
+    const handler = routeOf('POST', '/api/plugins/reload');
+    const res = fakeRes();
+    await handler(fakeReq(), res, parsed(''));
+    assert.equal(res.statusCode, 503);
+    assert.equal(JSON.parse(res.body).error, 'server is stopping');
   });
 });

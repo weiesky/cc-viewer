@@ -125,8 +125,10 @@ function importFile(req, res, parsedUrl, isLocal, deps) {
     res.end(JSON.stringify({ error: 'Missing boundary' }));
     return;
   }
-  const importUrl = new URL(req.url, `${deps.protocol}://${req.headers.host}`);
-  const dir = importUrl.searchParams.get('dir') || '';
+  // Reuse the parsedUrl that handleRequest already validated: req.headers.host may be a
+  // malformed value llhttp accepts but URL parsing rejects, and a fresh new URL() here
+  // would throw synchronously inside dispatch → unhandled rejection.
+  const dir = parsedUrl.searchParams.get('dir') || '';
   // 在 mkdirSync 之前纯字符串校验，防 symlink 副作用目录被创建在项目外
   const dirCheck = validateImportDir(dir);
   if (!dirCheck.ok) {

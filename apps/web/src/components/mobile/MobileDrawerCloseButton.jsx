@@ -5,12 +5,13 @@ import appStyles from '../../App.module.css';
 
 // 移动端抽屉通用关闭按钮：PluginModal / ProcessModal / ProxyModal 共用。
 // className 复用 App.module.css 中既有 `.mobileLogMgmtClose`。
-export default function MobileDrawerCloseButton({ onClose }) {
+export default function MobileDrawerCloseButton({ onClose, tabIndex = 0 }) {
   return (
     <button
       className={appStyles.mobileLogMgmtClose}
       onClick={onClose}
       aria-label={t('ui.closeDrawer')}
+      tabIndex={tabIndex}
     >
       <CloseOutlined style={{ fontSize: 16 }} />
     </button>

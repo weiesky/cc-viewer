@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- feat(server+web): **目录形态服务插件 + 远程 React 组件面板** — 插件系统从单文件 hook 扩展为目录形态（plugin.json）：`service.mjs` 以独立子进程运行 HTTP/WS 服务并挂载在主端口 `/plugins/<name>/*` 下；完整 activate/deactivate/onError 生命周期与热装载（`/api/plugins/reload` 单飞）；崩溃退避自动重启与孤儿清理。面板为远程 React 组件热挂载（非 iframe）：`window.CCV.registerPanel` 握手 + 共享宿主 React/antd，桌面 Modal / 移动全屏 overlay 渲染，`GET /api/plugin-panels` 清单驱动动态菜单。新增 `POST /api/plugins/restart`、`DELETE /api/plugins?dir=`；upgrade 改造为统一路由表；顺带修复畸形 Host 头可致进程崩溃的现有面。管理写接口与 `/api/local-url` 加 admin+同源闸（反代按 `X-Forwarded-Proto` 校 scheme）。三方文档见 `docs/plugin-services.md` / `.zh.md` + 面板构建模板。Coverage: `plugin-loader-service`, `plugin-service-manager`, `plugin-host`, `plugin-proxy`, `plugin-runtime`, `plugin-panels`, `plugin-manager-dir`, `plugin-service-integration`, `plugin-spawn-test-guard`, `same-origin`, `api-local-url-guard`, `panel-loader`, `plugin-panels-util`, `plugin-panel-host`.
 - feat(web): **「AgentTeam」菜单标签改名「快捷指令」** — 终端四芒星菜单与对话输入面板 (+) 菜单的级联行标签统一改名；各 locale 按「快捷提示词」语义本地化（en: Quick Prompts、ja: クイックプロンプト、de: Schnellprompts 等），非字面直译。
 - feat(web): **终端工具栏上传收纳进四芒星快捷菜单** — 终端底部工具栏独立的上传圆钮移除，「上传文件」改为四芒星菜单顶部菜单项（级联行样式），与对话输入面板 (+) 菜单行为对齐；hidden file input、`handleFileUpload`、pending-images / WS `image-upload-notify` 链路不变。Coverage: `upload-terminal-plus-menu.test.js`.
 - fix(server): **`[ccv:*]` 诊断日志默认静默，仅 `CCV_DEBUG=1` 时打印** — server 端全部 `reportSwallowed` 经新增 `server/lib/error-report.js` 门控包装转发 core，未开启时零 console 输出（上游挂掉/网络抖动等可恢复错误不再刷 `[ccv:proxyRetry.single-fetch]` 之类的告警）；web 前端不受影响。Coverage: `server-error-report.test.js`.

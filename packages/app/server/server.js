@@ -23,6 +23,7 @@ import { projectPrefsRoutes } from './routes/project-prefs.js';
 import { sessionPinRoutes } from './routes/session-pin.js';
 import { gitRoutes } from './routes/git.js';
 import { pluginsRoutes } from './routes/plugins.js';
+import { pluginServicesRoutes } from './routes/plugin-services.js';
 import { logsRoutes } from './routes/logs.js';
 import { voicePackRoutes } from './routes/voice-pack.js';
 import { skillsRoutes } from './routes/skills.js';
@@ -117,6 +118,8 @@ import { t, getLang, setLang } from './i18n.js';
 import { loadAuthConfig, loadAuthState, saveAuthConfig, clearProjectOverride, generatePassword, decideAuth, parseCookies, renderLoginPage, localeFromAcceptLanguage } from './lib/auth.js';
 import { checkAndUpdate } from './lib/updater.js';
 import { loadPlugins, runWaterfallHook, runParallelHook } from './lib/plugin-loader.js';
+import * as pluginRuntime from './lib/plugin-runtime.js';
+import { isSameOriginBrowserRequest } from './lib/same-origin.js';
 import { CONTEXT_WINDOW_FILE, readModelContextSize } from './lib/context-watcher.js';
 import { sendEventToClients } from './lib/log-watcher.js';
 import { applyTaskEvent, resetTasks, resetAllTasks, getTaskSnapshot, shouldResetTasks } from './lib/task-state.js';
@@ -842,6 +845,7 @@ const _routes = [
   ...sessionPinRoutes,
   ...gitRoutes,
   ...pluginsRoutes,
+  ...pluginServicesRoutes,
   ...logsRoutes,
   ...voicePackRoutes,
   ...skillsRoutes,
@@ -865,8 +869,56 @@ const _routes = [
 ];
 const dispatch = createDispatcher(_routes);
 
+// Host header validation: llhttp accepts values like `Host: [`, while `new URL(path, proto://host)`
+// throws Invalid URL - handleRequest is async and wired straight into createServer, so a throw becomes
+// an unhandled rejection that kills the process (same for the upgrade listener). Validate before parsing.
+function isValidHostHeader(host) {
+  if (typeof host !== 'string' || host.length === 0) return false;
+  try {
+    // Fixed base only validates that the host part parses; it is not used for business logic
+    new URL(`http://${host}/`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function safeParseRequestUrl(req) {
+  try {
+    if (!isValidHostHeader(req.headers.host)) return null;
+    return new URL(req.url, `${serverProtocol}://${req.headers.host}`);
+  } catch {
+    return null;
+  }
+}
+
+// Shared DNS-rebinding guard (HTTP and WS upgrade share it so port/IPv6 logic cannot drift).
+// Returns null to allow; otherwise { host } for the caller to reject.
+function checkHostAllowed(hostHeaderValue) {
+  const allowedHosts = process.env.CCV_ALLOWED_HOSTS
+    ? process.env.CCV_ALLOWED_HOSTS.split(',').map(s => s.trim()).filter(Boolean)
+    : ['localhost', '127.0.0.1', '::1', '[::1]', ...getAllLocalIps()];
+  if (allowedHosts.includes('*')) return null;
+  const hostHeader = (hostHeaderValue || '').toLowerCase();
+  // Port stripping: RFC 3986 requires bracketed IPv6 `[::1]:port`; bare `::1` would lose its last `\d` to port stripping.
+  // Treat a value containing `::` without a closing `]` as bare IPv6 and skip port stripping.
+  const isBareIPv6 = hostHeader.includes('::') && !hostHeader.includes(']');
+  const hostNoPort = isBareIPv6 ? hostHeader : hostHeader.replace(/:\d+$/, '');
+  const stripBrackets = hostNoPort.replace(/^\[|\]$/g, '');
+  const ok = allowedHosts.some(h => {
+    const hl = h.toLowerCase();
+    return hl === hostNoPort || hl === stripBrackets || hl === `[${stripBrackets}]`;
+  });
+  return ok ? null : { host: hostNoPort };
+}
+
 async function handleRequest(req, res) {
-  const parsedUrl = new URL(req.url, `${serverProtocol}://${req.headers.host}`);
+  const parsedUrl = safeParseRequestUrl(req);
+  if (!parsedUrl) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Bad Request: invalid Host header' }));
+    return;
+  }
   let url = parsedUrl.pathname;
 
   // CCV_BASE_PATH reverse proxy: strip prefix at TOP so API/WS/static/SPA
@@ -901,13 +953,18 @@ async function handleRequest(req, res) {
   // Host allowlist + 路由。
   const remoteIp = req.socket.remoteAddress;
   const isLocal = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1';
+  // authExemptStatic: no auth (panel bundles load via <script src> and cannot carry a token);
+  // hostExemptStatic: also skips the Host allowlist (host app assets only). Plugin panel statics
+  // are auth-exempt but keep DNS-rebinding protection - they load same-origin from a validated page.
   const isStaticAsset = url.startsWith('/assets/') || url === '/favicon.ico';
+  const isPluginPanelAsset = url.startsWith('/plugin-panels/');
+  const authExemptStatic = isStaticAsset || isPluginPanelAsset;
   const wantsHtml = method === 'GET' && ((req.headers.accept || '').includes('text/html') || url === '/');
   // Hoisted so decideAuth and the isAdmin computation share the SAME credential values.
   const urlToken = parsedUrl.searchParams.get('token');
   const cookieToken = parseCookies(req.headers.cookie).ccv_auth;
   const authDecision = decideAuth({
-    isStaticAsset,
+    isStaticAsset: authExemptStatic,
     pathname: url,
     isLocal,
     urlToken,
@@ -948,27 +1005,13 @@ async function handleRequest(req, res) {
   // 要求用户每次手动设 CCV_ALLOWED_HOSTS 不可接受。token 仍是必需(server.js:300-310 ACCESS_TOKEN gate),
   // DNS rebinding 攻击者需精确知道用户 LAN IP 才能利用,门槛降低但不增新攻击面;Vite/Cursor 同行也默认放开 LAN。
   // CCV_ALLOWED_HOSTS 显式设(包括 '*' 关闭防护)时完全沿用用户值,与 1.6.227 行为一致,向后兼容。
-  // 静态资源和 OPTIONS 预检不挡。
+  // Host app statics and OPTIONS preflights skip this; plugin panel statics (authExempt, not hostExempt) still run it.
   if (!isStaticAsset && method !== 'OPTIONS') {
-    const allowedHosts = process.env.CCV_ALLOWED_HOSTS
-      ? process.env.CCV_ALLOWED_HOSTS.split(',').map(s => s.trim()).filter(Boolean)
-      : ['localhost', '127.0.0.1', '::1', '[::1]', ...getAllLocalIps()];
-    if (!allowedHosts.includes('*')) {
-      const hostHeader = (req.headers.host || '').toLowerCase();
-      // 端口剥离:RFC 3986 要求 IPv6 Host 必须带 brackets `[::1]:port`,bare `::1` 末尾 `\d` 会被错剥成 `:`。
-      // 含 `::` 但无 `]` 闭合的视为 bare IPv6,不剥端口。
-      const isBareIPv6 = hostHeader.includes('::') && !hostHeader.includes(']');
-      const hostNoPort = isBareIPv6 ? hostHeader : hostHeader.replace(/:\d+$/, '');
-      const stripBrackets = hostNoPort.replace(/^\[|\]$/g, '');
-      const ok = allowedHosts.some(h => {
-        const hl = h.toLowerCase();
-        return hl === hostNoPort || hl === stripBrackets || hl === `[${stripBrackets}]`;
-      });
-      if (!ok) {
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: 'host-not-allowed', host: hostNoPort }));
-        return;
-      }
+    const denied = checkHostAllowed(req.headers.host);
+    if (denied) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'host-not-allowed', host: denied.host }));
+      return;
     }
   }
 
@@ -1112,8 +1155,25 @@ export async function startViewer() {
   if (_stoppingPromise) {
     try { await _stoppingPromise; } catch { /* stop 内部已 try/catch，最坏继续 */ }
   }
+  // Start de-duplication: two concurrent startViewer calls in one process would create two servers and two plugin runtimes
+  if (_startingPromise) {
+    return _startingPromise;
+  }
+  _startingPromise = _doStart();
+  try {
+    return await _startingPromise;
+  } finally {
+    _startingPromise = null;
+  }
+}
+
+let _startingPromise = null;
+
+async function _doStart() {
   _isStopping = false;
   _stoppingPromise = null;
+  // If the plugin runtime is still active (duplicate start), stop the previous generation before reloading
+  try { await pluginRuntime.onServerStopping(); } catch (err) { reportSwallowed('server.plugin-restop', err); }
   // 加载插件（需要在创建服务器之前，以便通过 hook 获取 HTTPS 证书）
   await loadPlugins();
   // Per-workspace: warm the pty-manager namespace for the synchronous hook
@@ -1303,6 +1363,26 @@ export async function startViewer() {
           if (isCliMode) {
             await setupTerminalWebSocket(currentServer);
           }
+          // Install the unified upgrade router (all modes): plugin service WS prefixes + registered terminal/mux.
+          // Install after createServer and before the first request to close the upgrade gap.
+          installUpgradeRouter(currentServer);
+          // Service plugin lifecycle: spawn -> probe -> mount -> activate (3s grace; slow plugins continue in background)
+          try {
+            await pluginRuntime.onServerStarted({
+              logDir: LOG_DIR,
+              port, host: HOST,
+              basePath: normalizeBasePath(process.env.CCV_BASE_PATH),
+              protocol: serverProtocol,
+              token: ACCESS_TOKEN,
+              internalToken: INTERNAL_TOKEN,
+              httpServer: currentServer,
+              pty: null,
+              interactions: null,
+              isStopping: () => _isStopping,
+            });
+          } catch (err) {
+            reportSwallowed('server.plugin-start', err);
+          }
           // 通知插件服务器已启动
           let ptyApi = null;
           if (isCliMode) {
@@ -1315,52 +1395,14 @@ export async function startViewer() {
               onPtyData: pm.onPtyData,
             };
           }
+          const interactions = _buildPluginInteractions();
+          // Feed pty/interactions to activated service plugins (activate runs before ptyApi exists, so null first)
+          try { pluginRuntime._enrichContext({ pty: ptyApi, interactions }); } catch (err) { reportSwallowed('server.plugin-enrich', err); }
           await runParallelHook('serverStarted', {
             port, host: HOST, url, ip: getLocalIp(),
             token: ACCESS_TOKEN, protocol: serverProtocol,
             httpServer: currentServer, pty: ptyApi,
-            interactions: {
-              getPendingPerms: () => [...pendingPermHooks.entries()].map(([id, e]) => ({ id, toolName: e.toolName, input: e.input, createdAt: e.createdAt })),
-              resolvePerm: (id, decision, allowSession) => {
-                const entry = pendingPermHooks.get(id);
-                if (!entry) return false;
-                clearTimeout(entry.timer);
-                pendingPermHooks.delete(id);
-                try {
-                  if (!entry.res.headersSent) {
-                    entry.res.writeHead(200, { 'Content-Type': 'application/json' });
-                    entry.res.end(JSON.stringify({ decision }));
-                  }
-                } catch {}
-                if (terminalWss) {
-                  const rmsg = JSON.stringify({ type: 'perm-hook-resolved', id });
-                  terminalWss.clients.forEach((c) => { if (c.readyState === 1) try { c.send(rmsg); } catch {} });
-                }
-                return true;
-              },
-              getPendingAsks: () => [...pendingAskHooks.entries()].map(([id, e]) => ({ id, questions: e.questions, createdAt: e.createdAt })),
-              resolveAsk: (id, answers) => {
-                const entry = pendingAskHooks.get(id);
-                if (!entry) return false;
-                const { res: hookRes, timer } = entry;
-                clearTimeout(timer);
-                pendingAskHooks.delete(id);
-                _persistAskDelete(id);
-                try {
-                  if (!hookRes.headersSent) {
-                    hookRes.writeHead(200, { 'Content-Type': 'application/json' });
-                    hookRes.end(JSON.stringify({ answers }));
-                  }
-                } catch {}
-                if (terminalWss) {
-                  const rmsg = JSON.stringify({ type: 'ask-hook-resolved', id });
-                  terminalWss.clients.forEach((c) => { if (c.readyState === 1) try { c.send(rmsg); } catch {} });
-                }
-                _notifyParentPending({ type: 'ask-hook-resolved', id });
-                return true;
-              },
-              resolveSdkApproval: (...args) => _sdkResolveApproval?.(...args),
-            },
+            interactions,
           });
           // IM adapters no longer run in the main ccv. Each enabled IM runs as an independent,
           // detached worker process (im-process-manager). Two CLI-mode cases:
@@ -1427,6 +1469,136 @@ export async function startViewer() {
 
     tryListen(START_PORT);
   });
+}
+
+// Plugin interactions object (shared definition for the serverStarted hook and service activate ctx;
+// drift would hand service plugins a capability subset).
+function _buildPluginInteractions() {
+  return {
+    getPendingPerms: () => [...pendingPermHooks.entries()].map(([id, e]) => ({ id, toolName: e.toolName, input: e.input, createdAt: e.createdAt })),
+    resolvePerm: (id, decision, allowSession) => {
+      const entry = pendingPermHooks.get(id);
+      if (!entry) return false;
+      clearTimeout(entry.timer);
+      pendingPermHooks.delete(id);
+      try {
+        if (!entry.res.headersSent) {
+          entry.res.writeHead(200, { 'Content-Type': 'application/json' });
+          entry.res.end(JSON.stringify({ decision }));
+        }
+      } catch {}
+      if (terminalWss) {
+        const rmsg = JSON.stringify({ type: 'perm-hook-resolved', id });
+        terminalWss.clients.forEach((c) => { if (c.readyState === 1) try { c.send(rmsg); } catch {} });
+      }
+      return true;
+    },
+    getPendingAsks: () => [...pendingAskHooks.entries()].map(([id, e]) => ({ id, questions: e.questions, createdAt: e.createdAt })),
+    resolveAsk: (id, answers) => {
+      const entry = pendingAskHooks.get(id);
+      if (!entry) return false;
+      const { res: hookRes, timer } = entry;
+      clearTimeout(timer);
+      pendingAskHooks.delete(id);
+      _persistAskDelete(id);
+      try {
+        if (!hookRes.headersSent) {
+          hookRes.writeHead(200, { 'Content-Type': 'application/json' });
+          hookRes.end(JSON.stringify({ answers }));
+        }
+      } catch {}
+      if (terminalWss) {
+        const rmsg = JSON.stringify({ type: 'ask-hook-resolved', id });
+        terminalWss.clients.forEach((c) => { if (c.readyState === 1) try { c.send(rmsg); } catch {} });
+      }
+      _notifyParentPending({ type: 'ask-hook-resolved', id });
+      return true;
+    },
+    resolveSdkApproval: (...args) => _sdkResolveApproval?.(...args),
+  };
+}
+
+// Unified upgrade router: plugin service WS prefixes + registered terminal/mux handlers. Installed
+// once per httpServer (_upgradeRouterInstalled), early in the listen callback, eliminating the
+// "upgrade requests before setup" gap. The sync section is one try/catch; async handlers guard
+// themselves (plugin-proxy never rejects). Auth and Host checks run before route matching;
+// a miss always destroys the socket (same as before).
+// The route table is per-httpServer state (httpServer._ccvUpgradeRoutes): after stop->start the new
+// server gets an empty table and re-registers; handler closures always reference the current wss/streamMux
+// (a module-level table kept the closed first-generation wss - 2026-10-22 review found /ws/terminal 503 after stop->start).
+function installUpgradeRouter(httpServer) {
+  if (!httpServer || httpServer._ccvUpgradeRouterInstalled) return;
+  httpServer._ccvUpgradeRouterInstalled = true;
+  // Initialize only when no table exists yet - setupTerminalWebSocket may have registered first
+  // (setup runs before installUpgradeRouter in the listen callback); unconditional assignment clears
+  // registered routes (2026-10-22: all terminal/mux routes were destroyed).
+  if (!httpServer._ccvUpgradeRoutes) httpServer._ccvUpgradeRoutes = [];
+  httpServer.on('upgrade', (req, socket, head) => {
+    try {
+      const wsUrl = safeParseRequestUrl(req);
+      if (!wsUrl) { socket.destroy(); return; }
+      // Upgrades bypass handleRequest, so basePath is stripped independently (same helper as HTTP)
+      const pathname = stripBasePath(wsUrl.pathname, normalizeBasePath(process.env.CCV_BASE_PATH));
+      // Same auth as HTTP (WS upgrades previously ignored tokens entirely - a remote-terminal hole).
+      // Compute isLocal explicitly here (same three-way check as handleRequest); WS is never an HTML request.
+      const wsRemoteIp = req.socket.remoteAddress;
+      const wsIsLocal = wsRemoteIp === '127.0.0.1' || wsRemoteIp === '::1' || wsRemoteIp === '::ffff:127.0.0.1';
+      const wsAuth = decideAuth({
+        isStaticAsset: false,
+        pathname,
+        isLocal: wsIsLocal,
+        urlToken: wsUrl.searchParams.get('token'),
+        cookieToken: parseCookies(req.headers.cookie).ccv_auth,
+        accessToken: ACCESS_TOKEN,
+        enabled: authConfig.enabled,
+        password: authConfig.password,
+        passwordUnreadable: authConfig.passwordUnreadable,
+        wantsHtml: false,
+      });
+      if (wsAuth.action !== 'allow') {
+        socket.destroy();
+        return;
+      }
+      // Upgrades previously skipped the Host check (HTTP had it); now share the same allowlist.
+      // Leave one diagnostic line on rejection - a silent destroy is nearly undebuggable behind proxies that rewrite only HTTP Host.
+      const hostDenied = checkHostAllowed(req.headers.host);
+      if (hostDenied) {
+        reportSwallowed('server.upgrade-host', new Error(`ws upgrade rejected by host allowlist: ${hostDenied.host}`));
+        socket.destroy();
+        return;
+      }
+      // Same-origin guard: loopback sockets do not prove the browser page behind them is
+      // ours. A cross-site page riding the user's token cookie must not open terminal/mux
+      // or plugin-service WebSockets. CLI/native clients send no Origin and stay allowed.
+      if (!isSameOriginBrowserRequest(req, wsUrl)) {
+        reportSwallowed('server.upgrade-origin', new Error(`ws upgrade rejected by origin check: ${req.headers.origin || '<none>'}`));
+        socket.destroy();
+        return;
+      }
+      wsUrl.pathname = pathname;
+      // 1) Service plugin prefixes (mount-table match; a miss falls through)
+      if (pluginRuntime.tryProxyUpgrade(req, socket, head, wsUrl)) return;
+      // 2) Registered built-in WS routes (terminal/scratch/mux; only present after setup in CLI mode)
+      for (const route of httpServer._ccvUpgradeRoutes) {
+        if (route.match(pathname)) {
+          route.handle(req, socket, head, wsUrl);
+          return;
+        }
+      }
+      socket.destroy();
+    } catch (err) {
+      reportSwallowed('server.upgrade-router', err);
+      try { socket.destroy(); } catch { /* noop */ }
+    }
+  });
+}
+
+function registerUpgradeRoute(httpServer, name, match, handle) {
+  const routes = httpServer._ccvUpgradeRoutes || (httpServer._ccvUpgradeRoutes = []);
+  const existing = routes.findIndex(r => r.name === name);
+  // Same-name override: after stop->start the handler closure must point at the new wss/streamMux
+  if (existing >= 0) routes[existing] = { name, match, handle };
+  else routes.push({ name, match, handle });
 }
 
 async function setupTerminalWebSocket(httpServer) {
@@ -1508,118 +1680,95 @@ async function setupTerminalWebSocket(httpServer) {
       return null;
     };
 
-    httpServer.on('upgrade', (req, socket, head) => {
-      const wsUrl = new URL(req.url, `${serverProtocol}://${req.headers.host}`);
-      // upgrade 不经 handleRequest，basePath 需独立剥离（与 HTTP 段同走统一函数）
-      let pathname = stripBasePath(wsUrl.pathname, normalizeBasePath(process.env.CCV_BASE_PATH));
-      // 与 HTTP 一致的鉴权（此前 WS upgrade 完全不校验 token，远程终端实为无门禁——本次堵洞）。
-      // 在此显式计算 isLocal（与 handleRequest 同款三态判断），WS 视作非 HTML 请求。
-      const wsRemoteIp = req.socket.remoteAddress;
-      const wsIsLocal = wsRemoteIp === '127.0.0.1' || wsRemoteIp === '::1' || wsRemoteIp === '::ffff:127.0.0.1';
-      const wsAuth = decideAuth({
-        isStaticAsset: false,
-        pathname,
-        isLocal: wsIsLocal,
-        urlToken: wsUrl.searchParams.get('token'),
-        cookieToken: parseCookies(req.headers.cookie).ccv_auth,
-        accessToken: ACCESS_TOKEN,
-        enabled: authConfig.enabled,
-        password: authConfig.password,
-        passwordUnreadable: authConfig.passwordUnreadable,
-        wantsHtml: false,
+    // Terminal/mux upgrade handlers register into the unified table (installUpgradeRouter runs in all
+    // modes; in modes without setup these routes do not exist and a miss destroys - same as before).
+    registerUpgradeRoute(httpServer, 'terminal', (p) => p === '/ws/terminal', (req, socket, head, wsUrl) => {
+      // Multi-PTY view attach (2026-10): `?project=<name>` pins the freshly
+      // connected client to the project it is VIEWING, so the initial
+      // state/buffer frames below come from that project's record — not from
+      // whatever project happened to spawn last. Unknown/absent project is a
+      // silent no-op (single-project behavior unchanged).
+      const viewProject = wsUrl.searchParams.get('project');
+      // Multi-instance: `&instance=<key>` pins the attach to THAT exact process when a
+      // same-cwd project runs two concurrent instances (basename alone is ambiguous).
+      const viewInstance = wsUrl.searchParams.get('instance');
+      if (viewProject || viewInstance) {
+        try { attachPtyFor({ project: viewProject || undefined, instanceKey: viewInstance || undefined }); } catch { }
+      }
+      // SDK multi-session (2026-10-12): remember this connection's viewed project so
+      // broadcastWsMessage can route cwd-tagged SDK frames only to the client(s) watching
+      // that workspace. No ?project= → bound view → receives every project (old behavior).
+      // Set it directly in THIS upgrade's callback (fires once per connection, so reconnects
+      // get re-stamped) — NOT via a one-shot wss.once('connection') listener, which would
+      // only ever stamp the FIRST connection and leave every later/reconnected client
+      // unstamped (receiving all workspaces' frames).
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        try { ws._ccvViewProject = viewProject || null; } catch {}
+        try { ws._ccvViewInstance = viewInstance || null; } catch {}
+        wss.emit('connection', ws, req);
       });
-      if (wsAuth.action !== 'allow') {
+    });
+    registerUpgradeRoute(httpServer, 'terminal-scratch', (p) => p === '/ws/terminal-scratch', (req, socket, head, wsUrl) => {
+      // Validate id: missing/illegal -> destroy (prevents empty/long/special Map keys)
+      const scratchId = wsUrl.searchParams.get('id');
+      if (!scratchId || !SCRATCH_ID_RE.test(scratchId)) {
         socket.destroy();
         return;
       }
-      if (pathname === '/ws/terminal') {
-        // Multi-PTY view attach (2026-10): `?project=<name>` pins the freshly
-        // connected client to the project it is VIEWING, so the initial
-        // state/buffer frames below come from that project's record — not from
-        // whatever project happened to spawn last. Unknown/absent project is a
-        // silent no-op (single-project behavior unchanged).
-        const viewProject = wsUrl.searchParams.get('project');
-        // Multi-instance: `&instance=<key>` pins the attach to THAT exact process when a
-        // same-cwd project runs two concurrent instances (basename alone is ambiguous).
-        const viewInstance = wsUrl.searchParams.get('instance');
-        if (viewProject || viewInstance) {
-          try { attachPtyFor({ project: viewProject || undefined, instanceKey: viewInstance || undefined }); } catch { }
-        }
-        // SDK multi-session (2026-10-12): remember this connection's viewed project so
-        // broadcastWsMessage can route cwd-tagged SDK frames only to the client(s) watching
-        // that workspace. No ?project= → bound view → receives every project (old behavior).
-        // Set it directly in THIS upgrade's callback (fires once per connection, so reconnects
-        // get re-stamped) — NOT via a one-shot wss.once('connection') listener, which would
-        // only ever stamp the FIRST connection and leave every later/reconnected client
-        // unstamped (receiving all workspaces' frames).
-        wss.handleUpgrade(req, socket, head, (ws) => {
-          try { ws._ccvViewProject = viewProject || null; } catch {}
-          try { ws._ccvViewInstance = viewInstance || null; } catch {}
-          wss.emit('connection', ws, req);
+      // Single upgrade hand-off used by the accept and both reject branches below.
+      const handOffScratch = () => {
+        req.ccvScratchId = scratchId;
+        wssScratch.handleUpgrade(req, socket, head, (ws) => {
+          wssScratch.emit('connection', ws, req);
         });
-      } else if (pathname === '/ws/terminal-scratch') {
-        // 校验 id：缺失或非法 → destroy（避免 Map<id> 被注入空键 / 超长 / 特殊字符）
-        const scratchId = wsUrl.searchParams.get('id');
-        if (!scratchId || !SCRATCH_ID_RE.test(scratchId)) {
-          socket.destroy();
-          return;
-        }
-        // Single upgrade hand-off used by the accept and both reject branches below.
-        const handOffScratch = () => {
-          req.ccvScratchId = scratchId;
-          wssScratch.handleUpgrade(req, socket, head, (ws) => {
-            wssScratch.emit('connection', ws, req);
-          });
-        };
-        // Multi-project (2026-10-12): ?project=/?instance= pin the scratch shell's cwd to
-        // the VIEWED workspace — same resolution as every project-scoped READ route
-        // (resolveViewRoot is sync: fs + sync registry read). No params → bound root.
-        // Accepted: with no instance and a same-basename twin live, the name path can
-        // resolve to the twin's dir (the single-live-PTY rule designed for READ routes);
-        // an unresolvable/ambiguous name takes the fatal-toast path below instead, so a
-        // wrong-cwd spawn is bounded to that deliberate arbitration, never silent.
-        const vr = resolveViewRoot({
-          projectParam: wsUrl.searchParams.get('project'),
-          instanceParam: wsUrl.searchParams.get('instance'),
-          boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
-          loadWorkspaces,
-          listLivePtys,
-        });
-        if (!vr.ok) {
-          // Unresolvable/deleted/ambiguous workspace: do NOT bare-destroy — the client
-          // would retry every 2s forever. Complete the upgrade, report once with a fatal
-          // toast (client stops reconnecting), then close. Nothing spawns on this path.
-          req.ccvScratchReject = vr.error || 'workspace unavailable';
-          handOffScratch();
-          return;
-        }
-        // Normalize once: the bound branch of resolveViewRoot returns the root un-normalized,
-        // named branches realpathSync — without this the same dir can key two buckets.
-        let scratchCwd = vr.root;
-        try { scratchCwd = realpathSync(vr.root); } catch { }
-        // Hard caps (per-workspace + global) on the ptys Map size (running and
-        // exited-not-yet-reaped entries included); an existing id+cwd reconnect is exempt
-        // so it can't be locked out by its own still-alive entry. Rejection goes through
-        // the same fatal-toast hand-off as a resolve failure (never a bare destroy) so the
-        // client stops reconnecting instead of retrying every 2s against a full bucket.
-        if (!hasScratchPty(scratchId, { cwd: scratchCwd })
-          && (getScratchPtyCount() >= MAX_SCRATCH_PTYS_TOTAL
-            || getScratchPtyCountForCwd(scratchCwd) >= MAX_SCRATCH_PTYS_PER_CWD)) {
-          req.ccvScratchReject = 'scratch terminal limit reached';
-          handOffScratch();
-          return;
-        }
-        req.ccvScratchCwd = scratchCwd;
+      };
+      // Multi-project (2026-10-12): ?project=/?instance= pin the scratch shell's cwd to
+      // the VIEWED workspace — same resolution as every project-scoped READ route
+      // (resolveViewRoot is sync: fs + sync registry read). No params → bound root.
+      // Accepted: with no instance and a same-basename twin live, the name path can
+      // resolve to the twin's dir (the single-live-PTY rule designed for READ routes);
+      // an unresolvable/ambiguous name takes the fatal-toast path below instead, so a
+      // wrong-cwd spawn is bounded to that deliberate arbitration, never silent.
+      const vr = resolveViewRoot({
+        projectParam: wsUrl.searchParams.get('project'),
+        instanceParam: wsUrl.searchParams.get('instance'),
+        boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
+        loadWorkspaces,
+        listLivePtys,
+      });
+      if (!vr.ok) {
+        // Unresolvable/deleted/ambiguous workspace: do NOT bare-destroy — the client
+        // would retry every 2s forever. Complete the upgrade, report once with a fatal
+        // toast (client stops reconnecting), then close. Nothing spawns on this path.
+        req.ccvScratchReject = vr.error || 'workspace unavailable';
         handOffScratch();
-      } else if (pathname === '/ws/mux') {
-        // Dialogue-channel stream mux. Auth already enforced by decideAuth above (token from
-        // ?token= / ccv_auth cookie — tokenInterceptor/appendToken put it on the ws:// URL
-        // exactly like /ws/terminal). No socket-level ?project= stamp: each logical stream
-        // carries its own scope in its `open` frame (one mux socket serves many workspaces).
-        streamMux.handleUpgrade(req, socket, head);
-      } else {
-        socket.destroy();
+        return;
       }
+      // Normalize once: the bound branch of resolveViewRoot returns the root un-normalized,
+      // named branches realpathSync — without this the same dir can key two buckets.
+      let scratchCwd = vr.root;
+      try { scratchCwd = realpathSync(vr.root); } catch { }
+      // Hard caps (per-workspace + global) on the ptys Map size (running and
+      // exited-not-yet-reaped entries included); an existing id+cwd reconnect is exempt
+      // so it can't be locked out by its own still-alive entry. Rejection goes through
+      // the same fatal-toast hand-off as a resolve failure (never a bare destroy) so the
+      // client stops reconnecting instead of retrying every 2s against a full bucket.
+      if (!hasScratchPty(scratchId, { cwd: scratchCwd })
+        && (getScratchPtyCount() >= MAX_SCRATCH_PTYS_TOTAL
+          || getScratchPtyCountForCwd(scratchCwd) >= MAX_SCRATCH_PTYS_PER_CWD)) {
+        req.ccvScratchReject = 'scratch terminal limit reached';
+        handOffScratch();
+        return;
+      }
+      req.ccvScratchCwd = scratchCwd;
+      handOffScratch();
+    });
+    registerUpgradeRoute(httpServer, 'mux', (p) => p === '/ws/mux', (req, socket, head) => {
+      // Dialogue-channel stream mux. Auth already enforced by decideAuth above (token from
+      // ?token= / ccv_auth cookie — tokenInterceptor/appendToken put it on the ws:// URL
+      // exactly like /ws/terminal). No socket-level ?project= stamp: each logical stream
+      // carries its own scope in its `open` frame (one mux socket serves many workspaces).
+      streamMux.handleUpgrade(req, socket, head);
     });
 
     // 反压状态转换日志（observability：线上排"页面卡"时可直接判断是否触发过反压、几次、积压量）。
@@ -3189,13 +3338,18 @@ async function _doStop() {
   // cleanup watchdog(5s) 截断其后的 temp jsonl rename（用户数据）——合并为单预算
   // 保证 teardown ≤3s，watchdog 前始终留出 rename 余量。超时后控制流顺序继续。
   try {
+    let _teardownTimer = null;
     await Promise.race([
       (async () => {
         try { await imCore.stopAll(); } catch { }
+        // Service plugin teardown shares the 3s budget with IM/hooks: SIGTERM every child synchronously,
+        // then deactivate + destroy connections in parallel, SIGKILL after the deadline (see plugin-runtime P0-5).
+        try { await pluginRuntime.onServerStopping(); } catch (err) { reportSwallowed('server.plugin-stop', err); }
         await runParallelHook('serverStopping');
       })(),
-      new Promise(r => setTimeout(r, 3000)),
+      new Promise(r => { _teardownTimer = setTimeout(r, 3000); _teardownTimer.unref?.(); }),
     ]);
+    clearTimeout(_teardownTimer);
   } catch { }
   stopLogWatch();
   unwatchAllWorkflows();

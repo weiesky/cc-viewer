@@ -55,7 +55,7 @@ function handlerFor(path, method) {
 }
 
 /** body-reading POST handler 调用器 */
-function callBody(handler, body, { deps = baseDeps(), parsedUrl = { searchParams: new URLSearchParams() }, isLocal = true, headers = {}, reqUrl } = {}) {
+function callBody(handler, body, { deps = baseDeps(), parsedUrl, isLocal = true, headers = {}, reqUrl } = {}) {
   return new Promise((resolve) => {
     const req = new EventEmitter();
     req.headers = headers;
@@ -66,7 +66,8 @@ function callBody(handler, body, { deps = baseDeps(), parsedUrl = { searchParams
       writeHead(code) { status = code; },
       end(b) { raw = b || ''; let d; try { d = JSON.parse(raw); } catch { d = raw; } resolve({ status, data: d }); },
     };
-    handler(req, res, parsedUrl, isLocal, deps);
+    const effectiveParsedUrl = parsedUrl || new URL(req.url || '/api/x', 'http://localhost');
+    handler(req, res, effectiveParsedUrl, isLocal, deps);
     if (typeof body === 'string') req.emit('data', Buffer.from(body));
     else if (body !== undefined) req.emit('data', Buffer.from(JSON.stringify(body)));
     req.emit('end');
@@ -85,7 +86,7 @@ function callGet(handler, searchParams = {}, { deps = baseDeps() } = {}) {
 }
 
 /** multipart import 调用器 */
-function callMultipart(handler, { reqHeaders, reqUrl, bodyBuf, parsedUrl = { searchParams: new URLSearchParams() }, deps = baseDeps() } = {}) {
+function callMultipart(handler, { reqHeaders, reqUrl, bodyBuf, parsedUrl, deps = baseDeps() } = {}) {
   return new Promise((resolve) => {
     const req = new EventEmitter();
     req.headers = reqHeaders || {};
@@ -93,7 +94,8 @@ function callMultipart(handler, { reqHeaders, reqUrl, bodyBuf, parsedUrl = { sea
     req.destroy = () => { req.emit('close'); };
     let status = 0; let raw = '';
     const res = { writeHead(code) { status = code; }, end(b) { raw = b || ''; let d; try { d = JSON.parse(raw); } catch { d = raw; } resolve({ status, data: d }); } };
-    handler(req, res, parsedUrl, true, deps);
+    const effectiveParsedUrl = parsedUrl || new URL(req.url || '/api/upload', 'http://localhost');
+    handler(req, res, effectiveParsedUrl, true, deps);
     if (bodyBuf) req.emit('data', bodyBuf);
     req.emit('end');
   });
