@@ -71,14 +71,20 @@
    - .chatInputBottomLeft 紧贴左边界（+ / mic 等操作按钮组）
    - .ctxBarSlot 中段，flex-basis 200 + flex-shrink 1 自适应填充至 200px
    - .chatInputBottomRight 用 margin-left:auto 抢占剩余空间贴右边界（hint + send） */
-.chatInputBottomLeft,
-.chatInputBottomRight {
+.chatInputBottomLeft {
   display: flex;
   align-items: center;
   gap: 4px;
   flex: 0 0 auto;
 }
 .chatInputBottomRight {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* Shrinkable so the proxy chip yields (instead of pushing send/stop off-screen) in narrow
+     chat columns; min-width:0 lets the slot's flex-shrink actually engage. */
+  flex: 0 1 auto;
+  min-width: 0;
   margin-left: auto;
 }
 
@@ -295,6 +301,27 @@
   color: var(--border-light);
   user-select: none;
   padding: 0 4px;
+  /* Never shrink or wrap — when the right group shrinks, only the proxy chip yields, so the
+     hint stays one line and the input-bar height (and --chat-input-bar-height) is undisturbed. */
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Proxy hot-switch chip slot: between the Enter hint and the send button. flex-shrink +
+   min-width:0 + a hard cap let an over-long profile name ellipsis on the chip itself, so a
+   narrow chat column (terminal dragged wide) never breaks the right-hand controls. */
+.proxyChipSlot {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(220px, 40vw);
+  margin: 0 2px;
+}
+/* Collapse the slot when ProxyChip returns null, so the default no-proxy state leaves no dead
+   gap between the hint and the send button. */
+.proxyChipSlot:empty {
+  display: none;
 }
 
 /* 血条 portal slot：3 段式中段。flex-basis 200 + flex-shrink 1，把左/右段之间的空间填满至 200px 上限；

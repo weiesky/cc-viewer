@@ -215,8 +215,8 @@ class AppBase extends React.Component {
       // 初值 null = 还没拿到；/api/claude-settings 与 workspace_started SSE 都会塞值。
       claudeProjectModel: null,
       // SDK-mode session launch model (from the sdk-init WS message, lifted up from ChatView
-      // via onSdkModel). Rendered in AppHeader's proxy-chip slot as a hot-switch fallback —
-      // only when the proxy chip renders nothing. null = unknown / not SDK mode.
+      // via onSdkModel). Rendered as the input-bar proxy chip's hot-switch fallback — only
+      // when the proxy chip renders nothing. null = unknown / not SDK mode.
       sdkModel: null,
       resumeRememberChoice: false,
       autoApproveSeconds: 3, // 自动审批倒计时秒数；默认 3s（0=关闭 / N=N 秒后自动批准 / -1=免审批）

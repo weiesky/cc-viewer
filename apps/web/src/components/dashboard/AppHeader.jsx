@@ -20,7 +20,6 @@ import { sortSkillsDefault } from '../../utils/skillsParser';
 import { handleSkillToggle, handleSkillDelete } from '../../utils/skillModalController';
 import { PINNED_KEY, togglePinned, normalizePinnedKeys, resolvePinnedKeys } from '../../utils/pinnedMenu';
 import { reportSwallowed } from '../../utils/errorReport';
-import { shouldRenderSdkModelChip } from '../../utils/sdkModelChip';
 import { classifyRequest } from '@ccv/core/requestType';
 import { resolveTeammateNames } from '@ccv/core/contentFilter';
 import { t, getLang, setLang, LANG_OPTIONS } from '../../i18n';
@@ -45,6 +44,7 @@ import { PanelIcon } from '../plugins/panelIcons';
 import { fetchPluginPanels, invalidatePluginPanels, panelTitle } from '../../utils/pluginPanels';
 import ProcessModal from '../settings/ProcessModal';
 import ProxyModal, { profileDisplayModel } from '../settings/ProxyModal';
+import { shouldRenderSdkModelChip } from '../../utils/sdkModelChip';
 import SystemTextModal from '../settings/SystemTextModal';
 import VoicePackSettings from '../settings/VoicePackSettings';
 import MessagingModal from '../settings/MessagingModal';
@@ -2099,10 +2099,10 @@ class AppHeader extends React.Component {
     );
   }
 
-  // 把 LiveTagPopover（血条 + popover trigger）通过 createPortal 渲染到
-  // 代理 chip：主 Agent 用 profile 时显示主源；main=Default 但自定义端点且子/Teammate
-  // 有显式分配时也露头（否则代理中的角色流量无指示）。休眠（main=Default+官方端点）不显示。
-  // chip 标签只显示主源：子/Teammate 的角色分配放进 title tooltip，header 上不铺开（太冗长）。
+  // Proxy hot-switch chip — header FALLBACK only. The chip's primary home is the chat input
+  // bar (ChatView → ChatInputBar / ProxyChip). The header shows it only in PTY mode while the
+  // terminal panel is open (the input bar is unmounted then, so without this the hot-switch
+  // entry would vanish). Logic mirrors ProxyChip.jsx exactly.
   _renderProxyChip() {
     const profiles = this.props.proxyProfiles || [];
     const roles = this.props.proxyRoles || {};
@@ -2112,8 +2112,6 @@ class AppHeader extends React.Component {
     const explicitRole = v => (v && v !== 'follow') ? (v === 'max' ? 'Default' : nameOf(v)) : null;
     const subD = explicitRole(roles.subagent);
     const teamD = explicitRole(roles.teammate);
-    // Whether the proxy hot-switch chip renders anything. Mirrors the early-return guards
-    // below; when false, the slot is empty and the SDK launch-model chip may fill it.
     let proxyChipVisible = !!activeId;
     if (proxyChipVisible) {
       if (activeId === 'max') {
@@ -2122,9 +2120,8 @@ class AppHeader extends React.Component {
       } else if (!p) proxyChipVisible = false;
     }
     if (!proxyChipVisible) {
-      // Hot-switch takes priority: the SDK launch-model chip only fills this slot when the
-      // proxy chip renders nothing (official Default / dormant). Non-clickable — it is a
-      // read-only model hint, unrelated to the proxy editor.
+      // Hot-switch takes priority: the SDK launch-model chip only fills this slot when the proxy
+      // chip renders nothing (official Default / dormant). Read-only — unrelated to the proxy editor.
       if (!shouldRenderSdkModelChip({ sdkMode: this.props.sdkMode, sdkModel: this.props.sdkModel, proxyChipVisible })) return null;
       return (
         <Tag className={styles.sdkModelTag} title={t('ui.sdkModel', { model: this.props.sdkModel })}>
@@ -2370,7 +2367,9 @@ class AppHeader extends React.Component {
             </Popover>
             );
           })()}
-          {!isElectronTab && this._renderProxyChip()}
+          {/* Header fallback: only while the PTY terminal is open (input bar unmounted). The chip's
+              primary slot is the chat input bar (see ChatView). */}
+          {!isElectronTab && terminalVisible && !this.props.sdkMode && this._renderProxyChip()}
           <HeaderProjectSwitcher
             currentProject={projectName}
             viewedProject={this.props.viewedProject || null}

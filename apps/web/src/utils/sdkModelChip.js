@@ -1,7 +1,7 @@
 /**
- * Pure guard for the SDK-mode model chip (AppHeader). Extracted for testability.
+ * Pure guard for the SDK-mode model chip (input-bar ProxyChip). Extracted for testability.
  *
- * The SDK session's launch model is displayed in the SAME header slot as the proxy
+ * The SDK session's launch model is displayed in the SAME input-bar slot as the proxy
  * hot-switch chip, strictly as a fallback: the proxy chip — when it renders — already
  * surfaces the effective (post-rewrite) model, and per product direction hot-switching
  * takes priority. So the SDK chip shows only when the proxy chip would render NOTHING

@@ -49,7 +49,7 @@ const SPEECH_LANG_MAP = {
   tr: 'tr-TR', uk: 'uk-UA',
 };
 
-function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, sdkMode, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onClearContext, isStreaming, pendingImages, onRemovePendingImage, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, onClearContextNow, ultraplanPopover, agentTeamEnabled, onResumeSession, viewProject, attachedSid, slashMenuOpen, slashMenuGroups, slashMenuActiveIndex, slashMenuLoading, onSlashMenuHover, onSlashMenuSelect, onSlashMenuClose }) {
+function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, sdkMode, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onClearContext, isStreaming, pendingImages, onRemovePendingImage, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, onClearContextNow, ultraplanPopover, agentTeamEnabled, onResumeSession, viewProject, attachedSid, slashMenuOpen, slashMenuGroups, slashMenuActiveIndex, slashMenuLoading, onSlashMenuHover, onSlashMenuSelect, onSlashMenuClose, proxyChip }) {
   const [plusOpen, setPlusOpen] = useState(false);
   // 桌面四芒星菜单的级联展开行（与终端工具栏同款交互）：null | 'perm' | 'plan' | 'agentteam'
   const [quickExpanded, setQuickExpanded] = useState(null);
@@ -609,6 +609,9 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
               ? null
               : (inputSuggestion && inputEmpty ? t('ui.chatInput.hintTab') : t('ui.chatInput.hintEnter'))}
           </div>
+          {proxyChip && (
+            <div className={styles.proxyChipSlot}>{proxyChip}</div>
+          )}
           <div className={styles.sendBtnWrap}>
             {isStreaming && onStop ? (
               <button

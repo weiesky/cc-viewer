@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { Modal, Button, Input, Radio, Select, Tag, message } from 'antd';
 import { EditOutlined, DeleteOutlined, PlusOutlined, ImportOutlined } from '@ant-design/icons';
 import { t } from '../../i18n';
-import { isMobile } from '../../env';
+import { isMobile, isPad } from '../../env';
 import { apiUrl, appendToken } from '../../utils/apiUrl';
 import { reportSwallowed } from '../../utils/errorReport';
 import { BLUR_MASK_STYLE } from '../../utils/modalMask';
@@ -375,9 +376,22 @@ export default function ProxyModal({
   );
 
   if (isMobile) {
-    return (
+    // The drawer is position:absolute; inset:0. On iPad (pad-mode) mount it via a body portal:
+    // inside ChatView its containing block would be .chatSectionFlex (chat column only), leaving
+    // the top Mobile nav tappable. At body level inset:0 spans the full viewport.
+    // On phones (isMobile && !isPad) keep it in-tree instead: Mobile.jsx pins .mobileCLIRoot to
+    // position:fixed at the visualViewport offset to fight the keyboard pushing the document up,
+    // and a body-portaled drawer would escape that lock (header/close pushed off-screen).
+    const drawer = (
       <>
-        <div className={`${appStyles.mobileDrawerOverlay} ${open ? appStyles.mobileDrawerOverlayVisible : ''}`}>
+        {/* Closed state is only translateX(-100%) off-screen — its inputs/buttons would stay in
+            the tab order and a11y tree (two copies on iPad: Mobile + ChatView). inert/aria-hidden
+            + visibility remove the closed drawer from both. */}
+        <div
+          className={`${appStyles.mobileDrawerOverlay} ${open ? appStyles.mobileDrawerOverlayVisible : ''}`}
+          inert={!open ? '' : undefined}
+          aria-hidden={!open}
+        >
           <div className={appStyles.mobileLogMgmtHeader}>
             <span className={appStyles.mobileLogMgmtTitle}>{titleNode}</span>
             <MobileDrawerCloseButton onClose={onClose} />
@@ -392,6 +406,7 @@ export default function ProxyModal({
         {deleteConfirmModal}
       </>
     );
+    return isPad ? ReactDOM.createPortal(drawer, document.body) : drawer;
   }
 
   return (
