@@ -30,15 +30,24 @@ const FOCUS_LINES = 2;
 // Shared autosize helper: measures the content box (scrollHeight minus vertical padding)
 // so an empty textarea snaps to exactly one line; `focused` pads short content up to two lines.
 // Mobile (isMobile && !isPad) keeps the legacy total-box behavior (different padding/font metrics).
+// Callers typically run right before the state commit that removes a min-height class
+// (.chatTextareaTwoLines/.chatTextareaFocused), so neutralize any min-height while
+// reading scrollHeight — otherwise the floor inflates scrollHeight and the inline
+// height stays stuck at the old floor until the next keystroke.
 export function resizeChatTextarea(ta, { focused = false } = {}) {
   if (!ta) return;
+  const prevMin = ta.style.minHeight;
+  ta.style.minHeight = '0px';
   ta.style.height = 'auto';
+  const measured = ta.scrollHeight;
   if (isMobile && !isPad) {
-    ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+    ta.style.height = Math.min(measured, 160) + 'px';
+    ta.style.minHeight = prevMin;
     return;
   }
-  const content = Math.min(Math.max(ta.scrollHeight - FOCUS_VPAD, LINE_H * MIN_LINES), LINE_H * MAX_LINES);
+  const content = Math.min(Math.max(measured - FOCUS_VPAD, LINE_H * MIN_LINES), LINE_H * MAX_LINES);
   ta.style.height = (focused ? Math.max(content, LINE_H * FOCUS_LINES) : content) + 'px';
+  ta.style.minHeight = prevMin;
 }
 
 const SPEECH_LANG_MAP = {
@@ -74,6 +83,11 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
   // Desktop-only focus expand: focused empty/one-line input grows to two lines (animated via CSS).
   const [focusExpand, setFocusExpand] = useState(false);
   const focusExpandRef = useRef(false);
+  // The ghost suggestion is clamped to two lines. When it needs more than the resting
+  // one line, raise the composer to a two-line floor (.chatTextareaTwoLines) so the
+  // toolbar row keeps its space instead of being painted over.
+  const ghostRef = useRef(null);
+  const [ghostTwoLines, setGhostTwoLines] = useState(false);
 
   const resizeInput = (focused) => {
     const ta = inputRef?.current;
@@ -85,6 +99,30 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
     setFocusExpand(on);
     resizeInput(on);
   };
+
+  useLayoutEffect(() => {
+    const ghost = ghostRef.current;
+    if (!ghost) {
+      setGhostTwoLines(false);
+      return;
+    }
+    // .ghostText is line-clamped to two lines, so a clamped height above one line's
+    // line-height + vertical padding means the composer needs the two-line floor.
+    const measure = () => {
+      const cs = getComputedStyle(ghost);
+      const lineH = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5 || 0;
+      const padV = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+      const twoLines = ghost.clientHeight > lineH + padV + 1;
+      setGhostTwoLines(prev => (prev === twoLines ? prev : twoLines));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(ghost);
+    return () => ro.disconnect();
+    // terminalVisible/sdkMode: the ghost unmounts while the PTY branch early-returns;
+    // closing the terminal must re-run the measurement on the remounted ghost.
+  }, [inputSuggestion, inputEmpty, terminalVisible, sdkMode]);
 
   useEffect(() => () => {
     const rec = recRef.current;
@@ -378,7 +416,7 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
           <div className={styles.textareaWithGhost}>
             <textarea
               ref={inputRef}
-              className={`${styles.chatTextarea}${focusExpand ? ` ${styles.chatTextareaFocused}` : ''}`}
+              className={`${styles.chatTextarea}${focusExpand ? ` ${styles.chatTextareaFocused}` : ''}${ghostTwoLines ? ` ${styles.chatTextareaTwoLines}` : ''}`}
               placeholder={inputSuggestion ? '' : t('ui.chatInput.placeholder')}
               rows={1}
               onKeyDown={onKeyDown}
@@ -388,7 +426,7 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
               onBlur={() => applyFocusExpand(false)}
             />
             {inputSuggestion && inputEmpty && (
-              <div className={styles.ghostText}>{inputSuggestion}</div>
+              <div ref={ghostRef} className={styles.ghostText}>{inputSuggestion}</div>
             )}
             {recording && interimText && (
               <div className={styles.interimPreview}>{interimText}</div>

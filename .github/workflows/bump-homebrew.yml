@@ -98,7 +98,22 @@ jobs:
         run: |
           set -euo pipefail
           URL="https://registry.npmjs.org/cc-viewer/-/cc-viewer-${VER}.tgz"
-          curl -fsSL "$URL" -o /tmp/pkg.tgz
+          # The packument (metadata) becomes visible BEFORE the tarball CDN object. The wait step
+          # above polls the metadata endpoint, so it can succeed while the tarball still 404s —
+          # v1.9.10 failed exactly this way (curl exit 22). Retry the download with the same wide
+          # window: every 30s, 40 attempts = 20min. Recoverable via
+          # `gh workflow run bump-homebrew.yml -f version=<VER>`.
+          for i in $(seq 1 40); do
+            if curl -fsSL "$URL" -o /tmp/pkg.tgz 2>/dev/null; then
+              break
+            fi
+            echo "[$i/40] tarball not yet downloadable (404), sleeping 30s..."
+            sleep 30
+          done
+          if [ ! -s /tmp/pkg.tgz ]; then
+            echo "✗ Timed out waiting for tarball ${URL}" >&2
+            exit 1
+          fi
           SHA=$(sha256sum /tmp/pkg.tgz | cut -d' ' -f1)
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
