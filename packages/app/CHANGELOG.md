@@ -1,5 +1,13 @@
 # cc-viewer
 
+## 1.9.10
+
+### Patch Changes
+
+- 45bfa41: fix(server): gate all `[ccv:*]` diagnostic console output on `CCV_DEBUG` so a down/flaky upstream or other recoverable noise no longer spams the terminal; set `CCV_DEBUG=1` to restore the previous per-tag capped logging.
+- 58493d1: feat(server+web): directory-shaped service plugins — independent child-process HTTP/WS services mounted on the main port under `/plugins/<name>/*`, full activate/deactivate/onError lifecycle with hot reload, plus remote React component panels hot-mounted into the web UI (desktop modal + mobile overlay) via `window.CCV.registerPanel`. Third-party docs: `docs/plugin-services.md` / `docs/plugin-services.zh.md`.
+- 9b1bb4e: fix(sdk): render turn/query failures as persistent, count-merged rows in the dialogue tail (not just a toast), and scope query-error frames by cwd/sessionId/instanceKey so multi-workspace errors no longer leak across views.
+
 ## 1.9.9
 
 ### Patch Changes
