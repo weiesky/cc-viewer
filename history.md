@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- feat(web): **「AgentTeam」菜单标签改名「快捷指令」** — 终端四芒星菜单与对话输入面板 (+) 菜单的级联行标签统一改名；各 locale 按「快捷提示词」语义本地化（en: Quick Prompts、ja: クイックプロンプト、de: Schnellprompts 等），非字面直译。
 - feat(web): **终端工具栏上传收纳进四芒星快捷菜单** — 终端底部工具栏独立的上传圆钮移除，「上传文件」改为四芒星菜单顶部菜单项（级联行样式），与对话输入面板 (+) 菜单行为对齐；hidden file input、`handleFileUpload`、pending-images / WS `image-upload-notify` 链路不变。Coverage: `upload-terminal-plus-menu.test.js`.
 - fix(server): **`[ccv:*]` 诊断日志默认静默，仅 `CCV_DEBUG=1` 时打印** — server 端全部 `reportSwallowed` 经新增 `server/lib/error-report.js` 门控包装转发 core，未开启时零 console 输出（上游挂掉/网络抖动等可恢复错误不再刷 `[ccv:proxyRetry.single-fetch]` 之类的告警）；web 前端不受影响。Coverage: `server-error-report.test.js`.
 - fix(web+server): **SDK 模式回合/查询错误渲染进对话** — SDK 出错（回合 result 错误、query 死亡/构建失败）此前只有瞬时 toast，对话里看似挂起。现对话尾部持久渲染错误行：相同错误合并计次 ×N（上限 3 条、带时间戳），发送新消息/切工作区/切视图/换会话时清除；toast 保留并与行同按工作区/实例 scope。query 级错误帧补 cwd/sessionId/instanceKey 路由元数据，route-failure 帧补 project 键，修复多工作区错误串台。Coverage: `sdk-manager-query.test.js`, `sdk-session-registry.test.js`, `cli-sdk-error-frame.test.js`, `sdk-error-dialogue.test.js`, `ws-instance-isolation.test.js`.
