@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- feat(web): **终端工具栏上传收纳进四芒星快捷菜单** — 终端底部工具栏独立的上传圆钮移除，「上传文件」改为四芒星菜单顶部菜单项（级联行样式），与对话输入面板 (+) 菜单行为对齐；hidden file input、`handleFileUpload`、pending-images / WS `image-upload-notify` 链路不变。Coverage: `upload-terminal-plus-menu.test.js`.
 - fix(server): **`[ccv:*]` 诊断日志默认静默，仅 `CCV_DEBUG=1` 时打印** — server 端全部 `reportSwallowed` 经新增 `server/lib/error-report.js` 门控包装转发 core，未开启时零 console 输出（上游挂掉/网络抖动等可恢复错误不再刷 `[ccv:proxyRetry.single-fetch]` 之类的告警）；web 前端不受影响。Coverage: `server-error-report.test.js`.
 - fix(web+server): **SDK 模式回合/查询错误渲染进对话** — SDK 出错（回合 result 错误、query 死亡/构建失败）此前只有瞬时 toast，对话里看似挂起。现对话尾部持久渲染错误行：相同错误合并计次 ×N（上限 3 条、带时间戳），发送新消息/切工作区/切视图/换会话时清除；toast 保留并与行同按工作区/实例 scope。query 级错误帧补 cwd/sessionId/instanceKey 路由元数据，route-failure 帧补 project 键，修复多工作区错误串台。Coverage: `sdk-manager-query.test.js`, `sdk-session-registry.test.js`, `cli-sdk-error-frame.test.js`, `sdk-error-dialogue.test.js`, `ws-instance-isolation.test.js`.
 - fix(web+server): **`/` 技能菜单与 SDK 面评审修复** — 收敛 supportedCommands 为纯 skill（按 init.skills 白名单过滤掉 /clear /model 等 TUI 内置命令）；空命令面回退 /api/skills；修复 SDK attach 切换工作区后重发 sdk-skills 的死代码（移到 return 前）；修复刷新/视图恢复时延迟初始化误清技能面的 reset 竞态；/api/skills 失败 5s 冷却后可重试；移动端菜单字号做 0.6 zoom 补偿；抽 `utils/projectKeyFromCwd` 统一前端 cwd→key 消毒（修 AppBase session-state 对 CJK/空格工作区的误判）；SDK 模式隐藏不生效的「Plan 自动审批」行。Coverage: `sdk-manager-query.test.js`, `project-key-from-cwd.test.js`, `sdk-plan-approval-guard.test.js`, `resume-history-menu.test.js`.

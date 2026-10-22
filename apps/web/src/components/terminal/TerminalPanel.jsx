@@ -1863,6 +1863,21 @@ class TerminalPanel extends React.Component {
               overlayInnerStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-hover)', borderRadius: 8, padding: 4, minWidth: 200 }}
               content={
                 <div className={styles.presetMenu}>
+                  {/* Upload top-level row: folded in from the standalone toolbar round button
+                      (mirrors the ChatInputBar (+) menu). onMouseEnter cancels hover-intent and
+                      collapses any expanded cascade, so moving diagonally from 历史会话/AgentTeam
+                      onto this row does not leave a stale submenu open. */}
+                  <button
+                    className={chrome.quickMenuRow}
+                    onClick={() => {
+                      this.setState({ quickSettingsOpen: false, quickSettingsExpanded: null });
+                      this.fileInputRef.current?.click();
+                    }}
+                    onMouseEnter={() => { this._qmHover.cancel(); if (this.state.quickSettingsExpanded) this.setState({ quickSettingsExpanded: null }); }}
+                  >
+                    <span className={chrome.quickMenuRowIcon}><UploadIcon /></span>
+                    <span className={chrome.quickMenuLabel}>{t('ui.terminal.upload')}</span>
+                  </button>
                   <QuickAutoApproveRows
                     autoApproveSeconds={this.props.autoApproveSeconds}
                     planAutoApproveSeconds={this.props.planAutoApproveSeconds}
@@ -1982,9 +1997,6 @@ class TerminalPanel extends React.Component {
                 </button>
               </Popover>
             ) : null}
-            <button className={styles.toolbarBtn} onClick={() => this.fileInputRef.current?.click()} title={t('ui.terminal.upload')}>
-              <UploadIcon />
-            </button>
             {(() => {
               // i18n 是单句 "X？Y。" 结构，按 ? / ？ 拆成 Popconfirm 的 title + description 以换行呈现
               const confirmFull = t('ui.chatInput.clearContextConfirm');
