@@ -935,6 +935,7 @@ class Mobile extends AppBase {
                     onScrollTsDone={() => {}}
                     cliMode={this.state.cliMode}
                     sdkMode={this.state.sdkMode}
+                    onSdkModel={this.handleSdkModel}
                     onSdkSessionState={this.handleSdkSessionState}
                     terminalVisible={this.state.mobileTerminalVisible}
                     mobileChatVisible={true}
@@ -961,6 +962,13 @@ class Mobile extends AppBase {
                     onClearContextOptimistic={this.handleClearContextOptimistic}
                     onUserMessageSent={this.handleUserMessageSent}
                     attachedSid={this.state.attachedSid || null}
+                    sdkModel={this.state.sdkModel}
+                    proxyProfiles={this.state.proxyProfiles}
+                    activeProxyId={this.state.activeProxyId}
+                    defaultConfig={this.state.defaultConfig}
+                    proxyRoles={this.state.proxyRoles}
+                    proxyOfficialDefault={this.state.proxyOfficialDefault}
+                    onProxyProfileChange={this.handleProxyProfileChange}
                   />
                 </div>
             </>

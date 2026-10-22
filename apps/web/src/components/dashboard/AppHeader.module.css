@@ -748,8 +748,8 @@
   border-color: var(--text-disabled);
 }
 
-/* SDK-mode launch-model chip: same pill geometry as .proxyProfileTag (it fills the same
-   slot as a hot-switch fallback) but read-only — no pointer cursor / hover affordance. */
+/* SDK-mode launch-model chip (header fallback): same pill geometry as .proxyProfileTag but
+   read-only — no pointer cursor / hover affordance. */
 .sdkModelTag {
   border-radius: 12px;
   background: var(--border-secondary);

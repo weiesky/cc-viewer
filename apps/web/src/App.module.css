@@ -1090,17 +1090,20 @@
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  transition: transform 0.3s ease;
+  transition: transform 0.3s ease, visibility 0.3s;
   will-change: transform;
   z-index: 100;
   background: var(--bg-base-alt);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* Closed drawers sit off-screen via transform alone; keep them out of the a11y tree too. */
+  visibility: hidden;
 }
 
 .mobileDrawerOverlayVisible {
   transform: translateX(0);
+  visibility: visible;
 }
 
 .mobileDrawerInner {

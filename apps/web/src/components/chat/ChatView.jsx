@@ -34,6 +34,8 @@ import { WorkflowButton, WorkflowRunsModal } from '../dashboard/WorkflowRunsPane
 import SnapLineOverlay from '../common/SnapLineOverlay';
 import RoleFilterBar from './RoleFilterBar';
 import ChatInputBar, { resizeChatTextarea } from './ChatInputBar';
+import ProxyChip from './ProxyChip';
+import ProxyModal from '../settings/ProxyModal';
 import WorkflowLiveHud from '../viewers/WorkflowLiveHud';
 import TaskProgressHud from './TaskProgressHud';
 import PresetModal from '../terminal/PresetModal';
@@ -332,6 +334,9 @@ class ChatView extends React.Component {
       tokenStatsPopoverOpen: false,
       // 桌面隐藏终端的输入栏 UltraPlan 弹层（与终端工具栏共用 UltraplanPanel）
       ultraplanPopoverOpen: false,
+      // ProxyModal toggle for the input-bar proxy hot-switch chip (chip click lifts up here,
+      // replacing the chip entry that used to live in AppHeader; the header/menu entries remain).
+      proxyModalVisible: false,
       ultraplanPopoverSize: readUltraplanPopoverSize(), // 与终端弹层共享同一对 localStorage key
       ultraplanExpertOrder: [],
       ultraplanExpertHidden: [],
@@ -647,6 +652,17 @@ class ChatView extends React.Component {
       nextProps.viewInstance !== this.props.viewInstance ||
       nextProps.attachedSid !== this.props.attachedSid ||
       nextProps.onResumeSession !== this.props.onResumeSession ||
+      // Input-bar proxy hot-switch chip (2026-10-22, migrated from AppHeader): the proxy/model
+      // props must reach ChatInputBar, or the chip never re-renders on hot-switch, role assignment,
+      // or SDK launch-model lift.
+      nextProps.sdkMode !== this.props.sdkMode ||
+      nextProps.sdkModel !== this.props.sdkModel ||
+      nextProps.proxyProfiles !== this.props.proxyProfiles ||
+      nextProps.activeProxyId !== this.props.activeProxyId ||
+      nextProps.defaultConfig !== this.props.defaultConfig ||
+      nextProps.proxyRoles !== this.props.proxyRoles ||
+      nextProps.proxyOfficialDefault !== this.props.proxyOfficialDefault ||
+      nextProps.onProxyProfileChange !== this.props.onProxyProfileChange ||
       nextState !== this.state
     );
   }
@@ -3791,6 +3807,25 @@ class ChatView extends React.Component {
       && this.state.slashMenuFsSkills === null;
     const streamSpinnerUrl = this._streamSpinnerUrl || shimmerUrl;
 
+    // Proxy hot-switch chip (migrated from AppHeader into the input bar's bottom-right): shown in
+    // --sdk mode and in PTY mode once the terminal panel is closed. While the PTY terminal is open
+    // the input bar is unmounted and the chip moves back to the Header (see AppHeader's fallback).
+    // Hidden on pure phones (isMobile && !isPad — phone entry is the Mobile hamburger menu) and in
+    // Electron native-tab mode (window.tabBridge — the tab bar already has a proxy button).
+    const isElectronTab = (typeof window !== 'undefined' && !!window.tabBridge);
+    const showProxyChip = (this.props.sdkMode || !terminalVisible) && !(isMobile && !isPad) && !isElectronTab;
+    const proxyChipNode = showProxyChip ? (
+      <ProxyChip
+        proxyProfiles={this.props.proxyProfiles}
+        activeProxyId={this.props.activeProxyId}
+        proxyRoles={this.props.proxyRoles}
+        proxyOfficialDefault={this.props.proxyOfficialDefault}
+        sdkMode={this.props.sdkMode}
+        sdkModel={this.props.sdkModel}
+        onOpenProxyModal={() => this.setState({ proxyModalVisible: true })}
+      />
+    ) : null;
+
     // 计算 SnapLineOverlay 的 currentLeft（侧栏拖拽时用侧栏宽度，终端拖拽时用终端位置）
     let snapCurrentLeft = 0;
     if (this.state.isDragging) {
@@ -4510,8 +4545,24 @@ class ChatView extends React.Component {
               onResumeSession={this.props.isLocalLog ? null : this.props.onResumeSession}
               viewProject={this.props.viewProject}
               attachedSid={this.props.attachedSid}
+              proxyChip={proxyChipNode}
             />
             </div>
+            {/* On pure phones the chip never renders, so this ProxyModal can never open — phones use
+                the Mobile hamburger menu's fullscreen drawer. Mount this copy only for the PC/iPad
+                input-bar chip, avoiding a duplicate always-mounted in-tab-order drawer on phones. */}
+            {!(isMobile && !isPad) && (
+            <ProxyModal
+              open={this.state.proxyModalVisible}
+              onClose={() => this.setState({ proxyModalVisible: false })}
+              proxyProfiles={this.props.proxyProfiles}
+              activeProxyId={this.props.activeProxyId}
+              defaultConfig={this.props.defaultConfig}
+              proxyRoles={this.props.proxyRoles}
+              proxyOfficialDefault={this.props.proxyOfficialDefault}
+              onProxyProfileChange={this.props.onProxyProfileChange}
+            />
+            )}
             <UltraPlanModal
               open={this.state.ultraplanModalOpen}
               variant={this.state.ultraplanVariant}

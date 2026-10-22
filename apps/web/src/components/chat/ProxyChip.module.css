@@ -1,0 +1,42 @@
+/* Proxy hot-switch chip in the chat input bar. Geometry mirrors the header original
+   (the AppHeader pill it replaces): same look so the migration is visually neutral. */
+
+.swapIcon {
+  margin-right: 4px;
+  font-size: 11px;
+}
+
+.proxyChip {
+  border-radius: 12px;
+  background: var(--border-secondary);
+  border: 1px solid var(--border-light);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+  margin-inline-end: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.proxyChip:hover {
+  color: var(--text-secondary);
+  border-color: var(--text-disabled);
+}
+
+/* SDK-mode launch-model chip: same pill geometry as .proxyChip (it fills the same slot as a
+   hot-switch fallback) but read-only — no pointer cursor / hover affordance. */
+.sdkChip {
+  border-radius: 12px;
+  background: var(--border-secondary);
+  border: 1px solid var(--border-light);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  cursor: default;
+  margin-inline-end: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
