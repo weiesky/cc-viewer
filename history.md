@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- fix(server): **`[ccv:*]` 诊断日志默认静默，仅 `CCV_DEBUG=1` 时打印** — server 端全部 `reportSwallowed` 经新增 `server/lib/error-report.js` 门控包装转发 core，未开启时零 console 输出（上游挂掉/网络抖动等可恢复错误不再刷 `[ccv:proxyRetry.single-fetch]` 之类的告警）；web 前端不受影响。Coverage: `server-error-report.test.js`.
 - fix(web+server): **`/` 技能菜单与 SDK 面评审修复** — 收敛 supportedCommands 为纯 skill（按 init.skills 白名单过滤掉 /clear /model 等 TUI 内置命令）；空命令面回退 /api/skills；修复 SDK attach 切换工作区后重发 sdk-skills 的死代码（移到 return 前）；修复刷新/视图恢复时延迟初始化误清技能面的 reset 竞态；/api/skills 失败 5s 冷却后可重试；移动端菜单字号做 0.6 zoom 补偿；抽 `utils/projectKeyFromCwd` 统一前端 cwd→key 消毒（修 AppBase session-state 对 CJK/空格工作区的误判）；SDK 模式隐藏不生效的「Plan 自动审批」行。Coverage: `sdk-manager-query.test.js`, `project-key-from-cwd.test.js`, `sdk-plan-approval-guard.test.js`, `resume-history-menu.test.js`.
 - fix(web): **修复 SDK 模式 plan 审批卡死** — SDK 模式下 cliMode 同为 true，导致 PTY 计划审批卡片/全局弹窗被一并激活，其「批准」发送的 PTY 击键被服务端 SDK 通道丢弃，SDK 会话空等至 5 分钟超时。现将 PTY plan 卡片、全局弹窗与「Plan 自动审批」全部按 `!sdkMode` 门控，SDK 模式只留底部 sdk-plan-* 审批面板。Coverage: `sdk-plan-approval-guard.test.js`.
 - feat(web): **桌面文件上传收纳进 (+) 菜单** — 聊天输入栏独立的桌面上传圆钮移除，「上传文件」改为 (+) 菜单顶部菜单项（级联行样式），与移动端行为对齐；粘贴/拖拽上传链路不变。Coverage: `upload-plus-menu.test.js`.

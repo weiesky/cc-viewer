@@ -21,7 +21,7 @@ import { readJsonlTolerant } from './replay.js';
 import { iterateJsonlLines } from './jsonl-read.js';
 import { iterateV2Items, findTeammateSessionDirs } from './adapter.js';
 import { SingleFlight } from './singleflight.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../../lib/error-report.js';
 import { classifyRequest, withAgentNameSubType } from '@ccv/core/requestType';
 
 // KEEP IN SYNC: server/lib/v2/adapter.js itemKey — (sessionId, seq) identity.

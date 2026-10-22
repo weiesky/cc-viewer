@@ -24,7 +24,7 @@ import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { renameSyncWithRetry } from './file-api.js';
 import { withFileLockAsync, hasLiveDiskHolder } from './async-file-lock.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 
 /** Lock file lives next to the data file, derived from ITS name (not a fixed basename), so two
  *  different files in the same directory never share a lock by accident. */

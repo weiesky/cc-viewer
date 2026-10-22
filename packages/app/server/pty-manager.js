@@ -17,7 +17,7 @@ import { randomBytes } from 'node:crypto';
 // (shared with the SDK link). Re-exported here for existing consumers/tests.
 import { withDefaultThinkingDisplay, resolveLaunchSystemPrompt, insertBeforeDashDash } from './lib/launch-config.js';
 export { withDefaultThinkingDisplay } from './lib/launch-config.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from './lib/error-report.js';
 import { t, tFor } from './i18n.js';
 
 const __filename = fileURLToPath(import.meta.url);

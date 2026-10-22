@@ -5,7 +5,7 @@ import { _projectName, getLiveLogSource, isContinuedLaunch } from '../intercepto
 import { LOG_DIR } from '../../findcc.js';
 import { streamRawEntriesAsync } from '../lib/log-stream.js';
 import { migrationStatus } from '../lib/v2/migrate-prompt.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 import { sseHead, sseWrite, needsDrain, wireEnd, awaitWireDrain, isWireV3Enabled } from '../lib/wire-compress.js';
 import { scopeKeyForProducer } from '../lib/scope-router.js';
 import { readV2ColdBundle } from '../lib/v2/meta-rows.js';

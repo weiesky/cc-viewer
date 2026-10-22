@@ -5,7 +5,7 @@ import { reconstructEntries } from '@ccv/core/delta-reconstructor';
 import { enrichEntry } from './enrich-plan-input.js';
 import { enrichEntry as enrichWorkflowEntry } from './enrich-workflow.js';
 import { sseWrite } from './wire-compress.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 
 // 1.7.0: the v1 log-file tail (fs.watch + byte cursors + rotation follow)
 // retired with the v1 write path — the live channel is server/lib/v2/

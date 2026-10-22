@@ -6,7 +6,7 @@ import { ERROR_STATUS_MAP } from '../lib/file-api.js';
 import { viewRootOrReply } from '../lib/view-root.js';
 import { loadWorkspaces } from '../workspace-registry.js';
 import { listLivePtys } from '../pty-manager.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 import { discoverClaudeMdCandidates, readCandidateById } from '../lib/claude-md-discovery.js';
 import { getClaudeConfigDir } from '../../findcc.js';
 import { _projectName } from '../interceptor.js';

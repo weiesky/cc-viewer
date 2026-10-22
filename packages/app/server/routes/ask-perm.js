@@ -6,7 +6,7 @@ import { filterClientsByScope } from '../lib/v2/view-router.js';
 import { _projectName } from '../interceptor.js';
 import { readPrefsRaw } from '../lib/prefs-store.js';
 import { getCurrentProjectKey, hasFork, resolveScoped } from '../lib/project-prefs.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 
 function pendingAsks(req, res, parsedUrl, isLocal, deps) {
   try {

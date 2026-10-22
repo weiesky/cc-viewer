@@ -24,7 +24,7 @@
  *   against an in-flight inject (same accepted risk class as the IM bridge today).
  */
 
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 import { bracketPasteSubmit, sanitizeInbound } from './im/im-bridge-core.js';
 
 const MAX_ITEMS = 50;             // im-bridge-core MAX_QUEUE parity

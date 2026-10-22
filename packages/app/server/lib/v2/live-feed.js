@@ -24,7 +24,7 @@
 
 import { watch, existsSync, readdirSync, readFileSync, statSync, openSync, readSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../../lib/error-report.js';
 import { createIncrementalReconstructor } from '@ccv/core/delta-reconstructor';
 import { processWatchedEntry, sendEventToClients, sendEventRawToClients } from '../log-watcher.js';
 import { filterClientsByInstance } from './view-router.js';

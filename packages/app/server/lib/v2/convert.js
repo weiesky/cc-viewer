@@ -28,7 +28,7 @@ import { join, basename } from 'node:path';
 import { iterateRawEntriesAsync } from '../log-stream.js';
 import { createIncrementalReconstructor } from '@ccv/core/delta-reconstructor';
 import { isLogFileName, parseLogTs } from '../log-file-utils.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../../lib/error-report.js';
 import { V2Writer } from './v2-writer.js';
 import { verifyV1File } from './verify.js';
 import { parseUserId } from './identity.js';

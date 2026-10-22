@@ -12,7 +12,7 @@
 // affects the request or spawn paths.
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 import { LOG_DIR } from '../../findcc.js';
 import { injectionConfigured } from './launch-config.js';
 import { readSnapshotByKey, transcriptDirForCwd, projectKeyForCwd } from './system-prompt-snapshots.js';

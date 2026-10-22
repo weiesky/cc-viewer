@@ -26,7 +26,7 @@ import { listSessionIds, readJsonlTolerant } from './replay.js';
 import { readPromptsHead, collectPromptsFromEvents } from '../user-prompt-extract.js';
 import { isDiscardableSession } from './session-select.js';
 import { isSupportedWireFormat, dirSizeSync } from './layout.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../../lib/error-report.js';
 
 const MAX_PROJECTS = 32;
 

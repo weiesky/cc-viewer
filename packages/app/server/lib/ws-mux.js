@@ -42,7 +42,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { reportSwallowed as defaultReport } from '@ccv/core/error-report';
+import { reportSwallowed as defaultReport } from '../lib/error-report.js';
 import { createBackpressureGate } from './ws-backpressure.js';
 
 const STREAM_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;

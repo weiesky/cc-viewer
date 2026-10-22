@@ -1,6 +1,6 @@
 // Synchronous read-only projection of the SDK session registry. Generic view
 // routing must not import sdk-manager (and eagerly load the Agent SDK) in PTY mode.
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 
 let _listSessions = null;
 

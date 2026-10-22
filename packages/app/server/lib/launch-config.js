@@ -19,7 +19,7 @@ import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { LOG_DIR } from '../../findcc.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 import {
   buildSystemPromptFileArgs, hasArg, argValue, isNonEmptyFile,
   SYSTEM_PROMPT_FILE, APPEND_SYSTEM_PROMPT_FILE,

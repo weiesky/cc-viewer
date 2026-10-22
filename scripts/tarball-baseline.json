@@ -1421,6 +1421,7 @@
   "server/lib/enrich-plan-input.js",
   "server/lib/enrich-workflow.js",
   "server/lib/ensure-hooks.js",
+  "server/lib/error-report.js",
   "server/lib/extract-plugin-name.mjs",
   "server/lib/file-access-policy.js",
   "server/lib/file-api.js",

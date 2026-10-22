@@ -17,7 +17,7 @@
 //   - race/stagger use AbortController; cancelled requests must be released correctly.
 import { resolveProfileModel, replaceTopLevelSystem } from '../interceptor-core.js';
 import { readFileSync, existsSync } from 'node:fs';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../../lib/error-report.js';
 import { liveSystemPromptEnabled, getLiveEntry, applyLiveSystem, knownInjectedTexts } from '../system-prompt-live.js';
 import { parseUserId } from '../session-id.js';
 

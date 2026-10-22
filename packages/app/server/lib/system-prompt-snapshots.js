@@ -33,7 +33,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, statSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 import { LOG_DIR, getClaudeConfigDir } from '../../findcc.js';
 import { renameSyncWithRetry } from './file-api.js';
 

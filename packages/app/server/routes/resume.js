@@ -53,7 +53,7 @@ import { bumpWorkspacesVersion } from '../lib/file-access-policy.js';
 import { isAdminReq } from '../lib/is-admin.js';
 import { isSameOriginBrowserRequest } from '../lib/same-origin.js';
 import { sseWrite } from '../lib/wire-compress.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 import { findSdkSessionByInstance, listSdkSessionInstances } from '../lib/sdk-session-index.js';
 
 function sendJson(res, code, obj) {

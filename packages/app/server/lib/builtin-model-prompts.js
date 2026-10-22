@@ -18,7 +18,7 @@ import { join } from 'node:path';
 import { expandModelIdVariants, normalizeModelName } from './model-system-prompts.js';
 import { listSystemPromptPresets } from './system-prompt-presets.js';
 import { renameSyncWithRetry } from './file-api.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 
 // 墓碑文件名：放在对应 scope 的 modelPromptDir 里，内容是规范大写名的 JSON 数组。
 // parseModelPromptFileName 对非 *_SYSTEM.md 文件名返回 null，天然不干扰条目列表。

@@ -13,7 +13,7 @@
 // Boundary: L1-lib. Imports json-store + credential-access + findcc (load-time root).
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 import { LOG_DIR } from '../../findcc.js';
 import { mutateJsonSync } from './json-store.js';
 import { migrateFieldWithVerify, getCredentialsFile } from './credential-access.js';

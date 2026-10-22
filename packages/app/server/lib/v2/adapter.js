@@ -29,7 +29,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../../lib/error-report.js';
 import { isMainAgentRequest } from '../interceptor-core.js';
 import { readSession } from './replay.js';
 import { iterateJsonlLines } from './jsonl-read.js';

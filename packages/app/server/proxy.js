@@ -13,7 +13,7 @@ import { parseAgentId, findHeader } from './lib/v2/agent-id.js';
 import { liveSystemPromptEnabled } from './lib/system-prompt-live.js';
 import { executeRequest, extractModel } from './lib/proxy/proxy-retry.js';
 import { buildRecord, appendRecord, dailyFilePath, todayStr, emitProxyStatsUpdate } from './lib/proxy/proxy-stats.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from './lib/error-report.js';
 import { LOG_DIR } from '../findcc.js';
 
 // Setup interceptor to patch fetch

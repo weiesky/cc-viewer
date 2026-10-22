@@ -25,7 +25,7 @@ import { summarizeSessionPage } from './session-list.js';
 import { sessionHasMainOrTeammateReq } from './session-select.js';
 import { readPin } from '../session-pin-store.js';
 import { LIVE_SESSION_MTIME_MS } from '../log-file-utils.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../../lib/error-report.js';
 
 /**
  * Liveness heuristic for the "running" placeholder column. A session is

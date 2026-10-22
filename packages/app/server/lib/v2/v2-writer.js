@@ -19,7 +19,7 @@
 import { statfsSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, basename, sep } from 'node:path';
 import { AsyncWriteQueue } from '../async-write-queue.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../../lib/error-report.js';
 import { ensureSessionDirSync, compactLocalTs14, sanitizePathComponent, normalizeSessionCwd } from './layout.js';
 import { resolveSessionDirName, latestMainSession } from './session-select.js';
 import { acquireSessionClaim, releaseSessionClaim, isForeignLiveOwned } from './session-owner.js';

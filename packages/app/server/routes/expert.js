@@ -19,7 +19,7 @@ import {
   matchBuiltinModelPrompt, isBuiltinDisabled,
   readBuiltinDisabled, setBuiltinDisabled, listBuiltinModelPrompts,
 } from '../lib/builtin-model-prompts.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 import { resolveSpawnModel } from '../lib/spawn-model-resolver.js';
 import { listSystemPromptPresets, groupPresetsByCategory, getSystemPromptVariablesDoc } from '../lib/system-prompt-presets.js';
 import { LOG_DIR } from '../../findcc.js';

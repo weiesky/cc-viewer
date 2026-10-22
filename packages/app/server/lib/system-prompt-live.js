@@ -19,7 +19,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 import { LOG_DIR } from '../../findcc.js';
 import { renameSyncWithRetry } from './file-api.js';
 import { matchModelPrompt, MODEL_PROMPT_DIR, readModelPrompt } from './model-system-prompts.js';

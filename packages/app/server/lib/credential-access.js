@@ -22,7 +22,7 @@
 //
 // Boundary: L1-lib (imports json-store + credential-store/vault + findcc for the load-time root).
 import { existsSync, readFileSync } from 'node:fs';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 import { LOG_DIR } from '../../findcc.js';
 import {
   setSecret, getSecret, hasSecret, deleteSecret, credentialsFileFor, masterKeyPathFor, vaultUnreadable,

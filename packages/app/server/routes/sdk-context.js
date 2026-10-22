@@ -2,7 +2,7 @@
 // the automatic turn-end/compact refreshes flow over the WS broadcast instead. A
 // `session-inactive` outcome is a NORMAL state (no turn run yet / query dead), so it
 // returns 200 with { ok:false, reason } rather than an HTTP error.
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 
 async function sdkContextUsage(req, res) {
   try {

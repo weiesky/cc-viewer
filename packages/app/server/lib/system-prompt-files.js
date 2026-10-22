@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { MODEL_PROMPT_DIR, matchModelPrompt } from './model-system-prompts.js';
 import { isBuiltinDisabled, matchBuiltinModelPrompt, materializeBuiltinPrompt } from './builtin-model-prompts.js';
 import { isNonEmptyFile } from './file-api.js';
-import { reportSwallowed } from '@ccv/core/error-report';
+import { reportSwallowed } from '../lib/error-report.js';
 
 // isNonEmptyFile lives in file-api.js (shared leaf, cycle break:
 // model-system-prompts.js must not import this module). Re-exported here so
