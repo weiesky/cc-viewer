@@ -62,6 +62,31 @@ describe('floating inputStack layout regression', () => {
     assert.ok(inputCss.includes('background: transparent') || inputCss.includes('background:transparent'), 'chatInputBar is transparent');
   });
 
+  it('.inputStack gradient stops at the measured scrollbar gutter', () => {
+    const rule = css.match(/\.inputStack\s*\{[\s\S]*?\n\}/)?.[0] || '';
+    assert.ok(rule.includes('--chat-scrollbar-width'), 'uses measured scrollbar width');
+    assert.ok(rule.includes('var(--chat-scrollbar-width, 0px)'), 'has 0px fallback for overlay scrollbars');
+    assert.ok(/background-size:\s*calc\(100%\s*-\s*var\(--chat-scrollbar-width/.test(rule),
+      'gradient is inset by the scrollbar gutter');
+    assert.ok(rule.includes('background-repeat: no-repeat'), 'no-repeat prevents tiling into the gutter');
+    assert.ok(!/background(?:-color)?:\s*var\(--bg-input-strip\)/.test(rule),
+      'no full-width solid background/background-color painting over the gutter');
+  });
+
+  it('scrollbar gutter is measured and cleaned up', () => {
+    const bindCalls = jsx.match(/this\._bindChatScrollbarRO\(\);/g) || [];
+    assert.ok(bindCalls.length >= 2, 'bound in componentDidMount and componentDidUpdate');
+    assert.ok(jsx.includes('offsetWidth - el.clientWidth'), 'measures the real gutter');
+    assert.ok(jsx.includes('this._chatScrollbarRO.disconnect()'), 'RO disconnect in unmount');
+    assert.ok(jsx.includes("removeProperty('--chat-scrollbar-width')"), 'CSS var cleanup in unmount');
+    assert.ok(jsx.includes("_getScrollContainer()"), 'reuses existing scroller getter');
+    assert.ok(jsx.includes("setProperty('--chat-scrollbar-width', '0px')"),
+      'resets to 0 when scroller is missing');
+    assert.ok(jsx.includes('_overlayScrollbarBleed'), 'has overlay-scrollbar fallback');
+    assert.ok(jsx.includes('new ResizeObserver(() => this._measureChatScrollbarWidth())'),
+      'width stays current when the scrollbar appears/disappears');
+  });
+
   it('no !important in any changed CSS rules (excluding comments)', () => {
     // Strip comments before checking for !important
     const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, '');

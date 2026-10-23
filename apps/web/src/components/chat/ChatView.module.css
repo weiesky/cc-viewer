@@ -471,13 +471,25 @@
   right: 0;
   bottom: 0;
   z-index: 15;
-  background: var(--bg-input-strip);
-  background: linear-gradient(
+  /* Paint the fade only up to the message list's scrollbar gutter
+     (--chat-scrollbar-width is measured from the live scroller; 0 for
+     overlay scrollbars). Keeps the vertical scrollbar fully visible.
+     The first gradient is a color-mix-free fallback for older browsers;
+     the second overrides it where color-mix is supported. */
+  background-image: linear-gradient(
+    to top,
+    var(--bg-input-strip) 0%,
+    transparent 100%
+  );
+  background-image: linear-gradient(
     to top,
     var(--bg-input-strip) 0%,
     color-mix(in srgb, var(--bg-input-strip) 85%, transparent) 55%,
     transparent 100%
   );
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: calc(100% - var(--chat-scrollbar-width, 0px)) 100%;
   pointer-events: none;
 }
 
