@@ -9,7 +9,7 @@ import ImageLightbox from '../common/ImageLightbox';
 import ConfirmRemoveButton from '../common/ConfirmRemoveButton';
 import styles from './ChatInputBar.module.css';
 import chrome from '../common/sharedChrome.module.css';
-import { AgentTeamIcon, UltraplanIcon, UploadIcon, TrashIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
+import { AgentTeamIcon, UltraplanIcon, UploadIcon, TrashIcon, ScheduleIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
 import QuickAutoApproveRows from '../common/QuickAutoApproveRows';
 import ResumeSessionsRow from '../common/ResumeSessionsRow';
 import SlashCommandMenu from './SlashCommandMenu';
@@ -58,7 +58,7 @@ const SPEECH_LANG_MAP = {
   tr: 'tr-TR', uk: 'uk-UA',
 };
 
-function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, sdkMode, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onClearContext, isStreaming, pendingImages, onRemovePendingImage, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, onClearContextNow, ultraplanPopover, agentTeamEnabled, onResumeSession, viewProject, attachedSid, slashMenuOpen, slashMenuGroups, slashMenuActiveIndex, slashMenuLoading, onSlashMenuHover, onSlashMenuSelect, onSlashMenuClose, proxyChip }) {
+function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, sdkMode, onKeyDown, onChange, onSend, onStop, onSuggestionClick, onUploadPath, presetItems, onPresetSend, onOpenPresetModal, onOpenUltraPlan, onOpenScheduleModal, onClearContext, isStreaming, pendingImages, onRemovePendingImage, uploadingItems, sendDeferred, onUploadStart, onUploadEnd, setContextBarSlot, autoApproveSeconds, onAutoApproveChange, planAutoApproveSeconds, onPlanAutoApproveChange, onClearContextNow, ultraplanPopover, agentTeamEnabled, onResumeSession, viewProject, attachedSid, slashMenuOpen, slashMenuGroups, slashMenuActiveIndex, slashMenuLoading, onSlashMenuHover, onSlashMenuSelect, onSlashMenuClose, proxyChip }) {
   const [plusOpen, setPlusOpen] = useState(false);
   // 桌面四芒星菜单的级联展开行（与终端工具栏同款交互）：null | 'perm' | 'plan' | 'agentteam'
   const [quickExpanded, setQuickExpanded] = useState(null);
@@ -471,6 +471,20 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                       <span className={chrome.quickMenuRowIcon}><UploadIcon /></span>
                       <span className={chrome.quickMenuLabel}>{t('ui.terminal.upload')}</span>
                     </button>
+                    {/* Scheduled tasks — opens the manager modal. A top-level row like Upload,
+                        so it shares the hover-intent collapse (moving diagonally from a cascaded
+                        row must close the open submenu). Hidden when the host can't run a
+                        scheduler (onOpenScheduleModal is null). */}
+                    {onOpenScheduleModal && (
+                      <button
+                        className={chrome.quickMenuRow}
+                        onClick={() => { closePlusMenu(); onOpenScheduleModal(); }}
+                        onMouseEnter={() => { qmHover.cancel(); if (quickExpanded) setQuickExpanded(null); }}
+                      >
+                        <span className={chrome.quickMenuRowIcon}><ScheduleIcon /></span>
+                        <span className={chrome.quickMenuLabel}>{t('ui.schedule.menuItem')}</span>
+                      </button>
+                    )}
                     {/* 桌面：与终端工具栏四芒星菜单同款级联结构（共享 QuickAutoApproveRows）。
                         改值必须走 AppBase handler（经 ChatView 钻取的 onAutoApproveChange /
                         onPlanAutoApproveChange），原因见组件内注释 */}
@@ -565,6 +579,13 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                       <UploadIcon />
                       <span>{t('ui.terminal.upload')}</span>
                     </button>
+                    {/* Mobile: scheduled tasks entry (flat menu), mirrors the desktop row. */}
+                    {onOpenScheduleModal && (
+                      <button className={styles.plusMenuItem} onClick={() => { closePlusMenu(); onOpenScheduleModal(); }}>
+                        <ScheduleIcon />
+                        <span>{t('ui.schedule.menuItem')}</span>
+                      </button>
+                    )}
                   </>
                 )}
               </div>

@@ -15,6 +15,8 @@ import { snapToPreset, stepPreset } from './utils/displayScaleHelper';
 import { isMainAgent, isSessionBoundary } from '@ccv/core/contentFilter';
 import { apiUrl, getBasePath } from './utils/apiUrl';
 import { publish as publishWorkflowUpdate } from './utils/workflowStore';
+import { publishScheduledTaskEvent } from './utils/scheduledTaskEvents';
+import { reasonLabel } from './utils/scheduleDescription';
 import { publish as publishTaskUpdate, clearTasks as clearTaskStore } from './utils/taskStore';
 import { reportSwallowed } from './utils/errorReport';
 import { attachMainPty, closeProjectPty, resumeSession } from './utils/resumeSessions';
@@ -90,6 +92,7 @@ const CHANNEL_FRAME_HANDLERS = {
   'v3_conv': '_onV3Conv',
   'v3_resp': '_onV3Resp',
   'session_pin': '_onSessionPin',
+  'scheduled_tasks': '_onScheduledTasks',
   'turn_active': '_onTurnActive',
   'turn_end': '_onTurnEnd',
   'im_log_update': '_onImLogUpdate',
@@ -3203,6 +3206,44 @@ class AppBase extends React.Component {
         // (review P2-1). Session boundaries (server side) own the resets.
       }
     } catch { /* tolerate parse error */ }
+  }
+
+  // scheduled_tasks SSE — task list changes + run outcomes. Scope-guarded like
+  // _onWorkflowUpdate (a background channel's project must not toast on the rendered
+  // view); cross-project run toasts are deduped by runId. Fires the tiny pub/sub that
+  // an open ScheduleTaskModal subscribes to for refresh.
+  _onScheduledTasks(channel, event) {
+    let data = {};
+    try { data = JSON.parse(event?.data || '{}'); }
+    catch (err) { reportSwallowed('sse.scheduled_tasks', err); return; }
+    try {
+      // Project scope guard (review P1-2): only consume frames for THIS channel's project.
+      const p = data && data.project;
+      if (p) {
+        const isBound = channel.key === BOUND_CHANNEL_KEY;
+        const matches = (channel.scope && channel.scope.project && p === channel.scope.project)
+          || (isBound && p === (this.state.projectName || ''));
+        if (!matches) return;
+      }
+      publishScheduledTaskEvent(data);
+    } catch (err) { reportSwallowed('sse.scheduled_tasks.publish', err); return; }
+    if (data.type !== 'task_run') return;
+    if (data.status === 'running') return; // in-progress marker, no toast
+    // Dedup across channels: a bound + parallel channel both receive their frames.
+    if (!this._schedRunToastSeen) this._schedRunToastSeen = new Set();
+    if (data.runId) {
+      if (this._schedRunToastSeen.has(data.runId)) return;
+      this._schedRunToastSeen.add(data.runId);
+      if (this._schedRunToastSeen.size > 200) { this._schedRunToastSeen.clear(); }
+    }
+    const summary = (data.summary || '').slice(0, 40);
+    try {
+      if (data.status === 'completed') message.success(t('ui.schedule.toast.completed', { summary }));
+      else if (data.status === 'error') message.error(t('ui.schedule.toast.error', { summary, reason: reasonLabel(data.reason) }));
+      else if (data.status === 'failed') message.error(t('ui.schedule.toast.dispatchFailed', { summary, reason: reasonLabel(data.reason) }));
+      else if (data.status === 'missed') message.warning(t('ui.schedule.toast.missed', { summary }));
+      // dispatched / skipped stay silent by design (the message appears in the session).
+    } catch (err) { reportSwallowed('sse.scheduled_tasks.toast', err); }
   }
 
   // turn_active SSE — turn-level loading truth (PTY mode): the UserPromptSubmit

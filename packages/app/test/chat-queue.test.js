@@ -155,6 +155,33 @@ describe('chat-queue: turn-end drain gating', () => {
     } finally { mock.timers.reset(); }
   });
 
+  it('strict (scheduled-task) write failure drops the item instead of requeueing the FIFO head', () => {
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    try {
+      const { deps, calls, broadcasts } = makeDeps();
+      // Wire the anchor-aware sequential writer so the strict path engages; make it fail.
+      const strictCalls = [];
+      deps.writeToPtySequentialFor = (chunks, onComplete, opts, anchor) => {
+        strictCalls.push({ chunks, opts, anchor });
+        if (onComplete) onComplete(false); // target instance dead → strict failure
+      };
+      cq.initChatQueue(deps);
+      cq.enqueue('scheduled prompt', { project: 'p', instanceKey: 'ccv-dead', strictAnchor: true });
+      cq.onTurnEnd();
+      mock.timers.tick(200);
+      // The strict item was attempted once with strict:true, then DROPPED (not unshifted).
+      assert.equal(strictCalls.length, 1);
+      assert.equal(strictCalls[0].opts.strict, true, 'strict flag reaches writeToPtySequentialFor');
+      assert.equal(cq.getSnapshot().length, 0, 'strict failure drops the item (no FIFO requeue)');
+      assert.ok(broadcasts.some(m => m.type === 'queue-rejected' && m.reason === 'target-gone'));
+      // A follow-up normal message is NOT blocked behind the dropped strict item.
+      cq.enqueue('next user message');
+      cq.onTurnEnd();
+      mock.timers.tick(200);
+      assert.equal(calls.seq.length, 1, 'FIFO is not wedged by the dropped strict item');
+    } finally { mock.timers.reset(); }
+  });
+
   it('defers while an external (IM) injection holds the PTY', () => {
     mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
     try {

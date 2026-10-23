@@ -39,6 +39,7 @@ import ProxyModal from '../settings/ProxyModal';
 import WorkflowLiveHud from '../viewers/WorkflowLiveHud';
 import TaskProgressHud from './TaskProgressHud';
 import PresetModal from '../terminal/PresetModal';
+import ScheduleTaskModal from '../common/ScheduleTaskModal';
 import UltraPlanModal from '../terminal/UltraPlanModal';
 import UltraplanPanel, { readUltraplanPopoverSize, ultraplanOverlayInnerStyle } from '../terminal/UltraplanPanel';
 import UltraplanExpertManagerModal from '../terminal/UltraplanExpertManagerModal';
@@ -306,6 +307,7 @@ class ChatView extends React.Component {
       stopOptimistic: false, // 点「停止」后乐观置 true：按钮/指示器立即切非运行态，真实 isStreaming 翻 false 或兜底超时后清除
       presetItems: [],
       mobilePresetModalVisible: false,
+      scheduleModalVisible: false,
       localAskAnswers: {}, // 提交后的本地答案映射，用于 Last Response 立即切换到非交互式
       pendingPermission: null, // { id, toolName, input } — active permission approval request
       permissionQueue: [], // queued permission requests when one is already active
@@ -4547,6 +4549,9 @@ class ChatView extends React.Component {
               presetItems={this.state.presetItems}
               onPresetSend={this.handlePresetSend}
               onOpenPresetModal={() => this.setState({ mobilePresetModalVisible: true })}
+              onOpenScheduleModal={(this.props.cliMode && !this.props.isLocalLog && (this.props.viewProject || this.props.projectName))
+                ? () => this.setState({ scheduleModalVisible: true })
+                : null}
               onOpenUltraPlan={this.state.agentTeamEnabled && this.props.cliMode
                 ? (isMobile ? () => this.setState({ ultraplanModalOpen: true }) : () => this.setState({ ultraplanPopoverOpen: true }))
                 : null}
@@ -4731,6 +4736,14 @@ class ChatView extends React.Component {
       <TeamModal session={this.state.teamModalSession} requests={this.props.requests} mainAgentSessions={this.props.mainAgentSessions} collapseToolResults={this.props.collapseToolResults} expandThinking={this.props.expandThinking} showFullToolContent={this.props.showFullToolContent} userProfile={this.props.userProfile} onViewRequest={this.props.onViewRequest} isHistoryLog={this._getIsHistoryLog()} lang={this.props.lang} onClose={() => this.setState({ teamModalSession: null })} />
       <WorkflowRunsModal run={this.state.workflowModalRun} onClose={() => this.setState({ workflowModalRun: null })} />
       <PresetModal open={this.state.mobilePresetModalVisible} onClose={() => this.setState({ mobilePresetModalVisible: false })} items={this.state.presetItems} onItemsChange={(items) => this.setState({ presetItems: items })} onSavePresets={(payload) => { if (this.props.onUpdatePreferences) this.props.onUpdatePreferences(payload); }} />
+      <ScheduleTaskModal
+        open={this.state.scheduleModalVisible}
+        onClose={() => this.setState({ scheduleModalVisible: false })}
+        project={this.props.viewProject || this.props.projectName || null}
+        instance={this.props.viewInstance || null}
+        serverTimezone={this.props.serverTimezone || null}
+        onResumeSession={this.props.isLocalLog ? null : this.props.onResumeSession}
+      />
     </>);
   }
 }

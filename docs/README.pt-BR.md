@@ -147,6 +147,10 @@ Uma vez configurado, use o comando `claude` normalmente. Visite `http://localhos
 
 ## Recursos
 
+### Tarefas agendadas
+
+Abra **Tarefas agendadas** no menu (+) (barra de entrada do chat ou barra de ferramentas do terminal) para executar um prompt em um agendamento: uma predefinição (a cada hora/diário/dias úteis/semanal), um cron personalizado de 5 campos ou um horário único. Uma tarefa injeta o prompt na sessão atual ou inicia uma nova sessão headless isolada (somente modo SDK). As tarefas são armazenadas por projeto e agendadas no fuso horário do servidor com um pequeno jitter; um bloqueio de arquivo entre processos evita execuções duplicadas e, após reinício ou suspensão, a execução perdida mais recente é recuperada em até 7 dias. Você pode **Executar agora**, pausar/retomar, excluir e ver as últimas 20 execuções. Nota: uma tarefa só é executada enquanto o `ccv` está em execução.
+
 ### Modo Programação
 
 Após iniciar com ccv, você pode ver:

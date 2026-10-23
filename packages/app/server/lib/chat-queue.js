@@ -136,13 +136,26 @@ function _injectHead() {
   try {
     // Route the inject by the enqueueing client's anchor when one was captured,
     // so a message queued while viewing project A never lands in project B's PTY.
+    // strictAnchor (scheduled tasks) additionally forbids the drain path's
+    // project/active fallback: a dead explicit instance fails the write instead of
+    // landing in the wrong conversation (review P0-2).
+    const strict = !!(item.anchor && item.anchor.strictAnchor);
     const _write = _deps.writeToPtySequentialFor && item.anchor
-      ? (chunks, done, opts) => _deps.writeToPtySequentialFor(chunks, done, opts, item.anchor)
+      ? (chunks, done, opts) => _deps.writeToPtySequentialFor(chunks, done, { ...(opts || {}), strict }, item.anchor)
       : _deps.writeToPtySequential;
     _write(bracketPasteSubmit(item.text), (ok) => {
       _injecting = false;
       if (gen !== _gen) return;
       if (!ok) {
+        // A strict (scheduled-task) write that failed is TERMINAL: the target instance is
+        // gone, and requeueing to the head of the shared cross-project FIFO would block
+        // every later message forever (review: strict failure must not unshift). Drop it
+        // and tell the client the scheduled prompt was not delivered.
+        if (strict) {
+          reportSwallowed('chat-queue.strict-drop', new Error('scheduled inject target gone'));
+          try { _deps.broadcastWs({ type: 'queue-rejected', reason: 'target-gone' }); } catch { /* best-effort */ }
+          return;
+        }
         // Dead PTY / write failure — never lose the message silently; put it back.
         _items.unshift(item);
         _broadcast();

@@ -147,6 +147,10 @@ Efter konfiguration bruger du `claude`-kommandoen som normalt. Besøg `http://lo
 
 ## Funktioner
 
+### Planlagte opgaver
+
+Åbn **Planlagte opgaver** fra (+)-menuen (chat-inputlinjen eller terminalværktøjslinjen) for at køre en prompt efter en tidsplan: en forudindstilling (hver time/dagligt/hverdage/ugentligt), et brugerdefineret 5-felters cron eller et engangstidspunkt. En opgave injicerer prompten i den aktuelle session eller starter en ny isoleret headless-session (kun SDK-tilstand). Opgaver gemmes pr. projekt og planlægges i serverens tidszone med et lille jitter; en krydsproces-fillås forhindrer dobbeltkørsel, og efter genstart eller dvale indhentes den seneste missede kørsel inden for 7 dage. Du kan **Køre nu**, pause/genoptage, slette og se de seneste 20 kørsler. Bemærk: en opgave kører kun, mens `ccv` kører.
+
 ### Programmeringstilstand
 
 Efter start med ccv kan du se:

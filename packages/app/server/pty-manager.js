@@ -1323,9 +1323,16 @@ export function writeToPtyFor(data, { sessionId, project, instanceKey } = {}) {
   return false;
 }
 
-/** writeToPtySequential variant routed by an explicit anchor. */
+/** writeToPtySequential variant routed by an explicit anchor. When `opts.strict` is set
+ * and the anchor names an explicit instanceKey that no longer resolves to a LIVE record,
+ * the write fails (onComplete(false)) WITHOUT falling back to the project/active record —
+ * scheduled-task injection must never land in the wrong conversation (review P0-2). */
 export function writeToPtySequentialFor(chunks, onComplete, opts = {}, anchor = {}) {
-  const key = _resolveKeyByAnchor(anchor);
+  let key = _resolveKeyByAnchor(anchor);
+  if (opts && opts.strict && typeof anchor.instanceKey === 'string' && anchor.instanceKey) {
+    const rec = ptys.get(anchor.instanceKey);
+    if (!rec || !rec.ptyProcess) key = null; // strict: a dead explicit instance never falls back
+  }
   const s = key ? ptys.get(key) : null;
   if (!s || !s.ptyProcess || !chunks || chunks.length === 0) {
     if (onComplete) onComplete(false);

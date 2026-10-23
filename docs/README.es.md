@@ -147,6 +147,10 @@ Una vez configurado, use el comando `claude` normalmente. Visite `http://localho
 
 ## Características
 
+### Tareas programadas
+
+Abre **Tareas programadas** desde el menú (+) (barra de entrada del chat o barra de herramientas del terminal) para ejecutar un prompt según una programación: un ajuste preestablecido (cada hora/diario/días laborables/semanal), un cron personalizado de 5 campos o una hora única. Una tarea inyecta el prompt en la sesión actual o inicia una nueva sesión headless aislada (solo modo SDK). Las tareas se guardan por proyecto y se programan en la zona horaria del servidor con un pequeño jitter; un bloqueo de archivo entre procesos evita ejecuciones duplicadas y, tras un reinicio o suspensión, se recupera la ejecución perdida más reciente dentro de 7 días. Puedes **Ejecutar ahora**, pausar/reanudar, eliminar y ver las últimas 20 ejecuciones. Nota: una tarea solo se ejecuta mientras `ccv` está en marcha.
+
 ### Modo Programación
 
 Después de iniciar con ccv, puede ver:

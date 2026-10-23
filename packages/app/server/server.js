@@ -21,6 +21,7 @@ import { miscRoutes } from './routes/misc.js';
 import { preferencesRoutes } from './routes/preferences.js';
 import { projectPrefsRoutes } from './routes/project-prefs.js';
 import { sessionPinRoutes } from './routes/session-pin.js';
+import { scheduledTasksRoutes } from './routes/scheduled-tasks.js';
 import { gitRoutes } from './routes/git.js';
 import { pluginsRoutes } from './routes/plugins.js';
 import { pluginServicesRoutes } from './routes/plugin-services.js';
@@ -50,6 +51,8 @@ import * as imCore from './lib/im/im-bridge-core.js';
 import * as imProcMgr from './lib/im/im-process-manager.js';
 import * as chatQueue from './lib/chat-queue.js';
 import { reportSwallowed } from './lib/error-report.js';
+import { initScheduledTaskScheduler, startScheduledTaskScheduler, stopScheduledTaskScheduler } from './lib/scheduled-task-scheduler.js';
+import { executeScheduledTask } from './lib/scheduled-task-executor.js';
 import './lib/adapters/dingtalk-adapter.js'; // side-effect: registers the DingTalk adapter
 import './lib/adapters/feishu-adapter.js';   // side-effect: registers the Feishu adapter
 import './lib/adapters/wecom-adapter.js';    // side-effect: registers the WeCom adapter
@@ -843,6 +846,7 @@ const _routes = [
   ...preferencesRoutes,
   ...projectPrefsRoutes,
   ...sessionPinRoutes,
+  ...scheduledTasksRoutes,
   ...gitRoutes,
   ...pluginsRoutes,
   ...pluginServicesRoutes,
@@ -1167,6 +1171,130 @@ export async function startViewer() {
   }
 }
 
+// ─── Scheduled tasks (scheduler wiring) ─────────────────────────────────────
+// The scheduler is L1 pure logic; every SDK/PTY capability is injected here (server.js
+// is the only place that knows isSdkMode / LOG_DIR / the SSE client set). Paths are
+// compared case-insensitively on win32 (workspace-registry's pathEq semantics).
+function _schedSamePath(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
+  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+// Process-level capability filter (P0-1): a process only claims a task it can run.
+// inject needs a LIVE session for the task's cwd in THIS process; spawn needs SDK mode.
+function _schedCanExecute(task) {
+  try {
+    // A workspace-management process (bound no project / no launched workspace) must never
+    // claim tasks — they belong to a tab's bound workspace (integration P0-1).
+    if (isWorkspaceMode && !_workspaceLaunched) return false;
+    // spawn capability is settled at execute time (the SDK accessors lazy-load on first
+    // execute); the tick-level filter only needs the mode gate so a PTY-mode process
+    // never claims a spawn task it can't run.
+    if (task.mode === 'spawn') return isSdkMode;
+    if (isSdkMode) {
+      // SDK sessions register eagerly at init; if the accessor isn't loaded yet, be
+      // permissive (execute will re-check and report no_live_session honestly).
+      return _sdkListSessions ? _sdkListSessions().some(s => _schedSamePath(s.cwd, task.cwd)) : true;
+    }
+    return _ptyListLive ? _ptyListLive().some(p => p.ptyKind === 'claude' && _schedSamePath(p.cwd, task.cwd)) : true;
+  } catch { return false; }
+}
+
+function _schedIsReady() {
+  try {
+    if (isSdkMode) return _sdkListSessions ? _sdkListSessions().length > 0 : true;
+    return _ptyListLive ? _ptyListLive().some(p => p.ptyKind === 'claude') : true;
+  } catch { return false; }
+}
+
+async function _schedExecute(task, claim) {
+  // Assemble the io accessors lazily (dynamic import keeps the L2 managers out of the
+  // L1 executor's module graph; server.js is L4 and may import them).
+  if (!_sdkListSessions && isSdkMode) {
+    try {
+      const sdk = await import('./lib/sdk-manager.js');
+      _sdkListSessions = sdk.listSdkSessions;
+      _sdkGetQueueSnapshotFn = sdk.getQueueSnapshot;
+      _sdkSendUserMessageFn = sdk.sendUserMessage;
+      _sdkIsAvailable = sdk.isSdkAvailable;
+      _sdkSpawnEphemeral = sdk.spawnEphemeralSession;
+    } catch (err) { reportSwallowed('server.sched-sdk-import', err); }
+  }
+  if (!_ptyListLive && !isSdkMode) {
+    try {
+      const pm = await import('./pty-manager.js');
+      _ptyListLive = pm.listLivePtys;
+      _ptyGetKindFor = pm.getPtyKindFor;
+    } catch (err) { reportSwallowed('server.sched-pty-import', err); }
+  }
+  const io = {
+    isSdkMode,
+    sdk: {
+      isSdkAvailable: () => (_sdkIsAvailable ? _sdkIsAvailable() : false),
+      listSdkSessions: () => (_sdkListSessions ? _sdkListSessions() : []),
+      getQueueSnapshot: (anchor) => (_sdkGetQueueSnapshotFn ? _sdkGetQueueSnapshotFn(anchor) : []),
+      sendUserMessage: (text, anchor) => (_sdkSendUserMessageFn ? _sdkSendUserMessageFn(text, anchor) : Promise.resolve()),
+      spawnEphemeralSession: (prompt, opts) => (_sdkSpawnEphemeral ? _sdkSpawnEphemeral(prompt, opts) : Promise.resolve({ ok: false, reason: 'sdk_unavailable' })),
+    },
+    pty: {
+      listLivePtys: () => (_ptyListLive ? _ptyListLive() : []),
+      getPtyKindFor: (anchor) => (_ptyGetKindFor ? _ptyGetKindFor(anchor) : null),
+    },
+    chatQueue,
+    samePath: _schedSamePath,
+  };
+  return executeScheduledTask(task, claim, io);
+}
+
+// Lazily-resolved capability accessors (populated on first use / after SDK init).
+let _sdkListSessions = null;
+let _sdkGetQueueSnapshotFn = null;
+let _sdkSendUserMessageFn = null;
+let _sdkIsAvailable = null;
+let _sdkSpawnEphemeral = null;
+let _ptyListLive = null;
+let _ptyGetKindFor = null;
+
+async function _initScheduledTasks() {
+  try {
+    // Preload the capability accessors BEFORE the first tick, so canExecute's very first
+    // evaluation is real (not the permissive fail-open default). Without this an Electron
+    // management process / tab worker would claim every due task on its first tick only
+    // to fail them (review: integration P0-1).
+    if (isSdkMode) {
+      try {
+        const sdk = await import('./lib/sdk-manager.js');
+        _sdkListSessions = sdk.listSdkSessions;
+        _sdkGetQueueSnapshotFn = sdk.getQueueSnapshot;
+        _sdkSendUserMessageFn = sdk.sendUserMessage;
+        _sdkIsAvailable = sdk.isSdkAvailable;
+        _sdkSpawnEphemeral = sdk.spawnEphemeralSession;
+      } catch (err) { reportSwallowed('server.sched-sdk-preload', err); }
+    } else {
+      try {
+        const pm = await import('./pty-manager.js');
+        _ptyListLive = pm.listLivePtys;
+        _ptyGetKindFor = pm.getPtyKindFor;
+      } catch (err) { reportSwallowed('server.sched-pty-preload', err); }
+    }
+    initScheduledTaskScheduler({
+      getRoot: () => LOG_DIR,
+      getMode: () => ({ sdk: isSdkMode }),
+      getSpawnConfig: () => ({ available: isSdkMode && !!(_sdkIsAvailable && _sdkIsAvailable()) }),
+      canExecute: _schedCanExecute,
+      isReady: _schedIsReady,
+      execute: _schedExecute,
+      broadcast: (project, payload) => {
+        try {
+          sendEventToClients(_filterClientsByViewProject(clients, project), 'scheduled_tasks', payload);
+        } catch (err) { reportSwallowed('server.sched-broadcast', err); }
+      },
+      report: reportSwallowed,
+    });
+    startScheduledTaskScheduler();
+  } catch (err) { reportSwallowed('server.sched-init', err); }
+}
+
 let _startingPromise = null;
 
 async function _doStart() {
@@ -1362,6 +1490,12 @@ async function _doStart() {
           // CLI 模式下启动 WebSocket 服务 (必须 await，否则插件 hook 拿不到 upgrade listeners)
           if (isCliMode) {
             await setupTerminalWebSocket(currentServer);
+          }
+          // Scheduled tasks: only a CLI-mode process that is NOT an IM worker runs the
+          // scheduler (an IM worker shares LOG_DIR but has no resident session to inject
+          // into — review P0-1). A workspace-management/static viewer process never does.
+          if (isCliMode && !process.env.CCV_IM_PLATFORM) {
+            await _initScheduledTasks();
           }
           // Install the unified upgrade router (all modes): plugin service WS prefixes + registered terminal/mux.
           // Install after createServer and before the first request to close the upgrade gap.
@@ -3324,6 +3458,7 @@ async function _doStop() {
   // Drop chat-queue timers (rescue / idle poll) so a stop/start cycle never injects a stale
   // queued message into a fresh PTY session.
   try { chatQueue.stop(); } catch { /* best-effort */ }
+  try { stopScheduledTaskScheduler(); } catch { /* best-effort */ }
   _clearTurnActiveHeartbeat();
   // Per-workspace: tear down every scope bucket plus the per-scope session tags
   // and streaming-edge records, so a restarted server never replays a stale

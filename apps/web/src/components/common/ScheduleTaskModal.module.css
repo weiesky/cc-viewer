@@ -1,0 +1,216 @@
+/* ScheduleTaskModal layout — left list, right form + history. */
+
+.layout {
+  display: flex;
+  gap: 16px;
+  min-height: 320px;
+}
+
+.listPane {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border-light);
+  padding-right: 12px;
+}
+
+.listHeader {
+  margin-bottom: 8px;
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.listRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-primary, inherit);
+}
+
+.listRow:hover {
+  background: var(--bg-hover, rgba(128, 128, 128, 0.08));
+}
+
+.listRowActive {
+  background: var(--bg-active, rgba(59, 130, 246, 0.12));
+}
+
+.listRowMain {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.listRowSummary {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.listRowMeta {
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+  background: var(--text-secondary, #999);
+}
+
+.status_active { background: var(--success-color, #52c41a); }
+.status_running { background: var(--info-color, #1677ff); }
+.status_paused { background: var(--warning-color, #faad14); }
+.status_completed { background: var(--text-secondary, #999); }
+.status_error { background: var(--error-color, #ff4d4f); }
+
+.run_dispatched { background: var(--success-color, #52c41a); }
+.run_completed { background: var(--success-color, #52c41a); }
+.run_failed { background: var(--error-color, #ff4d4f); }
+.run_error { background: var(--error-color, #ff4d4f); }
+.run_missed { background: var(--warning-color, #faad14); }
+.run_skipped { background: var(--text-secondary, #999); }
+.run_running { background: var(--info-color, #1677ff); }
+
+.detailPane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Run-mode + enabled share one row: radio group on the left, the enabled switch
+   right-aligned. Both are binary controls at the same visual level. */
+.modeRow {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.modeGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The switch keeps its natural (intrinsic) size — inside a column flex it would
+   otherwise stretch full-width (the "big blue bar" bug). */
+.enabledGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  flex-shrink: 0;
+}
+
+.scheduleMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.nextRun { color: var(--text-primary, inherit); }
+
+.label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #888);
+}
+
+.scheduleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.kindSelect { min-width: 130px; }
+.weekdaySelect { min-width: 110px; }
+.cronInput { flex: 1; min-width: 180px; font-family: monospace; }
+.inlineCtl { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+
+.muted { color: var(--text-secondary, #888); }
+
+.permNote {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--warning-color, #faad14);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.emptyHint {
+  color: var(--text-secondary, #888);
+  font-size: 12px;
+  padding: 12px 4px;
+}
+
+.history {
+  margin-top: 8px;
+  border-top: 1px solid var(--border-light);
+  padding-top: 8px;
+}
+
+.historyTitle {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text-secondary, #888);
+}
+
+.runRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 3px 0;
+}
+
+.runTime { color: var(--text-secondary, #888); flex-shrink: 0; }
+.runStatus { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.runDuration { color: var(--text-secondary, #888); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
+/* Mobile: stack list above the form. */
+@media (max-width: 640px) {
+  .layout { flex-direction: column; }
+  .listPane { width: 100%; border-right: none; border-bottom: 1px solid var(--border-light); padding-right: 0; padding-bottom: 8px; }
+  .list { max-height: 160px; }
+}

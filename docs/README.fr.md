@@ -147,6 +147,10 @@ Une fois configuré, utilisez la commande `claude` normalement. Visitez `http://
 
 ## Fonctionnalités
 
+### Tâches planifiées
+
+Ouvrez **Tâches planifiées** depuis le menu (+) (barre de saisie du chat ou barre d'outils du terminal) pour exécuter un prompt selon un horaire : un préréglage (horaire/quotidien/jours ouvrés/hebdomadaire), un cron personnalisé à 5 champs ou une heure unique. Une tâche injecte le prompt dans la session courante ou démarre une nouvelle session headless isolée (mode SDK uniquement). Les tâches sont stockées par projet et planifiées dans le fuseau horaire du serveur avec un léger jitter ; un verrou de fichier inter-processus évite les doubles exécutions et, après un redémarrage ou une mise en veille, la dernière exécution manquée est rattrapée dans les 7 jours. Vous pouvez **Exécuter maintenant**, suspendre/reprendre, supprimer et voir les 20 dernières exécutions. Remarque : une tâche ne s'exécute que lorsque `ccv` est en cours.
+
 ### Mode Programmation
 
 Après le démarrage avec ccv, vous pouvez voir :

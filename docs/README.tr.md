@@ -147,6 +147,10 @@ Yapılandırma tamamlandıktan sonra `claude` komutunu normal şekilde kullanın
 
 ## Özellikler
 
+### Zamanlanmış görevler
+
+(+) menüsünden (sohbet giriş çubuğu veya terminal araç çubuğu) **Zamanlanmış görevler**'i açarak bir istemi bir programa göre çalıştırın: bir ön ayar (saatlik/günlük/hafta içi/haftalık), özel 5 alanlı cron veya tek seferlik bir zaman. Bir görev, istemi geçerli oturuma enjekte eder veya yeni bir yalıtılmış headless oturum başlatır (yalnızca SDK modu). Görevler proje başına saklanır ve küçük bir jitter ile sunucunun saat diliminde zamanlanır; işlemler arası dosya kilidi çift çalıştırmayı önler ve yeniden başlatma veya uyku sonrasında en son kaçırılan çalıştırma 7 gün içinde telafi edilir. **Şimdi çalıştır**, duraklat/sürdür, sil ve son 20 çalıştırmayı görebilirsiniz. Not: bir görev yalnızca `ccv` çalışırken çalışır.
+
 ### Programlama modu
 
 ccv ile başlattıktan sonra şunu göreceksiniz:

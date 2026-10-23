@@ -77,6 +77,16 @@ export function AgentTeamIcon() {
   );
 }
 
+// Clock + small calendar dot — the "scheduled tasks" menu glyph.
+export function ScheduleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="12 7 12 12 15.5 13.5" />
+    </svg>
+  );
+}
+
 export function UltraplanIcon() {
   // Same ULTRAPLAN_PATH the mask URI uses, filled with currentColor so this fallback
   // (mobile chat button) stays geometry-identical to the masked glyph.

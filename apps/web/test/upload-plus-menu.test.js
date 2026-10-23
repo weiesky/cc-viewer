@@ -19,8 +19,9 @@ const CHAT_INPUT = read('src/components/chat/ChatInputBar.jsx');
 describe('upload entry folded into the ChatInputBar (+) menu', () => {
   it('the desktop (+) menu carries an upload item wired to handleUploadPick', () => {
     // Desktop branch starts with `{!isMobile ? (`; the upload menu item must appear before
-    // the cascade QuickAutoApproveRows so it sits at the top of the quick menu.
-    const desktopBranch = CHAT_INPUT.match(/\{!isMobile \? \(([\s\S]{0,2000}?)<QuickAutoApproveRows/);
+    // the cascade QuickAutoApproveRows so it sits at the top of the quick menu. (Window is
+    // 4000, not 2000: the scheduled-tasks row added 2026-10-23 sits between them.)
+    const desktopBranch = CHAT_INPUT.match(/\{!isMobile \? \(([\s\S]{0,4000}?)<QuickAutoApproveRows/);
     assert.ok(desktopBranch, 'desktop (+) menu branch must exist before QuickAutoApproveRows');
     assert.ok(
       /<button[\s\S]{0,200}?className=\{chrome\.quickMenuRow\}[\s\S]{0,200}?onClick=\{handleUploadPick\}[\s\S]{0,300}?<UploadIcon \/>[\s\S]{0,200}?ui\.terminal\.upload/.test(desktopBranch[1]),

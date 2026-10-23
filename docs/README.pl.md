@@ -147,6 +147,10 @@ Po konfiguracji używaj komendy `claude` jak zwykle. Odwiedź `http://localhost:
 
 ## Funkcje
 
+### Zaplanowane zadania
+
+Otwórz **Zaplanowane zadania** z menu (+) (pasek wprowadzania czatu lub pasek narzędzi terminala), aby uruchomić prompt według harmonogramu: ustawienie predefiniowane (co godzinę/codziennie/dni robocze/co tydzień), niestandardowy 5-polowy cron lub czas jednorazowy. Zadanie wstrzykuje prompt do bieżącej sesji lub uruchamia nową izolowaną sesję headless (tylko tryb SDK). Zadania są przechowywane per projekt i planowane w strefie czasowej serwera z małym jitterem; międzyprocesowa blokada pliku zapobiega podwójnym uruchomieniom, a po restarcie lub uśpieniu najnowsze pominięte uruchomienie jest nadrabiane w ciągu 7 dni. Możesz **Uruchomić teraz**, wstrzymać/wznowić, usunąć i zobaczyć ostatnie 20 uruchomień. Uwaga: zadanie działa tylko wtedy, gdy działa `ccv`.
+
 ### Tryb programowania
 
 Po uruchomieniu z ccv możesz zobaczyć:

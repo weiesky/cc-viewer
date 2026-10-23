@@ -34,9 +34,10 @@ import ScratchTerminal from './ScratchTerminal';
 import { darkTerminalTheme, lightTerminalTheme, terminalFontFamily } from './terminalThemes';
 import { resizeImageIfNeeded } from '../../utils/imageResize';
 import UltraplanPanel, { readUltraplanPopoverSize, ultraplanOverlayInnerStyle } from './UltraplanPanel';
-import { AgentTeamIcon, UploadIcon, TrashIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
+import { AgentTeamIcon, UploadIcon, TrashIcon, ScheduleIcon, SPARKLE_MASK_STYLE, ULTRAPLAN_MASK_STYLE } from '../common/quickMenuIcons';
 import QuickAutoApproveRows from '../common/QuickAutoApproveRows';
 import ResumeSessionsRow from '../common/ResumeSessionsRow';
+import ScheduleTaskModal from '../common/ScheduleTaskModal';
 import { createQuickMenuHoverIntent } from '../../utils/quickMenuHoverIntent';
 import chrome from '../common/sharedChrome.module.css';
 
@@ -222,6 +223,7 @@ class TerminalPanel extends React.Component {
       customUltraplanEditOpen: false,
       customUltraplanEditing: null,
       presetModalVisible: false,
+      scheduleModalVisible: false,
       presetItems: [],
       presetSelected: new Set(),
       presetAddVisible: false,
@@ -1878,6 +1880,18 @@ class TerminalPanel extends React.Component {
                     <span className={chrome.quickMenuRowIcon}><UploadIcon /></span>
                     <span className={chrome.quickMenuLabel}>{t('ui.terminal.upload')}</span>
                   </button>
+                  {/* Scheduled tasks — top-level row like Upload (shares the hover-intent
+                      collapse). Only when a project is bound (a scheduler runs per project). */}
+                  {this.props.viewProject && (
+                    <button
+                      className={chrome.quickMenuRow}
+                      onClick={() => this.setState({ quickSettingsOpen: false, quickSettingsExpanded: null, scheduleModalVisible: true })}
+                      onMouseEnter={() => { this._qmHover.cancel(); if (this.state.quickSettingsExpanded) this.setState({ quickSettingsExpanded: null }); }}
+                    >
+                      <span className={chrome.quickMenuRowIcon}><ScheduleIcon /></span>
+                      <span className={chrome.quickMenuLabel}>{t('ui.schedule.menuItem')}</span>
+                    </button>
+                  )}
                   <QuickAutoApproveRows
                     autoApproveSeconds={this.props.autoApproveSeconds}
                     planAutoApproveSeconds={this.props.planAutoApproveSeconds}
@@ -2231,6 +2245,16 @@ class TerminalPanel extends React.Component {
             <Button size="small" onClick={() => this.setState({ presetAddVisible: true, presetAddName: '', presetAddText: '', presetEditId: null })}>{t('ui.terminal.addItem')}</Button>
           </div>
         </Modal>
+
+        {/* Scheduled-task manager (shared component with the chat input bar). */}
+        <ScheduleTaskModal
+          open={this.state.scheduleModalVisible}
+          onClose={() => this.setState({ scheduleModalVisible: false })}
+          project={this.props.viewProject || null}
+          instance={this.props.viewInstance || null}
+          serverTimezone={this.props.serverTimezone || null}
+          onResumeSession={this.props.onResumeSession}
+        />
 
         {/* 添加快捷方式弹窗 */}
         <Modal

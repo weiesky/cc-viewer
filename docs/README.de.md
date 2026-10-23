@@ -147,6 +147,10 @@ Nach der Konfiguration verwenden Sie den Befehl `claude` wie gewohnt. Besuchen S
 
 ## Funktionen
 
+### Geplante Aufgaben
+
+Öffnen Sie **Geplante Aufgaben** über das (+)-Menü (Chat-Eingabeleiste oder Terminal-Symbolleiste), um einen Prompt nach einem Zeitplan auszuführen: eine Voreinstellung (stündlich/täglich/werktags/wöchentlich), einen benutzerdefinierten 5-Felder-Cron oder einen einmaligen Zeitpunkt. Eine Aufgabe fügt den Prompt in die aktuelle Sitzung ein oder startet eine neue isolierte Headless-Sitzung (nur SDK-Modus). Aufgaben werden pro Projekt gespeichert und in der Server-Zeitzone mit einem kleinen Jitter geplant; eine prozessübergreifende Dateisperre verhindert Doppelausführungen, und nach Neustart oder Ruhezustand wird die letzte verpasste Ausführung innerhalb von 7 Tagen nachgeholt. Sie können **Jetzt ausführen**, pausieren/fortsetzen, löschen und die letzten 20 Läufe ansehen. Hinweis: Eine Aufgabe läuft nur, solange `ccv` läuft.
+
 ### Programmiermodus
 
 Nach dem Start mit ccv sehen Sie:

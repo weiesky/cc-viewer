@@ -130,7 +130,7 @@ describe('AppBase.jsx 源码锚点（防未来重构漂移）', () => {
       'workspace_started', 'workspace_stopped', 'context_window', 'kv_cache_content',
       'workflow_update', 'task_update', 'proxy_profile', 'retry_config', 'ping',
       'server_config', 'v2_requests', 'v2_requests_delta', 'v3_conv', 'v3_resp',
-      'session_pin', 'turn_end', 'turn_active', 'im_log_update', 'streaming_status',
+      'session_pin', 'scheduled_tasks', 'turn_end', 'turn_active', 'im_log_update', 'streaming_status',
     ];
     const names = entries.map(([n]) => n);
     for (const name of mustGuard) {

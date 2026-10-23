@@ -147,6 +147,10 @@ Una volta configurato, usa il comando `claude` normalmente. Visita `http://local
 
 ## Funzionalità
 
+### Attività pianificate
+
+Apri **Attività pianificate** dal menu (+) (barra di input della chat o barra degli strumenti del terminale) per eseguire un prompt secondo una pianificazione: un preset (orario/giornaliero/giorni feriali/settimanale), un cron personalizzato a 5 campi o un orario singolo. Un'attività inserisce il prompt nella sessione corrente o avvia una nuova sessione headless isolata (solo modalità SDK). Le attività sono memorizzate per progetto e pianificate nel fuso orario del server con un piccolo jitter; un lock di file tra processi evita doppie esecuzioni e, dopo un riavvio o una sospensione, l'esecuzione mancata più recente viene recuperata entro 7 giorni. Puoi **Eseguire ora**, mettere in pausa/riprendere, eliminare e vedere le ultime 20 esecuzioni. Nota: un'attività viene eseguita solo mentre `ccv` è in esecuzione.
+
 ### Modalità Programmazione
 
 Dopo l'avvio con ccv, puoi vedere:

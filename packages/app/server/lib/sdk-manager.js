@@ -32,7 +32,7 @@ import { evaluateImDeny } from './im-deny.js';
 import { APPROVAL_TOOLS, isOverTrustDir, isPublishCommand } from './approval-policy.js';
 import { reportSwallowed } from '../lib/error-report.js';
 import { resolve as _pathResolve, dirname as _pathDirname, sep as _pathSep } from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { registerSdkSessionLister } from './sdk-session-index.js';
 import { readPrefsRaw } from './prefs-store.js';
 
@@ -49,6 +49,12 @@ try {
 // MUST stay module-level (outside any Session closure): tests set it BEFORE initSdkSession.
 export function __setQueryForTests(fn) { _query = fn; }
 
+// Test seams for the ephemeral-spawn wiring: observe the module-level turn-end callback
+// and the ephemeral-host set without a full initSdkSession.
+export function __setOnTurnEndForTests(fn) { _onTurnEnd = fn; }
+export function __ephemeralHostCountForTests() { return _ephemeralHosts.size; }
+export function __ephemeralAbortCountForTests() { return _ephemeralAborts.size; }
+
 // ── Session registry ─────────────────────────────────────────────────────────
 // Keyed by path.resolve(cwd) — normalize only, NO realpath (house exact-string
 // convention, routes/resume.js, so `/tmp` vs `/private/tmp` stay distinct). The
@@ -56,6 +62,14 @@ export function __setQueryForTests(fn) { _query = fn; }
 // selects which session the SDK composer and WS handlers act on.
 const _sessions = new Map();
 let _activeKey = null;
+// Ephemeral-turn hosts (scheduled-task spawn): sessions whose approval plumbing is
+// currently borrowed by a standalone run. resolveApproval/cancelApproval/
+// getPendingApprovals scan the UNION of _sessions and this set, so an ephemeral run's
+// approvals stay resolvable even if the user closes the host workspace mid-run.
+const _ephemeralHosts = new Set();
+// AbortControllers of in-flight ephemeral turns, so stopSession() can abort them on
+// shutdown (Electron stop/start, process exit) instead of leaking a hung child.
+const _ephemeralAborts = new Set();
 
 function _normalizeCwd(cwd) {
   if (typeof cwd !== 'string' || !cwd) return '';
@@ -624,6 +638,167 @@ function _createSession(key, cwd) {
     _drainResidentIterator(query, inputQueue);
   }
 
+  /**
+   * Run ONE standalone prompt in an ephemeral query that shares THIS session's approval
+   * plumbing (canUseTool host) but never touches resident state: not registered in
+   * `_sessions`, doesn't change `_activeKey`, doesn't go through `_processMessage`
+   * (so `_sessionId`/`_queryBusy`/lifecycle frames/watchdog are all untouched), and the
+   * result is judged directly from the query's own `result` message.
+   *
+   * Used by scheduled-task "spawn" mode: each run is a fresh, isolated headless session
+   * whose transcript routes to the task's project via cloned env headers (the resident
+   * session's env object is mutated in place by _ensureResidentQuery, so we must NOT
+   * reuse its reference — see _cloneEphemeralEnv).
+   *
+   * Returns { ok:true, sessionId, subtype, durationMs }
+   *      or { ok:false, reason, error?, sessionId? }.
+   */
+  async function _runEphemeralTurn(prompt, { timeoutMs = 30 * 60 * 1000, signal, permissionMode } = {}) {
+    if (!_query) return { ok: false, reason: 'sdk_unavailable' };
+    const ctx = { sessionId: null, approvalIds: [] };
+    const abort = new AbortController();
+    _ephemeralAborts.add(abort);
+    // Pre-aborted signal: bail BEFORE registering listeners / spawning (the abort listener
+    // would never fire for an already-aborted signal, wedging the run until the 30min
+    // timeout — review P3-7).
+    if (signal && signal.aborted) { _ephemeralAborts.delete(abort); return { ok: false, reason: 'aborted' }; }
+    const onOuterAbort = () => abort.abort();
+    if (signal) { try { signal.addEventListener('abort', onOuterAbort, { once: true }); } catch { /* best-effort */ } }
+
+    // Assemble options by reusing this host session's config, but with a CLONED env so
+    // the resident query's in-place header append can't leak the host's project/instance
+    // routing into this isolated child (and vice versa).
+    const env = _cloneEphemeralEnv(_childEnv);
+    if (!env) {
+      _ephemeralAborts.delete(abort);
+      if (signal) { try { signal.removeEventListener('abort', onOuterAbort); } catch { /* best-effort */ } }
+      return { ok: false, reason: 'not_initialized' };
+    }
+    const ephInstanceKey = `ccv-${randomBytes(16).toString('hex')}`; // matches interceptor's /^ccv-[0-9a-f]+$/
+    // Permission mode (review: security P1-3): a spawn task runs unattended, so it must NOT
+    // silently inherit a bypassPermissions host. Default to 'default' unless the task
+    // explicitly opted into inheriting the host's mode.
+    const ephPermissionMode = (typeof permissionMode === 'string' && permissionMode) ? permissionMode : 'default';
+    const options = {
+      cwd: _cwd,
+      permissionMode: ephPermissionMode,
+      canUseTool: (tool, input, opts) => _handleCanUseTool(tool, input, opts, ctx),
+      ...ephPermissionMode === 'bypassPermissions' && { allowDangerouslySkipPermissions: true },
+    };
+    options.env = env;
+    // Route this child's transcript to ITS project (the task's cwd) under a synthetic
+    // instance, exactly like the resident path tags x-ccv-project-dir/x-ccv-instance.
+    try {
+      const headerCwd = String(_cwd).replace(/[\r\n\x00-\x1f\x7f]/g, '');
+      if (headerCwd) {
+        const injected = `x-ccv-project-dir: ${headerCwd}\nx-ccv-instance: ${ephInstanceKey}`;
+        options.env.ANTHROPIC_CUSTOM_HEADERS = options.env.ANTHROPIC_CUSTOM_HEADERS
+          ? `${options.env.ANTHROPIC_CUSTOM_HEADERS}\n${injected}` : injected;
+      }
+    } catch (err) { reportSwallowed('sdk-manager.ephemeral-headers', err); }
+    if (_settings) options.settings = _settings;
+    if (_launchModel) options.model = _launchModel;
+    if (_claudeExecutable) options.pathToClaudeCodeExecutable = _claudeExecutable;
+    // Fresh session: no resume; inject the startup system prompt like a new launch.
+    try {
+      const launchArgs = process.env.CCV_SKIP_THINKING_DISPLAY === '1' ? _userArgs : withDefaultThinkingDisplay(_userArgs);
+      const lc = resolveLaunchSystemPrompt({
+        spawnDir: _cwd, extraArgs: launchArgs, env: env || process.env,
+        launchSettings: _settings, resume: null, persistPending: true,
+      });
+      options.extraArgs = launchArgsToExtraArgs([...launchArgs, ...lc.sysPrompt.args]);
+    } catch (err) {
+      reportSwallowed('sdk-manager.ephemeral-sysprompt', err);
+      try { options.extraArgs = launchArgsToExtraArgs(_userArgs); } catch { /* best-effort */ }
+    }
+
+    // _query() can throw synchronously (bad options); that must still release the abort
+    // handle registered above instead of leaking it into _ephemeralAborts (review P3).
+    let q;
+    try {
+      q = _query({ prompt: String(prompt == null ? '' : prompt), options });
+    } catch (err) {
+      _ephemeralAborts.delete(abort);
+      if (signal) { try { signal.removeEventListener('abort', onOuterAbort); } catch { /* best-effort */ } }
+      return { ok: false, reason: 'internal', error: String(err?.message || err) };
+    }
+    const startedAt = Date.now();
+
+    const cleanupApprovals = (reason) => {
+      // Resolve + dismiss any approvals THIS run left pending so they don't ghost in the
+      // host's map for 24h (AskUserQuestion) and replay as phantom modals on reconnect.
+      for (const id of ctx.approvalIds) {
+        const pending = _pendingApprovals.get(id);
+        try { pending?.resolve(null); } catch { /* best-effort */ }
+        try { _pendingApprovals.delete(id); } catch { /* best-effort */ }
+        if (pending) { try { _broadcastApprovalDismiss(pending.kind, id, reason); } catch { /* best-effort */ } }
+      }
+      ctx.approvalIds.length = 0;
+    };
+
+    const run = (async () => {
+      let resultMsg = null;
+      try {
+        for await (const msg of q) {
+          if (msg?.type === 'system' && msg.subtype === 'init' && msg.session_id) ctx.sessionId = msg.session_id;
+          if (msg?.type === 'result') { resultMsg = msg; if (msg.session_id) ctx.sessionId = msg.session_id; }
+        }
+      } catch (err) {
+        if (abort.signal.aborted) return { ok: false, reason: 'aborted', sessionId: ctx.sessionId };
+        return { ok: false, reason: 'internal', error: String(err?.message || err), sessionId: ctx.sessionId };
+      }
+      if (!resultMsg) return { ok: false, reason: 'internal', error: 'no result message', sessionId: ctx.sessionId };
+      const isError = resultMsg.is_error === true || (resultMsg.subtype && resultMsg.subtype !== 'success');
+      if (!isError) {
+        return { ok: true, sessionId: ctx.sessionId || resultMsg.session_id || null, subtype: resultMsg.subtype, durationMs: Date.now() - startedAt };
+      }
+      const detail = Array.isArray(resultMsg.errors) && resultMsg.errors.length
+        ? resultMsg.errors.join('; ')
+        : (typeof resultMsg.result === 'string' && resultMsg.result) || resultMsg.subtype || 'unknown error';
+      return { ok: false, reason: 'turn-error', error: String(detail), sessionId: ctx.sessionId || resultMsg.session_id || null, durationMs: Date.now() - startedAt };
+    })();
+
+    let timer = null;
+    let timedOut = false;
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(() => {
+        timedOut = true;
+        try { abort.abort(); } catch {}
+        try { q.close?.(); } catch {}
+        resolve({ ok: false, reason: 'timeout', sessionId: ctx.sessionId });
+      }, timeoutMs);
+      if (typeof timer.unref === 'function') timer.unref();
+    });
+    const aborted = new Promise((resolve) => {
+      try {
+        abort.signal.addEventListener('abort', () => {
+          // A timeout-driven abort reports as 'timeout', not 'aborted' — the timeout
+          // branch wins the race semantics even though both fire on the same signal.
+          if (timedOut) return;
+          try { q.close?.(); } catch {}
+          resolve({ ok: false, reason: 'aborted', sessionId: ctx.sessionId });
+        }, { once: true });
+      } catch { /* best-effort */ }
+    });
+
+    try {
+      const r = await Promise.race([run, timeout, aborted]);
+      // Emit a turn-end so the panel's new session card leaves the "running" state
+      // (review P1-2): module-level _onTurnEnd doesn't touch host state.
+      if (ctx.sessionId && _onTurnEnd) {
+        try { _onTurnEnd({ sessionId: ctx.sessionId, ts: Date.now(), cwd: _cwd }); }
+        catch (err) { reportSwallowed('sdk-manager.ephemeral-turn-end', err); }
+      }
+      if (ctx.approvalIds.length) cleanupApprovals(r.ok ? 'completed' : (r.reason || 'ended'));
+      return r;
+    } finally {
+      if (timer) clearTimeout(timer);
+      _ephemeralAborts.delete(abort);
+      try { abort.abort(); } catch { /* release listeners */ }
+      if (signal) { try { signal.removeEventListener('abort', onOuterAbort); } catch { /* best-effort */ } }
+    }
+  }
+
   async function _drainResidentIterator(query, inputQueue) {
     try {
       for await (const msg of query) {
@@ -1090,8 +1265,19 @@ function _createSession(key, cwd) {
    *      short-circuits the ExitPlanMode/AskUserQuestion interactive branches;
    *   4. the three regular branches (plan / ask / perm).
    */
-  async function _handleCanUseTool(toolName, input, options) {
+  async function _handleCanUseTool(toolName, input, options, ctx = null) {
     const id = options?.toolUseID || `sdk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    // Ephemeral-turn override (scheduled-task spawn): the approval payloads below carry
+    // the ephemeral run's own sessionId (tracked in ctx as the init/result messages
+    // stream in), NOT this host session's `_sessionId` — otherwise the pending modal is
+    // attributed to the host's conversation. Frontend dismiss matches on `id` only, so
+    // the host's sessionId stays untouched on the dismiss path.
+    const effSessionId = () => (ctx && ctx.sessionId) || _sessionId || null;
+    // Origin marker (security P2-1): an ephemeral/scheduled-task run's approval modal must
+    // be identifiable as coming from an unattended task, not the user's live conversation.
+    const origin = ctx ? { origin: 'scheduled-task' } : {};
+    // Approval-id tracking happens inside _waitForApproval (only reached when a tool truly
+    // parks for user input) so auto-allowed tools don't grow ctx.approvalIds unboundedly.
 
     // 1. IM worker hard deny — must run before any auto-allow (perm-bridge.js parity).
     if (process.env.CCV_IM_DENY === '1') {
@@ -1124,11 +1310,11 @@ function _createSession(key, cwd) {
           }
         } catch (err) { reportSwallowed('sdk-manager.waterfall.plan', err); }
       }
-      const planPayload = { type: 'sdk-plan-pending', id, input, cwd: _cwd, sessionId: _sessionId || null };
+      const planPayload = { type: 'sdk-plan-pending', id, input, cwd: _cwd, sessionId: effSessionId(), ...origin };
       if (_broadcastWs) {
         _broadcastWs(planPayload);
       }
-      const result = await _waitForApproval(id, 5 * 60 * 1000, 'plan', planPayload, options?.signal);
+      const result = await _waitForApproval(id, 5 * 60 * 1000, 'plan', planPayload, options?.signal, ctx);
       if (result === null) {
         return { behavior: 'deny', message: 'Timeout waiting for plan approval' };
       }
@@ -1158,11 +1344,11 @@ function _createSession(key, cwd) {
       // server/lib/ask/ask-constants.js.
       const askTimeoutMs = ASK_TIMEOUT_MS;
       const askStartedAt = Date.now();
-      const askPayload = { type: 'sdk-ask-pending', id, questions: input.questions, startedAt: askStartedAt, timeoutMs: askTimeoutMs, cwd: _cwd, sessionId: _sessionId || null };
+      const askPayload = { type: 'sdk-ask-pending', id, questions: input.questions, startedAt: askStartedAt, timeoutMs: askTimeoutMs, cwd: _cwd, sessionId: effSessionId(), ...origin };
       if (_broadcastWs) {
         _broadcastWs(askPayload);
       }
-      const answers = await _waitForApproval(id, askTimeoutMs, 'ask', askPayload, options?.signal);
+      const answers = await _waitForApproval(id, askTimeoutMs, 'ask', askPayload, options?.signal, ctx);
       if (answers === null) {
         return { behavior: 'deny', message: 'Timeout waiting for user answer' };
       }
@@ -1234,12 +1420,12 @@ function _createSession(key, cwd) {
         // unknown decision → fall through to normal approval flow
       } catch (err) { reportSwallowed('sdk-manager.waterfall.perm', err); }
     }
-    const permPayload = { type: 'perm-hook-pending', id, toolName, input, cwd: _cwd, sessionId: _sessionId || null };
+    const permPayload = { type: 'perm-hook-pending', id, toolName, input, cwd: _cwd, sessionId: effSessionId(), ...origin };
     if (_broadcastWs) {
       _broadcastWs(permPayload);
     }
 
-    const result = await _waitForApproval(id, 5 * 60 * 1000, 'perm', permPayload, options?.signal);
+    const result = await _waitForApproval(id, 5 * 60 * 1000, 'perm', permPayload, options?.signal, ctx);
     if (result === null) {
       return { behavior: 'deny', message: 'Timeout waiting for user approval' };
     }
@@ -1280,7 +1466,11 @@ function _createSession(key, cwd) {
     } catch (err) { console.warn('[sdk-manager] approval-dismiss broadcast threw:', err?.message); }
   }
 
-  function _waitForApproval(id, timeoutMs, kind, replay = null, signal = null) {
+  function _waitForApproval(id, timeoutMs, kind, replay = null, signal = null, ctx = null) {
+    // Record the id on the ephemeral run's ctx ONLY when it actually parks (the three
+    // callers below sit after every auto-allow/hard-deny early-return, so an auto-allowed
+    // tool never lands here) — keeps ctx.approvalIds bounded (review P3: no unbounded growth).
+    if (ctx && Array.isArray(ctx.approvalIds)) ctx.approvalIds.push(id);
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         _pendingApprovals.delete(id);
@@ -1649,6 +1839,7 @@ function _createSession(key, cwd) {
     },
     switchToSession: _switchToSession,
     getSessionId: () => _sessionId,
+    runEphemeralTurn: _runEphemeralTurn,
     close: () => {
       for (const { id, kind } of _cancelAllApprovals()) {
         _broadcastApprovalDismiss(kind, id, 'session-closed');
@@ -1665,6 +1856,78 @@ function _createSession(key, cwd) {
 
 export function isSdkAvailable() {
   return typeof _query === 'function';
+}
+
+/**
+ * Clone the host launch env for an ephemeral child, stripping any x-ccv-project-dir /
+ * x-ccv-instance lines the resident query already appended IN PLACE (cli.js hands the
+ * same childEnv object to initSdkSession AND setSdkLaunchConfig; _ensureResidentQuery
+ * mutates it). Without this the isolated child would report the HOST's routing headers
+ * and its transcript would be written under the wrong project/instance.
+ * Returns null when there is no env to clone (SDK children default to process.env only
+ * when `env` is omitted entirely — passing `{}` would spawn with an EMPTY environment).
+ */
+function _cloneEphemeralEnv(env) {
+  if (!env || typeof env !== 'object') return null;
+  const out = { ...env };
+  if (typeof out.ANTHROPIC_CUSTOM_HEADERS === 'string') {
+    out.ANTHROPIC_CUSTOM_HEADERS = out.ANTHROPIC_CUSTOM_HEADERS
+      .split('\n')
+      .filter(l => !/^x-ccv-(project-dir|instance):/i.test(l.trim()))
+      .join('\n');
+  }
+  return out;
+}
+
+/**
+ * Spawn a standalone, single-prompt SDK session for a scheduled task ("spawn" mode).
+ * The run is isolated from the user's resident conversation: it never enters
+ * `_sessions`, never changes `_activeKey`, and its result is judged from the query's
+ * own `result` message. Approval capability is borrowed from a host session for the
+ * task's cwd (the existing resident session when one is registered, else a temporary
+ * isolated host that is created just to carry approvals and torn down right after).
+ *
+ * SDK-mode only: without a launch-config template (setSdkLaunchConfig) the child would
+ * bypass ccv's loopback proxy and produce no transcript, so we refuse.
+ *
+ * Returns { ok:true, sessionId, subtype, durationMs }
+ *      or { ok:false, reason:'sdk_unavailable'|'not_initialized'|'timeout'|'aborted'|'turn-error'|'internal', error?, sessionId? }.
+ */
+export async function spawnEphemeralSession(prompt, { cwd, project, timeoutMs = 30 * 60 * 1000, signal, permissionMode } = {}) {
+  if (!_query) return { ok: false, reason: 'sdk_unavailable' };
+  const cfg = _launchConfigTemplate;
+  if (!cfg) return { ok: false, reason: 'not_initialized' };
+  if (!cwd) return { ok: false, reason: 'not_initialized' };
+
+  const key = _normalizeCwd(cwd);
+  let host = _sessions.get(key) || null;
+  let created = false;
+  if (!host) {
+    // No resident session for this cwd in this boot: create an isolated host purely to
+    // carry approvals (its canUseTool plumbing). It is NOT registered in _sessions.
+    host = _createSession(`__ephemeral_host__:${key}`, cwd);
+    try { host.init({ ...cfg }); }
+    catch (err) { reportSwallowed('sdk-manager.ephemeral-init', err); return { ok: false, reason: 'not_initialized', error: String(err?.message || err) }; }
+    created = true;
+  }
+  _ephemeralHosts.add(host);
+  try {
+    const r = await host.runEphemeralTurn(prompt, { timeoutMs, signal, permissionMode });
+    return { ...r, sessionId: r.sessionId || null };
+  } finally {
+    _ephemeralHosts.delete(host);
+    if (created) { try { host.teardown(); } catch (err) { reportSwallowed('sdk-manager.ephemeral-teardown', err); } }
+  }
+}
+
+/** Test seam: is a cwd's session currently hosting an ephemeral run? Checks the ephemeral
+ * host set directly (an isolated host for an unregistered cwd never enters _sessions). */
+export function __isEphemeralHostForTests(cwd) {
+  const key = _normalizeCwd(cwd);
+  for (const host of _ephemeralHosts) {
+    if (host.key === key || host.key === `__ephemeral_host__:${key}`) return true;
+  }
+  return false;
 }
 
 /**
@@ -1760,7 +2023,9 @@ export async function sendUserMessage(text, anchor) {
  * server.js when a WS message arrives. Does not switch active.
  */
 export function resolveApproval(id, value) {
-  for (const sess of _sessions.values()) {
+  // Scan the union of resident sessions and ephemeral hosts: an ephemeral run's
+  // approvals must stay resolvable even if the user closed the host workspace mid-run.
+  for (const sess of new Set([..._sessions.values(), ..._ephemeralHosts])) {
     if (sess.resolveApproval(id, value)) return true;
   }
   return false;
@@ -1771,7 +2036,7 @@ export function resolveApproval(id, value) {
  * WS handler). Does not switch active.
  */
 export function cancelApproval(id, reason) {
-  for (const sess of _sessions.values()) {
+  for (const sess of new Set([..._sessions.values(), ..._ephemeralHosts])) {
     if (sess.cancelApproval(id, reason)) return true;
   }
   return false;
@@ -1786,7 +2051,7 @@ export function getPendingApprovals(anchor) {
   const target = anchor ? _sessionForAnchor(anchor) : null;
   if (target) return target.getPendingApprovals();
   const out = [];
-  for (const sess of _sessions.values()) out.push(...sess.getPendingApprovals());
+  for (const sess of new Set([..._sessions.values(), ..._ephemeralHosts])) out.push(...sess.getPendingApprovals());
   return out;
 }
 
@@ -1842,6 +2107,12 @@ export function getQueueSnapshot(anchor) {
  * session and clears the registry + the active pointer (process-exit cleanup path).
  */
 export function stopSession() {
+  // Abort any in-flight ephemeral turns FIRST (their host may be about to be torn down),
+  // then tear down resident sessions and ephemeral hosts.
+  for (const abort of _ephemeralAborts) { try { abort.abort(); } catch { /* best-effort */ } }
+  _ephemeralAborts.clear();
+  for (const host of _ephemeralHosts) { try { host.teardown(); } catch (err) { reportSwallowed('sdk-manager.ephemeral-stop', err); } }
+  _ephemeralHosts.clear();
   for (const sess of _sessions.values()) {
     try { sess.teardown(); }
     catch (err) { reportSwallowed('sdk-manager.stop', err); }
