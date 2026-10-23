@@ -1,5 +1,11 @@
 # cc-viewer
 
+## 1.9.12
+
+### Patch Changes
+
+- 117ee25: fix(web): stop the floating input stack's gradient at the chat message list's measured scrollbar gutter, so the right-side vertical scrollbar stays fully visible on classic-scrollbar platforms; overlay-scrollbar layouts measure 0 and keep the full-width fade.
+
 ## 1.9.11
 
 ### Patch Changes
