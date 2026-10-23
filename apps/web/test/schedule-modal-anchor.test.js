@@ -73,8 +73,10 @@ describe('ScheduleTaskModal component', () => {
     }
   });
 
-  it('disables spawn when spawnAvailable is false', () => {
-    assert.ok(/disabled=\{!spawnAvailable\}/.test(MODAL), 'spawn radio disabled without spawnAvailable');
+  it('hides the run-mode radios entirely when spawn is unavailable (PTY mode)', () => {
+    assert.ok(!/disabled=\{!spawnAvailable\}/.test(MODAL), 'no disabled spawn radio remains');
+    assert.ok(/\{spawnAvailable && \([\s\S]{0,400}ui\.schedule\.mode['"]/.test(MODAL), 'mode group gated on spawnAvailable');
+    assert.ok(/!spawnAvailable && isNew && draft\.mode !== 'inject'/.test(MODAL), 'leftover spawn mode normalized to inject (new drafts only)');
   });
 
   it('routes "open session" through onResumeSession, not a raw fetch (P1-1)', () => {
@@ -93,5 +95,76 @@ describe('ScheduleTaskModal component', () => {
 
   it('schedules are formatted with the server timezone (P1-5)', () => {
     assert.ok(/formatNextRun\([^,]+, (tz|serverTimezone)\)/.test(MODAL), 'list/history use server timezone');
+  });
+
+  it('uses a localized title without the project suffix and moves New task beside it', () => {
+    const titleStart = MODAL.indexOf('title={(');
+    const titleEnd = MODAL.indexOf('open={open}', titleStart);
+    assert.ok(titleStart > -1 && titleEnd > titleStart, 'Modal title is a JSX node');
+    const title = MODAL.slice(titleStart, titleEnd);
+    assert.ok(/t\('ui\.schedule\.title'\)/.test(title), 'localized schedule title present');
+    assert.ok(!/\$\{project\}/.test(title), 'title does not interpolate project');
+    assert.ok(/showList &&[\s\S]{0,300}ui\.schedule\.newTask/.test(title), 'New task button is gated beside the title');
+  });
+
+  it('hides the task list and old empty-state controls until tasks exist', () => {
+    assert.ok(/const showList = tasks\.length > 0;/.test(MODAL), 'showList derives from tasks');
+    assert.ok(/\{showList && \(\s*<div className=\{styles\.listPane\}/.test(MODAL), 'list pane gated by showList');
+    assert.ok(!/styles\.listHeader/.test(MODAL), 'old list header button container removed');
+    assert.ok(!/ui\.schedule\.empty/.test(MODAL), 'zero-task inline empty hint removed');
+  });
+
+  it('keeps schedule warnings submit-only and removes the inline "None" row', () => {
+    assert.ok(!/ui\.schedule\.nextRunNone/.test(MODAL), 'modal no longer renders nextRunNone');
+    assert.ok(!/ui\.schedule\.previewInvalid/.test(MODAL), 'modal no longer renders previewInvalid inline');
+    assert.ok(/schedule && preview\.length > 0[\s\S]{0,300}ui\.schedule\.nextRun/.test(MODAL), 'next-run preview still renders when available');
+    const save = MODAL.match(/const handleSave = useCallback\(async \(\) => \{([\s\S]*?)\n  \}, \[/);
+    assert.ok(save, 'handleSave body located');
+    assert.ok(save[1].indexOf("ui.schedule.error.invalid_prompt") > -1, 'prompt validation remains');
+    assert.ok(save[1].indexOf("ui.schedule.error.invalid_schedule") > -1, 'schedule validation uses submit error');
+    assert.ok(save[1].indexOf("ui.schedule.error.invalid_prompt") < save[1].indexOf("ui.schedule.error.invalid_schedule"), 'prompt validation runs before schedule validation');
+  });
+
+  it('treats an empty cron expression as an invalid schedule before preview/save', () => {
+    assert.ok(/const expr = draft\.cronExpr\.trim\(\);\s*return expr \? \{ kind: 'cron', expr \} : null;/.test(MODAL), 'empty cron returns null');
+  });
+
+  it('drops scheduled-task responses from a previous project', () => {
+    assert.ok(/const loadProject = project;/.test(MODAL), 'loadTasks captures the requested project');
+    assert.ok(/projectRef\.current/.test(MODAL), 'guard compares against the live project ref');
+    assert.ok(/if \(loadProject !== projectRef\.current\) return;/.test(MODAL), 'stale project responses are ignored');
+  });
+
+  it('keeps "new task" mode sticky across list reloads (no auto re-select)', () => {
+    assert.ok(/newTaskMode\.current = true;[\s\S]{0,200}setSelectedId\(null\)/.test(MODAL), 'handleNew marks new-task mode');
+    assert.ok(/if \(newTaskMode\.current\) return null;/.test(MODAL), 'loadTasks does not re-select tasks[0] in new-task mode');
+    assert.ok(/newTaskMode\.current = false;[\s\S]{0,200}setSelectedId\(task \? task\.id : null\)/.test(MODAL), 'handleSelect clears new-task mode');
+  });
+
+  it('hides the enabled switch for a new task and shows it when editing', () => {
+    assert.ok(/\{!isNew && \([\s\S]{0,200}ui\.schedule\.enabled/.test(MODAL), 'enabled switch gated on !isNew');
+    assert.ok(/\{\(spawnAvailable \|\| !isNew\) && \(/.test(MODAL), 'whole field hidden for new tasks in PTY mode');
+  });
+
+  it('never overwrites an existing task mode when the control is hidden (PTY)', () => {
+    assert.ok(/if \(spawnAvailable\) updateBody\.mode = draft\.mode/.test(MODAL), 'update payload omits mode when hidden');
+    assert.ok(/if \(!spawnAvailable && isNew && draft\.mode !== 'inject'\)/.test(MODAL), 'mode normalization only applies to a NEW draft');
+  });
+
+  it('hides the run-history block until an existing task has runs', () => {
+    assert.ok(/\{!isNew && runs\.length > 0 && \(/.test(MODAL), 'history gated on existing task with runs');
+    assert.ok(!/ui\.schedule\.historyEmpty/.test(MODAL), 'empty-history hint removed');
+  });
+
+  it('legacy (read-only) tasks disable save/run/delete', () => {
+    assert.ok(/selectedTask\?\.legacy/.test(MODAL), 'legacy flag consulted');
+    assert.ok(/disabled=\{!canRunNow \|\| !!selectedTask\?\.legacy\}/.test(MODAL), 'run disabled for legacy');
+    assert.ok(/\{!isNew && !selectedTask\?\.legacy && \(/.test(MODAL), 'delete hidden for legacy');
+  });
+
+  it('title row CSS supports wrapping and removes dead list styles', () => {
+    assert.ok(/\.titleRow\s*\{[\s\S]{0,200}flex-wrap: wrap/.test(MODAL_CSS), 'title row can wrap');
+    assert.ok(!/\.listHeader\s*\{/.test(MODAL_CSS), 'listHeader style removed');
+    assert.ok(!/\.muted\s*\{/.test(MODAL_CSS), 'muted style removed');
   });
 });

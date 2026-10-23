@@ -16,7 +16,7 @@ import { getProjectName } from './project-state.js';
 // SINGLE SOURCE of "what must never live inside a fork": secrets (auth password + IM creds),
 // machine-level paths (logDir/claudeConfigDir), and the internal forks map. snapshotForFork /
 // cleanPatch / the admin list read all funnel through stripSensitive so the rule can't drift.
-const STRIP_KEYS = ['auth', 'authByProject', 'prefsByProject', 'logDir', 'claudeConfigDir'];
+const STRIP_KEYS = ['auth', 'authByProject', 'prefsByProject', 'logDir', 'claudeConfigDir', 'scheduledTasks'];
 
 /** Strip secrets + IM credentials + machine-level keys from a prefs-shaped object in place. */
 export function stripSensitive(obj) {
@@ -83,6 +83,9 @@ export function resolveScoped(globalPrefs, fork) {
   const { approvalModal: gAM, ...gRest } = globalPrefs || {};
   const { approvalModal: fAM, ...fRest } = fork || {};
   const merged = { ...gRest, ...fRest };
+  // 定时任务是全局状态(claim CAS 只在全局 prefs 上进行)——fork 永远不得携带/遮蔽它,
+  // 否则脏 fork 会把任务定义/claim 透给 scoped 客户端读侧。
+  delete merged.scheduledTasks;
   if (gAM || fAM) {
     // 防引用别名：fork 无 approvalModal 时也返回浅拷贝，避免调用方（preferencesGet 的
     // voicePack reconcile）回写到解析出的全局对象（当前每请求新解析虽无害，仍保持"绝不外泄内部引用"）。

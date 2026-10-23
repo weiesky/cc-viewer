@@ -13,7 +13,7 @@
 import { realpathSync } from 'node:fs';
 import { resolve, basename, sep, join } from 'node:path';
 import { homedir, platform, tmpdir } from 'node:os';
-import { getClaudeConfigDir, onLogDirChange } from '../../findcc.js';
+import { getClaudeConfigDir, onLogDirChange, LOG_DIR } from '../../findcc.js';
 import { loadWorkspaces } from '../workspace-registry.js';
 import { getBackupRoot } from './config-backup.js';
 
@@ -96,7 +96,36 @@ const SENSITIVE_CLAUDE_FILES = new Set([
   // 也绝不跨网读(master.key 同时被下方 .key 文件名规则覆盖,这里双保险)。
   'credentials.json',
   'master.key',
+  // cc-viewer preferences.json 现在承载定时任务定义(含 prompt,可能带 secret)——默认路径下与
+  // credentials 同级拒绝;LOG_DIR 被 --log-dir 移走时由下方 _logDirSensitiveFiles 按 realpath 拦。
+  'preferences.json',
 ]);
+
+/**
+ * LOG_DIR 下的敏感数据文件名(定时任务运行历史 / 旧版任务存储 / preferences 本身)。
+ * 默认 LOG_DIR = ~/.claude/cc-viewer 在 allowlist 内,这些文件若只按文件名拦会误伤项目内同名
+ * fixture,所以按 realpath 精确等值 + LOG_DIR 前缀拦截;LOG_DIR 被 setLogDir 移走时缓存随
+ * onLogDirChange 失效(沿用既有 roots 缓存失效钩子)。
+ */
+const LOGDIR_SENSITIVE_NAMES = new Set([
+  'preferences.json',
+  'scheduled-task-runs.json',
+  'scheduled-tasks.json',
+]);
+let _logDirSensitiveCache = null;
+function _logDirSensitiveFiles() {
+  if (_logDirSensitiveCache) return _logDirSensitiveCache;
+  let rootReal;
+  try { rootReal = realpathSync(LOG_DIR); } catch { rootReal = LOG_DIR; }
+  const files = new Set();
+  for (const name of LOGDIR_SENSITIVE_NAMES) {
+    files.add(norm(join(LOG_DIR, name)));
+    files.add(norm(join(rootReal, name)));
+  }
+  _logDirSensitiveCache = { root: norm(withSep(LOG_DIR)), rootReal: norm(withSep(rootReal)), files };
+  return _logDirSensitiveCache;
+}
+onLogDirChange(() => { _logDirSensitiveCache = null; });
 
 // ─── allowlist roots 缓存 ──────────────────────────────────────────────────────
 let _rootsCache = null;
@@ -220,6 +249,21 @@ export function isReadAllowed(absPath) {
       return { ok: false, reason: 'sensitive-config-backup' };
     }
   } catch { /* backup root missing / not realpath-able → no extra deny */ }
+
+  // 2c) Deny LOG_DIR 内的任务/偏好数据文件(preferences.json 含 auth + 定时任务 prompt、
+  // scheduled-task-runs.json 含 prompt 摘要、scheduled-tasks.json 为旧版任务存储)与内核写
+  // 过程的 tmp/corrupt 残留。这些路径必须绕开所有 HTTP 剥离逻辑之外的裸文件读写。
+  {
+    const sens = _logDirSensitiveFiles();
+    const realNorm = norm(real);
+    if (sens.files.has(realNorm)) {
+      return { ok: false, reason: 'sensitive-ccv-data' };
+    }
+    // .tmp-<rand>（writeJsonAtomic 中间态）与 .corrupt-<ts>（tolerant 自愈备份）同属敏感残留。
+    if ((realNorm.startsWith(sens.root) || realNorm.startsWith(sens.rootReal)) && /\.(tmp|corrupt)-[^/\\]+$/.test(realNorm)) {
+      return { ok: false, reason: 'sensitive-ccv-data' };
+    }
+  }
 
   // 3) 项目内文件豁免 sensitive 文件名(允许 fixtures/test-cert.pem 等合法 fixture)
   const projectRoot = getProjectRoot();

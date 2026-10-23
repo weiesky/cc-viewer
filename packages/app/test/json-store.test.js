@@ -14,7 +14,7 @@ process.env.CCV_LOG_DIR = __isoDir;
 process.env.CLAUDE_CONFIG_DIR = __isoDir;
 
 const {
-  readJsonSafe, writeJsonAtomic, mutateJson, mutateJsonSync, applyJsonPatch, lockPathFor,
+  readJsonSafe, readJsonStrict, writeJsonAtomic, mutateJson, mutateJsonSync, applyJsonPatch, lockPathFor,
 } = await import('../server/lib/json-store.js');
 
 let workDir;
@@ -40,6 +40,33 @@ describe('json-store kernel', () => {
   it('readJsonSafe returns fallback on missing file', () => {
     assert.deepEqual(readJsonSafe(freshFile('nope.json')), {});
     assert.deepEqual(readJsonSafe(freshFile('nope.json'), []), []);
+  });
+
+  it('readJsonStrict distinguishes missing / ok / corrupt (incl. scalar/array)', () => {
+    assert.deepEqual(readJsonStrict(freshFile('nope.json')), { state: 'missing', data: null });
+    const ok = freshFile('ok.json');
+    writeFileSync(ok, '{"a":1}');
+    assert.deepEqual(readJsonStrict(ok), { state: 'ok', data: { a: 1 } });
+    for (const [name, body] of [['bad.json', 'not json'], ['arr.json', '[1]'], ['scalar.json', '42'], ['null.json', 'null']]) {
+      const f = freshFile(name);
+      writeFileSync(f, body);
+      assert.deepEqual(readJsonStrict(f), { state: 'corrupt', data: null }, `${name} → corrupt`);
+    }
+  });
+
+  it('tolerant self-heal preserves the corrupt bytes as <file>.corrupt-<ts>', async () => {
+    const f = freshFile('prefs.json');
+    writeFileSync(f, 'not json at all');
+    await mutateJson(f, (d) => { d.healed = true; }, { fallback: {} });
+    assert.deepEqual(JSON.parse(readFileSync(f, 'utf-8')), { healed: true }, 'healed to fallback+patch');
+    const backups = readdirSync(workDir).filter(x => x.startsWith('prefs.json.corrupt-'));
+    assert.equal(backups.length, 1, 'corrupt bytes preserved');
+    assert.equal(readFileSync(join(workDir, backups[0]), 'utf-8'), 'not json at all', 'backup is byte-identical');
+    // Same for the sync flavor.
+    const f2 = freshFile('prefs2.json');
+    writeFileSync(f2, '{broken');
+    mutateJsonSync(f2, (d) => { d.x = 1; }, { fallback: {} });
+    assert.equal(readdirSync(workDir).filter(x => x.startsWith('prefs2.json.corrupt-')).length, 1, 'sync flavor also preserves');
   });
 
   it('readJsonSafe returns fallback on corrupt JSON', () => {

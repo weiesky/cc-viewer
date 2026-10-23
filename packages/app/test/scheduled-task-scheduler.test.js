@@ -177,3 +177,19 @@ test('tick: canExecute throwing is fail-CLOSED (claims nothing, reports)', async
   assert.equal(deps.calls.execute.length, 0, 'a throwing canExecute claims nothing');
   assert.equal(rd(root).tasks[0].claim, null);
 });
+
+test('legacy fallback: tick never claims legacy tasks and never writes the prefs tombstone', async () => {
+  const { writeFileSync, existsSync } = await import('node:fs');
+  const { legacyTasksFilePath, prefsFilePath } = await import('../server/lib/scheduled-task-store.js');
+  // A legacy-only registry (no prefs scheduledTasks key).
+  writeFileSync(legacyTasksFilePath(root), JSON.stringify({
+    version: 1,
+    tasks: [{ id: 'st_legacy', project: 'p', cwd: '/tmp/p', prompt: 'old', mode: 'inject', schedule: { kind: 'cron', expr: '* * * * *' }, enabled: true, nextRunAt: Date.now() - 1000, claim: null }],
+  }));
+  const deps = makeDeps();
+  initScheduledTaskScheduler(deps);
+  await __tickForTests(Date.now());
+  await new Promise(r => setTimeout(r, 30));
+  assert.equal(deps.calls.execute.length, 0, 'legacy tasks are never executed');
+  assert.equal(existsSync(prefsFilePath(root)), false, 'no prefs tombstone written for legacy');
+});

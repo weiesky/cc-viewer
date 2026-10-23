@@ -77,8 +77,18 @@ describe('project-prefs lib + routes', { concurrency: false }, () => {
       auth: { enabled: true, password: 'x' }, authByProject: { '/p': {} },
       prefsByProject: { '/q': {} }, logDir: '/l', claudeConfigDir: '/c',
       dingtalk: { secret: 's' }, _isLocal: true,
+      scheduledTasks: { version: 1, tasks: [{ id: 'st_1', prompt: 'secret' }] },
     });
     assert.deepEqual(snap, { expandThinking: true, themeColor: 'dark' });
+  });
+
+  it('resolveScoped drops scheduledTasks from both global and fork (tasks are global-only)', () => {
+    const out = lib.resolveScoped(
+      { themeColor: 'light', scheduledTasks: { version: 1, tasks: [{ id: 'st_g' }] } },
+      { themeColor: 'dark', scheduledTasks: { version: 1, tasks: [{ id: 'st_f' }] } },
+    );
+    assert.equal('scheduledTasks' in out, false);
+    assert.equal(out.themeColor, 'dark');
   });
 
   it('resolveScoped lets fork win over global and keeps unforked global keys', () => {
@@ -93,13 +103,13 @@ describe('project-prefs lib + routes', { concurrency: false }, () => {
 
   // ─── toggle (fork lifecycle) ────────────────────────────────────────────
   it('toggle on snapshots current global prefs into prefsByProject[key]', async () => {
-    writeFileSync(prefsFile, JSON.stringify({ expandThinking: true, themeColor: 'dark' }));
+    writeFileSync(prefsFile, JSON.stringify({ expandThinking: true, themeColor: 'dark', scheduledTasks: { version: 1, tasks: [{ id: 'st_1', prompt: 'x' }] } }));
     const { status, data } = await callPost(toggle, { enabled: true });
     assert.equal(status, 200);
     assert.equal(data.projectScoped, true);
     const onDisk = JSON.parse(readFileSync(prefsFile, 'utf-8'));
     assert.ok(onDisk.prefsByProject[projectKey], 'fork created');
-    assert.deepEqual(onDisk.prefsByProject[projectKey], { expandThinking: true, themeColor: 'dark' });
+    assert.deepEqual(onDisk.prefsByProject[projectKey], { expandThinking: true, themeColor: 'dark' }, 'fork snapshot never carries scheduledTasks');
   });
 
   it('toggle off deletes the fork key (inherits global again)', async () => {
@@ -142,6 +152,14 @@ describe('project-prefs lib + routes', { concurrency: false }, () => {
     assert.equal(status, 200);
     const onDisk = JSON.parse(readFileSync(prefsFile, 'utf-8'));
     assert.deepEqual(onDisk.prefsByProject[projectKey], { themeColor: 'dark', expandThinking: true });
+  });
+
+  it('update patch can never smuggle scheduledTasks into a fork', async () => {
+    writeFileSync(prefsFile, JSON.stringify({ prefsByProject: { [projectKey]: { themeColor: 'dark' } } }));
+    const { status } = await callPost(update, { patch: { expandThinking: true, scheduledTasks: { version: 1, tasks: [{ id: 'st_x', prompt: 'evil' }] } } });
+    assert.equal(status, 200);
+    const onDisk = JSON.parse(readFileSync(prefsFile, 'utf-8'));
+    assert.equal('scheduledTasks' in onDisk.prefsByProject[projectKey], false, 'cleanPatch strips scheduledTasks');
   });
 
   it('update for a fork that does not exist 404s', async () => {

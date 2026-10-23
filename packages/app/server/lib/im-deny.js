@@ -15,18 +15,21 @@ const CRED_DIRS = ['.ssh', '.aws', '.gnupg', '.kube', '.docker', '.config/gcloud
 // 家目录下的 shell 启动文件：写拒（被改写可植入持久化）。
 const WRITE_HOME_FILES = ['.bashrc', '.zshrc', '.bash_profile', '.zprofile', '.zshenv', '.profile', '.npmrc', '.netrc'];
 // Global settings/hooks: write-deny (protects the deny mechanism itself). Resolved against ~.
-const WRITE_REL_PATHS = ['.claude/settings.json', '.claude/settings.local.json', '.claude/cc-viewer/preferences.json', '.claude/cc-viewer/credentials.json', '.claude/cc-viewer/master.key'];
+const WRITE_REL_PATHS = ['.claude/settings.json', '.claude/settings.local.json', '.claude/cc-viewer/preferences.json', '.claude/cc-viewer/credentials.json', '.claude/cc-viewer/master.key', '.claude/cc-viewer/scheduled-task-runs.json', '.claude/cc-viewer/scheduled-tasks.json'];
 // Token/secret files under home: read-deny. Resolved against ~.
-const READ_REL_PATHS = ['.npmrc', '.netrc', '.claude/cc-viewer/preferences.json', '.claude/cc-viewer/credentials.json', '.claude/cc-viewer/master.key'];
+const READ_REL_PATHS = ['.npmrc', '.netrc', '.claude/cc-viewer/preferences.json', '.claude/cc-viewer/credentials.json', '.claude/cc-viewer/master.key', '.claude/cc-viewer/scheduled-task-runs.json', '.claude/cc-viewer/scheduled-tasks.json'];
 
 // Vault file names (bare-name match, any directory): LOG_DIR can be moved by --log-dir /
 // POST /api/preferences {logDir}, so hardcoding ~/.claude/cc-viewer would lose the vault whenever
-// the root moves. Match by file name so it stays denied regardless of root. Case-insensitive and
-// EXACT (does NOT match .bak/.old/.txt suffix variants — those are covered by the Bash-layer /i
-// regex and the backup-dir rule); basename grabs the last segment across POSIX/win32 (pathOf's
-// resolve would make lastIndexOf('/') miss on win32 backslashes).
+// the root moves. Match by file name so it stays denied regardless of root. Case-insensitive.
+// The credential vault (credentials.json/master.key) is EXACT-anchored: suffix variants
+// (.bak/.old/.txt) are deliberately allowed at this layer (covered by the Bash-layer /i regex
+// and the backup-dir rule). preferences.json / scheduled-task*.json additionally tolerate a
+// `.corrupt-*`/`.tmp-*` suffix — those residues hold the same secrets/prompts and are denied.
 const VAULT_FILE_RE = /^(credentials\.json|master\.key)$/i;
+const TASK_DATA_FILE_RE = /^(preferences\.json|scheduled-task-runs\.json|scheduled-tasks\.json)(\.(corrupt|tmp)-.*)?$/i;
 function isVaultFile(abs) { return VAULT_FILE_RE.test(basename(abs)); }
+function isTaskDataFile(abs) { return TASK_DATA_FILE_RE.test(basename(abs)); }
 
 // Bash 命令硬拦截规则。每条 { re, reason }。
 const BASH_DENY_RULES = [
@@ -56,7 +59,7 @@ const BASH_DENY_RULES = [
   // + 凭证 vault(credentials.json/master.key，含 cc-viewer-config-backups 备份目录) + 全局 settings。
   // credentials.json/master.key 用裸文件名匹配(不限 cc-viewer/ 前缀),并含 cred*/master* glob 形式,
   // 防止经备份目录、相对路径或 shell glob(cred*.json master*)绕过——IM 通道宁可拦多。
-  { re: /(id_rsa|id_ed25519|id_ecdsa|authorized_keys|\.ssh\/|\.aws\/|\.gnupg\/|\.kube\/|\.docker\/|\.config\/(gcloud|gh)\/|\.netrc|\.npmrc|cc-viewer\/preferences\.json|credentials\.json|master\.key|cc-viewer-config-backups|\.claude\/settings(\.local)?\.json)\b|(cred\*|master\*)/i, reason: 'access to credential / secret files' },
+  { re: /(id_rsa|id_ed25519|id_ecdsa|authorized_keys|\.ssh\/|\.aws\/|\.gnupg\/|\.kube\/|\.docker\/|\.config\/(gcloud|gh)\/|\.netrc|\.npmrc|cc-viewer\/preferences\.json|scheduled-task-runs\.json|scheduled-tasks\.json|credentials\.json|master\.key|cc-viewer-config-backups|\.claude\/settings(\.local)?\.json)\b|(cred\*|master\*)/i, reason: 'access to credential / secret files' },
 ];
 
 function underAny(absPath, roots) {
@@ -94,7 +97,7 @@ export function evaluateImDeny(toolName, toolInput = {}, opts = {}) {
   if (toolName === 'Read') {
     const abs = pathOf(toolInput, home);
     if (!abs) return { deny: false };
-    if (isVaultFile(abs)) return { deny: true, reason: 'read of the credential vault / master key' };
+    if (isVaultFile(abs) || isTaskDataFile(abs)) return { deny: true, reason: 'read of the credential vault / master key' };
     if (underAny(abs, credRoots)) return { deny: true, reason: 'read of a credential directory' };
     if (READ_REL_PATHS.some((rel) => abs === resolve(home, rel))) return { deny: true, reason: 'read of a secret/credential file' };
     return { deny: false };
@@ -103,7 +106,7 @@ export function evaluateImDeny(toolName, toolInput = {}, opts = {}) {
   if (toolName === 'Edit' || toolName === 'Write' || toolName === 'NotebookEdit') {
     const abs = pathOf(toolInput, home);
     if (!abs) return { deny: false };
-    if (isVaultFile(abs)) return { deny: true, reason: 'write to the credential vault / master key' };
+    if (isVaultFile(abs) || isTaskDataFile(abs)) return { deny: true, reason: 'write to the credential vault / master key' };
     if (underAny(abs, credRoots)) return { deny: true, reason: 'write to a credential directory' };
     if (WRITE_HOME_FILES.some((f) => abs === resolve(home, f))) return { deny: true, reason: 'write to a shell startup / credential file' };
     if (WRITE_REL_PATHS.some((rel) => abs === resolve(home, rel))) return { deny: true, reason: 'write to protected global config (settings/hooks or IM secrets)' };

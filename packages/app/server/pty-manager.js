@@ -501,6 +501,10 @@ async function _spawnClaudeImpl(key, proxyPort, cwd, extraArgs = [], claudePath 
         `Edit(${home}/.claude/settings.json)`, `Write(${home}/.claude/settings.json)`,
         `Edit(${home}/.claude/settings.local.json)`, `Write(${home}/.claude/settings.local.json)`,
         `Edit(${home}/.claude/cc-viewer/preferences.json)`, `Write(${home}/.claude/cc-viewer/preferences.json)`,
+        // preferences.json 现承载定时任务定义(含 prompt);运行历史/旧版任务文件同理拒读拒写。
+        `Read(${home}/.claude/cc-viewer/preferences.json)`,
+        `Read(${home}/.claude/cc-viewer/scheduled-task-runs.json)`, `Edit(${home}/.claude/cc-viewer/scheduled-task-runs.json)`, `Write(${home}/.claude/cc-viewer/scheduled-task-runs.json)`,
+        `Read(${home}/.claude/cc-viewer/scheduled-tasks.json)`, `Edit(${home}/.claude/cc-viewer/scheduled-tasks.json)`, `Write(${home}/.claude/cc-viewer/scheduled-tasks.json)`,
         `Read(${home}/.claude/cc-viewer/credentials.json)`, `Edit(${home}/.claude/cc-viewer/credentials.json)`, `Write(${home}/.claude/cc-viewer/credentials.json)`,
         `Read(${home}/.claude/cc-viewer/master.key)`, `Edit(${home}/.claude/cc-viewer/master.key)`, `Write(${home}/.claude/cc-viewer/master.key)`,
         // Backup copies of the vault (cc-viewer-config-backups/<ts>/) hold the same decryption

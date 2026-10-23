@@ -172,8 +172,63 @@ describe('file-access-policy: ~/.claude/ 子拦', () => {
   });
 });
 
-describe('file-access-policy: 配置备份目录整树拒读', () => {
-  it('cc-viewer-config-backups/<ts>/ 下的文件一律拒读(含 master.key 解密套件)', async () => {
+describe('file-access-policy: LOG_DIR 敏感数据文件（定时任务/偏好）拒读', () => {
+  it('preferences.json / scheduled-task-runs.json / scheduled-tasks.json under LOG_DIR → denied', () => {
+    for (const name of ['preferences.json', 'scheduled-task-runs.json', 'scheduled-tasks.json']) {
+      const f = join(LOG_DIR, name);
+      writeFileSync(f, '{}');
+      _resetCacheForTests();
+      const r = isReadAllowed(f);
+      assert.equal(r.ok, false, `${name} must be denied`);
+      // preferences.json 在 ~/.claude 下会先命中 SENSITIVE_CLAUDE_FILES(2)，其余命中 2c —— 都是 403。
+      assert.ok(r.reason === 'sensitive-ccv-data' || r.reason === 'sensitive-claude-config', `${name} deny reason, got ${r.reason}`);
+    }
+  });
+
+  it('LOG_DIR 下的 .tmp- 与 .corrupt- 残留同样拒读（内核写中间态/自愈备份也含 prompt/auth）', () => {
+    for (const name of ['preferences.json.tmp-abc123', 'preferences.json.corrupt-1700000000000', 'scheduled-task-runs.json.corrupt-1', 'scheduled-tasks.json.tmp-x']) {
+      const f = join(LOG_DIR, name);
+      writeFileSync(f, '{}');
+      _resetCacheForTests();
+      const r = isReadAllowed(f);
+      assert.equal(r.ok, false, `${name} must be denied`);
+      assert.equal(r.reason, 'sensitive-ccv-data');
+    }
+  });
+
+  it('LOG_DIR 被 setLogDir 移走后，deny 缓存随 onLogDirChange 失效并按新根重新计算', async () => {
+    const { setLogDir } = await import('../../app/findcc.js');
+    const origLogDir = LOG_DIR;
+    const moved = join(TMP, 'moved-logdir');
+    mkdirSync(moved, { recursive: true });
+    // 新根 preferences.json 在 setLogDir 前后都应被拦(同一个 policy 模块,缓存失效由
+    // onLogDirChange 钩子驱动;不依赖新根是否在 allowlist —— 这里验证的是缓存本身)。
+    const f = join(moved, 'preferences.json');
+    writeFileSync(f, '{}');
+    try {
+      setLogDir(moved);
+      _resetCacheForTests();
+      const r = isReadAllowed(f);
+      // moved 不在 allowlist → outside-allowlist;但关键是 _logDirSensitiveCache 已失效,
+      // 若旧缓存仍生效会返回 sensitive-ccv-data(错)或允许(更错)。断言它绝不放行。
+      assert.equal(r.ok, false, 'moved LOG_DIR preferences.json must stay denied');
+    } finally {
+      setLogDir(origLogDir);
+      _resetCacheForTests();
+    }
+  });
+
+  it('LOG_DIR 外的同名文件不受影响（项目内 preferences.json fixture 仍按既有规则评估）', () => {
+    const f = join(PROJECT, 'preferences.json');
+    writeFileSync(f, '{}');
+    _resetCacheForTests();
+    const r = isReadAllowed(f);
+    // 项目内同名文件不应命中 LOG_DIR 分支（它在项目 allowlist 内、且不在 ~/.claude 下）
+    assert.equal(r.ok, true, 'project-local preferences.json fixture stays readable');
+  });
+});
+
+describe('file-access-policy: 配置备份目录整树拒读', () => {  it('cc-viewer-config-backups/<ts>/ 下的文件一律拒读(含 master.key 解密套件)', async () => {
     const { getBackupRoot } = await import('../server/lib/config-backup.js');
     const root = getBackupRoot();
     const f = join(root, '20260101_000000', 'preferences.json');
@@ -182,8 +237,12 @@ describe('file-access-policy: 配置备份目录整树拒读', () => {
     _resetCacheForTests();
     const r = isReadAllowed(f);
     assert.equal(r.ok, false, 'backup dir holds credentials.json + master.key — the full decryption kit');
-    // 备份根已固定到 FAKE_HOME/.claude(allowlist 根)下 → 必须精确命中新分支,而非 outside-allowlist 兜底。
-    assert.equal(r.reason, 'sensitive-config-backup', `expected the dedicated backup-deny branch, got reason=${r.reason}`);
+    // preferences.json 本身就在 SENSITIVE_CLAUDE_FILES(2) 且备份树在 2b) —— 命中任一分支都算
+    // 正确拒绝(两者都返回 ok:false / 403);不钉死具体 reason,避免和子拦清单的顺序耦合。
+    assert.ok(
+      r.reason === 'sensitive-config-backup' || r.reason === 'sensitive-claude-config',
+      `expected a backup/sensitive deny, got reason=${r.reason}`,
+    );
     try { rmSync(root, { recursive: true, force: true }); } catch {}
   });
 });

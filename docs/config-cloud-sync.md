@@ -19,7 +19,9 @@ The cloud accepts **only** the following:
 > **Not** synced (machine/instance-bound, runtime, or tuning): `retry-config.json` (retry tuning,
 > per-instance), `workspaces.json`, `.session-pin.json`, `ask-store.json`, `update-check.json`,
 > session wire logs, stats caches, system-prompt snapshots/live, voice-packs, plugins,
-> `IM_<id>/*`, trash.
+> `IM_<id>/*`, trash. Also NOT synced: `scheduledTasks` (scheduled-task definitions + scheduling
+> state inside `preferences.json` — task prompts are user content and scheduling is machine-local)
+> and `scheduled-task-runs.json` (run history); both must be stripped from any prefs projection.
 
 **Secret-splitting rule**: `preferences.json` and `profile.json` are mixed files. Split before
 sync — the plaintext part goes to `user_preferences`/`proxy_profiles`; secrets

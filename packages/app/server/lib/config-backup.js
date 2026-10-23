@@ -1,11 +1,13 @@
 // 启动期配置备份 — 2026-06-06 LOG_DIR 整树删除事故防再犯。
-// preferences.json(auth/IM/偏好)、profile.json(代理热切换)、workspaces.json(工作区注册表)、
-// credentials.json + master.key(凭证 vault 密文与主密钥) 是无法从日志/会话重建的"静态设置";
+// preferences.json(auth/IM/偏好 + 定时任务定义/调度状态,含 prompt)、profile.json(代理热切换)、
+// workspaces.json(工作区注册表)、credentials.json + master.key(凭证 vault 密文与主密钥)
+// 是无法从日志/会话重建的"静态设置";
 // 本模块在 server 启动时把它们备份到 LOG_DIR **之外**的兄弟目录
 // (默认 ~/.claude/cc-viewer-config-backups/<时间戳>/),滚动保留最近 KEEP 份。
 // master.key 一并备份:credentials.json 是密文,没有 key 就是废数据;二者同地 0600,恢复路径才完整。
 // 历史明文备份(迁移前含 base64/明文密钥的 preferences/profile)不自动删除——它们是唯一的老密钥
 // 恢复来源,在确认 vault 可读前绝不清理。全程 best-effort:任何失败只返回 {ok:false},绝不抛错阻塞启动。
+// scheduled-task-runs.json(运行历史)故意不备份:历史可丢,且备份面越小越好。
 import { existsSync, mkdirSync, copyFileSync, readdirSync, rmSync, chmodSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { LOG_DIR } from '../../findcc.js';

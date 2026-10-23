@@ -56,8 +56,22 @@ export function startScheduledTaskScheduler() {
   // of THIS pid left behind). Failures here must never block startup.
   const root = _safe(() => _deps.getRoot());
   if (root) {
-    sweepStaleClaims(root, Date.now(), { selfInstanceId: _instanceId })
-      .catch(err => _report('scheduler.sweep', err));
+    // Skip the sweep entirely in legacy read-only mode: the sweep would create the
+    // `scheduledTasks` prefs key (tombstone) and hide the legacy set. Legacy claims are
+    // never swept (the legacy file is never written) — they are display-neutralized at
+    // the read boundary instead.
+    const reg = _safe(() => readScheduledTasks(root));
+    if (!reg || !reg.legacy) {
+      // Defer past the current synchronous startup burst: auth handoff (saveAuthConfig)
+      // and the credential migration run synchronously during _doStart, and the sync lock
+      // flavor THROWS on reentry if our async prefs write is mid-flight (json-store
+      // JSON_STORE_REENTRANT). setTimeout(0) keeps the sweep's lock off that path while
+      // still running before the first 10s tick.
+      setTimeout(() => {
+        sweepStaleClaims(root, Date.now(), { selfInstanceId: _instanceId })
+          .catch(err => _report('scheduler.sweep', err));
+      }, 0).unref?.();
+    }
   }
   _timer = setInterval(() => { _tick().catch(err => _report('scheduler.tick', err)); }, TICK_MS);
   if (typeof _timer.unref === 'function') _timer.unref();
@@ -100,8 +114,9 @@ async function _tick(now = Date.now()) {
       if (!ready) return;
     }
 
-    const { tasks } = readScheduledTasks(root);
-    const due = tasks.filter(t =>
+    const reg = readScheduledTasks(root);
+    if (reg.legacy) return; // read-only legacy fallback: writes can't resolve these ids
+    const due = reg.tasks.filter(t =>
       t.enabled && t.nextRunAt != null && t.nextRunAt <= now &&
       // Process-level capability: only claim work THIS process can execute (P0-1).
       // Fail-CLOSED: a throwing canExecute must not let this process claim the task

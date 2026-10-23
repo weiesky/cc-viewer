@@ -1473,6 +1473,7 @@
   "server/lib/same-origin.js",
   "server/lib/schedule-model.js",
   "server/lib/scheduled-task-executor.js",
+  "server/lib/scheduled-task-runs-store.js",
   "server/lib/scheduled-task-scheduler.js",
   "server/lib/scheduled-task-store.js",
   "server/lib/scope-router.js",

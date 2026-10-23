@@ -32,6 +32,7 @@ import { normalizeSchedule, nextBaseFor } from '../lib/schedule-model.js';
 import {
   createTask, updateTask, deleteTask, getTask, readScheduledTasks,
 } from '../lib/scheduled-task-store.js';
+import { readScheduledTaskRuns } from '../lib/scheduled-task-runs-store.js';
 import { runTaskNow, spawnAvailable } from '../lib/scheduled-task-scheduler.js';
 import { loadWorkspaces } from '../workspace-registry.js';
 import { listSdkSessionInstances } from '../lib/sdk-session-index.js';
@@ -135,15 +136,18 @@ function listHandler(req, res, parsedUrl) {
     reportSwallowed('scheduled-tasks.list', err);
     reg = { tasks: [], corrupt: true };
   }
-  if (reg.corrupt) reportSwallowed('scheduled-tasks.list.corrupt', new Error('scheduled-tasks.json is corrupt'));
+  if (reg.corrupt) reportSwallowed('scheduled-tasks.list.corrupt', new Error('preferences.json scheduledTasks is corrupt'));
+  // Prompt secrecy (review): a project query only earns full prompts when it actually
+  // resolves to a known project (bound / registry / live). Otherwise fall back to the
+  // summary shape so an arbitrary ?project= can't pull another project's prompt text.
+  const resolved = project ? _resolveProjectToCwd(project, parsedUrl.searchParams.get('instance') || '') : { ok: false };
+  const fullPrompt = !!project && resolved.ok;
   const tasks = (reg.tasks || []).filter(t => !project || t.project === project);
   const running = new Set();
   for (const t of tasks) if (t.claim) running.add(t.id);
-  // When a project is named, the full prompt is included (the editor round-trips it).
-  // Without a project (unbound / cross-project view), return summaries only (P2-3).
-  const shaped = project
-    ? tasks.map(t => ({ ..._publicTask(t), running: running.has(t.id) }))
-    : tasks.map(t => ({ ..._listTask(t), running: running.has(t.id) }));
+  const shaped = fullPrompt
+    ? tasks.map(t => ({ ..._publicTask(t), running: running.has(t.id), ...(reg.legacy ? { legacy: true } : {}) }))
+    : tasks.map(t => ({ ..._listTask(t), running: running.has(t.id), ...(reg.legacy ? { legacy: true } : {}) }));
   sendJson(res, 200, {
     tasks: shaped,
     serverTime: Date.now(),
@@ -155,12 +159,12 @@ function listHandler(req, res, parsedUrl) {
 
 function _publicTask(t) {
   const { runs, claim, ...rest } = t;
-  return { ...rest, runCount: Array.isArray(runs) ? runs.length : 0 };
+  return rest;
 }
 
 // List payload keeps the full prompt OUT (it may carry secrets and every logged-in
-// viewer can read the list — security P2-3). The form re-fetches the full task by id
-// when editing (an admin-gated detail read).
+// viewer can read the list — security P2-3). Full prompts only ship when the project
+// resolves (bound / registry / live instance — see listHandler's fullPrompt gate).
 function _listTask(t) {
   const p = _publicTask(t);
   p.promptSummary = String(t.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 200);
@@ -289,7 +293,10 @@ function runsHandler(req, res, parsedUrl) {
   // Runs carry the prompt summary + sessionId — scope them to the task's own project so a
   // viewer of project A can't read project B's run history by id (security P2-3).
   if (reqProject && task.project !== reqProject) return sendJson(res, 403, { ok: false, error: 'forbidden' });
-  sendJson(res, 200, { ok: true, runs: Array.isArray(task.runs) ? task.runs.slice(-20) : [], serverTime: Date.now() });
+  let runs = [];
+  try { runs = readScheduledTaskRuns(LOG_DIR, id); }
+  catch (err) { reportSwallowed('scheduled-tasks.runs.read', err); }
+  sendJson(res, 200, { ok: true, runs: runs.slice(-20), serverTime: Date.now() });
 }
 
 export const scheduledTasksRoutes = [

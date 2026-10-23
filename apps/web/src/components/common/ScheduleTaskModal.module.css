@@ -1,4 +1,4 @@
-/* ScheduleTaskModal layout — left list, right form + history. */
+/* ScheduleTaskModal layout — form by default, with a left task list once tasks exist. */
 
 .layout {
   display: flex;
@@ -15,8 +15,12 @@
   padding-right: 12px;
 }
 
-.listHeader {
-  margin-bottom: 8px;
+.titleRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  max-width: calc(100% - 40px);
 }
 
 .list {
@@ -162,8 +166,6 @@
 .weekdaySelect { min-width: 110px; }
 .cronInput { flex: 1; min-width: 180px; font-family: monospace; }
 .inlineCtl { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
-
-.muted { color: var(--text-secondary, #888); }
 
 .permNote {
   margin-top: 4px;

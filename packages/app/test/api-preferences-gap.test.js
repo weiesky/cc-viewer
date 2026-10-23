@@ -100,6 +100,17 @@ describe('GET /api/preferences (gap)', () => {
     assert.equal(data.theme, 'dark', 'unrelated prefs preserved');
   });
 
+  it('strips scheduledTasks (task prompts must never leave via prefs GET, even for admin)', async () => {
+    writeFileSync(prefsFile, JSON.stringify({
+      lang: 'en',
+      scheduledTasks: { version: 1, tasks: [{ id: 'st_1', prompt: 'secret prompt', cwd: '/tmp/x' }] },
+    }));
+    const res = await callGet(preferencesGet);
+    const data = JSON.parse(res.body);
+    assert.equal('scheduledTasks' in data, false, 'scheduledTasks removed from GET');
+    assert.equal(data.lang, 'en');
+  });
+
   it('always reports the runtime logDir and a home-friendly claudeConfigDir', async () => {
     const res = await callGet(preferencesGet);
     const data = JSON.parse(res.body);
@@ -155,6 +166,23 @@ describe('POST /api/preferences (gap)', () => {
     assert.equal(written.theme, 'light');
     // 回显同样不含 auth
     assert.equal('auth' in JSON.parse(res.body), false);
+  });
+
+  it('strips incoming scheduledTasks (admin or not) and preserves existing tasks on disk', async () => {
+    // Pre-existing tasks on disk must survive an unrelated prefs POST, and the POST must
+    // not be able to inject/replace them.
+    writeFileSync(prefsFile, JSON.stringify({
+      scheduledTasks: { version: 1, tasks: [{ id: 'st_keep', prompt: 'keep me' }] },
+    }));
+    const res = await callPost(preferencesPost, {
+      theme: 'light',
+      scheduledTasks: { version: 1, tasks: [{ id: 'st_evil', prompt: 'injected', schedule: { kind: 'once', at: 1 } }] },
+    });
+    assert.equal(res.statusCode, 200);
+    const written = JSON.parse(readFileSync(prefsFile, 'utf-8'));
+    assert.equal(written.scheduledTasks.tasks.length, 1, 'existing tasks preserved');
+    assert.equal(written.scheduledTasks.tasks[0].id, 'st_keep', 'incoming scheduledTasks ignored');
+    assert.equal('scheduledTasks' in JSON.parse(res.body), false, 'echo also strips scheduledTasks');
   });
 
   it('persists claudeExecutablePath only for the local admin', async () => {

@@ -147,4 +147,53 @@ describe('scheduled-tasks routes', () => {
     assert.equal(status, 503);
     assert.equal(data.error, 'scheduler_unavailable');
   });
+
+  it('list tasks never carry runs/runCount; runs come from the runs file', async () => {
+    const created = await callPost(route('POST', '/api/scheduled-tasks'), {
+      prompt: 'with history', mode: 'inject', schedule: { kind: 'daily', time: '09:00' },
+    });
+    const id = created.data.task.id;
+    // Seed a run directly in the runs store (scheduler isn't running in this test).
+    const { appendRun } = await import('../server/lib/scheduled-task-runs-store.js');
+    await appendRun(tmpDir, id, { status: 'completed', at: 1, finishedAt: 2, claimRunId: 'run_seed' });
+    const list = callGet(route('GET', '/api/scheduled-tasks'));
+    const t = list.data.tasks.find(x => x.id === id);
+    assert.ok(t, 'task listed');
+    assert.equal('runs' in t, false, 'list never embeds runs');
+    assert.equal('runCount' in t, false, 'runCount removed');
+    const runs = callGet(route('GET', '/api/scheduled-tasks/runs'), { id });
+    assert.equal(runs.status, 200);
+    assert.equal(runs.data.runs.length, 1);
+    assert.equal(runs.data.runs[0].claimRunId, 'run_seed');
+  });
+
+  it('GET list: corrupt prefs → storeCorrupt:true', async () => {
+    const { prefsFilePath } = await import('../server/lib/scheduled-task-store.js');
+    const { writeFileSync, readFileSync } = await import('node:fs');
+    const file = prefsFilePath(tmpDir);
+    const saved = readFileSync(file, 'utf-8');
+    try {
+      writeFileSync(file, 'not json');
+      const { status, data } = callGet(route('GET', '/api/scheduled-tasks'));
+      assert.equal(status, 200);
+      assert.equal(data.storeCorrupt, true);
+    } finally {
+      writeFileSync(file, saved);
+    }
+  });
+
+  it('GET list: arbitrary ?project= for an unknown project returns summaries, not full prompts', async () => {
+    // Seed a task under a project name that does not resolve (not bound, not registered,
+    // no live instance) — the summary shape must apply even though rows exist.
+    const { createTask } = await import('../server/lib/scheduled-task-store.js');
+    const r = await createTask(tmpDir, {
+      project: 'no-such-project', cwd: '/tmp/no-such-project', prompt: 'secret prompt text',
+      mode: 'inject', schedule: { kind: 'daily', time: '09:00' }, enabled: true,
+    }, Date.now());
+    assert.equal(r.ok, true);
+    const { data } = callGet(route('GET', '/api/scheduled-tasks'), { project: 'no-such-project' });
+    assert.equal(data.tasks.length, 1, 'the unresolvable project still lists its task');
+    assert.equal('prompt' in data.tasks[0], false, 'unknown project → summary-only shape');
+    assert.equal(typeof data.tasks[0].promptSummary, 'string');
+  });
 });

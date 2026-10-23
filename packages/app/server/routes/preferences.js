@@ -1,5 +1,5 @@
 // Preferences, Claude settings, and proxy-profile routes (moved verbatim from server.js).
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { LOG_DIR, setLogDir, getClaudeConfigDir, discoverClaudeExecutables, resolveExplicitClaudePath, CLAUDE_EXECUTABLE_PREF_KEY } from '../../findcc.js';
@@ -14,6 +14,7 @@ import { readClaudeProjectModel } from '../lib/context-watcher.js';
 import { inspectShellHook } from '../lib/shell-hook-inspect.js';
 import { sendEventToClients } from '../lib/log-watcher.js';
 import { listPlatforms } from '../lib/im/im-config.js';
+import { runsFilePath } from '../lib/scheduled-task-runs-store.js';
 import { mutatePrefs, applyPrefsPatch, readPrefsRaw } from '../lib/prefs-store.js';
 import { mutateJsonSync } from '../lib/json-store.js';
 import { persistProfilesApiKeys } from '../lib/credential-access.js';
@@ -50,6 +51,9 @@ function preferencesGet(req, res, parsedUrl, isLocal, deps) {
   // 全局 auth 与每个项目的 authByProject 覆盖都要剥离(后者同样含明文密码)。
   delete prefs.auth;
   delete prefs.authByProject;
+  // 定时任务(含 prompt/调度状态)属敏感数据:只能经 /api/scheduled-tasks 读写(admin+same-origin),
+  // 绝不随 prefs 下发/回写 —— 否则任何已授权客户端都能拿到 prompt 或借 applyPrefsPatch 注入任务。
+  delete prefs.scheduledTasks;
   if (!isAdmin || !isSameOriginBrowserRequest(req, parsedUrl)) {
     delete prefs[CLAUDE_EXECUTABLE_PREF_KEY];
   }
@@ -70,6 +74,7 @@ function preferencesGet(req, res, parsedUrl, isLocal, deps) {
     // 客户端的读路径，与 admin 列表口保持对称——手改 preferences.json 注入的脏 fork 也不会泄露。
     delete prefs.auth;
     delete prefs.authByProject;
+    delete prefs.scheduledTasks; // fork 防御性二次剥离:脏 fork 也不得把任务带给远程客户端
     stripImConfigs(prefs);
   }
   prefs.logDir = LOG_DIR; // 始终返回当前运行时的日志目录
@@ -143,6 +148,9 @@ function preferencesPost(req, res, parsedUrl, isLocal, deps) {
       // prefsByProject(项目独立配置 fork)只能经 admin-only 的 /api/project-prefs/* 修改；元字段
       // (_isLocal/_projectScoped/…)仅 GET 回包，绝不让它们经 /api/preferences 落盘污染。
       delete incoming.prefsByProject;
+      // 定时任务只能经 /api/scheduled-tasks (admin+same-origin) 写 —— 任何客户端(含 admin)
+      // 都不得借 prefs POST 注入/清空/覆盖任务(claim CAS、调度状态校验只在 store 层做)。
+      delete incoming.scheduledTasks;
       for (const k of Object.keys(incoming)) if (k[0] === '_') delete incoming[k];
       // IM bridge configs 同理：只能经 admin-only 的 /api/dingtalk/config、/api/im/* 修改，禁止借
       // /api/preferences 植入凭据。
@@ -154,11 +162,13 @@ function preferencesPost(req, res, parsedUrl, isLocal, deps) {
       // 因此只允许 admin（本机 loopback 或已鉴权远程 admin）触发——未鉴权远程/项目客户端直接剥掉。
       let targetFile = deps.getPrefsFile();
       let carried = null;
+      let oldLogDir = null;
       if (incoming.logDir && typeof incoming.logDir === 'string') {
         if (!isAdminReq(req, isLocal)) {
           delete incoming.logDir; // non-admin cannot move the data root (would open the LAN gate)
         } else {
           carried = readPrefsRaw(targetFile); // 旧文件全量（锁外读，迁移属罕见 admin 操作）
+          oldLogDir = LOG_DIR;
           setLogDir(incoming.logDir);
           targetFile = deps.getPrefsFile();
         }
@@ -215,10 +225,23 @@ function preferencesPost(req, res, parsedUrl, isLocal, deps) {
       delete prefs.auth;
       delete prefs.authByProject;
       delete prefs.prefsByProject; // fork blob 绝不回显（与 GET 一致）
+      delete prefs.scheduledTasks; // 任务(含 prompt)同样不回显——读写都走 /api/scheduled-tasks
       if (!isAdminReq(req, isLocal) || !isSameOriginBrowserRequest(req, parsedUrl)) {
         delete prefs[CLAUDE_EXECUTABLE_PREF_KEY];
       }
       stripImConfigs(prefs);
+      // logDir 切换时把旧根的定时任务运行历史一并搬到新根(任务定义已随 carried 进新 prefs;
+      // 历史不带过去会让既有任务的运行记录凭空消失)。best-effort:失败仅留痕,不影响主流程。
+      if (oldLogDir && oldLogDir !== LOG_DIR) {
+        try {
+          const oldRuns = runsFilePath(oldLogDir);
+          const newRuns = runsFilePath(LOG_DIR);
+          if (existsSync(oldRuns) && !existsSync(newRuns)) {
+            copyFileSync(oldRuns, newRuns);
+            try { unlinkSync(oldRuns); } catch { /* best-effort */ }
+          }
+        } catch (err) { reportSwallowed('preferences.logdir-runs-move', err); }
+      }
       prefs.logDir = LOG_DIR;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(prefs));

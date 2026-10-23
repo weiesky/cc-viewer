@@ -67,8 +67,31 @@ describe('im-deny: file tools', () => {
     for (const fp of [
       join(HOME, '.ssh/id_rsa'), join(HOME, '.aws/credentials'),
       join(HOME, '.npmrc'), join(HOME, '.claude/cc-viewer/preferences.json'),
+      join(HOME, '.claude/cc-viewer/scheduled-task-runs.json'),
+      join(HOME, '.claude/cc-viewer/scheduled-tasks.json'),
     ]) {
       assert.equal(evaluateImDeny('Read', { file_path: fp }, opts).deny, true, `Read should deny: ${fp}`);
+    }
+  });
+
+  it('denies scheduled-task data files under a moved LOG_DIR (bare-name match)', () => {
+    for (const fp of [
+      '/opt/ccv/data/preferences.json',
+      '/opt/ccv/data/scheduled-task-runs.json',
+      '/opt/ccv/data/scheduled-tasks.json',
+    ]) {
+      assert.equal(evaluateImDeny('Read', { file_path: fp }, opts).deny, true, `Read should deny (moved root): ${fp}`);
+      assert.equal(evaluateImDeny('Write', { file_path: fp }, opts).deny, true, `Write should deny (moved root): ${fp}`);
+    }
+  });
+
+  it('denies the corrupt/tmp residues of task data files', () => {
+    for (const fp of [
+      join(HOME, '.claude/cc-viewer/preferences.json.corrupt-1700000000000'),
+      join(HOME, '.claude/cc-viewer/scheduled-task-runs.json.tmp-abc'),
+      '/opt/ccv/data/scheduled-tasks.json.corrupt-1',
+    ]) {
+      assert.equal(evaluateImDeny('Read', { file_path: fp }, opts).deny, true, `Read should deny residue: ${fp}`);
     }
   });
 

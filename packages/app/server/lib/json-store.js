@@ -19,7 +19,7 @@
 //                       writers (auth.js, im-config.js) that cannot become async without
 //                       cascading signature changes through routes and server startup.
 // Both serialize same-process callers and mutex cross-process on the same `${file}.lock`.
-import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync, unlinkSync, openSync, closeSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync, unlinkSync, openSync, closeSync, statSync, copyFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { renameSyncWithRetry } from './file-api.js';
@@ -44,6 +44,23 @@ export function readJsonSafe(file, fallback = {}) {
     return obj;
   } catch {
     return fallback;
+  }
+}
+
+/**
+ * Structured read distinguishing missing / valid / corrupt without any fallback.
+ * Used by stores that must NOT silently recover from corruption (e.g. scheduled tasks in
+ * preferences.json): missing file → seed on first write; corrupt → surface, never overwrite.
+ * Read-only, no lock.
+ */
+export function readJsonStrict(file) {
+  if (!existsSync(file)) return { state: 'missing', data: null };
+  try {
+    const obj = JSON.parse(readFileSync(file, 'utf-8'));
+    if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) return { state: 'corrupt', data: null };
+    return { state: 'ok', data: obj };
+  } catch {
+    return { state: 'corrupt', data: null };
   }
 }
 
@@ -73,6 +90,15 @@ function _resolveForMutation(data, file, strictCorrupt) {
     reportSwallowed('json-store.corrupt-guard', err);
     throw err;
   }
+  // Tolerant self-heal keeps the long-standing "re-save recovers the file" behavior, but the
+  // corrupt bytes may carry data the caller's fallback would silently erase (e.g. scheduledTasks
+  // inside preferences.json). Preserve them once per file before overwriting so recovery is
+  // possible; best-effort — a failed backup must not block the heal. copyFileSync's third arg
+  // is an integer flag mask, not an options object — the destination inherits the source's
+  // 0600 mode, so no chmod is needed.
+  try {
+    copyFileSync(file, `${file}.corrupt-${Date.now()}`);
+  } catch (err) { reportSwallowed('json-store.corrupt-backup', err); }
   return undefined; // tolerant: signal "use the fallback"
 }
 
