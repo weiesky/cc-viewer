@@ -180,6 +180,9 @@ class ChatView extends React.Component {
     this.innerSplitRef = React.createRef();
     this.inputStackRef = React.createRef();
     this._inputStackRO = null;
+    // Chat scroller gutter measurement → --chat-scrollbar-width (.inputStack bleed).
+    this._chatScrollbarRO = null;
+    this._chatScrollbarROEl = null;
     // markdown codespan 文件路径探测(渲染期打标 → 这里异步验证存在性 → 升级可点击)
     this._mdProbeWrapRef = React.createRef();
     this._mdProbeObserver = null;
@@ -584,6 +587,7 @@ class ChatView extends React.Component {
       this._stickyController.bind(this.containerRef.current);
     }
     this._bindInputStackRO();
+    this._bindChatScrollbarRO();
     // 初始化时吸附到 60cols(SDK 模式无主 PTY 面板可吸附,跳过)
     if (this.state.needsInitialSnap && this.props.cliMode && this.props.terminalVisible && !this.props.sdkMode) {
       this._snapToInitialPosition();
@@ -613,6 +617,55 @@ class ChatView extends React.Component {
     if (typeof ResizeObserver !== 'undefined') {
       this._inputStackRO = new ResizeObserver(setInputStackVar);
       this._inputStackRO.observe(stackEl);
+    }
+  }
+
+  // Measure the chat scroller's scrollbar gutter into --chat-scrollbar-width.
+  // Classic scrollbars: offsetWidth - clientWidth is exact for the borderless
+  // .container/Virtuoso scroller. Overlay scrollbars (macOS default, mobile) report 0,
+  // so we fall back to a fixed minimum bleed to keep the floating scrollbar visible.
+  // Reset to 0 when the scroller is missing so a stale inset never lingers.
+  _measureChatScrollbarWidth() {
+    const el = this._getScrollContainer();
+    if (!el || !el.isConnected) {
+      document.documentElement.style.setProperty('--chat-scrollbar-width', '0px');
+      return;
+    }
+    const gutter = Math.max(0, el.offsetWidth - el.clientWidth);
+    const w = gutter > 0 ? gutter : ChatView._overlayScrollbarBleed();
+    document.documentElement.style.setProperty('--chat-scrollbar-width', w + 'px');
+  }
+
+  // Detect overlay-scrollable platform by probing a temporary overflow:scroll element.
+  // Returns the fixed bleed width for overlay scrollbars, 0 for classic scrollbars.
+  static _overlayScrollbarBleed() {
+    if (ChatView._cachedOverlayBleed != null) return ChatView._cachedOverlayBleed;
+    const probe = document.createElement('div');
+    probe.style.overflow = 'scroll';
+    probe.style.visibility = 'hidden';
+    probe.style.position = 'absolute';
+    probe.style.top = '-9999px';
+    document.body.appendChild(probe);
+    const gutter = probe.offsetWidth - probe.clientWidth;
+    document.body.removeChild(probe);
+    // Overlay scrollbars (macOS, mobile) report 0 → use a fixed bleed so the
+    // floating scrollbar is not covered by the input-stack gradient.
+    ChatView._cachedOverlayBleed = gutter === 0 ? 12 : 0;
+    return ChatView._cachedOverlayBleed;
+  }
+
+  // (Re)bind when the scroller node is swapped (loading ↔ loaded, Virtuoso mount).
+  // A classic scrollbar appearing/disappearing shrinks/grows the content box, which
+  // ResizeObserver reports; only rebinding/mount does the direct measurement.
+  _bindChatScrollbarRO() {
+    const el = this._getScrollContainer();
+    if (!el || !el.isConnected || this._chatScrollbarROEl === el) return;
+    if (this._chatScrollbarRO) { this._chatScrollbarRO.disconnect(); this._chatScrollbarRO = null; }
+    this._chatScrollbarROEl = el;
+    this._measureChatScrollbarWidth();
+    if (typeof ResizeObserver !== 'undefined') {
+      this._chatScrollbarRO = new ResizeObserver(() => this._measureChatScrollbarWidth());
+      this._chatScrollbarRO.observe(el);
     }
   }
 
@@ -669,6 +722,7 @@ class ChatView extends React.Component {
 
   componentDidUpdate(prevProps, prevState) {
     this._bindInputStackRO();
+    this._bindChatScrollbarRO();
     // messageListWrap 节点可能因 loading↔loaded / virtuoso 切换被换掉,需要时重挂观察器
     this._attachMdCodeProbe();
     if (prevProps.isStreaming !== this.props.isStreaming) {
@@ -1156,6 +1210,9 @@ class ChatView extends React.Component {
     if (this._stickyController) this._stickyController.dispose();
     if (this._inputStackRO) { this._inputStackRO.disconnect(); this._inputStackRO = null; }
     document.documentElement.style.removeProperty('--input-stack-height');
+    if (this._chatScrollbarRO) { this._chatScrollbarRO.disconnect(); this._chatScrollbarRO = null; }
+    this._chatScrollbarROEl = null;
+    document.documentElement.style.removeProperty('--chat-scrollbar-width');
     if (this._unsubWsHandler) { try { this._unsubWsHandler(); } catch {} this._unsubWsHandler = null; }
     if (this._unsubWsState) { try { this._unsubWsState(); } catch {} this._unsubWsState = null; }
   }
@@ -4124,7 +4181,7 @@ class ChatView extends React.Component {
               if (needsHighlight) el = React.cloneElement(el, { highlight: highlightFading ? 'fading' : 'active' });
               return isScrollTarget ? <div ref={this._scrollTargetRef}>{el}</div> : el;
             }}
-            scrollerRef={(ref) => { this._virtuosoScrollerEl = ref; this._stickyController.bind(ref); }}
+            scrollerRef={(ref) => { this._virtuosoScrollerEl = ref; this._stickyController.bind(ref); this._bindChatScrollbarRO(); }}
             context={{ header: this._virtuosoHeader, footer: this._virtuosoFooter }}
             components={this._virtuosoComponents || (this._virtuosoComponents = {
               Scroller: VirtuosoScroller,
