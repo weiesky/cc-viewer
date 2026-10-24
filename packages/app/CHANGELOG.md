@@ -1,5 +1,12 @@
 # cc-viewer
 
+## 1.9.14
+
+### Patch Changes
+
+- 6363a51: Recognize K3/K4 model variants, including k3.1-pro and k3.1-pro-highspeed, as Kimi models. Match these K3 aliases to the Kimi K3 system prompt, which now skips the Anthropic-specific claude-api skill for local model classification tasks.
+- 6bc7781: Make resume-route tests select PTY mode explicitly and cover the anchor-aware injection dependency.
+
 ## 1.9.13
 
 ### Patch Changes
