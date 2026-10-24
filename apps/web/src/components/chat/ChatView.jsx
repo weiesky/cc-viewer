@@ -3585,7 +3585,7 @@ class ChatView extends React.Component {
 
   handleOpenToolFilePath = async (filePath, line) => {
     if (!filePath) return;
-    if (tryOpenWithSystem(filePath, 'chat-message')) return;
+    if (tryOpenWithSystem(filePath, 'chat-message', { project: this.props.viewProject || this.props.projectName, instance: this.props.viewInstance })) return;
     let resolved = filePath;
     if (filePath.startsWith('/')) {
       // 懒加载项目目录（只请求一次，后续用缓存）
@@ -4257,7 +4257,7 @@ class ChatView extends React.Component {
               instance={this.props.viewInstance}
               onClose={() => this._setFileExplorerOpen(false)}
               onFileClick={(path) => {
-                if (tryOpenWithSystem(path, 'file-explorer')) return;
+                if (tryOpenWithSystem(path, 'file-explorer', { project: this.props.viewProject || this.props.projectName, instance: this.props.viewInstance })) return;
                 this.setState({ currentFile: path, currentGitDiff: null, scrollToLine: null, scrollToMatch: null });
               }}
               expandedPaths={this.state.fileExplorerExpandedPaths}
@@ -4284,12 +4284,12 @@ class ChatView extends React.Component {
               onClose={() => this._setGitChangesOpen(false)}
               onFileClick={(repoPath, filePath, commitHash) => {
                 const resolvedPath = repoPath && repoPath !== '.' ? `${repoPath}/${filePath}` : filePath;
-                if (tryOpenWithSystem(resolvedPath, 'git-changes')) return;
+                if (tryOpenWithSystem(resolvedPath, 'git-changes', { project: this.props.viewProject || this.props.projectName, instance: this.props.viewInstance })) return;
                 this.setState({ currentGitDiff: { repo: repoPath, file: filePath, commit: commitHash || null }, currentFile: null });
               }}
               onOpenFile={(repoPath, filePath) => {
                 const resolvedPath = repoPath && repoPath !== '.' ? `${repoPath}/${filePath}` : filePath;
-                if (tryOpenWithSystem(resolvedPath, 'git-changes')) return;
+                if (tryOpenWithSystem(resolvedPath, 'git-changes', { project: this.props.viewProject || this.props.projectName, instance: this.props.viewInstance })) return;
                 const parts = resolvedPath.split('/');
                 const ancestors = [];
                 for (let i = 1; i < parts.length; i++) ancestors.push(parts.slice(0, i).join('/'));
@@ -4322,7 +4322,7 @@ class ChatView extends React.Component {
                 }
               }}
               onOpenResult={(path, line, range) => {
-                if (tryOpenWithSystem(path, 'search')) return;
+                if (tryOpenWithSystem(path, 'search', { project: this.props.viewProject || this.props.projectName, instance: this.props.viewInstance })) return;
                 // Opening a result finishes any active $EDITOR session (mirrors the viewer's
                 // onClose) so the blocked terminal editor is released, not orphaned.
                 if (this.state.editorSessionId) {
@@ -4366,7 +4366,7 @@ class ChatView extends React.Component {
                   onOpenFile={(path, line) => {
                     const repo = this.state.currentGitDiff?.repo;
                     const resolvedPath = repo && repo !== '.' ? `${repo}/${path}` : path;
-                    if (tryOpenWithSystem(resolvedPath, 'git-diff')) return;
+                    if (tryOpenWithSystem(resolvedPath, 'git-diff', { project: this.props.viewProject || this.props.projectName, instance: this.props.viewInstance })) return;
                     const parts = resolvedPath.split('/');
                     const ancestors = [];
                     for (let i = 1; i < parts.length; i++) {

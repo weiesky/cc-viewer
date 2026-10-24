@@ -1,5 +1,5 @@
 import { message } from 'antd';
-import { apiUrl } from '../../utils/apiUrl';
+import { apiUrl, withViewParams } from '../../utils/apiUrl';
 
 // In-project drag-move helpers shared by the sidebar FileExplorer and the
 // remote FileBrowserModal. The dataTransfer contract mirrors the sidebar's
@@ -25,9 +25,9 @@ export function canDropMoveOn(fromPath, targetDir) {
 
 // POST /api/move-file; on success the caller's onFileRenamed(fromPath, newPath)
 // refreshes both the modal and the sidebar (handleAfterMutation / ChatView).
-export async function moveFile(fromPath, toDir, { onFileRenamed } = {}) {
+export async function moveFile(fromPath, toDir, { onFileRenamed, project, instance } = {}) {
   try {
-    const res = await fetch(apiUrl('/api/move-file'), {
+    const res = await fetch(apiUrl(withViewParams('/api/move-file', { project, instance })), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fromPath, toDir }),

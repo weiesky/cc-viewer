@@ -233,22 +233,21 @@ describe('/api/resume-sessions ?project=', () => {
 });
 
 describe('写路由 parity（不带 ?project= 行为不变）', () => {
-  it('rename/move/delete/git-restore/search-replace/file-content POST 无 ?project= 分支（源码锚点）', async () => {
+  it('rename/move/delete/file-content POST use the same view-root helper as reads', async () => {
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
     const { dirname, join: j } = await import('node:path');
     const here = dirname(fileURLToPath(import.meta.url));
     const filesFs = readFileSync(j(here, '../server/routes/files-fs.js'), 'utf8');
+    const filesContent = readFileSync(j(here, '../server/routes/files-content.js'), 'utf8');
     const git = readFileSync(j(here, '../server/routes/git.js'), 'utf8');
     const search = readFileSync(j(here, '../server/routes/search.js'), 'utf8');
-    const filesContent = readFileSync(j(here, '../server/routes/files-content.js'), 'utf8');
-    // 写 handler 不得出现 _viewRootOrReply（它们必须保持绑定根）。
-    for (const name of ['renameFile', 'moveFile', 'deleteFile', 'createFile', 'createDir', 'importFile']) {
-      const re = new RegExp(`function ${name}\\([^)]*\\) \\{[\\s\\S]{0,300}?_viewRootOrReply`);
-      assert.ok(!re.test(filesFs), `${name} 不得走 view-root`);
-    }
     assert.ok(!/function gitRestore\([^)]*\) \{[\s\S]{0,300}?_viewRootOrReply/.test(git), 'gitRestore 不得走 view-root');
     assert.ok(!/function replaceHandler\([^)]*\) \{[\s\S]{0,300}?_viewRootOrReply/.test(search), 'search-replace 不得走 view-root');
-    assert.ok(!/function fileContentPost\([^)]*\) \{[\s\S]{0,400}?_viewRootOrReply/.test(filesContent), 'file-content POST 不得走 view-root');
+    for (const name of ['renameFile', 'moveFile', 'deleteFile', 'createFile', 'createDir', 'importFile']) {
+      const re = new RegExp(`function ${name}\\([^)]*\\) \\{[\\s\\S]{0,2000}?_viewRootOrReply`);
+      assert.ok(re.test(filesFs), `${name} 必须跟随当前视图根`);
+    }
+    assert.ok(/function fileContentPost\([^)]*\) \{[\s\S]{0,2000}?_viewRootOrReply/.test(filesContent), 'file-content POST 必须跟随当前视图根');
   });
 });

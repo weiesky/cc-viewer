@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(web+server): **文件浏览器写操作跟随当前查看项目** — 创建、重命名、移动、删除、导入、保存、下载及 HTML 预览（含相对子资源）均携带项目/实例参数，不再误写启动项目；切换项目时清空文件弹窗缓存；保留 realpath 边界与编辑器会话兼容。修复大小写重命名、Windows 文件占用重试及 Linux 终端启动异常处理。Coverage: `files-view-write.test.js`, `file-context-menu-actions.test.js`, `html-preview-scope.test.js`, `chat-file-open-scope.test.js`, `api-files-fs.test.js`, `api-files-content.test.js`, `file-move.test.js`, `files-import.test.js`, `file-open.test.js`.
+
 - fix(web+server): **k3/k4 系列模型识别为 Kimi** — 头像、厂商与上下文窗口规则兼容裸名称、点号/连字符后缀及窗口后缀，包括 `k3.1-pro`、`k3.1-pro-highspeed`；`k30`/`k3pro` 保持未知模型。Coverage: `helpers-unit-a.test.js`, `context-rules.test.js`.
 - fix(system-prompt): **Kimi K3 提示词兼容 k3 系列别称并避免误用 Claude API 专属技能** — `k3.1-pro`、`k3.1-pro-highspeed` 等点号/连字符后缀、大小写及 `[1m]` 形式均命中 K3 的内置或用户自定义提示词，`k30`/`k3pro` 不误命中；在技能选择入口跳过 `claude-api` 及展示名 "Building LLM-Powered Applications with Claude"，模型名称、Logo、别名与上下文窗口分类属于本地代码任务，即使 Claude Code 自动推荐也不加载该技能。Coverage: `builtin-model-prompts.test.js`, `model-system-prompts.test.js`, `system-prompt-files.test.js`, `system-prompt-builder.test.js`.
 - test(server): **修复 resume-route 测试环境隔离** — 显式选择 PTY 模式，避免继承 ccv 的 SDK 环境；补齐 resume 注入的 anchor-aware writer 依赖。Coverage: `resume-route.test.js`.

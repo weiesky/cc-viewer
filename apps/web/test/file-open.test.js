@@ -69,6 +69,13 @@ describe('fileOpen.tryOpenWithSystem — 命中扩展名', () => {
     assert.equal(calls.length, 1);
   });
 
+  it('carries an explicitly supplied view scope without changing the request body', () => {
+    const calls = installFetch();
+    tryOpenWithSystem('report.pdf', 'file-explorer', { project: 'other project', instance: 'ccv-a1b2' });
+    assert.equal(calls[0].url, '/api/open-file?project=other%20project&instance=ccv-a1b2');
+    assert.deepEqual(JSON.parse(calls[0].opts.body), { path: 'report.pdf', source: 'file-explorer' });
+  });
+
   it('source 透传进 body', () => {
     const calls = installFetch();
     tryOpenWithSystem('a.xlsx', 'git-changes');
