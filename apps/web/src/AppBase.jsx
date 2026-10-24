@@ -939,6 +939,7 @@ class AppBase extends React.Component {
     if (!this.state.requests.length && !this.state.v2Rows.length) return;
     this._viewCache.snapshot(key, {
       requests: this.state.requests,
+      thinkingRequests: this.state.thinkingRequests,
       v2Rows: this.state.v2Rows,
       v2RowsMeta: this.state.v2RowsMeta,
       mainAgentSessions: this.state.mainAgentSessions,
@@ -1320,6 +1321,7 @@ class AppBase extends React.Component {
         // state-empty edge).
         if (!isIncremental) {
           st.requests = [];
+          st.thinkingRequests = [];
           st.mainAgentSessions = [];
           st.v2Rows = [];
           st.v2RowsMeta = { totalCount: 0, hasMore: false, oldestTs: '' };
@@ -1333,6 +1335,8 @@ class AppBase extends React.Component {
 
       const newState = {
         requests: entries,
+        thinkingRequests: this._mergeIncrementalEntries(ch.vm.react.thinkingRequests || [], entries)
+          .sort((left, right) => (left?.timestamp || '').localeCompare(right?.timestamp || '')),
         selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
         mainAgentSessions,
         fileLoading: false,
@@ -1374,6 +1378,7 @@ class AppBase extends React.Component {
       }
       this._commitColdIngest(myToken, {
         requests: core.entries,
+        thinkingRequests: core.entries,
         selectedIndex: core.filtered.length > 0 ? core.filtered.length - 1 : null,
         mainAgentSessions: core.mainAgentSessions,
         fileLoading: false,
@@ -2214,6 +2219,7 @@ class AppBase extends React.Component {
       const cached = plan.cached;
       this._commitChannel(ch, {
         requests: cached.requests,
+        thinkingRequests: cached.thinkingRequests,
         v2Rows: cached.v2Rows,
         v2RowsMeta: cached.v2RowsMeta,
         mainAgentSessions: cached.mainAgentSessions,
@@ -3414,6 +3420,9 @@ class AppBase extends React.Component {
     {
       const prev = vm.react;
       const requests = [...prev.requests]; // one copy per frame, not per message
+      const thinkingRequests = [...(prev.thinkingRequests || [])];
+      const thinkingSourceIndices = new Map(thinkingRequests.map((entry, index) => [`${entry?.timestamp}|${entry?.url}`, index]));
+      let thinkingSourcesOrdered = true;
 
       let cacheExpireAt = this.state.cacheExpireAt;
       let cacheType = this.state.cacheType;
@@ -3471,12 +3480,22 @@ class AppBase extends React.Component {
 
         if (existingIndex !== undefined) {
           requests[existingIndex] = entry;
+          const sourceIndex = thinkingSourceIndices.get(key);
+          if (sourceIndex !== undefined) thinkingRequests[sourceIndex] = entry;
+          else {
+            thinkingSourceIndices.set(key, thinkingRequests.length);
+            thinkingRequests.push(entry);
+            thinkingSourcesOrdered = false;
+          }
           if (this._sseSlimmer) this._sseSlimmer.onDedup(existingIndex);
         } else {
           const newIdx = requests.length;
           if (this._sseSlimmer) this._sseSlimmer.processEntry(entry, requests, newIdx);
           this._requestIndexMap.set(key, newIdx);
           requests.push(entry);
+          thinkingSourceIndices.set(key, thinkingRequests.length);
+          thinkingRequests.push(entry);
+          thinkingSourcesOrdered = false;
         }
 
         // 增量维护 KV-Cache 缓存内容：只在 completed MainAgent（有 usage）时更新，避免 inProgress 闪烁
@@ -3650,8 +3669,12 @@ class AppBase extends React.Component {
       // The view slice commits through the choke point; cacheExpireAt/cacheType
       // (localStorage cache countdown) and attachedSid are AppBase-level fields
       // that must never enter a channel's vm.
+      // Keep cached old producers before their carriers even when a late response arrives.
+      if (!thinkingSourcesOrdered) thinkingRequests.sort((left, right) => (left?.timestamp || '').localeCompare(right?.timestamp || ''));
       this._commitChannel(channel, {
-        requests, mainAgentSessions,
+        requests,
+        thinkingRequests,
+        mainAgentSessions,
         ...(shouldClearStreaming && { streamingLatest: null }),
         ...(_newPinTs != null && { pinnedSessionTs: _newPinTs }),
       });

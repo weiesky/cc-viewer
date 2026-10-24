@@ -16,6 +16,7 @@ import { buildPromptNavItems } from '../../utils/promptNav';
 import { getTeammateAvatar } from '../../utils/teammateAvatars';
 import { applyAvatarAnimationTargets } from '../../utils/avatarAnimationPostPass';
 import { mergeToolRuns } from '../../utils/toolRunMerge';
+import { buildResponseThinkingIndex, buildSessionThinkingDisplay, filterDisplayedResponseThinking } from '../../utils/responseThinking';
 import { isSystemText, classifyUserContent, isMainAgent, isTeammate, resolveTeammateNames, extractDisplayText, isUltraplanText } from '@ccv/core/contentFilter';
 import { classifyRequest, formatRequestTag, formatTeammateLabel } from '@ccv/core/requestType';
 import { playEvent as playVoiceEvent } from '../../utils/voicePackPlayer';
@@ -219,6 +220,11 @@ class ChatView extends React.Component {
     // 每项: { session, msgsLen, subCount, items, tsEntries, lastPendingAskId, lastPendingPlanId }
     this._sessionItemCache = [];
     this._itemCacheToggleSig = null;
+    // Response-thinking restoration is derived from raw messages, never written
+    // back into request/session data. Both caches follow the current view only.
+    this._responseThinkingRequests = null;
+    this._responseThinkingIndex = null;
+    this._responseThinkingMergeCache = new WeakMap();
     // Minimal-chat merged-run memo (utils/toolRunMerge.js): runKey → { members, element }.
     this._toolRunCache = new Map();
 
@@ -1056,6 +1062,9 @@ class ChatView extends React.Component {
           this._incToolSessionIdx = -1;
           this._reqScanCache = { tsToIndex: {}, modelName: null, completedModelName: null, modelNameByReqIdx: [], subAgentEntries: [], processedCount: 0, subAgentProcessedCount: 0, requestCacheTokenMap: new Map(), globalIndexState: createEmptyGlobalIndexState(), globalIndexProcessedCount: 0 };
           this._sessionItemCache = [];
+          this._responseThinkingRequests = null;
+          this._responseThinkingIndex = null;
+          this._responseThinkingMergeCache = new WeakMap();
           // 会话/工作区切换：清除乐观停止标志，避免陈旧 true 泄漏到新会话
           if (this.state.stopOptimistic) this._clearStopOptimistic();
           // Session/workspace switch: drop the parked busy queue on BOTH sides — queued text
@@ -1097,7 +1106,8 @@ class ChatView extends React.Component {
       // subAgent / teammate 的 tool_result 只走 requests 路径（不进 mainAgentSessions），
       // 必须在这里也调一次刷新检查，否则它们的文件修改完全感知不到
       this._toolFileMonitor.check();
-    } else if (prevProps.collapseToolResults !== this.props.collapseToolResults
+    } else if (prevProps.thinkingRequests !== this.props.thinkingRequests
+            || prevProps.collapseToolResults !== this.props.collapseToolResults
             || prevProps.expandThinking !== this.props.expandThinking
             || prevProps.showFullToolContent !== this.props.showFullToolContent
             || prevProps.minimalChat !== this.props.minimalChat
@@ -1516,7 +1526,15 @@ class ChatView extends React.Component {
   // teammate's own log. animateAvatar:false keeps a long historic transcript
   // from mass-playing draw-ins (the fallback path returns before the
   // avatar-animation post-pass, and raw body.messages carry no timestamps).
-  renderSessionMessages(messages, keyPrefix, resolveModelInfo, tsToIndex, requestCacheTokenMap, startIdx = 0, teammateIdentity = null) {
+  _getResponseThinkingIndex(requests) {
+    if (this._responseThinkingRequests !== requests) {
+      this._responseThinkingRequests = requests;
+      this._responseThinkingIndex = buildResponseThinkingIndex(requests, isMainAgent);
+    }
+    return this._responseThinkingIndex;
+  }
+
+  renderSessionMessages(messages, keyPrefix, resolveModelInfo, tsToIndex, requestCacheTokenMap, startIdx = 0, teammateIdentity = null, displayContents = null) {
     const { userProfile, collapseToolResults, expandThinking, showFullToolContent, showThinkingSummaries, onViewRequest } = this.props;
     const isHistoryLog = this._getIsHistoryLog();
     // 增量 / WeakMap 缓存
@@ -1587,7 +1605,7 @@ class ChatView extends React.Component {
 
     for (let mi = startIdx; mi < messages.length; mi++) {
       const msg = messages[mi];
-      const content = msg.content;
+      const content = msg.role === 'assistant' && displayContents ? displayContents[mi] : msg.content;
       const ts = msg._timestamp || null;  // carrier ts —— timestamp prop / resolveModelInfo / SubAgent 时间排序用
       // lookupTs：assistant 用 _generatedTs（producer 的 request ts），其他 role 用 _timestamp（即 carrier）。
       // 让 "查看请求" 按钮跳到真正产出该 bubble 内容的 mainAgent request，而不是下一次 carrier。
@@ -2088,8 +2106,11 @@ class ChatView extends React.Component {
       });
       const lrWillOwnAsk = lr.lrWillOwnAsk;
       const lrWillOwnPlan = lr.lrWillOwnPlan;
+      const thinkingDisplay = buildSessionThinkingDisplay(session, this._getResponseThinkingIndex(this.props.thinkingRequests || requests), this._responseThinkingMergeCache);
+      const { contents: displayContents, displayedResponses } = thinkingDisplay;
+      const displayContentsUnchanged = sc && sc.displayContents.every((content, i) => displayContents[i] === content);
 
-      if (sc && sc.session === session && sc.msgsLen === session.messages.length) {
+      if (sc && sc.session === session && sc.msgsLen === session.messages.length && displayContentsUnchanged) {
         // 完全命中：session 对象不变且消息数不变 → 直接复用。
         // 但 planApprovalMap / askAnswerMap 引用变化时（ExitPlanMode 审批落盘 / AskUserQuestion 答完），
         // 刷新持有相应 tool_use 的旧 element 的 prop，避免 React 因 element 引用未变跳过 SCU 让卡片永远停在 pending 视图。
@@ -2104,9 +2125,9 @@ class ChatView extends React.Component {
         msgs = refreshResolvedModelInfo(msgs, resolveModelInfo);
         lastPendingAskId = sc.lastPendingAskId;
         lastPendingPlanId = sc.lastPendingPlanId;
-      } else if (sc && sc.session === session && session.messages.length > sc.msgsLen) {
+      } else if (sc && sc.session === session && session.messages.length > sc.msgsLen && displayContentsUnchanged) {
         // 增量：session 对象不变但消息增长 → 只渲染新消息，拼接到缓存
-        const result = this.renderSessionMessages(session.messages, `s${si}`, sessionResolveModelInfo, tsToIndex, requestCacheTokenMap, sc.msgsLen);
+        const result = this.renderSessionMessages(session.messages, `s${si}`, sessionResolveModelInfo, tsToIndex, requestCacheTokenMap, sc.msgsLen, null, displayContents);
         // 旧段同样要刷新 planApprovalMap / askAnswerMap prop（同 FULL HIT 理由）
         msgs = refreshCachedItemProp(sc.items, sc.planApprovalMap, mergedPlanApprovalMap, 'ExitPlanMode', 'planApprovalMap').slice();
         msgs = refreshCachedItemProp(msgs, sc.askAnswerMap, mergedAskAnswerMap, 'AskUserQuestion', 'askAnswerMap');
@@ -2163,7 +2184,7 @@ class ChatView extends React.Component {
         msgs = msgs.concat(result.items);
       } else {
         // 缓存未命中 → 全量渲染
-        const result = this.renderSessionMessages(session.messages, `s${si}`, sessionResolveModelInfo, tsToIndex, requestCacheTokenMap);
+        const result = this.renderSessionMessages(session.messages, `s${si}`, sessionResolveModelInfo, tsToIndex, requestCacheTokenMap, 0, null, displayContents);
         msgs = result.items;
         lastPendingAskId = result.lastPendingAskId;
         lastPendingPlanId = result.lastPendingPlanId;
@@ -2173,6 +2194,7 @@ class ChatView extends React.Component {
       // 使下一轮 LR 不再持权时 messages-side 能自动恢复为 interactive）
       this._sessionItemCache[si] = {
         session, msgsLen: session.messages.length,
+        displayContents,
         items: msgs, lastPendingAskId, lastPendingPlanId,
         // 记下本轮 planApprovalMap / askAnswerMap 引用，下轮 FULL HIT / INCREMENTAL 据此判断是否要刷新旧 element 的 prop。
         planApprovalMap: mergedPlanApprovalMap,
@@ -2267,7 +2289,11 @@ class ChatView extends React.Component {
               : null;
             // Last Response 过滤：隐藏 tool_use 块，仅保留交互卡片（AskUserQuestion / ExitPlanMode）
             // 去重：如果 AskUserQuestion / ExitPlanMode 已在消息历史中渲染，不再在 Last Response 重复显示
-            const lrContent = filterLrContent(respContent, lr.historyAskIds, lr.historyPlanIds);
+            const lrContent = filterDisplayedResponseThinking(
+              filterLrContent(respContent, lr.historyAskIds, lr.historyPlanIds),
+              respContent,
+              displayedResponses,
+            );
             // 如果过滤后没有可见内容，不显示 Last Response 区域
             if (!hasVisibleLrContent(lrContent)) return;
             const entryReqIdx = session.entryTimestamp ? tsToIndex[session.entryTimestamp] : undefined;

@@ -6,6 +6,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createViewStateCache } from '../src/utils/viewStateCache.js';
+import { buildResponseThinkingIndex, buildSessionThinkingDisplay } from '../src/utils/responseThinking.js';
 
 const req = (ts, url = '/v1/messages') => ({ timestamp: ts, url, mainAgent: true });
 const row = (ts, sessionId = 's1', seq = 1) => ({ timestamp: ts, sessionId, seq });
@@ -93,6 +94,32 @@ describe('viewStateCache snapshot/restore', () => {
     assert.equal(got.requests.length, 5);
     assert.equal(got.lastTs, new Date(12000).toISOString(), 'lastTs still the newest (tail window)');
     assert.equal(got.requests[0].timestamp, new Date(8000).toISOString(), 'head trimmed');
+  });
+
+  it('keeps response sources needed by visible assistant turns when trimming requests', () => {
+    const requests = [];
+    const messages = [];
+    for (let i = 0; i < 12; i++) {
+      const timestamp = `t${String(i).padStart(2, '0')}`;
+      messages.push({ role: 'assistant', content: [{ type: 'text', text: `answer ${i}` }], _timestamp: `t${String(i + 1).padStart(2, '0')}`, _generatedTs: timestamp });
+      requests.push({
+        timestamp,
+        mainAgent: true,
+        body: { messages: [] },
+        response: { body: { content: [{ type: 'thinking', thinking: `thought ${i}` }, { type: 'text', text: `answer ${i}` }] } },
+        _seqEpoch: 'v2:sid',
+      });
+    }
+    requests.push({ timestamp: 't12', mainAgent: true, body: { messages }, response: { body: { content: [] } }, _seqEpoch: 'v2:sid' });
+    const cache = createViewStateCache({ windowSize: 5 });
+    cache.snapshot('p', { requests, mainAgentSessions: [{ messages, _seqEpoch: 'v2:sid' }] });
+    const got = cache.restore('p');
+    assert.equal(got.requests.length, 5);
+    assert.equal(got.thinkingRequests.length, 12);
+    assert.ok(got.thinkingRequests.every((entry) => entry.response.body.content.some((block) => block.type === 'thinking')));
+    const display = buildSessionThinkingDisplay(got.mainAgentSessions[0], buildResponseThinkingIndex(got.thinkingRequests));
+    assert.equal(display.restoredCount, 12);
+    assert.equal(got.requests.length, 5, 'request-list window remains bounded');
   });
 
   it('caches a timestamp-less state with lastTs=null (restore ok, no since resume)', () => {

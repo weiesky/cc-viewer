@@ -919,6 +919,7 @@ class Mobile extends AppBase {
                   <ChatView
                     {...this._settingsProps()}
                     requests={deepRequests}
+                    thinkingRequests={this.state.thinkingRequests || deepRequests}
                     mainAgentSessions={displaySessions}
                     sessionUpperBoundTs={sessionUpperBoundTs}
                     streamingLatest={this.state.streamingLatest}

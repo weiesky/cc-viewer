@@ -127,6 +127,7 @@ export function mergeMainAgentSessions(prevSessions, entry, options = {}) {
   if (prevSessions.length === 0) {
     return [{
       userId, messages: newMessages, response: newResponse, entryTimestamp, model: entryModel, _seqEpoch: seqEpoch,
+      _sessionId: entry._sessionId || entryTimestamp,
       // Degraded-broken carrier: truthful prefix with a mid-session hole. Only
       // the create branches carry it (a same-session merge onto a partial base
       // is defused by the whole-replace below); ChatView renders the banner.
@@ -155,6 +156,7 @@ export function mergeMainAgentSessions(prevSessions, entry, options = {}) {
     }
     return [...prevSessions, {
       userId, messages: newMessages, response: newResponse, entryTimestamp, model: entryModel, _seqEpoch: seqEpoch,
+      _sessionId: entry._sessionId || entryTimestamp,
       ...(entry._partialData === true && { _partialData: true }),
     }];
   }
@@ -272,11 +274,13 @@ export function mergeMainAgentSessions(prevSessions, entry, options = {}) {
     // v3 completed 即使 resp 缺失也构造 {body:null}）。
     if (newResponse !== undefined) lastSession.response = newResponse;
     lastSession.entryTimestamp = entryTimestamp;
+    if (entry._sessionId) lastSession._sessionId = entry._sessionId;
     if (entryModel) lastSession.model = entryModel; // latest wins; model-less entries keep the stamp
     return [...prevSessions];
   } else {
     return [...prevSessions, {
       userId, messages: newMessages, response: newResponse, entryTimestamp, model: entryModel, _seqEpoch: seqEpoch,
+      _sessionId: entry._sessionId || entryTimestamp,
       ...(entry._partialData === true && { _partialData: true }),
     }];
   }
