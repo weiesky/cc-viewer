@@ -5,7 +5,7 @@
  * 以后新增类型只需修改这里。
  */
 
-import { apiUrl } from './apiUrl';
+import { apiUrl, withViewParams } from './apiUrl';
 
 /** 需要系统默认应用打开的扩展名 */
 const SYSTEM_OPEN_EXTS = new Set([
@@ -21,13 +21,14 @@ const SYSTEM_OPEN_EXTS = new Set([
  * @param {string} path - 文件路径
  * @param {string} source - 调用来源，用于区分不同场景的潜在交互差异
  *   'file-explorer' | 'git-changes' | 'git-diff' | 'chat-message'
+ * @param {{project?: string, instance?: string}} [view] - optional viewed-project scope
  * @returns {boolean} 是否已处理
  */
-export function tryOpenWithSystem(path, source) {
+export function tryOpenWithSystem(path, source, { project, instance } = {}) {
   const ext = (path || '').split('.').pop().toLowerCase();
   if (!SYSTEM_OPEN_EXTS.has(ext)) return false;
 
-  fetch(apiUrl('/api/open-file'), {
+  fetch(apiUrl(withViewParams('/api/open-file', { project, instance })), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path, source }),

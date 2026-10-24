@@ -1,7 +1,6 @@
 // View-root resolution (multi-project, 2026-10): map an optional `?project=`
 // name to the REAL filesystem root of that project, so project-scoped READ
-// routes (file tree / git / skills / memory / stats / search) can follow the
-// viewed parallel project instead of always the bound one.
+// routes and boundary-checked file mutations follow the viewed project.
 //
 // Name → path sources (both consulted, in order):
 //   1. workspace-registry (loadWorkspaces) — persistent { path, projectName },
@@ -22,7 +21,8 @@
 //   3. still >1 real candidate → 400, never a silent guess.
 //
 // Pure + dependency-injected (fs/registry/pty seams) so it is directly
-// node-testable. WRITE routes must NOT use this — they stay bound-only.
+// node-testable. File mutation routes use the same resolver as their reads;
+// every target must still pass the resolved root's filesystem boundary checks.
 
 import { realpathSync, existsSync, statSync } from 'node:fs';
 import { projectKeyForCwd } from './system-prompt-snapshots.js';
@@ -192,7 +192,7 @@ export function resolveViewRoot({ projectParam, instanceParam, boundCwd, loadWor
 }
 
 /**
- * HTTP-facing wrapper shared by every project-scoped READ route (multi-project,
+ * HTTP-facing wrapper shared by project-scoped routes (multi-project,
  * 2026-10): resolves `?project=` (or a POST-body override) via resolveViewRoot
  * and, on failure, writes the error response itself. Returns the resolved root
  * to continue with, or null after replying (the caller must return early).

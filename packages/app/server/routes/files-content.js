@@ -2,8 +2,10 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, realpathSync, createReadStream } from 'node:fs';
 import { join, basename, dirname, resolve, sep } from 'node:path';
 import { isReadAllowed, reasonToStatus } from '../lib/file-access-policy.js';
-import { ERROR_STATUS_MAP } from '../lib/file-api.js';
-import { viewRootOrReply } from '../lib/view-root.js';
+import { ERROR_STATUS_MAP, isPathContained } from '../lib/file-api.js';
+import { viewRootOrReply, resolveViewRoot } from '../lib/view-root.js';
+import { findSdkSessionByInstance } from '../lib/sdk-session-index.js';
+import { projectKeyForCwd } from '../lib/system-prompt-snapshots.js';
 import { loadWorkspaces } from '../workspace-registry.js';
 import { listLivePtys } from '../pty-manager.js';
 import { reportSwallowed } from '../lib/error-report.js';
@@ -11,16 +13,20 @@ import { discoverClaudeMdCandidates, readCandidateById } from '../lib/claude-md-
 import { getClaudeConfigDir } from '../../findcc.js';
 import { _projectName } from '../interceptor.js';
 
-// Multi-project (2026-10): project-scoped READ routes resolve the viewed
-// project via the shared viewRootOrReply (?project=). WRITE routes keep the
-// bound root. SYNCHRONOUS: these handlers were sync before multi-project, and
+// Multi-project file operations use the same viewed root for reads and writes.
+// Every file-browser mutation enforces realpath containment in that root;
+// explicit editor sessions retain their existing allowlisted external paths.
 // their tests (and the dispatcher's sync-call convention) assert on res
 // immediately after the call — the override must not async-ify them.
-function _viewRootOrReply(req, res, parsedUrl) {
+// Both reads and writes resolve the viewed project. Absolute editor paths are
+// still governed by the allowlist; browser writes stay within the selected root.
+function _viewRootOrReply(req, res, parsedUrl, bodyProject, bodyInstance) {
   return viewRootOrReply(req, res, parsedUrl, {
     boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
     loadWorkspaces,
     listLivePtys,
+    bodyProject,
+    bodyInstance,
   });
 }
 
@@ -311,13 +317,51 @@ function fileRaw(req, res, parsedUrl) {
   const url = parsedUrl.pathname;
   const method = req.method;
   let reqPath;
-  if (url.startsWith('/api/file-raw/')) {
+  let scopedProject = '';
+  let scopedInstance = '';
+  if (url.startsWith('/api/file-raw/view/')) {
+    const parts = url.slice('/api/file-raw/view/'.length).split('/');
+    let project = '';
+    let instance = '';
+    try {
+      project = decodeURIComponent(parts[0] || '');
+      instance = decodeURIComponent(parts[1] || '');
+      reqPath = decodeURIComponent(parts.slice(2).join('/'));
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid path' }));
+      return;
+    }
+    scopedProject = project;
+    scopedInstance = instance;
+  } else if (url.startsWith('/api/file-raw/')) {
     const tail = parsedUrl.pathname.slice('/api/file-raw/'.length);
     try { reqPath = decodeURIComponent(tail); } catch { reqPath = tail; }
   } else {
     reqPath = parsedUrl.searchParams.get('path');
   }
-  const cwd = _viewRootOrReply(req, res, parsedUrl);
+  let resolvedView = null;
+  if (scopedProject) {
+    resolvedView = resolveViewRoot({
+      projectParam: scopedProject,
+      instanceParam: scopedInstance,
+      boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
+      loadWorkspaces,
+      listLivePtys,
+    });
+    // The path already pins its project. A stale/mismatched instance must not
+    // silently redirect it to the bound project or a different workspace.
+    const instanceRecord = scopedInstance ? findSdkSessionByInstance(scopedInstance) : null;
+    const instanceMatches = !scopedInstance || (instanceRecord
+      && (instanceRecord.projectName === scopedProject
+        || projectKeyForCwd(instanceRecord.cwd) === scopedProject));
+    if (!resolvedView.ok || (scopedInstance && !instanceMatches)) {
+      res.writeHead(resolvedView.ok ? 400 : resolvedView.status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: resolvedView.ok ? 'Project scope mismatch' : resolvedView.error }));
+      return;
+    }
+  }
+  const cwd = resolvedView?.root || _viewRootOrReply(req, res, parsedUrl);
   if (!cwd) return;
   fileRawWithRoot(req, res, parsedUrl, reqPath, cwd, method);
 }
@@ -460,7 +504,11 @@ function fileDownloadWithRoot(req, res, parsedUrl, reqPath, cwd) {
   }
 }
 
-function fileContentPost(req, res) {
+function fileContentPost(req, res, parsedUrl) {
+  // The shared read root keeps its raw cwd for projectMemory's store-key
+  // encoding. Normalize only this mutation's containment comparisons.
+  let writeRoot;
+  const isInsideWriteRoot = (path) => isPathContained(path, writeRoot);
   const MAX_BODY = 5 * 1024 * 1024; // 5MB，与 GET 路由限制对齐
   let body = '';
   let overflow = false;
@@ -475,8 +523,10 @@ function fileContentPost(req, res) {
       return;
     }
     try {
-      const { path: reqPath, content } = JSON.parse(body);
-      const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+      const { path: reqPath, content, editorSession } = JSON.parse(body);
+      const cwd = _viewRootOrReply(req, res, parsedUrl);
+      if (!cwd) return;
+      try { writeRoot = realpathSync(cwd); } catch { writeRoot = cwd; }
       if (!reqPath) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid path' }));
@@ -489,7 +539,6 @@ function fileContentPost(req, res) {
       }
       const isAbs = /^([a-zA-Z]:[\\/]|[\\/])/.test(reqPath);
       const absPath = isAbs ? reqPath : resolve(cwd, reqPath);
-
       // 写路径同样走 policy(收敛 editorSession 后门):允许覆盖现有文件;
       // 新文件场景递归向上找最近存在的祖先目录,只要它在 allowlist 内即放行。
       // (旧实现只查 immediate parent,父目录也不存在时误拒嵌套新建。)
@@ -525,6 +574,13 @@ function fileContentPost(req, res) {
           res.end(JSON.stringify(body));
           return;
         }
+        // Check containment before creating any missing parent directories.
+        // Explicit $EDITOR sessions retain their allowlisted external paths.
+        if (!editorSession && !isInsideWriteRoot(ancestorPolicy.real)) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Forbidden', reason: 'outside-view-root' }));
+          return;
+        }
         // 在祖先 real 路径下重建目标。Denylist 已在祖先 prefix 层生效,
         // 这里相信 allowlist 祖先的合法性(项目目录 / ~/.claude/cc-viewer 等)。
         targetReal = join(ancestorPolicy.real, ...descent);
@@ -539,6 +595,11 @@ function fileContentPost(req, res) {
         return;
       }
 
+      if (!editorSession && existsSync(targetReal) && !isInsideWriteRoot(targetReal)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Forbidden', reason: 'outside-view-root' }));
+        return;
+      }
       writeFileSync(targetReal, content, 'utf-8');
       const stat = statSync(targetReal);
       res.writeHead(200, { 'Content-Type': 'application/json' });

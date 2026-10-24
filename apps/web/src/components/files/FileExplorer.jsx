@@ -142,7 +142,7 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
     }
     submittingRef.current = true;
     try {
-      const res = await fetch(apiUrl('/api/rename-file'), {
+      const res = await fetch(apiUrl(withViewParams('/api/rename-file', { project, instance })), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ oldPath: childPath, newName: trimmed }),
@@ -159,7 +159,7 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
       alert(t('ui.renameFailed', { error: err.message }));
       setEditing(false);
     }
-  }, [editName, item.name, childPath, onFileRenamed]);
+  }, [editName, item.name, childPath, onFileRenamed, project, instance]);
 
   // 取消编辑
   const cancelEditing = useCallback(() => {
@@ -265,8 +265,8 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
     // Internal move — 守卫与请求走共享模块 ./fileMove(与弹窗 FileBrowserModal 一致)
     const fromPath = e.dataTransfer.getData('text/plain');
     if (!isDir || !canDropMoveOn(fromPath, childPath)) return;
-    moveFile(fromPath, childPath, { onFileRenamed });
-  }, [childPath, isDir, onFileRenamed, onImportFiles]);
+    moveFile(fromPath, childPath, { onFileRenamed, project, instance });
+  }, [childPath, isDir, onFileRenamed, onImportFiles, project, instance]);
 
   // 右键菜单项 — 与远程文件浏览弹窗(FileBrowserModal)共享定义与动作，
   // 按文件类型定制时只需改 fileContextMenu.js / fileContextMenuActions.jsx。
@@ -276,9 +276,9 @@ function TreeNode({ item, path, depth, onFileClick, expandedPaths, onToggleExpan
   const handleMenuClick = useMemo(
     () => createFileMenuHandler({
       path: childPath, name: item.name, isDir, renameMode: 'inline',
-      startEditing, onFileRenamed, onAttachToChat, onInsertPathToChat,
+      startEditing, onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance,
     }),
-    [childPath, item.name, isDir, startEditing, onFileRenamed, onAttachToChat, onInsertPathToChat]);
+    [childPath, item.name, isDir, startEditing, onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance]);
 
   const treeItemDiv = (
     <div
@@ -395,15 +395,15 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
     []);
   const handleHeaderMenuClick = useMemo(
     () => createFileMenuHandler({
-      path: '', name: '', isDir: true, onFileRenamed,
+      path: '', name: '', isDir: true, onFileRenamed, project, instance,
     }),
-    [onFileRenamed]);
+    [onFileRenamed, project, instance]);
 
   // Import external files (支持批量文件夹拖入，保留目录结构) — 实现已抽取到
   // ./importFiles 与 FileBrowserModal 共享；这里仅注入本组件的 onFileRenamed。
   const handleImportFiles = useCallback(
-    (payload, targetDir) => importFiles(payload, targetDir, { onFileRenamed }),
-    [onFileRenamed]);
+    (payload, targetDir) => importFiles(payload, targetDir, { onFileRenamed, project, instance }),
+    [onFileRenamed, project, instance]);
 
   // Container-level drag events for external files
   // dragover 定时器模式：持续收到 dragover 时保持高亮，300ms 无 dragover 则认为拖拽结束
@@ -477,15 +477,15 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
     }
     const fromDir = fromPath.includes('/') ? fromPath.substring(0, fromPath.lastIndexOf('/')) : '';
     if (fromDir === '') return; // 已在根，no-op（拖回原位无效果，符合直觉）
-    moveFile(fromPath, '', { onFileRenamed });
-  }, [handleImportFiles, resetDragState, onFileRenamed]);
+    moveFile(fromPath, '', { onFileRenamed, project, instance });
+  }, [handleImportFiles, resetDragState, onFileRenamed, project, instance]);
 
   return (
     <div ref={containerRef} className={`${styles.fileExplorer}${externalDragOver ? ' ' + styles.fileExplorerDragOver : ''}${internalContainerDragOver ? ' ' + styles.internalDragOverContainer : ''}`} style={style} data-file-explorer onDragOver={handleContainerDragOver} onDrop={handleContainerDrop}>
       <div className={styles.header}>
         <Dropdown menu={{ items: headerMenuItems, onClick: handleHeaderMenuClick }} trigger={['contextMenu']}>
           <span className={styles.headerTitle}>
-            <OpenFolderIcon apiEndpoint={apiUrl('/api/open-project-dir')} title={t('ui.openProjectDir')} size={14} onClick={() => setFileBrowserOpen(true)} />
+            <OpenFolderIcon apiEndpoint={apiUrl(withViewParams('/api/open-project-dir', { project, instance }))} title={t('ui.openProjectDir')} size={14} onClick={() => setFileBrowserOpen(true)} />
             {t('ui.fileExplorer')}
             {/* 手动刷新：外部 mv/cp/系统级文件变化等 tool_result 感知不到的场景下用户兜底；
                 复用既有 refreshTrigger++ 链路（ChatView state.fileExplorerRefresh），TreeNode
@@ -523,7 +523,7 @@ export default function FileExplorer({ style, onClose, onFileClick, expandedPath
         </Dropdown>
       </div>
       {htmlPreviewPath && (
-        <HtmlPreviewModal path={htmlPreviewPath} onClose={() => setHtmlPreviewPath(null)} />
+        <HtmlPreviewModal path={htmlPreviewPath} onClose={() => setHtmlPreviewPath(null)} project={project} instance={instance} />
       )}
       <FileBrowserModal
         open={fileBrowserOpen}

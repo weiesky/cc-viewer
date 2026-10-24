@@ -101,6 +101,13 @@ describe('moveFile', () => {
     assert.deepEqual(renamed, ['src/a.txt', 'dest/a.txt']);
   });
 
+  it('carries the viewed project and instance in the move request', async () => {
+    let url = null;
+    fetchHandler = async (requestUrl) => { url = requestUrl; return resp(true, { ok: true, newPath: 'dest/a.txt' }); };
+    await M.moveFile('src/a.txt', 'dest', { project: 'other project', instance: 'ccv-a1b2' });
+    assert.equal(url, '/api/move-file?project=other%20project&instance=ccv-a1b2');
+  });
+
   it('passes toDir: "" through verbatim (move to project root)', async () => {
     let body = null;
     fetchHandler = async (url, opts) => { body = JSON.parse(opts.body); return resp(true, { ok: true, newPath: 'a.txt' }); };

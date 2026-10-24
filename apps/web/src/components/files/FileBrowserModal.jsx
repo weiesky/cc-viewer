@@ -45,9 +45,9 @@ function ancestorsOf(path) {
 // Browser-native download via the attachment endpoint (same pattern as the
 // sidebar's remote-only "Download to local" item in FileExplorer.jsx).
 // apiUrl carries base path + ?token=.
-function downloadFile(childPath, name) {
+function downloadFile(childPath, name, project, instance) {
   const a = document.createElement('a');
-  a.href = apiUrl(`/api/download-file?path=${encodeURIComponent(childPath)}`);
+  a.href = apiUrl(withViewParams(`/api/download-file?path=${encodeURIComponent(childPath)}`, { project, instance }));
   a.download = name;
   document.body.appendChild(a);
   a.click();
@@ -139,9 +139,9 @@ function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNav
   const handleMenuClick = useMemo(
     () => createFileMenuHandler({
       path: childPath, name: item.name, isDir, renameMode: 'modal',
-      onFileRenamed, onAttachToChat, onInsertPathToChat,
+      onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance,
     }),
-    [childPath, item.name, isDir, onFileRenamed, onAttachToChat, onInsertPathToChat]);
+    [childPath, item.name, isDir, onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance]);
 
   // Drop target: external OS files import into THIS directory (a file row
   // means its parent — sidebar parity); in-project entries
@@ -279,9 +279,11 @@ function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelec
     () => createFileMenuHandler({
       path: childPath, name: item.name, isDir, renameMode: 'modal',
       onFileRenamed: menuCtx.onFileRenamed, onAttachToChat: menuCtx.onAttachToChat,
-      onInsertPathToChat: menuCtx.onInsertPathToChat, onDownload: downloadFile,
+      onInsertPathToChat: menuCtx.onInsertPathToChat,
+      onDownload: (path, name) => downloadFile(path, name, project, instance),
+      project, instance,
     }),
-    [childPath, item.name, isDir, menuCtx]);
+    [childPath, item.name, isDir, menuCtx, project, instance]);
 
   return (
     <Dropdown menu={{ items: menuItems, onClick: handleCellMenuClick }} trigger={['contextMenu']}>
@@ -350,6 +352,26 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
   // the download item always shows here).
   const { preferences } = useContext(SettingsContext);
   const isRemote = preferences?._isLocal === false;
+
+  // A view switch must not combine cached entries from the old project with
+  // mutations addressed to the new one. Reset the browser before fetching anew.
+  const viewScope = `${project || ''}\0${instance || ''}`;
+  const prevViewScope = useRef(viewScope);
+  useEffect(() => {
+    if (prevViewScope.current === viewScope) return;
+    prevViewScope.current = viewScope;
+    treeCache.current.clear();
+    setCurrentPath('');
+    setExpandedPaths(new Set());
+    setSelectedPath(null);
+    setPreviewFile(null);
+    setHtmlPreviewPath(null);
+    setRootItems(null);
+    setEntries(null);
+    setRootFailed(false);
+    setLoadFailed(false);
+    setCacheEpoch(e => e + 1);
+  }, [viewScope]);
 
   const fetchDir = useCallback((path) => {
     const cached = treeCache.current.get(path);
@@ -493,12 +515,12 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
     // This modal only opens for remote/container access (preferences._isLocal
     // === false), where /api/open-file would exec a GUI app on the headless
     // server host — a guaranteed silent no-op. Download to the client instead.
-    if (tryOpenWithSystem(childPath, 'file-explorer')) {
-      downloadFile(childPath, item.name);
+    if (tryOpenWithSystem(childPath, 'file-explorer', { project, instance })) {
+      downloadFile(childPath, item.name, project, instance);
       return;
     }
     setPreviewFile(childPath);
-  }, [currentPath, navigate]);
+  }, [currentPath, navigate, project, instance]);
 
   const retry = useCallback(() => {
     treeCache.current.delete(currentPath);
@@ -521,10 +543,10 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
     [isRemote]);
   const handleContainerMenuClick = useMemo(
     () => createFileMenuHandler({
-      path: currentPath, name: '', isDir: true,
+      path: currentPath, name: '', isDir: true, project, instance,
       onFileRenamed: handleAfterMutation,
     }),
-    [currentPath, handleAfterMutation]);
+    [currentPath, handleAfterMutation, project, instance]);
 
   // Stable callback bundle for GridCell (one identity per render → memoized
   // cell menus don't rebuild unless these actually change).
@@ -536,15 +558,15 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
   // onFileRenamed=handleAfterMutation refreshes the modal AND the sidebar
   // after a successful import.
   const handleImportFiles = useCallback(
-    (payload, targetDir) => importFiles(payload, targetDir, { onFileRenamed: handleAfterMutation }),
-    [handleAfterMutation]);
+    (payload, targetDir) => importFiles(payload, targetDir, { onFileRenamed: handleAfterMutation, project, instance }),
+    [handleAfterMutation, project, instance]);
 
   // In-project move (./fileMove, same endpoint+guards as the sidebar). Success
   // flows through handleAfterMutation(fromPath, newPath): prefix-remap of
   // currentPath/selection/previews + modal/sidebar refresh.
   const handleMove = useCallback(
-    (fromPath, toDir) => moveFile(fromPath, toDir, { onFileRenamed: handleAfterMutation }),
-    [handleAfterMutation]);
+    (fromPath, toDir) => moveFile(fromPath, toDir, { onFileRenamed: handleAfterMutation, project, instance }),
+    [handleAfterMutation, project, instance]);
 
   // Toolbar upload button → hidden file input (plain File[] payload).
   const fileInputRef = useRef(null);
@@ -812,7 +834,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
       {htmlPreviewPath && (
         // 1120 sits above this modal's 1100; both portal to body, so the
         // nested preview always stacks on top regardless of mount order.
-        <HtmlPreviewModal path={htmlPreviewPath} onClose={() => setHtmlPreviewPath(null)} zIndex={1120} />
+        <HtmlPreviewModal path={htmlPreviewPath} onClose={() => setHtmlPreviewPath(null)} zIndex={1120} project={project} instance={instance} />
       )}
     </Modal>
   );

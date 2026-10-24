@@ -80,7 +80,7 @@ function callGet(handler, pathname, search = '', method = 'GET') {
 }
 
 /** 调用 POST handler（req 为流式 EventEmitter），resolve { status, json }。 */
-function callPost(handler, body, { chunked = false } = {}) {
+function callPost(handler, body, { chunked = false, search = '' } = {}) {
   return new Promise((resolve) => {
     const req = new EventEmitter();
     req.destroy = () => { req.emit('end'); }; // 模拟 overflow 时的 destroy → end
@@ -91,7 +91,7 @@ function callPost(handler, body, { chunked = false } = {}) {
         resolve({ status: this.statusCode, json: JSON.parse(b == null ? '{}' : String(b)) });
       },
     };
-    handler(req, res);
+    handler(req, res, { searchParams: new URLSearchParams(search) });
     const payload = typeof body === 'string' ? body : JSON.stringify(body);
     if (chunked) {
       // 拆成两块发送，触发 data 多次累积

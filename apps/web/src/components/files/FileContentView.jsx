@@ -535,7 +535,7 @@ export default function FileContentView({
     const startFilePath = filePathRef.current;
     setSaveStatus('saving');
     try {
-      const res = await fetch(apiUrl('/api/file-content'), {
+      const res = await fetch(apiUrl(withViewParams('/api/file-content', { project, instance })), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: filePath, content: saveContent, ...(editorSession ? { editorSession: true } : {}) }),
@@ -566,7 +566,7 @@ export default function FileContentView({
         }, 3000);
       }
     }
-  }, [isDirty, filePath, currentContent, useMdxEditor, editorSession]);
+  }, [isDirty, filePath, currentContent, useMdxEditor, editorSession, project, instance]);
 
   saveRef.current = doSave;
 
