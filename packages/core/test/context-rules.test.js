@@ -109,12 +109,17 @@ describe('getModelMaxTokens — 家族档位', () => {
     assert.equal(getModelMaxTokens('llama-3-70b'), 1000000);
     assert.equal(getModelMaxTokens('some-opaque-upstream-alias'), 1000000);
   });
-  it('kimi/moonshot 前缀型号与裸 k3 → 256K 精确档', () => {
+  it('kimi/moonshot 前缀型号与 k3/k4 系列 → 256K 精确档', () => {
     assert.equal(getModelMaxTokens('kimi-k2.5'), 256000);
     assert.equal(getModelMaxTokens('kimi-k3'), 256000);
     assert.equal(getModelMaxTokens('moonshot-v1-k2'), 256000);
-    assert.equal(getModelMaxTokens('k3'), 256000);
-    assert.equal(getModelMaxTokens('K3'), 256000);
+    for (const model of ['k3', 'K3', 'k3.1-pro', 'k3.1-pro-highspeed', 'k3-pro', 'k4', 'K4', 'k4.1-pro']) {
+      assert.equal(getModelMaxTokens(model), 256000, model);
+    }
+  });
+  it('k3 系列不误匹配 k30/k3pro', () => {
+    assert.equal(getModelMaxTokens('k30'), 1000000);
+    assert.equal(getModelMaxTokens('k3pro'), 1000000);
   });
   it('kimi 256K 档可被 [Nk]/[Nm] 后缀覆盖', () => {
     assert.equal(getModelMaxTokens('kimi-k3[1m]'), 1000000);
@@ -139,12 +144,16 @@ describe('classifyContextWindow — 校准二分类', () => {
     assert.equal(classifyContextWindow('gpt-4o'), 200000);
     assert.equal(classifyContextWindow('deepseek-chat'), 200000);
   });
-  it('kimi/moonshot 前缀型号与裸 k3 均特判归 1M 桶', () => {
+  it('kimi/moonshot 前缀型号与 k3/k4 系列均特判归 1M 桶', () => {
     assert.equal(classifyContextWindow('kimi-k2.5'), 1000000);
     assert.equal(classifyContextWindow('kimi-k3'), 1000000);
     assert.equal(classifyContextWindow('moonshot-v1-k2'), 1000000);
     // 裸 k3:热切换 k3[1m] 时上游把响应 model 剥成裸 k3,response-first 解析须仍归 1M
     assert.equal(classifyContextWindow('k3'), 1000000);
+    assert.equal(classifyContextWindow('k3.1-pro'), 1000000);
+    assert.equal(classifyContextWindow('k3.1-pro-highspeed'), 1000000);
+    assert.equal(classifyContextWindow('k4'), 1000000);
+    assert.equal(classifyContextWindow('K4'), 1000000);
   });
   it('无法识别的型号归 1M 桶(getModelMaxTokens 落底 1M)', () => {
     assert.equal(classifyContextWindow('llama-3-70b'), 1000000);

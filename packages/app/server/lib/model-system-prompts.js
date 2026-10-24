@@ -263,7 +263,10 @@ const MODEL_ID_ALIASES = {
 // 让 .some 调用炸掉（模型 id 来自外部输入，不能信任）。
 // Expand a model id into every equivalent lowercase spelling.
 function modelIdVariants(id) {
-  return Object.hasOwn(MODEL_ID_ALIASES, id) ? MODEL_ID_ALIASES[id] : [id];
+  // A version/routing suffix identifies the same K3 family, not an unrelated
+  // model. Keep the boundary so k30 and k3pro remain unmatched.
+  const aliasId = /^k3(?:[.-]|$)/.test(id) ? 'k3' : id;
+  return Object.hasOwn(MODEL_ID_ALIASES, aliasId) ? MODEL_ID_ALIASES[aliasId] : [id];
 }
 
 // 供内置预设匹配复用的导出包装：入参任意大小写，先剥 `[1m]` 类方括号后缀

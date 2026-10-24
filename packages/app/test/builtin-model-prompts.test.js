@@ -42,10 +42,12 @@ describe('builtin-model-prompts: 条目列表', () => {
 });
 
 describe('builtin-model-prompts: 模型匹配', () => {
-  it('裸 k3 经别名展开命中 KIMI-K3；大写 K3 同样命中（lowercase 契约）', () => {
-    assert.equal(matchBuiltinModelPrompt('k3')?.name, 'KIMI-K3');
-    assert.equal(matchBuiltinModelPrompt('K3')?.name, 'KIMI-K3');
-    assert.equal(matchBuiltinModelPrompt('k3[1m]')?.name, 'KIMI-K3'); // 变体 'kimi-k3' 命中
+  it('k3 系列别称命中 KIMI-K3，大小写/窗口后缀同语义，lookalike 不误命中', () => {
+    for (const modelId of ['k3', 'K3', 'k3[1m]', 'k3.1-pro', 'k3.1-pro-highspeed', 'K3.1-PRO-HIGHSPEED', 'k3-pro', 'k3.1-pro[1m]']) {
+      assert.equal(matchBuiltinModelPrompt(modelId)?.name, 'KIMI-K3', modelId);
+    }
+    assert.equal(matchBuiltinModelPrompt('k30'), null);
+    assert.equal(matchBuiltinModelPrompt('k3pro'), null);
   });
 
   it('裸 deepseek-flash 经别名展开命中 DEEPSEEK-V4-FLASH（与 k3 同组简写契约）', () => {

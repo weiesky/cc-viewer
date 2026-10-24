@@ -225,8 +225,13 @@ describe('getModelInfo', () => {
     assert.equal(H.getModelInfo('gemini-1.5-pro').provider, 'Gemini');
     assert.equal(H.getModelInfo('qwen-max').provider, 'Qwen');
     assert.equal(H.getModelInfo('kimi-k2').provider, 'Kimi');
-    assert.equal(H.getModelInfo('k3').provider, 'Kimi');
-    assert.equal(H.getModelInfo('K3').provider, 'Kimi');
+    for (const model of ['k3', 'K3', 'k3.1-pro', 'k3.1-pro-highspeed', 'k3-pro', 'k3[1m]', 'k4', 'K4', 'k4.1-pro', 'k4.1-pro-highspeed']) {
+      const info = H.getModelInfo(model);
+      assert.equal(info.provider, 'Kimi', model);
+      assert.ok(info.svg?.startsWith('<svg'), model);
+    }
+    assert.equal(H.getModelInfo('k30').svg, null);
+    assert.equal(H.getModelInfo('k3pro').svg, null);
     assert.equal(H.getModelInfo('moonshot-v1').provider, 'Kimi');
     assert.equal(H.getModelInfo('glm-4').provider, 'GLM');
     assert.equal(H.getModelInfo('chatglm3').provider, 'GLM');

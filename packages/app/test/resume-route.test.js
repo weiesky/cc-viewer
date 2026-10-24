@@ -18,6 +18,8 @@ process.env.CCV_LOG_DIR = tmpDir;
 process.env.CLAUDE_CONFIG_DIR = tmpDir;
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
+// A ccv-hosted shell may export SDK mode; PTY cases below must opt out explicitly.
+process.env.CCV_SDK_MODE = '0';
 
 const { resumeRoutes } = await import('../server/routes/resume.js');
 const { initForWorkspace } = await import('../server/interceptor.js');
@@ -338,6 +340,26 @@ describe('POST /api/resume-session', () => {
   const resumeRoute = resumeRoutes.find((r) => r.method === 'POST' && r.path === '/api/resume-session').handler;
   const RESUME_UUID = 'a9883ab8-0ab7-459a-bcfd-4c8950a14384';
 
+  async function initResumeQueue({ streaming = false, onWrite } = {}) {
+    const cq = await import('../server/lib/chat-queue.js');
+    cq.__resetForTests();
+    cq.initChatQueue({
+      writeToPty: () => {},
+      writeToPtySequential: (chunks, cb) => cb && cb(true),
+      // injectResumeCommand uses the anchor-aware sequential writer directly.
+      writeToPtySequentialFor: (chunks, cb, opts, anchor) => {
+        if (onWrite) onWrite(chunks, anchor);
+        cb && cb(true);
+      },
+      getPtyKind: () => 'claude',
+      isStreaming: () => streaming,
+      hasPendingApproval: () => false,
+      hasExternalInjection: () => false,
+      broadcastWs: () => {},
+    });
+    return cq;
+  }
+
   function callResume(bodyObj, { origin } = {}) {
     return new Promise((resolve) => {
       let payload = '';
@@ -393,8 +415,10 @@ describe('POST /api/resume-session', () => {
 
   it('404 when the target is not a live claude PTY (and never falls back to active)', async () => {
     const ptyMgr = await import('../server/pty-manager.js');
+    const cq = await initResumeQueue();
     ptyMgr._resetForTests();
     ptyMgr._setPtyImportForTests(() => ({ spawn: () => ({ onData() {}, onExit() {}, kill() {}, resize() {}, write() {}, pid: 50000 }) }));
+    cq.__resetForTests();
     try {
       await spawnClaudeAt(join(tmpDir, 'resumeBoundProj'));
       // An unknown project must NOT resolve to the active PTY (strict gate).
@@ -402,6 +426,7 @@ describe('POST /api/resume-session', () => {
       assert.equal(r.status, 404);
       assert.equal(r.body.reason, 'not-found');
     } finally {
+      cq.__resetForTests();
       ptyMgr._resetForTests();
       ptyMgr._setPtyImportForTests(null);
     }
@@ -411,20 +436,11 @@ describe('POST /api/resume-session', () => {
     const ptyMgr = await import('../server/pty-manager.js');
     const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
     const cq = await import('../server/lib/chat-queue.js');
+    cq.__resetForTests();
     ptyMgr._resetForTests();
     ptyMgr._setPtyImportForTests(() => ({ spawn: () => ({ onData() {}, onExit() {}, kill() {}, resize() {}, write() {}, pid: 50001 }) }));
     const writes = [];
-    cq.__resetForTests();
-    cq.initChatQueue({
-      writeToPty: () => {},
-      writeToPtySequential: (c, cb) => cb && cb(true),
-      writeToPtySequentialFor: (chunks, cb, opts, anchor) => { writes.push({ chunks, anchor }); cb && cb(true); },
-      getPtyKind: () => 'claude',
-      isStreaming: () => false,
-      hasPendingApproval: () => false,
-      hasExternalInjection: () => false,
-      broadcastWs: () => {},
-    });
+    await initResumeQueue({ onWrite: (chunks, anchor) => writes.push({ chunks, anchor }) });
     try {
       const dir = join(tmpDir, 'resumeOkProj');
       await spawnClaudeAt(dir);
@@ -449,17 +465,7 @@ describe('POST /api/resume-session', () => {
     ptyMgr._resetForTests();
     let pid = 70000;
     ptyMgr._setPtyImportForTests(() => ({ spawn: () => ({ onData() {}, onExit() {}, kill() {}, resize() {}, write() {}, pid: pid++ }) }));
-    cq.__resetForTests();
-    cq.initChatQueue({
-      writeToPty: () => {},
-      writeToPtySequential: (c, cb) => cb && cb(true),
-      writeToPtySequentialFor: (chunks, cb) => cb && cb(true),
-      getPtyKind: () => 'claude',
-      isStreaming: () => false,
-      hasPendingApproval: () => false,
-      hasExternalInjection: () => false,
-      broadcastWs: () => {},
-    });
+    await initResumeQueue();
     try {
       const dir = join(tmpDir, 'resumeAmbigProj');
       await spawnClaudeAt(dir);
@@ -481,17 +487,7 @@ describe('POST /api/resume-session', () => {
     const cq = await import('../server/lib/chat-queue.js');
     ptyMgr._resetForTests();
     ptyMgr._setPtyImportForTests(() => ({ spawn: () => ({ onData() {}, onExit() {}, kill() {}, resize() {}, write() {}, pid: 50002 }) }));
-    cq.__resetForTests();
-    cq.initChatQueue({
-      writeToPty: () => {},
-      writeToPtySequential: (c, cb) => cb && cb(true),
-      writeToPtySequentialFor: (chunks, cb) => cb && cb(true),
-      getPtyKind: () => 'claude',
-      isStreaming: () => true,            // stays busy past the 2s poll budget
-      hasPendingApproval: () => false,
-      hasExternalInjection: () => false,
-      broadcastWs: () => {},
-    });
+    await initResumeQueue({ streaming: true }); // stays busy past the 2s poll budget
     try {
       const dir = join(tmpDir, 'resumeBusyProj');
       await spawnClaudeAt(dir);
