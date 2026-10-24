@@ -190,6 +190,17 @@ describe('presets', () => {
     assert.doesNotMatch(text, /<!--/, 'editor comment stripped');
   });
 
+  it('Kimi K3 excludes the Anthropic API skill for local model classification', () => {
+    const text = renderPresetTemplate('kimi-k3');
+    assert.match(text, /^# Choosing skills$/m);
+    assert.ok(text.includes('`claude-api`'), 'skill identifier is explicit');
+    assert.ok(text.includes('"Building LLM-Powered Applications with Claude"'), 'display-title alias is explicit');
+    assert.ok(text.includes('even when Claude Code automatically recommends or triggers it'));
+    assert.ok(text.includes('model-name recognition, model logos, aliases, or context-window classification'));
+    assert.ok(text.includes('local application code, NOT LLM API integration'));
+    assert.ok(text.includes('Do not invoke it or read its documentation'));
+  });
+
   it('rejects preset ids that attempt path traversal', () => {
     assert.throws(() => loadPreset('../systemPromptModel'), /Invalid preset id/);
     assert.throws(() => loadPreset('a/b'), /Invalid preset id/);

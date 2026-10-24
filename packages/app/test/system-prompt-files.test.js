@@ -334,6 +334,17 @@ describe('system-prompt-files: 内置 preset fallback', () => {
     assert.ok(text.includes('${'), '模板变量应保持字面量待渲染管线替换');
   });
 
+  it('k3 系列别称无用户文件时注入内置 K3 prompt', () => {
+    for (const modelId of ['k3.1-pro', 'k3.1-pro-highspeed', 'k3.1-pro[1m]']) {
+      const dir = mkTmp();
+      const r = buildSystemPromptFileArgs(dir, [], {}, { modelId });
+      assert.equal(r.model, 'KIMI-K3', modelId);
+      assert.deepEqual(r.loaded, ['builtin:KIMI-K3'], modelId);
+      assert.equal(r.args[0], '--system-prompt-file', modelId);
+      assert.ok(r.args[1].includes('kimi-k3-'), modelId);
+    }
+  });
+
   it('工作区用户文件优先于内置（行为零变化）', () => {
     const dir = mkTmp();
     mkdirSync(join(dir, 'system_prompt'));

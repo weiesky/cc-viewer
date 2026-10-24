@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- fix(web+server): **k3/k4 系列模型识别为 Kimi** — 头像、厂商与上下文窗口规则兼容裸名称、点号/连字符后缀及窗口后缀，包括 `k3.1-pro`、`k3.1-pro-highspeed`；`k30`/`k3pro` 保持未知模型。Coverage: `helpers-unit-a.test.js`, `context-rules.test.js`.
+- fix(system-prompt): **Kimi K3 提示词兼容 k3 系列别称并避免误用 Claude API 专属技能** — `k3.1-pro`、`k3.1-pro-highspeed` 等点号/连字符后缀、大小写及 `[1m]` 形式均命中 K3 的内置或用户自定义提示词，`k30`/`k3pro` 不误命中；在技能选择入口跳过 `claude-api` 及展示名 "Building LLM-Powered Applications with Claude"，模型名称、Logo、别名与上下文窗口分类属于本地代码任务，即使 Claude Code 自动推荐也不加载该技能。Coverage: `builtin-model-prompts.test.js`, `model-system-prompts.test.js`, `system-prompt-files.test.js`, `system-prompt-builder.test.js`.
+
 - feat(server+web): **新增「设置定时任务」** — 「+」菜单（聊天输入栏与终端工具栏）新增定时任务管理弹窗：按预设（每小时/每天/工作日/每周）、自定义 cron 或一次性时间，到点把一条 prompt 注入当前活会话，或新建独立 headless SDK 会话运行。任务定义与调度状态持久化在 `preferences.json`（`scheduledTasks` 键，经 strict 写 + GET/POST/fork 全路径剥离 + 文件 API/IM 拒读拒写），运行历史独立存 `scheduled-task-runs.json`（每任务最近 20 条，claimRunId 幂等去重）；服务端 10s tick 调度、跨进程文件锁认领防重复、重启/睡眠后 7 天内补跑最近一次；支持 Run now、暂停/恢复、删除（独立会话任务可跳转对应会话）。首个任务空态直接显示表单；有任务后列表显示且新建按钮移至标题；标题去掉项目后缀；调度占位提示改为提交时校验提示；PTY 模式隐藏执行方式、新建态隐藏启用开关、无运行历史不显示历史区。Coverage: `cron.test.js`, `schedule-model.test.js`, `scheduled-task-store.test.js`, `scheduled-task-scheduler.test.js`, `scheduled-task-executor.test.js`, `scheduled-task-routes.test.js`, `scheduled-task-runs-store.test.js`, `sdk-manager-ephemeral.test.js`, `schedule-description.test.js`, `schedule-i18n.test.js`, `schedule-modal-anchor.test.js`, `json-store.test.js`, `file-access-policy.test.js`, `api-preferences-gap.test.js`, `project-prefs.test.js`, `im-deny.test.js`.
 
 ## 1.9.12

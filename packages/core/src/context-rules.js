@@ -14,6 +14,10 @@
 // 显式 opt-in 优先级最高,胜过一切家族规则。
 const SIZE_SUFFIX_RE = /\[(\d+)([km])\]/i;
 
+// Bare K3/K4 aliases accept version, routing, and context-size suffixes without
+// treating lookalike names such as k30 or k3pro as Kimi models.
+const KIMI_MODEL_RE = /kimi|moonshot|^k[34](?:$|[.[\]-])/i;
+
 /**
  * 解析模型名里的 [Nk]/[Nm] 窗口后缀。
  * @param {string} modelName
@@ -74,7 +78,7 @@ const MODEL_CONTEXT_SIZES = [
   // Kimi 家族精确档:k2.x/k3 等带 kimi/moonshot 前缀的 → 256K;裸 'k3'(无前缀,
   // 代理直连时的简写 model 名)→ 256K 精确档但 classifyContextWindow 不升 1M
   // (见该函数的家族特判,裸 k3 归 200K 桶,超量由 adaptContextWindow 纠偏)。
-  { match: /kimi|moonshot|^k3$/i, tokens: 256000 },
+  { match: KIMI_MODEL_RE, tokens: 256000 },
   // deepseek-v4 defaults to 1M; placed before generic /deepseek/ so the
   // first-match-wins loop picks it up before falling through to 128K.
   // The `deepseek-flash` shorthand (an alias of deepseek-v4-flash, see the prompt
@@ -120,7 +124,7 @@ export function getModelMaxTokens(modelName) {
 export function classifyContextWindow(modelName) {
   if (!modelName || typeof modelName !== 'string') return 200000;
   if (modelName.toLowerCase().includes('1m')) return 1000000;
-  if (/kimi|moonshot|^k3$/i.test(modelName)) return 1000000;
+  if (KIMI_MODEL_RE.test(modelName)) return 1000000;
   // deepseek-flash 简写(deepseek-v4-flash 的别名)归 1M 桶,与请求侧判定对齐。
   if (/^deepseek-flash/i.test(modelName)) return 1000000;
   return getModelMaxTokens(modelName) >= 1000000 ? 1000000 : 200000;
