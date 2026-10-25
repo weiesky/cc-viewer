@@ -19,7 +19,7 @@ export function isImageFile(path) {
  * - metadata：chmod、chown
  * - package/archive：npm/yarn/pnpm install/uninstall、pip install、tar、unzip、curl -o、wget
  * - redirect write：> 与 >>（排除 2>、>= 等由 [^>]>(?!>)/>> 处理）
- * - git mutating：checkout/reset/stash/merge/rebase/cherry-pick/restore/clean/rm
+ * - git mutating：commit/checkout/reset/stash/merge/rebase/cherry-pick/restore/clean/rm
  *
  * 设计取舍（trade-off）：
  *   \b 单词边界不能区分"作为命令"还是"作为参数/字面量"，因此 `echo unlink` 之类
@@ -34,7 +34,7 @@ export function isImageFile(path) {
  *   isMutatingCommand('git status')                    // false
  *   isMutatingCommand('echo hello')                    // false
  */
-const MUTATING_CMD_RE = /\b(rm|rmdir|unlink|mkdir|mv|cp|touch|chmod|chown|ln|git\s+(checkout|reset|stash|merge|rebase|cherry-pick|restore|clean|rm)|npm\s+(install|uninstall|ci)|yarn\s+(add|remove)|pnpm\s+(add|remove|install)|pip\s+install|tar|unzip|curl\s+-[^\s]*o|wget)\b|\bfind\b[^|;&\n]*-delete\b|[^>]>(?!>)|>>/;
+const MUTATING_CMD_RE = /\b(rm|rmdir|unlink|mkdir|mv|cp|touch|chmod|chown|ln|git\s+(checkout|commit|reset|stash|merge|rebase|cherry-pick|restore|clean|rm)|npm\s+(install|uninstall|ci)|yarn\s+(add|remove)|pnpm\s+(add|remove|install)|pip\s+install|tar|unzip|curl\s+-[^\s]*o|wget)\b|\bfind\b[^|;&\n]*-delete\b|[^>]>(?!>)|>>/;
 
 /**
  * @param {string} cmd  Bash 命令字符串

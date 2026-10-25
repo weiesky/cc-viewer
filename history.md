@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(web): **修复 Git commit 不刷新「GIT 变更」面板** — 将 commit 纳入变更命令识别，成功后自动刷新文件与 Git 变更。Coverage: `commandValidator.test.js`, `tool-file-change-controller.test.js`.
+
 - fix(web): **修复上下文用量配色与展开滚动** — 条形图、图例和上下文网格按分类使用一致的可读颜色，区分部分填充与空闲格子；展开详情后可滚动查看全部内容。Coverage: `context-usage-view.test.js`, `sdk-context-usage-tab.test.js`.
 
 - fix(web): **SDK 会话按轮次恢复 thinking** — 将主请求响应中的思考内容关联到对应 assistant 消息，避免后续响应覆盖后丢失；保留签名与现有工具/审批去重，最新响应未返回 thinking 时不回填旧内容。严格校验 producer/carrier 时序与会话归属，修复冷加载、重连、混合 epoch 和项目切换裁窗后的错挂或丢失；减少无候选会话的重复扫描。Coverage: `response-thinking.test.js`, `response-thinking-chat.test.js`, `view-state-cache.test.js`.
