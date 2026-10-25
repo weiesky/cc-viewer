@@ -12,6 +12,13 @@ import styles from './SdkContextUsageTab.module.css';
 
 const { Text } = Typography;
 
+const GRID_FILL_CLASS = {
+  full: styles.gridCellFull,
+  partial: styles.gridCellPartial,
+  empty: styles.gridCellEmpty,
+  buffer: styles.gridCellBuffer,
+};
+
 /**
  * SDK-mode "Context usage" panel. Data is SESSION-level (vs ContextTab's per-request), so
  * it lives as its own DetailPanel tab. Sources: a WS `sdk-context-usage` push on turn-end /
@@ -142,12 +149,8 @@ export default function SdkContextUsageTab() {
                 {row.map((cell, ci) => (
                   <Tooltip key={ci} title={`${cell.categoryName}: ${formatTokenCount(cell.tokens)}`}>
                     <span
-                      className={styles.gridCell}
-                      style={{
-                        background: cell.isFilled ? cell.color : 'transparent',
-                        borderColor: cell.color,
-                        opacity: cell.isFilled ? cell.fullness : 0.4,
-                      }}
+                      className={`${styles.gridCell} ${GRID_FILL_CLASS[cell.fill]}`}
+                      style={{ '--cell-color': cell.color }}
                     />
                   </Tooltip>
                 ))}

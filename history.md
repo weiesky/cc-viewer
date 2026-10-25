@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(web): **修复上下文用量配色与展开滚动** — 条形图、图例和上下文网格按分类使用一致的可读颜色，区分部分填充与空闲格子；展开详情后可滚动查看全部内容。Coverage: `context-usage-view.test.js`, `sdk-context-usage-tab.test.js`.
+
 - fix(web): **SDK 会话按轮次恢复 thinking** — 将主请求响应中的思考内容关联到对应 assistant 消息，避免后续响应覆盖后丢失；保留签名与现有工具/审批去重，最新响应未返回 thinking 时不回填旧内容。严格校验 producer/carrier 时序与会话归属，修复冷加载、重连、混合 epoch 和项目切换裁窗后的错挂或丢失；减少无候选会话的重复扫描。Coverage: `response-thinking.test.js`, `response-thinking-chat.test.js`, `view-state-cache.test.js`.
 
 - fix(web+server): **文件浏览器写操作跟随当前查看项目** — 创建、重命名、移动、删除、导入、保存、下载及 HTML 预览（含相对子资源）均携带项目/实例参数，不再误写启动项目；切换项目时清空文件弹窗缓存；保留 realpath 边界与编辑器会话兼容。修复大小写重命名、Windows 文件占用重试及 Linux 终端启动异常处理。Coverage: `files-view-write.test.js`, `file-context-menu-actions.test.js`, `html-preview-scope.test.js`, `chat-file-open-scope.test.js`, `api-files-fs.test.js`, `api-files-content.test.js`, `file-move.test.js`, `files-import.test.js`, `file-open.test.js`.

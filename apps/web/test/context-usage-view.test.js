@@ -11,11 +11,11 @@ import './_shims/register.mjs';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-let normalizeColor, normalizePercent, buildUsageBar, gridToRows, buildDetailSections, buildApiUsage, nextPanelState;
+let normalizePercent, buildUsageBar, gridToRows, buildDetailSections, buildApiUsage, nextPanelState, resolveCategoryColor;
 
 before(async () => {
   const m = await import('../src/utils/contextUsageView.js');
-  ({ normalizeColor, normalizePercent, buildUsageBar, gridToRows, buildDetailSections, buildApiUsage, nextPanelState } = m);
+  ({ normalizePercent, buildUsageBar, gridToRows, buildDetailSections, buildApiUsage, nextPanelState, resolveCategoryColor } = m);
 });
 
 const FULL = {
@@ -33,19 +33,6 @@ const FULL = {
   apiUsage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 10, cache_read_input_tokens: 5 },
 };
 
-describe('contextUsageView — normalizeColor', () => {
-  it('合法 CSS 色直用;非法色回落调色板(按 index 稳定)', () => {
-    assert.equal(normalizeColor('#abc', 0), '#abc');
-    assert.equal(normalizeColor('#A1B2C3D4', 0), '#A1B2C3D4');
-    assert.equal(normalizeColor('rgb(1,2,3)', 0), 'rgb(1,2,3)');
-    assert.equal(normalizeColor('red', 0), 'red');
-    const a = normalizeColor('not a color!!', 0);
-    const b = normalizeColor(undefined, 0);
-    assert.equal(a, b, 'same index → same fallback slot');
-    assert.notEqual(normalizeColor(undefined, 0), normalizeColor(undefined, 1), 'different index → different slot');
-  });
-});
-
 describe('contextUsageView — normalizePercent', () => {
   it('0-1 量纲 ×100;0-100 直用;超界钳到 0-100;非数字归 0', () => {
     assert.equal(normalizePercent(0.6), 60);
@@ -55,6 +42,108 @@ describe('contextUsageView — normalizePercent', () => {
     assert.equal(normalizePercent(NaN), 0);
     assert.equal(normalizePercent('x'), 0);
     assert.equal(normalizePercent(undefined), 0);
+  });
+});
+
+describe('contextUsageView — CLI category colors', () => {
+  const categories = [
+    { name: 'System prompt', tokens: 161, color: 'promptBorder' },
+    { name: 'System tools', tokens: 19444, color: 'inactive' },
+    { name: 'MCP tools', tokens: 200, color: 'cyan_FOR_SUBAGENTS_ONLY' },
+    { name: 'Custom agents', tokens: 54, color: 'permission' },
+    { name: 'Memory files', tokens: 1244, color: 'claude' },
+    { name: 'Skills', tokens: 2688, color: 'warning' },
+    { name: 'Messages', tokens: 152124, color: 'purple_FOR_SUBAGENTS_ONLY' },
+    { name: 'Autocompact buffer', tokens: 33000, color: 'inactive' },
+    { name: 'Free space', tokens: 824339, color: 'promptBorder' },
+  ];
+
+  it('resolves every observed CLI token to a fixed category role', () => {
+    const segments = buildUsageBar({ categories, maxTokens: 1000000 }).segments;
+    assert.deepEqual(segments.map((s) => s.color), [
+      'var(--context-category-system-prompt)',
+      'var(--context-category-system-tools)',
+      'var(--context-category-mcp-tools)',
+      'var(--context-category-custom-agents)',
+      'var(--context-category-memory-files)',
+      'var(--context-category-skills)',
+      'var(--context-category-messages)',
+      'var(--context-category-buffer)',
+      'var(--context-category-free-space)',
+    ]);
+    assert.ok(segments.every((s) => s.color.startsWith('var(--context-category-')));
+  });
+
+  it('uses category identity before shared tokens and survives omitted categories', () => {
+    const all = buildUsageBar({ categories, maxTokens: 1000000 }).segments;
+    const reduced = buildUsageBar({ categories: categories.filter((c) => c.name !== 'System tools'), maxTokens: 1000000 }).segments;
+    for (const segment of reduced) {
+      assert.equal(segment.color, all.find((s) => s.name === segment.name).color);
+    }
+    assert.notEqual(all[0].color, all.at(-1).color, 'System prompt and Free space share promptBorder but not identity');
+  });
+
+  it('reuses base colors for deferred categories and stable hashes for unknown names', () => {
+    const deferred = buildUsageBar({ categories: [
+      { name: 'MCP tools (deferred)', tokens: 1, color: 'inactive', isDeferred: true },
+      { name: 'System tools (deferred)', tokens: 1, color: 'inactive', isDeferred: true },
+    ], maxTokens: 100 }).segments;
+    assert.equal(deferred[0].color, 'var(--context-category-mcp-tools)');
+    assert.equal(deferred[1].color, 'var(--context-category-system-tools)');
+    const a = buildUsageBar({ categories: [{ name: 'Future category', tokens: 1, color: 'inactive' }], maxTokens: 100 }).segments[0];
+    const b = buildUsageBar({ categories: [{ name: 'Future category', tokens: 1, color: 'transparent' }], maxTokens: 100 }).segments[0];
+    assert.equal(a.color, b.color, 'unknown names do not change color when the CLI token drifts');
+    assert.match(a.color, /^var\(--context-category-\d\)$/);
+  });
+
+  it('matches bar and grid colors by category rather than cell index', () => {
+    const usage = {
+      categories,
+      maxTokens: 1000000,
+      gridRows: [[
+        { color: 'promptBorder', isFilled: true, categoryName: 'System prompt', tokens: 161, squareFullness: 0.0322 },
+        { color: 'purple_FOR_SUBAGENTS_ONLY', isFilled: true, categoryName: 'Messages', tokens: 152124, squareFullness: 1 },
+        { color: 'promptBorder', isFilled: true, categoryName: 'Free space', tokens: 824339, squareFullness: 1 },
+      ], [
+        { color: 'purple_FOR_SUBAGENTS_ONLY', isFilled: true, categoryName: 'Messages', tokens: 152124, squareFullness: 1 },
+      ]],
+    };
+    const cells = gridToRows(usage).rows.flat();
+    const bar = buildUsageBar(usage).segments;
+    assert.equal(cells[0].color, bar[0].color);
+    assert.equal(cells[1].color, cells[3].color);
+    assert.equal(cells[1].color, bar.find((s) => s.name === 'Messages').color);
+    assert.equal(cells[0].fill, 'partial');
+    assert.equal(cells[1].fill, 'full');
+    assert.equal(cells[2].fill, 'empty', 'real Free space cells can be isFilled:true and fullness:1');
+  });
+
+  it('keeps partial cells visible and handles buffer and malformed fullness', () => {
+    const cells = gridToRows({ gridRows: [[
+      { categoryName: 'Skills', color: 'warning', squareFullness: 0.7 },
+      { categoryName: 'Skills', color: 'warning', squareFullness: 0.6999 },
+      { categoryName: 'Skills', color: 'warning', squareFullness: 0 },
+      { categoryName: 'Skills', color: 'warning', squareFullness: NaN },
+      { categoryName: 'Skills', color: 'warning', squareFullness: 0.5, isFilled: false },
+      { categoryName: 'Autocompact buffer', color: 'inactive', squareFullness: 1 },
+      { categoryName: 'Compact buffer', color: 'inactive', squareFullness: 1 },
+      { categoryName: 'Autocompact buffer', color: 'inactive', squareFullness: 1, isFilled: false },
+    ]] }).rows[0];
+    assert.deepEqual(cells.map((c) => c.fill), ['full', 'partial', 'empty', 'partial', 'empty', 'buffer', 'buffer', 'empty']);
+    assert.equal(cells[5].color, cells[6].color);
+    assert.equal(cells[5].color, 'var(--context-category-buffer)');
+    const bufferBar = buildUsageBar({ categories, maxTokens: 1000000 }).segments.find((s) => s.name === 'Autocompact buffer');
+    assert.equal(bufferBar.color, cells[5].color);
+  });
+
+  it('keeps token and missing-fullness fallbacks safe for drifted data', () => {
+    assert.equal(resolveCategoryColor('', 'warning'), 'var(--context-category-skills)');
+    for (const name of ['constructor', '__proto__']) {
+      assert.match(resolveCategoryColor(name, 'inactive'), /^var\(--context-category-\d\)$/);
+    }
+    const big = gridToRows({ gridRows: [Array.from({ length: 5000 }, () => ({ categoryName: 'Skills', color: 'warning', tokens: 1 }))] });
+    assert.equal(big.truncated, true);
+    assert.equal(big.rows[0][0].fill, 'partial', 'filled cells with unknown fullness stay visible');
   });
 });
 

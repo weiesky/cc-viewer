@@ -8,22 +8,64 @@
  * rather than in the component.
  */
 
-// Fixed fallback palette — the CLI's category color may be a terminal color name or an
-// otherwise invalid CSS value; unknown colors cycle through this stable list instead.
-const FALLBACK_PALETTE = [
-  '#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de',
-  '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc', '#48a9a6',
-];
+// The CLI reports Ink theme keys, not CSS colors. Category identity must take
+// precedence: System prompt and Free space both use promptBorder in the CLI.
+const CATEGORY_COLORS = new Map(Object.entries({
+  'system prompt': 'system-prompt',
+  'system tools': 'system-tools',
+  'mcp tools': 'mcp-tools',
+  'custom agents': 'custom-agents',
+  'memory files': 'memory-files',
+  skills: 'skills',
+  messages: 'messages',
+  'free space': 'free-space',
+  'autocompact buffer': 'buffer',
+  'compact buffer': 'buffer',
+}));
+const TOKEN_COLORS = new Map(Object.entries({
+  promptborder: 'system-prompt',
+  inactive: 'system-tools',
+  cyan_for_subagents_only: 'mcp-tools',
+  permission: 'custom-agents',
+  claude: 'memory-files',
+  warning: 'skills',
+  purple_for_subagents_only: 'messages',
+}));
 
-const CSS_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|rgba?\(\s*[\d.,%\s]+\)|[a-zA-Z]+)$/;
+function canonicalCategory(name) {
+  return typeof name === 'string'
+    ? name.trim().toLowerCase().replace(/\s+/g, ' ').replace(/ \(deferred\)$/, '')
+    : '';
+}
+
+function stableColorIndex(value) {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  return hash % 7;
+}
+
+export const CATEGORY_COLOR_ROLES = Object.freeze([
+  ...new Set([...CATEGORY_COLORS.values(), ...TOKEN_COLORS.values()]),
+  ...Array.from({ length: 7 }, (_, i) => String(i)),
+]);
 
 /** Numeric token field, tolerant of missing/non-finite values. Shared by all builders. */
 function tok(v) { return (typeof v === 'number' && Number.isFinite(v) ? v : 0); }
 
-/** Pass through valid CSS colors; map anything else to a stable palette slot by index. */
-export function normalizeColor(color, index = 0) {
-  if (typeof color === 'string' && CSS_COLOR_RE.test(color.trim())) return color.trim();
-  return FALLBACK_PALETTE[index % FALLBACK_PALETTE.length];
+/** Resolve one category color shared by the composition bar, legend, and grid. */
+export function resolveCategoryColor(categoryName, colorToken) {
+  const name = canonicalCategory(categoryName);
+  const role = CATEGORY_COLORS.get(name)
+    ?? (name ? stableColorIndex(name) : TOKEN_COLORS.get(String(colorToken || '').trim().toLowerCase()));
+  return `var(--context-category-${role ?? stableColorIndex(String(colorToken || ''))})`;
+}
+
+function gridFillState(categoryName, isFilled, fullness) {
+  if (!isFilled || fullness <= 0) return 'empty';
+  const name = canonicalCategory(categoryName);
+  if (name === 'autocompact buffer' || name === 'compact buffer') return 'buffer';
+  if (name === 'free space') return 'empty';
+  return fullness >= 0.7 ? 'full' : 'partial';
 }
 
 /** percentage may arrive as 0-1 or 0-100; normalize to a clamped 0-100 number. */
@@ -44,7 +86,7 @@ export function buildUsageBar(usage) {
     .map((c, i) => ({
       name: typeof c.name === 'string' ? c.name : `#${i + 1}`,
       tokens: c.tokens,
-      color: normalizeColor(c.color, i),
+      color: resolveCategoryColor(c.name, c.color),
       isDeferred: c.isDeferred === true,
       pct: max > 0 ? Math.min(100, (c.tokens / max) * 100) : 0,
     }));
@@ -72,10 +114,14 @@ export function gridToRows(usage) {
     for (const cell of row) {
       if (cells >= MAX_GRID_CELLS) { truncated = true; break; }
       if (!cell || typeof cell !== 'object') continue;
+      const isFilled = cell.isFilled !== false;
+      const fullness = typeof cell.squareFullness === 'number' && Number.isFinite(cell.squareFullness)
+        ? Math.min(1, Math.max(0, cell.squareFullness)) : (isFilled ? 0.5 : 0);
       outRow.push({
-        color: normalizeColor(cell.color, cells),
-        isFilled: cell.isFilled !== false,
-        fullness: typeof cell.squareFullness === 'number' ? Math.min(1, Math.max(0, cell.squareFullness)) : 1,
+        color: resolveCategoryColor(cell.categoryName, cell.color),
+        isFilled,
+        fullness,
+        fill: gridFillState(cell.categoryName, isFilled, fullness),
         categoryName: typeof cell.categoryName === 'string' ? cell.categoryName : '',
         tokens: typeof cell.tokens === 'number' ? cell.tokens : 0,
         percentage: normalizePercent(cell.percentage),
