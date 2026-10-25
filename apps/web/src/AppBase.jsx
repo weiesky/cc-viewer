@@ -240,6 +240,8 @@ class AppBase extends React.Component {
       selectedLogs: new Set(),   // Set<file>
       cliMode: false,
       sdkMode: false,
+      sdkContextClearVersion: 0,
+      boundInstance: null,
       workspaceMode: false,
       serverCachedContent: null,
       updateInfo: null,
@@ -798,6 +800,7 @@ class AppBase extends React.Component {
     // the Header (resolveBoundInstance — only set when the bound name is duplicated AND
     // resolvable). Used to disambiguate view-scoped readers (file tree) on the BOUND view.
     this._boundInstance = boundInstance || null;
+    if (this.state.boundInstance !== this._boundInstance) this.setState({ boundInstance: this._boundInstance });
     const vp = this.state.viewedProject;
     if (!vp || this.state.resumeSwitch) return;
     const vi = this.state.viewedInstance || null;
@@ -3732,6 +3735,7 @@ class AppBase extends React.Component {
     const ch = this._channels.getRendered();
     const vm = (ch && ch.vm) || this._localVm;
     this._commitChannel(ch, { contextBarOptimistic: true, contextBarLocked: true });
+    this.setState(prev => ({ sdkContextClearVersion: (prev.sdkContextClearVersion || 0) + 1 }));
     if (vm.clearOptimisticTimer) clearTimeout(vm.clearOptimisticTimer);
     vm.clearOptimisticTimer = setTimeout(() => {
       this._commitChannel(ch, { contextBarOptimistic: false });
@@ -3835,7 +3839,9 @@ class AppBase extends React.Component {
       vm.clearOptimisticTimer = null;
     }
     this._commitChannel(ch, { contextBarLocked: false, contextBarOptimistic: false });
+    this._boundInstance = null;
     this.setState({
+      boundInstance: null,
       workspaceMode: false,
       projectName,
       // Do NOT force a view: keep the user's CURRENT display prefs (user-pinned 2026-10-06).
@@ -3877,6 +3883,7 @@ class AppBase extends React.Component {
         if (ch) ch.vm.currentSessionId = null; // same as workspace_started: clear the old session id so lazy-lock can't misfire
         // Returned to the workspace list (no bound project) — drop the persisted workspace.
         clearViewedWorkspace();
+        this._boundInstance = null;
         this._commitChannel(ch, {
           requests: [],
           mainAgentSessions: [],
@@ -3888,6 +3895,7 @@ class AppBase extends React.Component {
           turnActive: false, // new workspace/view owns its own turn state
         });
         this.setState({
+          boundInstance: null,
           workspaceMode: true,
           projectName: '',
           attachedSid: null, // switching projects is an authoritative boundary: force-detach any attach

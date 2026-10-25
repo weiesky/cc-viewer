@@ -19,3 +19,14 @@
   word-break: break-word;
   pointer-events: none;
 }
+
+.memoryLinkTip {
+  z-index: 1102;
+  max-width: 420px;
+}
+
+.memoryLinkCost {
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}

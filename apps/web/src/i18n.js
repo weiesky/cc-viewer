@@ -10440,6 +10440,30 @@ const i18nData = {
     "ar": "{used} / {max}", "no": "{used} / {max}", "pt-BR": "{used} / {max}",
     "th": "{used} / {max}", "tr": "{used} / {max}", "uk": "{used} / {max}"
   },
+  "ui.contextUsage.tokens": {
+    "zh": "Tokens: {tokens}", "en": "Tokens: {tokens}", "zh-TW": "Tokens: {tokens}",
+    "ko": "토큰: {tokens}", "ja": "トークン: {tokens}", "de": "Tokens: {tokens}",
+    "es": "Tokens: {tokens}", "fr": "Jetons : {tokens}", "it": "Token: {tokens}",
+    "da": "Tokens: {tokens}", "pl": "Tokeny: {tokens}", "ru": "Токены: {tokens}",
+    "ar": "الرموز: {tokens}", "no": "Tokener: {tokens}", "pt-BR": "Tokens: {tokens}",
+    "th": "โทเค็น: {tokens}", "tr": "Token: {tokens}", "uk": "Токени: {tokens}"
+  },
+  "ui.contextUsage.tokensEstimated": {
+    "zh": "Tokens（估算）: {tokens}", "en": "Tokens (estimated): {tokens}", "zh-TW": "Tokens（估算）: {tokens}",
+    "ko": "토큰(추정): {tokens}", "ja": "トークン（推定）: {tokens}", "de": "Tokens (geschätzt): {tokens}",
+    "es": "Tokens (estimados): {tokens}", "fr": "Jetons (estimés) : {tokens}", "it": "Token (stimati): {tokens}",
+    "da": "Tokens (estimeret): {tokens}", "pl": "Tokeny (szacunkowo): {tokens}", "ru": "Токены (оценка): {tokens}",
+    "ar": "الرموز (تقديري): {tokens}", "no": "Tokener (estimert): {tokens}", "pt-BR": "Tokens (estimados): {tokens}",
+    "th": "โทเค็น (โดยประมาณ): {tokens}", "tr": "Token (tahmini): {tokens}", "uk": "Токени (оцінка): {tokens}"
+  },
+  "ui.contextUsage.totalScope": {
+    "zh": "SDK 当前上下文中的总消耗，可能多于下方可见条目。", "en": "Total cost in the current SDK context; it may include items not listed below.", "zh-TW": "SDK 目前上下文中的總消耗，可能多於下方可見項目。",
+    "ko": "현재 SDK 컨텍스트의 총 비용으로, 아래에 표시되지 않은 항목이 포함될 수 있습니다.", "ja": "現在の SDK コンテキスト全体のコストです。下記にない項目も含まれます。", "de": "Gesamtkosten im aktuellen SDK-Kontext; nicht aufgeführte Elemente können enthalten sein.",
+    "es": "Coste total en el contexto SDK actual; puede incluir elementos no enumerados.", "fr": "Coût total dans le contexte SDK actuel ; des éléments non listés peuvent être inclus.", "it": "Costo totale nel contesto SDK corrente; può includere elementi non elencati.",
+    "da": "Samlet forbrug i den aktuelle SDK-kontekst; kan indeholde elementer, der ikke er vist nedenfor.", "pl": "Łączny koszt w bieżącym kontekście SDK; może obejmować elementy niewymienione poniżej.", "ru": "Общая стоимость в текущем контексте SDK; может включать элементы, не перечисленные ниже.",
+    "ar": "التكلفة الإجمالية في سياق SDK الحالي؛ وقد تشمل عناصر غير مدرجة أدناه.", "no": "Total kostnad i gjeldende SDK-kontekst; kan inkludere elementer som ikke er oppført nedenfor.", "pt-BR": "Custo total no contexto SDK atual; pode incluir itens não listados abaixo.",
+    "th": "ต้นทุนรวมในบริบท SDK ปัจจุบัน อาจรวมรายการที่ไม่ได้แสดงด้านล่าง", "tr": "Geçerli SDK bağlamındaki toplam maliyet; aşağıda listelenmeyen öğeleri içerebilir.", "uk": "Загальна вартість у поточному контексті SDK; може включати елементи, не перелічені нижче."
+  },
   "ui.contextUsage.autoCompactAt": {
     "zh": "自动压缩于 {tokens}", "en": "Auto-compact at {tokens}", "zh-TW": "自動壓縮於 {tokens}",
     "ko": "자동 압축 {tokens}", "ja": "自動圧縮 {tokens}", "de": "Auto-Komprimierung bei {tokens}",

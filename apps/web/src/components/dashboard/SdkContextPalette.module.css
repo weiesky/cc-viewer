@@ -1,0 +1,39 @@
+/* Shared category identity for the blood-bar composition and full usage grid. */
+.root {
+  --context-category-system-prompt: #006c94;
+  --context-category-system-tools: #009d9d;
+  --context-category-mcp-tools: #d54700;
+  --context-category-custom-agents: #3c8800;
+  --context-category-memory-files: #796abb;
+  --context-category-skills: #9d445c;
+  --context-category-messages: #a4483e;
+  /* Free space and buffer are intentional context neutrals, not extra series hues. */
+  --context-category-free-space: #888888;
+  --context-category-buffer: #b58900;
+  --context-category-0: #006c94;
+  --context-category-1: #009d9d;
+  --context-category-2: #d54700;
+  --context-category-3: #3c8800;
+  --context-category-4: #796abb;
+  --context-category-5: #9d445c;
+  --context-category-6: #a4483e;
+}
+
+:global([data-theme="light"]) .root {
+  --context-category-system-prompt: #006c94;
+  --context-category-system-tools: #009990;
+  --context-category-mcp-tools: #b8860b;
+  --context-category-custom-agents: #007100;
+  --context-category-memory-files: #7754de;
+  --context-category-skills: #b12453;
+  --context-category-messages: #d53742;
+  --context-category-free-space: #666666;
+  --context-category-buffer: #888888;
+  --context-category-0: #006c94;
+  --context-category-1: #009990;
+  --context-category-2: #b8860b;
+  --context-category-3: #007100;
+  --context-category-4: #7754de;
+  --context-category-5: #b12453;
+  --context-category-6: #d53742;
+}

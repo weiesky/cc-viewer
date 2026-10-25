@@ -12,10 +12,14 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 
 let normalizePercent, buildUsageBar, gridToRows, buildDetailSections, buildApiUsage, nextPanelState, resolveCategoryColor;
+let mergeSdkContextBar, buildSkillUsageIndex, buildMemoryUsageIndex, memoryTokensForLink;
+let sdkContextFrameMatchesView, sdkContextPath;
 
 before(async () => {
   const m = await import('../src/utils/contextUsageView.js');
   ({ normalizePercent, buildUsageBar, gridToRows, buildDetailSections, buildApiUsage, nextPanelState, resolveCategoryColor } = m);
+  ({ mergeSdkContextBar, buildSkillUsageIndex, buildMemoryUsageIndex, memoryTokensForLink,
+    sdkContextFrameMatchesView, sdkContextPath } = m);
 });
 
 const FULL = {
@@ -265,12 +269,90 @@ describe('contextUsageView — nextPanelState 面板状态机', () => {
   });
 
   it('ts 单调守卫:落后帧被拒(WS 与 HTTP 两路)', () => {
-    const ready = { detail: { usage: { totalTokens: 10 }, ts: 100, trigger: 'turn-end' }, status: 'ready' };
+    const ready = { detail: { usage: { totalTokens: 10 }, ts: 100, receivedAt: 1000, trigger: 'turn-end' }, status: 'ready' };
     const staleWs = nextPanelState(ready, { kind: 'ws', frame: SNAP(50) });
     assert.equal(staleWs.detail.ts, 100, 'older WS frame rejected');
     const staleHttp = nextPanelState(ready, { kind: 'http', body: { ok: true, snapshot: SNAP(80) } });
     assert.equal(staleHttp.detail.ts, 100, 'older HTTP snapshot rejected');
     const newer = nextPanelState(ready, { kind: 'ws', frame: SNAP(150) });
     assert.equal(newer.detail.ts, 150, 'newer frame advances');
+    const staleClear = nextPanelState(newer, { kind: 'ws', frame: { ts: 100, usage: null } });
+    assert.equal(staleClear.detail.ts, 150, 'older clear cannot wipe newer detail');
+    const cleared = nextPanelState(newer, { kind: 'ws', frame: { ts: 200, usage: null } });
+    assert.equal(cleared.lastTs, 200, 'watermark survives a clear');
+    assert.equal(nextPanelState(cleared, { kind: 'http', body: { ok: true, snapshot: SNAP(150) } }).status, 'inactive');
+    assert.equal(nextPanelState(cleared, { kind: 'reset' }).lastTs, 0, 'new scope gets a fresh watermark');
+    const staleInactive = nextPanelState({ ...newer, detail: { ...newer.detail, receivedAt: 1000 } }, { kind: 'http', body: { ok: false, reason: 'session-inactive' }, startedAt: 50 });
+    assert.equal(staleInactive.detail.ts, 150, 'old inactive response cannot wipe newer WS data');
+  });
+});
+
+describe('contextUsageView — SDK blood-bar merge', () => {
+  const sdk = (overrides = {}) => ({
+    enabled: true, status: 'ready', detail: { usage: FULL }, ...overrides,
+  });
+
+  it('uses SDK totals only when enabled; PTY fallback stays byte-identical', () => {
+    const merged = mergeSdkContextBar({ sdk: sdk(), fallbackPercent: 88, fallbackTokens: 1234 });
+    assert.equal(merged.percent, 4);
+    assert.equal(merged.tokens, 8000);
+    assert.equal(merged.sdkActive, true);
+    assert.deepEqual(mergeSdkContextBar({ sdk: sdk({ enabled: false }), fallbackPercent: 88, fallbackTokens: 1234 }), {
+      percent: 88, tokens: 1234, sdkActive: false, bar: null,
+    });
+    assert.equal(mergeSdkContextBar({ sdk: sdk({ status: 'loading', detail: null }), fallbackPercent: 88 }).percent, 88);
+    assert.equal(mergeSdkContextBar({ sdk: sdk({ locked: true }) }).tokens, 0);
+    assert.equal(mergeSdkContextBar({ sdk: sdk({ awaitingFresh: true }) }).percent, 0);
+    assert.equal(mergeSdkContextBar({ sdk: sdk({ optimistic: true }) }).percent, 5);
+    assert.equal(mergeSdkContextBar({ sdk: sdk({ status: 'error' }) }).sdkActive, false, 'failed refresh falls back rather than hiding calibration');
+    assert.equal(mergeSdkContextBar({ sdk: sdk({ status: 'ready' }) }).sdkActive, true);
+  });
+});
+
+describe('contextUsageView — scoped SDK usage indexes and routing', () => {
+  it('matches exact and unique plugin skills, never ambiguous aliases', () => {
+    const usage = { skills: { tokens: 600, skillFrontmatter: [
+      { name: 'pdf', source: 'project', tokens: 100 },
+      { name: 'reader', source: 'plugin:demo', tokens: 200 },
+      { name: 'shared', source: 'plugin', tokens: 300 },
+    ] } };
+    const skills = [
+      { name: 'pdf', source: 'project' },
+      { name: 'demo:reader', source: 'plugin' },
+      { name: 'one:shared', source: 'plugin' },
+      { name: 'two:shared', source: 'plugin' },
+    ];
+    const index = buildSkillUsageIndex(usage, skills);
+    assert.equal(index.totalTokens, 600);
+    assert.equal(index.tokensByName.get('pdf'), 100);
+    assert.equal(index.tokensByName.get('demo:reader'), 200);
+    assert.equal(index.tokensByName.has('one:shared'), false);
+  });
+
+  it('scopes memory links to direct children of memory.dir and totals unique SDK files', () => {
+    const usage = { memoryFiles: [
+      { path: '/home/u/.claude/projects/p/memory/a.md', tokens: 100 },
+      { path: '/home/u/.claude/projects/p/memory/b%20b.md', tokens: 200 },
+      { path: '/tmp/p/CLAUDE.md', tokens: 300 },
+      { path: '/home/u/.claude/projects/p/memory/a.md', tokens: 100 },
+    ] };
+    const index = buildMemoryUsageIndex(usage, '/home/u/.claude/projects/p/memory/');
+    assert.equal(index.totalTokens, 600);
+    assert.deepEqual(memoryTokensForLink(index, 'a.md'), { tokens: 100, estimated: false });
+    assert.deepEqual(memoryTokensForLink(index, 'b%20b.md'), { tokens: 200, estimated: false });
+    assert.equal(memoryTokensForLink(index, 'CLAUDE.md'), null);
+    assert.equal(memoryTokensForLink(buildMemoryUsageIndex(usage), 'a.md'), null);
+    assert.deepEqual(memoryTokensForLink(index, 'linked.md', { memoryTokenEstimates: { 'linked.md': { tokens: 23 } } }), { tokens: 23, estimated: true });
+    const windows = buildMemoryUsageIndex({ memoryFiles: [{ path: 'C:\\u\\memory\\a.md', tokens: 7 }] }, 'c:\\u\\memory');
+    assert.deepEqual(memoryTokensForLink(windows, 'a.md'), { tokens: 7, estimated: false });
+  });
+
+  it('requires a matching view and exact instance when identified', () => {
+    const frame = { cwd: '/tmp/my project', instanceKey: 'a', ts: 1 };
+    assert.equal(sdkContextFrameMatchesView(frame, { project: 'my_project', instance: 'a' }), true);
+    assert.equal(sdkContextFrameMatchesView(frame, { project: 'my_project', instance: 'b' }), false);
+    assert.equal(sdkContextFrameMatchesView(frame, { project: 'my_project' }), false, 'unknown twin never flaps');
+    assert.equal(sdkContextFrameMatchesView(frame, {}), false);
+    assert.equal(sdkContextPath('my project', 'a'), '/api/sdk-context-usage?project=my+project&instance=a');
   });
 });

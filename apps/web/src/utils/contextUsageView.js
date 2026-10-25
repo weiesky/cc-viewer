@@ -1,3 +1,6 @@
+import { parseMemoryLink } from './memoryLinkParser.js';
+import { projectKeyFromCwd } from './projectKeyFromCwd.js';
+
 /**
  * Pure view-model builders for the SDK-mode "Context usage" panel (SdkContextUsageTab).
  * No React — every function takes the raw SDKControlGetContextUsageResponse and returns
@@ -207,6 +210,23 @@ export function buildApiUsage(usage) {
   };
 }
 
+function panelDetail(snapshot) {
+  return {
+    usage: snapshot.usage,
+    ts: snapshot.ts,
+    receivedAt: snapshot.receivedAt || Date.now(),
+    trigger: snapshot.trigger,
+    sessionId: snapshot.sessionId || null,
+    cwd: snapshot.cwd || null,
+    instanceKey: snapshot.instanceKey || null,
+  };
+}
+
+function snapshotIsStale(prev, snapshot) {
+  const ts = typeof snapshot?.ts === 'number' ? snapshot.ts : 0;
+  return ts < Math.max(prev.lastTs || 0, prev.detail?.ts || 0);
+}
+
 /**
  * Panel state machine (extracted pure for testability — DI-controller pattern).
  * prev = { detail: {usage,ts,trigger}|null, status: 'loading'|'ready'|'inactive'|'error' }.
@@ -218,28 +238,140 @@ export function buildApiUsage(usage) {
  * either source so an out-of-order HTTP response can't clobber a newer WS push.
  */
 export function nextPanelState(prev, event) {
-  const p = prev && typeof prev === 'object' ? prev : { detail: null, status: 'loading' };
+  const p = prev && typeof prev === 'object' ? prev : { detail: null, status: 'loading', lastTs: 0 };
   if (!event || typeof event !== 'object') return p;
+  if (event.kind === 'disabled') return { detail: null, status: 'disabled', lastTs: 0 };
+  if (event.kind === 'reset') return { detail: null, status: event.status || 'loading', lastTs: 0 };
 
   if (event.kind === 'ws') {
     const frame = event.frame;
-    if (!frame || typeof frame !== 'object') return p;
-    if (!frame.usage) return { detail: null, status: 'inactive' }; // clear frame
-    if (p.detail && typeof frame.ts === 'number' && frame.ts < p.detail.ts) return p; // stale
-    return { detail: { usage: frame.usage, ts: frame.ts, trigger: frame.trigger }, status: 'ready' };
+    if (!frame || typeof frame !== 'object' || snapshotIsStale(p, frame)) return p;
+    const lastTs = Math.max(p.lastTs || 0, typeof frame.ts === 'number' ? frame.ts : 0);
+    if (!frame.usage) return { detail: null, status: 'inactive', lastTs }; // clear frame
+    return { detail: panelDetail(frame), status: 'ready', lastTs };
   }
 
   if (event.kind === 'http') {
     const body = event.body;
     if (body && body.ok && body.snapshot && body.snapshot.usage) {
       const s = body.snapshot;
-      if (p.detail && typeof s.ts === 'number' && s.ts < p.detail.ts) return p; // stale
-      return { detail: { usage: s.usage, ts: s.ts, trigger: s.trigger }, status: 'ready' };
+      if (snapshotIsStale(p, s)) return p;
+      return { detail: panelDetail(s), status: 'ready', lastTs: Math.max(p.lastTs || 0, typeof s.ts === 'number' ? s.ts : 0) };
     }
-    if (body && body.reason === 'session-inactive') return { detail: null, status: 'inactive' };
+    if (body && body.reason === 'session-inactive') {
+      if (p.detail && typeof event.startedAt === 'number' && event.startedAt < (p.detail.receivedAt || 0)) return p;
+      return { detail: null, status: 'inactive', lastTs: p.lastTs || 0 };
+    }
     return { ...p, status: 'error' };
   }
 
   if (event.kind === 'http-error') return { ...p, status: 'error' };
   return p;
+}
+
+export const SDK_CONTEXT_DISABLED = Object.freeze({
+  enabled: false,
+  locked: false,
+  optimistic: false,
+  awaitingFresh: false,
+  status: 'disabled',
+  detail: null,
+  refreshing: false,
+  refresh: null,
+});
+
+/** Second-line routing guard for both WS frames and anchored HTTP responses. */
+export function sdkContextFrameMatchesView(frame, { project, instance } = {}) {
+  if (!frame || typeof frame !== 'object' || !project) return false;
+  if (projectKeyFromCwd(frame.cwd) !== project) return false;
+  const expected = instance || null;
+  if (expected) return frame.instanceKey === expected;
+  return !frame.instanceKey;
+}
+
+export function sdkContextPath(project, instance) {
+  const params = new URLSearchParams();
+  if (project) params.set('project', project);
+  if (instance) params.set('instance', instance);
+  const query = params.toString();
+  return `/api/sdk-context-usage${query ? `?${query}` : ''}`;
+}
+
+/** Blood-bar precedence. The SDK never changes the caller's request-derived fallback. */
+export function mergeSdkContextBar({ sdk = SDK_CONTEXT_DISABLED, fallbackPercent = 0, fallbackTokens = 0 } = {}) {
+  const fallback = { percent: fallbackPercent, tokens: fallbackTokens, sdkActive: false, bar: null };
+  if (!sdk?.enabled) return fallback;
+  if (sdk.locked || sdk.awaitingFresh || sdk.clearConfirmed === false) return { percent: 0, tokens: 0, sdkActive: true, bar: null };
+  const usage = sdk.detail?.usage;
+  if (!usage || sdk.status !== 'ready') return fallback;
+  const bar = buildUsageBar(usage);
+  if (!bar) return fallback;
+  return {
+    percent: sdk.optimistic ? 5 : bar.percentage,
+    tokens: usage.totalTokens,
+    sdkActive: true,
+    bar,
+  };
+}
+
+function normalizedName(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** Skill frontmatter is the SDK's context cost, not the cost of loading SKILL.md. */
+export function buildSkillUsageIndex(usage, skills) {
+  const rows = Array.isArray(usage?.skills?.skillFrontmatter) ? usage.skills.skillFrontmatter : [];
+  const tokensByName = new Map();
+  const candidates = Array.isArray(skills) ? skills : [];
+  for (const row of rows) {
+    const name = normalizedName(row?.name);
+    if (!name || tokensByName.has(name)) continue;
+    let displayName = candidates.find((skill) => normalizedName(skill?.name) === name)?.name;
+    if (!displayName && String(row?.source || '').toLowerCase().split(':')[0] === 'plugin' && !name.includes(':')) {
+      const aliases = candidates.filter((skill) => skill?.source === 'plugin' && normalizedName(skill.name).endsWith(`:${name}`));
+      if (aliases.length === 1) displayName = aliases[0].name;
+    }
+    if (displayName) tokensByName.set(displayName, tok(row.tokens));
+  }
+  return {
+    tokensByName,
+    totalTokens: usage?.skills && typeof usage.skills === 'object' ? tok(usage.skills.tokens) : null,
+  };
+}
+
+function normalizedPath(value) {
+  let path = String(value || '').replace(/\\/g, '/');
+  try { path = decodeURIComponent(path); } catch { /* Keep the raw path for comparison. */ }
+  return path.replace(/\/{2,}/g, '/').replace(/\/$/, '').toLowerCase();
+}
+
+/** Per-link costs are only safe for direct children of the current memory directory. */
+export function buildMemoryUsageIndex(usage, memoryDir) {
+  const rows = Array.isArray(usage?.memoryFiles) ? usage.memoryFiles : [];
+  const uniquePaths = new Map();
+  for (const row of rows) {
+    const path = normalizedPath(row?.path);
+    if (path) uniquePaths.set(path, tok(row?.tokens));
+  }
+  const totalTokens = rows.length ? [...uniquePaths.values()].reduce((sum, tokens) => sum + tokens, 0) : null;
+  const tokensByName = new Map();
+  const dir = normalizedPath(memoryDir);
+  if (dir) {
+    for (const [path, tokens] of uniquePaths) {
+      if (!path.startsWith(`${dir}/`) || path.slice(dir.length + 1).includes('/')) continue;
+      const name = path.slice(dir.length + 1);
+      if (!parseMemoryLink(name).open) continue;
+      if (tokensByName.has(name)) tokensByName.set(name, null);
+      else tokensByName.set(name, tokens);
+    }
+  }
+  return { tokensByName, totalTokens };
+}
+
+export function memoryTokensForLink(index, href, memory) {
+  const name = parseMemoryLink(href).open;
+  const tokens = name ? index?.tokensByName?.get(normalizedPath(name)) : null;
+  if (typeof tokens === 'number') return { tokens, estimated: false };
+  const estimate = name ? memory?.memoryTokenEstimates?.[name] : null;
+  return typeof estimate?.tokens === 'number' ? { tokens: estimate.tokens, estimated: true } : null;
 }

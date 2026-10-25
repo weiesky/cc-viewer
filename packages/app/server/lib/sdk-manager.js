@@ -94,6 +94,12 @@ function _matchesProject(sess, project) {
   return sanitized === project || rawBase === project;
 }
 
+// A project stamp matches a session when it names the session's exact normalized cwd
+// (absolute-path form) or its sanitized/raw basename (the web client's usual form).
+function _sessionMatchesProject(sess, project) {
+  return sess.key === _normalizeCwd(project) || _matchesProject(sess, project);
+}
+
 // Resolve an anchor { instanceKey|cwd|project } to a Session WITHOUT switching active (read ops).
 // `cwd` is an absolute path (exact key match); `project` is the SANITIZED project name the
 // web client sends (ChatView stamps `viewProject || projectName`, where projectName =
@@ -107,13 +113,20 @@ function _sessionForAnchor(anchor) {
   const cwd = (typeof anchor.cwd === 'string' && anchor.cwd) || null;
   const project = (typeof anchor.project === 'string' && anchor.project) || null;
   if (instanceKey) {
+    let byInstance = null;
     for (const s of _sessions.values()) {
-      if (s.instanceKey === instanceKey) return s;
+      if (s.instanceKey === instanceKey) { byInstance = s; break; }
     }
     // An exact instance that no longer exists must never fall back to a
     // same-basename sibling — that would execute the user's action in the
     // wrong workspace. The caller's unknown-anchor path drops + reports it.
-    return null;
+    if (!byInstance) return null;
+    // The web client stamps project and instance TOGETHER. A stale/mismatched pair
+    // must not let instance priority execute/read in a project other than the one
+    // the viewer named — resolve the pair to null instead (never fall through to
+    // project-only resolution, which could pick an unrelated sibling).
+    if (project && !_sessionMatchesProject(byInstance, project)) return null;
+    return byInstance;
   }
   if (cwd) return _sessions.get(_normalizeCwd(cwd)) || null;
   if (!project) return null;
@@ -239,6 +252,12 @@ function _userMessage(text) {
   };
 }
 
+// Bare "/clear" is the CLI's context-reset command; arguments/case variants are not the
+// reset command. Trim only surrounding whitespace (composer newlines/padding).
+function _isBareClearCommand(text) {
+  return typeof text === 'string' && text.trim() === '/clear';
+}
+
 /**
  * Normalize an SDK `task_*` system message into the camelCase relay payload
  * broadcast as `{ type: 'sdk-task', ... }`. Lossless pass-through (snake→camel
@@ -357,10 +376,15 @@ function _createSession(key, cwd) {
   let _lastContextUsage = null;   // last sdk-context-usage frame for WS reconnect replay
   let _ctxUsageFetching = false;  // one getContextUsage control request in flight
   let _ctxUsageQueued = false;    // a turn-end/compact arrived while in flight → rerun once (coalesce)
-  // Generation counter for the in-flight gate: _clearContextUsage bumps it so a stale
-  // request's .finally can't clear the flag of a NEWER in-flight request started after a
-  // session switch (the flag is only reset by the generation that set it).
+  // Generation counter for the in-flight gate AND stale-refresh suppression:
+  // _clearContextUsage bumps it so (a) a stale request's .finally can't clear the flag of a
+  // NEWER in-flight request started after a clear/switch (the flag is only reset by the
+  // generation that set it) and (b) a request that resolves after a clear cannot retain or
+  // broadcast its pre-clear snapshot.
   let _ctxUsageSeq = 0;
+  let _ctxUsageClearEpoch = 0;
+  let _ctxUsageClearPending = false;
+  let _ctxUsageStartSeq = 0;
   // Last sdk-mcp-status frame for WS reconnect replay. mcpServerStatus() is on-demand only
   // (HTTP pull + reconnect replay + clear-on-switch) — unlike context usage it is NOT
   // turn-correlated, so it gets no turn-end/compact trigger and none of the in-flight gate
@@ -533,6 +557,11 @@ function _createSession(key, cwd) {
       _queryBusy = false;
       return promise;
     }
+    // Typed /clear is detected at EXECUTION time (never at enqueue time): a clear queued
+    // behind a busy turn must not wipe the running turn's usage panel. Invalidate the
+    // retained snapshot before the CLI sees the command; the /clear turn's own result then
+    // refreshes it with the post-clear numbers.
+    if (_isBareClearCommand(text)) _clearContextUsage('context-cleared');
     _inputQueue.push(_userMessage(text));
     _turnInFlight = true;
     // Turn-level loading fallback: light the spinner the moment the turn is pushed.
@@ -828,6 +857,14 @@ function _createSession(key, cwd) {
     if (_activeQuery !== query) return; // stale generation — teardown already moved on
     _activeQuery = null;
     _inputQueue = null;
+    if (_ctxUsageClearPending) {
+      // A child that exits while applying /clear must not resume the cleared session on the
+      // next message. Start fresh, allow the next init/read, and invalidate older controls.
+      _ctxUsageClearPending = false;
+      _ctxUsageClearEpoch++;
+      _sessionId = null;
+      _launchResume = null;
+    }
     _clearGraceTimer();
     _clearTurnWatchdog();
     _lateResultTombstones = 0;
@@ -935,6 +972,9 @@ function _createSession(key, cwd) {
         if (msg.subtype === 'session_state_changed') {
           _announceSessionState(msg.state);
         } else if (msg.subtype === 'init') {
+          // /clear may reinitialize instead of returning a normal result. The new session is
+          // now authoritative, so context reads may resume (without resuming the old session).
+          if (_ctxUsageClearPending && msg.session_id) _ctxUsageClearPending = false;
           if (_broadcastWs && Array.isArray(msg.slash_commands) && msg.slash_commands.length > 0
             && msg.session_id !== _initAnnouncedSid) {
             _initAnnouncedSid = msg.session_id;
@@ -1048,7 +1088,9 @@ function _createSession(key, cwd) {
         _maybeDrain();
         // Refresh the context-usage panel AFTER the turn fully settles (fire-and-forget,
         // never awaited in this message loop). Placement after settle/drain guarantees a
-        // synchronous throw here can't truncate turn settlement.
+        // synchronous throw here can't truncate turn settlement. The CLI has now completed
+        // the /clear turn, so a fresh read is allowed again.
+        _ctxUsageClearPending = false;
         _refreshContextUsage('turn-end');
         break;
       }
@@ -1079,13 +1121,19 @@ function _createSession(key, cwd) {
    * Returns { ok:true, snapshot } | { ok:false, reason:'session-inactive'|'control-failed' }.
    * Never throws — the panel is best-effort; failures must not surface as sdk-error toasts.
    *
-   * Identity guard (not a null check): teardown nulls `_activeQuery`, but a subsequent user
-   * message lazily rebuilds it into a NEW query object. A late-resolving control promise from
-   * the dead generation must not broadcast that session's numbers into the new panel.
+   * Identity/generation guards (not just a null check): teardown nulls `_activeQuery`, but a
+   * subsequent user message lazily rebuilds it into a NEW query object. A late-resolving
+   * control promise from the dead generation must not broadcast that session's numbers into
+   * the new panel. `generation` additionally rejects a request that outlived a context clear
+   * on the SAME query (typed /clear), so its pre-clear numbers are neither retained nor
+   * returned. Manual pulls capture the same epoch, and every pull is newest-start-wins so
+   * an older response cannot overwrite a newer turn-end snapshot.
    */
-  async function _collectContextUsage(trigger) {
+  async function _collectContextUsage(trigger, generation, clearEpoch = _ctxUsageClearEpoch) {
+    if (_ctxUsageClearPending) return { ok: false, reason: 'session-inactive' };
     const q = _activeQuery;
     if (!q || typeof q.getContextUsage !== 'function') return { ok: false, reason: 'session-inactive' };
+    const startSeq = ++_ctxUsageStartSeq;
     let timeoutId;
     try {
       // SDK request() has no built-in timeout — race a bound so a live-but-unresponsive
@@ -1097,11 +1145,15 @@ function _createSession(key, cwd) {
       });
       const usage = await Promise.race([q.getContextUsage(), timeout]);
       if (_activeQuery !== q) return { ok: false, reason: 'session-inactive' }; // stale generation
+      // Cleared/superseded while this request was in flight — the numbers describe the
+      // PRE-clear context and must not land in the retained snapshot.
+      if (generation != null && generation !== _ctxUsageSeq) return { ok: false, reason: 'session-inactive' };
+      if (clearEpoch !== _ctxUsageClearEpoch || _ctxUsageClearPending || startSeq !== _ctxUsageStartSeq) return { ok: false, reason: 'session-inactive' };
       // Degenerate resolve (null/undefined/{}) — skip rather than broadcast a usage-less frame.
       if (!usage || typeof usage !== 'object' || Array.isArray(usage) || Object.keys(usage).length === 0) {
         return { ok: false, reason: 'control-failed' };
       }
-      _lastContextUsage = { type: 'sdk-context-usage', sessionId: _sessionId, ts: Date.now(), trigger, usage, cwd: _cwd };
+      _lastContextUsage = { type: 'sdk-context-usage', sessionId: _sessionId, ts: Date.now(), trigger, usage, cwd: _cwd, instanceKey };
       return { ok: true, snapshot: _lastContextUsage };
     } catch (err) {
       reportSwallowed('sdk-manager.context-usage', err);
@@ -1120,8 +1172,12 @@ function _createSession(key, cwd) {
   function _refreshContextUsage(trigger) {
     if (_ctxUsageFetching) { _ctxUsageQueued = true; return; }
     _ctxUsageFetching = true;
-    const seq = ++_ctxUsageSeq; // capture this generation; a session switch bumps it
-    _collectContextUsage(trigger).then((r) => {
+    const seq = ++_ctxUsageSeq; // capture this generation; a clear/session switch bumps it
+    _collectContextUsage(trigger, seq).then((r) => {
+      // A clear/switch landed while this request was in flight: its numbers are from the
+      // old generation and must not reach clients (the snapshot write is guarded inside
+      // _collectContextUsage for the same reason).
+      if (seq !== _ctxUsageSeq) return;
       if (r.ok && _broadcastWs) {
         try { _broadcastWs(r.snapshot); }
         catch (err) { reportSwallowed('sdk-manager.context-usage-broadcast', err); }
@@ -1136,18 +1192,21 @@ function _createSession(key, cwd) {
   }
 
   /**
-   * Clear the usage snapshot on a session boundary (switch / full reset). Broadcasts a
-   * usage:null clear frame ONLY when a snapshot was present (an empty-to-empty broadcast
-   * would just be noise). The death path deliberately does NOT clear (same-session resume
-   * keeps the last known value, matching _lastInitSnapshot's death behavior).
+   * Clear the usage snapshot on a context boundary (session switch / full reset / typed
+   * /clear). A usage:null clear frame is emitted when a snapshot was present, and always
+   * for an explicit /clear (a synchronization signal even when no snapshot existed).
+   * The death path deliberately does NOT clear (same-session resume keeps the last known value,
+   * matching _lastInitSnapshot's death behavior).
    */
   function _clearContextUsage(trigger) {
     const had = _lastContextUsage !== null;
     _lastContextUsage = null;
     _ctxUsageSeq++; // invalidate any in-flight generation so its finally can't clear a newer gate
+    _ctxUsageClearEpoch++;
+    _ctxUsageClearPending = trigger === 'context-cleared';
     _ctxUsageFetching = false;
     _ctxUsageQueued = false;
-    if (had && _broadcastWs) {
+    if ((had || trigger === 'context-cleared') && _broadcastWs) {
       try { _broadcastWs({ type: 'sdk-context-usage', sessionId: _sessionId, ts: Date.now(), trigger, usage: null, cwd: _cwd, instanceKey }); }
       catch (err) { reportSwallowed('sdk-manager.context-usage-broadcast', err); }
     }
@@ -1820,7 +1879,7 @@ function _createSession(key, cwd) {
       // On-demand fetch for the HTTP route: refresh the snapshot, broadcast to all clients,
       // then reply. Unlike _refreshContextUsage this bypasses the in-flight gate (an explicit
       // user refresh should not be swallowed by a queued turn-end) and returns the outcome.
-      const r = await _collectContextUsage('request');
+      const r = await _collectContextUsage('request', null, _ctxUsageClearEpoch);
       if (r.ok && _broadcastWs) {
         try { _broadcastWs(r.snapshot); }
         catch (err) { reportSwallowed('sdk-manager.context-usage-broadcast', err); }

@@ -173,6 +173,37 @@ function projectMemory(req, res, parsedUrl) {
   projectMemoryEntry(req, res, parsedUrl, respondJson);
 }
 
+// The SDK context snapshot prices MEMORY.md itself, not every linked detail file.
+// Supplement only the index's existing single-segment .md links with a transparent
+// content-length estimate; never allocate the SDK total across unrelated files.
+export function estimateLinkedMemoryTokens(content, dir) {
+  const estimates = {};
+  const MAX_BYTES = 512 * 1024;
+  const MAX_LINKS = 100;
+  if (typeof content !== 'string' || typeof dir !== 'string') return estimates;
+  const links = new Set();
+  for (const match of content.matchAll(/\]\(\s*([^)\s]+\.md)(?:[?#][^)\s]*)?(?:\s+"[^"]*")?\s*\)/gi)) {
+    let name;
+    try { name = decodeURIComponent(match[1].split('#')[0].split('?')[0]); } catch { continue; }
+    if (!name || name.includes('/') || name.includes('\\') || name.includes('\0') || name.startsWith('.')) continue;
+    links.add(name);
+    if (links.size >= MAX_LINKS) break;
+  }
+  let realDir;
+  try { realDir = realpathSync(dir); } catch { return estimates; }
+  const prefix = realDir.endsWith(sep) ? realDir : realDir + sep;
+  for (const name of links) {
+    try {
+      const realFile = realpathSync(join(realDir, name));
+      const stat = statSync(realFile);
+      if (!realFile.startsWith(prefix) || !stat.isFile() || stat.size > MAX_BYTES) continue;
+      if (!isReadAllowed(realFile).ok) continue;
+      estimates[name] = { tokens: Math.ceil(stat.size / 4), source: 'file-content-estimate' };
+    } catch { /* Missing/unreadable links remain without an estimate. */ }
+  }
+  return estimates;
+}
+
 // The entry wraps BOTH the view-root resolution and the read in the endpoint's
 // single error surface (the searchParams-throw defense test asserts a 500 from
 // THIS catch, regardless of which stage throws).
@@ -208,7 +239,9 @@ function projectMemoryWithRoot(req, res, parsedUrl, respondJson, cwd) {
       if (!st.isFile()) return respondJson(400, { error: 'Not a file' });
       if (st.size > MAX_BYTES) return respondJson(413, { error: 'File too large' });
       const content = readFileSync(policy.real, 'utf-8');
-      return respondJson(200, { exists: true, dir, indexPath, content });
+      // Only SDK mode consumes these estimates. PTY keeps the original cheap index read.
+      const memoryTokenEstimates = process.env.CCV_SDK_MODE === '1' ? estimateLinkedMemoryTokens(content, dir) : undefined;
+      return respondJson(200, { exists: true, dir, indexPath, content, memoryTokenEstimates });
     }
 
     // 明细文件: 仅接受单段 basename + .md 后缀
@@ -237,7 +270,7 @@ function projectMemoryWithRoot(req, res, parsedUrl, respondJson, cwd) {
     if (!st.isFile()) return respondJson(400, { error: 'Not a file' });
     if (st.size > MAX_BYTES) return respondJson(413, { error: 'File too large' });
     const content = readFileSync(realFile, 'utf-8');
-    return respondJson(200, { name: fileParam, path: realFile, content });
+    return respondJson(200, { name: fileParam, path: realFile, content, tokens: Math.ceil(Buffer.byteLength(content, 'utf8') / 4), tokenSource: 'file-content-estimate' });
   } catch (err) {
     // 与 /api/file-content 一致：已知 errno（ENOENT/EACCES 等）走 ERROR_STATUS_MAP 映射；
     // 500 时不回显 err.message —— 可能含 ~/.claude/projects/<encoded>/memory/ 路径片段。

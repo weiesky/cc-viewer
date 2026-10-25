@@ -11,6 +11,7 @@ import DetailPanel from './components/dashboard/DetailPanel';
 import ChatView from './components/chat/ChatView';
 import ApprovalModal from './components/approval/ApprovalModal';
 import { TerminalWsProvider } from './components/terminal/TerminalWsContext';
+import { SdkContextUsageProvider } from './components/dashboard/SdkContextUsageProvider';
 import TerminalPanel from './components/terminal/TerminalPanel';
 import PanelResizer from './components/common/PanelResizer';
 import OpenFolderIcon from './components/common/OpenFolderIcon';
@@ -517,7 +518,7 @@ class App extends AppBase {
     // App's own render, which must not depend on a mount/update-time mirror.
     const viewInstanceForChat = this.state.viewedInstance
       || ((this.state.viewedProject || this.state.projectName) === this.state.projectName
-          ? (this._boundInstance || null)
+          ? (this.state.boundInstance || this._boundInstance || null)
           : null);
 
     // 工作区选择器模式
@@ -541,6 +542,14 @@ class App extends AppBase {
         {/* viewedProject: multi-PTY attach scope — the shared terminal stream
             follows the VIEWED project (chip switch), not the last-spawned one. */}
         <TerminalWsProvider open={wsOpen} viewedProject={this.state.viewedProject || this.state.projectName || null} viewedInstance={viewInstanceForChat}>
+        <SdkContextUsageProvider
+          enabled={!this._isLocalLog && this.state.sdkMode && !this.state.attachedSid}
+          viewProject={this.state.viewedProject || this.state.projectName || null}
+          viewInstance={viewInstanceForChat}
+          clearVersion={this.state.sdkContextClearVersion}
+          locked={this.state.contextBarLocked}
+          optimistic={this.state.contextBarOptimistic}
+        >
         <ApprovalModal
           enabled={this.state.approvalPrefs.modalEnabled}
           soundEnabled={this.state.approvalPrefs.soundEnabled}
@@ -1021,6 +1030,7 @@ class App extends AppBase {
           </div>
         </Modal>
         </ApprovalModal>
+        </SdkContextUsageProvider>
         </TerminalWsProvider>
       </ConfigProvider>
     );

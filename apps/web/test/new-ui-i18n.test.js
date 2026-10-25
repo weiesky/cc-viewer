@@ -155,6 +155,8 @@ describe('new UI key i18n coverage', () => {
     ['ui.contextUsage.updatedAt', '{time}'],
     ['ui.contextUsage.usedOf', '{used}'],
     ['ui.contextUsage.usedOf', '{max}'],
+    ['ui.contextUsage.tokens', '{tokens}'],
+    ['ui.contextUsage.tokensEstimated', '{tokens}'],
     ['ui.contextUsage.autoCompactAt', '{tokens}'],
     // SDK 会话模型 chip 与「MCP 状态」面板的插值键。
     ['ui.sdkModel', '{model}'],

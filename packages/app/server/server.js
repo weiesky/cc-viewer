@@ -2203,10 +2203,13 @@ async function setupTerminalWebSocket(httpServer) {
       }
 
       // Replay the last sdk-context-usage snapshot so a reconnected panel restores the
-      // latest numbers (null snapshot → no frame, the panel falls back to its HTTP pull).
+      // latest numbers. Anchor by view instance (exact) else view project — same precedence
+      // as sdk-skills — and reject a missing/foreign instance when the viewer is pinned to
+      // one (context-only filter; other replay frames keep project-level semantics).
+      // Null snapshot → no frame, the panel falls back to its HTTP pull.
       if (isSdkMode && _sdkGetContextUsageSnapshot) {
-        const cuSnap = _sdkGetContextUsageSnapshot();
-        if (cuSnap && _sdkFrameForView(cuSnap)) {
+        const cuSnap = sdkContextReplayFrame(_sdkGetContextUsageSnapshot, _viewProj, ws._ccvViewInstance);
+        if (cuSnap) {
           try { ws.send(JSON.stringify(cuSnap)); } catch {}
         }
       }
@@ -3593,6 +3596,36 @@ export function broadcastWsMessage(msg) {  if (terminalWss) {
           || msg.type === 'ask-hook-cancelled')) {
     _notifyParentPending(msg);
   }
+}
+
+/**
+ * Context-usage reconnect replay. CONTEXT-ONLY: unlike the generic `_sdkFrameForView`
+ * (project-scoped, shared by init/session-state/queue/MCP/approval replay), a viewer
+ * pinned to an exact instance also requires the replayed frame to carry THAT instanceKey
+ * — otherwise a same-basename twin's snapshot could repaint the wrong panel. Anchor
+ * precedence matches sdk-skills: exact viewed instance, else viewed project, else no
+ * anchor (active session). Unknown/ambiguous anchors resolve to a null snapshot → no
+ * frame; never fall back to the active session. The project check reuses
+ * projectKeyForCwd so sanitized names (spaces/CJK) still match.
+ */
+export function sdkContextReplayFrame(getSnapshot, viewProject, viewInstance) {
+  if (typeof getSnapshot !== 'function') return null;
+  const anchor = viewInstance
+    ? { instanceKey: viewInstance }
+    : (viewProject ? { project: viewProject } : null);
+  const frame = anchor ? getSnapshot(anchor) : getSnapshot();
+  if (!frame || typeof frame !== 'object') return null;
+  if (viewInstance) {
+    const frameInstance = (typeof frame.instanceKey === 'string' && frame.instanceKey) ? frame.instanceKey : null;
+    if (frameInstance !== viewInstance) return null; // missing or foreign instance
+  }
+  if (viewProject) {
+    const frameProject = (typeof frame.cwd === 'string' && frame.cwd)
+      ? (projectKeyForCwd(frame.cwd) || null)
+      : null;
+    if (frameProject && frameProject !== viewProject) return null;
+  }
+  return frame;
 }
 
 /**

@@ -53,6 +53,14 @@ test('inject (SDK): full queue → failed/queue_rejected (P1-4, no false dispatc
   assert.deepEqual([r.status, r.reason], ['failed', 'queue_rejected']);
 });
 
+test('inject (SDK): exact instance is authoritative even for a legacy mismatched project stamp', async () => {
+  let seen;
+  const sdk = sdkFake({ sendUserMessage: async (text, anchor) => { seen = { text, anchor }; } });
+  const r = await executeScheduledTask({ ...TASK, project: 'legacy-mismatch' }, {}, { isSdkMode: true, sdk, pty: ptyFake(), chatQueue: chatQueueOk, samePath });
+  assert.equal(r.status, 'dispatched');
+  assert.deepEqual(seen, { text: TASK.prompt, anchor: { instanceKey: 'ccv-abc' } });
+});
+
 // ─── inject / PTY ───
 
 test('inject (PTY): dispatched with strictAnchor passed to enqueue', async () => {

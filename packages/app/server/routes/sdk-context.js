@@ -2,14 +2,25 @@
 // the automatic turn-end/compact refreshes flow over the WS broadcast instead. A
 // `session-inactive` outcome is a NORMAL state (no turn run yet / query dead), so it
 // returns 200 with { ok:false, reason } rather than an HTTP error.
+//
+// Multi-session: `?project=` and `?instance=` pin the pull to the VIEWED workspace (same
+// query-param names as the other view-scoped routes). No params → active session. Unknown
+// or ambiguous anchors stay `session-inactive` (never fall back to the active session).
 import { reportSwallowed } from '../lib/error-report.js';
 
-async function sdkContextUsage(req, res) {
+async function sdkContextUsage(req, res, parsedUrl) {
   try {
     // Dynamic import: sdk-manager is only loaded in SDK mode (resume.js parity). The
     // literal specifier satisfies the boundary verifier's R7 rule.
     const sdk = await import('../lib/sdk-manager.js');
-    const r = await sdk.fetchContextUsage();
+    const params = parsedUrl && parsedUrl.searchParams;
+    const project = (params && params.get('project')) || '';
+    const instance = (params && params.get('instance')) || '';
+    // No params must stay `undefined` so fetchContextUsage keeps the active-session fallback.
+    const anchor = (project || instance)
+      ? { project: project || undefined, instanceKey: instance || undefined }
+      : undefined;
+    const r = await sdk.fetchContextUsage(anchor);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(r.ok ? { ok: true, snapshot: r.snapshot } : { ok: false, reason: r.reason }));
   } catch (err) {

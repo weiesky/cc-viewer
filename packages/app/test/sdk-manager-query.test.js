@@ -2118,6 +2118,8 @@ describe('sdk-manager-query — sdk-context-usage 通道', () => {
     assert.equal(frames[0].trigger, 'turn-end');
     assert.deepEqual(frames[0].usage, USAGE, 'usage payload is losslessly passed through');
     assert.equal(typeof frames[0].ts, 'number');
+    const expectedInstance = sdk.listSdkSessions().find((s) => s.cwd === tmpDir).instanceKey;
+    assert.equal(frames[0].instanceKey, expectedInstance, 'snapshot carries the session instanceKey');
     assert.deepEqual(sdk.getContextUsageSnapshot(), frames[0], 'snapshot retained for WS replay');
     assert.equal(turnEnds.length, 1);
   });
@@ -2360,6 +2362,252 @@ describe('sdk-manager-query — sdk-context-usage 通道', () => {
     } finally {
       mock.timers.reset();
     }
+  });
+
+  it('anchored snapshot getter resolves exactly and rejects a mismatched pair', async () => {
+    const alphaCwd = join(tmpDir, 'ws-a', 'alpha');
+    const betaCwd = join(tmpDir, 'ws-b', 'beta');
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async () => [resultMsg()],
+      getContextUsage: { resolve: USAGE },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(alphaCwd, 'alpha', makeDeps().deps);
+    await sdk.sendUserMessage('alpha-turn');
+    await tick(10);
+    sdk.initSdkSession(betaCwd, 'beta', makeDeps().deps);
+    await sdk.sendUserMessage('beta-turn');
+    await tick(10);
+
+    const alpha = sdk.listSdkSessions().find((s) => s.cwd === alphaCwd);
+    const beta = sdk.listSdkSessions().find((s) => s.cwd === betaCwd);
+    const viaInstance = sdk.getContextUsageSnapshot({ instanceKey: alpha.instanceKey });
+    assert.equal(viaInstance.cwd, alphaCwd, 'exact instance replays its own snapshot');
+    assert.equal(viaInstance.instanceKey, alpha.instanceKey);
+    assert.equal(sdk.getContextUsageSnapshot({ project: 'alpha' }).cwd, alphaCwd, 'project anchor resolves');
+    assert.equal(sdk.getContextUsageSnapshot({ project: 'alpha', instanceKey: alpha.instanceKey }).cwd, alphaCwd,
+      'matching pair resolves');
+    assert.equal(sdk.getContextUsageSnapshot({ project: 'alpha', instanceKey: beta.instanceKey }), null,
+      'mismatched pair resolves to null, never to the foreign instance');
+    assert.equal(sdk.getActiveSdkCwd(), betaCwd, 'anchored reads never switch active');
+  });
+
+  it('typed /clear clears at execution, then the next turn-end repopulates', async () => {
+    const { deps, broadcasts } = makeDeps();
+    let ctxCalls = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async () => [resultMsg()],
+      getContextUsage: () => { ctxCalls++; return { resolve: { ...USAGE, totalTokens: ctxCalls } }; },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('warmup');
+    await tick(10);
+    assert.notEqual(sdk.getContextUsageSnapshot(), null, 'warmup turn seeded a snapshot');
+    const before = broadcasts.filter((b) => b.type === 'sdk-context-usage').length;
+
+    await sdk.sendUserMessage('/clear');
+    await tick(10);
+
+    const clearFrames = broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.trigger === 'context-cleared');
+    assert.equal(clearFrames.length, 1, 'typed /clear broadcasts exactly one clear frame');
+    assert.equal(clearFrames[0].usage, null);
+    assert.ok(fq.calls[0].pushed.map(pushedText).includes('/clear'), '/clear reached the resident query as a turn');
+    const afterClear = broadcasts.filter((b) => b.type === 'sdk-context-usage').slice(before);
+    assert.equal(afterClear.at(-1).trigger, 'turn-end', 'the /clear turn result refreshes after the clear');
+    assert.equal(afterClear.at(-1).usage.totalTokens, 2, 'post-clear snapshot is freshly fetched');
+    assert.equal(sdk.getContextUsageSnapshot().usage.totalTokens, 2);
+    assert.equal(sdk.getSessionId(), 'sess-ctx', 'unrelated session state is untouched');
+
+    const manual = await sdk.fetchContextUsage();
+    assert.equal(manual.ok, true, 'a post-clear manual fetch still works');
+    assert.equal(manual.snapshot.trigger, 'request');
+    assert.equal(manual.snapshot.usage.totalTokens, 3, 'manual fetch gets a fresh post-clear snapshot');
+  });
+
+  it('typed /clear emits a synchronization frame even with no prior snapshot', async () => {
+    const { deps, broadcasts } = makeDeps();
+    sdk.__setQueryForTests(makeCtxQuery({ resolve: USAGE }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('/clear');
+    await tick(10);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.trigger === 'context-cleared' && b.usage === null).length, 1);
+  });
+
+  it('non-exact /clear variants do not invalidate the snapshot', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const fq = makeCtxQuery({ resolve: USAGE });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('warmup');
+    await tick(10);
+
+    for (const text of ['/clearly', '/clear now']) {
+      await sdk.sendUserMessage(text); // eslint-disable-line no-await-in-loop
+      await tick(6); // eslint-disable-line no-await-in-loop
+    }
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.trigger === 'context-cleared').length, 0,
+      'only a bare /clear is the context-reset command');
+    assert.ok(broadcasts.filter((b) => b.type === 'sdk-context-usage').every((b) => b.trigger !== 'context-cleared'));
+  });
+
+  it('a /clear queued while busy executes only when the drain actually runs it', async () => {
+    const { deps, broadcasts } = makeDeps();
+    let releaseSecond;
+    const secondGate = new Promise((r) => { releaseSecond = r; });
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async (msg) => {
+        if (pushedText(msg) === 'second') await secondGate;
+        return [resultMsg()];
+      },
+      getContextUsage: { resolve: USAGE },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('warmup');
+    await tick(10);
+    assert.notEqual(sdk.getContextUsageSnapshot(), null);
+
+    const p2 = sdk.sendUserMessage('second');
+    await tick(6);
+    await sdk.sendUserMessage('/clear'); // busy → queued, not executed
+    await tick(4);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.trigger === 'context-cleared').length, 0,
+      'a merely queued /clear must not clear the running turn');
+    assert.deepEqual(sdk.getQueueSnapshot().map((q) => q.text), ['/clear']);
+
+    releaseSecond();
+    await p2;
+    await tick(12);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.trigger === 'context-cleared').length, 1,
+      'the drained /clear turn invalidates usage when it executes');
+    assert.ok(fq.calls[0].pushed.map(pushedText).includes('/clear'));
+  });
+
+  it('a manual pull that predates /clear cannot retain or broadcast pre-clear usage', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async () => [resultMsg()],
+      getContextUsage: (call) => call === 1 ? { resolve: USAGE } : { defer: true, keepOnClose: true },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('warmup');
+    await tick(10);
+    const pending = sdk.fetchContextUsage();
+    await tick(4);
+    const stalePending = fq.current().ctxUsagePending;
+    assert.ok(stalePending, 'manual control request is parked');
+    await sdk.sendUserMessage('/clear');
+    await tick(10);
+    const fresh = sdk.getContextUsageSnapshot();
+    stalePending.resolve({ ...USAGE, totalTokens: 999999 });
+    const stale = await pending;
+    assert.equal(stale.ok, false, 'pre-clear manual fetch is rejected by the clear epoch');
+    assert.equal(sdk.getContextUsageSnapshot(), fresh, 'stale pull cannot replace the post-clear snapshot');
+    assert.equal(broadcasts.some((b) => b.usage?.totalTokens === 999999), false, 'stale pull never broadcasts');
+  });
+
+  it('rejects context reads after the clear frame but before the clear result', async () => {
+    const { deps } = makeDeps();
+    let clearResult;
+    const gate = new Promise((resolve) => { clearResult = resolve; });
+    let calls = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async (msg) => {
+        if (pushedText(msg) === '/clear') await gate;
+        return [resultMsg()];
+      },
+      getContextUsage: () => { calls++; return { resolve: USAGE }; },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('warmup');
+    await tick(10);
+    const clear = sdk.sendUserMessage('/clear');
+    await tick(5);
+    const pending = await sdk.fetchContextUsage();
+    assert.equal(pending.ok, false, 'the CLI has not applied /clear yet, so no read may return old usage');
+    assert.equal(pending.reason, 'session-inactive');
+    assert.equal(calls, 1, 'no control read is issued during clear-pending');
+    clearResult();
+    await clear;
+    await tick(10);
+    assert.equal(calls, 2, 'the result releases a single fresh turn-end read');
+  });
+
+  it('an older manual pull cannot overwrite a newer turn-end snapshot', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const FRESH = { ...USAGE, totalTokens: 8200 };
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async () => [resultMsg()],
+      getContextUsage: (call) => call === 2 ? { defer: true, keepOnClose: true } : { resolve: FRESH },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('warmup');
+    await tick(10);
+    const pending = sdk.fetchContextUsage();
+    await tick(4);
+    const stalePending = fq.current().ctxUsagePending;
+    assert.ok(stalePending, 'older manual pull is parked');
+    await sdk.sendUserMessage('new turn');
+    await tick(10);
+    assert.equal(sdk.getContextUsageSnapshot().usage.totalTokens, FRESH.totalTokens);
+    stalePending.resolve(USAGE);
+    await tick(10);
+    const stale = await pending;
+    assert.equal(stale.ok, false, 'older manual result is superseded by the turn-end read');
+    assert.equal(sdk.getContextUsageSnapshot().usage.totalTokens, FRESH.totalTokens);
+    assert.equal(broadcasts.some((b) => b.usage && b.usage.totalTokens === USAGE.totalTokens), false);
+  });
+
+  it('a deferred pre-clear refresh is neither retained nor rebroadcast after /clear', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const SEED = { ...USAGE, totalTokens: 71 };
+    const STALE = { ...USAGE, totalTokens: 72 };
+    const FRESH = { ...USAGE, totalTokens: 73 };
+    let ctxCalls = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async () => [resultMsg()],
+      getContextUsage: () => {
+        ctxCalls++;
+        if (ctxCalls === 1) return { resolve: SEED };
+        if (ctxCalls === 2) return { defer: true, keepOnClose: true };
+        return { resolve: FRESH };
+      },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('warmup');
+    await tick(10);
+    assert.equal(sdk.getContextUsageSnapshot().usage.totalTokens, SEED.totalTokens);
+
+    await sdk.sendUserMessage('second'); // turn-end refresh parks as call #2
+    await tick(8);
+    assert.equal(ctxCalls, 2, 'pre-clear refresh parked');
+    const stalePending = fq.current().ctxUsagePending;
+    assert.ok(stalePending, 'deferred control request captured');
+
+    await sdk.sendUserMessage('/clear');
+    await tick(10); // the /clear turn-end refresh (call #3) lands FRESH
+    assert.equal(ctxCalls, 3);
+    assert.equal(sdk.getContextUsageSnapshot().usage.totalTokens, FRESH.totalTokens);
+
+    stalePending.resolve(STALE); // old generation resolves late
+    await tick(10);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.usage && b.usage.totalTokens === STALE.totalTokens).length, 0,
+      'pre-clear refresh must not broadcast after the clear');
+    assert.equal(sdk.getContextUsageSnapshot().usage.totalTokens, FRESH.totalTokens,
+      'pre-clear refresh must not overwrite the post-clear snapshot');
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.trigger === 'context-cleared').length, 1);
   });
 });
 

@@ -1,23 +1,6 @@
 /* SDK-mode "Context usage" panel (SdkContextUsageTab). Session-level usage view mounted
    as a DetailPanel tab. No !important (CLAUDE.md). */
 .root {
-  /* Category identity, not CLI theme-token names. Roles are shared by bar and grid. */
-  --context-category-system-prompt: #006c94;
-  --context-category-system-tools: #009d9d;
-  --context-category-mcp-tools: #d54700;
-  --context-category-custom-agents: #3c8800;
-  --context-category-memory-files: #796abb;
-  --context-category-skills: #9d445c;
-  --context-category-messages: #a4483e;
-  --context-category-free-space: #888888;
-  --context-category-buffer: #b58900;
-  --context-category-0: #006c94;
-  --context-category-1: #009d9d;
-  --context-category-2: #d54700;
-  --context-category-3: #3c8800;
-  --context-category-4: #796abb;
-  --context-category-5: #9d445c;
-  --context-category-6: #a4483e;
   box-sizing: border-box;
   height: 100%;
   min-height: 0;
@@ -27,25 +10,6 @@
   flex-direction: column;
   gap: 12px;
   padding: 4px 0;
-}
-
-:global([data-theme="light"]) .root {
-  --context-category-system-prompt: #006c94;
-  --context-category-system-tools: #009990;
-  --context-category-mcp-tools: #b8860b;
-  --context-category-custom-agents: #007100;
-  --context-category-memory-files: #7754de;
-  --context-category-skills: #b12453;
-  --context-category-messages: #d53742;
-  --context-category-free-space: #666666;
-  --context-category-buffer: #888888;
-  --context-category-0: #006c94;
-  --context-category-1: #009990;
-  --context-category-2: #b8860b;
-  --context-category-3: #007100;
-  --context-category-4: #7754de;
-  --context-category-5: #b12453;
-  --context-category-6: #d53742;
 }
 
 .root > * {
@@ -85,71 +49,6 @@
 
 .updatedAt {
   font-size: 12px;
-}
-
-.barSection {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.barMeta {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  font-variant-numeric: tabular-nums;
-}
-
-.barTrack {
-  position: relative;
-  display: flex;
-  height: 10px;
-  width: 100%;
-  border-radius: 5px;
-  overflow: hidden;
-  background: var(--border-secondary, rgba(0, 0, 0, 0.08));
-}
-
-.barSeg {
-  height: 100%;
-}
-
-.thresholdMark {
-  position: absolute;
-  top: -2px;
-  bottom: -2px;
-  width: 2px;
-  background: var(--color-warning, #faad14);
-}
-
-.autoCompactOff {
-  font-size: 12px;
-}
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  font-size: 12px;
-}
-
-.legendItem {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.legendDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  display: inline-block;
-}
-
-.deferredTag {
-  margin-inline-start: 4px;
-  font-size: 11px;
-  line-height: 1.4;
 }
 
 .gridSection {

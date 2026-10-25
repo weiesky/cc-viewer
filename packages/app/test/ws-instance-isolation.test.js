@@ -68,4 +68,73 @@ describe('broadcastWsMessage instance narrowing', () => {
       mod.setTerminalWssForTests(null);
     }
   });
+
+  it('an instance-stamped sdk-context-usage frame reaches only that instance viewer', () => {
+    const wss = { clients: new Set() };
+    const a = makeClient('same', 'ccv-aaa111');
+    const b = makeClient('same', 'ccv-bbb222');
+    wss.clients.add(a);
+    wss.clients.add(b);
+    mod.setTerminalWssForTests(wss);
+    try {
+      mod.broadcastWsMessage({ type: 'sdk-context-usage', cwd: '/a/same', instanceKey: 'ccv-aaa111', usage: { totalTokens: 1 } });
+      assert.equal(a.sent.length, 1, 'the owning instance viewer receives its usage frame');
+      assert.equal(b.sent.length, 0, 'the same-basename twin viewer must NOT receive it');
+    } finally {
+      mod.setTerminalWssForTests(null);
+    }
+  });
+});
+
+describe('sdkContextReplayFrame — context-only instance-aware reconnect replay', () => {
+  const frame = (cwd, instanceKey) => ({
+    type: 'sdk-context-usage', ts: 1, usage: { totalTokens: 1 }, cwd,
+    ...(instanceKey ? { instanceKey } : {}),
+  });
+
+  it('anchors by exact viewed instance (instance wins over project)', () => {
+    const calls = [];
+    const snap = frame('/ws/same', 'ccv-aaa111');
+    const out = mod.sdkContextReplayFrame((anchor) => { calls.push(anchor); return snap; }, 'same', 'ccv-aaa111');
+    assert.deepEqual(calls, [{ instanceKey: 'ccv-aaa111' }], 'exact instance is the anchor');
+    assert.equal(out, snap);
+  });
+
+  it('rejects missing/mismatched instance frames when the viewer is pinned to an instance', () => {
+    const missing = frame('/ws/same');
+    const foreign = frame('/ws/same', 'ccv-bbb222');
+    assert.equal(mod.sdkContextReplayFrame(() => missing, 'same', 'ccv-aaa111'), null,
+      'an unstamped snapshot cannot be trusted for an exact-instance view');
+    assert.equal(mod.sdkContextReplayFrame(() => foreign, 'same', 'ccv-aaa111'), null,
+      'a twin instance snapshot must be rejected');
+    assert.equal(mod.sdkContextReplayFrame(() => frame('/ws/other', 'ccv-aaa111'), 'same', 'ccv-aaa111'), null,
+      'the project filter still applies alongside the instance filter');
+    assert.equal(mod.sdkContextReplayFrame(() => missing, null, 'ccv-aaa111'), null,
+      'instance filtering does not depend on a project stamp');
+  });
+
+  it('falls back to a project anchor and filters via projectKeyForCwd', () => {
+    const calls = [];
+    const snap = frame('/ws/My Project');
+    const out = mod.sdkContextReplayFrame((anchor) => { calls.push(anchor); return snap; }, 'My_Project', null);
+    assert.deepEqual(calls, [{ project: 'My_Project' }], 'project is the fallback anchor');
+    assert.equal(out, snap, 'sanitized project keys match the sanitized cwd basename');
+    assert.equal(mod.sdkContextReplayFrame(() => frame('/ws/other'), 'My_Project', null), null,
+      'another project’s frame is rejected');
+  });
+
+  it('uses no anchor when the view carries neither project nor instance', () => {
+    const calls = [];
+    const snap = frame('/anything');
+    const out = mod.sdkContextReplayFrame((anchor) => { calls.push(anchor); return snap; }, null, null);
+    assert.deepEqual(calls, [undefined], 'no-param replay uses the active snapshot fallback');
+    assert.equal(out, snap);
+  });
+
+  it('returns null for an unknown/ambiguous anchor (never falls back to active)', () => {
+    const calls = [];
+    const out = mod.sdkContextReplayFrame((anchor) => { calls.push(anchor); return null; }, 'same', null);
+    assert.equal(out, null);
+    assert.deepEqual(calls, [{ project: 'same' }], 'the anchor getter is consulted exactly once');
+  });
 });

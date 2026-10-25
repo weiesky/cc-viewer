@@ -35,6 +35,7 @@ process.env.CLAUDE_CONFIG_DIR = FAKE_CLAUDE;
 process.env.CCV_PROJECT_DIR = PROJECT;
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
+process.env.CCV_SDK_MODE = '1';
 // 私有高位端口窗,避免与用户真实 ccv 服务(7008-7099)抢端口(2026-06-06 审计 port-clash)。
 // server.js 顶层把 CCV_START_PORT/MAX_PORT 冻结为 const,故必须在 import server.js 之前设好(本文件 before() 内动态 import,此处即生效)。
 process.env.CCV_START_PORT = '17920';
@@ -102,6 +103,26 @@ describe('GET /api/project-memory', { concurrency: false }, () => {
     const data = res.json();
     assert.equal(data.exists, true);
     assert.equal(data.content, indexContent);
+  });
+
+  it('estimates only existing linked detail files, never arbitrary paths', async () => {
+    writeFileSync(join(MEMORY_DIR, 'feedback_test.md'), '12345678');
+    writeFileSync(join(MEMORY_DIR, 'huge.md'), Buffer.alloc(512 * 1024 + 1));
+    writeFileSync(join(MEMORY_DIR, 'encoded name.md'), '12345678');
+    const indexContent = '# Test Memory\n\n- [Detail](feedback_test.md) — sample\n- [Missing](missing.md) — absent\n- [Outside](../secret.md) — blocked\n- [Huge](huge.md) — oversized\n- [Encoded](encoded%20name.md#top) — encoded';
+    writeFileSync(join(MEMORY_DIR, 'MEMORY.md'), indexContent);
+    writeFileSync(join(MEMORY_DIR, 'unlinked.md'), 'unlinked');
+    const res = await httpRequest(port, '/api/project-memory');
+    const data = res.json();
+    assert.equal(res.status, 200);
+    assert.deepEqual(data.memoryTokenEstimates, {
+      'feedback_test.md': { tokens: 2, source: 'file-content-estimate' },
+      'encoded name.md': { tokens: 2, source: 'file-content-estimate' },
+    });
+    assert.equal(data.memoryTokenEstimates['unlinked.md'], undefined);
+    const detail = (await httpRequest(port, '/api/project-memory?file=feedback_test.md')).json();
+    assert.equal(detail.tokens, 2);
+    assert.equal(detail.tokenSource, 'file-content-estimate');
   });
 
   it('returns detail file content for valid ?file=<basename>.md', async () => {

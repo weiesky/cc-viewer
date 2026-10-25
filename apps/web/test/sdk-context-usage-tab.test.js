@@ -13,6 +13,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const COMPONENT = readFileSync(join(here, '..', 'src', 'components', 'dashboard', 'SdkContextUsageTab.jsx'), 'utf-8');
 const I18N_SRC = readFileSync(join(here, '..', 'src', 'i18n.js'), 'utf-8');
 const CSS = readFileSync(join(here, '..', 'src', 'components', 'dashboard', 'SdkContextUsageTab.module.css'), 'utf-8');
+const COMPOSITION = readFileSync(join(here, '..', 'src', 'components', 'dashboard', 'SdkContextComposition.jsx'), 'utf-8');
+const COMPOSITION_CSS = readFileSync(join(here, '..', 'src', 'components', 'dashboard', 'SdkContextComposition.module.css'), 'utf-8');
+const PALETTE_CSS = readFileSync(join(here, '..', 'src', 'components', 'dashboard', 'SdkContextPalette.module.css'), 'utf-8');
 const CSS_CODE = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
 let CATEGORY_COLOR_ROLES;
 
@@ -46,8 +49,8 @@ describe('SdkContextUsageTab — readable grid and scrollable layout', () => {
   });
 
   it('declares both theme values for every category role used by the view model', () => {
-    const dark = CSS_CODE.match(/^\.root\s*\{([^}]*)\}/m);
-    const light = CSS_CODE.match(/:global\(\[data-theme="light"\]\)\s+\.root\s*\{([^}]*)\}/s);
+    const dark = PALETTE_CSS.match(/^\.root\s*\{([^}]*)\}/m);
+    const light = PALETTE_CSS.match(/:global\(\[data-theme="light"\]\)\s+\.root\s*\{([^}]*)\}/s);
     assert.ok(dark && light, 'missing theme category palette');
     assert.ok(CATEGORY_COLOR_ROLES.length >= 16, 'category role enumeration must not be empty');
     for (const suffix of CATEGORY_COLOR_ROLES) {
@@ -72,10 +75,11 @@ describe('SdkContextUsageTab — readable grid and scrollable layout', () => {
     assert.match(CSS_CODE, /\.grid\s*\{[^}]*overflow-x:\s*auto/s);
     assert.match(CSS_CODE, /\.headerRow\s*\{[^}]*flex-wrap:\s*wrap/s);
     assert.doesNotMatch(CSS_CODE, /\.barSeg\s*\{[^}]*flex-shrink:\s*0/s);
-    assert.match(COMPONENT, /className=\{styles\.barSeg\}/);
-    assert.match(COMPONENT, /width:\s*`\$\{s\.pct\}%`/);
-    assert.match(CSS_CODE, /\.barTrack\s*\{[^}]*display:\s*flex/s);
-    assert.doesNotMatch(CSS_CODE, /\.barSeg\s*\+\s*\.barSeg/s);
+    assert.match(COMPOSITION_CSS, /\.barTrack\s*\{[^}]*display:\s*flex/s);
+    assert.match(COMPOSITION, /className=\{styles\.barSeg\}/);
+    assert.match(COMPOSITION, /width:\s*`\$\{segment\.pct\}%`/);
+    assert.match(COMPONENT, /<SdkContextComposition bar=\{bar\}/);
+    assert.doesNotMatch(COMPOSITION_CSS, /\.barSeg\s*\+\s*\.barSeg/s);
     assert.doesNotMatch(CSS_CODE, /!important/);
   });
 });

@@ -3167,9 +3167,10 @@ class ChatView extends React.Component {
     this._closeSlashMenu();
     const ws = this._inputWs;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const isClear = /^\s*\/clear\s*$/.test(text);
     // /clear 自身不解锁血条 lock（lock 是清空确认后由 AppBase.handleClearContextOptimistic 设置）；
     // 其他正常用户消息（包括 slash 命令）都视为「新请求」并解锁血条。
-    if (!/^\s*\/clear(\s|$)/.test(text)) this.props.onUserMessageSent?.();
+    if (!isClear) this.props.onUserMessageSent?.();
     if (this.props.sdkMode) {
       this._clearSdkErrors();
       ws.send(JSON.stringify({ type: 'sdk-user-message', text, project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
@@ -3315,7 +3316,7 @@ class ChatView extends React.Component {
     if (uiStreamingNow) {
       const ws = this._inputWs;
       if (!ws || ws.readyState !== WebSocket.OPEN) return; // keep the draft (WS-closed precedent)
-      if (!/^\s*\/clear(\s|$)/.test(text)) this.props.onUserMessageSent?.();
+      if (!/^\s*\/clear\s*$/.test(text)) this.props.onUserMessageSent?.();
       textarea.value = '';
       resizeChatTextarea(textarea, { focused: document.activeElement === textarea });
       this._clearPendingImages();

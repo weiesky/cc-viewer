@@ -273,6 +273,15 @@ button.quickMenuRow:hover {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
 }
 
+.memoryDetailTokens {
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .quickMenuOption {
   background: none;
   border: none;

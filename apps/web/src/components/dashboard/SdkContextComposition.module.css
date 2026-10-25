@@ -1,0 +1,116 @@
+.barSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.barMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+
+.barTrack {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  width: 100%;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--border-secondary, rgba(0, 0, 0, 0.08));
+}
+
+.barSeg {
+  height: 100%;
+}
+
+.thresholdMark {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--color-warning, #faad14);
+}
+
+.autoCompactOff {
+  font-size: 12px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.deferredTag {
+  margin-inline-start: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.compact {
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  background: var(--bg-container);
+}
+
+.compact .legend {
+  gap: 6px 10px;
+  font-size: 11px;
+}
+
+.apiUsage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.strip {
+  position: absolute;
+  z-index: 2;
+  top: 1px;
+  left: 12px;
+  right: 12px;
+  height: 3px;
+  pointer-events: none;
+}
+
+.strip .barTrack {
+  height: 3px;
+  gap: 0;
+  border-radius: 2px;
+}
+
+.strip .thresholdMark {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .barTrack,
+  .barSeg {
+    transition: none;
+  }
+}

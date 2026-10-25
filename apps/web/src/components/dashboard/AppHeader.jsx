@@ -1260,21 +1260,21 @@ class AppHeader extends React.Component {
 
   // 加载明细文件：name 必须是单段 .md basename（前端先校验，server 再校验一遍）。
   // seq 防快速连点：用户连点两个不同明细时，慢的回包不应覆盖快的（否则用户最后看到的是错的内容）。
-  loadMemoryDetail = async (name) => {
+  loadMemoryDetail = async (name, memoryDir) => {
     const seq = ++this._memoryDetailSeq;
-    this.setState({ _memoryDetail: { name, loading: true } });
+    this.setState({ _memoryDetail: { name, memoryDir, loading: true } });
     try {
       const r = await fetch(apiUrl(withViewParams(`/api/project-memory?file=${encodeURIComponent(name)}`, { project: this.props.viewProject, instance: this.props.viewedInstance })));
       const data = await r.json();
       if (seq !== this._memoryDetailSeq) return;
       if (!r.ok) {
-        this.setState({ _memoryDetail: { name, error: data.error || `http:${r.status}` } });
+        this.setState({ _memoryDetail: { name, memoryDir, error: data.error || `http:${r.status}` } });
         return;
       }
-      this.setState({ _memoryDetail: { name, content: data.content || '' } });
+      this.setState({ _memoryDetail: { name, memoryDir, content: data.content || '', tokens: data.tokens } });
     } catch (e) {
       if (seq === this._memoryDetailSeq) {
-        this.setState({ _memoryDetail: { name, error: e.message || 'network' } });
+        this.setState({ _memoryDetail: { name, memoryDir, error: e.message || 'network' } });
       }
     }
   };

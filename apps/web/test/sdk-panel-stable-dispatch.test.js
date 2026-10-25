@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const TABS = [
   ['SdkMcpStatusTab.jsx', 'nextMcpPanelState'],
-  ['SdkContextUsageTab.jsx', 'nextPanelState'],
+  ['SdkContextUsageProvider.jsx', 'nextPanelState'],
 ];
 
 describe('SDK DetailPanel tabs — stable-dispatch (no refetch loop)', () => {

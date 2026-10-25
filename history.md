@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(web+server): **SDK 上下文用量合并进对话血条** — SDK 模式血条改用会话用量，弹层新增分类构成汇总、记忆与 Skill 总消耗及逐项消耗（SDK 未提供的记忆分文件使用内容长度估算）；桌面与移动端同步，PTY 保持原策略。原「网络 → 上下文用量」面板与网格保留；用量请求按项目/实例隔离，清空后等待新快照恢复。Coverage: `context-usage-view.test.js`, `sdk-context-provider.test.js`, `sdk-context-blood-bar.test.js`, `sdk-context-usage-tab.test.js`, `api-project-memory.test.js`, `sdk-context-route.test.js`, `sdk-manager-query.test.js`, `sdk-session-registry.test.js`, `ws-instance-isolation.test.js`.
+
 - fix(web): **修复 Git commit 不刷新「GIT 变更」面板** — 将 commit 纳入变更命令识别，成功后自动刷新文件与 Git 变更。Coverage: `commandValidator.test.js`, `tool-file-change-controller.test.js`.
 
 - fix(web): **修复上下文用量配色与展开滚动** — 条形图、图例和上下文网格按分类使用一致的可读颜色，区分部分填充与空闲格子；展开详情后可滚动查看全部内容。Coverage: `context-usage-view.test.js`, `sdk-context-usage-tab.test.js`.
