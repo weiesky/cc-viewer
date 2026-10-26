@@ -2145,29 +2145,36 @@ async function setupTerminalWebSocket(httpServer) {
       const _viewProj = ws._ccvViewProject || null;
       const _sdkFrameForView = (frame) => {
         if (!frame || typeof frame !== 'object') return true;      // no cwd → view-agnostic, replay
-        if (!_viewProj) return true;                               // bound view → all workspaces
+        const viewProject = ws._ccvViewProject || null;
+        if (!viewProject) return true;                             // bound view → all workspaces
         // The view stamp is a SANITIZED project key (projectKeyForCwd), so compare against the
         // frame's cwd sanitized the same way — a raw basename would silently drop legit frames
         // for space/CJK workspace names.
         const fproj = (typeof frame.cwd === 'string' && frame.cwd) ? (projectKeyForCwd(frame.cwd) || null) : null;
-        return !fproj || fproj === _viewProj;                      // no-cwd frame → replay; else must match
+        return !fproj || fproj === viewProject;                    // no-cwd frame → replay; else must match
+      };
+      const replaySdkPendingApprovals = ({ planOnly = false } = {}) => {
+        if (!_sdkGetPendingApprovals) return;
+        for (const p of _sdkGetPendingApprovals() || []) {
+          if (!p || !p.replay || !p.id) continue;
+          if (planOnly && p.kind !== 'plan') continue;
+          const payload = { ...p.replay };
+          if (!_sdkFrameForView(payload)) continue;
+          // The generic replay filter is project-scoped. When an exact instance
+          // is selected, require ownership metadata too instead of guessing from cwd.
+          if (ws._ccvViewInstance && payload.instanceKey !== ws._ccvViewInstance) continue;
+          if (p.kind === 'ask') {
+            payload.startedAt = Date.now();
+            payload.timeoutMs = p.remainingMs;
+          }
+          try { ws.send(JSON.stringify(payload)); } catch (err) { reportSwallowed('sdk.approval-replay', err); }
+        }
       };
 
       // Replay SDK 模式 pendings(sdk-manager canUseTool 的 ask/plan/perm):
       // 与上面 perm-hook 同理,但快照来自 sdk-manager(_pendingApprovals)。
       // ask 类带 startedAt/timeoutMs —— 与 ask-hook replay 同款剩余时间重算。
-      if (isSdkMode && _sdkGetPendingApprovals) {
-        for (const p of _sdkGetPendingApprovals() || []) {
-          if (!p || !p.replay || !p.id) continue;
-          const payload = { ...p.replay };
-          if (!_sdkFrameForView(payload)) continue; // 别的工作区的待审批不进本视图
-          if (p.kind === 'ask') {
-            payload.startedAt = now;           // 让前端按"还剩 remaining"起算
-            payload.timeoutMs = p.remainingMs; // 剩余可用时间
-          }
-          try { ws.send(JSON.stringify(payload)); } catch {}
-        }
-      }
+      if (isSdkMode) replaySdkPendingApprovals();
 
       // Replay sdk-init snapshot so a refreshed/reconnected page restores slash-command
       // surface and model info without waiting for the next session.
@@ -2387,6 +2394,10 @@ async function setupTerminalWebSocket(httpServer) {
                   }
                 }
               }
+              // View changes use attach rather than a new connection: restore that view's
+              // pending approvals too, so a plan cleared on switch-away can be answered
+              // after switching back instead of waiting for the server timeout.
+              replaySdkPendingApprovals({ planOnly: true });
               return;
             }
           } else if (isSdkMode && (msg.type === 'input' || msg.type === 'input-sequential'
@@ -2725,6 +2736,14 @@ async function setupTerminalWebSocket(httpServer) {
                 try { ws.send(cmsg); } catch {}
               }
             }
+          } else if (msg.type === 'sdk-plan-auto-cancel') {
+            // Cancellation stops the automatic timers on other viewers too. It is
+            // not an approval/denial: the plan remains pending for manual review.
+            if (_sdkResolveApproval && msg.id) broadcastWsMessage({
+              type: 'sdk-plan-auto-cancel', id: msg.id,
+              cwd: msg.cwd || null, project: msg.project || null,
+              instanceKey: msg.instanceKey || null,
+            });
           } else if (msg.type === 'sdk-plan-answer') {
             // Plan approval in SDK mode
             if (_sdkResolveApproval) {

@@ -556,7 +556,9 @@ describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权
 
     const sendP = sdk.sendUserMessage('go');
     await tick(6);
-    assert.ok(broadcasts.some((b) => b.type === 'sdk-plan-pending' && b.id === 'plan-1'));
+    const planPending = broadcasts.find((b) => b.type === 'sdk-plan-pending' && b.id === 'plan-1');
+    assert.ok(planPending, 'should broadcast the plan approval');
+    assert.ok(planPending.instanceKey, 'plan approval must carry its owning instance for view-scoped auto-approval');
     assert.equal(sdk.resolveApproval('plan-1', { approve: true }), true);
     await sendP;
     await tick(3);

@@ -27,9 +27,9 @@ const MOBILE = read('src/Mobile.jsx');
 const RESUME_UTILS = read('src/utils/resumeSessions.js');
 
 describe('star-menu migration — the history row lives after perm and plan', () => {
-  it('QuickAutoApproveRows accepts a `middle` node rendered after the last row (plan, or perm when plan hidden)', () => {
+  it('QuickAutoApproveRows accepts a `middle` node rendered after the plan row', () => {
     assert.ok(/middle/.test(QUICK_ROWS), 'QuickAutoApproveRows must accept a middle prop');
-    // plan 行可被 hidePlan 隐藏（SDK 模式），middle 跟随最后一行而非写死 index 1。
+    // The history entry follows the last row instead of relying on a fixed index.
     assert.ok(/isLastRow/.test(QUICK_ROWS) && /middle \? middle : null/.test(QUICK_ROWS), 'middle must render after the last row');
     assert.ok(/React\.Fragment key=\{row\.key\}/.test(QUICK_ROWS), 'middle must sit inside a keyed Fragment');
   });

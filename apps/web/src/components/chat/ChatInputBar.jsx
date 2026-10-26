@@ -497,7 +497,6 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
                       onToggle={setQuickExpanded}
                       onHoverEnter={qmHover.enter}
                       onHoverLeave={qmHover.leave}
-                      hidePlan={!!sdkMode}
                       middle={
                         <ResumeSessionsRow
                           expanded={quickExpanded === 'history'}

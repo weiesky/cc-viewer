@@ -24,6 +24,9 @@ import { dirname, join } from 'node:path';
 
 const read = (rel) => readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', rel), 'utf8');
 const CHATVIEW = read('src/components/chat/ChatView.jsx');
+const CHAT_INPUT = read('src/components/chat/ChatInputBar.jsx');
+const APPROVAL_PANEL = read('src/components/approval/ToolApprovalPanel.jsx');
+const MOBILE = read('src/Mobile.jsx');
 
 describe('SDK mode never activates the PTY plan-approval surface', () => {
   it('componentDidUpdate derives pendingPtyPlan only when cliMode && !sdkMode', () => {
@@ -33,11 +36,47 @@ describe('SDK mode never activates the PTY plan-approval surface', () => {
     );
   });
 
-  it('plan auto-approve never fires PTY keystrokes in SDK mode', () => {
+  it('plan auto-approve uses an explicit channel and never PTY keystrokes in SDK mode', () => {
     assert.ok(
-      /if \(!this\.props\.cliMode \|\| this\.props\.sdkMode \|\| !seconds\) return;/.test(CHATVIEW),
-      '_startPlanAutoApprove must bail out in sdkMode (auto keystrokes would hang the SDK session)',
+      /_startPlanAutoApprove = \(planId, channel\) =>/.test(CHATVIEW)
+        && /if \(!seconds\) return;/.test(CHATVIEW),
+      'the shared timer must accept a transport channel and remain disabled when the setting is off',
     );
+    assert.ok(
+      /if \(seconds === AUTO_APPROVE_INSTANT\) \{ this\._firePlanAutoApprove\(planId, channel\); return; \}/.test(CHATVIEW),
+      'instant approval must preserve the configured channel',
+    );
+    assert.ok(
+      /this\._startPlanAutoApprove\(curTarget\.id, curTarget\.channel\)/.test(CHATVIEW)
+        && /pendingPlanApproval: this\.state\.pendingPlanApproval/.test(CHATVIEW),
+      'the timer lifecycle must include the SDK pending plan as well as the PTY plan',
+    );
+    const fire = CHATVIEW.match(/_firePlanAutoApprove = \(planId, channel\) => \{([\s\S]*?)\n  \};/);
+    assert.ok(fire, 'the auto-approve firing method must accept a channel');
+    assert.ok(
+      /if \(channel === 'sdk'\) \{\s*this\.handlePlanApprove\(planId\);/.test(fire[1]),
+      'SDK auto-approval must resolve through handlePlanApprove → sdk-plan-answer',
+    );
+    assert.ok(
+      /target\?\.id !== planId \|\| target\.channel !== channel/.test(fire[1]),
+      'late timer ticks must not approve a different plan or transport',
+    );
+  });
+
+  it('cancel resolves the active channel and a disconnect cannot silently re-arm it', () => {
+    const cancel = CHATVIEW.match(/cancelPlanAutoApprove = \(\) => \{([\s\S]*?)\n  \};/);
+    assert.ok(cancel && /resolvePlanAutoApproveTarget/.test(cancel[1])
+      && /this\._planAutoCancelled\.add\(target\.id\)/.test(cancel[1]),
+    'cancel must remember the active SDK or PTY plan id');
+    assert.ok(
+      /Retain cancellation until this plan is resolved/.test(CHATVIEW)
+        && !/if \(planChanged && curPlanId\)/.test(CHATVIEW),
+      'cancelled ids must survive a transient empty pending state during reconnect',
+    );
+  });
+
+  it('the SDK quick menu exposes the now-functional Plan auto-approve setting', () => {
+    assert.ok(!/hidePlan=\{!!sdkMode\}/.test(CHAT_INPUT));
   });
 
   it('the message-list ChatMessage gets lastPendingPlanId=null under sdkMode (card stays read-only)', () => {
@@ -73,7 +112,7 @@ describe('SDK mode never activates the PTY plan-approval surface', () => {
   it('the SDK approval channel itself is untouched (pendingPlanApproval → sdk-plan-answer)', () => {
     assert.ok(
       /msg\.type === 'sdk-plan-pending'/.test(CHATVIEW)
-        && /setState\(\{ pendingPlanApproval: \{ id: msg\.id, input: msg\.input \} \}\)/.test(CHATVIEW),
+        && /setState\(\{ pendingPlanApproval: \{[\s\S]{0,160}?id: msg\.id, input: msg\.input/.test(CHATVIEW),
       'sdk-plan-pending must still set pendingPlanApproval',
     );
     assert.ok(
@@ -98,6 +137,25 @@ describe('SDK mode never activates the PTY plan-approval surface', () => {
         && /onDeny=\{\(id\) => this\.handlePlanReject\(id, ''\)\}/.test(CHATVIEW),
       'panel Allow/Deny must route to handlePlanApprove/handlePlanReject',
     );
+    assert.ok(
+      /planAutoApproveCountdown=\{this\.state\.planAutoApproveCountdown\}/.test(CHATVIEW)
+        && /onCancelPlanAutoApprove=\{this\.cancelPlanAutoApprove\}/.test(CHATVIEW),
+      'the SDK panel must display the shared countdown and cancellation affordance',
+    );
+    const panel = CHATVIEW.match(/this\.state\.pendingPlanApproval && \([\s\S]{0,700}?<ToolApprovalPanel[\s\S]{0,700}?\/>/);
+    assert.ok(panel && !/autoApproveSeconds/.test(panel[0]),
+      'plan auto-approval must not reuse the ordinary permission autoApproveSeconds setting');
+    assert.ok(
+      /ui\.planAutoApprove\.countdown/.test(APPROVAL_PANEL)
+        && /ui\.planAutoApprove\.cancel/.test(APPROVAL_PANEL),
+      'the shared panel must use the existing plan countdown translations',
+    );
+  });
+
+  it('mobile mirrors the ChatView countdown into the global SDK plan panel', () => {
+    assert.ok(/onPlanAutoApproveCountdown=\{this\.handlePlanAutoApproveCountdown\}/.test(MOBILE));
+    assert.ok(/planAutoApproveCountdown=\{this\.state\.globalPlanAutoApproveCountdown\}/.test(MOBILE));
+    assert.ok(/onCancelPlanAutoApprove=\{this\.state\.globalPlanApproval\.handlers\.cancelAutoApprove\}/.test(MOBILE));
   });
 
   it('sdk-plan-resolved clears the panel only for the matching id', () => {

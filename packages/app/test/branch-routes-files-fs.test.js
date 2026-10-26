@@ -124,11 +124,12 @@ function readAppendedLine(fromLength) {
   return readFileSync(explorerCapture, 'utf-8').slice(fromLength).trimEnd();
 }
 
-// 轮询等待从 fromLength 起出现新追加内容（stub append 落盘后再读，避免读到截断中途的空文件）。
-async function waitForAppended(p, fromLength, timeoutMs = 3000) {
+// Poll until the appended capture contains the expected terminal invocation.
+async function waitForAppended(p, fromLength, timeoutMs = 3000, expected = null) {
   const start = Date.now();
   for (;;) {
-    if (existsSync(p) && statSync(p).size > fromLength) return;
+    if (existsSync(p) && statSync(p).size > fromLength
+      && (!expected || readFileSync(p).subarray(fromLength).toString('utf8').includes(expected))) return;
     if (Date.now() - start > timeoutMs) throw new Error(`capture not appended: ${p}`);
     await new Promise((r) => setTimeout(r, 20));
   }
@@ -139,13 +140,18 @@ before(async () => {
   for (const n of STUB_NAMES) {
     const p = join(fakeBin, n);
     if (n === 'explorer.exe') {
-      writeFileSync(p, `#!/bin/sh\nprintf '%s\\n' "$@" >> '${explorerCapture}'\nexit 0\n`);
+      writeFileSync(p, `#!/bin/sh\n[ "\${CCV_TEST_STUB_WARMUP:-}" = "1" ] && exit 0\nprintf '%s\\n' "$@" >> '${explorerCapture}'\nexit 0\n`);
     } else if (['konsole', 'xfce4-terminal', 'xterm', 'xdg-open'].includes(n)) {
-      writeFileSync(p, `#!/bin/sh\nprintf '${n} %s\\n' "$*" >> '${terminalCapture}'\nexit 0\n`);
+      writeFileSync(p, `#!/bin/sh\n[ "\${CCV_TEST_STUB_WARMUP:-}" = "1" ] && exit 0\nprintf '${n} %s\\n' "$*" >> '${terminalCapture}'\nexit 0\n`);
     } else {
       writeFileSync(p, '#!/bin/sh\nexit 0\n');
     }
     try { chmodSync(p, 0o755); } catch {}
+    // macOS can spend seconds assessing a newly-created script on its first exec.
+    // Pay that cost in setup, without capture output, rather than inside a 3s assertion.
+    if (process.platform !== 'win32') {
+      execFileSync(p, [], { stdio: 'ignore', env: { ...process.env, CCV_TEST_STUB_WARMUP: '1' } });
+    }
   }
   process.env.PATH = fakeBin + ':' + origPath;
   const mod = await import('../server/routes/files-fs.js');
@@ -349,11 +355,13 @@ describe('files-fs 分支补强', { concurrency: false }, () => {
       setPlatform('linux');
       try {
         mkdirSync(join(projectDir, 'wd-fallback'), { recursive: true });
+        const captureStart = existsSync(terminalCapture) ? statSync(terminalCapture).size : 0;
         const res = await callBody(handlerFor('/api/open-terminal', 'POST'), { path: 'wd-fallback' });
         assert.equal(res.status, 200);
-        await waitForAppended(terminalCapture, 0);
-        assert.match(readFileSync(terminalCapture, 'utf8'), /^konsole --workdir /);
-        assert.doesNotMatch(readFileSync(terminalCapture, 'utf8'), /xfce4-terminal|xterm/);
+        await waitForAppended(terminalCapture, captureStart, 3000, 'wd-fallback');
+        const appended = readFileSync(terminalCapture).subarray(captureStart).toString('utf8');
+        assert.match(appended, /^konsole --workdir .*wd-fallback/m);
+        assert.doesNotMatch(appended, /xfce4-terminal|xterm/);
         await settle();
       } finally { restorePlatform(); }
     });

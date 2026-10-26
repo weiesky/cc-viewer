@@ -239,6 +239,67 @@ try {
     send({ type: 'ask-cancel', id: 'cancel_via_sdk_1', reason: 'abort' }); // _sdkCancelApproval 路径 handled=true
     await new Promise((r) => setTimeout(r, 300));
     try { ws.close(); } catch {}
+  } else if (scenario === 'sdkApprovalAttach') {
+    const _wsmod = await import(${JSON.stringify(WS_ENTRY_URL)});
+    const WebSocket = _wsmod.WebSocket || _wsmod.default || _wsmod;
+    const tok = mod.getAccessToken();
+    mod.setSdkGetPendingApprovals(() => [
+      {
+        id: 'plan-a', kind: 'plan',
+        replay: { type: 'sdk-plan-pending', id: 'plan-a', input: { plan: 'plan A' }, cwd: '/work/project-a', instanceKey: 'instance-a' },
+      },
+      {
+        id: 'plan-b', kind: 'plan',
+        replay: { type: 'sdk-plan-pending', id: 'plan-b', input: { plan: 'plan B' }, cwd: '/work/project-b', instanceKey: 'instance-b' },
+      },
+      {
+        id: 'perm-b', kind: 'perm',
+        replay: { type: 'perm-hook-pending', id: 'perm-b', input: {}, cwd: '/work/project-b', instanceKey: 'instance-b' },
+      },
+    ]);
+    const ws = new WebSocket('ws://127.0.0.1:' + port + '/ws/terminal?token=' + tok + '&project=project-a&instance=instance-a');
+    const frames = [];
+    const attachedPlans = [];
+    ws.on('message', (raw) => {
+      try {
+        const m = JSON.parse(raw.toString());
+        frames.push(m);
+        if (m.type === 'sdk-plan-pending') attachedPlans.push(m);
+      } catch {}
+    });
+    const waitFor = async (predicate) => {
+      const deadline = Date.now() + 4000;
+      while (Date.now() < deadline) {
+        if (predicate()) return true;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      return predicate();
+    };
+    await new Promise((r) => { ws.on('open', r); ws.on('error', r); setTimeout(r, 2500); });
+    const send = (o) => { try { ws.send(JSON.stringify(o)); } catch {} };
+    const baseline = attachedPlans.length;
+    const initialPlanReady = await waitFor(() => attachedPlans.length === 1);
+    if (!initialPlanReady || attachedPlans[0].id !== 'plan-a') {
+      console.error('SDK_APPROVAL_INITIAL_MISMATCH ' + JSON.stringify({ attachedPlans, frames }));
+      process.exit(4);
+    }
+    send({ type: 'attach', project: 'project-b', instanceKey: 'instance-b' });
+    const otherViewProcessed = await waitFor(() => attachedPlans.some((m) => m.id === 'plan-b') || frames.some((m) => m.type === 'queue-state'));
+    if (!otherViewProcessed) {
+      console.error('SDK_APPROVAL_OTHER_VIEW_NOT_PROCESSED ' + JSON.stringify({ attachedPlans, frames }));
+      process.exit(4);
+    }
+    const afterOtherView = attachedPlans.filter((m) => m.id === 'plan-a').length;
+    send({ type: 'attach', project: 'project-a', instanceKey: 'instance-a' });
+    await waitFor(() => attachedPlans.filter((m) => m.id === 'plan-a').length >= 2);
+    try { ws.close(); } catch {}
+    const restored = attachedPlans.at(-1);
+    if (afterOtherView !== 1 || restored?.id !== 'plan-a' || restored.instanceKey !== 'instance-a'
+      || attachedPlans.filter((m) => m.id === 'plan-a').length !== 2
+      || frames.some((m) => m.type === 'perm-hook-pending' || m.type === 'sdk-ask-pending')) {
+      console.error('SDK_APPROVAL_ATTACH_MISMATCH ' + JSON.stringify({ afterOtherView, attachedPlans, frames }));
+      process.exit(4);
+    }
   } else if (scenario === 'sdkQueueWs') {
     // SDK 模式 queue-* 分支：setter 路由 + qid 正则门禁 + 连接 replay + queue-message 兜底 relay。
     // 断言失败 → exit(4)（外层只认 status===0）。
@@ -840,6 +901,17 @@ describeCli('server.js 模块加载期 / startViewer env 分支（子进程）',
       CCV_WORKSPACE_MODE: '0',
       CCV_START_PORT: '18260',
       CCV_MAX_PORT: '18279',
+    });
+    assert.equal(res.status, 0, res.stderr);
+  });
+
+  it('SDK attach restores only the current view pending plan approval', () => {
+    const res = runScenario('sdkApprovalAttach', {
+      CCV_CLI_MODE: '1',
+      CCV_SDK_MODE: '1',
+      CCV_WORKSPACE_MODE: '0',
+      CCV_START_PORT: '18380',
+      CCV_MAX_PORT: '18399',
     });
     assert.equal(res.status, 0, res.stderr);
   });

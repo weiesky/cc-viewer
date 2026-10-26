@@ -31,8 +31,8 @@ describe('sdk-error dialogue rows — state + WS branch', () => {
   it('sdk-error branch guards with an early return BEFORE the toast and the row update', () => {
     const m = jsx.match(/msg\.type === 'sdk-error'\)\s*\{[\s\S]*?msg\.type === 'sdk-init'/);
     assert.ok(m, 'sdk-error branch found');
-    assert.match(m[0], /if \(!this\._sdkSkillsFrameMatchesView\(msg\)\) return;/, 'out-of-scope frames return early (no toast, no row)');
-    const guardIdx = m[0].indexOf('if (!this._sdkSkillsFrameMatchesView(msg)) return;');
+    assert.match(m[0], /if \(!this\._sdkFrameMatchesView\(msg\)\) return;/, 'out-of-scope frames return early (no toast, no row)');
+    const guardIdx = m[0].indexOf('if (!this._sdkFrameMatchesView(msg)) return;');
     const toastIdx = m[0].indexOf("message.error(t('ui.sdkError'");
     const setStateIdx = m[0].indexOf('this.setState(prev =>');
     assert.ok(toastIdx > -1, 'eager toast is kept');
@@ -81,7 +81,7 @@ describe('sdk-error dialogue rows — view/session switch clearing', () => {
   });
 
   it('viewSwitched clears sdkErrors', () => {
-    const m = jsx.match(/if \(viewSwitched\) \{[\s\S]{0,300}?\}/);
+    const m = jsx.match(/if \(viewSwitched \|\| planLostView\) \{[\s\S]*?\n    \}\n/);
     assert.ok(m, 'viewSwitched block found');
     assert.ok(m[0].includes('this._clearSdkErrors()'), 'viewSwitched clears sdkErrors via the shared helper');
   });

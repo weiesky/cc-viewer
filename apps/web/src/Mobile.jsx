@@ -90,6 +90,7 @@ class Mobile extends AppBase {
       mobileResumeVisible: false,      // /resume global session switcher modal
       globalPermission: null,     // { permission, handlers } — 全局权限审批浮层
       globalPlanApproval: null,   // { plan, handlers } — 全局计划审批浮层
+      globalPlanAutoApproveCountdown: null, // Read-only mirror of ChatView's plan timer
       autoApproveSeconds: 3,   // 与 AppBase 一致：默认 3s 倒计时自动批准（0=关闭 / -1=免审批）
       hasGit: true,
       terminalPendingImages: [],  // 终端面板独立的 pending 图片/文件
@@ -545,6 +546,7 @@ class Mobile extends AppBase {
 
   handlePendingPermission = (data) => { this.setState({ globalPermission: data }); };
   handlePendingPlanApproval = (data) => { this.setState({ globalPlanApproval: data }); };
+  handlePlanAutoApproveCountdown = (countdown) => { this.setState({ globalPlanAutoApproveCountdown: countdown }); };
 
   handleAutoApproveChange = (seconds) => {
     this.setState({ autoApproveSeconds: seconds });
@@ -657,7 +659,10 @@ class Mobile extends AppBase {
     const wsOpen = !mobileIsLocalLog;
 
     return (
-      <TerminalWsProvider open={wsOpen} viewedProject={this.state.viewedProject || this.state.projectName || null} viewedInstance={this.state.viewedInstance || null}>
+      <TerminalWsProvider open={wsOpen} viewedProject={this.state.viewedProject || this.state.projectName || null} viewedInstance={this.state.viewedInstance
+        || ((this.state.viewedProject || this.state.projectName) === this.state.projectName
+          ? (this._boundInstance || null)
+          : null)}>
       <SdkContextUsageProvider
         enabled={!mobileIsLocalLog && this.state.sdkMode && !this.state.attachedSid}
         viewProject={this.state.viewedProject || this.state.projectName || null}
@@ -951,6 +956,7 @@ class Mobile extends AppBase {
                     isStreaming={this.state.isStreaming}
                     onPendingPermission={this.handlePendingPermission}
                     onPendingPlanApproval={this.handlePendingPlanApproval}
+                    onPlanAutoApproveCountdown={this.handlePlanAutoApproveCountdown}
                     onPendingAsk={this.handleApprovalAsk}
                     onPendingPtyPlan={this.handleApprovalPtyPlan}
                     autoApproveSeconds={this.state.autoApproveSeconds}
@@ -960,7 +966,10 @@ class Mobile extends AppBase {
                     ownTabId={this.state.ownTabId}
                     projectName={this.state.projectName}
                     viewedProject={this.state.viewedProject || null}
-                    viewInstance={this.state.viewedInstance || null}
+                    viewInstance={this.state.viewedInstance
+                      || ((this.state.viewedProject || this.state.projectName) === this.state.projectName
+                        ? (this._boundInstance || null)
+                        : null)}
                     viewProject={this.state.viewedProject || this.state.projectName || null}
                     suppressInlineApprovalPanels={true}
                     pendingUploadPaths={this.state.pendingUploadPaths}
@@ -1455,6 +1464,9 @@ class Mobile extends AppBase {
             onDeny={(id) => this.state.globalPlanApproval.handlers.reject(id, '')}
             visible={true}
             global={true}
+            planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds}
+            planAutoApproveCountdown={this.state.globalPlanAutoApproveCountdown}
+            onCancelPlanAutoApprove={this.state.globalPlanApproval.handlers.cancelAutoApprove}
           />
         )}
       </div>

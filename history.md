@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- fix(web+server): **SDK 模式支持 Plan 自动审批** — 与 PTY 共用倒计时、立即免审批及取消行为，桌面与移动端均可使用；按当前工作区/实例隔离审批，视图切换可恢复，取消跨客户端同步；普通工具权限保持不变。Coverage: `plan-auto-approve-target.test.js`, `plan-auto-approve-runtime.test.js`, `plan-approval-panel.test.js`, `sdk-plan-approval-guard.test.js`, `resume-history-menu.test.js`, `branch-server.test.js`, `sdk-manager-query.test.js`.
+
+- test(server): **稳定终端回退用例** — 预热测试脚本首次执行，按增量捕获验证 `gnome-terminal` 缺失后的 `konsole` 回退，避免全量并行时首次执行扫描超过固定等待窗口。Coverage: `branch-routes-files-fs.test.js`.
+
 - feat(web+server): **SDK 上下文用量合并进对话血条** — SDK 模式血条改用会话用量，弹层新增分类构成汇总、记忆与 Skill 总消耗及逐项消耗（SDK 未提供的记忆分文件使用内容长度估算）；桌面与移动端同步，PTY 保持原策略。原「网络 → 上下文用量」面板与网格保留；用量请求按项目/实例隔离，清空后等待新快照恢复。Coverage: `context-usage-view.test.js`, `sdk-context-provider.test.js`, `sdk-context-blood-bar.test.js`, `sdk-context-usage-tab.test.js`, `api-project-memory.test.js`, `sdk-context-route.test.js`, `sdk-manager-query.test.js`, `sdk-session-registry.test.js`, `ws-instance-isolation.test.js`.
 
 - fix(web): **修复 Git commit 不刷新「GIT 变更」面板** — 将 commit 纳入变更命令识别，成功后自动刷新文件与 Git 变更。Coverage: `commandValidator.test.js`, `tool-file-change-controller.test.js`.

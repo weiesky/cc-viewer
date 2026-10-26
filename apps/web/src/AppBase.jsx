@@ -297,7 +297,7 @@ class AppBase extends React.Component {
         modalEnabled: true,
         soundEnabled: true,
         notifyOnlyWhenHidden: true,
-        planAutoApproveSeconds: 0, // 「Plan 自动审批」倒计时秒数（同 autoApproveSeconds 语义：0=关 / N=N 秒后自动批准 / -1=立即）；仅 CLI(PTY) 路径
+        planAutoApproveSeconds: 0, // 「Plan 自动审批」倒计时秒数（同 autoApproveSeconds 语义：0=关 / N=N 秒后自动批准 / -1=立即）；CLI(PTY) 与 SDK 路径
         voicePack: {
           enabled: true,
           volume: 0.3,

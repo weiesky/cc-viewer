@@ -1369,7 +1369,7 @@ function _createSession(key, cwd) {
           }
         } catch (err) { reportSwallowed('sdk-manager.waterfall.plan', err); }
       }
-      const planPayload = { type: 'sdk-plan-pending', id, input, cwd: _cwd, sessionId: effSessionId(), ...origin };
+      const planPayload = { type: 'sdk-plan-pending', id, input, cwd: _cwd, sessionId: effSessionId(), instanceKey, ...origin };
       if (_broadcastWs) {
         _broadcastWs(planPayload);
       }
