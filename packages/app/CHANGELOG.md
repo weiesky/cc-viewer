@@ -1,5 +1,16 @@
 # cc-viewer
 
+## 1.9.15
+
+### Patch Changes
+
+- ab1b89e: Fix file-browser mutations following the viewed project instead of the bound project, including scoped downloads/previews, symlink-safe imports, and platform-specific rename/terminal handling.
+- 5ee6739: Merge SDK context usage into desktop and mobile blood bars with category composition, memory and skill costs, and view-scoped refresh while preserving the full network panel and PTY behavior.
+- 9c36b5b: Keep context-usage category colors consistent across the bar, legend, and grid, distinguish partial and free cells, and restore panel scrolling after expanding detail sections.
+- 1aca9b5: Restore mid-task user prompts in conversation without changing model packets, keep queue snapshots scoped to the viewed session, and disable queue actions while messages are being dispatched. Preserve SDK follow-up prompts appended to existing message blocks and recover text sharing a block with an interrupt marker. Show send-now prompts immediately in the conversation and reconcile them with the real transcript. Render SDK content-block prompts safely without duplicating incremental bubbles, terminate dead PTY queue targets without blocking other sessions, and bound SDK dispatch retries.
+- 91b0055: Support Plan auto-approval in SDK mode with countdown, cancellation, and view-scoped approval.
+- d89aa3b: Restore response thinking to its corresponding assistant turns in SDK chat while preserving message history and Last Response deduplication. Associate responses using verified carrier provenance, prevent cross-session or future-response mismatches, and retain required sources across project view-cache windows.
+
 ## 1.9.14
 
 ### Patch Changes

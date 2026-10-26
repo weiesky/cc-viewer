@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.9.15
+
 - fix(web+server): **SDK 模式支持 Plan 自动审批** — 与 PTY 共用倒计时、立即免审批及取消行为，桌面与移动端均可使用；按当前工作区/实例隔离审批，视图切换可恢复，取消跨客户端同步；普通工具权限保持不变。Coverage: `plan-auto-approve-target.test.js`, `plan-auto-approve-runtime.test.js`, `plan-approval-panel.test.js`, `sdk-plan-approval-guard.test.js`, `resume-history-menu.test.js`, `branch-server.test.js`, `sdk-manager-query.test.js`.
 
 - test(server): **稳定终端回退用例** — 预热测试脚本首次执行，按增量捕获验证 `gnome-terminal` 缺失后的 `konsole` 回退，避免全量并行时首次执行扫描超过固定等待窗口。Coverage: `branch-routes-files-fs.test.js`.
