@@ -692,6 +692,33 @@
   border-color: var(--text-disabled);
 }
 
+.queueBubbleDispatching,
+.queueBubbleDispatching:hover {
+  border-color: var(--color-primary);
+}
+
+.optimisticQueueStatus {
+  padding: 0 18px 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: right;
+}
+
+.queueBubbleSendNow:disabled,
+.queueBubbleRemove:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.queueBubbleSendNow:disabled:hover {
+  opacity: 0.5;
+}
+
+.queueBubbleRemove:disabled:hover {
+  background: transparent;
+}
+
 /* Mobile parity with .chatInputBar (21px gutters) / larger composer radius. */
 @media (max-width: 768px) {
   .queueBubbleStack {

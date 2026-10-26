@@ -1,0 +1,39 @@
+{
+  "transcript": [
+    {
+      "type": "assistant",
+      "uuid": "assistant-tool",
+      "parentUuid": null,
+      "sessionId": "fixture-session",
+      "timestamp": "2026-01-01T00:00:00.000Z",
+      "message": { "role": "assistant", "id": "assistant-tool", "content": [{ "type": "tool_use", "id": "tool-fixture", "name": "Read", "input": { "file_path": "/tmp/example.txt" } }] }
+    },
+    {
+      "type": "user",
+      "uuid": "tool-result",
+      "parentUuid": "assistant-tool",
+      "sessionId": "fixture-session",
+      "timestamp": "2026-01-01T00:00:05.000Z",
+      "message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "tool-fixture", "content": "done" }] }
+    },
+    {
+      "type": "attachment",
+      "uuid": "queued-fixture",
+      "parentUuid": "tool-result",
+      "sessionId": "fixture-session",
+      "timestamp": "2026-01-01T00:00:01.000Z",
+      "entrypoint": "cli",
+      "attachment": {
+        "type": "queued_command",
+        "commandMode": "prompt",
+        "origin": { "kind": "human" },
+        "prompt": "Please adjust the approach.",
+        "timestamp": "2026-01-01T00:00:01.000Z"
+      }
+    }
+  ],
+  "wire": {
+    "role": "system",
+    "content": "The user sent a new message while you were working:\nPlease adjust the approach.\n\nIMPORTANT: After completing your current task, you MUST address the user's message above. Do not ignore it."
+  }
+}

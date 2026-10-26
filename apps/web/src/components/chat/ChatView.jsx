@@ -18,6 +18,9 @@ import { applyAvatarAnimationTargets } from '../../utils/avatarAnimationPostPass
 import { mergeToolRuns } from '../../utils/toolRunMerge';
 import { buildResponseThinkingIndex, buildSessionThinkingDisplay, filterDisplayedResponseThinking } from '../../utils/responseThinking';
 import { isSystemText, classifyUserContent, isMainAgent, isTeammate, resolveTeammateNames, extractDisplayText, isUltraplanText } from '@ccv/core/contentFilter';
+import { extractQueuedPromptWireMessage, queuedPromptDisplayText } from '@ccv/core/queued-prompt';
+import { queuedPromptsAfterIndex, queuedPromptsSignature } from './queuedPromptDisplay';
+import { reconcileOptimisticQueueMessages, captureOptimisticQueueTextCounts } from './optimisticQueueMessage';
 import { classifyRequest, formatRequestTag, formatTeammateLabel } from '@ccv/core/requestType';
 import { playEvent as playVoiceEvent } from '../../utils/voicePackPlayer';
 import { buildChunksForAnswer, buildBracketPasteSubmitChunks, BRACKET_PASTE_SUBMIT_SETTLE_MS } from '../../utils/ptyChunkBuilder';
@@ -267,6 +270,8 @@ class ChatView extends React.Component {
       // Server-authoritative busy queue (Enter-while-streaming) — mirrored from the
       // `queue-state` WS broadcast; rendered as floating bubbles above the composer.
       queuedMessages: [],
+      // Local send-now placeholders: visible until the real prompt renders.
+      optimisticQueueMessages: [],
       stickyBottom: true,
       userScrolling: false, // 用户滚动意图暂停窗口（wheel/touch/pointer 拖动进行中或空窗内）
       ptyPrompt: null,
@@ -1076,7 +1081,16 @@ class ChatView extends React.Component {
         this.handleInputSend();
       });
     }
+    if (prevProps.viewProject !== this.props.viewProject
+      || prevProps.viewInstance !== this.props.viewInstance
+      || prevProps.attachedSid !== this.props.attachedSid) {
+      this.setState({ optimisticQueueMessages: [] });
+    }
+    if (prevProps.sessionUpperBoundTs !== this.props.sessionUpperBoundTs) {
+      this._reconcileOptimisticQueueMessages();
+    }
     if (prevProps.mainAgentSessions !== this.props.mainAgentSessions) {
+      this._reconcileOptimisticQueueMessages();
       // sessions 引用变化 → 仅在 session 对象真正变化时重置增量状态
       // Plan 1 的 push 模式下，外层数组是浅拷贝（新引用），但 session 对象不变 → 保留增量状态
       if (this.props.mainAgentSessions !== this._prevSessions) {
@@ -1100,10 +1114,10 @@ class ChatView extends React.Component {
           // MUST stay inside this guard: mainAgentSessions gets a fresh array reference on
           // every streaming SSE tick, so an unguarded clear would destroy the queue exactly
           // while Claude is busy (this feature's primary scenario).
-          if (this.state.queuedMessages.length) {
-            this.setState({ queuedMessages: [] });
+          if (this.state.queuedMessages.length || this.state.optimisticQueueMessages.length) {
+            this.setState({ queuedMessages: [], optimisticQueueMessages: [] });
             if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
-              this._inputWs.send(JSON.stringify({ type: 'queue-clear', project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
+              this._inputWs.send(JSON.stringify({ type: 'queue-clear', project: prevProps.viewProject || prevProps.projectName, instanceKey: prevProps.viewInstance || null }));
             }
           }
         }
@@ -1563,7 +1577,7 @@ class ChatView extends React.Component {
     return this._responseThinkingIndex;
   }
 
-  renderSessionMessages(messages, keyPrefix, resolveModelInfo, tsToIndex, requestCacheTokenMap, startIdx = 0, teammateIdentity = null, displayContents = null) {
+  renderSessionMessages(messages, keyPrefix, resolveModelInfo, tsToIndex, requestCacheTokenMap, startIdx = 0, teammateIdentity = null, displayContents = null, queuedPrompts = []) {
     const { userProfile, collapseToolResults, expandThinking, showFullToolContent, showThinkingSummaries, onViewRequest } = this.props;
     const isHistoryLog = this._getIsHistoryLog();
     // 增量 / WeakMap 缓存
@@ -1631,6 +1645,14 @@ class ChatView extends React.Component {
     const lastPendingPlanOwnerIdx = _pending.planOwnerIdx;
 
     const renderedMessages = [];
+    const appendQueuedPrompts = (afterIndex) => {
+      for (const prompt of queuedPromptsAfterIndex(queuedPrompts, afterIndex)) {
+        renderedMessages.push(
+          <ChatMessage key={`${keyPrefix}-transcript-${prompt._ccvSourceId}`} role="user" text={queuedPromptDisplayText(prompt.content)} lang={this.props.lang} timestamp={prompt._timestamp || null} userProfile={userProfile} isHistoryLog={isHistoryLog} />
+        );
+      }
+    };
+    if (startIdx === 0) appendQueuedPrompts(-1);
 
     for (let mi = startIdx; mi < messages.length; mi++) {
       const msg = messages[mi];
@@ -1767,6 +1789,16 @@ class ChatView extends React.Component {
           );
         }
       } else if (msg.role === 'system') {
+        // Mid-conversation-system carries steering text in the model wire. Restore
+        // its human identity only in this render copy: the original role/content
+        // stays byte-faithful in the request store and detail views.
+        const queuedPrompt = extractQueuedPromptWireMessage(msg);
+        if (queuedPrompt) {
+          renderedMessages.push(
+            <ChatMessage key={`${keyPrefix}-queued-${mi}`} role="user" text={queuedPrompt.content} lang={this.props.lang} timestamp={ts} userProfile={userProfile} modelInfo={modelInfo} requestIndex={hasViewRequest ? reqIdx : undefined} onViewRequest={hasViewRequest ? onViewRequest : undefined} isHistoryLog={isHistoryLog} />
+          );
+          continue;
+        }
         // Mid-conversation system messages (mid-conversation-system beta): plain string
         // content (task reminders, "Exited Plan Mode", ...). Rendered verbatim — do NOT
         // route through extractDisplayText/isSystemText, they would swallow the text.
@@ -1782,6 +1814,7 @@ class ChatView extends React.Component {
           );
         }
       }
+      appendQueuedPrompts(mi);
     }
 
     // ownerInRange：owner-idx 是否落在本轮渲染的范围（>= startIdx）；
@@ -2025,7 +2058,7 @@ class ChatView extends React.Component {
     // === session item 缓存：toggle 签名检查 ===
     const { showThinkingSummaries } = this.props;
     const activePromptIds = (this.state.ptyPromptHistory || []).filter(p => p.status === 'active').map(p => p.id).join(',');
-    const toggleSig = `${collapseToolResults}|${expandThinking}|${showFullToolContent}|${this.props.minimalChat}|${showThinkingSummaries}|${this.props.cliMode}|${this.state.ptyPrompt?.id || ''}|${activePromptIds}|${this.props.userProfile?.name || ''}|${this.props.lang || ''}|${Object.keys(this.state.localAskAnswers || {}).join(',')}`;
+    const toggleSig = `${collapseToolResults}|${expandThinking}|${showFullToolContent}|${this.props.minimalChat}|${showThinkingSummaries}|${this.props.cliMode}|${this.state.ptyPrompt?.id || ''}|${activePromptIds}|${this.props.userProfile?.name || ''}|${this.props.lang || ''}|${Object.keys(this.state.localAskAnswers || {}).join(',')}|${queuedPromptsSignature(mainAgentSessions.map((session) => session._ccvQueuedPrompts || []).flat())}`;
     if (toggleSig !== this._itemCacheToggleSig) {
       this._sessionItemCache = [];
       this._itemCacheToggleSig = toggleSig;
@@ -2156,7 +2189,7 @@ class ChatView extends React.Component {
         lastPendingPlanId = sc.lastPendingPlanId;
       } else if (sc && sc.session === session && session.messages.length > sc.msgsLen && displayContentsUnchanged) {
         // 增量：session 对象不变但消息增长 → 只渲染新消息，拼接到缓存
-        const result = this.renderSessionMessages(session.messages, `s${si}`, sessionResolveModelInfo, tsToIndex, requestCacheTokenMap, sc.msgsLen, null, displayContents);
+        const result = this.renderSessionMessages(session.messages, `s${si}`, sessionResolveModelInfo, tsToIndex, requestCacheTokenMap, sc.msgsLen, null, displayContents, session._ccvQueuedPrompts);
         // 旧段同样要刷新 planApprovalMap / askAnswerMap prop（同 FULL HIT 理由）
         msgs = refreshCachedItemProp(sc.items, sc.planApprovalMap, mergedPlanApprovalMap, 'ExitPlanMode', 'planApprovalMap').slice();
         msgs = refreshCachedItemProp(msgs, sc.askAnswerMap, mergedAskAnswerMap, 'AskUserQuestion', 'askAnswerMap');
@@ -2213,7 +2246,7 @@ class ChatView extends React.Component {
         msgs = msgs.concat(result.items);
       } else {
         // 缓存未命中 → 全量渲染
-        const result = this.renderSessionMessages(session.messages, `s${si}`, sessionResolveModelInfo, tsToIndex, requestCacheTokenMap, 0, null, displayContents);
+        const result = this.renderSessionMessages(session.messages, `s${si}`, sessionResolveModelInfo, tsToIndex, requestCacheTokenMap, 0, null, displayContents, session._ccvQueuedPrompts);
         msgs = result.items;
         lastPendingAskId = result.lastPendingAskId;
         lastPendingPlanId = result.lastPendingPlanId;
@@ -2793,17 +2826,78 @@ class ChatView extends React.Component {
           // workspace's session — a viewer of the same-basename twin must ignore it, or
           // closing one workspace wipes the other's queue bubbles (review P2).
           if (msg.instanceKey && (this.props.viewInstance || null) && msg.instanceKey !== this.props.viewInstance) return;
-          this.setState({ queuedMessages: Array.isArray(msg.items) ? msg.items : [] });
+          const viewedQueueProject = this.props.viewProject || this.props.projectName;
+          if (viewedQueueProject && msg.project && msg.project !== viewedQueueProject) return;
+          const items = Array.isArray(msg.items) ? msg.items : [];
+          this.setState((prev) => ({
+            queuedMessages: items,
+            optimisticQueueMessages: reconcileOptimisticQueueMessages(
+              prev.optimisticQueueMessages.map((pending) => items.some((item) => item.id === pending.id && item.status === 'dispatching')
+                ? { ...pending, dispatchingSeen: true }
+                : pending),
+              this.props.mainAgentSessions?.[this.props.mainAgentSessions.length - 1],
+              items,
+              this._queueViewScope(),
+              { allowTextAck: !this.props.sessionUpperBoundTs },
+            ),
+          }));
         } else if (msg.type === 'queue-rejected') {
           // Negative ack for an optimistic enqueue (e.g. queue full): the composer was
           // already cleared, so tell the user the message went nowhere.
-          message.warning(t('ui.chatInput.queueFull'));
+          const viewedQueueProject = this.props.viewProject || this.props.projectName;
+          if ((msg.instanceKey && (this.props.viewInstance || null) && msg.instanceKey !== this.props.viewInstance)
+            || (viewedQueueProject && msg.project && msg.project !== viewedQueueProject)) return;
+          if (msg.id) {
+            this.setState((prev) => ({ optimisticQueueMessages: prev.optimisticQueueMessages.filter((item) => item.id !== msg.id) }));
+          }
+          message.warning(t(msg.reason === 'target-gone' ? 'ui.chatInput.queueTargetGone' : 'ui.chatInput.queueFull'));
         }
     } catch (e) { reportSwallowed('ws.terminal-msg', e, { msgType: msg?.type }); }
   };
 
   // ws 状态变更监听:close 时清残留审批面板(原 _inputWs.onclose 行为);Provider 内部已自动 2s 重连。
   // 'open' 的 ask 相关恢复逻辑（重发 _pendingCancelIds + 拉 /api/pending-asks）已搬到 AskFlowController.onWsOpen。
+  _handleQueueSendNow = (item) => {
+    if (item.status === 'dispatching' || !this._inputWs || this._inputWs.readyState !== WebSocket.OPEN) return;
+    // "Send now" starts a fresh turn immediately — same explicit-send clear as
+    // the composer send paths. The placeholder stays outside model history.
+    this._clearSdkErrors();
+    const scope = this._queueViewScope();
+    const sessions = this.props.mainAgentSessions || [];
+    const baselineTextCounts = captureOptimisticQueueTextCounts(sessions[sessions.length - 1]);
+    const optimistic = { id: item.id, text: item.text, ts: item.ts || Date.now(), baselineTextCount: baselineTextCounts[item.text] || 0, ...scope };
+    this.setState((prev) => ({
+      optimisticQueueMessages: [...prev.optimisticQueueMessages.filter((pending) => pending.id !== item.id), optimistic],
+    }), () => this.scrollToBottom());
+    this._inputWs.send(JSON.stringify({ type: 'queue-send-now', id: item.id, project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
+  };
+
+  _queueViewScope(props = this.props) {
+    return {
+      project: props.viewProject || props.projectName || null,
+      instanceKey: props.viewInstance || null,
+      attachedSid: props.attachedSid || null,
+    };
+  }
+
+  _reconcileOptimisticQueueMessages(queuedMessages = this.state.queuedMessages, sessions = this.props.mainAgentSessions) {
+    const session = sessions?.[sessions.length - 1] || null;
+    this.setState((prev) => {
+      if (prev.optimisticQueueMessages.length === 0) return null;
+      const optimisticQueueMessages = reconcileOptimisticQueueMessages(
+        prev.optimisticQueueMessages,
+        session,
+        queuedMessages,
+        this._queueViewScope(),
+        { allowTextAck: !this.props.sessionUpperBoundTs },
+      );
+      return optimisticQueueMessages.length === prev.optimisticQueueMessages.length
+        && optimisticQueueMessages.every((item, index) => item === prev.optimisticQueueMessages[index])
+        ? null
+        : { optimisticQueueMessages };
+    });
+  }
+
   _onTerminalWsState = (state) => {
     if (state === 'open') {
       this._askFlow.onWsOpen();
@@ -2828,8 +2922,9 @@ class ChatView extends React.Component {
       }
     } catch {}
     if (this.state.pendingPermission || this.state.pendingPlanApproval || this.state.pendingAsk
-        || this.state.pendingPtyPlan || this.state.askQueue?.length || this.state.queuedMessages?.length) {
-      this.setState({ pendingPermission: null, permissionQueue: [], pendingPlanApproval: null, pendingAsk: null, askQueue: [], askMetaMap: {}, pendingPtyPlan: null, queuedMessages: [] });
+        || this.state.pendingPtyPlan || this.state.askQueue?.length || this.state.queuedMessages?.length
+        || this.state.optimisticQueueMessages?.length) {
+      this.setState({ pendingPermission: null, permissionQueue: [], pendingPlanApproval: null, pendingAsk: null, askQueue: [], askMetaMap: {}, pendingPtyPlan: null, queuedMessages: [], optimisticQueueMessages: [] });
     }
     // ask 实例 flag 由控制器 reset（state 键已在上面那条合并 setState 里清）
     this._askFlow.resetAskFlagsOnClose();
@@ -4187,6 +4282,16 @@ class ChatView extends React.Component {
     const pendingBubble = cliMode && pendingInput ? (
       <ChatMessage key="pending-input" role="user" text={pendingInput} lang={this.props.lang} timestamp={new Date().toISOString()} userProfile={this.props.userProfile} isHistoryLog={false} />
     ) : null;
+    const optimisticQueueBubbles = cliMode && this.props.sdkMode && this.state.optimisticQueueMessages.length > 0 ? (
+      <div className={styles.optimisticQueueStack}>
+        {this.state.optimisticQueueMessages.map((item) => (
+          <div key={`optimistic-queue-${item.id}`} className={styles.optimisticQueueItem}>
+            <ChatMessage role="user" text={item.text} lang={this.props.lang} timestamp={new Date(item.ts).toISOString()} userProfile={this.props.userProfile} isHistoryLog={false} />
+            <div className={styles.optimisticQueueStatus} role="status">{t('ui.chatInput.queueDispatching')}</div>
+          </div>
+        ))}
+      </div>
+    ) : null;
 
     const stickyBtn = !stickyBottom ? (
       <button className={styles.stickyBottomBtn} onClick={this.handleStickToBottom}>
@@ -4230,7 +4335,7 @@ class ChatView extends React.Component {
               {loading ? <Loading size="large" /> : <Empty description={t('ui.noChat')} />}
             </div>
           ) : null}
-          {pendingBubble}
+          {pendingBubble}{optimisticQueueBubbles}
           {this._renderSdkErrors(true)}
           {/* Keeps the floating composer from overlapping the error rows; .sdkErrorStackEmpty
               self-anchors to the bottom via margin-top:auto in this column flex container. */}
@@ -4252,7 +4357,7 @@ class ChatView extends React.Component {
             <div className={streamingLiveItem ? styles.hideLastResponseDivider : undefined}>
               {filteredLastResponseItems}
             </div>
-          )}{pendingBubble}{this._renderSdkErrors()}{streamingLiveItem && (
+          )}{pendingBubble}{optimisticQueueBubbles}{this._renderSdkErrors()}{streamingLiveItem && (
             !filteredLastResponseItems && targetIdx != null && targetIdx >= visible.length
               ? <div key="stream-resp-anchor" ref={this._scrollTargetRef}>{streamingLiveItem}</div>
               : streamingLiveItem
@@ -4308,7 +4413,7 @@ class ChatView extends React.Component {
                   : filteredLastResponseItems}
               </div>
             )}
-            {pendingBubble}
+            {pendingBubble}{optimisticQueueBubbles}
             {this._renderSdkErrors()}
             {streamingLiveItem && (
               !filteredLastResponseItems && targetIdx != null && targetIdx >= visible.length
@@ -4587,16 +4692,17 @@ class ChatView extends React.Component {
             {this.state.queuedMessages.length > 0 && (
               <div className={styles.queueBubbleStack} role="status" aria-label={t('ui.chatInput.queueHint')}>
                 {this.state.queuedMessages.map((item) => (
-                  <div className={styles.queueBubble} key={item.id} title={item.text}>
+                  <div className={`${styles.queueBubble} ${item.status === 'dispatching' ? styles.queueBubbleDispatching : ''}`} key={item.id} title={item.text} aria-busy={item.status === 'dispatching'}>
                     <span className={styles.queueBubbleText}>{item.text}</span>
                     <button
                       type="button"
                       className={styles.queueBubbleRemove}
                       aria-label={t('ui.chatInput.queueRemove')}
                       title={t('ui.chatInput.queueRemove')}
+                      disabled={item.status === 'dispatching'}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
-                        if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
+                        if (item.status !== 'dispatching' && this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
                           this._inputWs.send(JSON.stringify({ type: 'queue-remove', id: item.id, project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
                         }
                       }}
@@ -4604,16 +4710,10 @@ class ChatView extends React.Component {
                     <button
                       type="button"
                       className={styles.queueBubbleSendNow}
+                      disabled={item.status === 'dispatching'}
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
-                          // "Send now" starts a fresh turn immediately — same explicit-send
-                          // clear as the composer send paths.
-                          this._clearSdkErrors();
-                          this._inputWs.send(JSON.stringify({ type: 'queue-send-now', id: item.id, project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
-                        }
-                      }}
-                    >{t('ui.chatInput.queueSendNow')}</button>
+                      onClick={() => this._handleQueueSendNow(item)}
+                    >{item.status === 'dispatching' ? t('ui.chatInput.queueDispatching') : t('ui.chatInput.queueSendNow')}</button>
                   </div>
                 ))}
               </div>

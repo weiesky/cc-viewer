@@ -85,6 +85,7 @@ const KEYS = [
   'ui.slashMenu.footerHint',     // keyboard-nav footer hint
   // Busy-queue bubbles above the composer (Enter-while-streaming; ChatView queue-state branch):
   'ui.chatInput.queueSendNow', // per-bubble "interrupt + inject now" button
+  'ui.chatInput.queueDispatching', // per-bubble non-actionable dispatch-in-progress label
   'ui.chatInput.queueRemove',  // per-bubble discard (×) button
   'ui.chatInput.queueHint',    // bubble-stack aria-label / explainer
   'ui.chatInput.queueFull',    // toast when the server rejects an enqueue (queue full)

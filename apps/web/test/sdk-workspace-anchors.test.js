@@ -24,7 +24,8 @@ describe('SDK workspace instance anchors', () => {
       assert.ok(sends.length > 0, `${type} sender exists`);
       for (const send of sends) {
         const objectLiteral = send.slice(0, send.indexOf('})'));
-        assert.ok(objectLiteral.includes('instanceKey: this.props.viewInstance || null'), `${type} carries viewInstance`);
+        const expected = type === 'queue-clear' ? 'prevProps.viewInstance || null' : 'this.props.viewInstance || null';
+        assert.ok(objectLiteral.includes(`instanceKey: ${expected}`), `${type} carries the correct source view instance`);
       }
     });
 

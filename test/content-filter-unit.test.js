@@ -512,6 +512,14 @@ describe('extractDisplayText', () => {
     assert.equal(CF.extractDisplayText('Your response was cut off because it exceeded the output token limit'), '');
   });
 
+  it('打断标记与补充正文同块时只恢复用户正文', () => {
+    assert.equal(CF.extractDisplayText('[Request interrupted by user]\n按补充要求继续'), '按补充要求继续');
+    assert.equal(CF.extractDisplayText('[Request interrupted by user for tool use]\n换个方案'), '换个方案');
+    assert.equal(CF.extractDisplayText('[Request interrupted by user'), '');
+    const quoted = '解释 [Request interrupted by user]\n但不要删掉这行引用';
+    assert.equal(CF.extractDisplayText(quoted), quoted);
+  });
+
   it('未知 / 未闭合标签起首 → ""（仍隐藏，= 当前行为）', () => {
     assert.equal(CF.extractDisplayText('<foo>bar</foo>'), '');
     assert.equal(CF.extractDisplayText('<system-reminder>\n问题没有闭合标签'), '');
@@ -741,6 +749,16 @@ describe('classifyUserContent', () => {
     const content = [{ type: 'text', text: '[Request interrupted by user]' }];
     const r = CF.classifyUserContent(content);
     assert.equal(r.textBlocks.length, 0);
+  });
+
+  it('二次提取：同块打断标记后的正文与独立正文块等价', () => {
+    const combined = CF.classifyUserContent([{ type: 'text', text: '[Request interrupted by user]\n补充要求' }]);
+    assert.deepEqual(combined.textBlocks.map((b) => b.text), ['补充要求']);
+    const split = CF.classifyUserContent([
+      { type: 'text', text: '[Request interrupted by user]\n' },
+      { type: 'text', text: '补充要求' },
+    ]);
+    assert.deepEqual(combined.textBlocks, split.textBlocks);
   });
 
   it('二次提取：剥标签后仍是系统文本 → 不回收', () => {

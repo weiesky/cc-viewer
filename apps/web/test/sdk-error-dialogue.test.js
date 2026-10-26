@@ -58,11 +58,11 @@ describe('sdk-error dialogue rows — state + WS branch', () => {
     assert.ok(helper, 'helper body found');
     assert.match(helper[0], /setState\(\{ sdkErrors: \[\] \}\)/, 'helper clears sdkErrors');
     assert.ok(!helper[0].includes('_lastUserSendTs'), 'no write-only timestamp field');
-    // The clear sits in the same click handler, before the send literal.
+    // The clear sits in the send-now handler, before the send literal.
     const sendNowIdx = jsx.indexOf("'queue-send-now'");
     assert.ok(sendNowIdx > -1, 'queue-send-now send found');
-    const handlerStart = jsx.lastIndexOf('onClick={() => {', sendNowIdx);
-    assert.ok(jsx.slice(handlerStart, sendNowIdx).includes('_clearSdkErrors()'), 'queue-send-now clears the rows too');
+    const handlerStart = jsx.lastIndexOf('_handleQueueSendNow = (item) => {', sendNowIdx);
+    assert.ok(handlerStart >= 0 && jsx.slice(handlerStart, sendNowIdx).includes('_clearSdkErrors()'), 'queue-send-now clears the rows too');
   });
 
   it('rows are NOT cleared on sdk-session-state running (auto-drain would wipe them)', () => {
@@ -136,7 +136,7 @@ describe('sdk-error dialogue rows — rendering', () => {
     assert.ok(noData && noData[0].includes('_renderSdkErrors(true)'), 'noData/loading branch renders the rows with the empty-state modifier');
     const footer = jsx.match(/_virtuosoFooter = <>[\s\S]{0,900}?inputStackSpacer/);
     assert.ok(footer && footer[0].includes('_renderSdkErrors()'), 'Virtuoso footer renders the rows');
-    const desktop = jsx.match(/pendingBubble\}\s*\{this\._renderSdkErrors\(\)\}\s*\{streamingLiveItem && \(/);
+    const desktop = jsx.match(/pendingBubble\}\{optimisticQueueBubbles\}\s*\{this\._renderSdkErrors\(\)\}\s*\{streamingLiveItem && \(/);
     assert.ok(desktop, 'desktop list renders the rows before the streaming overlay');
   });
 

@@ -1738,7 +1738,7 @@ function registerUpgradeRoute(httpServer, name, match, handle) {
 async function setupTerminalWebSocket(httpServer) {
   try {
     const { WebSocketServer } = await import('ws');
-    const { writeToPty, writeToPtySequential, writeToPtyFor, writeToPtySequentialFor, resizePty, onPtyData, onPtyExit, getPtyState, getPtyKind, getOutputBuffer, getCurrentWorkspace, spawnShell, findSafeSliceStart, attachPtyFor, listLivePtys } = await import('./pty-manager.js');
+    const { writeToPty, writeToPtySequential, writeToPtyFor, writeToPtySequentialFor, resizePty, onPtyData, onPtyExit, getPtyState, getPtyKind, getPtyKindFor, getOutputBuffer, getCurrentWorkspace, spawnShell, findSafeSliceStart, attachPtyFor, listLivePtys } = await import('./pty-manager.js');
     const {
       spawnScratch,
       writeScratch,
@@ -1770,13 +1770,40 @@ async function setupTerminalWebSocket(httpServer) {
     if (!isSdkMode) {
       chatQueue.initChatQueue({
         writeToPty,
+        writeToPtyFor,
         writeToPtySequential,
         writeToPtySequentialFor,
         getPtyKind,
         isStreaming: () => streamingState.active,
         hasPendingApproval: () => pendingAskHooks.size > 0 || pendingPermHooks.size > 0,
         hasExternalInjection: () => imCore.anyActiveInjection(),
-        broadcastWs: broadcastWsMessage,
+        hasLivePtyFor: (anchor) => {
+          if (!anchor || typeof anchor !== 'object') return undefined;
+          if (anchor.instanceKey) return getPtyKindFor({ instanceKey: anchor.instanceKey }) === 'claude';
+          if (anchor.project) return listLivePtys().some((pty) => pty.ptyKind === 'claude' && projectKeyForCwd(pty.cwd) === anchor.project);
+          return undefined;
+        },
+        broadcastWs: (msg, item) => {
+          if (msg.type !== 'queue-state') {
+            const scope = item?.anchor || msg.scope;
+            const { scope: _privateScope, ...publicMsg } = msg;
+            broadcastWsMessage(scope ? { ...publicMsg, project: scope.project, instanceKey: scope.instanceKey } : publicMsg);
+            return;
+          }
+          if (!terminalWss) return;
+          terminalWss.clients.forEach((client) => {
+            if (client.readyState !== 1) return;
+            const view = client._ccvViewInstance
+              ? { instanceKey: client._ccvViewInstance, project: client._ccvViewProject || undefined }
+              : { project: client._ccvViewProject || _projectName || '' };
+            const items = chatQueue.getSnapshot(view.project || view.instanceKey ? view : null);
+            const project = view.project || _projectName || undefined;
+            const instanceKey = view.instanceKey;
+            const { scope: _privateScope, ...publicMsg } = msg;
+            const payload = { ...publicMsg, items, ...(project ? { project } : {}), ...(instanceKey ? { instanceKey } : {}) };
+            try { client.send(JSON.stringify(payload)); } catch (err) { reportSwallowed('chat-queue.client-send', err); }
+          });
+        },
       });
     }
     const wss = new WebSocketServer({ noServer: true });
@@ -2143,6 +2170,21 @@ async function setupTerminalWebSocket(httpServer) {
       // workspace's approval/spinner/queue would pop into the foreground. Filter each
       // snapshot by this connection's `_ccvViewProject` (bound view / no ?project= → all).
       const _viewProj = ws._ccvViewProject || null;
+      const replayQueueSnapshot = () => {
+        const anchor = ws._ccvViewInstance
+          ? { instanceKey: ws._ccvViewInstance, project: ws._ccvViewProject || undefined }
+          : (ws._ccvViewProject ? { project: ws._ccvViewProject } : (isSdkMode ? null : { project: _projectName || undefined }));
+        const items = (isSdkMode && _sdkGetQueueSnapshot)
+          ? _sdkGetQueueSnapshot(anchor)
+          : chatQueue.getSnapshot(anchor);
+        if (!Array.isArray(items)) return;
+        const frame = { type: 'queue-state', items };
+        if (ws._ccvViewProject || (!isSdkMode && _projectName)) frame.project = ws._ccvViewProject || _projectName;
+        if (ws._ccvViewInstance) frame.instanceKey = ws._ccvViewInstance;
+        if (_sdkFrameForView(frame)) {
+          try { ws.send(JSON.stringify(frame)); } catch (err) { reportSwallowed('queue.replay-send', err); }
+        }
+      };
       const _sdkFrameForView = (frame) => {
         if (!frame || typeof frame !== 'object') return true;      // no cwd → view-agnostic, replay
         const viewProject = ws._ccvViewProject || null;
@@ -2232,13 +2274,7 @@ async function setupTerminalWebSocket(httpServer) {
 
       // Replay the chat-composer busy queue so a refreshed/reconnected page restores the
       // floating queued-message bubbles (server is the source of truth in both modes).
-      {
-        const qItems = (isSdkMode && _sdkGetQueueSnapshot) ? _sdkGetQueueSnapshot() : chatQueue.getSnapshot();
-        if (Array.isArray(qItems) && qItems.length) {
-          const qFrame = { type: 'queue-state', items: qItems };
-          if (_sdkFrameForView(qFrame)) { try { ws.send(JSON.stringify(qFrame)); } catch {} }
-        }
-      }
+      replayQueueSnapshot();
 
       // 兜底重绘标记：claude TUI 在 alternate-screen 下只在收到 SIGWINCH 时重绘整屏。
       // 若前端首次 resize 与 PTY 当前尺寸恰好相等，pty.resize noop 不发 SIGWINCH → 前端空白。
@@ -2398,6 +2434,7 @@ async function setupTerminalWebSocket(httpServer) {
               // pending approvals too, so a plan cleared on switch-away can be answered
               // after switching back instead of waiting for the server timeout.
               replaySdkPendingApprovals({ planOnly: true });
+              replayQueueSnapshot();
               return;
             }
           } else if (isSdkMode && (msg.type === 'input' || msg.type === 'input-sequential'
@@ -2508,12 +2545,20 @@ async function setupTerminalWebSocket(httpServer) {
             let res = null;
             try { res = (target || targetInstance) ? attachPtyFor({ project: target || undefined, instanceKey: targetInstance || undefined }) : null; } catch { res = null; }
             if (res && res.ok) {
+              ws._ccvViewProject = target || null;
+              ws._ccvViewInstance = targetInstance || null;
+              replayQueueSnapshot();
               try { ws.send(JSON.stringify({ type: 'attached', project: target, running: res.running, ptyKind: res.ptyKind, exitCode: res.exitCode })); } catch { }
               const snap = getOutputBuffer();
               if (snap) {
                 try { ws.send(JSON.stringify({ type: 'data', data: snap })); } catch { }
               }
             } else {
+              // The queue belongs to the view, not to a live PTY. A history view or
+              // a dead instance still needs its own queue snapshot after re-stamping.
+              ws._ccvViewProject = target || null;
+              ws._ccvViewInstance = targetInstance || null;
+              replayQueueSnapshot();
               // Multi-instance: surface an ambiguous project-name attach (with the live
               // candidates) so the client re-issues with an instanceKey instead of silently
               // pinning an arbitrary same-cwd process.
@@ -2794,7 +2839,7 @@ async function setupTerminalWebSocket(httpServer) {
                   });
                 }
               } else {
-                const _qAnchor = { project: typeof msg.project === 'string' ? msg.project : undefined, sessionId: typeof msg.sessionId === 'string' ? msg.sessionId : undefined, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined };
+                const _qAnchor = { project: (typeof msg.project === 'string' && msg.project) || _projectName || undefined, sessionId: typeof msg.sessionId === 'string' ? msg.sessionId : undefined, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined };
                 const _anchorArg = (_qAnchor.project || _qAnchor.sessionId || _qAnchor.instanceKey) ? _qAnchor : undefined;
                 try { chatQueue.enqueue(msg.text, _anchorArg); } catch (err) { reportSwallowed('server.queue-message', err); }
               }
@@ -2812,7 +2857,8 @@ async function setupTerminalWebSocket(httpServer) {
                   catch (err) { reportSwallowed('server.queue-send-now', err); }
                 }
               } else {
-                try { chatQueue.sendNow(qid); } catch (err) { reportSwallowed('server.queue-send-now', err); }
+                const qAnchor = { project: typeof msg.project === 'string' ? msg.project : undefined, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined };
+                try { chatQueue.sendNow(qid, qAnchor); } catch (err) { reportSwallowed('server.queue-send-now', err); }
               }
             }
           } else if (msg.type === 'queue-remove') {
@@ -2821,7 +2867,8 @@ async function setupTerminalWebSocket(httpServer) {
               if (isSdkMode) {
                 if (_sdkRemoveQueued) { const qAnchor = ((typeof msg.project === 'string' && msg.project) || (typeof msg.instanceKey === 'string' && msg.instanceKey)) ? { project: msg.project, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined } : undefined; try { _sdkRemoveQueued(qid, qAnchor); } catch (err) { reportSwallowed('server.queue-remove', err); } }
               } else {
-                try { chatQueue.remove(qid); } catch (err) { reportSwallowed('server.queue-remove', err); }
+                const qAnchor = { project: typeof msg.project === 'string' ? msg.project : undefined, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined };
+                try { chatQueue.remove(qid, qAnchor); } catch (err) { reportSwallowed('server.queue-remove', err); }
               }
             }
           } else if (msg.type === 'queue-clear') {
@@ -2830,7 +2877,8 @@ async function setupTerminalWebSocket(httpServer) {
             if (isSdkMode) {
               if (_sdkClearQueued) { const qAnchor = ((typeof msg.project === 'string' && msg.project) || (typeof msg.instanceKey === 'string' && msg.instanceKey)) ? { project: msg.project, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined } : undefined; try { _sdkClearQueued(qAnchor); } catch (err) { reportSwallowed('server.queue-clear', err); } }
             } else {
-              try { chatQueue.clear(); } catch (err) { reportSwallowed('server.queue-clear', err); }
+              const qAnchor = { project: typeof msg.project === 'string' ? msg.project : undefined, sessionId: typeof msg.sessionId === 'string' ? msg.sessionId : undefined, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined };
+              try { chatQueue.clear(qAnchor.project || qAnchor.sessionId || qAnchor.instanceKey ? qAnchor : undefined); } catch (err) { reportSwallowed('server.queue-clear', err); }
             }
           } else if (msg.type === 'queue-suppress') {
             // PTY Stop pressed: park the queue — the coming turn-end must not auto-drain it.

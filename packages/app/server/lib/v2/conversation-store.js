@@ -35,13 +35,13 @@ export class ConversationStore {
   /**
    * @param {object} paths - sessionPaths() object
    * @param {{appendTo: Function}} queue - AsyncWriteQueue (explicit-path API)
-   * @param {{exactFps?: boolean}} [opts] - exact mode: judgement fingerprints
-   *   additionally hash the FULL message JSON. The offline converter needs
-   *   byte-grade faithfulness (its golden gate replays byte-identical wire);
-   *   fingerprintMsg's 80-char first-block snip cannot distinguish wires that
-   *   share a long prefix (real data 2026-07-14: sub prompts identical in the
-   *   first 80 chars, differing later, judged "unchanged" → replay stuck on
-   *   the first wire). The live request path keeps the cheap default.
+   * @param {{exactFps?: boolean|'main'}} [opts] - exact mode: judgement
+   *   fingerprints additionally hash the FULL normalized message JSON. Default
+   *   'main' covers the user-facing conversation; sub/misc retain cheap fps.
+   *   The offline converter passes true for byte-grade faithfulness across all
+   *   conversations. fingerprintMsg's 80-char first-block snip cannot see an
+   *   appended prompt in a later content block, which would otherwise be
+   *   judged "unchanged" and vanish from the replayed main conversation.
    */
   constructor(paths, queue, opts = {}) {
     this._paths = paths;
@@ -54,9 +54,12 @@ export class ConversationStore {
     // per request on affected conversations (real-data storm, ~62% of corpus
     // bytes). Storage still records the wire verbatim; only the judgement
     // compares modulo cache_control/form.
-    this._fpOf = opts.exactFps
-      ? (m) => { const n = normalizeMsgForEquality(m); return `${fingerprintMsg(n)}:${fnv1a(JSON.stringify(n))}`; }
-      : fingerprintMsg;
+    this._exactFps = opts.exactFps === undefined ? 'main' : opts.exactFps;
+    this._exactFpOf = (m) => {
+      const n = normalizeMsgForEquality(m);
+      return `${fingerprintMsg(n)}:${fnv1a(JSON.stringify(n))}`;
+    };
+    this._fpOf = this._exactFps === true ? this._exactFpOf : fingerprintMsg;
   }
 
   _state(convKey) {
@@ -123,7 +126,8 @@ export class ConversationStore {
     // exactly like v1's Plan C does, or the two dual-write sides legitimately
     // diverge in a way the verify digest (built on messageFingerprint) is
     // structurally blind to (review P2).
-    const fpsIn = msgs.map(this._fpOf);
+    const fpOf = this._exactFps === 'main' && convKey === 'main' ? this._exactFpOf : this._fpOf;
+    const fpsIn = msgs.map(fpOf);
     const prev = st.count;
     const prevFps = st.fps;
 

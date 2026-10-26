@@ -312,6 +312,9 @@ function stripSystemTags(text) {
   // Same kind as the protocol JSON in a <teammate-message> wrapper; after stripping, the
   // second pass recovers only the user-appended body (empty if none)
   out = extractProtocolNotifications(out).rest;
+  // An interrupt marker may share a text block with the user's next prompt.
+  // Strip only its complete leading form; later quoted markers stay verbatim.
+  out = out.replace(/^\s*\[Request interrupted[^\]\n]*\]\s*/i, '');
   return out.trim();
 }
 

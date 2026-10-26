@@ -9464,6 +9464,26 @@ const i18nData = {
     "tr": "Şimdi gönder",
     "uk": "Надіслати зараз"
   },
+  "ui.chatInput.queueDispatching": {
+    "zh": "追加中…",
+    "en": "Sending…",
+    "zh-TW": "追加中…",
+    "ko": "병합 중…",
+    "ja": "追加中…",
+    "de": "Wird gesendet…",
+    "es": "Enviando…",
+    "fr": "Envoi en cours…",
+    "it": "Invio in corso…",
+    "da": "Sender…",
+    "pl": "Wysyłanie…",
+    "ru": "Отправка…",
+    "ar": "جارٍ الإرسال…",
+    "no": "Sender…",
+    "pt-BR": "Enviando…",
+    "th": "กำลังส่ง…",
+    "tr": "Gönderiliyor…",
+    "uk": "Надсилання…"
+  },
   "ui.chatInput.queueRemove": {
     "zh": "移除",
     "en": "Remove",
@@ -9483,6 +9503,26 @@ const i18nData = {
     "th": "ลบ",
     "tr": "Kaldır",
     "uk": "Видалити"
+  },
+  "ui.chatInput.queueTargetGone": {
+    "zh": "目标会话已关闭，该消息未能追加，请重新选择会话后重试",
+    "en": "The target session is no longer available. The message was not sent. Choose a session and try again.",
+    "zh-TW": "目標會話已關閉，該訊息未能追加，請重新選擇會話後重試",
+    "ko": "대상 세션이 닫혀 메시지를 병합하지 못했습니다. 세션을 선택한 후 다시 시도하세요",
+    "ja": "対象セッションが閉じられたため、追加できませんでした。セッションを選び直して再試行してください",
+    "de": "Die Zielsitzung wurde geschlossen. Die Nachricht wurde nicht gesendet. Wähle eine Sitzung und versuche es erneut.",
+    "es": "La sesión de destino se cerró y el mensaje no se envió. Elige una sesión e inténtalo de nuevo.",
+    "fr": "La session cible est fermée. Le message n'a pas été envoyé. Choisissez une session et réessayez.",
+    "it": "La sessione di destinazione è chiusa. Il messaggio non è stato inviato. Scegli una sessione e riprova.",
+    "da": "Destinationssessionen er lukket. Beskeden blev ikke sendt. Vælg en session og prøv igen.",
+    "pl": "Sesja docelowa została zamknięta. Wiadomość nie została wysłana. Wybierz sesję i spróbuj ponownie.",
+    "ru": "Целевая сессия закрыта. Сообщение не отправлено. Выберите сессию и повторите попытку.",
+    "ar": "الجلسة المستهدفة مغلقة، لم يتم إرسال الرسالة. اختر جلسة وحاول مرة أخرى.",
+    "no": "Måløkten er lukket. Meldingen ble ikke sendt. Velg en økt og prøv igjen.",
+    "pt-BR": "A sessão de destino foi fechada. A mensagem não foi enviada. Escolha uma sessão e tente novamente.",
+    "th": "เซสชันเป้าหมายถูกปิดแล้ว ข้อความไม่ได้ถูกส่ง โปรดเลือกเซสชันแล้วลองอีกครั้ง",
+    "tr": "Hedef oturum kapandı. Mesaj gönderilmedi. Bir oturum seçip yeniden deneyin.",
+    "uk": "Цільову сесію закрито. Повідомлення не надіслано. Виберіть сесію та повторіть спробу."
   },
   "ui.chatInput.queueHint": {
     "zh": "待发送消息（Claude 运行中，回车将排队）",

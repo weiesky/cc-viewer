@@ -644,6 +644,73 @@ describeCli('server.js handleRequest 分支（in-process CLI server）', { concu
     try { ws.close(); } catch {}
   });
 
+  it('queue-state and queue-rejected stay inside each viewer project scope', async () => {
+    const tok = mod.getAccessToken();
+    const projectA = 'queue-scope-a';
+    const projectB = 'queue-scope-b';
+    const a = new WebSocket(`ws://127.0.0.1:${port}/ws/terminal?token=${tok}&project=${projectA}`);
+    const b = new WebSocket(`ws://127.0.0.1:${port}/ws/terminal?token=${tok}&project=${projectB}`);
+    const frames = { a: [], b: [] };
+    a.on('message', (raw) => { try { frames.a.push(JSON.parse(raw.toString())); } catch {} });
+    b.on('message', (raw) => { try { frames.b.push(JSON.parse(raw.toString())); } catch {} });
+    await Promise.all([a, b].map((ws) => new Promise((resolve) => { ws.on('open', resolve); ws.on('error', resolve); })));
+    a.send(JSON.stringify({ type: 'queue-message', text: 'A private prompt', project: projectA }));
+    b.send(JSON.stringify({ type: 'queue-message', text: 'B private prompt', project: projectB }));
+    const delivered = await waitUntil(() => {
+      const aHas = frames.a.some((m) => m.type === 'queue-state' && m.items?.some((i) => i.text === 'A private prompt'));
+      const bHas = frames.b.some((m) => m.type === 'queue-state' && m.items?.some((i) => i.text === 'B private prompt'));
+      return aHas && bHas;
+    });
+    assert.ok(delivered, 'each source viewer receives its own queue item with status');
+    const unscoped = new WebSocket(`ws://127.0.0.1:${port}/ws/terminal?token=${tok}`);
+    const replay = await new Promise((resolve) => {
+      unscoped.on('message', (raw) => {
+        try { const msg = JSON.parse(raw.toString()); if (msg.type === 'queue-state') resolve(msg); } catch {}
+      });
+      unscoped.on('error', () => resolve(null));
+      setTimeout(() => resolve(null), 3000);
+    });
+    assert.ok(replay, 'an unscoped connection gets an authoritative queue replay');
+    assert.ok(replay.items.every((item) => item.text !== 'A private prompt' && item.text !== 'B private prompt'), 'unscoped replay does not expose other projects');
+    assert.ok(replay.project, 'bound PTY replay carries a project identity');
+    try { unscoped.close(); } catch {}
+    const state = frames.a.filter((m) => m.type === 'queue-state').at(-1);
+    assert.equal(state.project, projectA);
+    assert.equal(state.scope, undefined, 'the triggering session scope is not exposed to viewers');
+    assert.equal(state.items[0].status, 'queued');
+    const itemIdA = state.items[0].id;
+    assert.ok(frames.a.every((m) => m.type !== 'queue-state' || (m.items || []).every((i) => i.text !== 'B private prompt')));
+    assert.ok(frames.b.every((m) => m.type !== 'queue-state' || (m.items || []).every((i) => i.text !== 'A private prompt')),
+      'the other project never receives the prompt text, even for client-side filtering');
+
+    // Attaching to B must replay B's existing parked item immediately, not wait
+    // for another mutation. A's unrelated mutations cannot replace B's snapshot.
+    const beforeAttach = frames.a.length;
+    a.send(JSON.stringify({ type: 'attach', project: projectB }));
+    assert.ok(await waitUntil(() => {
+      const replay = frames.a.length > beforeAttach && frames.a.some((m) => m.type === 'queue-state' && m.project === projectB
+        && m.items?.some((i) => i.text === 'B private prompt'));
+      return replay;
+    }), 'attach replays the destination queue');
+    assert.ok(frames.b.some((m) => m.type === 'queue-state' && (m.items || []).some((i) => i.text === 'B private prompt')),
+      'B retains its own queue throughout A mutations');
+
+    // Force a real full-queue rejection for B, not just an assertion with no event.
+    a.send(JSON.stringify({ type: 'attach', project: projectA }));
+    b.send(JSON.stringify({ type: 'queue-remove', id: itemIdA, project: projectB }));
+    await wait(150);
+    assert.ok(frames.a.some((m) => m.type === 'queue-state' && m.items.some((item) => item.id === itemIdA)), 'B cannot remove A queue items');
+    b.send(JSON.stringify({ type: 'queue-clear', project: projectB }));
+    assert.ok(await waitUntil(() => frames.b.some((m) => m.type === 'queue-state' && m.items.length === 0)), 'B clear replays an empty authoritative snapshot');
+    for (let i = 0; i < 51; i++) b.send(JSON.stringify({ type: 'queue-message', text: `B overflow ${i}`, project: projectB }));
+    assert.ok(await waitUntil(() => frames.b.some((m) => m.type === 'queue-rejected' && m.reason === 'full')), 'the full queue emits a scoped rejection');
+    assert.ok(frames.a.every((m) => m.type !== 'queue-rejected'), 'the rejection does not leak to the other project');
+    b.send(JSON.stringify({ type: 'queue-clear', project: projectB }));
+    a.send(JSON.stringify({ type: 'queue-clear', project: projectA }));
+    try { a.close(); } catch {}
+    try { b.close(); } catch {}
+  });
+
   it('scratch WS 反压：暂停读取 + 洪泛输出 → onBehind/makeBpLogger 触发（1120-1163/1183-1187）', async () => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/terminal-scratch?id=bpscratch1&token=${mod.getAccessToken()}`);
     const opened = await new Promise((resolve) => {

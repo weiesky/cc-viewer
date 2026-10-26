@@ -1336,6 +1336,7 @@
   "node_modules/@ccv/core/src/context-rules.js",
   "node_modules/@ccv/core/src/delta-reconstructor.js",
   "node_modules/@ccv/core/src/error-report.js",
+  "node_modules/@ccv/core/src/queued-prompt.js",
   "node_modules/@ccv/core/src/requestType.js",
   "node_modules/@ccv/core/src/session-boundary.js",
   "node_modules/@ccv/core/src/teammateDetector.js",

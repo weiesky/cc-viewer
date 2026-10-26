@@ -123,11 +123,13 @@ export function mergeMainAgentSessions(prevSessions, entry, options = {}) {
   // "MainAgent" + generic-avatar flash on carried-over history. Latest wins: an inProgress carrier
   // stamps body.model, completion re-stamps the authoritative response.body.model.
   const entryModel = getEffectiveModel(entry);
+  const queuedPrompts = entry._ccvQueuedPrompts || [];
 
   if (prevSessions.length === 0) {
     return [{
       userId, messages: newMessages, response: newResponse, entryTimestamp, model: entryModel, _seqEpoch: seqEpoch,
       _sessionId: entry._sessionId || entryTimestamp,
+      _ccvQueuedPrompts: queuedPrompts,
       // Degraded-broken carrier: truthful prefix with a mid-session hole. Only
       // the create branches carry it (a same-session merge onto a partial base
       // is defused by the whole-replace below); ChatView renders the banner.
@@ -157,6 +159,7 @@ export function mergeMainAgentSessions(prevSessions, entry, options = {}) {
     return [...prevSessions, {
       userId, messages: newMessages, response: newResponse, entryTimestamp, model: entryModel, _seqEpoch: seqEpoch,
       _sessionId: entry._sessionId || entryTimestamp,
+      _ccvQueuedPrompts: queuedPrompts,
       ...(entry._partialData === true && { _partialData: true }),
     }];
   }
@@ -276,11 +279,13 @@ export function mergeMainAgentSessions(prevSessions, entry, options = {}) {
     lastSession.entryTimestamp = entryTimestamp;
     if (entry._sessionId) lastSession._sessionId = entry._sessionId;
     if (entryModel) lastSession.model = entryModel; // latest wins; model-less entries keep the stamp
+    lastSession._ccvQueuedPrompts = queuedPrompts;
     return [...prevSessions];
   } else {
     return [...prevSessions, {
       userId, messages: newMessages, response: newResponse, entryTimestamp, model: entryModel, _seqEpoch: seqEpoch,
       _sessionId: entry._sessionId || entryTimestamp,
+      _ccvQueuedPrompts: queuedPrompts,
       ...(entry._partialData === true && { _partialData: true }),
     }];
   }

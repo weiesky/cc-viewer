@@ -560,7 +560,7 @@ function postResumeSessionHandler(req, res, parsedUrl, isLocal, deps) {
       if (r.ok) {
         // Session identity just changed — drop any still-queued composer messages so a
         // message typed for the OLD conversation never drains into the resumed one.
-        try { chatQueue.clear(); } catch (err) { reportSwallowed('resume-route.clear-queue', err); }
+        try { chatQueue.clear({ project: targetProject || undefined, instanceKey: instanceKey || undefined }); } catch (err) { reportSwallowed('resume-route.clear-queue', err); }
         sendJson(res, 200, { ok: true });
         return;
       }

@@ -30,7 +30,7 @@ import { saveEntries, loadEntries, clearEntries, getCacheMeta } from './utils/en
 import { assignMessageTimestamps, applyInPlaceLastMsgReplace, getSessionStableId, resolveDisplaySessions, getLatestSessionByActivity, resolveHydratedPin, runPinHydration, applyBatchEntryTimestamps, resolveTakeoverStableId, shouldFollowLatest, shouldReleaseTakeoverOnBoundary } from './utils/sessionManager';
 import { mergeMainAgentSessions as _mergeMainAgentSessions, isMergeBlockedEntry, shouldDegradeBrokenMerge } from './utils/sessionMerge';
 import { reconstructEntries, createIncrementalReconstructor } from '@ccv/core/delta-reconstructor';
-import { normalizeV2Entries, createV2IncrementalReconstructor, isV2TranscriptLine, isMetadataRow } from '@ccv/core/v2-transcript-normalizer';
+import { normalizeV2Entries, createV2IncrementalReconstructor, isV2TranscriptDisplayLine, isMetadataRow } from '@ccv/core/v2-transcript-normalizer';
 import { createEntrySlimmer, createIncrementalSlimmer, internEntryBigFields } from './utils/entry-slim.js';
 import { yieldToMain, runChunkedPass, INGEST_BATCH_SIZE } from './utils/ingestPipeline.js';
 import { rowToListItem } from './utils/v3Rows.js';
@@ -3461,7 +3461,7 @@ class AppBase extends React.Component {
         // Metadata frames (mode / ai-title / ...) are dropped — isRelevantRequest
         // would otherwise surface them as garbage request rows.
         let entry;
-        if (isV2TranscriptLine(rawEntry)) {
+        if (isV2TranscriptDisplayLine(rawEntry)) {
           if (this._v2SseReconstructor.empty() && this._v2ColdSeed) {
             this._v2SseReconstructor.prime(this._v2ColdSeed);
           }

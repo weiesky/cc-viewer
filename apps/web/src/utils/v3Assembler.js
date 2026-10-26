@@ -102,6 +102,13 @@ export function createV3Assembler() {
       if (row.proxyUrl) entry.proxyUrl = row.proxyUrl;
       if (row.proxyRole) entry.proxyRole = row.proxyRole;
       if (isSnapshot) entry._isCheckpoint = true;
+      // Match the legacy adapter's in-place replacement protocol. Without the
+      // paired signals, live session merging treats a later-block prompt edit
+      // as unchanged even though the replayed entry contains the new text.
+      if (row.evt === 'ctl') {
+        entry._isCheckpoint = true;
+        entry._inPlaceReplaceDetected = true;
+      }
       if (row.inProgress) {
         entry.inProgress = true;
         entry.requestId = `${row.sessionId}-${row.seq}`;

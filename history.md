@@ -6,6 +6,10 @@
 
 - test(server): **稳定终端回退用例** — 预热测试脚本首次执行，按增量捕获验证 `gnome-terminal` 缺失后的 `konsole` 回退，避免全量并行时首次执行扫描超过固定等待窗口。Coverage: `branch-routes-files-fs.test.js`.
 
+- fix(web+server): **恢复任务中插入的用户指令** — 「对话」按原始 JSONL 的队列附件及 wire 中的插入提示还原用户气泡，保持原始报文不变；排队气泡新增「追加中」禁用状态，发送失败恢复，队列快照按当前查看项目/实例隔离，避免重复提交。修复 SDK 打断补充文本在等长消息后续内容块中被漏记及与打断标记同块时被隐藏的问题，实时与刷新后均可恢复；「立即追加」点击后先在对话末尾显示待确认用户消息，真实记录到达后归并。Coverage: `queued-prompt.test.js`, `v2-transcript-normalizer.test.js`, `queued-prompt-display.test.js`, `chat-queue.test.js`, `sdk-manager-query.test.js`, `queue-bubbles.test.js`, `branch-server.test.js`, `v2-core.test.js`, `v3-assembler.test.js`, `content-filter-unit.test.js`, `optimistic-queue-message.test.js`, `optimistic-queue-chat.test.js`.
+
+- fix(web+server): **完善排队消息恢复与发送状态** — 兼容 SDK 块数组提示的 Markdown 展示，避免增量对话重复用户气泡；清理失效终端的队列阻塞，严格隔离项目/实例操作，完善断连、失败及临时消息归并。Coverage: `optimistic-queue-chat.test.js`, `optimistic-queue-message.test.js`, `terminal-ws-attach.test.js`, `chat-queue.test.js`, `pty-manager-instance.test.js`, `sdk-manager-query.test.js`, `branch-server.test.js`.
+
 - feat(web+server): **SDK 上下文用量合并进对话血条** — SDK 模式血条改用会话用量，弹层新增分类构成汇总、记忆与 Skill 总消耗及逐项消耗（SDK 未提供的记忆分文件使用内容长度估算）；桌面与移动端同步，PTY 保持原策略。原「网络 → 上下文用量」面板与网格保留；用量请求按项目/实例隔离，清空后等待新快照恢复。Coverage: `context-usage-view.test.js`, `sdk-context-provider.test.js`, `sdk-context-blood-bar.test.js`, `sdk-context-usage-tab.test.js`, `api-project-memory.test.js`, `sdk-context-route.test.js`, `sdk-manager-query.test.js`, `sdk-session-registry.test.js`, `ws-instance-isolation.test.js`.
 
 - fix(web): **修复 Git commit 不刷新「GIT 变更」面板** — 将 commit 纳入变更命令识别，成功后自动刷新文件与 Git 变更。Coverage: `commandValidator.test.js`, `tool-file-change-controller.test.js`.

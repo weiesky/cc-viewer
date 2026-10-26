@@ -85,8 +85,11 @@ concat, ctl replace-tail → swap last; ctl compact is a state no-op) and
 builds v1-shape entries in the shape the legacy live wire delivered AFTER
 server-side reconstruction: full accumulated `body.messages` (shared refs),
 `_seq`/`_seqEpoch("v2:<uuid>")`/`_totalMessageCount`, `_isCheckpoint` on
-snapshot rows, placeholder entries for `inProgress` rows, `response.body`
-from the responses line. **No `body.tools`/`body.system`** — rows carry
+snapshot rows. ctl replace-tail rows additionally carry the paired
+`_isCheckpoint` + `_inPlaceReplaceDetected` signals so the live ingest can
+replace the last message through `applyInPlaceLastMsgReplace`, including prompts
+appended in later content blocks. Placeholder entries for `inProgress` rows,
+`response.body` from the responses line. **No `body.tools`/`body.system`** — rows carry
 classification, the detail view fetches full bodies. Entries feed the
 EXISTING ingest (`_ingestLiveEntry` seam / `_chunkedEntries` at load_end):
 merge guards, ChatView, team modal, tool-result maps keep exact semantics

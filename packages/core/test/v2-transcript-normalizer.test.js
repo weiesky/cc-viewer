@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeV2Entries, isV2TranscriptLine, isMetadataRow, buildSyntheticEntry } from '../src/v2-transcript-normalizer.js';
+import { normalizeV2Entries, isV2TranscriptLine, isMetadataRow, buildSyntheticEntry, createV2IncrementalReconstructor } from '../src/v2-transcript-normalizer.js';
 
 // ============================================================================
 // Test helpers — build minimal Claude Code 2.x transcript lines
@@ -255,6 +255,111 @@ describe('buildSyntheticEntry', () => {
     ];
     const e = buildSyntheticEntry(rows, 'sid-1', 0);
     assert.deepEqual(e.response.body, { model: 'k3', usage: { input_tokens: 1 } });
+  });
+});
+
+describe('queued prompt recovery', () => {
+  const queuedAttachment = (prompt, extra = {}) => ({
+    type: 'attachment', uuid: `queue-${++uuidSeq}`, parentUuid: 'tool-result-1', sessionId: 'sid-1',
+    timestamp: '2026-07-30T03:43:41.000Z', entrypoint: 'cli',
+    attachment: { type: 'queued_command', commandMode: 'prompt', prompt, origin: { kind: 'human' }, timestamp: '2026-07-30T03:43:41.000Z' },
+    ...extra,
+  });
+
+  it('keeps the attachment at its file position, not its earlier enqueue timestamp', () => {
+    const rows = [
+      makeLine({ type: 'assistant', role: 'assistant', content: [{ type: 'tool_use', id: 'tool-1', name: 'Bash', input: {} }], ts: '2026-07-30T03:43:40.000Z' }),
+      makeLine({ content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'done' }], ts: '2026-07-30T03:43:50.000Z' }),
+      queuedAttachment('steer now'),
+      makeLine({ type: 'assistant', role: 'assistant', content: [{ type: 'text', text: 'adjusted' }], ts: '2026-07-30T03:43:52.000Z' }),
+    ];
+    const entry = normalizeV2Entries(rows)[0];
+    const messages = entry.body.messages;
+    assert.deepEqual(messages.map((m) => m.role), ['assistant', 'user', 'assistant']);
+    assert.equal(messages.some((m) => m.content === 'steer now'), false, 'auxiliary prompt never enters the model packet');
+    assert.deepEqual(entry._ccvQueuedPrompts.map((p) => [p.content, p.afterIndex, p._ccvSourceId]), [['steer now', 1, rows[2].uuid]]);
+    assert.equal(rows[2].message, undefined, 'raw JSONL is not rewritten into a model user message');
+  });
+
+  it('preserves the transcript sequence around an attachment with an earlier enqueue timestamp', () => {
+    const earlierTool = makeLine({ type: 'assistant', role: 'assistant', content: [{ type: 'text', text: 'tool' }], ts: '2026-07-30T03:43:40.000Z' });
+    const laterResult = makeLine({ content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'result' }], ts: '2026-07-30T03:43:50.000Z' });
+    const queued = queuedAttachment('between neighbours');
+    const laterAssistant = makeLine({ type: 'assistant', role: 'assistant', content: [{ type: 'text', text: 'later' }], ts: '2026-07-30T03:43:42.000Z' });
+    const rows = [laterResult, earlierTool, queued, laterAssistant];
+    const entry = normalizeV2Entries(rows)[0];
+    const messages = entry.body.messages;
+    assert.deepEqual(messages.map((m) => m.content), [laterResult.message.content, earlierTool.message.content, laterAssistant.message.content]);
+    assert.deepEqual(entry._ccvQueuedPrompts.map((p) => [p.content, p.afterIndex]), [['between neighbours', 1]]);
+    assert.equal(rows[2].message, undefined);
+  });
+
+  it('preserves identical deliberate prompts as separate occurrences', () => {
+    const rows = [makeLine({ content: 'start' }), queuedAttachment('same'), queuedAttachment('same')];
+    const entry = normalizeV2Entries(rows)[0];
+    assert.deepEqual(entry.body.messages.map((m) => m.content), ['start']);
+    assert.deepEqual(entry._ccvQueuedPrompts.map((p) => p.content), ['same', 'same']);
+    assert.notEqual(entry._ccvQueuedPrompts[0]._ccvSourceId, entry._ccvQueuedPrompts[1]._ccvSourceId);
+    assert.deepEqual(entry._ccvQueuedPrompts.map((p) => p.afterIndex), [0, 0]);
+  });
+
+  it('accepts SDK blocks and ignores pending, automatic, and ordinary dequeued rows', () => {
+    const prompt = [{ type: 'text', text: 'SDK steer' }];
+    const rows = [
+      { type: 'queue-operation', operation: 'enqueue', content: 'pending', sessionId: 'sid-1' },
+      makeLine({ content: 'ordinary' }),
+      queuedAttachment(prompt, { entrypoint: 'sdk-ts', attachment: { type: 'queued_command', commandMode: 'prompt', prompt } }),
+      { type: 'queue-operation', operation: 'dequeue', sessionId: 'sid-1' },
+      makeLine({ content: 'next ordinary turn' }),
+      { type: 'queue-operation', operation: 'popAll', content: 'legacy steer', sessionId: 'sid-1', timestamp: '2026-07-30T03:43:50.000Z' },
+      { type: 'queue-operation', operation: 'popAll', content: '/theme', sessionId: 'sid-1' },
+    ];
+    const entry = normalizeV2Entries(rows)[0];
+    const messages = entry.body.messages;
+    assert.deepEqual(messages.map((m) => m.content), ['ordinary', 'next ordinary turn']);
+    assert.deepEqual(entry._ccvQueuedPrompts.map((p) => p.content), [prompt]);
+    assert.equal(messages.some((m) => m.content === 'pending'), false);
+    assert.equal(messages.some((m) => m.content === '/theme'), false);
+    assert.equal(messages.some((m) => m.content === 'legacy steer'), false, 'popAll is not a confirmed user message');
+  });
+
+  it('does not split /clear according to an attachment older timestamp', () => {
+    const rows = [
+      makeLine({ content: 'before' }),
+      makeLine({ content: '<command-name>/clear</command-name>', ts: '2026-07-30T03:44:00.000Z' }),
+      queuedAttachment('after clear', { timestamp: '2026-07-30T03:43:00.000Z', attachment: { type: 'queued_command', commandMode: 'prompt', prompt: 'after clear', origin: { kind: 'human' }, timestamp: '2026-07-30T03:43:00.000Z' } }),
+    ];
+    const out = normalizeV2Entries(rows);
+    assert.equal(out.length, 2);
+    assert.deepEqual(out[1].body.messages.map((m) => m.content), []);
+    assert.deepEqual(out[1]._ccvQueuedPrompts.map((p) => [p.content, p.afterIndex]), [['after clear', -1]]);
+  });
+
+  it('dedups uuid-less attachments independently instead of collapsing them to one', () => {
+    const reconstructor = createV2IncrementalReconstructor();
+    const a = queuedAttachment('first', { uuid: undefined });
+    const b = queuedAttachment('second', { uuid: undefined });
+    const first = reconstructor.reconstruct(a);
+    const second = reconstructor.reconstruct(b);
+    assert.deepEqual(first._ccvQueuedPrompts.map((p) => p.content), ['first']);
+    assert.deepEqual(second._ccvQueuedPrompts.map((p) => p.content), ['first', 'second']);
+    assert.equal(reconstructor.reconstruct(b), null);
+  });
+
+  it('incrementally appends confirmed inputs and dedups their replay after prime', () => {
+    const seedLine = makeLine({ content: 'seed' });
+    const seed = normalizeV2Entries([seedLine])[0];
+    const reconstructor = createV2IncrementalReconstructor();
+    reconstructor.prime(seed);
+    const line = queuedAttachment('live steer');
+    const snapshot = reconstructor.reconstruct(line);
+    assert.equal(snapshot.body.messages.length, 1, 'the real message count is unchanged');
+    assert.deepEqual(snapshot._ccvQueuedPrompts.map((p) => [p.content, p.afterIndex]), [['live steer', 0]]);
+    assert.equal(reconstructor.reconstruct(line), null);
+    assert.equal(reconstructor.reconstruct({ type: 'queue-operation', operation: 'enqueue', content: 'pending' }), null);
+    const replay = createV2IncrementalReconstructor();
+    replay.prime(snapshot);
+    assert.equal(replay.reconstruct(line), null);
   });
 });
 
