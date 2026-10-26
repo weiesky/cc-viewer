@@ -35,6 +35,7 @@ import { resolve as _pathResolve, dirname as _pathDirname, sep as _pathSep } fro
 import { createHash, randomBytes } from 'node:crypto';
 import { registerSdkSessionLister } from './sdk-session-index.js';
 import { readPrefsRaw } from './prefs-store.js';
+import { projectKeyForCwd } from './system-prompt-snapshots.js';
 
 let _query;
 try {
@@ -94,6 +95,12 @@ function _matchesProject(sess, project) {
   return sanitized === project || rawBase === project;
 }
 
+// A project stamp matches a session when it names the session's exact normalized cwd
+// (absolute-path form) or its sanitized/raw basename (the web client's usual form).
+function _sessionMatchesProject(sess, project) {
+  return sess.key === _normalizeCwd(project) || _matchesProject(sess, project);
+}
+
 // Resolve an anchor { instanceKey|cwd|project } to a Session WITHOUT switching active (read ops).
 // `cwd` is an absolute path (exact key match); `project` is the SANITIZED project name the
 // web client sends (ChatView stamps `viewProject || projectName`, where projectName =
@@ -107,13 +114,20 @@ function _sessionForAnchor(anchor) {
   const cwd = (typeof anchor.cwd === 'string' && anchor.cwd) || null;
   const project = (typeof anchor.project === 'string' && anchor.project) || null;
   if (instanceKey) {
+    let byInstance = null;
     for (const s of _sessions.values()) {
-      if (s.instanceKey === instanceKey) return s;
+      if (s.instanceKey === instanceKey) { byInstance = s; break; }
     }
     // An exact instance that no longer exists must never fall back to a
     // same-basename sibling — that would execute the user's action in the
     // wrong workspace. The caller's unknown-anchor path drops + reports it.
-    return null;
+    if (!byInstance) return null;
+    // The web client stamps project and instance TOGETHER. A stale/mismatched pair
+    // must not let instance priority execute/read in a project other than the one
+    // the viewer named — resolve the pair to null instead (never fall through to
+    // project-only resolution, which could pick an unrelated sibling).
+    if (project && !_sessionMatchesProject(byInstance, project)) return null;
+    return byInstance;
   }
   if (cwd) return _sessions.get(_normalizeCwd(cwd)) || null;
   if (!project) return null;
@@ -239,6 +253,12 @@ function _userMessage(text) {
   };
 }
 
+// Bare "/clear" is the CLI's context-reset command; arguments/case variants are not the
+// reset command. Trim only surrounding whitespace (composer newlines/padding).
+function _isBareClearCommand(text) {
+  return typeof text === 'string' && text.trim() === '/clear';
+}
+
 /**
  * Normalize an SDK `task_*` system message into the camelCase relay payload
  * broadcast as `{ type: 'sdk-task', ... }`. Lossless pass-through (snake→camel
@@ -357,10 +377,15 @@ function _createSession(key, cwd) {
   let _lastContextUsage = null;   // last sdk-context-usage frame for WS reconnect replay
   let _ctxUsageFetching = false;  // one getContextUsage control request in flight
   let _ctxUsageQueued = false;    // a turn-end/compact arrived while in flight → rerun once (coalesce)
-  // Generation counter for the in-flight gate: _clearContextUsage bumps it so a stale
-  // request's .finally can't clear the flag of a NEWER in-flight request started after a
-  // session switch (the flag is only reset by the generation that set it).
+  // Generation counter for the in-flight gate AND stale-refresh suppression:
+  // _clearContextUsage bumps it so (a) a stale request's .finally can't clear the flag of a
+  // NEWER in-flight request started after a clear/switch (the flag is only reset by the
+  // generation that set it) and (b) a request that resolves after a clear cannot retain or
+  // broadcast its pre-clear snapshot.
   let _ctxUsageSeq = 0;
+  let _ctxUsageClearEpoch = 0;
+  let _ctxUsageClearPending = false;
+  let _ctxUsageStartSeq = 0;
   // Last sdk-mcp-status frame for WS reconnect replay. mcpServerStatus() is on-demand only
   // (HTTP pull + reconnect replay + clear-on-switch) — unlike context usage it is NOT
   // turn-correlated, so it gets no turn-end/compact trigger and none of the in-flight gate
@@ -375,6 +400,14 @@ function _createSession(key, cwd) {
   // the id lets web clients act on individual queued bubbles (send-now / remove) and the
   // queue-state WS broadcast keeps every client in sync (server is the source of truth).
   let _messageQueue = [];
+  // Single in-transit slot between the queued FIFO and an ACCEPTED turn. An item is moved
+  // here before the interrupt (busy send-now) or before the drain start, so it is no longer
+  // actionable but stays visible in the snapshot as status: 'dispatching' (disabled bubble)
+  // until _startTurn commits it with a successful inputQueue.push. A pre-push failure puts
+  // it back at the queue head; a pushed message is never requeued, even if its turn fails.
+  let _dispatching = null;
+  let _dispatchingStarting = false; // _startTurn is running for _dispatching (pre-push)
+  let _dispatchAttempts = 0;
   // Stop semantics (product decision): Stop parks the queue instead of dropping it —
   // interruptTurn sets this flag so sendUserMessage's drain loop exits without running the
   // parked items; cleared when a fresh user message / send-now starts a new turn.
@@ -481,11 +514,11 @@ function _createSession(key, cwd) {
 
     // If a turn is already running, queue this message and return
     if (_queryBusy) {
-      if (_messageQueue.length >= MAX_QUEUE_ITEMS) {
+      if (_messageQueue.length + (_dispatching ? 1 : 0) >= MAX_QUEUE_ITEMS) {
         // Negative ack: the frontend cleared the composer optimistically — never fail
         // silently. Only the reject frame goes out (no queue-state — nothing changed).
         console.warn('[sdk-manager] queue full, rejecting message');
-        try { if (_broadcastWs) _broadcastWs({ type: 'queue-rejected', reason: 'full', cwd: _cwd, sessionId: _sessionId || null, instanceKey }); }
+        try { if (_broadcastWs) _broadcastWs({ type: 'queue-rejected', reason: 'full', cwd: _cwd, project: projectKeyForCwd(_cwd) || undefined, sessionId: _sessionId || null, instanceKey }); }
         catch (err) { reportSwallowed('sdk-manager.reject-broadcast', err); }
         return;
       }
@@ -497,23 +530,41 @@ function _createSession(key, cwd) {
     // A fresh user-initiated turn re-arms automatic draining of parked (Stop-kept) items.
     _suppressDrain = false;
     _consecutiveDeaths = 0; // explicit user action re-arms the death-drain backstop
-    await _startTurn(text);
+    const { promise } = await _startTurn(text);
+    return promise;
+  }
+
+  /** Queue snapshot. The optional dispatching item is listed first (it has been selected
+   * as the next turn) and carries status 'dispatching' until _startTurn accepts it; queued
+   * items carry status 'queued'. Both the broadcast and the reconnect snapshot use this
+   * one shape so every client converges on the same actionable set. */
+  function _getQueueSnapshot() {
+    const items = [];
+    if (_dispatching) items.push({ id: _dispatching.id, text: _dispatching.text, ts: _dispatching.ts, status: 'dispatching' });
+    for (const item of _messageQueue) items.push({ id: item.id, text: item.text, ts: item.ts, status: 'queued' });
+    return items;
   }
 
   /** Broadcast the queue snapshot to all terminal-WS clients (drives the floating bubbles). */
   function _broadcastQueueState() {
     if (!_broadcastWs) return;
     try {
-      _broadcastWs({ type: 'queue-state', cwd: _cwd, sessionId: _sessionId || null, instanceKey, items: _messageQueue.map(({ id, text, ts }) => ({ id, text, ts })) });
+      _broadcastWs({ type: 'queue-state', cwd: _cwd, project: projectKeyForCwd(_cwd) || undefined, sessionId: _sessionId || null, instanceKey, items: _getQueueSnapshot() });
     } catch (err) { console.warn('[sdk-manager] queue-state broadcast threw:', err?.message); }
   }
 
   /**
    * Start one turn: park a turn record, ensure the resident query exists, push the
-   * message. Resolves when the turn's result arrives (or on teardown/death settle).
+   * message. Returns { started, promise }:
+   *  - started: true only once the message was ACCEPTED by inputQueue.push (the commit
+   *    point). False means construction/teardown/push failed before delivery, so a
+   *    dispatching caller restores its queued item instead of treating it as sent.
+   *  - promise: resolves when the turn settles (result / teardown / death). It never
+   *    rejects; a later turn failure must NOT put an already-pushed message back.
    */
-  async function _startTurn(text) {
+  async function _startTurn(text, dispatch = null) {
     const { rec, promise } = _beginTurn();
+    if (dispatch) rec.dispatchItem = dispatch;
     _queryBusy = true;
     try {
       await _ensureResidentQuery();
@@ -523,17 +574,41 @@ function _createSession(key, cwd) {
       _settleTurn(rec);
       _queryBusy = false;
       _notifyQueryError(err);
-      return promise;
+      return { started: false, promise };
     }
     // Teardown/stop raced with construction — the settle already happened; don't push.
-    if (rec.settled) return promise;
-    if (!_activeQuery || !_inputQueue) {
+    if (rec.settled || (dispatch && _dispatching !== dispatch)) {
+      if (!rec.settled) {
+        _pendingTurns = _pendingTurns.filter((turn) => turn !== rec);
+        _settleTurn(rec);
+        if (_dispatching !== dispatch) _queryBusy = false;
+      }
+      return { started: false, promise };
+    }
+    if (!_activeQuery || !_inputQueue || (typeof _inputQueue.isClosed === 'function' && _inputQueue.isClosed()) || (dispatch && _dispatching !== dispatch)) {
+      _pendingTurns = _pendingTurns.filter((turn) => turn !== rec);
+      _settleTurn(rec);
+      _queryBusy = false;
+      return { started: false, promise };
+    }
+    // Typed /clear is detected at EXECUTION time (never at enqueue time): a clear queued
+    // behind a busy turn must not wipe the running turn's usage panel. Invalidate the
+    // retained snapshot before the CLI sees the command; the /clear turn's own result then
+    // refreshes it with the post-clear numbers.
+    if (_isBareClearCommand(text)) _clearContextUsage('context-cleared');
+    try {
+      // The push below is the acceptance point watched by the dispatching slot. The push
+      // queue itself never throws (a closed queue silently drops), and teardown nulls the
+      // handles synchronously before closing, so the checks above plus this call are the
+      // complete pre-push failure surface.
+      _inputQueue.push(_userMessage(text));
+    } catch (err) {
       _pendingTurns = _pendingTurns.filter((r) => r !== rec);
       _settleTurn(rec);
       _queryBusy = false;
-      return promise;
+      reportSwallowed('sdk-manager.queue-push', err);
+      return { started: false, promise };
     }
-    _inputQueue.push(_userMessage(text));
     _turnInFlight = true;
     // Turn-level loading fallback: light the spinner the moment the turn is pushed.
     // The CLI's own session_state_changed(running) arrives later and is idempotent
@@ -541,7 +616,7 @@ function _createSession(key, cwd) {
     // the only "on" signal, paired with the result-idle broadcast in _processMessage.
     _announceSessionState('running');
     _armTurnWatchdog();
-    return promise;
+    return { started: true, promise };
   }
 
   /**
@@ -828,6 +903,14 @@ function _createSession(key, cwd) {
     if (_activeQuery !== query) return; // stale generation — teardown already moved on
     _activeQuery = null;
     _inputQueue = null;
+    if (_ctxUsageClearPending) {
+      // A child that exits while applying /clear must not resume the cleared session on the
+      // next message. Start fresh, allow the next init/read, and invalidate older controls.
+      _ctxUsageClearPending = false;
+      _ctxUsageClearEpoch++;
+      _sessionId = null;
+      _launchResume = null;
+    }
     _clearGraceTimer();
     _clearTurnWatchdog();
     _lateResultTombstones = 0;
@@ -839,6 +922,15 @@ function _createSession(key, cwd) {
       _notifyQueryError(err);
     }
     _settleAllTurns();
+    // A dispatching item waiting on an interrupt unwind never reached the SDK. Death
+    // parks the backlog, so put it back at the queue head (actionable again) instead of
+    // leaving it locked in the slot; the drain below may immediately re-select it. Once
+    // _startTurn is running the item is mid-commit and must not be resurrected here.
+    if (_dispatching && !_dispatchingStarting) {
+      _messageQueue.unshift(_dispatching);
+      _dispatching = null;
+      _broadcastQueueState();
+    }
     // Flush pending approvals with a dismiss broadcast, else their modals hang forever.
     const pending = Array.from(_pendingApprovals, ([id, p]) => ({ id, kind: p.kind || null }));
     for (const { id, kind } of pending) {
@@ -894,13 +986,78 @@ function _createSession(key, cwd) {
     catch (cbErr) { console.warn('[sdk-manager] onQueryError threw:', cbErr?.message); }
   }
 
+  /**
+   * Start the dispatching item. The slot was claimed synchronously by the caller (auto
+   * drain or idle send-now), so repeated drains cannot start it twice. The item stays in
+   * the snapshot as 'dispatching' until _startTurn reports acceptance; if construction or
+   * the push fails before delivery it returns to the queue head, enabled again.
+   */
+  function _startDispatch() {
+    const item = _dispatching;
+    if (!item || _dispatchingStarting) return;
+    _dispatchingStarting = true;
+    _dispatchAttempts += 1;
+    _startTurn(item.text, item).then(({ started, promise }) => {
+      // A reset/clear that superseded this dispatch already swept the slot — never
+      // resurrect its item across that boundary.
+      if (_dispatching !== item) {
+        // A superseded start may have cleared _queryBusy while a newer dispatch
+        // is waiting. Resume only the current item, never the cancelled one.
+        _maybeDrain();
+        return;
+      }
+      _dispatchingStarting = false;
+      if (!started) {
+        // A pre-push failure has not committed this item. Retry the SAME slot once
+        // without depending on an unrelated legacy turn's busy flag or a result.
+        if (_dispatchAttempts < 2 && !_suppressDrain && !_switching) {
+          _broadcastQueueState();
+          _startDispatch();
+          return;
+        }
+        _dispatching = null;
+        _dispatchAttempts = 0;
+        _messageQueue.unshift(item);
+        _broadcastQueueState();
+        return;
+      }
+      _dispatching = null;
+      // Push accepted: the item is now the running turn, not a queued bubble. Clearing
+      // the slot here also means a later turn failure (error result / interrupt / death)
+      // can never requeue it.
+      _broadcastQueueState();
+      _dispatchAttempts = 0;
+      _consecutiveDeaths = 0; // only an accepted push re-arms the death-drain backstop
+      // The turn may already have settled inside the same microtask window (fast fake or
+      // CLI); continue the queue now when the normal result-driven drain could not.
+      _maybeDrain();
+      promise.catch((err) => reportSwallowed('sdk-manager.dispatch-turn', err));
+    }).catch((err) => {
+      if (_dispatching !== item) {
+        // A superseded start may have cleared _queryBusy while a newer dispatch
+        // is waiting. Resume only the current item, never the cancelled one.
+        _maybeDrain();
+        return;
+      }
+      _dispatchingStarting = false;
+      _dispatching = null;
+      _dispatchAttempts = 0;
+      _messageQueue.unshift(item);
+      _broadcastQueueState();
+      reportSwallowed('sdk-manager.dispatch', err);
+    });
+  }
+
   /** Drain one queued message after a turn boundary (result-driven, not loop-driven). */
   function _maybeDrain() {
-    if (_suppressDrain || _queryBusy || _switching) return;
-    if (_messageQueue.length === 0) return;
-    const next = _messageQueue.shift();
-    _broadcastQueueState();
-    _sendUserMessage(next.text).catch((err) => reportSwallowed('sdk-manager.drain', err));
+    if (_suppressDrain || _queryBusy || _switching || _dispatchingStarting) return;
+    if (!_dispatching) {
+      if (_messageQueue.length === 0) return;
+      _dispatching = _messageQueue.shift();
+      // Make the bubble visible-but-disabled while the turn is constructed/pushed.
+      _broadcastQueueState();
+    }
+    _startDispatch();
   }
 
   /**
@@ -935,6 +1092,9 @@ function _createSession(key, cwd) {
         if (msg.subtype === 'session_state_changed') {
           _announceSessionState(msg.state);
         } else if (msg.subtype === 'init') {
+          // /clear may reinitialize instead of returning a normal result. The new session is
+          // now authoritative, so context reads may resume (without resuming the old session).
+          if (_ctxUsageClearPending && msg.session_id) _ctxUsageClearPending = false;
           if (_broadcastWs && Array.isArray(msg.slash_commands) && msg.slash_commands.length > 0
             && msg.session_id !== _initAnnouncedSid) {
             _initAnnouncedSid = msg.session_id;
@@ -1048,7 +1208,9 @@ function _createSession(key, cwd) {
         _maybeDrain();
         // Refresh the context-usage panel AFTER the turn fully settles (fire-and-forget,
         // never awaited in this message loop). Placement after settle/drain guarantees a
-        // synchronous throw here can't truncate turn settlement.
+        // synchronous throw here can't truncate turn settlement. The CLI has now completed
+        // the /clear turn, so a fresh read is allowed again.
+        _ctxUsageClearPending = false;
         _refreshContextUsage('turn-end');
         break;
       }
@@ -1079,13 +1241,19 @@ function _createSession(key, cwd) {
    * Returns { ok:true, snapshot } | { ok:false, reason:'session-inactive'|'control-failed' }.
    * Never throws — the panel is best-effort; failures must not surface as sdk-error toasts.
    *
-   * Identity guard (not a null check): teardown nulls `_activeQuery`, but a subsequent user
-   * message lazily rebuilds it into a NEW query object. A late-resolving control promise from
-   * the dead generation must not broadcast that session's numbers into the new panel.
+   * Identity/generation guards (not just a null check): teardown nulls `_activeQuery`, but a
+   * subsequent user message lazily rebuilds it into a NEW query object. A late-resolving
+   * control promise from the dead generation must not broadcast that session's numbers into
+   * the new panel. `generation` additionally rejects a request that outlived a context clear
+   * on the SAME query (typed /clear), so its pre-clear numbers are neither retained nor
+   * returned. Manual pulls capture the same epoch, and every pull is newest-start-wins so
+   * an older response cannot overwrite a newer turn-end snapshot.
    */
-  async function _collectContextUsage(trigger) {
+  async function _collectContextUsage(trigger, generation, clearEpoch = _ctxUsageClearEpoch) {
+    if (_ctxUsageClearPending) return { ok: false, reason: 'session-inactive' };
     const q = _activeQuery;
     if (!q || typeof q.getContextUsage !== 'function') return { ok: false, reason: 'session-inactive' };
+    const startSeq = ++_ctxUsageStartSeq;
     let timeoutId;
     try {
       // SDK request() has no built-in timeout — race a bound so a live-but-unresponsive
@@ -1097,11 +1265,15 @@ function _createSession(key, cwd) {
       });
       const usage = await Promise.race([q.getContextUsage(), timeout]);
       if (_activeQuery !== q) return { ok: false, reason: 'session-inactive' }; // stale generation
+      // Cleared/superseded while this request was in flight — the numbers describe the
+      // PRE-clear context and must not land in the retained snapshot.
+      if (generation != null && generation !== _ctxUsageSeq) return { ok: false, reason: 'session-inactive' };
+      if (clearEpoch !== _ctxUsageClearEpoch || _ctxUsageClearPending || startSeq !== _ctxUsageStartSeq) return { ok: false, reason: 'session-inactive' };
       // Degenerate resolve (null/undefined/{}) — skip rather than broadcast a usage-less frame.
       if (!usage || typeof usage !== 'object' || Array.isArray(usage) || Object.keys(usage).length === 0) {
         return { ok: false, reason: 'control-failed' };
       }
-      _lastContextUsage = { type: 'sdk-context-usage', sessionId: _sessionId, ts: Date.now(), trigger, usage, cwd: _cwd };
+      _lastContextUsage = { type: 'sdk-context-usage', sessionId: _sessionId, ts: Date.now(), trigger, usage, cwd: _cwd, instanceKey };
       return { ok: true, snapshot: _lastContextUsage };
     } catch (err) {
       reportSwallowed('sdk-manager.context-usage', err);
@@ -1120,8 +1292,12 @@ function _createSession(key, cwd) {
   function _refreshContextUsage(trigger) {
     if (_ctxUsageFetching) { _ctxUsageQueued = true; return; }
     _ctxUsageFetching = true;
-    const seq = ++_ctxUsageSeq; // capture this generation; a session switch bumps it
-    _collectContextUsage(trigger).then((r) => {
+    const seq = ++_ctxUsageSeq; // capture this generation; a clear/session switch bumps it
+    _collectContextUsage(trigger, seq).then((r) => {
+      // A clear/switch landed while this request was in flight: its numbers are from the
+      // old generation and must not reach clients (the snapshot write is guarded inside
+      // _collectContextUsage for the same reason).
+      if (seq !== _ctxUsageSeq) return;
       if (r.ok && _broadcastWs) {
         try { _broadcastWs(r.snapshot); }
         catch (err) { reportSwallowed('sdk-manager.context-usage-broadcast', err); }
@@ -1136,18 +1312,21 @@ function _createSession(key, cwd) {
   }
 
   /**
-   * Clear the usage snapshot on a session boundary (switch / full reset). Broadcasts a
-   * usage:null clear frame ONLY when a snapshot was present (an empty-to-empty broadcast
-   * would just be noise). The death path deliberately does NOT clear (same-session resume
-   * keeps the last known value, matching _lastInitSnapshot's death behavior).
+   * Clear the usage snapshot on a context boundary (session switch / full reset / typed
+   * /clear). A usage:null clear frame is emitted when a snapshot was present, and always
+   * for an explicit /clear (a synchronization signal even when no snapshot existed).
+   * The death path deliberately does NOT clear (same-session resume keeps the last known value,
+   * matching _lastInitSnapshot's death behavior).
    */
   function _clearContextUsage(trigger) {
     const had = _lastContextUsage !== null;
     _lastContextUsage = null;
     _ctxUsageSeq++; // invalidate any in-flight generation so its finally can't clear a newer gate
+    _ctxUsageClearEpoch++;
+    _ctxUsageClearPending = trigger === 'context-cleared';
     _ctxUsageFetching = false;
     _ctxUsageQueued = false;
-    if (had && _broadcastWs) {
+    if ((had || trigger === 'context-cleared') && _broadcastWs) {
       try { _broadcastWs({ type: 'sdk-context-usage', sessionId: _sessionId, ts: Date.now(), trigger, usage: null, cwd: _cwd, instanceKey }); }
       catch (err) { reportSwallowed('sdk-manager.context-usage-broadcast', err); }
     }
@@ -1310,7 +1489,7 @@ function _createSession(key, cwd) {
           }
         } catch (err) { reportSwallowed('sdk-manager.waterfall.plan', err); }
       }
-      const planPayload = { type: 'sdk-plan-pending', id, input, cwd: _cwd, sessionId: effSessionId(), ...origin };
+      const planPayload = { type: 'sdk-plan-pending', id, input, cwd: _cwd, sessionId: effSessionId(), instanceKey, ...origin };
       if (_broadcastWs) {
         _broadcastWs(planPayload);
       }
@@ -1619,8 +1798,14 @@ function _createSession(key, cwd) {
    * Returns the list of approvals that were pending at interrupt time
    * (`[{ id, kind }]`) so the caller (server.js) can broadcast modal-close
    * messages to every client. Always an array (empty when nothing was pending).
+   *
+   * `keepDispatch` is set only by send-now's own preemption: the dispatching item it
+   * just selected must survive this interrupt. A user Stop (no options) parks the whole
+   * backlog, so a selected-but-not-yet-started item returns to the queue head and its
+   * bubble becomes actionable again. An item whose _startTurn is already running cannot
+   * be recalled (the push is synchronous once construction resolves), so it stays put.
    */
-  function _interruptTurn() {
+  function _interruptTurn({ keepDispatch = false } = {}) {
     const cancelled = _cancelAllApprovals();
     const q = _activeQuery;
     // Key off the sticky in-flight flag, not the FIFO: the grace/watchdog force-settle
@@ -1638,20 +1823,28 @@ function _createSession(key, cwd) {
       }
       _armSettleGrace();
     }
+    if (_dispatching && !_dispatchingStarting && !keepDispatch) {
+      _messageQueue.unshift(_dispatching);
+      _dispatching = null;
+    }
     _suppressDrain = true;
     _broadcastQueueState();
     return cancelled;
   }
 
   /**
-   * Send-now on a queued bubble: interrupt the running turn and make this message the next
-   * one executed. Unlike Stop, this does NOT suppress draining — the in-flight
-   * sendUserMessage loop picks the prioritized item up as soon as the abort settles
-   * (JS single-threading: the splice+unshift below is synchronous, so the drain's next
-   * iteration always sees it at the head).
+   * Send-now on a queued bubble: move this message into the single dispatching slot and
+   * make it the next turn. While busy it interrupts the running turn first, then the
+   * result-driven drain starts the dispatching item as soon as the abort settles. While
+   * idle (parked queue after Stop) it runs immediately. Both paths share _startDispatch's
+   * lifecycle: the bubble stays in the snapshot as 'dispatching' (disabled) until
+   * _startTurn accepts it; a pre-push failure restores it to the queue.
    *
-   * When no turn is running (parked queue after Stop), the message is executed immediately
-   * as a fresh turn.
+   * Only ONE item may be in flight through that lifecycle: a second send-now (including a
+   * repeat click on the same bubble) is rejected — it must not fire a second interrupt or
+   * reorder the selected item. The current snapshot is re-broadcast so stale clients
+   * converge on the disabled state. Removing the dispatching bubble is rejected for the
+   * same reason; other queued bubbles remain removable.
    *
    * Known semantic: if the FIRST turn is interrupted before its system/init message was
    * processed, `_sessionId` is still null and the prioritized message starts a fresh session
@@ -1661,32 +1854,46 @@ function _createSession(key, cwd) {
    * close approval modals on all clients.
    */
   function _sendQueuedNow(id) {
-    const idx = _messageQueue.findIndex((it) => it.id === id);
-    if (idx < 0) return []; // unknown / already dispatched — no-op BEFORE any interrupt
-    const [item] = _messageQueue.splice(idx, 1);
-    // Send-now ALWAYS means "run this now" — lift a Stop-park even when the aborted turn's
-    // unwind is still in flight (_queryBusy still true). Without this, the drain loop's
-    // `!_suppressDrain` condition would exit with the item already spliced out → silent loss.
-    _suppressDrain = false;
-
-    if (!_queryBusy) {
-      // Parked queue, idle session: run it now (broadcast happens via the drain path —
-      // here we broadcast explicitly since the item left the queue).
+    if (_dispatching) {
+      // The slot already owns the interrupt/drain window. Re-broadcast for convergence
+      // (a client may still render the bubble as actionable), but do not act twice.
       _broadcastQueueState();
-      // Fire-and-forget matches sendUserMessage's existing call sites (WS handler does not await).
-      _sendUserMessage(item.text).catch((err) => console.warn('[sdk-manager] send-now query failed:', err?.message));
       return [];
     }
+    const idx = _messageQueue.findIndex((it) => it.id === id);
+    if (idx < 0) {
+      _broadcastQueueState();
+      return []; // unknown / already dispatched — converge stale clients, never interrupt
+    }
+    const [item] = _messageQueue.splice(idx, 1);
+    _dispatching = item;
+    // Send-now ALWAYS means "run this now" — lift a Stop-park even when the aborted turn's
+    // unwind is still in flight (_queryBusy still true). Without this, the drain's
+    // `!_suppressDrain` condition would exit with the item parked in the slot → silent loss.
+    _suppressDrain = false;
 
-    _messageQueue.unshift(item);
-    const cancelled = _interruptTurn();
-    _suppressDrain = false; // send-now overrides the Stop-park interruptTurn just set
+    if (_queryBusy) {
+      // The interrupt broadcasts the snapshot itself (including this dispatching item).
+      const cancelled = _interruptTurn({ keepDispatch: true });
+      _suppressDrain = false; // send-now overrides the Stop-park interruptTurn just set
+      return cancelled;
+    }
+
+    // Parked queue, idle session: same lifecycle as automatic drain — announce the
+    // dispatching state before starting, then let _startDispatch commit/restore it.
     _broadcastQueueState();
-    return cancelled;
+    _startDispatch();
+    return [];
   }
 
-  /** Remove one queued message (bubble ×). Returns true when found. */
+  /** Remove one queued message (bubble ×). Returns true when found. The dispatching
+   * item is locked until _startTurn accepts it: reject and re-broadcast so a stale
+   * enabled bubble converges instead of silently dropping a message mid-commit. */
   function _removeQueued(id) {
+    if (_dispatching && _dispatching.id === id) {
+      _broadcastQueueState();
+      return false;
+    }
     const idx = _messageQueue.findIndex((it) => it.id === id);
     if (idx < 0) return false;
     _messageQueue.splice(idx, 1);
@@ -1694,16 +1901,18 @@ function _createSession(key, cwd) {
     return true;
   }
 
-  /** Drop all queued messages WITHOUT touching the running turn (session switch). */
+  /** Drop all queued messages WITHOUT touching the running turn (session switch).
+   * A dispatching item is still part of the backlog until its push starts; once
+   * _startTurn is running it is already being accepted and cannot be recalled. */
   function _clearQueued() {
-    if (_messageQueue.length === 0) return;
+    if (_messageQueue.length === 0 && !_dispatching) return;
     _messageQueue = [];
+    // Selection is not delivery: even while _startTurn is awaiting construction,
+    // a scope clear must invalidate the queued input before it can be accepted.
+    // The completion checks this identity and will not resurrect the item.
+    _dispatching = null;
+    _dispatchingStarting = false;
     _broadcastQueueState();
-  }
-
-  /** Queue snapshot for WS-reconnect replay (same pattern as getSdkInitSnapshot). */
-  function _getQueueSnapshot() {
-    return _messageQueue.map(({ id, text, ts }) => ({ id, text, ts }));
   }
 
   /**
@@ -1767,8 +1976,13 @@ function _createSession(key, cwd) {
     _consecutiveDeaths = 0;
     _clearGraceTimer();
     _clearTurnWatchdog();
-    const hadQueued = _messageQueue.length > 0;
+    const hadQueued = _messageQueue.length > 0 || !!_dispatching;
     _messageQueue = [];
+    // Hard reset sweeps the dispatching slot too; a pending _startTurn callback checks
+    // slot identity and therefore will not resurrect the item into the cleared queue.
+    _dispatching = null;
+    _dispatchingStarting = false;
+    _dispatchAttempts = 0;
     _suppressDrain = false;
     // Only broadcast on an actual change — initSdkSession calls this before any client cares,
     // and an empty-to-empty broadcast would just be noise on the wire.
@@ -1820,7 +2034,7 @@ function _createSession(key, cwd) {
       // On-demand fetch for the HTTP route: refresh the snapshot, broadcast to all clients,
       // then reply. Unlike _refreshContextUsage this bypasses the in-flight gate (an explicit
       // user refresh should not be swallowed by a queued turn-end) and returns the outcome.
-      const r = await _collectContextUsage('request');
+      const r = await _collectContextUsage('request', null, _ctxUsageClearEpoch);
       if (r.ok && _broadcastWs) {
         try { _broadcastWs(r.snapshot); }
         catch (err) { reportSwallowed('sdk-manager.context-usage-broadcast', err); }

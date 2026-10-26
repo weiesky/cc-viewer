@@ -14,6 +14,8 @@ import { PERM_AUTO_APPROVE_OPTIONS, PLAN_AUTO_APPROVE_OPTIONS, autoApproveSelect
 import ChatView from './components/chat/ChatView';
 import TerminalPanel from './components/terminal/TerminalPanel';
 import { TerminalWsProvider } from './components/terminal/TerminalWsContext';
+import { SdkContextUsageProvider, useSdkContextUsage } from './components/dashboard/SdkContextUsageProvider';
+import { mergeSdkContextBar } from './utils/contextUsageView';
 import ToolApprovalPanel from './components/approval/ToolApprovalPanel';
 import ApprovalModal from './components/approval/ApprovalModal';
 import MobileGitDiff from './components/mobile/MobileGitDiff';
@@ -34,7 +36,7 @@ import ProxyModal from './components/settings/ProxyModal';
 import OpenFolderIcon from './components/common/OpenFolderIcon';
 import appConfig from './config.json';
 import { t, getLang, setLang, LANG_OPTIONS } from './i18n';
-import { apiUrl } from './utils/apiUrl';
+import { apiUrl, withViewParams } from './utils/apiUrl';
 import { setViewScope } from './utils/viewScope';
 import * as SeqLoaders from './utils/seqResourceLoaders';
 
@@ -42,6 +44,31 @@ const CALIBRATION_MODELS = appConfig.calibrationModels;
 
 function MobileCtxLabelText({ projectName }) {
   return <>{t('ui.liveMonitoring')}{projectName ? `: ${projectName}` : ''}</>;
+}
+
+function MobileContextTag({ projectName, fallbackPercent, onToggle }) {
+  const sdk = useSdkContextUsage();
+  const merged = mergeSdkContextBar({ sdk, fallbackPercent });
+  const ctxColor = contextSeverityColor(merged.percent);
+  const label = `${t('ui.openCachePanel')}: ${merged.percent}%`;
+  return (
+    <span
+      className={styles.mobileCtxTag}
+      style={{ borderColor: ctxColor, color: ctxColor, cursor: 'pointer' }}
+      title={`${t('ui.liveMonitoring')}${projectName ? `: ${projectName}` : ''}`}
+      role="button"
+      tabIndex={0}
+      aria-label={label}
+      aria-haspopup="dialog"
+      onClick={onToggle}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onToggle(); }
+      }}
+    >
+      <span className={styles.mobileCtxTagFill} style={{ width: `${merged.percent}%`, backgroundColor: ctxColor }} />
+      <span className={styles.mobileCtxTagContent}><MobileCtxLabelText projectName={projectName} /></span>
+    </span>
+  );
 }
 
 class Mobile extends AppBase {
@@ -63,6 +90,7 @@ class Mobile extends AppBase {
       mobileResumeVisible: false,      // /resume global session switcher modal
       globalPermission: null,     // { permission, handlers } — 全局权限审批浮层
       globalPlanApproval: null,   // { plan, handlers } — 全局计划审批浮层
+      globalPlanAutoApproveCountdown: null, // Read-only mirror of ChatView's plan timer
       autoApproveSeconds: 3,   // 与 AppBase 一致：默认 3s 倒计时自动批准（0=关闭 / -1=免审批）
       hasGit: true,
       terminalPendingImages: [],  // 终端面板独立的 pending 图片/文件
@@ -177,7 +205,7 @@ class Mobile extends AppBase {
 
   handleDeleteSkill = (skill) => handleSkillDelete(this, skill);
 
-  loadMemory = async () => SeqLoaders.loadProjectMemory(this);
+  loadMemory = async () => SeqLoaders.loadProjectMemory(this, { project: this.state.viewedProject || this.state.projectName, instance: this.state.viewedInstance });
 
   // 与 AppHeader.handleRefreshMemory 同语义：用户主动刷新带 toast 反馈，
   // stale（workspace 中途切换）保持静默不误报失败。
@@ -188,7 +216,7 @@ class Mobile extends AppBase {
     let ok = false;
     let stale = false;
     try {
-      const r = await fetch(apiUrl('/api/project-memory'));
+      const r = await fetch(apiUrl(withViewParams('/api/project-memory', { project: this.state.viewedProject || this.state.projectName, instance: this.state.viewedInstance })));
       const data = await r.json();
       if (seq !== this._memorySeq) { stale = true; }
       else if (!r.ok) { this.setState({ _memory: false }); }
@@ -204,21 +232,21 @@ class Mobile extends AppBase {
     else message.error(t('ui.memoryRefreshFailed'), 5);
   };
 
-  loadMemoryDetail = async (name) => {
+  loadMemoryDetail = async (name, memoryDir) => {
     const seq = ++this._memoryDetailSeq;
-    this.setState({ _memoryDetail: { name, loading: true } });
+    this.setState({ _memoryDetail: { name, memoryDir, loading: true } });
     try {
-      const r = await fetch(apiUrl(`/api/project-memory?file=${encodeURIComponent(name)}`));
+      const r = await fetch(apiUrl(withViewParams(`/api/project-memory?file=${encodeURIComponent(name)}`, { project: this.state.viewedProject || this.state.projectName, instance: this.state.viewedInstance })));
       const data = await r.json();
       if (seq !== this._memoryDetailSeq) return;
       if (!r.ok) {
-        this.setState({ _memoryDetail: { name, error: data.error || `http:${r.status}` } });
+        this.setState({ _memoryDetail: { name, memoryDir, error: data.error || `http:${r.status}` } });
         return;
       }
-      this.setState({ _memoryDetail: { name, content: data.content || '' } });
+      this.setState({ _memoryDetail: { name, memoryDir, content: data.content || '', tokens: data.tokens } });
     } catch (e) {
       if (seq === this._memoryDetailSeq) {
-        this.setState({ _memoryDetail: { name, error: e.message || 'network' } });
+        this.setState({ _memoryDetail: { name, memoryDir, error: e.message || 'network' } });
       }
     }
   };
@@ -518,6 +546,7 @@ class Mobile extends AppBase {
 
   handlePendingPermission = (data) => { this.setState({ globalPermission: data }); };
   handlePendingPlanApproval = (data) => { this.setState({ globalPlanApproval: data }); };
+  handlePlanAutoApproveCountdown = (countdown) => { this.setState({ globalPlanAutoApproveCountdown: countdown }); };
 
   handleAutoApproveChange = (seconds) => {
     this.setState({ autoApproveSeconds: seconds });
@@ -630,7 +659,18 @@ class Mobile extends AppBase {
     const wsOpen = !mobileIsLocalLog;
 
     return (
-      <TerminalWsProvider open={wsOpen} viewedProject={this.state.viewedProject || this.state.projectName || null} viewedInstance={this.state.viewedInstance || null}>
+      <TerminalWsProvider open={wsOpen} viewedProject={this.state.viewedProject || this.state.projectName || null} viewedInstance={this.state.viewedInstance
+        || ((this.state.viewedProject || this.state.projectName) === this.state.projectName
+          ? (this._boundInstance || null)
+          : null)}>
+      <SdkContextUsageProvider
+        enabled={!mobileIsLocalLog && this.state.sdkMode && !this.state.attachedSid}
+        viewProject={this.state.viewedProject || this.state.projectName || null}
+        viewInstance={this.state.viewedInstance || null}
+        clearVersion={this.state.sdkContextClearVersion}
+        locked={this.state.contextBarLocked}
+        optimistic={this.state.contextBarOptimistic}
+      >
       <ApprovalModal
         enabled={isPad && this.state.approvalPrefs.modalEnabled}
         soundEnabled={this.state.approvalPrefs.soundEnabled}
@@ -671,44 +711,16 @@ class Mobile extends AppBase {
               </svg>
             </button>
             {!mobileIsLocalLog ? (() => {
-              // 移动端（含 iPad）：渲染与 PC 一致的上下文血条。contextPercent 已在 render 顶部计算。
-              const contextPercent = mobileContextPercent;
-              const ctxColor = contextSeverityColor(contextPercent);
-              const ctxLabel = `${t('ui.liveMonitoring')}${this.state.projectName ? `: ${this.state.projectName}` : ''}`;
-              // ctxLabel is also used in `title` (PC hover tooltip); the tooltip
-              // stays a plain label since mobile has no hover anyway.
-              // 血条本体——iPad 与手机一致，作为按钮触发左侧抽屉（mobileCachePanelOverlay）。
-              // mobileCachePanelVisible=true 时才 mount CachePopoverContent，维持 commit 0914cc5
-              // 的"打开才解析 200 条"性能修复。
-              const ctxTag = (
-                <span
-                  className={styles.mobileCtxTag}
-                  style={{ borderColor: ctxColor, color: ctxColor, cursor: 'pointer' }}
-                  title={ctxLabel}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={t('ui.openCachePanel')}
-                  onClick={() => this.setState(prev => ({
+              return (
+                <MobileContextTag
+                  projectName={this.state.projectName}
+                  fallbackPercent={mobileContextPercent}
+                  onToggle={() => this.setState(prev => ({
                     ...this._closeAllMobileOverlays(),
                     mobileCachePanelVisible: !prev.mobileCachePanelVisible,
                   }), () => this._onCachePanelOpenChange(this.state.mobileCachePanelVisible))}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      this.setState(prev => ({
-                        ...this._closeAllMobileOverlays(),
-                        mobileCachePanelVisible: !prev.mobileCachePanelVisible,
-                      }), () => this._onCachePanelOpenChange(this.state.mobileCachePanelVisible));
-                    }
-                  }}
-                >
-                  <span className={styles.mobileCtxTagFill} style={{ width: `${contextPercent}%`, backgroundColor: ctxColor }} />
-                  <span className={styles.mobileCtxTagContent}>
-                    <MobileCtxLabelText projectName={this.state.projectName} />
-                  </span>
-                </span>
+                />
               );
-              return ctxTag;
             })() : (
               <>
                 <Badge status="processing" color="green" />
@@ -919,6 +931,7 @@ class Mobile extends AppBase {
                   <ChatView
                     {...this._settingsProps()}
                     requests={deepRequests}
+                    thinkingRequests={this.state.thinkingRequests || deepRequests}
                     mainAgentSessions={displaySessions}
                     sessionUpperBoundTs={sessionUpperBoundTs}
                     streamingLatest={this.state.streamingLatest}
@@ -943,6 +956,7 @@ class Mobile extends AppBase {
                     isStreaming={this.state.isStreaming}
                     onPendingPermission={this.handlePendingPermission}
                     onPendingPlanApproval={this.handlePendingPlanApproval}
+                    onPlanAutoApproveCountdown={this.handlePlanAutoApproveCountdown}
                     onPendingAsk={this.handleApprovalAsk}
                     onPendingPtyPlan={this.handleApprovalPtyPlan}
                     autoApproveSeconds={this.state.autoApproveSeconds}
@@ -952,7 +966,10 @@ class Mobile extends AppBase {
                     ownTabId={this.state.ownTabId}
                     projectName={this.state.projectName}
                     viewedProject={this.state.viewedProject || null}
-                    viewInstance={this.state.viewedInstance || null}
+                    viewInstance={this.state.viewedInstance
+                      || ((this.state.viewedProject || this.state.projectName) === this.state.projectName
+                        ? (this._boundInstance || null)
+                        : null)}
                     viewProject={this.state.viewedProject || this.state.projectName || null}
                     suppressInlineApprovalPanels={true}
                     pendingUploadPaths={this.state.pendingUploadPaths}
@@ -982,7 +999,7 @@ class Mobile extends AppBase {
                 pendingImages={this.state.terminalPendingImages}
                 onRemovePendingImage={this._handleRemoveTerminalImage}
                 onClearPendingImages={this._handleClearTerminalImages}
-                onClearContextOptimistic={this.handleClearContextOptimistic}
+                onClearContextOptimistic={this.state.sdkMode ? undefined : this.handleClearContextOptimistic}
                 autoApproveSeconds={this.state.autoApproveSeconds}
                 onAutoApproveChange={this.handleAutoApproveChange}
                 planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds}
@@ -1447,11 +1464,15 @@ class Mobile extends AppBase {
             onDeny={(id) => this.state.globalPlanApproval.handlers.reject(id, '')}
             visible={true}
             global={true}
+            planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds}
+            planAutoApproveCountdown={this.state.globalPlanAutoApproveCountdown}
+            onCancelPlanAutoApprove={this.state.globalPlanApproval.handlers.cancelAutoApprove}
           />
         )}
       </div>
       </ConfigProvider>
       </ApprovalModal>
+      </SdkContextUsageProvider>
       </TerminalWsProvider>
     );
   }

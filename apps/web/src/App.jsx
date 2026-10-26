@@ -11,6 +11,7 @@ import DetailPanel from './components/dashboard/DetailPanel';
 import ChatView from './components/chat/ChatView';
 import ApprovalModal from './components/approval/ApprovalModal';
 import { TerminalWsProvider } from './components/terminal/TerminalWsContext';
+import { SdkContextUsageProvider } from './components/dashboard/SdkContextUsageProvider';
 import TerminalPanel from './components/terminal/TerminalPanel';
 import PanelResizer from './components/common/PanelResizer';
 import OpenFolderIcon from './components/common/OpenFolderIcon';
@@ -517,7 +518,7 @@ class App extends AppBase {
     // App's own render, which must not depend on a mount/update-time mirror.
     const viewInstanceForChat = this.state.viewedInstance
       || ((this.state.viewedProject || this.state.projectName) === this.state.projectName
-          ? (this._boundInstance || null)
+          ? (this.state.boundInstance || this._boundInstance || null)
           : null);
 
     // 工作区选择器模式
@@ -541,6 +542,14 @@ class App extends AppBase {
         {/* viewedProject: multi-PTY attach scope — the shared terminal stream
             follows the VIEWED project (chip switch), not the last-spawned one. */}
         <TerminalWsProvider open={wsOpen} viewedProject={this.state.viewedProject || this.state.projectName || null} viewedInstance={viewInstanceForChat}>
+        <SdkContextUsageProvider
+          enabled={!this._isLocalLog && this.state.sdkMode && !this.state.attachedSid}
+          viewProject={this.state.viewedProject || this.state.projectName || null}
+          viewInstance={viewInstanceForChat}
+          clearVersion={this.state.sdkContextClearVersion}
+          locked={this.state.contextBarLocked}
+          optimistic={this.state.contextBarOptimistic}
+        >
         <ApprovalModal
           enabled={this.state.approvalPrefs.modalEnabled}
           soundEnabled={this.state.approvalPrefs.soundEnabled}
@@ -729,7 +738,7 @@ class App extends AppBase {
               )
             )}
             <div className={styles.chatViewWrapper} style={{ display: viewMode === 'chat' ? 'flex' : 'none' }}>
-              <ChatView loadingProgress={fileLoading ? this._loadingProgressText() : null} {...this._settingsProps()} getTokenStatsContent={this._getTokenStatsContent} requests={deepRequests} mainAgentSessions={displaySessions} sessionUpperBoundTs={sessionUpperBoundTs} streamingLatest={this.state.streamingLatest} userProfile={this.state.userProfile} collapseToolResults={prefs.collapseToolResults} expandThinking={prefs.expandThinking} showFullToolContent={prefs.showFullToolContent} minimalChat={prefs.minimalChat} onlyCurrentSession={!this._isLocalLog} isLocalLog={!!this._isLocalLog} showThinkingSummaries={prefs.showThinkingSummaries} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={this.handleScrollTsDone} cliMode={this._isLocalLog ? false : this.state.cliMode} sdkMode={this._isLocalLog ? false : this.state.sdkMode} onSdkModel={this.handleSdkModel} onSdkSessionState={this.handleSdkSessionState} terminalVisible={this._isLocalLog ? false : (this.state.sdkMode ? this.state.scratchOpen : this.state.terminalVisible)} onToggleTerminal={() => this.setState(prev => prev.sdkMode ? ({ scratchOpen: !prev.scratchOpen }) : ({ terminalVisible: !prev.terminalVisible }))} pendingUploadPaths={this.state.pendingUploadPaths} onUploadPathsConsumed={this.handleUploadPathsConsumed} uploadingDrop={this.state.uploadingDrop} fileLoading={this.state.fileLoading} isStreaming={this.state.isStreaming} lang={this.state.lang} autoApproveSeconds={this.state.autoApproveSeconds} onAutoApproveChange={this.handleAutoApproveChange} planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds} onPlanAutoApproveChange={this.handlePlanAutoApproveChange} onClearContextOptimistic={this.handleClearContextOptimistic} onUserMessageSent={this.handleUserMessageSent} onPendingAsk={this.handleApprovalAsk} onPendingPtyPlan={this.handleApprovalPtyPlan} ownTabId={this.state.ownTabId} projectName={this.state.projectName} viewProject={this.state.viewedProject || this.state.projectName || null} setContextBarSlot={this.setContextBarSlot} attachedSid={this.state.attachedSid || null} viewInstance={viewInstanceForChat} onResumeSession={this.handleResumeSession} sdkModel={this.state.sdkModel} proxyProfiles={this.state.proxyProfiles} activeProxyId={this.state.activeProxyId} defaultConfig={this.state.defaultConfig} proxyRoles={this.state.proxyRoles} proxyOfficialDefault={this.state.proxyOfficialDefault} onProxyProfileChange={this.handleProxyProfileChange} />
+              <ChatView loadingProgress={fileLoading ? this._loadingProgressText() : null} {...this._settingsProps()} getTokenStatsContent={this._getTokenStatsContent} requests={deepRequests} thinkingRequests={this.state.thinkingRequests || deepRequests} mainAgentSessions={displaySessions} sessionUpperBoundTs={sessionUpperBoundTs} streamingLatest={this.state.streamingLatest} userProfile={this.state.userProfile} collapseToolResults={prefs.collapseToolResults} expandThinking={prefs.expandThinking} showFullToolContent={prefs.showFullToolContent} minimalChat={prefs.minimalChat} onlyCurrentSession={!this._isLocalLog} isLocalLog={!!this._isLocalLog} showThinkingSummaries={prefs.showThinkingSummaries} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={this.handleScrollTsDone} cliMode={this._isLocalLog ? false : this.state.cliMode} sdkMode={this._isLocalLog ? false : this.state.sdkMode} onSdkModel={this.handleSdkModel} onSdkSessionState={this.handleSdkSessionState} terminalVisible={this._isLocalLog ? false : (this.state.sdkMode ? this.state.scratchOpen : this.state.terminalVisible)} onToggleTerminal={() => this.setState(prev => prev.sdkMode ? ({ scratchOpen: !prev.scratchOpen }) : ({ terminalVisible: !prev.terminalVisible }))} pendingUploadPaths={this.state.pendingUploadPaths} onUploadPathsConsumed={this.handleUploadPathsConsumed} uploadingDrop={this.state.uploadingDrop} fileLoading={this.state.fileLoading} isStreaming={this.state.isStreaming} lang={this.state.lang} autoApproveSeconds={this.state.autoApproveSeconds} onAutoApproveChange={this.handleAutoApproveChange} planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds} onPlanAutoApproveChange={this.handlePlanAutoApproveChange} onClearContextOptimistic={this.handleClearContextOptimistic} onUserMessageSent={this.handleUserMessageSent} onPendingAsk={this.handleApprovalAsk} onPendingPtyPlan={this.handleApprovalPtyPlan} ownTabId={this.state.ownTabId} projectName={this.state.projectName} viewProject={this.state.viewedProject || this.state.projectName || null} setContextBarSlot={this.setContextBarSlot} attachedSid={this.state.attachedSid || null} viewInstance={viewInstanceForChat} onResumeSession={this.handleResumeSession} sdkModel={this.state.sdkModel} proxyProfiles={this.state.proxyProfiles} activeProxyId={this.state.activeProxyId} defaultConfig={this.state.defaultConfig} proxyRoles={this.state.proxyRoles} proxyOfficialDefault={this.state.proxyOfficialDefault} onProxyProfileChange={this.handleProxyProfileChange} />
             </div>
             {/* View-switch overlay removed (2026-10-08): the tab strip already shows a
                 spinning ring (projectTabRingSpin) for the in-flight switch, and the cold
@@ -1021,6 +1030,7 @@ class App extends AppBase {
           </div>
         </Modal>
         </ApprovalModal>
+        </SdkContextUsageProvider>
         </TerminalWsProvider>
       </ConfigProvider>
     );

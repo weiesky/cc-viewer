@@ -11,17 +11,15 @@ import { PERM_AUTO_APPROVE_OPTIONS, PLAN_AUTO_APPROVE_OPTIONS, autoApproveValueL
 // 级联子菜单由 expandedKey 驱动显隐而非 CSS :hover —— 选完档位要立即收起，
 // 此时鼠标仍悬停在 group 上，纯 :hover 收不掉。hover-intent 由宿主经
 // onHoverEnter/onHoverLeave 注入（见 utils/quickMenuHoverIntent）。
-function QuickAutoApproveRows({ autoApproveSeconds, planAutoApproveSeconds, onAutoApproveChange, onPlanAutoApproveChange, expandedKey, onToggle, onHoverEnter, onHoverLeave, middle, hidePlan }) {
+function QuickAutoApproveRows({ autoApproveSeconds, planAutoApproveSeconds, onAutoApproveChange, onPlanAutoApproveChange, expandedKey, onToggle, onHoverEnter, onHoverLeave, middle }) {
   const rows = [
     { key: 'perm', icon: <ShieldCheckIcon />, label: t('ui.permission.autoApprove.setting'), value: autoApproveSeconds, options: PERM_AUTO_APPROVE_OPTIONS, onChange: onAutoApproveChange },
-    // Plan auto-approve drives PTY keystrokes; in SDK mode there is no PTY and the setting is
-    // inert (sdk-plan uses its own channel), so the host passes hidePlan to drop the dead row.
-    ...(!hidePlan ? [{ key: 'plan', icon: <PlanClipboardIcon />, label: t('ui.approval.settings.planAutoApprove'), value: planAutoApproveSeconds, options: PLAN_AUTO_APPROVE_OPTIONS, onChange: onPlanAutoApproveChange }] : []),
+    { key: 'plan', icon: <PlanClipboardIcon />, label: t('ui.approval.settings.planAutoApprove'), value: planAutoApproveSeconds, options: PLAN_AUTO_APPROVE_OPTIONS, onChange: onPlanAutoApproveChange },
   ];
   // `middle` (2026-10-06): an optional node rendered after the plan row — the
   // session-history entry (star-menu migration). Rendered as a sibling inside
   // the plan fragment so the mapped children stay keyed and the order is
-  // perm → plan → middle. When plan is hidden (hidePlan), middle follows perm instead.
+  // perm → plan → middle.
   return rows.map((row, i) => {
     const expanded = expandedKey === row.key;
     const isLastRow = i === rows.length - 1;

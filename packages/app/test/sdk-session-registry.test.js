@@ -258,6 +258,32 @@ describe('sdk-manager per-cwd session registry', () => {
     assert.equal(sdk.getActiveSdkCwd(), '/x/same');
   });
 
+  it('a project+instance anchor pair must agree; a foreign instance never wins', async () => {
+    const rec = [];
+    sdk.__setQueryForTests(makeQuery(rec));
+    sdk.initSdkSession('/ws/alpha', 'alpha', deps);
+    sdk.initSdkSession('/ws/beta', 'beta', deps);
+    const alpha = sdk.listSdkSessions().find((s) => s.cwd === '/ws/alpha');
+    const beta = sdk.listSdkSessions().find((s) => s.cwd === '/ws/beta');
+
+    await sdk.sendUserMessage('go', { project: 'alpha', instanceKey: alpha.instanceKey });
+    await tick();
+    assert.equal(sdk.getSessionId({ project: 'alpha', instanceKey: alpha.instanceKey }), 's-/ws/alpha',
+      'a matching pair resolves normally');
+    assert.equal(sdk.getSessionId({ project: 'alpha', instanceKey: beta.instanceKey }), null,
+      'an instance from another project must not win by instance priority');
+    assert.equal(sdk.getSessionId({ project: 'beta', instanceKey: alpha.instanceKey }), null);
+    assert.equal(sdk.getSessionId({ instanceKey: alpha.instanceKey }), 's-/ws/alpha',
+      'instance-only anchors keep their exact behavior');
+
+    sdk.initSdkSession('/ws/My Project', 'My Project', deps);
+    await sdk.sendUserMessage('spaced', { project: 'My_Project' });
+    await tick();
+    const spaced = sdk.listSdkSessions().find((s) => s.cwd === '/ws/My Project');
+    assert.equal(sdk.getSessionId({ project: 'My_Project', instanceKey: spaced.instanceKey }), 's-/ws/My Project',
+      'sanitized project keys pair with their instance');
+  });
+
   it('a stale instance anchor is dropped, never degraded to a same-basename sibling', async () => {
     const rec = [];
     const errors = [];

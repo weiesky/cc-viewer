@@ -2,7 +2,7 @@
  * 第四轮 review 配套测试（2026-10）：
  * ① filesExists POST body {project} 正路径（files-fs.js）
  * ② git ?project= 正路径（git.js gitRepos/gitStatus）
- * ③ resolve-path 保持 bound（不接 ?project=，防 foreign 绝对路径回显）
+ * ③ resolve-path follows the selected project root with controlled view params
  * ④ viewProject 穿线契约（gitApi._q / searchApi body / AppHeader _withProject / ImageViewer）
  * ⑤ sid-detach 场景（detach-view-reset 语义扩展：纯 sid-detach 也全量重置）
  *
@@ -10,7 +10,7 @@
  */
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { EventEmitter } from 'node:events';
@@ -118,14 +118,19 @@ describe('② git ?project=（无 git 仓库环境的语义）', () => {
   });
 });
 
-describe('③ resolve-path 保持 bound（不接 ?project=）', () => {
+describe('③ resolve-path follows the selected project root', () => {
   const resolvePath = findRoute(filesFsRoutes, 'POST', '/api/resolve-path');
 
-  it('?project= 被忽略：仍解析绑定项目根（不回显 foreign 绝对路径）', async () => {
-    const { status, body } = await callPost(resolvePath, `/api/resolve-path?project=${encodeURIComponent(parallelName)}`, { path: 'b.txt' });
+  it('?project= resolves the same root used by the file view', async () => {
+    const { status, body } = await callPost(resolvePath, `/api/resolve-path?project=${encodeURIComponent(parallelName)}`, { path: 'p.txt' });
     assert.equal(status, 200);
-    assert.equal(body?.fullPath, join(boundDir, 'b.txt'), 'resolve-path 必须保持 bound');
-    assert.ok(!String(body?.fullPath || '').includes(parallelDir), '绝不解析到并行项目');
+    assert.equal(body?.fullPath, join(realpathSync(parallelDir), 'p.txt'));
+  });
+
+  it('without ?project= keeps the bound root for older clients', async () => {
+    const { status, body } = await callPost(resolvePath, '/api/resolve-path', { path: 'b.txt' });
+    assert.equal(status, 200);
+    assert.equal(body?.fullPath, join(boundDir, 'b.txt'));
   });
 });
 

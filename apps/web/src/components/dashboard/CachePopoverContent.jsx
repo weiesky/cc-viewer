@@ -1,7 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Popover, Select, Button, Alert, Modal, Tooltip, Dropdown, Space, message } from 'antd';
 import { ReloadOutlined, PlusOutlined, FolderOpenOutlined, FileZipOutlined, FileMarkdownOutlined, SettingOutlined } from '@ant-design/icons';
-import { extractCachedContent, parseCachedTools, extractLoadedSkills } from '../../utils/helpers';
+import { extractCachedContent, parseCachedTools, extractLoadedSkills, formatTokenCount } from '../../utils/helpers';
+import { buildApiUsage, buildMemoryUsageIndex, buildSkillUsageIndex, memoryTokensForLink, mergeSdkContextBar } from '../../utils/contextUsageView';
+import { useSdkContextUsage } from './SdkContextUsageProvider';
+import SdkContextComposition from './SdkContextComposition';
+import useMemoryLinkTip from '../common/useMemoryLinkTip';
 import { contextSeverityColor } from '../../utils/formatters';
 import { BUILTIN_SKILL_NAMES, mergeActiveSkills, groupActiveSkillsByScope } from '../../utils/skillsParser';
 import { t } from '../../i18n';
@@ -50,6 +54,11 @@ export default function CachePopoverContent({
   memoryRefreshing = false,
   inDrawer = false,
 }) {
+  const sdk = useSdkContextUsage();
+  const merged = mergeSdkContextBar({ sdk, fallbackPercent: contextPercent, fallbackTokens: contextTokens });
+  const sdkUsage = merged.sdkActive && merged.bar ? sdk.detail?.usage : null;
+  const { memoryTipHandlers, memoryTipNode, memoryTipId } = useMemoryLinkTip();
+  const memoryBodyRef = useRef(null);
   const skillFileInputRef = useRef(null);
   const skillFolderInputRef = useRef(null);
   // Import errors render inline (Alert inside this popover) instead of the global antd
@@ -163,16 +172,42 @@ export default function CachePopoverContent({
   const mergedSkills = mergeActiveSkills(fsSkills, lastSkillsRef.current || []);
   const skills = mergedSkills !== null ? mergedSkills : historicalSkills;
   const hasSkills = skills.length > 0;
+  const skillUsage = useMemo(() => buildSkillUsageIndex(sdkUsage, skills), [sdkUsage, skills]);
+  const memoryUsage = useMemo(() => buildMemoryUsageIndex(sdkUsage, memory?.dir), [sdkUsage, memory?.dir]);
+  const tokenLabel = (tokens, estimated = false) => t(estimated ? 'ui.contextUsage.tokensEstimated' : 'ui.contextUsage.tokens', { tokens: formatTokenCount(tokens) });
+
+  useEffect(() => {
+    const root = memoryBodyRef.current;
+    if (!root) return;
+    for (const anchor of root.querySelectorAll('a')) {
+      anchor.removeAttribute('data-memory-tokens');
+      anchor.removeAttribute('data-memory-description');
+      anchor.removeAttribute('aria-describedby');
+    }
+    if (!sdkUsage || !memory?.content) return;
+    for (const anchor of root.querySelectorAll('a')) {
+      const href = anchor.getAttribute('href') || '';
+      const usage = memoryTokensForLink(memoryUsage, href, memory);
+      if (!usage) continue;
+      anchor.dataset.memoryTokens = tokenLabel(usage.tokens, usage.estimated);
+      const description = anchor.getAttribute('title') || anchor.parentElement?.textContent?.trim() || anchor.textContent || '';
+      anchor.dataset.memoryDescription = description;
+      anchor.setAttribute('aria-describedby', 'memory-link-usage-tip');
+    }
+  }, [memory?.content, memoryUsage, sdkUsage, memoryTipId]);
 
   const renderBuiltinChip = ({ name, description }) => {
     const title = [name, description].filter(Boolean).join('\n\n');
     const chip = <span className={sharedChrome.cacheToolChip} title={title}>{name}</span>;
     return <ConceptHelp key={name} doc={`Tool-${name}`}>{chip}</ConceptHelp>;
   };
-  const renderChipPopoverContent = (description) => (
-    description
-      ? <div className={styles.chipDetailBody}>{description}</div>
-      : <div className={`${styles.chipDetailBody} ${styles.chipDetailEmpty}`}>{t('ui.noDescription')}</div>
+  const renderChipPopoverContent = (description, tokens) => (
+    <>
+      {typeof tokens === 'number' && <div className={styles.chipTokenCost}>{tokenLabel(tokens)}</div>}
+      {description
+        ? <div className={styles.chipDetailBody}>{description}</div>
+        : <div className={`${styles.chipDetailBody} ${styles.chipDetailEmpty}`}>{t('ui.noDescription')}</div>}
+    </>
   );
   // PC：hover 触发 antd Popover；移动端（含 iPad）：click 触发全屏 Modal。
   const renderMcpChip = ({ name, fullName, description }) => {
@@ -203,6 +238,9 @@ export default function CachePopoverContent({
     );
   };
   const renderSkillChip = ({ name, description }) => {
+    const tokens = skillUsage.tokensByName.get(name);
+    const chipModalData = { title: name, description, tokens };
+    const openChipModal = () => setChipModal(chipModalData);
     if (isMobile) {
       return (
         <span
@@ -210,8 +248,8 @@ export default function CachePopoverContent({
           className={sharedChrome.cacheToolChip}
           role="button"
           tabIndex={0}
-          onClick={() => setChipModal({ title: name, description })}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setChipModal({ title: name, description }); } }}
+          onClick={openChipModal}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openChipModal(); } }}
         >
           {name}
         </span>
@@ -221,7 +259,7 @@ export default function CachePopoverContent({
       <Popover
         key={name}
         title={name}
-        content={renderChipPopoverContent(description)}
+        content={renderChipPopoverContent(description, tokens)}
         overlayStyle={{ maxWidth: 480 }}
         mouseEnterDelay={0.2}
       >
@@ -238,7 +276,7 @@ export default function CachePopoverContent({
     const r = parseMemoryLink(hrefRaw);
     if (r.allow) return;
     e.preventDefault();
-    if (r.open) onOpenMemoryDetail?.(r.open);
+    if (r.open) onOpenMemoryDetail?.(r.open, memory?.dir);
   };
 
   const builtinBody = (
@@ -402,8 +440,10 @@ export default function CachePopoverContent({
     }
     return (
       <div
+        ref={memoryBodyRef}
         className={sharedChrome.memoryMarkdown}
         onClick={handleMemoryLinkClick}
+        {...memoryTipHandlers}
         dangerouslySetInnerHTML={{ __html: renderMarkdown(memory.content) }}
       />
     );
@@ -411,28 +451,45 @@ export default function CachePopoverContent({
 
   // Shared thresholds (75/55) — this chip previously used 80/60 and could
   // disagree in color with the header bar feeding it the same percentage.
-  const ctxColor = contextSeverityColor(contextPercent);
-  const cacheUsageText = contextTokens > 0
-    ? `${(contextTokens / 1000).toFixed(1)}K (${contextPercent}%)`
-    : `${contextPercent}%`;
+  const ctxColor = contextSeverityColor(merged.percent);
+  const cacheUsageText = merged.tokens > 0
+    ? `${(merged.tokens / 1000).toFixed(1)}K (${merged.percent}%)`
+    : `${merged.percent}%`;
   return (
     <div className={styles.cachePopover}>
       <div className={styles.cachePopoverHeader}>
         <div className={styles.cachePopoverTitle}>
           <span className={styles.cacheUsageLabel}>{t('ui.contextUsage')}</span>
           <span className={styles.cachePercent} style={{ color: ctxColor }}>{cacheUsageText}</span>
-          <span className={styles.cacheCalibrationLabel}>{t('ui.calibrationModelLabel')}</span>
-          <Select
-            size="small"
-            value={calibrationModel}
-            onChange={onCalibrationModelChange}
-            options={CALIBRATION_MODELS}
-            className={styles.calibrationSelect}
-            popupMatchSelectWidth={false}
-          />
+          {!merged.sdkActive && (
+            <>
+              <span className={styles.cacheCalibrationLabel}>{t('ui.calibrationModelLabel')}</span>
+              <Select
+                size="small"
+                value={calibrationModel}
+                onChange={onCalibrationModelChange}
+                options={CALIBRATION_MODELS}
+                className={styles.calibrationSelect}
+                popupMatchSelectWidth={false}
+              />
+            </>
+          )}
+          {merged.sdkActive && (
+            <Button
+              size="small"
+              type="text"
+              icon={<ReloadOutlined />}
+              onClick={sdk.refresh}
+              loading={sdk.refreshing}
+              disabled={sdk.refreshing}
+              aria-label={t('ui.contextUsage.refresh')}
+              title={t('ui.contextUsage.refresh')}
+            />
+          )}
         </div>
       </div>
       <div className={inDrawer ? styles.cacheScrollAreaInDrawer : styles.cacheScrollArea}>
+        {sdkUsage && <SdkContextComposition bar={merged.bar} variant="compact" apiUsage={buildApiUsage(sdkUsage)} />}
         {hasBuiltin && (
           <div className={`${styles.cacheSection} ${styles.cacheSectionBordered}`}>
             {/* 点标题也可打开「所有工具」目录(zIndex 抬到 1100 盖住血条 Popover;不改文案颜色) */}
@@ -473,6 +530,7 @@ export default function CachePopoverContent({
             <div className={styles.cacheSectionHeader}>
               <div className={styles.cacheSectionLabel}>
                 {t('ui.loadedSkills')} ({skills.length})
+                {skillUsage.totalTokens !== null && <span className={styles.sectionTokenTotal} title={t('ui.contextUsage.totalScope')}>{tokenLabel(skillUsage.totalTokens)}</span>}
               </div>
               {skills.length > 20 ? (
                 <Alert
@@ -522,6 +580,7 @@ export default function CachePopoverContent({
             <div className={`${styles.cacheSectionLabel} ${styles.memoryLabelWithIcon}`}>
               <OpenFolderIcon apiEndpoint={apiUrl('/api/open-memory-dir')} title={t('ui.memoryOpenDir')} size={14} />
               {t('ui.persistentMemory')}{memoryCount !== null ? ` (${memoryCount})` : ''}
+              {memoryUsage.totalTokens !== null && <span className={styles.sectionTokenTotal} title={t('ui.contextUsage.totalScope')}>{tokenLabel(memoryUsage.totalTokens)}</span>}
             </div>
             {onRefreshMemory && (() => {
               // 三态契约 → 刷新按钮的 disable / tooltip 决策：
@@ -561,6 +620,7 @@ export default function CachePopoverContent({
       </div>
       {/* 手机 chip 描述 Modal：portal 到 document.body 逃出 mobileCachePanelInner zoom: 0.6 容器。
           zIndex 1101 比 MemoryDetailModal (1100) 高 1，避免两者同时打开时视觉层级未定义。 */}
+      {memoryTipNode}
       {chipModal && (
         <Modal
           open={true}
@@ -571,9 +631,7 @@ export default function CachePopoverContent({
           zIndex={1101}
           destroyOnClose
         >
-          {chipModal.description
-            ? <div className={styles.chipDetailBody}>{chipModal.description}</div>
-            : <div className={`${styles.chipDetailBody} ${styles.chipDetailEmpty}`}>{t('ui.noDescription')}</div>}
+          {renderChipPopoverContent(chipModal.description, chipModal.tokens)}
         </Modal>
       )}
     </div>

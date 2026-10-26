@@ -1,36 +1,58 @@
-import React, { useMemo, useRef, useEffect, useCallback, useState } from 'react';
+import React, { useMemo, useRef, useEffect, useCallback, useState, useLayoutEffect } from 'react';
 import { t } from '../../i18n';
 import { AUTO_APPROVE_INSTANT } from '../../utils/helpers';
 import styles from './ToolApprovalPanel.module.css';
 
 const DEFAULT_AUTO_SECONDS = 3;
 
-function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSession, onDeny, visible, global: isGlobal, autoApproveSeconds = 0, onAutoApproveChange, source, queueDepth = 0 }) {
+function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSession, onDeny, visible, global: isGlobal, autoApproveSeconds = 0, onAutoApproveChange, source, queueDepth = 0, planAutoApproveSeconds = 0, planAutoApproveCountdown = null, onCancelPlanAutoApprove = null }) {
   const panelRef = useRef(null);
   const allowRef = useRef(null);
   const prevFocusRef = useRef(null);
-  const [show, setShow] = useState(false);
+  const focusInitializedRef = useRef(false);
+  const previousCountdownRef = useRef(null);
+  const planCountdownCancelledRef = useRef(false);
   const [exiting, setExiting] = useState(false);
+  const show = visible || exiting;
   const [countdown, setCountdown] = useState(-1); // -1 = 未启动, 0 = 归零, >0 = 倒计时中
   const countdownRef = useRef(null);
   const deniedRef = useRef(false); // 标记是否被拒绝（防止归零时误触发 onAllow）
 
+  const restorePanelFocus = useCallback(() => {
+    prevFocusRef.current?.focus?.();
+    prevFocusRef.current = null;
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!focusInitializedRef.current) {
+      focusInitializedRef.current = true;
+      if (visible && autoApproveSeconds === 0 && !planAutoApproveSeconds && allowRef.current) {
+        prevFocusRef.current = document.activeElement;
+        allowRef.current.focus();
+      }
+    }
+  }, [visible, show, autoApproveSeconds, planAutoApproveSeconds]);
   useEffect(() => {
     if (visible) {
-      setShow(true);
       setExiting(false);
       deniedRef.current = false;
-      // 自动审批开启时（倒计时或免审批）不抢焦点，避免打断用户在其他输入框的正常输入
-      if (autoApproveSeconds === 0) {
-        prevFocusRef.current = document.activeElement;
-        requestAnimationFrame(() => allowRef.current?.focus());
-      }
     } else if (show) {
       setExiting(true);
-      const timer = setTimeout(() => { setShow(false); setExiting(false); }, 200);
+      const timer = setTimeout(() => { setExiting(false); }, 200);
       return () => clearTimeout(timer);
     }
   }, [visible]);
+  useLayoutEffect(() => () => {
+    restorePanelFocus();
+    prevFocusRef.current = null;
+  }, [restorePanelFocus]);
+
+  // Preserve manual-panel keyboard behavior when the countdown finishes but the
+  // plan remains pending (for example after the user cancels auto-approval).
+  useEffect(() => {
+    if (planAutoApproveCountdown != null) planCountdownCancelledRef.current = false;
+    previousCountdownRef.current = planAutoApproveCountdown;
+  }, [planAutoApproveCountdown, visible]);
 
   // 自动审批倒计时
   useEffect(() => {
@@ -85,9 +107,22 @@ function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSes
     }
   }, [onAutoApproveChange, autoApproveSeconds, requestId, onAllow]);
 
+  const handlePlanAutoApproveCancel = useCallback(() => {
+    planCountdownCancelledRef.current = true;
+    onCancelPlanAutoApprove?.();
+    prevFocusRef.current?.focus?.();
+  }, [onCancelPlanAutoApprove]);
+
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Escape') {
-      handleDeny(requestId);
+      // During plan auto-approval, Escape means "keep the plan for manual review",
+      // not "reject the plan". A subsequent Escape uses the normal deny behavior.
+      if (planAutoApproveCountdown != null && !planCountdownCancelledRef.current && onCancelPlanAutoApprove) {
+        e.preventDefault();
+        handlePlanAutoApproveCancel();
+      } else {
+        handleDeny(requestId);
+      }
       return;
     }
     if (e.key === 'Tab') {
@@ -101,7 +136,7 @@ function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSes
         : (idx >= arr.length - 1 ? 0 : idx + 1);
       arr[next].focus();
     }
-  }, [handleDeny, requestId]);
+  }, [handleDeny, requestId, planAutoApproveCountdown, onCancelPlanAutoApprove, handlePlanAutoApproveCancel]);
 
   const displayText = useMemo(() => {
     if (!toolInput) return '';
@@ -185,6 +220,16 @@ function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSes
           {allowLabel}
         </button>
       </div>
+      {planAutoApproveCountdown != null && (
+        <div className={styles.planAutoApproveHint}>
+          <span>{t('ui.planAutoApprove.countdown', { count: planAutoApproveCountdown })}</span>
+          {onCancelPlanAutoApprove && (
+            <button type="button" className={styles.planAutoApproveCancel} onClick={handlePlanAutoApproveCancel}>
+              {t('ui.planAutoApprove.cancel')}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

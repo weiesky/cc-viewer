@@ -159,6 +159,13 @@ describe('importFiles', () => {
     assert.equal(renamed, 'x', 'first successful relPath must flow to onFileRenamed(null, relPath)');
   });
 
+  it('carries the viewed project and instance alongside the target directory', async () => {
+    let url = null;
+    fetchHandler = async (requestUrl) => { url = requestUrl; return resp(true, { ok: true }); };
+    await M.importFiles([{ name: 'a.txt' }], 'src', { project: 'other project', instance: 'ccv-a1b2' });
+    assert.equal(url, '/api/import-file?dir=src&project=other%20project&instance=ccv-a1b2');
+  });
+
   it('empty dir (no subDir) posts dir=<targetDir> verbatim', async () => {
     const calls = [];
     fetchHandler = async (url) => { calls.push(url); return resp(true, { ok: true }); };

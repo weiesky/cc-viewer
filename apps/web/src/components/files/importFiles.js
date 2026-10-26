@@ -1,6 +1,6 @@
 import { Modal, message } from 'antd';
 import { t } from '../../i18n';
-import { apiUrl } from '../../utils/apiUrl';
+import { apiUrl, withViewParams } from '../../utils/apiUrl';
 
 // Shared external-file import pipeline, used by both the sidebar FileExplorer
 // and the remote FileBrowserModal. Verbatim move from FileExplorer.jsx — keep
@@ -75,7 +75,7 @@ export async function expandEntries(entries, depth) {
 // payload: { topEntries, flatFiles } (synchronously extracted in the drop handler) or a plain File[] (fallback).
 // onFileRenamed is injected by the caller: FileExplorer passes its own prop (ChatView refresh chain),
 // FileBrowserModal passes handleAfterMutation (refreshes modal + sidebar together).
-export async function importFiles(payload, targetDir, { onFileRenamed } = {}) {
+export async function importFiles(payload, targetDir, { onFileRenamed, project, instance } = {}) {
   // 1. Normalize to {file, relPath}[]
   let entries = [];
   const topEntries = payload && payload.topEntries;
@@ -144,7 +144,7 @@ export async function importFiles(payload, targetDir, { onFileRenamed } = {}) {
       const form = new FormData();
       form.append('file', file);
       try {
-        const res = await fetch(apiUrl(`/api/import-file?dir=${encodeURIComponent(finalDir)}`), { method: 'POST', body: form });
+        const res = await fetch(apiUrl(withViewParams(`/api/import-file?dir=${encodeURIComponent(finalDir)}`, { project, instance })), { method: 'POST', body: form });
         const data = await res.json();
         if (!res.ok) {
           failures.push({ name: relPath, error: data.error || 'Import failed' });

@@ -16,7 +16,7 @@
  *  this.state on a render-scope switch. Kept as an exported list so the switch
  *  code can never drift from the factory shape. */
 export const REACT_SLICE_KEYS = [
-  'requests', 'v2Rows', 'v2RowsMeta', 'mainAgentSessions', 'selectedIndex',
+  'requests', 'thinkingRequests', 'v2Rows', 'v2RowsMeta', 'mainAgentSessions', 'selectedIndex',
   'pinnedSessionTs', 'streamingLatest', 'isStreaming', 'turnActive',
   'contextWindow', 'serverCachedContent',
   'contextBarLocked', 'contextBarOptimistic',
@@ -28,6 +28,7 @@ export function createChannelState() {
     // Committed React slice (authoritative while this channel is rendered).
     react: {
       requests: [],
+      thinkingRequests: [],
       v2Rows: [],
       v2RowsMeta: { totalCount: 0, hasMore: false, oldestTs: '' },
       mainAgentSessions: [],

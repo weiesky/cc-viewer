@@ -105,6 +105,22 @@ describe('ToolFileChangeController — 触发刷新', () => {
     assert.equal(host._state.fileExplorerRefresh, 1);
   });
 
+  it('Bash git commit 触发 Git 面板刷新', () => {
+    const host = makeHost({ fileExplorerOpen: true, gitChangesOpen: true });
+    const session = {
+      messages: [
+        { role: 'assistant', content: [{ type: 'tool_use', id: 'git-commit', name: 'Bash', input: { command: 'git commit -m "update files"' } }] },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'git-commit' }] },
+      ],
+    };
+    host.setProps([session], []);
+    const c = new ToolFileChangeController(host);
+    c.check();
+    mock.timers.tick(500);
+    assert.equal(host._state.gitChangesRefresh, 1);
+    assert.equal(host._state.fileExplorerRefresh, 1);
+  });
+
   it('requests 数据源（subAgent/teammate）的 Write 同样触发刷新', () => {
     const host = makeHost({ fileExplorerOpen: true });
     host.setProps([], [requestWithWrite()]); // 只走 requests，mainAgentSessions 为空

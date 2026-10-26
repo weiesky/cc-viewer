@@ -23,22 +23,23 @@ const _MD_CACHE_MAX = 1024;
 
 export function renderMarkdown(text) {
   if (!text) return '';
-  const hit = _mdCache.get(text);
+  const source = typeof text === 'string' ? text : String(text);
+  const hit = _mdCache.get(source);
   if (hit !== undefined) return hit;
 
   let html;
   try {
     // ADD_ATTR ['target']: DOMPurify's default allowlist strips `target`.
     // rel and data-* attributes pass through by default.
-    html = measureParse(() => DOMPurify.sanitize(marked.parse(text, { breaks: true }), { ADD_ATTR: ['target'] }));
+    html = measureParse(() => DOMPurify.sanitize(marked.parse(source, { breaks: true }), { ADD_ATTR: ['target'] }));
   } catch (e) {
-    html = escapeHtml(text);
+    html = escapeHtml(source);
   }
 
   if (_mdCache.size >= _MD_CACHE_MAX) {
     // evict oldest (Map preserves insertion order)
     _mdCache.delete(_mdCache.keys().next().value);
   }
-  _mdCache.set(text, html);
+  _mdCache.set(source, html);
   return html;
 }

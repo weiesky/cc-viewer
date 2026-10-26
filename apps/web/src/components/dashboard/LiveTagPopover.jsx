@@ -1,7 +1,10 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import { Popover, Tag } from 'antd';
 import { t } from '../../i18n';
 import CachePopoverContent from './CachePopoverContent';
+import { useSdkContextUsage } from './SdkContextUsageProvider';
+import { mergeSdkContextBar } from '../../utils/contextUsageView';
+import { contextSeverityColor } from '../../utils/formatters';
 import styles from './LiveTagPopover.module.css';
 
 // 静态 overlayInnerStyle 提到模块顶层 const,避免每次 render 创建新字面量。
@@ -36,11 +39,20 @@ function LiveTagPopover({
   onToolsCatalogOpenChange,
   projectName,
 }) {
-  // 用 CSS 变量替代 inline style 字面量,稳定 ctxColor / contextPercent 时 triggerStyle 引用不变。
+  const sdk = useSdkContextUsage();
+  const merged = mergeSdkContextBar({ sdk, fallbackPercent: contextPercent, fallbackTokens: contextTokens });
+  const effectiveColor = merged.sdkActive ? contextSeverityColor(merged.percent) : ctxColor;
   const triggerStyle = useMemo(() => ({
-    '--ctx-color': ctxColor,
-    '--ctx-percent': `${contextPercent}%`,
-  }), [ctxColor, contextPercent]);
+    '--ctx-color': effectiveColor,
+    '--ctx-percent': `${merged.percent}%`,
+  }), [effectiveColor, merged.percent]);
+  const onTriggerKeyDown = useCallback((event) => {
+    if (event.key === 'Escape') { onOpenChange(false); return; }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onOpenChange(!cachePopoverOpen);
+    }
+  }, [cachePopoverOpen, onOpenChange]);
 
   if (isLocalLog) {
     return (
@@ -78,13 +90,22 @@ function LiveTagPopover({
       open={cachePopoverOpen}
       onOpenChange={onOpenChange}
     >
-      <span className={styles.liveTag} style={triggerStyle}>
+      <span
+        className={styles.liveTag}
+        style={triggerStyle}
+        role="button"
+        tabIndex={0}
+        aria-haspopup="dialog"
+        aria-expanded={cachePopoverOpen}
+        aria-label={`${t('ui.contextUsage.title')}: ${merged.tokens > 0 ? `${merged.tokens} ` : ''}${merged.percent}%`}
+        onKeyDown={onTriggerKeyDown}
+      >
         <span className={styles.liveTagFill} />
         <span className={styles.liveTagContent}>
           <span className={styles.liveTagText}>
-            {contextTokens > 0
-              ? `${(contextTokens / 1000).toFixed(1)}K (${contextPercent}%)`
-              : `${contextPercent}%`}
+            {merged.tokens > 0
+              ? `${(merged.tokens / 1000).toFixed(1)}K (${merged.percent}%)`
+              : `${merged.percent}%`}
           </span>
         </span>
       </span>

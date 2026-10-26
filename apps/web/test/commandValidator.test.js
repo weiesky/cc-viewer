@@ -58,6 +58,10 @@ describe('isMutatingCommand — create / move / metadata', () => {
 });
 
 describe('isMutatingCommand — git mutating subset', () => {
+  it('matches git commit', () => {
+    assert.equal(isMutatingCommand('git commit -m "update files"'), true);
+  });
+
   it('matches git checkout / reset / stash / merge / rebase / cherry-pick / restore / clean / rm', () => {
     assert.equal(isMutatingCommand('git checkout main'), true);
     assert.equal(isMutatingCommand('git reset --hard HEAD'), true);

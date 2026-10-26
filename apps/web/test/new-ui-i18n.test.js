@@ -85,6 +85,7 @@ const KEYS = [
   'ui.slashMenu.footerHint',     // keyboard-nav footer hint
   // Busy-queue bubbles above the composer (Enter-while-streaming; ChatView queue-state branch):
   'ui.chatInput.queueSendNow', // per-bubble "interrupt + inject now" button
+  'ui.chatInput.queueDispatching', // per-bubble non-actionable dispatch-in-progress label
   'ui.chatInput.queueRemove',  // per-bubble discard (×) button
   'ui.chatInput.queueHint',    // bubble-stack aria-label / explainer
   'ui.chatInput.queueFull',    // toast when the server rejects an enqueue (queue full)
@@ -155,6 +156,8 @@ describe('new UI key i18n coverage', () => {
     ['ui.contextUsage.updatedAt', '{time}'],
     ['ui.contextUsage.usedOf', '{used}'],
     ['ui.contextUsage.usedOf', '{max}'],
+    ['ui.contextUsage.tokens', '{tokens}'],
+    ['ui.contextUsage.tokensEstimated', '{tokens}'],
     ['ui.contextUsage.autoCompactAt', '{tokens}'],
     // SDK 会话模型 chip 与「MCP 状态」面板的插值键。
     ['ui.sdkModel', '{model}'],

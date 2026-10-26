@@ -260,15 +260,45 @@ describe('ConversationStore event judgement', () => {
     assert.equal(lines[lines.length - 1].msgs[0].content[0].text, 'conv B opening', 'snapshot carries the full new wire');
   });
 
+  it('main detects a queued prompt appended after an unchanged tool_result block', () => {
+    const toolResult = { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool_1', content: 'done' }] };
+    ingest([textMsg('assistant', 'working'), toolResult], 1);
+    const supplemented = { ...toolResult, content: [...toolResult.content, textMsg('user', 'follow up').content[0]] };
+    const r = ingest([textMsg('assistant', 'working'), supplemented], 2);
+    assert.equal(r.ctl, 'replace-tail');
+    assert.deepEqual([r.msgFrom, r.msgTo], [1, 2]);
+    const lines = readLines(convEpochPath(paths, 'main', 0));
+    assert.equal(lines.at(-1).msg.content[1].text, 'follow up');
+  });
+
+  it('main detects edits past the 80-char prefix without snapshotting cache-only changes', () => {
+    const long = (suffix, cacheControl) => textMsg('user', 'x'.repeat(120) + suffix);
+    ingest([long('AAA')], 1);
+    const r = ingest([long('BBB')], 2);
+    assert.equal(r.ctl, 'replace-tail');
+
+    for (let seq = 3; seq < 24; seq++) {
+      const content = [{ type: 'text', text: 'x'.repeat(120) + 'BBB' }];
+      if (seq % 2 === 0) content[0].cache_control = { type: 'ephemeral', ttl: '1h' };
+      const migrated = ingest([{ role: 'user', content: seq % 3 === 0 ? content[0].text : content }], seq);
+      assert.equal(migrated.evt, null, 'cache/string form migration must not write a snapshot');
+    }
+    const other = new ConversationStore(paths, queue);
+    other.ingest('misc', [{ role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool_2', content: 'done' }] }], { seq: 24, rid: 'r24' });
+    const misc = other.ingest('misc', [{ role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool_2', content: 'done' }, { type: 'text', text: 'not main chat' }] }], { seq: 25, rid: 'r25' });
+    assert.equal(misc.evt, null, 'misc keeps the cheap comparison policy');
+  });
+
   it('exactFps mode distinguishes wires sharing an 80-char prefix (converter golden-gate grade)', () => {
     const long = (suffix) => [textMsg('user', 'x'.repeat(120) + suffix)];
-    // Default (live) fingerprints truncate at 80 chars: same-prefix wires are "unchanged".
+    // Main live fingerprints cover the full normalized message; misc keeps the
+    // cheap first-block policy because it does not feed the conversation view.
     const rDefault = (() => {
       const s = new ConversationStore(paths, queue);
       s.ingest('main', long('AAA'), { seq: 1, rid: 'r1' });
       return s.ingest('main', long('BBB'), { seq: 2, rid: 'r2' });
     })();
-    assert.equal(rDefault.evt, null, 'cheap live fps cannot see past 80 chars (accepted)');
+    assert.equal(rDefault.ctl, 'replace-tail');
     // Exact mode (offline converter) must snapshot the second wire.
     const s2 = new ConversationStore(ensureSessionDirSync(dir, 'proj2', SID), queue, { exactFps: true });
     s2.ingest('main', long('AAA'), { seq: 1, rid: 'r1' });
@@ -623,6 +653,25 @@ describe('V2Writer', () => {
 
     const lines = readLines(sp('proj', SID).promptsPath);
     assert.deepEqual(lines.flatMap(l => l.texts), ['q1', 'q2'], 'no duplicate q1 after restart');
+  });
+
+  it('default writer detects a queued prompt appended to an existing main message', async () => {
+    const w = new V2Writer({ logDir: dir, project: 'proj', enabled: true });
+    const toolResult = { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool_1', content: 'done' }] };
+    const e1 = mkEntry();
+    e1.body.messages = [textMsg('assistant', 'working'), toolResult];
+    w.ingestRequest(e1, e1.body.messages);
+    const e2 = mkEntry({ requestId: 'req_2' });
+    e2.body.messages = [textMsg('assistant', 'working'), { ...toolResult, content: [...toolResult.content, { type: 'text', text: 'follow up' }] }];
+    w.ingestRequest(e2, e2.body.messages);
+    await w.flush();
+    const paths = sp('proj', SID);
+    const lines = readLines(convEpochPath(paths, 'main', 0));
+    assert.equal(lines.at(-1).t, 'ctl');
+    assert.equal(lines.at(-1).msg.content[1].text, 'follow up');
+    const journal = readLines(paths.journalPath);
+    assert.equal(journal.find((line) => line.ph === 'req' && line.rid === 'req_2').evt, 'ctl');
+    assert.deepEqual(readLines(paths.promptsPath).flatMap((line) => line.texts), ['follow up']);
   });
 
   it('prompts.jsonl: a suggestion probe swapped for the real prompt (replace-tail) is captured', async () => {

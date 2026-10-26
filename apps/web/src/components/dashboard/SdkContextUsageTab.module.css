@@ -1,10 +1,19 @@
 /* SDK-mode "Context usage" panel (SdkContextUsageTab). Session-level usage view mounted
    as a DetailPanel tab. No !important (CLAUDE.md). */
 .root {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 4px 0;
+}
+
+.root > * {
+  flex-shrink: 0;
 }
 
 .center {
@@ -19,7 +28,15 @@
 .headerRow {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.headerRow > :first-child,
+.headerRow > .modelTag,
+.updatedAt {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .modelTag {
@@ -32,71 +49,6 @@
 
 .updatedAt {
   font-size: 12px;
-}
-
-.barSection {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.barMeta {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  font-variant-numeric: tabular-nums;
-}
-
-.barTrack {
-  position: relative;
-  display: flex;
-  height: 10px;
-  width: 100%;
-  border-radius: 5px;
-  overflow: hidden;
-  background: var(--border-secondary, rgba(0, 0, 0, 0.08));
-}
-
-.barSeg {
-  height: 100%;
-}
-
-.thresholdMark {
-  position: absolute;
-  top: -2px;
-  bottom: -2px;
-  width: 2px;
-  background: var(--color-warning, #faad14);
-}
-
-.autoCompactOff {
-  font-size: 12px;
-}
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  font-size: 12px;
-}
-
-.legendItem {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.legendDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  display: inline-block;
-}
-
-.deferredTag {
-  margin-inline-start: 4px;
-  font-size: 11px;
-  line-height: 1.4;
 }
 
 .gridSection {
@@ -113,19 +65,45 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .gridRow {
   display: flex;
   gap: 2px;
+  width: max-content;
 }
 
 .gridCell {
+  flex: 0 0 10px;
+  box-sizing: border-box;
   width: 10px;
   height: 10px;
   border-radius: 2px;
   border: 1px solid transparent;
   display: inline-block;
+}
+
+.gridCellFull {
+  background: var(--cell-color);
+  border-color: var(--cell-color);
+}
+
+.gridCellPartial {
+  background: var(--cell-color);
+  background: color-mix(in srgb, var(--cell-color) 45%, transparent);
+  border-color: var(--cell-color);
+}
+
+.gridCellEmpty {
+  background: transparent;
+  border-color: var(--context-category-free-space);
+}
+
+.gridCellBuffer {
+  background: var(--context-category-buffer);
+  border-color: var(--context-category-buffer);
 }
 
 .truncatedNote {

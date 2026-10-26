@@ -7,7 +7,15 @@ import { apiUrl } from '../../utils/apiUrl';
  * Extracted from FileExplorer so both the sidebar tree and the file-browser
  * modal reuse the same security-relevant iframe wiring.
  */
-export default function HtmlPreviewModal({ path, onClose, zIndex = 1100 }) {
+export function htmlPreviewUrl(path, { project, instance } = {}) {
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+  const scopedPrefix = project
+    ? `/api/file-raw/view/${encodeURIComponent(project)}/${encodeURIComponent(instance || '')}/`
+    : '/api/file-raw/';
+  return apiUrl(scopedPrefix + encodedPath);
+}
+
+export default function HtmlPreviewModal({ path, onClose, zIndex = 1100, project, instance }) {
   if (!path) return null;
   return (
     <Modal
@@ -32,7 +40,9 @@ export default function HtmlPreviewModal({ path, onClose, zIndex = 1100 }) {
         // the HTML then resolves to `/api/file-raw/<dir>/sorter.js` (same dir),
         // which c8/nyc-style coverage reports depend on. Each path segment is
         // encoded individually so the separating slashes survive.
-        src={apiUrl('/api/file-raw/' + path.split('/').map(encodeURIComponent).join('/'))}
+        // The scope lives in the path so relative subresources retain it during
+        // browser URL resolution; a query string would be dropped.
+        src={htmlPreviewUrl(path, { project, instance })}
         style={{ width: '100%', height: '100%', border: 'none' }}
         title={path}
         // Only allow-scripts, in sync with the server CSP (intersection applies).

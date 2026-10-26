@@ -53,6 +53,40 @@ function trimWindow(list, windowSize) {
   return list.length > w ? list.slice(list.length - w) : list;
 }
 
+// Display-only sources are separate from the request-list/resume window. They
+// retain only responses that can still be referenced by an assistant bubble.
+function thinkingSources(viewState, requests) {
+  const present = new Set();
+  const sources = [];
+  const add = (entry) => {
+    if (!entry || present.has(entry)) return;
+    present.add(entry);
+    sources.push(entry);
+  };
+  const candidates = new Map();
+  for (const entry of viewState.requests || []) {
+    if (!entry?.timestamp) continue;
+    if (entry.response?.body?.content?.some((block) => block?.type === 'thinking')) {
+      candidates.set(`${entry._seqEpoch || ''}\n${entry.timestamp}`, entry);
+    }
+  }
+  for (const session of viewState.mainAgentSessions || []) {
+    for (const message of session.messages || []) {
+      if (!message?._generatedTs) continue;
+      const entry = candidates.get(`${session._seqEpoch || ''}\n${message._generatedTs}`);
+      if (entry) add(entry);
+    }
+  }
+  for (const entry of requests) {
+    if (entry?.response?.body?.content?.some((block) => block?.type === 'thinking')
+      || sources.some((source) => source !== entry && source.body?.messages?.some((message) => message?.role === 'assistant'))) {
+      add(entry);
+    }
+  }
+  sources.sort((left, right) => (left.timestamp || '').localeCompare(right.timestamp || ''));
+  return sources;
+}
+
 export function createViewStateCache({ maxProjects = MAX_PROJECTS, windowSize = DEFAULT_WINDOW } = {}) {
   /** Map<project, snapshot> — insertion order doubles as FIFO order. */
   const store = new Map();
@@ -67,8 +101,10 @@ export function createViewStateCache({ maxProjects = MAX_PROJECTS, windowSize = 
   function snapshot(project, viewState = {}) {
     if (!project || typeof project !== 'string') return false;
     if (store.has(project)) store.delete(project); // re-insert at tail (most-recent)
+    const requests = trimWindow(viewState.requests, windowSize);
     const entry = {
-      requests: trimWindow(viewState.requests, windowSize),
+      requests,
+      thinkingRequests: thinkingSources(viewState, requests),
       v2Rows: trimWindow(viewState.v2Rows, windowSize),
       v2RowsMeta: viewState.v2RowsMeta && typeof viewState.v2RowsMeta === 'object' ? viewState.v2RowsMeta : { totalCount: 0, hasMore: false, oldestTs: '' },
       mainAgentSessions: Array.isArray(viewState.mainAgentSessions) ? viewState.mainAgentSessions : [],

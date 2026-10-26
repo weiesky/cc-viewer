@@ -30,7 +30,7 @@ import { saveEntries, loadEntries, clearEntries, getCacheMeta } from './utils/en
 import { assignMessageTimestamps, applyInPlaceLastMsgReplace, getSessionStableId, resolveDisplaySessions, getLatestSessionByActivity, resolveHydratedPin, runPinHydration, applyBatchEntryTimestamps, resolveTakeoverStableId, shouldFollowLatest, shouldReleaseTakeoverOnBoundary } from './utils/sessionManager';
 import { mergeMainAgentSessions as _mergeMainAgentSessions, isMergeBlockedEntry, shouldDegradeBrokenMerge } from './utils/sessionMerge';
 import { reconstructEntries, createIncrementalReconstructor } from '@ccv/core/delta-reconstructor';
-import { normalizeV2Entries, createV2IncrementalReconstructor, isV2TranscriptLine, isMetadataRow } from '@ccv/core/v2-transcript-normalizer';
+import { normalizeV2Entries, createV2IncrementalReconstructor, isV2TranscriptDisplayLine, isMetadataRow } from '@ccv/core/v2-transcript-normalizer';
 import { createEntrySlimmer, createIncrementalSlimmer, internEntryBigFields } from './utils/entry-slim.js';
 import { yieldToMain, runChunkedPass, INGEST_BATCH_SIZE } from './utils/ingestPipeline.js';
 import { rowToListItem } from './utils/v3Rows.js';
@@ -240,6 +240,8 @@ class AppBase extends React.Component {
       selectedLogs: new Set(),   // Set<file>
       cliMode: false,
       sdkMode: false,
+      sdkContextClearVersion: 0,
+      boundInstance: null,
       workspaceMode: false,
       serverCachedContent: null,
       updateInfo: null,
@@ -295,7 +297,7 @@ class AppBase extends React.Component {
         modalEnabled: true,
         soundEnabled: true,
         notifyOnlyWhenHidden: true,
-        planAutoApproveSeconds: 0, // 「Plan 自动审批」倒计时秒数（同 autoApproveSeconds 语义：0=关 / N=N 秒后自动批准 / -1=立即）；仅 CLI(PTY) 路径
+        planAutoApproveSeconds: 0, // 「Plan 自动审批」倒计时秒数（同 autoApproveSeconds 语义：0=关 / N=N 秒后自动批准 / -1=立即）；CLI(PTY) 与 SDK 路径
         voicePack: {
           enabled: true,
           volume: 0.3,
@@ -798,6 +800,7 @@ class AppBase extends React.Component {
     // the Header (resolveBoundInstance — only set when the bound name is duplicated AND
     // resolvable). Used to disambiguate view-scoped readers (file tree) on the BOUND view.
     this._boundInstance = boundInstance || null;
+    if (this.state.boundInstance !== this._boundInstance) this.setState({ boundInstance: this._boundInstance });
     const vp = this.state.viewedProject;
     if (!vp || this.state.resumeSwitch) return;
     const vi = this.state.viewedInstance || null;
@@ -939,6 +942,7 @@ class AppBase extends React.Component {
     if (!this.state.requests.length && !this.state.v2Rows.length) return;
     this._viewCache.snapshot(key, {
       requests: this.state.requests,
+      thinkingRequests: this.state.thinkingRequests,
       v2Rows: this.state.v2Rows,
       v2RowsMeta: this.state.v2RowsMeta,
       mainAgentSessions: this.state.mainAgentSessions,
@@ -1320,6 +1324,7 @@ class AppBase extends React.Component {
         // state-empty edge).
         if (!isIncremental) {
           st.requests = [];
+          st.thinkingRequests = [];
           st.mainAgentSessions = [];
           st.v2Rows = [];
           st.v2RowsMeta = { totalCount: 0, hasMore: false, oldestTs: '' };
@@ -1333,6 +1338,8 @@ class AppBase extends React.Component {
 
       const newState = {
         requests: entries,
+        thinkingRequests: this._mergeIncrementalEntries(ch.vm.react.thinkingRequests || [], entries)
+          .sort((left, right) => (left?.timestamp || '').localeCompare(right?.timestamp || '')),
         selectedIndex: filtered.length > 0 ? filtered.length - 1 : null,
         mainAgentSessions,
         fileLoading: false,
@@ -1374,6 +1381,7 @@ class AppBase extends React.Component {
       }
       this._commitColdIngest(myToken, {
         requests: core.entries,
+        thinkingRequests: core.entries,
         selectedIndex: core.filtered.length > 0 ? core.filtered.length - 1 : null,
         mainAgentSessions: core.mainAgentSessions,
         fileLoading: false,
@@ -2214,6 +2222,7 @@ class AppBase extends React.Component {
       const cached = plan.cached;
       this._commitChannel(ch, {
         requests: cached.requests,
+        thinkingRequests: cached.thinkingRequests,
         v2Rows: cached.v2Rows,
         v2RowsMeta: cached.v2RowsMeta,
         mainAgentSessions: cached.mainAgentSessions,
@@ -3414,6 +3423,9 @@ class AppBase extends React.Component {
     {
       const prev = vm.react;
       const requests = [...prev.requests]; // one copy per frame, not per message
+      const thinkingRequests = [...(prev.thinkingRequests || [])];
+      const thinkingSourceIndices = new Map(thinkingRequests.map((entry, index) => [`${entry?.timestamp}|${entry?.url}`, index]));
+      let thinkingSourcesOrdered = true;
 
       let cacheExpireAt = this.state.cacheExpireAt;
       let cacheType = this.state.cacheType;
@@ -3449,7 +3461,7 @@ class AppBase extends React.Component {
         // Metadata frames (mode / ai-title / ...) are dropped — isRelevantRequest
         // would otherwise surface them as garbage request rows.
         let entry;
-        if (isV2TranscriptLine(rawEntry)) {
+        if (isV2TranscriptDisplayLine(rawEntry)) {
           if (this._v2SseReconstructor.empty() && this._v2ColdSeed) {
             this._v2SseReconstructor.prime(this._v2ColdSeed);
           }
@@ -3471,12 +3483,22 @@ class AppBase extends React.Component {
 
         if (existingIndex !== undefined) {
           requests[existingIndex] = entry;
+          const sourceIndex = thinkingSourceIndices.get(key);
+          if (sourceIndex !== undefined) thinkingRequests[sourceIndex] = entry;
+          else {
+            thinkingSourceIndices.set(key, thinkingRequests.length);
+            thinkingRequests.push(entry);
+            thinkingSourcesOrdered = false;
+          }
           if (this._sseSlimmer) this._sseSlimmer.onDedup(existingIndex);
         } else {
           const newIdx = requests.length;
           if (this._sseSlimmer) this._sseSlimmer.processEntry(entry, requests, newIdx);
           this._requestIndexMap.set(key, newIdx);
           requests.push(entry);
+          thinkingSourceIndices.set(key, thinkingRequests.length);
+          thinkingRequests.push(entry);
+          thinkingSourcesOrdered = false;
         }
 
         // 增量维护 KV-Cache 缓存内容：只在 completed MainAgent（有 usage）时更新，避免 inProgress 闪烁
@@ -3650,8 +3672,12 @@ class AppBase extends React.Component {
       // The view slice commits through the choke point; cacheExpireAt/cacheType
       // (localStorage cache countdown) and attachedSid are AppBase-level fields
       // that must never enter a channel's vm.
+      // Keep cached old producers before their carriers even when a late response arrives.
+      if (!thinkingSourcesOrdered) thinkingRequests.sort((left, right) => (left?.timestamp || '').localeCompare(right?.timestamp || ''));
       this._commitChannel(channel, {
-        requests, mainAgentSessions,
+        requests,
+        thinkingRequests,
+        mainAgentSessions,
         ...(shouldClearStreaming && { streamingLatest: null }),
         ...(_newPinTs != null && { pinnedSessionTs: _newPinTs }),
       });
@@ -3709,6 +3735,7 @@ class AppBase extends React.Component {
     const ch = this._channels.getRendered();
     const vm = (ch && ch.vm) || this._localVm;
     this._commitChannel(ch, { contextBarOptimistic: true, contextBarLocked: true });
+    this.setState(prev => ({ sdkContextClearVersion: (prev.sdkContextClearVersion || 0) + 1 }));
     if (vm.clearOptimisticTimer) clearTimeout(vm.clearOptimisticTimer);
     vm.clearOptimisticTimer = setTimeout(() => {
       this._commitChannel(ch, { contextBarOptimistic: false });
@@ -3812,7 +3839,9 @@ class AppBase extends React.Component {
       vm.clearOptimisticTimer = null;
     }
     this._commitChannel(ch, { contextBarLocked: false, contextBarOptimistic: false });
+    this._boundInstance = null;
     this.setState({
+      boundInstance: null,
       workspaceMode: false,
       projectName,
       // Do NOT force a view: keep the user's CURRENT display prefs (user-pinned 2026-10-06).
@@ -3854,6 +3883,7 @@ class AppBase extends React.Component {
         if (ch) ch.vm.currentSessionId = null; // same as workspace_started: clear the old session id so lazy-lock can't misfire
         // Returned to the workspace list (no bound project) — drop the persisted workspace.
         clearViewedWorkspace();
+        this._boundInstance = null;
         this._commitChannel(ch, {
           requests: [],
           mainAgentSessions: [],
@@ -3865,6 +3895,7 @@ class AppBase extends React.Component {
           turnActive: false, // new workspace/view owns its own turn state
         });
         this.setState({
+          boundInstance: null,
           workspaceMode: true,
           projectName: '',
           attachedSid: null, // switching projects is an authoritative boundary: force-detach any attach

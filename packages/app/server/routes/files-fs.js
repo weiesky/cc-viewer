@@ -7,16 +7,17 @@ import { join, dirname, basename, resolve, sep } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import { execFile, spawn } from 'node:child_process';
 import { bumpWorkspacesVersion, isReadAllowed } from '../lib/file-access-policy.js';
-import { validateImportDir } from '../lib/file-api.js';
+import { isPathContained, validateImportDir, renameSyncWithRetry } from '../lib/file-api.js';
+import { reportSwallowed } from '../lib/error-report.js';
 import { viewRootOrReply } from '../lib/view-root.js';
 import { loadWorkspaces } from '../workspace-registry.js';
 import { listLivePtys } from '../pty-manager.js';
 import { PROFILE_PATH, _projectName, _logDir } from '../interceptor.js';
 import { LOG_DIR, getClaudeConfigDir } from '../../findcc.js';
 
-// Multi-project (2026-10): project-scoped READ routes resolve the viewed
-// project via the shared viewRootOrReply (?project=, or POST body {project}
-// for the body-carrying read probes). WRITE routes keep the bound root.
+// Project-scoped file operations resolve the viewed project via the shared
+// viewRootOrReply (?project=, or POST body {project}/{instance}). Mutations
+// still enforce realpath containment in that root before touching the disk.
 // SYNCHRONOUS: the affected handlers were sync before multi-project and their
 // tests assert on res immediately after the call.
 function _viewRootOrReply(req, res, parsedUrl, bodyProject, bodyInstance) {
@@ -161,11 +162,31 @@ function importFile(req, res, parsedUrl, isLocal, deps) {
   req.on('end', () => {
     if (aborted) return;
     try {
-      const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+      const cwd = _viewRootOrReply(req, res, parsedUrl);
+      if (!cwd) return;
       const targetDir = join(cwd, dir);
-      mkdirSync(targetDir, { recursive: true });
-      const realDir = realpathSync(targetDir);
       const realCwd = realpathSync(cwd);
+      let cursor = targetDir;
+      const missing = [];
+      while (!existsSync(cursor)) {
+        missing.unshift(basename(cursor));
+        const parent = dirname(cursor);
+        if (parent === cursor) break;
+        cursor = parent;
+      }
+      const realAncestor = realpathSync(cursor);
+      if (realAncestor !== realCwd && !realAncestor.startsWith(realCwd + sep)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Path traversal not allowed' }));
+        return;
+      }
+      // Create only after the nearest existing ancestor is known to be inside
+      // the view; mkdir first would let an escaping symlink create outside dirs.
+      for (const segment of missing) {
+        cursor = join(cursor, segment);
+        mkdirSync(cursor);
+      }
+      const realDir = realpathSync(targetDir);
       if (realDir !== realCwd && !realDir.startsWith(realCwd + sep)) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Path traversal not allowed' }));
@@ -339,7 +360,8 @@ function renameFile(req, res, parsedUrl, isLocal, deps) {
         res.end(JSON.stringify({ error: 'Invalid path' }));
         return;
       }
-      const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+      const cwd = _viewRootOrReply(req, res, parsedUrl, parsed.project, parsed.instance);
+      if (!cwd) return;
       const oldFullPath = join(cwd, oldPath);
       const parentDir = dirname(oldFullPath);
       const newFullPath = join(parentDir, newName);
@@ -349,13 +371,48 @@ function renameFile(req, res, parsedUrl, isLocal, deps) {
         res.end(JSON.stringify({ error: 'File not found' }));
         return;
       }
+      if (!isPathContained(oldFullPath, cwd)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Path traversal not allowed' }));
+        return;
+      }
+      // On a case-insensitive filesystem the differently-cased destination is
+      // the source itself, not a collision. A temporary name makes the case
+      // change work on NTFS and APFS even when realpath keeps the old casing.
+      const oldName = basename(oldPath);
+      if (oldName !== newName && oldName.toLowerCase() === newName.toLowerCase()) {
+        try {
+          if (realpathSync.native(newFullPath) === realpathSync.native(oldFullPath)) {
+            const tempPath = join(parentDir, `.ccv-rename-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+            renameSyncWithRetry(oldFullPath, tempPath);
+            try { renameSyncWithRetry(tempPath, newFullPath); }
+            catch (err) {
+              try { renameSyncWithRetry(tempPath, oldFullPath); }
+              catch (rollbackErr) { reportSwallowed('filesFs.renameRollback', rollbackErr, { tempPath }); }
+              throw err;
+            }
+            const newRelPath = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/') + 1) + newName : newName;
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, newPath: newRelPath }));
+            return;
+          }
+        } catch (err) {
+          // Case-sensitive filesystems have no destination to realpath yet;
+          // that is the normal rename case, not a server error.
+          if (err.code !== 'ENOENT') {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: err.message }));
+            return;
+          }
+        }
+      }
       // 检查目标是否已存在
       if (existsSync(newFullPath)) {
         res.writeHead(409, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Target already exists' }));
         return;
       }
-      renameSync(oldFullPath, newFullPath);
+      renameSyncWithRetry(oldFullPath, newFullPath);
       const newRelPath = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/') + 1) + newName : newName;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, newPath: newRelPath }));
@@ -391,7 +448,8 @@ function moveFile(req, res, parsedUrl, isLocal, deps) {
         res.end(JSON.stringify({ error: 'Invalid path' }));
         return;
       }
-      const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+      const cwd = _viewRootOrReply(req, res, parsedUrl, parsed.project, parsed.instance);
+      if (!cwd) return;
       const oldFullPath = join(cwd, fromPath);
       const toDirFull = join(cwd, toDir);
       // 检查源文件/目录存在
@@ -417,6 +475,11 @@ function moveFile(req, res, parsedUrl, isLocal, deps) {
         }
       }
       const name = basename(fromPath);
+      if (!isPathContained(oldFullPath, cwd) || !isPathContained(toDirFull, cwd)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Path traversal not allowed' }));
+        return;
+      }
       const newFullPath = join(toDirFull, name);
       // 检查目标位置不存在同名文件
       if (existsSync(newFullPath)) {
@@ -487,7 +550,8 @@ function deleteFile(req, res, parsedUrl, isLocal, deps) {
         res.end(JSON.stringify({ error: 'Invalid path' }));
         return;
       }
-      const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+      const cwd = _viewRootOrReply(req, res, parsedUrl, parsed.project, parsed.instance);
+      if (!cwd) return;
       const fullPath = join(cwd, filePath);
       if (!existsSync(fullPath)) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -565,7 +629,8 @@ function revealFile(req, res, parsedUrl, isLocal, deps) {
         res.end(JSON.stringify({ error: 'Invalid path' }));
         return;
       }
-      const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+      const cwd = _viewRootOrReply(req, res, parsedUrl, parsed.project, parsed.instance);
+      if (!cwd) return;
       const fullPath = join(cwd, filePath);
       if (!existsSync(fullPath)) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -623,7 +688,8 @@ function openFile(req, res, parsedUrl, isLocal, deps) {
         res.end(JSON.stringify({ error: 'Invalid path' }));
         return;
       }
-      const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+      const cwd = _viewRootOrReply(req, res, parsedUrl, parsed.project, parsed.instance);
+      if (!cwd) return;
       const fullPath = join(cwd, filePath);
       if (!existsSync(fullPath)) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -671,12 +737,11 @@ function resolvePath(req, res, parsedUrl, isLocal, deps) {
         res.end(JSON.stringify({ error: 'Invalid path' }));
         return;
       }
-      // resolve-path is an internal UI helper (resolve a relative path against
-      // the project root for reveal/open actions). It stays BOUND-only (review
-      // P2-5): resolving a foreign project's root and echoing its absolute path
-      // back would make this endpoint a weak path-leak oracle for projects the
-      // caller is not viewing.
-      const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+      // Resolve a project-relative path against the same viewed root used by
+      // reveal/open. Registered projects and live instances use the shared
+      // resolver, so same-name projects cannot silently fall back to the bound cwd.
+      const cwd = _viewRootOrReply(req, res, parsedUrl, parsed.project, parsed.instance);
+      if (!cwd) return;
       const fullPath = relPath ? join(cwd, relPath) : cwd;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, fullPath }));
@@ -790,7 +855,8 @@ function createFile(req, res, parsedUrl, isLocal, deps) {
         res.end(JSON.stringify({ error: 'Invalid path' }));
         return;
       }
-      const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+      const cwd = _viewRootOrReply(req, res, parsedUrl, parsed.project, parsed.instance);
+      if (!cwd) return;
       const fullDirPath = relDir ? join(cwd, relDir) : cwd;
       if (!existsSync(fullDirPath) || !statSync(fullDirPath).isDirectory()) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -838,7 +904,8 @@ function openTerminal(req, res, parsedUrl, isLocal, deps) {
         res.end(JSON.stringify({ error: 'Invalid path' }));
         return;
       }
-      const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+      const cwd = _viewRootOrReply(req, res, parsedUrl, parsed.project, parsed.instance);
+      if (!cwd) return;
       const fullDir = relDir ? join(cwd, relDir) : cwd;
       if (!existsSync(fullDir) || !statSync(fullDir).isDirectory()) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -860,23 +927,40 @@ function openTerminal(req, res, parsedUrl, isLocal, deps) {
       } else {
         // Linux: try common terminal emulators
         const terminals = ['gnome-terminal', 'konsole', 'xfce4-terminal', 'xterm'];
-        let launched = false;
-        for (const term of terminals) {
+        // spawn reports a missing executable asynchronously, outside try/catch.
+        // Probe each candidate with piped stdio so the next one can be attempted
+        // after ENOENT; detach only after a successful spawn.
+        const tryTerminal = (index) => {
+          if (index >= terminals.length) {
+            const child = spawn('xdg-open', [fullDir], { stdio: 'ignore', detached: true });
+            child.on('error', (err) => { reportSwallowed('filesFs.openTerminal', err, { terminal: 'xdg-open' }); });
+            child.unref();
+            return;
+          }
+          const term = terminals[index];
+          let child;
           try {
             if (term === 'gnome-terminal') {
-              spawn(term, ['--working-directory=' + fullDir], { stdio: 'ignore', detached: true }).unref();
+              child = spawn(term, ['--working-directory=' + fullDir], { stdio: 'pipe' });
             } else if (term === 'konsole') {
-              spawn(term, ['--workdir', fullDir], { stdio: 'ignore', detached: true }).unref();
+              child = spawn(term, ['--workdir', fullDir], { stdio: 'pipe' });
             } else {
-              spawn(term, [], { cwd: fullDir, stdio: 'ignore', detached: true }).unref();
+              child = spawn(term, [], { cwd: fullDir, stdio: 'pipe' });
             }
-            launched = true;
-            break;
-          } catch { continue; }
-        }
-        if (!launched) {
-          spawn('xdg-open', [fullDir], { stdio: 'ignore', detached: true }).unref();
-        }
+          } catch {
+            tryTerminal(index + 1);
+            return;
+          }
+          child.once('error', (err) => {
+            reportSwallowed('filesFs.openTerminal', err, { terminal: term });
+            tryTerminal(index + 1);
+          });
+          child.once('spawn', () => {
+            for (const stream of [child.stdin, child.stdout, child.stderr]) stream?.destroy();
+            child.unref();
+          });
+        };
+        tryTerminal(0);
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
@@ -915,7 +999,8 @@ function createDir(req, res, parsedUrl, isLocal, deps) {
         res.end(JSON.stringify({ error: 'Invalid path' }));
         return;
       }
-      const cwd = process.env.CCV_PROJECT_DIR || process.cwd();
+      const cwd = _viewRootOrReply(req, res, parsedUrl, parsed.project, parsed.instance);
+      if (!cwd) return;
       const fullDirPath = relDir ? join(cwd, relDir) : cwd;
       if (!existsSync(fullDirPath) || !statSync(fullDirPath).isDirectory()) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -965,8 +1050,9 @@ function openProfileDir(req, res) {
   res.end(JSON.stringify({ ok: true, dir }));
 }
 
-function openProjectDir(req, res) {
-  const dir = process.env.CCV_PROJECT_DIR || process.cwd();
+function openProjectDir(req, res, parsedUrl) {
+  const dir = _viewRootOrReply(req, res, parsedUrl);
+  if (!dir) return;
   const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
   execFile(cmd, [dir], { windowsHide: true }, () => {});
   res.writeHead(200, { 'Content-Type': 'application/json' });

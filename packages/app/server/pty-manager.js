@@ -1290,12 +1290,15 @@ export function resolveInstanceForCwd(cwd) {
  * would make resize/scrollback/getPtyState follow whichever project was last
  * SENT to, a new cross-project bleed (review P1, 2026-10-05).
  */
-function _resolveKeyByAnchor({ sessionId, project, instanceKey } = {}) {
+function _resolveKeyByAnchor({ sessionId, project, instanceKey, strict = false } = {}) {
+  // Explicit strict targets never fall back to the active conversation. Without this,
+  // a dead project/instance could receive a queued prompt meant for another one.
   // Multi-instance: an explicit instanceKey is the strongest anchor — it pins THIS exact
   // process (disambiguating two same-cwd instances that basename routing cannot).
   if (typeof instanceKey === 'string' && /^ccv-[0-9a-f]+$/.test(instanceKey)) {
     const rec = ptys.get(instanceKey);
     if (rec && rec.ptyProcess) return instanceKey;
+    if (strict) return null;
   }
   const projKey = (typeof project === 'string' && project) ? _resolveKey({ project }) : null;
   if (typeof sessionId === 'string' && sessionId) {
@@ -1313,12 +1316,13 @@ function _resolveKeyByAnchor({ sessionId, project, instanceKey } = {}) {
     }
   }
   if (projKey) return projKey;
+  if (strict) return null;
   return activePtyKey != null && ptys.has(activePtyKey) ? activePtyKey : null;
 }
 
 /** writeToPty variant routed by an explicit anchor instead of the global active pointer. */
-export function writeToPtyFor(data, { sessionId, project, instanceKey } = {}) {
-  const key = _resolveKeyByAnchor({ sessionId, project, instanceKey });
+export function writeToPtyFor(data, { sessionId, project, instanceKey, strict = false } = {}) {
+  const key = _resolveKeyByAnchor({ sessionId, project, instanceKey, strict });
   const s = key ? ptys.get(key) : null;
   if (s && s.ptyProcess) {
     s.ptyProcess.write(data);
@@ -1332,11 +1336,7 @@ export function writeToPtyFor(data, { sessionId, project, instanceKey } = {}) {
  * the write fails (onComplete(false)) WITHOUT falling back to the project/active record —
  * scheduled-task injection must never land in the wrong conversation (review P0-2). */
 export function writeToPtySequentialFor(chunks, onComplete, opts = {}, anchor = {}) {
-  let key = _resolveKeyByAnchor(anchor);
-  if (opts && opts.strict && typeof anchor.instanceKey === 'string' && anchor.instanceKey) {
-    const rec = ptys.get(anchor.instanceKey);
-    if (!rec || !rec.ptyProcess) key = null; // strict: a dead explicit instance never falls back
-  }
+  const key = _resolveKeyByAnchor({ ...anchor, strict: opts.strict === true });
   const s = key ? ptys.get(key) : null;
   if (!s || !s.ptyProcess || !chunks || chunks.length === 0) {
     if (onComplete) onComplete(false);

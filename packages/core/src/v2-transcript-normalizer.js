@@ -1,4 +1,5 @@
 // CLIENT-SAFE: no node deps. Home: @ccv/core (v2-transcript-normalizer.js) — consumed by apps/web + packages/app. Do not add fs/process/node: imports.
+import { extractQueuedPromptTranscriptLine } from './queued-prompt.js';
 /**
  * V2 Transcript Normalizer — Claude Code 2.x JSONL → legacy-compatible entry
  *
@@ -35,8 +36,9 @@
  *   same image) is ignored — message.content already carries the standard
  *   base64 data; honoring both would double memory.
  * - Metadata rows (mode / ai-title / last-prompt / file-history-snapshot /
- *   queue-operation) carry no message and are dropped — isRelevantRequest
- *   would otherwise surface them as garbage request rows.
+ *   system frames) carry no message and are dropped. Confirmed queued_command
+ *   attachments are the exception: they become display-only messages, while
+ *   pending enqueue / dequeue / remove / popAll remain non-renderable.
  */
 
 const V2_LINE_TYPES = new Set(['user', 'assistant']);
@@ -59,11 +61,17 @@ const DEDUP_MAX = 1024;
  */
 export function isV2TranscriptLine(entry) {
   if (!entry || typeof entry !== 'object') return false;
+  if (entry.type === 'attachment' || entry.type === 'queue-operation') return false;
   if (!V2_LINE_TYPES.has(entry.type)) return false;
   if (entry.isSidechain === true) return false;
   const msg = entry.message;
   if (!msg || typeof msg !== 'object') return false;
   return V2_LINE_ROLES.has(msg.role);
+}
+
+/** True for a confirmed queue input, not an enqueue that may never be consumed. */
+export function isV2TranscriptDisplayLine(entry) {
+  return isV2TranscriptLine(entry) || !!extractQueuedPromptTranscriptLine(entry);
 }
 
 /**
@@ -86,7 +94,17 @@ function isLegacyRequestLine(entry) {
  */
 export function isMetadataRow(entry) {
   if (!entry || typeof entry !== 'object') return false;
-  return !isV2TranscriptLine(entry) && !isLegacyRequestLine(entry);
+  return !isV2TranscriptDisplayLine(entry) && !isLegacyRequestLine(entry);
+}
+
+function queuedPrompt(line, position = 0) {
+  const prompt = extractQueuedPromptTranscriptLine(line, position);
+  if (!prompt) return null;
+  return {
+    content: prompt.content,
+    _timestamp: prompt.submittedTimestamp,
+    _ccvSourceId: prompt.sourceId,
+  };
 }
 
 function parseTs(ts) {
@@ -116,8 +134,15 @@ function sortLines(lines) {
  */
 function buildSegmentMessages(lines) {
   const messages = [];
+  const queuedPrompts = [];
   const assistantById = new Map(); // message.id → message object
-  for (const line of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex];
+    const queued = queuedPrompt(line, lineIndex);
+    if (queued) {
+      queuedPrompts.push({ ...queued, afterIndex: messages.length - 1 });
+      continue;
+    }
     const msg = line.message;
     if (msg.role === 'user') {
       messages.push({
@@ -157,7 +182,7 @@ function buildSegmentMessages(lines) {
     messages.push(m);
     if (mid) assistantById.set(mid, m);
   }
-  return messages;
+  return { messages, queuedPrompts };
 }
 
 /**
@@ -167,9 +192,9 @@ function buildSegmentMessages(lines) {
  * messages[0]._timestamp invariant.
  */
 export function buildSyntheticEntry(lines, sessionId, segIdx) {
-  const messages = buildSegmentMessages(lines);
-  if (messages.length === 0) return null;
-  const entryTs = messages[0]._timestamp;
+  const { messages, queuedPrompts } = buildSegmentMessages(lines);
+  if (messages.length === 0 && queuedPrompts.length === 0) return null;
+  const entryTs = messages.length > 0 ? messages[0]._timestamp : queuedPrompts[0]._timestamp;
   for (const m of messages) m._entryTs = entryTs;
 
   // Last assistant row carries model/usage — expose it as a synthetic
@@ -191,6 +216,7 @@ export function buildSyntheticEntry(lines, sessionId, segIdx) {
     sessionId,
     _seqEpoch: `v2:${sessionId}:${segIdx}`,
     _syntheticV2: true,
+    _ccvQueuedPrompts: queuedPrompts,
     _messageCount: messages.length,
   };
   if (lastModel || lastUsage) {
@@ -240,7 +266,7 @@ export function normalizeV2Entries(rawEntries) {
   let v2Count = 0;
   const kept = [];
   for (const e of rawEntries) {
-    if (isV2TranscriptLine(e)) {
+    if (isV2TranscriptDisplayLine(e)) {
       v2Count++;
     } else if (isLegacyRequestLine(e)) {
       kept.push(e);
@@ -251,7 +277,7 @@ export function normalizeV2Entries(rawEntries) {
 
   const bySession = new Map(); // sessionId → v2 lines
   for (const e of rawEntries) {
-    if (!isV2TranscriptLine(e)) continue;
+    if (!isV2TranscriptDisplayLine(e)) continue;
     const sid = e.sessionId || 'unknown';
     let arr = bySession.get(sid);
     if (!arr) bySession.set(sid, (arr = []));
@@ -260,8 +286,14 @@ export function normalizeV2Entries(rawEntries) {
 
   const synthetics = [];
   for (const [sid, lines] of bySession) {
-    const sorted = sortLines(lines);
-    const segments = splitSegments(sorted);
+    // Queue attachments carry their ENQUEUE timestamp, not the later position at
+    // which Claude consumed them. Keep the whole file sequence when such a row
+    // exists so its tool/assistant neighbours stay faithful to the transcript;
+    // sessions without queue inputs retain historical timestamp repair.
+    const ordered = lines.some((line) => extractQueuedPromptTranscriptLine(line))
+      ? lines
+      : sortLines(lines);
+    const segments = splitSegments(ordered);
     for (let i = 0; i < segments.length; i++) {
       const entry = buildSyntheticEntry(segments[i], sid, i);
       if (entry) synthetics.push(entry);
@@ -291,6 +323,7 @@ export function createV2IncrementalReconstructor() {
                            // primed cold entry's segment epoch, or the merge
                            // boundary check would split the session)
     accumulated: null,     // array of messages (cold snapshot or live-built)
+    queuedPrompts: [],
     shared: false,         // accumulated entries came from prime (copy-on-write)
     assistantById: new Map(),
     // tool_use blocks merged into an already-scanned message by a later split
@@ -300,6 +333,8 @@ export function createV2IncrementalReconstructor() {
     mergedToolUses: [],
     seenUuids: new Set(),
     uuidOrder: [],
+    lastQueuedLine: null,
+    lastQueuedPosition: -1,
     lastAssistant: null,
   };
 
@@ -380,6 +415,7 @@ export function createV2IncrementalReconstructor() {
       sessionId: state.sessionId,
       _seqEpoch: epoch,
       _syntheticV2: true,
+      _ccvQueuedPrompts: state.queuedPrompts.map((prompt) => ({ ...prompt })),
       _messageCount: messages.length,
     };
     if (state.lastAssistant) {
@@ -419,9 +455,12 @@ export function createV2IncrementalReconstructor() {
         ...m,
         content: Array.isArray(m.content) ? [...m.content] : m.content,
       }));
+      state.queuedPrompts = (syntheticEntry._ccvQueuedPrompts || []).map((prompt) => ({ ...prompt }));
+      for (const prompt of state.queuedPrompts) if (prompt._ccvSourceId) state.seenUuids.add(prompt._ccvSourceId);
       state.shared = true;
       state.assistantById.clear();
       for (const m of state.accumulated) {
+        if (m._ccvSourceId) state.seenUuids.add(m._ccvSourceId);
         if (m.role === 'assistant') {
           if (m._mid) state.assistantById.set(m._mid, m);
           state.lastAssistant = m;
@@ -436,7 +475,7 @@ export function createV2IncrementalReconstructor() {
      * isV2TranscriptLine first).
      */
     reconstruct(line) {
-      if (!isV2TranscriptLine(line)) return null;
+      if (!isV2TranscriptDisplayLine(line)) return null;
       // Session switch (workspace switch / another project's file on the same
       // SSE): the old session is already rendered — drop its baseline and
       // start a fresh one so rows never cross sessions.
@@ -445,12 +484,23 @@ export function createV2IncrementalReconstructor() {
         state.entryTs = line.timestamp;
         state.epoch = null;
         state.accumulated = [];
+        state.queuedPrompts = [];
         state.shared = false;
         state.assistantById.clear();
         state.lastAssistant = null;
         state.mergedToolUses = [];
       }
-      const uuid = line.uuid;
+      const position = !line.uuid && line.type === 'attachment' && state.lastQueuedLine === line
+        ? state.lastQueuedPosition : state.queuedPrompts.length;
+      const queued = queuedPrompt(line, position);
+      if (queued && !line.uuid) {
+        state.lastQueuedLine = line;
+        state.lastQueuedPosition = position;
+      } else {
+        state.lastQueuedLine = null;
+        state.lastQueuedPosition = -1;
+      }
+      const uuid = queued?._ccvSourceId || line.uuid;
       if (uuid && state.seenUuids.has(uuid)) return null;
       if (uuid) {
         state.seenUuids.add(uuid);
@@ -465,9 +515,21 @@ export function createV2IncrementalReconstructor() {
         state.entryTs = line.timestamp;
         state.epoch = null;
         state.accumulated = [];
+        state.queuedPrompts = [];
         state.shared = false;
       }
       const msg = line.message;
+      if (queued) {
+        if (state.accumulated === null) {
+          state.sessionId = line.sessionId || 'unknown';
+          state.entryTs = queued._timestamp;
+          state.accumulated = [];
+          state.queuedPrompts = [];
+          state.shared = false;
+        }
+        state.queuedPrompts.push({ ...queued, afterIndex: state.accumulated.length - 1 });
+        return snapshotEntry();
+      }
       if (msg.role === 'user' && isClearRow(line)) {
         // Live /clear: start a new segment (new epoch) so the batch and live
         // paths split sessions identically. The command row itself is dropped.
@@ -478,6 +540,7 @@ export function createV2IncrementalReconstructor() {
         state.epoch = `v2:${state.sessionId}:${(state.epoch?.split(':').pop() ?? 0) + 1}`;
         state.entryTs = null; // first message of the new segment owns the ts
         state.accumulated = [];
+        state.queuedPrompts = [];
         state.shared = false;
         state.assistantById.clear();
         state.lastAssistant = null;
@@ -509,6 +572,7 @@ export function createV2IncrementalReconstructor() {
       state.entryTs = null;
       state.epoch = null;
       state.accumulated = null;
+      state.queuedPrompts = [];
       state.shared = false;
       state.assistantById.clear();
       state.seenUuids.clear();

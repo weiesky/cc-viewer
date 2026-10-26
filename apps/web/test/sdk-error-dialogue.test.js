@@ -31,8 +31,8 @@ describe('sdk-error dialogue rows — state + WS branch', () => {
   it('sdk-error branch guards with an early return BEFORE the toast and the row update', () => {
     const m = jsx.match(/msg\.type === 'sdk-error'\)\s*\{[\s\S]*?msg\.type === 'sdk-init'/);
     assert.ok(m, 'sdk-error branch found');
-    assert.match(m[0], /if \(!this\._sdkSkillsFrameMatchesView\(msg\)\) return;/, 'out-of-scope frames return early (no toast, no row)');
-    const guardIdx = m[0].indexOf('if (!this._sdkSkillsFrameMatchesView(msg)) return;');
+    assert.match(m[0], /if \(!this\._sdkFrameMatchesView\(msg\)\) return;/, 'out-of-scope frames return early (no toast, no row)');
+    const guardIdx = m[0].indexOf('if (!this._sdkFrameMatchesView(msg)) return;');
     const toastIdx = m[0].indexOf("message.error(t('ui.sdkError'");
     const setStateIdx = m[0].indexOf('this.setState(prev =>');
     assert.ok(toastIdx > -1, 'eager toast is kept');
@@ -58,11 +58,11 @@ describe('sdk-error dialogue rows — state + WS branch', () => {
     assert.ok(helper, 'helper body found');
     assert.match(helper[0], /setState\(\{ sdkErrors: \[\] \}\)/, 'helper clears sdkErrors');
     assert.ok(!helper[0].includes('_lastUserSendTs'), 'no write-only timestamp field');
-    // The clear sits in the same click handler, before the send literal.
+    // The clear sits in the send-now handler, before the send literal.
     const sendNowIdx = jsx.indexOf("'queue-send-now'");
     assert.ok(sendNowIdx > -1, 'queue-send-now send found');
-    const handlerStart = jsx.lastIndexOf('onClick={() => {', sendNowIdx);
-    assert.ok(jsx.slice(handlerStart, sendNowIdx).includes('_clearSdkErrors()'), 'queue-send-now clears the rows too');
+    const handlerStart = jsx.lastIndexOf('_handleQueueSendNow = (item) => {', sendNowIdx);
+    assert.ok(handlerStart >= 0 && jsx.slice(handlerStart, sendNowIdx).includes('_clearSdkErrors()'), 'queue-send-now clears the rows too');
   });
 
   it('rows are NOT cleared on sdk-session-state running (auto-drain would wipe them)', () => {
@@ -81,7 +81,7 @@ describe('sdk-error dialogue rows — view/session switch clearing', () => {
   });
 
   it('viewSwitched clears sdkErrors', () => {
-    const m = jsx.match(/if \(viewSwitched\) \{[\s\S]{0,300}?\}/);
+    const m = jsx.match(/if \(viewSwitched \|\| planLostView\) \{[\s\S]*?\n    \}\n/);
     assert.ok(m, 'viewSwitched block found');
     assert.ok(m[0].includes('this._clearSdkErrors()'), 'viewSwitched clears sdkErrors via the shared helper');
   });
@@ -136,7 +136,7 @@ describe('sdk-error dialogue rows — rendering', () => {
     assert.ok(noData && noData[0].includes('_renderSdkErrors(true)'), 'noData/loading branch renders the rows with the empty-state modifier');
     const footer = jsx.match(/_virtuosoFooter = <>[\s\S]{0,900}?inputStackSpacer/);
     assert.ok(footer && footer[0].includes('_renderSdkErrors()'), 'Virtuoso footer renders the rows');
-    const desktop = jsx.match(/pendingBubble\}\s*\{this\._renderSdkErrors\(\)\}\s*\{streamingLiveItem && \(/);
+    const desktop = jsx.match(/pendingBubble\}\{optimisticQueueBubbles\}\s*\{this\._renderSdkErrors\(\)\}\s*\{streamingLiveItem && \(/);
     assert.ok(desktop, 'desktop list renders the rows before the streaming overlay');
   });
 

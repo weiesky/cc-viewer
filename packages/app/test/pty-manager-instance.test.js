@@ -17,6 +17,7 @@ import {
   listLivePtys,
   setPtySessionIdForInstance,
   writeToPtyFor,
+  writeToPtySequentialFor,
   ensurePtyForCwd,
   _resetForTests,
   _setPtyImportForTests,
@@ -55,6 +56,21 @@ function fakeSpawn() {
 describe('pty-manager multi-instance (instanceKey-keyed Map)', () => {
   beforeEach(() => { _resetForTests(); fakeSpawn(); });
   afterEach(() => { _resetForTests(); _setPtyImportForTests(null); });
+
+  it('strict writes never fall back from a dead explicit instance to its live sibling', async () => {
+    await spawnClaude(9999, '/proj/solo', [], '/bin/echo');
+    await spawnClaude(9999, '/proj/solo', [], '/bin/echo');
+    const [deadKey] = listLivePtys().map((pty) => pty.instanceKey);
+    killPtyFor({ instanceKey: deadKey });
+    const anchor = { project: 'solo', instanceKey: deadKey };
+    assert.equal(writeToPtyFor('\x1b', { ...anchor, strict: true }), false);
+    let result = null;
+    writeToPtySequentialFor(['never'], (ok) => { result = ok; }, { strict: true }, anchor);
+    assert.equal(result, false);
+    assert.deepEqual(spawned[1].writes, [], 'the surviving sibling is untouched');
+    assert.equal(writeToPtyFor('legacy fallback', anchor), true, 'non-strict callers retain fallback');
+    assert.deepEqual(spawned[1].writes, ['legacy fallback']);
+  });
 
   it('mints a distinct instanceKey per spawn, even on the same cwd', async () => {
     await spawnClaude(9999, '/proj/solo', [], '/bin/echo');

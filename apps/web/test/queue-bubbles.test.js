@@ -26,17 +26,20 @@ describe('queue bubbles — state + WS wiring', () => {
 
   it('queue-state WS branch replaces queuedMessages from the server snapshot', () => {
     assert.ok(jsx.includes("msg.type === 'queue-state'"), 'queue-state branch exists');
-    const branch = jsx.match(/msg\.type === 'queue-state'[\s\S]{0,600}?setState\(\{ queuedMessages: Array\.isArray\(msg\.items\)/);
+    const branch = jsx.match(/msg\.type === 'queue-state'[\s\S]{0,1200}?queuedMessages: items/);
     assert.ok(branch, 'queue-state branch setStates queuedMessages from msg.items');
+    assert.ok(branch[0].includes('msg.project'), 'queue snapshots are also isolated by project');
   });
 
   it('session/workspace switch clears local state AND notifies the server (queue-clear)', () => {
-    const block = jsx.match(/queuedMessages\.length\)\s*\{[\s\S]{0,400}?queue-clear/);
+    const block = jsx.match(/if \(this\.state\.queuedMessages\.length \|\| this\.state\.optimisticQueueMessages\.length\) \{\s*this\.setState\(\{ queuedMessages: \[\], optimisticQueueMessages: \[\] \}\);[\s\S]*?queue-clear[^;]+;/);
     assert.ok(block, 'session-switch block clears queuedMessages and sends queue-clear');
+    assert.ok(block[0].includes('prevProps.viewProject || prevProps.projectName'), 'the clear targets the source view, not the destination queue');
+    assert.ok(block[0].includes('prevProps.viewInstance'), 'the source instance is preserved');
   });
 
   it('ws-close cleanup covers queuedMessages', () => {
-    const block = jsx.match(/_onTerminalWsState = \(state\)[\s\S]*?askQueue: \[\], askMetaMap: \{\}, pendingPtyPlan: null, queuedMessages: \[\]/);
+    const block = jsx.match(/_onTerminalWsState = \(state\)[\s\S]*?queuedMessages: \[\], optimisticQueueMessages: \[\]/);
     assert.ok(block, 'ws-close setState clears queuedMessages too');
   });
 });
@@ -83,6 +86,24 @@ describe('queue bubbles — render block', () => {
     const block = jsx.slice(bubblesIdx, inputBarIdx);
     const preventers = block.match(/onMouseDown=\{\(e\) => e\.preventDefault\(\)\}/g) || [];
     assert.ok(preventers.length >= 2, 'both bubble buttons preventDefault on mousedown');
+  });
+
+  it('send-now creates a scoped pending conversation bubble before the original WS frame', () => {
+    assert.ok(jsx.includes('optimisticQueueMessages: []'), 'local placeholder state is separate from server queue');
+    assert.ok(jsx.includes('reconcileOptimisticQueueMessages'), 'real messages and queue snapshots share the reconciliation helper');
+    const block = jsx.match(/_handleQueueSendNow = \(item\) => \{[\s\S]{0,1300}?queue-send-now/);
+    assert.ok(block, 'click creates the placeholder before sending queue-send-now');
+    assert.ok(block[0].includes('...scope'), 'placeholder retains project/instance/attached session scope');
+    assert.ok(block[0].includes('scrollToBottom'), 'the pending bubble is immediately visible at the conversation tail');
+    assert.ok(!block[0].includes('pendingInput:'), 'send-now does not reuse the unrelated pendingInput lifecycle');
+  });
+
+  it('renders pending send-now messages in every conversation layout with existing i18n', () => {
+    assert.ok(jsx.includes('key={`optimistic-queue-${item.id}`}'), 'placeholder keys use the queue id');
+    assert.ok(jsx.includes("t('ui.chatInput.queueDispatching')"), 'pending status reuses the existing localized label');
+    const count = (jsx.match(/\{pendingBubble\}\{optimisticQueueBubbles\}/g) || []).length;
+    assert.equal(count, 3, 'empty, virtualized and regular chat layouts all render pending messages');
+    assert.ok(css.includes('.optimisticQueueStatus'), 'pending status has a lightweight style');
   });
 });
 

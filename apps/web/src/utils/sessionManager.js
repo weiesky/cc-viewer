@@ -384,6 +384,7 @@ export function applyBatchEntryTimestamps(st, entry) {
     st.timestamps.push(timestamp);
     st.generatedTimestamps.push(st.prevMainAgentTs || null);
   }
+  entry._sessionId = st.currentSessionId;
   if (messages.length > 0) {
     for (let j = 0; j < messages.length; j++) {
       const m = messages[j];
@@ -551,6 +552,9 @@ export function applyInPlaceLastMsgReplace(prevSessions, entry, timestamp, isNew
     // Preserve the v2 session epoch (task B) — this path clones the session, and
     // dropping it would make the next entry's epoch-boundary check read undefined.
     _seqEpoch: lastSession._seqEpoch,
+    _sessionId: entry._sessionId || lastSession._sessionId || timestamp,
+    _ccvQueuedPrompts: entry._ccvQueuedPrompts ?? lastSession._ccvQueuedPrompts ?? [],
+    ...(lastSession._partialData === true && { _partialData: true }),
   };
   // 末位替换：返回新 sessions 数组保持原顺序、prev 长度不变。
   // 下游 ChatView _sessionItemCache[last] 按 index 索引该 session，依赖 index 恒定不能错位。

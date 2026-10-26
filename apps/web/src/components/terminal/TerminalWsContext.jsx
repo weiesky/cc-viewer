@@ -78,6 +78,8 @@ export class TerminalWsProvider extends React.Component {
   connect = () => {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
     let url;
+    let pinnedProject = null;
+    let pinnedInstance = null;
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       // 带上 LAN token —— 服务端 WS upgrade 与 HTTP 同款鉴权,远程 ?token= 终端必须携带凭证。
@@ -86,10 +88,12 @@ export class TerminalWsProvider extends React.Component {
       // Multi-PTY: pin this connection to the project being VIEWED so the server
       // replays that project's state/buffer (not the last-spawned one).
       const vp = this.props.viewedProject;
+      pinnedProject = vp || null;
       if (vp) url += `${url.includes('?') ? '&' : '?'}project=${encodeURIComponent(vp)}`;
       // Multi-instance: pin the connection to the exact instance when a same-cwd project runs
       // two concurrent processes (so the server replays/attaches THIS process's terminal).
       const vi = this.props.viewedInstance;
+      pinnedInstance = vi || null;
       if (vi) url += `${url.includes('?') ? '&' : '?'}instance=${encodeURIComponent(vi)}`;
     } catch (e) {
       return; // SSR / 测试环境兜底
@@ -105,7 +109,15 @@ export class TerminalWsProvider extends React.Component {
     this.ws = ws;
 
     ws.onopen = () => {
-      this._attachedProject = this.props.viewedProject || null;
+      // The handshake may predate project hydration or a view switch. Record the
+      // identity actually carried by the URL, then attach the CURRENT view once
+      // the socket can send; otherwise a CONNECTING-time change is never repaired.
+      this._attachedProject = pinnedProject;
+      this._attachedInstance = pinnedInstance;
+      if (pinnedProject !== (this.props.viewedProject || null)
+        || pinnedInstance !== (this.props.viewedInstance || null)) {
+        this.attach(this.props.viewedProject, this.props.viewedInstance);
+      }
       this._notifyState('open');
     };
 

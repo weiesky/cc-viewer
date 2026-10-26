@@ -73,7 +73,7 @@ export class V2Writer {
     // writers pass none of these.
     this._sessionsDirName = opts.sessionsDirName || 'sessions';
     this._metaExtra = opts.metaExtra || null;
-    this._exactConvFps = !!opts.exactConvFps;
+    this._exactConvFps = opts.exactConvFps;
     // S6b live feed: called with the session dir after every ingest so the
     // in-process live cursor can read the fresh appends with zero fs-watch
     // latency. Purely a nudge — the feed's data source stays the files.

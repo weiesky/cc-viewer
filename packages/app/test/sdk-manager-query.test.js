@@ -76,7 +76,9 @@ function makeDeps(extra = {}) {
 //                   use this — the grace timer shares the mocked API)
 //   endWith(err) — end the output stream (err → throw): session-level death
 //   released     — count of released (completed) turns
-function makeResidentQuery({ respond, initMsgs, autoRelease = 0, getContextUsage, mcpServerStatus, supportedCommands } = {}) {
+//   endAfter     — >0: end the stream cleanly after that many completed turns
+//                  (models a session that exits on its own while the queue is parked)
+function makeResidentQuery({ respond, initMsgs, autoRelease = 0, endAfter = 0, getContextUsage, mcpServerStatus, supportedCommands } = {}) {
   const calls = [];
   let current = null;
   function fakeQuery({ prompt, options }) {
@@ -194,6 +196,9 @@ function makeResidentQuery({ respond, initMsgs, autoRelease = 0, getContextUsage
             await Promise.resolve();
             yield m;
           }
+          // Optional generation exit: the iterator ends after N completed turns even
+          // while the push queue is still open (natural session death).
+          if (endAfter > 0 && state.released >= endAfter) { done(); return; }
         }
         done();
       },
@@ -556,7 +561,9 @@ describe('sdk-manager-query — canUseTool: AskUserQuestion / ExitPlanMode / 权
 
     const sendP = sdk.sendUserMessage('go');
     await tick(6);
-    assert.ok(broadcasts.some((b) => b.type === 'sdk-plan-pending' && b.id === 'plan-1'));
+    const planPending = broadcasts.find((b) => b.type === 'sdk-plan-pending' && b.id === 'plan-1');
+    assert.ok(planPending, 'should broadcast the plan approval');
+    assert.ok(planPending.instanceKey, 'plan approval must carry its owning instance for view-scoped auto-approval');
     assert.equal(sdk.resolveApproval('plan-1', { approve: true }), true);
     await sendP;
     await tick(3);
@@ -2027,16 +2034,25 @@ describe('sdk-manager-query — queue-state 广播与快照', () => {
     await sdk.sendUserMessage('second');
 
     const last = broadcasts.filter((b) => b.type === 'queue-state').at(-1);
+    const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
+    assert.equal(last.project, projectKeyForCwd(tmpDir), 'queue frames carry the canonical project key');
     assert.equal(last.items.length, 1);
     assert.equal(last.items[0].text, 'second');
     assert.ok(last.items[0].id);
     assert.equal(typeof last.items[0].ts, 'number');
+    // Every snapshot item carries its actionable state; a queued item is actionable.
+    assert.equal(last.items[0].status, 'queued');
     assert.deepEqual(sdk.getQueueSnapshot(), last.items);
 
     releaseFirst();
     await p1;
     await tick(8);
-    const drained = broadcasts.filter((b) => b.type === 'queue-state').at(-1);
+    // Automatic drain announces the dispatching slot before _startTurn accepts it, then
+    // removes the bubble once inputQueue.push commits it.
+    const states = broadcasts.filter((b) => b.type === 'queue-state');
+    assert.ok(states.some((s) => s.items.length === 1 && s.items[0].text === 'second' && s.items[0].status === 'dispatching'),
+      'auto drain must expose the selected item as dispatching before it becomes the turn');
+    const drained = states.at(-1);
     assert.equal(drained.items.length, 0);
     assert.equal(sdk.getQueueSnapshot().length, 0);
   });
@@ -2078,6 +2094,8 @@ describe('sdk-manager-query — queue-state 广播与快照', () => {
     const rej = broadcasts.filter((b) => b.type === 'queue-rejected');
     assert.equal(rej.length, 1);
     assert.equal(rej[0].reason, 'full');
+    const { projectKeyForCwd } = await import('../server/lib/system-prompt-snapshots.js');
+    assert.equal(rej[0].project, projectKeyForCwd(tmpDir), 'queue rejection carries the same project identity');
     assert.equal(broadcasts.filter((b) => b.type === 'queue-state').length, stateBefore,
       'rejection must not trigger an extra queue-state broadcast (nothing changed)');
 
@@ -2118,6 +2136,8 @@ describe('sdk-manager-query — sdk-context-usage 通道', () => {
     assert.equal(frames[0].trigger, 'turn-end');
     assert.deepEqual(frames[0].usage, USAGE, 'usage payload is losslessly passed through');
     assert.equal(typeof frames[0].ts, 'number');
+    const expectedInstance = sdk.listSdkSessions().find((s) => s.cwd === tmpDir).instanceKey;
+    assert.equal(frames[0].instanceKey, expectedInstance, 'snapshot carries the session instanceKey');
     assert.deepEqual(sdk.getContextUsageSnapshot(), frames[0], 'snapshot retained for WS replay');
     assert.equal(turnEnds.length, 1);
   });
@@ -2360,6 +2380,252 @@ describe('sdk-manager-query — sdk-context-usage 通道', () => {
     } finally {
       mock.timers.reset();
     }
+  });
+
+  it('anchored snapshot getter resolves exactly and rejects a mismatched pair', async () => {
+    const alphaCwd = join(tmpDir, 'ws-a', 'alpha');
+    const betaCwd = join(tmpDir, 'ws-b', 'beta');
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async () => [resultMsg()],
+      getContextUsage: { resolve: USAGE },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(alphaCwd, 'alpha', makeDeps().deps);
+    await sdk.sendUserMessage('alpha-turn');
+    await tick(10);
+    sdk.initSdkSession(betaCwd, 'beta', makeDeps().deps);
+    await sdk.sendUserMessage('beta-turn');
+    await tick(10);
+
+    const alpha = sdk.listSdkSessions().find((s) => s.cwd === alphaCwd);
+    const beta = sdk.listSdkSessions().find((s) => s.cwd === betaCwd);
+    const viaInstance = sdk.getContextUsageSnapshot({ instanceKey: alpha.instanceKey });
+    assert.equal(viaInstance.cwd, alphaCwd, 'exact instance replays its own snapshot');
+    assert.equal(viaInstance.instanceKey, alpha.instanceKey);
+    assert.equal(sdk.getContextUsageSnapshot({ project: 'alpha' }).cwd, alphaCwd, 'project anchor resolves');
+    assert.equal(sdk.getContextUsageSnapshot({ project: 'alpha', instanceKey: alpha.instanceKey }).cwd, alphaCwd,
+      'matching pair resolves');
+    assert.equal(sdk.getContextUsageSnapshot({ project: 'alpha', instanceKey: beta.instanceKey }), null,
+      'mismatched pair resolves to null, never to the foreign instance');
+    assert.equal(sdk.getActiveSdkCwd(), betaCwd, 'anchored reads never switch active');
+  });
+
+  it('typed /clear clears at execution, then the next turn-end repopulates', async () => {
+    const { deps, broadcasts } = makeDeps();
+    let ctxCalls = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async () => [resultMsg()],
+      getContextUsage: () => { ctxCalls++; return { resolve: { ...USAGE, totalTokens: ctxCalls } }; },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('warmup');
+    await tick(10);
+    assert.notEqual(sdk.getContextUsageSnapshot(), null, 'warmup turn seeded a snapshot');
+    const before = broadcasts.filter((b) => b.type === 'sdk-context-usage').length;
+
+    await sdk.sendUserMessage('/clear');
+    await tick(10);
+
+    const clearFrames = broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.trigger === 'context-cleared');
+    assert.equal(clearFrames.length, 1, 'typed /clear broadcasts exactly one clear frame');
+    assert.equal(clearFrames[0].usage, null);
+    assert.ok(fq.calls[0].pushed.map(pushedText).includes('/clear'), '/clear reached the resident query as a turn');
+    const afterClear = broadcasts.filter((b) => b.type === 'sdk-context-usage').slice(before);
+    assert.equal(afterClear.at(-1).trigger, 'turn-end', 'the /clear turn result refreshes after the clear');
+    assert.equal(afterClear.at(-1).usage.totalTokens, 2, 'post-clear snapshot is freshly fetched');
+    assert.equal(sdk.getContextUsageSnapshot().usage.totalTokens, 2);
+    assert.equal(sdk.getSessionId(), 'sess-ctx', 'unrelated session state is untouched');
+
+    const manual = await sdk.fetchContextUsage();
+    assert.equal(manual.ok, true, 'a post-clear manual fetch still works');
+    assert.equal(manual.snapshot.trigger, 'request');
+    assert.equal(manual.snapshot.usage.totalTokens, 3, 'manual fetch gets a fresh post-clear snapshot');
+  });
+
+  it('typed /clear emits a synchronization frame even with no prior snapshot', async () => {
+    const { deps, broadcasts } = makeDeps();
+    sdk.__setQueryForTests(makeCtxQuery({ resolve: USAGE }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('/clear');
+    await tick(10);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.trigger === 'context-cleared' && b.usage === null).length, 1);
+  });
+
+  it('non-exact /clear variants do not invalidate the snapshot', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const fq = makeCtxQuery({ resolve: USAGE });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('warmup');
+    await tick(10);
+
+    for (const text of ['/clearly', '/clear now']) {
+      await sdk.sendUserMessage(text); // eslint-disable-line no-await-in-loop
+      await tick(6); // eslint-disable-line no-await-in-loop
+    }
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.trigger === 'context-cleared').length, 0,
+      'only a bare /clear is the context-reset command');
+    assert.ok(broadcasts.filter((b) => b.type === 'sdk-context-usage').every((b) => b.trigger !== 'context-cleared'));
+  });
+
+  it('a /clear queued while busy executes only when the drain actually runs it', async () => {
+    const { deps, broadcasts } = makeDeps();
+    let releaseSecond;
+    const secondGate = new Promise((r) => { releaseSecond = r; });
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async (msg) => {
+        if (pushedText(msg) === 'second') await secondGate;
+        return [resultMsg()];
+      },
+      getContextUsage: { resolve: USAGE },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('warmup');
+    await tick(10);
+    assert.notEqual(sdk.getContextUsageSnapshot(), null);
+
+    const p2 = sdk.sendUserMessage('second');
+    await tick(6);
+    await sdk.sendUserMessage('/clear'); // busy → queued, not executed
+    await tick(4);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.trigger === 'context-cleared').length, 0,
+      'a merely queued /clear must not clear the running turn');
+    assert.deepEqual(sdk.getQueueSnapshot().map((q) => q.text), ['/clear']);
+
+    releaseSecond();
+    await p2;
+    await tick(12);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.trigger === 'context-cleared').length, 1,
+      'the drained /clear turn invalidates usage when it executes');
+    assert.ok(fq.calls[0].pushed.map(pushedText).includes('/clear'));
+  });
+
+  it('a manual pull that predates /clear cannot retain or broadcast pre-clear usage', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async () => [resultMsg()],
+      getContextUsage: (call) => call === 1 ? { resolve: USAGE } : { defer: true, keepOnClose: true },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('warmup');
+    await tick(10);
+    const pending = sdk.fetchContextUsage();
+    await tick(4);
+    const stalePending = fq.current().ctxUsagePending;
+    assert.ok(stalePending, 'manual control request is parked');
+    await sdk.sendUserMessage('/clear');
+    await tick(10);
+    const fresh = sdk.getContextUsageSnapshot();
+    stalePending.resolve({ ...USAGE, totalTokens: 999999 });
+    const stale = await pending;
+    assert.equal(stale.ok, false, 'pre-clear manual fetch is rejected by the clear epoch');
+    assert.equal(sdk.getContextUsageSnapshot(), fresh, 'stale pull cannot replace the post-clear snapshot');
+    assert.equal(broadcasts.some((b) => b.usage?.totalTokens === 999999), false, 'stale pull never broadcasts');
+  });
+
+  it('rejects context reads after the clear frame but before the clear result', async () => {
+    const { deps } = makeDeps();
+    let clearResult;
+    const gate = new Promise((resolve) => { clearResult = resolve; });
+    let calls = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async (msg) => {
+        if (pushedText(msg) === '/clear') await gate;
+        return [resultMsg()];
+      },
+      getContextUsage: () => { calls++; return { resolve: USAGE }; },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('warmup');
+    await tick(10);
+    const clear = sdk.sendUserMessage('/clear');
+    await tick(5);
+    const pending = await sdk.fetchContextUsage();
+    assert.equal(pending.ok, false, 'the CLI has not applied /clear yet, so no read may return old usage');
+    assert.equal(pending.reason, 'session-inactive');
+    assert.equal(calls, 1, 'no control read is issued during clear-pending');
+    clearResult();
+    await clear;
+    await tick(10);
+    assert.equal(calls, 2, 'the result releases a single fresh turn-end read');
+  });
+
+  it('an older manual pull cannot overwrite a newer turn-end snapshot', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const FRESH = { ...USAGE, totalTokens: 8200 };
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async () => [resultMsg()],
+      getContextUsage: (call) => call === 2 ? { defer: true, keepOnClose: true } : { resolve: FRESH },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('warmup');
+    await tick(10);
+    const pending = sdk.fetchContextUsage();
+    await tick(4);
+    const stalePending = fq.current().ctxUsagePending;
+    assert.ok(stalePending, 'older manual pull is parked');
+    await sdk.sendUserMessage('new turn');
+    await tick(10);
+    assert.equal(sdk.getContextUsageSnapshot().usage.totalTokens, FRESH.totalTokens);
+    stalePending.resolve(USAGE);
+    await tick(10);
+    const stale = await pending;
+    assert.equal(stale.ok, false, 'older manual result is superseded by the turn-end read');
+    assert.equal(sdk.getContextUsageSnapshot().usage.totalTokens, FRESH.totalTokens);
+    assert.equal(broadcasts.some((b) => b.usage && b.usage.totalTokens === USAGE.totalTokens), false);
+  });
+
+  it('a deferred pre-clear refresh is neither retained nor rebroadcast after /clear', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const SEED = { ...USAGE, totalTokens: 71 };
+    const STALE = { ...USAGE, totalTokens: 72 };
+    const FRESH = { ...USAGE, totalTokens: 73 };
+    let ctxCalls = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-ctx')],
+      respond: async () => [resultMsg()],
+      getContextUsage: () => {
+        ctxCalls++;
+        if (ctxCalls === 1) return { resolve: SEED };
+        if (ctxCalls === 2) return { defer: true, keepOnClose: true };
+        return { resolve: FRESH };
+      },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('warmup');
+    await tick(10);
+    assert.equal(sdk.getContextUsageSnapshot().usage.totalTokens, SEED.totalTokens);
+
+    await sdk.sendUserMessage('second'); // turn-end refresh parks as call #2
+    await tick(8);
+    assert.equal(ctxCalls, 2, 'pre-clear refresh parked');
+    const stalePending = fq.current().ctxUsagePending;
+    assert.ok(stalePending, 'deferred control request captured');
+
+    await sdk.sendUserMessage('/clear');
+    await tick(10); // the /clear turn-end refresh (call #3) lands FRESH
+    assert.equal(ctxCalls, 3);
+    assert.equal(sdk.getContextUsageSnapshot().usage.totalTokens, FRESH.totalTokens);
+
+    stalePending.resolve(STALE); // old generation resolves late
+    await tick(10);
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.usage && b.usage.totalTokens === STALE.totalTokens).length, 0,
+      'pre-clear refresh must not broadcast after the clear');
+    assert.equal(sdk.getContextUsageSnapshot().usage.totalTokens, FRESH.totalTokens,
+      'pre-clear refresh must not overwrite the post-clear snapshot');
+    assert.equal(broadcasts.filter((b) => b.type === 'sdk-context-usage' && b.trigger === 'context-cleared').length, 1);
   });
 });
 
@@ -2636,7 +2902,315 @@ describe('sdk-manager-query — sendQueuedNow', () => {
     assert.equal(sdk.getQueueSnapshot().length, 0);
   });
 
-  it('未知 id → 返回 [] 且不广播不打断（守卫必须先于 interrupt）', async () => {
+  it('busy send-now exposes a single dispatching slot; repeat send-now/remove are rejected', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const calls = [];
+    const { fq, releaseFirst } = makeGatedQuery(calls);
+    fq.releaseNextInterrupt();
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(5);
+    await sdk.sendUserMessage('second');
+    await sdk.sendUserMessage('third');
+    const target = sdk.getQueueSnapshot().find((i) => i.text === 'third');
+
+    const cancelled = sdk.sendQueuedNow(target.id);
+    assert.ok(Array.isArray(cancelled));
+    // The selected item leaves the actionable FIFO immediately and stays visible first,
+    // disabled, until the interrupt unwind lets _startTurn accept it.
+    assert.deepEqual(sdk.getQueueSnapshot().map((i) => [i.text, i.status]), [
+      ['third', 'dispatching'],
+      ['second', 'queued'],
+    ]);
+    assert.equal(fq.current().interruptCalls, 1);
+
+    const framesBefore = broadcasts.filter((b) => b.type === 'queue-state').length;
+    assert.deepEqual(sdk.sendQueuedNow(target.id), [], 'repeat send-now must be rejected');
+    assert.equal(sdk.removeQueued(target.id), false, 'dispatching item must not be removable');
+    const secondId = sdk.getQueueSnapshot().find((i) => i.text === 'second').id;
+    assert.deepEqual(sdk.sendQueuedNow(secondId), [], 'the single slot rejects a competing selection too');
+    assert.equal(fq.current().interruptCalls, 1, 'repeat/competing send-now must not fire a second interrupt');
+    const states = broadcasts.filter((b) => b.type === 'queue-state');
+    assert.ok(states.length > framesBefore, 'rejected actions re-broadcast the snapshot for convergence');
+    assert.deepEqual(sdk.getQueueSnapshot().map((i) => [i.text, i.status]), [
+      ['third', 'dispatching'],
+      ['second', 'queued'],
+    ]);
+
+    releaseFirst();
+    await p1;
+    await tick(12);
+
+    assert.deepEqual(calls, ['first', 'third', 'second'], 'the locked item still runs first, then the rest drain');
+    assert.equal(sdk.getQueueSnapshot().length, 0);
+  });
+
+  it('idle send-now moves the picked item into the dispatching slot before starting it', async () => {
+    const { deps } = makeDeps();
+    const calls = [];
+    const { fq, releaseFirst } = makeGatedQuery(calls);
+    fq.releaseNextInterrupt();
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(5);
+    await sdk.sendUserMessage('a');
+    await sdk.sendUserMessage('b');
+    sdk.interruptTurn(); // parks [a, b]
+    releaseFirst();
+    await p1;
+    await tick(8);
+    assert.equal(sdk.getQueueSnapshot().length, 2);
+
+    const bId = sdk.getQueueSnapshot().find((i) => i.text === 'b').id;
+    sdk.sendQueuedNow(bId);
+    // Same lifecycle as auto drain: dispatching is published before the turn starts.
+    assert.deepEqual(sdk.getQueueSnapshot().map((i) => [i.text, i.status]), [
+      ['b', 'dispatching'],
+      ['a', 'queued'],
+    ]);
+    await tick(24);
+
+    assert.deepEqual(calls, ['first', 'b', 'a'], 'idle send-now executes the picked item, then the parked rest');
+    assert.equal(sdk.getQueueSnapshot().length, 0);
+  });
+
+  it('pre-push construction failure restores the dispatching item to the queue', async () => {
+    const { deps, broadcasts } = makeDeps();
+    const calls = [];
+    let releaseFirst;
+    const firstGate = new Promise((r) => { releaseFirst = r; });
+    // endAfter: the generation exits on its own once the interrupted turn finishes, so
+    // the parked queue survives with NO resident query — the next start must reconstruct.
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-pre-push')],
+      endAfter: 1,
+      respond: async (msg) => {
+        calls.push(pushedText(msg));
+        await firstGate;
+        return [resultMsg()];
+      },
+    });
+    fq.releaseNextInterrupt();
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(5);
+    await sdk.sendUserMessage('parked');
+    sdk.interruptTurn(); // park the queue (suppress drain), then let the turn settle
+    releaseFirst();
+    await p1;
+    await tick(8);
+    assert.ok(await waitMicro(() => sdk.getQueueSnapshot().length > 0), 'parked item survives the dying generation');
+    assert.ok(await waitMicro(() => sdk.getQueueSnapshot().every((item) => item.status === 'queued')), 'death leaves an actionable queue before manual send-now');
+    const id = sdk.getQueueSnapshot()[0].id;
+
+    // The generation ended; make the lazy reconstruction fail before inputQueue.push.
+    let failures = 0;
+    sdk.__setQueryForTests(() => { failures += 1; throw new Error('construction boom'); });
+
+    assert.deepEqual(sdk.sendQueuedNow(id), []);
+    assert.ok(await waitMicro(() => sdk.getQueueSnapshot()[0]?.status === 'queued'));
+
+    const snap = sdk.getQueueSnapshot();
+    assert.equal(snap.length, 1, 'a pre-push failure must not lose the message');
+    assert.equal(snap[0].id, id);
+    assert.equal(snap[0].status, 'queued', 'restored item becomes actionable again');
+    assert.equal(failures, 2, 'exactly one bounded automatic retry, then park');
+    const states = broadcasts.filter((b) => b.type === 'queue-state');
+    assert.ok(states.some((s) => s.items.some((i) => i.id === id && i.status === 'dispatching')),
+      'the item is announced as dispatching before the failed start');
+    assert.deepEqual(snap, states.at(-1).items, 'the last broadcast converges on the restored snapshot');
+
+    // A later retry with a working construction accepts it and clears the slot for good.
+    sdk.__setQueryForTests(fq);
+    sdk.sendQueuedNow(id);
+    await tick(20);
+    assert.deepEqual(calls, ['first', 'parked']);
+    assert.equal(sdk.getQueueSnapshot().length, 0);
+  });
+
+  it('a transient pre-push failure automatically retries once and delivers', async () => {
+    const { deps } = makeDeps();
+    const calls = [];
+    let releaseFirst;
+    const firstGate = new Promise((resolve) => { releaseFirst = resolve; });
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-retry-success')],
+      endAfter: 1,
+      respond: async (msg) => {
+        calls.push(pushedText(msg));
+        if (calls.length === 1) await firstGate;
+        return [resultMsg()];
+      },
+    });
+    fq.releaseNextInterrupt();
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    const first = sdk.sendUserMessage('first');
+    await tick(5);
+    await sdk.sendUserMessage('parked');
+    sdk.interruptTurn();
+    releaseFirst();
+    await first;
+    await tick(8);
+    assert.ok(await waitMicro(() => sdk.getQueueSnapshot().length > 0), 'parked item survives the dying generation');
+    assert.ok(await waitMicro(() => sdk.getQueueSnapshot().every((item) => item.status === 'queued')), 'death leaves an actionable queue before manual send-now');
+    const id = sdk.getQueueSnapshot()[0].id;
+    let constructions = 0;
+    sdk.__setQueryForTests((args) => {
+      constructions += 1;
+      if (constructions === 1) throw new Error('transient construction');
+      return fq(args);
+    });
+    sdk.sendQueuedNow(id);
+    assert.ok(await waitMicro(() => constructions === 2 && sdk.getQueueSnapshot().length === 0));
+    assert.equal(constructions, 2, 'the restored head is retried once');
+    assert.ok(await waitMicro(() => calls.includes('parked')), 'the accepted retry reaches the SDK input queue');
+    assert.deepEqual(calls, ['first', 'parked']);
+    assert.equal(sdk.getQueueSnapshot().length, 0);
+  });
+
+  it('clearQueued during query construction prevents the late inputQueue push', async () => {
+    const { deps } = makeDeps();
+    const calls = [];
+    let releaseFirst;
+    const firstGate = new Promise((r) => { releaseFirst = r; });
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-clear-await')],
+      endAfter: 1,
+      respond: async (msg) => {
+        calls.push(pushedText(msg));
+        await firstGate;
+        return [resultMsg()];
+      },
+    });
+    fq.releaseNextInterrupt();
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    const p1 = sdk.sendUserMessage('first');
+    await tick(5);
+    await sdk.sendUserMessage('do not deliver after clear');
+    sdk.interruptTurn();
+    releaseFirst();
+    await p1;
+    await tick(8);
+    assert.ok(await waitMicro(() => sdk.getQueueSnapshot().length > 0), 'parked item survives the dying generation');
+    assert.ok(await waitMicro(() => sdk.getQueueSnapshot().every((item) => item.status === 'queued')), 'death leaves an actionable queue before manual send-now');
+    const id = sdk.getQueueSnapshot()[0].id;
+
+    let releaseConstruction;
+    let constructionStarted;
+    const constructing = new Promise((resolve) => { constructionStarted = resolve; });
+    sdk.__setQueryForTests((args) => new Promise((resolve) => {
+      constructionStarted();
+      releaseConstruction = () => resolve(fq(args));
+    }));
+    sdk.sendQueuedNow(id);
+    await constructing;
+    assert.equal(sdk.getQueueSnapshot()[0].status, 'dispatching');
+    sdk.clearQueued();
+    assert.deepEqual(sdk.getQueueSnapshot(), []);
+
+    releaseConstruction();
+    await tick(12);
+    assert.deepEqual(calls, ['first'], 'the dispatch identity is checked after the construction await');
+    assert.deepEqual(sdk.getQueueSnapshot(), [], 'a cancelled dispatch cannot be restored');
+  });
+
+  it('clearQueued invalidates a dispatch whose query construction has not committed yet', async () => {
+    const { deps } = makeDeps();
+    const calls = [];
+    const { fq, releaseFirst } = makeGatedQuery(calls);
+    fq.releaseNextInterrupt();
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    const p1 = sdk.sendUserMessage('first');
+    await tick(5);
+    await sdk.sendUserMessage('do not deliver after clear');
+    const id = sdk.getQueueSnapshot()[0].id;
+
+    sdk.sendQueuedNow(id);
+    assert.equal(sdk.getQueueSnapshot()[0].status, 'dispatching');
+    sdk.clearQueued();
+    assert.deepEqual(sdk.getQueueSnapshot(), []);
+    releaseFirst();
+    await p1;
+    await tick(12);
+    assert.deepEqual(calls, ['first'], 'clearing the scope prevents the interrupted-turn drain from delivering the queued prompt');
+    assert.deepEqual(sdk.getQueueSnapshot(), [], 'a stale dispatch completion cannot restore a cleared item');
+  });
+
+  it('a pushed send-now item is not requeued when its own turn reports an error result', async () => {
+    const { deps } = makeDeps();
+    const calls = [];
+    let releaseFirst;
+    const firstGate = new Promise((r) => { releaseFirst = r; });
+    let idx = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-sn-fail')],
+      respond: async (msg) => {
+        calls.push(pushedText(msg));
+        if (idx++ === 0) await firstGate;
+        if (pushedText(msg) === 'x') {
+          return [resultMsg({ subtype: 'error_during_execution', is_error: true, errors: ['boom'] })];
+        }
+        return [resultMsg()];
+      },
+    });
+    fq.releaseNextInterrupt();
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(5);
+    await sdk.sendUserMessage('x');
+    const xId = sdk.getQueueSnapshot()[0].id;
+    sdk.sendQueuedNow(xId);
+    releaseFirst();
+    await p1;
+    await tick(12);
+
+    assert.deepEqual(calls, ['first', 'x'], 'the error turn itself still ran');
+    assert.equal(sdk.getQueueSnapshot().length, 0, 'a pushed message is never requeued on later turn failure');
+  });
+
+  it('Stop during the send-now unwind requeues the dispatching item and parks the backlog', async () => {
+    const { deps } = makeDeps();
+    const calls = [];
+    const { fq, releaseFirst } = makeGatedQuery(calls);
+    fq.releaseNextInterrupt();
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('first');
+    await tick(5);
+    await sdk.sendUserMessage('second');
+    await sdk.sendUserMessage('third');
+    const target = sdk.getQueueSnapshot().find((i) => i.text === 'third');
+    sdk.sendQueuedNow(target.id);
+    assert.equal(fq.current().interruptCalls, 1);
+
+    // The aborted turn has not produced its result yet; Stop now parks everything.
+    sdk.interruptTurn();
+    assert.equal(fq.current().interruptCalls, 1, 'Stop must not duplicate the send-now interrupt');
+    assert.deepEqual(sdk.getQueueSnapshot().map((i) => [i.text, i.status]), [
+      ['third', 'queued'],
+      ['second', 'queued'],
+    ], 'Stop returns the selected item to the actionable queue');
+
+    releaseFirst();
+    await p1;
+    await tick(12);
+    assert.deepEqual(calls, ['first'], 'parked backlog does not run after Stop');
+    assert.equal(sdk.getQueueSnapshot().length, 2);
+  });
+
+  it('未知 id → 返回 []，仅重放权威快照且不打断（守卫必须先于 interrupt）', async () => {
     const { deps, broadcasts } = makeDeps();
     let releaseFirst;
     const firstGate = new Promise((r) => { releaseFirst = r; });
@@ -2652,7 +3226,7 @@ describe('sdk-manager-query — sendQueuedNow', () => {
     const before = broadcasts.length;
     assert.deepEqual(sdk.sendQueuedNow('q_unknown'), []);
     await tick(3);
-    assert.equal(broadcasts.length, before, 'unknown id must not broadcast');
+    assert.equal(broadcasts.length, before + 1, 'unknown id replays the authoritative snapshot once');
     assert.equal(fq.current().interruptCalls, 0, 'unknown id must not interrupt the running turn');
     releaseFirst();
     await p1;

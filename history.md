@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## 1.9.15
+
+- fix(web+server): **SDK 模式支持 Plan 自动审批** — 与 PTY 共用倒计时、立即免审批及取消行为，桌面与移动端均可使用；按当前工作区/实例隔离审批，视图切换可恢复，取消跨客户端同步；普通工具权限保持不变。Coverage: `plan-auto-approve-target.test.js`, `plan-auto-approve-runtime.test.js`, `plan-approval-panel.test.js`, `sdk-plan-approval-guard.test.js`, `resume-history-menu.test.js`, `branch-server.test.js`, `sdk-manager-query.test.js`.
+
+- test(server): **稳定终端回退用例** — 预热测试脚本首次执行，按增量捕获验证 `gnome-terminal` 缺失后的 `konsole` 回退，避免全量并行时首次执行扫描超过固定等待窗口。Coverage: `branch-routes-files-fs.test.js`.
+
+- fix(web+server): **恢复任务中插入的用户指令** — 「对话」按原始 JSONL 的队列附件及 wire 中的插入提示还原用户气泡，保持原始报文不变；排队气泡新增「追加中」禁用状态，发送失败恢复，队列快照按当前查看项目/实例隔离，避免重复提交。修复 SDK 打断补充文本在等长消息后续内容块中被漏记及与打断标记同块时被隐藏的问题，实时与刷新后均可恢复；「立即追加」点击后先在对话末尾显示待确认用户消息，真实记录到达后归并。Coverage: `queued-prompt.test.js`, `v2-transcript-normalizer.test.js`, `queued-prompt-display.test.js`, `chat-queue.test.js`, `sdk-manager-query.test.js`, `queue-bubbles.test.js`, `branch-server.test.js`, `v2-core.test.js`, `v3-assembler.test.js`, `content-filter-unit.test.js`, `optimistic-queue-message.test.js`, `optimistic-queue-chat.test.js`.
+
+- fix(web+server): **完善排队消息恢复与发送状态** — 兼容 SDK 块数组提示的 Markdown 展示，避免增量对话重复用户气泡；清理失效终端的队列阻塞，严格隔离项目/实例操作，完善断连、失败及临时消息归并。Coverage: `optimistic-queue-chat.test.js`, `optimistic-queue-message.test.js`, `terminal-ws-attach.test.js`, `chat-queue.test.js`, `pty-manager-instance.test.js`, `sdk-manager-query.test.js`, `branch-server.test.js`.
+
+- feat(web+server): **SDK 上下文用量合并进对话血条** — SDK 模式血条改用会话用量，弹层新增分类构成汇总、记忆与 Skill 总消耗及逐项消耗（SDK 未提供的记忆分文件使用内容长度估算）；桌面与移动端同步，PTY 保持原策略。原「网络 → 上下文用量」面板与网格保留；用量请求按项目/实例隔离，清空后等待新快照恢复。Coverage: `context-usage-view.test.js`, `sdk-context-provider.test.js`, `sdk-context-blood-bar.test.js`, `sdk-context-usage-tab.test.js`, `api-project-memory.test.js`, `sdk-context-route.test.js`, `sdk-manager-query.test.js`, `sdk-session-registry.test.js`, `ws-instance-isolation.test.js`.
+
+- fix(web): **修复 Git commit 不刷新「GIT 变更」面板** — 将 commit 纳入变更命令识别，成功后自动刷新文件与 Git 变更。Coverage: `commandValidator.test.js`, `tool-file-change-controller.test.js`.
+
+- fix(web): **修复上下文用量配色与展开滚动** — 条形图、图例和上下文网格按分类使用一致的可读颜色，区分部分填充与空闲格子；展开详情后可滚动查看全部内容。Coverage: `context-usage-view.test.js`, `sdk-context-usage-tab.test.js`.
+
+- fix(web): **SDK 会话按轮次恢复 thinking** — 将主请求响应中的思考内容关联到对应 assistant 消息，避免后续响应覆盖后丢失；保留签名与现有工具/审批去重，最新响应未返回 thinking 时不回填旧内容。严格校验 producer/carrier 时序与会话归属，修复冷加载、重连、混合 epoch 和项目切换裁窗后的错挂或丢失；减少无候选会话的重复扫描。Coverage: `response-thinking.test.js`, `response-thinking-chat.test.js`, `view-state-cache.test.js`.
+
+- fix(web+server): **文件浏览器写操作跟随当前查看项目** — 创建、重命名、移动、删除、导入、保存、下载及 HTML 预览（含相对子资源）均携带项目/实例参数，不再误写启动项目；切换项目时清空文件弹窗缓存；保留 realpath 边界与编辑器会话兼容。修复大小写重命名、Windows 文件占用重试及 Linux 终端启动异常处理。Coverage: `files-view-write.test.js`, `file-context-menu-actions.test.js`, `html-preview-scope.test.js`, `chat-file-open-scope.test.js`, `api-files-fs.test.js`, `api-files-content.test.js`, `file-move.test.js`, `files-import.test.js`, `file-open.test.js`.
+
 - fix(web+server): **k3/k4 系列模型识别为 Kimi** — 头像、厂商与上下文窗口规则兼容裸名称、点号/连字符后缀及窗口后缀，包括 `k3.1-pro`、`k3.1-pro-highspeed`；`k30`/`k3pro` 保持未知模型。Coverage: `helpers-unit-a.test.js`, `context-rules.test.js`.
 - fix(system-prompt): **Kimi K3 提示词兼容 k3 系列别称并避免误用 Claude API 专属技能** — `k3.1-pro`、`k3.1-pro-highspeed` 等点号/连字符后缀、大小写及 `[1m]` 形式均命中 K3 的内置或用户自定义提示词，`k30`/`k3pro` 不误命中；在技能选择入口跳过 `claude-api` 及展示名 "Building LLM-Powered Applications with Claude"，模型名称、Logo、别名与上下文窗口分类属于本地代码任务，即使 Claude Code 自动推荐也不加载该技能。Coverage: `builtin-model-prompts.test.js`, `model-system-prompts.test.js`, `system-prompt-files.test.js`, `system-prompt-builder.test.js`.
 - test(server): **修复 resume-route 测试环境隔离** — 显式选择 PTY 模式，避免继承 ccv 的 SDK 环境；补齐 resume 注入的 anchor-aware writer 依赖。Coverage: `resume-route.test.js`.

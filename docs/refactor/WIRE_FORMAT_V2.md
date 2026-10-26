@@ -138,7 +138,7 @@ LOG_DIR/<project>/sessions/<session_id>/
 { "seq": 45, "rid": "…", "t": "ctl", "op": "compact", "keep": 2 }                          // v1 §3.5 /compact continuation 标记
 ```
 
-- **写侧判定规则（穷尽）**：设 conv 上一状态计数 P、末位指纹 F（进程内存态，进程重启后 P=0）。**判定指纹 = v1 的 `fingerprintMsg`（interceptor-core，对 tool_result 含 40 字符内容分量）**，与 v1 Plan C 完全同源——不用客户端共享的 `messageFingerprint`（其 tool_result 仅按 id，同 id 换内容不可见，评审已定级为双写分歧盲区）：
+- **写侧判定规则（穷尽）**：设 conv 上一状态计数 P、末位指纹 F（进程内存态，进程重启后 P=0）。main 默认使用 `fingerprintMsg` + 归一化全文 FNV，覆盖后续 content block 与长文本尾部的真实修改；sub/misc 保持轻量 `fingerprintMsg`（interceptor-core，对 tool_result 含 40 字符内容分量），离线转换器对所有 conv 使用全文判定。归一化复用 `normalizeMsgForEquality`：string ↔ text block 形态统一并剥离顶层 `cache_control`，只影响比较，不改变落盘 wire；不使用客户端共享的 `messageFingerprint`（其 tool_result 仅按 id，同 id 换内容不可见）：
   - `len==P && tailFp==F` → 无事件（journal 仍记 req/done，`evt` 省略）
   - `len==P && tailFp!=F && P>0` → `ctl replace-tail`（v1 :802-808 同判定；实现另要求新旧 tailFp 均非空——空 fp 消息退化为 snapshot，安全偏差）
   - `len>P && messages[P-1] 指纹==F` → `append`（切片 `slice(P)`）

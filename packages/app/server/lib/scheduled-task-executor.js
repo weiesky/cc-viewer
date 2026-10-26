@@ -50,7 +50,9 @@ async function _injectSdk(task, io) {
   try {
     // Fire-and-forget: acceptance = dispatched. The turn's own outcome is presented by
     // the conversation itself (resident result carries no success/failure to us).
-    await sdk.sendUserMessage(task.prompt, { cwd: task.cwd, project: task.project, instanceKey: target.instanceKey });
+    // The exact instance was already resolved above. Do not add a legacy project stamp:
+    // sdk-manager rejects a mismatched project+instance pair and would drop the injection.
+    await sdk.sendUserMessage(task.prompt, { instanceKey: target.instanceKey });
     return { status: 'dispatched' };
   } catch (err) {
     return { status: 'failed', reason: 'internal', error: String(err?.message || err) };

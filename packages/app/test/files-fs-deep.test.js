@@ -363,10 +363,10 @@ describe('files-fs-deep', { concurrency: false }, () => {
       } finally { restorePlatform(); }
     });
 
-    // open-terminal 成功支真实 spawn 终端模拟器(gnome-terminal/konsole/...)，其 async 'error'
-    // 事件无监听器会 crash 测试进程（spawn(...).unref() 不带 callback），故 skip。守卫分支已由
-    // api-files-fs-2.test.js 覆盖。
-    it.skip('/api/open-terminal success — spawns real terminal emulators (uncatchable async error), skipped', () => {});
+    // Missing emulators emit asynchronous spawn errors; files-fs now listens for
+    // them and probes the next candidate. The real ENOENT fallback is covered by
+    // branch-routes-files-fs.test.js with a missing gnome-terminal and konsole stub.
+    it.skip('/api/open-terminal success — real GUI terminal launch, skipped', () => {});
 
     it('/api/open-log-dir 200 (linux xdg-open, no GUI)', async () => {
       setPlatform('linux');

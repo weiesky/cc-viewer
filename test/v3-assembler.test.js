@@ -20,6 +20,9 @@ process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
 
 const { createV3Assembler } = await import('../apps/web/src/utils/v3Assembler.js');
+const { applyInPlaceLastMsgReplace } = await import('../apps/web/src/utils/sessionManager.js');
+const { createEntrySlimmer } = await import('../apps/web/src/utils/entry-slim.js');
+const { mergeMainAgentSessions } = await import('../apps/web/src/utils/sessionMerge.js');
 
 const textMsg = (role, text) => ({ role, content: [{ type: 'text', text }] });
 
@@ -74,6 +77,53 @@ describe('createV3Assembler unit', () => {
     assert.equal(e3.response, undefined);
     assert.equal(e3.body.messages[2].content[0].text, 'u2-replaced');
     assert.ok(e3.requestId);
+  });
+
+  it('replace-tail rows carry the live in-place replacement signals through completion', () => {
+    const a = createV3Assembler();
+    const sid = 'replace-tail-live';
+    const toolResult = { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool_1', content: 'done' }] };
+    const supplemented = { ...toolResult, content: [...toolResult.content, { type: 'text', text: 'follow up' }] };
+    a.addConvLines(sid, 'main', [
+      { seq: 1, t: 'snapshot', msgs: [textMsg('user', 'start'), textMsg('assistant', 'working')] },
+      { seq: 2, t: 'append', msgs: [toolResult] },
+      { seq: 3, t: 'ctl', op: 'replace-tail', msg: supplemented },
+    ]);
+    a.addRespLines(sid, [
+      { seq: 2, body: { content: [{ type: 'text', text: 'working' }] } },
+      { seq: 3, body: { content: [{ type: 'text', text: 'continued' }] } },
+    ]);
+    const row = (seq, inProgress = false) => ({
+      seq, sessionId: sid, timestamp: `2026-10-26T00:00:0${seq}.000Z`, url: 'u', conv: 'main', kind: 'main', mainAgent: true,
+      inProgress, evt: seq === 1 ? 'snapshot' : seq === 3 ? 'ctl' : 'append',
+    });
+    a.buildEntry(row(1));
+    const previous = a.buildEntry(row(2));
+    const sessions = [{ userId: null, messages: previous.body.messages, response: previous.response, entryTimestamp: previous.timestamp, _seqEpoch: previous._seqEpoch, _ccvQueuedPrompts: [{ content: 'existing queued prompt', afterIndex: 0 }] }];
+    const coldEntries = [a.buildEntry(row(1)), previous];
+    const slimmer = createEntrySlimmer((entry) => entry.mainAgent === true);
+    coldEntries.forEach((entry, index) => slimmer.process(entry, coldEntries, index));
+    slimmer.finalize(coldEntries);
+    const cold = coldEntries.reduce((sessions, entry) => mergeMainAgentSessions(sessions, entry, { skipTransientFilter: true }), []);
+    assert.equal(cold[0].messages.at(-1).content[0].type, 'tool_result', 'cold slim discards superseded message carriers');
+    assert.equal(cold[0].messages.some((message) => message.content?.[1]?.text === 'follow up'), false);
+    const pending = a.buildEntry(row(3, true));
+    assert.equal(pending._isCheckpoint, true);
+    assert.equal(pending._inPlaceReplaceDetected, true);
+    assert.equal(applyInPlaceLastMsgReplace(sessions, pending, pending.timestamp, false).applied, false, 'in-flight replacement must not erase the prior response');
+    const completed = a.buildEntry(row(3));
+    const result = applyInPlaceLastMsgReplace(sessions, completed, completed.timestamp, false);
+    assert.equal(result.applied, true);
+    assert.deepEqual(result.sessions[0].messages.at(-1).content[1], { type: 'text', text: 'follow up' });
+    assert.equal(result.sessions[0].messages[0], sessions[0].messages[0], 'prefix references stay stable');
+    assert.deepEqual(result.sessions[0]._ccvQueuedPrompts, sessions[0]._ccvQueuedPrompts, 'wire replacement must not discard native queued display records');
+    assert.equal(result.sessions[0].messages.at(-1).content.filter((b) => b.text === 'follow up').length, 1);
+    coldEntries.push(completed);
+    coldEntries.forEach((entry, index) => slimmer.process(entry, coldEntries, index));
+    slimmer.finalize(coldEntries);
+    const reloaded = coldEntries.reduce((sessions, entry) => mergeMainAgentSessions(sessions, entry, { skipTransientFilter: true }), []);
+    assert.deepEqual(reloaded[0].messages.at(-1).content[1], { type: 'text', text: 'follow up' }, 'cold reload keeps the supplemented prompt without a second replace protocol');
+    assert.equal(reloaded[0].messages.at(-1).content.filter((b) => b.text === 'follow up').length, 1);
   });
 
   it('in-flight cold load: last entry is inProgress + _v3Assembled with the full prefix', () => {

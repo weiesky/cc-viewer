@@ -11,7 +11,7 @@
 import React from 'react';
 import { Modal, Input, message } from 'antd';
 import { t } from '../../i18n';
-import { apiUrl } from '../../utils/apiUrl';
+import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import { copyTextToClipboard } from '../../utils/terminalClipboard';
 
 // Same Modal.confirm input styling used by the sidebar's new-file/new-dir flows.
@@ -37,27 +37,30 @@ export function createFileMenuHandler({
   onAttachToChat,
   onInsertPathToChat,
   onDownload,      // optional; the modal passes its downloadFile helper
+  project,
+  instance,
 }) {
+  const viewUrl = (path) => withViewParams(path, { project, instance });
   return ({ key }) => {
     switch (key) {
       case 'reveal':
         // Root container uses the OS call without a path (open-project-dir takes
         // no body and never 400s on ''); any real path uses reveal-file.
-        fetch(apiUrl(path ? '/api/reveal-file' : '/api/open-project-dir'), {
+        fetch(apiUrl(viewUrl(path ? '/api/reveal-file' : '/api/open-project-dir')), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           ...(path ? { body: JSON.stringify({ path }) } : {}),
         }).catch(() => {});
         break;
       case 'openTerminal':
-        fetch(apiUrl('/api/open-terminal'), {
+        fetch(apiUrl(viewUrl('/api/open-terminal')), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path }),
         }).catch(() => {});
         break;
       case 'copyPath':
-        fetch(apiUrl('/api/resolve-path'), {
+        fetch(apiUrl(viewUrl('/api/resolve-path')), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path }),
@@ -92,7 +95,7 @@ export function createFileMenuHandler({
         // Browser-native download via an attachment endpoint. apiUrl carries
         // base path + ?token=.
         const a = document.createElement('a');
-        a.href = apiUrl(`/api/download-file?path=${encodeURIComponent(path)}`);
+        a.href = apiUrl(viewUrl(`/api/download-file?path=${encodeURIComponent(path)}`));
         a.download = name;
         document.body.appendChild(a);
         a.click();
@@ -116,7 +119,7 @@ export function createFileMenuHandler({
             if (!newName || newName === name) return;
             let errMsg;
             try {
-              const r = await fetch(apiUrl('/api/rename-file'), {
+              const r = await fetch(apiUrl(viewUrl('/api/rename-file')), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ oldPath: path, newName }),
@@ -147,7 +150,7 @@ export function createFileMenuHandler({
             if (!newName) throw new Error('Empty filename');
             let errMsg;
             try {
-              const r = await fetch(apiUrl('/api/create-file'), {
+              const r = await fetch(apiUrl(viewUrl('/api/create-file')), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ dirPath: path, name: newName }),
@@ -180,7 +183,7 @@ export function createFileMenuHandler({
             if (!newName) throw new Error('Empty dir name');
             let errMsg;
             try {
-              const r = await fetch(apiUrl('/api/create-dir'), {
+              const r = await fetch(apiUrl(viewUrl('/api/create-dir')), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ dirPath: path, name: newName }),
@@ -207,7 +210,7 @@ export function createFileMenuHandler({
           onOk: async () => {
             let errMsg;
             try {
-              const r = await fetch(apiUrl('/api/delete-file'), {
+              const r = await fetch(apiUrl(viewUrl('/api/delete-file')), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path }),

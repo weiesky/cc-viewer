@@ -130,7 +130,7 @@ describe('FileBrowserModal wiring contract', () => {
   });
   it('html branch and tryOpenWithSystem run before setPreviewFile', () => {
     const htmlIdx = FILE_BROWSER_MODAL.indexOf('setHtmlPreviewPath(childPath)');
-    const sysIdx = FILE_BROWSER_MODAL.indexOf("tryOpenWithSystem(childPath, 'file-explorer')");
+    const sysIdx = FILE_BROWSER_MODAL.indexOf("tryOpenWithSystem(childPath, 'file-explorer', { project, instance })");
     const prevIdx = FILE_BROWSER_MODAL.indexOf('setPreviewFile(childPath)');
     assert.ok(htmlIdx >= 0 && sysIdx >= 0 && prevIdx >= 0, 'openItem branches missing');
     assert.ok(htmlIdx < sysIdx && sysIdx < prevIdx, 'openItem branch order must be html → system → in-modal preview');
@@ -146,7 +146,7 @@ describe('FileBrowserModal wiring contract', () => {
       'grid cells must only select on single-click');
   });
   it('office/pdf double-click downloads instead of no-op system open on the remote host', () => {
-    assert.ok(FILE_BROWSER_MODAL.includes('downloadFile(childPath, item.name)'),
+    assert.ok(FILE_BROWSER_MODAL.includes('downloadFile(childPath, item.name, project, instance)'),
       'system-open branch must fall back to a browser download (remote host has no GUI)');
     assert.ok(FILE_BROWSER_MODAL.includes('`/api/download-file?path=${encodeURIComponent(childPath)}`'),
       'download must go through the attachment endpoint');
@@ -172,6 +172,16 @@ describe('FileBrowserModal wiring contract', () => {
     assert.deepEqual(reports.sort(),
       ['fileBrowserGrid', 'fileBrowserTreeNode', 'fileBrowserTreeRoot'],
       'tree-node, tree-root and grid fetches must all call reportSwallowed');
+  });
+  it('resets cached directory data when project or instance changes', () => {
+    assert.ok(FILE_BROWSER_MODAL.includes('const prevViewScope = useRef(viewScope)'),
+      'the modal must track its current view scope');
+    assert.ok(FILE_BROWSER_MODAL.includes('prevViewScope.current = viewScope'),
+      'scope changes must update the scope marker');
+    assert.ok(FILE_BROWSER_MODAL.includes('treeCache.current.clear()'),
+      'scope changes must clear cached directory entries');
+    assert.ok(FILE_BROWSER_MODAL.includes("setCurrentPath('')"),
+      'scope changes must return to the project root');
   });
   it('cache is invalidated on reopen and via a refresh control', () => {
     assert.ok(FILE_BROWSER_MODAL.includes('treeCache.current.clear()'),
@@ -460,11 +470,11 @@ describe('modal upload wiring (button + zoned drag-drop)', () => {
     for (const [label, src] of [['FileExplorer', FILE_EXPLORER], ['FileBrowserModal', FILE_BROWSER_MODAL]]) {
       assert.ok(src.includes("from './fileMove'"), `${label} must import the shared fileMove module`);
     }
-    assert.ok(FILE_EXPLORER.includes('moveFile(fromPath, childPath, { onFileRenamed })'),
+    assert.ok(FILE_EXPLORER.includes('moveFile(fromPath, childPath, { onFileRenamed, project, instance })'),
       'sidebar TreeNode must move via the shared moveFile');
-    assert.ok(FILE_EXPLORER.includes("moveFile(fromPath, '', { onFileRenamed })"),
+    assert.ok(FILE_EXPLORER.includes("moveFile(fromPath, '', { onFileRenamed, project, instance })"),
       'sidebar blank area must move to root via the shared moveFile');
-    assert.ok(FILE_BROWSER_MODAL.includes('moveFile(fromPath, toDir, { onFileRenamed: handleAfterMutation })'),
+    assert.ok(FILE_BROWSER_MODAL.includes('moveFile(fromPath, toDir, { onFileRenamed: handleAfterMutation, project, instance })'),
       'modal handleMove must refresh modal + sidebar via handleAfterMutation');
     // Exact count: root tree map + root crumb + segment crumbs + GridCell.
     assert.equal(FILE_BROWSER_MODAL.split('onMove={handleMove}').length - 1, 4,
@@ -527,7 +537,7 @@ describe('modal upload wiring (button + zoned drag-drop)', () => {
   });
 
   it('uploads refresh the modal and the sidebar via handleAfterMutation', () => {
-    assert.ok(FILE_BROWSER_MODAL.includes('importFiles(payload, targetDir, { onFileRenamed: handleAfterMutation })'),
+    assert.ok(FILE_BROWSER_MODAL.includes('importFiles(payload, targetDir, { onFileRenamed: handleAfterMutation, project, instance })'),
       'handleImportFiles must inject handleAfterMutation as onFileRenamed');
   });
 

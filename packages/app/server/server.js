@@ -1738,7 +1738,7 @@ function registerUpgradeRoute(httpServer, name, match, handle) {
 async function setupTerminalWebSocket(httpServer) {
   try {
     const { WebSocketServer } = await import('ws');
-    const { writeToPty, writeToPtySequential, writeToPtyFor, writeToPtySequentialFor, resizePty, onPtyData, onPtyExit, getPtyState, getPtyKind, getOutputBuffer, getCurrentWorkspace, spawnShell, findSafeSliceStart, attachPtyFor, listLivePtys } = await import('./pty-manager.js');
+    const { writeToPty, writeToPtySequential, writeToPtyFor, writeToPtySequentialFor, resizePty, onPtyData, onPtyExit, getPtyState, getPtyKind, getPtyKindFor, getOutputBuffer, getCurrentWorkspace, spawnShell, findSafeSliceStart, attachPtyFor, listLivePtys } = await import('./pty-manager.js');
     const {
       spawnScratch,
       writeScratch,
@@ -1770,13 +1770,40 @@ async function setupTerminalWebSocket(httpServer) {
     if (!isSdkMode) {
       chatQueue.initChatQueue({
         writeToPty,
+        writeToPtyFor,
         writeToPtySequential,
         writeToPtySequentialFor,
         getPtyKind,
         isStreaming: () => streamingState.active,
         hasPendingApproval: () => pendingAskHooks.size > 0 || pendingPermHooks.size > 0,
         hasExternalInjection: () => imCore.anyActiveInjection(),
-        broadcastWs: broadcastWsMessage,
+        hasLivePtyFor: (anchor) => {
+          if (!anchor || typeof anchor !== 'object') return undefined;
+          if (anchor.instanceKey) return getPtyKindFor({ instanceKey: anchor.instanceKey }) === 'claude';
+          if (anchor.project) return listLivePtys().some((pty) => pty.ptyKind === 'claude' && projectKeyForCwd(pty.cwd) === anchor.project);
+          return undefined;
+        },
+        broadcastWs: (msg, item) => {
+          if (msg.type !== 'queue-state') {
+            const scope = item?.anchor || msg.scope;
+            const { scope: _privateScope, ...publicMsg } = msg;
+            broadcastWsMessage(scope ? { ...publicMsg, project: scope.project, instanceKey: scope.instanceKey } : publicMsg);
+            return;
+          }
+          if (!terminalWss) return;
+          terminalWss.clients.forEach((client) => {
+            if (client.readyState !== 1) return;
+            const view = client._ccvViewInstance
+              ? { instanceKey: client._ccvViewInstance, project: client._ccvViewProject || undefined }
+              : { project: client._ccvViewProject || _projectName || '' };
+            const items = chatQueue.getSnapshot(view.project || view.instanceKey ? view : null);
+            const project = view.project || _projectName || undefined;
+            const instanceKey = view.instanceKey;
+            const { scope: _privateScope, ...publicMsg } = msg;
+            const payload = { ...publicMsg, items, ...(project ? { project } : {}), ...(instanceKey ? { instanceKey } : {}) };
+            try { client.send(JSON.stringify(payload)); } catch (err) { reportSwallowed('chat-queue.client-send', err); }
+          });
+        },
       });
     }
     const wss = new WebSocketServer({ noServer: true });
@@ -2143,31 +2170,53 @@ async function setupTerminalWebSocket(httpServer) {
       // workspace's approval/spinner/queue would pop into the foreground. Filter each
       // snapshot by this connection's `_ccvViewProject` (bound view / no ?project= → all).
       const _viewProj = ws._ccvViewProject || null;
+      const replayQueueSnapshot = () => {
+        const anchor = ws._ccvViewInstance
+          ? { instanceKey: ws._ccvViewInstance, project: ws._ccvViewProject || undefined }
+          : (ws._ccvViewProject ? { project: ws._ccvViewProject } : (isSdkMode ? null : { project: _projectName || undefined }));
+        const items = (isSdkMode && _sdkGetQueueSnapshot)
+          ? _sdkGetQueueSnapshot(anchor)
+          : chatQueue.getSnapshot(anchor);
+        if (!Array.isArray(items)) return;
+        const frame = { type: 'queue-state', items };
+        if (ws._ccvViewProject || (!isSdkMode && _projectName)) frame.project = ws._ccvViewProject || _projectName;
+        if (ws._ccvViewInstance) frame.instanceKey = ws._ccvViewInstance;
+        if (_sdkFrameForView(frame)) {
+          try { ws.send(JSON.stringify(frame)); } catch (err) { reportSwallowed('queue.replay-send', err); }
+        }
+      };
       const _sdkFrameForView = (frame) => {
         if (!frame || typeof frame !== 'object') return true;      // no cwd → view-agnostic, replay
-        if (!_viewProj) return true;                               // bound view → all workspaces
+        const viewProject = ws._ccvViewProject || null;
+        if (!viewProject) return true;                             // bound view → all workspaces
         // The view stamp is a SANITIZED project key (projectKeyForCwd), so compare against the
         // frame's cwd sanitized the same way — a raw basename would silently drop legit frames
         // for space/CJK workspace names.
         const fproj = (typeof frame.cwd === 'string' && frame.cwd) ? (projectKeyForCwd(frame.cwd) || null) : null;
-        return !fproj || fproj === _viewProj;                      // no-cwd frame → replay; else must match
+        return !fproj || fproj === viewProject;                    // no-cwd frame → replay; else must match
+      };
+      const replaySdkPendingApprovals = ({ planOnly = false } = {}) => {
+        if (!_sdkGetPendingApprovals) return;
+        for (const p of _sdkGetPendingApprovals() || []) {
+          if (!p || !p.replay || !p.id) continue;
+          if (planOnly && p.kind !== 'plan') continue;
+          const payload = { ...p.replay };
+          if (!_sdkFrameForView(payload)) continue;
+          // The generic replay filter is project-scoped. When an exact instance
+          // is selected, require ownership metadata too instead of guessing from cwd.
+          if (ws._ccvViewInstance && payload.instanceKey !== ws._ccvViewInstance) continue;
+          if (p.kind === 'ask') {
+            payload.startedAt = Date.now();
+            payload.timeoutMs = p.remainingMs;
+          }
+          try { ws.send(JSON.stringify(payload)); } catch (err) { reportSwallowed('sdk.approval-replay', err); }
+        }
       };
 
       // Replay SDK 模式 pendings(sdk-manager canUseTool 的 ask/plan/perm):
       // 与上面 perm-hook 同理,但快照来自 sdk-manager(_pendingApprovals)。
       // ask 类带 startedAt/timeoutMs —— 与 ask-hook replay 同款剩余时间重算。
-      if (isSdkMode && _sdkGetPendingApprovals) {
-        for (const p of _sdkGetPendingApprovals() || []) {
-          if (!p || !p.replay || !p.id) continue;
-          const payload = { ...p.replay };
-          if (!_sdkFrameForView(payload)) continue; // 别的工作区的待审批不进本视图
-          if (p.kind === 'ask') {
-            payload.startedAt = now;           // 让前端按"还剩 remaining"起算
-            payload.timeoutMs = p.remainingMs; // 剩余可用时间
-          }
-          try { ws.send(JSON.stringify(payload)); } catch {}
-        }
-      }
+      if (isSdkMode) replaySdkPendingApprovals();
 
       // Replay sdk-init snapshot so a refreshed/reconnected page restores slash-command
       // surface and model info without waiting for the next session.
@@ -2203,10 +2252,13 @@ async function setupTerminalWebSocket(httpServer) {
       }
 
       // Replay the last sdk-context-usage snapshot so a reconnected panel restores the
-      // latest numbers (null snapshot → no frame, the panel falls back to its HTTP pull).
+      // latest numbers. Anchor by view instance (exact) else view project — same precedence
+      // as sdk-skills — and reject a missing/foreign instance when the viewer is pinned to
+      // one (context-only filter; other replay frames keep project-level semantics).
+      // Null snapshot → no frame, the panel falls back to its HTTP pull.
       if (isSdkMode && _sdkGetContextUsageSnapshot) {
-        const cuSnap = _sdkGetContextUsageSnapshot();
-        if (cuSnap && _sdkFrameForView(cuSnap)) {
+        const cuSnap = sdkContextReplayFrame(_sdkGetContextUsageSnapshot, _viewProj, ws._ccvViewInstance);
+        if (cuSnap) {
           try { ws.send(JSON.stringify(cuSnap)); } catch {}
         }
       }
@@ -2222,13 +2274,7 @@ async function setupTerminalWebSocket(httpServer) {
 
       // Replay the chat-composer busy queue so a refreshed/reconnected page restores the
       // floating queued-message bubbles (server is the source of truth in both modes).
-      {
-        const qItems = (isSdkMode && _sdkGetQueueSnapshot) ? _sdkGetQueueSnapshot() : chatQueue.getSnapshot();
-        if (Array.isArray(qItems) && qItems.length) {
-          const qFrame = { type: 'queue-state', items: qItems };
-          if (_sdkFrameForView(qFrame)) { try { ws.send(JSON.stringify(qFrame)); } catch {} }
-        }
-      }
+      replayQueueSnapshot();
 
       // 兜底重绘标记：claude TUI 在 alternate-screen 下只在收到 SIGWINCH 时重绘整屏。
       // 若前端首次 resize 与 PTY 当前尺寸恰好相等，pty.resize noop 不发 SIGWINCH → 前端空白。
@@ -2384,6 +2430,11 @@ async function setupTerminalWebSocket(httpServer) {
                   }
                 }
               }
+              // View changes use attach rather than a new connection: restore that view's
+              // pending approvals too, so a plan cleared on switch-away can be answered
+              // after switching back instead of waiting for the server timeout.
+              replaySdkPendingApprovals({ planOnly: true });
+              replayQueueSnapshot();
               return;
             }
           } else if (isSdkMode && (msg.type === 'input' || msg.type === 'input-sequential'
@@ -2494,12 +2545,20 @@ async function setupTerminalWebSocket(httpServer) {
             let res = null;
             try { res = (target || targetInstance) ? attachPtyFor({ project: target || undefined, instanceKey: targetInstance || undefined }) : null; } catch { res = null; }
             if (res && res.ok) {
+              ws._ccvViewProject = target || null;
+              ws._ccvViewInstance = targetInstance || null;
+              replayQueueSnapshot();
               try { ws.send(JSON.stringify({ type: 'attached', project: target, running: res.running, ptyKind: res.ptyKind, exitCode: res.exitCode })); } catch { }
               const snap = getOutputBuffer();
               if (snap) {
                 try { ws.send(JSON.stringify({ type: 'data', data: snap })); } catch { }
               }
             } else {
+              // The queue belongs to the view, not to a live PTY. A history view or
+              // a dead instance still needs its own queue snapshot after re-stamping.
+              ws._ccvViewProject = target || null;
+              ws._ccvViewInstance = targetInstance || null;
+              replayQueueSnapshot();
               // Multi-instance: surface an ambiguous project-name attach (with the live
               // candidates) so the client re-issues with an instanceKey instead of silently
               // pinning an arbitrary same-cwd process.
@@ -2722,6 +2781,14 @@ async function setupTerminalWebSocket(httpServer) {
                 try { ws.send(cmsg); } catch {}
               }
             }
+          } else if (msg.type === 'sdk-plan-auto-cancel') {
+            // Cancellation stops the automatic timers on other viewers too. It is
+            // not an approval/denial: the plan remains pending for manual review.
+            if (_sdkResolveApproval && msg.id) broadcastWsMessage({
+              type: 'sdk-plan-auto-cancel', id: msg.id,
+              cwd: msg.cwd || null, project: msg.project || null,
+              instanceKey: msg.instanceKey || null,
+            });
           } else if (msg.type === 'sdk-plan-answer') {
             // Plan approval in SDK mode
             if (_sdkResolveApproval) {
@@ -2772,7 +2839,7 @@ async function setupTerminalWebSocket(httpServer) {
                   });
                 }
               } else {
-                const _qAnchor = { project: typeof msg.project === 'string' ? msg.project : undefined, sessionId: typeof msg.sessionId === 'string' ? msg.sessionId : undefined, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined };
+                const _qAnchor = { project: (typeof msg.project === 'string' && msg.project) || _projectName || undefined, sessionId: typeof msg.sessionId === 'string' ? msg.sessionId : undefined, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined };
                 const _anchorArg = (_qAnchor.project || _qAnchor.sessionId || _qAnchor.instanceKey) ? _qAnchor : undefined;
                 try { chatQueue.enqueue(msg.text, _anchorArg); } catch (err) { reportSwallowed('server.queue-message', err); }
               }
@@ -2790,7 +2857,8 @@ async function setupTerminalWebSocket(httpServer) {
                   catch (err) { reportSwallowed('server.queue-send-now', err); }
                 }
               } else {
-                try { chatQueue.sendNow(qid); } catch (err) { reportSwallowed('server.queue-send-now', err); }
+                const qAnchor = { project: typeof msg.project === 'string' ? msg.project : undefined, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined };
+                try { chatQueue.sendNow(qid, qAnchor); } catch (err) { reportSwallowed('server.queue-send-now', err); }
               }
             }
           } else if (msg.type === 'queue-remove') {
@@ -2799,7 +2867,8 @@ async function setupTerminalWebSocket(httpServer) {
               if (isSdkMode) {
                 if (_sdkRemoveQueued) { const qAnchor = ((typeof msg.project === 'string' && msg.project) || (typeof msg.instanceKey === 'string' && msg.instanceKey)) ? { project: msg.project, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined } : undefined; try { _sdkRemoveQueued(qid, qAnchor); } catch (err) { reportSwallowed('server.queue-remove', err); } }
               } else {
-                try { chatQueue.remove(qid); } catch (err) { reportSwallowed('server.queue-remove', err); }
+                const qAnchor = { project: typeof msg.project === 'string' ? msg.project : undefined, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined };
+                try { chatQueue.remove(qid, qAnchor); } catch (err) { reportSwallowed('server.queue-remove', err); }
               }
             }
           } else if (msg.type === 'queue-clear') {
@@ -2808,7 +2877,8 @@ async function setupTerminalWebSocket(httpServer) {
             if (isSdkMode) {
               if (_sdkClearQueued) { const qAnchor = ((typeof msg.project === 'string' && msg.project) || (typeof msg.instanceKey === 'string' && msg.instanceKey)) ? { project: msg.project, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined } : undefined; try { _sdkClearQueued(qAnchor); } catch (err) { reportSwallowed('server.queue-clear', err); } }
             } else {
-              try { chatQueue.clear(); } catch (err) { reportSwallowed('server.queue-clear', err); }
+              const qAnchor = { project: typeof msg.project === 'string' ? msg.project : undefined, sessionId: typeof msg.sessionId === 'string' ? msg.sessionId : undefined, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined };
+              try { chatQueue.clear(qAnchor.project || qAnchor.sessionId || qAnchor.instanceKey ? qAnchor : undefined); } catch (err) { reportSwallowed('server.queue-clear', err); }
             }
           } else if (msg.type === 'queue-suppress') {
             // PTY Stop pressed: park the queue — the coming turn-end must not auto-drain it.
@@ -3593,6 +3663,36 @@ export function broadcastWsMessage(msg) {  if (terminalWss) {
           || msg.type === 'ask-hook-cancelled')) {
     _notifyParentPending(msg);
   }
+}
+
+/**
+ * Context-usage reconnect replay. CONTEXT-ONLY: unlike the generic `_sdkFrameForView`
+ * (project-scoped, shared by init/session-state/queue/MCP/approval replay), a viewer
+ * pinned to an exact instance also requires the replayed frame to carry THAT instanceKey
+ * — otherwise a same-basename twin's snapshot could repaint the wrong panel. Anchor
+ * precedence matches sdk-skills: exact viewed instance, else viewed project, else no
+ * anchor (active session). Unknown/ambiguous anchors resolve to a null snapshot → no
+ * frame; never fall back to the active session. The project check reuses
+ * projectKeyForCwd so sanitized names (spaces/CJK) still match.
+ */
+export function sdkContextReplayFrame(getSnapshot, viewProject, viewInstance) {
+  if (typeof getSnapshot !== 'function') return null;
+  const anchor = viewInstance
+    ? { instanceKey: viewInstance }
+    : (viewProject ? { project: viewProject } : null);
+  const frame = anchor ? getSnapshot(anchor) : getSnapshot();
+  if (!frame || typeof frame !== 'object') return null;
+  if (viewInstance) {
+    const frameInstance = (typeof frame.instanceKey === 'string' && frame.instanceKey) ? frame.instanceKey : null;
+    if (frameInstance !== viewInstance) return null; // missing or foreign instance
+  }
+  if (viewProject) {
+    const frameProject = (typeof frame.cwd === 'string' && frame.cwd)
+      ? (projectKeyForCwd(frame.cwd) || null)
+      : null;
+    if (frameProject && frameProject !== viewProject) return null;
+  }
+  return frame;
 }
 
 /**

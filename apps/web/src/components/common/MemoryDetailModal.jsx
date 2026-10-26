@@ -3,6 +3,9 @@ import { Modal } from 'antd';
 import { t } from '../../i18n';
 import { renderMarkdown } from '../../utils/markdown';
 import { parseMemoryLink } from '../../utils/memoryLinkParser';
+import { buildMemoryUsageIndex, memoryTokensForLink } from '../../utils/contextUsageView';
+import { formatTokenCount } from '../../utils/helpers';
+import { useSdkContextUsage } from '../dashboard/SdkContextUsageProvider';
 import styles from './sharedChrome.module.css';
 
 // 持久记忆条目明细 Modal（PC + iPad + 手机三处都需要 mount 一份）。
@@ -14,8 +17,15 @@ import styles from './sharedChrome.module.css';
 //   'memory'      (默认) → 用 parseMemoryLink 拦截：命中 .md basename 切明细，其他一律 preventDefault。
 //   'passthrough' → 不拦截，浏览器原生处理（CLAUDE.md 等场景需要 https:// / 相对链接正常打开）。
 export default function MemoryDetailModal({ detail, onClose, onOpenMemoryDetail, linkMode = 'memory' }) {
+  const sdk = useSdkContextUsage();
   if (!detail) return null;
-  const { name, content, error, loading } = detail;
+  const { name, content, error, loading, memoryDir } = detail;
+  const memoryUsage = linkMode === 'memory' && sdk.enabled && sdk.detail?.usage && memoryDir
+    ? memoryTokensForLink(buildMemoryUsageIndex(sdk.detail.usage, memoryDir), name)
+    : null;
+  const memoryTokens = linkMode === 'memory' && sdk.enabled
+    ? (memoryUsage || (typeof detail.tokens === 'number' ? { tokens: detail.tokens, estimated: true } : null))
+    : null;
 
   // 链接拦截：规则统一在 parseMemoryLink；命中 .md basename 切到对应明细。
   // passthrough 模式（CLAUDE.md 视图）：外链在新 tab 打开（noopener），其他链接吃掉防止 SPA 误导航。
@@ -40,7 +50,7 @@ export default function MemoryDetailModal({ detail, onClose, onOpenMemoryDetail,
     const r = parseMemoryLink(hrefRaw);
     if (r.allow) return;
     e.preventDefault();
-    if (r.open) onOpenMemoryDetail?.(r.open);
+    if (r.open) onOpenMemoryDetail?.(r.open, memoryDir);
   };
 
   let body;
@@ -69,6 +79,7 @@ export default function MemoryDetailModal({ detail, onClose, onOpenMemoryDetail,
       zIndex={1100}
       destroyOnClose
     >
+      {memoryTokens && <div className={styles.memoryDetailTokens}>{t(memoryTokens.estimated ? 'ui.contextUsage.tokensEstimated' : 'ui.contextUsage.tokens', { tokens: formatTokenCount(memoryTokens.tokens) })}</div>}
       {body}
     </Modal>
   );

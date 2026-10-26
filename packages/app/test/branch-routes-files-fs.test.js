@@ -24,9 +24,8 @@
 // 不可达分支（不为凑数写假断言）：
 //   502-505  deleteFile realFull2 二次 realpath 逃逸 —— 需 lstat 与 rmSync 之间 TOCTOU 换链，
 //            单进程内无法确定性复现。
-//   konsole/xfce4/xterm/xdg-open fallback（openTerminal 761-771）—— loop 的 catch{continue} 只
-//            在 spawn 同步抛时进入，而缺二进制/不可执行都是 async 错误，gnome-terminal 必先
-//            「成功」spawn → launched=true → break，单进程内造不出同步 spawn 失败让其 fall-through。
+//   konsole/xfce4/xterm/xdg-open fallback: missing binaries emit asynchronous
+//   spawn errors; the route listens for them and probes the next candidate.
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -110,13 +109,14 @@ function settle(ms = 120) { return new Promise((r) => setTimeout(r, ms)); }
 // 平台命令 stub 目录：放同名可执行脚本（exit 0），prepend 到 PATH，避免真实 GUI / async ENOENT。
 const fakeBin = join(tmpDir, 'fakebin');
 const origPath = process.env.PATH;
-const STUB_NAMES = ['open', 'explorer.exe', 'cmd.exe', 'gnome-terminal', 'konsole', 'xterm', 'xdg-open'];
+const STUB_NAMES = ['open', 'explorer.exe', 'cmd.exe', 'konsole', 'xfce4-terminal', 'xterm', 'xdg-open'];
 
 // explorer.exe 单独用捕获 stub：把 argv 追加写进文件供断言 /select,"<path>" 规范形式
 // （POSIX 下 windowsVerbatimArguments 被忽略，argv 即字面值，含字面双引号）。
 // 追加（>>）而非截断（>）：detached spawn 的 stub 可能在前一个用例 settle 之后才落地，
 // 截断模式会把后到的旧行盖进当前用例正读的文件，造成偶发读到上一条路径的 flake。
 // 其余 stub 保持纯 exit 0，不动既有用例语义。
+const terminalCapture = join(tmpDir, 'terminal-launches.txt');
 const explorerCapture = join(tmpDir, 'explorer-args.txt');
 
 // 读取从 fromLength 起新追加的一行（去掉行尾空白），规避前序用例迟到的 overwrite 行。
@@ -124,11 +124,12 @@ function readAppendedLine(fromLength) {
   return readFileSync(explorerCapture, 'utf-8').slice(fromLength).trimEnd();
 }
 
-// 轮询等待从 fromLength 起出现新追加内容（stub append 落盘后再读，避免读到截断中途的空文件）。
-async function waitForAppended(p, fromLength, timeoutMs = 3000) {
+// Poll until the appended capture contains the expected terminal invocation.
+async function waitForAppended(p, fromLength, timeoutMs = 3000, expected = null) {
   const start = Date.now();
   for (;;) {
-    if (existsSync(p) && statSync(p).size > fromLength) return;
+    if (existsSync(p) && statSync(p).size > fromLength
+      && (!expected || readFileSync(p).subarray(fromLength).toString('utf8').includes(expected))) return;
     if (Date.now() - start > timeoutMs) throw new Error(`capture not appended: ${p}`);
     await new Promise((r) => setTimeout(r, 20));
   }
@@ -139,11 +140,18 @@ before(async () => {
   for (const n of STUB_NAMES) {
     const p = join(fakeBin, n);
     if (n === 'explorer.exe') {
-      writeFileSync(p, `#!/bin/sh\nprintf '%s\\n' "$@" >> '${explorerCapture}'\nexit 0\n`);
+      writeFileSync(p, `#!/bin/sh\n[ "\${CCV_TEST_STUB_WARMUP:-}" = "1" ] && exit 0\nprintf '%s\\n' "$@" >> '${explorerCapture}'\nexit 0\n`);
+    } else if (['konsole', 'xfce4-terminal', 'xterm', 'xdg-open'].includes(n)) {
+      writeFileSync(p, `#!/bin/sh\n[ "\${CCV_TEST_STUB_WARMUP:-}" = "1" ] && exit 0\nprintf '${n} %s\\n' "$*" >> '${terminalCapture}'\nexit 0\n`);
     } else {
       writeFileSync(p, '#!/bin/sh\nexit 0\n');
     }
     try { chmodSync(p, 0o755); } catch {}
+    // macOS can spend seconds assessing a newly-created script on its first exec.
+    // Pay that cost in setup, without capture output, rather than inside a 3s assertion.
+    if (process.platform !== 'win32') {
+      execFileSync(p, [], { stdio: 'ignore', env: { ...process.env, CCV_TEST_STUB_WARMUP: '1' } });
+    }
   }
   process.env.PATH = fakeBin + ':' + origPath;
   const mod = await import('../server/routes/files-fs.js');
@@ -338,6 +346,22 @@ describe('files-fs 分支补强', { concurrency: false }, () => {
         const res = await callBody(handlerFor('/api/open-terminal', 'POST'), { path: 'wd-l' });
         assert.equal(res.status, 200);
         assert.equal(res.data.ok, true);
+        await settle();
+      } finally { restorePlatform(); }
+    });
+
+    it('falls through a missing gnome-terminal ENOENT and launches konsole', async (t) => {
+      if (process.platform === 'win32') { t.skip('POSIX command stubs required'); return; }
+      setPlatform('linux');
+      try {
+        mkdirSync(join(projectDir, 'wd-fallback'), { recursive: true });
+        const captureStart = existsSync(terminalCapture) ? statSync(terminalCapture).size : 0;
+        const res = await callBody(handlerFor('/api/open-terminal', 'POST'), { path: 'wd-fallback' });
+        assert.equal(res.status, 200);
+        await waitForAppended(terminalCapture, captureStart, 3000, 'wd-fallback');
+        const appended = readFileSync(terminalCapture).subarray(captureStart).toString('utf8');
+        assert.match(appended, /^konsole --workdir .*wd-fallback/m);
+        assert.doesNotMatch(appended, /xfce4-terminal|xterm/);
         await settle();
       } finally { restorePlatform(); }
     });

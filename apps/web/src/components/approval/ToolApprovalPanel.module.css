@@ -238,9 +238,40 @@
   background: var(--color-error-bg-medium);
 }
 
+.planAutoApproveHint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.planAutoApproveCancel {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.planAutoApproveCancel:hover {
+  opacity: 0.8;
+}
+
+@media (pointer: coarse) {
+  .planAutoApproveCancel { min-height: 44px; }
+}
+
 .allowBtn:focus-visible,
 .allowSessionBtn:focus-visible,
-.denyBtn:focus-visible {
+.denyBtn:focus-visible,
+.planAutoApproveCancel:focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 2px;
 }
