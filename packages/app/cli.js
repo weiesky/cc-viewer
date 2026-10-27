@@ -891,6 +891,7 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   // 注册 SDK 回调到 server.js（WS 消息路由用）
   serverMod.setSdkResolveApproval(sdkManager.resolveApproval);
   serverMod.setSdkCancelApproval(sdkManager.cancelApproval);
+  serverMod.setSdkAutoCancelApproval(sdkManager.autoCancelApproval);
   serverMod.setSdkSendUserMessage(sdkManager.sendUserMessage);
   serverMod.setSdkInterruptTurn(sdkManager.interruptTurn);
   serverMod.setSdkGetPendingApprovals(sdkManager.getPendingApprovals);

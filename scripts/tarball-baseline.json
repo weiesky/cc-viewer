@@ -1402,6 +1402,7 @@
   "server/lib/async-file-lock.js",
   "server/lib/async-write-queue.js",
   "server/lib/auth.js",
+  "server/lib/auto-approve.js",
   "server/lib/base-path.js",
   "server/lib/builtin-model-prompts.js",
   "server/lib/ccswitch-import.js",

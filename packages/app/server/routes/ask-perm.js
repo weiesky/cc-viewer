@@ -7,6 +7,8 @@ import { _projectName } from '../interceptor.js';
 import { readPrefsRaw } from '../lib/prefs-store.js';
 import { getCurrentProjectKey, hasFork, resolveScoped } from '../lib/project-prefs.js';
 import { reportSwallowed } from '../lib/error-report.js';
+import { computeAutoApprove, createAutoApproveState } from '../lib/auto-approve.js';
+import { isPublishCommand } from '../lib/approval-policy.js';
 
 function pendingAsks(req, res, parsedUrl, isLocal, deps) {
   try {
@@ -394,7 +396,7 @@ function permHook(req, res, parsedUrl, isLocal, deps) {
       return;
     }
     try {
-      const { toolName, input } = JSON.parse(body);
+      const { toolName, input, cwd } = JSON.parse(body);
       if (!toolName) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Missing toolName' }));
@@ -407,6 +409,7 @@ function permHook(req, res, parsedUrl, isLocal, deps) {
         const oldest = deps.pendingPermHooks.get(oldestId);
         if (oldest) {
           clearTimeout(oldest.timer);
+          if (oldest.auto?.timer) clearTimeout(oldest.auto.timer);
           try { if (!oldest.res.headersSent) { oldest.res.writeHead(429, { 'Content-Type': 'application/json' }); oldest.res.end(JSON.stringify({ error: 'Too many concurrent requests' })); } } catch {}
           deps.pendingPermHooks.delete(oldestId);
         }
@@ -431,6 +434,7 @@ function permHook(req, res, parsedUrl, isLocal, deps) {
       const timer = setTimeout(() => {
         const entry = deps.pendingPermHooks.get(id);
         if (entry) {
+          if (entry.auto?.timer) clearTimeout(entry.auto.timer);
           deps.pendingPermHooks.delete(id);
           try {
             if (!entry.res.headersSent) {
@@ -447,14 +451,60 @@ function permHook(req, res, parsedUrl, isLocal, deps) {
         }
       }, PERM_HOOK_TIMEOUT);
 
-      deps.pendingPermHooks.set(id, { toolName, input, res, timer, createdAt: Date.now() });
+      // Server-side auto-approve countdown (same semantics as the SDK path in
+      // sdk-manager.js): armed from request arrival; the server answers the hook
+      // itself at deadline + 1s buffer when no client did. autoCancelled is set by
+      // the perm-hook-auto-cancel WS handler (the approval then stays pending for
+      // a manual decision) and replayed to fresh clients.
+      // npm publish is a hard safety floor: always wait for a human decision, never
+      // the server-side auto-approve fallback (SDK path parity: sdk-manager.js).
+      const autoMeta = isPublishCommand(toolName, input)
+        ? { enabled: false }
+        : computeAutoApprove('perm', typeof cwd === 'string' && cwd ? cwd : undefined, { file: deps.getPrefsFile?.() });
+
+      const hookEntry = {
+        toolName, input, res, timer, createdAt: Date.now(),
+        autoCancelled: false,
+        auto: null,
+      };
+      deps.pendingPermHooks.set(id, hookEntry);
 
       // Broadcast to all terminal WS clients
       if (deps.terminalWss) {
-        const pmsg = JSON.stringify({ type: 'perm-hook-pending', id, toolName, input });
+        const pmsg = JSON.stringify({
+          type: 'perm-hook-pending', id, toolName, input,
+          // Always stamp autoApproveSeconds (0 = server says OFF) so a client whose
+          // global pref disagrees with the fork-resolved value never re-arms locally.
+          autoApproveSeconds: autoMeta.enabled ? autoMeta.seconds : 0,
+          ...(autoMeta.enabled ? { autoApproveAt: autoMeta.autoApproveAt } : {}),
+        });
         deps.terminalWss.clients.forEach((client) => {
           if (client.readyState === 1) {
             try { client.send(pmsg); } catch {}
+          }
+        });
+      }
+
+      // Arm AFTER the entry is in the map AND the pending frame is out: instant (-1)
+      // fires synchronously and resolves through the entry, so clients observe the
+      // order pending → resolved (never a ghost panel for an already-answered hook).
+      if (autoMeta.enabled) {
+        hookEntry.auto = createAutoApproveState(autoMeta, () => {
+          const entry = deps.pendingPermHooks.get(id);
+          if (!entry || entry.autoCancelled) return;
+          clearTimeout(entry.timer);
+          deps.pendingPermHooks.delete(id);
+          try {
+            if (!entry.res.headersSent) {
+              entry.res.writeHead(200, { 'Content-Type': 'application/json' });
+              entry.res.end(JSON.stringify({ decision: 'allow' }));
+            }
+          } catch {}
+          if (deps.terminalWss) {
+            const rmsg = JSON.stringify({ type: 'perm-hook-resolved', id, reason: 'auto-approved' });
+            deps.terminalWss.clients.forEach((c) => {
+              if (c.readyState === 1) try { c.send(rmsg); } catch {}
+            });
           }
         });
       }
@@ -464,6 +514,7 @@ function permHook(req, res, parsedUrl, isLocal, deps) {
         const entry = deps.pendingPermHooks.get(id);
         if (entry) {
           clearTimeout(entry.timer);
+          if (entry.auto?.timer) clearTimeout(entry.auto.timer);
           deps.pendingPermHooks.delete(id);
           if (deps.terminalWss) {
             const tmsg = JSON.stringify({ type: 'perm-hook-timeout', id });

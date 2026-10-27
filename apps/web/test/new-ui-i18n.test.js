@@ -27,6 +27,7 @@ function localeBlockOf(key) {
 }
 
 const KEYS = [
+  'ui.openFolder',
   'ui.memoryOpenDir',   // persistent memory "open directory" button (server/routes/files-fs.js openMemoryDir)
   'ui.proxy.editProxy', // proxy settings "edit" standalone Modal title (ProxyModal.jsx)
   'ui.proxy.effort',        // proxy hot-switch effort dropdown label (ProxyModal.jsx)

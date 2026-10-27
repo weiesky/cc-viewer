@@ -1,8 +1,10 @@
 // Read-oriented file-access routes (moved verbatim from server.js handleRequest).
-import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, realpathSync, createReadStream } from 'node:fs';
-import { join, basename, dirname, resolve, sep } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, realpathSync, createReadStream, readdirSync } from 'node:fs';
+import { join, basename, dirname, resolve, relative, sep } from 'node:path';
+import { homedir } from 'node:os';
 import { isReadAllowed, reasonToStatus } from '../lib/file-access-policy.js';
 import { ERROR_STATUS_MAP, isPathContained } from '../lib/file-api.js';
+import { listSkills } from '../lib/skills-api.js';
 import { viewRootOrReply, resolveViewRoot } from '../lib/view-root.js';
 import { findSdkSessionByInstance } from '../lib/sdk-session-index.js';
 import { projectKeyForCwd } from '../lib/system-prompt-snapshots.js';
@@ -12,6 +14,8 @@ import { reportSwallowed } from '../lib/error-report.js';
 import { discoverClaudeMdCandidates, readCandidateById } from '../lib/claude-md-discovery.js';
 import { getClaudeConfigDir } from '../../findcc.js';
 import { _projectName } from '../interceptor.js';
+import { isAdminReq } from '../lib/is-admin.js';
+import { isSameOriginBrowserRequest } from '../lib/same-origin.js';
 
 // Multi-project file operations use the same viewed root for reads and writes.
 // Every file-browser mutation enforces realpath containment in that root;
@@ -537,7 +541,7 @@ function fileDownloadWithRoot(req, res, parsedUrl, reqPath, cwd) {
   }
 }
 
-function fileContentPost(req, res, parsedUrl) {
+function fileContentPost(req, res, parsedUrl, isLocal) {
   // The shared read root keeps its raw cwd for projectMemory's store-key
   // encoding. Normalize only this mutation's containment comparisons.
   let writeRoot;
@@ -609,6 +613,13 @@ function fileContentPost(req, res, parsedUrl) {
         }
         // Check containment before creating any missing parent directories.
         // Explicit $EDITOR sessions retain their allowlisted external paths.
+        // editorSession is client-claimed — require admin to honor it, otherwise
+        // any caller could use it as a write-root bypass (see /api/target-files).
+        if (editorSession && !isAdminReq(req, isLocal)) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Forbidden', reason: 'editor-session-requires-admin' }));
+          return;
+        }
         if (!editorSession && !isInsideWriteRoot(ancestorPolicy.real)) {
           res.writeHead(403, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Forbidden', reason: 'outside-view-root' }));
@@ -628,6 +639,11 @@ function fileContentPost(req, res, parsedUrl) {
         return;
       }
 
+      if (editorSession && !isAdminReq(req, isLocal)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Forbidden', reason: 'editor-session-requires-admin' }));
+        return;
+      }
       if (!editorSession && existsSync(targetReal) && !isInsideWriteRoot(targetReal)) {
         res.writeHead(403, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Forbidden', reason: 'outside-view-root' }));
@@ -646,6 +662,231 @@ function fileContentPost(req, res, parsedUrl) {
   });
 }
 
+function targetError(status, message) {
+  return Object.assign(new Error(message), { status });
+}
+
+// Map fs errno to a sensible HTTP status: missing → 404, permission → 403,
+// symlink loop → 400 (treat as malformed), anything else → 404 (don't leak).
+function errnoToStatus(err) {
+  const code = err?.code;
+  if (code === 'EACCES' || code === 'EPERM') return 403;
+  if (code === 'ELOOP') return 400;
+  return 404;
+}
+
+function realDirectory(path, label) {
+  let real;
+  try { real = realpathSync(path); } catch (err) { throw targetError(errnoToStatus(err), `${label} not found`); }
+  let st;
+  try { st = statSync(real); } catch (err) { throw targetError(errnoToStatus(err), `${label} not found`); }
+  if (!st.isDirectory()) throw targetError(400, `${label} is not a directory`);
+  return real;
+}
+
+function checkedDirectory(path, label) {
+  const real = realDirectory(path, label);
+  const policy = isReadAllowed(real);
+  if (!policy.ok) throw targetError(reasonToStatus(policy.reason), `${label} not readable`);
+  return policy.real;
+}
+
+function insidePath(path, root) {
+  return path === root || path.startsWith(root + sep);
+}
+
+function targetNavigation(targetReal, cwd) {
+  const projectReal = realDirectory(cwd, 'Project');
+  if (insidePath(targetReal, projectReal)) return { rootReal: projectReal, rootKind: 'project' };
+  // $HOME becomes the navigation root for home-resident targets (user skills,
+  // plugins, the global CLAUDE.md). Entries outside the allowlist (e.g. ~/.ssh,
+  // ~/.aws) are filtered per-entry by isReadAllowed, and sensitive paths inside
+  // ~/.claude are covered by file-access-policy's denylist. The /api/target-files
+  // handler additionally gates this endpoint behind isAdminReq + same-origin so
+  // a cross-site page cannot enumerate the user's home tree.
+  const homeReal = realDirectory(homedir(), 'Home');
+  if (insidePath(targetReal, homeReal)) {
+    checkedDirectory(targetReal, 'Directory');
+    return { rootReal: homeReal, rootKind: 'home' };
+  }
+  const configReal = realDirectory(getClaudeConfigDir(), 'Claude config');
+  if (insidePath(targetReal, configReal)) {
+    checkedDirectory(targetReal, 'Directory');
+    return { rootReal: realDirectory(dirname(configReal), 'Config root'), rootKind: 'config' };
+  }
+  // Allowlist fallback: targets that live inside another allowlisted root
+  // (registered workspaces, /tmp/cc-viewer-uploads, etc.) are reachable via
+  // /api/claude-md's discovery (which uses isReadAllowed), so we must not
+  // 403 them here. Use the target's own directory as the navigation root —
+  // no parent browsing, but at least the entry the user clicked actually opens.
+  const policy = isReadAllowed(targetReal);
+  if (!policy.ok) throw targetError(reasonToStatus(policy.reason), 'Target not readable');
+  return { rootReal: realDirectory(targetReal, 'Target'), rootKind: 'target' };
+}
+
+function targetScope(targetReal, cwd) {
+  const navigation = targetNavigation(targetReal, cwd);
+  return { ...navigation, targetPath: relative(navigation.rootReal, targetReal).split(sep).join('/') };
+}
+
+function targetRelPath(raw) {
+  if (raw == null) return null;
+  if (raw === '') return [];
+  if (typeof raw !== 'string' || raw.length > 2048 || raw.includes('\0') || raw.includes('\\')
+    || raw.startsWith('/') || /^[a-zA-Z]:/.test(raw)) {
+    throw targetError(400, 'Invalid path');
+  }
+  const segments = raw.split('/');
+  if (segments.some(segment => !segment || segment === '.' || segment === '..')) {
+    throw targetError(400, 'Invalid path');
+  }
+  // Hard cap on navigation depth: each segment triggers at least one
+  // synchronous readdir + per-entry realpath/stat in `ancestors`, and a 2KB
+  // free-form path could otherwise fan out into hundreds of syscalls per
+  // request. 32 is far deeper than any realistic skill / CLAUDE.md location.
+  if (segments.length > 32) throw targetError(400, 'Path too deep');
+  return segments;
+}
+
+function resolveTargetRoot(parsedUrl, cwd) {
+  const kind = parsedUrl.searchParams.get('kind');
+  if (kind === 'claude-md') {
+    const id = parsedUrl.searchParams.get('id') || '';
+    if (!/^[0-9a-f]{12}$/i.test(id)) throw targetError(400, 'Invalid id');
+    const candidate = discoverClaudeMdCandidates({
+      cwd,
+      claudeConfigDir: getClaudeConfigDir(),
+      isReadAllowedFn: isReadAllowed,
+    }).find(entry => entry.id === id);
+    if (!candidate || basename(candidate.realPath) !== 'CLAUDE.md') throw targetError(404, 'Target not found');
+    return { ...targetScope(realDirectory(dirname(candidate.realPath), 'Directory'), cwd), targetKind: 'claude-md' };
+  }
+  if (kind !== 'skill') throw targetError(400, 'Invalid target kind');
+  const source = parsedUrl.searchParams.get('source');
+  const targetPath = parsedUrl.searchParams.get('targetPath');
+  if (!['user', 'project', 'plugin'].includes(source)) throw targetError(400, 'Invalid skill source');
+  if (typeof targetPath !== 'string' || !targetPath || targetPath.length > 4096 || targetPath.includes('\0')) {
+    throw targetError(400, 'Invalid skill path');
+  }
+  const skill = listSkills({ projectDir: cwd })
+    .find(entry => entry.source === source && entry.path === targetPath);
+  if (!skill) throw targetError(404, 'Target not found');
+  const rootReal = realDirectory(skill.path, 'Directory');
+  const scope = targetScope(rootReal, cwd);
+  const anchor = source === 'project'
+    ? scope.rootReal
+    : dirname(dirname(skill.path));
+  const anchorReal = realDirectory(anchor, 'Skill root');
+  if (!insidePath(rootReal, anchorReal)) throw targetError(403, 'Target outside skill root');
+  // Plugin root must follow the configured Claude config dir, not the default
+  // homedir()/.claude — otherwise plugin skills break under CLAUDE_CONFIG_DIR.
+  if (source === 'plugin' && !insidePath(rootReal, realDirectory(join(getClaudeConfigDir(), 'plugins'), 'Plugin root'))) {
+    throw targetError(403, 'Target outside plugin root');
+  }
+  return { ...scope, targetKind: 'skill' };
+}
+
+function listTargetDirectory(rootReal, segments, deps, requireReadable = true) {
+  const dirReal = requireReadable
+    ? checkedDirectory(segments.length ? join(rootReal, ...segments) : rootReal, 'Directory')
+    : realDirectory(segments.length ? join(rootReal, ...segments) : rootReal, 'Directory');
+  if (!isPathContained(dirReal, rootReal)) throw targetError(403, 'Path outside target');
+  const ignored = deps?.IGNORED_PATTERNS || new Set();
+  const entries = [];
+  let dirents;
+  try {
+    dirents = readdirSync(dirReal, { withFileTypes: true });
+  } catch (err) {
+    // EACCES → 403 (permission), ENOENT/ENOTDIR → 404 (race with rename/delete),
+    // anything else falls back to 404 so we don't leak internal state via 500.
+    throw targetError(errnoToStatus(err), 'Directory not readable');
+  }
+  // Hard cap on returned entries: this is a synchronous loop with realpath +
+  // stat + isReadAllowed per entry, and the endpoint fans out via `ancestors`,
+  // so an unbounded listing of a huge dir (e.g. ~/.claude/projects/<hash>/)
+  // would block the event loop and return a giant JSON payload. 5000 is well
+  // past any realistic skill/CLAUDE.md folder.
+  const MAX_ENTRIES = 5000;
+  for (const entry of dirents) {
+    if (entries.length >= MAX_ENTRIES) break;
+    if (ignored.has(entry.name)) continue;
+    const fullPath = join(dirReal, entry.name);
+    let real;
+    try { real = realpathSync(fullPath); } catch (err) { reportSwallowed('targetFiles.entry.realpath', err); continue; }
+    if (!insidePath(real, rootReal)) continue;
+    const policy = isReadAllowed(real);
+    if (!policy.ok) continue;
+    let st;
+    try { st = statSync(policy.real); } catch (err) { reportSwallowed('targetFiles.entry.stat', err); continue; }
+    if (!st.isDirectory() && !st.isFile()) continue;
+    entries.push({ name: entry.name, type: st.isDirectory() ? 'directory' : 'file', absPath: policy.real });
+  }
+  entries.sort((a, b) => a.type !== b.type
+    ? (a.type === 'directory' ? -1 : 1)
+    : a.name.localeCompare(b.name));
+  return entries;
+}
+
+function targetFiles(req, res, parsedUrl, isLocal, deps) {
+  try {
+    // /api/target-files exposes directory listings under the user's home and
+    // ~/.claude (which contains transcripts, prompt history, env snapshots).
+    // Combined with the global `Access-Control-Allow-Origin: *` and loopback's
+    // no-auth path, a bare GET would let any web page enumerate the user's
+    // ~/.claude tree. Require admin AND a same-origin browser request.
+    if (!isAdminReq(req, isLocal) || !isSameOriginBrowserRequest(req, parsedUrl)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'forbidden' }));
+      return;
+    }
+    const cwd = _viewRootOrReply(req, res, parsedUrl);
+    if (!cwd) return;
+    const scope = resolveTargetRoot(parsedUrl, cwd);
+    const rawPath = parsedUrl.searchParams.get('path');
+    const requestedSegments = targetRelPath(rawPath);
+    const segments = requestedSegments === null ? scope.targetPath.split('/').filter(Boolean) : requestedSegments;
+    const entries = listTargetDirectory(scope.rootReal, segments, deps, segments.length > 0 || scope.rootKind !== 'home');
+    const rootEntries = requestedSegments === null && segments.length > 0
+      ? listTargetDirectory(scope.rootReal, [], deps, scope.rootKind === 'project')
+      : entries;
+    const targetEntries = requestedSegments === null
+      ? entries.filter(entry => insidePath(entry.absPath, join(scope.rootReal, ...segments)))
+      : entries;
+    const targetSegments = scope.targetPath ? scope.targetPath.split('/') : [];
+    const ancestors = [];
+    // Ancestors are the chain from the navigation root down to the directory
+    // being listed. When the caller passed no `path` that's the chain leading
+    // to the target itself; when they passed `path`, the chain is the requested
+    // segments. We deliberately DO NOT use path.relative(targetPath, rawPath)
+    // here — that helper happily produces "../.." for sibling branches, which
+    // would pollute the cache with pseudo-paths and re-list directories the
+    // user never navigated into.
+    const chainSegments = requestedSegments === null ? targetSegments : segments;
+    // Request-scoped memo: targetFiles lists the same directory multiple times
+    // (entries + ancestors chain often share prefixes), so we cache by dir key
+    // to avoid duplicate readdirSync storms on large directories.
+    const listMemo = new Map();
+    const listOnce = (segs, requireReadable) => {
+      const key = segs.join('/') + (requireReadable ? '|r' : '|n');
+      if (!listMemo.has(key)) listMemo.set(key, listTargetDirectory(scope.rootReal, segs, deps, requireReadable));
+      return listMemo.get(key);
+    };
+    const ancestorCount = Math.max(0, chainSegments.length - (requestedSegments === null ? 0 : 1));
+    for (let i = 0; i <= ancestorCount; i++) {
+      const path = chainSegments.slice(0, i).join('/');
+      ancestors.push({ path, entries: listOnce(path ? path.split('/') : [], false) });
+    }
+    const { rootReal, ...response } = scope;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ...response, targetPath: segments.join('/'), entries: rootEntries, targetEntries, ancestors }));
+  } catch (err) {
+    const status = err.status || ERROR_STATUS_MAP[err.code] || 500;
+    if (status === 500) console.error('[api/target-files]', err);
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: status === 500 ? 'Internal error' : err.message }));
+  }
+}
+
 export const filesContentRoutes = [
   { method: 'GET', match: 'exact', path: '/api/plan-file', handler: planFile },
   { method: 'GET', match: 'exact', path: '/api/file-content', handler: fileContentGet },
@@ -654,4 +895,5 @@ export const filesContentRoutes = [
   { predicate: (url, method) => (url === '/api/file-raw' || url.startsWith('/api/file-raw/')) && (method === 'GET' || method === 'HEAD'), handler: fileRaw },
   { predicate: (url, method) => url === '/api/download-file' && (method === 'GET' || method === 'HEAD'), handler: fileDownload },
   { method: 'POST', match: 'exact', path: '/api/file-content', handler: fileContentPost },
+  { method: 'GET', match: 'exact', path: '/api/target-files', handler: targetFiles },
 ];

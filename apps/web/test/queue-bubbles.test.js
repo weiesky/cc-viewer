@@ -15,9 +15,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const JSX_PATH = join(__dirname, '..', 'src', 'components', 'chat', 'ChatView.jsx');
 const CSS_PATH = join(__dirname, '..', 'src', 'components', 'chat', 'ChatView.module.css');
+const CHAT_MESSAGE_PATH = join(__dirname, '..', 'src', 'components', 'chat', 'ChatMessage.jsx');
 
 const jsx = readFileSync(JSX_PATH, 'utf-8');
 const css = readFileSync(CSS_PATH, 'utf-8');
+const chatMessage = readFileSync(CHAT_MESSAGE_PATH, 'utf-8');
 
 describe('queue bubbles — state + WS wiring', () => {
   it('queuedMessages state is initialized', () => {
@@ -95,6 +97,7 @@ describe('queue bubbles — render block', () => {
     assert.ok(block, 'click creates the placeholder before sending queue-send-now');
     assert.ok(block[0].includes('...scope'), 'placeholder retains project/instance/attached session scope');
     assert.ok(block[0].includes('scrollToBottom'), 'the pending bubble is immediately visible at the conversation tail');
+    assert.ok(block[0].includes('sentAt'), 'placeholder is stamped with sentAt for the bounded ack sweep');
     assert.ok(!block[0].includes('pendingInput:'), 'send-now does not reuse the unrelated pendingInput lifecycle');
   });
 
@@ -104,6 +107,14 @@ describe('queue bubbles — render block', () => {
     const count = (jsx.match(/\{pendingBubble\}\{optimisticQueueBubbles\}/g) || []).length;
     assert.equal(count, 3, 'empty, virtualized and regular chat layouts all render pending messages');
     assert.ok(css.includes('.optimisticQueueStatus'), 'pending status has a lightweight style');
+    assert.ok(jsx.includes('labelSuffix='), 'the dispatching chip is passed into ChatMessage via labelSuffix');
+    assert.ok(!jsx.includes('<div className={styles.optimisticQueueStatus}'), 'no standalone status div below the bubble');
+  });
+
+  it('puts the dispatching chip inline right after the timestamp via labelSuffix', () => {
+    const matches = chatMessage.match(/\{timeStr && <Text className=\{styles\.timeTextNoMargin\}>\{timeStr\}<\/Text>\}\s*\{labelSuffix\}/g) || [];
+    assert.equal(matches.length, 2, 'labelSuffix renders right after the timestamp in both user branches (compact + normal)');
+    assert.ok(chatMessage.includes('p.labelSuffix !== n.labelSuffix'), 'labelSuffix participates in shouldComponentUpdate');
   });
 });
 
@@ -151,5 +162,15 @@ describe('queue bubbles — CSS', () => {
     const block = css.match(/\.queueBubbleText\s*\{[\s\S]*?\}/);
     assert.ok(block, '.queueBubbleText rule found');
     assert.ok(block[0].includes('-webkit-line-clamp: 2'), 'line clamp 2');
+  });
+
+  it('dispatching chip is inline text for the label row (not a block row)', () => {
+    const block = css.match(/\.optimisticQueueStatus\s*\{[\s\S]*?\}/);
+    assert.ok(block, '.optimisticQueueStatus rule found');
+    assert.ok(block[0].includes('margin-left: 6px'), 'inline offset from the timestamp');
+    assert.ok(block[0].includes('font-size: 11px'), 'matches the label row type scale (username is 11px)');
+    assert.ok(block[0].includes('white-space: nowrap'), 'single-line chip');
+    assert.ok(block[0].includes('flex-shrink: 0'), 'flex item does not shrink');
+    assert.ok(!block[0].includes('text-align: right'), 'no longer a right-aligned block row');
   });
 });

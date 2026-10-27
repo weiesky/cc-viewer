@@ -51,6 +51,7 @@ import * as imCore from './lib/im/im-bridge-core.js';
 import * as imProcMgr from './lib/im/im-process-manager.js';
 import * as chatQueue from './lib/chat-queue.js';
 import { reportSwallowed } from './lib/error-report.js';
+import { cancelAutoApproveState } from './lib/auto-approve.js';
 import { initScheduledTaskScheduler, startScheduledTaskScheduler, stopScheduledTaskScheduler } from './lib/scheduled-task-scheduler.js';
 import { executeScheduledTask } from './lib/scheduled-task-executor.js';
 import './lib/adapters/dingtalk-adapter.js'; // side-effect: registers the DingTalk adapter
@@ -634,6 +635,15 @@ function getAllLocalIps() {
     }
   }
   return ips;
+}
+
+// Approval/cancel message id validator — the single source for the ≤256-char +
+// [a-zA-Z0-9_-] whitelist shared by ask-cancel / sdk-plan-auto-cancel /
+// perm-hook-auto-cancel (keeps the three branches consistent).
+function validateApprovalId(raw) {
+  if (raw == null) return null;
+  const id = String(raw);
+  return id.length > 0 && id.length <= 256 && /^[a-zA-Z0-9_-]+$/.test(id) ? id : null;
 }
 
 // ─── Route dependency bag ──────────────────────────────────────────
@@ -1614,6 +1624,7 @@ function _buildPluginInteractions() {
       const entry = pendingPermHooks.get(id);
       if (!entry) return false;
       clearTimeout(entry.timer);
+      if (entry.auto?.timer) clearTimeout(entry.auto.timer);
       pendingPermHooks.delete(id);
       try {
         if (!entry.res.headersSent) {
@@ -2161,7 +2172,14 @@ async function setupTerminalWebSocket(httpServer) {
       // 直到超时 silent deny)。连接时重发,前端 perm 分支按 id 去重,天然幂等。
       for (const [id, entry] of pendingPermHooks) {
         try {
-          ws.send(JSON.stringify({ type: 'perm-hook-pending', id, toolName: entry.toolName, input: entry.input }));
+          ws.send(JSON.stringify({
+            type: 'perm-hook-pending', id, toolName: entry.toolName, input: entry.input,
+            autoApproveAt: entry.autoCancelled ? null : (entry.auto?.autoApproveAt ?? null),
+            // 0 = server says OFF (fork-off / npm publish floor): never let a reconnecting
+            // client fall back to its local pref and re-arm a countdown the server disabled.
+            autoApproveSeconds: entry.auto?.seconds ?? 0,
+            autoCancelled: entry.autoCancelled === true,
+          }));
         } catch {}
       }
 
@@ -2208,6 +2226,13 @@ async function setupTerminalWebSocket(httpServer) {
           if (p.kind === 'ask') {
             payload.startedAt = Date.now();
             payload.timeoutMs = p.remainingMs;
+          } else {
+            // plan/perm: carry the server-side auto-approve deadline so a reconnected
+            // client renders the REMAINING time (and a cancelled one never re-arms)
+            // instead of restarting a full-length countdown.
+            payload.autoApproveAt = p.autoApproveAt ?? null;
+            payload.autoCancelled = p.autoCancelled === true;
+            if (p.autoApproveSeconds != null) payload.autoApproveSeconds = p.autoApproveSeconds;
           }
           try { ws.send(JSON.stringify(payload)); } catch (err) { reportSwallowed('sdk.approval-replay', err); }
         }
@@ -2670,6 +2695,7 @@ async function setupTerminalWebSocket(httpServer) {
             if (hookEntry) {
               const { res: hookRes, timer } = hookEntry;
               clearTimeout(timer);
+              if (hookEntry.auto?.timer) clearTimeout(hookEntry.auto.timer);
               pendingPermHooks.delete(msg.id);
               permAnswered = true;
               try {
@@ -2706,7 +2732,7 @@ async function setupTerminalWebSocket(httpServer) {
             // cancelId/Reason 校验：与 toolUseId 同套白名单（≤256 字符 + [a-zA-Z0-9_-]）+ reason ≤500
             // 防恶意/buggy client 塞超长 key 撑大 _pendingApprovals 或塞 1MB reason 打爆 broadcast。
             const rawId = msg.id != null ? String(msg.id) : null;
-            const cancelId = rawId && rawId.length > 0 && rawId.length <= 256 && /^[a-zA-Z0-9_-]+$/.test(rawId) ? rawId : null;
+            const cancelId = validateApprovalId(msg.id);
             if (rawId && !cancelId) {
               console.warn('[server] ask-cancel rejected: invalid id format');
               return;
@@ -2782,20 +2808,63 @@ async function setupTerminalWebSocket(httpServer) {
               }
             }
           } else if (msg.type === 'sdk-plan-auto-cancel') {
-            // Cancellation stops the automatic timers on other viewers too. It is
-            // not an approval/denial: the plan remains pending for manual review.
-            if (_sdkResolveApproval && msg.id) broadcastWsMessage({
-              type: 'sdk-plan-auto-cancel', id: msg.id,
+            // Cancellation stops the automatic timers on every viewer AND the
+            // server-side fallback timer. It is not an approval/denial: the plan
+            // remains pending for manual review; the cancelled state is replayed
+            // to fresh clients so they never re-arm the countdown.
+            const rawPlanCancelId = msg.id != null ? String(msg.id) : null;
+            const planCancelId = validateApprovalId(msg.id);
+            if (rawPlanCancelId && !planCancelId) {
+              console.warn('[server] sdk-plan-auto-cancel rejected: invalid id format');
+              return;
+            }
+            let handled = false;
+            if (planCancelId && _sdkAutoCancelApproval) {
+              try { handled = _sdkAutoCancelApproval(planCancelId, 'plan') === true; } catch (err) { reportSwallowed('server.plan-auto-cancel', err); }
+            }
+            // Legacy relay fallback: no SDK pending matched (PTY-mode senders or a
+            // stale id) — keep the old behavior so other clients still stop counting.
+            if (!handled && planCancelId) broadcastWsMessage({
+              type: 'sdk-plan-auto-cancel', id: planCancelId,
               cwd: msg.cwd || null, project: msg.project || null,
               instanceKey: msg.instanceKey || null,
             });
+          } else if (msg.type === 'perm-hook-auto-cancel') {
+            // Symmetric to sdk-plan-auto-cancel for permission approvals: destroys the
+            // server-side fallback timer (SDK pending or PTY-hook long-poll), keeps the
+            // approval pending for a manual decision, and notifies all clients.
+            const rawPermCancelId = msg.id != null ? String(msg.id) : null;
+            const permCancelId = validateApprovalId(msg.id);
+            if (rawPermCancelId && !permCancelId) {
+              console.warn('[server] perm-hook-auto-cancel rejected: invalid id format');
+              return;
+            }
+            let permCancelHandled = false;
+            if (permCancelId && _sdkAutoCancelApproval) {
+              try { permCancelHandled = _sdkAutoCancelApproval(permCancelId, 'perm') === true; } catch (err) { reportSwallowed('server.perm-auto-cancel', err); }
+            }
+            if (!permCancelHandled && permCancelId) {
+              const hookEntry = pendingPermHooks.get(permCancelId);
+              if (hookEntry) {
+                cancelAutoApproveState(hookEntry);
+                permCancelHandled = true;
+                if (terminalWss) {
+                  const cmsg = JSON.stringify({ type: 'perm-hook-auto-cancel', id: permCancelId });
+                  terminalWss.clients.forEach((c) => {
+                    if (c.readyState === 1) try { c.send(cmsg); } catch {}
+                  });
+                }
+              }
+            }
           } else if (msg.type === 'sdk-plan-answer') {
             // Plan approval in SDK mode
-            if (_sdkResolveApproval) {
-              _sdkResolveApproval(msg.id, { approve: msg.approve !== false, feedback: msg.feedback || '' });
+            let planAnswered = false;
+            if (_sdkResolveApproval && msg.id) {
+              planAnswered = _sdkResolveApproval(msg.id, { approve: msg.approve !== false, feedback: msg.feedback || '' }) === true;
             }
-            // Broadcast resolved to other clients
-            if (terminalWss) {
+            // Broadcast resolved to other clients only when an answer was actually
+            // processed — a stale/unknown id must not close other viewers' plan modal.
+            if (planAnswered && terminalWss) {
               const rmsg = JSON.stringify({ type: 'sdk-plan-resolved', id: msg.id });
               terminalWss.clients.forEach((c) => {
                 if (c !== ws && c.readyState === 1) try { c.send(rmsg); } catch {}
@@ -3715,6 +3784,8 @@ function _broadcastApprovalCloses(cancelled, reason) {
 /** Reference to sdk-manager's resolveApproval (set by cli.js after import). */
 let _sdkResolveApproval = null;
 export function setSdkResolveApproval(fn) { _sdkResolveApproval = fn; }
+let _sdkAutoCancelApproval = null;
+export function setSdkAutoCancelApproval(fn) { _sdkAutoCancelApproval = fn; }
 
 /** Reference to sdk-manager's cancelApproval (set by cli.js after import). */
 // 与 _sdkResolveApproval 平行——但语义不同：cancelApproval 让 _waitForApproval resolve

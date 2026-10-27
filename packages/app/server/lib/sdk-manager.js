@@ -36,6 +36,12 @@ import { createHash, randomBytes } from 'node:crypto';
 import { registerSdkSessionLister } from './sdk-session-index.js';
 import { readPrefsRaw } from './prefs-store.js';
 import { projectKeyForCwd } from './system-prompt-snapshots.js';
+import {
+  computeAutoApprove,
+  createAutoApproveState,
+  cancelAutoApproveState,
+  replayAutoApproveFields,
+} from './auto-approve.js';
 
 let _query;
 try {
@@ -1489,11 +1495,24 @@ function _createSession(key, cwd) {
           }
         } catch (err) { reportSwallowed('sdk-manager.waterfall.plan', err); }
       }
-      const planPayload = { type: 'sdk-plan-pending', id, input, cwd: _cwd, sessionId: effSessionId(), instanceKey, ...origin };
+      // Server-side auto-approve countdown (armed from request arrival, wall-clock):
+      // the pending frame carries the absolute deadline so clients render the remaining
+      // time instead of arming their own full-length timer; the server resolves the
+      // approval itself at deadline + 1s buffer when no client answered.
+      // Unattended scheduled-task runs (ctx != null → origin 'scheduled-task') are exempt
+      // from the server-side auto-approve fallback — with no human watching, an ephemeral
+      // run must wait for a decision (5-min deny), symmetric to the npm-publish floor below.
+      const planAuto = ctx ? { enabled: false } : computeAutoApprove('plan', _cwd);
+      // Always stamp autoApproveSeconds (0 = server says OFF): the client's local pref
+      // can disagree with the fork-resolved server value, and absence would make the
+      // client fall back to its own countdown and defeat a fork-level off.
+      const planPayload = { type: 'sdk-plan-pending', id, input, cwd: _cwd, sessionId: effSessionId(), instanceKey, ...origin,
+        autoApproveSeconds: planAuto.enabled ? planAuto.seconds : 0,
+        ...(planAuto.enabled ? { autoApproveAt: planAuto.autoApproveAt } : {}) };
       if (_broadcastWs) {
         _broadcastWs(planPayload);
       }
-      const result = await _waitForApproval(id, 5 * 60 * 1000, 'plan', planPayload, options?.signal, ctx);
+      const result = await _waitForApproval(id, 5 * 60 * 1000, 'plan', planPayload, options?.signal, ctx, planAuto);
       if (result === null) {
         return { behavior: 'deny', message: 'Timeout waiting for plan approval' };
       }
@@ -1523,7 +1542,7 @@ function _createSession(key, cwd) {
       // server/lib/ask/ask-constants.js.
       const askTimeoutMs = ASK_TIMEOUT_MS;
       const askStartedAt = Date.now();
-      const askPayload = { type: 'sdk-ask-pending', id, questions: input.questions, startedAt: askStartedAt, timeoutMs: askTimeoutMs, cwd: _cwd, sessionId: effSessionId(), ...origin };
+      const askPayload = { type: 'sdk-ask-pending', id, questions: input.questions, startedAt: askStartedAt, timeoutMs: askTimeoutMs, cwd: _cwd, sessionId: effSessionId(), instanceKey, ...origin };
       if (_broadcastWs) {
         _broadcastWs(askPayload);
       }
@@ -1599,12 +1618,18 @@ function _createSession(key, cwd) {
         // unknown decision → fall through to normal approval flow
       } catch (err) { reportSwallowed('sdk-manager.waterfall.perm', err); }
     }
-    const permPayload = { type: 'perm-hook-pending', id, toolName, input, cwd: _cwd, sessionId: effSessionId(), ...origin };
+    // npm publish is a hard safety floor: it must always wait for a HUMAN decision
+    // (the 5-minute deny timeout applies), never the server-side auto-approve fallback.
+    // Same exemption for unattended scheduled-task runs (ctx != null).
+    const permAuto = (isPublish || ctx) ? { enabled: false } : computeAutoApprove('perm', _cwd);
+    const permPayload = { type: 'perm-hook-pending', id, toolName, input, cwd: _cwd, sessionId: effSessionId(), instanceKey, ...origin,
+      autoApproveSeconds: permAuto.enabled ? permAuto.seconds : 0,
+      ...(permAuto.enabled ? { autoApproveAt: permAuto.autoApproveAt } : {}) };
     if (_broadcastWs) {
       _broadcastWs(permPayload);
     }
 
-    const result = await _waitForApproval(id, 5 * 60 * 1000, 'perm', permPayload, options?.signal, ctx);
+    const result = await _waitForApproval(id, 5 * 60 * 1000, 'perm', permPayload, options?.signal, ctx, permAuto);
     if (result === null) {
       return { behavior: 'deny', message: 'Timeout waiting for user approval' };
     }
@@ -1645,30 +1670,52 @@ function _createSession(key, cwd) {
     } catch (err) { console.warn('[sdk-manager] approval-dismiss broadcast threw:', err?.message); }
   }
 
-  function _waitForApproval(id, timeoutMs, kind, replay = null, signal = null, ctx = null) {
+  function _waitForApproval(id, timeoutMs, kind, replay = null, signal = null, ctx = null, autoMeta = null) {
     // Record the id on the ephemeral run's ctx ONLY when it actually parks (the three
     // callers below sit after every auto-allow/hard-deny early-return, so an auto-allowed
     // tool never lands here) — keeps ctx.approvalIds bounded (review P3: no unbounded growth).
     if (ctx && Array.isArray(ctx.approvalIds)) ctx.approvalIds.push(id);
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
+        const cur = _pendingApprovals.get(id);
+        if (cur?.auto) cancelAutoApproveState(cur.auto);
         _pendingApprovals.delete(id);
         // Close the modal on every client — a silent deny would leave it hanging forever.
         _broadcastApprovalDismiss(kind, id, 'timeout');
         resolve(null);
       }, timeoutMs);
-      _pendingApprovals.set(id, {
+      const entry = {
         kind,  // 'ask' | 'plan' | 'perm' — lets cancelApproval distinguish types so an
         // ask-cancel does not collide with a plan/perm id
         replay,  // exact broadcast payload announced to clients — replayed to a fresh WS connection
         startedAt: Date.now(),
         timeoutMs,
+        // Durable auto-approve cancellation: a client cancel marks this and clears the
+        // server fallback timer, the approval stays pending for a manual decision, and
+        // the flag is replayed to fresh clients so they never re-arm the countdown.
+        autoCancelled: false,
+        auto: null,
         resolve: (value) => {
           clearTimeout(timer);
+          const cur = _pendingApprovals.get(id);
+          if (cur?.auto) cancelAutoApproveState(cur.auto);
           _pendingApprovals.delete(id);
           resolve(value);
         },
-      });
+      };
+      _pendingApprovals.set(id, entry);
+      // Arm the server-side fallback AFTER the entry is in the map: instant (-1) fires
+      // synchronously and resolves through the same first-wins wrapper.
+      if (autoMeta?.enabled) {
+        entry.auto = createAutoApproveState(autoMeta, () => {
+          const p = _pendingApprovals.get(id);
+          if (!p || p.autoCancelled) return;
+          p.resolve(kind === 'plan' ? { approve: true, feedback: '' } : { decision: 'allow' });
+          try {
+            _broadcastWs?.({ type: kind === 'plan' ? 'sdk-plan-resolved' : 'perm-hook-resolved', id, reason: 'auto-approved', cwd: _cwd, sessionId: _sessionId || null, instanceKey });
+          } catch (err) { reportSwallowed('sdk-manager.auto-approve-broadcast', err); }
+        });
+      }
       // CLI-side abort of the in-flight control request (e.g. interrupt while the modal is
       // open): settle through the same first-wins path as a timeout so the promise resolves
       // to deny and the modal closes everywhere. { once: true } prevents listener leaks.
@@ -1711,9 +1758,35 @@ function _createSession(key, cwd) {
     for (const [id, p] of _pendingApprovals) {
       const remaining = (p.timeoutMs ?? 0) - (now - (p.startedAt ?? now));
       if (remaining <= 0) continue;
-      out.push({ id, kind: p.kind || null, replay: p.replay || null, remainingMs: remaining });
+      out.push({
+        id, kind: p.kind || null, replay: p.replay || null, remainingMs: remaining,
+        ...replayAutoApproveFields(p.auto, p.autoCancelled),
+      });
     }
     return out;
+  }
+
+  /**
+   * Cancel the SERVER-SIDE auto-approve countdown for a pending plan/perm approval
+   * (client clicked the countdown-cancel button). Unlike cancelApproval this does NOT
+   * resolve the approval — it stays pending for a manual decision; only the fallback
+   * timer is destroyed and the cancelled flag is replayed to fresh clients so they
+   * never re-arm. Returns true when the id matched a pending approval of that kind
+   * (even on a repeat cancel — the state change is durable while pending); false when
+   * nothing matched (caller falls back to the legacy relay-only behavior).
+   */
+  function _autoCancelApproval(id, kind) {
+    // plan/perm only — ask approvals never arm a server auto-approve timer.
+    if (kind !== 'plan' && kind !== 'perm') return false;
+    const pending = _pendingApprovals.get(id);
+    if (!pending || pending.kind !== kind) return false;
+    const first = cancelAutoApproveState(pending);
+    if (first && _broadcastWs) {
+      try {
+        _broadcastWs({ type: kind === 'plan' ? 'sdk-plan-auto-cancel' : 'perm-hook-auto-cancel', id, cwd: _cwd, sessionId: _sessionId || null, instanceKey });
+      } catch (err) { reportSwallowed('sdk-manager.auto-cancel-broadcast', err); }
+    }
+    return true;
   }
 
   /**
@@ -2021,6 +2094,7 @@ function _createSession(key, cwd) {
     getQueueSnapshot: _getQueueSnapshot,
     resolveApproval: _resolveApproval,
     cancelApproval: _cancelApproval,
+    autoCancelApproval: _autoCancelApproval,
     getPendingApprovals: _getPendingApprovals,
     getSdkInitSnapshot: () => _lastInitSnapshot,
     getSessionStateSnapshot: () => {
@@ -2252,6 +2326,19 @@ export function resolveApproval(id, value) {
 export function cancelApproval(id, reason) {
   for (const sess of new Set([..._sessions.values(), ..._ephemeralHosts])) {
     if (sess.cancelApproval(id, reason)) return true;
+  }
+  return false;
+}
+
+/**
+ * Cancel the server-side auto-approve countdown for a plan/perm approval,
+ * scanning EVERY session (auto-cancel WS handlers). The approval stays pending
+ * for a manual decision. Returns false when no pending approval matched, so the
+ * caller can fall back to the legacy relay-only broadcast.
+ */
+export function autoCancelApproval(id, kind) {
+  for (const sess of new Set([..._sessions.values(), ..._ephemeralHosts])) {
+    if (sess.autoCancelApproval(id, kind)) return true;
   }
   return false;
 }

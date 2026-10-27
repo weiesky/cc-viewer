@@ -6,6 +6,7 @@ import { parseMemoryLink } from '../../utils/memoryLinkParser';
 import { buildMemoryUsageIndex, memoryTokensForLink } from '../../utils/contextUsageView';
 import { formatTokenCount } from '../../utils/helpers';
 import { useSdkContextUsage } from '../dashboard/SdkContextUsageProvider';
+import OpenFolderIcon from './OpenFolderIcon';
 import styles from './sharedChrome.module.css';
 
 // 持久记忆条目明细 Modal（PC + iPad + 手机三处都需要 mount 一份）。
@@ -16,7 +17,7 @@ import styles from './sharedChrome.module.css';
 // linkMode:
 //   'memory'      (默认) → 用 parseMemoryLink 拦截：命中 .md basename 切明细，其他一律 preventDefault。
 //   'passthrough' → 不拦截，浏览器原生处理（CLAUDE.md 等场景需要 https:// / 相对链接正常打开）。
-export default function MemoryDetailModal({ detail, onClose, onOpenMemoryDetail, linkMode = 'memory' }) {
+export default function MemoryDetailModal({ detail, onClose, onOpenMemoryDetail, linkMode = 'memory', onOpenFolder }) {
   const sdk = useSdkContextUsage();
   if (!detail) return null;
   const { name, content, error, loading, memoryDir } = detail;
@@ -72,7 +73,10 @@ export default function MemoryDetailModal({ detail, onClose, onOpenMemoryDetail,
   return (
     <Modal
       open={true}
-      title={name}
+      title={<span className={styles.memoryDetailTitle}>
+        {linkMode === 'passthrough' && onOpenFolder && <OpenFolderIcon title={t('ui.openFolder')} size={16} onClick={onOpenFolder} />}
+        <span className={styles.memoryDetailTitleText}>{name}</span>
+      </span>}
       onCancel={onClose}
       footer={null}
       width={720}

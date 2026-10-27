@@ -24,6 +24,7 @@ import MobileStats from './components/mobile/MobileStats';
 import VoicePackSettings from './components/settings/VoicePackSettings';
 import CachePopoverContent from './components/dashboard/CachePopoverContent';
 import MemoryDetailModal from './components/common/MemoryDetailModal';
+import FileBrowserModal from './components/files/FileBrowserModal';
 import { ResumeSessionsList } from './components/chat/ResumeSessionsPopover';
 import SkillsManagerModal from './components/settings/SkillsManagerModal';
 import ProjectPrefsManagerModal from './components/settings/ProjectPrefsManagerModal';
@@ -103,6 +104,7 @@ class Mobile extends AppBase {
       // CLAUDE.md 候选清单 + 明细（与 AppHeader 等价；分槽避免与 _memoryDetail 交叉）
       _claudeMd: null,
       _claudeMdDetail: null,
+      _targetBrowser: null,
       // 与 PC 端对齐:插件管理 / CCV进程管理 / 代理热切换 modal 仅持 open 状态;
       // 实际数据 + handler 都在 PluginModal/ProcessModal/ProxyModal 内部
       pluginModalVisible: false,
@@ -169,7 +171,11 @@ class Mobile extends AppBase {
     localStorage.setItem('ccv_calibrationModel', value);
   };
 
-  reloadFsSkills = async () => SeqLoaders.loadFsSkills(this, { isLocalLog: this._isLocalLog });
+  reloadFsSkills = async () => SeqLoaders.loadFsSkills(this, {
+    isLocalLog: this._isLocalLog,
+    project: this.state.viewedProject || this.state.projectName,
+    instance: this.state.viewedInstance,
+  });
 
   // 打开 skills 管理 modal。同时关闭 cache 抽屉避免两个 overlay 叠加。
   // 与 AppHeader.handleOpenSkillsModal 同语义；区别只在于关闭 cache UI 的字段名（mobileCachePanelVisible vs _cachePopoverOpen）。
@@ -259,29 +265,44 @@ class Mobile extends AppBase {
     if (open && this.state._claudeMd === null) this.loadClaudeMdList();
   };
 
-  loadClaudeMdList = async () => SeqLoaders.loadClaudeMdList(this);
+  loadClaudeMdList = async () => SeqLoaders.loadClaudeMdList(this, {
+    project: this.state.viewedProject || this.state.projectName,
+    instance: this.state.viewedInstance,
+  });
 
   // 点击 chip → 拉明细到 _claudeMdDetail；标题用"<scope> · <tail>"组合。
   loadClaudeMdDetail = async (id, tail, scope) => {
     const seq = ++this._claudeMdDetailSeq;
     const scopeLabel = scope === 'global' ? t('ui.claudeMdScopeGlobal') : t('ui.claudeMdScopeProject');
     const title = `${scopeLabel} · ${tail}`;
-    this.setState({ _claudeMdDetail: { name: title, loading: true } });
+    const base = { name: title, id };
+    this.setState({ _claudeMdDetail: { ...base, loading: true } });
     try {
-      const r = await fetch(apiUrl(`/api/claude-md?id=${encodeURIComponent(id)}`));
+      const r = await fetch(apiUrl(withViewParams(`/api/claude-md?id=${encodeURIComponent(id)}`, { project: this.state.viewedProject || this.state.projectName, instance: this.state.viewedInstance })));
       const data = await r.json();
       if (seq !== this._claudeMdDetailSeq) return;
       if (!r.ok) {
-        this.setState({ _claudeMdDetail: { name: title, error: data.error || `http:${r.status}` } });
+        this.setState({ _claudeMdDetail: { ...base, error: data.error || `http:${r.status}` } });
         return;
       }
-      this.setState({ _claudeMdDetail: { name: title, content: data.content || '' } });
+      this.setState({ _claudeMdDetail: { ...base, content: data.content || '' } });
     } catch (e) {
       if (seq === this._claudeMdDetailSeq) {
-        this.setState({ _claudeMdDetail: { name: title, error: e.message || 'network' } });
+        this.setState({ _claudeMdDetail: { ...base, error: e.message || 'network' } });
       }
     }
   };
+
+  openClaudeMdFolder = () => {
+    const detail = this.state._claudeMdDetail;
+    if (detail?.id) this.setState({ _targetBrowser: { target: { kind: 'claude-md', id: detail.id }, label: detail.name } });
+  };
+
+  openSkillFolder = (skill) => {
+    if (skill?.path) this.setState({ _targetBrowser: { target: { kind: 'skill', source: skill.source, path: skill.path }, label: skill.name } });
+  };
+
+  closeTargetBrowser = () => this.setState({ _targetBrowser: null });
 
   componentDidMount() {
     super.componentDidMount();
@@ -390,7 +411,7 @@ class Mobile extends AppBase {
       boundInstance: null,
     });
     // workspace 切换：projectName 变了 → 旧的 _fsSkills/_memory/_claudeMd 属于旧项目，作废 + 刷 seq
-    if (prevState.projectName !== this.state.projectName) {
+    if (prevState.projectName !== this.state.projectName || prevState.viewedProject !== this.state.viewedProject || prevState.viewedInstance !== this.state.viewedInstance) {
       this._fsSkillsSeq++;
       this._memorySeq++;
       this._claudeMdSeq++;
@@ -402,6 +423,7 @@ class Mobile extends AppBase {
         _memoryRefreshing: false,
         _claudeMd: null,
         _claudeMdDetail: null,
+        _targetBrowser: null,
       });
     }
   }
@@ -1094,8 +1116,20 @@ class Mobile extends AppBase {
           <MemoryDetailModal
             detail={this.state._claudeMdDetail}
             onClose={() => this.setState({ _claudeMdDetail: null })}
+            onOpenFolder={this.openClaudeMdFolder}
             linkMode="passthrough"
           />
+          {this.state._targetBrowser && (
+            <FileBrowserModal
+              open
+              target={this.state._targetBrowser.target}
+              rootLabel={this.state._targetBrowser.label}
+              project={this.state.viewedProject || this.state.projectName}
+              instance={this.state.viewedInstance}
+              zIndex={1120}
+              onClose={this.closeTargetBrowser}
+            />
+          )}
           <SkillsManagerModal
             open={this.state._skillsModal?.open || false}
             loading={this.state._skillsModal?.loading || false}
@@ -1104,6 +1138,7 @@ class Mobile extends AppBase {
             toggling={this.state._skillsModal?.toggling}
             onToggle={(s) => this.handleToggleSkill(s)}
             onDelete={(s) => this.handleDeleteSkill(s)}
+            onOpenFolder={this.openSkillFolder}
             onClose={() => this.setState(prev => ({ _skillsModal: { ...prev._skillsModal, open: false } }))}
           />
           <ProjectPrefsManagerModal
@@ -1452,6 +1487,10 @@ class Mobile extends AppBase {
             visible={true}
             global={true}
             autoApproveSeconds={this.state.autoApproveSeconds}
+            autoApproveSecondsServer={this.state.globalPermission.permission.autoApproveSeconds ?? null}
+            autoApproveAt={this.state.globalPermission.permission.autoApproveAt ?? null}
+            autoCancelled={this.state.globalPermission.permission.autoCancelled === true}
+            onCancelAutoApprove={this.state.globalPermission.handlers.cancelAutoApprove ?? null}
             onAutoApproveChange={this.handleAutoApproveChange}
           />
         )}

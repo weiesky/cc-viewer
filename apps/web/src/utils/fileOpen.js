@@ -24,9 +24,13 @@ const SYSTEM_OPEN_EXTS = new Set([
  * @param {{project?: string, instance?: string}} [view] - optional viewed-project scope
  * @returns {boolean} 是否已处理
  */
-export function tryOpenWithSystem(path, source, { project, instance } = {}) {
+export function isSystemOpenFile(path) {
   const ext = (path || '').split('.').pop().toLowerCase();
-  if (!SYSTEM_OPEN_EXTS.has(ext)) return false;
+  return SYSTEM_OPEN_EXTS.has(ext);
+}
+
+export function tryOpenWithSystem(path, source, { project, instance } = {}) {
+  if (!isSystemOpenFile(path)) return false;
 
   fetch(apiUrl(withViewParams('/api/open-file', { project, instance })), {
     method: 'POST',

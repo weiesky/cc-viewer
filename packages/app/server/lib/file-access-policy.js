@@ -233,8 +233,30 @@ export function isReadAllowed(absPath) {
     if (SENSITIVE_CLAUDE_FILES.has(last)) {
       return { ok: false, reason: 'sensitive-claude-config' };
     }
-    // 任意子目录下的 settings.json / settings.local.json 也拦
-    if (/^settings(\.local)?\.json$/i.test(last)) {
+    // settings.json / settings.local.json at any depth, plus all backups/variants
+    // (settings.json.bk*, settings_*.json, etc.) — rolling backup files carry the
+    // same env/api-key content and must not slip past the exact-name match.
+    if (/^settings(\.local)?\.json($|\.)|^settings_.*\.json$/i.test(last)) {
+      return { ok: false, reason: 'sensitive-claude-config' };
+    }
+    // Prompt history, project transcripts, shell snapshots, file history, and
+    // paste cache contain user prompt content and (in the case of shell snapshots)
+    // live env vars. Block the whole subtree EXCEPT projects/<encoded>/memory/**,
+    // which is the documented per-project memory dir served by /api/project-memory.
+    const rel = norm(real.slice(norm(withSep(claudeReal)).length));
+    const firstSeg = rel.split(sep)[0];
+    if (firstSeg === 'todos' || firstSeg === 'shell-snapshots'
+      || firstSeg === 'file-history' || firstSeg === 'paste-cache' || firstSeg === 'session-env') {
+      return { ok: false, reason: 'sensitive-claude-config' };
+    }
+    if (firstSeg === 'projects') {
+      const parts = rel.split(sep);
+      const isMemoryDir = parts.length >= 3 && parts[2] === 'memory';
+      if (!isMemoryDir) {
+        return { ok: false, reason: 'sensitive-claude-config' };
+      }
+    }
+    if (last === 'history.jsonl') {
       return { ok: false, reason: 'sensitive-claude-config' };
     }
   }

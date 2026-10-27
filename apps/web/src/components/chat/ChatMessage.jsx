@@ -209,6 +209,7 @@ class ChatMessage extends React.Component {
       p.animateAvatar !== n.animateAvatar ||
       p.isHistoryLog !== n.isHistoryLog ||
       p.isUltraplan !== n.isUltraplan ||
+      p.labelSuffix !== n.labelSuffix ||
       p.userProfile !== n.userProfile || p.modelInfo !== n.modelInfo || p.imSenderMap !== n.imSenderMap || p.imAgent !== n.imAgent ||
       p.resultText !== n.resultText || p.toolName !== n.toolName ||
       p.onViewRequest !== n.onViewRequest || p.onOpenFile !== n.onOpenFile ||
@@ -1046,7 +1047,7 @@ class ChatMessage extends React.Component {
   }
 
   renderUserMessage() {
-    const { timestamp } = this.props;
+    const { timestamp, labelSuffix } = this.props;
     // Strip a leading IM-origin marker (⟦im:dingtalk⟧) so the bubble shows clean text; imSource
     // drives the IM icon shown left of the username. Normal typed messages have no marker.
     const { text, imSource, senderId } = parseImOrigin(this.props.text);
@@ -1066,6 +1067,7 @@ class ChatMessage extends React.Component {
           <div className={styles.contentColLimited}>
             <div className={styles.labelRow}>
               {timeStr && <Text className={styles.timeTextNoMargin}>{timeStr}</Text>}
+              {labelSuffix}
               {this.renderViewRequestBtn()}
               <Text type="secondary" className={styles.labelTextRight}>{userName} — {t('ui.slashCommand.compact')}</Text>
             </div>
@@ -1103,6 +1105,7 @@ class ChatMessage extends React.Component {
         <div className={styles.contentColLimited}>
           <div className={styles.labelRow}>
             {timeStr && <Text className={styles.timeTextNoMargin}>{timeStr}</Text>}
+            {labelSuffix}
             {this.renderViewRequestBtn()}
             {this.props.isUltraplan && (
               <span className={styles.ultraplanTag}>{t('ui.ultraplan')}</span>

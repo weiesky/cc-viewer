@@ -9,13 +9,20 @@ import { loadWorkspaces } from '../workspace-registry.js';
 import { listLivePtys } from '../pty-manager.js';
 
 // Multi-project (2026-10): the skills LIST resolves the viewed project via
-// the shared viewRootOrReply (?project=). toggle/delete (mutations) keep the
-// bound root.
-function _viewRootOrReply(req, res, parsedUrl) {
+// the shared viewRootOrReply (?project=). toggle/delete used to keep the
+// bound root — that was a deliberate safety choice, but it breaks multi-view
+// semantics: the list shows skills for project B while a click on toggle or
+// delete silently rewrote project A's same-named skill. Resolve mutations
+// through the same viewRootOrReply (with body-level project/instance) so the
+// action targets the project the user is actually looking at; the helper
+// still constrains the resolved root to bound/registered/live projects.
+function _viewRootOrReply(req, res, parsedUrl, bodyProject, bodyInstance) {
   return viewRootOrReply(req, res, parsedUrl, {
     boundCwd: process.env.CCV_PROJECT_DIR || process.cwd(),
     loadWorkspaces,
     listLivePtys,
+    bodyProject,
+    bodyInstance,
   });
 }
 
@@ -34,18 +41,20 @@ async function skillsList(req, res, parsedUrl) {
 }
 
 // Skill 动态装卸 —— 切换单个 skill（在 skills/ 和 skills-skip/ 之间 move）
-function skillsToggle(req, res) {
+function skillsToggle(req, res, parsedUrl) {
   let body = '';
   req.on('data', chunk => { body += chunk; if (body.length > 4096) req.destroy(); });
   req.on('end', async () => {
     try {
-      const { source, name, enable } = JSON.parse(body);
+      const { source, name, enable, project, instance } = JSON.parse(body);
+      const projectDir = _viewRootOrReply(req, res, parsedUrl, project, instance);
+      if (!projectDir) return;
       // 不加进程锁：moveSkill 里 existsSync 前置 + renameSync 原子性已能让并发
       // toggle 落到合理分支（一个成功、另一个拿 SOURCE_MISSING 或 DUPLICATE）；
       // 前端 toggling:Set 也已防同 tab 连点，两者叠加足够安全
       moveSkill({
         source, name, enable: !!enable,
-        projectDir: process.env.CCV_PROJECT_DIR || process.cwd(),
+        projectDir,
       });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
@@ -75,10 +84,12 @@ function skillsDelete(req, res, parsedUrl, isLocal) {
   req.on('data', chunk => { body += chunk; if (body.length > 4096) req.destroy(); });
   req.on('end', async () => {
     try {
-      const { source, name, enabled } = JSON.parse(body);
+      const { source, name, enabled, project, instance } = JSON.parse(body);
+      const projectDir = _viewRootOrReply(req, res, parsedUrl, project, instance);
+      if (!projectDir) return;
       deleteSkill({
         source, name, enabled: !!enabled,
-        projectDir: process.env.CCV_PROJECT_DIR || process.cwd(),
+        projectDir,
       });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));

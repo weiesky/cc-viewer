@@ -19,7 +19,7 @@ const _origFetch = globalThis.fetch;
 globalThis.window = { location: { search: '' } };
 globalThis.document = { querySelector: () => null };
 
-const { tryOpenWithSystem } = await import('../src/utils/fileOpen.js');
+const { tryOpenWithSystem, isSystemOpenFile } = await import('../src/utils/fileOpen.js');
 
 after(() => {
   if (_origWindow === undefined) delete globalThis.window; else globalThis.window = _origWindow;
@@ -36,6 +36,17 @@ function installFetch({ reject = false } = {}) {
   };
   return calls;
 }
+
+describe('fileOpen.isSystemOpenFile — 与系统打开共用扩展名集合', () => {
+  it('识别文档扩展且不发起请求', () => {
+    let called = false;
+    globalThis.fetch = () => { called = true; return Promise.resolve({}); };
+    assert.equal(isSystemOpenFile('/x/report.PDF'), true);
+    assert.equal(isSystemOpenFile('/x/report.txt'), false);
+    assert.equal(isSystemOpenFile(null), false);
+    assert.equal(called, false);
+  });
+});
 
 describe('fileOpen.tryOpenWithSystem — 命中扩展名', () => {
   beforeEach(() => { globalThis.fetch = _origFetch; });

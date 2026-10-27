@@ -14,6 +14,10 @@
   padding: 8px 0;
 }
 
+.treePaneMobile {
+  display: none;
+}
+
 .treeItem {
   display: flex;
   align-items: center;

@@ -309,6 +309,28 @@ describe('perm-bridge.js', () => {
       assert.equal(output.hookSpecificOutput.permissionDecision, 'allow');
     });
 
+    it('forwards the hook payload cwd in the POST body (project-fork prefs lookup)', async () => {
+      let received = null;
+      server.close();
+      server = createServer((req, res) => {
+        let body = '';
+        req.on('data', (chunk) => { body += chunk; });
+        req.on('end', () => {
+          received = JSON.parse(body);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ decision: 'allow' }));
+        });
+      });
+      await new Promise((resolve) => {
+        server.listen(0, '127.0.0.1', () => { serverPort = server.address().port; resolve(); });
+      });
+      const input = JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'ls' }, cwd: '/proj/alpha' });
+      const { code } = await runBridge(input, { CCVIEWER_PORT: String(serverPort) });
+      assert.equal(code, 0);
+      assert.equal(received.cwd, '/proj/alpha');
+      assert.equal(received.toolName, 'Bash');
+    });
+
     it('returns deny decision when server denies', async () => {
       server.close();
       server = createServer((req, res) => {

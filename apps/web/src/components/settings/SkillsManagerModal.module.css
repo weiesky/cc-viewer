@@ -104,6 +104,17 @@
   flex: 1;
   min-width: 0;
 }
+.skillFolderChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.skillFolderChip > span[role="button"],
+.skillCardTitleRow > span[role="button"] {
+  min-width: 24px;
+  min-height: 24px;
+  justify-content: center;
+}
 .skillSourceBadge {
   font-size: 10px;
   font-weight: 600;

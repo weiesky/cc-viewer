@@ -498,13 +498,15 @@ describeCli('server.js CLI-mode terminal WS with a real PTY', { concurrency: fal
     await conn.close();
   });
 
-  // ─────────── sdk-plan-answer：CLI 无 resolver → 仍 broadcast sdk-plan-resolved (1583-1588) ───────────
-  it('sdk-plan-answer broadcasts sdk-plan-resolved to other clients in CLI mode', async () => {
+  // ─────────── sdk-plan-answer：CLI 无 resolver → 不应答也不广播（fix g：stale id 不得关掉其他端的弹窗） ───────────
+  it('sdk-plan-answer does NOT broadcast sdk-plan-resolved when resolve fails (CLI mode)', async () => {
     const a = await connectWs(base);
     const b = await connectWs(base);
+    const seen = b.msgs.length;
     a.send({ type: 'sdk-plan-answer', id: 'planRelay1', approve: true });
-    const resolvedB = await b.waitFor((m) => m.type === 'sdk-plan-resolved' && m.id === 'planRelay1', 2500);
-    assert.ok(resolvedB, 'other client should receive sdk-plan-resolved broadcast');
+    await wait(300);
+    const resolvedB = b.msgs.slice(seen).filter((m) => m.type === 'sdk-plan-resolved' && m.id === 'planRelay1');
+    assert.equal(resolvedB.length, 0, 'a failed/unhandled resolve must not close other viewers');
     await a.close();
     await b.close();
   });

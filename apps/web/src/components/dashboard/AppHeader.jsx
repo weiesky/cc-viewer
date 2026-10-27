@@ -36,6 +36,7 @@ import LiveTagPopover from './LiveTagPopover';
 import { deriveActiveProcessChips, deriveProjectTabs, resolveBoundInstance } from '../../utils/resumeSessions';
 import { readProjectTabOrder, writeProjectTabOrder, mergeProjectTabOrder, reorderProjectTabIds } from '../../utils/projectTabOrder';
 import MemoryDetailModal from '../common/MemoryDetailModal';
+import FileBrowserModal from '../files/FileBrowserModal';
 import SkillsManagerModal from '../settings/SkillsManagerModal';
 import ProjectPrefsManagerModal from '../settings/ProjectPrefsManagerModal';
 import PluginModal from '../settings/PluginModal';
@@ -499,6 +500,7 @@ class AppHeader extends React.Component {
       _toolsCatalogOpen: false,
       // CLAUDE.md 候选清单：null=未加载 / false=拉取失败 / [] 隐藏整段 / [{id,scope,tail,...}]
       _claudeMd: null,
+      _targetBrowser: null,
       // CLAUDE.md 明细 Modal：与 _memoryDetail 分槽，避免 memory 链接点击与 CLAUDE 链接点击交叉污染
       _claudeMdDetail: null,
       // 密码登录认证态：/api/auth/state 返回 effective + scope 信息。
@@ -984,7 +986,7 @@ class AppHeader extends React.Component {
     // Workspace 切换 OR viewed-project 切换：viewProject 变了 → 旧的 _fsSkills/_memory/_claudeMd
     // 属于旧 viewed 项目，直接作废（multi-project 2026-10；viewProject = viewedProject || projectName）。
     // 递增 seq 防止正在途中的 reload 回包把脏数据塞回 state。
-    if (prevProps.projectName !== this.props.projectName || prevProps.viewProject !== this.props.viewProject) {
+    if (prevProps.projectName !== this.props.projectName || prevProps.viewProject !== this.props.viewProject || prevProps.viewedInstance !== this.props.viewedInstance) {
       // seq++ 杀掉任何在途的 reloadFsSkills（即使下面不再重启新的 fetch，也要确保旧回包不会写脏数据）
       this._fsSkillsSeq++;
       this.setState({ _fsSkills: null });
@@ -995,7 +997,7 @@ class AppHeader extends React.Component {
       // _claudeMd 候选随项目变化（cwd 父链不同），同步作废
       this._claudeMdSeq++;
       this._claudeMdDetailSeq++;
-      this.setState({ _claudeMd: null, _claudeMdDetail: null });
+      this.setState({ _claudeMd: null, _claudeMdDetail: null, _targetBrowser: null });
     }
   }
 
@@ -1241,22 +1243,34 @@ class AppHeader extends React.Component {
     const seq = ++this._claudeMdDetailSeq;
     const scopeLabel = scope === 'global' ? t('ui.claudeMdScopeGlobal') : t('ui.claudeMdScopeProject');
     const title = `${scopeLabel} · ${tail}`;
-    this.setState({ _claudeMdDetail: { name: title, loading: true } });
+    const base = { name: title, id };
+    this.setState({ _claudeMdDetail: { ...base, loading: true } });
     try {
       const r = await fetch(apiUrl(withViewParams(`/api/claude-md?id=${encodeURIComponent(id)}`, { project: this.props.viewProject, instance: this.props.viewedInstance })));
       const data = await r.json();
       if (seq !== this._claudeMdDetailSeq) return;
       if (!r.ok) {
-        this.setState({ _claudeMdDetail: { name: title, error: data.error || `http:${r.status}` } });
+        this.setState({ _claudeMdDetail: { ...base, error: data.error || `http:${r.status}` } });
         return;
       }
-      this.setState({ _claudeMdDetail: { name: title, content: data.content || '' } });
+      this.setState({ _claudeMdDetail: { ...base, content: data.content || '' } });
     } catch (e) {
       if (seq === this._claudeMdDetailSeq) {
-        this.setState({ _claudeMdDetail: { name: title, error: e.message || 'network' } });
+        this.setState({ _claudeMdDetail: { ...base, error: e.message || 'network' } });
       }
     }
   };
+
+  openClaudeMdFolder = () => {
+    const detail = this.state._claudeMdDetail;
+    if (detail?.id) this.setState({ _targetBrowser: { target: { kind: 'claude-md', id: detail.id }, label: detail.name } });
+  };
+
+  openSkillFolder = (skill) => {
+    if (skill?.path) this.setState({ _targetBrowser: { target: { kind: 'skill', source: skill.source, path: skill.path }, label: skill.name } });
+  };
+
+  closeTargetBrowser = () => this.setState({ _targetBrowser: null });
 
   // 加载明细文件：name 必须是单段 .md basename（前端先校验，server 再校验一遍）。
   // seq 防快速连点：用户连点两个不同明细时，慢的回包不应覆盖快的（否则用户最后看到的是错的内容）。
@@ -2529,8 +2543,20 @@ class AppHeader extends React.Component {
         <MemoryDetailModal
           detail={this.state._claudeMdDetail}
           onClose={() => this.setState({ _claudeMdDetail: null })}
+          onOpenFolder={this.openClaudeMdFolder}
           linkMode="passthrough"
         />
+        {this.state._targetBrowser && (
+          <FileBrowserModal
+            open
+            target={this.state._targetBrowser.target}
+            rootLabel={this.state._targetBrowser.label}
+            project={this.props.viewProject}
+            instance={this.props.viewedInstance}
+            zIndex={1120}
+            onClose={this.closeTargetBrowser}
+          />
+        )}
         <Modal
           title={`${t('ui.userPrompt')} (${this.state.promptData.length}${t('ui.promptCountUnit')})`}
           open={this.state.promptModalVisible}
@@ -3005,6 +3031,7 @@ class AppHeader extends React.Component {
         toggling={modal.toggling}
         onToggle={(s) => this.handleToggleSkill(s)}
         onDelete={(s) => this.handleDeleteSkill(s)}
+        onOpenFolder={this.openSkillFolder}
         onClose={() => this.setState(prev => ({ _skillsModal: { ...prev._skillsModal, open: false } }))}
       />
     );

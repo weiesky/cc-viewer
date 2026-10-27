@@ -128,6 +128,25 @@ describe('PermissionController — autoAllow（免审批源头直放）', () => 
   });
 });
 
+describe('PermissionController — cancelAutoApprove', () => {
+  it('ws 开：发 perm-hook-auto-cancel，不出队、不动 pending', () => {
+    const host = makeHost({ pendingPermission: { id: 'p1' }, permissionQueue: [{ id: 'p2' }] });
+    const c = new PermissionController(host);
+    c.cancelAutoApprove('p1');
+    assert.deepEqual(host._sent[0], { type: 'perm-hook-auto-cancel', id: 'p1' });
+    assert.equal(host._state.pendingPermission.id, 'p1');
+    assert.deepEqual(host._state.permissionQueue.map(p => p.id), ['p2']);
+  });
+
+  it('ws 关：不发送、不抛错', () => {
+    const host = makeHost({ pendingPermission: { id: 'p1' }, wsOpen: false });
+    const c = new PermissionController(host);
+    assert.doesNotThrow(() => c.cancelAutoApprove('p1'));
+    assert.equal(host._sent.length, 0);
+    assert.equal(host._state.pendingPermission.id, 'p1');
+  });
+});
+
 describe('PermissionController — _findPtyOptionNumber 兜底', () => {
   it('无匹配选项时各 decision 的兜底号', () => {
     const c = new PermissionController(makeHost());

@@ -1,11 +1,12 @@
 import React, { useMemo, useRef, useEffect, useCallback, useState, useLayoutEffect } from 'react';
 import { t } from '../../i18n';
 import { AUTO_APPROVE_INSTANT } from '../../utils/helpers';
+import { startDeadlineCountdown } from '../../utils/deadlineCountdown';
 import styles from './ToolApprovalPanel.module.css';
 
 const DEFAULT_AUTO_SECONDS = 3;
 
-function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSession, onDeny, visible, global: isGlobal, autoApproveSeconds = 0, onAutoApproveChange, source, queueDepth = 0, planAutoApproveSeconds = 0, planAutoApproveCountdown = null, onCancelPlanAutoApprove = null }) {
+function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSession, onDeny, visible, global: isGlobal, autoApproveSeconds = 0, autoApproveSecondsServer = null, onAutoApproveChange, source, queueDepth = 0, planAutoApproveSeconds = 0, planAutoApproveCountdown = null, onCancelPlanAutoApprove = null, autoApproveAt = null, autoCancelled = false, onCancelAutoApprove = null }) {
   const panelRef = useRef(null);
   const allowRef = useRef(null);
   const prevFocusRef = useRef(null);
@@ -15,8 +16,12 @@ function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSes
   const [exiting, setExiting] = useState(false);
   const show = visible || exiting;
   const [countdown, setCountdown] = useState(-1); // -1 = 未启动, 0 = 归零, >0 = 倒计时中
-  const countdownRef = useRef(null);
+  const countdownRef = useRef(null); // startDeadlineCountdown 返回的 stop()
   const deniedRef = useRef(false); // 标记是否被拒绝（防止归零时误触发 onAllow）
+  const autoFiredRef = useRef(false); // 归零只触发一次 onAllow（防 onAllow 身份变化重复点火）
+  // 本地兜底 deadline（仅当服务器没给 autoApproveAt 时）：按 requestId 记住一次，
+  // 避免 re-render 把倒计时重置回满额。
+  const localDeadlineRef = useRef({ requestId: null, deadline: 0 });
 
   const restorePanelFocus = useCallback(() => {
     prevFocusRef.current?.focus?.();
@@ -54,47 +59,73 @@ function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSes
     previousCountdownRef.current = planAutoApproveCountdown;
   }, [planAutoApproveCountdown, visible]);
 
-  // 自动审批倒计时
+  // 自动审批倒计时（wall-clock deadline 驱动：后台标签节流不再让倒计时停滞，
+  // 服务器给的 autoApproveAt 优先于本地按秒数推算的兜底 deadline）。
   useEffect(() => {
-    if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
-    if (visible && autoApproveSeconds === AUTO_APPROVE_INSTANT && requestId) {
+    if (countdownRef.current) { countdownRef.current(); countdownRef.current = null; }
+    if (!visible || !requestId) { setCountdown(-1); return undefined; }
+    if (autoCancelled) { setCountdown(-1); return undefined; } // 取消后保持 pending，永不重武装
+    // 服务器显式给了档位（含 0=off，含 fork 语义）时以服务器为准；否则用本地偏好兜底
+    // （老服务器 / PTY 屏幕检测路径没有 autoApproveSeconds 字段）。
+    // 例外：用户刚把偏好改开/改大（local 与服务器快照不一致且 local 更激进）时以本地为准
+    // 重武装——否则"刚点开免审批却没反应"体感像坏了。0=off 永远以服务器为准（硬闸/fork-off）。
+    const serverOff = autoApproveSecondsServer === 0;
+    const localWantsMore = autoApproveSeconds === AUTO_APPROVE_INSTANT
+      || (autoApproveSeconds > 0 && (autoApproveSecondsServer == null || autoApproveSeconds < autoApproveSecondsServer || autoApproveSecondsServer === 0));
+    const effSeconds = serverOff ? 0
+      : (localWantsMore ? autoApproveSeconds
+        : (autoApproveSecondsServer != null ? autoApproveSecondsServer : autoApproveSeconds));
+    if (effSeconds === AUTO_APPROVE_INSTANT && !(autoApproveAt > 0)) {
       // 免审批（兜底路径）：仅用于「面板已挂载后用户切到免审批」——正常的新请求已在 ChatView
       // 源头被 autoAllow 直放、不会走到这里。归零触发立即批准（复用下方 countdown===0 → onAllow
       // 路径，不新增调用点）。
       deniedRef.current = false;
+      autoFiredRef.current = false;
       setCountdown(0);
-    } else if (visible && autoApproveSeconds > 0 && requestId) {
-      deniedRef.current = false;
-      setCountdown(autoApproveSeconds);
-      countdownRef.current = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(countdownRef.current);
-            countdownRef.current = null;
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      setCountdown(-1);
+      return undefined;
     }
-    return () => { if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; } };
-  }, [visible, autoApproveSeconds, requestId]);
+    let deadline = null;
+    if (typeof autoApproveAt === 'number' && autoApproveAt > 0 && !localWantsMore) {
+      deadline = autoApproveAt;
+    } else if (effSeconds > 0) {
+      if (localDeadlineRef.current.requestId !== requestId || localWantsMore) {
+        localDeadlineRef.current = { requestId, deadline: Date.now() + effSeconds * 1000 };
+      }
+      deadline = localDeadlineRef.current.deadline;
+    }
+    if (!deadline) { setCountdown(-1); return undefined; }
+    deniedRef.current = false;
+    autoFiredRef.current = false;
+    countdownRef.current = startDeadlineCountdown({
+      deadlineMs: deadline,
+      onTick: (s) => setCountdown(s),
+      onExpire: () => setCountdown(0),
+    });
+    return () => { if (countdownRef.current) { countdownRef.current(); countdownRef.current = null; } };
+  }, [visible, autoApproveSeconds, autoApproveSecondsServer, requestId, autoApproveAt, autoCancelled]);
 
-  // 倒计时归零 → 自动批准（仅当从 >0 递减到 0 时触发，排除初始状态和拒绝状态）
+  // 倒计时归零 → 自动批准（仅当从 >0 递减到 0 时触发，排除初始状态和拒绝状态；
+  // autoFiredRef 防 onAllow 身份变化导致的重复点火）
   useEffect(() => {
-    if (countdown === 0 && !deniedRef.current && visible && requestId) {
+    if (countdown === 0 && !deniedRef.current && !autoFiredRef.current && visible && requestId) {
+      autoFiredRef.current = true;
       onAllow(requestId);
     }
   }, [countdown, visible, requestId, onAllow]);
 
   const handleDeny = useCallback((id) => {
     deniedRef.current = true;
-    if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
+    if (countdownRef.current) { countdownRef.current(); countdownRef.current = null; }
     setCountdown(-1);
     onDeny(id);
   }, [onDeny]);
+
+  // 取消服务端+本地自动审批倒计时（保持 pending 供手动决定）
+  const handleCancelAutoApprove = useCallback(() => {
+    if (countdownRef.current) { countdownRef.current(); countdownRef.current = null; }
+    setCountdown(-1);
+    onCancelAutoApprove?.(requestId);
+  }, [onCancelAutoApprove, requestId]);
 
   // 简化按钮：点击切换开启/关闭
   const handleAutoApproveToggle = useCallback(() => {
@@ -228,6 +259,14 @@ function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSes
               {t('ui.planAutoApprove.cancel')}
             </button>
           )}
+        </div>
+      )}
+      {countdown > 0 && onCancelAutoApprove && !autoCancelled && (
+        <div className={styles.planAutoApproveHint}>
+          <span>{t('ui.permission.autoApprove.countdown', { count: countdown })}</span>
+          <button type="button" className={styles.planAutoApproveCancel} onClick={handleCancelAutoApprove}>
+            {t('ui.planAutoApprove.cancel')}
+          </button>
         </div>
       )}
     </div>

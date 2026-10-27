@@ -698,11 +698,11 @@
 }
 
 .optimisticQueueStatus {
-  padding: 0 18px 6px;
+  margin-left: 6px;
+  font-size: 11px;
   color: var(--text-muted);
-  font-size: 12px;
-  line-height: 18px;
-  text-align: right;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .queueBubbleSendNow:disabled,
