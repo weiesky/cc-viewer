@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { reconcileOptimisticQueueMessages } from '../src/components/chat/optimisticQueueMessage.js';
+import { reconcileOptimisticQueueMessages, captureOptimisticQueueTextCounts } from '../src/components/chat/optimisticQueueMessage.js';
 
 const scope = { project: 'project', instanceKey: 'instance', attachedSid: 'session' };
 const pending = (id, text = 'follow up', extra = {}) => ({ id, text, ts: 1, ...scope, ...extra });
@@ -70,5 +70,39 @@ describe('optimistic queue message reconciliation', () => {
   it('drops placeholders from another view or attached session', () => {
     const items = [pending('q1'), pending('q2', 'other', { instanceKey: 'other' }), pending('q3', 'old', { attachedSid: 'old' })];
     assert.deepEqual(reconcileOptimisticQueueMessages(items, { messages: [] }, [], scope).map((item) => item.id), ['q1']);
+  });
+
+  it('drops a seen-dispatching placeholder once the item leaves the authoritative snapshot', () => {
+    const dispatching = [pending('q1', 'follow up', { dispatchingSeen: true })];
+    assert.deepEqual(reconcileOptimisticQueueMessages(dispatching, { messages: [] }, [], scope), []);
+    assert.deepEqual(reconcileOptimisticQueueMessages(dispatching, { messages: [user('follow up')] }, [], scope), []);
+  });
+
+  it('keeps a seen-dispatching placeholder while the item is still dispatching', () => {
+    const dispatching = [pending('q1', 'follow up', { dispatchingSeen: true })];
+    assert.deepEqual(reconcileOptimisticQueueMessages(dispatching, { messages: [] }, [{ id: 'q1', status: 'dispatching' }], scope), dispatching);
+  });
+
+  it('does not drop a fresh placeholder that was never seen dispatching', () => {
+    const items = [pending('q1')];
+    assert.deepEqual(reconcileOptimisticQueueMessages(items, { messages: [] }, [], scope), items);
+  });
+
+  it('acknowledges the prompt in any displayed session, not just the last', () => {
+    const sessions = [{ messages: [] }, { messages: [user('follow up')] }];
+    assert.deepEqual(reconcileOptimisticQueueMessages([pending('q1')], sessions, [], scope), []);
+  });
+
+  it('aggregates identical-text baselines across all displayed sessions', () => {
+    const sessions = [{ messages: [user('same')] }, { messages: [user('same')] }];
+    const item = pending('q1', 'same', { baselineTextCount: 2 });
+    assert.deepEqual(reconcileOptimisticQueueMessages([item], sessions, [], scope), [item]);
+    const withThird = [{ messages: [user('same')] }, { messages: [user('same'), user('same')] }];
+    assert.deepEqual(reconcileOptimisticQueueMessages([item], withThird, [], scope), []);
+  });
+
+  it('captures baselines across all displayed sessions', () => {
+    const sessions = [{ messages: [user('a')] }, { messages: [user('a'), user('b')] }];
+    assert.deepEqual(captureOptimisticQueueTextCounts(sessions), { a: 2, b: 1 });
   });
 });

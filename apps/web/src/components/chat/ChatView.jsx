@@ -97,6 +97,11 @@ const normalizeProjectPath = (p) => (typeof p === 'string' && p.startsWith('./')
 // （streaming_status{active:false} 的 SSE + 2s _streamingOffTimer），否则会在 isStreaming 仍为 true
 // 时过早清除、让按钮回跳停止态。正常路径由 componentDidUpdate 的 isStreaming 下降沿先清除。
 const STOP_OPTIMISTIC_FALLBACK_MS = 4000;
+// Bounded wait for the optimistic send-now placeholder: covers the silent-rejection
+// paths in the server queue (competing dispatch slot, unknown id, unknown anchor) where
+// neither a queue-state removal nor a transcript echo ever arrives. The authoritative
+// queue bubble stays visible so the user can retry; the placeholder must not stick forever.
+const OPTIMISTIC_QUEUE_ACK_TIMEOUT_MS = 30 * 1000;
 // CLI/PTY 停止：focus-in(\x1b[I) 与 ESC(\x1b) 之间的间隔——给 Claude 一次独立 PTY read 先更新聚焦态
 // 再判定 ESC。对齐 _sendUserMessageImmediate 里 input→\r 的既有 50ms 约定（避免引入新魔数）。
 const STOP_FOCUS_IN_ESC_DELAY_MS = 50;
@@ -1085,6 +1090,7 @@ class ChatView extends React.Component {
       || prevProps.viewInstance !== this.props.viewInstance
       || prevProps.attachedSid !== this.props.attachedSid) {
       this.setState({ optimisticQueueMessages: [] });
+      this._clearOptimisticQueueSweepTimer();
     }
     if (prevProps.sessionUpperBoundTs !== this.props.sessionUpperBoundTs) {
       this._reconcileOptimisticQueueMessages();
@@ -1116,6 +1122,7 @@ class ChatView extends React.Component {
           // while Claude is busy (this feature's primary scenario).
           if (this.state.queuedMessages.length || this.state.optimisticQueueMessages.length) {
             this.setState({ queuedMessages: [], optimisticQueueMessages: [] });
+            this._clearOptimisticQueueSweepTimer();
             if (this._inputWs && this._inputWs.readyState === WebSocket.OPEN) {
               this._inputWs.send(JSON.stringify({ type: 'queue-clear', project: prevProps.viewProject || prevProps.projectName, instanceKey: prevProps.viewInstance || null }));
             }
@@ -1241,6 +1248,7 @@ class ChatView extends React.Component {
       }
     } catch {}
     if (this._queueTimer) clearTimeout(this._queueTimer);
+    this._clearOptimisticQueueSweepTimer();
     if (this._autoFillRafId) { cancelAnimationFrame(this._autoFillRafId); this._autoFillRafId = null; }
     this._ptyPrompt.dispose();
     this._toolFileMonitor.dispose();
@@ -2829,18 +2837,21 @@ class ChatView extends React.Component {
           const viewedQueueProject = this.props.viewProject || this.props.projectName;
           if (viewedQueueProject && msg.project && msg.project !== viewedQueueProject) return;
           const items = Array.isArray(msg.items) ? msg.items : [];
-          this.setState((prev) => ({
-            queuedMessages: items,
-            optimisticQueueMessages: reconcileOptimisticQueueMessages(
-              prev.optimisticQueueMessages.map((pending) => items.some((item) => item.id === pending.id && item.status === 'dispatching')
-                ? { ...pending, dispatchingSeen: true }
-                : pending),
-              this.props.mainAgentSessions?.[this.props.mainAgentSessions.length - 1],
-              items,
-              this._queueViewScope(),
-              { allowTextAck: !this.props.sessionUpperBoundTs },
-            ),
-          }));
+          this.setState(
+            (prev) => ({
+              queuedMessages: items,
+              optimisticQueueMessages: reconcileOptimisticQueueMessages(
+                prev.optimisticQueueMessages.map((pending) => items.some((item) => item.id === pending.id && item.status === 'dispatching')
+                  ? { ...pending, dispatchingSeen: true }
+                  : pending),
+                this.props.mainAgentSessions,
+                items,
+                this._queueViewScope(),
+                { allowTextAck: !this.props.sessionUpperBoundTs },
+              ),
+            }),
+            () => { if (this.state.optimisticQueueMessages.length === 0) this._clearOptimisticQueueSweepTimer(); },
+          );
         } else if (msg.type === 'queue-rejected') {
           // Negative ack for an optimistic enqueue (e.g. queue full): the composer was
           // already cleared, so tell the user the message went nowhere.
@@ -2848,7 +2859,10 @@ class ChatView extends React.Component {
           if ((msg.instanceKey && (this.props.viewInstance || null) && msg.instanceKey !== this.props.viewInstance)
             || (viewedQueueProject && msg.project && msg.project !== viewedQueueProject)) return;
           if (msg.id) {
-            this.setState((prev) => ({ optimisticQueueMessages: prev.optimisticQueueMessages.filter((item) => item.id !== msg.id) }));
+            this.setState(
+              (prev) => ({ optimisticQueueMessages: prev.optimisticQueueMessages.filter((item) => item.id !== msg.id) }),
+              () => { if (this.state.optimisticQueueMessages.length === 0) this._clearOptimisticQueueSweepTimer(); },
+            );
           }
           message.warning(t(msg.reason === 'target-gone' ? 'ui.chatInput.queueTargetGone' : 'ui.chatInput.queueFull'));
         }
@@ -2864,11 +2878,14 @@ class ChatView extends React.Component {
     this._clearSdkErrors();
     const scope = this._queueViewScope();
     const sessions = this.props.mainAgentSessions || [];
-    const baselineTextCounts = captureOptimisticQueueTextCounts(sessions[sessions.length - 1]);
-    const optimistic = { id: item.id, text: item.text, ts: item.ts || Date.now(), baselineTextCount: baselineTextCounts[item.text] || 0, ...scope };
+    const baselineTextCounts = captureOptimisticQueueTextCounts(sessions);
+    const optimistic = { id: item.id, text: item.text, ts: item.ts || Date.now(), sentAt: Date.now(), baselineTextCount: baselineTextCounts[item.text] || 0, ...scope };
     this.setState((prev) => ({
       optimisticQueueMessages: [...prev.optimisticQueueMessages.filter((pending) => pending.id !== item.id), optimistic],
-    }), () => this.scrollToBottom());
+    }), () => {
+      this.scrollToBottom();
+      this._scheduleOptimisticQueueSweep();
+    });
     this._inputWs.send(JSON.stringify({ type: 'queue-send-now', id: item.id, project: this.props.viewProject || this.props.projectName, instanceKey: this.props.viewInstance || null }));
   };
 
@@ -2881,12 +2898,11 @@ class ChatView extends React.Component {
   }
 
   _reconcileOptimisticQueueMessages(queuedMessages = this.state.queuedMessages, sessions = this.props.mainAgentSessions) {
-    const session = sessions?.[sessions.length - 1] || null;
     this.setState((prev) => {
       if (prev.optimisticQueueMessages.length === 0) return null;
       const optimisticQueueMessages = reconcileOptimisticQueueMessages(
         prev.optimisticQueueMessages,
-        session,
+        sessions,
         queuedMessages,
         this._queueViewScope(),
         { allowTextAck: !this.props.sessionUpperBoundTs },
@@ -2895,8 +2911,51 @@ class ChatView extends React.Component {
         && optimisticQueueMessages.every((item, index) => item === prev.optimisticQueueMessages[index])
         ? null
         : { optimisticQueueMessages };
-    });
+    }, () => { if (this.state.optimisticQueueMessages.length === 0) this._clearOptimisticQueueSweepTimer(); });
   }
+
+  // Arm a single timeout for the oldest unresolved send-now placeholder. No-op while a
+  // timer is already armed or no placeholders remain; the timer self-clears via the sweep.
+  _scheduleOptimisticQueueSweep = () => {
+    if (this._unmounted) return;
+    if (this._optimisticQueueSweepTimer) return;
+    const pending = this.state.optimisticQueueMessages;
+    if (!pending || pending.length === 0) return;
+    const now = Date.now();
+    const earliest = pending.reduce((min, item) => {
+      const sentAt = typeof item.sentAt === 'number' ? item.sentAt : now;
+      return Math.min(min, sentAt);
+    }, now);
+    const delay = Math.max(0, earliest + OPTIMISTIC_QUEUE_ACK_TIMEOUT_MS - now);
+    this._optimisticQueueSweepTimer = setTimeout(() => {
+      this._optimisticQueueSweepTimer = null;
+      if (this._unmounted) return;
+      this._sweepExpiredOptimisticQueueMessages();
+    }, delay);
+    if (typeof this._optimisticQueueSweepTimer.unref === 'function') this._optimisticQueueSweepTimer.unref();
+  };
+
+  _sweepExpiredOptimisticQueueMessages = (now = Date.now()) => {
+    if (this._unmounted) return;
+    this.setState((prev) => {
+      if (prev.optimisticQueueMessages.length === 0) return null;
+      const kept = prev.optimisticQueueMessages.filter((item) => {
+        const sentAt = typeof item.sentAt === 'number' ? item.sentAt : now;
+        return now - sentAt < OPTIMISTIC_QUEUE_ACK_TIMEOUT_MS;
+      });
+      if (kept.length === prev.optimisticQueueMessages.length) return null;
+      return { optimisticQueueMessages: kept };
+    }, () => {
+      if (this.state.optimisticQueueMessages.length > 0) this._scheduleOptimisticQueueSweep();
+    });
+  };
+
+  _clearOptimisticQueueSweepTimer = () => {
+    if (this._optimisticQueueSweepTimer) {
+      clearTimeout(this._optimisticQueueSweepTimer);
+      this._optimisticQueueSweepTimer = null;
+    }
+  };
 
   _onTerminalWsState = (state) => {
     if (state === 'open') {
@@ -2925,6 +2984,7 @@ class ChatView extends React.Component {
         || this.state.pendingPtyPlan || this.state.askQueue?.length || this.state.queuedMessages?.length
         || this.state.optimisticQueueMessages?.length) {
       this.setState({ pendingPermission: null, permissionQueue: [], pendingPlanApproval: null, pendingAsk: null, askQueue: [], askMetaMap: {}, pendingPtyPlan: null, queuedMessages: [], optimisticQueueMessages: [] });
+      this._clearOptimisticQueueSweepTimer();
     }
     // ask 实例 flag 由控制器 reset（state 键已在上面那条合并 setState 里清）
     this._askFlow.resetAskFlagsOnClose();
@@ -4286,8 +4346,17 @@ class ChatView extends React.Component {
       <div className={styles.optimisticQueueStack}>
         {this.state.optimisticQueueMessages.map((item) => (
           <div key={`optimistic-queue-${item.id}`} className={styles.optimisticQueueItem}>
-            <ChatMessage role="user" text={item.text} lang={this.props.lang} timestamp={new Date(item.ts).toISOString()} userProfile={this.props.userProfile} isHistoryLog={false} />
-            <div className={styles.optimisticQueueStatus} role="status">{t('ui.chatInput.queueDispatching')}</div>
+            <ChatMessage
+              role="user"
+              text={item.text}
+              lang={this.props.lang}
+              timestamp={new Date(item.ts).toISOString()}
+              userProfile={this.props.userProfile}
+              isHistoryLog={false}
+              labelSuffix={(
+                <span className={styles.optimisticQueueStatus} role="status">{t('ui.chatInput.queueDispatching')}</span>
+              )}
+            />
           </div>
         ))}
       </div>

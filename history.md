@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(web): **「追加中…」标签并入用户气泡时间行，派发成功后立即清除占位** — 排队消息「立即追加」的乐观占位改为紧跟用户消息时间戳行内显示，不再单独挂在气泡下方；服务端把该消息移出排队快照（即已接受派发）后立即撤下占位，文本回执改为扫描全部可见会话并按全部会话聚合基线，另加 30s 客户端兜底，修复固定/附着视图下占位要刷新才消失的问题。Coverage: `optimistic-queue-message.test.js`, `optimistic-queue-chat.test.js`, `queue-bubbles.test.js`.
+
 - feat(web+server): **CLAUDE.md 与 Skill 目录快捷浏览** — CLAUDE.md 弹窗标题及用户级、项目级、插件 Skill 名称左侧新增文件夹入口，桌面与移动端均可打开对应目录的只读文件浏览器；项目内从项目根目录导航，项目外从 `~` 导航，内置 Skill 不显示入口。Coverage: `api-target-files.test.js`, `external-folder-targets.test.js`, `file-browser-modal.test.js`, `file-open.test.js`.
 
 - fix(server): **加固 target-files 与 skill 变更接口安全边界** — `/api/target-files` 增加 admin 与同源校验,导航深度限制 32 段、单目录条目上限 5000,祖先链构造避免重复扫描并消除 `..` 伪路径;`~/.claude` 子树的 settings 备份、prompt 历史、项目 transcript、shell 快照、文件历史、粘贴缓存按目录前缀纳入拒读清单(projects/<id>/memory 仍允许);`editorSession` 写路径需 admin 校验;EACCES/ELOOP 等 errno 映射到正确的 4xx 状态码;插件 skill 根校验跟随 `CLAUDE_CONFIG_DIR`;`targetNavigation` 增加 allowlist 兜底根,修复「看得见点不开」;Skill toggle/delete 按当前查看项目/实例解析,避免多视图下误操作绑定项目同名 skill;FileBrowserModal 刷新/重开清空在途请求。Coverage: `api-target-files.test.js`, `api-files-content.test.js`, `external-folder-targets.test.js`, `file-browser-modal.test.js`.
