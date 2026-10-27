@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- chore(server): **kimi-k3 内置 system prompt 新增「不擅自安排真实环境验证」约束** — 在 `Deliver exactly what was asked and nothing more` 之后追加一条规则，明确要求仅在用户主动提出时才安排部署核查、live E2E、手动 smoke 等真实环境验证步骤。Coverage: `system-prompt-snapshots.test.js`.
+
 - fix(web): **「追加中…」标签并入用户气泡时间行，派发成功后立即清除占位** — 排队消息「立即追加」的乐观占位改为紧跟用户消息时间戳行内显示，不再单独挂在气泡下方；服务端把该消息移出排队快照（即已接受派发）后立即撤下占位，文本回执改为扫描全部可见会话并按全部会话聚合基线，另加 30s 客户端兜底，修复固定/附着视图下占位要刷新才消失的问题。Coverage: `optimistic-queue-message.test.js`, `optimistic-queue-chat.test.js`, `queue-bubbles.test.js`.
 
 - feat(web+server): **CLAUDE.md 与 Skill 目录快捷浏览** — CLAUDE.md 弹窗标题及用户级、项目级、插件 Skill 名称左侧新增文件夹入口，桌面与移动端均可打开对应目录的只读文件浏览器；项目内从项目根目录导航，项目外从 `~` 导航，内置 Skill 不显示入口。Coverage: `api-target-files.test.js`, `external-folder-targets.test.js`, `file-browser-modal.test.js`, `file-open.test.js`.
