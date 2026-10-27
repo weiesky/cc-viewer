@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- feat(web): **UltraReview 默认文案模版重写** — 预置 `UltraReview` 的实际默认 prompt（`ui.preset.codeReview5.desc`，18 语言）与 codeExpert UltraPlan 模版的审查段同步更新：用带 name 的 Agent teammate 组队（不再依赖 TeamCreate/TeamDelete）、多仓库分任务、修复 P0/P1 并辩证修复 P2（特殊项用 AskUserQuestion 咨询）、完成后逐个通知 teammate 退出。Coverage: `ultraplan-templates.test.js`, `builtin-presets.test.js`.
+- fix(server+web): **计划/权限自动审批倒计时下沉到服务端** — 倒计时从请求到达起算（服务端在用户设定 N 秒上加 1s 兜底），客户端未打开、断连或后台标签节流时也能按时自动批准；客户端「取消自动审批」会销毁服务端计时器并保持待手动审批（权限新增 `perm-hook-auto-cancel`，计划的 `sdk-plan-auto-cancel` 从纯转发改为真实取消）；重放帧携带服务端截止时间与取消状态，重连后显示剩余时间而不是重置满额；客户端倒计时改为 wall-clock 驱动。行为变化：未查看的工作区的待审批请求现在也会按设定自动批准；安全底线：npm publish 与无人值守计划任务（scheduled-task）不走服务端自动批准。PTY 计划（按键注入）仍为客户端路径。Coverage: `auto-approve.test.js`, `sdk-manager-auto-approve.test.js`, `api-ask-perm-extra.test.js`, `server-ws-branches.test.js`, `deadline-countdown.test.js`, `plan-auto-approve-runtime.test.js`, `permission-controller.test.js`.
+- fix(server): **SDK perm/ask 审批帧补 instanceKey + sdk-plan-answer 仅在真正解决后广播** — 多实例视图下权限/提问重放不再因缺 instanceKey 被丢弃（断连后倒计时不再丢失）；`sdk-plan-answer` 对失效/未知 id 不再误关其他端的计划弹窗。Coverage: `branch-server.test.js`, `server-cli-mode.test.js`.
+
 - chore(server): **kimi-k3 内置 system prompt 新增「不擅自安排真实环境验证」约束** — 在 `Deliver exactly what was asked and nothing more` 之后追加一条规则，明确要求仅在用户主动提出时才安排部署核查、live E2E、手动 smoke 等真实环境验证步骤。Coverage: `system-prompt-snapshots.test.js`.
 
 - fix(web): **「追加中…」标签并入用户气泡时间行，派发成功后立即清除占位** — 排队消息「立即追加」的乐观占位改为紧跟用户消息时间戳行内显示，不再单独挂在气泡下方；服务端把该消息移出排队快照（即已接受派发）后立即撤下占位，文本回执改为扫描全部可见会话并按全部会话聚合基线，另加 30s 客户端兜底，修复固定/附着视图下占位要刷新才消失的问题。Coverage: `optimistic-queue-message.test.js`, `optimistic-queue-chat.test.js`, `queue-bubbles.test.js`.
