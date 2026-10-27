@@ -8,6 +8,16 @@ import { apiUrl } from './apiUrl';
 import { t } from '../i18n';
 import { skillKey, skillOrderKey } from './skillsParser';
 
+// AppHeader reads the viewed project from props, Mobile from state — pick whichever is set.
+// The toggle/delete endpoints resolve skills against the SERVER's bound cwd by default;
+// when the user is browsing a different project/attach view, we must tell the server
+// which project the list came from, otherwise toggling "foo" in project B deletes "foo" in A.
+function viewScopeOf(host) {
+  const viewedProject = host.props?.viewedProject ?? host.state?.viewedProject ?? null;
+  const viewedInstance = host.props?.viewedInstance ?? host.state?.viewedInstance ?? null;
+  return { viewedProject, viewedInstance };
+}
+
 // 把 reload 的权威结果按当前显示顺序（skillOrderKey 保位）合并回 _skillsModal.skills。
 // skillOrderKey 只取 source+name（开关/删除都不改它），所以行原地不动；modal 没见过的新条目排末尾。
 export function mergePreservingOrder(prevSkills, resultSkills) {
@@ -34,10 +44,11 @@ export async function handleSkillToggle(host, skill) {
     return { _skillsModal: { ...prev._skillsModal, toggling: next, skills: prev._skillsModal.skills.map(flipEnabled(enable)) } };
   });
   try {
+    const { viewedProject, viewedInstance } = viewScopeOf(host);
     const r = await fetch(apiUrl('/api/skills/toggle'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source: skill.source, name: skill.name, enable }),
+      body: JSON.stringify({ source: skill.source, name: skill.name, enable, project: viewedProject, instance: viewedInstance }),
     });
     const data = await r.json();
     if (!r.ok) {
@@ -81,10 +92,11 @@ export async function handleSkillDelete(host, skill) {
     return { _skillsModal: { ...prev._skillsModal, toggling: next } };
   });
   try {
+    const { viewedProject, viewedInstance } = viewScopeOf(host);
     const r = await fetch(apiUrl('/api/skills/delete'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source: skill.source, name: skill.name, enabled: skill.enabled }),
+      body: JSON.stringify({ source: skill.source, name: skill.name, enabled: skill.enabled, project: viewedProject, instance: viewedInstance }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {

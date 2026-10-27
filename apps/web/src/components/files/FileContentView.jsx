@@ -325,6 +325,8 @@ export default function FileContentView({
   onDirtyChange,
   project,
   instance,
+  readOnly = false,
+  displayPath,
 }) {
   const [content, setContent] = useState(null);
   const [currentContent, setCurrentContent] = useState(null);
@@ -380,7 +382,7 @@ export default function FileContentView({
   // 「使用 MDX 编辑」= flag 开 + 非移动端 + 无扩展语法 + 未解析失败
   // 移动端直接降级到旧 marked 渲染：屏幕小 + 触屏体验差 + bundle 加载成本高，
   // GUI 编辑能力性价比不足，统一走 fallback 预览路径。
-  const useMdxEditor = isMdFile && mdxFeatureEnabled && !isMobile && !extensionDetected && !mdxParseErrored;
+  const useMdxEditor = isMdFile && mdxFeatureEnabled && !isMobile && !extensionDetected && !mdxParseErrored && !readOnly;
   // 「展示旧 marked 预览」= viewMode='markdown' && !useMdx
   const useLegacyPreview = isMdFile && viewMode === 'markdown' && !useMdxEditor;
 
@@ -516,7 +518,7 @@ export default function FileContentView({
   }, [viewMode, isDirty, content]);
 
   const doSave = useCallback(async () => {
-    if (!isDirty) return;
+    if (readOnly || !isDirty) return;
     // MDX 模式下优先从 editor ref 取最新 markdown（onChange 是 debounced，currentContent 可能滞后）
     let saveContent = currentContent;
     if (useMdxEditor && mdxRef.current?.getMarkdown) {
@@ -566,7 +568,7 @@ export default function FileContentView({
         }, 3000);
       }
     }
-  }, [isDirty, filePath, currentContent, useMdxEditor, editorSession, project, instance]);
+  }, [isDirty, filePath, currentContent, useMdxEditor, editorSession, project, instance, readOnly]);
 
   saveRef.current = doSave;
 
@@ -836,7 +838,7 @@ export default function FileContentView({
       scrollSyncExtension,
       keymap.of([{
         key: 'Mod-s',
-        run: () => { saveRef.current?.(); return true; },
+        run: () => { if (!readOnly) saveRef.current?.(); return true; },
       }]),
     ];
 
@@ -855,13 +857,14 @@ export default function FileContentView({
     );
 
     return exts;
-  }, [filePath, scrollSyncExtension]);
+  }, [filePath, scrollSyncExtension, readOnly]);
 
   // 跟踪文档行数变化
   const handleChange = useCallback((value) => {
+    if (readOnly) return;
     setCurrentContent(value);
     setLineCount(value.split('\n').length);
-  }, []);
+  }, [readOnly]);
 
   const saveStatusText = saveStatus === 'saving'
     ? i18n('ui.saving')
@@ -895,7 +898,7 @@ export default function FileContentView({
               <polyline points="15 18 9 12 15 6"/>
             </svg>
           </button>
-          <span className={styles.filePath}>{filePath}</span>
+          <span className={styles.filePath}>{displayPath || filePath}</span>
           {fileSize > 0 && (
             <span className={styles.fileSize}>{formatFileSize(fileSize)}</span>
           )}
@@ -966,7 +969,7 @@ export default function FileContentView({
               {viewMode === 'markdown' ? i18n('ui.viewText') : i18n('ui.viewMarkdown')}
             </button>
           )}
-          <button
+          {!readOnly && <button
             className={styles.saveBtn}
             onClick={doSave}
             disabled={!isDirty || saveStatus === 'saving'}
@@ -978,7 +981,7 @@ export default function FileContentView({
               <polyline points="7 3 7 8 15 8"/>
             </svg>
             {i18n('ui.save')}
-          </button>
+          </button>}
           <button className={styles.closeBtn} onClick={handleClose} title={i18n('ui.backToChat')}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -1016,6 +1019,8 @@ export default function FileContentView({
                 height="100%"
                 theme={editorTheme}
                 extensions={extensions}
+                readOnly={readOnly}
+                editable={!readOnly}
                 onChange={handleChange}
                 onCreateEditor={onEditorCreate}
                 basicSetup={{

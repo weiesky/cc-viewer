@@ -85,6 +85,18 @@
   color: var(--text-tertiary);
   font-size: 13px;
 }
+.memoryDetailTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.memoryDetailTitleText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .toolChipGrid {
   display: flex;
   flex-wrap: wrap;

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- feat(web+server): **CLAUDE.md 与 Skill 目录快捷浏览** — CLAUDE.md 弹窗标题及用户级、项目级、插件 Skill 名称左侧新增文件夹入口，桌面与移动端均可打开对应目录的只读文件浏览器；项目内从项目根目录导航，项目外从 `~` 导航，内置 Skill 不显示入口。Coverage: `api-target-files.test.js`, `external-folder-targets.test.js`, `file-browser-modal.test.js`, `file-open.test.js`.
+
+- fix(server): **加固 target-files 与 skill 变更接口安全边界** — `/api/target-files` 增加 admin 与同源校验,导航深度限制 32 段、单目录条目上限 5000,祖先链构造避免重复扫描并消除 `..` 伪路径;`~/.claude` 子树的 settings 备份、prompt 历史、项目 transcript、shell 快照、文件历史、粘贴缓存按目录前缀纳入拒读清单(projects/<id>/memory 仍允许);`editorSession` 写路径需 admin 校验;EACCES/ELOOP 等 errno 映射到正确的 4xx 状态码;插件 skill 根校验跟随 `CLAUDE_CONFIG_DIR`;`targetNavigation` 增加 allowlist 兜底根,修复「看得见点不开」;Skill toggle/delete 按当前查看项目/实例解析,避免多视图下误操作绑定项目同名 skill;FileBrowserModal 刷新/重开清空在途请求。Coverage: `api-target-files.test.js`, `api-files-content.test.js`, `external-folder-targets.test.js`, `file-browser-modal.test.js`.
+
 ## 1.9.15
 
 - fix(web+server): **SDK 模式支持 Plan 自动审批** — 与 PTY 共用倒计时、立即免审批及取消行为，桌面与移动端均可使用；按当前工作区/实例隔离审批，视图切换可恢复，取消跨客户端同步；普通工具权限保持不变。Coverage: `plan-auto-approve-target.test.js`, `plan-auto-approve-runtime.test.js`, `plan-approval-panel.test.js`, `sdk-plan-approval-guard.test.js`, `resume-history-menu.test.js`, `branch-server.test.js`, `sdk-manager-query.test.js`.

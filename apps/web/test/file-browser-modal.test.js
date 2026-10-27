@@ -123,27 +123,34 @@ describe('FileBrowserModal wiring contract', () => {
       'mask must include the 2px backdrop blur');
   });
   it('fetches directory listings through apiUrl + encodeURIComponent', () => {
-    assert.ok(FILE_BROWSER_MODAL.includes('apiUrl(withViewParams(`/api/files?path=${encodeURIComponent('),
-      'directory fetch must go through apiUrl + withViewParams + encodeURIComponent');
+    // The non-target branch must still route through apiUrl(withViewParams(...))
+    // — losing either wrapper drops the view-scope query (?project=/?instance=),
+    // the base path, or the token, which is exactly the regression the
+    // file-browser view-scope fix introduced this guard against.
+    assert.ok(FILE_BROWSER_MODAL.includes('apiUrl(withViewParams('),
+      'directory listing must go through apiUrl(withViewParams(...))');
+    assert.ok(FILE_BROWSER_MODAL.includes('`/api/files?path=${encodeURIComponent('),
+      'project directory paths must still be encoded');
     assert.ok(!FILE_BROWSER_MODAL.includes("'..'") && !FILE_BROWSER_MODAL.includes('".."'),
       'no raw .. path construction allowed');
   });
   it('html branch and tryOpenWithSystem run before setPreviewFile', () => {
-    const htmlIdx = FILE_BROWSER_MODAL.indexOf('setHtmlPreviewPath(childPath)');
+    const htmlIdx = FILE_BROWSER_MODAL.indexOf('setHtmlPreviewPath(itemPath)');
     const sysIdx = FILE_BROWSER_MODAL.indexOf("tryOpenWithSystem(childPath, 'file-explorer', { project, instance })");
     const prevIdx = FILE_BROWSER_MODAL.indexOf('setPreviewFile(childPath)');
     assert.ok(htmlIdx >= 0 && sysIdx >= 0 && prevIdx >= 0, 'openItem branches missing');
     assert.ok(htmlIdx < sysIdx && sysIdx < prevIdx, 'openItem branch order must be html → system → in-modal preview');
   });
-  it('z-index layering: browser modal 1100, nested html preview 1120', () => {
-    assert.ok(FILE_BROWSER_MODAL.includes('zIndex={1100}'), 'browser modal must stay at zIndex 1100');
-    assert.ok(FILE_BROWSER_MODAL.includes('zIndex={1120}'), 'nested HtmlPreviewModal must be at zIndex 1120');
+  it('z-index layering: browser default 1100, nested html preview 20 higher', () => {
+    assert.ok(FILE_BROWSER_MODAL.includes('zIndex = 1100'), 'browser modal default must stay at zIndex 1100');
+    assert.ok(FILE_BROWSER_MODAL.includes('zIndex={zIndex}'), 'browser must accept its parent stacking context');
+    assert.ok(FILE_BROWSER_MODAL.includes('zIndex={zIndex + 20}'), 'nested html preview must stack above the browser');
   });
   it('double-click opens, single-click only selects', () => {
     assert.ok(FILE_BROWSER_MODAL.includes('onDoubleClick={() => onOpen(item)}'),
       'grid cells must open on double-click');
-    assert.ok(FILE_BROWSER_MODAL.includes('onClick={() => onSelect(childPath)}'),
-      'grid cells must only select on single-click');
+    assert.ok(FILE_BROWSER_MODAL.includes('onClick={() => { onSelect(childPath); if (isMobile) onOpen(item); }}'),
+      'grid cells must select on click and open directly only on mobile');
   });
   it('office/pdf double-click downloads instead of no-op system open on the remote host', () => {
     assert.ok(FILE_BROWSER_MODAL.includes('downloadFile(childPath, item.name, project, instance)'),
@@ -442,11 +449,10 @@ describe('modal upload wiring (button + zoned drag-drop)', () => {
     assert.equal(drags, 2, 'row and cell onDragStart must both set the text/x-internal-move marker');
     const plains = FILE_BROWSER_MODAL.split("dataTransfer.setData('text/plain', childPath)").length - 1;
     assert.equal(plains, 2, 'row and cell onDragStart must both carry the fromPath as text/plain');
-    // Standalone `draggable` lines (the thumbnail's draggable={false} doesn't match).
-    const draggableCount = (FILE_BROWSER_MODAL.match(/^\s*draggable$/gm) || []).length;
-    assert.equal(draggableCount, 2, 'row and cell elements must both be draggable');
-    for (const attr of ['onDragStart={handleDragStartRow}', 'onDragStart={handleDragStartCell}',
-      'onDrop={handleDropRow}', 'onDrop={isDir ? handleDropCell : undefined}']) {
+    const draggableCount = (FILE_BROWSER_MODAL.match(/draggable=\{!readOnly\}/g) || []).length;
+    assert.equal(draggableCount, 2, 'row and cell elements must be draggable only outside read-only targets');
+    for (const attr of ['onDragStart={readOnly ? undefined : handleDragStartRow}', 'onDragStart={readOnly ? undefined : handleDragStartCell}',
+      'onDrop={readOnly ? undefined : handleDropRow}', 'onDrop={isDir && !readOnly ? handleDropCell : undefined}']) {
       assert.ok(FILE_BROWSER_MODAL.includes(attr), `missing JSX wiring: ${attr}`);
     }
     assert.ok(FILE_BROWSER_MODAL.includes("effectAllowed = 'move'"),
@@ -489,12 +495,12 @@ describe('modal upload wiring (button + zoned drag-drop)', () => {
       'grid blank internal drop must guard then move into currentPath');
     assert.ok(FILE_BROWSER_MODAL.includes("useInternalMoveTarget('', handleMove)"),
       'tree-pane blank area must move entries to the project root via the shared hook');
-    assert.ok(FILE_BROWSER_MODAL.includes('onDrop={handleTreePaneDrop}'),
-      'tree pane must wire its blank-area drop handler');
+    assert.ok(FILE_BROWSER_MODAL.includes('onDrop={readOnly ? undefined : handleTreePaneDrop}'),
+      'tree pane must allow its blank-area drop handler outside read-only targets');
     const crumb = bodyOf(FILE_BROWSER_MODAL, 'function CrumbDropTarget(', '\n}\n');
     assert.ok(crumb.includes('useInternalMoveTarget(path, onMove)'),
       'breadcrumb segments must be move targets via the shared hook');
-    assert.ok(crumb.includes('onDrop={onDrop}'), 'crumb must wire the drop handler');
+    assert.ok(crumb.includes('onDrop={readOnly ? undefined : onDrop}'), 'crumb must allow drops outside read-only targets');
   });
 
   it('layout catch-all swallows internal-move drags over non-target regions too', () => {

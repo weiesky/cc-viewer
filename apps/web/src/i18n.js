@@ -1363,6 +1363,26 @@ const i18nData = {
     "tr": "Log klasörünü aç",
     "uk": "Відкрити теку логів"
   },
+  "ui.openFolder": {
+    "zh": "打开文件夹",
+    "en": "Open folder",
+    "zh-TW": "開啟資料夾",
+    "ko": "폴더 열기",
+    "ja": "フォルダを開く",
+    "de": "Ordner öffnen",
+    "es": "Abrir carpeta",
+    "fr": "Ouvrir le dossier",
+    "it": "Apri cartella",
+    "da": "Åbn mappe",
+    "pl": "Otwórz folder",
+    "ru": "Открыть папку",
+    "ar": "فتح المجلد",
+    "no": "Åpne mappe",
+    "pt-BR": "Abrir pasta",
+    "th": "เปิดโฟลเดอร์",
+    "tr": "Klasörü aç",
+    "uk": "Відкрити папку"
+  },
   "ui.openProjectDir": {
     "zh": "浏览项目文件",
     "en": "Browse project files",

@@ -4,8 +4,9 @@ import { t } from '../../i18n';
 import { apiUrl, withViewParams } from '../../utils/apiUrl';
 import { getFileIcon } from '../../utils/fileIcons';
 import { isImageFile } from '../../utils/commandValidator';
-import { tryOpenWithSystem } from '../../utils/fileOpen';
+import { tryOpenWithSystem, isSystemOpenFile } from '../../utils/fileOpen';
 import { reportSwallowed } from '../../utils/errorReport';
+import { isMobile } from '../../env';
 import { SettingsContext } from '../../contexts/SettingsContext';
 import { buildFileContextMenuItems } from './fileContextMenu';
 import { createFileMenuHandler } from './fileContextMenuActions';
@@ -25,6 +26,17 @@ import styles from './FileBrowserModal.module.css';
  * Client-side paths never leave the project root (no dot-dot segment is ever
  * built); the server additionally rejects dot-dot and absolute paths in /api/files.
  */
+
+function targetFilesUrl(target, path) {
+  const params = new URLSearchParams({ kind: target.kind });
+  if (target.kind === 'claude-md') params.set('id', target.id);
+  else {
+    params.set('source', target.source);
+    params.set('targetPath', target.path);
+  }
+  if (path) params.set('path', path);
+  return `/api/target-files?${params.toString()}`;
+}
 
 function parentPathOf(path) {
   if (!path) return '';
@@ -69,7 +81,7 @@ function handleActivationKey(handler) {
 // a crumb moves it into that directory (root crumb '' = project root). The
 // full canDropMoveOn guards run at drop time; dragover only gates on the
 // internal-move marker (getData is unavailable mid-drag).
-function CrumbDropTarget({ label, path, link, onNavigate, onMove, title }) {
+function CrumbDropTarget({ label, path, link, onNavigate, onMove, title, readOnly = false }) {
   const { dragOver, ref: crumbRef, onDragOver, onDragLeave, onDrop } = useInternalMoveTarget(path, onMove);
   const interactive = !!link;
   return (
@@ -81,16 +93,16 @@ function CrumbDropTarget({ label, path, link, onNavigate, onMove, title }) {
       role={interactive ? 'button' : undefined}
       tabIndex={interactive ? 0 : undefined}
       title={title}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
+      onDragOver={readOnly ? undefined : onDragOver}
+      onDragLeave={readOnly ? undefined : onDragLeave}
+      onDrop={readOnly ? undefined : onDrop}
     >
       {label}
     </span>
   );
 }
 
-function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNavigate, onSelectFile, currentPath, selectedPath, treeCache, cacheEpoch, isRemote, onFileRenamed, onAttachToChat, onInsertPathToChat, onImportFiles, onMove, project, instance }) {  const childPath = path ? `${path}/${item.name}` : item.name;
+function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNavigate, onSelectFile, currentPath, selectedPath, treeCache, cacheEpoch, isRemote, onFileRenamed, onAttachToChat, onInsertPathToChat, onImportFiles, onMove, project, instance, target, readOnly }) {  const childPath = path ? `${path}/${item.name}` : item.name;
   const isDir = item.type === 'directory';
   const expanded = expandedPaths.has(childPath);
   const isGitIgnored = item.gitIgnored || false;
@@ -107,13 +119,20 @@ function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNav
     if (isDir && expanded && children === null && !loading) {
       setLoading(true);
       setLoadFailed(false);
-      fetch(apiUrl(withViewParams(`/api/files?path=${encodeURIComponent(childPath)}`, { project, instance })))
+      const requestPath = target ? targetFilesUrl(target, childPath) : `/api/files?path=${encodeURIComponent(childPath)}`;
+      fetch(apiUrl(withViewParams(requestPath, { project, instance })))
         .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-        .then(data => { treeCache.current.set(childPath, data); setChildren(data); setLoading(false); })
+        .then(data => {
+          const entries = target ? data.entries : data;
+          if (!Array.isArray(entries)) throw new Error('Invalid directory response');
+          treeCache.current.set(childPath, entries);
+          setChildren(entries);
+          setLoading(false);
+        })
         // Collapse + re-expand the arrow retries the fetch (children stays null).
         .catch((err) => { reportSwallowed('fileBrowserTreeNode', err); setLoading(false); setLoadFailed(true); });
     }
-  }, [expanded, cacheEpoch]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [expanded, cacheEpoch, target, project, instance]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRowClick = useCallback(() => {
     if (isDir) {
@@ -169,7 +188,7 @@ function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNav
 
   return (
     <>
-      <Dropdown menu={{ items: contextMenuItems, onClick: handleMenuClick }} trigger={['contextMenu']}>
+      <Dropdown menu={{ items: readOnly ? [] : contextMenuItems, onClick: handleMenuClick }} trigger={['contextMenu']} disabled={readOnly}>
         <div
           ref={rowRef}
           className={`${styles.treeItem} ${isCurrentDir ? styles.treeItemCurrent : ''} ${isSelectedFile ? styles.treeItemSelected : ''} ${isGitIgnored ? styles.treeItemIgnored : ''} ${dragOver ? styles.treeItemDragOver : ''} ${dragging ? styles.treeItemDragging : ''}`}
@@ -180,12 +199,12 @@ function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNav
           aria-expanded={isDir ? expanded : undefined}
           tabIndex={0}
           title={item.name}
-          draggable
-          onDragStart={handleDragStartRow}
-          onDragEnd={handleDragEndRow}
-          onDragOver={handleDragOverRow}
-          onDragLeave={handleDragLeaveRow}
-          onDrop={handleDropRow}
+          draggable={!readOnly}
+          onDragStart={readOnly ? undefined : handleDragStartRow}
+          onDragEnd={readOnly ? undefined : handleDragEndRow}
+          onDragOver={readOnly ? undefined : handleDragOverRow}
+          onDragLeave={readOnly ? undefined : handleDragLeaveRow}
+          onDrop={readOnly ? undefined : handleDropRow}
         >
         {isDir ? (
           <span
@@ -230,6 +249,8 @@ function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNav
           onMove={onMove}
           project={project}
           instance={instance}
+          target={target}
+          readOnly={readOnly}
         />
       ))}
     </>
@@ -250,7 +271,7 @@ function isThumbnailFile(name) {
 // One grid cell with its own (memoized) context menu — building the menu and
 // handler inside entries.map would recreate O(n) closures on every render.
 // The menu items depend only on (isDir, isRemote); the handler binds the path.
-function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelect, onOpen, menuCtx, onImportFiles, onMove, project, instance }) {
+function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelect, onOpen, menuCtx, onImportFiles, onMove, project, instance, readOnly }) {
   const isDir = item.type === 'directory';
   // Image cells render a real thumbnail (lazy-loaded; falls back to the file
   // icon on error, e.g. oversized >10MB or unreadable file).
@@ -286,21 +307,21 @@ function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelec
     [childPath, item.name, isDir, menuCtx, project, instance]);
 
   return (
-    <Dropdown menu={{ items: menuItems, onClick: handleCellMenuClick }} trigger={['contextMenu']}>
+    <Dropdown menu={{ items: readOnly ? [] : menuItems, onClick: handleCellMenuClick }} trigger={['contextMenu']} disabled={readOnly}>
       <div
         ref={cellRef}
         className={`${styles.cell} ${isSelected ? styles.cellSelected : ''} ${isGitIgnored ? styles.cellIgnored : ''} ${dragOver ? styles.cellDragOver : ''} ${dragging ? styles.cellDragging : ''}`}
-        onClick={() => onSelect(childPath)}
+        onClick={() => { onSelect(childPath); if (isMobile) onOpen(item); }}
         onDoubleClick={() => onOpen(item)}
         onKeyDown={handleActivationKey(() => onOpen(item))}
         role="button"
         tabIndex={0}
-        draggable
-        onDragStart={handleDragStartCell}
-        onDragEnd={handleDragEndCell}
-        onDragOver={isDir ? handleDragOverCell : undefined}
-        onDragLeave={isDir ? handleDragLeaveCell : undefined}
-        onDrop={isDir ? handleDropCell : undefined}
+        draggable={!readOnly}
+        onDragStart={readOnly ? undefined : handleDragStartCell}
+        onDragEnd={readOnly ? undefined : handleDragEndCell}
+        onDragOver={isDir && !readOnly ? handleDragOverCell : undefined}
+        onDragLeave={isDir && !readOnly ? handleDragLeaveCell : undefined}
+        onDrop={isDir && !readOnly ? handleDropCell : undefined}
         // rc-trigger prevents default but does NOT stop propagation:
         // without this the cell's right-click would also open the
         // blank-area container menu. Also select-on-right-click
@@ -312,7 +333,7 @@ function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelec
           {showThumb && !thumbFailed ? (
             <img
               className={styles.cellThumb}
-              src={apiUrl(withViewParams(`/api/file-raw?path=${encodeURIComponent(childPath)}`, { project, instance }))}
+              src={apiUrl(withViewParams(`/api/file-raw?path=${encodeURIComponent(item.absPath || childPath)}`, { project, instance }))}
               loading="lazy"
               alt=""
               draggable={false}
@@ -328,13 +349,21 @@ function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelec
   );
 }
 
-export default function FileBrowserModal({ open = false, onClose, onAttachToChat, onInsertPathToChat, onFileRenamed, refreshTrigger = 0, project, instance }) {
+export default function FileBrowserModal({ open = false, onClose, onAttachToChat, onInsertPathToChat, onFileRenamed, refreshTrigger = 0, project, instance, target = null, rootLabel = '', title, zIndex = 1100 }) {
+  const isExternal = !!target;
+  const readOnly = isExternal;
+  const validTarget = !target || (
+    (target.kind === 'claude-md' && /^[0-9a-f]{12}$/i.test(target.id || ''))
+    || (target.kind === 'skill' && ['user', 'project', 'plugin'].includes(target.source) && typeof target.path === 'string' && target.path)
+  );
   const [currentPath, setCurrentPath] = useState('');
   const [expandedPaths, setExpandedPaths] = useState(() => new Set());
   const [selectedPath, setSelectedPath] = useState(null);
   const [previewFile, setPreviewFile] = useState(null);
   const [htmlPreviewPath, setHtmlPreviewPath] = useState(null);
   const [rootItems, setRootItems] = useState(null);
+  const [targetInfo, setTargetInfo] = useState(null);
+  const targetPathRef = useRef('');
   const [rootFailed, setRootFailed] = useState(false);
   const [entries, setEntries] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -343,8 +372,10 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
   // modal reopen — the remote/container projects this targets change constantly).
   const [cacheEpoch, setCacheEpoch] = useState(0);
   const treeCache = useRef(new Map());
+  const dirRequests = useRef(new Map());
   // Guards against out-of-order grid fetches: only the latest request may setState.
   const gridReqSeq = useRef(0);
+  const initialTargetRef = useRef(false);
   // Guards against a grid fetch in flight when the modal closes mid-flight.
   const alive = useRef(true);
   // Same remote gate expression as FileExplorer — the shared menu builder must
@@ -355,39 +386,86 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
 
   // A view switch must not combine cached entries from the old project with
   // mutations addressed to the new one. Reset the browser before fetching anew.
-  const viewScope = `${project || ''}\0${instance || ''}`;
+  const targetKey = target ? `${target.kind}\0${target.id || ''}\0${target.source || ''}\0${target.path || ''}` : '';
+  const viewScope = `${targetKey}\0${project || ''}\0${instance || ''}`;
+  const targetViewRef = useRef(viewScope);
   const prevViewScope = useRef(viewScope);
   useEffect(() => {
     if (prevViewScope.current === viewScope) return;
     prevViewScope.current = viewScope;
+    targetViewRef.current = viewScope;
+    initialTargetRef.current = false;
     treeCache.current.clear();
+    dirRequests.current.clear();
     setCurrentPath('');
     setExpandedPaths(new Set());
     setSelectedPath(null);
     setPreviewFile(null);
     setHtmlPreviewPath(null);
     setRootItems(null);
-    setEntries(null);
+    setTargetInfo(null);
     setRootFailed(false);
+    setEntries(null);
     setLoadFailed(false);
     setCacheEpoch(e => e + 1);
   }, [viewScope]);
 
   const fetchDir = useCallback((path) => {
+    if (!validTarget) return Promise.reject(new Error('Invalid folder target'));
+    const requestScope = viewScope;
     const cached = treeCache.current.get(path);
     if (cached) return Promise.resolve(cached);
-    return fetch(apiUrl(withViewParams(`/api/files?path=${encodeURIComponent(path)}`, { project, instance })))
+    const pending = dirRequests.current.get(path);
+    if (pending) return pending;
+    const requestPath = target ? targetFilesUrl(target, path) : `/api/files?path=${encodeURIComponent(path)}`;
+    const request = fetch(apiUrl(withViewParams(requestPath, { project, instance })))
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then(data => { treeCache.current.set(path, data); return data; });
-  }, [project, instance]);
+      .then(data => {
+        if (!target) {
+          treeCache.current.set(path, data);
+          return data;
+        }
+        if (!data || !Array.isArray(data.entries) || typeof data.targetPath !== 'string'
+          || !['project', 'home', 'config'].includes(data.rootKind)
+          || !Array.isArray(data.ancestors)) {
+          throw new Error('Invalid directory response');
+        }
+        if (target && requestScope !== targetViewRef.current) throw new Error('Stale directory target');
+        for (const ancestor of data.ancestors) {
+          if (typeof ancestor.path === 'string' && Array.isArray(ancestor.entries)) treeCache.current.set(ancestor.path, ancestor.entries);
+        }
+        treeCache.current.set(path, data.entries);
+        targetPathRef.current = data.targetPath;
+        if (!path && data.targetPath && Array.isArray(data.targetEntries)) treeCache.current.set(data.targetPath, data.targetEntries);
+        setTargetInfo({ rootKind: data.rootKind });
+        return data.entries;
+      });
+    dirRequests.current.set(path, request);
+    request.finally(() => {
+      if (dirRequests.current.get(path) === request) dirRequests.current.delete(path);
+    }).catch(() => {});
+    return request;
+  }, [project, instance, targetKey, validTarget]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tree root: load on open; reload after cache invalidation (reopen/refresh).
   useEffect(() => {
     if (!open) return;
     alive.current = true;
     fetchDir('')
-      .then(data => { if (alive.current) { setRootItems(data); setRootFailed(false); } })
-      .catch((err) => { reportSwallowed('fileBrowserTreeRoot', err); if (alive.current) setRootFailed(true); });
+      .then(data => {
+        if (!alive.current) return;
+        setRootItems(data);
+        setRootFailed(false);
+        if (target && !initialTargetRef.current) {
+          initialTargetRef.current = true;
+          const targetPath = targetPathRef.current;
+          if (targetPath) {
+            setCurrentPath(targetPath);
+            setExpandedPaths(new Set(ancestorsOf(targetPath)));
+          }
+        }
+      })
+      .catch((err) => { reportSwallowed('fileBrowserTreeRoot', err); if (alive.current) { setRootFailed(true); setTargetInfo(null); } });
   }, [open, cacheEpoch, fetchDir]);
 
   // Grid listing follows currentPath; the sequence number drops stale responses.
@@ -417,6 +495,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
   useEffect(() => {
     if (open && !prevOpen.current) {
       treeCache.current.clear();
+      dirRequests.current.clear();
       setCacheEpoch(e => e + 1);
       setPreviewFile(null);
       setHtmlPreviewPath(null);
@@ -431,6 +510,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
 
   const refresh = useCallback(() => {
     treeCache.current.clear();
+    dirRequests.current.clear();
     setCacheEpoch(e => e + 1);
   }, []);
 
@@ -507,9 +587,15 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
       navigate(childPath);
       return;
     }
+    const itemPath = item.absPath || childPath;
     const ext = (item.name || '').split('.').pop().toLowerCase();
     if (ext === 'html' || ext === 'htm') {
-      setHtmlPreviewPath(childPath);
+      setHtmlPreviewPath(itemPath);
+      return;
+    }
+    if (readOnly) {
+      if (isSystemOpenFile(item.name)) downloadFile(itemPath, item.name, project, instance);
+      else setPreviewFile(itemPath);
       return;
     }
     // This modal only opens for remote/container access (preferences._isLocal
@@ -520,7 +606,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
       return;
     }
     setPreviewFile(childPath);
-  }, [currentPath, navigate, project, instance]);
+  }, [currentPath, navigate, project, instance, readOnly]);
 
   const retry = useCallback(() => {
     treeCache.current.delete(currentPath);
@@ -558,24 +644,25 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
   // onFileRenamed=handleAfterMutation refreshes the modal AND the sidebar
   // after a successful import.
   const handleImportFiles = useCallback(
-    (payload, targetDir) => importFiles(payload, targetDir, { onFileRenamed: handleAfterMutation, project, instance }),
-    [handleAfterMutation, project, instance]);
+    (payload, targetDir) => { if (!readOnly) importFiles(payload, targetDir, { onFileRenamed: handleAfterMutation, project, instance }); },
+    [handleAfterMutation, project, instance, readOnly]);
 
   // In-project move (./fileMove, same endpoint+guards as the sidebar). Success
   // flows through handleAfterMutation(fromPath, newPath): prefix-remap of
   // currentPath/selection/previews + modal/sidebar refresh.
   const handleMove = useCallback(
-    (fromPath, toDir) => moveFile(fromPath, toDir, { onFileRenamed: handleAfterMutation, project, instance }),
-    [handleAfterMutation, project, instance]);
+    (fromPath, toDir) => { if (!readOnly) moveFile(fromPath, toDir, { onFileRenamed: handleAfterMutation, project, instance }); },
+    [handleAfterMutation, project, instance, readOnly]);
 
   // Toolbar upload button → hidden file input (plain File[] payload).
   const fileInputRef = useRef(null);
   const handleUploadPick = useCallback((e) => {
+    if (readOnly) return;
     const files = Array.from(e.target.files || []);
     // Reset so re-picking the same file re-fires onChange.
     e.target.value = '';
     if (files.length > 0) handleImportFiles(files, currentPath);
-  }, [handleImportFiles, currentPath]);
+  }, [handleImportFiles, currentPath, readOnly]);
 
   // Grid blank area: external drops import into the browsed directory
   // (currentPath === '' = project root, same semantics as the sidebar's
@@ -584,17 +671,19 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
   const [gridDragOver, setGridDragOver] = useState(false);
   const gridRef = useRef(null);
   const handleGridDragOver = useCallback((e) => {
+    if (readOnly) return;
     const isExternal = isExternalFileDrag(e);
     const isInternal = isInternalMoveDrag(e);
     if (!isExternal && !isInternal) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = isExternal ? 'copy' : 'move';
     setGridDragOver(true);
-  }, []);
+  }, [readOnly]);
   const handleGridDragLeave = useCallback((e) => {
     if (gridRef.current && !gridRef.current.contains(e.relatedTarget)) setGridDragOver(false);
   }, []);
   const handleGridDrop = useCallback((e) => {
+    if (readOnly) return;
     const isExternal = isExternalFileDrag(e);
     const isInternal = isInternalMoveDrag(e);
     if (!isExternal && !isInternal) return;
@@ -611,7 +700,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
     if ((topEntries && topEntries.length > 0) || flatFiles.length > 0) {
       handleImportFiles({ topEntries, flatFiles }, currentPath);
     }
-  }, [handleImportFiles, handleMove, currentPath]);
+  }, [handleImportFiles, handleMove, currentPath, readOnly]);
 
   // Tree-pane blank area: in-project drop = move to the project root
   // (sidebar parity). Directory-row handlers stopPropagation inside the hook,
@@ -648,10 +737,10 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
       footer={null}
       closable
       maskClosable
-      width="min(1200px, calc(100vw - 80px))"
-      zIndex={1100}
+      width={isMobile ? 'calc(100vw - 8px)' : 'min(1200px, calc(100vw - 80px))'}
+      zIndex={zIndex}
       centered
-      title={<span style={{ color: 'var(--text-primary)', fontSize: 14 }}>{t('ui.fileBrowserModal.title')}</span>}
+      title={<span style={{ color: 'var(--text-primary)', fontSize: 14 }}>{title || rootLabel || t('ui.fileBrowserModal.title')}</span>}
       styles={{
         header: { background: 'var(--bg-container)', borderBottom: '1px solid var(--border-primary)', padding: '12px 20px' },
         body: { background: 'var(--bg-container)', height: 'calc(100vh - 160px)', overflow: 'hidden', padding: 0 },
@@ -670,12 +759,12 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
             pane on epoch bump re-inits every expanded node from the cleared
             cache → genuinely fresh snapshot on refresh/reopen. */}
         <aside
-          className={`${styles.treePane} ${treePaneDragOver ? styles.treePaneDragOver : ''}`}
+          className={`${styles.treePane} ${treePaneDragOver ? styles.treePaneDragOver : ''} ${isMobile && target ? styles.treePaneMobile : ''}`}
           key={cacheEpoch}
           ref={treePaneRef}
-          onDragOver={handleTreePaneDragOverGuarded}
-          onDragLeave={handleTreePaneDragLeave}
-          onDrop={handleTreePaneDrop}
+          onDragOver={readOnly ? undefined : handleTreePaneDragOverGuarded}
+          onDragLeave={readOnly ? undefined : handleTreePaneDragLeave}
+          onDrop={readOnly ? undefined : handleTreePaneDrop}
         >
           {rootFailed && (
             <div className={styles.statusText} role="button" tabIndex={0}
@@ -707,6 +796,8 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
               onMove={handleMove}
               project={project}
               instance={instance}
+              target={target}
+              readOnly={readOnly}
             />
           ))}
         </aside>
@@ -716,7 +807,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
               {isImageFile(previewFile) ? (
                 <ImageViewer filePath={previewFile} onClose={() => setPreviewFile(null)} project={project} instance={instance} />
               ) : (
-                <FileContentView filePath={previewFile} onClose={() => setPreviewFile(null)} project={project} instance={instance} />
+                <FileContentView filePath={previewFile} onClose={() => setPreviewFile(null)} project={project} instance={instance} readOnly={readOnly} displayPath={readOnly ? (currentPath ? `${currentPath}/${previewFile.split('/').pop()}` : previewFile.split('/').pop()) : previewFile} />
               )}
             </div>
           ) : (
@@ -745,11 +836,12 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
                   </svg>
                 </button>
                 <CrumbDropTarget
-                  label={t('ui.fileBrowserModal.root')}
+                  label={target ? (targetInfo?.rootKind === 'home' ? '~' : (project || rootLabel)) : (rootLabel || t('ui.fileBrowserModal.root'))}
                   path=""
                   link={!!currentPath}
                   onNavigate={navigate}
                   onMove={handleMove}
+                  readOnly={readOnly}
                 />
                 {crumbs.map((c, i) => (
                   <React.Fragment key={c.path}>
@@ -760,10 +852,12 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
                       link={i < crumbs.length - 1}
                       onNavigate={navigate}
                       onMove={handleMove}
+                      readOnly={readOnly}
                       title={c.label}
                     />
                   </React.Fragment>
                 ))}
+                {!readOnly && <>
                 <button
                   type="button"
                   className={styles.uploadBtn}
@@ -784,8 +878,9 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
                   hidden
                   onChange={handleUploadPick}
                 />
+                </>}
               </div>
-              <Dropdown menu={{ items: containerMenuItems, onClick: handleContainerMenuClick }} trigger={['contextMenu']}>
+              <Dropdown menu={{ items: readOnly ? [] : containerMenuItems, onClick: handleContainerMenuClick }} trigger={['contextMenu']} disabled={readOnly}>
               <div
                 ref={gridRef}
                 className={`${styles.grid} ${gridDragOver ? styles.gridDragOver : ''}`}
@@ -822,6 +917,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
                       onMove={handleMove}
                       project={project}
                       instance={instance}
+                      readOnly={readOnly}
                     />
                   );
                 })}
@@ -834,7 +930,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
       {htmlPreviewPath && (
         // 1120 sits above this modal's 1100; both portal to body, so the
         // nested preview always stacks on top regardless of mount order.
-        <HtmlPreviewModal path={htmlPreviewPath} onClose={() => setHtmlPreviewPath(null)} zIndex={1120} project={project} instance={instance} />
+        <HtmlPreviewModal path={htmlPreviewPath} onClose={() => setHtmlPreviewPath(null)} zIndex={zIndex + 20} project={project} instance={instance} />
       )}
     </Modal>
   );

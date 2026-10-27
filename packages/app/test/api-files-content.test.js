@@ -111,7 +111,7 @@ let planFile, fileContentGet, projectMemory, claudeMd, fileRaw, fileContentPost,
 before(async () => {
   const mod = await import('../server/routes/files-content.js');
   routes = mod.filesContentRoutes;
-  assert.ok(Array.isArray(routes) && routes.length === 7, 'expect 7 routes');
+  assert.ok(Array.isArray(routes) && routes.length === 8, 'expect 8 routes');
   const byPath = (p, m) => routes.find(r => r.path === p && r.method === m)?.handler;
   planFile = byPath('/api/plan-file', 'GET');
   fileContentGet = byPath('/api/file-content', 'GET');
