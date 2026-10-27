@@ -47,25 +47,25 @@ Your final plan must include the following elements:
 6. After the final plan has been successfully executed:
 First run \`git diff --quiet && git diff --cached --quiet\` (or equivalent) to detect whether the working tree actually has non-trivial changes; if there are no real changes (or only whitespace/comment-only edits), skip the UltraReview step.
 Otherwise, if the project is managed with Git:
-Initiate a team (\`TeamCreate\`), dynamically allocating the number of teammates based on task complexity (5 is recommended);
-If the \`TeamCreate\` tool is unavailable, spawn teammates directly with the \`Agent\` tool (note: as teammates, not plain subagents);
-Task: Conduct a Code Review of the current git changes from multiple perspectives;
+Use the \`Agent\` tool to build a team, dynamically allocating the number of teammates based on task complexity (5+ is recommended);
+Note: teammates are named (pass \`name\`), not plain subagents (which have no name);
+Task: Conduct a Code Review of the current git changes from multiple roles and perspectives;
 Pre-requisites:
-- The git repository may be located in a subdirectory of the current directory; prefer \`git rev-parse --show-toplevel\` (fall back to recursive lookup) before proceeding;
-- In the case of multiple repositories, tasks may be executed separately;
-The team's goal is to analyze the current Git change log and validate each modification from different perspectives, specifically including:
+- The git repository may be located in a subdirectory of the current directory; recursively locate the .git directory first (prefer \`git rev-parse --show-toplevel\`) before proceeding;
+- In the case of multiple repositories, review tasks may be executed separately per repository;
+Review dimensions (a reference framework — each role covers them as its perspective requires, aiming to be as comprehensive as possible):
 - Whether requirements/objectives have been met and functionality is complete;
 - Whether newly added code introduces side effects, breaks existing functionality, or poses potential risks;
 - Code quality: naming, readability, complexity, technical debt, maintainability;
 - Testing and documentation: whether there is adequate test coverage, and whether critical logic has necessary comments or documentation;
 - Dependencies and compatibility: whether new dependencies or version compatibility issues have been introduced;
+- Any other dimensions you see fit;
 Workflow:
 - Each teammate, according to their own role, covers the review dimensions one by one and independently outputs a report;
 - After consolidating the reports, perform a cross-review to identify conflicts or shared concerns;
 - Distill specific, actionable modification suggestions and annotate them with priority levels (P0/P1/P2/P3);
-- Upon completion, adopt P0 items; adopt P1 and P2 items selectively based on evaluation; disregard P3 items.
-- After execution is complete, close the team (\`TeamDelete\`);
-- If the \`TeamDelete\` tool is unavailable, notify each teammate to exit individually;
+- Upon completion, fix all P0 and P1 items; evaluate P2 items dialectically (use \`AskUserQuestion\` to consult the user when any item needs a special decision);
+- After execution is complete, close the team: notify each teammate to exit individually;
 </system-reminder>`,
 
   researchExpert: `<system-reminder>
