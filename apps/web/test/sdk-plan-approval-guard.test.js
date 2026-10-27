@@ -38,18 +38,25 @@ describe('SDK mode never activates the PTY plan-approval surface', () => {
 
   it('plan auto-approve uses an explicit channel and never PTY keystrokes in SDK mode', () => {
     assert.ok(
-      /_startPlanAutoApprove = \(planId, channel\) =>/.test(CHATVIEW)
+      /_startPlanAutoApprove = \(planId, channel, \{ autoApproveAt = null, autoApproveSeconds = null, autoCancelled = false \} = \{\}\) =>/.test(CHATVIEW)
         && /if \(!seconds\) return;/.test(CHATVIEW),
       'the shared timer must accept a transport channel and remain disabled when the setting is off',
     );
     assert.ok(
-      /if \(seconds === AUTO_APPROVE_INSTANT\) \{ this\._firePlanAutoApprove\(planId, channel\); return; \}/.test(CHATVIEW),
+      /if \(seconds === AUTO_APPROVE_INSTANT && !\(autoApproveAt > 0\)\) \{/.test(CHATVIEW),
       'instant approval must preserve the configured channel',
     );
     assert.ok(
-      /this\._startPlanAutoApprove\(curTarget\.id, curTarget\.channel\)/.test(CHATVIEW)
+      /this\._startPlanAutoApprove\(curTarget\.id, curTarget\.channel, curAuto\)/.test(CHATVIEW)
         && /pendingPlanApproval: this\.state\.pendingPlanApproval/.test(CHATVIEW),
       'the timer lifecycle must include the SDK pending plan as well as the PTY plan',
+    );
+    // 服务端兜底：pending 帧/重放携带 autoApproveAt（wall-clock 截止）与 autoCancelled，
+    // 客户端按截止时间倒计时（重连显示剩余而非重置满额），取消的计划永不重武装。
+    assert.ok(
+      /autoApproveAt: msg\.autoApproveAt \?\? null/.test(CHATVIEW)
+        && /startDeadlineCountdown/.test(CHATVIEW),
+      'SDK plan frames must carry the server auto-approve deadline and the countdown must be wall-clock driven',
     );
     const fire = CHATVIEW.match(/_firePlanAutoApprove = \(planId, channel\) => \{([\s\S]*?)\n  \};/);
     assert.ok(fire, 'the auto-approve firing method must accept a channel');

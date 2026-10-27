@@ -1487,6 +1487,10 @@ class Mobile extends AppBase {
             visible={true}
             global={true}
             autoApproveSeconds={this.state.autoApproveSeconds}
+            autoApproveSecondsServer={this.state.globalPermission.permission.autoApproveSeconds ?? null}
+            autoApproveAt={this.state.globalPermission.permission.autoApproveAt ?? null}
+            autoCancelled={this.state.globalPermission.permission.autoCancelled === true}
+            onCancelAutoApprove={this.state.globalPermission.handlers.cancelAutoApprove ?? null}
             onAutoApproveChange={this.handleAutoApproveChange}
           />
         )}

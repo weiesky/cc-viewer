@@ -164,7 +164,10 @@ const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 function postToViewer() {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ toolName, input: toolInput });
+    // Forward the session cwd so the server can resolve the project-forked
+    // autoApproveSeconds for the right workspace (falls back to the server's
+    // current project key when absent — backward compatible).
+    const body = JSON.stringify({ toolName, input: toolInput, cwd: typeof payload?.cwd === 'string' ? payload.cwd : undefined });
     const req = httpClient.request({
       hostname: '127.0.0.1',
       port: Number(port),

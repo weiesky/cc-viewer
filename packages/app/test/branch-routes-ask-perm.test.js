@@ -18,7 +18,7 @@ import './_shims/register.mjs';
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -398,6 +398,9 @@ describe('ask-perm 分支补洞: permHook', () => {
   });
 
   it('5min timer fire：entry.res.writeHead 抛 + ws.send 抛 → 348/352 catch{} 吞错', async (t) => {
+    // 关闭服务端自动审批兜底（perm 默认 3s 会先于此用例的 5min 超时 fire，让被测分支变死代码）。
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({ autoApproveSeconds: 0 }));
+    t.after(() => { try { rmSync(join(tmpDir, 'preferences.json'), { force: true }); } catch {} });
     t.mock.timers.enable({ apis: ['setTimeout'] });
     const wss = makeWss({ throwOnSend: true });
     const deps = makeDeps({ terminalWss: wss });

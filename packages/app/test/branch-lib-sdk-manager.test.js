@@ -29,7 +29,7 @@
 
 import { describe, it, before, after, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -42,6 +42,11 @@ before(async () => {
   tmpDir = mkdtempSync(join(tmpdir(), 'ccv-branch-sdkmgr-'));
   process.env.CCV_LOG_DIR = tmpDir;
   process.env.CLAUDE_CONFIG_DIR = tmpDir;
+  // 关闭服务端自动审批兜底计时器（perm 默认 3s 会先于此文件断言的 5min 超时 fire）。
+  writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({
+    autoApproveSeconds: 0,
+    approvalModal: { planAutoApproveSeconds: 0 },
+  }));
   sdk = await import('../server/lib/sdk-manager.js');
   try {
     const real = await import('@anthropic-ai/claude-agent-sdk');

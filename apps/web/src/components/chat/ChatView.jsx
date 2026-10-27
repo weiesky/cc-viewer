@@ -26,6 +26,7 @@ import { playEvent as playVoiceEvent } from '../../utils/voicePackPlayer';
 import { buildChunksForAnswer, buildBracketPasteSubmitChunks, BRACKET_PASTE_SUBMIT_SETTLE_MS } from '../../utils/ptyChunkBuilder';
 import { isPlanApprovalPrompt, isDangerousOperationPrompt, pickPlanApproveOptionNumber } from '../../utils/promptClassifier';
 import { resolvePlanAutoApproveTarget, sdkPlanMatchesView } from '../../utils/planAutoApprove';
+import { startDeadlineCountdown } from '../../utils/deadlineCountdown';
 import { reportSwallowed } from '../../utils/errorReport';
 import { isImageFile } from '../../utils/commandValidator';
 import { loadExpandedPaths, saveExpandedPaths } from '../../utils/fileExpandedPathsStorage';
@@ -400,9 +401,14 @@ class ChatView extends React.Component {
     this._currentLastPendingPlanId = null;
     this._resolvedPlanIds = new Set();
     this._lastObservedLpid = null;
-    // 「Plan 自动审批」倒计时：_planAutoTimer 当前 setInterval 句柄；_planAutoCancelled 记录用户手动取消过的 plan id（避免取消后又重启）。
+    // 「Plan 自动审批」倒计时：_planAutoTimer 为 deadlineCountdown 的 stop() 句柄；
     this._planAutoTimer = null;
     this._planAutoCancelled = new Set();
+    // 权限审批的服务端倒计时取消记录（perm-hook-auto-cancel）：保持 pending 供手动决定，重放/重连不重武装。
+    this._permAutoCancelled = new Set();
+    // WS 断开时被清掉的 pending 快照（仅留 id/auto 字段）——open 时据此补发用户已点过
+    // 但断线没能送达的取消（否则服务端兜底计时器仍会在到点自动批准）。
+    this._prunedPendings = { plan: null, perm: null };
     // Plan V2 文件型 plan 的异步内容缓存（input.planFilePath → 文件正文）
     this._planFileFetches = new Set();
     this._streamSpinnerUrl = props.isStreaming
@@ -790,7 +796,7 @@ class ChatView extends React.Component {
       // attach/replay can surface the pending request again in its owning view.
       this._clearPlanAutoApprove();
       this.setState({ pendingPlanApproval: null, pendingPtyPlan: null, planAutoApproveCountdown: null });
-      if (viewSwitched || planLostView) this._planAutoCancelled.clear();
+      if (viewSwitched || planLostView) { this._planAutoCancelled.clear(); this._permAutoCancelled.clear(); }
       // Pinned sdk-error rows belong to the previous view's workspace/instance.
       this._clearSdkErrors();
     }
@@ -883,6 +889,7 @@ class ChatView extends React.Component {
             allow: this.handlePermissionAllow,
             allowSession: this.props.sdkMode ? this.handlePermissionAllowSession : null,
             deny: this.handlePermissionDeny,
+            cancelAutoApprove: this.state.pendingPermission?.source === 'pty' ? null : this.cancelPermissionAutoApprove,
           },
         });
       } else {
@@ -970,6 +977,21 @@ class ChatView extends React.Component {
         }
       } catch {}
     }
+    // Perm auto-approve lifecycle: turning the setting OFF mid-countdown must destroy
+    // the server-side fallback timer too (explicit off = keep for manual review),
+    // symmetric to the plan path below. Queued requests each armed their own server
+    // timer at arrival, so cancel every queued id too, not just the displayed one.
+    if (prevProps.autoApproveSeconds !== this.props.autoApproveSeconds && !this.props.autoApproveSeconds) {
+      const cur = this.state.pendingPermission;
+      if (cur?.id && cur.source !== 'pty' && !cur.autoCancelled) {
+        this.cancelPermissionAutoApprove(cur.id);
+      }
+      for (const q of this.state.permissionQueue || []) {
+        if (q?.id && q.source !== 'pty' && !q.autoCancelled && !this._permAutoCancelled.has(q.id)) {
+          this.cancelPermissionAutoApprove(q.id);
+        }
+      }
+    }
     // Plan auto-approve lifecycle: PTY and SDK share one timer, but only the active
     // transport's pending plan in the current view may be approved.
     {
@@ -991,19 +1013,44 @@ class ChatView extends React.Component {
       const prevPlanId = prevTarget?.id ?? null;
       const planChanged = prevPlanId !== curPlanId || prevTarget?.channel !== curTarget?.channel;
       const enableChanged = prevProps.planAutoApproveSeconds !== this.props.planAutoApproveSeconds;
+      // The SDK pending entry carries the server-side deadline; PTY plans have none
+      // (keystroke injection stays a client-side affair).
+      const curPlan = curTarget?.channel === 'sdk' ? this.state.pendingPlanApproval : null;
+      const curAuto = {
+        autoApproveAt: curPlan?.autoApproveAt ?? null,
+        autoApproveSeconds: curPlan?.autoApproveSeconds ?? null,
+        autoCancelled: curPlan?.autoCancelled === true,
+      };
       // Retain cancellation until this plan is resolved, so another plan or a
       // later attach replay cannot silently turn it back into an auto-approval.
       if (planChanged || enableChanged) {
-        if (!curTarget || !this.props.planAutoApproveSeconds) {
+        if (!curTarget) {
           this._clearPlanAutoApprove();
-        } else if (planChanged) {
-          this._clearPlanAutoApprove();
-          this._startPlanAutoApprove(curTarget.id, curTarget.channel);
+        } else if (enableChanged && !this.props.planAutoApproveSeconds) {
+          // Preference switched off mid-countdown: destroy the server-side timer too
+          // (explicit off = keep the plan for manual review).
+          this.cancelPlanAutoApprove();
         } else if (enableChanged) {
-          // Apply the latest preference even while a countdown is active. A cancelled
-          // plan remains guarded inside _startPlanAutoApprove.
+          // 偏好换档（含关→开、N→-1）：帧里的 autoApproveSeconds 是请求到达时的快照，
+          // 会盖住刚改的新档位。换档时以 props 为准重新武装（deadline 取服务端截止与
+          // 新档的较早者），否则"刚点开却没反应"体感像坏了。
           this._clearPlanAutoApprove();
-          this._startPlanAutoApprove(curTarget.id, curTarget.channel);
+          const newSec = this.props.planAutoApproveSeconds;
+          const serverDeadline = curAuto.autoApproveAt;
+          const localDeadline = newSec > 0 ? Date.now() + newSec * 1000 : null;
+          const deadline = (serverDeadline > 0 && localDeadline)
+            ? Math.min(serverDeadline, localDeadline)
+            : (localDeadline ?? serverDeadline);
+          this._startPlanAutoApprove(curTarget.id, curTarget.channel, {
+            autoApproveAt: deadline,
+            autoApproveSeconds: newSec, // props 优先（覆盖帧快照）
+            autoCancelled: curAuto.autoCancelled,
+          });
+        } else {
+          // planChanged：以最新服务器截止/档位重新武装。
+          // A cancelled plan remains guarded inside _startPlanAutoApprove.
+          this._clearPlanAutoApprove();
+          this._startPlanAutoApprove(curTarget.id, curTarget.channel, curAuto);
         }
       }
     }
@@ -1217,7 +1264,7 @@ class ChatView extends React.Component {
     this._unmounted = true;
     this._slashSkillsSeq++; // invalidate any in-flight /api/skills pull so it never setStates post-unmount
     this._splitDrag.dispose();
-    if (this._planAutoTimer) { clearInterval(this._planAutoTimer); this._planAutoTimer = null; }
+    if (this._planAutoTimer) { this._planAutoTimer(); this._planAutoTimer = null; } // deadlineCountdown stop()
     // 缓发超时 timer + 残留上传占位的 objectURL 清扫(卸载中 drain/超时回调已各自 _unmounted 守卫)。
     clearTimeout(this._sendDeferTimer);
     for (const u of (this.state.uploadingItems || [])) { if (u.previewUrl) { try { URL.revokeObjectURL(u.previewUrl); } catch {} } }
@@ -2709,29 +2756,63 @@ class ChatView extends React.Component {
         } else if (msg.type === 'sdk-plan-pending') {
           // An auto-action must never target a plan from another viewed workspace/instance.
           if (!this._sdkFrameMatchesView(msg)) return;
+          if (msg.autoCancelled) this._planAutoCancelled.add(msg.id);
           this.setState({ pendingPlanApproval: {
             id: msg.id, input: msg.input, cwd: msg.cwd || null,
             project: msg.project || null, instanceKey: msg.instanceKey || null,
+            autoApproveAt: msg.autoApproveAt ?? null,
+            autoApproveSeconds: msg.autoApproveSeconds ?? null,
+            autoCancelled: msg.autoCancelled === true,
           } });
         } else if (msg.type === 'perm-hook-pending') {
           // 免审批：在请求到达处直接放行，不设 pendingPermission、不入队，从源头绕过
           // ToolApprovalPanel（否则面板会先挂载再于下一 tick 自动批准，残留一帧 + 200ms
           // 退场动画的闪烁）。ws 未连通时 autoAllow 返回 false → 回落到正常面板/队列路径，
           // 保持请求可见可恢复（重连服务端会重放），不静默丢成 timeout-deny。
-          const instantAllowed = this.props.autoApproveSeconds === AUTO_APPROVE_INSTANT
+          // 已取消服务端倒计时的请求不再即时直放（用户显式要求手动审）。
+          // 服务器 stamp 的档位（含 0=off / npm publish 硬闸 / fork 语义）优先于本地
+          // 全局偏好——loopback 客户端的 /api/preferences 不做 fork 解析，本地 prop 可能与
+          // 服务器为该请求实际计算的档位不一致；以服务器为准才能守住 publish 硬闸与 fork-off。
+          const effAutoSeconds = (msg.autoApproveSeconds != null) ? msg.autoApproveSeconds : this.props.autoApproveSeconds;
+          const instantAllowed = msg.autoCancelled !== true
+            && !this._permAutoCancelled.has(msg.id)
+            && effAutoSeconds === AUTO_APPROVE_INSTANT
             && this._permission.autoAllow({ id: msg.id });
           if (!instantAllowed) {
             // Queue support: if a permission panel is already showing, queue the new one
             this.setState(state => {
               if (state.pendingPermission?.id === msg.id || state.permissionQueue.some((entry) => entry.id === msg.id)) return null;
+              const autoFields = {
+                autoApproveAt: msg.autoApproveAt ?? null,
+                autoApproveSeconds: msg.autoApproveSeconds ?? null,
+                autoCancelled: msg.autoCancelled === true,
+              };
+              if (msg.autoCancelled) this._permAutoCancelled.add(msg.id);
               if (state.pendingPermission) {
-                return { permissionQueue: [...state.permissionQueue, { id: msg.id, toolName: msg.toolName, input: msg.input }] };
+                return { permissionQueue: [...state.permissionQueue, { id: msg.id, toolName: msg.toolName, input: msg.input, ...autoFields }] };
               }
-              return { pendingPermission: { id: msg.id, toolName: msg.toolName, input: msg.input } };
+              return { pendingPermission: { id: msg.id, toolName: msg.toolName, input: msg.input, ...autoFields } };
+            });
+          }
+        } else if (msg.type === 'perm-hook-auto-cancel') {
+          // 服务端/其他端取消了自动审批倒计时：保持 pending 供手动决定，本地不再武装。
+          if (msg.id) {
+            this._permAutoCancelled.add(msg.id);
+            this.setState(state => {
+              if (state.pendingPermission?.id === msg.id) {
+                return { pendingPermission: { ...state.pendingPermission, autoCancelled: true, autoApproveAt: null } };
+              }
+              const q = state.permissionQueue;
+              const idx = q.findIndex((p) => p.id === msg.id);
+              if (idx < 0) return null;
+              const nextQ = q.slice();
+              nextQ[idx] = { ...nextQ[idx], autoCancelled: true, autoApproveAt: null };
+              return { permissionQueue: nextQ };
             });
           }
         } else if (msg.type === 'perm-hook-timeout') {
           // Timeout carries id — only clear if it matches the active request, or remove from queue
+          if (msg.id) this._permAutoCancelled.delete(msg.id);
           this.setState(state => {
             if (msg.id && state.pendingPermission?.id === msg.id) {
               const next = state.permissionQueue[0] || null;
@@ -2745,6 +2826,7 @@ class ChatView extends React.Component {
           });
         } else if (msg.type === 'perm-hook-resolved') {
           // 另一端已审批，清除本端面板 or remove from queue
+          if (msg.id) this._permAutoCancelled.delete(msg.id);
           this.setState(state => {
             if (state.pendingPermission?.id === msg.id) {
               const next = state.permissionQueue[0] || null;
@@ -2960,6 +3042,12 @@ class ChatView extends React.Component {
   _onTerminalWsState = (state) => {
     if (state === 'open') {
       this._askFlow.onWsOpen();
+      // 断线期间没发出去的取消在重连时补发（服务端计时器需被销毁）。
+      this._resendPendingAutoCancels();
+      // WS 恢复后重武装计划倒计时：此前 _startPlanAutoApprove 在 ws 未 OPEN 时静默
+      // 放弃且无重试（偶发"不自动审批"的来源之一）。服务端的 autoApproveAt 会随
+      // 重放帧到达并覆盖；这里用 state 里已有的字段武装一次兜底。
+      this._rearmPlanAutoApproveOnOpen();
       return;
     }
     if (state !== 'close') return;
@@ -2983,6 +3071,13 @@ class ChatView extends React.Component {
     if (this.state.pendingPermission || this.state.pendingPlanApproval || this.state.pendingAsk
         || this.state.pendingPtyPlan || this.state.askQueue?.length || this.state.queuedMessages?.length
         || this.state.optimisticQueueMessages?.length) {
+      // 快照 plan/perm 的 id + auto 字段（state 即将清空），供 open 时补发取消。
+      const plan = this.state.pendingPlanApproval;
+      const perm = this.state.pendingPermission;
+      this._prunedPendings = {
+        plan: plan?.id ? { id: plan.id, cwd: plan.cwd || null, project: plan.project || null, instanceKey: plan.instanceKey || null } : null,
+        perm: perm?.id && perm.source !== 'pty' ? { id: perm.id } : null,
+      };
       this.setState({ pendingPermission: null, permissionQueue: [], pendingPlanApproval: null, pendingAsk: null, askQueue: [], askMetaMap: {}, pendingPtyPlan: null, queuedMessages: [], optimisticQueueMessages: [] });
       this._clearOptimisticQueueSweepTimer();
     }
@@ -2992,32 +3087,88 @@ class ChatView extends React.Component {
 
   // Plan auto-approve: after a short countdown, approve the pending plan unless cancelled.
   // ChatView is the only timer and WS owner; desktop/mobile panels only display its state.
-  _startPlanAutoApprove = (planId, channel) => {
+  //
+  // Deadline-driven (wall-clock): when the server armed its own fallback timer the frame
+  // carries `autoApproveAt` — the client counts down to that absolute deadline (replays
+  // show the REMAINING time instead of restarting a full countdown) and fires at the
+  // deadline, while the server's own timer fires 1s later as the no-client fallback.
+  // Background-tab timer throttling no longer stalls the countdown (Date.now() deltas).
+  _startPlanAutoApprove = (planId, channel, { autoApproveAt = null, autoApproveSeconds = null, autoCancelled = false } = {}) => {
     if (this._planAutoTimer) return;                                   // 已在倒计时
-    const seconds = this.props.planAutoApproveSeconds;                 // 0=off / N=countdown seconds / -1=instant
+    const seconds = autoApproveSeconds ?? this.props.planAutoApproveSeconds; // 0=off / N=countdown seconds / -1=instant
     if (!seconds) return;                                              // 0/undefined → manual approval
-    if (!planId || this._planAutoCancelled.has(planId)) return;        // A cancelled plan never re-arms
+    if (!planId || autoCancelled || this._planAutoCancelled.has(planId)) return; // A cancelled plan never re-arms
+    if (seconds === AUTO_APPROVE_INSTANT && !(autoApproveAt > 0)) {
+      const wsInstant = this._inputWs;
+      if (!wsInstant || wsInstant.readyState !== WebSocket.OPEN) return; // 断线时让服务端兜底
+      this._firePlanAutoApprove(planId, channel);
+      return;
+    }
+    // WS 未就绪时不武装本地计时器——服务端的兜底计时器（若有）会接管；open 时会重武装。
     const ws = this._inputWs;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;               // WS must be ready before starting
-    if (seconds === AUTO_APPROVE_INSTANT) { this._firePlanAutoApprove(planId, channel); return; } // Instant approval without a countdown
-    let remaining = seconds;
-    this.setState({ planAutoApproveCountdown: remaining });
-    this._planAutoTimer = setInterval(() => {
-      remaining -= 1;
-      if (remaining <= 0) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const deadline = (typeof autoApproveAt === 'number' && autoApproveAt > 0)
+      ? autoApproveAt
+      : Date.now() + seconds * 1000;
+    // 已过期的 deadline：startDeadlineCountdown 会同步 fire，此时 _planAutoTimer 还是
+    // null（赋值在返回后才发生），_clearPlanAutoApprove 清不掉、随后存进来的 noop stop
+    // 会谎称"倒计时进行中"挡住 open 重武装。已过期就不武装——服务端兜底计时器会接管。
+    if (deadline <= Date.now()) return;
+    this._planAutoTimer = startDeadlineCountdown({
+      deadlineMs: deadline,
+      onTick: (s) => { if (!this._unmounted) this.setState({ planAutoApproveCountdown: s }); },
+      onExpire: () => {
         this._clearPlanAutoApprove();
         this._firePlanAutoApprove(planId, channel);
-      } else {
-        this.setState({ planAutoApproveCountdown: remaining });
-      }
-    }, 1000);
+      },
+    });
   };
 
   _clearPlanAutoApprove = () => {
-    if (this._planAutoTimer) { clearInterval(this._planAutoTimer); this._planAutoTimer = null; }
+    if (this._planAutoTimer) { this._planAutoTimer(); this._planAutoTimer = null; }
     if (!this._unmounted && this.state.planAutoApproveCountdown != null) {
       this.setState({ planAutoApproveCountdown: null });
     }
+  };
+
+  // WS 重连后：补发仍处于 pending 的 SDK 计划/权限的取消（服务端兜底计时器需被销毁）。
+  // state 在 close 时已清空，所以用 close 时快照的 _prunedPendings + 当前 state 两路取 id。
+  _resendPendingAutoCancels = () => {
+    const ws = this._inputWs;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const plan = this.state.pendingPlanApproval || this._prunedPendings.plan;
+    if (plan?.id && this._planAutoCancelled.has(plan.id)) {
+      try {
+        ws.send(JSON.stringify({
+          type: 'sdk-plan-auto-cancel', id: plan.id,
+          cwd: plan.cwd || null, project: plan.project || null,
+          instanceKey: plan.instanceKey || null,
+        }));
+      } catch (err) { reportSwallowed('chatview.plan-auto-cancel-resend', err); }
+    }
+    const perm = this.state.pendingPermission || this._prunedPendings.perm;
+    if (perm?.id && perm.source !== 'pty' && this._permAutoCancelled.has(perm.id)) {
+      try { ws.send(JSON.stringify({ type: 'perm-hook-auto-cancel', id: perm.id })); } catch (err) { reportSwallowed('chatview.perm-auto-cancel-resend', err); }
+    }
+  };
+
+  // WS 重连后重武装计划倒计时（此前 ws 未 OPEN 时 _startPlanAutoApprove 静默放弃）。
+  _rearmPlanAutoApproveOnOpen = () => {
+    if (this._planAutoTimer) return;
+    const target = resolvePlanAutoApproveTarget({
+      sdkMode: this.props.sdkMode,
+      pendingPlanApproval: this.state.pendingPlanApproval,
+      pendingPtyPlan: this.state.pendingPtyPlan,
+      viewProject: this.props.viewProject || this.props.projectName || '',
+      viewInstance: this.props.viewInstance || null,
+    });
+    if (!target) return;
+    const plan = target.channel === 'sdk' ? this.state.pendingPlanApproval : null;
+    this._startPlanAutoApprove(target.id, target.channel, {
+      autoApproveAt: plan?.autoApproveAt ?? null,
+      autoApproveSeconds: plan?.autoApproveSeconds ?? null,
+      autoCancelled: plan?.autoCancelled === true,
+    });
   };
 
   _firePlanAutoApprove = (planId, channel) => {
@@ -3067,6 +3218,17 @@ class ChatView extends React.Component {
       }
     }
     this._clearPlanAutoApprove();
+  };
+
+  // 权限审批的倒计时取消：标记本地不重武装、面板保持打开供手动决定、通知服务端销毁兜底计时器。
+  cancelPermissionAutoApprove = (id) => {
+    if (!id) return;
+    this._permAutoCancelled.add(id);
+    const cur = this.state.pendingPermission;
+    if (cur?.id === id) {
+      this.setState({ pendingPermission: { ...cur, autoCancelled: true, autoApproveAt: null } });
+    }
+    if (cur?.source !== 'pty') this._permission.cancelAutoApprove(id);
   };
 
   handlePromptOptionClick = (number) => {
@@ -4724,6 +4886,10 @@ class ChatView extends React.Component {
                 onDeny={this.handlePermissionDeny}
                 visible={!!this.state.pendingPermission}
                 autoApproveSeconds={this.props.autoApproveSeconds}
+                autoApproveSecondsServer={this.state.pendingPermission?.autoApproveSeconds ?? null}
+                autoApproveAt={this.state.pendingPermission?.autoApproveAt ?? null}
+                autoCancelled={this.state.pendingPermission?.autoCancelled === true}
+                onCancelAutoApprove={this.state.pendingPermission?.source === 'pty' ? null : this.cancelPermissionAutoApprove}
                 onAutoApproveChange={this.props.onAutoApproveChange}
                 source={this.state.pendingPermission?.source}
                 queueDepth={this.state.permissionQueue.length}

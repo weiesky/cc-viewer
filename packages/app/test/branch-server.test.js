@@ -247,14 +247,19 @@ try {
       {
         id: 'plan-a', kind: 'plan',
         replay: { type: 'sdk-plan-pending', id: 'plan-a', input: { plan: 'plan A' }, cwd: '/work/project-a', instanceKey: 'instance-a' },
+        // Server-side auto-approve countdown state — replayed so a fresh client
+        // renders the REMAINING time instead of re-arming a full countdown.
+        autoApproveAt: 4102444800000, autoApproveSeconds: 30, autoCancelled: false,
       },
       {
         id: 'plan-b', kind: 'plan',
         replay: { type: 'sdk-plan-pending', id: 'plan-b', input: { plan: 'plan B' }, cwd: '/work/project-b', instanceKey: 'instance-b' },
+        autoApproveAt: null, autoApproveSeconds: 10, autoCancelled: true,
       },
       {
         id: 'perm-b', kind: 'perm',
         replay: { type: 'perm-hook-pending', id: 'perm-b', input: {}, cwd: '/work/project-b', instanceKey: 'instance-b' },
+        autoApproveAt: 4102444800000, autoApproveSeconds: 3, autoCancelled: false,
       },
     ]);
     const ws = new WebSocket('ws://127.0.0.1:' + port + '/ws/terminal?token=' + tok + '&project=project-a&instance=instance-a');
@@ -298,6 +303,17 @@ try {
       || attachedPlans.filter((m) => m.id === 'plan-a').length !== 2
       || frames.some((m) => m.type === 'perm-hook-pending' || m.type === 'sdk-ask-pending')) {
       console.error('SDK_APPROVAL_ATTACH_MISMATCH ' + JSON.stringify({ afterOtherView, attachedPlans, frames }));
+      process.exit(4);
+    }
+    // 重放必须透传服务端兜底计时器状态：autoApproveAt/autoApproveSeconds/autoCancelled，
+    // 让重连客户端渲染剩余时间（而不是重置满额）并尊重已取消状态。
+    if (restored.autoApproveAt !== 4102444800000 || restored.autoApproveSeconds !== 30 || restored.autoCancelled !== false) {
+      console.error('SDK_APPROVAL_AUTO_FIELDS_MISMATCH ' + JSON.stringify({ restored }));
+      process.exit(4);
+    }
+    const planB = attachedPlans.find((m) => m.id === 'plan-b');
+    if (!planB || planB.autoApproveAt !== null || planB.autoCancelled !== true) {
+      console.error('SDK_APPROVAL_AUTO_CANCELLED_MISMATCH ' + JSON.stringify({ planB }));
       process.exit(4);
     }
   } else if (scenario === 'sdkQueueWs') {

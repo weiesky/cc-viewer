@@ -179,7 +179,7 @@ describe('ChatView SDK plan auto-approval runtime behavior', () => {
   });
 
   it('sends an SDK answer at countdown expiry, never PTY keystrokes', () => {
-    mock.timers.enable({ apis: ['setInterval'] });
+    mock.timers.enable({ apis: ['setInterval', 'Date'] });
     const view = makeView(3);
     receivePlan(view);
     assert.equal(view.state.planAutoApproveCountdown, 3);
@@ -218,11 +218,15 @@ describe('ChatView SDK plan auto-approval runtime behavior', () => {
     changeSeconds(view, 0);
     assert.equal(view._planAutoTimer, null);
     assert.equal(view.state.planAutoApproveCountdown, null);
-    assert.deepEqual(sent, []);
+    // 偏好关闭 = 显式取消：销毁服务端兜底计时器（sdk-plan-auto-cancel），而非仅本地停止。
+    assert.deepEqual(sent, [{
+      type: 'sdk-plan-auto-cancel', id: 'plan-1',
+      cwd: '/work/project-a', project: null, instanceKey: 'instance-a',
+    }]);
   });
 
   it('does not re-arm a cancelled plan after disconnect/replay', () => {
-    mock.timers.enable({ apis: ['setInterval'] });
+    mock.timers.enable({ apis: ['setInterval', 'Date'] });
     const view = makeView(3);
     receivePlan(view);
     view.cancelPlanAutoApprove();
@@ -235,6 +239,57 @@ describe('ChatView SDK plan auto-approval runtime behavior', () => {
     mock.timers.tick(5000);
     assert.deepEqual(sent, []);
     assert.equal(view.state.pendingPlanApproval.id, 'plan-1');
+  });
+
+  it('counts down from the server deadline (autoApproveAt), not a fresh local countdown', () => {
+    mock.timers.enable({ apis: ['setInterval', 'Date'] });
+    const view = makeView(30);
+    // 服务端 1s 前到达的请求，N=30 → autoApproveAt = now + 29s：重放显示剩余而非满额 30。
+    const deadline = Date.now() + 29_000;
+    receivePlan(view, 'plan-1', { autoApproveAt: deadline, autoApproveSeconds: 30 });
+    assert.equal(view.state.planAutoApproveCountdown, 29);
+    mock.timers.tick(2000);
+    update(view, view.state);
+    assert.equal(view.state.planAutoApproveCountdown, 27);
+    // 到点（deadline 处）自动批准
+    mock.timers.tick(27_000);
+    update(view, view.state);
+    assert.deepEqual(sent, [{ type: 'sdk-plan-answer', id: 'plan-1', approve: true }]);
+  });
+
+  it('a replayed autoCancelled plan never arms the countdown', () => {
+    mock.timers.enable({ apis: ['setInterval', 'Date'] });
+    const view = makeView(10);
+    receivePlan(view, 'plan-1', { autoApproveAt: Date.now() + 10_000, autoApproveSeconds: 10, autoCancelled: true });
+    assert.equal(view._planAutoTimer, null);
+    assert.equal(view.state.planAutoApproveCountdown, null);
+    assert.equal(view._planAutoCancelled.has('plan-1'), true);
+    mock.timers.tick(20_000);
+    update(view, view.state);
+    assert.equal(sent.some((m) => m.type === 'sdk-plan-answer'), false);
+  });
+
+  it('re-arms the countdown on WS open after the pending plan survived a close', () => {
+    mock.timers.enable({ apis: ['setInterval', 'Date'] });
+    const view = makeView(5);
+    receivePlan(view);
+    // 模拟 ws 断开后再开：open 重武装仍在 pending 的计划
+    view._clearPlanAutoApprove();
+    assert.equal(view._planAutoTimer, null);
+    view._onTerminalWsState('open');
+    assert.ok(view._planAutoTimer, 'open must re-arm the countdown');
+    assert.equal(view.state.planAutoApproveCountdown, 5);
+  });
+
+  it('does not re-arm on open after the plan was resolved', () => {
+    mock.timers.enable({ apis: ['setInterval', 'Date'] });
+    const view = makeView(5);
+    receivePlan(view);
+    const prev = view.state;
+    view.setState({ pendingPlanApproval: null });
+    update(view, prev);
+    view._onTerminalWsState('open');
+    assert.equal(view._planAutoTimer, null);
   });
 
   it('does not approve a replayed background plan before view hydration', () => {
@@ -251,7 +306,7 @@ describe('ChatView SDK plan auto-approval runtime behavior', () => {
   });
 
   it('keeps an explicit cancellation after another plan activates and this plan replays', () => {
-    mock.timers.enable({ apis: ['setInterval'] });
+    mock.timers.enable({ apis: ['setInterval', 'Date'] });
     const view = makeView(3);
     receivePlan(view, 'plan-a');
     view.cancelPlanAutoApprove();
@@ -281,7 +336,7 @@ describe('ChatView SDK plan auto-approval runtime behavior', () => {
   });
 
   it('cancels the old timer when another client resolves the plan', () => {
-    mock.timers.enable({ apis: ['setInterval'] });
+    mock.timers.enable({ apis: ['setInterval', 'Date'] });
     const view = makeView(3);
     receivePlan(view);
     const previousState = view.state;
@@ -295,7 +350,7 @@ describe('ChatView SDK plan auto-approval runtime behavior', () => {
   });
 
   it('honors a switch to instant approval during an active countdown', () => {
-    mock.timers.enable({ apis: ['setInterval'] });
+    mock.timers.enable({ apis: ['setInterval', 'Date'] });
     const view = makeView(30);
     receivePlan(view);
     changeSeconds(view, -1);
@@ -322,7 +377,7 @@ describe('ChatView SDK plan auto-approval runtime behavior', () => {
   });
 
   it('stops auto-approval when the plan leaves the current view', () => {
-    mock.timers.enable({ apis: ['setInterval'] });
+    mock.timers.enable({ apis: ['setInterval', 'Date'] });
     const view = makeView(3);
     receivePlan(view);
     changeView(view, 'project-b', 'instance-b');
@@ -348,9 +403,52 @@ describe('ChatView SDK plan auto-approval runtime behavior', () => {
   });
 });
 
+describe('perm-hook-pending instant interception honors the server-stamped level', () => {
+  // 服务器为 fork-off / npm publish 硬闸 stamp autoApproveSeconds:0；loopback 客户端的
+  // 全局偏好不做 fork 解析，可能与服务器档位不一致。即时直放必须以服务器档位为准。
+  function receivePerm(view, owner = {}) {
+    view._onTerminalWsMessage({
+      type: 'perm-hook-pending', id: 'perm-1', toolName: 'Bash', input: { command: 'ls' },
+      cwd: '/work/project-a', instanceKey: 'instance-a', ...owner,
+    });
+  }
+
+  it('server stamps 0 (fork-off / publish) + client pref -1 → NOT instant-allowed', () => {
+    const view = makeView(0);
+    view.props = { ...view.props, autoApproveSeconds: -1 }; // 客户端全局免审批
+    receivePerm(view, { autoApproveSeconds: 0 });            // 服务器说关（publish / fork-off）
+    assert.equal(sent.some((m) => m.type === 'perm-hook-answer'), false, 'server-stamped off must win over the local -1');
+    assert.equal(view.state.pendingPermission?.id, 'perm-1', 'request stays pending for a manual decision');
+  });
+
+  it('server stamps -1 (authoritative instant) → instant-allowed even if local pref is 3', () => {
+    const view = makeView(0);
+    view.props = { ...view.props, autoApproveSeconds: 3 };
+    receivePerm(view, { autoApproveSeconds: -1 });
+    assert.deepEqual(sent, [{ type: 'perm-hook-answer', id: 'perm-1', decision: 'allow' }]);
+    assert.equal(view.state.pendingPermission, null);
+  });
+
+  it('legacy frame without the stamp falls back to the local pref (-1 → instant)', () => {
+    const view = makeView(0);
+    view.props = { ...view.props, autoApproveSeconds: -1 };
+    receivePerm(view, {}); // 无 autoApproveSeconds 字段（老服务器）
+    assert.deepEqual(sent, [{ type: 'perm-hook-answer', id: 'perm-1', decision: 'allow' }]);
+  });
+
+  it('a locally cancelled id is never instant-allowed on a replayed frame', () => {
+    const view = makeView(0);
+    view.props = { ...view.props, autoApproveSeconds: -1 };
+    view._permAutoCancelled.add('perm-1'); // 用户此前已取消（断线前没送达服务器）
+    receivePerm(view, { autoApproveSeconds: -1 });
+    assert.equal(sent.some((m) => m.type === 'perm-hook-answer'), false);
+    assert.equal(view.state.pendingPermission?.autoCancelled, false, 'replay w/o autoCancelled keeps it manual');
+  });
+});
+
 describe('ChatView PTY plan auto-approval lifecycle', () => {
   it('stops the timer and pending plan on a view switch without sending SDK answers', () => {
-    mock.timers.enable({ apis: ['setInterval'] });
+    mock.timers.enable({ apis: ['setInterval', 'Date'] });
     const view = makeView(3);
     view.props = { ...view.props, sdkMode: false, viewProject: 'project-a' };
     view.state = { ...view.state, pendingPtyPlan: { id: 'pty-plan' } };

@@ -29,6 +29,7 @@ const KEYS = [
   'ui.permission.autoApprove.setting',  // 复用:权限自动审批行标签
   'ui.permission.autoApprove.off',      // 复用:关闭档位
   'ui.permission.autoApprove.instant',  // 复用:免审批历史值显示
+  'ui.permission.autoApprove.countdown', // 新增:权限面板服务端倒计时提示
   'ui.approval.settings.planAutoApprove', // 复用:Plan 自动审批行标签
   'ui.terminal.agentTeam',              // 复用:AgentTeam 行标签(终端菜单 + 聊天输入栏快捷菜单)
   'ui.terminal.customShortcuts',        // 复用:AgentTeam 子菜单「自定义快捷方式」入口

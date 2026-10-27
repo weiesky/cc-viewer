@@ -22,6 +22,15 @@ export class PermissionController {
     });
   };
 
+  // 取消服务端+本地自动审批倒计时：approval 保持 pending 供手动决定（不出队）。
+  // PTY(source:'pty') 路径没有服务器计时器，调用方自己挡掉了；这里只发 hook 消息。
+  cancelAutoApprove = (id) => {
+    const ws = this.host.ws();
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'perm-hook-auto-cancel', id }));
+    }
+  };
+
   allow = (id) => {
     const perm = this.host.getState().pendingPermission;
     if (perm?.source === 'pty' && perm.ptyPrompt) {

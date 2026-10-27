@@ -22,7 +22,7 @@ import { describeCli } from './_helpers/cli-tier.mjs';
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 import { request } from 'node:http';
-import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -158,6 +158,12 @@ describeCli('server.js terminal WS long-poll resolution branches (CLI mode)', { 
   let mod, port, base;
 
   before(async () => {
+    // 关闭服务端自动审批兜底计时器：真实服务器下 perm 默认 3s+1s 会先于被测的
+    // 手动 answer/cancel 路径 resolve 掉 long-poll，让用例失真（慢 CI 上尤其如此）。
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({
+      autoApproveSeconds: 0,
+      approvalModal: { planAutoApproveSeconds: 0 },
+    }));
     mod = await import('../server/server.js');
     const srv = await mod.startViewer();
     assert.ok(srv, 'CLI-mode server should start');
@@ -211,6 +217,59 @@ describeCli('server.js terminal WS long-poll resolution branches (CLI mode)', { 
     // B 应收到 resolved 广播
     const resolvedB = await connB.waitFor((m) => m.type === 'perm-hook-resolved' && m.id === permId);
     assert.ok(resolvedB, 'other client (B) should receive perm-hook-resolved broadcast');
+    await connA.close();
+    await connB.close();
+  });
+
+  // ─────────── perm-hook-auto-cancel：取消服务端兜底计时器但保持 pending ───────────
+  it('perm-hook-auto-cancel keeps the entry pending and notifies all clients; later answer still resolves', async () => {
+    const connA = await connectWs(base);
+    const connB = await connectWs(base);
+    const poll = postPermHookLongPoll(port, 'Bash', { command: 'ls' });
+    const pendingA = await connA.waitFor((m) => m.type === 'perm-hook-pending' && m.toolName === 'Bash');
+    const permId = pendingA.id;
+
+    // 取消（不解决）→ B 收到 perm-hook-auto-cancel，entry 仍 pending
+    connA.send({ type: 'perm-hook-auto-cancel', id: permId });
+    const cancelB = await connB.waitFor((m) => m.type === 'perm-hook-auto-cancel' && m.id === permId, 2500);
+    assert.ok(cancelB, 'all clients should receive perm-hook-auto-cancel');
+    // entry 未解决：long-poll 仍挂着，手动 answer 后正常放行
+    connA.send({ type: 'perm-hook-answer', id: permId, decision: 'allow' });
+    const res = await poll.done;
+    assert.equal(res.status, 200);
+    assert.deepEqual(JSON.parse(res.body), { decision: 'allow' });
+    await connA.close();
+    await connB.close();
+  });
+
+  it('perm-hook-auto-cancel with an invalid id format is rejected silently', async () => {
+    const conn = await connectWs(base);
+    const seen = conn.msgs.length;
+    conn.send({ type: 'perm-hook-auto-cancel', id: 'bad id!!' });
+    await wait(200);
+    const got = conn.msgs.slice(seen).filter((m) => m.type === 'perm-hook-auto-cancel');
+    assert.equal(got.length, 0, 'invalid-format id must be dropped');
+    await conn.close();
+  });
+
+  // ─────────── perm-hook 重放：auto 字段透传（含取消后 autoApproveAt=null） ───────────
+  it('a newly connected ws replays a pending perm-hook with its auto-approve fields', async () => {
+    const connA = await connectWs(base);
+    const poll = postPermHookLongPoll(port, 'Bash', { command: 'ls' });
+    const pendingA = await connA.waitFor((m) => m.type === 'perm-hook-pending' && m.toolName === 'Bash');
+    const permId = pendingA.id;
+    // 取消（prefs 关闭档：本就无 autoApproveAt，但 autoCancelled 必须置真并随重放透传）
+    connA.send({ type: 'perm-hook-auto-cancel', id: permId });
+    await connA.waitFor((m) => m.type === 'perm-hook-auto-cancel' && m.id === permId, 2500);
+    // 新连接重放：autoCancelled=true / autoApproveAt=null
+    const connB = await connectWs(base);
+    const replayed = await connB.waitFor((m) => m.type === 'perm-hook-pending' && m.id === permId, 2500);
+    assert.ok(replayed, 'new ws should replay the pending perm-hook');
+    assert.equal(replayed.autoCancelled, true, 'cancelled state must survive replay');
+    assert.equal(replayed.autoApproveAt, null, 'cancelled replay must not carry a deadline');
+    // 清场：手动 answer 收尾
+    connA.send({ type: 'perm-hook-answer', id: permId, decision: 'allow' });
+    await poll.done;
     await connA.close();
     await connB.close();
   });

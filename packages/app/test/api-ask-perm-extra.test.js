@@ -581,6 +581,9 @@ describe('ask-perm: permHook (POST /api/perm-hook)', () => {
   });
 
   it('5min 超时（fake timer 快进）→ res 回 408 Timeout、删 entry、广播 perm-hook-timeout', async (t) => {
+    // 关闭服务端自动审批兜底计时器（perm 默认 3s 会先于此用例断言的 5min 超时 fire）。
+    writeFileSync(join(tmpDir, 'preferences.json'), JSON.stringify({ autoApproveSeconds: 0 }));
+    t.after(() => { try { rmSync(join(tmpDir, 'preferences.json'), { force: true }); } catch {} });
     // PERM_HOOK_TIMEOUT 在源码内硬编码 5*60*1000，无 deps 注入口；用 node:test fake timer 快进。
     t.mock.timers.enable({ apis: ['setTimeout'] });
     const deps = makeDeps();
@@ -599,6 +602,161 @@ describe('ask-perm: permHook (POST /api/perm-hook)', () => {
     assert.equal(res.json.error, 'Timeout');
     assert.equal(deps.pendingPermHooks.has(id), false, 'timeout 后删 entry');
     assert.ok(deps._wss._sent.some(m => m.type === 'perm-hook-timeout' && m.id === id));
+  });
+
+  // ── 服务端自动审批兜底（PTY hook 路径）──
+  const PREFS_FILE = join(tmpDir, 'preferences.json');
+  const prefsOff = () => { try { rmSync(PREFS_FILE, { force: true }); } catch {} };
+
+  it('npm publish 永不走服务端自动批准（即时档也一样）', async (t) => {
+    writeFileSync(PREFS_FILE, JSON.stringify({ autoApproveSeconds: -1 }));
+    t.after(prefsOff);
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const deps = makeDeps({ getPrefsFile: () => PREFS_FILE });
+    const req = makeReq();
+    const res = makeRes();
+    permHookHandler(req, res, { pathname: '/x' }, true, deps);
+    req.emit('data', JSON.stringify({ toolName: 'Bash', input: { command: 'npm publish' } }));
+    req.emit('end');
+    await drainMicro();
+    const id = [...deps.pendingPermHooks.keys()][0];
+    assert.ok(id, 'publish goes to the approval modal (parks), not auto-answered');
+    const pending = deps._wss._sent.find(m => m.type === 'perm-hook-pending' && m.id === id);
+    assert.equal(pending.autoApproveSeconds, 0, 'publish frame stamped off');
+    assert.ok(!pending.autoApproveAt);
+    t.mock.timers.tick(10_000);
+    assert.equal(res.ended, false, 'publish must never auto-fire');
+    clearTimeout(deps.pendingPermHooks.get(id)?.timer);
+    deps.pendingPermHooks.delete(id);
+  });
+
+  it('autoApproveSeconds=-1（即时）→ 同 tick 回 200 allow；帧顺序 pending → resolved', async (t) => {
+    writeFileSync(PREFS_FILE, JSON.stringify({ autoApproveSeconds: -1 }));
+    t.after(prefsOff);
+    const deps = makeDeps({ getPrefsFile: () => PREFS_FILE });
+    const req = makeReq();
+    const res = makeRes();
+    permHookHandler(req, res, { pathname: '/x' }, true, deps);
+    req.emit('data', JSON.stringify({ toolName: 'Bash', input: {} }));
+    req.emit('end');
+    await drainMicro();
+    // 即时档：服务端在广播 pending 后立即自行应答（无需任何客户端）
+    assert.equal(res.status, 200);
+    assert.equal(res.json.decision, 'allow');
+    const types = deps._wss._sent.map(m => m.type);
+    const pi = types.indexOf('perm-hook-pending');
+    const ri = types.indexOf('perm-hook-resolved');
+    assert.ok(pi >= 0 && ri > pi, 'pending must be broadcast before resolved (no ghost panel)');
+    assert.equal(deps._wss._sent[ri].reason, 'auto-approved');
+    assert.equal(deps.pendingPermHooks.size, 0, 'instant fire consumes the entry');
+  });
+
+  it('autoApproveSeconds=1 → pending 帧带 autoApproveAt；兜底计时器到点回 200 allow + 广播 auto-approved', async (t) => {
+    writeFileSync(PREFS_FILE, JSON.stringify({ autoApproveSeconds: 1 }));
+    t.after(prefsOff);
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const deps = makeDeps({ getPrefsFile: () => PREFS_FILE });
+    const req = makeReq();
+    const res = makeRes();
+    permHookHandler(req, res, { pathname: '/x' }, true, deps);
+    req.emit('data', JSON.stringify({ toolName: 'Bash', input: {} }));
+    req.emit('end');
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    const id = [...deps.pendingPermHooks.keys()][0];
+    assert.ok(id, 'entry 应已注册');
+    const pending = deps._wss._sent.find(m => m.type === 'perm-hook-pending' && m.id === id);
+    assert.ok(pending.autoApproveAt > 0, 'pending frame carries the absolute deadline');
+    assert.equal(pending.autoApproveSeconds, 1);
+    // 截止(1s)+buffer(1s) 到点 → 服务端自己应答 allow
+    t.mock.timers.tick(2100);
+    assert.equal(res.status, 200);
+    assert.equal(res.json.decision, 'allow');
+    assert.equal(deps.pendingPermHooks.has(id), false);
+    assert.ok(deps._wss._sent.some(m => m.type === 'perm-hook-resolved' && m.id === id && m.reason === 'auto-approved'));
+  });
+
+  // drivePost 内含 real setTimeout drain，mock timer 下永不 resolve → 这些用例一律裸 emit + 微任务 drain
+  const drainMicro = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
+
+  it('autoApproveSeconds=1 + entry.autoCancelled → 到期不点火（保持 pending 供手动决定）', async (t) => {
+    writeFileSync(PREFS_FILE, JSON.stringify({ autoApproveSeconds: 1 }));
+    t.after(prefsOff);
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const deps = makeDeps({ getPrefsFile: () => PREFS_FILE });
+    const req = makeReq();
+    const res = makeRes();
+    permHookHandler(req, res, { pathname: '/x' }, true, deps);
+    req.emit('data', JSON.stringify({ toolName: 'Bash', input: {} }));
+    req.emit('end');
+    await drainMicro();
+    const id = [...deps.pendingPermHooks.keys()][0];
+    // 模拟 perm-hook-auto-cancel WS 处理器对 PTY-hook entry 的取消
+    const entry = deps.pendingPermHooks.get(id);
+    clearTimeout(entry.auto?.timer);
+    if (entry.auto) entry.auto.cancelled = true;
+    entry.autoCancelled = true;
+    t.mock.timers.tick(5000);
+    assert.equal(res.ended, false, 'cancelled entry must not auto-fire');
+    assert.equal(deps.pendingPermHooks.has(id), true, 'approval stays pending for manual decision');
+    // 清理：mock 下 5min 真实 timer 不会自 fire，手动摘 entry（force-exit 会兜底，但别留悬挂引用）
+    clearTimeout(entry.timer);
+    deps.pendingPermHooks.delete(id);
+  });
+
+  it('autoApproveSeconds=0（关闭）→ pending 帧无 autoApproveAt，到期只走 5min 超时', async (t) => {
+    writeFileSync(PREFS_FILE, JSON.stringify({ autoApproveSeconds: 0 }));
+    t.after(prefsOff);
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const deps = makeDeps({ getPrefsFile: () => PREFS_FILE });
+    const req = makeReq();
+    const res = makeRes();
+    permHookHandler(req, res, { pathname: '/x' }, true, deps);
+    req.emit('data', JSON.stringify({ toolName: 'Bash', input: {} }));
+    req.emit('end');
+    await drainMicro();
+    const id = [...deps.pendingPermHooks.keys()][0];
+    const pending = deps._wss._sent.find(m => m.type === 'perm-hook-pending' && m.id === id);
+    assert.equal(pending.autoApproveAt, undefined);
+    t.mock.timers.tick(60 * 1000);
+    assert.equal(res.ended, false, 'disabled auto-approve must never fire');
+    clearTimeout(deps.pendingPermHooks.get(id)?.timer);
+    deps.pendingPermHooks.delete(id);
+  });
+
+  it('res.close 时清 auto.timer（兜底不再点火）', async (t) => {
+    writeFileSync(PREFS_FILE, JSON.stringify({ autoApproveSeconds: 1 }));
+    t.after(prefsOff);
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const deps = makeDeps({ getPrefsFile: () => PREFS_FILE });
+    const req = makeReq();
+    const res = makeRes();
+    permHookHandler(req, res, { pathname: '/x' }, true, deps);
+    req.emit('data', JSON.stringify({ toolName: 'Bash', input: {} }));
+    req.emit('end');
+    await drainMicro();
+    const id = [...deps.pendingPermHooks.keys()][0];
+    res._fireClose();
+    assert.equal(deps.pendingPermHooks.has(id), false);
+    t.mock.timers.tick(5000);
+    assert.ok(!deps._wss._sent.some(m => m.type === 'perm-hook-resolved' && m.reason === 'auto-approved'));
+  });
+
+  it('body 带 cwd → 走该项目 fork 的 autoApproveSeconds', async (t) => {
+    const forkCwd = '/proj/forked';
+    writeFileSync(PREFS_FILE, JSON.stringify({
+      autoApproveSeconds: 0,
+      prefsByProject: { [forkCwd]: { autoApproveSeconds: 5 } },
+    }));
+    t.after(prefsOff);
+    const deps = makeDeps({ getPrefsFile: () => PREFS_FILE });
+    const res = makeRes();
+    await drivePost(permHookHandler, { toolName: 'Bash', input: {}, cwd: forkCwd }, { deps, res });
+    const id = [...deps.pendingPermHooks.keys()][0];
+    const pending = deps._wss._sent.find(m => m.type === 'perm-hook-pending' && m.id === id);
+    assert.equal(pending.autoApproveSeconds, 5, 'fork 覆盖全局关闭档');
+    clearTimeout(deps.pendingPermHooks.get(id)?.timer);
+    if (deps.pendingPermHooks.get(id)?.auto?.timer) clearTimeout(deps.pendingPermHooks.get(id).auto.timer);
+    deps.pendingPermHooks.delete(id);
   });
 });
 
