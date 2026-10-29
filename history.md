@@ -2,12 +2,17 @@
 
 ## Unreleased
 
+## 1.9.17
+
 - fix(web): **「最新回复」与对话末条重复时整块隐藏** — 当最后一轮回复已回显进对话消息、且与「最新回复」为同一轮（text 正文一致且 tool_use id 序列一致）时，不再重复渲染「最新回复」模块；仅当 LR 不独占任何待审批交互卡片时才隐藏，未回显进对话的最新回复仍正常显示。Coverage: `lr-duplicate-text.test.js`.
 
 - fix(web): **SDK 模式 Plan 审批改用独立 plan 卡片弹窗** — ExitPlanMode 审批复用 PTY 的 planModeBox 卡片样式 + 全局 ApprovalModal 弹窗（批准 / 批准并修改（带反馈）/ 拒绝 + 自动审批倒计时），与权限审批面板彻底分离，不再渲染成权限样式；移除底部权限样式的 SDK plan ToolApprovalPanel（桌面 + 移动端）。决议仍走 sdk-plan-answer 协议不变，PTY 击键通道保持 !sdkMode 硬门控。卡片兜底：plan 弹窗在 transcript 卡片未挂载时（帧先于 transcript / toolUseID 缺失 / scheduled-task）也会渲染可操作的审批表单，不再空体卡死。Coverage: `sdk-plan-approval-guard.test.js`, `plan-auto-approve-runtime.test.js`.
 
 - feat(web+server): **CLAUDE.md / skill 文件浏览器弹窗支持右键菜单与预览编辑** — 此前该弹窗（target 模式）整体只读，右键退化为浏览器原生菜单。现接入与文件资源管理器同一套右键菜单（在系统中展示 / 在终端中打开 / 新建文件 / 新建文件夹 / 复制路径 / 复制相对路径 / 重命名 / 删除），并放开文件预览的内容编辑保存。新增 `/api/target-*` 写路由，从 target 身份服务端重新解析导航根（admin+同源校验、realpath 容器内校验、符号链接拒绝、`isWriteAllowed` 写策略兜底 ~/.claude 凭据/敏感前缀目录/LOG_DIR/备份目录，rename/delete 均做子树扫描防止绕过）；OS「在系统中展示/在终端中打开」逻辑抽取为共享 helper 供项目与 target 路由复用；拖拽 / 上传 / 移动仍保持只读。Coverage: `api-target-files-fs.test.js`, `branch-lib-file-access-policy.test.js`, `file-context-menu.test.js`, `file-context-menu-actions.test.js`, `file-browser-modal.test.js`, `external-folder-targets.test.js`.
 - fix(web): **SDK 模式打开 scratch 终端不再隐藏对话输入框血条** — 血条 portal 宿主的显隐门控与输入框早退改为同一豁免，SDK 模式下血条始终跟随对话输入框、与 scratch 终端开合无关；PTY 模式终端打开时血条仍迁移到终端工具栏。Coverage: `sdk-context-blood-bar.test.js`.
+
+## 1.9.16
+
 - feat(web): **UltraReview 默认文案模版重写** — 预置 `UltraReview` 的实际默认 prompt（`ui.preset.codeReview5.desc`，18 语言）与 codeExpert UltraPlan 模版的审查段同步更新：用带 name 的 Agent teammate 组队（不再依赖 TeamCreate/TeamDelete）、多仓库分任务、修复 P0/P1 并辩证修复 P2（特殊项用 AskUserQuestion 咨询）、完成后逐个通知 teammate 退出。Coverage: `ultraplan-templates.test.js`, `builtin-presets.test.js`.
 - fix(server+web): **计划/权限自动审批倒计时下沉到服务端** — 倒计时从请求到达起算（服务端在用户设定 N 秒上加 1s 兜底），客户端未打开、断连或后台标签节流时也能按时自动批准；客户端「取消自动审批」会销毁服务端计时器并保持待手动审批（权限新增 `perm-hook-auto-cancel`，计划的 `sdk-plan-auto-cancel` 从纯转发改为真实取消）；重放帧携带服务端截止时间与取消状态，重连后显示剩余时间而不是重置满额；客户端倒计时改为 wall-clock 驱动。行为变化：未查看的工作区的待审批请求现在也会按设定自动批准；安全底线：npm publish 与无人值守计划任务（scheduled-task）不走服务端自动批准。PTY 计划（按键注入）仍为客户端路径。Coverage: `auto-approve.test.js`, `sdk-manager-auto-approve.test.js`, `api-ask-perm-extra.test.js`, `server-ws-branches.test.js`, `deadline-countdown.test.js`, `plan-auto-approve-runtime.test.js`, `permission-controller.test.js`.
 - fix(server): **SDK perm/ask 审批帧补 instanceKey + sdk-plan-answer 仅在真正解决后广播** — 多实例视图下权限/提问重放不再因缺 instanceKey 被丢弃（断连后倒计时不再丢失）；`sdk-plan-answer` 对失效/未知 id 不再误关其他端的计划弹窗。Coverage: `branch-server.test.js`, `server-cli-mode.test.js`.
