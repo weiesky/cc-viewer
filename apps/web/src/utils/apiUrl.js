@@ -49,3 +49,17 @@ export function withViewParams(path, { project, instance } = {}) {
   return out;
 }
 
+// Target mode (the CLAUDE.md / skill file-browser modal): append the target
+// identity the server uses to re-derive the navigation root — `kind` plus either
+// `id` (claude-md) or `source` + `targetPath` (skill). These go on the query
+// string so the read route (/api/target-files) and the write routes
+// (/api/target-*) resolve the SAME root. Pure string builder; combine with
+// withViewParams (project/instance) and apiUrl (base/token) at the call site.
+export function withTargetParams(path, target) {
+  if (!target) return path;
+  const params = new URLSearchParams({ kind: target.kind });
+  if (target.kind === 'claude-md') params.set('id', target.id);
+  else { params.set('source', target.source); params.set('targetPath', target.path); }
+  return `${path}${path.includes('?') ? '&' : '?'}${params.toString()}`;
+}
+

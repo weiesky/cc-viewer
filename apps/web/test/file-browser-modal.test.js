@@ -214,8 +214,10 @@ describe('shared context menu wiring (sidebar tree ≡ modal)', () => {
     // isRemote, appending a modal-only item) must fail the suite.
     assert.ok(FILE_EXPLORER.includes('buildFileContextMenuItems({ isDir, isRemote })'),
       'sidebar TreeNode must call the builder with { isDir, isRemote }');
-    assert.ok(FILE_BROWSER_MODAL.includes('buildFileContextMenuItems({ isDir, isRemote })'),
-      'modal must call the builder with the identical { isDir, isRemote }');
+    // The modal threads isTarget so the CLAUDE.md/skill browser omits the
+    // chat-only items; write operations are always offered (server enforces).
+    assert.ok(FILE_BROWSER_MODAL.includes('buildFileContextMenuItems({ isDir, isRemote, isTarget: !!target })'),
+      'modal entry menu must pass isTarget alongside isDir/isRemote');
   });
   it('modal derives isRemote with the same expression as the sidebar', () => {
     assert.ok(FILE_BROWSER_MODAL.includes('preferences?._isLocal === false'),

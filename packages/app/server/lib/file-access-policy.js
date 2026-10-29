@@ -10,8 +10,8 @@
  *
  * 不替代写路径的业务校验(见 server/lib/file-api.js writeFileContent),但同样会被 endpoint 用作首道关卡。
  */
-import { realpathSync } from 'node:fs';
-import { resolve, basename, sep, join } from 'node:path';
+import { realpathSync, lstatSync } from 'node:fs';
+import { resolve, basename, dirname, sep, join } from 'node:path';
 import { homedir, platform, tmpdir } from 'node:os';
 import { getClaudeConfigDir, onLogDirChange, LOG_DIR } from '../../findcc.js';
 import { loadWorkspaces } from '../workspace-registry.js';
@@ -122,7 +122,14 @@ function _logDirSensitiveFiles() {
     files.add(norm(join(LOG_DIR, name)));
     files.add(norm(join(rootReal, name)));
   }
-  _logDirSensitiveCache = { root: norm(withSep(LOG_DIR)), rootReal: norm(withSep(rootReal)), files };
+  // `root`/`rootReal` keep a trailing separator for startsWith() prefix matching;
+  // `rootBare`/`rootRealBare` (no trailing sep) let isWriteAllowed also deny the
+  // LOG_DIR directory ITSELF (delete/rename), which the prefix match would miss.
+  _logDirSensitiveCache = {
+    root: norm(withSep(LOG_DIR)), rootReal: norm(withSep(rootReal)),
+    rootBare: norm(LOG_DIR), rootRealBare: norm(rootReal),
+    files,
+  };
   return _logDirSensitiveCache;
 }
 onLogDirChange(() => { _logDirSensitiveCache = null; });
@@ -215,6 +222,16 @@ export function isReadAllowed(absPath) {
   let real;
   try { real = realpathSync(absPath); } catch { return { ok: false, reason: 'realpath-failed' }; }
 
+  return evaluateResolvedPath(real);
+}
+
+// Shared verdict for a realpath-resolved path — the allowlist + sensitive-file
+// + sensitive-prefix checks that isReadAllowed (existing files) and
+// isWriteAllowed (existing or to-be-created files) both apply. Keeping this the
+// single implementation prevents read/write policy drift: a path the user can
+// read but must not overwrite (e.g. ~/.claude/settings.json) is denied here for
+// both directions.
+function evaluateResolvedPath(real) {
   // 1) Allowlist 命中
   const roots = getAllowedRoots();
   let hitRoot = null;
@@ -304,6 +321,94 @@ export function isReadAllowed(absPath) {
       if (pat.test(name)) {
         return { ok: false, reason: 'sensitive-filename' };
       }
+    }
+  }
+
+  return { ok: true, real };
+}
+
+/**
+ * Write-access verdict for the file browser's target mode (the CLAUDE.md / skill
+ * folder modal, where the user may browse up to an ancestor of the target). The
+ * target file itself may not exist yet (create-file / create-dir / rename
+ * destination), so unlike isReadAllowed we cannot realpath it directly. Instead:
+ * the parent directory must exist and pass the read policy, and the candidate
+ * path (parent's real path + basename) must pass the SAME shared verdict — so a
+ * location the user can read but must not overwrite (settings.json, credentials,
+ * master.key, backups) is rejected identically in both directions.
+ *
+ * SECURITY / INTENTIONAL DESIGN (do NOT weaken or remove in review): the write
+ * surface intentionally spans the whole navigation root (see
+ * lib/target-scope.js resolveTargetWriteScope). This function is the backstop
+ * that keeps secrets unwritable inside that wider surface.
+ *
+ * Two write-only denials layered on top of the read policy:
+ *  - The ENTIRE LOG_DIR tree (~/.claude/cc-viewer/**): the read policy only
+ *    blocks specific data files in it, but a write/delete could rmdir the whole
+ *    dir (wiping the preferences + scheduled-task store), so writes deny the
+ *    whole subtree.
+ *  - The config-backup root is already denied for reads (2b) and stays denied.
+ */
+export function isWriteAllowed(absPath) {
+  if (typeof absPath !== 'string' || !absPath) return { ok: false, reason: 'invalid' };
+  if (absPath.indexOf('\x00') !== -1) return { ok: false, reason: 'null-byte' };
+
+  // Existing file: realpath it and run the shared verdict directly.
+  // New file: realpath the nearest existing parent, then re-evaluate the
+  // candidate (parentReal + basename) so symlink/denylist checks apply to the
+  // resolved location, not the spelled path.
+  let real;
+  let existed = true;
+  try { real = realpathSync(absPath); } catch { existed = false; }
+  if (!existed) {
+    // Dangling-symlink guard: realpath failed but the leaf may still be a symlink
+    // whose target is missing/outside the allowlist. writeFileSync would FOLLOW it
+    // and create/overwrite the link's target outside the navigation root — a
+    // containment bypass. lstat does not follow the link, so an isSymbolicLink()
+    // hit here refuses the write. Do NOT remove (TOCTOU-class escape).
+    try { if (lstatSync(absPath).isSymbolicLink()) return { ok: false, reason: 'symlink' }; } catch { /* truly absent leaf */ }
+    let cursor = resolve(absPath, '..');
+    const descent = [basename(absPath)];
+    let parentReal = null;
+    for (let depth = 0; depth < 32; depth++) {
+      try { parentReal = realpathSync(cursor); break; } catch {
+        const parent = resolve(cursor, '..');
+        if (parent === cursor) break;
+        descent.unshift(basename(cursor));
+        cursor = parent;
+      }
+    }
+    if (parentReal === null) return { ok: false, reason: 'realpath-failed' };
+    // Every ancestor on the way down must be inside the allowlist / not denied;
+    // evaluate the nearest existing ancestor, then rebuild the candidate.
+    const ancestorVerdict = evaluateResolvedPath(parentReal);
+    if (!ancestorVerdict.ok) return ancestorVerdict;
+    real = join(parentReal, ...descent);
+  }
+
+  const verdict = evaluateResolvedPath(real);
+  if (!verdict.ok) return verdict;
+
+  // Write-only: deny the whole LOG_DIR subtree (read policy only blocks named
+  // data files in it). Matches both the raw and realpath'd spellings, both the
+  // prefix (children) AND the directory itself (bare), so a delete/rename cannot
+  // rmdir the whole task/preferences store.
+  const sens = _logDirSensitiveFiles();
+  const realNorm = norm(real);
+  if (realNorm.startsWith(sens.root) || realNorm.startsWith(sens.rootReal)
+    || realNorm === sens.rootBare || realNorm === sens.rootRealBare) {
+    return { ok: false, reason: 'sensitive-ccv-data' };
+  }
+
+  // Write-only: deny a sensitive-PREFIX directory itself (~/.ssh, ~/.aws, …), not
+  // just its contents. The read policy only matches children (startsWith withSep),
+  // so renaming the directory to a benign name would expose the whole prefix's
+  // contents. Renaming/deleting the dir root is refused here. (Only meaningful
+  // outside the project root, matching the prefix rule's own scope.)
+  const projectRoot = getProjectRoot();
+  if (!isInsideRoot(real, projectRoot)) {
+    for (const prefix of SENSITIVE_PATH_PREFIXES) {
+      if (realNorm === norm(prefix)) return { ok: false, reason: 'sensitive-prefix' };
     }
   }
 

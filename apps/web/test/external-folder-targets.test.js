@@ -77,7 +77,7 @@ describe('CLAUDE.md and skill folder-entry wiring', () => {
   });
 });
 
-describe('target-scoped file browser read-only boundaries', () => {
+describe('target-scoped file browser boundaries (menu/preview enabled, drag/upload read-only)', () => {
   it('uses a target listing endpoint and clears state on target/view changes', () => {
     assert.match(browser, /function targetFilesUrl\(target, path\)/);
     assert.match(browser, /params\.set\('targetPath', target\.path\)/);
@@ -92,9 +92,12 @@ describe('target-scoped file browser read-only boundaries', () => {
     assert.match(browser, /const readOnly = isExternal/);
   });
 
-  it('disables every mutation surface, including previews and drag events', () => {
+  it('enables the context menu in target mode but keeps drag/upload read-only', () => {
+    // Product decision: the CLAUDE.md/skill browser's right-click menu AND inline
+    // preview editing are enabled (the server resolves the navigation root and
+    // enforces the write policy). readOnly still gates drag-and-drop / upload /
+    // move — those stay disabled.
     for (const token of [
-      'disabled={readOnly}',
       'draggable={!readOnly}',
       'onDragStart={readOnly ? undefined : handleDragStartRow}',
       'onDragStart={readOnly ? undefined : handleDragStartCell}',
@@ -102,15 +105,22 @@ describe('target-scoped file browser read-only boundaries', () => {
       'if (!readOnly) moveFile(',
       'if (readOnly) return;',
       '{!readOnly && <>',
-      'readOnly={readOnly}',
     ]) assert.ok(browser.includes(token), `missing read-only guard ${token}`);
+    // The context menu is NO LONGER disabled by readOnly — the three Dropdowns
+    // render their items unconditionally; the server enforces the write policy.
+    assert.ok(!browser.includes('items: readOnly ? [] :'),
+      'context-menu Dropdowns must not be emptied by readOnly');
+    assert.ok(!browser.includes('disabled={readOnly}'),
+      'context-menu Dropdowns must not be disabled by readOnly');
+    assert.ok(browser.includes('isTarget: !!target'), 'menu builder must receive isTarget');
+  });
+
+  it('passes the target identity to the editable preview', () => {
+    // Preview editing in target mode needs the target identity so
+    // /api/file-content resolves the navigation root (not the project view root).
+    assert.match(browser, /FileContentView filePath=\{previewFile\}.*target=\{target\}.*readOnly=\{false\}/);
+    assert.match(viewer, /withTargetParams\('\/api\/file-content', target\)/);
     assert.match(viewer, /readOnly = false/);
-    assert.match(viewer, /!mdxParseErrored && !readOnly/);
-    assert.match(viewer, /if \(readOnly \|\| !isDirty\) return/);
-    assert.match(viewer, /readOnly=\{readOnly\}/);
-    assert.match(viewer, /editable=\{!readOnly\}/);
-    assert.match(viewer, /\{!readOnly && <button/);
-    assert.match(viewer, /if \(readOnly\) return;\n    setCurrentContent/);
   });
 
   it('uses authorized absolute paths for previews and direct download, not OS open', () => {
@@ -119,7 +129,7 @@ describe('target-scoped file browser read-only boundaries', () => {
     assert.match(browser, /isSystemOpenFile\(item\.name\)\) downloadFile\(itemPath/);
     assert.match(browser, /else setPreviewFile\(itemPath\)/);
     assert.match(browser, /encodeURIComponent\(item\.absPath \|\| childPath\)/);
-    assert.match(browser, /FileContentView filePath=\{previewFile\}.*readOnly=\{readOnly\}/);
+    assert.match(browser, /FileContentView filePath=\{previewFile\}.*readOnly=\{false\}/);
     assert.match(browser, /zIndex=\{zIndex \+ 20\}/);
     assert.match(browser, /styles\.treePaneMobile/);
   });

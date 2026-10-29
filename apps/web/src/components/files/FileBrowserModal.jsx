@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, useContext } from 'react';
 import { Modal, Dropdown } from 'antd';
 import { t } from '../../i18n';
-import { apiUrl, withViewParams } from '../../utils/apiUrl';
+import { apiUrl, withViewParams, withTargetParams } from '../../utils/apiUrl';
 import { getFileIcon } from '../../utils/fileIcons';
 import { isImageFile } from '../../utils/commandValidator';
 import { tryOpenWithSystem, isSystemOpenFile } from '../../utils/fileOpen';
@@ -150,17 +150,24 @@ function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNav
 
   // Right-click menu — identical definition/actions as the sidebar tree, with
   // rename via Modal.confirm (the modal has no inline-edit infrastructure).
+  // Enabled in target mode too (product decision); the server enforces the write
+  // policy, so the client offers every action and lets the server reject what the
+  // location may not mutate.
   // Rendered inside the Modal, so antd's zIndexContext stacks the dropdown
   // above it automatically (1100 + 50 = 1150; do not hardcode overlayStyle).
   const contextMenuItems = useMemo(
-    () => buildFileContextMenuItems({ isDir, isRemote }),
-    [isDir, isRemote]);
+    () => buildFileContextMenuItems({ isDir, isRemote, isTarget: !!target }),
+    [isDir, isRemote, target]);
   const handleMenuClick = useMemo(
     () => createFileMenuHandler({
       path: childPath, name: item.name, isDir, renameMode: 'modal',
-      onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance,
+      onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance, target,
+      // Target entries carry absPath; download it so a navigation-root-relative
+      // childPath is never misresolved against the project view root (matches the
+      // grid cell's download wiring).
+      onDownload: (p, n) => downloadFile(item.absPath || p, n, project, instance),
     }),
-    [childPath, item.name, isDir, onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance]);
+    [childPath, item.name, item.absPath, isDir, onFileRenamed, onAttachToChat, onInsertPathToChat, project, instance, target]);
 
   // Drop target: external OS files import into THIS directory (a file row
   // means its parent — sidebar parity); in-project entries
@@ -188,7 +195,7 @@ function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNav
 
   return (
     <>
-      <Dropdown menu={{ items: readOnly ? [] : contextMenuItems, onClick: handleMenuClick }} trigger={['contextMenu']} disabled={readOnly}>
+      <Dropdown menu={{ items: contextMenuItems, onClick: handleMenuClick }} trigger={['contextMenu']}>
         <div
           ref={rowRef}
           className={`${styles.treeItem} ${isCurrentDir ? styles.treeItemCurrent : ''} ${isSelectedFile ? styles.treeItemSelected : ''} ${isGitIgnored ? styles.treeItemIgnored : ''} ${dragOver ? styles.treeItemDragOver : ''} ${dragging ? styles.treeItemDragging : ''}`}
@@ -270,8 +277,8 @@ function isThumbnailFile(name) {
 
 // One grid cell with its own (memoized) context menu — building the menu and
 // handler inside entries.map would recreate O(n) closures on every render.
-// The menu items depend only on (isDir, isRemote); the handler binds the path.
-function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelect, onOpen, menuCtx, onImportFiles, onMove, project, instance, readOnly }) {
+// The menu items depend on (isDir, isRemote, target); the handler binds the path.
+function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelect, onOpen, menuCtx, onImportFiles, onMove, project, instance, readOnly, target }) {
   const isDir = item.type === 'directory';
   // Image cells render a real thumbnail (lazy-loaded; falls back to the file
   // icon on error, e.g. oversized >10MB or unreadable file).
@@ -294,20 +301,23 @@ function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelec
   }, [childPath]);
   const handleDragEndCell = useCallback(() => setDragging(false), []);
   // Per-cell menu: identical to the sidebar tree's entry menu (shared
-  // builder/factory), rename via Modal.confirm.
-  const menuItems = useMemo(() => buildFileContextMenuItems({ isDir, isRemote }), [isDir, isRemote]);
+  // builder/factory), rename via Modal.confirm. Enabled in target mode; the
+  // server enforces the write policy.
+  const menuItems = useMemo(() => buildFileContextMenuItems({ isDir, isRemote, isTarget: !!target }), [isDir, isRemote, target]);
   const handleCellMenuClick = useMemo(
     () => createFileMenuHandler({
       path: childPath, name: item.name, isDir, renameMode: 'modal',
       onFileRenamed: menuCtx.onFileRenamed, onAttachToChat: menuCtx.onAttachToChat,
       onInsertPathToChat: menuCtx.onInsertPathToChat,
-      onDownload: (path, name) => downloadFile(path, name, project, instance),
-      project, instance,
+      // Target entries carry an absPath (the read route resolves it); download
+      // that, falling back to the relative childPath for project entries.
+      onDownload: (path, name) => downloadFile(item.absPath || path, name, project, instance),
+      project, instance, target,
     }),
-    [childPath, item.name, isDir, menuCtx, project, instance]);
+    [childPath, item.name, item.absPath, isDir, menuCtx, project, instance, target]);
 
   return (
-    <Dropdown menu={{ items: readOnly ? [] : menuItems, onClick: handleCellMenuClick }} trigger={['contextMenu']} disabled={readOnly}>
+    <Dropdown menu={{ items: menuItems, onClick: handleCellMenuClick }} trigger={['contextMenu']}>
       <div
         ref={cellRef}
         className={`${styles.cell} ${isSelected ? styles.cellSelected : ''} ${isGitIgnored ? styles.cellIgnored : ''} ${dragOver ? styles.cellDragOver : ''} ${dragging ? styles.cellDragging : ''}`}
@@ -351,6 +361,11 @@ function GridCell({ item, childPath, isSelected, isGitIgnored, isRemote, onSelec
 
 export default function FileBrowserModal({ open = false, onClose, onAttachToChat, onInsertPathToChat, onFileRenamed, refreshTrigger = 0, project, instance, target = null, rootLabel = '', title, zIndex = 1100 }) {
   const isExternal = !!target;
+  // readOnly still gates drag-and-drop / upload / move (those stay disabled in the
+  // target browser). The right-click context menu and inline preview editing are
+  // intentionally ENABLED in target mode (product decision): the server resolves
+  // the navigation root from the target identity and enforces the write policy,
+  // so the modal no longer treats external targets as fully read-only.
   const readOnly = isExternal;
   const validTarget = !target || (
     (target.kind === 'claude-md' && /^[0-9a-f]{12}$/i.test(target.id || ''))
@@ -426,7 +441,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
           return data;
         }
         if (!data || !Array.isArray(data.entries) || typeof data.targetPath !== 'string'
-          || !['project', 'home', 'config'].includes(data.rootKind)
+          || !['project', 'home', 'config', 'target'].includes(data.rootKind)
           || !Array.isArray(data.ancestors)) {
           throw new Error('Invalid directory response');
         }
@@ -542,12 +557,24 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
       };
       setCurrentPath(prev => remap(prev, { onGone: '' }));
       setSelectedPath(prev => remap(prev, { onGone: null }));
-      setPreviewFile(prev => (prev === oldPath || (prev && prev.startsWith(oldPath + '/')) ? null : prev));
-      setHtmlPreviewPath(prev => (prev === oldPath || (prev && prev.startsWith(oldPath + '/')) ? null : prev));
+      if (target) {
+        // Target-mode previews hold the ABSOLUTE path (item.absPath), which never
+        // equals the navigation-root-relative oldPath — so prefix remapping can't
+        // match. Close the preview on any mutation to avoid saving a stale file
+        // back under its old name after a rename/delete.
+        setPreviewFile(null);
+        setHtmlPreviewPath(null);
+      } else {
+        setPreviewFile(prev => (prev === oldPath || (prev && prev.startsWith(oldPath + '/')) ? null : prev));
+        setHtmlPreviewPath(prev => (prev === oldPath || (prev && prev.startsWith(oldPath + '/')) ? null : prev));
+      }
     }
     refresh();
-    onFileRenamed?.(oldPath, newPath);
-  }, [refresh, onFileRenamed]);
+    // The target browser's entry points (AppHeader/Mobile) do not pass an
+    // onFileRenamed callback; guard so a navigation-root-relative path is never
+    // forwarded to the project sidebar by a future caller wiring one up.
+    if (!target) onFileRenamed?.(oldPath, newPath);
+  }, [refresh, onFileRenamed, target]);
 
   const navigate = useCallback((path) => {
     setCurrentPath(path);
@@ -623,16 +650,17 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
   }
 
   // Right-click menu for the grid blank area — the same 'container' definition
-  // the sidebar header uses (one shared builder keeps both in sync).
+  // the sidebar header uses (one shared builder keeps both in sync). Enabled in
+  // target mode; the server enforces the write policy.
   const containerMenuItems = useMemo(
-    () => buildFileContextMenuItems({ isDir: true, isRemote, scope: 'container' }),
-    [isRemote]);
+    () => buildFileContextMenuItems({ isDir: true, isRemote, scope: 'container', isTarget: !!target }),
+    [isRemote, target]);
   const handleContainerMenuClick = useMemo(
     () => createFileMenuHandler({
-      path: currentPath, name: '', isDir: true, project, instance,
+      path: currentPath, name: '', isDir: true, project, instance, target,
       onFileRenamed: handleAfterMutation,
     }),
-    [currentPath, handleAfterMutation, project, instance]);
+    [currentPath, handleAfterMutation, project, instance, target]);
 
   // Stable callback bundle for GridCell (one identity per render → memoized
   // cell menus don't rebuild unless these actually change).
@@ -807,7 +835,10 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
               {isImageFile(previewFile) ? (
                 <ImageViewer filePath={previewFile} onClose={() => setPreviewFile(null)} project={project} instance={instance} />
               ) : (
-                <FileContentView filePath={previewFile} onClose={() => setPreviewFile(null)} project={project} instance={instance} readOnly={readOnly} displayPath={readOnly ? (currentPath ? `${currentPath}/${previewFile.split('/').pop()}` : previewFile.split('/').pop()) : previewFile} />
+                // Preview is editable in target mode (product decision): the modal
+                // passes the target identity so /api/file-content resolves the
+                // navigation root (not the project view root) for the write.
+                <FileContentView filePath={previewFile} onClose={() => setPreviewFile(null)} project={project} instance={instance} target={target} readOnly={false} displayPath={readOnly ? (currentPath ? `${currentPath}/${previewFile.split('/').pop()}` : previewFile.split('/').pop()) : previewFile} />
               )}
             </div>
           ) : (
@@ -880,7 +911,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
                 />
                 </>}
               </div>
-              <Dropdown menu={{ items: readOnly ? [] : containerMenuItems, onClick: handleContainerMenuClick }} trigger={['contextMenu']} disabled={readOnly}>
+              <Dropdown menu={{ items: containerMenuItems, onClick: handleContainerMenuClick }} trigger={['contextMenu']}>
               <div
                 ref={gridRef}
                 className={`${styles.grid} ${gridDragOver ? styles.gridDragOver : ''}`}
@@ -918,6 +949,7 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
                       project={project}
                       instance={instance}
                       readOnly={readOnly}
+                      target={target}
                     />
                   );
                 })}

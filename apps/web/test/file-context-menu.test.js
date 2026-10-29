@@ -78,3 +78,38 @@ describe('buildFileContextMenuItems — container scope (header / blank-area par
     );
   });
 });
+
+describe('buildFileContextMenuItems — target mode (CLAUDE.md / skill browser)', () => {
+  // Target mode keeps the FULL menu visible (product decision); write items the
+  // current location cannot perform are shown but disabled, not hidden.
+  it('keeps the full item sequence in target mode except chat-only items', () => {
+    const dirItems = buildFileContextMenuItems({ isDir: true, isRemote: false, isTarget: true });
+    assert.deepEqual(seq(dirItems), [
+      'reveal', 'openTerminal', 'newFile', 'newDir', 'divider',
+      'copyPath', 'copyRelPath', 'divider', 'rename', 'delete',
+    ]);
+    // The target browser modal wires no attach/insert-to-chat callback, so those
+    // two chat-only items are omitted for files (everything else preserved).
+    const fileItems = buildFileContextMenuItems({ isDir: false, isRemote: false, isTarget: true });
+    assert.deepEqual(seq(fileItems), [
+      'reveal', 'copyPath', 'copyRelPath',
+      'divider', 'rename', 'delete',
+    ]);
+  });
+
+  it('keeps write items enabled in target mode (server enforces the write policy)', () => {
+    // No client-side gating: the server rejects what the location may not mutate,
+    // so the menu always offers the write actions (clearer than a dead disabled item).
+    const dirItems = buildFileContextMenuItems({ isDir: true, isTarget: true });
+    for (const i of dirItems.filter(x => x.key)) assert.ok(!i.disabled, `${i.key} must stay enabled`);
+    const container = buildFileContextMenuItems({ isDir: true, scope: 'container', isTarget: true });
+    for (const i of container.filter(x => x.key)) assert.ok(!i.disabled, `${i.key} must stay enabled`);
+    // Container scope never has rename/delete.
+    assert.ok(!seq(container).includes('rename') && !seq(container).includes('delete'));
+  });
+
+  it('non-target default keeps every write item enabled (regression guard)', () => {
+    const items = buildFileContextMenuItems({ isDir: true });
+    for (const i of items.filter(x => x.key)) assert.ok(!i.disabled, `${i.key} must stay enabled by default`);
+  });
+});

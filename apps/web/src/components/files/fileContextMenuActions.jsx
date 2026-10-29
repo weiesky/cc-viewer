@@ -11,7 +11,7 @@
 import React from 'react';
 import { Modal, Input, message } from 'antd';
 import { t } from '../../i18n';
-import { apiUrl, withViewParams } from '../../utils/apiUrl';
+import { apiUrl, withViewParams, withTargetParams } from '../../utils/apiUrl';
 import { copyTextToClipboard } from '../../utils/terminalClipboard';
 
 // Same Modal.confirm input styling used by the sidebar's new-file/new-dir flows.
@@ -39,28 +39,36 @@ export function createFileMenuHandler({
   onDownload,      // optional; the modal passes its downloadFile helper
   project,
   instance,
+  target,          // optional; when set, the modal is browsing a CLAUDE.md/skill
+                   // target — paths are navigation-root-relative and the
+                   // /api/target-* write routes resolve the root server-side.
 }) {
-  const viewUrl = (path) => withViewParams(path, { project, instance });
+  // Target mode hits the /api/target-<op> routes (which resolve the navigation
+  // root from the target identity); project mode hits the project-scoped routes.
+  // The path is still sent in the body; the target identity rides the query.
+  const endpoint = (name) => (target ? `/api/target-${name}` : `/api/${name}`);
+  const viewUrl = (p) => withViewParams(withTargetParams(p, target), { project, instance });
   return ({ key }) => {
     switch (key) {
       case 'reveal':
-        // Root container uses the OS call without a path (open-project-dir takes
-        // no body and never 400s on ''); any real path uses reveal-file.
-        fetch(apiUrl(viewUrl(path ? '/api/reveal-file' : '/api/open-project-dir')), {
+        // Project root container uses the OS call without a path (open-project-dir
+        // takes no body and never 400s on ''); any real path uses reveal-file. In
+        // target mode always use the target reveal route ('' = navigation root).
+        fetch(apiUrl(viewUrl(target ? endpoint('reveal-file') : (path ? '/api/reveal-file' : '/api/open-project-dir'))), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          ...(path ? { body: JSON.stringify({ path }) } : {}),
+          ...(target || path ? { body: JSON.stringify({ path }) } : {}),
         }).catch(() => {});
         break;
       case 'openTerminal':
-        fetch(apiUrl(viewUrl('/api/open-terminal')), {
+        fetch(apiUrl(viewUrl(endpoint('open-terminal'))), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path }),
         }).catch(() => {});
         break;
       case 'copyPath':
-        fetch(apiUrl(viewUrl('/api/resolve-path')), {
+        fetch(apiUrl(viewUrl(endpoint('resolve-path'))), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path }),
@@ -85,6 +93,8 @@ export function createFileMenuHandler({
           .catch(() => {});
         break;
       case 'attachToChat':
+        // Chat-only item; not offered in target mode (the modal wires no callback),
+        // so the path here is always project-relative.
         onAttachToChat?.(path);
         break;
       case 'insertPathToChat':
@@ -119,7 +129,7 @@ export function createFileMenuHandler({
             if (!newName || newName === name) return;
             let errMsg;
             try {
-              const r = await fetch(apiUrl(viewUrl('/api/rename-file')), {
+              const r = await fetch(apiUrl(viewUrl(endpoint('rename-file'))), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ oldPath: path, newName }),
@@ -150,7 +160,7 @@ export function createFileMenuHandler({
             if (!newName) throw new Error('Empty filename');
             let errMsg;
             try {
-              const r = await fetch(apiUrl(viewUrl('/api/create-file')), {
+              const r = await fetch(apiUrl(viewUrl(endpoint('create-file'))), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ dirPath: path, name: newName }),
@@ -183,7 +193,7 @@ export function createFileMenuHandler({
             if (!newName) throw new Error('Empty dir name');
             let errMsg;
             try {
-              const r = await fetch(apiUrl(viewUrl('/api/create-dir')), {
+              const r = await fetch(apiUrl(viewUrl(endpoint('create-dir'))), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ dirPath: path, name: newName }),
@@ -210,7 +220,7 @@ export function createFileMenuHandler({
           onOk: async () => {
             let errMsg;
             try {
-              const r = await fetch(apiUrl(viewUrl('/api/delete-file')), {
+              const r = await fetch(apiUrl(viewUrl(endpoint('delete-file'))), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path }),

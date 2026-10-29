@@ -32,6 +32,7 @@ import { ultraAgentsRoutes } from './routes/ultra-agents.js';
 import { filesContentRoutes } from './routes/files-content.js';
 import { workflowJournalRoutes } from './routes/workflow-journal.js';
 import { filesFsRoutes } from './routes/files-fs.js';
+import { targetFilesFsRoutes } from './routes/target-files-fs.js';
 import { searchRoutes } from './routes/search.js';
 import { workspacesRoutes } from './routes/workspaces.js';
 import { expertRoutes } from './routes/expert.js';
@@ -867,6 +868,7 @@ const _routes = [
   ...filesContentRoutes,
   ...workflowJournalRoutes,
   ...filesFsRoutes,
+  ...targetFilesFsRoutes,
   ...searchRoutes,
   ...workspacesRoutes,
   ...expertRoutes,

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { DownloadOutlined, CopyOutlined, CameraOutlined } from '@ant-design/icons';
 import { Modal, message } from 'antd';
-import { apiUrl, withViewParams } from '../../utils/apiUrl';
+import { apiUrl, withViewParams, withTargetParams } from '../../utils/apiUrl';
 import { useMarkdownExport } from '../../hooks/useMarkdownExport';
 import { detectMdExtensions } from '../../utils/mdExtensionDetect';
 import { handleStaleChunk } from '../../utils/lazyWithReload';
@@ -327,6 +327,9 @@ export default function FileContentView({
   instance,
   readOnly = false,
   displayPath,
+  target,          // optional; CLAUDE.md/skill browser modal — save resolves the
+                   // navigation root from this target identity (query), not the
+                   // project view root. filePath is already the absolute path.
 }) {
   const [content, setContent] = useState(null);
   const [currentContent, setCurrentContent] = useState(null);
@@ -537,7 +540,7 @@ export default function FileContentView({
     const startFilePath = filePathRef.current;
     setSaveStatus('saving');
     try {
-      const res = await fetch(apiUrl(withViewParams('/api/file-content', { project, instance })), {
+      const res = await fetch(apiUrl(withViewParams(withTargetParams('/api/file-content', target), { project, instance })), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: filePath, content: saveContent, ...(editorSession ? { editorSession: true } : {}) }),
@@ -568,7 +571,7 @@ export default function FileContentView({
         }, 3000);
       }
     }
-  }, [isDirty, filePath, currentContent, useMdxEditor, editorSession, project, instance, readOnly]);
+  }, [isDirty, filePath, currentContent, useMdxEditor, editorSession, project, instance, readOnly, target]);
 
   saveRef.current = doSave;
 

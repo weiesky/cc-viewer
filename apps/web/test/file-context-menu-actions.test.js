@@ -62,6 +62,11 @@ function menu(path = 'src', isDir = true) {
   return createFileMenuHandler({ path, name: 'entry', isDir, renameMode: 'modal', project: 'other project', instance: 'ccv-a1b2' });
 }
 
+const SKILL_TARGET = { kind: 'skill', source: 'user', path: '/home/u/.claude/skills/demo' };
+function targetMenu(path = 'demo', isDir = true) {
+  return createFileMenuHandler({ path, name: 'entry', isDir, renameMode: 'modal', project: 'other project', instance: 'ccv-a1b2', target: SKILL_TARGET });
+}
+
 describe('file context menu project-scoped requests', () => {
   for (const [key, endpoint] of [
     ['reveal', '/api/reveal-file'],
@@ -88,6 +93,41 @@ describe('file context menu project-scoped requests', () => {
       globalThis.document.getElementById = () => ({ value: key === 'rename' ? 'new.txt' : 'created' });
       await globalThis.__fileMenuConfirm.onOk();
       assert.equal(requests[0].url, `${endpoint}?project=other%20project&instance=ccv-a1b2`);
+    });
+  }
+});
+
+describe('file context menu target-scoped requests (CLAUDE.md / skill browser)', () => {
+  // Target mode swaps every endpoint for /api/target-<op> and carries the target
+  // identity in the query (kind + source + targetPath) so the server re-derives
+  // the navigation root instead of trusting a client-sent path.
+  const TARGET_Q = 'kind=skill&source=user&targetPath=%2Fhome%2Fu%2F.claude%2Fskills%2Fdemo';
+
+  for (const [key, endpoint] of [
+    ['reveal', '/api/target-reveal-file'],
+    ['openTerminal', '/api/target-open-terminal'],
+    ['copyPath', '/api/target-resolve-path'],
+  ]) {
+    it(`${key} hits the target route with the target identity`, async () => {
+      targetMenu('demo/file.txt', false)({ key });
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(requests[0].url, `${endpoint}?${TARGET_Q}&project=other%20project&instance=ccv-a1b2`);
+    });
+  }
+
+  for (const [key, endpoint] of [
+    ['newFile', '/api/target-create-file'],
+    ['newDir', '/api/target-create-dir'],
+    ['delete', '/api/target-delete-file'],
+    ['rename', '/api/target-rename-file'],
+  ]) {
+    it(`${key} confirmation posts to the target route`, async () => {
+      const handler = targetMenu('demo/old.txt', false);
+      handler({ key });
+      assert.ok(globalThis.__fileMenuConfirm, 'Modal.confirm must be called');
+      globalThis.document.getElementById = () => ({ value: key === 'rename' ? 'new.txt' : 'created' });
+      await globalThis.__fileMenuConfirm.onOk();
+      assert.equal(requests[0].url, `${endpoint}?${TARGET_Q}&project=other%20project&instance=ccv-a1b2`);
     });
   }
 });

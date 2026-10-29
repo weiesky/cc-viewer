@@ -5,11 +5,12 @@ import {
 } from 'node:fs';
 import { join, dirname, basename, resolve, sep } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
-import { execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { bumpWorkspacesVersion, isReadAllowed } from '../lib/file-access-policy.js';
 import { isPathContained, validateImportDir, renameSyncWithRetry } from '../lib/file-api.js';
 import { reportSwallowed } from '../lib/error-report.js';
 import { viewRootOrReply } from '../lib/view-root.js';
+import { revealInOs, openTerminalAt } from '../lib/os-open.js';
 import { loadWorkspaces } from '../workspace-registry.js';
 import { listLivePtys } from '../pty-manager.js';
 import { PROFILE_PATH, _projectName, _logDir } from '../interceptor.js';
@@ -645,17 +646,12 @@ function revealFile(req, res, parsedUrl, isLocal, deps) {
         return;
       }
       const plat = process.platform;
-      if (plat === 'darwin') {
-        execFile('open', ['-R', fullPath], () => {});
-      } else if (plat === 'win32') {
-        // explorer /select 的规范形式是 /select,"<path>"（仅路径部分加引号、整体一个 arg）。
-        // 必须 windowsVerbatimArguments 透传：否则 Node 对含空格 arg 整体加引号生成
-        // explorer.exe "/select,C:\My Proj\x.txt"，explorer 解析不了 → 功能失效。
-        // Windows 文件名不允许 "，且不经 cmd.exe，无元字符注入面。
-        const child = spawn('explorer.exe', [`/select,"${fullPath}"`], { windowsVerbatimArguments: true, windowsHide: true });
-        child.on('error', () => {}); // 防 async ENOENT 变 uncaughtException 砸进程
+      if (plat === 'darwin' || plat === 'win32') {
+        revealInOs(fullPath);
       } else {
-        execFile('xdg-open', [dirname(fullPath)], () => {});
+        // Linux: a directory reveals itself; a file reveals its parent (xdg-open on
+        // a file would launch the default app). Shared helper, see lib/os-open.js.
+        revealInOs(fullPath, { isDir: statSync(fullPath).isDirectory() });
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, fullPath }));
@@ -919,49 +915,7 @@ function openTerminal(req, res, parsedUrl, isLocal, deps) {
         res.end(JSON.stringify({ error: 'Path traversal not allowed' }));
         return;
       }
-      const plat = process.platform;
-      if (plat === 'darwin') {
-        spawn('open', ['-a', 'Terminal', fullDir], { stdio: 'ignore', detached: true }).unref();
-      } else if (plat === 'win32') {
-        spawn('cmd.exe', ['/c', 'start', 'cmd.exe'], { cwd: fullDir, stdio: 'ignore', detached: true, windowsHide: true }).unref();
-      } else {
-        // Linux: try common terminal emulators
-        const terminals = ['gnome-terminal', 'konsole', 'xfce4-terminal', 'xterm'];
-        // spawn reports a missing executable asynchronously, outside try/catch.
-        // Probe each candidate with piped stdio so the next one can be attempted
-        // after ENOENT; detach only after a successful spawn.
-        const tryTerminal = (index) => {
-          if (index >= terminals.length) {
-            const child = spawn('xdg-open', [fullDir], { stdio: 'ignore', detached: true });
-            child.on('error', (err) => { reportSwallowed('filesFs.openTerminal', err, { terminal: 'xdg-open' }); });
-            child.unref();
-            return;
-          }
-          const term = terminals[index];
-          let child;
-          try {
-            if (term === 'gnome-terminal') {
-              child = spawn(term, ['--working-directory=' + fullDir], { stdio: 'pipe' });
-            } else if (term === 'konsole') {
-              child = spawn(term, ['--workdir', fullDir], { stdio: 'pipe' });
-            } else {
-              child = spawn(term, [], { cwd: fullDir, stdio: 'pipe' });
-            }
-          } catch {
-            tryTerminal(index + 1);
-            return;
-          }
-          child.once('error', (err) => {
-            reportSwallowed('filesFs.openTerminal', err, { terminal: term });
-            tryTerminal(index + 1);
-          });
-          child.once('spawn', () => {
-            for (const stream of [child.stdin, child.stdout, child.stderr]) stream?.destroy();
-            child.unref();
-          });
-        };
-        tryTerminal(0);
-      }
+      openTerminalAt(fullDir);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
     } catch (err) {

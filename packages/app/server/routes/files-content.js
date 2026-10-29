@@ -1,10 +1,8 @@
 // Read-oriented file-access routes (moved verbatim from server.js handleRequest).
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, realpathSync, createReadStream, readdirSync } from 'node:fs';
-import { join, basename, dirname, resolve, relative, sep } from 'node:path';
-import { homedir } from 'node:os';
-import { isReadAllowed, reasonToStatus } from '../lib/file-access-policy.js';
+import { join, basename, dirname, resolve, sep } from 'node:path';
+import { isReadAllowed, isWriteAllowed, reasonToStatus } from '../lib/file-access-policy.js';
 import { ERROR_STATUS_MAP, isPathContained } from '../lib/file-api.js';
-import { listSkills } from '../lib/skills-api.js';
 import { viewRootOrReply, resolveViewRoot } from '../lib/view-root.js';
 import { findSdkSessionByInstance } from '../lib/sdk-session-index.js';
 import { projectKeyForCwd } from '../lib/system-prompt-snapshots.js';
@@ -16,6 +14,10 @@ import { getClaudeConfigDir } from '../../findcc.js';
 import { _projectName } from '../interceptor.js';
 import { isAdminReq } from '../lib/is-admin.js';
 import { isSameOriginBrowserRequest } from '../lib/same-origin.js';
+import {
+  targetError, errnoToStatus, realDirectory, checkedDirectory, insidePath,
+  targetRelPath, resolveTargetRoot,
+} from '../lib/target-scope.js';
 
 // Multi-project file operations use the same viewed root for reads and writes.
 // Every file-browser mutation enforces realpath containment in that root;
@@ -563,7 +565,36 @@ function fileContentPost(req, res, parsedUrl, isLocal) {
       const { path: reqPath, content, editorSession } = JSON.parse(body);
       const cwd = _viewRootOrReply(req, res, parsedUrl);
       if (!cwd) return;
-      try { writeRoot = realpathSync(cwd); } catch { writeRoot = cwd; }
+      // Target mode (the CLAUDE.md / skill browser modal) edits files that live in
+      // the target's NAVIGATION ROOT, which is frequently OUTSIDE the viewed project
+      // (~/.claude, $HOME). When the request carries a target identity
+      // (kind + id / source + targetPath, same as /api/target-files), resolve the
+      // write root to that navigation root instead of the project view root, so
+      // isInsideWriteRoot no longer 403s the file the user is explicitly editing.
+      // The target root is re-derived server-side (never trusted from the client),
+      // and the isWriteAllowed policy below still runs unchanged.
+      // SECURITY / INTENTIONAL DESIGN (do NOT tighten in review without product
+      // sign-off): in target mode the write policy is the WHOLE navigation root,
+      // and writes go through isWriteAllowed (NOT isReadAllowed) — so the LOG_DIR
+      // tree, ~/.claude credentials/settings, ~/.ssh, and the config-backup tree
+      // stay unwritable even though the wider surface is editable. This path is
+      // gated to admin + same-origin browser requests, the same bar as
+      // /api/target-files, because it can reach the user's home tree. A relative
+      // path in target mode is anchored at the navigation root, not the project.
+      const targetKind = parsedUrl.searchParams.get('kind');
+      let targetNavRoot = null;
+      if (targetKind) {
+        if (!isAdminReq(req, isLocal) || !isSameOriginBrowserRequest(req, parsedUrl)) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'forbidden' }));
+          return;
+        }
+        const scope = resolveTargetRoot(parsedUrl, cwd);
+        writeRoot = scope.rootReal;
+        targetNavRoot = scope.rootReal;
+      } else {
+        try { writeRoot = realpathSync(cwd); } catch { writeRoot = cwd; }
+      }
       if (!reqPath) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid path' }));
@@ -575,12 +606,18 @@ function fileContentPost(req, res, parsedUrl, isLocal) {
         return;
       }
       const isAbs = /^([a-zA-Z]:[\\/]|[\\/])/.test(reqPath);
-      const absPath = isAbs ? reqPath : resolve(cwd, reqPath);
+      // In target mode a relative path is anchored at the navigation root; in
+      // project mode at the project view root (unchanged legacy behavior).
+      const absPath = isAbs ? reqPath : resolve(targetNavRoot || cwd, reqPath);
       // 写路径同样走 policy(收敛 editorSession 后门):允许覆盖现有文件;
       // 新文件场景递归向上找最近存在的祖先目录,只要它在 allowlist 内即放行。
       // (旧实现只查 immediate parent,父目录也不存在时误拒嵌套新建。)
+      // Target mode uses the WRITE policy (isWriteAllowed) so the LOG_DIR tree,
+      // ~/.claude credentials and other sensitive targets stay unwritable even
+      // though the navigation root is editable; project mode keeps isReadAllowed.
+      const policyFn = targetNavRoot ? isWriteAllowed : isReadAllowed;
       let targetReal;
-      const policy = isReadAllowed(absPath);
+      const policy = policyFn(absPath);
       if (policy.ok) {
         targetReal = policy.real;
       } else if (policy.reason === 'realpath-failed') {
@@ -644,7 +681,16 @@ function fileContentPost(req, res, parsedUrl, isLocal) {
         res.end(JSON.stringify({ error: 'Forbidden', reason: 'editor-session-requires-admin' }));
         return;
       }
-      if (!editorSession && existsSync(targetReal) && !isInsideWriteRoot(targetReal)) {
+      // Target mode: containment in the navigation root must hold whether the file
+      // exists OR is being created — otherwise a crafted relative path could write
+      // outside the navigation root (isWriteAllowed only bounds by the allowlist).
+      // Project mode keeps the legacy existing-file-only check.
+      if (!editorSession && targetNavRoot && !isInsideWriteRoot(targetReal)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Forbidden', reason: 'outside-view-root' }));
+        return;
+      }
+      if (!editorSession && !targetNavRoot && existsSync(targetReal) && !isInsideWriteRoot(targetReal)) {
         res.writeHead(403, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Forbidden', reason: 'outside-view-root' }));
         return;
@@ -654,136 +700,14 @@ function fileContentPost(req, res, parsedUrl, isLocal) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, size: stat.size }));
     } catch (err) {
-      const status = ERROR_STATUS_MAP[err.code] || 500;
+      // targetError carries `.status` (400/403/404); fs errnos carry `.code`.
+      // Honor both so an invalid/stale target identity is not reported as 500.
+      const status = err.status || ERROR_STATUS_MAP[err.code] || 500;
       const message = status === 500 ? `Cannot save file: ${err.message}` : err.message;
       res.writeHead(status, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: message }));
     }
   });
-}
-
-function targetError(status, message) {
-  return Object.assign(new Error(message), { status });
-}
-
-// Map fs errno to a sensible HTTP status: missing → 404, permission → 403,
-// symlink loop → 400 (treat as malformed), anything else → 404 (don't leak).
-function errnoToStatus(err) {
-  const code = err?.code;
-  if (code === 'EACCES' || code === 'EPERM') return 403;
-  if (code === 'ELOOP') return 400;
-  return 404;
-}
-
-function realDirectory(path, label) {
-  let real;
-  try { real = realpathSync(path); } catch (err) { throw targetError(errnoToStatus(err), `${label} not found`); }
-  let st;
-  try { st = statSync(real); } catch (err) { throw targetError(errnoToStatus(err), `${label} not found`); }
-  if (!st.isDirectory()) throw targetError(400, `${label} is not a directory`);
-  return real;
-}
-
-function checkedDirectory(path, label) {
-  const real = realDirectory(path, label);
-  const policy = isReadAllowed(real);
-  if (!policy.ok) throw targetError(reasonToStatus(policy.reason), `${label} not readable`);
-  return policy.real;
-}
-
-function insidePath(path, root) {
-  return path === root || path.startsWith(root + sep);
-}
-
-function targetNavigation(targetReal, cwd) {
-  const projectReal = realDirectory(cwd, 'Project');
-  if (insidePath(targetReal, projectReal)) return { rootReal: projectReal, rootKind: 'project' };
-  // $HOME becomes the navigation root for home-resident targets (user skills,
-  // plugins, the global CLAUDE.md). Entries outside the allowlist (e.g. ~/.ssh,
-  // ~/.aws) are filtered per-entry by isReadAllowed, and sensitive paths inside
-  // ~/.claude are covered by file-access-policy's denylist. The /api/target-files
-  // handler additionally gates this endpoint behind isAdminReq + same-origin so
-  // a cross-site page cannot enumerate the user's home tree.
-  const homeReal = realDirectory(homedir(), 'Home');
-  if (insidePath(targetReal, homeReal)) {
-    checkedDirectory(targetReal, 'Directory');
-    return { rootReal: homeReal, rootKind: 'home' };
-  }
-  const configReal = realDirectory(getClaudeConfigDir(), 'Claude config');
-  if (insidePath(targetReal, configReal)) {
-    checkedDirectory(targetReal, 'Directory');
-    return { rootReal: realDirectory(dirname(configReal), 'Config root'), rootKind: 'config' };
-  }
-  // Allowlist fallback: targets that live inside another allowlisted root
-  // (registered workspaces, /tmp/cc-viewer-uploads, etc.) are reachable via
-  // /api/claude-md's discovery (which uses isReadAllowed), so we must not
-  // 403 them here. Use the target's own directory as the navigation root —
-  // no parent browsing, but at least the entry the user clicked actually opens.
-  const policy = isReadAllowed(targetReal);
-  if (!policy.ok) throw targetError(reasonToStatus(policy.reason), 'Target not readable');
-  return { rootReal: realDirectory(targetReal, 'Target'), rootKind: 'target' };
-}
-
-function targetScope(targetReal, cwd) {
-  const navigation = targetNavigation(targetReal, cwd);
-  return { ...navigation, targetPath: relative(navigation.rootReal, targetReal).split(sep).join('/') };
-}
-
-function targetRelPath(raw) {
-  if (raw == null) return null;
-  if (raw === '') return [];
-  if (typeof raw !== 'string' || raw.length > 2048 || raw.includes('\0') || raw.includes('\\')
-    || raw.startsWith('/') || /^[a-zA-Z]:/.test(raw)) {
-    throw targetError(400, 'Invalid path');
-  }
-  const segments = raw.split('/');
-  if (segments.some(segment => !segment || segment === '.' || segment === '..')) {
-    throw targetError(400, 'Invalid path');
-  }
-  // Hard cap on navigation depth: each segment triggers at least one
-  // synchronous readdir + per-entry realpath/stat in `ancestors`, and a 2KB
-  // free-form path could otherwise fan out into hundreds of syscalls per
-  // request. 32 is far deeper than any realistic skill / CLAUDE.md location.
-  if (segments.length > 32) throw targetError(400, 'Path too deep');
-  return segments;
-}
-
-function resolveTargetRoot(parsedUrl, cwd) {
-  const kind = parsedUrl.searchParams.get('kind');
-  if (kind === 'claude-md') {
-    const id = parsedUrl.searchParams.get('id') || '';
-    if (!/^[0-9a-f]{12}$/i.test(id)) throw targetError(400, 'Invalid id');
-    const candidate = discoverClaudeMdCandidates({
-      cwd,
-      claudeConfigDir: getClaudeConfigDir(),
-      isReadAllowedFn: isReadAllowed,
-    }).find(entry => entry.id === id);
-    if (!candidate || basename(candidate.realPath) !== 'CLAUDE.md') throw targetError(404, 'Target not found');
-    return { ...targetScope(realDirectory(dirname(candidate.realPath), 'Directory'), cwd), targetKind: 'claude-md' };
-  }
-  if (kind !== 'skill') throw targetError(400, 'Invalid target kind');
-  const source = parsedUrl.searchParams.get('source');
-  const targetPath = parsedUrl.searchParams.get('targetPath');
-  if (!['user', 'project', 'plugin'].includes(source)) throw targetError(400, 'Invalid skill source');
-  if (typeof targetPath !== 'string' || !targetPath || targetPath.length > 4096 || targetPath.includes('\0')) {
-    throw targetError(400, 'Invalid skill path');
-  }
-  const skill = listSkills({ projectDir: cwd })
-    .find(entry => entry.source === source && entry.path === targetPath);
-  if (!skill) throw targetError(404, 'Target not found');
-  const rootReal = realDirectory(skill.path, 'Directory');
-  const scope = targetScope(rootReal, cwd);
-  const anchor = source === 'project'
-    ? scope.rootReal
-    : dirname(dirname(skill.path));
-  const anchorReal = realDirectory(anchor, 'Skill root');
-  if (!insidePath(rootReal, anchorReal)) throw targetError(403, 'Target outside skill root');
-  // Plugin root must follow the configured Claude config dir, not the default
-  // homedir()/.claude — otherwise plugin skills break under CLAUDE_CONFIG_DIR.
-  if (source === 'plugin' && !insidePath(rootReal, realDirectory(join(getClaudeConfigDir(), 'plugins'), 'Plugin root'))) {
-    throw targetError(403, 'Target outside plugin root');
-  }
-  return { ...scope, targetKind: 'skill' };
 }
 
 function listTargetDirectory(rootReal, segments, deps, requireReadable = true) {

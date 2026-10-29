@@ -90,7 +90,7 @@ process.env.CCV_LOG_DIR = LOG;
 
 // 动态 import:env 设置后再加载 policy(模块顶部锁定 homedir()/STARTUP_CWD/roots)。
 const policy = await import('../server/lib/file-access-policy.js');
-const { isReadAllowed, getAllowedRoots, reasonToStatus, bumpWorkspacesVersion, _resetCacheForTests } = policy;
+const { isReadAllowed, isWriteAllowed, getAllowedRoots, reasonToStatus, bumpWorkspacesVersion, _resetCacheForTests } = policy;
 _resetCacheForTests();
 
 after(() => {
@@ -259,5 +259,69 @@ describe('file-access-policy 分支补强: 运行时 env 触发 catch / 缺省�
       restore();
       _resetCacheForTests();
     }
+  });
+});
+
+describe('isWriteAllowed (target-browser write policy)', () => {
+  it('denies a sensitive-PREFIX directory itself (rename would expose its contents)', () => {
+    // ~/.aws itself must be unwritable: renaming it to a benign name would move its
+    // contents out from under the sensitive-prefix rule (which matches children).
+    // Run first in this describe: later cases mutate CCV_LOG_DIR / caches.
+    const r = isWriteAllowed(AWS_DIR);
+    assert.equal(r.ok, false, JSON.stringify(r));
+    assert.equal(r.reason, 'sensitive-prefix');
+    // A non-sensitive sibling directory at the same level stays writable.
+    assert.equal(isWriteAllowed(DOCS_DIR).ok, true);
+  });
+
+  it('allows a plain file inside the allowlist (project or home)', () => {
+    assert.equal(isWriteAllowed(PROJECT_FILE).ok, true);
+    assert.equal(isWriteAllowed(DOCS_PLAIN).ok, true);
+  });
+
+  it('denies the same sensitive paths as the read policy (prefix + filename)', () => {
+    assert.equal(isWriteAllowed(AWS_CONFIG).ok, false, 'sensitive prefix must be unwritable');
+    assert.equal(isWriteAllowed(DOCS_PEM).ok, false, 'sensitive filename must be unwritable');
+    assert.equal(isWriteAllowed(SETTINGS_CAP).ok, false, 'claude settings must be unwritable');
+  });
+
+  it('allows a NOT-yet-existing file under an allowed parent (create-file case)', () => {
+    const r = isWriteAllowed(join(DOCS_DIR, 'brand-new.txt'));
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.ok(r.real.endsWith(join('docs', 'brand-new.txt')));
+  });
+
+  it('denies a NOT-yet-existing file under a sensitive parent', () => {
+    assert.equal(isWriteAllowed(join(AWS_DIR, 'new-creds')).ok, false, 'cannot create under ~/.aws');
+    assert.equal(isWriteAllowed(join(CLAUDE_SUB, 'settings.json')).ok, false, 'cannot create settings.json');
+  });
+
+  it('denies the whole LOG_DIR tree even for a benign filename (write-only denial)', async () => {
+    // The read policy only blocks NAMED data files in LOG_DIR; a write/delete
+    // could rmdir the whole task/preferences store, so the write policy denies
+    // the entire subtree. LOG_DIR is allowlist-adjacent in production (defaults
+    // under ~/.claude), so relocate it inside the fake HOME allowlist via the
+    // live-binding setter (which also fires onLogDirChange → cache invalidation),
+    // then restore.
+    const { setLogDir } = await import('../findcc.js');
+    const logUnderHome = join(HOME, '.claude', 'cc-viewer');
+    mkdirSync(logUnderHome, { recursive: true });
+    setLogDir(logUnderHome);
+    try {
+      _resetCacheForTests();
+      const benign = join(logUnderHome, 'some-subdir', 'notes.txt');
+      const r = isWriteAllowed(benign);
+      assert.equal(r.ok, false, `LOG_DIR subtree must be unwritable: ${JSON.stringify(r)}`);
+      assert.equal(r.reason, 'sensitive-ccv-data');
+    } finally {
+      setLogDir(LOG);
+      _resetCacheForTests();
+    }
+  });
+
+  it('rejects invalid and null-byte paths', () => {
+    assert.equal(isWriteAllowed('').ok, false);
+    assert.equal(isWriteAllowed(null).ok, false);
+    assert.equal(isWriteAllowed(join(DOCS_DIR, 'a\0b')).ok, false);
   });
 });
