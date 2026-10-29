@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(web): **SDK 模式 Plan 审批改用独立 plan 卡片弹窗** — ExitPlanMode 审批复用 PTY 的 planModeBox 卡片样式 + 全局 ApprovalModal 弹窗（批准 / 批准并修改（带反馈）/ 拒绝 + 自动审批倒计时），与权限审批面板彻底分离，不再渲染成权限样式；移除底部权限样式的 SDK plan ToolApprovalPanel（桌面 + 移动端）。决议仍走 sdk-plan-answer 协议不变，PTY 击键通道保持 !sdkMode 硬门控。卡片兜底：plan 弹窗在 transcript 卡片未挂载时（帧先于 transcript / toolUseID 缺失 / scheduled-task）也会渲染可操作的审批表单，不再空体卡死。Coverage: `sdk-plan-approval-guard.test.js`, `plan-auto-approve-runtime.test.js`.
+
 - feat(web+server): **CLAUDE.md / skill 文件浏览器弹窗支持右键菜单与预览编辑** — 此前该弹窗（target 模式）整体只读，右键退化为浏览器原生菜单。现接入与文件资源管理器同一套右键菜单（在系统中展示 / 在终端中打开 / 新建文件 / 新建文件夹 / 复制路径 / 复制相对路径 / 重命名 / 删除），并放开文件预览的内容编辑保存。新增 `/api/target-*` 写路由，从 target 身份服务端重新解析导航根（admin+同源校验、realpath 容器内校验、符号链接拒绝、`isWriteAllowed` 写策略兜底 ~/.claude 凭据/敏感前缀目录/LOG_DIR/备份目录，rename/delete 均做子树扫描防止绕过）；OS「在系统中展示/在终端中打开」逻辑抽取为共享 helper 供项目与 target 路由复用；拖拽 / 上传 / 移动仍保持只读。Coverage: `api-target-files-fs.test.js`, `branch-lib-file-access-policy.test.js`, `file-context-menu.test.js`, `file-context-menu-actions.test.js`, `file-browser-modal.test.js`, `external-folder-targets.test.js`.
 - fix(web): **SDK 模式打开 scratch 终端不再隐藏对话输入框血条** — 血条 portal 宿主的显隐门控与输入框早退改为同一豁免，SDK 模式下血条始终跟随对话输入框、与 scratch 终端开合无关；PTY 模式终端打开时血条仍迁移到终端工具栏。Coverage: `sdk-context-blood-bar.test.js`.
 - feat(web): **UltraReview 默认文案模版重写** — 预置 `UltraReview` 的实际默认 prompt（`ui.preset.codeReview5.desc`，18 语言）与 codeExpert UltraPlan 模版的审查段同步更新：用带 name 的 Agent teammate 组队（不再依赖 TeamCreate/TeamDelete）、多仓库分任务、修复 P0/P1 并辩证修复 P2（特殊项用 AskUserQuestion 咨询）、完成后逐个通知 teammate 退出。Coverage: `ultraplan-templates.test.js`, `builtin-presets.test.js`.

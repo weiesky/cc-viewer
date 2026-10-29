@@ -22,7 +22,6 @@ import { extractQueuedPromptWireMessage, queuedPromptDisplayText } from '@ccv/co
 import { queuedPromptsAfterIndex, queuedPromptsSignature } from './queuedPromptDisplay';
 import { reconcileOptimisticQueueMessages, captureOptimisticQueueTextCounts } from './optimisticQueueMessage';
 import { classifyRequest, formatRequestTag, formatTeammateLabel } from '@ccv/core/requestType';
-import { playEvent as playVoiceEvent } from '../../utils/voicePackPlayer';
 import { buildChunksForAnswer, buildBracketPasteSubmitChunks, BRACKET_PASTE_SUBMIT_SETTLE_MS } from '../../utils/ptyChunkBuilder';
 import { isPlanApprovalPrompt, isDangerousOperationPrompt, pickPlanApproveOptionNumber } from '../../utils/promptClassifier';
 import { resolvePlanAutoApproveTarget, sdkPlanMatchesView } from '../../utils/planAutoApprove';
@@ -334,7 +333,7 @@ class ChatView extends React.Component {
       askMetaMap: {}, // { [askId]: { startedAt, timeoutMs } } — 倒计时元数据。ask-pending 时 add，
       // ask resolve/cancel/timeout 时 delete，确保内存随 ask 生命周期回收（不会随会话增长无界累积）。
       pendingPtyPlan: null, // { id, prompt } — active plan approval. id 与 ExitPlanMode tool_use id (lastPendingPlanId) 同源，由 componentDidUpdate 从 _currentLastPendingPlanId 派生（cliMode 守卫 + _resolvedPlanIds 短暂窗口守卫）。
-      planAutoApproveCountdown: null, // number|null — Remaining seconds for the active PTY/SDK plan countdown, mirrored to desktop and mobile panels.
+      planAutoApproveCountdown: null, // number|null — Remaining seconds for the active PTY/SDK plan countdown, rendered on the plan card.
       pendingImages: [], // [{ path, source }] — images uploaded/pasted, shown as previews in chat input
       uploadingItems: [], // [{ id, name, previewUrl }] — 上传在途的占位项(路径还没 resolve);预览条只从 pendingImages 渲染缩略图,故占位需独立 state
       sendDeferred: false, // 仅渲染用:有上传在途时按了发送 → 缓发态(发送按钮 spinner)。权威双发标志是实例字段 _sendDeferred
@@ -856,8 +855,9 @@ class ChatView extends React.Component {
     }
     // 派生 pendingPtyPlan from _currentLastPendingPlanId（与 inline 卡片同源）。
     // _currentLastPendingPlanId 由 buildAllItems 末尾镜像；只在 cliMode && !sdkMode 下生效
-    // （红线 2：SDK 模式走底部 ToolApprovalPanel 的 sdk-plan-* 通道，PTY 卡片/全局 modal 一律不激活，
-    // 否则点「批准」会发 PTY 击键 input——服务端 SDK 模式丢弃 input，canUseTool 承诺永不 resolve，卡死）。
+    // （红线 2：PTY 卡片/全局 modal 走 PTY 击键 input——SDK 模式服务端丢弃 input，canUseTool
+    // 承诺永不 resolve，卡死；故 SDK 不派生 pendingPtyPlan。SDK 的 ExitPlanMode 改由
+    // pendingPlanApproval 驱动，经 onPendingPtyPlan bubble 复用同一 planModeBox 卡片与 modal）。
     // _resolvedPlanIds 守用户已操作但 JSONL 还没回写 planApprovalMap 的短暂窗口（提交后到 tool_result 落盘之间），
     // 防 CDU 把 modal 重弹；过期项在 lpid 变化时（即旧 plan 真正 resolve）下面分支自动清出。
     {
@@ -896,24 +896,58 @@ class ChatView extends React.Component {
         this.props.onPendingPermission(null);
       }
     }
-    if (prevState.pendingPlanApproval !== this.state.pendingPlanApproval && this.props.onPendingPlanApproval) {
-      if (this.state.pendingPlanApproval) {
-        this.props.onPendingPlanApproval({
-          plan: this.state.pendingPlanApproval,
-          handlers: { approve: this.handlePlanApprove, reject: this.handlePlanReject, cancelAutoApprove: this.cancelPlanAutoApprove },
-        });
-        // SDK ExitPlanMode lives in an inline card, not the global ApprovalModal, so
-        // ApprovalModal's sound effect never fires for this path. Hook the voice pack
-        // here directly( — SDK plan was silent before this).
-        try {
-          const vp = this.props.preferences?.approvalModal?.voicePack;
-          if (vp && vp.enabled && vp.events && vp.events.planApproval) {
-            playVoiceEvent('planApproval', vp, { dedupeKey: `planApproval:${this.state.pendingPlanApproval.id}` });
-          }
-        } catch { /* never throw from componentDidUpdate */ }
-      } else {
-        this.props.onPendingPlanApproval(null);
+    // Plan modal bubble — single writer for BOTH transports, collapsed into one derived entry to
+    // remove the SDK/PTY double-writer race and level-vs-edge misreads (two blocks 30 lines apart
+    // could otherwise bubble plan then immediately null it in the same commit). A tab is either
+    // PTY or SDK mode, so exactly one source is non-null at a time; PTY wins if both somehow set.
+    // SDK ExitPlanMode reuses the 'ptyPlan' ApprovalModal kind — its planModeBox portals into
+    // ctx.ptyPlanSlot by id, exactly like a PTY plan. Keyed by plan ID (not object identity):
+    // sdk-plan-pending replay after a WS reconnect refreshes the object and must not reopen a
+    // user-dismissed modal. Sound is fired by ApprovalModal (ptyPlan → 'planApproval').
+    {
+      const modeOn = this.props.sdkMode;
+      const prevModeOn = prevProps.sdkMode;
+      const curId = modeOn
+        ? (this.state.pendingPlanApproval?.id ?? null)
+        : (this.state.pendingPtyPlan?.id ?? null);
+      const prevId = prevModeOn
+        ? (prevState.pendingPlanApproval?.id ?? null)
+        : (prevState.pendingPtyPlan?.id ?? null);
+      const entered = curId != null && (curId !== prevId || modeOn !== prevModeOn);
+      const left = prevId != null && (prevId !== curId || modeOn !== prevModeOn);
+      if (this.props.onPendingPtyPlan) {
+        if (entered) {
+          this.props.onPendingPtyPlan({
+            ptyPlan: modeOn ? this.state.pendingPlanApproval : this.state.pendingPtyPlan,
+            handlers: modeOn
+              ? {
+                approve: this.handleSdkPlanOptionClick,
+                feedbackSubmit: this.handleSdkPlanFeedbackSubmit,
+                cancelAutoApprove: this.cancelPlanAutoApprove,
+              }
+              : {
+                approve: this.handlePromptOptionClick,
+                feedbackSubmit: this.handlePlanFeedbackSubmit,
+              },
+          });
+        } else if (left) {
+          this.props.onPendingPtyPlan(null);
+        }
       }
+      // Electron main parity：badge / flashFrame / OS 通知 + 其他 tab chip。直换（A→B 同帧）时
+      // 先发 resolved(prevId) 再发 pending(curId)，main 的 per-id Map 正确处理，badge 不差一。
+      try {
+        if (left) {
+          window.tabBridge?.notifyPtyPlanResolved?.({ id: prevId, tabId: this.props.ownTabId ?? null });
+        }
+        if (entered) {
+          window.tabBridge?.notifyPtyPlanPending?.({
+            id: curId,
+            payload: { projectName: this.props.projectName || '' },
+            tabId: this.props.ownTabId ?? null,
+          });
+        }
+      } catch { /* never throw from componentDidUpdate */ }
     }
     if (prevState.pendingAsk !== this.state.pendingAsk) {
       if (this.props.onPendingAsk) {
@@ -940,40 +974,6 @@ class ChatView extends React.Component {
             id: prevState.pendingAsk.id,
             tabId: this.props.ownTabId ?? null,
           });
-        }
-      } catch {}
-    }
-    // PTY plan transitions — bubble up so the global modal can render, AND notify the Electron main
-    // process via tabBridge so it can flashFrame / setBadgeCount / fire OS Notification (parallel to
-    // the server.js -> tab-worker process.send route used for ask).
-    if (prevState.pendingPtyPlan !== this.state.pendingPtyPlan) {
-      if (this.props.onPendingPtyPlan) {
-        if (this.state.pendingPtyPlan) {
-          this.props.onPendingPtyPlan({
-            ptyPlan: this.state.pendingPtyPlan,
-            handlers: {
-              approve: this.handlePromptOptionClick,
-              feedbackSubmit: this.handlePlanFeedbackSubmit,
-            },
-          });
-        } else {
-          this.props.onPendingPtyPlan(null);
-        }
-      }
-      try {
-        if (typeof window !== 'undefined' && window.tabBridge) {
-          if (this.state.pendingPtyPlan) {
-            window.tabBridge.notifyPtyPlanPending?.({
-              id: this.state.pendingPtyPlan.id,
-              payload: { projectName: this.props.projectName || '' },
-              tabId: this.props.ownTabId ?? null,
-            });
-          } else if (prevState.pendingPtyPlan) {
-            window.tabBridge.notifyPtyPlanResolved?.({
-              id: prevState.pendingPtyPlan.id,
-              tabId: this.props.ownTabId ?? null,
-            });
-          }
         }
       } catch {}
     }
@@ -1053,9 +1053,6 @@ class ChatView extends React.Component {
           this._startPlanAutoApprove(curTarget.id, curTarget.channel, curAuto);
         }
       }
-    }
-    if (prevState.planAutoApproveCountdown !== this.state.planAutoApproveCountdown) {
-      this.props.onPlanAutoApproveCountdown?.(this.state.planAutoApproveCountdown);
     }
     // Last Response 出现/消失时，Footer 高度变化会导致 Virtuoso atBottom 误判，需要重新吸底
     if (useVirtuoso && prevState.lastResponseItems !== this.state.lastResponseItems && this.state.stickyBottom) {
@@ -1240,7 +1237,14 @@ class ChatView extends React.Component {
       const allItems = this._applyMobileSlice(rawItems);
       this.setState({ allItems, lastResponseItems: this._lastResponseItems, visibleCount: allItems.length }, () => this.scrollToBottom());
     }
-    // mobileChatVisible: scroll to bottom when becoming visible
+    // SDK plan 到达/决议时重建 items:lastPendingPlanId（驱动卡片可交互 + portal）与 planApprovalMap
+    // （驱动卡片 pending→approved/rejected）都烘进缓存的 ChatMessage element，只在 buildAllItems 内重建。
+    // sdk-plan-pending 仅 setState pendingPlanApproval，不触发上面的 startRender 分支；toggleSig 只失效
+    // buildAllItems 内部的 _sessionItemCache，没有此处显式重建它是惰性无效的。按 id 比较（非对象身份），
+    // WS replay 同 id 不重建；startRender 不触碰 pendingPlanApproval，无回环。
+    if (prevState.pendingPlanApproval?.id !== this.state.pendingPlanApproval?.id) {
+      this.startRender();
+    }
     if (isMobile && this.props.mobileChatVisible && !prevProps.mobileChatVisible) {
       // 显式动作（面板切显示）：清除用户滚动窗口，贴底不被残留窗口抑制
       this._stickyController.resetUserScrollState();
@@ -1270,14 +1274,15 @@ class ChatView extends React.Component {
     for (const u of (this.state.uploadingItems || [])) { if (u.previewUrl) { try { URL.revokeObjectURL(u.previewUrl); } catch {} } }
     // 清理全局审批/通知 — 切 session/关 tab 时让 modal 同步消失，main 进程 badge 归零
     if (this.props.onPendingPermission) this.props.onPendingPermission(null);
-    if (this.props.onPendingPlanApproval) this.props.onPendingPlanApproval(null);
-    this.props.onPlanAutoApproveCountdown?.(null);
     if (this.props.onPendingAsk) this.props.onPendingAsk(null);
     if (this.props.onPendingPtyPlan) this.props.onPendingPtyPlan(null);
     try {
-      if (this.state.pendingPtyPlan && typeof window !== 'undefined' && window.tabBridge?.notifyPtyPlanResolved) {
+      // PTY plan 与 SDK plan（复用 ptyPlan modal kind）都要通知 main 清 badge/通知。
+      const unmountPlanId = this.state.pendingPtyPlan?.id
+        ?? (this.props.sdkMode ? this.state.pendingPlanApproval?.id : null);
+      if (unmountPlanId && typeof window !== 'undefined' && window.tabBridge?.notifyPtyPlanResolved) {
         window.tabBridge.notifyPtyPlanResolved({
-          id: this.state.pendingPtyPlan.id,
+          id: unmountPlanId,
           tabId: this.props.ownTabId ?? null,
         });
       }
@@ -1822,9 +1827,13 @@ class ChatView extends React.Component {
         // 定向传递 lastPendingAskId/PlanId：只传给"owner message"（即 streaming 中最新一份），
         // 避免同 toolId 出现在多条 message 时让多个 ChatMessage 都进 isInteractive 路径并双重 portal
         const msgLastAskId = (mi === lastPendingAskOwnerIdx) ? lastPendingAskId : null;
-        // SDK 模式下 plan 审批走底部 ToolApprovalPanel（sdk-plan-* 通道），inline 卡片保持只读
-        // （isInteractive = pending && cliMode && id===lastPendingPlanId），传 null 防 PTY 击键路径激活。
-        const msgLastPlanId = (mi === lastPendingPlanOwnerIdx && !this.props.sdkMode) ? lastPendingPlanId : null;
+        // SDK 模式下 ExitPlanMode 卡片同样可交互：权威 pending id 来自 sdk-plan-pending 帧
+        // （server 用 options.toolUseID 作 id，与 tool_use block id 同源）。点击由下方 sdkMode
+        // 三元切到 SDK handler（sdk-plan-answer），不触发 PTY 击键。owner-idx 锁保留：同一
+        // toolId 出现在多条 message 时只有 owner bubble 拿得到 id，防双 portal。
+        const msgLastPlanId = (mi === lastPendingPlanOwnerIdx)
+          ? (this.props.sdkMode ? (this.state.pendingPlanApproval?.id ?? null) : lastPendingPlanId)
+          : null;
         // Normalize the two content shapes into one block list (null → skip):
         // array content drops system-text blocks (e.g. SUGGESTION MODE); string
         // content renders only if text survives chrome-stripping.
@@ -1840,7 +1849,7 @@ class ChatView extends React.Component {
         }
         if (asstContent) {
           renderedMessages.push(
-            <ChatMessage key={`${keyPrefix}-asst-${mi}`} role="assistant" isTeammate={teammateIdentity ? true : undefined} label={teammateIdentity?.label} animateAvatar={teammateIdentity ? false : undefined} content={asstContent} toolResultMap={toolResultMap} readContentMap={readContentMap} editSnapshotMap={editSnapshotMap} askAnswerMap={mergedAskAnswerMap} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} timestamp={ts} displayTs={msg._generatedTs} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} showThinkingSummaries={showThinkingSummaries} ptyPrompt={this.state.ptyPrompt} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} lastPendingPlanId={msgLastPlanId} lastPendingAskId={msgLastAskId} onPlanApprovalClick={this.handlePromptOptionClick} onPlanFeedbackSubmit={this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} cliMode={this.props.cliMode} onOpenFile={this.handleOpenToolFilePath} cacheTotalTokens={cacheTotalTokens} requestIndex={hasViewRequest ? reqIdx : undefined} onViewRequest={hasViewRequest ? onViewRequest : undefined} isHistoryLog={isHistoryLog} />
+            <ChatMessage key={`${keyPrefix}-asst-${mi}`} role="assistant" isTeammate={teammateIdentity ? true : undefined} label={teammateIdentity?.label} animateAvatar={teammateIdentity ? false : undefined} content={asstContent} toolResultMap={toolResultMap} readContentMap={readContentMap} editSnapshotMap={editSnapshotMap} askAnswerMap={mergedAskAnswerMap} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} timestamp={ts} displayTs={msg._generatedTs} modelInfo={modelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} showThinkingSummaries={showThinkingSummaries} ptyPrompt={this.state.ptyPrompt} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} lastPendingPlanId={msgLastPlanId} lastPendingAskId={msgLastAskId} onPlanApprovalClick={this.props.sdkMode ? this.handleSdkPlanOptionClick : this.handlePromptOptionClick} onPlanFeedbackSubmit={this.props.sdkMode ? this.handleSdkPlanFeedbackSubmit : this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} cliMode={this.props.cliMode} onOpenFile={this.handleOpenToolFilePath} cacheTotalTokens={cacheTotalTokens} requestIndex={hasViewRequest ? reqIdx : undefined} onViewRequest={hasViewRequest ? onViewRequest : undefined} isHistoryLog={isHistoryLog} />
           );
         }
       } else if (msg.role === 'system') {
@@ -2111,9 +2120,11 @@ class ChatView extends React.Component {
     const tsItemMap = {};
 
     // === session item 缓存：toggle 签名检查 ===
+    // SDK plan 的交互态由 state 驱动（id 到达晚于 transcript 行），必须把 pendingPlanApproval.id
+    // 与 sdkMode 纳入签名，让 session item cache 在 plan 到达/决议时失效以重建 lastPendingPlanId。
     const { showThinkingSummaries } = this.props;
     const activePromptIds = (this.state.ptyPromptHistory || []).filter(p => p.status === 'active').map(p => p.id).join(',');
-    const toggleSig = `${collapseToolResults}|${expandThinking}|${showFullToolContent}|${this.props.minimalChat}|${showThinkingSummaries}|${this.props.cliMode}|${this.state.ptyPrompt?.id || ''}|${activePromptIds}|${this.props.userProfile?.name || ''}|${this.props.lang || ''}|${Object.keys(this.state.localAskAnswers || {}).join(',')}|${queuedPromptsSignature(mainAgentSessions.map((session) => session._ccvQueuedPrompts || []).flat())}`;
+    const toggleSig = `${collapseToolResults}|${expandThinking}|${showFullToolContent}|${this.props.minimalChat}|${showThinkingSummaries}|${this.props.cliMode}|${this.state.pendingPlanApproval?.id || ''}|${!!this.props.sdkMode}|${this.state.ptyPrompt?.id || ''}|${activePromptIds}|${this.props.userProfile?.name || ''}|${this.props.lang || ''}|${Object.keys(this.state.localAskAnswers || {}).join(',')}|${queuedPromptsSignature(mainAgentSessions.map((session) => session._ccvQueuedPrompts || []).flat())}`;
     if (toggleSig !== this._itemCacheToggleSig) {
       this._sessionItemCache = [];
       this._itemCacheToggleSig = toggleSig;
@@ -2389,8 +2400,10 @@ class ChatView extends React.Component {
             // Last Response 单独存储，不混入主列表
             if (session.entryTimestamp) tsItemMap[session.entryTimestamp] = rawAllItems.length;
             const respLastPendingAskId = lr.respLastPendingAskId;
-            // SDK 模式 LR 卡片同样只读：plan 审批由底部 ToolApprovalPanel 承担（同消息列表守卫）。
-            const respLastPendingPlanId = this.props.sdkMode ? null : lr.respLastPendingPlanId;
+            // SDK 模式 LR 卡片同样可交互：id 取自 sdk-plan-pending state（与消息列表同源）。
+            const respLastPendingPlanId = this.props.sdkMode
+              ? (this.state.pendingPlanApproval?.id ?? null)
+              : lr.respLastPendingPlanId;
             if (respLastPendingPlanId) buildLpid = respLastPendingPlanId;
             // 收集 Last Response 中所有 AskUserQuestion 的问题文本，用于 prompt 去重
             this._lastResponseAskQuestions = collectLrAskQuestions(respContent);
@@ -2423,7 +2436,7 @@ class ChatView extends React.Component {
                 <Divider className={styles.lastResponseDivider}>
                   <Text type="secondary" className={styles.lastResponseLabel}>{t('ui.lastResponse')}</Text>
                 </Divider>
-                <ChatMessage key="resp-asst" role="assistant" content={lrContent} timestamp={session.entryTimestamp} modelInfo={globalModelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} toolResultMap={EMPTY_MAP} askAnswerMap={Object.keys(_localAskForSession).length > 0 ? _localAskForSession : EMPTY_MAP} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} lastPendingAskId={respLastPendingAskId} lastPendingPlanId={respLastPendingPlanId} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} ptyPrompt={this.state.ptyPrompt} cacheTotalTokens={entryCacheTotal} onPlanApprovalClick={this.handlePromptOptionClick} onPlanFeedbackSubmit={this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} cliMode={this.props.cliMode} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} onOpenFile={this.handleOpenToolFilePath} isHistoryLog={isHistoryLog} />
+                <ChatMessage key="resp-asst" role="assistant" content={lrContent} timestamp={session.entryTimestamp} modelInfo={globalModelInfo} collapseToolResults={collapseToolResults} expandThinking={expandThinking} showFullToolContent={showFullToolContent} minimalChat={this.props.minimalChat} toolResultMap={EMPTY_MAP} askAnswerMap={Object.keys(_localAskForSession).length > 0 ? _localAskForSession : EMPTY_MAP} planApprovalMap={planApprovalMap} latestPlanContent={latestPlanContent} planFileContents={this.state.planFileContents} lastPendingAskId={respLastPendingAskId} lastPendingPlanId={respLastPendingPlanId} activePlanPrompt={activePlanPrompt} activePtyPlanId={this.state.pendingPtyPlan?.id ?? null} planAutoApproveCountdown={this.state.planAutoApproveCountdown} onCancelPlanAutoApprove={this.cancelPlanAutoApprove} activeDangerousPrompt={activeDangerousPrompt} ptyPrompt={this.state.ptyPrompt} cacheTotalTokens={entryCacheTotal} onPlanApprovalClick={this.props.sdkMode ? this.handleSdkPlanOptionClick : this.handlePromptOptionClick} onPlanFeedbackSubmit={this.props.sdkMode ? this.handleSdkPlanFeedbackSubmit : this.handlePlanFeedbackSubmit} onDangerousApprovalClick={this.handlePromptOptionClick} cliMode={this.props.cliMode} onAskQuestionSubmit={this.handleAskQuestionSubmit} onAskQuestionCancel={this.handleAskCancel} pendingAsk={this.state.pendingAsk} askMetaMap={this.state.askMetaMap} onOpenFile={this.handleOpenToolFilePath} isHistoryLog={isHistoryLog} />
               </React.Fragment>
             );
           }
@@ -3116,7 +3129,7 @@ class ChatView extends React.Component {
     if (deadline <= Date.now()) return;
     this._planAutoTimer = startDeadlineCountdown({
       deadlineMs: deadline,
-      onTick: (s) => { if (!this._unmounted) this.setState({ planAutoApproveCountdown: s }); },
+      onTick: (s) => { if (!this._unmounted) this._setPlanCountdown(s); },
       onExpire: () => {
         this._clearPlanAutoApprove();
         this._firePlanAutoApprove(planId, channel);
@@ -3127,8 +3140,31 @@ class ChatView extends React.Component {
   _clearPlanAutoApprove = () => {
     if (this._planAutoTimer) { this._planAutoTimer(); this._planAutoTimer = null; }
     if (!this._unmounted && this.state.planAutoApproveCountdown != null) {
-      this.setState({ planAutoApproveCountdown: null });
+      this._setPlanCountdown(null);
     }
+  };
+
+  // 倒计时 tick 同时刷新缓存的 plan 卡片 prop。planAutoApproveCountdown 每秒变但不触发
+  // buildAllItems,而卡片 element 存在 state（allItems 数组 / _lastResponseItems 单 Fragment),
+  // 不 clone 刷新就会停在创建时的旧值（refreshCachedItemProp 同款 FULL HIT 冻结问题）。
+  _setPlanCountdown = (s) => {
+    const patch = { planAutoApproveCountdown: s, onCancelPlanAutoApprove: this.cancelPlanAutoApprove };
+    const next = { planAutoApproveCountdown: s };
+    const patchCard = (el) => {
+      if (!el || !el.props || el.props.role !== 'assistant' || !Array.isArray(el.props.content)) return el;
+      if (!el.props.content.some(b => b.type === 'tool_use' && b.name === 'ExitPlanMode')) return el;
+      return React.cloneElement(el, patch);
+    };
+    const allItems = Array.isArray(this.state.allItems) ? this.state.allItems.map(patchCard) : this.state.allItems;
+    let lastResponseItems = this.state.lastResponseItems;
+    if (lastResponseItems && lastResponseItems.props) {
+      const kids = React.Children.toArray(lastResponseItems.props.children);
+      const patched = kids.map(patchCard);
+      if (patched.some((k, i) => k !== kids[i])) {
+        lastResponseItems = React.cloneElement(lastResponseItems, {}, ...patched);
+      }
+    }
+    this.setState({ ...next, allItems, lastResponseItems });
   };
 
   // WS 重连后：补发仍处于 pending 的 SDK 计划/权限的取消（服务端兜底计时器需被销毁）。
@@ -3314,6 +3350,23 @@ class ChatView extends React.Component {
       ws.send(JSON.stringify({ type: 'sdk-plan-answer', id, approve: false, feedback: feedback || '' }));
     }
     this.setState({ pendingPlanApproval: null });
+  };
+
+  // ── SDK plan card(planModeBox portaled into ApprovalModal)──
+  // 卡片用 OPTION NUMBER 调 onPlanApprovalClick(1=批准,2=批准并改→textarea,3=拒绝 — 默认选项)。
+  // pendingPlanApproval.id 是 sdk-plan-answer 的权威目标。
+  handleSdkPlanOptionClick = (number) => {
+    const id = this.state.pendingPlanApproval?.id;
+    if (!id) return;
+    if (number === 1) this.handlePlanApprove(id);
+    else this.handlePlanReject(id, ''); // 选项 3;选项 2 走 textarea 路径,不会到这
+  };
+
+  handleSdkPlanFeedbackSubmit = (number, text) => {
+    const id = this.state.pendingPlanApproval?.id;
+    if (!id) return;
+    // approve:false + feedback === PTY「批准并修改」:Claude 改完再提 plan。
+    this.handlePlanReject(id, text);
   };
 
   handlePlanFeedbackSubmit = (number, text) => {
@@ -4895,19 +4948,8 @@ class ChatView extends React.Component {
                 queueDepth={this.state.permissionQueue.length}
               />
             )}
-            {!this.props.suppressInlineApprovalPanels && this.state.pendingPlanApproval && (
-              <ToolApprovalPanel
-                toolName="ExitPlanMode"
-                toolInput={this.state.pendingPlanApproval.input}
-                requestId={this.state.pendingPlanApproval.id}
-                onAllow={this.handlePlanApprove}
-                onDeny={(id) => this.handlePlanReject(id, '')}
-                visible={true}
-                planAutoApproveSeconds={this.props.planAutoApproveSeconds}
-                planAutoApproveCountdown={this.state.planAutoApproveCountdown}
-                onCancelPlanAutoApprove={this.cancelPlanAutoApprove}
-              />
-            )}
+            {/* SDK plan 审批（ExitPlanMode）已复用全局 ApprovalModal 的 planModeBox 卡片
+                （portal 进 ptyPlan slot），不再渲染底部权限样式面板。权限审批面板在上方保留。 */}
             <WorkflowLiveHud />
             {this._renderSdkErrorAnnouncer()}
             {this.props.sdkMode && this.state.sdkCompactNotices.length > 0 && (() => {

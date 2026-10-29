@@ -3,18 +3,19 @@ import { createContext } from 'react';
 /**
  * Cross-tree bridge for the global approval modal.
  *
- * The inline `AskQuestionForm` (in ChatMessage) and the inline `planModeBox` PTY plan card
- * (also in ChatMessage) read this context and, when the matching id is currently active
- * in the modal AND not dismissed, render via `ReactDOM.createPortal` into the matching slot
- * div instead of inline. The component tree (and therefore the React state of the form,
+ * The inline `AskQuestionForm` (in ChatMessage) and the inline `planModeBox` plan card
+ * (PTY and SDK, also in ChatMessage) read this context and, when the matching id is currently
+ * active in the modal AND not dismissed, render via `ReactDOM.createPortal` into the matching
+ * slot div instead of inline. The component tree (and therefore the React state of the form,
  * including any in-flight feedback textarea content) is preserved across the move —
  * Portals do not unmount their children.
  *
  * Default value is a no-op: when the modal is disabled or unavailable, inline rendering
  * proceeds untouched.
  *
- * Note: permission and SDK ExitPlanMode panels deliberately stay inline-only and are NOT
- * routed through this context.
+ * Note: permission panels deliberately stay inline-only and are NOT routed through this
+ * context. SDK ExitPlanMode reuses the 'ptyPlan' kind: ChatView bubbles the SDK pending plan
+ * through onPendingPtyPlan, so its planModeBox portals in exactly like a PTY plan.
  */
 export const ApprovalPortalContext = createContext({
   ptyPlanSlot: null,     // HTMLElement | null

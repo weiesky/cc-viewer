@@ -6,13 +6,11 @@ import styles from './ToolApprovalPanel.module.css';
 
 const DEFAULT_AUTO_SECONDS = 3;
 
-function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSession, onDeny, visible, global: isGlobal, autoApproveSeconds = 0, autoApproveSecondsServer = null, onAutoApproveChange, source, queueDepth = 0, planAutoApproveSeconds = 0, planAutoApproveCountdown = null, onCancelPlanAutoApprove = null, autoApproveAt = null, autoCancelled = false, onCancelAutoApprove = null }) {
+function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSession, onDeny, visible, global: isGlobal, autoApproveSeconds = 0, autoApproveSecondsServer = null, onAutoApproveChange, source, queueDepth = 0, autoApproveAt = null, autoCancelled = false, onCancelAutoApprove = null }) {
   const panelRef = useRef(null);
   const allowRef = useRef(null);
   const prevFocusRef = useRef(null);
   const focusInitializedRef = useRef(false);
-  const previousCountdownRef = useRef(null);
-  const planCountdownCancelledRef = useRef(false);
   const [exiting, setExiting] = useState(false);
   const show = visible || exiting;
   const [countdown, setCountdown] = useState(-1); // -1 = 未启动, 0 = 归零, >0 = 倒计时中
@@ -31,12 +29,12 @@ function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSes
   useLayoutEffect(() => {
     if (!focusInitializedRef.current) {
       focusInitializedRef.current = true;
-      if (visible && autoApproveSeconds === 0 && !planAutoApproveSeconds && allowRef.current) {
+      if (visible && autoApproveSeconds === 0 && allowRef.current) {
         prevFocusRef.current = document.activeElement;
         allowRef.current.focus();
       }
     }
-  }, [visible, show, autoApproveSeconds, planAutoApproveSeconds]);
+  }, [visible, show, autoApproveSeconds]);
   useEffect(() => {
     if (visible) {
       setExiting(false);
@@ -51,13 +49,6 @@ function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSes
     restorePanelFocus();
     prevFocusRef.current = null;
   }, [restorePanelFocus]);
-
-  // Preserve manual-panel keyboard behavior when the countdown finishes but the
-  // plan remains pending (for example after the user cancels auto-approval).
-  useEffect(() => {
-    if (planAutoApproveCountdown != null) planCountdownCancelledRef.current = false;
-    previousCountdownRef.current = planAutoApproveCountdown;
-  }, [planAutoApproveCountdown, visible]);
 
   // 自动审批倒计时（wall-clock deadline 驱动：后台标签节流不再让倒计时停滞，
   // 服务器给的 autoApproveAt 优先于本地按秒数推算的兜底 deadline）。
@@ -138,22 +129,9 @@ function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSes
     }
   }, [onAutoApproveChange, autoApproveSeconds, requestId, onAllow]);
 
-  const handlePlanAutoApproveCancel = useCallback(() => {
-    planCountdownCancelledRef.current = true;
-    onCancelPlanAutoApprove?.();
-    prevFocusRef.current?.focus?.();
-  }, [onCancelPlanAutoApprove]);
-
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Escape') {
-      // During plan auto-approval, Escape means "keep the plan for manual review",
-      // not "reject the plan". A subsequent Escape uses the normal deny behavior.
-      if (planAutoApproveCountdown != null && !planCountdownCancelledRef.current && onCancelPlanAutoApprove) {
-        e.preventDefault();
-        handlePlanAutoApproveCancel();
-      } else {
-        handleDeny(requestId);
-      }
+      handleDeny(requestId);
       return;
     }
     if (e.key === 'Tab') {
@@ -167,7 +145,7 @@ function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSes
         : (idx >= arr.length - 1 ? 0 : idx + 1);
       arr[next].focus();
     }
-  }, [handleDeny, requestId, planAutoApproveCountdown, onCancelPlanAutoApprove, handlePlanAutoApproveCancel]);
+  }, [handleDeny, requestId]);
 
   const displayText = useMemo(() => {
     if (!toolInput) return '';
@@ -180,12 +158,6 @@ function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSes
         return toolInput.file_path || toolInput.description || '';
       case 'NotebookEdit':
         return toolInput.notebook_path || toolInput.description || '';
-      case 'ExitPlanMode': {
-        // ExitPlanMode V2: input.plan 是 normalizeToolInput 注入的完整 markdown plan
-        // 优先展示 plan 正文（multi-agent-room 等场景下 plan 仅来自 input，避免 default 分支把 27k JSON 截到 500 字）
-        const txt = (typeof toolInput.plan === 'string' && toolInput.plan.trim()) ? toolInput.plan : '';
-        return txt || (toolInput.planFilePath ? `(plan @ ${toolInput.planFilePath})` : (toolInput.description || ''));
-      }
       default:
         if (toolInput.description) return toolInput.description;
         return JSON.stringify(toolInput, null, 2).slice(0, 500);
@@ -251,16 +223,6 @@ function ToolApprovalPanel({ toolName, toolInput, requestId, onAllow, onAllowSes
           {allowLabel}
         </button>
       </div>
-      {planAutoApproveCountdown != null && (
-        <div className={styles.planAutoApproveHint}>
-          <span>{t('ui.planAutoApprove.countdown', { count: planAutoApproveCountdown })}</span>
-          {onCancelPlanAutoApprove && (
-            <button type="button" className={styles.planAutoApproveCancel} onClick={handlePlanAutoApproveCancel}>
-              {t('ui.planAutoApprove.cancel')}
-            </button>
-          )}
-        </div>
-      )}
       {countdown > 0 && onCancelAutoApprove && !autoCancelled && (
         <div className={styles.planAutoApproveHint}>
           <span>{t('ui.permission.autoApprove.countdown', { count: countdown })}</span>

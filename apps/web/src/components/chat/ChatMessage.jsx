@@ -200,6 +200,7 @@ class ChatMessage extends React.Component {
       p.toolResultMap !== n.toolResultMap || p.readContentMap !== n.readContentMap ||
       p.editSnapshotMap !== n.editSnapshotMap || p.askAnswerMap !== n.askAnswerMap ||
       p.planApprovalMap !== n.planApprovalMap || p.latestPlanContent !== n.latestPlanContent ||
+      p.planAutoApproveCountdown !== n.planAutoApproveCountdown || p.onCancelPlanAutoApprove !== n.onCancelPlanAutoApprove ||
       p.ptyPrompt !== n.ptyPrompt || p.cliMode !== n.cliMode ||
       p.lastPendingAskId !== n.lastPendingAskId || p.lastPendingPlanId !== n.lastPendingPlanId ||
       p.pendingAsk !== n.pendingAsk ||
@@ -880,12 +881,13 @@ class ChatMessage extends React.Component {
           )}
         </div>
       );
-      // PTY plan portal: when the global modal is showing the same active plan id,
+      // Plan portal (PTY and SDK): when the global modal is showing the same active plan id,
       // ReactDOM.createPortal moves this entire planModeBox subtree (including the feedback
       // textarea state) into the modal slot WITHOUT unmounting — local state survives.
       // Inline rendering resumes when modal is dismissed or the prompt resolves.
       // Only interactive cards qualify (resolved/historical cards never portal).
-      // ptyPlanCardId 用 tu.id（ExitPlanMode tool_use id）作权威源，与 ChatView pendingPtyPlan.id（=lastPendingPlanId）同源。
+      // ptyPlanCardId 用 tu.id（ExitPlanMode tool_use id）作权威源：PTY 下与 ChatView
+      // pendingPtyPlan.id（=lastPendingPlanId）同源；SDK 下与 pendingPlanApproval.id（=sdk toolUseID）同源。
       const ptyPlanCardId = isInteractive ? String(tu.id) : '';
       return (
         <ApprovalPortalContext.Consumer key={tu.id}>

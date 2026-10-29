@@ -90,8 +90,8 @@ class Mobile extends AppBase {
       mobileCachePanelVisible: false,  // 手机模式：点击血条划出的侧边抽屉
       mobileResumeVisible: false,      // /resume global session switcher modal
       globalPermission: null,     // { permission, handlers } — 全局权限审批浮层
-      globalPlanApproval: null,   // { plan, handlers } — 全局计划审批浮层
-      globalPlanAutoApproveCountdown: null, // Read-only mirror of ChatView's plan timer
+      // SDK plan 审批复用 ApprovalModal 的 planModeBox 卡片（onPendingPtyPlan 通道），
+      // 不再有独立的计划审批浮层。
       autoApproveSeconds: 3,   // 与 AppBase 一致：默认 3s 倒计时自动批准（0=关闭 / -1=免审批）
       hasGit: true,
       terminalPendingImages: [],  // 终端面板独立的 pending 图片/文件
@@ -567,8 +567,6 @@ class Mobile extends AppBase {
   // ─── 移动端渲染 ────────────────────────────────────────
 
   handlePendingPermission = (data) => { this.setState({ globalPermission: data }); };
-  handlePendingPlanApproval = (data) => { this.setState({ globalPlanApproval: data }); };
-  handlePlanAutoApproveCountdown = (countdown) => { this.setState({ globalPlanAutoApproveCountdown: countdown }); };
 
   handleAutoApproveChange = (seconds) => {
     this.setState({ autoApproveSeconds: seconds });
@@ -977,8 +975,6 @@ class Mobile extends AppBase {
                     fileLoading={this.state.fileLoading}
                     isStreaming={this.state.isStreaming}
                     onPendingPermission={this.handlePendingPermission}
-                    onPendingPlanApproval={this.handlePendingPlanApproval}
-                    onPlanAutoApproveCountdown={this.handlePlanAutoApproveCountdown}
                     onPendingAsk={this.handleApprovalAsk}
                     onPendingPtyPlan={this.handleApprovalPtyPlan}
                     autoApproveSeconds={this.state.autoApproveSeconds}
@@ -1494,20 +1490,8 @@ class Mobile extends AppBase {
             onAutoApproveChange={this.handleAutoApproveChange}
           />
         )}
-        {this.state.globalPlanApproval && (
-          <ToolApprovalPanel
-            toolName="ExitPlanMode"
-            toolInput={this.state.globalPlanApproval.plan.input}
-            requestId={this.state.globalPlanApproval.plan.id}
-            onAllow={this.state.globalPlanApproval.handlers.approve}
-            onDeny={(id) => this.state.globalPlanApproval.handlers.reject(id, '')}
-            visible={true}
-            global={true}
-            planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds}
-            planAutoApproveCountdown={this.state.globalPlanAutoApproveCountdown}
-            onCancelPlanAutoApprove={this.state.globalPlanApproval.handlers.cancelAutoApprove}
-          />
-        )}
+        {/* SDK plan 审批（ExitPlanMode）复用 ApprovalModal 的 planModeBox 卡片
+            （onPendingPtyPlan 通道 portal），不再有独立底部面板。权限审批面板在上方保留。 */}
       </div>
       </ConfigProvider>
       </ApprovalModal>

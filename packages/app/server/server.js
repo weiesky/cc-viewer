@@ -295,9 +295,10 @@ const gitRestoreLocks = new Map(); // Map<absLockKey, Promise<void>>
 
 // Notify the parent process (Electron main, when forked under tab-worker) about pending state changes.
 // No-op outside Electron (process.send is undefined when run as a standalone Node server).
-// Only ask-hook-* / sdk-ask-* are translated. Permission and SDK plan stay inline-only and do not
-// drive global modal / flashFrame / Notification (per UX direction). PTY plan is parsed in the
-// renderer and reported via window.tabBridge directly, not through this server-side hook.
+// Only ask-hook-* / sdk-ask-* are translated. Permission stays inline-only and does not
+// drive global modal / flashFrame / Notification (per UX direction). Plan approvals — PTY and
+// SDK — are parsed in the renderer and reported via window.tabBridge directly (SDK ExitPlanMode
+// reuses the PTY plan card/modal channel), not through this server-side hook.
 function _notifyParentPending(msg) {
   if (!process.send || !msg || typeof msg !== 'object' || !msg.type) return;
   let event = null;
@@ -3726,7 +3727,8 @@ export function broadcastWsMessage(msg) {  if (terminalWss) {
       try { c.send(str); } catch {}
     });
   }
-  // 仅对 ask 类型转译给主进程；perm-hook-* / sdk-plan-* 维持 inline-only（红线）。
+  // 仅对 ask 类型转译给主进程；perm-hook-* 维持 inline-only（红线）。sdk-plan-* 不经此 server
+  // 侧钩子——SDK plan 在渲染端复用 PTY plan 卡片/modal 通道，由 window.tabBridge 上报。
   // 显式调用 _notifyParentPending 的分支（ask-hook-resolved 等）走 ws.send 不进这里，无重复触发。
   if (msg && typeof msg === 'object' && typeof msg.type === 'string'
       && (msg.type === 'sdk-ask-pending' || msg.type === 'sdk-ask-resolved' || msg.type === 'sdk-ask-timeout'

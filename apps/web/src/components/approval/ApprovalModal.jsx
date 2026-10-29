@@ -3,6 +3,7 @@ import { t } from '../../i18n';
 import { ApprovalPortalContext } from '../chat/ApprovalPortalContext';
 import { playEvent as playVoiceEvent, playChimeFallback } from '../../utils/voicePackPlayer';
 import AskQuestionForm from '../chat/AskQuestionForm';
+import PlanApprovalForm from '../chat/PlanApprovalForm';
 import { shouldRenderAskFallback, ASK_FALLBACK_GRACE_MS } from '../../utils/askFallback';
 import styles from './ApprovalModal.module.css';
 
@@ -44,8 +45,9 @@ const _tr = (key, params, fallback) => {
  * portal switch — Portals do not unmount their child tree, so any in-flight feedback
  * textarea content survives ESC dismiss → reopen.
  *
- * Permission and SDK ExitPlanMode panels deliberately stay inline-only and are NOT
- * routed through this modal.
+ * Permission panels deliberately stay inline-only and are NOT routed through this modal.
+ * SDK ExitPlanMode reuses the 'ptyPlan' kind: ChatView bubbles the SDK pending plan
+ * through onPendingPtyPlan, so its planModeBox portals in exactly like a PTY plan.
  */
 export default function ApprovalModal({
   enabled,
@@ -107,6 +109,8 @@ export default function ApprovalModal({
 
   const askId = _idForKind('ask', approvalGlobal);
   const askPendingVisible = visibleKinds.includes('ask');
+  const ptyPlanId = _idForKind('ptyPlan', approvalGlobal);
+  const ptyPlanPendingVisible = visibleKinds.includes('ptyPlan');
 
   const ctxValue = useMemo(() => ({
     askSlot: slotsReady ? askSlotRef.current : null,
@@ -155,6 +159,45 @@ export default function ApprovalModal({
     questions: approvalGlobal?.ask?.ask?.questions,
     submitHandler: approvalGlobal?.ask?.handlers?.submit,
   });
+
+  // ptyPlan fallback — same shape as the ask fallback above. The plan modal body is normally
+  // filled by the transcript planModeBox portaling into the ptyPlan slot. When nothing portals
+  // in (sdk-plan-pending arrives before transcript ingest, a replayed plan whose tool_use block
+  // scrolled out of the render window, or a synthetic toolUseID that never matches a transcript
+  // block), the modal would otherwise show an empty body with no approve/reject surface. Render
+  // a PlanApprovalForm directly from the authoritative pending-plan payload so the user always
+  // gets working Approve / Approve-with-edits / Reject.
+  const [ptyPlanSlotOccupied, setPtyPlanSlotOccupied] = useState(false);
+  const [ptyPlanGraceElapsed, setPtyPlanGraceElapsed] = useState(false);
+
+  useLayoutEffect(() => {
+    const node = ptyPlanSlotRef.current;
+    if (!ptyPlanPendingVisible || !node) {
+      setPtyPlanSlotOccupied(false);
+      return undefined;
+    }
+    const update = () => setPtyPlanSlotOccupied(node.childElementCount > 0);
+    update();
+    const mo = new MutationObserver(update);
+    mo.observe(node, { childList: true });
+    return () => { mo.disconnect(); };
+  }, [ptyPlanPendingVisible, ptyPlanId]);
+
+  useEffect(() => {
+    setPtyPlanGraceElapsed(false);
+    if (!ptyPlanPendingVisible) return undefined;
+    const timer = setTimeout(() => setPtyPlanGraceElapsed(true), ASK_FALLBACK_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [ptyPlanPendingVisible, ptyPlanId]);
+
+  const ptyPlanPayload = approvalGlobal?.ptyPlan?.ptyPlan;
+  const ptyPlanHandlers = approvalGlobal?.ptyPlan?.handlers;
+  const ptyPlanFallbackVisible = ptyPlanPendingVisible
+    && !ptyPlanSlotOccupied
+    && ptyPlanGraceElapsed
+    && ptyPlanPayload != null
+    && typeof ptyPlanHandlers?.approve === 'function'
+    && typeof ptyPlanHandlers?.feedbackSubmit === 'function';
 
   // ESC = minimise（pending 保留）
   // Cmd/Ctrl+ESC = cancel（仅对 ask 类型生效，等价 terminal Claude Code 的 onAbort）—
@@ -296,6 +339,22 @@ export default function ApprovalModal({
                     onCancel={approvalGlobal.ask.handlers.cancel
                       ? () => approvalGlobal.ask.handlers.cancel(askId, 'User aborted')
                       : undefined}
+                  />
+                </div>
+              )}
+              {ptyPlanFallbackVisible && (
+                // ptyPlanFallbackVisible already verified a non-null payload and function
+                // approve/feedbackSubmit handlers. Resolve via the same ChatView SDK handlers:
+                // approve → option 1; reject → option 3; approve-with-edits → feedback text.
+                <div className={`${styles.slot}${activeKind !== 'ptyPlan' ? ' ' + styles.slotHidden : ''}`}>
+                  <PlanApprovalForm
+                    key={ptyPlanId}
+                    input={ptyPlanPayload.input}
+                    onApprove={() => ptyPlanHandlers.approve(1)}
+                    onReject={() => ptyPlanHandlers.approve(3)}
+                    onFeedbackSubmit={(text) => ptyPlanHandlers.feedbackSubmit(2, text)}
+                    planAutoApproveCountdown={null}
+                    onCancelPlanAutoApprove={ptyPlanHandlers.cancelAutoApprove ?? null}
                   />
                 </div>
               )}

@@ -73,7 +73,6 @@ async function buildChatView() {
 
 let ChatView;
 const sent = [];
-const countdowns = [];
 const sharedProps = {
   cliMode: true,
   sdkMode: true,
@@ -83,8 +82,15 @@ const sharedProps = {
   preferences: {},
   viewProject: 'project-a',
   viewInstance: 'instance-a',
-  onPlanAutoApproveCountdown: (value) => countdowns.push(value),
 };
+
+// Bubble spy — installed per-test, records every onPendingPtyPlan payload (or null clear).
+let ptyPlanBubble;
+function watchPlanBubble(view) {
+  ptyPlanBubble = [];
+  view.props = { ...view.props, onPendingPtyPlan: (data) => ptyPlanBubble.push(data) };
+  return ptyPlanBubble;
+}
 
 function makeView(planAutoApproveSeconds) {
   const view = new ChatView({ ...sharedProps, planAutoApproveSeconds });
@@ -104,7 +110,7 @@ function makeView(planAutoApproveSeconds) {
   view._bindChatScrollbarRO = () => {};
   view._attachMdCodeProbe = () => {};
   view._maybeScheduleLocalLogAutoFill = () => {};
-  view._stickyController = { bind() {}, startSmoothFollow() {}, resetUserScrollState() {} };
+  view._stickyController = { bind() {}, startSmoothFollow() {}, resetUserScrollState() {}, isUserScrolling() { return false; }, refreshFollowTarget() {}, writeUnderLock() {} };
   return view;
 }
 
@@ -156,7 +162,6 @@ before(async () => {
 
 afterEach(() => {
   sent.length = 0;
-  countdowns.length = 0;
   mock.timers.reset();
   mock.restoreAll();
 });
@@ -194,19 +199,6 @@ describe('ChatView SDK plan auto-approval runtime behavior', () => {
     assert.deepEqual(sent, [{ type: 'sdk-plan-answer', id: 'plan-1', approve: true }]);
     assert.equal(view.state.pendingPlanApproval, null);
     assert.equal(view.state.planAutoApproveCountdown, null);
-  });
-
-  it('mirrors countdown changes for the mobile global plan panel', () => {
-    const view = makeView(3);
-    receivePlan(view);
-    const previousState = view.state;
-    view.setState({ planAutoApproveCountdown: 2 });
-    update(view, previousState);
-    assert.deepEqual(countdowns, [3, 2]);
-    const clearedState = view.state;
-    view.setState({ planAutoApproveCountdown: null });
-    update(view, clearedState);
-    assert.deepEqual(countdowns, [3, 2, null]);
   });
 
   it('starts and stops a countdown when the preference changes', () => {
@@ -467,5 +459,121 @@ describe('ChatView PTY plan auto-approval lifecycle', () => {
     mock.timers.tick(5000);
     assert.deepEqual(ptyCalls, []);
     assert.deepEqual(sent, []);
+  });
+});
+
+describe('ChatView SDK plan modal bubble lifecycle', () => {
+  it('bubbles the SDK plan into the ptyPlan modal kind on arrival and clears on resolve', () => {
+    const view = makeView(0);
+    const bubble = watchPlanBubble(view);
+    receivePlan(view, 'plan-1');
+    // entered: one bubble carrying the SDK plan nested under `ptyPlan`, with SDK handlers.
+    assert.equal(bubble.length, 1);
+    assert.equal(bubble[0].ptyPlan.id, 'plan-1');
+    assert.equal(typeof bubble[0].handlers.approve, 'function');
+    assert.equal(typeof bubble[0].handlers.feedbackSubmit, 'function');
+    assert.equal(typeof bubble[0].handlers.cancelAutoApprove, 'function');
+    // resolve → left: a single null clear.
+    const prev = view.state;
+    view._onTerminalWsMessage({ type: 'sdk-plan-resolved', id: 'plan-1' });
+    update(view, prev);
+    assert.equal(bubble.length, 2);
+    assert.equal(bubble[1], null);
+  });
+
+  it('does not re-bubble on a WS replay of the same plan id (id-keyed, no modal re-pop)', () => {
+    const view = makeView(0);
+    const bubble = watchPlanBubble(view);
+    receivePlan(view, 'plan-1');
+    receivePlan(view, 'plan-1'); // replay: same id, fresh object identity
+    // Only the first arrival bubbles; the same-id replay must not re-enter.
+    assert.equal(bubble.length, 1);
+  });
+
+  it('re-bubbles as a transition when a different plan id replaces the pending one', () => {
+    const view = makeView(0);
+    const bubble = watchPlanBubble(view);
+    receivePlan(view, 'plan-a');
+    receivePlan(view, 'plan-b');
+    // entered(A) then entered(B) — the merged writer treats A→B as a new entry, not a clear.
+    assert.equal(bubble.length, 2);
+    assert.equal(bubble[0].ptyPlan.id, 'plan-a');
+    assert.equal(bubble[1].ptyPlan.id, 'plan-b');
+  });
+
+  it('clears the bubble when sdkMode turns off while a plan is pending', () => {
+    const view = makeView(0);
+    const bubble = watchPlanBubble(view);
+    receivePlan(view, 'plan-1');
+    assert.equal(bubble.length, 1);
+    // Flip sdkMode off with the plan still in state (mode edge must clear the modal).
+    const previousProps = view.props;
+    const previousState = view.state;
+    view.props = { ...view.props, sdkMode: false };
+    view.componentDidUpdate(previousProps, previousState);
+    assert.equal(bubble[bubble.length - 1], null);
+  });
+});
+
+describe('ChatView SDK plan card click routing', () => {
+  it('option 1 approves, other direct options reject with empty feedback', () => {
+    const view = makeView(0);
+    receivePlan(view, 'plan-1');
+    view.handleSdkPlanOptionClick(1);
+    assert.deepEqual(sent, [{ type: 'sdk-plan-answer', id: 'plan-1', approve: true }]);
+    assert.equal(view.state.pendingPlanApproval, null);
+  });
+
+  it('option 3 rejects with empty feedback', () => {
+    const view = makeView(0);
+    receivePlan(view, 'plan-1');
+    view.handleSdkPlanOptionClick(3);
+    assert.deepEqual(sent, [{ type: 'sdk-plan-answer', id: 'plan-1', approve: false, feedback: '' }]);
+  });
+
+  it('approve-with-edits resolves as approve:false + feedback (Claude revises)', () => {
+    const view = makeView(0);
+    receivePlan(view, 'plan-1');
+    view.handleSdkPlanFeedbackSubmit(2, 'please add tests');
+    assert.deepEqual(sent, [{ type: 'sdk-plan-answer', id: 'plan-1', approve: false, feedback: 'please add tests' }]);
+  });
+
+  it('ignores clicks when no plan is pending', () => {
+    const view = makeView(0);
+    view.handleSdkPlanOptionClick(1);
+    view.handleSdkPlanFeedbackSubmit(2, 'x');
+    assert.deepEqual(sent, []);
+  });
+});
+
+describe('ChatView plan countdown card refresh', () => {
+  it('pushes countdown ticks into the cached ExitPlanMode card element prop', () => {
+    const view = makeView(0);
+    // Seed a cached ExitPlanMode-bearing card element in allItems (assistant role + tool_use).
+    const cardEl = {
+      props: {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'plan-1', name: 'ExitPlanMode', input: {} }],
+        planAutoApproveCountdown: null,
+      },
+    };
+    view.setState({ allItems: [cardEl], lastResponseItems: null });
+    view._setPlanCountdown(7);
+    const refreshed = view.state.allItems[0];
+    assert.notEqual(refreshed, cardEl, 'the card element must be cloned, not mutated in place');
+    assert.equal(refreshed.props.planAutoApproveCountdown, 7);
+    assert.equal(typeof refreshed.props.onCancelPlanAutoApprove, 'function');
+    // Clearing the countdown clears the card prop too.
+    view._setPlanCountdown(null);
+    assert.equal(view.state.allItems[0].props.planAutoApproveCountdown, null);
+  });
+
+  it('leaves non-plan cards untouched when refreshing the countdown', () => {
+    const view = makeView(0);
+    const planCard = { props: { role: 'assistant', content: [{ type: 'tool_use', id: 'p', name: 'ExitPlanMode', input: {} }] } };
+    const otherCard = { props: { role: 'assistant', content: [{ type: 'tool_use', id: 'x', name: 'Bash', input: {} }] } };
+    view.setState({ allItems: [planCard, otherCard], lastResponseItems: null });
+    view._setPlanCountdown(5);
+    assert.equal(view.state.allItems[1], otherCard, 'non-ExitPlanMode cards keep their reference');
   });
 });

@@ -272,7 +272,8 @@ class AppBase extends React.Component {
       // ─── Approval modal global state ───
       // approvalGlobal: { ptyPlan?, ask? } currently active in the (single) ChatView mounted in this app instance.
       // Each entry carries { id, ..., handlers } as bubbled by ChatView.componentDidUpdate.
-      // Permission and SDK ExitPlanMode stay inline-only — they do NOT pop the global modal.
+      // Permission stays inline-only — it does NOT pop the global modal. SDK ExitPlanMode reuses
+      // the 'ptyPlan' kind (ChatView bubbles it via onPendingPtyPlan), so SDK plans pop the modal too.
       approvalGlobal: { ptyPlan: null, ask: null },
       // approvalDismissedIds: pending ids the user has chosen to minimize. Reopens via bell / chip.
       approvalDismissedIds: new Set(),
@@ -4003,12 +4004,23 @@ class AppBase extends React.Component {
   // Generic transition helper that mirrors a kind in/out of approvalGlobal AND wipes stale
   // dismissed entries for that kind. Used by both ask (static id reuse) and ptyPlan (timestamp ids
   // could repeat after long sessions). PTY plan and ask share the same dismiss-on-transition policy.
+  //
+  // Dismiss persistence across a WS blip: a reconnect replays sdk-plan-pending as null→value with
+  // the SAME id. That must not reopen a modal the user minimised, so the wipe only runs when the
+  // pending id actually CHANGES (a genuinely new plan) — not on a same-id re-bubble or a clear.
+  // Tracked per kind in _lastApprovalKindId.
   _setApprovalKind = (kind, data) => {
     const enriched = this._injectProjectName(data, kind);
     this.setState(prev => {
       const next = { ...prev.approvalGlobal };
       if (enriched) next[kind] = enriched;
       else next[kind] = null;
+      const prevId = prev.approvalGlobal?.[kind]?.[kind]?.id ?? null;
+      const nextId = enriched?.[kind]?.id ?? null;
+      if (prevId === nextId) {
+        // Same id (or both null): a replay/clear — keep any existing dismissal untouched.
+        return { approvalGlobal: next };
+      }
       const dismissed = new Set(prev.approvalDismissedIds);
       let changed = false;
       for (const id of dismissed) {

@@ -24,6 +24,10 @@
  *    ownership or both sides go inert); respLastPendingPlanId is NOT gated —
  *    it feeds buildLpid → _currentLastPendingPlanId → the pendingPtyPlan
  *    derivation in componentDidUpdate, which applies its own cliMode gate.
+ *    In SDK mode the LR card's interactivity is driven directly by
+ *    pendingPlanApproval.id (ChatView respLastPendingPlanId override), while
+ *    lrWillOwnPlan stays false (cliMode forced off for ownership), so the
+ *    messages side is never stripped and remains the single owner.
  */
 
 /** Every AskUserQuestion / ExitPlanMode tool_use id in a session's history. */
