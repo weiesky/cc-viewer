@@ -30,6 +30,8 @@
  *    messages side is never stripped and remains the single owner.
  */
 
+import { isSystemText, extractDisplayText } from '@ccv/core/contentFilter';
+
 /** Every AskUserQuestion / ExitPlanMode tool_use id in a session's history. */
 export function collectHistoryToolIds(messages) {
   const askIds = new Set();
@@ -229,4 +231,104 @@ export function collectLrAskQuestions(respContent) {
     }
   }
   return questions;
+}
+
+/**
+ * Visible text + tool_use anchors of the last assistant bubble in history that
+ * actually has visible text. In some sessions the SAME final turn is echoed
+ * into BOTH `session.messages` (the last assistant bubble) and
+ * `session.response.body.content` (the LR block), rendering one reply twice.
+ *
+ * Returns `{ text, toolIds }` for the LAST assistant message with visible text
+ * (mirrors the render side: array content drops system-text blocks, string
+ * content goes through extractDisplayText). `text` is the trimmed `\n\n`-joined
+ * visible text; `toolIds` is the ordered tool_use id list — used as a same-turn
+ * anchor (echoed copies keep the SAME toolu_* ids, whereas a different turn
+ * almost never repeats them). Returns null when no assistant message has
+ * visible text — the caller must NOT hide the LR then (the reply has not been
+ * echoed into messages yet, so the LR is its only rendering).
+ */
+export function lastAssistantOf(messages) {
+  const msgs = messages || [];
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (!m || m.role !== 'assistant') continue;
+    const c = m.content;
+    let parts = null;
+    let toolIds = [];
+    if (Array.isArray(c)) {
+      parts = c
+        .filter(b => b.type === 'text' && typeof b.text === 'string' && b.text.trim() && !isSystemText(b.text))
+        .map(b => b.text);
+      toolIds = c
+        .filter(b => b.type === 'tool_use' && typeof b.id === 'string' && b.id)
+        .map(b => b.id);
+    } else if (typeof c === 'string') {
+      const t = extractDisplayText(c);
+      if (t) parts = [t];
+    }
+    // Skip assistant bubbles with no visible text (e.g. pure tool_use turns) —
+    // keep scanning upward, matching computeMessagesPending's "non-empty" idea
+    // but requiring real visible text so a bare tool_use bubble is not read as
+    // "different from the LR".
+    if (parts && parts.length) return { text: parts.join('\n\n').trim(), toolIds };
+  }
+  return null;
+}
+
+/** Back-compat thin wrapper: just the visible text of lastAssistantOf. */
+export function lastAssistantTextOf(messages) {
+  const r = lastAssistantOf(messages);
+  return r ? r.text : null;
+}
+
+/**
+ * Visible text-body of a Last-Response payload. The LR render path does NOT
+ * apply the isSystemText filter, so neither does this. Returns null when the
+ * LR carries no visible text (e.g. only interaction cards / tool_use) — such
+ * an LR is never a text duplicate and stays subject to ownership rules.
+ */
+export function lrTextOf(respContent) {
+  if (!Array.isArray(respContent)) return null;
+  const parts = respContent
+    .filter(b => b.type === 'text' && typeof b.text === 'string' && b.text.trim())
+    .map(b => b.text);
+  return parts.length ? parts.join('\n\n').trim() : null;
+}
+
+/** Ordered tool_use id list of a content array (same-turn anchor). */
+function toolIdsOf(content) {
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter(b => b.type === 'tool_use' && typeof b.id === 'string' && b.id)
+    .map(b => b.id);
+}
+
+function sameIds(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/**
+ * True only when the LR is the SAME turn already echoed into the last
+ * assistant bubble — i.e. the LR is genuinely redundant and the caller hides
+ * the WHOLE block (divider label, thinking included). Two conjuncts:
+ *  - the trimmed, `\n\n`-joined visible text bodies are equal, AND
+ *  - the ordered tool_use id sequences are equal. Echoed copies share the same
+ *    toolu_* ids; a DIFFERENT turn whose text merely repeats (a retry, a short
+ *    "Done.") has fresh ids and is NOT hidden — that LR is the only rendering
+ *    of the newest reply and must stay. A pure-text turn has empty ids on both
+ *    sides and falls back to text equality alone (accepted residue).
+ * Callers must ALSO gate on interaction ownership (lrWillOwnAsk/Plan false and
+ * no LR-only pending card) so a pending Ask/ExitPlanMode card the messages
+ * side does not render is never hidden along with the block.
+ */
+export function lrDuplicatesLastAssistant({ messages, respContent }) {
+  const lrText = lrTextOf(respContent);
+  if (!lrText) return false;
+  const hist = lastAssistantOf(messages);
+  if (!hist) return false;
+  if (lrText !== hist.text) return false;
+  return sameIds(toolIdsOf(respContent), hist.toolIds);
 }

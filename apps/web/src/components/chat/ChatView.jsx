@@ -57,7 +57,7 @@ import { StickyBottomController } from '../../utils/stickyBottomController';
 import { AskFlowController, ASK_KIND, LEGACY_ASK_PLACEHOLDER_ID } from './controllers/askFlowController';
 import { UltraplanController } from '../../utils/ultraplanController';
 import { shouldDeferSend, reduceUploading } from './uploadDeferLogic';
-import { computeMessagesPending, healStalePendingIds, computeLrOwnership, filterLrContent, hasVisibleLrContent, collectLrAskQuestions } from './interactionOwnership';
+import { computeMessagesPending, healStalePendingIds, computeLrOwnership, filterLrContent, hasVisibleLrContent, collectLrAskQuestions, lrDuplicatesLastAssistant } from './interactionOwnership';
 import { ScrollHighlightController } from './controllers/scrollHighlightController';
 import { PermissionController } from './controllers/permissionController';
 import { ToolFileChangeController } from './controllers/toolFileChangeController';
@@ -2396,7 +2396,21 @@ class ChatView extends React.Component {
           // sides can no longer disagree about who owns the interaction.
           const shouldHide = lr.shouldHide;
 
-          if (!shouldHide) {
+          // The SAME final turn can be echoed into BOTH session.messages (last
+          // assistant bubble) and session.response.body.content (this LR),
+          // rendering one reply twice. Hide the whole LR block only when it is
+          // provably that same turn (trimmed `\n\n`-joined text equal AND the
+          // tool_use id sequence equal — see interactionOwnership.js) AND the
+          // LR owns no pending interaction the messages side does not already
+          // render (lrWillOwn*/hasInteractiveBlock false). The ownership guard
+          // keeps a pending Ask/ExitPlanMode card (and the PTY plan-modal
+          // buildLpid chain) alive instead of hiding it with the block. This is
+          // mode-agnostic (PTY/SDK/local-log all share the same wire path).
+          const hideDuplicateLr =
+            !lr.lrWillOwnAsk && !lr.lrWillOwnPlan && !lr.hasInteractiveBlock &&
+            lrDuplicatesLastAssistant({ messages: session.messages, respContent });
+
+          if (!shouldHide && !hideDuplicateLr) {
             // Last Response 单独存储，不混入主列表
             if (session.entryTimestamp) tsItemMap[session.entryTimestamp] = rawAllItems.length;
             const respLastPendingAskId = lr.respLastPendingAskId;
