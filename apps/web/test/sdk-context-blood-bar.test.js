@@ -12,6 +12,7 @@ const mobile = src('Mobile.jsx');
 const popover = src('components/dashboard/CachePopoverContent.jsx');
 const memory = src('components/common/MemoryDetailModal.jsx');
 const app = src('App.jsx');
+const chatInput = src('components/chat/ChatInputBar.jsx');
 
 describe('SDK context blood-bar integration contracts', () => {
   it('shares one provider and keeps SDK composition out of PTY/local/history bars', () => {
@@ -44,5 +45,22 @@ describe('SDK context blood-bar integration contracts', () => {
     for (const path of ['components/dashboard/SdkContextComposition.module.css', 'components/dashboard/SdkContextPalette.module.css', 'components/dashboard/CachePopoverContent.module.css']) {
       assert.doesNotMatch(src(path), /!important/);
     }
+  });
+
+  it('keeps the ctxBarSlot portal host mounted while the SDK scratch terminal is open', () => {
+    // In SDK mode terminalVisible mirrors scratchOpen while the composer stays mounted
+    // (early return is gated on `terminalVisible && !sdkMode`). The blood-bar portal host
+    // must use the same exemption: a raw `!terminalVisible` gate unmounts the slot on
+    // scratch open, so AppHeader's createPortal(LiveTagPopover) loses its target.
+    assert.equal((chatInput.match(/styles\.ctxBarSlot/g) || []).length, 1,
+      'exactly one ctxBarSlot portal host in ChatInputBar');
+    const gate = chatInput.match(
+      /\{!\(isMobile && !isPad\)\s*&&\s*([\s\S]*?)\s*&&\s*setContextBarSlot\s*&&\s*\(\s*<div className=\{styles\.ctxBarSlot\}[\s\S]*?ref=\{setContextBarSlot\}/,
+    );
+    assert.ok(gate, 'ChatInputBar renders the ctxBarSlot host for AppHeader');
+    assert.match(gate[1], /!\(terminalVisible && !sdkMode\)|!terminalVisible\s*\|\|\s*sdkMode/,
+      'slot gate must exempt sdkMode; PTY terminal-open still hides the slot');
+    assert.match(chatInput, /if \(terminalVisible && !sdkMode\) \{/,
+      'composer early return keeps the SDK composer mounted');
   });
 });

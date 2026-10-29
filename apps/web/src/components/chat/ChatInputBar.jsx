@@ -656,9 +656,11 @@ function ChatInputBar({ inputRef, inputEmpty, inputSuggestion, terminalVisible, 
             </button>
           )}
           </div>
-          {/* 中段：血条 portal slot；终端关闭 + 非纯移动端时挂在左/右控件之间，
-              flex-basis 200 + flex-shrink 1 自适应填充至 200px 上限；AppHeader 通过 createPortal 把 LiveTagPopover 渲染进来 */}
-          {!(isMobile && !isPad) && !terminalVisible && setContextBarSlot && (
+          {/* Middle: blood-bar portal slot. Mounted with the composer (hidden only on pure phones);
+              in SDK mode terminalVisible is the scratch toggle, so the slot survives scratch open/close
+              (same predicate as the early return above). flex-basis 200 + flex-shrink 1 fills up to
+              200px; AppHeader portals LiveTagPopover in via createPortal. */}
+          {!(isMobile && !isPad) && !(terminalVisible && !sdkMode) && setContextBarSlot && (
             <div className={styles.ctxBarSlot} ref={setContextBarSlot} />
           )}
           <div className={styles.chatInputBottomRight}>
