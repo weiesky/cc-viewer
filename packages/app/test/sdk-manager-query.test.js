@@ -1309,6 +1309,7 @@ describe('sdk-manager-query — interruptTurn 真中断 + 排空 pending 审批'
   it('grace 兜底：interrupt 后无 result → 10s 强制 settle；迟到的 result 被墓碑丢弃不错位', async () => {
     const { deps, turnEnds } = makeDeps();
     const calls = [];
+    const queryLog = [];
     let releaseFirst;
     const firstGate = new Promise((r) => { releaseFirst = r; });
     let idx = 0;
@@ -1316,6 +1317,7 @@ describe('sdk-manager-query — interruptTurn 真中断 + 排空 pending 审批'
       initMsgs: [sysInit('sess-grace')],
       respond: async (msg) => {
         calls.push(pushedText(msg));
+        queryLog.push(fq.currentIndex ? fq.currentIndex() : 0);
         if (idx++ === 0) await firstGate; // first turn: parked until manual release
         return [resultMsg()];
       },
@@ -1329,23 +1331,26 @@ describe('sdk-manager-query — interruptTurn 真中断 + 排空 pending 审批'
       await tick(5);
       sdk.interruptTurn();
       await waitMicro(() => fq.current().interruptCalls === 1);
-      // No result arrives → grace force-settles the turn
+      // No result arrives → grace settles the turn AND marks the generation suspect
+      // (the CLI never answered our Stop — it may be wedged). The wedged query is torn
+      // down lazily on the next push, NOT at grace-expiry, so a merely-slow child is
+      // never SIGTERM-ed mid-side-effect.
       mock.timers.tick(11 * 1000);
       await p1; // settled via grace — no hang
       await tick(6);
       assert.equal(turnEnds.length, 0, 'grace force-settle 不伪造 turnEnd');
 
-      // The late result for the interrupted turn arrives now (gate released)…
-      releaseFirst();
-      await tick(6);
-      // …and must be tombstoned (no turnEnd, no settling of a future turn)
-      assert.equal(turnEnds.length, 0, '迟到 result 被墓碑消费');
-
-      // A fresh turn runs clean on the same resident query
+      // A fresh turn rebuilds the resident query (suspect generation) and resumes the
+      // captured session id. The late result of the interrupted turn then arrives on the
+      // STALE generation and is dropped by the generation guard — never settling turn 2.
       await sdk.sendUserMessage('second');
       await tick(8);
-      assert.deepEqual(calls, ['first', 'second']);
-      assert.equal(turnEnds.length, 1, '新回合正常触发 turnEnd');
+      assert.equal(calls[0], 'first');
+      assert.equal(calls[1], 'second', '第二回合照常发出');
+
+      releaseFirst(); // late result of turn 1 on the old (torn-down) generation
+      await tick(8);
+      assert.equal(turnEnds.length, 1, '迟到 result 不污染新回合（generation guard / tombstone）');
     } finally {
       mock.timers.reset();
     }
@@ -3386,8 +3391,9 @@ describe('sdk-manager-query — removeQueued / interruptTurn 广播', () => {
 // ── Review-driven regression coverage: watchdog settle / tombstone misfire / signal
 // ── abort / death & switch dismiss broadcasts ──
 describe('sdk-manager-query — review 回归（watchdog / 墓碑 / signal / dismiss）', () => {
-  it('watchdog fire：队首 turn 的 promise 必须 settle + 挂墓碑；审批 pending 时豁免', async () => {
+  it('探针连续超时判死：队首 turn settle + turn-stuck 上报 + 下一代 resume 重建；迟到 result 不污染', async () => {
     const { deps } = makeDeps();
+    const queryErrorMetas = [];
     const calls = [];
     let releaseFirst;
     const firstGate = new Promise((r) => { releaseFirst = r; });
@@ -3399,48 +3405,75 @@ describe('sdk-manager-query — review 回归（watchdog / 墓碑 / signal / dis
         if (idx++ === 0) await firstGate; // silent turn — never yields on its own
         return [resultMsg()];
       },
+      // Wedged control plane: every probe parks forever (the 10s probe timeout convicts).
+      getContextUsage: () => ({ defer: true }),
     });
     mock.timers.enable({ apis: ['setTimeout'] });
     try {
       sdk.__setQueryForTests(fq);
-      sdk.initSdkSession(tmpDir, 'proj', deps);
+      sdk.initSdkSession(tmpDir, 'proj', { ...deps, onQueryError: (m, meta) => queryErrorMetas.push(meta) });
 
       const p1 = sdk.sendUserMessage('first');
       await tick(5);
-      // watchdog (25min) fires before any result — force-settle path
-      mock.timers.tick(26 * 60 * 1000);
-      await p1; // MUST settle (regression: shift-then-settleAll used to leak it)
+      // 10min silence → probe 1 (parks, times out at +10s) → failure 1; 3min → probe 2
+      // (parks, times out) → failure 2 = MAX → convict + recover.
+      mock.timers.tick(10 * 60 * 1000);
+      await tick(2);
+      assert.equal(queryErrorMetas.length, 0, 'first probe failure alone must not convict');
+      // Drive the remaining windows STEP BY STEP: mock.tick() advances only as far as
+      // the next timer, so probe 1's re-arm (3min) would swallow the two 10s probe
+      // timeouts queued behind it in a single big tick. Step: probe1 timeout → 3min
+      // re-arm → probe2 timeout = conviction.
+      mock.timers.tick(10 * 1000); // probe 1 times out → failure 1, re-arm at 3min
+      await tick(2);
+      mock.timers.tick(3 * 60 * 1000); // probe 2 parks (defer)
+      await tick(2);
+      mock.timers.tick(10 * 1000); // probe 2 times out → failure 2 = MAX → convict
+      let settled = false;
+      p1.then(() => { settled = true; });
+      await waitMicro(() => settled);
+      assert.ok(settled, 'recovery MUST settle the turn promise (regression: old watchdog leaked it)');
+      assert.ok(queryErrorMetas.some((meta) => meta?.code === 'turn-stuck'), 'turn-stuck reported after 2 failed probes');
       await tick(4);
+      const stuck = queryErrorMetas.find((meta) => meta?.code === 'turn-stuck');
+      assert.ok(stuck, 'turn-stuck error reported');
+      assert.equal(stuck.retryable, true);
 
-      // The turn's owed result arrives late → tombstoned (no turnEnd, no mis-settle)
+      // The turn's owed result arrives late on the dead generation → dropped by the
+      // generation guard (no turnEnd, no mis-settle of the next turn).
       releaseFirst();
       await tick(6);
 
-      // Next turn runs clean on the same resident query
+      // Next turn tears down the suspect generation and resumes the captured session id.
       await sdk.sendUserMessage('second');
       await tick(8);
+      assert.equal(fq.calls.length, 2, 'suspect generation rebuilt on the next push');
+      assert.equal(fq.calls[1].options.resume, 'sess-wd');
       assert.deepEqual(calls, ['first', 'second']);
     } finally {
       mock.timers.reset();
     }
   });
 
-  it('审批 pending 时 watchdog 不 force-settle（重挂等待审批超时）', async () => {
+  it('审批 pending 时探针豁免（重挂等待，不判死）；审批完成后回合正常结束', async () => {
     const { deps, broadcasts } = makeDeps();
+    const queryErrorMetas = [];
     const ctrl = { cutOpts: { toolUseID: 'wd-ask' } };
     sdk.__setQueryForTests(makeCanUseToolQuery('AskUserQuestion', { questions: [{ q: 'hold?' }] }, ctrl));
-    sdk.initSdkSession(tmpDir, 'proj', deps);
+    sdk.initSdkSession(tmpDir, 'proj', { ...deps, onQueryError: (m, meta) => queryErrorMetas.push(meta) });
     mock.timers.enable({ apis: ['setTimeout'] });
     try {
       const sendP = sdk.sendUserMessage('go');
       sendP.catch(() => {});
       await waitMicro(() => broadcasts.some((b) => b.type === 'sdk-ask-pending'));
-      // Cross the watchdog window while the approval is pending: no force-settle —
-      // the queued message must NOT be pushed into the approval-parked turn.
+      // Cross several probe windows while the approval is pending: the parked approval
+      // proves liveness, so nothing is probed and nothing is convicted — and the queued
+      // message must NOT be pushed into the approval-parked turn.
       await sdk.sendUserMessage('queued');
-      mock.timers.tick(26 * 60 * 1000);
+      mock.timers.tick(30 * 60 * 1000);
       await tick(6);
-      assert.equal(sdk.getQueueSnapshot().length, 1, '审批 pending 证明会话存活，watchdog 仅重挂');
+      assert.equal(sdk.getQueueSnapshot().length, 1, '审批 pending 证明会话存活，探针仅重挂');
+      assert.equal(queryErrorMetas.filter((meta) => meta?.code === 'turn-stuck').length, 0, '不判死');
       // Resolve the ask → turn completes → queued message drains
       sdk.resolveApproval('wd-ask', [{ answer: 'A' }]);
       await tick(10);

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- fix(server+web): **SDK 卡死回合按活性探活判死** — 移除 25 分钟静默强制结算（会误杀合法多小时工具回合）；回合静默超时后改为对 CLI 控制面发探活，连续无应答才判死：标记可疑代际、下次发送时按会话 id 懒重建（不打断可能仍在跑的子进程），并报可重试的 turn-stuck。审批 pending 视为存活不探活；丢失 result 与 Stop 后未应答也在下次发送时重建。Coverage: `sdk-manager-query.test.js`, `sdk-session-state.test.js`.
+
+- fix(server+web): **切回工作区恢复待审批 ask/perm + 长回合 Stop 常显** — attach 重放从仅 plan 扩为全量，前端给 ask/perm 补视图守卫防跨工作区弹错；服务端回合活跃时按固定间隔广播 sdk-session-state 心跳并在 attach 时按视图重放，前端增加实例过滤并透传 `turnActive`，长工具回合 Stop 按钮不再消失。Coverage: `server-sdk-attach-replay.test.js`, `sdk-session-state.test.js`, `stop-button-turn-active.test.js`.
+
+- feat(server+web): **502/网络错误内联重试反馈** — CLI 重试时即在出错消息后内联显示「正在重试 N/max」；重试耗尽或回合卡死后出现「重试」按钮，点击从断点续跑当前中断的生成（不重发原文），成功后提醒条消失。Coverage: `sdk-retry-inline.test.js`(server+web), `chat-synthetic-retry-prompt.test.js`.
+
+- fix(server+web): **WS 断开发送不再静默丢消息** — WS 未 OPEN 时提示「发送失败」并保留草稿；服务端发送失败改上报并定向回发起方（不全局广播）。Coverage: `send-failed-feedback.test.js`, `sdk-manager-send-failure.test.js`.
+
+- fix(server+web): **审批 hook 超时 + SSE 慢重连 + off 模式流看门狗** — 审批类插件 hook 加 15s 超时，超时回落正常审批弹窗；SSE 重连预算耗尽后每 30s 慢重连并提示；off 模式 LLM 响应流加空闲看门狗（默认 5 分钟，可配 0 关闭）。Coverage: `plugin-loader.test.js`, `sse-slow-reconnect.test.js`, `proxy-stream-idle-off.test.js`.
+
 - fix(server): **修复 target 模式经 /api/file-content 保存「新文件」必 403** — 写路径的 containment 检查走 `isPathContained`，其内部 `realpathSync(target)` 对不存在的叶子必 throw → 误判 outside-view-root 403。现对不存在的叶子容忍：realpath 最近存在祖先后重建路径并做纯前缀比对（root 已 realpath）；已存在文件仍走严格 realpath，越权新建（`..` 逃逸、symlink 指出 root）仍 403。Coverage: `api-target-files-fs.test.js`.
 
 - fix(web): **修复 WS 重连同 id 的 SDK plan 弹窗被重新弹开** — `AppBase._setApprovalKind` 的同 id 守卫有盲区：WS 闪断把 pending 清成 null，重连 replay 同 id 时 prevId=null≠nextId，守卫失效、误清该 id 的 dismiss，把用户已最小化的审批弹窗重新弹开。现把 dismiss 清除策略抽为纯函数 `shouldWipeApprovalDismissal`：null→id 过渡不清 dismiss，仅真·新 id 替换旧 id 才清。Coverage: `approval-dismissal.test.js`.

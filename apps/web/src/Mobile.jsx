@@ -974,6 +974,7 @@ class Mobile extends AppBase {
                     mobileChatVisible={true}
                     fileLoading={this.state.fileLoading}
                     isStreaming={this.state.isStreaming}
+                    turnActive={this.state.turnActive}
                     onPendingPermission={this.handlePendingPermission}
                     onPendingAsk={this.handleApprovalAsk}
                     onPendingPtyPlan={this.handleApprovalPtyPlan}

@@ -17,6 +17,7 @@ import { getTeammateAvatar } from '../../utils/teammateAvatars';
 import { applyAvatarAnimationTargets } from '../../utils/avatarAnimationPostPass';
 import { mergeToolRuns } from '../../utils/toolRunMerge';
 import { buildResponseThinkingIndex, buildSessionThinkingDisplay, filterDisplayedResponseThinking } from '../../utils/responseThinking';
+import { isCcvRetryPrompt } from '../../utils/ccvMarkers';
 import { isSystemText, classifyUserContent, isMainAgent, isTeammate, resolveTeammateNames, extractDisplayText, isUltraplanText } from '@ccv/core/contentFilter';
 import { extractQueuedPromptWireMessage, queuedPromptDisplayText } from '@ccv/core/queued-prompt';
 import { queuedPromptsAfterIndex, queuedPromptsSignature } from './queuedPromptDisplay';
@@ -136,6 +137,14 @@ const VirtuosoScroller = React.forwardRef((props, ref) => (
 
 function randomInterval() {
   return 100 + Math.random() * 50;
+}
+
+// Map a server sdk-retry-turn rejection reason to a localized label, falling back to the
+// generic "unavailable" for reasons without a dedicated key.
+function _sdkRetryReasonText(reason) {
+  const key = `ui.sdkRetry.${reason}`;
+  const v = t(key);
+  return (v && v !== key) ? v : t('ui.sdkRetry.unavailable');
 }
 
 // UltraPlan modal 拖拽尺寸持久化 helper —— 单值 key,与 PanelResizer 风格一致。
@@ -261,6 +270,10 @@ class ChatView extends React.Component {
       // SDK turn/query failures pinned in the dialogue tail (sdk-error WS frame) —
       // merged by message with a recurrence count; cleared on the next explicit send.
       sdkErrors: [],
+      // 502/retry inline state (sdk-retry-state WS frame): the CLI's own retry progress,
+      // then the manual [retry] affordance once retries are exhausted. Cleared with
+      // sdkErrors on the next explicit send / recovered success.
+      sdkRetry: null,
       // `/` skill-menu surface: menu open/query/active + two data sources (SDK broadcast
       // sdk-skills vs. the /api/skills fallback) — see utils/slashCommandMenu.js.
       slashMenu: { ...CLOSED_SLASH_MENU },
@@ -386,6 +399,7 @@ class ChatView extends React.Component {
     this._slashSkillsFailedAt = 0; // last /api/skills failure ts — gates the retry cooldown
     this._inputRef = React.createRef();
     this._stopOptimisticTimer = null; // 乐观停止兜底定时器
+    this._sdkRetryResetTimer = null; // manual [retry] 15s fallback (componentWillUnmount clears)
     // PTY byte-stream state (buffer/carry/debounce/current-prompt mirror/auto-allow
     // dedupe) is owned by this._ptyPrompt (PtyPromptController), see end of constructor.
     // 全部 ask 状态机字段 + 方法由 this._askFlow（AskFlowController）持有，见构造末尾。
@@ -447,6 +461,9 @@ class ChatView extends React.Component {
       setCurrentPtyPrompt: (v) => this._ptyPrompt.setCurrent(v),
       clearPtyDebounce: () => this._ptyPrompt.clearDebounce(),
       sendUserMessageImmediate: (text, ta, skip) => this._sendUserMessageImmediate(text, ta, skip),
+      // View-ownership guard for SDK ask frames (same rule as the plan/perm guards in
+      // ChatView): a frame stamped for a different workspace/instance must not surface.
+      sdkFrameMatchesView: (msg) => this._sdkFrameMatchesView(msg),
       takePendingFlush: (askId) => {
         if (!this._pendingFlushQueue || this._pendingFlushQueue.length === 0) return null;
         const idx = this._pendingFlushQueue.findIndex(e => e.askId === askId);
@@ -710,6 +727,7 @@ class ChatView extends React.Component {
       nextProps.userProfile !== this.props.userProfile ||
       nextProps.pendingUploadPaths !== this.props.pendingUploadPaths ||
       nextProps.isStreaming !== this.props.isStreaming ||
+      nextProps.turnActive !== this.props.turnActive ||
       nextProps.lang !== this.props.lang ||
       nextProps.showThinkingSummaries !== this.props.showThinkingSummaries ||
       nextProps.fileLoading !== this.props.fileLoading ||
@@ -764,7 +782,8 @@ class ChatView extends React.Component {
       }
       this._fileScrollSnapshot = null;
       // Clear SDK session surface on workspace switch to prevent stale data.
-      this.setState({ sdkCompactNotices: [], sdkErrors: [] });
+      if (this._sdkRetryResetTimer) { clearTimeout(this._sdkRetryResetTimer); this._sdkRetryResetTimer = null; }
+      this.setState({ sdkCompactNotices: [], sdkErrors: [], sdkRetry: null });
       // `'' → 真实名` 是延迟初始化（/api/project-name 异步到达），不是真切换：跳过 reset，
       // 否则刷新后刚回放落地的 sdk-skills 会被立即清空、menu 永久退到 fs 回退。
       if (prevProps.projectName) this._resetSlashMenuSurface();
@@ -789,12 +808,24 @@ class ChatView extends React.Component {
       || prevProps.viewInstance !== this.props.viewInstance;
     const planLostView = viewIdentityChanged && this.state.pendingPlanApproval
       && !this._sdkFrameMatchesView(this.state.pendingPlanApproval);
-    if (viewSwitched || planLostView) {
+    // Instance-level transitions (null→instance or instance→null within the SAME project)
+    // must also clear the SDK approval/error surfaces: viewSwitched is false there, but
+    // the old instance's ask/perm/sdkErrors would otherwise linger beside the replayed
+    // new-instance ones (and a stale [retry] would target the wrong anchor).
+    const instanceTransition = viewIdentityChanged && !!(prevProps.viewInstance || this.props.viewInstance);
+    if (viewSwitched || planLostView || instanceTransition) {
       this._resetSlashMenuSurface();
       // Approval actions must belong to the view that presented them. A later
       // attach/replay can surface the pending request again in its owning view.
       this._clearPlanAutoApprove();
-      this.setState({ pendingPlanApproval: null, pendingPtyPlan: null, planAutoApproveCountdown: null });
+      // ask/perm follow the same ownership rule as plan ONLY in SDK mode: the attach
+      // replay that restores them is SDK-only (replaySdkPendingApprovals). PTY hook
+      // ask/perm are NOT replayed on attach (only on a fresh WS connect / onWsOpen), so
+      // clearing them here would orphan a live PTY modal into a silent timeout-deny.
+      this.setState({
+        pendingPlanApproval: null, pendingPtyPlan: null, planAutoApproveCountdown: null,
+        ...(this.props.sdkMode ? { pendingAsk: null, askQueue: [], pendingPermission: null, permissionQueue: [] } : {}),
+      });
       if (viewSwitched || planLostView) { this._planAutoCancelled.clear(); this._permAutoCancelled.clear(); }
       // Pinned sdk-error rows belong to the previous view's workspace/instance.
       this._clearSdkErrors();
@@ -1269,6 +1300,7 @@ class ChatView extends React.Component {
     this._slashSkillsSeq++; // invalidate any in-flight /api/skills pull so it never setStates post-unmount
     this._splitDrag.dispose();
     if (this._planAutoTimer) { this._planAutoTimer(); this._planAutoTimer = null; } // deadlineCountdown stop()
+    if (this._sdkRetryResetTimer) { clearTimeout(this._sdkRetryResetTimer); this._sdkRetryResetTimer = null; }
     // 缓发超时 timer + 残留上传占位的 objectURL 清扫(卸载中 drain/超时回调已各自 _unmounted 守卫)。
     clearTimeout(this._sendDeferTimer);
     for (const u of (this.state.uploadingItems || [])) { if (u.previewUrl) { try { URL.revokeObjectURL(u.previewUrl); } catch {} } }
@@ -1754,6 +1786,9 @@ class ChatView extends React.Component {
             }
             // 渲染普通用户文本块
             for (let ti = 0; ti < textBlocks.length; ti++) {
+              // A synthetic [cc-viewer:retry] continue prompt is session history the model
+              // reads, not a user bubble — hide it (transcript/request panel keep it).
+              if (isCcvRetryPrompt(textBlocks[ti].text)) continue;
               const isPlan = /Implement the following plan:/i.test(textBlocks[ti].text || '');
               renderedMessages.push(
                 <ChatMessage key={`${keyPrefix}-user-${mi}-${ti}`} role={isPlan ? 'plan-prompt' : 'user'} text={textBlocks[ti].text} isUltraplan={!isPlan && ultraplan} lang={this.props.lang} timestamp={ts} userProfile={userProfile} modelInfo={modelInfo} requestIndex={hasViewRequest ? reqIdx : undefined} onViewRequest={hasViewRequest ? onViewRequest : undefined} isHistoryLog={isHistoryLog} />
@@ -1814,7 +1849,7 @@ class ChatView extends React.Component {
             }
           } else {
             const dispText = extractDisplayText(content);
-            if (dispText) {
+            if (dispText && !isCcvRetryPrompt(dispText)) { // hide the synthetic [cc-viewer:retry] prompt
               const isPlan = /Implement the following plan:/i.test(dispText);
               const ultra = !isPlan && isUltraplanText(content);
               renderedMessages.push(
@@ -2792,6 +2827,11 @@ class ChatView extends React.Component {
             autoCancelled: msg.autoCancelled === true,
           } });
         } else if (msg.type === 'perm-hook-pending') {
+          // A permission request must belong to the view that presents it: drop frames
+          // stamped for a different workspace/instance (a bound view's connection would
+          // otherwise surface a sibling's modal). PTY hook frames carry no cwd/instanceKey
+          // and pass the guard (sdkPlanMatchesView returns true for them).
+          if (!this._sdkFrameMatchesView(msg)) return;
           // 免审批：在请求到达处直接放行，不设 pendingPermission、不入队，从源头绕过
           // ToolApprovalPanel（否则面板会先挂载再于下一 tick 自动批准，残留一帧 + 200ms
           // 退场动画的闪烁）。ws 未连通时 autoAllow 返回 false → 回落到正常面板/队列路径，
@@ -2888,6 +2928,9 @@ class ChatView extends React.Component {
           // the dialogue tail, so a dead turn no longer looks like a silent hang. Same
           // view guard as sdk-skills: background workspace/instance frames must not land here.
           if (!this._sdkFrameMatchesView(msg)) return;
+          // A terminal failure supersedes the retry progress line (the retries are done —
+          // the error row below, with its own [retry] button when retryable, is the truth).
+          if (this._sdkRetryResetTimer) { clearTimeout(this._sdkRetryResetTimer); this._sdkRetryResetTimer = null; }
           const detail = String(msg.message || '');
           message.error(t('ui.sdkError', { detail }));
           const ts = Date.now();
@@ -2896,8 +2939,56 @@ class ChatView extends React.Component {
             // instead of stacking duplicate rows; cap applies to distinct messages.
             const kept = (prev.sdkErrors || []).filter(e => e.message !== detail);
             const prevEntry = (prev.sdkErrors || []).find(e => e.message === detail);
-            return { sdkErrors: [...kept, { message: detail, ts, count: (prevEntry?.count || 0) + 1 }].slice(-3) };
+            return {
+              sdkRetry: null, // terminal error supersedes the retry progress line
+              // A terminal failure also unlocks any row stuck in `recovering` (a retried
+              // turn that failed again) — otherwise its [retry] button never returns.
+              sdkErrors: [...kept.map(e => e.recovering ? { ...e, recovering: false } : e), {
+              message: detail, ts, count: (prevEntry?.count || 0) + 1,
+              // Retry metadata for the inline [重试] affordance (502/turn-stuck/session-ended).
+              turnId: msg.turnId || null, retryable: msg.retryable === true,
+              apiStatus: (typeof msg.apiStatus === 'number') ? msg.apiStatus : null,
+              attempt: msg.attempt || 0, maxRetries: msg.maxRetries || 0, code: msg.code || null,
+            }].slice(-3) };
           });
+        } else if (msg.type === 'sdk-send-failed') {
+          // Directed (initiator-only) notice that a composer send never reached the SDK
+          // session. The draft is preserved client-side; surface the failure so it is
+          // never dropped silently.
+          try { message.warning(t('ui.sendFailed')); } catch {}
+        } else if (msg.type === 'sdk-retry-state') {
+          // 502/retry lifecycle: the CLI's own retry (retrying) → manual [retry] click
+          // (recovering) → success (recovered) or a refusal (rejected). Cleanup matches by
+          // retryOf = the FAILED turn's id (never the new turn's id), so a retry's success
+          // clears the failed row's progress/button.
+          if (!this._sdkFrameMatchesView(msg)) return;
+          if (msg.phase === 'retrying') {
+            this.setState({ sdkRetry: { phase: 'retrying', turnId: msg.turnId || null, attempt: msg.attempt || 0, maxRetries: msg.maxRetries || 0, errorStatus: (typeof msg.errorStatus === 'number') ? msg.errorStatus : null, error: msg.error || null } });
+            // Re-arm the fallback so a retried turn that never resolves can't leave the
+            // progress line up forever (and a fresh window can't be wiped by an OLD timer).
+            this._armSdkRetryReset();
+          } else if (msg.phase === 'recovering') {
+            this.setState(prev => ({
+              sdkRetry: { phase: 'recovering', retryOf: msg.retryOf || null, turnId: msg.turnId || null },
+              sdkErrors: (prev.sdkErrors || []).map(e => (msg.retryOf && e.turnId === msg.retryOf) ? { ...e, recovering: true } : e),
+            }));
+            this._armSdkRetryReset();
+          } else if (msg.phase === 'recovered') {
+            if (this._sdkRetryResetTimer) { clearTimeout(this._sdkRetryResetTimer); this._sdkRetryResetTimer = null; }
+            this.setState(prev => ({
+              sdkRetry: null,
+              // Clear ONLY the failed turn's row (retryOf). A missing retryOf must NOT
+              // wipe every retryable row.
+              sdkErrors: (prev.sdkErrors || []).filter(e => !(msg.retryOf && e.retryable && e.turnId === msg.retryOf)),
+            }));
+          } else if (msg.phase === 'rejected') {
+            if (this._sdkRetryResetTimer) { clearTimeout(this._sdkRetryResetTimer); this._sdkRetryResetTimer = null; }
+            this.setState(prev => ({
+              sdkRetry: null,
+              sdkErrors: (prev.sdkErrors || []).map(e => e.recovering ? { ...e, recovering: false } : e),
+            }));
+            message.warning(_sdkRetryReasonText(msg.reason));
+          }
         } else if (msg.type === 'sdk-init') {
           // SDK 会话的 slash 命令面 + 模型(headless 会话没有 TUI `/` 帮助)。
           // 每个 session 只广播一次(server 侧去重)。模型上提给 AppHeader 渲染。
@@ -2923,8 +3014,9 @@ class ChatView extends React.Component {
           // Turn-level busy truth (idle/running/requires_action) — lift to AppBase,
           // which owns the spinner's turn-level state (same onSdkModel lift pattern).
           // cwd travels so AppBase can drop frames from background workspaces
-          // (multi-workspace SDK: one broadcast reaches every viewer).
-          if (typeof this.props.onSdkSessionState === 'function') this.props.onSdkSessionState(msg.state, { sessionId: msg.sessionId || null, cwd: msg.cwd || null });
+          // (multi-workspace SDK: one broadcast reaches every viewer). instanceKey too —
+          // the 10s turn heartbeat would otherwise light a same-basename sibling's client.
+          if (typeof this.props.onSdkSessionState === 'function') this.props.onSdkSessionState(msg.state, { sessionId: msg.sessionId || null, cwd: msg.cwd || null, instanceKey: msg.instanceKey || null });
         } else if (msg.type === 'sdk-compact') {
           // SDK-side compact (invisible on the wire) — render as a system notice.
           // Cap at 10 entries to prevent unbounded growth; only the latest is rendered.
@@ -3503,7 +3595,43 @@ class ChatView extends React.Component {
   // because the server's queue auto-drain announces running right after the error
   // frame, which would wipe the row before the user ever sees it.
   _clearSdkErrors = () => {
-    if ((this.state.sdkErrors || []).length) this.setState({ sdkErrors: [] });
+    if (this._sdkRetryResetTimer) { clearTimeout(this._sdkRetryResetTimer); this._sdkRetryResetTimer = null; }
+    if ((this.state.sdkErrors || []).length || this.state.sdkRetry) this.setState({ sdkErrors: [], sdkRetry: null });
+  };
+
+  // Manual [retry] of a retryable failed turn. Sends sdk-retry-turn to the server; a
+  // rejected phase / 15s fallback restores the row's button if the server never answers.
+  _handleSdkRetry = (row) => {
+    const ws = this._inputWs;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      try { message.warning(t('ui.sendFailed')); } catch {}
+      return;
+    }
+    this.setState(prev => ({
+      sdkRetry: { phase: 'recovering', retryOf: row.turnId || null, turnId: null },
+      sdkErrors: (prev.sdkErrors || []).map(e => (e === row || (row.turnId && e.turnId === row.turnId)) ? { ...e, recovering: true } : e),
+    }));
+    try { ws.send(JSON.stringify({ type: 'sdk-retry-turn', project: this.props.viewProject || this.props.projectName || undefined, instanceKey: this.props.viewInstance || undefined, turnId: row.turnId || null })); }
+    catch (err) {
+      // Roll back ONLY the clicked row (a broadcast 'recovering' on a sibling row must
+      // not be un-locked by this send failure).
+      try { message.warning(t('ui.sendFailed')); } catch {}
+      this.setState(prev => ({ sdkRetry: null, sdkErrors: (prev.sdkErrors || []).map(e => (row.turnId && e.turnId === row.turnId) ? { ...e, recovering: false } : e) }));
+      return;
+    }
+    this._armSdkRetryReset();
+  };
+
+  _armSdkRetryReset = () => {
+    if (this._sdkRetryResetTimer) clearTimeout(this._sdkRetryResetTimer);
+    this._sdkRetryResetTimer = setTimeout(() => {
+      this._sdkRetryResetTimer = null;
+      if (this._unmounted) return;
+      this.setState(prev => ({
+        sdkRetry: null,
+        sdkErrors: (prev.sdkErrors || []).map(e => e.recovering ? { ...e, recovering: false } : e),
+      }));
+    }, 15000);
   };
 
   // Persistent sdk-error rows pinned at the dialogue tail (all three messageList
@@ -3524,16 +3652,45 @@ class ChatView extends React.Component {
 
   _renderSdkErrors = (emptyState = false) => {
     const rows = this.state.sdkErrors || [];
-    if (rows.length === 0) return null;
+    const retry = this.state.sdkRetry;
+    if (rows.length === 0 && !retry) return null;
+    // Retry progress line (the CLI's own 502 retry): "API 请求失败(502)，正在重试 1/N".
+    // Uses the network-error variant when there is no HTTP status. The recovering line
+    // shows while a manual [retry] turn is resuming the interrupted reply.
+    const retryRow = retry ? (
+      <div key="sdk-retry" className={styles.sdkRetryRow} role="status">
+        {retry.phase === 'recovering'
+          ? t('ui.sdkRetry.recovering')
+          : (retry.errorStatus != null
+            ? t('ui.sdkRetry.retrying', { status: retry.errorStatus, attempt: retry.attempt, max: retry.maxRetries })
+            : t('ui.sdkRetry.retryingNetwork', { attempt: retry.attempt, max: retry.maxRetries }))}
+      </div>
+    ) : null;
     return (
       <div className={emptyState ? `${styles.sdkErrorStack} ${styles.sdkErrorStackEmpty}` : styles.sdkErrorStack}>
-        {rows.map(({ message: detail, ts, count }) => (
-          <div key={detail} className={styles.sdkErrorRow}>
-            {t('ui.sdkError', { detail })}
-            {count > 1 ? <span className={styles.sdkErrorCount}>×{count}</span> : null}
-            <span className={styles.sdkErrorTs}>{formatHms(new Date(ts))}</span>
-          </div>
-        ))}
+        {retryRow}
+        {rows.map((row) => {
+          const { message: detail, ts, count, turnId, retryable, code, recovering } = row;
+          // A localized code label replaces the raw detail in the visible text, but the
+          // raw detail is preserved on title/aria-label for diagnosis.
+          const codeKey = code ? `ui.sdkErrorCode.${code}` : null;
+          const codeLabel = codeKey && t(codeKey) !== codeKey ? t(codeKey) : null;
+          const label = codeLabel || t('ui.sdkError', { detail });
+          const showRetry = retryable && turnId && !recovering;
+          return (
+            <div key={detail} className={styles.sdkErrorRow} title={detail} aria-label={detail}>
+              {label}
+              {count > 1 ? <span className={styles.sdkErrorCount}>×{count}</span> : null}
+              {showRetry ? (
+                <button type="button" className={styles.sdkRetryBtn} onClick={() => this._handleSdkRetry(row)}>
+                  {t('ui.sdkRetry.retry')}
+                </button>
+              ) : null}
+              {recovering ? <span className={styles.sdkRetryRecovering}>{t('ui.sdkRetry.recovering')}</span> : null}
+              <span className={styles.sdkErrorTs}>{formatHms(new Date(ts))}</span>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -3609,7 +3766,11 @@ class ChatView extends React.Component {
     if (!text) return;
     this._closeSlashMenu();
     const ws = this._inputWs;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    // WS not open: warn and KEEP the draft — never silently drop the user's message.
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      try { message.warning(t('ui.sendFailed')); } catch {}
+      return;
+    }
     const isClear = /^\s*\/clear\s*$/.test(text);
     // /clear 自身不解锁血条 lock（lock 是清空确认后由 AppBase.handleClearContextOptimistic 设置）；
     // 其他正常用户消息（包括 slash 命令）都视为「新请求」并解锁血条。
@@ -3758,7 +3919,11 @@ class ChatView extends React.Component {
     const uiStreamingNow = this.props.isStreaming && !this.state.stopOptimistic;
     if (uiStreamingNow) {
       const ws = this._inputWs;
-      if (!ws || ws.readyState !== WebSocket.OPEN) return; // keep the draft (WS-closed precedent)
+      // keep the draft (WS-closed precedent) — but tell the user instead of dropping silently
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        try { message.warning(t('ui.sendFailed')); } catch {}
+        return;
+      }
       if (!/^\s*\/clear\s*$/.test(text)) this.props.onUserMessageSent?.();
       textarea.value = '';
       resizeChatTextarea(textarea, { focused: document.activeElement === textarea });
@@ -5078,6 +5243,10 @@ class ChatView extends React.Component {
               } : null}
               onClearContextNow={this.props.cliMode ? this._doClearContext : null}
               isStreaming={uiStreaming}
+              // Server turn truth keeps Stop visible through long tool runs (isStreaming
+              // alone flickers off between streaming bursts). stopOptimistic preserves the
+              // instant-hide feedback right after the user clicks Stop.
+              turnActive={this.props.turnActive && !this.state.stopOptimistic}
               pendingImages={this.state.pendingImages}
               onRemovePendingImage={this._removePendingImage}
               uploadingItems={this.state.uploadingItems}

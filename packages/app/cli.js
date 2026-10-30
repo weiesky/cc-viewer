@@ -838,6 +838,7 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   }
   // 观测面走与 PTY 相同的 wire 通路(SDK 子进程流量经 ANTHROPIC_BASE_URL 到 ccv proxy →
   // fetch hook → v2 transcript → SSE),sdk-manager 不再另接 v2/streaming 注入。
+  const { runWaterfallHook } = await import('./server/lib/plugin-loader.js');
   sdkManager.initSdkSession(workingDir, basename(workingDir), {
     broadcastWs: (msg) => serverMod.broadcastWsMessage(msg),
     permissionMode,
@@ -849,7 +850,7 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
       ? { continue: sdkArgs.continue, resumeId: sdkArgs.resume, forkSession: sdkArgs.forkSession }
       : null,
     userArgs: sdkArgs.rest,
-    runWaterfallHook: (await import('./server/lib/plugin-loader.js')).runWaterfallHook,
+    runWaterfallHook,
     // Round-3 P0: SDK mode has no Stop hook (ensureHooks() skipped above), so
     // the only place we learn a turn ended is the SDK 'result' message. Forward
     // it to the same SSE channel the Stop hook bridge uses in PTY mode.
@@ -894,6 +895,7 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   serverMod.setSdkAutoCancelApproval(sdkManager.autoCancelApproval);
   serverMod.setSdkSendUserMessage(sdkManager.sendUserMessage);
   serverMod.setSdkInterruptTurn(sdkManager.interruptTurn);
+  serverMod.setSdkRetryTurn(sdkManager.retryInterruptedTurn);
   serverMod.setSdkGetPendingApprovals(sdkManager.getPendingApprovals);
   serverMod.setSdkGetInitSnapshot(sdkManager.getSdkInitSnapshot);
   serverMod.setSdkGetSkillsSnapshot(sdkManager.getSkillsSnapshot);
@@ -905,6 +907,20 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   serverMod.setSdkRemoveQueued(sdkManager.removeQueued);
   serverMod.setSdkClearQueued(sdkManager.clearQueued);
   serverMod.setSdkGetQueueSnapshot(sdkManager.getQueueSnapshot);
+
+  // Durable process-level wiring: registered ONCE here so a workspace stop→relaunch
+  // (which calls stopSession and clears the mutable callbacks, then re-inits without
+  // them) re-adopts the process wiring instead of silently losing every sdk-* frame.
+  sdkManager.setSdkProcessWiring({
+    onTurnEnd: ({ sessionId, ts, cwd }) => {
+      if (typeof serverMod.broadcastTurnEnd !== 'function') return;
+      try { serverMod.broadcastTurnEnd(sessionId, ts, null, cwd); }
+      catch (err) { console.warn('[sdk] broadcastTurnEnd threw:', err?.message); }
+    },
+    onQueryError: (message, meta) => serverMod.broadcastWsMessage({ type: 'sdk-error', message, ...(meta || {}) }),
+    broadcastWs: (msg) => serverMod.broadcastWsMessage(msg),
+    runWaterfallHook,
+  });
 
   // 自动打开浏览器
   const protocol = serverMod.getProtocol();

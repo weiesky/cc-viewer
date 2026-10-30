@@ -389,6 +389,9 @@ class AppBase extends React.Component {
       // Legacy reconnect pacing (matches the pre-channel _reconnectSSE backoff).
       backoff: (n) => Math.min(2000 * Math.pow(2, n - 1), 32000),
       onEvict: (ch) => this._onChannelEvict(ch),
+      // Budget spent: the manager keeps probing every slowRetryMs — tell the
+      // user once per exhaustion cycle (reset when a socket reopens).
+      onReconnectExhausted: () => { try { message.warning(t('ui.sseReconnectExhausted')); } catch {} },
       handlers: {
         onCreate: () => createChannelState(),
         onFrame: (channel, name, event) => this._onChannelFrame(channel, name, event),
@@ -1962,7 +1965,7 @@ class AppBase extends React.Component {
     if (vm.react.streamingLatest) this._commitChannel(channel, { streamingLatest: null });
     const plan = this._channelUrlFor(channel.scope, { reconnect: true, channel });
     if (!this._channels.reconnect(channel.key, { url: plan.url })) {
-      console.error('SSE reconnect limit reached');
+      // Budget spent: the manager notified once and keeps slow-retrying.
       return;
     }
     vm.hasViewCache = !!plan.hasCache;
@@ -3819,6 +3822,16 @@ class AppBase extends React.Component {
       const viewed = this.state.viewedProject || this.state.projectName || '';
       const frameProj = projectKeyFromCwd(meta.cwd);
       if (viewed && frameProj && frameProj !== viewed) return; // background workspace's frame
+    }
+    // Same-basename instance guard: the 10s turn heartbeat re-broadcasts the state of the
+    // OWNING instance only — without this a sibling instance's heartbeat keeps a bound
+    // viewer's spinner/Stop lit even though its own twin is idle. The effective viewed
+    // instance mirrors the resume-switch derivation (viewedInstance, else bound twin).
+    if (meta?.instanceKey) {
+      const viewedName = this.state.viewedProject || this.state.projectName || '';
+      const effectiveInstance = this.state.viewedInstance
+        || (viewedName === this.state.projectName ? (this.state.boundInstance || this._boundInstance || null) : null);
+      if (effectiveInstance && meta.instanceKey !== effectiveInstance) return; // a sibling instance's frame
     }
     this._applyTurnActive(state === 'running' || state === 'requires_action');
   };

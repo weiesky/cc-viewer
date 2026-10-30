@@ -608,6 +608,9 @@ export class AskFlowController {
    */
   handleWsMessage(msg) {
     if (msg.type === 'ask-hook-pending') {
+      // View ownership: a frame stamped for another workspace/instance must not surface
+      // here (PTY frames carry no cwd/instanceKey and pass the guard — see perm/plan).
+      if (this.host.sdkFrameMatchesView && !this.host.sdkFrameMatchesView(msg)) return true;
       // Hook bridge: server 发 id 让多并发 ask（sub-agents）经 pendingAskHooks Map 多路复用互不阻塞。
       // Legacy server（无 id）→ fall back 到 LEGACY_ASK_PLACEHOLDER_ID 单槽语义。
       if (Array.isArray(msg.questions) && msg.questions.length > 0) {
@@ -651,6 +654,7 @@ export class AskFlowController {
     }
     if (msg.type === 'sdk-ask-pending') {
       // SDK mode: AskUserQuestion via canUseTool — id 是 SDK toolUseId。与 hook 共用队列。
+      if (this.host.sdkFrameMatchesView && !this.host.sdkFrameMatchesView(msg)) return true;
       if (msg.id == null) {
         console.warn('[ChatView] sdk-ask-pending missing id — server invariant violated, ignoring');
         return true;

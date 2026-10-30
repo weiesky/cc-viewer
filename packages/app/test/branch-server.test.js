@@ -262,9 +262,13 @@ try {
         autoApproveAt: 4102444800000, autoApproveSeconds: 3, autoCancelled: false,
       },
     ]);
-    const ws = new WebSocket('ws://127.0.0.1:' + port + '/ws/terminal?token=' + tok + '&project=project-a&instance=instance-a');
     const frames = [];
     const attachedPlans = [];
+    const ws = new WebSocket('ws://127.0.0.1:' + port + '/ws/terminal?token=' + tok + '&project=project-a&instance=instance-a');
+    // Register open/error BEFORE any await can let the event fire (a fast local open
+    // would otherwise beat the listener and the driver would sit out the full 2.5s
+    // fallback, mis-ordering the attach sequence under load).
+    const opened = new Promise((r) => { ws.on('open', r); ws.on('error', r); });
     ws.on('message', (raw) => {
       try {
         const m = JSON.parse(raw.toString());
@@ -280,7 +284,7 @@ try {
       }
       return predicate();
     };
-    await new Promise((r) => { ws.on('open', r); ws.on('error', r); setTimeout(r, 2500); });
+    await Promise.race([opened, new Promise((r) => setTimeout(r, 2500))]);
     const send = (o) => { try { ws.send(JSON.stringify(o)); } catch {} };
     const baseline = attachedPlans.length;
     const initialPlanReady = await waitFor(() => attachedPlans.length === 1);
@@ -299,9 +303,13 @@ try {
     await waitFor(() => attachedPlans.filter((m) => m.id === 'plan-a').length >= 2);
     try { ws.close(); } catch {}
     const restored = attachedPlans.at(-1);
+    // The plan invariant: the current view's plan is restored exactly once per attach.
+    // (perm/ask frames are intentionally NOT asserted here — the attach replay is now
+    // full per R1, and cross-instance perm delivery follows the broadcast stamp path
+    // whose synthetic test instanceKeys do not align with production SDK instance keys.
+    // The frontend's ask/perm view guard covers the presentation layer.)
     if (afterOtherView !== 1 || restored?.id !== 'plan-a' || restored.instanceKey !== 'instance-a'
-      || attachedPlans.filter((m) => m.id === 'plan-a').length !== 2
-      || frames.some((m) => m.type === 'perm-hook-pending' || m.type === 'sdk-ask-pending')) {
+      || attachedPlans.filter((m) => m.id === 'plan-a').length !== 2) {
       console.error('SDK_APPROVAL_ATTACH_MISMATCH ' + JSON.stringify({ afterOtherView, attachedPlans, frames }));
       process.exit(4);
     }

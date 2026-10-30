@@ -157,7 +157,10 @@ function makeResidentQuery({ respond, initMsgs } = {}) {
   return fakeQuery;
 }
 
-const stateFrames = (broadcasts) => broadcasts.filter((b) => b.type === 'sdk-session-state');
+// Heartbeat frames (the 10s turn-active keep-alive) are excluded so the legacy
+// exact-sequence assertions stay stable; heartbeat cases assert on the raw broadcasts.
+const stateFrames = (broadcasts) =>
+  broadcasts.filter((b) => b.type === 'sdk-session-state' && !b.heartbeat);
 
 describe('sdk-session-state relay', () => {
   it('push broadcasts running fallback; result broadcasts idle', async () => {
@@ -326,5 +329,51 @@ describe('sdk-session-state relay', () => {
     // replays the idle frame, which is correct — the session is dead, not mid-turn.
     // Only session switch / full reset nulls the snapshot (covered above).
     assert.equal(sdk.getSessionStateSnapshot()?.state, 'idle');
+  });
+
+  it('10s heartbeat re-broadcasts the active state with turnId, cleared on idle/interrupt', async () => {
+    const { deps, broadcasts } = makeDeps();
+    // The turn parks on a gate (real CLI waiting on tools) so the 10s heartbeat interval
+    // can be observed across two windows; interruptTurn() then releases it — the CLI's
+    // contract is that the aborted turn wraps up with an (error) result, clearing to idle.
+    let releaseFirst;
+    const firstGate = new Promise((r) => { releaseFirst = r; });
+    let idx = 0;
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit()],
+      respond: async () => {
+        if (idx++ === 0) await firstGate;
+        return [resultMsg({ subtype: 'error_during_execution', is_error: true, errors: ['turn aborted'] })];
+      },
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    try {
+      const p = sdk.sendUserMessage('hi').catch(() => {});
+      await tick(6);
+      // Tick two heartbeat windows. The 10s interval re-broadcasts the running state
+      // (heartbeat:true) so a client's 30s stale sweep never clears the Stop button.
+      mock.timers.tick(10 * 1000);
+      await tick(2);
+      mock.timers.tick(10 * 1000);
+      await tick(2);
+      const beats = broadcasts.filter((b) => b.type === 'sdk-session-state' && b.heartbeat === true);
+      assert.ok(beats.length >= 2, `heartbeat re-broadcasts while the turn is active: ${beats.length}`);
+      assert.equal(beats[0].state, 'running');
+      assert.ok(beats[0].turnId, 'heartbeat carries the in-flight turnId');
+      // Interrupt → wrap-up result → idle → the heartbeat interval is cleared.
+      sdk.interruptTurn();
+      releaseFirst(); // CLI answers the interrupt with the turn's (error) result
+      await p;
+      await tick(8);
+      const afterIdle = broadcasts.filter((b) => b.type === 'sdk-session-state' && b.heartbeat === true).length;
+      mock.timers.tick(20 * 1000);
+      await tick(2);
+      const later = broadcasts.filter((b) => b.type === 'sdk-session-state' && b.heartbeat === true).length;
+      assert.equal(later, afterIdle, 'no heartbeat once the turn is idle');
+    } finally {
+      mock.timers.reset();
+    }
   });
 });

@@ -2216,11 +2216,10 @@ async function setupTerminalWebSocket(httpServer) {
         const fproj = (typeof frame.cwd === 'string' && frame.cwd) ? (projectKeyForCwd(frame.cwd) || null) : null;
         return !fproj || fproj === viewProject;                    // no-cwd frame → replay; else must match
       };
-      const replaySdkPendingApprovals = ({ planOnly = false } = {}) => {
+      const replaySdkPendingApprovals = () => {
         if (!_sdkGetPendingApprovals) return;
         for (const p of _sdkGetPendingApprovals() || []) {
           if (!p || !p.replay || !p.id) continue;
-          if (planOnly && p.kind !== 'plan') continue;
           const payload = { ...p.replay };
           if (!_sdkFrameForView(payload)) continue;
           // The generic replay filter is project-scoped. When an exact instance
@@ -2459,9 +2458,24 @@ async function setupTerminalWebSocket(httpServer) {
                 }
               }
               // View changes use attach rather than a new connection: restore that view's
-              // pending approvals too, so a plan cleared on switch-away can be answered
-              // after switching back instead of waiting for the server timeout.
-              replaySdkPendingApprovals({ planOnly: true });
+              // pending approvals too, so a plan/ask/perm cleared on switch-away can be
+              // answered after switching back instead of waiting for the server timeout.
+              // (Was plan-only; ask/perm were orphaned into a timeout deny on re-attach.
+              // The replay helpers already filter by the just-stamped view project+instance,
+              // and the frontend dedupes by id, so a full replay never double-opens a modal.)
+              replaySdkPendingApprovals();
+              // Re-announce the just-viewed workspace's turn state so the spinner / Stop
+              // button reflects it immediately (otherwise a long-running turn shows idle
+              // until the next state change or heartbeat).
+              if (_sdkGetSessionStateSnapshot) {
+                const stateAnchor = ws._ccvViewInstance
+                  ? { instanceKey: ws._ccvViewInstance }
+                  : (ws._ccvViewProject ? { project: ws._ccvViewProject } : null);
+                const stateSnap = stateAnchor ? _sdkGetSessionStateSnapshot(stateAnchor) : _sdkGetSessionStateSnapshot();
+                if (stateSnap && (!ws._ccvViewInstance || stateSnap.instanceKey === ws._ccvViewInstance)) {
+                  try { ws.send(JSON.stringify(stateSnap)); } catch (err) { reportSwallowed('sdk.session-state-replay', err); }
+                }
+              }
               replayQueueSnapshot();
               return;
             }
@@ -2879,7 +2893,11 @@ async function setupTerminalWebSocket(httpServer) {
             if (_sdkSendUserMessage && msg.text) {
               const anchor = ((typeof msg.project === 'string' && msg.project) || (typeof msg.instanceKey === 'string' && msg.instanceKey)) ? { project: msg.project, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined } : undefined;
               _sdkSendUserMessage(msg.text, anchor).catch(err => {
-                console.error('[SDK] sendUserMessage error:', err.message);
+                reportSwallowed('server.sdk-send', err);
+                // Directed back to the initiator ONLY (a global broadcast would show every
+                // viewer a send failure for a message only one of them typed).
+                try { ws.send(JSON.stringify({ type: 'sdk-send-failed', reason: err?.code === 'not-delivered' ? 'not-delivered' : 'error', detail: String(err?.message || err), ts: Date.now() })); }
+                catch (e2) { reportSwallowed('server.sdk-send-failed-send', e2); }
               });
             }
           } else if (msg.type === 'sdk-interrupt') {
@@ -2897,6 +2915,25 @@ async function setupTerminalWebSocket(httpServer) {
               // 切非运行态并等 4s 兜底才翻回，输出仍在流 —— 打日志让这类错配可观测。
               console.warn('[SDK] sdk-interrupt ignored: isSdkMode=%s, handler=%s', isSdkMode, !!_sdkInterruptTurn);
             }
+          } else if (msg.type === 'sdk-retry-turn') {
+            // Manual [retry] of the last failed (retryable) turn: pushes a synthetic
+            // continue instruction instead of resending the user's original message.
+            // Refusals go back ONLY to the initiating ws (a global broadcast would show
+            // every viewer a reject for an action only one of them took).
+            if (isSdkMode && _sdkRetryTurn) {
+              const anchor = ((typeof msg.project === 'string' && msg.project) || (typeof msg.instanceKey === 'string' && msg.instanceKey)) ? { project: msg.project, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined } : undefined;
+              _sdkRetryTurn(typeof msg.turnId === 'string' ? msg.turnId : null, anchor).then((r) => {
+                if (!r || r.ok) return;
+                // Echo the view stamps so a user who switched views before the reply
+                // lands doesn't see the rejection (and its sdkRetry clear) in the new view.
+                try { ws.send(JSON.stringify({ type: 'sdk-retry-state', phase: 'rejected', reason: r.reason || 'unavailable', turnId: msg.turnId || null, project: msg.project, instanceKey: msg.instanceKey, ts: Date.now() })); }
+                catch (err) { reportSwallowed('server.sdk-retry-reject', err); }
+              }).catch((err) => {
+                reportSwallowed('server.sdk-retry-turn', err);
+                try { ws.send(JSON.stringify({ type: 'sdk-retry-state', phase: 'rejected', reason: 'unavailable', turnId: msg.turnId || null, project: msg.project, instanceKey: msg.instanceKey, ts: Date.now() })); }
+                catch (e2) { reportSwallowed('server.sdk-retry-reject', e2); }
+              });
+            }
           } else if (msg.type === 'queue-message') {
             // Chat-composer busy-queue enqueue (terminal-hidden PTY mode). These queue-* types
             // are deliberately NOT in the SDK no-op gate above: each branch routes by mode.
@@ -2907,7 +2944,9 @@ async function setupTerminalWebSocket(httpServer) {
                 if (_sdkSendUserMessage) {
                   const anchor = ((typeof msg.project === 'string' && msg.project) || (typeof msg.instanceKey === 'string' && msg.instanceKey)) ? { project: msg.project, instanceKey: typeof msg.instanceKey === 'string' ? msg.instanceKey : undefined } : undefined;
                   _sdkSendUserMessage(msg.text, anchor).catch(err => {
-                    console.error('[SDK] queue-message relay error:', err.message);
+                    reportSwallowed('server.sdk-queue-relay', err);
+                    try { ws.send(JSON.stringify({ type: 'sdk-send-failed', reason: err?.code === 'not-delivered' ? 'not-delivered' : 'error', detail: String(err?.message || err), ts: Date.now() })); }
+                    catch (e2) { reportSwallowed('server.sdk-send-failed-send', e2); }
                   });
                 }
               } else {
@@ -3007,7 +3046,7 @@ async function setupTerminalWebSocket(httpServer) {
               _armRedrawRetries();
             }
           }
-        } catch {}
+        } catch (err) { reportSwallowed('server.ws-dispatch', err); }
       });
 
       ws.on('close', () => {
@@ -3804,6 +3843,10 @@ export function setSdkSendUserMessage(fn) { _sdkSendUserMessage = fn; }
 /** Reference to sdk-manager's interruptTurn (set by cli.js after import). */
 let _sdkInterruptTurn = null;
 export function setSdkInterruptTurn(fn) { _sdkInterruptTurn = fn; }
+
+/** Reference to sdk-manager's retryInterruptedTurn (set by cli.js after import). */
+let _sdkRetryTurn = null;
+export function setSdkRetryTurn(fn) { _sdkRetryTurn = fn; }
 
 /** Reference to sdk-manager's getPendingApprovals (set by cli.js after import). */
 let _sdkGetPendingApprovals = null;
