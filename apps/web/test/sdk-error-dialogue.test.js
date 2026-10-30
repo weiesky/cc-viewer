@@ -56,7 +56,8 @@ describe('sdk-error dialogue rows — state + WS branch', () => {
     assert.ok(marks.length >= 4, `all explicit-send sites clear the rows (${marks.length} call sites)`);
     const helper = jsx.match(/_clearSdkErrors = \(\) => \{[\s\S]{0,300}?\};/);
     assert.ok(helper, 'helper body found');
-    assert.match(helper[0], /setState\(\{ sdkErrors: \[\] \}\)/, 'helper clears sdkErrors');
+    // The helper now also clears the inline 502-retry state alongside the error rows.
+    assert.match(helper[0], /setState\(\{ sdkErrors: \[\], sdkRetry: null \}\)/, 'helper clears sdkErrors and sdkRetry');
     assert.ok(!helper[0].includes('_lastUserSendTs'), 'no write-only timestamp field');
     // The clear sits in the send-now handler, before the send literal.
     const sendNowIdx = jsx.indexOf("'queue-send-now'");
@@ -75,8 +76,8 @@ describe('sdk-error dialogue rows — state + WS branch', () => {
 describe('sdk-error dialogue rows — view/session switch clearing', () => {
   it('workspace switch clears sdkErrors together with sdkCompactNotices', () => {
     assert.ok(
-      jsx.includes('sdkCompactNotices: [], sdkErrors: []'),
-      'projectName switch block clears both SDK surfaces',
+      jsx.includes('sdkCompactNotices: [], sdkErrors: [], sdkRetry: null'),
+      'projectName switch block clears both SDK surfaces and the retry state',
     );
   });
 
@@ -99,9 +100,10 @@ describe('sdk-error dialogue rows — rendering', () => {
   it('_renderSdkErrors renders the row stack with per-row count and timestamp', () => {
     const m = jsx.match(/_renderSdkErrors = \(emptyState = false\) => \{[\s\S]*?_closeSlashMenu/);
     assert.ok(m, '_renderSdkErrors helper found');
-    // The visible stack is NOT a live region (recurrences must not re-read 3 traces);
-    // a separate always-mounted announcer carries a one-line summary.
-    assert.ok(!m[0].includes('role="status"'), 'visible stack is not a live region');
+    // The error-row stack is NOT a live region (recurrences must not re-read 3 traces);
+    // a separate always-mounted announcer carries a one-line summary. The 502-retry
+    // progress row IS a polite status line (a transient countdown), which is fine.
+    assert.ok(!m[0].includes('className={styles.sdkErrorRow} role='), 'error rows are not live regions');
     assert.ok(m[0].includes('styles.sdkErrorStack'), 'stack class used');
     assert.ok(m[0].includes('sdkErrorStackEmpty'), 'empty-state modifier applied via the emptyState arg');
     assert.ok(m[0].includes('styles.sdkErrorRow'), 'row class used');

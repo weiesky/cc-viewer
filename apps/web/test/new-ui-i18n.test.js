@@ -135,6 +135,18 @@ const KEYS = [
   'ui.workspaces.help',
   'ui.workspaces.helpTitle',
   'ui.workspaces.helpBody',
+  // SDK resilience + 502 inline retry (sdk-error rows / retry bar, ChatView.jsx):
+  'ui.sdkErrorCode.turn-stuck',
+  'ui.sdkErrorCode.session-ended',
+  'ui.sdkRetry.retrying',
+  'ui.sdkRetry.retryingNetwork',
+  'ui.sdkRetry.retry',
+  'ui.sdkRetry.recovering',
+  'ui.sdkRetry.busy',
+  'ui.sdkRetry.stale',
+  'ui.sdkRetry.unavailable',
+  // SSE slow-reconnect toast (AppBase.jsx):
+  'ui.sseReconnectExhausted',
 ];
 
 describe('new UI key i18n coverage', () => {
@@ -164,6 +176,12 @@ describe('new UI key i18n coverage', () => {
     ['ui.sdkModel', '{model}'],
     ['ui.mcpStatus.updatedAt', '{time}'],
     ['ui.mcpStatus.toolCount', '{count}'],
+    // SDK 502 inline retry bar interpolation keys.
+    ['ui.sdkRetry.retrying', '{status}'],
+    ['ui.sdkRetry.retrying', '{attempt}'],
+    ['ui.sdkRetry.retrying', '{max}'],
+    ['ui.sdkRetry.retryingNetwork', '{attempt}'],
+    ['ui.sdkRetry.retryingNetwork', '{max}'],
   ];
   for (const [key, placeholder] of PLACEHOLDER_KEYS) {
     it(`${key} 每个 locale 保留占位符 ${placeholder}`, () => {
