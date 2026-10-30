@@ -1,5 +1,14 @@
 # cc-viewer
 
+## 1.9.18
+
+### Patch Changes
+
+- 208f134: fix(server+web): 修复三处 fork 评审发现的上游缺陷 —— ① target 模式经 /api/file-content 保存"新文件"必 403（containment realpath 对不存在叶子返回 false，现容忍新叶子：realpath 最近存在祖先后做纯前缀比对）；② WS 闪断重连同 id 的 SDK plan 弹窗被重新弹开（_setApprovalKind null→id 过渡误清 dismiss，现仅真·新 id 替换才清，策略抽为 shouldWipeApprovalDismissal 纯函数）；③ ApprovalModal ptyPlan fallback 硬编码 countdown=null 致后台自动审批静默无取消入口，现由 payload 的 autoApproveAt 驱动显示倒计时与取消。
+- cdf05bf: feat(server+web): 502/网络错误内联重试反馈 —— CLI 重试时即在出错消息后内联显示「正在重试 N/max」；重试耗尽后出现「重试」按钮，点击从断点续跑当前中断的生成（不重发原文），成功后提醒条消失。
+- 77b61bd: fix(server+web): 韧性小修 —— WS 断开时发送消息给出失败提示且保留草稿；审批类插件 hook 加 15s 超时回落正常审批弹窗；SSE 预算耗尽后每 30s 慢重连并提示；off 模式 LLM 流加空闲看门狗（默认 5 分钟，可配 0 关闭）。
+- 84e65cd: fix(server+web): SDK 韧性修复 —— 卡死回合改为按活性探活判死（不再按静默时长误杀长任务）；切回工作区恢复待审批 ask/perm；工作区 stop→重launch 后恢复 SDK 回调；长回合期间 Stop 按钮常显。
+
 ## 1.9.17
 
 ### Patch Changes

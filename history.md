@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.9.18
+
 - fix(server+web): **SDK 卡死回合按活性探活判死** — 移除 25 分钟静默强制结算（会误杀合法多小时工具回合）；回合静默超时后改为对 CLI 控制面发探活，连续无应答才判死：标记可疑代际、下次发送时按会话 id 懒重建（不打断可能仍在跑的子进程），并报可重试的 turn-stuck。审批 pending 视为存活不探活；丢失 result 与 Stop 后未应答也在下次发送时重建。Coverage: `sdk-manager-query.test.js`, `sdk-session-state.test.js`.
 
 - fix(server+web): **切回工作区恢复待审批 ask/perm + 长回合 Stop 常显** — attach 重放从仅 plan 扩为全量，前端给 ask/perm 补视图守卫防跨工作区弹错；服务端回合活跃时按固定间隔广播 sdk-session-state 心跳并在 attach 时按视图重放，前端增加实例过滤并透传 `turnActive`，长工具回合 Stop 按钮不再消失。Coverage: `server-sdk-attach-replay.test.js`, `sdk-session-state.test.js`, `stop-button-turn-active.test.js`.
