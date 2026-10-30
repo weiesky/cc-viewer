@@ -19,6 +19,7 @@ import { publishScheduledTaskEvent } from './utils/scheduledTaskEvents';
 import { reasonLabel } from './utils/scheduleDescription';
 import { publish as publishTaskUpdate, clearTasks as clearTaskStore } from './utils/taskStore';
 import { reportSwallowed } from './utils/errorReport';
+import { shouldWipeApprovalDismissal } from './utils/approvalDismissal';
 import { attachMainPty, closeProjectPty, resumeSession } from './utils/resumeSessions';
 import { readViewedWorkspace, writeViewedWorkspace, clearViewedWorkspace, resolveRestoredViewScope, resolveCwdForView } from './utils/viewedWorkspaceStorage';
 import { createViewStateCache } from './utils/viewStateCache';
@@ -4017,8 +4018,10 @@ class AppBase extends React.Component {
       else next[kind] = null;
       const prevId = prev.approvalGlobal?.[kind]?.[kind]?.id ?? null;
       const nextId = enriched?.[kind]?.id ?? null;
-      if (prevId === nextId) {
-        // Same id (or both null): a replay/clear — keep any existing dismissal untouched.
+      if (!shouldWipeApprovalDismissal(prevId, nextId)) {
+        // Same id, both null, or a null→id transition (a genuinely new pending
+        // has no dismissal to wipe, and a WS-reconnect replay of a minimised
+        // plan must NOT be reopened): keep any existing dismissal untouched.
         return { approvalGlobal: next };
       }
       const dismissed = new Set(prev.approvalDismissedIds);

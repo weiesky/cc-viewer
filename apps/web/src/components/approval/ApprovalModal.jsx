@@ -5,6 +5,8 @@ import { playEvent as playVoiceEvent, playChimeFallback } from '../../utils/voic
 import AskQuestionForm from '../chat/AskQuestionForm';
 import PlanApprovalForm from '../chat/PlanApprovalForm';
 import { shouldRenderAskFallback, ASK_FALLBACK_GRACE_MS } from '../../utils/askFallback';
+import { planFallbackCountdownDeadline } from '../../utils/planFallbackCountdown';
+import { startDeadlineCountdown } from '../../utils/deadlineCountdown';
 import styles from './ApprovalModal.module.css';
 
 const KIND_PRIORITY = ['ptyPlan', 'ask'];
@@ -199,6 +201,25 @@ export default function ApprovalModal({
     && typeof ptyPlanHandlers?.approve === 'function'
     && typeof ptyPlanHandlers?.feedbackSubmit === 'function';
 
+  // Fallback countdown: the SDK pending plan payload carries the server's
+  // wall-clock auto-approve deadline (`autoApproveAt`), so even when the inline
+  // transcript card is not portaled in (its per-second countdown prop lives on
+  // ChatView state) the modal must still SHOW the countdown and offer a cancel
+  // — otherwise a background auto-approve fires silently. Drive a local
+  // deadline countdown off the same autoApproveAt; PTY plans have no deadline
+  // (payload is {id,prompt}) and stay countdown-less, matching the inline card.
+  const [ptyPlanFallbackCountdown, setPtyPlanFallbackCountdown] = useState(null);
+  const ptyPlanAutoApproveAt = ptyPlanFallbackVisible ? planFallbackCountdownDeadline(ptyPlanPayload) : null;
+  useEffect(() => {
+    if (!(ptyPlanAutoApproveAt > 0)) { setPtyPlanFallbackCountdown(null); return undefined; }
+    const stop = startDeadlineCountdown({
+      deadlineMs: ptyPlanAutoApproveAt,
+      onTick: (s) => setPtyPlanFallbackCountdown(s),
+      onExpire: () => setPtyPlanFallbackCountdown(null),
+    });
+    return stop;
+  }, [ptyPlanAutoApproveAt]);
+
   // ESC = minimise（pending 保留）
   // Cmd/Ctrl+ESC = cancel（仅对 ask 类型生效，等价 terminal Claude Code 的 onAbort）—
   // 等价路径：ChatView.handleAskCancel 走 ask-cancel WS 协议 + SDK 包内置 ensureToolResultPairing 闭合 transcript。
@@ -353,7 +374,7 @@ export default function ApprovalModal({
                     onApprove={() => ptyPlanHandlers.approve(1)}
                     onReject={() => ptyPlanHandlers.approve(3)}
                     onFeedbackSubmit={(text) => ptyPlanHandlers.feedbackSubmit(2, text)}
-                    planAutoApproveCountdown={null}
+                    planAutoApproveCountdown={ptyPlanFallbackCountdown}
                     onCancelPlanAutoApprove={ptyPlanHandlers.cancelAutoApprove ?? null}
                   />
                 </div>

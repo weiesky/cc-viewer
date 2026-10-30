@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- fix(server): **修复 target 模式经 /api/file-content 保存「新文件」必 403** — 写路径的 containment 检查走 `isPathContained`，其内部 `realpathSync(target)` 对不存在的叶子必 throw → 误判 outside-view-root 403。现对不存在的叶子容忍：realpath 最近存在祖先后重建路径并做纯前缀比对（root 已 realpath）；已存在文件仍走严格 realpath，越权新建（`..` 逃逸、symlink 指出 root）仍 403。Coverage: `api-target-files-fs.test.js`.
+
+- fix(web): **修复 WS 重连同 id 的 SDK plan 弹窗被重新弹开** — `AppBase._setApprovalKind` 的同 id 守卫有盲区：WS 闪断把 pending 清成 null，重连 replay 同 id 时 prevId=null≠nextId，守卫失效、误清该 id 的 dismiss，把用户已最小化的审批弹窗重新弹开。现把 dismiss 清除策略抽为纯函数 `shouldWipeApprovalDismissal`：null→id 过渡不清 dismiss，仅真·新 id 替换旧 id 才清。Coverage: `approval-dismissal.test.js`.
+
+- fix(web): **ApprovalModal ptyPlan fallback 接入自动审批倒计时** — fallback（transcript 卡片未挂载/滚出视口时）此前硬编码 `planAutoApproveCountdown={null}`，服务端自动审批在后台静默触发、弹窗无倒计时也无取消入口。现由 SDK pending payload 自带的 `autoApproveAt`（wall-clock 截止时间）经 `planFallbackCountdownDeadline` 派生倒计时并显示取消按钮；PTY 计划无截止时间、保持无倒计时，与内联卡片一致。Coverage: `plan-fallback-countdown.test.js`.
+
 ## 1.9.17
 
 - fix(web): **「最新回复」与对话末条重复时整块隐藏** — 当最后一轮回复已回显进对话消息、且与「最新回复」为同一轮（text 正文一致且 tool_use id 序列一致）时，不再重复渲染「最新回复」模块；仅当 LR 不独占任何待审批交互卡片时才隐藏，未回显进对话的最新回复仍正常显示。Coverage: `lr-duplicate-text.test.js`.

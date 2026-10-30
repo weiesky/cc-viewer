@@ -258,4 +258,28 @@ describe('/api/target-* write routes', { concurrency: false }, () => {
     assert.equal(res.status, 200, res.body);
     assert.ok(!existsSync(join(userSkill, 'todelete.txt')));
   });
+
+  it('saves a NEW file via /api/file-content in target mode (regression: must not 403)', async () => {
+    // Regression for the containment realpath: isPathContained realpaths its
+    // target, which throws for a not-yet-existing file, so a legitimate
+    // new-file save inside the navigation root used to 403 with
+    // 'outside-view-root'. Containment must tolerate the missing leaf by
+    // realpathing the nearest existing ancestor.
+    const filesContent = (await import('../server/routes/files-content.js')).filesContentRoutes;
+    const fileContentPost = filesContent.find(r => r.path === '/api/file-content' && r.method === 'POST').handler;
+    const rel = '.claude/skills/write-skill/created-via-content.txt';
+    const res = await call(fileContentPost, { body: { path: rel, content: 'fresh' }, query: targetQ() });
+    assert.equal(res.status, 200, res.body);
+    assert.equal(res.json().ok, true);
+    assert.equal(readFileSync(join(userSkill, 'created-via-content.txt'), 'utf-8'), 'fresh');
+  });
+
+  it('still 403s a new file that resolves OUTSIDE the target navigation root', async () => {
+    // The tolerant-new-leaf containment must not open a hole: a relative path
+    // that escapes the navigation root via ".." stays forbidden.
+    const filesContent = (await import('../server/routes/files-content.js')).filesContentRoutes;
+    const fileContentPost = filesContent.find(r => r.path === '/api/file-content' && r.method === 'POST').handler;
+    const res = await call(fileContentPost, { body: { path: '../../escaped.txt', content: 'x' }, query: targetQ() });
+    assert.equal(res.status, 403, res.body);
+  });
 });

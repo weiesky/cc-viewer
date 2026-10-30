@@ -548,6 +548,29 @@ function fileContentPost(req, res, parsedUrl, isLocal) {
   // encoding. Normalize only this mutation's containment comparisons.
   let writeRoot;
   const isInsideWriteRoot = (path) => isPathContained(path, writeRoot);
+  // isPathContained realpaths its target, so it returns false for a not-yet-existing
+  // file — which wrongly 403s every new-file save in target mode. For a missing leaf,
+  // realpath the nearest existing ancestor, re-append the descent, then prefix-compare
+  // against the (already-real) write root; an existing path keeps the strict realpath.
+  const isInsideWriteRootAllowNew = (path) => {
+    if (isInsideWriteRoot(path)) return true;
+    if (existsSync(path)) return false; // exists but resolves outside → strict deny
+    const root = writeRoot.endsWith(sep) ? writeRoot : writeRoot + sep;
+    let cursor = resolve(path, '..');
+    const descent = [basename(path)];
+    for (let depth = 0; depth < 32; depth++) {
+      if (existsSync(cursor)) {
+        let rebuilt;
+        try { rebuilt = join(realpathSync(cursor), ...descent); } catch { return false; }
+        return rebuilt === writeRoot || rebuilt.startsWith(root);
+      }
+      const parent = resolve(cursor, '..');
+      if (parent === cursor) return false;
+      descent.unshift(basename(cursor));
+      cursor = parent;
+    }
+    return false;
+  };
   const MAX_BODY = 5 * 1024 * 1024; // 5MB，与 GET 路由限制对齐
   let body = '';
   let overflow = false;
@@ -685,7 +708,7 @@ function fileContentPost(req, res, parsedUrl, isLocal) {
       // exists OR is being created — otherwise a crafted relative path could write
       // outside the navigation root (isWriteAllowed only bounds by the allowlist).
       // Project mode keeps the legacy existing-file-only check.
-      if (!editorSession && targetNavRoot && !isInsideWriteRoot(targetReal)) {
+      if (!editorSession && targetNavRoot && !isInsideWriteRootAllowNew(targetReal)) {
         res.writeHead(403, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Forbidden', reason: 'outside-view-root' }));
         return;
