@@ -1,5 +1,6 @@
 
 import { createServer } from 'node:http';
+import { Readable, Transform, pipeline } from 'node:stream';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
@@ -11,7 +12,7 @@ import { getClaudeConfigDir } from '../findcc.js';
 import { isAnthropicApiPath, classifyProxyRole } from './lib/interceptor-core.js';
 import { parseAgentId, findHeader } from './lib/v2/agent-id.js';
 import { liveSystemPromptEnabled } from './lib/system-prompt-live.js';
-import { executeRequest, extractModel } from './lib/proxy/proxy-retry.js';
+import { executeRequest, extractModel, isStreamResponse } from './lib/proxy/proxy-retry.js';
 import { buildRecord, appendRecord, dailyFilePath, todayStr, emitProxyStatsUpdate } from './lib/proxy/proxy-stats.js';
 import { reportSwallowed } from './lib/error-report.js';
 import { LOG_DIR } from '../findcc.js';
@@ -231,7 +232,6 @@ export function startProxy() {
         res.writeHead(response.status, responseHeaders);
 
         if (response.body) {
-          const { Readable, pipeline } = await import('node:stream');
           // @ts-ignore
           const nodeStream = Readable.fromWeb(response.body);
           // 持久 error handler 兜底：防止 pipeline 清理后延迟到达的 error 事件导致进程崩溃
@@ -388,15 +388,59 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
   res.writeHead(finalStatus, responseHeaders);
 
   if (response.body) {
-    const { Readable, pipeline } = await import('node:stream');
     // @ts-ignore
     const nodeStream = Readable.fromWeb(response.body);
     nodeStream.on('error', () => {});
-    pipeline(nodeStream, res, (err) => {
-      if (err && process.env.CCV_DEBUG) {
-        console.error('[CC-Viewer Proxy] Stream pipeline error:', err.message);
-      }
-    });
+    const streamIdleMs = retryConfig && retryConfig.mode === 'off'
+      ? (retryConfig.streamIdleTimeoutMs ?? 0)
+      : 0;
+    // Only gate SSE (streaming) responses: a non-stream body legitimately arrives as one
+    // whole payload after a long upstream think, and must not be truncated mid-wait.
+    if (streamIdleMs > 0 && isStreamResponse(response)) {
+      // Off-mode-only idle watchdog: retry modes already attach the equivalent
+      // guard on the Web-stream side upstream (applyStreamIdleWatchdog). That
+      // variant cannot run for off mode — its pipeThrough races the
+      // interceptor's getReader() body reconstruction (spurious `fetch failed`).
+      // This Node-side Transform sits after Readable.fromWeb, so it is immune
+      // to that race. The timer arms at construction, BEFORE the first chunk,
+      // so a stream that never sends its first byte is still bounded.
+      let watchdog = null;
+      let idleTimer = null;
+      const disarmIdle = () => {
+        if (idleTimer) {
+          clearTimeout(idleTimer);
+          idleTimer = null;
+        }
+      };
+      const armIdle = () => {
+        disarmIdle();
+        idleTimer = setTimeout(() => {
+          idleTimer = null;
+          // Log unconditionally: a destroyed stream surfaces downstream as an unexplained
+          // `fetch failed`; without this line there is no way to attribute it.
+          console.warn(`[CC-Viewer Proxy] off-mode stream idle timeout (${streamIdleMs}ms) — destroying upstream stream`);
+          watchdog.destroy(new Error(`proxy stream idle timeout (${streamIdleMs}ms)`));
+        }, streamIdleMs);
+        if (typeof idleTimer.unref === 'function') idleTimer.unref();
+      };
+      watchdog = new Transform({
+        transform(chunk, _enc, cb) { armIdle(); cb(null, chunk); },
+        flush(cb) { disarmIdle(); cb(); },
+        destroy(err, cb) { disarmIdle(); cb(err); },
+      });
+      armIdle();
+      pipeline(nodeStream, watchdog, res, (err) => {
+        if (err && process.env.CCV_DEBUG) {
+          console.error('[CC-Viewer Proxy] Stream pipeline error:', err.message);
+        }
+      });
+    } else {
+      pipeline(nodeStream, res, (err) => {
+        if (err && process.env.CCV_DEBUG) {
+          console.error('[CC-Viewer Proxy] Stream pipeline error:', err.message);
+        }
+      });
+    }
   } else if (response.text) {
     // 竞速失败兜底 response：用 text() 取 body
     const text = await response.text();

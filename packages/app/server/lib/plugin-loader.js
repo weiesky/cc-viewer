@@ -33,6 +33,13 @@ const HOOK_TYPES = {
   onStreamChunk: 'parallel',
 };
 
+// Approval hooks gate an interactive UI modal, so a hung plugin must not park the approval
+// forever: each invocation times out and falls back to the normal approval modal.
+// Non-approval waterfall hooks (beforeRequest/httpsOptions/localUrl) are startup/auth-critical
+// and stay UNTIMED.
+const APPROVAL_HOOK_TIMEOUT_MS = 15 * 1000;
+const APPROVAL_HOOKS = new Set(['onPlanRequest', 'onAskRequest', 'onPermRequest']);
+
 let _plugins = [];
 // Full result of the last loadPlugins (directory service/panel plugins and failures included)
 let _entries = [];
@@ -312,14 +319,39 @@ export async function loadPlugins(opts = {}) {
 
 /**
  * waterfall hook：串行管道执行，前一个的返回值传给下一个
+ * `timeoutMsOverride` is test-only; approval hooks default to APPROVAL_HOOK_TIMEOUT_MS.
  */
-export async function runWaterfallHook(name, initialValue) {
+export async function runWaterfallHook(name, initialValue, timeoutMsOverride) {
   let value = initialValue;
+  // Only approval hooks are timed out; the override is ignored for the other hooks.
+  const timeoutMs = APPROVAL_HOOKS.has(name)
+    ? (timeoutMsOverride ?? APPROVAL_HOOK_TIMEOUT_MS)
+    : undefined;
   for (const plugin of _plugins) {
     const hookFn = plugin.hooks[name];
     if (typeof hookFn !== 'function') continue;
     try {
-      const result = await hookFn(value);
+      let result;
+      if (timeoutMs !== undefined) {
+        // A timed-out hook promise itself is not cancellable (bounded leak: it may keep
+        // running in the background); the timer is cleared as soon as the hook settles.
+        let timer;
+        try {
+          result = await Promise.race([
+            Promise.resolve().then(() => hookFn(value)),
+            new Promise((_, reject) => {
+              timer = setTimeout(
+                () => reject(new Error(`hook timed out after ${timeoutMs} ms`)),
+                timeoutMs
+              );
+            }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
+      } else {
+        result = await hookFn(value);
+      }
       if (result != null && typeof result === 'object') {
         value = { ...value, ...result };
       }

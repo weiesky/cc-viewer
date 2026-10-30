@@ -98,6 +98,10 @@ describe('createChannelManager lifecycle', () => {
     assert.equal(m.reconnect('bound'), true);
     tm.fireAll();
     assert.equal(m.reconnect('bound'), false, 'budget exhausted');
+    assert.ok(
+      [...tm.pending.values()].some((t) => t.ms === 30000),
+      'a slow-retry timer is armed after exhaustion instead of giving up',
+    );
   });
 
   it('LRU eviction never evicts rendered or bound, and onEvict fires with the victim', () => {

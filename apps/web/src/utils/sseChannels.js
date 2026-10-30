@@ -48,8 +48,13 @@ export function createChannelManager({
   maxChannels = 3,
   heartbeatMs = 45000,
   reconnectBudget = 10,
+  // Fixed cadence kept alive AFTER the reconnect budget is spent, so a long
+  // outage still heals without hammering the server (see reconnect()).
+  slowRetryMs = 30000,
   backoff = (n, index) => Math.min(2000 * Math.pow(2, n - 1), 32000) + index * 250,
   onEvict = () => {},
+  // One-shot notice per exhaustion cycle (re-armed by es.onopen).
+  onReconnectExhausted = () => {},
   setTimeout: _setTimeout,
   clearTimeout: _clearTimeout,
 } = {}) {
@@ -79,6 +84,8 @@ export function createChannelManager({
       reconnectCount: 0,
       heartbeatTimer: null,
       reconnectTimer: null,
+      slowRetryTimer: null,
+      exhaustedNotified: false,
       lastFrameAt: 0,
       closed: false,
       vm: typeof handlers.onCreate === 'function' ? handlers.onCreate(key, resolvedScope) : {},
@@ -88,6 +95,10 @@ export function createChannelManager({
   }
 
   function _connect(ch, url) {
+    // A fresh connect supersedes ANY pending retry (post-exhaustion slow retry or a
+    // budget backoff): otherwise the stale timer would open a second socket.
+    if (ch.slowRetryTimer) { clearT(ch.slowRetryTimer); ch.slowRetryTimer = null; }
+    if (ch.reconnectTimer) { clearT(ch.reconnectTimer); ch.reconnectTimer = null; }
     _closeSocket(ch);
     ch.gen += 1;
     ch.url = url;
@@ -107,7 +118,10 @@ export function createChannelManager({
     if (typeof handlers.onBind === 'function') handlers.onBind(ch, es, stale);
     es.onopen = () => {
       if (stale()) return;
+      // A live socket restores the full budget and supersedes the slow retry.
       ch.reconnectCount = 0;
+      ch.exhaustedNotified = false;
+      if (ch.slowRetryTimer) { clearT(ch.slowRetryTimer); ch.slowRetryTimer = null; }
       _touch(ch);
       handlers.onOpen?.(ch);
     };
@@ -190,11 +204,30 @@ export function createChannelManager({
     }
   }
 
-  /** Reconnect a channel (heartbeat timeout / explicit). Budget-limited. */
+  /** Reconnect a channel (heartbeat timeout / explicit). Budget-limited; once
+   *  the budget is spent, keep probing on a fixed slow cadence instead of
+   *  giving up forever, and notify the caller once per exhaustion cycle. */
   function reconnect(key, { url } = {}) {
     const ch = channels.get(key);
     if (!ch) return false;
-    if (ch.reconnectCount >= reconnectBudget) return false;
+    if (ch.reconnectCount >= reconnectBudget) {
+      // Honor the caller's freshest URL (the incremental ?since= cursor) — reconnecting
+      // on the URL from several backoffs ago would re-replay an oversized/cold range.
+      if (url) ch.url = url;
+      if (!ch.exhaustedNotified) {
+        ch.exhaustedNotified = true;
+        onReconnectExhausted(ch);
+      }
+      if (!ch.slowRetryTimer) {
+        // Call _connect DIRECTLY: reconnect() would only re-check (and keep
+        // failing) the spent budget.
+        ch.slowRetryTimer = setT(() => {
+          ch.slowRetryTimer = null;
+          if (!ch.closed) _connect(ch, ch.url);
+        }, slowRetryMs);
+      }
+      return false; // caller contract preserved — waited out, not connected now
+    }
     ch.reconnectCount += 1;
     ch.vm.reconnectsSinceCommit = (ch.vm.reconnectsSinceCommit || 0) + 1;
     if (ch.reconnectTimer) clearT(ch.reconnectTimer);
@@ -227,6 +260,7 @@ export function createChannelManager({
     _closeSocket(ch);
     if (ch.heartbeatTimer) { clearT(ch.heartbeatTimer); ch.heartbeatTimer = null; }
     if (ch.reconnectTimer) { clearT(ch.reconnectTimer); ch.reconnectTimer = null; }
+    if (ch.slowRetryTimer) { clearT(ch.slowRetryTimer); ch.slowRetryTimer = null; }
     channels.delete(key);
     if (renderedKey === key) renderedKey = null;
     return true;

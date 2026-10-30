@@ -250,6 +250,61 @@ describe('runWaterfallHook', () => {
     assert.equal(result.url, 'http://x/ok');
   });
 
+  it('times out a hung approval hook, keeps the value unchanged and continues the chain', async () => {
+    writePlugin('test-wf-hang.js', `
+      export default {
+        name: 'wf-hang',
+        hooks: {
+          onPermRequest() { return new Promise(() => {}); }
+        }
+      };
+    `);
+    writePlugin('test-wf-after-hang.js', `
+      export default {
+        name: 'wf-after-hang',
+        hooks: {
+          onPermRequest(val) {
+            globalThis.__ccvPermAfterRan = true;
+            return val;
+          }
+        }
+      };
+    `);
+    await loadPlugins();
+    const ctx = { tool: 'Bash', decision: 'allow' };
+    try {
+      const result = await runWaterfallHook('onPermRequest', ctx, 20);
+      assert.deepEqual(result, { tool: 'Bash', decision: 'allow' });
+      assert.equal(globalThis.__ccvPermAfterRan, true, 'plugin after the hung one should still run');
+    } finally {
+      delete globalThis.__ccvPermAfterRan;
+    }
+  });
+
+  it('does not time out non-approval waterfall hooks (override is ignored)', async () => {
+    writePlugin('test-wf-no-timeout.js', `
+      export default {
+        name: 'wf-no-timeout',
+        hooks: {
+          beforeRequest(val) {
+            return new Promise(resolve => setTimeout(() => resolve({ ...val, late: true }), 100));
+          }
+        }
+      };
+    `);
+    await loadPlugins();
+    let settled = false;
+    const call = runWaterfallHook('beforeRequest', { url: 'http://x' }, 20).then(v => {
+      settled = true;
+      return v;
+    });
+    await new Promise(resolve => setTimeout(resolve, 40));
+    assert.equal(settled, false, 'beforeRequest must not be cut off by the timeout override');
+    const result = await call;
+    assert.equal(result.late, true, 'the hook own resolution still governs');
+    assert.equal(result.url, 'http://x');
+  });
+
   it('ignores null/undefined return from a hook', async () => {
     writePlugin('test-wf-null.js', `
       export default {

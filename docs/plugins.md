@@ -255,6 +255,8 @@ initial value → plugin-A → plugin-B → plugin-C → final value
 
 If a plugin returns `null`/`undefined`, the value passes through unchanged.
 
+The three approval hooks — `onPlanRequest`, `onAskRequest` and `onPermRequest` — gate an interactive approval modal, so each plugin invocation times out after **15 seconds**. A hook that hangs past the timeout is handled like an error (logged, value unchanged) and the approval falls back to the normal modal. All other waterfall hooks (`beforeRequest`, `httpsOptions`, `localUrl`) are startup/auth-critical and are **not** timed out. Note that a timed-out hook promise is not cancellable: the plugin's async work may keep running in the background.
+
 ### Parallel
 
 All plugins execute **concurrently**. Return values are ignored. Used for notifications/side effects.

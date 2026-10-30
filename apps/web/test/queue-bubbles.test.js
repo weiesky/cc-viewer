@@ -48,14 +48,16 @@ describe('queue bubbles — state + WS wiring', () => {
 
 describe('queue bubbles — send path', () => {
   it('handleInputSend enqueues while busy instead of sending immediately', () => {
-    const m = jsx.match(/uiStreamingNow[\s\S]{0,900}?'queue-message'/);
+    // Budget widened (900→1400): the WS-not-open guard now warns via ui.sendFailed
+    // (R4) before the queue-message send, lengthening the busy branch.
+    const m = jsx.match(/uiStreamingNow[\s\S]{0,1400}?'queue-message'/);
     assert.ok(m, 'busy branch sends queue-message (PTY mode)');
     assert.ok(m[0].includes("'sdk-user-message'"), 'busy branch keeps sdk-user-message for SDK mode');
     assert.ok(m[0].includes('onUserMessageSent'), 'busy branch keeps the context-bar unlock for non-/clear text');
   });
 
   it('busy branch deliberately skips the optimistic pendingInput bubble', () => {
-    const m = jsx.match(/uiStreamingNow[\s\S]{0,900}?'queue-message'/);
+    const m = jsx.match(/uiStreamingNow[\s\S]{0,1400}?'queue-message'/);
     assert.ok(m, 'busy branch found');
     assert.ok(!m[0].includes('pendingInput:'), 'no pendingInput setState inside the busy branch');
   });

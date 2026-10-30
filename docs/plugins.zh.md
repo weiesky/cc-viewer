@@ -304,6 +304,8 @@ hooks: {
 - 如果插件返回 `null` 或 `undefined`，上下文保持不变，继续传给下一个
 - 返回值会与当前上下文做浅合并（`{ ...value, ...result }`）
 
+三个审批类 hook（`onPlanRequest`、`onAskRequest`、`onPermRequest`）会阻塞交互式审批弹窗，因此每个插件的调用超过 **15 秒**即视为超时：按错误处理（记录日志、当前值不变），并回退到常规审批弹窗。其余 waterfall hook（`beforeRequest`、`httpsOptions`、`localUrl`）属于启动/鉴权关键路径，**不设超时**。注意：超时的 hook Promise 无法取消，插件内部的异步任务仍可能在后台继续执行。
+
 ### Parallel（并行通知）
 
 所有插件**同时执行**，返回值忽略。用于通知和副作用操作。
