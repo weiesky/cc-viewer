@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(web): **SDK 错误行重试中不再与「恢复中」并行显示** — 手动重试把行标 `recovering` 后，此前只把 [重试] 按钮换成行内「恢复中」小字，错误文本仍整条渲染，与顶部恢复进度行并行出现。现 `recovering` 的行整条隐藏，只保留恢复进度行；重试失败（`recovering` 复位）才重新出现，成功则清除该行。同步移除不再引用的 `.sdkRetryRecovering` 样式。Coverage: `sdk-retry-inline.test.js`.
+
 - fix(web): **view-switch 后已最小化的 SDK ask 弹窗不再重开** — view 切换把 `pendingAsk` 清成 null 触发 `id→null`，被 dismissal wipe 误判为真 clear 而清掉 minimize;attach 全量 replay 用同一 id 走 `null→id` 保留分支，但 dismissal 已丢失、弹窗重开。现把 view-switch 合成 clear 标记为 `reason: 'view-switch'`,wipe 判据对它放行（真 clear 仍 wipe）;ask 与 ptyPlan 共用同一判据，一并修复。Coverage: `approval-dismissal.test.js`.
 
 - fix(server): **丢失 result 兜底不再误吞下一回合 result** — 强制结算的回合改记代际 epoch，迟到 result 只在无活回合可归属时丢弃；新回合 result 正常配对。修复 v1.9.18 兜底计数器残留吞 result、致下一回合被误判 turn-stuck 的问题。Coverage: `sdk-manager-lost-result.test.js`.

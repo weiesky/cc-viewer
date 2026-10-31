@@ -3684,12 +3684,18 @@ class ChatView extends React.Component {
         {retryRow}
         {rows.map((row) => {
           const { message: detail, ts, count, turnId, retryable, code, recovering } = row;
+          // A row whose retry is in progress is hidden ENTIRELY (error text, [retry]
+          // button, timestamp) — only the top recovering/retrying progress line shows.
+          // Showing the error beside a "recovering" tag reads as two parallel states.
+          // The row reappears only when the retry settles to a failure (recovering reset
+          // to false) or is cleared on success.
+          if (recovering) return null;
           // A localized code label replaces the raw detail in the visible text, but the
           // raw detail is preserved on title/aria-label for diagnosis.
           const codeKey = code ? `ui.sdkErrorCode.${code}` : null;
           const codeLabel = codeKey && t(codeKey) !== codeKey ? t(codeKey) : null;
           const label = codeLabel || t('ui.sdkError', { detail });
-          const showRetry = retryable && turnId && !recovering;
+          const showRetry = retryable && turnId;
           return (
             <div key={detail} className={styles.sdkErrorRow} title={detail} aria-label={detail}>
               {label}
@@ -3699,7 +3705,6 @@ class ChatView extends React.Component {
                   {t('ui.sdkRetry.retry')}
                 </button>
               ) : null}
-              {recovering ? <span className={styles.sdkRetryRecovering}>{t('ui.sdkRetry.recovering')}</span> : null}
               <span className={styles.sdkErrorTs}>{formatHms(new Date(ts))}</span>
             </div>
           );
