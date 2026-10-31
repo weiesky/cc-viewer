@@ -10,6 +10,7 @@ import { sseHead, sseWrite, needsDrain, wireEnd, awaitWireDrain, isWireV3Enabled
 import { scopeKeyForProducer } from '../lib/scope-router.js';
 import { readV2ColdBundle } from '../lib/v2/meta-rows.js';
 import { readV2SingleEntry } from '../lib/v2/adapter.js';
+import { createAttachBufferClient, flushAttachBuffer } from '../lib/attach-buffer.js';
 import { resolveSessionDirName, latestMainSessionDir } from '../lib/v2/session-select.js';
 import { sanitizePathComponent, normalizeSessionCwd } from '../lib/v2/layout.js';
 import { listLivePtys } from '../pty-manager.js';
@@ -213,12 +214,29 @@ export async function serveEventStream(sink, params, deps) {
   const registrable = sink.registrable;
   let closed = false;
   let pingTimer = null;
+  // Attach buffer (2026-10): a stand-in client registered in deps.clients during
+  // the cold load so live v2 deltas landing in the cold-load→push gap are queued
+  // (not broadcast to the not-yet-registered real client, and lost). Replayed
+  // through the real sink after load_end, then swapped for the registrable.
+  // Declared BEFORE dispose: sink.onClose may fire dispose synchronously on
+  // registration, so the variable must be initialized before that hook exists.
+  let attachBufferClient = null;
+  // Conv coverage of the v3 cold bundle (`native.convSeqs`), used to skip
+  // replaying a v3_conv frame the bundle already carried. Stays null on the
+  // legacy wire or when the cold read fails → flush fails open (replays all).
+  let coldConvCoverage = null;
   const dispose = () => {
     if (closed) return;
     closed = true;
     if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
     const idx = deps.clients.indexOf(registrable);
     if (idx !== -1) deps.clients.splice(idx, 1);
+    if (attachBufferClient) {
+      const bi = deps.clients.indexOf(attachBufferClient);
+      if (bi !== -1) deps.clients.splice(bi, 1);
+      try { attachBufferClient.end(); } catch (err) { reportSwallowed('sse.attach-buffer.dispose', err); }
+      attachBufferClient = null;
+    }
   };
   // Register the close hook at the ENTRY (not after the history stream): a client that
   // disconnects mid-cold-load must still clear the pingTimer and never be pushed — the
@@ -240,6 +258,13 @@ export async function serveEventStream(sink, params, deps) {
   // 否则 streamRawEntriesAsync 的 setImmediate yield 间隙会让 watcher 的
   // sendToClients 向该客户端推送 live entry，而 load_end 的 setState 会覆盖这些
   // 已处理的 live entry，导致 对话条目"显示→消失→重现"闪烁。
+  //
+  // Attach buffer (2026-10): the client registered into deps.clients during the
+  // cold load is NOT the real res — it is a buffer proxy that never writes the
+  // socket. It carries the same view stamps as the registrable, queueing the live
+  // deltas owed to this connection while the cold load runs. The real res still
+  // receives its first data only after load_end (the anti-flicker invariant is
+  // unchanged); the queued frames are replayed at the flush below.
 
   // SSE 心跳保活：每 30s 发送 ping 事件，防止连接被 OS/代理/浏览器静默断开
   pingTimer = setInterval(() => {
@@ -319,6 +344,26 @@ export async function serveEventStream(sink, params, deps) {
   // else the bound project. Stamped onto the sink registrable so per-project feeds can
   // route live entries to exactly the clients viewing that project.
   const viewedProject = projectParam || (_projectName || '');
+  // Attach buffer: register the stand-in client NOW, in the synchronous segment
+  // before the first await (readV2ColdBundle / streamRawEntriesAsync). From here
+  // until the flush-and-swap at registration, any live v2 delta routed to this
+  // view scope is queued on the proxy instead of being lost to the gap. The
+  // proxy carries the same project/instance stamps the registrable will get
+  // below, so filterClientsByViewProject/Instance deliver it exactly this
+  // connection's frames — no cross-project / cross-instance bleed.
+  if (!closed) {
+    attachBufferClient = createAttachBufferClient({
+      project: viewedProject || undefined,
+      instance: instanceParam || undefined,
+      maxBytes: deps.attachBufferMaxBytes,
+      // Overflow = the cold-load window's increments are dropped, i.e. the original
+      // lost-render bug resurfaces for THIS connection. reportSwallowed is gated behind
+      // CCV_DEBUG, so it is invisible in production — log unconditionally, or the most
+      // likely residual failure of this fix would be undiagnosable.
+      onOverflow: (bytes) => console.warn(`[events] attach buffer overflowed at ${bytes} bytes; this connection may miss live updates until reconnect`),
+    });
+    deps.clients.push(attachBufferClient);
+  }
   const resolveColdSource = () => {
     if (sidParam) {
       const project = projectParam || _projectName;
@@ -525,6 +570,10 @@ export async function serveEventStream(sink, params, deps) {
         limit: useLimit ? effectiveLimit : 0,
         since: useIncremental ? sinceParam : null,
       });
+      // Conv coverage for the attach buffer flush: replayed v3_conv frames whose
+      // seq the cold bundle already carried are skipped (client conv replay is
+      // not idempotent). On a read error this stays null → flush fails open.
+      coldConvCoverage = (native && native.convSeqs) || null;
       // Build every payload BEFORE load_start so it can carry the exact byte
       // total — the client renders a real received/total progress (the legacy
       // wire's per-entry count-up has no per-frame granularity here).
@@ -637,7 +686,21 @@ export async function serveEventStream(sink, params, deps) {
   if (instanceParam) registrable._ccvViewInstance = instanceParam;
   // Push-guard: a client whose close fired mid-cold-load (dispose already ran via the
   // entry-registered onClose hook) must NOT be re-added to the broadcast list.
-  if (!closed) deps.clients.push(registrable);
+  //
+  // Attach buffer flush + swap: replay every live delta queued during the cold
+  // load (in emission order, conv-covered frames skipped), then swap the proxy
+  // for the real registrable. This whole block is synchronous — no broadcast can
+  // interleave between the replay and the swap, so nothing is double-sent or
+  // lost. After this point the connection receives live frames directly.
+  if (!closed) {
+    flushAttachBuffer(sink, attachBufferClient, coldConvCoverage);
+    if (attachBufferClient) {
+      const bi = deps.clients.indexOf(attachBufferClient);
+      if (bi !== -1) deps.clients.splice(bi, 1);
+    }
+    deps.clients.push(registrable);
+  }
+  attachBufferClient = null;
 
   // 任务清单快照补推：内存态不在冷加载数据里，页面刷新/重连后横条要等下一次
   // 任务事件才恢复 —— 连接建立即推一份当前快照（空列表也推，清掉客户端残留）。

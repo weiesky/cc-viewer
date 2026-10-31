@@ -402,7 +402,18 @@ function _createSession(key, cwd) {
                              // second Stop would silently no-op).
   let _settleGraceTimer = null; // backstop after interrupt: force-settle if no result arrives
   let _lostResultTimer = null;  // lost-result backstop handle (cleared on turn settle/teardown)
-  let _lateResultTombstones = 0; // results to discard (already force-settled via grace/watchdog)
+  // Generation guard for late results (replaces the old _lateResultTombstones counter).
+  // Result frames carry no turn id, so a force-settled turn's late result is
+  // indistinguishable from the NEXT turn's result on arrival order alone. The counter
+  // solved this by counting "results still owed", but it only reset on teardown/reset —
+  // so when the owed result NEVER arrived (the lost-result case), the count outlived its
+  // turn and swallowed the NEXT turn's result (no shift, no turn_end → that turn then
+  // force-settled as turn-stuck too). The guard instead binds the debt to the force-settled
+  // turn's epoch: a result is discarded only while it provably belongs to the dead
+  // generation. Once a NEWER turn is in flight, its own result pairs normally — the stale
+  // debt is dropped (the old result may never come, and must not tax the live turn).
+  let _turnEpoch = 0;        // advanced per _beginTurn; rec.epoch snapshots it
+  let _lateResultEpoch = 0;  // epoch of the force-settled turn awaiting a late result (0 = none)
   let _consecutiveDeaths = 0;   // backstop against respawn storms in a broken environment
   // Activity probe (replaces the old fixed 25min silence watchdog): re-armed on every
   // incoming SDK message. When a turn stays silent past ACTIVITY_PROBE_IDLE_MS it pings
@@ -514,6 +525,7 @@ function _createSession(key, cwd) {
     const rec = {
       id: 'turn_' + (++_turnSeq).toString(36) + '_' + Math.random().toString(36).slice(2, 8),
       resolve, interrupted: false, settled: false,
+      epoch: ++_turnEpoch, // generation this turn belongs to — the late-result guard keys off it
       apiRetry: { count: 0, attempt: 0, maxRetries: 0, lastStatus: null, lastError: null },
     };
     _pendingTurns.push(rec);
@@ -642,9 +654,10 @@ function _createSession(key, cwd) {
     // and leaving them would replay a ghost modal on attach AND suppress probing on the
     // rebuilt generation (size > 0 = "alive"). They time out / deny as their own path.
     _cancelAllApprovals();
-    // Tombstone the result that a merely-slow child may still emit before the lazy
-    // teardown — otherwise it would fire a spurious turn_end for an already-failed turn.
-    _lateResultTombstones++;
+    // Mark the result that a merely-slow child may still emit before the lazy teardown —
+    // otherwise it would fire a spurious turn_end for an already-failed turn. Bound to the
+    // head turn's epoch so it cannot tax a later turn if the result never arrives.
+    if (_pendingTurns[0]) _lateResultEpoch = _pendingTurns[0].epoch;
     _settleAllTurns();
     _announceSessionState('idle');
     // Retry is only possible if a session id was captured to resume — a first turn that
@@ -1111,7 +1124,10 @@ function _createSession(key, cwd) {
     _clearGraceTimer();
     _clearTurnWatchdog();
     _clearStateHeartbeat();
-    _lateResultTombstones = 0;
+    // Clear any stale late-result debt: the dead generation's frames are filtered by the
+    // _activeQuery guard, so the owed result can never arrive — leaving the debt would
+    // suppress the next generation's api_retry frames (and its retry affordance).
+    _lateResultEpoch = 0;
     const hadTurns = _pendingTurns.length > 0;
     const headTurn = _pendingTurns[0] || null;
     // Session died mid-turn: no result will arrive, so without this the spinner would
@@ -1184,7 +1200,10 @@ function _createSession(key, cwd) {
     _clearTurnWatchdog();
     _probeFailures = 0;
     _clearStateHeartbeat();
-    _lateResultTombstones = 0;
+    // Teardown filters the dead generation's late frames via _activeQuery, so its owed
+    // result can never arrive — clear the debt or it would suppress the rebuilt turn's
+    // api_retry frames. (_lastFailedTurn survives on purpose; the debt must not.)
+    _lateResultEpoch = 0;
     // NOTE: _lastFailedTurn deliberately survives teardown — the lazy rebuild path
     // (_startTurn's suspect-generation teardown) must keep the recorded failure so the
     // manual [retry] affordance stays available. User-facing session boundaries clear it
@@ -1356,9 +1375,12 @@ function _createSession(key, cwd) {
         } else if (msg.subtype === 'api_retry') {
           // The CLI's own retry of a retryable API error (502/429/5xx/network). It carries
           // no turn id, so we attribute it to the head pending turn — approximate but
-          // correct in the common single-turn case. Skipped while a tombstone is pending
-          // (a late retry of an already-interrupted turn must not relight the bar).
-          if (_lateResultTombstones === 0) {
+          // correct in the common single-turn case. Skipped only while a late-result debt
+          // is pending AND no live turn could own the frame (a late retry of an
+          // already-interrupted turn must not relight the bar). The gate mirrors the
+          // result branch's orphan rule: a stale debt must never suppress a live turn's
+          // own retry frames, and must not outlive the teardown/reset that orphaned it.
+          if (_lateResultEpoch === 0 || _pendingTurns.length > 0) {
             const rec = _pendingTurns.length ? _pendingTurns[0] : null;
             if (rec) {
               rec.apiRetry.count += 1;
@@ -1443,26 +1465,42 @@ function _createSession(key, cwd) {
 
       case 'result': {
         if (msg.session_id) _sessionId = msg.session_id;
-        // Grace/watchdog tombstone: a result that arrives AFTER its turn was already
-        // force-settled belongs to that dead turn — discard it instead of letting it
-        // settle (and prematurely end) the NEXT turn. If the tombstone outlived its turn
-        // entirely (the owed result never comes) the count would swallow a FUTURE turn's
-        // result — the bookkeeping clear below keeps that mistake bounded to the
-        // turn-end signal rather than wedging _queryBusy.
-        if (_lateResultTombstones > 0) {
-          _lateResultTombstones--;
-          _clearGraceTimer();
-          _queryBusy = false;
-          _turnInFlight = false;
-          // The tombstoned turn is over — but a NEWER turn may already be in flight
-          // (Stop → grace settle → user re-sent → late result of the old turn arrives).
-          // Only announce idle when no turn is pending, else we'd kill turn 2's spinner.
-          if (_pendingTurns.length === 0) {
-            _announceSessionState('idle');
-            _clearTurnWatchdog();
+        // Generation guard for late results. Result frames carry no turn id, so a result
+        // that arrives AFTER its turn was force-settled is indistinguishable from the NEXT
+        // turn's result on arrival order alone. The guard resolves this by generation:
+        // a force-settled turn is REMOVED from the FIFO (shift / settleAll), so when a
+        // result arrives and the FIFO is EMPTY, nothing live could own it — it is the dead
+        // generation's late result and is discarded (no turn_end, no error attribution).
+        //
+        // Deliberate trade-off (NOT a guarantee): when a NEWER turn is already in flight,
+        // an arriving result is paired with it (`head.epoch > _lateResultEpoch`), because
+        // swallowing the live turn's own result is the worse failure (that was the original
+        // bug — the stuck turn got mis-settled as turn-stuck and re-ran). The cost is that
+        // a genuinely-late result of the dead generation CAN be mis-paired to the live turn
+        // here (an early/extra turn_end, or a wrong error toast attributed to it) — accepted
+        // because the live turn must not lose its own result. This window is narrow: the
+        // late result must arrive after the backstop AND after a newer turn has started.
+        if (_lateResultEpoch !== 0) {
+          const head = _pendingTurns[0] || null;
+          if (!head) {
+            // No live turn could own this result — it is the dead generation's late result.
+            _lateResultEpoch = 0;
+            _clearGraceTimer();
+            _queryBusy = false;
+            _turnInFlight = false;
+            // The dead generation is over — but a NEWER turn may already be in flight
+            // (Stop → grace settle → user re-sent → late result of the old turn arrives).
+            // Only announce idle when no turn is pending, else we'd kill turn 2's spinner.
+            if (_pendingTurns.length === 0) {
+              _announceSessionState('idle');
+              _clearTurnWatchdog();
+            }
+            _maybeDrain();
+            break;
           }
-          _maybeDrain();
-          break;
+          // A NEWER generation is in flight: this result is that live turn's own, so fall
+          // through to pair it normally — and drop the never-arriving late result's debt.
+          _lateResultEpoch = 0;
         }
         const rec = _pendingTurns.shift();
         // 502/retry state machine. An error result after observed CLI retries records a
@@ -2149,7 +2187,7 @@ function _createSession(key, cwd) {
       const rec = _pendingTurns[0];
       if (!rec || !rec.interrupted) return;
       console.warn('[sdk-manager] no result within interrupt grace — settling the turn and marking the generation suspect');
-      _lateResultTombstones++;
+      _lateResultEpoch = rec.epoch; // discard this generation's late result, never a later turn's
       _pendingTurns.shift();
       _settleTurn(rec);
       _queryBusy = false;
@@ -2181,9 +2219,11 @@ function _createSession(key, cwd) {
       if (_queryBusy === false) return;
       if (_lastSessionState !== 'idle') return; // a newer turn started running — not lost
       console.warn('[sdk-manager] session idle but a turn result never arrived — settling as lost result');
-      // Tombstone the result that may still arrive: without it the late result would
+      // Mark the head turn's epoch as owing a result: without it a late result would
       // consume the NEXT turn's FIFO record (settling it early and mispairing turn-end).
-      _lateResultTombstones++;
+      // Binding to the epoch (not a count) is the fix for the swallowed-next-result bug —
+      // this result never arriving must not let the debt outlive its generation.
+      if (_pendingTurns[0]) _lateResultEpoch = _pendingTurns[0].epoch;
       _settleAllTurns();
       const retryable = !!(_sessionId || _launchResume);
       _lastFailedTurn = {
@@ -2427,7 +2467,7 @@ function _createSession(key, cwd) {
     _clearContextUsage('session-switched');
     _clearMcpStatus('session-switched');
     _pendingTurns = [];
-    _lateResultTombstones = 0;
+    _lateResultEpoch = 0; // session boundary: a stale debt must not follow into the new session
     _consecutiveDeaths = 0;
     _suspectGeneration = false;
     _lastFailedTurn = null;

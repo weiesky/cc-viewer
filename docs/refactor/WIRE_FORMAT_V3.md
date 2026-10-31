@@ -67,6 +67,20 @@ pinned by the live/cold row-parity tests in `test/v2-live-feed.test.js`
 `server_config` additionally carries `build` (server version): a tab whose
 bundle predates a server upgrade reloads itself on reconnect mismatch.
 
+**Attach buffer (2026-10) — live frames inside the cold-load window.** The
+client is only registered into the broadcast list AFTER `load_end` (so a live
+entry can never be overwritten by the cold `setState`). Live `v2_requests_delta`
+/ single-line `v3_conv`/`v3_resp` frames emitted while a cold load is in
+progress would previously be lost to this connection. The server now registers a
+buffer proxy (same view stamps) during the cold load and replays those frames
+AFTER `load_end`, in emission order, before swapping in the real client. Rows
+and responses lines upsert client-side by `(sessionId, seq)` so they replay
+idempotently; `v3_conv` is NOT idempotent (the assembler appends + consumes with
+a monotonic pointer), so the replay skips any conv frame whose seq the cold
+bundle already carried (coverage = the bundle's `native.convSeqs`, keyed
+`sessionId\x00channel`, `{seqs, baseSeq}`; torn/unparseable lines are never
+covered so their complete re-send is not skipped).
+
 ## 3. On-demand detail — `GET /api/v2-entry`
 
 `?file=v2:<project>/<dirToken>&seq=N[&sid=<uuid>]` → `{entry, prevMain}`.
