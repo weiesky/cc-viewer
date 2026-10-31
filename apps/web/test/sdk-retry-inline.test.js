@@ -57,9 +57,21 @@ describe('sdk-retry inline bar (批次 B frontend)', () => {
     assert.ok(css.includes('.sdkRetryBtn'), '.sdkRetryBtn defined');
     // The NEW retry rules must not use !important (repo rule; other legacy rules are
     // out of scope for this anchor).
-    for (const cls of ['sdkRetryRow', 'sdkRetryBtn', 'sdkRetryRecovering']) {
+    for (const cls of ['sdkRetryRow', 'sdkRetryBtn']) {
       const rule = css.match(new RegExp('\\.' + cls + '\\b[^}]*\\}'));
       if (rule) assert.ok(!rule[0].includes('!important'), `${cls} must not use !important`);
     }
+  });
+
+  it('hides a recovering error row entirely (no parallel error + recovering states)', () => {
+    // Regression: while a retry is in progress the failed row must NOT render its error
+    // text beside a "recovering" tag — the row is skipped wholesale and only the top
+    // recovering progress line shows. The row returns only when the retry fails.
+    const m = jsx.match(/rows\.map\(\(row\) => \{[\s\S]*?\}\)\}/);
+    assert.ok(m, 'sdk-error rows map found');
+    assert.ok(m[0].includes('if (recovering) return null'), 'recovering row skipped entirely');
+    assert.ok(!m[0].includes('sdkRetryRecovering'), 'no inline recovering tag left in the row');
+    // The [retry] button no longer needs a !recovering guard (recovering rows are gone).
+    assert.ok(m[0].includes('const showRetry = retryable && turnId;'), 'showRetry guard simplified');
   });
 });

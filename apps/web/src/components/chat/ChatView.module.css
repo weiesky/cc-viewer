@@ -688,12 +688,6 @@
   background: var(--color-error-bg-light);
 }
 
-.sdkRetryRecovering {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-left: 8px;
-}
-
 /* Queued-message bubbles — stacked above the composer while a run is busy
    (Enter-while-streaming). Visual parity with the composer card (.chatInputWrapper):
    same bg/border/shadow/hover border-color, and the stack uses the same horizontal
