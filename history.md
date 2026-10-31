@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(web): **项目文件浏览器点击文件直接展示内容** — 树面板此前单击文件只选中、需到右侧网格双击才打开。现树中点击可打开的文件直接展示其内容（html/图片/文本预览，复用 openItem 的打开决策），同时保留选中高亮；点文件夹行为不变（右侧展开）。Coverage: `file-browser-modal.test.js`.
+
 - style(web): **SDK 错误条限宽 800px** — 错误/重试进度条宽屏下原本随消息列铺到 1400px,现夹到 800px（两侧随视口留白）,800px 以下保留 20px/侧。Coverage: `sdk-error-dialogue.test.js`.
 
 - fix(web): **SDK 错误行重试中不再与「恢复中」并行显示** — 手动重试把行标 `recovering` 后，此前只把 [重试] 按钮换成行内「恢复中」小字，错误文本仍整条渲染，与顶部恢复进度行并行出现。现 `recovering` 的行整条隐藏，只保留恢复进度行；重试失败（`recovering` 复位）才重新出现，成功则清除该行。同步移除不再引用的 `.sdkRetryRecovering` 样式。Coverage: `sdk-retry-inline.test.js`.

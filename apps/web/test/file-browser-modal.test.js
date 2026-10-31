@@ -491,6 +491,23 @@ describe('modal upload wiring (button + zoned drag-drop)', () => {
       'ModalTreeNode recursion must thread onMove');
   });
 
+  it('a tree file row opens the content directly (not just select)', () => {
+    // The grid double-click already opened files; the tree single-click only selected.
+    // Now a click on an openable file shows its content directly: handleRowClick selects
+    // the row AND delegates to openItem's open decision via openTreeFile.
+    const rowClick = bodyOf(FILE_BROWSER_MODAL, 'const handleRowClick = useCallback(() => {');
+    assert.ok(rowClick.includes('onSelectFile(childPath)'), 'tree row click still selects for highlight');
+    assert.ok(rowClick.includes('onOpenFile(item, childPath)'), 'tree row click also opens the file content');
+    // openTreeFile reuses openItem's rooted path logic (html / image / content preview).
+    assert.ok(FILE_BROWSER_MODAL.includes('const openTreeFile = useCallback((item, childPath) => {'),
+      'openTreeFile handler defined');
+    assert.ok(FILE_BROWSER_MODAL.includes('openItem({ ...item, name: childPath })'),
+      'openTreeFile reuses openItem with the rooted childPath');
+    // Threaded to the root map and through ModalTreeNode recursion.
+    assert.ok(FILE_BROWSER_MODAL.includes('onOpenFile={openTreeFile}'), 'root map passes onOpenFile');
+    assert.ok(FILE_BROWSER_MODAL.includes('onOpenFile={onOpenFile}'), 'ModalTreeNode recursion threads onOpenFile');
+  });
+
   it('in-project drops are accepted on grid blank, tree blank and breadcrumbs', () => {
     const gridDropBlock = bodyOf(FILE_BROWSER_MODAL, 'const handleGridDrop = useCallback((e) => {');
     assert.ok(gridDropBlock.includes('if (canDropMoveOn(fromPath, currentPath)) handleMove(fromPath, currentPath);'),
