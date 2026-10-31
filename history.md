@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- style(web): **SDK 错误条限宽 800px** — 错误/重试进度条宽屏下原本随消息列铺到 1400px,现夹到 800px（两侧随视口留白）,800px 以下保留 20px/侧。Coverage: `sdk-error-dialogue.test.js`.
+
 - fix(web): **SDK 错误行重试中不再与「恢复中」并行显示** — 手动重试把行标 `recovering` 后，此前只把 [重试] 按钮换成行内「恢复中」小字，错误文本仍整条渲染，与顶部恢复进度行并行出现。现 `recovering` 的行整条隐藏，只保留恢复进度行；重试失败（`recovering` 复位）才重新出现，成功则清除该行。同步移除不再引用的 `.sdkRetryRecovering` 样式。Coverage: `sdk-retry-inline.test.js`.
 
 - fix(web): **view-switch 后已最小化的 SDK ask 弹窗不再重开** — view 切换把 `pendingAsk` 清成 null 触发 `id→null`，被 dismissal wipe 误判为真 clear 而清掉 minimize;attach 全量 replay 用同一 id 走 `null→id` 保留分支，但 dismissal 已丢失、弹窗重开。现把 view-switch 合成 clear 标记为 `reason: 'view-switch'`,wipe 判据对它放行（真 clear 仍 wipe）;ask 与 ptyPlan 共用同一判据，一并修复。Coverage: `approval-dismissal.test.js`.
