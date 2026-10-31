@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(web): **view-switch 后已最小化的 SDK ask 弹窗不再重开** — view 切换把 `pendingAsk` 清成 null 触发 `id→null`，被 dismissal wipe 误判为真 clear 而清掉 minimize;attach 全量 replay 用同一 id 走 `null→id` 保留分支，但 dismissal 已丢失、弹窗重开。现把 view-switch 合成 clear 标记为 `reason: 'view-switch'`,wipe 判据对它放行（真 clear 仍 wipe）;ask 与 ptyPlan 共用同一判据，一并修复。Coverage: `approval-dismissal.test.js`.
+
 - fix(server): **丢失 result 兜底不再误吞下一回合 result** — 强制结算的回合改记代际 epoch，迟到 result 只在无活回合可归属时丢弃；新回合 result 正常配对。修复 v1.9.18 兜底计数器残留吞 result、致下一回合被误判 turn-stuck 的问题。Coverage: `sdk-manager-lost-result.test.js`.
 
 - fix(server): **首次 `ccv --sdk` 首回合对话不再卡渲染** — `/events` 冷加载窗口（冷读冻结快照→注册广播列表）内的 live 增量原本丢失无重放，首回合恰好落入。现加 attach buffer：冷加载期间挂缓冲代理入队窗口增量，load_end 后按序回放再换真实客户端，`v3_conv` 按冷包 coverage 去重。Coverage: `sse-attach-buffer.test.js`, `events-attach-buffer.test.js`.
