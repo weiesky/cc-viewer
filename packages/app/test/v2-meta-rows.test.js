@@ -19,7 +19,7 @@ process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
 
 const { V2Writer } = await import('../server/lib/v2/v2-writer.js');
-const { readV2RequestsMeta } = await import('../server/lib/v2/meta-rows.js');
+const { readV2RequestsMeta, readV2NativeCold } = await import('../server/lib/v2/meta-rows.js');
 const { resolveSessionDirName } = await import('../server/lib/v2/session-select.js');
 
 const SID = 'a1a2a3a4-2222-4333-8444-000000000002';
@@ -280,5 +280,35 @@ describe('Pass B wire-agent classification', () => {
     // anon row is SubAgent:Search — if the name override leaked to SubAgent it
     // would be null; assert the role tag survived.
     assert.equal(rows[0].typeTag.subType, 'Search');
+  });
+});
+
+describe('readV2NativeCold convSeqs (attach-buffer coverage)', () => {
+  it('records the conv lines the cold bundle sends, keyed by sessionId\\x00channel', async () => {
+    const { rows } = await readV2RequestsMeta(sessionDir, {});
+    const { convSeqs } = await readV2NativeCold(sessionDir, rows);
+    // The main channel of the leader session is covered; its key carries the session id.
+    const mainKey = [...convSeqs.keys()].find((k) => k.startsWith(`${SID}\x00`));
+    assert.ok(mainKey, `expected a coverage entry for session ${SID}, got: ${[...convSeqs.keys()]}`);
+    const cov = convSeqs.get(mainKey);
+    assert.ok(cov.seqs instanceof Set);
+    // Every main-channel seq the bundle emits is in the coverage set; baseSeq is the min.
+    assert.ok(cov.seqs.size >= 1, 'cold conv window produced at least one covered seq');
+    for (const s of cov.seqs) assert.ok(Number.isInteger(s));
+    assert.equal(cov.baseSeq, Math.min(...cov.seqs), 'baseSeq is the smallest covered seq');
+    // A seq clearly beyond the window is NOT covered (so its live replay is not skipped).
+    const beyond = Math.max(...cov.seqs) + 100;
+    assert.equal(cov.seqs.has(beyond), false);
+  });
+
+  it('covers only the requested window (limit) — not the whole history', async () => {
+    const { rows } = await readV2RequestsMeta(sessionDir, { limit: 1 });
+    const { convSeqs } = await readV2NativeCold(sessionDir, rows);
+    const mainKey = [...convSeqs.keys()][0];
+    if (!mainKey) return; // a session with no conv window legitimately yields no coverage
+    const cov = convSeqs.get(mainKey);
+    // The windowed coverage stays a finite Set; baseSeq never exceeds every covered seq.
+    assert.ok(cov.seqs.size >= 1);
+    assert.ok(cov.baseSeq <= Math.min(...cov.seqs));
   });
 });

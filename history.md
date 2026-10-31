@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- fix(server): **丢失 result 兜底不再误吞下一回合 result** — 强制结算的回合改记代际 epoch，迟到 result 只在无活回合可归属时丢弃；新回合 result 正常配对。修复 v1.9.18 兜底计数器残留吞 result、致下一回合被误判 turn-stuck 的问题。Coverage: `sdk-manager-lost-result.test.js`.
+
+- fix(server): **首次 `ccv --sdk` 首回合对话不再卡渲染** — `/events` 冷加载窗口（冷读冻结快照→注册广播列表）内的 live 增量原本丢失无重放，首回合恰好落入。现加 attach buffer：冷加载期间挂缓冲代理入队窗口增量，load_end 后按序回放再换真实客户端，`v3_conv` 按冷包 coverage 去重。Coverage: `sse-attach-buffer.test.js`, `events-attach-buffer.test.js`.
+
 ## 1.9.18
 
 - fix(server+web): **SDK 卡死回合按活性探活判死** — 移除 25 分钟静默强制结算（会误杀合法多小时工具回合）；回合静默超时后改为对 CLI 控制面发探活，连续无应答才判死：标记可疑代际、下次发送时按会话 id 懒重建（不打断可能仍在跑的子进程），并报可重试的 turn-stuck。审批 pending 视为存活不探活；丢失 result 与 Stop 后未应答也在下次发送时重建。Coverage: `sdk-manager-query.test.js`, `sdk-session-state.test.js`.
