@@ -4024,14 +4024,17 @@ class AppBase extends React.Component {
   // pending id actually CHANGES (a genuinely new plan) — not on a same-id re-bubble or a clear.
   // Tracked per kind in _lastApprovalKindId.
   _setApprovalKind = (kind, data) => {
-    const enriched = this._injectProjectName(data, kind);
+    // View-switch synthetic clears arrive as { reason: 'view-switch' } so the wipe
+    // policy can tell them apart from a real id → null clear (which must re-arm).
+    const reason = (data && typeof data === 'object' && data.reason) || null;
+    const enriched = reason ? null : this._injectProjectName(data, kind);
     this.setState(prev => {
       const next = { ...prev.approvalGlobal };
       if (enriched) next[kind] = enriched;
       else next[kind] = null;
       const prevId = prev.approvalGlobal?.[kind]?.[kind]?.id ?? null;
       const nextId = enriched?.[kind]?.id ?? null;
-      if (!shouldWipeApprovalDismissal(prevId, nextId)) {
+      if (!shouldWipeApprovalDismissal(prevId, nextId, { reason })) {
         // Same id, both null, or a null→id transition (a genuinely new pending
         // has no dismissal to wipe, and a WS-reconnect replay of a minimised
         // plan must NOT be reopened): keep any existing dismissal untouched.

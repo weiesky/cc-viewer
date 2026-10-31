@@ -826,6 +826,10 @@ class ChatView extends React.Component {
         pendingPlanApproval: null, pendingPtyPlan: null, planAutoApproveCountdown: null,
         ...(this.props.sdkMode ? { pendingAsk: null, askQueue: [], pendingPermission: null, permissionQueue: [] } : {}),
       });
+      // Mark the pendingAsk/pendingPtyPlan clears above as view-switch synthetic so the
+      // bubble (in the cDU diff below) can tell AppBase to skip the dismissal wipe —
+      // the attach replay re-bubbles the same id, and wiping would reopen a minimised modal.
+      this._approvalViewSwitchClear = true;
       if (viewSwitched || planLostView) { this._planAutoCancelled.clear(); this._permAutoCancelled.clear(); }
       // Pinned sdk-error rows belong to the previous view's workspace/instance.
       this._clearSdkErrors();
@@ -962,7 +966,11 @@ class ChatView extends React.Component {
               },
           });
         } else if (left) {
-          this.props.onPendingPtyPlan(null);
+          // Same view-switch synthetic-clear tag as the ask bubble below: a cleared plan
+          // that the attach replay re-bubbles must not lose its dismissal.
+          const viewSwitchedClear = this._approvalViewSwitchClear;
+          this._approvalViewSwitchClear = false;
+          this.props.onPendingPtyPlan(viewSwitchedClear ? { reason: 'view-switch' } : null);
         }
       }
       // Electron main parity：badge / flashFrame / OS 通知 + 其他 tab chip。直换（A→B 同帧）时
@@ -988,7 +996,12 @@ class ChatView extends React.Component {
             handlers: { submit: this.handleAskQuestionSubmit, cancel: this.handleAskCancel },
           });
         } else {
-          this.props.onPendingAsk(null);
+          // The view-switch clear above wipes pendingAsk but is NOT a real dismissal —
+          // the attach replay re-bubbles the same id. Tag it so AppBase skips the
+          // dismissal wipe and a minimised modal stays minimised across the round-trip.
+          const viewSwitchedClear = this._approvalViewSwitchClear;
+          this._approvalViewSwitchClear = false;
+          this.props.onPendingAsk(viewSwitchedClear ? { reason: 'view-switch' } : null);
         }
       }
       // ask transition 时显式通知 main 清聚合状态。覆盖两种迁移：
