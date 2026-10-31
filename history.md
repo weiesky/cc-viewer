@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- style(web): **GIT 变更 commit 行移除作者名** — 每条 commit 的展示不再渲染作者，把空间留给 commit 描述;hash / 描述 / 时间 / 增删统计保持不变。
+
 - feat(web): **项目文件浏览器点击文件直接展示内容** — 树面板此前单击文件只选中、需到右侧网格双击才打开。现树中点击可打开的文件直接展示其内容（html/图片/文本预览，复用 openItem 的打开决策），同时保留选中高亮；点文件夹行为不变（右侧展开）。Coverage: `file-browser-modal.test.js`.
 
 - style(web): **SDK 错误条限宽 800px** — 错误/重试进度条宽屏下原本随消息列铺到 1400px,现夹到 800px（两侧随视口留白）,800px 以下保留 20px/侧。Coverage: `sdk-error-dialogue.test.js`.
