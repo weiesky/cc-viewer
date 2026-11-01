@@ -188,6 +188,31 @@ describe('plugin-runtime lifecycle (no spawn)', () => {
     assert.deepEqual(events, [['entry', 'e1']], 'deactivate 后订阅已退订');
   });
 
+  it('events.on subscribes to agent_loop_end via dispatcher and unsubscribes on deactivate', async () => {
+    writeDirPlugin('evloop', {
+      'plugin.json': JSON.stringify({ name: 'evloop', main: 'main.mjs' }),
+      'main.mjs': `
+        export default {
+          async activate(ctx) {
+            ctx.events.on('agent_loop_end', (p) => globalThis.__ccvEvents.push(['loopEnd', p.reason]));
+            ctx.events.on('agent_loop_start', (p) => globalThis.__ccvEvents.push(['loopStart', p.mode]));
+          },
+          async deactivate() {},
+        };
+      `,
+    });
+    globalThis.__ccvEvents = events;
+    await loadPlugins();
+    const { runParallelHook } = await import('../server/lib/plugin-loader.js');
+    await onServerStarted(ctx);
+    await runParallelHook('onAgentLoopStart', { sessionId: 's1', ts: 1, project: 'p', instance: null, mode: 'sdk', turnId: 't1', turnStartedAt: 100 });
+    await runParallelHook('onAgentLoopEnd', { sessionId: 's1', ts: 2, project: 'p', instance: null, mode: 'sdk', turnId: 't1', turnStartedAt: 100, reason: 'success' });
+    assert.deepEqual(events, [['loopStart', 'sdk'], ['loopEnd', 'success']]);
+    await unloadPlugin('evloop', 'disable');
+    await runParallelHook('onAgentLoopEnd', { sessionId: 's1', ts: 3, project: 'p', instance: null, mode: 'sdk', turnId: 't2', turnStartedAt: 200, reason: 'error' });
+    assert.deepEqual(events, [['loopStart', 'sdk'], ['loopEnd', 'success']], 'deactivate 后订阅已退订');
+  });
+
   it('restartPlugin on non-service plugin returns error', async () => {
     writeDirPlugin('plain', {
       'plugin.json': JSON.stringify({ name: 'plain', main: 'main.mjs' }),

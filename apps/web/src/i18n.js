@@ -10444,6 +10444,22 @@ const i18nData = {
     "ar": "نهاية الدور", "no": "Tur slutt", "pt-BR": "Fim do turno",
     "th": "จบเทิร์น", "tr": "Tur sonu", "uk": "Кінець ходу"
   },
+  "ui.voicePack.event.agentLoopStart": {
+    "zh": "智能体循环开始", "en": "Agent loop started", "zh-TW": "智慧體循環開始",
+    "ko": "에이전트 루프 시작", "ja": "エージェントループ開始", "de": "Agent-Loop gestartet",
+    "es": "Bucle del agente iniciado", "fr": "Boucle d'agent démarrée", "it": "Ciclo dell'agente avviato",
+    "da": "Agent-loop startet", "pl": "Pętla agenta rozpoczęta", "ru": "Цикл агента запущен",
+    "ar": "بدء حلقة الوكيل", "no": "Agentløkke startet", "pt-BR": "Loop do agente iniciado",
+    "th": "เริ่มลูปเอเจนต์", "tr": "Ajan döngüsü başladı", "uk": "Цикл агента розпочато"
+  },
+  "ui.voicePack.event.agentLoopEnd": {
+    "zh": "智能体循环结束", "en": "Agent loop ended", "zh-TW": "智慧體循環結束",
+    "ko": "에이전트 루프 종료", "ja": "エージェントループ終了", "de": "Agent-Loop beendet",
+    "es": "Bucle del agente finalizado", "fr": "Boucle d'agent terminée", "it": "Ciclo dell'agente terminato",
+    "da": "Agent-loop afsluttet", "pl": "Pętla agenta zakończona", "ru": "Цикл агента завершён",
+    "ar": "انتهاء حلقة الوكيل", "no": "Agentløkke avsluttet", "pt-BR": "Loop do agente encerrado",
+    "th": "สิ้นสุดลูปเอเจนต์", "tr": "Ajan döngüsü sona erdi", "uk": "Цикл агента завершено"
+  },
   "ui.voicePack.binding.default": {
     "zh": "默认 (内置)", "en": "Default (built-in)", "zh-TW": "預設 (內建)",
     "ko": "기본 (내장)", "ja": "デフォルト (内蔵)", "de": "Standard (eingebaut)",

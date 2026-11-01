@@ -873,6 +873,24 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
     // persistent dialogue row plus a toast; meta (cwd/sessionId/instanceKey, filled by
     // the sdk-manager session closure) routes it to the owning workspace's viewers.
     onQueryError: (message, meta) => serverMod.broadcastWsMessage({ type: 'sdk-error', message, ...(meta || {}) }),
+    // Authoritative per-turn loop boundaries (immediate, turn-correlated) — the voice
+    // pack / plugin lifecycle complement to the debounced turn_end above.
+    onAgentLoopStart: (p) => {
+      if (typeof serverMod.broadcastAgentLoopStart !== 'function') {
+        console.warn('[sdk] serverMod.broadcastAgentLoopStart is not a function (export missing?); loop-start signal dropped');
+        return;
+      }
+      try { serverMod.broadcastAgentLoopStart(p); }
+      catch (err) { console.warn('[sdk] broadcastAgentLoopStart threw:', err?.message); }
+    },
+    onAgentLoopEnd: (p) => {
+      if (typeof serverMod.broadcastAgentLoopEnd !== 'function') {
+        console.warn('[sdk] serverMod.broadcastAgentLoopEnd is not a function (export missing?); loop-end signal dropped');
+        return;
+      }
+      try { serverMod.broadcastAgentLoopEnd(p); }
+      catch (err) { console.warn('[sdk] broadcastAgentLoopEnd threw:', err?.message); }
+    },
   });
 
   // Per-cwd multi-session (2026-10-12): hand the boot launch config (proxy env, model,
@@ -918,6 +936,22 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
       catch (err) { console.warn('[sdk] broadcastTurnEnd threw:', err?.message); }
     },
     onQueryError: (message, meta) => serverMod.broadcastWsMessage({ type: 'sdk-error', message, ...(meta || {}) }),
+    onAgentLoopStart: (p) => {
+      if (typeof serverMod.broadcastAgentLoopStart !== 'function') {
+        console.warn('[sdk] serverMod.broadcastAgentLoopStart is not a function (export missing?); loop-start signal dropped');
+        return;
+      }
+      try { serverMod.broadcastAgentLoopStart(p); }
+      catch (err) { console.warn('[sdk] broadcastAgentLoopStart threw:', err?.message); }
+    },
+    onAgentLoopEnd: (p) => {
+      if (typeof serverMod.broadcastAgentLoopEnd !== 'function') {
+        console.warn('[sdk] serverMod.broadcastAgentLoopEnd is not a function (export missing?); loop-end signal dropped');
+        return;
+      }
+      try { serverMod.broadcastAgentLoopEnd(p); }
+      catch (err) { console.warn('[sdk] broadcastAgentLoopEnd threw:', err?.message); }
+    },
     broadcastWs: (msg) => serverMod.broadcastWsMessage(msg),
     runWaterfallHook,
   });

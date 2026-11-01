@@ -125,7 +125,7 @@ interface PluginContext {
   config: Readonly<object>;     // manifest config.defaults（v1 无运行时写）
   logger: { debug/info/warn/error(...): void };
   events: {
-    on(event: 'new_entry' | 'stream_chunk', cb): () => void; // deactivate 自动退订
+    on(event: 'new_entry' | 'stream_chunk' | 'agent_loop_start' | 'agent_loop_end', cb): () => void; // deactivate 自动退订
   };
   signal: AbortSignal;          // deactivate/unload 时 abort
   isStopping(): boolean;

@@ -3005,7 +3005,9 @@ async function setupTerminalWebSocket(httpServer) {
                 { project: (typeof msg.project === 'string' && msg.project) || null, instance: (typeof msg.instanceKey === 'string' && msg.instanceKey) || null },
                 _projectName || '',
               );
-              _setTurnActive(false, null, qScope);
+              // Web Stop = user interrupt: the loop ends NOW (no Stop hook fires on
+              // interrupt), so emit the immediate agent_loop_end alongside the clear.
+              _setTurnActive(false, null, qScope, 'interrupted');
             }
           } else if (msg.type === 'image-remove-notify' || msg.type === 'image-upload-notify') {
             // Security: only allow paths within upload directories, reject traversal
@@ -3163,6 +3165,7 @@ let _lastSdkActive = false;
 // Per-scope CLI streaming edge state ('' = bound — the legacy single flag).
 const _lastCliActiveByScope = new Map();
 let _onTurnEndBroadcastForTests = null;
+let _onAgentLoopBroadcastForTests = null;
 
 function _normalizeKey(sessionId) {
   return (typeof sessionId === 'string' && sessionId) ? sessionId : null;
@@ -3230,6 +3233,14 @@ function _emitTurnEnd(sessionId, ts, transcriptPath = null, scope = null) {
   const sid = _normalizeKey(sessionId);
   const t = ts || Date.now();
   const sc = scope || { project: '', instance: null };
+  // PTY loop end rides the debounced boundary (the Stop hook is query()-level, so an
+  // immediate frame would ring mid-loop on user-role injections). SDK mode already
+  // emitted its authoritative per-result end — emitting here too would double-fire.
+  // Emitted BEFORE turn_end so the client can suppress the legacy voice when the new
+  // agentLoopEnd cue actually played (same boundary ts on both frames).
+  if (!isSdkMode) {
+    _emitAgentLoopBoundary('end', { sessionId: sid, ts: t, scope: sc, mode: 'pty', reason: 'stop-hook', transcriptPath });
+  }
   try {
     if (clients.length > 0 && sendEventToClients) {
       const target = sc.project
@@ -3251,6 +3262,61 @@ function _emitTurnEnd(sessionId, ts, transcriptPath = null, scope = null) {
   } catch (err) {
     console.warn(`[turn-end] broadcast failed sid=${sid}:`, err && err.message);
   }
+}
+
+// ── Agent-loop boundary frames (agent_loop_start / agent_loop_end) ─────────────
+// Authoritative per-turn loop lifecycle, uniform across modes:
+//   SDK: emitted by sdk-manager at push-accept (start) and the turn's real result /
+//        settlement (end) — immediate, per-turn correlated (turnId + turnStartedAt),
+//        bypassing the turn_end debounce entirely (task-notification pseudo results
+//        are filtered upstream and never reach here).
+//   PTY: start on the UserPromptSubmit rising edge in _setTurnActive; end from
+//        _emitTurnEnd (post-debounce, 'stop-hook') or the web Stop clear
+//        ('interrupted'). PTY's end stays debounced on purpose — see the
+//        SUNSET-MARKER block above.
+// Every emission also fires the matching plugin parallel hook (onAgentLoopStart /
+// onAgentLoopEnd) so plugins observe the same lifecycle as SSE clients.
+function _emitAgentLoopBoundary(phase, { sessionId = null, ts = Date.now(), scope = null, mode, turnId = null, turnStartedAt = null, reason = null, transcriptPath = null } = {}) {
+  if (_isStopping) return;
+  const sc = scope || { project: '', instance: null };
+  const payload = {
+    sessionId: _normalizeKey(sessionId), ts,
+    project: sc.project || (_projectName || ''), instance: sc.instance || null,
+    mode,
+    turnId: turnId || null, turnStartedAt: turnStartedAt || null,
+    ...(reason ? { reason } : {}),
+    ...(transcriptPath ? { transcriptPath } : {}),
+  };
+  if (clients.length > 0 && sendEventToClients) {
+    try {
+      const target = sc.project
+        ? filterClientsByScope(clients, sc.project, sc.instance, _projectName || '')
+        : _filterClientsByViewProject(clients, _projectName || '');
+      sendEventToClients(target, phase === 'start' ? 'agent_loop_start' : 'agent_loop_end', payload);
+    } catch (err) { reportSwallowed('agent-loop.broadcast', err); }
+  }
+  // Fire-and-forget: a plugin failure must never affect the SSE/turn pipeline.
+  runParallelHook(phase === 'start' ? 'onAgentLoopStart' : 'onAgentLoopEnd', payload).catch(() => {});
+  if (typeof _onAgentLoopBroadcastForTests === 'function') {
+    try { _onAgentLoopBroadcastForTests({ phase, payload }); }
+    catch (e) { if (process.env.NODE_ENV === 'test') throw e; /* never let a test stub pollute prod */ }
+  }
+}
+
+// SDK-mode entries (cli.js wires sdk-manager's per-turn callbacks here). The cwd
+// routes the frame to that workspace's scope, mirroring broadcastTurnEnd; instanceKey
+// narrows same-basename twins.
+export function broadcastAgentLoopStart(p = {}) {
+  const scope = p.cwd
+    ? normalizeProducerScope({ project: projectKeyForCwd(p.cwd) || '', instance: p.instanceKey || null }, _projectName || '')
+    : null;
+  _emitAgentLoopBoundary('start', { ...p, scope, mode: 'sdk' });
+}
+export function broadcastAgentLoopEnd(p = {}) {
+  const scope = p.cwd
+    ? normalizeProducerScope({ project: projectKeyForCwd(p.cwd) || '', instance: p.instanceKey || null }, _projectName || '')
+    : null;
+  _emitAgentLoopBoundary('end', { ...p, scope, mode: 'sdk' });
 }
 
 function _scheduleTurnEndBroadcast(sessionId, ts, transcriptPath = null, scope = null) {
@@ -3435,7 +3501,10 @@ function _broadcastTurnActive(active, sessionId, scope = null) {
 // turn-end entry points and would otherwise emit duplicate frames). The heartbeat
 // is armed/disarmed here so it tracks the flag exactly. Scope defaults to bound
 // ('') — the legacy single-workspace behavior is byte-identical.
-function _setTurnActive(active, sessionId, scope = null) {
+// `source` distinguishes clear paths: only 'interrupted' (web Stop / queue-suppress)
+// emits an immediate agent_loop_end — the ordinary Stop-hook clear defers to the
+// debounced end in _emitTurnEnd so user-role injection loops don't ring mid-loop.
+function _setTurnActive(active, sessionId, scope = null, source = 'hook') {
   const sc = scope || { project: '', instance: null };
   const key = scopeKeyOf(sc.project, sc.instance);
   const bucket = turnStateFor(key);
@@ -3446,6 +3515,11 @@ function _setTurnActive(active, sessionId, scope = null) {
   if (next) _turnSessionIdByScope.set(key, sessionId || null);
   if (activeTurnScopes().length > 0) _armTurnActiveHeartbeat(); else _clearTurnActiveHeartbeat();
   _broadcastTurnActive(next, sessionId, sc);
+  if (next) {
+    _emitAgentLoopBoundary('start', { sessionId, ts: Date.now(), scope: sc, mode: 'pty' });
+  } else if (source === 'interrupted') {
+    _emitAgentLoopBoundary('end', { sessionId, ts: Date.now(), scope: sc, mode: 'pty', reason: 'interrupted' });
+  }
 }
 
 // 统一的 streaming-state 观察入口。production polling 和 SDK push 都调它，测试也走它，
@@ -3480,19 +3554,21 @@ export const __testing = (process.env.NODE_ENV === 'test') ? {
     _lastCliActiveByScope.clear();
     _stoppingPromise = null;
     _onTurnEndBroadcastForTests = null;
+    _onAgentLoopBroadcastForTests = null;
     setTurnActive(false);
     _clearTurnActiveHeartbeat();
     _turnSessionIdByScope.clear();
     clearScopeState();
   },
   onBroadcast(fn) { _onTurnEndBroadcastForTests = fn; },
+  onAgentLoopBroadcast(fn) { _onAgentLoopBroadcastForTests = fn; },
   getPendingKeys() { return [..._pendingTurnEndTimers.keys()]; },
   setIsStopping(v) { _isStopping = !!v; },
   observeStreamingTick(activeNow, mode = 'cli', scopeKey = BOUND_SCOPE) { return _observeStreamingTick(activeNow, mode, scopeKey); },
   scheduleTurnEnd(sessionId, ts, scope = null) { _scheduleTurnEndBroadcast(sessionId, ts, null, scope); },
   getDebounceMs() { return TURN_END_DEBOUNCE_MS; },
   getPtyTurnActive(scopeKey = BOUND_SCOPE) { return turnStateFor(scopeKey).active; },
-  setPtyTurnActive(v, sessionId = null, scope = null) { _setTurnActive(v, sessionId, scope); },
+  setPtyTurnActive(v, sessionId = null, scope = null, source = 'hook') { _setTurnActive(v, sessionId, scope, source); },
   // Routes the payload through the SAME predicate the deps.onTaskEvent closure
   // uses, so tests exercise the production gate rather than a mirror of it.
   notifyTaskEvent(payload) {
@@ -3512,6 +3588,7 @@ export const __testing = (process.env.NODE_ENV === 'test') ? {
 } : Object.freeze({
   reset() {},
   onBroadcast() {},
+  onAgentLoopBroadcast() {},
   getPendingKeys() { return []; },
   setIsStopping() {},
   observeStreamingTick() { return false; },

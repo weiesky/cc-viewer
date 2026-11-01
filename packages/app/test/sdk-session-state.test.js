@@ -162,6 +162,38 @@ function makeResidentQuery({ respond, initMsgs } = {}) {
 const stateFrames = (broadcasts) =>
   broadcasts.filter((b) => b.type === 'sdk-session-state' && !b.heartbeat);
 
+// A frame-queue fake: the test pushes SDK frames and the iterator drains them, so
+// the test controls the EXACT arrival order across turns (unlike makeResidentQuery's
+// per-message respond batch, which cannot deliver turn 1's trailing frame AFTER
+// turn 2's push). Needed to exercise the stale-idle gate against a real interleaving.
+function makeFrameQuery() {
+  const frameQueue = [];
+  let wake = null;
+  function fakeQuery({ prompt }) {
+    void prompt;
+    const state = { ended: false };
+    const api = {
+      async *[Symbol.asyncIterator]() {
+        yield sysInit();
+        while (!state.ended) {
+          if (frameQueue.length === 0) {
+            await new Promise((res) => { wake = res; });
+            continue;
+          }
+          const m = frameQueue.shift();
+          await Promise.resolve();
+          yield m;
+        }
+      },
+      async interrupt() {},
+      close() { state.ended = true; if (wake) wake(); },
+    };
+    return api;
+  }
+  fakeQuery.pushFrame = (m) => { frameQueue.push(m); if (wake) { const w = wake; wake = null; w(); } };
+  return fakeQuery;
+}
+
 describe('sdk-session-state relay', () => {
   it('push broadcasts running fallback; result broadcasts idle', async () => {
     const { deps, broadcasts } = makeDeps();
@@ -223,6 +255,8 @@ describe('sdk-session-state relay', () => {
     assert.equal(snap?.type, 'sdk-session-state');
     assert.equal(snap?.state, 'idle');
     assert.equal(snap?.sessionId, 'sess-1');
+    assert.equal(typeof snap?.turnStartedAt, 'number', 'snapshot carries the wall-clock turn stamp');
+    assert.ok(snap.turnStartedAt > 0);
   });
 
   it('switchToSession resets the snapshot (no stale replay into the new session)', async () => {
@@ -362,6 +396,8 @@ describe('sdk-session-state relay', () => {
       assert.ok(beats.length >= 2, `heartbeat re-broadcasts while the turn is active: ${beats.length}`);
       assert.equal(beats[0].state, 'running');
       assert.ok(beats[0].turnId, 'heartbeat carries the in-flight turnId');
+      assert.equal(typeof beats[0].turnStartedAt, 'number', 'heartbeat carries the turn stamp');
+      assert.ok(beats[0].turnStartedAt > 0);
       // Interrupt → wrap-up result → idle → the heartbeat interval is cleared.
       sdk.interruptTurn();
       releaseFirst(); // CLI answers the interrupt with the turn's (error) result
@@ -375,5 +411,57 @@ describe('sdk-session-state relay', () => {
     } finally {
       mock.timers.reset();
     }
+  });
+
+  it('a late CLI idle from the PREVIOUS turn is dropped for a fresh turn (cliStateSeen gate)', async () => {
+    const { deps, broadcasts } = makeDeps();
+    // Frame-queue control: turn 1's TRAILING idle (CLI contract: the idle can arrive
+    // AFTER the result) is delivered only AFTER turn 2's push, so the head turn is
+    // turn 2 (cliStateSeen === false) when the stale frame lands. This is the real
+    // interleaving the gate exists for — a respond-batch fake cannot produce it.
+    const fq = makeFrameQuery();
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    const p1 = sdk.sendUserMessage('one').catch(() => {});
+    await tick(4);
+    fq.pushFrame(stateMsg('running'));
+    fq.pushFrame(resultMsg());            // turn 1 settles
+    await tick(8);
+    await p1;
+    assert.deepEqual(stateFrames(broadcasts).map((f) => f.state), ['running', 'idle'], 'turn 1 completes');
+
+    // Turn 2 pushed, but its own CLI frames have NOT arrived yet → cliStateSeen false.
+    const p2 = sdk.sendUserMessage('two').catch(() => {});
+    await tick(4);
+    // Now turn 1's LATE trailing idle lands while turn 2 is the unseen head: the gate
+    // must drop it (not clear turn 2's spinner, not arm the lost-result backstop).
+    fq.pushFrame(stateMsg('idle'));
+    await tick(6);
+    const states = stateFrames(broadcasts).map((f) => f.state);
+    assert.equal(states[states.length - 1], 'running',
+      `turn 1's late idle must not clear turn 2's spinner: ${JSON.stringify(states)}`);
+    // Turn 2's own frames then flow and settle it normally.
+    fq.pushFrame(stateMsg('running'));
+    fq.pushFrame(resultMsg());
+    await tick(8);
+    await p2;
+    assert.deepEqual(stateFrames(broadcasts).map((f) => f.state), ['running', 'idle', 'running', 'idle']);
+  });
+
+  it('a CLI idle after the head turn was SEEN running still announces (not over-dropped)', async () => {
+    const { deps, broadcasts } = makeDeps();
+    // The head turn WAS seen running by the CLI (cliStateSeen true), so its
+    // idle is genuine and must announce — the stale-idle gate must not eat it.
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit()],
+      respond: () => [stateMsg('running'), stateMsg('idle'), resultMsg()],
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    await sdk.sendUserMessage('hi');
+    await tick(10);
+    assert.deepEqual(stateFrames(broadcasts).map((f) => f.state), ['running', 'idle']);
   });
 });
