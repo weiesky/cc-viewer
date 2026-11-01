@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat(server+web): **SDK 模式 Agent-Loop 感知修复与权威轮次边界** — 会话状态携带 turnId+turnStartedAt（防迟到 idle 清新回合 spinner）；SDK 消息流按 ≤1/s 合并活性帧（覆盖工具/压缩阶段）；新增 `agent_loop_start`/`agent_loop_end` SSE 帧（SDK 真 result 即时、PTY 防抖后/打断即时，两模式统一，过滤后台任务伪 result）；prompt/push 即刻点亮 spinner。配套语音播报新增 `agentLoopStart`/`agentLoopEnd` 事件（默认关闭，18 语言，防与 turnEnd 双响）；插件新增 `onAgentLoopStart`/`onAgentLoopEnd` hook 与 service 插件 `agent_loop_*` 事件。Coverage: `sdk-agent-loop.test.js`, `agent-loop-server-events.test.js`, `agent-loop-voice.test.js`, `sdk-session-state.test.js`, `voice-pack-events.test.js`, `turn-active-gating.test.js`, `stop-button-turn-active.test.js`.
+
 - style(web): **GIT 变更 commit 行移除作者名** — 每条 commit 的展示不再渲染作者，把空间留给 commit 描述;hash / 描述 / 时间 / 增删统计保持不变。
 
 - feat(web): **项目文件浏览器点击文件直接展示内容** — 树面板此前单击文件只选中、需到右侧网格双击才打开。现树中点击可打开的文件直接展示其内容（html/图片/文本预览，复用 openItem 的打开决策），同时保留选中高亮；点文件夹行为不变（右侧展开）。Coverage: `file-browser-modal.test.js`.

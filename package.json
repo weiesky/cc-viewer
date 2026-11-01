@@ -33,7 +33,7 @@
     "verify:mac-keychain": "node --test scripts/test/mac-keychain.test.mjs"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.91",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.124",
     "@changesets/cli": "^3.0.0",
     "@xterm/xterm": "^6.0.0",
     "acorn": "^8.16.0",

@@ -48,9 +48,20 @@ describe('persistent Stop button (R8)', () => {
     assert.ok(m[0].includes('effectiveInstance'), 'derives the effective viewed instance');
   });
 
-  it('ChatView includes instanceKey in the sdk-session-state meta it lifts', () => {
+  it('AppBase drops sdk-session-state frames from an OLDER turn (turnStartedAt guard)', () => {
+    const appBase = readFileSync(join(root, 'src', 'AppBase.jsx'), 'utf-8');
+    const m = appBase.match(/handleSdkSessionState = \(state, meta\) => \{[\s\S]*?this\._applyTurnActive\(state === 'running'/);
+    assert.ok(m, 'handleSdkSessionState found (up to the apply call)');
+    assert.ok(m[0].includes('turnStartedAt'), 'reads the turn stamp');
+    assert.ok(m[0].includes('sdkTurnStartedAt'), 'tracks the highest epoch on the channel vm');
+    assert.ok(/epoch < \(vm\.sdkTurnStartedAt \|\| 0\)\) return/.test(appBase), 'older-epoch frames are dropped');
+  });
+
+  it('ChatView includes instanceKey + turn correlation in the sdk-session-state meta it lifts', () => {
     const m = chatView.match(/msg\.type === 'sdk-session-state'\)\s*\{[\s\S]*?onSdkSessionState\(msg\.state, \{[^}]*\}\)/);
     assert.ok(m, 'sdk-session-state lift found');
     assert.ok(m[0].includes('instanceKey: msg.instanceKey'), 'meta carries instanceKey');
+    assert.ok(m[0].includes('turnId: msg.turnId'), 'meta carries the turn id');
+    assert.ok(m[0].includes('turnStartedAt'), 'meta carries the turn stamp');
   });
 });

@@ -14,11 +14,22 @@
     "turnEnd": {
       "file": "end.MP3",
       "size": 70894
+    },
+    "agentLoopStart": {
+      "file": "agentLoopStart.wav",
+      "size": 12394
+    },
+    "agentLoopEnd": {
+      "file": "end.MP3",
+      "size": 70894
     }
   },
   "voiceLines": {
     "planApproval": "请陛下御览。",
     "askQuestion": "请陛下圣裁。",
     "turnEnd": "臣已办妥。"
+  },
+  "cues": {
+    "agentLoopStart": "Dee-dee!  (短促上行双音，\"开工\")"
   }
 }

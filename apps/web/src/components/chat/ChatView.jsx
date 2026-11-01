@@ -3029,7 +3029,7 @@ class ChatView extends React.Component {
           // cwd travels so AppBase can drop frames from background workspaces
           // (multi-workspace SDK: one broadcast reaches every viewer). instanceKey too —
           // the 10s turn heartbeat would otherwise light a same-basename sibling's client.
-          if (typeof this.props.onSdkSessionState === 'function') this.props.onSdkSessionState(msg.state, { sessionId: msg.sessionId || null, cwd: msg.cwd || null, instanceKey: msg.instanceKey || null });
+          if (typeof this.props.onSdkSessionState === 'function') this.props.onSdkSessionState(msg.state, { sessionId: msg.sessionId || null, cwd: msg.cwd || null, instanceKey: msg.instanceKey || null, turnId: msg.turnId || null, turnStartedAt: Number.isFinite(msg.turnStartedAt) ? msg.turnStartedAt : null, heartbeat: msg.heartbeat === true, activity: msg.activity === true });
         } else if (msg.type === 'sdk-compact') {
           // SDK-side compact (invisible on the wire) — render as a system notice.
           // Cap at 10 entries to prevent unbounded growth; only the latest is rendered.
