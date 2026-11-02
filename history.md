@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- fix(web): **文件浏览器树子目录单击打开错误路径** — 树行的根路径被 `openItem` 再拼一次 `currentPath` 得到 `skills/skills/foo/...`；改为 `openItem` 接受显式根路径，树直接传入。Coverage: `file-browser-modal.test.js`.
+
+- fix(server): **`/events` 冷加载 convSeqs 收敛并入单遍扫描** — 快照扫描已解析的行被 coverage 段再次 `JSON.parse` 且无 yield，热路径叠加 O(window 字节) 同步解析。合并进单遍并恢复事件循环 yield。Coverage: `v2-meta-rows.test.js`.
+
+- fix(web): **工具文件变更监听的 `_toolUseMap` 不再无界增长** — LRU 砍头时同步删除 map 中被砍 id 的 `{name, input}` 条目（Write 的 input 是整个文件内容），长会话/长开 tab 内存不再无限累积。Coverage: `tool-file-change-controller.test.js`.
+
+- fix(web): **审批 dismissal 守卫收紧** — `_setApprovalKind` 仅 `reason === 'view-switch'` 视为合成清除（未知 reason 不再静默清 pending 并抹 dismissal）；`ChatView._approvalViewSwitchClear` 改为按 ptyPlan/ask 槽位记录，修复同次 view-switch 清两槽位时后者误判真清、重开已最小化弹窗。Coverage: `approval-dismissal.test.js`.
+
+- test(server): **补 SDK 活性两分支用例** — 审批 settle 后 watchdog 重新武装判死沉默 child；lost-result backstop 武装后有新消息到达时释放 turn-stuck 误判。Coverage: `sdk-manager-query.test.js`, `sdk-manager-lost-result.test.js`.
+
 - perf(web): **切换/发送长上下文对话时界面长时间迟滞** — 工具文件变更监听（`ToolFileChangeController.check`）此前在每个 SSE tick 都对所有会话 + 所有请求的全部 messages 做两遍全量遍历；长会话里每个 request.body.messages 都是累积前缀，求和即 O(上下文²)，且与「当前/新会话」无关，故新开会话也同样卡。改为按「session/request 对象引用」的 WeakMap 增量游标，只扫自上次以来新增的 messages（尾部一条重扫以覆盖流式合并进已扫 message 的 content 增长），tool_use 映射跨调用持久累积防止漏判文件修改；冷加载/切会话时由 ChatView 调 resetCursors 整体重建。Coverage: `tool-file-change-controller.test.js`.
 
 - fix(server): **打开有预载历史的项目（SDK 模式）后发新消息不刷新对话画面** — 历史会话目录被 live-feed 重连时以 `suppressExisting` 同步种子读取，把 attach 前已落盘的新消息当历史吞掉（offset 越过、永不重读），画面冻结在预载历史上、仅刷新可见。改为按 feed 上次观察到的字节水位线抑制：种子只读到水位线、其后内容按 live 广播（既不错吞新消息，也不重放历史）。Coverage: `v2-live-feed.test.js`.

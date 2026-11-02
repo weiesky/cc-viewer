@@ -611,8 +611,10 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
     if (currentPath) navigate(parentPathOf(currentPath));
   }, [currentPath, navigate]);
 
-  const openItem = useCallback((item) => {
-    const childPath = currentPath ? `${currentPath}/${item.name}` : item.name;
+  // openPath: pass the entry's already-rooted path (tree rows) to skip the
+  // currentPath prefix — the grid derives the path from currentPath instead.
+  const openItem = useCallback((item, openPath) => {
+    const childPath = openPath || (currentPath ? `${currentPath}/${item.name}` : item.name);
     if (item.type === 'directory') {
       navigate(childPath);
       return;
@@ -639,10 +641,10 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
   }, [currentPath, navigate, project, instance, readOnly]);
 
   // Open a file directly from the tree: the row's childPath is already rooted, so
-  // this reuses openItem's open decision (html / image / content) without needing
-  // currentPath the way the grid does.
+  // it is passed straight through — reusing openItem's open decision (html / image /
+  // content) without re-prefixing currentPath the way the grid does.
   const openTreeFile = useCallback((item, childPath) => {
-    openItem({ ...item, name: childPath });
+    openItem(item, childPath);
   }, [openItem]);
 
   const retry = useCallback(() => {

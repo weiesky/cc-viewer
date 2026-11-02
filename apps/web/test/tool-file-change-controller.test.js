@@ -213,6 +213,22 @@ describe('ToolFileChangeController — 去重 / LRU', () => {
     assert.equal(c._processedToolIds.has('id0'), false);
     assert.equal(c._processedToolIds.has('id20000'), true);
   });
+
+  it('LRU 砍头同步删除 _toolUseMap 中被砍 id 的条目（map 不随长会话无界增长）', () => {
+    const host = makeHost();
+    host.setProps([{ messages: [] }], []); // 非空源以越过 early-return
+    const c = new ToolFileChangeController(host);
+    for (let i = 0; i < 20001; i++) {
+      const id = 'id' + i;
+      c._processedToolIds.add(id);
+      c._processedToolIdQueue.push(id);
+      c._toolUseMap.set(id, { name: 'Write', input: { file_path: '/f' + i, content: 'x'.repeat(100) } });
+    }
+    c.check();
+    assert.equal(c._toolUseMap.size, 15000, '被砍 id 的 tool_use 条目一并删除');
+    assert.equal(c._toolUseMap.has('id0'), false);
+    assert.equal(c._toolUseMap.has('id20000'), true);
+  });
 });
 
 describe('ToolFileChangeController — dispose', () => {

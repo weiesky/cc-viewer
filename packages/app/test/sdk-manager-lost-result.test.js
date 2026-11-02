@@ -389,6 +389,44 @@ describe('sdk-manager lost-result generation guard', () => {
     }
   });
 
+  it('backstop armed 后仍有新消息到达 → 释放 turn-stuck 误判（_inboundMsgSeq 守护）', async () => {
+    const { deps, turnEnds, queryErrors } = makeDeps();
+    // The lost-result backstop re-checks at fire time whether any message arrived after
+    // arming (_inboundMsgSeq > armedSeq + 1). If the head turn is still producing frames
+    // (a late assistant/content frame lands during the 5s grace), the conviction is a
+    // false positive — the turn is alive — and must be released, not settled turn-stuck.
+    const fq = makeFrameQueueQuery();
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      const pA = sdk.sendUserMessage('turn A').catch(() => {});
+      await tick(5);
+      fq.pushFrame(stateMsg('running'));
+      fq.pushFrame(stateMsg('idle')); // arms the lost-result backstop
+      await tick(6);
+      // During the 5s grace the turn is STILL producing work: an assistant frame bumps
+      // _inboundMsgSeq past armedSeq+1, so the backstop must release rather than convict.
+      fq.pushFrame({ type: 'assistant', session_id: 'sess-1', message: { content: [{ type: 'text', text: 'still working' }] } });
+      await tick(4);
+      // Let the 5s backstop elapse: without the _inboundMsgSeq release this would
+      // force-settle turn A as turn-stuck even though it demonstrably produced a frame.
+      mock.timers.tick(6 * 1000);
+      await tick(10);
+      assert.equal(errorToasts(queryErrors).length, 0,
+        'a message arriving during the grace must release the backstop — no turn-stuck');
+      assert.equal(turnEnds.length, 0, 'no result yet → no turn_end');
+      // The turn's real result then settles it normally.
+      fq.pushFrame(resultMsg());
+      await tick(8);
+      await pA;
+      assert.equal(turnEnds.length, 1, 'the live turn’s own result produces its turn_end');
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
   it('pins the trade-off: a late result arriving while a NEWER turn is in flight pairs with the live turn', async () => {
     const { deps, turnEnds } = makeDeps();
     // Deliberate trade-off (see sdk-manager result branch comment): when turn B is in

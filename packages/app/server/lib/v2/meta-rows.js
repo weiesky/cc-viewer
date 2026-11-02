@@ -266,13 +266,29 @@ export async function readV2NativeCold(sessionDir, rows) {
         catch (err) { reportSwallowed('v2-native.conv-read-failed', err); }
         await yieldLoop(); // one yield per conv file read (error path included)
       }
-      // last snapshot at-or-before the window start for this session
+      // Single pass over the conv raws: pick the last snapshot at-or-before the
+      // window start AND collect the coverage seqs of every line at-or-past it.
+      // A separate coverage loop used to re-parse every window line with no
+      // event-loop yield, right after this scan had already parsed them.
       let start = 0;
+      let covSeqs = [];
+      let covBase = Infinity;
       for (let i = 0; i < raws.length; i++) {
         try {
           const ev = JSON.parse(raws[i]);
-          if (ev.t === 'snapshot' && ev.seq <= minSeq) start = i;
+          if (ev.t === 'snapshot' && ev.seq <= minSeq) {
+            start = i;
+            covSeqs = [];
+            covBase = Infinity;
+          }
           if (ev.seq > minSeq) break;
+          // Only lines that PARSE with an integer seq are recorded — a torn
+          // trailing line (writer mid-append) is NOT covered: the live feed
+          // re-sends it complete and the replay must not skip it.
+          if (Number.isInteger(ev.seq)) {
+            covSeqs.push(ev.seq);
+            if (ev.seq < covBase) covBase = ev.seq;
+          }
         } catch { /* tolerate torn line */ }
         if (i % 2000 === 1999) await yieldLoop();
       }
@@ -281,25 +297,19 @@ export async function readV2NativeCold(sessionDir, rows) {
       // attach buffer can skip replaying it. baseSeq = the smallest seq in the
       // window (the snapshot baseline is the first in seq order) — a replayed seq
       // below it was already reflected in the cold assembly and must not be
-      // re-consumed either. Only lines that PARSE are recorded: a torn trailing
-      // line (writer mid-append, no newline yet) is NOT in coverage — its seq is
-      // re-sent complete by the live feed once the newline lands, and the replay
-      // must not skip it (a skipped snapshot would corrupt the client's assembler).
+      // re-consumed either. A torn trailing line is excluded above so its
+      // complete re-send is not skipped (a skipped snapshot would corrupt the
+      // client's assembler).
       {
         const covKey = `${sessionId}\x00${key}`;
-        let cov = convSeqs.get(covKey);
-        if (!cov) { cov = { seqs: new Set(), baseSeq: Infinity }; convSeqs.set(covKey, cov); }
-        for (const raw of windowRaws) {
-          let seq = null;
-          try {
-            const ev = JSON.parse(raw);
-            if (Number.isInteger(ev && ev.seq)) seq = ev.seq;
-          } catch { /* torn line: not covered — the live re-send must not be skipped */ }
-          if (seq === null) continue;
-          cov.seqs.add(seq);
-          if (seq < cov.baseSeq) cov.baseSeq = seq;
+        const slot = convSeqs.get(covKey);
+        if (!slot) {
+          convSeqs.set(covKey, { seqs: new Set(covSeqs), baseSeq: covBase === Infinity ? 0 : covBase });
+        } else {
+          for (const s of covSeqs) slot.seqs.add(s);
+          if (covBase < slot.baseSeq) slot.baseSeq = covBase;
+          if (!Number.isFinite(slot.baseSeq)) slot.baseSeq = 0;
         }
-        if (cov.baseSeq === Infinity) cov.baseSeq = 0;
       }
       // Cap each frame at ~512KB of lines: a multi-MB single SSE event forces
       // one giant synchronous JSON.parse on the client's main thread (no

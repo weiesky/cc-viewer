@@ -154,11 +154,16 @@ export class ToolFileChangeController {
     if (sessions.length === 0 && requests.length === 0) return;
 
     // 用 FIFO 队列做 LRU 砍头：上限 20000（≈ 持续多日对话），砍头一次保留 15000 条；
-    // 普通会话几乎不触发。避免暴力 clear() 导致残留旧 id 被重新认作新事件
+    // 普通会话几乎不触发。避免暴力 clear() 导致残留旧 id 被重新认作新事件。
+    // 同步从 _toolUseMap 删除被砍掉的 id —— 该 map 存每个 tool_use 的 {name, input}
+    // （Write 的 input 是整个文件内容），不随砍头清理会在长会话里无界增长。
     if (this._processedToolIds.size > PROCESSED_TOOL_IDS_MAX) {
       const trimCount = this._processedToolIds.size - PROCESSED_TOOL_IDS_KEEP;
       const toRemove = this._processedToolIdQueue.splice(0, trimCount);
-      for (const id of toRemove) this._processedToolIds.delete(id);
+      for (const id of toRemove) {
+        this._processedToolIds.delete(id);
+        this._toolUseMap.delete(id);
+      }
     }
 
     const toolUseMap = this._toolUseMap;

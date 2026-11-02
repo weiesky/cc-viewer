@@ -3483,6 +3483,61 @@ describe('sdk-manager-query — review 回归（watchdog / 墓碑 / signal / dis
     }
   });
 
+  it('审批 settle 后 watchdog 重新武装：child 审批后再无消息 → 探针两次超时判死', async () => {
+    // _rearmWatchdogAfterApprovalSettled 的直接覆盖：approval park 期间探针不武装
+    // （park 本身证明存活），但若审批解决后 child 再无消息，没有这个重挂钩子
+    // watchdog 会永久解除，卡死的 child 永远不会被判死。
+    const { deps, broadcasts } = makeDeps();
+    const queryErrorMetas = [];
+    const ctrl = { cutOpts: { toolUseID: 'wd-rearm' } };
+    const fq = makeResidentQuery({
+      initMsgs: [sysInit('sess-rearm')],
+      respond: async (msg, { options }) => {
+        void msg;
+        if (ctrl.used) { await new Promise(() => {}); } // 第二轮起永不产出（不会走到：首轮即卡死）
+        ctrl.used = true;
+        ctrl.promise = options.canUseTool('AskUserQuestion', { questions: [{ q: 'hold?' }] }, ctrl.cutOpts);
+        ctrl.result = await ctrl.promise;
+        await new Promise(() => {}); // 审批解决后再无消息 —— 沉默的 child
+      },
+      // 楔死的控制面：每次探针都挂起，10s 超时记一次失败。
+      getContextUsage: () => ({ defer: true }),
+    });
+    sdk.__setQueryForTests(fq);
+    sdk.initSdkSession(tmpDir, 'proj', { ...deps, onQueryError: (m, meta) => queryErrorMetas.push(meta) });
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      const p1 = sdk.sendUserMessage('go');
+      p1.catch(() => {});
+      await waitMicro(() => broadcasts.some((b) => b.type === 'sdk-ask-pending'));
+      // 审批 pending：探针豁免，跨窗口不判死。
+      mock.timers.tick(15 * 60 * 1000);
+      await tick(4);
+      assert.equal(queryErrorMetas.filter((meta) => meta?.code === 'turn-stuck').length, 0, 'pending 期间不判死');
+      // 审批解决 → _rearmWatchdogAfterApprovalSettled 重新武装；child 沉默。
+      sdk.resolveApproval('wd-rearm', [{ answer: 'A' }]);
+      await tick(4);
+      // 重挂的探针：10min 空闲 → 探针 1 挂起，10s 超时 → failure 1；
+      // 3min → 探针 2 挂起，10s 超时 → failure 2 = MAX → 判死。
+      mock.timers.tick(10 * 60 * 1000);
+      await tick(2);
+      mock.timers.tick(10 * 1000); // 探针 1 超时 → failure 1，3min 重挂
+      await tick(2);
+      assert.equal(queryErrorMetas.filter((meta) => meta?.code === 'turn-stuck').length, 0, '单次失败不判死');
+      mock.timers.tick(3 * 60 * 1000); // 探针 2 挂起（defer）
+      await tick(2);
+      mock.timers.tick(10 * 1000); // 探针 2 超时 → failure 2 = MAX → 判死
+      let settled = false;
+      p1.then(() => { settled = true; }, () => { settled = true; });
+      await waitMicro(() => settled);
+      assert.ok(settled, '判死后回合 promise 必须 settle');
+      assert.ok(queryErrorMetas.some((meta) => meta?.code === 'turn-stuck'),
+        '审批后卡死的 child 必须被重新武装的 watchdog 判死');
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
   it('墓碑误吞守护：grace settle 后迟到 result 吞掉墓碑，再下一个 result 正常 settle 新回合', async () => {
     const { deps, turnEnds } = makeDeps();
     const calls = [];

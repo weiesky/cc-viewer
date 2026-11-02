@@ -4114,7 +4114,10 @@ class AppBase extends React.Component {
   _setApprovalKind = (kind, data) => {
     // View-switch synthetic clears arrive as { reason: 'view-switch' } so the wipe
     // policy can tell them apart from a real id → null clear (which must re-arm).
-    const reason = (data && typeof data === 'object' && data.reason) || null;
+    // Only 'view-switch' is a synthetic clear: an unknown reason field on a real
+    // payload must not silently null the pending approval (it would also fall into
+    // the plain-clear branch of shouldWipeApprovalDismissal and wipe the dismissal).
+    const reason = (data && typeof data === 'object' && data.reason === 'view-switch') ? 'view-switch' : null;
     const enriched = reason ? null : this._injectProjectName(data, kind);
     this.setState(prev => {
       const next = { ...prev.approvalGlobal };

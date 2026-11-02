@@ -245,6 +245,12 @@ class ChatView extends React.Component {
     // Minimal-chat merged-run memo (utils/toolRunMerge.js): runKey → { members, element }.
     this._toolRunCache = new Map();
 
+    // View-switch synthetic approval clear, tracked PER SLOT: a single boolean is
+    // consumed by whichever cDU branch runs first, so when one view-switch clears
+    // BOTH ptyPlan and ask, the second branch would see false, treat its clear as
+    // a real one and wipe the dismissal (re-opening a minimised modal).
+    this._approvalViewSwitchClear = { ptyPlan: false, ask: false };
+
     // 文件详情滚动位置快照（写/编辑触发 fileVersion remount 时跨实例传递）。
     // 故意用 instance ref 而非 React state：onScroll throttle 100ms 期间会高频写入，
     // 走 setState 会反复 re-render ChatView/FileContentView 拖累滚动顺滑度。
@@ -829,7 +835,9 @@ class ChatView extends React.Component {
       // Mark the pendingAsk/pendingPtyPlan clears above as view-switch synthetic so the
       // bubble (in the cDU diff below) can tell AppBase to skip the dismissal wipe —
       // the attach replay re-bubbles the same id, and wiping would reopen a minimised modal.
-      this._approvalViewSwitchClear = true;
+      // Per slot: one view-switch can clear both, and each cDU branch consumes only its own.
+      this._approvalViewSwitchClear.ptyPlan = true;
+      this._approvalViewSwitchClear.ask = true;
       if (viewSwitched || planLostView) { this._planAutoCancelled.clear(); this._permAutoCancelled.clear(); }
       // Pinned sdk-error rows belong to the previous view's workspace/instance.
       this._clearSdkErrors();
@@ -968,8 +976,8 @@ class ChatView extends React.Component {
         } else if (left) {
           // Same view-switch synthetic-clear tag as the ask bubble below: a cleared plan
           // that the attach replay re-bubbles must not lose its dismissal.
-          const viewSwitchedClear = this._approvalViewSwitchClear;
-          this._approvalViewSwitchClear = false;
+          const viewSwitchedClear = this._approvalViewSwitchClear.ptyPlan;
+          this._approvalViewSwitchClear.ptyPlan = false;
           this.props.onPendingPtyPlan(viewSwitchedClear ? { reason: 'view-switch' } : null);
         }
       }
@@ -999,8 +1007,8 @@ class ChatView extends React.Component {
           // The view-switch clear above wipes pendingAsk but is NOT a real dismissal —
           // the attach replay re-bubbles the same id. Tag it so AppBase skips the
           // dismissal wipe and a minimised modal stays minimised across the round-trip.
-          const viewSwitchedClear = this._approvalViewSwitchClear;
-          this._approvalViewSwitchClear = false;
+          const viewSwitchedClear = this._approvalViewSwitchClear.ask;
+          this._approvalViewSwitchClear.ask = false;
           this.props.onPendingAsk(viewSwitchedClear ? { reason: 'view-switch' } : null);
         }
       }

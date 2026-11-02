@@ -498,11 +498,14 @@ describe('modal upload wiring (button + zoned drag-drop)', () => {
     const rowClick = bodyOf(FILE_BROWSER_MODAL, 'const handleRowClick = useCallback(() => {');
     assert.ok(rowClick.includes('onSelectFile(childPath)'), 'tree row click still selects for highlight');
     assert.ok(rowClick.includes('onOpenFile(item, childPath)'), 'tree row click also opens the file content');
-    // openTreeFile reuses openItem's rooted path logic (html / image / content preview).
+    // openTreeFile reuses openItem's open decision (html / image / content preview),
+    // passing the already-rooted childPath straight through — stuffing it into
+    // item.name would make openItem prefix currentPath a second time (the
+    // skills/skills/foo double-prefix bug).
     assert.ok(FILE_BROWSER_MODAL.includes('const openTreeFile = useCallback((item, childPath) => {'),
       'openTreeFile handler defined');
-    assert.ok(FILE_BROWSER_MODAL.includes('openItem({ ...item, name: childPath })'),
-      'openTreeFile reuses openItem with the rooted childPath');
+    assert.ok(FILE_BROWSER_MODAL.includes('openItem(item, childPath)'),
+      'openTreeFile must pass the rooted childPath as the explicit open path, not via item.name');
     // Threaded to the root map and through ModalTreeNode recursion.
     assert.ok(FILE_BROWSER_MODAL.includes('onOpenFile={openTreeFile}'), 'root map passes onOpenFile');
     assert.ok(FILE_BROWSER_MODAL.includes('onOpenFile={onOpenFile}'), 'ModalTreeNode recursion threads onOpenFile');
