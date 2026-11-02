@@ -779,6 +779,42 @@
   cursor: not-allowed;
 }
 
+/* Phone scratchOnly (--sdk overlay is the only host): the tab rail flips to a
+   horizontal top strip. Driven by the JS-applied .scratchOnlyPhone modifier
+   (isMobile && !isPad) — one source of truth shared with aria-orientation and
+   the virtual keybar, so landscape phones / 768px tablets / narrow desktop
+   windows never disagree. Descendant scoping keeps the PTY-mode bottom drawer
+   (.scratchWrap without this ancestor) untouched. Touch targets raised to
+   ~44px per the mobile guideline. */
+.scratchOnlyPhone .scratchWrap {
+  flex-direction: column;
+}
+.scratchOnlyPhone .scratchTabs {
+  width: auto;
+  flex-direction: row;
+  border-right: none;
+  border-bottom: 1px solid var(--border-primary);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.scratchOnlyPhone .scratchTab {
+  flex-shrink: 0;
+  height: 44px;
+}
+.scratchOnlyPhone .scratchTabClose {
+  width: 44px;
+  height: 44px;
+}
+.scratchOnlyPhone .scratchTabAdd {
+  margin-top: 0;
+  min-width: 44px;
+  min-height: 44px;
+  /* Tab rail scrolls horizontally; keep "+" reachable without swiping to the end. */
+  position: sticky;
+  inset-inline-end: 0;
+  background: var(--bg-base-alt);
+}
+
 /* tab 对应的 xterm pane 容器：仅承担 box-shadow glow；4px focus 视觉已迁移到 .scratchInner border。
    原方案 outline + outline-offset:-4px 是 paint-only，xterm-screen 顶/底会把 outline 像素带盖白（用户实测）；
    改成 .scratchInner 自身的 border:4px 后，box model 强制预留 4px 像素带，xterm fitAddon 读 content-box
@@ -786,6 +822,7 @@
 .scratchPanes {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   position: relative;

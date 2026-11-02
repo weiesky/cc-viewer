@@ -4,6 +4,8 @@
 
 - fix(web): **文件浏览器树子目录单击打开错误路径** — 树行的根路径被 `openItem` 再拼一次 `currentPath` 得到 `skills/skills/foo/...`；改为 `openItem` 接受显式根路径，树直接传入。Coverage: `file-browser-modal.test.js`.
 
+- fix(web): **`--sdk` 模式手机端终端对齐桌面 scratch 终端** — overlay 在 sdkMode 下改挂 scratchOnly 多 tab shell（唯一宿主，含 iPad），支持 tab 切换/新增/关闭与底部虚拟键栏。Coverage: `scratch-workspace-switch.test.js`, `mobile-term-layout.test.js`.
+
 - fix(server): **`/events` 冷加载 convSeqs 收敛并入单遍扫描** — 快照扫描已解析的行被 coverage 段再次 `JSON.parse` 且无 yield，热路径叠加 O(window 字节) 同步解析。合并进单遍并恢复事件循环 yield。Coverage: `v2-meta-rows.test.js`.
 
 - fix(web): **工具文件变更监听的 `_toolUseMap` 不再无界增长** — LRU 砍头时同步删除 map 中被砍 id 的 `{name, input}` 条目（Write 的 input 是整个文件内容），长会话/长开 tab 内存不再无限累积。Coverage: `tool-file-change-controller.test.js`.

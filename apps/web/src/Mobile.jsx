@@ -1011,24 +1011,43 @@ class Mobile extends AppBase {
           )}
           {!mobileIsLocalLog && (
             <div className={`${styles.mobileChatOverlay} ${this.state.mobileTerminalVisible ? styles.mobileChatOverlayVisible : ''}`}>
-              <TerminalPanel
-                {...this._settingsProps()}
-                modelName={mobileModelName}
-                onFilePath={this._handleTerminalFilePath}
-                pendingImages={this.state.terminalPendingImages}
-                onRemovePendingImage={this._handleRemoveTerminalImage}
-                onClearPendingImages={this._handleClearTerminalImages}
-                onClearContextOptimistic={this.state.sdkMode ? undefined : this.handleClearContextOptimistic}
-                autoApproveSeconds={this.state.autoApproveSeconds}
-                onAutoApproveChange={this.handleAutoApproveChange}
-                planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds}
-                onPlanAutoApproveChange={this.handlePlanAutoApproveChange}
-                viewProject={this.state.viewedProject || this.state.projectName || null}
-                viewInstance={this.state.viewedInstance
-                  || ((this.state.viewedProject || this.state.projectName) === this.state.projectName
-                      ? (this._boundInstance || null)
-                      : null)}
-              />
+              {this.state.sdkMode ? (
+                // --sdk has no main PTY: the overlay is the ONLY host of the scratch
+                // multi-tab shell (phone + iPad — the ChatView-embedded panel is gated
+                // off by sdkMode && isMobile). key forces a remount: sdkMode arrives via
+                // the async /api/cli-mode fetch, and without a key React reuses the PTY
+                // panel instance, leaking the main xterm (never disposed).
+                <TerminalPanel
+                  key="sdk-scratch"
+                  scratchOnly
+                  scratchOpen={this.state.mobileTerminalVisible}
+                  viewProject={this.state.viewedProject || this.state.projectName || null}
+                  viewInstance={this.state.viewedInstance
+                    || ((this.state.viewedProject || this.state.projectName) === this.state.projectName
+                        ? (this._boundInstance || null)
+                        : null)}
+                />
+              ) : (
+                <TerminalPanel
+                  key="pty"
+                  {...this._settingsProps()}
+                  modelName={mobileModelName}
+                  onFilePath={this._handleTerminalFilePath}
+                  pendingImages={this.state.terminalPendingImages}
+                  onRemovePendingImage={this._handleRemoveTerminalImage}
+                  onClearPendingImages={this._handleClearTerminalImages}
+                  onClearContextOptimistic={this.handleClearContextOptimistic}
+                  autoApproveSeconds={this.state.autoApproveSeconds}
+                  onAutoApproveChange={this.handleAutoApproveChange}
+                  planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds}
+                  onPlanAutoApproveChange={this.handlePlanAutoApproveChange}
+                  viewProject={this.state.viewedProject || this.state.projectName || null}
+                  viewInstance={this.state.viewedInstance
+                    || ((this.state.viewedProject || this.state.projectName) === this.state.projectName
+                        ? (this._boundInstance || null)
+                        : null)}
+                />
+              )}
             </div>
           )}
           {/* View-switch overlay removed (2026-10-08, symmetric with App.jsx): the tab

@@ -167,15 +167,147 @@ describe('scratch workspace switch: prop threading', () => {
     );
   });
 
-  it('Mobile TerminalPanel carries both props (iPad renders scratch)', () => {
+  it('Mobile TerminalPanel carries both props (sdk overlay scratch branch)', () => {
     const idx = mobile.indexOf('<TerminalPanel');
     assert.ok(idx > 0);
-    const block = mobile.slice(idx, idx + 1500);
+    // End at the branch delimiter so the sdk slice cannot be satisfied by the pty
+    // branch's identical props (dropping them from the sdk branch must fail here).
+    const end = mobile.indexOf(') : (', idx);
+    const block = mobile.slice(idx, end > idx ? end : idx + 1500);
     assert.ok(block.includes('viewProject={this.state.viewedProject || this.state.projectName || null}'), 'Mobile must pass viewProject');
     // Same derivation as the desktop viewInstanceForChat (bound-instance fallback) so an
     // iPad and a desktop resolve the same cwd — and the same scratch group key.
     assert.ok(block.includes('viewInstance={this.state.viewedInstance'), 'Mobile must pass viewInstance');
     assert.ok(block.includes('this._boundInstance || null'), 'Mobile must mirror the bound-instance fallback');
+  });
+});
+
+describe('sdk mobile scratch terminal (2026-11-03)', () => {
+  // In --sdk mode the mobile terminal IS the desktop scratch terminal: the Mobile
+  // overlay is the only host, and the ChatView-embedded panel must be gated off —
+  // otherwise phone/iPad double-mount the same (id, cwd) PTYs with two sockets
+  // fighting over resize.
+  it('Mobile overlay mounts scratchOnly panel in sdkMode with key remount', () => {
+    const idx = mobile.indexOf('<TerminalPanel');
+    assert.ok(idx > 0);
+    const block = mobile.slice(idx, idx + 1500);
+    // The branch must stay conditional — an unconditional scratchOnly mount would
+    // replace the PTY-mode panel too.
+    assert.ok(mobile.includes('{this.state.sdkMode ? ('), 'overlay must branch on sdkMode');
+    assert.ok(block.includes('scratchOnly'), 'sdk branch must be scratchOnly');
+    assert.ok(
+      block.includes('scratchOpen={this.state.mobileTerminalVisible}'),
+      'sdk branch must drive scratchOpen from mobileTerminalVisible',
+    );
+    assert.ok(block.includes('key="sdk-scratch"'), 'sdk branch must force remount via key (sdkMode resolves async)');
+  });
+
+  it('ChatView suppresses its own terminal block on the Mobile tree (both modes)', () => {
+    assert.ok(
+      chatView.includes('{terminalVisible && !isMobile && ('),
+      'the whole terminal container must be gated off the Mobile tree — in sdkMode it double-mounts scratch PTYs, in PTY mode the hidden zoom-scaled copy wins the shared-PTY resize',
+    );
+    // Desktop anchor must survive verbatim (single-line scratchOnly mount).
+    assert.ok(
+      chatView.includes('<TerminalPanel scratchOnly scratchOpen={terminalVisible} viewProject={this.props.viewProject} viewInstance={this.props.viewInstance}'),
+      'desktop sdk scratchOnly branch must stay intact',
+    );
+  });
+
+  it('TerminalPanel scratchOnly branch renders on phones (no isMobile gate) with a virtual keybar', () => {
+    // Slice strictly to the scratchOnly RENDER branch — `if (this.props.scratchOnly)`
+    // also appears as early-return guards in lifecycle methods (:376/:438), so anchor
+    // on the render-time open check which is unique to the branch.
+    const start = terminalPanel.indexOf('if (!this.props.scratchOpen) return null;');
+    assert.ok(start > 0, 'scratchOnly render branch must exist');
+    const end = terminalPanel.indexOf('<div className={styles.terminalPanel}>', start);
+    const scratchOnlyBranch = terminalPanel.slice(start, end);
+    assert.ok(scratchOnlyBranch.length > 0, 'scratchOnly branch slice must be non-empty');
+    assert.ok(
+      !scratchOnlyBranch.includes('(!isMobile || isPad) && ('),
+      'scratchOnly branch must render on phones (gate removed)',
+    );
+    assert.ok(
+      scratchOnlyBranch.includes('(isMobile && !isPad) && this._renderVirtualKeybar('),
+      'the keybar itself must stay phone-gated (never on desktop)',
+    );
+    assert.ok(scratchOnlyBranch.includes('_renderVirtualKeybar('), 'scratchOnly branch must render the phone virtual keybar');
+    // Both keybars share _renderVirtualKeybar; the scratch branch must pass its own
+    // handler — rewiring to the main-PTY handleVirtualKey (the exact bug being fixed)
+    // must fail here.
+    assert.ok(
+      scratchOnlyBranch.includes('this._renderVirtualKeybar((seq) => this.handleScratchVirtualKey(seq))'),
+      'scratch keybar must route through handleScratchVirtualKey',
+    );
+    // Phone layout uses the JS-driven modifier (single source of truth shared with
+    // aria-orientation), not a viewport media query that disagrees at the breakpoint.
+    assert.ok(scratchOnlyBranch.includes('styles.scratchOnlyPhone'), 'phone modifier class must drive the horizontal tab rail');
+    assert.ok(scratchOnlyBranch.includes("aria-orientation={(isMobile && !isPad) ? 'horizontal' : 'vertical'}"), 'aria-orientation must follow the same predicate');
+  });
+
+  it('handleScratchVirtualKey routes to the active tab (no blur — shell keys fire mid-command)', () => {
+    assert.ok(terminalPanel.includes('handleScratchVirtualKey = (seq)'), 'handler must exist');
+    assert.ok(
+      terminalPanel.includes('r?.current?.sendVirtualKey(seq)'),
+      'input must go through the active ScratchTerminal (scratchOnly has no main containerRef)',
+    );
+    const idx = scratchTerminal.indexOf('sendVirtualKey = (seq)');
+    assert.ok(idx > 0, 'sendVirtualKey must exist');
+    const body = scratchTerminal.slice(idx, idx + 500);
+    assert.ok(body.includes("type: 'input', data: seq"), 'sendVirtualKey must send on the tab ws');
+    assert.ok(body.includes('this.ws.readyState === WebSocket.OPEN'), 'sendVirtualKey must guard on an OPEN socket');
+    // Shell keys (↑/Tab/Esc) are used mid-command; blurring would dismiss the soft
+    // keyboard before every key — diverges from the main panel on purpose.
+    assert.ok(!body.includes('this.blur()'), 'scratch keybar must NOT blur (keyboard stays open for the next key)');
+  });
+
+  it('scratch tab handlers guard focus on phones', () => {
+    const handlers = ['handleScratchTabClick', 'handleScratchTabAdd', 'handleScratchTabClose'];
+    const AFTER_LAST = 'handleScratchTabFocusChange = '; // method following the trio
+    for (let i = 0; i < handlers.length; i++) {
+      const idx = terminalPanel.indexOf(`${handlers[i]} = `);
+      assert.ok(idx > 0, `${handlers[i]} must exist`);
+      // End the slice at the NEXT named method — a fixed-width window would bleed
+      // into the neighbor's guard and pass even if this handler lost its own.
+      const nextName = i + 1 < handlers.length ? `${handlers[i + 1]} = ` : AFTER_LAST;
+      const nextIdx = terminalPanel.indexOf(nextName, idx + 1);
+      assert.ok(nextIdx > idx, `${handlers[i]} must be followed by ${nextName} (slice terminator)`);
+      const body = terminalPanel.slice(idx, nextIdx);
+      assert.ok(
+        body.includes('if (!isMobile || isPad)') && body.includes('focus()'),
+        `${handlers[i]} must guard focus() with (!isMobile || isPad)`,
+      );
+    }
+  });
+
+  it('ScratchTerminal wires the mobile adaptations at mount (not just definitions)', () => {
+    // Pin the mount-time rAF adjacency — `this._mobileFixedResize();` also occurs in
+    // the viewport debounce and refit, so a bare includes() stays green if the mount
+    // wiring is deleted (mutation-verified).
+    const mountIdx = scratchTerminal.indexOf('// Phone fixed 60-column layout: compute fontSize/cols/rows from the container');
+    assert.ok(mountIdx > 0, 'phone mount branch must exist');
+    const mountBlock = scratchTerminal.slice(mountIdx, mountIdx + 500);
+    assert.ok(mountBlock.includes('requestAnimationFrame'), 'mount must defer to rAF');
+    assert.ok(mountBlock.includes('this._mobileFixedResize();'), 'mount rAF must run the fixed layout');
+
+    assert.ok(scratchTerminal.includes('this._setupMobileTouchScroll();'), 'mount must attach touch scroll');
+    assert.ok(scratchTerminal.includes("addEventListener('resize', this._onViewportResize)"), 'soft-keyboard viewport resize must re-run the fixed layout');
+    assert.ok(scratchTerminal.includes('attachMobileTouchScroll(this.terminal, this.containerRef.current)'), 'touch scroll uses the shared util');
+    assert.ok(scratchTerminal.includes('applyMobileFixedLayout(term,'), 'sizing uses the shared util');
+    assert.ok(scratchTerminal.includes('isAlive: () => this.terminal === term'), 'dispose guard must be wired into applyMobileFixedLayout');
+    assert.ok(
+      scratchTerminal.includes('if (isMobile && !isPad) return;'),
+      'ResizeObserver must bail on phones (fixed layout)',
+    );
+
+    // Unmount cleanup: slice from the componentWillUnmount head so the in-handler
+    // occurrences of clearTimeout/removeEventListener cannot satisfy the anchors.
+    const unmountIdx = scratchTerminal.indexOf('componentWillUnmount()');
+    const unmountHead = scratchTerminal.slice(unmountIdx, unmountIdx + 700);
+    assert.ok(unmountHead.includes('clearTimeout(this._vvTimer)'), 'vvTimer must be cleared on unmount');
+    assert.ok(unmountHead.includes('cancelAnimationFrame(this._initRafId)'), 'mount rAF must be cancelled on unmount');
+    assert.ok(unmountHead.includes("removeEventListener('resize', this._onViewportResize)"), 'viewport listener must be removed on unmount');
+    assert.ok(unmountHead.includes('this._stopMobileMomentum'), 'momentum stop must run on unmount');
   });
 });
 

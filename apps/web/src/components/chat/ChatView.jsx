@@ -5369,10 +5369,17 @@ class ChatView extends React.Component {
               </svg>
             </div>
           )}
-          {/* 右侧终端容器(两种模式共用):分界线 + 容器都在。SDK 模式容器内渲染 scratch-only
-              子终端(scratchOnly 分支,无主 PTY 主区/工具栏);PTY 模式渲染完整 TerminalPanel。
-              terminalVisible 在 SDK 模式下是 scratchOpen(App state)。 */}
-          {terminalVisible && (
+          {/* Right-side terminal container (shared by both modes): divider + container.
+              SDK mode renders the scratchOnly sub-terminal inside (no main-PTY area /
+              toolbar); PTY mode renders the full TerminalPanel. terminalVisible is
+              scratchOpen (App state) in SDK mode.
+              Suppressed on the whole Mobile tree (phone + iPad — main.jsx splits on
+              isMobile) in BOTH modes: in SDK mode it would double-mount the same
+              (id, cwd) scratch PTYs against the Mobile overlay panel; in PTY mode the
+              hidden embedded copy measures its own (zoom-scaled, ~1.67x taller)
+              container and its sendResize would win over the visible overlay panel's
+              on the shared /ws/terminal. The overlay is the only mobile host. */}
+          {terminalVisible && !isMobile && (
             <>
               <div className={styles.vResizer} onMouseDown={this.handleSplitMouseDown} />
               <div className={styles.terminalPanelWrap} style={{ width: terminalWidth }} data-drop-zone="chat">
