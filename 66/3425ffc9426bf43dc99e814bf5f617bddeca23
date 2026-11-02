@@ -1,0 +1,55 @@
+apps/web/src/utils/sdkTaskTracker.js
+  s_abdafb7680a0d1::t_4a40149f148206 21
+  s_abdafb7680a0d1::t_c514056f6256b0 1-20,22-102,104-134,136-141
+  s_abdafb7680a0d1::t_7c56bafdda745b 103
+  s_abdafb7680a0d1::t_5de5a7059f51e1 135
+.changeset/sdk-slow-upstream-advisory.md
+  s_a4f48a8f74edcd::t_391b5269f7575e 1-5
+packages/app/server/lib/proxy/proxy-stats.js
+  s_a4f48a8f74edcd::t_6a44f18283bd5d 161-183
+apps/web/src/AppBase.jsx
+  s_abdafb7680a0d1::t_d427ae8611d575 2899
+  s_abdafb7680a0d1::t_f1c781949d5ef3 21
+  s_abdafb7680a0d1::t_a1d90b79f2a7b1 2980
+packages/app/test/proxy-stats.test.js
+  s_a4f48a8f74edcd::t_1d9ad3a96b0e6d 450-461
+packages/app/server/server.js
+  s_a4f48a8f74edcd::t_7948f14d5ba199 504-526
+apps/web/src/components/chat/ChatView.jsx
+  s_abdafb7680a0d1::t_ae2682d59a08da 47
+  s_abdafb7680a0d1::t_c7e8e476d4ab51 3054-3058
+  s_a4f48a8f74edcd::t_44ea44bc06ff30 2985-2992
+packages/app/server/proxy.js
+  s_a4f48a8f74edcd::t_5b059a80fcf2b0 16
+  s_a4f48a8f74edcd::t_0fe45f0e44477d 271-279
+  s_a4f48a8f74edcd::t_8e2738e4a6d6da 345-363
+  s_a4f48a8f74edcd::t_96b0f926a08ad0 324-343
+apps/web/src/i18n.js
+  s_a4f48a8f74edcd::t_f4f38d9827d863 3110-3129
+apps/web/test/sdkTaskTracker.test.js
+  s_abdafb7680a0d1::t_61a6deac0bbeff 1-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "663425ffc9426bf43dc99e814bf5f617bddeca23",
+  "prompts": {},
+  "sessions": {
+    "s_a4f48a8f74edcd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "57e3e95d-699f-4046-b680-7b09c8d5a9d6",
+        "model": "k3"
+      },
+      "human_author": null
+    },
+    "s_abdafb7680a0d1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c3b0e9a-b81f-46d7-8a67-29f92902a3ce",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
