@@ -1201,6 +1201,10 @@ class ChatView extends React.Component {
           this._responseThinkingRequests = null;
           this._responseThinkingIndex = null;
           this._responseThinkingMergeCache = new WeakMap();
+          // session 元素引用真变化（冷加载整批换 session 对象 /切会话）→ 工具文件监听
+          // 的增量游标一并失效重建（其 check() 自身的 requests 截短检测覆盖不了「等长但
+          // 内容全换」的情形）。
+          this._toolFileMonitor.resetCursors();
           // 会话/工作区切换：清除乐观停止标志，避免陈旧 true 泄漏到新会话
           if (this.state.stopOptimistic) this._clearStopOptimistic();
           // Session/workspace switch: drop the parked busy queue on BOTH sides — queued text
