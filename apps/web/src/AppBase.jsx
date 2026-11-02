@@ -57,6 +57,11 @@ const LOG_PAGE_SIZE = 50;
 // forever. Zero streaming activity for this long ⇒ the clear signal was lost;
 // fall back to the legacy debounced behavior (never worse than pre-turnActive).
 const TURN_ACTIVE_STALE_MS = 30 * 1000;
+// Double-ring suppression window: the authoritative agent_loop_end and the legacy
+// debounced turn_end for the SAME boundary share one `ts` (PTY: identical; SDK: the
+// loop end is stamped a few ms after the result that scheduled the debounced frame),
+// so a small window — not an exact match — absorbs the inter-frame gap.
+const AGENT_LOOP_END_SUPPRESS_MS = 1500;
 
 // SSE channel watchdog: no frame of ANY kind for this long ⇒ reconnect. Also
 // the freshness bound of the warm-switch gate (a channel whose last frame is
@@ -96,6 +101,8 @@ const CHANNEL_FRAME_HANDLERS = {
   'scheduled_tasks': '_onScheduledTasks',
   'turn_active': '_onTurnActive',
   'turn_end': '_onTurnEnd',
+  'agent_loop_start': '_onAgentLoopStart',
+  'agent_loop_end': '_onAgentLoopEnd',
   'im_log_update': '_onImLogUpdate',
   'streaming_status': '_onStreamingStatus',
 };
@@ -3270,6 +3277,21 @@ class AppBase extends React.Component {
     } catch (err) { reportSwallowed('sse.turn_active', err); }
   }
 
+  // Shared scope guard for scope-routed turn-boundary frames (turn_end /
+  // agent_loop_start / agent_loop_end): the server routes by project+instance,
+  // but a stale cross-scope frame is still dropped defensively. Mirrors the
+  // turn_end rules — project mismatch drops; instance narrows only when both
+  // sides carry one.
+  _frameMatchesChannelScope(channel, data) {
+    if (data.project) {
+      const proj = channel.scope.project
+        || (channel.key === BOUND_CHANNEL_KEY ? (this.state.projectName || '') : '');
+      if (proj && data.project !== proj) return false;
+    }
+    if (data.instance && channel.scope.instance && data.instance !== channel.scope.instance) return false;
+    return true;
+  }
+
   // turn_end SSE — broadcast by /api/turn-end-notify whenever Claude Code's Stop hook
   // fires (real end of a user-prompt turn). This is the **authoritative** turnEnd
   // signal — far more accurate than isStreaming falling-edge, which resets per-API-call
@@ -3281,17 +3303,19 @@ class AppBase extends React.Component {
   _onTurnEnd(channel, event) {
     let data = {};
     try { data = JSON.parse(event?.data || '{}') || {}; } catch { /* fine */ }
-    if (data.project) {
-      const proj = channel.scope.project
-        || (channel.key === BOUND_CHANNEL_KEY ? (this.state.projectName || '') : '');
-      if (proj && data.project !== proj) return;
-    }
-    if (data.instance && channel.scope.instance && data.instance !== channel.scope.instance) return;
+    if (!this._frameMatchesChannelScope(channel, data)) return;
     this._applyTurnActive(false, channel);
     if (!this._isRenderedChannel(channel)) return;
     const vp = this.state.approvalPrefs && this.state.approvalPrefs.voicePack;
     if (vp && vp.enabled && vp.events && vp.events.turnEnd) {
       const serverTs = data.ts || null;
+      // Double-ring suppression: when the authoritative agentLoopEnd cue already
+      // played for THIS boundary (same session, ts within the inter-frame gap),
+      // the legacy debounced turn_end must not ring a second time. Clear/state
+      // handling above still runs — only the voice is skipped.
+      const last = channel.vm.lastAgentLoopEnd;
+      if (last && (!serverTs || serverTs <= last.ts + AGENT_LOOP_END_SUPPRESS_MS)
+        && (!data.sessionId || !last.sessionId || data.sessionId === last.sessionId)) return;
       try {
         playVoiceEvent('turnEnd', vp, {
           // Prefer the server-supplied ts so a re-broadcast (server bug, two
@@ -3299,6 +3323,55 @@ class AppBase extends React.Component {
           // unique key if absent — relies on COOLDOWN_MS.turnEnd to suppress.
           dedupeKey: `turnEnd:${serverTs || Date.now()}`,
         });
+      } catch { /* never propagate */ }
+    }
+  }
+
+  // agent_loop_start SSE — authoritative per-turn loop begin (both modes; PTY rising
+  // edge / SDK push-accept). Lights the turn immediately (spinner shows at prompt
+  // time, not at the first API call) and rings the opt-in voice cue once per turn.
+  _onAgentLoopStart(channel, event) {
+    let data = {};
+    try { data = JSON.parse(event?.data || '{}') || {}; } catch { /* fine */ }
+    if (!this._frameMatchesChannelScope(channel, data)) return;
+    // A new turn invalidates the previous boundary's suppression record — otherwise
+    // two turns finishing within the suppression window could silence the newer
+    // boundary's legacy turnEnd ring when its own agentLoopEnd play was opted out.
+    channel.vm.lastAgentLoopEnd = null;
+    this._applyTurnActive(true, channel);
+    if (!this._isRenderedChannel(channel)) return;
+    const vp = this.state.approvalPrefs && this.state.approvalPrefs.voicePack;
+    if (vp && vp.enabled && vp.events && vp.events.agentLoopStart) {
+      try {
+        playVoiceEvent('agentLoopStart', vp, {
+          dedupeKey: `agentLoopStart:${data.turnId || data.ts || Date.now()}`,
+        });
+      } catch { /* never propagate */ }
+    }
+  }
+
+  // agent_loop_end SSE — authoritative per-turn loop end. SDK frames are immediate
+  // (real result, task-notification pseudo results filtered server-side); PTY frames
+  // arrive with the debounced turn_end or instantly on user interrupt. The turn-level
+  // clear applies to the frame's OWN channel; only the rendered channel rings.
+  _onAgentLoopEnd(channel, event) {
+    let data = {};
+    try { data = JSON.parse(event?.data || '{}') || {}; } catch { /* fine */ }
+    if (!this._frameMatchesChannelScope(channel, data)) return;
+    this._applyTurnActive(false, channel);
+    if (!this._isRenderedChannel(channel)) return;
+    const vp = this.state.approvalPrefs && this.state.approvalPrefs.voicePack;
+    if (vp && vp.enabled && vp.events && vp.events.agentLoopEnd) {
+      try {
+        const played = playVoiceEvent('agentLoopEnd', vp, {
+          dedupeKey: `agentLoopEnd:${data.turnId || data.ts || Date.now()}`,
+        });
+        // Record only an actual play: _onTurnEnd suppresses the legacy voice only
+        // when the new cue really rang for this boundary (an opted-out/failed play
+        // must leave the legacy turnEnd path intact).
+        if (played) {
+          channel.vm.lastAgentLoopEnd = { ts: data.ts || Date.now(), sessionId: data.sessionId || null };
+        }
       } catch { /* never propagate */ }
     }
   }
@@ -3758,8 +3831,10 @@ class AppBase extends React.Component {
   handleSdkModel = (model) => { this.setState({ sdkModel: model || null }); };
 
   // Turn-level loading truth, single writer for all sources (turn_active SSE,
-  // sdk-session-state WS via handleSdkSessionState, turn_end fallback). Lighting
-  // also marks the timestamp the staleness backstop measures from; clearing also
+  // sdk-session-state WS via handleSdkSessionState, agent_loop_* SSE, turn_end
+  // fallback). Lighting also marks the timestamp the staleness backstop measures
+  // from AND lights isStreaming — the spinner must show at prompt/push time
+  // (agent_loop_start / sdk running), not wait for the first API call; clearing
   // drops isStreaming so the spinner dies with the turn, not 2s later.
   // `channel` targets one scope (defaults to the rendered channel — the WS
   // caller and the Esc sniff are rendered-scope signals).
@@ -3772,7 +3847,7 @@ class AppBase extends React.Component {
       vm.turnActiveSince = Date.now();
       clearTimeout(vm.turnStaleTimer);
       vm.turnStaleTimer = setTimeout(() => this._checkTurnActiveStale(ch), TURN_ACTIVE_STALE_MS);
-      this._commitChannel(ch, { turnActive: true });
+      this._commitChannel(ch, { turnActive: true, isStreaming: true });
       return;
     }
     if (!vm.react.turnActive) return; // idempotent
@@ -3832,6 +3907,19 @@ class AppBase extends React.Component {
       const effectiveInstance = this.state.viewedInstance
         || (viewedName === this.state.projectName ? (this.state.boundInstance || this._boundInstance || null) : null);
       if (effectiveInstance && meta.instanceKey !== effectiveInstance) return; // a sibling instance's frame
+    }
+    // Turn-epoch guard: session_state_changed carries no turn id of its own, so a
+    // frame that settles the PREVIOUS turn (late idle, or a heartbeat flushed before
+    // the server saw the new push) can arrive after this turn started. The server
+    // stamps every frame with the turn's wall-clock start; an older stamp can never
+    // belong to the current turn and is dropped. Absent stamp (old server) → today's
+    // behavior. (sdk-session-state is a rendered-scope signal, so the guard lives on
+    // the rendered channel's vm, same as _applyTurnActive's default target.)
+    const epoch = Number.isFinite(meta?.turnStartedAt) ? meta.turnStartedAt : null;
+    if (epoch != null && epoch > 0) {
+      const vm = this._renderedVm();
+      if (epoch < (vm.sdkTurnStartedAt || 0)) return; // stale frame from an older turn
+      vm.sdkTurnStartedAt = epoch;
     }
     this._applyTurnActive(state === 'running' || state === 'requires_action');
   };
@@ -4024,14 +4112,17 @@ class AppBase extends React.Component {
   // pending id actually CHANGES (a genuinely new plan) — not on a same-id re-bubble or a clear.
   // Tracked per kind in _lastApprovalKindId.
   _setApprovalKind = (kind, data) => {
-    const enriched = this._injectProjectName(data, kind);
+    // View-switch synthetic clears arrive as { reason: 'view-switch' } so the wipe
+    // policy can tell them apart from a real id → null clear (which must re-arm).
+    const reason = (data && typeof data === 'object' && data.reason) || null;
+    const enriched = reason ? null : this._injectProjectName(data, kind);
     this.setState(prev => {
       const next = { ...prev.approvalGlobal };
       if (enriched) next[kind] = enriched;
       else next[kind] = null;
       const prevId = prev.approvalGlobal?.[kind]?.[kind]?.id ?? null;
       const nextId = enriched?.[kind]?.id ?? null;
-      if (!shouldWipeApprovalDismissal(prevId, nextId)) {
+      if (!shouldWipeApprovalDismissal(prevId, nextId, { reason })) {
         // Same id, both null, or a null→id transition (a genuinely new pending
         // has no dismissal to wipe, and a WS-reconnect replay of a minimised
         // plan must NOT be reopened): keep any existing dismissal untouched.

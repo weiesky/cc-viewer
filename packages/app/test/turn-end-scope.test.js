@@ -57,7 +57,7 @@ describe('turn_end scope routing (source anchors)', () => {
 describe('turn_active per-scope state machine (source anchors)', () => {
   it('_setTurnActive is scope-keyed via turnStateFor(scopeKeyOf(...))', () => {
     assert.ok(
-      /function _setTurnActive\(active, sessionId, scope = null\) \{[\s\S]*?const key = scopeKeyOf\(sc\.project, sc\.instance\);[\s\S]*?const bucket = turnStateFor\(key\);/.test(SERVER_SRC),
+      /function _setTurnActive\(active, sessionId, scope = null, source = 'hook'\) \{[\s\S]*?const key = scopeKeyOf\(sc\.project, sc\.instance\);[\s\S]*?const bucket = turnStateFor\(key\);/.test(SERVER_SRC),
       'turn bucket resolved per scope',
     );
   });

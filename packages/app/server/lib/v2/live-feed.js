@@ -74,6 +74,12 @@ export function readNewLines(cursor, chunkBytes = READ_CHUNK_BYTES, maxLineBytes
   } catch {
     return []; // not created yet
   }
+  // Suppressed-seed cap: while seeding history, read only up to the byte size
+  // the feed last observed (cursor._limit). Bytes past it are read live on the
+  // follow-up pass. The cap compares BEFORE the shrink check so a file that
+  // grew past the cap reads exactly to it (offset === capped size ⇒ no-op);
+  // the partial-line carry already tolerates a cap landing mid-line.
+  if (cursor._limit != null) size = Math.min(size, cursor._limit);
   if (size < cursor.offset) return null;
   if (size === cursor.offset) return [];
   if (cursor._pendBufs === undefined) {
@@ -194,6 +200,15 @@ export class V2LiveFeed {
     this._clientFilter = typeof opts.clientFilter === 'function' ? opts.clientFilter : null;
     this._sessions = new Map(); // dir → cursor bundle
     this._seenDirs = new Map(); // dir → last observed journal mtimeMs (attached or not)
+    // dir → { journal, responses, conv: Map<path,size> } — per-file byte sizes
+    // captured at the feed's last observation of the dir (initial scan, attach,
+    // eviction, safety scan). A suppressed re-attach seeds only UP TO these
+    // offsets and reads everything past them live: bytes appended after the
+    // last observation (a resumed history session's new turn) are genuinely
+    // new, not history the cold-load channel owns. Without this the suppressed
+    // seed swallowed them (offset advanced past, never re-read → the new
+    // message only reappeared on a cold reload).
+    this._seenSizes = new Map();
     this._discardGated = new Set(); // dirs refused by the discard gate — first real attach must NOT suppress history
     this._sessionsRoot = null;
     this._rootWatcher = null;
@@ -245,6 +260,7 @@ export class V2LiveFeed {
     for (const cur of this._sessions.values()) this._closeCursor(cur);
     this._sessions.clear();
     this._seenDirs.clear();
+    this._seenSizes.clear();
     this._discardGated.clear();
     this._sessionsRoot = null;
   }
@@ -263,7 +279,10 @@ export class V2LiveFeed {
       // must be seeded suppressed, or the re-attach replays the whole session
       // through the broadcast path (the exact OOM this module was fixed for).
       // Only a genuinely never-seen dir emits from byte 0.
-      cur = this._attach(sessionDir, { suppressExisting: this._seenDirs.has(sessionDir) });
+      cur = this._attach(sessionDir, {
+        suppressExisting: this._seenDirs.has(sessionDir),
+        suppressUpTo: this._seenSizes.get(sessionDir) || null,
+      });
       if (!cur) {
         if (_retries < TICK_RETRY_MAX) {
           setTimeout(() => this.tick(sessionDir, _retries + 1), TICK_RETRY_MS);
@@ -319,11 +338,15 @@ export class V2LiveFeed {
       const dir = join(this._sessionsRoot, name);
       const mtime = this._journalMtime(dir);
       this._seenDirs.set(dir, mtime);
+      // Record the byte watermark NOW (before any attach) so a later suppressed
+      // re-attach of this pre-existing dir seeds only up to here and reads any
+      // post-observation append live.
+      this._seenSizes.set(dir, this._snapshotSizes(dir));
       // Pre-existing dirs with recent activity are live producers that predate
       // this feed (mid-run server start / workspace switch): follow them but
       // suppress their history — the cold reload channel covers it.
       if (mtime > 0 && this._now() - mtime <= ATTACH_RECENT_MS) {
-        this._attach(dir, { suppressExisting: true });
+        this._attach(dir, { suppressExisting: true, suppressUpTo: this._seenSizes.get(dir) });
       }
     }
   }
@@ -346,6 +369,8 @@ export class V2LiveFeed {
     if (mtime === 0) return; // no journal yet — the next event/tick retries
     const seenBefore = this._seenDirs.has(dir);
     this._seenDirs.set(dir, mtime);
+    const suppressUpTo = this._seenSizes.get(dir) || this._snapshotSizes(dir);
+    this._seenSizes.set(dir, suppressUpTo);
     if (!seenBefore) {
       // Genuinely new session dir: everything in it is new — emit from byte 0
       // when it was born after the feed started, otherwise treat as history.
@@ -358,7 +383,7 @@ export class V2LiveFeed {
           return !(bt > 0) || bt >= this._startedAt - 1000;
         } catch { return true; }
       })();
-      this._attach(dir, { suppressExisting: !bornAfterStart });
+      this._attach(dir, { suppressExisting: !bornAfterStart, suppressUpTo });
     }
   }
 
@@ -366,9 +391,33 @@ export class V2LiveFeed {
     try { return statSync(join(dir, 'journal.jsonl')).mtimeMs; } catch { return 0; }
   }
 
+  /** Snapshot the current byte size of every file a cursor reads (journal,
+   *  responses, and every conv epoch file) — the watermark a later suppressed
+   *  re-attach seeds up to. A missing file (ENOENT) sizes 0 (all of it is new);
+   *  any OTHER stat error sizes MAX_SAFE_INTEGER so a transient failure
+   *  (Windows AV/EBUSY/EPERM) never zeroes the watermark and re-arms a
+   *  full-history replay on the next attach (same error direction as
+   *  _seekCursorsToEof). */
+  _snapshotSizes(dir) {
+    const sizeOf = (p) => {
+      try { return statSync(p).size; } catch (err) {
+        if (err && err.code === 'ENOENT') return 0;
+        reportSwallowed('v2-live.snapshot-stat', err);
+        return Number.MAX_SAFE_INTEGER;
+      }
+    };
+    const conv = new Map();
+    for (const { path } of this._enumerateConvFiles(dir)) conv.set(path, sizeOf(path));
+    return {
+      journal: sizeOf(join(dir, 'journal.jsonl')),
+      responses: sizeOf(join(dir, 'responses.jsonl')),
+      conv,
+    };
+  }
+
   // ── per-session cursors ────────────────────────────────────────────────────
 
-  _attach(dir, { suppressExisting }) {
+  _attach(dir, { suppressExisting, suppressUpTo = null }) {
     if (this._sessions.has(dir)) return this._sessions.get(dir);
     if (!existsSync(join(dir, 'journal.jsonl'))) return null;
     // Multi-window isolation: a dir exclusively claimed by ANOTHER live ccv
@@ -470,7 +519,39 @@ export class V2LiveFeed {
       } catch (err) {
         reportSwallowed('v2-live.session-watch', err);
       }
-      this._readCursor(cur); // seed (suppressed history or brand-new content)
+      // Seed read. When suppressing with a known watermark, cap each cursor at
+      // the last-observed size so the seed swallows ONLY bytes that predate the
+      // feed's last look; anything past it was appended after and is genuinely
+      // new (a resumed history session's fresh turn), not cold-load history.
+      const cappedSeed = cur.suppress && suppressUpTo;
+      if (cappedSeed) {
+        cur.journal._limit = suppressUpTo.journal;
+        cur.responses._limit = suppressUpTo.responses;
+        for (const { path } of this._enumerateConvFiles(dir)) {
+          const fc = { key: null, path, offset: 0 };
+          // A conv file in the watermark caps at its observed size. A conv file
+          // NOT in the watermark did not exist at the last look (a new conv key
+          // or a post-/clear epoch minted by the resumed turn), so its content
+          // is entirely new — cap at 0 so the suppressed seed reads NONE of it
+          // and the follow-up (suppress=false) reads + forwards it live. Leaving
+          // it uncapped here would let the suppressed seed consume it silently:
+          // the follow-up would then find the offset at EOF and the wire-v3
+          // client would assemble the new turn with empty messages.
+          fc._limit = (suppressUpTo.conv && suppressUpTo.conv.has(path)) ? suppressUpTo.conv.get(path) : 0;
+          cur.convFiles.set(path, fc);
+        }
+      }
+      try {
+        this._readCursor(cur); // seed (suppressed history or brand-new content)
+      } finally {
+        // Always drop the caps: a leaked _limit clamps every later read to
+        // size===offset, permanently freezing the cursor.
+        if (cappedSeed) {
+          delete cur.journal._limit;
+          delete cur.responses._limit;
+          for (const fc of cur.convFiles.values()) delete fc._limit;
+        }
+      }
     } else {
       // No per-dir watcher either: a promote can bring hundreds of dead dirs
       // at once and each fs.watch costs an fd. The safety poll's unconditional
@@ -479,6 +560,15 @@ export class V2LiveFeed {
       this._seekCursorsToEof(cur);
     }
     cur.suppress = false;
+    // Follow-up live read: bytes appended after the watermark but before the
+    // per-dir watcher was armed (a resumed history session whose first new turn
+    // raced this attach) sit past the capped offsets with no watcher event to
+    // deliver them — read them now so the new turn broadcasts instead of
+    // waiting for the next append / safety poll (and never arriving if the
+    // conversation goes quiet). No-op when nothing new is on disk.
+    if (!convertOrigin && suppressUpTo) this._readCursor(cur);
+    // Refresh the watermark to the post-attach state for any later re-attach.
+    this._seenSizes.set(dir, this._snapshotSizes(dir));
     return cur;
   }
 
@@ -788,6 +878,7 @@ export class V2LiveFeed {
       // ownership release (owner exits) plus new activity re-attaches through
       // the normal mtime-bump path below.
       if (this._isForeignLiveOwned(cur.dir)) {
+        this._seenSizes.set(cur.dir, this._snapshotSizes(cur.dir)); // watermark before detach
         this._closeCursor(cur);
         this._sessions.delete(cur.dir);
         this._seenDirs.set(cur.dir, this._journalMtime(cur.dir));
@@ -799,6 +890,7 @@ export class V2LiveFeed {
       if (this._idleEvictMs > 0 && cur.openReqs.size === 0) {
         const mtime = this._journalMtime(cur.dir);
         if (mtime > 0 && this._now() - mtime > this._idleEvictMs) {
+          this._seenSizes.set(cur.dir, this._snapshotSizes(cur.dir)); // watermark before eviction
           this._closeCursor(cur);
           this._sessions.delete(cur.dir);
           this._seenDirs.set(cur.dir, mtime);
@@ -826,9 +918,18 @@ export class V2LiveFeed {
         this._maybeAttachNew(dir);
       } else if (mtime > seen) {
         // A dir skipped at the initial scan (stale then) has resumed activity:
-        // follow it now, history suppressed (it predates this feed).
+        // follow it now. Seed suppressed ONLY up to the last-observed byte
+        // watermark (captured at scan/eviction — the mtime bump proves new
+        // bytes landed past it); the resumed turn itself is read live, not
+        // swallowed with the history it predates this feed alongside. A missing
+        // watermark means the feed never observed this dir's pre-activity state,
+        // so there is no safe boundary — fall back to suppress-to-EOF (null)
+        // rather than snapshotting NOW (which would cap ABOVE the new bytes and
+        // re-introduce the swallow).
+        const suppressUpTo = this._seenSizes.get(dir) || null;
         this._seenDirs.set(dir, mtime);
-        this._attach(dir, { suppressExisting: true });
+        if (suppressUpTo) this._seenSizes.set(dir, suppressUpTo);
+        this._attach(dir, { suppressExisting: true, suppressUpTo });
       }
     }
   }

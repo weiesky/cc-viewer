@@ -10,14 +10,21 @@
 //
 // Usage:
 //   node scripts/gen-default-voicepack.js [--force]
-
+//   node scripts/gen-default-voicepack.js --merge --only <keys> [--dir <packDir>]
+//
+// Merge mode (the sanctioned way to add cues to a SHIPPED pack without replacing
+// its hand-recorded audio): read the existing pack.json, synthesize ONLY the
+// requested events as <eventKey>.wav, and merge those entries into its events
+// table (name/displayName/placeholder/voiceLines/cues are preserved). Events
+// whose pattern entry is `null` are intentionally NOT synthesized — they map to
+// an existing recording (e.g. agentLoopEnd reuses each pack's turnEnd audio) and
+// the pack.json entry is edited by hand.
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EVENT_KEYS } from '../packages/core/src/voice-pack-events.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = join(__dirname, '..', 'apps', 'web', 'public', 'voice-packs', 'default');
 
 const SAMPLE_RATE = 22050;
 const BITS = 16;
@@ -33,6 +40,11 @@ const RELEASE_SECONDS = 0.025;  // slightly longer release with quadratic curve 
 //
 // Volumes are deliberately low (≈ 0.20-0.28). Square waves are harmonic-rich
 // and read louder than sines at the same numeric volume.
+//
+// A `null` pattern means "no synthesized cue": the event maps to an existing
+// recording in each shipped pack (agentLoopEnd reuses the turnEnd audio —
+// semantically exact). The key stays listed so the EVENT_KEYS coverage check
+// below treats the pack as complete by construction.
 const PATTERNS = {
   // "Bi-poop?" — short low chirp, gap, rising "poop?" inquiry
   planApproval: [
@@ -56,6 +68,17 @@ const PATTERNS = {
     { freq: 0, ms: 30, vol: 0 },
     { wave: 'square', freq: 440, freqEnd: 330, ms: 280, vol: 0.24 },
   ],
+  // "Dee-dee!" — short rising two-note "ready" cue for the loop start. Deliberately
+  // distinct from askQuestion's repeated equal chirps (an inquiry) and from the
+  // turnEnd arpeggio (a finish): this is a pickup, not a question or a completion.
+  agentLoopStart: [
+    { wave: 'square', freq: 523, ms: 90, vol: 0.22 },
+    { freq: 0, ms: 40, vol: 0 },
+    { wave: 'square', freq: 784, freqEnd: 988, ms: 150, vol: 0.22 },
+  ],
+  // Loop end reuses each pack's recorded turnEnd cue (it IS the same semantic
+  // boundary) — nothing to synthesize. pack.json entries are edited by hand.
+  agentLoopEnd: null,
 };
 
 // Defensive: PATTERNS must cover every EVENT_KEYS entry so the bundled default
@@ -136,14 +159,72 @@ function buildWav(pcm) {
   return Buffer.concat([header, pcm]);
 }
 
+// Onomatopoeia table — what each cue is meant to sound like, for anyone
+// generating their own replacements.
+const CUES = {
+  planApproval:       'Bi-poop?  (短低 + 上扬"问"句)',
+  askQuestion:        'Pip pip!  (两短促跳跳)',
+  turnEnd:            'Wee-doo~ ♪  (下行小调，满足)',
+  agentLoopStart:     'Dee-dee!  (短促上行双音，"开工")',
+  agentLoopEnd:       '(复用各语音包 turnEnd 录音，无合成音)',
+};
+
+// ── CLI args ────────────────────────────────────────────────────────────────
+const argv = process.argv.slice(2);
+const FORCE = argv.includes('--force');
+const MERGE = argv.includes('--merge');
+function _argValue(flag) {
+  const i = argv.indexOf(flag);
+  return (i >= 0 && i + 1 < argv.length) ? argv[i + 1] : null;
+}
+const ONLY = (_argValue('--only') || '').split(',').map((s) => s.trim()).filter(Boolean);
+const OUT_DIR = _argValue('--dir')
+  ? join(process.cwd(), _argValue('--dir'))
+  : join(__dirname, '..', 'apps', 'web', 'public', 'voice-packs', 'default');
+
+// ── Merge mode: add/refresh ONLY the requested synthesized events inside an
+// existing (shipped) pack. Everything else in pack.json is preserved. ────────
+if (MERGE) {
+  if (ONLY.length === 0) {
+    console.error('[voice-pack] --merge requires --only <eventKey[,eventKey…]>');
+    process.exit(1);
+  }
+  const packPath = join(OUT_DIR, 'pack.json');
+  if (!existsSync(packPath)) {
+    console.error(`[voice-pack] --merge needs an existing pack.json at ${packPath}`);
+    process.exit(1);
+  }
+  const manifest = JSON.parse(readFileSync(packPath, 'utf-8'));
+  manifest.events = manifest.events || {};
+  manifest.cues = manifest.cues || {};
+  for (const key of ONLY) {
+    if (!(key in PATTERNS)) {
+      console.error(`[voice-pack] unknown event key for --only: ${key}`);
+      process.exit(1);
+    }
+    if (PATTERNS[key] === null) {
+      console.log(`[voice-pack] ${key}: no synthesized pattern (maps to an existing recording) — edit pack.json by hand`);
+      continue;
+    }
+    const wav = buildWav(buildPcm(PATTERNS[key]));
+    const filePath = join(OUT_DIR, `${key}.wav`);
+    writeFileSync(filePath, wav);
+    manifest.events[key] = { file: `${key}.wav`, size: wav.length };
+    manifest.cues[key] = CUES[key];
+    console.log(`[voice-pack] wrote ${filePath} (${wav.length} bytes)`);
+  }
+  writeFileSync(packPath, JSON.stringify(manifest, null, 2) + '\n');
+  console.log(`[voice-pack] merged into ${packPath}`);
+  process.exit(0);
+}
+
 // 防误覆盖：若目标目录已存在「异名」pack.json（如随仓发布的 default-butler），需显式 --force 才覆盖。
-const FORCE = process.argv.includes('--force');
 const existingPackPath = join(OUT_DIR, 'pack.json');
 if (!FORCE && existsSync(existingPackPath)) {
   let existingName = '';
   try { existingName = JSON.parse(readFileSync(existingPackPath, 'utf-8')).name || ''; } catch { /* 坏文件视为无名，放行 */ }
   if (existingName && existingName !== 'default-pixel-buddy') {
-    console.error(`[voice-pack] public/voice-packs/default/ 已存在异名默认包「${existingName}」，本脚本会用 default-pixel-buddy 覆盖它。`);
+    console.error(`[voice-pack] ${OUT_DIR} 已存在异名默认包「${existingName}」，本脚本会用 default-pixel-buddy 覆盖它。`);
     console.error('[voice-pack] 如确需重新生成 chiptune 占位包，请加 --force：node scripts/gen-default-voicepack.js --force');
     process.exit(1);
   }
@@ -157,15 +238,18 @@ const manifest = {
   // Note: the dir's currently-shipped pack is default-butler, not this one (see header).
   placeholder: false,
   events: {},
-  // Onomatopoeia table — what each cue is meant to sound like, for anyone
-  // generating their own replacements.
-  cues: {
-    planApproval:       'Bi-poop?  (短低 + 上扬"问"句)',
-    askQuestion:        'Pip pip!  (两短促跳跳)',
-    turnEnd:            'Wee-doo~ ♪  (下行小调，满足)',
-  },
+  cues: { ...CUES },
 };
 for (const [eventKey, pattern] of Object.entries(PATTERNS)) {
+  if (pattern === null) {
+    // No synthesized cue (see the PATTERNS comment) — the pixel pack maps the
+    // event to its turnEnd wav so a full regeneration still ships complete.
+    if (manifest.events.turnEnd) {
+      manifest.events[eventKey] = { ...manifest.events.turnEnd };
+      console.log(`[voice-pack] ${eventKey}: aliased to the turnEnd wav (no synthesized pattern)`);
+    }
+    continue;
+  }
   const wav = buildWav(buildPcm(pattern));
   const path = join(OUT_DIR, `${eventKey}.wav`);
   writeFileSync(path, wav);

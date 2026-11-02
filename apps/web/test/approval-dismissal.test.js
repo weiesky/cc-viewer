@@ -40,4 +40,17 @@ describe('shouldWipeApprovalDismissal', () => {
   it('wipes on a real clear of a pending (id → null)', () => {
     assert.equal(shouldWipeApprovalDismissal('p1', null), true);
   });
+
+  it('keeps the dismissal on a view-switch synthetic clear (id → null, reason view-switch)', () => {
+    // The view-switch clear is not a real dismissal: the attach full replay
+    // (replaySdkPendingApprovals) re-bubbles the SAME id right after. Wiping here
+    // is the v1.9.18 regression — a minimised ask modal reopened on switch-back.
+    assert.equal(shouldWipeApprovalDismissal('ask_1', null, { reason: 'view-switch' }), false);
+  });
+
+  it('view-switch round-trip keeps the minimise (id → null[view-switch] → same id)', () => {
+    // minimise → clear (view switch) → replay same id ⇒ dismissal kept at BOTH steps.
+    assert.equal(shouldWipeApprovalDismissal('ask_1', null, { reason: 'view-switch' }), false);
+    assert.equal(shouldWipeApprovalDismissal(null, 'ask_1'), false);
+  });
 });

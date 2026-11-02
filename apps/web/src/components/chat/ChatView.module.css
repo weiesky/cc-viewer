@@ -603,8 +603,11 @@
 .sdkErrorStack {
   display: flex;
   flex-direction: column;
-  width: calc(100% - 32px);
-  max-width: 1400px; /* needed for the Virtuoso footer (not under .container's max-width rule) */
+  /* Cap the bar at 800px; below that keep a 20px-per-side floor via
+     calc(100% - 40px). Also covers the Virtuoso footer, which is not under
+     .container's max-width rule. */
+  width: calc(100% - 40px);
+  max-width: min(800px, calc(100% - 40px));
   margin: 4px auto 8px;
   box-sizing: border-box;
   flex-shrink: 0;
@@ -686,12 +689,6 @@
 
 .sdkRetryBtn:hover {
   background: var(--color-error-bg-light);
-}
-
-.sdkRetryRecovering {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-left: 8px;
 }
 
 /* Queued-message bubbles — stacked above the composer while a run is busy

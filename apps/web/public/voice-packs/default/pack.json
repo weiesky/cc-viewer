@@ -14,11 +14,22 @@
     "turnEnd": {
       "file": "It_is_done_sir.MP3",
       "size": 45816
+    },
+    "agentLoopStart": {
+      "file": "agentLoopStart.wav",
+      "size": 12394
+    },
+    "agentLoopEnd": {
+      "file": "It_is_done_sir.MP3",
+      "size": 45816
     }
   },
   "voiceLines": {
     "planApproval": "The plan awaits your approval, sir.",
     "askQuestion": "A choice for your consideration, sir.",
     "turnEnd": "It is done, sir."
+  },
+  "cues": {
+    "agentLoopStart": "Dee-dee!  (短促上行双音，\"开工\")"
   }
 }
