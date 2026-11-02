@@ -12,7 +12,7 @@
  */
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync as writeFileSyncFs, appendFileSync as appendFileSyncFs } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, mkdirSync, renameSync, statSync, unlinkSync, utimesSync, writeFileSync as writeFileSyncFs, appendFileSync as appendFileSyncFs } from 'node:fs';
 import { spawnSync as spawnSyncCp } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -675,15 +675,17 @@ describe('migration promote → live feed (OOM guard)', () => {
     assert.equal(feed.isFollowing(sessionDirOf(SID)), false, 'idle cursor evicted');
     feed._idleEvictMs = 10 * 60 * 1000; // restore so the tail of the test reads, not evicts
 
-    // Resume: the entry that lands during the eviction gap is history on
-    // re-attach (seen dir → suppressed seed) — no replay through the broadcast
-    // path (the OOM shape), the cold-load channel owns it.
+    // Resume: the entry that lands during the eviction gap is genuinely NEW
+    // (appended after the feed's last observation), so the watermark-capped
+    // suppressed seed must NOT swallow it — it broadcasts live on re-attach.
+    // The OOM guard still holds: only bytes that predate the watermark are
+    // seeded silently; nothing already observed is replayed.
     const t2 = [...t1, textMsg('assistant', 'r1'), textMsg('user', 'turn 2')];
     fire(w, mainEntry(t2));
     await w.flush();
     feed.tick(sessionDirOf(SID));
     assert.equal(feed.isFollowing(sessionDirOf(SID)), true, 'tick() re-attached');
-    assert.equal(dataEntries(client).length, 1, 'no history replay on re-attach');
+    assert.equal(dataEntries(client).length, 2, 'eviction-gap turn is live on re-attach, not swallowed');
 
     // Post-re-attach appends broadcast live again.
     const t3 = [...t2, textMsg('assistant', 'r2'), textMsg('user', 'turn 3')];
@@ -691,8 +693,210 @@ describe('migration promote → live feed (OOM guard)', () => {
     await w.flush();
     feed._safetyTick();
     const live = dataEntries(client);
-    assert.equal(live.length, 2, 'increment after re-attach is live');
-    assert.equal(live[1].body.messages.length, 5);
+    assert.equal(live.length, 3, 'increment after re-attach is live');
+    assert.equal(live[2].body.messages.length, 5);
+  });
+
+  // A resumed HISTORY session (the reported bug): the feed has seen the dir but
+  // never attached it (stale at scan), and the new turn is flushed to disk
+  // BEFORE the attach runs (deferred attach — tick retry / lazy feed / safety
+  // poll). The suppressed seed must stop at the last-observed watermark and
+  // broadcast the new turn live, not swallow it (pre-fix: swallowed → the
+  // conversation view only refreshed on a cold reload).
+  it('tick() re-attach of a stale history dir broadcasts the post-observation turn, without replaying history', async () => {
+    const w = newWriter();
+    const t1 = [textMsg('user', 'turn 1')];
+    fire(w, mainEntry(t1));
+    await w.flush();
+    const sdir = sessionDirOf(SID);
+    // Make the dir older than ATTACH_RECENT_MS so the initial scan only records it.
+    const staleSec = (Date.now() - 10 * 60 * 1000) / 1000;
+    utimesSync(join(sdir, 'journal.jsonl'), staleSec, staleSec);
+
+    const client = fakeClient();
+    const feed = newFeed([client]);
+    feed.start(projectDirOf());
+    assert.equal(feed.isFollowing(sdir), false, 'stale history dir only seen, not attached');
+    assert.equal(feed._seenDirs.has(sdir), true, 'initial scan recorded the dir');
+
+    // The new turn lands on disk BEFORE any attach (deferred-attach race).
+    const t2 = [...t1, textMsg('assistant', 'r1'), textMsg('user', 'turn 2')];
+    fire(w, mainEntry(t2));
+    await w.flush();
+
+    feed.tick(sdir);
+    assert.equal(feed.isFollowing(sdir), true, 'tick() re-attached');
+    const live = dataEntries(client);
+    assert.equal(live.length, 1, 'exactly the post-observation turn broadcasts — history is NOT replayed');
+    assert.equal(live[0].body.messages.length, 3, 'the new turn carries the full accumulated conversation');
+    assert.ok(!live[0].inProgress, 'completed turn');
+
+    // Parity with a cold read proves the history was seeded (not skipped) and
+    // the new turn was not double-ingested.
+    const cold = reconstructEntries([...iterateV2RawEntries(sdir)].map((r) => JSON.parse(r)));
+    assert.equal(cold.length, 2);
+    assert.deepEqual(live[0].body.messages, cold[1].body.messages, 'live turn matches cold reconstruction');
+
+    // Cursor at EOF: a later poll re-emits nothing.
+    feed._safetyTick();
+    assert.equal(dataEntries(client).length, 1, 'no duplicate on the next poll');
+  });
+
+  it('safety-poll discovery of a cross-process append reads the resumed turn live', async () => {
+    const w = newWriter();
+    fire(w, mainEntry([textMsg('user', 'old turn')]));
+    await w.close(); // producer gone; dir unowned
+    const sdir = sessionDirOf(SID);
+    const staleSec = (Date.now() - 10 * 60 * 1000) / 1000;
+    utimesSync(join(sdir, 'journal.jsonl'), staleSec, staleSec);
+
+    const client = fakeClient();
+    const feed = newFeed([client]);
+    feed.start(projectDirOf());
+    assert.equal(feed.isFollowing(sdir), false);
+
+    // A second writer (no in-process nudge wired) appends — the safety poll is
+    // the only discovery path, and it used to seed-suppress to EOF.
+    const w2 = newWriter();
+    fire(w2, mainEntry([textMsg('user', 'old turn'), textMsg('assistant', 'r'), textMsg('user', 'new turn')]));
+    await w2.flush();
+
+    feed._safetyTick();
+    assert.equal(feed.isFollowing(sdir), true, 'mtime bump re-attached');
+    const live = dataEntries(client);
+    assert.equal(live.length, 1, 'the resumed turn broadcasts once');
+    assert.equal(live[0].body.messages.length, 3);
+  });
+
+  it('-c adoption: a continued turn written into a stale history dir broadcasts live', async () => {
+    const wA = newWriter();
+    fire(wA, mainEntry([textMsg('user', 'history turn')]));
+    await wA.close();
+    const sdir = sessionDirOf(SID);
+    const staleSec = (Date.now() - 10 * 60 * 1000) / 1000;
+    utimesSync(join(sdir, 'journal.jsonl'), staleSec, staleSec);
+
+    const client = fakeClient();
+    const feed = newFeed([client]);
+    feed.start(projectDirOf());
+    assert.equal(feed.isFollowing(sdir), false);
+
+    // Process restart onto the same session dir (`-c` continuation).
+    const wB = newWriter();
+    const cont = [textMsg('user', 'history turn'), textMsg('assistant', 'old reply'), textMsg('user', 'continued turn')];
+    fire(wB, mainEntry(cont));
+    await wB.flush();
+    assert.equal(wB.currentSessionDir(), sdir, 'continuation re-used the history dir');
+
+    feed.tick(sdir);
+    const live = dataEntries(client);
+    assert.equal(live.length, 1, 'continued turn only; history stays cold-load owned');
+    assert.equal(live[0].body.messages.length, 3);
+  });
+
+  it('wire v3: a resumed history turn emits exactly one delta row that assembles onto the cold baseline', async () => {
+    const w = newWriter();
+    const t1 = [textMsg('user', 'turn 1')];
+    fire(w, mainEntry(t1));
+    await w.flush();
+    const sdir = sessionDirOf(SID);
+    const staleSec = (Date.now() - 10 * 60 * 1000) / 1000;
+    utimesSync(join(sdir, 'journal.jsonl'), staleSec, staleSec);
+
+    const client = fakeClient();
+    const feed = newFeed([client], { wireV3: true });
+    feed.start(projectDirOf());
+    assert.equal(feed.isFollowing(sdir), false);
+
+    // Production reality: opening the history project cold-loads the backlog
+    // (v2_requests rows + v3_conv baseline) into the client assembler BEFORE any
+    // live frame. Mirror that baseline here so the assembler holds turn 1.
+    const asm = createV3Assembler();
+    const t1Conv = readFileSync(join(sdir, 'conversations', 'main', 'e0.jsonl'), 'utf-8')
+      .split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    asm.addConvLines(SID, 'main', t1Conv);
+
+    // The resumed turn lands on disk BEFORE the attach (deferred-attach race).
+    const t2 = [...t1, textMsg('assistant', 'r1'), textMsg('user', 'turn 2')];
+    fire(w, mainEntry(t2));
+    await w.flush();
+    feed.tick(sdir);
+
+    // Replay the live frames through the SAME assembler (the cold baseline is
+    // already in it) — exactly one new completed row must build, non-empty, and
+    // it must continue the conversation rather than restart it empty.
+    const frames = namedFrames(client);
+    const built = [];
+    for (const f of frames) {
+      if (f.event === 'v3_conv') asm.addConvLines(f.data.sessionId, f.data.channel, f.data.line);
+      else if (f.event === 'v3_resp') asm.addRespLines(f.data.sessionId, f.data.line);
+      else if (f.event === 'v2_requests_delta') {
+        const e = asm.buildEntry(f.data);
+        if (!f.data.inProgress) built.push(e);
+      }
+    }
+    // History is NOT re-emitted; exactly the one resumed turn is broadcast.
+    assert.equal(built.length, 1, 'exactly the resumed turn, no history replay');
+    assert.ok(built[0].body.messages.length > 0, 'live-assembled messages must not be empty');
+    const cold = reconstructEntries([...iterateV2RawEntries(sdir)].map((r) => JSON.parse(r)));
+    assert.equal(cold.length, 2);
+    assert.deepEqual(built[0].body.messages, cold[1].body.messages, 'parity with cold reconstruction');
+  });
+
+  it('wire v3: a conv file created AFTER the watermark (new sub-agent channel) is forwarded live, not swallowed by the suppressed seed', async () => {
+    // History turn 1 in `main`; watermark captured at scan. The resumed turn then
+    // spawns a sub-agent, minting a BRAND-NEW conv file (new key) that postdates
+    // the watermark. Its v3_conv must reach the client or the sub row assembles
+    // with empty messages (the empty-chat class).
+    const w = newWriter();
+    const t1 = [textMsg('user', 'turn 1')];
+    fire(w, mainEntry(t1));
+    await w.flush();
+    const sdir = sessionDirOf(SID);
+    const staleSec = (Date.now() - 10 * 60 * 1000) / 1000;
+    utimesSync(join(sdir, 'journal.jsonl'), staleSec, staleSec);
+
+    const client = fakeClient();
+    const feed = newFeed([client], { wireV3: true });
+    feed.start(projectDirOf());
+    assert.equal(feed.isFollowing(sdir), false);
+    // Cold baseline: only `main` exists at watermark time.
+    const t1Conv = readFileSync(join(sdir, 'conversations', 'main', 'e0.jsonl'), 'utf-8')
+      .split('\n').filter(Boolean).map((l) => JSON.parse(l));
+
+    // Resumed turn 2 spawns a sub-agent: a fresh conv channel file appears.
+    const sub = {
+      timestamp: nextTs(), project: 'proj', url: 'https://api.anthropic.com/v1/messages', method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: { model: 'claude-fable-5', metadata: { user_id: userIdOf(SID) }, messages: [textMsg('user', 'sub task')] },
+      response: null, duration: 0, isStream: false, isHeartbeat: false, isCountTokens: false,
+      mainAgent: false, requestId: `rid_${++tsCounter}`,
+    };
+    fire(w, sub);
+    await w.flush();
+
+    feed.tick(sdir);
+    const frames = namedFrames(client);
+    const subRow = frames.find((f) => f.event === 'v2_requests_delta' && f.data.conv && f.data.conv !== 'main');
+    assert.ok(subRow, 'a live delta row for the new sub channel was emitted');
+    const subConv = frames.filter((f) => f.event === 'v3_conv' && f.data.channel === subRow.data.conv);
+    assert.ok(subConv.length >= 1, 'the new conv channel v3_conv lines are forwarded live (not swallowed by the seed)');
+
+    // Assemble: the sub channel row must build non-empty messages.
+    const asm = createV3Assembler();
+    asm.addConvLines(SID, 'main', t1Conv); // cold baseline
+    const built = [];
+    for (const f of frames) {
+      if (f.event === 'v3_conv') asm.addConvLines(f.data.sessionId, f.data.channel, f.data.line);
+      else if (f.event === 'v3_resp') asm.addRespLines(f.data.sessionId, f.data.line);
+      else if (f.event === 'v2_requests_delta') {
+        const e = asm.buildEntry(f.data);
+        if (!f.data.inProgress) built.push(e);
+      }
+    }
+    const subBuilt = built.find((e) => e.mainAgent === false);
+    assert.ok(subBuilt, 'the sub entry was built');
+    assert.ok(subBuilt.body.messages.length > 0, 'sub entry messages non-empty (conv reached the client)');
   });
 
   it('a cursor with an open (in-flight) request is never evicted mid-flight', async () => {
@@ -870,7 +1074,7 @@ describe('foreign live-owner attach gate', () => {
     assert.equal(feed._discardGated.has(probe), true, 'and its self-healing bookkeeping engages normally');
   });
 
-  it('after the foreign owner dies, renewed activity re-attaches with history SUPPRESSED (no flood)', async () => {
+  it('after the foreign owner dies, renewed activity re-attaches and the resumed turn broadcasts (no cold-load fallback for a cross-process writer)', async () => {
     const sdir = await seedForeignSession();
     const client = fakeClient();
     const feed = newFeed([client]);
@@ -879,13 +1083,18 @@ describe('foreign live-owner attach gate', () => {
 
     // Owner "dies": replace the live claim with a reaped child's pid, then the
     // dir sees new bytes (e.g. this process adopts it later, or a stray flush).
+    // The foreign-live gate (not the watermark) is what isolates a LIVE parallel
+    // window; once the owner is dead the dir is plain unowned data, and a
+    // cross-process producer has no cold-load fallback for a connected client —
+    // so the watermark-capped seed keeps pre-observation history silent while
+    // the resumed activity past it broadcasts.
     const deadPid = spawnSyncCp(process.execPath, ['-e', '']).pid;
     claimAs(sdir, deadPid);
     appendFileSyncFs(join(sdir, 'journal.jsonl'),
       JSON.stringify({ ph: 'req', seq: 98, rid: 'late', kind: 'main', conv: 'main', ts: '2026-07-17T00:02:00.000Z', url: 'u' }) + '\n');
     feed._safetyTick();
     assert.equal(feed.isFollowing(sdir), true, 'dead-owner dir re-attaches on the mtime bump');
-    const leaked = dataEntries(client).filter((e) => JSON.stringify(e).includes('other window secret'));
-    assert.equal(leaked.length, 0, 'the pre-existing history stays suppressed — cold load owns it');
+    const activity = dataEntries(client).filter((e) => JSON.stringify(e).includes('other window secret'));
+    assert.ok(activity.length >= 1, 'the resumed turn is broadcast — a cross-process producer has no cold-load fallback');
   });
 });

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(server): **打开有预载历史的项目（SDK 模式）后发新消息不刷新对话画面** — 历史会话目录被 live-feed 重连时以 `suppressExisting` 同步种子读取，把 attach 前已落盘的新消息当历史吞掉（offset 越过、永不重读），画面冻结在预载历史上、仅刷新可见。改为按 feed 上次观察到的字节水位线抑制：种子只读到水位线、其后内容按 live 广播（既不错吞新消息，也不重放历史）。Coverage: `v2-live-feed.test.js`.
+
 - feat(server+web): **SDK 模式 Agent-Loop 感知修复与权威轮次边界** — 会话状态携带 turnId+turnStartedAt（防迟到 idle 清新回合 spinner）；SDK 消息流按 ≤1/s 合并活性帧（覆盖工具/压缩阶段）；新增 `agent_loop_start`/`agent_loop_end` SSE 帧（SDK 真 result 即时、PTY 防抖后/打断即时，两模式统一，过滤后台任务伪 result）；prompt/push 即刻点亮 spinner。配套语音播报新增 `agentLoopStart`/`agentLoopEnd` 事件（默认关闭，18 语言，防与 turnEnd 双响）；插件新增 `onAgentLoopStart`/`onAgentLoopEnd` hook 与 service 插件 `agent_loop_*` 事件。Coverage: `sdk-agent-loop.test.js`, `agent-loop-server-events.test.js`, `agent-loop-voice.test.js`, `sdk-session-state.test.js`, `voice-pack-events.test.js`, `turn-active-gating.test.js`, `stop-button-turn-active.test.js`.
 
 - style(web): **GIT 变更 commit 行移除作者名** — 每条 commit 的展示不再渲染作者，把空间留给 commit 描述;hash / 描述 / 时间 / 增删统计保持不变。
