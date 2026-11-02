@@ -1,0 +1,34 @@
+packages/app/test/proxy-stats.test.js
+  s_a4f48a8f74edcd::t_1d9ad3a96b0e6d 450-461
+packages/app/server/lib/proxy/proxy-stats.js
+  s_a4f48a8f74edcd::t_6a44f18283bd5d 161-183
+packages/app/server/server.js
+  s_a4f48a8f74edcd::t_7948f14d5ba199 504-526
+.changeset/sdk-slow-upstream-advisory.md
+  s_a4f48a8f74edcd::t_391b5269f7575e 1-5
+apps/web/src/i18n.js
+  s_a4f48a8f74edcd::t_f4f38d9827d863 3110-3129
+packages/app/server/proxy.js
+  s_a4f48a8f74edcd::t_8e2738e4a6d6da 345-363
+  s_a4f48a8f74edcd::t_5b059a80fcf2b0 16
+  s_a4f48a8f74edcd::t_0fe45f0e44477d 271-279
+  s_a4f48a8f74edcd::t_96b0f926a08ad0 324-343
+apps/web/src/components/chat/ChatView.jsx
+  s_a4f48a8f74edcd::t_44ea44bc06ff30 2984-2991
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dcec2321761a6768fb67d80dcb9f00a225a81bad",
+  "prompts": {},
+  "sessions": {
+    "s_a4f48a8f74edcd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "57e3e95d-699f-4046-b680-7b09c8d5a9d6",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
