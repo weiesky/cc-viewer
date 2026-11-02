@@ -147,9 +147,6 @@ const KEYS = [
   'ui.sdkRetry.unavailable',
   // SSE slow-reconnect toast (AppBase.jsx):
   'ui.sseReconnectExhausted',
-  // voice-pack agent-loop lifecycle event labels (VoicePackSettings.jsx rows):
-  'ui.voicePack.event.agentLoopStart',
-  'ui.voicePack.event.agentLoopEnd',
 ];
 
 describe('new UI key i18n coverage', () => {

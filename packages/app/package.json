@@ -66,7 +66,7 @@
     "ws": "^8.21.0"
   },
   "optionalDependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.124"
+    "@anthropic-ai/claude-agent-sdk": "^0.2.91"
   },
   "//bundledDependencies": "@ccv/core is the private workspace package (packages/core). npm pack follows the pnpm workspace symlink and ships it as real files inside the tarball — no registry publish, no import rewriting.",
   "bundledDependencies": [

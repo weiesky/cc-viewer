@@ -98,8 +98,8 @@ describe('queue-suppress scope plumbing (source anchors, both ends)', () => {
     const { fileURLToPath } = await import('node:url');
     const { dirname, join } = await import('node:path');
     const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../server/server.js'), 'utf8');
-    assert.ok(/msg\.type === 'queue-suppress'[\s\S]{0,1600}?const qScope = normalizeProducerScope\(/.test(src), 'queue-suppress normalizes the message scope');
-    assert.ok(/const qScope = normalizeProducerScope\([\s\S]{0,300}?\);[\s\S]{0,200}?_setTurnActive\(false, null, qScope, 'interrupted'\)/.test(src), 'the clear lands on the normalized scope with the interrupted source');
+    assert.ok(/msg\.type === 'queue-suppress'[\s\S]{0,900}?const qScope = normalizeProducerScope\(/.test(src), 'queue-suppress normalizes the message scope');
+    assert.ok(/const qScope = normalizeProducerScope\([\s\S]{0,300}?\);\s*_setTurnActive\(false, null, qScope\);/.test(src), 'the clear lands on the normalized scope');
   });
 });
 

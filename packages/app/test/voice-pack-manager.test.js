@@ -227,28 +227,6 @@ describe('default pack (bundled "皇上系列")', () => {
     );
     assert.equal(hit.format, 'mp3');
   });
-
-  it('agentLoopStart resolves to the synthesized .wav; agentLoopEnd reuses the turnEnd recording', () => {
-    const start = getDefaultPackPath('agentLoopStart');
-    assert.ok(start, 'agentLoopStart should resolve');
-    assert.equal(start.format, 'wav');
-    assert.ok(/[\\/]agentLoopStart\.wav$/i.test(start.path), `expected agentLoopStart.wav, got ${start.path}`);
-    const end = getDefaultPackPath('agentLoopEnd');
-    const turn = getDefaultPackPath('turnEnd');
-    assert.ok(end && turn, 'agentLoopEnd and turnEnd should resolve');
-    // Compare by manifest FILE (not the resolved absolute path): the dist/public
-    // resolution root can differ between the two lookups in an unbuilt tree, but
-    // the aliasing contract is about the recording file itself.
-    assert.ok(/[\\/]It_is_done_sir\.MP3$/i.test(end.path), `agentLoopEnd aliases the butler turnEnd MP3, got ${end.path}`);
-    assert.equal(end.format, turn.format, 'agentLoopEnd serves the same format as turnEnd');
-    // Sanguo parity: same aliasing rule in the second bundled pack.
-    const sanStart = getBundledPackPath('sanguo', 'agentLoopStart');
-    const sanEnd = getBundledPackPath('sanguo', 'agentLoopEnd');
-    const sanTurn = getBundledPackPath('sanguo', 'turnEnd');
-    assert.ok(sanStart && /[\\/]agentLoopStart\.wav$/i.test(sanStart.path), 'sanguo agentLoopStart is the .wav');
-    assert.ok(/[\\/]end\.MP3$/i.test(sanEnd.path), `sanguo agentLoopEnd aliases its turnEnd MP3, got ${sanEnd.path}`);
-    assert.equal(sanEnd.format, sanTurn.format);
-  });
 });
 
 describe('getBundledPackPath + listBundledPacks (multi-pack)', () => {

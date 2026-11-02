@@ -243,47 +243,6 @@ hooks: {
 }
 ```
 
-### `onAgentLoopStart` / `onAgentLoopEnd` — Parallel
-
-Triggered at the authoritative per-turn agent-loop boundaries, uniformly in PTY and SDK mode. Unlike the debounced `turn_end` voice signal, these are per-turn and turn-correlated: start when the turn is accepted (UserPromptSubmit hook in PTY mode, SDK push-accept in SDK mode), end at the turn's real settlement (SDK `result` message — background-task `task-notification` pseudo results are filtered; PTY Stop-hook after the voice debounce, or immediately on user interrupt). In SDK mode every turn yields exactly one start and one end. In PTY mode the end rides the cancellable voice debounce, so a prompt re-sent within the debounce window cancels the previous pending end (the new turn's start still fires) — PTY start/end pairing is therefore best-effort, not exactly-once.
-
-Shared payload:
-
-| Field            | Description                                                                                                                                          |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sessionId`      | Claude session id (`null` when unknown)                                                                                                              |
-| `ts`             | Boundary timestamp (ms)                                                                                                                              |
-| `project`        | Routing project key                                                                                                                                  |
-| `instance`       | Routing instance key (`null` = project-level)                                                                                                        |
-| `mode`           | `'pty'` \| `'sdk'` — which runtime produced the boundary                                                                                             |
-| `turnId`         | Per-turn id (SDK turns only; `null` in PTY mode)                                                                                                     |
-| `turnStartedAt`      | Wall-clock turn start stamp (SDK only; `null` in PTY mode)                                                                                           |
-| `reason`         | End only: `'success'` \| `'error'` \| `'interrupted'` \| `'interrupt-timeout'` \| `'lost-result'` \| `'turn-stuck'` \| `'session-ended'` \| `'stop-hook'` |
-| `transcriptPath` | End only, PTY: transcript file path when known                                                                                                       |
-
-| Property       | Description                                       |
-| -------------- | ------------------------------------------------- |
-| **Type**       | Parallel (concurrent notification)                |
-| **Parameters** | the payload object above                          |
-| **Returns**    | Ignored                                           |
-| **Timing**     | Turn accepted (start) / turn settled (end)        |
-
-```javascript
-hooks: {
-  async onAgentLoopEnd(payload) {
-    if (payload.reason === 'error') {
-      fetch('https://alerts.company.com/api/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: `Agent turn failed in ${payload.project}`, payload }),
-      }).catch(() => {});
-    }
-  },
-}
-```
-
-Service plugins receive the same events through `ctx.events.on('agent_loop_start' | 'agent_loop_end', cb)` (see [plugin-services.md](./plugin-services.md)).
-
 ## Hook Execution Models
 
 ### Waterfall

@@ -41,9 +41,6 @@ describe('sanguo end-to-end pipeline (zh user fresh launch)', () => {
     assert.equal(seed.planApproval, 'sanguo');
     assert.equal(seed.askQuestion, 'sanguo');
     assert.equal(seed.turnEnd, null);
-    // The agent-loop lifecycle events are opt-in everywhere (per-turn frequency).
-    assert.equal(seed.agentLoopStart, null);
-    assert.equal(seed.agentLoopEnd, null);
 
     // 2. mergeVoicePackInto — the path POST /api/preferences runs the seed
     // through. Must pass 'sanguo' values verbatim, not strip them.
@@ -54,8 +51,6 @@ describe('sanguo end-to-end pipeline (zh user fresh launch)', () => {
     assert.equal(merged.events.planApproval, 'sanguo');
     assert.equal(merged.events.askQuestion, 'sanguo');
     assert.equal(merged.events.turnEnd, null);
-    assert.equal(merged.events.agentLoopStart, null);
-    assert.equal(merged.events.agentLoopEnd, null);
 
     // 3. reconcileVoicePackPrefs — server persistence whitelist. Pre-P0-fix
     // (val === 'default' only), sanguo got nulled here on every save.
@@ -63,8 +58,6 @@ describe('sanguo end-to-end pipeline (zh user fresh launch)', () => {
     assert.equal(reconciled.events.planApproval, 'sanguo', 'reconcile must keep sanguo (P0)');
     assert.equal(reconciled.events.askQuestion, 'sanguo');
     assert.equal(reconciled.events.turnEnd, null);
-    assert.equal(reconciled.events.agentLoopStart, null, 'new event keys survive reconcile (null stays null)');
-    assert.equal(reconciled.events.agentLoopEnd, null);
 
     // 4. getBundledPackPath — server-side file resolution. The file must
     // actually exist in dist/ or public/, otherwise audio 404s and frontend

@@ -189,12 +189,6 @@ const RETRY_CONTINUE_PROMPT =
 // How often to re-broadcast sdk-session-state while a turn is active (keeps the client's
 // Stop button/spinner alive past its 30s stale sweep and re-seeds it after a view switch).
 const STATE_HEARTBEAT_MS = 10 * 1000;
-// Message-level activity coalescing: every non-boundary SDK message (assistant/user/
-// tool_progress/system task_*/status/api_retry/compact) refreshes turn liveness, but
-// rebroadcasting per message would flood the terminal WS on busy turns. Activity frames
-// reuse the sdk-session-state shape (heartbeat+activity flags) so clients need no new
-// handler, and are capped at one per ACTIVITY_MIN_INTERVAL_MS per turn.
-const ACTIVITY_MIN_INTERVAL_MS = 1000;
 // getContextUsage control requests have no SDK-side timeout — bound the wait so a live-but-
 // unresponsive child can't wedge the in-flight gate forever.
 const CTX_USAGE_TIMEOUT_MS = 10 * 1000;
@@ -211,11 +205,6 @@ let _onTurnEnd = null; // SDK mode has no Stop hook (ensureHooks() skipped) — 
 let _onQueryError = null; // query-level failure → (message: string, meta: {cwd, sessionId, instanceKey}) => void; cli.js forwards it as a scoped sdk-error WS frame (dialogue row + toast)
 let _broadcastWs = null;
 let _runWaterfallHook = null;
-// Authoritative per-turn loop boundaries (voice/plugin/SSE agent_loop_*). Unlike the
-// debounced turn_end, these fire exactly once per accepted turn at push time (start) and
-// at the turn's real settlement (end) — see _emitAgentLoopStart/_emitAgentLoopEnd.
-let _onAgentLoopStart = null;
-let _onAgentLoopEnd = null;
 // Durable process-level wiring registered ONCE by cli.js. Unlike the mutable callbacks
 // above (which stopSession clears), this survives a workspace stop→relaunch so a launch
 // route that omits the callbacks still restores them (see _adoptProcessWiring). Tests
@@ -227,8 +216,6 @@ export function setSdkProcessWiring(w) {
     onQueryError: w.onQueryError || null,
     broadcastWs: w.broadcastWs || null,
     runWaterfallHook: w.runWaterfallHook || null,
-    onAgentLoopStart: w.onAgentLoopStart || null,
-    onAgentLoopEnd: w.onAgentLoopEnd || null,
   };
 }
 function _adoptProcessWiring() {
@@ -237,8 +224,6 @@ function _adoptProcessWiring() {
   if (!_onQueryError) _onQueryError = _processWiring.onQueryError;
   if (!_broadcastWs) _broadcastWs = _processWiring.broadcastWs;
   if (!_runWaterfallHook) _runWaterfallHook = _processWiring.runWaterfallHook;
-  if (!_onAgentLoopStart) _onAgentLoopStart = _processWiring.onAgentLoopStart;
-  if (!_onAgentLoopEnd) _onAgentLoopEnd = _processWiring.onAgentLoopEnd;
 }
 
 // Process-level SDK LAUNCH-CONFIG template (2026-10-12). cli.js registers it once at boot
@@ -417,18 +402,7 @@ function _createSession(key, cwd) {
                              // second Stop would silently no-op).
   let _settleGraceTimer = null; // backstop after interrupt: force-settle if no result arrives
   let _lostResultTimer = null;  // lost-result backstop handle (cleared on turn settle/teardown)
-  // Generation guard for late results (replaces the old _lateResultTombstones counter).
-  // Result frames carry no turn id, so a force-settled turn's late result is
-  // indistinguishable from the NEXT turn's result on arrival order alone. The counter
-  // solved this by counting "results still owed", but it only reset on teardown/reset —
-  // so when the owed result NEVER arrived (the lost-result case), the count outlived its
-  // turn and swallowed the NEXT turn's result (no shift, no turn_end → that turn then
-  // force-settled as turn-stuck too). The guard instead binds the debt to the force-settled
-  // turn's epoch: a result is discarded only while it provably belongs to the dead
-  // generation. Once a NEWER turn is in flight, its own result pairs normally — the stale
-  // debt is dropped (the old result may never come, and must not tax the live turn).
-  let _turnEpoch = 0;        // advanced per _beginTurn; rec.epoch snapshots it
-  let _lateResultEpoch = 0;  // epoch of the force-settled turn awaiting a late result (0 = none)
+  let _lateResultTombstones = 0; // results to discard (already force-settled via grace/watchdog)
   let _consecutiveDeaths = 0;   // backstop against respawn storms in a broken environment
   // Activity probe (replaces the old fixed 25min silence watchdog): re-armed on every
   // incoming SDK message. When a turn stays silent past ACTIVITY_PROBE_IDLE_MS it pings
@@ -440,11 +414,6 @@ function _createSession(key, cwd) {
   let _activityProbe = null;
   let _probeFailures = 0;
   let _probeEpoch = 0; // bumped on any message/interrupt → invalidates an in-flight probe
-  // Monotonic inbound-message counter, bumped ONCE per received SDK message (not by
-  // watchdog arms/clears like _probeEpoch). The lost-result backstop snapshots it at
-  // arm time: any message arriving afterwards proves the head turn is producing work,
-  // so a mis-armed conviction (uncorrelatable-idle hazard) disarms instead of firing.
-  let _inboundMsgSeq = 0;
   // Suspect generation: set when an interrupt grace expires with no result (the CLI never
   // answered our Stop) or a probe convicts the child. The wedged query is torn down LAZILY
   // — on the next push rather than at conviction time — so we never SIGTERM a child that
@@ -468,12 +437,6 @@ function _createSession(key, cwd) {
   // reconnect replay like _lastInitSnapshot; reset alongside it on switch/reset.
   let _lastSessionState = null;
   let _stateHeartbeat = null;   // setInterval re-broadcasting sdk-session-state while a turn is active
-  // Message-activity coalescer state (see ACTIVITY_MIN_INTERVAL_MS): pending throttled
-  // activity frame plus the wall-clock turn stamp used as the wire-level turnStartedAt.
-  let _lastActivityAt = 0;
-  let _activityPending = null;  // { kind, rec }
-  let _activityTimer = null;
-  let _lastTurnStartedAt = 0;   // wire turnStartedAt for frames emitted with no head turn (idle settles)
   let _lastContextUsage = null;   // last sdk-context-usage frame for WS reconnect replay
   let _ctxUsageFetching = false;  // one getContextUsage control request in flight
   let _ctxUsageQueued = false;    // a turn-end/compact arrived while in flight → rerun once (coalesce)
@@ -551,13 +514,9 @@ function _createSession(key, cwd) {
     const rec = {
       id: 'turn_' + (++_turnSeq).toString(36) + '_' + Math.random().toString(36).slice(2, 8),
       resolve, interrupted: false, settled: false,
-      epoch: ++_turnEpoch, // generation this turn belongs to — the late-result guard keys off it
-      startedAt: Date.now(), // wall-clock turn stamp — the wire-level turnStartedAt (restart-safe, unlike the counter epoch)
-      loopStarted: false, loopEnded: false, // idempotence for the agent_loop boundary callbacks
       apiRetry: { count: 0, attempt: 0, maxRetries: 0, lastStatus: null, lastError: null },
     };
     _pendingTurns.push(rec);
-    _lastTurnStartedAt = rec.startedAt;
     return { rec, promise };
   }
 
@@ -593,36 +552,15 @@ function _createSession(key, cwd) {
    * pending timer, and the counter is reset by a successful/answered probe (or a full
    * teardown/reset) — otherwise conviction at MAX_FAILURES would be unreachable. */
   function _armTurnWatchdog() {
-    // NOTE: cancel + bump the epoch FIRST (any arm is triggered by observed activity
-    // and must invalidate an in-flight probe), then decide whether a timer is needed.
     _clearTurnWatchdog();
     if (_pendingTurns.length === 0) return;
-    if (_pendingApprovals.size > 0) {
-      // Approval pending = the child is parked awaiting our control response, which
-      // itself proves liveness — do not even probe. No timer is armed here; probing
-      // resumes via _rearmWatchdogAfterApprovalSettled when the last approval settles.
-      return;
-    }
     _activityProbe = setTimeout(() => {
       _activityProbe = null;
       if (_pendingTurns.length === 0) return;
-      if (_pendingApprovals.size > 0) { _armTurnWatchdog(); return; } // approval parked mid-wait — stand down
+      if (_pendingApprovals.size > 0) { _armTurnWatchdog(); return; } // approval pending = alive
       _runActivityProbe();
     }, _probeFailures === 0 ? ACTIVITY_PROBE_IDLE_MS : ACTIVITY_PROBE_INTERVAL_MS);
     if (_activityProbe.unref) _activityProbe.unref();
-  }
-
-  /** Re-arm the activity probe after the LAST pending approval settles (answered,
-   * cancelled, or timed out). _armTurnWatchdog deliberately arms NO timer while an
-   * approval is parked (the park itself proves liveness), so without this hook a
-   * child that wedges AFTER the approval clears would never be probed again — the
-   * watchdog would be permanently disarmed for the rest of the turn. Only re-arm
-   * when the approval map just emptied; a still-pending sibling approval keeps the
-   * park (and its liveness guarantee) intact. */
-  function _rearmWatchdogAfterApprovalSettled() {
-    if (_pendingTurns.length === 0) return;
-    if (_pendingApprovals.size > 0) return;
-    _armTurnWatchdog();
   }
 
   function _clearTurnWatchdog() {
@@ -704,15 +642,11 @@ function _createSession(key, cwd) {
     // and leaving them would replay a ghost modal on attach AND suppress probing on the
     // rebuilt generation (size > 0 = "alive"). They time out / deny as their own path.
     _cancelAllApprovals();
-    // Mark the result that a merely-slow child may still emit before the lazy teardown —
-    // otherwise it would fire a spurious turn_end for an already-failed turn. Bound to the
-    // head turn's epoch so it cannot tax a later turn if the result never arrives.
-    if (_pendingTurns[0]) _lateResultEpoch = _pendingTurns[0].epoch;
-    const stuckRecs = [..._pendingTurns];
+    // Tombstone the result that a merely-slow child may still emit before the lazy
+    // teardown — otherwise it would fire a spurious turn_end for an already-failed turn.
+    _lateResultTombstones++;
     _settleAllTurns();
-    for (const r of stuckRecs) _emitAgentLoopEnd(r, 'turn-stuck');
-    _announceSessionState('idle', stalledRec || null);
-    _clearActivity();
+    _announceSessionState('idle');
     // Retry is only possible if a session id was captured to resume — a first turn that
     // wedges before any init frame has nothing to continue, so don't offer [retry].
     const retryable = !!(_sessionId || _launchResume);
@@ -865,10 +799,7 @@ function _createSession(key, cwd) {
     // The CLI's own session_state_changed(running) arrives later and is idempotent
     // against this — on CLIs that never emit it (no env gate / older build) this is
     // the only "on" signal, paired with the result-idle broadcast in _processMessage.
-    _announceSessionState('running', rec);
-    // Authoritative loop start (voice/plugin/SSE agent_loop_start) — fires once, only
-    // after the push is accepted (queued/undelivered messages never ring).
-    _emitAgentLoopStart(rec);
+    _announceSessionState('running');
     _armTurnWatchdog();
     return { started: true, promise, turnId: rec.id };
   }
@@ -1147,9 +1078,7 @@ function _createSession(key, cwd) {
         // so a probe that timed out on the PREVIOUS quiet stretch cannot convict a turn
         // that has since demonstrably produced output.
         _probeFailures = 0;
-        _inboundMsgSeq++;
         _armTurnWatchdog(); // reset the activity probe on observed activity
-        _noteActivity(msg); // coalesced UI liveness (≤1/s sdk-session-state activity frame)
       }
       _onResidentDeath(query, inputQueue, null);
     } catch (err) {
@@ -1182,20 +1111,12 @@ function _createSession(key, cwd) {
     _clearGraceTimer();
     _clearTurnWatchdog();
     _clearStateHeartbeat();
-    _clearActivity();
-    // Clear any stale late-result debt: the dead generation's frames are filtered by the
-    // _activeQuery guard, so the owed result can never arrive — leaving the debt would
-    // suppress the next generation's api_retry frames (and its retry affordance).
-    _lateResultEpoch = 0;
+    _lateResultTombstones = 0;
     const hadTurns = _pendingTurns.length > 0;
     const headTurn = _pendingTurns[0] || null;
     // Session died mid-turn: no result will arrive, so without this the spinner would
-    // hang forever. The turn is unambiguously over. `headTurn` stamps the idle with the
-    // dead turn's id, and every pending turn reports its loop end (session-ended).
-    _announceSessionState('idle', headTurn);
-    // Only a turn that actually STARTED reports an end — a record that never reached the
-    // push (construction raced with this death) must not emit an end with no matching start.
-    if (hadTurns) { for (const rec of _pendingTurns) { if (rec.loopStarted) _emitAgentLoopEnd(rec, 'session-ended'); } }
+    // hang forever. The turn is unambiguously over.
+    _announceSessionState('idle');
     if (err && err.name !== 'AbortError') {
       console.error('[SDK] Resident query error:', err.message);
       _notifyQueryError(err);
@@ -1263,19 +1184,11 @@ function _createSession(key, cwd) {
     _clearTurnWatchdog();
     _probeFailures = 0;
     _clearStateHeartbeat();
-    _clearActivity();
-    // Teardown filters the dead generation's late frames via _activeQuery, so its owed
-    // result can never arrive — clear the debt or it would suppress the rebuilt turn's
-    // api_retry frames. (_lastFailedTurn survives on purpose; the debt must not.)
-    _lateResultEpoch = 0;
+    _lateResultTombstones = 0;
     // NOTE: _lastFailedTurn deliberately survives teardown — the lazy rebuild path
     // (_startTurn's suspect-generation teardown) must keep the recorded failure so the
     // manual [retry] affordance stays available. User-facing session boundaries clear it
     // instead: _resetFullState / _switchToSession (which funnel close/teardown/stop).
-    // Teardown is also a loop boundary: any turn that STARTED must report its end, or
-    // SSE clients / onAgentLoopEnd plugins see a start with no end (killed workspace,
-    // session switch mid-turn). Guard on loopStarted so a never-pushed record stays silent.
-    for (const rec of _pendingTurns) { if (rec.loopStarted) _emitAgentLoopEnd(rec, 'session-ended'); }
     _settleAllTurns();
     if (inputQueue) inputQueue.close();
     if (query) {
@@ -1372,85 +1285,15 @@ function _createSession(key, cwd) {
    * Announce a turn-level session state to WS clients (spinner source in SDK mode).
    * State-change guarded + retained for reconnect replay. Broadcast failures are
    * swallowed inside this helper — the message loop must never die on a UI signal.
-   *
-   * Every frame carries turn correlation (turnId + turnStartedAt): the CLI's
-   * session_state_changed has no turn id of its own, so a late frame from the PREVIOUS
-   * turn (e.g. its idle arriving after a fresh push) would otherwise clear the new
-   * turn's spinner. `rec` is the turn this state belongs to — internal settle paths
-   * pass it explicitly because the FIFO head may already have shifted.
    */
-  function _announceSessionState(state, rec = null) {
+  function _announceSessionState(state) {
     const valid = state === 'idle' || state === 'running' || state === 'requires_action';
     if (!valid || state === _lastSessionState) return;
     _lastSessionState = state;
-    const owner = rec || _pendingTurns[0] || null;
     // _broadcast carries the routing envelope (cwd + sessionId + instanceKey) — every
     // frame needs it so concurrent sessions' clients filter correctly.
-    _broadcast({
-      type: 'sdk-session-state', state,
-      turnId: owner ? owner.id : null,
-      turnStartedAt: owner ? owner.startedAt : _lastTurnStartedAt,
-    });
+    _broadcast({ type: 'sdk-session-state', state });
     _syncStateHeartbeat();
-  }
-
-  /** One-shot agent-loop boundary callbacks (voice/plugin/SSE agent_loop_*). Idempotent
-   * per turn record — every settle path (result, interrupt grace, lost result, stuck
-   * recovery, death) funnels through _emitAgentLoopEnd exactly once. Callback throws are
-   * isolated so a broken host can never wedge the message loop. */
-  function _emitAgentLoopStart(rec) {
-    if (!rec || rec.loopStarted) return;
-    rec.loopStarted = true;
-    if (!_onAgentLoopStart) return;
-    try { _onAgentLoopStart({ sessionId: _sessionId || null, ts: Date.now(), cwd: _cwd, instanceKey, turnId: rec.id, turnStartedAt: rec.startedAt }); }
-    catch (err) { reportSwallowed('sdk-manager.agent-loop-start', err); }
-  }
-  function _emitAgentLoopEnd(rec, reason) {
-    if (!rec || rec.loopEnded) return;
-    rec.loopEnded = true;
-    if (!_onAgentLoopEnd) return;
-    try { _onAgentLoopEnd({ sessionId: _sessionId || null, ts: Date.now(), cwd: _cwd, instanceKey, turnId: rec.id, turnStartedAt: rec.startedAt, reason }); }
-    catch (err) { reportSwallowed('sdk-manager.agent-loop-end', err); }
-  }
-
-  /** Coalesced message-level liveness: any non-boundary SDK message (assistant/user/
-   * tool_progress / system task_* frames / status / api_retry / compact …) proves the
-   * loop is alive mid-turn — including tool/compaction/hook phases the proxy's per-API
-   * streaming_status cannot see. Frames reuse the sdk-session-state shape with
-   * heartbeat+activity flags (no new client handler) and are capped at one per
-   * ACTIVITY_MIN_INTERVAL_MS. */
-  function _noteActivity(msg) {
-    if (_pendingTurns.length === 0 || !msg) return;
-    const t = msg.type;
-    if (t === 'result') return; // boundary, not progress
-    if (t === 'system' && msg.subtype === 'session_state_changed') return; // state frame, not activity
-    const rec = _pendingTurns[0];
-    const kind = t === 'system' ? `system:${msg.subtype || ''}`
-      : t === 'stream_event' ? `stream:${(msg.event && msg.event.type) || ''}` : t;
-    _activityPending = { kind, rec };
-    const wait = Math.max(0, ACTIVITY_MIN_INTERVAL_MS - (Date.now() - _lastActivityAt));
-    if (wait === 0) _flushActivity();
-    else if (!_activityTimer) {
-      _activityTimer = setTimeout(_flushActivity, wait);
-      if (_activityTimer.unref) _activityTimer.unref();
-    }
-  }
-  function _flushActivity() {
-    if (_activityTimer) { clearTimeout(_activityTimer); _activityTimer = null; }
-    const p = _activityPending; _activityPending = null;
-    if (!p || p.rec.settled || _pendingTurns[0] !== p.rec) return;
-    if (_lastSessionState !== 'running' && _lastSessionState !== 'requires_action') return;
-    _lastActivityAt = Date.now();
-    _broadcast({
-      type: 'sdk-session-state', state: _lastSessionState, heartbeat: true, activity: true,
-      kind: p.kind, turnId: p.rec.id, turnStartedAt: p.rec.startedAt,
-      pendingApprovals: _pendingApprovals.size,
-    });
-  }
-  function _clearActivity() {
-    if (_activityTimer) { clearTimeout(_activityTimer); _activityTimer = null; }
-    _activityPending = null;
-    _lastActivityAt = 0;
   }
 
   // The in-flight turn is the FIFO HEAD (the result branch shifts from the head).
@@ -1466,11 +1309,9 @@ function _createSession(key, cwd) {
     if (active && !_stateHeartbeat) {
       _stateHeartbeat = setInterval(() => {
         if (_lastSessionState !== 'running' && _lastSessionState !== 'requires_action') return;
-        const head = _pendingTurns[0] || null;
         _broadcast({
           type: 'sdk-session-state', state: _lastSessionState, heartbeat: true,
-          turnId: _currentTurnId(), turnStartedAt: head ? head.startedAt : _lastTurnStartedAt,
-          pendingApprovals: _pendingApprovals.size,
+          turnId: _currentTurnId(), pendingApprovals: _pendingApprovals.size,
         });
       }, STATE_HEARTBEAT_MS);
       if (_stateHeartbeat.unref) _stateHeartbeat.unref();
@@ -1500,42 +1341,24 @@ function _createSession(key, cwd) {
         // which cli.js injects into the child env; on CLIs that never emit it the
         // push/result fallbacks keep the spinner correct at result granularity.
         if (msg.subtype === 'session_state_changed') {
-          // Late-idle suppression (LOAD-BEARING gate): session_state_changed carries no
-          // turn id, so an idle that settles the PREVIOUS turn can arrive after a fresh
-          // push. If the head turn has never been seen running/requires_action by the CLI,
-          // this idle cannot belong to it — drop it, or it would kill the new turn's
-          // spinner. The frontend's turnStartedAt guard is NOT a substitute here: a stale
-          // idle processed AFTER the new push is stamped with the NEW head's epoch, so the
-          // client cannot tell it apart — only this server-side cliStateSeen gate can (the
-          // client guard only helps against transport-level reordering of older-stamped
-          // frames). Residual hazard (new turn's running lands before the old idle): the
-          // gate passes it; the lost-result backstop's armedSeq check below disarms the
-          // resulting mis-armed conviction when the head turn is still producing messages.
-          const head = _pendingTurns[0] || null;
-          const staleIdle = msg.state === 'idle' && head && !head.cliStateSeen;
-          if (!staleIdle) {
-            _announceSessionState(msg.state, head);
-            // A CLI-emitted running/requires_action proves the head turn is genuinely
-            // in-flight on the child (vs a freshly-drained turn whose own CLI frames have
-            // not arrived yet). Lost-result only arms for such a turn — a LATE idle frame
-            // from the previous turn must not convict the just-pushed one.
-            if ((msg.state === 'running' || msg.state === 'requires_action') && head) head.cliStateSeen = true;
-            // Lost-result backstop: the CLI says the turn settled (idle) but no result
-            // message arrived for our pending FIFO. Without this _queryBusy would wedge
-            // forever now that the 25min silence watchdog is gone. Give the result a short
-            // grace to arrive first (frame ordering within a turn end is not guaranteed),
-            // then settle as a retryable failure.
-            if (msg.state === 'idle' && head && head.cliStateSeen) _armLostResultBackstop();
-          }
+          _announceSessionState(msg.state);
+          // A CLI-emitted running/requires_action proves the head turn is genuinely
+          // in-flight on the child (vs a freshly-drained turn whose own CLI frames have
+          // not arrived yet). Lost-result only arms for such a turn — a LATE idle frame
+          // from the previous turn must not convict the just-pushed one.
+          if ((msg.state === 'running' || msg.state === 'requires_action') && _pendingTurns[0]) _pendingTurns[0].cliStateSeen = true;
+          // Lost-result backstop: the CLI says the turn settled (idle) but no result
+          // message arrived for our pending FIFO. Without this _queryBusy would wedge
+          // forever now that the 25min silence watchdog is gone. Give the result a short
+          // grace to arrive first (frame ordering within a turn end is not guaranteed),
+          // then settle as a retryable failure.
+          if (msg.state === 'idle' && _pendingTurns.length > 0 && _pendingTurns[0].cliStateSeen) _armLostResultBackstop();
         } else if (msg.subtype === 'api_retry') {
           // The CLI's own retry of a retryable API error (502/429/5xx/network). It carries
           // no turn id, so we attribute it to the head pending turn — approximate but
-          // correct in the common single-turn case. Skipped only while a late-result debt
-          // is pending AND no live turn could own the frame (a late retry of an
-          // already-interrupted turn must not relight the bar). The gate mirrors the
-          // result branch's orphan rule: a stale debt must never suppress a live turn's
-          // own retry frames, and must not outlive the teardown/reset that orphaned it.
-          if (_lateResultEpoch === 0 || _pendingTurns.length > 0) {
+          // correct in the common single-turn case. Skipped while a tombstone is pending
+          // (a late retry of an already-interrupted turn must not relight the bar).
+          if (_lateResultTombstones === 0) {
             const rec = _pendingTurns.length ? _pendingTurns[0] : null;
             if (rec) {
               rec.apiRetry.count += 1;
@@ -1620,49 +1443,26 @@ function _createSession(key, cwd) {
 
       case 'result': {
         if (msg.session_id) _sessionId = msg.session_id;
-        // Background-task wake results are NOT turn boundaries: while local_agent /
-        // local_workflow tasks are active the CLI holds the turn's real result back, and
-        // each answered task notification can yield a synthetic result (num_turns: 0,
-        // empty result). Treating one as end-of-turn fires a phantom turn_end (and would
-        // ring the voice pack / clear the spinner mid-loop), so skip it entirely.
-        if (msg.origin && msg.origin.kind === 'task-notification') break;
-        // Generation guard for late results. Result frames carry no turn id, so a result
-        // that arrives AFTER its turn was force-settled is indistinguishable from the NEXT
-        // turn's result on arrival order alone. The guard resolves this by generation:
-        // a force-settled turn is REMOVED from the FIFO (shift / settleAll), so when a
-        // result arrives and the FIFO is EMPTY, nothing live could own it — it is the dead
-        // generation's late result and is discarded (no turn_end, no error attribution).
-        //
-        // Deliberate trade-off (NOT a guarantee): when a NEWER turn is already in flight,
-        // an arriving result is paired with it (`head.epoch > _lateResultEpoch`), because
-        // swallowing the live turn's own result is the worse failure (that was the original
-        // bug — the stuck turn got mis-settled as turn-stuck and re-ran). The cost is that
-        // a genuinely-late result of the dead generation CAN be mis-paired to the live turn
-        // here (an early/extra turn_end, or a wrong error toast attributed to it) — accepted
-        // because the live turn must not lose its own result. This window is narrow: the
-        // late result must arrive after the backstop AND after a newer turn has started.
-        if (_lateResultEpoch !== 0) {
-          const head = _pendingTurns[0] || null;
-          if (!head) {
-            // No live turn could own this result — it is the dead generation's late result.
-            _lateResultEpoch = 0;
-            _clearGraceTimer();
-            _queryBusy = false;
-            _turnInFlight = false;
-            // The dead generation is over — but a NEWER turn may already be in flight
-            // (Stop → grace settle → user re-sent → late result of the old turn arrives).
-            // Only announce idle when no turn is pending, else we'd kill turn 2's spinner.
-            if (_pendingTurns.length === 0) {
-              _announceSessionState('idle');
-              _clearTurnWatchdog();
-              _clearActivity();
-            }
-            _maybeDrain();
-            break;
+        // Grace/watchdog tombstone: a result that arrives AFTER its turn was already
+        // force-settled belongs to that dead turn — discard it instead of letting it
+        // settle (and prematurely end) the NEXT turn. If the tombstone outlived its turn
+        // entirely (the owed result never comes) the count would swallow a FUTURE turn's
+        // result — the bookkeeping clear below keeps that mistake bounded to the
+        // turn-end signal rather than wedging _queryBusy.
+        if (_lateResultTombstones > 0) {
+          _lateResultTombstones--;
+          _clearGraceTimer();
+          _queryBusy = false;
+          _turnInFlight = false;
+          // The tombstoned turn is over — but a NEWER turn may already be in flight
+          // (Stop → grace settle → user re-sent → late result of the old turn arrives).
+          // Only announce idle when no turn is pending, else we'd kill turn 2's spinner.
+          if (_pendingTurns.length === 0) {
+            _announceSessionState('idle');
+            _clearTurnWatchdog();
           }
-          // A NEWER generation is in flight: this result is that live turn's own, so fall
-          // through to pair it normally — and drop the never-arriving late result's debt.
-          _lateResultEpoch = 0;
+          _maybeDrain();
+          break;
         }
         const rec = _pendingTurns.shift();
         // 502/retry state machine. An error result after observed CLI retries records a
@@ -1696,12 +1496,7 @@ function _createSession(key, cwd) {
         // in CLI mode — fires once per user-prompt response when the whole chain
         // (assistant text + all tool calls + final reply) completes. SDK mode
         // doesn't go through ensureHooks() so this in-process callback is the
-        // only way the renderer learns the turn is over. NOTE: deliberately NOT
-        // gated on `rec` — the late-result trade-off (see the generation-guard
-        // comment above) pairs a dead turn's late result with the live turn, and
-        // the live turn's OWN result can then arrive with an empty FIFO; phantom
-        // ringing from background tasks is prevented by the task-notification
-        // filter above, not by requiring a FIFO record.
+        // only way the renderer learns the turn is over.
         if (_onTurnEnd) {
           // Per-workspace (2026-10): carry the session's own cwd so the server
           // can route turn_end to THIS workspace's SSE scope (SDK mode has no
@@ -1710,23 +1505,13 @@ function _createSession(key, cwd) {
           catch (err) { console.warn('[sdk-manager] onTurnEnd threw:', err?.message); }
         }
         if (rec) _settleTurn(rec);
-        // Authoritative loop end for THIS turn — immediate, per-turn (turnId/turnStartedAt
-        // correlated), unlike the debounced turn_end above. `is_error`/non-success
-        // subtypes distinguish error ends; interrupted turns report their own reason.
-        if (rec) {
-          const errored = msg.is_error === true || (msg.subtype && msg.subtype !== 'success');
-          _emitAgentLoopEnd(rec, rec.interrupted ? 'interrupted' : (errored ? 'error' : 'success'));
-        }
         _clearGraceTimer();
-        _clearActivity();
         _queryBusy = false;
         _turnInFlight = false;
         // Turn-level spinner clear at result time — immediate, unlike the debounced
         // `turn_end` SSE (voice-pack semantics). Idempotent against a real
-        // session_state_changed(idle) arriving before/after. `rec` is passed explicitly:
-        // the FIFO head has already shifted, so the default head lookup would stamp this
-        // idle with the NEXT turn's id.
-        _announceSessionState('idle', rec);
+        // session_state_changed(idle) arriving before/after.
+        _announceSessionState('idle');
         if (_pendingTurns.length === 0) _clearTurnWatchdog();
         _maybeDrain();
         // Refresh the context-usage panel AFTER the turn fully settles (fire-and-forget,
@@ -2203,7 +1988,6 @@ function _createSession(key, cwd) {
         // Close the modal on every client — a silent deny would leave it hanging forever.
         _broadcastApprovalDismiss(kind, id, 'timeout');
         resolve(null);
-        _rearmWatchdogAfterApprovalSettled();
       }, timeoutMs);
       const entry = {
         kind,  // 'ask' | 'plan' | 'perm' — lets cancelApproval distinguish types so an
@@ -2222,7 +2006,6 @@ function _createSession(key, cwd) {
           if (cur?.auto) cancelAutoApproveState(cur.auto);
           _pendingApprovals.delete(id);
           resolve(value);
-          _rearmWatchdogAfterApprovalSettled();
         },
       };
       _pendingApprovals.set(id, entry);
@@ -2366,16 +2149,14 @@ function _createSession(key, cwd) {
       const rec = _pendingTurns[0];
       if (!rec || !rec.interrupted) return;
       console.warn('[sdk-manager] no result within interrupt grace — settling the turn and marking the generation suspect');
-      _lateResultEpoch = rec.epoch; // discard this generation's late result, never a later turn's
+      _lateResultTombstones++;
       _pendingTurns.shift();
       _settleTurn(rec);
-      _emitAgentLoopEnd(rec, 'interrupt-timeout');
       _queryBusy = false;
       _suspectGeneration = true;
       // The CLI never answered the interrupt — no result is coming, so clear the
       // spinner here rather than waiting on a dead signal.
-      _announceSessionState('idle', rec);
-      _clearActivity();
+      _announceSessionState('idle');
       if (_pendingTurns.length === 0) _clearTurnWatchdog();
       _maybeDrain();
     }, INTERRUPT_GRACE_MS);
@@ -2393,32 +2174,17 @@ function _createSession(key, cwd) {
     // backstop from turn A must never settle turn B (which may be parked on the SAME idle
     // state). The interrupt-grace path owns user-cancelled turns — skip those here.
     const armedRec = _pendingTurns[0] || null;
-    const armedSeq = _inboundMsgSeq; // any message arriving after arming bumps this
     _lostResultTimer = setTimeout(() => {
       _lostResultTimer = null;
       const rec = _pendingTurns[0];
       if (!rec || rec !== armedRec || rec.interrupted) return;   // stale arm / different turn / user-cancelled
       if (_queryBusy === false) return;
       if (_lastSessionState !== 'idle') return; // a newer turn started running — not lost
-      // Mitigation for the uncorrelatable-idle hazard: if the accepted idle actually
-      // belonged to the PREVIOUS turn (the new turn's `running` landed first, so
-      // cliStateSeen was already true and the gate passed it), the head turn may still
-      // be alive. A message arriving after arming proves the head turn is producing
-      // work — not lost. Disarm rather than convict it as turn-stuck. (armedSeq is read
-      // inside _processMessage, BEFORE the drain loop increments the seq for the very
-      // idle that armed us — so exactly ONE bump is expected from the arming message;
-      // anything beyond it is post-arm activity.)
-      if (_inboundMsgSeq > armedSeq + 1) return;
       console.warn('[sdk-manager] session idle but a turn result never arrived — settling as lost result');
-      // Mark the head turn's epoch as owing a result: without it a late result would
+      // Tombstone the result that may still arrive: without it the late result would
       // consume the NEXT turn's FIFO record (settling it early and mispairing turn-end).
-      // Binding to the epoch (not a count) is the fix for the swallowed-next-result bug —
-      // this result never arriving must not let the debt outlive its generation.
-      if (_pendingTurns[0]) _lateResultEpoch = _pendingTurns[0].epoch;
-      const lostRecs = [..._pendingTurns];
+      _lateResultTombstones++;
       _settleAllTurns();
-      _clearActivity();
-      for (const r of lostRecs) _emitAgentLoopEnd(r, 'lost-result');
       const retryable = !!(_sessionId || _launchResume);
       _lastFailedTurn = {
         turnId: rec.id || null, retryable, apiStatus: rec.apiRetry?.lastStatus ?? null,
@@ -2658,12 +2424,10 @@ function _createSession(key, cwd) {
     if (_lastSessionState && _lastSessionState !== 'idle') _announceSessionState('idle');
     _lastSessionState = null;
     _clearStateHeartbeat();
-    _clearActivity();
-    _lastTurnStartedAt = 0;
     _clearContextUsage('session-switched');
     _clearMcpStatus('session-switched');
     _pendingTurns = [];
-    _lateResultEpoch = 0; // session boundary: a stale debt must not follow into the new session
+    _lateResultTombstones = 0;
     _consecutiveDeaths = 0;
     _suspectGeneration = false;
     _lastFailedTurn = null;
@@ -2719,8 +2483,7 @@ function _createSession(key, cwd) {
     getSdkInitSnapshot: () => _lastInitSnapshot,
     getSessionStateSnapshot: () => {
       if (!_lastSessionState) return null;
-      const head = _pendingTurns[0] || null;
-      return { type: 'sdk-session-state', state: _lastSessionState, sessionId: _sessionId || null, cwd: _cwd, instanceKey, turnId: _currentTurnId(), turnStartedAt: head ? head.startedAt : _lastTurnStartedAt, pendingApprovals: _pendingApprovals.size };
+      return { type: 'sdk-session-state', state: _lastSessionState, sessionId: _sessionId || null, cwd: _cwd, instanceKey, turnId: _currentTurnId(), pendingApprovals: _pendingApprovals.size };
     },
     getContextUsageSnapshot: () => _lastContextUsage,
     getMcpStatusSnapshot: () => _lastMcpStatus,
@@ -2856,8 +2619,6 @@ export function __isEphemeralHostForTests(cwd) {
  * @param {function} deps.broadcastWs — (msg) => void, terminal-WS broadcast for approvals
  * @param {string} [deps.permissionMode]
  * @param {function} [deps.runWaterfallHook] — plugin waterfall (onPlanRequest/onAskRequest/onPermRequest)
- * @param {function} [deps.onAgentLoopStart] — ({sessionId, ts, cwd, instanceKey, turnId, turnStartedAt}) => void, fired once per accepted turn
- * @param {function} [deps.onAgentLoopEnd] — (same + reason) => void, fired once at the turn's real settlement
  * @param {object} [deps.env] — child env (must already contain ANTHROPIC_BASE_URL → ccv proxy)
  * @param {object} [deps.settings] — merged Settings object (env.ANTHROPIC_BASE_URL double-injection)
  * @param {string} [deps.model] — --model lifted from user args (options.model)
@@ -2867,7 +2628,7 @@ export function __isEphemeralHostForTests(cwd) {
  *   must come from the same selection as PTY mode, else the SDK spawns a PATH claude that
  *   host security tooling (e.g. agent-security headless guards) may SIGKILL on spawn
  */
-export function initSdkSession(cwd, projectName, { onTurnEnd, onQueryError, broadcastWs, permissionMode, runWaterfallHook, onAgentLoopStart, onAgentLoopEnd, env, settings, model, launchResume, userArgs, claudeExecutable } = {}) {
+export function initSdkSession(cwd, projectName, { onTurnEnd, onQueryError, broadcastWs, permissionMode, runWaterfallHook, env, settings, model, launchResume, userArgs, claudeExecutable } = {}) {
   void projectName; // reserved (display name comes from the wire path)
   // Process-global callbacks (cli.js registers one wiring; every session reuses it). Only
   // OVERWRITE when a callback is actually passed — a later per-workspace init (the launch
@@ -2877,8 +2638,6 @@ export function initSdkSession(cwd, projectName, { onTurnEnd, onQueryError, broa
   if (onQueryError !== undefined) _onQueryError = onQueryError || null;
   if (broadcastWs !== undefined) _broadcastWs = broadcastWs;
   if (runWaterfallHook !== undefined) _runWaterfallHook = runWaterfallHook || null;
-  if (onAgentLoopStart !== undefined) _onAgentLoopStart = onAgentLoopStart || null;
-  if (onAgentLoopEnd !== undefined) _onAgentLoopEnd = onAgentLoopEnd || null;
   // Restore any callback stopSession() cleared from the durable process wiring (cli.js's
   // registration). A workspace stop→relaunch omits these callbacks, so without this every
   // sdk-* frame would silently stop broadcasting after returning to the workspace list.
@@ -3060,8 +2819,6 @@ export function stopSession() {
   _onQueryError = null;
   _broadcastWs = null;
   _runWaterfallHook = null;
-  _onAgentLoopStart = null;
-  _onAgentLoopEnd = null;
 }
 
 /**

@@ -79,8 +79,6 @@ export default {
 | `serverStarted` | parallel | `{ port, host, url, ip, token, protocol, httpServer, pty }` | 忽略 | 服务器启动成功后 |
 | `serverStopping` | parallel | `{}` | 忽略 | 服务器关闭前 |
 | `onNewEntry` | parallel | `entry` (JSONL 日志条目对象) | 忽略 | 检测到新的 JSONL 日志条目时 |
-| `onAgentLoopStart` | parallel | `{ sessionId, ts, project, instance, mode, turnId, turnStartedAt }` | 忽略 | 一轮用户回合被接受时（PTY UserPromptSubmit / SDK push 受理） |
-| `onAgentLoopEnd` | parallel | 同上 + `reason` + `transcriptPath?` | 忽略 | 一轮用户回合真实结束时（SDK result / PTY Stop 防抖后 / 用户打断） |
 
 ---
 
@@ -290,42 +288,6 @@ hooks: {
   },
 }
 ```
-
-### `onAgentLoopStart` / `onAgentLoopEnd` — 智能体循环边界
-
-**类型：Parallel（并行通知）**
-
-在权威的单轮 Agent-Loop 边界触发，PTY 与 SDK 模式语义一致。与走 10 秒防抖的 `turn_end` 语音信号不同，这两个 hook 按轮次触发且带 turn 关联：start 在回合被接受时（PTY 的 UserPromptSubmit hook；SDK 的 push 受理），end 在回合真实结束时（SDK `result` 消息——后台任务 `task-notification` 伪 result 已被过滤；PTY 为 Stop hook 防抖后，或用户打断时立即）。SDK 模式下每轮恰好一对 start/end；PTY 模式的 end 走可取消的语音防抖，防抖窗口内重发提示会取消上一个未发的 end（新回合的 start 仍会触发），故 PTY 的 start/end 配对是尽力而为、不保证恰好一次。
-
-**参数说明（两者共享同一 payload）：**
-
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `sessionId` | `string \| null` | Claude 会话 id |
-| `ts` | `number` | 边界时间戳（毫秒） |
-| `project` | `string` | 路由 project key |
-| `instance` | `string \| null` | 路由 instance key（`null` = project 级） |
-| `mode` | `'pty' \| 'sdk'` | 产生该边界的运行时 |
-| `turnId` | `string \| null` | 单轮 id（仅 SDK；PTY 为 `null`） |
-| `turnStartedAt` | `number \| null` | 回合开始的墙钟戳（仅 SDK；PTY 为 `null`） |
-| `reason` | `string` | 仅 end：`'success'` \| `'error'` \| `'interrupted'` \| `'interrupt-timeout'` \| `'lost-result'` \| `'turn-stuck'` \| `'session-ended'` \| `'stop-hook'` |
-| `transcriptPath` | `string` | 仅 end 且 PTY：已知的 transcript 文件路径 |
-
-```javascript
-hooks: {
-  async onAgentLoopEnd(payload) {
-    if (payload.reason === 'error') {
-      fetch('https://alerts.company.com/api/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: `智能体回合失败：${payload.project}`, payload }),
-      }).catch(() => {});
-    }
-  },
-}
-```
-
-service 插件可通过 `ctx.events.on('agent_loop_start' | 'agent_loop_end', cb)` 订阅同一事件（见 [plugin-services.zh.md](./plugin-services.zh.md)）。
 
 ---
 

@@ -102,7 +102,7 @@ function CrumbDropTarget({ label, path, link, onNavigate, onMove, title, readOnl
   );
 }
 
-function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNavigate, onSelectFile, onOpenFile, currentPath, selectedPath, treeCache, cacheEpoch, isRemote, onFileRenamed, onAttachToChat, onInsertPathToChat, onImportFiles, onMove, project, instance, target, readOnly }) {  const childPath = path ? `${path}/${item.name}` : item.name;
+function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNavigate, onSelectFile, currentPath, selectedPath, treeCache, cacheEpoch, isRemote, onFileRenamed, onAttachToChat, onInsertPathToChat, onImportFiles, onMove, project, instance, target, readOnly }) {  const childPath = path ? `${path}/${item.name}` : item.name;
   const isDir = item.type === 'directory';
   const expanded = expandedPaths.has(childPath);
   const isGitIgnored = item.gitIgnored || false;
@@ -138,12 +138,10 @@ function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNav
     if (isDir) {
       onNavigate(childPath);
     } else {
-      // Select the row for highlight, then open the file content directly —
-      // a click on an openable file shows its content instead of only selecting it.
+      // Reveal the file in the grid: navigate to its parent and select it.
       onSelectFile(childPath);
-      onOpenFile(item, childPath);
     }
-  }, [isDir, childPath, item, onNavigate, onSelectFile, onOpenFile]);
+  }, [isDir, childPath, onNavigate, onSelectFile]);
 
   const handleArrowClick = useCallback((e) => {
     e.stopPropagation();
@@ -246,7 +244,6 @@ function ModalTreeNode({ item, path, depth, expandedPaths, onToggleExpand, onNav
           onToggleExpand={onToggleExpand}
           onNavigate={onNavigate}
           onSelectFile={onSelectFile}
-          onOpenFile={onOpenFile}
           currentPath={currentPath}
           selectedPath={selectedPath}
           treeCache={treeCache}
@@ -638,13 +635,6 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
     setPreviewFile(childPath);
   }, [currentPath, navigate, project, instance, readOnly]);
 
-  // Open a file directly from the tree: the row's childPath is already rooted, so
-  // this reuses openItem's open decision (html / image / content) without needing
-  // currentPath the way the grid does.
-  const openTreeFile = useCallback((item, childPath) => {
-    openItem({ ...item, name: childPath });
-  }, [openItem]);
-
   const retry = useCallback(() => {
     treeCache.current.delete(currentPath);
     loadGrid(currentPath);
@@ -822,7 +812,6 @@ export default function FileBrowserModal({ open = false, onClose, onAttachToChat
               onToggleExpand={handleToggleExpand}
               onNavigate={navigate}
               onSelectFile={handleSelectFileFromTree}
-              onOpenFile={openTreeFile}
               currentPath={currentPath}
               selectedPath={selectedPath}
               treeCache={treeCache}

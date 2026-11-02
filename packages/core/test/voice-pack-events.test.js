@@ -11,23 +11,13 @@ import {
 } from '../src/voice-pack-events.js';
 
 describe('voice-pack-events.js EVENT_KEYS 不变量', () => {
-  it('当前 EVENT_KEYS 锁定为 5 项 (planApproval / askQuestion / turnEnd / agentLoopStart / agentLoopEnd)', () => {
-    assert.equal(EVENT_KEYS.length, 5, `EVENT_KEYS 长度必须为 5，实测 ${EVENT_KEYS.length}: ${EVENT_KEYS.join(',')}`);
+  it('当前 EVENT_KEYS 锁定为 3 项 (planApproval / askQuestion / turnEnd)', () => {
+    assert.equal(EVENT_KEYS.length, 3, `EVENT_KEYS 长度必须为 3，实测 ${EVENT_KEYS.length}: ${EVENT_KEYS.join(',')}`);
     assert.deepEqual(
       [...EVENT_KEYS].sort(),
-      ['agentLoopEnd', 'agentLoopStart', 'askQuestion', 'planApproval', 'turnEnd'],
+      ['askQuestion', 'planApproval', 'turnEnd'],
       'EVENT_KEYS 内容必须严格匹配（防 typo / 误增 / 误删）',
     );
-  });
-
-  it('agentLoopStart / agentLoopEnd 默认 null（opt-in，按轮频率默认关）', () => {
-    assert.equal(DEFAULT_BINDINGS.agentLoopStart, null);
-    assert.equal(DEFAULT_BINDINGS.agentLoopEnd, null);
-    for (const locale of ['zh', 'zh-TW', 'en']) {
-      const b = getDefaultBindingsForLocale(locale);
-      assert.equal(b.agentLoopStart, null, `${locale} agentLoopStart stays null`);
-      assert.equal(b.agentLoopEnd, null, `${locale} agentLoopEnd stays null`);
-    }
   });
 
   it('timeoutWarning5min / timeoutWarning60s 已彻底剔除（防回滚）', () => {

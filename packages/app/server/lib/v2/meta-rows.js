@@ -193,9 +193,7 @@ const _coldBundleFlight = new SingleFlight({ ttlMs: 500 });
 
 /**
  * The complete v3 cold read for one /events connection: windowed rows +
- * native conv/responses payloads, single-flighted per (dir, window). The
- * returned `native.convSeqs` is the conv coverage the /events attach buffer
- * uses to avoid double-replaying conv lines (see attach-buffer.js).
+ * native conv/responses payloads, single-flighted per (dir, window).
  */
 export function readV2ColdBundle(sessionDir, { limit = 0, since = null } = {}) {
   const key = `bundle:${sessionDir}|${limit}|${since || ''}`;
@@ -219,12 +217,8 @@ export function readV2ColdBundle(sessionDir, { limit = 0, since = null } = {}) {
  *
  * @param {string} sessionDir - leader dir (teammate dirs folded like the rows)
  * @param {object[]} rows - the window rows (readV2RequestsMeta output)
- * @returns {Promise<{convPayloads: string[], respPayloads: string[],
- *   convSeqs: Map<string, {seqs: Set<number>, baseSeq: number}>}>}
- *   pre-serialized JSON payloads for `v3_conv` / `v3_resp` SSE frames, plus the
- *   conv-line coverage keyed `${sessionId}\x00${channel}` — used by the /events
- *   attach buffer to skip replaying a v3_conv frame the cold bundle already
- *   carried (client conv replay is NOT idempotent; see attach-buffer.js).
+ * @returns {Promise<{convPayloads: string[], respPayloads: string[]}>}
+ *   pre-serialized JSON payloads for `v3_conv` / `v3_resp` SSE frames
  */
 export async function readV2NativeCold(sessionDir, rows) {
   const yieldLoop = () => new Promise((resolve) => setImmediate(resolve));
@@ -244,7 +238,6 @@ export async function readV2NativeCold(sessionDir, rows) {
 
   const convPayloads = [];
   const respPayloads = [];
-  const convSeqs = new Map();
   for (const dir of dirs) {
     const dirMeta = readMeta(dir);
     const sessionId = (dirMeta && dirMeta.sessionId) || basename(dir);
@@ -277,30 +270,6 @@ export async function readV2NativeCold(sessionDir, rows) {
         if (i % 2000 === 1999) await yieldLoop();
       }
       const windowRaws = raws.slice(start);
-      // Record every conv line the cold bundle is about to send so the /events
-      // attach buffer can skip replaying it. baseSeq = the smallest seq in the
-      // window (the snapshot baseline is the first in seq order) — a replayed seq
-      // below it was already reflected in the cold assembly and must not be
-      // re-consumed either. Only lines that PARSE are recorded: a torn trailing
-      // line (writer mid-append, no newline yet) is NOT in coverage — its seq is
-      // re-sent complete by the live feed once the newline lands, and the replay
-      // must not skip it (a skipped snapshot would corrupt the client's assembler).
-      {
-        const covKey = `${sessionId}\x00${key}`;
-        let cov = convSeqs.get(covKey);
-        if (!cov) { cov = { seqs: new Set(), baseSeq: Infinity }; convSeqs.set(covKey, cov); }
-        for (const raw of windowRaws) {
-          let seq = null;
-          try {
-            const ev = JSON.parse(raw);
-            if (Number.isInteger(ev && ev.seq)) seq = ev.seq;
-          } catch { /* torn line: not covered — the live re-send must not be skipped */ }
-          if (seq === null) continue;
-          cov.seqs.add(seq);
-          if (seq < cov.baseSeq) cov.baseSeq = seq;
-        }
-        if (cov.baseSeq === Infinity) cov.baseSeq = 0;
-      }
       // Cap each frame at ~512KB of lines: a multi-MB single SSE event forces
       // one giant synchronous JSON.parse on the client's main thread (no
       // paint, no rAF — the loading UI freezes). Small frames are macrotask
@@ -318,7 +287,7 @@ export async function readV2NativeCold(sessionDir, rows) {
     await yieldLoop();
     pushChunked(respPayloads, respRaws, (linesJson) => `{"sessionId":${JSON.stringify(sessionId)},"lines":[${linesJson}]}`);
   }
-  return { convPayloads, respPayloads, convSeqs };
+  return { convPayloads, respPayloads };
 }
 
 const NATIVE_FRAME_BUDGET = 512 * 1024;

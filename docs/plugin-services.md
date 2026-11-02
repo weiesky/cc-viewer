@@ -127,7 +127,7 @@ interface PluginContext {
   config: Readonly<object>;     // manifest config.defaults (no runtime writes in v1)
   logger: { debug/info/warn/error(...): void };
   events: {
-    on(event: 'new_entry' | 'stream_chunk' | 'agent_loop_start' | 'agent_loop_end', cb): () => void; // auto-unsubscribed on deactivate
+    on(event: 'new_entry' | 'stream_chunk', cb): () => void; // auto-unsubscribed on deactivate
   };
   signal: AbortSignal;          // aborted on deactivate/unload
   isStopping(): boolean;

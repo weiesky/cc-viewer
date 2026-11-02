@@ -50,14 +50,6 @@ export function createChannelState() {
     turnActiveSince: null,
     turnSignalTs: null,
     turnStaleTimer: null,
-    // SDK turn correlation: highest sdk-session-state turnStartedAt seen on this
-    // channel — frames stamped with an older epoch belong to a dead turn and
-    // are dropped (late idle must not clear a fresh turn's spinner).
-    sdkTurnStartedAt: 0,
-    // Last agentLoopEnd voice cue that ACTUALLY played on this channel
-    // ({ ts, sessionId }) — lets _onTurnEnd skip the legacy turnEnd ring for
-    // the same boundary (double-ring suppression).
-    lastAgentLoopEnd: null,
     streamingOffTimer: null,
     streamingRaf: null,
     pendingStreamingLatest: null,

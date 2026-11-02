@@ -2,26 +2,6 @@
 
 ## Unreleased
 
-- perf(web): **切换/发送长上下文对话时界面长时间迟滞** — 工具文件变更监听（`ToolFileChangeController.check`）此前在每个 SSE tick 都对所有会话 + 所有请求的全部 messages 做两遍全量遍历；长会话里每个 request.body.messages 都是累积前缀，求和即 O(上下文²)，且与「当前/新会话」无关，故新开会话也同样卡。改为按「session/request 对象引用」的 WeakMap 增量游标，只扫自上次以来新增的 messages（尾部一条重扫以覆盖流式合并进已扫 message 的 content 增长），tool_use 映射跨调用持久累积防止漏判文件修改；冷加载/切会话时由 ChatView 调 resetCursors 整体重建。Coverage: `tool-file-change-controller.test.js`.
-
-- fix(server): **打开有预载历史的项目（SDK 模式）后发新消息不刷新对话画面** — 历史会话目录被 live-feed 重连时以 `suppressExisting` 同步种子读取，把 attach 前已落盘的新消息当历史吞掉（offset 越过、永不重读），画面冻结在预载历史上、仅刷新可见。改为按 feed 上次观察到的字节水位线抑制：种子只读到水位线、其后内容按 live 广播（既不错吞新消息，也不重放历史）。Coverage: `v2-live-feed.test.js`.
-
-- feat(server+web): **SDK 模式 Agent-Loop 感知修复与权威轮次边界** — 会话状态携带 turnId+turnStartedAt（防迟到 idle 清新回合 spinner）；SDK 消息流按 ≤1/s 合并活性帧（覆盖工具/压缩阶段）；新增 `agent_loop_start`/`agent_loop_end` SSE 帧（SDK 真 result 即时、PTY 防抖后/打断即时，两模式统一，过滤后台任务伪 result）；prompt/push 即刻点亮 spinner。配套语音播报新增 `agentLoopStart`/`agentLoopEnd` 事件（默认关闭，18 语言，防与 turnEnd 双响）；插件新增 `onAgentLoopStart`/`onAgentLoopEnd` hook 与 service 插件 `agent_loop_*` 事件。Coverage: `sdk-agent-loop.test.js`, `agent-loop-server-events.test.js`, `agent-loop-voice.test.js`, `sdk-session-state.test.js`, `voice-pack-events.test.js`, `turn-active-gating.test.js`, `stop-button-turn-active.test.js`.
-
-- style(web): **GIT 变更 commit 行移除作者名** — 每条 commit 的展示不再渲染作者，把空间留给 commit 描述;hash / 描述 / 时间 / 增删统计保持不变。
-
-- feat(web): **项目文件浏览器点击文件直接展示内容** — 树面板此前单击文件只选中、需到右侧网格双击才打开。现树中点击可打开的文件直接展示其内容（html/图片/文本预览，复用 openItem 的打开决策），同时保留选中高亮；点文件夹行为不变（右侧展开）。Coverage: `file-browser-modal.test.js`.
-
-- style(web): **SDK 错误条限宽 800px** — 错误/重试进度条宽屏下原本随消息列铺到 1400px,现夹到 800px（两侧随视口留白）,800px 以下保留 20px/侧。Coverage: `sdk-error-dialogue.test.js`.
-
-- fix(web): **SDK 错误行重试中不再与「恢复中」并行显示** — 手动重试把行标 `recovering` 后，此前只把 [重试] 按钮换成行内「恢复中」小字，错误文本仍整条渲染，与顶部恢复进度行并行出现。现 `recovering` 的行整条隐藏，只保留恢复进度行；重试失败（`recovering` 复位）才重新出现，成功则清除该行。同步移除不再引用的 `.sdkRetryRecovering` 样式。Coverage: `sdk-retry-inline.test.js`.
-
-- fix(web): **view-switch 后已最小化的 SDK ask 弹窗不再重开** — view 切换把 `pendingAsk` 清成 null 触发 `id→null`，被 dismissal wipe 误判为真 clear 而清掉 minimize;attach 全量 replay 用同一 id 走 `null→id` 保留分支，但 dismissal 已丢失、弹窗重开。现把 view-switch 合成 clear 标记为 `reason: 'view-switch'`,wipe 判据对它放行（真 clear 仍 wipe）;ask 与 ptyPlan 共用同一判据，一并修复。Coverage: `approval-dismissal.test.js`.
-
-- fix(server): **丢失 result 兜底不再误吞下一回合 result** — 强制结算的回合改记代际 epoch，迟到 result 只在无活回合可归属时丢弃；新回合 result 正常配对。修复 v1.9.18 兜底计数器残留吞 result、致下一回合被误判 turn-stuck 的问题。Coverage: `sdk-manager-lost-result.test.js`.
-
-- fix(server): **首次 `ccv --sdk` 首回合对话不再卡渲染** — `/events` 冷加载窗口（冷读冻结快照→注册广播列表）内的 live 增量原本丢失无重放，首回合恰好落入。现加 attach buffer：冷加载期间挂缓冲代理入队窗口增量，load_end 后按序回放再换真实客户端，`v3_conv` 按冷包 coverage 去重。Coverage: `sse-attach-buffer.test.js`, `events-attach-buffer.test.js`.
-
 ## 1.9.18
 
 - fix(server+web): **SDK 卡死回合按活性探活判死** — 移除 25 分钟静默强制结算（会误杀合法多小时工具回合）；回合静默超时后改为对 CLI 控制面发探活，连续无应答才判死：标记可疑代际、下次发送时按会话 id 懒重建（不打断可能仍在跑的子进程），并报可重试的 turn-stuck。审批 pending 视为存活不探活；丢失 result 与 Stop 后未应答也在下次发送时重建。Coverage: `sdk-manager-query.test.js`, `sdk-session-state.test.js`.

@@ -138,7 +138,7 @@ export function setTurnEndCooldownMs(ms) {
 }
 
 // Main entry point.
-//   eventKey:  'planApproval' | 'askQuestion' | 'turnEnd' | 'agentLoopStart' | 'agentLoopEnd'
+//   eventKey:  'planApproval' | 'askQuestion' | 'turnEnd'
 //   prefs:     prefs.approvalModal.voicePack — { enabled, volume, events: { ... } }
 //   opts.dedupeKey:  optional string; second call with same key for same event is ignored
 export function playEvent(eventKey, prefs, opts = {}) {

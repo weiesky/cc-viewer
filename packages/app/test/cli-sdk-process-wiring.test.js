@@ -33,10 +33,8 @@ describe('cli.js SDK process wiring (R6)', () => {
   it('registers the durable process wiring once via setSdkProcessWiring', () => {
     assert.match(CLI_SRC, /sdkManager\.setSdkProcessWiring\(\{/, 'setSdkProcessWiring is called');
     const idx = CLI_SRC.indexOf('setSdkProcessWiring({');
-    // Window sized to the full wiring object (it grew with the agent-loop callbacks —
-    // a fixed small window silently truncates and drops trailing keys from the check).
-    const window = CLI_SRC.slice(idx, idx + 1600);
-    for (const key of ['onTurnEnd', 'onQueryError', 'broadcastWs', 'runWaterfallHook', 'onAgentLoopStart', 'onAgentLoopEnd']) {
+    const window = CLI_SRC.slice(idx, idx + 700);
+    for (const key of ['onTurnEnd', 'onQueryError', 'broadcastWs', 'runWaterfallHook']) {
       assert.ok(window.includes(key), `process wiring carries ${key}`);
     }
   });

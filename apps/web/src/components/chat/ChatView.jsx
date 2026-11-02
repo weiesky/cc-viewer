@@ -826,10 +826,6 @@ class ChatView extends React.Component {
         pendingPlanApproval: null, pendingPtyPlan: null, planAutoApproveCountdown: null,
         ...(this.props.sdkMode ? { pendingAsk: null, askQueue: [], pendingPermission: null, permissionQueue: [] } : {}),
       });
-      // Mark the pendingAsk/pendingPtyPlan clears above as view-switch synthetic so the
-      // bubble (in the cDU diff below) can tell AppBase to skip the dismissal wipe —
-      // the attach replay re-bubbles the same id, and wiping would reopen a minimised modal.
-      this._approvalViewSwitchClear = true;
       if (viewSwitched || planLostView) { this._planAutoCancelled.clear(); this._permAutoCancelled.clear(); }
       // Pinned sdk-error rows belong to the previous view's workspace/instance.
       this._clearSdkErrors();
@@ -966,11 +962,7 @@ class ChatView extends React.Component {
               },
           });
         } else if (left) {
-          // Same view-switch synthetic-clear tag as the ask bubble below: a cleared plan
-          // that the attach replay re-bubbles must not lose its dismissal.
-          const viewSwitchedClear = this._approvalViewSwitchClear;
-          this._approvalViewSwitchClear = false;
-          this.props.onPendingPtyPlan(viewSwitchedClear ? { reason: 'view-switch' } : null);
+          this.props.onPendingPtyPlan(null);
         }
       }
       // Electron main parity：badge / flashFrame / OS 通知 + 其他 tab chip。直换（A→B 同帧）时
@@ -996,12 +988,7 @@ class ChatView extends React.Component {
             handlers: { submit: this.handleAskQuestionSubmit, cancel: this.handleAskCancel },
           });
         } else {
-          // The view-switch clear above wipes pendingAsk but is NOT a real dismissal —
-          // the attach replay re-bubbles the same id. Tag it so AppBase skips the
-          // dismissal wipe and a minimised modal stays minimised across the round-trip.
-          const viewSwitchedClear = this._approvalViewSwitchClear;
-          this._approvalViewSwitchClear = false;
-          this.props.onPendingAsk(viewSwitchedClear ? { reason: 'view-switch' } : null);
+          this.props.onPendingAsk(null);
         }
       }
       // ask transition 时显式通知 main 清聚合状态。覆盖两种迁移：
@@ -1201,10 +1188,6 @@ class ChatView extends React.Component {
           this._responseThinkingRequests = null;
           this._responseThinkingIndex = null;
           this._responseThinkingMergeCache = new WeakMap();
-          // session 元素引用真变化（冷加载整批换 session 对象 /切会话）→ 工具文件监听
-          // 的增量游标一并失效重建（其 check() 自身的 requests 截短检测覆盖不了「等长但
-          // 内容全换」的情形）。
-          this._toolFileMonitor.resetCursors();
           // 会话/工作区切换：清除乐观停止标志，避免陈旧 true 泄漏到新会话
           if (this.state.stopOptimistic) this._clearStopOptimistic();
           // Session/workspace switch: drop the parked busy queue on BOTH sides — queued text
@@ -3033,7 +3016,7 @@ class ChatView extends React.Component {
           // cwd travels so AppBase can drop frames from background workspaces
           // (multi-workspace SDK: one broadcast reaches every viewer). instanceKey too —
           // the 10s turn heartbeat would otherwise light a same-basename sibling's client.
-          if (typeof this.props.onSdkSessionState === 'function') this.props.onSdkSessionState(msg.state, { sessionId: msg.sessionId || null, cwd: msg.cwd || null, instanceKey: msg.instanceKey || null, turnId: msg.turnId || null, turnStartedAt: Number.isFinite(msg.turnStartedAt) ? msg.turnStartedAt : null, heartbeat: msg.heartbeat === true, activity: msg.activity === true });
+          if (typeof this.props.onSdkSessionState === 'function') this.props.onSdkSessionState(msg.state, { sessionId: msg.sessionId || null, cwd: msg.cwd || null, instanceKey: msg.instanceKey || null });
         } else if (msg.type === 'sdk-compact') {
           // SDK-side compact (invisible on the wire) — render as a system notice.
           // Cap at 10 entries to prevent unbounded growth; only the latest is rendered.
@@ -3688,18 +3671,12 @@ class ChatView extends React.Component {
         {retryRow}
         {rows.map((row) => {
           const { message: detail, ts, count, turnId, retryable, code, recovering } = row;
-          // A row whose retry is in progress is hidden ENTIRELY (error text, [retry]
-          // button, timestamp) — only the top recovering/retrying progress line shows.
-          // Showing the error beside a "recovering" tag reads as two parallel states.
-          // The row reappears only when the retry settles to a failure (recovering reset
-          // to false) or is cleared on success.
-          if (recovering) return null;
           // A localized code label replaces the raw detail in the visible text, but the
           // raw detail is preserved on title/aria-label for diagnosis.
           const codeKey = code ? `ui.sdkErrorCode.${code}` : null;
           const codeLabel = codeKey && t(codeKey) !== codeKey ? t(codeKey) : null;
           const label = codeLabel || t('ui.sdkError', { detail });
-          const showRetry = retryable && turnId;
+          const showRetry = retryable && turnId && !recovering;
           return (
             <div key={detail} className={styles.sdkErrorRow} title={detail} aria-label={detail}>
               {label}
@@ -3709,6 +3686,7 @@ class ChatView extends React.Component {
                   {t('ui.sdkRetry.retry')}
                 </button>
               ) : null}
+              {recovering ? <span className={styles.sdkRetryRecovering}>{t('ui.sdkRetry.recovering')}</span> : null}
               <span className={styles.sdkErrorTs}>{formatHms(new Date(ts))}</span>
             </div>
           );

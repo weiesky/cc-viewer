@@ -59,30 +59,6 @@ export class ToolFileChangeController {
     this._fileRefreshTimer = null;
     this._gitRefreshTimer = null;
     this._contentRefreshTimer = null;
-    // ── 增量扫描游标（性能修复：原为每帧全量重扫所有 sessions/requests 的全部
-    // messages —— 长会话里每个 request.body.messages 都是累积前缀，求和即
-    // O(上下文²)，且每个 SSE tick 都触发 → 切换长上下文后发消息长时间迟滞）──
-    // tool_use 的 id→{name,input} 映射跨调用累积（_processToolResult 反查 tool_use
-    // 拿 toolName/input；tool_use 出现在早期 assistant message，若每次重建 map 只扫
-    // 新增量会漏掉它 → 漏判文件修改）。
-    this._toolUseMap = new Map();
-    // 游标用 WeakMap<session/request 对象, 该对象 messages 已扫长度>。为何用对象引用
-    // 而非数组索引/字符串 key：传给 check() 的 mainAgentSessions/requests 是被
-    // filter(visibleRequests)/slice(resolveDisplaySessions) 过的派生数组，索引随过滤/pin
-    // 变化、不可靠；但元素对象引用跨帧稳定 —— merge 复用同一 session 对象
-    // (sessionMerge.js:283 只 mutate 不重建)，request 被 reconstruct 替换时是新对象
-    // (AppBase:3563)。WeakMap 随对象移除自动 GC，无泄漏；新对象未命中 → 从 0 扫（正确：
-    // 新会话/被替换的 entry 需全扫其前缀）。
-    this._sessScanned = new WeakMap();
-    this._reqScanned = new WeakMap();
-  }
-
-  /** 整体重置增量游标（冷加载/切会话/切项目）。由 ChatView 在 sessionsActuallyChanged
-   *  （session 元素引用真变化）时调用 —— 换新 WeakMap 即整体失效，旧游标随旧对象 GC。 */
-  resetCursors() {
-    this._toolUseMap = new Map();
-    this._sessScanned = new WeakMap();
-    this._reqScanned = new WeakMap();
   }
 
   _processToolResult(block, toolUseMap, flags) {
@@ -161,71 +137,45 @@ export class ToolFileChangeController {
       for (const id of toRemove) this._processedToolIds.delete(id);
     }
 
-    const toolUseMap = this._toolUseMap;
-
-    // ── 两阶段增量（与原全量两 Pass 语义一致：先把本批增量的 tool_use 全部收进持久 map，
-    // 再扫本批增量的 tool_result，杜绝「tool_result 先于其 tool_use 被处理 → 永久漏判」）。
-    // 游标推进到 msgs.length，但对「最后一条已扫 message」重扫一次 —— 流式/v2 分流合并会把
-    // 新 block 合进尾部那条已扫 message（message 数不变、content 增长），尾部重扫以 O(尾部
-    // 一条) 的代价覆盖该情形，其余 message 纯增量。_processedToolIds 幂等兜底重复 block。 ──
-
-    // 阶段 1：收集增量 tool_use（assistant messages + response.content）
+    // ─── Pass 1: 收集 tool_use 索引（id → {name, input}）─────────────────
+    // 同时扫 mainAgentSessions（含流式 response.body.content）与 requests（subAgent/teammate）
+    const toolUseMap = new Map();
     for (const session of sessions) {
-      if (session.response?.body?.content) collectToolUseBlocks(session.response.body.content, toolUseMap);
+      collectToolUseBlocks(session.response?.body?.content, toolUseMap);
       if (Array.isArray(session.messages)) {
-        const msgs = session.messages;
-        const scanned = this._sessScanned.get(session) || 0;
-        // 长度回缩（/clear 重建该 session 的 messages）→ 从 0 重扫；否则尾部重扫一条
-        // （from = scanned-1）覆盖流式/v2 分流合并进尾部那条已扫 message 的 content 增长。
-        const from = scanned > msgs.length ? 0 : Math.max(0, scanned - 1);
-        for (let i = from; i < msgs.length; i++) {
-          const msg = msgs[i];
+        for (const msg of session.messages) {
           if (msg.role === 'assistant') collectToolUseBlocks(msg.content, toolUseMap);
         }
       }
     }
     for (const req of requests) {
-      if (req.response?.body?.content) collectToolUseBlocks(req.response.body.content, toolUseMap);
+      collectToolUseBlocks(req.response?.body?.content, toolUseMap);
       if (Array.isArray(req.body?.messages)) {
-        const msgs = req.body.messages;
-        const scanned = this._reqScanned.get(req) || 0;
-        const from = scanned > msgs.length ? 0 : Math.max(0, scanned - 1);
-        for (let i = from; i < msgs.length; i++) {
-          const msg = msgs[i];
+        for (const msg of req.body.messages) {
           if (msg.role === 'assistant') collectToolUseBlocks(msg.content, toolUseMap);
         }
       }
     }
 
-    // 阶段 2：扫增量 tool_result（user messages）触发刷新；游标在此推进
+    // ─── Pass 2: 扫 tool_result 触发刷新 ─────────────────────────────
     const flags = { needFileRefresh: false, needGitRefresh: false, needContentRefresh: false };
+
     for (const session of sessions) {
       if (!Array.isArray(session.messages)) continue;
-      const msgs = session.messages;
-      const scanned = this._sessScanned.get(session) || 0;
-      const from = scanned > msgs.length ? 0 : Math.max(0, scanned - 1);
-      for (let i = from; i < msgs.length; i++) {
-        const msg = msgs[i];
+      for (const msg of session.messages) {
         if (msg.role === 'user' && Array.isArray(msg.content)) {
           for (const block of msg.content) this._processToolResult(block, toolUseMap, flags);
         }
       }
-      this._sessScanned.set(session, msgs.length);
     }
     for (const req of requests) {
       if (!Array.isArray(req.body?.messages)) continue;
-      const msgs = req.body.messages;
-      const scanned = this._reqScanned.get(req) || 0;
-      const from = scanned > msgs.length ? 0 : Math.max(0, scanned - 1);
-      for (let i = from; i < msgs.length; i++) {
-        const msg = msgs[i];
+      for (const msg of req.body.messages) {
         if (msg.role === 'user' && Array.isArray(msg.content)) {
           for (const block of msg.content) this._processToolResult(block, toolUseMap, flags);
         }
       }
-      this._reqScanned.set(req, msgs.length);
     }
-
     const { needFileRefresh, needGitRefresh, needContentRefresh } = flags;
     const state = this.host.getState();
 

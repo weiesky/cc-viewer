@@ -34,14 +34,13 @@ function mkStreamingHost() {
     TURN_ACTIVE_STALE_MS: 30 * 1000,
     _now: 0, // fake clock (ms)
 
-    // mirrors _applyTurnActive (lighting now also lights isStreaming — the spinner
-    // must show at prompt/push time, not wait for the first API call)
+    // mirrors _applyTurnActive
     applyTurnActive(active) {
       if (active) {
         if (this.state.turnActive) return;
         this._turnActiveSince = this._now;
         this._turnStaleTimer = 'armed'; // schedules checkTurnActiveStale at +30s
-        this.state = { ...this.state, turnActive: true, isStreaming: true };
+        this.state = { ...this.state, turnActive: true };
         return;
       }
       if (!this.state.turnActive) return;
@@ -96,13 +95,6 @@ function mkStreamingHost() {
 }
 
 describe('turnActive 把关的 streaming 状态机(镜像)', () => {
-  it('turn 亮起即点亮 spinner(agent_loop_start / sdk running,不等首个 API 调用)', () => {
-    const h = mkStreamingHost();
-    h.applyTurnActive(true);          // agent_loop_start / sdk-session-state(running)
-    assert.equal(h.state.turnActive, true);
-    assert.equal(h.state.isStreaming, true, 'turn-level 亮起必须同步点亮 spinner');
-  });
-
   it('工具间隙(API 空闲 + turnActive=true)spinner 不灭', () => {
     const h = mkStreamingHost();
     h.applyTurnActive(true);          // UserPromptSubmit
@@ -158,17 +150,6 @@ describe('AppBase.jsx 源码锚点(防重构漂移)', () => {
     assert.ok(
       /_applyTurnActive = \(active, channel = null\)[\s\S]{0,1100}?turnActive: false, isStreaming: false/.test(APPBASE_SRC),
       '_applyTurnActive(false) 必须同时清 isStreaming');
-  });
-
-  it('turnActive 上升沿同步点亮 isStreaming(prompt/push 即转,不等首个 API)', () => {
-    assert.ok(
-      /_applyTurnActive = \(active, channel = null\)[\s\S]{0,800}?turnActive: true, isStreaming: true/.test(APPBASE_SRC),
-      '_applyTurnActive(true) 必须同步点亮 isStreaming');
-  });
-
-  it('agent_loop_start / agent_loop_end 帧已注册到 CHANNEL_FRAME_HANDLERS', () => {
-    assert.ok(/'agent_loop_start': '_onAgentLoopStart',/.test(APPBASE_SRC), '缺少 agent_loop_start 注册');
-    assert.ok(/'agent_loop_end': '_onAgentLoopEnd',/.test(APPBASE_SRC), '缺少 agent_loop_end 注册');
   });
 
   it('turn_active SSE 监听已接线且带 stale 守卫', () => {

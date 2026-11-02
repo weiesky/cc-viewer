@@ -31,8 +31,6 @@ const HOOK_TYPES = {
   serverStopping: 'parallel',
   onNewEntry: 'parallel',
   onStreamChunk: 'parallel',
-  onAgentLoopStart: 'parallel',
-  onAgentLoopEnd: 'parallel',
 };
 
 // Approval hooks gate an interactive UI modal, so a hung plugin must not park the approval

@@ -19,8 +19,6 @@ export const EVENT_KEYS = [
   'planApproval',
   'askQuestion',
   'turnEnd',
-  'agentLoopStart',
-  'agentLoopEnd',
 ];
 
 // Per-event default binding when no user override is set:
@@ -28,16 +26,11 @@ export const EVENT_KEYS = [
 //   - 'sanguo'  → play the bundled sanguo (三国) audio — initial seed for zh/zh-TW
 //   - null      → event is OFF by default (user must opt in)
 // turnEnd defaults to null because firing on every Claude reply is noisy
-//( — frequency overload mitigation). agentLoopStart/agentLoopEnd are likewise
-// per-turn and stay off by default for the same frequency reason. (Enabling both
-// agentLoopEnd and turnEnd does NOT double-ring: the client suppresses the legacy
-// turnEnd cue when agentLoopEnd actually played for the same boundary.)
+//( — frequency overload mitigation).
 export const DEFAULT_BINDINGS = Object.freeze({
   planApproval: 'default',
   askQuestion: 'default',
   turnEnd: null,
-  agentLoopStart: null,
-  agentLoopEnd: null,
 });
 
 // Bundled packs that ship inside the npm tarball under public/voice-packs/<id>/.
@@ -61,15 +54,13 @@ const LOCALE_DEFAULT_SEEDS = Object.freeze({
 });
 
 // Per-event default bindings for a given locale pack. Event keys that should
-// stay off-by-default (turnEnd is noisy on every reply; the agentLoop pair is
-// likewise per-turn) keep null regardless of which pack the locale prefers.
+// stay off-by-default (turnEnd is noisy on every reply) keep null regardless
+// of which pack the locale prefers.
 function bindingsForPack(packId) {
   return Object.freeze({
     planApproval: packId,
     askQuestion: packId,
     turnEnd: null,
-    agentLoopStart: null,
-    agentLoopEnd: null,
   });
 }
 

@@ -107,8 +107,6 @@ const prefsAllOn = () => ({
     planApproval: 'default',
     askQuestion: 'default',
     turnEnd: 'default',
-    agentLoopStart: 'default',
-    agentLoopEnd: 'default',
   },
 });
 
@@ -213,26 +211,6 @@ describe('playEvent — dedupeKey', () => {
     const prefs = prefsAllOn();
     assert.equal(player.playEvent('askQuestion', prefs, { dedupeKey: 'ask:123' }), true);
     assert.equal(player.playEvent('planApproval', prefs, { dedupeKey: 'plan:123' }), true);
-  });
-
-  it('agentLoopEnd dedupes per turnId (re-broadcast of the same boundary is silent)', () => {
-    const prefs = prefsAllOn();
-    assert.equal(player.playEvent('agentLoopEnd', prefs, { dedupeKey: 'agentLoopEnd:turn_1' }), true);
-    assert.equal(player.playEvent('agentLoopEnd', prefs, { dedupeKey: 'agentLoopEnd:turn_1' }), false, 'same turn must not ring twice');
-    MockAudio.instances[0].fire('ended');
-    assert.equal(player.playEvent('agentLoopEnd', prefs, { dedupeKey: 'agentLoopEnd:turn_2' }), true, 'a NEW turn rings again');
-  });
-
-  it('agentLoopStart / agentLoopEnd are independent of turnEnd (no shared dedupe/cooldown)', () => {
-    const prefs = prefsAllOn();
-    // The player reuses ONE shared Audio element — always drain via the first
-    // instance (instances[1] never exists for sequential plays).
-    assert.equal(player.playEvent('agentLoopStart', prefs, { dedupeKey: 'agentLoopStart:turn_1' }), true);
-    MockAudio.instances[0].fire('ended');
-    assert.equal(player.playEvent('agentLoopEnd', prefs, { dedupeKey: 'agentLoopEnd:turn_1' }), true, 'same-turn end is a different event key');
-    MockAudio.instances[0].fire('ended');
-    // turnEnd's 10s cooldown must not leak into the agentLoop pair.
-    assert.equal(player.playEvent('turnEnd', prefs, { dedupeKey: 'turnEnd:1' }), true);
   });
 });
 

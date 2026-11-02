@@ -166,8 +166,7 @@ describe('sdk-error dialogue rows — CSS contract', () => {
     const stack = css.match(/\.sdkErrorStack \{[\s\S]{0,500}?\}/);
     assert.ok(stack, 'sdkErrorStack block found');
     assert.ok(!stack[0].includes('margin-top: auto'), 'base stack has NO auto top margin (would gap short conversations)');
-    assert.ok(stack[0].includes('calc(100% - 40px)'), 'width insets without colliding with .container > * margins');
-    assert.ok(stack[0].includes('min(800px'), 'bar width capped at 800px on wide viewports');
+    assert.ok(stack[0].includes('calc(100% - 32px)'), 'width insets without colliding with .container > * margins');
     assert.ok(stack[0].includes('flex-shrink: 0'), 'rows never get squeezed by the flex container');
     const empty = css.match(/\.sdkErrorStackEmpty \{[\s\S]{0,200}?\}/);
     assert.ok(empty, 'sdkErrorStackEmpty block found');

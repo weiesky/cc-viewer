@@ -160,6 +160,7 @@ function CommitRow({ commit, repoPath, expanded, onToggle, onFileClick, onOpenFi
         </span>
         <span className={styles.commitHash}>{commit.shortHash}</span>
         <span className={styles.commitSubject}>{commit.subject}</span>
+        {commit.author && <span className={styles.commitMeta}>{commit.author}</span>}
         {dateLabel && <span className={styles.commitMeta}>{dateLabel}</span>}
         <StatBadges insertions={commit.insertions} deletions={commit.deletions} />
         {!(commit.insertions > 0 || commit.deletions > 0) && commit.files.length > 0 && (

@@ -491,7 +491,7 @@ function buildPluginContext(rt) {
       on(event, cb) {
         // Subscriptions go into the runtime dispatcher table (injected into the loader pipeline via
         // getEventDispatcherPlugin); abort on deactivate/unload unsubscribes. No second event bus.
-        const hookName = EVENT_TO_HOOK[event] || null;
+        const hookName = event === 'new_entry' ? 'onNewEntry' : event === 'stream_chunk' ? 'onStreamChunk' : null;
         if (!hookName || typeof cb !== 'function') return () => {};
         const wrapper = (payload) => { if (!signal.aborted) cb(payload); };
         _eventSubs[hookName].add(wrapper);
@@ -508,24 +508,14 @@ function buildPluginContext(rt) {
 
 // Events dispatcher: the subscription table lives in the runtime; getEventDispatcherPlugin()
 // returns the plugin object that bridges into the loader hook pipeline (no second event bus).
-// ctx.events.on('…') event name → the loader hook that feeds it (agent_loop_* are the
-// service-plugin view of the agent-loop lifecycle, same payload as the SSE frames).
-const EVENT_TO_HOOK = {
-  new_entry: 'onNewEntry',
-  stream_chunk: 'onStreamChunk',
-  agent_loop_start: 'onAgentLoopStart',
-  agent_loop_end: 'onAgentLoopEnd',
-};
 const _eventDispatcher = {
   name: 'ccv-plugin-events',
   hooks: {
     onNewEntry(payload) { dispatchEvent('onNewEntry', payload); },
     onStreamChunk(payload) { dispatchEvent('onStreamChunk', payload); },
-    onAgentLoopStart(payload) { dispatchEvent('onAgentLoopStart', payload); },
-    onAgentLoopEnd(payload) { dispatchEvent('onAgentLoopEnd', payload); },
   },
 };
-const _eventSubs = { onNewEntry: new Set(), onStreamChunk: new Set(), onAgentLoopStart: new Set(), onAgentLoopEnd: new Set() };
+const _eventSubs = { onNewEntry: new Set(), onStreamChunk: new Set() };
 function dispatchEvent(hookName, payload) {
   for (const fn of _eventSubs[hookName]) {
     try { fn(payload); } catch (err) { reportSwallowed('plugin-runtime.event', err); }
