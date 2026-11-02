@@ -1,0 +1,35 @@
+apps/web/test/sdkTaskTracker.test.js
+  s_abdafb7680a0d1::t_61a6deac0bbeff 1-140,143-144
+  s_abdafb7680a0d1::t_c83ccbbb593807 141-142
+  s_abdafb7680a0d1::t_ad33ea699c9698 145-147
+apps/web/src/utils/sdkTaskTracker.js
+  s_abdafb7680a0d1::t_5de5a7059f51e1 133
+  s_abdafb7680a0d1::t_4a40149f148206 21
+  s_abdafb7680a0d1::t_c514056f6256b0 1-20,22-100,102-132,134-139,141
+  s_abdafb7680a0d1::t_7c56bafdda745b 101
+  s_abdafb7680a0d1::t_44156132c53ae8 140
+  s_abdafb7680a0d1::t_6251d49e905737 142-144
+apps/web/src/AppBase.jsx
+  s_abdafb7680a0d1::t_d427ae8611d575 2899
+  s_abdafb7680a0d1::t_a1d90b79f2a7b1 2980
+  s_abdafb7680a0d1::t_f1c781949d5ef3 21
+apps/web/src/components/chat/ChatView.jsx
+  s_abdafb7680a0d1::t_98a58de3747c82 47
+  s_abdafb7680a0d1::t_91ed4b3d3fcbf5 3054-3059
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "03228e9b7b2aacce739aacdd2effa307ddf862f2",
+  "prompts": {},
+  "sessions": {
+    "s_abdafb7680a0d1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c3b0e9a-b81f-46d7-8a67-29f92902a3ce",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
