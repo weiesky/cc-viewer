@@ -1,0 +1,20 @@
+apps/web/src/components/chat/ChatView.jsx
+  h_f08accc60857ed 1204-1207
+apps/web/src/components/chat/controllers/toolFileChangeController.js
+  h_f08accc60857ed 62-85,164-172,174,176-182,188,190-194,200,204-208,213,217-221,226,228
+apps/web/test/tool-file-change-controller.test.js
+  h_f08accc60857ed 233-358
+history.md
+  h_f08accc60857ed 5-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bc4f66e64d0f18f82bc088e32f669c22361947a7",
+  "prompts": {},
+  "humans": {
+    "h_f08accc60857ed": {
+      "author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
