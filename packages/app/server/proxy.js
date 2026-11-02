@@ -13,7 +13,7 @@ import { isAnthropicApiPath, classifyProxyRole } from './lib/interceptor-core.js
 import { parseAgentId, findHeader } from './lib/v2/agent-id.js';
 import { liveSystemPromptEnabled } from './lib/system-prompt-live.js';
 import { executeRequest, extractModel, isStreamResponse } from './lib/proxy/proxy-retry.js';
-import { buildRecord, appendRecord, dailyFilePath, todayStr, emitProxyStatsUpdate } from './lib/proxy/proxy-stats.js';
+import { buildRecord, appendRecord, dailyFilePath, todayStr, emitProxyStatsUpdate, emitSlowUpstream } from './lib/proxy/proxy-stats.js';
 import { reportSwallowed } from './lib/error-report.js';
 import { LOG_DIR } from '../findcc.js';
 
@@ -268,6 +268,15 @@ export function startProxy() {
   });
 }
 
+// A non-utility LLM request that has been waiting this long for ANY upstream
+// response (headers not yet arrived) is, from the user's seat, indistinguishable
+// from a hang — yet both retry layers are legitimately idle (CLI's own retry only
+// counts a settled failure; the proxy's retry engine only re-fires on a settled
+// response/status). Emit ONE advisory frame per request so the UI can say "still
+// waiting on the model" instead of a bare spinner. 30s ≈ long enough to ignore
+// normal slow first-token, short enough to beat the user's give-up threshold.
+const SLOW_UPSTREAM_MS = 30 * 1000;
+
 // ── 大模型 API 请求处理：重试引擎 + 明细统计 ──────────────────────
 // mode=off 时仍写 1 条明细（attempts=1）以支撑可用率统计；完全禁用统计用 CCV_PROXY_STATS=off。
 // 重试配置由 interceptor._retryConfigState 提供（live binding，watchFile 热刷新），
@@ -312,21 +321,46 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
     }
   });
 
+  // Slow-upstream advisory: fires once if the request is STILL waiting for the
+  // upstream's first response byte past SLOW_UPSTREAM_MS. Utility probes
+  // (count_tokens / sdk heartbeat) are exempt — they are invisible to the user
+  // and firing on them would toast on background traffic. The emit is a no-op
+  // unless server.js registered a listener (SDK mode), so PTY/proxy-only
+  // processes pay nothing.
+  let slowTimer = null;
+  if (liveCtx.isUtility !== true) {
+    slowTimer = setTimeout(() => {
+      emitSlowUpstream({
+        projectKey: interceptor._projectName || '',
+        waitingMs: SLOW_UPSTREAM_MS,
+        model,
+      });
+    }, SLOW_UPSTREAM_MS);
+    if (slowTimer.unref) slowTimer.unref();
+  }
+  const clearSlowTimer = () => { if (slowTimer) { clearTimeout(slowTimer); slowTimer = null; } };
+  clientAbort.signal.addEventListener('abort', clearSlowTimer, { once: true });
+
   // 执行带重试的请求
-  const result = await executeRequest({
-    url: fullUrl,
-    fetchOptions: retryFetchOptions,
-    retryConfig,
-    ctx: {
-      dispatcher: proxyDispatcher,
-      profile,
-      signal: clientAbort.signal,
-      // live system 改写上下文（system-prompt-live.js）：role 门 + 项目键。
-      role: liveCtx.role,
-      isUtility: liveCtx.isUtility === true,
-      projectKey: interceptor._projectName || '',
-    },
-  });
+  let result;
+  try {
+    result = await executeRequest({
+      url: fullUrl,
+      fetchOptions: retryFetchOptions,
+      retryConfig,
+      ctx: {
+        dispatcher: proxyDispatcher,
+        profile,
+        signal: clientAbort.signal,
+        // live system 改写上下文（system-prompt-live.js）：role 门 + 项目键。
+        role: liveCtx.role,
+        isUtility: liveCtx.isUtility === true,
+        projectKey: interceptor._projectName || '',
+      },
+    });
+  } finally {
+    clearSlowTimer();
+  }
 
   const { response, attempts, retryCodes, durationMs, finalStatus, succeeded, upstreamStatus } = result;
 

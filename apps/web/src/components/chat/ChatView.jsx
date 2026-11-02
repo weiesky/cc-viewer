@@ -2981,6 +2981,14 @@ class ChatView extends React.Component {
           // session. The draft is preserved client-side; surface the failure so it is
           // never dropped silently.
           try { message.warning(t('ui.sendFailed')); } catch {}
+        } else if (msg.type === 'sdk-slow-upstream') {
+          // Proxy-side advisory: a non-utility LLM request has been waiting past
+          // the slow threshold for ANY upstream byte. Both retry layers are
+          // legitimately idle here (CLI retries a settled failure; the proxy
+          // retries a settled response) — without this frame the user only sees a
+          // bare spinner for minutes (review: the 164s ECONNRESET turn).
+          if (!this._sdkFrameMatchesView(msg)) return;
+          try { message.info(t('ui.sdkSlowUpstream', { seconds: Math.round((msg.waitingMs || 0) / 1000) }), 5); } catch {}
         } else if (msg.type === 'sdk-retry-state') {
           // 502/retry lifecycle: the CLI's own retry (retrying) → manual [retry] click
           // (recovering) → success (recovered) or a refusal (rejected). Cleanup matches by

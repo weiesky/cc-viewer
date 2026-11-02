@@ -501,6 +501,29 @@ export function notifyProxyStats(logFile) {
 // through the lib and never reaches back into this module.
 setProxyStatsListener(notifyProxyStats);
 
+// Slow-upstream advisory (review follow-up): proxy.js cannot import sdk-manager
+// (layer boundary is shrink-only), so IT emits through proxy-stats and server.js —
+// which already legally holds both the SDK accessors and the terminal WS — decides
+// whether the slow request maps to a live turn worth surfacing. The frame goes out
+// as a scoped sdk-slow-upstream (workspace-keyed by the proxy's project) so only
+// viewers of that workspace see it.
+setSlowUpstreamListener(({ projectKey, waitingMs, model } = {}) => {
+  try {
+    if (!isSdkMode || !_sdkListSessions || !terminalWss) return;
+    const sess = (_sdkListSessions() || []).find(s => projectKeyForCwd(s.cwd) === projectKey) || null;
+    // No live session for this workspace → the slow request is not user-visible
+    // traffic (IM worker, scheduled task in another process, …) — stay silent.
+    if (!sess) return;
+    const queueItems = _sdkGetQueueSnapshotFn ? _sdkGetQueueSnapshotFn({ project: projectKey }) : [];
+    const inFlight = Array.isArray(queueItems) && queueItems.length > 0;
+    const payload = JSON.stringify({
+      type: 'sdk-slow-upstream', cwd: sess.cwd, project: projectKey, instanceKey: sess.instanceKey || null,
+      waitingMs, model: model || null, turnInFlight: inFlight, ts: Date.now(),
+    });
+    terminalWss.clients.forEach((c) => { if (c.readyState === 1) try { c.send(payload); } catch { /* best effort */ } });
+  } catch (err) { reportSwallowed('server.slow-upstream-listener', err); }
+});
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',

@@ -158,6 +158,29 @@ export function emitProxyStatsUpdate(fileName) {
   }
 }
 
+// ── Slow-upstream listener (sdk-slow-upstream) ──────────────────────────────
+// proxy.js is forbidden from importing sdk-manager / server.js (layer boundary:
+// new cross-layer edges are shrink-only). Same registration pattern as the stats
+// listener above: server.js (which already legally holds both sdk-manager and the
+// terminal WS) registers a callback here at load time; proxy.js emits a
+// { projectKey, waitingMs, model } signal when a non-utility LLM request has been
+// waiting past the slow threshold. No listener (proxy-only process / PTY mode)
+// → no-op.
+let _slowUpstreamListener = null;
+
+export function setSlowUpstreamListener(fn) {
+  _slowUpstreamListener = typeof fn === 'function' ? fn : null;
+}
+
+export function emitSlowUpstream(info) {
+  if (!_slowUpstreamListener) return;
+  try {
+    _slowUpstreamListener(info);
+  } catch (err) {
+    reportSwallowed('proxyStats.slow-upstream-emit', err);
+  }
+}
+
 // ── Aggregate computation ──────────────────────────────────────────────────────
 
 /**
