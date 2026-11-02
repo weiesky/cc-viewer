@@ -1,0 +1,45 @@
+apps/web/src/components/files/FileBrowserModal.jsx
+  s_cdf894665e9842::t_c3a283113d3c86 614-617
+  s_cdf894665e9842::t_7e2b89aeba3fc5 644-645,647
+packages/app/test/sdk-manager-lost-result.test.js
+  s_cdf894665e9842::t_cb3be9a2f12b69 392-429
+apps/web/test/tool-file-change-controller.test.js
+  s_cdf894665e9842::t_5f6e34c2009b70 216-231
+apps/web/test/file-browser-modal.test.js
+  s_cdf894665e9842::t_a9cab48e0ac478 501-504,507-508
+.changeset/fix-v1-9-19-upstream-review.md
+  s_cdf894665e9842::t_1ba44269afb821 1-13
+history.md
+  s_cdf894665e9842::t_2c381b852dcde5 5-14
+packages/app/server/lib/v2/meta-rows.js
+  s_cdf894665e9842::t_c73df5fb15238b 269
+  s_cdf894665e9842::t_bec4779eb1f914 291,305-306,308
+  s_cdf894665e9842::t_7b8b0cc1705a3a 270-272,274-275,279-283,285-290,300-302,307,309-311
+apps/web/src/components/chat/controllers/toolFileChangeController.js
+  s_cdf894665e9842::t_cd07e6d8f0fbee 157-159,163-166
+apps/web/src/AppBase.jsx
+  s_cdf894665e9842::t_a79b83285f01b0 4117-4120
+packages/app/test/sdk-manager-query.test.js
+  s_cdf894665e9842::t_7e1567e3db198b 3486-3540
+apps/web/src/components/chat/ChatView.jsx
+  s_cdf894665e9842::t_e238fb9d2d2ed1 979-980
+  s_cdf894665e9842::t_8d87978fedc2f0 838-840
+  s_cdf894665e9842::t_6d5a48025ce41d 1010-1011
+  s_cdf894665e9842::t_1189281fca6290 248-253
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c29af25e64d3491fe7c58dc80bf859eda7831ba4",
+  "prompts": {},
+  "sessions": {
+    "s_cdf894665e9842": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f14b9be3-f272-437b-b761-40342aca00a5",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
