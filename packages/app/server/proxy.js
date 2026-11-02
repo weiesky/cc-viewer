@@ -277,6 +277,13 @@ export function startProxy() {
 // normal slow first-token, short enough to beat the user's give-up threshold.
 const SLOW_UPSTREAM_MS = 30 * 1000;
 
+// Test seam: lets tests shrink the threshold and observe emits without standing
+// up a real 30s wait or a network upstream. Production defaults are unchanged.
+export const __testing = {
+  slowUpstreamMs: SLOW_UPSTREAM_MS,
+  emit: emitSlowUpstream,
+};
+
 // ── 大模型 API 请求处理：重试引擎 + 明细统计 ──────────────────────
 // mode=off 时仍写 1 条明细（attempts=1）以支撑可用率统计；完全禁用统计用 CCV_PROXY_STATS=off。
 // 重试配置由 interceptor._retryConfigState 提供（live binding，watchFile 热刷新），
@@ -327,15 +334,30 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
   // and firing on them would toast on background traffic. The emit is a no-op
   // unless server.js registered a listener (SDK mode), so PTY/proxy-only
   // processes pay nothing.
+  //
+  // Scope comes from the request's own self-report headers
+  // (x-ccv-project-dir / x-ccv-instance, injected per SDK session / PTY spawn),
+  // NOT the process-wide interceptor._projectName — the latter is rebound on
+  // every workspace switch, so under concurrent workspaces it would attribute a
+  // background workspace's slow request to whichever workspace bound last.
+  const slowStartTime = Date.now();
   let slowTimer = null;
+  let slowFired = false;
+  let slowCwd = '';
+  let slowInstance = '';
   if (liveCtx.isUtility !== true) {
+    slowCwd = findHeader(fetchOptions.headers, 'x-ccv-project-dir') || '';
+    slowInstance = findHeader(fetchOptions.headers, 'x-ccv-instance') || '';
     slowTimer = setTimeout(() => {
-      emitSlowUpstream({
-        projectKey: interceptor._projectName || '',
-        waitingMs: SLOW_UPSTREAM_MS,
+      slowFired = true;
+      __testing.emit({
+        type: 'slow',
+        cwd: slowCwd,
+        instanceKey: slowInstance,
+        waitingMs: Date.now() - slowStartTime,
         model,
       });
-    }, SLOW_UPSTREAM_MS);
+    }, __testing.slowUpstreamMs);
     if (slowTimer.unref) slowTimer.unref();
   }
   const clearSlowTimer = () => { if (slowTimer) { clearTimeout(slowTimer); slowTimer = null; } };
@@ -360,6 +382,11 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
     });
   } finally {
     clearSlowTimer();
+    // If the advisory fired, tell the UI the wait is over so the persistent
+    // toast is dismissed instead of lingering past completion.
+    if (slowFired) {
+      __testing.emit({ type: 'resolved', cwd: slowCwd, instanceKey: slowInstance });
+    }
   }
 
   const { response, attempts, retryCodes, durationMs, finalStatus, succeeded, upstreamStatus } = result;

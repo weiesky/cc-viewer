@@ -179,8 +179,12 @@ describe('TaskProgressHud progress dots contract', () => {
   });
 
   it('all-completed tasks still hide the HUD', () => {
-    assert.ok(jsx.includes("tasks.some(x => x.status !== 'completed')"),
-      'visible criterion unchanged');
+    // Terminal tasks (completed OR failed) must not keep the HUD visible — a
+    // fully-failed batch is just as "done" as a fully-completed one.
+    assert.ok(jsx.includes("tasks.some(x => !isDone(x))"),
+      'visible criterion treats completed and failed as terminal');
+    assert.ok(jsx.includes("x.status === 'completed' || x.status === 'failed'"),
+      'isDone covers both terminal states');
   });
 
   it('antd Popover/Tooltip replace the native title tooltips', () => {

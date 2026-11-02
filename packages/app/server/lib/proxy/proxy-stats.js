@@ -159,12 +159,15 @@ export function emitProxyStatsUpdate(fileName) {
 }
 
 // ── Slow-upstream listener (sdk-slow-upstream) ──────────────────────────────
-// proxy.js is forbidden from importing sdk-manager / server.js (layer boundary:
-// new cross-layer edges are shrink-only). Same registration pattern as the stats
-// listener above: server.js (which already legally holds both sdk-manager and the
-// terminal WS) registers a callback here at load time; proxy.js emits a
-// { projectKey, waitingMs, model } signal when a non-utility LLM request has been
-// waiting past the slow threshold. No listener (proxy-only process / PTY mode)
+// proxy.js must not import sdk-manager: a proxy-only process (ccv run / PTY)
+// has no SDK loaded, and sdk-manager's top-level `await import('@anthropic-ai/
+// claude-agent-sdk')` would pull the SDK into it. Same registration pattern as
+// the stats listener above: server.js (which already legally holds both
+// sdk-manager and the terminal WS) registers a callback here at load time;
+// proxy.js emits a { cwd, instanceKey, waitingMs, model } signal when a
+// non-utility LLM request has been waiting past the slow threshold. The cwd /
+// instanceKey come from the request's own self-report headers (request-level
+// truth), not the process-wide bound project. No listener (proxy-only process)
 // → no-op.
 let _slowUpstreamListener = null;
 

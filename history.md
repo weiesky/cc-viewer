@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- fix(web+sdk): **慢上游提示与 SDK 任务 HUD 审查修复** — 补 `server.js` 缺失的 `setSlowUpstreamListener` import；慢上游提示按请求自带的 `x-ccv-project-dir`/`x-ccv-instance` 精确归属工作区（多工作区不再串台）并经 `broadcastWsMessage` 路由，toast 常驻至请求完结（新增 resolved 帧），`waitingMs` 为真实时长；SDK 任务 HUD 在 sessionId 变更时立即清空旧清单、失败/被杀/停止任务渲染为失败态、SDK 模式忽略 hook 空快照防覆盖。Coverage: `proxy-slow-upstream.test.js`, `sdkTaskTracker.test.js`.
+
+- feat(web): **SDK 模式接通任务清单 HUD** — `--sdk` 下 TaskProgressHud 不再缺席：新增 `sdkTaskTracker` 消费 server 转发的 WS `sdk-task` 帧（task_started/progress/updated/notification），客户端归并为 taskStore 兼容快照，HUD 直接复用现有渲染。含 `_sdkFrameMatchesView` 守卫、sessionId 变更自动重置、re-fire 状态复位。Coverage: `sdkTaskTracker.test.js`.
+
+- feat(sdk): **慢上游在途提示** — LLM 请求等上游首字节超 30s 时经 proxy-stats 监听器广播 `sdk-slow-upstream`，前端 toast「模型响应缓慢，已等待 Ns，仍在等待…」，消除此前请求挂起数分钟 UI 死寂（如一次 ECONNRESET 前挂 164s 无任何反馈）的可观测缺口。utility 探针豁免，PTY/proxy-only 进程零成本。Coverage: `proxy-stats.test.js`.
+
 - fix(web): **文件浏览器树子目录单击打开错误路径** — 树行的根路径被 `openItem` 再拼一次 `currentPath` 得到 `skills/skills/foo/...`；改为 `openItem` 接受显式根路径，树直接传入。Coverage: `file-browser-modal.test.js`.
 
 - fix(web): **`--sdk` 模式手机端终端对齐桌面 scratch 终端** — overlay 在 sdkMode 下改挂 scratchOnly 多 tab shell（唯一宿主，含 iPad），支持 tab 切换/新增/关闭与底部虚拟键栏。Coverage: `scratch-workspace-switch.test.js`, `mobile-term-layout.test.js`.

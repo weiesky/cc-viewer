@@ -44,6 +44,7 @@ import ProxyChip from './ProxyChip';
 import ProxyModal from '../settings/ProxyModal';
 import WorkflowLiveHud from '../viewers/WorkflowLiveHud';
 import TaskProgressHud from './TaskProgressHud';
+import { applyFrame as applySdkTaskFrame } from '../../utils/sdkTaskTracker';
 import PresetModal from '../terminal/PresetModal';
 import ScheduleTaskModal from '../common/ScheduleTaskModal';
 import UltraPlanModal from '../terminal/UltraPlanModal';
@@ -2987,8 +2988,21 @@ class ChatView extends React.Component {
           // legitimately idle here (CLI retries a settled failure; the proxy
           // retries a settled response) — without this frame the user only sees a
           // bare spinner for minutes (review: the 164s ECONNRESET turn).
+          // A stable key + duration:0 makes it a single persistent toast that
+          // stays until the request settles (sdk-slow-upstream-resolved) instead
+          // of a 5s flash that leaves minutes of silence after it.
           if (!this._sdkFrameMatchesView(msg)) return;
-          try { message.info(t('ui.sdkSlowUpstream', { seconds: Math.round((msg.waitingMs || 0) / 1000) }), 5); } catch {}
+          try {
+            message.open({
+              key: 'sdk-slow-upstream',
+              type: 'info',
+              content: t('ui.sdkSlowUpstream', { seconds: Math.round((msg.waitingMs || 0) / 1000) }),
+              duration: 0,
+            });
+          } catch {}
+        } else if (msg.type === 'sdk-slow-upstream-resolved') {
+          if (!this._sdkFrameMatchesView(msg)) return;
+          try { message.destroy('sdk-slow-upstream'); } catch {}
         } else if (msg.type === 'sdk-retry-state') {
           // 502/retry lifecycle: the CLI's own retry (retrying) → manual [retry] click
           // (recovering) → success (recovered) or a refusal (rejected). Cleanup matches by
@@ -3050,6 +3064,12 @@ class ChatView extends React.Component {
           // (multi-workspace SDK: one broadcast reaches every viewer). instanceKey too —
           // the 10s turn heartbeat would otherwise light a same-basename sibling's client.
           if (typeof this.props.onSdkSessionState === 'function') this.props.onSdkSessionState(msg.state, { sessionId: msg.sessionId || null, cwd: msg.cwd || null, instanceKey: msg.instanceKey || null, turnId: msg.turnId || null, turnStartedAt: Number.isFinite(msg.turnStartedAt) ? msg.turnStartedAt : null, heartbeat: msg.heartbeat === true, activity: msg.activity === true });
+        } else if (msg.type === 'sdk-task') {
+          // SDK-mode task lifecycle relay (task_started/progress/updated/notification).
+          // Fed into the client-side tracker which publishes taskStore-compatible
+          // snapshots so TaskProgressHud works without hooks.
+          if (!this._sdkFrameMatchesView(msg)) return;
+          applySdkTaskFrame(msg);
         } else if (msg.type === 'sdk-compact') {
           // SDK-side compact (invisible on the wire) — render as a system notice.
           // Cap at 10 entries to prevent unbounded growth; only the latest is rendered.

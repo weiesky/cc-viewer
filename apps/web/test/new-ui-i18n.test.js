@@ -74,6 +74,7 @@ const KEYS = [
   'ui.proxy.roleSummary',
   // SDK-mode path fix (wsOpen restored + error channel + P1 UI):
   'ui.sdkError',     // SDK query-level failure toast (ChatView sdk-error branch)
+  'ui.sdkSlowUpstream', // SDK slow-upstream advisory toast (ChatView sdk-slow-upstream branch)
   'ui.sdkCompacted', // SDK compact_boundary notice bar (ChatView sdk-compact branch)
   'ui.sdkSlashHint', // SDK slash-command hint (above the composer, when typing `/`)
   'ui.sdkModel', // SDK launch-model chip (AppHeader proxy-chip slot, hot-switch fallback)
@@ -98,6 +99,7 @@ const KEYS = [
   'ui.tasks.status.pending',
   'ui.tasks.status.inProgress',
   'ui.tasks.status.completed',
+  'ui.tasks.status.failed',
   'ui.tasks.owner',
   // Minimal-chat preference toggle (AppHeader / Mobile / PreferencesForm; merges tool-only turns):
   'ui.minimalChat',
@@ -185,6 +187,8 @@ describe('new UI key i18n coverage', () => {
     ['ui.sdkRetry.retrying', '{max}'],
     ['ui.sdkRetry.retryingNetwork', '{attempt}'],
     ['ui.sdkRetry.retryingNetwork', '{max}'],
+    // SDK slow-upstream advisory toast interpolation key.
+    ['ui.sdkSlowUpstream', '{seconds}'],
   ];
   for (const [key, placeholder] of PLACEHOLDER_KEYS) {
     it(`${key} 每个 locale 保留占位符 ${placeholder}`, () => {

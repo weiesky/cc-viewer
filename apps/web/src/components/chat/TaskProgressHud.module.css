@@ -124,6 +124,10 @@
   text-decoration-color: var(--text-disabled);
 }
 
+.labelFailed {
+  color: var(--color-error);
+}
+
 .doing {
   flex: 0 0 auto;
   /* .label no longer flex-grows (shrink-to-fit so the detail Popover anchors to the
@@ -208,9 +212,21 @@
 
 .dotDone { color: var(--text-muted); }
 .dotDone .dotRing { fill: var(--text-muted); stroke: var(--text-muted); }
+.dotFailed { color: var(--color-error); }
+.dotFailed .dotRing { fill: var(--color-error); stroke: var(--color-error); }
 .dotRunning { color: var(--color-primary); }
 .dotRunning .dotRing { fill: currentColor; stroke: currentColor; }
 .dotPending { color: var(--text-muted); }
+
+/* The ✕ is punched out of the filled disc in the bar's own surface color,
+   mirroring how .dotCheck punches the ✓ out of a completed dot. */
+.dotCross {
+  fill: none;
+  stroke: var(--bg-container);
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
 .statePulse { animation: ccvTaskHudPulse 1.1s ease-in-out infinite; }
 

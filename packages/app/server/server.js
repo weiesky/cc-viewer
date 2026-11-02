@@ -47,7 +47,7 @@ import { resumeRoutes } from './routes/resume.js';
 import { sdkContextRoutes } from './routes/sdk-context.js';
 import { sdkMcpStatusRoutes } from './routes/sdk-mcp-status.js';
 import { proxyStatsRoutes } from './routes/proxy-stats.js';
-import { setProxyStatsListener } from './lib/proxy/proxy-stats.js';
+import { setProxyStatsListener, setSlowUpstreamListener } from './lib/proxy/proxy-stats.js';
 import * as imCore from './lib/im/im-bridge-core.js';
 import * as imProcMgr from './lib/im/im-process-manager.js';
 import * as chatQueue from './lib/chat-queue.js';
@@ -502,25 +502,35 @@ export function notifyProxyStats(logFile) {
 setProxyStatsListener(notifyProxyStats);
 
 // Slow-upstream advisory (review follow-up): proxy.js cannot import sdk-manager
-// (layer boundary is shrink-only), so IT emits through proxy-stats and server.js —
-// which already legally holds both the SDK accessors and the terminal WS — decides
-// whether the slow request maps to a live turn worth surfacing. The frame goes out
-// as a scoped sdk-slow-upstream (workspace-keyed by the proxy's project) so only
-// viewers of that workspace see it.
-setSlowUpstreamListener(({ projectKey, waitingMs, model } = {}) => {
+// (a proxy-only process must not load the SDK), so IT emits through proxy-stats
+// and server.js — which already legally holds both the SDK accessors and the
+// terminal WS — decides whether the slow request maps to a live session worth
+// surfacing. The frame carries the request's own cwd/instanceKey and is routed
+// through broadcastWsMessage, so only viewers of that workspace/instance see it.
+setSlowUpstreamListener(({ type, cwd, instanceKey, waitingMs, model } = {}) => {
   try {
     if (!isSdkMode || !_sdkListSessions || !terminalWss) return;
-    const sess = (_sdkListSessions() || []).find(s => projectKeyForCwd(s.cwd) === projectKey) || null;
-    // No live session for this workspace → the slow request is not user-visible
-    // traffic (IM worker, scheduled task in another process, …) — stay silent.
+    // Match the session by the request's real cwd (and instance when present),
+    // not the process-wide bound project — concurrent workspaces would otherwise
+    // cross-attribute the advisory. No live session → the slow request is not
+    // user-visible traffic (IM worker, scheduled task, …) — stay silent.
+    const sessions = _sdkListSessions() || [];
+    const sess = sessions.find(s => instanceKey && s.instanceKey === instanceKey)
+      || sessions.find(s => cwd && s.cwd === cwd)
+      || null;
     if (!sess) return;
-    const queueItems = _sdkGetQueueSnapshotFn ? _sdkGetQueueSnapshotFn({ project: projectKey }) : [];
-    const inFlight = Array.isArray(queueItems) && queueItems.length > 0;
-    const payload = JSON.stringify({
-      type: 'sdk-slow-upstream', cwd: sess.cwd, project: projectKey, instanceKey: sess.instanceKey || null,
-      waitingMs, model: model || null, turnInFlight: inFlight, ts: Date.now(),
+    if (type === 'resolved') {
+      // The waited-on request settled — tell the UI to dismiss the toast.
+      broadcastWsMessage({
+        type: 'sdk-slow-upstream-resolved', cwd: sess.cwd, project: projectKeyForCwd(sess.cwd),
+        instanceKey: sess.instanceKey || null, ts: Date.now(),
+      });
+      return;
+    }
+    broadcastWsMessage({
+      type: 'sdk-slow-upstream', cwd: sess.cwd, project: projectKeyForCwd(sess.cwd),
+      instanceKey: sess.instanceKey || null, waitingMs, model: model || null, ts: Date.now(),
     });
-    terminalWss.clients.forEach((c) => { if (c.readyState === 1) try { c.send(payload); } catch { /* best effort */ } });
   } catch (err) { reportSwallowed('server.slow-upstream-listener', err); }
 });
 

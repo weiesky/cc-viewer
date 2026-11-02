@@ -18,6 +18,7 @@ import { publish as publishWorkflowUpdate } from './utils/workflowStore';
 import { publishScheduledTaskEvent } from './utils/scheduledTaskEvents';
 import { reasonLabel } from './utils/scheduleDescription';
 import { publish as publishTaskUpdate, clearTasks as clearTaskStore } from './utils/taskStore';
+import { clear as clearSdkTaskTracker } from './utils/sdkTaskTracker';
 import { reportSwallowed } from './utils/errorReport';
 import { shouldWipeApprovalDismissal } from './utils/approvalDismissal';
 import { attachMainPty, closeProjectPty, resumeSession } from './utils/resumeSessions';
@@ -2396,6 +2397,10 @@ class AppBase extends React.Component {
    *  when it has none — the departing project's checklist must not linger. */
   _syncTaskStoreForChannel(ch) {
     try {
+      // SDK mode: the hook-driven SSE snapshot is always empty, so replaying /
+      // clearing it here would wipe the checklist the sdkTaskTracker maintains.
+      // Leave the tracker-owned store untouched.
+      if (this.state.sdkMode) return;
       const snap = ch && ch.vm && ch.vm.taskSnapshot;
       if (snap) publishTaskUpdate(snap);
       else clearTaskStore();
@@ -2895,6 +2900,7 @@ class AppBase extends React.Component {
         this._v3ResetClientState(channel); // review P0-2: old project's rows/assembler must not survive the switch
         this._rebuildRequestIndex([]);
         clearTaskStore(); // old project's task checklist must not linger into the new session
+        clearSdkTaskTracker(); // SDK-mode tracker mirrors the same lifecycle
         // 切项目要连当前 session id 一并清掉：否则 _maintainPinState 的 lazy-lock 兜底
         // (getSessionStableId(null) || vm.currentSessionId) 会拿旧项目的会话 id 误锁新项目，
         // 在 hydrate GET 抢先返回前可能把旧 id POST 进新项目的 pin 文件。
@@ -2975,6 +2981,7 @@ class AppBase extends React.Component {
     this._v3ResetClientState(channel); // review P0-2
     this._rebuildRequestIndex([]);
     clearTaskStore(); // same as workspace_started: drop the old session's checklist
+    clearSdkTaskTracker(); // SDK-mode tracker mirrors the same lifecycle
     channel.vm.currentSessionId = null; // same as workspace_started: clear the old session id so lazy-lock can't misfire
     // No bound project survives: every channel's scope domain is gone.
     for (const key of this._channels.keys()) {
@@ -3061,6 +3068,12 @@ class AppBase extends React.Component {
   _onTaskUpdate(channel, event) {
     try {
       const data = JSON.parse(event.data);
+      // SDK mode: hooks never fire, so the server-side task-state bucket is
+      // always empty and the connect-time SSE replay pushes `{ tasks: [] }`.
+      // Publishing that empty snapshot would wipe the checklist the
+      // sdkTaskTracker just rebuilt from WS sdk-task frames. Ignore hook
+      // snapshots here — in SDK mode the tracker is the sole taskStore writer.
+      if (this.state.sdkMode) return;
       if (!this._isRenderedChannel(channel)) { channel.vm.taskSnapshot = data; return; }
       // B2 view-attach: while attached to a sid, hide the primary
       // session's task checklist — it is not the attached sid's, and the resume
