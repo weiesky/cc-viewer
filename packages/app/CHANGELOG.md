@@ -1,5 +1,24 @@
 # cc-viewer
 
+## 1.9.19
+
+### Patch Changes
+
+- ef5fc8b: feat(server+web): **SDK 模式 Agent-Loop 感知修复与权威轮次边界** — 解决 SDK 模式下「Loop 是否还在执行」体感不准：spinner 此前只靠单次 API 粒度的网络信号+无 turn 关联的会话状态，迟到 idle 会清掉新回合；轮次结束靠 10s 防抖 turn_end，后台任务 `task-notification` 伪 result 会触发幻影结束。
+  
+  - **活性信号**：SDK 消息流（assistant/user/tool_progress/task_*/api_retry/compact 等非边界消息）按 ≤1/s 合并为 `sdk-session-state` 活性帧（heartbeat+activity），覆盖代理层看不见的工具/压缩阶段；零额外子进程 IPC（未启用逐 token 的 includePartialMessages）。
+  - **Turn 关联**：`sdk-session-state` 携带 `turnId` + 墙钟 `turnStartedAt`；服务端丢弃 head 回合未被 CLI 确认 running 的迟到 idle（承重门控），前端按 epoch 守卫丢弃传输重排的旧帧；lost-result 兜底在 armed 后有新活动时 disarm（缓解「新回合 running 先于旧 idle」时的误判）。
+  - **权威 loopEnd**：新增 `agent_loop_start`/`agent_loop_end` SSE 帧；SDK 从真 result（过滤 `origin.kind==='task-notification'`）立即发出、绕过防抖；PTY 从 UserPromptSubmit 上升沿/打断、`_emitTurnEnd`（防抖后）发出，两模式统一。修复伪 result 幻影 turn_end。
+  - **spinner 即亮**：prompt/push 即刻点亮，不等首个 API 调用。
+  - **语音播报**：新增 `agentLoopStart`/`agentLoopEnd` 事件（默认关闭，opt-in）；`agentLoopEnd` 复用各语音包 turnEnd 录音，`agentLoopStart` 为新生成短提示音；18 语言；按 turnId 去重，实际播放后抑制同边界 `turnEnd` 语音（防双响）。
+  - **插件**：新增 `onAgentLoopStart`/`onAgentLoopEnd` parallel hook（PTY+SDK 双路径同点触发，payload 含 mode/turnId/turnStartedAt/reason）；service 插件 `ctx.events.on` 增加 `agent_loop_start`/`agent_loop_end`。
+  
+  Coverage: `sdk-agent-loop.test.js`, `agent-loop-server-events.test.js`, `agent-loop-voice.test.js`, `sdk-session-state.test.js`, `plugin-runtime.test.js`, `voice-pack-events.test.js`, `voice-pack-manager.test.js`, `turn-active-gating.test.js`, `stop-button-turn-active.test.js`.
+- bd32d02: fix(server): **打开有预载历史的项目（SDK 模式）后发新消息不刷新对话画面** — 历史会话目录被 live-feed 重连时以 `suppressExisting` 同步种子读取，把 attach 前已落盘的新消息当历史吞掉（offset 越过、永不重读），画面冻结在预载历史上、仅刷新可见。改为按 feed 上次观察到的字节水位线抑制：种子只读到水位线、其后内容按 live 广播（既不错吞新消息，也不重放历史）。Coverage: `v2-live-feed.test.js`.
+- 7641f51: fix(server): **修复丢失 result 兜底误吞下一回合 result** — v1.9.18 的丢失 result 兜底在强制结算时用计数器 `_lateResultTombstones` 记「迟到的 result 待丢弃」，但它只在 teardown/reset 时清零、开新回合不清。result 真丢（永不到）时，这个计数残留并吞掉下一回合的正常 result（不发 turn_end），5 秒后该回合又被误判 turn-stuck 提示重试——尽管内容已落盘。改为代际 guard：被强制结算的回合记录其 epoch，迟到 result 只在无活回合可归属时丢弃；新回合的 result 正常配对、旧债即时作废。Coverage: `sdk-manager-lost-result.test.js`.
+  
+  fix(server): **修复首次 `ccv --sdk` 首回合对话卡渲染、刷新才恢复** — `/events` 冷加载刻意等历史发完才把客户端加进广播列表（防闪烁），但「冷读冻结快照 → 注册」这段窗口内的 live 增量既不在快照也不广播给该客户端，且无重放；首回合独占「冷加载慢 + 首数据晚」恰好落入窗口，只能刷新补。现加 attach buffer：冷加载期间挂一个带相同视图戳的缓冲代理入广播列表，窗口增量入队，load_end 后按序回放再换真实客户端；`v3_conv` 按冷包 coverage 去重（客户端 conv 重放非幂等）。Coverage: `sse-attach-buffer.test.js`, `events-attach-buffer.test.js`.
+
 ## 1.9.18
 
 ### Patch Changes
