@@ -230,6 +230,132 @@ describe('ToolFileChangeController — dispose', () => {
   });
 });
 
+// 增量扫描（性能修复）：check() 不再每帧全量重扫所有 sessions/requests 的 messages，
+// 而是用 WeakMap<对象, 已扫 messages 长度> 游标只扫增量。以下验证增量行为与全量一致，
+// 且不重复触发、不漏触发。
+describe('增量扫描游标', () => {
+  beforeEach(() => { mock.timers.enable({ apis: ['setTimeout'] }); });
+  afterEach(() => { mock.timers.reset(); });
+
+  it('同一 session 追加新 tool_result → 只触发新增的那次，旧的幂等不重刷', () => {
+    const host = makeHost({ fileExplorerOpen: true });
+    // 一个会持续增长的 session 对象（merge 复用同一对象引用）。
+    const session = {
+      messages: [
+        { role: 'assistant', content: [{ type: 'tool_use', id: 'w1', name: 'Write', input: { file_path: 'a.js' } }] },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'w1' }] },
+      ],
+    };
+    host.setProps([session], []);
+    const c = new ToolFileChangeController(host);
+    c.check();
+    mock.timers.tick(500);
+    assert.equal(host._state.fileExplorerRefresh, 1, '第一个 Write 触发一次刷新');
+
+    // 同一 session 对象追加第二个 Write（merge 的 push 模式：messages 变长）。
+    session.messages.push(
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'w2', name: 'Write', input: { file_path: 'b.js' } }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'w2' }] },
+    );
+    c.check(); // 增量：应只处理 w2，w1 幂等早退
+    mock.timers.tick(500);
+    assert.equal(host._state.fileExplorerRefresh, 2, '第二个 Write 增量再触发一次（不重刷 w1）');
+  });
+
+  it('push 一个新 session 对象 → 新 session 从 0 全扫，其 tool_result 被检测', () => {
+    const host = makeHost({ fileExplorerOpen: true });
+    const s1 = sessionWithWrite('t1', 'old.js');
+    host.setProps([s1], []);
+    const c = new ToolFileChangeController(host);
+    c.check();
+    mock.timers.tick(500);
+    assert.equal(host._state.fileExplorerRefresh, 1);
+
+    // 新增一个全新 session 对象（新会话）。
+    const s2 = sessionWithWrite('t2', 'new.js');
+    host.setProps([s1, s2], []);
+    c.check();
+    mock.timers.tick(500);
+    assert.equal(host._state.fileExplorerRefresh, 2, '新 session 的 Write 被增量检测');
+  });
+
+  it('requests 数据源增量：同一 request 追加 messages → 只扫增量', () => {
+    const host = makeHost({ fileExplorerOpen: true });
+    const req = {
+      body: { messages: [
+        { role: 'assistant', content: [{ type: 'tool_use', id: 'r1', name: 'Write', input: { file_path: 'x.js' } }] },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'r1' }] },
+      ] },
+    };
+    host.setProps([], [req]);
+    const c = new ToolFileChangeController(host);
+    c.check();
+    mock.timers.tick(500);
+    assert.equal(host._state.fileExplorerRefresh, 1);
+
+    // 同一 request 对象 messages 增长（累积前缀），追加第二个 Write。
+    req.body.messages.push(
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'r2', name: 'Write', input: { file_path: 'y.js' } }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'r2' }] },
+    );
+    c.check();
+    mock.timers.tick(500);
+    assert.equal(host._state.fileExplorerRefresh, 2, 'request 增量 Write 再触发一次');
+  });
+
+  it('resetCursors 后重扫：_processedToolIds 幂等 → 不重复触发已处理的刷新', () => {
+    const host = makeHost({ fileExplorerOpen: true });
+    host.setProps([sessionWithWrite('t1')], []);
+    const c = new ToolFileChangeController(host);
+    c.check();
+    mock.timers.tick(500);
+    assert.equal(host._state.fileExplorerRefresh, 1);
+
+    // 冷加载/切会话 → resetCursors。同一内容重扫，但 w 的 tool_result 已在
+    // _processedToolIds 里（不被 resetCursors 清），幂等早退 → 不重复触发。
+    c.resetCursors();
+    c.check();
+    mock.timers.tick(500);
+    assert.equal(host._state.fileExplorerRefresh, 1, 'reset 后重扫不重复触发已处理的 tool_result');
+  });
+
+  it('流式尾部 content 增长：同一 user message 追加 tool_result block → 被捕获', () => {
+    const host = makeHost({ fileExplorerOpen: true });
+    // 先收集 tool_use（assistant），尾部 user message 初始无 tool_result。
+    const session = {
+      messages: [
+        { role: 'assistant', content: [{ type: 'tool_use', id: 's1', name: 'Write', input: { file_path: 's.js' } }] },
+        { role: 'user', content: [{ type: 'text', text: 'working...' }] },
+      ],
+    };
+    host.setProps([session], []);
+    const c = new ToolFileChangeController(host);
+    c.check();
+    mock.timers.tick(500);
+    assert.equal(host._state.fileExplorerRefresh, 0, '初始无 tool_result，不刷新');
+
+    // 流式把 tool_result 合进尾部那条已扫的 user message（message 数不变、content 增长）。
+    session.messages[1].content.push({ type: 'tool_result', tool_use_id: 's1' });
+    c.check(); // 尾部重扫一条 → 捕获新合入的 tool_result
+    mock.timers.tick(500);
+    assert.equal(host._state.fileExplorerRefresh, 1, '尾部 message 新增的 tool_result 被重扫捕获');
+  });
+
+  it('长度回缩（/clear 重置该 session）→ 从 0 重扫不抛错', () => {
+    const host = makeHost({ fileExplorerOpen: true });
+    const session = sessionWithWrite('t1');
+    host.setProps([session], []);
+    const c = new ToolFileChangeController(host);
+    c.check();
+    mock.timers.tick(500);
+    // /clear：同一 session 对象的 messages 被换成更短的全新数组。
+    session.messages = [{ role: 'user', content: [{ type: 'text', text: 'after clear' }] }];
+    c.check(); // scanned(2) > msgs.length(1) → from=0 重扫
+    mock.timers.tick(500);
+    assert.ok(true, '回缩重扫不抛错');
+  });
+});
+
 describe('collectToolUseBlocks（纯函数）', () => {
   it('正常 tool_use → 收集 {name, input}', () => {
     const map = new Map();
