@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- perf(web): **切换/发送长上下文对话时界面长时间迟滞** — 工具文件变更监听（`ToolFileChangeController.check`）此前在每个 SSE tick 都对所有会话 + 所有请求的全部 messages 做两遍全量遍历；长会话里每个 request.body.messages 都是累积前缀，求和即 O(上下文²)，且与「当前/新会话」无关，故新开会话也同样卡。改为按「session/request 对象引用」的 WeakMap 增量游标，只扫自上次以来新增的 messages（尾部一条重扫以覆盖流式合并进已扫 message 的 content 增长），tool_use 映射跨调用持久累积防止漏判文件修改；冷加载/切会话时由 ChatView 调 resetCursors 整体重建。Coverage: `tool-file-change-controller.test.js`.
+
 - fix(server): **打开有预载历史的项目（SDK 模式）后发新消息不刷新对话画面** — 历史会话目录被 live-feed 重连时以 `suppressExisting` 同步种子读取，把 attach 前已落盘的新消息当历史吞掉（offset 越过、永不重读），画面冻结在预载历史上、仅刷新可见。改为按 feed 上次观察到的字节水位线抑制：种子只读到水位线、其后内容按 live 广播（既不错吞新消息，也不重放历史）。Coverage: `v2-live-feed.test.js`.
 
 - feat(server+web): **SDK 模式 Agent-Loop 感知修复与权威轮次边界** — 会话状态携带 turnId+turnStartedAt（防迟到 idle 清新回合 spinner）；SDK 消息流按 ≤1/s 合并活性帧（覆盖工具/压缩阶段）；新增 `agent_loop_start`/`agent_loop_end` SSE 帧（SDK 真 result 即时、PTY 防抖后/打断即时，两模式统一，过滤后台任务伪 result）；prompt/push 即刻点亮 spinner。配套语音播报新增 `agentLoopStart`/`agentLoopEnd` 事件（默认关闭，18 语言，防与 turnEnd 双响）；插件新增 `onAgentLoopStart`/`onAgentLoopEnd` hook 与 service 插件 `agent_loop_*` 事件。Coverage: `sdk-agent-loop.test.js`, `agent-loop-server-events.test.js`, `agent-loop-voice.test.js`, `sdk-session-state.test.js`, `voice-pack-events.test.js`, `turn-active-gating.test.js`, `stop-button-turn-active.test.js`.
