@@ -1,0 +1,29 @@
+apps/web/src/components/chat/ChatMessage.jsx
+  s_a4f48a8f74edcd::t_5b75f313856d76 1443-1446
+  s_a4f48a8f74edcd::t_e9a226566490b3 1333-1339
+apps/web/test/chat-blank-bubble.test.js
+  s_a4f48a8f74edcd::t_41ee19bac71c5b 1-34,47-75,77-89,91-104
+  s_a4f48a8f74edcd::t_6b09c15560743d 46
+  s_a4f48a8f74edcd::t_3177a77c0aa904 35-45
+  s_a4f48a8f74edcd::t_99db2f7b10db2b 76,90
+.changeset/chat-blank-bubble.md
+  s_a4f48a8f74edcd::t_eb603a5819cb29 1-5
+history.md
+  s_a4f48a8f74edcd::t_027ef9d2c1ac00 5-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6393767682cffe74378d1099f48fc450533a8cf2",
+  "prompts": {},
+  "sessions": {
+    "s_a4f48a8f74edcd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "57e3e95d-699f-4046-b680-7b09c8d5a9d6",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
