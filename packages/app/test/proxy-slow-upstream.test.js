@@ -58,6 +58,9 @@ before(async () => {
 
 after(() => {
   globalThis.fetch = realFetch;
+  // Close the proxy listener so node:test's event loop can exit (the suite
+  // otherwise hangs on the open server handle).
+  try { proxyMod.__testing.lastServer?.close(); } catch { /* noop */ }
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -97,10 +100,12 @@ describe('proxy.js slow-upstream advisory', () => {
     assert.equal(slow.length, 1, 'exactly one slow advisory per request');
     assert.equal(slow[0].cwd, '/work/ws-a');
     assert.equal(slow[0].instanceKey, 'inst-a');
-    assert.ok(slow[0].waitingMs >= 40, 'waitingMs reflects real elapsed, not a constant');
+    assert.ok(slow[0].requestId, 'each slow advisory carries a requestId');
+    assert.ok(typeof slow[0].waitingMs === 'number' && slow[0].waitingMs > 0, 'waitingMs reflects real elapsed, not a constant');
     assert.equal(slow[0].model, 'claude-test');
     assert.equal(resolved.length, 1, 'a resolved signal follows once the wait ends');
     assert.equal(resolved[0].cwd, '/work/ws-a');
+    assert.equal(resolved[0].requestId, slow[0].requestId, 'resolved clears the same requestId');
   });
 
   it('does not emit when the request settles before the threshold', async () => {

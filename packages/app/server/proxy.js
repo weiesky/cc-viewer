@@ -256,7 +256,11 @@ export function startProxy() {
       }
     });
 
-    // Start on random port
+    // Start on random port. Resolve with the port (existing callers destructure a
+    // number). Expose the server on the test seam so tests can close it and let
+    // node:test's event loop exit (proxy-slow-upstream.test.js hung on the open
+    // handle); production callers ignore it.
+    __testing.lastServer = server;
     server.listen(0, '127.0.0.1', () => {
       const address = server.address();
       resolve(address.port);
@@ -288,6 +292,7 @@ let _slowReqSeq = 0;
 export const __testing = {
   slowUpstreamMs: SLOW_UPSTREAM_MS,
   emit: emitSlowUpstream,
+  lastServer: null, // set by startProxy so tests can close the listener
 };
 
 // ── 大模型 API 请求处理：重试引擎 + 明细统计 ──────────────────────
