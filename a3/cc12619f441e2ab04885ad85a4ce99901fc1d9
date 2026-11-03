@@ -1,0 +1,40 @@
+apps/web/src/components/terminal/TerminalPanel.jsx
+  s_a4f48a8f74edcd::t_73cabdfb04be1f 1184-1188
+packages/app/server/proxy.js
+  s_a4f48a8f74edcd::t_847b6354a3bf6e 544-545,547,550
+  s_a4f48a8f74edcd::t_38fcd1427246c5 381-383,389-391,412-420
+  s_a4f48a8f74edcd::t_56601103856d0e 475,487-490,492
+apps/web/src/utils/sdkTaskTracker.js
+  s_a4f48a8f74edcd::t_2e06259427d9a2 190-204
+history.md
+  s_a4f48a8f74edcd::t_5c084bc00717c9 5-6
+apps/web/src/components/terminal/ScratchTerminal.jsx
+  s_a4f48a8f74edcd::t_54a83fbe156fbb 323-328
+apps/web/src/components/chat/ChatView.jsx
+  s_a4f48a8f74edcd::t_3b41504028946d 814-816
+  s_a4f48a8f74edcd::t_a173d70f9328e1 1370-1379,1383
+  s_a4f48a8f74edcd::t_1b15bb5cb00b73 854-859
+packages/app/server/server.js
+  s_a4f48a8f74edcd::t_c4bf64ccd71632 528-534,536-537,541
+packages/app/test/proxy-slow-upstream.test.js
+  s_a4f48a8f74edcd::t_3dd23f27872a52 153-192
+apps/web/src/AppBase.jsx
+  s_a4f48a8f74edcd::t_c7b02b036fd46e 21
+  s_a4f48a8f74edcd::t_ae0be758b3cac6 2402-2406
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a3cc12619f441e2ab04885ad85a4ce99901fc1d9",
+  "prompts": {},
+  "sessions": {
+    "s_a4f48a8f74edcd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "57e3e95d-699f-4046-b680-7b09c8d5a9d6",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
