@@ -156,4 +156,36 @@ describe('attachMobileTouchScroll', () => {
     flushRaf(30);
     assert.equal(term.scrolled.length, n, 'no momentum from the pre-multitouch streak');
   });
+
+  it('multi-touch → single-finger transition does not jump the viewport (review P2-8)', () => {
+    const screen = makeScreen();
+    const term = makeTerm();
+    attachMobileTouchScroll(term, makeContainer(screen));
+
+    // single-finger drag starts at y=200
+    screen.emit('touchstart', touch(200));
+    advance(10);
+    screen.emit('touchmove', touch(190));
+    flushRaf();
+    assert.deepEqual(term.scrolled, [1]); // 10px → 1 line at 10px/line
+    term.scrolled.length = 0;
+
+    // second finger lands far away and moves — anchor must track touches[0],
+    // not stay frozen at y=190 from the single-finger streak.
+    screen.emit('touchstart', { touches: [{ clientY: 50 }, { clientY: 300 }] });
+    advance(10);
+    screen.emit('touchmove', { touches: [{ clientY: 45 }, { clientY: 300 }] }); // multi-touch move
+    flushRaf();
+    assert.deepEqual(term.scrolled, [], 'multi-touch produces no scroll');
+
+    // second finger lifts → back to single finger at y≈45. The next move must
+    // compute dy against the refreshed anchor (~45), NOT the stale 190 — a
+    // frozen anchor would yield dy≈190-40=150px ≈ 15 lines (a huge jump).
+    advance(10);
+    screen.emit('touchmove', touch(40)); // single finger resumes near the anchor
+    flushRaf();
+    // dy = 45-40 = 5px → 0 lines (below one line). Anything ≥1 line means the
+    // anchor was stale and the viewport jumped.
+    assert.deepEqual(term.scrolled, [], 'no jump on multi→single transition');
+  });
 });

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(sdk+web): **CR 后续修复（慢上游提示健壮性 + 若干 P2）** — 慢上游 toast 加 90s 兜底 + 切工作区/卸载即销毁；requestId 计数 + `waitingMs` 客户端自增；server cwd 回退仅当未上报 instance；计时改到首个 body chunk。composer pad 提到 12 行 + clamp 修正。sdkTaskTracker 工作区 owner 感知 + 终态批次重置。`Teammate.md` 18 locale ×2 树去 `TeamCreate`。mobile 触摸滚动修多指过渡跳动。Coverage: `ultraplan-teamcreate-free.test.js`, `mobile-touch-scroll.test.js`.
+
 - fix(web): **SubAgent 空白 `chat-boxer` 气泡** — 纯空白 text block 为 truthy 但解析为零 segments，两条共享渲染路径（legacy + web-search in-order）在 `renderAssistantText` 后、创建 `chat-boxer` 前按 `segments.length === 0` 跳过，消除 SubAgent/Teammate 等未过滤入口的可见空气泡；合法空 system-tag 不误删。Coverage: `chat-blank-bubble.test.js`.
 
 - fix(content): **UltraReview 提示词统一为无 TeamCreate 新版** — codeExpert 评审段与 customContent 预填样板对齐为「Agent 工具构建 team（teammate 有 name)→ 多角色评审 → 修 P0/P1、辩证 P2 → 逐一通知 teammate 退出」；清除内嵌提示词工具清单里残留的 `TeamCreate` 引用（该工具不存在）。覆盖 18 locale 的 UltraPlan.md / CustomUltraplanExpert.md、`code-expert.json`、`ultraplanTemplates.js` 与 i18n 骨架。Coverage: `ultraplan-templates.test.js`, `builtin-presets.test.js`.

@@ -29,6 +29,18 @@ import { publish as publishTaskUpdate, clearTasks as clearTaskStore } from './ta
 /** @type {Map<string, object>} */
 let _tasks = new Map();
 let _sessionId = null;
+// Workspace owner of the current checklist (review P2-5). The server routes
+// cwd-tagged sdk-task frames only to clients viewing that workspace and does not
+// replay them; a single module-global tracker with no owner would otherwise show
+// the previous workspace's checklist on a view switch and drop frames belonging
+// to the workspace that actually emitted them.
+let _ownerKey = null;
+
+function _frameOwner(frame) {
+  const cwd = typeof frame.cwd === 'string' ? frame.cwd : '';
+  const inst = typeof frame.instanceKey === 'string' ? frame.instanceKey : '';
+  return (cwd || inst) ? `${cwd}::${inst}` : null;
+}
 
 // SDK status vocabulary → HUD status mapping. The HUD renders four states
 // (pending / in_progress / completed / failed); the SDK terminal failures
@@ -68,6 +80,18 @@ export function applyFrame(frame) {
   // and publish the emptied snapshot immediately — otherwise a first frame that
   // does not merge (unknown taskId / skipTranscript) would leave the previous
   // session's checklist stuck on the HUD until some later publishable frame.
+  // Workspace-owner boundary (review P2-5): a frame from a DIFFERENT workspace
+  // than the one whose tasks we're showing means a view switch — the displayed
+  // checklist no longer belongs here. Reset+publish empty so the new workspace
+  // starts clean instead of briefly showing the previous project's tasks.
+  const owner = _frameOwner(frame);
+  if (owner && owner !== _ownerKey) {
+    _ownerKey = owner;
+    _tasks = new Map();
+    _sessionId = null;
+    _publish();
+  }
+
   if (frame.sessionId && frame.sessionId !== _sessionId) {
     _tasks = new Map();
     _sessionId = frame.sessionId;
@@ -77,6 +101,14 @@ export function applyFrame(frame) {
   switch (subtype) {
     case 'task_started': {
       if (frame.skipTranscript) return;
+      // Batch reset (review P2-5): when every tracked task is already terminal,
+      // a new task_started opens a fresh turn's batch — drop the previous
+      // turn's residue so the HUD never opens as "✓ 3/4" with stale dots and
+      // _tasks can't grow unboundedly across turns (hook-path parity: the PTY
+      // path resets the checklist on every new user prompt).
+      if (_tasks.size > 0 && [..._tasks.values()].every(t => t.status === 'completed' || t.status === 'failed')) {
+        _tasks = new Map();
+      }
       const existing = _tasks.get(taskId);
       if (existing) {
         // Idempotent re-fire: refresh mutable fields and reset status
@@ -151,6 +183,7 @@ export function applyFrame(frame) {
 export function clear() {
   _tasks = new Map();
   _sessionId = null;
+  _ownerKey = null;
   clearTaskStore();
 }
 

@@ -277,6 +277,12 @@ export function startProxy() {
 // normal slow first-token, short enough to beat the user's give-up threshold.
 const SLOW_UPSTREAM_MS = 30 * 1000;
 
+// Monotonic id so concurrent slow requests each get a distinct toast and a
+// resolved frame only clears its own (review P2-1: a single constant key made
+// parallel subagent requests clobber each other and the first resolve dismissed
+// all). Passed through both the slow and the resolved frame.
+let _slowReqSeq = 0;
+
 // Test seam: lets tests shrink the threshold and observe emits without standing
 // up a real 30s wait or a network upstream. Production defaults are unchanged.
 export const __testing = {
@@ -345,13 +351,16 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
   let slowFired = false;
   let slowCwd = '';
   let slowInstance = '';
+  let slowReqId = null;
   if (liveCtx.isUtility !== true) {
     slowCwd = findHeader(fetchOptions.headers, 'x-ccv-project-dir') || '';
     slowInstance = findHeader(fetchOptions.headers, 'x-ccv-instance') || '';
+    slowReqId = `sq-${++_slowReqSeq}`;
     slowTimer = setTimeout(() => {
       slowFired = true;
       __testing.emit({
         type: 'slow',
+        requestId: slowReqId,
         cwd: slowCwd,
         instanceKey: slowInstance,
         waitingMs: Date.now() - slowStartTime,
@@ -362,6 +371,15 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
   }
   const clearSlowTimer = () => { if (slowTimer) { clearTimeout(slowTimer); slowTimer = null; } };
   clientAbort.signal.addEventListener('abort', clearSlowTimer, { once: true });
+  // The timer measures time-to-HEADERS (fetch resolves at headers). Keep it armed
+  // until the first BODY chunk so a headers-fast-then-stalled stream still counts
+  // as slow (review P2-3); the finally below stays as the cleanup backstop.
+  let slowFirstByteSeen = false;
+  const markFirstByte = () => {
+    if (slowFirstByteSeen) return;
+    slowFirstByteSeen = true;
+    clearSlowTimer();
+  };
 
   // 执行带重试的请求
   let result;
@@ -385,7 +403,7 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
     // If the advisory fired, tell the UI the wait is over so the persistent
     // toast is dismissed instead of lingering past completion.
     if (slowFired) {
-      __testing.emit({ type: 'resolved', cwd: slowCwd, instanceKey: slowInstance });
+      __testing.emit({ type: 'resolved', requestId: slowReqId, cwd: slowCwd, instanceKey: slowInstance });
     }
   }
 
@@ -452,6 +470,10 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
     // @ts-ignore
     const nodeStream = Readable.fromWeb(response.body);
     nodeStream.on('error', () => {});
+    // First body byte arrived → the upstream is no longer "slow"; stop the
+    // advisory timer. Headers alone don't count (a headers-fast-then-stalled
+    // SSE stream is exactly the silent case we want to surface).
+    nodeStream.once('data', markFirstByte);
     const streamIdleMs = retryConfig && retryConfig.mode === 'off'
       ? (retryConfig.streamIdleTimeoutMs ?? 0)
       : 0;

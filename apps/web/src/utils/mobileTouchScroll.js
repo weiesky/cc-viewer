@@ -77,13 +77,25 @@ export function attachMobileTouchScroll(terminal, container) {
     // Reset samples even for multi-touch — a 2nd finger mid-gesture must not let
     // touchend compute momentum from the previous single-finger streak.
     velocitySamples = [];
-    if (e.touches.length !== 1) return;
-    lastY = e.touches[0].clientY;
-    lastTime = performance.now();
+    // Always re-seed the anchor, even for multi-touch (review P2-8): otherwise a
+    // 2nd-finger land/lift leaves lastY frozen, and the next single-finger
+    // touchmove computes dy against a stale anchor → a large viewport jump.
+    if (e.touches.length > 0) {
+      lastY = e.touches[0].clientY;
+      lastTime = performance.now();
+    }
   }, { passive: true });
 
   screen.addEventListener('touchmove', (e) => {
-    if (e.touches.length !== 1) return;
+    if (e.touches.length !== 1) {
+      // Keep the anchor fresh on multi-touch (review P2-8) so the transition
+      // back to a single finger never computes dy from a frozen lastY.
+      if (e.touches.length > 0) {
+        lastY = e.touches[0].clientY;
+        lastTime = performance.now();
+      }
+      return;
+    }
     const y = e.touches[0].clientY;
     const now = performance.now();
     const dt = now - lastTime;

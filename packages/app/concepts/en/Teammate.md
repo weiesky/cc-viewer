@@ -2,7 +2,7 @@
 
 ## Definition
 
-A Teammate is a collaborative agent in Claude Code Agent Team mode. When the main agent creates a team via `TeamCreate` and spawns teammates using the `Agent` tool, each teammate runs as an independent agent process with its own context window and toolset, communicating with team members through `SendMessage`.
+A Teammate is a collaborative agent in Claude Code Agent Team mode. When the main agent creates a team and spawns teammates using the `Agent` tool, each teammate runs as an independent agent process with its own context window and toolset, communicating with team members through `SendMessage`.
 
 ## Differences from SubAgent
 

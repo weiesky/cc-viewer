@@ -507,7 +507,7 @@ setProxyStatsListener(notifyProxyStats);
 // terminal WS — decides whether the slow request maps to a live session worth
 // surfacing. The frame carries the request's own cwd/instanceKey and is routed
 // through broadcastWsMessage, so only viewers of that workspace/instance see it.
-setSlowUpstreamListener(({ type, cwd, instanceKey, waitingMs, model } = {}) => {
+setSlowUpstreamListener(({ type, requestId, cwd, instanceKey, waitingMs, model } = {}) => {
   try {
     if (!isSdkMode || !_sdkListSessions || !terminalWss) return;
     // Match the session by the request's real cwd (and instance when present),
@@ -515,21 +515,27 @@ setSlowUpstreamListener(({ type, cwd, instanceKey, waitingMs, model } = {}) => {
     // cross-attribute the advisory. No live session → the slow request is not
     // user-visible traffic (IM worker, scheduled task, …) — stay silent.
     const sessions = _sdkListSessions() || [];
-    const sess = sessions.find(s => instanceKey && s.instanceKey === instanceKey)
-      || sessions.find(s => cwd && s.cwd === cwd)
-      || null;
+    // cwd fallback only when NO instance was reported (review P2-2): an
+    // ephemeral/scheduled-task session self-reports a fresh synthetic
+    // x-ccv-instance that is never in listSdkSessions; falling back to a
+    // same-cwd resident session would then toast for background traffic the
+    // user is not waiting on. When an instance IS given but matches nothing,
+    // the request is not a resident session's — stay silent.
+    const sess = instanceKey
+      ? (sessions.find(s => s.instanceKey === instanceKey) || null)
+      : (sessions.find(s => cwd && s.cwd === cwd) || null);
     if (!sess) return;
     if (type === 'resolved') {
       // The waited-on request settled — tell the UI to dismiss the toast.
       broadcastWsMessage({
         type: 'sdk-slow-upstream-resolved', cwd: sess.cwd, project: projectKeyForCwd(sess.cwd),
-        instanceKey: sess.instanceKey || null, ts: Date.now(),
+        instanceKey: sess.instanceKey || null, requestId: requestId || null, ts: Date.now(),
       });
       return;
     }
     broadcastWsMessage({
       type: 'sdk-slow-upstream', cwd: sess.cwd, project: projectKeyForCwd(sess.cwd),
-      instanceKey: sess.instanceKey || null, waitingMs, model: model || null, ts: Date.now(),
+      instanceKey: sess.instanceKey || null, requestId: requestId || null, waitingMs, model: model || null, ts: Date.now(),
     });
   } catch (err) { reportSwallowed('server.slow-upstream-listener', err); }
 });

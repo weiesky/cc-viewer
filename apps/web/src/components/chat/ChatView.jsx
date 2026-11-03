@@ -407,6 +407,12 @@ class ChatView extends React.Component {
     this._inputRef = React.createRef();
     this._stopOptimisticTimer = null; // 乐观停止兜底定时器
     this._sdkRetryResetTimer = null; // manual [retry] 15s fallback (componentWillUnmount clears)
+    // Slow-upstream toast bookkeeping (review P2-1): track pending slow requests
+    // by requestId so concurrent slow requests don't clobber one shared toast,
+    // and tick the displayed elapsed time so it isn't frozen at the 30s emit.
+    // Map<requestId, { startedAt }>; the toast shows the OLDEST pending wait.
+    this._slowUpstreamPending = new Map();
+    this._slowUpstreamTickTimer = null;
     // PTY byte-stream state (buffer/carry/debounce/current-prompt mirror/auto-allow
     // dedupe) is owned by this._ptyPrompt (PtyPromptController), see end of constructor.
     // 全部 ask 状态机字段 + 方法由 this._askFlow（AskFlowController）持有，见构造末尾。
@@ -805,6 +811,10 @@ class ChatView extends React.Component {
       this._fileScrollSnapshot = null;
       this.setState({ currentFile: null, currentGitDiff: null });
       this._detectGit();
+      // A slow-upstream toast belongs to the workspace that emitted it; leaving
+      // it up after switching away would pin a stale "still waiting" notice on
+      // an unrelated view (review P1-1).
+      try { message.destroy('sdk-slow-upstream'); } catch {}
     }
     // Viewed-project / viewed-instance switch: the `/` menu's skill list belongs to the
     // previous workspace/instance — reset it so a stale list never bleeds across views.
@@ -1321,10 +1331,45 @@ class ChatView extends React.Component {
     this._maybeScheduleLocalLogAutoFill();
   }
 
+  // ── Slow-upstream toast helpers (review P2-1) ───────────────────────────
+  // The toast shows the OLDEST pending wait. duration:90 is a bounded fallback
+  // so a lost sdk-slow-upstream-resolved frame can never pin it forever (P1-1);
+  // the tick re-opens it with fresh elapsed time (re-open resets duration).
+  _renderSlowUpstreamToast() {
+    if (this._slowUpstreamPending.size === 0) return;
+    let oldest = Infinity;
+    for (const { startedAt } of this._slowUpstreamPending.values()) oldest = Math.min(oldest, startedAt);
+    const seconds = Math.max(0, Math.round((Date.now() - oldest) / 1000));
+    try {
+      message.open({
+        key: 'sdk-slow-upstream',
+        type: 'info',
+        content: t('ui.sdkSlowUpstream', { seconds }),
+        duration: 90,
+      });
+    } catch {}
+  }
+
+  _armSlowUpstreamTick() {
+    if (this._slowUpstreamTickTimer) return;
+    this._slowUpstreamTickTimer = setInterval(() => {
+      if (this._slowUpstreamPending.size === 0) { this._stopSlowUpstreamTick(); return; }
+      this._renderSlowUpstreamToast();
+    }, 5000);
+  }
+
+  _stopSlowUpstreamTick() {
+    if (this._slowUpstreamTickTimer) { clearInterval(this._slowUpstreamTickTimer); this._slowUpstreamTickTimer = null; }
+  }
+
   componentWillUnmount() {
     this._unmounted = true;
     this._slashSkillsSeq++; // invalidate any in-flight /api/skills pull so it never setStates post-unmount
+    this._stopSlowUpstreamTick();
+    this._slowUpstreamPending.clear();
     this._splitDrag.dispose();
+    // Best-effort: a persistent slow-upstream toast must not outlive the chat view.
+    try { message.destroy('sdk-slow-upstream'); } catch {}
     if (this._planAutoTimer) { this._planAutoTimer(); this._planAutoTimer = null; } // deadlineCountdown stop()
     if (this._sdkRetryResetTimer) { clearTimeout(this._sdkRetryResetTimer); this._sdkRetryResetTimer = null; }
     // 缓发超时 timer + 残留上传占位的 objectURL 清扫(卸载中 drain/超时回调已各自 _unmounted 守卫)。
@@ -2988,21 +3033,25 @@ class ChatView extends React.Component {
           // legitimately idle here (CLI retries a settled failure; the proxy
           // retries a settled response) — without this frame the user only sees a
           // bare spinner for minutes (review: the 164s ECONNRESET turn).
-          // A stable key + duration:0 makes it a single persistent toast that
-          // stays until the request settles (sdk-slow-upstream-resolved) instead
-          // of a 5s flash that leaves minutes of silence after it.
           if (!this._sdkFrameMatchesView(msg)) return;
-          try {
-            message.open({
-              key: 'sdk-slow-upstream',
-              type: 'info',
-              content: t('ui.sdkSlowUpstream', { seconds: Math.round((msg.waitingMs || 0) / 1000) }),
-              duration: 0,
-            });
-          } catch {}
+          // Track by requestId (fallback to a synthetic key when absent) so
+          // concurrent slow requests don't clobber a single shared toast and a
+          // resolve only clears its own (review P2-1).
+          const rid = msg.requestId || `anon-${msg.cwd || ''}`;
+          const startedAt = Date.now() - (msg.waitingMs || 0);
+          this._slowUpstreamPending.set(rid, { startedAt });
+          this._renderSlowUpstreamToast();
+          this._armSlowUpstreamTick();
         } else if (msg.type === 'sdk-slow-upstream-resolved') {
           if (!this._sdkFrameMatchesView(msg)) return;
-          try { message.destroy('sdk-slow-upstream'); } catch {}
+          const rid = msg.requestId || `anon-${msg.cwd || ''}`;
+          this._slowUpstreamPending.delete(rid);
+          if (this._slowUpstreamPending.size === 0) {
+            this._stopSlowUpstreamTick();
+            try { message.destroy('sdk-slow-upstream'); } catch {}
+          } else {
+            this._renderSlowUpstreamToast();
+          }
         } else if (msg.type === 'sdk-retry-state') {
           // 502/retry lifecycle: the CLI's own retry (retrying) → manual [retry] click
           // (recovering) → success (recovered) or a refusal (rejected). Cleanup matches by
