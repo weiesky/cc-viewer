@@ -1,5 +1,26 @@
 # cc-viewer
 
+## 1.9.20
+
+### Patch Changes
+
+- d90ac95: fix(web): **SubAgent 空白 `chat-boxer` 气泡** — 纯空白 text block（`'   '`/`'\n\n'`）为 truthy，能穿过两条共享渲染路径的 `if (tb.text)`/`if (!block.text)` 判断，但 `renderAssistantText` 解析后 segments 为空；wrapper `<div className="chat-boxer">` 仍被无条件创建，而 `.chat-boxer` 无子节点也有背景/边框/padding，遂渲染为可见空气泡。主消息因 `isSystemText` 预过滤掩盖了它，SubAgent/Teammate 的 `respContent` 原样透传才暴露。修复落在共享渲染层：legacy 与 web-search in-order 两条路径都在 `renderAssistantText` 之后、创建 `chat-boxer` 之前按 `segments.length === 0` 跳过——同时覆盖 Main/SubAgent/TeamSessionPanel/Last Response/merged run，且合法空 system-tag（非空 segments）不误删。
+- 2ea5181: fix(sdk+web): **CR 后续修复（慢上游提示健壮性 + 若干 P2）** — 慢上游在途提示：toast 加 90s 兜底时长 + 切工作区/卸载即销毁（不再永不消失）；按 requestId 计数避免并发慢请求互相覆盖；`waitingMs` 由客户端按 5s 自增刷新（不再冻结在 30s）；server 侧 cwd 回退仅当未上报 instance（定时任务 ephemeral 会话不再误判为前台等待）；计时改为收到首个 body chunk 才停表（原来量到 headers 为止）。composer pad 模式 max-height 提到 268px（12 行），JS clamp 不再重复减 padding。sdkTaskTracker 增加工作区 owner 感知（切工作区不再串上个项目清单）+ 全终态时 `task_started` 开新批次（跨轮不再累积）。`Teammate.md` 18 locale ×2 树去除不存在的 `TeamCreate`/`TeamDelete` 引用并加负向断言。mobile 触摸滚动修多指→单指过渡的视口跳动。
+- c29af25: fix(web): **修复文件浏览器树在子目录下单击打开错误路径（双重前缀）** — 树行的 `childPath` 已是带前缀的根路径，`openTreeFile` 却把它塞进 `item.name` 让 `openItem` 再拼一次 `currentPath`，子目录下单击得到 `skills/skills/foo/...`。改为 `openItem` 接受可选的显式根路径，树直接传入，网格仍按 `currentPath` 推导。
+  
+  fix(server): **`meta-rows.js` convSeqs 收敛合并为单遍扫描并恢复事件循环 yield** — 快照扫描已解析过的行被 coverage 段再次 `JSON.parse`，且循环无 `yieldLoop()`，在每次 `/events` 冷加载热路径上叠加 O(window 字节) 的同步解析。合并进现有扫描单遍收集。
+  
+  fix(web): **`ToolFileChangeController._toolUseMap` 随 LRU 砍头同步清理** — 持久 `Map` 存每个 tool_use 的 `{name, input}`（Write 的 input 是整个文件内容），`_processedToolIds` 有 20000 条 LRU 上限而 map 无对应清理，长会话/长开 tab 内存无限累积。砍头时同步删除 map 中被砍 id 的条目。
+  
+  fix(web): **审批 dismissal 守卫两处收紧** — `_setApprovalKind` 之前把任意 truthy `reason` 当合成清除（未知 reason 会静默清掉 pending 且抹掉 dismissal），改为仅 `reason === 'view-switch'`；`ChatView` 的 `_approvalViewSwitchClear` 由单布尔改为按 ptyPlan/ask 槽位记录并在 constructor 初始化，修复同一次 view-switch 同时清两个槽位时后者误判真清、重开已最小化弹窗的问题。
+  
+  test(server): **补 SDK 活性两分支用例** — 审批 settle 后 watchdog 重新武装（child 沉默 → 两次探针超时判死）；lost-result backstop 武装后仍有新消息到达时释放 turn-stuck 误判（`_inboundMsgSeq` 守护）。Coverage: `sdk-manager-query.test.js`, `sdk-manager-lost-result.test.js`.
+- 0cde7d1: fix(web+sdk): 慢上游提示与 SDK 任务 HUD 审查修复 — `server.js` 补 `setSlowUpstreamListener` 缺失 import（否则模块加载即崩）。慢上游提示改为作用域精确匹配（按请求自带的 `x-ccv-project-dir`/`x-ccv-instance`，而非进程级绑定项目，多工作区不再串台），经 `broadcastWsMessage` 做服务端视图路由；toast 改为常驻直到请求完结（新增 `sdk-slow-upstream-resolved` 帧主动关闭），`waitingMs` 用真实已等待时长。SDK 任务 HUD：sessionId 变更时立即清空旧清单；任务失败/被杀/停止（failed/killed/stopped）渲染为失败态（红色 ✕）而非"已完成"；SDK 模式下忽略 hook 空快照避免覆盖 HUD。
+- 99256ac: fix(web): **`--sdk` 模式手机端终端对齐桌面 scratch 终端** — 之前手机 overlay 挂的是无主 PTY 的普通 TerminalPanel（服务端丢弃 input/resize），表现为空白 xterm + 死键栏；且 scratchOnly 分支的 phone gate 让 tab UI 完全不渲染。现 Mobile overlay 在 sdkMode 下改挂 `scratchOnly` 面板（key 强制 remount 防主 xterm 泄漏），去掉 scratchOnly 的 phone gate 并加底部虚拟键栏（直连 active tab 的 `/ws/terminal-scratch`），ScratchTerminal 补齐手机适配（60 列固定布局量容器、触摸滚动、字体与水位对齐主面板、visualViewport 软键盘重排），手机（非 iPad）tab 栏转横向（JS 设备判定，与 aria-orientation 同源）。ChatView 内嵌面板在 Mobile 树整体关闭（含 PTY 模式），消除双挂。终端切换/新增/关闭与桌面一致（同一 localStorage tab 组）。
+- 6b34032: feat(sdk): **慢上游在途提示** — 修复“发出去后界面死寂数分钟”的可观测缺口。LLM 请求等上游首字节超过 30s 时，代理经 proxy-stats 监听器发信号，server.js（已合法持有 sdk-manager 访问器与 terminal WS，不新增跨层 import）在该工作区有活跃 SDK 会话时广播作用域化 `sdk-slow-upstream` 帧，前端 toast“模型响应缓慢，已等待 Ns，仍在等待…”。utility 探针（count_tokens / sdk 心跳）豁免；PTY/proxy-only 进程无监听器时为零成本 no-op。背景：一个 ECONNRESET 前的请求曾挂 164s 无任何 UI 反馈——CLI 重试只针对已完结的失败、代理重试只针对已完结的响应，两层都合法地空闲，用户只能干看。
+- 0cde7d1: feat(web): **SDK 模式接通任务清单 HUD** — `--sdk` 下 TaskProgressHud 不再缺席。新增 `sdkTaskTracker` 消费 server 转发的 WS `sdk-task` 帧（task_started/progress/updated/notification），客户端归并为 taskStore 兼容快照，HUD 直接复用现有渲染。含 `_sdkFrameMatchesView` 视图守卫、sessionId 变更自动重置、task_started re-fire 状态复位。PTY 模式零影响（sdk-task 帧仅 SDK 模式产生）。
+- 92ed9bc: fix(content): 统一 UltraReview 提示词为无 TeamCreate 的新版 — codeExpert 评审段改为「用 Agent 工具构建 team(teammate 有 name,subagent 没有）→ 多角色评审 → P0/P1 修复、P2 辩证处理 → 完成后逐一通知 teammate 退出」；同步清除 codeExpert/customContent 预填样板及 CustomUltraplanExpert 内嵌提示词工具清单里残留的 `TeamCreate` 引用（该工具不存在）。覆盖 18 个 locale 的 UltraPlan.md / CustomUltraplanExpert.md、`code-expert.json`、`ultraplanTemplates.js` 与 i18n 预填骨架（`ultraplan-origin.md` 整体重写为新版）。
+
 ## 1.9.19
 
 ### Patch Changes
