@@ -1,0 +1,28 @@
+history.md
+  s_a4f48a8f74edcd::t_e3b5ef7198095f 7-8
+apps/web/test/scratch-open-persist.test.js
+  s_a4f48a8f74edcd::t_f95ab744242b5c 1-51
+apps/web/src/App.jsx
+  s_a4f48a8f74edcd::t_37e23411dfe1f2 83-90
+  s_a4f48a8f74edcd::t_064be77fb599dc 751
+  s_a4f48a8f74edcd::t_ecb16d7d7563cc 64-66
+  s_a4f48a8f74edcd::t_0aaf8e5a1994d8 601
+.changeset/sdk-scratch-open-persist.md
+  s_a4f48a8f74edcd::t_68d5e5a5d92c3c 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1bfc1585e833d037a7dab6fe23e5a8c0aac48c08",
+  "prompts": {},
+  "sessions": {
+    "s_a4f48a8f74edcd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "57e3e95d-699f-4046-b680-7b09c8d5a9d6",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
