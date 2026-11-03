@@ -42,9 +42,9 @@
 
 .chatTextarea {
   width: 100%;
-  /* 行高 21px(14*1.5) + 上下 padding 16px：min 一行 37px，max 六行 136px */
+  /* 行高 21px(14*1.5) + 上下 padding 16px：min 一行 37px，max 十二行 268px */
   min-height: 37px;
-  max-height: 136px;
+  max-height: 268px;
   padding: 12px 14px 4px;
   background: #00000000;
   color: var(--text-primary);

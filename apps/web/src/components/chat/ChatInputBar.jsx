@@ -24,7 +24,7 @@ const SpeechRec = typeof window !== 'undefined' && window.isSecureContext
 const FOCUS_VPAD = 16;
 const LINE_H = 21;
 const MIN_LINES = 1;
-const MAX_LINES = 6;
+const MAX_LINES = 12;
 const FOCUS_LINES = 2;
 
 // Shared autosize helper: measures the content box (scrollHeight minus vertical padding)
