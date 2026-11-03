@@ -61,7 +61,9 @@ class App extends AppBase {
       leftPanelWidth: 380,
       terminalVisible: true,
       // SDK 模式:Header「终端」按钮切换的多 tab scratch 子终端(无主 PTY)。与 terminalVisible 独立。
-      scratchOpen: false,
+      // Persisted (global ccv_ panel-open pattern, same as ccv_fileExplorerOpen): a
+      // refresh must restore the open/closed state instead of always starting closed.
+      scratchOpen: (() => { try { return localStorage.getItem('ccv_scratchOpen') === 'true'; } catch { return false; } })(),
       proxyStatsVisible: false,
       currentTab: 'context',
       pendingCacheHighlight: null,
@@ -77,6 +79,14 @@ class App extends AppBase {
   _checkProxyActive() {
     return isProxyMode(this.state.activeProxyId, this.state.defaultConfig);
   }
+
+  // SDK scratch terminal open/closed — persist (global ccv_ panel-open pattern)
+  // so a refresh restores it instead of resetting to closed. Mirrors
+  // ChatView._setFileExplorerOpen/_setGitChangesOpen.
+  _setScratchOpen = (open) => {
+    try { localStorage.setItem('ccv_scratchOpen', String(!!open)); } catch {}
+    this.setState({ scratchOpen: !!open });
+  };
 
   // Child components (TerminalPanel / ChatInputBar) register the usage-bar slot DOM via ref callback;
   // when terminalVisible toggles, old slot unregisters (ref(null)) → new slot registers (ref(el)),
@@ -588,7 +598,7 @@ class App extends AppBase {
               sdkMode={this.state.sdkMode}
               sdkModel={this.state.sdkModel}
               terminalVisible={this.state.sdkMode ? this.state.scratchOpen : this.state.terminalVisible}
-              onToggleTerminal={() => this.setState(prev => prev.sdkMode ? ({ scratchOpen: !prev.scratchOpen }) : ({ terminalVisible: !prev.terminalVisible }))}
+              onToggleTerminal={() => (this.state.sdkMode ? this._setScratchOpen(!this.state.scratchOpen) : this.setState(prev => ({ terminalVisible: !prev.terminalVisible })))}
               proxyStatsVisible={this.state.proxyStatsVisible}
               onToggleProxyStats={this.handleToggleProxyStats}
               contextWindow={this.state.contextWindow}
@@ -738,7 +748,7 @@ class App extends AppBase {
               )
             )}
             <div className={styles.chatViewWrapper} style={{ display: viewMode === 'chat' ? 'flex' : 'none' }}>
-              <ChatView loadingProgress={fileLoading ? this._loadingProgressText() : null} {...this._settingsProps()} getTokenStatsContent={this._getTokenStatsContent} requests={deepRequests} thinkingRequests={this.state.thinkingRequests || deepRequests} mainAgentSessions={displaySessions} sessionUpperBoundTs={sessionUpperBoundTs} streamingLatest={this.state.streamingLatest} userProfile={this.state.userProfile} collapseToolResults={prefs.collapseToolResults} expandThinking={prefs.expandThinking} showFullToolContent={prefs.showFullToolContent} minimalChat={prefs.minimalChat} onlyCurrentSession={!this._isLocalLog} isLocalLog={!!this._isLocalLog} showThinkingSummaries={prefs.showThinkingSummaries} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={this.handleScrollTsDone} cliMode={this._isLocalLog ? false : this.state.cliMode} sdkMode={this._isLocalLog ? false : this.state.sdkMode} onSdkModel={this.handleSdkModel} onSdkSessionState={this.handleSdkSessionState} terminalVisible={this._isLocalLog ? false : (this.state.sdkMode ? this.state.scratchOpen : this.state.terminalVisible)} onToggleTerminal={() => this.setState(prev => prev.sdkMode ? ({ scratchOpen: !prev.scratchOpen }) : ({ terminalVisible: !prev.terminalVisible }))} pendingUploadPaths={this.state.pendingUploadPaths} onUploadPathsConsumed={this.handleUploadPathsConsumed} uploadingDrop={this.state.uploadingDrop} fileLoading={this.state.fileLoading} isStreaming={this.state.isStreaming} turnActive={this.state.turnActive} lang={this.state.lang} autoApproveSeconds={this.state.autoApproveSeconds} onAutoApproveChange={this.handleAutoApproveChange} planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds} onPlanAutoApproveChange={this.handlePlanAutoApproveChange} onClearContextOptimistic={this.handleClearContextOptimistic} onUserMessageSent={this.handleUserMessageSent} onPendingAsk={this.handleApprovalAsk} onPendingPtyPlan={this.handleApprovalPtyPlan} ownTabId={this.state.ownTabId} projectName={this.state.projectName} viewProject={this.state.viewedProject || this.state.projectName || null} setContextBarSlot={this.setContextBarSlot} attachedSid={this.state.attachedSid || null} viewInstance={viewInstanceForChat} onResumeSession={this.handleResumeSession} sdkModel={this.state.sdkModel} proxyProfiles={this.state.proxyProfiles} activeProxyId={this.state.activeProxyId} defaultConfig={this.state.defaultConfig} proxyRoles={this.state.proxyRoles} proxyOfficialDefault={this.state.proxyOfficialDefault} onProxyProfileChange={this.handleProxyProfileChange} />
+              <ChatView loadingProgress={fileLoading ? this._loadingProgressText() : null} {...this._settingsProps()} getTokenStatsContent={this._getTokenStatsContent} requests={deepRequests} thinkingRequests={this.state.thinkingRequests || deepRequests} mainAgentSessions={displaySessions} sessionUpperBoundTs={sessionUpperBoundTs} streamingLatest={this.state.streamingLatest} userProfile={this.state.userProfile} collapseToolResults={prefs.collapseToolResults} expandThinking={prefs.expandThinking} showFullToolContent={prefs.showFullToolContent} minimalChat={prefs.minimalChat} onlyCurrentSession={!this._isLocalLog} isLocalLog={!!this._isLocalLog} showThinkingSummaries={prefs.showThinkingSummaries} onViewRequest={this.handleViewRequest} scrollToTimestamp={this.state.chatScrollToTs} onScrollTsDone={this.handleScrollTsDone} cliMode={this._isLocalLog ? false : this.state.cliMode} sdkMode={this._isLocalLog ? false : this.state.sdkMode} onSdkModel={this.handleSdkModel} onSdkSessionState={this.handleSdkSessionState} terminalVisible={this._isLocalLog ? false : (this.state.sdkMode ? this.state.scratchOpen : this.state.terminalVisible)} onToggleTerminal={() => (this.state.sdkMode ? this._setScratchOpen(!this.state.scratchOpen) : this.setState(prev => ({ terminalVisible: !prev.terminalVisible })))} pendingUploadPaths={this.state.pendingUploadPaths} onUploadPathsConsumed={this.handleUploadPathsConsumed} uploadingDrop={this.state.uploadingDrop} fileLoading={this.state.fileLoading} isStreaming={this.state.isStreaming} turnActive={this.state.turnActive} lang={this.state.lang} autoApproveSeconds={this.state.autoApproveSeconds} onAutoApproveChange={this.handleAutoApproveChange} planAutoApproveSeconds={this.state.approvalPrefs?.planAutoApproveSeconds} onPlanAutoApproveChange={this.handlePlanAutoApproveChange} onClearContextOptimistic={this.handleClearContextOptimistic} onUserMessageSent={this.handleUserMessageSent} onPendingAsk={this.handleApprovalAsk} onPendingPtyPlan={this.handleApprovalPtyPlan} ownTabId={this.state.ownTabId} projectName={this.state.projectName} viewProject={this.state.viewedProject || this.state.projectName || null} setContextBarSlot={this.setContextBarSlot} attachedSid={this.state.attachedSid || null} viewInstance={viewInstanceForChat} onResumeSession={this.handleResumeSession} sdkModel={this.state.sdkModel} proxyProfiles={this.state.proxyProfiles} activeProxyId={this.state.activeProxyId} defaultConfig={this.state.defaultConfig} proxyRoles={this.state.proxyRoles} proxyOfficialDefault={this.state.proxyOfficialDefault} onProxyProfileChange={this.handleProxyProfileChange} />
             </div>
             {/* View-switch overlay removed (2026-10-08): the tab strip already shows a
                 spinning ring (projectTabRingSpin) for the in-flight switch, and the cold
