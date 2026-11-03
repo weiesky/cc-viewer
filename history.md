@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(content): **UltraReview 提示词统一为无 TeamCreate 新版** — codeExpert 评审段与 customContent 预填样板对齐为「Agent 工具构建 team（teammate 有 name)→ 多角色评审 → 修 P0/P1、辩证 P2 → 逐一通知 teammate 退出」；清除内嵌提示词工具清单里残留的 `TeamCreate` 引用（该工具不存在）。覆盖 18 locale 的 UltraPlan.md / CustomUltraplanExpert.md、`code-expert.json`、`ultraplanTemplates.js` 与 i18n 骨架。Coverage: `ultraplan-templates.test.js`, `builtin-presets.test.js`.
+
 - fix(web+sdk): **慢上游提示与 SDK 任务 HUD 审查修复** — 补 `server.js` 缺失的 `setSlowUpstreamListener` import；慢上游提示按请求自带的 `x-ccv-project-dir`/`x-ccv-instance` 精确归属工作区（多工作区不再串台）并经 `broadcastWsMessage` 路由，toast 常驻至请求完结（新增 resolved 帧），`waitingMs` 为真实时长；SDK 任务 HUD 在 sessionId 变更时立即清空旧清单、失败/被杀/停止任务渲染为失败态、SDK 模式忽略 hook 空快照防覆盖。Coverage: `proxy-slow-upstream.test.js`, `sdkTaskTracker.test.js`.
 
 - feat(web): **SDK 模式接通任务清单 HUD** — `--sdk` 下 TaskProgressHud 不再缺席：新增 `sdkTaskTracker` 消费 server 转发的 WS `sdk-task` 帧（task_started/progress/updated/notification），客户端归并为 taskStore 兼容快照，HUD 直接复用现有渲染。含 `_sdkFrameMatchesView` 守卫、sessionId 变更自动重置、re-fire 状态复位。Coverage: `sdkTaskTracker.test.js`.

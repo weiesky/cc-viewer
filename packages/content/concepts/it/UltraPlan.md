@@ -63,7 +63,7 @@ Below are the two raw prompt templates UltraPlan actually sends to Claude Code (
 ### Code Expert (codeExpert)
 
 <textarea readonly><system-reminder>
-[SCOPED INSTRUCTION] The following instructions apply only to the next 1–3 interactions. Once the task is complete, these instructions should gradually decrease in priority and no longer affect subsequent interactions. You should be adept at utilizing tools such as `AskUserQuestion`, `EnterPlanMode`, and `TeamCreate`, rather than relying solely on plain text processing. Before execution, you must ensure that the `EnterPlanMode`, `ExitPlanMode`, `SendMessage`, `TaskCreate`, `TaskUpdate`, `TaskStop`, `TaskGet`, `TaskOutput` and `TaskList` tools are loaded.
+[SCOPED INSTRUCTION] The following instructions apply only to the next 1–3 interactions. Once the task is complete, these instructions should gradually decrease in priority and no longer affect subsequent interactions. You should be adept at utilizing tools such as `AskUserQuestion` and `EnterPlanMode`, rather than relying solely on plain text processing. Before execution, you must ensure that the `EnterPlanMode`, `ExitPlanMode`, `SendMessage`, `TaskCreate`, `TaskUpdate`, `TaskStop`, `TaskGet`, `TaskOutput` and `TaskList` tools are loaded.
 
 Pre-requisite: Use `AskUserQuestion` to clarify user intent whenever the request is ambiguous (target element, interaction style, scope of platforms, etc.). Skip only if the intent is unambiguous.
 
@@ -98,11 +98,11 @@ Your final plan must include the following elements:
 6. After the final plan has been successfully executed:
 First run `git diff --quiet && git diff --cached --quiet` (or equivalent) to detect whether the working tree actually has non-trivial changes; if there are no real changes (or only whitespace/comment-only edits), skip the UltraReview step.
 Otherwise, if the project is managed with Git:
-Use the `Agent` tool to build a team, dynamically allocating the number of teammates based on task complexity (5+ is recommended);
-Note: teammates are named (pass `name`), not plain subagents (which have no name);
+Use the `Agent` tool to build a team, dynamically allocating the number of teammates based on task complexity (5+ recommended);
+Note: spawn teammates (which have a `name`), not plain subagents (which have no name);
 Task: Conduct a Code Review of the current git changes from multiple roles and perspectives;
 Pre-requisites:
-- The git repository may be located in a subdirectory of the current directory; recursively locate the .git directory first (prefer `git rev-parse --show-toplevel`) before proceeding;
+- The git repository may be located in a subdirectory of the current directory; recursively locate the `.git` directory first before proceeding;
 - In the case of multiple repositories, review tasks may be executed separately per repository;
 Review dimensions (a reference framework — each role covers them as its perspective requires, aiming to be as comprehensive as possible):
 - Whether requirements/objectives have been met and functionality is complete;
