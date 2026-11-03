@@ -1,0 +1,24 @@
+packages/app/test/proxy-slow-upstream.test.js
+  s_a4f48a8f74edcd::t_5c8318521cf8ba 61-63
+  s_a4f48a8f74edcd::t_a7f8c9ee2d0eb3 103-104,108
+packages/app/server/proxy.js
+  s_a4f48a8f74edcd::t_ca21887d13433b 259
+  s_a4f48a8f74edcd::t_f085dd9c4e0671 260-263
+  s_a4f48a8f74edcd::t_f0331b72dfa55d 295
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b01ff6f502c24749eec12c9872919e943ce9e1af",
+  "prompts": {},
+  "sessions": {
+    "s_a4f48a8f74edcd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "57e3e95d-699f-4046-b680-7b09c8d5a9d6",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
