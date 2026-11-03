@@ -23,16 +23,20 @@ const TOUCH_TRIGGER_PROPS = (isMobile && !isPad)
   : {};
 
 /**
- * Claude Code 任务清单 HUD：docked 在 ChatView 输入框上方（消息滚动区之外），
- * 常驻可见、不被对话挤走。数据来自 taskStore（AppBase 的 SSE `task_update`
- * 全量快照持续喂养；服务端由 task-bridge hooks → task-state reducer 维护）。
+ * Task checklist HUD: docked above the ChatView input bar (outside the message
+ * scroll area), always visible and never pushed away by the conversation. Data
+ * comes from taskStore (fed by AppBase's SSE `task_update` full snapshots in
+ * PTY mode; in SDK mode hooks never fire, so sdkTaskTracker feeds it from WS
+ * sdk-task frames instead).
  *
- * 形态：紧凑横条（✓ done/total + 当前任务），点击展开完整清单。列表保持创建
- * 顺序（服务端 Map 插入序 = TUI 顺序，原地更新不换槽），不做状态重排。
- * 无任务或全部完成时返回 null 自动隐藏（SDK 模式无 hooks、任务工具被 flag
- * 禁用时同理）。会话/工作区切换由 AppBase 的 clearTaskStore 清空点 + 服务端
- * 连接即推快照保证新鲜，组件自身不做 sessionId 比对（snapshot id 是 CC 会话
- * UUID，与 ccv 的 ts 会话 id 属不同身份空间）。
+ * Shape: a compact strip (✓ done/total + the current task) that expands to the
+ * full checklist on click. The list keeps creation order (server Map insertion
+ * order = TUI order, in-place updates, no reshuffling). Returns null to
+ * auto-hide when there are no tasks or every task is in a terminal state
+ * (completed or failed). The component does no sessionId comparison itself —
+ * freshness comes from AppBase's clearTaskStore points plus the server pushing
+ * a snapshot on connect (the snapshot id is a CC session UUID, a different
+ * identity space from ccv's ts session id).
  */
 export default function TaskProgressHud() {
   const [snapshot, setSnapshot] = useState(getSnapshot);
@@ -41,7 +45,8 @@ export default function TaskProgressHud() {
   useEffect(() => subscribe(setSnapshot), []);
 
   const tasks = snapshot.tasks;
-  const visible = tasks.length > 0 && tasks.some(x => x.status !== 'completed');
+  const isDone = (x) => x.status === 'completed' || x.status === 'failed';
+  const visible = tasks.length > 0 && tasks.some(x => !isDone(x));
 
   // Reset the expansion when the strip hides (empty / all done) so a later
   // task batch doesn't re-open already expanded.
@@ -51,7 +56,7 @@ export default function TaskProgressHud() {
 
   if (!visible) return null;
 
-  const done = tasks.filter(x => x.status === 'completed').length;
+  const done = tasks.filter(x => isDone(x)).length;
   const total = tasks.length;
 
   // Derive "current" in display order: first in_progress (its activeForm in
@@ -135,6 +140,7 @@ export default function TaskProgressHud() {
 // classes (not strings), so a CSS rename can never silently fall through.
 const DOT_CLASS = {
   completed: styles.dotDone,
+  failed: styles.dotFailed,
   in_progress: styles.dotRunning,
   pending: styles.dotPending,
 };
@@ -143,6 +149,7 @@ const DOT_CLASS = {
 // a drawn circle and their metrics vary by font. A single 16-unit viewBox
 // scales with the local font size via the .dot CSS class.
 //   completed  → filled grey disc, check punched out in the surface color
+//   failed     → filled error-red disc, ✕ punched out in the surface color
 //   in_progress → filled primary disc + the existing pulse animation
 //   pending    → hollow grey ring
 function TaskStatusDot({ status }) {
@@ -157,6 +164,9 @@ function TaskStatusDot({ status }) {
       {status === 'completed' && (
         <path className={styles.dotCheck} d="M5.1 8.4L7.1 10.3L10.9 5.9" />
       )}
+      {status === 'failed' && (
+        <path className={styles.dotCross} d="M5.4 5.4L10.6 10.6M10.6 5.4L5.4 10.6" />
+      )}
     </svg>
   );
 }
@@ -166,7 +176,8 @@ function TaskRow({ task }) {
   const detail = task.description || task.subject || '';
   const statusKey = task.status === 'in_progress' ? 'ui.tasks.status.inProgress'
     : task.status === 'completed' ? 'ui.tasks.status.completed'
-      : 'ui.tasks.status.pending';
+      : task.status === 'failed' ? 'ui.tasks.status.failed'
+        : 'ui.tasks.status.pending';
   return (
     <div className={styles.row}>
       <span className={styles.glyph}><TaskStatusDot status={task.status} /></span>
@@ -185,7 +196,7 @@ function TaskRow({ task }) {
           open={detail ? undefined : false}
           {...TOUCH_TRIGGER_PROPS}
         >
-          <span className={`${styles.label} ${task.status === 'completed' ? styles.labelDone : ''}`}>
+          <span className={`${styles.label} ${task.status === 'completed' ? styles.labelDone : ''} ${task.status === 'failed' ? styles.labelFailed : ''}`}>
             {task.subject || `#${task.taskId}`}
           </span>
         </Popover>

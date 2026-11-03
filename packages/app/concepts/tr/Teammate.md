@@ -2,7 +2,7 @@
 
 ## Tanım
 
-Teammate, Claude Code Agent'ın Takım Modu (Team Mode) altındaki iş birlikçi agent'tır. Ana agent `TeamCreate` ile bir takım oluşturup `Agent` aracını kullanarak teammate ürettiğinde, her teammate bağımsız bir agent süreci olarak çalışır, kendi bağlam penceresine ve araç setine sahiptir ve `SendMessage` aracılığıyla takım üyeleriyle iletişim kurar.
+Teammate, Claude Code Agent'ın Takım Modu (Team Mode) altındaki iş birlikçi agent'tır. Ana agent `Agent` aracını kullanarak bir takım oluşturup teammate ürettiğinde, her teammate bağımsız bir agent süreci olarak çalışır, kendi bağlam penceresine ve araç setine sahiptir ve `SendMessage` aracılığıyla takım üyeleriyle iletişim kurar.
 
 ## SubAgent ile Farkları
 

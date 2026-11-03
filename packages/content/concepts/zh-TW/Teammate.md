@@ -2,7 +2,7 @@
 
 ## 定義
 
-Teammate 是 Claude Code Agent Team 模式下的協作 agent。當主 agent 透過 `TeamCreate` 建立團隊並使用 `Agent` 工具生成 teammate 時，每個 teammate 作為獨立的 agent 程序運行，擁有自己的上下文視窗和工具集，透過 `SendMessage` 與團隊成員通訊。
+Teammate 是 Claude Code Agent Team 模式下的協作 agent。當主 agent 透過 `Agent` 工具建立團隊並生成 teammate 時，每個 teammate 作為獨立的 agent 程序運行，擁有自己的上下文視窗和工具集，透過 `SendMessage` 與團隊成員通訊。
 
 ## 與 SubAgent 的區別
 

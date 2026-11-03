@@ -1233,6 +1233,7 @@ const i18nData = {
   "ui.tasks.status.pending": { "zh": "待处理", "en": "pending", "zh-TW": "待處理", "ja": "保留中", "ko": "대기 중", "de": "ausstehend", "es": "pendiente", "fr": "en attente", "it": "in sospeso", "da": "afventer", "pl": "oczekujące", "ru": "ожидает", "ar": "قيد الانتظار", "no": "venter", "pt-BR": "pendente", "th": "รอดำเนินการ", "tr": "beklemede", "uk": "очікує" },
   "ui.tasks.status.inProgress": { "zh": "进行中", "en": "in progress", "zh-TW": "進行中", "ja": "進行中", "ko": "진행 중", "de": "in Bearbeitung", "es": "en curso", "fr": "en cours", "it": "in corso", "da": "i gang", "pl": "w trakcie", "ru": "выполняется", "ar": "قيد التنفيذ", "no": "pågår", "pt-BR": "em andamento", "th": "กำลังดำเนินการ", "tr": "devam ediyor", "uk": "виконується" },
   "ui.tasks.status.completed": { "zh": "已完成", "en": "completed", "zh-TW": "已完成", "ja": "完了", "ko": "완료", "de": "abgeschlossen", "es": "completado", "fr": "terminé", "it": "completato", "da": "fuldført", "pl": "ukończone", "ru": "завершено", "ar": "مكتمل", "no": "fullført", "pt-BR": "concluído", "th": "เสร็จสิ้น", "tr": "tamamlandı", "uk": "завершено" },
+  "ui.tasks.status.failed": { "zh": "失败", "en": "failed", "zh-TW": "失敗", "ja": "失敗", "ko": "실패", "de": "fehlgeschlagen", "es": "fallido", "fr": "échoué", "it": "fallito", "da": "mislykket", "pl": "nieudane", "ru": "ошибка", "ar": "فشل", "no": "mislyktes", "pt-BR": "falhou", "th": "ล้มเหลว", "tr": "başarısız", "uk": "невдало" },
   "ui.tasks.owner": { "zh": "负责人", "en": "Owner", "zh-TW": "負責人", "ja": "担当者", "ko": "담당자", "de": "Verantwortlich", "es": "Responsable", "fr": "Responsable", "it": "Responsabile", "da": "Ansvarlig", "pl": "Odpowiedzialny", "ru": "Ответственный", "ar": "المسؤول", "no": "Ansvarlig", "pt-BR": "Responsável", "th": "ผู้รับผิดชอบ", "tr": "Sorumlu", "uk": "Відповідальний" },
   "ui.dingtalk.title": { "zh": "钉钉", "en": "DingTalk", "zh-TW": "釘釘" },
   "ui.dingtalk.desc": { "zh": "在钉钉里双向对话当前 Claude Code 会话。仅需 AppKey 与 AppSecret（Stream 模式，无需公网）。", "en": "Chat two-way with the current Claude Code session from DingTalk. Only an AppKey and AppSecret are needed (Stream mode, no public network)." },
@@ -3106,6 +3107,26 @@ const i18nData = {
     "th": "คำขอ API ล้มเหลว ({status}) กำลังลองใหม่ {attempt}/{max}",
     "tr": "API isteği başarısız oldu ({status}), yeniden deneniyor {attempt}/{max}",
     "uk": "Запит API не вдався ({status}), повторна спроба {attempt}/{max}",
+  },
+  "ui.sdkSlowUpstream": {
+    "zh": "模型响应缓慢，已等待 {seconds} 秒，仍在等待…",
+    "en": "The model is slow to respond — still waiting ({seconds}s)…",
+    "zh-TW": "模型回應緩慢，已等待 {seconds} 秒，仍在等待…",
+    "ko": "모델 응답이 느립니다. {seconds}초째 대기 중…",
+    "ja": "モデルの応答が遅れています。{seconds}秒経過、待機中…",
+    "de": "Das Modell antwortet langsam — wartet seit {seconds}s…",
+    "es": "El modelo responde lento — esperando desde hace {seconds}s…",
+    "fr": "Le modèle répond lentement — en attente depuis {seconds}s…",
+    "it": "Il modello risponde lentamente — in attesa da {seconds}s…",
+    "da": "Modellen svarer langsomt — venter i {seconds}s…",
+    "pl": "Model odpowiada wolno — czeka już {seconds}s…",
+    "ru": "Модель отвечает медленно — ожидание уже {seconds}с…",
+    "ar": "النموذج يستجيب ببطء — لا يزال قيد الانتظار ({seconds} ثانية)…",
+    "no": "Modellen svarer sakte — har ventet i {seconds}s…",
+    "pt-BR": "O modelo está respondendo devagar — aguardando há {seconds}s…",
+    "th": "โมเดลตอบสนองช้า — รอมา {seconds} วินาทีแล้ว…",
+    "tr": "Model yavaş yanıtlıyor — {seconds} saniyedir bekleniyor…",
+    "uk": "Модель відповідає повільно — очікування вже {seconds}с…",
   },
   "ui.sdkRetry.retryingNetwork": {
     "zh": "网络错误，正在重试 {attempt}/{max}",
@@ -14675,7 +14696,7 @@ const i18nData = {
   // 新建自定义专家时预填进正文文本框的英文外壳骨架。仅 en(纯结构无本地化),其余语言 t() 回落 en;
   // 发送时 buildCustomTemplate 幂等不重复包壳(见 src/utils/ultraplanTemplates.js)。
   "ui.ultraplan.customContentTemplate": {
-    "en": "<system-reminder>\n[SCOPED INSTRUCTION] The following instructions apply only to the next 1–3 interactions. Once the task is complete, these instructions should gradually decrease in priority and no longer affect subsequent interactions. You should be adept at utilizing tools such as `AskUserQuestion`, `EnterPlanMode`, and `TeamCreate`, rather than relying solely on plain text processing.\n\n</system-reminder>"
+    "en": "<system-reminder>\n[SCOPED INSTRUCTION] The following instructions apply only to the next 1–3 interactions. Once the task is complete, these instructions should gradually decrease in priority and no longer affect subsequent interactions. You should be adept at utilizing tools such as `AskUserQuestion` and `EnterPlanMode`, rather than relying solely on plain text processing.\n\n</system-reminder>"
   },
   // 自定义专家弹窗左栏(参考文档)折叠把手的 title 文案:折叠态 = 展开提示,展开态 = 折叠提示。
   "ui.ultraplan.collapseDoc": {

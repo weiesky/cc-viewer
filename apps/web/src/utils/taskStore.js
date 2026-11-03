@@ -22,7 +22,7 @@ function _emit() {
   }
 }
 
-const VALID_STATUSES = new Set(['pending', 'in_progress', 'completed']);
+const VALID_STATUSES = new Set(['pending', 'in_progress', 'completed', 'failed']);
 
 function _normalizeTask(t) {
   if (!t || typeof t !== 'object') return null;

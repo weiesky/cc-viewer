@@ -11,9 +11,11 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 import { t } from '../../i18n';
 import { darkTerminalTheme, lightTerminalTheme, terminalFontFamily } from './terminalThemes';
-import { isWindows, isMac } from '../../env';
+import { isWindows, isMac, isMobile, isPad, isIOS } from '../../env';
 import styles from './TerminalPanel.module.css';
 import { TerminalWriteQueue, INBAND_RESET } from '../../utils/terminalWriteQueue';
+import { applyMobileFixedLayout } from '../../utils/mobileTermLayout';
+import { attachMobileTouchScroll } from '../../utils/mobileTouchScroll';
 import { diagCount } from '../../utils/termDiag';
 import { sanitizeBracketPasteText } from '../../utils/ptyChunkBuilder';
 import { clipboardKeyAction, copyTextToClipboard, planPasteSend } from '../../utils/terminalClipboard';
@@ -35,6 +37,9 @@ class ScratchTerminal extends React.Component {
       () => this.terminal,
       {
         ...(isWindows ? { initialChunkBytes: 16 * 1024 } : null),
+        // Phones have a tighter memory budget: halve the backlog self-protection
+        // watermarks (same policy as TerminalPanel).
+        ...((isMobile && !isPad) ? { highWaterBytes: 1024 * 1024, trimTargetBytes: 256 * 1024 } : null),
         // 积压丢弃后向服务端请求权威快照对齐（同 TerminalPanel，2s 节流见 _requestResync）
         onTrim: () => this._requestResync(),
       }
@@ -118,6 +123,17 @@ class ScratchTerminal extends React.Component {
   componentWillUnmount() {
     this._closing = true;
     if (this._wsReconnectTimer) clearTimeout(this._wsReconnectTimer);
+    if (this._initRafId) { cancelAnimationFrame(this._initRafId); this._initRafId = 0; }
+    if (this._vvTimer) { clearTimeout(this._vvTimer); this._vvTimer = null; }
+    if (this._stopMobileMomentum) { try { this._stopMobileMomentum(); } catch {} this._stopMobileMomentum = null; }
+    if (this._onViewportResize) {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', this._onViewportResize);
+      } else {
+        window.removeEventListener('resize', this._onViewportResize);
+      }
+      this._onViewportResize = null;
+    }
     if (this._themeObserver) { this._themeObserver.disconnect(); this._themeObserver = null; }
     // unmount 前同步排空 buffer 给 xterm，再 dispose 队列；与 terminal.dispose 顺序无关。
     if (this._writeQ) {
@@ -156,13 +172,13 @@ class ScratchTerminal extends React.Component {
       cursorBlink: false,
       cursorStyle: 'bar',
       cursorWidth: 1,
-      fontSize: 13,
+      fontSize: (isMobile && !isPad) ? 11 : 13,
       fontFamily: terminalFontFamily,
       theme: isDark ? darkTerminalTheme : lightTerminalTheme,
       allowProposedApi: true,
       // 与 TerminalPanel 同款：Windows 下超宽字形按 cell 缩放，治 IME 中文偏移
       rescaleOverlappingGlyphs: isWindows,
-      scrollback: 1000,
+      scrollback: isPad ? 2000 : isIOS ? 200 : isMobile ? 1000 : 2000,
       smoothScrollDuration: 0,
       scrollOnUserInput: true,
     });
@@ -253,9 +269,73 @@ class ScratchTerminal extends React.Component {
         try { this.terminal.refresh(0, this.terminal.rows - 1); } catch { /* noop */ }
       });
     }
+
+    if (isMobile && !isPad) {
+      // Phone fixed 60-column layout: compute fontSize/cols/rows from the container
+      // (same strategy as TerminalPanel). Hidden tabs (display:none pane) cannot be
+      // measured and are skipped — the parent's refit() on activation covers them.
+      this._initRafId = requestAnimationFrame(() => {
+        this._initRafId = 0;
+        if (!this.terminal) return; // unmount within one frame of mount
+        this._mobileFixedResize();
+      });
+    } else {
+      // Explicit first fit: don't rely on the ResizeObserver's first callback alone
+      // (aligned with TerminalPanel).
+      this._initRafId = requestAnimationFrame(() => {
+        this._initRafId = 0;
+        if (!this.terminal || !this.fitAddon) return;
+        this.refit();
+      });
+    }
+
+    if (isMobile) {
+      this._setupMobileTouchScroll();
+    }
+    if (isMobile && !isPad) {
+      // iOS soft keyboard: the root is pinned to visualViewport.height and
+      // window.innerHeight never changes, so measuring the container is the only
+      // way to notice the keyboard opening/closing (same for Android's
+      // interactive-widget=resizes-content).
+      this._onViewportResize = () => {
+        if (this._vvTimer) clearTimeout(this._vvTimer);
+        this._vvTimer = setTimeout(() => { this._vvTimer = null; this._mobileFixedResize(); }, 150);
+      };
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', this._onViewportResize);
+      } else {
+        window.addEventListener('resize', this._onViewportResize);
+      }
+    }
   }
 
-  // 主动粘贴的安全送出：复用 planPasteSend（active=true，无原生 paste 事件 → bracketedPasteMode 也自行包裹）
+  // Phone fixed 60-column layout: sizing math lives in utils/mobileTermLayout.js
+  // (shared with TerminalPanel) and measures the xterm parent (.scratchHost),
+  // which excludes tab rail / keybar / borders by construction.
+  _mobileFixedResize(attempt = 0) {
+    const term = this.terminal;
+    if (!term) return;
+    const done = applyMobileFixedLayout(term, this.containerRef.current, {
+      // xterm dispose() never nulls _core; the field null-out on unmount is the liveness signal.
+      isAlive: () => this.terminal === term,
+      onResized: () => this.sendResize(),
+    });
+    if (!done && attempt < 3) {
+      // Not measurable: hidden pane (skip — refit() on activation covers it) or the
+      // renderer has no cell dims yet (retry a few frames; no ResizeObserver on phones).
+      const el = this.containerRef.current;
+      if (el && el.offsetWidth > 0 && el.offsetHeight > 0) {
+        setTimeout(() => this._mobileFixedResize(attempt + 1), 50);
+      }
+    }
+  }
+
+  // Phone touch scrolling lives in utils/mobileTouchScroll.js (shared with
+  // TerminalPanel); it returns the stop fn we keep for unmount.
+  _setupMobileTouchScroll() {
+    this._stopMobileMomentum = attachMobileTouchScroll(this.terminal, this.containerRef.current);
+  }
+
   _pasteScratchText = (text) => {
     if (!text || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     const data = planPasteSend(text, {
@@ -367,6 +447,8 @@ class ScratchTerminal extends React.Component {
   }
 
   setupResizeObserver() {
+    // Phones use the fixed 60-column layout instead of dynamic fit (same policy as TerminalPanel).
+    if (isMobile && !isPad) return;
     this.resizeObserver = new ResizeObserver(() => {
       if (this._resizeDebounceTimer) clearTimeout(this._resizeDebounceTimer);
       this._resizeDebounceTimer = setTimeout(() => {
@@ -384,10 +466,15 @@ class ScratchTerminal extends React.Component {
     }
   }
 
-  // 公开方法：父组件在 tab 切换 / 首次显示时调用
-  // display:none -> block 不会触发 ResizeObserver，必须显式 fit
+  // Public method: the parent calls this on tab switch / first display.
+  // display:none -> block does not fire ResizeObserver, so an explicit fit is required.
   refit = () => {
-    if (!this.fitAddon || !this.terminal) return;
+    if (!this.terminal) return;
+    if (isMobile && !isPad) {
+      this._mobileFixedResize();
+      return;
+    }
+    if (!this.fitAddon) return;
     const el = this.containerRef.current;
     if (!el || el.offsetWidth <= 0 || el.offsetHeight <= 0) return;
     try {
@@ -400,7 +487,23 @@ class ScratchTerminal extends React.Component {
     try { this.terminal?.focus(); } catch {}
   };
 
-  // 关闭 tab 时通知后端 kill 该 id 的 pty
+  blur = () => {
+    try { this.terminal?.textarea?.blur(); } catch {}
+  };
+
+  // Virtual-key input (phone scratchOnly keybar): same ws input channel as onData.
+  // No blur here: a scratch shell's keybar is used MID-command (arrows, Tab, Esc in
+  // editors), so dismissing the soft keyboard on every tap would force a re-tap into
+  // the xterm before each key. This intentionally diverges from the main panel's
+  // handleVirtualKey (which blurs after each key). The keybar's touch wiring already
+  // keeps the button itself from stealing focus, so the keyboard stays open.
+  sendVirtualKey = (seq) => {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'input', data: seq }));
+    }
+  };
+
+  // Notify the backend to kill this tab id's pty when the tab closes.
   requestKill = () => {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       try { this.ws.send(JSON.stringify({ type: 'kill' })); } catch {}

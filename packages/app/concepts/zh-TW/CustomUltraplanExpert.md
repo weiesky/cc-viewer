@@ -133,7 +133,7 @@ Research Expert 派了 6 種潛在角色（industry 調研員、學術研究員�
 
 ```
 <system-reminder>
-[SCOPED INSTRUCTION] The following instructions apply only to the next 1–3 interactions. Once the task is complete, these instructions should gradually decrease in priority and no longer affect subsequent interactions. You should be adept at utilizing tools such as `AskUserQuestion`, `EnterPlanMode`, and `TeamCreate`, rather than relying solely on plain text processing.
+[SCOPED INSTRUCTION] The following instructions apply only to the next 1–3 interactions. Once the task is complete, these instructions should gradually decrease in priority and no longer affect subsequent interactions. You should be adept at utilizing tools such as `AskUserQuestion` and `EnterPlanMode`, rather than relying solely on plain text processing.
 
 You are a senior competitive intelligence analyst for {行業}. Your goal is to
 produce a decision-grade competitive landscape report for the product "{我方產品}".

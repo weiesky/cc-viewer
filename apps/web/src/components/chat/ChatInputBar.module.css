@@ -42,9 +42,9 @@
 
 .chatTextarea {
   width: 100%;
-  /* 行高 21px(14*1.5) + 上下 padding 16px：min 一行 37px，max 六行 136px */
+  /* 行高 21px(14*1.5) + 上下 padding 16px：min 一行 37px，max 十二行 268px */
   min-height: 37px;
-  max-height: 136px;
+  max-height: 268px;
   padding: 12px 14px 4px;
   background: #00000000;
   color: var(--text-primary);
@@ -697,7 +697,7 @@
 /* ─── iPad/Pad 模式：恢复桌面默认值 ─── */
 :global(html.pad-mode) .chatInputBar { padding: 8px max(16px, calc((100% - 1000px) / 2)) 12px; }
 :global(html.pad-mode) .chatInputWrapper { border-radius: 16px; }
-:global(html.pad-mode) .chatTextarea { min-height: 37px; max-height: 136px; padding: 12px 14px 4px; font-size: 14px; transition: height 0.2s ease; }
+:global(html.pad-mode) .chatTextarea { min-height: 37px; max-height: 268px; padding: 12px 14px 4px; font-size: 14px; transition: height 0.2s ease; }
 :global(html.pad-mode) .chatTextareaTwoLines { min-height: 58px; }
 :global(html.pad-mode) .ghostText { padding: 12px 14px 4px; font-size: 14px; }
 :global(html.pad-mode) .chatInputBottom { padding: 4px 6px 6px; gap: 4px; }

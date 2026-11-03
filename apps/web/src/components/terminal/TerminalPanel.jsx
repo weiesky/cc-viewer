@@ -25,6 +25,8 @@ import CustomUltraplanEditModal from './CustomUltraplanEditModal';
 import UltraplanExpertManagerModal from './UltraplanExpertManagerModal';
 import { visibleExpertKeys } from '../../utils/ultraplanExperts';
 import { TerminalWriteQueue, INBAND_RESET } from '../../utils/terminalWriteQueue';
+import { applyMobileFixedLayout } from '../../utils/mobileTermLayout';
+import { attachMobileTouchScroll } from '../../utils/mobileTouchScroll';
 import { installTermDiag, diagCount } from '../../utils/termDiag';
 import { downscaleForRetina } from '../../utils/imageDownscale';
 import { buildPresetShortcutsPayload } from '../../utils/presetShortcuts';
@@ -294,14 +296,29 @@ class TerminalPanel extends React.Component {
     return ref;
   }
 
+  // Phone: keep the active tab visible inside the horizontally scrolling rail
+  // (tab taps come from visible tabs, but add/close/workspace-switch can leave the
+  // new active tab off-screen).
+  _scrollActiveScratchTabIntoView() {
+    if (!(isMobile && !isPad)) return;
+    try {
+      this._scratchWrapRef.current
+        ?.querySelector(`.${styles.scratchTabActive}`)
+        ?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    } catch { /* best-effort scroll hint */ }
+  }
+
   handleScratchTabClick = (id) => {
     if (id === this.state.activeScratchTabId) return;
     this.setState({ activeScratchTabId: id }, () => {
       this._persistScratch();
+      this._scrollActiveScratchTabIntoView();
       const r = this._scratchRefs.get(id);
       if (r?.current) {
         r.current.refit();
-        r.current.focus();
+        // Phones must not steal focus on tab switches — each tap would pop the
+        // system soft keyboard (same convention as the other focus guards below).
+        if (!isMobile || isPad) r.current.focus();
       }
     });
   };
@@ -312,11 +329,12 @@ class TerminalPanel extends React.Component {
     const tabs = [...this.state.scratchTabs, { id: newId }];
     this.setState({ scratchTabs: tabs, activeScratchTabId: newId }, () => {
       this._persistScratch();
+      this._scrollActiveScratchTabIntoView();
       // 等下一帧 ScratchTerminal mount + 显示后再 refit/focus
       Promise.resolve().then(() => {
         const r = this._scratchRefs.get(newId);
         r?.current?.refit();
-        r?.current?.focus();
+        if (!isMobile || isPad) r?.current?.focus();
       });
     });
   };
@@ -336,10 +354,11 @@ class TerminalPanel extends React.Component {
     }
     this.setState({ scratchTabs: tabs, activeScratchTabId: active }, () => {
       this._persistScratch();
+      this._scrollActiveScratchTabIntoView();
       if (active) {
         const r = this._scratchRefs.get(active);
         r?.current?.refit();
-        r?.current?.focus();
+        if (!isMobile || isPad) r?.current?.focus();
       }
     });
   };
@@ -874,149 +893,10 @@ class TerminalPanel extends React.Component {
     }
   }
 
-  /**
-   * 手机端触摸滚动：xterm 的 viewport 在 screen 层之下，原生触摸无法滚动。
-   * 使用 terminal.scrollLines() 官方 API 代替直接操作 scrollTop，
-   * 确保与 xterm 内部状态同步。通过 rAF 批量处理 + 惯性动画实现流畅滚动。
-   * 参考: https://github.com/xtermjs/xterm.js/issues/594
-   */
+  // Phone touch scrolling lives in utils/mobileTouchScroll.js (shared with
+  // ScratchTerminal); it returns the stop fn we keep for unmount.
   _setupMobileTouchScroll() {
-    const screen = this.containerRef.current?.querySelector('.xterm-screen');
-    if (!screen) return;
-
-    const term = this.terminal;
-    // 获取行高（用于将像素 delta 转为行数）
-    const getLineHeight = () => {
-      const cellDims = term._core?._renderService?.dimensions?.css?.cell;
-      return cellDims?.height || 15;
-    };
-
-    let lastY = 0;
-    let lastTime = 0;
-    let momentumRaf = null;
-    // 像素级累积器，不足一行时保留小数部分
-    let pixelAccum = 0;
-    let pendingDy = 0;
-    let scrollRaf = null;
-    let velocitySamples = [];
-
-    const stopMomentum = () => {
-      if (momentumRaf) {
-        cancelAnimationFrame(momentumRaf);
-        momentumRaf = null;
-      }
-      if (scrollRaf) {
-        cancelAnimationFrame(scrollRaf);
-        scrollRaf = null;
-      }
-      pendingDy = 0;
-      pixelAccum = 0;
-    };
-
-    // 将累积的像素偏移转化为行滚动
-    const flushScroll = () => {
-      scrollRaf = null;
-      if (pendingDy === 0) return;
-      pixelAccum += pendingDy;
-      pendingDy = 0;
-      const lh = getLineHeight();
-      const lines = Math.trunc(pixelAccum / lh);
-      if (lines !== 0) {
-        term.scrollLines(lines);
-        pixelAccum -= lines * lh;
-      }
-    };
-
-    screen.addEventListener('touchstart', (e) => {
-      stopMomentum();
-      if (e.touches.length !== 1) return;
-      lastY = e.touches[0].clientY;
-      lastTime = performance.now();
-      velocitySamples = [];
-    }, { passive: true });
-
-    screen.addEventListener('touchmove', (e) => {
-      if (e.touches.length !== 1) return;
-      const y = e.touches[0].clientY;
-      const now = performance.now();
-      const dt = now - lastTime;
-      const dy = lastY - y; // 正值 = 向上滚
-
-      if (dt > 0) {
-        const v = dy / dt * 16;
-        velocitySamples.push({ v, t: now });
-        // 只保留最近 100ms 的样本
-        while (velocitySamples.length > 0 && now - velocitySamples[0].t > 100) {
-          velocitySamples.shift();
-        }
-      }
-
-      pendingDy += dy;
-      if (!scrollRaf) {
-        scrollRaf = requestAnimationFrame(flushScroll);
-      }
-
-      lastY = y;
-      lastTime = now;
-    }, { passive: true });
-
-    screen.addEventListener('touchend', () => {
-      // 刷掉剩余 pending
-      if (scrollRaf) {
-        cancelAnimationFrame(scrollRaf);
-        scrollRaf = null;
-      }
-      if (pendingDy !== 0) {
-        pixelAccum += pendingDy;
-        pendingDy = 0;
-        const lh = getLineHeight();
-        const lines = Math.trunc(pixelAccum / lh);
-        if (lines !== 0) term.scrollLines(lines);
-        pixelAccum = 0;
-      }
-
-      // 用加权平均计算末速度（像素/帧）
-      let velocity = 0;
-      if (velocitySamples.length >= 2) {
-        let totalWeight = 0;
-        let weightedV = 0;
-        const latest = velocitySamples[velocitySamples.length - 1].t;
-        for (const s of velocitySamples) {
-          const w = Math.max(0, 1 - (latest - s.t) / 100);
-          weightedV += s.v * w;
-          totalWeight += w;
-        }
-        velocity = totalWeight > 0 ? weightedV / totalWeight : 0;
-      }
-      velocitySamples = [];
-
-      // 惯性滚动（仍用像素级累积器保证精度）
-      if (Math.abs(velocity) < 0.5) return;
-      const friction = 0.95;
-      let mAccum = 0;
-      const tick = () => {
-        if (Math.abs(velocity) < 0.3) {
-          // 最后残余不足一行则四舍五入
-          const lh = getLineHeight();
-          const rest = Math.round(mAccum / lh);
-          if (rest !== 0) term.scrollLines(rest);
-          momentumRaf = null;
-          return;
-        }
-        mAccum += velocity;
-        const lh = getLineHeight();
-        const lines = Math.trunc(mAccum / lh);
-        if (lines !== 0) {
-          term.scrollLines(lines);
-          mAccum -= lines * lh;
-        }
-        velocity *= friction;
-        momentumRaf = requestAnimationFrame(tick);
-      };
-      momentumRaf = requestAnimationFrame(tick);
-    }, { passive: true });
-
-    this._stopMobileMomentum = stopMomentum;
+    this._stopMobileMomentum = attachMobileTouchScroll(this.terminal, this.containerRef.current);
   }
 
   // 通过 TerminalWsContext 共享 ws — 不再自建。本方法接收 Provider 派发的所有消息,
@@ -1288,47 +1168,29 @@ class TerminalPanel extends React.Component {
   };
 
   /**
-   * 移动端固定 60 列：通过调整 fontSize 使 60 列恰好撑满屏幕宽度，
-   * 行数根据缩放后的行高和可用高度动态计算。
+   * Phone fixed 60-column layout: sizing math lives in utils/mobileTermLayout.js
+   * (shared with ScratchTerminal) and measures the xterm parent container
+   * directly instead of approximating via window minus chrome constants.
    */
-  _mobileFixedResize() {
-    if (!this.terminal) return;
+  _mobileFixedResize(attempt = 0) {
+    const term = this.terminal;
+    if (!term) return;
 
-    // 从 xterm 渲染器获取当前字符尺寸
-    const cellDims = this.terminal._core?._renderService?.dimensions?.css?.cell;
-    if (!cellDims || !cellDims.width || !cellDims.height) {
-      // 渲染器尚未就绪，延迟重试
-      setTimeout(() => this._mobileFixedResize(), 50);
-      return;
-    }
-
-    const MOBILE_COLS = 60;
-    const padX = 16; // 8px * 2 容器内边距
-    const padY = 8;  // 4px * 2
-    const topBarHeight = 40;
-    const keybarHeight = 52;
-
-    const availableWidth = window.innerWidth - padX;
-    const availableHeight = window.innerHeight - topBarHeight - keybarHeight - padY;
-
-    // 根据当前 fontSize 和 charWidth 的比例，计算让 60 列恰好填满宽度所需的 fontSize
-    const currentFontSize = this.terminal.options.fontSize;
-    const currentCharWidth = cellDims.width;
-    const targetFontSize = Math.floor(currentFontSize * availableWidth / (MOBILE_COLS * currentCharWidth) * 10) / 10;
-
-    // 更新字号，xterm 会重新渲染
-    this.terminal.options.fontSize = targetFontSize;
-
-    // 等渲染器更新后再计算行数
-    requestAnimationFrame(() => {
-      if (!this.terminal) return; // unmount 竞态：this.terminal._core 对 null 取属性会抛
-      const newCellDims = this.terminal._core?._renderService?.dimensions?.css?.cell;
-      const lineHeight = newCellDims?.height || cellDims.height;
-      const rows = Math.max(5, Math.min(Math.floor(availableHeight / lineHeight), 100));
-
-      this.terminal.resize(MOBILE_COLS, rows);
-      this.sendResize();
+    const done = applyMobileFixedLayout(term, this.containerRef.current, {
+      // xterm dispose() never nulls _core; the field null-out on unmount is the liveness signal.
+      isAlive: () => this.terminal === term,
+      onResized: () => this.sendResize(),
     });
+    if (!done && attempt < 3) {
+      // Not measurable: either the renderer has no cell dims yet (retry a few frames)
+      // or the container is hidden/zero-sized (skip — retrying a hidden host spins
+      // forever; the phone main panel is always visible when opened, and rotation /
+      // overlay re-opens re-run this via initTerminal/focus paths).
+      const el = this.containerRef.current;
+      if (el && el.offsetWidth > 0 && el.offsetHeight > 0) {
+        setTimeout(() => this._mobileFixedResize(attempt + 1), 50);
+      }
+    }
   }
 
   /**
@@ -1464,6 +1326,15 @@ class TerminalPanel extends React.Component {
     }
   };
 
+  // Virtual key for the scratchOnly (--sdk) branch: that branch never renders
+  // containerRef (the main xterm host), so input must go straight to the active
+  // tab's ScratchTerminal — sendVirtualKey uses that tab's own /ws/terminal-scratch
+  // socket and applies the same phone blur policy as handleVirtualKey.
+  handleScratchVirtualKey = (seq) => {
+    const r = this._scratchRefs.get(this.state.activeScratchTabId);
+    r?.current?.sendVirtualKey(seq);
+  };
+
   /**
    * 移动端虚拟按键触摸处理：区分点击与拖动滚动。
    * 仅当触摸位移 < 阈值时才视为点击并触发按键，否则视为滚动不触发。
@@ -1496,6 +1367,27 @@ class TerminalPanel extends React.Component {
       action();
     }
   };
+
+  // Shared phone keybar: VIRTUAL_KEYS + the tap-vs-drag touch wiring. `onKey` receives
+  // the escape sequence; children (e.g. agent-team preset buttons) are main-branch only.
+  _renderVirtualKeybar(onKey, children = null) {
+    return (
+      <div className={styles.virtualKeybar}>
+        {VIRTUAL_KEYS.map(k => (
+          <button
+            key={k.label}
+            className={styles.virtualKey}
+            onTouchStart={this._vkTouchStart}
+            onTouchMove={this._vkTouchMove}
+            onTouchEnd={(e) => this._vkTouchEnd(() => onKey(k.seq), e)}
+          >
+            {k.label}
+          </button>
+        ))}
+        {children}
+      </div>
+    );
+  }
 
   handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -1713,16 +1605,24 @@ class TerminalPanel extends React.Component {
     // 只渲染多 tab scratch shell(独立 /ws/terminal-scratch WS,SDK 模式服务端可用),
     // 跳过主 PTY 区 / 工具栏 / 虚拟键盘 / 各 Modal。scratchOpen 由 props 驱动(App state)。
     if (this.props.scratchOnly) {
-      // 直接读 prop(不经 state):父容器用 display:none 切换显隐,TerminalPanel 始终挂载,
-      // 避免「return null → componentDidUpdate 不触发 → prop/state 同步卡死」的闭环。
+      // Read the prop directly (never state): the desktop host keeps this panel
+      // mounted and toggles visibility via the scratchOpen prop (App state), and the
+      // Mobile overlay drives it from mobileTerminalVisible. Returning null here only
+      // skips the DOM — the component itself stays mounted, so componentDidUpdate
+      // still fires on the closed→open edge and refits the tabs (see componentDidUpdate).
       if (!this.props.scratchOpen) return null;
       return (
-        <div className={`${styles.terminalPanel} ${styles.scratchOnlyPanel || ''}`}>
-          {/* scratchOnly(右侧竖向容器):scratch 面板与容器等高——省掉横向 resizer 与固定 height,
-              高度由 flex:1 + min-height:0 自适应,不再写死 max-height。 */}
-          {(!isMobile || isPad) && (
-            <div ref={this._scratchWrapRef} className={`${styles.scratchWrap} ${styles.scratchWrapFill || ''}`}>
-              <div className={styles.scratchTabs} role="tablist" aria-orientation="vertical">
+        <div className={`${styles.terminalPanel} ${styles.scratchOnlyPanel || ''}${(isMobile && !isPad) ? ` ${styles.scratchOnlyPhone}` : ''}`}>
+          {/* scratchOnly (right-hand vertical container): the scratch panel fills the
+              container height — no horizontal resizer, no fixed height; flex:1 +
+              min-height:0 adapt instead of a hardcoded max-height.
+              Phones (the --sdk overlay's only host) render the same tree: the tab
+              rail flips horizontal via the scratchOnlyPhone modifier (single JS
+              source of truth, also drives aria-orientation), and the bottom virtual
+              keybar routes through handleScratchVirtualKey to the active tab's
+              scratch WS. */}
+          <div ref={this._scratchWrapRef} className={`${styles.scratchWrap} ${styles.scratchWrapFill || ''}`}>
+            <div className={styles.scratchTabs} role="tablist" aria-orientation={(isMobile && !isPad) ? 'horizontal' : 'vertical'}>
                   {this.state.scratchTabs.map((tab, idx) => {
                     const isActive = tab.id === this.state.activeScratchTabId;
                     const isLast = this.state.scratchTabs.length === 1;
@@ -1786,7 +1686,7 @@ class TerminalPanel extends React.Component {
                   })}
                 </div>
               </div>
-          )}
+          {(isMobile && !isPad) && this._renderVirtualKeybar((seq) => this.handleScratchVirtualKey(seq))}
         </div>
       );
     }
@@ -2135,19 +2035,9 @@ class TerminalPanel extends React.Component {
             </div>
           </>
         )}
-        {(isMobile && !isPad) && (
-          <div className={styles.virtualKeybar}>
-            {VIRTUAL_KEYS.map(k => (
-              <button
-                key={k.label}
-                className={styles.virtualKey}
-                onTouchStart={this._vkTouchStart}
-                onTouchMove={this._vkTouchMove}
-                onTouchEnd={(e) => this._vkTouchEnd(() => this.handleVirtualKey(k.seq), e)}
-              >
-                {k.label}
-              </button>
-            ))}
+        {(isMobile && !isPad) && this._renderVirtualKeybar(
+          (seq) => this.handleVirtualKey(seq),
+          <>
             {/* TODO: 移动端文件上传 - 受限于浏览器安全策略，触摸事件链中 input.click() 无法触发文件选择器
             <span className={styles.vkSeparator} />
             <button
@@ -2184,7 +2074,7 @@ class TerminalPanel extends React.Component {
                 })}
               </>
             ) : null}
-          </div>
+          </>,
         )}
         {/* 预置快捷方式弹窗 */}
         <Modal

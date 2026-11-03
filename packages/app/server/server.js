@@ -47,7 +47,7 @@ import { resumeRoutes } from './routes/resume.js';
 import { sdkContextRoutes } from './routes/sdk-context.js';
 import { sdkMcpStatusRoutes } from './routes/sdk-mcp-status.js';
 import { proxyStatsRoutes } from './routes/proxy-stats.js';
-import { setProxyStatsListener } from './lib/proxy/proxy-stats.js';
+import { setProxyStatsListener, setSlowUpstreamListener } from './lib/proxy/proxy-stats.js';
 import * as imCore from './lib/im/im-bridge-core.js';
 import * as imProcMgr from './lib/im/im-process-manager.js';
 import * as chatQueue from './lib/chat-queue.js';
@@ -500,6 +500,45 @@ export function notifyProxyStats(logFile) {
 // registers the notify callback with the proxy-stats lib; proxy.js only emits
 // through the lib and never reaches back into this module.
 setProxyStatsListener(notifyProxyStats);
+
+// Slow-upstream advisory (review follow-up): proxy.js cannot import sdk-manager
+// (a proxy-only process must not load the SDK), so IT emits through proxy-stats
+// and server.js — which already legally holds both the SDK accessors and the
+// terminal WS — decides whether the slow request maps to a live session worth
+// surfacing. The frame carries the request's own cwd/instanceKey and is routed
+// through broadcastWsMessage, so only viewers of that workspace/instance see it.
+setSlowUpstreamListener(({ type, requestId, cwd, instanceKey, waitingMs, model } = {}) => {
+  try {
+    if (!isSdkMode || !_sdkListSessions || !terminalWss) return;
+    // Match the session by the request's real cwd (and instance when present),
+    // not the process-wide bound project — concurrent workspaces would otherwise
+    // cross-attribute the advisory. No live session → the slow request is not
+    // user-visible traffic (IM worker, scheduled task, …) — stay silent.
+    const sessions = _sdkListSessions() || [];
+    // cwd fallback only when NO instance was reported (review P2-2): an
+    // ephemeral/scheduled-task session self-reports a fresh synthetic
+    // x-ccv-instance that is never in listSdkSessions; falling back to a
+    // same-cwd resident session would then toast for background traffic the
+    // user is not waiting on. When an instance IS given but matches nothing,
+    // the request is not a resident session's — stay silent.
+    const sess = instanceKey
+      ? (sessions.find(s => s.instanceKey === instanceKey) || null)
+      : (sessions.find(s => cwd && s.cwd === cwd) || null);
+    if (!sess) return;
+    if (type === 'resolved') {
+      // The waited-on request settled — tell the UI to dismiss the toast.
+      broadcastWsMessage({
+        type: 'sdk-slow-upstream-resolved', cwd: sess.cwd, project: projectKeyForCwd(sess.cwd),
+        instanceKey: sess.instanceKey || null, requestId: requestId || null, ts: Date.now(),
+      });
+      return;
+    }
+    broadcastWsMessage({
+      type: 'sdk-slow-upstream', cwd: sess.cwd, project: projectKeyForCwd(sess.cwd),
+      instanceKey: sess.instanceKey || null, requestId: requestId || null, waitingMs, model: model || null, ts: Date.now(),
+    });
+  } catch (err) { reportSwallowed('server.slow-upstream-listener', err); }
+});
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',

@@ -1330,6 +1330,13 @@ class ChatMessage extends React.Component {
     textBlocks.forEach((tb, i) => {
       if (tb.text) {
         const { segments } = renderAssistantText(tb.text);
+        // Blank-whitespace text ('   ', '\n\n') is truthy but parses to zero
+        // segments — pushing chat-boxer here would render a visible empty
+        // bubble (chat-boxer has background/border/padding even with no
+        // children). Gate on the real render condition (segments), not on
+        // re-trimming, so a whitespace-only block yields no wrapper while a
+        // legal empty system-tag (a system-tag segment) still renders.
+        if (segments.length === 0) return;
         const isCursorTarget = i === lastTextIdxWithContent;
         innerContent.push(
           <div key={`text-${i}`} className="chat-boxer">{this.renderSegments(segments, isCursorTarget)}</div>
@@ -1433,6 +1440,10 @@ class ChatMessage extends React.Component {
       if (block.type === 'text') {
         if (!block.text) continue;
         const { segments } = renderAssistantText(block.text);
+        // Same zero-segment guard as the legacy path: a whitespace-only text
+        // block parses to [] yet is truthy, and the chat-boxer wrapper is
+        // visible even with no children. Skip before creating the wrapper.
+        if (segments.length === 0) continue;
         const isCursorTarget = i === lastTextGlobalIdx;
         innerContent.push(
           <div key={`text-${i}`} className="chat-boxer">{this.renderSegments(segments, isCursorTarget)}</div>

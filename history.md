@@ -2,7 +2,21 @@
 
 ## Unreleased
 
+- fix(sdk+web): **CR 后续修复（慢上游提示健壮性 + 若干 P2）** — 慢上游 toast 加 90s 兜底 + 切工作区/卸载即销毁；requestId 计数 + `waitingMs` 客户端自增；server cwd 回退仅当未上报 instance；计时改到首个 body chunk。composer pad 提到 12 行 + clamp 修正。sdkTaskTracker 工作区 owner 感知 + 终态批次重置。`Teammate.md` 18 locale ×2 树去 `TeamCreate`。mobile 触摸滚动修多指过渡跳动。Coverage: `ultraplan-teamcreate-free.test.js`, `mobile-touch-scroll.test.js`.
+
+- fix(web): **SubAgent 空白 `chat-boxer` 气泡** — 纯空白 text block 为 truthy 但解析为零 segments，两条共享渲染路径（legacy + web-search in-order）在 `renderAssistantText` 后、创建 `chat-boxer` 前按 `segments.length === 0` 跳过，消除 SubAgent/Teammate 等未过滤入口的可见空气泡；合法空 system-tag 不误删。Coverage: `chat-blank-bubble.test.js`.
+
+- fix(content): **UltraReview 提示词统一为无 TeamCreate 新版** — codeExpert 评审段与 customContent 预填样板对齐为「Agent 工具构建 team（teammate 有 name)→ 多角色评审 → 修 P0/P1、辩证 P2 → 逐一通知 teammate 退出」；清除内嵌提示词工具清单里残留的 `TeamCreate` 引用（该工具不存在）。覆盖 18 locale 的 UltraPlan.md / CustomUltraplanExpert.md、`code-expert.json`、`ultraplanTemplates.js` 与 i18n 骨架。Coverage: `ultraplan-templates.test.js`, `builtin-presets.test.js`.
+
+- fix(web+sdk): **慢上游提示与 SDK 任务 HUD 审查修复** — 补 `server.js` 缺失的 `setSlowUpstreamListener` import；慢上游提示按请求自带的 `x-ccv-project-dir`/`x-ccv-instance` 精确归属工作区（多工作区不再串台）并经 `broadcastWsMessage` 路由，toast 常驻至请求完结（新增 resolved 帧），`waitingMs` 为真实时长；SDK 任务 HUD 在 sessionId 变更时立即清空旧清单、失败/被杀/停止任务渲染为失败态、SDK 模式忽略 hook 空快照防覆盖。Coverage: `proxy-slow-upstream.test.js`, `sdkTaskTracker.test.js`.
+
+- feat(web): **SDK 模式接通任务清单 HUD** — `--sdk` 下 TaskProgressHud 不再缺席：新增 `sdkTaskTracker` 消费 server 转发的 WS `sdk-task` 帧（task_started/progress/updated/notification），客户端归并为 taskStore 兼容快照，HUD 直接复用现有渲染。含 `_sdkFrameMatchesView` 守卫、sessionId 变更自动重置、re-fire 状态复位。Coverage: `sdkTaskTracker.test.js`.
+
+- feat(sdk): **慢上游在途提示** — LLM 请求等上游首字节超 30s 时经 proxy-stats 监听器广播 `sdk-slow-upstream`，前端 toast「模型响应缓慢，已等待 Ns，仍在等待…」，消除此前请求挂起数分钟 UI 死寂（如一次 ECONNRESET 前挂 164s 无任何反馈）的可观测缺口。utility 探针豁免，PTY/proxy-only 进程零成本。Coverage: `proxy-stats.test.js`.
+
 - fix(web): **文件浏览器树子目录单击打开错误路径** — 树行的根路径被 `openItem` 再拼一次 `currentPath` 得到 `skills/skills/foo/...`；改为 `openItem` 接受显式根路径，树直接传入。Coverage: `file-browser-modal.test.js`.
+
+- fix(web): **`--sdk` 模式手机端终端对齐桌面 scratch 终端** — overlay 在 sdkMode 下改挂 scratchOnly 多 tab shell（唯一宿主，含 iPad），支持 tab 切换/新增/关闭与底部虚拟键栏。Coverage: `scratch-workspace-switch.test.js`, `mobile-term-layout.test.js`.
 
 - fix(server): **`/events` 冷加载 convSeqs 收敛并入单遍扫描** — 快照扫描已解析的行被 coverage 段再次 `JSON.parse` 且无 yield，热路径叠加 O(window 字节) 同步解析。合并进单遍并恢复事件循环 yield。Coverage: `v2-meta-rows.test.js`.
 

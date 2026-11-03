@@ -13,7 +13,7 @@ import { isAnthropicApiPath, classifyProxyRole } from './lib/interceptor-core.js
 import { parseAgentId, findHeader } from './lib/v2/agent-id.js';
 import { liveSystemPromptEnabled } from './lib/system-prompt-live.js';
 import { executeRequest, extractModel, isStreamResponse } from './lib/proxy/proxy-retry.js';
-import { buildRecord, appendRecord, dailyFilePath, todayStr, emitProxyStatsUpdate } from './lib/proxy/proxy-stats.js';
+import { buildRecord, appendRecord, dailyFilePath, todayStr, emitProxyStatsUpdate, emitSlowUpstream } from './lib/proxy/proxy-stats.js';
 import { reportSwallowed } from './lib/error-report.js';
 import { LOG_DIR } from '../findcc.js';
 
@@ -256,7 +256,11 @@ export function startProxy() {
       }
     });
 
-    // Start on random port
+    // Start on random port. Resolve with the port (existing callers destructure a
+    // number). Expose the server on the test seam so tests can close it and let
+    // node:test's event loop exit (proxy-slow-upstream.test.js hung on the open
+    // handle); production callers ignore it.
+    __testing.lastServer = server;
     server.listen(0, '127.0.0.1', () => {
       const address = server.address();
       resolve(address.port);
@@ -267,6 +271,29 @@ export function startProxy() {
     });
   });
 }
+
+// A non-utility LLM request that has been waiting this long for ANY upstream
+// response (headers not yet arrived) is, from the user's seat, indistinguishable
+// from a hang — yet both retry layers are legitimately idle (CLI's own retry only
+// counts a settled failure; the proxy's retry engine only re-fires on a settled
+// response/status). Emit ONE advisory frame per request so the UI can say "still
+// waiting on the model" instead of a bare spinner. 30s ≈ long enough to ignore
+// normal slow first-token, short enough to beat the user's give-up threshold.
+const SLOW_UPSTREAM_MS = 30 * 1000;
+
+// Monotonic id so concurrent slow requests each get a distinct toast and a
+// resolved frame only clears its own (review P2-1: a single constant key made
+// parallel subagent requests clobber each other and the first resolve dismissed
+// all). Passed through both the slow and the resolved frame.
+let _slowReqSeq = 0;
+
+// Test seam: lets tests shrink the threshold and observe emits without standing
+// up a real 30s wait or a network upstream. Production defaults are unchanged.
+export const __testing = {
+  slowUpstreamMs: SLOW_UPSTREAM_MS,
+  emit: emitSlowUpstream,
+  lastServer: null, // set by startProxy so tests can close the listener
+};
 
 // ── 大模型 API 请求处理：重试引擎 + 明细统计 ──────────────────────
 // mode=off 时仍写 1 条明细（attempts=1）以支撑可用率统计；完全禁用统计用 CCV_PROXY_STATS=off。
@@ -312,21 +339,78 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
     }
   });
 
+  // Slow-upstream advisory: fires once if the request is STILL waiting for the
+  // upstream's first response byte past SLOW_UPSTREAM_MS. Utility probes
+  // (count_tokens / sdk heartbeat) are exempt — they are invisible to the user
+  // and firing on them would toast on background traffic. The emit is a no-op
+  // unless server.js registered a listener (SDK mode), so PTY/proxy-only
+  // processes pay nothing.
+  //
+  // Scope comes from the request's own self-report headers
+  // (x-ccv-project-dir / x-ccv-instance, injected per SDK session / PTY spawn),
+  // NOT the process-wide interceptor._projectName — the latter is rebound on
+  // every workspace switch, so under concurrent workspaces it would attribute a
+  // background workspace's slow request to whichever workspace bound last.
+  const slowStartTime = Date.now();
+  let slowTimer = null;
+  let slowFired = false;
+  let slowCwd = '';
+  let slowInstance = '';
+  let slowReqId = null;
+  if (liveCtx.isUtility !== true) {
+    slowCwd = findHeader(fetchOptions.headers, 'x-ccv-project-dir') || '';
+    slowInstance = findHeader(fetchOptions.headers, 'x-ccv-instance') || '';
+    slowReqId = `sq-${++_slowReqSeq}`;
+    slowTimer = setTimeout(() => {
+      slowFired = true;
+      __testing.emit({
+        type: 'slow',
+        requestId: slowReqId,
+        cwd: slowCwd,
+        instanceKey: slowInstance,
+        waitingMs: Date.now() - slowStartTime,
+        model,
+      });
+    }, __testing.slowUpstreamMs);
+    if (slowTimer.unref) slowTimer.unref();
+  }
+  const clearSlowTimer = () => { if (slowTimer) { clearTimeout(slowTimer); slowTimer = null; } };
+  clientAbort.signal.addEventListener('abort', clearSlowTimer, { once: true });
+  // The timer measures time-to-HEADERS (fetch resolves at headers). Keep it armed
+  // until the first BODY chunk so a headers-fast-then-stalled stream still counts
+  // as slow (review P2-3); the finally below stays as the cleanup backstop.
+  let slowFirstByteSeen = false;
+  const markFirstByte = () => {
+    if (slowFirstByteSeen) return;
+    slowFirstByteSeen = true;
+    clearSlowTimer();
+  };
+
   // 执行带重试的请求
-  const result = await executeRequest({
-    url: fullUrl,
-    fetchOptions: retryFetchOptions,
-    retryConfig,
-    ctx: {
-      dispatcher: proxyDispatcher,
-      profile,
-      signal: clientAbort.signal,
-      // live system 改写上下文（system-prompt-live.js）：role 门 + 项目键。
-      role: liveCtx.role,
-      isUtility: liveCtx.isUtility === true,
-      projectKey: interceptor._projectName || '',
-    },
-  });
+  let result;
+  try {
+    result = await executeRequest({
+      url: fullUrl,
+      fetchOptions: retryFetchOptions,
+      retryConfig,
+      ctx: {
+        dispatcher: proxyDispatcher,
+        profile,
+        signal: clientAbort.signal,
+        // live system 改写上下文（system-prompt-live.js）：role 门 + 项目键。
+        role: liveCtx.role,
+        isUtility: liveCtx.isUtility === true,
+        projectKey: interceptor._projectName || '',
+      },
+    });
+  } finally {
+    clearSlowTimer();
+    // If the advisory fired, tell the UI the wait is over so the persistent
+    // toast is dismissed instead of lingering past completion.
+    if (slowFired) {
+      __testing.emit({ type: 'resolved', requestId: slowReqId, cwd: slowCwd, instanceKey: slowInstance });
+    }
+  }
 
   const { response, attempts, retryCodes, durationMs, finalStatus, succeeded, upstreamStatus } = result;
 
@@ -391,6 +475,10 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
     // @ts-ignore
     const nodeStream = Readable.fromWeb(response.body);
     nodeStream.on('error', () => {});
+    // First body byte arrived → the upstream is no longer "slow"; stop the
+    // advisory timer. Headers alone don't count (a headers-fast-then-stalled
+    // SSE stream is exactly the silent case we want to surface).
+    nodeStream.once('data', markFirstByte);
     const streamIdleMs = retryConfig && retryConfig.mode === 'off'
       ? (retryConfig.streamIdleTimeoutMs ?? 0)
       : 0;

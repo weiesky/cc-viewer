@@ -24,7 +24,7 @@ const SpeechRec = typeof window !== 'undefined' && window.isSecureContext
 const FOCUS_VPAD = 16;
 const LINE_H = 21;
 const MIN_LINES = 1;
-const MAX_LINES = 6;
+const MAX_LINES = 12;
 const FOCUS_LINES = 2;
 
 // Shared autosize helper: measures the content box (scrollHeight minus vertical padding)
@@ -45,8 +45,11 @@ export function resizeChatTextarea(ta, { focused = false } = {}) {
     ta.style.minHeight = prevMin;
     return;
   }
-  const content = Math.min(Math.max(measured - FOCUS_VPAD, LINE_H * MIN_LINES), LINE_H * MAX_LINES);
-  ta.style.height = (focused ? Math.max(content, LINE_H * FOCUS_LINES) : content) + 'px';
+  // border-box: style.height includes padding, so do NOT subtract FOCUS_VPAD from
+  // the cap — measured already is the full box height. Subtracting it made the
+  // 12-line cap render as ~11 lines and left the CSS max-height (268px) dead.
+  const content = Math.min(Math.max(measured, LINE_H * MIN_LINES + FOCUS_VPAD), LINE_H * MAX_LINES + FOCUS_VPAD);
+  ta.style.height = (focused ? Math.max(content, LINE_H * FOCUS_LINES + FOCUS_VPAD) : content) + 'px';
   ta.style.minHeight = prevMin;
 }
 

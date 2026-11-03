@@ -447,4 +447,16 @@ describe('proxy-stats appendRecord / notifier (review P2)', () => {
     emitProxyStatsUpdate('proxy_z.jsonl'); // listener errors are contained
     setProxyStatsListener(null); // cleanup for other suites
   });
+
+  it('emitSlowUpstream mirrors the stats listener contract (no-op / forward / contained throw)', async () => {
+    const { setSlowUpstreamListener, emitSlowUpstream } = await import('../server/lib/proxy/proxy-stats.js');
+    emitSlowUpstream({ projectKey: 'p', waitingMs: 30000 }); // no listener → no throw
+    const seen = [];
+    setSlowUpstreamListener((info) => seen.push(info));
+    emitSlowUpstream({ projectKey: 'p', waitingMs: 30000, model: 'm' });
+    assert.deepEqual(seen, [{ projectKey: 'p', waitingMs: 30000, model: 'm' }]);
+    setSlowUpstreamListener(() => { throw new Error('boom'); });
+    emitSlowUpstream({ projectKey: 'p', waitingMs: 30000 }); // listener errors are contained
+    setSlowUpstreamListener(null); // cleanup for other suites
+  });
 });

@@ -2,7 +2,7 @@
 
 ## Definicja
 
-Teammate to agent współpracujący w trybie Claude Code Agent Team. Gdy główny agent tworzy zespół za pomocą `TeamCreate` i generuje teammate'ów przy użyciu narzędzia `Agent`, każdy teammate działa jako niezależny proces agenta z własnym oknem kontekstu i zestawem narzędzi, komunikując się z członkami zespołu za pośrednictwem `SendMessage`.
+Teammate to agent współpracujący w trybie Claude Code Agent Team. Gdy główny agent tworzy zespół i generuje teammate'ów przy użyciu narzędzia `Agent`, każdy teammate działa jako niezależny proces agenta z własnym oknem kontekstu i zestawem narzędzi, komunikując się z członkami zespołu za pośrednictwem `SendMessage`.
 
 ## Różnice w porównaniu z SubAgent
 
