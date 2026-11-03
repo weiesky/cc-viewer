@@ -1,0 +1,123 @@
+packages/content/concepts/de/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+apps/web/src/components/chat/ChatInputBar.jsx
+  s_a4f48a8f74edcd::t_7082406ee2e494 48-52
+packages/content/concepts/fr/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+apps/web/src/utils/mobileTouchScroll.js
+  s_a4f48a8f74edcd::t_83b7aac9fa2c8c 90-97
+  s_a4f48a8f74edcd::t_668ba1a0789390 80-86,98
+packages/content/concepts/ja/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+.changeset/cr-followup-slow-hud-composer.md
+  s_a4f48a8f74edcd::t_9092d64ad2ca60 1-5
+packages/app/server/proxy.js
+  s_a4f48a8f74edcd::t_16b2a9d918a224 280-285
+  s_a4f48a8f74edcd::t_5a016d662be92e 354,358,363,374-382,406
+  s_a4f48a8f74edcd::t_2a523980c1d4b6 473-476
+packages/content/concepts/th/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+packages/content/concepts/es/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+packages/content/concepts/ar/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+packages/content/concepts/zh-TW/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+packages/content/concepts/en/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+packages/content/concepts/it/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+packages/content/concepts/ko/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+packages/content/concepts/uk/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+apps/web/test/mobile-touch-scroll.test.js
+  s_a4f48a8f74edcd::t_a0faec18de201d 159-190
+packages/content/concepts/no/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+history.md
+  s_a4f48a8f74edcd::t_a7193325b38766 5-6
+packages/content/concepts/zh/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+packages/content/concepts/tr/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+packages/app/server/server.js
+  s_a4f48a8f74edcd::t_53327cb1df4e64 510
+  s_a4f48a8f74edcd::t_587b1a54e1cbf2 518-526,532,538
+packages/content/concepts/ru/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+apps/web/src/components/chat/ChatInputBar.module.css
+  s_a4f48a8f74edcd::t_d23c83d356e0e9 700
+packages/content/concepts/pl/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+packages/content/concepts/pt-BR/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+packages/content/concepts/da/Teammate.md
+  s_a4f48a8f74edcd::t_cf576c8ad70f02 5
+apps/web/src/components/chat/ChatView.jsx
+  s_a4f48a8f74edcd::t_8a73c274a9b792 410-415
+  s_a4f48a8f74edcd::t_b21848176e9d00 1334-1364,1368-1369
+  s_a4f48a8f74edcd::t_2584b030b9a84f 1371-1372
+  s_a4f48a8f74edcd::t_e65ce19ebcfd6c 3037-3044,3047-3054
+  s_a4f48a8f74edcd::t_9cfe579cfab6c6 814-817
+apps/web/test/ultraplan-teamcreate-free.test.js
+  s_a4f48a8f74edcd::t_17b57dfdf0406d 1-23,25-75
+  s_a4f48a8f74edcd::t_f5be6041d5cad0 24
+apps/web/src/utils/sdkTaskTracker.js
+  s_a4f48a8f74edcd::t_4eca1cea630455 83-94
+  s_a4f48a8f74edcd::t_71c9ce8422c727 32-43
+  s_a4f48a8f74edcd::t_71df74573fadc5 186
+  s_a4f48a8f74edcd::t_a474828eb6fc3b 104-111
+packages/app/concepts/ar/Teammate.md
+  s_a4f48a8f74edcd::t_c4099b111eab48 5
+packages/app/concepts/da/Teammate.md
+  s_a4f48a8f74edcd::t_305bb01b43049a 5
+packages/app/concepts/de/Teammate.md
+  s_a4f48a8f74edcd::t_191f79b84a3917 5
+packages/app/concepts/en/Teammate.md
+  s_a4f48a8f74edcd::t_caa8b93ff7bcad 5
+packages/app/concepts/es/Teammate.md
+  s_a4f48a8f74edcd::t_7082468efd1c32 5
+packages/app/concepts/fr/Teammate.md
+  s_a4f48a8f74edcd::t_829190456dec1d 5
+packages/app/concepts/it/Teammate.md
+  s_a4f48a8f74edcd::t_57178c44eb9474 5
+packages/app/concepts/ja/Teammate.md
+  s_a4f48a8f74edcd::t_4f5528eb50f665 5
+packages/app/concepts/ko/Teammate.md
+  s_a4f48a8f74edcd::t_4fc6dffff256f5 5
+packages/app/concepts/no/Teammate.md
+  s_a4f48a8f74edcd::t_d6c153960561c9 5
+packages/app/concepts/pl/Teammate.md
+  s_a4f48a8f74edcd::t_ce340e49c95772 5
+packages/app/concepts/pt-BR/Teammate.md
+  s_a4f48a8f74edcd::t_fe46fccf2ace56 5
+packages/app/concepts/ru/Teammate.md
+  s_a4f48a8f74edcd::t_43e8c0911cca93 5
+packages/app/concepts/th/Teammate.md
+  s_a4f48a8f74edcd::t_0a9ea1c2afe3b3 5
+packages/app/concepts/tr/Teammate.md
+  s_a4f48a8f74edcd::t_c2c5b8b26321d7 5
+packages/app/concepts/uk/Teammate.md
+  s_a4f48a8f74edcd::t_b7486d3364fe5c 5
+packages/app/concepts/zh-TW/Teammate.md
+  s_a4f48a8f74edcd::t_949807f7ecb6b7 5
+packages/app/concepts/zh/Teammate.md
+  s_a4f48a8f74edcd::t_abad4378200a2d 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2ea5181df8c2d4e8385b76ca4507b74b8e409231",
+  "prompts": {},
+  "sessions": {
+    "s_a4f48a8f74edcd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "57e3e95d-699f-4046-b680-7b09c8d5a9d6",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
