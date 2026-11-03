@@ -1,0 +1,84 @@
+apps/web/src/utils/sdkTaskTracker.js
+  s_3fa622a52a8c3a::t_e838d1f9fda848 67-70,73-74
+  s_3fa622a52a8c3a::t_0637c06a27a83a 15-16
+  s_3fa622a52a8c3a::t_f51cdf448380ce 135-136,139
+  s_3fa622a52a8c3a::t_f1d7462e7d86f6 33-36,43-45
+apps/web/src/utils/taskStore.js
+  s_3fa622a52a8c3a::t_85820b0493c891 25
+apps/web/src/i18n.js
+  s_3fa622a52a8c3a::t_5fd58ecaea6b8d 1236
+packages/app/server/lib/proxy/proxy-stats.js
+  s_3fa622a52a8c3a::t_986966d86cfbd8 162-170
+history.md
+  s_3fa622a52a8c3a::t_77619fa881c771 5-6
+.changeset/review-followup-sdk-hud-slow.md
+  s_3fa622a52a8c3a::t_d0185533358982 1-5
+packages/app/test/proxy-slow-upstream.test.js
+  s_3fa622a52a8c3a::t_48d772cc3fbced 1-148
+apps/web/src/components/chat/TaskProgressHud.jsx
+  s_3fa622a52a8c3a::t_af77f04e68b715 48-49
+  s_3fa622a52a8c3a::t_27c403287e7755 26-30,32-39
+  s_3fa622a52a8c3a::t_d37681ec449ab3 179-180
+  s_3fa622a52a8c3a::t_e805eca6d75c5b 143,152,167-168
+  s_3fa622a52a8c3a::t_f8f503da2f3b07 199
+  s_3fa622a52a8c3a::t_2cb9808fc5fc65 59
+  s_3fa622a52a8c3a::t_cd9149fbfe8c34 169
+apps/web/src/AppBase.jsx
+  s_3fa622a52a8c3a::t_b0bc16cef0c2ec 2400-2403
+  s_3fa622a52a8c3a::t_baa4128993ee9a 3071-3076
+apps/web/test/sdkTaskTracker.test.js
+  s_3fa622a52a8c3a::t_a8911f626a3d17 168,170-184
+  s_3fa622a52a8c3a::t_3d76252184d2ce 65,68,71,74
+  s_3fa622a52a8c3a::t_61f30cebfbcd61 103,106,109,112,115,119
+  s_3fa622a52a8c3a::t_fad095ea12baa7 113-114,116-117
+  s_3fa622a52a8c3a::t_e6c0209ac5bbf1 122,124,127-137
+  s_3fa622a52a8c3a::t_389f492b7629cc 169
+packages/app/server/server.js
+  s_3ebf5716409f40::t_fb75c4e3e1b2a5 50
+  s_3fa622a52a8c3a::t_ebd40815027047 510,522-529
+  s_3fa622a52a8c3a::t_bda94684a43c7d 505-509,513-520,530-532
+apps/web/src/components/chat/TaskProgressHud.module.css
+  s_3fa622a52a8c3a::t_559700c11777d9 215-216,221-229
+  s_3fa622a52a8c3a::t_5819f24276f799 127-130
+  s_3fa622a52a8c3a::t_4d1190a478fa1c 230
+apps/web/src/components/chat/ChatView.jsx
+  s_3fa622a52a8c3a::t_13af7ddef022b4 2991-2993,2995-3005
+packages/app/server/proxy.js
+  s_3fa622a52a8c3a::t_f580caec20d326 353,360
+  s_3fa622a52a8c3a::t_e119ce69c61540 337-343,357
+  s_3fa622a52a8c3a::t_f29e836a65973b 388
+  s_3fa622a52a8c3a::t_47508b14545876 385-387,389
+  s_3fa622a52a8c3a::t_722bfba59874a8 345-347,349-350,352,354-356
+  s_3fa622a52a8c3a::t_f86c7672d3c0f7 280-281,283-286
+  s_3fa622a52a8c3a::t_4557aa47afe6c6 282
+apps/web/test/task-progress-hud.test.js
+  s_3fa622a52a8c3a::t_1262b4f12582c4 182-187
+apps/web/test/new-ui-i18n.test.js
+  s_3fa622a52a8c3a::t_1d660b0c2f69c5 190-191
+  s_3fa622a52a8c3a::t_9c6ac168b944c3 102
+  s_3fa622a52a8c3a::t_9a58e0e5cc24f6 77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c401e97fe4a61fca5d50193ae5da1bb6dc87e773",
+  "prompts": {},
+  "sessions": {
+    "s_3ebf5716409f40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0cdd3503-d0df-4505-b757-0b534176ecfa",
+        "model": "glink/Kimi-K3:glink_domestic"
+      },
+      "human_author": null
+    },
+    "s_3fa622a52a8c3a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d2f27c78-dab3-4b2c-acf9-d68c826cc31d",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
