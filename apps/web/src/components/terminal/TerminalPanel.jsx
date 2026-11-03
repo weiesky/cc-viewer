@@ -1181,11 +1181,11 @@ class TerminalPanel extends React.Component {
       isAlive: () => this.terminal === term,
       onResized: () => this.sendResize(),
     });
-    if (!done && attempt < 3) {
-      // Not measurable: either the renderer has no cell dims yet (retry a few frames)
-      // or the container is hidden/zero-sized (skip — retrying a hidden host spins
-      // forever; the phone main panel is always visible when opened, and rotation /
-      // overlay re-opens re-run this via initTerminal/focus paths).
+    // Time-budget retry (review P2-3): the async (WebGL) renderer may lack cell
+    // dims within the old 3-attempt cap, after which the phone 60-column layout
+    // never applied. Retry up to ~2s while visible (a hidden host still skips —
+    // retrying it spins forever).
+    if (!done && attempt < 40) {
       const el = this.containerRef.current;
       if (el && el.offsetWidth > 0 && el.offsetHeight > 0) {
         setTimeout(() => this._mobileFixedResize(attempt + 1), 50);

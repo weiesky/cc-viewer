@@ -320,9 +320,12 @@ class ScratchTerminal extends React.Component {
       isAlive: () => this.terminal === term,
       onResized: () => this.sendResize(),
     });
-    if (!done && attempt < 3) {
-      // Not measurable: hidden pane (skip — refit() on activation covers it) or the
-      // renderer has no cell dims yet (retry a few frames; no ResizeObserver on phones).
+    // Time-budget retry (review P2-3): the xterm renderer (WebGL) is async and may
+    // have no cell dims within the old 3-attempt (~150ms) cap, after which the
+    // 60-column layout was never applied for the panel's lifetime. Retry for up to
+    // ~2s while the pane is visible, and also re-run on visualViewport resize
+    // (keyboard open/close) via _onViewportResize → _mobileFixedResize.
+    if (!done && attempt < 40) {
       const el = this.containerRef.current;
       if (el && el.offsetWidth > 0 && el.offsetHeight > 0) {
         setTimeout(() => this._mobileFixedResize(attempt + 1), 50);

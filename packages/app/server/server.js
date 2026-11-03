@@ -524,15 +524,21 @@ setSlowUpstreamListener(({ type, requestId, cwd, instanceKey, waitingMs, model }
     const sess = instanceKey
       ? (sessions.find(s => s.instanceKey === instanceKey) || null)
       : (sessions.find(s => cwd && s.cwd === cwd) || null);
-    if (!sess) return;
     if (type === 'resolved') {
-      // The waited-on request settled — tell the UI to dismiss the toast.
+      // The waited-on request settled — tell the UI to dismiss the toast. A
+      // request can settle AFTER its session closed (review P2-2): the session
+      // lookup then misses and the dismiss would be silently dropped, leaving a
+      // stuck toast. Fall back to the request's own self-reported cwd/instanceKey
+      // so the dismiss always reaches the workspace that was told to wait.
+      const rcwd = sess ? sess.cwd : cwd;
+      const rinst = sess ? (sess.instanceKey || null) : (instanceKey || null);
       broadcastWsMessage({
-        type: 'sdk-slow-upstream-resolved', cwd: sess.cwd, project: projectKeyForCwd(sess.cwd),
-        instanceKey: sess.instanceKey || null, requestId: requestId || null, ts: Date.now(),
+        type: 'sdk-slow-upstream-resolved', cwd: rcwd, project: projectKeyForCwd(rcwd),
+        instanceKey: rinst, requestId: requestId || null, ts: Date.now(),
       });
       return;
     }
+    if (!sess) return;
     broadcastWsMessage({
       type: 'sdk-slow-upstream', cwd: sess.cwd, project: projectKeyForCwd(sess.cwd),
       instanceKey: sess.instanceKey || null, requestId: requestId || null, waitingMs, model: model || null, ts: Date.now(),

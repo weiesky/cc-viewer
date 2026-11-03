@@ -150,4 +150,44 @@ describe('proxy.js slow-upstream advisory', () => {
     assert.equal(slow[0].cwd, '');
     assert.equal(slow[0].instanceKey, '');
   });
+
+  // review P1-2: the timer must stay armed past HEADERS until the first body
+  // chunk. A headers-fast-then-stalled SSE stream is exactly the silent case the
+  // feature targets. The stub resolves headers at 10ms but delays the first body
+  // byte to 200ms (> the 40ms threshold) — the slow frame MUST fire, then a
+  // resolved once the first body chunk arrives.
+  it('fires for a headers-fast-then-stalled-body stream (timer waits for first byte, not headers)', async () => {
+    const events = [];
+    proxyMod.__testing.slowUpstreamMs = 40;
+    proxyMod.__testing.emit = (info) => events.push(info);
+    // Headers at 10ms, first SSE body byte at 200ms.
+    globalThis.fetch = () => new Promise((resolve) => {
+      setTimeout(() => {
+        const stream = new ReadableStream({
+          start(controller) {
+            setTimeout(() => {
+              controller.enqueue(new TextEncoder().encode('data: {}\n\n'));
+              controller.close();
+            }, 200);
+          },
+        });
+        resolve({
+          ok: true,
+          status: 200,
+          headers: new Map([['content-type', 'text/event-stream']]),
+          body: stream,
+        });
+      }, 10);
+    });
+
+    await proxyReq('/v1/messages', {
+      body: LLM_BODY,
+      headers: { 'content-type': 'application/json', 'x-ccv-project-dir': '/work/ws-b', 'x-ccv-instance': 'inst-b' },
+    });
+
+    const slow = events.filter(e => e.type === 'slow');
+    assert.equal(slow.length, 1, 'a body-stall past the threshold fires the advisory even though headers were fast');
+    assert.equal(slow[0].cwd, '/work/ws-b');
+    assert.equal(events.filter(e => e.type === 'resolved').length, 1, 'resolved once the first body chunk lands');
+  });
 });

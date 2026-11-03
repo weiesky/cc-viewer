@@ -378,12 +378,17 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
   clientAbort.signal.addEventListener('abort', clearSlowTimer, { once: true });
   // The timer measures time-to-HEADERS (fetch resolves at headers). Keep it armed
   // until the first BODY chunk so a headers-fast-then-stalled stream still counts
-  // as slow (review P2-3); the finally below stays as the cleanup backstop.
+  // as slow (review P1-2). markFirstByte is the real settle point: it disarms the
+  // timer AND emits resolved; the finally below is only an error-path backstop
+  // (executeRequest resolves at headers, so clearing there would defeat this).
   let slowFirstByteSeen = false;
   const markFirstByte = () => {
     if (slowFirstByteSeen) return;
     slowFirstByteSeen = true;
     clearSlowTimer();
+    if (slowFired) {
+      __testing.emit({ type: 'resolved', requestId: slowReqId, cwd: slowCwd, instanceKey: slowInstance });
+    }
   };
 
   // 执行带重试的请求
@@ -404,11 +409,15 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
       },
     });
   } finally {
-    clearSlowTimer();
-    // If the advisory fired, tell the UI the wait is over so the persistent
-    // toast is dismissed instead of lingering past completion.
-    if (slowFired) {
-      __testing.emit({ type: 'resolved', requestId: slowReqId, cwd: slowCwd, instanceKey: slowInstance });
+    // Error-path backstop ONLY: executeRequest resolved at headers, so a success
+    // path must NOT clear here — the timer stays armed until the first body chunk
+    // (markFirstByte). Clear+resolve only when no usable response came back
+    // (network error / aborted / no response object) so the advisory never leaks.
+    if (slowFirstByteSeen || !result || !result.response) {
+      clearSlowTimer();
+      if (slowFired) {
+        __testing.emit({ type: 'resolved', requestId: slowReqId, cwd: slowCwd, instanceKey: slowInstance });
+      }
     }
   }
 
@@ -463,6 +472,7 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
 
   // 网络异常（finalStatus=0）或竞速全失败：返回 502 + Proxy Error，与原 catch 分支一致
   if (finalStatus === 0) {
+    markFirstByte(); // settle the advisory on a hard network failure
     res.writeHead(502, { 'x-forward-attempts': String(attempts) });
     res.end('Proxy Error');
     return;
@@ -474,11 +484,12 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
   if (response.body) {
     // @ts-ignore
     const nodeStream = Readable.fromWeb(response.body);
-    nodeStream.on('error', () => {});
-    // First body byte arrived → the upstream is no longer "slow"; stop the
-    // advisory timer. Headers alone don't count (a headers-fast-then-stalled
-    // SSE stream is exactly the silent case we want to surface).
+    // First body chunk → the wait is over. Also settle if the body errors or
+    // closes before any byte (client abort / stalled-then-closed stream), so the
+    // advisory never leaks past a terminal stream state.
+    nodeStream.on('error', markFirstByte);
     nodeStream.once('data', markFirstByte);
+    nodeStream.once('close', markFirstByte);
     const streamIdleMs = retryConfig && retryConfig.mode === 'off'
       ? (retryConfig.streamIdleTimeoutMs ?? 0)
       : 0;
@@ -530,10 +541,13 @@ async function handleLlmApiRequest(req, res, fullUrl, fetchOptions, body, proxyD
       });
     }
   } else if (response.text) {
-    // 竞速失败兜底 response：用 text() 取 body
+    // 竞速失败兜底 response：用 text() 取 body —— a fully-read non-stream body
+    // means the wait is over.
     const text = await response.text();
+    markFirstByte();
     res.end(text);
   } else {
+    markFirstByte(); // no body at all — settle the advisory
     res.end();
   }
 }

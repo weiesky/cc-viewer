@@ -811,10 +811,9 @@ class ChatView extends React.Component {
       this._fileScrollSnapshot = null;
       this.setState({ currentFile: null, currentGitDiff: null });
       this._detectGit();
-      // A slow-upstream toast belongs to the workspace that emitted it; leaving
-      // it up after switching away would pin a stale "still waiting" notice on
-      // an unrelated view (review P1-1).
-      try { message.destroy('sdk-slow-upstream'); } catch {}
+      // The slow-upstream toast is cleared in the shared viewSwitched/planLostView/
+      // instanceTransition block below (covers this transition too) — see
+      // _clearSlowUpstreamToast. No standalone destroy here.
     }
     // Viewed-project / viewed-instance switch: the `/` menu's skill list belongs to the
     // previous workspace/instance — reset it so a stale list never bleeds across views.
@@ -852,6 +851,12 @@ class ChatView extends React.Component {
       if (viewSwitched || planLostView) { this._planAutoCancelled.clear(); this._permAutoCancelled.clear(); }
       // Pinned sdk-error rows belong to the previous view's workspace/instance.
       this._clearSdkErrors();
+      // The slow-upstream toast belongs to the workspace that emitted it. Destroy
+      // alone is not enough — the 5s tick re-opens it while _slowUpstreamPending is
+      // non-empty, and the resolved frame for the old view is dropped by
+      // _sdkFrameMatchesView, so without this clear it revives ~5s later and (the
+      // duration resetting on each re-open) never clears (review P1-1).
+      this._clearSlowUpstreamToast();
     }
     // Close the `/` menu when its composer becomes hidden/inert — terminal opened or local-log
     // view entered — otherwise a stale open menu (old query) revives over the remounted empty
@@ -1362,14 +1367,21 @@ class ChatView extends React.Component {
     if (this._slowUpstreamTickTimer) { clearInterval(this._slowUpstreamTickTimer); this._slowUpstreamTickTimer = null; }
   }
 
+  // Single teardown for the slow-upstream toast (review P1-1): stop the tick,
+  // clear pending requestIds, and destroy the toast. Called on every
+  // project/instance transition AND on unmount, so a lost resolved frame can
+  // never leave a toast (or a tick that revives it) behind.
+  _clearSlowUpstreamToast() {
+    this._stopSlowUpstreamTick();
+    this._slowUpstreamPending.clear();
+    try { message.destroy('sdk-slow-upstream'); } catch {}
+  }
+
   componentWillUnmount() {
     this._unmounted = true;
     this._slashSkillsSeq++; // invalidate any in-flight /api/skills pull so it never setStates post-unmount
-    this._stopSlowUpstreamTick();
-    this._slowUpstreamPending.clear();
+    this._clearSlowUpstreamToast();
     this._splitDrag.dispose();
-    // Best-effort: a persistent slow-upstream toast must not outlive the chat view.
-    try { message.destroy('sdk-slow-upstream'); } catch {}
     if (this._planAutoTimer) { this._planAutoTimer(); this._planAutoTimer = null; } // deadlineCountdown stop()
     if (this._sdkRetryResetTimer) { clearTimeout(this._sdkRetryResetTimer); this._sdkRetryResetTimer = null; }
     // 缓发超时 timer + 残留上传占位的 objectURL 清扫(卸载中 drain/超时回调已各自 _unmounted 守卫)。

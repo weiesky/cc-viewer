@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(sdk+web): **慢上游提示两处复活/失效修复 + 若干 P2** — toast 切视图/实例后经 5s tick 复活且永不消失（改在视图/实例切换与卸载统一 `_clearSlowUpstreamToast`）；markFirstByte 此前是死代码，计时实为到 headers 为止（改由 markFirstByte 发 resolved、finally 降为错误兜底，覆盖 headers-fast-body-stalled）；server resolved 在会话已关时回退用请求自报 cwd/instance 广播。sdkTaskTracker 切工作区即重置（不再残留上一项目清单）。mobile 60 列布局重试放宽到 ~2s（不再 3 次即弃）。Coverage: `proxy-slow-upstream.test.js`, `sdkTaskTracker.test.js`.
+
 - fix(sdk+web): **CR 后续修复（慢上游提示健壮性 + 若干 P2）** — 慢上游 toast 加 90s 兜底 + 切工作区/卸载即销毁；requestId 计数 + `waitingMs` 客户端自增；server cwd 回退仅当未上报 instance；计时改到首个 body chunk。composer pad 提到 12 行 + clamp 修正。sdkTaskTracker 工作区 owner 感知 + 终态批次重置。`Teammate.md` 18 locale ×2 树去 `TeamCreate`。mobile 触摸滚动修多指过渡跳动。Coverage: `ultraplan-teamcreate-free.test.js`, `mobile-touch-scroll.test.js`.
 
 - fix(web): **SubAgent 空白 `chat-boxer` 气泡** — 纯空白 text block 为 truthy 但解析为零 segments，两条共享渲染路径（legacy + web-search in-order）在 `renderAssistantText` 后、创建 `chat-boxer` 前按 `segments.length === 0` 跳过，消除 SubAgent/Teammate 等未过滤入口的可见空气泡；合法空 system-tag 不误删。Coverage: `chat-blank-bubble.test.js`.

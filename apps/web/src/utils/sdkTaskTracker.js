@@ -187,6 +187,21 @@ export function clear() {
   clearTaskStore();
 }
 
+/**
+ * Reset for a VIEWED-workspace switch (review P2-1). The tracker only learns the
+ * owner from the NEXT sdk-task frame, so on a switch to a workspace with no task
+ * activity the previous workspace's checklist would otherwise linger on screen
+ * indefinitely. AppBase calls this on channel activation in SDK mode so the HUD
+ * clears immediately instead of waiting (possibly forever) for a new frame.
+ * The new owner's first frame re-seeds the tracker via the owner-change branch.
+ */
+export function resetForView() {
+  _tasks = new Map();
+  _sessionId = null;
+  _ownerKey = null;
+  clearTaskStore();
+}
+
 /** Test hook: restore pristine module state. */
 export function __resetForTests() {
   clear();

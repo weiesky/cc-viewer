@@ -18,7 +18,7 @@ import { publish as publishWorkflowUpdate } from './utils/workflowStore';
 import { publishScheduledTaskEvent } from './utils/scheduledTaskEvents';
 import { reasonLabel } from './utils/scheduleDescription';
 import { publish as publishTaskUpdate, clearTasks as clearTaskStore } from './utils/taskStore';
-import { clear as clearSdkTaskTracker } from './utils/sdkTaskTracker';
+import { clear as clearSdkTaskTracker, resetForView as resetSdkTaskTrackerForView } from './utils/sdkTaskTracker';
 import { reportSwallowed } from './utils/errorReport';
 import { shouldWipeApprovalDismissal } from './utils/approvalDismissal';
 import { attachMainPty, closeProjectPty, resumeSession } from './utils/resumeSessions';
@@ -2399,8 +2399,11 @@ class AppBase extends React.Component {
     try {
       // SDK mode: the hook-driven SSE snapshot is always empty, so replaying /
       // clearing it here would wipe the checklist the sdkTaskTracker maintains.
-      // Leave the tracker-owned store untouched.
-      if (this.state.sdkMode) return;
+      // But the tracker only re-seeds on the NEXT frame for the new owner, so
+      // switching to a workspace with no task activity would leave the previous
+      // workspace's checklist on screen indefinitely — reset it on activation
+      // (review P2-1). The new owner's first frame re-seeds via the owner branch.
+      if (this.state.sdkMode) { resetSdkTaskTrackerForView(); return; }
       const snap = ch && ch.vm && ch.vm.taskSnapshot;
       if (snap) publishTaskUpdate(snap);
       else clearTaskStore();
