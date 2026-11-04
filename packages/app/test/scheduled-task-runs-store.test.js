@@ -12,7 +12,7 @@ import {
 
 let root;
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'ccv-str-')); });
-afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 
 test('appendRun creates the file at 0600 and reads back oldest→newest', async () => {
   await appendRun(root, 'st_a', { status: 'completed', at: 1, finishedAt: 2, claimRunId: 'run_1' });

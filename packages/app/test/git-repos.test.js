@@ -43,7 +43,7 @@ describe('resolveRepoCwd security', () => {
   });
 
   afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it('rejects path traversal with ..', () => {
@@ -72,7 +72,7 @@ describe('/api/git-repos endpoint logic', () => {
   });
 
   afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it('detects root git repo', () => {

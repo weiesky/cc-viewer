@@ -14,7 +14,7 @@ import { readScheduledTaskRuns, runsFilePath } from '../server/lib/scheduled-tas
 
 let root;
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'ccv-st-')); });
-afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 
 const MIN = 60_000;
 const DAY = 24 * 3600 * 1000;
@@ -415,5 +415,5 @@ test('finalizeTask: runs append failure keeps the claim (runs_unavailable), no s
   const t = listTasks(root)[0];
   assert.ok(t.claim, 'claim still held');
   assert.equal(t.lastResult, null, 'no terminal state written');
-  rmSync(runsFilePath(root), { recursive: true, force: true });
+  rmSync(runsFilePath(root), { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });

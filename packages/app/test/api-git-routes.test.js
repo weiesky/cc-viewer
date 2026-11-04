@@ -126,7 +126,7 @@ function callPost(handler, url, body, deps) {
 describe('gitRepos GET /api/git-repos', { concurrency: false }, () => {
   let dir;
   beforeEach(() => { dir = mkdtempSync(join(TMP_ROOT, 'repos-')); });
-  afterEach(() => { rmSync(dir, { recursive: true, force: true }); delete process.env.CCV_PROJECT_DIR; });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); delete process.env.CCV_PROJECT_DIR; });
 
   it('returns root repo + subdir repos, skips hidden and node_modules', async () => {
     initRepo(dir);
@@ -192,7 +192,7 @@ describe('gitStatus GET /api/git-status', { concurrency: false }, () => {
     deps = makeDeps(dir);
     handler = handlerFor('/api/git-status', 'GET');
   });
-  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 
   it('400 on invalid repo param', async () => {
     const { status, json } = await callGet(handler, '/api/git-status?repo=../escape', deps);
@@ -267,7 +267,7 @@ describe('gitDiff GET /api/git-diff', { concurrency: false }, () => {
     deps = makeDeps(dir);
     handler = handlerFor('/api/git-diff', 'GET');
   });
-  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 
   it('400 on invalid repo param', async () => {
     const { status, json } = await callGet(handler, '/api/git-diff?repo=a/b&files=x', deps);
@@ -352,7 +352,7 @@ describe('gitLogUnpushed GET /api/git-log-unpushed', { concurrency: false }, () 
     deps = makeDeps(dir);
     handler = handlerFor('/api/git-log-unpushed', 'GET');
   });
-  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 
   it('400 on invalid repo param', async () => {
     const { status, json } = await callGet(handler, '/api/git-log-unpushed?repo=..', deps);
@@ -377,7 +377,7 @@ describe('gitLogUnpushed GET /api/git-log-unpushed', { concurrency: false }, () 
     // 造一个本地 "remote"：clone 后在 clone 里再提交
     commit(dir, 'a.txt', 'a\n', 'base');
     const remote = mkdtempSync(join(TMP_ROOT, 'remote-'));
-    rmSync(remote, { recursive: true, force: true });
+    rmSync(remote, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     execSync(`git clone "${dir}" "${remote}"`, { stdio: 'pipe' });
     execSync('git config user.email "t@t.com"', { cwd: remote, stdio: 'pipe' });
     execSync('git config user.name "T"', { cwd: remote, stdio: 'pipe' });
@@ -392,7 +392,7 @@ describe('gitLogUnpushed GET /api/git-log-unpushed', { concurrency: false }, () 
     assert.equal(json().hasUpstream, true);
     assert.ok(json().commits.some(c => (c.subject || c.message || '').includes('unpushed-one')),
       `commits=${JSON.stringify(json().commits)}`);
-    rmSync(remote, { recursive: true, force: true });
+    rmSync(remote, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it('500 when getUnpushedCommits throws via resolveRepoCwd error', async () => {
@@ -417,7 +417,7 @@ describe('gitRestore POST /api/git-restore', { concurrency: false }, () => {
     deps = makeDeps(dir);
     handler = handlerFor('/api/git-restore', 'POST');
   });
-  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 
   it('400 on invalid JSON body', async () => {
     const { status, json } = await callPost(handler, '/api/git-restore', 'not-json{', deps);
@@ -496,13 +496,13 @@ describe('gitRestore POST /api/git-restore', { concurrency: false }, () => {
       symlinkSync(secret, join(dir, 'link.txt'));
     } catch {
       // 某些文件系统不支持 symlink，跳过断言但不让用例失败
-      rmSync(outside, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       return;
     }
     const { status, json } = await callPost(handler, '/api/git-restore', { path: 'link.txt' }, deps);
     assert.equal(status, 400);
     assert.equal(json().error, 'Path traversal not allowed');
-    rmSync(outside, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it('500 when git status execFileAsync rejects', async () => {
@@ -517,5 +517,5 @@ describe('gitRestore POST /api/git-restore', { concurrency: false }, () => {
 });
 
 after(() => {
-  try { rmSync(TMP_ROOT, { recursive: true, force: true }); } catch {}
+  try { rmSync(TMP_ROOT, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch {}
 });

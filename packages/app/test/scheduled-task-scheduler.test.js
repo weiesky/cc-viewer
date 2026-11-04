@@ -12,7 +12,20 @@ import {
 
 let root;
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'ccv-sched-')); });
-afterEach(() => { __resetSchedulerForTests(); rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { __resetSchedulerForTests(); rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
+
+// Poll a condition instead of a fixed sleep: runTaskNow/_tick fire _launch
+// fire-and-forget (its finalize write + final broadcast are async), so a bare
+// setTimeout(50) races on a loaded CI runner. Poll until the condition holds or
+// the deadline passes, then let the caller's assertion report the real state.
+async function waitFor(cond, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try { if (cond()) return true; } catch { /* keep polling */ }
+    if (Date.now() >= deadline) return false;
+    await new Promise(r => setTimeout(r, 10));
+  }
+}
 
 function makeDeps(over = {}) {
   const calls = { execute: [], broadcast: [], report: [] };
@@ -55,8 +68,8 @@ test('runTaskNow: claims and executes, broadcasts running + final', async () => 
   const r = await runTaskNow(task.id, { manual: true });
   assert.equal(r.ok, true, JSON.stringify(r));
   assert.equal(r.action, 'claimed');
-  // Wait a tick for the fire-and-forget _launch to settle.
-  await new Promise(r2 => setTimeout(r2, 50));
+  // Wait for the fire-and-forget _launch to settle.
+  await waitFor(() => deps.calls.broadcast.some(p => p.status === 'dispatched'));
   assert.equal(deps.calls.execute.length, 1);
   assert.ok(deps.calls.broadcast.some(p => p.status === 'running'));
   assert.ok(deps.calls.broadcast.some(p => p.status === 'dispatched'));
@@ -92,7 +105,8 @@ test('executor errors are contained and reported, not thrown (compliance P0)', a
   mod.startScheduledTaskScheduler();
   const r = await runTaskNow(task.id, { manual: true });
   assert.equal(r.ok, true);
-  await new Promise(r2 => setTimeout(r2, 50));
+  // Wait for the fire-and-forget _launch to report + broadcast the error.
+  await waitFor(() => deps.calls.broadcast.some(p => p.status === 'error'));
   // Error was reported and an 'error' result broadcast, no unhandled rejection.
   assert.ok(deps.calls.report.some(c => c.tag === 'scheduler.execute'));
   assert.ok(deps.calls.broadcast.some(p => p.status === 'error'));
@@ -138,7 +152,7 @@ test('tick: a due task is claimed + executed + broadcast (real _tick drive)', as
   const { task } = await ct(root, { project: 'p', cwd: '/tmp/p', prompt: 'hi', mode: 'inject', schedule: { kind: 'cron', expr: '* * * * *' } }, now);
   const dueNow = task.nextRunAt + 1000;
   await __tickForTests(dueNow);
-  await new Promise(r => setTimeout(r, 50)); // let the fire-and-forget _launch settle
+  await waitFor(() => deps.calls.broadcast.some(p => p.status === 'dispatched'));
   assert.equal(deps.calls.execute.length, 1, 'due task executed');
   assert.ok(deps.calls.broadcast.some(p => p.status === 'dispatched'));
 });

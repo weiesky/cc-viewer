@@ -51,8 +51,8 @@ describe('getUnpushedCommits', () => {
   let work, remote;
 
   afterEach(() => {
-    if (work) rmSync(work, { recursive: true, force: true });
-    if (remote) rmSync(remote, { recursive: true, force: true });
+    if (work) rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    if (remote) rmSync(remote, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     work = null; remote = null;
   });
 
@@ -283,8 +283,8 @@ describe('getGitDiffs with commitHash', () => {
   let work, remote;
 
   afterEach(() => {
-    if (work) rmSync(work, { recursive: true, force: true });
-    if (remote) rmSync(remote, { recursive: true, force: true });
+    if (work) rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    if (remote) rmSync(remote, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     work = null; remote = null;
   });
 

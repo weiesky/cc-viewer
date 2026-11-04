@@ -17,7 +17,7 @@ process.env.CCV_PROJECT_DIR = join(tmpDir, 'projA');
 const { scheduledTasksRoutes } = await import('../server/routes/scheduled-tasks.js');
 const { initForWorkspace } = await import('../server/interceptor.js');
 
-after(() => { try { rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
+after(() => { try { rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch {} });
 
 function route(method, path) {
   return scheduledTasksRoutes.find(r => r.method === method && r.path === path).handler;

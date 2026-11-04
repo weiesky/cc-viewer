@@ -82,7 +82,7 @@ describe('POST /api/git-restore', { concurrency: false }, () => {
 
   after(() => {
     try { stopViewer && stopViewer(); } catch {}
-    try { rmSync(TMP, { recursive: true, force: true }); } catch {}
+    try { rmSync(TMP, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch {}
   });
 
   it('restores modified tracked file to HEAD content', async () => {
@@ -166,7 +166,7 @@ describe('isPathContained() — cross-platform separator', () => {
     ROOT = mkdtempSync(join(tmpdir(), 'ccv-isPathContained-'));
   });
   after(() => {
-    try { rmSync(ROOT, { recursive: true, force: true }); } catch {}
+    try { rmSync(ROOT, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch {}
   });
 
   it('returns true when target equals root', () => {
@@ -194,7 +194,7 @@ describe('isPathContained() — cross-platform separator', () => {
     try {
       assert.equal(isPathContained(sibling, ROOT), false);
     } finally {
-      rmSync(sibling, { recursive: true, force: true });
+      rmSync(sibling, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 

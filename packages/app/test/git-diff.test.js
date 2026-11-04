@@ -27,7 +27,7 @@ describe('getGitDiffs', () => {
   });
 
   afterEach(() => {
-    rmSync(cwd, { recursive: true, force: true });
+    rmSync(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it('returns empty array for empty file list', async () => {
@@ -139,7 +139,7 @@ describe('countUntrackedLines', () => {
   });
 
   afterEach(() => {
-    rmSync(cwd, { recursive: true, force: true });
+    rmSync(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it('returns 0 for a missing file', () => {
@@ -215,7 +215,7 @@ describe('countUntrackedLines', () => {
       // Without the symlink guard this would return 3, leaking the line count.
       assert.equal(countUntrackedLines(cwd, 'leak.txt'), 0);
     } finally {
-      rmSync(outside, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 
@@ -227,7 +227,7 @@ describe('countUntrackedLines', () => {
       symlinkSync(outside, join(cwd, 'link'));
       assert.equal(countUntrackedLines(cwd, 'link/data.txt'), 0);
     } finally {
-      rmSync(outside, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 
