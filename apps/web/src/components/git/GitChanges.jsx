@@ -19,6 +19,14 @@ const STATUS_COLORS = {
   'U': '#e2c08d',
   '?': '#73c991',
   '??': '#73c991',
+  // Unmerged/conflict porcelain codes — red, same as D, to stand out from regular changes.
+  'UU': '#f14c4c',
+  'AA': '#f14c4c',
+  'DD': '#f14c4c',
+  'AU': '#f14c4c',
+  'UA': '#f14c4c',
+  'DU': '#f14c4c',
+  'UD': '#f14c4c',
 };
 
 const STATUS_LABELS = {
