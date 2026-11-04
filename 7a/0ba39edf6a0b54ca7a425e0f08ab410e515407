@@ -1,0 +1,40 @@
+packages/app/test/git-diff.test.js
+  s_beaa4688d27c94::t_e8191942a12c5e 30,142,218,230
+packages/app/test/git-repos.test.js
+  s_beaa4688d27c94::t_e8191942a12c5e 46,75
+packages/app/test/scheduled-task-scheduler.test.js
+  s_beaa4688d27c94::t_df687b37ae5169 71-72
+  s_beaa4688d27c94::t_dc89a85dbac34a 108-109
+  s_beaa4688d27c94::t_ff32bd9fb59c61 15
+  s_beaa4688d27c94::t_0afa408625ac12 155
+  s_beaa4688d27c94::t_4f6614790a1ad9 17-28
+  s_beaa4688d27c94::t_2919ea871da95c 16
+packages/app/test/scheduled-task-runs-store.test.js
+  s_beaa4688d27c94::t_ff32bd9fb59c61 15
+packages/app/test/scheduled-task-store.test.js
+  s_beaa4688d27c94::t_ff32bd9fb59c61 17,418
+packages/app/test/git-unpushed.test.js
+  s_beaa4688d27c94::t_e8191942a12c5e 54-55,286-287
+packages/app/test/git-restore.test.js
+  s_beaa4688d27c94::t_e8191942a12c5e 85,169,197
+packages/app/test/scheduled-task-routes.test.js
+  s_beaa4688d27c94::t_ff32bd9fb59c61 20
+packages/app/test/api-git-routes.test.js
+  s_beaa4688d27c94::t_e8191942a12c5e 129,195,270,355,380,395,420,499,505,520
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7a0ba39edf6a0b54ca7a425e0f08ab410e515407",
+  "prompts": {},
+  "sessions": {
+    "s_beaa4688d27c94": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "69d880d8-9ea2-4a3e-843f-4b78db5b260d",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
