@@ -617,8 +617,9 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
   const _cfg = resolveBaseConfig();
   const url = `${protocol}://127.0.0.1:${port}${_cfg.basePath}`;
   const _token = serverMod.getAccessToken();
-  // CCV_BASE_URL 带 host：自动打开与 External 行用公网 URL（带 ccv 自己的 ?token=，
-  // 否则默认鉴权下是 403 死链）。无请求上下文 → scheme 取显式值或默认 https。
+  // CCV_BASE_URL with a host: auto-open and the External line use the public URL (carrying
+  // ccv's own ?token= — without it the default token auth makes the remote link a 403 dead
+  // link). No request context here, so the scheme is the explicit value or https by default.
   const externalUrl = externalUrlFromConfig(_cfg, { token: _token });
   const openUrl = externalUrl || url;
   if (!noOpen) {
@@ -966,8 +967,9 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   const _cfg = resolveBaseConfig();
   const url = `${protocol}://127.0.0.1:${port}${_cfg.basePath}`;
   const _token = serverMod.getAccessToken();
-  // CCV_BASE_URL 带 host：自动打开与 External 行用公网 URL（带 ccv 自己的 ?token=，
-  // 否则默认鉴权下是 403 死链）。无请求上下文 → scheme 取显式值或默认 https。
+  // CCV_BASE_URL with a host: auto-open and the External line use the public URL (carrying
+  // ccv's own ?token= — without it the default token auth makes the remote link a 403 dead
+  // link). No request context here, so the scheme is the explicit value or https by default.
   const externalUrl = externalUrlFromConfig(_cfg, { token: _token });
   const openUrl = externalUrl || url;
   if (!noOpen) {

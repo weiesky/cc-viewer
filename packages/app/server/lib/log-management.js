@@ -2,12 +2,11 @@ import { existsSync, realpathSync, readdirSync, readFileSync, statSync, mkdirSyn
 import { readFile, stat, readdir } from 'node:fs/promises';
 import { join, sep, dirname, basename } from 'node:path';
 import { reconstructEntries } from '@ccv/core/delta-reconstructor';
-import { sanitizePathComponent, dirSizeSync } from './v2/layout.js';
+import { sanitizePathComponent, dirSizeSync, listShards } from './v2/layout.js';
 import { listV2Sessions } from './v2/adapter.js';
 import { summarizeSessionPage } from './v2/session-list.js';
 import { listSessionIds } from './v2/replay.js';
 import { isLogFileName, LIVE_SESSION_MTIME_MS } from './log-file-utils.js';
-import { reportSwallowed } from './error-report.js';
 
 // wire-v2 S5 addressing (spec §12): 'v2:<project>/<session_id>' in every
 // existing ?file= parameter slot. Components must survive the same whitelist
@@ -155,15 +154,11 @@ export function listV2LogsPage(logDir, project, { page = 1, pageSize = 50 } = {}
     if (meta && meta.leader) continue; // teammate — folded into its leader's row
     candidates.push({ dirName, startTs: (meta && meta.startTs) || '' });
   }
-  // Frozen-shard count per base dirName (cheap: one readdir of parts/).
+  // Frozen-shard count per base dirName (cheap: one readdir of parts/, via the
+  // layout-owned enumerator so the numeric-name rule lives in exactly one place).
   const shardCountByBase = new Map();
   for (const c of candidates) {
-    let count = 0;
-    try {
-      for (const part of readdirSync(join(projectDir, 'sessions', c.dirName, 'parts'), { withFileTypes: true })) {
-        if (part.isDirectory() && Number.isInteger(Number(part.name)) && Number(part.name) >= 1) count++;
-      }
-    } catch { /* no parts/ — unsharded */ }
+    const count = listShards(join(projectDir, 'sessions', c.dirName)).length;
     if (count > 0) shardCountByBase.set(c.dirName, count);
   }
   // Newest first; dirName tiebreak matches listV2Logs' file tiebreak for stability.

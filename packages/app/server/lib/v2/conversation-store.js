@@ -72,7 +72,8 @@ export class ConversationStore {
   }
 
   _state(convKey) {
-    let st = this._convs.get(convKey);    if (!st) {
+    let st = this._convs.get(convKey);
+    if (!st) {
       // fps: per-message judgement fingerprints of the CURRENT wire state.
       // Tail-only comparison proved insufficient on real data (2026-07-14):
       // interleaved same-sid streams (pre-flag proxy teammates, dual writers)

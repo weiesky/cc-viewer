@@ -11,6 +11,8 @@
 import { iterateJsonlLines } from './jsonl-read.js';
 import { readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { shardPartsDir } from './layout.js';
+import { reportSwallowed } from '../../lib/error-report.js';
 
 export class Journal {
   /**
@@ -41,9 +43,16 @@ export class Journal {
    *  none/unreadable). Sits in journal.js (not shard-manager) to avoid an
    *  import cycle — shard-manager's rotate path constructs Journal. */
   static _maxSeqAcrossShards(journalPath) {
-    const partsDir = join(dirname(journalPath), 'parts');
+    const partsDir = shardPartsDir(dirname(journalPath));
     let names;
-    try { names = readdirSync(partsDir, { withFileTypes: true }); } catch { return 0; }
+    // A non-ENOENT readdir failure must not silently reseed seq at 1 — that
+    // collides with every frozen shard's seqs. Report and keep the 0 fallback
+    // only for the genuinely-absent parts/ dir.
+    try { names = readdirSync(partsDir, { withFileTypes: true }); }
+    catch (err) {
+      if (err && err.code !== 'ENOENT') reportSwallowed('v2-journal.shard-seq-scan', err);
+      return 0;
+    }
     let max = 0;
     for (const e of names) {
       if (!e.isDirectory()) continue;

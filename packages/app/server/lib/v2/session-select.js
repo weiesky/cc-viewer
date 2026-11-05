@@ -23,8 +23,9 @@ import { existsSync, readFileSync, openSync, readSync, closeSync, readdirSync } 
 import { join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { listSessionIds } from './replay.js';
-import { isSupportedWireFormat, normalizeSessionCwd } from './layout.js';
+import { isSupportedWireFormat, normalizeSessionCwd, shardPartsDir } from './layout.js';
 import { isForeignLiveOwned } from './session-owner.js';
+import { reportSwallowed } from '../../lib/error-report.js';
 
 /**
  * Find the on-disk dir NAME of an existing session for `sessionId` (a UUID), or
@@ -144,10 +145,14 @@ export function sessionHasMainTurn(dir) {
  *  already lived through at least one rotation's worth of history). */
 function _hasArchivedParts(dir) {
   try {
-    for (const e of readdirSync(join(dir, 'parts'), { withFileTypes: true })) {
+    for (const e of readdirSync(shardPartsDir(dir), { withFileTypes: true })) {
       if (e.isDirectory() && Number.isInteger(Number(e.name)) && Number(e.name) >= 1) return true;
     }
-  } catch { /* no parts/ — not sharded */ }
+  } catch (err) {
+    // ENOENT = not sharded; anything else is a real read error that must not be
+    // misread as "no shards" (a just-rotated session would vanish from lists).
+    if (err && err.code !== 'ENOENT') reportSwallowed('v2-session-select.parts-scan', err);
+  }
   return false;
 }
 
@@ -210,13 +215,9 @@ export function sessionHasMainOrTeammateReq(dir) {
   // sentinel — the main/teammate history is archived under `parts/`. A session
   // with a parts/ archive IS main-bearing (it had real turns before the cut);
   // treating it as discardable would vanish it from every list/resume/live
-  // surface until the next request lands.
-  try {
-    const parts = join(dir, 'parts');
-    for (const e of readdirSync(parts, { withFileTypes: true })) {
-      if (e.isDirectory() && Number.isInteger(Number(e.name)) && Number(e.name) >= 1) return true;
-    }
-  } catch { /* no parts/ — fall through to the journal scan */ }
+  // surface until the next request lands. Delegates to the same helper the
+  // other gates use.
+  if (_hasArchivedParts(dir)) return true;
   // ioErrorResult=true: a transient read error must KEEP the session (treat
   // as main-bearing) — hiding a real session is the worse failure direction;
   // a missing journal still returns false (discard is correct there).

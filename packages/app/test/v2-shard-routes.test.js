@@ -6,13 +6,14 @@
  * The routes (/events?sid&shardBefore, /api/local-log?file&shardBefore) are a
  * thin SSE framing over this reader; these tests pin the reader contract:
  *   - beforeSeq scopes the window to the frozen shard older than the cut
- *   - the shard window carries a reconstructable baseline (checkpoint at its
- *     start), exactly like a same-session windowed read
+ *   - each shard page is a PURE increment slice (no baseline/checkpoint
+ *     promotion) — paged prepends must never re-deliver the overlap, or the
+ *     client renders it twice
  *   - the returned oldestSeq is a usable cursor that ADVANCES across shards
  *     (never dead-ends on the newest frozen shard)
  *   - entries match a direct windowed read of the frozen dir
  *
- * Data-safety: mkdtemp fixtures only. Tests inject the writer's `shardBytes`
+ * Data-safety: mkdtemp fixtures only. Tests inject the writer's `shardPrompts`
  * seam (tiny) instead of any env var.
  */
 import { describe, it, beforeEach, afterEach } from 'node:test';

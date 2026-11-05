@@ -1,4 +1,4 @@
-// Wire Format v2 — session-dir sharding (100MB auto-split).
+// Wire Format v2 — session-dir sharding (prompt-count auto-split).
 //
 // A single long-lived session can grow without bound (issue: a 653MB session
 // dir made startup / cold load replay parse every journal + responses +
@@ -8,9 +8,10 @@
 // moves the CURRENT content aside into the session's own `parts/`
 // subdir and continues writing into a fresh skeleton at the same dir.
 //
-// Layout contract (single owner, same discipline as layout.js). A session dir
-// keeps ALL of its history under ONE folder — copy/move/download/delete of the
-// session dir carries every shard:
+// Layout contract: parts/ path helpers live in layout.js (the single owner of
+// every v2 path) and are re-exported here for rotate-side consumers. A session
+// dir keeps ALL of its history under ONE folder — copy/move/download/delete of
+// the session dir carries every shard:
 //   <project>/sessions/<dirName>/           — active shard (live files at the root)
 //   <project>/sessions/<dirName>/parts/<N>/ — frozen shard N (N = 1,2,… oldest→newest)
 // sessions/ enumerators only ever look ONE level down (listSessionIds yields
@@ -24,10 +25,15 @@
 
 import { mkdirSync, readdirSync, readFileSync, renameSync } from 'node:fs';
 import { join, basename } from 'node:path';
-import { ensureSessionDirSync, writeFileAtomicSync } from './layout.js';
+import { ensureSessionDirSync, writeFileAtomicSync, shardPartsDir, shardPartDir, listShards } from './layout.js';
+import { readJsonlTolerant } from './replay.js';
 import { BlobStore } from './blob-store.js';
 import { ConversationStore } from './conversation-store.js';
 import { reportSwallowed } from '../../lib/error-report.js';
+
+// Path ownership lives in layout.js; re-export so existing rotate-side and
+// route-side consumers keep a single import site.
+export { shardPartsDir, shardPartDir, listShards } from './layout.js';
 
 /** Default prompt-count ceiling per shard: after this many main-conversation
  *  user-prompt turns, the NEXT new user prompt opens a fresh shard — so every
@@ -35,40 +41,55 @@ import { reportSwallowed } from '../../lib/error-report.js';
  *  `shardPrompts` seam, not env. */
 export const SHARD_PROMPT_THRESHOLD = 2000;
 
-/** The parts/ subdir INSIDE one session dir that holds its frozen shards. */
-export function shardPartsDir(sessionDir) {
-  return join(sessionDir, 'parts');
-}
-
-/** Frozen shard dir for shard N of a session. */
-export function shardPartDir(sessionDir, n) {
-  return join(sessionDir, 'parts', String(n));
+/**
+ * Read every frozen shard's cut seq, oldest first. Each shard's cut is its
+ * journal max seq; the persisted `cut.json` marker (written at the cut) is
+ * read FIRST, and only shards written before the marker existed fall back to a
+ * full journal scan. The journal is the smallest of the four files, but on a
+ * many-shard session the marker turns an O(total-history) scan into
+ * O(shard count) small reads.
+ * @param {string} sessionDir - absolute path of the ACTIVE session dir
+ * @returns {Array<{ partIndex: number, dir: string, cutSeq: number }>}
+ */
+export function readShardCuts(sessionDir) {
+  const cuts = [];
+  for (const sh of listShards(sessionDir)) {
+    let maxSeq = 0;
+    let fromMarker = false;
+    try {
+      const marker = JSON.parse(readFileSync(join(sh.dir, 'cut.json'), 'utf-8'));
+      if (marker && typeof marker.cutSeq === 'number' && marker.cutSeq > 0) { maxSeq = marker.cutSeq; fromMarker = true; }
+    } catch { /* no marker (legacy shard) — fall through to the journal scan */ }
+    if (!fromMarker) {
+      try {
+        for (const line of readJsonlTolerant(join(sh.dir, 'journal.jsonl'))) {
+          if (typeof line.seq === 'number' && line.seq > maxSeq) maxSeq = line.seq;
+        }
+      } catch (err) { reportSwallowed('v2-shard.cut-read', err); }
+    }
+    cuts.push({ partIndex: sh.partIndex, dir: sh.dir, cutSeq: maxSeq });
+  }
+  return cuts;
 }
 
 /**
- * Enumerate frozen shards of one session, oldest first. Each entry
- * { partIndex, dir }. Reads the session's own parts/ subdir.
- * @param {string} sessionDir - absolute path of the ACTIVE session dir
- * @returns {Array<{ partIndex: number, dir: string }>}
+ * Initial shard cursor for the "load earlier history" button on a cold load:
+ * the seq just past the newest frozen shard's cut (i.e. the first seq the
+ * ACTIVE dir owns), so the first shardBefore read lands on exactly that shard.
+ * Shared by the /events and /api/local-log routes — identical contract.
+ * Returns null when the session has no frozen shards (or its cut is unknown).
  */
-export function listShards(sessionDir) {
-  const root = shardPartsDir(sessionDir);
-  const out = [];
-  let names = [];
-  try {
-    names = readdirSync(root, { withFileTypes: true });
-  } catch (err) {
-    if (err && err.code !== 'ENOENT') reportSwallowed('v2-shard.list', err);
-    return out; // no parts/ dir → no frozen shards
-  }
-  for (const e of names) {
-    if (!e.isDirectory()) continue;
-    const n = Number(e.name);
-    if (!Number.isInteger(n) || n < 1) continue;
-    out.push({ partIndex: n, dir: join(root, e.name) });
-  }
-  out.sort((a, b) => a.partIndex - b.partIndex);
-  return out;
+export function initialShardCursor(sourceDir) {
+  if (!sourceDir) return null;
+  const cuts = readShardCuts(sourceDir);
+  if (cuts.length === 0) return null;
+  const newest = cuts[cuts.length - 1];
+  if (!newest.cutSeq || newest.cutSeq <= 0) return null;
+  // The session UUID lets the follow-latest view (no ?sid in scope) still
+  // address the shardBefore read back to THIS session.
+  let sid = null;
+  try { sid = JSON.parse(readFileSync(join(sourceDir, 'meta.json'), 'utf-8')).sessionId || null; } catch {}
+  return { hasMore: true, oldestSeq: newest.cutSeq + 1, partIndex: newest.partIndex + 1, prepend: false, sid };
 }
 
 /** Highest shard index already archived for a session (0 when none). A
@@ -169,12 +190,23 @@ export function rotateSessionDir(writer, s) {
         ...(frozenMeta || {}),
         pid: process.pid,
         startTs: (frozenMeta && frozenMeta.startTs) || new Date().toISOString(),
+        // The fresh shard starts its prompt count over; persist it so a
+        // restart re-seeds from meta (not the archived, PROMPTS-capped
+        // prompts.jsonl line count).
+        shardPromptsActive: 0,
         ...(s._instanceKey && { instance: s._instanceKey }),
       },
       writer._sessionsDirName,
       basename(sessionDir),
     );
     s.paths = paths;
+    // Persist the FROZEN shard's final prompt count into the live meta (the
+    // frozen copy keeps its own). This is the restart re-seed source: the
+    // archived prompts.jsonl is PROMPTS-capped and would under-count.
+    try {
+      const liveMeta = { ...(frozenMeta || {}), pid: process.pid, shardPromptsActive: s._partPrompts || 0, ...(s._instanceKey && { instance: s._instanceKey }) };
+      writeFileAtomicSync(join(sessionDir, 'meta.json'), JSON.stringify(liveMeta, null, 2) + '\n');
+    } catch (err) { reportSwallowed('v2-shard.rotate-livemeta', err); }
     s.blobs = new BlobStore(paths);
     // ConversationStore: REUSE the same object (only its _paths pointer flips to
     // the fresh skeleton). Rebuilding it empty would make the next request write

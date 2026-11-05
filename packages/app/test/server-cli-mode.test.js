@@ -58,7 +58,7 @@ async function waitUntil(pred, { timeoutMs = 3000, intervalMs = 10, label = 'con
 }
 
 // 打开一个 ws 并等到 open；返回带 msgs 队列 + waitFor(pred) 的句柄。
-// opts.headers：透传给 ws 客户端（如自定义 Host 头，验证 upgrade 路径的 Host allowlist）。
+// opts.headers: passed through to the ws client (e.g. a custom Host header to verify the Host allowlist on the upgrade path).
 function connectWs(base, path = '/ws/terminal', opts = {}) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(base + path, opts);
@@ -597,9 +597,9 @@ describeCli('server.js CLI-mode terminal WS with a real PTY', { concurrency: fal
     }
   });
 
-  // ─────────── CCV_BASE_URL：host+path 形式下的 strip/注入/WS upgrade ───────────
-  // CCV_BASE_URL 同样每请求现读（resolveBaseConfig），字面前缀含 {token} 时请求侧到达的
-  // 是编码形式（new URL / WebSocket 构造器都会编码花括号）——此用例锁定编码形态匹配。
+  // ─────────── CCV_BASE_URL: strip/injection/WS upgrade under the host+path form ───────────
+  // CCV_BASE_URL is likewise read per request (resolveBaseConfig); when the literal prefix contains {token}, requests arrive
+  // in encoded form (new URL / the WebSocket constructor both encode braces) — this test locks encoded-form matching.
   it('CCV_BASE_URL strips the prefix (encoded {token} form) for static, index injection, and WS upgrade', async () => {
     const prevUrl = process.env.CCV_BASE_URL;
     const PREFIX = '/arca/api/v1/session/{token}';
@@ -618,9 +618,9 @@ describeCli('server.js CLI-mode terminal WS with a real PTY', { concurrency: fal
       assert.equal(html.status, 200, 'GET <wire>/ should serve index after CCV_BASE_URL prefix strip');
       assert.ok(html.body.includes(`<base href="${PREFIX}/"`), 'index html keeps the literal {token} base href');
 
-      // scratch ws upgrade：WebSocket 构造器会把 {token} 编码为 %7Btoken%7D（这里直接放编码形式）。
-      // Host 头用公网域名 —— 锁定 checkHostAllowed 在 upgrade 路径同样自动并入 base URL host
-      //（云代理下 WS 被 403 即此回归）。
+      // scratch ws upgrade: the WebSocket constructor encodes {token} as %7Btoken%7D (the encoded form is used directly here).
+      // The Host header uses the public domain — locks that checkHostAllowed also auto-merges the base URL host on the upgrade path
+      // (a WS 403 behind the cloud proxy is this regression).
       const sid = 'scr_bu_1';
       const conn = await connectWs(base, `${WIRE}/ws/terminal-scratch?id=${sid}`, {
         headers: { host: 'arca-sandbox-office.alipay.com' },

@@ -346,14 +346,14 @@ describe('renderLoginPage', () => {
   });
 
   it('login POST targets the effective base path (prefix-preserving reverse proxy)', () => {
-    // 默认（无前缀）：根绝对路径 —— 登录页会被派发到任意 HTML 路径（含深层直链），
-    // 相对路径会按文档 URL 解析而 404（P1 回归锁）
+    // Default (no prefix): root-absolute path — the login page can be served from any HTML path (including deep links),
+    // while a relative path would resolve against the document URL and 404 (P1 regression lock)
     assert.match(renderLoginPage({ lang: 'en' }), /fetch\("\/api\/auth\/login"/);
-    // 带前缀：fetch 目标落在前缀之下（字面 {token} 形式，浏览器请求时会自行编码）
+    // With a prefix: the fetch target lands under the prefix (literal {token} form; the browser encodes it on request)
     const prefixed = renderLoginPage({ lang: 'en', basePath: '/arca/api/v1/session/{token}/' });
     assert.ok(prefixed.includes('fetch("/arca/api/v1/session/{token}/api/auth/login"'),
       'login POST must be prefixed, got: ' + prefixed.slice(prefixed.indexOf('fetch('), prefixed.indexOf('fetch(') + 90));
-    // JS 字符串转义：双引号与 </ 不能破坏文档
+    // JS string escaping: double quotes and </ must not break the document
     const evil = renderLoginPage({ lang: 'en', basePath: '/p"x</script>/' });
     assert.ok(evil.includes('fetch("/p\\"x<\\/script>/api/auth/login"'), 'basePath must be JS-string escaped');
   });

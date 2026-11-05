@@ -972,10 +972,11 @@ function checkHostAllowed(hostHeaderValue) {
   const allowedHosts = process.env.CCV_ALLOWED_HOSTS
     ? process.env.CCV_ALLOWED_HOSTS.split(',').map(s => s.trim()).filter(Boolean)
     : ['localhost', '127.0.0.1', '::1', '[::1]', ...getAllLocalIps()];
-  // CCV_BASE_URL 带 host 时视为显式信任声明：始终并入 allowlist（合并语义——显式
-  // CCV_ALLOWED_HOSTS 列表保留，base URL host 追加），否则云代理域名下所有请求（含 WS
-  // upgrade）都被 403 host-not-allowed。只并入 hostname（去端口），与下方 hostNoPort 比较
-  // 口径一致。用户确认过该合并语义（docs/base-url.md §Host allowlist）。
+  // A CCV_BASE_URL with a host is an explicit trust declaration: always merge it into the
+  // allowlist (additive semantics — an explicit CCV_ALLOWED_HOSTS list is kept, the base URL
+  // host appended), otherwise every request under the cloud-proxy domain (including the WS
+  // upgrade) is 403 host-not-allowed. Hostname only (port stripped), matching the hostNoPort
+  // comparison below. Merge semantics confirmed with the user (docs/base-url.md §Host allowlist).
   const baseUrlHost = baseUrlAllowedHost();
   if (baseUrlHost && !allowedHosts.includes(baseUrlHost)) allowedHosts.push(baseUrlHost);
   if (allowedHosts.includes('*')) return null;
@@ -994,14 +995,16 @@ function checkHostAllowed(hostHeaderValue) {
 
 async function handleRequest(req, res) {
   // CCV_BASE_URL / CCV_BASE_PATH reverse proxy: strip prefix at TOP so API/WS/static/SPA
-  // all work with original unprefixed paths. 剥离后必须写回 parsedUrl.pathname ——
-  // dispatch()（routes/_dispatch.js）与多个 handler（files-content/ask-perm/im）直读
-  // parsedUrl.pathname 做路由匹配和偏移 slice，不写回则前缀下全部 /api/* 与 SSE /events
-  // 命不中、落 SPA fallback（PR #108 遗留 P0）。searchParams 不受 pathname 赋值影响。
-  // 生效前缀：CCV_BASE_URL 的 path 优先，回退 CCV_BASE_PATH；每请求现读（测试可翻转 env）。
-  // 字面 '{'/'}' 无需预处理：new URL 对特殊 scheme 的 pathname 恒做百分号编码
-  // （'/a{token}/b' → '/a%7Btoken%7D/b'），stripBasePath 按编码后的线格式匹配即可，
-  // 字面（curl -g / 代理原样转发）与编码（浏览器/fetch）两种客户端形态自然同构。
+  // all work with original unprefixed paths. The stripped path MUST be written back to
+  // parsedUrl.pathname — dispatch() (routes/_dispatch.js) and several handlers
+  // (files-content/ask-perm/im) read parsedUrl.pathname directly for routing and offset
+  // slicing; without the write-back every prefixed /api/* and SSE /events misses and falls
+  // to the SPA fallback (PR #108 leftover P0). searchParams are unaffected by the pathname
+  // assignment. Effective prefix: CCV_BASE_URL's path first, CCV_BASE_PATH as fallback;
+  // re-read per request (tests flip env). Literal '{'/'}' need no preprocessing: new URL
+  // percent-encodes them in special-scheme pathnames ('/a{token}/b' → '/a%7Btoken%7D/b'),
+  // so stripBasePath matching on the encoded wire form naturally covers both client shapes
+  // (literal via curl -g / proxy pass-through, encoded via browser/fetch).
   const bp = resolveBaseConfig().basePath;
   const parsedUrl = safeParseRequestUrl(req);
   if (!parsedUrl) {
@@ -1521,9 +1524,11 @@ async function _doStart() {
               if (_prefs.lang) setLang(_prefs.lang);
             }
           } catch { /* 读 prefs 失败就保持默认语言 */ }
-          // CCV_BASE_URL / CCV_BASE_PATH 配置校验：非法 CCV_BASE_URL 回退 legacy 并告警；
-          // 两者同设时 CCV_BASE_URL 优先并提示；CCV_BASE_PATH 缺前导 '/' 的旧告警保留
-          // （仅在未被 CCV_BASE_URL 覆盖时）。放在 setLang 之后，告警语言才跟随用户配置。
+          // CCV_BASE_URL / CCV_BASE_PATH config validation: an invalid CCV_BASE_URL falls
+          // back to the legacy var with a warning; when both are set CCV_BASE_URL wins with
+          // a notice; the legacy CCV_BASE_PATH missing-leading-'/' warning is kept (only when
+          // not overridden by CCV_BASE_URL). Placed AFTER setLang so the warning language
+          // follows the user's configured locale.
           const _baseCfg = resolveBaseConfig();
           {
             if (_baseCfg.source !== 'baseUrl') {
@@ -1538,9 +1543,11 @@ async function _doStart() {
           setLivePort(port, serverProtocol);
           // 自动打开/serverStarted hook 用的 URL 也要带反代前缀（与启动打印一致）
           const url = `${serverProtocol}://127.0.0.1:${port}${_baseCfg.basePath}`;
-          // CCV_BASE_URL 带 host：对外展示的公网 URL（二维码/分享/External 行）。启动期没有
-          // 请求上下文，scheme 取显式值或默认 https（X-Forwarded-Proto 只在 /api/local-url 有
-          // 请求时可用）。必须带 ?token= —— 默认 token 鉴权下无 token 的远程链接是 403 死链。
+          // CCV_BASE_URL with a host: the public URL shown to the outside (QR/share/External
+          // line). At startup there is no request context, so the scheme is the explicit
+          // value or https by default (X-Forwarded-Proto is only available per request, in
+          // /api/local-url). Must carry ?token= — under the default token auth a remote link
+          // without it is a 403 dead link.
           const externalUrl = externalUrlFromConfig(_baseCfg, { token: ACCESS_TOKEN });
           const openUrl = externalUrl || url;
           if (!isCliMode) {
@@ -1563,8 +1570,10 @@ async function _doStart() {
             const ccVer = JSON.parse(readFileSync(ccPkgPath, 'utf-8')).version;
             const [maj, min, pat] = ccVer.split('.').map(Number);
             if ((maj < 2 || (maj === 2 && min === 0 && pat < 69)) && !isBrowserOpenSuppressed()) {
-              // spawn 数组传参不过 shell：URL 里的 '?token='/'{token}' 不会被 shell 展开或分词；
-              // Windows 的 start 是 cmd.exe 内置命令，第二个 arg '""' 是 title 占位（否则 URL 被当 title）。
+              // spawn with an argv array bypasses the shell: the '?token='/'{token}' in the
+              // URL is never shell-expanded or word-split; on Windows `start` is a cmd.exe
+              // builtin whose second arg '""' is the title placeholder (otherwise the URL is
+              // treated as the title).
               let child;
               if (platform() === 'win32') {
                 child = spawn('cmd.exe', ['/c', 'start', '""', openUrl], { stdio: 'ignore', detached: true, windowsHide: true });

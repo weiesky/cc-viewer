@@ -7,7 +7,8 @@
 
 import { mkdirSync, writeFileSync, renameSync, existsSync, openSync, writeSync, fsyncSync, closeSync, readdirSync, statSync } from 'node:fs';
 import { readdir as readdirAsync, stat as statAsync } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname, basename } from 'node:path';
+import { reportSwallowed } from '../../lib/error-report.js';
 
 // The wire-format version this build writes AND the only one it reads.
 // Stamped into meta.json and the journal sentinel at session creation; the
@@ -215,3 +216,68 @@ export function ensureConvDirSync(paths, convKey) {
   mkdirSync(dir, { recursive: true });
   return dir;
 }
+
+// ─── Sharding path ownership ────────────────────────────────────────────────
+// A session dir keeps ALL of its history under ONE folder — copy/move/download/
+// delete of the session dir carries every shard:
+//   <project>/sessions/<dirName>/           — active shard (live files at the root)
+//   <project>/sessions/<dirName>/parts/<N>/ — frozen shard N (N = 1,2,… oldest→newest)
+// sessions/ enumerators only ever look ONE level down, so the nested parts/
+// subtree is invisible to them. These helpers are the ONLY join sites for
+// parts/ paths (single-owner discipline, same as every other v2 path here).
+
+/** The parts/ subdir INSIDE one session dir that holds its frozen shards. */
+export function shardPartsDir(sessionDir) {
+  return join(sessionDir, 'parts');
+}
+
+/** Frozen shard dir for shard N of a session. */
+export function shardPartDir(sessionDir, n) {
+  return join(sessionDir, 'parts', String(n));
+}
+
+/**
+ * Enumerate frozen shards of one session, oldest first. Each entry
+ * { partIndex, dir }. Reads the session's own parts/ subdir.
+ * @param {string} sessionDir - absolute path of the ACTIVE session dir
+ * @returns {Array<{ partIndex: number, dir: string }>}
+ */
+export function listShards(sessionDir) {
+  const root = shardPartsDir(sessionDir);
+  const out = [];
+  let names = [];
+  try {
+    names = readdirSync(root, { withFileTypes: true });
+  } catch (err) {
+    if (err && err.code !== 'ENOENT') reportSwallowed('v2-shard.list', err);
+    return out; // no parts/ dir → no frozen shards
+  }
+  for (const e of names) {
+    if (!e.isDirectory()) continue;
+    const n = Number(e.name);
+    if (!Number.isInteger(n) || n < 1) continue;
+    out.push({ partIndex: n, dir: join(root, e.name) });
+  }
+  out.sort((a, b) => a.partIndex - b.partIndex);
+  return out;
+}
+
+/**
+ * Resolve a session-dir-or-shard-dir to the readSession coordinates of its
+ * SHARD root. A frozen shard lives INSIDE the session dir at
+ * <project>/sessions/<base>/parts/<N>/ — one level deeper than a normal
+ * session dir — so the naive projectDir derivation would point readSession at
+ * a nonexistent path. Returns null for a normal (non-shard) session dir.
+ * @returns {{ base: string, projectDir: string, sessionsDirName: string, sessionId: string } | null}
+ */
+export function shardReadRoot(sessionDir) {
+  if (basename(dirname(sessionDir)) !== 'parts') return null;
+  const base = basename(dirname(dirname(sessionDir)));        // <dirName>
+  return {
+    base,
+    projectDir: dirname(dirname(dirname(dirname(sessionDir)))), // <project>
+    sessionsDirName: join('sessions', base, 'parts'),          // sessions/<base>/parts
+    sessionId: basename(sessionDir),                           // <N>
+  };
+}
+

@@ -342,6 +342,13 @@ export class V2Writer {
       // dir keeps its ORIGINAL author's cwd — never relabeled by the adopting entry.
       // Normalized lexically (no realpath) to match the read side's targetCwd.
       ...(cwd && { cwd: normalizeSessionCwd(cwd) }),
+      // Sharding (2026-11): persist the ACTIVE shard's prompt counter so a
+      // restart re-seeds from meta instead of the prompts.jsonl line count —
+      // that file is archived with its shard (PROMPTS-capped) and would seed
+      // an under-count, letting a near-threshold shard grow unboundedly.
+      // First-write-wins: the counter is carried forward by the rotation's own
+      // meta carry-over, not rewritten here.
+      shardPromptsActive: 0,
       ...(this._metaExtra || {}),
     };
     const projectDir = join(this._logDir, sanitizePathComponent(project));
@@ -563,7 +570,8 @@ export class V2Writer {
       // Run an already-armed cut at this quiescent point (no in-flight request
       // on this session yet — the count is bumped by _ingestInto below). This
       // is what lets the NEXT new-user-prompt after a threshold-crossing one
-      // land in a fresh shard.
+      // land in a fresh shard. (_armShardRotation already runs _maybeRotate
+      // when it arms with nothing in flight; this covers cuts armed earlier.)
       if (s._shardArmed && (s._inflight || 0) === 0) this._maybeRotate(s);
 
       // System-prompt snapshot, Bind A (wire): the FIRST main request of a session
@@ -609,27 +617,31 @@ export class V2Writer {
           if (pseq != null && prid) {
             // Held requests count as in-flight too (they complete later via
             // _lateHandles): a rotation must not fire while one is open.
-            s._inflight = (s._inflight || 0) + 1;
-            this._lateHandles.set(prid, { s, sid, seq: pseq, rid: prid, paths: s.paths, journal: s.journal, counted: true });
+            const handle = { s, sid, seq: pseq, rid: prid, paths: s.paths, journal: s.journal, counted: false };
+            this._openHandle(handle);
+            this._lateHandles.set(prid, handle);
             if (this._lateHandles.size > 64) {
               const evicted = this._lateHandles.keys().next().value;
               const evictedHandle = this._lateHandles.get(evicted);
               this._lateHandles.delete(evicted);
               // Evicting a still-open handle must release its in-flight count,
-              // or the session would never rotate again (stuck at >0).
-              if (evictedHandle && evictedHandle.counted && evictedHandle.s && evictedHandle.s._inflight > 0) evictedHandle.s._inflight -= 1;
+              // or the session would never rotate again (stuck at >0). The
+              // handle is unreachable afterwards, so close without re-arming
+              // the rotation latch (its completion can never arrive).
+              this._closeHandle(evictedHandle, { rotate: false });
             }
           }
         }
       }
 
       const seq = this._ingestInto(s, sid, entry, originalMessages);
-      if (seq != null) {
+      const handle = seq == null ? null : { s, sid, seq, rid: entry.requestId || `${seq}`, paths: s.paths, journal: s.journal, counted: false };
+      if (handle) {
         // In-flight guard for shard rotation: a completion must land its
         // done/response in the SAME shard that holds its req line. Count the
         // request as open until ingestCompletion closes it; rotation only runs
         // once this reaches zero (and the queue is flushed).
-        s._inflight = (s._inflight || 0) + 1;
+        this._openHandle(handle);
       }
       if (seq != null && this._onActivity) {
         try { this._onActivity(s.paths.dir); } catch { /* nudge only — never disturb the write */ }
@@ -641,7 +653,7 @@ export class V2Writer {
       // at completion time silently dropped them). It ALSO snapshots the
       // request-time paths so a shard rotation between request and completion
       // keeps the done/response in the shard that owns this seq.
-      return seq == null ? null : { s, sid, seq, rid: entry.requestId || `${seq}`, paths: s.paths, journal: s.journal, counted: true };
+      return handle;
     } catch (err) {
       reportSwallowed('v2-write.ingestRequest', err);
       return null;
@@ -666,29 +678,15 @@ export class V2Writer {
     if (kind === 'main') s._sawMain = true;
 
     // Shard trigger (2026-11): a NEW main-conversation user prompt is the cut
-    // node. Read the conv store's CURRENT wire length (read-only, no side
-    // effect); a fresh user turn appends a non-tool-result user message at
-    // [prevCount, len). A SNAPSHOT (restart / -c / compact / dual-writer) has
-    // prevCount < len only for genuinely new tail content — so scanning that
-    // slice never recounts history. Tool-loop follow-ups append only
-    // tool_result/assistant and do NOT count. On crossing the prompt ceiling,
-    // rotate BEFORE this request's blob/conv/journal writes so the new prompt
-    // opens the fresh shard (this is the quiescent point: this request's
+    // node. See _countShardPrompt for the counting rule. On crossing the prompt
+    // ceiling, rotate BEFORE this request's blob/conv/journal writes so the new
+    // prompt opens the fresh shard (this is the quiescent point: this request's
     // in-flight count isn't bumped until after _ingestInto returns).
-    if (kind === 'main' && msgs && msgs.length > 0) {
-      const prevCount = s.convs.count('main');
-      let isNewUserPrompt = false;
-      for (let i = prevCount; i < msgs.length; i++) {
-        const m = msgs[i];
-        if (m && m.role === 'user' && !this._isToolResultMsg(m)) { isNewUserPrompt = true; break; }
-      }
-      if (isNewUserPrompt) {
-        s._partPrompts = (s._partPrompts || 0) + 1;
-        if ((s._partPrompts || 0) > this._shardThresholdPrompts() && (s._inflight || 0) === 0 && !s._rotating) {
-          s._shardArmed = true;
-          this._maybeRotate(s);
-          if (!s._rotating && !s._shardArmed) s._partPrompts = 1; // rotated: this prompt starts the new shard
-        }
+    if (this._countShardPrompt(s, kind, msgs)) {
+      if ((s._partPrompts || 0) > this._shardThresholdPrompts() && (s._inflight || 0) === 0 && !s._rotating) {
+        s._shardArmed = true;
+        this._maybeRotate(s);
+        if (!s._rotating && !s._shardArmed) s._partPrompts = 1; // rotated: this prompt starts the new shard
       }
     }
 
@@ -857,16 +855,32 @@ export class V2Writer {
       }
       // Close the in-flight guard opened at ingestRequest and, when this was
       // the last open request, run any armed shard rotation (quiescent point).
-      // Only a handle that was actually counted may decrement (a late/held
-      // handle counted at flush time; a duplicate or uncounted completion must
-      // not push the count negative or rotate with requests still open).
-      if (typeof handle.seq === 'number' && handle.counted && s._inflight > 0) {
-        handle.counted = false; // one-shot latch: a double completion can't double-decrement
-        s._inflight -= 1;
-        if (s._inflight === 0) this._maybeRotate(s);
-      }
+      this._closeHandle(handle);
     } catch (err) {
       reportSwallowed('v2-write.ingestCompletion', err);
+    }
+  }
+
+  /** Open an in-flight handle: every counted handle must close exactly once
+   *  (see _closeHandle). Centralized so the increment sites can't drift. */
+  _openHandle(handle) {
+    if (!handle || typeof handle.seq !== 'number') return;
+    handle.s._inflight = (handle.s._inflight || 0) + 1;
+    handle.counted = true;
+  }
+
+  /** Close a counted handle exactly once (the `counted` latch makes a double
+   *  close a no-op) and, when it was the session's last open request, run any
+   *  armed shard rotation (quiescent point). `rotate:false` for paths where
+   *  the handle is already unreachable (late-handle eviction) — re-arming the
+   *  rotation latch there would be wasted work. */
+  _closeHandle(handle, { rotate = true } = {}) {
+    const s = handle && (handle.s || this._sessions.get(handle.sid));
+    if (!s) return;
+    if (typeof handle.seq === 'number' && handle.counted && s._inflight > 0) {
+      handle.counted = false; // one-shot latch: a double completion can't double-decrement
+      s._inflight -= 1;
+      if (rotate && s._inflight === 0) this._maybeRotate(s);
     }
   }
 
@@ -876,19 +890,13 @@ export class V2Writer {
    *  rotates again for this process's lifetime. */
   releaseHandle(handle) {
     try {
-      const s = handle && (handle.s || this._sessions.get(handle.sid));
-      if (!s) return;
-      if (typeof handle.seq === 'number' && handle.counted && s._inflight > 0) {
-        handle.counted = false;
-        s._inflight -= 1;
-        if (s._inflight === 0) this._maybeRotate(s);
-      }
+      this._closeHandle(handle);
     } catch (err) { reportSwallowed('v2-write.release-handle', err); }
   }
 
   /** Arm shard rotation once the live dir crosses the threshold. Cheap: an O(1)
-   *  counter until the (infrequent) real size probe fires. The actual cut is
-   *  deferred to _maybeRotate (quiescent point). */
+   *  counter bump per new user prompt. The actual cut is deferred to
+   *  _maybeRotate (quiescent point). */
   _armShardRotation(s) {
     if (!s || s._shardArmed || s._rotating) return;
     // Only rotate live session trees — the offline converter writes to a
@@ -897,26 +905,57 @@ export class V2Writer {
     if (this._sessionsDirName !== 'sessions') return;
     // Prompt-count trigger (no disk probing): the per-session counter
     // `_partPrompts` is bumped on each NEW main-conversation user prompt (see
-    // _ingestInto). On first contact (a re-attached/restarted session) seed it
-    // from the live prompts.jsonl LINE COUNT (streamed, one line per recorded
-    // prompt) — readPromptsHead would UNDER-count (256KB head cap + dedup) and
-    // let an already-long shard grow far past the threshold after a restart.
+    // _countShardPrompt). On first contact (a re-attached/restarted session)
+    // seed it from the LIVE meta's `shardPromptsActive` (persisted at the last
+    // rotation); the prompts.jsonl LINE COUNT is only the legacy fallback —
+    // that file is archived with its shard (PROMPTS-capped), so seeding from
+    // it after a rotation would under-count and let a near-threshold shard
+    // grow unboundedly across restarts.
     if (!s._promptsSeeded) {
       s._promptsSeeded = true;
-      let lines = 0;
-      try { for (const _ of iterateJsonlLines(s.paths.promptsPath)) lines++; } catch { lines = 0; }
-      s._partPrompts = lines;
+      let seeded = null;
+      try {
+        const meta = JSON.parse(readFileSync(s.paths.metaPath, 'utf-8'));
+        if (meta && typeof meta.shardPromptsActive === 'number' && meta.shardPromptsActive >= 0) seeded = meta.shardPromptsActive;
+      } catch { /* no meta (legacy/external producer) — fall back to the file scan */ }
+      if (seeded == null) {
+        let lines = 0;
+        try { for (const _ of iterateJsonlLines(s.paths.promptsPath)) lines++; } catch { lines = 0; }
+        seeded = lines;
+      }
+      s._partPrompts = seeded;
     }
     if ((s._partPrompts || 0) < this._shardThresholdPrompts()) return;
     s._shardArmed = true;
     // An armed cut takes effect at the next quiescent point (the request start
     // with none open, or the last completion) — _maybeRotate runs from both. If
     // THIS request armed it and nothing is in flight yet, cut right away.
-    if (s._shardArmed && (s._inflight || 0) === 0) this._maybeRotate(s);
+    if ((s._inflight || 0) === 0) this._maybeRotate(s);
   }
 
   _shardThresholdPrompts() {
     return (typeof this._shardPrompts === 'number' && this._shardPrompts > 0) ? this._shardPrompts : SHARD_PROMPT_THRESHOLD;
+  }
+
+  /** Count one NEW main-conversation user prompt toward the shard ceiling and
+   *  bump the per-session counter. Rule: read the conv store's CURRENT wire
+   *  length (read-only, no side effect); a fresh user turn appends a
+   *  non-tool-result user message at [prevCount, len). A SNAPSHOT (restart /
+   *  -c / compact / dual-writer) has prevCount < len only for genuinely new
+   *  tail content — so scanning that slice never recounts history. Tool-loop
+   *  follow-ups append only tool_result/assistant and do NOT count.
+   *  @returns {boolean} true when this entry carried a new user prompt. */
+  _countShardPrompt(s, kind, msgs) {
+    if (kind !== 'main' || !msgs || msgs.length === 0) return false;
+    const prevCount = s.convs.count('main');
+    for (let i = prevCount; i < msgs.length; i++) {
+      const m = msgs[i];
+      if (m && m.role === 'user' && !this._isToolResultMsg(m)) {
+        s._partPrompts = (s._partPrompts || 0) + 1;
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Run an armed rotation at a quiescent point — SYNCHRONOUSLY, before the

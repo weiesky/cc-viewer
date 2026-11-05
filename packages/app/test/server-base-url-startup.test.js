@@ -1,8 +1,8 @@
-// 覆盖目标：CCV_BASE_URL 的启动期行为——非 CLI 模式启动日志的 External 行与
-// baseUrl 配置告警（server.js setLang 之后的校验块 + startedLocal/Network/External 打印）。
-// 这些行只在 startViewer 的监听回调里打印一次，api-base-url.test.js 的在 before 里翻转 env
-// 的结构无法覆盖，故独立文件在 import 前设好 env，并用 console.error/console.warn 拦截捕获输出。
-// 端口私有窗 18510-18519（全仓唯一，与 api-base-url 的 18500-18509 不重叠）。
+// Coverage: startup-time behavior of CCV_BASE_URL — the External line in non-CLI startup logs and
+// baseUrl config warnings (the validation block after setLang in server.js + startedLocal/Network/External printing).
+// These lines print only once in startViewer's listen callback, a structure that api-base-url.test.js's
+// before-flip-env approach cannot cover, so this separate file sets env before import and captures output via console.error/console.warn interception.
+// Private port window 18510-18519 (unique in the repo, no overlap with api-base-url's 18500-18509).
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-// ── 必须在任何会拉起 findcc.js 的 import 之前设置 ──
+// ── Must be set before any import that pulls in findcc.js ──
 const tmpDir = mkdtempSync(join(tmpdir(), 'ccv-base-url-startup-'));
 mkdirSync(join(tmpDir, 'logs'), { recursive: true });
 process.env.CCV_LOG_DIR = tmpDir;
@@ -30,7 +30,7 @@ describe('CCV_BASE_URL startup output (non-CLI mode)', { concurrency: false }, (
   let mod, errorLines, warnLines;
 
   before(async () => {
-    // console.error/warn 拦截：started* 行走 console.error，配置告警走 console.warn
+    // console.error/warn interception: started* lines go through console.error, config warnings through console.warn
     errorLines = [];
     warnLines = [];
     const origError = console.error;
@@ -55,23 +55,23 @@ describe('CCV_BASE_URL startup output (non-CLI mode)', { concurrency: false }, (
     });
   });
 
-  it('启动日志打印 External 行（公网 URL + ccv 自己的 ?token=）', () => {
+  it('startup log prints the External line (public URL + ccv own ?token=)', () => {
     const external = errorLines.find((l) => l.includes('External:'));
     assert.ok(external, `expected an External line, got:\n${errorLines.join('\n')}`);
     assert.ok(external.includes('https://arca-sandbox-office.alipay.com/arca/api/v1/session/{token}/?token='),
       `External line must carry host+prefix+token, got: ${external}`);
-    // token 必须是 ccv 的 ACCESS_TOKEN（getAccessToken 与打印同源）
+    // token must be ccv's ACCESS_TOKEN (getAccessToken and the printed line share the same source)
     assert.ok(external.includes(`?token=${mod.getAccessToken()}`), 'External line must carry the real ACCESS_TOKEN');
   });
 
-  it('Network 行的 {token} 前缀不被 ACCESS_TOKEN 二次替换（i18n 单趟插值回归锁）', () => {
+  it('Network line keeps its {token} prefix, not re-substituted by ACCESS_TOKEN (single-pass i18n interpolation regression lock)', () => {
     const network = errorLines.find((l) => l.includes('Network:'));
     assert.ok(network, 'expected a Network line');
     assert.ok(network.includes('/arca/api/v1/session/{token}/?token='),
       `Network line must keep the literal {token} prefix, got: ${network}`);
   });
 
-  it('Local 行带前缀、无合法告警污染', () => {
+  it('Local line carries the prefix, no warning pollution for a valid value', () => {
     const local = errorLines.find((l) => l.includes('Local:'));
     assert.ok(local?.includes('/arca/api/v1/session/{token}/'), `Local line must carry prefix, got: ${local}`);
     assert.ok(!warnLines.some((l) => l.includes('CCV_BASE_URL')), `no warning expected for a valid value, got:\n${warnLines.join('\n')}`);

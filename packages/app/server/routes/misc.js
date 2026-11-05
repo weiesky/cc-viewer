@@ -26,12 +26,14 @@ async function localUrl(req, res, parsedUrl, isLocal, deps) {
   let defaultUrl;
   const externalUrl = externalUrlFromConfig(cfg, { token: deps.ACCESS_TOKEN, req });
   if (externalUrl) {
-    // CCV_BASE_URL 带 host：二维码/分享链接必须是公网 URL，否则扫码绕过代理直连容器内网
-    // IP（手机根本到不了）。scheme：显式 > 本请求的 X-Forwarded-Proto > 默认 https。
+    // CCV_BASE_URL with a host: the QR/share link MUST be the public URL — otherwise the
+    // scan bypasses the proxy and hits the container's internal IP (a phone can never
+    // reach it). Scheme: explicit > this request's X-Forwarded-Proto > https.
     defaultUrl = externalUrl;
   } else {
-    // 反代子路径部署时分享/二维码 URL 也要带前缀，否则扫码绕过代理直连源站端口（与
-    // server.startedNetwork 启动打印保持一致）。未设前缀时为空串，行为不变。
+    // Behind a reverse-proxy sub-path the share/QR URL must carry the prefix too —
+    // otherwise the scan bypasses the proxy and hits the origin port (consistent with
+    // the server.startedNetwork startup print). Empty prefix → empty string, unchanged.
     defaultUrl = `${deps.protocol}://${localIp}:${deps.actualPort}${cfg.basePath}?token=${deps.ACCESS_TOKEN}`;
   }
   const hookResult = await runWaterfallHook('localUrl', { url: defaultUrl, ip: localIp, port: deps.actualPort, token: deps.ACCESS_TOKEN });

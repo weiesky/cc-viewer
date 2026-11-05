@@ -277,4 +277,82 @@ describe('readV2ShardEntries', () => {
     assert.equal(res.entries.length, 0);
     assert.equal(res.hasMore, false);
   });
+
+  it('reads the ACTIVE shard prefix when the cursor is past every frozen cut (partIndex 0)', async () => {
+    const w = newWriter();
+    const msgs = [textMsg('user', 'u1')];
+    fire(w, mainEntry([...msgs]));
+    await fireTurns(w, SHARD_PROMPTS, msgs); // → 1 frozen shard
+    await fireTurns(w, 2, msgs);             // active tail (2 more turns)
+    const sd = sessionDirOf(SID);
+    const shards = listShards(sd);
+    assert.equal(shards.length, 1, 'exactly one frozen shard');
+    const newestFrozenCut = Math.max(...readSession(join(dir, 'proj'), join(basename(sd), 'parts', String(shards[0].partIndex)), 'sessions').reqs.keys());
+    // A limit-truncated cold window's oldest seq sits INSIDE the active shard —
+    // the cursor must read the active prefix (partIndex 0), not jump to frozen.
+    const res = await readV2ShardEntries(sd, { beforeSeq: newestFrozenCut + 2, limit: 1 });
+    assert.equal(res.partIndex, 0, 'cursor past every frozen cut reads the ACTIVE shard');
+    assert.ok(res.entries.length > 0, 'active prefix yields entries');
+    assert.ok(res.hasMore, 'more history behind (active prefix remainder or the frozen shard)');
+    // Walking further back eventually lands on the frozen shard.
+    if (res.oldestSeq != null) {
+      const older = await readV2ShardEntries(sd, { beforeSeq: res.oldestSeq, limit: 0 });
+      assert.ok(older.partIndex >= 0 && older.partIndex <= 1, 'cursor walks toward older shards');
+    }
+  });
+});
+
+describe('rotation recovery + seeding', () => {
+  it('restart re-seeds the prompt counter from the live prompts.jsonl (near-threshold keeps rotating)', async () => {
+    const w = newWriter();
+    const msgs = [textMsg('user', 'u1')];
+    fire(w, mainEntry([...msgs]));
+    await fireTurns(w, SHARD_PROMPTS, msgs); // → 1 frozen shard; active has 1 prompt recorded
+    const sd = sessionDirOf(SID);
+    assert.equal(listShards(sd).length, 1);
+    // Simulate a restart: a brand-new writer must re-seed _partPrompts from the
+    // ACTIVE dir's prompts.jsonl and rotate again at the threshold, not from 0.
+    const w2 = newWriter();
+    await fireTurns(w2, SHARD_PROMPTS, msgs); // active 1 + these → crosses again
+    assert.ok(listShards(sd).length >= 2, `second rotation after restart, got ${listShards(sd).length} shards`);
+  });
+
+  it('a partial shard (journal moved, conversations missing) is never overwritten and ingest continues past it', async () => {
+    const w = newWriter();
+    const msgs = [textMsg('user', 'u1')];
+    fire(w, mainEntry([...msgs]));
+    await fireTurns(w, SHARD_PROMPTS, msgs); // → parts/1
+    const sd = sessionDirOf(SID);
+    assert.equal(listShards(sd).length, 1);
+    // Crash simulation: parts/2 exists with ONLY a journal (mid-archive crash).
+    const { mkdirSync, writeFileSync, rmSync: rm } = await import('node:fs');
+    const crashed = shardPartDir(sd, 2);
+    mkdirSync(crashed, { recursive: true });
+    writeFileSync(join(crashed, 'journal.jsonl'), JSON.stringify({ ph: 'meta', wireFormat: 2, sessionId: SID }) + '\n');
+    const crashedBefore = readdirSync(crashed).sort();
+    // The collision (EEXIST) aborts that rotation — the crashed shard is never
+    // overwritten — and the NEXT rotation claims index 3, leaving the crashed
+    // parts/2 as the gap marker. Journal seqs stay continuous across the gap:
+    // the aborted attempt's prompt opens part 3 (its content moved with the
+    // retry), and every surviving shard plus the active dir tiles (frozenMax <
+    // nextShardMin < activeMin).
+    await fireTurns(w, SHARD_PROMPTS + 1, msgs);
+    assert.deepEqual(readdirSync(crashed).sort(), crashedBefore, 'crashed shard content untouched');
+    const shards = listShards(sd).map((s) => s.partIndex);
+    assert.ok(shards.includes(3), `a later rotation claims index 3 past the crashed gap, got ${JSON.stringify(shards)}`);
+    const part3Seqs = [...readSession(join(dir, 'proj'), join(basename(sd), 'parts', '3'), 'sessions').reqs.keys()];
+    assert.ok(part3Seqs.length > 0, 'ingest continued into the retried shard');
+    const part1Seqs = [...readSession(join(dir, 'proj'), join(basename(sd), 'parts', '1'), 'sessions').reqs.keys()];
+    assert.ok(Math.min(...part3Seqs) > Math.max(...part1Seqs), 'seq continuity across the crash gap');
+    rm(crashed, { recursive: true, force: true });
+  });
+});
+
+describe('SHARD_PROMPT_THRESHOLD default', () => {
+  it('is 2000 and the writer falls back to it without the seam', async () => {
+    const { SHARD_PROMPT_THRESHOLD } = await import('../server/lib/v2/shard-manager.js');
+    assert.equal(SHARD_PROMPT_THRESHOLD, 2000);
+    const w = new V2Writer({ logDir: dir, project: 'proj', enabled: true, minFreeBytes: 0 });
+    assert.equal(w._shardThresholdPrompts(), 2000);
+  });
 });

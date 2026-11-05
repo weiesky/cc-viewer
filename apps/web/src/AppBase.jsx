@@ -1460,6 +1460,10 @@ class AppBase extends React.Component {
     const targetVm = vm;
     targetVm.shardLoading = true;
     targetVm.shardPrependEntries = [];
+    // Remember the OWNING vm for teardown: _closeShardES must reset THIS vm's
+    // flag, not whatever view is rendered when the teardown runs.
+    this._shardTargetVm = targetVm;
+    this._shardTargetIsLocal = capturedIsLocal;
     this._commitChannel(capturedIsLocal ? null : capturedChannel, { shardLoading: true });
 
     es.addEventListener('load_start', (event) => {
@@ -1513,15 +1517,19 @@ class AppBase extends React.Component {
 
   /** Close any in-flight shard-prepend EventSource and reset its view flag.
    *  Called from every teardown path (unmount, workspace stop, abort) so a
-   *  stale shard load never writes into a view that moved on. */
+   *  stale shard load never writes into a view that moved on. Resets the vm
+   *  that OWNS the load (recorded at click time), not the rendered one — a
+   *  view switch mid-load would otherwise leak shardLoading:true on the old
+   *  channel and block its "load earlier" button forever. */
   _closeShardES() {
     if (this._shardES) { try { this._shardES.close(); } catch {} this._shardES = null; }
-    const vm = this._renderedVm();
+    const vm = this._shardTargetVm;
     if (vm && vm.shardLoading) {
       vm.shardPrependEntries = [];
       vm.shardLoading = false;
-      this._commitChannel(this._channels.getRendered(), { shardLoading: false });
+      this._commitChannel(this._shardTargetIsLocal ? null : this._channels.getRendered(), { shardLoading: false });
     }
+    this._shardTargetVm = null;
   }
 
   /** Prepend-commit pipeline for a shard load (load_end of _loadEarlierShard).
@@ -1580,8 +1588,10 @@ class AppBase extends React.Component {
         shardLoading: false,
         // Signal ChatView to EXPAND its render window by the number of items the
         // prepend added — otherwise the older history lands above the visible
-        // tail window and "load earlier" appears to do nothing.
-        shardPrependCount: (this._renderedVm().shardPrependCount || 0) + (core.filtered ? core.filtered.length : core.entries.length),
+        // tail window and "load earlier" appears to do nothing. The counter
+        // belongs to THIS vm (the load's target), not the rendered channel's —
+        // a view switch mid-load must not bump the wrong channel's window.
+        shardPrependCount: (vm.shardPrependCount || 0) + (core.filtered ? core.filtered.length : core.entries.length),
         // The shard window's oldest entry becomes the new history cursor.
         v2RowsMeta: {
           ...(prev.v2RowsMeta || { totalCount: 0, hasMore: false }),
@@ -2771,12 +2781,10 @@ class AppBase extends React.Component {
       const vm = channel.vm;
       // Sharding (2026-11): every load_start may carry a `shard` block — the
       // hasMore cursor for "load earlier history". The ACTIVE-shard cold load
-      // reports shards only when frozen `.part<N>` dirs exist; a shardBefore
-      // load reports the NEXT older cursor. Track it on the vm so the button
-      // stays available without a reload. A shard-load frame carries both
-      // `shard` AND a truthy `shard.seq` echo — that is how we tell a prepend
-      // load (which must NOT reset chunkedEntries) from a fresh baseline.
-      const isShardPrepend = !!(data.shard && typeof data.shard === 'object' && data.shard.prepend === true);
+      // reports shards only when frozen `.part<N>` dirs exist. Track it on the
+      // vm so the button stays available without a reload. (Shard-PREPEND loads
+      // never travel this channel path — they run on the dedicated EventSource
+      // opened by _loadEarlierShard, so no prepend special-casing is needed here.)
       if (data.shard && typeof data.shard === 'object') {
         vm.shards = {
           hasMore: !!data.shard.hasMore,
@@ -2786,11 +2794,10 @@ class AppBase extends React.Component {
           // — which has no ?sid in scope — can still address the shardBefore read.
           sid: (typeof data.shard.sid === 'string' && data.shard.sid) ? data.shard.sid : (vm.shards && vm.shards.sid) || null,
         };
-      } else if (!isShardPrepend) {
+      } else {
         // A fresh non-shard baseline on an unsharded session clears the cursor
         // (a reload after the last shard was deleted must not keep a stale
-        // "load earlier" button). Shard-prepend loads leave it to their own
-        // shard frame.
+        // "load earlier" button).
         vm.shards = { hasMore: false, oldestSeq: null, partIndex: 0 };
       }
       if (!this._isRenderedChannel(channel)) {
@@ -2807,16 +2814,9 @@ class AppBase extends React.Component {
       // A new baseline is being built: until this load COMMITS (see
       // _commitColdIngest) the vm must not pass the warm gate — a switch that
       // aborts the in-flight pipeline would otherwise leave a slice that is
-      // missing this load's whole window. A shard-PREPEND load is exempt: it
-      // adds older history onto an already-committed baseline, so the baseline
-      // stays warm and the buffered chunks accumulate separately (prepended at
-      // load_end by _runShardPrependIngest).
-      if (isShardPrepend) {
-        vm.shardPrependEntries = [];
-        vm.shardLoading = true;
-        this._commitChannel(channel, { shardLoading: true });
-        return;
-      }
+      // missing this load's whole window. (Shard prepends are exempt by
+      // construction: they never arrive here — they run on their own
+      // EventSource and leave the committed baseline warm throughout.)
       vm.committed = false;
       vm.chunkedEntries = [];
       vm.chunkedTotal = data.total || 0;

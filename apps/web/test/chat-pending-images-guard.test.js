@@ -269,6 +269,57 @@ describe('ChatView composer attachments vs incoming conversation updates', () =>
     assert.deepEqual(view.state.pendingImages, [], 'an attach switch alone must drop the old attachments');
   });
 
+  it('clears pasted images when only viewProject/viewInstance change (attachedSid unchanged)', () => {
+    const view = makeView();
+    const s = session('t1');
+    updateSessions(view, [s]);
+    pasteImage(view);
+    const previousProps = view.props;
+    const previousState = view.state;
+    // Project-tab switch: attachedSid stays — the clear must come from viewSwitched.
+    view.props = { ...view.props, viewProject: 'project-b', viewInstance: 'instance-b' };
+    view.componentDidUpdate(previousProps, previousState);
+    assert.deepEqual(view.state.pendingImages, [], 'a project/instance switch alone must drop the old attachments');
+  });
+
+  it('clears pasted images when the same session object is re-stamped in place (epoch-less big-drop replacement)', () => {
+    const view = makeView();
+    const s = session('t1');
+    updateSessions(view, [s]);
+    pasteImage(view);
+    // Legacy/epoch-less shape: merge mutates the SAME session object and
+    // re-stamps messages[0]._timestamp — object compares see nothing; only the
+    // cached stable-id VALUES can catch it.
+    s.messages[0]._timestamp = 't2';
+    const previousProps = view.props;
+    const previousState = view.state;
+    view.props = { ...view.props, mainAgentSessions: [s] };
+    view.componentDidUpdate(previousProps, previousState);
+    assert.deepEqual(view.state.pendingImages, [], 'an in-place identity change must drop the old attachments');
+  });
+
+  it('clears pasted images when only a middle session identity changes (same length, same first/last)', () => {
+    const view = makeView();
+    const a = session('t1'); const b = session('t2'); const c = session('t3');
+    updateSessions(view, [a, b, c]);
+    pasteImage(view);
+    updateSessions(view, [a, session('t9'), c]);
+    assert.deepEqual(view.state.pendingImages, [], 'a middle-session swap is still a conversation change');
+  });
+
+  it('still clears when a live append lands in the same commit as a shard prepend', () => {
+    const view = makeView();
+    const s2 = session('t2');
+    updateSessions(view, [s2]);
+    pasteImage(view);
+    const previousProps = view.props;
+    const previousState = view.state;
+    // Prepend + append in ONE commit: the tail changed, so the shard skip must not apply.
+    view.props = { ...view.props, mainAgentSessions: [session('t1'), s2, session('t3')], shardPrependCount: 1 };
+    view.componentDidUpdate(previousProps, previousState);
+    assert.deepEqual(view.state.pendingImages, [], 'a same-commit live append must not hide behind the shard skip');
+  });
+
   it('keeps pasted images when viewProject/viewInstance resolve from null (async boot init)', () => {
     const view = makeView();
     view.props = { ...view.props, viewProject: null, viewInstance: null };

@@ -1,63 +1,98 @@
-// CCV_BASE_PATH（反向代理子路径部署）的统一 normalize / validate / strip。
-// 纯函数，无副作用，server.js（HTTP 剥离 / <base> 注入 / WS upgrade）与 cli.js（启动 URL
-// 打印）共用，消除各处复制粘贴的 normalize 逻辑。vite.config.js 不复用（构建期 base 有
-// `undefined→'/'` 的三态语义，与运行时"未设=无前缀"不同，见该文件注释）。
+// Unified normalize / validate / strip for CCV_BASE_PATH (reverse-proxy sub-path deployment).
+// Pure functions, no side effects; shared by server.js (HTTP strip / <base> injection /
+// WS upgrade) and cli.js (startup URL printing) so the normalize logic lives in exactly one
+// place. vite.config.js deliberately does NOT reuse this (build-time base has a three-state
+// `undefined → '/'` semantic that differs from runtime "unset = no prefix" — see that file).
 
-// 规范化 basePath：未设 / 空串 / 根 '/' → ''（无前缀）；其余补尾斜杠（'/proxy' → '/proxy/'）。
-// 尾斜杠是 startsWith 匹配的防歧义关键（'/proxy/' 不会误命中 '/proxyextra/x'）。
-// 缺前导 '/' 的非法值（'proxy/x'）也返回 ''（忽略）——否则注入段会产出相对 <base> 破坏页面；
-// 告警由 validateBasePath 在启动期负责。
+// Normalize basePath: unset / empty / root '/' → '' (no prefix); anything else gets a trailing
+// slash ('/proxy' → '/proxy/'). The trailing slash is the anti-ambiguity key for startsWith
+// matching ('/proxy/' never mis-hits '/proxyextra/x'). Invalid values missing the leading '/'
+// ('proxy/x') also return '' (ignored) — otherwise the injected segment would produce a
+// relative <base> and break the page; the startup warning is validateBasePath's job.
+// Backslashes are rejected for the same reason as in parseBaseUrl: WHATWG resolution treats
+// '/\evil.com/x' as protocol-relative, which would make the injected <base> cross-origin.
 export function normalizeBasePath(raw) {
-  if (!raw || raw === '/' || !raw.startsWith('/')) return '';
-  // 剥裸换行符：含 \n/\r 的值会把 index.html 注入的 JS 字符串断成语法错误（页面级 DoS）
+  if (!raw || raw === '/' || !raw.startsWith('/') || raw.includes('\\')) return '';
+  // Strip raw CR/LF: a value containing \n/\r would break the JS string injected into
+  // index.html into a syntax error (page-level DoS).
   return raw.replace(/[\r\n]/g, '').replace(/\/?$/, '/');
 }
 
-// 校验 + 规范化。非空但缺前导 '/'（如 'proxy/x'）属配置错误：startsWith 永不命中、剥离
-// 静默失效。不自动补 '/' —— 自动修正会掩盖与代理侧前缀的错配，更难排查；这里选择
-// 忽略（按无前缀工作）并返回 i18n key 供启动期 console.warn。
+// Validate + normalize. A non-empty value missing the leading '/' (e.g. 'proxy/x') is a
+// configuration error: startsWith never matches and stripping silently does nothing. We do
+// NOT auto-prepend '/' — auto-fixing would hide a mismatch with the proxy-side prefix and be
+// harder to diagnose; instead the value is ignored (behave as no-prefix) and an i18n key is
+// returned for the startup console.warn. A value containing a backslash is rejected outright
+// (see normalizeBasePath) rather than silently ignored.
 export function validateBasePath(raw) {
   if (raw && raw !== '/' && !raw.startsWith('/')) {
+    return { ok: false, normalized: '', warning: 'basePath.missingLeadingSlash' };
+  }
+  if (raw && raw.includes('\\')) {
     return { ok: false, normalized: '', warning: 'basePath.missingLeadingSlash' };
   }
   return { ok: true, normalized: normalizeBasePath(raw), warning: null };
 }
 
-// 从请求 pathname 剥掉 basePath 前缀，保证结果带前导 '/'（路由表按 '/api/...' 匹配）。
-// slice(length - 1) 让匹配前缀的尾斜杠留作结果的前导斜杠：
+// Strip the basePath prefix from a request pathname, guaranteeing a leading '/' on the result
+// (route tables match '/api/...'). slice(length - 1) keeps the matched prefix's trailing slash
+// as the result's leading slash:
 //   stripBasePath('/proxy/api/x', '/proxy/') → '/api/x'
 //   stripBasePath('/proxy/',      '/proxy/') → '/'
-// 请求 pathname 一律经 new URL 序列化（safeParseRequestUrl / 浏览器均如此），字面前缀里的
-// '{token}' 等字符在线格式下是 '%7Btoken%7D' —— 因此匹配用 wireBasePathVariants 的编码形式，
-// 注入（<base>/window.__CCV_BASE_PATH__）仍用字面形式。不匹配原样返回，由调用方按 SPA/404 处理。
-// 裸前缀（无尾斜杠，如 '/proxy' 或编码形式）按前缀根处理 → '/'：配合注入的 <base href>，
-// 相对资源解析正确，分享链接少个尾斜杠不再白屏/404。精确相等判断，'/proxyextra' 不受误伤。
+// Request pathnames are always serialized by new URL (safeParseRequestUrl / browsers alike),
+// so literal-prefix characters like '{token}' arrive percent-encoded ('%7Btoken%7D') — matching
+// therefore uses the encoded forms from wireBasePathVariants, while injection
+// (<base>/window.__CCV_BASE_PATH__) keeps the literal form. A non-matching path is returned
+// unchanged and the caller handles it as SPA/404. A bare prefix (no trailing slash, e.g.
+// '/proxy' or its encoded form) is treated as the prefix root → '/': together with the
+// injected <base href>, relative assets resolve correctly and a shared link missing the
+// trailing slash no longer white-screens/404s. The equality check is exact — '/proxyextra'
+// is not affected.
 
-// 把字面 basePath 序列化为线格式（请求 pathname 形态）：new URL 会把 '{'/'}' 等 WHATWG
-// path 字符百分号编码（'/session/{token}/' → '/session/%7Btoken%7D/'）。前缀剥离、插件
-// cookie Path 等一切与"已解析请求路径"比较的场合都必须用这个形态；字面形态只用于
-// <base href>/JS 注入。含 '?#' 的值会被 URL 解析吞掉尾斜杠（'/a?x/' → '/a'），这种配置
-// 本就命不中任何请求——回退字面形式保持旧行为（永不误剥相邻路径）。
+// Serialize a literal basePath to wire form (the request-pathname shape): new URL
+// percent-encodes WHATWG path characters like '{'/'}' ('/session/{token}/' →
+// '/session/%7Btoken%7D/'). Every comparison against an already-parsed request path (prefix
+// stripping, plugin cookie Path, ...) MUST use this form; the literal form is only for
+// <base href>/JS injection. A value containing '?#' would have its trailing slash eaten by URL
+// parsing ('/a?x/' → '/a') — such a config can never match a request anyway, so we fall back
+// to the literal form to preserve the old behavior (never over-strip adjacent paths).
 export function wireBasePath(normalizedBase) {
   if (!normalizedBase) return '';
   if (/[?#]/.test(normalizedBase)) return normalizedBase;
   try {
     const wire = new URL(`http://ccv-base${normalizedBase}`).pathname;
-    // 尾斜杠是 startsWith 防歧义与 slice 前导斜杠语义的关键，丢失即回退（防御性）。
+    // The trailing slash is the key to startsWith disambiguation and the slice leading-slash
+    // semantic; if it was lost, fall back (defensive).
     return wire.endsWith('/') ? wire : normalizedBase;
   } catch {
     return normalizedBase;
   }
 }
 
-// 匹配候选：线格式 + 百分号编码大小写变体（有的代理会把 %7B 转小写为 %7b、或反向转大写，
-// new URL 原样保留大小写，故两种形态都可能到达）。无编码时去重为单元素。
+// Match candidates: the wire form plus percent-escape case variants. Some proxies re-case
+// individual escapes (%7B → %7b or back), and new URL preserves the incoming case, so ANY
+// per-triplet case combination can arrive — generate all 2^N combinations (N is the number of
+// escapes, typically 2 for '{token}'). With no escapes this dedupes to a single element.
 export function wireBasePathVariants(normalizedBase) {
   const wire = wireBasePath(normalizedBase);
   if (!wire) return [];
-  const lower = wire.replace(/%([0-9A-Fa-f]{2})/g, (s) => s.toLowerCase());
-  const upper = wire.replace(/%([0-9A-Fa-f]{2})/g, (s) => s.toUpperCase());
-  return [...new Set([wire, lower, upper])];
+  const triplets = [...wire.matchAll(/%([0-9A-Fa-f]{2})/g)];
+  if (triplets.length === 0) return [wire];
+  const seen = new Set();
+  const out = [];
+  const walk = (prefix, idx) => {
+    if (idx === triplets.length) {
+      const candidate = prefix + wire.slice(triplets[idx - 1].index + 3);
+      if (!seen.has(candidate)) { seen.add(candidate); out.push(candidate); }
+      return;
+    }
+    const t = triplets[idx];
+    const literal = wire.slice(idx === 0 ? 0 : triplets[idx - 1].index + 3, t.index);
+    walk(prefix + literal + t[0].toLowerCase(), idx + 1);
+    walk(prefix + literal + t[0].toUpperCase(), idx + 1);
+  };
+  walk('', 0);
+  return out;
 }
 
 export function stripBasePath(pathname, normalizedBase) {

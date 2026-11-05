@@ -10,8 +10,7 @@ import { sseHead, sseWrite, needsDrain, wireEnd, awaitWireDrain, isWireV3Enabled
 import { scopeKeyForProducer } from '../lib/scope-router.js';
 import { readV2ColdBundle } from '../lib/v2/meta-rows.js';
 import { readV2SingleEntry, readV2ShardEntries, isV2SessionDir } from '../lib/v2/adapter.js';
-import { listShards } from '../lib/v2/shard-manager.js';
-import { readJsonlTolerant } from '../lib/v2/replay.js';
+import { initialShardCursor } from '../lib/v2/shard-manager.js';
 import { createAttachBufferClient, flushAttachBuffer } from '../lib/attach-buffer.js';
 import { resolveSessionDirName, latestMainSessionDir } from '../lib/v2/session-select.js';
 import { sanitizePathComponent, normalizeSessionCwd } from '../lib/v2/layout.js';
@@ -212,30 +211,14 @@ export function sseUpdateBadgeFrame(pending) {
 
 /**
  * Initial shard cursor for a cold-load source: when the session has frozen
- * shards (sibling sessions-parts root), the "load earlier history" button needs
- * the entry point — the seq just past the newest frozen shard's cut (i.e. the
- * first seq the ACTIVE dir owns). Returns null when there are no shards.
+ * shards, the "load earlier history" button needs the entry point — the seq
+ * just past the newest frozen shard's cut (i.e. the first seq the ACTIVE dir
+ * owns). Returns null when there are no shards. Delegates to shard-manager's
+ * shared implementation (cut.json-aware).
  */
 function _initialShardCursor(sourceDir) {
   if (!sourceDir || !isV2SessionDir(sourceDir)) return null;
-  let frozen;
-  try { frozen = listShards(sourceDir); } catch { return null; }
-  if (!frozen || frozen.length === 0) return null;
-  // Newest frozen shard's cut seq (journal max) + 1 = the cursor that makes the
-  // first "load earlier" read land on exactly that shard.
-  const newest = frozen[frozen.length - 1];
-  let cut = 0;
-  try {
-    for (const line of readJsonlTolerant(join(newest.dir, 'journal.jsonl'))) {
-      if (typeof line.seq === 'number' && line.seq > cut) cut = line.seq;
-    }
-  } catch (err) { reportSwallowed('events.shard-cursor', err); }
-  if (cut <= 0) return null;
-  // The session UUID lets the follow-latest view (no ?sid in scope) still
-  // address the shardBefore read back to THIS session.
-  let sid = null;
-  try { sid = JSON.parse(readFileSync(join(sourceDir, 'meta.json'), 'utf-8')).sessionId || null; } catch {}
-  return { hasMore: true, oldestSeq: cut + 1, partIndex: newest.partIndex + 1, prepend: false, sid };
+  return initialShardCursor(sourceDir);
 }
 
 /**

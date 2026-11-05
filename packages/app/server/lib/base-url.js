@@ -70,6 +70,9 @@ export function parseBaseUrl(raw) {
   // A value that carried a scheme but nothing after it ('https://', 'https://?x=1') is a
   // configuration error, not "no prefix" — surface it so resolveBaseConfig can fall back.
   if (m && !text) return invalid();
+  // A query/fragment-only value ('?x=1', '#f') is a configuration error too: accepting it as
+  // "valid, no prefix" would silently override a configured CCV_BASE_PATH with nothing.
+  if (!m && cut !== -1 && !text) return invalid();
   if (!text) return { ...EMPTY, warning };
 
   let host = null;
@@ -95,10 +98,13 @@ export function parseBaseUrl(raw) {
     host = am[1] !== undefined ? `[${am[1].toLowerCase()}]` : am[2].toLowerCase();
   }
 
-  // The path is used verbatim in HTML/JS injection, so whitespace and control characters are
-  // rejected rather than silently diverging from the wire-encoded request pathname.
-  // A '//' path would inject a protocol-relative <base href="//..."> (cross-origin) — reject.
-  if (/\s/.test(pathRaw) || pathRaw.startsWith('//')) return invalid();
+  // The path is used verbatim in HTML/JS injection, so whitespace, control characters and
+  // backslashes are rejected rather than silently diverging from the wire-encoded request
+  // pathname. A '//' path would inject a protocol-relative <base href="//..."> (cross-origin);
+  // a backslash is rejected for the same reason — WHATWG URL resolution treats '/\evil.com/x'
+  // like '//evil.com/x', turning every relative API call (token appended) into a cross-origin
+  // request. C0 controls are rejected as well (they would reach the startup console raw).
+  if (/\s/.test(pathRaw) || /[\\\u0000-\u001f\u007f]/.test(pathRaw) || pathRaw.startsWith('//')) return invalid();
 
   // normalizeBasePath: '' for root, adds the trailing slash that disambiguates startsWith,
   // and strips CRLF from the path itself. Braces ({token}) stay literal.

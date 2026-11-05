@@ -35,10 +35,10 @@ import { readSession, readJsonlTolerant } from './replay.js';
 import { iterateJsonlLines } from './jsonl-read.js';
 import { isDiscardableSession } from './session-select.js';
 import { LIVE_SESSION_MTIME_MS } from '../log-file-utils.js';
-import { blobPath, isSupportedWireFormat } from './layout.js';
+import { blobPath, isSupportedWireFormat, shardReadRoot } from './layout.js';
 import { SingleFlight } from './singleflight.js';
 import { listV2Sessions } from './session-list.js';
-import { listShards } from './shard-manager.js';
+import { readShardCuts } from './shard-manager.js';
 
 // Same stamping rules as the v1 interceptor (KEEP IN SYNC: server/interceptor.js
 // requestEntry construction) — recomputed from the journal's url, not from kind,
@@ -626,17 +626,16 @@ function* iterateSessionItems(sessionDir, opts = {}) {
   // sessionsDirName 'sessions' resolves it). A frozen SHARD lives INSIDE the
   // session dir at <project>/sessions/<dirName>/parts/<N>/ — one level deeper —
   // so the same naive derivation would point readSession at a nonexistent
-  // path. Detect the shard shape and pass an explicit projectDir/sessionsDirName/
-  // sessionId that resolve to the shard dir.
+  // path. layout's shardReadRoot owns the shape detection + coordinate
+  // derivation.
   let projectDir = dirname(dirname(sessionDir));
   let sessionsDirName = 'sessions';
   let sessionId = basename(sessionDir);
-  if (basename(dirname(sessionDir)) === 'parts') {
-    // shard: <project>/sessions/<base>/parts/<N> — one level INSIDE the session dir
-    const base = basename(dirname(dirname(sessionDir)));        // <dirName>
-    projectDir = dirname(dirname(dirname(dirname(sessionDir)))); // <project>
-    sessionsDirName = join('sessions', base, 'parts');          // sessions/<base>/parts
-    sessionId = basename(sessionDir);                           // <N>
+  const shardRoot = shardReadRoot(sessionDir);
+  if (shardRoot) {
+    projectDir = shardRoot.projectDir;
+    sessionsDirName = shardRoot.sessionsDirName;
+    sessionId = shardRoot.sessionId;
   }
   const beforeSeq = (typeof opts.beforeSeq === 'number' && opts.beforeSeq > 0) ? opts.beforeSeq : null;
   let session;
@@ -1060,8 +1059,10 @@ export async function readV2WindowedEntries(sessionDir, opts = {}) {
   const cached = !!opts.cached;
   // beforeSeq scopes the window content (sharding) — it MUST be in the key or
   // two "load earlier" pages of the same shard coalesce onto the first cursor.
+  // noBaselinePromotion is in the key for the same reason: a promoted and a
+  // non-promoted read of the same window must never share a flight/result.
   const beforeSeq = (typeof opts.beforeSeq === 'number' && opts.beforeSeq > 0) ? opts.beforeSeq : 0;
-  const key = `win:${sessionDir}|${opts.limit || 0}|${opts.before || ''}|${beforeSeq}`;
+  const key = `win:${sessionDir}|${opts.limit || 0}|${opts.before || ''}|${beforeSeq}|${opts.noBaselinePromotion ? 1 : 0}`;
   return _windowFlight.run(key, async () => {
     _windowStats.materializeRuns++;
     const win = await computeV2Window(sessionDir, opts);
@@ -1117,31 +1118,13 @@ export async function readV2ShardEntries(sessionDir, opts = {}) {
   const cached = opts.cached !== false;
   const empty = { entries: [], hasMore: false, oldestTimestamp: '', oldestSeq: null, partIndex: 0, totalCount: 0, mainAgentRing: [] };
   if (beforeSeq == null) return empty;
-  const frozen = listShards(sessionDir); // oldest first: [{partIndex, dir}]
-  if (frozen.length === 0) return empty;
 
-  // Each shard's journal max seq (= its cut). Read the persisted cut.json
-  // (written at the cut) first; only fall back to a full journal scan for
-  // shards written before the marker existed. The journal is the smallest of
-  // the four files, but on a many-shard session the persisted marker turns an
-  // O(total-history) scan into O(shard count) small reads.
-  const cuts = [];
-  for (const sh of frozen) {
-    let maxSeq = 0;
-    let fromMarker = false;
-    try {
-      const marker = JSON.parse(readFileSync(join(sh.dir, 'cut.json'), 'utf-8'));
-      if (marker && typeof marker.cutSeq === 'number' && marker.cutSeq > 0) { maxSeq = marker.cutSeq; fromMarker = true; }
-    } catch { /* no marker (legacy shard) — fall through to the journal scan */ }
-    if (!fromMarker) {
-      try {
-        for (const line of readJsonlTolerant(join(sh.dir, 'journal.jsonl'))) {
-          if (typeof line.seq === 'number' && line.seq > maxSeq) maxSeq = line.seq;
-        }
-      } catch (err) { reportSwallowed('v2-shard.cut-read', err); }
-    }
-    cuts.push({ partIndex: sh.partIndex, dir: sh.dir, cutSeq: maxSeq });
-  }
+  // Each shard's journal max seq (= its cut), via the shared marker-aware
+  // reader (cut.json first, journal-scan fallback for pre-marker shards) —
+  // same source as the routes' initial cursor, so the two can never disagree
+  // on where a shard boundary lies. Empty = not sharded.
+  const cuts = readShardCuts(sessionDir);
+  if (cuts.length === 0) return empty;
   // Shard intervals: shard i owns (cuts[i-1].cutSeq, cuts[i].cutSeq]; the first
   // shard owns (0, cuts[0].cutSeq]. The shard owning `beforeSeq-1` is the FIRST
   // whose cutSeq >= beforeSeq-1 — that keeps a mid-shard cursor on the same
@@ -1151,7 +1134,10 @@ export async function readV2ShardEntries(sessionDir, opts = {}) {
   const want = beforeSeq - 1;
   const newestCut = cuts.length > 0 ? cuts[cuts.length - 1].cutSeq : 0;
   if (want > newestCut) {
-    const win = await readV2WindowedEntries(sessionDir, { limit: opts.limit, beforeSeq, cached });
+    // A shard page is a pure increment slice prepended onto the client's
+    // baseline — baseline promotion would re-deliver the overlap and the
+    // client renders it twice (same rule as the frozen branch below).
+    const win = await readV2WindowedEntries(sessionDir, { limit: opts.limit, beforeSeq, cached, noBaselinePromotion: true });
     let activeOldestSeq = (typeof win.oldestSeq === 'number' && win.oldestSeq > 0) ? win.oldestSeq : null;
     if (activeOldestSeq == null) activeOldestSeq = newestCut > 0 ? newestCut + 1 : null;
     return {

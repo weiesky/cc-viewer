@@ -366,7 +366,7 @@ describe('listV2LogsPage', () => {
     return sids;
   }
 
-  it('returns only the requested page; total reflects all sessions; rows keep the 6-field shape', async () => {
+  it('returns only the requested page; total reflects all sessions; rows keep the 7-field shape', async () => {
     await makeSessions(7);
     const p1 = listV2LogsPage(dir, 'proj', { page: 1, pageSize: 3 });
     assert.equal(p1.total, 7, 'total = all sessions regardless of page');

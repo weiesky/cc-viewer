@@ -35,6 +35,10 @@ describe('base-path lib', () => {
       assert.equal(normalizeBasePath('/pro\nxy/'), '/proxy/');
       assert.equal(normalizeBasePath('/pro\rxy'), '/proxy/');
     });
+
+    it('backslash → "" (WHATWG parses /\\evil as protocol-relative; an injected <base> would go cross-origin)', () => {
+      assert.equal(normalizeBasePath('/\\evil.example/x'), '');
+    });
   });
 
   describe('validateBasePath', () => {
@@ -47,6 +51,13 @@ describe('base-path lib', () => {
 
     it('缺前导斜杠 → 忽略（normalized 为空）+ warning key', () => {
       const r = validateBasePath('proxy/x');
+      assert.equal(r.ok, false);
+      assert.equal(r.normalized, '');
+      assert.equal(r.warning, 'basePath.missingLeadingSlash');
+    });
+
+    it('contains backslash → rejected + warning key (cross-origin <base> protection; must not silently pass as no-prefix)', () => {
+      const r = validateBasePath('/\\evil.example/x');
       assert.equal(r.ok, false);
       assert.equal(r.normalized, '');
       assert.equal(r.warning, 'basePath.missingLeadingSlash');
@@ -86,27 +97,27 @@ describe('base-path lib', () => {
       assert.equal(stripBasePath('/proxy/ws-other', normalizeBasePath('/proxy/ws')), '/proxy/ws-other');
     });
 
-    it('裸前缀（无尾斜杠访问）→ "/"：配合注入的 <base href> 让相对资源解析正确（2026-11 行为变更）', () => {
+    it('bare prefix (accessed without trailing slash) → "/": together with the injected <base href>, relative assets resolve correctly (2026-11 behavior change)', () => {
       assert.equal(stripBasePath('/proxy', '/proxy/'), '/');
     });
 
-    it('编码形式匹配：字面前缀 {token} 对上线格式 %7Btoken%7D 的请求 pathname', () => {
-      // safeParseRequestUrl 用 new URL 解析请求，花括号恒被编码 —— 匹配必须走 wire 形式
+    it('encoded-form matching: literal prefix {token} against wire-form %7Btoken%7D request pathnames', () => {
+      // safeParseRequestUrl parses requests with new URL, so braces are always encoded — matching must use the wire form
       const base = '/arca/api/v1/session/{token}/';
       assert.equal(stripBasePath('/arca/api/v1/session/%7Btoken%7D/api/x', base), '/api/x');
       assert.equal(stripBasePath('/arca/api/v1/session/%7Btoken%7D/', base), '/');
-      // 编码小写变体（防御把 %XX 转小写的代理）
+      // lowercase encoded variant (guards against proxies that lowercase %XX)
       assert.equal(stripBasePath('/arca/api/v1/session/%7btoken%7d/api/x', base), '/api/x');
-      // 编码裸前缀（无尾斜杠）→ '/'
+      // encoded bare prefix (no trailing slash) → '/'
       assert.equal(stripBasePath('/arca/api/v1/session/%7Btoken%7D', base), '/');
-      // 防歧义：编码形式也不误伤相邻路径
+      // ambiguity guard: the encoded form must not clip adjacent paths
       assert.equal(stripBasePath('/arca/api/v1/session/%7Btoken%7Dextra/x', base), '/arca/api/v1/session/%7Btoken%7Dextra/x');
     });
 
-    it('含 ?/# 的值回退字面前缀（URL 解析会吞尾斜杠，保持旧的"永不命中"行为而非误剥）', () => {
+    it('values containing ?/# fall back to the literal prefix (URL parsing swallows the trailing slash; keeps the old never-match behavior instead of mis-stripping)', () => {
       assert.equal(wireBasePath('/a?x/'), '/a?x/');
       assert.equal(wireBasePath('/a#x/'), '/a#x/');
-      // 剥离行为与旧版一致：不命中任何已解析路径（也不会把 '/api/x' 切成 'pi/x'）
+      // Stripping matches the old version: no parsed path matches (and '/api/x' is never truncated to 'pi/x')
       assert.equal(stripBasePath('/api/cli-mode', '/a?x/'), '/api/cli-mode');
       assert.equal(stripBasePath('/proxyextra/x', '/proxy#/'), '/proxyextra/x');
       assert.ok(!wireBasePathVariants('/a?x/').some((b) => !b.endsWith('/') && b !== ''));

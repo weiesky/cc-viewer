@@ -214,6 +214,11 @@ class ChatView extends React.Component {
     this._incToolProcessedCount = 0;
     this._incToolSessionIdx = -1;
     this._prevSessions = null;
+    // Value cache of the previous sessions' stable ids. The object-based
+    // `_prevSessions` compare cannot see same-object in-place identity changes
+    // (a big-drop replacement mutates lastSession.messages[0]._timestamp), so
+    // attachment clearing compares these cached VALUES instead.
+    this._prevStableIds = null;
 
     // requests 扫描增量缓存。按职责分 3 类，增量扫描时只追加不回溯：
     //
@@ -1239,7 +1244,8 @@ class ChatView extends React.Component {
       this._clearOptimisticQueueSweepTimer();
       // Composer attachments belong to the old view's conversation. Reuse the
       // viewSwitched predicate from above so a null→real async instance init
-      // does not count as a switch; attachedSid changes are always user-driven.
+      // does not count as a switch. attachedSid changes are user-driven or a
+      // terminal-side boundary release (_detachedView) — both real switches.
       if (viewSwitched || prevProps.attachedSid !== this.props.attachedSid) this._clearPendingImages();
     }
     if (prevProps.sessionUpperBoundTs !== this.props.sessionUpperBoundTs) {
@@ -1247,6 +1253,25 @@ class ChatView extends React.Component {
     }
     if (prevProps.mainAgentSessions !== this.props.mainAgentSessions) {
       this._reconcileOptimisticQueueMessages();
+      // Attachment identity check runs on EVERY sessions ref change, OUTSIDE the
+      // object-identity guard below: mergeMainAgentSessions mutates the last
+      // session in place and returns only a fresh outer array, so an epoch-less
+      // big-drop replacement (same object, re-stamped messages[0]._timestamp)
+      // leaves `sessionsActuallyChanged` false while the conversation changed.
+      {
+        const nextIds = (this.props.mainAgentSessions || []).map(getSessionStableId);
+        const prevIds = this._prevStableIds || [];
+        // Empty prev = first commit after mount, not a switch (nothing to leave).
+        // A shard prepend is the same conversation growing backwards — skip the
+        // clear only when the baseline tail survived unchanged (a live append
+        // landing in the same commit still clears).
+        const shardPrepended = (this.props.shardPrependCount || 0) > (prevProps.shardPrependCount || 0);
+        const tailUnchanged = prevIds.length > 0 && nextIds.length >= prevIds.length
+          && prevIds[prevIds.length - 1] === nextIds[nextIds.length - 1];
+        if (prevIds.length > 0 && !(shardPrepended && tailUnchanged)
+          && this._sessionListIdentityChanged(prevIds, nextIds)) this._clearPendingImages();
+        this._prevStableIds = nextIds;
+      }
       // sessions 引用变化 → 仅在 session 对象真正变化时重置增量状态
       // Plan 1 的 push 模式下，外层数组是浅拷贝（新引用），但 session 对象不变 → 保留增量状态
       if (this.props.mainAgentSessions !== this._prevSessions) {
@@ -1281,18 +1306,6 @@ class ChatView extends React.Component {
               this._inputWs.send(JSON.stringify({ type: 'queue-clear', project: prevProps.viewProject || prevProps.projectName, instanceKey: prevProps.viewInstance || null }));
             }
           }
-          // Clear composer attachments only when the conversation itself changed
-          // (session switch / new session appended). A stable-id guard is required
-          // in BOTH directions: mergeMainAgentSessions returns a fresh outer array
-          // on every streaming tick (an unguarded clear would wipe pasted images on
-          // the next incoming request — the reported bug), while in-place tail
-          // replacement clones the last session object within the SAME conversation
-          // (an object-identity guard would still fire at every turn completion).
-          // Empty prev = first commit after mount, not a switch (nothing to leave);
-          // a shard prepend is the same conversation growing backwards.
-          const shardPrepended = prevProps.shardPrependCount !== this.props.shardPrependCount;
-          if (prev.length > 0 && !shardPrepended
-            && this._sessionListIdentityChanged(prev, next)) this._clearPendingImages();
         }
         this._prevSessions = this.props.mainAgentSessions;
       }
@@ -1655,10 +1668,13 @@ class ChatView extends React.Component {
   // appended), not merely session object identities: same-conversation rebuilds
   // (applyInPlaceLastMsgReplace, cold-load/shard replays) clone session objects
   // but preserve each session's messages[0]._timestamp, and getSessionStableId
-  // compares that value — so their ids are unchanged.
-  _sessionListIdentityChanged(prev, next) {
-    if (prev.length !== next.length) return true;
-    return prev.some((s, i) => getSessionStableId(s) !== getSessionStableId(next[i]));
+  // compares that value — so their ids are unchanged. Both arguments are arrays
+  // of stable-id VALUES (see the `_prevStableIds` cache): a null/undefined id
+  // on either side is treated as changed (sessions without messages[0] have no
+  // stable identity to compare).
+  _sessionListIdentityChanged(prevIds, nextIds) {
+    if (prevIds.length !== nextIds.length) return true;
+    return prevIds.some((id, i) => id == null || nextIds[i] == null || id !== nextIds[i]);
   }
 
   // ===== 上传在途占位 + 缓发(defer) =====
