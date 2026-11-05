@@ -33,7 +33,7 @@ import { loadExpandedPaths, saveExpandedPaths } from '../../utils/fileExpandedPa
 import { createEmptyToolState, appendToolResultMap, cachedBuildToolResultMap, getToolResultCache, setToolResultCache, buildSubAgentResultMap, createEmptyGlobalIndexState, appendToGlobalToolResultIndex } from '../../utils/toolResultBuilder';
 import { refreshCachedItemProp } from '../../utils/refreshCachedItemProp';
 import { refreshResolvedModelInfo, healUnresolvedTeammateEntries, needsFullReqRescan } from '../../utils/identityHeal';
-import { resolveBubbleProducerTs } from '../../utils/sessionManager';
+import { resolveBubbleProducerTs, getSessionStableId } from '../../utils/sessionManager';
 import { terminalAnchor } from '../../utils/terminalAnchor';
 import { TeamButton, TeamModal } from '../dashboard/TeamSessionPanel';
 import { WorkflowButton, WorkflowRunsModal } from '../dashboard/WorkflowRunsPanel';
@@ -1237,6 +1237,10 @@ class ChatView extends React.Component {
       || prevProps.attachedSid !== this.props.attachedSid) {
       this.setState({ optimisticQueueMessages: [] });
       this._clearOptimisticQueueSweepTimer();
+      // Composer attachments belong to the old view's conversation. Reuse the
+      // viewSwitched predicate from above so a null→real async instance init
+      // does not count as a switch; attachedSid changes are always user-driven.
+      if (viewSwitched || prevProps.attachedSid !== this.props.attachedSid) this._clearPendingImages();
     }
     if (prevProps.sessionUpperBoundTs !== this.props.sessionUpperBoundTs) {
       this._reconcileOptimisticQueueMessages();
@@ -1277,6 +1281,18 @@ class ChatView extends React.Component {
               this._inputWs.send(JSON.stringify({ type: 'queue-clear', project: prevProps.viewProject || prevProps.projectName, instanceKey: prevProps.viewInstance || null }));
             }
           }
+          // Clear composer attachments only when the conversation itself changed
+          // (session switch / new session appended). A stable-id guard is required
+          // in BOTH directions: mergeMainAgentSessions returns a fresh outer array
+          // on every streaming tick (an unguarded clear would wipe pasted images on
+          // the next incoming request — the reported bug), while in-place tail
+          // replacement clones the last session object within the SAME conversation
+          // (an object-identity guard would still fire at every turn completion).
+          // Empty prev = first commit after mount, not a switch (nothing to leave);
+          // a shard prepend is the same conversation growing backwards.
+          const shardPrepended = prevProps.shardPrependCount !== this.props.shardPrependCount;
+          if (prev.length > 0 && !shardPrepended
+            && this._sessionListIdentityChanged(prev, next)) this._clearPendingImages();
         }
         this._prevSessions = this.props.mainAgentSessions;
       }
@@ -1286,7 +1302,6 @@ class ChatView extends React.Component {
       if (this.state.pendingInput) {
         this.setState({ pendingInput: null });
       }
-      this._clearPendingImages();
       this._updateSuggestion();
       this._toolFileMonitor.check();
     } else if (prevProps.requests !== this.props.requests) {
@@ -1635,6 +1650,16 @@ class ChatView extends React.Component {
       this.setState({ pendingImages: [] });
     }
   };
+
+  // True when the session LIST identity changed (session switch / new session
+  // appended), not merely session object identities: same-conversation rebuilds
+  // (applyInPlaceLastMsgReplace, cold-load/shard replays) clone session objects
+  // but preserve each session's messages[0]._timestamp, and getSessionStableId
+  // compares that value — so their ids are unchanged.
+  _sessionListIdentityChanged(prev, next) {
+    if (prev.length !== next.length) return true;
+    return prev.some((s, i) => getSessionStableId(s) !== getSessionStableId(next[i]));
+  }
 
   // ===== 上传在途占位 + 缓发(defer) =====
   // 上传一开始(ChatInputBar 粘贴/选图、AppBase 拖拽)就登记占位,resolve/reject 时撤销;
