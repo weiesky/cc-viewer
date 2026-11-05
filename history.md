@@ -2,12 +2,6 @@
 
 ## Unreleased
 
-- fix(web): **粘贴到 [对话输入框] 的图片不再被新请求冲掉** — `componentDidUpdate` 里 `_clearPendingImages()` 此前无守卫，`mainAgentSessions` 每个流式 tick 换新数组引用即触发清空；改为按会话 stable id 判身份（同会话的 in-place 末位替换/冷加载重建/分片 prepend 不再误清），仅真切会话/新会话/切视图时清空附件。Coverage: `chat-pending-images-guard.test.js`.
-
-- feat(server): **新增 `CCV_BASE_URL` 云端反代公网 URL 配置** — 云部署端口被映射为 `https://host/arca/api/v1/session/{token}/...` 时，支持 `host/path`、`/path`、`scheme://host/path`、`//host/path` 四种写法：路径前缀驱动 HTTP/WS 剥前缀、`<base>` 注入、插件挂载与启动/二维码 URL（`{token}` 字面与编码请求形态都匹配，裸前缀按前缀根处理）；带 host 时并入 Host allowlist 并生成带 `?token=` 的对外链接（External 行/自动打开/二维码，scheme 显式 > X-Forwarded-Proto > 默认 https）；与 `CCV_BASE_PATH` 同设时 `CCV_BASE_URL` 优先。顺带修复：密码登录页在带前缀代理下提交路径错误、i18n 插值把 `{token}` 前缀二次替换、插件 cookie Path 未按编码形态派发。文档见 `docs/base-url.md` / `.zh.md`。Coverage: `base-url-lib.test.js`, `api-base-url.test.js`, `server-base-url-startup.test.js`, `base-path-lib.test.js`, `auth-lib.test.js`, `server-cli-mode.test.js`, `plugin-mount-prefixes.test.js`.
-
-- fix(logs): **超大历史日志自动分片 + 手动逐片加载** — 单 session 的主会话 user prompt 超过 2000 条时，写侧在请求边界（无 in-flight + 写队列空闲）把当前内容收进该 session 自己的 `parts/<N>/` 子目录并开新活跃骨架续写（切点落在完整「用户提问→agent loop」段边界，journal seq 连续，meta 身份/leader/cwd 继承；session 仍是一个文件夹，拷贝/下载/删除整体生效）；冷加载/启动默认只读最新分片，旧分片由客户端/web 顶部「加载更早历史」按钮按 seq 游标逐片 prepend 加载。修复 653MB 单日志导致重启卡死、日志刷不出、输入框卡顿。删除整 session 连同全部历史。Coverage: `v2-shard-manager.test.js`, `v2-shard-routes.test.js`.
-
 - fix(web): **GIT 变更冲突状态徽标以红色显示** — `UU`/`AA`/`DD` 等未合并(冲突)porcelain 状态此前未在配色表中、落到灰色兜底难以察觉；现统一映射为与 `D` 相同的红色，冲突文件在变更树中一眼可辨。
 
 - fix(sdk+web): **慢上游提示两处复活/失效修复 + 若干 P2** — toast 切视图/实例后经 5s tick 复活且永不消失（改在视图/实例切换与卸载统一 `_clearSlowUpstreamToast`）；markFirstByte 此前是死代码，计时实为到 headers 为止（改由 markFirstByte 发 resolved、finally 降为错误兜底，覆盖 headers-fast-body-stalled）；server resolved 在会话已关时回退用请求自报 cwd/instance 广播。sdkTaskTracker 切工作区即重置（不再残留上一项目清单）。mobile 60 列布局重试放宽到 ~2s（不再 3 次即弃）。Coverage: `proxy-slow-upstream.test.js`, `sdkTaskTracker.test.js`.
@@ -57,6 +51,14 @@
 - fix(server): **丢失 result 兜底不再误吞下一回合 result** — 强制结算的回合改记代际 epoch，迟到 result 只在无活回合可归属时丢弃；新回合 result 正常配对。修复 v1.9.18 兜底计数器残留吞 result、致下一回合被误判 turn-stuck 的问题。Coverage: `sdk-manager-lost-result.test.js`.
 
 - fix(server): **首次 `ccv --sdk` 首回合对话不再卡渲染** — `/events` 冷加载窗口（冷读冻结快照→注册广播列表）内的 live 增量原本丢失无重放，首回合恰好落入。现加 attach buffer：冷加载期间挂缓冲代理入队窗口增量，load_end 后按序回放再换真实客户端，`v3_conv` 按冷包 coverage 去重。Coverage: `sse-attach-buffer.test.js`, `events-attach-buffer.test.js`.
+
+## 1.9.22
+
+- fix(web): **粘贴到 [对话输入框] 的图片不再被新请求冲掉** — `componentDidUpdate` 里 `_clearPendingImages()` 此前无守卫，`mainAgentSessions` 每个流式 tick 换新数组引用即触发清空；改为按会话 stable id 判身份（同会话的 in-place 末位替换/冷加载重建/分片 prepend 不再误清），仅真切会话/新会话/切视图时清空附件。Coverage: `chat-pending-images-guard.test.js`.
+
+- feat(server): **新增 `CCV_BASE_URL` 云端反代公网 URL 配置** — 云部署端口被映射为 `https://host/arca/api/v1/session/{token}/...` 时，支持 `host/path`、`/path`、`scheme://host/path`、`//host/path` 四种写法：路径前缀驱动 HTTP/WS 剥前缀、`<base>` 注入、插件挂载与启动/二维码 URL（`{token}` 字面与编码请求形态都匹配，裸前缀按前缀根处理）；带 host 时并入 Host allowlist 并生成带 `?token=` 的对外链接（External 行/自动打开/二维码，scheme 显式 > X-Forwarded-Proto > 默认 https）；与 `CCV_BASE_PATH` 同设时 `CCV_BASE_URL` 优先。顺带修复：密码登录页在带前缀代理下提交路径错误、i18n 插值把 `{token}` 前缀二次替换、插件 cookie Path 未按编码形态派发。文档见 `docs/base-url.md` / `.zh.md`。Coverage: `base-url-lib.test.js`, `api-base-url.test.js`, `server-base-url-startup.test.js`, `base-path-lib.test.js`, `auth-lib.test.js`, `server-cli-mode.test.js`, `plugin-mount-prefixes.test.js`.
+
+- fix(logs): **超大历史日志自动分片 + 手动逐片加载** — 单 session 的主会话 user prompt 超过 2000 条时，写侧在请求边界（无 in-flight + 写队列空闲）把当前内容收进该 session 自己的 `parts/<N>/` 子目录并开新活跃骨架续写（切点落在完整「用户提问→agent loop」段边界，journal seq 连续，meta 身份/leader/cwd 继承；session 仍是一个文件夹，拷贝/下载/删除整体生效）；冷加载/启动默认只读最新分片，旧分片由客户端/web 顶部「加载更早历史」按钮按 seq 游标逐片 prepend 加载。修复 653MB 单日志导致重启卡死、日志刷不出、输入框卡顿。删除整 session 连同全部历史。Coverage: `v2-shard-manager.test.js`, `v2-shard-routes.test.js`.
 
 ## 1.9.18
 
@@ -1073,3 +1075,4 @@
 ### 0.0.1 (2026-02-17) — 初始版本
 
 - 拦截并记录 Claude API 请求/响应
+

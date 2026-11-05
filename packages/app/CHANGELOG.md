@@ -1,5 +1,17 @@
 # cc-viewer
 
+## 1.9.22
+
+### Patch Changes
+
+- 57c732d: feat(server): add `CCV_BASE_URL` for cloud reverse-proxy deployment — one env var accepts `host/path`, `/path`, `scheme://host/path`, or protocol-relative `//host/path` (ws/wss normalized to http/https). The extracted path prefix drives the existing base-path machinery (HTTP/WS prefix strip, `<base href>` + `window.__CCV_BASE_PATH__` injection, plugin mounts, startup/QR URLs), matching both literal `{token}` segments and their percent-encoded request forms; the bare prefix (no trailing slash) now serves the app root (`/`). When a host is present it is merged into the Host allowlist and used to build external links (startup `External:` line, browser auto-open, `/api/local-url` QR link) with scheme resolution: explicit > `X-Forwarded-Proto` > default `https`, always carrying ccv's own `?token=`. `CCV_BASE_URL` takes precedence over `CCV_BASE_PATH`; invalid values fall back with a warning (4 new i18n keys × 18 locales). Also fixes: the password login page posting to an unprefixed endpoint behind a prefix-preserving proxy, i18n interpolation re-substituting a `{token}` path segment with the access token, and plugin cookie `Path` now uses the wire-encoded prefix. Docs: `docs/base-url.md` / `docs/base-url.zh.md`.
+- b23c137: fix(logs): auto-shard oversized session logs by prompt count + manual per-shard "load earlier history"
+  
+  Once a session's main conversation passes 2000 user prompts, the writer archives the current content into the session's OWN `parts/<N>/` subdir at a quiescent request boundary (no in-flight request, idle write queue) — cutting at a whole user-prompt→loop boundary so every part holds complete turns — and a fresh skeleton keeps writing at the root (journal seq stays continuous; meta identity/leader/cwd carried over). The session stays ONE folder: copy/download/delete carry all of its history. Cold load / startup now read only the latest shard; older shards load on demand via a top "load earlier history" button that walks a seq cursor across shards and prepends them. Fixes the 653MB-log startup freeze (the cold-load replay parsed the whole dir into memory and stalled the event loop). Deleting a session carries its whole history.
+- ff0fe1b: fix(web): keep pasted composer images across incoming chat updates
+  
+  `ChatView.componentDidUpdate` cleared `pendingImages` on every `mainAgentSessions` reference change, but the merge returns a fresh outer array on every streaming tick — so a pasted image was wiped as soon as the next request arrived. The clear now runs only when the session-list identity actually changes (stable per-session ids compared by value, so same-conversation rebuilds like in-place tail replacement, cold-load replays, and shard prepends keep attachments), plus on real view/workspace switches.
+
 ## 1.9.21
 
 ### Patch Changes
