@@ -1259,6 +1259,9 @@ class AppBase extends React.Component {
   _abortColdIngest({ drain = false } = {}) {
     this._ingestToken++;
     this._ingestRunning = false;
+    // A baseline reset supersedes any in-flight shard prepend too — its entries
+    // belong to the outgoing baseline, not whatever replaces it.
+    this._closeShardES();
     const buffered = this._liveGateBuffer;
     this._liveGateBuffer = [];
     if (drain && buffered.length > 0) {
@@ -1405,6 +1408,200 @@ class AppBase extends React.Component {
     } catch (err) {
       reportSwallowed('sse.local-log-ingest', err, { token: myToken });
       this._failColdIngest(myToken);
+    }
+  }
+
+  /**
+   * Sharding (2026-11): "load earlier history" — fetch the frozen `.part<N>`
+   * shard immediately older than the current window and PREPEND it onto the
+   * committed baseline. The baseline itself is never rebuilt (live append is
+   * untouched; the shard replays to its own cut state, so no cross-shard
+   * baseline is needed).
+   *
+   * Two surfaces share this: the live channel (?sid + shardBefore → /events)
+   * and the local-log read-only view (file + shardBefore → /api/local-log).
+   */
+  _loadEarlierShard = () => {
+    const vm = this._renderedVm();
+    const shards = vm && vm.shards;
+    if (!shards || !shards.hasMore || !(shards.oldestSeq > 0)) return;
+    if (vm.shardLoading) return; // one prepend in flight at a time
+    if (!vm.committed || vm.react.fileLoading) return; // baseline must be committed first
+    const isLocal = !!this._isLocalLog;
+    const file = this._localLogFile;
+    // The follow-latest (bound) view has no ?sid in scope — fall back to the
+    // sid the server stamped on the shard cursor (events.js _initialShardCursor).
+    const sid = this.state.attachedSid
+      || (this._channels.getRendered() && this._channels.getRendered().scope.sid)
+      || (shards && shards.sid)
+      || null;
+    let url;
+    if (isLocal) {
+      if (!file) return;
+      url = `/api/local-log?file=${encodeURIComponent(file)}&shardBefore=${shards.oldestSeq}`;
+    } else {
+      if (!sid) return;
+      const proj = this.state.viewedProject || this.state.projectName || '';
+      const projQ = proj ? `&project=${encodeURIComponent(proj)}` : '';
+      const instQ = this.state.viewedInstance ? `&instance=${encodeURIComponent(this.state.viewedInstance)}` : '';
+      url = `/events?sid=${encodeURIComponent(sid)}${projQ}${instQ}&shardBefore=${shards.oldestSeq}&limit=${isMobile ? 200 : 400}`;
+    }
+    // The prepend runs on its OWN EventSource (not the live channel's socket):
+    // the live channel must keep streaming undisturbed; this connection ends
+    // at its own load_end.
+    if (this._shardES) { try { this._shardES.close(); } catch {} this._shardES = null; }
+    const es = new EventSource(apiUrl(url));
+    this._shardES = es;
+    // Capture the CLICK-TIME view so a mid-load view switch can't prepend the
+    // old session's history into the new view (load_end/onerror use these, not
+    // the then-current rendered channel).
+    const capturedIsLocal = isLocal;
+    const capturedChannel = this._channels.getRendered();
+    const targetVm = vm;
+    targetVm.shardLoading = true;
+    targetVm.shardPrependEntries = [];
+    this._commitChannel(capturedIsLocal ? null : capturedChannel, { shardLoading: true });
+
+    es.addEventListener('load_start', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.shard && typeof data.shard === 'object') {
+          targetVm.shards = {
+            hasMore: !!data.shard.hasMore,
+            oldestSeq: (typeof data.shard.oldestSeq === 'number' && data.shard.oldestSeq > 0) ? data.shard.oldestSeq : null,
+            partIndex: data.shard.partIndex || 0,
+            sid: (typeof data.shard.sid === 'string' && data.shard.sid) ? data.shard.sid : (targetVm.shards && targetVm.shards.sid) || null,
+          };
+        }
+      } catch (e) { reportSwallowed('sse.shard-load_start', e); }
+    });
+    es.addEventListener('load_chunk', (event) => {
+      try {
+        const chunk = JSON.parse(event.data);
+        if (Array.isArray(chunk)) {
+          if (!Array.isArray(targetVm.shardPrependEntries)) targetVm.shardPrependEntries = [];
+          targetVm.shardPrependEntries.push(...chunk);
+        }
+      } catch (e) { reportSwallowed('sse.shard-load_chunk', e, { dataLen: event.data?.length }); }
+    });
+    es.addEventListener('load_end', () => {
+      es.close();
+      if (this._shardES === es) this._shardES = null;
+      const entries = Array.isArray(targetVm.shardPrependEntries) ? targetVm.shardPrependEntries : [];
+      targetVm.shardPrependEntries = [];
+      targetVm.shardLoading = false;
+      // Drop the prepend if the view moved on while the shard was loading —
+      // the captured channel is no longer the rendered one (or local mode flipped).
+      const viewMoved = capturedIsLocal
+        ? !this._isLocalLog
+        : (capturedChannel && capturedChannel !== this._channels.getRendered());
+      if (viewMoved) {
+        this._commitChannel(capturedIsLocal ? null : capturedChannel, { shardLoading: false });
+        return;
+      }
+      this._runShardPrependIngest(entries, capturedIsLocal ? null : capturedChannel)
+        .catch((err) => reportSwallowed('sse.shard-ingest-outer', err));
+    });
+    es.onerror = () => {
+      es.close();
+      if (this._shardES === es) this._shardES = null;
+      targetVm.shardPrependEntries = [];
+      targetVm.shardLoading = false;
+      this._commitChannel(capturedIsLocal ? null : capturedChannel, { shardLoading: false });
+    };
+  }
+
+  /** Close any in-flight shard-prepend EventSource and reset its view flag.
+   *  Called from every teardown path (unmount, workspace stop, abort) so a
+   *  stale shard load never writes into a view that moved on. */
+  _closeShardES() {
+    if (this._shardES) { try { this._shardES.close(); } catch {} this._shardES = null; }
+    const vm = this._renderedVm();
+    if (vm && vm.shardLoading) {
+      vm.shardPrependEntries = [];
+      vm.shardLoading = false;
+      this._commitChannel(this._channels.getRendered(), { shardLoading: false });
+    }
+  }
+
+  /** Prepend-commit pipeline for a shard load (load_end of _loadEarlierShard).
+   *  Reconstructs + slims + processes the shard's entries on the SAME chunked
+   *  machinery as a cold ingest, then unshifts them ahead of the committed
+   *  baseline and rebuilds the dedup index. The baseline's own objects are
+   *  never mutated in place — the commit swaps in a fresh array. */
+  async _runShardPrependIngest(rawEntries, channel) {
+    const myToken = ++this._ingestToken;
+    const ch = channel === null ? null : (channel || this._channels.getRendered());
+    const vm = ch ? ch.vm : this._localVm;
+    if (!vm) return;
+    if (!Array.isArray(rawEntries) || rawEntries.length === 0) {
+      this._commitChannel(ch, { shardLoading: false });
+      return;
+    }
+    // Preserve the live-rebuild chain state across the shard pipeline: the
+    // shared cold-ingest core would otherwise overwrite `_v2ColdSeed` with the
+    // shard's OLDEST synthetic (breaking the "prime from the committed
+    // baseline" contract) and `_initProcessState` would clear the live
+    // reconstructors mid-stream. Snapshot + restore around the core.
+    const savedColdSeed = this._v2ColdSeed;
+    const savedSseReconstructor = this._sseReconstructor;
+    const savedV2SseReconstructor = this._v2SseReconstructor;
+    const savedSseSlimmer = this._sseSlimmer;
+    try {
+      const ctl = this._makeIngestCtl(myToken);
+      const core = await this._runColdIngestCore(rawEntries, ctl);
+      // Restore the live-rebuild state the core clobbered — the baseline's own
+      // seed/reconstructors are still the authoritative ones (the shard's
+      // entries are OLDER, never the live tail).
+      this._v2ColdSeed = savedColdSeed;
+      this._sseReconstructor = savedSseReconstructor;
+      this._v2SseReconstructor = savedV2SseReconstructor;
+      this._sseSlimmer = savedSseSlimmer;
+      if (core.aborted) return;
+      if (core.empty) {
+        this._commitChannel(ch, { shardLoading: false });
+        return;
+      }
+      const prev = vm.react;
+      const mergedRequests = [...core.entries, ...(prev.requests || [])];
+      const mergedThinking = [...core.entries, ...(prev.thinkingRequests || [])]
+        .sort((l, r) => (l?.timestamp || '').localeCompare(r?.timestamp || ''));
+      // ChatView renders the conversation from mainAgentSessions, NOT requests —
+      // a prepend that only updates `requests` would load the shard without ever
+      // showing it. The shard's entries are OLDER than the baseline, so its
+      // sessions prepend ahead of the baseline's sessions (the shard window's
+      // trailing session is the baseline's own first session — merged by the
+      // reconstructor into a continuous one when the shard ends mid-conversation).
+      const mergedSessions = [...(core.mainAgentSessions || []), ...(prev.mainAgentSessions || [])];
+      const newState = {
+        requests: mergedRequests,
+        thinkingRequests: mergedThinking,
+        mainAgentSessions: mergedSessions,
+        shardLoading: false,
+        // Signal ChatView to EXPAND its render window by the number of items the
+        // prepend added — otherwise the older history lands above the visible
+        // tail window and "load earlier" appears to do nothing.
+        shardPrependCount: (this._renderedVm().shardPrependCount || 0) + (core.filtered ? core.filtered.length : core.entries.length),
+        // The shard window's oldest entry becomes the new history cursor.
+        v2RowsMeta: {
+          ...(prev.v2RowsMeta || { totalCount: 0, hasMore: false }),
+          oldestTs: (core.entries[0] && core.entries[0].timestamp) || (prev.v2RowsMeta && prev.v2RowsMeta.oldestTs) || '',
+        },
+      };
+      this._commitChannel(ch, newState, () => {
+        // Re-derive the dedup index over the merged baseline — the prepend
+        // shifted every index, so the stale map would misroute live updates.
+        try { this._rebuildRequestIndex(mergedRequests); } catch (e) { reportSwallowed('sse.shard-reindex', e); }
+      });
+    } catch (err) {
+      // Restore on the failure path too (a mid-pipeline throw must not leave
+      // the live chain pointing at shard state).
+      this._v2ColdSeed = savedColdSeed;
+      this._sseReconstructor = savedSseReconstructor;
+      this._v2SseReconstructor = savedV2SseReconstructor;
+      this._sseSlimmer = savedSseSlimmer;
+      reportSwallowed('sse.shard-ingest', err, { token: myToken });
+      this._commitChannel(ch, { shardLoading: false });
     }
   }
 
@@ -1633,6 +1830,7 @@ class AppBase extends React.Component {
 
   componentWillUnmount() {
     this._stopWireV2ConvertPoll();
+    this._closeShardES();
     window.removeEventListener('keydown', this._onScaleKeydown);
     document.removeEventListener('dragend', this._resetDragFeedback);
     document.removeEventListener('drop', this._resetDragFeedback);
@@ -2571,6 +2769,30 @@ class AppBase extends React.Component {
     try {
       const data = JSON.parse(event.data);
       const vm = channel.vm;
+      // Sharding (2026-11): every load_start may carry a `shard` block — the
+      // hasMore cursor for "load earlier history". The ACTIVE-shard cold load
+      // reports shards only when frozen `.part<N>` dirs exist; a shardBefore
+      // load reports the NEXT older cursor. Track it on the vm so the button
+      // stays available without a reload. A shard-load frame carries both
+      // `shard` AND a truthy `shard.seq` echo — that is how we tell a prepend
+      // load (which must NOT reset chunkedEntries) from a fresh baseline.
+      const isShardPrepend = !!(data.shard && typeof data.shard === 'object' && data.shard.prepend === true);
+      if (data.shard && typeof data.shard === 'object') {
+        vm.shards = {
+          hasMore: !!data.shard.hasMore,
+          oldestSeq: (typeof data.shard.oldestSeq === 'number' && data.shard.oldestSeq > 0) ? data.shard.oldestSeq : null,
+          partIndex: data.shard.partIndex || 0,
+          // The server stamps the session UUID so the follow-latest (bound) view
+          // — which has no ?sid in scope — can still address the shardBefore read.
+          sid: (typeof data.shard.sid === 'string' && data.shard.sid) ? data.shard.sid : (vm.shards && vm.shards.sid) || null,
+        };
+      } else if (!isShardPrepend) {
+        // A fresh non-shard baseline on an unsharded session clears the cursor
+        // (a reload after the last shard was deleted must not keep a stale
+        // "load earlier" button). Shard-prepend loads leave it to their own
+        // shard frame.
+        vm.shards = { hasMore: false, oldestSeq: null, partIndex: 0 };
+      }
       if (!this._isRenderedChannel(channel)) {
         // Tap channel: load frames never render here. An empty window marks the
         // scope stale (next activate goes cold); everything else is dropped —
@@ -2585,7 +2807,16 @@ class AppBase extends React.Component {
       // A new baseline is being built: until this load COMMITS (see
       // _commitColdIngest) the vm must not pass the warm gate — a switch that
       // aborts the in-flight pipeline would otherwise leave a slice that is
-      // missing this load's whole window.
+      // missing this load's whole window. A shard-PREPEND load is exempt: it
+      // adds older history onto an already-committed baseline, so the baseline
+      // stays warm and the buffered chunks accumulate separately (prepended at
+      // load_end by _runShardPrependIngest).
+      if (isShardPrepend) {
+        vm.shardPrependEntries = [];
+        vm.shardLoading = true;
+        this._commitChannel(channel, { shardLoading: true });
+        return;
+      }
       vm.committed = false;
       vm.chunkedEntries = [];
       vm.chunkedTotal = data.total || 0;
@@ -2624,6 +2855,14 @@ class AppBase extends React.Component {
       const chunk = JSON.parse(event.data);
       const vm = channel.vm;
       if (Array.isArray(chunk)) {
+        // Sharding (2026-11): a shard-prepend load buffers into its own slot —
+        // mixing into chunkedEntries would corrupt the baseline cold load that
+        // may be in flight (or leave stale chunks for the next baseline).
+        if (vm.shardLoading) {
+          if (!Array.isArray(vm.shardPrependEntries)) vm.shardPrependEntries = [];
+          vm.shardPrependEntries.push(...chunk);
+          return;
+        }
         if (!Array.isArray(vm.chunkedEntries)) vm.chunkedEntries = [];
         vm.chunkedEntries.push(...chunk);
         // 增量模式下静默累积；非增量模式用 rAF 节流，每帧最多更新一次计数
@@ -2673,6 +2912,19 @@ class AppBase extends React.Component {
     // the click-time attach landed before the record existed). Idempotent.
     if (this.state.viewedProject) attachMainPty(this.state.viewedProject, { instanceKey: this.state.viewedInstance || null });
     if (this._loadingCountRafId) { cancelAnimationFrame(this._loadingCountRafId); this._loadingCountRafId = null; }
+    // Sharding (2026-11): a shard-prepend load ends here — its chunks were
+    // buffered separately (shardPrependEntries, NOT chunkedEntries) and are
+    // PREPENDED onto the committed baseline by _runShardPrependIngest. The
+    // baseline itself is never rebuilt, so the live gate stays open and the
+    // scroll anchor is preserved by the list's own keying.
+    if (vm.shardLoading) {
+      const shardEntries = Array.isArray(vm.shardPrependEntries) ? vm.shardPrependEntries : [];
+      vm.shardPrependEntries = [];
+      vm.shardLoading = false;
+      this._runShardPrependIngest(shardEntries, channel)
+        .catch((err) => reportSwallowed('sse.shard-ingest-outer', err));
+      return;
+    }
     // Wire v3 (V3.S5): flagged cold loads carry no legacy chunks — build
     // the window's entries from rows + native lines instead. All v3
     // frames precede load_end on the wire, so the assembler is complete.
@@ -3464,8 +3716,21 @@ class AppBase extends React.Component {
     const es = new EventSource(apiUrl(`/api/local-log?file=${encodeURIComponent(file)}`));
     this._localLogES = es;
 
-    es.addEventListener('load_start', () => {
+    es.addEventListener('load_start', (event) => {
       try {
+        // Parse the shard cursor so the read-only view's "load earlier history"
+        // button appears for a sharded session (server: logs.js _initialShardCursor).
+        const data = JSON.parse(event.data || '{}');
+        if (data.shard && typeof data.shard === 'object') {
+          this._localVm.shards = {
+            hasMore: !!data.shard.hasMore,
+            oldestSeq: (typeof data.shard.oldestSeq === 'number' && data.shard.oldestSeq > 0) ? data.shard.oldestSeq : null,
+            partIndex: data.shard.partIndex || 0,
+            sid: (typeof data.shard.sid === 'string' && data.shard.sid) ? data.shard.sid : null,
+          };
+        } else {
+          this._localVm.shards = { hasMore: false, oldestSeq: null, partIndex: 0 };
+        }
         this._commitChannel(null, { fileLoadingCount: 0 });
       } catch (e) { reportSwallowed('sse.local-log.load_start', e); }
     });
@@ -4875,7 +5140,15 @@ class AppBase extends React.Component {
       deepRequests = this._deepRequests;
     }
 
-    return { filteredRequests, deepRequests, selectedRequest, fileLoading, fileLoadingCount, mainAgentSessions, viewMode };
+    return {
+      filteredRequests, deepRequests, selectedRequest, fileLoading, fileLoadingCount, mainAgentSessions, viewMode,
+      // Sharding (2026-11): surfaced so App/Mobile can render the "load
+      // earlier history" button (ChatView) without reaching into the channel
+      // vm themselves.
+      shards: loss.shards || { hasMore: false, oldestSeq: null, partIndex: 0 },
+      shardLoading: !!loss.shardLoading,
+      shardPrependCount: loss.shardPrependCount || 0,
+    };
   }
 
   /** 工作区选择器渲染（PC/Mobile 共用） */

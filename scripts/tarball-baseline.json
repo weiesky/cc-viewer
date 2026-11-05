@@ -1532,6 +1532,7 @@
   "server/lib/v2/session-list.js",
   "server/lib/v2/session-owner.js",
   "server/lib/v2/session-select.js",
+  "server/lib/v2/shard-manager.js",
   "server/lib/v2/singleflight.js",
   "server/lib/v2/v2-writer.js",
   "server/lib/v2/verify.js",

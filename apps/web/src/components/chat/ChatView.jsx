@@ -745,6 +745,11 @@ class ChatView extends React.Component {
       nextProps.showThinkingSummaries !== this.props.showThinkingSummaries ||
       nextProps.fileLoading !== this.props.fileLoading ||
       nextProps.loadingProgress !== this.props.loadingProgress ||
+      // Sharding (2026-11): the "load earlier history" button + its spinner are
+      // driven by these — a shard load must re-render even when nothing else changed.
+      nextProps.shards !== this.props.shards ||
+      nextProps.shardLoading !== this.props.shardLoading ||
+      nextProps.shardPrependCount !== this.props.shardPrependCount ||
       nextProps.claudeSettings !== this.props.claudeSettings ||
       nextProps.preferences !== this.props.preferences ||
       // 审批档位值要直达终端工具栏快捷菜单：不能只依赖 preferences 引用同批变化放行
@@ -775,6 +780,35 @@ class ChatView extends React.Component {
   }
 
   componentDidUpdate(prevProps, prevState) {
+    // Sharding (2026-11): a "load earlier history" prepend landed — expand the
+    // render window by the number of items it added and anchor the viewport, or
+    // the older history lands above the visible tail and the click looks like a
+    // no-op. Runs BEFORE the session-switch reset below so it isn't wiped.
+    if (prevProps.shardPrependCount !== this.props.shardPrependCount) {
+      const added = (this.props.shardPrependCount || 0) - (prevProps.shardPrependCount || 0);
+      if (added > 0) {
+        this._mobileExtraItems += added;
+        const prevLen = this.state.allItems?.length || 0;
+        const rawItems = this.buildAllItems();
+        const allItems = this._applyMobileSlice(rawItems);
+        const addedCount = allItems.length - prevLen;
+        if (useVirtuoso && this.virtuosoRef.current) {
+          this.setState({ allItems, lastResponseItems: this._lastResponseItems, visibleCount: allItems.length }, () => {
+            if (this.virtuosoRef.current && addedCount > 0) this.virtuosoRef.current.scrollToIndex({ index: addedCount, align: 'start' });
+          });
+        } else {
+          const el = this.containerRef.current;
+          const prevScrollHeight = el ? el.scrollHeight : 0;
+          const prevScrollTop = el ? el.scrollTop : 0;
+          this.setState({ allItems, lastResponseItems: this._lastResponseItems, visibleCount: allItems.length }, () => {
+            if (el) {
+              this._stickyController.suppressOnce();
+              el.scrollTop = prevScrollTop + (el.scrollHeight - prevScrollHeight);
+            }
+          });
+        }
+      }
+    }
     this._bindInputStackRO();
     this._bindChatScrollbarRO();
     // messageListWrap 节点可能因 loading↔loaded / virtuoso 切换被换掉,需要时重挂观察器
@@ -4901,6 +4935,28 @@ class ChatView extends React.Component {
       </div>
     ) : null;
 
+    // Sharding (2026-11): when the session has frozen `.part<N>` shards older
+    // than the loaded window, offer a "load earlier history" button. Rendered
+    // ABOVE the slice-expand button (a shard prepend is the only way to reach
+    // history beyond the current in-memory baseline). Driven entirely by the
+    // server-stamped cursor (AppBase._loadEarlierShard); the button hides
+    // itself once the oldest shard is loaded (hasMore=false).
+    const shards = this.props.shards;
+    const shardBtn = (shards && shards.hasMore) ? (
+      <div className={styles.loadMoreWrap}>
+        {this.props.shardLoading ? (
+          <div className={`${styles.loadMoreBtn} ${styles.loadMoreBtnLoading}`}>
+            <span className={styles.loadMoreSpinner} />
+            {t('ui.loading')}
+          </div>
+        ) : (
+          <button className={styles.loadMoreBtn} onClick={this.props.onLoadEarlierShard}>
+            {t('ui.loadEarlierShard')}
+          </button>
+        )}
+      </div>
+    ) : null;
+
     const roleFilterBar = this.state.roleFilterOpen && collectedRoles.length > 0 ? (
       <RoleFilterBar roles={collectedRoles} selectedRoles={this.state.roleFilterSelected} onToggle={(key) => this.setState(prev => {
         const next = new Set(prev.roleFilterSelected);
@@ -4932,7 +4988,7 @@ class ChatView extends React.Component {
           <ImageLightbox src={this.state.mdLightboxSrc} alt="" onClose={() => this.setState({ mdLightboxSrc: null })} />
         )}
         {useVirtuoso ? (
-          this._virtuosoHeader = loadMoreBtn,
+          this._virtuosoHeader = <>{shardBtn}{loadMoreBtn}</>,
           this._virtuosoFooter = <>
             {spinnerNode}
           {filteredLastResponseItems && (
@@ -4975,6 +5031,7 @@ class ChatView extends React.Component {
             ref={this.containerRef}
             className={styles.container}
           >
+            {shardBtn}
             {loadMoreBtn}
             {visible.map((item, i) => {
               const isScrollTarget = i === targetIdx;

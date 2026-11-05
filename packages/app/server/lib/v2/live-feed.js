@@ -706,6 +706,21 @@ export class V2LiveFeed {
     if (fresh) this._scheduleRead(fresh);
   }
 
+  /** Shard rotation (2026-11): the writer archived the dir's live files into
+   *  `parts/<N>/` and rebuilt a fresh skeleton at the SAME path. The shrink→
+   *  rebuild heuristic would re-attach with suppressExisting:true and swallow
+   *  the fresh shard's first post-cut entries as "history". Rebuild WITHOUT
+   *  suppression: the fresh skeleton is brand-new content to broadcast. */
+  reattachAfterShardRotation(dir) {
+    const cur = this._sessions.get(dir);
+    if (cur) {
+      this._closeCursor(cur);
+      this._sessions.delete(dir);
+    }
+    const fresh = this._attach(dir, { suppressExisting: false });
+    if (fresh) this._scheduleRead(fresh);
+  }
+
   _emitDrained(cur) {
     cur.synth.sweepDeadlines();
     const items = cur.synth.drain();

@@ -609,6 +609,17 @@ function startLogWatch() {
     const feed = _feedForSessionDir(dir);
     if (feed) feed.tick(dir);
   });
+  // Shard rotation (2026-11): after a rotation the dir's journal was rebuilt
+  // small at the SAME path — the feed's shrink→rebuild heuristic would re-attach
+  // with suppressExisting:true and swallow the fresh shard's first post-cut
+  // entries. Re-attach it explicitly WITHOUT suppression (the fresh shard is new
+  // content, not cold-load history).
+  _v2Writer.setOnShardRotated((dir) => {
+    try {
+      const feed = _feedForSessionDir(dir);
+      if (feed && typeof feed.reattachAfterShardRotation === 'function') feed.reattachAfterShardRotation(dir);
+    } catch { /* nudge only — never disturb the write */ }
+  });
   // Feed each resolved (sid, project) into the PTY sid index so chat sends can
   // be routed to the PTY owning that conversation (anchor routing, 2026-10-05).
   // Lazy import keeps pty-manager out of the early module graph (and off the

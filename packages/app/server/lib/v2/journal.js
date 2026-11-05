@@ -9,6 +9,8 @@
 // (or the process died) — that IS the v1 placeholder, minus the duplicated body.
 
 import { iterateJsonlLines } from './jsonl-read.js';
+import { readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 export class Journal {
   /**
@@ -24,7 +26,31 @@ export class Journal {
     // resetSessions, process re-attach) would restart at 1 and collide with
     // prior lines — the reader folds by seq, so collisions silently corrupt.
     // Journal lines are small; a one-time full read at session bind is cheap.
+    //
+    // Sharding (2026-11): after a rotation the live journal restarts EMPTY while
+    // the archived `parts/<N>/journal.jsonl` hold the earlier seqs. A restart
+    // that re-seeds only from the live journal would restart at 1 and collide
+    // with every frozen shard. Seed from the max across the live journal AND
+    // every archived shard.
     this._seq = Journal._maxSeqIn(paths.journalPath);
+    const shardMax = Journal._maxSeqAcrossShards(paths.journalPath);
+    if (shardMax > this._seq) this._seq = shardMax;
+  }
+
+  /** Max journal seq across the session's archived `parts/<N>/` shards (0 when
+   *  none/unreadable). Sits in journal.js (not shard-manager) to avoid an
+   *  import cycle — shard-manager's rotate path constructs Journal. */
+  static _maxSeqAcrossShards(journalPath) {
+    const partsDir = join(dirname(journalPath), 'parts');
+    let names;
+    try { names = readdirSync(partsDir, { withFileTypes: true }); } catch { return 0; }
+    let max = 0;
+    for (const e of names) {
+      if (!e.isDirectory()) continue;
+      const n = Journal._maxSeqIn(join(partsDir, e.name, 'journal.jsonl'));
+      if (n > max) max = n;
+    }
+    return max;
   }
 
   static _maxSeqIn(journalPath) {

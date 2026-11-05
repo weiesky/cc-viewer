@@ -1,5 +1,5 @@
 // Local log management routes (moved verbatim from server.js handleRequest).
-import { existsSync, realpathSync, statSync, createReadStream, mkdtempSync, rmSync, readdirSync } from 'node:fs';
+import { existsSync, realpathSync, statSync, createReadStream, mkdtempSync, rmSync, readdirSync, readFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import AdmZip from 'adm-zip';
@@ -12,6 +12,31 @@ import { dirSizeSync, sanitizePathComponent } from '../lib/v2/layout.js';
 import { extractV2Zip } from '../lib/log-zip.js';
 import { startConvert, stopConvert, convertStatus } from '../lib/v2/convert-manager.js';
 import { migrationStatus } from '../lib/v2/migrate-prompt.js';
+import { readV2ShardEntries, isV2SessionDir } from '../lib/v2/adapter.js';
+import { listShards } from '../lib/v2/shard-manager.js';
+import { readJsonlTolerant } from '../lib/v2/replay.js';
+import { reportSwallowed } from '../lib/error-report.js';
+
+/** Initial shard cursor for a v2 local-log source: lets the read-only view's
+ *  "load earlier history" button appear on the first (non-shard) load of a
+ *  sharded session. Same contract as the /events cold-load cursor. */
+function _initialShardCursor(filePath) {
+  if (!isV2SessionDir(filePath)) return null;
+  let frozen;
+  try { frozen = listShards(filePath); } catch { return null; }
+  if (!frozen || frozen.length === 0) return null;
+  const newest = frozen[frozen.length - 1];
+  let cut = 0;
+  try {
+    for (const line of readJsonlTolerant(join(newest.dir, 'journal.jsonl'))) {
+      if (typeof line.seq === 'number' && line.seq > cut) cut = line.seq;
+    }
+  } catch (err) { reportSwallowed('local-log.shard-cursor', err); }
+  if (cut <= 0) return null;
+  let sid = null;
+  try { sid = JSON.parse(readFileSync(join(filePath, 'meta.json'), 'utf-8')).sessionId || null; } catch {}
+  return { hasMore: true, oldestSeq: cut + 1, partIndex: newest.partIndex + 1, prepend: false, sid };
+}
 
 // Cap for the in-memory zip build (adm-zip toBuffer holds the whole archive in
 // heap) and the upload accumulation — the repo has an OOM history, so both the
@@ -211,8 +236,7 @@ async function downloadLog(req, res, parsedUrl) {
   }
 }
 
-async function localLog(req, res, parsedUrl) {
-  const file = parsedUrl.searchParams.get('file');
+async function localLog(req, res, parsedUrl) {  const file = parsedUrl.searchParams.get('file');
   if (!file || file.includes('..')) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Invalid file name' }));
@@ -233,6 +257,7 @@ async function localLog(req, res, parsedUrl) {
     // v2 寻址时 validateLogPath 返回 session 目录绝对路径，log-stream 据此分派适配器
     const filePath = validateLogPath(LOG_DIR, file);
     const limitVal = Math.min(parseInt(parsedUrl.searchParams.get('limit'), 10) || 0, 500);
+    const shardBefore = parseInt(parsedUrl.searchParams.get('shardBefore'), 10) || 0;
 
     // Negotiated Content-Encoding (br|identity) — every subsequent byte MUST
     // go through sseWrite/wireEnd (see server/lib/wire-compress.js).
@@ -242,10 +267,29 @@ async function localLog(req, res, parsedUrl) {
       'Connection': 'keep-alive',
     });
 
-    if (limitVal > 0) {
+    if (isV2Ref && shardBefore > 0) {
+      // Sharding (2026-11): serve the frozen `.part<N>` shard older than this
+      // seq — same load_start/load_chunk/load_end frame shape as the full
+      // branch, plus a `shard` block the client uses for its "load earlier"
+      // cursor.
+      const shardRes = await readV2ShardEntries(filePath, { beforeSeq: shardBefore, limit: limitVal || 0, cached: true });
+      sseWrite(res, `event: load_start\ndata: ${JSON.stringify({
+        total: shardRes.totalCount,
+        incremental: false,
+        hasMore: shardRes.hasMore,
+        oldestTs: shardRes.oldestTimestamp || '',
+        shard: { partIndex: shardRes.partIndex, oldestSeq: shardRes.oldestSeq, hasMore: shardRes.hasMore, prepend: true },
+      })}\n\n`);
+      for (const raw of shardRes.entries) {
+        sseWrite(res, 'event: load_chunk\ndata: [');
+        sseWrite(res, raw.includes('\n') ? raw.replace(/\n/g, '') : raw);
+        sseWrite(res, ']\n\n');
+      }
+    } else if (limitVal > 0) {
       // 尾部加载模式：跳过 countLogEntries，只读文件末尾
       const { entries, hasMore, oldestTimestamp, estimatedTotal } = await readTailEntries(filePath, { limit: limitVal });
-      sseWrite(res, `event: load_start\ndata: ${JSON.stringify({ total: estimatedTotal, incremental: false, hasMore, oldestTs: oldestTimestamp })}\n\n`);
+      const shard = _initialShardCursor(filePath);
+      sseWrite(res, `event: load_start\ndata: ${JSON.stringify({ total: estimatedTotal, incremental: false, hasMore, oldestTs: oldestTimestamp, ...(shard && { shard }) })}\n\n`);
       for (const raw of entries) {
         sseWrite(res, 'event: load_chunk\ndata: [');
         sseWrite(res, raw.includes('\n') ? raw.replace(/\n/g, '') : raw);
@@ -254,7 +298,8 @@ async function localLog(req, res, parsedUrl) {
     } else {
       // 全量加载模式（向后兼容）
       const total = await countLogEntries(filePath);
-      sseWrite(res, `event: load_start\ndata: ${JSON.stringify({ total, incremental: false })}\n\n`);
+      const shard = _initialShardCursor(filePath);
+      sseWrite(res, `event: load_start\ndata: ${JSON.stringify({ total, incremental: false, ...(shard && { shard }) })}\n\n`);
       await streamRawEntriesAsync(filePath, (raw) => {
         sseWrite(res, 'event: load_chunk\ndata: [');
         sseWrite(res, raw.includes('\n') ? raw.replace(/\n/g, '') : raw);

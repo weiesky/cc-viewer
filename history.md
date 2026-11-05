@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(logs): **超大历史日志自动分片 + 手动逐片加载** — 单 session 的主会话 user prompt 超过 2000 条时，写侧在请求边界（无 in-flight + 写队列空闲）把当前内容收进该 session 自己的 `parts/<N>/` 子目录并开新活跃骨架续写（切点落在完整「用户提问→agent loop」段边界，journal seq 连续，meta 身份/leader/cwd 继承；session 仍是一个文件夹，拷贝/下载/删除整体生效）；冷加载/启动默认只读最新分片，旧分片由客户端/web 顶部「加载更早历史」按钮按 seq 游标逐片 prepend 加载。修复 653MB 单日志导致重启卡死、日志刷不出、输入框卡顿。日志管理工具列表显示分片数，删除整 session 连同全部历史。Coverage: `v2-shard-manager.test.js`, `v2-shard-routes.test.js`.
+
 - fix(web): **GIT 变更冲突状态徽标以红色显示** — `UU`/`AA`/`DD` 等未合并(冲突)porcelain 状态此前未在配色表中、落到灰色兜底难以察觉；现统一映射为与 `D` 相同的红色，冲突文件在变更树中一眼可辨。
 
 - fix(sdk+web): **慢上游提示两处复活/失效修复 + 若干 P2** — toast 切视图/实例后经 5s tick 复活且永不消失（改在视图/实例切换与卸载统一 `_clearSlowUpstreamToast`）；markFirstByte 此前是死代码，计时实为到 headers 为止（改由 markFirstByte 发 resolved、finally 降为错误兜底，覆盖 headers-fast-body-stalled）；server resolved 在会话已关时回退用请求自报 cwd/instance 广播。sdkTaskTracker 切工作区即重置（不再残留上一项目清单）。mobile 60 列布局重试放宽到 ~2s（不再 3 次即弃）。Coverage: `proxy-slow-upstream.test.js`, `sdkTaskTracker.test.js`.

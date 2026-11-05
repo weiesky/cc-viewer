@@ -44,6 +44,11 @@ export function createChannelState() {
       fileLoading: false,
       fileLoadingCount: 0,
       fileLoadingBytes: null,
+      // Sharding (2026-11): cursor for "load earlier history" — the frozen
+      // `.part<N>` shard older than the current window. hasMore=false when the
+      // session was never split (or the oldest shard is already loaded).
+      shards: { hasMore: false, oldestSeq: null, partIndex: 0 },
+      shardLoading: false,
     },
     // Channel-scoped timers/scratch — must NOT be shared across scopes (a
     // background channel's timer must never write the rendered view's state).

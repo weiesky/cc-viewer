@@ -11364,6 +11364,26 @@ const i18nData = {
     "tr": "Eski mesajları yükle ({count} gizli)",
     "uk": "Завантажити старіші повідомлення ({count} приховано)"
   },
+  "ui.loadEarlierShard": {
+    "zh": "加载更早历史",
+    "en": "Load earlier history",
+    "zh-TW": "載入更早歷史",
+    "ko": "이전 기록 로드",
+    "ja": "以前の履歴を読み込む",
+    "de": "Älteren Verlauf laden",
+    "es": "Cargar historial anterior",
+    "fr": "Charger l'historique précédent",
+    "it": "Carica cronologia precedente",
+    "da": "Indlæs ældre historik",
+    "pl": "Załaduj wcześniejszą historię",
+    "ru": "Загрузить более раннюю историю",
+    "ar": "تحميل السجل الأقدم",
+    "no": "Last inn eldre historikk",
+    "pt-BR": "Carregar histórico anterior",
+    "th": "โหลดประวัติก่อนหน้า",
+    "tr": "Önceki geçmişi yükle",
+    "uk": "Завантажити давнішу історію"
+  },
   "ui.workspaces.emptyDir": {
     "zh": "此目录下没有子目录", "en": "No subdirectories in this directory", "zh-TW": "此目錄下沒有子目錄",
     "ko": "이 디렉토리에 하위 디렉토리가 없습니다", "ja": "このディレクトリにはサブディレクトリがありません",

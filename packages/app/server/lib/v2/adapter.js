@@ -31,13 +31,14 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { reportSwallowed } from '../../lib/error-report.js';
 import { isMainAgentRequest } from '../interceptor-core.js';
-import { readSession } from './replay.js';
+import { readSession, readJsonlTolerant } from './replay.js';
 import { iterateJsonlLines } from './jsonl-read.js';
 import { isDiscardableSession } from './session-select.js';
 import { LIVE_SESSION_MTIME_MS } from '../log-file-utils.js';
 import { blobPath, isSupportedWireFormat } from './layout.js';
 import { SingleFlight } from './singleflight.js';
 import { listV2Sessions } from './session-list.js';
+import { listShards } from './shard-manager.js';
 
 // Same stamping rules as the v1 interceptor (KEEP IN SYNC: server/interceptor.js
 // requestEntry construction) — recomputed from the journal's url, not from kind,
@@ -612,13 +613,35 @@ export class SessionSynthesizer {
 /**
  * Cold generator over ONE session dir: yields items (see SessionSynthesizer)
  * in seq order — the eager feeding of the shared synthesis engine.
+ *
+ * opts.beforeSeq (sharding, 2026-11): forwarded to readSession — journal lines
+ * and conversation events with seq >= beforeSeq are dropped BEFORE the eager
+ * seed, so a frozen `.part<N>` shard replays exactly the requests up to the
+ * cut (its incremental snapshot is self-contained at that boundary). The
+ * responses read below is filtered the same way (first-write-wins by seq).
  */
 function* iterateSessionItems(sessionDir, opts = {}) {
-  const projectDir = dirname(dirname(sessionDir));
-  const sessionId = basename(sessionDir);
+  // Path derivation: a live session is <project>/sessions/<dirName> (so
+  // projectDir = dirname(dirname(sessionDir)) and readSession's default
+  // sessionsDirName 'sessions' resolves it). A frozen SHARD lives INSIDE the
+  // session dir at <project>/sessions/<dirName>/parts/<N>/ — one level deeper —
+  // so the same naive derivation would point readSession at a nonexistent
+  // path. Detect the shard shape and pass an explicit projectDir/sessionsDirName/
+  // sessionId that resolve to the shard dir.
+  let projectDir = dirname(dirname(sessionDir));
+  let sessionsDirName = 'sessions';
+  let sessionId = basename(sessionDir);
+  if (basename(dirname(sessionDir)) === 'parts') {
+    // shard: <project>/sessions/<base>/parts/<N> — one level INSIDE the session dir
+    const base = basename(dirname(dirname(sessionDir)));        // <dirName>
+    projectDir = dirname(dirname(dirname(dirname(sessionDir)))); // <project>
+    sessionsDirName = join('sessions', base, 'parts');          // sessions/<base>/parts
+    sessionId = basename(sessionDir);                           // <N>
+  }
+  const beforeSeq = (typeof opts.beforeSeq === 'number' && opts.beforeSeq > 0) ? opts.beforeSeq : null;
   let session;
   try {
-    session = readSession(projectDir, sessionId);
+    session = readSession(projectDir, sessionId, sessionsDirName, { beforeSeq });
   } catch (err) {
     // One unreadable session must degrade to "not rendered", never crash the
     // whole scan (issue #129: an oversized file crash-looped every startup).
@@ -640,7 +663,13 @@ function* iterateSessionItems(sessionDir, opts = {}) {
   // before any req is pumped — every gate then resolves exactly like the
   // historical whole-file read.
   for (const [key, events] of session.convEvents) synth._conv(key).events = events;
-  synth._responses = readResponsesRaw(sessionDir);
+  const responses = readResponsesRaw(sessionDir);
+  if (beforeSeq != null) {
+    for (const seq of responses.keys()) {
+      if (seq >= beforeSeq) responses.delete(seq);
+    }
+  }
+  synth._responses = responses;
   synth._dones = session.dones;
   const seqs = [...session.reqs.keys()].sort((a, b) => a - b);
   for (const seq of seqs) {
@@ -821,13 +850,13 @@ export function _v2WindowStatsForTest(reset = false) {
  * The result is IMMUTABLE and shared across coalesced callers — window
  * selection must not mutate `recs`/`ring`.
  */
-export async function scanV2Descriptors(sessionDir) {
+export async function scanV2Descriptors(sessionDir, opts = {}) {
   _windowStats.scanRuns++;
   const dedup = new Map(); // key → descriptor (insertion order = output order)
   const ring = []; // newest ≤3 isMain descriptors, pre-dedup iteration order
   let nokey = 0;
   let n = 0;
-  for (const d of iterateV2Items(sessionDir, { descriptorOnly: true })) {
+  for (const d of iterateV2Items(sessionDir, { descriptorOnly: true, beforeSeq: opts.beforeSeq })) {
     const key = d.ts && d.url ? `${d.ts}|${d.url}` : `__nokey_${nokey++}`;
     dedup.set(key, d);
     // Ring criterion is item.isMain (kind==='main' on a non-teammate session):
@@ -881,9 +910,12 @@ function selectV2Window(scan, opts = {}) {
 }
 
 /** Level-1 shared Pass A + per-caller selection. `cached` gates the TTL
- *  micro-cache read (F5b: /events live-attach must never consume it). */
+ *  micro-cache read (F5b: /events live-attach must never consume it). The
+ *  scan key includes beforeSeq so a shard-window scan never coalesces with
+ *  the full-session scan of the same dir (different folds, different recs). */
 export async function computeV2Window(sessionDir, opts = {}) {
-  const scan = await _scanFlight.run(`scan:${sessionDir}`, () => scanV2Descriptors(sessionDir), { cached: !!opts.cached });
+  const beforeSeq = (typeof opts.beforeSeq === 'number' && opts.beforeSeq > 0) ? opts.beforeSeq : 0;
+  const scan = await _scanFlight.run(`scan:${sessionDir}|${beforeSeq}`, () => scanV2Descriptors(sessionDir, { beforeSeq: beforeSeq || undefined }), { cached: !!opts.cached });
   return selectV2Window(scan, opts);
 }
 
@@ -899,7 +931,7 @@ export async function computeV2Window(sessionDir, opts = {}) {
  * equivalent (algorithm review F6). `collect` mode fills a slot array in
  * Pass A output order instead: byte-identical to the historical single pass.
  */
-async function materializeV2Window(sessionDir, win, { collect = false, onEntry = null, promoteKeys = null } = {}) {
+async function materializeV2Window(sessionDir, win, { collect = false, onEntry = null, promoteKeys = null, noBaselinePromotion = false } = {}) {
   const memberIdx = new Map();
   win.members.forEach((d, i) => memberIdx.set(itemKey(d.sessionId, d.seq), i));
   const ringKeys = new Set(win.ring.map((d) => itemKey(d.sessionId, d.seq)));
@@ -928,7 +960,10 @@ async function materializeV2Window(sessionDir, win, { collect = false, onEntry =
       // the detail view needs the full replayed state for BOTH the target and
       // its prevMain (Body Diff / cacheLoss compare whole messages arrays).
       // The window baseline promotes only win.baselineKey (the window start).
-      if (k === win.baselineKey || (promoteKeys && promoteKeys.has(k))) {
+      // noBaselinePromotion (shard "load earlier" pages): a shard page must be a
+      // PURE increment slice, not a checkpoint — otherwise each page replays the
+      // shard's whole prefix and the client renders the overlap twice.
+      if (!noBaselinePromotion && (k === win.baselineKey || (promoteKeys && promoteKeys.has(k)))) {
         const state = item.stateRef || [];
         const rebuilt = { ...item.entry, body: { ...item.entry.body, messages: state } };
         rebuilt._isCheckpoint = true;
@@ -1023,11 +1058,14 @@ export async function readV2SingleEntry(sessionDir, opts = {}) {
 
 export async function readV2WindowedEntries(sessionDir, opts = {}) {
   const cached = !!opts.cached;
-  const key = `win:${sessionDir}|${opts.limit || 0}|${opts.before || ''}`;
+  // beforeSeq scopes the window content (sharding) — it MUST be in the key or
+  // two "load earlier" pages of the same shard coalesce onto the first cursor.
+  const beforeSeq = (typeof opts.beforeSeq === 'number' && opts.beforeSeq > 0) ? opts.beforeSeq : 0;
+  const key = `win:${sessionDir}|${opts.limit || 0}|${opts.before || ''}|${beforeSeq}`;
   return _windowFlight.run(key, async () => {
     _windowStats.materializeRuns++;
     const win = await computeV2Window(sessionDir, opts);
-    const { slots, mainAgentRing } = await materializeV2Window(sessionDir, win, { collect: true });
+    const { slots, mainAgentRing } = await materializeV2Window(sessionDir, win, { collect: true, noBaselinePromotion: !!opts.noBaselinePromotion });
     const entries = [];
     for (let i = 0; i < slots.length; i++) {
       if (slots[i] !== undefined) {
@@ -1043,10 +1081,113 @@ export async function readV2WindowedEntries(sessionDir, opts = {}) {
       entries,
       hasMore: win.hasMore,
       oldestTimestamp: win.oldestTimestamp,
+      // The DELIVERED window's oldest seq (win.members[0] is the tail-sliced
+      // window start, not the whole shard's min) — the cursor for "load
+      // earlier" must advance from the delivered edge, or a limit-truncated
+      // page would skip the shard's middle history.
+      oldestSeq: (win.members && win.members.length > 0 && typeof win.members[0].seq === 'number') ? win.members[0].seq : null,
       totalCount: win.totalCount,
       mainAgentRing,
     };
   }, { cached });
+}
+
+/**
+ * Sharded windowed read (2026-11): read the session's history OLDER than
+ * `beforeSeq`. Frozen shards live INSIDE the session dir at
+ * `<project>/sessions/<base>/parts/<N>/` and each is a self-contained session
+ * dir (its meta.json is copied in at the cut): its incremental snapshot replays
+ * to the state at the cut, so the window's baseline promotion (selectV2Window)
+ * is byte-exact without touching the active shard.
+ *
+ * Target selection is cursor-driven and handles BOTH cross-shard and
+ * within-shard paging: each shard owns the seq interval (prevCut, cutSeq]; the
+ * shard that owns `beforeSeq - 1` is the one to read (its cut is the first
+ * cutSeq >= beforeSeq - 1), so a limit-truncated page stays on the SAME shard
+ * for the next click instead of skipping the shard's middle history.
+ *
+ * @param {string} sessionDir - ACTIVE session dir (the base)
+ * @param {{beforeSeq: number, limit?: number, cached?: boolean}} opts
+ * @returns {Promise<{entries: string[], hasMore: boolean, oldestTimestamp: string,
+ *   oldestSeq: number|null, partIndex: number, totalCount: number, mainAgentRing: string[]}>}
+ *   hasMore = this shard window has older entries OR an even-older shard exists.
+ */
+export async function readV2ShardEntries(sessionDir, opts = {}) {
+  const beforeSeq = (typeof opts.beforeSeq === 'number' && opts.beforeSeq > 0) ? opts.beforeSeq : null;
+  const cached = opts.cached !== false;
+  const empty = { entries: [], hasMore: false, oldestTimestamp: '', oldestSeq: null, partIndex: 0, totalCount: 0, mainAgentRing: [] };
+  if (beforeSeq == null) return empty;
+  const frozen = listShards(sessionDir); // oldest first: [{partIndex, dir}]
+  if (frozen.length === 0) return empty;
+
+  // Each shard's journal max seq (= its cut). Read the persisted cut.json
+  // (written at the cut) first; only fall back to a full journal scan for
+  // shards written before the marker existed. The journal is the smallest of
+  // the four files, but on a many-shard session the persisted marker turns an
+  // O(total-history) scan into O(shard count) small reads.
+  const cuts = [];
+  for (const sh of frozen) {
+    let maxSeq = 0;
+    let fromMarker = false;
+    try {
+      const marker = JSON.parse(readFileSync(join(sh.dir, 'cut.json'), 'utf-8'));
+      if (marker && typeof marker.cutSeq === 'number' && marker.cutSeq > 0) { maxSeq = marker.cutSeq; fromMarker = true; }
+    } catch { /* no marker (legacy shard) — fall through to the journal scan */ }
+    if (!fromMarker) {
+      try {
+        for (const line of readJsonlTolerant(join(sh.dir, 'journal.jsonl'))) {
+          if (typeof line.seq === 'number' && line.seq > maxSeq) maxSeq = line.seq;
+        }
+      } catch (err) { reportSwallowed('v2-shard.cut-read', err); }
+    }
+    cuts.push({ partIndex: sh.partIndex, dir: sh.dir, cutSeq: maxSeq });
+  }
+  // Shard intervals: shard i owns (cuts[i-1].cutSeq, cuts[i].cutSeq]; the first
+  // shard owns (0, cuts[0].cutSeq]. The shard owning `beforeSeq-1` is the FIRST
+  // whose cutSeq >= beforeSeq-1 — that keeps a mid-shard cursor on the same
+  // shard for within-shard paging. A cursor PAST every cut (beforeSeq newer
+  // than the newest frozen cut) still has history in the ACTIVE shard's own
+  // pre-window prefix — read it there first.
+  const want = beforeSeq - 1;
+  const newestCut = cuts.length > 0 ? cuts[cuts.length - 1].cutSeq : 0;
+  if (want > newestCut) {
+    const win = await readV2WindowedEntries(sessionDir, { limit: opts.limit, beforeSeq, cached });
+    let activeOldestSeq = (typeof win.oldestSeq === 'number' && win.oldestSeq > 0) ? win.oldestSeq : null;
+    if (activeOldestSeq == null) activeOldestSeq = newestCut > 0 ? newestCut + 1 : null;
+    return {
+      entries: win.entries,
+      hasMore: win.hasMore || cuts.length > 0,
+      oldestTimestamp: win.oldestTimestamp,
+      oldestSeq: activeOldestSeq,
+      partIndex: 0, // active shard
+      totalCount: win.totalCount,
+      mainAgentRing: win.mainAgentRing,
+    };
+  }
+  let targetIdx = -1;
+  for (let i = 0; i < cuts.length; i++) {
+    if (cuts[i].cutSeq >= want) { targetIdx = i; break; }
+  }
+  if (targetIdx === -1) return empty; // cursor is at/below every shard's start — nothing older
+  const target = cuts[targetIdx];
+  const prevCut = targetIdx > 0 ? cuts[targetIdx - 1].cutSeq : 0;
+
+  const win = await readV2WindowedEntries(target.dir, { limit: opts.limit, beforeSeq, cached, noBaselinePromotion: true });
+  // Cursor for the NEXT older read: the DELIVERED window's oldest seq (the
+  // tail-sliced window start), so a limit-truncated page advances from its own
+  // edge. Falls back to just past the shard's start when the window is empty.
+  let oldestSeq = (typeof win.oldestSeq === 'number' && win.oldestSeq > 0) ? win.oldestSeq : null;
+  if (oldestSeq == null && target.cutSeq > 0) oldestSeq = prevCut + 1;
+  const hasOlderShard = targetIdx > 0;
+  return {
+    entries: win.entries,
+    hasMore: win.hasMore || hasOlderShard,
+    oldestTimestamp: win.oldestTimestamp,
+    oldestSeq,
+    partIndex: target.partIndex,
+    totalCount: win.totalCount,
+    mainAgentRing: win.mainAgentRing,
+  };
 }
 
 /**
@@ -1064,7 +1205,12 @@ export async function readV2WindowedEntries(sessionDir, opts = {}) {
  */
 export async function streamV2WindowedEntries(sessionDir, opts, onEntry) {
   const win = await computeV2Window(sessionDir, opts);
-  if (opts.onReady) opts.onReady({ totalCount: win.totalCount, hasMore: win.hasMore, oldestTs: win.oldestTimestamp || null });
+  // oldestSeq = the DELIVERED window's oldest seq (the tail-sliced window
+  // start) — lets the cold-load shard cursor anchor at the live window's edge
+  // instead of the newest frozen shard's cut, so the active shard's own
+  // pre-window prefix stays reachable.
+  const windowOldestSeq = (win.members && win.members.length > 0 && typeof win.members[0].seq === 'number') ? win.members[0].seq : null;
+  if (opts.onReady) opts.onReady({ totalCount: win.totalCount, hasMore: win.hasMore, oldestTs: win.oldestTimestamp || null, oldestSeq: windowOldestSeq });
   // Bounded window (limit>0): collect into slots and emit in Pass A output
   // order — byte-order parity with the historical single pass. Unbounded paths
   // (limit=0: /api/requests, workspaces reload, explicit ?limit=0) stream in

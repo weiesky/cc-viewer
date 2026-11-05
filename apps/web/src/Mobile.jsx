@@ -609,7 +609,7 @@ class Mobile extends AppBase {
   };
 
   render() {
-    const { filteredRequests, deepRequests, fileLoading, fileLoadingCount, mainAgentSessions } = this.renderPrepare();
+    const { filteredRequests, deepRequests, fileLoading, fileLoadingCount, mainAgentSessions, shards, shardLoading, shardPrependCount } = this.renderPrepare();
     const prefs = this._prefValues();
     // 「仅展示当前会话」锁定：切到「以 pin 会话结尾」（与 App 同口径，见 _displaySessionsFor）。
     const { sessions: displaySessions, upperBoundTs: sessionUpperBoundTs } = this._displaySessionsFor(mainAgentSessions);
@@ -962,6 +962,10 @@ class Mobile extends AppBase {
                     minimalChat={prefs.minimalChat}
                     onlyCurrentSession={!mobileIsLocalLog}
                     isLocalLog={mobileIsLocalLog}
+                    shards={shards}
+                    shardLoading={shardLoading}
+                    shardPrependCount={shardPrependCount}
+                    onLoadEarlierShard={this._loadEarlierShard}
                     showThinkingSummaries={prefs.showThinkingSummaries}
                     onViewRequest={null}
                     scrollToTimestamp={null}

@@ -19,7 +19,7 @@
 // does NOT use listV2Sessions (dirSizeSync recursion + prompts head-reads +
 // full turn counting): this runs on every cold `/events` connection.
 
-import { existsSync, readFileSync, openSync, readSync, closeSync } from 'node:fs';
+import { existsSync, readFileSync, openSync, readSync, closeSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { listSessionIds } from './replay.js';
@@ -125,6 +125,11 @@ function scanJournal(dir, budget, onLine, ioErrorResult = false) {
  * @returns {boolean}
  */
 export function sessionHasMainTurn(dir) {
+  // Sharding (2026-11): a session whose live journal was just rotated holds only
+  // the sentinel — its main history is archived under parts/. The parts/ archive
+  // means the session HAS had main turns, so report true instead of letting the
+  // session vanish from latest-main/cold-load selection until the next request.
+  if (_hasArchivedParts(dir)) return true;
   return scanJournal(dir, MAIN_REQ_SCAN_BUDGET, (line) => {
     // Cheap prefilter before JSON.parse: a main req line carries both.
     if (!line.includes('"ph":"req"') || !line.includes('"kind":"main"')) return false;
@@ -133,6 +138,17 @@ export function sessionHasMainTurn(dir) {
       return !!(o && o.ph === 'req' && o.kind === 'main');
     } catch { return false; } // torn line — keep scanning
   });
+}
+
+/** True when the session dir has an archived `parts/<N>/` shard (i.e. it has
+ *  already lived through at least one rotation's worth of history). */
+function _hasArchivedParts(dir) {
+  try {
+    for (const e of readdirSync(join(dir, 'parts'), { withFileTypes: true })) {
+      if (e.isDirectory() && Number.isInteger(Number(e.name)) && Number(e.name) >= 1) return true;
+    }
+  } catch { /* no parts/ — not sharded */ }
+  return false;
 }
 
 /**
@@ -150,6 +166,10 @@ export function sessionHasMainTurn(dir) {
  * @returns {boolean}
  */
 export function sessionHasCompletedMainTurn(dir) {
+  // Sharding (2026-11): an archived parts/ shard means the session HAS completed
+  // main turns (they were folded before the cut) — report true rather than let a
+  // just-rotated session (sentinel-only live journal) drop out of selection.
+  if (_hasArchivedParts(dir)) return true;
   const mainSeqs = new Set(); // seqs of kind:'main' req lines seen so far
   const doneSeqs = new Set(); // seqs of done lines seen so far
   return scanJournal(dir, COMPLETED_TURN_SCAN_BUDGET, (line) => {
@@ -186,6 +206,17 @@ export function sessionHasCompletedMainTurn(dir) {
  * @returns {boolean}
  */
 export function sessionHasMainOrTeammateReq(dir) {
+  // Sharding (2026-11): right after a rotation the live journal holds only the
+  // sentinel — the main/teammate history is archived under `parts/`. A session
+  // with a parts/ archive IS main-bearing (it had real turns before the cut);
+  // treating it as discardable would vanish it from every list/resume/live
+  // surface until the next request lands.
+  try {
+    const parts = join(dir, 'parts');
+    for (const e of readdirSync(parts, { withFileTypes: true })) {
+      if (e.isDirectory() && Number.isInteger(Number(e.name)) && Number(e.name) >= 1) return true;
+    }
+  } catch { /* no parts/ — fall through to the journal scan */ }
   // ioErrorResult=true: a transient read error must KEEP the session (treat
   // as main-bearing) — hiding a real session is the worse failure direction;
   // a missing journal still returns false (discard is correct there).

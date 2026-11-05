@@ -23,6 +23,10 @@ LOG_DIR/<project>/sessions/<session_id>/
   conversations/<convKey>/e<N>.jsonl   # wire 事件行（见 §6）
   blobs/sha256-<hex16>.json            # tools/system CAS（见 §7）
   owner.lock         # 运行时活性 sidecar（多窗口隔离，2026-07-17）——非 wire 协议组成
+  parts/<N>/         # 冻结分片（2026-11，见 §2a）——本 session 的历史切片
+    meta.json        #   轮转时复制的身份（frozen:true）
+    cut.json         #   { cutSeq } 切点序号（读取 O(1)，免扫 journal）
+    journal.jsonl / responses.jsonl / conversations/… / blobs/   # 切点时的完整快照
 ```
 
 - `owner.lock`（`server/lib/v2/session-owner.js`）：`{pid, startedAt}`，MAIN leader 写进程创建/收养目录时 `wx` 原子抢占写入，正常退出/workspace 切换时删除。**不属于 wire 格式**：`readSession`/replay/verify 不读取它，声明有效性 = 持有 pid 存活（`kill(pid,0)`），进程崩溃即自动失效——它只影响"live 归属"判定（live-feed 跟随、冷加载兜底、`-c` 收养候选），历史读取面一律无视。teammate / IM worker / 离线转换器不写此文件。
@@ -33,6 +37,22 @@ LOG_DIR/<project>/sessions/<session_id>/
 - `e<N>`：epoch 文件，N 从 0 起；main 对话在 /clear 边界 N+1（§9.4）；sub/misc 恒为 e0。
 - 目录创建：session/conv 首写前 `mkdirSync(recursive)` **同步**执行（异步 mkdir 会输给 write queue 的 microtask drain → ENOENT 被吞）。
 - 命名消歧：`workflow-live.js` 的 ultraAgent 运行日志也叫 `journal.jsonl`，位于完全不同的路径体系（session 传输目录），与本格式无关。
+
+## §2a 分片（parts/）——超大 session 的自动切片（2026-11）
+
+**动机**：单 session 无限增长时，冷加载/启动的 `readSession` 会把整个目录 parse 进内存（峰值 ≈ 磁盘 × 3-5），并把事件循环停滞在巨型 entry 的 parse/stringify 上（SSE/WS/输入全部饿死）。分片把活跃目录的体积压在阈值内，旧历史手动按需加载。
+
+**布局**：冻结分片收在 session 目录**内部**的 `parts/<N>/`（N 从 1 起，最老在前）。一个 session 仍是一个文件夹——拷贝/下载/删除 `sessions/<session_id>/` 就带走全部历史；而 sessions/ 枚举器只读一层子目录，看不到 parts/ 里的分片（无幽灵行）。每个 `parts/<N>/` 是自包含 session 目录（含切点时的 journal/responses/conversations/blobs 快照 + 复制的 meta.json + cut.json），读取独立成立，无需跨分片基线。
+
+**切点（prompt 条数制）**：主会话每来一个新的 user prompt 计数 +1；超过 `SHARD_PROMPT_THRESHOLD`（2000）后，**下一个新 user prompt** 在请求边界（无 in-flight 请求 + 写队列空闲）触发切片。判定只看 conv store 尚未见过的 wire 增量（`[count, len)`），snapshot（重启/`-c`/`/compact`/双写者）不会重计历史；tool-loop 跟进（tool_result/assistant）不计数。切点落在完整「用户提问→agent loop」段边界。
+
+**轮转是同步的、在 quiescent 点执行**：把 `journal.jsonl`/`responses.jsonl`/`prompts.jsonl`/`conversations`/`blobs` 逐文件 rename 进 `parts/<N>/`（同目录原子 O(1)），`meta.json` 与 `owner.lock` 留在根；`Journal` 复用原对象只换 `_paths`（seq 跨分片连续）；`ConversationStore` 复用（继承 count/fps/epoch，仅重置 `dirEnsured`），切后请求只写**增量**（不重写全量历史）；`BlobStore` 重建。重启后 `Journal` 跨活跃 journal + 所有 `parts/<N>/journal.jsonl` 取 max seq 续号（优先读 `cut.json`）。
+
+**读侧**：冷加载/启动默认只读活跃分片。旧分片由客户端/web 顶部「加载更早历史」按钮按 seq 游标逐片 prepend 加载：`?sid=<uuid>&shardBefore=<oldestSeq>&limit=<N>`（`/events`）或 `?file=v2:…&shardBefore=<seq>`（`/api/local-log`）。`readV2ShardEntries` 按区间选片（含 `beforeSeq-1` 的分片），`oldestSeq` 取交付窗口首条 seq（游标在片内分页时留在同一片），`hasMore = 本片还有更早 || 存在更老分片`；分片读页**不做窗口起点 checkpoint 提升**（纯增量切片，避免分页 prepend 时重叠回放）。初始游标锚定冷加载实际交付窗口的 `oldestSeq`（而非冻结分片 cut+1），活跃片自身被 limit 截断的前缀仍可到达。
+
+**兼容性**：新版读旧的无分片目录完全等价（`listShards` 为空、无 parts/）。旧版本读含 parts/ 的目录只显示活跃分片（历史静默截断，不崩）；旧版写进程在同一活跃目录里可能从 seq=1 重新计数（降级写入不安全，见 §14）。`sessions/` 一层枚举器（latestMainSession/resume-list/stats/convert/live-feed 根扫描）天然看不到 parts/ 嵌套子树。
+
+**日志管理**：`listV2LogsPage` 按 dirName 折叠分片（`shards: 1 + N`、`size` 含 parts/）；`deleteLogFiles` 删 session 时整目录 rename 进回收站，parts/ 随之带走。
 
 ## §3 meta.json
 

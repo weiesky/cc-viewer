@@ -2,11 +2,12 @@ import { existsSync, realpathSync, readdirSync, readFileSync, statSync, mkdirSyn
 import { readFile, stat, readdir } from 'node:fs/promises';
 import { join, sep, dirname, basename } from 'node:path';
 import { reconstructEntries } from '@ccv/core/delta-reconstructor';
-import { sanitizePathComponent } from './v2/layout.js';
+import { sanitizePathComponent, dirSizeSync } from './v2/layout.js';
 import { listV2Sessions } from './v2/adapter.js';
 import { summarizeSessionPage } from './v2/session-list.js';
 import { listSessionIds } from './v2/replay.js';
 import { isLogFileName, LIVE_SESSION_MTIME_MS } from './log-file-utils.js';
+import { reportSwallowed } from './error-report.js';
 
 // wire-v2 S5 addressing (spec §12): 'v2:<project>/<session_id>' in every
 // existing ?file= parameter slot. Components must survive the same whitelist
@@ -142,12 +143,28 @@ export function listV2LogsPage(logDir, project, { page = 1, pageSize = 50 } = {}
   if (!existsSync(projectDir)) return out;
 
   // Cheap pass: order candidates by startTs without paying per-session folds.
+  // Sharding (2026-11): frozen shards live INSIDE the session dir under
+  // `parts/<N>/`, so sessions/ enumerates ONLY live sessions (the parts subtree
+  // is invisible one level down) and `dirSizeSync`/`summarizeSession` already
+  // include the archived bytes — no cross-root folding needed. The shard COUNT
+  // comes from a one-level readdir of each session's parts/ dir below.
   const candidates = [];
   for (const dirName of listSessionIds(projectDir)) {
     let meta = null;
     try { meta = JSON.parse(readFileSync(join(projectDir, 'sessions', dirName, 'meta.json'), 'utf-8')); } catch { /* journal is self-describing */ }
     if (meta && meta.leader) continue; // teammate — folded into its leader's row
     candidates.push({ dirName, startTs: (meta && meta.startTs) || '' });
+  }
+  // Frozen-shard count per base dirName (cheap: one readdir of parts/).
+  const shardCountByBase = new Map();
+  for (const c of candidates) {
+    let count = 0;
+    try {
+      for (const part of readdirSync(join(projectDir, 'sessions', c.dirName, 'parts'), { withFileTypes: true })) {
+        if (part.isDirectory() && Number.isInteger(Number(part.name)) && Number(part.name) >= 1) count++;
+      }
+    } catch { /* no parts/ — unsharded */ }
+    if (count > 0) shardCountByBase.set(c.dirName, count);
   }
   // Newest first; dirName tiebreak matches listV2Logs' file tiebreak for stability.
   candidates.sort((a, b) => b.startTs.localeCompare(a.startTs) || b.dirName.localeCompare(a.dirName));
@@ -161,13 +178,18 @@ export function listV2LogsPage(logDir, project, { page = 1, pageSize = 50 } = {}
     if (s.leader) continue;
     if (s.size === 0) continue;
     if (s.discard) continue; // quota-probe orphans: never listed
+    const shards = shardCountByBase.get(c.dirName) || 0;
     out.items.push({
       file: `v2:${project}/${s.sid}`,
       kind: 'v2',
       timestamp: compactLocalTs(s.startTs),
+      // s.size (dirSizeSync) already spans the parts/ shard archive — the whole
+      // session dir is one folder on disk.
       size: s.size,
       turns: s.turns,
       preview: s.preview || [],
+      // 1 + frozen count = total shards (active + archived); 1 when unsharded.
+      shards: 1 + shards,
     });
   }
   return out;
@@ -331,6 +353,9 @@ export function deleteLogFiles(logDir, files, opts = {}) {
         let target = join(recycleDir, ref.sessionId);
         if (existsSync(target)) target = `${target}-${now()}`;
         renameSync(realPath, target);
+        // Sharding (2026-11): the frozen shards live INSIDE the session dir
+        // (parts/<N>/), so the rename above already carried them — nothing to
+        // cascade, no orphans.
         results.push({ file, ok: true, movedTo: target });
       } catch (err) {
         results.push({ file, error: err.message });

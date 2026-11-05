@@ -29,7 +29,9 @@ import { ConversationStore } from './conversation-store.js';
 import { parseUserId, classifyKind, ConvResolver } from './identity.js';
 import { parseAgentId, findHeader } from './agent-id.js';
 import { extractUserTexts, flattenPromptText, isSuggestionMode, readPromptsHead } from '../user-prompt-extract.js';
+import { iterateJsonlLines } from './jsonl-read.js';
 import { consumePendingForWireByKey, writeSnapshotByKey, systemTextOfBody } from '../system-prompt-snapshots.js';
+import { rotateSessionDir, SHARD_PROMPT_THRESHOLD } from './shard-manager.js';
 
 // Below this many free bytes on the log volume, v2 skips writing and reports
 // once — logging must not be the thing that fills the disk (plan risk #9).
@@ -94,6 +96,10 @@ export class V2Writer {
     // REASSIGNED away from body.messages, never mutated in place — safe).
     this._lateHandles = new Map(); // rid → handle for held requests whose completion arrives after the flush
     this._diskGuardTripped = false;
+    // Shard rotation seam (tests): prompt ceiling per shard. The production
+    // default is SHARD_PROMPT_THRESHOLD (2000); tests inject a tiny value so a
+    // few fixture prompts trigger the cut.
+    this._shardPrompts = typeof opts.shardPrompts === 'number' && opts.shardPrompts > 0 ? opts.shardPrompts : 0;
     this._continuedSeen = false;   // P2: wire-level `claude -c` continuation marker
     // `-c` folder adoption (Claude 2.1.210 hands a fresh wire session_id on every
     // continue, so a new folder would otherwise be minted each time). Set from
@@ -139,6 +145,11 @@ export class V2Writer {
    *  writer exists (module init order), so the nudge callback arrives here. */
   setOnActivity(fn) { this._onActivity = typeof fn === 'function' ? fn : null; }
   setOnSessionResolved(fn) { this._onSessionResolved = typeof fn === 'function' ? fn : null; }
+  // Shard rotation (2026-11): fired AFTER a rotation rebinds the session to a
+  // fresh skeleton. The live feed must re-attach the dir WITHOUT suppressing
+  // history — the fresh shard's first post-cut content is new, not cold-load
+  // history (the default shrink→rebuild path would suppress and swallow it).
+  setOnShardRotated(fn) { this._onShardRotated = typeof fn === 'function' ? fn : null; }
 
   /**
    * If this request should adopt the previous main session's folder — a `-c`
@@ -366,6 +377,24 @@ export class V2Writer {
       journal: new Journal(paths, this._queue),
       convs: new ConversationStore(paths, this._queue, { exactFps: this._exactConvFps }),
       resolver: new ConvResolver(),
+      // Identity UUID (wire sessionId / adopted folder's UUID) — shard rotation
+      // re-stamps it on the recreated active dir so the session's identity stays
+      // stable across the cut without re-reading the frozen meta.
+      _identityId: identityId,
+      // The instanceKey that stamped meta.json — shard rotation re-stamps it on
+      // the recreated active dir (shard-manager.js) so multi-instance routing
+      // survives the cut.
+      _instanceKey: instanceKey || null,
+      // In-flight request count + rotation state (shard-manager.js): the cut is
+      // deferred until no request is open and the write queue is idle.
+      _inflight: 0,
+      _shardArmed: false,
+      _rotating: false,
+      _shardRetryQueued: false,
+      // New-user-prompt count on the CURRENT shard (the rotation trigger).
+      // Seeded once from the live prompts.jsonl on first contact (restart).
+      _partPrompts: 0,
+      _promptsSeeded: false,
       // The project this session's dir lives under — needed by resetSessions(target)
       // to clear ONLY one project's sessions on a workspace switch, leaving a
       // concurrently-running background project's bindings (a cross-project /resume
@@ -521,6 +550,22 @@ export class V2Writer {
         (typeof entry._ccvInstance === 'string' && entry._ccvInstance) ? entry._ccvInstance : null,
         (typeof entry._resumeProjectCwd === 'string' && entry._resumeProjectCwd) ? entry._resumeProjectCwd : null);
 
+      // Shard rotation (shard-manager.js): the live content is archived into the
+      // session's own `parts/<N>/` and this session is rebound to a fresh
+      // skeleton. The trigger is PROMPT-COUNT based, not bytes: after
+      // SHARD_PROMPT_THRESHOLD user-prompt turns on the main conversation, the
+      // NEXT new user prompt starts a fresh shard — so every part holds whole
+      // user-prompt→loop segments, never a half-turn. Rotation is DEFERRED to a
+      // quiescent point (no in-flight request + an idle write queue, so a
+      // req/done never splits across shards and a chunked drain never tears a
+      // line across the cut). Cost below threshold: one O(1) counter check.
+      try { this._armShardRotation(s); } catch (err) { reportSwallowed('v2-write.shard-arm', err); }
+      // Run an already-armed cut at this quiescent point (no in-flight request
+      // on this session yet — the count is bumped by _ingestInto below). This
+      // is what lets the NEXT new-user-prompt after a threshold-crossing one
+      // land in a fresh shard.
+      if (s._shardArmed && (s._inflight || 0) === 0) this._maybeRotate(s);
+
       // System-prompt snapshot, Bind A (wire): the FIRST main request of a session
       // carries the launch's rendered injection in body.system — match it against the
       // project's pending queue and key the snapshot to the wire sid (== transcript
@@ -562,15 +607,30 @@ export class V2Writer {
           const pseq = this._ingestInto(s, sid, p.entry, p.originalMessages);
           const prid = p.rid; // captured at hold time — the seam may have deleted entry.requestId by now
           if (pseq != null && prid) {
-            this._lateHandles.set(prid, { s, sid, seq: pseq, rid: prid });
+            // Held requests count as in-flight too (they complete later via
+            // _lateHandles): a rotation must not fire while one is open.
+            s._inflight = (s._inflight || 0) + 1;
+            this._lateHandles.set(prid, { s, sid, seq: pseq, rid: prid, paths: s.paths, journal: s.journal, counted: true });
             if (this._lateHandles.size > 64) {
-              this._lateHandles.delete(this._lateHandles.keys().next().value);
+              const evicted = this._lateHandles.keys().next().value;
+              const evictedHandle = this._lateHandles.get(evicted);
+              this._lateHandles.delete(evicted);
+              // Evicting a still-open handle must release its in-flight count,
+              // or the session would never rotate again (stuck at >0).
+              if (evictedHandle && evictedHandle.counted && evictedHandle.s && evictedHandle.s._inflight > 0) evictedHandle.s._inflight -= 1;
             }
           }
         }
       }
 
       const seq = this._ingestInto(s, sid, entry, originalMessages);
+      if (seq != null) {
+        // In-flight guard for shard rotation: a completion must land its
+        // done/response in the SAME shard that holds its req line. Count the
+        // request as open until ingestCompletion closes it; rotation only runs
+        // once this reaches zero (and the queue is flushed).
+        s._inflight = (s._inflight || 0) + 1;
+      }
       if (seq != null && this._onActivity) {
         try { this._onActivity(s.paths.dir); } catch { /* nudge only — never disturb the write */ }
       }
@@ -578,8 +638,10 @@ export class V2Writer {
       // resetSessions() (workspace switch) clears the _sessions map, and a
       // completion arriving after the switch must still land its done/response
       // lines in the session the request belonged to (review P2: a map lookup
-      // at completion time silently dropped them).
-      return seq == null ? null : { s, sid, seq, rid: entry.requestId || `${seq}` };
+      // at completion time silently dropped them). It ALSO snapshots the
+      // request-time paths so a shard rotation between request and completion
+      // keeps the done/response in the shard that owns this seq.
+      return seq == null ? null : { s, sid, seq, rid: entry.requestId || `${seq}`, paths: s.paths, journal: s.journal, counted: true };
     } catch (err) {
       reportSwallowed('v2-write.ingestRequest', err);
       return null;
@@ -602,6 +664,33 @@ export class V2Writer {
       this._continuedSeen = true;
     }
     if (kind === 'main') s._sawMain = true;
+
+    // Shard trigger (2026-11): a NEW main-conversation user prompt is the cut
+    // node. Read the conv store's CURRENT wire length (read-only, no side
+    // effect); a fresh user turn appends a non-tool-result user message at
+    // [prevCount, len). A SNAPSHOT (restart / -c / compact / dual-writer) has
+    // prevCount < len only for genuinely new tail content — so scanning that
+    // slice never recounts history. Tool-loop follow-ups append only
+    // tool_result/assistant and do NOT count. On crossing the prompt ceiling,
+    // rotate BEFORE this request's blob/conv/journal writes so the new prompt
+    // opens the fresh shard (this is the quiescent point: this request's
+    // in-flight count isn't bumped until after _ingestInto returns).
+    if (kind === 'main' && msgs && msgs.length > 0) {
+      const prevCount = s.convs.count('main');
+      let isNewUserPrompt = false;
+      for (let i = prevCount; i < msgs.length; i++) {
+        const m = msgs[i];
+        if (m && m.role === 'user' && !this._isToolResultMsg(m)) { isNewUserPrompt = true; break; }
+      }
+      if (isNewUserPrompt) {
+        s._partPrompts = (s._partPrompts || 0) + 1;
+        if ((s._partPrompts || 0) > this._shardThresholdPrompts() && (s._inflight || 0) === 0 && !s._rotating) {
+          s._shardArmed = true;
+          this._maybeRotate(s);
+          if (!s._rotating && !s._shardArmed) s._partPrompts = 1; // rotated: this prompt starts the new shard
+        }
+      }
+    }
 
     // 1. Blobs (sync + fsync — the durability barrier).
     const toolsRef = s.blobs.put(entry.body && entry.body.tools);
@@ -728,8 +817,14 @@ export class V2Writer {
       // deletes requestId from the entry before writing, and the seam must be
       // free to call us before or after those deletes.
       const rid = handle.rid || `${handle.seq}`;
+      // Write to the shard that owns this seq — the request-time paths snapshot
+      // on the handle (NOT s.paths, which a shard rotation may have since
+      // rebound to the fresh active dir). Falls back to the session's current
+      // paths for legacy handles without a snapshot.
+      const donePaths = handle.paths || s.paths;
+      const doneJournal = handle.journal || s.journal;
       this._queue.appendTo(
-        s.paths.responsesPath,
+        donePaths.responsesPath,
         JSON.stringify({
           seq: handle.seq,
           rid,
@@ -740,7 +835,7 @@ export class V2Writer {
       );
 
       const usage = respBody && respBody.usage ? respBody.usage : null;
-      s.journal.writeDone({
+      doneJournal.writeDone({
         seq: handle.seq,
         rid,
         ts: opts.doneTs || new Date().toISOString(),
@@ -760,8 +855,110 @@ export class V2Writer {
       if (this._onActivity && s.paths) {
         try { this._onActivity(s.paths.dir); } catch { /* nudge only — never disturb the write */ }
       }
+      // Close the in-flight guard opened at ingestRequest and, when this was
+      // the last open request, run any armed shard rotation (quiescent point).
+      // Only a handle that was actually counted may decrement (a late/held
+      // handle counted at flush time; a duplicate or uncounted completion must
+      // not push the count negative or rotate with requests still open).
+      if (typeof handle.seq === 'number' && handle.counted && s._inflight > 0) {
+        handle.counted = false; // one-shot latch: a double completion can't double-decrement
+        s._inflight -= 1;
+        if (s._inflight === 0) this._maybeRotate(s);
+      }
     } catch (err) {
       reportSwallowed('v2-write.ingestCompletion', err);
+    }
+  }
+
+  /** Release a request's in-flight count WITHOUT writing a done/response line —
+   *  for requests that will never complete (fetch reject on Esc/network error,
+   *  stream read abort). Without it `_inflight` leaks ≥1 and the session never
+   *  rotates again for this process's lifetime. */
+  releaseHandle(handle) {
+    try {
+      const s = handle && (handle.s || this._sessions.get(handle.sid));
+      if (!s) return;
+      if (typeof handle.seq === 'number' && handle.counted && s._inflight > 0) {
+        handle.counted = false;
+        s._inflight -= 1;
+        if (s._inflight === 0) this._maybeRotate(s);
+      }
+    } catch (err) { reportSwallowed('v2-write.release-handle', err); }
+  }
+
+  /** Arm shard rotation once the live dir crosses the threshold. Cheap: an O(1)
+   *  counter until the (infrequent) real size probe fires. The actual cut is
+   *  deferred to _maybeRotate (quiescent point). */
+  _armShardRotation(s) {
+    if (!s || s._shardArmed || s._rotating) return;
+    // Only rotate live session trees — the offline converter writes to a
+    // staging sibling (sessionsDirName 'sessions-migrating') whose promote/
+    // verify flow assumes one dir per logical session.
+    if (this._sessionsDirName !== 'sessions') return;
+    // Prompt-count trigger (no disk probing): the per-session counter
+    // `_partPrompts` is bumped on each NEW main-conversation user prompt (see
+    // _ingestInto). On first contact (a re-attached/restarted session) seed it
+    // from the live prompts.jsonl LINE COUNT (streamed, one line per recorded
+    // prompt) — readPromptsHead would UNDER-count (256KB head cap + dedup) and
+    // let an already-long shard grow far past the threshold after a restart.
+    if (!s._promptsSeeded) {
+      s._promptsSeeded = true;
+      let lines = 0;
+      try { for (const _ of iterateJsonlLines(s.paths.promptsPath)) lines++; } catch { lines = 0; }
+      s._partPrompts = lines;
+    }
+    if ((s._partPrompts || 0) < this._shardThresholdPrompts()) return;
+    s._shardArmed = true;
+    // An armed cut takes effect at the next quiescent point (the request start
+    // with none open, or the last completion) — _maybeRotate runs from both. If
+    // THIS request armed it and nothing is in flight yet, cut right away.
+    if (s._shardArmed && (s._inflight || 0) === 0) this._maybeRotate(s);
+  }
+
+  _shardThresholdPrompts() {
+    return (typeof this._shardPrompts === 'number' && this._shardPrompts > 0) ? this._shardPrompts : SHARD_PROMPT_THRESHOLD;
+  }
+
+  /** Run an armed rotation at a quiescent point — SYNCHRONOUSLY, before the
+   *  triggering request's `_ingestInto`. The cut is safe only when: no request
+   *  is in flight on this session (its completion must land in the same shard
+   *  as its req) AND the write queue is idle (a chunked drain re-opens the
+   *  target path per chunk, so a mid-drain rename would tear a line across
+   *  shards). When the queue is busy the cut stays armed and retries at the
+   *  next request start / completion. */
+  _maybeRotate(s) {
+    if (!s || s._rotating) return;
+    if ((s._inflight || 0) > 0) return; // completion of the last one re-triggers
+    if (!s._shardArmed) return;
+    if (!this._queue.isIdle) {
+      // The drain hasn't settled — a mid-drain rename would tear a chunked line
+      // across shards. Park ONE retry on the drain-complete callback (the true
+      // idle point) instead of busy-retrying per request.
+      if (!s._shardRetryQueued) {
+        s._shardRetryQueued = true;
+        this._queue.onIdle(() => {
+          s._shardRetryQueued = false;
+          this._maybeRotate(s);
+        });
+      }
+      return;
+    }
+    s._rotating = true;
+    try {
+      const rotated = rotateSessionDir(this, s);
+      if (rotated) {
+        // Re-claim the freshly created active dir so multi-window isolation
+        // survives the cut (the old claim rode the rename into the shard).
+        if (this._claimsEnabled() && acquireSessionClaim(s.paths.dir).ok) {
+          this._claimedDirs.add(s.paths.dir);
+        }
+        s._shardArmed = false;
+        s._partPrompts = 0; // fresh active shard starts its prompt count over
+      }
+    } catch (err) {
+      reportSwallowed('v2-write.shard-rotate', err);
+    } finally {
+      s._rotating = false;
     }
   }
 
@@ -780,6 +977,16 @@ export class V2Writer {
    *  sessionUuid matches this id is the one the main process is actively running. */
   currentSessionId() {
     return this._currentSid || null;
+  }
+
+  /** True when a wire message is a tool_result carrier (not a fresh user
+   *  prompt). The shard cut only opens on a genuine user turn — tool-loop
+   *  follow-ups append tool_result blocks at the wire tail and must not count. */
+  _isToolResultMsg(msg) {
+    const c = msg && msg.content;
+    if (typeof c === 'string') return false; // plain-text user prompt
+    if (!Array.isArray(c)) return false;
+    return c.some((b) => b && b.type === 'tool_result');
   }
 
   /** Lifecycle hook: drop in-memory conversation continuity so the next

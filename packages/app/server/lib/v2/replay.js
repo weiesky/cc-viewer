@@ -45,8 +45,14 @@ export function listSessionIds(projectDir, sessionsDirName = 'sessions') {
  * this build doesn't understand returns `unsupported: true` with EMPTY folds —
  * callers must refuse it loudly instead of interpreting bytes they can't parse.
  * A missing version (torn creation) is treated as the current one.
+ *
+ * opts.beforeSeq (sharding, 2026-11): when set, only journal req/done lines and
+ * conversation events with seq < beforeSeq are folded — a frozen `.part<N>`
+ * shard is read as "the session up to the cut", never leaking the active
+ * shard's later seqs into the window. The maps stay seq-keyed either way.
  */
-export function readSession(projectDir, sessionId, sessionsDirName = 'sessions') {
+export function readSession(projectDir, sessionId, sessionsDirName = 'sessions', opts = {}) {
+  const beforeSeq = (typeof opts.beforeSeq === 'number' && opts.beforeSeq > 0) ? opts.beforeSeq : null;
   const dir = join(projectDir, sessionsDirName, sessionId);
   let meta = null;
   try { meta = JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf-8')); } catch { }
@@ -59,6 +65,7 @@ export function readSession(projectDir, sessionId, sessionsDirName = 'sessions')
   const reqs = new Map();
   const dones = new Map();
   for (const line of readJsonlTolerant(join(dir, 'journal.jsonl'))) {
+    if (beforeSeq != null && typeof line.seq === 'number' && line.seq >= beforeSeq) continue;
     if (line.ph === 'req') reqs.set(line.seq, line);
     else if (line.ph === 'done' && !dones.has(line.seq)) dones.set(line.seq, line);
     else if (line.ph === 'meta' && typeof line.wireFormat === 'number') {
@@ -77,8 +84,9 @@ export function readSession(projectDir, sessionId, sessionsDirName = 'sessions')
         if (!/^e\d+\.jsonl$/.test(f)) continue;
         events.push(...readJsonlTolerant(join(convRoot, entry.name, f)));
       }
-      events.sort((a, b) => a.seq - b.seq);
-      convEvents.set(entry.name, events);
+      const filtered = beforeSeq == null ? events : events.filter((ev) => typeof ev.seq === 'number' && ev.seq < beforeSeq);
+      filtered.sort((a, b) => a.seq - b.seq);
+      convEvents.set(entry.name, filtered);
     }
   }
   return { sessionId, dir, meta, wireFormat, reqs, dones, convEvents };

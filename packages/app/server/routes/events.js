@@ -9,7 +9,9 @@ import { reportSwallowed } from '../lib/error-report.js';
 import { sseHead, sseWrite, needsDrain, wireEnd, awaitWireDrain, isWireV3Enabled } from '../lib/wire-compress.js';
 import { scopeKeyForProducer } from '../lib/scope-router.js';
 import { readV2ColdBundle } from '../lib/v2/meta-rows.js';
-import { readV2SingleEntry } from '../lib/v2/adapter.js';
+import { readV2SingleEntry, readV2ShardEntries, isV2SessionDir } from '../lib/v2/adapter.js';
+import { listShards } from '../lib/v2/shard-manager.js';
+import { readJsonlTolerant } from '../lib/v2/replay.js';
 import { createAttachBufferClient, flushAttachBuffer } from '../lib/attach-buffer.js';
 import { resolveSessionDirName, latestMainSessionDir } from '../lib/v2/session-select.js';
 import { sanitizePathComponent, normalizeSessionCwd } from '../lib/v2/layout.js';
@@ -171,6 +173,7 @@ export function paramsFromParsedUrl(parsedUrl) {
   const sidRaw = g('sid');
   const instanceRaw = g('instance');
   const limitRaw = g('limit');
+  const shardBeforeRaw = g('shardBefore');
   return {
     sid: (typeof sidRaw === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sidRaw)) ? sidRaw : null,
     project: g('project'),
@@ -179,6 +182,10 @@ export function paramsFromParsedUrl(parsedUrl) {
     cc: parseInt(g('cc'), 10) || 0,
     limitRaw,                       // keep the raw string so "absent" (null) ≠ "explicit 0"
     limitGiven: limitRaw !== null,
+    // Sharding (2026-11): when present with ?sid, the cold load reads the
+    // frozen `.part<N>` shard older than this journal seq instead of the
+    // active session dir.
+    shardBefore: (typeof shardBeforeRaw === 'string' && /^\d+$/.test(shardBeforeRaw)) ? parseInt(shardBeforeRaw, 10) : 0,
   };
 }
 
@@ -202,6 +209,34 @@ export function sseUpdateBadgeFrame(pending) {
  *   sink.awaitDrain() -> Promise resolves on drain / close / error / 30s timeout
  *   sink.registrable             the object pushed into deps.clients (gets _ccvView* stamps)
  */
+
+/**
+ * Initial shard cursor for a cold-load source: when the session has frozen
+ * shards (sibling sessions-parts root), the "load earlier history" button needs
+ * the entry point — the seq just past the newest frozen shard's cut (i.e. the
+ * first seq the ACTIVE dir owns). Returns null when there are no shards.
+ */
+function _initialShardCursor(sourceDir) {
+  if (!sourceDir || !isV2SessionDir(sourceDir)) return null;
+  let frozen;
+  try { frozen = listShards(sourceDir); } catch { return null; }
+  if (!frozen || frozen.length === 0) return null;
+  // Newest frozen shard's cut seq (journal max) + 1 = the cursor that makes the
+  // first "load earlier" read land on exactly that shard.
+  const newest = frozen[frozen.length - 1];
+  let cut = 0;
+  try {
+    for (const line of readJsonlTolerant(join(newest.dir, 'journal.jsonl'))) {
+      if (typeof line.seq === 'number' && line.seq > cut) cut = line.seq;
+    }
+  } catch (err) { reportSwallowed('events.shard-cursor', err); }
+  if (cut <= 0) return null;
+  // The session UUID lets the follow-latest view (no ?sid in scope) still
+  // address the shardBefore read back to THIS session.
+  let sid = null;
+  try { sid = JSON.parse(readFileSync(join(sourceDir, 'meta.json'), 'utf-8')).sessionId || null; } catch {}
+  return { hasMore: true, oldestSeq: cut + 1, partIndex: newest.partIndex + 1, prepend: false, sid };
+}
 
 /**
  * serveEventStream — THE single implementation of one /events stream, behind both the SSE
@@ -243,7 +278,7 @@ export async function serveEventStream(sink, params, deps) {
   // previous tail-registration leaked the timer and pushed a dead res in that window.
   sink.onClose?.(dispose);
 
-  const { sidParam, projectParam, instanceParam, sinceParam, ccParam, limitRaw, limitGiven } = {
+  const { sidParam, projectParam, instanceParam, sinceParam, ccParam, limitRaw, limitGiven, shardBeforeParam } = {
     sidParam: params.sid,
     projectParam: params.project,
     instanceParam: params.instance,
@@ -251,6 +286,7 @@ export async function serveEventStream(sink, params, deps) {
     ccParam: params.cc,
     limitRaw: params.limitRaw,
     limitGiven: params.limitGiven,
+    shardBeforeParam: params.shardBefore,
   };
 
   // 注意：不要在此处 clients.push(res)！
@@ -488,8 +524,45 @@ export async function serveEventStream(sink, params, deps) {
   // Wire v3 (V3.S5): flagged + v2 source ⇒ the legacy full-entry cold stream
   // is REPLACED by rows + native lines (the byte win); the client assembler
   // rebuilds entries locally. v1 legacy files keep the entry pipeline.
-  const _v3Src = (deps.wireV3 && !emptyLiveView) ? (coldSource || getLiveLogSource()) : null;
+  // A shardBefore cold read is a legacy-shape stream over ONE frozen shard —
+  // never the v3 native bundle (the client renders it as a "load earlier"
+  // prepend, not a fresh baseline).
+  const _v3Src = (deps.wireV3 && !emptyLiveView && !shardBeforeParam) ? (coldSource || getLiveLogSource()) : null;
   const v3Cold = !!(_v3Src && existsSync(join(_v3Src, 'journal.jsonl')));
+
+  // Sharding (2026-11): ?sid=<uuid>&shardBefore=<seq> serves the frozen
+  // `.part<N>` shard immediately older than that seq, as a self-contained
+  // window with its own baseline (the shard's incremental snapshot replays to
+  // the cut state). Live append is untouched — the live feed only ever reads
+  // the active dir.
+  if (shardBeforeParam > 0 && viewColdDir && isV2SessionDir(viewColdDir)) {
+    try {
+      const shardRes = await readV2ShardEntries(viewColdDir, { beforeSeq: shardBeforeParam, limit: useLimit ? effectiveLimit : 0, cached: false });
+      sink.write(`event: load_start\ndata: ${JSON.stringify({
+        total: shardRes.totalCount,
+        incremental: false,
+        hasMore: shardRes.hasMore,
+        oldestTs: shardRes.oldestTimestamp || '',
+        // prepend:true tells the client this is a "load earlier" load — buffer
+        // chunks separately and PREPEND at load_end, never reset the baseline.
+        shard: { partIndex: shardRes.partIndex, oldestSeq: shardRes.oldestSeq, hasMore: shardRes.hasMore, prepend: true },
+      })}\n\n`);
+      for (const raw of shardRes.entries) {
+        if (!sink.alive()) break;
+        const out = enrichRawIfNeeded(raw);
+        try {
+          sink.write('event: load_chunk\ndata: [');
+          sink.write(out.includes('\n') ? out.replace(/\n/g, '') : out);
+          sink.write(']\n\n');
+        } catch { break; }
+      }
+    } catch (err) {
+      reportSwallowed('events.shard-load', err, { sid: sidParam, shardBefore: shardBeforeParam });
+      try { sink.write(`event: load_start\ndata: ${JSON.stringify({ total: 0, incremental: false, shard: { partIndex: 0, oldestSeq: null, hasMore: false, prepend: true } })}\n\n`); } catch {}
+    }
+    sink.write(`event: load_end\ndata: {}\n\n`);
+    return;
+  }
 
   // S6b: the cold-load source is the current v2 session dir when the v2
   // writer is active (adapter stream), else the v1 file.
@@ -497,6 +570,12 @@ export async function serveEventStream(sink, params, deps) {
   // in-flight placeholder, which the client batch gate still blocks — the
   // previous conversation is the better cold load there (interceptor.js
   // getLiveLogSource header comment).
+  // Initial shard cursor for the "load earlier history" button: computed once
+  // from the cold source. oldestSeq is REFINED in onReady to the delivered
+  // window's oldest seq (a limit-truncated cold window must not skip the active
+  // shard's own pre-window prefix by jumping straight to the frozen cut).
+  const _coldShardCursor = shardBeforeParam ? null : _initialShardCursor(emptyLiveView ? null : (coldSource || getLiveLogSource()));
+
   const coldLoadResult = v3Cold ? null : await streamRawEntriesAsync(emptyLiveView ? '' : (coldSource || getLiveLogSource({ serveInFlight: !!deps.wireV3 })), async (raw) => {
     // 直接发送原始 JSON 字符串，不做 parse/reconstruct/stringify
     // ExitPlanMode V2 空 input 的条目按需补全 plan / planFilePath，其它原样透传
@@ -536,7 +615,7 @@ export async function serveEventStream(sink, params, deps) {
         if (mainAgentRawRing.length > MAINAGENT_SCAN_RING) mainAgentRawRing.shift();
       }
     },
-    onReady: ({ totalCount, hasMore, oldestTs }) => {
+    onReady: ({ totalCount, hasMore, oldestTs, oldestSeq }) => {
       // Pass 1 完成、Pass 2 开始前：发送 load_start
       // 增量模式下不显示 loading 遮罩，非增量模式显示进度
       const loadStartData = { total: totalCount, incremental: !!useIncremental };
@@ -550,6 +629,14 @@ export async function serveEventStream(sink, params, deps) {
       if (useLimit) {
         loadStartData.hasMore = !!hasMore;
         loadStartData.oldestTs = oldestTs || '';
+      }
+      // Initial shard cursor — refined to the DELIVERED window's oldest seq so
+      // the first "load earlier" read covers the active shard's own pre-window
+      // prefix before jumping to the frozen shards (no middle gap).
+      if (_coldShardCursor) {
+        const refined = { ..._coldShardCursor };
+        if (typeof oldestSeq === 'number' && oldestSeq > 0) refined.oldestSeq = oldestSeq;
+        loadStartData.shard = refined;
       }
       sink.write(`event: load_start\ndata: ${JSON.stringify(loadStartData)}\n\n`);
     },
@@ -589,6 +676,7 @@ export async function serveEventStream(sink, params, deps) {
         loadStartData.hasMore = !!meta.hasMore;
         loadStartData.oldestTs = meta.oldestTimestamp || '';
       }
+      if (_coldShardCursor) loadStartData.shard = _coldShardCursor;
       sink.write(`event: load_start\ndata: ${JSON.stringify(loadStartData)}\n\n`);
       sink.write(`event: v2_requests\ndata: ${rowsPayload}\n\n`);
       for (const payload of native.convPayloads) sink.write(`event: v3_conv\ndata: ${payload}\n\n`);

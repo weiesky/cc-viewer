@@ -62,9 +62,17 @@ export class ConversationStore {
     this._fpOf = this._exactFps === true ? this._exactFpOf : fingerprintMsg;
   }
 
+  /** Read-only current wire length of a conversation (0 when never ingested).
+   *  No side effects (unlike _state, which seeds epoch/fps) — used by the
+   *  shard-rotation prompt-node check in v2-writer to read the length BEFORE
+   *  deciding whether this request opens a fresh user turn. */
+  count(convKey) {
+    const st = this._convs.get(convKey);
+    return st ? st.count : 0;
+  }
+
   _state(convKey) {
-    let st = this._convs.get(convKey);
-    if (!st) {
+    let st = this._convs.get(convKey);    if (!st) {
       // fps: per-message judgement fingerprints of the CURRENT wire state.
       // Tail-only comparison proved insufficient on real data (2026-07-14):
       // interleaved same-sid streams (pre-flag proxy teammates, dual writers)

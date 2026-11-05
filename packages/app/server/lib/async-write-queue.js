@@ -26,6 +26,7 @@ export class AsyncWriteQueue {
     // typeof 防御：字符串 "1000" 能通过 > 0 协转检查，但后续字节比较会退化为字典序
     this._highWaterMark = (typeof opts.highWaterMark === 'number' && opts.highWaterMark > 0)
       ? opts.highWaterMark : HIGH_WATER_MARK;
+    this._idleCbs = [];        // one-shot drain-complete listeners (shard rotation)
   }
 
   _getPath() {
@@ -34,6 +35,10 @@ export class AsyncWriteQueue {
 
   get filePath() { return this._getPath(); }
   get pendingBytes() { return this._pendingBytes; }
+  /** True when no bytes are queued and no drain is in flight — a synchronous
+   *  rename of a target path is safe only at this point (a chunked drain
+   *  re-opens the path per chunk). Used by v2 shard rotation. */
+  get isIdle() { return this._pendingBytes === 0 && !this._draining; }
 
   append(data, onDone) {
     return this.appendTo(this._getPath(), data, onDone);
@@ -164,5 +169,18 @@ export class AsyncWriteQueue {
 
     for (const resolve of this._flushResolvers) resolve();
     this._flushResolvers.length = 0;
+    // Drain-complete callbacks (v2 shard rotation): a rotation armed while the
+    // queue was busy re-runs here, at the true idle point.
+    for (const cb of this._idleCbs.splice(0)) {
+      try { cb(); } catch { /* a listener must never break the drain path */ }
+    }
+  }
+
+  /** Register a one-shot callback fired the next time the queue goes idle
+   *  (queue empty + no drain in flight). Fires SYNCHRONOUSLY if already idle. */
+  onIdle(cb) {
+    if (typeof cb !== 'function') return;
+    if (this._queue.length === 0 && !this._draining) { try { cb(); } catch {} return; }
+    this._idleCbs.push(cb);
   }
 }

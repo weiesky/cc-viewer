@@ -377,7 +377,10 @@ describe('listV2LogsPage', () => {
     assert.equal(p3.items.length, 1, 'last page returns the remainder');
     for (const row of [...p1.items, ...p2.items, ...p3.items]) {
       const keys = Object.keys(row).sort();
-      assert.deepEqual(keys, ['file', 'kind', 'preview', 'size', 'timestamp', 'turns'].sort(), 'row keeps 6-field shape');
+      // 2026-11 sharding: rows gained a 7th field `shards` (1 + frozen `.part<N>`
+      // count). Unsharded sessions always report shards:1.
+      assert.deepEqual(keys, ['file', 'kind', 'preview', 'shards', 'size', 'timestamp', 'turns'].sort(), 'row keeps 7-field shape');
+      assert.equal(row.shards, 1, 'unsharded session reports a single (active) shard');
     }
   });
 

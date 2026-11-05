@@ -1492,6 +1492,9 @@ export function setupInterceptor() {
       response = await _originalFetch.call(this, _fetchUrl, _fetchOpts);
     } catch (err) {
       if (streamingBucket) _resetStreamingBucket();
+      // The request will never produce a completion — release its v2 in-flight
+      // count so the session isn't permanently blocked from shard rotation.
+      if (_v2Handle) { try { _v2Writer.releaseHandle(_v2Handle); } catch { /* best-effort */ } _v2Handle = null; }
       throw err;
     }
 
@@ -1706,6 +1709,9 @@ export function setupInterceptor() {
                 }
               } catch (err) {
                 _resetStreamingBucket();
+                // The stream died before producing a completion — release the
+                // v2 in-flight count so shard rotation isn't permanently blocked.
+                if (_v2Handle) { try { _v2Writer.releaseHandle(_v2Handle); } catch { /* best-effort */ } _v2Handle = null; }
                 controller.error(err);
               }
             }
