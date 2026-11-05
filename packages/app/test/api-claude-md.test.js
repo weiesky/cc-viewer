@@ -32,6 +32,7 @@ process.env.CLAUDE_CONFIG_DIR = FAKE_CLAUDE;
 process.env.CCV_PROJECT_DIR = PROJECT;
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
+delete process.env.CCV_BASE_URL;
 
 function httpRequest(port, path) {
   return new Promise((resolve, reject) => {

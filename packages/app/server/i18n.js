@@ -647,6 +647,86 @@ const i18nData = {
     "tr": "  ⚠️  CCV_BASE_PATH \"{value}\" \"/\" ile başlamalıdır — yok sayıldı. Örnek: \"/proxy/\"",
     "uk": "  ⚠️  CCV_BASE_PATH \"{value}\" має починатися з \"/\" — проігноровано. Приклад: \"/proxy/\""
   },
+  "baseUrl.invalid": {
+    "zh": "  ⚠️  CCV_BASE_URL \"{value}\" 无法解析或使用了不支持的 scheme（支持 http(s)://、ws(s)://、host/path 或 /path 写法），已忽略并回退到 CCV_BASE_PATH。",
+    "en": "  ⚠️  CCV_BASE_URL \"{value}\" is invalid or uses an unsupported scheme (use http(s)://, ws(s)://, host/path, or /path) — ignored; falling back to CCV_BASE_PATH.",
+    "zh-TW": "  ⚠️  CCV_BASE_URL \"{value}\" 無法解析或使用了不支援的 scheme（支援 http(s)://、ws(s)://、host/path 或 /path 寫法），已忽略並回退到 CCV_BASE_PATH。",
+    "ko": "  ⚠️  CCV_BASE_URL \"{value}\"을(를) 해석할 수 없거나 지원하지 않는 scheme입니다(http(s)://, ws(s)://, host/path 또는 /path 형식 사용) — 무시하고 CCV_BASE_PATH로 되돌립니다.",
+    "ja": "  ⚠️  CCV_BASE_URL \"{value}\" は解析できないか、未対応の scheme です（http(s)://、ws(s)://、host/path、/path 形式を使用）— 無視し、CCV_BASE_PATH にフォールバックします。",
+    "de": "  ⚠️  CCV_BASE_URL \"{value}\" ist ungültig oder verwendet ein nicht unterstütztes Schema (http(s)://, ws(s)://, host/path oder /path verwenden) — ignoriert; Rückfall auf CCV_BASE_PATH.",
+    "es": "  ⚠️  CCV_BASE_URL \"{value}\" no es válida o usa un esquema no admitido (use http(s)://, ws(s)://, host/path o /path) — ignorada; se recurre a CCV_BASE_PATH.",
+    "fr": "  ⚠️  CCV_BASE_URL « {value} » est invalide ou utilise un schéma non pris en charge (utilisez http(s)://, ws(s)://, host/path ou /path) — ignorée ; retour à CCV_BASE_PATH.",
+    "it": "  ⚠️  CCV_BASE_URL \"{value}\" non è valida o usa uno schema non supportato (usa http(s)://, ws(s)://, host/path o /path) — ignorata; ripiego su CCV_BASE_PATH.",
+    "da": "  ⚠️  CCV_BASE_URL \"{value}\" er ugyldig eller bruger et ikke-understøttet skema (brug http(s)://, ws(s)://, host/path eller /path) — ignoreret; falder tilbage på CCV_BASE_PATH.",
+    "pl": "  ⚠️  CCV_BASE_URL \"{value}\" jest nieprawidłowy lub używa nieobsługiwanego schematu (użyj http(s)://, ws(s)://, host/path lub /path) — zignorowano; powrót do CCV_BASE_PATH.",
+    "ru": "  ⚠️  CCV_BASE_URL \"{value}\" недействителен или использует неподдерживаемую схему (используйте http(s)://, ws(s)://, host/path или /path) — проигнорировано; возврат к CCV_BASE_PATH.",
+    "ar": "  ⚠️  CCV_BASE_URL \"{value}\" غير صالح أو يستخدم مخططًا غير مدعوم (استخدم http(s):// أو ws(s):// أو host/path أو /path) — تم التجاهل؛ الرجوع إلى CCV_BASE_PATH.",
+    "no": "  ⚠️  CCV_BASE_URL \"{value}\" er ugyldig eller bruker et ikke-støttet skjema (bruk http(s)://, ws(s)://, host/path eller /path) — ignorert; faller tilbake til CCV_BASE_PATH.",
+    "pt-BR": "  ⚠️  CCV_BASE_URL \"{value}\" é inválida ou usa um esquema não suportado (use http(s)://, ws(s)://, host/path ou /path) — ignorada; revertendo para CCV_BASE_PATH.",
+    "th": "  ⚠️  CCV_BASE_URL \"{value}\" ไม่ถูกต้องหรือใช้ scheme ที่ไม่รองรับ (ใช้ http(s)://, ws(s)://, host/path หรือ /path) — ถูกละเว้น กลับไปใช้ CCV_BASE_PATH",
+    "tr": "  ⚠️  CCV_BASE_URL \"{value}\" geçersiz veya desteklenmeyen bir şema kullanıyor (http(s)://, ws(s)://, host/path veya /path kullanın) — yoksayıldı; CCV_BASE_PATH değerine geri dönülüyor.",
+    "uk": "  ⚠️  CCV_BASE_URL \"{value}\" недійсний або використовує непідтримувану схему (використовуйте http(s)://, ws(s)://, host/path або /path) — проігноровано; повернення до CCV_BASE_PATH."
+  },
+  "baseUrl.queryFragmentIgnored": {
+    "zh": "  ⚠️  CCV_BASE_URL \"{value}\" 中的查询串/锚点已忽略（只使用 scheme、host 与 path）。",
+    "en": "  ⚠️  CCV_BASE_URL \"{value}\": query string / fragment ignored (only scheme, host, and path are used).",
+    "zh-TW": "  ⚠️  CCV_BASE_URL \"{value}\" 中的查詢串/錨點已忽略（只使用 scheme、host 與 path）。",
+    "ko": "  ⚠️  CCV_BASE_URL \"{value}\": 쿼리 문자열/프래그먼트는 무시됩니다(scheme, host, path만 사용).",
+    "ja": "  ⚠️  CCV_BASE_URL \"{value}\": クエリ文字列/フラグメントは無視されます（scheme、host、path のみ使用）。",
+    "de": "  ⚠️  CCV_BASE_URL \"{value}\": Query-String/Fragment ignoriert (nur Schema, Host und Pfad werden verwendet).",
+    "es": "  ⚠️  CCV_BASE_URL \"{value}\": cadena de consulta/fragmento ignorados (solo se usan esquema, host y ruta).",
+    "fr": "  ⚠️  CCV_BASE_URL « {value} » : chaîne de requête/fragment ignorés (seuls le schéma, l'hôte et le chemin sont utilisés).",
+    "it": "  ⚠️  CCV_BASE_URL \"{value}\": query string/frammento ignorati (vengono usati solo schema, host e percorso).",
+    "da": "  ⚠️  CCV_BASE_URL \"{value}\": forespørgselsstreng/fragment ignoreret (kun skema, vært og sti bruges).",
+    "pl": "  ⚠️  CCV_BASE_URL \"{value}\": ciąg zapytania/fragment zignorowane (używany jest tylko schemat, host i ścieżka).",
+    "ru": "  ⚠️  CCV_BASE_URL \"{value}\": строка запроса/фрагмент проигнорированы (используются только схема, хост и путь).",
+    "ar": "  ⚠️  CCV_BASE_URL \"{value}\": تم تجاهل سلسلة الاستعلام/الجزء (يُستخدم فقط المخطط والمضيف والمسار).",
+    "no": "  ⚠️  CCV_BASE_URL \"{value}\": spørrestreng/fragment ignorert (kun skjema, vert og sti brukes).",
+    "pt-BR": "  ⚠️  CCV_BASE_URL \"{value}\": query string/fragmento ignorados (apenas esquema, host e caminho são usados).",
+    "th": "  ⚠️  CCV_BASE_URL \"{value}\": ละเว้น query string/fragment (ใช้เฉพาะ scheme, host และ path)",
+    "tr": "  ⚠️  CCV_BASE_URL \"{value}\": sorgu dizesi/parça yoksayıldı (yalnızca şema, ana bilgisayar ve yol kullanılır).",
+    "uk": "  ⚠️  CCV_BASE_URL \"{value}\": рядок запиту/фрагмент проігноровано (використовуються лише схема, хост і шлях)."
+  },
+  "baseUrl.overridesBasePath": {
+    "zh": "  ℹ️  CCV_BASE_URL 与 CCV_BASE_PATH 同时设置，CCV_BASE_URL 优先（CCV_BASE_PATH 被忽略）。",
+    "en": "  ℹ️  Both CCV_BASE_URL and CCV_BASE_PATH are set; CCV_BASE_URL takes precedence (CCV_BASE_PATH is ignored).",
+    "zh-TW": "  ℹ️  CCV_BASE_URL 與 CCV_BASE_PATH 同時設定，CCV_BASE_URL 優先（CCV_BASE_PATH 被忽略）。",
+    "ko": "  ℹ️  CCV_BASE_URL과 CCV_BASE_PATH가 모두 설정되어 있습니다. CCV_BASE_URL이 우선합니다(CCV_BASE_PATH는 무시됨).",
+    "ja": "  ℹ️  CCV_BASE_URL と CCV_BASE_PATH の両方が設定されています。CCV_BASE_URL が優先されます（CCV_BASE_PATH は無視されます）。",
+    "de": "  ℹ️  CCV_BASE_URL und CCV_BASE_PATH sind beide gesetzt; CCV_BASE_URL hat Vorrang (CCV_BASE_PATH wird ignoriert).",
+    "es": "  ℹ️  CCV_BASE_URL y CCV_BASE_PATH están definidas; CCV_BASE_URL tiene prioridad (CCV_BASE_PATH se ignora).",
+    "fr": "  ℹ️  CCV_BASE_URL et CCV_BASE_PATH sont toutes deux définies ; CCV_BASE_URL est prioritaire (CCV_BASE_PATH est ignorée).",
+    "it": "  ℹ️  CCV_BASE_URL e CCV_BASE_PATH sono entrambe impostate; CCV_BASE_URL ha la precedenza (CCV_BASE_PATH viene ignorata).",
+    "da": "  ℹ️  Både CCV_BASE_URL og CCV_BASE_PATH er sat; CCV_BASE_URL har forrang (CCV_BASE_PATH ignoreres).",
+    "pl": "  ℹ️  Ustawiono zarówno CCV_BASE_URL, jak i CCV_BASE_PATH; CCV_BASE_URL ma pierwszeństwo (CCV_BASE_PATH jest ignorowana).",
+    "ru": "  ℹ️  Заданы и CCV_BASE_URL, и CCV_BASE_PATH; приоритет у CCV_BASE_URL (CCV_BASE_PATH игнорируется).",
+    "ar": "  ℹ️  تم تعيين كل من CCV_BASE_URL و CCV_BASE_PATH؛ الأولوية لـ CCV_BASE_URL (يتم تجاهل CCV_BASE_PATH).",
+    "no": "  ℹ️  Både CCV_BASE_URL og CCV_BASE_PATH er satt; CCV_BASE_URL har forrang (CCV_BASE_PATH ignoreres).",
+    "pt-BR": "  ℹ️  CCV_BASE_URL e CCV_BASE_PATH estão definidas; CCV_BASE_URL tem precedência (CCV_BASE_PATH é ignorada).",
+    "th": "  ℹ️  ตั้งค่าทั้ง CCV_BASE_URL และ CCV_BASE_PATH; CCV_BASE_URL มีความสำคัญกว่า (CCV_BASE_PATH จะถูกละเว้น)",
+    "tr": "  ℹ️  Hem CCV_BASE_URL hem CCV_BASE_PATH ayarlı; CCV_BASE_URL önceliklidir (CCV_BASE_PATH yoksayılır).",
+    "uk": "  ℹ️  Задано і CCV_BASE_URL, і CCV_BASE_PATH; пріоритет має CCV_BASE_URL (CCV_BASE_PATH ігнорується)."
+  },
+  "server.startedExternal": {
+    "zh": "  ➜ External: {url}",
+    "en": "  ➜ External: {url}",
+    "zh-TW": "  ➜ External: {url}",
+    "ko": "  ➜ External: {url}",
+    "ja": "  ➜ External: {url}",
+    "de": "  ➜ External: {url}",
+    "es": "  ➜ External: {url}",
+    "fr": "  ➜ External: {url}",
+    "it": "  ➜ External: {url}",
+    "da": "  ➜ External: {url}",
+    "pl": "  ➜ External: {url}",
+    "ru": "  ➜ External: {url}",
+    "ar": "  ➜ External: {url}",
+    "no": "  ➜ External: {url}",
+    "pt-BR": "  ➜ External: {url}",
+    "th": "  ➜ External: {url}",
+    "tr": "  ➜ External: {url}",
+    "uk": "  ➜ External: {url}"
+  },
   "server.auth.loginTitle": {
     "zh": "请输入访问密码",
     "en": "Enter access password",
@@ -3095,14 +3175,18 @@ export function getLang() {
   return currentLang;
 }
 
+// Single-pass interpolation: a param value that itself contains '{otherKey}' must NOT be
+// re-substituted (e.g. basePath '/arca/.../session/{token}/' must survive the later {token}
+// param pass). Per-key replaceAll loops rewrite earlier insertions; a regex callback resolves
+// each placeholder exactly once against the ORIGINAL template text.
+function interpolate(text, params) {
+  return text.replace(/\{([A-Za-z0-9_]+)\}/g, (m, k) =>
+    Object.prototype.hasOwnProperty.call(params, k) ? String(params[k]) : m);
+}
+
 export function t(key, params) {
-  let text = locales[currentLang]?.[key] || locales['en'][key] || key;
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      text = text.replaceAll(`{${k}}`, v);
-    }
-  }
-  return text;
+  const text = locales[currentLang]?.[key] || locales['en'][key] || key;
+  return params ? interpolate(text, params) : text;
 }
 
 /**
@@ -3111,13 +3195,8 @@ export function t(key, params) {
  * without mutating shared state. Falls back to en → key.
  */
 export function tFor(key, lang, params) {
-  let text = locales[lang]?.[key] || locales['en'][key] || key;
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      text = text.replaceAll(`{${k}}`, v);
-    }
-  }
-  return text;
+  const text = locales[lang]?.[key] || locales['en'][key] || key;
+  return params ? interpolate(text, params) : text;
 }
 
 /**

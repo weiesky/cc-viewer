@@ -106,7 +106,8 @@ interface PluginContext {
   version: string | null;
   pluginDir: string;
   dataDir: string;              // <log_dir>/plugin-data/<name>/ (created, 0700)
-  basePath: string;             // '' or '/ccv' when CCV_BASE_PATH is set
+  basePath: string;             // '' or '/ccv/' — normalized effective prefix (trailing slash;
+                                // literal braces kept) from CCV_BASE_URL (preferred) or CCV_BASE_PATH
   server: {
     port: number; host: string; protocol: 'http' | 'https'; url: string;
     token: string;              // ACCESS_TOKEN (sensitive)
@@ -310,5 +311,8 @@ await; keep React 18 / antd 5 major versions aligned with the host.
   IM worker processes never activate service plugins.
 - **Windows:** process-group kill uses `taskkill /T /F`; locks and configs are per
   server PID, so concurrent cc-viewer instances don't collide.
-- **CCV_BASE_PATH:** the proxy strips it before forwarding; your service always sees
-  unprefixed paths. `x-forwarded-prefix` carries `<basePath><pluginPrefix>`.
+- **CCV_BASE_URL / CCV_BASE_PATH:** cc-viewer strips the prefix itself before proxying; your
+  service always sees unprefixed paths. `x-forwarded-prefix` carries `<basePath><pluginPrefix>`.
+  When both are set, CCV_BASE_URL wins (see [docs/base-url.md](./base-url.md)).
+  `x-forwarded-prefix` carries the literal (browser-facing) prefix; rewritten `Set-Cookie`
+  `Path` values use the percent-encoded wire form automatically (braces → `%7B`/`%7D`).

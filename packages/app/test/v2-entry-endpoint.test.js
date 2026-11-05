@@ -23,6 +23,7 @@ process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
 process.env.CCV_START_PORT = '18470';
 process.env.CCV_MAX_PORT = '18479';
+delete process.env.CCV_BASE_URL;
 
 const { V2Writer } = await import('../server/lib/v2/v2-writer.js');
 const { readV2SingleEntry, iterateV2RawEntries } = await import('../server/lib/v2/adapter.js');

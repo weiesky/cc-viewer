@@ -7,6 +7,7 @@ import { join } from 'node:path';
 
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
+delete process.env.CCV_BASE_URL;
 
 function httpRequest(port, path, { method = 'GET', body = null } = {}) {
   return new Promise((resolve, reject) => {

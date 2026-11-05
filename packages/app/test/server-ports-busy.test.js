@@ -32,6 +32,7 @@ process.env.CCV_START_PORT = String(BUSY_PORT);
 process.env.CCV_MAX_PORT = String(BUSY_PORT);
 delete process.env.CCV_IM_PLATFORM;
 delete process.env.CCV_BASE_PATH;
+delete process.env.CCV_BASE_URL;
 delete process.env.CCV_ALLOWED_HOSTS;
 delete process.env.CCV_USE_PASSWORD;
 delete process.env.CCV_PASSWORD;

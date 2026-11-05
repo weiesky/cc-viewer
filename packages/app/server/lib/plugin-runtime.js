@@ -24,6 +24,7 @@ import {
   createRestartBackoff,
 } from './plugin-service-manager.js';
 import { createProxyTracker, createPluginAgent, proxyHttpRequest, proxyUpgrade } from './plugin-proxy.js';
+import { wireBasePath } from './base-url.js';
 import { reportSwallowed } from './error-report.js';
 
 const ACTIVATE_TIMEOUT_MS = 2000;
@@ -137,19 +138,37 @@ function notifyError(rt, err, info) {
 
 function currentMountTarget(rt) {
   if (!rt.child || !rt.status.port) return null;
-  // basePath always has a trailing slash (normalizeBasePath) - strip it before joining to avoid '//plugins/x'
-  const basePath = (_ctx?.basePath || '').replace(/\/$/, '');
-  const externalPrefix = `${basePath}${rt.entry.service.prefix}`;
+  const p = mountPrefixes(rt);
   return {
     name: rt.name,
     port: rt.status.port,
     secret: rt.child.secret,
-    externalPrefix,
-    cookiePath: `${externalPrefix}/`,
+    externalPrefix: p.externalPrefix,
+    cookiePath: p.cookiePath,
     protocol: _ctx?.protocol || 'http',
     agent: rt.agent,
   };
 }
+
+// externalPrefix (Location / x-forwarded-prefix) stays LITERAL; cookiePath must be the WIRE
+// form because browsers compare cookie paths against the percent-encoded request pathname.
+// basePath is injectable for tests; production callers leave it to the server-injected ctx.
+function mountPrefixes(rt, basePath = _ctx?.basePath || '') {
+  // basePath always has a trailing slash (normalizeBasePath) - strip it before joining to avoid '//plugins/x'
+  const literal = basePath.replace(/\/$/, '');
+  // wireBasePath needs the trailing-slash form (it falls back to literal otherwise), so
+  // serialize BEFORE stripping the slash. A base containing '{token}'-style characters
+  // arrives percent-encoded ('%7Btoken%7D') — a literal cookie Path would never be sent back.
+  const wire = wireBasePath(basePath).replace(/\/$/, '');
+  return {
+    externalPrefix: `${literal}${rt.entry.service.prefix}`,
+    cookiePath: `${wire}${rt.entry.service.prefix}/`,
+  };
+}
+
+// Test-only export: the wire-cookie contract above regressed once (slash stripped before
+// serializing → silent literal fallback), so the pure mapping is exposed for unit tests.
+export const _mountPrefixesForTest = mountPrefixes;
 
 // ---- mount table ----
 

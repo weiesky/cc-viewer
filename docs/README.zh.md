@@ -20,6 +20,8 @@
 
 本地配置如何映射到云数据库、以及云同步模型（云端为准、本地只读兜底），见 [配置收敛与云端同步建议](./config-cloud-sync.zh.md)（[English](./config-cloud-sync.md)）。此为设计方案，尚未实现。
 
+反向代理公网 URL（CCV_BASE_URL）：[docs/base-url.zh.md](./base-url.zh.md)（[English](./base-url.md)）—— 把 cc-viewer 挂到带路径前缀的公网 URL 下（Host 白名单、WebSocket、分享/二维码链接自动跟随）。
+
 ## 使用方法
 
 ### 前提

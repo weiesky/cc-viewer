@@ -33,6 +33,7 @@ process.env.CCV_START_PORT = '17860';
 process.env.CCV_MAX_PORT = '17899';
 delete process.env.CCV_IM_PLATFORM;
 delete process.env.CCV_BASE_PATH;
+delete process.env.CCV_BASE_URL;
 delete process.env.CCV_ALLOWED_HOSTS;
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));

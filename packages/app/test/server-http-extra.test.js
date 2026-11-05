@@ -30,6 +30,7 @@ process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
 process.env.NODE_ENV = 'test';
 delete process.env.CCV_BASE_PATH;
+delete process.env.CCV_BASE_URL;
 delete process.env.CCV_ALLOWED_HOSTS;
 delete process.env.CCV_USE_PASSWORD;
 delete process.env.CCV_PASSWORD;

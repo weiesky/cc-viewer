@@ -20,6 +20,8 @@ Une boîte à outils Vibe Coding distillée à partir de l'expérience de dével
 
 How local config maps to a cloud database and the cloud-sync model (cloud-authoritative, local read-only fallback) is described in [Config Convergence & Cloud-Sync Advisory](./config-cloud-sync.md) ([中文](./config-cloud-sync.zh.md)). This is a proposal, not yet implemented.
 
+Reverse-proxy base URL (CCV_BASE_URL): [docs/base-url.md](./base-url.md) ([中文](./base-url.zh.md)) — serve cc-viewer under a public URL path prefix (Host allowlist, WS upgrades, share/QR links follow automatically).
+
 ## Utilisation
 
 ### Prérequis

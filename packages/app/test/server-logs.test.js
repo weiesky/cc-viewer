@@ -23,6 +23,7 @@ process.env.CCV_START_PORT = '19750';
 process.env.CCV_MAX_PORT = '19759';
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
+delete process.env.CCV_BASE_URL;
 
 // 隔离段之后才动态 import(此时 LOG_DIR 已固化到 __isoDir)
 const { LOG_DIR } = await import('../findcc.js');

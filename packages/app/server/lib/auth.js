@@ -295,11 +295,14 @@ function escapeHtml(s) {
 /**
  * Self-contained login page (inline CSS + JS, references NO /assets — static assets
  * are auth-exempt but we don't want to surface the SPA bundle to unauthenticated
- * remotes). On submit it POSTs to /api/auth/login and reloads on success.
+ * remotes). On submit it POSTs to <basePath>api/auth/login and reloads on success.
  *
  * `lang` is a resolved locale code (caller derives it from Accept-Language).
+ * `basePath` is the effective deployment prefix (CCV_BASE_URL/CCV_BASE_PATH), normalized
+ * with a trailing slash ('' at root): a prefix-preserving reverse proxy would otherwise
+ * route the hardcoded '/api/auth/login' POST nowhere near ccv.
  */
-export function renderLoginPage({ lang = 'en', error = false } = {}) {
+export function renderLoginPage({ lang = 'en', error = false, basePath = '' } = {}) {
   const dir = lang === 'ar' ? 'rtl' : 'ltr';
   const title = escapeHtml(tFor('server.auth.loginTitle', lang));
   const placeholder = escapeHtml(tFor('server.auth.loginPlaceholder', lang));
@@ -307,6 +310,11 @@ export function renderLoginPage({ lang = 'en', error = false } = {}) {
   const errMsg = escapeHtml(tFor('server.auth.loginError', lang));
   const toggleLabel = escapeHtml(tFor('server.auth.togglePassword', lang));
   const errStyle = error ? '' : ' style="display:none"';
+  // Login POST target: always root-absolute. basePath carries its own trailing slash; without
+  // a prefix fall back to '/api/auth/login' — the login page is served for ANY HTML navigation
+  // path (deep links included) and a relative 'api/auth/login' would resolve against the
+  // document URL and miss the endpoint. JS string escape: \ -> \\, " -> \", </ -> <\/ .
+  const jsSafeBase = String(basePath || '/').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/<\//g, '<\\/');
   return `<!DOCTYPE html>
 <html lang="${escapeHtml(lang)}" dir="${dir}" data-theme="dark">
 <head>
@@ -387,7 +395,7 @@ export function renderLoginPage({ lang = 'en', error = false } = {}) {
   f.addEventListener('submit', function (ev) {
     ev.preventDefault();
     b.disabled = true; e.style.display = 'none';
-    fetch('/api/auth/login', {
+    fetch("${jsSafeBase}api/auth/login", {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: p.value })

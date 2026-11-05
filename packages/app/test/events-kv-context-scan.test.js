@@ -29,6 +29,7 @@ process.env.CCV_WIRE_V3 = '0';
 // server.js 顶层把 CCV_START_PORT/MAX_PORT 冻结为 const,故必须在 import server.js 之前设好(本文件 before() 内动态 import,此处即生效)。
 process.env.CCV_START_PORT = '17930';
 process.env.CCV_MAX_PORT = '17939';
+delete process.env.CCV_BASE_URL;
 
 // 1.7.0：日志存储只有 v2 session dir。测试数据不再手写 v1 .jsonl，而是用生产
 // V2Writer 直接 ingest v1-shape entry（与 fetch hook 的调用面完全一致），再由

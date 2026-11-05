@@ -40,6 +40,7 @@ process.env.CCV_SDK_MODE = '1';
 // server.js 顶层把 CCV_START_PORT/MAX_PORT 冻结为 const,故必须在 import server.js 之前设好(本文件 before() 内动态 import,此处即生效)。
 process.env.CCV_START_PORT = '17920';
 process.env.CCV_MAX_PORT = '17929';
+delete process.env.CCV_BASE_URL;
 
 function httpRequest(port, path, { method = 'GET', body = null } = {}) {
   return new Promise((resolve, reject) => {

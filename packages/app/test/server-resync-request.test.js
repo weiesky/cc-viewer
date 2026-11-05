@@ -25,6 +25,7 @@ process.env.CCV_SDK_MODE = '0';
 process.env.NODE_ENV = 'test';
 delete process.env.CCV_IM_PLATFORM;
 delete process.env.CCV_BASE_PATH;
+delete process.env.CCV_BASE_URL;
 delete process.env.CCV_ALLOWED_HOSTS;
 // 私有高位端口窗，避免与用户真实 ccv 服务抢端口（惯例见 server-ws-branches.test.js）
 process.env.CCV_START_PORT = '19750';

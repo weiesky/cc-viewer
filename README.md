@@ -214,6 +214,7 @@ cc-viewer works in a single container or on a cloud host where you reach the UI 
 * **Reverse-proxy note:** access control is based on the socket peer address (`X-Forwarded-For` is deliberately not trusted, to prevent spoofing). This does not affect remote admins — they authenticate by token/password, not by IP. It only means "same-container" detection relies on a real loopback connection.
 
 * **Design doc:** how local config maps to a cloud database and the cloud-sync model (cloud-authoritative, local read-only fallback) is described in [Config Convergence & Cloud-Sync Advisory](./docs/config-cloud-sync.md) ([中文](./docs/config-cloud-sync.zh.md)). This is a proposal, not yet implemented.
+* **Reverse-proxy base URL:** when the platform maps the port to a public URL with a path prefix (e.g. `https://host.example.com/arca/api/v1/session/{token}`), set `CCV_BASE_URL` to it — prefix routing, WebSocket upgrades, Host allowlisting, and the share/QR links all follow automatically. See [Deploying behind a reverse-proxy URL](./docs/base-url.md) ([中文](./docs/base-url.zh.md)).
 
 
 ### Model-specific system prompts

@@ -27,6 +27,9 @@ export default defineConfig(() => {
     // Note: server/lib/base-path.js's normalizeBasePath is not reused here — build-time `base`
     // has different semantics from runtime (here '/' means absolute and unset/'' means relative;
     // at runtime both '/' and unset mean "no prefix").
+    // CCV_BASE_URL is intentionally NOT read here: it is a runtime deployment setting handled
+    // by the server (prefix strip + <base> injection); the default relative build already works
+    // under any prefix. See docs/base-url.md.
     base: (() => {
       const v = process.env.CCV_BASE_PATH;
       if (v === undefined) return '';          // default: relative (use CCV_BASE_PATH=/ for absolute)

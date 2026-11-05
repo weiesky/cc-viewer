@@ -18,6 +18,7 @@ process.env.CCV_START_PORT = '18400';
 process.env.CCV_MAX_PORT = '18409';
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
+delete process.env.CCV_BASE_URL;
 
 const { LOG_DIR } = await import('../findcc.js');
 const { resolveSessionDirName } = await import('../server/lib/v2/session-select.js');

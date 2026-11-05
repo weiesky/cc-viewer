@@ -16,6 +16,7 @@ process.env.CCV_CLI_MODE = '0';
 // 确保 CLI 密码钩子不介入(默认 disabled 起步)
 delete process.env.CCV_USE_PASSWORD;
 delete process.env.CCV_PASSWORD;
+delete process.env.CCV_BASE_URL;
 // 私有高位端口窗,避免与用户真实 ccv 服务(7008-7099)抢端口(2026-06-06 审计 port-clash)。
 // server.js 顶层把 CCV_START_PORT/MAX_PORT 冻结为 const,故必须在 import server.js 之前设好(本文件 before() 内动态 import,此处即生效)。
 process.env.CCV_START_PORT = '19710';

@@ -21,6 +21,7 @@ process.env.CCV_TEST_ALLOW_PLUGIN_SPAWN = '1';
 process.env.NODE_ENV = 'test';
 delete process.env.CCV_IM_PLATFORM;
 delete process.env.CCV_BASE_PATH;
+delete process.env.CCV_BASE_URL;
 
 const PLUGIN_DIR = join(tmpDir, 'plugins', 'hello-service');
 

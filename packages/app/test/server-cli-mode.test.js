@@ -37,6 +37,7 @@ process.env.CCV_START_PORT = '17900';
 process.env.CCV_MAX_PORT = '17909';
 delete process.env.CCV_IM_PLATFORM;
 delete process.env.CCV_BASE_PATH;
+delete process.env.CCV_BASE_URL;
 delete process.env.CCV_ALLOWED_HOSTS;
 // Hermetic bound root: the scratch upgrade resolves boundCwd as CCV_PROJECT_DIR || cwd —
 // a developer shell inside a ccv-managed terminal could leak a foreign CCV_PROJECT_DIR.
@@ -57,9 +58,10 @@ async function waitUntil(pred, { timeoutMs = 3000, intervalMs = 10, label = 'con
 }
 
 // 打开一个 ws 并等到 open；返回带 msgs 队列 + waitFor(pred) 的句柄。
-function connectWs(base, path = '/ws/terminal') {
+// opts.headers：透传给 ws 客户端（如自定义 Host 头，验证 upgrade 路径的 Host allowlist）。
+function connectWs(base, path = '/ws/terminal', opts = {}) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(base + path);
+    const ws = new WebSocket(base + path, opts);
     const msgs = [];
     const waiters = [];
     ws.on('message', (d) => {
@@ -592,6 +594,43 @@ describeCli('server.js CLI-mode terminal WS with a real PTY', { concurrency: fal
       try { scratchMgr.killScratch(sid); } catch {}
     } finally {
       if (prev === undefined) delete process.env.CCV_BASE_PATH; else process.env.CCV_BASE_PATH = prev;
+    }
+  });
+
+  // ─────────── CCV_BASE_URL：host+path 形式下的 strip/注入/WS upgrade ───────────
+  // CCV_BASE_URL 同样每请求现读（resolveBaseConfig），字面前缀含 {token} 时请求侧到达的
+  // 是编码形式（new URL / WebSocket 构造器都会编码花括号）——此用例锁定编码形态匹配。
+  it('CCV_BASE_URL strips the prefix (encoded {token} form) for static, index injection, and WS upgrade', async () => {
+    const prevUrl = process.env.CCV_BASE_URL;
+    const PREFIX = '/arca/api/v1/session/{token}';
+    const WIRE = '/arca/api/v1/session/%7Btoken%7D';
+    process.env.CCV_BASE_URL = `arca-sandbox-office.alipay.com${PREFIX}`;
+    try {
+      const html = await new Promise((resolve) => {
+        const req = request({ hostname: '127.0.0.1', port, path: `${WIRE}/`, method: 'GET' }, (res) => {
+          let body = ''; res.on('data', (c) => { body += c; }); res.on('end', () => resolve({ status: res.statusCode, body }));
+        });
+        req.on('error', () => resolve({ status: -1 }));
+        const tid = setTimeout(() => { try { req.destroy(); } catch {} resolve({ status: -1 }); }, 4000);
+        if (typeof tid.unref === 'function') tid.unref();
+        req.end();
+      });
+      assert.equal(html.status, 200, 'GET <wire>/ should serve index after CCV_BASE_URL prefix strip');
+      assert.ok(html.body.includes(`<base href="${PREFIX}/"`), 'index html keeps the literal {token} base href');
+
+      // scratch ws upgrade：WebSocket 构造器会把 {token} 编码为 %7Btoken%7D（这里直接放编码形式）。
+      // Host 头用公网域名 —— 锁定 checkHostAllowed 在 upgrade 路径同样自动并入 base URL host
+      //（云代理下 WS 被 403 即此回归）。
+      const sid = 'scr_bu_1';
+      const conn = await connectWs(base, `${WIRE}/ws/terminal-scratch?id=${sid}`, {
+        headers: { host: 'arca-sandbox-office.alipay.com' },
+      });
+      const stateMsg = await conn.waitFor((m) => m.type === 'state', 10000);
+      assert.ok(stateMsg, 'scratch ws under CCV_BASE_URL prefix should upgrade and emit state');
+      await conn.close();
+      try { scratchMgr.killScratch(sid); } catch {}
+    } finally {
+      if (prevUrl === undefined) delete process.env.CCV_BASE_URL; else process.env.CCV_BASE_URL = prevUrl;
     }
   });
 

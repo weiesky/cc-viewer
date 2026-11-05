@@ -29,6 +29,7 @@ process.env.CCV_START_PORT = '19740';
 process.env.CCV_MAX_PORT = '19749';
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
+delete process.env.CCV_BASE_URL;
 
 function postAskHook(port, questions, clientTimeoutMs) {
   return new Promise((resolve) => {

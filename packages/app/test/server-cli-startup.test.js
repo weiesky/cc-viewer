@@ -38,6 +38,7 @@ process.env.CCV_USE_PASSWORD = '1';
 process.env.CCV_PASSWORD = EXPLICIT_PASSWORD;
 delete process.env.CCV_IM_PLATFORM;
 delete process.env.CCV_BASE_PATH;
+delete process.env.CCV_BASE_URL;
 delete process.env.CCV_ALLOWED_HOSTS;
 
 function raw(port, path, headers = {}) {

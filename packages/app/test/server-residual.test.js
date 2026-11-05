@@ -68,6 +68,7 @@ process.env.CCV_START_PORT = '17820';
 process.env.CCV_MAX_PORT = '17859';
 delete process.env.CCV_IM_PLATFORM;
 delete process.env.CCV_BASE_PATH;
+delete process.env.CCV_BASE_URL;
 delete process.env.CCV_ALLOWED_HOSTS;
 delete process.env.CCV_USE_PASSWORD;
 delete process.env.CCV_PASSWORD;

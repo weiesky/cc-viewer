@@ -33,6 +33,7 @@ process.env.CCV_START_PORT = '19760';
 process.env.CCV_MAX_PORT = '19769';
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
+delete process.env.CCV_BASE_URL;
 
 /** 用 node:http 发请求（避免被 interceptor patch 的 fetch 干扰） */
 function httpRequest(port, path, { method = 'GET', body = null } = {}) {

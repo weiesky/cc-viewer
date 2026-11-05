@@ -5,7 +5,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeBasePath, validateBasePath, stripBasePath } from '../server/lib/base-path.js';
+import { normalizeBasePath, validateBasePath, stripBasePath, wireBasePath, wireBasePathVariants } from '../server/lib/base-path.js';
 import { tFor } from '../server/i18n.js';
 
 describe('base-path lib', () => {
@@ -86,8 +86,30 @@ describe('base-path lib', () => {
       assert.equal(stripBasePath('/proxy/ws-other', normalizeBasePath('/proxy/ws')), '/proxy/ws-other');
     });
 
-    it('裸前缀 /proxy（无尾斜杠访问）不剥离——PIN 已知边界，代理侧应 redirect 到 /proxy/', () => {
-      assert.equal(stripBasePath('/proxy', '/proxy/'), '/proxy');
+    it('裸前缀（无尾斜杠访问）→ "/"：配合注入的 <base href> 让相对资源解析正确（2026-11 行为变更）', () => {
+      assert.equal(stripBasePath('/proxy', '/proxy/'), '/');
+    });
+
+    it('编码形式匹配：字面前缀 {token} 对上线格式 %7Btoken%7D 的请求 pathname', () => {
+      // safeParseRequestUrl 用 new URL 解析请求，花括号恒被编码 —— 匹配必须走 wire 形式
+      const base = '/arca/api/v1/session/{token}/';
+      assert.equal(stripBasePath('/arca/api/v1/session/%7Btoken%7D/api/x', base), '/api/x');
+      assert.equal(stripBasePath('/arca/api/v1/session/%7Btoken%7D/', base), '/');
+      // 编码小写变体（防御把 %XX 转小写的代理）
+      assert.equal(stripBasePath('/arca/api/v1/session/%7btoken%7d/api/x', base), '/api/x');
+      // 编码裸前缀（无尾斜杠）→ '/'
+      assert.equal(stripBasePath('/arca/api/v1/session/%7Btoken%7D', base), '/');
+      // 防歧义：编码形式也不误伤相邻路径
+      assert.equal(stripBasePath('/arca/api/v1/session/%7Btoken%7Dextra/x', base), '/arca/api/v1/session/%7Btoken%7Dextra/x');
+    });
+
+    it('含 ?/# 的值回退字面前缀（URL 解析会吞尾斜杠，保持旧的"永不命中"行为而非误剥）', () => {
+      assert.equal(wireBasePath('/a?x/'), '/a?x/');
+      assert.equal(wireBasePath('/a#x/'), '/a#x/');
+      // 剥离行为与旧版一致：不命中任何已解析路径（也不会把 '/api/x' 切成 'pi/x'）
+      assert.equal(stripBasePath('/api/cli-mode', '/a?x/'), '/api/cli-mode');
+      assert.equal(stripBasePath('/proxyextra/x', '/proxy#/'), '/proxyextra/x');
+      assert.ok(!wireBasePathVariants('/a?x/').some((b) => !b.endsWith('/') && b !== ''));
     });
 
     it('多级前缀剥离', () => {

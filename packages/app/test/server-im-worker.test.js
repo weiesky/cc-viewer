@@ -38,6 +38,7 @@ process.env.CCV_PROJECT_DIR = projectDir;
 // 关键：在 import server.js 之前钉死 IM-worker 平台（合法 id，但无 prefs → startBridge no-op）。
 process.env.CCV_IM_PLATFORM = 'dingtalk';
 delete process.env.CCV_BASE_PATH;
+delete process.env.CCV_BASE_URL;
 delete process.env.CCV_ALLOWED_HOSTS;
 delete process.env.CCV_USE_PASSWORD;
 delete process.env.CCV_PASSWORD;

@@ -20,6 +20,7 @@ process.env.NODE_ENV = 'test';
 // gated on !isSdkMode). A developer shell running INSIDE an SDK-mode Claude Code
 // session leaks CCV_SDK_MODE=1 into the test process — force PTY mode explicitly.
 delete process.env.CCV_SDK_MODE;
+delete process.env.CCV_BASE_URL;
 // findcc's resolveLogDir maps the keyword 'tmp' to a process-private disposable dir
 // (os.tmpdir()/cc-viewer-test/<pid>) — the ONLY form its test-isolation barrier and
 // setLogDir's whitelist both accept. A raw mkdtemp path under macOS /var/folders is

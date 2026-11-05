@@ -15,7 +15,7 @@ import { INJECT_IMPORT, LEGACY_INJECT_IMPORTS, resolveCliPath, resolvePreferredC
 import { ensureHooks, removeAllManagedHooks } from './server/lib/ensure-hooks.js';
 import { injectCliJsAt, removeCliJsInjectionAt, INJECT_START as _INJECT_START, INJECT_END as _INJECT_END, buildInjectBlock as _buildInjectBlock } from './server/lib/cli-inject.js';
 import { inspectShellHook } from './server/lib/shell-hook-inspect.js';
-import { normalizeBasePath } from './server/lib/base-path.js';
+import { resolveBaseConfig, externalUrlFromConfig } from './server/lib/base-url.js';
 import { mergeSettingsIntoArgs } from './server/lib/settings-merge.js';
 import { splitSdkLaunchArgs, resolveLaunchSystemPrompt, insertBeforeDashDash } from './server/lib/launch-config.js';
 import { createHardenedCleanup, installWinKeypressFallback } from './server/lib/term-signals.js';
@@ -614,8 +614,13 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
 
   // 4. 自动打开浏览器
   const protocol = serverMod.getProtocol();
-  const basePath = normalizeBasePath(process.env.CCV_BASE_PATH);
-  const url = `${protocol}://127.0.0.1:${port}${basePath}`;
+  const _cfg = resolveBaseConfig();
+  const url = `${protocol}://127.0.0.1:${port}${_cfg.basePath}`;
+  const _token = serverMod.getAccessToken();
+  // CCV_BASE_URL 带 host：自动打开与 External 行用公网 URL（带 ccv 自己的 ?token=，
+  // 否则默认鉴权下是 403 死链）。无请求上下文 → scheme 取显式值或默认 https。
+  const externalUrl = externalUrlFromConfig(_cfg, { token: _token });
+  const openUrl = externalUrl || url;
   if (!noOpen) {
     try {
       // URL 含 & 在 cmd.exe 下会被当命令分隔符切断 query；用 spawn 数组传参避免 shell interpolation。
@@ -627,10 +632,10 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
       // would crash. Swallow it here as a best-effort fallback.
       let child;
       if (process.platform === 'win32') {
-        child = spawn('cmd.exe', ['/c', 'start', '""', url], { stdio: 'ignore', detached: true, windowsHide: true });
+        child = spawn('cmd.exe', ['/c', 'start', '""', openUrl], { stdio: 'ignore', detached: true, windowsHide: true });
       } else {
         const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
-        child = spawn(cmd, [url], { stdio: 'ignore', detached: true });
+        child = spawn(cmd, [openUrl], { stdio: 'ignore', detached: true });
       }
       child.on('error', () => {});
       child.unref();
@@ -639,10 +644,10 @@ async function runCliMode(extraClaudeArgs = [], cwd, noOpen = false) {
 
   console.log(`CC Viewer:`);
   console.log(`  ➜ Local:   ${url}`);
+  if (externalUrl) console.log(t('server.startedExternal', { url: externalUrl }));
   const _lanIps = serverMod.getAllLocalIps();
-  const _token = serverMod.getAccessToken();
   for (const _ip of _lanIps) {
-    console.log(`  ➜ Network: ${protocol}://${_ip}:${port}${basePath}?token=${_token}`);
+    console.log(`  ➜ Network: ${protocol}://${_ip}:${port}${_cfg.basePath}?token=${_token}`);
   }
   // 密码登录已启用时,把当前密码打印出来 —— 否则 `ccv --usePassword`(随机密码)在 CLI 模式下
   // 用户无从得知密码(server.js 的密码打印只在非 CLI 模式生效)。空密码=无防护,给出警告。
@@ -958,8 +963,13 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
 
   // 自动打开浏览器
   const protocol = serverMod.getProtocol();
-  const basePath = normalizeBasePath(process.env.CCV_BASE_PATH);
-  const url = `${protocol}://127.0.0.1:${port}${basePath}`;
+  const _cfg = resolveBaseConfig();
+  const url = `${protocol}://127.0.0.1:${port}${_cfg.basePath}`;
+  const _token = serverMod.getAccessToken();
+  // CCV_BASE_URL 带 host：自动打开与 External 行用公网 URL（带 ccv 自己的 ?token=，
+  // 否则默认鉴权下是 403 死链）。无请求上下文 → scheme 取显式值或默认 https。
+  const externalUrl = externalUrlFromConfig(_cfg, { token: _token });
+  const openUrl = externalUrl || url;
   if (!noOpen) {
     try {
       // URL 含 & 在 cmd.exe 下会被当命令分隔符切断 query；用 spawn 数组传参避免 shell interpolation。
@@ -971,10 +981,10 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
       // would crash. Swallow it here as a best-effort fallback.
       let child;
       if (process.platform === 'win32') {
-        child = spawn('cmd.exe', ['/c', 'start', '""', url], { stdio: 'ignore', detached: true, windowsHide: true });
+        child = spawn('cmd.exe', ['/c', 'start', '""', openUrl], { stdio: 'ignore', detached: true, windowsHide: true });
       } else {
         const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
-        child = spawn(cmd, [url], { stdio: 'ignore', detached: true });
+        child = spawn(cmd, [openUrl], { stdio: 'ignore', detached: true });
       }
       child.on('error', () => {});
       child.unref();
@@ -983,10 +993,10 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
 
   console.log(`CC Viewer (SDK mode):`);
   console.log(`  ➜ Local:   ${url}`);
+  if (externalUrl) console.log(t('server.startedExternal', { url: externalUrl }));
   const _lanIps = serverMod.getAllLocalIps();
-  const _token = serverMod.getAccessToken();
   for (const _ip of _lanIps) {
-    console.log(`  ➜ Network: ${protocol}://${_ip}:${port}${basePath}?token=${_token}`);
+    console.log(`  ➜ Network: ${protocol}://${_ip}:${port}${_cfg.basePath}?token=${_token}`);
   }
   // 密码登录已启用时,把当前密码打印出来 —— 否则 `ccv --usePassword`(随机密码)在 CLI 模式下
   // 用户无从得知密码(server.js 的密码打印只在非 CLI 模式生效)。空密码=无防护,给出警告。

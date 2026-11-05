@@ -293,6 +293,7 @@ function imFixture({ startPort, endPort }) {
     CCV_SDK_MODE: undefined,
     CCV_PROXY_MODE: undefined,
     CCV_BASE_PATH: undefined,
+    CCV_BASE_URL: undefined,
   };
   for (const k of Object.keys(env)) if (env[k] === undefined) delete env[k];
   return { home, logDir, env };

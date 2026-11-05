@@ -133,7 +133,8 @@ import { createImLogWatcher } from './lib/im/im-log-watcher.js';
 import { unwatchAllWorkflows } from './lib/workflow-watcher.js';
 import { backupConfigs } from './lib/config-backup.js';
 import { migrateCredentialsToVault } from './lib/credential-migrate.js';
-import { normalizeBasePath, validateBasePath, stripBasePath } from './lib/base-path.js';
+import { validateBasePath, stripBasePath } from './lib/base-path.js';
+import { resolveBaseConfig, externalUrlFromConfig, baseUrlAllowedHost } from './lib/base-url.js';
 import { createHardenedCleanup } from './lib/term-signals.js';
 import { createBackpressureGate } from './lib/ws-backpressure.js';
 import { createFloodCoalescer, envIntAllowZero } from './lib/pty-flood-coalescer.js';
@@ -971,6 +972,12 @@ function checkHostAllowed(hostHeaderValue) {
   const allowedHosts = process.env.CCV_ALLOWED_HOSTS
     ? process.env.CCV_ALLOWED_HOSTS.split(',').map(s => s.trim()).filter(Boolean)
     : ['localhost', '127.0.0.1', '::1', '[::1]', ...getAllLocalIps()];
+  // CCV_BASE_URL 带 host 时视为显式信任声明：始终并入 allowlist（合并语义——显式
+  // CCV_ALLOWED_HOSTS 列表保留，base URL host 追加），否则云代理域名下所有请求（含 WS
+  // upgrade）都被 403 host-not-allowed。只并入 hostname（去端口），与下方 hostNoPort 比较
+  // 口径一致。用户确认过该合并语义（docs/base-url.md §Host allowlist）。
+  const baseUrlHost = baseUrlAllowedHost();
+  if (baseUrlHost && !allowedHosts.includes(baseUrlHost)) allowedHosts.push(baseUrlHost);
   if (allowedHosts.includes('*')) return null;
   const hostHeader = (hostHeaderValue || '').toLowerCase();
   // Port stripping: RFC 3986 requires bracketed IPv6 `[::1]:port`; bare `::1` would lose its last `\d` to port stripping.
@@ -986,6 +993,16 @@ function checkHostAllowed(hostHeaderValue) {
 }
 
 async function handleRequest(req, res) {
+  // CCV_BASE_URL / CCV_BASE_PATH reverse proxy: strip prefix at TOP so API/WS/static/SPA
+  // all work with original unprefixed paths. 剥离后必须写回 parsedUrl.pathname ——
+  // dispatch()（routes/_dispatch.js）与多个 handler（files-content/ask-perm/im）直读
+  // parsedUrl.pathname 做路由匹配和偏移 slice，不写回则前缀下全部 /api/* 与 SSE /events
+  // 命不中、落 SPA fallback（PR #108 遗留 P0）。searchParams 不受 pathname 赋值影响。
+  // 生效前缀：CCV_BASE_URL 的 path 优先，回退 CCV_BASE_PATH；每请求现读（测试可翻转 env）。
+  // 字面 '{'/'}' 无需预处理：new URL 对特殊 scheme 的 pathname 恒做百分号编码
+  // （'/a{token}/b' → '/a%7Btoken%7D/b'），stripBasePath 按编码后的线格式匹配即可，
+  // 字面（curl -g / 代理原样转发）与编码（浏览器/fetch）两种客户端形态自然同构。
+  const bp = resolveBaseConfig().basePath;
   const parsedUrl = safeParseRequestUrl(req);
   if (!parsedUrl) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -993,13 +1010,6 @@ async function handleRequest(req, res) {
     return;
   }
   let url = parsedUrl.pathname;
-
-  // CCV_BASE_PATH reverse proxy: strip prefix at TOP so API/WS/static/SPA
-  // all work with original unprefixed paths. 剥离后必须写回 parsedUrl.pathname ——
-  // dispatch()（routes/_dispatch.js）与多个 handler（files-content/ask-perm/im）直读
-  // parsedUrl.pathname 做路由匹配和偏移 slice，不写回则前缀下全部 /api/* 与 SSE /events
-  // 命不中、落 SPA fallback（PR #108 遗留 P0）。searchParams 不受 pathname 赋值影响。
-  const bp = normalizeBasePath(process.env.CCV_BASE_PATH);
   url = stripBasePath(url, bp);
   parsedUrl.pathname = url;
   const method = req.method;
@@ -1058,7 +1068,7 @@ async function handleRequest(req, res) {
   if (authDecision.action === 'login-page') {
     const lang = localeFromAcceptLanguage(req.headers['accept-language']) || getLang();
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-    res.end(renderLoginPage({ lang }));
+    res.end(renderLoginPage({ lang, basePath: bp }));
     return;
   }
   if (authDecision.action === 'unauthorized') {
@@ -1156,7 +1166,7 @@ async function handleRequest(req, res) {
         // base=''（相对路径产物），让浏览器把所有相对 URL（含任意深度 SPA-fallback 文档里的
         // ./assets）解析到正确根/前缀下，避免深链直访（如 /a/b）时相对当前路径解析 → 白屏。
         // window.__CCV_BASE_PATH__ 仅子路径时注入：运行时 API/WS 的 base 语义保持"未设=无前缀"不变。
-        const injectBase = normalizeBasePath(process.env.CCV_BASE_PATH);
+        const injectBase = bp;
         const baseHref = injectBase || '/';
         const escapedBase = baseHref.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         let injectHtml = `<base href="${escapedBase}">`;
@@ -1511,26 +1521,36 @@ async function _doStart() {
               if (_prefs.lang) setLang(_prefs.lang);
             }
           } catch { /* 读 prefs 失败就保持默认语言 */ }
-          // CCV_BASE_PATH 配置校验：缺前导 '/' 时剥离静默失效（startsWith 永不命中），
-          // 启动期告警一次。放在 setLang 之后，告警语言才跟随用户配置。
+          // CCV_BASE_URL / CCV_BASE_PATH 配置校验：非法 CCV_BASE_URL 回退 legacy 并告警；
+          // 两者同设时 CCV_BASE_URL 优先并提示；CCV_BASE_PATH 缺前导 '/' 的旧告警保留
+          // （仅在未被 CCV_BASE_URL 覆盖时）。放在 setLang 之后，告警语言才跟随用户配置。
+          const _baseCfg = resolveBaseConfig();
           {
-            const _bpCheck = validateBasePath(process.env.CCV_BASE_PATH);
-            if (_bpCheck.warning) console.warn(t(_bpCheck.warning, { value: process.env.CCV_BASE_PATH }));
+            if (_baseCfg.source !== 'baseUrl') {
+              const _bpCheck = validateBasePath(process.env.CCV_BASE_PATH);
+              if (_bpCheck.warning) console.warn(t(_bpCheck.warning, { value: process.env.CCV_BASE_PATH }));
+            }
+            if (_baseCfg.warning) console.warn(t(_baseCfg.warning, { value: _baseCfg.warningValue }));
           }
           // interceptor.js runs in this same process (via proxy.js → setupInterceptor).
           // Inject live-port via module-level setter instead of process.env to avoid
           // polluting env of child_process.spawn descendants (Bash tools / MCP / Electron tabs).
           setLivePort(port, serverProtocol);
           // 自动打开/serverStarted hook 用的 URL 也要带反代前缀（与启动打印一致）
-          const url = `${serverProtocol}://127.0.0.1:${port}${normalizeBasePath(process.env.CCV_BASE_PATH)}`;
+          const url = `${serverProtocol}://127.0.0.1:${port}${_baseCfg.basePath}`;
+          // CCV_BASE_URL 带 host：对外展示的公网 URL（二维码/分享/External 行）。启动期没有
+          // 请求上下文，scheme 取显式值或默认 https（X-Forwarded-Proto 只在 /api/local-url 有
+          // 请求时可用）。必须带 ?token= —— 默认 token 鉴权下无 token 的远程链接是 403 死链。
+          const externalUrl = externalUrlFromConfig(_baseCfg, { token: ACCESS_TOKEN });
+          const openUrl = externalUrl || url;
           if (!isCliMode) {
             console.error(t('server.started'));
-            const _bp = normalizeBasePath(process.env.CCV_BASE_PATH);
-            console.error(t('server.startedLocal', { protocol: serverProtocol, port, basePath: _bp }));
+            console.error(t('server.startedLocal', { protocol: serverProtocol, port, basePath: _baseCfg.basePath }));
             const _ips = getAllLocalIps();
             for (const _ip of _ips) {
-              console.error(t('server.startedNetwork', { protocol: serverProtocol, ip: _ip, port, basePath: _bp, token: ACCESS_TOKEN }));
+              console.error(t('server.startedNetwork', { protocol: serverProtocol, ip: _ip, port, basePath: _baseCfg.basePath, token: ACCESS_TOKEN }));
             }
+            if (externalUrl) console.error(t('server.startedExternal', { url: externalUrl }));
             if (authConfig.enabled) {
               if (authConfig.password === '') console.error(t('server.passwordEmptyWarn'));
               else console.error(t('server.passwordActive', { password: authConfig.password }));
@@ -1543,8 +1563,17 @@ async function _doStart() {
             const ccVer = JSON.parse(readFileSync(ccPkgPath, 'utf-8')).version;
             const [maj, min, pat] = ccVer.split('.').map(Number);
             if ((maj < 2 || (maj === 2 && min === 0 && pat < 69)) && !isBrowserOpenSuppressed()) {
-              const cmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
-              execAsync(`${cmd} ${url}`, { timeout: 5000 }).catch(() => {});
+              // spawn 数组传参不过 shell：URL 里的 '?token='/'{token}' 不会被 shell 展开或分词；
+              // Windows 的 start 是 cmd.exe 内置命令，第二个 arg '""' 是 title 占位（否则 URL 被当 title）。
+              let child;
+              if (platform() === 'win32') {
+                child = spawn('cmd.exe', ['/c', 'start', '""', openUrl], { stdio: 'ignore', detached: true, windowsHide: true });
+              } else {
+                child = spawn(platform() === 'darwin' ? 'open' : 'xdg-open', [openUrl], { stdio: 'ignore', detached: true, windowsHide: true });
+              }
+              // headless/容器环境可能无 xdg-open/open/start → spawn 异步 error 事件需兜底
+              child.on('error', () => {});
+              child.unref();
             }
           } catch { }
           // 工作区模式下延迟到选择工作区后再启动监听
@@ -1574,7 +1603,7 @@ async function _doStart() {
             await pluginRuntime.onServerStarted({
               logDir: LOG_DIR,
               port, host: HOST,
-              basePath: normalizeBasePath(process.env.CCV_BASE_PATH),
+              basePath: _baseCfg.basePath,
               protocol: serverProtocol,
               token: ACCESS_TOKEN,
               internalToken: INTERNAL_TOKEN,
@@ -1739,10 +1768,13 @@ function installUpgradeRouter(httpServer) {
   if (!httpServer._ccvUpgradeRoutes) httpServer._ccvUpgradeRoutes = [];
   httpServer.on('upgrade', (req, socket, head) => {
     try {
+      // Upgrades bypass handleRequest, so basePath is stripped independently (same helper as
+      // HTTP). Literal braces need no pre-handling: new URL already encodes them in the
+      // pathname, and stripBasePath matches the wire form.
+      const bp = resolveBaseConfig().basePath;
       const wsUrl = safeParseRequestUrl(req);
       if (!wsUrl) { socket.destroy(); return; }
-      // Upgrades bypass handleRequest, so basePath is stripped independently (same helper as HTTP)
-      const pathname = stripBasePath(wsUrl.pathname, normalizeBasePath(process.env.CCV_BASE_PATH));
+      const pathname = stripBasePath(wsUrl.pathname, bp);
       // Same auth as HTTP (WS upgrades previously ignored tokens entirely - a remote-terminal hole).
       // Compute isLocal explicitly here (same three-way check as handleRequest); WS is never an HTML request.
       const wsRemoteIp = req.socket.remoteAddress;

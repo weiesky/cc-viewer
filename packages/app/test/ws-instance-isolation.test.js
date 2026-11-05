@@ -14,6 +14,7 @@ process.env.CLAUDE_CONFIG_DIR = tmpDir;
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
 process.env.NODE_ENV = 'test';
+delete process.env.CCV_BASE_URL;
 
 const mod = await import('../server/server.js');
 

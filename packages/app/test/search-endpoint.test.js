@@ -20,6 +20,7 @@ process.env.CCV_START_PORT = '19780';
 process.env.CCV_MAX_PORT = '19789';
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.CCV_CLI_MODE = '0';
+delete process.env.CCV_BASE_URL;
 
 function post(port, path, body) {
   return new Promise((resolve, reject) => {

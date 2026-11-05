@@ -104,7 +104,8 @@ interface PluginContext {
   version: string | null;
   pluginDir: string;
   dataDir: string;              // <log_dir>/plugin-data/<name>/（自动创建，0700）
-  basePath: string;             // 设置 CCV_BASE_PATH 时为 '/ccv'，否则 ''
+  basePath: string;             // 设置时为 '/ccv/'，否则 '' —— 归一化生效前缀（带尾斜杠；
+                                // 花括号保持字面），取自 CCV_BASE_URL（优先）或 CCV_BASE_PATH
   server: {
     port: number; host: string; protocol: 'http' | 'https'; url: string;
     token: string;              // ACCESS_TOKEN（敏感）
@@ -266,4 +267,4 @@ node build.mjs                       # 产出 panel/index.js（import 了 css �
 
 - **Electron**：每个 server 进程（管理 server + 每个标签页 worker）都会运行一份已启用服务插件。有外部副作用的插件（绑定端口、单例资源）会每个标签页跑一份——请据此设计。IM worker 进程不会激活服务插件。
 - **Windows**：进程组 kill 用 `taskkill /T /F`；锁与配置按 server PID 命名，多个 cc-viewer 实例互不冲突。
-- **CCV_BASE_PATH**：代理在转发前剥离；你的服务看到的永远是无前缀路径。`x-forwarded-prefix` 携带 `<basePath><插件前缀>`。
+- **CCV_BASE_URL / CCV_BASE_PATH**：前缀由 cc-viewer 自己在转发前剥离；你的服务看到的永远是无前缀路径。`x-forwarded-prefix` 携带 `<basePath><插件前缀>`。两者同设时 CCV_BASE_URL 优先（见 [docs/base-url.zh.md](./base-url.zh.md)）。`x-forwarded-prefix` 携带字面（浏览器侧）前缀；改写后的 `Set-Cookie` `Path` 自动使用百分号编码的线格式（花括号 → `%7B`/`%7D`）。

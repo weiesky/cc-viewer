@@ -7,6 +7,7 @@
 process.env.CCV_PROXY_MODE = '1';
 process.env.CCV_WORKSPACE_MODE = '1';
 process.env.NODE_ENV = 'test';
+delete process.env.CCV_BASE_URL;
 
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';

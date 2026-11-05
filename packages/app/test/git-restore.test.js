@@ -40,6 +40,7 @@ process.env.CCV_CLI_MODE = '0';
 // 注:顶部 line 22 静态 import 的是 file-api.js(仅 node 内置依赖,不拉 server.js),server.js 由 before() 动态 import,此处端口窗在其加载前已生效。
 process.env.CCV_START_PORT = '17940';
 process.env.CCV_MAX_PORT = '17949';
+delete process.env.CCV_BASE_URL;
 
 function httpJson(port, path, method, body) {
   return new Promise((resolve, reject) => {

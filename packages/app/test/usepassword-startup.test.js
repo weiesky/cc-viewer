@@ -16,6 +16,7 @@ process.env.CCV_USE_PASSWORD = '1';
 process.env.CCV_PASSWORD = 'STARTPW42';
 process.env.CCV_WORKSPACE_MODE = '1'; // skip auto-start/listen
 delete process.env.CCV_CLI_MODE;      // simulate early-load / non-CLI at module eval
+delete process.env.CCV_BASE_URL;
 
 describe('--usePassword startup hook writes project scope', () => {
   before(async () => { await import('../server/server.js'); });

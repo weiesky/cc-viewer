@@ -11,6 +11,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 process.env.NODE_ENV = 'test';
+delete process.env.CCV_BASE_URL;
 
 const server = await import('../server/server.js');
 const T = server.__testing;
