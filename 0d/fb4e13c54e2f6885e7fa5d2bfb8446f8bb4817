@@ -1,0 +1,23 @@
+packages/app/CHANGELOG.md
+  s_664f7849f1ec29::t_763ba7bffe7080 3-14
+history.md
+  s_664f7849f1ec29::t_7889a541b6aaf9 55-62,1078
+packages/app/package.json
+  s_664f7849f1ec29::t_763ba7bffe7080 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0dfb4e13c54e2f6885e7fa5d2bfb8446f8bb4817",
+  "prompts": {},
+  "sessions": {
+    "s_664f7849f1ec29": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "df6d9e9b-1c18-430a-b68b-c468fa2d33a2",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
