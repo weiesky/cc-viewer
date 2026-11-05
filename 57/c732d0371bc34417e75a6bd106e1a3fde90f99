@@ -1,0 +1,256 @@
+packages/app/test/turn-end-debounce.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 12
+packages/app/test/api-auth.test.js
+  s_1a209c4e512e77::t_0c4b7e4c07d144 19
+packages/app/test/v2-entry-endpoint.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 26
+docs/README.ru.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+packages/app/test/events-kv-context-scan.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 32
+docs/README.no.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+docs/README.ar.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+docs/README.pl.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+docs/README.pt-BR.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+scripts/tarball-baseline.json
+  s_1a209c4e512e77::t_80a98154f362de 1410
+docs/base-url.zh.md
+  s_1a209c4e512e77::t_59221867620a75 72
+  s_1a209c4e512e77::t_67da3e274fee26 75-76,78,80-82,88,92
+  s_1a209c4e512e77::t_bed97a7eb3e8b5 93-95
+  s_1a209c4e512e77::t_405930f4e13f9a 113
+  s_1a209c4e512e77::t_a35f0aa3ed2bb5 41
+  s_1a209c4e512e77::t_cabbff9459465a 1-13,15-20,22-40,42-65,69-71,73-74,83,86-87,89-91,96-112,115
+  s_1a209c4e512e77::t_6521765ca60bb8 21
+  s_1a209c4e512e77::t_f7802f7567d9df 14
+  s_1a209c4e512e77::t_f71b1992f2461b 66-68
+  s_1a209c4e512e77::t_cb949e8dbe6f4e 77
+  s_1a209c4e512e77::t_1e6ef7d7cc1fdb 79,84-85
+  s_1a209c4e512e77::t_75958cf467629d 114,116
+docs/base-url.md
+  s_1a209c4e512e77::t_72ec782de05f73 72
+  s_1a209c4e512e77::t_0c37bd83672dd5 75-77,79,81-83,90,94
+  s_1a209c4e512e77::t_1e77736ab5fca6 41
+  s_1a209c4e512e77::t_e8d80adda99c62 78
+  s_1a209c4e512e77::t_1e6ef7d7cc1fdb 80
+  s_1a209c4e512e77::t_f091eb9db4afdf 95-97
+  s_1a209c4e512e77::t_f9303abe1f963a 115
+  s_1a209c4e512e77::t_dc677ed10518db 1-20,22-40,42-65,69-71,73-74,84,88-89,91-93,98-114,117
+  s_1a209c4e512e77::t_d3cd2da1c135ff 116,118
+  s_1a209c4e512e77::t_90c294fd545ed0 21
+  s_1a209c4e512e77::t_b5638e581b9eca 66-68
+  s_1a209c4e512e77::t_9a84fcfaffe415 85-87
+packages/app/test/server-resync-request.test.js
+  s_1a209c4e512e77::t_f475e052844a6c 28
+docs/plugin-services.md
+  s_1a209c4e512e77::t_f65a2defa02f0e 109-110,316-318
+  s_1a209c4e512e77::t_78a21557c2a361 314-315
+packages/app/test/server-cli-mode.test.js
+  s_1a209c4e512e77::t_4664de030ac0c8 61-62,64
+  s_1a209c4e512e77::t_fa20019ad4c9df 40
+  s_1a209c4e512e77::t_5e048650fb624f 621-623,625-627
+  s_1a209c4e512e77::t_13debb4eb140df 600-620,624,628-636
+docs/README.ja.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+docs/README.de.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+packages/app/test/branch-cli.test.js
+  s_1a209c4e512e77::t_791bf1f3a246df 296
+packages/app/test/server-ports-busy.test.js
+  s_1a209c4e512e77::t_f475e052844a6c 35
+packages/app/test/server-startup-extra.test.js
+  s_1a209c4e512e77::t_f475e052844a6c 36
+packages/app/test/plugin-service-integration.test.js
+  s_1a209c4e512e77::t_f475e052844a6c 24
+packages/app/test/server-http-extra-2.test.js
+  s_1a209c4e512e77::t_f475e052844a6c 37
+packages/app/test/api-project-memory.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 43
+packages/app/test/server-http-extra.test.js
+  s_1a209c4e512e77::t_f475e052844a6c 33
+packages/app/server/routes/misc.js
+  s_1a209c4e512e77::t_c18ddd5d978be0 4
+  s_1a209c4e512e77::t_119c8324ea0536 25-26,29-30,32-36
+  s_1a209c4e512e77::t_41071a3a9b5a84 27-28,31
+packages/app/server/lib/base-path.js
+  s_1a209c4e512e77::t_7c7f0c9e736f83 39-40,43,45-47
+  s_1a209c4e512e77::t_5904df4b78ba6b 35-38,41-42,44,48-52,55-57,61
+  s_1a209c4e512e77::t_f6e5ff78cb742f 53-54,58-60
+  s_1a209c4e512e77::t_6110095fe20b2b 27,30-34,62,64-69
+docs/README.ko.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+packages/app/test/server-base-url-startup.test.js
+  s_1a209c4e512e77::t_b4766b95b73d4e 77
+  s_1a209c4e512e77::t_127c41e6247750 4-5
+  s_1a209c4e512e77::t_577a733a8bc33a 25-26
+  s_1a209c4e512e77::t_babd0822f458ab 1-3,6-24,27-29,31-32,34,36,38,40-45,47-76,78-79
+  s_1a209c4e512e77::t_35fcbfa6d48ab7 30,33,35,37,39,46
+docs/README.zh-TW.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+packages/app/test/api-im.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 18
+docs/README.th.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+packages/app/test/server-plugins.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 10
+packages/app/test/turn-active.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 10
+packages/app/test/branch-server.test.js
+  s_1a209c4e512e77::t_f475e052844a6c 48
+apps/web/vite.config.js
+  s_1a209c4e512e77::t_f2c9de19cbb065 30-32
+packages/app/test/server-im-worker.test.js
+  s_1a209c4e512e77::t_f475e052844a6c 41
+packages/app/test/api-claude-md.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 35
+packages/app/test/server-ws-branches.test.js
+  s_1a209c4e512e77::t_f475e052844a6c 39
+packages/app/server/i18n.js
+  s_1a209c4e512e77::t_7ff37af13e7578 650-729
+  s_1a209c4e512e77::t_d2a6b9343ef579 3178-3186,3188-3189,3198-3199
+README.md
+  s_1a209c4e512e77::t_dd8b77e7d5fc6b 217
+packages/app/cli.js
+  s_1a209c4e512e77::t_aa5362950c787e 966-970,972,984,987,996,999
+  s_1a209c4e512e77::t_8adc89c2186e73 18
+  s_1a209c4e512e77::t_6abdecefb498d6 622,971
+  s_1a209c4e512e77::t_15c4e14ccafb28 617-621,623,635,638,647,650
+packages/app/test/server-v2-read.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 21
+packages/app/test/server-malformed-host.test.js
+  s_1a209c4e512e77::t_f475e052844a6c 28
+packages/app/test/auth-lib.test.js
+  s_1a209c4e512e77::t_0f502aca3121e8 349-351
+  s_1a209c4e512e77::t_6333ab948bb532 348,352-359
+  s_1a209c4e512e77::t_93813e410217d8 342
+  s_1a209c4e512e77::t_ee11633a8637f1 347
+packages/app/test/server-lifecycle.test.js
+  s_1a209c4e512e77::t_f475e052844a6c 49
+packages/app/test/server-cli-startup.test.js
+  s_1a209c4e512e77::t_f475e052844a6c 41
+packages/app/server/lib/auth.js
+  s_1a209c4e512e77::t_e559df755c38c4 398
+  s_1a209c4e512e77::t_b40fd47cd0f60a 313-317
+  s_1a209c4e512e77::t_dff687ff146c44 298,301-303,305
+docs/README.es.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+packages/app/test/base-url-lib.test.js
+  s_1a209c4e512e77::t_68f24e543b07ed 1-15,17-100,105-235,248-256,258-262,265-268,271-273,275-287
+  s_1a209c4e512e77::t_7ea8331c043687 101-104
+  s_1a209c4e512e77::t_4bcc35c5829c3a 236-247
+  s_1a209c4e512e77::t_a1d5a148731893 257,263
+  s_1a209c4e512e77::t_2c839de40ec8ff 264
+  s_1a209c4e512e77::t_5f855f794b9462 16
+  s_1a209c4e512e77::t_54c471b0dc93b6 269-270,274
+history.md
+  s_1a209c4e512e77::t_2591e066215002 5
+  s_1a209c4e512e77::t_0a9e8d960c64cd 6
+docs/plugin-services.zh.md
+  s_1a209c4e512e77::t_f65a2defa02f0e 107-108,270
+packages/app/test/ws-instance-isolation.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 17
+packages/app/test/api-base-path.test.js
+  s_1a209c4e512e77::t_f475e052844a6c 28
+docs/README.fr.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+docs/README.tr.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+packages/app/server/lib/plugin-runtime.js
+  s_1a209c4e512e77::t_8e3726083a17e2 27
+  s_1a209c4e512e77::t_020e61931c5a50 141,146-147,153-154,157,159-161,163-171
+  s_1a209c4e512e77::t_05848b9dab0e9b 155-156,158,162
+  s_1a209c4e512e77::t_b544f154658ea7 172
+packages/app/test/usepassword-startup.test.js
+  s_1a209c4e512e77::t_0c4b7e4c07d144 19
+docs/README.zh.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 24
+  s_1a209c4e512e77::t_6e56b6b0997a5c 23
+packages/app/test/server-ask-hook-map.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 32
+packages/app/test/git-restore.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 43
+packages/app/test/search-endpoint.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 23
+packages/app/server/lib/base-url.js
+  s_1a209c4e512e77::t_6a29b8bae13e41 1-17,22-69,73-99,102-147,149-184,203
+  s_1a209c4e512e77::t_684af1c591ec16 18-21
+  s_1a209c4e512e77::t_59152ce48f8c45 70-72
+  s_1a209c4e512e77::t_06aaf1ba6dd24e 100-101
+  s_1a209c4e512e77::t_e9787712caf525 148
+  s_1a209c4e512e77::t_efcda0501c143e 185-202
+packages/app/test/base-path-lib.test.js
+  s_1a209c4e512e77::t_014ef572143cd9 8
+  s_1a209c4e512e77::t_a691da9f80f7df 89-104
+  s_1a209c4e512e77::t_309f0cc6d70487 106-112
+  s_1a209c4e512e77::t_c44d272bdfa61d 105
+packages/app/test/api-base-url.test.js
+  s_1a209c4e512e77::t_577a41c1a8c61b 27-28
+  s_1a209c4e512e77::t_bd8969420fb8e6 119-125
+  s_1a209c4e512e77::t_d93b15dda507f0 1-3,5-26,29-47,62-94,113-118,126-272
+  s_1a209c4e512e77::t_a65ed9df67b184 48-61
+  s_1a209c4e512e77::t_7f5cfbe1218b04 95-112
+  s_1a209c4e512e77::t_b173198d8a45fb 4
+packages/app/test/server-auth-branches.test.js
+  s_1a209c4e512e77::t_f475e052844a6c 42
+packages/app/test/plugin-mount-prefixes.test.js
+  s_1a209c4e512e77::t_e8a8e34b727a43 1-39
+docs/README.it.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+docs/README.uk.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+docs/README.da.md
+  s_1a209c4e512e77::t_c1738fe9c00b4a 23-24
+.changeset/base-url-cloud-deploy.md
+  s_1a209c4e512e77::t_08f443831d3dba 1-4
+  s_1a209c4e512e77::t_55b7b524b39084 5
+packages/app/server/server.js
+  s_1a209c4e512e77::t_b9ad140bc40c95 1071
+  s_1a209c4e512e77::t_45ce2975de9e0b 1566-1571,1573-1576
+  s_1a209c4e512e77::t_6908d255604dbb 137
+  s_1a209c4e512e77::t_cedf755f2448af 975-978
+  s_1a209c4e512e77::t_1c67aa9a488d7a 1774,1777
+  s_1a209c4e512e77::t_1e69045a9b7a01 979-980
+  s_1a209c4e512e77::t_a884c8728963d7 1002-1004
+  s_1a209c4e512e77::t_d2fc7a09d890b0 1169
+  s_1a209c4e512e77::t_04bec59bb38e1c 1544
+  s_1a209c4e512e77::t_00448ba7103320 1771
+  s_1a209c4e512e77::t_9a671eeed24ef7 1772-1773
+  s_1a209c4e512e77::t_8dafd3519bbf4c 1606
+  s_1a209c4e512e77::t_b6884946885f00 1540-1543,1545,1548,1551,1553
+  s_1a209c4e512e77::t_b515a2d5187238 1572
+  s_1a209c4e512e77::t_110f3d185ac4b4 136
+  s_1a209c4e512e77::t_938e7d3fc9165f 996-1001,1005
+  s_1a209c4e512e77::t_f0d80fe875c3e3 1524-1527,1529-1533
+packages/app/test/agent-loop-server-events.test.js
+  s_1a209c4e512e77::t_0c4b7e4c07d144 23
+packages/app/test/server.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 36
+packages/app/test/server-residual.test.js
+  s_1a209c4e512e77::t_fa20019ad4c9df 71
+packages/app/test/turn-end-scope-behavior.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 14
+packages/app/test/server-logs.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 26
+packages/app/test/api-dingtalk.test.js
+  s_1a209c4e512e77::t_5d7419f9ef56f3 28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "57c732d0371bc34417e75a6bd106e1a3fde90f99",
+  "prompts": {},
+  "sessions": {
+    "s_1a209c4e512e77": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec1ffaef-bd8d-45b6-92ca-99d24d1fcf64",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
