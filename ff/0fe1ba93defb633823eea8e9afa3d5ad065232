@@ -1,0 +1,38 @@
+apps/web/test/chat-pending-images-guard.test.js
+  s_664f7849f1ec29::t_68121521cd4fdd 1-16,29-32,36-182,184-187,237-258,285
+  s_664f7849f1ec29::t_564baac21c7ceb 17-28
+  s_664f7849f1ec29::t_7f5cc198a5d6f9 189-192
+  s_664f7849f1ec29::t_05888b0c50d6a9 193-196
+  s_664f7849f1ec29::t_4845672ff61491 183,188,197-236
+  s_664f7849f1ec29::t_7a3a25cfc45ab5 259-284
+  s_664f7849f1ec29::t_4bbebb6820c18e 33-35
+.changeset/wild-geese-attach.md
+  s_664f7849f1ec29::t_56f81907104fd4 1-6
+  s_664f7849f1ec29::t_a7adacdf8cfb9d 7
+history.md
+  s_664f7849f1ec29::t_63c8dd8ffc62da 5
+  s_664f7849f1ec29::t_9696e5c898d380 6
+apps/web/src/components/chat/ChatView.jsx
+  s_664f7849f1ec29::t_da15de11bdc813 1291-1295
+  s_664f7849f1ec29::t_74d143b72ba46c 1240-1243
+  s_664f7849f1ec29::t_9dabf445ae9549 1654-1656,1659-1663
+  s_664f7849f1ec29::t_fa20cfafe23065 1657-1658
+  s_664f7849f1ec29::t_963f0195f1d510 1284-1290
+  s_664f7849f1ec29::t_2980d262fd3389 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ff0fe1ba93defb633823eea8e9afa3d5ad065232",
+  "prompts": {},
+  "sessions": {
+    "s_664f7849f1ec29": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "df6d9e9b-1c18-430a-b68b-c468fa2d33a2",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
