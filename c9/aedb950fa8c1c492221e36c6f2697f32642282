@@ -1,0 +1,83 @@
+apps/web/src/utils/activeAgents.js
+  s_ce13639032640c::t_917916f1cb43df 257-308
+  s_ce13639032640c::t_1e223305cb2b6e 68-70
+  s_ce13639032640c::t_f8f04ef8e37be6 214-217
+  s_ce13639032640c::t_62401ece23cd98 309-336
+packages/app/cli.js
+  s_ce13639032640c::t_bfbd56e76dff3b 929
+apps/web/test/sdkTaskTracker.test.js
+  s_ce13639032640c::t_8df98f54d7a691 251-292
+  s_ce13639032640c::t_1927978185889e 12
+apps/web/src/components/chat/ChatView.jsx
+  s_ce13639032640c::t_d68b3281ebdeee 1285-1288
+  s_ce13639032640c::t_d6f6f729e09795 4895,4898,4903-4910
+  s_ce13639032640c::t_244665370b76fb 43
+  s_ce13639032640c::t_1860b5dc4533c3 3846
+  s_ce13639032640c::t_5e1a43307a7b25 50
+  s_ce13639032640c::t_8c2cda791bd2fd 4900-4902,4911,4914,4916,4918-4928,4930-4931,4935-4940
+  s_ce13639032640c::t_2719d66b2b79ad 3254-3259
+  s_ce13639032640c::t_b73525dd1e3084 3238-3246
+  s_ce13639032640c::t_3f8b516934147b 5143-5149
+  s_ca7d4ffd016d2f::t_ff118a844882f4 4896
+apps/web/src/utils/sdkTaskTracker.js
+  s_ce13639032640c::t_7d532655cf424b 255-256
+  s_ce13639032640c::t_45661eeb486672 243-254,257-283
+  s_ce13639032640c::t_f667cbeda368d1 228-242
+apps/web/test/active-agents-bar.test.js
+  s_ce13639032640c::t_cbe32deaacf57a 71,81-87
+packages/app/server/lib/sdk-manager.js
+  s_ce13639032640c::t_362ec385ed95c0 2786-2791
+  s_ce13639032640c::t_c121fabc18fa32 3303-3308
+  s_ce13639032640c::t_02011715ec2628 523-531
+  s_ce13639032640c::t_e446f15c1430ff 389-417
+  s_ce13639032640c::t_7323f580bc6522 2710-2711
+  s_ce13639032640c::t_a2788180b69516 1643-1662
+  s_ce13639032640c::t_f9c100c63c0452 2684-2685
+.changeset/sdk-task-server-table.md
+  s_ce13639032640c::t_71b714b1f8cd7c 1-5
+packages/app/server/server.js
+  s_ce13639032640c::t_a278585732ed4a 2399-2409
+  s_ce13639032640c::t_679a3edbe132cf 4058-4061
+apps/web/test/activeAgents.test.js
+  s_ce13639032640c::t_3080c3f9bac7e0 25
+  s_ce13639032640c::t_575fbb55013031 291-359
+  s_ce13639032640c::t_494ba62b835b2c 360-408
+  s_ce13639032640c::t_fb921026eeac02 24
+packages/app/test/sdk-task-table.test.js
+  s_ce13639032640c::t_9894f9a670c2dc 1-181
+apps/web/test/chat-active-agents-wiring.test.js
+  s_ce13639032640c::t_0dafe6c16fa439 83-87
+  s_ce13639032640c::t_15b0c01d26376a 99-101
+  s_ce13639032640c::t_3bd8f6aac2fb32 39-42,46-50
+apps/web/src/components/chat/ActiveAgentsBar.jsx
+  s_ce13639032640c::t_3f7eedef8fad3a 11
+  s_ce13639032640c::t_972ba1a0cab393 108
+  s_ce13639032640c::t_813a58e14fe737 81-100,102-103
+  s_ce13639032640c::t_b6110bdf040ab6 41-46,48,66
+.changeset/sdk-active-agents-bar.md
+  s_ce13639032640c::t_ce449d25103794 8-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c9aedb950fa8c1c492221e36c6f2697f32642282",
+  "prompts": {},
+  "sessions": {
+    "s_ca7d4ffd016d2f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ad984ec-ef52-4fb8-9388-013295effddf",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    },
+    "s_ce13639032640c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7ec1d625-eada-49ab-8b08-8fda62f0e2bd",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
