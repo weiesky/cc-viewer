@@ -25,6 +25,13 @@
  */
 
 import { publish as publishTaskUpdate, clearTasks as clearTaskStore } from './taskStore.js';
+import { AGENT_TASK_TYPES } from './activeAgents.js';
+
+// Cap on the retained prompt for agent tasks. The taskStore retains a task until
+// the next batch reset, so the full prompt must not be kept; a bounded snippet is
+// enough for the active-agents strip to join the spawn tool_use / transcript row
+// by prompt prefix (resolveAgentIdentity) or to infer an anonymous avatar type.
+const AGENT_PROMPT_SNIPPET_LEN = 1024;
 
 /** @type {Map<string, object>} */
 let _tasks = new Map();
@@ -116,6 +123,14 @@ export function applyFrame(frame) {
         if (frame.description != null) existing.subject = frame.description;
         if (frame.summary != null) existing.description = frame.summary;
         if (frame.taskType != null) existing.taskType = frame.taskType;
+        // Refresh the agent-identity fields when the re-fire frame carries them
+        // (conditional merge: the server only forwards fields that are present, so
+        // a field absent from the frame keeps its previous value). They join the
+        // MainAgent's Agent tool_use for the real name.
+        if (frame.toolUseId != null) existing.toolUseId = frame.toolUseId;
+        if (AGENT_TASK_TYPES.has(frame.taskType) && typeof frame.prompt === 'string') {
+          existing.promptSnippet = frame.prompt.slice(0, AGENT_PROMPT_SNIPPET_LEN);
+        }
         existing.status = 'in_progress';
         existing.createdAt = Date.now();
         _publish();
@@ -130,6 +145,14 @@ export function applyFrame(frame) {
         owner: null,
         teammateName: null,
         agentId: null,
+        // Agent-identity fields for the active-agents strip. toolUseId joins the
+        // MainAgent's Agent/Task tool_use block (exact match) for the real
+        // name/subagent_type; promptSnippet is the prompt-prefix fallback. Only
+        // agent taskTypes carry a prompt worth retaining (bounded).
+        toolUseId: frame.toolUseId != null ? frame.toolUseId : null,
+        promptSnippet: (AGENT_TASK_TYPES.has(frame.taskType) && typeof frame.prompt === 'string')
+          ? frame.prompt.slice(0, AGENT_PROMPT_SNIPPET_LEN)
+          : null,
         taskType: frame.taskType ?? null,
         createdAt: Date.now(),
       });

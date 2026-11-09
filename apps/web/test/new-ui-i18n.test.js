@@ -152,6 +152,10 @@ const KEYS = [
   // voice-pack agent-loop lifecycle event labels (VoicePackSettings.jsx rows):
   'ui.voicePack.event.agentLoopStart',
   'ui.voicePack.event.agentLoopEnd',
+  // SDK active subAgent/teammate strip (ActiveAgentsBar.jsx):
+  'ui.activeAgents.title',
+  'ui.activeAgents.all',
+  'ui.activeAgents.showAll',
 ];
 
 describe('new UI key i18n coverage', () => {

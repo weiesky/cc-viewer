@@ -44,14 +44,21 @@
   display: flex;
   flex-direction: row;
   height: 100%;
-  overflow: hidden;
+  /* When the window shrinks below (chatSection min-width + the fixed terminal
+     panel), the terminal no longer squeezes the conversation to zero width —
+     the row scrolls horizontally instead. Only takes effect in that overflow
+     case; at normal widths nothing scrolls. */
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .chatSection {
   flex: 1;
+  /* Floor under the conversation so a wide open terminal panel can never crush
+     it to 0px on a narrow window — the row overflows + scrolls instead. */
+  min-width: 280px;
   display: flex;
   flex-direction: column;
-  min-width: 0;
   overflow: hidden;
   /* dropZoneMask 的绝对定位参照物(zone marker 也挂在本元素上) */
   position: relative;
@@ -108,6 +115,22 @@
 .messageListWrap.withRoleFilter > .container,
 .messageListWrap.withRoleFilter > .mobileVirtuoso {
   padding-top: 41px; /* RoleFilterBar height */
+}
+
+/* Same compensation for the smaller active-agents strip (top:4 + height:28 + 4px
+   breathing room). Mutually exclusive with .withRoleFilter (ChatView picks one). */
+.messageListWrap.withActiveAgents > .container,
+.messageListWrap.withActiveAgents > .mobileVirtuoso {
+  padding-top: 36px; /* ActiveAgentsBar footprint */
+}
+
+/* Mobile enlarges the strip to top:6 + height:40 (footprint 46px) — match it so
+   the first row isn't tucked under the bar. */
+@media (max-width: 768px) {
+  .messageListWrap.withActiveAgents > .container,
+  .messageListWrap.withActiveAgents > .mobileVirtuoso {
+    padding-top: 46px;
+  }
 }
 
 .stickyBottomBtn {

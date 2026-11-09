@@ -48,6 +48,45 @@ describe('utils/sdkTaskTracker.js', () => {
     assert.equal(getTasks()[0].subject, 'Reworked');
   });
 
+  it('task_started retains toolUseId and a bounded promptSnippet for agent tasks', () => {
+    const longPrompt = 'p'.repeat(5000);
+    applyFrame({ subtype: 'task_started', taskId: 'a1', sessionId: 's1', description: 'Explore', taskType: 'local_agent', toolUseId: 'toolu_1', prompt: longPrompt });
+    const t = getTasks()[0];
+    assert.equal(t.toolUseId, 'toolu_1');
+    assert.equal(t.promptSnippet.length, 1024);
+    assert.equal(t.promptSnippet, longPrompt.slice(0, 1024));
+  });
+
+  it('task_started does not retain prompt for non-agent tasks', () => {
+    applyFrame({ subtype: 'task_started', taskId: 'b1', sessionId: 's1', description: 'Run tests', taskType: 'local_bash', toolUseId: 'toolu_2', prompt: 'npm test' });
+    const t = getTasks()[0];
+    assert.equal(t.toolUseId, 'toolu_2');
+    assert.equal(t.promptSnippet, null);
+  });
+
+  it('task_started re-fire refreshes toolUseId/promptSnippet for a reused taskId', () => {
+    // NO terminal state in between: re-firing while the task is still in_progress
+    // hits the `existing` branch directly (a completed task would instead trigger
+    // the all-terminal batch reset and rebuild via the new-task path).
+    applyFrame({ subtype: 'task_started', taskId: 'a1', sessionId: 's1', description: 'Old', taskType: 'local_agent', toolUseId: 'toolu_old', prompt: 'old prompt' });
+    applyFrame({ subtype: 'task_started', taskId: 'a1', sessionId: 's1', description: 'New', taskType: 'local_agent', toolUseId: 'toolu_new', prompt: 'new prompt' });
+    const tasks = getTasks();
+    assert.equal(tasks.length, 1, 're-fire reuses the same task slot (no new row)');
+    assert.equal(tasks[0].toolUseId, 'toolu_new');
+    assert.equal(tasks[0].promptSnippet, 'new prompt');
+    assert.equal(tasks[0].subject, 'New');
+  });
+
+  it('task_started re-fire keeps prior toolUseId/promptSnippet when the new frame omits them', () => {
+    // Conditional-merge semantics: fields absent from the re-fire frame retain
+    // their previous values (the server only forwards fields that are present).
+    applyFrame({ subtype: 'task_started', taskId: 'a1', sessionId: 's1', description: 'Old', taskType: 'local_agent', toolUseId: 'toolu_old', prompt: 'old prompt' });
+    applyFrame({ subtype: 'task_started', taskId: 'a1', sessionId: 's1', description: 'New', taskType: 'local_agent' });
+    const t = getTasks()[0];
+    assert.equal(t.toolUseId, 'toolu_old', 'omitted toolUseId is retained');
+    assert.equal(t.promptSnippet, 'old prompt', 'omitted prompt is retained');
+  });
+
   it('task_updated applies status patch with mapping', () => {
     applyFrame({ subtype: 'task_started', taskId: 't1', sessionId: 's1', description: 'Task' });
     applyFrame({ subtype: 'task_updated', taskId: 't1', sessionId: 's1', patch: { status: 'completed' } });

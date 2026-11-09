@@ -39,6 +39,9 @@ import { TeamButton, TeamModal } from '../dashboard/TeamSessionPanel';
 import { WorkflowButton, WorkflowRunsModal } from '../dashboard/WorkflowRunsPanel';
 import SnapLineOverlay from '../common/SnapLineOverlay';
 import RoleFilterBar from './RoleFilterBar';
+import ActiveAgentsBar from './ActiveAgentsBar';
+import { deriveActiveAgents, labelMatchesAgent, promptMatchesAgent, firstUserText } from '../../utils/activeAgents';
+import { getSnapshot as getTaskSnapshot } from '../../utils/taskStore';
 import ChatInputBar, { resizeChatTextarea } from './ChatInputBar';
 import ProxyChip from './ProxyChip';
 import ProxyModal from '../settings/ProxyModal';
@@ -341,6 +344,13 @@ class ChatView extends React.Component {
       gitChangesRefresh: 0,
       roleFilterOpen: false,
       roleFilterSelected: new Set(),
+      // Active subAgent/teammate focus (--sdk mode). A single-select descriptor
+      // ({key,kind,name,avatarType,promptPrefix}|null) that filters the conversation
+      // to one agent's rows; mutually exclusive with the RoleFilterBar above.
+      // activeAgentsBarVisible drives the top-padding class without ChatView itself
+      // subscribing to taskStore.
+      activeAgent: null,
+      activeAgentsBarVisible: false,
       teamModalSession: null,
       workflowModalRun: null,
       mdLightboxSrc: null,
@@ -879,6 +889,10 @@ class ChatView extends React.Component {
       // clearing them here would orphan a live PTY modal into a silent timeout-deny.
       this.setState({
         pendingPlanApproval: null, pendingPtyPlan: null, planAutoApproveCountdown: null,
+        // An agent focus belongs to the session/workspace it was set in — never
+        // carry it across a view/instance switch (a same-named teammate elsewhere
+        // would otherwise be silently filtered by the old focus).
+        activeAgent: null, activeAgentsBarVisible: false,
         ...(this.props.sdkMode ? { pendingAsk: null, askQueue: [], pendingPermission: null, permissionQueue: [] } : {}),
       });
       // Mark the pendingAsk/pendingPtyPlan clears above as view-switch synthetic so the
@@ -1178,8 +1192,13 @@ class ChatView extends React.Component {
       if (el) this._stickyController.startSmoothFollow(el);
     }
     // Session switch within the same workspace (resume/detach changes attachedSid) —
-    // the pinned rows belong to the previous session.
-    if (prevProps.attachedSid !== this.props.attachedSid) this._clearSdkErrors();
+    // the pinned rows belong to the previous session. The agent focus likewise belongs
+    // to the session it was set in: the tracker resets on the new session's first
+    // frame, but if that session has no task frames the focus would otherwise linger.
+    if (prevProps.attachedSid !== this.props.attachedSid) {
+      this._clearSdkErrors();
+      if (this.state.activeAgent) this.setState({ activeAgent: null });
+    }
     // Streaming border fade-out: when isStreaming goes from true to false, trigger fade
     if (prevProps.isStreaming && !this.props.isStreaming) {
       this.setState({ streamingFading: true });
@@ -1250,6 +1269,23 @@ class ChatView extends React.Component {
     }
     if (prevProps.sessionUpperBoundTs !== this.props.sessionUpperBoundTs) {
       this._reconcileOptimisticQueueMessages();
+      // Pinning to a historical session hides the strip (showActiveAgentsBar gate);
+      // drop any focus so the older session's rows are never filtered by a live
+      // session's agent.
+      if (this.props.sessionUpperBoundTs != null && this.state.activeAgent) this.setState({ activeAgent: null });
+    }
+    // Focus lifecycle backstop (SDK active-agents strip): if the focused agent is
+    // no longer in the active set (its task reached a terminal state, or the
+    // tracker was reset on a view/session switch), clear the focus so the user is
+    // never left with a filtered list and no visible way back. This runs here —
+    // not inside ActiveAgentsBar — because the bar can be unmounted on a workspace
+    // switch, in which case its own effect would never fire. Matching is by taskId
+    // (stable across the identity join); a teammate focused under a resolved
+    // tm:<name> key still carries its originating taskId.
+    if (this.state.activeAgent && this.state.activeAgent.taskId) {
+      const focusTaskId = this.state.activeAgent.taskId;
+      const stillActive = deriveActiveAgents(getTaskSnapshot().tasks).some(a => a.taskId === focusTaskId);
+      if (!stillActive) this.setState({ activeAgent: null });
     }
     if (prevProps.mainAgentSessions !== this.props.mainAgentSessions) {
       this._reconcileOptimisticQueueMessages();
@@ -3779,6 +3815,31 @@ class ChatView extends React.Component {
     return sdkPlanMatchesView(msg, this.props.viewProject || this.props.projectName || '', this.props.viewInstance || null);
   };
 
+  // --- Active subAgent/teammate strip (--sdk mode) ---
+  // Class arrow fields (stable references across renders) so ActiveAgentsBar's
+  // useEffect deps never see a new callback identity per render — a new identity
+  // would re-fire the visibility/focus effects pointlessly.
+
+  // Click an avatar → focus that agent; click the focused one again → restore all.
+  // Focusing is mutually exclusive with the RoleFilterBar (never stack two
+  // top-of-list filter UIs): opening focus closes the bar and clears its chips.
+  _handleAgentSelect = (agent) => {
+    if (!agent) { this.setState({ activeAgent: null }); return; }
+    this.setState(prev => ({
+      activeAgent: prev.activeAgent && prev.activeAgent.key === agent.key
+        ? null
+        : { key: agent.key, taskId: agent.taskId, kind: agent.kind, name: agent.name, avatarType: agent.avatarType, promptPrefix: agent.promptPrefix },
+      roleFilterOpen: false,
+      roleFilterSelected: new Set(),
+    }));
+  };
+
+  _handleAgentShowAll = () => this.setState({ activeAgent: null, roleFilterSelected: new Set() });
+
+  _handleActiveAgentsVisibility = (visible) => {
+    if (visible !== this.state.activeAgentsBarVisible) this.setState({ activeAgentsBarVisible: visible });
+  };
+
   // An explicit user send starts a fresh turn: drop the pinned error rows (a retry's
   // own failure re-posts a row). Cleared here — NOT on sdk-session-state 'running' —
   // because the server's queue auto-drain announces running right after the error
@@ -4498,7 +4559,7 @@ class ChatView extends React.Component {
       <div className={styles.navSidebar}>
         <button
           className={this.state.roleFilterOpen ? styles.navBtnActive : styles.navBtn}
-          onClick={() => this.setState(prev => prev.roleFilterOpen ? { roleFilterOpen: false, roleFilterSelected: new Set() } : { roleFilterOpen: true })}
+          onClick={() => this.setState(prev => prev.roleFilterOpen ? { roleFilterOpen: false, roleFilterSelected: new Set() } : { roleFilterOpen: true, activeAgent: null })}
           title={t('ui.roleFilter')}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -4812,7 +4873,47 @@ class ChatView extends React.Component {
 
     let filteredItems = allItems;
     const _selSize = this.state.roleFilterSelected.size;
-    if (_selSize > 0 && _selSize < collectedRoles.length) {
+    // Active-agent focus (--sdk): a single agent's rows, mutually exclusive with
+    // the role filter above. Matching runs at render time so rows that land AFTER
+    // the click (a just-started agent's transcript rows arrive late) still enter
+    // the result without a re-click.
+    const _agentFocus = (this.props.sdkMode && this.state.activeAgent) ? this.state.activeAgent : null;
+    let _zeroHit = false; // set when the focus matched nothing and we fell back to all items
+    if (_agentFocus) {
+      const reqList = this.props.requests || [];
+      const matchRow = (item) => {
+        const p = item && item.props;
+        if (!p) return true; // keep separators / non-message rows
+        const role = p.role;
+        if (role === 'sub-agent-chat') {
+          // Teammate rows: clean-name match against "Teammate: name(model)".
+          if (p.isTeammate) return labelMatchesAgent(p.label, _agentFocus);
+          // Anonymous subagent rows: instance-level prompt-prefix match when the
+          // row's first user message is decidable; else fall back to type-level.
+          if (_agentFocus.kind === 'subagent') {
+            const req = p.requestIndex != null ? reqList[p.requestIndex] : null;
+            const rowText = req ? firstUserText(req) : null;
+            const inst = promptMatchesAgent(rowText, _agentFocus);
+            if (inst !== null) return inst;
+          }
+          return labelMatchesAgent(p.label, _agentFocus);
+        }
+        // Fallback-rendered teammate assistant row (no mainAgentSessions path).
+        if (role === 'assistant' && p.isTeammate && p.label) return labelMatchesAgent(p.label, _agentFocus);
+        // A teammate's own message/status rows are part of that agent's conversation.
+        if ((role === 'teammate-message' || role === 'teammate-status') && _agentFocus.kind === 'teammate' && _agentFocus.name) {
+          return String(p.label || '').toLowerCase() === _agentFocus.name.toLowerCase();
+        }
+        return false;
+      };
+      filteredItems = allItems.filter(matchRow);
+      // Zero-hit guard: a click must never yield a blank conversation (the agent's
+      // rows may not have landed yet, or the label/type inference missed). Fall
+      // back to the unfiltered list AND treat this frame as unfocused — otherwise
+      // the main agent's Last Response / live streaming overlay would be hidden
+      // by a focus that matches nothing.
+      if (filteredItems.length === 0) { filteredItems = allItems; _zeroHit = true; }
+    } else if (_selSize > 0 && _selSize < collectedRoles.length) {
       filteredItems = allItems.filter(item => {
         if (!item || !item.props) return true;
         const role = item.props.role;
@@ -4827,14 +4928,19 @@ class ChatView extends React.Component {
       });
     }
 
-    const _isFiltering = _selSize > 0 && _selSize < collectedRoles.length;
-    let filteredLastResponseItems = lastResponseItems && _isFiltering && !this.state.roleFilterSelected.has('assistant') ? null : lastResponseItems;
+    // An agent focus IS a filter too: hide the main agent's pinned Last Response
+    // and its live streaming overlay (same invariant the role filter enforces).
+    // A zero-hit focus is treated as unfocused — the list fell back to all items,
+    // so the main agent's content must NOT be hidden by it.
+    const _effectiveFocus = _zeroHit ? null : _agentFocus;
+    const _isFiltering = !!_effectiveFocus || (_selSize > 0 && _selSize < collectedRoles.length);
+    let filteredLastResponseItems = lastResponseItems && _isFiltering && !(!_effectiveFocus && this.state.roleFilterSelected.has('assistant')) ? null : lastResponseItems;
 
     // Live streaming overlay: 实时打字机效果，独立于 mainAgentSessions / dedup 路径
     // 仅显示 text + thinking blocks（tool_use 由最终 entry 通过 Last Response 渲染）。
     // roleFilter 反选 assistant 时跳过 overlay 以遵从过滤语义（否则一边过滤一边仍实时输出自相矛盾）。
     let streamingLiveItem = null;
-    const _assistantFilteredOut = _isFiltering && !this.state.roleFilterSelected.has('assistant');
+    const _assistantFilteredOut = _isFiltering && (_effectiveFocus || !this.state.roleFilterSelected.has('assistant'));
     // 乐观停止：点「停止」后即时停掉实时打字机浮层，避免按钮/页内指示器已切非运行态、
     // 而中断落地前的残余 SSE chunk 仍在 overlay 里继续吐字（自相矛盾）。
     // pin 锁在更早会话时（sessionUpperBoundTs != null），streaming 来自未展示的更新会话，
@@ -4911,7 +5017,7 @@ class ChatView extends React.Component {
       if (!id) { id = this._navRefIds.next++; this._navRefIds.map.set(o, id); }
       return id;
     };
-    this._navCacheKey = `${refId(allItems)}:${refId(this.props.mainAgentSessions)}:${_isFiltering ? [...this.state.roleFilterSelected].sort().join(',') : ''}:${visibleCount}:${visible.length}:${this.props.lang || ''}`;
+    this._navCacheKey = `${refId(allItems)}:${refId(this.props.mainAgentSessions)}:${_isFiltering ? [...this.state.roleFilterSelected].sort().join(',') : ''}:${_agentFocus ? `focus:${_agentFocus.key}` : ''}:${visibleCount}:${visible.length}:${this.props.lang || ''}`;
     // 优先使用精确的 visibleIdx（同一请求的多条消息共享 timestamp，findIndex 会匹配到第一条）
     // findIndex 用 displayTs ?? timestamp 作 key —— assistant bubble 的 props.timestamp 是 carrier
     // (= 下一次 entry 的 ts)，而 highlightTs 来自 scrollToTimestamp (= request 自身 ts)；只看 timestamp
@@ -5002,8 +5108,27 @@ class ChatView extends React.Component {
       <RoleFilterBar roles={collectedRoles} selectedRoles={this.state.roleFilterSelected} onToggle={(key) => this.setState(prev => {
         const next = new Set(prev.roleFilterSelected);
         next.has(key) ? next.delete(key) : next.add(key);
-        return { roleFilterSelected: next };
+        // A chip selection replaces any active-agent focus (the two filters are
+        // mutually exclusive — never stack them).
+        return { roleFilterSelected: next, activeAgent: null };
       })} />
+    ) : null;
+
+    // Active subAgent/teammate strip (--sdk only). Hidden while the role filter
+    // bar is open (they'd overlap at the top of the list) and while pinned to a
+    // historical session (sessionUpperBoundTs): a pinned view shows an older
+    // session, but the strip's agents come from the live one, so focusing would
+    // filter the pinned rows to blank. Rendered in BOTH the empty and loaded
+    // branches below so its visibility effect always runs.
+    const showActiveAgentsBar = this.props.sdkMode && !this.state.roleFilterOpen && this.props.sessionUpperBoundTs == null;
+    const activeAgentsBar = showActiveAgentsBar ? (
+      <ActiveAgentsBar
+        requests={this.props.requests}
+        selectedKey={this.state.activeAgent ? this.state.activeAgent.key : null}
+        onSelect={this._handleAgentSelect}
+        onShowAll={this._handleAgentShowAll}
+        onVisibleChange={this._handleActiveAgentsVisibility}
+      />
     ) : null;
 
     const messageList = (noData || loading) ? (
@@ -5020,11 +5145,13 @@ class ChatView extends React.Component {
               self-anchors to the bottom via margin-top:auto in this column flex container. */}
           <div className={styles.inputStackSpacer} aria-hidden="true" />
         </div>
+        {activeAgentsBar}
         {stickyBtn}
       </div>
     ) : (
-      <div className={roleFilterBar ? `${styles.messageListWrap} ${styles.withRoleFilter}` : styles.messageListWrap} onClick={this.handleChatMdClick} onKeyDown={this.handleChatMdKeydown} ref={this._mdProbeWrapRef}>
+      <div className={roleFilterBar ? `${styles.messageListWrap} ${styles.withRoleFilter}` : (activeAgentsBar && this.state.activeAgentsBarVisible ? `${styles.messageListWrap} ${styles.withActiveAgents}` : styles.messageListWrap)} onClick={this.handleChatMdClick} onKeyDown={this.handleChatMdKeydown} ref={this._mdProbeWrapRef}>
         {roleFilterBar}
+        {activeAgentsBar}
         {this.state.mdLightboxSrc && (
           <ImageLightbox src={this.state.mdLightboxSrc} alt="" onClose={() => this.setState({ mdLightboxSrc: null })} />
         )}

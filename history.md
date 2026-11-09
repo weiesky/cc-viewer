@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- feat(web): **`--sdk` 模式 [对话] 右上角新增活跃 SubAgent/Teammate 头像条** — 由 WS `sdk-task` 帧派生活跃 `local_agent`/`in_process_teammate`（taskStore 快照），磨砂玻璃 28px 浮条、24px 圆形头像（teammate 复用 `getTeammateAvatar`、匿名 subagent 用 `getSvgAvatar` sub-* 图标，身份经 toolUseId/prompt 前缀 join 主会话 Agent tool_use 解析）；点头像仅显示该 agent 对话、再点或尾部 (ALL) 恢复全部，与角色筛选互斥，全部结束自动消失并复位筛选。Coverage: `activeAgents.test.js`, `active-agents-bar.test.js`, `chat-active-agents-wiring.test.js`, `sdkTaskTracker.test.js`.
+
+- fix(web): **窄窗口下 [对话] 区被固定宽度终端分栏压成 0 宽消失** — `.chatSection` 由 `min-width:0` 改为 `min-width:280px`（对话区下限，永不被压没），`.splitContainer` 由 `overflow:hidden` 改为 `overflow-x:auto`（总宽超窗口时横向滚动、终端被挤到右侧可滚动查看，而非压扁对话）。Coverage: `chat-active-agents-wiring.test.js`.
+
 - fix(web): **GIT 变更冲突状态徽标以红色显示** — `UU`/`AA`/`DD` 等未合并(冲突)porcelain 状态此前未在配色表中、落到灰色兜底难以察觉；现统一映射为与 `D` 相同的红色，冲突文件在变更树中一眼可辨。
 
 - fix(sdk+web): **慢上游提示两处复活/失效修复 + 若干 P2** — toast 切视图/实例后经 5s tick 复活且永不消失（改在视图/实例切换与卸载统一 `_clearSlowUpstreamToast`）；markFirstByte 此前是死代码，计时实为到 headers 为止（改由 markFirstByte 发 resolved、finally 降为错误兜底，覆盖 headers-fast-body-stalled）；server resolved 在会话已关时回退用请求自报 cwd/instance 广播。sdkTaskTracker 切工作区即重置（不再残留上一项目清单）。mobile 60 列布局重试放宽到 ~2s（不再 3 次即弃）。Coverage: `proxy-slow-upstream.test.js`, `sdkTaskTracker.test.js`.
