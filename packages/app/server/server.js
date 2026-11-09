@@ -2396,6 +2396,17 @@ async function setupTerminalWebSocket(httpServer) {
         }
       }
 
+      // Replay the authoritative sdk-task table so a refreshed/reconnected client can
+      // reconcile its delta-only tracker (the active-agents strip) — a task frame lost in
+      // a WS gap is no longer unrecoverable, and a session switch drops the table so the
+      // prior session's agents never linger. Null/empty → no frame, client clears its own.
+      if (isSdkMode && _sdkGetSdkTaskSnapshot) {
+        const taskSnap = _sdkGetSdkTaskSnapshot();
+        if (taskSnap && _sdkFrameForView(taskSnap)) {
+          try { ws.send(JSON.stringify(taskSnap)); } catch {}
+        }
+      }
+
       // Replay the chat-composer busy queue so a refreshed/reconnected page restores the
       // floating queued-message bubbles (server is the source of truth in both modes).
       replayQueueSnapshot();
@@ -4043,6 +4054,10 @@ export function setSdkGetMcpStatusSnapshot(fn) { _sdkGetMcpStatusSnapshot = fn; 
 /** Reference to sdk-manager's getSessionStateSnapshot (set by cli.js after import). */
 let _sdkGetSessionStateSnapshot = null;
 export function setSdkGetSessionStateSnapshot(fn) { _sdkGetSessionStateSnapshot = fn; }
+
+/** Reference to sdk-manager's getSdkTaskSnapshot (set by cli.js after import). */
+let _sdkGetSdkTaskSnapshot = null;
+export function setSdkGetSdkTaskSnapshot(fn) { _sdkGetSdkTaskSnapshot = fn; }
 
 /** Reference to sdk-manager's sendQueuedNow (set by cli.js after import). */
 let _sdkSendQueuedNow = null;

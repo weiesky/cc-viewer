@@ -225,6 +225,62 @@ export function resetForView() {
   clearTaskStore();
 }
 
+/**
+ * Reset on a session boundary WITHIN the same workspace (review: stale-strip).
+ * /clear or an in-place resume/fork replaces the session but may emit no sdk-task
+ * frame for a while; without a reset the previous session's in_progress agents
+ * would linger in the store (strip never auto-hides, focus never clears). ChatView
+ * calls this when sdk-session-state reports a sessionId different from the last one
+ * it saw. The next sdk-task frame re-seeds via the owner/session-change branch.
+ */
+export function resetForSession() {
+  _tasks = new Map();
+  _sessionId = null;
+  _ownerKey = null;
+  clearTaskStore();
+}
+
+/**
+ * Reconcile the tracker to the server's authoritative sdk-task table (WS reconnect
+ * replay of `sdk-task-snapshot`). The live relay is delta-only — a frame lost in a
+ * WS gap is unrecoverable from the stream alone — so on reconnect the server sends
+ * its bounded table and the client REPLACES its view. This is the authoritative
+ * source: it both resurrects tasks whose started-frame was missed AND (critically)
+ * drops tasks the server no longer tracks (a lost terminal frame, or a session the
+ * server switched away from), so the active-agents strip can no longer linger.
+ *
+ * @param {object} frame - { sessionId, tasks: Array<server-folded task> }
+ */
+export function applySnapshot(frame) {
+  if (!frame || typeof frame !== 'object' || !Array.isArray(frame.tasks)) return;
+  const tasks = frame.tasks;
+  const next = new Map();
+  for (const t of tasks) {
+    if (!t || t.taskId == null) continue;
+    const taskId = String(t.taskId);
+    next.set(taskId, {
+      taskId,
+      subject: t.description ?? null,
+      description: t.summary ?? null,
+      activeForm: null,
+      status: _mapStatus(t.status) || (t.terminal ? 'failed' : 'in_progress'),
+      owner: null,
+      teammateName: null,
+      agentId: null,
+      toolUseId: t.toolUseId != null ? t.toolUseId : null,
+      promptSnippet: (AGENT_TASK_TYPES.has(t.taskType) && typeof t.promptSnippet === 'string')
+        ? t.promptSnippet.slice(0, AGENT_PROMPT_SNIPPET_LEN)
+        : null,
+      taskType: t.taskType ?? null,
+      createdAt: Date.now(),
+      ...(t.usage ? { usage: t.usage } : {}),
+    });
+  }
+  _tasks = next;
+  if (frame.sessionId) _sessionId = frame.sessionId;
+  _publish();
+}
+
 /** Test hook: restore pristine module state. */
 export function __resetForTests() {
   clear();

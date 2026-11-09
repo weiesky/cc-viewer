@@ -21,6 +21,8 @@ import {
   labelMatchesAgent,
   promptMatchesAgent,
   firstUserText,
+  transcriptRowMatchesAgent,
+  isFocusActive,
 } from '../src/utils/activeAgents.js';
 
 describe('activeAgents.js', () => {
@@ -284,6 +286,124 @@ describe('activeAgents.js', () => {
       // imperative blurb stays unmatchable rather than a dead clickable chip.
       const id = resolveAgentIdentity(tmTask('Update all seventeen translated README files now'), emptyMap);
       assert.equal(id.name, null);
+    });
+  });
+
+  describe('transcriptRowMatchesAgent', () => {
+    // The MainAgent spawned one Explore subagent (toolu_E) whose Agent input
+    // prompt is the raw task; the transcript row's first user message is the
+    // WRAPPED variant (deferred-tools prefix), so the two 60-char prefixes
+    // diverge — the exact scenario that made the HEAD filter a silent no-op.
+    const SPAWN_PROMPT = 'Find all the boundary checks in the repo and report them';
+    const requests = [
+      { mainAgent: true, response: { body: { content: [
+        { type: 'tool_use', id: 'toolu_E', name: 'Agent', input: { description: 'Explore codebase', subagent_type: 'Explore', prompt: SPAWN_PROMPT } },
+        { type: 'tool_use', id: 'toolu_G', name: 'Agent', input: { description: 'Other', subagent_type: 'general-purpose', prompt: 'A completely different task about something else entirely' } },
+      ] } } },
+    ];
+    const toolUseMap = buildAgentToolUseMap(requests);
+    const focusExplore = resolveAgentIdentity(
+      { taskId: 'taskE', toolUseId: 'toolu_E', kind: 'subagent', prompt: SPAWN_PROMPT, description: 'Explore codebase' },
+      toolUseMap
+    );
+
+    it('binds a row to its spawn by toolUseId even when the prompt prefixes diverge', () => {
+      // The row's first user text does NOT start with the spawn prompt (wrapped),
+      // but its prefix still maps to the same spawn block via the join.
+      const wrappedRowText = SPAWN_PROMPT; // prefix matches → maps to toolu_E
+      const hit = transcriptRowMatchesAgent(
+        { label: 'SubAgent:Explore', isTeammate: false, rowPromptText: wrappedRowText },
+        focusExplore, toolUseMap
+      );
+      assert.equal(hit, true);
+    });
+
+    it('rejects a row bound to a DIFFERENT spawn toolUseId (exact mismatch)', () => {
+      const otherRowText = 'A completely different task about something else entirely'; // → toolu_G
+      const hit = transcriptRowMatchesAgent(
+        { label: 'SubAgent:Explore', isTeammate: false, rowPromptText: otherRowText },
+        focusExplore, toolUseMap
+      );
+      assert.equal(hit, false);
+    });
+
+    it('falls back to a same-type label match when there is no exact anchor and prefixes are undecidable', () => {
+      const noRowText = transcriptRowMatchesAgent(
+        { label: 'SubAgent:Explore', isTeammate: false, rowPromptText: null },
+        focusExplore, toolUseMap
+      );
+      assert.equal(noRowText, true);
+      const wrongType = transcriptRowMatchesAgent(
+        { label: 'SubAgent:Plan', isTeammate: false, rowPromptText: null },
+        focusExplore, toolUseMap
+      );
+      assert.equal(wrongType, false);
+    });
+
+    it('teammate rows match by clean name, ignoring the prompt heuristic', () => {
+      const tmFocus = { kind: 'teammate', name: 'reviewer', avatarType: 'teammate', promptPrefix: '' };
+      assert.equal(transcriptRowMatchesAgent(
+        { label: 'Teammate: reviewer(claude-opus-4-8)', isTeammate: true, rowPromptText: 'whatever' },
+        tmFocus, toolUseMap
+      ), true);
+      assert.equal(transcriptRowMatchesAgent(
+        { label: 'Teammate: writer', isTeammate: true, rowPromptText: 'whatever' },
+        tmFocus, toolUseMap
+      ), false);
+    });
+
+    it('returns false for malformed input', () => {
+      assert.equal(transcriptRowMatchesAgent(null, focusExplore, toolUseMap), false);
+      assert.equal(transcriptRowMatchesAgent({ label: 'SubAgent:Explore', isTeammate: false }, null, toolUseMap), false);
+    });
+  });
+
+  describe('isFocusActive', () => {
+    const emptyMap = { byToolUseId: new Map(), byPromptPrefix: new Map() };
+    const tmTask = (taskId, desc) => ({ taskId, toolUseId: null, kind: 'teammate', taskType: 'in_process_teammate', prompt: '', description: desc, status: 'in_progress' });
+
+    it('subagent: active only while its own taskId is active', () => {
+      const focus = { kind: 'subagent', taskId: 't1', name: null };
+      const active = [
+        { taskId: 't1', kind: 'subagent', taskType: 'local_agent', status: 'in_progress' },
+      ];
+      assert.equal(isFocusActive(focus, active, emptyMap), true);
+      assert.equal(isFocusActive(focus, [], emptyMap), false);
+    });
+
+    it('teammate: stays active while ANY task resolves to the same name (multi-task dedupe)', () => {
+      // Teammate "alice" has tasks T1+T2; the avatar carries T1. T1 ends, T2 runs.
+      // The focus must NOT be cleared while the same-named teammate is still active.
+      const requests = [
+        { mainAgent: true, response: { body: { content: [
+          { type: 'tool_use', id: 'toolu_alice', name: 'Agent', input: { name: 'alice', prompt: 'do work' } },
+        ] } } },
+      ];
+      const toolUseMap = buildAgentToolUseMap(requests);
+      const active = [
+        { taskId: 'T2', toolUseId: 'toolu_alice', kind: 'teammate', taskType: 'in_process_teammate', prompt: 'do work', description: '', status: 'in_progress' },
+      ];
+      const focus = { kind: 'teammate', name: 'alice', taskId: 'T1' }; // stale first taskId
+      assert.equal(isFocusActive(focus, active, toolUseMap), true);
+      // Once no alice task remains, the focus clears.
+      assert.equal(isFocusActive(focus, [], toolUseMap), false);
+    });
+
+    it('teammate: a different-named active teammate does not keep the focus alive', () => {
+      const requests = [
+        { mainAgent: true, response: { body: { content: [
+          { type: 'tool_use', id: 'toolu_bob', name: 'Agent', input: { name: 'bob', prompt: 'do work' } },
+        ] } } },
+      ];
+      const toolUseMap = buildAgentToolUseMap(requests);
+      const active = [
+        { taskId: 'T9', toolUseId: 'toolu_bob', kind: 'teammate', taskType: 'in_process_teammate', prompt: 'do work', description: '', status: 'in_progress' },
+      ];
+      assert.equal(isFocusActive({ kind: 'teammate', name: 'alice', taskId: 'T1' }, active, toolUseMap), false);
+    });
+
+    it('returns false for null focus', () => {
+      assert.equal(isFocusActive(null, [], emptyMap), false);
     });
   });
 });

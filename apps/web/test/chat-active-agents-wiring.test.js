@@ -36,15 +36,18 @@ describe('ChatView active-agents wiring contract', () => {
     assert.ok(JSX.includes('activeAgentsBarVisible: false'), 'activeAgentsBarVisible state');
   });
 
-  it('agent focus filters rows via labelMatchesAgent (+ promptMatchesAgent for subagents)', () => {
-    assert.ok(JSX.includes('labelMatchesAgent(p.label, _agentFocus)'), 'label match against focus');
-    assert.ok(JSX.includes('promptMatchesAgent(rowText, _agentFocus)'), 'instance-level prompt match');
+  it('agent focus filters rows via transcriptRowMatchesAgent (tool_use join) + labelMatchesAgent', () => {
+    assert.ok(JSX.includes('transcriptRowMatchesAgent('), 'row bound to focus via the spawn tool_use join');
+    assert.ok(JSX.includes('buildAgentToolUseMap(reqList)'), 'per-render join map for instance matching');
+    assert.ok(JSX.includes('labelMatchesAgent(p.label, _agentFocus)'), 'teammate label match against focus');
     assert.ok(JSX.includes('firstUserText(req)'), 'row first-user-text extraction');
   });
 
-  it('zero-hit guard: a click can never blank the conversation', () => {
-    assert.ok(JSX.includes('if (filteredItems.length === 0) { filteredItems = allItems; _zeroHit = true; }'),
-      'empty filter result falls back to the full list and marks the zero-hit');
+  it('zero-hit guard: a click can never blank the conversation (message rows only)', () => {
+    // The guard must judge by matched MESSAGE rows — separators/banners always
+    // survive the filter, so a raw length check would never fire.
+    assert.ok(JSX.includes('if (_matchedMsgRows === 0) { filteredItems = allItems; _zeroHit = true; }'),
+      'zero matched message rows falls back to the full list and marks the zero-hit');
   });
 
   it('focus is folded into _isFiltering and the streaming-overlay gate via the effective focus', () => {
@@ -77,11 +80,11 @@ describe('ChatView active-agents wiring contract', () => {
       'pinning to history clears focus');
   });
 
-  it('cDU focus backstop: clears focus when the focused taskId leaves the active set', () => {
-    assert.ok(/deriveActiveAgents\(getTaskSnapshot\(\)\.tasks\)\.some\(a => a\.taskId === focusTaskId\)/.test(JSX),
-      'backstop derives active set and matches by taskId');
-    assert.ok(/if \(!stillActive\) this\.setState\(\{ activeAgent: null \}\)/.test(JSX),
-      'backstop clears a dead focus');
+  it('cDU focus backstop: clears focus via the shared isFocusActive rule', () => {
+    assert.ok(JSX.includes('deriveActiveAgents(getTaskSnapshot().tasks)'),
+      'backstop derives the active set from the task snapshot');
+    assert.ok(/if \(!isFocusActive\(this\.state\.activeAgent, active, toolUseMap\)\) this\.setState\(\{ activeAgent: null \}\)/.test(JSX),
+      'backstop clears a dead focus (teammate by name, subagent by taskId)');
   });
 
   it('focus descriptor carries taskId so the backstop can match it', () => {
@@ -93,9 +96,9 @@ describe('ChatView active-agents wiring contract', () => {
     assert.ok(occurrences >= 2, `activeAgentsBar mounted in both branches (found ${occurrences})`);
   });
 
-  it('bar is gated on sdkMode, hidden while role filter is open or pinned to history', () => {
-    assert.ok(/showActiveAgentsBar = this\.props\.sdkMode && !this\.state\.roleFilterOpen && this\.props\.sessionUpperBoundTs == null/.test(JSX),
-      'single gate: sdk only, not role-filter-open, not pinned');
+  it('bar is gated on sdkMode, hidden while role filter open / pinned / attached', () => {
+    assert.ok(/showActiveAgentsBar = this\.props\.sdkMode && !this\.state\.roleFilterOpen && this\.props\.sessionUpperBoundTs == null && this\.props\.attachedSid == null/.test(JSX),
+      'single gate: sdk only, not role-filter-open, not pinned, not attached to a historical session');
   });
 
   it('bar is a controlled child: receives requests, selectedKey, and the three handlers', () => {

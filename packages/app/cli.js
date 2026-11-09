@@ -926,6 +926,7 @@ async function runSdkMode(extraClaudeArgs = [], cwd, noOpen = false) {
   serverMod.setSdkGetContextUsageSnapshot(sdkManager.getContextUsageSnapshot);
   serverMod.setSdkGetMcpStatusSnapshot(sdkManager.getMcpStatusSnapshot);
   serverMod.setSdkGetSessionStateSnapshot(sdkManager.getSessionStateSnapshot);
+  serverMod.setSdkGetSdkTaskSnapshot(sdkManager.getSdkTaskSnapshot);
   // Busy-queue bubble actions (queue-send-now / queue-remove / queue-clear / replay).
   serverMod.setSdkSendQueuedNow(sdkManager.sendQueuedNow);
   serverMod.setSdkRemoveQueued(sdkManager.removeQueued);

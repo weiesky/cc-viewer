@@ -65,6 +65,9 @@ export function buildAgentToolUseMap(requests) {
         description: typeof inp.description === 'string' ? inp.description : null,
         prompt,
         promptPrefix,
+        // The spawn block's own tool_use id — the only reliable cross-reference
+        // between an active task and a transcript row (prompt prefixes diverge).
+        toolUseId: block.id != null ? String(block.id) : null,
       };
       if (block.id) byToolUseId.set(String(block.id), entry);
       // Later duplicates overwrite — idempotent and matches resolveTeammateNames.
@@ -208,6 +211,10 @@ export function resolveAgentIdentity(agent, toolUseMap) {
     title,
     matchable: true,
     promptPrefix,
+    // Exact spawn anchor when the join resolved a tool_use block — lets the row
+    // filter match by id instead of the unreliable prompt prefix. Prefer the
+    // task frame's own toolUseId; fall back to the joined block's id.
+    toolUseId: agent.toolUseId || (joined && joined.toolUseId) || null,
   };
 }
 
@@ -246,4 +253,84 @@ export function promptMatchesAgent(rowPromptText, identity) {
   if (!prefix) return null;
   if (typeof rowPromptText !== 'string' || !rowPromptText) return null;
   return rowPromptText.trimStart().startsWith(prefix);
+}
+
+/**
+ * Bind a transcript `sub-agent-chat` row to the focused agent in ONE decision.
+ *
+ * Splitting this into two independent string matches was the source of the
+ * "click selects but the list does not filter" bug: the bar's avatarType is
+ * inferred from the Agent tool_use via the task frame's promptSnippet, while
+ * the row was matched against the row's own first-user text — and the SDK's
+ * reported prompt rarely matches the transcript's wrapped first user message
+ * (system injection / <available-deferred-tools> prefix). The two prefixes
+ * diverge, the row's prompt check returned false (no type-level fallback), and
+ * the type-level label check compared the row's TRUE avatarType against the
+ * bar's possibly-wrong inferred one — so every row was filtered out.
+ *
+ * Correct approach: resolve the row's OWN spawn tool_use (by toolUseId, else by
+ * the row's prompt prefix) and compare the resulting identity directly:
+ *  - teammate rows: clean-name equality (exact, no prompt heuristic);
+ *  - subagent rows: exact toolUseId match wins; otherwise the row binds to the
+ *    focused agent only when the row's prompt prefix is consistent with the
+ *    same spawn AND the avatarType agrees.
+ *
+ * @param {{label:string, isTeammate:boolean, rowPromptText:string|null}} row
+ * @param {object} identity - resolveAgentIdentity result for the focused agent.
+ * @param {{byToolUseId: Map, byPromptPrefix: Map}} toolUseMap - buildAgentToolUseMap result.
+ * @returns {boolean}
+ */
+export function transcriptRowMatchesAgent(row, identity, toolUseMap) {
+  if (!row || !identity) return false;
+  const label = row.label;
+  const maps = toolUseMap || { byToolUseId: new Map(), byPromptPrefix: new Map() };
+  if (row.isTeammate) return labelMatchesAgent(label, identity);
+  if (identity.kind !== 'subagent') return false;
+
+  // Exact: the focused identity carries its spawn toolUseId and the row's
+  // prompt prefix maps to that same spawn block.
+  const rowText = typeof row.rowPromptText === 'string' ? row.rowPromptText.trimStart() : '';
+  const rowPrefix = rowText ? rowText.slice(0, PROMPT_PREFIX_LEN) : '';
+  const rowSpawn = (rowPrefix && maps.byPromptPrefix.get(rowPrefix)) || null;
+
+  if (identity.toolUseId && rowSpawn) {
+    return rowSpawn.toolUseId === identity.toolUseId;
+  }
+  // No exact anchor: fall back to type-level label match ONLY when the prompt
+  // prefixes do not actively disagree (a disagreement means the bar's inferred
+  // avatarType is untrustworthy, but the row may still be a same-type peer).
+  if (rowPrefix && identity.promptPrefix && !rowText.startsWith(identity.promptPrefix)) {
+    // Prefixes diverge: cannot instance-match. Accept only a same-type label so
+    // the focused subagent still surfaces its own rows (they share its type).
+    return isSubAgentLabel(label) && avatarTypeFromSubLabel(label) === identity.avatarType;
+  }
+  return labelMatchesAgent(label, identity);
+}
+
+/**
+ * Is the focused agent still active? ONE liveness rule shared by ChatView's cDU
+ * backstop and ActiveAgentsBar's reset effect (they previously disagreed):
+ *  - teammate: active while ANY active task resolves to the same name — the bar
+ *    dedupes a multi-task teammate to one avatar, so matching only the clicked
+ *    taskId would drop the focus while a sibling task is still running.
+ *  - subagent: active while its own taskId is active (one task per avatar).
+ *
+ * @param {object} focus - the focus descriptor ({kind, name, taskId}).
+ * @param {Array<object>} activeAgents - deriveActiveAgents(...) output (unresolved).
+ * @param {{byToolUseId: Map, byPromptPrefix: Map}} toolUseMap - buildAgentToolUseMap result.
+ * @returns {boolean}
+ */
+export function isFocusActive(focus, activeAgents, toolUseMap) {
+  if (!focus) return false;
+  const list = Array.isArray(activeAgents) ? activeAgents : [];
+  if (focus.kind === 'teammate' && focus.name) {
+    const want = String(focus.name).toLowerCase();
+    return list.some((a) => {
+      if (a.kind !== 'teammate') return false;
+      const id = resolveAgentIdentity(a, toolUseMap);
+      return id.name && id.name.toLowerCase() === want;
+    });
+  }
+  if (focus.taskId) return list.some((a) => a.taskId === focus.taskId);
+  return false;
 }

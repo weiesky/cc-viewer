@@ -40,14 +40,14 @@ import { WorkflowButton, WorkflowRunsModal } from '../dashboard/WorkflowRunsPane
 import SnapLineOverlay from '../common/SnapLineOverlay';
 import RoleFilterBar from './RoleFilterBar';
 import ActiveAgentsBar from './ActiveAgentsBar';
-import { deriveActiveAgents, labelMatchesAgent, promptMatchesAgent, firstUserText } from '../../utils/activeAgents';
+import { deriveActiveAgents, resolveAgentIdentity, labelMatchesAgent, buildAgentToolUseMap, transcriptRowMatchesAgent, isFocusActive, firstUserText } from '../../utils/activeAgents';
 import { getSnapshot as getTaskSnapshot } from '../../utils/taskStore';
 import ChatInputBar, { resizeChatTextarea } from './ChatInputBar';
 import ProxyChip from './ProxyChip';
 import ProxyModal from '../settings/ProxyModal';
 import WorkflowLiveHud from '../viewers/WorkflowLiveHud';
 import TaskProgressHud from './TaskProgressHud';
-import { applyFrame as applySdkTaskFrame } from '../../utils/sdkTaskTracker';
+import { applyFrame as applySdkTaskFrame, applySnapshot as applySdkTaskSnapshot, resetForSession as resetSdkTaskTrackerForSession } from '../../utils/sdkTaskTracker';
 import PresetModal from '../terminal/PresetModal';
 import ScheduleTaskModal from '../common/ScheduleTaskModal';
 import UltraPlanModal from '../terminal/UltraPlanModal';
@@ -1282,10 +1282,10 @@ class ChatView extends React.Component {
     // switch, in which case its own effect would never fire. Matching is by taskId
     // (stable across the identity join); a teammate focused under a resolved
     // tm:<name> key still carries its originating taskId.
-    if (this.state.activeAgent && this.state.activeAgent.taskId) {
-      const focusTaskId = this.state.activeAgent.taskId;
-      const stillActive = deriveActiveAgents(getTaskSnapshot().tasks).some(a => a.taskId === focusTaskId);
-      if (!stillActive) this.setState({ activeAgent: null });
+    if (this.state.activeAgent && (this.state.activeAgent.taskId || this.state.activeAgent.name)) {
+      const active = deriveActiveAgents(getTaskSnapshot().tasks);
+      const toolUseMap = buildAgentToolUseMap(this.props.requests || []);
+      if (!isFocusActive(this.state.activeAgent, active, toolUseMap)) this.setState({ activeAgent: null });
     }
     if (prevProps.mainAgentSessions !== this.props.mainAgentSessions) {
       this._reconcileOptimisticQueueMessages();
@@ -3235,6 +3235,15 @@ class ChatView extends React.Component {
           // cwd travels so AppBase can drop frames from background workspaces
           // (multi-workspace SDK: one broadcast reaches every viewer). instanceKey too —
           // the 10s turn heartbeat would otherwise light a same-basename sibling's client.
+          // Session boundary within the SAME workspace (/clear, in-place resume/fork):
+          // reset the task tracker so the previous session's agents don't linger when
+          // the new session is slow to emit its first sdk-task frame.
+          const newSid = msg.sessionId || null;
+          if (newSid && this._lastSdkSessionStateSid && newSid !== this._lastSdkSessionStateSid) {
+            resetSdkTaskTrackerForSession();
+            if (this.state.activeAgent) this.setState({ activeAgent: null });
+          }
+          if (newSid) this._lastSdkSessionStateSid = newSid;
           if (typeof this.props.onSdkSessionState === 'function') this.props.onSdkSessionState(msg.state, { sessionId: msg.sessionId || null, cwd: msg.cwd || null, instanceKey: msg.instanceKey || null, turnId: msg.turnId || null, turnStartedAt: Number.isFinite(msg.turnStartedAt) ? msg.turnStartedAt : null, heartbeat: msg.heartbeat === true, activity: msg.activity === true });
         } else if (msg.type === 'sdk-task') {
           // SDK-mode task lifecycle relay (task_started/progress/updated/notification).
@@ -3242,6 +3251,12 @@ class ChatView extends React.Component {
           // snapshots so TaskProgressHud works without hooks.
           if (!this._sdkFrameMatchesView(msg)) return;
           applySdkTaskFrame(msg);
+        } else if (msg.type === 'sdk-task-snapshot') {
+          // Authoritative table replayed on WS reconnect: reconcile the delta-only
+          // tracker (drops tasks the server no longer tracks — e.g. a lost terminal
+          // frame or a switched-away session — so the strip cannot linger).
+          if (!this._sdkFrameMatchesView(msg)) return;
+          applySdkTaskSnapshot(msg);
         } else if (msg.type === 'sdk-compact') {
           // SDK-side compact (invisible on the wire) — render as a system notice.
           // Cap at 10 entries to prevent unbounded growth; only the latest is rendered.
@@ -3828,7 +3843,7 @@ class ChatView extends React.Component {
     this.setState(prev => ({
       activeAgent: prev.activeAgent && prev.activeAgent.key === agent.key
         ? null
-        : { key: agent.key, taskId: agent.taskId, kind: agent.kind, name: agent.name, avatarType: agent.avatarType, promptPrefix: agent.promptPrefix },
+        : { key: agent.key, taskId: agent.taskId, kind: agent.kind, name: agent.name, avatarType: agent.avatarType, promptPrefix: agent.promptPrefix, toolUseId: agent.toolUseId || null },
       roleFilterOpen: false,
       roleFilterSelected: new Set(),
     }));
@@ -4877,42 +4892,52 @@ class ChatView extends React.Component {
     // the role filter above. Matching runs at render time so rows that land AFTER
     // the click (a just-started agent's transcript rows arrive late) still enter
     // the result without a re-click.
-    const _agentFocus = (this.props.sdkMode && this.state.activeAgent) ? this.state.activeAgent : null;
+    const _clickedFocus = (this.props.sdkMode && this.state.activeAgent) ? this.state.activeAgent : null;
+    let _agentFocus = _clickedFocus;
     let _zeroHit = false; // set when the focus matched nothing and we fell back to all items
-    if (_agentFocus) {
+    if (_clickedFocus) {
       const reqList = this.props.requests || [];
+      // One join map per render: binds each sub-agent-chat row to its spawn
+      // tool_use (by id, else prompt prefix) so instance matching is reliable.
+      const toolUseMap = buildAgentToolUseMap(reqList);
+      // Re-resolve the focused identity FRESH each render (matched by taskId):
+      // the stored descriptor is a click-time snapshot — a subagent clicked before
+      // its Agent tool_use landed keeps avatarType 'sub' and no toolUseId even after
+      // the transcript resolves the real type, which would silently miss its rows.
+      if (_clickedFocus.taskId) {
+        const live = deriveActiveAgents(getTaskSnapshot().tasks).find(a => a.taskId === _clickedFocus.taskId);
+        if (live) _agentFocus = resolveAgentIdentity(live, toolUseMap);
+      }
+      let _matchedMsgRows = 0; // message rows only — separators/banners must not count
       const matchRow = (item) => {
         const p = item && item.props;
-        if (!p) return true; // keep separators / non-message rows
+        if (!p || !p.role) return true; // keep separators / banners / non-message rows out of the count
         const role = p.role;
+        let hit = false;
         if (role === 'sub-agent-chat') {
-          // Teammate rows: clean-name match against "Teammate: name(model)".
-          if (p.isTeammate) return labelMatchesAgent(p.label, _agentFocus);
-          // Anonymous subagent rows: instance-level prompt-prefix match when the
-          // row's first user message is decidable; else fall back to type-level.
-          if (_agentFocus.kind === 'subagent') {
-            const req = p.requestIndex != null ? reqList[p.requestIndex] : null;
-            const rowText = req ? firstUserText(req) : null;
-            const inst = promptMatchesAgent(rowText, _agentFocus);
-            if (inst !== null) return inst;
-          }
-          return labelMatchesAgent(p.label, _agentFocus);
+          // Teammate rows: clean-name match; anonymous subagent rows: instance
+          // match via the spawn tool_use join (transcriptRowMatchesAgent).
+          const req = p.requestIndex != null ? reqList[p.requestIndex] : null;
+          const rowText = req ? firstUserText(req) : null;
+          hit = transcriptRowMatchesAgent({ label: p.label, isTeammate: !!p.isTeammate, rowPromptText: rowText }, _agentFocus, toolUseMap);
+        } else if (role === 'assistant' && p.isTeammate && p.label) {
+          // Fallback-rendered teammate assistant row (no mainAgentSessions path).
+          hit = labelMatchesAgent(p.label, _agentFocus);
+        } else if ((role === 'teammate-message' || role === 'teammate-status') && _agentFocus.kind === 'teammate' && _agentFocus.name) {
+          // A teammate's own message/status rows are part of that agent's conversation.
+          hit = String(p.label || '').toLowerCase() === _agentFocus.name.toLowerCase();
         }
-        // Fallback-rendered teammate assistant row (no mainAgentSessions path).
-        if (role === 'assistant' && p.isTeammate && p.label) return labelMatchesAgent(p.label, _agentFocus);
-        // A teammate's own message/status rows are part of that agent's conversation.
-        if ((role === 'teammate-message' || role === 'teammate-status') && _agentFocus.kind === 'teammate' && _agentFocus.name) {
-          return String(p.label || '').toLowerCase() === _agentFocus.name.toLowerCase();
-        }
-        return false;
+        if (hit) _matchedMsgRows++;
+        return hit;
       };
       filteredItems = allItems.filter(matchRow);
       // Zero-hit guard: a click must never yield a blank conversation (the agent's
-      // rows may not have landed yet, or the label/type inference missed). Fall
-      // back to the unfiltered list AND treat this frame as unfocused — otherwise
-      // the main agent's Last Response / live streaming overlay would be hidden
-      // by a focus that matches nothing.
-      if (filteredItems.length === 0) { filteredItems = allItems; _zeroHit = true; }
+      // rows may not have landed yet, or the label/type inference missed). Judge by
+      // MESSAGE rows only — separators/banners always survive the filter and would
+      // otherwise defeat this guard. Fall back to the unfiltered list AND treat the
+      // frame as unfocused so the main agent's Last Response / streaming overlay is
+      // not hidden by a focus that matched nothing.
+      if (_matchedMsgRows === 0) { filteredItems = allItems; _zeroHit = true; }
     } else if (_selSize > 0 && _selSize < collectedRoles.length) {
       filteredItems = allItems.filter(item => {
         if (!item || !item.props) return true;
@@ -5115,12 +5140,13 @@ class ChatView extends React.Component {
     ) : null;
 
     // Active subAgent/teammate strip (--sdk only). Hidden while the role filter
-    // bar is open (they'd overlap at the top of the list) and while pinned to a
-    // historical session (sessionUpperBoundTs): a pinned view shows an older
-    // session, but the strip's agents come from the live one, so focusing would
-    // filter the pinned rows to blank. Rendered in BOTH the empty and loaded
-    // branches below so its visibility effect always runs.
-    const showActiveAgentsBar = this.props.sdkMode && !this.state.roleFilterOpen && this.props.sessionUpperBoundTs == null;
+    // bar is open (they'd overlap at the top of the list), while pinned to a
+    // historical session (sessionUpperBoundTs), AND while attached to a resumed/
+    // historical session (?sid=): in all three the visible rows belong to an older
+    // session, but the strip's agents come from the LIVE one, so focusing would
+    // filter those rows to blank (review: Requirements-F1). Rendered in BOTH the
+    // empty and loaded branches below so its visibility effect always runs.
+    const showActiveAgentsBar = this.props.sdkMode && !this.state.roleFilterOpen && this.props.sessionUpperBoundTs == null && this.props.attachedSid == null;
     const activeAgentsBar = showActiveAgentsBar ? (
       <ActiveAgentsBar
         requests={this.props.requests}

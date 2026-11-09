@@ -8,6 +8,7 @@ import {
   buildAgentToolUseMap,
   deriveActiveAgents,
   resolveAgentIdentity,
+  isFocusActive,
 } from '../../utils/activeAgents';
 import styles from './ActiveAgentsBar.module.css';
 
@@ -37,13 +38,18 @@ export default function ActiveAgentsBar({ requests, selectedKey = null, onSelect
   const [snapshot, setSnapshot] = useState(getSnapshot);
   useEffect(() => subscribe(setSnapshot), []);
 
+  // The tool_use join map depends ONLY on the transcript — NOT on the task
+  // snapshot, which is republished on every task_progress frame. Splitting it out
+  // stops the whole-transcript rescan from running several times a second while an
+  // agent streams progress (review: Quality P2-3 / Risk P3).
+  const toolUseMap = useMemo(() => buildAgentToolUseMap(requests), [requests]);
+
   // Resolve identities against the transcript. Memoized on the snapshot + the
-  // request list so a re-render from an unrelated ChatView setState does not
+  // (stable) join map so a re-render from an unrelated ChatView setState does not
   // rebuild the tool_use map.
   const agents = useMemo(() => {
     const active = deriveActiveAgents(snapshot.tasks);
     if (active.length === 0) return [];
-    const toolUseMap = buildAgentToolUseMap(requests);
     // Teammates share one avatar per resolved name (the same teammate may have
     // several concurrent tasks); subagents stay one-per-task.
     const seenTeammates = new Set();
@@ -57,7 +63,7 @@ export default function ActiveAgentsBar({ requests, selectedKey = null, onSelect
       out.push(identity);
     }
     return out;
-  }, [snapshot, requests]);
+  }, [snapshot, toolUseMap]);
 
   const visible = agents.length > 0;
 
@@ -72,16 +78,34 @@ export default function ActiveAgentsBar({ requests, selectedKey = null, onSelect
   // OTHERS stay active, the bar re-renders but ChatView does not (it never
   // subscribed to taskStore and `visible` is still true), so the backstop never
   // runs and the conversation would stay filtered to a dead agent. Restore "all"
-  // the moment the selected key is no longer among the active agents. The `if
-  // (!selectedKey) return` guard keeps this from looping.
-  const focused = !!selectedKey && agents.some((a) => a.key === selectedKey);
+  // the moment the focused agent is no longer active. Liveness uses the SAME
+  // isFocusActive rule as ChatView's backstop (teammate by name, subagent by
+  // taskId) so a multi-task teammate is not cleared while a sibling task runs.
+  const focusedIdentity = useMemo(
+    () => agents.find((a) => a.key === selectedKey) || null,
+    [agents, selectedKey]
+  );
+  const focusAlive = useMemo(() => {
+    if (!selectedKey) return true; // nothing focused → never fire
+    const active = deriveActiveAgents(snapshot.tasks);
+    // Rebuild a minimal focus descriptor: the selected key's identity if still
+    // listed, else a name/taskId probe so liveness matches ChatView's rule.
+    const probe = focusedIdentity || agents.find((a) => a.key === selectedKey) || null;
+    if (!probe) {
+      // Not currently rendered — fall back to key presence across ALL resolved
+      // identities (a teammate may be momentarily unresolved between frames).
+      return active.some((a) => resolveAgentIdentity(a, toolUseMap).key === selectedKey);
+    }
+    return isFocusActive(probe, active, toolUseMap);
+  }, [selectedKey, focusedIdentity, agents, snapshot, toolUseMap]);
   useEffect(() => {
-    if (selectedKey && !focused && typeof onShowAll === 'function') onShowAll();
-  }, [selectedKey, focused, onShowAll]);
+    if (selectedKey && !focusAlive && typeof onShowAll === 'function') onShowAll();
+  }, [selectedKey, focusAlive, onShowAll]);
 
   // Hooks above this line always run; the early return must stay below them.
   if (!visible) return null;
 
+  const focused = !!selectedKey && focusedIdentity != null;
   return (
     <div className={`${styles.bar}${focused ? ` ${styles.barFocused}` : ''}`}
       role="group" aria-label={t('ui.activeAgents.title')}>

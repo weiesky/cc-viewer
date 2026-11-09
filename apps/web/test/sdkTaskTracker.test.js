@@ -9,7 +9,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { applyFrame, clear, __resetForTests } from '../src/utils/sdkTaskTracker.js';
+import { applyFrame, applySnapshot, clear, __resetForTests } from '../src/utils/sdkTaskTracker.js';
 import { getSnapshot, getTasks, __resetForTests as resetTaskStore } from '../src/utils/taskStore.js';
 
 beforeEach(() => {
@@ -247,5 +247,47 @@ describe('utils/sdkTaskTracker.js', () => {
   it('sessionId tracks the latest frame', () => {
     applyFrame({ subtype: 'task_started', taskId: 't1', sessionId: 's1', description: 'Task' });
     assert.equal(getSnapshot().sessionId, 's1');
+  });
+
+  describe('applySnapshot (authoritative reconnect reconcile)', () => {
+    it('resurrects a task whose started-frame was missed AND drops one the server no longer tracks', () => {
+      // Client saw only t_live; server also has t_missed (its frame was lost) and has
+      // since dropped t_stale (its terminal frame was lost client-side).
+      applyFrame({ subtype: 'task_started', taskId: 't_live', sessionId: 's1', description: 'Live' });
+      applyFrame({ subtype: 'task_started', taskId: 't_stale', sessionId: 's1', description: 'Stale' });
+
+      applySnapshot({
+        sessionId: 's1',
+        tasks: [
+          { taskId: 't_live', taskType: 'local_agent', toolUseId: 'toolu_live', status: 'running', description: 'Live', promptSnippet: 'p' },
+          { taskId: 't_missed', taskType: 'in_process_teammate', toolUseId: 'toolu_missed', status: 'running', description: 'Missed', promptSnippet: 'q' },
+        ],
+      });
+
+      const ids = getTasks().map((t) => t.taskId).sort();
+      assert.deepEqual(ids, ['t_live', 't_missed'], 'stale dropped, missed resurrected');
+      assert.equal(getSnapshot().sessionId, 's1');
+      const missed = getTasks().find((t) => t.taskId === 't_missed');
+      assert.equal(missed.status, 'in_progress');
+      assert.equal(missed.toolUseId, 'toolu_missed');
+      assert.equal(missed.promptSnippet, 'q');
+    });
+
+    it('maps terminal statuses so a resurrected-then-finished agent is not revived as active', () => {
+      applySnapshot({
+        sessionId: 's1',
+        tasks: [{ taskId: 't_done', taskType: 'local_agent', status: 'completed', terminal: true, description: 'Done' }],
+      });
+      const t = getTasks().find((x) => x.taskId === 't_done');
+      assert.equal(t.status, 'completed');
+    });
+
+    it('ignores malformed snapshots', () => {
+      applyFrame({ subtype: 'task_started', taskId: 't1', sessionId: 's1', description: 'Keep' });
+      applySnapshot(null);
+      applySnapshot({});
+      applySnapshot({ tasks: 'nope' });
+      assert.deepEqual(getTasks().map((t) => t.taskId), ['t1'], 'unchanged on malformed input');
+    });
   });
 });

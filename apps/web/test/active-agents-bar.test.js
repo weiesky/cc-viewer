@@ -68,7 +68,7 @@ describe('ActiveAgentsBar source contract', () => {
     const iSubscribe = jsx.indexOf('useEffect(() => subscribe(setSnapshot)');
     const iMemo = jsx.indexOf('useMemo(');
     const iVisibleFx = jsx.indexOf('onVisibleChange(visible)');
-    const iResetFx = jsx.indexOf('if (selectedKey && !focused');
+    const iResetFx = jsx.indexOf('if (selectedKey && !focusAlive');
     const iReturn = jsx.indexOf('if (!visible) return null');
     assert.ok(iSubscribe > -1 && iMemo > -1 && iReturn > -1, 'hooks + return all present');
     assert.ok(iVisibleFx > -1 && iResetFx > -1, 'both useEffect hooks present');
@@ -78,12 +78,13 @@ describe('ActiveAgentsBar source contract', () => {
 
   it('resets the focus when the selected agent leaves the active set', () => {
     // The bar holds the derived agents list, so it is the right place to detect a
-    // dead focus (ChatView does not re-render on a partial task completion).
-    assert.ok(jsx.includes('const focused = !!selectedKey && agents.some((a) => a.key === selectedKey)'),
-      'focused computed from the live agents list');
-    assert.ok(/if \(selectedKey && !focused && typeof onShowAll === 'function'\) onShowAll\(\)/.test(jsx),
-      'effect restores "all" when the selected key is gone');
-    assert.ok(jsx.includes('[selectedKey, focused, onShowAll]'), 'effect deps cover the reset');
+    // dead focus (ChatView does not re-render on a partial task completion). It
+    // uses the shared isFocusActive rule (teammate by name, subagent by taskId) so
+    // a multi-task teammate is not cleared while a sibling task is still running.
+    assert.ok(jsx.includes('isFocusActive('), 'liveness via the shared isFocusActive rule');
+    assert.ok(/if \(selectedKey && !focusAlive && typeof onShowAll === 'function'\) onShowAll\(\)/.test(jsx),
+      'effect restores "all" when the focus is no longer active');
+    assert.ok(jsx.includes('[selectedKey, focusAlive, onShowAll]'), 'effect deps cover the reset');
     assert.ok(/styles\.bar\}\$\{focused \?/.test(jsx),
       'barFocused keyed off the live focused flag (not raw selectedKey)');
   });
