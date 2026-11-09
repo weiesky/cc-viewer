@@ -14,6 +14,12 @@
  * fallback.
  */
 
+import { PROMPT_PREFIX_LEN } from '@ccv/core/contentFilter';
+
+// Re-exported so existing importers of this module keep working; the value itself
+// is sourced from @ccv/core/contentFilter (one shared definition, no drift).
+export { PROMPT_PREFIX_LEN };
+
 // task_started.task_type values that represent a user-visible agent (subagent
 // or teammate). local_workflow / local_bash / remote_agent are excluded: they
 // are workflow-internal agents or background shells, not a chat peer.
@@ -22,10 +28,6 @@ export const AGENT_TASK_TYPES = new Set(['local_agent', 'in_process_teammate']);
 // Statuses after which an agent no longer counts as active. sdkTaskTracker maps
 // killed/stopped to 'failed', so only these two are terminal here.
 const TERMINAL_STATUSES = new Set(['completed', 'failed']);
-
-// Keep in sync with packages/core/src/contentFilter.js PROMPT_PREFIX_LEN — the
-// prompt-prefix join length used to match an Agent tool_use to a transcript row.
-export const PROMPT_PREFIX_LEN = 60;
 
 // "name: rest" teammate prefix, used ONLY as a fallback when the tool_use join
 // misses. Allows spaces in the name (up to the first colon) — names are not

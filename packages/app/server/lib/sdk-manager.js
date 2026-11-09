@@ -36,6 +36,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { registerSdkSessionLister } from './sdk-session-index.js';
 import { readPrefsRaw } from './prefs-store.js';
 import { projectKeyForCwd } from './system-prompt-snapshots.js';
+import { AGENT_PROMPT_SNIPPET_LEN } from '@ccv/core/contentFilter';
 import {
   computeAutoApprove,
   createAutoApproveState,
@@ -328,18 +329,17 @@ function _isBareClearCommand(text) {
  * delta for the client to apply, and `skip_transcript` is forwarded as
  * `skipTranscript` so the UI stage can decide whether to hide ambient tasks.
  *
- * Two constraints the UI stage MUST respect (server-side, this round is pure relay):
+ * Two constraints the UI stage MUST respect:
  *  - TWO status vocabularies share the wire: `task_notification.status` is
  *    `completed|failed|stopped`, while `task_updated.patch.status` is
  *    `pending|running|completed|failed|killed` — adjacent but disjoint domains.
  *    A client that naively merges `{...task, ...frame}` then `{...frame.patch}`
  *    will mis-render; discriminate by `subtype` before reading `status`.
- *  - NO server-side task table → NOT reconnect-replayed (unlike sdk-init's
- *    `_lastInitSnapshot`). A frame missed during a WS gap (page refresh / 2s
- *    reconnect) is NOT recoverable; an in-flight task is invisible to a late
- *    client. Accept-as-ephemeral vs add a bounded last-state map is a UI-stage
- *    decision (see sdk-mode-todo-list; if replay is wanted, reuse task-state.js's
- *    reducer semantics rather than growing a second table here).
+ *  - The live relay is delta-only, but every frame is ALSO folded into a bounded
+ *    per-session table (taskId → latest folded state, cap 64, reset on session
+ *    boundaries) and replayed as an authoritative `sdk-task-snapshot` on WS
+ *    reconnect — a frame missed during a gap is recoverable, and an empty table
+ *    replays as `tasks: []` so the client reconciles to "no tasks".
  *
  * Note: the 4 subtypes relayed here are the PUBLIC contract (sdk.d.ts SDKMessage
  * union). The SDK additionally emits @internal `task_summary` / `post_turn_summary`
@@ -391,7 +391,8 @@ function _normalizeSdkTask(msg) {
  * known state per taskId). task_started seeds; task_progress/updated merge fields
  * (patch.status is authoritative for updated); task_notification marks terminal.
  * Kept deliberately small — the full prompt is retained only as a bounded snippet,
- * matching the client tracker's AGENT_PROMPT_SNIPPET_LEN.
+ * shared via @ccv/core's AGENT_PROMPT_SNIPPET_LEN so the client tracker truncates
+ * identically.
  */
 const _SDK_TASK_TERMINAL = new Set(['completed', 'failed', 'stopped', 'killed']);
 function _foldSdkTask(prev, frame) {
@@ -400,8 +401,13 @@ function _foldSdkTask(prev, frame) {
   if (frame.toolUseId != null) next.toolUseId = frame.toolUseId;
   if (frame.taskType != null) next.taskType = frame.taskType;
   if (frame.description != null) next.description = frame.description;
+  if (frame.patch && frame.patch.description != null) next.description = frame.patch.description; // task_updated delta
   if (frame.summary != null) next.summary = frame.summary;
-  if (frame.prompt != null) next.promptSnippet = String(frame.prompt).slice(0, 1024);
+  if (frame.prompt != null) next.promptSnippet = String(frame.prompt).slice(0, AGENT_PROMPT_SNIPPET_LEN);
+  // Retained so getSdkTaskSnapshot can hide ambient tasks from the replay while the
+  // entry still participates in session-boundary detection (a skipTranscript first
+  // frame may be the only task frame carrying the new sessionId).
+  if (frame.skipTranscript != null) next.skipTranscript = frame.skipTranscript === true;
   if (frame.workflowName != null) next.workflowName = frame.workflowName;
   if (frame.lastToolName != null) next.lastToolName = frame.lastToolName;
   if (frame.usage != null) next.usage = frame.usage;
@@ -1594,6 +1600,14 @@ function _createSession(key, cwd) {
           // /clear may reinitialize instead of returning a normal result. The new session is
           // now authoritative, so context reads may resume (without resuming the old session).
           if (_ctxUsageClearPending && msg.session_id) _ctxUsageClearPending = false;
+          // Session boundary for the task table: /clear re-inits with a new session_id but
+          // may emit no task frame until the next task starts (the task-frame boundary in
+          // the task branch only fires once one arrives), and a task that was in flight
+          // gets no terminal frame — without this reset a reconnect would resurrect it.
+          if (msg.session_id && msg.session_id !== _sdkTaskTableSessionId) {
+            _sdkTaskTable = new Map();
+            _sdkTaskTableSessionId = msg.session_id;
+          }
           if (_broadcastWs && Array.isArray(msg.slash_commands) && msg.slash_commands.length > 0
             && msg.session_id !== _initAnnouncedSid) {
             _initAnnouncedSid = msg.session_id;
@@ -2785,10 +2799,17 @@ function _createSession(key, cwd) {
     getSkillsSnapshot: () => _lastSkillsSnapshot,
     // Authoritative sdk-task table for WS reconnect replay: a refreshed/reconnected
     // client reconciles its delta-only tracker to this snapshot (sessionId-scoped).
-    getSdkTaskSnapshot: () => (
-      _sdkTaskTable.size === 0 ? null
-        : { type: 'sdk-task-snapshot', cwd: _cwd, instanceKey, sessionId: _sdkTaskTableSessionId, tasks: [..._sdkTaskTable.values()] }
-    ),
+    // ALWAYS returns a frame — an empty `tasks: []` is authoritative ("no tasks"),
+    // otherwise a client that missed the session boundary keeps its stale agents.
+    // skipTranscript entries are tracked (they carry the session boundary) but hidden
+    // from the replay, matching the live path that never shows ambient tasks.
+    getSdkTaskSnapshot: () => ({
+      type: 'sdk-task-snapshot',
+      cwd: _cwd,
+      instanceKey,
+      sessionId: _sdkTaskTableSessionId,
+      tasks: [..._sdkTaskTable.values()].filter((t) => t.skipTranscript !== true),
+    }),
     fetchContextUsage: async () => {
       // On-demand fetch for the HTTP route: refresh the snapshot, broadcast to all clients,
       // then reply. Unlike _refreshContextUsage this bypasses the in-flight gate (an explicit
@@ -3300,7 +3321,18 @@ export function getMcpStatusSnapshot(anchor) {
   return sess ? sess.getMcpStatusSnapshot() : null;
 }
 
-/** WS reconnect replay getter for the authoritative sdk-task table. No anchor → active session. */
+/**
+ * WS reconnect replay getter for the authoritative sdk-task table.
+ *
+ * `anchor` (optional, skills-snapshot parity — resolved by _sessionForAnchor):
+ *   - { instanceKey }            exact registered instance
+ *   - { cwd }                    exact normalized cwd
+ *   - { project }                sanitized/raw basename; ambiguous → null
+ * No anchor → the ACTIVE session. Returns the always-present `sdk-task-snapshot`
+ * frame ({ type, cwd, instanceKey, sessionId, tasks }) — tasks may be empty — or
+ * null only when the anchor resolves to no registered session (the caller sends
+ * nothing; an anchor failure must not replay a foreign workspace's table).
+ */
 export function getSdkTaskSnapshot(anchor) {
   const sess = anchor ? _sessionForAnchor(anchor) : _active();
   return sess ? sess.getSdkTaskSnapshot() : null;

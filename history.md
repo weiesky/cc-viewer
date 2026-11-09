@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- fix(sdk+web): **F5 刷新后 `--sdk` 活跃 agent 头像条不再消失** — 根因是 `applySnapshot` 只回填任务、不种子 `_ownerKey`：刷新后快照先复活 strip，下一个 live 帧因 owner 误判为视图切换而全量清空、strip 永远空到下个 task_started。修复：`applySnapshot` 从快照 cwd/instanceKey 种子 `_ownerKey`；服务端 `/clear` 即清空任务表、空表也发权威 `tasks:[]` 快照、重放按 view 锚定、`skipTranscript` 后台任务在此快照中过滤。Coverage: `sdkTaskTracker.test.js`, `sdk-task-table.test.js`, `branch-server.test.js`.
+
+- fix(web): **多工作区下后台 session 心跳不再清空前台头像条/focus** — `sdk-session-state` 的 sessionId 变化重置此前未做视图过滤；现经 `_sdkFrameMatchesView` 门控、视图切换时复位 `_lastSdkSessionStateSid`。Coverage: `chat-active-agents-wiring.test.js`.
+
 - feat(web): **`--sdk` 模式 [对话] 右上角新增活跃 SubAgent/Teammate 头像条** — 由 WS `sdk-task` 帧派生活跃 `local_agent`/`in_process_teammate`（taskStore 快照），磨砂玻璃 28px 浮条、24px 圆形头像（teammate 复用 `getTeammateAvatar`、匿名 subagent 用 `getSvgAvatar` sub-* 图标，身份经 toolUseId/prompt 前缀 join 主会话 Agent tool_use 解析）；点头像仅显示该 agent 对话、再点或尾部 (ALL) 恢复全部，与角色筛选互斥，全部结束自动消失并复位筛选。Coverage: `activeAgents.test.js`, `active-agents-bar.test.js`, `chat-active-agents-wiring.test.js`, `sdkTaskTracker.test.js`.
 
 - fix(web): **窄窗口下 [对话] 区被固定宽度终端分栏压成 0 宽消失** — `.chatSection` 由 `min-width:0` 改为 `min-width:280px`（对话区下限，永不被压没），`.splitContainer` 由 `overflow:hidden` 改为 `overflow-x:auto`（总宽超窗口时横向滚动、终端被挤到右侧可滚动查看，而非压扁对话）。Coverage: `chat-active-agents-wiring.test.js`.

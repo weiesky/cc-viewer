@@ -610,7 +610,10 @@ let _registryScanned = new WeakSet();
 // Identify the session by the first request's timestamp; auto-reset on switch
 let _registrySessionKey = null;
 
-const PROMPT_PREFIX_LEN = 60;
+export const PROMPT_PREFIX_LEN = 60;
+// Shared cap on the retained prompt snippet for agent tasks — the web tracker and
+// the server replay table must truncate identically for prompt-prefix joins.
+export const AGENT_PROMPT_SNIPPET_LEN = 1024;
 const TM_TAG_RE = /<teammate-message[^>]*>/;
 
 /**

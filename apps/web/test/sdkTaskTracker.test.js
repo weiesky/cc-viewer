@@ -273,6 +273,40 @@ describe('utils/sdkTaskTracker.js', () => {
       assert.equal(missed.promptSnippet, 'q');
     });
 
+    it('a live frame from the snapshot\'s own workspace keeps the resurrected tasks', () => {
+      // Regression: the snapshot must adopt cwd/instanceKey ownership. Otherwise
+      // the next live frame's owner-change branch sees owner !== _ownerKey (null)
+      // and wipes everything the snapshot just restored.
+      applySnapshot({
+        cwd: '/w/a', instanceKey: 'inst-a', sessionId: 's1',
+        tasks: [
+          { taskId: 't1', taskType: 'local_agent', toolUseId: 'toolu_1', status: 'running', description: 'A', promptSnippet: 'p' },
+          { taskId: 't2', taskType: 'in_process_teammate', status: 'running', description: 'B' },
+        ],
+      });
+      assert.deepEqual(getTasks().map((t) => t.taskId), ['t1', 't2']);
+      applyFrame({ subtype: 'task_progress', taskId: 't1', cwd: '/w/a', instanceKey: 'inst-a', sessionId: 's1', lastToolName: 'Bash', description: 'working' });
+      const tasks = getTasks();
+      assert.deepEqual(tasks.map((t) => t.taskId), ['t1', 't2'], 'same-workspace frame must not reset');
+      assert.equal(tasks[0].lastToolName, 'Bash');
+      assert.equal(tasks[0].subject, 'working');
+      assert.equal(getSnapshot().sessionId, 's1');
+      // A frame from a DIFFERENT workspace still resets (owner-change branch).
+      applyFrame({ subtype: 'task_progress', taskId: 't1', cwd: '/w/b', instanceKey: 'inst-b', sessionId: 's1' });
+      assert.deepEqual(getTasks(), []);
+    });
+
+    it('excludes skipTranscript entries but keeps tasks from servers without the flag', () => {
+      applySnapshot({
+        sessionId: 's1',
+        tasks: [
+          { taskId: 't_visible', taskType: 'local_agent', status: 'running', description: 'Visible' },
+          { taskId: 't_ambient', taskType: 'local_agent', status: 'running', description: 'Ambient', skipTranscript: true },
+        ],
+      });
+      assert.deepEqual(getTasks().map((t) => t.taskId), ['t_visible']);
+    });
+
     it('maps terminal statuses so a resurrected-then-finished agent is not revived as active', () => {
       applySnapshot({
         sessionId: 's1',

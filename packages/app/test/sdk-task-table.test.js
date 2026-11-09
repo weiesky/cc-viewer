@@ -85,13 +85,18 @@ function makeResidentQuery({ initMsgs, respond } = {}) {
 }
 
 describe('sdk-task server table', () => {
-  it('starts empty: no snapshot before any task frame', async () => {
+  it('replays an authoritative empty frame before any task frame (not null)', async () => {
     const { deps } = makeDeps();
     sdk.__setQueryForTests(makeResidentQuery({ initMsgs: [sysInit()] }));
     sdk.initSdkSession(tmpDir, 'proj', deps);
     await sdk.sendUserMessage('hi');
     await tick();
-    assert.equal(sdk.getSdkTaskSnapshot(), null);
+
+    const snap = sdk.getSdkTaskSnapshot();
+    assert.ok(snap, 'empty table still yields a replay frame — the client reconciles to "no tasks"');
+    assert.equal(snap.type, 'sdk-task-snapshot');
+    assert.equal(snap.sessionId, 'sess-1');
+    assert.deepEqual(snap.tasks, []);
   });
 
   it('folds task_started (+toolUseId/prompt) into the table and exposes it via the snapshot', async () => {
@@ -172,10 +177,91 @@ describe('sdk-task server table', () => {
     sdk.initSdkSession(tmpDir, 'proj', deps);
     await sdk.sendUserMessage('hi');
     await tick(8);
-    assert.ok(sdk.getSdkTaskSnapshot());
+    assert.equal(sdk.getSdkTaskSnapshot().tasks.length, 1);
 
     const r = sdk.switchToSession('sess-other');
     assert.equal(r.ok, true);
-    assert.equal(sdk.getSdkTaskSnapshot(), null, 'table cleared on session switch');
+    const snap = sdk.getSdkTaskSnapshot();
+    assert.deepEqual(snap.tasks, [], 'table cleared on session switch (empty frame, not null)');
+  });
+
+  it('an init with a new session_id (/clear) clears the table with no task frame following', async () => {
+    const { deps } = makeDeps();
+    let turn = 0;
+    sdk.__setQueryForTests(makeResidentQuery({
+      initMsgs: [sysInit()],
+      respond: () => {
+        turn += 1;
+        return turn === 1
+          ? [taskMsg('task_started', { task_id: 't1', task_type: 'local_agent', tool_use_id: 'toolu_1', description: 'd', prompt: 'p' }), resultMsg()]
+          : [sysInit('sess-2'), resultMsg()]; // /clear re-init, no task frame
+      },
+    }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('hi');
+    await tick(8);
+    assert.equal(sdk.getSdkTaskSnapshot().tasks.length, 1);
+
+    await sdk.sendUserMessage('/clear');
+    await tick(8);
+    const snap = sdk.getSdkTaskSnapshot();
+    assert.equal(snap.sessionId, 'sess-2');
+    assert.deepEqual(snap.tasks, [], 'init session boundary drops the outgoing session that had no terminal frame');
+  });
+
+  it('skipTranscript tasks are folded (session boundary still detected) but excluded from the replay', async () => {
+    const { deps } = makeDeps();
+    sdk.__setQueryForTests(makeResidentQuery({
+      initMsgs: [sysInit()],
+      respond: () => [
+        taskMsg('task_started', { task_id: 'bg', task_type: 'local_agent', skip_transcript: true, description: 'ambient' }),
+        taskMsg('task_started', { task_id: 'vis', task_type: 'local_agent', tool_use_id: 'toolu_2', description: 'visible' }),
+        resultMsg(),
+      ],
+    }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('hi');
+    await tick(8);
+
+    const snap = sdk.getSdkTaskSnapshot();
+    assert.deepEqual(snap.tasks.map((t) => t.taskId), ['vis'], 'ambient task hidden from the replay (live-path parity)');
+
+    // Folding (not dropping) the ambient entry is what keeps the session-boundary check
+    // working when a skipTranscript frame is the first one carrying the new sessionId.
+    const { deps: deps2 } = makeDeps();
+    sdk.__setQueryForTests(makeResidentQuery({
+      initMsgs: [sysInit()],
+      respond: () => [
+        taskMsg('task_started', { task_id: 'vis', task_type: 'local_agent', tool_use_id: 'toolu_3', description: 'visible' }),
+        taskMsg('task_started', { task_id: 'bg', task_type: 'local_agent', skip_transcript: true }, 'sess-2'),
+        resultMsg(),
+      ],
+    }));
+    sdk.initSdkSession(tmpDir, 'proj', deps2);
+    await sdk.sendUserMessage('hi');
+    await tick(8);
+    const snap2 = sdk.getSdkTaskSnapshot();
+    assert.equal(snap2.sessionId, 'sess-2', 'skipTranscript frame still triggers the session boundary');
+    assert.deepEqual(snap2.tasks, []);
+  });
+
+  it('merges task_updated.patch.description into the folded entry', async () => {
+    const { deps } = makeDeps();
+    sdk.__setQueryForTests(makeResidentQuery({
+      initMsgs: [sysInit()],
+      respond: () => [
+        taskMsg('task_started', { task_id: 't1', task_type: 'local_agent', description: 'old blurb' }),
+        taskMsg('task_updated', { task_id: 't1', patch: { description: 'new blurb', status: 'running' } }),
+        resultMsg(),
+      ],
+    }));
+    sdk.initSdkSession(tmpDir, 'proj', deps);
+    await sdk.sendUserMessage('hi');
+    await tick(8);
+
+    const t = sdk.getSdkTaskSnapshot().tasks[0];
+    assert.equal(t.description, 'new blurb');
+    assert.equal(t.status, 'running');
+    assert.equal(t.terminal, false);
   });
 });

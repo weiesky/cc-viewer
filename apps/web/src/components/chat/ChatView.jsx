@@ -422,6 +422,14 @@ class ChatView extends React.Component {
     this._inputRef = React.createRef();
     this._stopOptimisticTimer = null; // 乐观停止兜底定时器
     this._sdkRetryResetTimer = null; // manual [retry] 15s fallback (componentWillUnmount clears)
+    // Last sessionId seen on the VIEWED workspace's sdk-session-state frame — drives the
+    // same-workspace /clear/resume tracker reset. Per-view state: a view switch nulls it
+    // so the new view's first frame seeds it instead of comparing against another view's.
+    this._lastSdkSessionStateSid = null;
+    // Per-requests memo for the Agent/Task tool_use join map (active-agents strip),
+    // keyed on the props.requests ARRAY IDENTITY — see _getAgentToolUseMap.
+    this._agentToolUseMapReqs = undefined;
+    this._agentToolUseMap = null;
     // Slow-upstream toast bookkeeping (review P2-1): track pending slow requests
     // by requestId so concurrent slow requests don't clobber one shared toast,
     // and tick the displayed elapsed time so it isn't frozen at the 30s emit.
@@ -895,6 +903,10 @@ class ChatView extends React.Component {
         activeAgent: null, activeAgentsBarVisible: false,
         ...(this.props.sdkMode ? { pendingAsk: null, askQueue: [], pendingPermission: null, permissionQueue: [] } : {}),
       });
+      // The tracked session id belongs to the previous view. Null it so the new view's
+      // first sdk-session-state seeds the tracker boundary instead of a same-workspace
+      // reset firing against a sid from a different workspace/instance.
+      this._lastSdkSessionStateSid = null;
       // Mark the pendingAsk/pendingPtyPlan clears above as view-switch synthetic so the
       // bubble (in the cDU diff below) can tell AppBase to skip the dismissal wipe —
       // the attach replay re-bubbles the same id, and wiping would reopen a minimised modal.
@@ -1284,7 +1296,7 @@ class ChatView extends React.Component {
     // tm:<name> key still carries its originating taskId.
     if (this.state.activeAgent && (this.state.activeAgent.taskId || this.state.activeAgent.name)) {
       const active = deriveActiveAgents(getTaskSnapshot().tasks);
-      const toolUseMap = buildAgentToolUseMap(this.props.requests || []);
+      const toolUseMap = this._getAgentToolUseMap();
       if (!isFocusActive(this.state.activeAgent, active, toolUseMap)) this.setState({ activeAgent: null });
     }
     if (prevProps.mainAgentSessions !== this.props.mainAgentSessions) {
@@ -3237,13 +3249,19 @@ class ChatView extends React.Component {
           // the 10s turn heartbeat would otherwise light a same-basename sibling's client.
           // Session boundary within the SAME workspace (/clear, in-place resume/fork):
           // reset the task tracker so the previous session's agents don't linger when
-          // the new session is slow to emit its first sdk-task frame.
-          const newSid = msg.sessionId || null;
-          if (newSid && this._lastSdkSessionStateSid && newSid !== this._lastSdkSessionStateSid) {
-            resetSdkTaskTrackerForSession();
-            if (this.state.activeAgent) this.setState({ activeAgent: null });
+          // the new session is slow to emit its first sdk-task frame. View-filtered —
+          // the tracker/focus are single instances, so only the VIEWED workspace's
+          // frames may reset them (a background workspace's sid change must not wipe
+          // the strip the user is looking at). The lift below stays unfiltered:
+          // AppBase applies its own cwd/instance ownership check.
+          if (this._sdkFrameMatchesView(msg)) {
+            const newSid = msg.sessionId || null;
+            if (newSid && this._lastSdkSessionStateSid && newSid !== this._lastSdkSessionStateSid) {
+              resetSdkTaskTrackerForSession();
+              if (this.state.activeAgent) this.setState({ activeAgent: null });
+            }
+            if (newSid) this._lastSdkSessionStateSid = newSid;
           }
-          if (newSid) this._lastSdkSessionStateSid = newSid;
           if (typeof this.props.onSdkSessionState === 'function') this.props.onSdkSessionState(msg.state, { sessionId: msg.sessionId || null, cwd: msg.cwd || null, instanceKey: msg.instanceKey || null, turnId: msg.turnId || null, turnStartedAt: Number.isFinite(msg.turnStartedAt) ? msg.turnStartedAt : null, heartbeat: msg.heartbeat === true, activity: msg.activity === true });
         } else if (msg.type === 'sdk-task') {
           // SDK-mode task lifecycle relay (task_started/progress/updated/notification).
@@ -3853,6 +3871,22 @@ class ChatView extends React.Component {
 
   _handleActiveAgentsVisibility = (visible) => {
     if (visible !== this.state.activeAgentsBarVisible) this.setState({ activeAgentsBarVisible: visible });
+  };
+
+  // Per-requests memo for the Agent/Task tool_use join map. The focus backstop
+  // (cDU) and the render-time row filter both need it, and while focused a
+  // streaming turn re-renders constantly — rebuilding here must not rescan the
+  // whole transcript twice per commit. Cached on the props.requests ARRAY
+  // IDENTITY: AppBase replaces the array only when entries actually change, so a
+  // taskStore/setState-only re-render reuses the map.
+  _getAgentToolUseMap = () => {
+    const reqs = this.props.requests;
+    // `!this._agentToolUseMap` covers the initial undefined===undefined case.
+    if (this._agentToolUseMapReqs === reqs && this._agentToolUseMap) return this._agentToolUseMap;
+    this._agentToolUseMapReqs = reqs;
+    const reqList = reqs || [];
+    this._agentToolUseMap = buildAgentToolUseMap(reqList);
+    return this._agentToolUseMap;
   };
 
   // An explicit user send starts a fresh turn: drop the pinned error rows (a retry's
@@ -4897,9 +4931,10 @@ class ChatView extends React.Component {
     let _zeroHit = false; // set when the focus matched nothing and we fell back to all items
     if (_clickedFocus) {
       const reqList = this.props.requests || [];
-      // One join map per render: binds each sub-agent-chat row to its spawn
-      // tool_use (by id, else prompt prefix) so instance matching is reliable.
-      const toolUseMap = buildAgentToolUseMap(reqList);
+      // Shared per-requests join map (memoized, see _getAgentToolUseMap): binds
+      // each sub-agent-chat row to its spawn tool_use (by id, else prompt prefix)
+      // so instance matching is reliable without a per-render transcript rescan.
+      const toolUseMap = this._getAgentToolUseMap();
       // Re-resolve the focused identity FRESH each render (matched by taskId):
       // the stored descriptor is a click-time snapshot — a subagent clicked before
       // its Agent tool_use landed keeps avatarType 'sub' and no toolUseId even after
