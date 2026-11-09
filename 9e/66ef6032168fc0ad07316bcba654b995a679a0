@@ -1,0 +1,53 @@
+history.md
+  s_8bb890f35dad92::t_c412de6884274b 5-8
+packages/core/src/contentFilter.js
+  s_8bb890f35dad92::t_7140a3934e3569 613-616
+packages/app/server/server.js
+  s_8bb890f35dad92::t_4f6b244a1bad56 2402-2406,2408-2420
+  s_8bb890f35dad92::t_b19d806f94bb1f 2601-2618
+.changeset/sdk-task-server-table.md
+  s_8bb890f35dad92::t_f301ee0e15205a 6-9
+apps/web/src/utils/sdkTaskTracker.js
+  s_8bb890f35dad92::t_d650cbb2e7d16e 249-252,260-262,284-289
+  s_8bb890f35dad92::t_ff34d08aa92d23 20-24
+  s_8bb890f35dad92::t_378ba532c77641 31
+apps/web/src/utils/activeAgents.js
+  s_8bb890f35dad92::t_53d9ada9916634 17-22
+packages/app/test/sdk-task-table.test.js
+  s_8bb890f35dad92::t_68781fa63d27a3 180,184-265
+  s_8bb890f35dad92::t_6b8897b68d0fd5 88,94-99
+apps/web/test/sdkTaskTracker.test.js
+  s_8bb890f35dad92::t_f05e35b267bf7c 276-309
+apps/web/src/components/chat/ChatView.jsx
+  s_8bb890f35dad92::t_efeb949059a454 3252-3263
+  s_8bb890f35dad92::t_33a9f4112b012e 425-432
+  s_8bb890f35dad92::t_1cf2b40edde71e 1299
+  s_8bb890f35dad92::t_c19c75566efa98 906-909
+  s_8bb890f35dad92::t_c65c2c91fe5b3e 4934-4937
+  s_8bb890f35dad92::t_4a5b48556d2648 3876-3891
+packages/app/server/lib/sdk-manager.js
+  s_8bb890f35dad92::t_5333e8317fd397 404,407-410
+  s_8bb890f35dad92::t_6b4c663927fb18 2802-2812
+  s_8bb890f35dad92::t_64f3d21f757e21 39
+  s_8bb890f35dad92::t_b0b288e53f762f 406
+  s_8bb890f35dad92::t_35113594d2b6a7 332,338-342
+  s_8bb890f35dad92::t_e4a2a2d26bda5f 394-395
+  s_8bb890f35dad92::t_b952e7b0a86936 3324-3335
+  s_8bb890f35dad92::t_1370ab2a6fed44 1603-1610
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9e66ef6032168fc0ad07316bcba654b995a679a0",
+  "prompts": {},
+  "sessions": {
+    "s_8bb890f35dad92": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1feb80a1-8a92-4f3f-a06e-0c9d13769852",
+        "model": "k3"
+      },
+      "human_author": "weiesky.wangc <weiesky.wangc@antgroup.com>"
+    }
+  }
+}
