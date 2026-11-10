@@ -201,7 +201,7 @@ export function resolveExplicitClaudePath(value, platform = process.platform) {
   } catch { return null; }
   let real = expanded;
   try { real = realpathSync(expanded); } catch { }
-  const isJs = real.toLowerCase().endsWith('.js');
+  const isJs = real.toLowerCase().endsWith('.js') || real.toLowerCase().endsWith('.cjs');
   try {
     if (isJs) {
       accessSync(real, fsConstants.R_OK);
@@ -571,7 +571,7 @@ export function resolveClaudeFromPath() {
 
       let real = result;
       try { real = realpathSync(result); } catch { }
-      if (real.endsWith('.js')) return { path: real, isNpmVersion: true };
+      if (real.endsWith('.js') || real.endsWith('.cjs')) return { path: real, isNpmVersion: true };
       return { path: result, isNpmVersion: false };
     } catch {
       // Try the next lookup command.
@@ -630,12 +630,12 @@ export function resolveNativePath() {
       // win32 过滤掉 sh shim / .cmd / .ps1，只取 .exe（否则 ConPTY spawn 报 error 193）
       const result = pickSpawnableLookupResult(rawOut);
       if (result && existsSync(result)) {
-        // 只排除 .js 文件（老版本 npm 分发的 cli.js，需要 node 运行，
+        // 只排除 .js/.cjs 文件（npm 分发的 Node 入口，需要 node 运行，
         // 由 resolveNpmClaudePath 处理）。Claude Code 2.x+ 的 npm 包内
         // 直接打包了原生二进制（bin/claude.exe），应当作 native 处理。
         let real = result;
         try { real = realpathSync(result); } catch { }
-        if (real.endsWith('.js')) continue;
+        if (real.endsWith('.js') || real.endsWith('.cjs')) continue;
         return result;
       }
     } catch {

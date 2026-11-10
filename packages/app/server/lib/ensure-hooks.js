@@ -2,8 +2,9 @@
  * Register AskUserQuestion and permission approval hooks into ~/.claude/settings.json.
  * Shared between cli.js and electron/tab-worker.js.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, statSync, chmodSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { getClaudeConfigDir } from '../../findcc.js';
 import { SERVER_LIB } from '../_paths.js';
@@ -385,3 +386,134 @@ export function ensureHooks() {
     console.warn('[CC Viewer] Failed to ensure hooks:', err.message);
   }
 }
+
+// ─── .claude.json path resolution + onboarding/trust initialization ───
+// Claude Code's global config file lives at a location that depends on whether
+// CLAUDE_CONFIG_DIR is set and whether a `.config.json` override exists:
+//   1. `<configDir>/.config.json`  — highest precedence when it exists
+//   2. `<configDir>/.claude.json`  — custom config dir (e.g. CodeFuse engine cc dir)
+//   3. `~/.claude.json`            — default (home dir, NOT ~/.claude/.claude.json)
+// Getting this wrong means the trust/onboarding write lands in a file Claude
+// never reads, and the process stays blocked on the "Yes, I trust this folder" page.
+export function resolveClaudeJsonPath(configDir) {
+  const expand = (d) => (typeof d === 'string' && d.startsWith('~/')) ? join(homedir(), d.slice(2)) : d;
+  const defaultDir = resolve(getClaudeConfigDir());
+  const dir = resolve(expand(configDir) || defaultDir);
+  const dotConfig = join(dir, '.config.json');
+  if (existsSync(dotConfig)) return dotConfig;
+  const explicitCustomDir = !!configDir && dir !== defaultDir;
+  const parentEnvSet = !!(process.env.CLAUDE_CONFIG_DIR && process.env.CLAUDE_CONFIG_DIR.trim() !== '');
+  if (explicitCustomDir || parentEnvSet) return join(dir, '.claude.json');
+  return resolve(defaultDir, '..', '.claude.json');
+}
+
+/**
+ * Ensure Claude Code's onboarding and trust state are pre-seeded in .claude.json
+ * so the process never blocks on interactive confirmation dialogs ("Yes, I accept"
+ * / "Yes, I trust this folder"). This is critical for headless IM workers where
+ * no human is present to press Enter.
+ *
+ * Fields written (idempotent, never overwrites user data):
+ *   - `hasCompletedOnboarding: true` — skips the first-run onboarding flow
+ *   - `trustedFolders[workspacePath] = true` — skips the directory trust dialog
+ *   - `projects[workspacePath].hasTrustDialogAccepted = true` — newer Claude builds
+ *     may key trust off this per-project field instead of (or in addition to)
+ *     `trustedFolders`
+ *
+ * Safety invariant: if the target file exists but is unreadable/corrupt, we
+ * NEVER write back — a blind overwrite would destroy the user's projects,
+ * mcpServers, oauthAccount, etc. (same rule as ensureApiKeyApproved).
+ *
+ * Writes are atomic (tmp file + rename) and preserve the original file mode.
+ */
+export function ensureOnboardingAndTrust({ configDir, workspacePath } = {}) {
+  try {
+    const claudeJsonPath = resolveClaudeJsonPath(configDir || getClaudeConfigDir());
+    let claudeJson = null;
+    if (existsSync(claudeJsonPath)) {
+      try {
+        claudeJson = JSON.parse(readFileSync(claudeJsonPath, 'utf-8'));
+        if (!claudeJson || typeof claudeJson !== 'object' || Array.isArray(claudeJson)) {
+          console.warn(`[cc-viewer] ${claudeJsonPath} is not a JSON object, skipping onboarding/trust write`);
+          return;
+        }
+      } catch (err) {
+        // P0 safety rule: unreadable/corrupt file → never overwrite.
+        console.warn(`[cc-viewer] ${claudeJsonPath} is unreadable/unparseable (${err.message}), skipping onboarding/trust write to avoid overwriting user config`);
+        return;
+      }
+    } else {
+      claudeJson = {}; // first run: safe to start from empty object
+    }
+
+    let dirty = false;
+    // 1) hasCompletedOnboarding: skip the "Yes, I accept" first-run dialog.
+    if (claudeJson.hasCompletedOnboarding !== true) {
+      claudeJson.hasCompletedOnboarding = true;
+      dirty = true;
+    }
+    // 2) bypassPermissionsModeAccepted: skip the "Bypass Permissions mode" warning
+    //    that appears when --dangerously-skip-permissions is used on a fresh config.
+    //    IM workers always launch with this flag, so this is required to prevent
+    //    the hang from moving from the trust page to the bypass page.
+    if (claudeJson.bypassPermissionsModeAccepted !== true) {
+      claudeJson.bypassPermissionsModeAccepted = true;
+      dirty = true;
+    }
+    // 3) trustedFolders: skip the "Do you trust this folder" dialog.
+    //    NOTE: Claude Code 2.1.199 does not actually read this field (verified
+    //    against the binary); it is written for forward compatibility only.
+    //    Normalize the key the same way Claude does: path.normalize + forward
+    //    slashes on Windows, NFC on all platforms.
+    if (workspacePath) {
+      const normPath = resolve(workspacePath).replace(/\\/g, '/').normalize('NFC');
+      const trusted = claudeJson.trustedFolders && typeof claudeJson.trustedFolders === 'object' && !Array.isArray(claudeJson.trustedFolders)
+        ? claudeJson.trustedFolders
+        : {};
+      if (!trusted[normPath]) {
+        trusted[normPath] = true;
+        claudeJson.trustedFolders = trusted;
+        dirty = true;
+      }
+    }
+    // 4) projects[workspacePath].hasTrustDialogAccepted: the field Claude Code
+    //    2.1.199 actually checks (verified against the binary). This is the
+    //    operative trust mechanism. Same normalization as above.
+    if (workspacePath) {
+      const normPath = resolve(workspacePath).replace(/\\/g, '/').normalize('NFC');
+      if (!claudeJson.projects || typeof claudeJson.projects !== 'object' || Array.isArray(claudeJson.projects)) {
+        claudeJson.projects = {};
+      }
+      const proj = claudeJson.projects[normPath];
+      if (!proj || typeof proj !== 'object' || Array.isArray(proj)) {
+        claudeJson.projects[normPath] = { hasTrustDialogAccepted: true };
+        dirty = true;
+      } else if (proj.hasTrustDialogAccepted !== true) {
+        proj.hasTrustDialogAccepted = true;
+        dirty = true;
+      }
+    }
+
+    if (dirty) {
+      // Atomic write: tmp file + rename, preserving original file mode.
+      // Create the tmp file with the target permissions from the start (0o600 for
+      // a new file — .claude.json may contain credentials), so the content is
+      // never briefly world-readable between write and chmod.
+      const tmpPath = `${claudeJsonPath}.tmp.${process.pid}.${randomBytes(4).toString('hex')}`;
+      try {
+        let targetMode = 0o600; // safe default for a new file holding credentials
+        try {
+          targetMode = statSync(claudeJsonPath).mode & 0o777;
+        } catch { /* file doesn't exist yet — use safe default */ }
+        writeFileSync(tmpPath, JSON.stringify(claudeJson, null, 2), { encoding: 'utf-8', mode: targetMode });
+        renameSyncWithRetry(tmpPath, claudeJsonPath);
+      } catch (err) {
+        try { if (existsSync(tmpPath)) unlinkSync(tmpPath); } catch { /* ignore */ }
+        throw err;
+      }
+    }
+  } catch (err) {
+    console.warn('[cc-viewer] Failed to ensure onboarding/trust in .claude.json:', err.message);
+  }
+}
+

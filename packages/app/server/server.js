@@ -1660,6 +1660,7 @@ async function _doStart() {
                 getPtyState: pmb.getPtyState,
                 getPtyKind: pmb.getPtyKind,
                 getPtySkipPermissions: pmb.getPtySkipPermissions,
+                getPtyBootState: pmb.getPtyBootState,
                 isStreaming: () => streamingState.active,
                 getConfig: () => loadConfig(id),
                 // 钉钉 AI 卡片逐字流式的文本源（仅 worker 注入）：对话过程中读主 agent 累计文本，

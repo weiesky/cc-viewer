@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(im): **修复 Linux 容器内钉钉 IM 已连接但 Claude 停在目录信任页导致回复超时** — 新增 `ensureOnboardingAndTrust`（预写 `hasCompletedOnboarding` + `trustedFolders` + `projects.hasTrustDialogAccepted` 到 `.claude.json`，仅 IM worker 场景生效）+ CodeFuse 配置目录回退（IM worker 启动时自动选择含 `.claude.json` 的 CodeFuse cc 目录，确保 hooks 与信任状态同目录）+ `getPtyBootState`（PTY 启动状态检测，ANSI 转义剥离 + 启动窗口限制 + 尾部扫描防误报，卡在信任页时 IM 立即返回明确错误而非等 120 秒超时）+ `.cjs` npm 启动器支持（`resolveExplicitClaudePath`/`resolveClaudeFromPath`/`pty-manager`/`cli.js` 均识别 `.cjs` 入口）。Coverage: `ensure-hooks.test.js`, `pty-manager-gap.test.js`, `im-bridge-core.test.js`, `findcc-gap.test.js`.
+
 - fix(sdk+web): **F5 刷新后 `--sdk` 活跃 agent 头像条不再消失** — 根因是 `applySnapshot` 只回填任务、不种子 `_ownerKey`：刷新后快照先复活 strip，下一个 live 帧因 owner 误判为视图切换而全量清空、strip 永远空到下个 task_started。修复：`applySnapshot` 从快照 cwd/instanceKey 种子 `_ownerKey`；服务端 `/clear` 即清空任务表、空表也发权威 `tasks:[]` 快照、重放按 view 锚定、`skipTranscript` 后台任务在此快照中过滤。Coverage: `sdkTaskTracker.test.js`, `sdk-task-table.test.js`, `branch-server.test.js`.
 
 - fix(web): **多工作区下后台 session 心跳不再清空前台头像条/focus** — `sdk-session-state` 的 sessionId 变化重置此前未做视图过滤；现经 `_sdkFrameMatchesView` 门控、视图切换时复位 `_lastSdkSessionStateSid`。Coverage: `chat-active-agents-wiring.test.js`.

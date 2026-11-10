@@ -27,6 +27,9 @@ import {
   getCurrentWorkspace,
   _clearThinkingDisplayRejectedPaths,
 } from '../server/pty-manager.js';
+import { mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 // 轮询直到条件满足，替代固定 setTimeout 减少 flake
 const waitUntil = async (predicate, { timeoutMs = 800, intervalMs = 5 } = {}) => {
@@ -37,6 +40,12 @@ const waitUntil = async (predicate, { timeoutMs = 800, intervalMs = 5 } = {}) =>
   }
   throw new Error('waitUntil timeout');
 };
+
+// Test isolation: spawnClaude now calls ensureOnboardingAndTrust which writes
+// .claude.json. Without a temp CLAUDE_CONFIG_DIR, the write would land in the
+// real user config (or the shared guard dir). Redirect to a per-suite temp dir.
+const _testConfigDir = mkdtempSync(join(tmpdir(), 'ccv-pty-gap-cfg-'));
+process.env.CLAUDE_CONFIG_DIR = _testConfigDir;
 
 // 通用可控 mock pty 工厂：暴露每个实例的 data/exit 触发器，便于精确驱动
 function makeControllableImport(spawned) {
@@ -96,7 +105,15 @@ describe('pty-manager-gap: spawnClaude npm version + serverPort/token + IM_DENY'
     assert.ok(inst.args.includes('--thinking-display'));
   });
 
-  it('非 .js 路径即使 isNpmVersion=true 也直接用 claudePath 作为 command', async () => {
+  it('npm 版本 (.cjs + isNpmVersion) 用 node 运行并把脚本路径放在 args[0]', async () => {
+    await spawnClaude(9000, process.cwd(), [], '/path/to/claude.cjs', true);
+    const inst = spawned[0];
+    assert.equal(inst.command, process.execPath);
+    assert.equal(inst.args[0], '/path/to/claude.cjs');
+    assert.equal(inst.args[1], '--settings');
+  });
+
+  it('非 .js/.cjs 路径即使 isNpmVersion=true 也直接用 claudePath 作为 command', async () => {
     await spawnClaude(9000, process.cwd(), [], '/usr/local/bin/claude', true);
     assert.equal(spawned[0].command, '/usr/local/bin/claude');
     assert.equal(spawned[0].args[0], '--settings');
@@ -716,5 +733,103 @@ describe('pty-manager-gap: spawnShell fallback 交互 shell', () => {
     const buf = getOutputBuffer();
     assert.ok(buf.length <= 200000, `shell buffer 应截断, 实际 ${buf.length}`);
     assert.ok(buf.endsWith('SHELL_TAIL_END'));
+  });
+});
+
+// ─── getPtyBootState ───
+// Detects whether the Claude PTY is blocked on an interactive dialog (trust,
+// onboarding) so the IM bridge can fail fast instead of timing out at 120s.
+// Detection is only active during a boot window (first 30s after spawn) and
+// only scans the last 4KB of the buffer, so normal conversation content
+// containing trigger words does NOT cause false positives.
+
+describe('pty-manager: getPtyBootState', () => {
+  let spawned;
+
+  beforeEach(() => {
+    spawned = [];
+    _clearThinkingDisplayRejectedPaths();
+    _setPtyImportForTests(makeControllableImport(spawned));
+  });
+
+  afterEach(() => {
+    killPty();
+    _setPtyImportForTests(null);
+  });
+
+  it('no PTY → no-pty', async () => {
+    // Ensure no PTY record exists at all (killPty in afterEach only nulls
+    // ptyProcess; the record itself persists). We need a fresh module state.
+    const { getPtyBootState, _resetForTests } = await import('../server/pty-manager.js');
+    _resetForTests();
+    assert.equal(getPtyBootState(), 'no-pty');
+  });
+
+  it('running PTY with minimal output → booting', async () => {
+    await spawnClaude(9000, process.cwd(), [], '/bin/echo', false);
+    const { getPtyBootState } = await import('../server/pty-manager.js');
+    // Very short buffer → still booting
+    assert.equal(getPtyBootState(), 'booting');
+  });
+
+  it('detects "Yes, I trust this folder" → blocked-on-trust', async () => {
+    await spawnClaude(9000, process.cwd(), [], '/bin/echo', false);
+    const { getPtyBootState } = await import('../server/pty-manager.js');
+    // Simulate enough output to pass the booting threshold, then the trust dialog
+    spawned[0]._emitData('x'.repeat(100) + '\nYes, I trust this folder\n');
+    assert.equal(getPtyBootState(), 'blocked-on-trust');
+  });
+
+  it('detects "Do you trust this folder" → blocked-on-trust', async () => {
+    await spawnClaude(9000, process.cwd(), [], '/bin/echo', false);
+    const { getPtyBootState } = await import('../server/pty-manager.js');
+    spawned[0]._emitData('x'.repeat(100) + '\nDo you trust this folder?\n');
+    assert.equal(getPtyBootState(), 'blocked-on-trust');
+  });
+
+  it('detects ANSI-escaped trust dialog (Ink positioned rendering) → blocked-on-trust', async () => {
+    await spawnClaude(9000, process.cwd(), [], '/bin/echo', false);
+    const { getPtyBootState } = await import('../server/pty-manager.js');
+    // Ink renders dialog options with cursor-forward ANSI sequences instead of spaces
+    spawned[0]._emitData('x'.repeat(100) + '\n\x1b[4G1.\x1b[7GYes,\x1b[12GI\x1b[14Gtrust\x1b[20Gthis\x1b[25Gfolder\n');
+    assert.equal(getPtyBootState(), 'blocked-on-trust');
+  });
+
+  it('detects onboarding UI → blocked-on-onboarding', async () => {
+    await spawnClaude(9000, process.cwd(), [], '/bin/echo', false);
+    const { getPtyBootState } = await import('../server/pty-manager.js');
+    spawned[0]._emitData('x'.repeat(100) + '\nYes, I accept\n');
+    assert.equal(getPtyBootState(), 'blocked-on-onboarding');
+  });
+
+  it('exited PTY → exited', async () => {
+    await spawnClaude(9000, process.cwd(), [], '/bin/echo', false);
+    const { getPtyBootState } = await import('../server/pty-manager.js');
+    spawned[0]._emitData('x'.repeat(100)); // pass booting threshold
+    spawned[0]._emitExit(0);
+    assert.equal(getPtyBootState(), 'exited');
+  });
+
+  it('normal output → ready', async () => {
+    await spawnClaude(9000, process.cwd(), [], '/bin/echo', false);
+    const { getPtyBootState } = await import('../server/pty-manager.js');
+    spawned[0]._emitData('Claude Code v2.1.199 ready\n' + 'x'.repeat(100));
+    assert.equal(getPtyBootState(), 'ready');
+  });
+
+  it('conversation containing trigger words → ready (no false positive)', async () => {
+    await spawnClaude(9000, process.cwd(), [], '/bin/echo', false);
+    const { getPtyBootState } = await import('../server/pty-manager.js');
+    // Normal conversation that happens to contain trigger words
+    spawned[0]._emitData('x'.repeat(100) + '\nUser: How do I get started with this project?\n');
+    assert.equal(getPtyBootState(), 'ready');
+  });
+
+  it('old dialog text beyond scan tail → ready (boot window + tail scan)', async () => {
+    await spawnClaude(9000, process.cwd(), [], '/bin/echo', false);
+    const { getPtyBootState } = await import('../server/pty-manager.js');
+    // Dialog text followed by enough output to push it beyond the 4KB scan tail
+    spawned[0]._emitData('Yes, I trust this folder\n' + 'x'.repeat(5000));
+    assert.equal(getPtyBootState(), 'ready');
   });
 });
