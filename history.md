@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix(kimi-k3): **Kimi K3 system prompt 新增工具错误熔断段** — 报错先诊断再行动、区分参数非法与瞬时故障、同工具同参数最多重试 1 次、连续失败 2 次立即停手向用户报告，修复 TaskUpdate 空调用死循环。
+
 - feat(web): **定时任务支持 UltraPlan 模版与图片/附件** — 任务内容复用 UltraPlan 输入面板：默认选中「空模版」tab（原样发送），可选代码/调研/自定义专家；支持粘贴/上传附件（存持久路径，≤20 个）。任务存的仍是原始文本，模版包裹与路径前缀由执行器在触发时组装，摘要/toast 不回显模版壳、重编辑无双重包裹；自定义专家内容保存时快照。Coverage: `scheduled-task-store.test.js`, `scheduled-task-routes.test.js`, `scheduled-task-executor.test.js`, `ultraplan-templates.test.js`, `ultraplan-panel-embedded.test.js`, `schedule-modal-anchor.test.js`.
 
 - fix(im): **修复 Linux 容器内钉钉 IM 已连接但 Claude 停在目录信任页导致回复超时** — 新增 `ensureOnboardingAndTrust`（预写 `hasCompletedOnboarding` + `trustedFolders` + `projects.hasTrustDialogAccepted` 到 `.claude.json`，仅 IM worker 场景生效）+ CodeFuse 配置目录回退（IM worker 启动时自动选择含 `.claude.json` 的 CodeFuse cc 目录，确保 hooks 与信任状态同目录）+ `getPtyBootState`（PTY 启动状态检测，ANSI 转义剥离 + 启动窗口限制 + 尾部扫描防误报，卡在信任页时 IM 立即返回明确错误而非等 120 秒超时）+ `.cjs` npm 启动器支持（`resolveExplicitClaudePath`/`resolveClaudeFromPath`/`pty-manager`/`cli.js` 均识别 `.cjs` 入口）。Coverage: `ensure-hooks.test.js`, `pty-manager-gap.test.js`, `im-bridge-core.test.js`, `findcc-gap.test.js`.
