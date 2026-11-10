@@ -28,6 +28,27 @@ function _emptyDraft() {
   };
 }
 
+// A draft counts as "blank" when nothing in it differs from the pristine new-task
+// form. Blank drafts carry no user work, so closing/switching away must NOT prompt
+// the discard-confirm — even if `dirty` was flipped by an incidental focus/click
+// (e.g. opening the TimePicker and cancelling, or typing into the prompt and
+// deleting it again).
+function _isBlankDraft(draft) {
+  const e = _emptyDraft();
+  return (
+    draft.id === null
+    && draft.prompt.trim() === ''
+    && draft.mode === e.mode
+    && draft.scheduleKind === e.scheduleKind
+    && draft.hourlyMinute === e.hourlyMinute
+    && draft.time === e.time
+    && draft.weeklyDay === e.weeklyDay
+    && draft.cronExpr === e.cronExpr
+    && draft.onceAt === null
+    && draft.enabled === e.enabled
+  );
+}
+
 // Build the API schedule object from the draft's UI fields. Returns null when invalid.
 function _draftToSchedule(draft) {
   switch (draft.scheduleKind) {
@@ -214,7 +235,8 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
   const updateDraft = useCallback((patch) => { setDraft(d => ({ ...d, ...patch })); setDirty(true); }, []);
 
   const handleSelect = useCallback((task) => {
-    if (dirty && draft.id !== (task && task.id)) {
+    // Blank drafts (no prompt, no schedule tweaks) carry no work — don't ask to discard.
+    if (dirty && !_isBlankDraft(draft) && draft.id !== (task && task.id)) {
       Modal.confirm({
         title: t('ui.schedule.discardConfirm'),
         onOk: () => { newTaskMode.current = false; setDirty(false); setSelectedId(task ? task.id : null); if (task) setDraft(_taskToDraft(task)); },
@@ -224,10 +246,10 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
     newTaskMode.current = false;
     setSelectedId(task ? task.id : null);
     if (task) { setDraft(_taskToDraft(task)); setDirty(false); }
-  }, [dirty, draft.id]);
+  }, [dirty, draft]);
 
   const handleNew = useCallback(() => {
-    if (dirty) {
+    if (dirty && !_isBlankDraft(draft)) {
       Modal.confirm({
         title: t('ui.schedule.discardConfirm'),
         onOk: () => { newTaskMode.current = true; setDirty(false); setSelectedId(null); setDraft(_emptyDraft()); },
@@ -237,7 +259,7 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
     newTaskMode.current = true;
     setSelectedId(null);
     setDraft(_emptyDraft());
-  }, [dirty, project, spawnAvailable]);
+  }, [dirty, draft, project, spawnAvailable]);
 
   const handleSave = useCallback(async () => {
     const schedule = _draftToSchedule(draft);
@@ -320,12 +342,14 @@ export default function ScheduleTaskModal({ open, onClose, project, instance, se
   }, [onResumeSession, onClose]);
 
   const handleCancel = useCallback(() => {
-    if (dirty) {
+    // Skip the discard-confirm when the draft is still the pristine blank form —
+    // nothing was actually entered, so there is no work to lose.
+    if (dirty && !_isBlankDraft(draft)) {
       Modal.confirm({ title: t('ui.schedule.discardConfirm'), onOk: () => { setDirty(false); onClose(); } });
       return;
     }
     onClose();
-  }, [dirty, onClose]);
+  }, [dirty, draft, onClose]);
 
   // ── render ────────────────────────────────────────────────────────────────
   const canRunNow = !isNew && !dirty;
